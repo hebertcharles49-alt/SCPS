@@ -1,3 +1,69 @@
+# SYNTHÈSE DE SESSION — handoff roulant (2026-07-10, MID-VAGUE multi-agents)
+
+> Branche `claude/vibrant-euler-1tgfp3` (== main, sync au commit 4798331/a7a2c21) ·
+> **SAVE_VERSION 73** · Thread du jour : DEUX GROS DOCUMENTS JOUEUR (audit UI +
+> passe éditoriale tech/events + équilibrage culture/foi) exécutés en hiérarchie
+> multi-agents. ⚠ ARBRE NON COMMITÉ, très chargé — voir « État à la reprise ».
+
+## ÉTAT À LA REPRISE (si compaction) — 2026-07-10 après-midi
+- **Specs persistées** : docs/RETOURS_2026-07-10.md (verdict UI 5 points + éditorial
+  tech/events) · docs/EQUILIBRAGE_CULTURE_FOI_2026-07-10.md (éthos/héritages/traditions/foi).
+- **AGENTS LIVRÉS (diffs NON commités dans l'arbre)** :
+  1. KIT DE DÉPART (scps_econ.c + scps_tune_list.h : SPAWN_KIT_* ×9, dépôt capitale
+     de chaque empire à la genèse, jurisprudence CS_TRADE_POOL).
+  2. CRÉATEUR 4 onglets (culture_creator.gd : sections plates par rang + grisage d'axe,
+     onglet Identité blason+nom, en-têtes renommés) + shot_ui.gd (capture 01e).
+  3. TRADITIONS↔REGISTRE J (le gros) : 9 leviers HeritageLeviers câblés sur des formules
+     rang-registre — 7 tunables TRAD_*_W (REND 1.0 · INFL 10 · CAP 0.30 · PERM 3.0 ·
+     ARCANE 0.25 · DERIVE 1.0 · FRACT 0.06). Fichiers : econ/statecraft/demography/
+     revolt/ai(+h)/sim/api/heritage/tune_list. Découvertes : `langue` = horloge morte ;
+     `rendement` ne touchait pas la prod. Mesuré : pop +15-25 %, révoltes 18→13,
+     hégémon 3/3. ARCANE désormais = coût branche faustienne ±25 %/pt (plus une
+     pénalité pure — réconciliation faite dans le brief équilibrage).
+  4. ÉDITORIAL TECH (scps_tech.c seul) : eff% retirés du trio Scriptorium/Académie/
+     Université, charges civiles cachées→0 (Outillage/Wards/Fortifs/Armurerie),
+     +NODE_PROD_PCT (Taille de précision 5 · Automates 8 · Alchimie 5), Scrying dK+0.5,
+     7 renommages, hovers honnêtes (« production globale »), 74/74 flavors (champ
+     existait déjà).
+- **AGENTS EN VOL** : ÉVÉNEMENTS (ouvertures+flavors par option, effets INCHANGÉS,
+  scps_events.c) · FOI (canaux morts des 16 pôles/3 crédos remappés K/P/H/L/démo,
+  scps_religion.c) · TRADITIONS-ÉQUILIBRAGE (36 deltas cibles unité commune,
+  scps_heritage.c, Arcanique/Sourd GARDENT arcane±1) · ÉTHOS+HÉRITAGES (tolérances
+  fiscales, Bureaucrate dégonflé, Pacifiste relevé, esclavage re-gaté TECH = revert
+  partiel brassage ASSUMÉ joueur, signatures normalisées 0.60).
+- **FAIT DE MA MAIN (non commité)** : tooltips cascade FIXÉE (grâce de régression 0.3 s
+  — le niveau 2 sautait à la frame de naissance) · politique hover (défs SEULEMENT via
+  mots turquoise, plus de leçon dans le corps, footer méta retiré) · double hover natif
+  TUÉ (project.godot [gui] tooltip_delay 100000) · F1-F8 dans les hovers du rail ·
+  redraw overlay/sol au pan/zoom (map_view._nav_redraw) · ledger droit DÉCOUPÉ au
+  contenu + 288px (Frame.LEDGER_W partagé alerts/tech_panel/topbar) · chips alertes
+  280px/42 chars · tiroir 380px + Conseil aéré · UI-1 : échelle 100/125/150 %
+  (options_panel + stretch canvas_items project.godot + T_OPT_SCALE i18n) + FS 16/14 ·
+  UI-5 : focus clavier RESTAURÉ (Espace intercepté par main._input AMONT du focus,
+  focus_mode=NONE retiré de ui_theme).
+- **PIPELINE DE CLÔTURE (à dérouler quand les 4 agents restants ont atterri)** :
+  (1) compilation complète + make smoke + bancs sensibles (heritage/statecraft/revolt/
+  demography/religion/tech/events/ai) ; (2) re-baseline golden UNE FOIS (kit+câblage+
+  équilibrages mordent an-0) ; (3) sweep santé ./chronicle 9 5 250 6 12 (satisfaction,
+  hégémon mortel 5/5, §27 gaté an-180) ; (4) probe shot_ui headless (⚠ tuer les
+  instances Godot zombies AVANT — 2 process bloqués sur le verrou d'import la dernière
+  fois) ; (5) commit vague + push + ff-merge main ; (6) export build_godot.sh (Git Bash
+  → bash MSYS2 : APPDATA scrubé, le script détecte le profil par PRÉSENCE des templates).
+- **RESTE EN FILE (tasks)** : UI-2 topbar 4 blocs+matières en tiroir+alerte rupture ·
+  UI-3 zone contextuelle unique · UI-4 hiérarchie d'actions+conséquences · UI-5 suite
+  (symboles doublant la couleur) · #70 portraits conseillers=identité=modificateur
+  (agents équilibrage à lancer après la vague) · rendu du champ flavor tech dans le
+  panneau Medusa (le champ est rempli, l'UI ne l'affiche peut-être pas encore).
+- **PIÈGES chauds** : bash -lc mange le cd (scripts dans packaging/windows/) · worktrees
+  KO sur cette machine (git introuvable pour le harnais) · un seul make à la fois
+  (agents en fsyntax-only) · limite de session API ~12:50 Paris (l'agent traditions
+  est mort dessus une fois, SendMessage l'a ressuscité).
+
+
+---
+
+# ARCHIVE (threads précédents)
+
 # SYNTHÈSE DE SESSION — handoff roulant (2026-07-09)
 
 > Branche `claude/vibrant-euler-1tgfp3` · **SAVE_VERSION 73** · moteur ~figé ce thread.

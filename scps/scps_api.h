@@ -1016,12 +1016,16 @@ int scps_country_factions(ScpsSim *s, int cid, ScpsFaction *out, int max,
 /* AVANT scps_sim_generate ; la composition est appliquée À la génération.    */
 /* ====================================================================== */
 
-/* HÉRITAGE (lignée culturelle) : id + nom + sphère + un ethnonyme-exemple. */
-typedef struct { int id; const char *nom; const char *sphere; const char *exemple; } ScpsHeritage;
+/* HÉRITAGE (lignée culturelle) : id + nom + sphère + un ethnonyme-exemple + une
+ * phrase d'ambiance (`flavor`, champ ajouté en FIN de struct — display-only,
+ * docs/EQUILIBRAGE_CULTURE_FOI_2026-07-10.md §HÉRITAGES). */
+typedef struct { int id; const char *nom; const char *sphere; const char *exemple; const char *flavor; } ScpsHeritage;
 int scps_heritage_list(ScpsHeritage *out, int max);     /* retourne HERITAGE_COUNT */
 
-/* ÉTHOS (axe de valeurs) : id + nom + épithète de pays (« Horde »…) + une ligne. */
-typedef struct { int id; const char *nom; const char *epithete; const char *hint; } ScpsEthosDef;
+/* ÉTHOS (axe de valeurs) : id + nom + épithète de pays (« Horde »…) + une ligne +
+ * une phrase d'ambiance (`flavor`, champ ajouté en FIN de struct — display-only,
+ * docs/EQUILIBRAGE_CULTURE_FOI_2026-07-10.md §ÉTHOS). */
+typedef struct { int id; const char *nom; const char *epithete; const char *hint; const char *flavor; } ScpsEthosDef;
 int scps_ethos_list(ScpsEthosDef *out, int max);        /* retourne ETHOS_COUNT */
 
 /* TRADITION (= un trait) : id + nom + axe (0 Physique·1 Social·2 Intellectuel) +

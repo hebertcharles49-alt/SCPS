@@ -10,7 +10,7 @@ const Frame = preload("res://ui/frame.gd")
 
 const AlertsK = preload("res://ui/alerts.gd")   # la TABLE DU FIL (FEED_KINDS) partagée
 
-const W := 268.0
+const W := 288.0            ## élargie (retour joueur 2026-07-10 : « laisse respirer »)
 const HANDLE_W := 14.0      ## bande réduite quand la sidebar est REPLIÉE (rabat)
 const LOG_MAX := 18         ## (les factions parties en topbar, le journal respire)
 
@@ -41,11 +41,15 @@ func _process(_d: float) -> void:
 		if visible:
 			queue_redraw()
 
+var _maxh := 600.0          ## hauteur DISPONIBLE (bande topbar→bas) — le panneau s'y borne
+                            ## mais se DÉCOUPE au contenu (retour joueur : « adapte la taille »)
+
 func _layout() -> void:
 	var vp := get_viewport_rect().size
 	var w := HANDLE_W if _collapsed else W
+	_maxh = maxf(140.0, vp.y - Frame.TOPBAR_H - Frame.BOTTOMBAR_H)
 	position = Vector2(vp.x - w, Frame.TOPBAR_H)
-	size = Vector2(w, vp.y - Frame.TOPBAR_H - Frame.BOTTOMBAR_H)
+	size = Vector2(w, _maxh)   # plein cadre au layout ; le _draw re-latche à son contenu
 
 func _gui_input(e: InputEvent) -> void:
 	if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
@@ -125,6 +129,7 @@ func _draw() -> void:
 		return
 	VKit.fill(self, Rect2(0, 0, W, size.y), Color(VKit.COL_PANEL.r, VKit.COL_PANEL.g, VKit.COL_PANEL.b, 0.94))
 	VKit.fill(self, Rect2(0, 0, 2, size.y), VKit.COL_GOLD)
+	VKit.fill(self, Rect2(0, size.y - 2.0, W, 2), VKit.COL_GOLD)   # le panneau se FERME au contenu
 	var hd2: Texture2D = UIKit.parch_tex("sheet23_remaining_chrome_sidebar_02")
 	if hd2 != null:
 		draw_texture_rect(hd2, Rect2(_handle_rect.position - Vector2(2, 0),
@@ -258,8 +263,9 @@ func _draw() -> void:
 	if not _folded("JOURNAL"):
 		if _log.is_empty():
 			VKit.text(self, Vector2(x, y), VKit.COL_DIM, "rien à signaler")
+			y += 16
 		for e in _log:
-			if y > size.y - 20.0:
+			if y > _maxh - 20.0:   # borné à la BANDE dispo (pas à size.y, qui s'adapte)
 				break
 			var line := "an %d · %s" % [int(e["y"]), String(e["txt"])]
 			# tronqué à la largeur (les détails vivent dans les alertes/panneaux)
@@ -267,6 +273,13 @@ func _draw() -> void:
 				line = line.substr(0, line.length() - 4) + "…"
 			VKit.text(self, Vector2(x, y), VKit.COL_DIM, line, VKit.FS_SMALL)
 			y += 16
+
+	# ── DÉCOUPE AU CONTENU : le panneau s'arrête à sa dernière ligne (latch —
+	# la taille converge en une frame ; l'empreinte STOP cesse de bloquer la carte
+	# sous le vide, retour joueur 2026-07-10 « ADAPTER LA TAILLE DU MENU DE DROITE »).
+	var want := clampf(y + 10.0, 140.0, _maxh)
+	if absf(want - size.y) > 2.0:
+		set_deferred("size", Vector2(size.x, want))
 
 func _grp(n) -> String:
 	var s := str(absi(int(n)))
@@ -298,14 +311,14 @@ func _lsection(x: float, y: float, title: String, rib: Color, count: String) -> 
 func _folded(title: String) -> bool:
 	return bool(_fold.get(title, false))
 
-## HOVER des bandeaux (→ TooltipServer : mots-concepts + définitions). Chaque section
-## du ledger dit son métier — « un explicatif sur chaque display » (doctrine joueur).
+## HOVER des bandeaux — politique joueur : nom, raccourci, FACTUEL (pas de leçon ;
+## les mots turquoise portent les définitions via la cascade).
 const SEC_TIPS := {
-	"VILLES": "Vos régions habitées, triées par âmes. La démographie les fait croître vers leur logement.",
-	"ARMÉES": "La réserve (votre levée, en régiments) et l'ost de campagne s'il est déployé. Recompléter paie or et matière.",
-	"COLONISATION": "Le chantier de colonisation en cours : la colonne mûrit selon la distance, puis la ferveur fondatrice porte la jeune province.",
-	"MISSION": "La mission décennale : un objectif proposé par le siècle, sa récompense promise en or et matière.",
-	"JOURNAL": "Le fil des évènements passés (guerres, révoltes, sécessions). Clic sur un bandeau : replier la section.",
+	"VILLES": "Vos régions habitées, triées par âmes.",
+	"ARMÉES": "Réserve levée et ost de campagne. Recompléter paie or et matière.",
+	"COLONISATION": "Le chantier de Colonisation en cours et son avancement.",
+	"MISSION": "La mission décennale et sa récompense.",
+	"JOURNAL": "Le fil des évènements passés. Clic sur un bandeau : replier.",
 }
 
 func _get_tooltip(at_position: Vector2) -> String:

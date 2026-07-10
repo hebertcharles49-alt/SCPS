@@ -120,7 +120,7 @@ func _input(event: InputEvent) -> void:
 		if event.position.distance_to(_press_pos) > CLICK_SLOP:
 			_dragged = true
 		_camera.position -= event.relative / _camera.zoom.x
-		queue_redraw()
+		_nav_redraw()
 	elif event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
 			_zoom(0.84)
@@ -155,7 +155,17 @@ func _zoom(factor: float) -> void:
 	var nz := _camera.zoom.x / factor
 	nz = clampf(nz, ZOOM_MIN, ZOOM_MAX)
 	_camera.zoom = Vector2(nz, nz)
+	_nav_redraw()
+
+## la NAVIGATION (pan/zoom) redessine aussi l'overlay et le sol : les largeurs de
+## trait, les LOD de frontières et les assets dépendent du zoom — sans ça ils ne
+## s'actualisaient qu'au CLIC (retour joueur 2026-07-10).
+func _nav_redraw() -> void:
 	queue_redraw()
+	if _overlay != null:
+		_overlay.queue_redraw()
+	if _ground != null:
+		_ground.queue_redraw()
 
 func _pick_at_mouse() -> void:
 	if Sim.world == null or not Sim.world.has_method("province_at"):
@@ -202,7 +212,7 @@ func fit() -> void:
 	z = clampf(z, ZOOM_MIN, ZOOM_MAX)
 	_camera.zoom = Vector2(z, z)
 	_camera.position = iso_pos(W * 0.5, Sim.world.map_h() * 0.5)
-	queue_redraw()
+	_nav_redraw()
 
 ## FOCUS DÉPART : cadre la caméra sur la CAPITALE du joueur, à un zoom de lecture
 ## confortable (le joueur voit tout de suite QUI il joue et OÙ il commence — au lieu

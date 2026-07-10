@@ -277,8 +277,8 @@ func _draw() -> void:
 	# va quand le temps est en cause ; la barre d'entropie garde le centre-haut.
 	if Sim.game_on and Sim.speed_index == 0:
 		var prw := 128.0
-		# à GAUCHE du ledger (bande droite ~274 px, dessinée après nous → elle couvrirait)
-		var prr := Rect2(ww - 274.0 - prw - 12.0, H + 6.0, prw, 26.0)
+		# à GAUCHE du ledger (bande droite, dessinée après nous → elle couvrirait)
+		var prr := Rect2(ww - Frame.LEDGER_W - prw - 12.0, H + 6.0, prw, 26.0)
 		VKit.fill(self, prr, Color(0.38, 0.08, 0.07, 0.94))
 		VKit.box(self, prr, Color(0.78, 0.62, 0.30))
 		var ptxt := "Pause"

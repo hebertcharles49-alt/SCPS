@@ -319,6 +319,18 @@ func _ready() -> void:
 
 	Sim.set_speed(0)            # monde en pause tant que le menu est ouvert
 
+## ESPACE = pause, intercepté EN AMONT du focus GUI (_input passe avant les boutons
+## focusés) — le focus clavier reste VIVANT partout (Tab/Entrée, audit 2026-07-10) ;
+## on ne vole la barre d'espace qu'aux boutons, jamais à un champ de saisie.
+func _input(e: InputEvent) -> void:
+	if not (e is InputEventKey and e.pressed and not e.echo and e.keycode == KEY_SPACE):
+		return
+	var fo := get_viewport().gui_get_focus_owner()
+	if fo is LineEdit or fo is TextEdit:
+		return                       # on tape un espace dans un champ : pas de pause
+	Sim.toggle_pause()
+	get_viewport().set_input_as_handled()
+
 func _unhandled_input(e: InputEvent) -> void:
 	if not (e is InputEventKey and e.pressed and not e.echo):
 		return
@@ -349,8 +361,6 @@ func _unhandled_input(e: InputEvent) -> void:
 					Sound.play("ui_parchment_close")
 				else:
 					_chronique.open()
-		KEY_SPACE:
-			Sim.toggle_pause()
 		KEY_EQUAL, KEY_PLUS, KEY_KP_ADD:
 			Sim.faster()
 		KEY_MINUS, KEY_KP_SUBTRACT:

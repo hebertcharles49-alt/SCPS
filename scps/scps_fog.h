@@ -59,4 +59,11 @@ void fog_visible_regions(const World *w, const WorldEconomy *econ, int viewer_ci
 void fog_save(FILE *f);
 bool fog_load(FILE *f);
 
+/* BANC/FUZZ SEULEMENT (motif intertrade_debug_set_hub_of) : force `a` à connaître
+ * TOUT le monde. Les bancs de verbes diplo testent la PLOMBERIE (journal → drain →
+ * relations), pas l'exploration — sans ça, un joueur passif d'un monde clairsemé
+ * ne rencontre légitimement personne (radius 2) et tout verbe est « cible
+ * inconnue ». JAMAIS appelé par la sim. */
+void fog_debug_meet_all(int a);
+
 #endif /* SCPS_FOG_H */

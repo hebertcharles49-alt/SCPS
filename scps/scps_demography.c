@@ -12,6 +12,7 @@
 #include "scps_routes.h"    /* S2 : le contact COMMERCIAL porte la cristallisation culturelle */
 #include "scps_diplo.h"     /* S2 : la guerre coupe le contact */
 #include "scps_tune.h"      /* S2 : le rythme de fusion calibrable */
+#include "scps_heritage.h"  /* TRADITIONS : perméabilité → P d'assimilation ; dérive → contact */
 #include "scps_math.h"      /* clampf/absf partagés */
 #include <string.h>
 #include <math.h>
@@ -576,6 +577,14 @@ int demography_contact_tick(WorldEconomy *e, ModifierStack *drift,
         SyncFeasibility f=culture_can_syncretize(&ca,&cb,P,K);
         if (!f.feasible) continue;                             /* porte fermée : plus de P+K requis */
         float d=econ_content_dist_faith(&a,&b);
+        /* TRADITIONS — le levier DÉRIVE (Adaptable/Prosélyte/Éphémère vs Traditionaliste/
+         * Longévif/Réservé) : la culture du pays PROPRIÉTAIRE dérive plus ou moins vite
+         * vers ses partenaires de contact — le MÊME levier que l'horloge linguistique
+         * (world_tick), routé par le fuse_rate S2. ±0.20 levier × TRAD_DERIVE_W=1 → ±20 %. */
+        float fuse_r = fuse_rate;
+        { HeritageBuild hb = culture_build_for((uint32_t)re->owner);
+          fuse_r *= 1.f + tune_f("TRAD_DERIVE_W",1.f)*build_leviers(&hb).derive;
+          if (fuse_r < 0.f) fuse_r = 0.f; }
         if (d>=inner && d<FUSE_EPS){                           /* FRANCHISSEMENT → l'hybride cristallise */
             Culture h;
             if (culture_syncretize(&ca,&cb,&h)){               /* l'ORIGINE porte la fusion (durable) */
@@ -587,7 +596,7 @@ int demography_contact_tick(WorldEconomy *e, ModifierStack *drift,
                 cryst++;
             }
         } else if (d>=FUSE_EPS && drift){                      /* encore loin : la dérive DURABLE vers le partenaire (générations) */
-            float rate=fuse_rate*f.openness*(sea?1.f:0.5f)*ypt; if(rate>0.5f)rate=0.5f;
+            float rate=fuse_r*f.openness*(sea?1.f:0.5f)*ypt; if(rate>0.5f)rate=0.5f;
             GroupDrift step={ (b.valeurs-a.valeurs)*rate, (b.subsistance-a.subsistance)*rate,
                               (b.parente-a.parente)*rate, (b.religion-a.religion)*rate, 0.f };
             modstack_accumulate_drift(drift, dom->drift_id, step, false);   /* DURABLE (métabolisé), comme l'assimilation */
@@ -830,7 +839,16 @@ void demography_tick(World *w, WorldEconomy *econ, WorldLegitimacy *wl,
          * (les institutions se cassent). Centré sur K=5 à K_inst=REF (non-régression), amplifié. */
         float K_eff = K + (re->build.K_inst - tune_f("ASSIM_K_INST_REF",1.5f)) * tune_f("ASSIM_K_INST_AMP",4.f);
         K_eff = clampf(K_eff, 0.f, 20.f);
-        assimilation_tick(pp, drift, P, K_eff, dt);              /* dérive durable (∝ D∞ / institutions), au pas dt */
+        /* TRADITIONS — le levier PERMÉABILITÉ (Ouvert/Insulaire) de l'empire PROPRIÉTAIRE
+         * module l'entrée P du timer d'assimilation (assimilation_years : metab =
+         * 0.5+(P+K)/20) — la porte d'assimilation du peuple, PAR PAYS, jamais un bonus
+         * plat. ±0.5 levier × TRAD_PERM_W=3 → ±1.5 P (≈ ±8 % de vitesse). */
+        float P_eff = P;
+        if (re->owner>=0){
+            HeritageBuild hb = culture_build_for((uint32_t)re->owner);
+            P_eff = clampf(P + tune_f("TRAD_PERM_W",3.f)*build_leviers(&hb).permeabilite, 0.f, 10.f);
+        }
+        assimilation_tick(pp, drift, P_eff, K_eff, dt);          /* dérive durable (∝ D∞ / institutions), au pas dt */
         float yh = (wl && r < SCPS_MAX_REG) ? wl->years_held[r] : 100.f;
         faith_convert_tick(pp, crown, yh, dt);                  /* la FOI converge vers le trône (§2) */
         for (int i=0;i<pp->n_groups;i++)

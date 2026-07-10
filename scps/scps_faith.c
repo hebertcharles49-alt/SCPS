@@ -1,6 +1,14 @@
 /*
  * scps_faith.c — la religion (voir scps_faith.h)
  *
+ * ⚠ PROTOTYPE INACTIF (2026-07-10) : n'est appelé QUE par son propre banc (grep :
+ * aucun autre .c n'inclut scps_faith.h) — aucun câblage moteur, jamais lu par
+ * sim_day/econ/ai. La religion RÉELLEMENT jouée est scps_religion.c (P1-P8,
+ * composable, sérialisée section RELG) ; voir docs/EQUILIBRAGE_CULTURE_FOI_2026-07-10.md
+ * « Double système ». Ce fichier reste un PROTOTYPE de génération déterministe
+ * (foi émergente par branche × bande de l'axe religion, sans schisme joueur) —
+ * ne pas le confondre avec le module actif.
+ *
  * Génération déterministe : on agrège les cultures du monde en foi par (branche ×
  * bande de l'axe religion). Chaque foi est la face sacrée de l'éthos MODAL de ses
  * fidèles ; son prosélytisme suit leur credo ; sa posture sur l'interdit (orthodoxe

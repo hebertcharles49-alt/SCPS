@@ -18,6 +18,7 @@
 #include "scps_intertrade.h"/* #26 : intertrade_embargoed (la mémoire de l'embargo) */
 #include "scps_provlog.h"   /* le JOURNAL diplomatique (trahison/sécession/relations, display) */
 #include "scps_math.h"      /* clampf/iclamp/absf partagés */
+#include "scps_heritage.h"  /* TRADITIONS : le levier INFLUENCE entre dans le standing */
 #include <string.h>
 
 /* ---- Calibrage --------------------------------------------------------- */
@@ -369,12 +370,20 @@ void statecraft_council_ai(Statecraft *sc, const World *w, const WorldEconomy *e
 }
 
 /* ---- Lecteurs ---------------------------------------------------------- */
+/* TRADITIONS — le levier INFLUENCE (Charismatique/Prosélyte vs Rebutant/Réservé) entre
+ * dans le STANDING (l'assiette vers laquelle l'Influence converge), au MÊME RANG que le
+ * prestige — PAR PAYS (culture_build_for), jamais un bonus global. ±0.75 levier ×
+ * TRAD_INFL_W=10 → ±7.5 pts sur 0..100 (1 diplomate = 25 pts). MIROIR statecraft_tick. */
+static float sc_trad_influence(int cid){
+    HeritageBuild hb = culture_build_for((uint32_t)cid);
+    return tune_f("TRAD_INFL_W", 10.f) * build_leviers(&hb).influence;
+}
 float statecraft_influence_flux(const Statecraft *sc, const WorldEconomy *econ,
                                 const WorldProsperity *wp, int cid){
     if (!sc||!econ||!wp||cid<0||cid>=SCPS_MAX_COUNTRY) return 0.f;
     float prosp = (cid<wp->n_countries)? clampf(wp->country[cid].P_realise,0.f,10.f):0.f;
     float size  = (float)country_size(econ, cid);
-    float standing = clampf(prosp*4.f + size*3.f + sc->prestige[cid], 0.f, 100.f);
+    float standing = clampf(prosp*4.f + size*3.f + sc->prestige[cid] + sc_trad_influence(cid), 0.f, 100.f);
     return (standing - sc->influence[cid]) * SC_INFLUENCE_RATE;   /* /jour */
 }
 
@@ -538,12 +547,12 @@ void statecraft_tick(Statecraft *sc, World *w, WorldEconomy *econ,
     int NC = w->n_countries;
     float fd = (float)days;
 
-    /* ---- Influence → standing (prospérité + taille + prestige) ---------- */
+    /* ---- Influence → standing (prospérité + taille + prestige + traditions) ---------- */
     for (int c=0;c<NC;c++){
         sc->prestige[c] = clampf(sc->prestige[c] - SC_PRESTIGE_DECAY*fd, 0.f, 30.f);
         float prosp = (c<wp->n_countries) ? clampf(wp->country[c].P_realise,0.f,10.f) : 0.f;
         float size  = (float)country_size(econ, c);
-        float standing = clampf(prosp*4.f + size*3.f + sc->prestige[c], 0.f, 100.f);
+        float standing = clampf(prosp*4.f + size*3.f + sc->prestige[c] + sc_trad_influence(c), 0.f, 100.f);
         sc->influence[c] = clampf(toward(sc->influence[c], standing, SC_INFLUENCE_RATE*fd), 0.f, 100.f);
         sc->staff[c].count = staff_cap(sc, c);
     }

@@ -85,9 +85,9 @@ static func _wire(b: BaseButton) -> void:
 	if b.has_meta("_scps_fb"):
 		return
 	b.set_meta("_scps_fb", true)
-	# AUCUN focus clavier (style Paradox) : un bouton focusé MANGEAIT Espace/Entrée —
-	# la pause ne répondait plus après un clic (retour joueur 2026-07-10).
-	b.focus_mode = Control.FOCUS_NONE
+	# Le focus clavier RESTE VIVANT (Tab/Entrée/focus visible — audit 2026-07-10) :
+	# la barre d'espace est interceptée EN AMONT du focus par main._input (la pause
+	# répond après un clic SANS sacrifier l'accessibilité clavier).
 	b.button_down.connect(func():
 		Sound.play("ui_click")   # LE clic universel (façon iPhone) — chaque bouton tape
 		Sim.notify_action()      # PAUSE : l'UI se rafraîchit au clic (retour joueur 2026-07-09)

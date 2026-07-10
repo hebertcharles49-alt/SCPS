@@ -6,4 +6,5 @@ extends RefCounted
 const TOPBAR_H := 48.0      ## bandeau haut (pleine largeur) — 48 px : cellules CK3 (valeur EMPILÉE sur delta)
 const BOTTOMBAR_H := 66.0   ## bandeau bas (pleine largeur) — porte mode & zoom (agrandi, retour joueur)
 const SIDEBAR_W := 64.0     ## rail gauche (pleine hauteur) — boutons 52 px (retour joueur « très petits »)
+const LEDGER_W := 288.0     ## bande droite (empire_sidebar.W) — la RÉSERVE des panneaux/chips
 const MARGIN := 8.0

@@ -1686,8 +1686,10 @@ int scps_tech_nodes(ScpsSim *s, ScpsTechNode *out, int max){
         out[i].is_base = nd->is_base?1:0;
         out[i].name    = sz(nd->name);  out[i].unlocks = sz(nd->unlocks);
         out[i].effet   = sz(nd->effet);
-        /* coût AFFICHÉ = coût de base × remise de diffusion (ce que le joueur paiera vraiment). */
-        out[i].cost    = (int)(nd->cost * tech_diffusion_mult((TechId)i) + 0.5f);
+        /* coût AFFICHÉ = coût de base × remise de diffusion × traditions (arcane, nœuds
+         * faustiens) — ce que le joueur paiera vraiment (miroir de la voie scps_sim.c). */
+        out[i].cost    = (int)(nd->cost * tech_diffusion_mult((TechId)i)
+                             * ai_tech_tradition_mult(p, (TechId)i) + 0.5f);
         /* prérequis : node[i] ↔ TechId i, donc prereq (un TechId, TECH_COUNT=aucun)
          * est directement l'INDICE du nœud parent dans CE tableau → arête de l'arbre. */
         const TechNode *tn = tech_node((TechId)i);
@@ -3013,6 +3015,23 @@ int scps_road_path(ScpsSim *s, int i, ScpsRoadPt *out, int max, int *level){
 /* sim) → utilisable AVANT scps_sim_generate.                               */
 /* ====================================================================== */
 
+/* FLAVOR — phrases d'ambiance des 6 héritages (ordre ESOTERIQUE..CLANIQUE, docs/
+ * EQUILIBRAGE_CULTURE_FOI_2026-07-10.md §HÉRITAGES, verbatim joueur). */
+static const char *HERITAGE_FLAVOR[HERITAGE_COUNT] = {
+    "Leurs généalogies commencent avant les premiers calendriers, dans des siècles "
+      "dont les ruines seules se souviennent.",
+    "Ils disent que tout serment ressemble à un métal : il révèle sa valeur seulement "
+      "lorsqu'on le chauffe assez pour le briser.",
+    "Leur première horloge mesurait les saisons. La seconde mesura le travail. La "
+      "troisième apprit aux deux à rapporter de l'or.",
+    "Ils ont porté tant de lois, de langues et de couronnes qu'ils appellent désormais "
+      "tradition l'art de changer sans disparaître.",
+    "Leurs frontières suivent les canaux, leurs fêtes les moissons et leurs souvenirs "
+      "les champs que leurs ancêtres ont refusé d'abandonner.",
+    "Un étranger leur demanda où finissait la famille. On lui montra les tombes, les "
+      "troupeaux, les guerriers et enfin l'horizon.",
+};
+
 int scps_heritage_list(ScpsHeritage *out, int max){
     static char ex[HERITAGE_COUNT][32];   /* ethnonymes-exemples (persistent le temps que l'hôte copie) */
     int n=0;
@@ -3022,6 +3041,7 @@ int scps_heritage_list(ScpsHeritage *out, int max){
         out[n].nom     = heritage_name((Heritage)h);
         out[n].sphere  = sphere_name(heritage_sphere((Heritage)h));
         out[n].exemple = ex[h];
+        out[n].flavor  = HERITAGE_FLAVOR[h];
         n++;
     }
     return n;
@@ -3038,12 +3058,28 @@ int scps_ethos_list(ScpsEthosDef *out, int max){
         "Profit & carrefours : prospère par le commerce.",
         "Consentement seul : ne fracture jamais, pacifique.",
     };
+    /* FLAVOR — phrases d'ambiance (ordre DOMINATEUR..PACIFISTE, même doc que HERITAGE_FLAVOR). */
+    static const char *FLAVOR[ETHOS_COUNT] = {
+        "Ils ne demandent pas si la frontière peut être franchie, seulement combien "
+          "d'hommes il faudra pour qu'elle cesse d'exister.",
+        "Une dette peut être oubliée, une défaite réparée. Une honte, elle, attend "
+          "patiemment les petits-fils.",
+        "Chaque personne connaît sa place, chaque place son devoir et chaque devoir "
+          "le sceau qui le rend incontestable.",
+        "Le royaume ne repose pas sur la volonté d'un seul homme, mais sur mille "
+          "registres qui refusent obstinément de se contredire.",
+        "Ils ne conquièrent pas les ports. Ils y prêtent de l'or jusqu'à ce que les "
+          "clés deviennent une modalité de remboursement.",
+        "Ils ont juré de ne prendre aucune vie. Leurs voisins débattent encore pour "
+          "savoir si cette promesse est une vertu ou une invitation.",
+    };
     int n=0;
     for(int e=0; e<ETHOS_COUNT && n<max; e++){
         out[n].id       = e;
         out[n].nom      = ethos_name((Ethos)e);
         out[n].epithete = EPI[e];
         out[n].hint     = HINT[e];
+        out[n].flavor   = FLAVOR[e];
         n++;
     }
     return n;

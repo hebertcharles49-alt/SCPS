@@ -29,6 +29,10 @@ file_logging/max_log_files=5
 window/size/viewport_width=1600
 window/size/viewport_height=900
 window/size/mode=3
+; étirement canvas_items : requis pour l'ÉCHELLE UI des options (content_scale_factor).
+; factor par défaut 1.0 = rendu identique à avant ; l'option 125/150 % scale tout.
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
 
 [audio]
 
@@ -39,6 +43,13 @@ buses/default_bus_layout="res://default_bus_layout.tres"
 Sim="*res://autoload/sim.gd"
 Sound="*res://audio/sound.gd"
 ECUtilities="*uid://cip7vyqyn45sf"
+
+[gui]
+
+; tooltip natif NEUTRALISÉ à la source (le set_setting runtime de main.gd ne
+; suffisait pas : « double hover » sur les onglets du rail, retour joueur
+; 2026-07-10) — le TooltipServer est le SEUL rendu de tooltip.
+timers/tooltip_delay_sec=100000.0
 
 [editor_plugins]
 

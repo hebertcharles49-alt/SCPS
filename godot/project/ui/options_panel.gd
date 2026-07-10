@@ -27,8 +27,14 @@ const C_TITLE := Color(0.90, 0.76, 0.48)
 const LOCALES := ["fr", "en"]
 const LOCALE_NAMES := ["Français", "English"]
 
+## Les ÉCHELLES d'interface offertes (audit 2026-07-10 : « échelle UI 100/125/150 % »).
+## Appliquées via content_scale_factor (stretch canvas_items, cf. project.godot).
+const SCALES := [1.0, 1.25, 1.5]
+const SCALE_NAMES := ["100 %", "125 %", "150 %"]
+
 var lang := "fr"           ## "fr" | "en"
 var fullscreen := true     ## défaut projet (window/size/mode=3) ; relu au boot
+var ui_scale := 1.0        ## 1.0 | 1.25 | 1.5
 var _booted := false
 var _box: Control = null
 
@@ -58,6 +64,12 @@ func _apply() -> void:
 	if fullscreen != _is_fullscreen():
 		DisplayServer.window_set_mode(
 			DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen else DisplayServer.WINDOW_MODE_WINDOWED)
+	# échelle UI : le facteur logique de la fenêtre (1.0 = pixel-perfect, défaut)
+	var w := get_window() if is_inside_tree() else null
+	if w == null and Engine.get_main_loop() is SceneTree:
+		w = (Engine.get_main_loop() as SceneTree).root
+	if w != null and absf(w.content_scale_factor - ui_scale) > 0.01:
+		w.content_scale_factor = ui_scale
 
 func _is_fullscreen() -> bool:
 	var m := DisplayServer.window_get_mode()
@@ -73,11 +85,15 @@ func _load_cfg() -> void:
 	if l in LOCALES:
 		lang = l
 	fullscreen = bool(cfg.get_value("options", "fullscreen", fullscreen))
+	var sc := float(cfg.get_value("options", "ui_scale", ui_scale))
+	if sc in SCALES:
+		ui_scale = sc
 
 func _save_cfg() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("options", "lang", lang)
 	cfg.set_value("options", "fullscreen", fullscreen)
+	cfg.set_value("options", "ui_scale", ui_scale)
 	cfg.save(CFG_PATH)
 
 
@@ -132,6 +148,22 @@ func _build_ui() -> void:
 	fs.toggled.connect(_on_fullscreen)
 	col.add_child(fs)
 
+	# échelle de l'interface : 100 / 125 / 150 % (audit 2026-07-10)
+	var srow := HBoxContainer.new()
+	srow.add_theme_constant_override("separation", 8)
+	var slab := Label.new(); slab.text = tr("T_OPT_SCALE")
+	slab.custom_minimum_size = Vector2(150, 0)
+	slab.add_theme_color_override("font_color", C_TEXT)
+	srow.add_child(slab)
+	var sopt := OptionButton.new()
+	for nom in SCALE_NAMES:
+		sopt.add_item(nom)
+	sopt.selected = SCALES.find(ui_scale)
+	sopt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sopt.item_selected.connect(_on_scale)
+	srow.add_child(sopt)
+	col.add_child(srow)
+
 	var hint := Label.new(); hint.text = tr("T_OPT_HINT")
 	hint.add_theme_color_override("font_color", C_DIM)
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -155,5 +187,10 @@ func _on_lang(i: int) -> void:
 
 func _on_fullscreen(on: bool) -> void:
 	fullscreen = on
+	_save_cfg()
+	_apply()
+
+func _on_scale(i: int) -> void:
+	ui_scale = SCALES[clampi(i, 0, SCALES.size() - 1)]
 	_save_cfg()
 	_apply()

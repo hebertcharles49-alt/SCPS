@@ -9,7 +9,7 @@ const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const DX := 46.0
 const DY := 102.0
-const DW := 312.0
+const DW := 380.0   ## élargi (retour joueur 2026-07-10 : « laisse respirer, on a de la place »)
 
 const TAB_ICON := ["menu_economy", "menu_demography", "menu_stocks", "menu_market",
 	"menu_army", "menu_filters", "menu_diplomacy", "menu_council"]
@@ -319,7 +319,7 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 		if filled:
 			# le ministre ASSIS : nom · tier · ÂGE (il vieillit ; la retraite vide le siège vers 66-73)
 			VKit.text(self, Vector2(x + 16, y), VKit.COL_PARCH,
-				"%s — tier %d · %d ans" % [seat["councilor"], int(seat["tier"]), int(seat.get("age", 0))], VKit.FS_SMALL)
+				"%s · tier %d · %d ans" % [seat["councilor"], int(seat["tier"]), int(seat.get("age", 0))], VKit.FS_SMALL)
 			var bw := VKit.text_w("Renvoyer", VKit.FS_SMALL) + 14.0
 			var r := Rect2(DW - 14.0 - bw, y - 1, bw, 16)
 			VKit.fill(self, r, VKit.COL_PANEL2)
@@ -354,8 +354,8 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 				px += lw + 4.0
 			y += 22
 		else:
-			VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, "(siège vacant — la pool se renouvelle par génération)", VKit.FS_SMALL)
-			y += 18
+			VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, "(siège vacant : la pool se renouvelle par génération)", VKit.FS_SMALL)
+			y += 20
 			# l'embauche ÉCLAIRÉE : les CANDIDATS de la pool courante (nom · âge · ×tier · coût/mois)
 			if Sim.world.has_method("council_candidates"):
 				for cand in Sim.world.council_candidates(idx):
@@ -367,8 +367,8 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 					VKit.box(self, cr, VKit.sense(0.80))
 					VKit.text(self, Vector2(cr.position.x + 7, y), VKit.COL_PARCH, lab, VKit.FS_SMALL)
 					_conseil_btns.append({"rect": cr, "act": "hire", "seat": idx, "slot": int(cand["slot"])})
-					y += 19
-			y += 4
+					y += 22
+			y += 8
 		idx += 1
 	# (Décrets + Peuple servile vivent dans le sous-onglet POLITIQUES — lot 5)
 	if _conseil_flash != "":

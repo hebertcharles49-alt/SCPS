@@ -80,7 +80,7 @@ func _layout() -> void:
 	# géométrie des nœuds est FIXE et généreuse, la hauteur SCROLLE (barre latérale).
 	# Centré ENTRE le rail gauche et le ledger droit (il passait sous le ledger).
 	var free_x0 := Frame.SIDEBAR_W + 8.0
-	var free_x1 := vp.x - 274.0 - 8.0
+	var free_x1 := vp.x - Frame.LEDGER_W - 8.0
 	PW = clampf((free_x1 - free_x0) * 0.98, 900.0, 1780.0)
 	PH = clampf(vp.y * 0.92, 620.0, 1200.0)
 	size = Vector2(PW, PH)

@@ -73,12 +73,14 @@ typedef struct {
     int            pts;       /* signé : +1/+2 atout, −1/−2 défaut */
     TraitId        antonym;
     HeritageLeviers lev;       /* deltas */
-    const char    *hover;     /* définition (membrane) */
+    const char    *hover;     /* définition chiffrée (membrane) */
+    const char    *flavor;    /* citation courte, display-only (membrane) */
 } TraitDef;
 
 const TraitDef *trait_def(TraitId t);
 const char     *trait_name(TraitId t);
 const char     *trait_hover(TraitId t);
+const char     *trait_flavor(TraitId t);
 const char     *category_name(TraitCategory c);
 
 /* ===================================================================== */

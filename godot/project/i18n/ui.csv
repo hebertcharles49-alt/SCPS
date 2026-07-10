@@ -17,6 +17,7 @@ T_LOAD_FAIL,Chargement impossible (emplacement vide ou version différente).,Can
 T_OPT_TITLE,Options,Options
 T_OPT_LANG,Langue,Language
 T_OPT_FULLSCREEN,Plein écran,Fullscreen
+T_OPT_SCALE,Échelle de l'interface,UI scale
 T_OPT_HINT,La langue s'applique au menu et aux textes du moteur ; les panneaux en jeu suivront à mesure de la migration.,Applies to the menu and engine texts; in-game panels will follow as the migration proceeds.
 T_NG_TITLE,Nouvelle partie,New game
 T_NG_WORLD,Monde,World

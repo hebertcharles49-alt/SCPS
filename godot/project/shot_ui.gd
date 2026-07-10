@@ -61,8 +61,10 @@ func _run() -> void:
 	if ng._creator != null:
 		ng._creator._tabs.current_tab = 1   # l'onglet ÉTHOS (lore explicative)
 		await _shot("01c2_creator_ethos")
-		ng._creator._tabs.current_tab = 2   # l'onglet TRADITIONS (boutons groupés)
+		ng._creator._tabs.current_tab = 2   # l'onglet TRADITIONS (3 sections plates)
 		await _shot("01d_creator_trad")
+		ng._creator._tabs.current_tab = 3   # l'onglet IDENTITÉ (armoiries/nom/peuple)
+		await _shot("01e_creator_identite")
 	lay.queue_free()
 	await get_tree().process_frame
 

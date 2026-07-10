@@ -63,7 +63,11 @@ int main(void){
         group_ethos_lean(&(PopCulture){.ethos=ETHOS_PACIFISTE,.heritage=HERITAGE_MECANISTE,.credo=CREDO_PLURALISTE}, w);
         ok("mécaniste pacifiste → Communautaire dominant", argmax(w)==FAC_COMMUNAUTAIRE);
         group_ethos_lean(&(PopCulture){.ethos=ETHOS_ORDRE,.heritage=HERITAGE_METALLURGISTE,.credo=CREDO_PLURALISTE}, w);
-        ok("métallurgiste d'ordre → Transgresseur présent (forge à runes)", w[FAC_TRANSGRESSEUR]>0.15f);
+        /* ÉQUILIBRAGE 2026-07-10 : signature Métallurgiste normalisée (Transgresseur
+         * 0.4→0.3) recale le résultat exactement à 0.15 normalisé — seuil abaissé à
+         * 0.12 pour rester robuste à l'arrondi flottant, intention inchangée
+         * (« Transgresseur présent, non dominant »). */
+        ok("métallurgiste d'ordre → Transgresseur présent (forge à runes)", w[FAC_TRANSGRESSEUR]>0.12f);
         /* CREDO : la ferveur nourrit les Gardiens. */
         float wp[FAC_COUNT], wz[FAC_COUNT];
         group_ethos_lean(&(PopCulture){.ethos=ETHOS_ORDRE,.heritage=HERITAGE_ADAPTATIF,.credo=CREDO_PLURALISTE}, wp);

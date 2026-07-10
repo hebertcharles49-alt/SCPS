@@ -24,11 +24,11 @@ const SLICE_PAL := [
 	Color(0xa8/255.0,0x5a/255.0,0x5a/255.0), Color(0x6f/255.0,0x9a/255.0,0x5a/255.0),
 ]
 
-# tailles de police (g_font / g_font_small / g_font_big) — montées d'un cran
-# (retour joueur 2026-07-10 : « agrandis la police ») ; les layouts en pas de
-# 14-16 px encaissent +1/+2 (le texte se dessine depuis le HAUT, pas de clip).
-const FS := 15
-const FS_SMALL := 12
+# tailles de police (g_font / g_font_small / g_font_big) — RELEVÉES (audit
+# 2026-07-10 : « texte courant 16-17 px minimum, secondaire 14 px minimum ») ;
+# les layouts en pas de 14-18 px encaissent (le texte se dessine depuis le HAUT).
+const FS := 16
+const FS_SMALL := 14
 const FS_BIG := 20
 
 # ── POLICES (DA parchemin) : Alegreya Sans = l'UI (humaniste, lisible en bouton/panneau/

@@ -12,42 +12,60 @@
 #define M_HALF    0.5f
 #define M_SOFT    0.6f   /* morale/cohésion/influence/agitation/assim/coercion/revenue */
 #define M_HARD    0.8f
-#define R_POP_UP  0.12f
+#define R_POP_UP  0.10f  /* symétrique à R_POP_DN (10 %/10 %) — REMAP 2026-07-10, ex-0.12f */
 #define R_POP_DN (-0.10f)
-#define R_RES_UP  0.12f
-#define R_RES_DN (-0.10f)
 #define COLOR_SHIFT 40   /* variante "proche" */
 #define COLOR_NEAR_MAX 64
 
+/* REMAP CANAUX VIVANTS (2026-07-10, docs/EQUILIBRAGE_CULTURE_FOI_2026-07-10.md « FOI — pôles ») :
+ * seuls 7 canaux ch[RC_*] sont réellement LUS par le moteur — RC_K/RC_P/RC_H/RC_L/RC_STAB/
+ * RC_COHESION (scps_prosperity.c, folded dans K/P/H/Lt) + RC_POPGROWTH (scps_econ.c, la démo).
+ * Le reste de l'enum (RC_I/F/PE/RESEARCH/ENTROPY/INFLUENCE/REVENUE/ASSIM/COERCION/AGITATION/
+ * MORALE/CONSCRIPT) N'EST CONSOMMÉ NULLE PART — audit confirmé par grep sur `.ch[RC_*]` hors de
+ * ce fichier (aucune occurrence pour ces 12 canaux). Chaque pôle ci-dessous a désormais UN
+ * avantage ET UN coût VIVANTS (deux faces réelles) — plus de promesse gratuite ni de pénalité
+ * pure. Les crédos gardent quelques deltas sur des canaux morts (RC_PE/RC_I/RC_AGITATION/
+ * RC_ASSIM/RC_COERCION) — VOULU, réservés à un câblage relationnel futur (diplo/scholar), donc
+ * jamais affichés côté joueur (cf. relig_pole_tip / commentaires crédo ci-dessous). */
 const ReligPoleDef RELIG_POLES[RP_COUNT] = {
- [RP_FECONDITE] ={RA_SANG,   "relig.pole.fecondite", {{RC_POPGROWTH,R_POP_UP},{RC_I,M_HARD}}},
+ [RP_FECONDITE] ={RA_SANG,   "relig.pole.fecondite", {{RC_POPGROWTH,R_POP_UP},{RC_K,-M_HALF}}},
  [RP_OFFRANDE]  ={RA_SANG,   "relig.pole.offrande",  {{RC_STAB,M_COORD},{RC_POPGROWTH,R_POP_DN}}},
  [RP_TRANSE]    ={RA_FEU,    "relig.pole.transe",    {{RC_COHESION,M_HARD},{RC_K,-M_HARD}}},
  [RP_SILENCE]   ={RA_FEU,    "relig.pole.silence",   {{RC_K,M_COORD},{RC_COHESION,-M_SOFT}}},
  [RP_ACCUEIL]   ={RA_SEUIL,  "relig.pole.accueil",   {{RC_P,M_COORD},{RC_H,-M_COORD}}},
- [RP_MUR]       ={RA_SEUIL,  "relig.pole.mur",       {{RC_H,M_COORD},{RC_PE,-M_SOFT}}},
- [RP_COURONNE]  ={RA_SERMENT,"relig.pole.couronne",  {{RC_L,M_COORD},{RC_F,-M_COORD}}},
- [RP_ASSEMBLEE] ={RA_SERMENT,"relig.pole.assemblee", {{RC_F,M_COORD},{RC_K,-M_HALF}}},
- [RP_ANCETRES]  ={RA_VEILLE, "relig.pole.ancetres",  {{RC_STAB,M_HARD},{RC_ASSIM,-M_SOFT}}},
- [RP_CENDRE]    ={RA_VEILLE, "relig.pole.cendre",    {{RC_ASSIM,M_HARD},{RC_STAB,-M_SOFT}}},
- [RP_GNOSE]     ={RA_CANON,  "relig.pole.gnose",     {{RC_RESEARCH,R_RES_UP},{RC_ENTROPY,M_HARD}}},
- [RP_ORTHODOXIE]={RA_CANON,  "relig.pole.orthodoxie",{{RC_STAB,M_HARD},{RC_RESEARCH,R_RES_DN}}},
- [RP_FRUGALITE] ={RA_DON,    "relig.pole.frugalite", {{RC_COHESION,M_HARD},{RC_REVENUE,-M_SOFT}}},
- [RP_FASTE]     ={RA_DON,    "relig.pole.faste",     {{RC_INFLUENCE,M_HARD},{RC_COHESION,-M_SOFT}}},
- [RP_COURAGE]   ={RA_GLAIVE, "relig.pole.courage",   {{RC_MORALE,M_HARD},{RC_PE,-M_SOFT}}},
- [RP_TREVE]     ={RA_GLAIVE, "relig.pole.treve",     {{RC_INFLUENCE,M_HARD},{RC_MORALE,-M_SOFT}}},
+ [RP_MUR]       ={RA_SEUIL,  "relig.pole.mur",       {{RC_H,M_COORD},{RC_P,-M_COORD}}},
+ [RP_COURONNE]  ={RA_SERMENT,"relig.pole.couronne",  {{RC_L,M_COORD},{RC_P,-M_HALF}}},
+ [RP_ASSEMBLEE] ={RA_SERMENT,"relig.pole.assemblee", {{RC_P,M_HARD},{RC_L,-M_HALF}}},
+ [RP_ANCETRES]  ={RA_VEILLE, "relig.pole.ancetres",  {{RC_STAB,M_HARD},{RC_P,-M_HALF}}},
+ [RP_CENDRE]    ={RA_VEILLE, "relig.pole.cendre",    {{RC_P,M_HARD},{RC_STAB,-M_SOFT}}},
+ [RP_GNOSE]     ={RA_CANON,  "relig.pole.gnose",     {{RC_K,M_HARD},{RC_L,-M_HALF}}},
+ [RP_ORTHODOXIE]={RA_CANON,  "relig.pole.orthodoxie",{{RC_STAB,M_HARD},{RC_K,-M_HALF}}},
+ [RP_FRUGALITE] ={RA_DON,    "relig.pole.frugalite", {{RC_COHESION,M_HARD},{RC_P,-M_HALF}}},
+ [RP_FASTE]     ={RA_DON,    "relig.pole.faste",     {{RC_P,M_HARD},{RC_COHESION,-M_SOFT}}},
+ [RP_COURAGE]   ={RA_GLAIVE, "relig.pole.courage",   {{RC_H,M_HARD},{RC_L,-M_SOFT}}},
+ [RP_TREVE]     ={RA_GLAIVE, "relig.pole.treve",     {{RC_L,M_HARD},{RC_H,-M_SOFT}}},
 };
 
 /* deltas-self du crédo (sentinelle RC_COUNT). INDEXÉS PAR L'ENUM Credo RÉEL de
  * scps_culture.h : 0=CREDO_PLURALISTE · 1=CREDO_EVANGELISTE (« prosélyte ») ·
- * 2=CREDO_PURIFICATEUR (« loyaliste »). Noms d'ARRAY distincts des constantes d'enum
- * (sinon collision). « prosélyte » volontairement léger : son poids est RELATIONNEL
- * (conversion/CB/tension cross-entités), câblé en phases diplo/scholar, pas ici. */
-static const ReligDelta g_credo_pluraliste[] = {
+ * 2=CREDO_PURIFICATEUR — ⚠ LE NOM JOUEUR EST « LOYALISTE » (i18n/UI) : CREDO_PURIFICATEUR
+ * EST le crédo « loyaliste » du joueur, jamais renommé côté moteur. Noms d'ARRAY distincts
+ * des constantes d'enum (sinon collision). Chaque crédo garde quelques deltas sur des
+ * canaux MORTS (RC_PE/RC_I/RC_AGITATION/RC_ASSIM/RC_COERCION, cf. note REMAP au-dessus de
+ * RELIG_POLES) — VOULU, poids RELATIONNEL réservé à un câblage diplo/scholar futur
+ * (conversion/CB/tension cross-entités) : NE JAMAIS les afficher côté joueur (relig_pole_tip
+ * ne les mentionne pas ; seuls P/H/L/K/démo, vivants, sont promis). */
+static const ReligDelta g_credo_pluraliste[] = {   /* vivant : P +1 · H −1 (RC_P/RC_H) */
+  /* Flavor : « Ils n'affirment pas que tous les dieux disent vrai, seulement qu'aucun trône
+   * ne devrait décider lequel a le droit de parler. » */
   {RC_P,M_COORD},{RC_PE,M_HALF},{RC_AGITATION,-M_SOFT},{RC_H,-M_COORD},{RC_I,M_HALF},{RC_COUNT,0}};
-static const ReligDelta g_credo_evangeliste[] = {   /* « prosélyte » */
-  {RC_ASSIM,M_SOFT},{RC_PE,-0.4f},{RC_COUNT,0}};
-static const ReligDelta g_credo_purificateur[] = {  /* « loyaliste » */
+static const ReligDelta g_credo_evangeliste[] = {   /* « prosélyte » — vivant : P +0,5 · L −0,3 (AJOUTÉ) */
+  /* Flavor : « Une vérité que l'on garde pour soi n'est qu'un doute bien élevé. La leur doit
+   * voyager, convaincre et revenir accompagnée. » */
+  {RC_ASSIM,M_SOFT},{RC_PE,-0.4f},{RC_P,0.5f},{RC_L,-0.3f},{RC_COUNT,0}};
+static const ReligDelta g_credo_purificateur[] = {  /* « loyaliste » — vivant : H +1 · L +0,6 (COHESION) · P −1 */
+  /* Flavor : « La foi, la loi et la couronne parlent ici d'une seule voix. Ceux qui entendent
+   * autre chose sont invités à écouter de plus près. » */
   {RC_H,M_COORD},{RC_COHESION,M_SOFT},{RC_COERCION,M_HALF},{RC_P,-M_COORD},{RC_PE,-0.4f},{RC_COUNT,0}};
 
 /* table indexée par valeur de l'enum Credo — ALIGNÉE sur l'ordre de scps_culture.h. */
@@ -529,24 +547,28 @@ const char *relig_pole_name(ReligPole p){
     "Frugalit\xc3\xa9","Faste","Courage","Tr\xc3\xaave"};
   return (p>=0&&p<RP_COUNT)?N[p]:"?";
 }
+/* REMAP 2026-07-10 : chaque tip dit désormais les DEUX faces réelles (avantage vivant +
+ * coût vivant, K/P/H/L/démo — cf. note au-dessus de RELIG_POLES) puis la flavor de la
+ * spec (docs/EQUILIBRAGE_CULTURE_FOI_2026-07-10.md « FOI — pôles »), en RAW UTF-8 comme
+ * les .flavor de scps_events.c (pas de canal RC_* promis qui ne soit pas consommé). */
 const char *relig_pole_tip(ReligPole p){
   static const char *T[RP_COUNT]={
-    "Croissance accrue, flux plus lourd",          /* Fécondité  */
-    "Stabilit\xc3\xa9 par le sang vers\xc3\xa9",    /* Offrande   */
-    "Ferveur chaude, ordre dilu\xc3\xa9",           /* Transe     */
-    "Discipline, peu d'effervescence",             /* Silence    */
-    "Membrane ouverte, peu d'expulsion",           /* Accueil    */
-    "Membrane ferm\xc3\xa9""e, contact appauvri",   /* Mur        */
-    "Pouvoir centralis\xc3\xa9",                     /* Couronne   */
-    "D\xc3\xa9""cision distribu\xc3\xa9""e",         /* Assemblée  */
-    "Continuit\xc3\xa9, assimilation lente",        /* Ancêtres   */
-    "Table rase, assimilation rapide",             /* Cendre     */
-    "Savoir pouss\xc3\xa9, app\xc3\xa9tit faustien",/* Gnose      */
-    "Doctrine fig\xc3\xa9""e, d\xc3\xa9rive verrouill\xc3\xa9""e", /* Orthodoxie */
-    "Coh\xc3\xa9sion sobre, revenu moindre",        /* Frugalité  */
-    "Prestige, grief d'in\xc3\xa9galit\xc3\xa9",     /* Faste      */
-    "Ardeur guerri\xc3\xa8re, contact m\xc3\xa9""fiant", /* Courage */
-    "Concorde marchande, ardeur moindre"};         /* Trêve      */
+    "Croissance plus rapide, gestion (K) alourdie. « Chaque naissance est une prière exaucée, même lorsque les greniers n'avaient rien demandé. »",                    /* Fécondité  */
+    "Légitimité par le sang versé, croissance ralentie. « Le sang versé ne rachète pas les morts. Il rappelle seulement aux vivants le prix de leur survie. »",         /* Offrande   */
+    "Cohésion ardente, gestion (K) dispersée. « Quand les tambours s'arrêtent, personne ne sait plus qui a parlé. Tous se souviennent pourtant d'avoir répondu ensemble. »", /* Transe */
+    "Gestion (K) disciplinée, cohésion refroidie. « Le silence enseigne la maîtrise. Il enseigne aussi à ceux qui souffrent que personne ne souhaite les entendre. »",  /* Silence    */
+    "Prospérité ouverte, tolérance mise à l'épreuve. « Toute porte ouverte laisse entrer un hôte, une idée et parfois l'homme qui contestera demain le maître de maison. »", /* Accueil */
+    "Tolérance affermie, prospérité bridée. « Un mur protège la communauté de ce qui rôde dehors, puis lui apprend à redouter tout ce qu'elle ne voit plus. »",         /* Mur        */
+    "Légitimité centralisée, prospérité rognée. « Le souverain porte la couronne devant les hommes. Devant le ciel, c'est la couronne qui porte le souverain. »",       /* Couronne   */
+    "Prospérité distribuée, légitimité contestée. « Quand tous peuvent parler, nul ne peut prétendre n'avoir pas été entendu. Cela ne signifie pas que quelqu'un ait obéi. »", /* Assemblée */
+    "Légitimité enracinée, prospérité engourdie. « Les morts ne gouvernent pas, assurent les prêtres. Ils se contentent de rendre chaque changement honteux. »",        /* Ancêtres   */
+    "Prospérité renouvelée, légitimité fragilisée. « Nous avons brûlé les anciens noms pour que chacun puisse en choisir un nouveau. L'odeur de fumée, elle, demeure. »", /* Cendre    */
+    "Gestion (K) éclairée, légitimité suspecte. « Le divin se cache dans les questions que les prêtres interdisent. Les réponses, malheureusement, savent aussi se cacher. »", /* Gnose */
+    "Légitimité fixée, gestion (K) rigidifiée. « La vérité a été fixée une fois pour toutes. Toute nouvelle question devient donc une faute de mémoire. »",             /* Orthodoxie */
+    "Légitimité par la sobriété, prospérité comprimée. « Le bol vide rapproche les fidèles, surtout lorsque le prélat chargé de l'expliquer mange dans une autre pièce. »", /* Frugalité */
+    "Prospérité éclatante, légitimité jalousée. « L'or sur l'autel prouve la grandeur de la foi. Les pauvres demandent parfois pourquoi elle exige autant de preuves. »", /* Faste     */
+    "Tolérance martiale, légitimité risquée. « Mourir sans peur est une grâce. Envoyer sans peur les autres mourir en est une que les chefs reçoivent plus souvent. »", /* Courage    */
+    "Légitimité apaisée, tolérance émoussée. « La paix n'efface aucune querelle. Elle donne simplement à chacun le temps de se souvenir pourquoi il préférait vivre. »"}; /* Trêve    */
   return (p>=0&&p<RP_COUNT)?T[p]:"";
 }
 const char *scholar_role_name(int role){
@@ -565,10 +587,13 @@ void religion_selftest(void){
   int trad[3]={RP_FECONDITE,RP_MUR,RP_GNOSE};
   uint8_t col[3]={20,40,200};
   /* crédo 1 (évangéliste) : sans terme RC_H, donc le +H du pôle MUR reste lisible
-     (le crédo 0 pluraliste a RC_H −1.0 qui ANNULERAIT le +1.0 de MUR → net 0). */
+     (le crédo 0 pluraliste a RC_H −1.0 qui ANNULERAIT le +1.0 de MUR → net 0).
+     REMAP 2026-07-10 : RP_GNOSE ne touche plus RC_RESEARCH/RC_ENTROPY (morts, jamais
+     lus) mais RC_K/RC_L (vivants) — recalculé : K = FECONDITE(-0.5) + GNOSE(+0.8) = +0.3
+     (>0) ; L = GNOSE(-0.5) + credo_evangeliste(-0.3, ajouté par le remap) = -0.8 (<0). */
   int root=religion_spawn(1,trad,123,1,col); assert(root>=0);
   ReligAccum a; religion_apply(&g_religions[root],&a);
-  assert(a.ch[RC_POPGROWTH]>0 && a.ch[RC_H]>0 && a.ch[RC_RESEARCH]>0 && a.ch[RC_ENTROPY]>0);
+  assert(a.ch[RC_POPGROWTH]>0 && a.ch[RC_H]>0 && a.ch[RC_K]>0 && a.ch[RC_L]<0);
   int kid=religion_schism(root,1,RP_ACCUEIL,2,RP_ORTHODOXIE,2,124,2,1,0xC0FFEE);
   assert(kid>=0 && g_religions[kid].parent==root);
   assert(g_religions[kid].traditions[0]==RP_FECONDITE); /* slot 0 conservé */

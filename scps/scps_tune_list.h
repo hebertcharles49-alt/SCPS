@@ -722,6 +722,36 @@
     X(TIER4_POP,              4000.0f) \
     X(TIER5_POP,              5000.0f) \
     X(TIER6_POP,              8000.0f) \
-    X(TIER7_POP,             10000.0f)
+    X(TIER7_POP,             10000.0f) \
+    /* KIT DE DÉPART (2026-07-10, demande joueur) : petit STOCK déposé sur la province-
+     * capitale de chaque EMPIRE/JOUEUR à la genèse (scps_econ.c, site du CS_TRADE_POOL) —
+     * de quoi tenir le premier hiver et lever une garde. 0 = désactivé. */ \
+    X(SPAWN_KIT_WOOD,           50.0f) \
+    X(SPAWN_KIT_FOOD,          100.0f) \
+    X(SPAWN_KIT_CLAY,           20.0f) \
+    X(SPAWN_KIT_IRON,           20.0f) \
+    X(SPAWN_KIT_STONE,          20.0f) \
+    X(SPAWN_KIT_TOOLS,          20.0f) \
+    X(SPAWN_KIT_ARMS,          100.0f) \
+    X(SPAWN_KIT_RANGED,        100.0f) \
+    X(SPAWN_KIT_BEER,           20.0f) \
+    /* TRADITIONS → CIRCUIT DES TUNABLES (2026-07-10, demande joueur : « elles ne sont
+     * pas dans le registre, elles n'ont aucun levier ») : chaque coefficient route un
+     * levier de HeritageLeviers (scps_heritage.h) vers une ENTRÉE moteur EXISTANTE,
+     * PAR PAYS (culture_build_for) — jamais un tune_set global. 0 = levier débranché.
+     *  · REND   → tech_prod des provinces (rang NODE_PROD_PCT) : ±0.30 levier → ±30 % prod
+     *  · INFL   → standing statecraft (assiette de l'Influence, rang prestige) : ±0.75 → ±7.5 pts
+     *  · CAP    → pénalité off-culture de society_sat (la tenue de la diversité) : ±1.0 → ±30 %
+     *  · PERM   → entrée P d'assimilation_tick (vitesse d'assimilation) : ±0.5 → ±1.5 P
+     *  · ARCANE → coût des nœuds FAUSTIENS (rang remise de diffusion) : ±1.0 → ∓25 %
+     *  · DERIVE → fuse_rate du contact culturel (S2) : ±0.20 → ±20 %
+     *  · FRACT  → fold du grief de révolte (rang W_AGITATION_UNREST) : ±1.0 → ±0.06 */ \
+    X(TRAD_REND_W,               1.0f) \
+    X(TRAD_INFL_W,              10.0f) \
+    X(TRAD_CAP_W,                0.30f) \
+    X(TRAD_PERM_W,               3.0f) \
+    X(TRAD_ARCANE_W,             0.25f) \
+    X(TRAD_DERIVE_W,             1.0f) \
+    X(TRAD_FRACT_W,              0.06f)
 
 #endif /* SCPS_TUNE_LIST_H */

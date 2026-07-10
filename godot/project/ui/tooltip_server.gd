@@ -32,6 +32,7 @@ var _grace := 0.0
 var _sub_level := -1         ## mot turquoise en cours de survol : niveau…
 var _sub_key := ""           ## …concept…
 var _sub_t := 0.0            ## …et temps accumulé
+var _shrink_t := 0.0         ## grâce de RÉGRESSION (souris à un étage moins profond)
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -112,11 +113,17 @@ func _process(delta: float) -> void:
 				_teardown(0)
 			return
 		_grace = 0.0
-		# la souris est remontée à un étage moins profond → les enfants au-delà ferment
-		# (depth = profondeur souris : source=0, étage i = i+1 ; on garde depth étages,
-		#  et au retour à la SOURCE seule la racine survit)
+		# la souris est remontée à un étage moins profond → les enfants au-delà ferment,
+		# mais avec la MÊME grâce que la sortie de chaîne : un enfant qui vient de
+		# naître est HORS de la souris (posé à côté du curseur) — sans grâce il
+		# mourrait à la frame suivante (le bug « le niveau 2 saute instantanément »).
 		if _levels.size() > maxi(depth, 1):
-			_teardown(maxi(depth, 1))
+			_shrink_t += delta
+			if _shrink_t >= GRACE:
+				_teardown(maxi(depth, 1))
+				_shrink_t = 0.0
+		else:
+			_shrink_t = 0.0
 		# CASCADE : un mot turquoise couve → son enfant s'ouvre
 		if _sub_level >= 0 and _sub_key != "" and _levels.size() < MAXDEPTH:
 			_sub_t += delta
@@ -147,6 +154,9 @@ func _process(delta: float) -> void:
 	elif not _levels.is_empty() and _t >= LOCK_AT:
 		_lock()
 
+## Politique de contenu (retour joueur) : le hover = nom, raccourci, explication
+## FACTUELLE — JAMAIS la définition des concepts dans le corps ; le joueur survole
+## le MOT TURQUOISE pour l'obtenir (cascade). Aucune ligne méta d'explication.
 func _decorated(text: String, header_key: String = "") -> String:
 	var d: Dictionary = Concepts.decorate(text)
 	var bb := String(d["bb"])
@@ -154,20 +164,11 @@ func _decorated(text: String, header_key: String = "") -> String:
 		var hic: String = Concepts.icon_of(header_key)
 		var hpre := ("[img=18x18]%s[/img] " % hic) if hic != "" and ResourceLoader.exists(hic) else ""
 		bb = "%s[b][color=#%s]%s[/color][/b]\n%s" % [hpre, Concepts.COL, header_key, bb]
-	var defs: Array = d["defs"]
-	if header_key == "" and defs.size() > 0:
-		bb += "\n[color=#5a5348]────────[/color]"
-		for k in defs:
-			var ic: String = Concepts.icon_of(String(k))
-			var pre := ("[img=16x16]%s[/img] " % ic) if ic != "" and ResourceLoader.exists(ic) else ""
-			bb += "\n%s[url=%s][color=#%s]%s[/color][/url][color=#b9ae98] : %s[/color]" % [
-				pre, k, Concepts.COL, k, Concepts.def_of(String(k))]
 	return bb
 
 func _show_root(text: String) -> void:
 	var lvl := _mk_level()
-	(lvl["rtl"] as RichTextLabel).text = _decorated(text) \
-		+ "\n[color=#7a715f]survol 1 s : verrouiller · Codex : menu (Échap)[/color]"
+	(lvl["rtl"] as RichTextLabel).text = _decorated(text)
 	_levels.append(lvl)
 	_place(lvl, get_global_mouse_position() + Vector2(18, 22))
 

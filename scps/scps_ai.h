@@ -203,6 +203,12 @@ unsigned ai_heritage_access(const World *w, const WorldEconomy *econ, const Rout
 void  tech_diffusion_refresh(const World *w, const TechState *all, int n_ts);
 float tech_diffusion_mult(TechId id);
 
+/* TRADITIONS — le levier ARCANE module le coût des nœuds FAUSTIENS pour CE pays
+ * (∈ [0.5, 2], 1 si non-faustien) : Arcanique ouvre la branche Magie, Sourd à
+ * l'arcane la renchérit. Appliqué par ai_effective_cost (IA), la voie joueur
+ * (scps_sim.c) et le coût affiché (scps_api.c) — le prix montré = le prix payé. */
+float ai_tech_tradition_mult(int cid, TechId id);
+
 /* §syncrétique — RAFRAÎCHIT le cercle d'un empire : recalcule la profondeur de contact
  * par archétype, la met en cache (ts->arch_depth, lu par la membrane) et loquette les
  * nœuds de diffusion atteints. Appelée par ai_research_step ET par le visualiseur (pour

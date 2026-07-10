@@ -13,6 +13,7 @@
 #include "scps_provlog.h"    /* DACT_* : le journal d'actes diplomatique */
 #include "scps_agency.h"     /* LOT T : edifice_tier (le palier de famille) */
 #include "scps_tech.h"       /* LOT T : tech_has_tier (la preuve de tier de recherche) */
+#include "scps_fog.h"        /* DIPLO-FOG : fog_debug_meet_all (découverte forcée, banc seul) */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -133,6 +134,13 @@ int main(int argc, char **argv){
         int nc2 = scps_country_count(s2);
         ScpsRelation rel[64]; int nr = scps_country_relations(s2, pl, rel, 64);
         int wars0=0; for (int i=0;i<nr;i++) wars0 += rel[i].at_war;
+        /* DIPLO-FOG (lot 5) : un empire NON DÉCOUVERT n'existe pas pour le joueur —
+         * or le joueur du banc est PASSIF (jamais d'expansion) et le monde-archétype
+         * est clairsemé : il ne rencontre légitimement PERSONNE en radius 2, tous les
+         * verbes seraient « cible inconnue ». Le banc teste la PLOMBERIE des verbes,
+         * pas l'exploration → découverte forcée BANC-SEULEMENT (motif
+         * intertrade_debug_set_hub_of). */
+        fog_debug_meet_all(pl);
         /* W-GUERRE-3 : déclarer la guerre exige désormais un CASUS BELLI. On cherche
          * d'abord une cible à CB déjà UTILISABLE (gratuit — subjugation/anti-piraterie) ;
          * à défaut on FABRIQUE une intrigue (2 ans du revenu de la cible) contre une
@@ -146,11 +154,25 @@ int main(int argc, char **argv){
             if (scps_diplo_options(s2, c, &op) && op.can_declare_war) wt=c;   /* CB déjà utilisable */
         }
         if (wt<0){                                          /* aucun CB gratuit → FABRIQUER */
-            for (int c=0;c<nc2 && wt<0;c++){
-                if (c==pl || scps_country_role(s2,c)==4) continue;
-                ScpsDiploOptions op;
-                if (scps_diplo_options(s2, c, &op) && op.can_fabricate
-                    && scps_player_fabricate_cb(s2, c)>0) wt=c;   /* l'or PAYÉ, l'intrigue court */
+            /* Le prix de l'intrigue (2 ans du revenu de la CIBLE) est SENSIBLE AU MONDE
+             * (les tolérances fiscales 2026-07-10 ont bougé les trésoreries an-0) : si
+             * aucune cible n'est payable AUJOURD'HUI, on laisse le trésor S'ACCUMULER
+             * par pas de 180 j (borné ~5 ans) — l'intention du banc est l'aller-retour
+             * du flux, pas la richesse du joueur au jour J. */
+            for (int tries=0; tries<10 && wt<0; tries++){
+                float min_cost = 1e30f;
+                for (int c=0;c<nc2 && wt<0;c++){
+                    if (c==pl || scps_country_role(s2,c)==4) continue;
+                    ScpsDiploOptions op;
+                    if (!scps_diplo_options(s2, c, &op)) continue;
+                    if (op.fabricate_cost < min_cost) min_cost = op.fabricate_cost;
+                    if (op.can_fabricate && scps_player_fabricate_cb(s2, c)>0) wt=c;   /* l'or PAYÉ, l'intrigue court */
+                }
+                if (wt<0){
+                    printf("   (intrigue : aucune cible payable — coût min %.0f, on laisse le trésor monter, essai %d)\n",
+                           (double)min_cost, tries+1);
+                    scps_sim_advance_days(s2, 180);
+                }
             }
             if (wt>=0) scps_sim_advance_days(s2, 400);       /* > FAB_MATURE_DAYS : l'intrigue MÛRIT */
         }

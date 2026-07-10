@@ -56,7 +56,8 @@ func _ready() -> void:
 		b.setup_icon(String(TABS[i][0]), BTN, "")   # SANS fond de chrome (retour joueur : icône nue sur le rail)
 		b.pad_frac = 0.16
 		b.pressed.connect(_on_tab.bind(i))
-		b.tooltip_text = String(TABS[i][1])
+		# politique hover : nom + raccourci (l'explication vit dans le tiroir lui-même)
+		b.tooltip_text = "%s (F%d)" % [String(TABS[i][1]), i + 1]
 		_btns.append(b)
 
 	_drawer = load("res://ui/sidebar_drawer.gd").new()

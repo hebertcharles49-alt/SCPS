@@ -485,13 +485,15 @@ const PopCulture *econ_ruling_culture(const World *w, const WorldEconomy *econ, 
 }
 
 /* ESCLAVAGE — le gate ACHETEUR (miroir de scps_ai.c: le gate qui institue la capture,
- * `a->can_enslave`, réévalué ici en LECTURE SEULE pour le VERBE JOUEUR/marché — un
- * abolitionniste, ni éthos conquérant ni TECH_ESCLAVAGE, ne peut pas acheter au pool). */
+ * `a->can_enslave`, réévalué ici en LECTURE SEULE pour le VERBE JOUEUR/marché).
+ * ÉQUILIBRAGE 2026-07-10 (docs/EQUILIBRAGE_CULTURE_FOI_2026-07-10.md §ÉTHOS/priorité 4) :
+ * REVERT PARTIEL du lot brassage — décision joueur, l'esclavage exige désormais la
+ * TECH (Économie servile) pour TOUS, l'ancienne exception d'éthos conquérant
+ * (Dominateur/Honneur « déporte par coutume ») est RETIRÉE. w/econ/cid gardés dans la
+ * signature (miroir scps_ai.c, tous les appelants inchangés) mais ne servent plus. */
 bool econ_country_can_enslave(const World *w, const WorldEconomy *econ, const TechState *ts, int cid){
-    if (ts && ts->unlocked[TECH_ESCLAVAGE]) return true;
-    const PopCulture *crown = econ_ruling_culture(w, econ, cid);
-    if (!crown) return false;
-    return crown->ethos==ETHOS_DOMINATEUR || crown->ethos==ETHOS_HONNEUR;
+    (void)w; (void)econ; (void)cid;
+    return ts && ts->unlocked[TECH_ESCLAVAGE];
 }
 
 /* TENSION DE DEMANDE : +10 % de besoins partout (appliqué au facteur `units`) → une
@@ -1525,6 +1527,47 @@ void econ_init(WorldEconomy *e, const World *w) {
         }
     }
 
+    /* KIT DE DÉPART (2026-07-10, demande joueur) : chaque EMPIRE/JOUEUR naît avec un petit
+     * STOCK sur sa PROVINCE-CAPITALE — de quoi tenir le premier hiver et lever une garde,
+     * en plus du socle vivrier (SPAWN_FOOD_RAW, une capacité de TUILE) et du pool cité-état
+     * (le marché mondial). Écrit APRÈS la remise à zéro des stocks (l.« Prix & stock »),
+     * même site/jurisprudence que CS_TRADE_POOL ci-dessus (dépôt direct pe->stock[] à la
+     * genèse — la vue region[] n'existe pas encore, aucun risque d'écrasement §P1).
+     * Tunables à 0 = désactivés (registre J, scps_tune_list.h). */
+    {
+        float kit_wood   = tune_f("SPAWN_KIT_WOOD",    50.0f);
+        float kit_food   = tune_f("SPAWN_KIT_FOOD",   100.0f);
+        float kit_clay   = tune_f("SPAWN_KIT_CLAY",    20.0f);
+        float kit_iron   = tune_f("SPAWN_KIT_IRON",    20.0f);
+        float kit_stone  = tune_f("SPAWN_KIT_STONE",   20.0f);
+        float kit_tools  = tune_f("SPAWN_KIT_TOOLS",   20.0f);
+        float kit_arms   = tune_f("SPAWN_KIT_ARMS",   100.0f);
+        float kit_ranged = tune_f("SPAWN_KIT_RANGED", 100.0f);
+        float kit_beer   = tune_f("SPAWN_KIT_BEER",    20.0f);
+        for (int cid=0; cid<w->n_countries; cid++){
+            PolityRole role=w->country[cid].role;
+            if (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST) continue;
+            int cp=w->country[cid].capital_prov;
+            if (cp<0||cp>=w->n_provinces||cp>=SCPS_MAX_PROV||!e->prov[cp].active) continue;
+            ProvinceEconomy *pe=&e->prov[cp];
+            pe->stock[RES_WOOD]        += kit_wood;
+            pe->stock[RES_GRAIN]       += kit_food;
+            pe->stock[RES_CLAY]        += kit_clay;
+            pe->stock[RES_IRON]        += kit_iron;
+            pe->stock[RES_STONE]       += kit_stone;
+            pe->stock[RES_TOOLS]       += kit_tools;
+            pe->stock[RES_ARMS]        += kit_arms;      /* armes LÉGÈRES */
+            pe->stock[RES_ARMS_RANGED] += kit_ranged;     /* armes de TRAIT (arc/trait) */
+            pe->stock[RES_BEER]        += kit_beer;
+            if (getenv("SCPS_KITDIAG"))
+                fprintf(stderr, "[kit] pays %d capitale %d : bois=%.0f grain=%.0f argile=%.0f "
+                        "fer=%.0f pierre=%.0f outils=%.0f armes=%.0f trait=%.0f biere=%.0f\n",
+                        cid, cp, pe->stock[RES_WOOD], pe->stock[RES_GRAIN], pe->stock[RES_CLAY],
+                        pe->stock[RES_IRON], pe->stock[RES_STONE], pe->stock[RES_TOOLS],
+                        pe->stock[RES_ARMS], pe->stock[RES_ARMS_RANGED], pe->stock[RES_BEER]);
+        }
+    }
+
     /* ──────────────────────────────────────────────────────────────────────
      * HAMEAUX LIBRES (POLITY_WILD) — les PEUPLES LIBRES. Pour CHAQUE empire on PLANTE
      * WILD_PER_PLAYABLE hameaux sur les PROVINCES VIERGES viables les plus PROCHES — BFS
@@ -1609,14 +1652,21 @@ void econ_init(WorldEconomy *e, const World *w) {
  * (un Mercantile n'étrangle pas ses bourgeois ; un Bureaucrate extrait partout ;
  * un Dominateur essore la masse mais pas l'élite). */
 float econ_tax_tolerance(Ethos e, SocialClass c){
+    /* ÉQUILIBRAGE 2026-07-10 (docs/EQUILIBRAGE_CULTURE_FOI_2026-07-10.md §ÉTHOS) :
+     * BUREAUCRATE resserré (l'État qui extrait PARTOUT ne devrait plus être aussi
+     * confortable qu'un Ordre bien tenu) · ORDRE recalé au POINT DE RÉFÉRENCE cible
+     * (0.50/0.50/0.45) · PACIFISTE relevé (0.30 uniforme → 0.38, moins fragile
+     * fiscalement) · HONNEUR : SEULE l'élite bouge (0.22→0.31, identité razzia/
+     * prestige gardée sur laborer/bourgeois). DOMINATEUR/MERCANTILE inchangés
+     * (hors normalisation — pas concernés par cette passe). */
     static const float T[ETHOS_COUNT][CLASS_COUNT] = {
         /*               Laborer Bourgeois Élite */
         /* DOMINATEUR */ {0.60f,  0.40f,   0.25f},
-        /* HONNEUR    */ {0.55f,  0.40f,   0.22f},
-        /* ORDRE      */ {0.55f,  0.52f,   0.42f},
-        /* BUREAUCRATE*/ {0.60f,  0.60f,   0.58f},
+        /* HONNEUR    */ {0.55f,  0.40f,   0.31f},
+        /* ORDRE      */ {0.50f,  0.50f,   0.45f},
+        /* BUREAUCRATE*/ {0.55f,  0.52f,   0.50f},
         /* MERCANTILE */ {0.45f,  0.28f,   0.42f},
-        /* PACIFISTE  */ {0.30f,  0.30f,   0.30f},
+        /* PACIFISTE  */ {0.38f,  0.38f,   0.38f},
     };
     if (e<0||e>=ETHOS_COUNT||c<0||c>=CLASS_COUNT) return 0.40f;
     return T[e][c];
@@ -1699,12 +1749,27 @@ bool econ_country_has_tier(int cid, int tier){
 void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
     g_tech_cache = ts; g_tech_cache_n = ts ? n_ts : 0;
     if (!e) return;
+    /* TRADITIONS — le levier RENDEMENT (Inventif/Robuste/Sobre vs Borné/Frêle/Indolent)
+     * entre dans tech_prod, le MÊME multiplicateur que NODE_PROD_PCT/EFF_PCT (lu par
+     * prod_mult à chaque tick) — PAR PAYS (culture_build_for), jamais un bonus plat.
+     * Cache par pays : le build est stable dans le tick. ±0.30 levier × TRAD_REND_W=1
+     * → ±30 % de production. Plancher 0.1 (jamais une prod négative/nulle). */
+    float trad_rend[SCPS_MAX_COUNTRY];
+    { float rw = tune_f("TRAD_REND_W", 1.0f);
+      for (int c=0;c<SCPS_MAX_COUNTRY;c++){
+          HeritageBuild hb = culture_build_for((uint32_t)c);
+          trad_rend[c] = rw * build_leviers(&hb).rendement;
+      } }
     for (int p=0;p<e->n_prov;p++){
         ProvinceEconomy *pe=&e->prov[p];
         int o=pe->owner;
         pe->tech_prod = (ts && o>=0 && o<n_ts)
                       ? 1.f + tech_prod_bonus(&ts[o]) + tech_eff_bonus(&ts[o])
                       : 1.f;
+        if (o>=0 && o<SCPS_MAX_COUNTRY){
+            pe->tech_prod += trad_rend[o];
+            if (pe->tech_prod < 0.1f) pe->tech_prod = 0.1f;
+        }
         pe->tech_foreuse = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_FOREUSE] : false;  /* §B2 : gate de BLD_FOREUSE */
         pe->tech_alchimie = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_ALCHIMIE] : false; /* F3 : gate de BLD_ALAMBIC */
         pe->tech_replicateur = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_TRANSMUTATION] : false; /* FAU4 : gate de BLD_REPLICATEUR */
@@ -1717,6 +1782,10 @@ void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
         RegionEconomy *re=&e->region[r];
         int o=re->owner;
         re->tech_prod = (ts && o>=0 && o<n_ts) ? 1.f + tech_prod_bonus(&ts[o]) + tech_eff_bonus(&ts[o]) : 1.f;
+        if (o>=0 && o<SCPS_MAX_COUNTRY){
+            re->tech_prod += trad_rend[o];                       /* TRADITIONS : même levier que les provinces */
+            if (re->tech_prod < 0.1f) re->tech_prod = 0.1f;
+        }
         re->tech_foreuse = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_FOREUSE] : false;
         re->tech_alchimie = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_ALCHIMIE] : false;
         re->tech_replicateur = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_TRANSMUTATION] : false;
@@ -2929,6 +2998,10 @@ void econ_tick(WorldEconomy *e, float dt) {
         }
 
         /* ---- 6. MISE À JOUR : démographie, tech, satisfaction générale - */
+        /* TRADITIONS de l'empire (lues UNE fois par région) : le levier CAPACITÉ module
+         * la pénalité off-culture ci-dessous, le levier DÉMOGRAPHIE la fertilité plus bas. */
+        HeritageBuild sb_trad = culture_build_for((uint32_t)(re->owner<0?0:re->owner));
+        HeritageLeviers trad_lv = build_leviers(&sb_trad);
         /* food_sat = la couverture VIVRIÈRE RÉELLE (et non la satisfaction
          * globale) → plus de nourriture = plus de croissance, fin de la famine. */
         {
@@ -2938,8 +3011,14 @@ void econ_tick(WorldEconomy *e, float dt) {
              * servie par les biens (confort/moral/luxe) de la culture dominante.
              * Frappe la satisfaction SOCIALE — PAS les vivres (food_sat épargné,
              * universel) → la survie/croissance ne sont pas punies par la
-             * diversité ; l'assimilation efface la pénalité. */
-            re->society_sat *= (1.f - 0.60f*econ_off_culture_fraction(&re->pop));
+             * diversité ; l'assimilation efface la pénalité.
+             * TRADITIONS — le levier CAPACITÉ (Discipliné/Bâtisseur vs Frondeur/
+             * Brouillon) : un peuple qui TIENT la diversité sert mieux ses minorités —
+             * on module la pénalité EXISTANTE (society_sat, lue par la satisfaction ET
+             * le grief de révolte), jamais un bonus plat. cap∈[−1,+1] × TRAD_CAP_W=0.30
+             * → pénalité ×[0.7..1.3]. */
+            float offpen = 0.60f * clampf(1.f - tune_f("TRAD_CAP_W",0.30f)*trad_lv.capacite, 0.f, 1.6f);
+            re->society_sat *= (1.f - clampf(offpen,0.f,1.f)*econ_off_culture_fraction(&re->pop));
         }
 
         /* FERTILITÉ = f(BESOINS SATISFAITS). Doublement ~40 ans au PLANCHER (besoins
@@ -2950,9 +3029,8 @@ void econ_tick(WorldEconomy *e, float dt) {
         float food_s = re->food_sat;
         /* Démographie modulée par les TRADITIONS de l'empire (Prolifique → + de naissances ;
          * Lent à croître → moins) — INDÉPENDANT de l'héritage (qui ne fait que les noms).
-         * IA : tirées au hasard par empire ; joueur : SA composition (culture_build_for). */
-        HeritageBuild sb_demo = culture_build_for((uint32_t)(re->owner<0?0:re->owner));
-        float demo = build_leviers(&sb_demo).demographie;
+         * IA : tirées au hasard par empire ; joueur : SA composition (leviers hoistés en tête du §6). */
+        float demo = trad_lv.demographie;
         /* MODIFICATEURS PROVINCIAUX diégétiques → entrée DÉMO (pas un bonus plat) : la
          * TERRE D'ABONDANCE repeuple les provinces sous-remplies & nourries (le rebond des
          * low seeds). Auto-ciblé → les provinces pleines (seeds riches) reçoivent 0. */

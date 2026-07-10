@@ -540,6 +540,16 @@ void revolt_scan(RevoltState *rs, World *w, WorldEconomy *econ,
             float ag = (float)statecraft_agitation(sc, r) / 100.f;
             worst = clampf(worst + tune_f("W_AGITATION_UNREST", W_AGITATION_UNREST) * ag, 0.f, 1.f);
         }
+        /* TRADITIONS — le levier FRACTURE (Soudé/Factieux) : la cohésion sociale du
+         * peuple AMORTIT ou AGGRAVE le grief — même FOLD que W_AGITATION_UNREST (le
+         * canal sécession/révolte incarné), PAR PAYS (culture_build_for). ±1 levier ×
+         * TRAD_FRACT_W=0.06 (échelle : FAITH_UNREST 0.22, OVEREXT_CAP 0.45). Soudé (−1)
+         * APAISE ; complète la voie D̄→§2.4 déjà câblée (scps_prosperity.c). */
+        if (o>=0){
+            HeritageBuild hb = culture_build_for((uint32_t)o);
+            float frl = build_leviers(&hb).fracture;
+            if (frl!=0.f) worst = clampf(worst + tune_f("TRAD_FRACT_W",0.06f)*frl, 0.f, 1.f);
+        }
         /* DEUX compteurs SÉPARÉS (chacun un sens UNIQUE, plus de champ à double sémantique) :
          *  · `desperation_days` = la misère SOUTENUE (≥0) : monte en crise, retombe au calme ;
          *  · `revolt_cooldown`  = le RÉPIT post-révolte (≥0, jours restants) : décrémenté par le

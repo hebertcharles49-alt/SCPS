@@ -232,8 +232,13 @@ void prosperity_tick(WorldProsperity *wp, const World *w,
          * C3 (audit éco) : le collapse RC_L+RC_STAB+RC_COHESION dans Lt est DÉLIBÉRÉ (proxy).
          * ⚠ SEULS 7 canaux ch[RC_*] sont LUS en prod (ici K/P/H/L/STAB/COHESION + RC_POPGROWTH
          * dans econ) ; le RESTE de l'enum (~12 : RC_I/F/PE/RESEARCH/ENTROPY/INFLUENCE/REVENUE/
-         * ASSIM/COERCION/AGITATION/MORALE/CONSCRIPT) est ÉCRIT par les pôles mais JAMAIS lu —
-         * chantier à part (les câbler = re-baseline, un canal à la fois). */
+         * ASSIM/COERCION/AGITATION/MORALE/CONSCRIPT) reste MORT (jamais lu ici ni ailleurs).
+         * REMAP (2026-07-10, docs/EQUILIBRAGE_CULTURE_FOI_2026-07-10.md) : RELIG_POLES[] a
+         * été récrite pour que CHAQUE pôle ne pointe plus que vers ces 7 canaux vivants (un
+         * avantage + un coût, jamais une promesse gratuite ni une pénalité pure sur un canal
+         * mort) — seuls les CRÉDOS gardent encore quelques deltas sur des canaux morts
+         * (RC_PE/RC_I/RC_AGITATION/RC_ASSIM/RC_COERCION), VOULU pour un câblage relationnel
+         * futur (diplo/scholar) et jamais affiché côté joueur (scps_religion.c). */
         if (religion_of_country(cid) >= 0) {
             const ReligAccum *ra = religion_country_acc(cid);
             K  = clampf(K  + ra->ch[RC_K], 0.f, 10.f);

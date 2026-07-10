@@ -718,9 +718,11 @@ void sim_day(Sim *s, World *w) {
             float rw = tune_f("AI_RESEARCH_INCOME_W", AI_RESEARCH_INCOME_W); /* levier « 60 % de l'arbre » : même débit que l'IA */
             s->ts[pl].research_points += (savoir/365.f) * yield * prosp * metab * rw; /* /an → /jour */
             /* DÉCOUPLAGE §27 (miroir de ai_effective_cost) : le boost de revenu est ANNULÉ sur les
-             * nœuds FAUSTIENS (coût ×W) → leur cadence reste baseline, la charge §27 ne s'emballe pas. */
+             * nœuds FAUSTIENS (coût ×W) → leur cadence reste baseline, la charge §27 ne s'emballe pas.
+             * TRADITIONS : le levier ARCANE (ai_tech_tradition_mult) — le MÊME facteur que l'IA. */
             float need = tech_cost((TechId)s->research_target, (float)w->country[pl].n_regions)
-                       * tech_diffusion_mult((TechId)s->research_target);
+                       * tech_diffusion_mult((TechId)s->research_target)
+                       * ai_tech_tradition_mult(pl, (TechId)s->research_target);
             if (tech_node((TechId)s->research_target)->faustian) need *= rw;
             if (s->ts[pl].research_points >= need){
                 tech_research(&s->ts[pl], (TechId)s->research_target, access);   /* DÉBLOQUÉ */

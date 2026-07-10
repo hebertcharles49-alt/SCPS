@@ -35,14 +35,18 @@ void group_ethos_lean(const PopCulture *c, float w[FAC_COUNT]){
         case ETHOS_PACIFISTE:   w[FAC_COMMUNAUTAIRE]+=1.0f; break;
         default: break;
     }
-    /* 2) SIGNATURE de heritage — le penchant inné du peuple (§2). */
+    /* 2) SIGNATURE de heritage — le penchant inné du peuple (§2).
+     * ÉQUILIBRAGE 2026-07-10 (docs/EQUILIBRAGE_CULTURE_FOI_2026-07-10.md §HÉRITAGES) :
+     * normalisées à Σ≈0.60 chacune (avant : sommes disparates 0.6-0.9 qui sur-pesaient
+     * certains héritages dans le spectre de factions). Adaptatif RENFORCÉ (0.2/0.2→0.3/0.3,
+     * désormais la moitié du poids du Clanique, cohérent avec son rôle d'intégrateur). */
     switch (c->heritage){
-        case HERITAGE_CLANIQUE:    w[FAC_CONQUERANT]+=0.5f;    w[FAC_TRANSGRESSEUR]+=0.5f; break; /* guerre + interdit */
-        case HERITAGE_METALLURGISTE:     w[FAC_LEGISTE]+=0.4f;       w[FAC_TRANSGRESSEUR]+=0.4f; break; /* forge à runes */
-        case HERITAGE_AGRAIRE: w[FAC_MARCHAND]+=0.4f;      w[FAC_COMMUNAUTAIRE]+=0.5f; break;
-        case HERITAGE_MECANISTE:    w[FAC_MARCHAND]+=0.5f;      w[FAC_COMMUNAUTAIRE]+=0.3f; break; /* négoce, bien commun */
-        case HERITAGE_ESOTERIQUE:     w[FAC_TRANSGRESSEUR]+=0.4f; w[FAC_GARDIEN]+=0.3f;       break; /* arcane + tradition */
-        case HERITAGE_ADAPTATIF:   w[FAC_MARCHAND]+=0.2f;      w[FAC_LEGISTE]+=0.2f;       break; /* l'intégrateur */
+        case HERITAGE_CLANIQUE:    w[FAC_CONQUERANT]+=0.35f;    w[FAC_TRANSGRESSEUR]+=0.25f; break; /* guerre + interdit */
+        case HERITAGE_METALLURGISTE:     w[FAC_LEGISTE]+=0.30f;       w[FAC_TRANSGRESSEUR]+=0.30f; break; /* forge à runes */
+        case HERITAGE_AGRAIRE: w[FAC_MARCHAND]+=0.25f;      w[FAC_COMMUNAUTAIRE]+=0.35f; break;
+        case HERITAGE_MECANISTE:    w[FAC_MARCHAND]+=0.35f;      w[FAC_COMMUNAUTAIRE]+=0.25f; break; /* négoce, bien commun */
+        case HERITAGE_ESOTERIQUE:     w[FAC_TRANSGRESSEUR]+=0.35f; w[FAC_GARDIEN]+=0.25f;       break; /* arcane + tradition */
+        case HERITAGE_ADAPTATIF:   w[FAC_MARCHAND]+=0.30f;      w[FAC_LEGISTE]+=0.30f;       break; /* l'intégrateur */
         default: break;
     }
     /* 3) CREDO — la ferveur nourrit les Gardiens ; la tolérance, l'ouverture. */

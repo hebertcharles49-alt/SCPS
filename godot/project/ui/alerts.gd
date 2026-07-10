@@ -29,7 +29,7 @@ const COL_ECO    := Color(0.78, 0.52, 0.22)   ## orange — économie/commerce
 
 const CHIP := 30.0
 const GAP := 6.0
-const LABELW := 184.0  ## la colonne du LABEL visible (« letters » RimWorld : lisible sans hover)
+const LABELW := 280.0  ## la colonne du LABEL visible (« letters » RimWorld : lisible sans hover)
 const FEED_MAX := 8   ## évènements gardés à l'écran (les plus récents ; clic = acquitté)
 
 ## LA TABLE DU FIL (FeedKind → présentation) — AJOUTER UN ÉVÈNEMENT = une ligne ici
@@ -81,7 +81,7 @@ func _refresh() -> void:
 	var vw := get_viewport_rect().size.x
 	# décalé à GAUCHE de l'empire-sidebar (bande droite permanente en jeu) ; la colonne
 	# porte désormais le LABEL visible (façon « letters » RimWorld) + le chip
-	position = Vector2(vw - CHIP - LABELW - 10.0 - (274.0 if Sim.game_on else 0.0), Frame.TOPBAR_H + 10.0)
+	position = Vector2(vw - CHIP - LABELW - 10.0 - (Frame.LEDGER_W + 6.0 if Sim.game_on else 0.0), Frame.TOPBAR_H + 10.0)
 	size = Vector2(CHIP + LABELW, maxf(1.0, n * (CHIP + GAP)))
 	visible = n > 0
 	queue_redraw()
@@ -267,8 +267,10 @@ func _short(tip: String) -> String:
 		cut = s.find(" : ")
 	if cut > 0:
 		s = s.substr(0, cut)
-	if s.length() > 26:
-		s = s.substr(0, 25) + "…"
+	# 42 au lieu de 26 : « 3 siège(s) du conseil VAC… » se lisait tronqué (retour
+	# joueur 2026-07-10) — le cartouche s'élargit à son texte, on peut le laisser dire.
+	if s.length() > 42:
+		s = s.substr(0, 41) + "…"
 	return s
 
 func _draw() -> void:

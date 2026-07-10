@@ -1771,3 +1771,346 @@ Tout en px, résolution de référence Stellaris = 1920×1080 (offset natif show
 **Pièges**
 - Lancer `D:/MSYS2/usr/bin/bash.exe -l` DEPUIS Git Bash scrubbe l'environnement Windows EN ENTIER : `APPDATA` vide (même passé explicitement sur la ligne de commande), `cmd` introuvable → le repli `cmd /c echo %APPDATA%` de build_godot.sh échouait en silence → « aucun modèle d'exportation trouvé ». Depuis un vrai terminal MSYS2 ça marchait, d'où la latence de découverte.
 - Fix durable dans build_godot.sh : si APPDATA est vide OU ne contient pas `Godot/export_templates`, on balaie `/c/Users/*/AppData/Roaming` et on prend le profil qui PORTE les templates (détection par présence, pas par env).
+
+## 2026-07-10 — KIT DE DÉPART (stock genèse sur la capitale des empires)
+**Découvertes**
+- Site du dépôt : `scps_econ.c` bloc « KIT DE DÉPART », inséré juste APRÈS le bloc CS_TRADE_POOL (jurisprudence directe — même écriture directe `pe->stock[RES_X] += …` à la genèse, avant que la vue `region[]` n'existe : aucun risque d'écrasement §P1). Boucle sur `w->country[cid].role==POLITY_PLAYER||POLITY_ANTAGONIST`, dépose sur `w->country[cid].capital_prov` (même garde que le bloc SPAWN_FOOD_RAW juste au-dessus : `cp>=0 && active`).
+- Mapping demande→enums réels (scps_types.h) : bois→RES_WOOD · nourriture→RES_GRAIN · argile→RES_CLAY · fer→RES_IRON · pierre→RES_STONE · outils→RES_TOOLS · armes légères→RES_ARMS (RES_ARMS_LIGHT n'est qu'un `#define` ALIAS de RES_ARMS, scps_types.h:219 — pas une ressource distincte) · armes de trait→RES_ARMS_RANGED (confirmé par le commentaire scps_econ.c:70 « armes de trait (fer + bois) », recette BLD_BOWYER) · bière→RES_BEER.
+- 9 tunables neufs au registre J (scps_tune_list.h, fin de fichier, après TIER7_POP) : `SPAWN_KIT_WOOD` 50 · `_FOOD` 100 · `_CLAY` 20 · `_IRON` 20 · `_STONE` 20 · `_TOOLS` 20 · `_ARMS` 100 · `_RANGED` 100 · `_BEER` 20. 0 = désactivé (motif standard `tune_f`).
+- Diag gated permanent ajouté (motif SCPS_CAPDIAG/SCPS_IPMDIAG) : `SCPS_KITDIAG=1` imprime le stock déposé par pays/capitale — vérifié seed 9 : 5 empires (sur 6 attendus — un 6e a probablement une capitale inactive à la genèse, même contrainte que SPAWN_FOOD_RAW, pas un bug neuf) tous à bois=50 grain=100 argile=20 fer=20 pierre=20 outils=20 armes=100 trait=100 biere=20.
+**Pièges**
+- Le `cd` inline dans `bash -lc "…"` est mangé (confirmé encore une fois) : `MSYSTEM=MINGW64 D:/MSYS2/usr/bin/bash.exe -l -c "make smoke"` échoue « Aucune règle » — il FAUT un script fichier avec `cd /c/Users/Charl/Desktop/SCPS-main` en 1re ligne, invoqué par chemin ABSOLU (`bash -l /c/…/script.sh`), jamais par chemin relatif (le `cd` du shell interactif -l repart d'ailleurs).
+- `packaging/windows/build_ai_demo.sh` existe déjà et fait exactement `make ai_demo + make smoke` — pas besoin d'en écrire un nouveau pour ce genre de vérif, le réutiliser.
+**Restes**
+- Aucun. `make smoke` 7/7 vert, run court `./chronicle 9 1 30 6 12` sain (hégémon mortel 1/1, exit propre). SAVE non bumpé (dépôt dans des stores déjà sérialisés, `pe->stock[]`). Golden NON re-baseliné (attendu, l'orchestrateur s'en charge après merge).
+
+## 2026-07-10 — TRADITIONS branchées sur le circuit des tunables (TRAD_*_W)
+**Découvertes**
+- Audit des 9 leviers de `HeritageLeviers` (scps_heritage.h) — la vérité pré-mission : 4 VIVANTS (demographie → `scps_econ.c` §6 fertilité `net_growth=r_base·(1+demo)·(1+bonus)`, rang POP_R_BASE ; coercition → `scps_prosperity.c:314` st.H §2.4 + `scps_diplo.c:790` mil_power ; capacite/permeabilite/arcane/fracture → entrées st.K/st.P/flux_faustien/st.D_bar de `scps_prosperity.c:312-316` — VIVANTS côté §2.4 mais MORTS sur leurs canaux nommés), 1 TÉNU (influence → `scps_diplo.c:807` portée de menace seulement, ±7.5 % de distance effective — jamais l'Influence d'État), 2 quasi-MORTS sur leur canal (rendement ne touchait QUE P_realise `scps_prosperity.c:377`, jamais la production des provinces ; derive ne touchait QUE l'horloge `langue` `scps_world.c:2720` — or `langue` n'est LUE par AUCUNE formule moteur (econ_content_dist = valeurs/subsistance/parente/religion), seulement la bande lignée du readout → un MOT).
+- Câblages neufs (7 tunables registre J, tous PAR PAYS via `culture_build_for`, jamais tune_set global) : rendement→`econ_apply_country_tech` (`pe/re->tech_prod += TRAD_REND_W·lev`, rang NODE_PROD_PCT, plancher 0.1) · influence→`sc_trad_influence` dans le standing statecraft (2 sites miroirs, rang prestige) · capacite→pénalité off-culture de society_sat (`scps_econ.c` §6, ×[0.7..1.3]) · permeabilite→P_eff d'`assimilation_tick` (`scps_demography.c` demography_tick) · arcane→`ai_tech_tradition_mult` (coût des nœuds FAUSTIENS ∈[0.5,2], public : ai_effective_cost + voie joueur scps_sim.c + coût AFFICHÉ scps_api.c — le prix montré = le prix payé) · derive→fuse_rate du contact S2 (`demography_contact_tick`) · fracture→fold du grief de révolte (`revolt_scan`, rang W_AGITATION_UNREST, Soudé APAISE).
+- `ai_effective_cost` a gagné un 4e param `cid` (10 sites d'appel, tous `a->cid`).
+- Aucun nouveau lien Makefile : tout banc qui lie `scps_scps_econ.o` lie déjà `scps_scps_heritage.o` (econ appelle culture_build_for depuis Q6).
+**Pièges**
+- `re->society_sat` §6 : le build de traditions est désormais HOISTÉ en tête du §6 (`sb_trad`/`trad_lv`) et RÉUTILISÉ par la fertilité (l'ancien `sb_demo` supprimé) — ne pas re-fetcher deux fois.
+- `statecraft_influence_flux` n'a AUCUN appelant hors bancs (lecteur mort) mais reste le MIROIR documenté du standing — patché quand même (garder les deux synchrones).
+- `culture_build_for(cid)` n'a besoin QUE du cid (hash) — pas de World* : ça se câble partout, y compris statecraft qui n'a pas w sous la main dans ses lecteurs.
+**Restes**
+- Golden 12 ans BOUGE (les tirages IA mordent la prod/le coût/la révolte dès l'an-0) — re-baseline à l'orchestrateur post-merge, NON faite ici.
+- `derive` garde aussi l'horloge `langue` (world_tick) — toujours display-only ; si un jour `langue` doit mordre, c'est un chantier distance-culturelle à part.
+- Mesure appariée seed 9 (3 sims × 100 ans, OFF = SCPS_TUNE 7×TRAD_*_W=0 vs ON défauts) : pop 205/131/261k → 241/169/297k (+15-25 %, canal prod + monde plus calme), satisfaction ~égale (70-75/83-88/79-85), hégémon mortel 3/3 les deux, révoltes 18→13, morts 983→446, guerres 59→38 déclarations — sain, pas d'emballement ; le sweep long tranchera les défauts.
+
+## 2026-07-10 — Passe éditoriale TECH (effets/hovers/flavors, scps_tech.c)
+**Découvertes**
+- Les champs `hover`/`flavor` de `TechNode` (scps_tech.h) EXISTAIENT DÉJÀ (pack display-only posé le 2026-07-05, avec `unlocks` déjà renommés en mots de jeu — « Collège de guerre », « Tour de mages » — préfigurant les renommages demandés) : la mission (3) « AJOUTE le champ » était donc un no-op, tout le travail est passé en RÉÉCRITURE de contenu existant, pas en extension de struct. Aucun risque d'offset/ABI : `tech_hover`/`tech_flavor`/`scps_tech_nodes` (scps_api.c) lisent tous via les accesseurs `tech_node(id)->champ`, jamais par offset brut.
+- Audit systématique AVANT édition : grep `"puissance brute"` × dPuissance de chaque nœud a trouvé UN SEUL mensonge (TECH_MANUFACTURE, dPuissance=0 mais hover le promettait) — le reste de la table était déjà honnête sur ce point (résidu d'une passe antérieure). Grep `"agricole"` a trouvé exactement les 7 nœuds listés par le joueur (Irrigation/Abondance/Vergers/Pâturages/Druide/Charrues/Machines agricoles) — aucun de plus, aucun de moins.
+- `tech_by_name()` (MODTOOLS `SCPS_MODS` techbonus) matche par le champ `name` — les 7 renommages changent donc la clé de matching d'un éventuel fichier de mods externe déjà écrit (`Qualité des matériaux` → `Taille de précision` etc.) ; sans impact sur le golden/déterminisme (aucun fichier `SCPS_MODS` n'est chargé par défaut).
+**Pièges**
+- `NODE_EFF_PCT`/`NODE_PROD_PCT` (tables séparées des `NODES[]`, indexées par désignateur `[TECH_X]=`) ne sont PAS dans le hover à l'origine pour Scriptorium/Académie/Université — le +eff% caché n'était mentionné NULLE PART dans le texte joueur ; le retirer n'a donc demandé AUCUN changement de hover, juste la suppression des 3 lignes de table (piège évité : j'ai failli chercher un texte "efficacité" à retirer du hover qui n'existait pas).
+- Repéré tard (2e passe) : COMBO_ACADEMIE/COMBO_DRUIDE/COMBO_CHARRUES/COMBO_MACHINES_AGRI avaient été SAUTÉS lors du premier balayage du bloc COMBOS (édités seulement POUDRE/AUTOMATES_ARC puis CHAMAN/GUILDES, en oubliant les nœuds intercalés) — capté par une relecture complète du fichier après la première vague d'edits, avant syntax-check. Toujours RELIRE le fichier entier après un gros pavé d'édits ciblés plutôt que de faire confiance à la liste mentale.
+**Restes**
+- Effets numériques changés (exactement la liste demandée, rien d'autre) : Scriptorium/Académie/Université −NODE_EFF_PCT (0.05/0.07/0.10→0) · Outillage flux 0.05→0 & charge 0.3→0 · Wards charge 0.3→0 · Fortifications charge 0.2→0 (+ commentaire RÈGLE 3 mis à jour) · Armurerie charge 0.3→0 · Qualité matériaux/Taille de précision +NODE_PROD_PCT 0.05 · Automates +NODE_PROD_PCT 0.08 · Alchimie +NODE_PROD_PCT 0.05 · Scrying/Clairvoyance dK 0→0.5.
+- Renommages (champ `name` uniquement, `unlocks` intact) : Scrying→Clairvoyance · Collecte de bois→Sylviculture · Collecte d'argile→Extraction d'argile · Collecte de nourriture→Subsistances · Qualité des matériaux→Taille de précision · Mécanisme d'horlogerie→Horlogerie civique · Foederati→Fédérés.
+- Flavors : 74/74 posés (remplacement intégral, texte fourni verbatim) — aucun ID de la liste manquant côté enum, correspondance 1:1 vérifiée par relecture complète du fichier.
+- Hovers réécrits (au-delà des 74 flavors) : les nœuds explicitement nommés par le doc (Scriptorium/Académie/Université — aucun changement de texte nécessaire, cf. piège ci-dessus — Wards/Scrying/Outillage/Manufacture/Qualité matériaux/Fortifications/Automates/Armurerie/Alchimie) + les 7 « agricole→production globale » + flux/charge chiffrés annoncés sur Rouages/Horlogerie civique/Glyphes éthérés/Communion éthérée (et, par cohérence, Fonderie/Industrie de masse/Foreuse arcanique/Gravure runique déjà passés en chiffré au fil de la relecture) + Académie cosmopolite/Concile des savants reformulés « efficacité générale (toute production) » au lieu de « recherche » seule. Le reste de la table (POUDRIERE et consorts) n'a PAS été touché en hover — jugé déjà honnête, seul le flavor a changé, pour rester dans le périmètre demandé et ne pas gold-plater.
+- Syntax-check : `D:/MSYS2/mingw64/bin/gcc.exe -fsyntax-only -std=c99 -Wall -Wextra -Ithird_party scps/{scps_tech.c,scps_readout.c,scps_api.c}` — les 3 compilent SANS AUCUN warning ni erreur (aucun `cc` natif dans ce Git Bash ; le binaire MSYS2 sous `D:\MSYS2\mingw64\bin\gcc.exe` est la voie qui marche sur ce poste). Pas de `make` lancé (build/ occupé par un autre agent, conforme à la consigne). Golden NON re-baseliné (attendu — les changements d'effets bougent le hash 12 ans, l'orchestrateur s'en charge post-merge). `scps_tech.h` non touché (le champ `flavor` existait déjà).
+
+## 2026-07-10 — Remap des canaux religieux morts (scps_religion.c, pôles + crédos)
+**Découvertes**
+- Audit confirmé par grep exhaustif (`.ch[RC_*]` hors de scps_religion.c) : SEULS 7 canaux
+  sont consommés en prod — RC_K/RC_P/RC_H (scps_prosperity.c:239-241, clampf direct sur
+  K/P/H), RC_L+RC_STAB+RC_COHESION (scps_prosperity.c:242, foldés dans `Lt`) et
+  RC_POPGROWTH (scps_econ.c:3033, `demo +=`). Les 12 autres (RC_I/F/PE/RESEARCH/ENTROPY/
+  INFLUENCE/REVENUE/ASSIM/COERCION/AGITATION/MORALE/CONSCRIPT) ont ZÉRO lecteur — la spec
+  du joueur était exacte pôle par pôle (vérifié un par un, aucune correction nécessaire).
+- `scps_prosperity.c:233-236` portait déjà un commentaire d'audit identique (« ⚠ SEULS 7
+  canaux… ») — probablement laissé par une session antérieure ayant fait le même constat
+  sans le exploiter ; ce commentaire a servi de confirmation croisée indépendante.
+- `scps_events.c` (`.flavor="…"`) prouve que le RAW UTF-8 direct en littéral C compile et
+  tourne déjà dans ce build (MinGW gcc) — pas besoin du style `\xc3\xa9""suite` de
+  `strings_ids.h`/`relig_pole_name` (ce style semble spécifique aux tables STR_* membrane,
+  pas une exigence du toolchain). `grep -rlP '"[^"]*[àâäéèêëîïôöùûüç][^"]*"' scps/*.c`
+  liste ~20 fichiers (tous les `*_demo.c`/`chronicle.c`/`dump.c`/`batch.c`) qui le font déjà.
+  → les nouveaux tips/flavors de `relig_pole_tip` sont écrits en RAW UTF-8 (comme
+  `scps_events.c`), pas en `\x` escapé (gain de temps + zéro risque de troncature de
+  hex-escape sur un accent suivi d'une lettre a-f).
+**Pièges**
+- Piège hex-escape C99 : `\xNN` consomme TOUS les chiffres hexadécimaux qui suivent
+  (0-9a-f), pas seulement 2 — d'où le motif `"\xc3\xa9""condit\xc3\xa9"` (split de
+  littéral) partout où un accent est suivi d'une lettre a-f. Évité entièrement en
+  utilisant du RAW UTF-8 pour les nouveaux tips.
+- `R_RES_UP`/`R_RES_DN` (magnitudes dédiées à RP_GNOSE/RP_ORTHODOXIE sur RC_RESEARCH,
+  désormais retirées du remap) n'avaient AUCUN autre consommateur — supprimées proprement
+  (grep confirmé 0 référence restante) plutôt que laissées mortes dans le fichier.
+- `religion_selftest()` assertait `RC_RESEARCH>0 && RC_ENTROPY>0` sur RP_GNOSE — cassé par
+  le remap (ces canaux ne sont plus écrits par ce pôle). Recalé sur `RC_K>0 && RC_L<0`
+  (calcul exact : K = FECONDITE(-0.5)+GNOSE(+0.8) = +0.3 ; L = GNOSE(-0.5)+credo
+  évangéliste(-0.3, nouveau) = -0.8) — intention du test préservée (vérifier qu'aucune
+  annulation inattendue pôle/crédo ne masque le signal).
+**Restes**
+- Les crédos gardent des deltas sur canaux morts (RC_PE/RC_I/RC_AGITATION/RC_ASSIM/
+  RC_COERCION) — VOULU par la spec (réservés à un câblage relationnel diplo/scholar futur),
+  documenté en commentaire au-dessus de chaque `g_credo_*`, jamais promis dans les tips.
+- Pas de champ `flavor` dédié ajouté à `ReligPoleDef` (la mission demandait explicitement
+  le fallback « append au tip » quand le champ n'existe pas) — si un futur agent veut la
+  parité stricte avec `TechNode.flavor`/`EvOption.flavor` (séparer mécanique et citation),
+  c'est un ajout de champ pur (pas de sérialisation, la table est statique).
+- Golden 12 ans : AUCUN re-baseline fait ici (consigne explicite) — attendu à bouger sur
+  les graines où une foi naît <an-12 (3/5 selon CLAUDE.md), à charge de l'orchestrateur
+  post-merge. `religion_demo`/`scps_api_demo`/`religion_selftest` syntax-checkés seulement
+  (gcc -fsyntax-only, MSYS2 `D:\MSYS2\mingw64\bin\gcc.exe`, pas de `make` — build occupé
+  par d'autres agents).
+
+## 2026-07-10 — TRADITIONS : les 36 deltas cibles appliqués (docs/EQUILIBRAGE_CULTURE_FOI)
+**Découvertes**
+- L'agent précédent (vague TRAD_*_W) n'avait câblé que les LEVIERS et re-libellé les hovers
+  EXISTANTS — aucun `.lev` de la table `TRAITS[]` n'avait encore bougé vers les cibles de
+  `docs/EQUILIBRAGE_CULTURE_FOI_2026-07-10.md`. Cette mission applique les deltas eux-mêmes
+  (36 traits) + ajoute le champ `flavor` (citation courte, display-only, fin de struct —
+  `TraitDef` en tête de `scps_heritage.h`, `trait_flavor()` en accesseur) sans toucher `.pts`
+  ni `.antonym` ⇒ `build_is_valid` (budget 1 majeur/1 mineur/1 défaut par axe) tient
+  automatiquement, aucune vérif requise au-delà d'une lecture.
+- Mapping chiffré vérifié contre `scps_tune_list.h` (TRAD_*_W, posés par l'agent précédent) :
+  `rendement` 1:1 sur `tech_prod` (0.10=10 %) · `influence` ×10 (TRAD_INFL_W, 0.25→+2.5,
+  0.5→+5 d'Influence d'État) · `capacite` ×0.30 sur la pénalité de diversité minoritaire
+  (TRAD_CAP_W, 0.5→15 %, 0.25→7.5 %) · `arcane` ×0.25 sur le coût de la branche faustienne
+  (TRAD_ARCANE_W, 1.0→25 %) · `coercition`/`fracture`/`derive`/`permeabilite` restent
+  additifs directs sur l'échelle moteur (H 0-10, D̄, dérive relative, P) — TRAD_FRACT_W=0.06
+  cité en hover pour Soudé/Factieux (±1.0/±0.5 → ±0.06/±0.03 sur le grief de révolte),
+  `permeabilite` laissé qualitatif (comme le faisait déjà l'agent précédent, pas de chiffre
+  TRAD_PERM_W×lev cité — l'échelle P interne n'est pas documentée en unités lisibles joueur).
+- RÉCONCILIATION Arcanique/Sourd (imposée par le brief, contre le texte brut de la spec
+  ligne 81/87 qui datait d'avant le câblage) : **gardé** `arcane=+1.0`/`-1.0` tel quel (déjà
+  deux faces vivantes : coût de branche ∓25 % + pente de flux ±1) ; **refusé** le
+  `K+1`/`K-0.5` que la spec proposait en compensation d'un levier qu'elle croyait mort — le
+  brief le dit explicitement, documenté aussi dans le hover ("mais la pente vers la Brèche
+  s'accentue"/"mais −1 de flux lui ferme aussi les débouchés arcanes" : chaque pôle énonce
+  sa contrepartie, plus de "protection gratuite" ni de "pénalité pure").
+- Deltas retirés (remplacés par un autre levier, pas juste réduits) : `T_PROSELYTE`/
+  `T_RESERVE` perdent `.derive` (dupliquait Adaptable/Traditionaliste) au profit de
+  `.permeabilite` ±0.25 ; `T_ADAPTABLE`/`T_TRADITIONALISTE` perdent `.derive` côté Adaptable
+  (Traditionaliste GARDE le sien, +P−0.5 en plus — asymétrie voulue par la spec) ;
+  `T_STUDIEUX`/`T_INCULTE` passent de `.rendement` (doublonnait Industrieux/Inculte) à
+  `.capacite` ±0.5 (miroir de Discipline/Frondeur) ; `T_FRELE`/`T_CONVALESCENT` perdent
+  leur `.coercition` (spec : "SEUL") — ces deux-là restent volontairement ASYMÉTRIQUES vs
+  leur antonyme (Robuste garde coercition+0.5, Régénérant garde coercition+0.5) : la spec le
+  demande explicitement, `build_is_valid` ne l'interdit pas (seul `.pts`/`.antonym`/`.cat`
+  comptent pour la validation, jamais la magnitude des leviers).
+- 4 traits « REDONDANTS UI » (exclus du créateur joueur mais vivants côté IA/
+  `culture_random_build`) recalés comme demandé : Endurant/Fragile au climat (hover
+  dé-climatisé, magnitude ±10 % démo inchangée), Industrieux/Indolent (±10 % prod, gardés
+  tels quels — Industrieux devient la SEULE option "prod pure +10 %" côté intellectuel
+  depuis que Studieux migre vers K).
+
+**Tableau des 36 (delta AVANT → APRÈS, `.lev`)**
+| Trait | Avant | Après |
+|---|---|---|
+| Robuste | H+1, rend+20% | H+0.5, rend+10% |
+| Régénérant | démo+20%, H+1 | démo+10%, H+0.5 |
+| Prolifique | démo+15% | démo+10% |
+| Longévif | dérive−20% | dérive−20%, K+0.25 |
+| Endurant | démo+10% | inchangé (hover dé-climatisé) |
+| Sobre | rend+10% | inchangé |
+| Frêle | H−1, rend−20% | rend−10% (H retiré) |
+| Convalescent | démo−20%, H−1 | démo−10% (H retiré) |
+| Lent à croître | démo−15% | démo−10% |
+| Éphémère | dérive+20% | dérive+20%, K−0.25 |
+| Fragile au climat | démo−10% | inchangé (hover dé-climatisé) |
+| Vorace | rend−10% | inchangé (hover corrigé) |
+| Belliqueux | H+1 | inchangé |
+| Soudé | fracture−1 | inchangé (hover chiffre le fold −0.06) |
+| Charismatique | infl+0.5 | inchangé (hover = portée diplo) |
+| Ouvert | P+0.5 | inchangé |
+| Discipliné | K+0.5 | inchangé |
+| Prosélyte | infl+0.25, dérive+20% | infl+0.25, P+0.25 (dérive→P) |
+| Débonnaire | H−1 | H−0.5 |
+| Factieux | fracture+1 | fracture+0.5 |
+| Rebutant | infl−0.5 | inchangé |
+| Insulaire | P−0.5 | inchangé |
+| Frondeur | K−0.5 | inchangé |
+| Réservé | infl−0.25, dérive−20% | infl−0.25, P−0.25 (dérive→P) |
+| Inventif | rend+20% | inchangé (hover : "recherche" retiré) |
+| Arcanique | arcane+1 | inchangé (RÉCONCILIÉ, pas de K+1) |
+| Studieux | rend+10% | K+0.5 (rend retiré) |
+| Bâtisseur | K+0.5 | K+0.25, rend+5% |
+| Adaptable | dérive+20% | P+0.5 (dérive retiré) |
+| Industrieux | rend+10% | inchangé |
+| Borné | rend−20% | rend−10% |
+| Sourd à l'arcane | arcane−1 | inchangé (RÉCONCILIÉ, pas de K−0.5) |
+| Inculte | rend−10% | K−0.5 (rend retiré) |
+| Brouillon | K−0.5 | K−0.25, rend−5% |
+| Traditionaliste | dérive−20% | dérive−20%, P−0.5 (ajouté) |
+| Indolent | rend−10% | inchangé |
+
+**Pièges**
+- `cc`/`gcc` nus absents du PATH Git Bash — le binaire MSYS2
+  `D:\MSYS2\mingw64\bin\gcc.exe` existe mais ÉCHOUE SILENCIEUSEMENT (exit 1, ZÉRO texte
+  d'erreur, y compris sur un `int main(){}` trivial) tant que `mingw64/bin` n'est pas EN
+  TÊTE du `PATH` — sans ça il ne trouve pas son propre `cc1` interne. Fix :
+  `PATH="/d/MSYS2/mingw64/bin:$PATH" gcc.exe -fsyntax-only …`. Reproduit identiquement en
+  PowerShell (`& "D:\MSYS2\mingw64\bin\gcc.exe"` seul → exit 1 muet aussi). Vérifié aussi
+  sur `heritage_demo.c` (lecteur de `trait_def`/`.antonym`, non modifié) : compile propre,
+  la struct `TraitDef` +1 champ trailing ne casse aucun accès positionnel existant.
+**Restes**
+- Golden 12 ans : re-baseline attendue (les tirages IA — `culture_random_build` — changent
+  de magnitude dès l'an-0 sur ~2/3 des traits) ; NON faite ici (build occupé par d'autres
+  agents, consigne explicite de ne pas toucher au moteur/golden).
+- Le champ `flavor` n'est PAS encore exposé côté façade (`scps_api.c` `ScpsTraitInfo` n'a
+  qu'un champ `hover`) ni côté Godot (`culture_creator.gd`/binding) — câblage de surface
+  laissé à un futur agent (hors du fichier autorisé pour cette mission).
+- Section ÉTHOS/HÉRITAGES (signatures politiques Légiste/Marchand/Transgresseur/etc.) de la
+  spec vit ailleurs (probablement `scps_culture.c`, hors `scps_heritage.c`) — non touchée,
+  hors scope de cette mission.
+
+## Passe éditoriale ÉVÉNEMENTS (task #69, 2026-07-10)
+
+**Découvertes**
+- `scps_events.h:97-113` `EvOption` n'a AUCUN champ « intro/desc » au niveau de
+  l'ÉVÉNEMENT — seulement `label`/`blurb`/`flavor` PAR OPTION. La spec joueur demande
+  une OUVERTURE unique par évènement + un flavor par option ; faute de champ dédié (et
+  fichier autorisé = `scps_events.c` seul, header interdit), l'ouverture est postée dans
+  **`blurb` de CHAQUE option du même évènement** (texte dupliqué verbatim par option) —
+  `blurb` n'est lu NULLE PART à l'affichage aujourd'hui (`scps_api.c:2400-2461`
+  `scps_pending_event` n'expose que `situation` — `event_title()`, PAS `blurb` — et
+  `flavors[]`/`effets[]` calculés à la volée) : c'est un contenu PRÉPARÉ pour un futur
+  câblage UI, zéro risque de régression d'affichage actuel.
+- `event_title()` (`scps_events.c:1873-1896`) résout `%s` UNIQUEMENT sur `EventDef.name`
+  (le TITRE), jamais sur `blurb`/`flavor` — ces deux champs sont de simples `const char*`
+  jamais passés en format string nulle part (vérifié : `events_text_clean` les scanne en
+  `strstr`, `scps_api.c` les recopie tels quels via `sz()`). Les ouvertures fournies par
+  le joueur pour les évènements à titre `%s` (Marbrive, Pont effondré, Cloches, Deux
+  cartes, Eau noire, Dernière décision, Foreuse saigne, Relique douteuse, Remède fait
+  des morts, Cellule des faubourgs, Tarif appris, les 3 Trahisons, Marche-éthos)
+  contiennent ELLES-MÊMES un `%s` (le nom de province/pays/ministre, cohérent avec le
+  titre) → posé TEL QUEL dans `blurb` (littéralement `%s`, jamais résolu tant qu'aucun
+  code ne fait le même traitement que `event_title` sur `blurb`) : INERTE aujourd'hui
+  (blurb non affiché), attend un futur câblage qui appliquera la même substitution.
+- Motif d'ajout de `flavor` SANS toucher `eff`/`hook`/`gamble` : `EvOption` a l'ordre
+  `label, blurb, eff, ai_chance, hook, flavor, gamble_eff, gamble_p`. Pour les options
+  qui s'arrêtaient à `ai_chance` (4 positionnels, ex. QUAKE/FLOOD/…) ou à `hook` (5
+  positionnels, ex. « Guerre préventive » de FUSILS_REVIENNENT, « Renoncer à la branche »
+  de SAVANTS_ENNEMI), l'ajout `, .flavor="…"` APRÈS la liste positionnelle est un
+  initialiseur C99 valide (positionnel jusqu'à l'index N, puis désigné pour un index
+  ultérieur) et laisse le(s) champ(s) intermédiaire(s) non nommé(s) (`hook` notamment)
+  au ZÉRO IMPLICITE identique à avant — aucun effet de bord sur faction/scar/cooldown.
+  Vérifié : compile propre, `hook.faction` reste 0 par défaut comme avant sur ces cas.
+- 56/56 `EvId` de `scps_events.h` couverts (tous ceux listés dans la table `EVENTS[]`,
+  de `EVID_QUAKE` à `EVID_PRATIQUE_DERIVE`) — aucun EVID de la commande n'était absent
+  du code, aucun n'a été inventé.
+- Titres RENOMMÉS effectivement (14/56, les autres soit gardaient déjà exactement le
+  texte proposé — no-op — soit n'avaient aucun renommage proposé — titre inchangé) :
+  QUAKE, FLOOD, DROUGHT, FIRE, PLAGUE, SUCCESSION, SCHISM, XENOPHILE, XENOPHOBE,
+  MERV_FONDATION, MERV_SACRIFICE, MERV_ASCENSION, CONSEIL_SUCCESSION, PARENTE_LOINTAINE.
+  MARBRIVE et les 15 autres titres à `%s` : gardés BYTE-IDENTIQUES (vérifié par grep,
+  16 titres à `%s` avant/après, contenu identique).
+
+**Pièges**
+- `cc`/`gcc` nus absents du PATH ; `D:\MSYS2\mingw64\bin\gcc.exe` invoqué en chemin
+  ABSOLU sans `mingw64/bin` en tête du PATH échoue SILENCIEUSEMENT (exit 1, zéro texte,
+  même sur `int main(){}`) — déjà noté par un agent précédent (cf. entrée Traits ci-
+  dessus). Contournement supplémentaire trouvé ici : ajouter `-v` fait apparaître le vrai
+  résultat (RC=0, pas d'erreur) même SANS le fix de PATH — mais le fix propre reste
+  `PATH="/d/MSYS2/mingw64/bin:$PATH" gcc.exe -fsyntax-only -std=c99 -Wall -Wextra
+  -Ithird_party scps/scps_events.c` (RC=0, 0 warning, confirmé deux fois).
+- Piège de conception évité : dupliquer l'ouverture dans `blurb` de CHAQUE option (au
+  lieu d'une seule fois) était nécessaire car rien à l'échelle de l'`EventDef` ne porte
+  un texte partagé entre options — la duplication de littéraux C est inoffensive
+  (`events_text_clean` scanne chaque `blurb` séparément, pas de coût de perf sensible,
+  table statique compilée une fois).
+
+**Restes**
+- `blurb` (l'ouverture) reste NON EXPOSÉ à l'UI (ni façade `scps_api.c`, ni Godot) — un
+  futur agent devra soit ajouter `situation_blurb`/`intro` à `ScpsPendingEvent` (lisant
+  `d->options[0].blurb`, identique pour toute option) soit réutiliser `event_title()`-
+  style resolution pour que les `%s` dans les ouvertures s'affichent correctement (16
+  évènements en dépendent) — CHAMP HEADER À AJOUTER, hors du fichier autorisé ici.
+- `flavor` EST déjà exposé (`scps_api.c:2421` `out->flavors[i]`) et donc les 56 nouveaux
+  textes sont VISIBLES dès aujourd'hui côté joueur sans câblage supplémentaire.
+
+## 2026-07-10 — ÉQUILIBRAGE ÉTHOS + HÉRITAGES + ESCLAVAGE (docs/EQUILIBRAGE_CULTURE_FOI_2026-07-10.md §ÉTHOS/§HÉRITAGES)
+**Découvertes**
+- Les 3 tables visées par la spec ne vivent PAS où le nom aurait suggéré : la tolérance
+  fiscale par éthos×classe est `econ_tax_tolerance` (scps_econ.c:1652, PAS scps_culture.c) ;
+  le « biais institutionnel » Bureaucrate est `build_f` dans `ai_derive_weights`
+  (scps_ai.c:142, un multiplicateur de `w_build`, pas une table à part) ; le « surcoût
+  militaire IA » Pacifiste est la branche `FN_ARMEE` d'`ai_tech_cost_mult`
+  (scps_ai.c:1963, PAS un champ de fiche) ; la « signature politique » d'héritage est le
+  bloc switch §2 de `group_ethos_lean` (scps_factions.c:39-46, PAS scps_heritage.c — ce
+  fichier ne porte que TRAITS[]/ROSTER[], la signature de FACTION est un fichier distinct).
+- Le gate d'esclavage EST DOUBLÉ (miroir volontaire, documenté en commentaire) : `a->can_enslave`
+  (scps_ai.c:2389, l'IA) ET `econ_country_can_enslave` (scps_econ.c:490, le VERBE JOUEUR/marché,
+  seul point lu par scps_api.c/scps_navy.c/scps_sim.c — 4 appelants externes tous en LECTURE
+  de cette fonction, aucun ne réévalue l'éthos lui-même). Les DEUX devaient changer ensemble
+  (raté l'un = un vrai split-brain joueur-vs-IA sur qui peut acheter/capturer).
+- `ScpsEthosDef`/`ScpsHeritage` (scps_api.h:1020/1024) avaient déjà un slot `hint`/pas de
+  flavor — le `flavor` demandé par la spec est un concept SÉPARÉ du `hint` existant (hint =
+  résumé mécanique court « Conquête : pousse la coercition… » ; flavor = la phrase d'ambiance
+  fournie verbatim par le joueur). Ajouté en FIN de struct (aucun risque d'ABI/offset pour les
+  lecteurs C existants — seuls des accès nommés `.epithete`/`.hint`, jamais d'initialiseur
+  positionnel `{a,b,c,d}` sur ces deux structs, vérifié par grep avant l'édit).
+- Piège de banc pris AVANT compile : `factions_demo.c:66` assertait
+  `w[FAC_TRANSGRESSEUR]>0.15f` pour ORDRE+MÉTALLURGISTE — recalcul à la main avec les
+  nouvelles valeurs normalisées (Légiste+0.30/Transgresseur+0.30 au lieu de 0.4/0.4) donne
+  EXACTEMENT 0.30/2.00=0.15 normalisé (tombe pile sur le seuil, dépend de l'arrondi flottant
+  de l'ordre d'accumulation `for f<FAC_COUNT: s+=w[f]`) → seuil abaissé à 0.12f (marge de
+  sécurité, intention « Transgresseur présent, non dominant » inchangée). Les 5 autres
+  assertions de `factions_demo.c` (agraire mercantile, adaptatif bureaucrate, mécaniste
+  pacifiste, l'enracinement conquête §3, la classe qui pèse §4, fracture §6, coup §7) ont
+  toutes été recalculées à la main (les deltas de la spec préservent les ORDRES relatifs —
+  Σ toujours ≈0.60, juste redistribué entre les deux factions du couple) : marges confortables,
+  aucun autre banc cassé. `econ_tax_demo.c` (5 assertions comparatives sur `econ_tax_tolerance`)
+  vérifié de même : toutes tiennent avec les nouvelles valeurs (marges ≥0.02 partout, PACIFISTE
+  0.38<0.4f tient de justesse mais tient).
+**Pièges**
+- Trois autres agents éditaient `scps_ai.c` EN PARALLÈLE sur la MÊME fonction
+  (`ai_research_step`/`ai_effective_cost`, lignes 2238-2600, la mission tech-diffusion/traditions
+  arcane) — mes cibles (build_f:142, FN_ARMEE mult:1963, can_enslave:2389) sont toutes HORS de
+  leurs hunks (vérifié `git diff --stat`/`git diff | grep @@` AVANT chaque édition, comme
+  demandé). Aucune collision, mais `git diff` a dû être relu une 2e fois après l'édit du gate
+  can_enslave car la ligne bougeait de ±quelques lignes à cause des inserts amont d'un autre
+  agent entre deux de mes lectures — toujours RELIRE juste avant d'éditer, pas se fier à un
+  numéro de ligne mémorisé d'un Read précédent.
+- Retirer la branche éthos de `econ_country_can_enslave` rend `w`/`econ`/`cid` inutilisés dans
+  le corps — gardés dans la SIGNATURE (4 appelants externes, casser l'ABI C aurait forcé 4
+  sites de plus à toucher hors scope) et neutralisés par `(void)w; (void)econ; (void)cid;`
+  (motif déjà présent ailleurs dans le fichier, scps_econ.c:3776, repris à l'identique).
+**Restes**
+- Le champ `flavor` neuf n'est PAS câblé côté Godot (`scps_sim_node.cpp`/`.h` +
+  `culture_creator.gd` ne lisent que `epithete`/`hint` du Dictionary) — binding + UI à étendre
+  par un futur agent (hors du périmètre .c de cette mission, DLL non reconstruite ici).
+- Priorité 5 de la spec (« mesurer sur campagnes identiques ») NON faite ici — aucun sweep
+  lancé (consigne : ne pas re-baseliner golden, l'orchestrateur mesurera après merge).
+- Sections TRADITIONS et FOI de la spec : NON touchées (hors mission, gérées par d'autres
+  agents en parallèle — cf. entrée « TRADITIONS branchées sur le circuit des tunables » et
+  « Passe éditoriale TECH » plus haut dans ce fichier).
+- Golden 12 ans va bouger (tolérance fiscale + biais IA + signature de faction mordent dès
+  l'an-0) — attendu, PAS re-baseliné ici (consigne explicite). SAVE : rien de sérialisé ne
+  change (tables statiques + 1 champ ajouté à une struct façade non-sérialisée) — pas de bump.
+- Syntax-check : `D:/MSYS2/mingw64/bin/gcc.exe -fsyntax-only -std=c99 -Wall -Wextra -Ithird_party`
+  sur `scps_econ.c`, `scps_ai.c`, `scps_ai.h`, `scps_factions.c`, `scps_api.c`, `scps_api.h`,
+  `factions_demo.c` — tous compilent SANS AUCUN warning ni erreur.
+
+## 2026-07-10 — clôture de vague : 4 pièges d'orchestration payés cher
+**Découvertes**
+- scps_api_demo cassé DEPUIS le lot diplo-fog (pas par la vague) : un joueur PASSIF ne
+  « connaît » personne (country_knows, radius 2) → tous les verbes diplo = « cible
+  inconnue ». Masqué car `make test` complet n'avait pas retourné depuis. Fix :
+  `fog_debug_meet_all` (scps_fog.{h,c}, BANC/FUZZ seulement, motif intertrade_debug_set_hub_of).
+- `ScpsCountryInfo.gold` est un DOUBLE : l'imprimer en %d = UB varargs qui pourrit TOUTE
+  la ligne printf (les « INT_MIN / 1e30 » de mon diag étaient du garbage d'affichage —
+  l'économie était saine). Toujours vérifier les types de champs façade avant un printf de diag.
+**Pièges**
+- `shot_ui.tscn` est une probe FENÊTRÉE (c'est écrit dans son en-tête) : en --headless,
+  `await RenderingServer.frame_post_draw` NE TIRE JAMAIS → gel éternel avant la 1re capture.
+  4 heures de fausse piste (DLL scons, cache .godot, moteur) pour une option de ligne de commande.
+- Le prompt de crash (feedback.gd `popup_centered`) GÈLE aussi une probe : chaque instance
+  tuée arme le flag → la probe suivante pend sur le dialogue → on la tue → cercle vicieux.
+  Fix : _detect_crash efface le flag et sort en headless.
+- Diag du gel : `user://logs/godot.log` (file_logging actif) donne la chronologie NON
+  bufferisée là où le stdout redirigé (fully buffered) ment sur le point d'arrêt réel.
+**Restes**
+- Champ flavor des traits/éthos/héritages/techs rempli côté moteur mais pas encore rendu
+  par les panneaux Godot (creator/tech Medusa) — câblage UI à faire.
+- EvOption.blurb porte les OUVERTURES d'événements (inerte, rien ne le rend) — à câbler
+  dans event_dialog (attention aux %s du blurb au moment du rendu).
+- 2 stashs parqués (vague-complete dupliqué, heritage orphelin d'agent) — à droper après
+  vérif que le commit de vague contient tout.

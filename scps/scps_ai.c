@@ -138,8 +138,11 @@ void ai_derive_weights(AiActor *a, const PopCulture *self){
     a->w_trade = norm01(10.f - v) * econ_f;
 
     /* Bâtir du K : l'éthos qui TIENT la diversité (Bureaucrate > Ordre > reste ;
-     * le Dominateur/Honneur bâtit peu — il tient par la force, pas par le droit). */
-    float build_f = (self->ethos==ETHOS_BUREAUCRATE) ? 1.6f
+     * le Dominateur/Honneur bâtit peu — il tient par la force, pas par le droit).
+     * ÉQUILIBRAGE 2026-07-10 (docs/EQUILIBRAGE_CULTURE_FOI_2026-07-10.md §ÉTHOS) :
+     * biais institutionnel Bureaucrate 1.6→1.35 (garde l'identité « bâtisseur
+     * d'institutions », resserre l'écart avec Ordre 1.2). */
+    float build_f = (self->ethos==ETHOS_BUREAUCRATE) ? 1.35f
                   : (self->ethos==ETHOS_ORDRE)        ? 1.2f
                   : (self->ethos==ETHOS_DOMINATEUR || self->ethos==ETHOS_HONNEUR) ? 0.6f
                   : 1.0f;
@@ -1957,7 +1960,10 @@ static float ai_tech_cost_mult(Ethos e, const TechNode *n){
             break;
         case FN_ARMEE:                                         /* la levée / l'arme */
             if (e==ETHOS_DOMINATEUR || e==ETHOS_HONNEUR) m*=0.80f;
-            else if (e==ETHOS_PACIFISTE) m*=1.30f;
+            /* ÉQUILIBRAGE 2026-07-10 (docs/EQUILIBRAGE_CULTURE_FOI_2026-07-10.md
+             * §ÉTHOS) : surcoût militaire IA Pacifiste 1.30→1.20 (garde le frein
+             * d'expansion/faustien, allège juste l'excès). */
+            else if (e==ETHOS_PACIFISTE) m*=1.20f;
             else if (e==ETHOS_MERCANTILE) m*=1.10f;
             break;
         case FN_RENFORCEMENT:                                  /* tenir : institutions, intégration, foi */
@@ -2238,15 +2244,28 @@ float tech_diffusion_mult(TechId id){
     if (frac>1.f) frac=1.f;
     return 1.f - tune_f("AI_TECH_DIFFUSE_MAX",AI_TECH_DIFFUSE_MAX) * frac;
 }
-/* coût EFFECTIF d'une tech pour l'IA : géologie (√N) × biais d'éthos × remise de diffusion.
+/* TRADITIONS — le levier ARCANE (Arcanique/Sourd à l'arcane) module le COÛT des nœuds
+ * FAUSTIENS (« la branche Magie s'ouvre » / « coûte très cher ») — même rang que la
+ * remise de diffusion, PAR PAYS (culture_build_for), jamais un tune global. ∈ [0.5, 2] :
+ * jamais gratuite, jamais un mur. PUBLIC : la voie JOUEUR (scps_sim.c) et le coût
+ * AFFICHÉ (scps_api.c) appliquent le MÊME facteur (le prix montré = le prix payé). */
+float ai_tech_tradition_mult(int cid, TechId id){
+    const TechNode *n = tech_node(id);
+    if (!n || !n->faustian || cid<0) return 1.f;
+    HeritageBuild hb = culture_build_for((uint32_t)cid);
+    return clampf(1.f - tune_f("TRAD_ARCANE_W",0.25f)*build_leviers(&hb).arcane, 0.5f, 2.f);
+}
+/* coût EFFECTIF d'une tech pour l'IA : géologie (√N) × biais d'éthos × remise de diffusion
+ * × traditions (arcane, nœuds faustiens seulement).
  * DÉCOUPLAGE §27 (2026-07-08) : le boost de REVENU (AI_RESEARCH_INCOME_W) accélère l'arbre
  * ×W, mais l'entropie mondiale = ENTROPY_TECH_W·Σ(charge des nœuds FAUSTIENS) — un arbre ×W
  * over-chargerait la Brèche et effondrerait la fenêtre des fins §27 vers le gate an-180
  * (MESURÉ). Contre-mesure : le coût des nœuds FAUSTIENS est ×W lui aussi → le boost de revenu
  * s'y ANNULE, leur cadence d'acquisition reste ≈ baseline (charge §27 inchangée), l'arbre gonfle
  * par les nœuds NON-faustiens (charge nulle). W=1 (défaut) ⇒ ×1 ⇒ golden-safe. */
-static float ai_effective_cost(TechId id, float nprov, Ethos eth){
-    float c = tech_cost(id, nprov) * ai_tech_cost_mult(eth, tech_node(id)) * tech_diffusion_mult(id);
+static float ai_effective_cost(TechId id, float nprov, Ethos eth, int cid){
+    float c = tech_cost(id, nprov) * ai_tech_cost_mult(eth, tech_node(id)) * tech_diffusion_mult(id)
+            * ai_tech_tradition_mult(cid, id);
     if (tech_node(id)->faustian) c *= tune_f("AI_RESEARCH_INCOME_W", AI_RESEARCH_INCOME_W);
     return c;
 }
@@ -2281,7 +2300,7 @@ static TechId ai_pick_tech(const AiActor *a, const TechState *ts, const World *w
         TechId id=(TechId)i;
         if (!tech_can_research(ts,id,access)) continue;
         const TechNode *n=tech_node(id);
-        float cost=ai_effective_cost(id, nprov, eth);   /* géologie √N × biais d'éthos × remise de diffusion */
+        float cost=ai_effective_cost(id, nprov, eth, a->cid);   /* géologie √N × biais d'éthos × remise de diffusion × traditions */
         if (cost > ts->research_points + 0.01f) continue;          /* pas encore les moyens */
         float score=0.f;
         /* BUTS — la fonction du nœud répond à un besoin lu de la VUE (pas de script). */
@@ -2361,12 +2380,13 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
     /* §4c — le gate de l'esclavage, RAFRAÎCHI AVANT tout early-return (piège pris au
      * SLAVEDIAG : CINQ returns d'épargne/famine plus bas sautaient ce bloc — un empire
      * HONNEUR coincé en épargne gardait can_enslave=0 pour toujours, la capture ne
-     * tournait jamais). La TECH (Économie servile) l'INSTITUE ; l'éthos CONQUÉRANT
-     * (Dominateur/Honneur) déporte par COUTUME. Volume faible (SLAVE_FRACTION),
-     * diffusion faible (METAB_DIFFUSE_SLAVE) : présent, jamais massif. */
-    { Ethos eeth = ai_capital_ethos(w, econ, a->cid);
-      a->can_enslave = ts->unlocked[TECH_ESCLAVAGE]
-                    || eeth==ETHOS_DOMINATEUR || eeth==ETHOS_HONNEUR; }
+     * tournait jamais). ÉQUILIBRAGE 2026-07-10 (docs/EQUILIBRAGE_CULTURE_FOI_2026-07-10.md
+     * §ÉTHOS/priorité 4) : REVERT PARTIEL du lot brassage (« l'éthos CONQUÉRANT déporte
+     * par COUTUME ») — décision joueur, l'esclavage exige désormais la TECH (Économie
+     * servile) pour TOUS les éthos, sans exception Dominateur/Honneur. Volume faible
+     * (SLAVE_FRACTION), diffusion faible (METAB_DIFFUSE_SLAVE) : tunables INTACTS,
+     * seul le gate change. */
+    a->can_enslave = ts->unlocked[TECH_ESCLAVAGE];
     if (a->cid>=0 && a->cid<SCPS_MAX_COUNTRY) g_ai_enslave[a->cid]=a->can_enslave;  /* cache pour le règlement d'un TIERS */
     a->has_creuset = ts->unlocked[TECH_INTEGRATION]; /* §leviers : le Creuset forme mieux */
     a->has_halles  = ts->unlocked[TECH_HALLES];      /* E3 : l'IA stockeuse exige les Halles */
@@ -2405,7 +2425,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
         }
         if (pick==TECH_HALLES)
             fprintf(stderr,"[E3DIAG-TECH] day=%d cid=%d PICKED halles (research_points=%.1f cost=%.1f)\n",
-                    day, a->cid, ts->research_points, ai_effective_cost(TECH_HALLES, nprov, ai_capital_ethos(w,econ,a->cid)));
+                    day, a->cid, ts->research_points, ai_effective_cost(TECH_HALLES, nprov, ai_capital_ethos(w,econ,a->cid), a->cid));
     }
 #endif
     /* §4 COUPLAGE : une fois l'Industrie en poche, l'empire AFFAMÉ DE FER ÉPARGNE pour la
@@ -2424,7 +2444,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
         if (tgt!=TECH_COUNT && !ts->unlocked[tgt]){
             TechId step=ai_step_toward(ts, tgt, access);
             if (step!=TECH_COUNT){
-                float sc=ai_effective_cost(step, nprov, ai_capital_ethos(w,econ,a->cid));
+                float sc=ai_effective_cost(step, nprov, ai_capital_ethos(w,econ,a->cid), a->cid);
                 if (ts->research_points < sc) return;      /* on ÉPARGNE pour le pas suivant */
                 pick=step;                                 /* on AVANCE vers l'échappatoire */
             }
@@ -2453,7 +2473,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
           TechId step = tech_can_research(ts,savoir_chain[k],access) ? savoir_chain[k]
                                                                       : ai_step_toward(ts,savoir_chain[k],access);
           if (step==TECH_COUNT) break;                        /* chaîne non viable (accès) — n'insiste pas */
-          float sc = ai_effective_cost(step, nprov, ai_capital_ethos(w,econ,a->cid));
+          float sc = ai_effective_cost(step, nprov, ai_capital_ethos(w,econ,a->cid), a->cid);
           if (ts->research_points < sc) return;                /* on ÉPARGNE pour le maillon suivant */
           pick = step; palier_hold = true;                     /* AVANCE ; les branches suivantes s'inclinent */
           break;
@@ -2485,11 +2505,11 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
                 TechId st = tech_can_research(ts,(TechId)id,access) ? (TechId)id
                                                                     : ai_step_toward(ts,(TechId)id,access);
                 if (st==TECH_COUNT) continue;               /* chaîne non viable (accès) */
-                float cc=ai_effective_cost((TechId)id, nprov, ai_capital_ethos(w,econ,a->cid));
+                float cc=ai_effective_cost((TechId)id, nprov, ai_capital_ethos(w,econ,a->cid), a->cid);
                 if (cc<t2cost){ t2cost=cc; t2step=st; }     /* on retient le PAS de la moins chère */
             }
             if (t2step!=TECH_COUNT){
-                float sc=ai_effective_cost(t2step, nprov, ai_capital_ethos(w,econ,a->cid));
+                float sc=ai_effective_cost(t2step, nprov, ai_capital_ethos(w,econ,a->cid), a->cid);
                 if (ts->research_points < sc) return;       /* pas les moyens : on ÉPARGNE (et TIENT) */
                 pick = t2step;                              /* on AVANCE vers le palier */
                 palier_hold = true;                         /* PRIORITÉ : les épargnes S1/S3/S4 s'inclinent */
@@ -2514,7 +2534,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
                 const TechNode *tn=tech_node((TechId)id);
                 if (tn->native==HERITAGE_COUNT || tn->faustian || ts->unlocked[id]) continue;
                 if (!tech_can_research(ts, (TechId)id, access)) continue;     /* accessible (accès+prérequis) */
-                float cc=ai_effective_cost((TechId)id, nprov, eg);
+                float cc=ai_effective_cost((TechId)id, nprov, eg, a->cid);
                 if (cc<sigcost){ sig=(TechId)id; sigcost=cc; }                /* la moins chère d'abord */
             }
             if (sig!=TECH_COUNT){
@@ -2541,7 +2561,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
         if (ai_faustian_appetite(cr, val) >= AI_FAUST_QUEST){               /* la SOIF d'interdit (rare) */
             TechId step=ai_step_toward(ts, TECH_FORGE_RUNES, access);
             if (step!=TECH_COUNT){
-                float sc=ai_effective_cost(step, nprov, ai_capital_ethos(w,econ,a->cid));
+                float sc=ai_effective_cost(step, nprov, ai_capital_ethos(w,econ,a->cid), a->cid);
                 if (ts->research_points < sc) return;                      /* on ÉPARGNE pour le pas suivant */
                 pick=step;                                                 /* on AVANCE vers l'emblème */
             }
@@ -2567,13 +2587,13 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
       if (tgt!=TECH_COUNT && !palier_hold){                      /* le palier 2 (soif) prime */
           TechId step=ai_step_toward(ts, tgt, access);
           if (step!=TECH_COUNT){
-              float sc=ai_effective_cost(step, nprov, eth);
+              float sc=ai_effective_cost(step, nprov, eth, a->cid);
               if (ts->research_points < sc) return;              /* on ÉPARGNE pour le pas suivant */
               pick=step;                                         /* on AVANCE vers la tech d'unité */
           }
       } }
     if (pick!=TECH_COUNT){
-        float cost = ai_effective_cost(pick, nprov, ai_capital_ethos(w,econ,a->cid));
+        float cost = ai_effective_cost(pick, nprov, ai_capital_ethos(w,econ,a->cid), a->cid);
         if (ts->research_points >= cost && tech_research(ts, pick, access)){
             ts->research_points -= cost;
             a->stats.techs++;

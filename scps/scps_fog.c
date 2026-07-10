@@ -88,6 +88,12 @@ void fog_visible_regions(const World *w, const WorldEconomy *econ, int viewer_ci
     }
 }
 
+/* BANC/FUZZ SEULEMENT — cf. scps_fog.h. */
+void fog_debug_meet_all(int a){
+    if (a<0 || a>=SCPS_MAX_COUNTRY) return;
+    for (int b=0; b<SCPS_MAX_COUNTRY; b++) g_known[a][b]=1;
+}
+
 /* ---- Sérialisation (section FOGV, motif WILD/DCRE : sim_wild_save/decrees_save) ---- */
 void fog_save(FILE *f){
     fwrite(g_known, sizeof g_known, 1, f);

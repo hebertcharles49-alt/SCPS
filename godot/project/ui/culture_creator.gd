@@ -2,10 +2,14 @@ extends Control
 ## CultureCreator — la fenêtre « créateur d'empire » façon Stellaris, en ONGLETS
 ## (retour joueur 2026-07-10 : « dispatcher avec plusieurs onglets, expliquer,
 ## pas tout mettre dans les menus déroulants, expliquer combien ») :
-##   · onglet HÉRITAGE  : la lignée (noms + accès natif à sa branche d'arbre) ;
-##   · onglet ÉTHOS     : l'âme de l'État — « ça m'apporte quoi » dit en clair ;
-##   · onglet TRADITIONS : une par AXE, en BOUTONS visibles avec leurs CHIFFRES
-##                   (+2 majeur · +1 mineur · −1 défaut) — plus de déroulants.
+##   · onglet HÉRITAGE   : votre affinité technologique (noms + accès natif à sa
+##                   branche d'arbre) ;
+##   · onglet ÉTHOS      : votre orientation politique et culturelle ;
+##   · onglet TRADITIONS : TROIS sections plates (Positif majeur · Positif mineur ·
+##                   Négatif), tous axes mélangés (retour joueur : « une liste non
+##                   divisée, sinon illisible ») — choisir un trait GRISE les autres
+##                   traits du même axe dans les AUTRES sections (l'axe est consommé) ;
+##   · onglet IDENTITÉ   : armoiries, nom de l'empire, aperçu du peuple.
 ## La GRAINE ne vit plus ici (écran Nouvelle partie) — le mode autonome régénère
 ## sur la graine COURANTE (Sim.current_seed).
 ##
@@ -76,9 +80,10 @@ var _her_opt: OptionButton
 var _her_info: Label
 var _eth_opt: OptionButton
 var _eth_info: Label
-var _trad_btns := [[], [], []]        # par axe : [{btn:Button, id:int}]
+var _trad_flow: Dictionary = {}       # par rang (2/1/-1) : le HFlowContainer de la section
+var _trad_all: Array = []             # à PLAT, tous axes : [{btn:Button, id:int, ax:int, grp:int}]
 var _trad_sel := [-1, -1, -1]         # trait CHOISI par axe (id façade, -1 = aucun)
-var _trad_hover := [null, null, null]
+var _trad_summary: Label              # « Physique : Robuste · Social : … » (récap des 3 choix)
 var _culture_lbl: Label
 var _valid_lbl: Label
 var _preview_lbl: Label
@@ -168,7 +173,7 @@ func _build_ui() -> void:
 	sub.add_theme_color_override("font_color", C_DIM)
 	col.add_child(sub)
 
-	# ── ONGLETS (façon Stellaris) : Héritage / Éthos / Traditions ──
+	# ── ONGLETS (façon Stellaris) : Héritage / Éthos / Traditions / Identité ──
 	_tabs = TabContainer.new()
 	_tabs.custom_minimum_size = Vector2(0, 300)
 	_tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -179,7 +184,7 @@ func _build_ui() -> void:
 	t_her.name = "Héritage"
 	t_her.add_theme_constant_override("separation", 8)
 	_tabs.add_child(t_her)
-	t_her.add_child(_section("Votre lignée : elle nomme votre empire et ouvre sa branche de l'arbre."))
+	t_her.add_child(_section("Votre affinité technologique."))
 	_her_opt = OptionButton.new()
 	_her_opt.item_selected.connect(func(_i): _refresh())
 	t_her.add_child(_her_opt)
@@ -191,40 +196,50 @@ func _build_ui() -> void:
 	t_eth.name = "Éthos"
 	t_eth.add_theme_constant_override("separation", 8)
 	_tabs.add_child(t_eth)
-	t_eth.add_child(_section("L'âme de l'État : épithète, armée, factions de la cour."))
+	t_eth.add_child(_section("Votre orientation politique et culturelle."))
 	_eth_opt = OptionButton.new()
 	_eth_opt.item_selected.connect(func(_i): _refresh())
 	t_eth.add_child(_eth_opt)
 	_eth_info = _hint_label()
 	t_eth.add_child(_eth_info)
 
-	# — onglet TRADITIONS : les CHOIX en RANGÉES par groupe (retour joueur : « regrouper
-	#   par négatif / positif mineur / positif majeur », aucun +1/−1 affiché) —
+	# — onglet TRADITIONS : TROIS sections PLATES par rang (retour joueur : « une
+	#   liste non divisée : traits mineurs, traits majeurs, traits négatifs, sinon
+	#   illisible ») — tous axes mélangés dans chaque section ; choisir un trait
+	#   grise les autres traits du MÊME axe dans les AUTRES sections (l'axe consommé).
 	var t_trad := VBoxContainer.new()
 	t_trad.name = "Traditions"
-	t_trad.add_theme_constant_override("separation", 4)
+	t_trad.add_theme_constant_override("separation", 6)
 	_tabs.add_child(t_trad)
-	t_trad.add_child(_section("Une tradition par axe : un atout majeur, un atout mineur, un défaut."))
-	for ax in range(3):
-		var lab := Label.new()
-		lab.text = AXES[ax]
-		lab.add_theme_color_override("font_color", C_TITLE)
-		t_trad.add_child(lab)
-		var box := VBoxContainer.new()
-		box.add_theme_constant_override("separation", 2)
-		t_trad.add_child(box)
-		_trad_btns[ax] = []          # peuplé par _load_data (les traits de la façade)
-		_trad_btns[ax].append(box)   # [0] = le conteneur ; les boutons suivent
-		var hv := _hint_label()
-		t_trad.add_child(hv)
-		_trad_hover[ax] = hv
+	t_trad.add_child(_section("Un trait par axe : un atout majeur, un atout mineur, un défaut."))
+	_trad_summary = Label.new()
+	_trad_summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_trad_summary.add_theme_color_override("font_color", C_DIM)
+	t_trad.add_child(_trad_summary)
+	_trad_flow = {}
+	for grp in [[2, "Positif majeur"], [1, "Positif mineur"], [-1, "Négatif"]]:
+		var glab := Label.new()
+		glab.text = String(grp[1])
+		glab.add_theme_color_override("font_color", C_TITLE)
+		t_trad.add_child(glab)
+		var flow := HFlowContainer.new()
+		flow.add_theme_constant_override("h_separation", 6)
+		flow.add_theme_constant_override("v_separation", 4)
+		t_trad.add_child(flow)
+		_trad_flow[int(grp[0])] = flow   # peuplé par _load_data (les traits de la façade)
 
-	# ── IDENTITÉ : armoiries (variantes) + NOM d'empire (retour joueur 2026-07-10 :
-	#    « éditeur de nom » + « éditeur d'héraldique non présent ») ──
-	col.add_child(_sep())
+	# — onglet IDENTITÉ : armoiries (variantes) + NOM d'empire + aperçu du peuple
+	#   (retour joueur 2026-07-10 : « éditeur de nom » + « éditeur d'héraldique non
+	#   présent » ; regroupés hors des autres onglets — « les autres occurrences se
+	#   retrouvent là ») —
+	var t_id := VBoxContainer.new()
+	t_id.name = "Identité"
+	t_id.add_theme_constant_override("separation", 10)
+	_tabs.add_child(t_id)
+	t_id.add_child(_section("Vos armoiries et le nom de votre empire."))
 	var idrow := HBoxContainer.new()
 	idrow.add_theme_constant_override("separation", 8)
-	col.add_child(idrow)
+	t_id.add_child(idrow)
 	_arms_rect = TextureRect.new()
 	_arms_rect.custom_minimum_size = Vector2(44, 44)
 	_arms_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -247,14 +262,14 @@ func _build_ui() -> void:
 	_name_edit.max_length = 30
 	_name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	idrow.add_child(_name_edit)
-
-	# ── APERÇU live ──
-	col.add_child(_sep())
+	t_id.add_child(_sep())
 	_culture_lbl = Label.new()
 	_culture_lbl.add_theme_color_override("font_color", C_TITLE)
 	_culture_lbl.add_theme_font_size_override("font_size", 16)
-	col.add_child(_culture_lbl)
+	t_id.add_child(_culture_lbl)
 
+	# ── ligne EFFETS + VALIDITÉ : communes, sous les onglets, quel que soit l'onglet actif ──
+	col.add_child(_sep())
 	_preview_lbl = Label.new()
 	_preview_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_preview_lbl.custom_minimum_size = Vector2(600, 0)
@@ -317,12 +332,12 @@ func _world_seed() -> int:
 # ── DONNÉES : tout vient de la façade C ────────────────────────────────────────
 func _load_data() -> void:
 	if Sim.world == null:
-		_valid_lbl.text = "Moteur (libscps) absent — bâtir : cd godot && scons."
+		_valid_lbl.text = "Moteur (libscps) absent : bâtir cd godot && scons."
 		_valid_lbl.add_theme_color_override("font_color", C_BAD)
 		_start_btn.disabled = true
 		return
 	if not Sim.world.has_method("heritage_list"):
-		_valid_lbl.text = "libscps obsolète (créateur absent) — recompiler : cd godot && scons."
+		_valid_lbl.text = "libscps obsolète (créateur absent) : recompiler cd godot && scons."
 		_valid_lbl.add_theme_color_override("font_color", C_BAD)
 		_start_btn.disabled = true
 		return
@@ -348,50 +363,32 @@ func _load_data() -> void:
 		var ax := int(t["axe"])
 		if ax >= 0 and ax < 3 and not (String(t["nom"]) in REDONDANTS):
 			_axis_traits[ax].append(t)
-	# les BOUTONS de tradition : NOM SEUL, une RANGÉE par groupe avec son étiquette
-	# alignée (« Positif majeur · Positif mineur · Négatif ») — AUCUN chiffre sur les
-	# boutons ni les étiquettes ; l'effet PRÉCIS (chiffré) vit au survol et sous l'axe.
+	# les BOUTONS de tradition : NOM SEUL, TROIS sections PLATES (Positif majeur ·
+	# Positif mineur · Négatif), tous axes mélangés (retour joueur : « une liste non
+	# divisée, sinon illisible ») — AUCUN chiffre sur les boutons ; l'effet PRÉCIS
+	# (chiffré) vit au survol (tooltip = hover moteur).
+	_trad_all = []
 	for ax in range(3):
-		var box: VBoxContainer = _trad_btns[ax][0]
-		var entries := []
-		entries.append(box)
-		for grp in [[2, "Positif majeur"], [1, "Positif mineur"], [-1, "Négatif"]]:
-			var row := HBoxContainer.new()
-			row.add_theme_constant_override("separation", 6)
-			box.add_child(row)
-			var glab := Label.new()
-			glab.text = String(grp[1])
-			glab.custom_minimum_size = Vector2(110, 0)
-			glab.add_theme_color_override("font_color", C_DIM)
-			glab.add_theme_font_size_override("font_size", 12)
-			row.add_child(glab)
-			var flow := HFlowContainer.new()
-			flow.add_theme_constant_override("h_separation", 6)
-			flow.add_theme_constant_override("v_separation", 4)
-			flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			row.add_child(flow)
-			for t in _axis_traits[ax]:
-				var rk := int(t["rang"])
-				var nrk := 2 if rk >= 2 else (1 if rk == 1 else -1)
-				if nrk != int(grp[0]):
-					continue
-				var id := int(t["id"])
-				var b := Button.new()
-				b.toggle_mode = true
-				b.text = String(t["nom"])
-				b.tooltip_text = String(t["hover"])
-				var axc := ax
-				var idc := id
-				b.pressed.connect(func(): _on_trait_pick(axc, idc))
-				flow.add_child(b)
-				entries.append({"btn": b, "id": id})
-		_trad_btns[ax] = entries
+		for t in _axis_traits[ax]:
+			var rk := int(t["rang"])
+			var grp := 2 if rk >= 2 else (1 if rk == 1 else -1)
+			var flow: HFlowContainer = _trad_flow[grp]
+			var id := int(t["id"])
+			var b := Button.new()
+			b.toggle_mode = true
+			b.text = String(t["nom"])
+			b.tooltip_text = String(t["hover"])
+			var axc := ax
+			var idc := id
+			b.pressed.connect(func(): _on_trait_pick(axc, idc))
+			flow.add_child(b)
+			_trad_all.append({"btn": b, "id": id, "ax": ax, "grp": grp})
 
 	# défaut sensé : une compo VALIDE d'entrée (majeur Phys / mineur Soc / défaut Int)
 	_preset_default()
 
 
-# (les libellés « +2/+1/−1 » par bouton sont retirés — le rang se lit au GROUPE
+# (les libellés « +2/+1/−1 » par bouton sont retirés — le rang se lit à la SECTION
 #  majeur/mineur/défaut ; la règle en tête garde les chiffres.)
 
 
@@ -403,10 +400,8 @@ func _on_trait_pick(ax: int, id: int) -> void:
 
 ## reflète _trad_sel sur l'état pressé des boutons (sans re-signal)
 func _sync_trait_buttons() -> void:
-	for ax in range(3):
-		for i in range(1, _trad_btns[ax].size()):
-			var e: Dictionary = _trad_btns[ax][i]
-			(e["btn"] as Button).set_pressed_no_signal(int(e["id"]) == _trad_sel[ax])
+	for e in _trad_all:
+		(e["btn"] as Button).set_pressed_no_signal(int(e["id"]) == _trad_sel[int(e["ax"])])
 
 
 # choisit, par axe, le 1er trait du rang voulu (rôle[ax] : 0 majeur · 1 mineur · 2 défaut)
@@ -440,24 +435,20 @@ func _trait_hover(id: int) -> String:
 				return String(t["hover"])
 	return ""
 
-## GRISE les traits IMPOSSIBLES : la compo exige EXACTEMENT {majeur, mineur, défaut}
-## sur les 3 axes — vu les DEUX autres choix courants, un rang déjà « épuisé » se grise.
+## GUIDE sans surcharger (retour joueur) : dès qu'un axe a un trait choisi, l'axe
+## est CONSOMMÉ à ce rang — les autres traits du même axe dans les AUTRES sections
+## se grisent (on ne peut pas doubler l'axe sur deux rangs). Dans SA section (même
+## rang), les autres traits du même axe restent cliquables : on peut y switcher.
+## La validité FINE (exactement 1 majeur/1 mineur/1 défaut sur les 3 axes) reste
+## jugée par culture_validate (le message ✓/✗ sous les onglets).
 func _regray() -> void:
-	for ax in range(3):
-		var others := []
-		for bx in range(3):
-			if bx != ax:
-				others.append(_norm_rank(_trait_rank(_trad_sel[bx])))
-		for i in range(1, _trad_btns[ax].size()):
-			var e: Dictionary = _trad_btns[ax][i]
-			var r := _norm_rank(_trait_rank(int(e["id"])))
-			# permis ssi {r} ∪ others peut ENCORE devenir {2,1,-1} : r ne doit pas
-			# être déjà porté par LES DEUX autres axes (un doublon reste réparable).
-			var dup := 0
-			for o in others:
-				if o == r:
-					dup += 1
-			(e["btn"] as Button).disabled = dup >= 2
+	for e in _trad_all:
+		var ax: int = int(e["ax"])
+		var id: int = int(e["id"])
+		var grp: int = int(e["grp"])
+		var sel: int = _trad_sel[ax]
+		var dis := sel != -1 and id != sel and grp != _norm_rank(_trait_rank(sel))
+		(e["btn"] as Button).disabled = dis
 
 func _norm_rank(r: int) -> int:
 	return 2 if r >= 2 else (1 if r == 1 else -1)
@@ -499,10 +490,17 @@ func _refresh() -> void:
 			_eth_info.text = "Votre État sera une « %s … ». %s\n\n%s\n\nDans tous les cas, l'éthos compose votre ARMÉE (le type de troupes que votre doctrine favorise), vos FACTIONS de cour (qui vous soutient, qui conspire), l'épithète de votre État et les évènements qui vous ressemblent." % [
 				String(e["epithete"]), String(e["hint"]), elore]
 			break
-	# traditions : l'effet PRÉCIS du trait choisi sous chaque axe (le hover moteur
-	# porte les chiffres réels ; le rang se lit au groupe, pas en préfixe)
+	# traditions : récap des 3 choix (un par axe) — l'effet PRÉCIS et chiffré de
+	# chaque trait vit dans son propre tooltip_text (le hover moteur, inchangé)
+	var parts := PackedStringArray()
 	for ax in range(3):
-		_trad_hover[ax].text = _trait_hover(_cur_trait(ax))
+		var nm := "…"
+		for t in _axis_traits[ax]:
+			if int(t["id"]) == _trad_sel[ax]:
+				nm = String(t["nom"])
+				break
+		parts.append("%s : %s" % [AXES[ax], nm])
+	_trad_summary.text = " · ".join(parts)
 	_regray()
 
 	# nom de culture (le PEUPLE)
@@ -524,7 +522,10 @@ func _refresh() -> void:
 			num = "%+.2f" % val
 		tips.append("%s %s" % [String(lv["nom"]), num])
 	_preview_lbl.text = ("Effets : " + " · ".join(tips)) if tips.size() > 0 else "Effets : aucun"
-	_preview_lbl.tooltip_text = ""
+	# le TooltipServer global décore les mots-concepts (Affinité arcane, Fracture,
+	# Coercition, Perméabilité, Capacité, Dérive culturelle…) — pas besoin de les
+	# expliquer ici, leur définition apparaît en cascade au survol.
+	_preview_lbl.tooltip_text = _preview_lbl.text
 	_update_arms()
 
 	# validité (la façade fait foi) + message d'aide

@@ -71,6 +71,12 @@ func _arm_flag() -> void:
 func _detect_crash() -> void:
 	if not FileAccess.file_exists(FLAG_PATH):
 		return
+	# HEADLESS (probes shot_ui/audits) : jamais de dialogue modal — il attendrait un
+	# clic qui ne viendra pas et GÈLE la probe (pris 2026-07-10 : instances tuées →
+	# drapeau posé → la probe suivante pendait sur ce prompt). On efface le drapeau.
+	if DisplayServer.get_name() == "headless":
+		DirAccess.remove_absolute(FLAG_PATH)
+		return
 	var when := ""
 	var f := FileAccess.open(FLAG_PATH, FileAccess.READ)
 	if f:
