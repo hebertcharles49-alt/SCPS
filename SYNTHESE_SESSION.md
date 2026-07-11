@@ -1,8 +1,13 @@
 # SYNTHÈSE DE SESSION — handoff roulant (2026-07-11 soir)
 
-## ÉTAT COURANT — CALIBRAGE FINS + DÉCLENCHEURS D'ÂGES (task #82, EN COURS)
-- Branche `claude/vibrant-euler-1tgfp3` (== main). Dernier commit poussé/mergé : **abfe7b1**
-  (gigasweep 200 sims + Découvertes 0,12 + Lot 2 UI). SAVE_VERSION **78**. scps.exe exporté 05:59.
+## ÉTAT COURANT — CALIBRAGE FINS + DÉCLENCHEURS D'ÂGES (task #82, ✅ LIVRÉ)
+- Branche `claude/vibrant-euler-1tgfp3` (== main). Commit poussé + mergé main : **58874ee**
+  (calibrage fins/âges). SAVE_VERSION **78** (inchangé). scps.exe ré-exporté 10:43.
+- RÉSULTAT : fins EAU 3·RONCES 4·HIVER 5·RÉCHAUF 5·SANG 3·AUCUNE 0 (était 24/200) ;
+  âges Soulèvements 70 %·Tyrans 15 %·ni-ni 15 % (Tyrans était 0/200). Gates verts (39/39
+  runnable, determinism STABLE, savetest byte-identique, golden re-baseliné 7/310/411).
+- PROCHAIN : task #79 (UI Lots 3-4) reste en attente. Rien d'autre en vol.
+- (archive — historique de la mission ci-dessous)
 - DIRECTIVE JOUEUR : « lisse les déclencheurs et trouve pourquoi certaines fins ne viennent
   jamais. Trouve, itère, corrige. » — les problèmes flaggés au gigasweep : Tyrans 0/200,
   SANG 0/200, EAU 11/200, RÉCHAUF 2/24-aucune.
