@@ -88,10 +88,34 @@ uint16_t econ_culture_identity_pool(Heritage heritage){
     if(id) g_culture_id[id].flags|=CULTURE_ID_POOL;
     return id;
 }
+typedef struct { uint16_t id; bool substrate; } CultureRoot;
+static void culture_id_collect(uint16_t id, bool substrate, CultureRoot *root, int *n, int max, int depth);
+/* `b` n'apporte-t-il AUCUN peuple FONDATEUR nouveau à `a` (ses racines ⊆ celles de a) ?
+ * Le STACKING : « A rencontre B → C ; C ré-absorbe du B → RESTE C » (2026-07-11). Sans ça,
+ * chaque mélange forgeait une génération de plus (A→C→D→E… sans fin : gén 255, registre
+ * saturé, noms « Peuple N » — cf. télémétrie chronicle). SEUL un peuple encore JAMAIS
+ * incorporé (racine absente) crée une nouvelle culture nommée. */
+static bool culture_id_no_new_root(uint16_t a, uint16_t b){
+    CultureRoot ra[32], rb[32]; int na=0, nb=0;
+    memset(ra,0,sizeof ra); memset(rb,0,sizeof rb);
+    culture_id_collect(a,false,ra,&na,32,0);
+    culture_id_collect(b,false,rb,&nb,32,0);
+    if (nb==0) return true;                     /* b n'a aucune racine identifiable → rien de neuf */
+    for (int j=0;j<nb;j++){
+        bool found=false;
+        for (int i=0;i<na;i++) if (ra[i].id==rb[j].id){ found=true; break; }
+        if (!found) return false;               /* une racine de b absente de a → apport NOUVEAU */
+    }
+    return true;
+}
 uint16_t econ_culture_identity_fuse(uint16_t a, uint16_t b, Heritage heritage,
                                     float b_share, CultureBlendKind kind){
     if (!econ_culture_identity_valid(a)) return econ_culture_identity_valid(b)?b:0;
     if (!econ_culture_identity_valid(b) || a==b) return a;
+    /* STACKING : a contient déjà toutes les racines de b → a RESTE lui-même (pas de
+     * nouvelle génération). Les proportions du mix figent au 1er brassage (couche de
+     * MÉMOIRE, pas de démographie exacte) ; la métabolisation lit déjà le COUNT du groupe. */
+    if (culture_id_no_new_root(a,b)) return a;
     if (b_share<0.f) b_share=0.f;
     if (b_share>1.f) b_share=1.f;
     uint16_t b_bp=(kind==CULTURE_BLEND_PEOPLE)?(uint16_t)(b_share*10000.f+0.5f):0u;
@@ -157,7 +181,7 @@ bool econ_culture_identity_heritage_mix(uint16_t id, float out[HERITAGE_COUNT]){
     return true;
 }
 
-typedef struct { uint16_t id; bool substrate; } CultureRoot;
+/* CultureRoot + prototype déclarés plus haut (avant fuse, pour le STACKING). */
 static void culture_id_collect(uint16_t id, bool substrate, CultureRoot *root, int *n, int max, int depth){
     if (!econ_culture_identity_valid(id) || depth>24) return;
     const CultureIdentity *ci=&g_culture_id[id];
