@@ -20,6 +20,8 @@ var _city_names := {}       ## region → nom (cache, résolu via province_at(si
 var _collapsed := false     ## rabat (pièces planche 23 : 01 replier · 02 déplier)
 var _handle_rect := Rect2()
 var _refill_rect := Rect2() ## chip RECOMPLÉTER (déménagé du tiroir Armée — retour joueur)
+var _age_rect := Rect2()    ## encart d'ÂGE en haut de la bande (déménagé de la topbar,
+var _age_engageable := false ## retour joueur 2026-07-11 : « sous le temps, au-dessus du menu »)
 var _fold := {}             ## titre de section → replié (retour joueur 2026-07-10 :
                             ## « tous les menus de droite doivent pouvoir se collapser »)
 var _sec_rects := []        ## [{rect, title}] bandeaux cliquables (reconstruit au _draw)
@@ -57,6 +59,15 @@ func _gui_input(e: InputEvent) -> void:
 			_collapsed = not _collapsed
 			_layout()
 			queue_redraw()
+			accept_event()
+			return
+		# ENCART D'ÂGE : clic sur « Engager » → verbe CMD_AGE_ENGAGE (enfilé, déterministe)
+		if not _collapsed and _age_engageable and _age_rect.size.x > 0 and _age_rect.has_point(e.position):
+			if Sim.world != null and Sim.world.has_method("player_age_engage"):
+				Sim.world.player_age_engage()
+				Sound.play("ui_click")
+				Sim.notify_action()
+				queue_redraw()
 			accept_event()
 			return
 		if not _collapsed and _refill_rect.size.x > 0 and _refill_rect.has_point(e.position):
@@ -137,6 +148,12 @@ func _draw() -> void:
 	var x := 12.0
 	var y := 10.0
 	_sec_rects.clear()
+
+	# ── ENCART D'ÂGE (haut de la bande, sous le bloc TEMPS de la topbar, AU-DESSUS du
+	#    menu — retour joueur 2026-07-11) : « Engager : <âge> » ambre CLIQUABLE quand un
+	#    âge s'est levé sans être engagé (verbe CMD_AGE_ENGAGE) ; sinon « Âge : <âge> »
+	#    en contexte discret. Rien tant qu'aucun âge n'a percé (l'Aube). ──
+	y = _draw_age(x, y)
 
 	# ── VILLES : régions habitées du joueur, triées par âmes ──
 	var cities := []
@@ -281,6 +298,39 @@ func _draw() -> void:
 	if absf(want - size.y) > 2.0:
 		set_deferred("size", Vector2(size.x, want))
 
+## ENCART D'ÂGE — dessiné tout en haut de la bande (sous le bloc TEMPS de la topbar,
+## au-dessus du menu). « Engager : <âge> » AMBRE cliquable quand un âge s'est levé sans
+## être engagé (verbe CMD_AGE_ENGAGE) ; sinon « Âge : <âge> » discret (l'ère courante).
+## Retourne le y APRÈS l'encart (0 avancement tant qu'aucun âge n'a percé).
+func _draw_age(x: float, y: float) -> float:
+	_age_rect = Rect2()
+	_age_engageable = false
+	var w = Sim.world
+	if w == null or not w.has_method("age_state"):
+		return y
+	var ag: Dictionary = w.age_state()
+	var age := int(ag.get("age", -1))
+	var nm := String(ag.get("name", ""))
+	if age < 0 or nm == "":
+		return y                                  # l'Aube : aucun âge levé → encart vide
+	if not bool(ag.get("engaged", true)):
+		# âge levé, non engagé → chip AMBRE cliquable, pleine largeur
+		var r := Rect2(x - 2.0, y, W - 20.0, 26.0)
+		_age_engageable = true
+		_age_rect = r
+		VKit.fill(self, r, Color(0.24, 0.17, 0.07, 0.95))
+		VKit.box(self, r, Color(0.90, 0.72, 0.34))
+		UIKit.draw_icon(self, "fine_age", Vector2(r.position.x + 6, y + 4), 16)
+		var lab := "Engager : %s" % nm
+		while VKit.text_w(lab) > r.size.x - 34.0 and lab.length() > 10:
+			lab = lab.substr(0, lab.length() - 2) + "…"
+		VKit.text(self, Vector2(r.position.x + 26, y + 5), Color(0.90, 0.72, 0.34), lab)
+		return y + 32.0
+	# âge engagé → ligne de CONTEXTE discrète (l'ère où l'on vit)
+	UIKit.draw_icon(self, "fine_age", Vector2(x, y + 2), 15)
+	VKit.text(self, Vector2(x + 20.0, y + 3), Color(0.72, 0.60, 0.36), "Âge : %s" % nm, VKit.FS_SMALL)
+	return y + 22.0
+
 func _grp(n) -> String:
 	var s := str(absi(int(n)))
 	var out := ""
@@ -324,6 +374,8 @@ const SEC_TIPS := {
 func _get_tooltip(at_position: Vector2) -> String:
 	if _collapsed:
 		return ""
+	if _age_engageable and _age_rect.size.x > 0 and _age_rect.has_point(at_position):
+		return "Un âge s'est levé — clic pour l'ENGAGER (une fois par âge)."
 	for sr in _sec_rects:
 		if (sr["rect"] as Rect2).has_point(at_position):
 			return String(SEC_TIPS.get(String(sr["title"]), ""))

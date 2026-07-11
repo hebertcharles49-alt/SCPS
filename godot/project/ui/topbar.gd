@@ -26,7 +26,8 @@ signal tech_requested
 var _speed_rect := Rect2()
 var _speed_btns := []   ## boutons de vitesse DISCRETS façon RimWorld : [[Rect2, index], …]
 var _savoir_rect := Rect2()
-var _age_rect := Rect2()   # §7 : chip « Âge levé — Engager » (vide quand rien à engager)
+# §7 — l'encart d'âge (« Engager : … » / « Âge : … ») a DÉMÉNAGÉ en haut du menu de
+# droite (empire_sidebar.gd), sous le bloc TEMPS — retour joueur 2026-07-11.
 
 ## DELTAS MENSUELS (rendu attendu EU4 : « 12 125 +45 » vert/rouge) — photo du mois
 ## précédent, prise à chaque month_ticked (display-only, aucun état moteur).
@@ -409,8 +410,7 @@ func _draw() -> void:
 
 	# séparateur visuel avant le BLOC TEMPS — ANCRÉ au contenu RÉELLEMENT dessiné (pas
 	# une position fixe) : un contenu politique long (pays à beaucoup de factions, longue
-	# pénurie nommée) ne doit JAMAIS chevaucher le chip Engager ci-dessous (capturé en
-	# capture d'écran — le repli `_age_rect` en tient compte aussi, cf. plus bas).
+	# pénurie nommée) ne doit JAMAIS chevaucher le bloc date/vitesse à droite.
 	if content_end > 16.0:
 		content_end = _block_sep(content_end)
 
@@ -421,38 +421,8 @@ func _draw() -> void:
 	# ici que RÉSERVER sa place (largeur max fixe) pour ancrer le chip d'âge.
 	var dtw := VKit.text_w("Jour 30 · mois 12 · an 9999")
 	var dtx0 := ww - 116.0 - dtw - 18.0
-
-	# §7 — ENGAGEMENT D'ÂGE : un âge s'est levé et le joueur ne l'a pas engagé →
-	# chip ambre cliquable (l'IA s'engage auto ; le joueur choisit — verbe CMD_AGE_ENGAGE).
-	# Chip PLAT (les bandes parchemin sont retirées — panneaux plats 2026-07-10).
-	_age_rect = Rect2()
-	if w.has_method("age_state"):
-		var ag: Dictionary = w.age_state()
-		if int(ag.get("age", -1)) >= 0 and not bool(ag.get("engaged", true)):
-			var lab := "Engager : %s" % String(ag.get("name", ""))
-			var aw := VKit.text_w(lab) + 34.0
-			# GARDE ANTI-CHEVAUCHEMENT (audit UI-2) : le chip reste ANCRÉ à gauche de
-			# la date (jamais poussé DESSUS — 1re tentative fautive, capturée) ; quand
-			# le bloc POLITIQUE arrive trop près, c'est le LABEL qui se TRONQUE
-			# (« Engager : Âge du Comm… ») — le nom complet vit au survol (tip).
-			var avail := dtx0 - 14.0 - content_end
-			if aw > avail:
-				# tronque jusqu'au minimum « Engager… » (~105 px) — un léger recouvrement
-				# résiduel du dernier blason reste possible en cas extrême (le chip est
-				# opaque et dessiné PAR-DESSUS : lisible et cliquable, jamais l'inverse).
-				while lab.length() > 7 and VKit.text_w(lab + "…") + 34.0 > avail:
-					lab = lab.substr(0, lab.length() - 1)
-				lab += "…"
-				aw = VKit.text_w(lab) + 34.0
-			_age_rect = Rect2(dtx0 - aw - 14.0, 6, aw, H - 12)
-			VKit.fill(self, _age_rect, Color(0.24, 0.17, 0.07, 0.95))
-			VKit.box(self, _age_rect, Color(0.90, 0.72, 0.34))
-			UIKit.draw_icon(self, "fine_age", Vector2(_age_rect.position.x + 6, cy - 2), 16)
-			VKit.text(self, Vector2(_age_rect.position.x + 26, cy), Color(0.90, 0.72, 0.34), lab)
-			# push_front : le chip est dessiné PAR-DESSUS le contenu → son tip doit GAGNER
-			# le hit-test (sinon un blason recouvert répondrait au survol du chip).
-			_tips.push_front([_age_rect,
-				"Un âge s'est levé : %s — clic pour l'ENGAGER (une fois par âge)" % String(ag.get("name", ""))])
+	# (§7 : l'encart d'âge « Engager/Âge » vit désormais en haut du menu de droite,
+	#  empire_sidebar.gd — sous le bloc TEMPS. La topbar ne le dessine plus.)
 
 	# RUBAN PAUSE (rendu attendu EU4) : le monde figé se DIT, pas juste un glyphe dans
 	# le coin. ANCRÉ sous les contrôles de vitesse (bord droit) — c'est là que l'œil
@@ -492,10 +462,6 @@ func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if _savoir_rect.has_point(event.position):
 			tech_requested.emit()
-		elif _age_rect.size.x > 0 and _age_rect.has_point(event.position):
-			if Sim.world != null and Sim.world.has_method("player_age_engage"):
-				Sim.world.player_age_engage()   # enfilé ; le chip s'éteint au drain (engaged=true)
-				queue_redraw()
 		elif _speed_rect.has_point(event.position):
 			# boutons DISCRETS (RimWorld) : on clique LA vitesse voulue
 			for sb in _speed_btns:

@@ -7,10 +7,17 @@ extends RefCounted
 ## bleu nuit/cuivre de la v0 (viewer SDL) est SUPPRIMÉ. Display-only.
 
 # ── palette (la famille du chrome parchemin — cuir / or / encre) ────────────
+# HIÉRARCHIE TYPO (audit UI 4.3, 4 niveaux — la COULEUR/GRAISSE porte le rang, JAMAIS la
+# taille — les layouts sont vérifiés serré à 1280×720, +1px de police déborde) :
+#   1. TITRE   — `header()`   : COL_PARCH à FS_BIG (fenêtre majeure, le plus net)
+#   2. SECTION — `section()`  : COL_GOLD (bandeau de sous-panneau)
+#   3. VALEUR  — `value()`    : COL_VALUE, LE plus lumineux — le chiffre qui compte
+#   4. DÉTAIL  — `detail()`   : COL_DIM à FS_SMALL — flavor/annexe, contraste réduit
 const COL_PANEL    := Color(0x17/255.0, 0x11/255.0, 0x09/255.0, 0xf6/255.0)   # cuir profond
 const COL_PANEL2   := Color(0x2a/255.0, 0x21/255.0, 0x15/255.0, 0xf6/255.0)   # cuir clair (chips/champs)
 const COL_PANEL_HI := Color(0x4a/255.0, 0x3a/255.0, 0x24/255.0, 0x4d/255.0)   # reflet chaud
-const COL_GOLD     := Color(0xc9/255.0, 0xa2/255.0, 0x4b/255.0, 1.0)          # or vieilli (accent)
+const COL_GOLD     := Color(0xc9/255.0, 0xa2/255.0, 0x4b/255.0, 1.0)          # or vieilli (accent · niveau 2 Section)
+const COL_VALUE    := Color(0xff/255.0, 0xdd/255.0, 0x8c/255.0, 1.0)          # or CLAIR lumineux · niveau 3 Valeur
 const COL_PARCH    := Color(0xed/255.0, 0xe3/255.0, 0xcd/255.0, 1.0)
 const COL_DIM      := Color(0x96/255.0, 0x8d/255.0, 0x79/255.0, 1.0)
 const COL_EDGE     := Color(0x4a/255.0, 0x3b/255.0, 0x26/255.0, 1.0)          # filet brun doré
@@ -85,6 +92,22 @@ static func text(ci: CanvasItem, pos: Vector2, col: Color, s: String, size: int 
 static func text_w(s: String, size: int = FS) -> float:
 	return font().get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 
+## VALEUR — niveau 3 de la hiérarchie typo (4.3) : le NOMBRE-CLÉ d'une ligne (bonus final,
+## coût, montant) dans le ton le plus LUMINEUX de la palette — au-dessus de COL_GOLD/
+## COL_PARCH, jamais un attribut/catégorie. La HIÉRARCHIE se lit par la COULEUR, pas la
+## taille (`size` reste FS par défaut — ne PAS agrandir, les layouts sont bornés serré).
+## Optionnel : les panneaux existants gardent leurs couleurs actuelles (souvent `sense()`
+## pour une valeur jugée bonne/mauvaise) ; ce helper est disponible pour les prochains sans
+## rien casser. Renvoie la largeur (comme text()).
+static func value(ci: CanvasItem, pos: Vector2, s: String, size: int = FS) -> float:
+	return text(ci, pos, COL_VALUE, s, size)
+
+## DÉTAIL — niveau 4 (le plus bas) : flavor/annexe/formule, contraste NETTEMENT réduit.
+## `size` reste FS_SMALL par défaut (déjà la taille "secondaire" du kit — pas de nouveau
+## palier de police). Renvoie la largeur (comme text()).
+static func detail(ci: CanvasItem, pos: Vector2, s: String, size: int = FS_SMALL) -> float:
+	return text(ci, pos, COL_DIM, s, size)
+
 ## texte ENVELOPPÉ aux mots, borné à `largeur_max` et `max_lignes` — AUDIT UI 1.2
 ## (« ENFERMER les textes ») : ne dessine JAMAIS un caractère au-delà de `largeur_max`,
 ## quitte à casser un mot trop long lettre par lettre. La DERNIÈRE ligne porte une
@@ -153,10 +176,42 @@ static func box(ci: CanvasItem, r: Rect2, c: Color) -> void:
 static func fill(ci: CanvasItem, r: Rect2, c: Color) -> void:
 	ci.draw_rect(r, c, true)
 
+## GRAIN de papier PROCÉDURAL (4.1 : « cuir/papier léger dans les grandes surfaces »).
+## Aucune texture de grain propre dans le pack (chrome/parch = icônes/chips, pas de fond de
+## matière) → un bruit fbm cuit UNE fois en niveaux de gris (même famille que le sol de la
+## carte parchemin, cf. map/iso_ground.gd::_make_noise), mis en cache statique. Dessiné à
+## très faible alpha UNIFORME dans panel_bg (le RGB varie par pixel = le grain, l'alpha du
+## blend ne varie PAS = jamais un motif qui saute aux yeux — « la promesse du menu, sans
+## bruit »). PAS de NoiseTexture2D (génération asynchrone) : `Noise.get_image()` est
+## synchrone, un seul appel, aucun souci de thread/attente.
+static var _grain_tex: ImageTexture = null
+static func _grain() -> ImageTexture:
+	if _grain_tex == null:
+		var fnl := FastNoiseLite.new()
+		fnl.seed = 4242
+		fnl.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		fnl.frequency = 0.22
+		fnl.fractal_type = FastNoiseLite.FRACTAL_FBM
+		fnl.fractal_octaves = 3
+		var img := fnl.get_image(256, 256)
+		img.convert(Image.FORMAT_RGBA8)
+		_grain_tex = ImageTexture.create_from_image(img)
+	return _grain_tex
+
+## FLEURON discret (4.1 : « ornements réservés aux titres ») : un losange d'encre or, la
+## SEULE décoration de titre du kit — délibérément vectoriel (pas un asset de chrome : le
+## pack `panel_corner_ornate_*`/`panel_title_plaque` appartient à l'habillage 9-slice déjà
+## RETIRÉ des panneaux, cf. panel_bg ci-dessus — le réintroduire romprait cette discipline).
+static func _fleuron(ci: CanvasItem, center: Vector2, r: float, a: float = 0.85) -> void:
+	ci.draw_colored_polygon(PackedVector2Array([
+		center + Vector2(0.0, -r), center + Vector2(r, 0.0),
+		center + Vector2(0.0, r), center + Vector2(-r, 0.0)
+	]), Color(COL_GOLD.r, COL_GOLD.g, COL_GOLD.b, a))
+
 ## panel_bg : fond de panneau PLAT (retour joueur 2026-07-10 : « débarrasse-toi des
 ## assets de panneau — les joueurs pardonnent le cheap quand c'est lisible », RimWorld).
-## Ombre douce + cuir plat + liseré fin — plus AUCUN 9-slice de chrome (le cadre
-## parchemin étiré/riveté disparaît ; les icônes de RESSOURCE restent, elles).
+## Ombre douce + cuir plat + liseré fin + GRAIN subtil (4.1) — plus AUCUN 9-slice de chrome
+## (le cadre parchemin étiré/riveté disparaît ; les icônes de RESSOURCE restent, elles).
 static var _pb_shadow: StyleBoxFlat = null
 static var _pb_body: StyleBoxFlat = null
 
@@ -172,6 +227,14 @@ static func panel_bg(ci: CanvasItem, r: Rect2) -> void:
 		_pb_body.set_border_width_all(1)
 	ci.draw_style_box(_pb_shadow, Rect2(r.position + Vector2(3, 5), r.size))
 	ci.draw_style_box(_pb_body, r)
+	var g := _grain()
+	if g != null:
+		var gr := r.grow(-3.0)
+		if gr.size.x > 4.0 and gr.size.y > 4.0:
+			# TUILÉ (tile=true) à sa taille native → grain FIN ~4 px (papier), pas des
+			# taches ~16 px (un 256² ÉTIRÉ sur un grand panneau blobait — retour visuel
+			# 2026-07-11 : « sans bruit »). Alpha abaissé 0.055→0.032 : senti, pas noisy.
+			ci.draw_texture_rect(g, gr, true, Color(1.0, 0.95, 0.85, 0.032))
 
 ## jauge 0-100 : piste sombre + REMPLISSAGE proportionnel teinté par le sens (l'ancien
 ## arc-en-ciel plein + curseur lisait comme une palette, pas comme une valeur).
@@ -225,6 +288,7 @@ static func face(ci: CanvasItem, center: Vector2, r: float, mood: float, lit: bo
 const HDR_H := 36.0
 static func header(ci: CanvasItem, w: float, title: String) -> Rect2:
 	fill(ci, Rect2(0, 0, w, HDR_H), Color(0.055, 0.042, 0.028, 0.92))
+	_fleuron(ci, Vector2(6.0, 17.0), 3.5)          # ornement de TITRE (4.1) — marge gauche, avant le texte
 	text(ci, Vector2(12, 7), COL_PARCH, title, FS_BIG)
 	fill(ci, Rect2(0, HDR_H - 1.0, w, 1), Color(COL_GOLD.r, COL_GOLD.g, COL_GOLD.b, 0.6))
 	var cr := Rect2(w - 30.0, 8.0, 20.0, 20.0)
@@ -246,6 +310,7 @@ static func section(ci: CanvasItem, x: float, y: float, title: String) -> float:
 	fill(ci, Rect2(x - 4, y - 3, bw + 8, 20), Color(0.085, 0.066, 0.048, 0.88))
 	fill(ci, Rect2(x - 4, y - 3, bw + 8, 1), Color(COL_GOLD.r, COL_GOLD.g, COL_GOLD.b, 0.55))
 	fill(ci, Rect2(x - 4, y + 16, bw + 8, 1), Color(COL_GOLD.r, COL_GOLD.g, COL_GOLD.b, 0.55))
+	_fleuron(ci, Vector2(x - 1.0, y + 7.0), 3.0)   # ornement de TITRE (4.1) — dans la marge réservée, jamais sous le texte
 	text(ci, Vector2(x + 2, y - 1), COL_GOLD, title)
 	return y + 24
 

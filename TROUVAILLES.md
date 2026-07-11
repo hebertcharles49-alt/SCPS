@@ -3817,3 +3817,89 @@ sandbox pour un parse réel).
   C'est ce qui a fait crasher tout le codex (main.gd `_codex` restait Nil, la probe s'arrêtait
   au shot 18). Corrigé ; le reste des fichiers d'agent (topbar/sidebar/créateur/newgame) avait
   déjà PROUVÉ son parse en RENDANT (shots 02/01c/01b) avant le crash codex.
+
+## 2026-07-11 — Lot 4 (4.1 matières + 4.3 hiérarchie typo), vkit.gd seul
+**Découvertes**
+- `godot/project/ui/vkit.gd::panel_bg` (appelé par 10 panneaux : economy/country/tech/
+  province_detail/province_panel/construction/battle/event_dialog/event_popup/
+  sidebar_drawer) est LE point d'entrée unique des « grandes surfaces » — enrichir CE
+  helper propage le style à tous les panneaux sans toucher un seul fichier appelant. Même
+  logique pour `VKit.section()` (bandeau de sous-section, ~15 appelants) et `VKit.header()`
+  (bande de titre de fenêtre majeure) — les 3 points de levier pour la hiérarchie typo 4.3.
+- `Noise.get_image(w, h)` (méthode de la classe de base `Noise`, héritée par
+  `FastNoiseLite`) est SYNCHRONE et renvoie directement une `Image` (format L8, converti en
+  RGBA8 via `img.convert(Image.FORMAT_RGBA8)`) — pas besoin de `NoiseTexture2D` (génération
+  async, le pattern déjà utilisé dans `map/iso_ground.gd::_make_noise` pour le sol de
+  carte) quand on veut un grain CUIT UNE FOIS et mis en cache statique. Vérifié par
+  exécution headless réelle (voir méthode de vérif ci-dessous) : format avant convert = 0
+  (L8), après = 5 (RGBA8), `ImageTexture.create_from_image` accepte le résultat direct.
+- **Méthode de vérif SUPÉRIEURE à `--check-only -s` (qui donne les faux positifs
+  « Identifier not found » sur autoload, cf. entrée du dessus)** : lancer un vrai
+  `SceneTree` headless avec `--path` sur le projet + `--script` sur un script de test HORS
+  du projet (scratchpad) qui fait `load("res://ui/vkit.gd")` puis appelle directement les
+  fonctions statiques (`VKit._grain()`, `VKit.COL_VALUE`, etc.) dans `_initialize()`. Les
+  autoloads du projet se chargent normalement (aucun faux « Identifier not found »), les
+  vraies erreurs de parse/type remontent, et on peut vérifier le comportement RÉEL d'une
+  API engine (ici `Noise.get_image`) sans jamais ouvrir de fenêtre : `Godot...exe --headless
+  --path <projet> --script <script_hors_projet>.gd`. N'exécute PAS `_draw()` (nécessite un
+  CanvasItem en cours de dessin) mais couvre 100 % du reste : compilation, types, constantes,
+  présence de méthode, et tout appel d'API engine qui ne dépend pas d'un contexte de rendu.
+- Un paramètre nommé `value` (dans `gauge(ci,x,y,w,h,value:int)`, préexistant) et une
+  NOUVELLE méthode de classe `value()` (ajoutée ici) coexistent sans conflit — GDScript
+  scope les paramètres localement à leur fonction, aucune collision avec un symbole de
+  classe de même nom tant que le corps de la fonction ne s'auto-référence pas. Confirmé par
+  la compilation headless (aucune erreur/warning bloquant).
+
+**Ce qui a été ajouté (vkit.gd uniquement — ui_theme.gd et uikit.gd non touchés, aucun
+besoin identifié pour ce lot)**
+- `COL_VALUE` (or clair lumineux 0xffdd8c) + commentaire de palette documentant les 4
+  niveaux (Titre=`header()`/COL_PARCH·FS_BIG < Section=`section()`/COL_GOLD < Valeur=
+  `value()`/COL_VALUE < Détail=`detail()`/COL_DIM·FS_SMALL) — la hiérarchie existait déjà
+  À MOITIÉ (Titre/Section distincts par construction) ; le vrai trou était le niveau 3
+  (« le chiffre qui compte », plus lumineux que tout le texte courant COL_PARCH).
+- `VKit.value(ci,pos,s,size=FS)` / `VKit.detail(ci,pos,s,size=FS_SMALL)` : wrappers minces
+  autour de `text()`, opt-in, AUCUNE signature existante changée. Taille inchangée (FS/
+  FS_SMALL déjà existants) — la hiérarchie passe par la couleur, jamais par +1px (contrainte
+  dure de la mission : les layouts sont vérifiés serré à 1280×720).
+- `VKit._fleuron(ci,center,r,a)` : losange vectoriel discret en COL_GOLD (PAS un asset —
+  `panel_corner_ornate_*`/`panel_title_plaque` du pack chrome appartiennent à l'habillage
+  9-slice explicitement RETIRÉ des panneaux le 2026-07-10, cf. CLAUDE.md « débarrasse-toi
+  des assets de panneau » ; les réintroduire aurait été un backslide). Posé dans la MARGE
+  RÉSERVÉE avant le texte (jamais sous/après) : `header()` à (6,17) r=3.5 (marge gauche 0-12
+  avant le titre x=12), `section()` à (x-1,y+7) r=3.0 (marge x-4..x+2 avant le titre x+2) —
+  zéro déplacement de texte, zéro changement de hauteur consommée (`section()` renvoie
+  toujours `y+24` comme documenté « AUCUN layout appelant ne bouge »).
+- `VKit._grain()` + branchement dans `panel_bg()` : bruit fbm 256×256 (simplex smooth,
+  fréquence 0.22, 3 octaves, seed 4242) cuit une fois, caché statiquement, dessiné en RGBA8
+  sur `r.grow(-3.0)` (marge anti-bordure) à `Color(1.0,0.95,0.85,0.055)` — alpha UNIFORME
+  5,5 % (dans la fourchette 5-10 % demandée), seul le RGB varie par pixel = le grain ; garde
+  `gr.size > 4×4` pour éviter un rect dégénéré sur un panneau minuscule.
+
+**Ce que ça donne**
+- Les 10 panneaux consommant `panel_bg()` gagnent le grain automatiquement, sans édition.
+- Les fenêtres via `header()` et sections via `section()` gagnent le fleuron de titre
+  automatiquement (tous appelants confondus).
+- `VKit.value()`/`VKit.detail()` sont disponibles pour les PROCHAINS panneaux (ou une
+  future passe de migration) — aucun panneau existant n'a été retouché pour les adopter
+  (hors périmètre : les 3 fichiers autorisés étaient vkit/ui_theme/uikit, pas les panneaux).
+
+**Pièges évités**
+- Ne PAS utiliser `NoiseTexture2D` pour le grain (génération async, threads — inutile pour
+  un cache statique cuit une fois ; `Noise.get_image()` suffit et est synchrone).
+- Ne PAS agrandir FS/FS_SMALL/FS_BIG pour la hiérarchie — uniquement la couleur (contrainte
+  dure de la mission, layouts vérifiés serré).
+- Ne PAS réintroduire d'asset de chrome de panneau (ornate corners/plaque) — décision
+  produit déjà actée et documentée dans CLAUDE.md.
+
+**Restes**
+- Aucun panneau existant n'adopte encore `VKit.value()`/`VKit.detail()` — ils gardent leurs
+  couleurs actuelles (souvent `sense()` pour une valeur bonne/mauvaise, ce qui reste
+  légitime et prioritaire sur la hiérarchie neutre quand un jugement de qualité s'applique).
+  Une future mission « migration typo » pourrait les adopter panneau par panneau.
+- 4.2 (brouillard de carte) explicitement laissé de côté (hors des 3 fichiers autorisés,
+  sous-système shader/map distinct — l'orchestrateur tranchera).
+- Non vérifié VISUELLEMENT (aucune probe fenêtrée autorisée) : la compilation/API est
+  prouvée par exécution headless réelle (voir méthode ci-dessus), mais le RENDU final (le
+  grain se voit-il bien à 5,5 % sur cuir #171109, le fleuron est-il bien positionné en
+  pixel-perfect aux 3 résolutions) reste à confirmer par l'orchestrateur qui détient
+  l'affichage.
