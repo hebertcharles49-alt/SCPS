@@ -86,11 +86,12 @@ func _draw() -> void:
 	VKit.box(self, _close_rect, VKit.COL_GOLD)
 	VKit.text(self, Vector2(_close_rect.position.x + 4, _close_rect.position.y + 1), VKit.COL_PARCH, "x")
 	y += 24
-	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "%s · %d régions" % [info["ethos"], int(info["regions"])])
+	VKit.detail(self, Vector2(x, y), "%s · %d régions" % [info["ethos"], int(info["regions"])], VKit.FS)
 	y += 22
-	# pop, avec son icône (l'ESTIMATION extérieure — ce qui se voit d'un royaume)
+	# pop, avec son icône (l'ESTIMATION extérieure — ce qui se voit d'un royaume) —
+	# LA valeur principale du panneau étranger : la taille du peuple.
 	UIKit.draw_icon(self, "population_group", Vector2(x, y - 1), 16)
-	VKit.text(self, Vector2(x + 20, y), VKit.COL_PARCH, _grp(info["pop"]))
+	VKit.value(self, Vector2(x + 20, y), _grp(info["pop"]))
 	y += 26
 
 	# ON NE LIT PAS DANS LE ROYAUME D'AUTRUI (retour joueur : « pourquoi je vois les
@@ -98,7 +99,8 @@ func _draw() -> void:
 	# doctrine « national = topbar » : ni trésor, ni jauges internes. Ce qui se SAIT :
 	# l'éthos, la taille, les âmes (estimées), l'influence (réputation PUBLIQUE).
 	UIKit.draw_icon(self, "influence_compass", Vector2(x, y - 1), 16)
-	VKit.text(self, Vector2(x + 20, y), VKit.COL_DIM, "Influence %d" % int(info["influence"]))
+	var infl_lbl_w: float = VKit.detail(self, Vector2(x + 20, y), "Influence ", VKit.FS)
+	VKit.value(self, Vector2(x + 20 + infl_lbl_w, y), str(int(info["influence"])), VKit.FS)
 	_tips.append([Rect2(0.0, y - 2.0, PW, 20.0), "Influence"])
 	y += 4
 
@@ -115,12 +117,13 @@ func _draw() -> void:
 		var rq := int(mis.get("reward_qty", 0))
 		if rg > 0 or rq > 0:
 			y += 15
-			var rew := "prime : "
+			var rew := ""
 			if rg > 0:
 				rew += "%d or" % rg
 			if rq > 0:
 				rew += (" + " if rg > 0 else "") + "%d %s" % [rq, String(mis.get("reward_mat", ""))]
-			VKit.text(self, Vector2(x + 4, y), VKit.COL_DIM, rew, VKit.FS_SMALL)
+			var rew_x: float = VKit.detail(self, Vector2(x + 4, y), "prime : ", VKit.FS_SMALL)
+			VKit.value(self, Vector2(x + 4 + rew_x, y), rew, VKit.FS_SMALL)
 
 ## icône · libellé · jauge texturée · CHIFFRE (plus de mot de bande — chiffre + nom seuls)
 func _gauge_row(x: float, y: float, label: String, icon: String, value: int) -> void:

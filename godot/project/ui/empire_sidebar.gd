@@ -172,7 +172,7 @@ func _draw() -> void:
 				break
 			VKit.text(self, Vector2(x, y), VKit.COL_PARCH, _region_name(cd[1]))
 			var pg := _grp(cd[0])
-			VKit.text(self, Vector2(W - 14.0 - VKit.text_w(pg), y), VKit.COL_DIM, pg)
+			VKit.value(self, Vector2(W - 14.0 - VKit.text_w(pg), y), pg)
 			y += 18
 			shown += 1
 		if cities.size() > shown:
@@ -190,12 +190,17 @@ func _draw() -> void:
 		var ca: Dictionary = w.country_army(me) if w.has_method("country_army") else {}
 		var ai: Dictionary = w.army_info(me)
 		if bool(ai.get("active", false)):
-			VKit.text(self, Vector2(x, y), VKit.COL_PARCH,
-				"En campagne : %s (%s)" % [_grp(int(ai.get("units", 0))), String(ai.get("phase", ""))])
+			var camp_lbl_w: float = VKit.detail(self, Vector2(x, y), "En campagne : ", VKit.FS)
+			var camp_val_w: float = VKit.value(self, Vector2(x + camp_lbl_w, y), _grp(int(ai.get("units", 0))), VKit.FS)
+			VKit.detail(self, Vector2(x + camp_lbl_w + camp_val_w, y), " (%s)" % String(ai.get("phase", "")), VKit.FS)
 			y += 18
 		var res_n := int(ca.get("regiments", 0))
-		VKit.text(self, Vector2(x, y), VKit.COL_PARCH if res_n > 0 else VKit.COL_DIM,
-			"Réserve : %s · levée %s" % [_grp(res_n), String(ca.get("levy_name", "—"))])
+		var res_lbl_w: float = VKit.detail(self, Vector2(x, y), "Réserve : ", VKit.FS)
+		if res_n > 0:
+			var res_val_w: float = VKit.value(self, Vector2(x + res_lbl_w, y), _grp(res_n), VKit.FS)
+			VKit.detail(self, Vector2(x + res_lbl_w + res_val_w, y), " · levée %s" % String(ca.get("levy_name", "—")), VKit.FS)
+		else:
+			VKit.detail(self, Vector2(x + res_lbl_w, y), "0 · levée %s" % String(ca.get("levy_name", "—")), VKit.FS)
 		y += 18
 		# RECOMPLÉTER (retour joueur : « doit être dans la side bar droite ») — verbe journalisé
 		_refill_rect = Rect2(x, y, 104, 20)
@@ -268,11 +273,13 @@ func _draw() -> void:
 			if line2 != "":
 				VKit.text(self, Vector2(x, y), VKit.COL_PARCH, line2, VKit.FS_SMALL)
 				y += 14
-			var rw := "récompense : %d or" % int(mi.get("reward_gold", 0))
+			var rw := "%d or" % int(mi.get("reward_gold", 0))
 			var mat := String(mi.get("reward_mat", ""))
 			if mat != "" and float(mi.get("reward_qty", 0)) > 0.0:
 				rw += " + %d %s" % [int(mi.get("reward_qty", 0)), mat]
-			VKit.text(self, Vector2(x, y), VKit.COL_DIM, rw + " (an %d)" % int(mi.get("issued_year", 0)), VKit.FS_SMALL)
+			var rw_lbl_w: float = VKit.detail(self, Vector2(x, y), "récompense : ", VKit.FS_SMALL)
+			var rw_val_w: float = VKit.value(self, Vector2(x + rw_lbl_w, y), rw, VKit.FS_SMALL)
+			VKit.detail(self, Vector2(x + rw_lbl_w + rw_val_w, y), " (an %d)" % int(mi.get("issued_year", 0)), VKit.FS_SMALL)
 			y += 17
 
 	# ── LE LOG : le fil de notifications (persistant, le plus récent en tête) ──

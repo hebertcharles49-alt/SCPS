@@ -3903,3 +3903,84 @@ besoin identifié pour ce lot)**
   grain se voit-il bien à 5,5 % sur cuir #171109, le fleuron est-il bien positionné en
   pixel-perfect aux 3 résolutions) reste à confirmer par l'orchestrateur qui détient
   l'affichage.
+
+## Retrofit VALEUR/DÉTAIL — l'adoption panneau par panneau (2026-07-11, suite de la
+## passe finition ci-dessus)
+
+**Mission** : `VKit.value()`/`VKit.detail()` (COL_VALUE lumineux / COL_DIM atténué,
+niveaux 3/4 de la hiérarchie typo) existaient depuis le commit 5c628f4 mais AUCUN panneau
+ne les consommait. Retrofit ciblé sur 9 fichiers autorisés (economy_panel, country_panel,
+tech_panel, province_panel, province_detail, construction_panel, sidebar_drawer,
+empire_sidebar, topbar, battle_panel) — country_actions.gd et religion_panel.gd étaient
+dans la liste autorisée mais **hors périmètre RÉEL** : les deux sont bâtis en Label/Button
+Godot natifs (`add_theme_color_override`), **zéro appel `VKit.text()`** — rien à retrofiter,
+le kit immediate-draw ne s'y applique pas.
+
+**Découvertes**
+- `topbar.gd::_cell()` (ligne ~180) est le point d'ÉTRANGLEMENT de TOUTE la barre — un seul
+  changement (`vcol.a>0 ? vcol : VKit.COL_VALUE` au lieu de `COL_PARCH`) promeut simultanément
+  trésor/pop/nourriture/savoir/influence/corruption sans toucher aux appelants, tout en
+  PRÉSERVANT les teintes sémantiques (`sense()` du revenu net) qui restent prioritaires.
+  Motif à chercher en premier dans tout fichier à forte densité de cellules similaires.
+- Beaucoup de « valeurs clés » sont en fait des SOUS-CHAÎNES d'un `%s` combiné label+nombre
+  (ex. `"Influence %d"`, `"récompense : %d or"`, `"Bassin : %s bras"`). `value()`/`detail()`
+  n'acceptent qu'une chaîne entière → split obligatoire en 2-3 appels séquentiels, chacun
+  retournant sa largeur (`VKit.text()`/`value()`/`detail()` renvoient TOUJOURS un `float` de
+  largeur) pour chaîner `x + w1`, `x + w1 + w2`, etc. — jamais recalculer via `text_w()` sur
+  un texte déjà dessiné (double calcul, source de dérive si le texte change entre-temps).
+- Beaucoup de nombres étaient DÉJÀ colorés sémantiquement (`VKit.sense(...)` selon bon/
+  mauvais/pénurie/bande de marché) — stocks (sidebar_drawer `_draw_stocks`), prix de marché
+  (`_draw_marche`), opinion diplo (`_opinion_col`), agitation/loyauté/pertes de bataille.
+  Ceux-là sont laissés INTACTS par construction de la mission (« ne touche pas ce qui porte
+  déjà un sens ») — value() n'y ajoute rien, sense() EST déjà la hiérarchie visuelle pour un
+  jugement qualitatif.
+
+**Sites modifiés (fichier:zone)**
+- `topbar.gd:192-198` `_cell()` — LE site à fort effet de levier (toutes les cellules).
+- `country_panel.gd:93,101-102,120-121` — pop (value), influence (detail label + value),
+  récompense de mission (detail + value).
+- `tech_panel.gd:325-326,341,398-401,456-460` — points, % de progression, « +X% recherche »
+  (métabolisation), « X/Y » Ascension.
+- `province_panel.gd:116,266,312,315` — habitants, impôts, Logement/Services (COL_VALUE
+  remplace COL_PARCH neutre, le cas ⚠ saturé garde `sense(0.12)`).
+- `province_detail.gd:125-126,197-200,374,443,477,511,535,598,667,698` — en-tête habitants,
+  % culture dominante, quantité de réincorporation, niveau de bâtiment, coût « Bâtir »,
+  prix de marché local, jauges d'empire (4 bandes), impôts (onglet Production), barres +X/j.
+- `construction_panel.gd:129-131,203-205` — coût édifice (or·jours), coût manufacture.
+- `battle_panel.gd:101-102,112-113` — effectif attaquant/défenseur.
+- `empire_sidebar.gd:174-175,193-199,271,276-279` — pop de ville, effectif en campagne +
+  réserve, récompense de mission.
+- `sidebar_drawer.gd:144-145,216,246-247,256,578-579,708-712,906-907,1037,1063-1065,1100`
+  — pop totale (Démographie), Trésor + Commerce + valeur partenaire (Économie), bonus
+  conseiller + récompense mission (Conseil), âmes serviles (Servile), force mobilisée +
+  composition + flotte (Armée).
+
+**Ce qui a été LAISSÉ tel quel (et pourquoi)**
+- Stocks/Marché (sidebar_drawer) : chaque valeur est DÉJÀ `_marche_col(band)` (rouge
+  pénurie → or engorgé) — c'est une hiérarchie SÉMANTIQUE, pas neutre ; value() y ferait
+  doublon voire régresserait l'info (bande de marché perdue).
+- Diplomatie (sidebar_drawer `_draw_diplo`) : l'opinion ±100 est déjà `_opinion_col(op)`
+  (vert/rouge depuis 0) ; le nom du pays est déjà `col` selon guerre/allié.
+  `country_actions.gd` (fenêtre par-pays) est en Label/Button Godot, hors kit immediate-draw.
+- `religion_panel.gd` : idem, 100% Label/Button (`add_theme_color_override`), aucun
+  `VKit.text()`.
+- Per-classe (Laboureurs/Artisans/Noblesse/Esclaves) dans province_panel/province_detail :
+  listes de 3-4 lignes répétées — promouvoir CHAQUE ligne violerait « 1-2 par bloc, sinon
+  rien n'est lumineux » ; laissées en COL_PARCH (déjà le corps neutre, pas COL_DIM).
+- Table Marché local (province_detail, onglet Contexte) : seul le PRIX est passé en value()
+  par ligne, le STOCK reste COL_DIM — 1 valeur/ligne, cohérent avec le principe de densité.
+- `economy_panel.gd` : aucune valeur numérique dessinée directement (c'est un graphe Easy
+  Charts + un placeholder de chargement) — rien à retrofiter.
+
+**Restes**
+- `sidebar_drawer.gd::_draw_filtres`/`_draw_diplo` (liste des pays) : aucune valeur
+  numérique neutre à promouvoir (chips de mode carte = labels, pas des nombres).
+  `_draw_decrets`/`_draw_servile` boutons "N or (une fois)"/"achat/vente" restent COL_DIM
+  (coûts secondaires d'un verbe, cohérent avec construction_panel où le COÛT est justement
+  la valeur promue — divergence assumée : ici la carte-décret a déjà son nom en emphase,
+  le prix annexe reste secondaire pour ne pas surcharger une carte dense en hovers).
+- Non vérifié VISUELLEMENT (contrainte de la mission : aucune probe fenêtrée) — la
+  cohérence d'alignement est garantie par construction (value()/detail() rendent à la MÊME
+  position/taille que text(), seule la couleur change ; tous les calculs de largeur
+  utilisés pour chaîner des segments proviennent des valeurs de retour réelles des
+  helpers, jamais d'un `text_w()` recalculé séparément).

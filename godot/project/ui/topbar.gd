@@ -189,7 +189,13 @@ func _cell(px: float, icon: String, rid_or_val, val: String, dtxt: String, dpos:
 	elif icon != "":
 		UIKit.draw_icon(self, icon, Vector2(px, (H - 22.0) * 0.5), 22)
 	var tx := px + 26.0
-	VKit.text(self, Vector2(tx, 6.0), vcol if vcol.a > 0.0 else VKit.COL_PARCH, val)
+	# la VALEUR de la cellule (chiffre-clé du topbar : trésor/pop/nourriture/savoir/…) —
+	# COL_VALUE par défaut ; un `vcol` explicite (sense() bon/mauvais, ex. revenu net)
+	# reste PRIORITAIRE — ce sens sémantique ne doit jamais être écrasé.
+	if vcol.a > 0.0:
+		VKit.text(self, Vector2(tx, 6.0), vcol, val)
+	else:
+		VKit.value(self, Vector2(tx, 6.0), val)
 	var wv := VKit.text_w(val)
 	var wd := 0.0
 	if dtxt != "":

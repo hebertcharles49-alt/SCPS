@@ -141,8 +141,8 @@ func _draw() -> void:
 func _draw_demo(x: float, y: float, me: int) -> float:
 	var d: Dictionary = Sim.world.country_demo(me)
 	var total: int = int(d["pop_total"])
-	VKit.text(self, Vector2(x, y), VKit.COL_PARCH,
-		"population : %s · %d région(s)" % [_grp(total), int(d["n_regions"])])
+	var demo_val_w: float = VKit.value(self, Vector2(x, y), "population : %s" % _grp(total))
+	VKit.detail(self, Vector2(x + demo_val_w, y), " · %d région(s)" % int(d["n_regions"]), VKit.FS)
 	y += 24
 	for cl in d["classes"]:
 		var pct: int = 0 if total == 0 else int(round(100.0 * int(cl["pop"]) / total))
@@ -213,7 +213,7 @@ func _draw_eco(x: float, y: float, me: int) -> float:
 	# — Trésor & budget de l'année (la décomposition du flux d'or) —
 	var b: Dictionary = Sim.world.budget_summary(me)
 	UIKit.draw_icon(self, "gold_coin", Vector2(x, y - 1), 16)
-	VKit.text(self, Vector2(x + 20, y), VKit.COL_PARCH, "Trésor : %s or" % _grp(b["gold"]))
+	VKit.value(self, Vector2(x + 20, y), "Trésor : %s or" % _grp(b["gold"]))
 	y += 18
 	var net: float = b["net"]
 	var ncol := VKit.sense(0.80) if net >= 0 else VKit.sense(0.12)
@@ -243,7 +243,7 @@ func _draw_eco(x: float, y: float, me: int) -> float:
 	# — Commerce (routes + partenaires) —
 	var t: Dictionary = Sim.world.country_trade(me)
 	UIKit.draw_icon(self, "menu_economy", Vector2(x, y - 1), 16)
-	VKit.text(self, Vector2(x + 20, y), VKit.COL_PARCH,
+	VKit.value(self, Vector2(x + 20, y),
 		"%d route(s) · export %d or/an" % [int(t["routes"]), int(t["export_gold"])])
 	y += 20
 	var partners: Array = t["partners"]
@@ -253,7 +253,7 @@ func _draw_eco(x: float, y: float, me: int) -> float:
 	for p in partners:
 		var col := VKit.sense(0.12) if bool(p["at_war"]) else (VKit.COL_GOLD if bool(p["embargo"]) else VKit.COL_PARCH)
 		VKit.text(self, Vector2(x + 8, y), col, String(p["name"]), VKit.FS_SMALL)
-		VKit.text(self, Vector2(x + 150, y), VKit.COL_DIM, "%d or/an" % int(p["value"]), VKit.FS_SMALL)
+		VKit.value(self, Vector2(x + 150, y), "%d or/an" % int(p["value"]), VKit.FS_SMALL)
 		VKit.text(self, Vector2(x + 228, y), col, String(p["status"]), VKit.FS_SMALL)
 		y += 15
 	return y
@@ -575,7 +575,8 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 				var lpts := float(loyalty) * 0.15
 				var cpts := float(int(seat.get("corruption_pct", 0))) * 0.35
 				var bline := "%s +%.1f %%" % [domain, finalp]
-				VKit.text(self, Vector2(x + 16, y), VKit.COL_GOLD, bline, VKit.FS_SMALL)
+				var bline_lbl_w: float = VKit.detail(self, Vector2(x + 16, y), "%s " % domain, VKit.FS_SMALL)
+				VKit.value(self, Vector2(x + 16 + bline_lbl_w, y), "+%.1f %%" % finalp, VKit.FS_SMALL)
 				_hover_zones.append({"rect": Rect2(x + 14, y - 2, VKit.text_w(bline, VKit.FS_SMALL) + 6, 16),
 					"text": "Rang : +%.1f %% · Administration : +%.1f pts · Loyauté : +%.1f pts · Corruption : −%.1f pts · Efficacité : %.1f %% ⇒ +%.1f %% net." % [
 						rankp, kpts, lpts, cpts, effp, finalp]})
@@ -704,11 +705,12 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 					VKit.text(self, Vector2(x, y), VKit.sense(0.70),
 						"Bonus du responsable : +%.1f %%" % float(mi.get("resp_bonus_pct", 0.0)), VKit.FS_SMALL)
 					y += 15
-			var rw := "Récompense prévue : %.0f or" % float(mi.get("reward_gold_adj", mi.get("reward_gold", 0)))
+			var rw := "%.0f or" % float(mi.get("reward_gold_adj", mi.get("reward_gold", 0)))
 			var mat := String(mi.get("reward_mat", ""))
 			if mat != "" and float(mi.get("reward_qty_adj", mi.get("reward_qty", 0))) > 0.0:
 				rw += " + %.0f %s" % [float(mi.get("reward_qty_adj", mi.get("reward_qty", 0))), mat]
-			VKit.text(self, Vector2(x, y), VKit.COL_DIM, rw, VKit.FS_SMALL)
+			var rw_lbl_w2: float = VKit.detail(self, Vector2(x, y), "Récompense prévue : ", VKit.FS_SMALL)
+			VKit.value(self, Vector2(x + rw_lbl_w2, y), rw, VKit.FS_SMALL)
 			y += 16
 	# (Décrets + Peuple servile vivent dans le sous-onglet POLITIQUES — lot 5)
 	if _conseil_flash != "":
@@ -901,7 +903,7 @@ func _draw_servile(x: float, y: float, me: int) -> float:
 	var w = Sim.world
 	var mp: Dictionary = w.manumit_preview()
 	var souls := int(mp.get("souls", 0))
-	VKit.text(self, Vector2(x, y), VKit.COL_PARCH,
+	VKit.value(self, Vector2(x, y),
 		"âmes serviles : %s (%.1f%% du pays)" % [_grp(souls), float(mp.get("pct_of_country", 0.0))], VKit.FS_SMALL)
 	y += 18
 
@@ -1032,7 +1034,7 @@ func _draw_armee(x: float, y: float, me: int) -> float:
 	_levy_btns.clear(); _posture_btns.clear(); _army_btns.clear(); _navy_btns.clear()
 	var a: Dictionary = Sim.world.country_army(me)
 	UIKit.draw_icon(self, "menu_army", Vector2(x, y - 1), 18)
-	VKit.text(self, Vector2(x + 22, y), VKit.COL_PARCH, "force mobilisée : %d régiments" % int(a["regiments"]))
+	VKit.value(self, Vector2(x + 22, y), "force mobilisée : %d régiments" % int(a["regiments"]))
 	y += 22
 	# — Levée : [-] nom [+] (verbe : player_set_levy, journalisé — drainé au tick) —
 	var levy: int = int(a["levy"])
@@ -1058,7 +1060,7 @@ func _draw_armee(x: float, y: float, me: int) -> float:
 		VKit.text(self, Vector2(x, y), VKit.COL_GOLD,
 			"armée de campagne — région %d · %s" % [int(ar["region"]), ar["phase"]], VKit.FS_SMALL)
 		y += 16
-		VKit.text(self, Vector2(x, y), VKit.COL_PARCH,
+		VKit.value(self, Vector2(x, y),
 			"inf %d · arch %d · cav %d · mages %d  (Σ %d)" % [
 				int(ar["inf"]), int(ar["arch"]), int(ar["cav"]), int(ar["mages"]), int(ar["units"])], VKit.FS_SMALL)
 		y += 20
@@ -1095,7 +1097,7 @@ func _draw_armee(x: float, y: float, me: int) -> float:
 	_army_btns.append({"rect": r2, "act": "disband"})
 	y += 26
 	UIKit.draw_icon(self, "harbor_anchor", Vector2(x, y - 1), 16)
-	VKit.text(self, Vector2(x + 20, y), VKit.COL_DIM, "Flotte : %d coque(s)" % int(a["fleet"]))
+	VKit.value(self, Vector2(x + 20, y), "Flotte : %d coque(s)" % int(a["fleet"]))
 	y += 20
 	# — Flotte : mise en chantier (verbe : player_navy_build) — bateau gravé par coque
 	var hull_boat := ["sheet24_topbar_boats_menu_11", "sheet24_topbar_boats_menu_13", "sheet24_topbar_boats_menu_10"]

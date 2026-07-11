@@ -113,7 +113,7 @@ func _draw() -> void:
 	var y := content_y0 - _scrolloff
 
 	# ── HABITANTS + PROSPÉRITÉ (sortie du header : elle y chevauchait paysage & ✕) ──
-	VKit.text(self, Vector2(x, y), VKit.COL_PARCH, "%s habitants" % _grp(info["ames"]))
+	VKit.value(self, Vector2(x, y), "%s habitants" % _grp(info["ames"]))
 	var gw := 64.0
 	VKit.gauge(self, x + rw - gw, y + 4, gw, 10, int(info["aisance_val"]))
 	var plab := "Prospérité %d" % int(info["aisance_val"])
@@ -263,7 +263,7 @@ func _draw() -> void:
 	var tax := float(w.province_tax(_pid))
 	if tax > 0.5:
 		var taxtxt := "Impôts ~%s or/an" % _grp(int(round(tax)))
-		VKit.text(self, Vector2(x + rw - VKit.text_w(taxtxt) - 8.0, y), VKit.COL_DIM, taxtxt)
+		VKit.value(self, Vector2(x + rw - VKit.text_w(taxtxt) - 8.0, y), taxtxt)
 		_tips.append([Rect2(x + rw - VKit.text_w(taxtxt) - 12.0, y - 2.0, VKit.text_w(taxtxt) + 12.0, 20.0),
 			"Ce que la couronne LÈVE ici par an : ~42 % de la richesse des classes, rogné par l'évasion quand la satisfaction baisse ou que l'éthos tolère mal l'impôt."])
 	y += 22
@@ -309,10 +309,10 @@ func _draw() -> void:
 	var housing_txt := "%s/%s" % [_grp(cap.get("pop", 0)), _grp(cap.get("logement_cap", 0))]
 	if libres < 0:
 		housing_txt = "⚠ " + housing_txt
-	y = VKit.row(self, x, y, "Logement", housing_txt, VKit.COL_PARCH if libres >= 0 else VKit.sense(0.12))
+	y = VKit.row(self, x, y, "Logement", housing_txt, VKit.COL_VALUE if libres >= 0 else VKit.sense(0.12))
 	_tips.append([Rect2(0.0, y, PW, 20.0),
 		"Âmes servies / capacité de SERVICES (échoppes, bains, cultes) : au-delà, le confort décroche."])
-	y = VKit.row(self, x, y, "Services", "%s/%s" % [_grp(cap.get("pop", 0)), _grp(cap.get("service_cap", 0))], VKit.COL_PARCH)
+	y = VKit.row(self, x, y, "Services", "%s/%s" % [_grp(cap.get("pop", 0)), _grp(cap.get("service_cap", 0))], VKit.COL_VALUE)
 	if int(cap.get("prod_pct", 0)) > 0:
 		_tips.append([Rect2(0.0, y, PW, 20.0),
 			"Le bonus de production du bourg : OUTILS en circulation + édifices de savoir-faire + tier — il multiplie extraction et ateliers de la province."])

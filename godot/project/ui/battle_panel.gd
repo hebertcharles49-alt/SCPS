@@ -99,7 +99,7 @@ func _draw() -> void:
 	VKit.text(self, Vector2(x, y), VKit.COL_PARCH, atk_name)
 	y += 18
 	var atk_units := int(bi.get("atk_units", 0))
-	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "%s hommes" % _grp(atk_units))
+	VKit.value(self, Vector2(x, y), "%s hommes" % _grp(atk_units))
 	y += 16
 	y = _compo_bar(x, y, rw, int(bi.get("atk_inf", 0)), int(bi.get("atk_arch", 0)),
 		int(bi.get("atk_cav", 0)), int(bi.get("atk_mages", 0)))
@@ -110,7 +110,7 @@ func _draw() -> void:
 	VKit.text(self, Vector2(x, y), VKit.COL_PARCH, def_name)
 	y += 18
 	var def_units := int(bi.get("def_units", 0))
-	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "%s hommes" % _grp(def_units))
+	VKit.value(self, Vector2(x, y), "%s hommes" % _grp(def_units))
 	y += 16
 	y = _compo_bar(x, y, rw, int(bi.get("def_inf", 0)), int(bi.get("def_arch", 0)),
 		int(bi.get("def_cav", 0)), int(bi.get("def_mages", 0)))

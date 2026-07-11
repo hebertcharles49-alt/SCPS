@@ -122,8 +122,8 @@ func _draw() -> void:
 	VKit.box(self, _close_rect, VKit.COL_GOLD)
 	VKit.text(self, Vector2(_close_rect.position.x + 6, _close_rect.position.y + 3), VKit.COL_PARCH, "x")
 
-	VKit.text(self, Vector2(x, HEAD + 4), VKit.COL_PARCH,
-		"%s habitants · %s · %s" % [_grp(info["ames"]), info["climat"], info["relief"]], VKit.FS_SMALL)
+	var hd_val_w: float = VKit.value(self, Vector2(x, HEAD + 4), "%s habitants" % _grp(info["ames"]), VKit.FS_SMALL)
+	VKit.detail(self, Vector2(x + hd_val_w, HEAD + 4), " · %s · %s" % [info["climat"], info["relief"]], VKit.FS_SMALL)
 
 	# ── onglets (chips cliquables) ─────────────────────────────────────────────
 	_tab_rects.clear()
@@ -194,8 +194,10 @@ func _draw_peuples_apercu(x: float, y: float, colw: float, w, info: Dictionary, 
 	VKit.fill(self, Rect2(x + 2, y + 2, 18, 18), VKit.SLICE_PAL[dom_i % 8])
 	VKit.box(self, Rect2(x + 2, y + 2, 18, 18), VKit.COL_GOLD)
 	VKit.text(self, Vector2(x + 26, y), VKit.COL_GOLD, "Culture", VKit.FS_SMALL)
-	VKit.text(self, Vector2(x + 26, y + 14), VKit.COL_PARCH,
-		"%s (%d%%)" % [String(groups[dom_i]["culture"]), dom_pct], VKit.FS_SMALL)
+	var dom_lbl_w: float = VKit.text(self, Vector2(x + 26, y + 14), VKit.COL_PARCH,
+		"%s (" % String(groups[dom_i]["culture"]), VKit.FS_SMALL)
+	var dom_val_w: float = VKit.value(self, Vector2(x + 26 + dom_lbl_w, y + 14), "%d%%" % dom_pct, VKit.FS_SMALL)
+	VKit.text(self, Vector2(x + 26 + dom_lbl_w + dom_val_w, y + 14), VKit.COL_PARCH, ")", VKit.FS_SMALL)
 	y += 36
 	for i in range(mini(groups.size(), 6)):
 		VKit.fill(self, Rect2(x + 4, y + 3, 9, 9), VKit.SLICE_PAL[i % 8])
@@ -371,7 +373,7 @@ func _draw_reincorp(x: float, y: float, w, colw: float) -> float:
 	# quantité (± STEP)
 	cx = x
 	cx = _reinc_btn(cx, y, "−", "qty_minus")
-	VKit.text(self, Vector2(cx + 4, y), VKit.COL_PARCH, "%s âmes" % _grp(_reinc_qty), VKit.FS_SMALL)
+	VKit.value(self, Vector2(cx + 4, y), "%s âmes" % _grp(_reinc_qty), VKit.FS_SMALL)
 	cx += VKit.text_w("%s âmes" % _grp(_reinc_qty), VKit.FS_SMALL) + 14
 	cx = _reinc_btn(cx, y, "+", "qty_plus")
 	y += 26
@@ -440,7 +442,7 @@ func _draw_batiments(x: float, y: float, w) -> void:
 			VKit.text(self, Vector2(x + 20, y), VKit.COL_PARCH, String(b["nom"]), VKit.FS_SMALL)
 			var lv := int(b["niveau"])
 			VKit.fill(self, Rect2(x + 230, y + 2, 90.0 * float(lv) / float(maxlv), 10), VKit.COL_GOLD)
-			VKit.text(self, Vector2(x + 326, y), VKit.COL_PARCH, str(lv), VKit.FS_SMALL)
+			VKit.value(self, Vector2(x + 326, y), str(lv), VKit.FS_SMALL)
 			VKit.text(self, Vector2(x + 380, y), VKit.COL_DIM, _grp(b["ouvriers"]), VKit.FS_SMALL)
 			y += 19
 
@@ -474,7 +476,7 @@ func _draw_batiments(x: float, y: float, w) -> void:
 		var br := Rect2(x + 334.0 - bw, y - 2, bw, 18)
 		VKit.fill(self, br, VKit.COL_PANEL2)
 		VKit.box(self, br, VKit.COL_GOLD)
-		VKit.text(self, Vector2(br.position.x + 10, br.position.y + 2), VKit.COL_PARCH, blab, VKit.FS_SMALL)
+		VKit.value(self, Vector2(br.position.x + 10, br.position.y + 2), blab, VKit.FS_SMALL)
 		_manuf_btns.append({"rect": br, "bld": bld})
 		y += 20
 	if not any_legal:
@@ -508,7 +510,7 @@ func _draw_empire(x: float, y: float, w) -> void:
 	else:
 		for l in lines:
 			VKit.text(self, Vector2(x, y), VKit.COL_PARCH, String(l.get("name", "")), VKit.FS_SMALL)
-			VKit.text(self, Vector2(x + 140, y), VKit.COL_DIM, "%.1f or" % float(l.get("price", 0.0)), VKit.FS_SMALL)
+			VKit.value(self, Vector2(x + 140, y), "%.1f or" % float(l.get("price", 0.0)), VKit.FS_SMALL)
 			VKit.text(self, Vector2(x + 220, y), VKit.COL_DIM, "stock %s" % _grp(int(l.get("stock", 0))), VKit.FS_SMALL)
 			VKit.text(self, Vector2(x + 340, y), VKit.sense(0.62), String(l.get("marche", "")), VKit.FS_SMALL)
 			y += 17
@@ -532,7 +534,7 @@ func _draw_empire(x: float, y: float, w) -> void:
 		UIKit.draw_icon(self, band[2], Vector2(x, y - 2), 18)
 		VKit.text(self, Vector2(x + 24, y), VKit.COL_PARCH, band[1], VKit.FS_SMALL)
 		UIKit.bar(self, Rect2(x + 130, y + 2, 200, 12), v)
-		VKit.text(self, Vector2(x + 338, y), VKit.COL_PARCH, str(v), VKit.FS_SMALL)
+		VKit.value(self, Vector2(x + 338, y), str(v), VKit.FS_SMALL)
 		y += 24
 	y += 8
 	UIKit.draw_icon(self, "knowledge_book", Vector2(x, y - 2), 16)
@@ -595,7 +597,7 @@ func _draw_alloc(x: float, y: float, w, info: Dictionary) -> void:
 		if not closed:
 			VKit.fill(self, Rect2(bx, ry + 2, 80.0 * float(pct) / 100.0, 10), VKit.COL_GOLD)
 		VKit.box(self, Rect2(bx, ry + 2, 80, 10), VKit.COL_EDGE)
-		VKit.text(self, Vector2(bx + 86, ry), VKit.COL_PARCH, "%d%%" % pct, VKit.FS_SMALL)
+		VKit.value(self, Vector2(bx + 86, ry), "%d%%" % pct, VKit.FS_SMALL)
 		# contrôles (région à soi seulement)
 		if mine:
 			var cx := bx + 122.0
@@ -664,7 +666,7 @@ func _draw_flux(fx: float, fy: float, fw: float, fh: float, w) -> void:
 	var tax := float(w.province_tax(_pid))
 	if tax > 0.5:
 		var tax_txt := "Impôts : ~%s or/an" % _grp(int(round(tax)))
-		VKit.text(self, Vector2(fx + fw - VKit.text_w(tax_txt, VKit.FS_SMALL), fy), VKit.COL_DIM, tax_txt, VKit.FS_SMALL)
+		VKit.value(self, Vector2(fx + fw - VKit.text_w(tax_txt, VKit.FS_SMALL), fy), tax_txt, VKit.FS_SMALL)
 	var inc: Array = w.province_income(_pid)
 	if inc.is_empty():
 		VKit.text(self, Vector2(fx, fy + 24.0), VKit.COL_DIM, "rien de notable", VKit.FS_SMALL)
@@ -695,7 +697,7 @@ func _draw_flux(fx: float, fy: float, fw: float, fh: float, w) -> void:
 		var col := VKit.SLICE_PAL[7] if manuf else VKit.COL_GOLD
 		VKit.fill(self, Rect2(cx - bw / 2.0, base - bhh, bw, bhh), col)
 		var vs := "+%.1f/j" % v
-		VKit.text(self, Vector2(cx - VKit.text_w(vs, VKit.FS_SMALL) / 2.0, base - bhh - 13.0), VKit.COL_PARCH, vs, VKit.FS_SMALL)
+		VKit.value(self, Vector2(cx - VKit.text_w(vs, VKit.FS_SMALL) / 2.0, base - bhh - 13.0), vs, VKit.FS_SMALL)
 		var spr := UIKit.resource_sprite(int(inc[i].get("res_id", -1)), String(inc[i]["source"]))
 		if spr != null:
 			draw_texture_rect(spr, Rect2(cx - 10.0, base + 3.0, 20.0, 20.0), false)

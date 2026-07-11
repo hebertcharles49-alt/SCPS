@@ -322,7 +322,8 @@ func _draw() -> void:
 	VKit.box(self, _close_rect, VKit.COL_GOLD)
 	VKit.text(self, Vector2(_close_rect.position.x + 6, _close_rect.position.y + 3), VKit.COL_PARCH, "x")
 
-	VKit.text(self, Vector2(PW - 250, 13), VKit.COL_PARCH, "Points : %d" % int(info.get("points", 0)), VKit.FS_SMALL)
+	var pts_lbl_w: float = VKit.detail(self, Vector2(PW - 250, 13), "Points : ", VKit.FS_SMALL)
+	VKit.value(self, Vector2(PW - 250 + pts_lbl_w, 13), str(int(info.get("points", 0))), VKit.FS_SMALL)
 	var crise := int(info.get("crise_pct", 0))
 	var pcol := VKit.COL_DIM if crise < 25 else (VKit.sense(0.40) if crise < 60 else VKit.sense(0.10))
 	VKit.text(self, Vector2(PW - 250, 30), pcol,
@@ -338,7 +339,7 @@ func _draw() -> void:
 		var bw := 200.0
 		VKit.box(self, Rect2(bx, 30, bw, 9), VKit.COL_DIM)
 		VKit.fill(self, Rect2(bx + 1, 31, (bw - 2) * prog, 7), COL_UNLOCKED)
-		VKit.text(self, Vector2(bx + bw + 8, 30), VKit.COL_PARCH, "%d%%" % int(prog * 100.0), VKit.FS_SMALL)
+		VKit.value(self, Vector2(bx + bw + 8, 30), "%d%%" % int(prog * 100.0), VKit.FS_SMALL)
 	else:
 		VKit.text(self, Vector2(220, 13), VKit.COL_DIM, "Recherche : (cliquez un nœud recherchable)", VKit.FS_SMALL)
 	# légende d'état
@@ -395,8 +396,9 @@ func _draw_metab(info: Dictionary) -> void:
 	VKit.fill(self, Rect2(12, y0, PW - 24, 1), VKit.COL_EDGE)
 	var mp := int(info.get("metab_pct", 0))
 	UIKit.draw_icon(self, "knowledge_book", Vector2(14, y0 + 4), 14)
-	VKit.text(self, Vector2(36, y0 + 5), VKit.COL_GOLD,
-		"Peuples intégrés : +%d%% de recherche" % mp, VKit.FS_SMALL)
+	var mlbl_w: float = VKit.detail(self, Vector2(36, y0 + 5), "Peuples intégrés : ", VKit.FS_SMALL)
+	var mval_w: float = VKit.value(self, Vector2(36 + mlbl_w, y0 + 5), "+%d%%" % mp, VKit.FS_SMALL)
+	VKit.detail(self, Vector2(36 + mlbl_w + mval_w, y0 + 5), " de recherche", VKit.FS_SMALL)
 	if Sim.world == null:
 		return
 
@@ -453,8 +455,11 @@ func _draw_metab(info: Dictionary) -> void:
 	var cw2 := (PW - 28.0) / float(m)
 	var ry2 := y0 + 68.0
 	var req_txt := (" — requis palier : %d" % mreq) if mreq > 0 else ""
-	VKit.text(self, Vector2(16, ry2 - 12), VKit.COL_GOLD,
-		"Compte pour l'Ascension : %d/%d%s" % [mcount, m, req_txt], VKit.FS_SMALL)
+	var asc_lbl_w: float = VKit.detail(self, Vector2(16, ry2 - 12), "Compte pour l'Ascension : ", VKit.FS_SMALL)
+	VKit.value(self, Vector2(16 + asc_lbl_w, ry2 - 12), "%d/%d" % [mcount, m], VKit.FS_SMALL)
+	if req_txt != "":
+		var asc_val_w: float = VKit.text_w("%d/%d" % [mcount, m], VKit.FS_SMALL)
+		VKit.detail(self, Vector2(16 + asc_lbl_w + asc_val_w, ry2 - 12), req_txt, VKit.FS_SMALL)
 	for i in m:
 		var h2: Dictionary = mh[i]
 		var x2 := 16.0 + i * cw2

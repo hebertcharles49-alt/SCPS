@@ -8,6 +8,20 @@
   runnable, determinism STABLE, savetest byte-identique, golden re-baseliné 7/310/411).
 - (archive — historique de la mission ci-dessous)
 
+## EN VOL — finition suite (retrofit typo + fog) 2026-07-11 midi
+- Après « Go finition » : encart d'âge déplacé (haut menu droit) + matière/fleurons
+  LIVRÉS & exportés (commit 5c628f4, scps.exe 11:59). Puis « continues » →
+- AGENT EN VOL : retrofit typo lumineuse — applique VKit.value()/detail() aux nombres-clés
+  de tous les panneaux (economy/country/tech/province*/construction/sidebar_drawer/
+  empire_sidebar/topbar/battle/religion/country_actions). Interdit : vkit/theme/map/main.
+- FOG §4.2 : INVESTIGUÉ (moi) → LAISSÉ. Le voile (binding fog_image, scps_sim_node.cpp:278)
+  est DÉJÀ sépia #18130e (≠ noir hors-carte), rampe douce 6 cellules, cœur alpha 252
+  DÉLIBÉRÉ (retour joueur antérieur « ce n'est pas un brouillard de guerre » — poussé plus
+  opaque). Ajouter une texture demanderait un rebuild DLL + ne se verrait pas à 252 ; baisser
+  l'alpha contredirait ce retour. Intent §4.2 (distinct du hors-carte) déjà tenu.
+- RESTE après l'agent : probe 1280/1920, commit, export. Puis (optionnel) le fog-texture
+  seulement si le joueur le redemande explicitement (tension avec le retour 252).
+
 ## task #79 UI Lots 3-4 — LIVRÉ (display-only Godot, golden/save intacts)
 - Probe shot_ui paramétrée en résolution (res=WxH → shots_ui/<WxH>/) + clear du drapeau de
   crash user:// (shots propres). VÉRIFIÉ à 1280×720, 1600×900, 1920×1080 : les 25 états

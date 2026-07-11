@@ -127,8 +127,8 @@ func _draw() -> void:
 				VKit.text(self, Vector2(PADX + 38 + VKit.text_w(String(b.get("nom", ""))) + 6, yrow + 5),
 					VKit.COL_GOLD, "✦", VKit.FS_SMALL)
 			var ctx := "%d or · %d j" % [int(b.get("gold", 0)), int(b.get("days", 0))]
-			VKit.text(self, Vector2(PADX + rw - VKit.text_w(ctx, VKit.FS_SMALL) - 6, yrow + 6),
-				VKit.COL_DIM, ctx, VKit.FS_SMALL)
+			VKit.value(self, Vector2(PADX + rw - VKit.text_w(ctx, VKit.FS_SMALL) - 6, yrow + 6),
+				ctx, VKit.FS_SMALL)
 			# L2 : la RECETTE en icônes de ressource (retour joueur : « icône ressources »)
 			var cx := PADX + 38.0
 			for c in b.get("cost", []):
@@ -201,8 +201,8 @@ func _draw() -> void:
 				VKit.text(self, Vector2(PADX + 38, yrow + 4), VKit.COL_PARCH, mnom)
 				if mcost > 0:
 					var mctx := "%d or" % mcost
-					VKit.text(self, Vector2(PADX + rw - VKit.text_w(mctx, VKit.FS_SMALL) - 6, yrow + 6),
-						VKit.COL_DIM, mctx, VKit.FS_SMALL)
+					VKit.value(self, Vector2(PADX + rw - VKit.text_w(mctx, VKit.FS_SMALL) - 6, yrow + 6),
+						mctx, VKit.FS_SMALL)
 				VKit.text(self, Vector2(PADX + 38, yrow + 23), VKit.COL_DIM,
 					"s'élève dans la province visée (bras & intrants locaux)", VKit.FS_SMALL)
 				_hover_zones.append({"rect": rowm, "head": mnom, "lines": PackedStringArray([
