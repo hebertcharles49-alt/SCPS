@@ -155,21 +155,20 @@ uint16_t econ_culture_identity_fuse(uint16_t a, uint16_t b, Heritage heritage,
      * ethnonyme autonome). On sature (télémétrie chronicle : gén max atteint 255, 2026-07-11). */
     { uint8_t gmax=(ga>gb?ga:gb); ci->generation = (gmax<255u)?(uint8_t)(gmax+1u):255u; }
     float minor=tune_f("CULTURE_NAME_MINOR_MIN",0.10f);
-    int autonom=(int)tune_f("CULTURE_AUTONYM_GENERATION",2.f);
     /* Copies LOCALES des noms parents : `ci->name` et `g_culture_id[a/b].name` vivent
-     * dans le MÊME tableau `g_culture_id[]` → snprintf(dst,src) déclenche -Wrestrict
-     * (le compilateur ne peut prouver le non-recouvrement). Les locaux tranchent (2026-07-11). */
+     * dans le MÊME tableau `g_culture_id[]` (snprintf(dst,src) chevauchant = -Wrestrict). */
     char na[CULTURE_NAME_N], nb[CULTURE_NAME_N];
     memcpy(na,g_culture_id[a].name,sizeof na);
     memcpy(nb,g_culture_id[b].name,sizeof nb);
     if (kind==CULTURE_BLEND_SUBSTRATE || b_share<minor){
-        snprintf(ci->name,sizeof ci->name,"%s",na);
-    } else if ((int)ci->generation<autonom){
-        snprintf(ci->name,sizeof ci->name,"%.21s-%.21s",na,nb);
+        snprintf(ci->name,sizeof ci->name,"%s",na);   /* apport NÉGLIGEABLE (ruines/<10 %) : A garde son nom */
     } else {
-        uint32_t seed=((uint32_t)a<<16) ^ (uint32_t)b ^ ((uint32_t)ci->generation<<28)
+        /* MÉLANGE (portmanteau) : tête(A) + queue(B) → un TROISIÈME peuple, ni A ni B, ni
+         * « A-B » (retour joueur 2026-07-11 : « pas de pureté ni d'hybride »). « Gerkhan » ⊕
+         * « Yoclides » → « Gerclides ». Déterministe par (a,b,génération,graine-monde). */
+        uint32_t seed=((uint32_t)a<<16) ^ (uint32_t)b ^ ((uint32_t)ci->generation<<24)
                     ^ g_culture_world_seed;
-        culture_id_fresh_name(ci->name,sizeof ci->name,heritage,seed);
+        culture_blend_name(ci->name,(int)sizeof ci->name,na,nb,seed);
     }
     return id;
 }

@@ -4427,6 +4427,36 @@ void culture_make_name(char *out, int n, Heritage heritage, uint32_t seed){
              NAME_ROOT[r][(h>>3)&7], NAME_SUFF[r][(h>>9)&3], ETHNO[(h>>15)&7],
              NAME_ADJ[(h>>18)&31]);
 }
+/* frontière de caractère UTF-8 : recule `idx` tant qu'on est sur un octet de
+ * continuation (10xxxxxx) — pour ne JAMAIS couper un accent (é, ï, û…) en deux. */
+static size_t utf8_back(const char *s, size_t idx){
+    while (idx>0 && ((unsigned char)s[idx]&0xC0)==0x80) idx--;
+    return idx;
+}
+/* NOM DE PEUPLE MÊLÉ (PORTMANTEAU) : la TÊTE du nom A + la QUEUE du nom B → un
+ * TROISIÈME peuple, ni A ni B, ni « A-B » (« Gerkhan » ⊕ « Yoclides » → « Gerclides »).
+ * Travaille sur l'ETHNONYME (1er mot, sans l'adjectif) puis pose un adjectif neuf.
+ * Retour joueur 2026-07-11 : « pas de pureté ni d'hybride, un mélange de syllabes ». */
+void culture_blend_name(char *out, int n, const char *a, const char *b, uint32_t seed){
+    char ea[64], eb[64]; size_t i;
+    for(i=0;a[i] && a[i]!=' ' && i+1<sizeof ea;i++) ea[i]=a[i];
+    ea[i]='\0';
+    for(i=0;b[i] && b[i]!=' ' && i+1<sizeof eb;i++) eb[i]=b[i];
+    eb[i]='\0';
+    size_t la=strlen(ea), lb=strlen(eb);
+    uint32_t h=(seed*2654435761u)^0x9E3779B9u; h^=h>>13; h*=0x85ebca6bu; h^=h>>16;
+    const char *adj=NAME_ADJ[(h>>18)&31];
+    if (la<2 || lb<2){ snprintf(out,(size_t)n,"%s%s %s",ea,eb,adj); return; }
+    /* TÊTE COURTE et STABLE de A (≈1re syllabe, 3 lettres — INDÉPENDANTE de la longueur
+     * de A) : le CHAÎNAGE (gén 8-15) ne gonfle donc JAMAIS le nom — le noyau du peuple
+     * d'origine persiste, seule la QUEUE (≈dernière syllabe de B, 5-6 lettres) tourne avec
+     * le dernier apport. « Gerkhan »⊕« Yoclides » → « Ger »+« clides » = « Gerclides ». */
+    size_t hc = utf8_back(ea, la<3?la:3u);
+    size_t tl = 5u + (h&1u);                        /* queue 5 ou 6 (jitter de variété) */
+    size_t bs = (lb>tl)? utf8_back(eb, lb-tl) : 0u;  /* garde les ~5-6 dernières lettres de B */
+    if (hc<1) hc=utf8_back(ea, la>1?1:la);          /* jamais vide */
+    snprintf(out,(size_t)n,"%.*s%s %s",(int)hc,ea,eb+bs,adj);
+}
 
 /* ════════════════════════════════════════════════════════════════════════
  * LA MER §4 — LE COÛT DIRECTIONNEL (et la volta émerge)

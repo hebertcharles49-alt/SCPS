@@ -84,6 +84,8 @@ void place_make_name(char *out, int n, Heritage heritage, uint32_t seed);
 /* NOM DE CULTURE (peuple) procédural — ethnonyme inventé (façon Stellaris) : l'IA ne
  * s'affiche JAMAIS « culture <éthos> ». Dérivé (héritage + seed), déterministe. */
 void culture_make_name(char *out, int n, Heritage heritage, uint32_t seed);
+/* nom de peuple MÊLÉ : portmanteau tête(A)+queue(B) → « Gerkhan »⊕« Yoclides »=« Gerclides ». */
+void culture_blend_name(char *out, int n, const char *a, const char *b, uint32_t seed);
 
 /* ── LA MER (brief mer §4) : le mouvement directionnel sur le champ de courants ──
  * coût(tuile, direction) = base / (1 + k·max(0, v̂·d̂)) × (1 + m·max(0, −v̂·d̂)) ;
