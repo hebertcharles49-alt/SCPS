@@ -315,6 +315,19 @@ int main(void) {
     world_generate(w, &p); econ_init(econ, w); gen_population(w, econ); prosperity_init(wp, w);
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) ts[c].charge=0.f;
     int n_reg_b = econ->n_regions;
+    /* FINS CORRIGÉES (2026-07-11) : plus de bascule/détachement de région (THORN_FLIP_FRAC
+     * SUPPRIMÉ) — la fin DÉGRADE (habitabilité + grain, econ_cold_refresh, motif du FROID)
+     * au lieu d'EFFACER. « AVANT » = TOUTES les régions du monde FRAIS, capturé avant même
+     * le fire — l'ÉRUPTION (1er pas de thorns_step) corrompt le foyer d'UN COUP dans la
+     * MÊME tick que le fire, donc un snapshot pris APRÈS le fire capturerait déjà la marque
+     * de l'épicentre à son plancher (aucune dégradation supplémentaire à observer sur 80
+     * ans, puisque l'éruption a déjà tout corrompu). */
+    econ_aggregate_regions(econ);
+    static float hab_pre[SCPS_MAX_REG]; static double grain_pre[SCPS_MAX_REG];
+    for (int r = 0; r < n_reg_b && r < SCPS_MAX_REG; r++) {
+        hab_pre[r] = econ->region[r].habitability;
+        grain_pre[r] = (double)econ->region[r].raw_cap[RES_GRAIN];
+    }
     endgame_init(&eg);
     wp->entropy = FINV+10.f; wp->entropy_epicenter = -1;
     wp->faust_consumed[0]=0.0; wp->faust_consumed[1]=1000.0; wp->faust_consumed[2]=0.0;
@@ -323,18 +336,36 @@ int main(void) {
     long thn_after_fire=0; for(int i=0;i<SCPS_N;i++) if(w->cell[i].biome==BIO_THORNS) thn_after_fire++;
     CHECK("éruption : des cellules deviennent ronces", thn_after_fire > 0);
     int epi_b = eg.epicenter_reg;
+    econ_aggregate_regions(econ);
+    int epi_owner0 = (epi_b>=0 && epi_b<econ->n_regions) ? econ->region[epi_b].owner : -1;
     for (int y=0;y<80;y++) endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 181+y);
     long thn_late=0; for(int i=0;i<SCPS_N;i++) if(w->cell[i].biome==BIO_THORNS) thn_late++;
     CHECK("le front s'étend (ronces ↑ après 80 ans)", thn_late > thn_after_fire);
-    /* RECALIBRAGE (archétypes worldgen) : la chute du foyer se juge APRÈS le
-     * déroulé, plus au tick de feu — sur un monde archipel la région-épicentre
-     * peut être une ÎLE (voisins = mer) : aucun voisin corrompu à l'éruption ⇒
-     * `corrupted==0` ⇒ le flip est différé au 1er an où le front mord une terre
-     * voisine. L'INTENTION (le foyer 100 % ronces finit par TOMBER, owner=-1)
-     * est inchangée — le front s'étend (contrôle ci-dessus) ⇒ le flip a eu lieu. */
     econ_aggregate_regions(econ);   /* RE-KEY : region[] n'est qu'un MIROIR de prov[] — même idiome que C3/C4/C6 */
-    CHECK("la région-foyer est tombée (owner=-1)", epi_b<0 || econ->region[epi_b].owner == -1);
+    CHECK("la région-foyer n'est PAS détachée (owner inchangé, aucune suppression)",
+          epi_b<0 || econ->region[epi_b].owner == epi_owner0);
     CHECK("n_regions inchangé (indices figés)", econ->n_regions == n_reg_b);
+    if (epi_b>=0 && epi_b<n_reg_b && epi_b<SCPS_MAX_REG) {
+        float  epi_hab1   = econ->region[epi_b].habitability;
+        CHECK("l'habitabilité du foyer DÉGRADE (ronces = 0.05, plus de flip)", epi_hab1 < hab_pre[epi_b]);
+    }
+    /* Le GRAIN ne peut baisser QUE là où il existait déjà (une province côtière/archipel
+     * peut vivre de poisson, raw_cap[GRAIN]=0 dès la genèse — econ_cold_refresh ne fait
+     * que PLAFONNER vers le bas, jamais remonter) : on cherche, parmi TOUTES les régions
+     * dégradées par le front (habitabilité en baisse), UNE qui avait du grain pour prouver
+     * que la famine ÉMERGE bien (même mécanisme que C4/le FROID), plutôt que de fixer le
+     * seul foyer (dont le sort géo-dépendant n'est pas garanti). */
+    {
+        bool found_grain_drop = false;
+        for (int r = 0; r < n_reg_b && r < SCPS_MAX_REG; r++) {
+            if (econ->region[r].owner < 0) continue;
+            if (grain_pre[r] <= 0.0) continue;
+            if (econ->region[r].habitability >= hab_pre[r]) continue;   /* pas touché par les ronces */
+            if ((double)econ->region[r].raw_cap[RES_GRAIN] < grain_pre[r]) { found_grain_drop = true; break; }
+        }
+        CHECK("la fertilité vivrière d'une région dégradée s'effondre (famine progressive, pas de purge)",
+              found_grain_drop);
+    }
     THORNS_HASH(w, thn_n_a, thn_h_a);
 
     bool sane5 = (eg.thorn_front_n >= 0 && eg.thorn_front_n <= SCPS_THORN_FRONT_MAX);
@@ -514,7 +545,7 @@ int main(void) {
     wp->entropy = tune_f("ENTROPY_FIN", 55.f) + 10.f;   /* seuil d'entropie déjà franchi */
     wp->entropy_epicenter = -1;
     wp->faust_consumed[0] = 100000.0; wp->faust_consumed[1] = 0.0; wp->faust_consumed[2] = 0.0;  /* essence archi-dominant */
-    /* SANG a besoin d'une région RAVAGÉE pour se marquer (sang_seed snapshot revolt_scar) —
+    /* SANG a besoin d'une région RAVAGÉE pour se marquer (sang_step relit revolt_scar) —
      * un monde frais n'a vécu ni guerre ni révolte : on marque une région à la main (le
      * signal que sac de guerre/révolte aurait posé). */
     for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner >= 0) { econ->region[r].revolt_scar = 0.9f; break; }
@@ -522,20 +553,42 @@ int main(void) {
     CHECK("SANG l'emporte au seuil (malgré un transmuteur dominant)", eg.fired && eg.fin == FIN_SANG);
     CHECK("foyer SANG assigné (épicentre valide)", eg.epicenter_reg >= -1);
 
-    /* dépeuplement BORNÉ : draine une région marquée, ne descend jamais sous le
-     * plancher (le monde reste FINI — pas de spirale vers zéro). */
+    /* PLANCHER PERMANENT (2026-07-11, « fins corrigées ») : AUCUN drain de pop, AUCUNE
+     * région supprimée — sang_scar[] est un RATCHET sur revolt_scar, et sa marque
+     * PLANCHE le revolt_scar de CHAQUE province de la région (déjà appliqué par le
+     * sang_step d'amorçage ci-dessus, au tick de fire). */
     int probe_sang = -1; float scar0 = -1.f;
     for (int r = 0; r < econ->n_regions; r++) if (eg.sang_scar[r] > scar0) { scar0 = eg.sang_scar[r]; probe_sang = r; }
     bool sang_marked = (probe_sang >= 0 && scar0 > 0.f);
-    float pop_before = 0.f;
-    if (sang_marked) for (int cl = 0; cl < CLASS_COUNT; cl++) pop_before += econ->region[probe_sang].strata[cl].pop;
-    for (int y = 0; y < 300; y++) endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, camp, 0, 201 + y);
-    float pop_after = 0.f;
-    if (sang_marked) for (int cl = 0; cl < CLASS_COUNT; cl++) pop_after += econ->region[probe_sang].strata[cl].pop;
     CHECK("une région marquée SANG existe", sang_marked);
-    CHECK("la région marquée s'est DÉPEUPLÉE (300 ans)", !sang_marked || pop_after < pop_before);
-    CHECK("le plancher est TENU (le monde reste fini, pas de spirale à 0)",
-          !sang_marked || pop_after >= 49.f);   /* SANG_POP_FLOOR=50, marge d'arrondi */
+
+    bool floored_at_fire = true;
+    int  rep_pid = -1;
+    if (sang_marked && probe_sang < w->n_regions) {
+        const Region *rg = &w->region[probe_sang];
+        for (int k = 0; k < rg->n_provinces; k++) {
+            int pid = rg->province_ids[k];
+            if (pid < 0 || pid >= econ->n_prov) continue;
+            if (rep_pid < 0) rep_pid = pid;
+            if (econ->prov[pid].revolt_scar < scar0 - 1e-4f) floored_at_fire = false;
+        }
+    }
+    CHECK("le plancher a DÉJÀ mordu chaque province de la région, au tick de fire",
+          !sang_marked || floored_at_fire);
+
+    /* « une nouvelle guerre AGRANDIT la marque » : on simule ~4 ans de décrue NORMALE
+     * (scps_econ.c) sur la province représentative (revolt_scar → 0), PUIS une guerre
+     * plus sanglante (revolt_scar régional monte au-delà de scar0). sang_step doit
+     * (a) faire monter sang_scar au nouveau maximum et (b) RESTAURER le plancher sur
+     * la province malgré la décrue manuelle — la plaie ne se referme jamais. */
+    if (rep_pid >= 0) econ->prov[rep_pid].revolt_scar = 0.f;
+    float scar_grown = scar0 + 0.05f; if (scar_grown > 1.f) scar_grown = 1.f;
+    if (sang_marked) econ->region[probe_sang].revolt_scar = scar_grown;
+    for (int y = 0; y < 300; y++) endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, camp, 0, 201 + y);
+    CHECK("une NOUVELLE guerre AGRANDIT la marque (jamais redescendue)",
+          !sang_marked || eg.sang_scar[probe_sang] >= scar_grown - 1e-4f);
+    CHECK("le plancher RESTAURE la province malgré la décrue manuelle (ne guérit plus)",
+          rep_pid < 0 || econ->prov[rep_pid].revolt_scar >= eg.sang_scar[probe_sang] - 1e-4f);
     CHECK("la cicatrice sang NE GUÉRIT PAS (contrairement à revolt_scar)",
           !sang_marked || eg.sang_scar[probe_sang] >= scar0);
 

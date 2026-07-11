@@ -17,6 +17,7 @@
 #include "scps_agency.h"    /* CONTENU W2 (lot 2) §C : Edifice (EDI_SANCTUAIRE/TEMPLE/CATHEDRALE, C6) */
 #include "scps_demography.h" /* ESCLAVAGE (A1) : demography_manumit_country (choix « Abolir ») */
 #include "scps_lang.h"      /* lot M : tr() — le NOM du ministre (maison V2a) dans les titres de trahison */
+#include "scps_fog.h"       /* raccord 6 : country_known_pair_share/country_knows (Découvertes) */
 /* V2b LOT 2 relit statecraft_council_* — déjà visible via scps_statecraft.h (inclus
  * par scps_events.h) ; LOT 1 relit endgame_* — déjà visible via scps_endgame.h (idem). */
 
@@ -128,6 +129,11 @@ struct EventCtx {
     DiploState      *dp;   /* §F : guerres (T) + rancune (Amnistie) ; peut être NULL */
     EndgameState    *eg;   /* V2b LOT 1 : la Merveille (merv/merv_country/metab_count) ; peut être NULL */
     int              human_player;   /* MEMBRANE DE DÉCISION : -1 = chronique (jamais enfilé) */
+    /* raccord 7 (Âge des Héros) — MissionsState, pour poser le bonus « la prochaine
+     * mission du siège » depuis resolve_choice (EVID_HERO_*). NULL pour TOUT autre
+     * évènement (les ~15 initialisateurs positionnels existants omettent ce champ
+     * en fin de liste ⇒ zéro-initialisé par construction — aucune retouche). */
+    MissionsState   *ms;
 };
 
 /* §G2 — fwd : un fait NOTABLE inscrit une MÉMOIRE (l'âge en est un, défini plus haut
@@ -151,20 +157,18 @@ static bool is_forest(Biome b){ return b==BIO_FOREST||b==BIO_WOODS||b==BIO_JUNGL
 static bool is_arid (Biome b){ return b==BIO_DESERT||b==BIO_DRYLANDS||b==BIO_SAVANNA||b==BIO_STEPPE||b==BIO_COASTAL_DESERT; }
 static bool is_lowland(Biome b){ return b==BIO_PLAINS||b==BIO_FARMLAND||b==BIO_GRASSLAND||b==BIO_MARSH||b==BIO_MANGROVE||b==BIO_BOG; }
 
-#define AGE_DAWN_YEARS 20   /* l'âge de l'Aube (base) dure les 20 premières années */
-#define AGE_MIN_YEARS  30   /* puis un âge par génération (30 ans) entre avènements */
-
 static void events_fire_caps_seed(EventsState *ev, uint32_t seed);  /* défini avec fire_event */
 void events_init(EventsState *ev, const World *w, uint32_t seed){
     memset(ev,0,sizeof(*ev));
     ev->rng = seed ? seed : 0xA17F23C5u;
     events_fire_caps_seed(ev, ev->rng);   /* PLAFOND DE TIRS À VIE : 3-5 par évènement plafonné */
-    ev->ages.research_mult = 1.f;
-    ev->ages.integration_mult = 1.f;
+    /* ÂGES SANS ORDRE IMPOSÉ : AUCUNE chronologie fixe, AUCUN minimum d'Aube — chaque
+     * âge devient éligible dès que son déclencheur matériel est vrai (dès l'an 0, en
+     * théorie). year_eligible[a]=-1 = pas encore éligible ; last_dawn_year très bas
+     * (jamais un vrai an de partie) pour ne pas bloquer le TOUT premier avènement. */
+    for (int a=0;a<AGE_COUNT;a++) ev->ages.year_eligible[a] = -1;
     ev->ages.last_dawned = -1;
-    /* L'Aube dure 20 ans : le 1er âge ne peut s'éveiller avant l'an 20
-     * (gate : an ≥ last_dawn_year + 30, donc last init = 20 − 30 = −10). */
-    ev->ages.last_dawn_year = AGE_DAWN_YEARS - AGE_MIN_YEARS;
+    ev->ages.last_dawn_year = -1000000;
     ev->last_id = -1; ev->last_name = NULL;
     g_marbrive_fired=0; g_pont_effondre_fired=0;   /* MEMBRANE DE DÉCISION : télémétrie RAZ par sim */
     g_calm_shocks_fired=0;   /* LOT F : catastrophes du monde calme, RAZ par sim */
@@ -618,6 +622,12 @@ static bool trig_trahison_seat(const EventCtx *cx, int c, int seat){
 static bool trig_trahison_savoir   (const EventCtx *cx,int c){ return trig_trahison_seat(cx,c,0); }
 static bool trig_trahison_societe  (const EventCtx *cx,int c){ return trig_trahison_seat(cx,c,1); }
 static bool trig_trahison_industrie(const EventCtx *cx,int c){ return trig_trahison_seat(cx,c,2); }
+
+/* raccord 7 — L'ÂGE DES HÉROS : « Le nom du siècle » n'est JAMAIS scanné par le
+ * balayage mtth (le fait est déjà avéré au moment de l'appel — ages_hero_fire
+ * appelle fire_event DIRECTEMENT) ; ce trigger neutre n'existe que parce que
+ * EventDef.trigger n'est pas un pointeur optionnel dans la table. */
+static bool trig_never(const EventCtx *cx, int c){ (void)cx;(void)c; return false; }
 
 /* SUCCESSION — un ministre LOYAL (le seuil-miroir de betrayal_ready : PAS à
  * l'agonie) en poste depuis plus de SC_COUNCIL_GEN_YEARS (20 ans, la longueur
@@ -1648,6 +1658,66 @@ static const EventDef EVENTS[EVID_COUNT] = {
           0.1f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
           "Fermez les yeux tant que les routes restent ouvertes. Certains voleurs coûtent moins cher en fonction qu'en cellule." } }, 3 },
 
+    /* ═══ ÂGES SANS ORDRE IMPOSÉ — « Le nom du siècle » (raccord 7, l'Âge des Héros) ═══
+     * Un ministre rang III, encore assis, vient de mener une mission décennale à bien
+     * avec efficacité ≥1.00 et loyauté ≥75 : SON siège consacre un héros. %s = « [Prénom]
+     * [Maison], [titre] » (event_title, hero_seat_of ci-dessus) — jamais le pays. Les
+     * hooks des trois options sont RÉSOLUS DYNAMIQUEMENT (la faction RÉELLE du titulaire,
+     * cf. le bloc conseil dédié de resolve_choice) — le hook STATIQUE reste NEUTRE. Jamais
+     * scanné par le balayage mtth (trig_never) : ages_hero_fire appelle fire_event
+     * DIRECTEMENT depuis scps_sim.c, le fait est déjà avéré. */
+    [EVID_HERO_SAVOIR] = { EVID_HERO_SAVOIR, EV_COUNTRY, "%s a mené à bien sa décennie",
+        trig_never, 0.f, NULL, {
+        { "Lui confier la prochaine décennie",
+          "%s a mené à bien une décennie de labeur au service du Savoir : son nom passera à la postérité. La cour attend de savoir ce que le trône en fera.",
+          { .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=0 },
+          "Qu'il poursuive son œuvre. Une décennie de plus, avec toute notre confiance derrière lui." },
+        { "Lui donner les clefs",
+          "%s a mené à bien une décennie de labeur au service du Savoir : son nom passera à la postérité. La cour attend de savoir ce que le trône en fera.",
+          { .unlock_branch=-1 },
+          0.2f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=0 },
+          "Qu'il tienne les clefs autant qu'il le voudra. Le mérite, à ce niveau, se paie d'un peu de pouvoir." },
+        { "Il a fait son devoir",
+          "%s a mené à bien une décennie de labeur au service du Savoir : son nom passera à la postérité. La cour attend de savoir ce que le trône en fera.",
+          { .unlock_branch=-1 },
+          0.3f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=0 },
+          "Le devoir accompli n'appelle pas de récompense. Qu'il retourne à son pupitre, satisfait d'avoir servi." } }, 3 },
+    [EVID_HERO_SOCIETE] = { EVID_HERO_SOCIETE, EV_COUNTRY, "%s a mené à bien sa décennie",
+        trig_never, 0.f, NULL, {
+        { "Lui confier la prochaine décennie",
+          "%s a mené à bien une décennie de labeur au service du Royaume : son nom passera à la postérité. La cour attend de savoir ce que le trône en fera.",
+          { .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=0 },
+          "Qu'il poursuive son œuvre. Une décennie de plus, avec toute notre confiance derrière lui." },
+        { "Lui donner les clefs",
+          "%s a mené à bien une décennie de labeur au service du Royaume : son nom passera à la postérité. La cour attend de savoir ce que le trône en fera.",
+          { .unlock_branch=-1 },
+          0.2f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=0 },
+          "Qu'il tienne les clefs autant qu'il le voudra. Le mérite, à ce niveau, se paie d'un peu de pouvoir." },
+        { "Il a fait son devoir",
+          "%s a mené à bien une décennie de labeur au service du Royaume : son nom passera à la postérité. La cour attend de savoir ce que le trône en fera.",
+          { .unlock_branch=-1 },
+          0.3f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=0 },
+          "Le devoir accompli n'appelle pas de récompense. Qu'il retourne à son pupitre, satisfait d'avoir servi." } }, 3 },
+    [EVID_HERO_INDUSTRIE] = { EVID_HERO_INDUSTRIE, EV_COUNTRY, "%s a mené à bien sa décennie",
+        trig_never, 0.f, NULL, {
+        { "Lui confier la prochaine décennie",
+          "%s a mené à bien une décennie de labeur au service des Ouvrages : son nom passera à la postérité. La cour attend de savoir ce que le trône en fera.",
+          { .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=0 },
+          "Qu'il poursuive son œuvre. Une décennie de plus, avec toute notre confiance derrière lui." },
+        { "Lui donner les clefs",
+          "%s a mené à bien une décennie de labeur au service des Ouvrages : son nom passera à la postérité. La cour attend de savoir ce que le trône en fera.",
+          { .unlock_branch=-1 },
+          0.2f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=0 },
+          "Qu'il tienne les clefs autant qu'il le voudra. Le mérite, à ce niveau, se paie d'un peu de pouvoir." },
+        { "Il a fait son devoir",
+          "%s a mené à bien une décennie de labeur au service des Ouvrages : son nom passera à la postérité. La cour attend de savoir ce que le trône en fera.",
+          { .unlock_branch=-1 },
+          0.3f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=0 },
+          "Le devoir accompli n'appelle pas de récompense. Qu'il retourne à son pupitre, satisfait d'avoir servi." } }, 3 },
+
     /* SUCCESSION — la retraite d'un loyal (>20 ans). Un moment, deux choix légers.
      * P2 : les DEUX options retirent IMMÉDIATEMENT le titulaire, SANS le grief de
      * renvoi (bypass COUNCIL_DISMISS_GRIEF — résolu dans le bloc conseil dédié). */
@@ -1934,6 +2004,27 @@ static int treason_seat_of(int evid){
  * « Le marchand » suggérait FAC_MARCHAND à tort quel que soit le titulaire réel). */
 static const char *TREASON_FALLBACK[3] = { "Le conseiller du Savoir", "Le conseiller du Royaume", "Le conseiller des Ouvrages" };
 
+/* raccord 7 (Âge des Héros) — même motif que treason_seat_of, sur les 3 EVID_HERO_*. */
+static int hero_seat_of(int evid){
+    switch (evid){
+        case EVID_HERO_SAVOIR:    return 0;
+        case EVID_HERO_SOCIETE:   return 1;
+        case EVID_HERO_INDUSTRIE: return 2;
+        default:                  return -1;
+    }
+}
+/* TITRES (spec verbatim, docs/AGES_FINS_2026-07-11.md) : Savoir INVARIANT (« Grand
+ * Esprit », aucun genre donné) ; Société/Industrie genrés sur l'index de prénom
+ * (statecraft_council_cand_female — 12 premiers masculins, 12 suivants féminins). */
+static const char *hero_title(int seat, bool female){
+    switch (seat){
+        case 0:  return "Grand Esprit";
+        case 1:  return female ? "Mère de la nation"  : "Père de la nation";
+        case 2:  return female ? "Grande Capitaine"   : "Grand Capitaine";
+        default: return "Héros du siècle";
+    }
+}
+
 /* TITRE PRÉSENTÉ (display-only) : le nom de la table est un GABARIT — s'il porte
  * un « %s », on y coud le NOM RÉEL du sujet (région en EV_PROVINCE, pays en
  * EV_COUNTRY, MINISTRE pour les trahisons du Conseil) au moment de la PRÉSENTATION
@@ -1946,8 +2037,26 @@ const char *event_title(const World *w, int evid, int subject, char *buf, int n)
     const char *p = strstr(d->name, "%s");
     if (!p || !w){ snprintf(buf, (size_t)n, "%s", d->name); return buf; }
     const char *nom = "?";
-    int seat = treason_seat_of(evid);
-    if (seat >= 0){
+    int hseat = hero_seat_of(evid);
+    int seat = (hseat>=0) ? -1 : treason_seat_of(evid);
+    if (hseat >= 0){
+        /* raccord 7 — « [Prénom] [Maison], [titre] » (spec verbatim). Fallback
+         * (siège vacant / avant le 1er tick) : le titre seul, générique. */
+        nom = hero_title(hseat, false);
+        if (g_title_sc && subject>=0 && subject<w->n_countries){
+            int slot = statecraft_council_seated(g_title_sc, subject, hseat);
+            if (slot >= 0){
+                static char heronom[160];
+                int gen = statecraft_council_seated_gen(g_title_sc, subject, hseat);
+                bool female = statecraft_council_cand_female(w->seed, subject, hseat, slot, gen);
+                snprintf(heronom, sizeof heronom, "%s %s, %s",
+                        statecraft_council_cand_firstname(w->seed, subject, hseat, slot, gen),
+                        statecraft_council_cand_house(w->seed, subject, hseat, slot, gen),
+                        hero_title(hseat, female));
+                nom = heronom;
+            }
+        }
+    } else if (seat >= 0){
         nom = TREASON_FALLBACK[seat];
         if (g_title_sc && subject>=0 && subject<w->n_countries){
             int slot = statecraft_council_seated(g_title_sc, subject, seat);
@@ -2019,10 +2128,14 @@ static void apply_effect(EventCtx *cx, EvScope scope, int subject, const EvEffec
         if (cx->wp){
             cx->wp->age_C_bonus     = clampf(cx->wp->age_C_bonus + e->d_C_global, 0.f, 5.f);
             cx->wp->age_breach_flux = clampf(cx->wp->age_breach_flux + e->d_breach, 0.f, 10.f);
+            /* raccord 3 — tier_open vit désormais sur wp (bitmask age_tech_mask :
+             * ai_research_step a `wp` sous la main, jamais `ev` — cf. scps_events.h). */
+            if (e->unlock_branch>=0 && e->unlock_branch<THM_COUNT && e->unlock_tier>=0 && e->unlock_tier<8){
+                unsigned bit = (unsigned)e->unlock_branch*8u + (unsigned)e->unlock_tier;
+                if (bit<32) cx->wp->age_tech_mask |= (1u<<bit);
+            }
         }
         cx->ev->ages.breach_pressure = clampf(cx->ev->ages.breach_pressure + e->d_breach, 0.f, 10.f);
-        if (e->unlock_branch>=0 && e->unlock_branch<THM_COUNT && e->unlock_tier>=0 && e->unlock_tier<8)
-            cx->ev->ages.tier_open[e->unlock_branch][e->unlock_tier]=true;
         return;
     }
     if (scope==EV_PROVINCE){
@@ -2443,6 +2556,34 @@ static void resolve_choice(EventCtx *cx, int evid, int subject, int oi, int toda
                 faction_concede(cid, (EthosFaction)fac);
             }
         }
+        else if (hero_seat_of(evid)>=0 && cid>=0){
+            /* raccord 7 — « Le nom du siècle ». Le siège est FIXE par EVID (mirroir des
+             * TRAHISON_* ci-dessus) ; l'identité (slot,gen) est RE-DÉRIVÉE ici (le fait est
+             * frais — même tick que ages_hero_fire). oi==0/1 posent un BONUS sur la
+             * PROCHAINE mission du siège (cx->ms->hero_bonus, consommé par
+             * mission_grant/scps_missions.c — successeur exclu si le titulaire a changé
+             * d'ici là) ; oi==1 CAPTURE la faction (faction_concede — la Corruption qui
+             * en découle EST l'effet, jamais un delta codé à côté) ; oi==2 aigrit SA
+             * PROPRE faction (refusé, pas « la plus opposée » — motif RENVOYER de P1-3). */
+            int seat = hero_seat_of(evid);
+            int fac  = statecraft_council_seat_faction(cx->sc, seed, cid, seat);
+            if (oi==0 || oi==1){
+                if (cx->ms && cx->sc){
+                    int slot = statecraft_council_seated(cx->sc, cid, seat);
+                    if (slot>=0){
+                        int gen = statecraft_council_seated_gen(cx->sc, cid, seat);
+                        HeroMissionBonus *hb = &cx->ms->hero_bonus[cid][seat];
+                        hb->mult = (oi==0) ? tune_f("AGE_HERO_MISSION_REWARD",1.20f)
+                                           : tune_f("AGE_HERO_MISSION_REWARD_CAPTURED",1.30f);
+                        hb->slot = (int8_t)slot; hb->gen = (int8_t)gen;
+                    }
+                }
+                if (oi==0 && fac>=0) faction_lever_apply(cid, (EthosFaction)fac, tune_f("AGE_HERO_FACTION_LEVER",0.08f));
+                else if (oi==1 && fac>=0) faction_concede(cid, (EthosFaction)fac);   /* Corruption : la capture EST l'effet */
+            } else if (fac>=0){
+                faction_grievance_add(cid, (EthosFaction)fac, tune_f("AGE_HERO_REFUSED_GRIEF",0.08f));
+            }
+        }
         else if (evid==EVID_CONSEIL_C1 && cid>=0){
             /* La conspiration porte sur une paire ALIÉNÉE (COUNCIL_PAIR_CONSPIRATION) —
              * « Les renvoyer les deux »/« En sacrifier un » n'ont RIEN à ajouter :
@@ -2653,7 +2794,7 @@ bool pending_event_resolve(EventsState *ev, World *w, WorldEconomy *econ,
      * peut plus ré-enfiler) — il sert UNIQUEMENT à faire accrocher LES ANNALES quand
      * c'est bien le joueur qui a choisi (fire_event du tick régulier reste la seule
      * voie d'ENFILAGE ; ceci n'est que le point de sortie du choix DÉJÀ posé). */
-    EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp,eg,human_player};
+    EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp,eg,human_player,NULL};
     resolve_choice(&cx, p.evid, p.subject, option, today);
     pending_event_remove(ev, slot);
     return true;
@@ -2664,7 +2805,7 @@ void pending_event_tick_expire(EventsState *ev, World *w, WorldEconomy *econ,
                                EndgameState *eg,
                                int today){
     if (!ev) return;
-    EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp,eg,-1};
+    EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp,eg,-1,NULL};
     /* parcours à REBOURS : pending_event_remove swap avec le dernier — reculer évite
      * de sauter un slot fraîchement déplacé dans la case qu'on vient de traiter. */
     for (int i=ev->pending_n-1; i>=0; i--){
@@ -2691,7 +2832,7 @@ const char *events_name_of(int evid){
 void events_strike(EventsState *ev, World *w, WorldEconomy *econ,
                    WorldLegitimacy *wl, WorldProsperity *wp, Statecraft *sc,
                    int region, EvId shock){
-    EventCtx cx={ev,w,econ,wl,wp,sc,NULL,NULL,NULL,NULL,-1};
+    EventCtx cx={ev,w,econ,wl,wp,sc,NULL,NULL,NULL,NULL,-1,NULL};
     if (shock<0||shock>=EVID_COUNT) return;
     apply_effect(&cx, EVENTS[shock].scope, region, &EVENTS[shock].options[0].eff);
     ev->last_id=shock; ev->last_name=EVENTS[shock].name; ev->n_fired++;
@@ -2722,7 +2863,7 @@ int events_plague_spread(EventsState *ev, World *w, WorldEconomy *econ,
         EvEffect e = EVENTS[EVID_PLAGUE].options[0].eff;
         e.pop_mult = mult;
         e.d_agitation = 18.f - 3.f*h;
-        EventCtx cx={ev,w,econ,wl,NULL,sc,rn,NULL,NULL,NULL,-1};
+        EventCtx cx={ev,w,econ,wl,NULL,sc,rn,NULL,NULL,NULL,-1,NULL};
         apply_effect(&cx, EV_PROVINCE, r, &e);
         provlog_push_event(r, EVENTS[EVID_PLAGUE].name, +1, ev_effdir(&e));   /* journal provincial : la peste */
         infected++;
@@ -2745,7 +2886,7 @@ int events_plague_spread(EventsState *ev, World *w, WorldEconomy *econ,
 /* ===================================================================== */
 int events_match_political(const EventsState *ev, World *w, WorldEconomy *econ,
                            WorldLegitimacy *wl, Statecraft *sc, int region){
-    EventCtx cx={ (EventsState*)ev, w, econ, wl, NULL, sc, NULL, NULL, NULL, NULL, -1 };
+    EventCtx cx={ (EventsState*)ev, w, econ, wl, NULL, sc, NULL, NULL, NULL, NULL, -1, NULL };
     static const int order[4]={ EVID_INTEG_DOMINATEUR, EVID_INTEG_MERCANTILE,
                                 EVID_INTEG_BUREAUCRATE, EVID_INTEG_ANCIEN };
     for (int i=0;i<4;i++){
@@ -2756,45 +2897,48 @@ int events_match_political(const EventsState *ev, World *w, WorldEconomy *econ,
 }
 
 /* ===================================================================== */
-/* ÂGES — une LECTURE du monde fait advenir l'ère                        */
+/* ÂGES SANS ORDRE IMPOSÉ (2026-07-11, docs/AGES_FINS_2026-07-11.md)      */
 /* ===================================================================== */
-#define NODE_VALUE_Y   1.0f    /* une région « riche » : route_pe au-dessus de ça */
-#define X_NODES        4       /* … et il en faut X pour l'Âge du Commerce         */
-#define LUM_TOTAL_Y   25.f     /* Lumière mondiale cumulée → Âge de la Raison      */
-#define EMPIRES_INTEG  10      /* régions bien intégrées → Âge des Empires         */
-#define BREACH_CHARGE  5.f     /* charge faustienne quelque part → Âge de la Brèche*/
-/* ---- Âges structurels : seuils & poussées (la surface d'équilibrage) ---- */
-#define LUM_SAVOIR_Y  40.f     /* société de MASSE : savoir mondial cumulé          */
-#define LUM_C_Y        4.f     /* … ET connectée (les idées circulent)              */
-#define MASSE_CRITIQUE 2       /* pays en révolution → contagion des Soulèvements   */
-#define OF_FRAC_Y      3.0f    /* monde qui se fracture …                            */
-#define OF_DEREAL_Y    1.0f    /* … sous charge faustienne …                         */
-#define OF_SI_CRISE    5.0f    /* … en crise ouverte → l'Ordre de Fer répond         */
-#define AGE_DELTA_I    2.0f    /* Lumières : surgissement des idées (+ I)            */
-#define AGE_DELTA_SOLV 2.0f    /* Lumières : dissolution de la légitimité coercitive */
-#define AGE_DELTA_L    2.0f    /* Soulèvements : la légitimité ne porte plus (− L)   */
-#define AGE_DELTA_H    2.5f    /* Ordre de Fer : la poigne (+ H)                     */
-#define AGE_DELTA_MYTH 3.0f    /* Ordre de Fer : le mythe nie la diversité (− D̄)     */
-
 /* Verdict du moteur, mode « révolution » = SCPS_SUBMERGE_REVOLUTION (miroir, on
  * n'inclut PAS scps_core : on lit l'int déjà stocké dans CountryProsperity). */
 enum { EV_MODE_CONSENTI=0, EV_MODE_COERC_FRAGILE, EV_MODE_REVOLUTION, EV_MODE_SECESSION };
 
 static const char *AGE_NAMES[AGE_COUNT]={
-    "Âge du Commerce Mondial","Âge de la Raison","Âge des Empires","Âge de la Brèche",
-    "Âge des Lumières","Âge des Soulèvements","Âge de l'Ordre de Fer"
+    "L'Ère des Échanges","L'Âge des Découvertes","L'Âge des Empires","L'Âge des Héros",
+    "L'Âge de la Brèche","L'Âge des Lumières","L'Âge des Soulèvements","L'Ère des Tyrans"
 };
 const char *age_name(AgeId a){ return (a>=0&&a<AGE_COUNT)?AGE_NAMES[a]:"?"; }
+
+#define AUBE_CITATION "Il n'y a rien de nouveau sous le soleil. (Ecclésiaste 1:9)"
+static const char *AGE_CITATIONS[AGE_COUNT]={
+    "L'effet naturel du commerce est de porter à la paix. (Montesquieu)",
+    "Si j'ai vu plus loin, c'est en me tenant sur les épaules de géants. (Newton)",
+    "Ils font un désert et appellent cela la paix. (Tacite)",
+    "L'histoire universelle est, au fond, l'histoire des grands hommes. (Carlyle)",
+    "La science de l'homme est la mesure de sa puissance. (Bacon)",
+    "Aie le courage de te servir de ton propre entendement. (Kant)",
+    "De l'audace, encore de l'audace… (Danton)",
+    "Le pouvoir tend à corrompre… (Lord Acton)",
+};
+const char *age_citation(int age){
+    if (age<0) return AUBE_CITATION;
+    return (age<AGE_COUNT) ? AGE_CITATIONS[age] : "";
+}
 
 /* ---- Lecteurs de l'état AGRÉGÉ du monde (sur les pays non-vierges) ------ */
 static int nc_loop(const World *w, const WorldProsperity *wp){
     return (w->n_countries < wp->n_countries) ? w->n_countries : wp->n_countries;
 }
-static float w_total_savoir(const World *w, const WorldProsperity *wp){
-    float s=0.f;
+static int w_living_count(const World *w, const WorldProsperity *wp){
+    int n=0;
+    for (int c=0;c<nc_loop(w,wp);c++) if (w->country[c].role!=POLITY_UNCLAIMED) n++;
+    return n;
+}
+static float w_mean_savoir(const World *w, const WorldProsperity *wp){
+    float s=0.f; int n=0;
     for (int c=0;c<nc_loop(w,wp);c++)
-        if (w->country[c].role!=POLITY_UNCLAIMED) s+=wp->country[c].Lumiere;
-    return s;
+        if (w->country[c].role!=POLITY_UNCLAIMED){ s+=wp->country[c].Lumiere; n++; }
+    return n? s/(float)n : 0.f;
 }
 static float w_mean_C(const World *w, const WorldProsperity *wp){
     float s=0.f; int n=0;
@@ -2826,109 +2970,317 @@ int events_count_revolutionary(const World *w, const WorldProsperity *wp){
         if (w->country[c].role!=POLITY_UNCLAIMED && wp->country[c].mode==EV_MODE_REVOLUTION) n++;
     return n;
 }
-/* Le mythe homogénéisant se diffuse : la foi du trône devient exclusive. */
-static void spread_credo_purificateur(World *w, WorldEconomy *econ){
-    for (int c=0;c<w->n_countries;c++){
-        int cr=world_capital_region(w,c);
-        if (cr>=0 && cr<econ->n_regions && econ->region[cr].culture.settled
-            && econ->region[cr].culture.credo==CREDO_PLURALISTE)
-            econ->region[cr].culture.credo=CREDO_PURIFICATEUR;
-    }
+/* raccord 6 — le ratio de pays connus (façade + déclencheur des Découvertes) : un
+ * simple relais de country_known_pair_share (scps_fog.c), qui NE dépend PAS des
+ * Âges (fog n'a jamais besoin de connaître AgeId). */
+float ages_known_pair_share(const World *w){ return country_known_pair_share(w); }
+int ages_fog_radius_add(const EventsState *ev){
+    return (ev && ages_dawned(ev,AGE_DISCOVERY)) ? (int)tune_f("AGE_DISCOVERY_FOG_RADIUS_ADD",1.0f) : 0;
 }
 
-static bool age_trig_commerce(World *w, WorldEconomy *econ, WorldProsperity *wp, const TechState ts[]){
-    (void)w;(void)wp;(void)ts; int rich=0;
-    for (int r=0;r<econ->n_regions;r++) if (econ->region[r].route_pe > NODE_VALUE_Y) rich++;
-    return rich >= X_NODES;
+/* ---- DÉCLENCHEURS MATÉRIELS (spec verbatim, docs/AGES_FINS_2026-07-11.md) ---- */
+static bool age_trig_exchange(World *w, WorldEconomy *econ, WorldProsperity *wp, const TechState ts[]){
+    (void)w;(void)wp;(void)ts;
+    int rich=0, habited=0;
+    for (int r=0;r<econ->n_regions;r++){
+        if (econ->region[r].owner<0) continue;
+        habited++;
+        if (econ->region[r].route_pe > tune_f("AGE_EXCHANGE_NODE_VALUE",1.0f)) rich++;
+    }
+    if (rich < (int)tune_f("AGE_EXCHANGE_NODE_MIN",4.0f)) return false;
+    return habited>0 && (float)rich/(float)habited >= tune_f("AGE_EXCHANGE_NODE_SHARE",0.08f);
 }
-static bool age_trig_reason(World *w, WorldEconomy *econ, WorldProsperity *wp, const TechState ts[]){
-    (void)w;(void)econ;(void)ts; if(!wp) return false; float lum=0.f;
-    for (int c=0;c<wp->n_countries;c++) lum += wp->country[c].Lumiere;
-    return lum > LUM_TOTAL_Y;
+static bool age_trig_discovery(World *w, WorldEconomy *econ, WorldProsperity *wp, const TechState ts[]){
+    (void)econ;(void)wp;(void)ts;
+    if (w_living_count(w,wp) < (int)tune_f("AGE_DISCOVERY_COUNTRY_MIN",6.0f)) return false;
+    return ages_known_pair_share(w) >= tune_f("AGE_DISCOVERY_KNOWN_PAIR_SHARE",0.35f);
 }
 static bool age_trig_empires(World *w, WorldEconomy *econ, WorldProsperity *wp, const TechState ts[],
                              WorldLegitimacy *wl){
-    (void)w;(void)wp;(void)ts; if(!wl) return false; int integ=0;
-    for (int r=0;r<econ->n_regions;r++)
-        if (econ->region[r].owner>=0 && econ->region[r].culture.settled
-            && r<SCPS_MAX_REG && wl->years_held[r] > 40.f) integ++;
-    return integ >= EMPIRES_INTEG;
+    (void)wp;(void)ts; if(!wl) return false;
+    int world_n=0; int per_country[SCPS_MAX_COUNTRY]={0};
+    float held_min = tune_f("AGE_EMPIRES_HELD_YEARS",35.0f);
+    for (int r=0;r<econ->n_regions;r++){
+        int o=econ->region[r].owner;
+        if (o<0 || o>=SCPS_MAX_COUNTRY || !econ->region[r].culture.settled) continue;
+        if (r>=SCPS_MAX_REG || wl->years_held[r] <= held_min) continue;
+        world_n++; per_country[o]++;
+    }
+    if (world_n < (int)tune_f("AGE_EMPIRES_REGIONS_WORLD",8.0f)) return false;
+    int need_one = (int)tune_f("AGE_EMPIRES_REGIONS_ONE_COUNTRY",4.0f);
+    for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++) if (per_country[c] >= need_one) return true;
+    return false;
 }
 static bool age_trig_breach(World *w, WorldEconomy *econ, WorldProsperity *wp, const TechState ts[]){
     (void)w;(void)econ;(void)wp; if(!ts) return false;
-    for (int c=0;c<SCPS_MAX_COUNTRY;c++) if (ts[c].charge > BREACH_CHARGE) return true;
+    float charge_min = tune_f("AGE_BREACH_CHARGE",6.0f);
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++) if (ts[c].charge > charge_min) return true;
     return false;
 }
-/* ---- Âges STRUCTURELS (chaîne causale : Lumières d'abord) --------------- */
 static bool age_trig_lumieres(World *w, WorldProsperity *wp){
     if (!wp) return false;
-    return w_total_savoir(w,wp) > LUM_SAVOIR_Y && w_mean_C(w,wp) > LUM_C_Y;
+    return w_mean_savoir(w,wp) > tune_f("AGE_LUMIERES_SAVOIR_MEAN",5.0f)
+        && w_mean_C(w,wp)      > tune_f("AGE_LUMIERES_C_MEAN",4.5f);
 }
+/* Soulèvements ↔ Tyrans : paire MUTUELLEMENT EXCLUSIVE (qui advient ferme l'autre
+ * pour toujours) — plus de précondition Lumières (aucun ordre imposé). Ces deux
+ * triggers restent des lectures MATÉRIELLES PURES (pas de précondition dessus) :
+ * l'exclusion elle-même est un GATE séparé, revérifié à CHAQUE tentative
+ * d'avènement (pas seulement au moment de l'ÉLIGIBILITÉ) — sinon les deux
+ * s'ACQUIÈRENT tous les deux au même instant (un monde qui bascule dans la
+ * crise satisfait souvent les DEUX conditions à la fois), et l'éligibilité
+ * ACQUISE de spec (« reste acquise même si la valeur redescend ») ferait
+ * quand même avenir le second après coup. */
 static bool age_trig_soulevements(const EventsState *ev, World *w, WorldProsperity *wp){
-    if (!ev->ages.dawned[AGE_LUMIERES] || !wp) return false;       /* précondition causale */
-    return events_count_revolutionary(w,wp) >= MASSE_CRITIQUE;     /* verdict du moteur */
+    (void)ev; if (!wp) return false;
+    return events_count_revolutionary(w,wp) >= (int)tune_f("AGE_SOULEVEMENTS_MIN_COUNTRIES",2.0f);
 }
-static bool age_trig_ordrefer(const EventsState *ev, World *w, WorldProsperity *wp){
-    if (!ev->ages.dawned[AGE_LUMIERES] || !wp) return false;       /* société de masse */
-    return w_mean_fracture(w,wp) > OF_FRAC_Y
-        && w_mean_dereal(w,wp)   > OF_DEREAL_Y
-        && w_mean_SI(w,wp)       < OF_SI_CRISE;                    /* crise ouverte */
+static bool age_trig_tyrans(const EventsState *ev, World *w, WorldProsperity *wp){
+    (void)ev; if (!wp) return false;
+    return w_mean_fracture(w,wp) > tune_f("AGE_TYRANS_FRACTURE",3.0f)
+        && w_mean_dereal(w,wp)   > tune_f("AGE_TYRANS_DEREAL",1.25f)
+        && w_mean_SI(w,wp)       < tune_f("AGE_TYRANS_SI",5.0f);
 }
 
-static void age_dawn(EventsState *ev, AgeId a, World *w, WorldEconomy *econ, WorldProsperity *wp){
-    EventCtx cx={ev,w,econ,NULL,wp,NULL,NULL,NULL,NULL,NULL,-1};
+/* ---- JITTER SANS CHRONOLOGIE CACHÉE (hash pur, aucun état de rng partagé) ---- */
+static uint32_t age_hash(uint32_t a, uint32_t b, uint32_t c, uint32_t d){
+    uint32_t h = a*2654435761u ^ b*40503u ^ c*2246822519u ^ d*3266489917u;
+    h ^= h>>16; h *= 2246822519u; h ^= h>>13; h *= 3266489917u; h ^= h>>16;
+    return h;
+}
+/* année d'avènement = éligible + hash(seed,âge,éligible) % (JITTER+1) — 0..4 ans
+ * d'attente déterministe, sans rien de plus à sérialiser (dérivée à chaque tick). */
+static int age_dawn_year(uint32_t seed, AgeId a, int eligible){
+    int jitter = (int)tune_f("AGE_TRIGGER_JITTER_YEARS",4.0f);
+    if (jitter<0) jitter=0;
+    uint32_t h = age_hash(seed^0xA6E1F00Du, (uint32_t)a, (uint32_t)eligible, 0x0DE1F1E5u);
+    return eligible + (int)(h % (uint32_t)(jitter+1));
+}
+/* Ordre de priorité (« un hash de la seed choisit le premier ») entre deux âges
+ * candidats la MÊME année : rang STABLE (indépendant de l'année), pas un second tirage. */
+static uint32_t age_priority(uint32_t seed, AgeId a){
+    return age_hash(seed^0xC011DE01u, (uint32_t)a, 0, 0);
+}
+
+/* ⚠ SUPPRIMÉ (raccord Tyrans, spec verbatim) : « AUCUNE conversion automatique des
+ * credos » — l'Ère des Tyrans faisait auparavant muter le credo de la capitale de
+ * CHAQUE pays vers CREDO_PURIFICATEUR (spread_credo_purificateur). Retiré sans
+ * remplacement (cf. TROUVAILLES.md). */
+
+/* ---- LEVIERS DE FACTION SCOPÉS (« que dans les pays MATÉRIELLEMENT concernés ») */
+static void age_lever_exchange(World *w, WorldEconomy *econ){
+    float y = tune_f("AGE_EXCHANGE_NODE_VALUE",1.0f);
+    float lv = tune_f("AGE_EXCHANGE_MERCHANT_LEVER",0.08f);
+    bool hit[SCPS_MAX_COUNTRY]={0};
+    for (int r=0;r<econ->n_regions;r++){
+        int o=econ->region[r].owner;
+        if (o>=0 && o<SCPS_MAX_COUNTRY && econ->region[r].route_pe>y) hit[o]=true;
+    }
+    for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
+        if (hit[c]) faction_lever_apply(c, FAC_MARCHAND, lv);
+}
+static void age_lever_discovery(World *w, WorldProsperity *wp){
+    float share_min = tune_f("AGE_DISCOVERY_KNOWN_PAIR_SHARE",0.35f);
+    float lv_t = tune_f("AGE_DISCOVERY_TRANSGRESSEUR_LEVER",0.06f);
+    float lv_m = tune_f("AGE_DISCOVERY_MERCHANT_LEVER",0.04f);
+    int nc = nc_loop(w,wp);
+    for (int a=0;a<nc && a<SCPS_MAX_COUNTRY;a++){
+        if (w->country[a].role==POLITY_UNCLAIMED) continue;
+        int n=0, known=0;
+        for (int b=0;b<nc && b<SCPS_MAX_COUNTRY;b++){
+            if (b==a || w->country[b].role==POLITY_UNCLAIMED) continue;
+            n++; if (country_knows(a,b)) known++;
+        }
+        if (n>0 && (float)known/(float)n >= share_min){
+            faction_lever_apply(a, FAC_TRANSGRESSEUR, lv_t);
+            faction_lever_apply(a, FAC_MARCHAND, lv_m);
+        }
+    }
+}
+static void age_lever_empires(World *w, WorldEconomy *econ, WorldLegitimacy *wl){
+    if (!wl) return;
+    float held_min = tune_f("AGE_EMPIRES_HELD_YEARS",35.0f);
+    int need_one = (int)tune_f("AGE_EMPIRES_REGIONS_ONE_COUNTRY",4.0f);
+    float lv = tune_f("AGE_EMPIRES_CONQUEROR_LEVER",0.10f);
+    int per_country[SCPS_MAX_COUNTRY]={0};
+    for (int r=0;r<econ->n_regions;r++){
+        int o=econ->region[r].owner;
+        if (o<0 || o>=SCPS_MAX_COUNTRY || !econ->region[r].culture.settled) continue;
+        if (r<SCPS_MAX_REG && wl->years_held[r] > held_min) per_country[o]++;
+    }
+    for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
+        if (per_country[c] >= need_one) faction_lever_apply(c, FAC_CONQUERANT, lv);
+}
+static void age_lever_breach(const TechState ts[]){
+    if (!ts) return;
+    float charge_min = tune_f("AGE_BREACH_CHARGE",6.0f);
+    float lv = tune_f("AGE_BREACH_TRANSGRESSEUR_LEVER",0.12f);
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++)
+        if (ts[c].charge > charge_min) faction_lever_apply(c, FAC_TRANSGRESSEUR, lv);
+}
+/* Lumières/Soulèvements/Tyrans : aucune condition PAR PAYS n'est donnée par la
+ * spec (contrairement à Échanges/Découvertes/Empires/Brèche) — la « matière » est
+ * l'appartenance au monde vivant (tout pays non-UNCLAIMED), sauf Soulèvements qui
+ * NOMME explicitement « les pays révolutionnaires ». */
+static void age_lever_lumieres(World *w, WorldProsperity *wp){
+    float lv_l = tune_f("AGE_LUMIERES_LEGISTE_LEVER",0.06f);
+    float lv_c = tune_f("AGE_LUMIERES_COMMUNAUTAIRE_LEVER",0.04f);
+    for (int c=0;c<nc_loop(w,wp) && c<SCPS_MAX_COUNTRY;c++)
+        if (w->country[c].role!=POLITY_UNCLAIMED){
+            faction_lever_apply(c, FAC_LEGISTE, lv_l);
+            faction_lever_apply(c, FAC_COMMUNAUTAIRE, lv_c);
+        }
+}
+static void age_lever_soulevements(World *w, WorldProsperity *wp){
+    float lv = tune_f("AGE_SOULEVEMENTS_COMMUNAUTAIRE_LEVER",0.12f);
+    for (int c=0;c<nc_loop(w,wp) && c<SCPS_MAX_COUNTRY;c++)
+        if (w->country[c].role!=POLITY_UNCLAIMED && wp->country[c].mode==EV_MODE_REVOLUTION)
+            faction_lever_apply(c, FAC_COMMUNAUTAIRE, lv);
+}
+static void age_lever_tyrans(World *w, WorldProsperity *wp){
+    float lv_c = tune_f("AGE_TYRANS_CONQUEROR_LEVER",0.08f);
+    float lv_l = tune_f("AGE_TYRANS_LEGISTE_LEVER",0.04f);
+    for (int c=0;c<nc_loop(w,wp) && c<SCPS_MAX_COUNTRY;c++)
+        if (w->country[c].role!=POLITY_UNCLAIMED){
+            faction_lever_apply(c, FAC_CONQUERANT, lv_c);
+            faction_lever_apply(c, FAC_LEGISTE, lv_l);
+        }
+}
+
+static void age_dawn(EventsState *ev, uint32_t seed, AgeId a, World *w, WorldEconomy *econ,
+                     WorldProsperity *wp, WorldLegitimacy *wl, const TechState ts[]){
+    EventCtx cx={ev,w,econ,NULL,wp,NULL,NULL,NULL,NULL,NULL,-1,NULL};
     EvEffect e; memset(&e,0,sizeof e); e.pop_mult=1.f; e.unlock_branch=-1;
     switch(a){
-        case AGE_COMMERCE: e.d_C_global=1.0f; e.unlock_branch=THM_SOCIETE; e.unlock_tier=3; break;
-        case AGE_REASON:   ev->ages.research_mult += 0.5f; e.unlock_branch=THM_SOCIETE; e.unlock_tier=4; break;
-        case AGE_EMPIRES:  ev->ages.integration_mult += 0.5f; e.unlock_branch=THM_SOCIETE; e.unlock_tier=5; break;
-        case AGE_BREACH:   e.d_breach=2.0f; e.unlock_branch=THM_SAVOIR; e.unlock_tier=5; break;
-        /* Structurels : on déplace une ENTRÉE GLOBALE du moteur (le verdict suit). */
-        case AGE_LUMIERES:
-            if (wp){ wp->age_I_bonus += AGE_DELTA_I;            /* les idées surgissent */
-                     wp->age_lumiere_solvent += AGE_DELTA_SOLV; }/* la légitimité coercitive se dissout */
-            e.unlock_branch=THM_SOCIETE; e.unlock_tier=4;       /* le boon : le savoir */
+        case AGE_EXCHANGE:
+            e.d_C_global = tune_f("AGE_EXCHANGE_C",0.50f);            /* PERMANENT */
+            if (wp) wp->age_P_bonus += tune_f("AGE_EXCHANGE_P",0.50f);/* TRANSITOIRE */
+            if (wp) wp->age_mig_mult = tune_f("AGE_EXCHANGE_MIG_PACT_MULT",1.15f); /* TRANSITOIRE */
+            e.unlock_branch=THM_SOCIETE; e.unlock_tier=3;
+            if (w && econ) age_lever_exchange(w,econ);
             break;
-        case AGE_SOULEVEMENTS: if(wp) wp->age_L_penalty += AGE_DELTA_L; break;   /* L ↓ partout (contagion) */
-        case AGE_ORDRE_FER:
-            if (wp){ wp->age_H_bonus      += AGE_DELTA_H;          /* la poigne */
-                     wp->age_myth_homogen += AGE_DELTA_MYTH; }     /* le mythe nie la diversité */
-            if (w && econ) spread_credo_purificateur(w,econ);
+        case AGE_DISCOVERY:
+            e.d_C_global = tune_f("AGE_DISCOVERY_C",0.50f);           /* PERMANENT */
+            if (wp) wp->age_research_mult = tune_f("AGE_DISCOVERY_RESEARCH_MULT",1.10f); /* TRANSITOIRE */
+            e.unlock_branch=THM_SAVOIR; e.unlock_tier=4;
+            if (w) age_lever_discovery(w,wp);
+            break;
+        case AGE_EMPIRES:
+            if (wp) wp->age_integration_mult = tune_f("AGE_EMPIRES_INTEGRATION_MULT",1.20f); /* PERMANENT */
+            e.unlock_branch=THM_SOCIETE; e.unlock_tier=5;
+            if (w && econ) age_lever_empires(w,econ,wl);
+            break;
+        case AGE_HEROES:
+            break;   /* aucun effet mondial — la mécanique vit dans ages_hero_fire */
+        case AGE_BREACH:
+            e.d_breach = tune_f("AGE_BREACH_FLUX",1.50f);
+            e.unlock_branch=THM_SAVOIR; e.unlock_tier=5;
+            age_lever_breach(ts);
+            break;
+        case AGE_LUMIERES:
+            if (wp){ wp->age_I_bonus         += tune_f("AGE_LUMIERES_I",1.50f);       /* TRANSITOIRE */
+                     wp->age_lumiere_solvent += tune_f("AGE_LUMIERES_SOLVENT",1.25f); }/* TRANSITOIRE */
+            if (w) age_lever_lumieres(w,wp);
+            break;
+        case AGE_SOULEVEMENTS:
+            if (wp) wp->age_L_penalty += tune_f("AGE_SOULEVEMENTS_L",1.50f);   /* TRANSITOIRE */
+            if (w) age_lever_soulevements(w,wp);
+            break;
+        case AGE_TYRANS:
+            if (wp){ wp->age_H_bonus      += tune_f("AGE_TYRANS_H",1.75f);        /* TRANSITOIRE */
+                     wp->age_myth_homogen += tune_f("AGE_TYRANS_DIVERSITY",1.50f); }/* TRANSITOIRE */
+            /* AUCUNE conversion automatique des credos (spec verbatim) : PAS
+             * d'appel à spread_credo_purificateur (retirée ci-dessus). */
+            if (w) age_lever_tyrans(w,wp);
             break;
         default: break;
     }
-    apply_effect(&cx, EV_WORLD, 0, &e);
+    apply_effect(&cx, EV_WORLD, 0, &e);   /* pousse age_C_bonus/age_breach_flux/age_tech_mask (EV_WORLD, ci-dessus) */
     ev->ages.dawned[a]=true; ev->ages.last_dawned=(int)a;
-    ev->ages.last_dawn_year = ev->ages.days_elapsed/365;   /* horodate l'avènement */
+    ev->ages.last_dawn_year = ev->ages.days_elapsed/365;   /* throttle des collisions : 1/an */
     /* §G2 — un ÂGE est le fait le PLUS notable : MÉMOIRE durable de poids plein
      * (subject = -1, échelle monde) → un présage l'évoquera plus tard. */
     dir_remember(&ev->director, ev->ages.days_elapsed, DMEM_AGE, -1, 1.0f);
+    (void)seed;
 }
 
 bool events_check_ages(EventsState *ev, World *w, WorldEconomy *econ,
                        WorldProsperity *wp, WorldLegitimacy *wl, const TechState ts[]){
-    bool any=false;
-    /* Rythme : UN SEUL âge par fenêtre de 30 ans, rien avant l'an 30. La barrière
-     * est RÉÉVALUÉE après chaque avènement (last_dawn_year bouge) → les âges
-     * s'égrènent une génération à la fois, jamais en grappe. */
-    #define AGE_GATE (ev->ages.days_elapsed/365 >= ev->ages.last_dawn_year + AGE_MIN_YEARS)
-    if (AGE_GATE && !ev->ages.dawned[AGE_COMMERCE] && age_trig_commerce(w,econ,wp,ts)){ age_dawn(ev,AGE_COMMERCE,w,econ,wp); any=true; }
-    if (AGE_GATE && !ev->ages.dawned[AGE_REASON]   && age_trig_reason  (w,econ,wp,ts)){ age_dawn(ev,AGE_REASON,w,econ,wp);   any=true; }
-    /* Lumières AVANT les âges politiques (la société de masse d'abord). */
-    if (AGE_GATE && !ev->ages.dawned[AGE_LUMIERES] && age_trig_lumieres(w,wp))        { age_dawn(ev,AGE_LUMIERES,w,econ,wp); any=true; }
-    if (AGE_GATE && !ev->ages.dawned[AGE_EMPIRES]  && age_trig_empires (w,econ,wp,ts,wl)){ age_dawn(ev,AGE_EMPIRES,w,econ,wp);any=true; }
-    if (AGE_GATE && !ev->ages.dawned[AGE_BREACH]   && age_trig_breach  (w,econ,wp,ts)){ age_dawn(ev,AGE_BREACH,w,econ,wp);   any=true; }
-    /* Politiques : exigent que les Lumières aient eu lieu (causalité). */
-    if (AGE_GATE && !ev->ages.dawned[AGE_SOULEVEMENTS] && age_trig_soulevements(ev,w,wp)){ age_dawn(ev,AGE_SOULEVEMENTS,w,econ,wp); any=true; }
-    if (AGE_GATE && !ev->ages.dawned[AGE_ORDRE_FER]    && age_trig_ordrefer   (ev,w,wp)){ age_dawn(ev,AGE_ORDRE_FER,w,econ,wp);    any=true; }
-    #undef AGE_GATE
-    return any;
+    uint32_t seed = w ? w->seed : 0u;
+    int year = ev->ages.days_elapsed/365;
+    /* 1. ÉLIGIBILITÉ — ACQUISE la première fois que le déclencheur devient vrai,
+     * pour chaque âge non encore avenu (les âges déjà avenus n'ont plus rien à
+     * latcher). AGE_HEROES est HORS scan (déclenché par ages_hero_fire). */
+    bool trig[AGE_COUNT] = {0};
+    trig[AGE_EXCHANGE]     = age_trig_exchange(w,econ,wp,ts);
+    trig[AGE_DISCOVERY]    = age_trig_discovery(w,econ,wp,ts);
+    trig[AGE_EMPIRES]      = age_trig_empires(w,econ,wp,ts,wl);
+    trig[AGE_BREACH]       = age_trig_breach(w,econ,wp,ts);
+    trig[AGE_LUMIERES]     = age_trig_lumieres(w,wp);
+    trig[AGE_SOULEVEMENTS] = age_trig_soulevements(ev,w,wp);
+    trig[AGE_TYRANS]       = age_trig_tyrans(ev,w,wp);
+    for (int a=0;a<AGE_COUNT;a++){
+        if (a==AGE_HEROES || ev->ages.dawned[a] || ev->ages.year_eligible[a]>=0) continue;
+        if (trig[a]) ev->ages.year_eligible[a] = (int16_t)year;
+    }
+    /* 2. AVÈNEMENT — au plus UN âge par an (le throttle RÉSOUT les collisions :
+     * « un hash de la seed choisit le premier, les autres suivent les années
+     * suivantes », sans état de plus — le perdant reste candidat, retenté l'an
+     * prochain). Priorité DÉTERMINISTE (age_priority), pas l'ordre de l'enum. */
+    if (year <= ev->ages.last_dawn_year) return false;
+    AgeId best=AGE_COUNT; uint32_t best_pr=0;
+    for (int a=0;a<AGE_COUNT;a++){
+        if (a==AGE_HEROES || ev->ages.dawned[a] || ev->ages.year_eligible[a]<0) continue;
+        if (year < age_dawn_year(seed,(AgeId)a,ev->ages.year_eligible[a])) continue;
+        /* EXCLUSION MUTUELLE Soulèvements↔Tyrans — revérifiée ICI (pas à l'éligibilité,
+         * cf. commentaire d'age_trig_soulevements/_tyrans) : l'un des deux a pu avenir
+         * ENTRE le moment où CET âge est devenu éligible et aujourd'hui. */
+        if (a==AGE_SOULEVEMENTS && ev->ages.dawned[AGE_TYRANS]) continue;
+        if (a==AGE_TYRANS && ev->ages.dawned[AGE_SOULEVEMENTS]) continue;
+        uint32_t pr = age_priority(seed,(AgeId)a);
+        if (best==AGE_COUNT || pr<best_pr){ best=(AgeId)a; best_pr=pr; }
+    }
+    if (best==AGE_COUNT) return false;
+    age_dawn(ev,seed,best,w,econ,wp,wl,ts);
+    return true;
 }
 bool  ages_dawned(const EventsState *ev, AgeId a){ return (a>=0&&a<AGE_COUNT)?ev->ages.dawned[a]:false; }
-bool  ages_tier_open(const EventsState *ev, TechTheme br, int tier){
-    return (br>=0&&br<THM_COUNT&&tier>=0&&tier<8)?ev->ages.tier_open[br][tier]:false;
+bool  ages_tier_open(const WorldProsperity *wp, TechTheme br, int tier){
+    if (!wp || br<0 || br>=THM_COUNT || tier<0 || tier>=8) return false;
+    unsigned bit = (unsigned)br*8u + (unsigned)tier;
+    return bit<32 && (wp->age_tech_mask & (1u<<bit)) != 0;
+}
+bool  ages_tech_researchable(const WorldProsperity *wp, TechTheme br, int tier){
+    bool gated = (br==THM_SOCIETE && (tier==3 || tier==5))
+              || (br==THM_SAVOIR  && (tier==4 || tier==5));
+    return !gated || ages_tier_open(wp,br,tier);
 }
 float ages_breach_pressure(const EventsState *ev){ return ev->ages.breach_pressure; }
+
+/* raccord 7 — L'ÂGE DES HÉROS. Le TEST (rang III + efficacité + loyauté + encore
+ * assis) vit dans scps_sim.c (accès direct à Statecraft/MissionsState, ce module
+ * n'en a pas besoin) ; ici on se contente de faire advenir l'âge (une fois) et de
+ * pousser « Le nom du siècle » — DÉTERMINISTE, pas de mtth (fire_event(subject)
+ * sans roll, comme age_dawn : le fait est déjà avéré au moment de l'appel). */
+void ages_hero_fire(EventsState *ev, World *w, WorldEconomy *econ, WorldLegitimacy *wl,
+                    WorldProsperity *wp, Statecraft *sc, RouteNetwork *rn,
+                    const TechState ts[], DiploState *dp, EndgameState *eg,
+                    MissionsState *ms, int cid, int seat, int slot, int gen,
+                    int human_player){
+    if (!ev || !w || cid<0 || cid>=w->n_countries) return;
+    (void)slot; (void)gen;   /* l'identité est RE-DÉRIVÉE à la résolution (statecraft_council_seated) */
+    if (!ev->ages.dawned[AGE_HEROES])
+        age_dawn(ev, w->seed, AGE_HEROES, w, econ, wp, wl, ts);
+    int evid;
+    switch (seat){
+        case 0: evid=EVID_HERO_SAVOIR;    break;
+        case 1: evid=EVID_HERO_SOCIETE;   break;
+        case 2: evid=EVID_HERO_INDUSTRIE; break;
+        default: return;
+    }
+    EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp,eg,human_player,ms};
+    fire_event(&cx, evid, cid);
+}
 
 /* ===================================================================== */
 /* LE DIRECTEUR D'ÉVÉNEMENTS (§F) — stabilise / déstabilise, sans s'acharner */
@@ -3384,7 +3736,7 @@ void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
                        RouteNetwork *rn, const TechState ts[], DiploState *dp,
                        EndgameState *eg, int days,
                        int human_player){
-    EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp,eg,human_player};
+    EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp,eg,human_player,NULL};
     g_title_sc = sc;   /* lot M : latch display-only pour event_title (noms de ministre) */
     ev->ages.days_elapsed += days;          /* horloge de jeu (rythme des âges) */
 
@@ -3419,9 +3771,12 @@ void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
             }
         }
     }
-    /* Peste : foyer rare sur le plus grand carrefour ouvert, puis diffusion. */
+    /* Peste : foyer rare sur le plus grand carrefour ouvert, puis diffusion.
+     * (NODE_VALUE_Y vivait autrefois à côté des seuils d'âge ; ce seuil « région
+     * riche » est réutilisé ICI, sans rapport avec les Âges — cf. AGE_EXCHANGE_
+     * NODE_VALUE pour l'équivalent tunable côté Échanges.) */
     {
-        int hub=-1; float best=NODE_VALUE_Y;
+        int hub=-1; float best=1.0f;
         for (int r=0;r<econ->n_regions;r++) if (econ->region[r].route_pe>best){ best=econ->region[r].route_pe; hub=r; }
         if (hub>=0 && frand(&ev->rng) < mtth_p(EVENTS[EVID_PLAGUE].mtth_days / calm_mult, days)){
             events_plague_spread(ev,w,econ,wl,sc,rn,hub);
@@ -3596,14 +3951,21 @@ void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
 
     /* Résorption TRANSITOIRE de l'amplification structurelle : la crise aiguë
      * retombe à mesure que les pays tranchent (réforme / poigne / effondrement)
-     * — résolution émergente, pas un minuteur. Les acquis (palier, credo) restent. */
+     * — résolution émergente, pas un minuteur. Les acquis (palier, credo) restent.
+     * AGE_STRUCTURAL_DECAY_DAY (registre J, raccord « jitter ») remplace le 0,0004
+     * codé en dur. age_P_bonus/age_mig_mult/age_research_mult (Échanges/Découvertes,
+     * TRANSITOIRES) suivent le MÊME rythme ; age_integration_mult (Empires) et
+     * age_tech_mask ne décroissent JAMAIS (PERMANENTS, spec verbatim). */
     if (wp){
-        float k = clampf(0.0004f*(float)days, 0.f, 1.f);
+        float k = clampf(tune_f("AGE_STRUCTURAL_DECAY_DAY",0.00015f)*(float)days, 0.f, 1.f);
         wp->age_I_bonus         -= wp->age_I_bonus         * k;
         wp->age_lumiere_solvent -= wp->age_lumiere_solvent * k;
         wp->age_L_penalty       -= wp->age_L_penalty       * k;
         wp->age_H_bonus         -= wp->age_H_bonus         * k;
         wp->age_myth_homogen    -= wp->age_myth_homogen    * k;
+        wp->age_P_bonus         -= wp->age_P_bonus         * k;
+        wp->age_mig_mult        -= (wp->age_mig_mult-1.f)  * k;   /* décroît VERS 1, pas vers 0 */
+        wp->age_research_mult   -= (wp->age_research_mult-1.f) * k;
     }
 
     /* MEMBRANE DE DÉCISION — un pending qui a expiré (180 j sans choix du joueur)

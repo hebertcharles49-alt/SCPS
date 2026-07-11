@@ -3267,3 +3267,267 @@ fixe). **SAVE toujours non bumpé** (les 2 readers assiette sont purs).
   (visible sur `15_tech.png`/`04_prov_detail.png`) — MÊME ancrage que l'ancienne pile pleine (donc pas
   une régression : la pile pleine aurait chevauché BEAUCOUP PLUS), mais un ajustement de position
   serait cosmétiquement bienvenu (hors scope de ce lot, non demandé).
+
+## [2026-07-11] §27 FINS CORRIGÉES — EAU d'un coup · RONCES dégrade sans purger · SANG = plancher permanent (implémenteur solo, scps_endgame.{c,h}/scps_tune_list.h/endgame_demo.c — SAVE non bumpé)
+Périmètre STRICT (docs/AGES_FINS_2026-07-11.md, section « Fins corrigées » + raccord 9) : refaire les
+3 fins §27 sur des moteurs EXISTANTS. Session PARALLÈLE à un autre agent sur les ÂGES (scps_events.{c,h}/
+scps_missions.h/scps_prosperity.{c,h}) — jamais touché ces fichiers, vérifié `git diff` avant chaque édit.
+
+**Découvertes**
+- **EAU** : `cataclysm_water_seed` (scps_endgame.c) traçait DÉJÀ le masque COMPLET du rift en UN passage
+  (tous les bras/toute la longueur, `eg->sunken[r]=1` pour CHAQUE région touchée) — c'est
+  `cataclysm_water_step` qui étalait le drain sur `SINK_RIFTS_PER_YEAR` (3) régions/an. Le fix est donc
+  MINIMAL : retirer le budget (`sunk_now < budget`) de la boucle de `cataclysm_water_step` — elle
+  engloutit alors TOUT `sunken[r]==1` en une passe. Comme `cataclysm_water_seed` (dans
+  `endgame_select_and_fire`) ET le premier appel de `cataclysm_water_step` (dans le `switch` d'
+  `endgame_tick`, juste après) tournent dans le MÊME appel d'`endgame_tick` (le fire), la carte sombre
+  ENTIÈREMENT l'année du tir — vérifié en LIVE (`chronicle 9 …` : « 6 région(s) englouties (0 en cours) »,
+  zéro pending après le tick de déclenchement, sur 2 runs distincts). WATER_RIFT_ARMS/_LENGTH/_STEP
+  promus au registre J en `X(...)` séparés (défaut inchangé 5/96/3) — les anciens `#define RIFT_ARMS`
+  locaux supprimés, lus via `tune_f` au point d'usage.
+- **RONCES** : le pipeline dégradation-avant-mort (habitabilité BIO_THORNS=0.05 + `econ_cold_refresh`
+  appelé après CHAQUE propagation annuelle) était DÉJÀ écrit (LOT F, 2026-07-08) — seul le bloc de
+  BASCULE (`THORN_FLIP_FRAC≥0.5` : convertit+détache+strip+refragmente) restait à retirer. Suppression
+  pure (aucun remplacement nécessaire, le recalcul habitabilité/grain tourne déjà juste avant le bloc
+  supprimé). `camp` devient un paramètre inutilisé de `thorns_step` (gardé pour la signature du switch
+  d'`endgame_tick`, `(void)camp;` en tête — miroir du style `(void)rn;` déjà présent).
+- **SANG — le vrai piège de conception** : l'ÉRUPTION (`cataclysm_thorns_seed`-like) de SANG n'existe pas
+  vraiment — `sang_seed` snapshotait `revolt_scar` UNE fois au fire ; `sang_step` drainait ensuite la pop
+  chaque année. Le raccord 9 demande un RATCHET (marque qui ne redescend jamais + plancher permanent sur
+  `revolt_scar` des PROVINCES) plutôt qu'un drain — j'ai fusionné `sang_seed`+`sang_step` en UNE
+  fonction (`sang_step`, appelée au fire ET chaque année via le `switch`) qui (1) relit
+  `econ->region[r].revolt_scar` (agrégat pop-pondéré, `econ_aggregate_regions` scps_econ.c:1124) — si
+  ≥`SANG_SCAR_MIN` ET > la marque actuelle, `sang_scar[r]` MONTE ; (2) pour CHAQUE province de la région
+  (`w->region[r].province_ids[]`), plafonne PAR LE BAS : `pe->revolt_scar = max(pe->revolt_scar,
+  sang_scar[r])`. Écriture DIRECTE sur `ProvinceEconomy.revolt_scar` depuis scps_endgame.c — PAS un
+  précédent inventé : `cataclysm_strip_region_econ` (même fichier, EAU) écrit DÉJÀ `pe->owner=-1` etc.
+  directement, le module endgame a licence sur ces champs pour SES mutations de fin de partie.
+- **`endgame_flee_target` (non-`_arr`) devenait du code MORT** une fois le drain SANG retiré (son SEUL
+  appelant) — retiré (aurait été un warning `-Wunused-function` sous `-Wall`, vérifié 0 warning après
+  coup). `endgame_evacuate_region`/`endgame_flee_target_arr` restent utilisés (exode générique LOT F,
+  EAU/FROID/RONCES/CHAUD — SANG n'y participe PAS, cf. Pièges).
+- **`ProvinceEconomy.revolt_scar` (province, la vérité) vs `RegionEconomy.revolt_scar` (agrégat
+  pop-pondéré, `scarsum[r]/popsum[r]`, RECONSTRUIT à chaque `econ_aggregate_regions`)** — le raccord 9
+  parle de « revolt_scar régionale » comme SIGNAL de lecture (l'agrégat, cohérent avec ce que lisait déjà
+  l'ancien `sang_seed`) mais le PLANCHER s'écrit côté province (la vérité sérialisée/decayée chaque mois
+  par `scps_econ.c:3064` `re->revolt_scar -= 0.25*dt`). Confondre les deux (planher sur l'agrégat au lieu
+  des provinces) n'aurait RIEN empêché de guérir — l'agrégat est écrasé au prochain tick éco.
+- **Vérifié en LIVE (chronicle réel, pas seulement le banc synthétique)** : `SCPS_TUNE=ENDGAME_BLOOD_FRAC=
+  0.01` (diagnostic seulement, jamais committé) fait fircher SANG de façon fiable (6/6 sur un mini-sweep
+  de graines 1-99) — confirme que le sélecteur + `sang_step` fonctionnent bout-en-bout en conditions
+  réelles, pas seulement sous les manipulations manuelles du banc.
+
+**Pièges**
+- **Le banc RONCES mesurait au MAUVAIS instant** : `cataclysm_thorns_seed` (l'ÉRUPTION) corrompt TOUTE
+  la région-épicentre EN UN COUP, dans le MÊME tick que le fire (comme l'EAU) — un snapshot
+  habitabilité/grain pris APRÈS le tick de fire capture déjà l'épicentre à son plancher ; 80 ans de
+  propagation supplémentaire ne peuvent plus rien y faire baisser (déjà minimal). Il FAUT snapshotter
+  TOUTES les régions du monde FRAIS avant même le premier `endgame_tick`, puis comparer `region[epi_b]`
+  à cette valeur pré-fire — piège identique en substance à celui déjà documenté pour le FROID/l'exode
+  (« FIN_FROID était FLAT », 2026-07-08) : mesurer au mauvais moment masque un effet réel.
+- **Le grain (`raw_cap[RES_GRAIN]`) d'une région ne peut baisser que s'il existait déjà** —
+  `econ_cold_refresh` ne fait que PLAFONNER vers le bas (`if (cold_grain < raw_cap) raw_cap = cold_grain`),
+  jamais remonter ; une province côtière/archipel peut vivre de poisson SEUL (`raw_cap[GRAIN]=0` dès la
+  genèse, N1 « carte nue ») — fixer le test sur LE foyer précis échoue selon la géographie tirée (graine
+  9 = archétype « archipel »). Fix : chercher, parmi TOUTES les régions dont l'habitabilité a baissé, UNE
+  qui avait du grain — plus robuste qu'un test fixé sur l'épicentre.
+- **SANG n'a JAMAIS gagné en conditions normales sur les seeds de golden (7/108/209/310/411, 12 ans) ni
+  sur le sweep 250 ans par défaut** (`ENDGAME_BLOOD_FRAC=0.20` par défaut ; la mémoire des morts tourne
+  autour de 3-9 % de la pop vivante sur des mondes calmes) — c'est ATTENDU (SANG doit être RARE), mais ça
+  veut dire qu'un run « normal » ne suffit PAS à observer le mécanisme live ; il faut soit un sweep large
+  (50+ graines), soit un `SCPS_TUNE=ENDGAME_BLOOD_FRAC=…` bas en diagnostic ponctuel (jamais committé,
+  golden inchangé puisque `SCPS_TUNE` est un override runtime).
+- **Le worktree gate-check** : `make chronicle`/`golden`/`determinism`/`smoke` échouaient dans l'arbre de
+  travail PARTAGÉ (le second agent avait `scps_events.h` modifié mais PAS encore `scps_events.c` synchro
+  — `AgesState.tier_open`/`research_mult`/`AGE_COMMERCE` etc. inexistants côté .c, erreurs de compilation
+  à CE moment précis, rien à voir avec mes fichiers). Contournement PROPRE : `git worktree add --detach
+  <tmp> fbabfa4` (le commit de départ propre) + copie MANUELLE de mes 4 fichiers modifiés
+  (scps_endgame.{c,h}, scps_tune_list.h, endgame_demo.c) dans ce worktree isolé, gates lancés LÀ — zéro
+  risque d'écraser le travail en cours de l'autre agent, zéro dépendance à ce que son build soit fini.
+  `git worktree remove` (ou suppression manuelle) à faire par l'orchestrateur en fin de vague.
+- **Environnement de build** : le shell par défaut du Bash tool n'a PAS `make`/`gcc` MSYS2 sur PATH (son
+  `/tmp` n'est même pas le même `/tmp` que celui vu par le sous-shell MSYS2 — écrire un fichier dans
+  `/tmp` depuis `MSYSTEM=MINGW64 /d/MSYS2/usr/bin/bash.exe -l script.sh` puis le lire depuis le Bash tool
+  droit donne un fichier VIDE/périmé). Toujours (a) écrire un script `.sh` sur disque avec `cd` explicite
+  en 1re ligne, (b) l'invoquer `MSYSTEM=MINGW64 /d/MSYS2/usr/bin/bash.exe -l <chemin absolu du .sh>`, (c)
+  rediriger toute sortie qu'on veut relire ensuite vers un chemin Windows ABSOLU sous `/c/...` (jamais
+  `/tmp`) — cf. `scps-build-windows.md` (mémoire), confirmé à nouveau ici.
+
+**Restes**
+- Aucun canal neuf ajouté (conforme au mandat) : SANG reste borné par `revolt_scar`, qui ne capture QUE
+  les cicatrices de sac/révolte — une guerre inter-états SANS siège/révolte locale peut faire monter le
+  ratio mondial de morts sans jamais marquer AUCUNE région (`sang_scar` reste tout à 0, `sang_step`
+  no-op) ; gap PRÉ-EXISTANT déjà documenté 2026-07-08 (Lot F), toujours vrai, toujours hors mandat de
+  cette session (le mandat interdisait explicitement un second signal).
+- Pas de télémétrie chronicle dédiée au NOMBRE de régions marquées SANG (seule la ligne « mémoire des
+  morts X% » existe, mondiale) — chronicle.c est hors périmètre des fichiers autorisés ; un futur lot
+  pourrait ajouter « N région(s) marquée(s) SANG » au résumé §27 si le calibrage l'exige.
+- `docs/AGES_FINS_2026-07-11.md` §« Les âges » (hors mandat, agent parallèle) reste À FAIRE par l'autre
+  agent — l'arbre partagé n'était PAS buildable au moment de cette session (scps_events.c/.h désynchros) ;
+  revérifier `make golden`/`determinism` dans l'arbre RÉEL (pas le worktree isolé) une fois l'autre agent
+  terminé, pour confirmer qu'aucune interaction imprévue entre les deux lots ne bouge le hash 12 ans.
+
+## 2026-07-11 ÂGES SANS ORDRE IMPOSÉ — docs/AGES_FINS_2026-07-11.md (agent §Ages)
+**Découvertes**
+- L'ancien système d'âges vivait ENTIER dans `scps_events.h`/`scps_events.c` (AgeId, AgesState,
+  events_check_ages, age_dawn, ages_tier_open/ages_dawned/ages_breach_pressure) — AUCUN autre module
+  n'implémentait de logique d'âge, seuls `scps_factions.c:age_patron/faction_age_engage` (l'engagement,
+  SUPPRIMÉ) et `chronicle.c`/`events_demo.c`/`structural_demo.c`/`factions_demo.c` en lisaient l'API.
+- `tier_open`/`research_mult`/`integration_mult` étaient DES CHAMPS MORTS avant cette session : posés par
+  `age_dawn` mais JAMAIS lus par `tech_can_research`/`ai_research_step`/demography — confirmé par grep
+  exhaustif (seuls les bancs les lisaient). Raccords 1/2/3 = les CÂBLER pour de vrai, pas les inventer.
+  Déplacés vers `WorldProsperity` (`age_research_mult`/`age_integration_mult`/`age_tech_mask`, uint bitmask
+  `theme*8+tier`) plutôt que laissés sur `AgesState` : tout consommateur (ai_research_step, demography_tick,
+  scps_sim.c voie joueur) avait DÉJÀ `wp` sous la main, jamais `ev`/EventsState — évite d'élargir la
+  signature de fonctions largement appelées.
+- **Piège de link le plus coûteux** : appeler une fonction de `scps_events.c` (`ages_tech_researchable`)
+  depuis `scps_ai.c` casse le LINK de `ai_demo`/`FORKS_DEMO_OBJS`/`CREDIT_DEMO_OBJS`/`CAP_DEMO_OBJS` — ces
+  binaires ne lient PAS `scps_scps_events.o` (`AI_DEMO_OBJS`, Makefile:343). Fix : DUPLIQUER le petit test
+  de bit LOCALEMENT dans `scps_ai.c` (`ai_age_tier_open`, statique, lit `wp->age_tech_mask` directement,
+  ZÉRO appel cross-module) plutôt que d'exposer une fonction publique consommée par un module qui n'a pas
+  le luxe de tirer tout `scps_events.o`. Le miroir `ages_tech_researchable` (scps_events.c, pour
+  scps_sim.c/scps_api.c qui lient déjà events.o) DOIT rester identique bit-à-bit si les 4 paliers gated
+  changent (`THM_SOCIETE` 3/5 · `THM_SAVOIR` 4/5) — pas de test partagé, un commentaire de garde de chaque
+  côté suffit (cf. les deux fonctions).
+- **`Makefile:EVENTS_DEMO_OBJS`** ne liait PAS `scps_scps_fog.o` (ajouté : `country_knows`/
+  `fog_debug_meet_all` désormais utilisés par `scps_events.c` pour le déclencheur Découvertes) — toute
+  liste `*_OBJS` qui a `scps_scps_events.o` sans `scps_scps_fog.o` cassera au link si un futur âge lit
+  encore du brouillard ; awk de contrôle : `awk '/_OBJS.*(:=|\+=)/{if(n)print n,e?"E":"-",f?"F":"-";
+  n=$1;e=0;f=0} /scps_scps_events\.o/{e=1} /scps_scps_fog\.o/{f=1}' Makefile` (seule EVENTS_DEMO_OBJS
+  avait E sans F après mon ajout de scps_fog.h à scps_events.c — corrigé).
+- **`EventCtx` (struct interne à `scps_events.c`, ~10 constructeurs positionnels `{ev,w,econ,...}`)** :
+  ajouter un champ EN FIN de struct (`MissionsState *ms`) est SÛR par construction en C99 — un
+  initialiseur positionnel avec MOINS d'éléments laisse le reste à zéro (`ms=NULL` partout sauf le seul
+  site qui le passe explicitement, `ages_hero_fire`). Mais `-Wextra` prévient quand même
+  (`-Wmissing-field-initializers`) — ajouté `,NULL` explicite aux ~7 sites existants pour rester à
+  0 warning (le codebase l'exige).
+- **Le hero (raccord 7) se détecte HORS du module events** : `scps_missions.c` gagne un flag transitoire
+  `Mission.just_completed` (RAZ en tête de CHAQUE `missions_tick`, posé vrai dans la branche succès) —
+  scps_sim.c (qui a Statecraft+MissionsState+EventsState tous sous la main) fait le test rang III +
+  efficacité + loyauté + encore assis JUSTE APRÈS l'appel à `missions_tick`, puis appelle
+  `ages_hero_fire(...)`. `scps_missions.c` reste ignorant des évènements (pas de nouvelle dépendance
+  croisée events↔missions dans ce sens). Le SIÈGE est FIXE par EVID (`EVID_HERO_SAVOIR/SOCIETE/
+  INDUSTRIE` = seat 0/1/2), motif copié EXACT de `EVID_TRAHISON_SAVOIR/SOCIETE/INDUSTRIE`
+  (`hero_seat_of`/`treason_seat_of`, scps_events.c) — la faction du titulaire est résolue DYNAMIQUEMENT
+  à la résolution (`statecraft_council_seat_faction`), le hook statique de la table reste neutre.
+- Genre du héros : AUCUN état neuf — `statecraft_council_cand_female` (nouveau, scps_statecraft.{h,c})
+  relit le MÊME hash que `statecraft_council_cand_firstname` (`h % 24 >= 12`), juste un second regard sur
+  un tirage déjà déterministe.
+- Le bonus « la prochaine mission du siège » (raccord 7, oi=0/1) est porté par `MissionsState.hero_bonus
+  [cid][seat] = {mult, slot, gen}` — consommé (appliqué OU perdu, jamais laissé traîner) dans
+  `mission_grant` (scps_missions.c) qui compare `(slot,gen)` COURANT du siège à celui figé au choix : si
+  le titulaire a changé, le successeur ne touche rien (spec verbatim), et le slot est remis à 0 dans
+  TOUS les cas (pas de fuite d'un bonus jamais consommé si le siège ne se re-route jamais vers ce héros).
+- **fire_event() en mode DÉTERMINISTE (pas de roll mtth)** : appeler `fire_event(&cx, evid, subject)`
+  directement (sans passer par le scan `if (EVENTS[x].trigger(...) && frand(...)<mtth_p(...))`) enfile
+  (joueur) ou auto-résout (IA, `best ai_chance`) IMMÉDIATEMENT, sans consommer `ev->rng` — c'est le MÊME
+  mécanisme que `age_dawn` (qui n'est pas non plus dans le scan). `EVENTS[EVID_HERO_*].trigger` pointe
+  vers un `trig_never` neutre (jamais appelé, la table exige un pointeur non-NULL) ; `mtth_days=0.f`.
+- `capital_max_tier`/tier_open : NE PAS confondre le TIER de la SPEC des Âges (Société 3/Savoir 4/
+  Société 5/Savoir 5, un palier de l'arbre TECH) avec le tier de PROVINCE (LOT T, pop→T1..T7) — deux
+  échelles totalement différentes qui partagent juste le mot « tier ». Aucune interaction.
+
+**Pièges**
+- **Le piège le plus coûteux (2 tests cassés, ~45 min à isoler)** : `events_demo.c` ne réinitialise
+  JAMAIS `faction_lever_apply`/`faction_levers_reset()` ni le monde (`route_pe`/`years_held`/`ts.charge`/
+  `country_knows` fog) ENTRE ses sections — seul `events_init(s.ev,...)` (RAZ `ev` uniquement) est appelé
+  en tête de section. Tant que les âges n'avaient AUCUN effet de bord sur les factions (l'ancien
+  `age_dawn` ne touchait jamais `scps_factions.c`), ce résidu inter-sections était invisible. Mes leviers
+  scopés (`age_lever_exchange/_discovery/_empires/_breach`, NOUVEAUX) le rendent VISIBLE : la section 4
+  (test des âges) laisse `route_pe`/`years_held`/`ts.charge` à des valeurs qui SATISFONT ENCORE les
+  déclencheurs plus loin dans le fichier ; comme `events_init()` remet `ev->ages.dawned[]`/
+  `year_eligible[]` à zéro à CHAQUE section suivante, les âges peuvent RE-DAWN en section 15 (Conseil) —
+  et là, `age_lever_exchange`/`_discovery` votent sur des pays que la section ne s'attend pas à voir
+  bouger, cassant `EVID_TRAHISON_SAVOIR`/`EVID_MERV_SACRIFICE` (probabilistes, sensibles à l'état
+  faction/rng accumulé). Fix appliqué EN FIN DE SECTION 4 (`events_demo.c`, juste après le dernier
+  `ok(...)` des âges) : `faction_levers_reset()` + RAZ manuel de route_pe/years_held/ts.charge + `fog_reset()`
+  — même discipline que `events_init()` referme SA section, ce nettoyage referme la section 4. **Tout futur
+  banc qui enchaîne des sections SANS réinitialiser le monde ENTRE elles est à risque dès qu'un âge
+  gagne un effet de bord** — chercher `faction_levers_reset()`/`fog_reset()` manquants en premier si un
+  test lointain casse après une modification de `age_dawn`/`age_lever_*`.
+- **Éligibilité ACQUISE (spec) vs exclusion mutuelle Soulèvements↔Tyrans — INCOMPATIBLES telles quelles.**
+  Un `age_trig_soulevements`/`age_trig_tyrans` qui inclut la précondition `!dawned[AUTRE]` ne bloque QUE
+  l'ÉLIGIBILITÉ (le premier `year_eligible[a]=year` latché) — pas l'AVÈNEMENT (spec : « l'éligibilité
+  reste ACQUISE même si la valeur redescend », donc la phase 2/avènement ne revérifie PAS le trigger).
+  Un monde qui bascule en crise satisfait SOUVENT les deux conditions matérielles EN MÊME TEMPS (avant
+  qu'aucun des deux n'ait dawné) → les DEUX se latchent la même année → celui qui dawn EN SECOND
+  (perdant du throttle 1/an, retenté l'an suivant) ignore que l'autre a entretemps dawné, et avient
+  QUAND MÊME (violation de l'exclusion). Fix : les triggers `age_trig_soulevements`/`age_trig_tyrans`
+  sont des lectures MATÉRIELLES PURES (pas de précondition dessus, servent SEULEMENT à l'éligibilité) ;
+  l'exclusion est un GATE SÉPARÉ, réévalué à CHAQUE tentative d'avènement dans la boucle de sélection de
+  `events_check_ages` (`if (a==AGE_SOULEVEMENTS && dawned[AGE_TYRANS]) continue;` et le miroir) — capturé
+  par `structural_demo.c` §1 (réécrite pour tester l'exclusion mutuelle DANS LES DEUX SENS plutôt que
+  l'ancienne causalité Lumières-d'abord, supprimée par la spec).
+- **`make`/`cc` de ce poste résout un mingw64 CASSÉ** (`/mingw64/bin/cc` = en fait `D:\Git\mingw64`,
+  le mingw BUNDLED avec Git for Windows — PAS `D:\MSYS2\mingw64`) qui échoue avec `Cannot create
+  temporary file in C:\Windows\: Permission denied`, de façon INTERMITTENTE et pas forcément liée à la
+  taille du fichier (chronicle.c/events_demo.c/ai_demo ont chacun échoué au moins une fois en compile
+  OU en LINK, y compris avec `CC=/d/MSYS2/mingw64/bin/gcc.exe` explicite passé à `make` — le `make`
+  MSYS lui-même semble scrubber l'environnement différemment d'un appel gcc direct). Contournement fiable
+  à 100 % (jamais échoué) : quand `make CC=... <cible>` échoue sur `Cannot create temporary file`,
+  RE-EXÉCUTER la commande gcc affichée EN LA COPIANT TELLE QUELLE hors de make (compile OU link), puis
+  relancer make normalement — make retrouve le `.o`/l'exe déjà produit et continue. `export TMP=
+  'C:\Users\...\Temp' TEMP=... TMPDIR=/tmp` avant TOUT (compile direct ET make) réduit la fréquence mais
+  ne l'élimine pas. Les `.exe` déjà présents dans le repo (`events_demo.exe`, `ai_demo.exe`, …) au début
+  de session sont des BINAIRES PÉRIMÉS (antérieurs à toute session en cours) — ne JAMAIS les prendre pour
+  un test déjà vert sans vérifier le timestamp (`ls -la`) contre l'heure de la dernière modif source.
+- Chaque Bash tool call est un shell FRAIS : un fichier écrit sous `/tmp` (ou `/c/.../Temp`) dans un appel
+  n'est PAS garanti lisible dans l'appel suivant (observé : `cp /tmp/x.o build/` → "No such file", et une
+  redirection `> /tmp/mk.log` suivie de `tail /tmp/mk.log` dans le MÊME `&&`-chain a aussi échoué une
+  fois) — préférer TOUJOURS écrire directement dans `build/` (chemin du repo, persistant) plutôt que
+  `/tmp`, et regrouper compile+link+run dans UN SEUL appel Bash quand l'ordre compte.
+
+**Restes**
+- **`ENTROPY_BREACH_W`** (scps_tune_list.h, `scps_endgame.c:118`) reste à son défaut PRÉ-EXISTANT (0.3),
+  PAS le 0.60 de la spec (« poids de la Brèche dans l'entropie 0.60 ») : `scps_endgame.c` est le fichier
+  de l'agent parallèle « fins » (en cours d'édition pendant cette session, cf. entrée ci-dessus) — changer
+  SEULEMENT le défaut du registre sans toucher le `tune_f("ENTROPY_BREACH_W", 0.3f)` du fichier casse
+  l'invariant documenté (« le défaut du registre DOIT égaler le défaut au site d'appel »). Une ligne à
+  changer aux DEUX endroits une fois `scps_endgame.c` stabilisé : `0.3f` → `0.60f` (scps_tune_list.h:553
+  et scps_endgame.c:118).
+- **Citations et readout d'âge** : `scps_age_citation`/`scps_known_pair_share` sont des fonctions
+  ADDITIVES neuves (scps_api.{h,c}) plutôt qu'une extension de la signature de `scps_age_state`
+  existante — `godot/src/scps_sim_node.cpp` appelle déjà `scps_age_state` avec sa signature actuelle
+  (4 arguments) ; l'élargir aurait cassé la compilation du binding Godot (hors périmètre/build de cette
+  mission). Un futur agent Godot doit CÂBLER ces deux nouvelles fonctions côté binding + UI (topbar/
+  age_recap) pour que les citations/le ratio de pays connus soient VUS par le joueur.
+- **Chip « Engager »** : conservé EXACTEMENT tel quel côté verbe (`CMD_AGE_ENGAGE`/
+  `scps_player_age_engage`, scps_sim.c/scps_api.c INCHANGÉS) — devenu un pur accusé de réception
+  (`player_age_engaged` s'actualise, plus aucun effet moteur). Le chip topbar + l'écran de récap d'âge
+  (Godot, `age_recap.gd`/`topbar.gd`) n'ont PAS besoin de changer : ils continuent d'éteindre le chip au
+  clic, ce qui reste vrai (le verbe existe toujours, réussit toujours). Seule la SÉMANTIQUE change (« vous
+  avez vu cet âge » plutôt que « vous avez voté pour son patron ») — un futur agent UI pourrait vouloir
+  retoucher le LIBELLÉ/le texte du récap pour ne plus promettre un effet qui n'existe plus (codex.gd:50
+  dit encore « le joueur choisit son moment » — reste littéralement vrai mais pourrait clarifier
+  qu'aucun vote de faction n'est plus en jeu).
+- **`ai_age_tier_open` (scps_ai.c) et `ages_tech_researchable` (scps_events.c) sont DEUX COPIES** de la
+  même règle de gating (Société 3/5, Savoir 4/5) — voir Découvertes ci-dessus pour le pourquoi (le
+  link). Si un futur âge ajoute/retire un palier gated, les DEUX fonctions doivent changer ensemble ;
+  aucun test ne les compare bit-à-bit (à ajouter si ça dérive).
+- **`tier_open` visuel côté façade** : `scps_tech_nodes` (scps_api.c) downgrade OPEN→LOCKED pour les 4
+  paliers gated non ouverts, mais `scps_tech_info`/le panneau Medusa Godot n'affichent PAS explicitement
+  QUEL âge ouvrirait le palier verrouillé (juste "verrouillé") — un futur agent UI pourrait vouloir un
+  hover « s'ouvre à [nom de l'âge] ».
+- **Bancs NON revérifiés par cette session** (compilés seuls, jamais linkés+exécutés, faute de temps) :
+  `agency_demo`/`army_demo`/`campaign_demo`/`diplo_demo`/`econ_*_demo`/`endgame_demo`/`faith_demo`/
+  `navy_demo`/`prosperity_demo`/`readout_demo`/`religion_demo`/`revolt_demo`/`routes_demo`/`social_demo`/
+  `warhost_demo` — compilation SEULE (gcc -c) sans erreur pour chacun (confirmé), mais pas de link+run.
+  Aucun de ces fichiers ne référence les symboles renommés (AGE_COMMERCE/AGE_REASON/AGE_ORDRE_FER/
+  age_patron/faction_age_engage) d'après un grep dédié — risque résiduel FAIBLE mais non nul.
+  `intertrade_demo` reste le KO pré-existant connu (setenv, Windows/MinGW, sans rapport).
+- **`make golden`/`determinism` NON relancés** (mandat explicite : « NE RE-BASELINE PAS golden — ça va
+  bouger fort, attendu, l'orchestrateur gère ») — cette session s'est arrêtée aux gates fonctionnels
+  (chronicle 2 graines exit 0, bancs ci-dessus verts). Le hash 12 ans BOUGE nécessairement (nouveaux
+  triggers dès l'an-0, ex-Commerce renommé Échanges avec un seuil légèrement différent — X_NODES/
+  NODE_VALUE_Y inchangés en valeur mais la logique de %habité est nouvelle) : à re-baseliner par
+  l'orchestrateur UNE SEULE FOIS après fusion avec le lot « fins » de l'agent parallèle.
+- **SAVE BUMP nécessaire, non fait** : `AgesState` (+`year_eligible[AGE_COUNT]`, -`tier_open[3][8]`/
+  -`research_mult`/-`integration_mult`), `WorldProsperity` (+5 champs : `age_P_bonus`/`age_mig_mult`/
+  `age_research_mult`/`age_integration_mult`/`age_tech_mask`), `MissionsState` (+`Mission.just_completed`
+  +`hero_bonus[SCPS_MISSIONS_MAX][SC_COUNCIL_SEATS]`) changent tous de taille — les TROIS sont
+  fwrite/fread BRUTS (scps_save.c:SVT_EVNT/SVT_PROS/SVT_MISS) ⇒ `SAVE_VERSION` (scps_save.h, actuellement
+  77) DOIT monter d'au moins 1 avant tout commit. scps_save.c/scps_save.h étaient HORS PÉRIMÈTRE de cette
+  mission (pas dans la liste de fichiers autorisés) — un futur agent (ou l'orchestrateur) doit faire le
+  bump + vérifier `save_sane` sur les nouveaux champs bornés (`year_eligible` ∈ [-1,~1000],
+  `hero_bonus[].slot/gen` ∈ [-1,SC_COUNCIL_CANDS)/[-1,~qqch), `age_tech_mask` n'a pas besoin de borne
+  — bitmask).

@@ -131,13 +131,27 @@ static float mission_reward_mult(const Statecraft *sc, const WorldProsperity *wp
 }
 
 static void mission_grant(const World *w, WorldEconomy *econ, Statecraft *sc, const WorldProsperity *wp,
-                          uint32_t seed, int cid, const Mission *m){
+                          uint32_t seed, int cid, const Mission *m, MissionsState *ms){
     /* récompense versée à la CAPITALE (le siège) — cohérent avec mission_check, qui VÉRIFIE le bâti sur
      * capital_region(). L'ancien « 1re région possédée » (plus bas index) coïncidait avec la capitale sur
      * les anciens mondes ; un monde re-baseliné peut les dissocier → la récompense tombait à côté. */
     int cr=capital_region(w,econ,cid);
     if (cr<0) return;
     float mult = mission_reward_mult(sc,wp,seed,cid,m);            /* P3 : bonus ∝ rang×efficacité du siège responsable */
+    /* raccord 7 (Âge des Héros) — « Lui confier »/« Lui donner les clefs » posent un bonus
+     * (mult>0) sur le SIÈGE responsable, identité (slot,gen) figée au moment du choix. Il ne
+     * s'applique QUE si le titulaire n'a pas changé depuis (sinon le successeur ne le reçoit
+     * pas) — CONSOMMÉ dans les deux cas (utilisé, ou perdu). */
+    { int seat = mission_responsible_seat(m);
+      if (ms && seat>=0 && seat<SC_COUNCIL_SEATS && cid>=0 && cid<SCPS_MISSIONS_MAX){
+          HeroMissionBonus *hb = &ms->hero_bonus[cid][seat];
+          if (hb->mult > 0.f){
+              int slot = statecraft_council_seated(sc,cid,seat);
+              int gen  = statecraft_council_seated_gen(sc,cid,seat);
+              if (slot==hb->slot && gen==hb->gen) mult *= hb->mult;
+              hb->mult = 0.f;   /* consommée (appliquée ou perdue) */
+          }
+      } }
     /* RE-KEY PROVINCE : treasury province-owned — route sur la représentative.
      * region[].stock[] est un REFLET reconstruit EN ENTIER depuis prov[] à chaque
      * econ_aggregate_regions — PAS « le marché, resté au grain région, intact » (le
@@ -157,6 +171,7 @@ void missions_tick(MissionsState *ms, const World *w, WorldEconomy *econ,
     for (int c=0;c<w->n_countries && c<SCPS_MISSIONS_MAX;c++){
         if (w->country[c].role==POLITY_UNCLAIMED || !has_regions(econ,c)) continue;
         Mission *m=&ms->m[c];
+        m->just_completed=false;   /* raccord 7 : RAZ à chaque appel — le signal ne vit qu'UN tour */
         if (year%10==0 && (!m->active || m->issued_year!=year)){  /* nouvelle décennie : mission fraîche */
             /* P3 — l'ÉCHEC est RÉSOLU ICI, AVANT l'émission de la suivante (fin du
              * remplacement silencieux) : une mission ACTIVE et INACHEVÉE au moment
@@ -166,7 +181,8 @@ void missions_tick(MissionsState *ms, const World *w, WorldEconomy *econ,
             *m = mission_roll(w,econ,ts,c,year);
         }
         if (m->active && !m->done && mission_check(w,econ,ts,c,m)){
-            m->done=true; mission_grant(w,econ,sc,wp,seed,c,m);   /* accomplie → récompense (au siège) + loyauté */
+            m->done=true; m->just_completed=true;
+            mission_grant(w,econ,sc,wp,seed,c,m,ms);   /* accomplie → récompense (au siège) + loyauté */
         }
     }
 }

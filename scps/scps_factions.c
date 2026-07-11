@@ -306,34 +306,18 @@ void faction_grievance_add(int cid, EthosFaction f, float amount){
     float g = g_lever_grief[cid][f] + amount;
     g_lever_grief[cid][f] = g<0.f?0.f:(g>1.f?1.f:g);
 }
-/* ---- Engagement d'âge (§7) -------------------------------------------- */
-#define ENGAGE_LEVER 0.10f   /* la pledge tenue RENFORCE le patron (un vote) */
-#define ENGAGE_SAT   0.08f   /* … et APAISE (satisfaction de l'ordre ↑ un temps) */
-EthosFaction age_patron(int age){
-    switch (age){                                  /* cf. AgeId (scps_events.h) */
-        case 0: return FAC_MARCHAND;        /* Commerce mondial : s'ouvrir au négoce */
-        case 1: return FAC_LEGISTE;         /* Raison : codifier */
-        case 2: return FAC_CONQUERANT;      /* Empires : l'expansion */
-        case 3: return FAC_TRANSGRESSEUR;   /* Brèche : la puissance ultime */
-        case 4: return FAC_LEGISTE;         /* Lumières : la raison, l'institution */
-        case 5: return FAC_COMMUNAUTAIRE;   /* Soulèvements : le peuple, la réforme */
-        case 6: return FAC_CONQUERANT;      /* Ordre de Fer : la poigne */
-        default: return FAC_LEGISTE;
-    }
-}
-void faction_age_engage(const World *w, WorldEconomy *econ, int cid, int age){
-    (void)w;
-    if (!econ || cid<0) return;
-    faction_lever_apply(cid, age_patron(age), ENGAGE_LEVER);   /* la faction de l'heure s'avance */
-    /* RE-KEY PROVINCE : satisfaction province-owned — route sur la représentative de
-     * chaque région (region[r].satisfaction est un DÉRIVÉ pop-pondéré, écrasé au
-     * prochain econ_tick si écrit directement). */
-    for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==cid){
-        int pid=econ_region_rep_province(econ,r); if (pid<0||pid>=econ->n_prov) continue;
-        float s=econ->prov[pid].satisfaction + ENGAGE_SAT;     /* cohésion du régime (apaise l'agitation) */
-        econ->prov[pid].satisfaction = s>1.f?1.f:s;
-    }
-}
+/* ⚠ SUPPRIMÉ (raccord 8, Âges sans ordre imposé, docs/AGES_FINS_2026-07-11.md) :
+ * age_patron()/faction_age_engage() — l'ancien « engagement d'âge » (§7) posait un
+ * vote de faction MONDIAL (une même faction-patronne pour TOUS les pays, quel que
+ * soit leur rapport matériel à l'âge) ET un bonus de SATISFACTION (« la cohésion du
+ * régime »). La règle commune de la refonte est explicite : « AUCUN âge ne donne de
+ * satisfaction » et « les leviers de factions ne s'appliquent que dans les pays
+ * MATÉRIELLEMENT concernés ». Les nouveaux leviers scopés vivent désormais dans
+ * scps_events.c (age_lever_exchange/_discovery/_empires/_breach/_lumieres/
+ * _soulevements/_tyrans), appelés UNE fois à l'avènement de CHAQUE âge — pas un
+ * mécanisme générique par pays. Le verbe joueur CMD_AGE_ENGAGE (scps_sim.c) reste
+ * mais devient une pure NOTIFICATION D'AVÈNEMENT (accusé de réception, sans effet
+ * moteur) — cf. TROUVAILLES.md pour le détail du choix. */
 void faction_levers_on_coup(int cid){
     /* Le coup a basculé le régime : la rancœur accumulée se DÉCHARGE (sinon le pays
      * recouve aussitôt — un coup tous les deux ans). La pression politique est purgée. */

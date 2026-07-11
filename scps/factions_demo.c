@@ -206,14 +206,13 @@ int main(void){
            faction_grievance(0,FAC_MARCHAND)==0.f && faction_grievance(1,FAC_COMMUNAUTAIRE)==0.f);
     }
 
-    /* ═══ 9. ENGAGEMENT D'ÂGE (§7) — la faction de l'heure s'avance ══════ */
-    printf("\n── 9. Engagement d'âge : chaque âge avance SA faction-patronne ──\n");
-    {
-        ok("l'âge du Commerce s'avance pour les Marchands",       age_patron(0)==FAC_MARCHAND);
-        ok("l'âge des Empires s'avance pour les Conquérants",     age_patron(2)==FAC_CONQUERANT);
-        ok("l'âge de la Brèche s'avance pour les Transgresseurs", age_patron(3)==FAC_TRANSGRESSEUR);
-        ok("l'âge des Soulèvements s'avance pour les Communautaires", age_patron(5)==FAC_COMMUNAUTAIRE);
-    }
+    /* ⚠ SUPPRIMÉ (raccord 8, Âges sans ordre imposé, 2026-07-11) : « §9. ENGAGEMENT
+     * D'ÂGE » testait age_patron()/faction_age_engage() (un vote de faction MONDIAL
+     * + un bonus de satisfaction, tous deux supprimés — cf. scps_factions.c). Les
+     * leviers d'âge SCOPÉS aux pays matériellement concernés vivent désormais dans
+     * scps_events.c (age_lever_exchange/_discovery/_empires/_breach/_lumieres/
+     * _soulevements/_tyrans) — testés dans events_demo.c/structural_demo.c, qui
+     * ont accès au module events (ce banc-ci n'exerce QUE scps_factions.c). */
 
     /* ═══ I5 — L'AUDIT DES OFFICES : réprimer la capture (corr −20) ══════ */
     printf("\n── I5. L'audit des offices : l'État réprime la capture (corruption −20) ──\n");

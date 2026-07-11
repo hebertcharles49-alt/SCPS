@@ -11,10 +11,12 @@ void fog_reset(void){
     memset(g_known, 0, sizeof g_known);
 }
 
-void fog_update(const World *w, const WorldEconomy *econ){
+void fog_update(const World *w, const WorldEconomy *econ, int radius_bonus){
     if (!w || !econ) return;
     int n = econ->n_regions; if (n > SCPS_MAX_REG) n = SCPS_MAX_REG;
     int nc = w->n_countries; if (nc > SCPS_MAX_COUNTRY) nc = SCPS_MAX_COUNTRY;
+    if (radius_bonus<0) radius_bonus=0;
+    int radius = FOG_RADIUS + radius_bonus;
 
     /* scratch RÉUTILISÉ à chaque empire (motif hub_map_build : static, pas de
      * malloc/free répété — RAZ ciblée [0,n) à chaque tour de boucle). */
@@ -35,7 +37,7 @@ void fog_update(const World *w, const WorldEconomy *econ){
             int r=q[qh++];
             int b=econ->region[r].owner;
             if (b>=0 && b<SCPS_MAX_COUNTRY) g_known[a][b]=1;   /* découverte SUR LE TERRAIN, cumulative */
-            if (depth[r] >= FOG_RADIUS) continue;               /* radius 2 : n'étend plus au-delà */
+            if (depth[r] >= radius) continue;                   /* radius (+1 saut, Découvertes) : n'étend plus au-delà */
             for (int s=0; s<n; s++){
                 if (!econ->adj[r][s] || visited[s]) continue;
                 visited[s]=1; depth[s]=(uint8_t)(depth[r]+1);
@@ -44,13 +46,30 @@ void fog_update(const World *w, const WorldEconomy *econ){
         }
     }
 }
+/* raccord 6 — Σcountry_knows(a,b) / Σpaires, sur les pays VIVANTS (role≠UNCLAIMED),
+ * paires ORDONNÉES (a≠b). 0 s'il n'y a pas au moins 2 pays vivants. */
+float country_known_pair_share(const World *w){
+    if (!w) return 0.f;
+    int nc = w->n_countries; if (nc > SCPS_MAX_COUNTRY) nc = SCPS_MAX_COUNTRY;
+    long total=0, known=0;
+    for (int a=0; a<nc; a++){
+        if (w->country[a].role==POLITY_UNCLAIMED) continue;
+        for (int b=0; b<nc; b++){
+            if (b==a || w->country[b].role==POLITY_UNCLAIMED) continue;
+            total++;
+            if (country_knows(a,b)) known++;
+        }
+    }
+    return total>0 ? (float)known/(float)total : 0.f;
+}
 
 bool country_knows(int a, int b){
     if (a<0 || a>=SCPS_MAX_COUNTRY || b<0 || b>=SCPS_MAX_COUNTRY) return false;
     return g_known[a][b] != 0;
 }
 
-void fog_visible_regions(const World *w, const WorldEconomy *econ, int viewer_cid, uint8_t *out_region){
+void fog_visible_regions(const World *w, const WorldEconomy *econ, int viewer_cid,
+                         int radius_bonus, uint8_t *out_region){
     if (!out_region) return;
     if (!w || !econ || viewer_cid<0 || viewer_cid>=SCPS_MAX_COUNTRY){
         memset(out_region, 1, (size_t)SCPS_MAX_REG);   /* pas de joueur engagé : aucun voile */
@@ -58,10 +77,12 @@ void fog_visible_regions(const World *w, const WorldEconomy *econ, int viewer_ci
     }
     memset(out_region, 0, (size_t)SCPS_MAX_REG);
     int n = econ->n_regions; if (n > SCPS_MAX_REG) n = SCPS_MAX_REG;
+    if (radius_bonus<0) radius_bonus=0;
+    int radius = FOG_RADIUS + radius_bonus;
 
-    /* BFS radius-2 depuis les régions du viewer — out_region sert AUSSI de
-     * marqueur "atteint" (évite un second tableau : {ses régions} ∪ {radius 2}
-     * sont exactement l'ensemble atteint par CETTE BFS). */
+    /* BFS radius-2 (+1 saut, Découvertes) depuis les régions du viewer — out_region
+     * sert AUSSI de marqueur "atteint" (évite un second tableau : {ses régions} ∪
+     * {radius} sont exactement l'ensemble atteint par CETTE BFS). */
     static uint8_t depth[SCPS_MAX_REG];
     static int16_t q[SCPS_MAX_REG];
     int qh=0, qt=0;
@@ -72,7 +93,7 @@ void fog_visible_regions(const World *w, const WorldEconomy *econ, int viewer_ci
     }
     while (qh<qt){
         int r=q[qh++];
-        if (depth[r] >= FOG_RADIUS) continue;
+        if (depth[r] >= radius) continue;
         for (int s=0; s<n; s++){
             if (!econ->adj[r][s] || out_region[s]) continue;
             out_region[s]=1; depth[s]=(uint8_t)(depth[r]+1);

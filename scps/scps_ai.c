@@ -2270,6 +2270,26 @@ static float ai_effective_cost(TechId id, float nprov, Ethos eth, int cid){
     return c;
 }
 
+/* raccord 3 (Âges sans ordre imposé, docs/AGES_FINS_2026-07-11.md) — le palier
+ * est-il RÉELLEMENT ouvert ? SEULS Société 3 (Échanges) / Savoir 4 (Découvertes) /
+ * Société 5 (Empires) / Savoir 5 (Brèche) sont gated (bit theme*8+tier de
+ * wp->age_tech_mask, posé par apply_effect dans scps_events.c) ; tout le reste de
+ * l'arbre reste INCHANGÉ. Copie LOCALE de scps_events.c:ages_tech_researchable —
+ * DÉLIBÉRÉ, pas un appel cross-module : ai_demo (et FORKS/CREDIT/CAP_DEMO qui en
+ * dérivent, Makefile) ne lient PAS scps_events.o, et ce n'est qu'un test de bit
+ * sur un champ déjà public de WorldProsperity — un appel de fonction aurait exigé
+ * scps_scps_events.o+scps_scps_fog.o partout où scps_scps_ai.o est lié (cf.
+ * TROUVAILLES.md). Les deux copies DOIVENT rester identiques si l'un des deux
+ * quartets de paliers gated change. */
+static bool ai_age_tier_open(const WorldProsperity *wp, TechTheme br, int tier){
+    bool gated = (br==THM_SOCIETE && (tier==3 || tier==5))
+              || (br==THM_SAVOIR  && (tier==4 || tier==5));
+    if (!gated) return true;
+    if (!wp) return false;
+    unsigned bit = (unsigned)br*8u + (unsigned)tier;
+    return bit<32 && (wp->age_tech_mask & (1u<<bit)) != 0;
+}
+
 /* Le nœud à déverrouiller : score = BUTS (la fonction répond au besoin lu) +
  * PENCHANT de heritage (biais vers son thème + ses signatures) − FREIN (le faustien
  * n'est pris que si la pente dépasse le frein). Aucun « si heritage==X ». */
@@ -2300,6 +2320,7 @@ static TechId ai_pick_tech(const AiActor *a, const TechState *ts, const World *w
         TechId id=(TechId)i;
         if (!tech_can_research(ts,id,access)) continue;
         const TechNode *n=tech_node(id);
+        if (!ai_age_tier_open(wp, n->theme, n->tier)) continue;   /* raccord 3 : Société3/Savoir4/Société5/Savoir5 */
         float cost=ai_effective_cost(id, nprov, eth, a->cid);   /* géologie √N × biais d'éthos × remise de diffusion × traditions */
         if (cost > ts->research_points + 0.01f) continue;          /* pas encore les moyens */
         float score=0.f;
@@ -2349,12 +2370,14 @@ float ai_research_income(const WorldEconomy *econ, const TechState *ts, int cid)
 /* S3 — LE PROCHAIN PAS vers une cible (beeline) : remonte la chaîne de prérequis de `target`
  * et renvoie le nœud LE PLUS PROFOND non encore acquis qui soit RECHERCHABLE (accès + prérequis).
  * TECH_COUNT si la cible est déjà acquise OU si le pas suivant reste verrouillé (archétype/ruine). */
-static TechId ai_step_toward(const TechState *ts, TechId target, unsigned access){
+static TechId ai_step_toward(const TechState *ts, TechId target, unsigned access, const WorldProsperity *wp){
     if (target<0||target>=TECH_COUNT||ts->unlocked[target]) return TECH_COUNT;
     TechId chain[24]; int nc=0; TechId t=target;
     while (t>=0 && t<TECH_COUNT && nc<24){ chain[nc++]=t; t=tech_node(t)->prereq; }
     for (int i=nc-1;i>=0;i--){                 /* de la racine VERS la cible : le 1er non-acquis = le pas suivant */
         if (ts->unlocked[chain[i]]) continue;
+        const TechNode *n=tech_node(chain[i]);
+        if (!ai_age_tier_open(wp, n->theme, n->tier)) return TECH_COUNT;   /* raccord 3 */
         return tech_can_research(ts, chain[i], access) ? chain[i] : TECH_COUNT;
     }
     return TECH_COUNT;
@@ -2401,6 +2424,10 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
      * l'arbre gonfle par les nœuds NON-faustiens (charge nulle) ⇒ la fenêtre des fins §27 ne
      * s'effondre pas vers le gate an-180 (contrairement à une coupe de coût, MESURÉ). 1.0 = neutre. */
     income *= tune_f("AI_RESEARCH_INCOME_W", AI_RESEARCH_INCOME_W);
+    /* raccord 1 (Âge des Découvertes) — recherche ×1.10 PENDANT LA POUSSÉE, lue DANS
+     * ce revenu existant (wp->age_research_mult, TRANSITOIRE, défaut 1 : jamais un
+     * second tick). */
+    if (wp) income *= wp->age_research_mult;
     /* MÉTABOLISATION (Temps 1) — un empire CREUSET (qui a digéré des âmes d'un autre
      * héritage) cherche plus vite : « incorporer d'autres gens dans sa culture fonctionne ».
      * Signal ~0 tôt (l'assimilation prend des décennies) ⇒ la fenêtre golden ne bouge pas. */
@@ -2430,7 +2457,8 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
 #endif
     /* §4 COUPLAGE : une fois l'Industrie en poche, l'empire AFFAMÉ DE FER ÉPARGNE pour la
      * foreuse (chère, faustienne) plutôt que d'éparpiller — l'issue tentante précipite sa Brèche. */
-    if (pick!=TECH_FOREUSE && tech_can_research(ts, TECH_FOREUSE, access)){
+    if (pick!=TECH_FOREUSE && tech_can_research(ts, TECH_FOREUSE, access)
+        && ai_age_tier_open(wp, tech_node(TECH_FOREUSE)->theme, tech_node(TECH_FOREUSE)->tier)){
         AiView vg = ai_observe(wp, w, econ, a->cid);
         if (vg.chain_gap==RES_IRON) return;        /* on garde les points : la foreuse d'abord */
     }
@@ -2442,7 +2470,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
         TechId tgt = ai_resource_famine(econ,a->cid,RES_WOOD)  ? TECH_TRANSMUTATION
                    : ai_resource_famine(econ,a->cid,RES_GRAIN) ? TECH_FORGE_RUNES : TECH_COUNT;
         if (tgt!=TECH_COUNT && !ts->unlocked[tgt]){
-            TechId step=ai_step_toward(ts, tgt, access);
+            TechId step=ai_step_toward(ts, tgt, access, wp);
             if (step!=TECH_COUNT){
                 float sc=ai_effective_cost(step, nprov, ai_capital_ethos(w,econ,a->cid), a->cid);
                 if (ts->research_points < sc) return;      /* on ÉPARGNE pour le pas suivant */
@@ -2470,8 +2498,9 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
     { TechId savoir_chain[3] = { TECH_SCRIPTORIUM, TECH_ACADEMIE, TECH_UNIVERSITE };
       for (int k=0;k<3;k++){
           if (ts->unlocked[savoir_chain[k]]) continue;
-          TechId step = tech_can_research(ts,savoir_chain[k],access) ? savoir_chain[k]
-                                                                      : ai_step_toward(ts,savoir_chain[k],access);
+          TechId step = (tech_can_research(ts,savoir_chain[k],access)
+                         && ai_age_tier_open(wp, tech_node(savoir_chain[k])->theme, tech_node(savoir_chain[k])->tier))
+                        ? savoir_chain[k] : ai_step_toward(ts,savoir_chain[k],access,wp);
           if (step==TECH_COUNT) break;                        /* chaîne non viable (accès) — n'insiste pas */
           float sc = ai_effective_cost(step, nprov, ai_capital_ethos(w,econ,a->cid), a->cid);
           if (ts->research_points < sc) return;                /* on ÉPARGNE pour le maillon suivant */
@@ -2502,8 +2531,8 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
             for (int id=0; id<TECH_COUNT; id++){
                 const TechNode *tn=tech_node((TechId)id);
                 if (tn->tier!=2 || tn->faustian || ts->unlocked[id]) continue;
-                TechId st = tech_can_research(ts,(TechId)id,access) ? (TechId)id
-                                                                    : ai_step_toward(ts,(TechId)id,access);
+                TechId st = (tech_can_research(ts,(TechId)id,access) && ai_age_tier_open(wp,tn->theme,tn->tier))
+                          ? (TechId)id : ai_step_toward(ts,(TechId)id,access,wp);
                 if (st==TECH_COUNT) continue;               /* chaîne non viable (accès) */
                 float cc=ai_effective_cost((TechId)id, nprov, ai_capital_ethos(w,econ,a->cid), a->cid);
                 if (cc<t2cost){ t2cost=cc; t2step=st; }     /* on retient le PAS de la moins chère */
@@ -2534,6 +2563,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
                 const TechNode *tn=tech_node((TechId)id);
                 if (tn->native==HERITAGE_COUNT || tn->faustian || ts->unlocked[id]) continue;
                 if (!tech_can_research(ts, (TechId)id, access)) continue;     /* accessible (accès+prérequis) */
+                if (!ai_age_tier_open(wp, tn->theme, tn->tier)) continue;   /* raccord 3 */
                 float cc=ai_effective_cost((TechId)id, nprov, eg, a->cid);
                 if (cc<sigcost){ sig=(TechId)id; sigcost=cc; }                /* la moins chère d'abord */
             }
@@ -2559,7 +2589,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
           int crg=(cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
           if (crg>=0&&crg<econ->n_regions){ cr=econ->region[crg].culture.credo; val=econ->region[crg].culture.valeurs; } }
         if (ai_faustian_appetite(cr, val) >= AI_FAUST_QUEST){               /* la SOIF d'interdit (rare) */
-            TechId step=ai_step_toward(ts, TECH_FORGE_RUNES, access);
+            TechId step=ai_step_toward(ts, TECH_FORGE_RUNES, access, wp);
             if (step!=TECH_COUNT){
                 float sc=ai_effective_cost(step, nprov, ai_capital_ethos(w,econ,a->cid), a->cid);
                 if (ts->research_points < sc) return;                      /* on ÉPARGNE pour le pas suivant */
@@ -2585,7 +2615,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
           }
       }
       if (tgt!=TECH_COUNT && !palier_hold){                      /* le palier 2 (soif) prime */
-          TechId step=ai_step_toward(ts, tgt, access);
+          TechId step=ai_step_toward(ts, tgt, access, wp);
           if (step!=TECH_COUNT){
               float sc=ai_effective_cost(step, nprov, eth, a->cid);
               if (ts->research_points < sc) return;              /* on ÉPARGNE pour le pas suivant */

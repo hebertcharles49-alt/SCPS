@@ -628,8 +628,9 @@ static int pact_border_prov(const WorldEconomy *e, int host, int src_region){
  * ATTRACTIF (prospère) reçoit NET (« à l'avantage de celui qui a le plus à
  * offrir »). Les migrants portent leur héritage → diaspora ARR_MIGRANT chez
  * l'hôte → métabolisation (le savoir DIFFUSE — l'inverse de l'isolement de Song). */
-int demography_migration_pact_tick(WorldEconomy *e, const DiploState *dp, int day){
+int demography_migration_pact_tick(WorldEconomy *e, const DiploState *dp, int day, float age_mult){
     if (!e || !dp) return 0;
+    if (age_mult<=0.f) age_mult=1.f;
     /* LOT G (2026-07-08) — la porte s'est OUVERTE au pacte commercial (scps_ai.c §2c) ET
      * une alliance peut, en pratique, se former plus tôt que le canal d'origine ne le
      * supposait (mesuré : bumper FRAC — même réservé à l'ALLIANCE — cassait `make golden`
@@ -668,6 +669,7 @@ int demography_migration_pact_tick(WorldEconomy *e, const DiploState *dp, int da
             if (dab==DIPLO_WAR) continue;   /* la guerre suspend l'échange */
             float frac = (post_golden && dab==DIPLO_ALLIED) ? frac_ally : frac_base;
             frac *= decree_mig_pact_mult(a) * decree_mig_pact_mult(b);   /* orientations CIRCULATION/FRONTIÈRES — ne touche QUE ce pacte, jamais les réfugiés */
+            frac *= age_mult;   /* raccord 5 (Échanges) : migrations de pacte ×1.15 pendant la poussée */
             float sa=attract[a], sb=attract[b], tot_attr=sa+sb+1e-3f;
             int rsrcA=e->prov[top_prov[a]].region, rsrcB=e->prov[top_prov[b]].region;
             int dstAB=pact_border_prov(e,b,rsrcA); if (dstAB<0) dstAB=top_prov[b];  /* a→b : entre à la FRONTIÈRE de b */
@@ -810,8 +812,9 @@ int demography_refugee_tick(World *w, WorldEconomy *e, const DiploState *dp){
 }
 
 void demography_tick(World *w, WorldEconomy *econ, WorldLegitimacy *wl,
-                     ModifierStack *drift, float P, float K, float dt){
+                     ModifierStack *drift, float P, float K, float dt, float integ_mult){
     if (dt<=0.f) dt=1.f;
+    if (integ_mult<=0.f) integ_mult=1.f;
     /* RE-KEY PROVINCE (T1) : econ->region[r].pop n'est qu'un MIROIR de la province
      * représentative (copié par econ_aggregate_regions) — y écrire des groupes est perdu
      * au prochain econ_tick. Les groupes VIVENT sur econ->prov[rep_pid].pop (la vérité) ;
@@ -850,7 +853,10 @@ void demography_tick(World *w, WorldEconomy *econ, WorldLegitimacy *wl,
             HeritageBuild hb = culture_build_for((uint32_t)re->owner);
             P_eff = clampf(P + tune_f("TRAD_PERM_W",3.f)*build_leviers(&hb).permeabilite, 0.f, 10.f);
         }
-        assimilation_tick(pp, drift, P_eff, K_eff, dt);          /* dérive durable (∝ D∞ / institutions), au pas dt */
+        /* raccord 2 (Âge des Empires) — intégration ×1.20 PERMANENT : le pas d'assimilation
+         * est ACCÉLÉRÉ (dt*integ_mult), pas un second système — même « P+K accélèrent »
+         * que TRAD_PERM_W ci-dessus, juste un multiplicateur mondial de plus. */
+        assimilation_tick(pp, drift, P_eff, K_eff, dt*integ_mult);   /* dérive durable (∝ D∞ / institutions), au pas dt */
         float yh = (wl && r < SCPS_MAX_REG) ? wl->years_held[r] : 100.f;
         faith_convert_tick(pp, crown, yh, dt);                  /* la FOI converge vers le trône (§2) */
         for (int i=0;i<pp->n_groups;i++)

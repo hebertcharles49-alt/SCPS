@@ -98,12 +98,16 @@ typedef struct EndgameState {
     double   war_dead_player;                 /* mémoire à décrue, morts DU joueur seulement */
     double   war_dead_player_seen;            /* dernier cumul Campaign.*_player lu */
 
-    /* SANG (FIN_SANG) : dépeuplement progressif des régions marquées par la
-     * guerre — une CICATRICE QUI NE GUÉRIT PLUS (contrairement à revolt_scar
-     * qui décroît). Figée aux régions les plus ravagées au moment du fire
-     * (snapshot de revolt_scar), puis drainée chaque année, bornée (un
-     * plancher de pop empêche la spirale vers zéro). */
-    float    sang_scar[SCPS_MAX_REG];         /* SANG : intensité de la marque [0..1], PERMANENTE */
+    /* SANG (FIN_SANG, refonte 2026-07-11 « fins corrigées ») : un RATCHET sur
+     * revolt_scar — une CICATRICE QUI NE GUÉRIT PLUS (contrairement à revolt_scar
+     * qui décroît normalement). Chaque année (sang_step), toute région dont le
+     * revolt_scar agrégé franchit SANG_SCAR_MIN fait MONTER sa marque (jamais
+     * redescendue) ; la marque PLANCHE en retour le revolt_scar de CHAQUE province
+     * de la région. AUCUN drain de pop, AUCUN modificateur d'habitabilité, AUCUNE
+     * région supprimée — les moteurs EXISTANTS qui lisent revolt_scar (production,
+     * croissance, reconstruction, valeur de province, exode via REFUGEE_FLEE_SCAR)
+     * font tout le reste. */
+    float    sang_scar[SCPS_MAX_REG];         /* SANG : plancher de la marque [0..1], PERMANENT */
 
     /* ── FIN_CHAUD (2026-07-08) — LE RÉCHAUFFEMENT, la fin des mondes calmes ─────
      * Le combustible RÉELLEMENT brûlé (bois de feu SERVI au panier des journaliers +

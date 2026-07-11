@@ -811,6 +811,13 @@ int  scps_player_alloc_auto    (ScpsSim *s, int region);   /* retour au split AU
  * CMD_AGE_ENGAGE (drain déterministe, une fois par âge). */
 int  scps_age_state         (ScpsSim *s, int *engaged, char *name, int cap);
 int  scps_player_age_engage (ScpsSim *s);
+/* ÂGES SANS ORDRE IMPOSÉ (2026-07-11) — la citation de l'âge (les 9 citations de
+ * la spec, un flavor diégétique par âge + l'Aube). age = AgeId (scps_age_state)
+ * ou -1 pour l'Aube. Lecture pure, additive (scps_age_state garde sa signature). */
+const char *scps_age_citation(ScpsSim *s, int age);
+/* raccord 6 — ratio [0..1] de paires de pays vivants qui se connaissent (le
+ * déclencheur des Découvertes, exposé en lecture pour un readout). */
+float scps_known_pair_share(ScpsSim *s);
 /* COLONISATION (charte : « le joueur colonise n'importe quelle province ») — ENFILE
  * CMD_COLONIZE (source = sa province la plus peuplée, portes au drain) ; scps_can_colonize
  * = le read de légalité (cible vierge + une source aux portes + CADENCE v50) pour griser. */

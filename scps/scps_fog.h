@@ -38,12 +38,20 @@ void fog_reset(void);
  * econ->adj[][] : toute région ATTEINTE (quel qu'en soit l'owner) marque
  * known[a][owner]=1 — CUMULATIF (jamais effacé hors fog_reset). Un empire se
  * connaît toujours lui-même. Appelée au tick annuel + une fois à sim_init. */
-void fog_update(const World *w, const WorldEconomy *econ);
+/* `radius_bonus` (raccord Découvertes, docs/AGES_FINS_2026-07-11.md : « rayon du
+ * brouillard +1 saut ») s'ajoute AU RADIUS 2 de base — 0 = comportement d'origine.
+ * L'appelant le calcule (`ages_dawned(ev,AGE_DISCOVERY)?1:0`) : fog n'a jamais
+ * besoin de connaître les Âges. */
+void fog_update(const World *w, const WorldEconomy *econ, int radius_bonus);
 
 /* LECTURE publique — a connaît-il b (b existe-t-il aux yeux de a) ? Le helper que
  * l'orchestrateur câblera plus tard dans l'IA/diplo (guerre/diplomatie filtrées
  * par la connaissance) — INUTILISÉ ailleurs dans la sim pour l'instant. */
 bool country_knows(int a, int b);
+/* raccord 6 — le ratio de paires de pays VIVANTS qui se connaissent (ordonné,
+ * a≠b) : Σcountry_knows(a,b) / Σpaires. Alimente le déclencheur des Découvertes
+ * (35 %) ET un readout (scps_api.c). */
+float country_known_pair_share(const World *w);
 
 /* Régions VISIBLES pour `viewer_cid` MAINTENANT (dérivé à la volée, rien n'est
  * mémorisé) : {ses régions} ∪ {BFS radius-2 à la volée} ∪ {toute région dont
@@ -52,7 +60,8 @@ bool country_knows(int a, int b);
  * à 1 (aucun voile — chronique/viewer sans joueur humain). Pur lecteur (aucun
  * état modifié) : LE masque VISUEL, jamais lu par une décision de sim — motif
  * map_state_tint (scps_api.c) : calculé UNE fois, consommé en boucle. */
-void fog_visible_regions(const World *w, const WorldEconomy *econ, int viewer_cid, uint8_t *out_region);
+void fog_visible_regions(const World *w, const WorldEconomy *econ, int viewer_cid,
+                         int radius_bonus, uint8_t *out_region);
 
 /* section FOGV du save (motif WILD/DCRE : sim_wild_save/decrees_save — un tag
  * NULL,0 dans scps_save.c puis cet appel dédié). fog_load() RAZ avant de lire. */

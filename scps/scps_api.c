@@ -428,7 +428,8 @@ void scps_fog_visible(ScpsSim *s, uint8_t *out){
         memset(out, 1, (size_t)SCPS_W*SCPS_H); return;   /* pas de joueur : rien à cacher */
     }
     uint8_t rv[SCPS_MAX_REG];
-    fog_visible_regions(s->w, s->sim.econ, s->sim.human_player, rv);
+    fog_visible_regions(s->w, s->sim.econ, s->sim.human_player,
+                        ages_fog_radius_add(s->sim.ev), rv);
     const int W = SCPS_W, H = SCPS_H;
     /* base : visible ⇔ sa région est vue ; eau/sans-région VOILÉE. */
     for (int y=0;y<H;y++) for (int x=0;x<W;x++){
@@ -464,7 +465,8 @@ void scps_fog_region_mask(ScpsSim *s, uint8_t *out){
     if (!out) return;
     if (!s || !s->ready) return;   /* rien à écrire : scps_region_count(s) vaut déjà 0 */
     uint8_t rv[SCPS_MAX_REG];
-    fog_visible_regions(s->w, s->sim.econ, s->sim.human_player, rv);
+    fog_visible_regions(s->w, s->sim.econ, s->sim.human_player,
+                        ages_fog_radius_add(s->sim.ev), rv);
     int n = s->sim.econ->n_regions; if (n<0) n=0; if (n>SCPS_MAX_REG) n=SCPS_MAX_REG;
     memcpy(out, rv, (size_t)n);
 }
@@ -1912,7 +1914,13 @@ int scps_tech_nodes(ScpsSim *s, ScpsTechNode *out, int max){
     for(int i=0;i<n;i++){
         const TreeNodeReadout *nd = &tt.node[i];
         out[i].quarter = nd->quarter;  out[i].tier = nd->tier;
-        out[i].state   = (int)nd->state;
+        /* raccord 3 (Âges sans ordre imposé) — un nœud RÉELLEMENT verrouillé par un âge
+         * pas encore avenu (Société3/Savoir4/Société5/Savoir5) ne s'affiche jamais OPEN,
+         * même si tech_tree_readout (pur, sans wp) l'a jugé accessible. */
+        { TreeState st = nd->state;
+          const TechNode *gn = tech_node((TechId)i);
+          if (st==TREE_OPEN && !ages_tech_researchable(s->sim.wp, gn->theme, gn->tier)) st=TREE_LOCKED;
+          out[i].state = (int)st; }
         out[i].faustian= nd->faustian?1:0; out[i].orphan = nd->orphan?1:0;
         out[i].is_base = nd->is_base?1:0;
         out[i].name    = sz(nd->name);  out[i].unlocks = sz(nd->unlocks);
@@ -2765,6 +2773,20 @@ int scps_age_state(ScpsSim *s, int *engaged, char *name, int cap){
     if (engaged) *engaged = (s->sim.player_age_engaged==age) ? 1 : 0;
     if (name && cap>0) snprintf(name, (size_t)cap, "%s", age_name((AgeId)age));
     return age;
+}
+/* raccord « les 9 citations » — la citation de l'âge COURANT (membrane, mot résolu).
+ * age=-1 (aucun âge levé, l'Aube) renvoie sa propre citation ; sinon celle de l'âge
+ * (AgeId). Fonction ADDITIVE (n'a pas touché à scps_age_state pour ne pas casser
+ * la signature déjà consommée côté binding Godot). */
+const char *scps_age_citation(ScpsSim *s, int age){
+    if (!s || !s->ready || !s->sim.ev) return age_citation(-1);
+    return age_citation(age);
+}
+/* raccord 6 — le ratio de pays connus [0..1] (le déclencheur des Découvertes,
+ * exposé pour un readout : « combien du monde se connaît »). */
+float scps_known_pair_share(ScpsSim *s){
+    if (!s || !s->ready) return 0.f;
+    return ages_known_pair_share(s->w);
 }
 
 /* ── ALERTES (les deux voies) ─────────────────────────────────────────────── */

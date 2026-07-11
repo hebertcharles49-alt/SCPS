@@ -111,9 +111,12 @@ void demography_attach(World *w, WorldEconomy *econ, ModifierStack *drift);
 /* Un pas (un an) sur la démographie VIVANTE : rafraîchit la fiche effective de
  * chaque groupe (cache), fait la L par groupe, l'assimilation (dérive durable),
  * la migration (groupes vers la prospérité), puis SYNCHRONISE RegionEconomy.culture
- * (= groupe dominant). Le verdict reste au pays (scps_order inchangé). */
+ * (= groupe dominant). Le verdict reste au pays (scps_order inchangé).
+ * `integ_mult` (raccord 2, Âge des Empires — PERMANENT, défaut 1) accélère
+ * PROPORTIONNELLEMENT le pas d'assimilation (assimilation_tick reçoit dt*integ_mult
+ * au lieu de dt) — même levier que P/K, pas un second système. */
 void demography_tick(World *w, WorldEconomy *econ, WorldLegitimacy *wl,
-                     ModifierStack *drift, float P, float K, float dt);
+                     ModifierStack *drift, float P, float K, float dt, float integ_mult);
 
 /* S2 — LA CRISTALLISATION CULTURELLE PAR CONTACT (réveille `culture_syncretize`) : une
  * région en contact COMMERCIAL soutenu (route ouverte, à la paix) avec un autre pays voit

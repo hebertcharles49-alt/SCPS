@@ -32,7 +32,12 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 77u           /* v77 : ORIENTATIONS POLITIQUES (2026-07-10, scps_decrees.{h,
+#define SAVE_VERSION 78u           /* v78 : ÂGES SANS ORDRE (2026-07-11, docs/AGES_FINS) — trois
+                                    * structs fwrite BRUTES changent de taille : AgesState
+                                    * (+year_eligible[8], −tier_open/−research_mult/−integ_mult),
+                                    * WorldProsperity (+5 champs age_*), MissionsState
+                                    * (+just_completed +hero_bonus[][]). <v78 refusé.
+                                    * v77 : ORIENTATIONS POLITIQUES (2026-07-10, scps_decrees.{h,
                                     * c}) — la DÉCISION « Audit des offices » ajoute un cooldown
                                     * PAR PAYS (g_audit_cd[SCPS_MAX_COUNTRY], accumulateur inter-
                                     * ticks — jurisprudence EMOB/COLC/TXYR/RVLT) à la section DCRE

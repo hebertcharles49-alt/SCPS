@@ -168,7 +168,9 @@ void        diplo_set_migration_pact(DiploState *d, int a, int b, bool on);
  * plus tôt que prévu sur certaines graines (mesuré : golden cassait sinon) ; avant ce
  * cap, TOUS les pactes utilisent le taux de base MIG_PACT_FRAC, golden-safe par
  * construction (comportement inchangé du canal d'origine). */
-int         demography_migration_pact_tick(WorldEconomy *e, const DiploState *dp, int day);
+/* `age_mult` (raccord 5, Ère des Échanges — ×1.15 TRANSITOIRE, défaut 1) est LU DANS
+ * ce tick existant, motif decree_mig_pact_mult (jamais un second tick). */
+int         demography_migration_pact_tick(WorldEconomy *e, const DiploState *dp, int day, float age_mult);
 /* Tick ANNUEL : TRIBUTS (servage lourd 8 %/an + coercition chez le serf ; protectorat
  * léger 2 %), APPEL du protecteur (les guerres du protégé l'appellent), DÉFECTION
  * (ratio de force < ~1.15 → dénonciation ; le serf part en guerre), ACCEPTATION par

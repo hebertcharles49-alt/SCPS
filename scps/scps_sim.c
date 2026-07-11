@@ -595,14 +595,18 @@ static void sim_cmd_drain(Sim *s, World *w){
             int rp=econ_region_rep_province(s->econ,r); if (rp<0||rp>=s->econ->n_prov) break;
             s->econ->prov[rp].alloc_on=0;
             break; }
-          /* ── §7 — ENGAGEMENT D'ÂGE : l'IA s'engage auto au lever d'un âge ; le joueur
-           *    CHOISIT (gate human_player dans le bloc annuel) — ce verbe est son choix.
-           *    Une fois par âge (player_age_engaged retient le dernier engagé). ── */
+          /* ── ÂGES SANS ORDRE IMPOSÉ (raccord 8) — CMD_AGE_ENGAGE n'applique plus AUCUN
+           *    effet moteur (l'ancien vote de faction mondial + bonus de satisfaction sont
+           *    SUPPRIMÉS, cf. scps_factions.c) : chaque âge pousse déjà ses propres leviers
+           *    SCOPÉS à l'avènement (age_dawn, scps_events.c), pour TOUS les pays matériel-
+           *    lement concernés — le joueur inclus, sans qu'il ait besoin de « choisir » de
+           *    les recevoir. Le verbe reste un ACCUSÉ DE RÉCEPTION pur (player_age_engaged
+           *    éteint le chip « Engager » côté UI, ouvre le récap d'âge) — plus petit diff
+           *    cohérent avec le chip existant (docs/AGES_FINS_2026-07-11.md, raccord 8). ── */
           case CMD_AGE_ENGAGE: {
             int age = s->ev->ages.last_dawned;
             if (age<0 || s->player_age_engaged==age) break;   /* rien de levé / déjà engagé */
             if (regions_of(s->econ,p)<=0) break;               /* royaume mort : refus net */
-            faction_age_engage(w, s->econ, p, age);
             s->player_age_engaged = age;
             break; }
           /* ── COLONISATION (charte) : a[0] = la province CIBLE (vierge). La SOURCE = la
@@ -722,7 +726,9 @@ void sim_day(Sim *s, World *w) {
     if (s->research_target>=0 && s->human_player>=0 && s->human_player<w->n_countries){
         int pl=s->human_player;
         unsigned access = ai_heritage_access(w, s->econ, s->rn, pl);
-        if (!tech_can_research(&s->ts[pl], (TechId)s->research_target, access)){
+        const TechNode *rn_node = tech_node((TechId)s->research_target);
+        if (!tech_can_research(&s->ts[pl], (TechId)s->research_target, access)
+            || !ages_tech_researchable(s->wp, rn_node->theme, rn_node->tier)){   /* raccord 3 */
             s->research_target=-1;                              /* plus accessible (acquise / prérequis manquant) */
         } else {
             float savoir = econ_country_savoir(s->econ, pl);     /* SAVOIR : la POP produit (strates × bibliothèque), annuel — la MÊME source que l'IA */
@@ -732,7 +738,9 @@ void sim_day(Sim *s, World *w) {
             float metab = 1.f + tune_f("AI_METAB_RES_W",AI_METAB_RES_W)     /* MÉTABOLISATION (Temps 1) : creuset → +recherche */
                               * econ_country_metabolized(w, s->econ, pl);
             float rw = tune_f("AI_RESEARCH_INCOME_W", AI_RESEARCH_INCOME_W); /* levier « 60 % de l'arbre » : même débit que l'IA */
-            s->ts[pl].research_points += (savoir/365.f) * yield * prosp * metab * rw; /* /an → /jour */
+            /* raccord 1 (Âge des Découvertes) : recherche ×1.10 pendant la poussée, MÊME
+             * lecteur que l'IA (wp->age_research_mult). */
+            s->ts[pl].research_points += (savoir/365.f) * yield * prosp * metab * rw * s->wp->age_research_mult; /* /an → /jour */
             /* DÉCOUPLAGE §27 (miroir de ai_effective_cost) : le boost de revenu est ANNULÉ sur les
              * nœuds FAUSTIENS (coût ×W) → leur cadence reste baseline, la charge §27 ne s'emballe pas.
              * TRADITIONS : le levier ARCANE (ai_tech_tradition_mult) — le MÊME facteur que l'IA. */
@@ -762,7 +770,12 @@ void sim_day(Sim *s, World *w) {
         statecraft_council_loyalty_tick(s->sc, w, s->econ, w->seed, 1.f/12.f);   /* V2a : la loyauté CONVERGE (jamais un saut) */
         PROF(PB_ECON, econ_tick(s->econ, 1.f/12.f));
         statecraft_tick(s->sc, w, s->econ, s->wp, s->wl, s->dp, s->rn, 30);
-        PROF(PB_DEMO, demography_tick(w, s->econ, s->wl, s->drift, 5.f, 5.f, 1.f/12.f));
+        /* raccords 2/4 (Âges sans ordre imposé) — P mondial (age_P_bonus, Échanges) et le
+         * multiplicateur d'intégration (age_integration_mult, Empires) sont lus ICI, DANS
+         * le tick existant (jamais un second système). */
+        PROF(PB_DEMO, demography_tick(w, s->econ, s->wl, s->drift,
+                                      5.f + s->wp->age_P_bonus, 5.f, 1.f/12.f,
+                                      s->wp->age_integration_mult));
         religion_refresh_all(s->econ);   /* FOI PAR GROUPE : le culte DOMINANT par région suit les groupes (post-démo) */
         for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)   /* E3 : l'IA stockeuse (mensuel) */
             if (s->ai_on[c]) ai_speculate_tick(&s->ai[c], s->econ);
@@ -941,10 +954,10 @@ void sim_day(Sim *s, World *w) {
         }
         PROF(PB_INTERTRADE, intertrade_tick(s->econ, s->rn, s->dp));   /* grandes routes marchandes (goods inter-pays + embargo) */
         PROF(PB_CONTACT, demography_contact_tick(s->econ, s->drift, s->rn, s->dp, 5.f, 5.f, 1.f));   /* S2 : la cristallisation suit le contact (annuel) */
-        demography_migration_pact_tick(s->econ, s->dp, s->day);   /* BRASSAGE : échange passif de population entre alliés (annuel) */
+        demography_migration_pact_tick(s->econ, s->dp, s->day, s->wp->age_mig_mult);   /* BRASSAGE : échange passif de population entre alliés (annuel) */
         ai_slave_trade_year(w, s->econ, s->ai, s->ai_on); /* P4 : le pool des Centres se remplit (vente du surplus servile) */
         demography_refugee_tick(w, s->econ, s->dp);        /* BRASSAGE : la guerre fait FUIR, l'apaisement fait RESPIRER (annuel) */
-        fog_update(w, s->econ);   /* BROUILLARD DE GUERRE : connaissance des empires (radius 2, cumulative — étape 1/2, VISUEL seulement) */
+        fog_update(w, s->econ, ages_fog_radius_add(s->ev));   /* BROUILLARD DE GUERRE : connaissance des empires (radius 2 +1 saut/Découvertes, cumulative — étape 1/2, VISUEL seulement) */
         wild_cultural_tick(s, w);   /* HAMEAUX LIBRES (B4) : ralliement culturel des hameaux WILD au voisin */
         PROF(PB_PROSP, prosperity_tick(s->wp, w, s->econ, s->net, s->ts, s->wl));
         if (s->eg){
@@ -979,14 +992,35 @@ void sim_day(Sim *s, World *w) {
         diplo_suzerainty_tick(s->dp, w, s->econ, s->wp);   /* suzeraineté + FRONDE : tributs, ligues, défections */
         diplo_war_tick(s->dp, w, s->econ, s->wp, 1.0f);
         missions_tick(s->missions, w, s->econ, s->ts, s->sc, s->wp, w->seed, s->year);  /* missions décennales : rythme + récompense (P3 : siège responsable) */
+        /* raccord 7 — L'ÂGE DES HÉROS : le TEST vit ici (accès direct à Statecraft/Mission,
+         * scps_missions.c reste ignorant des évènements) — pour chaque pays qui vient de
+         * compléter sa mission décennale (just_completed), rang III + efficacité ≥1.00 +
+         * loyauté ≥75 + encore assis fait advenir l'Âge des Héros et pousse « Le nom du
+         * siècle » (membrane de décision pour le joueur, auto-résolu pour l'IA). */
+        for (int c=0;c<w->n_countries && c<SCPS_MISSIONS_MAX;c++){
+            const Mission *mm = &s->missions->m[c];
+            if (!mm->just_completed) continue;
+            int seat = mission_responsible_seat(mm);
+            if (seat<0) continue;
+            int slot = statecraft_council_seated(s->sc,c,seat);
+            if (slot<0) continue;   /* siège vacant : pas de titulaire à consacrer */
+            int gen  = statecraft_council_seated_gen(s->sc,c,seat);
+            int tier = statecraft_council_cand_tier(w->seed,c,seat,slot,gen);
+            float eff = statecraft_council_efficiency(s->sc,s->wp,c,seat);
+            float loy = (float)statecraft_council_loyalty(s->sc,c,seat);
+            if (tier==3 && eff>=tune_f("AGE_HERO_EFFICIENCY_MIN",1.00f)
+                        && loy>=tune_f("AGE_HERO_LOYALTY_MIN",75.f))
+                ages_hero_fire(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp, s->eg,
+                               s->missions, c, seat, slot, gen, s->human_player);
+        }
         statecraft_council_age_tick(s->sc, w->seed, s->year);    /* LES ANNÉES PASSENT : les conseillers vieillissent, la retraite vide le siège */
         faction_levers_decay(0.07f);   /* §4 : une stance non entretenue s'efface (~15 ans) */
-        if (s->ev->ages.last_dawned != s->prev_dawned){          /* §7 : un âge se lève → engagement */
-            int age=s->ev->ages.last_dawned;
-            if (age>=0) for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
-                if (w->country[c].role!=POLITY_UNCLAIMED && regions_of(s->econ,c)>0
-                    && c!=s->human_player)                        /* le JOUEUR choisit lui-même : pas d'engagement auto (human=-1 ⇒ no-op chronique) */
-                    faction_age_engage(w, s->econ, c, age);       /* la faction-patronne s'avance (l'IA accepte) */
+        if (s->ev->ages.last_dawned != s->prev_dawned){
+            /* ⚠ SUPPRIMÉ (raccord 8) : l'ancien engagement d'âge par pays (faction_age_engage,
+             * appelé ici pour TOUTE l'IA) — les leviers scopés de chaque âge s'appliquent
+             * désormais UNE fois, pour tous les pays matériellement concernés, à l'intérieur
+             * même de age_dawn (scps_events.c). `prev_dawned` reste suivi tel quel (champ
+             * sérialisé, scps_save.c hors périmètre de cette mission — aucun coût à le garder). */
             s->prev_dawned = s->ev->ages.last_dawned;
         }
         /* JOURNAL PROVINCIAL : diff annuel des modificateurs DYNAMIQUES par région
@@ -1105,7 +1139,7 @@ void sim_init(Sim *s, World *w) {
      * an-0 — on appelle simplement la MÊME fog_update qu'au tick annuel, une fois de
      * plus ici (genèse), pour que chaque empire connaisse déjà ses voisins à radius 2
      * dès le jour 0 (sinon le joueur resterait aveugle une année entière). */
-    fog_update(w, s->econ);
+    fog_update(w, s->econ, ages_fog_radius_add(s->ev));
     s->day=0; s->year=0;
 }
 

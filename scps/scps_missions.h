@@ -36,10 +36,24 @@ typedef struct {
     Resource reward_mat;   /* un lot de matières en récompense */
     float    reward_qty;
     char     text[80];     /* la mission, en mots (membrane) */
+    /* raccord 7 (Âge des Héros) — vrai PENDANT le tour de missions_tick où cette
+     * mission vient d'être accomplie (RAZ en tête de chaque missions_tick) : le
+     * signal que scps_sim.c lit pour tester l'éligibilité au héros (rang III +
+     * efficacité + loyauté + encore assis) SANS coupler ce module aux évènements. */
+    bool     just_completed;
 } Mission;
 
+/* raccord 7 — le bonus d'un héros consacré (« Lui confier »/« Lui donner les
+ * clefs ») s'attache au SIÈGE, identifié par (slot,gen) : si le titulaire change
+ * avant la PROCHAINE mission routée sur ce siège, le successeur ne le reçoit PAS
+ * (« sans le bonus »). mult<=0 = aucun bonus en attente. */
+typedef struct { float mult; int8_t slot, gen; } HeroMissionBonus;
+
 #define SCPS_MISSIONS_MAX SCPS_MAX_COUNTRY
-typedef struct { Mission m[SCPS_MISSIONS_MAX]; } MissionsState;
+typedef struct {
+    Mission m[SCPS_MISSIONS_MAX];
+    HeroMissionBonus hero_bonus[SCPS_MISSIONS_MAX][SC_COUNCIL_SEATS];
+} MissionsState;
 
 void missions_init(MissionsState *ms);
 

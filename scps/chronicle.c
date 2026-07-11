@@ -1466,7 +1466,7 @@ int main(int argc, char **argv){
               if (statecraft_council_betrayal_ready(s.sc,c,st)) tot_council_brink++;
           }
           tot_council_ai_replace += statecraft_council_ai_replace_count(); }
-        if (age_year[AGE_ORDRE_FER]>=0)   worlds_with_ironorder++;
+        if (age_year[AGE_TYRANS]>=0)      worlds_with_ironorder++;   /* ex-AGE_ORDRE_FER (Âges sans ordre imposé) */
         if (age_year[AGE_SOULEVEMENTS]>=0) worlds_with_uprising++;
         /* A5 — L'HÉGÉMON MORTEL : ce monde a-t-il vu un grand empire (≥10 rég)
          * passer sous Stabilité 50 OU subir un coup/renversement ? (preuve que

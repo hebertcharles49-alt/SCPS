@@ -174,6 +174,8 @@ EthosFaction statecraft_council_faction(uint32_t seed, int cid, int seat, int sl
  * donnent la paire complète (« Aveline » + « Vœrn » → « Aveline Vœrn »). */
 const char *statecraft_council_cand_firstname(uint32_t seed, int cid, int seat, int slot, int gen);
 const char *statecraft_council_cand_house    (uint32_t seed, int cid, int seat, int slot, int gen);
+/* raccord 7 — le genre du candidat (même hash que le prénom, index<12 = masculin) */
+bool        statecraft_council_cand_female   (uint32_t seed, int cid, int seat, int slot, int gen);
 
 /* Lecteurs — loyauté (0..100) et curseur de paie (0..2, 1.0 = normal) du siège
  * POURVU (0/1.0 par défaut si vacant — lu par convention, jamais accédé nu). */

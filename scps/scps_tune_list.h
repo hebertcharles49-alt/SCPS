@@ -517,7 +517,6 @@
      *   Merveille exemptée : le joueur peut vaincre à tout moment).
      * ENTROPY_TECH_W : poids de la charge de tech faustienne dans l'entropie mondiale
      *   (décision C1 — élargie hors transmuteurs seuls).
-     * SINK_RIFTS_PER_YEAR : régions englouties/an (eau, C3).
      * COLD_RAMP_PER_YEAR : décalage de température annuel (froid, C4).
      * THORN_CELLS_PER_YEAR : cellules corrompues/an (ronces, C5).
      * THORN_RANDOM_FRAC : fraction de voisins choisis aléatoirement (erratique, C5).
@@ -534,7 +533,6 @@
      * pèse moins mais l'arbre en porte plus ⇒ le tir médian revient ~an 200-235 (spread baseline,
      * gate respecté), au prix d'une rareté accrue sur les mondes bas-charge (fragmentés). */ \
     X(ENTROPY_TECH_W,         0.20f) \
-    X(SINK_RIFTS_PER_YEAR,    3.0f) \
     X(COLD_RAMP_PER_YEAR,     0.005f) \
     X(THORN_CELLS_PER_YEAR, 200.0f) \
     X(THORN_RANDOM_FRAC,      0.35f) \
@@ -547,15 +545,19 @@
      * pour qu'une guerre mondiale MAJEURE (ratio ~ENDGAME_BLOOD_FRAC) pèse comme une
      * charge tech soutenue (même ordre que ENTROPY_TECH_W), PAS plus. ENDGAME_BLOOD_
      * FRAC : au-delà de ce ratio, LE SANG L'EMPORTE quelle que soit la nature dominante
-     * (décision #1 — une barre, un visage dominant). SANG_DRAIN_PER_YEAR : fraction de
-     * pop drainée/an dans une région marquée (cicatrice PERMANENTE, ne guérit plus). */ \
-    X(ENTROPY_BREACH_W,       0.3f) \
+     * (décision #1 — une barre, un visage dominant). Le drain/plancher-pop de SANG (ex-
+     * SANG_DRAIN_PER_YEAR/SANG_POP_FLOOR) est SUPPRIMÉ (2026-07-11, « fins corrigées ») :
+     * SANG est désormais un plancher PERMANENT sur revolt_scar (SANG_SCAR_MIN, en fin de
+     * fichier) — les moteurs EXISTANTS (prod/croissance/exode par REFUGEE_FLEE_SCAR) font
+     * tout le reste, aucun canal neuf. */ \
+    X(ENTROPY_BREACH_W,       0.6f) /* 0.3→0.6 : spec ÂGES 2026-07-11 (« poids de la
+                                     * Brèche dans l'entropie : 0,60 ») — appliqué par
+                                     * l'orchestrateur, les 2 agents ayant atterri. */ \
     /* ENTROPY_BLOOD_W recalé 1→8 (2e passe, mesuré 5 graines) : le ratio passe sur la
      * pop VIVANTE (0.05-1.5 observé) — à 8, un monde sanglant (ratio ~1) pousse ~8 pts
      * d'entropie (précipite sa fin), un monde calme ~0.4 (négligeable). */ \
     X(ENTROPY_BLOOD_W,        8.0f) \
     X(ENDGAME_BLOOD_FRAC,     0.20f) \
-    X(SANG_DRAIN_PER_YEAR,    0.03f) \
     /* SANG_MEMORY_HL : demi-vie (ans) de la MÉMOIRE des morts de guerre — sans décrue,
      * le cumul à vie dépassait la pop renouvelée (40-961 % en sweep) et toute partie
      * longue devenait SANG ; à 40 ans le seuil BLOOD_FRAC mesure « une génération qui
@@ -568,20 +570,18 @@
      * décrue) atteint BLOOD_PLAYER_SHARE — sinon on retombe au sélecteur normal (rare
      * dominant/hash). Sans main humaine (chronique/viewer), la garde est INACTIVE. */ \
     X(BLOOD_PLAYER_SHARE,     0.25f) \
-    /* LOT F (2026-07-08) — L'EXODE AVANT LA MORT : EAU/FROID/RONCES/SANG routent une
-     * PART de leur pression (habitabilité effondrée / drain de guerre) vers la
-     * machinerie de réfugiés au lieu de tuer sur place. EXODUS_INTENSITY_MIN : la fin
-     * doit mordre franchement (endgame_region_intensity) avant qu'on fuie — calé BAS
-     * (mesuré : le gate temporel ENDGAME_YEAR_OPEN=180 laisse souvent peu de RUNWAY
-     * — une fin qui latche à l'an 217-246 n'a que 4-33 ans pour monter ; à 0.30 la
-     * plupart des fins n'auraient JAMAIS le temps de déclencher l'exode). EXODUS_
-     * FRAC_PER_YEAR : part de la pop d'une région en fuite, évacuée/an (EAU/FROID/
-     * RONCES). SANG_FLEE_FRAC : part du drain annuel de la marque SANG routée en
-     * fuite plutôt qu'au tombeau (le reste demeure une perte réelle — la guerre tue
-     * aussi, tout le monde ne s'échappe pas). */ \
+    /* LOT F (2026-07-08) — L'EXODE AVANT LA MORT : EAU/FROID/RONCES/CHAUD routent une
+     * PART de leur pression (habitabilité effondrée) vers la machinerie de réfugiés au
+     * lieu de tuer sur place. EXODUS_INTENSITY_MIN : la fin doit mordre franchement
+     * (endgame_region_intensity) avant qu'on fuie — calé BAS (mesuré : le gate temporel
+     * ENDGAME_YEAR_OPEN=180 laisse souvent peu de RUNWAY — une fin qui latche à l'an
+     * 217-246 n'a que 4-33 ans pour monter ; à 0.30 la plupart des fins n'auraient JAMAIS
+     * le temps de déclencher l'exode). EXODUS_FRAC_PER_YEAR : part de la pop d'une région
+     * en fuite, évacuée/an. SANG N'Y PARTICIPE PAS (2026-07-11, « fins corrigées ») : le
+     * plancher permanent sur revolt_scar (SANG_SCAR_MIN) fait déjà fuir via le seuil
+     * EXISTANT REFUGEE_FLEE_SCAR (scps_demography.c) — un second canal ferait doublon. */ \
     X(EXODUS_INTENSITY_MIN,  0.15f) \
     X(EXODUS_FRAC_PER_YEAR,  0.10f) \
-    X(SANG_FLEE_FRAC,        0.35f) \
     /* FIN_CHAUD (2026-07-08 ; REPLI 2026-07-08b) — LE RÉCHAUFFEMENT, la fin de REPLI
      * des MONDES CALMES. Le combustible RÉELLEMENT brûlé (bois de feu SERVI au panier +
      * charbon consommé en intrant de manufacture — l'offre servie ∝ pop prospère, jamais
@@ -823,6 +823,84 @@
     X(DECISION_AUDIT_CORRUPTION_MIN,      20.0f) \
     X(DECISION_AUDIT_REVENUE_RATE,        0.25f) \
     X(DECISION_AUDIT_COOLDOWN_YEARS,       5.0f) \
-    X(DECISION_AUDIT_L_DELTA,              0.3f)
+    X(DECISION_AUDIT_L_DELTA,              0.3f) \
+    /* FINS CORRIGÉES (2026-07-11, docs/AGES_FINS_2026-07-11.md) — les 3 fins réécrites pour
+     * frapper d'un coup / dégrader plutôt qu'effacer / marquer plutôt que drainer, sur des
+     * moteurs EXISTANTS (aucun canal neuf). WATER_RIFT_ARMS/_LENGTH/_STEP : géométrie du
+     * masque du rift d'eau (promus depuis les #define locaux RIFT_ARMS/RIFT_ARM_LEN/
+     * RIFT_ARM_STEP de scps_endgame.c, valeurs INCHANGÉES) — cataclysm_water_seed trace le
+     * masque COMPLET puis TOUTES les régions marquées sombrent AU TICK DE DÉCLENCHEMENT
+     * (SINK_RIFTS_PER_YEAR, le budget par-an, est SUPPRIMÉ) ; adjacency + refragmentation
+     * recalculées UNE seule fois après. THORN_CELLS_PER_YEAR/_RANDOM_FRAC (déjà au registre,
+     * plus haut, INCHANGÉS) gardent leur rôle ; THORN_FLIP_FRAC (le seuil qui détachait une
+     * région majoritairement ronces) est SUPPRIMÉ — BIO_THORNS garde son habitabilité 0,05,
+     * plus aucune région n'est détachée/supprimée, seule l'habitabilité+le grain dégradent
+     * (econ_cold_refresh, déjà appelé après chaque propagation annuelle). SANG_SCAR_MIN :
+     * promu depuis le #define local de scps_endgame.c (valeur INCHANGÉE) — le seuil au-delà
+     * duquel une région ravagée (revolt_scar) entre dans la marque PERMANENTE sang_scar[r]
+     * (le plancher qui ne guérit plus : chaque tick, si revolt_scar régionale ≥ ce seuil,
+     * sang_scar[r]=max(sang_scar[r],revolt_scar), puis CHAQUE province de la région voit son
+     * revolt_scar planché à sang_scar[r] — les moteurs EXISTANTS, pas un nouveau canal). */ \
+    X(WATER_RIFT_ARMS,        5.0f) \
+    X(WATER_RIFT_LENGTH,     96.0f) \
+    X(WATER_RIFT_STEP,        3.0f) \
+    X(SANG_SCAR_MIN,          0.15f) \
+    /* ÂGES SANS ORDRE IMPOSÉ (2026-07-11, docs/AGES_FINS_2026-07-11.md, raccord 10) —
+     * chaque âge = déclencheur matériel + jitter déterministe + effet + citation,
+     * AUCUN ordre imposé (Soulèvements↔Tyrans restent la SEULE paire mutuellement
+     * exclusive, revérifiée à l'avènement — scps_events.c). AGE_TRIGGER_JITTER_YEARS :
+     * 0-N ans d'attente entre éligibilité et avènement (hash seed×âge×année éligible).
+     * AGE_STRUCTURAL_DECAY_DAY : résorption/jour des bonus TRANSITOIRES (I/L/H/myth +
+     * P/mig_mult/research_mult ; remplace le 0,0004 codé en dur). Les seuils *_C/_P/_I/
+     * _L/_H/_DIVERSITY/_FLUX sont les DELTAS pointés par le nom de l'âge (Échanges/
+     * Découvertes/Empires/Brèche/Lumières/Soulèvements/Tyrans) ; les *_LEVER/_GRIEF
+     * sont les leviers de faction SCOPÉS aux pays MATÉRIELLEMENT concernés (posés une
+     * fois à l'avènement de CHAQUE âge, jamais un pays au hasard). */ \
+    X(AGE_TRIGGER_JITTER_YEARS,        4.0f) \
+    X(AGE_STRUCTURAL_DECAY_DAY,        0.00015f) \
+    X(AGE_EXCHANGE_NODE_VALUE,         1.0f) \
+    X(AGE_EXCHANGE_NODE_MIN,           4.0f) \
+    X(AGE_EXCHANGE_NODE_SHARE,         0.08f) \
+    X(AGE_EXCHANGE_C,                  0.50f) \
+    X(AGE_EXCHANGE_P,                  0.50f) \
+    X(AGE_EXCHANGE_MIG_PACT_MULT,      1.15f) \
+    X(AGE_EXCHANGE_MERCHANT_LEVER,     0.08f) \
+    X(AGE_DISCOVERY_KNOWN_PAIR_SHARE,  0.35f) \
+    X(AGE_DISCOVERY_COUNTRY_MIN,       6.0f) \
+    X(AGE_DISCOVERY_C,                 0.50f) \
+    X(AGE_DISCOVERY_RESEARCH_MULT,     1.10f) \
+    X(AGE_DISCOVERY_FOG_RADIUS_ADD,    1.0f) \
+    X(AGE_DISCOVERY_TRANSGRESSEUR_LEVER, 0.06f) \
+    X(AGE_DISCOVERY_MERCHANT_LEVER,    0.04f) \
+    X(AGE_EMPIRES_REGIONS_WORLD,       8.0f) \
+    X(AGE_EMPIRES_REGIONS_ONE_COUNTRY, 4.0f) \
+    X(AGE_EMPIRES_HELD_YEARS,          35.0f) \
+    X(AGE_EMPIRES_INTEGRATION_MULT,    1.20f) \
+    X(AGE_EMPIRES_CONQUEROR_LEVER,     0.10f) \
+    X(AGE_HERO_EFFICIENCY_MIN,         1.00f) \
+    X(AGE_HERO_LOYALTY_MIN,            75.0f) \
+    X(AGE_HERO_MISSION_REWARD,         1.20f) \
+    X(AGE_HERO_MISSION_REWARD_CAPTURED, 1.30f) \
+    X(AGE_HERO_FACTION_LEVER,          0.08f) \
+    X(AGE_HERO_REFUSED_GRIEF,          0.08f) \
+    X(AGE_BREACH_CHARGE,               6.0f) \
+    X(AGE_BREACH_FLUX,                 1.50f) \
+    X(AGE_BREACH_TRANSGRESSEUR_LEVER,  0.12f) \
+    X(AGE_LUMIERES_SAVOIR_MEAN,        5.0f) \
+    X(AGE_LUMIERES_C_MEAN,             4.5f) \
+    X(AGE_LUMIERES_I,                  1.50f) \
+    X(AGE_LUMIERES_SOLVENT,            1.25f) \
+    X(AGE_LUMIERES_LEGISTE_LEVER,      0.06f) \
+    X(AGE_LUMIERES_COMMUNAUTAIRE_LEVER, 0.04f) \
+    X(AGE_SOULEVEMENTS_MIN_COUNTRIES,  2.0f) \
+    X(AGE_SOULEVEMENTS_L,              1.50f) \
+    X(AGE_SOULEVEMENTS_COMMUNAUTAIRE_LEVER, 0.12f) \
+    X(AGE_TYRANS_FRACTURE,             3.0f) \
+    X(AGE_TYRANS_DEREAL,               1.25f) \
+    X(AGE_TYRANS_SI,                   5.0f) \
+    X(AGE_TYRANS_H,                    1.75f) \
+    X(AGE_TYRANS_DIVERSITY,            1.50f) \
+    X(AGE_TYRANS_CONQUEROR_LEVER,      0.08f) \
+    X(AGE_TYRANS_LEGISTE_LEVER,        0.04f)
 
 #endif /* SCPS_TUNE_LIST_H */

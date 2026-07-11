@@ -24,9 +24,9 @@
 #include <math.h>     /* cosf/sinf : les bras radiaux du rift */
 
 /* ── Formes du cataclysme (capacités/géométrie — PAS le registre J) ──────── */
-#define RIFT_ARMS         5     /* bras radiaux du rift d'eau */
-#define RIFT_ARM_LEN     96     /* portée d'un bras (cellules) depuis l'épicentre */
-#define RIFT_ARM_STEP     3     /* pas d'échantillonnage le long d'un bras */
+/* RIFT_ARMS/_LEN/_STEP : PROMUS au registre J (2026-07-11, « fins corrigées ») sous
+ * WATER_RIFT_ARMS/_LENGTH/_STEP — valeurs par défaut INCHANGÉES (5/96/3), lues via
+ * tune_f() au point d'usage (cataclysm_water_seed) au lieu de #define locaux. */
 #define SPLIT_VIABLE_MIN  2     /* un fragment de ≥ N régions sécède ; sinon il est perdu */
 
 void endgame_init(EndgameState *eg) {
@@ -115,7 +115,7 @@ static void endgame_entropy_widen(EndgameState *eg, WorldProsperity *wp,
         for (int c = 0; c < nc && c < SCPS_MAX_COUNTRY; c++) tech_ent += ts[c].charge;
         wp->entropy += tune_f("ENTROPY_TECH_W", 1.0f) * tech_ent;
     }
-    wp->entropy += tune_f("ENTROPY_BREACH_W", 0.3f) * wp->age_breach_flux;
+    wp->entropy += tune_f("ENTROPY_BREACH_W", 0.6f) * wp->age_breach_flux;
     if (eg && camp) {
         /* MÉMOIRE À DÉCRUE (calibrage post-sweep : le miroir cumulatif atteignait
          * 40-961 % de pop_ref — toute partie longue devenait SANG). On accumule le
@@ -373,19 +373,24 @@ static int cataclysm_resplit_empire(World *w, WorldEconomy *econ, int country) {
 }
 
 /* AMORÇAGE (au fire) : trace K bras radiaux depuis l'épicentre, programme les
- * régions traversées (sunken[r]=1). Le résultat (le bitmap) EST la donnée persistée. */
+ * régions traversées (sunken[r]=1). Le résultat (le bitmap) EST la donnée persistée —
+ * le MASQUE COMPLET (toutes les régions que le rift touche), engloutit D'UN COUP par
+ * cataclysm_water_step juste après (même tick — le déroulement n'est plus étalé/an). */
 static void cataclysm_water_seed(EndgameState *eg, const World *w, const WorldEconomy *econ) {
     int cx, cy; region_centroid(w, eg->epicenter_reg, &cx, &cy);
     uint32_t rng = (uint32_t)((eg->epicenter_reg + 1) * 2654435761u)
                  ^ (uint32_t)((eg->fauteur_country + 1) * 40503u) ^ 0x5EA00Du;
+    int arms = (int)(tune_f("WATER_RIFT_ARMS", 5.f) + 0.5f); if (arms < 1) arms = 1;
+    int len  = (int)(tune_f("WATER_RIFT_LENGTH", 96.f) + 0.5f); if (len < 1) len = 1;
+    int step = (int)(tune_f("WATER_RIFT_STEP", 3.f) + 0.5f); if (step < 1) step = 1;
     memset(eg->sunken, 0, sizeof eg->sunken);
     if (eg->epicenter_reg >= 0 && eg->epicenter_reg < econ->n_regions)
         eg->sunken[eg->epicenter_reg] = 1;
-    for (int a = 0; a < RIFT_ARMS; a++) {
-        float ang = 6.2831853f * ((float)a / RIFT_ARMS) + (float)(rng % 628) / 100.f;
+    for (int a = 0; a < arms; a++) {
+        float ang = 6.2831853f * ((float)a / (float)arms) + (float)(rng % 628) / 100.f;
         rng = rng * 1664525u + 1013904223u;
         float dx = cosf(ang), dy = sinf(ang);
-        for (int s = RIFT_ARM_STEP; s <= RIFT_ARM_LEN; s += RIFT_ARM_STEP) {
+        for (int s = step; s <= len; s += step) {
             int x = cx + (int)(dx * s), y = cy + (int)(dy * s);
             if (x < 0 || y < 0 || x >= SCPS_W || y >= SCPS_H) break;
             int r = w->cell[scps_idx(x,y)].region;
@@ -397,13 +402,15 @@ static void cataclysm_water_seed(EndgameState *eg, const World *w, const WorldEc
     eg->sink_pending = pend; eg->n_sunken = 0;
 }
 
-/* DÉROULEMENT (par an) : engloutit jusqu'à SINK_RIFTS_PER_YEAR régions programmées,
- * recalcule l'adjacence, refragmente les empires scindés. */
+/* DÉROULEMENT (AU TICK DE DÉCLENCHEMENT) : engloutit D'UN COUP toutes les régions
+ * programmées (sunken[r]==1) — plus de budget par-an (SINK_RIFTS_PER_YEAR SUPPRIMÉ,
+ * 2026-07-11) — puis recalcule l'adjacence et refragmente UNE SEULE fois. Comme
+ * cataclysm_water_seed s'exécute dans le MÊME appel d'endgame_tick (le fire, cf.
+ * endgame_select_and_fire → switch), la carte sombre entièrement l'année du tir ;
+ * les appels annuels suivants sont des no-op (sunk_now==0, plus rien à engloutir). */
 static void cataclysm_water_step(EndgameState *eg, World *w, WorldEconomy *econ, Campaign *camp) {
-    int budget = (int)(tune_f("SINK_RIFTS_PER_YEAR", 3.f) + 0.5f);
-    if (budget < 1) budget = 1;
     int sunk_now = 0;
-    for (int r = 0; r < econ->n_regions && sunk_now < budget; r++) {
+    for (int r = 0; r < econ->n_regions; r++) {
         if (eg->sunken[r] != 1) continue;       /* 1 = programmé, pas encore sombré */
         cataclysm_sink_region(w, econ, camp, r);
         eg->sunken[r] = 2;                       /* 2 = englouti */
@@ -553,20 +560,11 @@ static long g_exodus_total = 0;
 void endgame_exodus_reset(void) { g_exodus_total = 0; }
 long endgame_exodus_count(void) { return g_exodus_total; }
 
-/* Voisine HABITABLE (adjacence éco, owner≥0) la MOINS touchée par LA MÊME fin ;
- * -1 si personne n'est mieux loti (piégé — comme les réfugiés de guerre : « si
- * possible »). Ne fuit JAMAIS vers une région PLUS touchée que la sienne. */
-static int endgame_flee_target(const EndgameState *eg, const World *w, const WorldEconomy *econ, int r) {
-    float my_i = endgame_region_intensity(eg, w, econ, r);
-    int best = -1; float best_i = my_i;
-    for (int o = 0; o < econ->n_regions && o < SCPS_MAX_REG; o++) {
-        if (o == r || !econ->adj[r][o]) continue;
-        if (econ->region[o].owner < 0) continue;
-        float oi = endgame_region_intensity(eg, w, econ, o);
-        if (oi < best_i) { best_i = oi; best = o; }
-    }
-    return best;
-}
+/* endgame_flee_target (la variante O(n_régions) par-appel, non batchée) a été
+ * RETIRÉE (2026-07-11, « fins corrigées ») : son seul appelant était l'ancien
+ * sang_step (drain SANG supprimé) — endgame_flee_target_arr (plus bas, O(1) sur
+ * le tableau précalculé par endgame_compute_all_intensities) reste le seul
+ * lecteur de l'exode générique EAU/FROID/RONCES/CHAUD. */
 
 /* Évacue `frac` de CHAQUE groupe des provinces de la région `r` vers la province
  * REPRÉSENTATIVE de `dst` (mode ARR_REFUGIE, home_reg=r — l'exode se souvient
@@ -734,7 +732,13 @@ static void endgame_exodus_step(EndgameState *eg, World *w, WorldEconomy *econ) 
 /* ─────────────────────────────────────────────────────────────────────────────
  * C5 — APOCALYPSE DES RONCES (flux) : BFS-CELLULES erratique
  * ──────────────────────────────────────────────────────────────────────────── */
-#define THORN_FLIP_FRAC 0.5f    /* ≥ 50 % des cellules de terre en ronces ⇒ la région tombe */
+/* THORN_FLIP_FRAC (le seuil qui détachait une région majoritairement ronces —
+ * owner=-1, cellules strippées, refragmentation) est SUPPRIMÉ (2026-07-11, « fins
+ * corrigées ») : plus AUCUNE région n'est détachée/supprimée par les ronces. La
+ * fin DÉGRADE au lieu d'EFFACER — BIO_THORNS garde son habitabilité 0,05 (déjà
+ * branchée) et econ_cold_refresh (déjà appelé après CHAQUE propagation annuelle,
+ * ci-dessous) fait ÉMERGER la famine progressivement dans les provinces touchées,
+ * SANS jamais retirer la région du jeu. */
 
 /* ÉRUPTION (1er pas) : la bramble jaillit du foyer — corrompt les cellules de la
  * région-épicentre et les pose comme front initial. Mute w (≠ water_seed, read-only). */
@@ -755,8 +759,12 @@ static void cataclysm_thorns_seed(EndgameState *eg, World *w, const WorldEconomy
 
 /* DÉROULEMENT (par an) : le front de ronces propage de façon ERRATIQUE (fraction
  * aléatoire des voisins de terre, rng dédié → déterministe & frontière non circulaire).
- * Une région majoritairement ronces TOMBE (strip partagé C3) → recalcul + refragmentation. */
+ * Aucune région ne tombe (THORN_FLIP_FRAC supprimé) — après CHAQUE propagation,
+ * l'habitabilité et le grain des provinces touchées sont recalculés (econ_cold_refresh,
+ * le motif du FROID). `camp` n'est plus utilisé (le partage cataclysm_strip_region_econ
+ * disparaît côté ronces) — gardé dans la signature pour le switch d'endgame_tick. */
 static void thorns_step(EndgameState *eg, World *w, WorldEconomy *econ, Campaign *camp) {
+    (void)camp;
     if (eg->thorn_front_n == 0) cataclysm_thorns_seed(eg, w, econ);   /* éruption au 1er pas */
     int budget = (int)(tune_f("THORN_CELLS_PER_YEAR", 200.f) + 0.5f); if (budget < 1) budget = 1;
     float frac = tune_f("THORN_RANDOM_FRAC", 0.35f);
@@ -784,100 +792,57 @@ static void thorns_step(EndgameState *eg, World *w, WorldEconomy *econ, Campaign
     eg->thorn_front_n = nn;
     if (corrupted == 0) return;                                                /* rien corrompu : carte stable */
 
-    /* LOT F (2026-07-08) — LA MALADIE AVANT LA MORT : biome_habitability(BIO_THORNS)
-     * vient d'être branchée (quasi-nulle) ; econ_cold_refresh (déjà écrit pour C4,
+    /* LA MALADIE, PAS LA MORT (2026-07-11, « fins corrigées ») : biome_habitability
+     * (BIO_THORNS) est quasi-nulle (0,05) ; econ_cold_refresh (déjà écrit pour C4,
      * réutilisé TEL QUEL — même chaîne biome→habitabilité→grain) fait ÉMERGER la
-     * famine dans CHAQUE province touchée dès que ses cellules corrompent, des
-     * ANNÉES avant que la région n'atteigne le seuil de 50 % qui la fait tomber. */
+     * famine dans CHAQUE province touchée dès que ses cellules corrompent — AUCUNE
+     * région ne tombe plus (le seuil de bascule THORN_FLIP_FRAC est supprimé) : la
+     * dégradation progresse chaque année, indéfiniment, sans jamais retirer la région
+     * du jeu (owner/province/pays intacts). */
     econ_cold_refresh(econ, w);
-
-    /* régions majoritairement ronces → TOMBENT (convertit + détache + strip éco partagé). */
-    static int land[SCPS_MAX_REG], thn[SCPS_MAX_REG];
-    memset(land, 0, sizeof land); memset(thn, 0, sizeof thn);
-    for (int i = 0; i < SCPS_N; i++) {
-        Cell *c = &w->cell[i];
-        if (c->height < SEA_LEVEL) continue;
-        int r = c->region; if (r < 0 || r >= SCPS_MAX_REG) continue;
-        land[r]++; if (c->biome == BIO_THORNS) thn[r]++;
-    }
-    int flipped = 0;
-    for (int r = 0; r < econ->n_regions && r < SCPS_MAX_REG; r++) {
-        if (land[r] == 0 || econ->region[r].owner < 0) continue;
-        if ((float)thn[r] >= THORN_FLIP_FRAC * (float)land[r]) {
-            for (int i = 0; i < SCPS_N; i++) { Cell *c = &w->cell[i];
-                if (c->region == r) { c->biome = BIO_THORNS; c->province = c->region = c->country = c->continent = -1; c->coast = false; } }
-            cataclysm_strip_region_econ(w, econ, camp, r);
-            flipped++;
-        }
-    }
-    if (flipped == 0) return;
-    world_recompute_adjacency(w); econ_build_adjacency(econ, w);
-    int nc0 = w->n_countries, born = 0;
-    for (int c = 0; c < nc0; c++) born += cataclysm_resplit_empire(w, econ, c);
-    if (born > 0) world_recompute_adjacency(w);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * C4bis — APOCALYPSE DE SANG (guerre) : dépeuplement progressif, cicatrice
- * PERMANENTE (ne guérit plus — contrairement à revolt_scar qui décroît).
+ * C4bis — APOCALYPSE DE SANG (guerre) : PLANCHER PERMANENT sur revolt_scar
+ * (2026-07-11, « fins corrigées » — AUCUN nouveau canal). SANG n'assigne plus
+ * aucun modificateur d'habitabilité, ne draine plus la pop directement et ne
+ * supprime aucune région : sang_scar[r] est un RATCHET qui ne redescend jamais,
+ * et son unique effet est de PLANCHER le revolt_scar de chaque province de la
+ * région marquée — « la cicatrice ne se referme plus ». Tout le reste (prod
+ * −50 % max, croissance −50 % max, reconstruction, valeur de province via
+ * diplo_province_price, exode via le seuil EXISTANT REFUGEE_FLEE_SCAR de
+ * scps_demography.c) découle des moteurs qui lisent DÉJÀ revolt_scar — aucun
+ * n'est neuf ici.
  * ──────────────────────────────────────────────────────────────────────────── */
-#define SANG_SCAR_MIN 0.15f   /* une région n'entre dans la marque qu'au-delà (guerre RÉELLE, pas du bruit) */
 
-/* AMORÇAGE (au fire) : la marque SANG naît d'un instantané de revolt_scar (le
- * signal « région ravagée » déjà porté par l'éco — sac de guerre/révolte) sur
- * TOUTES les régions vivantes qui le dépassent. Une fois posée, sang_scar ne
- * décroît JAMAIS (contrairement à revolt_scar) — la guerre laisse une plaie
- * qui ne se referme plus, c'est la thèse de cette fin. */
-static void sang_seed(EndgameState *eg, const WorldEconomy *econ) {
-    memset(eg->sang_scar, 0, sizeof eg->sang_scar);
-    for (int r = 0; r < econ->n_regions && r < SCPS_MAX_REG; r++) {
+/* DÉROULEMENT (au fire ET chaque année tant que SANG est la fin latchée — le
+ * même appel fait office d'amorçage : le 1er passage établit la marque, les
+ * suivants la font grandir si la guerre continue, « une nouvelle guerre
+ * AGRANDIT la marque »). Pour chaque région VIVANTE dont le revolt_scar agrégé
+ * (pop-pondéré, econ_aggregate_regions) franchit SANG_SCAR_MIN, la marque
+ * sang_scar[r] MONTE au max (jamais redescendue) ; puis CHAQUE province de la
+ * région est planchée : revolt_scar = max(revolt_scar, sang_scar[r]) — la
+ * décroissance normale (scps_econ.c, −0.25/an) ne peut plus faire refermer la
+ * plaie sous ce plancher. */
+static void sang_step(EndgameState *eg, const World *w, WorldEconomy *econ) {
+    float scar_min = tune_f("SANG_SCAR_MIN", 0.15f);
+    int nr = econ->n_regions; if (nr > SCPS_MAX_REG) nr = SCPS_MAX_REG;
+    for (int r = 0; r < nr; r++) {
         const RegionEconomy *re = &econ->region[r];
         if (re->owner < 0) continue;
-        float s = re->revolt_scar;
-        if (s > SANG_SCAR_MIN) eg->sang_scar[r] = (s > 1.f) ? 1.f : s;
-    }
-}
-
-/* DÉROULEMENT (par an) : draine une fraction de pop ∝ la marque, dans CHAQUE
- * région marquée, PLAFONNÉE (un plancher de pop empêche la spirale vers zéro —
- * "un monde fini", pas un memset brutal). Réutilise econ_region_pop_add (le
- * même idiome que le reste de l'éco — jamais un accès direct à prov[]). */
-#define SANG_DRAIN_PER_YEAR 0.03f  /* fraction de pop drainée/an dans une région à marque=1 */
-#define SANG_POP_FLOOR      50.f   /* plancher : une région marquée ne descend jamais sous ça */
-static void sang_step(EndgameState *eg, World *w, WorldEconomy *econ) {
-    float rate = tune_f("SANG_DRAIN_PER_YEAR", SANG_DRAIN_PER_YEAR);
-    float flee_frac = tune_f("SANG_FLEE_FRAC", 0.35f);
-    for (int r = 0; r < econ->n_regions && r < SCPS_MAX_REG; r++) {
-        float scar = eg->sang_scar[r];
-        if (scar <= 0.f) continue;
-        RegionEconomy *re = &econ->region[r];
-        if (re->owner < 0) continue;
-        float tot = 0.f; for (int cl = 0; cl < CLASS_COUNT; cl++) tot += re->strata[cl].pop;
-        if (tot <= SANG_POP_FLOOR) continue;                 /* plancher atteint : la région respire */
-        float drain = tot * rate * scar;
-        if (tot - drain < SANG_POP_FLOOR) drain = tot - SANG_POP_FLOOR;
-        if (drain <= 0.f) continue;
-
-        /* LOT F — L'EXODE AVANT LA MORT : une PART de ce qui aurait péri FUIT vers
-         * la voisine la moins marquée au lieu de mourir sur place ; le reste
-         * (1-flee_frac) demeure une perte RÉELLE — la guerre tue aussi, tout le
-         * monde ne s'échappe pas (ratio mort/fuite tunable). */
-        int dst = endgame_flee_target(eg, w, econ, r);
-        if (getenv("SCPS_EXODIAG"))
-            fprintf(stderr, "[EXODIAG SANG] reg=%d scar=%.2f dst=%d tot=%.0f drain=%.0f\n", r, (double)scar, dst, (double)tot, (double)drain);
-        if (dst >= 0 && tot > 0.f) {
-            float want = drain * flee_frac;
-            long evac = endgame_evacuate_region(econ, w, r, dst, want / tot);
-            if (getenv("SCPS_EXODIAG"))
-                fprintf(stderr, "[EXODIAG SANG]   evac=%ld want=%.0f\n", evac, (double)want);
-            drain -= (float)evac;
-            if (drain < 0.f) drain = 0.f;
+        if (re->revolt_scar >= scar_min && re->revolt_scar > eg->sang_scar[r]) {
+            float s = re->revolt_scar; if (s > 1.f) s = 1.f;
+            eg->sang_scar[r] = s;
         }
-
-        for (int cl = 0; cl < CLASS_COUNT; cl++) {
-            float share = (tot > 0.f) ? re->strata[cl].pop / tot : 0.f;
-            float take = drain * share;
-            if (take > 0.f) econ_region_pop_add(econ, r, cl, -take);
+        float floor = eg->sang_scar[r];
+        if (floor <= 0.f) continue;
+        if (r >= w->n_regions) continue;
+        const Region *rg = &w->region[r];
+        for (int k = 0; k < rg->n_provinces; k++) {
+            int pid = rg->province_ids[k];
+            if (pid < 0 || pid >= econ->n_prov) continue;
+            ProvinceEconomy *pe = &econ->prov[pid];
+            if (pe->revolt_scar < floor) pe->revolt_scar = floor;
         }
     }
 }
@@ -1341,12 +1306,15 @@ static void endgame_select_and_fire(EndgameState *eg, const World *w,
         }
         eg->fin   = FIN_SANG;
         eg->fired = true;
-        sang_seed(eg, econ);
+        /* AMORÇAGE : sang_step (ci-dessus, l'unique fonction du mécanisme depuis
+         * 2026-07-11) fait aussi office de sang_seed — marque + plancher en un seul
+         * appel ; le switch d'endgame_tick le rappellera chaque année ensuite. */
+        sang_step(eg, w, econ);
         if (getenv("SCPS_EXODIAG")) {
             int nmarked = 0; float sum = 0.f;
             for (int r2 = 0; r2 < econ->n_regions && r2 < SCPS_MAX_REG; r2++)
                 if (eg->sang_scar[r2] > 0.f) { nmarked++; sum += eg->sang_scar[r2]; }
-            fprintf(stderr, "[EXODIAG] sang_seed : %d région(s) marquée(s), somme scar %.2f\n", nmarked, (double)sum);
+            fprintf(stderr, "[EXODIAG] sang_step (amorçage) : %d région(s) marquée(s), somme scar %.2f\n", nmarked, (double)sum);
         }
         endgame_faction_react(FIN_SANG, eg->fauteur_country);
         return;
@@ -1409,14 +1377,18 @@ void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
             case FIN_EAU:    cataclysm_water_step(eg, w, econ, camp); break;
             case FIN_FROID:  cold_step(eg, w, econ); break;
             case FIN_RONCES: thorns_step(eg, w, econ, camp); break;
-            case FIN_SANG:   sang_step(eg, w, econ); break;   /* route DÉJÀ une part en fuite (LOT F) */
+            case FIN_SANG:   sang_step(eg, w, econ); break;   /* ratchet+plancher SEULEMENT (2026-07-11) */
             case FIN_CHAUD:  chaud_step(eg, w, econ, camp); break;   /* réchauffement : étuve + montée des eaux */
             default: break;   /* ASCENSION : pas de carve (terre intacte) */
         }
         /* LOT F — L'EXODE (générique) : EAU/FROID/RONCES/CHAUD routent une part de
-         * leur pression via la machinerie de réfugiés. SANG le fait déjà EN INTERNE
-         * (sang_step, ci-dessus — sa marque EST déjà un drain/an, on y greffe la
-         * fuite directement plutôt qu'un passage générique redondant). */
+         * leur pression via la machinerie de réfugiés (endgame_exodus_step, ci-dessous).
+         * SANG N'Y PARTICIPE PAS (2026-07-11, « fins corrigées ») : son plancher permanent
+         * sur revolt_scar fait déjà fuir via le seuil EXISTANT REFUGEE_FLEE_SCAR
+         * (demography_refugee_tick, scps_demography.c) — un canal générique de plus ferait
+         * doublon, et la marque SANG ne redescendant JAMAIS, le seuil d'exode LOT F
+         * (endgame_region_intensity) resterait franchi pour toujours → spirale d'évacuation
+         * sans fin, ce que le design évite explicitement. */
         if (eg->fin == FIN_EAU || eg->fin == FIN_FROID || eg->fin == FIN_RONCES
             || eg->fin == FIN_CHAUD)
             endgame_exodus_step(eg, w, econ);

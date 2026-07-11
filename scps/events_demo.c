@@ -26,6 +26,7 @@
 #include "scps_routes.h"
 #include "scps_events.h"
 #include "scps_religion.h"   /* V2b LOT 3 : religion_fracture_level/credo_drift/scholar_drift */
+#include "scps_fog.h"        /* raccord 6 (Découvertes) : fog_debug_meet_all pour forcer country_knows */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,6 +35,18 @@ static int g_pass=0, g_fail=0;
 static void ok(const char *what, bool cond){
     printf("   %s %s\n", cond?"✓":"✗", what);
     if (cond) g_pass++; else g_fail++;
+}
+
+/* ÂGES SANS ORDRE IMPOSÉ (raccord jitter) — un âge n'avient plus au tick où son
+ * déclencheur devient vrai (0-AGE_TRIGGER_JITTER_YEARS ans plus tard, PLUS le
+ * throttle « au plus un âge par an » qui résout les collisions) : on AVANCE
+ * année par année jusqu'à ce que la cible avienne (ou qu'on abandonne). */
+static void advance_until_age(EventsState *ev, World *w, WorldEconomy *econ, WorldProsperity *wp,
+                              WorldLegitimacy *wl, TechState *ts, AgeId target, int max_years){
+    for (int i=0;i<max_years && !ages_dawned(ev,target);i++){
+        ev->ages.days_elapsed += 365;
+        events_check_ages(ev,w,econ,wp,wl,ts);
+    }
 }
 
 typedef struct {
@@ -256,60 +269,94 @@ int main(int argc, char **argv){
         ok("quatre cultures, quatre récits distincts (même déclencheur)", distinct);
     } else ok("(monde trop petit pour le test de saveur — ignoré)", true);
 
-    /* ═══ 4. ÂGES ÉMERGENTS (état du monde, pas une date) ═══════════════ */
-    printf("\n── 4. Les âges ADVIENNENT quand le monde atteint un état ──\n");
+    /* ═══ 4. ÂGES SANS ORDRE IMPOSÉ (état du monde + jitter, pas une date fixe) ═══ */
+    printf("\n── 4. Les âges ADVIENNENT quand le monde atteint un état (aucun ordre imposé) ──\n");
     /* On neutralise les conditions, puis on les allume une à une : chaque âge
      * n'advient QUE quand son état est atteint (preuve d'émergence, pas de minuteur). */
     for (int r=0;r<s.econ->n_regions;r++){ s.econ->region[r].route_pe=0.f; if(r<SCPS_MAX_REG) s.wl->years_held[r]=0.f; }
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){ s.ts[c].charge=0.f; if(c<s.wp->n_countries) s.wp->country[c].Lumiere=0.f; }
     events_init(s.ev,s.w,seed);
-    s.wp->age_C_bonus=0.f; s.wp->age_breach_flux=0.f;
-    s.ev->ages.days_elapsed += 31*365; events_check_ages(s.ev,s.w,s.econ,s.wp,s.wl,s.ts);
+    s.wp->age_C_bonus=0.f; s.wp->age_breach_flux=0.f; s.wp->age_research_mult=1.f; s.wp->age_integration_mult=1.f;
+    s.ev->ages.days_elapsed += 365; events_check_ages(s.ev,s.w,s.econ,s.wp,s.wl,s.ts);
     ok("monde « éteint » : aucun âge ne s'éveille",
-       !ages_dawned(s.ev,AGE_COMMERCE)&&!ages_dawned(s.ev,AGE_REASON)
+       !ages_dawned(s.ev,AGE_EXCHANGE)&&!ages_dawned(s.ev,AGE_DISCOVERY)
        &&!ages_dawned(s.ev,AGE_EMPIRES)&&!ages_dawned(s.ev,AGE_BREACH));
 
-    /* Âge du Commerce : X nœuds au-dessus de la valeur Y. */
+    /* L'Ère des Échanges : ≥4 régions ET ≥8 % des régions habitées, route_pe>Y. */
     { int settled[64], ns=0;
       for (int r=0;r<s.econ->n_regions && ns<6;r++) if (s.econ->region[r].culture.settled) settled[ns++]=r;
       for (int k=0;k<ns;k++) s.econ->region[settled[k]].route_pe=2.0f; }   /* 6 carrefours riches */
-    s.ev->ages.days_elapsed += 31*365; events_check_ages(s.ev,s.w,s.econ,s.wp,s.wl,s.ts);
-    printf("   Commerce : éveillé=%d  C mondial=+%.1f  palier Société/3 ouvert=%d\n",
-           ages_dawned(s.ev,AGE_COMMERCE), s.wp->age_C_bonus, ages_tier_open(s.ev,THM_SOCIETE,3));
-    ok("l'Âge du Commerce s'éveille quand X nœuds dépassent la valeur Y", ages_dawned(s.ev,AGE_COMMERCE));
+    advance_until_age(s.ev,s.w,s.econ,s.wp,s.wl,s.ts, AGE_EXCHANGE, 10);
+    printf("   Échanges : éveillé=%d (an %d)  C mondial=+%.2f  palier Société/3 ouvert=%d\n",
+           ages_dawned(s.ev,AGE_EXCHANGE), s.ev->ages.days_elapsed/365, s.wp->age_C_bonus,
+           ages_tier_open(s.wp,THM_SOCIETE,3));
+    ok("l'Ère des Échanges s'éveille quand X nœuds dépassent la valeur Y (avec jitter)", ages_dawned(s.ev,AGE_EXCHANGE));
     ok("à son avènement, la connectivité MONDIALE monte (C global) + palier de tech",
-       s.wp->age_C_bonus>0.f && ages_tier_open(s.ev,THM_SOCIETE,3));
+       s.wp->age_C_bonus>0.f && ages_tier_open(s.wp,THM_SOCIETE,3));
 
-    /* Âge de la Raison : Lumière mondiale cumulée. */
-    for (int c=0;c<s.wp->n_countries && c<4;c++) s.wp->country[c].Lumiere=9.f;
-    s.ev->ages.days_elapsed += 31*365; events_check_ages(s.ev,s.w,s.econ,s.wp,s.wl,s.ts);
-    ok("l'Âge de la Raison s'éveille au seuil de Lumière mondiale (recherche ↑)",
-       ages_dawned(s.ev,AGE_REASON) && s.ev->ages.research_mult>1.f);
+    /* L'Âge des Découvertes : ≥6 pays vivants ET 35 % des paires se connaissent
+     * (country_knows) — trop dépendant de la topologie pour un banc synthétique
+     * fiable, on FORCE la connaissance (motif fuzz/banc documenté scps_fog.h). */
+    if (s.w->n_countries>=6){
+        for (int c=0;c<s.w->n_countries;c++) fog_debug_meet_all(c);
+        advance_until_age(s.ev,s.w,s.econ,s.wp,s.wl,s.ts, AGE_DISCOVERY, 10);
+        ok("l'Âge des Découvertes s'éveille au ratio de pays connus (recherche ↑)",
+           ages_dawned(s.ev,AGE_DISCOVERY) && s.wp->age_research_mult>1.f);
+    } else ok("(monde trop petit pour le test des Découvertes — ignoré)", true);
 
-    /* Âge des Empires : régions bien intégrées. */
-    { int n=0; for (int r=0;r<s.econ->n_regions && n<12;r++)
-        if (s.econ->region[r].owner>=0 && s.econ->region[r].culture.settled && r<SCPS_MAX_REG){ s.wl->years_held[r]=60.f; n++; } }
-    s.ev->ages.days_elapsed += 31*365; events_check_ages(s.ev,s.w,s.econ,s.wp,s.wl,s.ts);
-    ok("l'Âge des Empires s'éveille sur l'intégration cumulée (intégration ↑)",
-       ages_dawned(s.ev,AGE_EMPIRES) && s.ev->ages.integration_mult>1.f);
+    /* L'Âge des Empires : ≥8 régions habitées tenues depuis 35 ans, DONT 4 par un
+     * MÊME pays (pas juste 8 régions éparses). */
+    { int cid0=-1;
+      for (int c=0;c<s.w->n_countries;c++){
+          int n=0; for (int r=0;r<s.econ->n_regions;r++) if (s.econ->region[r].owner==c) n++;
+          if (n>=4){ cid0=c; break; }
+      }
+      int n=0;
+      if (cid0>=0) for (int r=0;r<s.econ->n_regions && n<4;r++)
+          if (s.econ->region[r].owner==cid0 && s.econ->region[r].culture.settled && r<SCPS_MAX_REG){ s.wl->years_held[r]=60.f; n++; }
+      for (int r=0;r<s.econ->n_regions && n<8;r++)
+          if (s.econ->region[r].owner>=0 && s.econ->region[r].culture.settled && r<SCPS_MAX_REG && s.wl->years_held[r]<60.f){
+              s.wl->years_held[r]=60.f; n++;
+          }
+      if (cid0>=0){
+          advance_until_age(s.ev,s.w,s.econ,s.wp,s.wl,s.ts, AGE_EMPIRES, 10);
+          ok("l'Âge des Empires s'éveille sur l'intégration cumulée (≥4 d'un même pays, intégration ↑)",
+             ages_dawned(s.ev,AGE_EMPIRES) && s.wp->age_integration_mult>1.f);
+      } else ok("(monde trop petit pour le test des Empires — ignoré)", true);
+    }
 
     /* ═══ 5. L'ÂGE DE LA BRÈCHE — l'endgame faustien ═══════════════════ */
     printf("\n── 5. Pousser la Magie fait advenir la Brèche (pression mondiale) ──\n");
     ok("avant : la Brèche dort", !ages_dawned(s.ev,AGE_BREACH));
-    s.ts[0].charge=6.0f;                              /* une démesure faustienne quelque part */
-    s.ev->ages.days_elapsed += 31*365; events_check_ages(s.ev,s.w,s.econ,s.wp,s.wl,s.ts);
+    s.ts[0].charge=7.0f;                              /* une démesure faustienne quelque part (>AGE_BREACH_CHARGE=6) */
+    advance_until_age(s.ev,s.w,s.econ,s.wp,s.wl,s.ts, AGE_BREACH, 10);
     printf("   Brèche : éveillée=%d  pression mondiale=%.1f  flux faustien mondial=%.1f  palier Magie/5=%d\n",
            ages_dawned(s.ev,AGE_BREACH), ages_breach_pressure(s.ev), s.wp->age_breach_flux,
-           ages_tier_open(s.ev,THM_SAVOIR,5));
+           ages_tier_open(s.wp,THM_SAVOIR,5));
     ok("la charge faustienne fait advenir l'Âge de la Brèche", ages_dawned(s.ev,AGE_BREACH));
     ok("la Brèche monte la pression de fin MONDIALE (flux faustien global → déréalisation)",
        ages_breach_pressure(s.ev)>0.f && s.wp->age_breach_flux>0.f);
 
-    /* Dispersion : les quatre âges sont advenus à des MOMENTS distincts (états
-     * atteints l'un après l'autre), pas tous en même temps — la tech se disperse. */
-    ok("les quatre âges sont advenus par PALIERS d'état (tech dispersée, pas un minuteur)",
-       ages_dawned(s.ev,AGE_COMMERCE)&&ages_dawned(s.ev,AGE_REASON)
-       &&ages_dawned(s.ev,AGE_EMPIRES)&&ages_dawned(s.ev,AGE_BREACH));
+    /* Dispersion : les âges sont advenus à des MOMENTS distincts (états atteints
+     * l'un après l'autre), pas tous en même temps — AUCUN ORDRE IMPOSÉ (le throttle
+     * « au plus un âge par an » les espace, sans jamais fixer LEQUEL vient d'abord). */
+    ok("Échanges et Brèche sont advenus par PALIERS d'état (tech dispersée, pas un minuteur)",
+       ages_dawned(s.ev,AGE_EXCHANGE) && ages_dawned(s.ev,AGE_BREACH));
+    /* NETTOYAGE DE SECTION — events_init() (appelé en tête de CHAQUE section
+     * suivante) referme `ev` (dawned[]/year_eligible[] repartent à zéro), mais
+     * PAS le monde : route_pe/years_held/charge/fog restent à ce que CETTE
+     * section vient de poser. Sans ce nettoyage, un âge REDEVIENT éligible dans
+     * une section ULTÉRIEURE (son déclencheur matériel est resté vrai) et
+     * REDAWN — inoffensif pour l'ancien code (aucun effet de bord), mais les
+     * leviers de faction SCOPÉS des âges (age_lever_*, NEUFS) votent alors sur
+     * des pays que la section suivante ne s'attend pas à voir bouger (mesuré :
+     * un second avènement des Découvertes/Échanges au fil du tick de la section
+     * 15 aigrissait la faction attendue AVANT que betrayal_ready ait fini de
+     * converger). On referme comme events_init referme `ev`. */
+    faction_levers_reset();
+    for (int r=0;r<s.econ->n_regions;r++){ s.econ->region[r].route_pe=0.f; if(r<SCPS_MAX_REG) s.wl->years_held[r]=0.f; }
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++) s.ts[c].charge=0.f;
+    fog_reset();
 
     /* ═══ 6. MEMBRANE — aucun nom SCPS dans les textes ═════════════════ */
     printf("\n── 6. Membrane : les textes parlent en mots, jamais en SCPS ──\n");
@@ -581,7 +628,7 @@ int main(int argc, char **argv){
      * (poids 200) posé maintenant doit survivre à un remplissage massif de faits
      * LÉGERS (poids 1) qui suivent — le panthéon résiste au bruit récent. */
     events_init(s.ev,s.w,seed);
-    int heavy_idx = annal_push(s.ev, 5, ANNAL_AGE, AGE_COMMERCE, 0, -1, 200, -1);
+    int heavy_idx = annal_push(s.ev, 5, ANNAL_AGE, AGE_EXCHANGE, 0, -1, 200, -1);
     ok("le fait LOURD est bien écrit", heavy_idx>=0);
     for (int k=0;k<ANNALS_CAP*3;k++)
         annal_push(s.ev, 20+k, ANNAL_DILEMME, EVID_QUAKE, 0, k%7, 1, 0);   /* rafale de faits légers */
@@ -589,14 +636,14 @@ int main(int argc, char **argv){
     bool heavy_survives=false;
     for (int i=0;i<annals_count(s.ev);i++){
         AnnalEntry e; annals_at(s.ev,i,&e);
-        if (e.kind==ANNAL_AGE && e.a==AGE_COMMERCE && e.year==5){ heavy_survives=true; break; }
+        if (e.kind==ANNAL_AGE && e.a==AGE_EXCHANGE && e.year==5){ heavy_survives=true; break; }
     }
     ok("SÉLECTION PAR POIDS : le fait LOURD (200) survit à une rafale de faits légers (1)",
        heavy_survives);
     /* (c) un fait TROP LÉGER (poids 0) face à un anneau plein de faits déjà lourds
      * ne remplace RIEN (annal_push renvoie -1). */
     events_init(s.ev,s.w,seed);
-    for (int k=0;k<ANNALS_CAP;k++) annal_push(s.ev, 1+k, ANNAL_AGE, AGE_COMMERCE, 0, -1, 200, -1);
+    for (int k=0;k<ANNALS_CAP;k++) annal_push(s.ev, 1+k, ANNAL_AGE, AGE_EXCHANGE, 0, -1, 200, -1);
     ok("anneau plein de faits lourds", annals_count(s.ev)==ANNALS_CAP);
     int wi_light = annal_push(s.ev, 999, ANNAL_DILEMME, EVID_QUAKE, 0, 0, 0, 0);
     ok("un fait TROP LÉGER ne déloge rien dans un panthéon plein (push refusé, -1)", wi_light==-1);

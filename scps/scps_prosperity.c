@@ -161,6 +161,11 @@ void prosperity_init(WorldProsperity *wp, const World *w) {
         wp->country[c].C  = 1.0f;  /* connectivité initiale basse */
         wp->country[c].SI = 4.0f;
     }
+    /* ÂGES SANS ORDRE IMPOSÉ : les multiplicateurs mondiaux naissent NEUTRES (1),
+     * jamais 0 (age_P_bonus/age_tech_mask restent additifs/bitmask, 0 = neutre). */
+    wp->age_mig_mult = 1.f;
+    wp->age_research_mult = 1.f;
+    wp->age_integration_mult = 1.f;
 }
 
 /* ======================================================================= */
@@ -224,6 +229,11 @@ void prosperity_tick(WorldProsperity *wp, const World *w,
         float Lt= ts_c ? ts_c->L        : 3.f;   /* tech L (ordre consenti) → croissance */
         float P = ts_c ? ts_c->puissance: 3.f;   /* puissance → porte PE (§2.3)          */
         float H = ts_c ? ts_c->H        : 0.f;
+        /* ÂGES SANS ORDRE IMPOSÉ (raccord 4) — le P mondial de l'Ère des Échanges (Îlot
+         * TRANSITOIRE) s'ajoute ICI, AVANT toute consommation de P dans cette passe : la
+         * porte de Babel (scps_babel_gate, ci-dessous) ET la métabolisation (le P passé à
+         * demography_tick, scps_sim.c — même bonus, un seul point de vérité). */
+        P = clampf(P + wp->age_P_bonus, 0.f, 10.f);
         /* RELIGION (P4) : les pôles/crédo NUDGENT les coordonnées de TRAVAIL (non
          * destructif : K/Lt/P/H sont des copies locales, ts_c reste intact ⇒ pas
          * d'empilement inter-tick). GATED sur religion_of_country : aucun effet sans

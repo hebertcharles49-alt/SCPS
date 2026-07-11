@@ -165,6 +165,14 @@ const char *statecraft_council_cand_house(uint32_t seed, int cid, int seat, int 
     uint32_t h = sc_hash(sc_genseed(seed,gen)^0x40C51Eu, (uint32_t)cid, (uint32_t)(seat*7+slot), 0xD00D5Eu);
     return SC_HOUSES[h % (uint32_t)SC_COUNCIL_HOUSES];
 }
+/* raccord 7 (Âge des Héros) — le GENRE dérivé du MÊME hash que le prénom (index
+ * 0-11 masculin, 12-23 féminin, cf. SC_FIRSTNAMES) : AUCUN état neuf, un simple
+ * second regard sur le tirage déjà déterministe. */
+bool statecraft_council_cand_female(uint32_t seed, int cid, int seat, int slot, int gen){
+    if (seat<0||seat>=SC_COUNCIL_SEATS) return false;
+    uint32_t h = sc_hash(sc_genseed(seed,gen)^0x91A2E3u, (uint32_t)cid, (uint32_t)(seat*7+slot), 0xB4C1u);
+    return (h % (uint32_t)SC_COUNCIL_FIRSTNAMES) >= 12u;
+}
 /* P0-1 — LA FACTION D'UN CANDIDAT : plus de spectre par siège — un mélange
  * DÉTERMINISTE des 6 factions (Fisher-Yates, xs32 amorcé par un hash de
  * seed×pays×siège×GÉNÉRATION) ; les SC_COUNCIL_CANDS premières du mélange sont

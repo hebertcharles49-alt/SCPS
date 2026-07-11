@@ -25,6 +25,7 @@
 #include "scps_tech.h"
 #include "scps_diplo.h"   /* §F : le directeur lit les guerres (T) et l'Amnistie ÉPONGE la rancune */
 #include "scps_endgame.h" /* V2b LOT 1 : la Merveille en 3 étapes (merv/MervPhase/metab_count) */
+#include "scps_missions.h" /* raccord 7 : l'Âge des Héros naît d'une mission décennale réussie */
 
 /* ===================================================================== */
 /* CADRE D'ÉVÈNEMENT (data-driven)                                        */
@@ -171,6 +172,12 @@ typedef enum {
     EVID_TRAHISON_SAVOIR,     /* le savant publie tes secrets (siège Savoir, betrayal_ready) */
     EVID_TRAHISON_SOCIETE,    /* le notable place ses familles (siège Société, betrayal_ready) */
     EVID_TRAHISON_INDUSTRIE,  /* le marchand détourne (siège Industrie, betrayal_ready) */
+    /* ═══ ÂGES SANS ORDRE IMPOSÉ — L'ÂGE DES HÉROS (raccord 7) : « Le nom du siècle »,
+     * un par siège (miroir EXACT du motif TRAHISON_* : le siège concerné est fixe par
+     * EVID, résolu dynamiquement dans resolve_choice). ═══ */
+    EVID_HERO_SAVOIR,         /* la mission décennale du siège Savoir consacre un Grand Esprit */
+    EVID_HERO_SOCIETE,        /* … du siège Société consacre un Père/Mère de la nation */
+    EVID_HERO_INDUSTRIE,      /* … du siège Industrie consacre un Grand(e) Capitaine */
     EVID_CONSEIL_SUCCESSION,  /* la retraite d'un loyal (>20 ans en poste) */
     EVID_CONSEIL_R1,          /* Savoir vs Société : trancher, ou renvoyer les deux */
     EVID_CONSEIL_R2,          /* Industrie vs Société : la route */
@@ -249,25 +256,41 @@ typedef struct {
 /* ===================================================================== */
 /* ÂGES — déclenchés par une LECTURE du monde (§4)                        */
 /* ===================================================================== */
+/* ÂGES SANS ORDRE IMPOSÉ (2026-07-11, docs/AGES_FINS_2026-07-11.md) — AUCUNE
+ * chronologie fixe : chaque âge devient ÉLIGIBLE la première fois que son
+ * déclencheur matériel est vrai (ACQUIS pour toujours, même si la condition
+ * redescend), puis ADVIENT après un jitter déterministe (0..AGE_TRIGGER_JITTER_
+ * YEARS ans, hash(seed,âge,année éligible)). Les deux paires causales de
+ * l'ancien code (Lumières→{Soulèvements,Ordre de Fer}) sont DÉFAITES : seule la
+ * paire mutuellement exclusive Soulèvements↔Tyrans subsiste (qui avient EMPÊCHE
+ * l'autre). */
 typedef enum {
-    AGE_COMMERCE = 0, AGE_REASON, AGE_EMPIRES, AGE_BREACH,
-    /* Âges STRUCTURELS — lisent la crise & les idées, poussent les ENTRÉES du
-     * moteur d'ordre (I/L/H), laissent le verdict §2.4 faire les conséquences.
-     * Chaîne causale : les Lumières d'abord (société de masse), puis le fork
-     * Soulèvements (le consentement renverse) ↔ Ordre de Fer (la poigne écrase). */
-    AGE_LUMIERES, AGE_SOULEVEMENTS, AGE_ORDRE_FER,
+    AGE_EXCHANGE = 0,   /* L'Ère des Échanges (ex-Commerce) */
+    AGE_DISCOVERY,      /* L'Âge des Découvertes (ex-Raison) */
+    AGE_EMPIRES,        /* L'Âge des Empires */
+    AGE_HEROES,         /* L'Âge des Héros — déclenché par une mission décennale, pas un scan */
+    AGE_BREACH,         /* L'Âge de la Brèche */
+    AGE_LUMIERES,       /* L'Âge des Lumières */
+    AGE_SOULEVEMENTS,   /* L'Âge des Soulèvements (exclut l'Ère des Tyrans) */
+    AGE_TYRANS,         /* L'Ère des Tyrans (ex-Ordre de Fer ; exclut les Soulèvements) */
     AGE_COUNT
 } AgeId;
 
 typedef struct {
-    bool  dawned[AGE_COUNT];
-    bool  tier_open[THM_COUNT][8];   /* paliers de tech ouverts par les âges */
-    float breach_pressure;           /* l'endgame faustien mondial */
-    float research_mult;             /* palier de la Raison : recherche plus vive */
-    float integration_mult;          /* palier des Empires : intégration accélérée */
+    bool    dawned[AGE_COUNT];
+    /* JITTER SANS CHRONOLOGIE CACHÉE : année où le déclencheur est devenu vrai la
+     * PREMIÈRE fois (-1 = pas encore éligible). ACQUIS — ne redescend jamais même
+     * si la condition matérielle cesse d'être vraie. L'année d'AVÈNEMENT n'est
+     * PAS stockée : dérivée à chaque tick de year_eligible + hash(seed,a,eligible)
+     * % (AGE_TRIGGER_JITTER_YEARS+1) — recalcul pur, rien à faire dériver. */
+    int16_t year_eligible[AGE_COUNT];
+    float breach_pressure;           /* l'endgame faustien mondial (Brèche) */
     int   last_dawned;               /* -1 ou AgeId du dernier avènement */
     int   days_elapsed;              /* temps de jeu écoulé (cumul des ticks) */
-    int   last_dawn_year;            /* an du dernier avènement (rythme : 1 âge / 30 ans mini) */
+    int   last_dawn_year;            /* an du dernier avènement RÉEL (throttle : au plus 1/an,
+                                       * ce qui résout les collisions — « les autres suivent les
+                                       * années suivantes » sans état de plus : le perdant d'une
+                                       * collision reste candidat et gagne l'an prochain). */
 } AgesState;
 
 /* ===================================================================== */
@@ -481,9 +504,43 @@ const char *event_title(const World *w, int evid, int subject, char *buf, int n)
 bool  events_check_ages(EventsState *ev, World *w, WorldEconomy *econ,
                         WorldProsperity *wp, WorldLegitimacy *wl, const TechState ts[]);
 bool  ages_dawned(const EventsState *ev, AgeId a);
-bool  ages_tier_open(const EventsState *ev, TechTheme br, int tier);
+/* raccord 3 — le palier est-il RÉELLEMENT ouvert (Société 3/Échanges · Savoir 4/
+ * Découvertes · Société 5/Empires · Savoir 5/Brèche) ? Lu de wp->age_tech_mask
+ * (posé par apply_effect, comme age_C_bonus — pas dans AgesState : ai_research_step
+ * a déjà `wp` sous la main, jamais `ev`). */
+bool  ages_tier_open(const WorldProsperity *wp, TechTheme br, int tier);
+/* raccord 3, la porte RÉELLEMENT posée à l'éligibilité technologique : SEULS les
+ * 4 paliers explicitement nommés par la spec (Société 3/Échanges · Savoir 4/
+ * Découvertes · Société 5/Empires · Savoir 5/Brèche) sont soumis à ages_tier_open ;
+ * tout le reste de l'arbre (Forge entière, tiers 0-2 partout, Savoir 3…) reste
+ * INCHANGÉ (jamais gated — sinon tout l'arbre existant se verrouillerait au silence
+ * d'un âge qui ne le mentionne pas). Appelée par scps_ai.c (IA), scps_sim.c (voie
+ * joueur) et scps_api.c (readout) — un SEUL point de vérité. */
+bool  ages_tech_researchable(const WorldProsperity *wp, TechTheme br, int tier);
 float ages_breach_pressure(const EventsState *ev);
 const char *age_name(AgeId a);
+/* La citation de l'âge (membrane, champ flavor du readout d'âge — scps_age_state) ;
+ * age<0 renvoie la citation de L'AUBE (l'état initial, jamais dans AgeId). */
+const char *age_citation(int age /* AgeId ou -1 = l'Aube */);
+/* raccord 6 — le ratio de pays connus [0..1] : Σ country_knows(a,b) ordonné sur les
+ * paires de pays VIVANTS / Σ paires. Alimente le déclencheur des Découvertes (35 %)
+ * ET un readout (scps_api.c). */
+float ages_known_pair_share(const World *w);
+/* raccord Découvertes — le bonus de radius de brouillard (0 tant que l'âge n'est
+ * pas advenu, sinon AGE_DISCOVERY_FOG_RADIUS_ADD au registre J) : un seul point
+ * de vérité pour les 4 sites d'appel de fog_update/fog_visible_regions. */
+int ages_fog_radius_add(const EventsState *ev);
+/* raccord 7 — L'ÂGE DES HÉROS : appelé par scps_sim.c juste après missions_tick,
+ * pour CHAQUE (pays,siège) qui vient de compléter une mission décennale en
+ * satisfaisant rang III + efficacité + loyauté + encore assis (le test lui-même
+ * vit dans scps_sim.c, qui a accès à Statecraft/MissionsState). Fait advenir
+ * AGE_HEROES la première fois, puis pousse « Le nom du siècle » (membrane de
+ * décision pour le joueur, auto-résolu pour l'IA). */
+void  ages_hero_fire(EventsState *ev, World *w, WorldEconomy *econ, WorldLegitimacy *wl,
+                     WorldProsperity *wp, Statecraft *sc, RouteNetwork *rn,
+                     const TechState ts[], DiploState *dp, EndgameState *eg,
+                     MissionsState *ms, int cid, int seat, int slot, int gen,
+                     int human_player);
 /* Verdict du MOTEUR agrégé : combien de pays sont en mode révolutionnaire
  * (SI<5 & pression≥fracture) — la masse critique des Soulèvements, sans aucun
  * code de révolution dédié. */

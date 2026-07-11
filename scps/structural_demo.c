@@ -128,25 +128,49 @@ int main(int argc, char **argv){
     for (int c=0;c<s.w->n_countries;c++) if (s.w->country[c].role!=POLITY_UNCLAIMED && cap_region(s.w,c)>=0) polities[npol++]=c;
     if (npol<4){ fprintf(stderr,"monde trop vide (%d pays)\n",npol); return 1; }
 
-    /* ═══ 1. CAUSALITÉ — pas de Soulèvement/Ordre de Fer avant les Lumières ═ */
-    printf("\n── 1. Causalité : la société de masse (Lumières) d'abord ──\n");
+    /* ═══ 1. AUCUN ORDRE IMPOSÉ — Soulèvements ↔ Tyrans : EXCLUSION MUTUELLE ═
+     * (docs/AGES_FINS_2026-07-11.md) : la vieille précondition « les Lumières
+     * d'abord » est SUPPRIMÉE (les âges n'ont plus de chronologie cachée) ; ce
+     * qui SUBSISTE est la paire Soulèvements↔Tyrans, mutuellement exclusive —
+     * qui advient FERME l'autre pour toujours, quel que soit l'état des Lumières. */
+    printf("\n── 1. Aucun ordre imposé : Soulèvements et Tyrans s'excluent l'un l'autre ──\n");
     events_init(s.ev,s.w,seed);
-    /* Monde en pleine crise (révolutions + fracture) MAIS sans savoir : les âges
-     * politiques NE DOIVENT PAS s'éveiller (les Lumières n'ont pas eu lieu). */
+    /* Monde en pleine crise (révolutions + fracture) SANS savoir : les Soulèvements
+     * peuvent maintenant s'éveiller MÊME SANS les Lumières (aucune précondition). */
     for (int c=0;c<s.w->n_countries && c<s.wp->n_countries;c++) if (s.w->country[c].role!=POLITY_UNCLAIMED){
         s.wp->country[c].mode=2; /* révolution */ s.wp->country[c].fracture=5.f;
         s.wp->country[c].dereal=2.f; s.wp->country[c].SI=3.f; s.wp->country[c].Lumiere=0.f; s.wp->country[c].C=0.f;
     }
-    s.ev->ages.days_elapsed += 31*365; events_check_ages(s.ev,s.w,s.econ,s.wp,s.wl,s.ts);
-    ok("sans les Lumières, l'Âge des Soulèvements ne peut PAS s'éveiller", !ages_dawned(s.ev,AGE_SOULEVEMENTS));
-    ok("sans les Lumières, l'Âge de l'Ordre de Fer ne peut PAS s'éveiller", !ages_dawned(s.ev,AGE_ORDRE_FER));
-    /* Maintenant la société accumule savoir + connexion → les Lumières adviennent,
-     * et alors seulement la chaîne peut se dérouler. */
+    chain_to(&s, AGE_SOULEVEMENTS);
+    ok("les Soulèvements s'éveillent SANS précondition (aucun ordre imposé)", ages_dawned(s.ev,AGE_SOULEVEMENTS));
+    ok("l'Âge des Lumières n'a PAS eu besoin d'advenir d'abord", !ages_dawned(s.ev,AGE_LUMIERES));
+    /* Le monde reste, EN PLUS, en crise ouverte de fracture/déréalisation/SI —
+     * le déclencheur des Tyrans est matériellement satisfait — mais l'Âge des
+     * Soulèvements vient de fermer cette porte pour de bon. */
+    chain_to(&s, AGE_TYRANS);
+    ok("… et l'Ère des Tyrans reste FERMÉE (exclusion mutuelle, même déclencheur matériel réuni)",
+       !ages_dawned(s.ev,AGE_TYRANS));
+
+    /* Le miroir : Tyrans d'abord ferme les Soulèvements. */
+    events_init(s.ev,s.w,seed);
+    for (int c=0;c<s.w->n_countries && c<s.wp->n_countries;c++) if (s.w->country[c].role!=POLITY_UNCLAIMED){
+        s.wp->country[c].mode=0; s.wp->country[c].fracture=5.f; s.wp->country[c].dereal=2.f; s.wp->country[c].SI=3.f;
+    }
+    chain_to(&s, AGE_TYRANS);
+    ok("(miroir) l'Ère des Tyrans peut advenir SEULE, sans les Soulèvements", ages_dawned(s.ev,AGE_TYRANS));
+    for (int c=0;c<s.w->n_countries && c<s.wp->n_countries;c++) if (s.w->country[c].role!=POLITY_UNCLAIMED) s.wp->country[c].mode=2;
+    chain_to(&s, AGE_SOULEVEMENTS);
+    ok("(miroir) … et ferme à son tour les Soulèvements", !ages_dawned(s.ev,AGE_SOULEVEMENTS));
+
+    /* Repart propre pour les sections suivantes : les Lumières adviennent d'elles-
+     * mêmes une fois savoir+connexion réunis (aucune précondition à démontrer ici,
+     * juste le terrain pour §2/§3). */
+    events_init(s.ev,s.w,seed);
+    for (int c=0;c<s.w->n_countries && c<s.wp->n_countries;c++) if (s.w->country[c].role!=POLITY_UNCLAIMED)
+        s.wp->country[c].mode=0;
     light_the_world(&s);
-    chain_to(&s, AGE_SOULEVEMENTS);   /* on laisse le temps : la chaîne s'égrène */
+    chain_to(&s, AGE_LUMIERES);
     ok("les Lumières s'éveillent (savoir mondial + connexion atteints)", ages_dawned(s.ev,AGE_LUMIERES));
-    ok("APRÈS les Lumières, la chaîne causale peut se dérouler (Soulèvements éveillé)",
-       ages_dawned(s.ev,AGE_SOULEVEMENTS));
 
     /* ═══ 2. LUMIÈRES — le solvant double (via le moteur) ═══════════════ */
     printf("\n── 2. Lumières : la société ouverte réforme, le régime coercitif s'amorce ──\n");
@@ -168,13 +192,16 @@ int main(int argc, char **argv){
     /* Avènement des Lumières (savoir+C atteints) → +I et dissolution coercitive. */
     light_the_world(&s);
     shape(&s, cOpen, 1.f,7.f,8.f,6.f); shape(&s, cCoer, 9.f,4.f,6.f,6.f);  /* re-fige les cas */
-    chain_to(&s, AGE_LUMIERES);        /* Commerce→Raison→Lumières, génération par génération */
+    chain_to(&s, AGE_LUMIERES);        /* aucun ordre imposé : l'état du monde suffit, aucun âge préalable requis */
     shape(&s, cOpen, 1.f,7.f,8.f,6.f); shape(&s, cCoer, 9.f,4.f,6.f,6.f);  /* re-fige après la chaîne */
     tickP(&s);
     float SIo1=s.wp->country[cOpen].SI, FRc1=s.wp->country[cCoer].fragilite;
     printf("   société OUVERTE : SI %.1f→%.1f (pression de réforme) ; régime COERCITIF : fragilité %.1f→%.1f (amorcé)\n",
            SIo0,SIo1, FRc0,FRc1);
-    ok("le boon : le palier du savoir s'ouvre (Société/4)", ages_tier_open(s.ev,THM_SOCIETE,4));
+    /* Les Lumières N'OUVRENT plus de palier de tech (spec verbatim : seuls Échanges/
+     * Découvertes/Empires/Brèche gatent Société3/Savoir4/Société5/Savoir5) — le
+     * boon des Lumières, c'est l'I mondial (surgissement des idées). */
+    ok("le boon des Lumières : l'I mondial monte (surgissement des idées)", s.wp->age_I_bonus>0.f);
     ok("la société OUVERTE subit la pression de réforme (SI baisse)", SIo1 < SIo0 - 0.1f);
     ok("le régime COERCITIF voit sa légitimité se dissoudre → fragilité monte", FRc1 > FRc0 + 0.1f);
 
@@ -304,7 +331,7 @@ int main(int argc, char **argv){
     /* ═══ 6. MEMBRANE — aucun terme réel ni variable SCPS ═══════════════ */
     printf("\n── 6. Membrane : des noms diégétiques, jamais un terme réel ni SCPS ──\n");
     printf("   âges : « %s », « %s », « %s »\n",
-           age_name(AGE_LUMIERES), age_name(AGE_SOULEVEMENTS), age_name(AGE_ORDRE_FER));
+           age_name(AGE_LUMIERES), age_name(AGE_SOULEVEMENTS), age_name(AGE_TYRANS));
     ok("noms d'âges diégétiques, aucun nom SCPS dans les textes", events_text_clean());
 
     printf("\n══════════════════════════════════════════════════════════════\n");

@@ -71,6 +71,24 @@ typedef struct {
     float             age_L_penalty;    /* Soulèvements : la légitimité ne porte plus (− L) */
     float             age_H_bonus;      /* Ordre de Fer : la poigne (+ H) */
     float             age_myth_homogen; /* Ordre de Fer : le mythe nie la diversité (− D̄ effectif) */
+    /* ÂGES SANS ORDRE IMPOSÉ (2026-07-11, docs/AGES_FINS_2026-07-11.md) — les leviers
+     * MONDIAUX des nouveaux âges (Échanges/Découvertes/Empires), rangés ici au même
+     * titre que age_C_bonus/age_breach_flux (les Âges pouss ent des ENTRÉES du moteur,
+     * jamais un bonus plat). age_P_bonus (Échanges, TRANSITOIRE — décroît comme
+     * age_I_bonus) est lu AVANT la métabolisation (le P de demography_tick) ET la
+     * porte de Babel (scps_prosperity.c). age_mig_mult (Échanges, TRANSITOIRE, défaut
+     * 1 — décroît VERS 1, pas vers 0) multiplie demography_migration_pact_tick.
+     * age_research_mult (Découvertes, TRANSITOIRE, défaut 1) multiplie le revenu de
+     * recherche (ai_research_step/voie joueur). age_integration_mult (Empires,
+     * PERMANENT, défaut 1 — jamais décroissant) accélère assimilation_tick (demography_tick).
+     * age_tech_mask : bits (theme*8+tier) RÉELLEMENT ouverts par un âge (Société 3 —
+     * Échanges, Savoir 4 — Découvertes, Société 5 — Empires, Savoir 5 — Brèche) ;
+     * PERMANENT une fois posé. */
+    float             age_P_bonus;
+    float             age_mig_mult;
+    float             age_research_mult;
+    float             age_integration_mult;
+    unsigned          age_tech_mask;
     /* FAU0 — FONDATIONS PARTAGÉES (faustien × capstone §27). L'ENTROPIE MONDIALE CUMULÉE :
      * toute activité faustienne l'incrémente, la décrue passive la grignote ; le capstone la
      * lira comme barre Entropie + seuil terminal. Les compteurs de conso (cachés) disent le
