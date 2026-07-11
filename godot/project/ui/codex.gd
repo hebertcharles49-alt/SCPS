@@ -62,6 +62,19 @@ const DOMAINS := [
 
 var _list: VBoxContainer
 var _panel: PanelContainer
+var _scroll: ScrollContainer
+var _search_edit: LineEdit
+var _sommaire_row: HFlowContainer
+
+## catégories repliables + recherche (retour joueur 2026-07-10, Lot 4.4) : la liste
+## était plate, alphabétique, sans repère. Les DOMAINES thématiques EXISTAIENT déjà
+## (Empire & Économie / Peuples / Diplomatie & Guerre / Foi & Savoir / Fin de partie) —
+## on les rend REPLIABLES et on ajoute « Concepts & jauges » comme catégorie de plus,
+## plus un sommaire cliquable (saute à la section) et un champ de recherche qui filtre
+## les entrées en direct. Zéro logique de sim : pur réarrangement d'affichage, rien
+## n'est lu/écrit côté façade dans ce fichier.
+var _collapsed: Dictionary = {}   # nom de catégorie -> bool (repliée)
+var _sections: Dictionary = {}    # nom -> {header:Button, sep:HSeparator, body:VBoxContainer, entries:[{ctrl,text}]}
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -72,7 +85,7 @@ func _ready() -> void:
 	add_child(center)
 
 	_panel = PanelContainer.new()
-	_panel.custom_minimum_size = Vector2(680, 680)
+	_panel.custom_minimum_size = Vector2(700, 690)
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.10, 0.08, 0.06, 0.97)
 	sb.border_color = Color(0.62, 0.52, 0.30)
@@ -83,7 +96,7 @@ func _ready() -> void:
 	center.add_child(_panel)
 
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 8)
+	col.add_theme_constant_override("separation", 6)
 	_panel.add_child(col)
 
 	var title := Label.new()
@@ -96,16 +109,42 @@ func _ready() -> void:
 	subtitle.text = "Tout ce que vous pouvez faire, et où le faire. (Échap pour fermer · menu Échap pour rouvrir)"
 	subtitle.add_theme_color_override("font_color", Color(0.62, 0.60, 0.58))
 	col.add_child(subtitle)
+
+	# ── en-tête FIXE (ne défile pas) : recherche + sommaire des catégories ──
+	var search_row := HBoxContainer.new()
+	search_row.add_theme_constant_override("separation", 6)
+	col.add_child(search_row)
+	var search_ic := Label.new()
+	search_ic.text = "🔎"
+	search_row.add_child(search_ic)
+	_search_edit = LineEdit.new()
+	_search_edit.placeholder_text = "Rechercher un verbe ou un concept…"
+	_search_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_search_edit.text_changed.connect(_on_search_changed)
+	search_row.add_child(_search_edit)
+	var clear_btn := Button.new()
+	clear_btn.text = "✕"
+	clear_btn.tooltip_text = "Effacer la recherche"
+	clear_btn.focus_mode = Control.FOCUS_NONE
+	clear_btn.pressed.connect(func():
+		_search_edit.text = ""
+		_apply_filter(""))
+	search_row.add_child(clear_btn)
+
+	_sommaire_row = HFlowContainer.new()
+	_sommaire_row.add_theme_constant_override("h_separation", 4)
+	_sommaire_row.add_theme_constant_override("v_separation", 4)
+	col.add_child(_sommaire_row)
 	col.add_child(HSeparator.new())
 
-	var sc := ScrollContainer.new()
-	sc.custom_minimum_size = Vector2(650, 560)
-	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	col.add_child(sc)
+	_scroll = ScrollContainer.new()
+	_scroll.custom_minimum_size = Vector2(670, 500)
+	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(_scroll)
 	_list = VBoxContainer.new()
 	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_list.add_theme_constant_override("separation", 10)
-	sc.add_child(_list)
+	_list.add_theme_constant_override("separation", 4)
+	_scroll.add_child(_list)
 
 	var foot := HBoxContainer.new()
 	col.add_child(foot)
@@ -127,16 +166,14 @@ func _rebuild() -> void:
 		return
 	for c in _list.get_children():
 		c.queue_free()
+	_sections = {}
+
 	# domaine « CONCEPTS & JAUGES » : généré du registre ui/concepts.gd — la MÊME
 	# source que les mots turquoise des tooltips (retour joueur 2026-07-10 : le
-	# codex est branché sur les concepts).
+	# codex est branché sur les concepts). Traité comme une catégorie de plus
+	# (repliable, cherchable) au même titre que les domaines de verbes.
 	var Concepts = load("res://ui/concepts.gd")
-	var chead := Label.new()
-	chead.text = "Concepts & jauges"
-	chead.add_theme_font_size_override("font_size", 17)
-	chead.add_theme_color_override("font_color", Color(0.35, 0.78, 0.76))
-	_list.add_child(chead)
-	_list.add_child(HSeparator.new())
+	var concept_entries := []
 	var ckeys: Array = Concepts.DEFS.keys()
 	ckeys.sort()
 	for ck in ckeys:
@@ -148,21 +185,17 @@ func _rebuild() -> void:
 		cl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var ic: String = Concepts.icon_of(String(ck))
 		var pre := ("[img=16x16]%s[/img] " % ic) if ic != "" and ResourceLoader.exists(ic) else ""
+		var defx: String = Concepts.def_of(String(ck))
 		cl.text = "%s[color=#%s]%s[/color] [color=#8f877a]: %s[/color]" % [
-			pre, Concepts.COL, String(ck), Concepts.def_of(String(ck))]
+			pre, Concepts.COL, String(ck), defx]
 		cl.add_theme_font_size_override("normal_font_size", 13)
-		_list.add_child(cl)
+		concept_entries.append({"ctrl": cl, "text": (String(ck) + " " + defx).to_lower()})
+	_add_section("Concepts & jauges", concept_entries)
+
 	for domain in DOMAINS:
 		var dname: String = String(domain[0])
 		var entries: Array = domain[1]
-
-		var head := Label.new()
-		head.text = dname
-		head.add_theme_font_size_override("font_size", 17)
-		head.add_theme_color_override("font_color", Color(0.86, 0.74, 0.46))
-		_list.add_child(head)
-		_list.add_child(HSeparator.new())
-
+		var dom_entries := []
 		for e in entries:
 			var entry: Dictionary = e
 			var row := VBoxContainer.new()
@@ -177,18 +210,136 @@ func _rebuild() -> void:
 			nom_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
 			row.add_child(nom_lbl)
 
+			var ou_txt: String = String(entry.get("ou", "—"))
 			var ou_lbl := Label.new()
-			ou_lbl.text = "  Où : " + String(entry.get("ou", "—"))
+			ou_lbl.text = "  Où : " + ou_txt
 			ou_lbl.add_theme_color_override("font_color", Color(0.55, 0.62, 0.72))
 			ou_lbl.add_theme_font_size_override("font_size", 13)
 			ou_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
 			row.add_child(ou_lbl)
 
+			var regle_txt: String = String(entry.get("regle", "—"))
 			var regle_lbl := Label.new()
-			regle_lbl.text = "  Règle : " + String(entry.get("regle", "—"))
+			regle_lbl.text = "  Règle : " + regle_txt
 			regle_lbl.add_theme_color_override("font_color", Color(0.62, 0.60, 0.58))
 			regle_lbl.add_theme_font_size_override("font_size", 13)
 			regle_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
 			row.add_child(regle_lbl)
 
-			_list.add_child(row)
+			dom_entries.append({"ctrl": row, "text": (nom + " " + ou_txt + " " + regle_txt).to_lower()})
+		_add_section(dname, dom_entries)
+
+	_rebuild_sommaire()
+	_apply_filter(_search_edit.text if _search_edit != null else "")
+
+## titre d'en-tête de section : flèche de repli + nom + compte d'entrées visibles.
+## (paramètre nommé `cat`, pas `name` — Control hérite déjà d'un `.name` de Node,
+## autant éviter l'ombrage plutôt que compter sur la tolérance du compilateur)
+func _section_title(cat: String, collapsed: bool, n: int) -> String:
+	return "%s %s (%d)" % (["▸", cat, n] if collapsed else ["▾", cat, n])
+
+## ajoute une section repliable (en-tête cliquable + séparateur + corps) à _list.
+func _add_section(cat: String, entries: Array) -> void:
+	var collapsed: bool = bool(_collapsed.get(cat, false))
+	var header := Button.new()
+	header.flat = true
+	header.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	header.focus_mode = Control.FOCUS_NONE
+	header.add_theme_font_size_override("font_size", 17)
+	header.add_theme_color_override("font_color", Color(0.86, 0.74, 0.46))
+	header.text = _section_title(cat, collapsed, entries.size())
+	header.tooltip_text = "Replier / déplier « %s »" % cat
+	header.pressed.connect(func(): _toggle_section(cat))
+	var sep := HSeparator.new()
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 10)
+	body.visible = not collapsed
+	for en in entries:
+		body.add_child(en["ctrl"])
+	_list.add_child(header)
+	_list.add_child(sep)
+	_list.add_child(body)
+	_sections[cat] = {"header": header, "sep": sep, "body": body, "entries": entries}
+
+func _toggle_section(cat: String) -> void:
+	if not _sections.has(cat):
+		return
+	var collapsed: bool = not bool(_collapsed.get(cat, false))
+	_collapsed[cat] = collapsed
+	var sec: Dictionary = _sections[cat]
+	var entries: Array = sec["entries"]
+	(sec["header"] as Button).text = _section_title(cat, collapsed, entries.size())
+	(sec["body"] as Control).visible = not collapsed
+
+## le sommaire : une puce par catégorie, saute à la section (déplie + scroll).
+func _rebuild_sommaire() -> void:
+	if _sommaire_row == null:
+		return
+	for c in _sommaire_row.get_children():
+		c.queue_free()
+	var names := ["Concepts & jauges"]
+	for domain in DOMAINS:
+		names.append(String(domain[0]))
+	for nm in names:
+		var chip := Button.new()
+		chip.text = nm
+		chip.flat = true
+		chip.focus_mode = Control.FOCUS_NONE
+		chip.add_theme_font_size_override("font_size", 12)
+		chip.add_theme_color_override("font_color", Color(0.55, 0.62, 0.72))
+		chip.tooltip_text = "Aller à « %s »" % nm
+		var nmc: String = nm
+		chip.pressed.connect(func(): _goto_section(nmc))
+		_sommaire_row.add_child(chip)
+
+func _goto_section(cat: String) -> void:
+	if not _sections.has(cat):
+		return
+	if _search_edit != null and _search_edit.text != "":
+		_search_edit.text = ""
+		_apply_filter("")
+	_collapsed[cat] = false
+	var sec: Dictionary = _sections[cat]
+	(sec["header"] as Button).text = _section_title(cat, false, (sec["entries"] as Array).size())
+	(sec["body"] as Control).visible = true
+	await get_tree().process_frame
+	if _scroll != null:
+		_scroll.ensure_control_visible(sec["header"])
+
+func _on_search_changed(_new_text: String) -> void:
+	_apply_filter(_search_edit.text)
+
+## filtre en direct : sous-chaîne (nom+définition/règle), insensible à la casse.
+## recherche vide ⇒ chaque section respecte son état de repli ; recherche active ⇒
+## sections sans résultat se masquent, les autres se déplient le temps de la requête.
+func _apply_filter(query: String) -> void:
+	if _sections.is_empty():
+		return
+	var q := query.strip_edges().to_lower()
+	for cat in _sections.keys():
+		var sec: Dictionary = _sections[cat]
+		var body: Control = sec["body"]
+		var header: Button = sec["header"]
+		var sep: Control = sec["sep"]
+		var entries: Array = sec["entries"]
+		if q == "":
+			for en in entries:
+				(en["ctrl"] as Control).visible = true
+			var collapsed: bool = bool(_collapsed.get(cat, false))
+			header.text = _section_title(cat, collapsed, entries.size())
+			header.visible = true
+			sep.visible = true
+			body.visible = not collapsed
+			continue
+		var n_match := 0
+		for en in entries:
+			var m: bool = (en["text"] as String).find(q) >= 0
+			(en["ctrl"] as Control).visible = m
+			if m:
+				n_match += 1
+		var any_match: bool = n_match > 0
+		header.visible = any_match
+		sep.visible = any_match
+		body.visible = any_match
+		if any_match:
+			header.text = _section_title(cat, false, n_match)

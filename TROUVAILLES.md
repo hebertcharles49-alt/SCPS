@@ -3665,3 +3665,155 @@ scps_events.c, 1/an) puis itération SCPS_TUNE. Validation 10 graines × 2 sims 
 - La foreuse (essence) morte côté IA (scps_ai.c) reste la cause SOURCE du déséquilibre EAU — la
   loterie la CONTOURNE par le plancher, sans toucher l'IA (hors périmètre). Un vrai fix source =
   donner à la foreuse un beeline (comme réplicateur/corne) — chantier IA séparé.
+
+## UI Lot 3 (topbar + rail gauche), 2026-07-11
+
+**Contexte** : docs/UI_RECO_2026-07-10.md §3.1/§3.2, sur une capture baseline
+(shots_ui/1280x720/02_hud.png) antérieure au commit fbabfa4 ("Vague soir"). Fichiers
+exclusifs : ui/topbar.gd · ui/sidebar.gd · ui/icon_button.gd.
+
+**Découvertes**
+- ui/topbar.gd:1-518 (avant édition) — la capture baseline était DÉJÀ PÉRIMÉE : le bug
+  parenthèse orpheline (« Poisson : rupture 0) »), le chip « Engager… » tronqué et le
+  ruban Pause flottant au centre-haut étaient déjà corrigés par fbabfa4 (const
+  `_FOOD_NAMES` + `_food_tip`, chip « Engager : %s » avec troncature garde-fou ancrée
+  à `content_end`, ruban Pause ancré sous les boutons de vitesse `Frame.LEDGER_W`). Seul
+  restait le vrai chantier §3.1 : la barre affichait encore ~18 chiffres/chips (nom,
+  trésor, pop, provinces, stabilité, nourriture, pénurie générique, prospérité, savoir,
+  colonie, légitimité, influence, cohésion, bonheur, N blasons de faction variables,
+  ⚑ coup/corruption) au lieu des 8 permanents demandés.
+- godot/project/assets/scps/ui/icons/ contient `tax_ledger.png` (revenu net),
+  `corruption_coin.png` (corruption), `influence_compass.png` (influence) — tous
+  DÉJÀ dans le pack, inutilisés jusqu'ici. `graph.png` n'existe QUE sous
+  `addons/medusa/icons/`, pas dans le pack UI (`UIKit.icon()` aurait no-op silencieusement).
+- icon_button.gd:_draw() — la branche `bg == ""` sert DEUX appelants distincts : les
+  onglets du rail (fg_is_chrome=false, icône nue) ET les boutons `setup_chrome()` du
+  bas (fg_is_chrome=true, ex. zoom). Le soulignement or « sélectionné » n'existait
+  QUE pour la 1re variante (`bg=="" and not fg_is_chrome`) — donc mes ajouts de fond
+  plein (halo sélectionné/survolé) touchent AUSSI les boutons de mode de controls.gd
+  (setup_icon(..., "")), pas seulement le rail — c'est voulu (même sémantique
+  « sélectionné », amélioration cohérente) mais à savoir si un futur agent cherche
+  pourquoi le bas de l'écran a changé d'aspect aussi.
+- Aucun des 3 fichiers n'utilise le motif `tr("T_*")`/TranslationServer (celui
+  documenté dans CLAUDE.md ENGLISH lot E, câblé seulement dans le shell menu/options) —
+  topbar/sidebar/icon_button restent 100 % littéraux FR, motif suivi tel quel (pas de
+  régression, mais pas de nouveau système introduit non plus).
+- `Sim.game_on` (autoload/sim.gd:37) n'a AUCUN signal dédié — seulement assigné
+  directement dans menu_root.gd (Lancer/Charger). Les raccourcis F1-F8 (main.gd:375)
+  le gardent déjà en garde. Sidebar.gd poll désormais ce booléen en `_process` (1
+  comparaison/frame, redraw seulement au changement) pour l'état « indisponible »
+  du rail — pas de signal à créer, pas de fichier hors périmètre à toucher.
+
+**Pièges**
+- Le format `"%s" % x if cond else "%s" % y` — en GDScript (grammaire proche de
+  Python) le `%` de formatage lie PLUS FORT que le `if/else` ternaire ⇒ ça parse
+  bien comme `(fmt1 % x) if cond else (fmt2 % y)`. Utilisé tel quel dans
+  `_net_income_tip`-style et dans `sidebar.gd:_sync_enabled` (tooltip conditionnel)
+  — vérifié par lecture, pas testé en éditeur (aucune fenêtre lancée, cf. consigne).
+- Le fond « sélectionné » de icon_button.gd n'était PAS gaté par `enabled` dans un
+  premier jet — un onglet sélectionné-puis-devenu-indisponible aurait gardé son
+  halo plein doré tout en ayant l'icône éteinte (double message contradictoire).
+  Gardé défensivement (`selected and enabled`) même si le cas est inatteignable en
+  pratique aujourd'hui (`game_on` ne repasse jamais à false après le lancement).
+
+**Restes**
+- Aucune probe fenêtrée lancée (consigne explicite de l'orchestrateur — il détient
+  l'unique affichage). La vérification est par relecture de code + inspection des
+  assets ; à confirmer visuellement par l'orchestrateur aux 3 résolutions (§3.4).
+- Les jauges/factions démotées vivent maintenant SEULEMENT en tooltip natif
+  (`_get_tooltip`/`tooltip_text`) — si LOT 4 (finition graphique) veut un rendu
+  tooltip plus riche que du texte multi-ligne brut, il faudra remplacer le
+  mécanisme natif par un composant dédié (hors périmètre ici).
+
+## UI Lot 4.4 (créateur/codex/annales/nouvelle partie), 2026-07-11
+
+**Contexte** : docs/UI_RECO_2026-07-10.md §4.4 + « Par écran », sur les captures
+baseline 1280×720 (18_codex.png · 01c/01d_creator*.png · 01b_newgame.png ·
+19_chronique.png). Fichiers exclusifs : ui/codex.gd · ui/culture_creator.gd ·
+ui/new_game_panel.gd · ui/chronique.gd. Aucune probe fenêtrée (consigne de
+l'orchestrateur) — vérifié par relecture + comptage de balises (parenthèses/
+accolades/crochets équilibrés par fichier, aucun Python/Godot CLI dispo dans ce
+sandbox pour un parse réel).
+
+**Découvertes**
+- codex.gd — les 5 DOMAINES thématiques (Empire & Économie/Peuples/Diplomatie &
+  Guerre/Foi & Savoir/Fin de partie) EXISTAIENT déjà comme catégorisation ; le vrai
+  manque du §4.4 était juste qu'elles n'étaient ni repliables ni cherchables (liste
+  plate). Rendu la « catégorisation par thème » gratuite en réutilisant l'existant.
+- culture_creator.gd — `culture_preview(t0,t1,t2)` (l'aperçu CHIFFRÉ) ne dépend QUE
+  des traditions, jamais de l'héritage/éthos choisi ; `_her`/`_eth` n'apportent que du
+  texte qualitatif (sphère/epithete/hint + les LORE consts locales HER_LORE/
+  ETHOS_LORE). Donc les nouvelles cartes Héritage/Éthos n'ont PAS de chiffre à
+  afficher dessus (règle membrane : ne pas inventer un nombre) — compensé par un
+  `tooltip_text` = la LORE complète (comparaison rapide au survol sans cliquer).
+- new_game_panel.gd — `Sim.world.worldparams_default(seed)` (scps_sim_node.cpp:1676)
+  renvoie DÉJÀ n_continents/world_age/land_amount/mountains/erosion/temperature/
+  humidity, PURE fonction de la graine (pas de génération, pas de mutation) ; ET
+  `godot/project/i18n/ui.csv` a DÉJÀ les clés T_NG_AGE/LAND/MOUNTAINS/EROSION/
+  TEMP/HUMID/CONTINENTS (labels FR+EN) — préparées par un agent antérieur pour un
+  aperçu qui n'a jamais été câblé. L'« aperçu compact » du §4.4 était donc déjà
+  amorcé aux deux bouts (façade + i18n), juste jamais relié dans ce fichier.
+- new_game_panel.gd — `worldgen_set` (via `_gather_params`) n'écrase QUE
+  n_empires/n_city_states depuis le slider TAILLE ; n_continents/terres/relief/
+  climat restent l'ARCHÉTYPE de la graine (worldparams_default), inchangés par la
+  taille. Donc le nombre de RÉGIONS n'est PAS une fonction pure de la taille seule
+  (dépend aussi de l'archétype) — honnêteté du §4.4 respectée : décompte
+  empires/cités EXACT (table SIZES), régions en qualitatif seulement (pas de
+  chiffre fabriqué).
+- chronique.gd — `annals()` (scps_sim_node.cpp:1302) renvoie déjà `kind` (int,
+  enum ANNAL_* de scps_events.h : DILEMME=0/CICATRICE=1/AGE=2/GUERRE_GAGNEE=3/
+  GUERRE_PERDUE=4/SECESSION=5/HEGEMON_BRISE=6/MONUMENT=7/FIN=8/TRAHISON=9/
+  MERVEILLE_ETAPE=10) — jamais lu côté Godot avant ce lot. C'est le levier
+  « entrées enrichies » du §4.4 (glyphe+couleur par catégorie) sans rien inventer.
+
+**Pièges**
+- Le ternaire GDScript AVANT `%` : `"%s %s (%d)" % (["▸",n,c] if cond else
+  ["▾",n,c])` — j'ai explicitement PARENTHÉSÉ le ternaire complet côté droit du
+  `%` (au lieu de compter sur la précédence, cf. le piège noté au Lot 3 : `%` lie
+  plus fort que `if/else`, donc SANS parenthèses `"fmt" % a if c else b` parse en
+  `("fmt"%a) if c else b`, PAS ce qu'on veut ici où les DEUX branches doivent être
+  formatées par le même gabarit).
+- `LineEdit.text = "..."` en GDScript (assignation directe de propriété, pas
+  `set_text()`) NE déclenche PAS le signal `text_changed` — vérifié par lecture de
+  la doc Godot 4, pas testé en éditeur. Le bouton dé du new_game_panel devait donc
+  appeler `_refresh_world_preview()` EXPLICITEMENT après avoir posé la graine
+  tirée, en plus du `.text_changed.connect(...)` qui ne couvre que la frappe
+  utilisateur.
+- `ScrollContainer.ensure_control_visible(ctrl)` (utilisé par le sommaire du
+  codex pour sauter à une section) attend un layout à jour : appelé après un
+  `await get_tree().process_frame` pour laisser le conteneur fraîchement rendu
+  visible (body.visible=true) se dimensionner avant de calculer le défilement —
+  non testé en éditeur (pas de probe fenêtrée), à surveiller si le saut atterrit
+  un cadre en retard au premier essai.
+
+**Restes**
+- Aucune probe fenêtrée lancée (consigne explicite de l'orchestrateur). Vérifié
+  par relecture complète + un comptage de balises équilibrées par fichier
+  (parenthèses/accolades/crochets, heuristique — ne détecte pas un mauvais TYPE
+  de fermeture) ; à confirmer visuellement aux 3 résolutions.
+- Traditions (culture_creator.gd, onglet 3) n'a PAS été converti en cartes — c'était
+  DÉJÀ des boutons `toggle_mode` en `HFlowContainer` (pas un menu déroulant), donc
+  hors du "vs déroulants" du §4.4 ; seuls Héritage/Éthos (les deux vrais
+  `OptionButton`) ont été convertis.
+- new_game_panel.gd : les bucket-words de l'aperçu monde (« aride »/« tempéré »/
+  « vieux et fendu »…) sont des LITTÉRAUX FR non passés par `tr()` — impossible
+  d'ajouter des clés à `i18n/ui.csv` dans ce lot (fichier hors périmètre) ; suit le
+  précédent DÉJÀ dans ce même fichier (`T_NG_ARCH_HINT`, fallback littéral quand la
+  clé n'existe pas en CSV). Un futur agent i18n pourra ajouter T_NG_LAND_LOW/MID/
+  HIGH etc. et les basculer en `tr()` sans toucher à la logique de bucket.
+- chronique.gd : le plafond `MAX_SC=480px` de la liste (~16 lignes visibles avant
+  défilement) et le plancher `MIN_SC=90px` sont un choix arbitraire raisonnable,
+  pas une valeur mesurée sur un vrai règne long — à ajuster si un règne à 40+
+  faits rend le tiroir trop haut ou trop court en pratique.
+
+## 2026-07-11 — UI Lots 3-4 : vérif de parse GDScript (piège check-only)
+- `godot --check-only -s res://ui/X.gd` (script ISOLÉ) renvoie TOUJOURS « Compile Error:
+  Identifier not found: Sim/Sound/Frame » pour tout script qui touche un AUTOLOAD → FAUX
+  POSITIF, pas un vrai bug de syntaxe. Le signal FIABLE d'une vraie erreur = une ligne
+  « Parse Error: … » (ex. `nmc` : « Cannot infer the type of variable »). Sinon, seule la
+  PROBE FENÊTRÉE (le script chargé dans le projet complet + rendu) prouve qu'un script est bon.
+- Un `:=` sur une variable de boucle non typée (`for nm in names: var nmc := nm`) casse
+  l'inférence si `names` n'a pas de type d'élément → typer explicitement (`var nmc: String = nm`).
+  C'est ce qui a fait crasher tout le codex (main.gd `_codex` restait Nil, la probe s'arrêtait
+  au shot 18). Corrigé ; le reste des fichiers d'agent (topbar/sidebar/créateur/newgame) avait
+  déjà PROUVÉ son parse en RENDANT (shots 02/01c/01b) avant le crash codex.
