@@ -243,7 +243,7 @@ func _refresh() -> void:
 		+ ("Mémoire : " + " — ".join(mem) if mem.size() > 0 else "Mémoire : aucun acte notable")
 	# le DIPLOMATE : cooldown → tous les verbes grisés + la raison affichée
 	var cd := int(w.diplo_cd()) if w.has_method("diplo_cd") else 0
-	_cd_lbl.text = ("Émissaire en tournée — de retour dans %d j" % cd) if cd > 0 else "Émissaire disponible"
+	_cd_lbl.text = ("Émissaire : retour dans %d j" % cd) if cd > 0 else "Émissaire : disponible"
 	var op2: Dictionary = w.diplo_options(_cid) if w.has_method("diplo_options") else {}
 	var can := {
 		"war": bool(op2.get("can_declare_war", false)),
@@ -335,7 +335,7 @@ func _act(verb: String) -> void:
 		"migration": ok = bool(w.player_offer_migration(_cid))
 		"embargo": ok = bool(w.player_embargo(_cid, 1))
 		"fabricate": ok = bool(w.player_fabricate_cb(_cid))
-	_flash.text = "Ordre émis — l'émissaire part (verdict au drain)." if ok else "Ordre refusé."
+	_flash.text = "Ordre émis — l'émissaire part." if ok else "Ordre refusé."
 	if ok:
 		# l'ÉMISSAIRE PART : on mémorise SON objectif (display-only) pour le menu de droite,
 		# tant qu'il est « en tournée » (diplo_cd). Phrase franche + le pays cible.

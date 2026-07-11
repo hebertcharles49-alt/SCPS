@@ -64,17 +64,14 @@ func _res_pair(w, me: int, rname: String) -> Dictionary:
 func _matter_cell(px: float, w, me: int, rname: String) -> float:
 	var rp := _res_pair(w, me, rname)
 	if rp.is_empty():
-		# ressource absente du bilan (jamais produite/stockée) : la cellule reste
-		# PRÉSENTE à « 0 » — la matière de construction/armement de la barre définitive
-		# ne doit pas clignoter selon ce qui est en stock (« vous n'en avez aucune »).
-		return _cell(px, "", "", "0", "", true, "%s — aucun en stock" % rname,
-			VKit.COL_DIM, rname)
-	# FACE = le nombre seul (retour joueur : « l'UI fournit l'information, PAS PLUS ») ;
-	# le flux mensuel vit dans le HOVER.
+		# absente du bilan : la cellule reste à « 0 » (la matière ne clignote pas).
+		return _cell(px, "", "", "0", "", true, rname, VKit.COL_DIM, rname)
+	# FACE = le stock seul (« l'UI fournit l'information, PAS PLUS ») ; le hover = le NOM
+	# + le flux mensuel (le stock est déjà sur la face, on ne le répète pas).
 	var permo := float(rp["permo"])
-	var tip := "%s — %s en stock" % [rname, _grp(int(rp["stock"]))]
+	var tip := rname
 	if absf(permo) >= 0.5:
-		tip += " · %+d/mois" % int(round(permo))
+		tip += " %+d/mois" % int(round(permo))
 	return _cell(px, "", "", _grp(int(rp["stock"])), "", true, tip, Color(0, 0, 0, 0), rname)
 
 ## LOYAUTÉ du royaume = moyenne de la loyauté des sièges du CONSEIL (0-100) — la fidélité
@@ -226,7 +223,7 @@ func _research_tip(w, me: int) -> String:
 	var mp := int(ri.get("metab_pct", 0))
 	if mp > 0:
 		parts.append("Métabolisation +%d%%" % mp)
-	return "Recherche +%d/mois\n%s\n(clic : l'arbre de technologie)" % [perm, " · ".join(parts)]
+	return "Recherche +%d/mois\n%s\n(clic : arbre de tech)" % [perm, " · ".join(parts)]
 
 ## SÉPARATEUR DE BLOC — l'UNIQUE trait de la barre (retour joueur « c'est le bordel » :
 ## fini le double empilement filet-par-cellule + barre-de-bloc). Un SEUL filet or fin,
@@ -470,7 +467,7 @@ func _draw() -> void:
 		if not short.is_empty():
 			var djs := int(short["days"])
 			var sname := String(short["name"])
-			_food_full_tip += "\nPénurie — %s : rupture dans %d j" % [sname, djs]
+			_food_full_tip += "\n%s : rupture dans %d j" % [sname, djs]
 		if w.has_method("country_food"):
 			px = _cell(px, "fine_grain", "", _grp(int(w.country_food(me))), "", true, _food_full_tip)
 		px = _block_sep(px)
@@ -497,7 +494,7 @@ func _draw() -> void:
 			var fdtxt := "%+d/mois" % fd if fd != 0 else ""
 			var ftip := "%s — %d %% de soutien%s" % [fnm, part, " ★ dominante" if dom else ""]
 			if fd != 0:
-				ftip += " · tend %+d/mois" % fd
+				ftip += " · %+d/mois" % fd
 			if grief > 0:
 				ftip += " · rancœur %d" % grief
 			if fi == 0:
@@ -515,7 +512,7 @@ func _draw() -> void:
 		var loy_tip := "Loyauté du conseil %d / 100" % loy
 		if loy < 0:
 			loy = int(ci.get("legitimite", 0))
-			loy_tip = "Loyauté %d / 100 (légitimité — conseil vacant)" % loy
+			loy_tip = "Loyauté %d / 100 (légitimité)" % loy
 		px = _cell(px, "politics_crown", "", "%d" % loy, "", true, loy_tip,
 			VKit.sense(float(loy) / 100.0))
 		var prosp := int(ci.get("prosperite", 0))
