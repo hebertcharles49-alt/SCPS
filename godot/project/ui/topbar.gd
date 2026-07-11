@@ -495,7 +495,7 @@ func _draw() -> void:
 			var grief := int(fe.get("grief", 0))
 			var fd := int(_fac_d.get(fnm, 0))
 			var fdtxt := "%+d/mois" % fd if fd != 0 else ""
-			var ftip := "%s — %d %% du spectre%s" % [fnm, part, " ★ dominante" if dom else ""]
+			var ftip := "%s — %d %% de l'opinion du royaume%s" % [fnm, part, " ★ dominante" if dom else ""]
 			if fd != 0:
 				ftip += " · tend %+d/mois" % fd
 			if grief > 0:

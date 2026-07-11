@@ -38,6 +38,14 @@ var game_on := false            ## la PARTIE a commencé (Lancer/Charger) — av
                                 ## fond tourne en vitrine, alertes & popups restent muets
 var current_seed := SEED_DEFAULT ## graine du monde courant (contexte pour le rapport de bug)
 
+## ÉMISSAIRE (display-only) : le moteur ne stocke QUE le cooldown diplomatique
+## (diplo_cd) ; l'OBJECTIF du dernier envoi (« Proposer une alliance à X ») n'est pas
+## sérialisé — on le mémorise ici, posé par le verbe diplo joueur (country_actions),
+## lu par le menu de droite. Une phrase franche, effacée à la reprise d'un nouvel envoi.
+var emissary_objective := ""
+func note_emissary(objective: String) -> void:
+	emissary_objective = objective
+
 func _ready() -> void:
 	if not ClassDB.class_exists("ScpsWorld"):
 		push_error("GDExtension `libscps` absente — bâtir d'abord : `cd godot && scons`. Voir godot/README.md.")

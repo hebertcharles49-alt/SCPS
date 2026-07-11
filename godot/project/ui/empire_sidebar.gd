@@ -155,6 +155,10 @@ func _draw() -> void:
 	#    en contexte discret. Rien tant qu'aucun âge n'a percé (l'Aube). ──
 	y = _draw_age(x, y)
 
+	# ── ÉMISSAIRE (sous l'âge) : disponibilité · temps de retour · objectif du dernier
+	#    envoi diplomatique (retour joueur 2026-07-12) ──
+	y = _draw_emissary(x, y)
+
 	# ── VILLES : régions habitées du joueur, triées par âmes ──
 	var cities := []
 	for r in range(w.region_count()):
@@ -337,6 +341,31 @@ func _draw_age(x: float, y: float) -> float:
 	UIKit.draw_icon(self, "fine_age", Vector2(x, y + 2), 15)
 	VKit.text(self, Vector2(x + 20.0, y + 3), Color(0.72, 0.60, 0.36), "Âge : %s" % nm, VKit.FS_SMALL)
 	return y + 22.0
+
+## ÉMISSAIRE — disponibilité · retour · objectif. Le moteur ne stocke que le cooldown
+## (diplo_cd) ; l'objectif vient de Sim.emissary_objective (posé au verbe diplo joueur).
+## Disponible = ligne verte discrète ; en tournée = ambre + retour + objectif.
+func _draw_emissary(x: float, y: float) -> float:
+	var w = Sim.world
+	if w == null or not w.has_method("diplo_cd"):
+		return y
+	var cd := int(w.diplo_cd())
+	UIKit.draw_icon(self, "menu_diplomacy", Vector2(x, y + 2), 15)
+	if cd <= 0:
+		VKit.text(self, Vector2(x + 20.0, y + 3), Color(0.52, 0.72, 0.48),
+			"Émissaire : disponible", VKit.FS_SMALL)
+		return y + 22.0
+	VKit.text(self, Vector2(x + 20.0, y + 3), Color(0.82, 0.66, 0.36),
+		"Émissaire : retour dans %d j" % cd, VKit.FS_SMALL)
+	y += 20.0
+	var obj := String(Sim.emissary_objective)
+	if obj != "":
+		var lab := "Objectif : %s" % obj
+		while VKit.text_w(lab, VKit.FS_SMALL) > W - x - 12.0 and lab.length() > 12:
+			lab = lab.substr(0, lab.length() - 2) + "…"
+		VKit.text(self, Vector2(x + 20.0, y + 1), VKit.COL_DIM, lab, VKit.FS_SMALL)
+		y += 18.0
+	return y + 4.0
 
 func _grp(n) -> String:
 	var s := str(absi(int(n)))

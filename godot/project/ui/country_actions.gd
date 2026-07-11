@@ -336,6 +336,18 @@ func _act(verb: String) -> void:
 		"embargo": ok = bool(w.player_embargo(_cid, 1))
 		"fabricate": ok = bool(w.player_fabricate_cb(_cid))
 	_flash.text = "Ordre émis — l'émissaire part (verdict au drain)." if ok else "Ordre refusé."
+	if ok:
+		# l'ÉMISSAIRE PART : on mémorise SON objectif (display-only) pour le menu de droite,
+		# tant qu'il est « en tournée » (diplo_cd). Phrase franche + le pays cible.
+		var target := String(_head.text)
+		var obj: String = {
+			"war": "Déclarer la guerre à %s", "peace": "Proposer la paix à %s",
+			"ally": "Proposer une alliance à %s", "pact": "Proposer un pacte à %s",
+			"migration": "Proposer un pacte migratoire à %s",
+			"embargo": "Décréter un embargo contre %s",
+			"fabricate": "Fabriquer une revendication contre %s",
+		}.get(verb, "Émissaire dépêché auprès de %s")
+		Sim.note_emissary(obj % target)
 	if ok and verb == "war":
 		Sound.play("moment_war_horn")
 	elif not ok:
