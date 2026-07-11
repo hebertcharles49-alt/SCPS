@@ -4406,12 +4406,26 @@ void country_make_name(char *out, int n, Heritage heritage, Ethos ethos, int cid
  * répétitif. L'axe (éthos) n'est PAS un nom. Dérivé de (héritage + seed=cid), déterministe ⇒ rien
  * à sérialiser (comme les toponymes). Racine+suffixe du syllabaire d'héritage + une terminaison
  * ethnonymique → ~256 variantes/héritage. P.ex. « Caeldoriens », « Brenwicar », « Tikilites ». */
+/* ADJECTIF de peuple — banque partagée (32 → masque &31). Un vrai mot descriptif qui
+ * SUIT l'ethnonyme syllabique : « Caeldoriens Farouches ». Déterministe par seed. */
+static const char *NAME_ADJ[32] = {
+    "Anciens","Libres","Fiers","Épars","Unis","Farouches","Sages","Errants",
+    "Rouges","Noirs","Dorés","Gris","Purs","Mêlés","Hauts","Cachés",
+    "Nomades","Maritimes","Sylvestres","Solaires","Cendrés","Vermeils","Austères","Prospères",
+    "Indomptés","Voilés","Runiques","Vaillants","Sereins","Rebelles","Insulaires","Éternels"
+};
 void culture_make_name(char *out, int n, Heritage heritage, uint32_t seed){
     static const char *ETHNO[8] = { "iens","ar","ites","esi","ane","oï","uri","ade" };
     int r=(heritage>=0&&heritage<HERITAGE_COUNT)?(int)heritage:HERITAGE_ADAPTATIF;
     uint32_t h=(seed*2654435761u)^0x9E3779B9u; h^=h>>13; h*=0x85ebca6bu; h^=h>>16;
-    snprintf(out,(size_t)n,"%s%s%s",
-             NAME_ROOT[r][(h>>3)&7], NAME_SUFF[r][(h>>9)&3], ETHNO[(h>>15)&7]);
+    /* ETHNONYME syllabique (racine+suffixe+terminaison = 256) + ADJECTIF (32) → ~8000
+     * variantes/héritage. Le brassage (v79) multiplie les peuples nommés ; à 256 le repli
+     * « Peuple N » s'armait ; à ~8000 il ne s'arme plus. « Découper en syllabe ET adjectif »
+     * (retour joueur 2026-07-11) — vaut pour l'IA ET la culture composée par le JOUEUR
+     * (même appel façade). Déterministe par seed ⇒ rien de neuf à sérialiser. */
+    snprintf(out,(size_t)n,"%s%s%s %s",
+             NAME_ROOT[r][(h>>3)&7], NAME_SUFF[r][(h>>9)&3], ETHNO[(h>>15)&7],
+             NAME_ADJ[(h>>18)&31]);
 }
 
 /* ════════════════════════════════════════════════════════════════════════

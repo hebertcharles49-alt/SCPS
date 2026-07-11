@@ -58,9 +58,15 @@ static bool culture_id_name_used(const char *name){
     return false;
 }
 static void culture_id_fresh_name(char *out, size_t n, Heritage h, uint32_t seed){
+    /* ⚠ le candidat est composé dans un buffer LOCAL, PAS directement dans `out` :
+     * `out` pointe DANS g_culture_id[id].name (l'identité en cours de nommage) et
+     * culture_id_name_used balaie le registre ENTIER, id COMPRIS → écrire le candidat
+     * dans `out` le faisait se matcher LUI-MÊME → « used » à chaque essai → repli
+     * « Peuple N » systématique (le vrai bug des noms fades, trouvé 2026-07-11). */
+    char cand[CULTURE_NAME_N];
     for (uint32_t k=0;k<512;k++){
-        culture_make_name(out,(int)n,h,culture_id_hash(seed+k*0x9e3779b9u));
-        if (!culture_id_name_used(out)) return;
+        culture_make_name(cand,(int)sizeof cand,h,culture_id_hash(seed+k*0x9e3779b9u));
+        if (!culture_id_name_used(cand)){ snprintf(out,n,"%s",cand); return; }
     }
     snprintf(out,n,"Peuple %u",(unsigned)g_culture_id_count);
 }
