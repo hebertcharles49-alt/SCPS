@@ -89,26 +89,41 @@ static func worst_shortage(w, me: int) -> Dictionary:
 ## inventé : uniquement des lignes déjà exposées par la façade (country_budget/
 ## country_stocks/country_info), telles quelles.
 
-## LE TRÉSOR EN QUOI+COMBIEN : les postes RÉELS de l'instrument I0 (l'or, ligne à
-## ligne — country_budget → econ_flux_get/FX_*, scps_api.c:2045) au lieu de
-## raconter ce qu'est l'argent. `budget_summary` donne le net de l'année en cours
-## (le flux RAZ à chaque roulement d'année, scps_api.c:149-159 — ce n'est pas un
-## solde "mensuel", contrairement à l'ancien libellé).
-func _treasury_tip(w, me: int) -> String:
+## LES POSTES RÉELS de l'instrument I0 (l'or, ligne à ligne — country_budget →
+## econ_flux_get/FX_*, scps_api.c:2045) — factorisé : consommé par le Trésor (état)
+## ET par le Revenu net (le NOUVEAU permanent UI-3.1), même donnée, deux angles.
+func _budget_parts_txt(w, me: int) -> String:
 	if not w.has_method("country_budget"):
-		return "Trésor"
+		return ""
 	var parts := []
 	for p in w.country_budget(me):
 		var amt: float = float(p.get("amount", 0.0))
 		if absf(amt) < 0.5:
 			continue
 		parts.append("%s %+d" % [String(p.get("name", "")), int(round(amt))])
+	return " · ".join(parts)
+
+## LE TRÉSOR EN QUOI+COMBIEN : au lieu de raconter ce qu'est l'argent. `budget_summary`
+## donne le net de l'année en cours (le flux RAZ à chaque roulement d'année,
+## scps_api.c:149-159 — ce n'est pas un solde "mensuel", contrairement à l'ancien libellé).
+func _treasury_tip(w, me: int) -> String:
 	var tip := "Trésor"
-	if not parts.is_empty():
-		tip += " — " + " · ".join(parts)
+	var parts := _budget_parts_txt(w, me)
+	if parts != "":
+		tip += " — " + parts
 	if w.has_method("budget_summary"):
 		var net := float((w.budget_summary(me) as Dictionary).get("net", 0.0))
 		tip += " (net %+d cette année)" % int(round(net))
+	return tip
+
+## LE REVENU NET EN QUOI+COMBIEN (UI-3.1, permanent séparé du Trésor — la VALEUR
+## affichée sur la cellule EST déjà le net ; le survol détaille les postes qui le
+## composent, jamais un second calcul).
+func _net_income_tip(w, me: int) -> String:
+	var tip := "Revenu net (année en cours)"
+	var parts := _budget_parts_txt(w, me)
+	if parts != "":
+		tip += " — " + parts
 	return tip
 
 ## LA NOURRITURE EN QUOI+COMBIEN : production vs consommation, bien par bien
@@ -138,20 +153,24 @@ func _block_sep(px: float) -> float:
 		Color(VKit.COL_GOLD.r, VKit.COL_GOLD.g, VKit.COL_GOLD.b, 0.55))
 	return px + 2.0 + 14.0
 
-## une jauge nationale 0-100 (stabilité/prospérité/légitimité/cohésion) — factorisé
-## pour être posée dans des blocs différents (ROYAUME/ÉCONOMIE/POLITIQUE) sans dupliquer
-## le corps de la cellule. UI-5 : la couleur sense() ne porte JAMAIS seule l'état — un
-## signe la double aux EXTRÊMES (▲ haute/▼ basse) ; le milieu n'a pas besoin d'alarme,
-## on ne sur-décore pas une valeur médiane.
-func _gauge_cell(px: float, ci: Dictionary, cptips: Dictionary, key: String, icon: String) -> float:
+## RETOUR JOUEUR UI-3.1 (2026-07-11, docs/UI_RECO_2026-07-10.md §3.1 « topbar
+## simplifiée ») : la barre ne garde que ~8 PERMANENTS (trésor · revenu net annuel ·
+## pop · nourriture+rupture · recherche · Influence · Corruption · date+vitesse).
+## Les jauges 0-100 (stabilité/prospérité/légitimité/cohésion), le décompte de
+## provinces, la colonisation en chantier, le bonheur détaillé et les blasons de
+## faction ne DISPARAISSENT PAS — ils se lisent au SURVOL du bloc le plus proche
+## (Pop pour l'état du royaume, Revenu net pour l'économie, Influence/Corruption
+## pour la politique) : `_gauge_line` formate un « Mot NN[ ▲|▼] » textuel pour ces
+## tooltips composites (UI-5 : la couleur ne porte jamais seule l'état, même en
+## texte — le chiffre + le signe restent visibles hors couleur).
+func _gauge_line(ci: Dictionary, cptips: Dictionary, key: String) -> String:
 	var gv := int(ci.get(key, 0))
 	var glyph := ""
 	if gv >= 66:
 		glyph = " ▲"
 	elif gv <= 33:
 		glyph = " ▼"
-	return _cell(px, icon, "", str(gv) + glyph, "", true,
-		String(cptips.get(key, "")), VKit.sense(clampf(gv / 100.0, 0.0, 1.0)))
+	return "%s %d%s" % [String(cptips.get(key, key)), gv, glyph]
 
 ## CELLULE DE RESSOURCE façon CK3 (hud.gui:6148-6207) : icône 22 px à gauche, VALEUR
 ## empilée sur son DELTA (vert si ≥0, rouge sinon), séparateur vertical léger. `icon` =
@@ -264,77 +283,16 @@ func _draw() -> void:
 		px += 30
 		var CPTips: Dictionary = load("res://ui/country_panel.gd").TIPS
 
-		# ═══ BLOC ROYAUME : nom · or · pop · N provinces · stabilité (audit UI-2 :
-		#     « regrouper en 4 blocs » — royaume/économie/politique/temps) ═══
-		var nom := String(ci["nom"])
-		VKit.text(self, Vector2(px, cy), VKit.COL_GOLD, nom); px += VKit.text_w(nom) + 18
-		px = _cell(px, "fine_coin", "", _grp(ci["or"]), _delta_txt(_d_gold), _d_gold >= 0.0,
-			_treasury_tip(w, me))
-		var _pop_tip := "Population"
-		var _dp_txt := _delta_txt(float(_d_pop))
-		if _dp_txt != "":
-			_pop_tip += " — %s ce mois" % _dp_txt
-		px = _cell(px, "population_group", "", _grp(ci["pop"]), _delta_txt(float(_d_pop)), _d_pop >= 0,
-			_pop_tip)
-		# modèle province (EU4) : le pays compte ses PROVINCES (pas ses régions)
-		var rt := "%d prov." % w.country_province_count(me)
-		_tips.append([Rect2(px - 4.0, 0.0, VKit.text_w(rt) + 8.0, H), "Provinces colonisées"])
-		VKit.text(self, Vector2(px, cy), VKit.COL_DIM, rt); px += VKit.text_w(rt) + 14
-		px = _gauge_cell(px, ci, CPTips, "stabilite", "stability_shield")
-		px = _block_sep(px)
-
-		# ═══ BLOC ÉCONOMIE : nourriture · pénurie/prod critique · prospérité · savoir ·
-		#     colonisation en chantier. Les 5 cellules de MATIÈRES BRUTES bois/argile/
-		#     pierre/fer/armes SORTENT d'ici (retour joueur « TOPBAR SURCHARGÉ ») → le
-		#     tiroir Économie/Stocks (sidebar_drawer.gd) ; seule la PIRE PÉNURIE
-		#     remonte, en alerte explicite (« Fer : rupture dans 12 jours »). ═══
-		if w.has_method("country_food"):
-			px = _cell(px, "fine_grain", "", _grp(int(w.country_food(me))), "", true,
-				_food_tip(w, me))
-		var short := worst_shortage(w, me)
-		if not short.is_empty():
-			var djs := int(short["days"])
-			var slbl := "%s : rupture %d j" % [String(short["name"]), djs]
-			# UI-5 : la couleur (rouge) ne porte JAMAIS seule l'état — le texte chiffré
-			# ET le symbole ▼ portent le même sens en second canal.
-			px = _cell(px, "alert_shortage", "", slbl, "▼", false,
-				"Pénurie — %s : rupture prévue dans %d jour(s) au rythme actuel" % [String(short["name"]), djs],
-				VKit.sense(0.10))
-		else:
-			px = _cell(px, "alert_shortage", "", "production stable", "", true,
-				"Aucune ressource nationale en rupture prévisible", VKit.COL_DIM)
-		px = _gauge_cell(px, ci, CPTips, "prosperite", "prosperity_sprout")
-		var sx0 := px
-		var _savoir_tip := String(CPTips.get("savoir", "Savoir"))
-		var _metab := int(ci.get("metab_pct", 0))
-		if _metab > 0:
-			_savoir_tip += " — métabolisation +%d%% recherche" % _metab
-		_savoir_tip += " (clic : l'arbre de technologie)"
-		px = _cell(px, "fine_knowledge", "", "%d" % int(ci["savoir"]), "", true, _savoir_tip)
-		_savoir_rect = Rect2(sx0 - 4, 0, px - sx0, H)
-		# CHANTIER DE COLONISATION (v50) : la colonie qui mûrit
-		if w.has_method("colony_status"):
-			var cs: Dictionary = w.colony_status()
-			if bool(cs.get("active", false)):
-				var tot := maxi(1, int(cs.get("total_days", 1)))
-				var pct := int(round(100.0 * float(tot - int(cs.get("days_left", 0))) / float(tot)))
-				var ctxt := "Colonie %d %%" % pct
-				UIKit.draw_icon(self, "settlement_cluster", Vector2(px, cy - 2), 16); px += 20
-				VKit.text(self, Vector2(px, cy), Color(0.62, 0.78, 0.52), ctxt); px += VKit.text_w(ctxt) + 20
-		px = _block_sep(px)
-
-		# ═══ BLOC POLITIQUE : légitimité · influence · cohésion · bonheur · factions
-		#     (blasons existants) · tension de coup (retour joueur : « les factions
-		#     doivent être en top bar » — doctrine national = topbar). Bonheur = satis-
-		#     faction pondérée des classes (détail au survol) ; puis un BLASON par
-		#     faction, mini-barre d'ADHÉSION dessous, ★ dominante, rancœur en liseré
-		#     rouge — détail au survol. ═══
-		px = _gauge_cell(px, ci, CPTips, "legitimite", "politics_crown")
-		var infl := int(ci.get("influence", 0))
-		px = _cell(px, "politics_law", "", str(infl), "", true, "Influence")
-		px = _gauge_cell(px, ci, CPTips, "cohesion", "happiness_medallion")
+		# RETOUR JOUEUR UI-3.1 (2026-07-11) : la barre ne garde que ~8 PERMANENTS —
+		# trésor · revenu net annuel · pop · nourriture(+rupture) · recherche ·
+		# Influence · Corruption · date+vitesse. Tout le SECONDAIRE d'hier (provinces,
+		# stabilité, prospérité, colonisation en chantier, légitimité, cohésion,
+		# bonheur détaillé, blasons de faction, tension de coup) ne disparaît pas :
+		# il se lit désormais au SURVOL du bloc le plus proche (jamais un calcul
+		# inventé — les mêmes lectures façade qu'avant, juste reléguées en tooltip).
 		var dmt: Dictionary = w.country_demo(me) if w.has_method("country_demo") else {}
 		var clst: Array = dmt.get("classes", [])
+		var _happy_tip := ""
 		if clst.size() >= 3:
 			var sat_avg := 0.0
 			var wsum := 0.0
@@ -343,52 +301,110 @@ func _draw() -> void:
 				sat_avg += float(cl.get("satisfaction", 0)) * p
 				wsum += p
 			sat_avg = sat_avg / maxf(wsum, 1.0)
-			# UI-5 : même doublage aux extrêmes que les jauges (▲/▼) — la couleur seule
-			# ne dit pas si 72 % est un bon ou un mauvais bonheur.
 			var bglyph := ""
 			if sat_avg >= 66.0:
 				bglyph = " ▲"
 			elif sat_avg <= 33.0:
 				bglyph = " ▼"
-			px = _cell(px, "happiness_medallion", "", "%d %%%s" % [int(round(sat_avg)), bglyph], "", true,
-				"Bonheur — Laboureurs %d · Artisans %d · Noblesse %d" % [
-					int(clst[0].get("satisfaction", 0)), int(clst[1].get("satisfaction", 0)),
-					int(clst[2].get("satisfaction", 0))],
-				VKit.sense(clampf(sat_avg / 100.0, 0.0, 1.0)))
+			_happy_tip = "Bonheur %d %%%s (Laboureurs %d · Artisans %d · Noblesse %d)" % [
+				int(round(sat_avg)), bglyph,
+				int(clst[0].get("satisfaction", 0)), int(clst[1].get("satisfaction", 0)),
+				int(clst[2].get("satisfaction", 0))]
+		var fx: Dictionary = w.country_factions(me) if w.has_method("country_factions") else {}
+
+		# ═══ BLOC ROYAUME : nom · trésor · revenu net annuel · population ═══
+		var nom := String(ci["nom"])
+		VKit.text(self, Vector2(px, cy), VKit.COL_GOLD, nom); px += VKit.text_w(nom) + 18
+		px = _cell(px, "fine_coin", "", _grp(ci["or"]), _delta_txt(_d_gold), _d_gold >= 0.0,
+			_treasury_tip(w, me))
+		var _net := 0.0
+		if w.has_method("budget_summary"):
+			_net = float((w.budget_summary(me) as Dictionary).get("net", 0.0))
+		px = _cell(px, "tax_ledger", "", "%+d" % int(round(_net)), "", _net >= 0.0,
+			_net_income_tip(w, me), VKit.sense(0.85) if _net >= 0.0 else VKit.sense(0.12))
+		# Population : provinces colonisées + stabilité + colonisation en chantier
+		# DÉMOTÉES ici (retour joueur « topbar surchargé ») — le mot avant le chiffre,
+		# jamais une coordonnée moteur nue.
+		var _pop_tip := "Population — %d province(s) colonisée(s) · %s" % [
+			w.country_province_count(me), _gauge_line(ci, CPTips, "stabilite")]
+		var _dp_txt := _delta_txt(float(_d_pop))
+		if _dp_txt != "":
+			_pop_tip += " — %s ce mois" % _dp_txt
+		if w.has_method("colony_status"):
+			var cs: Dictionary = w.colony_status()
+			if bool(cs.get("active", false)):
+				var tot := maxi(1, int(cs.get("total_days", 1)))
+				var pct := int(round(100.0 * float(tot - int(cs.get("days_left", 0))) / float(tot)))
+				_pop_tip += " · colonie en chantier %d %%" % pct
+		px = _cell(px, "population_group", "", _grp(ci["pop"]), _delta_txt(float(_d_pop)), _d_pop >= 0,
+			_pop_tip)
+		px = _block_sep(px)
+
+		# ═══ BLOC ÉCONOMIE : nourriture (+ rupture) · recherche. Les 5 cellules de
+		#     MATIÈRES BRUTES bois/argile/pierre/fer/armes vivent dans le tiroir
+		#     Économie/Stocks ; prospérité démotée au survol du Revenu net ci-dessus. ═══
+		var short := worst_shortage(w, me)
+		var _food_dtxt := ""
+		var _food_pos := true
+		var _food_vcol := Color(0, 0, 0, 0)
+		var _food_full_tip := _food_tip(w, me)
+		if not short.is_empty():
+			var djs := int(short["days"])
+			var sname := String(short["name"])
+			if _FOOD_NAMES.has(sname):
+				# la pénurie EST vivrière : elle se lit directement sur la cellule
+				# (UI-5 : le texte chiffré ET le symbole ▼ portent le même sens).
+				_food_dtxt = "rupture %d j" % djs
+				_food_pos = false
+				_food_vcol = VKit.sense(0.10)
+				_food_full_tip += "\nPénurie — %s : rupture prévue dans %d jour(s)" % [sname, djs]
+			else:
+				# pénurie d'une AUTRE ressource (déjà relayée par les alertes) :
+				# secondaire ici, une ligne dans le survol du grenier.
+				_food_full_tip += "\nAutre pénurie — %s : rupture prévue dans %d jour(s) (voir alertes)" % [sname, djs]
+		if w.has_method("country_food"):
+			px = _cell(px, "fine_grain", "", _grp(int(w.country_food(me))), _food_dtxt, _food_pos,
+				_food_full_tip, _food_vcol)
+		var sx0 := px
+		var _savoir_tip := String(CPTips.get("savoir", "Savoir"))
+		var _metab := int(ci.get("metab_pct", 0))
+		if _metab > 0:
+			_savoir_tip += " — métabolisation +%d%% recherche" % _metab
+		_savoir_tip += " · %s (clic : l'arbre de technologie)" % _gauge_line(ci, CPTips, "prosperite")
+		px = _cell(px, "fine_knowledge", "", "%d" % int(ci["savoir"]), "", true, _savoir_tip)
+		_savoir_rect = Rect2(sx0 - 4, 0, px - sx0, H)
+		px = _block_sep(px)
+
+		# ═══ BLOC POLITIQUE : Influence · Corruption. Légitimité/cohésion/bonheur/
+		#     factions/tension de coup DÉMOTÉS au survol (retour joueur : ne garder
+		#     QUE les 2 permanents chiffrés — le détail politique reste à un clic,
+		#     jamais perdu). ═══
+		var infl := int(ci.get("influence", 0))
+		px = _cell(px, "influence_compass", "", str(infl), "", true,
+			"Influence — %s · %s" % [_gauge_line(ci, CPTips, "legitimite"), _gauge_line(ci, CPTips, "cohesion")])
+		var cor := int(fx.get("corruption", 0))
+		var cor_tip := "Corruption"
+		if not _happy_tip.is_empty():
+			cor_tip += " — " + _happy_tip
+		var coup := int(fx.get("coup", 0))
 		if w.has_method("country_factions"):
-			var fx: Dictionary = w.country_factions(me)
-			var coup := int(fx.get("coup", 0))
-			var cor := int(fx.get("corruption", 0))
-			var court := "Tension de coup %d · corruption %d" % [coup, cor]
+			cor_tip += "\nTension de coup %d" % coup
+			var flist := []
 			for fe in fx.get("list", []):
 				var fnm := String(fe.get("name", ""))
 				var part := int(fe.get("part", 0))
 				var dom := bool(fe.get("dominant", false))
 				var g := int(fe.get("grief", 0))
-				var bl: Texture2D = UIKit.faction_blason(fnm, g >= 25)
-				if bl != null:
-					draw_texture_rect(bl, Rect2(px, 6, 20, 20), false)
-				else:
-					UIKit.draw_icon(self, "politics_law", Vector2(px, 6), 20)
+				var fline := "%s %d %%" % [fnm, part]
 				if dom:
-					VKit.text(self, Vector2(px + 13, -1), VKit.COL_GOLD, "★", VKit.FS_SMALL)
-				# mini-barre d'ADHÉSION sous le blason (rancœur ≥25 : liseré rouge)
-				VKit.fill(self, Rect2(px, 30, 20, 5), VKit.COL_PANEL2)
-				VKit.fill(self, Rect2(px, 30, 20.0 * clampf(part / 100.0, 0.0, 1.0), 5),
-					VKit.sense(0.15) if g >= 25 else VKit.sense(0.72))
-				VKit.box(self, Rect2(px, 30, 20, 5), VKit.COL_EDGE)
-				var ftip := "%s — adhésion %d %%" % [fnm, part]
-				if dom:
-					ftip += " (★ dominante)"
+					fline += " ★"
 				if g > 0:
-					ftip += " · rancœur %d" % g
-				_tips.append([Rect2(px - 2.0, 0.0, 24.0, H), ftip + "\n" + court])
-				px += 26.0
-			if coup >= 20 or cor > 0:
-				var wtxt := "⚑"
-				VKit.text(self, Vector2(px + 2, cy), VKit.sense(0.10) if coup >= 45 else VKit.sense(0.35), wtxt)
-				_tips.append([Rect2(px - 2.0, 0.0, VKit.text_w(wtxt) + 10.0, H), court])
-				px += VKit.text_w(wtxt) + 12.0
+					fline += " (rancœur %d)" % g
+				flist.append(fline)
+			if not flist.is_empty():
+				cor_tip += " · Factions : " + " · ".join(flist)
+		px = _cell(px, "corruption_coin", "", str(cor), "", true, cor_tip,
+			VKit.sense(0.20) if (coup >= 45 or cor >= 50) else Color(0, 0, 0, 0))
 		content_end = px
 
 	# séparateur visuel avant le BLOC TEMPS — ANCRÉ au contenu RÉELLEMENT dessiné (pas

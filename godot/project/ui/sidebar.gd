@@ -3,6 +3,12 @@ extends Control
 ## le bandeau bas : 8 onglets menu_* (économie · démographie · stocks · marché ·
 ## armée · filtres · diplomatie · conseil). Fond cuir sombre + liseré or (capte
 ## ses clics). Le TIROIR (panneaux éco/démo/…) sort à droite du rail. Suit la hauteur.
+##
+## RETOUR JOUEUR UI-3.2 (2026-07-11, docs/UI_RECO_2026-07-10.md §3.2) : 4 états par
+## onglet — normal / survolé / SÉLECTIONNÉ (fond plein + cadre, cf. icon_button.gd)
+## / indisponible (avant qu'une partie ne commence — les raccourcis F1-F8 eux-mêmes
+## ne répondent qu'à `Sim.game_on`, main.gd:375 — le rail ne doit pas mentir sur ce
+## qui est cliquable). Chaque onglet garde son tooltip natif « Nom (Fx) ».
 
 const VKit = preload("res://ui/vkit.gd")
 const Frame = preload("res://ui/frame.gd")
@@ -30,6 +36,7 @@ var _drawer
 var _map
 var _rail: Panel
 var _vb: VBoxContainer
+var _last_enabled := true   ## dernier état diffusé aux onglets (évite un redraw/frame)
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -56,7 +63,8 @@ func _ready() -> void:
 		b.setup_icon(String(TABS[i][0]), BTN, "")   # SANS fond de chrome (retour joueur : icône nue sur le rail)
 		b.pad_frac = 0.16
 		b.pressed.connect(_on_tab.bind(i))
-		# politique hover : nom + raccourci (l'explication vit dans le tiroir lui-même)
+		# politique hover : nom + raccourci (l'explication vit dans le tiroir lui-même) —
+		# le raccourci EXACT vient du même mapping que main.gd:374 (F1 = index 0, …).
 		b.tooltip_text = "%s (F%d)" % [String(TABS[i][1]), i + 1]
 		_btns.append(b)
 
@@ -70,6 +78,25 @@ func _ready() -> void:
 
 	get_viewport().size_changed.connect(_resize)
 	_resize.call_deferred()
+	_sync_enabled()   # état initial (avant toute partie : rail indisponible)
+
+## UI-3.2 « indisponible » : les onglets ne servent à rien avant qu'une partie
+## commence (les raccourcis F1-F8 eux-mêmes ignorent l'appui hors `Sim.game_on`,
+## main.gd:375) — le rail doit le DIRE plutôt que d'inviter un clic mort. Poll
+## léger (pas de signal dédié à `game_on` côté Sim) : un frame par changement
+## d'état seulement, jamais un redraw en régime établi.
+func _process(_dt: float) -> void:
+	if Sim.game_on != _last_enabled:
+		_sync_enabled()
+
+func _sync_enabled() -> void:
+	_last_enabled = Sim.game_on
+	for k in range(_btns.size()):
+		var b = _btns[k]
+		b.enabled = _last_enabled
+		b.tooltip_text = "%s (F%d)" % [String(TABS[k][1]), k + 1] if _last_enabled \
+			else "%s (F%d) — indisponible avant le début d'une partie" % [String(TABS[k][1]), k + 1]
+		b.queue_redraw()
 
 func _resize() -> void:
 	var vp := get_viewport_rect().size

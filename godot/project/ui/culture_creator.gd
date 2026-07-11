@@ -2,9 +2,12 @@ extends Control
 ## CultureCreator — la fenêtre « créateur d'empire » façon Stellaris, en ONGLETS
 ## (retour joueur 2026-07-10 : « dispatcher avec plusieurs onglets, expliquer,
 ## pas tout mettre dans les menus déroulants, expliquer combien ») :
-##   · onglet HÉRITAGE   : votre affinité technologique (noms + accès natif à sa
-##                   branche d'arbre) ;
-##   · onglet ÉTHOS      : votre orientation politique et culturelle ;
+##   · onglet HÉRITAGE   : votre affinité technologique — CARTES comparables côte à
+##                   côte (retour joueur 2026-07-10, Lot 4.4 : « cartes comparables
+##                   vs déroulants ») ; le nom+sphère sur la carte, la LORE complète
+##                   au survol, l'aperçu détaillé de la carte SÉLECTIONNÉE dessous ;
+##   · onglet ÉTHOS      : votre orientation politique et culturelle — mêmes cartes
+##                   comparables (6 options, tiennent en grille à 1280×720) ;
 ##   · onglet TRADITIONS : TROIS sections plates (Positif majeur · Positif mineur ·
 ##                   Négatif), tous axes mélangés (retour joueur : « une liste non
 ##                   divisée, sinon illisible ») — choisir un trait GRISE les autres
@@ -94,9 +97,17 @@ var _axis_traits := [[], [], []]      # traditions par axe : [{id,nom,rang,hover
 
 # widgets
 var _tabs: TabContainer
-var _her_opt: OptionButton
+## Héritage/Éthos : CARTES comparables côte à côte (retour joueur 2026-07-10 :
+## « cartes comparables plutôt que des menus déroulants ») — remplace les anciens
+## OptionButton. Chaque carte = {btn:Button, id:int} ; _her_sel_id/_eth_sel_id =
+## l'id façade couramment choisi (même sémantique que l'ancien .selected).
+var _her_grid: HFlowContainer
+var _her_cards: Array = []
+var _her_sel_id := 0
 var _her_info: Label
-var _eth_opt: OptionButton
+var _eth_grid: HFlowContainer
+var _eth_cards: Array = []
+var _eth_sel_id := 0
 var _eth_info: Label
 var _trad_flow: Dictionary = {}       # par rang (2/1/-1) : le HFlowContainer de la section
 var _trad_all: Array = []             # à PLAT, tous axes : [{btn:Button, id:int, ax:int, grp:int}]
@@ -197,27 +208,31 @@ func _build_ui() -> void:
 	_tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(_tabs)
 
-	# — onglet HÉRITAGE —
+	# — onglet HÉRITAGE — CARTES comparables (retour joueur 2026-07-10) : 6 héritages,
+	# une carte chacun (nom + sphère), côte à côte plutôt qu'un menu déroulant qu'on
+	# ouvre un à la fois. L'effet détaillé (chiffré + lore) reste sous les onglets.
 	var t_her := VBoxContainer.new()
 	t_her.name = "Héritage"
 	t_her.add_theme_constant_override("separation", 8)
 	_tabs.add_child(t_her)
 	t_her.add_child(_section("Votre affinité technologique."))
-	_her_opt = OptionButton.new()
-	_her_opt.item_selected.connect(func(_i): _refresh())
-	t_her.add_child(_her_opt)
+	_her_grid = HFlowContainer.new()
+	_her_grid.add_theme_constant_override("h_separation", 8)
+	_her_grid.add_theme_constant_override("v_separation", 8)
+	t_her.add_child(_her_grid)
 	_her_info = _hint_label()
 	t_her.add_child(_her_info)
 
-	# — onglet ÉTHOS —
+	# — onglet ÉTHOS — mêmes cartes comparables (6 éthos).
 	var t_eth := VBoxContainer.new()
 	t_eth.name = "Éthos"
 	t_eth.add_theme_constant_override("separation", 8)
 	_tabs.add_child(t_eth)
 	t_eth.add_child(_section("Votre orientation politique et culturelle."))
-	_eth_opt = OptionButton.new()
-	_eth_opt.item_selected.connect(func(_i): _refresh())
-	t_eth.add_child(_eth_opt)
+	_eth_grid = HFlowContainer.new()
+	_eth_grid.add_theme_constant_override("h_separation", 8)
+	_eth_grid.add_theme_constant_override("v_separation", 8)
+	t_eth.add_child(_eth_grid)
 	_eth_info = _hint_label()
 	t_eth.add_child(_eth_info)
 
@@ -342,6 +357,24 @@ func _hint_label() -> Label:
 	l.add_theme_font_size_override("font_size", 12)
 	return l
 
+## une carte de choix (Héritage/Éthos) : bouton bascule, deux lignes (nom + un
+## descripteur court), même motif de sélection EXCLUSIVE que les cartes de
+## Traditions plus bas (toggle_mode + set_pressed_no_signal en groupe).
+func _make_choice_card(title: String, subtitle: String) -> Button:
+	var card := Button.new()
+	card.toggle_mode = true
+	card.focus_mode = Control.FOCUS_NONE
+	card.custom_minimum_size = Vector2(152, 50)
+	card.clip_text = false
+	card.text = "%s\n%s" % [title, subtitle]
+	card.add_theme_font_size_override("font_size", 13)
+	return card
+
+## reflète l'id sélectionné sur l'état pressé des cartes d'un groupe (sans re-signal).
+func _sync_choice_cards(cards: Array, sel_id: int) -> void:
+	for c in cards:
+		(c["btn"] as Button).set_pressed_no_signal(int(c["id"]) == sel_id)
+
 ## la graine du MONDE : gérée ailleurs (Nouvelle partie / monde courant)
 func _world_seed() -> int:
 	return int(Sim.current_seed)
@@ -361,14 +394,38 @@ func _load_data() -> void:
 		return
 
 	_her = Sim.world.heritage_list()
+	_her_cards = []
 	for h in _her:
-		_her_opt.add_item(String(h["nom"]))
-		_her_opt.set_item_metadata(_her_opt.item_count - 1, int(h["id"]))
+		var hid := int(h["id"])
+		var hcard := _make_choice_card(String(h["nom"]), String(h["sphere"]))
+		# survol = comparaison rapide sans cliquer (la LORE complète reste dans
+		# _her_info pour la carte SÉLECTIONNÉE)
+		hcard.tooltip_text = String(HER_LORE[hid]) if hid >= 0 and hid < HER_LORE.size() else ""
+		var hidc := hid
+		hcard.pressed.connect(func():
+			_her_sel_id = hidc
+			_sync_choice_cards(_her_cards, _her_sel_id)
+			_refresh())
+		_her_grid.add_child(hcard)
+		_her_cards.append({"btn": hcard, "id": hid})
+	if _her_cards.size() > 0:
+		_her_sel_id = int(_her_cards[0]["id"])
 
 	_eth = Sim.world.ethos_list()
+	_eth_cards = []
 	for e in _eth:
-		_eth_opt.add_item(String(e["nom"]))
-		_eth_opt.set_item_metadata(_eth_opt.item_count - 1, int(e["id"]))
+		var eid := int(e["id"])
+		var ecard := _make_choice_card(String(e["nom"]), String(e["epithete"]))
+		ecard.tooltip_text = String(ETHOS_LORE[eid]) if eid >= 0 and eid < ETHOS_LORE.size() else ""
+		var eidc := eid
+		ecard.pressed.connect(func():
+			_eth_sel_id = eidc
+			_sync_choice_cards(_eth_cards, _eth_sel_id)
+			_refresh())
+		_eth_grid.add_child(ecard)
+		_eth_cards.append({"btn": ecard, "id": eid})
+	if _eth_cards.size() > 0:
+		_eth_sel_id = int(_eth_cards[0]["id"])
 
 	# REDONDANCES ÉCARTÉES du sélecteur (retour joueur 2026-07-10 : « rester logique
 	# et enlever les redondances ») — preuve par la TABLE moteur (scps_heritage.c) :
@@ -434,8 +491,12 @@ func _select_roles(role: Array) -> void:
 	_sync_trait_buttons()
 
 func _preset_default() -> void:
-	_her_opt.select(0)
-	_eth_opt.select(0)
+	if _her_cards.size() > 0:
+		_her_sel_id = int(_her_cards[0]["id"])
+		_sync_choice_cards(_her_cards, _her_sel_id)
+	if _eth_cards.size() > 0:
+		_eth_sel_id = int(_eth_cards[0]["id"])
+		_sync_choice_cards(_eth_cards, _eth_sel_id)
 	_select_roles([0, 1, 2])   # Phys majeur · Soc mineur · Int défaut
 
 
@@ -473,10 +534,10 @@ func _norm_rank(r: int) -> int:
 
 
 func _cur_heritage() -> int:
-	return int(_her_opt.get_item_metadata(_her_opt.selected)) if _her_opt.selected >= 0 else 0
+	return _her_sel_id
 
 func _cur_ethos() -> int:
-	return int(_eth_opt.get_item_metadata(_eth_opt.selected)) if _eth_opt.selected >= 0 else 0
+	return _eth_sel_id
 
 func _cur_trait(ax: int) -> int:
 	return _trad_sel[ax]
@@ -487,7 +548,7 @@ func _refresh() -> void:
 	# garde : pas de monde, OU libscps obsolète/incomplet (listes non peuplées par
 	# _load_data) → ne PAS appeler les méthodes du créateur (elles n'existent pas sur
 	# un vieux binding). Couvre l'appel de _ready() et de _on_randomize().
-	if Sim.world == null or _her_opt == null or _her_opt.item_count == 0:
+	if Sim.world == null or _her_cards.is_empty():
 		return
 	var her := _cur_heritage()
 	var eth := _cur_ethos()
@@ -565,8 +626,12 @@ func _refresh() -> void:
 func _on_randomize() -> void:
 	if Sim.world == null:
 		return
-	_her_opt.select(_rng.randi_range(0, max(0, _her_opt.item_count - 1)))
-	_eth_opt.select(_rng.randi_range(0, max(0, _eth_opt.item_count - 1)))
+	if _her_cards.size() > 0:
+		_her_sel_id = int(_her_cards[_rng.randi_range(0, _her_cards.size() - 1)]["id"])
+		_sync_choice_cards(_her_cards, _her_sel_id)
+	if _eth_cards.size() > 0:
+		_eth_sel_id = int(_eth_cards[_rng.randi_range(0, _eth_cards.size() - 1)]["id"])
+		_sync_choice_cards(_eth_cards, _eth_sel_id)
 	_arms_var = _rng.randi_range(0, 15)   # les armes suivent le tirage
 	# permutation aléatoire des rôles {majeur, mineur, défaut} sur les 3 axes
 	var roles := [0, 1, 2]
@@ -638,6 +703,6 @@ func _on_cancel() -> void:
 ## ouvre la fenêtre (réinitialise une composition valide par défaut)
 func open() -> void:
 	show()
-	if Sim.world != null and _her_opt.item_count > 0:
+	if Sim.world != null and _her_cards.size() > 0:
 		_refresh()
 	queue_redraw()

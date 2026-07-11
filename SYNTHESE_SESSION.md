@@ -6,8 +6,24 @@
 - RÉSULTAT : fins EAU 3·RONCES 4·HIVER 5·RÉCHAUF 5·SANG 3·AUCUNE 0 (était 24/200) ;
   âges Soulèvements 70 %·Tyrans 15 %·ni-ni 15 % (Tyrans était 0/200). Gates verts (39/39
   runnable, determinism STABLE, savetest byte-identique, golden re-baseliné 7/310/411).
-- PROCHAIN : task #79 (UI Lots 3-4) reste en attente. Rien d'autre en vol.
 - (archive — historique de la mission ci-dessous)
+
+## task #79 UI Lots 3-4 — LIVRÉ (display-only Godot, golden/save intacts)
+- Probe shot_ui paramétrée en résolution (res=WxH → shots_ui/<WxH>/) + clear du drapeau de
+  crash user:// (shots propres). VÉRIFIÉ à 1280×720, 1600×900, 1920×1080 : les 25 états
+  rendent, 0 erreur (§3.4 = le gate, PASSÉ).
+- 3.1 TOPBAR : 8 permanents (trésor · +net vert · pop · nourriture+rupture · recherche ·
+  Influence · Corruption · date/vitesse), le reste démoté en TOOLTIPS. « Engager : L'Âge de X »
+  (nom complet). 3.2 RAIL : 4 états (normal/hover/sélect FORT/indispo) + gating game_on +
+  raccourcis. 4.4 : créateur héritage/éthos en CARTES · codex recherche+catégories repliables+
+  sommaire · newgame aperçu monde+taille expliquée · annales hauteur adaptée+glyphes.
+- ⚠ 1 bug agent pris par la probe : codex.gd `var nmc := nm` (inférence cassée) → codex Nil →
+  crash au shot 18. Corrigé (`: String`). Le reste avait prouvé son parse EN RENDANT.
+- La « discrepance » du baseline était un shot PÉRIMÉ (la parenthèse/Engager/Pause étaient déjà
+  corrigés en source ; l'agent A avait raison). 
+- RESTE (honnête) : 4.1 matières / 4.2 fog / 4.3 hiérarchie typo — le P2 le plus SUBJECTIF,
+  theme-wide, NON fait (risque de déstabiliser les layouts fraîchement vérifiés). À proposer au
+  joueur comme vague de finition séparée. Le chip « Pause » flotte encore un peu (mineur).
 - DIRECTIVE JOUEUR : « lisse les déclencheurs et trouve pourquoi certaines fins ne viennent
   jamais. Trouve, itère, corrige. » — les problèmes flaggés au gigasweep : Tyrans 0/200,
   SANG 0/200, EAU 11/200, RÉCHAUF 2/24-aucune.

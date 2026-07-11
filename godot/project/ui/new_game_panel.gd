@@ -37,6 +37,8 @@ const ETHOS_KEYS := ["T_ETHOS_0", "T_ETHOS_1", "T_ETHOS_2", "T_ETHOS_3", "T_ETHO
 
 var _size_sld: HSlider      # TAILLE Tiny→Huge — le seul réglage monde exposé pour l'instant
 var _size_val: Label
+var _size_explain: Label   ## « → N empires · M cités-états » — la taille en termes concrets
+var _preview_lbl: Label    ## aperçu compact du monde (continents/terres/climat/âge, façade worldparams_default)
 var _seed_edit: LineEdit
 var _rng := RandomNumberGenerator.new()
 var _empire_box: VBoxContainer
@@ -110,8 +112,20 @@ func _build_ui() -> void:
 	size_row.add_child(_size_val)
 	_size_sld.value_changed.connect(func(_v):
 		_size_val.text = tr(String(_cur_size()[0]))
+		_refresh_size_explain()
 		_rebuild_empire_list())
 	world.add_child(size_row)
+
+	# EXPLIQUER LA TAILLE en termes concrets (retour joueur 2026-07-10, Lot 4.4 :
+	# « aperçu compact du monde + expliquer la taille ») — les décomptes empires/
+	# cités-états sont RÉELS (SIZES, exactement ce que worldgen_set va poser) ; le
+	# nombre de RÉGIONS en dépend aussi mais varie avec la graine/l'archétype —
+	# on ne fabrique pas un chiffre non lisible sans générer, on le dit en clair.
+	_size_explain = Label.new()
+	_size_explain.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_size_explain.add_theme_color_override("font_color", C_TEXT)
+	_size_explain.add_theme_font_size_override("font_size", 12)
+	world.add_child(_size_explain)
 
 	var hint := Label.new()
 	hint.text = tr("T_NG_ARCH_HINT") if tr("T_NG_ARCH_HINT") != "T_NG_ARCH_HINT" \
@@ -129,14 +143,31 @@ func _build_ui() -> void:
 	_seed_edit = LineEdit.new()
 	_seed_edit.text = "9"
 	_seed_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_seed_edit.text_changed.connect(func(_t): _refresh_world_preview())
 	seed_row.add_child(_seed_edit)
 	var dice := Button.new()
 	dice.text = "🎲"
 	dice.tooltip_text = "Tirer une graine au hasard"
-	dice.pressed.connect(func(): _seed_edit.text = str(_rng.randi_range(0, 999999)))
+	dice.pressed.connect(func():
+		_seed_edit.text = str(_rng.randi_range(0, 999999))
+		_refresh_world_preview())   # .text= ne déclenche pas text_changed en direct
 	seed_row.add_child(dice)
 	world.add_child(seed_row)
 	_size_val.text = tr(String(_cur_size()[0]))
+
+	# ── APERÇU COMPACT DU MONDE : lit worldparams_default(graine) — l'archétype
+	# réel qui sera généré (continents/terres/relief/climat/âge), en MOTS (jamais
+	# les flottants bruts de la façade) ; se rafraîchit avec la graine. Zéro logique
+	# de sim : lecture pure d'une fonction façade déterministe, aucune écriture.
+	world.add_child(HSeparator.new())
+	world.add_child(_section("Aperçu du monde"))
+	_preview_lbl = Label.new()
+	_preview_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_preview_lbl.add_theme_color_override("font_color", C_DIM)
+	_preview_lbl.add_theme_font_size_override("font_size", 12)
+	world.add_child(_preview_lbl)
+	_refresh_size_explain()
+	_refresh_world_preview()
 
 	# ── colonne EMPIRES ──
 	var emp := VBoxContainer.new()
@@ -179,6 +210,41 @@ func _cur_seed() -> int:
 func _cur_size() -> Array:
 	var i: int = clampi(int(_size_sld.value), 0, SIZES.size() - 1)
 	return SIZES[i]
+
+## « Petit — ~2 empires · ~98 régions » (retour joueur 2026-07-10) : les décomptes
+## d'empires/cités sont EXACTS (SIZES, ce que worldgen_set posera) ; le nombre de
+## régions varie avec l'archétype de la graine — on ne l'invente pas, on le dit.
+func _refresh_size_explain() -> void:
+	if _size_explain == null:
+		return
+	var sz := _cur_size()
+	_size_explain.text = "→ %d empires · %d cités-états. (Le nombre de régions suit : plus d'empires colonisent davantage de terres.)" % [int(sz[1]), int(sz[2])]
+
+## mot de 3 paliers pour une valeur normalisée [0..1] — jamais le flottant brut.
+func _bucket_word(v: float, lo: String, mid: String, hi: String) -> String:
+	return lo if v < 0.34 else (hi if v > 0.66 else mid)
+
+## aperçu compact du monde : lit worldparams_default(graine) — l'archétype réel de
+## CETTE graine (continents/terres/relief/climat/âge), traduit en mots. N'affecte
+## pas la genèse ; se rafraîchit à chaque changement de graine.
+func _refresh_world_preview() -> void:
+	if _preview_lbl == null:
+		return
+	if Sim.world == null or not Sim.world.has_method("worldparams_default"):
+		_preview_lbl.text = ""
+		return
+	var p: Dictionary = Sim.world.worldparams_default(_cur_seed())
+	var land := _bucket_word(float(p.get("land_amount", 0.5)), "îles éparses", "terres équilibrées", "grandes étendues")
+	var mount := _bucket_word(float(p.get("mountains", 0.5)), "plaines", "relief vallonné", "hautes montagnes")
+	var temp := _bucket_word(float(p.get("temperature", 0.5)), "froid", "tempéré", "chaud")
+	var humid := _bucket_word(float(p.get("humidity", 0.5)), "aride", "modéré", "humide")
+	var age := _bucket_word(float(p.get("world_age", 0.5)), "jeune", "mûr", "vieux et fendu")
+	var n_cont := int(p.get("n_continents", 0))
+	_preview_lbl.text = "%s : %d\n%s : %s · %s : %s\nClimat : %s, %s\n%s : %s" % [
+		tr("T_NG_CONTINENTS"), n_cont,
+		tr("T_NG_LAND"), land, tr("T_NG_MOUNTAINS"), mount,
+		temp, humid,
+		tr("T_NG_AGE"), age]
 
 func _rebuild_empire_list() -> void:
 	for c in _empire_box.get_children():

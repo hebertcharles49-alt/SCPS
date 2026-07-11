@@ -139,3 +139,6 @@ sweep_*/
 chronicle_pop.exe
 a-*.d
 gigasweep_*.log
+
+# Probe UI screenshots (shot_ui.gd, hors make)
+godot/project/shots_ui/
