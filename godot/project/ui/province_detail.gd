@@ -154,12 +154,18 @@ func _draw() -> void:
 
 	# tooltip de survol (Journal : les effets de l'entrée)
 	if _hover_text != "":
-		var tw := VKit.text_w(_hover_text, VKit.FS_SMALL) + 14.0
+		var tip_lines := _hover_text.split("\n")
+		var tw := 0.0
+		for line in tip_lines:
+			tw = maxf(tw, VKit.text_w(String(line), VKit.FS_SMALL) + 14.0)
+		tw = minf(tw, PW - 12.0)
+		var th := 6.0 + 15.0 * float(tip_lines.size())
 		var tx2 := minf(_hover_pos.x + 14.0, PW - tw - 6.0)
-		var ty2 := minf(maxf(4.0, _hover_pos.y - 22.0), PH - 22.0)
-		VKit.fill(self, Rect2(tx2, ty2, tw, 18), VKit.COL_PANEL2)
-		VKit.box(self, Rect2(tx2, ty2, tw, 18), VKit.COL_GOLD)
-		VKit.text(self, Vector2(tx2 + 7, ty2 + 2), VKit.COL_PARCH, _hover_text, VKit.FS_SMALL)
+		var ty2 := minf(maxf(4.0, _hover_pos.y - th - 4.0), PH - th - 4.0)
+		VKit.fill(self, Rect2(tx2, ty2, tw, th), VKit.COL_PANEL2)
+		VKit.box(self, Rect2(tx2, ty2, tw, th), VKit.COL_GOLD)
+		for i in range(tip_lines.size()):
+			VKit.text(self, Vector2(tx2 + 7, ty2 + 2 + i * 15), VKit.COL_PARCH, String(tip_lines[i]), VKit.FS_SMALL)
 
 # ── ONGLET PEUPLES : DEUX COLONNES (LOT UI 2.5, 2026-07-11) — aperçu (médaillon de
 #    culture + légende + classes + modificateurs) à GAUCHE, actions (foi + agitation
@@ -198,11 +204,18 @@ func _draw_peuples_apercu(x: float, y: float, colw: float, w, info: Dictionary, 
 		"%s (" % String(groups[dom_i]["culture"]), VKit.FS_SMALL)
 	var dom_val_w: float = VKit.value(self, Vector2(x + 26 + dom_lbl_w, y + 14), "%d%%" % dom_pct, VKit.FS_SMALL)
 	VKit.text(self, Vector2(x + 26 + dom_lbl_w + dom_val_w, y + 14), VKit.COL_PARCH, ")", VKit.FS_SMALL)
+	var dom_lineage := String(groups[dom_i].get("lineage", ""))
+	if dom_lineage != "":
+		_hover_zones.append({"rect": Rect2(x + 22, y, colw - 22, 32.0), "text": dom_lineage})
 	y += 36
 	for i in range(mini(groups.size(), 6)):
 		VKit.fill(self, Rect2(x + 4, y + 3, 9, 9), VKit.SLICE_PAL[i % 8])
 		VKit.text(self, Vector2(x + 18, y), VKit.COL_PARCH,
-			"%s %d%% · %s" % [String(groups[i]["culture"]), int(groups[i]["percent"]), String(groups[i]["etat"])], VKit.FS_SMALL)
+			"%s %d%% · %s · %s" % [String(groups[i]["culture"]), int(groups[i]["percent"]),
+			String(groups[i]["klass"]), String(groups[i]["etat"])], VKit.FS_SMALL)
+		var lineage := String(groups[i].get("lineage", ""))
+		if lineage != "":
+			_hover_zones.append({"rect": Rect2(x, y - 1, colw, 15.0), "text": lineage})
 		y += 15
 	y += 8
 

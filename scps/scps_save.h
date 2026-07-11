@@ -32,7 +32,11 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 78u           /* v78 : ÂGES SANS ORDRE (2026-07-11, docs/AGES_FINS) — trois
+#define SAVE_VERSION 79u           /* v79 : IDENTITÉS CULTURELLES PAR GROUPE — PopGroup et les
+                                    * agrégats province/région portent culture_id ; ColonyWork
+                                    * mémorise la culture des colons ; section CLIN pour les noms
+                                    * et filiations. Les blobs ECON changent de taille. <v79 refusé.
+                                    * v78 : ÂGES SANS ORDRE (2026-07-11, docs/AGES_FINS) — trois
                                     * structs fwrite BRUTES changent de taille : AgesState
                                     * (+year_eligible[8], −tier_open/−research_mult/−integ_mult),
                                     * WorldProsperity (+5 champs age_*), MissionsState

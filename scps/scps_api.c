@@ -769,7 +769,8 @@ int scps_province_groups(ScpsSim *s, int pid, ScpsGroup *out, int max){
     int reg = s->w->province[pid].region;
     if(reg<0 || reg>=s->sim.econ->n_regions) return 0;
     RegionEconomy *re = &s->sim.econ->region[reg];
-    if(re->pop.n_groups<=0) return 0;
+    ProvinceEconomy *pe = &s->sim.econ->prov[pid];
+    if(pe->pop.n_groups<=0) return 0;
     /* la doctrine du TRÔNE (crown) : culture de la région-capitale du propriétaire. */
     int owner = re->owner;
     const PopCulture *crown = &re->culture;
@@ -781,11 +782,12 @@ int scps_province_groups(ScpsSim *s, int pid, ScpsGroup *out, int max){
         }
     }
     GroupReadout gr[SCPS_MAX_GROUPS];
-    int ng = province_composition(&re->pop, s->sim.drift, crown, 5.f, 5.f, gr, SCPS_MAX_GROUPS);
+    int ng = province_composition(&pe->pop, s->sim.drift, crown, 5.f, 5.f, gr, SCPS_MAX_GROUPS);
     if(ng>max) ng=max;
     for(int i=0;i<ng;i++){
         out[i].heritage     = sz(gr[i].heritage);
         out[i].culture  = sz(gr[i].culture);
+        out[i].lineage  = sz(gr[i].lineage);
         out[i].religion = sz(gr[i].religion);
         out[i].klass    = sz(gr[i].klass);
         out[i].etat     = sz(gr[i].etat);

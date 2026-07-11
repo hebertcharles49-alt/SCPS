@@ -1,5 +1,25 @@
 # SYNTHÈSE DE SESSION — handoff roulant (2026-07-11 soir)
 
+## ÉTAT COURANT, IDENTITÉS CULTURELLES PAR GROUPE (2026-07-11)
+- Branche `claude/vibrant-euler-1tgfp3`, arbre non commité. `SAVE_VERSION 79` : ECON change
+  de taille et la section `CLIN` sérialise les noms/filiations.
+- Livré en source : chaque `PopGroup` porte son ethnonyme; noblesse A et laboureurs B restent
+  distincts dans une même province. Assimilation, migration, retour de réfugiés et contact
+  conservent les parents. Une recolonisation garde l'ancien peuple seulement comme substrat.
+- Raccord tech terminé : une fusion démographique conserve les proportions d'héritage du groupe
+  absorbé et les ventile dans `econ_country_metabolized` / la barre d'accès aux signatures. Un
+  simple contact culturel ou un substrat ne fournit aucun accès technologique.
+- Membrane : `province_groups` lit désormais la province réelle; Godot affiche culture + classe
+  et un tooltip localisé Parents/Racines/Substrat. Les trois réglages de nommage sont dans
+  `scps_tune_list.h`.
+- Gates passés : moteur complet compile, `demography_demo` 53/53, savetest 2/2 byte-identique,
+  déterminisme stable, façade C et binding C++ compilés, DLL debug reconstruite et chargée par
+  l'éditeur headless. Le boot de scène headless plante aussi avec une DLL témoin ancienne :
+  environnement/projet préexistant, pas régression isolée.
+- Clôture : tables de chaînes, DLL et chronicle recompilés; gates courts et diff vérifiés.
+  Reste seulement le contrôle visuel du tooltip en partie si une session fenêtrée est disponible.
+  Ne pas ajouter d'événement de renommage sans demande explicite.
+
 ## ÉTAT COURANT — CALIBRAGE FINS + DÉCLENCHEURS D'ÂGES (task #82, ✅ LIVRÉ)
 - Branche `claude/vibrant-euler-1tgfp3` (== main). Commit poussé + mergé main : **58874ee**
   (calibrage fins/âges). SAVE_VERSION **78** (inchangé). scps.exe ré-exporté 10:43.
@@ -7,6 +27,23 @@
   âges Soulèvements 70 %·Tyrans 15 %·ni-ni 15 % (Tyrans était 0/200). Gates verts (39/39
   runnable, determinism STABLE, savetest byte-identique, golden re-baseliné 7/310/411).
 - (archive — historique de la mission ci-dessous)
+
+## EN VOL — LANDING de la feature CONCURRENTE « culture_id » (2026-07-11 après-midi)
+- Contexte : un ré-audit (« ré-audite le code ») a révélé du travail CONCURRENT non commité
+  dans l'arbre — feature « IDENTITÉS CULTURELLES PAR GROUPE », SAVE 78→**79** (culture_id sur
+  PopGroup + agrégats province/région, settlers_culture_id sur ColonyWork, section save CLIN
+  noms+filiations, metab_group_mix lit le heritage_mix incarné = le couplage tech). ~430 l sur
+  econ/demography/save/api/intertrade/strings/tune_list + province_detail.gd + sim_node.cpp.
+  L'utilisateur a dit : « Tu peux analyser et commit le travail concurrent. » → JE LE LANDE.
+- ANALYSE : feature disciplinée (save_sane borne culture_id + n_groups ; membrane-propre ;
+  demography_demo 53/53 vert ; tunables défaut = call-site). 1 vrai warning -Wrestrict
+  (snprintf overlap dans g_culture_id) → CORRIGÉ (copies locales na/nb). Les warnings
+  format-truncation api.c sont PRÉ-EXISTANTS (hors build make, hors scope).
+- RESTE (le landing propre) : 2 bancs sensibles-au-monde à recaler (structural §3 contagion
+  8→8 ; events EVID_TRAHISON_SAVOIR ne tire plus) → AGENT en vol (recalage intention préservée,
+  interdit d'affaiblir). + determinism/savetest v79/fuzz/warnings EN VOL (gate_culturecore).
+  Puis golden-update, commit. ⚠ NE PAS affaiblir les assertions ; ⚠ savetest v79 doit être
+  byte-identique (registre global + CLIN sérialisés) — si KO = vrai bug à surfacer.
 
 ## EN VOL — finition suite (retrofit typo + fog) 2026-07-11 midi
 - Après « Go finition » : encart d'âge déplacé (haut menu droit) + matière/fleurons

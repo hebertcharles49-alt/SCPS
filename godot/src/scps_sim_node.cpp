@@ -542,6 +542,7 @@ Array ScpsWorld::province_groups(int province) {
         Dictionary d;
         d["heritage"] = String::utf8(g[i].heritage);
         d["culture"]  = String::utf8(g[i].culture);
+        d["lineage"]  = String::utf8(g[i].lineage);
         d["religion"] = String::utf8(g[i].religion);
         d["klass"]    = String::utf8(g[i].klass);
         d["etat"]     = String::utf8(g[i].etat);

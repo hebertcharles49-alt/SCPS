@@ -198,7 +198,11 @@ int assimilation_tick(ProvincePop *pp, ModifierStack *drift, float P, float K, f
          * strates reste ~80-90). La dérive culturelle elle-même reste inoffensive (un esclave
          * peut converger culturellement sans changer de statut) — seule la FUSION est bloquée. */
         if (d<FUSE_EPS && g->klass!=CLASS_SLAVE && pp->groups[dom_idx].klass!=CLASS_SLAVE){    /* fusion dans le dominant */
-            pp->groups[dom_idx].count += g->count;
+            PopGroup *winner=&pp->groups[dom_idx];
+            float minority=(float)g->count/fmaxf((float)(winner->count+g->count),1.f);
+            winner->culture_id=econ_culture_identity_fuse(winner->culture_id,g->culture_id,
+                                                           winner->heritage,minority,CULTURE_BLEND_PEOPLE);
+            winner->count += g->count;
             int last=pp->n_groups-1;
             pp->groups[i]=pp->groups[last]; pp->n_groups--;
             if (dom_idx==last) dom_idx=i;
@@ -272,6 +276,10 @@ bool migration_move(ProvincePop *from, ProvincePop *to, int gi, long amount, int
                       ? src->home_reg : home_reg;
         to->groups[to->n_groups++]=ng;       /* crée du D interne dans la cible */
     } else {
+        float share=(float)amount/fmaxf((float)(to->groups[dst].count+amount),1.f);
+        to->groups[dst].culture_id=econ_culture_identity_fuse(to->groups[dst].culture_id,
+                                                               src->culture_id,to->groups[dst].heritage,
+                                                               share,CULTURE_BLEND_PEOPLE);
         to->groups[dst].count += amount;
     }
     src->count -= amount;
@@ -324,6 +332,7 @@ int province_composition(const ProvincePop *pp, const ModifierStack *drift,
                          const PopCulture *crown, float P, float K,
                          GroupReadout out[], int max){
     static char etat_buf[DEMO_MAX_GROUPS][48];
+    static char lineage_buf[DEMO_MAX_GROUPS][256];
     if (pp->n_groups<=0) return 0;                  /* province vide : nulle composition (province_dominant→NULL) */
     long total=province_total_pop(pp); if(total<1)total=1;
     const PopGroup *dom=province_dominant(pp);
@@ -334,7 +343,10 @@ int province_composition(const ProvincePop *pp, const ModifierStack *drift,
         PopCulture eff=group_culture_effective(g,drift);
         GroupReadout *r=&out[n];
         r->heritage    = heritage_name(g->heritage);
-        r->culture = ethos_name(eff.ethos);
+        const char *named=econ_culture_identity_name(g->culture_id);
+        r->culture = (named && named[0]) ? named : ethos_name(eff.ethos);
+        econ_culture_identity_lineage(g->culture_id,lineage_buf[n],sizeof lineage_buf[n]);
+        r->lineage=lineage_buf[n];
         r->religion= religion_branch_name(eff.rel_branch);
         r->klass   = labor_class_word(g->klass);
         r->percent = (int)(100*g->count/total);
@@ -390,8 +402,9 @@ float migration_attractivity(float prosperity, float K_inst){
 }
 
 void demography_attach(World *w, WorldEconomy *econ, ModifierStack *drift){
-    (void)w;   /* signature publique conservée (appelants historiques) ; RE-KEY : plus besoin du World* */
     if (drift) memset(drift, 0, sizeof(*drift));     /* la pile de dérive du monde, à neuf */
+    econ_culture_identity_reset(w?w->seed:0u);
+    uint16_t base_id[SCPS_MAX_REG]; memset(base_id,0,sizeof base_id);
     int id=1;
     /* RE-KEY PROVINCE (T1) : le groupe-substrat VIT sur la province représentative
      * (econ_region_rep_province, ancrage figé) — écrire econ->region[r].pop serait
@@ -412,6 +425,8 @@ void demography_attach(World *w, WorldEconomy *econ, ModifierStack *drift){
         if (total<1) total=1;
         PopGroup *g=&pp->groups[0]; memset(g,0,sizeof(*g));
         g->heritage=re->culture.heritage; g->origin_sphere=heritage_sphere(re->culture.heritage);
+        base_id[r]=econ_culture_identity_base(g->heritage,(uint32_t)(r+1)*2654435761u);
+        g->culture_id=base_id[r]; re->culture_id=base_id[r]; econ->region[r].culture_id=base_id[r];
         g->origin=re->culture; g->culture=re->culture;     /* substrat = effective au départ */
         g->klass=CLASS_LABORER; g->count=total;
         g->pop_by_class[CLASS_LABORER]=total;        /* repli : tout Journalier avant la 1re émergence */
@@ -420,6 +435,17 @@ void demography_attach(World *w, WorldEconomy *econ, ModifierStack *drift){
         g->diaspora=false; g->drift_id=id++; g->home_reg=-1;   /* de souche : aucun foyer « ailleurs » (memset 0 = région valide) */
         g->faith=-1;        /* GENÈSE : monde ATHÉE (≠ 0 = religion 0 ; la foi vient plus tard) */
         pp->n_groups=1;     /* MONO-GROUPE → non-régression (les nombres d'hier) */
+    }
+    /* Les groupes vivent à la province. Les représentants viennent d'être recréés
+     * ci-dessus ; les autres provinces, déjà semées par worldgen, reçoivent le MÊME
+     * nom fondateur que leur région. Aucun écrasement de classe/culture locale. */
+    for(int pid=0;pid<econ->n_prov;pid++){
+        ProvinceEconomy *pe=&econ->prov[pid];
+        int r=pe->region; if(r<0 || r>=SCPS_MAX_REG || !pe->culture.settled) continue;
+        if(!base_id[r]) base_id[r]=econ_culture_identity_base(pe->culture.heritage,(uint32_t)(r+1)*2654435761u);
+        pe->culture_id=base_id[r];
+        for(int i=0;i<pe->pop.n_groups;i++) if(!pe->pop.groups[i].culture_id)
+            pe->pop.groups[i].culture_id=base_id[r];
     }
     g_dyn_drift_id=DYN_DRIFT_BASE;   /* nouvelle partie : le compteur dynamique repart au socle */
 }
@@ -590,6 +616,9 @@ int demography_contact_tick(WorldEconomy *e, ModifierStack *drift,
             Culture h;
             if (culture_syncretize(&ca,&cb,&h)){               /* l'ORIGINE porte la fusion (durable) */
                 PopCulture hpc=dom->origin; culture_to_pc(&h,&hpc); dom->origin=hpc;
+                dom->culture_id=econ_culture_identity_fuse(dom->culture_id,pd->culture_id,
+                                                           dom->heritage,0.30f,CULTURE_BLEND_CONTACT);
+                pe->culture_id=dom->culture_id; re->culture_id=dom->culture_id;
                 if (drift){ GroupDrift cur=modstack_group_drift(drift,dom->drift_id);
                     GroupDrift neg={-cur.dCv,-cur.dCs,-cur.dCp,-cur.dCr,0.f};   /* la dérive culture revient à plat (l'origine EST l'hybride) */
                     modstack_accumulate_drift(drift, dom->drift_id, neg, false); }
@@ -725,6 +754,10 @@ static long refugee_settle_home(ProvincePop *home, const PopGroup *ref, long amt
     for (int i=0;i<home->n_groups;i++)
         if (home->groups[i].heritage==ref->heritage
             && econ_content_dist_faith(&home->groups[i].origin,&ref->origin)<FUSE_EPS){
+            float share=(float)amt/fmaxf((float)(home->groups[i].count+amt),1.f);
+            home->groups[i].culture_id=econ_culture_identity_fuse(home->groups[i].culture_id,
+                                                                   ref->culture_id,home->groups[i].heritage,
+                                                                   share,CULTURE_BLEND_PEOPLE);
             home->groups[i].count += amt; return amt;      /* rejoint ses gens (fusion) */
         }
     if (home->n_groups>=DEMO_MAX_GROUPS) return 0;          /* foyer plein → renonce (ils restent) */
@@ -862,7 +895,8 @@ void demography_tick(World *w, WorldEconomy *econ, WorldLegitimacy *wl,
         for (int i=0;i<pp->n_groups;i++)
             pp->groups[i].culture = group_culture_effective(&pp->groups[i], drift);
         const PopGroup *dom=province_dominant(pp);
-        if (dom){ pe->culture = dom->culture; re->culture = dom->culture; } /* la dominante mène ; miroir région immédiat (lecteurs de la même frame) */
+        if (dom){ pe->culture = dom->culture; re->culture = dom->culture;
+                  pe->culture_id=dom->culture_id; re->culture_id=dom->culture_id; } /* dominante = cache, jamais source d'identité */
     }
     /* 2. Migration : les groupes affluent vers la prospérité voisine (round-robin),
      *    toujours via la province représentative source/destination. */
@@ -922,6 +956,14 @@ void demography_on_conquest(World *w, WorldEconomy *econ, ModifierStack *drift, 
     if (pp->n_groups<=0) return;
     const PopCulture *crown = econ_ruling_culture(w,econ,conqueror);
     Heritage ch = crown ? crown->heritage : HERITAGE_ADAPTATIF;
+    uint16_t crown_id=0;
+    if(w && conqueror>=0 && conqueror<w->n_countries){
+        int cp=w->country[conqueror].capital_prov;
+        if(cp>=0 && cp<econ->n_prov){
+            const PopGroup *cg=province_dominant(&econ->prov[cp].pop);
+            crown_id=cg?cg->culture_id:econ->prov[cp].culture_id;
+        }
+    }
     /* les conquis deviennent une minorité restive : l'intégration repart de zéro.
      * BRASSAGE — une nation native d'un AUTRE héritage vient d'être ABSORBÉE : elle
      * n'est plus « de naissance » sous ce maître, c'est un peuple SOUMIS à digérer
@@ -940,6 +982,7 @@ void demography_on_conquest(World *w, WorldEconomy *econ, ModifierStack *drift, 
         long total=province_total_pop(pp);
         PopGroup g; memset(&g,0,sizeof g);
         g.heritage=crown->heritage; g.origin_sphere=heritage_sphere(crown->heritage);
+        g.culture_id=crown_id;
         g.origin=*crown; g.culture=*crown; g.klass=CLASS_ELITE;
         g.count=total/5+50; g.L=7.f; g.agit_base=agit_from_L(7.f); g.integration=1.f;
         g.diaspora=true; g.arrival=ARR_MIGRANT; g.drift_id=demography_dyn_id_next();

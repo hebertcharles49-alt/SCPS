@@ -401,5 +401,8 @@
     X(STR_BLD_CHANCELLERIE_LUX,  "Chancellerie de luxe") \
     X(STR_BLD_COMPTOIR_ARTISAN,  "Comptoir d'artisan") \
     X(STR_BLD_ATELIER_SEREIN,    "Atelier serein") \
+    X(STR_CULTURE_PARENTS, "Parents : ") \
+    X(STR_CULTURE_RACINES, "Racines : ") \
+    X(STR_CULTURE_SUBSTRAT,"Substrat : ")
 
 #endif /* SCPS_STRINGS_IDS_H */

@@ -1062,9 +1062,39 @@ int main(int argc, char **argv){
                 /* RECALIBRAGE (archétypes worldgen) : mtth 1825 j ⇒ sur 10 ans de
                  * tirages 30 j, P(jamais) ≈ 13 % — le contrôle dépendait du chemin
                  * RNG du monde. 30 ans ⇒ P(jamais) ≈ 0.25 % : l'intention (l'évènement
-                 * TIRE quand betrayal_ready tient) est testée, plus la chance. */
-                for (int d=0; d<10950 && events_trahison_savoir_fired()==tb0; d+=30)
+                 * TIRE quand betrayal_ready tient) est testée, plus la chance.
+                 * RECALIBRAGE 2026-07-11 bis (feature « identités culturelles par
+                 * groupe ») : DIAGNOSTIQUÉ — betrayal_ready(seat=0) ne reste plus
+                 * gelé. D'AUTRES dilemmes du Conseil (R1/R3/A1/C1, mêmes sièges,
+                 * même file d'attente humaine PENDING_EVENT_CAP=8) peuvent aussi
+                 * cibler le siège Savoir et le RENVOYER (CONSEIL_C1 « Renvoyer les
+                 * deux » notamment) avant que TRAHISON_SAVOIR n'ait sa chance —
+                 * ils enfilent puis s'auto-résolvent par EXPIRATION (180 j, meilleur
+                 * ai_chance) si le joueur ne tranche pas. Mesuré : à graine 42, le
+                 * Conseil se fait débaucher (siège vacant, ready→faux) dès le jour
+                 * 720. Ce n'est PAS le trigger sous test — on ISOLE la variable
+                 * (même discipline que « on rassasie les peuples… pour ISOLER
+                 * l'effet de la légitimité » plus haut dans ce fichier) : le joueur
+                 * TRANCHE ces dilemmes-là lui-même, avec l'option qui ne renvoie
+                 * JAMAIS le siège Savoir (R1 oi=1 tranche pour la Société, R3 oi=1
+                 * tranche pour l'Industrie, A1 oi=1 lève le 3e siège hors-paire, C1
+                 * oi=2 « Céder » ne renvoie personne) — TRAHISON_SAVOIR, lui, reste
+                 * intouché et tire naturellement (trigger && frand, moteur seul). */
+                for (int d=0; d<10950 && events_trahison_savoir_fired()==tb0; d+=30){
                     world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,NULL,30,human);
+                    for (int pi=pending_event_count(s.ev)-1; pi>=0; pi--){
+                        PendingEvent pe; if (!pending_event_at(s.ev,pi,&pe)) continue;
+                        if (pe.subject!=human) continue;
+                        int oi=-1;
+                        if (pe.evid==EVID_CONSEIL_R1) oi=1;        /* tranche pour la Société : seat0 intact */
+                        else if (pe.evid==EVID_CONSEIL_R3) oi=1;   /* tranche pour l'Industrie : seat0 intact */
+                        else if (pe.evid==EVID_CONSEIL_A1) oi=1;   /* lève le 3e siège hors-paire : seat0 intact */
+                        else if (pe.evid==EVID_CONSEIL_C1) oi=2;   /* « Céder » : aucun renvoi */
+                        if (oi>=0)
+                            pending_event_resolve(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,NULL,
+                                                   pi,oi,s.ev->ages.days_elapsed,human);
+                    }
+                }
                 ok("EVID_TRAHISON_SAVOIR tire sur betrayal_ready(seat=0)", events_trahison_savoir_fired()>tb0);
             } else ok("(betrayal_ready ne s'est pas déclenché sur cette graine — cf. bilan)", true);
 

@@ -179,6 +179,7 @@ typedef struct {
 typedef enum { ARR_NATIF=0, ARR_MIGRANT, ARR_SOUMIS, ARR_DEPORTE, ARR_REFUGIE, ARR_COUNT } Arrival;
 typedef struct {
     Heritage heritage;
+    uint16_t     culture_id;     /* identité NOMMÉE du groupe, distincte de ses axes culturels */
     Sphere       origin_sphere;  /* FIXE : pour le gouffre */
     PopCulture   origin;         /* substrat FIXE */
     PopCulture   culture;        /* fiche EFFECTIVE (cache = origine + dérive) */
@@ -243,6 +244,7 @@ typedef struct {
 typedef struct {
     PopStratum strata[CLASS_COUNT];
     PopCulture culture;   /* profil culturel DOMINANT (synchronisé sur le plus gros groupe) */
+    uint16_t   culture_id;/* dernier peuple dominant : demeure comme substrat si la province se vide */
     ProvincePop pop;      /* les GROUPES de la province (clé de voûte) — n_groups=0 si non attaché */
     ProvBuild  build;     /* densité institutionnelle bâtie par le joueur */
     uint32_t   edi_built; /* E1bis.11 : masque des ÉDIFICES bâtis (par-édifice → upgrades familiales) */
@@ -353,6 +355,7 @@ typedef struct {
 typedef struct {
     PopStratum strata[CLASS_COUNT];
     PopCulture culture;   /* profil culturel DOMINANT (synchronisé sur le plus gros groupe/province) */
+    uint16_t   culture_id;/* miroir de l'identité dominante de la province représentative */
     ProvincePop pop;      /* GROUPES agrégés (miroir de la province-capitale/dominante) */
     ProvBuild  build;     /* densité institutionnelle bâtie — somme des provinces membres */
     uint32_t   edi_built; /* union des masques d'édifices des provinces membres */
@@ -462,6 +465,8 @@ typedef struct {
         int16_t cd_days;         /* cadence : jours avant le PROCHAIN ordre permis */
         float   seed_base;       /* colons embarqués (ponction déjà faite) */
         float   yield;           /* rendement à l'arrivée (0..1) */
+        PopCulture settlers_culture; /* culture EFFECTIVE au départ du convoi */
+        uint16_t settlers_culture_id; /* nom/filiation au départ, même si la métropole change */
     } colony[SCPS_MAX_COUNTRY];
 
     /* ── FIN_CHAUD (§27, 2026-07-08) — CUMULS SIM du combustible RÉELLEMENT brûlé
@@ -469,10 +474,33 @@ typedef struct {
      * journaliers (econ_tick, branche générique du marché) + CHARBON consommé en
      * intrant de manufacture (poudrière, forge céleste, …). Monotones croissants,
      * lus en DELTA par l'endgame (motif Campaign.dead_choc → war_dead_seen).
-     * Sérialisés dans le blob ECON (fwrite brut ⇒ SAVE_VERSION 74). ── */
+     * Sérialisés dans le blob ECON (fwrite brut ⇒ dernier changement : SAVE_VERSION 79). ── */
     double        fuel_wood_cum;
     double        fuel_coal_cum;
 } WorldEconomy;
+
+/* ---- Identités culturelles nommées ----------------------------------- *
+ * Couche de MÉMOIRE uniquement : les règles restent les axes de PopCulture.
+ * L'identité vit sur chaque PopGroup (une élite A et des laboureurs B peuvent
+ * donc cohabiter), tandis que ProvinceEconomy.culture_id ne garde que le
+ * dernier dominant, utile comme substrat d'un territoire dépeuplé. */
+void     econ_culture_identity_reset(uint32_t world_seed);
+uint16_t econ_culture_identity_base(Heritage heritage, uint32_t stable_seed);
+uint16_t econ_culture_identity_pool(Heritage heritage); /* identité stable d'un groupe rendu fongible */
+typedef enum {
+    CULTURE_BLEND_PEOPLE = 0, /* des âmes fusionnent : leurs héritages restent porteurs de savoir */
+    CULTURE_BLEND_CONTACT,    /* influence culturelle sans population incorporée */
+    CULTURE_BLEND_SUBSTRATE   /* mémoire de ruines, jamais une source de savoir */
+} CultureBlendKind;
+uint16_t econ_culture_identity_fuse(uint16_t parent_a, uint16_t parent_b,
+                                    Heritage heritage, float parent_b_share,
+                                    CultureBlendKind kind);
+const char *econ_culture_identity_name(uint16_t id);
+void     econ_culture_identity_lineage(uint16_t id, char *out, size_t out_n);
+bool     econ_culture_identity_heritage_mix(uint16_t id, float out[HERITAGE_COUNT]);
+bool     econ_culture_identity_valid(uint16_t id);
+void     econ_culture_identity_save(FILE *f);
+bool     econ_culture_identity_load(FILE *f);
 
 /* ---- API -------------------------------------------------------------- */
 

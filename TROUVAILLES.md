@@ -3984,3 +3984,114 @@ le kit immediate-draw ne s'y applique pas.
   position/taille que text(), seule la couleur change ; tous les calculs de largeur
   utilisés pour chaîner des segments proviennent des valeurs de retour réelles des
   helpers, jamais d'un `text_w()` recalculé séparément).
+
+## [2026-07-11] Culture nommée par groupe, filiations et substrats (implémenteur solo)
+**Découvertes** : `scps_demography.c:province_composition` appelait `ethos_name`, donc la
+« culture » affichée était encore un axe et non un ethnonyme. Le syncrétisme vivant
+`demography_contact_tick` cristallisait déjà les coordonnées, mais `culture_to_pc` perdait
+`Culture.name`, tandis que `assimilation_tick` additionnait les effectifs puis supprimait le
+groupe absorbé avec toute son identité. Le grain minimal correct est donc `PopGroup`, pas
+`ProvinceEconomy` : une noblesse A et des laboureurs B restent deux peuples tant que leurs
+groupes coexistent. `ProvinceEconomy.culture_id` n'est qu'une mémoire du dernier dominant,
+utile si le territoire se vide et devient un substrat de ruines. La genèse fiable passe par
+`demography_attach`, appelée après `worldgen_seed_peoples`; les groupes créés plus tard par le
+marché servile (`scps_intertrade.c:intertrade_slave_buy`) constituaient le seul constructeur
+ne copiant aucune identité et exigent un nom de pool stable par héritage. Enfin,
+`scps_api.c:scps_province_groups` lisait le miroir régional, pas `econ->prov[pid].pop`, ce qui
+masquait les différences propres à la province sélectionnée.
+**Pièges** : `WorldEconomy` est sérialisé brut. Ajouter les ids à `PopGroup`, aux agrégats et
+la culture embarquée de `ColonyWork` impose `SAVE_VERSION 79`; le registre statique des noms
+doit aussi vivre dans une section dédiée (`CLIN`) sous peine de save/reload divergent. Les
+libellés du tooltip de filiation sont face joueur et doivent passer par `STR_*` avec miroir
+anglais, même si les noms procéduraux restent produits par `culture_make_name`. Dans ce
+sandbox Codex, `godot/godot-cpp` est bien la jonction documentée vers `E:\JEUX\SCPS`; SCons lancé
+depuis son Python ne transmet pas correctement l'environnement aux sous-processus MinGW
+(`cc1plus` introuvable). La reconstruction directe avec les drapeaux du `SConstruct` fonctionne.
+Le boot de la scène headless plante aussi avec une ancienne DLL témoin; l'initialisation éditeur
+headless de la DLL neuve passe, donc ce crash n'est pas imputable à cette modification.
+**Restes** : vérifier visuellement dans une partie longue le survol multi-ligne
+Parents/Racines/Substrat et la lisibilité des lignes « culture · classe · état ». Aucun événement
+de renommage n'a été ajouté : l'identité reste une membrane du syncrétisme existant, pas une
+nouvelle mécanique ni une nouvelle source d'événements.
+
+## [2026-07-11] Filiations culturelles raccordées à la métabolisation tech (implémenteur solo)
+**Découverte** : `econ_country_heritage_digested` et `econ_country_metabolized` lisaient seulement
+`PopGroup.heritage`. Tant que deux peuples restaient deux groupes, la diaspora étrangère alimentait
+correctement sa barre. Dès que `assimilation_tick` absorbait le groupe minoritaire, son effectif
+survivait dans le dominant mais son héritage disparaissait du calcul, alors même que `culture_id`
+gardait sa filiation. La barre pouvait donc reculer au moment précis où l'assimilation s'achevait.
+**Correction** : `CultureIdentity` conserve maintenant une composition d'héritages normalisée.
+Les fusions de personnes la pondèrent avec la part démographique réellement incorporée. Les
+fusions de contact et de substrat copient uniquement la composition déjà incarnée du parent local :
+elles gardent leur généalogie et leur nom sans fabriquer de diaspora ni d'accès tech gratuit.
+La métabolisation ventile chaque groupe fusionné sur cette composition, en conservant les portes
+existantes `arrival`, `integration` et les coefficients migrant/soumis/réfugié/déporté.
+**Pièges** : la déduplication d'identités doit inclure la part incorporée, quantifiée en points de
+base, sinon deux provinces ayant les mêmes parents mais des proportions différentes partageraient
+une composition fausse. `CultureIdentity` est sérialisée brute dans `CLIN`; le changement reste dans
+la version de travail `SAVE_VERSION 79`, qui n'était pas encore livrée. La métabolisation de la
+Merveille demeure volontairement séparée de la barre tech, conformément aux deux lectures déjà
+affichées par `tech_panel.gd`.
+**Preuves** : `demography_demo` 53/53 vérifie la conservation exacte de 2 000 âmes claniques sur
+9 000 après disparition du groupe, ainsi que zéro apport pour contact et substrat. `scps_api_demo`
+179/179, savetest 2/2 byte-identique, déterminisme stable et GDExtension chargée par Godot headless.
+
+## [2026-07-11] Recalage post-« identités culturelles par groupe » — 2 bancs sensibles au monde (structural_demo/events_demo)
+**Contexte** : la feature culture_id (SAVE v79, ci-dessus) change le monde dès l'an-0 (D_bar/
+gouvernance dérivent désormais des GROUPES) → `structural_demo` §3 (contagion des Soulèvements)
+et `events_demo` section 15 (EVID_TRAHISON_SAVOIR) perdaient chacun une assertion à la graine
+par défaut (42). Fichiers touchés EXCLUSIVEMENT : `scps/structural_demo.c`,
+`scps/events_demo.c` — aucun fichier moteur.
+
+**Banc 1 — structural_demo.c §3 « Soulèvements : la contagion »** : `rev1 > rev0` échouait
+(8 → 8). Diagnostic (printf temporaire de `SI`/`fracture`/`L`/`D_bar_int` par pays frontière,
+retiré ensuite) : à L=6.0 (le bord d'origine), les pays « consentis » avaient SI=7.29-8.39
+avant la chute mondiale de L (−1.5, `AGE_SOULEVEMENTS_L`) et SI=5.60-7.24 APRÈS — jamais sous
+le seuil SI=5 (`scps_mode`, scps_core.c:93-98). Le monde post-feature est simplement plus
+stable à ce point de L qu'avant (D_bar=0 dans ce banc — countries mono-culture façonnés par
+`shape()` — donc `fracture=0` et le mode ne dépend que de `SI<5`, pas de la diversité). Fix :
+le bord des pays « consentis » est abaissé de L=6.0 à **L=5.0** (`structural_demo.c:229`,
+seule ligne changée + commentaire). Mesuré à la nouvelle valeur : SI=6.23-7.66 avant la chute
+(marge ≥1.2 au-dessus de 5, non-révolutionnaires) et SI=4.27-6.22 après (les pays qui
+franchissent le tombent à 4.27-4.95, marge ≥0.5 sous 5) → **rev0=8 → rev1=15** (+7, marge
+large, pas au ras du seuil). `deep_n`/les pays profonds (L=1.0) sont INTACTS — seul le bord
+frontière a bougé.
+
+**Banc 2 — events_demo.c section 15, EVID_TRAHISON_SAVOIR** : l'assertion « tire sur
+betrayal_ready(seat=0) » échouait alors que `betrayal_ready` était bien vrai au départ.
+Diagnostic (dump périodique de `pending_event_count`/contenu de la file + betrayal_ready,
+retiré ensuite) : `betrayal_ready(seat=0)` n'est PAS gelé pendant la boucle de mesure — il
+retombe à faux dès qu'un AUTRE dilemme du Conseil ciblant le même siège se résout par
+EXPIRATION (`pending_event_tick_expire`, scps_events.c:2804, 180 j, meilleur `ai_chance`)
+avant que TRAHISON_SAVOIR n'ait eu sa chance. Coupable identifié à la graine 42 :
+`EVID_CONSEIL_C1` (« la conspiration ») enfilé au jour 540 et auto-résolu en oi=0 (« Renvoyer
+les deux ») au jour 720 (180 j plus tard, pile où `ready` bascule à faux dans le diag) —
+`statecraft_council_dismiss` vide le siège 0 (`scps_statecraft.c:360-363` :
+`betrayal_ready` renvoie faux si `statecraft_council_seated(...)<0`). `EVID_CONSEIL_R1`/`R3`/
+`A1` ont aussi une branche `oi==2` qui peut renvoyer le siège Savoir. Ce n'est PAS le trigger
+sous test (le siège Savoir se fait débaucher par un tout autre dilemme avant de trahir) — la
+feature culture_id ne casse rien dans le trigger lui-même, elle a juste changé le chemin RNG/
+timing qui fait émerger ces dilemmes concurrents avant TRAHISON_SAVOIR. Fix (isolation de
+variable, même discipline que le commentaire existant « on rassasie les peuples… pour ISOLER
+l'effet de la légitimité ») : dans la boucle de mesure, on draine nous-mêmes la file `pending`
+à chaque tick et on tranche IMMÉDIATEMENT tout `CONSEIL_R1`/`R3`/`A1`/`C1` visant le joueur
+avec l'option qui NE renvoie JAMAIS le siège 0 (R1→oi=1 « tranche pour la Société », R3→oi=1
+« tranche pour l'Industrie », A1→oi=1 « lève le 3e siège hors-paire » — toujours ≠0 par
+construction de `3-a-b` —, C1→oi=2 « Céder », aucun renvoi) via `pending_event_resolve`
+(déjà exposé, aucun accès direct à l'état). `EVID_TRAHISON_SAVOIR`/`SUCCESSION` (qui
+exclut déjà les sièges `betrayal_ready` par construction) restent intouchés et tirent
+naturellement. Preuve : `events_demo` 118/118 à la graine par défaut, 119/119 en 7/11,
+118/118 en 9/42/99 — comportement stable sur plusieurs graines (les deux échecs pré-existants
+à 99/123 sur `structural_demo`/`events_demo` sont antérieurs à cette session, vérifiés
+identiques via `git stash`, hors-scope).
+
+**Pièges** : ne pas confondre `ev->fires[evid]` (compté à l'ENFILAGE dans `pending`,
+`ev_fire_note`) avec le compteur `g_trahison_savoir_fired`/`events_trahison_savoir_fired()`
+(incrémenté seulement dans `resolve_choice`, donc seulement quand l'évènement est vraiment
+RÉSOLU — par le joueur ou par expiration). Un évènement `n_options>1` possédé par
+`human_player` ne s'auto-résout JAMAIS immédiatement (`fire_event` retourne après l'avoir
+enfilé) — sans intervention (choix joueur simulé ou expiration 180 j), le compteur de test
+reste à 0 indéfiniment même si le trigger est vrai à chaque tick.
+
+**Restes** : aucun — les deux bancs sont verts (18/18 et 118/118) sans affaiblissement
+d'assertion, à la graine par défaut (42) utilisée par `run_tests.sh`/`make test`.

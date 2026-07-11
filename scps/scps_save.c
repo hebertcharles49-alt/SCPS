@@ -71,6 +71,7 @@ bool scps_save_slot_info(int slot, SaveHeader *out){
     X(CRDT,'C','R','D','T')  /* dette : g_creditor[]        */ \
     X(PCAP,'P','C','A','P')  /* limiteur de production (v24) */ \
     X(CULT,'C','U','L','T')  /* v36 : slots de culture + map cid→slot */ \
+    X(CLIN,'C','L','I','N')  /* v79 : noms et généalogies des cultures de PopGroup */ \
     X(RELG,'R','E','L','G')  /* v37 : registre religion + liens pays */ \
     X(WILD,'W','I','L','D')  /* v48 : compteurs de contact des hameaux libres (ralliement) */ \
     X(EMOB,'E','M','O','B')  /* v57 : mobilité de classe — g_friche[] + g_lowsat_streak[][] (savetest fix) */ \
@@ -150,6 +151,7 @@ bool scps_save_game(int slot, World *w, Sim *s, const WorldParams *params, int s
     ok&=sv_w(f,SVT_PCAP, NULL,0); econ_prodcap_save(f);
     if (s->eg) ok&=sv_w(f,SV_TAG('E','G','A','M'), s->eg, sizeof *s->eg);
     ok&=sv_w(f,SVT_CULT, NULL,0); culture_slots_save(f);   /* v36 : cultures composées (joueur + IA) */
+    ok&=sv_w(f,SVT_CLIN, NULL,0); econ_culture_identity_save(f); /* v79 : filiations culturelles */
     ok&=sv_w(f,SVT_RELG, NULL,0); religion_save(f);        /* v37 : registre religion + liens pays */
     ok&=sv_w(f,SVT_WILD, NULL,0); sim_wild_save(f);        /* v48 : compteurs de ralliement des hameaux */
     ok&=sv_w(f,SVT_EMOB, NULL,0); econ_mobility_save(f);   /* v57 : g_friche[] + g_lowsat_streak[][] */
@@ -218,6 +220,13 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
     for (int p=0;p<w->n_provinces;p++){ const Province *pr=&w->province[p];
         if (pr->region < 0 || pr->country < 0) return false;
         if (pr->region >= w->n_regions || pr->country >= w->n_countries) return false; }
+    for(int p=0;p<s->econ->n_prov;p++){
+        const ProvinceEconomy *pe=&s->econ->prov[p];
+        if(pe->culture_id && !econ_culture_identity_valid(pe->culture_id)) return false;
+        if(pe->pop.n_groups<0 || pe->pop.n_groups>SCPS_MAX_GROUPS) return false;
+        for(int i=0;i<pe->pop.n_groups;i++)
+            if(!econ_culture_identity_valid(pe->pop.groups[i].culture_id)) return false;
+    }
     for (int r=0;r<w->n_regions;r++){ const Region *rg=&w->region[r];
         if (rg->n_provinces<0 || rg->n_provinces>12 || rg->country< -1 || rg->country>=w->n_countries) return false;
         for (int k=0;k<rg->n_provinces;k++)
@@ -441,6 +450,7 @@ int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_her
     ok&=sv_r(f,SVT_PCAP, NULL,0); ok&=econ_prodcap_load(f);
     if (s->eg) ok&=sv_r(f,SV_TAG('E','G','A','M'), s->eg, sizeof *s->eg);
     ok&=sv_r(f,SVT_CULT, NULL,0); ok&=culture_slots_load(f);   /* v36 : cultures composées */
+    ok&=sv_r(f,SVT_CLIN, NULL,0); ok&=econ_culture_identity_load(f); /* v79 : filiations culturelles */
     ok&=sv_r(f,SVT_RELG, NULL,0); ok&=(religion_load(f)==0);   /* v37 : religion + liens pays */
     ok&=sv_r(f,SVT_WILD, NULL,0); ok&=sim_wild_load(f);        /* v48 : compteurs de ralliement des hameaux */
     ok&=sv_r(f,SVT_EMOB, NULL,0); ok&=econ_mobility_load(f);   /* v57 : g_friche[] + g_lowsat_streak[][] */

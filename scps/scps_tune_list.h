@@ -432,6 +432,12 @@
     /* S2 (syncrétisme) — la CRISTALLISATION culturelle suit le contact : fraction du fossé
      * de contenu comblée/an par un contact commercial maritime SOUTENU (porte-modulée). */ \
     X(SYNC_FUSE_RATE,         0.10f) \
+    /* IDENTITÉ CULTURELLE : seuil de poids pour qu'un apport entre dans le nom ;
+     * à partir de la 2e fusion, le composé reçoit un ethnonyme autonome. Un
+     * peuple disparu ne survit dans une colonie que comme substrat mémoriel. */ \
+    X(CULTURE_NAME_MINOR_MIN,       0.10f) \
+    X(CULTURE_AUTONYM_GENERATION,   2.0f) \
+    X(CULTURE_RUIN_SUBSTRATE_W,     0.10f) \
     /* FAU (faustien — la pente vers la Brèche). FAUST_SPAWN_CHARGE : charge ajoutée par unité
      * de sortie d'un transmuteur (le VOLUME = la fracture). CHARGE_DECAY : décrue passive/tick
      * de l'entropie régionale hors péché (≪ accumulation sous spawn soutenu). ENTROPY_TERMINAL :

@@ -89,6 +89,7 @@ float country_L   (const ProvincePop *provs, int n);
 typedef struct {
     const char *heritage;      /* "Humain", "Clanique"… (diégétique) */
     const char *culture;   /* nom de culture (diégétique) */
+    const char *lineage;   /* parents/racines du nom, vide pour une culture fondatrice */
     const char *religion;  /* branche de foi (diégétique) — pour le camembert Religion */
     const char *klass;     /* "Noblesse" / "Artisans" / "Laboureurs" */
     int         percent;   /* part de la province */

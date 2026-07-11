@@ -390,4 +390,6 @@
     X(STR_BLD_CHANCELLERIE_LUX,  "Fine Chancery") \
     X(STR_BLD_COMPTOIR_ARTISAN,  "Artisan Trading Post") \
     X(STR_BLD_ATELIER_SEREIN,    "Serene Workshop") \
-
+    X(STR_CULTURE_PARENTS, "Parents: ") \
+    X(STR_CULTURE_RACINES, "Roots: ") \
+    X(STR_CULTURE_SUBSTRAT,"Substrate: ")

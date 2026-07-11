@@ -462,6 +462,68 @@ int main(int argc, char **argv){
         free(e);
     }
 
+    /* 13. IDENTITÉ AU NIVEAU DU GROUPE : une élite A et des laboureurs B
+     * restent lisibles séparément, puis leur fusion garde les deux racines. */
+    printf("\n── 13. Noms culturels : classes distinctes, mémoire après fusion ──\n");
+    {
+        econ_culture_identity_reset(4242u);
+        uint16_t ida=econ_culture_identity_base(HERITAGE_ADAPTATIF,11u);
+        uint16_t idb=econ_culture_identity_base(HERITAGE_CLANIQUE,22u);
+        const char *na=econ_culture_identity_name(ida);
+        const char *nb=econ_culture_identity_name(idb);
+        ProvincePop mix; memset(&mix,0,sizeof mix);
+        mix.groups[0]=grp(HERITAGE_ADAPTATIF,SPHERE_HOMMES,humc,CLASS_LABORER,7000,6.f,1.f,false);
+        mix.groups[0].culture_id=ida; mix.groups[0].drift_id=7001;
+        mix.groups[1]=grp(HERITAGE_CLANIQUE,SPHERE_ETRANGERS,humc,CLASS_ELITE,2000,6.f,1.f,true);
+        mix.groups[1].culture_id=idb; mix.groups[1].drift_id=7002;
+        mix.n_groups=2;
+        GroupReadout before[DEMO_MAX_GROUPS];
+        int n_before=province_composition(&mix,drift,&humc,5.f,5.f,before,DEMO_MAX_GROUPS);
+        bool class_pair=n_before==2
+                     && strcmp(before[0].culture,na)==0 && strcmp(before[0].klass,"Laboureurs")==0
+                     && strcmp(before[1].culture,nb)==0 && strcmp(before[1].klass,"Noblesse")==0;
+        ok("l'UI distingue les laboureurs A de la noblesse B dans une même province",class_pair);
+        int fused=assimilation_tick(&mix,drift,5.f,5.f,1.f);
+        char lineage[256]; econ_culture_identity_lineage(mix.groups[0].culture_id,lineage,sizeof lineage);
+        ok("la fusion achevée produit un nom culturel composé",fused==1 && mix.n_groups==1
+           && strcmp(econ_culture_identity_name(mix.groups[0].culture_id),na)!=0);
+        ok("la généalogie conserve les deux peuples absorbés",
+           strstr(lineage,na)!=NULL && strstr(lineage,nb)!=NULL);
+        float embodied[HERITAGE_COUNT];
+        bool has_mix=econ_culture_identity_heritage_mix(mix.groups[0].culture_id,embodied);
+        ok("la fusion conserve la part démographique de chaque héritage",
+           has_mix && absf(embodied[HERITAGE_ADAPTATIF]-7000.f/9000.f)<0.001f
+                   && absf(embodied[HERITAGE_CLANIQUE]-2000.f/9000.f)<0.001f);
+
+        World *tw=calloc(1,sizeof *tw); WorldEconomy *te=calloc(1,sizeof *te);
+        tw->n_countries=1; tw->country[0].capital_prov=0; tw->province[0].region=0;
+        te->n_prov=1; te->n_regions=1; te->region[0].culture.heritage=HERITAGE_ADAPTATIF;
+        te->prov[0].owner=0; te->prov[0].pop=mix;
+        float digested[HERITAGE_COUNT]; econ_country_heritage_digested(tw,te,0,digested);
+        ok("après disparition du groupe B, sa part reste visible dans la barre tech",
+           absf(digested[HERITAGE_CLANIQUE]-2000.f/9000.f)<0.001f
+           && absf(econ_country_metabolized(tw,te,0)-2000.f/9000.f)<0.001f);
+        free(te); free(tw);
+
+        uint16_t idc=econ_culture_identity_base(HERITAGE_ESOTERIQUE,33u);
+        uint16_t id2=econ_culture_identity_fuse(mix.groups[0].culture_id,idc,
+                                                HERITAGE_ADAPTATIF,0.20f,CULTURE_BLEND_PEOPLE);
+        ok("une seconde couche reçoit un ethnonyme autonome sans perdre ses racines",
+           id2!=mix.groups[0].culture_id && econ_culture_identity_name(id2)[0]!='\0');
+        uint16_t ruins=econ_culture_identity_base(HERITAGE_METALLURGISTE,44u);
+        uint16_t settled=econ_culture_identity_fuse(id2,ruins,HERITAGE_ADAPTATIF,0.10f,CULTURE_BLEND_SUBSTRATE);
+        econ_culture_identity_lineage(settled,lineage,sizeof lineage);
+        ok("un peuple disparu demeure comme substrat, jamais comme population fantôme",
+           strstr(lineage,"Substrat :")!=NULL && strstr(lineage,econ_culture_identity_name(ruins))!=NULL);
+        econ_culture_identity_heritage_mix(settled,embodied);
+        ok("le substrat ne donne aucun héritage technologique",
+           embodied[HERITAGE_METALLURGISTE]<0.001f);
+
+        uint16_t contact=econ_culture_identity_fuse(ida,idc,HERITAGE_ADAPTATIF,0.30f,CULTURE_BLEND_CONTACT);
+        ok("un syncrétisme de contact ne fabrique pas une diaspora technologique",
+           !econ_culture_identity_heritage_mix(contact,embodied));
+    }
+
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n", g_pass, g_fail);
     printf("══════════════════════════════════════════════════════════════\n");

@@ -14,10 +14,217 @@
 #include "scps_labor.h"   /* capitale_* : la productivité de la capitale booste la prod réelle */
 #include "scps_factions.h"/* §C3 : faction_capture_total → le « rot » qui mine l'efficacité noble */
 #include "scps_decrees.h" /* ORIENTATIONS DU JOUEUR (2026-07-10) : decree_*_mult(cid) — 1.0 si inactif/IA */
+#include "scps_lang.h"    /* membrane : libellés de filiation traduisibles */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+
+/* ====================================================================== */
+/* IDENTITÉS CULTURELLES NOMMÉES                                         */
+/* ====================================================================== */
+/* Les coordonnées de PopCulture continuent de porter les règles culturelles.
+ * Le registre donne un nom et une généalogie aux PopGroup, et conserve la
+ * composition démographique que la métabolisation tech lisait déjà avant la
+ * disparition physique d'un groupe assimilé. Contact et substrat restent
+ * mémoriels : ils ne créent aucune âme ni aucun accès tech. L'id 0 signifie
+ * « non nommé » (bancs unitaires/anciens objets construits à la main). */
+#define CULTURE_ID_MAX 4096
+#define CULTURE_NAME_N 48
+#define CULTURE_EDGE_SUBSTRATE 0x01u
+#define CULTURE_ID_POOL        0x02u
+#define CULTURE_EDGE_CONTACT   0x04u
+#define CULTURE_ID_PEOPLE_MIX  0x08u
+typedef struct {
+    uint16_t parent_a, parent_b;
+    uint16_t parent_b_bp;      /* poids démographique, en points de base ; 0 pour contact/substrat */
+    uint8_t  generation;
+    uint8_t  flags;
+    Heritage heritage;
+    float    heritage_mix[HERITAGE_COUNT]; /* composition incarnée ; somme 1 */
+    char     name[CULTURE_NAME_N];
+} CultureIdentity;
+static CultureIdentity g_culture_id[CULTURE_ID_MAX];
+static uint16_t g_culture_id_count=1;   /* slot 0 réservé */
+static uint32_t g_culture_world_seed=0;
+
+static uint32_t culture_id_hash(uint32_t x){
+    x ^= x>>16; x *= 0x7feb352du; x ^= x>>15; x *= 0x846ca68bu; x ^= x>>16;
+    return x;
+}
+static bool culture_id_name_used(const char *name){
+    for (uint16_t i=1;i<g_culture_id_count;i++)
+        if (strcmp(g_culture_id[i].name,name)==0) return true;
+    return false;
+}
+static void culture_id_fresh_name(char *out, size_t n, Heritage h, uint32_t seed){
+    for (uint32_t k=0;k<512;k++){
+        culture_make_name(out,(int)n,h,culture_id_hash(seed+k*0x9e3779b9u));
+        if (!culture_id_name_used(out)) return;
+    }
+    snprintf(out,n,"Peuple %u",(unsigned)g_culture_id_count);
+}
+void econ_culture_identity_reset(uint32_t world_seed){
+    memset(g_culture_id,0,sizeof g_culture_id);
+    g_culture_id_count=1;
+    g_culture_world_seed=world_seed;
+}
+uint16_t econ_culture_identity_base(Heritage heritage, uint32_t stable_seed){
+    if (g_culture_id_count>=CULTURE_ID_MAX) return 0;
+    uint16_t id=g_culture_id_count++;
+    CultureIdentity *ci=&g_culture_id[id]; memset(ci,0,sizeof *ci);
+    ci->heritage=heritage;
+    if (heritage>=0 && heritage<HERITAGE_COUNT) ci->heritage_mix[heritage]=1.f;
+    culture_id_fresh_name(ci->name,sizeof ci->name,heritage,
+                          stable_seed ^ g_culture_world_seed ^ 0x43554c54u);
+    return id;
+}
+uint16_t econ_culture_identity_pool(Heritage heritage){
+    for(uint16_t i=1;i<g_culture_id_count;i++){
+        CultureIdentity *ci=&g_culture_id[i];
+        if((ci->flags&CULTURE_ID_POOL) && !ci->parent_a && !ci->parent_b && ci->heritage==heritage) return i;
+    }
+    uint16_t id=econ_culture_identity_base(heritage,0x504f4f4cu ^ (uint32_t)heritage*2654435761u);
+    if(id) g_culture_id[id].flags|=CULTURE_ID_POOL;
+    return id;
+}
+uint16_t econ_culture_identity_fuse(uint16_t a, uint16_t b, Heritage heritage,
+                                    float b_share, CultureBlendKind kind){
+    if (!econ_culture_identity_valid(a)) return econ_culture_identity_valid(b)?b:0;
+    if (!econ_culture_identity_valid(b) || a==b) return a;
+    if (b_share<0.f) b_share=0.f;
+    if (b_share>1.f) b_share=1.f;
+    uint16_t b_bp=(kind==CULTURE_BLEND_PEOPLE)?(uint16_t)(b_share*10000.f+0.5f):0u;
+    float embodied_share=(float)b_bp/10000.f;
+    uint8_t flags=(kind==CULTURE_BLEND_SUBSTRATE)?CULTURE_EDGE_SUBSTRATE
+                 :(kind==CULTURE_BLEND_CONTACT)?CULTURE_EDGE_CONTACT
+                 :CULTURE_ID_PEOPLE_MIX;
+    if (g_culture_id[a].flags&CULTURE_ID_PEOPLE_MIX) flags|=CULTURE_ID_PEOPLE_MIX;
+    /* Deux mêmes filiations produisent le même peuple : la répétition d'un tick
+     * ou d'une province ne gonfle pas le registre et ne change pas le nom. */
+    for (uint16_t i=1;i<g_culture_id_count;i++){
+        CultureIdentity *x=&g_culture_id[i];
+        if (x->parent_a==a && x->parent_b==b && x->parent_b_bp==b_bp
+            && x->flags==flags && x->heritage==heritage) return i;
+    }
+    if (g_culture_id_count>=CULTURE_ID_MAX) return a;
+    uint16_t id=g_culture_id_count++;
+    CultureIdentity *ci=&g_culture_id[id]; memset(ci,0,sizeof *ci);
+    ci->parent_a=a; ci->parent_b=b; ci->parent_b_bp=b_bp; ci->flags=flags; ci->heritage=heritage;
+    if (kind==CULTURE_BLEND_PEOPLE){
+        for(int h=0;h<HERITAGE_COUNT;h++)
+            ci->heritage_mix[h]=g_culture_id[a].heritage_mix[h]*(1.f-embodied_share)
+                               +g_culture_id[b].heritage_mix[h]*embodied_share;
+    } else {
+        memcpy(ci->heritage_mix,g_culture_id[a].heritage_mix,sizeof ci->heritage_mix);
+    }
+    uint8_t ga=g_culture_id[a].generation, gb=g_culture_id[b].generation;
+    ci->generation=(uint8_t)((ga>gb?ga:gb)+1u);
+    float minor=tune_f("CULTURE_NAME_MINOR_MIN",0.10f);
+    int autonom=(int)tune_f("CULTURE_AUTONYM_GENERATION",2.f);
+    /* Copies LOCALES des noms parents : `ci->name` et `g_culture_id[a/b].name` vivent
+     * dans le MÊME tableau `g_culture_id[]` → snprintf(dst,src) déclenche -Wrestrict
+     * (le compilateur ne peut prouver le non-recouvrement). Les locaux tranchent (2026-07-11). */
+    char na[CULTURE_NAME_N], nb[CULTURE_NAME_N];
+    memcpy(na,g_culture_id[a].name,sizeof na);
+    memcpy(nb,g_culture_id[b].name,sizeof nb);
+    if (kind==CULTURE_BLEND_SUBSTRATE || b_share<minor){
+        snprintf(ci->name,sizeof ci->name,"%s",na);
+    } else if ((int)ci->generation<autonom){
+        snprintf(ci->name,sizeof ci->name,"%.21s-%.21s",na,nb);
+    } else {
+        uint32_t seed=((uint32_t)a<<16) ^ (uint32_t)b ^ ((uint32_t)ci->generation<<28)
+                    ^ g_culture_world_seed;
+        culture_id_fresh_name(ci->name,sizeof ci->name,heritage,seed);
+    }
+    return id;
+}
+const char *econ_culture_identity_name(uint16_t id){
+    return econ_culture_identity_valid(id)?g_culture_id[id].name:"";
+}
+bool econ_culture_identity_valid(uint16_t id){
+    return id>0 && id<g_culture_id_count && g_culture_id[id].name[0]!='\0';
+}
+bool econ_culture_identity_heritage_mix(uint16_t id, float out[HERITAGE_COUNT]){
+    if (out) for(int h=0;h<HERITAGE_COUNT;h++) out[h]=0.f;
+    if (!out || !econ_culture_identity_valid(id)
+        || !(g_culture_id[id].flags&CULTURE_ID_PEOPLE_MIX)) return false;
+    memcpy(out,g_culture_id[id].heritage_mix,sizeof g_culture_id[id].heritage_mix);
+    return true;
+}
+
+typedef struct { uint16_t id; bool substrate; } CultureRoot;
+static void culture_id_collect(uint16_t id, bool substrate, CultureRoot *root, int *n, int max, int depth){
+    if (!econ_culture_identity_valid(id) || depth>24) return;
+    const CultureIdentity *ci=&g_culture_id[id];
+    if (!ci->parent_a && !ci->parent_b){
+        for (int i=0;i<*n;i++) if (root[i].id==id){
+            if (!substrate) root[i].substrate=false;
+            return;
+        }
+        if (*n<max){ root[*n].id=id; root[*n].substrate=substrate; (*n)++; }
+        return;
+    }
+    culture_id_collect(ci->parent_a,substrate,root,n,max,depth+1);
+    culture_id_collect(ci->parent_b,substrate || (ci->flags&CULTURE_EDGE_SUBSTRATE),root,n,max,depth+1);
+}
+static void culture_line_append(char *out, size_t n, const char *s){
+    size_t z=strlen(out); if (z+1>=n) return;
+    snprintf(out+z,n-z,"%s",s);
+}
+void econ_culture_identity_lineage(uint16_t id, char *out, size_t out_n){
+    if (!out || out_n==0) return;
+    out[0]='\0';
+    if (!econ_culture_identity_valid(id)) return;
+    const CultureIdentity *ci=&g_culture_id[id];
+    if (!ci->parent_a || !ci->parent_b) return;
+    culture_line_append(out,out_n,tr(STR_CULTURE_PARENTS));
+    culture_line_append(out,out_n,econ_culture_identity_name(ci->parent_a));
+    culture_line_append(out,out_n," + ");
+    culture_line_append(out,out_n,econ_culture_identity_name(ci->parent_b));
+    CultureRoot roots[8]; int nr=0; memset(roots,0,sizeof roots);
+    culture_id_collect(id,false,roots,&nr,8,0);
+    bool any_sub=false; for(int i=0;i<nr;i++) if(roots[i].substrate) any_sub=true;
+    culture_line_append(out,out_n,"\n");
+    culture_line_append(out,out_n,tr(STR_CULTURE_RACINES));
+    bool first=true;
+    for(int i=0;i<nr;i++) if(!roots[i].substrate){
+        if(!first) culture_line_append(out,out_n,", ");
+        culture_line_append(out,out_n,econ_culture_identity_name(roots[i].id)); first=false;
+    }
+    if(any_sub){
+        culture_line_append(out,out_n,"\n");
+        culture_line_append(out,out_n,tr(STR_CULTURE_SUBSTRAT)); first=true;
+        for(int i=0;i<nr;i++) if(roots[i].substrate){
+            if(!first) culture_line_append(out,out_n,", ");
+            culture_line_append(out,out_n,econ_culture_identity_name(roots[i].id)); first=false;
+        }
+    }
+}
+void econ_culture_identity_save(FILE *f){
+    fwrite(&g_culture_world_seed,sizeof g_culture_world_seed,1,f);
+    fwrite(&g_culture_id_count,sizeof g_culture_id_count,1,f);
+    fwrite(g_culture_id,sizeof g_culture_id[0],g_culture_id_count,f);
+}
+bool econ_culture_identity_load(FILE *f){
+    uint32_t seed=0; uint16_t count=0;
+    if (fread(&seed,sizeof seed,1,f)!=1 || fread(&count,sizeof count,1,f)!=1) return false;
+    if (count<1 || count>CULTURE_ID_MAX) return false;
+    memset(g_culture_id,0,sizeof g_culture_id);
+    if (fread(g_culture_id,sizeof g_culture_id[0],count,f)!=(size_t)count) return false;
+    g_culture_world_seed=seed; g_culture_id_count=count;
+    for(uint16_t i=1;i<count;i++){
+        CultureIdentity *ci=&g_culture_id[i]; ci->name[CULTURE_NAME_N-1]='\0';
+        if(!ci->name[0] || ci->parent_a>=count || ci->parent_b>=count || ci->generation>64) return false;
+        float sum=0.f;
+        for(int h=0;h<HERITAGE_COUNT;h++){
+            if(!isfinite(ci->heritage_mix[h]) || ci->heritage_mix[h]<0.f || ci->heritage_mix[h]>1.f) return false;
+            sum+=ci->heritage_mix[h];
+        }
+        if(!isfinite(sum) || sum<0.999f || sum>1.001f) return false;
+    }
+    return true;
+}
 
 /* ====================================================================== */
 /* TABLES DE CONSTANTES                                                    */
@@ -591,6 +798,22 @@ static float metab_diffuse_coeff(uint8_t arrival){
     }
 }
 
+/* Ventile un groupe entre les héritages qu'il INCARNE. Tant que les peuples
+ * cohabitent, le chemin historique arrival × integration reste la porte. Après
+ * fusion démographique, la composition enregistrée remplace le groupe disparu :
+ * un peuple déjà cristallisé sur son propre sol (ARR_NATIF) porte pleinement ce
+ * qu'il a assimilé. Les identités nées d'un contact ou d'un substrat renvoient
+ * false et ne court-circuitent donc jamais la porte démographique. */
+static float metab_group_mix(const PopGroup *g, float out[HERITAGE_COUNT]){
+    for(int h=0;h<HERITAGE_COUNT;h++) out[h]=0.f;
+    if(econ_culture_identity_heritage_mix(g->culture_id,out)){
+        if(g->arrival==ARR_NATIF) return 1.f;
+        return metab_diffuse_coeff(g->arrival)*clampf(g->integration,0.f,1.f);
+    }
+    if(g->heritage>=0 && g->heritage<HERITAGE_COUNT) out[g->heritage]=1.f;
+    return metab_diffuse_coeff(g->arrival)*clampf(g->integration,0.f,1.f);
+}
+
 /* SAVOIR — la POP produit la recherche (même patron que la puissance commerciale) : Σ des trois
  * strates pondérées (élite > bourgeois > journalier), × le bonus en % de la BRANCHE BIBLIOTHÈQUE
  * (Σ build.savoir, clampé — PROPORTIONNEL, pas un montant fixe). Base ANNUELLE. Source UNIQUE,
@@ -661,10 +884,9 @@ float econ_country_metabolized(const World *w, const WorldEconomy *econ, int cid
         for (int i=0;i<pp->n_groups;i++){
             const PopGroup *g=&pp->groups[i];
             tot += (double)g->count;
-            if (g->heritage!=native){
-                float df=metab_diffuse_coeff(g->arrival);   /* migrant/soumis plein · déporté faible · natif 0 */
-                if (df>0.f) dig += (double)g->count * (double)clampf(g->integration,0.f,1.f) * (double)df;
-            }
+            float mix[HERITAGE_COUNT]; float df=metab_group_mix(g,mix);
+            if(df>0.f) for(int h=0;h<HERITAGE_COUNT;h++) if(h!=(int)native)
+                dig += (double)g->count*(double)mix[h]*(double)df;
         }
     }
     return (tot>0.0) ? (float)(dig/tot) : 0.f;
@@ -689,10 +911,9 @@ void econ_country_heritage_digested(const World *w, const WorldEconomy *econ, in
         for (int i=0;i<pp->n_groups;i++){
             const PopGroup *g=&pp->groups[i];
             tot += (double)g->count;
-            if (g->heritage>=0 && g->heritage<HERITAGE_COUNT){
-                float df=metab_diffuse_coeff(g->arrival);   /* la BARRE d'accès suit le même coeff que la métabolisation */
-                if (df>0.f) dig[g->heritage] += (double)g->count * (double)clampf(g->integration,0.f,1.f) * (double)df;
-            }
+            float mix[HERITAGE_COUNT]; float df=metab_group_mix(g,mix);
+            if(df>0.f) for(int h=0;h<HERITAGE_COUNT;h++)
+                dig[h] += (double)g->count*(double)mix[h]*(double)df;
         }
     }
     if (tot>0.0) for (int r=0;r<HERITAGE_COUNT;r++) out[r]=(float)(dig[r]/tot);
@@ -1099,7 +1320,7 @@ void econ_aggregate_regions(WorldEconomy *e){
         int rp = rep_pid[r];
         if (rp>=0){
             const ProvinceEconomy *pe=&e->prov[rp];
-            ag->culture=pe->culture; ag->pop=pe->pop;
+            ag->culture=pe->culture; ag->culture_id=pe->culture_id; ag->pop=pe->pop;
             ag->n_bld=pe->n_bld; for (int i=0;i<pe->n_bld;i++) ag->bld[i]=pe->bld[i];
             ag->import_margin=pe->import_margin; ag->import_toll_region=pe->import_toll_region;
             ag->tech_prod=pe->tech_prod; ag->tech_foreuse=pe->tech_foreuse; ag->tech_alchimie=pe->tech_alchimie;
@@ -3410,7 +3631,14 @@ static int econ_region_best_vacant_prov(const WorldEconomy *e, int region){
 }
 
 static void colonize_from_prov(WorldEconomy *e, int src_pid, int dst_pid, int cid);
-static void colonize_seed_pop_group(ProvinceEconomy *dst, int dst_pid, long total);
+static void colonize_seed_pop_group(ProvinceEconomy *dst, int dst_pid, long total,
+                                    const PopCulture *settlers, uint16_t settlers_id);
+static const PopGroup *econ_pop_dominant(const ProvincePop *pp){
+    if(!pp || pp->n_groups<=0) return NULL;
+    const PopGroup *best=&pp->groups[0];
+    for(int i=1;i<pp->n_groups;i++) if(pp->groups[i].count>best->count) best=&pp->groups[i];
+    return best;
+}
 /* GRAIN PUBLIC historique = région (8 appelants externes) : résolue vers la MEILLEURE
  * province colonisée de src_rid (possédée par cid) et la meilleure province VACANTE de
  * dst_rid — c'est LÀ que la charte veut l'acte fondateur (charte : « départ = 1 province »). */
@@ -3504,6 +3732,9 @@ bool econ_colonize_province(WorldEconomy *e, const World *w, int src_pid, int ds
     cw->cd_days=COLONY_CD_DAYS;
     cw->seed_base=fmaxf(take, COLONY_SEED_POP);
     cw->yield=yield;
+    { const PopGroup *sg=econ_pop_dominant(&src->pop);
+      cw->settlers_culture=sg?sg->culture:src->culture;
+      cw->settlers_culture_id=sg?sg->culture_id:src->culture_id; }
     return true;
 }
 
@@ -3523,13 +3754,14 @@ void econ_colony_day(WorldEconomy *e, const World *w){
             float seeded=fmaxf(cw->seed_base*cw->yield, 40.f);
             econ_seed_population(dst, seeded);
             dst->colonized=true;
-            dst->culture.settled=true;
             dst->owner=(int16_t)cid;
             dst->ferveur=1.f;                          /* FERVEUR FONDATRICE (lot 2) */
-            colonize_seed_pop_group(dst, cw->dst, (long)seeded);
+            colonize_seed_pop_group(dst, cw->dst, (long)seeded,
+                                    &cw->settlers_culture,cw->settlers_culture_id);
         }
         cw->src=cw->dst=-1; cw->days_left=cw->total_days=0;
-        cw->seed_base=0.f; cw->yield=0.f;
+        cw->seed_base=0.f; cw->yield=0.f; cw->settlers_culture_id=0;
+        memset(&cw->settlers_culture,0,sizeof cw->settlers_culture);
     }
 }
 
@@ -3556,7 +3788,17 @@ void econ_region_set_owner(WorldEconomy *e, const World *w, int region, int new_
  * verraient une province colonisée mais CULTURE-LESS (n_groups=0). drift_id dans la
  * plage STATIQUE 1..SCPS_MAX_PROV (jamais ≥ DYN_DRIFT_BASE=1e6 côté scps_demography.c ;
  * unique par province — pas de collision entre deux fondations, ni avec l'init). */
-static void colonize_seed_pop_group(ProvinceEconomy *dst, int dst_pid, long total) {
+static void colonize_seed_pop_group(ProvinceEconomy *dst, int dst_pid, long total,
+                                    const PopCulture *settlers, uint16_t settlers_id) {
+    uint16_t old_id=dst->culture_id;                 /* 0 = terre vierge, sinon mémoire des ruines */
+    if(settlers) dst->culture=*settlers;             /* les gens apportent leur culture, pas le biome */
+    dst->culture.settled=true;
+    uint16_t founded_id=settlers_id;
+    if(econ_culture_identity_valid(settlers_id) && econ_culture_identity_valid(old_id) && old_id!=settlers_id){
+        float ruins=tune_f("CULTURE_RUIN_SUBSTRATE_W",0.10f);
+        founded_id=econ_culture_identity_fuse(settlers_id,old_id,dst->culture.heritage,ruins,CULTURE_BLEND_SUBSTRATE);
+    }
+    dst->culture_id=founded_id;
     ProvincePop *pp=&dst->pop;
     memset(pp,0,sizeof(*pp));
     pp->prov = dst_pid;
@@ -3564,11 +3806,12 @@ static void colonize_seed_pop_group(ProvinceEconomy *dst, int dst_pid, long tota
     if (total<1) total=1;
     PopGroup *g=&pp->groups[0]; memset(g,0,sizeof(*g)); g->faith=-1;   /* athée à la colonisation (memset 0 = religion 0) */
     g->heritage=dst->culture.heritage; g->origin_sphere=heritage_sphere(dst->culture.heritage);
+    g->culture_id=founded_id;
     g->origin=dst->culture; g->culture=dst->culture;
     g->klass=CLASS_LABORER; g->count=total;
     g->pop_by_class[CLASS_LABORER]=total; g->pop_by_class[CLASS_BOURGEOIS]=0; g->pop_by_class[CLASS_ELITE]=0;
     g->L=7.f; g->agit_base=0.f;   /* agit_from_L(7)=0 (colons de la couronne, intégrés) */
-    g->integration=1.f; g->diaspora=false; g->drift_id=dst_pid+1;
+    g->integration=1.f; g->diaspora=false; g->drift_id=dst_pid+1; g->home_reg=-1;
     pp->n_groups=1;
 }
 static void colonize_from_prov(WorldEconomy *e, int src_pid, int dst_pid, int cid) {
@@ -3588,12 +3831,14 @@ static void colonize_from_prov(WorldEconomy *e, int src_pid, int dst_pid, int ci
      * convoi → la colonisation REDISTRIBUE la pop sans la détruire (la mer, elle,
      * garde son surcoût ×2 via econ_colonize_overseas, prélevé en amont). */
     float seeded=fmaxf(take, COLONY_SEED_POP);
+    const PopGroup *sg=econ_pop_dominant(&src->pop);
+    PopCulture settlers=sg?sg->culture:src->culture;
+    uint16_t settlers_id=sg?sg->culture_id:src->culture_id;
     econ_seed_population(dst, seeded);
     dst->colonized=true;
-    dst->culture.settled=true;   /* la culture de biome (gen_population) s'active */
     dst->owner=(int16_t)cid;
     dst->ferveur=1.f;            /* FERVEUR FONDATRICE (lot 2) : la jeune colonie a faim d'avenir */
-    colonize_seed_pop_group(dst, dst_pid, (long)seeded);   /* HÉRITE la culture (charte : colonisation propage) */
+    colonize_seed_pop_group(dst, dst_pid, (long)seeded,&settlers,settlers_id);
 }
 
 /* L5 — COLONIE OUTRE-MER : mêmes PORTES que l'essaimage terrestre (pop, vivres,

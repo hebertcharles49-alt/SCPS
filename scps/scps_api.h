@@ -243,7 +243,7 @@ void  scps_map_endgame_variant(ScpsSim *s, uint8_t *dst);
  * composition (camemberts culture/idéologie), les revenus (production), la pop
  * par classe (barre empilée) et l'ossature de capitale. Tous membrane/tangibles. */
 typedef struct {
-    const char *heritage, *culture, *religion, *klass, *etat, *loyaute;  /* mots résolus */
+    const char *heritage, *culture, *lineage, *religion, *klass, *etat, *loyaute;  /* mots résolus */
     int         percent;     /* part de la province */
 } ScpsGroup;
 /* remplit out[0..min(n,max)-1] avec les groupes pop ; retourne le nombre écrit. */

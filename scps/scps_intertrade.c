@@ -774,6 +774,7 @@ long intertrade_slave_buy(WorldEconomy *e, int region, long count, bool can_ensl
         if (pp->n_groups>=SCPS_MAX_GROUPS) return 0;
         PopGroup ng; memset(&ng,0,sizeof ng);
         ng.heritage=(Heritage)h; ng.origin_sphere=heritage_sphere((Heritage)h);
+        ng.culture_id=econ_culture_identity_pool((Heritage)h);
         /* le pool est FONGIBLE (l'or blanchit l'origine précise) : la fiche culturelle
          * exacte du vendeur n'est pas conservée à travers le marché — un substrat neutre
          * (axes à 0, settled) porte l'héritage/l'arrival, ce que la friction/diffusion lisent. */

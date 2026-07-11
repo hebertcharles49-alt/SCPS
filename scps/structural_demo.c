@@ -218,15 +218,24 @@ int main(int argc, char **argv){
      * Soulèvements est passé de 2 à AGE_SOULEVEMENTS_MIN_COUNTRIES (8, une vraie
      * VAGUE mondiale, sinon Soulèvements verrouillait Tyrans à vie). La « masse
      * critique » que ce banc démontre doit donc suivre le seuil RÉEL : on rend
-     * profonds (déjà tombés, L=1.0) AU MOINS le seuil de pays, en laissant ≥2
-     * pays consentis (L=6.0) juste au-dessus du bord pour que la contagion
-     * (chute de L mondiale) en fasse encore basculer d'autres (rev1>rev0). */
+     * profonds (déjà tombés, L=1.0) AU MOINS le seuil de pays, en laissant les
+     * pays consentis juste au-dessus du bord pour que la contagion (chute de L
+     * mondiale) en fasse encore basculer d'autres (rev1>rev0).
+     * RECALAGE 2026-07-11 bis (feature « identités culturelles par groupe ») :
+     * le monde an-0 a changé (D_bar/gouvernance dérivent désormais des GROUPES,
+     * pas d'un agrégat pays) ; au bord ancien (L=6.0), la chute −1.5 laissait les
+     * pays consentis pile au-dessus du seuil SI=5 (mesuré : SI 5.60-7.24 après
+     * chute, rev1==rev0==8 — aucune contagion). Le bord est abaissé à L=5.0 (mesuré :
+     * SI 6.23-7.66 avant, encore 4.27-6.22 après −1.5) : les pays consentis restent
+     * NON-révolutionnaires avant (marge ≥1.2 sur SI=5) et une majorité franchit
+     * NETTEMENT après (marge ≥0.5 sous SI=5) — rev0=8→rev1=15, avec marge, pas au
+     * ras du seuil. */
     int soulev_min=(int)tune_f("AGE_SOULEVEMENTS_MIN_COUNTRIES",8.f);
     int deep_n=soulev_min; if (deep_n>npol-2) deep_n=npol-2; if (deep_n<2) deep_n=2;
     for (int i=0;i<npol;i++){
         int c=polities[i];
         bool deep=(i<deep_n);
-        shape(&s,c, /*H*/1.f, /*K*/ deep?3.f:5.f, /*L*/ deep?1.0f:6.0f, /*C*/6.f);
+        shape(&s,c, /*H*/1.f, /*K*/ deep?3.f:5.f, /*L*/ deep?1.0f:5.0f, /*C*/6.f);
         for (int r=0;r<s.econ->n_regions;r++) if (s.econ->region[r].owner==c)
             s.econ->region[r].satisfaction=0.85f;
     }
