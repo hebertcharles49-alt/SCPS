@@ -14,7 +14,15 @@ func _arg(p: String, d: String) -> String:
 	return d
 
 func _ready() -> void:
-	get_window().size = Vector2i(1920, 1080)
+	# res=WxH (défaut 1920x1080) + sortie dans un sous-dossier par résolution
+	# (probe 3 résolutions, docs/UI_RECO_2026-07-10.md §3.4 — sans clobber).
+	var rs := _arg("res=", "1920x1080").split("x")
+	var rw := (int(rs[0]) if rs.size() == 2 else 1920)
+	var rh := (int(rs[1]) if rs.size() == 2 else 1080)
+	if rw < 320: rw = 1920
+	if rh < 240: rh = 1080
+	get_window().size = Vector2i(rw, rh)
+	_dir = "res://shots_ui/%dx%d/" % [rw, rh]
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(_dir))
 	_main = load("res://main/Main.tscn").instantiate()
 	add_child(_main)
