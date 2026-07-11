@@ -28,7 +28,25 @@
   runnable, determinism STABLE, savetest byte-identique, golden re-baseliné 7/310/411).
 - (archive — historique de la mission ci-dessous)
 
-## EN VOL — LANDING de la feature CONCURRENTE « culture_id » (2026-07-11 après-midi)
+## SYSTÈME DE CULTURE culture_id — VAGUE COMPLÈTE (2026-07-11 soir) — LIVRÉ
+- Feature concurrente v79 LANDÉE (6176e4f) : identités par groupe, metab par identité,
+  save CLIN, 2 bancs recalés, golden re-baseliné. Puis suite de raffinements pilotés joueur :
+  - 55afa4f : télémétrie chronicle « identités culturelles » + fix save-mature (génération
+    saturée 255, cap de load retiré — un save an-65+ était incHARGEABLE).
+  - c319e59 : STACKING — un peuple RESTE lui-même en ré-absorbant les siens (fuse renvoie a si
+    racines(b)⊆racines(a)) → gén 255→8, registre 1212→89. Golden re-baseliné.
+  - 556c9c5 : noms syllabe+ADJECTIF + fix du vrai bug « Peuple N » (culture_id_fresh_name
+    composait dans `out` = le slot en cours → self-match). Golden IDENTIQUE (display-only).
+  - b5440d8 : nom de peuple MÊLÉ = PORTMANTEAU (tête_A + queue_B → « Gerclides »), tête courte
+    stable anti-soupe-de-syllabes. Golden IDENTIQUE.
+  - 94df5de : hover « Parenté » = les peuples FONDATEURS (ethnonyme + héritage + (substrat)),
+    STR_CULTURE_PARENTE FR/EN, 2 assertions demography_demo recalées. Golden IDENTIQUE.
+- Décisions de design tranchées (statu quo) : PAS de convergence canonique par ensemble de
+  racines (path-dependent OK, façon britoromains→anglo-saxons→anglais) ; noms toponymiques
+  (« anglais ») écartés (marginal). Gates à chaque cran : make test 39/39, determinism STABLE,
+  savetest v79 byte-identique, 0 warning. EXPORT scps.exe EN COURS (dernier cran).
+
+## (archive) EN VOL — LANDING de la feature CONCURRENTE « culture_id » (2026-07-11 après-midi)
 - Contexte : un ré-audit (« ré-audite le code ») a révélé du travail CONCURRENT non commité
   dans l'arbre — feature « IDENTITÉS CULTURELLES PAR GROUPE », SAVE 78→**79** (culture_id sur
   PopGroup + agrégats province/région, settlers_culture_id sur ColonyWork, section save CLIN
