@@ -557,7 +557,16 @@
      * pop VIVANTE (0.05-1.5 observé) — à 8, un monde sanglant (ratio ~1) pousse ~8 pts
      * d'entropie (précipite sa fin), un monde calme ~0.4 (négligeable). */ \
     X(ENTROPY_BLOOD_W,        8.0f) \
-    X(ENDGAME_BLOOD_FRAC,     0.20f) \
+    /* 0.20→0.09 (investigation 2026-07-11, SCPS_FINDIAG 6 graines × 2 sims) : le ratio
+     * AU TIR (an ~180, mémoire décrue HL 40 ans / pop vivante) s'étale 0.014-0.112 —
+     * le seuil 0.20 datait de l'ère PRÉ-Phase-1 où la spirale de révolte gonflait les
+     * morts (÷10 000 depuis) ; il n'était JAMAIS atteint (SANG 0/200 au gigasweep).
+     * À 0.09, les ~2 mondes les plus sanglants sur 12 franchissent — « SANG présent
+     * dans AU MOINS les mondes les plus sanglants ». L'assiette (Campaign dead_choc+
+     * dead_pursuit) est SAINE : les morts de révolte (~150-2665/sim) sont négligeables
+     * devant les ~30-80k morts de bataille — c'était le SEUIL qui était d'une autre
+     * ère, pas l'assiette. */ \
+    X(ENDGAME_BLOOD_FRAC,     0.09f) \
     /* SANG_MEMORY_HL : demi-vie (ans) de la MÉMOIRE des morts de guerre — sans décrue,
      * le cumul à vie dépassait la pop renouvelée (40-961 % en sweep) et toute partie
      * longue devenait SANG ; à 40 ans le seuil BLOOD_FRAC mesure « une génération qui
@@ -570,6 +579,33 @@
      * décrue) atteint BLOOD_PLAYER_SHARE — sinon on retombe au sélecteur normal (rare
      * dominant/hash). Sans main humaine (chronique/viewer), la garde est INACTIVE. */ \
     X(BLOOD_PLAYER_SHARE,     0.25f) \
+    /* LOTERIE DE FIN EAU/RONCES/FROID (refonte, investigation « lisse les
+     * déclencheurs, trouve pourquoi certaines fins ne viennent jamais », 2026-07-11,
+     * cf. TROUVAILLES.md) — MESURÉ (SCPS_FINDIAG, 6 graines × 2 sims × 250 ans) :
+     * la fin EAU (essence/foreuse) était structurellement IMPOSSIBLE, pas juste
+     * rare — côté IA (scps_ai.c, hors périmètre de cette mission), la foreuse n'a
+     * qu'un seul couplage de construction (famine de fer, tier-4, sans beeline),
+     * la conso d'essence mesurée était à 0.0 dans 100% des tirs observés ; l'ancien
+     * argmax-ou-climat ne pouvait donc JAMAIS choisir EAU (0×poids=0, et l'autre
+     * branche climat n'était jamais atteinte puisqu'un des 2 autres compteurs
+     * dépasse quasi toujours le seuil de dominance). FIX : endgame_pick_fin_lottery
+     * fusionne les deux anciens modes en UNE loterie — poids = PLANCHER climatique
+     * (FIN_BASE_*, jamais nul, modulé par la température/humidité RÉELLES du monde,
+     * cf. world_avg_climate) + bonus proportionnel à la PART de production
+     * (FIN_PROD_W_* × share ∈[0,1]). FIN_BASE_EAU est monté à 1.5 (vs 1.0 pour
+     * RONCES/FROID) pour COMPENSER que sa part de production est structurellement
+     * ~0 — sans ce plancher relevé, EAU resterait écrasée par la production réelle
+     * des deux autres. Arithmétique (clim≈1, un transmuteur dominant share≈1) :
+     * P(EAU)=1.5/4.5≈33 % · P(dominant)=2/4.5≈44 % · P(l'autre)≈22 % — mélangé sur
+     * la population fer-dominant (~2/3 des tirs) et flux-dominant (~1/3), les trois
+     * fins sortent ~29-37 % chacune. CALIBRÉ sur 6 graines × 2 sims × 250 ans
+     * (SCPS_FINDIAG) : voir TROUVAILLES.md pour la mesure AVANT/APRÈS. */ \
+    X(FIN_BASE_EAU,           1.5f) \
+    X(FIN_BASE_RONCES,        1.0f) \
+    X(FIN_BASE_FROID,         1.0f) \
+    X(FIN_PROD_W_ESSENCE,     1.0f) \
+    X(FIN_PROD_W_FLUX,        1.0f) \
+    X(FIN_PROD_W_FER,         1.0f) \
     /* LOT F (2026-07-08) — L'EXODE AVANT LA MORT : EAU/FROID/RONCES/CHAUD routent une
      * PART de leur pression (habitabilité effondrée) vers la machinerie de réfugiés au
      * lieu de tuer sur place. EXODUS_INTENSITY_MIN : la fin doit mordre franchement
@@ -604,7 +640,13 @@
      * déterministe). CALIBRAGE (sweep 2026-07-08b) : DELAY=30/MIN=4 — le réchauffement
      * ne prend QUE les sans-fin (les autres fins RESTAURÉES à leur niveau pré-CHAUD). */ \
     X(FUEL_FALLBACK_DELAY,    60.0f) \
-    X(FUEL_FALLBACK_MIN,       4.0f) \
+    /* 4.0→2.0 (investigation 2026-07-11) : les 24 mondes « sans fin » du gigasweep
+     * avaient un combustible/tête final de 0.9-3.9 — TOUS sous l'ancien seuil 4.0
+     * (le repli n'a rattrapé que 2/24). À 2.0, 22/24 sont rattrapés ; les 2 mondes
+     * réellement SOBRES (0.9, 1.0) restent sans fin — cohérent (« un monde calme ET
+     * sobre reste sans fin », le design d'origine, seul le niveau était trop haut :
+     * il avait été calé sur des mondes prospères d'AVANT la refonte éco per-capita). */ \
+    X(FUEL_FALLBACK_MIN,       2.0f) \
     X(FUEL_COAL_W,             3.0f) \
     X(FUEL_MEMORY_HL,         60.0f) \
     X(HEAT_RAMP_PER_YEAR,      0.010f) \
@@ -895,12 +937,26 @@
     X(AGE_LUMIERES_SOLVENT,            1.25f) \
     X(AGE_LUMIERES_LEGISTE_LEVER,      0.06f) \
     X(AGE_LUMIERES_COMMUNAUTAIRE_LEVER, 0.04f) \
-    X(AGE_SOULEVEMENTS_MIN_COUNTRIES,  2.0f) \
+    /* SOULÈVEMENTS↔TYRANS — le VRAI embranchement (investigation 2026-07-11,
+     * SCPS_AGEDIAG 6 graines × 2 sims × 250 ans, cf. TROUVAILLES.md). MESURÉ :
+     * « ≥2 pays en révolution » était quasi UNIVERSEL (la vague de révoltes des
+     * ans 5-13 atteint 2+ dans 12/12 sims → Soulèvements advenait an 8-13 partout,
+     * verrouillant Tyrans À VIE — 0/200 au gigasweep) ; et les seuils Tyrans
+     * étaient INATTEIGNABLES de toute façon (fracture_moy réelle plafonne 0.36-0.72
+     * vs seuil 3.0 — un facteur 5-8× ; SI_moy ne redescend jamais sous ~6 après
+     * l'an 2 vs seuil <5). Recalage aux mondes RÉELS : MIN_COUNTRIES 2→8 (la
+     * simultanéité STRICTE — une vraie vague mondiale, atteinte dans ~10/12 sims,
+     * médiane an 8-9 inchangée, plus tardive/jamais dans les mondes plus calmes) ·
+     * FRACTURE 3.0→0.30 · SI 5.0→8.5 (DEREAL 1.25 inchangé — il est atteignable).
+     * Table de course mesurée (éligibilité, jitter 0-4 des deux côtés) :
+     * Soulèvements 10/12 · Tyrans 2/12 (~17 %, cible 15-40 %) · aucun 0/12 —
+     * l'exclusivité devient un embranchement d'histoire, plus un verrou. */ \
+    X(AGE_SOULEVEMENTS_MIN_COUNTRIES,  8.0f) \
     X(AGE_SOULEVEMENTS_L,              1.50f) \
     X(AGE_SOULEVEMENTS_COMMUNAUTAIRE_LEVER, 0.12f) \
-    X(AGE_TYRANS_FRACTURE,             3.0f) \
+    X(AGE_TYRANS_FRACTURE,             0.30f) \
     X(AGE_TYRANS_DEREAL,               1.25f) \
-    X(AGE_TYRANS_SI,                   5.0f) \
+    X(AGE_TYRANS_SI,                   8.5f) \
     X(AGE_TYRANS_H,                    1.75f) \
     X(AGE_TYRANS_DIVERSITY,            1.50f) \
     X(AGE_TYRANS_CONQUEROR_LEVER,      0.08f) \

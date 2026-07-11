@@ -9,6 +9,8 @@
 #include "scps_events.h"
 #include <string.h>
 #include <math.h>
+#include <stdio.h>    /* SCPS_AGEDIAG (diag gated, motif SCPS_CAPDIAG) : fprintf(stderr,...) */
+#include <stdlib.h>   /* SCPS_AGEDIAG : getenv */
 #include "scps_tune.h"
 #include "scps_math.h"      /* clampf/absf/xs32/frand partagés */
 #include "scps_provlog.h"   /* journal provincial : on POUSSE les évènements EV_PROVINCE (display) */
@@ -3219,6 +3221,35 @@ bool events_check_ages(EventsState *ev, World *w, WorldEconomy *econ,
     trig[AGE_LUMIERES]     = age_trig_lumieres(w,wp);
     trig[AGE_SOULEVEMENTS] = age_trig_soulevements(ev,w,wp);
     trig[AGE_TYRANS]       = age_trig_tyrans(ev,w,wp);
+    /* DIAG GATED SCPS_AGEDIAG (même motif que SCPS_FINDIAG/SCPS_CAPDIAG, OFF par
+     * défaut, stderr → déterminisme intact) — investigation « TYRANS 0/200 » :
+     * Soulèvements (≥2 pays en révolution, condition bon marché) tire-t-il TOUJOURS
+     * avant que Tyrans (fracture/déréalisation/SI mondiaux) ne devienne ne serait-ce
+     * qu'ATTEIGNABLE ? Throttlé à 1/an (days_elapsed%365==0, cf. la cadence de
+     * world_events_tick, appelé quotidiennement). */
+    if (getenv("SCPS_AGEDIAG") && (ev->ages.days_elapsed % 365) == 0) {
+        /* Signaux ÉCHANGES/DÉCOUVERTES ajoutés à la ligne (2e passe, question de la
+         * mission « Échanges an 3-6 partout = trop uniforme ? ») : le comptage des
+         * régions riches en route_pe + la part de paires connues, pour juger si un
+         * seuil créerait de la variance — proposé seulement si LA DONNÉE le montre. */
+        int rich=0, habited=0;
+        for (int r=0;r<econ->n_regions;r++){
+            if (econ->region[r].owner<0) continue;
+            habited++;
+            if (econ->region[r].route_pe > tune_f("AGE_EXCHANGE_NODE_VALUE",1.0f)) rich++;
+        }
+        fprintf(stderr,
+            "[AGEDIAG] an %d : revolutionnaires=%d (seuil %d) | fracture_moy=%.2f (seuil>%.2f) "
+            "dereal_moy=%.2f (seuil>%.2f) SI_moy=%.2f (seuil<%.2f) | Soulevements=%s Tyrans=%s "
+            "dawned{S=%d,T=%d} | exch rich=%d/%d | pairs=%.3f\n",
+            year, events_count_revolutionary(w,wp), (int)tune_f("AGE_SOULEVEMENTS_MIN_COUNTRIES",2.0f),
+            (double)w_mean_fracture(w,wp), (double)tune_f("AGE_TYRANS_FRACTURE",3.0f),
+            (double)w_mean_dereal(w,wp),   (double)tune_f("AGE_TYRANS_DEREAL",1.25f),
+            (double)w_mean_SI(w,wp),       (double)tune_f("AGE_TYRANS_SI",5.0f),
+            trig[AGE_SOULEVEMENTS]?"VRAI":"faux", trig[AGE_TYRANS]?"VRAI":"faux",
+            (int)ev->ages.dawned[AGE_SOULEVEMENTS], (int)ev->ages.dawned[AGE_TYRANS],
+            rich, habited, (double)ages_known_pair_share(w));
+    }
     for (int a=0;a<AGE_COUNT;a++){
         if (a==AGE_HEROES || ev->ages.dawned[a] || ev->ages.year_eligible[a]>=0) continue;
         if (trig[a]) ev->ages.year_eligible[a] = (int16_t)year;

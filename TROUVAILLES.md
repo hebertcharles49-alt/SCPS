@@ -3609,3 +3609,59 @@ habitée a toujours au moins une culture).
   rares sont biaisés (essence/foreuse quasi morts ⇒ EAU rare) ; SANG exige un ratio de
   morts que les mondes calmes n'atteignent pas (gap connu 08-07). Chantier compteurs, pas
   dispatch.
+
+## 2026-07-11 — « lisse les déclencheurs + trouve pourquoi certaines fins ne viennent jamais » (task #82)
+Réponse aux deux « Restes » du verdict gigasweep ci-dessus. Investigation par DIAG gated
+(`SCPS_FINDIAG` dans scps_endgame.c au TIR + à l'an 250 des sans-fin ; `SCPS_AGEDIAG` dans
+scps_events.c, 1/an) puis itération SCPS_TUNE. Validation 10 graines × 2 sims × 250 ans.
+
+**FINS — causes RÉELLES par fin (mesurées, pas supposées)**
+- EAU n'était pas *rare* mais **mathématiquement IMPOSSIBLE** : l'ancien sélecteur faisait un
+  argmax STRICT des compteurs de conso de rare (essence→EAU) ; or la foreuse (essence) mesure
+  0.0 dans 100 % des tirs observés (côté IA, hors périmètre : un seul couplage de construction,
+  famine de fer tier-4 sans beeline, vs réplicateur/corne qui ont FAU5). 0×poids=0 ⇒ EAU jamais
+  choisie ; et le fallback-climat n'était jamais atteint (un des 2 autres compteurs dépasse quasi
+  toujours le seuil de dominance). FIX : `endgame_pick_fin_lottery` fusionne les 2 modes en UNE
+  loterie — poids = plancher climatique (jamais nul, modulé par temp/humidité RÉELLES) + part de
+  production (share∈[0,1]). `FIN_BASE_EAU`=1.5 (vs 1.0 R/F) COMPENSE que sa production est ~0.
+  ⚠ INVARIANT : le call-site avait `tune_f("FIN_BASE_EAU",3.0f)` ≠ registre 1.5 (le registre gagne
+  au runtime, mais fallback trompeur) → corrigé à 1.5.
+- SANG 0/200 : le seuil `ENDGAME_BLOOD_FRAC`=0.20 datait de l'ère PRÉ-Phase-1 (spirale de révolte,
+  morts ÷10 000 depuis). Le ratio AU TIR (mémoire décrue HL 40 / pop vivante) s'étale 0.014-0.112
+  → 0.20 JAMAIS franchi. L'assiette (morts de BATAILLE Campaign, ~30-80k) est SAINE — c'était le
+  SEUIL d'une autre ère. 0.20→**0.09** : les ~2 mondes les plus sanglants /12 franchissent.
+- « aucune » 24/200 + RÉCHAUF 2 : le repli CHAUD exigeait `FUEL_FALLBACK_MIN`=4.0 de combustible/
+  tête ; les 24 sans-fin en avaient 0.9-3.9 (TOUS sous 4.0, calé sur des mondes prospères d'AVANT
+  la refonte éco per-capita). 4.0→**2.0** : 22/24 rattrapés, les 2 vraiment sobres (0.9,1.0) restent
+  sans fin (cohérent — « un monde calme ET sobre reste sans fin »).
+- RÉSULTAT (20 sims) : EAU 3 · RONCES 4 · HIVER 5 · RÉCHAUF 5 · SANG 3 · **AUCUNE 0** (était 24/200) ;
+  ratio naturel EAU/RONCES/HIVER = 1,67:1 ≤3:1. Toutes les fins tirent.
+
+**ÂGES — Tyrans 0/200 : le VERROU à sens unique brisé (Soulèvements↔Tyrans)**
+- MESURÉ (AGEDIAG) : `revolutionnaires` pic à 3-5 (mode 3), atteint ≥8 seulement ~10 %/années
+  (sporadique, tardif) ; `dereal_moy` (le signal LIANT de Tyrans) part de ~0 et monte lentement.
+  L'ancien seuil Soulèvements MIN=2 était atteint dès la vague de révolte an 5-13 dans TOUS les
+  mondes → Soulèvements verrouillait Tyrans à vie. Les seuils Tyrans étaient de toute façon
+  inatteignables (fracture_moy plafonne 0.36-0.72 vs 3.0 ; SI_moy ~6 jamais <5).
+- FIX : `AGE_SOULEVEMENTS_MIN_COUNTRIES` 2→**8** (une vraie VAGUE mondiale) · `AGE_TYRANS_FRACTURE`
+  3.0→**0.30** · `AGE_TYRANS_SI` 5.0→**8.5** (DEREAL 1.25 inchangé, atteignable). L'embranchement
+  émerge : le monde à forte vague de révolte précoce → Soulèvements ; le monde à fracture/
+  déréalisation lente sans vague ≥8 → Tyrans.
+- COURBE MESURÉE (20 sims, grep correct `ÂGE : L.[^|]*`) : MIN=5 → Soulèv 100 % / Tyr 0 % (verrou) ·
+  MIN=7 → 85 % / 5 % · **MIN=8 → 70 % / 15 % / ni-ni 15 %** (l'embranchement cible « Tyrans minorité
+  réelle 15-40 %, Soulèvements le reste »). MIN=8 retenu.
+- ⚠ **PIÈGE DE MESURE (2h potentiellement perdues)** : mon 1er grep `"an [0-9]*  ÂGE : L.Âge des
+  Soulèvements"` renvoyait 0 FAUSSEMENT (le préfixe « an NNN␣␣ÂGE » ne matchait pas la vraie ligne)
+  → j'ai cru Soulèvements MORT à MIN=8 et failli baisser MIN (ce qui aurait RESTAURÉ le verrou).
+  Le grep correct `grep -oE "ÂGE : L.[^|]*"` (la ligne d'avènement, hors bilan `| pays`) révèle
+  Soulèv 14/20. LEÇON : compter les avènements d'âge par `ÂGE : L.[^|]*`, jamais avec un préfixe
+  « an NNN » (nombre d'espaces variable).
+
+**Restes / hors périmètre**
+- Échanges dawne 20/20 an 3-6 (uniforme). LAISSÉ tel quel : c'est un âge FONDATEUR (les réseaux
+  de commerce se forment tôt partout) — la donnée montre l'uniformité mais c'est correct pour cet
+  âge ; l'embranchement dramatique est Soulèvements/Tyrans, désormais vivant. Forcer une variance
+  ici re-baselinerait pour un gain douteux.
+- La foreuse (essence) morte côté IA (scps_ai.c) reste la cause SOURCE du déséquilibre EAU — la
+  loterie la CONTOURNE par le plancher, sans toucher l'IA (hors périmètre). Un vrai fix source =
+  donner à la foreuse un beeline (comme réplicateur/corne) — chantier IA séparé.

@@ -1,4 +1,30 @@
-# SYNTHÈSE DE SESSION — handoff roulant (2026-07-10, MID-VAGUE multi-agents)
+# SYNTHÈSE DE SESSION — handoff roulant (2026-07-11 soir)
+
+## ÉTAT COURANT — CALIBRAGE FINS + DÉCLENCHEURS D'ÂGES (task #82, EN COURS)
+- Branche `claude/vibrant-euler-1tgfp3` (== main). Dernier commit poussé/mergé : **abfe7b1**
+  (gigasweep 200 sims + Découvertes 0,12 + Lot 2 UI). SAVE_VERSION **78**. scps.exe exporté 05:59.
+- DIRECTIVE JOUEUR : « lisse les déclencheurs et trouve pourquoi certaines fins ne viennent
+  jamais. Trouve, itère, corrige. » — les problèmes flaggés au gigasweep : Tyrans 0/200,
+  SANG 0/200, EAU 11/200, RÉCHAUF 2/24-aucune.
+- ARBRE NON COMMITÉ (travail d'un agent Fable mort à sa limite, repris par moi/Opus) :
+  scps_endgame.c (loterie unifiée EAU/RONCES/FROID = plancher climat + part de production →
+  EAU n'est plus math. exclue ; findiag gated SCPS_FINDIAG) · scps_tune_list.h (ENDGAME_BLOOD_FRAC
+  0.20→0.09 · FUEL_FALLBACK_MIN 4→2 · FIN_BASE_* + FIN_PROD_W_* neufs · AGE_SOULEVEMENTS_MIN_COUNTRIES
+  2→8 · AGE_TYRANS_FRACTURE 3.0→0.30 · AGE_TYRANS_SI 5.0→8.5) · scps_events.c (diag SCPS_AGEDIAG)
+  · endgame_demo.c + structural_demo.c (recalés, intention préservée — structural §3 « masse
+  critique » lit le seuil réel). J'ai corrigé l'invariant FIN_BASE_EAU (call-site 3.0→1.5 = registre).
+- VALIDATION FINS (10 graines × 2 sims) : **EAU=3 RONCES=4 HIVER=5 RÉCHAUF=5 SANG=3 AUCUNE=0**
+  → toutes les fins tirent, AUCUNE=0 (était 24/200), ratio naturel 1,67:1 ≤3:1. ✓ RÉSOLU.
+- EN COURS : les ÂGES. Tyrans 3/20 (RÉSOLU, était 0/200) MAIS Soulèvements 0/20 (MIN=8 a
+  déplacé le verrou au lieu de créer un embranchement). Mesure : revolutionnaires pic 3-5
+  (mode 3), ≥8 sporadique/tardif → MIN=8 rate la vague de révolte précoce. ITÉRATION EN VOL :
+  sweep MIN∈{5,6,7} (script gate_agesplit.sh) pour trouver le split Soulèvements/Tyrans.
+- RESTE : choisir MIN → appliquer registre → gates (make test, golden-update, determinism,
+  savetest) → TROUVAILLES.md append → commit/push/merge → export scps.exe. Task #79 (UI Lots
+  3-4) reste en attente après.
+
+---
+# (archive) SYNTHÈSE 2026-07-10 — VAGUE multi-agents
 
 ## MISE À JOUR fin d'après-midi — VAGUE CONSEIL + UI-2/3/4 EN VOL
 - COMMITÉ/MERGÉ/EXPORTÉ à 3c7e8b0 : toute la vague du matin (traditions↔registre J,

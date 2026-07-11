@@ -1178,15 +1178,55 @@ static void world_avg_climate(const World *w, float *out_temp, float *out_moist)
     *out_moist = (n > 0) ? (float)(sm / (double)n) : 0.5f;
 }
 
-static FinType endgame_pick_default_fin(const World *w, int fauteur, int epi, int year) {
+/* LOTERIE UNIFIÉE EAU/RONCES/FROID (refonte 2026-07-11, investigation « lisse les
+ * déclencheurs, trouve pourquoi certaines fins ne viennent jamais »).
+ *
+ * L'ANCIEN sélecteur branchait en DEUX modes disjoints : un argmax STRICT du
+ * transmuteur dominant (essence/flux/fer céleste) si l'un d'eux dépassait un
+ * seuil, sinon un dispatch pondéré par le climat. MESURÉ (SCPS_FINDIAG, 6 graines
+ * × 2 sims × 250 ans, cf. TROUVAILLES.md) : la foreuse (essence) est à 0.0 dans
+ * 100 % des tirs observés — côté IA (scps_ai.c, HORS PÉRIMÈTRE de cette mission),
+ * elle n'a qu'UN SEUL couplage de construction (famine de fer, tier-4, SANS
+ * beeline), quand le réplicateur/la corne ont FAU5 (famine bois/nourriture, plus
+ * fréquente, AVEC beeline). Résultat : un argmax BRUT ne peut MATHÉMATIQUEMENT
+ * jamais choisir EAU par ce chemin (0 × n'importe quel poids reste 0), et le
+ * dispatch-climat n'était JAMAIS atteint puisqu'un des deux autres compteurs est
+ * quasi toujours ≥ le seuil de dominance — EAU était donc structurellement
+ * IMPOSSIBLE, pas seulement rare.
+ *
+ * FIX : une loterie UNIQUE (plus de branchement) où CHAQUE fin a un poids
+ * composé d'un PLANCHER climatique (jamais nul, cf. world_avg_climate — la
+ * même lecture qu'avant) PLUS un bonus proportionnel à la PART de production
+ * (share ∈ [0,1], Σ=1 sauf si aucun transmuteur n'a jamais tourné) — la
+ * production continue de PESER (RONCES/FROID restent tirés par leur vraie
+ * activité), mais EAU n'est plus mathématiquement exclue : son plancher
+ * (FIN_BASE_EAU) COMPENSE le déséquilibre de production à la SOURCE hors
+ * périmètre, sans jamais assigner un bonus plat non lu du monde (le plancher
+ * lui-même reste modulé par le climat RÉEL, comme avant). */
+static FinType endgame_pick_fin_lottery(const World *w, const WorldProsperity *wp,
+                                        int fauteur, int epi, int year) {
     float t = 0.5f, m = 0.5f;
     world_avg_climate(w, &t, &m);
-    float w_eau    = 1.0f;
-    float w_froid  = 1.0f + 0.7f * (t - 0.5f);   /* déjà froid → pèse moins (anti-redondance) */
-    float w_ronces = 1.0f + 0.7f * (0.5f - m);   /* déjà aride → pèse plus */
-    if (w_froid  < 0.3f) w_froid  = 0.3f;
-    if (w_ronces < 0.3f) w_ronces = 0.3f;
-    float total = w_eau + w_froid + w_ronces;
+    float clim_eau    = 1.0f;
+    float clim_froid  = 1.0f + 0.7f * (t - 0.5f);   /* déjà froid → pèse moins (anti-redondance) */
+    float clim_ronces = 1.0f + 0.7f * (0.5f - m);   /* déjà aride → pèse plus */
+    if (clim_froid  < 0.3f) clim_froid  = 0.3f;
+    if (clim_ronces < 0.3f) clim_ronces = 0.3f;
+
+    double c0 = (double)wp->faust_consumed[0], c1 = (double)wp->faust_consumed[1], c2 = (double)wp->faust_consumed[2];
+    double prod_tot = c0 + c1 + c2;
+    float share_eau    = (prod_tot > 0.0) ? (float)(c0 / prod_tot) : 0.f;
+    float share_ronces = (prod_tot > 0.0) ? (float)(c1 / prod_tot) : 0.f;
+    float share_froid  = (prod_tot > 0.0) ? (float)(c2 / prod_tot) : 0.f;
+
+    float w_eau    = tune_f("FIN_BASE_EAU",    1.5f) * clim_eau
+                    + tune_f("FIN_PROD_W_ESSENCE", 1.0f) * share_eau;
+    float w_ronces = tune_f("FIN_BASE_RONCES", 1.0f) * clim_ronces
+                    + tune_f("FIN_PROD_W_FLUX",     1.0f) * share_ronces;
+    float w_froid  = tune_f("FIN_BASE_FROID",  1.0f) * clim_froid
+                    + tune_f("FIN_PROD_W_FER",      1.0f) * share_froid;
+    float total = w_eau + w_ronces + w_froid;
+    if (total <= 0.f) total = 1.f;   /* garde (tunables mis à 0 par un modder) */
 
     uint32_t seed = fin_mix32((uint32_t)(fauteur + 1) * 2654435761u)
                   ^ fin_mix32((uint32_t)(epi + 1) * 0x9E3779B9u)
@@ -1194,10 +1234,47 @@ static FinType endgame_pick_default_fin(const World *w, int fauteur, int epi, in
     uint32_t h = fin_mix32(seed);
     float roll = ((float)(h & 0xFFFFFFu) / (float)0x1000000) * total;
 
-    if (roll < w_eau) return FIN_EAU;
-    roll -= w_eau;
-    if (roll < w_ronces) return FIN_RONCES;
-    return FIN_FROID;
+    FinType choice;
+    if (roll < w_eau)                  choice = FIN_EAU;
+    else if (roll - w_eau < w_ronces)  choice = FIN_RONCES;
+    else                                choice = FIN_FROID;
+
+    if (getenv("SCPS_FINDIAG")) {
+        static const char *FN[] = { "AUCUNE","EAU","FROID","RONCES" };
+        fprintf(stderr,
+            "[FINDIAG] an %d : loterie t=%.2f m=%.2f | share essence=%.2f flux=%.2f fer=%.2f | "
+            "poids eau=%.2f ronces=%.2f froid=%.2f -> %s\n",
+            year, (double)t, (double)m, (double)share_eau, (double)share_ronces, (double)share_froid,
+            (double)w_eau, (double)w_ronces, (double)w_froid, FN[(int)choice]);
+    }
+    return choice;
+}
+
+/* ── DIAG GATED SCPS_FINDIAG (motif SCPS_CAPDIAG, OFF par défaut, stderr →
+ * déterminisme intact) — 2026-07-11, investigation « lisse les déclencheurs,
+ * trouve pourquoi certaines fins ne viennent jamais ». Imprime AU TIR (chaque
+ * site qui pose eg->fired=true, avec la VOIE empruntée) la cause RÉELLE de la
+ * sélection : les 3 compteurs de rares AU MOMENT du tir — PAS la valeur figée
+ * en fin de sim que la télémétrie chronicle affiche (celle-ci continue
+ * d'accumuler 70 ans APRÈS le tir, ce qui avait initialement fait croire à des
+ * incohérences dominant/choix qui n'en étaient pas — piège identifié en
+ * investigation, cf. TROUVAILLES.md) —, le ratio de sang, le ratio de
+ * combustible et l'entropie. Le cas « sans fin à l'an 250 » est imprimé depuis
+ * endgame_tick lui-même (ci-dessous), PAS depuis chronicle.c (hors périmètre
+ * de cette mission). */
+static void findiag_fire(const EndgameState *eg, const WorldEconomy *econ,
+                          const WorldProsperity *wp, int year, const char *voie) {
+    if (!getenv("SCPS_FINDIAG")) return;
+    static const char *FN[] = { "AUCUNE","EAU","FROID","RONCES","ASCENSION","SANG","CHAUD" };
+    int fi = (int)eg->fin; if (fi < 0 || fi > 6) fi = 0;
+    fprintf(stderr,
+        "[FINDIAG] an %d : FIN=%s voie=%s | entropie %.1f (seuil %.0f) | "
+        "essence %.1f . flux %.1f . fer_celeste %.1f | sang %.4f (seuil %.2f) | "
+        "feu/tete %.2f (seuil %.1f)\n",
+        year, FN[fi], voie, (double)wp->entropy, (double)tune_f("ENTROPY_FIN", 50.f),
+        (double)wp->faust_consumed[0], (double)wp->faust_consumed[1], (double)wp->faust_consumed[2],
+        endgame_blood_ratio(eg, econ), (double)tune_f("ENDGAME_BLOOD_FRAC", 0.20f),
+        endgame_fuel_ratio(eg, econ), (double)tune_f("FUEL_FALLBACK_MIN", 4.0f));
 }
 
 /* ── C2 — sélecteur + déclencheur (latch : un seul déclenchement) ──────────── */
@@ -1212,6 +1289,7 @@ static void endgame_select_and_fire(EndgameState *eg, const World *w,
     if (eg->merv == MERV_ASCENDED) {
         eg->fired = true; eg->fin = FIN_ASCENSION; eg->fin_year = year;
         endgame_faction_react(FIN_ASCENSION, eg->merv_country);
+        findiag_fire(eg, econ, wp, year, "ascension");
         return;
     }
 
@@ -1256,6 +1334,7 @@ static void endgame_select_and_fire(EndgameState *eg, const World *w,
             eg->fin   = FIN_CHAUD;
             eg->fired = true;
             endgame_faction_react(FIN_CHAUD, fauteur);
+            findiag_fire(eg, econ, wp, year, "chaud-repli");
         }
         return;
     }
@@ -1317,27 +1396,22 @@ static void endgame_select_and_fire(EndgameState *eg, const World *w,
             fprintf(stderr, "[EXODIAG] sang_step (amorçage) : %d région(s) marquée(s), somme scar %.2f\n", nmarked, (double)sum);
         }
         endgame_faction_react(FIN_SANG, eg->fauteur_country);
+        findiag_fire(eg, econ, wp, year, "sang");
         return;
     }
 
-    /* Sélecteur par compteur DOMINANT de conso de rare (les transmuteurs) :
-     * 0 (essence) → EAU · 1 (flux) → RONCES · 2 (fer céleste) → FROID. */
-    int k = 0; double mx = wp->faust_consumed[0];
-    for (int i = 1; i < 3; i++) if (wp->faust_consumed[i] > mx) { mx = wp->faust_consumed[i]; k = i; }
-    if (mx < 1.0) {
-        /* Aucun transmuteur (le cas COURANT) : le SAVOIR faustien seul a mené à la
-         * Brèche → la FORME de l'apocalypse suit le DISPATCH pondéré (LOT F) —
-         * avalanche + poids diégétiques, ≤2:1 mesuré sur sweep. Le RÉCHAUFFEMENT
-         * (FIN_CHAUD) N'EST PLUS ici (design REPLI) : un monde qui a franchi le seuil
-         * a une fin NATURELLE — le réchauffement ne peut la remplacer. Il n'agit qu'en
-         * repli sur les mondes RESTÉS sous le seuil (branche « sous le seuil » plus haut). */
-        eg->fin   = endgame_pick_default_fin(w, eg->fauteur_country, eg->epicenter_reg, year);
-        eg->fired = true;
-    } else {
-        static const FinType MAP[3] = { FIN_EAU, FIN_RONCES, FIN_FROID };
-        eg->fin   = MAP[k];
-        eg->fired = true;
-    }
+    /* Sélecteur EAU/RONCES/FROID : loterie unique pondérée par le climat RÉEL du
+     * monde ET la part de production de chaque transmuteur (essence/foreuse →
+     * EAU · flux/réplicateur → RONCES · fer céleste/corne → FROID) — cf. le
+     * commentaire d'endgame_pick_fin_lottery pour pourquoi l'ancien argmax
+     * excluait EAU MATHÉMATIQUEMENT (essence toujours à 0 côté IA, hors
+     * périmètre). Le RÉCHAUFFEMENT (FIN_CHAUD) N'EST PAS ici (design REPLI) : un
+     * monde qui a franchi le seuil d'entropie a une fin NATURELLE parmi ces
+     * trois — le réchauffement n'agit qu'en repli sur les mondes RESTÉS sous le
+     * seuil (branche « sous le seuil » plus haut). */
+    eg->fin   = endgame_pick_fin_lottery(w, wp, eg->fauteur_country, eg->epicenter_reg, year);
+    eg->fired = true;
+    findiag_fire(eg, econ, wp, year, "loterie");
     /* Amorçage de l'eau : trace le rift (le front de ronces C5 viendra ici aussi). */
     if (eg->fin == FIN_EAU && epi >= 0) cataclysm_water_seed(eg, w, econ);
     endgame_faction_react(eg->fin, eg->fauteur_country);
@@ -1370,6 +1444,14 @@ void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
     if (!eg->fired) {
         if (w && econ && ts) endgame_select_and_fire(eg, w, econ, wp, ts, year);
     }
+
+    /* DIAG « SANS FIN » (SCPS_FINDIAG) — le monde a atteint la fin de la fenêtre
+     * usuelle des sweeps (250 ans, cf. packaging/windows/gigasweep.sh) sans avoir
+     * tiré : imprime l'état final (entropie/compteurs/ratios) pour diagnostiquer
+     * pourquoi. Posé ICI (module endgame) et pas dans chronicle.c (hors périmètre) —
+     * `year>=249` (pas une égalité stricte) couvre toute longueur de run ≥249 ans,
+     * quitte à répéter la ligne les dernières années d'un run plus long (diag). */
+    if (!eg->fired && year >= 249) findiag_fire(eg, econ, wp, year, "sans-fin");
 
     /* C3-C5 — dérouler la fin latchée (la carve voit la même année que le fire). */
     if (eg->fired && w && econ) {

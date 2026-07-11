@@ -214,9 +214,18 @@ int main(int argc, char **argv){
      * juste au-dessus du seuil, que la chute de L mondiale fera basculer. On
      * rassasie les peuples (satisfaction haute → charge fiscale basse) pour
      * ISOLER l'effet de la légitimité : seul L bouge. */
+    /* RECALAGE 2026-07-11 (investigation « TYRANS 0/200 ») : le seuil des
+     * Soulèvements est passé de 2 à AGE_SOULEVEMENTS_MIN_COUNTRIES (8, une vraie
+     * VAGUE mondiale, sinon Soulèvements verrouillait Tyrans à vie). La « masse
+     * critique » que ce banc démontre doit donc suivre le seuil RÉEL : on rend
+     * profonds (déjà tombés, L=1.0) AU MOINS le seuil de pays, en laissant ≥2
+     * pays consentis (L=6.0) juste au-dessus du bord pour que la contagion
+     * (chute de L mondiale) en fasse encore basculer d'autres (rev1>rev0). */
+    int soulev_min=(int)tune_f("AGE_SOULEVEMENTS_MIN_COUNTRIES",8.f);
+    int deep_n=soulev_min; if (deep_n>npol-2) deep_n=npol-2; if (deep_n<2) deep_n=2;
     for (int i=0;i<npol;i++){
         int c=polities[i];
-        bool deep=(i<2);
+        bool deep=(i<deep_n);
         shape(&s,c, /*H*/1.f, /*K*/ deep?3.f:5.f, /*L*/ deep?1.0f:6.0f, /*C*/6.f);
         for (int r=0;r<s.econ->n_regions;r++) if (s.econ->region[r].owner==c)
             s.econ->region[r].satisfaction=0.85f;

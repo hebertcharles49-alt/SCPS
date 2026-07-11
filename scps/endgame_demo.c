@@ -138,6 +138,18 @@ int main(void) {
 
     /* ---- C2 : sélecteur par compteur dominant -------------------------- */
     printf("\nC2 sélecteur + latch + override\n");
+    /* RECALAGE 2026-07-11 (loterie unifiée, intention PRÉSERVÉE) : le sélecteur
+     * n'est plus un argmax strict mais une LOTERIE poids = plancher climatique
+     * (FIN_BASE_*) + part de production (FIN_PROD_W_* × share). L'intention
+     * testée ici — « le rare dominant choisit le visage de l'apocalypse » —
+     * reste vraie par construction quand les planchers climatiques sont à 0 :
+     * le poids se réduit à la part de production, et un compteur TOTALEMENT
+     * dominant (share=1, les 2 autres à 0) rend la loterie DÉTERMINISTE. On
+     * zérote donc les planchers pour tout le banc (aucun test n'exerce la voie
+     * climatique seule : chaque fire forcé pose un compteur archi-dominant). */
+    tune_set("FIN_BASE_EAU",    0.f);
+    tune_set("FIN_BASE_RONCES", 0.f);
+    tune_set("FIN_BASE_FROID",  0.f);
     float FINV = tune_f("ENTROPY_FIN", 50.f);
 
     /* essence (0) dominant → EAU */
