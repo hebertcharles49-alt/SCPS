@@ -501,6 +501,21 @@ bool     econ_culture_identity_heritage_mix(uint16_t id, float out[HERITAGE_COUN
 bool     econ_culture_identity_valid(uint16_t id);
 void     econ_culture_identity_save(FILE *f);
 bool     econ_culture_identity_load(FILE *f);
+/* TÉLÉMÉTRIE (chronicle) — agrège le registre d'identités du monde COURANT (remis à
+ * plat à la genèse par econ_culture_identity_reset). Lecture PURE : aucune décision
+ * moteur, aucun impact golden/déterminisme. `deepest` = l'identité la plus fusionnée
+ * (pour imprimer un exemple de nom émergent + sa lignée). */
+typedef struct {
+    int total;          /* identités NOMMÉES (hors slot 0) */
+    int founders;       /* fondatrices (sans parents — genèse + pools serviles) */
+    int fus_people;     /* fusions démographiques (peuples incorporés) */
+    int fus_contact;    /* fusions par contact (influence, sans pop) */
+    int fus_substrate;  /* substrats de ruines (colonie sur terre habitée) */
+    int autonyms;       /* composés ayant reçu un ETHNONYME autonome (gén ≥ seuil) */
+    int max_gen;        /* profondeur de filiation maximale */
+    uint16_t deepest;   /* id de la filiation la plus profonde (0 si aucune fusion) */
+} CultureIdentityStats;
+void     econ_culture_identity_telemetry(CultureIdentityStats *out);
 
 /* ---- API -------------------------------------------------------------- */
 

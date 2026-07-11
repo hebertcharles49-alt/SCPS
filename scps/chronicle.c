@@ -1121,6 +1121,21 @@ int main(int argc, char **argv){
           printf("              métabolisation : %d/%d empire(s) creuset (>1%% digéré) · moyenne %.1f%% · max %.1f%% → +%.1f%% recherche au plus métabolisé\n",
                  ncreuset, nm, nm?sm/nm*100.f:0.f, mx*100.f, mx*wgt*100.f); }
 
+        /* IDENTITÉS CULTURELLES (v79) — la mécanique de NOMMAGE en action : combien de
+         * peuples nommés ont ÉMERGÉ du brassage (fusions démographiques/contact/substrat),
+         * combien ont gagné un ETHNONYME autonome, et un EXEMPLE de nom émergent + sa lignée
+         * (la preuve visible que le brassage forge de nouveaux peuples). Télémétrie PURE. */
+        { CultureIdentityStats cs; econ_culture_identity_telemetry(&cs);
+          char ex[288]="";
+          if (cs.deepest){
+              char lin[220]; econ_culture_identity_lineage(cs.deepest, lin, sizeof lin);
+              for (char *p=lin; *p; p++) if (*p=='\n') *p='|';   /* aplati pour une ligne */
+              snprintf(ex, sizeof ex, " · ex : « %s » (gén %d — %s)",
+                       econ_culture_identity_name(cs.deepest), cs.max_gen, lin); }
+          printf("              identités culturelles : %d nommée(s) — %d fondatrice(s) · %d fusion(s) (%d peuples · %d contact · %d substrat) · %d ethnonyme(s) autonome(s) · gén max %d%s\n",
+                 cs.total, cs.founders, cs.fus_people+cs.fus_contact+cs.fus_substrate,
+                 cs.fus_people, cs.fus_contact, cs.fus_substrate, cs.autonyms, cs.max_gen, ex); }
+
         /* MEMBRANE DE DÉCISION — combien de fois la crise phare (et sa suite CONSÉQUENTE)
          * ont tiré : la preuve que la boucle de décision VIT sur le long cours. */
         printf("              membrane de décision : %ld Marbrive · %ld Pont(s) effondré(s)\n",

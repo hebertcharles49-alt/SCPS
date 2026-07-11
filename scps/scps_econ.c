@@ -119,7 +119,11 @@ uint16_t econ_culture_identity_fuse(uint16_t a, uint16_t b, Heritage heritage,
         memcpy(ci->heritage_mix,g_culture_id[a].heritage_mix,sizeof ci->heritage_mix);
     }
     uint8_t ga=g_culture_id[a].generation, gb=g_culture_id[b].generation;
-    ci->generation=(uint8_t)((ga>gb?ga:gb)+1u);
+    /* SATURE à 255 (uint8_t) : sur un long run, une identité dominante fusionne à CHAQUE
+     * migration/assimilation → la génération grimpe sans borne ; `(uint8_t)(255+1)` BOUCLERAIT
+     * à 0 (un enfant de lignée profonde reprendrait alors un nom composé au lieu d'un
+     * ethnonyme autonome). On sature (télémétrie chronicle : gén max atteint 255, 2026-07-11). */
+    { uint8_t gmax=(ga>gb?ga:gb); ci->generation = (gmax<255u)?(uint8_t)(gmax+1u):255u; }
     float minor=tune_f("CULTURE_NAME_MINOR_MIN",0.10f);
     int autonom=(int)tune_f("CULTURE_AUTONYM_GENERATION",2.f);
     /* Copies LOCALES des noms parents : `ci->name` et `g_culture_id[a/b].name` vivent
@@ -215,7 +219,11 @@ bool econ_culture_identity_load(FILE *f){
     g_culture_world_seed=seed; g_culture_id_count=count;
     for(uint16_t i=1;i<count;i++){
         CultureIdentity *ci=&g_culture_id[i]; ci->name[CULTURE_NAME_N-1]='\0';
-        if(!ci->name[0] || ci->parent_a>=count || ci->parent_b>=count || ci->generation>64) return false;
+        /* `generation` est un uint8_t (≤255 par construction) ; l'ancien rejet `>64`
+         * refusait toute save MATURE (la génération grimpe jusqu'à 255 sur un long run —
+         * télémétrie chronicle) → save v79 d'une partie âgée INCHARGEABLE. Retiré : la
+         * borne de type suffit ; parents/nom/mélange restent validés. (2026-07-11) */
+        if(!ci->name[0] || ci->parent_a>=count || ci->parent_b>=count) return false;
         float sum=0.f;
         for(int h=0;h<HERITAGE_COUNT;h++){
             if(!isfinite(ci->heritage_mix[h]) || ci->heritage_mix[h]<0.f || ci->heritage_mix[h]>1.f) return false;
@@ -224,6 +232,24 @@ bool econ_culture_identity_load(FILE *f){
         if(!isfinite(sum) || sum<0.999f || sum>1.001f) return false;
     }
     return true;
+}
+
+/* TÉLÉMÉTRIE (chronicle) — voir scps_econ.h. Balaie le registre du monde courant. */
+void econ_culture_identity_telemetry(CultureIdentityStats *o){
+    if(!o) return;
+    memset(o,0,sizeof *o);
+    int autonom=(int)tune_f("CULTURE_AUTONYM_GENERATION",2.f);
+    for(uint16_t i=1;i<g_culture_id_count;i++){
+        const CultureIdentity *ci=&g_culture_id[i];
+        if(!ci->name[0]) continue;
+        o->total++;
+        if(!ci->parent_a && !ci->parent_b){ o->founders++; continue; }
+        if(ci->flags&CULTURE_EDGE_SUBSTRATE)      o->fus_substrate++;
+        else if(ci->flags&CULTURE_EDGE_CONTACT)   o->fus_contact++;
+        else                                      o->fus_people++;
+        if((int)ci->generation>=autonom) o->autonyms++;
+        if((int)ci->generation>o->max_gen){ o->max_gen=ci->generation; o->deepest=i; }
+    }
 }
 
 /* ====================================================================== */
