@@ -374,6 +374,16 @@ func _unhandled_input(e: InputEvent) -> void:
 		KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6, KEY_F7, KEY_F8:
 			if _sidebar != null and Sim.game_on:
 				_sidebar.toggle_tab(e.keycode - KEY_F1)
+		KEY_T:
+			# ARBRE DE TECHNOLOGIE (le tech_panel documente « bascule touche T » mais le
+			# raccourci n'était jamais câblé : le seul opener était la cellule Savoir de la
+			# topbar — retirée par la refonte « topbar définitive ». On rétablit T comme
+			# porte du savoir, via la MÊME route que le clic Savoir d'hier).
+			if _tech != null and Sim.game_on:
+				_tech.visible = not _tech.visible
+				if _tech.visible:
+					Sound.play("ui_parchment_open")
+				_tech.queue_redraw()
 		KEY_H:
 			if _chronique != null:
 				if _chronique.visible:

@@ -4131,3 +4131,30 @@ inspectée, `git diff --check` sans erreur. Aucun type, lecteur ou verbe moteur 
 - Corollaire : un crash « dans sim.gd/regenerate » n'est PAS un bug GDScript — c'est la DLL
   sous-jacente. Vérifier les DEUX timestamps `godot/project/bin/*.dll` avant de chasser un
   fantôme côté script.
+
+## Topbar définitive + hover-lock qui colle (2026-07-12, UI)
+- **Découverte (hover verrouillé « ne se dismiss qu'au clic »)** : `tooltip_server.gd::_in_chain`
+  gardait la chaîne verrouillée vivante tant que la souris survolait le Control SOURCE
+  (grow 8). La topbar dessine ses cellules sur UN SEUL Control pleine largeur → « encore
+  sur la source » = toute la barre ; le tooltip restait figé jusqu'à un clic (qui
+  invalide/reconstruit le Control sous-jacent, seule sortie). Fix : gate du hitbox-source
+  par la DISTANCE à l'ancre (`_anchor` posée au `_show_root`, seuil `SRC_LEAVE` 72 px). La
+  souris SUR le tooltip le garde par la hitbox du PANNEAU (inchangé) ; s'éloigner de la
+  source le ferme, quelle que soit sa taille.
+- **Découverte (accès arbre de tech)** : `tech_panel.gd` documente « bascule touche T »
+  mais le raccourci n'était JAMAIS câblé dans `main.gd` — le seul opener était la cellule
+  Savoir de la topbar. La refonte « topbar définitive » retire Savoir ⇒ il fallait câbler
+  `KEY_T` (fait) sinon l'arbre devenait inatteignable (hors chip métabolisation conditionnel).
+- **Découverte (topbar : données dispo sans toucher au C)** : tendance de faction = snapshot
+  mensuel de `part` (country_factions) → delta « +x/mois » (display-only) ; loyauté = moyenne
+  `loyalty` des sièges de `country_council`, repli LÉGITIMITÉ quand le conseil est vacant
+  (an-0 typiquement) ; prospérité = `country_info.prosperite`. `country_stocks` n'expose
+  QUE les ressources non nulles ⇒ `_matter_cell` rend « 0 » pour une matière absente (la
+  trio bois/argile/pierre + armes ne doit pas clignoter selon le stock).
+- **Piège** : `resource_sprite(rid, name)` résout le chip par NOM via `resource_key(name)`,
+  mais `_cell` l'appelait avec name="" ⇒ ajout d'un param `rname` à `_cell` pour les
+  cellules de matière (bois/argile/pierre = "Bois"/"Argile"/"Pierre", armes = "Armes légères").
+- **Restes** : `country_actions` (fenêtre diplo) converti en liste EU4 verticale groupée
+  (sections Guerre/Alliances/Commerce, boutons pleine largeur) — NON vérifié en probe (la
+  graine de probe n'a aucun pays étranger CONNU à l'an-24 : fenêtre jamais ouverte headless) ;
+  parse OK, logique `_refresh`/`_act` inchangée. À revoir en jeu réel.

@@ -33,6 +33,15 @@ var _sub_level := -1         ## mot turquoise en cours de survol : niveau…
 var _sub_key := ""           ## …concept…
 var _sub_t := 0.0            ## …et temps accumulé
 var _shrink_t := 0.0         ## grâce de RÉGRESSION (souris à un étage moins profond)
+var _anchor := Vector2.ZERO  ## point-souris à l'ouverture du tooltip racine (ancre de dismiss)
+
+const SRC_LEAVE := 72.0      ## px : au-delà de cette distance de l'ancre, le SURVOL de la
+                             ## source ne maintient plus la chaîne verrouillée (sans ça un
+                             ## Control LARGE — la topbar dessine ses cellules sur UN seul
+                             ## Control pleine largeur — gardait le tooltip figé tant que la
+                             ## souris restait n'importe où sur la barre : « ne se dismiss
+                             ## qu'au clic », le clic invalidant la source. La souris SUR le
+                             ## tooltip le garde vivant par la hitbox du PANNEAU, pas ceci.)
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -89,8 +98,11 @@ func _teardown(from_level: int) -> void:
 func _in_chain(mp: Vector2) -> int:
 	# renvoie l'étage le plus PROFOND contenant la souris ; -1 = dehors partout
 	var deepest := -1
+	# La SOURCE ne maintient la chaîne que si la souris est encore DESSUS *et* proche de
+	# l'ancre : un Control large ne fige plus le tooltip une fois qu'on s'en éloigne.
 	if _hover_ctrl != null and is_instance_valid(_hover_ctrl) \
-			and _hover_ctrl.get_global_rect().grow(8.0).has_point(mp):
+			and _hover_ctrl.get_global_rect().grow(8.0).has_point(mp) \
+			and mp.distance_to(_anchor) <= SRC_LEAVE:
 		deepest = 0
 	for i in range(_levels.size()):
 		var r: Rect2 = (_levels[i]["panel"] as PanelContainer).get_global_rect().grow(GROW)
@@ -170,7 +182,8 @@ func _show_root(text: String) -> void:
 	var lvl := _mk_level()
 	(lvl["rtl"] as RichTextLabel).text = _decorated(text)
 	_levels.append(lvl)
-	_place(lvl, get_global_mouse_position() + Vector2(18, 22))
+	_anchor = get_global_mouse_position()
+	_place(lvl, _anchor + Vector2(18, 22))
 
 func _lock() -> void:
 	_locked = true

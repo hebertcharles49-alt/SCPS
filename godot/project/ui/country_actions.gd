@@ -114,38 +114,43 @@ func _build() -> void:
 	_war_sb_press = _mkbox(Color(0.14, 0.04, 0.03), Color(0.46, 0.13, 0.10), 2, true)
 	_war_sb_armed = _mkbox(Color(0.48, 0.12, 0.09), Color(0.95, 0.36, 0.25), 2)
 
-	# 6 verbes en grille 3×2 à largeur ÉGALE (le long libellé « Fabriquer… » déformait
-	# la grille : Guerre géant, Paix minuscule — capture 2026-07-09) ; « Fabriquer une
-	# revendication » vit sur SA ligne, pleine largeur.
-	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.add_theme_constant_override("h_separation", 6)
-	grid.add_theme_constant_override("v_separation", 6)
-	col.add_child(grid)
-	for v in [["war", "Guerre"], ["peace", "Paix"], ["ally", "Allier"], ["pact", "Pacte"], ["migration", "Migration"], ["embargo", "Embargo"]]:
-		var b := Button.new()
-		b.text = v[1]
-		b.custom_minimum_size = Vector2(104, 0)
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var verb: String = v[0]
-		if verb == "war":
-			# DESTRUCTIF : rouge sombre + CONFIRMATION 2 clics (motif _servile_manumit_armed/
-			# province_panel._purge_armed) — jamais exécuté directement au 1er clic.
-			b.add_theme_stylebox_override("normal", _war_sb_idle)
-			b.add_theme_stylebox_override("hover", _war_sb_hover)
-			b.add_theme_stylebox_override("pressed", _war_sb_press)
-			b.add_theme_color_override("font_color", Color(0.94, 0.82, 0.78))
-			b.add_theme_color_override("font_hover_color", Color(1.0, 0.90, 0.86))
-			b.pressed.connect(func(): _war_press())
-		else:
-			b.pressed.connect(func(): _act(verb))
-		grid.add_child(b)
-		_btns[verb] = b
-	var fb := Button.new()
-	fb.text = "Fabriquer une revendication"
-	fb.pressed.connect(func(): _act("fabricate"))
-	col.add_child(fb)
-	_btns["fabricate"] = fb
+	# RENDU EU4-LIKE (retour joueur 2026-07-11 « l'interface diplo doit avoir le rendu
+	# EU4-like ») : les verbes ne vivent plus dans une grille 3×2 mais dans une LISTE
+	# VERTICALE d'actions GROUPÉES (Guerre · Alliances · Commerce) — chaque action est
+	# une rangée PLEINE LARGEUR alignée à gauche, sous un en-tête de section or, façon
+	# panneau d'interactions d'EU4. Toute la logique (_refresh : grisé/ambre/confirmation
+	# de guerre, _act) est INCHANGÉE — seule la disposition change.
+	var groups := [
+		["Guerre & revendication", [["war", "⚔ Guerre"], ["fabricate", "Fabriquer une revendication"], ["peace", "Paix"]]],
+		["Alliances & pactes", [["ally", "Alliance"], ["pact", "Pacte commercial"]]],
+		["Commerce & migration", [["migration", "Pacte migratoire"], ["embargo", "Embargo"]]],
+	]
+	for grp in groups:
+		var sl := Label.new()
+		sl.text = String(grp[0]).to_upper()
+		sl.add_theme_font_size_override("font_size", 12)
+		sl.add_theme_color_override("font_color", VKit.COL_GOLD)
+		col.add_child(sl)
+		for v in grp[1]:
+			var verb: String = v[0]
+			var b := Button.new()
+			b.text = v[1]
+			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			b.custom_minimum_size = Vector2(0, 32)   # rangée pleine largeur, cible ≥32 px
+			if verb == "war":
+				# DESTRUCTIF : rouge sombre + CONFIRMATION 2 clics (motif _servile_manumit_armed/
+				# province_panel._purge_armed) — jamais exécuté directement au 1er clic.
+				b.add_theme_stylebox_override("normal", _war_sb_idle)
+				b.add_theme_stylebox_override("hover", _war_sb_hover)
+				b.add_theme_stylebox_override("pressed", _war_sb_press)
+				b.add_theme_color_override("font_color", Color(0.94, 0.82, 0.78))
+				b.add_theme_color_override("font_hover_color", Color(1.0, 0.90, 0.86))
+				b.pressed.connect(func(): _war_press())
+			else:
+				b.pressed.connect(func(): _act(verb))
+			col.add_child(b)
+			_btns[verb] = b
 
 	_flash = Label.new()
 	_flash.add_theme_color_override("font_color", Color(0.46, 0.74, 0.42))

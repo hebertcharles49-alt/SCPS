@@ -36,10 +36,58 @@ var _last_pop := 0
 var _d_gold := 0.0
 var _d_pop := 0
 
+## INFLUENCE DE FACTION — la « tendance » demandée : chaque faction voit sa PART du
+## spectre bouger d'un mois à l'autre (le decay du moteur, mesuré à la source). On
+## photographie la part de chaque faction (par NOM) au roulement du mois et on affiche
+## le delta « +x/mois » — display-only, aucune coordonnée moteur, juste le mouvement OBSERVÉ.
+var _fac_last := {}      ## nom de faction → part du mois précédent
+var _fac_d := {}         ## nom de faction → delta mensuel (+/-)
+
 func _delta_txt(d: float) -> String:
 	if absf(d) < 0.5:
 		return ""
 	return "%+d" % int(round(d))
+
+## STOCK + FLUX MENSUEL d'une ressource par NOM (country_stocks → stock & net_day). Le
+## « +x/mois » = net_day × 30 (le flux RÉEL du jour, projeté au mois — jamais un calcul
+## inventé). Renvoie {} si la ressource n'est pas listée pour ce pays.
+func _res_pair(w, me: int, rname: String) -> Dictionary:
+	if not w.has_method("country_stocks"):
+		return {}
+	for st in w.country_stocks(me):
+		if String(st.get("name", "")) == rname:
+			return {"stock": int(st.get("stock", 0)), "permo": float(st.get("net_day", 0.0)) * 30.0}
+	return {}
+
+## une CELLULE de matière (bois/argile/pierre/armes) : sprite par nom · valeur = stock ·
+## delta = « +N/mois » vert/rouge · hover nommé. Repli discret si la ressource manque.
+func _matter_cell(px: float, w, me: int, rname: String) -> float:
+	var rp := _res_pair(w, me, rname)
+	if rp.is_empty():
+		# ressource absente du bilan (jamais produite/stockée) : la cellule reste
+		# PRÉSENTE à « 0 » — la matière de construction/armement de la barre définitive
+		# ne doit pas clignoter selon ce qui est en stock (« vous n'en avez aucune »).
+		return _cell(px, "", "", "0", "", true, "%s — aucun en stock" % rname,
+			VKit.COL_DIM, rname)
+	var permo := float(rp["permo"])
+	var dtxt := "%+d/mois" % int(round(permo)) if absf(permo) >= 0.5 else ""
+	var tip := "%s — %s en stock" % [rname, _grp(int(rp["stock"]))]
+	if absf(permo) >= 0.5:
+		tip += " · %+d/mois" % int(round(permo))
+	return _cell(px, "", "", _grp(int(rp["stock"])), dtxt, permo >= 0.0, tip, Color(0, 0, 0, 0), rname)
+
+## LOYAUTÉ du royaume = moyenne de la loyauté des sièges du CONSEIL (0-100) — la fidélité
+## des grands du royaume envers la couronne (country_council → loyalty). -1 si pas de conseil.
+func _council_loyalty(w, me: int) -> int:
+	if not w.has_method("country_council"):
+		return -1
+	var sum := 0.0
+	var n := 0
+	for s in w.country_council(me):
+		if bool(s.get("filled", false)):
+			sum += float(s.get("loyalty", 0))
+			n += 1
+	return int(round(sum / float(n))) if n > 0 else -1
 
 ## LA PIRE PÉNURIE du pays (retour joueur UI-2 point 2/3 : « Fer : rupture dans 12
 ## jours » remonte en alerte explicite au lieu de noyer 5 chips de stock brut dans la
@@ -179,11 +227,17 @@ func _gauge_line(ci: Dictionary, cptips: Dictionary, key: String) -> String:
 ## pièce du pack d'icônes OU `rid` ≥ 0 = sprite de ressource. `tip` = le HOVER (retour
 ## joueur : « un explicatif sur chaque display ») ; `vcol.a > 0` teinte la valeur.
 func _cell(px: float, icon: String, rid_or_val, val: String, dtxt: String, dpos: bool,
-		tip: String = "", vcol: Color = Color(0, 0, 0, 0)) -> float:
+		tip: String = "", vcol: Color = Color(0, 0, 0, 0), rname: String = "") -> float:
 	var rid := -1
 	if icon == "" and typeof(rid_or_val) == TYPE_INT:
 		rid = int(rid_or_val)
-	if rid >= 0:
+	if rname != "":
+		# cellule de RESSOURCE par NOM (bois/argile/pierre/armes) : le chip parchemin de
+		# la ressource, résolu par resource_sprite(-1, nom) — même sprite que le tiroir Stocks.
+		var rspr: Texture2D = UIKit.resource_sprite(-1, rname)
+		if rspr != null:
+			draw_texture_rect(rspr, Rect2(px, (H - 22.0) * 0.5, 22, 22), false)
+	elif rid >= 0:
 		var spr: Texture2D = UIKit.resource_sprite(rid, "")
 		if spr != null:
 			draw_texture_rect(spr, Rect2(px, (H - 22.0) * 0.5, 22, 22), false)
@@ -250,6 +304,24 @@ func _on_tick(_year: int) -> void:
 			_d_pop = p - _last_pop
 			_last_gold = g
 			_last_pop = p
+			# tendance des factions : delta mensuel de la PART de chaque faction (le decay observé)
+			if w.has_method("country_factions"):
+				var fx: Dictionary = w.country_factions(me)
+				var seen := {}
+				for fe in fx.get("list", []):
+					var fnm := String(fe.get("name", ""))
+					if fnm == "":
+						continue
+					var part := int(fe.get("part", 0))
+					if _fac_last.has(fnm):
+						_fac_d[fnm] = part - int(_fac_last[fnm])
+					_fac_last[fnm] = part
+					seen[fnm] = true
+				# oublie les factions disparues (évite un delta figé sur un nom mort)
+				for k in _fac_last.keys():
+					if not seen.has(k):
+						_fac_last.erase(k)
+						_fac_d.erase(k)
 	queue_redraw()
 
 func _on_change() -> void:
@@ -322,7 +394,9 @@ func _draw() -> void:
 				int(clst[2].get("satisfaction", 0))]
 		var fx: Dictionary = w.country_factions(me) if w.has_method("country_factions") else {}
 
-		# ═══ BLOC ROYAUME : nom · trésor · revenu net annuel · population ═══
+		# ═══ IDENTITÉ (ancre) : nom du royaume. Population · recherche · provinces ·
+		#     stabilité · métabolisation · colonie s'y lisent au SURVOL — la barre
+		#     DÉFINITIVE (retour joueur 2026-07-11) ne les garde plus en permanents. ═══
 		var nom := String(ci["nom"])
 		var nomw := VKit.text_w(nom)
 		var nr := Rect2(px - 6.0, 6.0, nomw + 14.0, H - 12.0)
@@ -330,35 +404,37 @@ func _draw() -> void:
 		VKit.fill(self, Rect2(nr.position, Vector2(3.0, nr.size.y)), VKit.COL_GOLD)
 		VKit.box(self, nr, VKit.COL_EDGE)
 		VKit.text(self, Vector2(px + 2.0, cy), VKit.COL_GOLD, nom)
-		px += nomw + 18
-		px = _cell(px, "fine_coin", "", _grp(ci["or"]), _delta_txt(_d_gold), _d_gold >= 0.0,
-			_treasury_tip(w, me))
-		var _net := 0.0
-		if w.has_method("budget_summary"):
-			_net = float((w.budget_summary(me) as Dictionary).get("net", 0.0))
-		px = _cell(px, "tax_ledger", "", "%+d" % int(round(_net)), "", _net >= 0.0,
-			_net_income_tip(w, me), VKit.sense(0.85) if _net >= 0.0 else VKit.sense(0.12))
-		# Population : provinces colonisées + stabilité + colonisation en chantier
-		# DÉMOTÉES ici (retour joueur « topbar surchargé ») — le mot avant le chiffre,
-		# jamais une coordonnée moteur nue.
-		var _pop_tip := "Population — %d province(s) colonisée(s) · %s" % [
-			w.country_province_count(me), _gauge_line(ci, CPTips, "stabilite")]
 		var _dp_txt := _delta_txt(float(_d_pop))
-		if _dp_txt != "":
-			_pop_tip += " — %s ce mois" % _dp_txt
+		var _id_tip := "%s — Population %s%s · Recherche %d · %d province(s) · %s" % [nom,
+			_grp(ci["pop"]), (" (%s ce mois)" % _dp_txt) if _dp_txt != "" else "",
+			int(ci["savoir"]), w.country_province_count(me), _gauge_line(ci, CPTips, "stabilite")]
+		var _metab := int(ci.get("metab_pct", 0))
+		if _metab > 0:
+			_id_tip += " · métabolisation +%d%% recherche" % _metab
 		if w.has_method("colony_status"):
 			var cs: Dictionary = w.colony_status()
 			if bool(cs.get("active", false)):
 				var tot := maxi(1, int(cs.get("total_days", 1)))
 				var pct := int(round(100.0 * float(tot - int(cs.get("days_left", 0))) / float(tot)))
-				_pop_tip += " · colonie en chantier %d %%" % pct
-		px = _cell(px, "population_group", "", _grp(ci["pop"]), _delta_txt(float(_d_pop)), _d_pop >= 0,
-			_pop_tip)
+				_id_tip += " · colonie en chantier %d %%" % pct
+		_id_tip += "\n(T : l'arbre de technologie)"
+		_tips.append([nr, _id_tip])
+		px += nomw + 18
+
+		# ═══ OR — hover : LE REVENU DÉTAILLÉ (impôts · corruption · entretiens ·
+		#     salaires · armée…) via country_budget (l'instrument I0), net d'année inclus. ═══
+		px = _cell(px, "fine_coin", "", _grp(ci["or"]), _delta_txt(_d_gold), _d_gold >= 0.0,
+			_treasury_tip(w, me))
 		px = _block_sep(px)
 
-		# ═══ BLOC ÉCONOMIE : nourriture (+ rupture) · recherche. Les 5 cellules de
-		#     MATIÈRES BRUTES bois/argile/pierre/fer/armes vivent dans le tiroir
-		#     Économie/Stocks ; prospérité démotée au survol du Revenu net ci-dessus. ═══
+		# ═══ MATIÈRES DE CONSTRUCTION : bois · argile · pierre (stock + « +N/mois ») ══
+		px = _matter_cell(px, w, me, "Bois")
+		px = _matter_cell(px, w, me, "Argile")
+		px = _matter_cell(px, w, me, "Pierre")
+		px = _block_sep(px)
+		# ═══ ARMES (même modèle : stock + flux mensuel) ══
+		px = _matter_cell(px, w, me, "Armes légères")
+		# ═══ NOURRITURE : stock du grenier · hover = income par bien − pénurie dans X ══
 		var short := worst_shortage(w, me)
 		var _food_dtxt := ""
 		var _food_pos := true
@@ -375,52 +451,54 @@ func _draw() -> void:
 				_food_vcol = VKit.sense(0.10)
 				_food_full_tip += "\nPénurie — %s : rupture prévue dans %d jour(s)" % [sname, djs]
 			else:
-				# pénurie d'une AUTRE ressource (déjà relayée par les alertes) :
-				# secondaire ici, une ligne dans le survol du grenier.
 				_food_full_tip += "\nAutre pénurie — %s : rupture prévue dans %d jour(s) (voir alertes)" % [sname, djs]
 		if w.has_method("country_food"):
 			px = _cell(px, "fine_grain", "", _grp(int(w.country_food(me))), _food_dtxt, _food_pos,
 				_food_full_tip, _food_vcol)
-		var sx0 := px
-		var _savoir_tip := String(CPTips.get("savoir", "Savoir"))
-		var _metab := int(ci.get("metab_pct", 0))
-		if _metab > 0:
-			_savoir_tip += " — métabolisation +%d%% recherche" % _metab
-		_savoir_tip += " · %s (clic : l'arbre de technologie)" % _gauge_line(ci, CPTips, "prosperite")
-		px = _cell(px, "fine_knowledge", "", "%d" % int(ci["savoir"]), "", true, _savoir_tip)
-		_savoir_rect = Rect2(sx0 - 4, 0, px - sx0, H)
 		px = _block_sep(px)
 
-		# ═══ BLOC POLITIQUE : Influence · Corruption. Légitimité/cohésion/bonheur/
-		#     factions/tension de coup DÉMOTÉS au survol (retour joueur : ne garder
-		#     QUE les 2 permanents chiffrés — le détail politique reste à un clic,
-		#     jamais perdu). ═══
-		var infl := int(ci.get("influence", 0))
-		px = _cell(px, "influence_compass", "", str(infl), "", true,
-			"Influence — %s · %s" % [_gauge_line(ci, CPTips, "legitimite"), _gauge_line(ci, CPTips, "cohesion")])
-		var cor := int(fx.get("corruption", 0))
-		var cor_tip := "Corruption"
-		if not _happy_tip.is_empty():
-			cor_tip += " — " + _happy_tip
+		# ═══ INFLUENCE DE FACTION : chaque faction · sa PART · sa TENDANCE « +x/mois »
+		#     (le decay observé au fil des mois, cf. _on_tick). La dominante porte ★. ═══
 		var coup := int(fx.get("coup", 0))
-		if w.has_method("country_factions"):
-			cor_tip += "\nTension de coup %d" % coup
-			var flist := []
-			for fe in fx.get("list", []):
-				var fnm := String(fe.get("name", ""))
-				var part := int(fe.get("part", 0))
-				var dom := bool(fe.get("dominant", false))
-				var g := int(fe.get("grief", 0))
-				var fline := "%s %d %%" % [fnm, part]
-				if dom:
-					fline += " ★"
-				if g > 0:
-					fline += " (rancœur %d)" % g
-				flist.append(fline)
-			if not flist.is_empty():
-				cor_tip += " · Factions : " + " · ".join(flist)
-		px = _cell(px, "corruption_coin", "", str(cor), "", true, cor_tip,
-			VKit.sense(0.20) if (coup >= 45 or cor >= 50) else Color(0, 0, 0, 0))
+		var flist: Array = fx.get("list", [])
+		var nfac := mini(flist.size(), 4)   # garde-fou de largeur (rarement > 3 factions)
+		for fi in range(nfac):
+			var fe: Dictionary = flist[fi]
+			var fnm := String(fe.get("name", ""))
+			var part := int(fe.get("part", 0))
+			var dom := bool(fe.get("dominant", false))
+			var grief := int(fe.get("grief", 0))
+			var fd := int(_fac_d.get(fnm, 0))
+			var fdtxt := "%+d/mois" % fd if fd != 0 else ""
+			var ftip := "%s — %d %% du spectre%s" % [fnm, part, " ★ dominante" if dom else ""]
+			if fd != 0:
+				ftip += " · tend %+d/mois" % fd
+			if grief > 0:
+				ftip += " · rancœur %d" % grief
+			if fi == 0:
+				ftip += "\nTension de coup %d" % coup
+			var fval := ("★ %d%%" % part) if dom else ("%d%%" % part)
+			px = _cell(px, "influence_compass", "", fval, fdtxt, fd >= 0, ftip,
+				VKit.sense(0.20) if (grief >= 60 or coup >= 45) else Color(0, 0, 0, 0))
+		px = _block_sep(px)
+
+		# ═══ LOYAUTÉ · PROSPÉRITÉ (jauges 0-100, valeur teintée bon/mauvais — UI-5 :
+		#     le chiffre reste lisible hors couleur). ═══
+		# LOYAUTÉ : la fidélité du conseil si un ministre siège ; sinon la LÉGITIMITÉ
+		# (l'adhésion du royaume au droit de régner) — la barre garde toujours la paire.
+		var loy := _council_loyalty(w, me)
+		var loy_tip := "Loyauté du conseil %d / 100 — la fidélité des grands à la couronne" % loy
+		if loy < 0:
+			loy = int(ci.get("legitimite", 0))
+			loy_tip = "Loyauté (légitimité) %d / 100 — l'adhésion du royaume au droit de régner\n(un conseil siégeant montrera la fidélité de ses ministres)" % loy
+		px = _cell(px, "politics_crown", "", "%d" % loy, "", true, loy_tip,
+			VKit.sense(float(loy) / 100.0))
+		var prosp := int(ci.get("prosperite", 0))
+		var _prosp_tip := "Prospérité — %s (%d / 100)" % [String(ci.get("prosperite_mot", "")), prosp]
+		if not _happy_tip.is_empty():
+			_prosp_tip += "\n" + _happy_tip
+		px = _cell(px, "prosperity_sprout", "", "%d" % prosp, "", true, _prosp_tip,
+			VKit.sense(float(prosp) / 100.0))
 		content_end = px
 
 	# séparateur visuel avant le BLOC TEMPS — ANCRÉ au contenu RÉELLEMENT dessiné (pas
