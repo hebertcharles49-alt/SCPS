@@ -42,6 +42,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("province_region", "province"),    &ScpsWorld::province_region);
     ClassDB::bind_method(D_METHOD("province_info", "province"),      &ScpsWorld::province_info);
     ClassDB::bind_method(D_METHOD("country_info", "country"),        &ScpsWorld::country_info);
+    ClassDB::bind_method(D_METHOD("country_research_income", "country"), &ScpsWorld::country_research_income);
     ClassDB::bind_method(D_METHOD("army_info", "country"),           &ScpsWorld::army_info);
     ClassDB::bind_method(D_METHOD("region_tier", "region"),          &ScpsWorld::region_tier);
     ClassDB::bind_method(D_METHOD("region_settle_group", "region"),  &ScpsWorld::region_settle_group);
@@ -439,6 +440,18 @@ Dictionary ScpsWorld::country_info(int country) {
      * Nécessaire pour le hover Savoir (source de bonus chiffrée : « métabolisation
      * +X% recherche »), cf. TROUVAILLES.md. */
     d["metab_pct"]      = c.metab_pct;
+    return d;
+}
+
+Dictionary ScpsWorld::country_research_income(int country) {
+    Dictionary d;
+    ScpsResearchIncome ri;
+    scps_country_research_income(sim, country, &ri);
+    d["per_day"]    = ri.per_day;
+    d["pop_daily"]  = ri.pop_daily;
+    d["yield_mult"] = ri.yield_mult;
+    d["age_mult"]   = ri.age_mult;
+    d["metab_pct"]  = ri.metab_pct;
     return d;
 }
 

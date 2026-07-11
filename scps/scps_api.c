@@ -553,6 +553,29 @@ void scps_country_info(ScpsSim *s, int cid, ScpsCountryInfo *out){
                               * econ_country_metabolized(s->w, s->sim.econ, cid) * 100.f + 0.5f);
 }
 
+/* REVENU DE RECHERCHE (hover Savoir) — décompose ai_research_income comme le moteur :
+ *   income/jour = (savoir_pop / 365) × yield(institutions) × income_W × age_mult × (1+métab).
+ * Chaque facteur est un NOMBRE TANGIBLE lu de l'état courant, jamais recalculé à part. */
+void scps_country_research_income(ScpsSim *s, int cid, ScpsResearchIncome *out){
+    if(!out) return;
+    memset(out, 0, sizeof *out);
+    if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return;
+    const TechState *ts = &s->sim.ts[cid];
+    double pop   = econ_country_savoir(s->sim.econ, cid);       /* annuel, la POP produit */
+    double yield = tech_research_yield(ts);                     /* institutions & bibliothèques */
+    double agem  = s->sim.wp ? s->sim.wp->age_research_mult : 1.0; /* LUMIÈRE de l'âge (transitoire) */
+    double metabf = econ_country_metabolized(s->w, s->sim.econ, cid);
+    double income_w = tune_f("AI_RESEARCH_INCOME_W", AI_RESEARCH_INCOME_W);
+    double metab_w  = tune_f("AI_METAB_RES_W", AI_METAB_RES_W);
+    /* la base POP par jour, le poids global (tune) DÉJÀ plié dedans (jamais surfacé) :
+     * le joueur voit « Pops +N », puis les modificateurs ×/+ qui l'amènent au total. */
+    out->pop_daily  = (pop / 365.0) * income_w;
+    out->yield_mult = yield;
+    out->age_mult   = agem;
+    out->metab_pct  = (int)(metab_w * metabf * 100.0 + 0.5);
+    out->per_day    = out->pop_daily * yield * agem * (1.0 + metab_w * metabf);
+}
+
 /* ---- ACTEURS SUR LA CARTE (Phase 3) : armées de campagne + tiers de ville --- */
 
 void scps_army_info(ScpsSim *s, int cid, ScpsArmyInfo *out){

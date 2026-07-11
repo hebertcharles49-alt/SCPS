@@ -69,12 +69,13 @@ func _matter_cell(px: float, w, me: int, rname: String) -> float:
 		# ne doit pas clignoter selon ce qui est en stock (« vous n'en avez aucune »).
 		return _cell(px, "", "", "0", "", true, "%s — aucun en stock" % rname,
 			VKit.COL_DIM, rname)
+	# FACE = le nombre seul (retour joueur : « l'UI fournit l'information, PAS PLUS ») ;
+	# le flux mensuel vit dans le HOVER.
 	var permo := float(rp["permo"])
-	var dtxt := "%+d/mois" % int(round(permo)) if absf(permo) >= 0.5 else ""
 	var tip := "%s — %s en stock" % [rname, _grp(int(rp["stock"]))]
 	if absf(permo) >= 0.5:
 		tip += " · %+d/mois" % int(round(permo))
-	return _cell(px, "", "", _grp(int(rp["stock"])), dtxt, permo >= 0.0, tip, Color(0, 0, 0, 0), rname)
+	return _cell(px, "", "", _grp(int(rp["stock"])), "", true, tip, Color(0, 0, 0, 0), rname)
 
 ## LOYAUTÉ du royaume = moyenne de la loyauté des sièges du CONSEIL (0-100) — la fidélité
 ## des grands du royaume envers la couronne (country_council → loyalty). -1 si pas de conseil.
@@ -141,38 +142,34 @@ static func worst_shortage(w, me: int) -> Dictionary:
 ## LES POSTES RÉELS de l'instrument I0 (l'or, ligne à ligne — country_budget →
 ## econ_flux_get/FX_*, scps_api.c:2045) — factorisé : consommé par le Trésor (état)
 ## ET par le Revenu net (le NOUVEAU permanent UI-3.1), même donnée, deux angles.
-func _budget_parts_txt(w, me: int) -> String:
+## Les postes de l'instrument I0 (country_budget → FX_*), convertis en TAUX MENSUEL :
+## l'accumulateur est RAZ à chaque année ⇒ « /mois » = total-à-ce-jour ÷ jours-écoulés ×30
+## (chiffres MENSUELS, retour joueur). Direct/franc : « Nom +N », pas de prose.
+func _budget_parts_txt(w, me: int, doy: int) -> String:
 	if not w.has_method("country_budget"):
 		return ""
 	var parts := []
 	for p in w.country_budget(me):
-		var amt: float = float(p.get("amount", 0.0))
+		var amt: float = float(p.get("amount", 0.0)) / float(doy) * 30.0
 		if absf(amt) < 0.5:
 			continue
 		parts.append("%s %+d" % [String(p.get("name", "")), int(round(amt))])
 	return " · ".join(parts)
 
-## LE TRÉSOR EN QUOI+COMBIEN : au lieu de raconter ce qu'est l'argent. `budget_summary`
-## donne le net de l'année en cours (le flux RAZ à chaque roulement d'année,
-## scps_api.c:149-159 — ce n'est pas un solde "mensuel", contrairement à l'ancien libellé).
+## HOVER OR — direct/franc, MENSUEL : le net du trésor par mois + les postes qui le
+## composent (impôts · corruption · entretiens · salaires · armée…). Aucune définition,
+## aucun détail d'opération — que des nombres.
 func _treasury_tip(w, me: int) -> String:
-	var tip := "Trésor"
-	var parts := _budget_parts_txt(w, me)
-	if parts != "":
-		tip += " — " + parts
+	var doy := 1
+	if w.has_method("day_of_year"):
+		doy = maxi(1, int(w.day_of_year()))
+	var net_m := 0.0
 	if w.has_method("budget_summary"):
-		var net := float((w.budget_summary(me) as Dictionary).get("net", 0.0))
-		tip += " (net %+d cette année)" % int(round(net))
-	return tip
-
-## LE REVENU NET EN QUOI+COMBIEN (UI-3.1, permanent séparé du Trésor — la VALEUR
-## affichée sur la cellule EST déjà le net ; le survol détaille les postes qui le
-## composent, jamais un second calcul).
-func _net_income_tip(w, me: int) -> String:
-	var tip := "Revenu net (année en cours)"
-	var parts := _budget_parts_txt(w, me)
+		net_m = float((w.budget_summary(me) as Dictionary).get("net", 0.0)) / float(doy) * 30.0
+	var tip := "Trésor %+d/mois" % int(round(net_m))
+	var parts := _budget_parts_txt(w, me, doy)
 	if parts != "":
-		tip += " — " + parts
+		tip += "\n" + parts
 	return tip
 
 ## LA NOURRITURE EN QUOI+COMBIEN : production vs consommation, bien par bien
@@ -185,10 +182,51 @@ func _food_tip(w, me: int) -> String:
 	for st in w.country_stocks(me):
 		var nm := String(st.get("name", ""))
 		if _FOOD_NAMES.has(nm):
-			parts.append("%s %+.1f/j" % [nm, float(st.get("net_day", 0.0))])
+			parts.append("%s %+d/mois" % [nm, int(round(float(st.get("net_day", 0.0)) * 30.0))])
 	if parts.is_empty():
 		return "Grenier"
 	return "Grenier — " + " · ".join(parts)
+
+## MATÉRIAUX — UN SEUL onglet : le TOTAL des matières de construction (bois + argile +
+## pierre) ; le hover DÉTAILLE chaque matière (stock + flux mensuel). Chiffres MENSUELS.
+func _materials_cell(px: float, w, me: int) -> float:
+	var total := 0
+	var permo_total := 0.0
+	var parts := PackedStringArray()
+	for rname in ["Bois", "Argile", "Pierre"]:
+		var rp := _res_pair(w, me, rname)
+		var stock := int(rp.get("stock", 0))
+		var permo := float(rp.get("permo", 0.0))
+		total += stock
+		permo_total += permo
+		var line := "%s %s" % [rname, _grp(stock)]
+		if absf(permo) >= 0.5:
+			line += " (%+d/mois)" % int(round(permo))
+		parts.append(line)
+	# FACE = le total seul (« genre 82 ») ; le détail par matière est dans le HOVER.
+	return _cell(px, "action_build", "", _grp(total), "", true,
+		"Matériaux — " + " · ".join(parts))
+
+## HOVER SAVOIR — direct/franc, chiffres MENSUELS : le revenu de recherche décomposé —
+## Pops (base) · Institutions (×) · Lumière de l'âge (×, si portée) · Métabolisation (+%).
+func _research_tip(w, me: int) -> String:
+	if not w.has_method("country_research_income"):
+		return "Recherche"
+	var ri: Dictionary = w.country_research_income(me)
+	var perm := int(round(float(ri.get("per_day", 0.0)) * 30.0))
+	var popm := int(round(float(ri.get("pop_daily", 0.0)) * 30.0))
+	var parts := PackedStringArray()
+	parts.append("Pops +%d" % popm)
+	var ym := float(ri.get("yield_mult", 1.0))
+	if absf(ym - 1.0) >= 0.05:
+		parts.append("Institutions ×%.1f" % ym)
+	var am := float(ri.get("age_mult", 1.0))
+	if am > 1.005:
+		parts.append("Lumière ×%.1f" % am)
+	var mp := int(ri.get("metab_pct", 0))
+	if mp > 0:
+		parts.append("Métabolisation +%d%%" % mp)
+	return "Recherche +%d/mois\n%s\n(clic : l'arbre de technologie)" % [perm, " · ".join(parts)]
 
 ## SÉPARATEUR DE BLOC (audit UI-2 : « regrouper en 4 blocs ») — barre verticale ÉPAISSE
 ## et opaque, à distinguer du filet fin (alpha 0.22) que chaque _cell pose déjà entre
@@ -405,56 +443,45 @@ func _draw() -> void:
 		VKit.box(self, nr, VKit.COL_EDGE)
 		VKit.text(self, Vector2(px + 2.0, cy), VKit.COL_GOLD, nom)
 		var _dp_txt := _delta_txt(float(_d_pop))
-		var _id_tip := "%s — Population %s%s · Recherche %d · %d province(s) · %s" % [nom,
-			_grp(ci["pop"]), (" (%s ce mois)" % _dp_txt) if _dp_txt != "" else "",
-			int(ci["savoir"]), w.country_province_count(me), _gauge_line(ci, CPTips, "stabilite")]
-		var _metab := int(ci.get("metab_pct", 0))
-		if _metab > 0:
-			_id_tip += " · métabolisation +%d%% recherche" % _metab
+		var _id_tip := "%s — Population %s%s · %d province(s) · %s" % [nom,
+			_grp(ci["pop"]), (" %s/mois" % _dp_txt) if _dp_txt != "" else "",
+			w.country_province_count(me), _gauge_line(ci, CPTips, "stabilite")]
 		if w.has_method("colony_status"):
 			var cs: Dictionary = w.colony_status()
 			if bool(cs.get("active", false)):
 				var tot := maxi(1, int(cs.get("total_days", 1)))
 				var pct := int(round(100.0 * float(tot - int(cs.get("days_left", 0))) / float(tot)))
 				_id_tip += " · colonie en chantier %d %%" % pct
-		_id_tip += "\n(T : l'arbre de technologie)"
 		_tips.append([nr, _id_tip])
 		px += nomw + 18
 
-		# ═══ OR — hover : LE REVENU DÉTAILLÉ (impôts · corruption · entretiens ·
-		#     salaires · armée…) via country_budget (l'instrument I0), net d'année inclus. ═══
-		px = _cell(px, "fine_coin", "", _grp(ci["or"]), _delta_txt(_d_gold), _d_gold >= 0.0,
-			_treasury_tip(w, me))
+		# ═══ OR — face : le trésor seul. Hover : le REVENU DÉTAILLÉ MENSUEL (impôts ·
+		#     corruption · entretiens · salaires · armée…) via country_budget (I0). ═══
+		px = _cell(px, "fine_coin", "", _grp(ci["or"]), "", true, _treasury_tip(w, me))
 		px = _block_sep(px)
 
-		# ═══ MATIÈRES DE CONSTRUCTION : bois · argile · pierre (stock + « +N/mois ») ══
-		px = _matter_cell(px, w, me, "Bois")
-		px = _matter_cell(px, w, me, "Argile")
-		px = _matter_cell(px, w, me, "Pierre")
-		px = _block_sep(px)
-		# ═══ ARMES (même modèle : stock + flux mensuel) ══
+		# ═══ MATÉRIAUX : UN onglet (total bois+argile+pierre) · hover = détail par matière ══
+		px = _materials_cell(px, w, me)
+		# ═══ ARMES : stock + flux mensuel (même modèle) ══
 		px = _matter_cell(px, w, me, "Armes légères")
-		# ═══ NOURRITURE : stock du grenier · hover = income par bien − pénurie dans X ══
+		# ═══ NOURRITURE : stock du grenier. La rupture SORT de la cellule → seul le hover
+		#     porte l'income par bien ET « pénurie dans X » (retour joueur : l'UI = le
+		#     nombre, le hover = le détail). ══
 		var short := worst_shortage(w, me)
-		var _food_dtxt := ""
-		var _food_pos := true
-		var _food_vcol := Color(0, 0, 0, 0)
 		var _food_full_tip := _food_tip(w, me)
 		if not short.is_empty():
 			var djs := int(short["days"])
 			var sname := String(short["name"])
-			if _FOOD_NAMES.has(sname):
-				# la pénurie EST vivrière : elle se lit directement sur la cellule
-				# (UI-5 : le texte chiffré ET le symbole ▼ portent le même sens).
-				_food_dtxt = "rupture %d j" % djs
-				_food_pos = false
-				_food_vcol = VKit.sense(0.10)
-				_food_full_tip += "\nPénurie — %s : rupture prévue dans %d jour(s)" % [sname, djs]
-			else:
-				_food_full_tip += "\nAutre pénurie — %s : rupture prévue dans %d jour(s) (voir alertes)" % [sname, djs]
+			_food_full_tip += "\nPénurie — %s : rupture dans %d j" % [sname, djs]
 		if w.has_method("country_food"):
-			px = _cell(px, "fine_grain", "", _grp(int(w.country_food(me))), _food_dtxt, _food_pos,
-				_food_full_tip, _food_vcol)
+			px = _cell(px, "fine_grain", "", _grp(int(w.country_food(me))), "", true, _food_full_tip)
+		px = _block_sep(px)
+
+		# ═══ SAVOIR : le niveau · hover = income de recherche MENSUEL décomposé (Pops ·
+		#     Institutions · Lumière · Métabolisation) · CLIC = l'arbre de technologie. ══
+		var sx0 := px
+		px = _cell(px, "fine_knowledge", "", "%d" % int(ci["savoir"]), "", true, _research_tip(w, me))
+		_savoir_rect = Rect2(sx0 - 4, 0, px - sx0, H)
 		px = _block_sep(px)
 
 		# ═══ INFLUENCE DE FACTION : chaque faction · sa PART · sa TENDANCE « +x/mois »
@@ -487,10 +514,10 @@ func _draw() -> void:
 		# LOYAUTÉ : la fidélité du conseil si un ministre siège ; sinon la LÉGITIMITÉ
 		# (l'adhésion du royaume au droit de régner) — la barre garde toujours la paire.
 		var loy := _council_loyalty(w, me)
-		var loy_tip := "Loyauté du conseil %d / 100 — la fidélité des grands à la couronne" % loy
+		var loy_tip := "Loyauté du conseil %d / 100" % loy
 		if loy < 0:
 			loy = int(ci.get("legitimite", 0))
-			loy_tip = "Loyauté (légitimité) %d / 100 — l'adhésion du royaume au droit de régner\n(un conseil siégeant montrera la fidélité de ses ministres)" % loy
+			loy_tip = "Loyauté %d / 100 (légitimité — conseil vacant)" % loy
 		px = _cell(px, "politics_crown", "", "%d" % loy, "", true, loy_tip,
 			VKit.sense(float(loy) / 100.0))
 		var prosp := int(ci.get("prosperite", 0))

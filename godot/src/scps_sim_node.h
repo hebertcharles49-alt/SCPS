@@ -71,6 +71,7 @@ public:
     Dictionary province_info(int province);           /* mots + nombres (la membrane) */
     Dictionary province_class_sat(int province);      /* satisfaction 0-100 par classe (−1 = vide) */
     Dictionary country_info(int country);             /* mots + nombres (la membrane) */
+    Dictionary country_research_income(int country);  /* hover Savoir : income décomposé */
 
     /* ACTEURS SUR LA CARTE (Phase 3) */
     Dictionary army_info(int country);                /* armée de campagne (vide si inactive) */

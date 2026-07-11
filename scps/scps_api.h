@@ -143,6 +143,22 @@ typedef struct {
 void scps_province_info(ScpsSim *s, int province, ScpsProvInfo  *out);
 void scps_country_info (ScpsSim *s, int country,  ScpsCountryInfo *out);
 
+/* ---- REVENU DE RECHERCHE (hover Savoir de la topbar) ------------------ *
+ * Le DÉTAIL de l'income de recherche du pays, décomposé comme le moteur le
+ * calcule (ai_research_income) : la contribution des POPS × les modificateurs
+ * (institutions/bibliothèques + métabolisation) × la « lumière » de l'âge
+ * (age_research_mult, transitoire — l'Âge des Découvertes/Lumières). Tangibles :
+ * des points de recherche RÉELS, jamais une coordonnée moteur nue. */
+typedef struct {
+    double per_day;    /* points de recherche RÉELS produits par jour (le total, « +N/jour ») */
+    double pop_daily;  /* la contribution des POPS par jour, AVANT modificateurs (« Pops +N ») —
+                        * le poids global (tune) est déjà plié dedans, jamais surfacé au joueur */
+    double yield_mult; /* × institutions & bibliothèques (tech_research_yield) */
+    double age_mult;   /* × LUMIÈRE de l'âge (age_research_mult ; 1.0 = aucun âge porteur) */
+    int    metab_pct;  /* + % métabolisation (creuset digéré) */
+} ScpsResearchIncome;
+void scps_country_research_income(ScpsSim *s, int country, ScpsResearchIncome *out);
+
 /* ---- ACTEURS SUR LA CARTE (Phase 3) ---------------------------------- *
  * Une ARMÉE de campagne par pays (si déployée) : où elle est, vers où elle marche,
  * sa phase (mot + brut pour l'anim), son effectif et sa composition. Tangibles. */
