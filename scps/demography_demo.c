@@ -487,8 +487,14 @@ int main(int argc, char **argv){
         char lineage[256]; econ_culture_identity_lineage(mix.groups[0].culture_id,lineage,sizeof lineage);
         ok("la fusion achevée produit un nom culturel composé",fused==1 && mix.n_groups==1
            && strcmp(econ_culture_identity_name(mix.groups[0].culture_id),na)!=0);
+        /* la lignée « Parenté » liste les ETHNONYMES (1er mot, sans l'adjectif) des ancêtres */
+        char ea[48], eb[48]; size_t z;
+        for(z=0;na[z] && na[z]!=' ' && z+1<sizeof ea;z++) ea[z]=na[z];
+        ea[z]='\0';
+        for(z=0;nb[z] && nb[z]!=' ' && z+1<sizeof eb;z++) eb[z]=nb[z];
+        eb[z]='\0';
         ok("la généalogie conserve les deux peuples absorbés",
-           strstr(lineage,na)!=NULL && strstr(lineage,nb)!=NULL);
+           strstr(lineage,ea)!=NULL && strstr(lineage,eb)!=NULL);
         float embodied[HERITAGE_COUNT];
         bool has_mix=econ_culture_identity_heritage_mix(mix.groups[0].culture_id,embodied);
         ok("la fusion conserve la part démographique de chaque héritage",
@@ -513,8 +519,11 @@ int main(int argc, char **argv){
         uint16_t ruins=econ_culture_identity_base(HERITAGE_METALLURGISTE,44u);
         uint16_t settled=econ_culture_identity_fuse(id2,ruins,HERITAGE_ADAPTATIF,0.10f,CULTURE_BLEND_SUBSTRATE);
         econ_culture_identity_lineage(settled,lineage,sizeof lineage);
+        const char *rn=econ_culture_identity_name(ruins); char er[48]; size_t zr;
+        for(zr=0;rn[zr] && rn[zr]!=' ' && zr+1<sizeof er;zr++) er[zr]=rn[zr];
+        er[zr]='\0';
         ok("un peuple disparu demeure comme substrat, jamais comme population fantôme",
-           strstr(lineage,"Substrat :")!=NULL && strstr(lineage,econ_culture_identity_name(ruins))!=NULL);
+           strstr(lineage,"(substrat)")!=NULL && strstr(lineage,er)!=NULL);
         econ_culture_identity_heritage_mix(settled,embodied);
         ok("le substrat ne donne aucun héritage technologique",
            embodied[HERITAGE_METALLURGISTE]<0.001f);

@@ -403,6 +403,7 @@
     X(STR_BLD_ATELIER_SEREIN,    "Atelier serein") \
     X(STR_CULTURE_PARENTS, "Parents : ") \
     X(STR_CULTURE_RACINES, "Racines : ") \
-    X(STR_CULTURE_SUBSTRAT,"Substrat : ")
+    X(STR_CULTURE_SUBSTRAT,"Substrat : ") \
+    X(STR_CULTURE_PARENTE, "Parenté")
 
 #endif /* SCPS_STRINGS_IDS_H */

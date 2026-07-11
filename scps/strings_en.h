@@ -392,4 +392,5 @@
     X(STR_BLD_ATELIER_SEREIN,    "Serene Workshop") \
     X(STR_CULTURE_PARENTS, "Parents: ") \
     X(STR_CULTURE_RACINES, "Roots: ") \
-    X(STR_CULTURE_SUBSTRAT,"Substrate: ")
+    X(STR_CULTURE_SUBSTRAT,"Substrate: ") \
+    X(STR_CULTURE_PARENTE, "Ancestry")

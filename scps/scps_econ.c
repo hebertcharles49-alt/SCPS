@@ -10,6 +10,7 @@
 #include "scps_tune.h"    /* Arc J : constantes de calibrage surchargeables (SCPS_TUNE) */
 #include "scps_world.h"   /* resource_name(), subsistance_for_biome() */
 #include "scps_culture.h" /* culture_content_distance() pour la novelty diaspora */
+#include "scps_heritage.h"/* heritage_name() — hover « Parenté » des cultures mêlées */
 #include "scps_religion.h"/* P4 : nudge démographie/coordonnées par la religion (gated) */
 #include "scps_labor.h"   /* capitale_* : la productivité de la capitale booste la prod réelle */
 #include "scps_factions.h"/* §C3 : faction_capture_total → le « rot » qui mine l'efficacité noble */
@@ -205,33 +206,40 @@ static void culture_line_append(char *out, size_t n, const char *s){
     size_t z=strlen(out); if (z+1>=n) return;
     snprintf(out+z,n-z,"%s",s);
 }
+/* HOVER « L'HISTORIQUE d'une culture mêlée » (retour joueur 2026-07-11) :
+ *   Parenté
+ *   Zorvane Clanique
+ *   Gerclide Adaptatif
+ *   Karnesi Métallurgiste (substrat)
+ * On liste les PEUPLES FONDATEURS (les racines réelles, via culture_id_collect — dédup par
+ * id, l'arête SUBSTRAT propagée) plutôt que chaque génération intermédiaire de mélange (qui
+ * n'est qu'un LABEL transitoire, pas un peuple distinct) : c'est « de quels peuples ce peuple
+ * est FAIT ». Chaque ligne : ethnonyme + héritage d'origine · « (substrat) » = mémoire de
+ * ruines. Dédup par LIBELLÉ ; un peuple FONDATEUR (sans parents) n'a pas de parenté. */
 void econ_culture_identity_lineage(uint16_t id, char *out, size_t out_n){
     if (!out || out_n==0) return;
     out[0]='\0';
     if (!econ_culture_identity_valid(id)) return;
     const CultureIdentity *ci=&g_culture_id[id];
     if (!ci->parent_a || !ci->parent_b) return;
-    culture_line_append(out,out_n,tr(STR_CULTURE_PARENTS));
-    culture_line_append(out,out_n,econ_culture_identity_name(ci->parent_a));
-    culture_line_append(out,out_n," + ");
-    culture_line_append(out,out_n,econ_culture_identity_name(ci->parent_b));
-    CultureRoot roots[8]; int nr=0; memset(roots,0,sizeof roots);
-    culture_id_collect(id,false,roots,&nr,8,0);
-    bool any_sub=false; for(int i=0;i<nr;i++) if(roots[i].substrate) any_sub=true;
-    culture_line_append(out,out_n,"\n");
-    culture_line_append(out,out_n,tr(STR_CULTURE_RACINES));
-    bool first=true;
-    for(int i=0;i<nr;i++) if(!roots[i].substrate){
-        if(!first) culture_line_append(out,out_n,", ");
-        culture_line_append(out,out_n,econ_culture_identity_name(roots[i].id)); first=false;
-    }
-    if(any_sub){
+    CultureRoot roots[16]; int nr=0; memset(roots,0,sizeof roots);
+    culture_id_collect(id, false, roots, &nr, 16, 0);
+    if (nr==0) return;
+    culture_line_append(out,out_n,tr(STR_CULTURE_PARENTE));
+    char shown[12][64]; int ns=0;
+    for (int i=0;i<nr && ns<10;i++){
+        const char *nm=econ_culture_identity_name(roots[i].id);
+        char eth[40]; size_t j;                       /* l'ETHNONYME = le 1er mot (sans l'adjectif) */
+        for (j=0;nm[j] && nm[j]!=' ' && j+1<sizeof eth;j++) eth[j]=nm[j];
+        eth[j]='\0';
+        char line[64];
+        snprintf(line,sizeof line,"%s %s%s", eth, heritage_name(g_culture_id[roots[i].id].heritage),
+                 roots[i].substrate?" (substrat)":"");
+        bool dup=false; for (int k=0;k<ns;k++) if (strcmp(shown[k],line)==0){ dup=true; break; }
+        if (dup) continue;
+        snprintf(shown[ns++],sizeof shown[0],"%s",line);
         culture_line_append(out,out_n,"\n");
-        culture_line_append(out,out_n,tr(STR_CULTURE_SUBSTRAT)); first=true;
-        for(int i=0;i<nr;i++) if(roots[i].substrate){
-            if(!first) culture_line_append(out,out_n,", ");
-            culture_line_append(out,out_n,econ_culture_identity_name(roots[i].id)); first=false;
-        }
+        culture_line_append(out,out_n,line);
     }
 }
 void econ_culture_identity_save(FILE *f){
