@@ -228,18 +228,16 @@ func _research_tip(w, me: int) -> String:
 		parts.append("Métabolisation +%d%%" % mp)
 	return "Recherche +%d/mois\n%s\n(clic : l'arbre de technologie)" % [perm, " · ".join(parts)]
 
-## SÉPARATEUR DE BLOC (audit UI-2 : « regrouper en 4 blocs ») — barre verticale ÉPAISSE
-## et opaque, à distinguer du filet fin (alpha 0.22) que chaque _cell pose déjà entre
-## ses propres cellules internes. Pas de micro-label textuel : la barre ne fait que
-## 48 px de haut (Frame.TOPBAR_H, hors fichiers autorisés) — une 3e ligne de texte y
-## serait illisible (< 10 px), ce que l'audit lisibilité (point 1) proscrit justement ;
-## on prend l'alternative offerte par la mission (« OU séparateur simple »).
+## SÉPARATEUR DE BLOC — l'UNIQUE trait de la barre (retour joueur « c'est le bordel » :
+## fini le double empilement filet-par-cellule + barre-de-bloc). Un SEUL filet or fin,
+## inséré verticalement (marge haut/bas) : discret, « l'or = la structure », cohérent
+## avec l'arête or du bas de barre. Les cellules d'un même bloc ne sont, elles, séparées
+## que par l'espace.
 func _block_sep(px: float) -> float:
-	px += 8.0
-	VKit.fill(self, Rect2(px, 5.0, 1.0, H - 10.0), VKit.COL_EDGE)
-	VKit.fill(self, Rect2(px + 1.0, 15.0, 1.0, H - 30.0),
-		Color(VKit.COL_GOLD.r, VKit.COL_GOLD.g, VKit.COL_GOLD.b, 0.62))
-	return px + 2.0 + 14.0
+	px += 10.0
+	VKit.fill(self, Rect2(px, 13.0, 1.0, H - 26.0),
+		Color(VKit.COL_GOLD.r, VKit.COL_GOLD.g, VKit.COL_GOLD.b, 0.34))
+	return px + 1.0 + 12.0
 
 ## RETOUR JOUEUR UI-3.1 (2026-07-11, docs/UI_RECO_2026-07-10.md §3.1 « topbar
 ## simplifiée ») : la barre ne garde que ~8 PERMANENTS (trésor · revenu net annuel ·
@@ -297,9 +295,9 @@ func _cell(px: float, icon: String, rid_or_val, val: String, dtxt: String, dpos:
 	var cw := 26.0 + maxf(wv, wd) + 10.0
 	if tip != "":
 		_tips.append([Rect2(px - 4.0, 0.0, cw + 8.0, H), tip])
-	VKit.fill(self, Rect2(px + cw, 9.0, 1.0, H - 20.0),
-		Color(VKit.COL_GOLD.r, VKit.COL_GOLD.g, VKit.COL_GOLD.b, 0.22))
-	return px + cw + 10.0
+	# (plus de filet PAR cellule — retour joueur « le bordel » : dans un bloc, les cellules
+	#  ne sont séparées que par l'ESPACE ; SEUL _block_sep trace un trait, entre blocs.)
+	return px + cw + 14.0
 
 var _tips: Array = []   ## [[Rect2, texte], …] — reconstruit au _draw, hit-testé au survol
 
