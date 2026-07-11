@@ -2016,7 +2016,7 @@ func _draw_iso(w, mv: Node2D) -> void:
 			var inv := vt.affine_inverse()
 			var s0: Vector2 = inv * Vector2.ZERO
 			var s1: Vector2 = inv * vp
-			var page := Color(24.0 / 255.0, 19.0 / 255.0, 14.0 / 255.0, 252.0 / 255.0)
+			var page := Color(24.0 / 255.0, 19.0 / 255.0, 14.0 / 255.0, 1.0)   # marge hors-monde PLEINEMENT opaque (2026-07-11)
 			if fp0.y > s0.y:
 				draw_rect(Rect2(s0, Vector2(s1.x - s0.x, fp0.y - s0.y)), page, true)
 			if fp1.y < s1.y:

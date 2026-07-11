@@ -287,7 +287,7 @@ Ref<Image> ScpsWorld::fog_image() {
          * qui suit les fronts carrés de la BFS (blocs crénelés sur la mer, capture joueur
          * 2026-07-09). BFS bornée depuis le visible → l'alpha monte en RAMPE sur FOG_RAMP
          * cellules (halo doux, esprit parchemin). La CONNAISSANCE reste celle du moteur. */
-        const int FOG_RAMP = 6;
+        const int FOG_RAMP = 4;   /* front RESSERRÉ (6→4) : bord doux plus étroit (2026-07-11) */
         std::vector<uint8_t> dist((size_t)w * h, 255);   /* 255 = loin (opaque plein) */
         std::vector<int32_t> q((size_t)w * h);
         int64_t qh = 0, qt = 0;
@@ -311,10 +311,15 @@ Ref<Image> ScpsWorld::fog_image() {
         for (int64_t i = 0; i < (int64_t)w * h; i++) {
             if (vis[(size_t)i]) continue;              /* visible : transparent, rien à peindre */
             int d = dist[(size_t)i];
-            /* cœur à 252/255 (retour joueur : « ce n'est pas un brouillard de guerre » —
-             * à 236 le lavis politique et les bandes d'empire transparaissaient encore) */
-            uint8_t a = (d >= FOG_RAMP || d == 255) ? 252
-                      : (uint8_t)(252.0f * (0.30f + 0.70f * (float)d / (float)FOG_RAMP));
+            /* cœur PLEINEMENT OPAQUE 255 (retour joueur 2026-07-11 : « dès qu'on voit à
+             * travers, ce n'est pas un brouillard de guerre — fais DISPARAÎTRE ce qu'il y a
+             * dessous ! ») : à 252 le lavis politique/les bandes transparaissaient ENCORE
+             * (~1 %). Le voile est dessiné EN DERNIER (overlay:2028), donc à 255 il masque
+             * TOUT (terrain, lavis, frontières) hors du connu. La rampe de front (bord doux
+             * anti-crénelage BFS) est RESSERRÉE (plancher relevé 0.62, RAMP 4) → transition
+             * fine et déjà très opaque, plus de « fenêtre » sur la carte au front. */
+            uint8_t a = (d >= FOG_RAMP || d == 255) ? 255
+                      : (uint8_t)(255.0f * (0.62f + 0.38f * (float)d / (float)FOG_RAMP));
             dst[i*4+0] = 24; dst[i*4+1] = 19; dst[i*4+2] = 14;   /* encre sépia sombre (#18130e) */
             dst[i*4+3] = a;                                      /* opaque au cœur, rampe au front */
         }
