@@ -161,43 +161,50 @@ func _draw() -> void:
 		VKit.box(self, Rect2(tx2, ty2, tw, 18), VKit.COL_GOLD)
 		VKit.text(self, Vector2(tx2 + 7, ty2 + 2), VKit.COL_PARCH, _hover_text, VKit.FS_SMALL)
 
-# ── ONGLET PEUPLES : camemberts culture/religion + classes + agitation (hover) ──
+# ── ONGLET PEUPLES : DEUX COLONNES (LOT UI 2.5, 2026-07-11) — aperçu (médaillon de
+#    culture + légende + classes + modificateurs) à GAUCHE, actions (foi + agitation
+#    + réincorporation) à DROITE. Les grands camemberts culture/religion (76px de
+#    diamètre chacun) deviennent des MÉDAILLONS compacts. ──
 func _draw_peuples(x: float, y: float, w, info: Dictionary) -> void:
 	var groups: Array = w.province_groups(_pid)
-	var cy := y + 44.0
 	if groups.is_empty():
 		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "province inhabitée", VKit.FS_SMALL)
 		return
-	# camembert CULTURE (une part par groupe) + camembert RELIGION (dédupliqué)
-	var cper := []
-	var ccol := []
-	for i in range(groups.size()):
-		cper.append(groups[i]["percent"])
-		ccol.append(VKit.SLICE_PAL[i % 8])
-	var rnames := []
-	var rper := []
-	var rcol := []
-	for g in groups:
-		var idx: int = rnames.find(g["religion"])
-		if idx < 0:
-			rnames.append(g["religion"]); rper.append(g["percent"]); rcol.append(VKit.SLICE_PAL[(rnames.size() - 1) % 8])
-		else:
-			rper[idx] += g["percent"]
-	var pr := 38.0
-	VKit.pie(self, Vector2(x + pr + 10, cy), pr, cper, ccol)
-	VKit.pie(self, Vector2(x + 3 * pr + 44, cy), pr, rper, rcol)
-	VKit.text(self, Vector2(x + 2, cy + pr + 6), VKit.COL_DIM, "Culture", VKit.FS_SMALL)
-	VKit.text(self, Vector2(x + 2 * pr + 36, cy + pr + 6), VKit.COL_DIM, "Religion", VKit.FS_SMALL)
-	# légende des cultures (nom + part) à droite des camemberts
-	var lx := x + 4 * pr + 80
-	var ly := cy - pr - 4.0
-	for i in range(mini(groups.size(), 6)):
-		VKit.fill(self, Rect2(lx, ly + 3, 9, 9), VKit.SLICE_PAL[i % 8])
-		VKit.text(self, Vector2(lx + 15, ly), VKit.COL_PARCH,
-			"%s %d%% · %s" % [String(groups[i]["culture"]), int(groups[i]["percent"]), String(groups[i]["etat"])], VKit.FS_SMALL)
-		ly += 16
+	var col_gap := 24.0
+	var avail := PW - 2.0 * x
+	var two_col := avail >= 560.0   # « quand le contenu le permet » — sinon empilé (colonne unique)
+	var leftW: float = floor((avail - col_gap) * 0.56) if two_col else avail
+	var rightW: float = (avail - col_gap - leftW) if two_col else avail
+	var rx: float = (x + leftW + col_gap) if two_col else x
 
-	# classes (barre empilée) + ESCLAVES (4e segment, si présents)
+	var ly := _draw_peuples_apercu(x, y, leftW, w, info, groups)
+	var ry := y if two_col else (ly + 10.0)
+	_draw_peuples_actions(rx, ry, rightW, w, info)
+
+# ── colonne GAUCHE : médaillon de CULTURE (compact) + légende + classes + modif. ──
+func _draw_peuples_apercu(x: float, y: float, colw: float, w, info: Dictionary, groups: Array) -> float:
+	# médaillon de culture : la DOMINANTE en pastille+nom+% (remplace le camembert
+	# 76px) ; la légende (déjà TEXTE, déjà compacte) détaille les autres groupes.
+	var dom_i := 0
+	var dom_pct := -1
+	for i in range(groups.size()):
+		var p := int(groups[i]["percent"])
+		if p > dom_pct:
+			dom_pct = p; dom_i = i
+	VKit.fill(self, Rect2(x + 2, y + 2, 18, 18), VKit.SLICE_PAL[dom_i % 8])
+	VKit.box(self, Rect2(x + 2, y + 2, 18, 18), VKit.COL_GOLD)
+	VKit.text(self, Vector2(x + 26, y), VKit.COL_GOLD, "Culture", VKit.FS_SMALL)
+	VKit.text(self, Vector2(x + 26, y + 14), VKit.COL_PARCH,
+		"%s (%d%%)" % [String(groups[dom_i]["culture"]), dom_pct], VKit.FS_SMALL)
+	y += 36
+	for i in range(mini(groups.size(), 6)):
+		VKit.fill(self, Rect2(x + 4, y + 3, 9, 9), VKit.SLICE_PAL[i % 8])
+		VKit.text(self, Vector2(x + 18, y), VKit.COL_PARCH,
+			"%s %d%% · %s" % [String(groups[i]["culture"]), int(groups[i]["percent"]), String(groups[i]["etat"])], VKit.FS_SMALL)
+		y += 15
+	y += 8
+
+	# classes (barre empilée, largeur de COLONNE) + ESCLAVES (4e segment, si présents)
 	var cls: Dictionary = w.province_classes(_pid)
 	var slaves: int = int(w.province_slave_count(_pid))
 	var ccnt := [int(cls["laboureurs"]), int(cls["artisans"]), int(cls["noblesse"])]
@@ -208,77 +215,103 @@ func _draw_peuples(x: float, y: float, w, info: Dictionary) -> void:
 		cc.append(Color(0.28, 0.26, 0.24))
 		cnames.append("Esclaves")
 	var tot: float = maxf(1.0, ccnt[0] + ccnt[1] + ccnt[2] + (slaves if slaves > 0 else 0))
-	var py := cy + pr + 28.0
-	var rw := PW - 32.0
+	var rw := colw
 	var acc := 0.0
 	var nseg := ccnt.size()
 	for i in range(nseg):
 		var segw: float = (rw - acc) if i == nseg - 1 else float(ccnt[i]) / tot * rw
 		segw = maxf(0.0, segw)
-		VKit.fill(self, Rect2(x + acc, py, segw, 14), cc[i])
+		VKit.fill(self, Rect2(x + acc, y, segw, 14), cc[i])
 		acc += segw
-	VKit.box(self, Rect2(x, py, rw, 14), VKit.COL_DIM)
-	py += 19
+	VKit.box(self, Rect2(x, y, rw, 14), VKit.COL_DIM)
+	y += 19
+	# légende des classes — EMPILÉE (une colonne de ~300px n'a pas la place des
+	# 4×200px côte à côte de l'ancienne mise en page pleine largeur).
 	for i in range(nseg):
-		VKit.fill(self, Rect2(x + i * 200.0, py + 3, 9, 9), cc[i])
+		VKit.fill(self, Rect2(x + 2, y + 3, 9, 9), cc[i])
 		var lbl: String = String(cnames[i])
 		if i == 3:
 			lbl = "%s (%d%%)" % [cnames[i], int(round(100.0 * float(ccnt[i]) / tot))]
-		VKit.text(self, Vector2(x + i * 200.0 + 15, py), VKit.COL_PARCH, "%s %s" % [lbl, _grp(ccnt[i])], VKit.FS_SMALL)
+		VKit.text(self, Vector2(x + 16, y), VKit.COL_PARCH, "%s %s" % [lbl, _grp(ccnt[i])], VKit.FS_SMALL)
+		y += 15
 
-	# ── FAVEURS & FLÉAUX (ScpsProvInfo.mods — déjà exposé, jamais affiché côté Godot) ──
+	# ── FAVEURS & FLÉAUX (ScpsProvInfo.mods) ──
 	var mods: Array = info.get("mods", [])
 	if not mods.is_empty():
-		py += 14
-		VKit.text(self, Vector2(x, py), VKit.COL_GOLD, "MODIFICATEURS", VKit.FS_SMALL)
-		py += 16
+		y += 8
+		VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "MODIFICATEURS", VKit.FS_SMALL)
+		y += 16
 		for m in mods:
 			var faveur := bool(m.get("faveur", false))
 			var mcol2 := VKit.sense(0.85) if faveur else VKit.sense(0.10)   # vert faveur / rouge fléau
 			var mark2 := "+" if faveur else "−"
-			VKit.text(self, Vector2(x + 8, py), mcol2, mark2, VKit.FS_SMALL)
-			VKit.text(self, Vector2(x + 22, py), VKit.COL_PARCH, String(m.get("nom", "")), VKit.FS_SMALL)
+			VKit.text(self, Vector2(x + 8, y), mcol2, mark2, VKit.FS_SMALL)
+			VKit.text(self, Vector2(x + 22, y), VKit.COL_PARCH, String(m.get("nom", "")), VKit.FS_SMALL)
 			var heff := String(m.get("effet", ""))
 			if heff != "":
-				_hover_zones.append({"rect": Rect2(x, py - 1, PW - 32.0, 15.0), "text": heff})
-			py += 15
+				_hover_zones.append({"rect": Rect2(x, y - 1, colw, 15.0), "text": heff})
+			y += 15
+	return y
+
+# ── colonne DROITE : médaillon de FOI (compact, absence NOMMÉE) + agitation + la
+#    réincorporation (l'ACTION du joueur — LOT G). ──
+func _draw_peuples_actions(x: float, y: float, colw: float, w, info: Dictionary) -> float:
+	# médaillon de RELIGION : l'ÉTABLI (module scps_religion, P1-P8 — le monde naît
+	# ATHÉE, cf. CLAUDE.md « FONDATION PAR ÉDIFICE ») — symbole (pastille) + mot ;
+	# une ABSENCE (aucune foi encore fondée dans cette région) est NOMMÉE, jamais un
+	# disque vide. Distinct de la « vision du monde » par groupe (légende de gauche).
+	var region: int = w.province_region(_pid)
+	var owner := int(info.get("owner", -2))
+	var C_FAITH := Color(0.55, 0.42, 0.78)   # même violet que religion_panel.gd (cohérence de code couleur)
+	var rid := (int(w.religion_of_region(region)) if w.has_method("religion_of_region") else -1)
+	VKit.fill(self, Rect2(x + 2, y + 2, 18, 18), C_FAITH if rid >= 0 else VKit.COL_PANEL2)
+	VKit.box(self, Rect2(x + 2, y + 2, 18, 18), C_FAITH)
+	VKit.text(self, Vector2(x + 26, y), VKit.COL_GOLD, "Religion", VKit.FS_SMALL)
+	if rid >= 0 and owner >= 0 and w.has_method("religion_name"):
+		VKit.text(self, Vector2(x + 26, y + 14), VKit.COL_PARCH, String(w.religion_name(owner)), VKit.FS_SMALL)
+	else:
+		VKit.text(self, Vector2(x + 26, y + 14), VKit.COL_DIM, "Aucune foi établie", VKit.FS_SMALL)
+	y += 40
 
 	# ── AGITATION : la jauge + les MODIFICATEURS (nom · apport signé · résorption/an) ──
-	py += 34
 	var ag: Dictionary = w.province_agitation(_pid)
 	var val := int(ag.get("value", 0))
 	var acol := VKit.COL_DIM if val < 35 else (VKit.sense(0.45) if val < 70 else VKit.sense(0.10))
-	UIKit.draw_icon(self, "menu_diplomacy", Vector2(x, py - 1), 16)
-	VKit.text(self, Vector2(x + 22, py), VKit.COL_PARCH, "Agitation", VKit.FS_SMALL)
-	UIKit.bar(self, Rect2(x + 100, py, 150, 14), val)
-	VKit.text(self, Vector2(x + 258, py), acol, "%d / 100" % val, VKit.FS_SMALL)
-	py += 22
+	UIKit.draw_icon(self, "menu_diplomacy", Vector2(x, y - 1), 16)
+	VKit.text(self, Vector2(x + 22, y), VKit.COL_PARCH, "Agitation", VKit.FS_SMALL)
+	y += 17
+	UIKit.bar(self, Rect2(x, y, colw - 40.0, 14), val)
+	VKit.text(self, Vector2(x + colw - 34.0, y), acol, "%d/100" % val, VKit.FS_SMALL)
+	y += 22
 	var causes: Array = ag.get("causes", [])
 	if causes.is_empty():
-		VKit.text(self, Vector2(x + 16, py), VKit.COL_DIM, "province paisible", VKit.FS_SMALL)
+		VKit.text(self, Vector2(x + 8, y), VKit.COL_DIM, "province paisible", VKit.FS_SMALL)
+		y += 16
 	else:
-		VKit.text(self, Vector2(x + 16, py), VKit.COL_DIM, "Modificateurs", VKit.FS_SMALL)
-		py += 16
+		VKit.text(self, Vector2(x + 8, y), VKit.COL_DIM, "Modificateurs", VKit.FS_SMALL)
+		y += 16
 		for c in causes:
 			var d := int(c["delta"])
 			var dec := int(c.get("decay", 0))
 			var mcol := VKit.sense(0.16) if d > 0 else VKit.sense(0.78)   # soulève rouge / apaise vert
-			VKit.text(self, Vector2(x + 24, py), VKit.COL_PARCH, String(c["cause"]), VKit.FS_SMALL)
-			VKit.text(self, Vector2(x + 200, py), mcol, "%+d" % d, VKit.FS_SMALL)
+			VKit.text(self, Vector2(x + 12, y), VKit.COL_PARCH, String(c["cause"]), VKit.FS_SMALL)
+			var dlab := "%+d" % d
+			VKit.text(self, Vector2(x + colw - 68.0, y), mcol, dlab, VKit.FS_SMALL)
 			if dec > 0:
-				VKit.text(self, Vector2(x + 250, py), VKit.COL_DIM, "−%d/an" % dec, VKit.FS_SMALL)
-			py += 16
+				VKit.text(self, Vector2(x + colw - 34.0, y), VKit.COL_DIM, "−%d/an" % dec, VKit.FS_SMALL)
+			y += 16
 
 	# ── RÉINCORPORATION DE POP (LOT G) — read-only si la province n'est pas au joueur ──
-	var mine := (int(info.get("owner", -2)) == int(w.player()))
-	if mine and py < PH - 96:
-		py += 8
-		VKit.fill(self, Rect2(x, py, PW - 32.0, 1), VKit.COL_EDGE)
-		py += 10
-		_draw_reincorp(x, py, w)
+	var mine := (owner == int(w.player()))
+	if mine and y < PH - 60.0:
+		y += 8
+		VKit.fill(self, Rect2(x, y, colw, 1), VKit.COL_EDGE)
+		y += 10
+		y = _draw_reincorp(x, y, w, colw)
 	else:
 		_reinc_dd_a.visible = false
 		_reinc_dd_b.visible = false
+	return y
 
 # ── RÉINCORPORATION DE POP : sélecteur de classe + deux menus déroulants (région
 #    A source / B destination, mes régions) + quantité + « Déplacer ». ──
@@ -296,7 +329,12 @@ func _refresh_reinc_owned(w) -> void:
 		seen[region] = true
 		_reinc_owned.append({"region": region, "nom": String(pi.get("nom", "région %d" % region))})
 
-func _draw_reincorp(x: float, y: float, w) -> void:
+## réincorporation, LOT UI 2.5 : menus EMPILÉS (De : / Vers :, plus de côte à côte —
+## une colonne de ~300px n'a pas la place de deux menus 190px + flèche) ; le bouton
+## « Déplacer » indisponible affiche sa raison EXACTE au survol — miroir du SEUL gate
+## que le drain (CMD_POP_TRANSFER, scps_sim.c) peut encore opposer une fois régions
+## à soi + quantité>0 + classe valide déjà garanties par l'UI : source == destination.
+func _draw_reincorp(x: float, y: float, w, colw: float) -> float:
 	_reinc_btns.clear()
 	_refresh_reinc_owned(w)
 	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Réincorporation", VKit.FS_SMALL)
@@ -305,21 +343,24 @@ func _draw_reincorp(x: float, y: float, w) -> void:
 		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "il faut au moins DEUX régions à soi", VKit.FS_SMALL)
 		_reinc_dd_a.visible = false
 		_reinc_dd_b.visible = false
-		return
+		return y + 16.0
 	_reinc_a = clampi(_reinc_a, 0, _reinc_owned.size() - 1)
 	_reinc_b = clampi(_reinc_b, 0, _reinc_owned.size() - 1)
 	var names := []
 	for r in _reinc_owned:
 		names.append(String(r["nom"]))
-	# menus déroulants A (source) / B (destination) — positionnés en enfants (dessin par-dessus)
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "De :", VKit.FS_SMALL)
+	y += 14
 	_reinc_dd_a.setup(names, _reinc_a)
 	_reinc_dd_a.position = Vector2(x, y)
 	_reinc_dd_a.visible = true
+	y += 28
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "Vers :", VKit.FS_SMALL)
+	y += 14
 	_reinc_dd_b.setup(names, _reinc_b)
-	_reinc_dd_b.position = Vector2(x + 220, y)
+	_reinc_dd_b.position = Vector2(x, y)
 	_reinc_dd_b.visible = true
-	VKit.text(self, Vector2(x + 200, y + 4), VKit.COL_DIM, "→", VKit.FS_SMALL)
-	y += 30
+	y += 28
 	# classe ciblée (± cycle)
 	var klass_name: String = REINCORP_CLASSES[_reinc_klass]
 	var cx := _reinc_btn(x, y, "◂", "klass_prev")
@@ -339,7 +380,7 @@ func _draw_reincorp(x: float, y: float, w) -> void:
 	var cost_txt := ("aucune — main servile" if _reinc_klass == 3 else "coercition sur %s" % a_nom)
 	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "coût : %s" % cost_txt, VKit.FS_SMALL)
 	y += 22
-	# bouton Déplacer
+	# bouton Déplacer — INTERDIT (grisé + raison) quand source == destination.
 	var same := (_reinc_a == _reinc_b)
 	var br := Rect2(x, y, 110, 22)
 	VKit.fill(self, br, VKit.COL_PANEL2 if not same else VKit.COL_PANEL)
@@ -347,8 +388,14 @@ func _draw_reincorp(x: float, y: float, w) -> void:
 	VKit.text(self, Vector2(br.position.x + 12, br.position.y + 4), VKit.COL_PARCH if not same else VKit.COL_DIM, "Déplacer", VKit.FS_SMALL)
 	if not same:
 		_reinc_btns.append({"rect": br, "act": "move"})
+	else:
+		_hover_zones.append({"rect": br,
+			"text": "Source et destination identiques — choisissez deux régions différentes (le moteur refuse un transfert région → elle-même)."})
+	y += 22
 	if _reinc_flash != "":
-		VKit.text(self, Vector2(x + 122, y + 4), (VKit.sense(0.85) if _reinc_flash_ok else VKit.sense(0.10)), _reinc_flash, VKit.FS_SMALL)
+		VKit.text(self, Vector2(x, y), (VKit.sense(0.85) if _reinc_flash_ok else VKit.sense(0.10)), _reinc_flash, VKit.FS_SMALL)
+		y += 16
+	return y
 
 func _reinc_btn(bx: float, by: float, label: String, act: String) -> float:
 	var bw := VKit.text_w(label, VKit.FS_SMALL) + 12.0

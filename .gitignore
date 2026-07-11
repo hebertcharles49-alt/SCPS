@@ -138,3 +138,4 @@ __pycache__/
 sweep_*/
 chronicle_pop.exe
 a-*.d
+gigasweep_*.log

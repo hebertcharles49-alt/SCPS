@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
-export TMP=/tmp TEMP=/tmp PATH="/d/MSYS2/mingw64/bin:$PATH"
+export TMP=/tmp TEMP=/tmp TMPDIR=/tmp PROCESSOR_ARCHITECTURE=AMD64
 cd /c/Users/Charl/Desktop/SCPS-main
-gcc -fsyntax-only -std=c99 -Wall -Wextra -Ithird_party scps/scps_api.c scps/scps_decrees.c && echo SYNTAX_OK
+make golden-update 2>&1 | tail -1
+make determinism 2>&1 | grep -iE "STABLE|DIVERG" | head -1
+cd godot && scons platform=windows use_mingw=yes target=template_debug -j4 2>&1 | tail -1 && scons platform=windows use_mingw=yes target=template_release -j4 2>&1 | tail -1

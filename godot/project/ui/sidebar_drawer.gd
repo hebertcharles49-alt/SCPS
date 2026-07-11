@@ -60,6 +60,7 @@ func show_tab(i: int) -> void:
 	_tab = i
 	_hover_text = ""
 	_servile_manumit_armed = false   # jamais une confirmation qui traverse une fermeture d'onglet
+	_marche_hover_res = -1           # le survol ne survit pas à un changement d'onglet (la sélection, si)
 	visible = i >= 0
 	queue_redraw()
 
@@ -257,15 +258,82 @@ func _draw_eco(x: float, y: float, me: int) -> float:
 		y += 15
 	return y
 
-# ── MARCHÉ (sb_panel_marche, table des prix) : [A]cheter/[V]endre 10 sur la
-#    région-capitale (verbes : player_market_buy/_sell, journalisés) ──────────
-var _marche_btns := []   # [{rect, act, res_id}] boutons Acheter/Vendre
+# ── MARCHÉ (sb_panel_marche, table des prix) : Acheter/Vendre MARCHE_QTY sur la
+#    région-capitale (verbes : player_market_buy/_sell, journalisés) — LOT UI 2.3
+#    (2026-07-11) : le nom d'une ressource ne s'affiche QUE sur la ligne survolée/
+#    sélectionnée (densité — les autres n'ont que l'icône, le nom complet reste dans
+#    l'infobulle native) ; boutons PLEINS « Acheter N »/« Vendre N » (≥32px, la
+#    QUANTITÉ est SUR le bouton — avant validation) ; prix / état du marché / actions
+#    sur des LIGNES DISTINCTES (séparation visuelle) ; pénurie/tendu/sain/engorgé =
+#    couleur + MOT (déjà un mot moteur, désormais coloré par bande — jamais la couleur
+#    seule) ; TRI par prix/pénurie/catégorie (3 chips, état persistant PAR SESSION —
+#    variable d'instance, jamais écrit sur disque). ──────────────────────────────
+var _marche_btns := []       # [{rect, act, res_id}] boutons Acheter/Vendre
+var _marche_rows := []       # [{rect, res_id}] la ligne ENTIÈRE (survol + sélection)
+var _marche_sort_btns := []  # [{rect, key}] les 3 chips de tri
 var _marche_flash := ""
 var _marche_flash_ok := true
+var _marche_hover_res := -1     # ligne sous la SOURIS (motion) — remis à -1 au changement d'onglet
+var _marche_selected_res := -1  # dernière ligne CLIQUÉE — persiste (comme le tri)
+var _marche_sort_key := ""      # "" (ordre moteur) · "prix" · "penurie" · "categorie"
+var _marche_sort_dir := 1       # 1 = croissant · -1 = décroissant (reclic sur le chip actif)
 const MARCHE_QTY := 10
+## RES_PROD_FIRST (scps/scps_types.h : « tout ce qui est < RES_PROD_FIRST est une
+## ressource brute ») — la frontière brute/manufacturée du MOTEUR, pas une catégorie
+## inventée côté UI. Comptée depuis RES_NONE=0 jusqu'à RES_STONE inclus (26 entrées).
+const MARCHE_CAT_SPLIT := 26
+
+func _marche_category_word(res_id: int) -> String:
+	return "brute" if res_id < MARCHE_CAT_SPLIT else "manufacturée"
+
+## texte tronqué à une largeur MAX (règle 1.2 « ENFERMER les textes ») — le nom
+## COMPLET reste toujours dans l'infobulle native ; l'ellipse est le dernier recours.
+func _fit_text(s: String, max_w: float, fs: int) -> String:
+	if VKit.text_w(s, fs) <= max_w:
+		return s
+	var out := s
+	while out.length() > 1 and VKit.text_w(out + "…", fs) > max_w:
+		out = out.substr(0, out.length() - 1)
+	return out + "…"
+
+## tri STABLE (départage par res_id) — AFFICHAGE seulement ; les verbes achat/vente
+## restent adressés par res_id, indépendants de l'ordre montré.
+func _marche_sorted(me: int) -> Array:
+	var arr: Array = Sim.world.country_stocks(me).duplicate()
+	if _marche_sort_key == "":
+		return arr
+	var key := _marche_sort_key
+	var dir := _marche_sort_dir
+	var cat_split := MARCHE_CAT_SPLIT
+	arr.sort_custom(func(a, b):
+		var va := 0.0
+		var vb := 0.0
+		match key:
+			"prix":
+				va = float(a["price"]); vb = float(b["price"])
+			"penurie":
+				va = float(a["market_band"]); vb = float(b["market_band"])
+			"categorie":
+				va = 0.0 if int(a["res_id"]) < cat_split else 1.0
+				vb = 0.0 if int(b["res_id"]) < cat_split else 1.0
+		if va == vb:
+			return int(a["res_id"]) < int(b["res_id"])
+		return (va < vb) if dir > 0 else (va > vb))
+	return arr
+
+func _marche_sort_act(key: String) -> void:
+	if _marche_sort_key == key:
+		_marche_sort_dir = -_marche_sort_dir
+	else:
+		_marche_sort_key = key
+		_marche_sort_dir = 1
+	Sound.play("ui_click")
+	queue_redraw()
 
 func _draw_marche(x: float, y: float, me: int) -> float:
 	_marche_btns.clear()
+	_marche_rows.clear()
+	_marche_sort_btns.clear()
 	var cap_region := -1
 	var cap_prov: int = Sim.world.country_capital_province(me)
 	if cap_prov >= 0:
@@ -283,25 +351,88 @@ func _draw_marche(x: float, y: float, me: int) -> float:
 	if cp_bonus > 0:
 		cp_tip += "\nDont +%d %% apportés par vos édifices de commerce." % cp_bonus
 	_hover_zones.append({"rect": Rect2(x - 2, y - 3, 264, 16), "text": cp_tip})
-	y += 18
-	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "bien          prix(or)   marché", VKit.FS_SMALL)
+	y += 20
+
+	# TRI (3 chips d'en-tête, état persistant PAR SESSION) — clic = trier, reclic sur
+	# le chip actif = inverser le sens (▲/▼).
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "Trier :", VKit.FS_SMALL)
+	var scx := x + VKit.text_w("Trier :", VKit.FS_SMALL) + 8.0
+	for it in [["prix", "Prix"], ["penurie", "Pénurie"], ["categorie", "Catégorie"]]:
+		var key: String = it[0]
+		var lbl: String = it[1]
+		var active := (_marche_sort_key == key)
+		var disp := (lbl + (" ▲" if _marche_sort_dir > 0 else " ▼")) if active else lbl
+		var tw := VKit.text_w(disp, VKit.FS_SMALL) + 12.0
+		var r := Rect2(scx, y - 2, tw, 17)
+		VKit.fill(self, r, VKit.COL_GOLD if active else VKit.COL_PANEL2)
+		VKit.box(self, r, VKit.COL_EDGE)
+		VKit.text(self, Vector2(scx + 6, y - 1), VKit.COL_PANEL if active else VKit.COL_PARCH, disp, VKit.FS_SMALL)
+		_marche_sort_btns.append({"rect": r, "key": key})
+		scx += tw + 6.0
+	y += 22
+
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "bien              prix          état                actions", VKit.FS_SMALL)
 	y += 16
-	for st in Sim.world.country_stocks(me):
-		var col := _marche_col(int(st["market_band"]))
+	if cap_region < 0:
+		VKit.text(self, Vector2(x, y), VKit.sense(0.30), "Aucune capitale connue — achats/ventes indisponibles.", VKit.FS_SMALL)
+		y += 16
+
+	for st in _marche_sorted(me):
+		var row_y0 := y
+		var band := int(st["market_band"])
+		var col := _marche_col(band)
 		var res_id := int(st["res_id"])
-		_res_cell(x, y, res_id, String(st["name"]), col)
-		VKit.text(self, Vector2(x + 110, y), col, "%.2f" % float(st["price"]), VKit.FS_SMALL)
-		VKit.text(self, Vector2(x + 178, y), VKit.COL_DIM, String(st["marche"]), VKit.FS_SMALL)
-		if cap_region >= 0:
-			var ra := Rect2(x + 240, y - 2, 18, 16)
-			VKit.fill(self, ra, VKit.COL_PANEL2); VKit.box(self, ra, VKit.sense(0.80))
-			VKit.text(self, Vector2(ra.position.x + 4, y - 1), VKit.sense(0.80), "A", VKit.FS_SMALL)
-			_marche_btns.append({"rect": ra, "act": "buy", "res_id": res_id})
-			var rv := Rect2(x + 262, y - 2, 18, 16)
-			VKit.fill(self, rv, VKit.COL_PANEL2); VKit.box(self, rv, VKit.sense(0.12))
-			VKit.text(self, Vector2(rv.position.x + 4, y - 1), VKit.sense(0.12), "V", VKit.FS_SMALL)
-			_marche_btns.append({"rect": rv, "act": "sell", "res_id": res_id})
+		var name := String(st["name"])
+		var is_active := (res_id == _marche_hover_res) or (res_id == _marche_selected_res)
+		var spr := UIKit.resource_sprite(res_id, name)
+		if spr != null:
+			draw_texture_rect(spr, Rect2(x, y - 3, 18, 18), false)
+			if is_active:
+				VKit.text(self, Vector2(x + 22, y), col, _fit_text(name, 108.0, VKit.FS_SMALL), VKit.FS_SMALL)
+		else:
+			VKit.text(self, Vector2(x, y), col, _fit_text(name, 122.0, VKit.FS_SMALL), VKit.FS_SMALL)
+		# prix — sa propre position, sa propre couleur (bande)
+		VKit.text(self, Vector2(x + 140, y), col, "%.2f or" % float(st["price"]), VKit.FS_SMALL)
+		# état du marché — SÉPARÉ du prix (gap + colonne dédiée) ; couleur + MOT (jamais
+		# la couleur seule — le mot vient déjà du moteur, ex. « pénurie »/« sain »).
+		VKit.text(self, Vector2(x + 212, y), col, String(st["marche"]), VKit.FS_SMALL)
 		y += 18
+
+		# actions — ligne DISTINCTE (séparée de prix/état) : boutons PLEINS ≥32px de
+		# large ; la QUANTITÉ (MARCHE_QTY) figure SUR le bouton, avant toute validation.
+		var can_trade := cap_region >= 0
+		var ax := x + 8.0
+		var lab_b := "Acheter %d" % MARCHE_QTY
+		var bw := maxf(32.0, VKit.text_w(lab_b, VKit.FS_SMALL) + 14.0)
+		var rb := Rect2(ax, y, bw, 20.0)
+		VKit.fill(self, rb, VKit.COL_PANEL2)
+		VKit.box(self, rb, VKit.sense(0.80) if can_trade else VKit.COL_EDGE)
+		VKit.text(self, Vector2(rb.position.x + 7, y + 2), VKit.sense(0.80) if can_trade else VKit.COL_DIM, lab_b, VKit.FS_SMALL)
+		if can_trade:
+			_marche_btns.append({"rect": rb, "act": "buy", "res_id": res_id})
+		else:
+			_hover_zones.append({"rect": rb, "text": "Aucune capitale connue — achat indisponible."})
+		var lab_s := "Vendre %d" % MARCHE_QTY
+		var sw := maxf(32.0, VKit.text_w(lab_s, VKit.FS_SMALL) + 14.0)
+		var rs := Rect2(ax + bw + 8.0, y, sw, 20.0)
+		VKit.fill(self, rs, VKit.COL_PANEL2)
+		VKit.box(self, rs, VKit.sense(0.12) if can_trade else VKit.COL_EDGE)
+		VKit.text(self, Vector2(rs.position.x + 7, y + 2), VKit.sense(0.12) if can_trade else VKit.COL_DIM, lab_s, VKit.FS_SMALL)
+		if can_trade:
+			_marche_btns.append({"rect": rs, "act": "sell", "res_id": res_id})
+		else:
+			_hover_zones.append({"rect": rs, "text": "Aucune capitale connue — vente indisponible."})
+		y += 24
+
+		var row_rect := Rect2(x - 4.0, row_y0 - 3.0, DW - 2.0 * x + 8.0, y - row_y0 - 2.0)
+		_marche_rows.append({"rect": row_rect, "res_id": res_id})
+		var tip := "%s — %s — %s en stock (%.2f or, %s)" % [
+			name, _marche_category_word(res_id), _grp(int(st["stock"])), float(st["price"]), String(st["marche"])]
+		_hover_zones.append({"rect": row_rect, "text": tip})
+		y += 3
+		VKit.fill(self, Rect2(x, y, DW - 2.0 * x, 1), VKit.COL_EDGE)
+		y += 5
+
 	if _marche_flash != "":
 		y += 4
 		VKit.text(self, Vector2(x, y),
@@ -1078,15 +1209,40 @@ const DACT_LABEL := {
 
 func _draw_diplo(x: float, y: float, me: int) -> float:
 	_diplo_btns.clear()
+	# BROUILLARD (retour joueur : « vision diplomatique complète alors qu'on a un fog ») :
+	# un pays JAMAIS DÉCOUVERT n'existe pas dans la liste — filtré D'ABORD pour savoir
+	# si la liste est VRAIMENT vide (LOT UI 2.4 : état vide explicatif).
+	var rels: Array = []
+	for rel in Sim.world.country_relations(me):
+		var target0: int = int(rel["country"])
+		if Sim.world.has_method("country_known") and int(Sim.world.country_known(target0)) == 0:
+			continue
+		rels.append(rel)
+	if rels.is_empty():
+		VKit.text(self, Vector2(x, y), VKit.COL_PARCH, "Aucun pays étranger connu.", VKit.FS_SMALL)
+		y += 18
+		y += VKit.text_wrapped(self, Vector2(x, y), VKit.COL_DIM,
+			"Explorez la carte, ouvrez une route ou attendez qu'un contact soit établi.",
+			DW - 2.0 * x, 3, VKit.FS_SMALL)
+		y += 8
+		VKit.fill(self, Rect2(x, y, DW - 2.0 * x, 1), VKit.COL_EDGE)
+		y += 10
+		VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Moyens existants", VKit.FS_SMALL)
+		y += 18
+		for line in [
+			"coloniser une région voisine étend vos frontières — et le rayon de découverte avec elles",
+			"une route commerciale approfondit le contact avec un partenaire déjà croisé",
+			"la découverte est cumulative, sur un rayon de 2 régions autour des vôtres",
+		]:
+			VKit.text(self, Vector2(x + 6, y), VKit.COL_DIM, "•", VKit.FS_SMALL)
+			y += VKit.text_wrapped(self, Vector2(x + 18, y), VKit.COL_DIM, line, DW - 2.0 * x - 18.0, 2, VKit.FS_SMALL)
+			y += 4
+		return y + 4.0
 	# UN SEUL hint en tête (il était répété sous CHAQUE pays — bruit, capture 2026-07-09)
 	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "▸ cliquer une fiche : actions diplomatiques", VKit.FS_SMALL)
 	y += 18
-	for rel in Sim.world.country_relations(me):
+	for rel in rels:
 		var target: int = int(rel["country"])
-		# BROUILLARD (retour joueur : « vision diplomatique complète alors qu'on a un
-		# fog ») : un pays JAMAIS DÉCOUVERT n'existe pas dans la liste.
-		if Sim.world.has_method("country_known") and int(Sim.world.country_known(target)) == 0:
-			continue
 		var row_y0 := y
 		var at_war: bool = bool(rel["at_war"])
 		var allied: bool = bool(rel["allied"])
@@ -1244,6 +1400,17 @@ func _conseil_act(act: String, seat: int, slot: int, pay: float = 1.0) -> void:
 	queue_redraw()
 
 func _gui_input(event: InputEvent) -> void:
+	# HOVER (Marché, LOT UI 2.3) : la ligne sous la souris — immédiat (pas de délai
+	# d'infobulle), c'est ce qui fait apparaître le NOM de la ressource.
+	if event is InputEventMouseMotion and _tab == 3:
+		var hov := -1
+		for r in _marche_rows:
+			if (r["rect"] as Rect2).has_point(event.position):
+				hov = int(r["res_id"])
+				break
+		if hov != _marche_hover_res:
+			_marche_hover_res = hov
+			queue_redraw()
 	# SCROLL générique : molette = défilement de l'onglet courant (clampé au contenu).
 	if event is InputEventMouseButton and event.pressed \
 		and (event.button_index == MOUSE_BUTTON_WHEEL_DOWN or event.button_index == MOUSE_BUTTON_WHEEL_UP):
@@ -1261,11 +1428,22 @@ func _gui_input(event: InputEvent) -> void:
 			accept_event()
 			return
 		if _tab == 3:
+			for b in _marche_sort_btns:
+				if (b["rect"] as Rect2).has_point(event.position):
+					_marche_sort_act(String(b["key"]))
+					accept_event()
+					return
 			for b in _marche_btns:
 				if b.rect.has_point(event.position):
 					var w = Sim.world
 					var me: int = w.player() if w != null else -1
 					_marche_act(String(b.act), int(b.res_id), me)
+					accept_event()
+					return
+			for r in _marche_rows:
+				if (r["rect"] as Rect2).has_point(event.position):
+					_marche_selected_res = int(r["res_id"])
+					queue_redraw()
 					accept_event()
 					return
 		if _tab == 4:

@@ -865,7 +865,10 @@
     X(AGE_EXCHANGE_P,                  0.50f) \
     X(AGE_EXCHANGE_MIG_PACT_MULT,      1.15f) \
     X(AGE_EXCHANGE_MERCHANT_LEVER,     0.08f) \
-    X(AGE_DISCOVERY_KNOWN_PAIR_SHARE,  0.35f) \
+    X(AGE_DISCOVERY_KNOWN_PAIR_SHARE,  0.12f) /* 0.35 (spec) etait INATTEIGNABLE sous la
+                                            * diplo-fog (1/200 au gigasweep 2026-07-11 :
+                                            * le ratio compte cites-etats+hameaux) ;
+                                            * 0.12 mesure = 7/8 sims sur 4 graines. */ \
     X(AGE_DISCOVERY_COUNTRY_MIN,       6.0f) \
     X(AGE_DISCOVERY_C,                 0.50f) \
     X(AGE_DISCOVERY_RESEARCH_MULT,     1.10f) \

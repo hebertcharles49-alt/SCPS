@@ -2993,7 +2993,7 @@ static bool age_trig_exchange(World *w, WorldEconomy *econ, WorldProsperity *wp,
 static bool age_trig_discovery(World *w, WorldEconomy *econ, WorldProsperity *wp, const TechState ts[]){
     (void)econ;(void)wp;(void)ts;
     if (w_living_count(w,wp) < (int)tune_f("AGE_DISCOVERY_COUNTRY_MIN",6.0f)) return false;
-    return ages_known_pair_share(w) >= tune_f("AGE_DISCOVERY_KNOWN_PAIR_SHARE",0.35f);
+    return ages_known_pair_share(w) >= tune_f("AGE_DISCOVERY_KNOWN_PAIR_SHARE",0.12f);
 }
 static bool age_trig_empires(World *w, WorldEconomy *econ, WorldProsperity *wp, const TechState ts[],
                              WorldLegitimacy *wl){
@@ -3080,7 +3080,7 @@ static void age_lever_exchange(World *w, WorldEconomy *econ){
         if (hit[c]) faction_lever_apply(c, FAC_MARCHAND, lv);
 }
 static void age_lever_discovery(World *w, WorldProsperity *wp){
-    float share_min = tune_f("AGE_DISCOVERY_KNOWN_PAIR_SHARE",0.35f);
+    float share_min = tune_f("AGE_DISCOVERY_KNOWN_PAIR_SHARE",0.12f);
     float lv_t = tune_f("AGE_DISCOVERY_TRANSGRESSEUR_LEVER",0.06f);
     float lv_m = tune_f("AGE_DISCOVERY_MERCHANT_LEVER",0.04f);
     int nc = nc_loop(w,wp);
