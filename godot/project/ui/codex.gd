@@ -10,6 +10,7 @@ extends Control
 
 ## Chaque entrée : {nom, ou, regle, bientot (optionnel, true si le verbe n'a pas encore
 ## d'UI Godot — câblé côté façade C mais aucun bouton/panneau ne l'expose aujourd'hui)}
+const VKit = preload("res://ui/vkit.gd")
 const DOMAINS := [
 	["Empire & Économie", [
 		{"nom": "Bâtir un édifice", "ou": "Panneau Construction (bouton depuis la province ou l'onglet Constructions) · touche via le panneau province", "regle": "coûts en matières + or, réels (roster scps_building_roster) ; grisé si illégal (tech/région/or)"},
@@ -87,10 +88,11 @@ func _ready() -> void:
 	_panel = PanelContainer.new()
 	_panel.custom_minimum_size = Vector2(700, 690)
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.10, 0.08, 0.06, 0.97)
-	sb.border_color = Color(0.62, 0.52, 0.30)
-	sb.set_border_width_all(2)
-	sb.set_corner_radius_all(6)
+	sb.bg_color = VKit.COL_PANEL
+	sb.border_color = VKit.COL_EDGE
+	sb.set_border_width_all(1)
+	sb.set_border_width(SIDE_TOP, 3)
+	sb.set_corner_radius_all(1)
 	sb.set_content_margin_all(14)
 	_panel.add_theme_stylebox_override("panel", sb)
 	center.add_child(_panel)

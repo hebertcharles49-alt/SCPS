@@ -69,10 +69,11 @@ func _ready() -> void:
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(620, 620)
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.10, 0.08, 0.06, 0.97)
-	sb.border_color = VKit.COL_GOLD
-	sb.set_border_width_all(2)
-	sb.set_corner_radius_all(6)
+	sb.bg_color = VKit.COL_PANEL
+	sb.border_color = VKit.COL_EDGE
+	sb.set_border_width_all(1)
+	sb.set_border_width(SIDE_TOP, 3)
+	sb.set_corner_radius_all(1)
 	sb.set_content_margin_all(16)
 	panel.add_theme_stylebox_override("panel", sb)
 	center.add_child(panel)

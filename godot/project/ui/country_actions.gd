@@ -54,10 +54,11 @@ func _process(_dt: float) -> void:
 func _build() -> void:
 	_panel = PanelContainer.new()
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.10, 0.08, 0.055, 0.98)
-	sb.border_color = Color(0.79, 0.64, 0.29)
-	sb.set_border_width_all(2)
-	sb.set_corner_radius_all(6)
+	sb.bg_color = VKit.COL_PANEL
+	sb.border_color = VKit.COL_EDGE
+	sb.set_border_width_all(1)
+	sb.set_border_width(SIDE_TOP, 3)
+	sb.set_corner_radius_all(1)
 	sb.set_content_margin_all(14)
 	_panel.add_theme_stylebox_override("panel", sb)
 	add_child(_panel)

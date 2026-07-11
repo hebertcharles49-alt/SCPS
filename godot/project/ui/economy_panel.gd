@@ -4,7 +4,7 @@ extends Control
 ## métrique (Population · Trésor · Prospérité) — chacune prend toute l'échelle
 ## verticale (auto-ajustée à sa plage). L'historique s'accumule an par an depuis
 ## la façade (country_pop / budget_summary / country_info), même panneau caché.
-## Charte parchemin (cuir/or). Display-only.
+## Charte EU4 × RimWorld. Display-only.
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")

@@ -4095,3 +4095,39 @@ reste à 0 indéfiniment même si le trigger est vrai à chaque tick.
 
 **Restes** : aucun — les deux bancs sont verts (18/18 et 118/118) sans affaiblissement
 d'assertion, à la graine par défaut (42) utilisée par `run_tests.sh`/`make test`.
+
+## [2026-07-11] Refonte du langage visuel EU4 × RimWorld (implémenteur solo)
+**Découverte** : l'UI possédait déjà les bons organes, mais deux directions se superposaient sans
+discipline. La topbar, l'héraldique et les illustrations parlaient grand strategy; presque tous
+les fonds, bordures et boutons restaient brun-or, ce qui noyait les valeurs et donnait le même
+poids visuel à une donnée, une section et une action. Le rail était lisible mais son tiroir
+commençait sous lui (`DX=46` pour un rail de 64 px), et les listes denses ne disposaient pas de
+guidage horizontal stable.
+**Correction** : `vkit.gd` devient la source de vérité du mélange. Les surfaces de travail sont
+graphite/acier, presque carrées, avec une ombre courte. L'or est limité à l'arête supérieure, au
+repère de section et à l'état actif. Les jauges gagnent une piste noire, un reflet et trois
+graduations. `list_row_bg` fournit alternance, séparateur et sélection pour les ledgers. Le thème
+natif reprend les mêmes boutons, champs, panneaux et tooltips. Topbar, rail, tiroirs, province,
+évènements, religion, codex, annales, récap d'âge et épilogue utilisent la même grammaire.
+**Pièges** : une simple recoloration globale ne suffit pas. Les `PanelContainer` qui posent leur
+propre `StyleBoxFlat` ignorent le thème et doivent être raccordés explicitement. Inversement, le
+menu et les illustrations doivent garder du parchemin : les convertir au graphite supprimerait
+la différence entre le monde raconté et la surface de travail. Le lancement de la scène complète
+reste inutilisable en headless à cause du crash natif déjà documenté; une sonde autonome sans
+autoload ni GDExtension a donc rendu directement le vrai `VKit` en 1600×900 pour la vérification.
+**Preuves** : import/parse Godot headless RC=0, GDExtension initialisée, sonde OpenGL rendue et
+inspectée, `git diff --check` sans erreur. Aucun type, lecteur ou verbe moteur modifié.
+
+## 2026-07-11 — le crash 0xC0000005 / signal 11 = la DLL DEBUG périmée (pas l'UI)
+- Symptôme : `scps.exe`/probe crash à `regenerate (sim.gd:52)` AU BOOT (signal 11), avant tout
+  panneau UI. Le joueur l'avait signalé (« 0xC0000005 à la sonde interactive »).
+- Cause RÉELLE : le probe et l'éditeur Godot tournent en DEBUG → chargent
+  `godot/project/bin/libscps.windows.template_DEBUG.x86_64.dll`. `build_godot.sh` (export)
+  ne reconstruit que la RELEASE ; la DEBUG restait à une version ANTÉRIEURE (structs pré-v79
+  incompatibles) → segfault dans le moteur au premier `world.generate`.
+- FIX : `rebuild_dll.sh` (il bâtit template_debug ET template_release). Après quoi la probe
+  passe (25 états). ⚠ Toujours reconstruire la DEBUG après un changement C si on teste via la
+  probe/l'éditeur ; l'export release seul ne suffit pas pour le mode debug.
+- Corollaire : un crash « dans sim.gd/regenerate » n'est PAS un bug GDScript — c'est la DLL
+  sous-jacente. Vérifier les DEUX timestamps `godot/project/bin/*.dll` avant de chasser un
+  fantôme côté script.

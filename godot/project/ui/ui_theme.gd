@@ -1,5 +1,5 @@
 extends RefCounted
-## UI THEME — le THÈME GLOBAL (parchemin sombre) + le FEEDBACK DE CLIC universel.
+## UI THEME — socle EU4 × RimWorld (graphite, ivoire, accent or) + feedback universel.
 ## « Rendre du feedback à chaque bouton qui existe » : (1) des ÉTATS visibles (normal /
 ## hover clair / pressed enfoncé / disabled fané) posés au niveau du THÈME de la fenêtre
 ## → chaque Button/OptionButton/CheckBox présent ET futur en hérite sans câblage ;
@@ -11,7 +11,7 @@ static func _box(bg: Color, border: Color, bw: int = 1, shift_down := false) -> 
 	sb.bg_color = bg
 	sb.border_color = border
 	sb.set_border_width_all(bw)
-	sb.set_corner_radius_all(3)
+	sb.set_corner_radius_all(1)
 	sb.content_margin_left = 10.0
 	sb.content_margin_right = 10.0
 	sb.content_margin_top = 5.0 + (2.0 if shift_down else 0.0)
@@ -27,44 +27,49 @@ static func build() -> Theme:
 	if fui != null:
 		th.default_font = fui
 		th.default_font_size = 16   # +1 cran (retour joueur 2026-07-10 : « agrandis la police »)
-	# ── BOUTONS : cadre CUIR + bordure OR (StyleBoxFlat), 4 états nettement distincts.
+	# ── BOUTONS : commandes graphite carrées façon RimWorld, accent or façon EU4.
 	# Les planches sheet02 ont des fleurons AU MILIEU des bords → AUCUN 9-slice ne peut les
 	# étirer sans les déformer (le « découpage » raté) ; le cadre plat s'étire NET à toute
 	# taille (survol plus clair, appui enfoncé & sombre, désactivé fané).
-	var normal := _box(Color(0.26, 0.20, 0.14), Color(0.74, 0.58, 0.30), 2)
-	var hover := _box(Color(0.35, 0.28, 0.19), Color(0.93, 0.75, 0.41), 2)
-	var press := _box(Color(0.17, 0.13, 0.09), Color(0.66, 0.52, 0.28), 2, true)
-	var disab := _box(Color(0.20, 0.17, 0.14, 0.6), Color(0.42, 0.35, 0.24, 0.55), 1)
+	var normal := _box(Color(0.13, 0.15, 0.15), VKit.COL_EDGE, 1)
+	var hover := _box(Color(0.22, 0.24, 0.23), VKit.COL_GOLD, 2)
+	var press := _box(Color(0.075, 0.085, 0.085), Color(VKit.COL_GOLD.r, VKit.COL_GOLD.g, VKit.COL_GOLD.b, 0.72), 2, true)
+	var disab := _box(Color(0.10, 0.11, 0.11, 0.72), Color(0.28, 0.30, 0.29, 0.65), 1)
 	var focus := StyleBoxFlat.new()
 	focus.draw_center = false
-	focus.border_color = Color(0.86, 0.68, 0.26, 0.55)   # l'or de sélection, discret
-	focus.set_border_width_all(1)
-	focus.set_corner_radius_all(3)
+	focus.border_color = Color(VKit.COL_GOLD.r, VKit.COL_GOLD.g, VKit.COL_GOLD.b, 0.72)
+	focus.set_border_width_all(2)
+	focus.set_corner_radius_all(1)
 	for cls in ["Button", "OptionButton", "CheckBox", "MenuButton", "CheckButton"]:
 		th.set_stylebox("normal", cls, normal)
 		th.set_stylebox("hover", cls, hover)
 		th.set_stylebox("pressed", cls, press)
 		th.set_stylebox("disabled", cls, disab)
 		th.set_stylebox("focus", cls, focus)
-		th.set_color("font_color", cls, Color(0.90, 0.85, 0.72))
-		th.set_color("font_hover_color", cls, Color(0.99, 0.95, 0.82))
-		th.set_color("font_pressed_color", cls, Color(0.80, 0.72, 0.55))
-		th.set_color("font_disabled_color", cls, Color(0.55, 0.50, 0.42))
+		th.set_color("font_color", cls, VKit.COL_PARCH)
+		th.set_color("font_hover_color", cls, Color(1.0, 0.96, 0.83))
+		th.set_color("font_pressed_color", cls, VKit.COL_GOLD)
+		th.set_color("font_disabled_color", cls, Color(0.48, 0.50, 0.48))
 	# LineEdit : champ lisible + focus doré
-	var le := _box(Color(0.12, 0.10, 0.08), Color(0.38, 0.32, 0.22))
+	var le := _box(Color(0.055, 0.065, 0.065), VKit.COL_EDGE)
 	th.set_stylebox("normal", "LineEdit", le)
-	th.set_stylebox("focus", "LineEdit", _box(Color(0.14, 0.12, 0.09), Color(0.86, 0.68, 0.26)))
-	th.set_color("font_color", "LineEdit", Color(0.92, 0.88, 0.76))
+	th.set_stylebox("focus", "LineEdit", _box(Color(0.075, 0.085, 0.085), VKit.COL_GOLD, 2))
+	th.set_color("font_color", "LineEdit", VKit.COL_PARCH)
+	# Panneaux natifs : même plaque que les panneaux immédiats, sans faux parchemin.
+	var native_panel := _box(VKit.COL_PANEL, VKit.COL_EDGE, 1)
+	for cls in ["Panel", "PanelContainer", "PopupPanel"]:
+		th.set_stylebox("panel", cls, native_panel)
 	# TOOLTIP façon EU4 (rendu attendu 2026-07-09) : encart SOMBRE quasi opaque, liseré
 	# OR — le tooltip système gris cassait la charte partout (chaque bouton en a un).
 	var tip := StyleBoxFlat.new()
-	tip.bg_color = Color(0.075, 0.06, 0.045, 0.97)
-	tip.border_color = Color(0.78, 0.62, 0.30)
+	tip.bg_color = Color(0.045, 0.052, 0.052, 0.985)
+	tip.border_color = VKit.COL_EDGE
 	tip.set_border_width_all(1)
-	tip.set_corner_radius_all(3)
+	tip.set_border_width(SIDE_LEFT, 3)
+	tip.set_corner_radius_all(1)
 	tip.set_content_margin_all(8)
 	th.set_stylebox("panel", "TooltipPanel", tip)
-	th.set_color("font_color", "TooltipLabel", Color(0.92, 0.88, 0.76))
+	th.set_color("font_color", "TooltipLabel", VKit.COL_PARCH)
 	th.set_font_size("font_size", "TooltipLabel", 14)
 	return th
 

@@ -86,18 +86,19 @@ func _draw() -> void:
 		return
 	size = Vector2(W, _height())
 	VKit.panel_bg(self, Rect2(0, 0, W, size.y))
-	VKit.box(self, Rect2(0, 0, W, size.y), VKit.COL_GOLD)
+	VKit.box(self, Rect2(0, 0, W, size.y), VKit.COL_EDGE)
 	# — bandeau : « UNE DÉCISION S'IMPOSE » —
-	VKit.fill(self, Rect2(0, 0, W, 34), Color(0.09, 0.07, 0.05, 0.96))
-	VKit.fill(self, Rect2(0, 32, W, 2), VKit.COL_GOLD)
+	VKit.fill(self, Rect2(0, 0, W, 34), Color(0.075, 0.085, 0.086, 0.985))
+	VKit.fill(self, Rect2(0, 0, 4, 34), VKit.COL_GOLD)
+	VKit.fill(self, Rect2(4, 33, W - 4, 1), VKit.COL_EDGE)
 	var head := "— UNE DÉCISION S'IMPOSE —"
 	VKit.text(self, Vector2((W - VKit.text_w(head, VKit.FS_BIG)) * 0.5, 8), VKit.COL_GOLD, head, VKit.FS_BIG)
 	# — l'ILLUSTRATION du thème (bannière 4:1, réutilisée par famille d'évènements) —
 	if _tex != null:
 		draw_texture_rect(_tex, Rect2(1, 35, W - 2.0, BANNER_H), false)
 	else:
-		VKit.fill(self, Rect2(1, 35, W - 2.0, BANNER_H), Color(0.09, 0.07, 0.05, 0.9))
-	VKit.fill(self, Rect2(0, 35 + BANNER_H, W, 2), VKit.COL_GOLD)
+		VKit.fill(self, Rect2(1, 35, W - 2.0, BANNER_H), VKit.COL_PANEL2)
+	VKit.fill(self, Rect2(0, 35 + BANNER_H, W, 1), VKit.COL_EDGE)
 	# — la SITUATION (le nom de l'évènement, résolu — membrane) —
 	var y := 46.0 + BANNER_H + 6.0
 	for l in _body_lines(String(_pending.get("situation", ""))):

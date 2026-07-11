@@ -1,7 +1,7 @@
 extends Control
 ## Sidebar — le RAIL gauche PLEINE HAUTEUR (cadre d'écran), entre le bandeau haut et
 ## le bandeau bas : 8 onglets menu_* (économie · démographie · stocks · marché ·
-## armée · filtres · diplomatie · conseil). Fond cuir sombre + liseré or (capte
+## armée · filtres · diplomatie · conseil). Fond graphite + arête stratégique (capte
 ## ses clics). Le TIROIR (panneaux éco/démo/…) sort à droite du rail. Suit la hauteur.
 ##
 ## RETOUR JOUEUR UI-3.2 (2026-07-11, docs/UI_RECO_2026-07-10.md §3.2) : 4 états par
@@ -42,20 +42,20 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 
-	# rail de fond PLEINE HAUTEUR : cuir sombre UNI + liseré or à droite (capte ses
+	# rail de fond PLEINE HAUTEUR : graphite uni + arête stratégique à droite (capte ses
 	# clics). ⚠ alpha 1.0 (COL_PANEL est translucide — le rail laissait transparaître
 	# la carte, « pas uni », retour joueur 2026-07-10).
 	_rail = Panel.new()
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(VKit.COL_PANEL.r, VKit.COL_PANEL.g, VKit.COL_PANEL.b, 1.0)
-	sb.border_color = VKit.COL_GOLD
-	sb.set_border_width(SIDE_RIGHT, 2)
+	sb.border_color = VKit.COL_EDGE
+	sb.set_border_width(SIDE_RIGHT, 1)
 	_rail.add_theme_stylebox_override("panel", sb)
 	add_child(_rail)
 
 	# colonne d'onglets, centrée sur le rail
 	_vb = VBoxContainer.new()
-	_vb.add_theme_constant_override("separation", 4)
+	_vb.add_theme_constant_override("separation", 3)
 	add_child(_vb)
 	for i in range(TABS.size()):
 		var b = IconButton.new()

@@ -3,25 +3,27 @@ extends RefCounted
 ## primitives immédiates (panel_bg, box, gauge, pie, face, section, row, text).
 ## (consommé via `const VKit = preload("res://ui/vkit.gd")` — robuste en headless,
 ##  pas de dépendance au cache de class_name de l'éditeur).
-## DA PARCHEMIN : cuir sombre + or vieilli + encre brune — le code couleur
-## bleu nuit/cuivre de la v0 (viewer SDL) est SUPPRIMÉ. Display-only.
+## DA EU4 × RIMWORLD : cadre stratégique, héraldique et or vieilli pour la lecture
+## impériale ; surfaces graphite, contrôles francs et densité utilitaire pour le travail.
+## Le parchemin reste dans les illustrations et les titres, jamais comme voile brun
+## uniforme sur toute l'interface. Display-only.
 
-# ── palette (la famille du chrome parchemin — cuir / or / encre) ────────────
+# ── palette (graphite utilitaire / ivoire / or stratégique) ─────────────────
 # HIÉRARCHIE TYPO (audit UI 4.3, 4 niveaux — la COULEUR/GRAISSE porte le rang, JAMAIS la
 # taille — les layouts sont vérifiés serré à 1280×720, +1px de police déborde) :
 #   1. TITRE   — `header()`   : COL_PARCH à FS_BIG (fenêtre majeure, le plus net)
 #   2. SECTION — `section()`  : COL_GOLD (bandeau de sous-panneau)
 #   3. VALEUR  — `value()`    : COL_VALUE, LE plus lumineux — le chiffre qui compte
 #   4. DÉTAIL  — `detail()`   : COL_DIM à FS_SMALL — flavor/annexe, contraste réduit
-const COL_PANEL    := Color(0x17/255.0, 0x11/255.0, 0x09/255.0, 0xf6/255.0)   # cuir profond
-const COL_PANEL2   := Color(0x2a/255.0, 0x21/255.0, 0x15/255.0, 0xf6/255.0)   # cuir clair (chips/champs)
-const COL_PANEL_HI := Color(0x4a/255.0, 0x3a/255.0, 0x24/255.0, 0x4d/255.0)   # reflet chaud
-const COL_GOLD     := Color(0xc9/255.0, 0xa2/255.0, 0x4b/255.0, 1.0)          # or vieilli (accent · niveau 2 Section)
-const COL_VALUE    := Color(0xff/255.0, 0xdd/255.0, 0x8c/255.0, 1.0)          # or CLAIR lumineux · niveau 3 Valeur
-const COL_PARCH    := Color(0xed/255.0, 0xe3/255.0, 0xcd/255.0, 1.0)
-const COL_DIM      := Color(0x96/255.0, 0x8d/255.0, 0x79/255.0, 1.0)
-const COL_EDGE     := Color(0x4a/255.0, 0x3b/255.0, 0x26/255.0, 1.0)          # filet brun doré
-const COL_SHADOW   := Color(0x05/255.0, 0x03/255.0, 0x01/255.0, 0x6e/255.0)
+const COL_PANEL    := Color(0x13/255.0, 0x16/255.0, 0x17/255.0, 0xf8/255.0)   # graphite profond
+const COL_PANEL2   := Color(0x29/255.0, 0x2d/255.0, 0x2e/255.0, 0xfa/255.0)   # acier sombre (chips/champs)
+const COL_PANEL_HI := Color(0x58/255.0, 0x55/255.0, 0x49/255.0, 0x66/255.0)   # sélection chaude, sans brunir le fond
+const COL_GOLD     := Color(0xc8/255.0, 0xa6/255.0, 0x61/255.0, 1.0)          # or vieilli : structure EU4
+const COL_VALUE    := Color(0xf3/255.0, 0xda/255.0, 0x91/255.0, 1.0)          # valeur immédiatement lisible
+const COL_PARCH    := Color(0xe3/255.0, 0xdf/255.0, 0xd2/255.0, 1.0)          # ivoire froid sur graphite
+const COL_DIM      := Color(0x9b/255.0, 0xa0/255.0, 0x99/255.0, 1.0)
+const COL_EDGE     := Color(0x50/255.0, 0x56/255.0, 0x54/255.0, 1.0)          # filet acier, l'or reste un accent
+const COL_SHADOW   := Color(0x02/255.0, 0x03/255.0, 0x03/255.0, 0x90/255.0)
 
 # palette de parts (camemberts, barres empilées) — viewer.c SLICE_PAL[8]
 const SLICE_PAL := [
@@ -78,9 +80,9 @@ static func sense(good: float) -> Color:
 	good = clampf(good, 0.0, 1.0)
 	if good >= 0.5:
 		var t := (good - 0.5) * 2.0
-		return Color(lerpf(0xc8, 0x6a, t)/255.0, lerpf(0xa0, 0x9a, t)/255.0, lerpf(0x4a, 0x5b, t)/255.0)
+		return Color(lerpf(0xc8, 0x76, t)/255.0, lerpf(0xa6, 0xa0, t)/255.0, lerpf(0x61, 0x6a, t)/255.0)
 	var u := good * 2.0
-	return Color(lerpf(0xb1, 0xc8, u)/255.0, lerpf(0x50, 0xa0, u)/255.0, lerpf(0x3c, 0x4a, u)/255.0)
+	return Color(lerpf(0xb8, 0xc8, u)/255.0, lerpf(0x5b, 0xa6, u)/255.0, lerpf(0x52, 0x61, u)/255.0)
 
 # ── texte : pos = COIN HAUT-GAUCHE (comme viewer) ; renvoie la largeur ──────
 static func text(ci: CanvasItem, pos: Vector2, col: Color, s: String, size: int = FS) -> float:
@@ -208,10 +210,8 @@ static func _fleuron(ci: CanvasItem, center: Vector2, r: float, a: float = 0.85)
 		center + Vector2(0.0, r), center + Vector2(-r, 0.0)
 	]), Color(COL_GOLD.r, COL_GOLD.g, COL_GOLD.b, a))
 
-## panel_bg : fond de panneau PLAT (retour joueur 2026-07-10 : « débarrasse-toi des
-## assets de panneau — les joueurs pardonnent le cheap quand c'est lisible », RimWorld).
-## Ombre douce + cuir plat + liseré fin + GRAIN subtil (4.1) — plus AUCUN 9-slice de chrome
-## (le cadre parchemin étiré/riveté disparaît ; les icônes de RESSOURCE restent, elles).
+## panel_bg : plaque graphite presque carrée, ombre courte, filet acier et arête or.
+## RimWorld fournit la surface de travail ; EU4 ne subsiste que dans la ligne de titre.
 static var _pb_shadow: StyleBoxFlat = null
 static var _pb_body: StyleBoxFlat = null
 
@@ -219,14 +219,18 @@ static func panel_bg(ci: CanvasItem, r: Rect2) -> void:
 	if _pb_shadow == null:
 		_pb_shadow = StyleBoxFlat.new()
 		_pb_shadow.bg_color = COL_SHADOW
-		_pb_shadow.set_corner_radius_all(8)
+		_pb_shadow.set_corner_radius_all(3)
 		_pb_body = StyleBoxFlat.new()
 		_pb_body.bg_color = COL_PANEL
-		_pb_body.set_corner_radius_all(6)
-		_pb_body.border_color = Color(COL_GOLD.r, COL_GOLD.g, COL_GOLD.b, 0.55)
+		_pb_body.set_corner_radius_all(2)
+		_pb_body.border_color = COL_EDGE
 		_pb_body.set_border_width_all(1)
-	ci.draw_style_box(_pb_shadow, Rect2(r.position + Vector2(3, 5), r.size))
+	ci.draw_style_box(_pb_shadow, Rect2(r.position + Vector2(4, 4), r.size))
 	ci.draw_style_box(_pb_body, r)
+	fill(ci, Rect2(r.position + Vector2(1, 1), Vector2(maxf(0.0, r.size.x - 2.0), 2.0)),
+		Color(COL_GOLD.r, COL_GOLD.g, COL_GOLD.b, 0.72))
+	fill(ci, Rect2(r.position + Vector2(1, 3), Vector2(maxf(0.0, r.size.x - 2.0), 1.0)),
+		Color(1.0, 1.0, 1.0, 0.035))
 	var g := _grain()
 	if g != null:
 		var gr := r.grow(-3.0)
@@ -234,17 +238,21 @@ static func panel_bg(ci: CanvasItem, r: Rect2) -> void:
 			# TUILÉ (tile=true) à sa taille native → grain FIN ~4 px (papier), pas des
 			# taches ~16 px (un 256² ÉTIRÉ sur un grand panneau blobait — retour visuel
 			# 2026-07-11 : « sans bruit »). Alpha abaissé 0.055→0.032 : senti, pas noisy.
-			ci.draw_texture_rect(g, gr, true, Color(1.0, 0.95, 0.85, 0.032))
+			ci.draw_texture_rect(g, gr, true, Color(0.78, 0.80, 0.75, 0.016))
 
-## jauge 0-100 : piste sombre + REMPLISSAGE proportionnel teinté par le sens (l'ancien
-## arc-en-ciel plein + curseur lisait comme une palette, pas comme une valeur).
+## jauge 0-100 : piste noire, remplissage franc, reflet supérieur et graduations.
+## C'est la lecture de travail RimWorld, avec les couleurs sémantiques de SCPS.
 static func gauge(ci: CanvasItem, x: float, y: float, w: float, h: float, value: int) -> void:
 	value = clampi(value, 0, 100)
-	fill(ci, Rect2(x, y, w, h), COL_PANEL2)
+	fill(ci, Rect2(x, y, w, h), Color(0.055, 0.065, 0.065, 1.0))
 	box(ci, Rect2(x - 1, y - 1, w + 2, h + 2), COL_EDGE)
 	var fw := (w - 2.0) * float(value) / 100.0
 	if fw > 0.5:
-		fill(ci, Rect2(x + 1, y + 1, fw, h - 2), sense(float(value) / 100.0))
+		var fc := sense(float(value) / 100.0)
+		fill(ci, Rect2(x + 1, y + 1, fw, h - 2), Color(fc.r * 0.82, fc.g * 0.82, fc.b * 0.82, 1.0))
+		fill(ci, Rect2(x + 1, y + 1, fw, 1.0), Color(1.0, 1.0, 1.0, 0.24))
+	for mark in [0.25, 0.50, 0.75]:
+		fill(ci, Rect2(x + floor(w * mark), y + 1, 1.0, maxf(1.0, h - 2.0)), Color(0.0, 0.0, 0.0, 0.28))
 
 ## camembert : parts (percent[]) en couleurs (cols[]) — 0 en haut, sens horaire
 static func pie(ci: CanvasItem, center: Vector2, radius: float, percents: Array, cols: Array) -> void:
@@ -281,40 +289,52 @@ static func face(ci: CanvasItem, center: Vector2, r: float, mood: float, lit: bo
 			ci.draw_line(prev, p, c, 1.0)
 		prev = p
 
-## HEADER DE FENÊTRE (discipline Stellaris minée 2026-07-10 : bande de titre 36 px ·
-## titre en grand corps · filet séparateur sous la bande · close en HAUT-DROITE).
+## HEADER DE FENÊTRE : plaque stratégique EU4 sur une surface utilitaire RimWorld.
 ## Renvoie le rect du bouton ✕ (à tester dans _gui_input du panneau). Le contenu
 ## démarre à HDR_H + ~8. Remplace les titres nus posés à des y variables.
 const HDR_H := 36.0
 static func header(ci: CanvasItem, w: float, title: String) -> Rect2:
-	fill(ci, Rect2(0, 0, w, HDR_H), Color(0.055, 0.042, 0.028, 0.92))
-	_fleuron(ci, Vector2(6.0, 17.0), 3.5)          # ornement de TITRE (4.1) — marge gauche, avant le texte
-	text(ci, Vector2(12, 7), COL_PARCH, title, FS_BIG)
-	fill(ci, Rect2(0, HDR_H - 1.0, w, 1), Color(COL_GOLD.r, COL_GOLD.g, COL_GOLD.b, 0.6))
-	var cr := Rect2(w - 30.0, 8.0, 20.0, 20.0)
-	fill(ci, cr, COL_PANEL2)
-	box(ci, cr, COL_GOLD)
-	text(ci, Vector2(cr.position.x + 6, cr.position.y + 2), COL_PARCH, "x")
+	fill(ci, Rect2(0, 0, w, HDR_H), Color(0.075, 0.085, 0.086, 0.98))
+	fill(ci, Rect2(0, 0, 4.0, HDR_H), COL_GOLD)
+	fill(ci, Rect2(4.0, 0, maxf(0.0, w - 4.0), 1.0), Color(1.0, 1.0, 1.0, 0.08))
+	text(ci, Vector2(14, 7), COL_PARCH, title, FS_BIG)
+	fill(ci, Rect2(4.0, HDR_H - 1.0, maxf(0.0, w - 4.0), 1), COL_EDGE)
+	var cr := Rect2(w - 31.0, 7.0, 23.0, 23.0)
+	fill(ci, cr, Color(0.04, 0.045, 0.045, 0.9))
+	box(ci, cr, COL_EDGE)
+	text(ci, Vector2(cr.position.x + 7, cr.position.y + 3), COL_PARCH, "x")
 	return cr
 
 # ── sections & rangées (ui_section / ui_row). y est un [valeur] muté → on
 #    renvoie le nouveau y (GDScript n'a pas de int*). ─────────────────────────
-## HEADER DE SECTION en BANDEAU (rendu attendu Paradox 2026-07-09) : bande sombre +
-## filets or haut/bas, titre or — remplace le texte nu, même consommation verticale
-## (30 px) donc AUCUN layout appelant ne bouge. La largeur suit le Control porteur.
+## HEADER DE SECTION : bande graphite compacte, repère or à gauche, un seul filet.
 static func section(ci: CanvasItem, x: float, y: float, title: String) -> float:
 	y += 6
 	var bw := 220.0
 	if ci is Control:
 		bw = maxf(80.0, (ci as Control).size.x - 2.0 * x)
-	fill(ci, Rect2(x - 4, y - 3, bw + 8, 20), Color(0.085, 0.066, 0.048, 0.88))
-	fill(ci, Rect2(x - 4, y - 3, bw + 8, 1), Color(COL_GOLD.r, COL_GOLD.g, COL_GOLD.b, 0.55))
-	fill(ci, Rect2(x - 4, y + 16, bw + 8, 1), Color(COL_GOLD.r, COL_GOLD.g, COL_GOLD.b, 0.55))
-	_fleuron(ci, Vector2(x - 1.0, y + 7.0), 3.0)   # ornement de TITRE (4.1) — dans la marge réservée, jamais sous le texte
-	text(ci, Vector2(x + 2, y - 1), COL_GOLD, title)
+	fill(ci, Rect2(x - 4, y - 3, bw + 8, 20), Color(COL_PANEL2.r, COL_PANEL2.g, COL_PANEL2.b, 0.94))
+	fill(ci, Rect2(x - 4, y - 3, 3.0, 20), COL_GOLD)
+	fill(ci, Rect2(x - 1, y + 16, bw + 5, 1), COL_EDGE)
+	text(ci, Vector2(x + 4, y), COL_GOLD, title.to_upper(), FS_SMALL)
 	return y + 24
 
 static func row(ci: CanvasItem, x: float, y: float, cat: String, word: String, wc: Color) -> float:
 	text(ci, Vector2(x, y), COL_DIM, cat)
 	text(ci, Vector2(x + 104, y), wc, word)
+	var rw := 220.0
+	if ci is Control:
+		rw = maxf(80.0, (ci as Control).size.x - 2.0 * x)
+	fill(ci, Rect2(x, y + 18.0, rw, 1.0), Color(COL_EDGE.r, COL_EDGE.g, COL_EDGE.b, 0.28))
 	return y + 20
+
+## Ligne de ledger : alternance à peine visible, séparateur bas et sélection à gauche.
+## Les grandes listes gardent ainsi la densité d'EU4 sans devenir une soupe de texte.
+static func list_row_bg(ci: CanvasItem, r: Rect2, index: int, selected: bool = false) -> void:
+	if selected:
+		fill(ci, r, COL_PANEL_HI)
+		fill(ci, Rect2(r.position, Vector2(3.0, r.size.y)), COL_GOLD)
+	elif index % 2 == 0:
+		fill(ci, r, Color(COL_PANEL2.r, COL_PANEL2.g, COL_PANEL2.b, 0.34))
+	fill(ci, Rect2(r.position.x, r.position.y + r.size.y - 1.0, r.size.x, 1.0),
+		Color(COL_EDGE.r, COL_EDGE.g, COL_EDGE.b, 0.22))

@@ -1,5 +1,16 @@
 # SYNTHÈSE DE SESSION — handoff roulant (2026-07-11 soir)
 
+## ÉTAT COURANT, REFONTE UI EU4 × RIMWORLD (2026-07-11)
+- Arbre non commité, 18 scripts UI touchés, aucun changement de gameplay ni de membrane.
+- Direction : shell stratégique, héraldique, ledger et or structurel côté EU4; graphite plat,
+  contrôles carrés, jauges segmentées, listes alternées et états francs côté RimWorld.
+- `vkit.gd` et `ui_theme.gd` portent la grammaire globale. Topbar, rail, tiroirs, province,
+  évènements et principales fenêtres modales ont été raccordés; le menu conserve davantage de
+  parchemin pour distinguer l'avant-partie de la surface de travail.
+- Vérification : import/parse Godot headless OK; sonde visuelle isolée 1600×900 rendue et inspectée.
+  Le boot de la scène complète reste impossible en headless à cause du crash natif déjà reproduit
+  avec l'ancienne DLL. Aucun script UI n'est en erreur.
+
 ## ÉTAT COURANT, IDENTITÉS CULTURELLES PAR GROUPE (2026-07-11)
 - Branche `claude/vibrant-euler-1tgfp3`, arbre non commité. `SAVE_VERSION 79` : ECON change
   de taille et la section `CLIN` sérialise les noms/filiations.

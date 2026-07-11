@@ -7,8 +7,9 @@ extends Control
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
-const DX := 46.0
-const DY := 102.0
+const Frame = preload("res://ui/frame.gd")
+const DX := Frame.SIDEBAR_W + 10.0
+const DY := Frame.TOPBAR_H + 10.0
 const DW := 380.0   ## élargi (retour joueur 2026-07-10 : « laisse respirer, on a de la place »)
 
 const TAB_ICON := ["menu_economy", "menu_demography", "menu_stocks", "menu_market",
@@ -73,12 +74,12 @@ var _scroll := {}         ## {tab: offset px}
 var _maxscroll := 0.0     ## du DERNIER _draw (pour la molette)
 
 func _draw_header(x: float) -> void:
-	# titre PLAT (la plaque de chrome ornée est retirée — lisibilité d'abord) —
-	# dessiné EN DERNIER (fixe, par-dessus le contenu défilé).
-	VKit.fill(self, Rect2(0, 0, DW, 36), Color(0.055, 0.042, 0.028, 0.92))
-	VKit.fill(self, Rect2(0, 35, DW, 1), Color(VKit.COL_GOLD.r, VKit.COL_GOLD.g, VKit.COL_GOLD.b, 0.6))
-	UIKit.draw_icon(self, TAB_ICON[_tab], Vector2(x, 8), 22)
-	VKit.text(self, Vector2(x + 28, 7), VKit.COL_GOLD, TAB_NAME[_tab], VKit.FS_BIG)
+	# titre stratégique fixe, mais surface carrée et utilitaire.
+	VKit.fill(self, Rect2(0, 0, DW, 36), Color(0.075, 0.085, 0.086, 0.985))
+	VKit.fill(self, Rect2(0, 0, 4.0, 36), VKit.COL_GOLD)
+	VKit.fill(self, Rect2(4, 35, DW - 4, 1), VKit.COL_EDGE)
+	UIKit.draw_icon(self, TAB_ICON[_tab], Vector2(x + 2, 8), 20)
+	VKit.text(self, Vector2(x + 30, 7), VKit.COL_PARCH, TAB_NAME[_tab], VKit.FS_BIG)
 
 func _draw() -> void:
 	if _tab < 0:
@@ -86,7 +87,7 @@ func _draw() -> void:
 	_hover_zones.clear()
 	_tips.clear()
 	VKit.panel_bg(self, Rect2(0, 0, DW, size.y))
-	VKit.fill(self, Rect2(DW - 2, 0, 2, size.y), VKit.COL_GOLD)
+	VKit.fill(self, Rect2(DW - 1, 3, 1, size.y - 3), VKit.COL_EDGE)
 	var x := 14.0
 	var w = Sim.world
 	if w == null:
@@ -144,20 +145,25 @@ func _draw_demo(x: float, y: float, me: int) -> float:
 	var demo_val_w: float = VKit.value(self, Vector2(x, y), "population : %s" % _grp(total))
 	VKit.detail(self, Vector2(x + demo_val_w, y), " · %d région(s)" % int(d["n_regions"]), VKit.FS)
 	y += 24
+	var row_i := 0
 	for cl in d["classes"]:
+		VKit.list_row_bg(self, Rect2(x - 4, y - 2, DW - 2.0 * x + 8, 19), row_i)
 		var pct: int = 0 if total == 0 else int(round(100.0 * int(cl["pop"]) / total))
 		UIKit.draw_icon(self, "population_group", Vector2(x, y), 14)
 		VKit.text(self, Vector2(x + 20, y), VKit.COL_PARCH, String(cl["nom"]), VKit.FS_SMALL)
 		VKit.text(self, Vector2(x + 110, y), VKit.COL_PARCH, "%s (%d%%)" % [_grp(cl["pop"]), pct], VKit.FS_SMALL)
 		UIKit.bar(self, Rect2(x + 200, y, 84, 12), int(cl["satisfaction"]))
 		y += 20
+		row_i += 1
 	return y
 
 # ── STOCKS (sb_panel_stocks, read-only) ────────────────────────────────────
 func _draw_stocks(x: float, y: float, me: int) -> float:
 	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "bien          stock   net/j   couv.", VKit.FS_SMALL)
 	y += 16
+	var row_i := 0
 	for st in Sim.world.country_stocks(me):
+		VKit.list_row_bg(self, Rect2(x - 4, y - 2, DW - 2.0 * x + 8, 18), row_i)
 		var col := _marche_col(int(st["market_band"]))
 		_res_cell(x, y, int(st["res_id"]), String(st["name"]), col)
 		VKit.text(self, Vector2(x + 110, y), col, _grp(st["stock"]), VKit.FS_SMALL)
@@ -167,6 +173,7 @@ func _draw_stocks(x: float, y: float, me: int) -> float:
 		var covs := ("" if cov < 0 else (">1 an" if cov >= 366 else "%d j" % cov))
 		VKit.text(self, Vector2(x + 225, y), col, covs, VKit.FS_SMALL)
 		y += 18
+		row_i += 1
 	return y
 
 ## cellule d'identité d'une ressource : le SPRITE (assets/scps/pack/resources, par
@@ -231,6 +238,7 @@ func _draw_eco(x: float, y: float, me: int) -> float:
 	for p in Sim.world.country_budget(me):
 		if shown >= 5:   # limite de COMPTE (résumé) — le scroll gère la hauteur désormais
 			break
+		VKit.list_row_bg(self, Rect2(x + 4, y - 1, DW - 2.0 * x - 8, 14), shown)
 		var amt: float = p["amount"]
 		var pcol := VKit.sense(0.78) if amt >= 0 else VKit.sense(0.18)
 		VKit.text(self, Vector2(x + 8, y), VKit.COL_PARCH, String(p["name"]), VKit.FS_SMALL)

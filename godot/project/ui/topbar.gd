@@ -150,8 +150,9 @@ func _food_tip(w, me: int) -> String:
 ## on prend l'alternative offerte par la mission (« OU séparateur simple »).
 func _block_sep(px: float) -> float:
 	px += 8.0
-	VKit.fill(self, Rect2(px, 5.0, 2.0, H - 10.0),
-		Color(VKit.COL_GOLD.r, VKit.COL_GOLD.g, VKit.COL_GOLD.b, 0.55))
+	VKit.fill(self, Rect2(px, 5.0, 1.0, H - 10.0), VKit.COL_EDGE)
+	VKit.fill(self, Rect2(px + 1.0, 15.0, 1.0, H - 30.0),
+		Color(VKit.COL_GOLD.r, VKit.COL_GOLD.g, VKit.COL_GOLD.b, 0.62))
 	return px + 2.0 + 14.0
 
 ## RETOUR JOUEUR UI-3.1 (2026-07-11, docs/UI_RECO_2026-07-10.md §3.1 « topbar
@@ -256,9 +257,11 @@ func _on_change() -> void:
 
 func _draw() -> void:
 	var ww := size.x
-	# barre PLEINE LARGEUR : cuir sombre + liseré or en bas (cadre franc, pas arrondi)
+	# ledger EU4 sur plaque RimWorld : graphite, arête froide, un seul liseré or.
 	VKit.fill(self, Rect2(0, 0, ww, H), VKit.COL_PANEL)
-	VKit.fill(self, Rect2(0, H - 2, ww, 2), VKit.COL_GOLD)
+	VKit.fill(self, Rect2(0, 0, ww, 1), Color(1.0, 1.0, 1.0, 0.07))
+	VKit.fill(self, Rect2(0, H - 3, ww, 2), Color(0.02, 0.025, 0.025, 0.9))
+	VKit.fill(self, Rect2(0, H - 1, ww, 1), VKit.COL_GOLD)
 	var cy := (H - 18.0) * 0.5     # centrage vertical du contenu
 
 	if Sim.world == null:
@@ -321,7 +324,13 @@ func _draw() -> void:
 
 		# ═══ BLOC ROYAUME : nom · trésor · revenu net annuel · population ═══
 		var nom := String(ci["nom"])
-		VKit.text(self, Vector2(px, cy), VKit.COL_GOLD, nom); px += VKit.text_w(nom) + 18
+		var nomw := VKit.text_w(nom)
+		var nr := Rect2(px - 6.0, 6.0, nomw + 14.0, H - 12.0)
+		VKit.fill(self, nr, Color(VKit.COL_PANEL2.r, VKit.COL_PANEL2.g, VKit.COL_PANEL2.b, 0.72))
+		VKit.fill(self, Rect2(nr.position, Vector2(3.0, nr.size.y)), VKit.COL_GOLD)
+		VKit.box(self, nr, VKit.COL_EDGE)
+		VKit.text(self, Vector2(px + 2.0, cy), VKit.COL_GOLD, nom)
+		px += nomw + 18
 		px = _cell(px, "fine_coin", "", _grp(ci["or"]), _delta_txt(_d_gold), _d_gold >= 0.0,
 			_treasury_tip(w, me))
 		var _net := 0.0
@@ -456,8 +465,10 @@ func _draw() -> void:
 	for i in range(4):
 		var r := Rect2(sx + float(i) * sbw, 6, sbw - 3.0, H - 12)
 		var active := (Sim.speed_index == i)
-		VKit.fill(self, r, VKit.COL_GOLD if active else VKit.COL_PANEL2)
-		VKit.box(self, r, VKit.COL_EDGE)
+		VKit.fill(self, r, VKit.COL_GOLD if active else Color(0.075, 0.085, 0.085, 0.96))
+		VKit.box(self, r, VKit.COL_GOLD if active else VKit.COL_EDGE)
+		if not active:
+			VKit.fill(self, Rect2(r.position + Vector2(1, 1), Vector2(r.size.x - 2, 1)), Color(1, 1, 1, 0.08))
 		var g: String = glyphs[i]
 		VKit.text(self, Vector2(r.position.x + (r.size.x - VKit.text_w(g, VKit.FS_SMALL)) * 0.5,
 			r.position.y + (r.size.y - 16.0) * 0.5), VKit.COL_PANEL if active else VKit.COL_PARCH, g, VKit.FS_SMALL)

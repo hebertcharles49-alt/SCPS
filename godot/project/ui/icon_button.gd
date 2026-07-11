@@ -59,10 +59,12 @@ func _draw() -> void:
 		# `enabled` : un onglet indisponible ne porte AUCUN fond d'état — un seul
 		# canal (la teinte éteinte plus bas) pour ne pas contredire « indisponible ».
 		if selected and enabled:
-			VKit.fill(self, r, Color(VKit.COL_GOLD.r, VKit.COL_GOLD.g, VKit.COL_GOLD.b, 0.30))
-			VKit.box(self, r, VKit.COL_GOLD)
+			VKit.fill(self, r, VKit.COL_PANEL_HI)
+			VKit.fill(self, Rect2(0, 0, 3.0, r.size.y), VKit.COL_GOLD)
+			VKit.box(self, r, VKit.COL_EDGE)
 		elif hov:
-			VKit.fill(self, r, Color(VKit.COL_GOLD.r, VKit.COL_GOLD.g, VKit.COL_GOLD.b, 0.13))
+			VKit.fill(self, r, Color(0.25, 0.28, 0.27, 0.88))
+			VKit.box(self, r, Color(VKit.COL_EDGE.r, VKit.COL_EDGE.g, VKit.COL_EDGE.b, 0.8))
 	# avant-plan
 	var mod := Color.WHITE
 	if not enabled:
@@ -71,11 +73,11 @@ func _draw() -> void:
 		mod = Color(0.55, 0.52, 0.47, 0.42)
 	elif bg == "":
 		# pièce auto-suffisante : la teinte porte l'état
-		if selected: mod = Color(1.15, 1.05, 0.8)
+		if selected: mod = Color(1.20, 1.12, 0.88)
 		elif hov: mod = Color(1.12, 1.12, 1.12)
 		else: mod = Color(0.92, 0.92, 0.92)
 	else:
-		# icône d'encre sombre sur chrome cuir sombre : un LIFT rend le glyphe lisible
+		# icône d'encre sombre sur chrome graphite : un LIFT rend le glyphe lisible
 		# (les onglets du rail étaient des taches illisibles — capture 2026-07-09)
 		if selected: mod = Color(1.45, 1.35, 1.05)
 		elif hov: mod = Color(1.40, 1.40, 1.35)
@@ -90,7 +92,7 @@ func _draw() -> void:
 	# épais (double canal, en plus du fond plein ci-dessus — UI-5 : jamais la couleur seule)
 	if bg == "" and not fg_is_chrome:
 		if selected and enabled:
-			draw_rect(Rect2(2, size.y - 4, size.x - 4, 3), Color(0.92, 0.76, 0.34))
+			draw_rect(Rect2(4, size.y - 3, size.x - 6, 2), VKit.COL_GOLD)
 		elif hov:
 			draw_rect(Rect2(3, size.y - 3, size.x - 6, 2), Color(0.86, 0.68, 0.26, 0.4))
 

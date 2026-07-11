@@ -457,8 +457,8 @@ func _draw() -> void:
 		#    du contenu défilé transparaître, capturé sur 03_prov_own.png) : un panneau à
 		#    contenu long (BÂTIMENTS avec beaucoup de manufactures) scrolle sous ce pied.
 		VKit.fill(self, Rect2(0, footer_y0, PW, footer_h), Color(VKit.COL_PANEL.r, VKit.COL_PANEL.g, VKit.COL_PANEL.b, 1.0))
-		VKit.fill(self, Rect2(0, footer_y0, PW, footer_h), Color(0.20, 0.16, 0.10, 0.35))   # teinte distincte
-		VKit.fill(self, Rect2(0, footer_y0, PW, 1.0), Color(VKit.COL_GOLD.r, VKit.COL_GOLD.g, VKit.COL_GOLD.b, 0.6))
+		VKit.fill(self, Rect2(0, footer_y0, PW, footer_h), VKit.COL_PANEL_HI)
+		VKit.fill(self, Rect2(0, footer_y0, PW, 1.0), VKit.COL_EDGE)
 		_draw_gov_actions(x, footer_y0 + 10.0, w)
 
 	if _maxscroll > 0.0:
@@ -504,12 +504,12 @@ func _draw_header(w, info: Dictionary, cap: Dictionary, record: bool) -> float:
 
 	# ✕ (fermer) + chevron (REPLIER — retour joueur : « barre gauche à adapter/rétractable »)
 	_close_rect = Rect2(PW - 20, 3, 16, 16)
-	VKit.fill(self, _close_rect, VKit.COL_PANEL2)
-	VKit.box(self, _close_rect, VKit.COL_GOLD)
+	VKit.fill(self, _close_rect, Color(0.04, 0.045, 0.045, 0.92))
+	VKit.box(self, _close_rect, VKit.COL_EDGE)
 	VKit.text(self, Vector2(_close_rect.position.x + 4, _close_rect.position.y + 1), VKit.COL_PARCH, "x")
 	_collapse_rect = Rect2(PW - 40, 3, 16, 16)
-	VKit.fill(self, _collapse_rect, VKit.COL_PANEL2)
-	VKit.box(self, _collapse_rect, VKit.COL_GOLD)
+	VKit.fill(self, _collapse_rect, Color(0.04, 0.045, 0.045, 0.92))
+	VKit.box(self, _collapse_rect, VKit.COL_EDGE)
 	VKit.text(self, Vector2(_collapse_rect.position.x + 4, _collapse_rect.position.y + 1),
 		VKit.COL_PARCH, "+" if _collapsed else "–")
 	if record:
@@ -537,7 +537,7 @@ func _draw_header(w, info: Dictionary, cap: Dictionary, record: bool) -> float:
 	var name_x := x + hsz + 8.0
 	var name_full := String(info["nom"])
 	var name_w := (PW - 44.0) - name_x   # borne AVANT le chevron replier (PW-40)
-	VKit.text_wrapped(self, Vector2(name_x, y), VKit.COL_GOLD, name_full, name_w, 1, VKit.FS_BIG)
+	VKit.text_wrapped(self, Vector2(name_x, y), VKit.COL_VALUE, name_full, name_w, 1, VKit.FS_BIG)
 	if record and VKit.text_w(name_full, VKit.FS_BIG) > name_w:
 		_tips.append([Rect2(name_x, y, name_w, 20.0), name_full])
 	var sub_txt := "%s · %s · %s" % [info["climat"], info["relief"], cap.get("statut", "")]

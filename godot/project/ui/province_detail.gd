@@ -5,7 +5,7 @@ extends Control
 ##                  /an pour les temporaires comme « Conquête récente »). Pas de prose.
 ##   • Production : les flux +X/j par bien (sprite de ressource sous la barre).
 ##   • Bâtiments  : les manufactures bâties (niveau + ouvriers).
-## Pattern onglets + survol calqué sur sidebar_drawer. Charte parchemin (cuir/or).
+## Pattern onglets + survol calqué sur sidebar_drawer. Charte EU4 × RimWorld.
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")

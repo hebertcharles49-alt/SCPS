@@ -16,6 +16,7 @@ extends Control
 signal goto_region(region: int)   ## main.gd centre la carte (même motif que alerts/event_popup)
 
 const Epithet = preload("res://ui/epithet.gd")
+const VKit = preload("res://ui/vkit.gd")
 
 ## un glyphe + une couleur par ANNAL_* (scps_events.h, MÊME ORDRE que l'enum C ; scps_api.c
 ## sérialise `kind` en int brut, index direct) — la catégorie du fait, pas son contenu.
@@ -59,10 +60,11 @@ func _ready() -> void:
 	_panel = PanelContainer.new()
 	_panel.custom_minimum_size = Vector2(560, MIN_SC + CHROME)
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.10, 0.08, 0.06, 0.97)
-	sb.border_color = Color(0.62, 0.52, 0.30)
-	sb.set_border_width_all(2)
-	sb.set_corner_radius_all(6)
+	sb.bg_color = VKit.COL_PANEL
+	sb.border_color = VKit.COL_EDGE
+	sb.set_border_width_all(1)
+	sb.set_border_width(SIDE_TOP, 3)
+	sb.set_corner_radius_all(1)
 	sb.set_content_margin_all(14)
 	_panel.add_theme_stylebox_override("panel", sb)
 	center.add_child(_panel)

@@ -9,8 +9,9 @@ extends Control
 
 signal closed   ## le panneau se ferme → le jeu reprend (main.gd)
 
-const C_BG    := Color(0.04, 0.03, 0.02, 0.74)
-const C_PANEL := Color(0.10, 0.08, 0.055, 0.98)   # cuir sombre
+const VKit = preload("res://ui/vkit.gd")
+const C_BG    := Color(0.02, 0.025, 0.025, 0.76)
+const C_PANEL := VKit.COL_PANEL
 const C_EDGE  := Color(0.55, 0.42, 0.78)        # liseré violet (religion)
 const C_TEXT  := Color(0.88, 0.86, 0.82)
 const C_DIM   := Color(0.62, 0.60, 0.58)
@@ -51,8 +52,8 @@ func _build_ui() -> void:
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(600, 0)
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = C_PANEL; sb.border_color = C_EDGE; sb.set_border_width_all(2)
-	sb.set_corner_radius_all(6); sb.set_content_margin_all(18)
+	sb.bg_color = C_PANEL; sb.border_color = C_EDGE; sb.set_border_width_all(1)
+	sb.set_border_width(SIDE_TOP, 3); sb.set_corner_radius_all(1); sb.set_content_margin_all(18)
 	panel.add_theme_stylebox_override("panel", sb)
 	center.add_child(panel)
 	var col := VBoxContainer.new()

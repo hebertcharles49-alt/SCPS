@@ -1,5 +1,5 @@
 extends Control
-## VKitDropdown — un menu déroulant DESSINÉ À LA CHARTE (cuir / or /
+## VKitDropdown — un menu déroulant DESSINÉ À LA CHARTE (graphite / or /
 ## parchemin), en immédiat VKit comme le reste de l'UI (pas d'OptionButton natif,
 ## impossible à teinter proprement). Émet `selected(index)`. Le Control grandit en
 ## hauteur quand il est ouvert (la zone cliquable suit la liste visible).
