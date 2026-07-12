@@ -783,6 +783,7 @@ Dictionary ScpsWorld::diplo_options(int target) {
     d["would_accept_pact"]    = (bool)(ok && o.would_accept_pact);
     d["would_accept_migration"]= (bool)(ok && o.would_accept_migration);
     d["would_accept_peace"]   = (bool)(ok && o.would_accept_peace);
+    d["truce_days"]           = ok ? (double)o.truce_days : 0.0;
     /* W-GUERRE-3 — l'état de l'intrigue fabriquée (CB payant) contre `target`. */
     d["can_fabricate"]          = (bool)(ok && o.can_fabricate);
     d["fabricate_cost"]         = ok ? (double)o.fabricate_cost : 0.0;

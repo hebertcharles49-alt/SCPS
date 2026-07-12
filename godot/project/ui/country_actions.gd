@@ -325,7 +325,7 @@ func _refresh() -> void:
 			b.modulate = Color(1.0, 0.82, 0.5) if amber else Color(1, 1, 1)
 		# RETOUR JOUEUR : chaque verbe GRISÉ nomme sa raison au survol (« pourquoi je peux pas ? »)
 		if b.disabled:
-			b.tooltip_text = _why_disabled(verb, cd, at_war, allied, has_pact)
+			b.tooltip_text = _why_disabled(verb, cd, at_war, allied, has_pact, op2)
 		elif verb == "war" and _war_armed:
 			b.tooltip_text = "irréversible — cliquez de nouveau pour confirmer (4 s)"
 		elif amber:
@@ -395,12 +395,21 @@ func _act(verb: String) -> void:
 
 ## la RAISON explicite d'un verbe GRISÉ (retour joueur : « chaque chose grisée doit être nommée »).
 ## Dérivée des flags diplo_options + de l'état de relation (opinion_summary), langue-indépendante.
-func _why_disabled(verb: String, cd: int, at_war: bool, allied: bool, has_pact: bool) -> String:
+func _why_disabled(verb: String, cd: int, at_war: bool, allied: bool, has_pact: bool, op2: Dictionary = {}) -> String:
 	if cd > 0:
 		return "émissaire en tournée — de retour dans %d j" % cd
 	match verb:
 		"war":
-			return "déjà en guerre avec ce pays" if at_war else "trêve en cours (paix trop récente)"
+			# la VRAIE raison (retour joueur « pourquoi je suis en trêve au début ? ») : au
+			# départ il n'y a PAS de trêve — la guerre est bloquée par l'absence de CASUS
+			# BELLI (fabriquez une revendication). On ne dit « trêve » que s'il y en a une.
+			if at_war:
+				return "déjà en guerre avec ce pays"
+			if float(op2.get("truce_days", 0.0)) > 0.0:
+				return "trêve en cours — paix trop récente (%d j)" % int(ceili(float(op2.get("truce_days", 0.0))))
+			if bool(op2.get("fabricating", false)):
+				return "revendication en fabrication (%d j)" % int(ceili(float(op2.get("fabricating_days_left", 0.0))))
+			return "aucun casus belli — fabriquez une revendication d'abord"
 		"peace":
 			return "vous n'êtes pas en guerre avec ce pays"
 		"ally":

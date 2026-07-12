@@ -1571,6 +1571,7 @@ int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out){
     { CasusBelli cbn = diplo_casus_belli(s->w, s->sim.econ, s->sim.wp, d, p, t, RES_NONE);
       bool has_cb = (cbn!=CB_NONE && !diplo_cb_needs_fabrication(cbn)) || diplo_fab_ready_cb(d,p,t)!=CB_NONE;
       out->can_declare_war = (!at_war && diplo_truce_days(d,p,t)<=0.f && has_cb) ? 1:0; }
+    out->truce_days         = diplo_truce_days(d,p,t);   /* pour distinguer trêve vs no-CB à l'UI */
     out->can_make_peace     = at_war ? 1:0;
     out->can_offer_alliance = (!at_war && st!=DIPLO_ALLIED && slot) ? 1:0;
     out->can_offer_pact     = (!at_war && !diplo_trade_pact(d,p,t)) ? 1:0;

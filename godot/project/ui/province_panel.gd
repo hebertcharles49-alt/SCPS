@@ -389,6 +389,27 @@ func _draw() -> void:
 			VKit.box(self, _colonize_rect, Color(0.75, 0.85, 0.55))
 			VKit.text(self, Vector2(x, y + bbh + 4), Color(0.62, 0.78, 0.52),
 				"Ordre émis — la colonne part sous peu", VKit.FS_SMALL)
+	elif powner < 0:
+		# VIERGE mais colonisation IMPOSSIBLE ici, MAINTENANT (retour joueur « le bouton de
+		# colonisation a disparu ») : on GARDE le bouton, GRISÉ, avec la RAISON — au lieu de
+		# le cacher. Une colonie à la fois, une par an (scps_can_colonize).
+		_colonize_rect = Rect2()   # non cliquable tant que grisé
+		var gr := Rect2(x, y, bw + 16, bbh)
+		VKit.fill(self, gr, Color(VKit.COL_PANEL2.r, VKit.COL_PANEL2.g, VKit.COL_PANEL2.b, 0.5))
+		VKit.box(self, gr, VKit.COL_EDGE)
+		UIKit.draw_icon(self, "action_build", Vector2(x + 6, y + 5), 18)
+		VKit.text(self, Vector2(x + 28, y + 5), VKit.COL_DIM, "Coloniser")
+		var why := "aucune de vos provinces n'est prête (pop ≥ 800, nourrie)"
+		if w.has_method("colony_status"):
+			var cs: Dictionary = w.colony_status()
+			if bool(cs.get("active", false)):
+				var ctot := maxi(1, int(cs.get("total_days", 1)))
+				var cpct := int(round(100.0 * float(ctot - int(cs.get("days_left", 0))) / float(ctot)))
+				why = "colonie déjà en chantier (%d %%)" % cpct
+			elif int(cs.get("cd_days", 0)) > 0:
+				why = "une colonie par an — encore %d j" % int(cs.get("cd_days", 0))
+		VKit.text(self, Vector2(x, y + bbh + 3), VKit.COL_DIM, why, VKit.FS_SMALL)
+		y += bbh + 18.0
 	elif powner >= 0 and powner != me:
 		var dop: Dictionary = w.diplo_options(powner) if w.has_method("diplo_options") else {}
 		if bool(dop.get("can_make_peace", false)):

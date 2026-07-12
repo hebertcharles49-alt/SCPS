@@ -538,6 +538,8 @@ typedef struct {
     int would_accept_pact;      /* idem (opinion + complémentarité) */
     int would_accept_migration; /* BRASSAGE : le vis-à-vis CONSENTIRAIT au pacte migratoire */
     int would_accept_peace;     /* le vis-à-vis CÉDERAIT (score de guerre / épuisement) */
+    float truce_days;           /* > 0 : TRÊVE en cours (jours restants) — la guerre est bloquée
+                                 * par une PAIX RÉCENTE, pas par l'absence de casus belli */
     /* W-GUERRE-3 — LE CASUS BELLI FABRIQUÉ : can_declare_war reste la légalité STRUCTURELLE
      * (pas déjà en guerre, pas de trêve) ; ces trois champs disent si une déclaration
      * OFFENSIVE (territorial/économique/religieux) est actuellement ARMÉE. Un CB « gratuit »

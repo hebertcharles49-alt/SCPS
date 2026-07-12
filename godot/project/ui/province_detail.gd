@@ -719,6 +719,13 @@ func _draw_flux(fx: float, fy: float, fw: float, fh: float, w) -> void:
 	VKit.fill(self, Rect2(fx, base, fw, 1), VKit.COL_DIM)
 
 func _gui_input(event: InputEvent) -> void:
+	# MOLETTE : consommée ICI pour ne PAS zoomer la carte dessous (retour joueur « scroller
+	# le panneau province zoome le jeu »). Le panneau capte l'évènement au lieu de le laisser
+	# filer vers le zoom de la carte.
+	if event is InputEventMouseButton and event.pressed and \
+			(event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN):
+		accept_event()
+		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if _close_rect.has_point(event.position):
 			visible = false
