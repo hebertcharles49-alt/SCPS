@@ -2619,11 +2619,7 @@ int scps_player_move_army(ScpsSim *s, int target_region){
     PlayerCmd c = { CMD_MOVE_ARMY, { target_region, 0, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
-int scps_player_posture(ScpsSim *s, int posture){
-    if (!s || !s->ready) return 0;
-    PlayerCmd c = { CMD_POSTURE, { posture, 0, 0, 0 } };
-    return sim_cmd_push(&s->sim, c) ? 1 : 0;
-}
+/* POSTURES RETIRÉES (retour joueur) : les verbes de posture n'existent plus. */
 int scps_player_refill(ScpsSim *s){
     if (!s || !s->ready) return 0;
     PlayerCmd c = { CMD_REFILL, { 0, 0, 0, 0 } };
@@ -2655,10 +2651,6 @@ int scps_player_merge_corps(ScpsSim *s, int dst_id, int src_id){
 int scps_player_move_corps(ScpsSim *s, int id, int target_region){
     if (!s || !s->ready) return 0;
     PlayerCmd c={CMD_CORPS_MOVE,{id,target_region,0,0}}; return sim_cmd_push(&s->sim,c)?1:0;
-}
-int scps_player_corps_posture(ScpsSim *s, int id, int posture){
-    if (!s || !s->ready) return 0;
-    PlayerCmd c={CMD_CORPS_POSTURE,{id,posture,0,0}}; return sim_cmd_push(&s->sim,c)?1:0;
 }
 int scps_player_refill_corps(ScpsSim *s, int id){
     if (!s || !s->ready) return 0;

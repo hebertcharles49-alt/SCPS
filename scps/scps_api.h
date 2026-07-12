@@ -805,7 +805,6 @@ int  scps_player_market_buy    (ScpsSim *s, int region, int good, long qty, int 
 int  scps_player_market_sell   (ScpsSim *s, int region, int good, long qty, int tier);
 int  scps_player_campaign      (ScpsSim *s, int from_region, int target_region);
 int  scps_player_move_army     (ScpsSim *s, int target_region);   /* clic-armée → destination (mouvement libre) */
-int  scps_player_posture       (ScpsSim *s, int posture);
 int  scps_player_refill        (ScpsSim *s);
 int  scps_player_navy_build    (ScpsSim *s, int hull);
 int  scps_player_disband       (ScpsSim *s);
@@ -813,7 +812,6 @@ int  scps_player_raise_corps   (ScpsSim *s, long packets, int target_region);
 int  scps_player_split_corps   (ScpsSim *s, int id, long packets);
 int  scps_player_merge_corps   (ScpsSim *s, int dst_id, int src_id);
 int  scps_player_move_corps    (ScpsSim *s, int id, int target_region);
-int  scps_player_corps_posture (ScpsSim *s, int id, int posture);
 int  scps_player_refill_corps  (ScpsSim *s, int id);
 int  scps_player_disband_corps (ScpsSim *s, int id);
 /* LOT P (2026-07-07) — PILLER LA CÔTE : une province CÔTIÈRE d'un AUTRE pays (ni allié,

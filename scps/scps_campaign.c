@@ -373,8 +373,11 @@ void campaign_release_transports(Campaign *c, struct NavyState *navy){
 
 /* ---- POSTURE (§5 sidebar) : prudente marche/assiège LENTEMENT (préserve), -----
  * l'agressive PRESSE (marche vive, siège mené tambour battant). Un palier, un mot. */
-static float posture_march_mult(int p){ return (p==FA_PRUDENTE)?1.15f : (p==FA_AGRESSIVE)?0.88f : 1.f; }
-static float posture_siege_mult(int p){ return (p==FA_PRUDENTE)?1.15f : (p==FA_AGRESSIVE)?0.85f : 1.f; }
+/* POSTURES RETIRÉES (retour joueur : feature jamais demandée, sans intérêt tactique).
+ * Les corps roulent tous en régime NEUTRE — ces deux helpers sont conservés inertes
+ * (×1.0) pour ne pas toucher les ~8 sites de marche/siège du module de bataille. */
+static float posture_march_mult(int p){ (void)p; return 1.f; }
+static float posture_siege_mult(int p){ (void)p; return 1.f; }
 void campaign_set_posture(Campaign *c, int owner, int posture){
     campaign_set_corps_posture(c,owner,posture);
 }
@@ -619,7 +622,7 @@ static void bt_rout(Campaign *c, const World *w, const WorldEconomy *e, DiploSta
      * infanterie pure ⇒ le choc peut primer (le slugfest frontal). */
     float cavf=army_cav_frac(&vf);
     float ctrv=side_counter(&vf,&lf);   /* le vainqueur qui CONTRAIT le vaincu fait une curée plus totale */
-    float P=0.06f + ((V->posture==FA_AGRESSIVE)?0.08f:(V->posture==FA_PRUDENTE)?-0.03f:0.f)
+    float P=0.06f                                     /* postures retirées : plus de terme de posture */
           + 0.04f*vfrac + tune_f("CAV_PURSUIT",0.45f)*cavf
           + tune_f("CTR_PURSUIT",0.30f)*fmaxf(0.f, ctrv-1.f);
     if (terrain_combat_bonus(c->reg_biome[bt->loc])>1.10f) P-=0.04f;   /* la montagne couvre la fuite */
@@ -704,8 +707,8 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
         float tA=bt_terrainA(c,e,bt->loc,A->owner,B->owner);
         float ctrA=powf(side_counter(&forceA,&forceB), tune_f("CTR_BITE",0.6f)); /* le contre PRIME sur la qualité brute */
         float ctrB=powf(side_counter(&forceB,&forceA), tune_f("CTR_BITE",0.6f));
-        float pA=side_power(&forceA)*tA*ctrA *((A->posture==FA_AGRESSIVE)?1.10f:(A->posture==FA_PRUDENTE)?0.92f:1.f);
-        float pB=side_power(&forceB)/tA*ctrB *((B->posture==FA_AGRESSIVE)?1.10f:(B->posture==FA_PRUDENTE)?0.92f:1.f);
+        float pA=side_power(&forceA)*tA*ctrA;   /* postures retirées */
+        float pB=side_power(&forceB)/tA*ctrB;
         pA*=0.85f+0.30f*xs01(rng); pB*=0.85f+0.30f*xs01(rng);
         float tot=pA+pB+1e-3f;
         float dmgk=tune_f("BT_DMG_K",BT_DMG_K);
@@ -738,7 +741,7 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
              * fait tomber les sièges et prendre le terrain (avant : 98 % de décrochages,
              * 0 occupation). Posture prudente = plus prompte à rompre (+0.10). */
             float base=tune_f("BT_DECROCHE",0.22f);
-            float sA=(A->posture==FA_PRUDENTE)?base+0.10f:base, sB=(B->posture==FA_PRUDENTE)?base+0.10f:base;
+            float sA=base, sB=base;   /* postures retirées : plus de bonus de décrochage prudent */
             int who=(fA<sA && fA<fB-0.08f)?0:(fB<sB && fB<fA-0.08f)?1:-1;
             if (who>=0){
                 FieldArmy *L=&c->army[who?bt->b:bt->a], *V=&c->army[who?bt->a:bt->b];

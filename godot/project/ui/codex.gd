@@ -24,7 +24,6 @@ const DOMAINS := [
 		{"nom": "Ouvrir / router une route commerciale", "ou": "Panneau province (chips « Route terre » / « Route mer »)", "regle": "gate : deux ports + deux marchés + (pacte ou même empire) ; le rendement décroît avec la distance, jamais nul"},
 		{"nom": "Recompléter l'armée / Dissoudre l'armée", "ou": "Tiroir Armée (sidebar)", "regle": "recompléter paie or+matière ; dissoudre libère la pop MAIS ne rend PAS les armes (asymétrie connue, cf. rapport)"},
 		{"nom": "Mettre une coque en chantier (marine)", "ou": "Tiroir Armée (sidebar), section Flotte", "regle": "coût en cuivre (depuis le retrait du métal) ; nécessite un port"},
-		{"nom": "Changer de posture militaire", "ou": "Tiroir Armée (sidebar)", "regle": "3 chips (défensive/neutre/offensive) — pèse sur l'agressivité/les gates IA miroir"},
 		{"nom": "Lancer une campagne (attaquer une région)", "ou": "Panneau province (chip « Attaquer ici », depuis une région ennemie voisine)", "regle": "revalidé au drain : région à soi comme origine, chemin BFS existant — silencieux si échoue"},
 	]],
 	["Peuples", [

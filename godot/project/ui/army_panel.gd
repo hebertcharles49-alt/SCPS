@@ -77,24 +77,7 @@ func _build() -> void:
 	_hint.text = "Cliquez une province : à vous → repositionner · ennemie → attaquer (siège, assaut, occupation & butin)."
 	v.add_child(_hint)
 
-	# POSTURE
-	var pl := Label.new()
-	pl.text = "Posture"
-	pl.add_theme_font_size_override("font_size", VKit.FS_SMALL)
-	pl.add_theme_color_override("font_color", VKit.COL_DIM)
-	v.add_child(pl)
-	var ph := HBoxContainer.new()
-	ph.add_theme_constant_override("separation", 4)
-	v.add_child(ph)
-	var pnames := ["Prudente", "Standard", "Agressive"]
-	for i in 3:
-		var b := Button.new()
-		b.text = pnames[i]
-		b.custom_minimum_size = Vector2(0, 34)
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var idx := i
-		b.pressed.connect(func(): _do_posture(idx))
-		ph.add_child(b)
+	# (POSTURE retirée — retour joueur : feature sans intérêt, jamais demandée.)
 
 	# ACTIONS
 	var ah := HBoxContainer.new()
@@ -186,11 +169,6 @@ func _say(msg: String, good: bool) -> void:
 	_flash.text = msg
 	_flash.add_theme_color_override("font_color", VKit.sense(0.80) if good else VKit.sense(0.20))
 	_flash_ms = Time.get_ticks_msec()
-
-func _do_posture(i: int) -> void:
-	if Sim.world != null and Sim.world.has_method("player_corps_posture"):
-		for id in _selected_ids: Sim.world.player_corps_posture(id,i)
-		_say("Posture : %s." % ["prudente", "standard", "agressive"][i], true)
 
 func _do_refill() -> void:
 	if Sim.world != null and Sim.world.has_method("player_refill_corps"):

@@ -129,7 +129,6 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_market_sell", "region", "good", "qty", "tier"), &ScpsWorld::player_market_sell);
     ClassDB::bind_method(D_METHOD("player_campaign", "from_region", "target_region"), &ScpsWorld::player_campaign);
     ClassDB::bind_method(D_METHOD("player_move_army", "target_region"), &ScpsWorld::player_move_army);
-    ClassDB::bind_method(D_METHOD("player_posture", "posture"),         &ScpsWorld::player_posture);
     ClassDB::bind_method(D_METHOD("player_refill"),                     &ScpsWorld::player_refill);
     ClassDB::bind_method(D_METHOD("player_navy_build", "hull"),         &ScpsWorld::player_navy_build);
     ClassDB::bind_method(D_METHOD("player_disband"),                    &ScpsWorld::player_disband);
@@ -137,7 +136,6 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_split_corps", "id", "packets"), &ScpsWorld::player_split_corps);
     ClassDB::bind_method(D_METHOD("player_merge_corps", "dst_id", "src_id"), &ScpsWorld::player_merge_corps);
     ClassDB::bind_method(D_METHOD("player_move_corps", "id", "target_region"), &ScpsWorld::player_move_corps);
-    ClassDB::bind_method(D_METHOD("player_corps_posture", "id", "posture"), &ScpsWorld::player_corps_posture);
     ClassDB::bind_method(D_METHOD("player_refill_corps", "id"), &ScpsWorld::player_refill_corps);
     ClassDB::bind_method(D_METHOD("player_disband_corps", "id"), &ScpsWorld::player_disband_corps);
     ClassDB::bind_method(D_METHOD("player_raid_coast", "prov"),         &ScpsWorld::player_raid_coast);
@@ -1411,7 +1409,6 @@ bool ScpsWorld::player_market_buy(int region, int good, int qty, int tier)  { re
 bool ScpsWorld::player_market_sell(int region, int good, int qty, int tier) { return sim ? scps_player_market_sell(sim, region, good, (long)qty, tier) != 0 : false; }
 bool ScpsWorld::player_campaign(int from_region, int target_region) { return sim ? scps_player_campaign(sim, from_region, target_region) != 0 : false; }
 bool ScpsWorld::player_move_army(int target_region) { return sim ? scps_player_move_army(sim, target_region) != 0 : false; }
-bool ScpsWorld::player_posture(int posture)              { return sim ? scps_player_posture(sim, posture) != 0 : false; }
 bool ScpsWorld::player_refill()                          { return sim ? scps_player_refill(sim) != 0 : false; }
 bool ScpsWorld::player_navy_build(int hull)              { return sim ? scps_player_navy_build(sim, hull) != 0 : false; }
 bool ScpsWorld::player_disband()                         { return sim ? scps_player_disband(sim) != 0 : false; }
@@ -1419,7 +1416,6 @@ bool ScpsWorld::player_raise_corps(int packets,int target_region){ return sim?sc
 bool ScpsWorld::player_split_corps(int id,int packets){ return sim?scps_player_split_corps(sim,id,packets)!=0:false; }
 bool ScpsWorld::player_merge_corps(int dst_id,int src_id){ return sim?scps_player_merge_corps(sim,dst_id,src_id)!=0:false; }
 bool ScpsWorld::player_move_corps(int id,int target_region){ return sim?scps_player_move_corps(sim,id,target_region)!=0:false; }
-bool ScpsWorld::player_corps_posture(int id,int posture){ return sim?scps_player_corps_posture(sim,id,posture)!=0:false; }
 bool ScpsWorld::player_refill_corps(int id){ return sim?scps_player_refill_corps(sim,id)!=0:false; }
 bool ScpsWorld::player_disband_corps(int id){ return sim?scps_player_disband_corps(sim,id)!=0:false; }
 

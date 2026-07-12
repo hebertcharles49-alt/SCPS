@@ -210,11 +210,10 @@ int main(int argc, char **argv){
         v += scps_player_market_buy(s2, 0, 1, 10, 0) ? 1:0;
         v += scps_player_market_sell(s2, 0, 1, 10, 0)? 1:0;
         v += scps_player_campaign(s2, 0, 1)  ? 1:0;
-        v += scps_player_posture(s2, 2)      ? 1:0;
         v += scps_player_refill(s2)          ? 1:0;
         v += scps_player_navy_build(s2, 0)   ? 1:0;
         v += scps_player_disband(s2)         ? 1:0;
-        ok("§3 — 13 verbes intérieur/commerce/guerre ENFILÉS", v==13);
+        ok("§3 — 12 verbes intérieur/commerce/guerre ENFILÉS (posture retirée)", v==12);
         scps_sim_advance_days(s2, 1);        /* le drain les applique tous, revalidés, sans crash */
         ok("§3 — drainés sans crash (revalidation au drain : membrane stable)", scps_year(s2)>=0);
         /* §3 — OPTIONS : la légalité grise les boutons. On choisit une cible VALIDE au sens de
