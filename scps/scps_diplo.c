@@ -552,7 +552,12 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
     /* ── 3. ACCEPTATION PAR LA MENACE (inchangé) ── */
     for (int v=0;v<w->n_countries && v<SCPS_MAX_COUNTRY;v++){
         if (d->suzerain[v]>=0) continue;
-        if (w->country[v].role==POLITY_UNCLAIMED || w->country[v].capital_prov<0) continue;
+        /* Les PEUPLES LIBRES (WILD) ne se SOUMETTENT jamais d'eux-mêmes à un voisin fort —
+         * ils restent indépendants tant qu'on ne les CONQUIERT/vassalise pas activement
+         * (retour joueur : un hameau libre voisin devenait protectorat automatiquement, ce
+         * qui ouvrait une trêve et BLOQUAIT la déclaration de guerre malgré un CB mûr). */
+        if (w->country[v].role==POLITY_UNCLAIMED || w->country[v].role==POLITY_WILD
+            || w->country[v].capital_prov<0) continue;
         if (diplo_ally_count(d,v)>0) continue;
         float mv=diplo_mil_power(w,econ,v); if (mv<=0.f) continue;
         int big=-1; float best=0.f;

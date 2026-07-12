@@ -1571,7 +1571,9 @@ func _draw_garrison(w, mv, c: int, zoom: float, human_idx: int) -> void:
 		return
 	if c != human_idx and not _fog_visible_region(creg):
 		return
-	var rc: Vector2 = w.region_centroid(creg)
+	# POSE sur le SIÈGE (la ville dessinée), pas le centroïde géométrique de la région —
+	# sinon la garnison flotte loin de la province (retour joueur « apparaît loin »).
+	var rc: Vector2 = _region_seat.get(creg, w.region_centroid(creg))
 	if rc.x < 0:
 		return
 	var ctr: Vector2 = mv.iso_pos(rc.x, rc.y)
@@ -1878,7 +1880,8 @@ func _draw_iso(w, mv: Node2D) -> void:
 		# dessine pas — les tiennes (c==human_idx) restent TOUJOURS visibles.
 		if c != human_idx and not _fog_visible_region(reg):
 			continue
-		var rctr: Vector2 = w.region_centroid(reg)
+		# POSE sur le SIÈGE (la ville), pas le centroïde — l'armée reste SUR la province.
+		var rctr: Vector2 = _region_seat.get(reg, w.region_centroid(reg))
 		if rctr.x < 0:
 			continue
 		var ctr: Vector2 = mv.iso_pos(rctr.x, rctr.y)
