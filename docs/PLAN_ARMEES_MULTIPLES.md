@@ -1,8 +1,16 @@
 # PLAN — Armées multiples par nation (corps manœuvrables + boîte de sélection)
 
-**Statut : DESIGN À VALIDER. Aucune ligne de code tant que ce plan n'est pas approuvé.**
-Rédigé 2026-07-12. Déclencheur : « je veux scinder mon armée en plusieurs corps que je
-manœuvre séparément, et les sélectionner à la boîte (draw-box) ».
+**Statut : DÉCISIONS PRISES (2026-07-12) — implémentation phasée autorisée (P5 complet).**
+Déclencheur : « je veux scinder mon armée en plusieurs corps que je manœuvre séparément,
+et les sélectionner à la boîte (draw-box) ».
+
+### DÉCISIONS VERROUILLÉES
+- **Combat : B2 empilement** — corps amis d'une région = front commun, pertes au prorata.
+- **Portée : P5 complet équilibré** (jusqu'à l'IA multi-corps + le sweep de re-validation).
+- **Plafond : un stack par RÉGIMENT, fusionnable.** `MAX_CORPS = 32`/pays (plafond dur ;
+  au-delà, les régiments restent groupés). Descendre à 1 régiment/corps est FAISABLE mais
+  jamais l'intérêt — la fusion est la norme, le design ne doit pas récompenser l'éparpillement.
+- **IA : D2** — un corps par front actif (pas une IA RTS ; une doctrine de concentration).
 
 ---
 
