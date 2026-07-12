@@ -743,8 +743,17 @@ int main(int argc, char **argv){
                scps_pending_event(sp, 0, &pe)==1 && pe.n_options>=1 && pe.situation[0]!='\0');
             ok("player_event_choice ENFILE le choix (mis en file)",
                scps_player_event_choice(sp, 0, 0)==1);
+            char chosen[128];
+            strncpy(chosen, pe.situation, sizeof chosen - 1); chosen[sizeof chosen - 1]='\0';
             scps_sim_advance_days(sp, 2);   /* le drain RÉSOUT au prochain tick */
-            ok("le choix DRAINÉ retire le pending de la file", scps_pending_count(sp)<n1);
+            /* ROBUSTE au monde : le kit vivrier ×20 (SPAWN_KIT_FOOD 2000) rend la genèse
+             * plus ÉVÉNEMENTIELLE — d'autres décisions peuvent éclore pendant le drain, si
+             * bien que le COMPTE net ne baisse pas toujours. On vérifie donc l'INTENT réel :
+             * le pending qu'on a CHOISI (par sa situation) a bien DISPARU de la file. */
+            bool chosen_gone=true;
+            for (int k=0;k<scps_pending_count(sp);k++){ ScpsPendingEvent pk;
+                if (scps_pending_event(sp,k,&pk)==1 && strcmp(pk.situation,chosen)==0){ chosen_gone=false; break; } }
+            ok("le choix DRAINÉ résout le pending choisi", chosen_gone);
             /* LES ANNALES DU RÈGNE : le dilemme qu'on vient de trancher (drain réel, pas
              * pending_event_resolve directement) doit apparaître, TRIÉ, ligne non vide. */
             ScpsAnnal an[16];

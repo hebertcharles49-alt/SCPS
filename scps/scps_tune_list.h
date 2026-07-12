@@ -775,8 +775,8 @@
     /* KIT DE DÉPART (2026-07-10, demande joueur) : petit STOCK déposé sur la province-
      * capitale de chaque EMPIRE/JOUEUR à la genèse (scps_econ.c, site du CS_TRADE_POOL) —
      * de quoi tenir le premier hiver et lever une garde. 0 = désactivé. */ \
-    X(SPAWN_KIT_WOOD,           50.0f) \
-    X(SPAWN_KIT_FOOD,          100.0f) \
+    X(SPAWN_KIT_WOOD,          250.0f) \
+    X(SPAWN_KIT_FOOD,         2000.0f) \
     X(SPAWN_KIT_CLAY,           20.0f) \
     X(SPAWN_KIT_IRON,           20.0f) \
     X(SPAWN_KIT_STONE,          20.0f) \

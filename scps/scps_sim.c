@@ -164,6 +164,33 @@ static void sim_campaign_orders(Sim *s, World *w) {
         }
         if(active_n>=nfoe && idle_id<0) continue; /* doctrine D2 : un corps par front, concentration au-delà */
         if (warhost_units(s->host,c)<=0 && idle_id<0) continue;
+        /* CONCENTRATION DÉFENSIVE (doctrine D2, moitié jadis manquante) : un corps À MOI
+         * DÉBORDÉ (en siège/bataille ou brisé, sur une région où l'ennemi PÈSE plus que
+         * ma force locale) attire un corps IDLE en RENFORT (empilement B2) — au lieu
+         * d'ouvrir un nouveau front. Referme l'asymétrie « le joueur concentre, l'IA
+         * s'éparpille ». Déterministe (ordre fixe, aucun RNG). */
+        if (idle_id>=0){
+            int reinforce=-1;
+            for (int n=0;n<active_n && reinforce<0;n++){
+                int aid=campaign_corps_id_at(s->camp,c,n);
+                const FieldArmy *a=campaign_corps_const(s->camp,aid);
+                if (!a || aid==idle_id) continue;
+                if (a->phase!=FA_SIEGE && a->phase!=FA_BATTLE && a->broken_days<=0) continue;
+                int r=a->loc; if (r<0 || r>=s->econ->n_regions) continue;
+                long mine=0, foe=0;
+                for (int k=0;k<CAMPAIGN_ARMY_CAP;k++){ const FieldArmy *b=&s->camp->army[k];
+                    if (!b->active) continue;
+                    if (b->owner==c && b->loc==r) mine+=campaign_corps_units(s->camp,b->id);
+                    else if (b->loc>=0 && b->loc<s->econ->n_regions
+                             && diplo_status(s->dp,c,b->owner)==DIPLO_WAR
+                             && (b->loc==r || s->econ->adj[r][b->loc]))
+                        foe+=campaign_corps_units(s->camp,b->id);
+                }
+                if (foe>mine) reinforce=r;   /* débordé → on empile un renfort */
+            }
+            if (reinforce>=0 && campaign_redirect_corps(s->camp,s->econ,s->dp,idle_id,reinforce))
+                continue;   /* le corps idle RENFORCE : pas de nouveau front ce tick */
+        }
         int front_enemy=foes[(active_n<nfoe?active_n:0)%nfoe];
         int frontier=-1, target=-1;
         /* B5 — PRIORITÉ DE LIBÉRATION : une de mes régions tenue par un occupant
