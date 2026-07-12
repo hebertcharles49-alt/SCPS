@@ -1557,6 +1557,34 @@ func _process(dt: float) -> void:
 				_roads_dirty = true
 				queue_redraw()
 
+## GARNISON : la réserve MOBILISÉE d'un pays (régiments recrutés, PAS en campagne) — un
+## pion à la capitale, pour qu'une armée levée SE VOIE. Plus petit que l'ost de campagne ;
+## fog-gaté (les tiennes toujours visibles). Lit country_army/country_capital_region.
+func _draw_garrison(w, mv, c: int, zoom: float, human_idx: int) -> void:
+	if not w.has_method("country_army") or not w.has_method("country_capital_region"):
+		return
+	var reg_n := int(w.country_army(c).get("regiments", 0))
+	if reg_n <= 0:
+		return
+	var creg := int(w.country_capital_region(c))
+	if creg < 0:
+		return
+	if c != human_idx and not _fog_visible_region(creg):
+		return
+	var rc: Vector2 = w.region_centroid(creg)
+	if rc.x < 0:
+		return
+	var ctr: Vector2 = mv.iso_pos(rc.x, rc.y)
+	var pt: Texture2D = HeraldryK.pion(0, c)   # phase repos, teinté au pays
+	if pt != null:
+		var s := _w(zoom, 5.0, 22.0, 48.0)     # plus discret que l'ost de campagne (34..74)
+		draw_texture_rect(pt, Rect2(ctr - Vector2(s * 0.5, s * 0.80), Vector2(s, s)), false, Color(1, 1, 1, 0.80))
+	else:
+		var col := _country_color(c)
+		var sv := 4.0 / zoom
+		draw_colored_polygon(PackedVector2Array([
+			ctr + Vector2(0, -sv), ctr + Vector2(sv, 0), ctr + Vector2(0, sv), ctr + Vector2(-sv, 0)]), col)
+
 func _country_color(c: int) -> Color:
 	# UNE SEULE FAMILLE de couleur par entité : la teinte du pigment politique (frontière =
 	# lavis = armée = nom), en version FORTE pour un acteur posé SUR la carte (le jeton doit
@@ -1838,6 +1866,10 @@ func _draw_iso(w, mv: Node2D) -> void:
 	for c in range(w.country_count()):
 		var a: Dictionary = w.army_info(c)
 		if not bool(a.get("active", false)):
+			# RÉSERVE MOBILISÉE (régiments recrutés mais pas en campagne) : une garnison à la
+			# CAPITALE — sinon une armée levée n'apparaît NULLE PART (retour joueur « les
+			# armées mobilisées n'apparaissent pas sur la carte »). Pion plus discret que l'ost.
+			_draw_garrison(w, mv, c, zoom, human_idx)
 			continue
 		var reg: int = a.get("region", -1)
 		if reg < 0:
