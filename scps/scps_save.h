@@ -32,7 +32,9 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 80u           /* v80 : AUDIT save-robustesse — la section RELG gagne l'ancre
+#define SAVE_VERSION 81u           /* v81 : ARMÉES MULTIPLES — Campaign sérialise 32 slots stables
+                                    * par pays, leur id et le compte de corps actifs. <v81 refusé.
+                                    * v80 : AUDIT save-robustesse — la section RELG gagne l'ancre
                                     * du plafond religieux (empires de genèse, g_relig_n_emp_ref,
                                     * P1) ; la section DCRE gagne le flag « décret financé »
                                     * (g_decree_funded, P4). Deux sections grandissent. <v80 refusé.

@@ -24,7 +24,7 @@ enum { VIEW_GLOBE = 0, VIEW_ISO = 1 }
 
 signal province_picked(province: int, region: int, owner: int)
 signal country_context(owner: int)   ## CLIC DROIT sur un territoire → l'UI diplomatique du pays
-signal army_selection_changed(on: bool)   ## le pion du joueur est (dé)sélectionné → panneau d'armée
+signal army_selection_changed(ids: Array) ## corps sélectionnés → panneau d'armée
 signal mode_changed(m: int)     ## le mode render a changé (légende, sélecteurs)
 
 var mode := 0                   ## ViewMode de carte (0 terrain · 1 politique · 2 régions · 3 pays)
@@ -32,9 +32,11 @@ var view_mode := VIEW_ISO       ## TOUJOURS ISO (compat overlay : le globe n'exi
 
 var _selected_prov := -1
 var _army_selected := false     ## MODE MARCHE : le pion du joueur est sélectionné, le prochain clic ordonne la destination
+var _selected_corps: Array[int] = []
 var _raid_mode := false          ## sous-mode PILLAGE : le prochain clic pille la province cible au lieu de marcher
 var _press_pos := Vector2.ZERO
 var _dragged := false
+var _box_dragging := false
 var _himg: Image                ## couche HEIGHT (figée) — lue par l'overlay (relief/ombres)
 
 var _ground: Node2D             ## sol PARCHEMIN (iso_ground.gd, shader cartographique)
@@ -122,8 +124,11 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and (event.button_mask & (MOUSE_BUTTON_MASK_RIGHT | MOUSE_BUTTON_MASK_LEFT)):
 		if event.position.distance_to(_press_pos) > CLICK_SLOP:
 			_dragged = true
-		_camera.position -= event.relative / _camera.zoom.x
-		_nav_redraw()
+			if event.button_mask & MOUSE_BUTTON_MASK_RIGHT:
+				_camera.position -= event.relative / _camera.zoom.x
+			else:
+				_box_dragging = true
+			_nav_redraw()
 	elif event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
 			_zoom(0.84)
@@ -133,8 +138,11 @@ func _input(event: InputEvent) -> void:
 			if event.pressed:
 				_press_pos = event.position
 				_dragged = false
-			elif not _dragged and get_viewport().gui_get_hovered_control() == null:
-				_pick_at_mouse()
+				_box_dragging = false
+			elif get_viewport().gui_get_hovered_control() == null:
+				if _dragged: _select_box()
+				else: _pick_at_mouse()
+				_box_dragging = false; queue_redraw()
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			if event.pressed:
 				_press_pos = event.position
@@ -174,14 +182,37 @@ func _nav_redraw() -> void:
 		_ground.queue_redraw()
 
 ## MODE MARCHE : (dé)sélectionne le pion du joueur et propage l'état à l'overlay (anneau doré).
-func _set_army_selected(on: bool) -> void:
-	_army_selected = on
-	if not on:
+func _set_selected_corps(ids: Array) -> void:
+	_selected_corps.clear()
+	for id in ids:
+		if int(id) >= 0 and int(id) not in _selected_corps: _selected_corps.append(int(id))
+	_army_selected = not _selected_corps.is_empty()
+	if not _army_selected:
 		_raid_mode = false
 	if _overlay != null:
-		_overlay.army_selected = on
+		_overlay.army_selected = _army_selected
+		_overlay.selected_corps = _selected_corps.duplicate()
 		_overlay.queue_redraw()
-	army_selection_changed.emit(on)
+	army_selection_changed.emit(_selected_corps.duplicate())
+
+func _set_army_selected(on: bool) -> void:
+	if not on: _set_selected_corps([])
+
+func _select_box() -> void:
+	if _overlay == null or not _overlay.has_method("player_corps_in_rect"): return
+	var a := _overlay.to_local(get_viewport().get_canvas_transform().affine_inverse() * _press_pos)
+	var b := _overlay.get_local_mouse_position()
+	var rect := Rect2(Vector2(minf(a.x,b.x),minf(a.y,b.y)),Vector2(absf(b.x-a.x),absf(b.y-a.y)))
+	_set_selected_corps(_overlay.player_corps_in_rect(rect))
+
+func _draw() -> void:
+	if not _box_dragging: return
+	var inv := get_viewport().get_canvas_transform().affine_inverse()
+	var a := to_local(inv * _press_pos)
+	var b := get_local_mouse_position()
+	var r := Rect2(Vector2(minf(a.x,b.x),minf(a.y,b.y)),Vector2(absf(b.x-a.x),absf(b.y-a.y)))
+	draw_rect(r,Color(0.95,0.78,0.28,0.12),true)
+	draw_rect(r,Color(1.0,0.86,0.38,0.9),false,1.5/maxf(_camera.zoom.x,0.001))
 
 ## PILLAGE : le panneau d'armée arme le sous-mode — le prochain clic pille la province cible.
 func arm_raid() -> void:
@@ -192,8 +223,8 @@ func _pick_at_mouse() -> void:
 	if Sim.world == null or not Sim.world.has_method("province_at"):
 		return
 	# clic sur le PION du joueur ? (hit-test en espace local overlay = iso)
-	var hit_army: bool = _overlay != null and _overlay.has_method("point_hits_player_army") \
-		and _overlay.point_hits_player_army(_overlay.get_local_mouse_position())
+	var hit_army: int = _overlay.point_hits_player_army(_overlay.get_local_mouse_position()) \
+		if _overlay != null and _overlay.has_method("point_hits_player_army") else -1
 	var wp := unproj(get_global_mouse_position().x, get_global_mouse_position().y)
 	var cx := int(floor(wp.x))
 	var cy := int(floor(wp.y))
@@ -203,21 +234,24 @@ func _pick_at_mouse() -> void:
 	if _army_selected:
 		if _raid_mode:
 			# sous-mode PILLAGE : ce clic pille la province côtière ciblée (par-province).
-			if not hit_army and prov >= 0 and Sim.world.has_method("player_raid_coast"):
+			if hit_army < 0 and prov >= 0 and Sim.world.has_method("player_raid_coast"):
 				Sim.world.player_raid_coast(prov)
 				Sim.notify_action()
 			_set_army_selected(false)
 			return
 		# mode MARCHE : ce clic ORDONNE la destination — sauf re-clic sur l'armée (= annule).
-		if not hit_army:
+		if hit_army < 0:
 			var dreg: int = Sim.world.province_region(prov) if prov >= 0 else -1
-			if dreg >= 0 and Sim.world.has_method("player_move_army"):
-				Sim.world.player_move_army(dreg)
+			if dreg >= 0 and Sim.world.has_method("player_move_corps"):
+				for id in _selected_corps:
+					var ci: Dictionary = Sim.world.corps_info(id) if Sim.world.has_method("corps_info") else {}
+					if bool(ci.get("active",false)): Sim.world.player_move_corps(id,dreg)
+					elif Sim.world.has_method("player_move_army"): Sim.world.player_move_army(dreg)
 				Sim.notify_action()
-		_set_army_selected(false)
+		if hit_army < 0: _set_selected_corps([])
 		return
-	if hit_army:
-		_set_army_selected(true)   # entrer en mode marche (l'anneau doré s'allume)
+	if hit_army >= 0:
+		_set_selected_corps([hit_army])
 		return
 	if not in_map:
 		return

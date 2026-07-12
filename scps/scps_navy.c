@@ -596,7 +596,7 @@ void navy_course_tick(NavyState *ns, const World *w, WorldEconomy *econ,
 void navy_interception_tick(NavyState *ns, struct Campaign *camp, const World *w,
                             WorldEconomy *econ, struct DiploState *dp, uint32_t *rng){
     (void)econ;
-    for (int i=0;i<SCPS_MAX_COUNTRY;i++){
+    for (int i=0;i<CAMPAIGN_ARMY_CAP;i++){
         FieldArmy *a=&camp->army[i];
         if (!a->active || a->phase!=FA_SAIL || a->intercept_done) continue;
         int owner=a->owner;

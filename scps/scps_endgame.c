@@ -263,10 +263,12 @@ static void cataclysm_strip_region_econ(World *w, WorldEconomy *econ, Campaign *
         }
     }
     if (r < w->n_regions) w->region[r].country = -1;   /* province.country reste ≥0 (save_sane) */
-    if (camp) for (int c = 0; c < SCPS_MAX_COUNTRY; c++) {
+    if (camp) for (int c = 0; c < CAMPAIGN_ARMY_CAP; c++) {
         FieldArmy *a = &camp->army[c];
         if (a->active && (a->loc == r || a->dest == r || a->next == r)) {
             a->active = false; a->dest = -1; a->next = -1;
+            if (a->owner>=0 && a->owner<SCPS_MAX_COUNTRY && camp->n_corps[a->owner]>0)
+                camp->n_corps[a->owner]--;
         }
     }
 }

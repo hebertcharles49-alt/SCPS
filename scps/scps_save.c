@@ -334,11 +334,19 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
     for (int i=0;i<s->rn->n;i++){ const TradeRoute *rt=&s->rn->route[i];
         if (rt->ra<0 || rt->ra>=s->econ->n_regions || rt->rb<0 || rt->rb>=s->econ->n_regions) return false;
         if (rt->choke_region< -1 || rt->choke_region>=s->econ->n_regions) return false; }
-    for (int i=0;i<SCPS_MAX_COUNTRY;i++){ const FieldArmy *a=&s->camp->army[i];
+    for (int owner=0;owner<SCPS_MAX_COUNTRY;owner++){
+        int counted=0;
+        if (s->camp->n_corps[owner]<0 || s->camp->n_corps[owner]>CAMPAIGN_MAX_CORPS) return false;
+        for (int slot=0;slot<CAMPAIGN_MAX_CORPS;slot++){ int i=CAMPAIGN_CORPS_ID(owner,slot); const FieldArmy *a=&s->camp->army[i];
+        if (a->id!=i || a->owner!=owner) return false;
         if (!a->active) continue;
-        if (a->owner<0 || a->owner>=w->n_countries) return false;
+        counted++;
+        if (a->owner>=w->n_countries) return false;
         if (a->loc <0 || a->loc >=s->econ->n_regions) return false;
-        if (a->dest< -1 || a->dest>=s->econ->n_regions || a->next< -1 || a->next>=s->econ->n_regions) return false; }
+        if (a->dest< -1 || a->dest>=s->econ->n_regions || a->next< -1 || a->next>=s->econ->n_regions) return false;
+        }
+        if (counted!=s->camp->n_corps[owner]) return false;
+    }
     for (int i=0;i<SCPS_MAX_COUNTRY;i++){ const Navy *nv=&s->navy->n[i];
         for (int t=0;t<HULL_COUNT;t++) if (nv->hull[t]<0 || nv->hull[t]>100000) return false;
         if (nv->at_sea<0 || nv->build_hull<-1 || nv->build_hull>=HULL_COUNT) return false;
@@ -356,7 +364,7 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         if (s->dp->fab_state[a][b] < FAB_NONE || s->dp->fab_state[a][b] > FAB_READY) return false;
         if (s->dp->fab_days[a][b] < 0.f) return false;
         if (s->dp->fab_cb[a][b] < CB_NONE || s->dp->fab_cb[a][b] > CB_ANTIPIRATERIE) return false; }
-    for (int i=0;i<SCPS_MAX_COUNTRY;i++)
+    for (int i=0;i<CAMPAIGN_ARMY_CAP;i++)
         if (s->camp->army[i].taken_region < -1 || s->camp->army[i].taken_region >= s->econ->n_regions) return false;
     if (s->ag){
         if (s->ag->n < 0 || s->ag->n > SCPS_MAX_BUILDS) return false;
@@ -387,10 +395,11 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
             if (s->rs->concede_cd[c]   < -31.f || s->rs->concede_cd[c]   > 40.f*365.f) return false;
         }
     }
-    for (int i=0;i<SCPS_MAX_COUNTRY;i++){
+    for (int i=0;i<CAMPAIGN_ARMY_CAP;i++){
         if (s->camp->army[i].force.n_units < 0 || s->camp->army[i].force.n_units > ARMY_MAX_UNITS) return false;
-        if (s->host && (s->host->army[i].n_units < 0 || s->host->army[i].n_units > ARMY_MAX_UNITS)) return false;
     }
+    for (int i=0;i<SCPS_MAX_COUNTRY;i++)
+        if (s->host && (s->host->army[i].n_units < 0 || s->host->army[i].n_units > ARMY_MAX_UNITS)) return false;
     /* défaut #5 (audit 2026-07-06) : la carte des hubs intertrade (section ITRD, sérialisée
      * BRUTE — g_hub_of/g_hub_dist) indexe e->region[] sans borne haute côté lecteur ; une
      * save forgée y écrivant un index ≥ n_regions cause une lecture hors-bornes au premier

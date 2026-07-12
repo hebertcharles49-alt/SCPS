@@ -44,6 +44,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("country_info", "country"),        &ScpsWorld::country_info);
     ClassDB::bind_method(D_METHOD("country_research_income", "country"), &ScpsWorld::country_research_income);
     ClassDB::bind_method(D_METHOD("army_info", "country"),           &ScpsWorld::army_info);
+    ClassDB::bind_method(D_METHOD("corps_ids", "country"),            &ScpsWorld::corps_ids);
+    ClassDB::bind_method(D_METHOD("corps_info", "id"),                &ScpsWorld::corps_info);
     ClassDB::bind_method(D_METHOD("region_tier", "region"),          &ScpsWorld::region_tier);
     ClassDB::bind_method(D_METHOD("region_settle_group", "region"),  &ScpsWorld::region_settle_group);
     ClassDB::bind_method(D_METHOD("region_war_state", "region"),     &ScpsWorld::region_war_state);
@@ -131,6 +133,13 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_refill"),                     &ScpsWorld::player_refill);
     ClassDB::bind_method(D_METHOD("player_navy_build", "hull"),         &ScpsWorld::player_navy_build);
     ClassDB::bind_method(D_METHOD("player_disband"),                    &ScpsWorld::player_disband);
+    ClassDB::bind_method(D_METHOD("player_raise_corps", "packets", "target_region"), &ScpsWorld::player_raise_corps);
+    ClassDB::bind_method(D_METHOD("player_split_corps", "id", "packets"), &ScpsWorld::player_split_corps);
+    ClassDB::bind_method(D_METHOD("player_merge_corps", "dst_id", "src_id"), &ScpsWorld::player_merge_corps);
+    ClassDB::bind_method(D_METHOD("player_move_corps", "id", "target_region"), &ScpsWorld::player_move_corps);
+    ClassDB::bind_method(D_METHOD("player_corps_posture", "id", "posture"), &ScpsWorld::player_corps_posture);
+    ClassDB::bind_method(D_METHOD("player_refill_corps", "id"), &ScpsWorld::player_refill_corps);
+    ClassDB::bind_method(D_METHOD("player_disband_corps", "id"), &ScpsWorld::player_disband_corps);
     ClassDB::bind_method(D_METHOD("player_raid_coast", "prov"),         &ScpsWorld::player_raid_coast);
     ClassDB::bind_method(D_METHOD("can_raid_coast", "prov"),            &ScpsWorld::can_raid_coast);
     ClassDB::bind_method(D_METHOD("player_build_manuf", "region", "bld"), &ScpsWorld::player_build_manuf);
@@ -462,6 +471,7 @@ Dictionary ScpsWorld::army_info(int country) {
     scps_army_info(sim, country, &a);
     d["active"] = (bool)a.active;
     if (!a.active) return d;
+    d["id"]       = a.id;
     d["region"]   = a.region;
     d["dest"]     = a.dest;
     d["owner"]    = a.owner;
@@ -472,6 +482,20 @@ Dictionary ScpsWorld::army_info(int country) {
     d["arch"]     = (int64_t)a.arch;
     d["cav"]      = (int64_t)a.cav;
     d["mages"]    = (int64_t)a.mages;
+    return d;
+}
+Array ScpsWorld::corps_ids(int country) {
+    Array out; if (!sim) return out;
+    int n=scps_country_corps_count(sim,country);
+    for(int i=0;i<n;i++){ int id=scps_country_corps_id(sim,country,i); if(id>=0) out.push_back(id); }
+    return out;
+}
+Dictionary ScpsWorld::corps_info(int id) {
+    Dictionary d; ScpsArmyInfo a; scps_corps_info(sim,id,&a);
+    d["active"]=(bool)a.active; d["id"]=id; if(!a.active) return d;
+    d["region"]=a.region; d["dest"]=a.dest; d["owner"]=a.owner; d["phase_id"]=a.phase_id;
+    d["phase"]=String::utf8(a.phase); d["units"]=(int64_t)a.units; d["inf"]=(int64_t)a.inf;
+    d["arch"]=(int64_t)a.arch; d["cav"]=(int64_t)a.cav; d["mages"]=(int64_t)a.mages;
     return d;
 }
 
@@ -1391,6 +1415,13 @@ bool ScpsWorld::player_posture(int posture)              { return sim ? scps_pla
 bool ScpsWorld::player_refill()                          { return sim ? scps_player_refill(sim) != 0 : false; }
 bool ScpsWorld::player_navy_build(int hull)              { return sim ? scps_player_navy_build(sim, hull) != 0 : false; }
 bool ScpsWorld::player_disband()                         { return sim ? scps_player_disband(sim) != 0 : false; }
+bool ScpsWorld::player_raise_corps(int packets,int target_region){ return sim?scps_player_raise_corps(sim,packets,target_region)!=0:false; }
+bool ScpsWorld::player_split_corps(int id,int packets){ return sim?scps_player_split_corps(sim,id,packets)!=0:false; }
+bool ScpsWorld::player_merge_corps(int dst_id,int src_id){ return sim?scps_player_merge_corps(sim,dst_id,src_id)!=0:false; }
+bool ScpsWorld::player_move_corps(int id,int target_region){ return sim?scps_player_move_corps(sim,id,target_region)!=0:false; }
+bool ScpsWorld::player_corps_posture(int id,int posture){ return sim?scps_player_corps_posture(sim,id,posture)!=0:false; }
+bool ScpsWorld::player_refill_corps(int id){ return sim?scps_player_refill_corps(sim,id)!=0:false; }
+bool ScpsWorld::player_disband_corps(int id){ return sim?scps_player_disband_corps(sim,id)!=0:false; }
 
 /* PANNEAU B — manufacture civile par région : le verbe (enfile) + la légalité (read-only). */
 bool ScpsWorld::player_build_manuf(int region, int bld) {

@@ -579,20 +579,31 @@ void scps_country_research_income(ScpsSim *s, int cid, ScpsResearchIncome *out){
 /* ---- ACTEURS SUR LA CARTE (Phase 3) : armées de campagne + tiers de ville --- */
 
 void scps_army_info(ScpsSim *s, int cid, ScpsArmyInfo *out){
+    scps_corps_info(s,cid,out); /* slot 0 : compatibilité historique */
+}
+int scps_country_corps_count(ScpsSim *s, int country){
+    return (s && s->ready) ? campaign_corps_count(s->sim.camp,country) : 0;
+}
+int scps_country_corps_id(ScpsSim *s, int country, int ordinal){
+    return (s && s->ready) ? campaign_corps_id_at(s->sim.camp,country,ordinal) : -1;
+}
+void scps_corps_info(ScpsSim *s, int id, ScpsArmyInfo *out){
     if(!out) return;
     memset(out, 0, sizeof *out);
-    out->region = -1; out->dest = -1; out->owner = cid; out->phase = "";
-    if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return;
-    if(!campaign_active(s->sim.camp, cid)) return;
-    const FieldArmy *a = &s->sim.camp->army[cid];
-    FieldPhase ph = campaign_phase(s->sim.camp, cid);
+    out->id=id; out->region=-1; out->dest=-1; out->owner=-1; out->phase="";
+    if(!s || !s->ready) return;
+    const FieldArmy *a=campaign_corps_const(s->sim.camp,id);
+    if(!a || !a->active || a->owner<0 || a->owner>=s->w->n_countries) return;
+    FieldPhase ph=a->phase;
+    out->id       = id;
+    out->owner    = a->owner;
     out->active   = 1;
-    out->region   = campaign_location(s->sim.camp, cid);
+    out->region   = a->loc;
     out->dest     = a->dest;
     out->phase_id = (int)ph;
     out->phase    = sz(campaign_phase_name(ph));
-    out->units    = campaign_units(s->sim.camp, cid);
-    ArmyComposition comp = campaign_composition(s->sim.camp, cid);
+    out->units    = campaign_corps_units(s->sim.camp,id);
+    ArmyComposition comp=campaign_corps_composition(s->sim.camp,id);
     out->inf = comp.infanterie; out->arch = comp.archers;
     out->cav = comp.cavalerie;  out->mages = comp.mages;
 }
@@ -606,11 +617,11 @@ int scps_region_war_state(ScpsSim *s, int r, int *belligerent_out){
     int occ = s->sim.dp->occupier[r];
     if(occ>=0 && occ!=owner){ if(belligerent_out) *belligerent_out = occ; return 2; }
     /* ASSIÉGÉE : une armée de campagne D'UN AUTRE pays s'y tient en phase FA_SIEGE. */
-    for(int k=0;k<s->w->n_countries && k<SCPS_MAX_COUNTRY;k++){
+    for(int k=0;k<CAMPAIGN_ARMY_CAP;k++){
         const FieldArmy *a = &s->sim.camp->army[k];
         if(!a->active || a->phase!=FA_SIEGE || a->loc!=r) continue;
-        if(owner>=0 && k==owner) continue;   /* on ne s'assiège pas soi-même */
-        if(belligerent_out) *belligerent_out = k;
+        if(owner>=0 && a->owner==owner) continue;   /* on ne s'assiège pas soi-même */
+        if(belligerent_out) *belligerent_out = a->owner;
         return 1;
     }
     return 0;
@@ -633,7 +644,7 @@ void scps_battle_info(ScpsSim *s, int r, ScpsBattleInfo *out){
     if(bt){
         out->valid=1; out->region=r;
         /* a = celui qui a marché jusqu'ici (l'attaquant présumé si ≠ owner du sol) */
-        int A=bt->a, B=bt->b;
+        int A=s->sim.camp->army[bt->a].owner, B=s->sim.camp->army[bt->b].owner;
         if(owner>=0 && B==owner){ out->attacker=A; out->defender=B; }
         else if(owner>=0 && A==owner){ out->attacker=B; out->defender=A; }
         else { out->attacker=A; out->defender=B; }
@@ -644,9 +655,9 @@ void scps_battle_info(ScpsSim *s, int r, ScpsBattleInfo *out){
     } else {
         /* 2) sinon, un SIÈGE en cours (une armée ennemie FA_SIEGE ici) */
         int besieger=-1;
-        for(int k=0;k<s->w->n_countries && k<SCPS_MAX_COUNTRY;k++){
+        for(int k=0;k<CAMPAIGN_ARMY_CAP;k++){
             const FieldArmy *a=&s->sim.camp->army[k];
-            if(a->active && a->phase==FA_SIEGE && a->loc==r && !(owner>=0 && k==owner)){ besieger=k; break; }
+            if(a->active && a->phase==FA_SIEGE && a->loc==r && !(owner>=0 && a->owner==owner)){ besieger=a->owner; break; }
         }
         if(besieger<0) return;   /* rien à montrer : out reste invalide */
         out->valid=1; out->region=r;
@@ -655,12 +666,20 @@ void scps_battle_info(ScpsSim *s, int r, ScpsBattleInfo *out){
     }
 
     if(out->attacker>=0 && out->attacker<SCPS_MAX_COUNTRY){
-        ArmyComposition c = campaign_composition(s->sim.camp, out->attacker);
+        ArmyComposition c={0};
+        for(int n=0;n<campaign_corps_count(s->sim.camp,out->attacker);n++){
+            ArmyComposition x=campaign_corps_composition(s->sim.camp,campaign_corps_id_at(s->sim.camp,out->attacker,n));
+            c.infanterie+=x.infanterie;c.archers+=x.archers;c.cavalerie+=x.cavalerie;c.mages+=x.mages;c.total+=x.total;
+        }
         out->atk_units=c.total; out->atk_inf=c.infanterie; out->atk_arch=c.archers;
         out->atk_cav=c.cavalerie; out->atk_mages=c.mages;
     }
     if(out->defender>=0 && out->defender<SCPS_MAX_COUNTRY){
-        ArmyComposition c = campaign_composition(s->sim.camp, out->defender);
+        ArmyComposition c={0};
+        for(int n=0;n<campaign_corps_count(s->sim.camp,out->defender);n++){
+            ArmyComposition x=campaign_corps_composition(s->sim.camp,campaign_corps_id_at(s->sim.camp,out->defender,n));
+            c.infanterie+=x.infanterie;c.archers+=x.archers;c.cavalerie+=x.cavalerie;c.mages+=x.mages;c.total+=x.total;
+        }
         out->def_units=c.total; out->def_inf=c.infanterie; out->def_arch=c.archers;
         out->def_cav=c.cavalerie; out->def_mages=c.mages;
     }
@@ -2620,6 +2639,35 @@ int scps_player_disband(ScpsSim *s){
     PlayerCmd c = { CMD_DISBAND, { 0, 0, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
+int scps_player_raise_corps(ScpsSim *s, long packets, int target_region){
+    if (!s || !s->ready || packets<=0) return 0;
+    PlayerCmd c={CMD_CORPS_RAISE,{(int32_t)packets,target_region,0,0}};
+    return sim_cmd_push(&s->sim,c)?1:0;
+}
+int scps_player_split_corps(ScpsSim *s, int id, long packets){
+    if (!s || !s->ready || packets<=0) return 0;
+    PlayerCmd c={CMD_CORPS_SPLIT,{id,(int32_t)packets,0,0}}; return sim_cmd_push(&s->sim,c)?1:0;
+}
+int scps_player_merge_corps(ScpsSim *s, int dst_id, int src_id){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c={CMD_CORPS_MERGE,{dst_id,src_id,0,0}}; return sim_cmd_push(&s->sim,c)?1:0;
+}
+int scps_player_move_corps(ScpsSim *s, int id, int target_region){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c={CMD_CORPS_MOVE,{id,target_region,0,0}}; return sim_cmd_push(&s->sim,c)?1:0;
+}
+int scps_player_corps_posture(ScpsSim *s, int id, int posture){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c={CMD_CORPS_POSTURE,{id,posture,0,0}}; return sim_cmd_push(&s->sim,c)?1:0;
+}
+int scps_player_refill_corps(ScpsSim *s, int id){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c={CMD_CORPS_REFILL,{id,0,0,0}}; return sim_cmd_push(&s->sim,c)?1:0;
+}
+int scps_player_disband_corps(ScpsSim *s, int id){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c={CMD_CORPS_DISBAND,{id,0,0,0}}; return sim_cmd_push(&s->sim,c)?1:0;
+}
 /* LOT P (2026-07-07) — PILLER LA CÔTE : lecture PURE, miroir EXACT du gate au drain
  * (CMD_RAID_COAST, scps_sim.c) — la piraterie reste un acte GRIS (pas de guerre
  * exigée, comme la course pirate IA existante ; « pas d'allié/pacte » est le garde-
@@ -3044,7 +3092,7 @@ void scps_player_alerts(ScpsSim *s, ScpsPlayerAlerts *out){
     if (out->revolt_region>=0) out->revolt_agit=(int)(worst_agit+0.5f);
     if (out->famine_region>=0) out->famine_pct=(int)(worst_food*100.f+0.5f);
     /* SIÈGE ennemi sur MON sol (armée de campagne adverse en phase siège) */
-    for (int k=0;k<SCPS_MAX_COUNTRY;k++){
+    for (int k=0;k<CAMPAIGN_ARMY_CAP;k++){
         const FieldArmy *en=&s->sim.camp->army[k];
         if (!en->active || en->phase!=FA_SIEGE || en->owner==me) continue;
         if (en->loc<0 || en->loc>=e->n_regions || e->region[en->loc].owner!=me) continue;

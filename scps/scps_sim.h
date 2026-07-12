@@ -116,6 +116,13 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
         * gardé bataille/mer/brisée) ; réserve au repos → campaign_order depuis la CAPITALE.
         * Arriver sur une région À SOI = l'armée s'y POSE (FA_IDLE) ; ennemie = siège/assaut. */
        CMD_MOVE_ARMY,
+       CMD_CORPS_RAISE,     /* a: packets, target */
+       CMD_CORPS_SPLIT,     /* a: id, packets */
+       CMD_CORPS_MERGE,     /* a: dst_id, src_id */
+       CMD_CORPS_MOVE,      /* a: id, target */
+       CMD_CORPS_POSTURE,   /* a: id, posture */
+       CMD_CORPS_REFILL,    /* a: id */
+       CMD_CORPS_DISBAND,   /* a: id */
        CMD_COUNT };
 #define SCPS_CMDQ_MAX 64
 typedef struct { uint8_t verb; int32_t a[4]; } PlayerCmd;

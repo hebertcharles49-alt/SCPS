@@ -114,9 +114,9 @@ var _region_anchor := {}  ## région colonisée → assise de ville CALÉE SUR T
 var _region_seat := {}    ## région colonisée → SIÈGE du tampon : cellule INTÉRIEURE de province (jamais sur une jonction)
 ## MOUVEMENT D'ARMÉE (clic-armée → clic-destination) : position ISO cliquable du pion du
 ## JOUEUR (garnison OU ost) + rayon, recalculés à chaque _draw ; army_selected = mode marche.
-var army_selected := false
-var _pa_iso := Vector2(-1, -1)
-var _pa_r := 0.0
+var army_selected := false                 ## compat panneau historique
+var selected_corps: Array[int] = []
+var _pa_positions := {}                    ## id -> {pos:Vector2, radius:float}
 var _dress_tex := {}      ## id de marque de terrain (lot 2) → Texture2D (cache)
 var _dressing := []       ## [{pos(monde), id, scale}] — marques de biome semées (display-only)
 var _dressing_dirty := true ## la géo a changé (génération/chargement) → re-semer le dressing
@@ -1569,8 +1569,21 @@ func _draw_army_ring(ctr: Vector2, s: float, zoom: float) -> void:
 	draw_arc(ctr, r, 0.0, TAU, 40, Color(1.0, 0.86, 0.36, 0.95), 2.4 / zoom, true)
 
 ## Le clic (en espace LOCAL de l'overlay = iso) touche-t-il le pion du joueur ?
-func point_hits_player_army(local: Vector2) -> bool:
-	return _pa_iso.x >= 0.0 and local.distance_to(_pa_iso) <= maxf(_pa_r, 6.0)
+func point_hits_player_army(local: Vector2) -> int:
+	var best := -1
+	var best_d := INF
+	for id in _pa_positions:
+		var p: Vector2 = _pa_positions[id]["pos"]
+		var d := local.distance_to(p)
+		if d <= maxf(float(_pa_positions[id]["radius"]), 6.0) and d < best_d:
+			best = int(id); best_d = d
+	return best
+
+func player_corps_in_rect(rect: Rect2) -> Array[int]:
+	var out: Array[int] = []
+	for id in _pa_positions:
+		if rect.has_point(_pa_positions[id]["pos"]): out.append(int(id))
+	return out
 
 ## GARNISON : la réserve MOBILISÉE d'un pays (régiments recrutés, PAS en campagne) — un
 ## pion à la capitale, pour qu'une armée levée SE VOIE. Plus petit que l'ost de campagne ;
@@ -1594,7 +1607,8 @@ func _draw_garrison(w, mv, c: int, zoom: float, human_idx: int) -> void:
 	var ctr: Vector2 = mv.iso_pos(rc.x, rc.y)
 	var s := _w(zoom, 5.0, 22.0, 48.0)         # plus discret que l'ost de campagne (34..74)
 	if c == human_idx:
-		_pa_iso = ctr ; _pa_r = s * 0.7        # cible cliquable (sélection d'armée)
+		_pa_positions[c] = {"pos":ctr,"radius":s*0.7}
+		if c in selected_corps: _draw_army_ring(ctr,s,zoom)
 		if army_selected:
 			_draw_army_ring(ctr, s, zoom)
 	var pt: Texture2D = HeraldryK.pion(0, c)   # phase repos, teinté au pays
@@ -1884,15 +1898,23 @@ func _draw_iso(w, mv: Node2D) -> void:
 	# ── ARMÉES : PION DE PLATEAU (planche 32 — la figurine d'étain posée SUR la
 	#    table, drapeau teinté au pays, la POSE dit la phase) + ligne de marche.
 	#    Ombre de contact = la même pièce en silhouette, décalée SE (front32). ──
-	_pa_iso = Vector2(-1, -1)   # cible cliquable du joueur : recalculée ce frame (garnison OU ost)
+	_pa_positions.clear()
+	var actors: Array[Dictionary] = []
 	for c in range(w.country_count()):
-		var a: Dictionary = w.army_info(c)
-		if not bool(a.get("active", false)):
+		var ids: Array = w.corps_ids(c) if w.has_method("corps_ids") else []
+		if ids.is_empty():
 			# RÉSERVE MOBILISÉE (régiments recrutés mais pas en campagne) : une garnison à la
 			# CAPITALE — sinon une armée levée n'apparaît NULLE PART (retour joueur « les
 			# armées mobilisées n'apparaissent pas sur la carte »). Pion plus discret que l'ost.
 			_draw_garrison(w, mv, c, zoom, human_idx)
 			continue
+		for n in range(ids.size()):
+			var info: Dictionary = w.corps_info(int(ids[n]))
+			if bool(info.get("active",false)): actors.append({"country":c,"army":info,"stack":n})
+	for actor in actors:
+		var c: int = actor["country"]
+		var a: Dictionary = actor["army"]
+		var corps_id: int = int(a.get("id",-1))
 		var reg: int = a.get("region", -1)
 		if reg < 0:
 			continue
@@ -1905,9 +1927,11 @@ func _draw_iso(w, mv: Node2D) -> void:
 		if rctr.x < 0:
 			continue
 		var ctr: Vector2 = mv.iso_pos(rctr.x, rctr.y)
+		var stack_i: int = int(actor["stack"])
+		ctr += Vector2((stack_i % 4) * 5.0, -float(stack_i / 4) * 4.0) / maxf(zoom,0.0001)
 		if c == human_idx:
-			_pa_iso = ctr ; _pa_r = _w(zoom, 6.0, 30.0, 64.0) * 0.7   # cible cliquable (ost)
-			if army_selected:
+			_pa_positions[corps_id] = {"pos":ctr,"radius":_w(zoom,6.0,30.0,64.0)*0.7}
+			if corps_id in selected_corps:
 				_draw_army_ring(ctr, _w(zoom, 6.0, 30.0, 64.0), zoom)
 		var phase: int = a.get("phase_id", 0)
 		var dest: int = a.get("dest", -1)

@@ -17,6 +17,7 @@ var _flash_ms := -100000
 var _disband_btn: Button
 var _disband_armed := false
 var _disband_ms := -100000
+var _selected_ids: Array[int] = []
 
 func _ready() -> void:
 	visible = false
@@ -34,9 +35,11 @@ func _process(_dt: float) -> void:
 		_flash.text = ""
 
 ## appelé par main sur map_view.army_selection_changed(on)
-func set_army(on: bool) -> void:
-	visible = on
-	if on:
+func set_army(ids: Array) -> void:
+	_selected_ids.clear()
+	for id in ids: _selected_ids.append(int(id))
+	visible = not _selected_ids.is_empty()
+	if visible:
 		_disband_armed = false
 		_refresh()
 
@@ -97,6 +100,12 @@ func _build() -> void:
 	var ah := HBoxContainer.new()
 	ah.add_theme_constant_override("separation", 4)
 	v.add_child(ah)
+	var bra := Button.new()
+	bra.text = "Lever un corps"
+	bra.tooltip_text = "Détache la moitié de la réserve nationale à la capitale."
+	bra.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bra.pressed.connect(_do_raise)
+	ah.add_child(bra)
 	var brf := Button.new()
 	brf.text = "Recompléter"
 	brf.custom_minimum_size = Vector2(0, 34)
@@ -111,6 +120,18 @@ func _build() -> void:
 	brd.tooltip_text = "Arme le pillage : cliquez ensuite une province côtière étrangère (nécessite une coque pirate)."
 	brd.pressed.connect(_do_raid)
 	ah.add_child(brd)
+	var bsp := Button.new()
+	bsp.text = "Scinder"
+	bsp.tooltip_text = "Sépare chaque corps sélectionné en deux détachements égaux."
+	bsp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bsp.pressed.connect(_do_split)
+	ah.add_child(bsp)
+	var bmg := Button.new()
+	bmg.text = "Fusionner"
+	bmg.tooltip_text = "Fusionne les corps sélectionnés présents dans la même région."
+	bmg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bmg.pressed.connect(_do_merge)
+	ah.add_child(bmg)
 	_disband_btn = Button.new()
 	_disband_btn.custom_minimum_size = Vector2(0, 34)
 	_disband_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -136,11 +157,14 @@ func _refresh() -> void:
 	if Sim.world == null:
 		return
 	var me: int = Sim.world.player()
-	var a: Dictionary = Sim.world.army_info(me)
-	if bool(a.get("active", false)):
-		var compo := "%d inf · %d dist · %d cav · %d mages" % [
-			int(a.get("inf", 0)), int(a.get("arch", 0)), int(a.get("cav", 0)), int(a.get("mages", 0))]
-		_head.text = "⚔ Votre armée — %s · %d hommes" % [String(a.get("phase", "?")), int(a.get("units", 0))]
+	var total:=0; var inf:=0; var arch:=0; var cav:=0; var mages:=0; var active:=0; var phase:="Réserve"
+	for id in _selected_ids:
+		var a: Dictionary = Sim.world.corps_info(id) if Sim.world.has_method("corps_info") else Sim.world.army_info(me)
+		if not bool(a.get("active",false)): continue
+		active+=1; total+=int(a.get("units",0)); inf+=int(a.get("inf",0)); arch+=int(a.get("arch",0)); cav+=int(a.get("cav",0)); mages+=int(a.get("mages",0)); phase=String(a.get("phase","?"))
+	if active>0:
+		var compo := "%d inf · %d dist · %d cav · %d mages" % [inf,arch,cav,mages]
+		_head.text = "⚔ %d corps — %s · %d hommes" % [active,phase,total] if active>1 else "⚔ Votre corps — %s · %d hommes" % [phase,total]
 		_hint.text = "%s\nCliquez une province : à vous → repositionner · ennemie → attaquer (siège, assaut, occupation & butin)." % compo
 	else:
 		var reg_n := 0
@@ -164,14 +188,24 @@ func _say(msg: String, good: bool) -> void:
 	_flash_ms = Time.get_ticks_msec()
 
 func _do_posture(i: int) -> void:
-	if Sim.world != null and Sim.world.has_method("player_posture"):
-		Sim.world.player_posture(i)
+	if Sim.world != null and Sim.world.has_method("player_corps_posture"):
+		for id in _selected_ids: Sim.world.player_corps_posture(id,i)
 		_say("Posture : %s." % ["prudente", "standard", "agressive"][i], true)
 
 func _do_refill() -> void:
-	if Sim.world != null and Sim.world.has_method("player_refill"):
-		var ok: bool = Sim.world.player_refill()
+	if Sim.world != null and Sim.world.has_method("player_refill_corps"):
+		var ok:=false
+		for id in _selected_ids: ok = Sim.world.player_refill_corps(id) or ok
 		_say("Recomplètement ordonné." if ok else "Rien à recompléter.", ok)
+
+func _do_raise() -> void:
+	if Sim.world == null or not Sim.world.has_method("player_raise_corps"): return
+	var me:=int(Sim.world.player())
+	var reserve:=int(Sim.world.country_army(me).get("regiments",0))
+	var capital:=int(Sim.world.country_capital_region(me)) if Sim.world.has_method("country_capital_region") else -1
+	var packets:=maxi(1,int(reserve/2))
+	var ok:bool=reserve>0 and capital>=0 and Sim.world.player_raise_corps(packets,capital)
+	_say("Nouveau corps levé à la capitale." if ok else "Réserve insuffisante.",ok)
 
 func _do_raid() -> void:
 	raid_requested.emit()   # main arme le sous-mode raid de la carte
@@ -185,6 +219,23 @@ func _do_disband() -> void:
 		return
 	_disband_armed = false
 	_refresh_disband()
-	if Sim.world != null and Sim.world.has_method("player_disband"):
-		var ok: bool = Sim.world.player_disband()
+	if Sim.world != null and Sim.world.has_method("player_disband_corps"):
+		var ok:=false
+		for id in _selected_ids: ok = Sim.world.player_disband_corps(id) or ok
 		_say("Armée dissoute." if ok else "Aucune armée à dissoudre.", ok)
+
+func _do_split() -> void:
+	if Sim.world == null or not Sim.world.has_method("player_split_corps"): return
+	var ok:=false
+	for id in _selected_ids:
+		var a: Dictionary=Sim.world.corps_info(id)
+		var half:=int(a.get("units",0))/2
+		if half>0: ok=Sim.world.player_split_corps(id,half) or ok
+	_say("Scission ordonnée." if ok else "Scission impossible.",ok)
+
+func _do_merge() -> void:
+	if Sim.world == null or not Sim.world.has_method("player_merge_corps") or _selected_ids.size()<2:
+		_say("Sélectionnez au moins deux corps au même endroit.",false); return
+	var dst:=_selected_ids[0]; var ok:=false
+	for i in range(1,_selected_ids.size()): ok=Sim.world.player_merge_corps(dst,_selected_ids[i]) or ok
+	_say("Fusion ordonnée." if ok else "Les corps doivent être dans la même région.",ok)

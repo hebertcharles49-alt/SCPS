@@ -43,11 +43,68 @@ static long force_units(const ArmyState *a){
     long t=0; for (int i=0;i<a->n_units;i++) if (a->units[i].count>0) t+=a->units[i].count;
     return t;
 }
+/* Déplace exactement `packets` paquets en conservant la composition au mieux.
+ * Les stocks d'armes et la population affectée suivent au prorata : aucune âme
+ * ni ressource n'est créée par une scission. */
+static long force_take(ArmyState *dst, ArmyState *src, long packets){
+    long total=force_units(src);
+    if (!dst || !src || packets<=0 || total<=0) return 0;
+    if (packets>total) packets=total;
+    army_init(dst); dst->doctrine=src->doctrine;
+    long left=packets;
+    for (int i=0;i<src->n_units && left>0;i++){
+        long take=(src->units[i].count*packets)/total;
+        if (take>left) take=left;
+        if (take>0){ dst->units[dst->n_units]=src->units[i]; dst->units[dst->n_units].count=take;
+                     dst->n_units++; src->units[i].count-=take; left-=take; }
+    }
+    for (int i=0;i<src->n_units && left>0;i++) if (src->units[i].count>0){
+        long take=src->units[i].count<left?src->units[i].count:left;
+        int j=-1; for (int k=0;k<dst->n_units;k++) if (dst->units[k].type==src->units[i].type){j=k;break;}
+        if (j<0 && dst->n_units<ARMY_MAX_UNITS){ j=dst->n_units++; dst->units[j]=src->units[i]; dst->units[j].count=0; }
+        if (j>=0){ dst->units[j].count+=take; src->units[i].count-=take; left-=take; }
+    }
+    long moved=packets-left;
+    for (int w=0;w<W_COUNT;w++){ long x=(src->weapons[w]*moved)/total; dst->weapons[w]=x; src->weapons[w]-=x; }
+    for (int cl=0;cl<LAB_CLASS_COUNT;cl++){
+        long x=(src->pop_by_class_in_army[cl]*moved)/total;
+        dst->pop_by_class_in_army[cl]=x; src->pop_by_class_in_army[cl]-=x;
+    }
+    return moved;
+}
 static bool region_ok(const Campaign *c, const WorldEconomy *e, int r){
     if (r<0 || r>=e->n_regions) return false;
     if (e->region[r].impassable) return false;          /* zone morte */
     if (terrain_impassable(c->reg_biome[r])) return false; /* roche/glace/eau */
     return true;
+}
+
+int campaign_corps_id(int owner, int slot){
+    if (owner<0 || owner>=SCPS_MAX_COUNTRY || slot<0 || slot>=CAMPAIGN_MAX_CORPS) return -1;
+    return CAMPAIGN_CORPS_ID(owner,slot);
+}
+FieldArmy *campaign_corps(Campaign *c, int id){
+    return (c && id>=0 && id<CAMPAIGN_ARMY_CAP) ? &c->army[id] : NULL;
+}
+const FieldArmy *campaign_corps_const(const Campaign *c, int id){
+    return (c && id>=0 && id<CAMPAIGN_ARMY_CAP) ? &c->army[id] : NULL;
+}
+int campaign_corps_count(const Campaign *c, int owner){
+    if (!c || owner<0 || owner>=SCPS_MAX_COUNTRY) return 0;
+    int n=0;
+    for (int s=0;s<CAMPAIGN_MAX_CORPS;s++) if (c->army[CAMPAIGN_CORPS_ID(owner,s)].active) n++;
+    return n;
+}
+int campaign_corps_id_at(const Campaign *c, int owner, int ordinal){
+    if (!c || owner<0 || owner>=SCPS_MAX_COUNTRY || ordinal<0) return -1;
+    for (int s=0;s<CAMPAIGN_MAX_CORPS;s++){
+        int id=CAMPAIGN_CORPS_ID(owner,s);
+        if (c->army[id].active && ordinal--==0) return id;
+    }
+    return -1;
+}
+static void corps_count_sync(Campaign *c, int owner){
+    if (c && owner>=0 && owner<SCPS_MAX_COUNTRY) c->n_corps[owner]=campaign_corps_count(c,owner);
 }
 
 /* Prochaine région depuis `from` vers `dest` (BFS sur l'adjacence praticable).
@@ -106,7 +163,7 @@ static float posture_siege_mult(int p);
 
 void campaign_init(Campaign *c, const World *w, const WorldEconomy *econ){
     memset(c,0,sizeof(*c));
-    for (int i=0;i<SCPS_MAX_COUNTRY;i++){ c->army[i].posture=FA_STANDARD;  /* défaut : standard */
+    for (int i=0;i<CAMPAIGN_ARMY_CAP;i++){ c->army[i].posture=FA_STANDARD;  /* défaut : standard */
                                           c->army[i].taken_region=-1; }    /* memset→0 = région 0 valide : remettre -1 */
     c->n_regions = econ->n_regions;
     for (int r=0; r<econ->n_regions && r<SCPS_MAX_REG; r++){
@@ -128,8 +185,8 @@ void campaign_init(Campaign *c, const World *w, const WorldEconomy *econ){
         if (cell->region<0 || cell->region>=SCPS_MAX_REG) continue;
         if (cell->river >= RIVER_BATTLE_MIN) c->reg_river[cell->region]=true;
     }
-    for (int i=0;i<SCPS_MAX_COUNTRY;i++){
-        c->army[i].active=false; c->army[i].owner=i;
+    for (int i=0;i<CAMPAIGN_ARMY_CAP;i++){
+        c->army[i].active=false; c->army[i].id=i; c->army[i].owner=i%SCPS_MAX_COUNTRY;
         c->army[i].loc=-1; c->army[i].dest=-1; c->army[i].next=-1;
         c->army[i].phase=FA_IDLE;
     }
@@ -157,20 +214,75 @@ bool campaign_order(Campaign *c, const WorldEconomy *econ, int owner,
     army_merge_into(&a->force, src_force);                /* TRANSFERT (pas copie) : src_force est vidé */
     a->taken=0; a->legs=0; a->battles=0; a->taken_region=-1;
     if (from_region==target_region){                     /* déjà sur place */
-        a->phase=FA_IDLE; a->next=-1; a->days_left=0.f; a->leg_days=0.f; return true;
+        a->phase=FA_IDLE; a->next=-1; a->days_left=0.f; a->leg_days=0.f;
+        corps_count_sync(c,owner); return true;
     }
     a->next=hop; a->phase=FA_MARCH;
     a->leg_days  = army_step_days(&a->force, c->reg_biome[hop], c->reg_height[hop], false, false)
                  * posture_march_mult(a->posture);
     a->days_left = a->leg_days;
+    corps_count_sync(c,owner);
+    return true;
+}
+
+int campaign_raise(Campaign *c, const WorldEconomy *econ, int owner,
+                   int from_region, int target_region, ArmyState *src_force,
+                   long packets){
+    if (!c || !econ || !src_force || owner<0 || owner>=SCPS_MAX_COUNTRY) return -1;
+    if (from_region<0 || from_region>=econ->n_regions || target_region<0 || target_region>=econ->n_regions) return -1;
+    if (packets<=0 || packets>force_units(src_force)) return -1;
+    int slot=-1;
+    for (int s=0;s<CAMPAIGN_MAX_CORPS;s++) if (!c->army[CAMPAIGN_CORPS_ID(owner,s)].active){ slot=s; break; }
+    if (slot<0) return -1;
+    int hop=next_hop(c,econ,from_region,target_region); if (hop<0) return -1;
+    int id=CAMPAIGN_CORPS_ID(owner,slot); FieldArmy *a=&c->army[id];
+    ArmyState det; if (force_take(&det,src_force,packets)<=0) return -1;
+    int posture=a->posture;
+    memset(a,0,sizeof *a); a->id=id; a->owner=owner; a->active=true;
+    a->loc=from_region; a->dest=target_region; a->next=-1; a->taken_region=-1;
+    a->posture=posture; a->force=det;
+    if (from_region==target_region) a->phase=FA_IDLE;
+    else { a->next=hop; a->phase=FA_MARCH;
+           a->leg_days=army_step_days(&a->force,c->reg_biome[hop],c->reg_height[hop],false,false)*posture_march_mult(a->posture);
+           a->days_left=a->leg_days; }
+    corps_count_sync(c,owner);
+    return id;
+}
+
+int campaign_split(Campaign *c, int id, long packets){
+    FieldArmy *src=campaign_corps(c,id);
+    if (!src || !src->active || src->phase==FA_BATTLE || src->phase>=FA_EMBARK) return -1;
+    long total=force_units(&src->force); if (packets<=0 || packets>=total) return -1;
+    int slot=-1; for (int s=0;s<CAMPAIGN_MAX_CORPS;s++){
+        int nid=CAMPAIGN_CORPS_ID(src->owner,s); if (!c->army[nid].active){slot=s;break;}
+    }
+    if (slot<0) return -1;
+    int nid=CAMPAIGN_CORPS_ID(src->owner,slot); FieldArmy *dst=&c->army[nid]; ArmyState det;
+    if (force_take(&det,&src->force,packets)<=0) return -1;
+    memset(dst,0,sizeof *dst); dst->id=nid; dst->owner=src->owner; dst->active=true;
+    dst->loc=src->loc; dst->dest=-1; dst->next=-1; dst->phase=FA_IDLE; dst->taken_region=-1;
+    dst->posture=src->posture; dst->force=det;
+    corps_count_sync(c,src->owner);
+    return nid;
+}
+
+bool campaign_merge(Campaign *c, int dst_id, int src_id){
+    FieldArmy *dst=campaign_corps(c,dst_id), *src=campaign_corps(c,src_id);
+    if (!dst || !src || dst==src || !dst->active || !src->active || dst->owner!=src->owner) return false;
+    if (dst->loc!=src->loc || dst->phase==FA_BATTLE || src->phase==FA_BATTLE || dst->phase>=FA_EMBARK || src->phase>=FA_EMBARK) return false;
+    army_merge_into(&dst->force,&src->force);
+    int owner=src->owner, id=src->id, posture=src->posture;
+    memset(src,0,sizeof *src); src->id=id; src->owner=owner; src->loc=src->dest=src->next=-1;
+    src->taken_region=-1; src->posture=posture; src->phase=FA_IDLE;
+    corps_count_sync(c,owner);
     return true;
 }
 
 /* L1 — la REDIRECTION : nouvelle cible, MÊME force (les pertes restent payées). */
-bool campaign_redirect(Campaign *c, const WorldEconomy *econ, const DiploState *dp,
-                       int owner, int target_region){
-    if (owner<0 || owner>=SCPS_MAX_COUNTRY) return false;
-    FieldArmy *a=&c->army[owner];
+bool campaign_redirect_corps(Campaign *c, const WorldEconomy *econ, const DiploState *dp,
+                             int id, int target_region){
+    FieldArmy *a=campaign_corps(c,id);
+    if (!a) return false;
     if (!a->active || a->phase==FA_BATTLE || a->phase>=FA_EMBARK) return false;  /* épinglée / en mer */
     if (a->broken_days>0) return false;                                          /* brisée : elle fuit */
     if (target_region<0 || target_region>=econ->n_regions) return false;
@@ -194,6 +306,10 @@ bool campaign_redirect(Campaign *c, const WorldEconomy *econ, const DiploState *
                  * posture_march_mult(a->posture);
     a->days_left = a->leg_days;
     return true;
+}
+bool campaign_redirect(Campaign *c, const WorldEconomy *econ, const DiploState *dp,
+                       int owner, int target_region){
+    return campaign_redirect_corps(c,econ,dp,owner,target_region);
 }
 
 /* ── L'EMBARQUEMENT (mer §6) : port → mer → côte, tout en jours ─────────── */
@@ -234,13 +350,14 @@ bool campaign_order_sea(Campaign *c, const World *w, const WorldEconomy *econ,
     a->land_at_port = (econ->region[target_region].build.port>0.f);
     navy->n[owner].at_sea += need_tr;                   /* la flotte est ENGAGÉE jusqu'au débarquement */
     c->n_sails++; c->sail_days_sum += days;
+    corps_count_sync(c,owner);
     return true;
 }
 
 /* Rend à la flotte les transports des armées revenues à terre (ou mortes). */
 void campaign_release_transports(Campaign *c, struct NavyState *navy){
     if (!navy) return;
-    for (int i=0;i<SCPS_MAX_COUNTRY;i++){
+    for (int i=0;i<CAMPAIGN_ARMY_CAP;i++){
         FieldArmy *a=&c->army[i];
         if (a->sail_transports<=0) continue;
         bool at_sea = a->active && (a->phase==FA_EMBARK || a->phase==FA_SAIL || a->phase==FA_LAND);
@@ -259,13 +376,19 @@ void campaign_release_transports(Campaign *c, struct NavyState *navy){
 static float posture_march_mult(int p){ return (p==FA_PRUDENTE)?1.15f : (p==FA_AGRESSIVE)?0.88f : 1.f; }
 static float posture_siege_mult(int p){ return (p==FA_PRUDENTE)?1.15f : (p==FA_AGRESSIVE)?0.85f : 1.f; }
 void campaign_set_posture(Campaign *c, int owner, int posture){
-    if (!c || owner<0 || owner>=SCPS_MAX_COUNTRY) return;
+    campaign_set_corps_posture(c,owner,posture);
+}
+void campaign_set_corps_posture(Campaign *c, int id, int posture){
+    FieldArmy *a=campaign_corps(c,id); if (!a) return;
     if (posture<FA_PRUDENTE) posture=FA_PRUDENTE;
     if (posture>FA_AGRESSIVE) posture=FA_AGRESSIVE;
-    c->army[owner].posture=posture;
+    a->posture=posture;
 }
 int campaign_posture(const Campaign *c, int owner){
-    return (c && owner>=0 && owner<SCPS_MAX_COUNTRY) ? c->army[owner].posture : FA_STANDARD;
+    return campaign_corps_posture(c,owner);
+}
+int campaign_corps_posture(const Campaign *c, int id){
+    const FieldArmy *a=campaign_corps_const(c,id); return a?a->posture:FA_STANDARD;
 }
 const char *campaign_posture_name(int p){
     static const char *N[3]={ "prudente","standard","agressive" };
@@ -344,6 +467,49 @@ static long kill_packets(ArmyState *f, long packets){
     }
     return packets-left;
 }
+static bool stack_member(const FieldArmy *a, int owner, int loc){
+    return a->active && a->owner==owner && a->loc==loc && a->phase==FA_BATTLE
+        && a->broken_days<=0 && force_units(&a->force)>0;
+}
+static void stack_force(const Campaign *c, int owner, int loc, ArmyState *out){
+    army_init(out); bool doctrine=false;
+    for (int i=0;i<CAMPAIGN_ARMY_CAP;i++){
+        const FieldArmy *a=&c->army[i]; if (!stack_member(a,owner,loc)) continue;
+        ArmyState cp=a->force;
+        if (!doctrine){ out->doctrine=cp.doctrine; doctrine=true; }
+        else {
+            if (cp.doctrine.weapon_power>out->doctrine.weapon_power) out->doctrine.weapon_power=cp.doctrine.weapon_power;
+            if (cp.doctrine.moral_mul>out->doctrine.moral_mul) out->doctrine.moral_mul=cp.doctrine.moral_mul;
+            if (cp.doctrine.arcane_power>out->doctrine.arcane_power) out->doctrine.arcane_power=cp.doctrine.arcane_power;
+            if (cp.doctrine.firearm_power>out->doctrine.firearm_power) out->doctrine.firearm_power=cp.doctrine.firearm_power;
+            out->doctrine.can_summon |= cp.doctrine.can_summon;
+        }
+        army_merge_into(out,&cp);
+    }
+}
+static long stack_kill(Campaign *c, int owner, int loc, long packets){
+    long total=0; for (int i=0;i<CAMPAIGN_ARMY_CAP;i++) if (stack_member(&c->army[i],owner,loc)) total+=force_units(&c->army[i].force);
+    if (packets>total) packets=total;
+    if (packets<=0 || total<=0) return 0;
+    long left=packets, killed=0;
+    for (int i=0;i<CAMPAIGN_ARMY_CAP && left>0;i++){
+        FieldArmy *a=&c->army[i]; if (!stack_member(a,owner,loc)) continue;
+        long share=(force_units(&a->force)*packets)/total; if (share>left) share=left;
+        long k=kill_packets(&a->force,share); killed+=k; left-=k;
+    }
+    for (int i=0;i<CAMPAIGN_ARMY_CAP && left>0;i++){
+        FieldArmy *a=&c->army[i]; if (!stack_member(a,owner,loc)) continue;
+        long k=kill_packets(&a->force,left); killed+=k; left-=k;
+    }
+    return killed;
+}
+static void stack_join_battle(Campaign *c, int owner, int loc){
+    for (int i=0;i<CAMPAIGN_ARMY_CAP;i++){
+        FieldArmy *a=&c->army[i];
+        if (!a->active || a->owner!=owner || a->loc!=loc || a->phase>=FA_EMBARK || a->broken_days>0) continue;
+        a->phase=FA_BATTLE; a->battles++;
+    }
+}
 static float bt_terrainA(const Campaign *c, const WorldEconomy *e, int loc, int ownA, int ownB){
     float terrainA=1.f;
     if (region_defense(e,loc)>0.f){
@@ -400,24 +566,29 @@ static void bt_end(Campaign *c, const WorldEconomy *e, const DiploState *dp, Fie
      * restant le plus haut ; il PRESSE (assiège la région contestée). Les autres — le
      * brisé déjà en fuite, les renforts, ou le nul de stalemate (les DEUX brisés) —
      * rentrent au repos. Aucun vainqueur si la PAIX a éclaté (on n'assiège pas hors guerre). */
-    int victor=-1;
+    int victor_owner=-1;
     if (bt->a>=0 && bt->b>=0
         && diplo_status(dp,c->army[bt->a].owner,c->army[bt->b].owner)==DIPLO_WAR){
         FieldArmy *A=&c->army[bt->a], *B=&c->army[bt->b];
+        ArmyState sa,sb; stack_force(c,A->owner,bt->loc,&sa); stack_force(c,B->owner,bt->loc,&sb);
         float fA=bt->resA/(bt->resA0+1.f), fB=bt->resB/(bt->resB0+1.f);
-        bool okA=(A->phase==FA_BATTLE && A->active && A->broken_days==0);
-        bool okB=(B->phase==FA_BATTLE && B->active && B->broken_days==0);
-        if      (okA && (!okB || fA>=fB)) victor=bt->a;
-        else if (okB)                     victor=bt->b;
+        bool okA=force_units(&sa)>0, okB=force_units(&sb)>0;
+        if      (okA && (!okB || fA>=fB)) victor_owner=A->owner;
+        else if (okB)                     victor_owner=B->owner;
     }
-    int ids[4]={bt->a,bt->b,bt->helpA,bt->helpB};
-    for (int k=0;k<4;k++){
-        if (ids[k]<0) continue;
-        FieldArmy *A=&c->army[ids[k]];
+    int ownerA=c->army[bt->a].owner, ownerB=c->army[bt->b].owner;
+    for (int k=0;k<CAMPAIGN_ARMY_CAP;k++){
+        FieldArmy *A=&c->army[k];
+        if (A->loc!=bt->loc || (A->owner!=ownerA && A->owner!=ownerB)) continue;
         if (A->phase!=FA_BATTLE) continue;
-        if (ids[k]==victor && bt_press_siege(c,e,dp,A,bt->loc)) continue;  /* P1 : il presse */
+        if (A->owner==victor_owner && bt_press_siege(c,e,dp,A,bt->loc)) continue;  /* le stack vainqueur presse */
         A->phase=FA_IDLE;
     }
+    /* Les renforts diplomatiques historiques ne font pas partie du stack national,
+     * mais doivent eux aussi être libérés du champ. */
+    int helpers[2]={bt->helpA,bt->helpB};
+    for (int h=0;h<2;h++) if (helpers[h]>=0 && helpers[h]<CAMPAIGN_ARMY_CAP
+        && c->army[helpers[h]].phase==FA_BATTLE) c->army[helpers[h]].phase=FA_IDLE;
     bt->active=false;
 }
 /* la part MONTÉE d'une force [0..1] : la cavalerie court-sus aux fuyards — c'est ELLE
@@ -437,6 +608,8 @@ static void bt_rout(Campaign *c, const World *w, const WorldEconomy *e, DiploSta
                     FieldBattle *bt, int loser_side /* 0=A 1=B */){
     int ia=bt->a, ib=bt->b;
     FieldArmy *L=&c->army[loser_side?ib:ia], *V=&c->army[loser_side?ia:ib];
+    int lose_owner=L->owner, win_owner=V->owner;
+    ArmyState lf,vf; stack_force(c,lose_owner,bt->loc,&lf); stack_force(c,win_owner,bt->loc,&vf);
     float vfrac=(loser_side? bt->resA/(bt->resA0+1.f) : bt->resB/(bt->resB0+1.f));
     /* P3 — la curée est ALLÉGÉE (plafond ≤ 12 %, socle 6 %) : une armée battue SURVIT
      * pour revenir — la guerre s'inscrit dans la DURÉE (ré-assauts) au lieu d'annihiler
@@ -444,15 +617,15 @@ static void bt_rout(Campaign *c, const World *w, const WorldEconomy *e, DiploSta
      * H4/L4 — LA CAVALERIE FAIT LA POURSUITE : la part montée du VAINQUEUR pousse la curée
      * ET en RELÈVE le plafond → cavalerie DOMINANTE ⇒ la poursuite DOMINE le choc ;
      * infanterie pure ⇒ le choc peut primer (le slugfest frontal). */
-    float cavf=army_cav_frac(&V->force);
-    float ctrv=side_counter(&V->force,&L->force);   /* le vainqueur qui CONTRAIT le vaincu fait une curée plus totale */
+    float cavf=army_cav_frac(&vf);
+    float ctrv=side_counter(&vf,&lf);   /* le vainqueur qui CONTRAIT le vaincu fait une curée plus totale */
     float P=0.06f + ((V->posture==FA_AGRESSIVE)?0.08f:(V->posture==FA_PRUDENTE)?-0.03f:0.f)
           + 0.04f*vfrac + tune_f("CAV_PURSUIT",0.45f)*cavf
           + tune_f("CTR_PURSUIT",0.30f)*fmaxf(0.f, ctrv-1.f);
     if (terrain_combat_bonus(c->reg_biome[bt->loc])>1.10f) P-=0.04f;   /* la montagne couvre la fuite */
     float cap=tune_f("CUREE_CAP",0.22f) + tune_f("CAV_CUREE_CAP",0.40f)*cavf;  /* la cavalerie relève le plafond de curée */
     P=fminf(cap,fmaxf(0.03f,P));
-    long lp=force_units(&L->force);
+    long lp=force_units(&lf);
     /* T5 — PLANCHER DE POURSUITE : lp*P arrondi au plus proche retombe à 0 pour toute
      * petite armée (lp≲10, fréquent chez les cités-états/pays périphériques) → la
      * déroute A EU LIEU (un camp cède le terrain) mais ne coûte STRICTEMENT RIEN : la
@@ -463,31 +636,33 @@ static void bt_rout(Campaign *c, const World *w, const WorldEconomy *e, DiploSta
     long to_kill=(long)((float)lp*P+0.5f);
     if (to_kill<1 && lp>=1) to_kill=1;
     if (!L->rally_used && to_kill>=lp) to_kill=lp-1;   /* L2 : le NOYAU survit pour se rallier */
-    long pursued=kill_packets(&L->force,to_kill);
+    long pursued=stack_kill(c,lose_owner,bt->loc,to_kill);
     c->dead_pursuit += pursued*100;                                    /* la curée : l'essentiel des morts */
     if (g_campaign_human>=0 && (L->owner==g_campaign_human || V->owner==g_campaign_human))
         c->dead_pursuit_player += pursued*100;   /* #32 : le joueur est belligérant ICI */
     c->n_routs++;
     /* L2 — LE RALLIEMENT : les fuyards se reformeront (40-60 % de l'avant-déroute,
      * 30-60 j) — une fois par guerre. Déterministe : dérivé de l'effectif. */
-    if (!L->rally_used && force_units(&L->force)>0 && lp>0){
-        L->rally_used   = true;
-        L->rally_days   = 30.f + (float)(lp % 31);                     /* 30-60 j */
-        L->rally_packets= (int)((float)lp * (0.40f + 0.01f*(float)(lp % 21)));  /* 40-60 % */
-        if (L->rally_packets < 1) L->rally_packets = 1;
-    }
     bt_score(dp, V->owner, L->owner, 6.f+fminf(12.f,(float)pursued*0.6f));
-    L->broken_days=BT_BRISEE_J;
-    L->phase=FA_IDLE; L->dest=-1; L->next=-1;
-    { int cp=(L->owner>=0&&L->owner<w->n_countries)?w->country[L->owner].capital_prov:-1;
-      int cr=(cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
-      if (cr>=0 && cr!=L->loc){
-          int hop=next_hop(c,e,L->loc,cr);
-          if (hop>=0){ L->dest=cr; L->next=hop; L->phase=FA_MARCH;
-                       L->leg_days=army_step_days(&L->force,c->reg_biome[hop],c->reg_height[hop],false,false)*0.8f;
-                       L->days_left=L->leg_days; }
-      } }
-    if (force_units(&L->force)<=0){ L->active=false; L->phase=FA_IDLE; }
+    for (int i=0;i<CAMPAIGN_ARMY_CAP;i++){
+        FieldArmy *R=&c->army[i];
+        if (!R->active || R->owner!=lose_owner || R->loc!=bt->loc || R->phase!=FA_BATTLE) continue;
+        long rp=force_units(&R->force);
+        if (!R->rally_used && rp>0){
+            R->rally_used=true; R->rally_days=30.f+(float)(rp%31);
+            R->rally_packets=(int)((float)rp*(0.40f+0.01f*(float)(rp%21)));
+            if (R->rally_packets<1) R->rally_packets=1;
+        }
+        R->broken_days=BT_BRISEE_J; R->phase=FA_IDLE; R->dest=-1; R->next=-1;
+        { int cp=(lose_owner>=0&&lose_owner<w->n_countries)?w->country[lose_owner].capital_prov:-1;
+          int cr=(cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
+          if (cr>=0 && cr!=R->loc){ int hop=next_hop(c,e,R->loc,cr);
+              if (hop>=0){ R->dest=cr; R->next=hop; R->phase=FA_MARCH;
+                  R->leg_days=army_step_days(&R->force,c->reg_biome[hop],c->reg_height[hop],false,false)*0.8f;
+                  R->days_left=R->leg_days; }
+          } }
+        if (rp<=0){ R->active=false; R->phase=FA_IDLE; }
+    }
     /* P1 — le vainqueur V reste EN LICE (FA_BATTLE) : bt_end, appelé juste après, le
      * fait PRESSER le siège de la région contestée au lieu de décrocher (avant : V→IDLE
      * et la guerre se vidait — 217 batailles pour 0 occupation). */
@@ -499,7 +674,7 @@ static void bt_reinforce(Campaign *c, const WorldEconomy *e, const DiploState *d
         int *slot = side? &bt->helpB : &bt->helpA;
         if (*slot>=0) continue;
         int own = side? c->army[bt->b].owner : c->army[bt->a].owner;
-        for (int k=0;k<SCPS_MAX_COUNTRY;k++){
+        for (int k=0;k<CAMPAIGN_ARMY_CAP;k++){
             FieldArmy *H=&c->army[k];
             if (!H->active || H->broken_days>0 || H->phase==FA_BATTLE) continue;
             if (H->owner==own) continue;
@@ -519,27 +694,28 @@ static void bt_reinforce(Campaign *c, const WorldEconomy *e, const DiploState *d
 static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploState *dp,
                    FieldBattle *bt, uint32_t *rng){
     FieldArmy *A=&c->army[bt->a], *B=&c->army[bt->b];
-    if (!A->active||!B->active){ bt_end(c,e,dp,bt); return; }
     if (diplo_status(dp,A->owner,B->owner)!=DIPLO_WAR){ bt_end(c,e,dp,bt); return; }   /* la paix a éclaté */
+    ArmyState forceA,forceB; stack_force(c,A->owner,bt->loc,&forceA); stack_force(c,B->owner,bt->loc,&forceB);
+    if (force_units(&forceA)<=0 || force_units(&forceB)<=0){ bt_end(c,e,dp,bt); return; }
     bt->days++; c->battle_days++;
     int ph=bt->cycle % (BT_CHOC_J+BT_ACCALMIE_J);
     if (ph<BT_CHOC_J){
         bt->chocs++;
         float tA=bt_terrainA(c,e,bt->loc,A->owner,B->owner);
-        float ctrA=powf(side_counter(&A->force,&B->force), tune_f("CTR_BITE",0.6f)); /* le contre PRIME sur la qualité brute */
-        float ctrB=powf(side_counter(&B->force,&A->force), tune_f("CTR_BITE",0.6f));
-        float pA=side_power(&A->force)*tA*ctrA *((A->posture==FA_AGRESSIVE)?1.10f:(A->posture==FA_PRUDENTE)?0.92f:1.f);
-        float pB=side_power(&B->force)/tA*ctrB *((B->posture==FA_AGRESSIVE)?1.10f:(B->posture==FA_PRUDENTE)?0.92f:1.f);
+        float ctrA=powf(side_counter(&forceA,&forceB), tune_f("CTR_BITE",0.6f)); /* le contre PRIME sur la qualité brute */
+        float ctrB=powf(side_counter(&forceB,&forceA), tune_f("CTR_BITE",0.6f));
+        float pA=side_power(&forceA)*tA*ctrA *((A->posture==FA_AGRESSIVE)?1.10f:(A->posture==FA_PRUDENTE)?0.92f:1.f);
+        float pB=side_power(&forceB)/tA*ctrB *((B->posture==FA_AGRESSIVE)?1.10f:(B->posture==FA_PRUDENTE)?0.92f:1.f);
         pA*=0.85f+0.30f*xs01(rng); pB*=0.85f+0.30f*xs01(rng);
         float tot=pA+pB+1e-3f;
         float dmgk=tune_f("BT_DMG_K",BT_DMG_K);
         bt->resB -= bt->resB0*dmgk*(2.f*pA/tot);
         bt->resA -= bt->resA0*dmgk*(2.f*pB/tot);
-        bt->lossB += (float)force_units(&B->force)*tune_f("BT_CHOC_MORTS",BT_CHOC_MORTS)*(2.f*pA/tot);
-        bt->lossA += (float)force_units(&A->force)*tune_f("BT_CHOC_MORTS",BT_CHOC_MORTS)*(2.f*pB/tot);
+        bt->lossB += (float)force_units(&forceB)*tune_f("BT_CHOC_MORTS",BT_CHOC_MORTS)*(2.f*pA/tot);
+        bt->lossA += (float)force_units(&forceA)*tune_f("BT_CHOC_MORTS",BT_CHOC_MORTS)*(2.f*pB/tot);
         long mB=0,mA=0;
-        if (bt->lossB>=1.f){ mB=kill_packets(&B->force,(long)bt->lossB); bt->lossB-=(float)mB; }
-        if (bt->lossA>=1.f){ mA=kill_packets(&A->force,(long)bt->lossA); bt->lossA-=(float)mA; }
+        if (bt->lossB>=1.f){ mB=stack_kill(c,B->owner,bt->loc,(long)bt->lossB); bt->lossB-=(float)mB; }
+        if (bt->lossA>=1.f){ mA=stack_kill(c,A->owner,bt->loc,(long)bt->lossA); bt->lossA-=(float)mA; }
         c->dead_choc += (mA+mB)*100;
         if (g_campaign_human>=0 && (A->owner==g_campaign_human || B->owner==g_campaign_human))
             c->dead_choc_player += (mA+mB)*100;   /* #32 : le joueur est belligérant de CETTE bataille */
@@ -566,15 +742,17 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
             int who=(fA<sA && fA<fB-0.08f)?0:(fB<sB && fB<fA-0.08f)?1:-1;
             if (who>=0){
                 FieldArmy *L=&c->army[who?bt->b:bt->a], *V=&c->army[who?bt->a:bt->b];
-                long lp=force_units(&L->force);
+                ArmyState ls; stack_force(c,L->owner,bt->loc,&ls); long lp=force_units(&ls);
                 long dc_kill=(long)((float)lp*0.08f+0.5f);
                 if (dc_kill<1 && lp>=1) dc_kill=1;   /* T5 — même plancher qu'en poursuite (cf. bt_rout) */
-                long pursued=kill_packets(&L->force,dc_kill);
+                long pursued=stack_kill(c,L->owner,bt->loc,dc_kill);
                 c->dead_pursuit+=pursued*100; c->n_disengage++;
                 if (g_campaign_human>=0 && (L->owner==g_campaign_human || V->owner==g_campaign_human))
                     c->dead_pursuit_player += pursued*100;   /* #32 : le joueur est belligérant ICI */
                 bt_score(dp,V->owner,L->owner,2.f);
-                L->phase=FA_IDLE; L->dest=-1; L->next=-1; L->broken_days=10;
+                for (int i=0;i<CAMPAIGN_ARMY_CAP;i++) if (stack_member(&c->army[i],L->owner,bt->loc)){
+                    c->army[i].phase=FA_IDLE; c->army[i].dest=-1; c->army[i].next=-1; c->army[i].broken_days=10;
+                }
                 bt_end(c,e,dp,bt); return;
             }
         }
@@ -583,7 +761,8 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
         c->n_stalemate++;
         int up=(bt->resA/(bt->resA0+1.f)>=bt->resB/(bt->resB0+1.f))?1:0;
         bt_score(dp, up?A->owner:B->owner, up?B->owner:A->owner, 2.f);
-        A->broken_days=15; B->broken_days=15;
+        for (int i=0;i<CAMPAIGN_ARMY_CAP;i++) if (c->army[i].phase==FA_BATTLE && c->army[i].loc==bt->loc
+             && (c->army[i].owner==A->owner || c->army[i].owner==B->owner)) c->army[i].broken_days=15;
         bt_end(c,e,dp,bt); return;
     }
     bt->cycle++;
@@ -594,10 +773,11 @@ static void bt_engage(Campaign *c, int i, int j, int loc){
         if (bt->active) continue;
         memset(bt,0,sizeof *bt);
         bt->active=true; bt->a=i; bt->b=j; bt->helpA=-1; bt->helpB=-1; bt->loc=loc;
-        bt->resA=bt->resA0=side_reserve(&c->army[i].force);
-        bt->resB=bt->resB0=side_reserve(&c->army[j].force);
-        c->army[i].phase=FA_BATTLE; c->army[j].phase=FA_BATTLE;
-        c->army[i].battles++; c->army[j].battles++;
+        int oa=c->army[i].owner, ob=c->army[j].owner;
+        stack_join_battle(c,oa,loc); stack_join_battle(c,ob,loc);
+        ArmyState sa,sb; stack_force(c,oa,loc,&sa); stack_force(c,ob,loc,&sb);
+        bt->resA=bt->resA0=side_reserve(&sa);
+        bt->resB=bt->resB0=side_reserve(&sb);
         c->n_battles++;
         return;
     }
@@ -610,7 +790,7 @@ void campaign_tick(Campaign *c, const World *w, const WorldEconomy *e,
 
     /* §terrain : une armée dont le PAYS est MORT (annexé → role UNCLAIMED) se DISSOUT
      * — pas de zombie en campagne. (warhost/marine se taisent par le même skip ailleurs.) */
-    for (int i=0;i<SCPS_MAX_COUNTRY;i++){
+    for (int i=0;i<CAMPAIGN_ARMY_CAP;i++){
         FieldArmy *a=&c->army[i];
         if (a->active && a->owner>=0 && a->owner<w->n_countries
             && w->country[a->owner].role==POLITY_UNCLAIMED){
@@ -619,9 +799,9 @@ void campaign_tick(Campaign *c, const World *w, const WorldEconomy *e,
     }
 
     /* 1. batailles : paires hostiles (en guerre) partageant une région. */
-    for (int i=0;i<SCPS_MAX_COUNTRY;i++){
+    for (int i=0;i<CAMPAIGN_ARMY_CAP;i++){
         if (!c->army[i].active) continue;
-        for (int j=i+1;j<SCPS_MAX_COUNTRY;j++){
+        for (int j=i+1;j<CAMPAIGN_ARMY_CAP;j++){
             if (!c->army[j].active) continue;
             if (c->army[i].loc != c->army[j].loc) continue;
             if (c->army[i].owner == c->army[j].owner) continue;
@@ -639,12 +819,12 @@ void campaign_tick(Campaign *c, const World *w, const WorldEconomy *e,
           for (int k=0;k<CAMPAIGN_MAX_BATTLES;k++)
               if (c->battle[k].active){ bt_reinforce(c,e,dp,&c->battle[k]); bt_day(c,w,e,dp,&c->battle[k],rng); }
       }
-      for (int i=0;i<SCPS_MAX_COUNTRY;i++)
+      for (int i=0;i<CAMPAIGN_ARMY_CAP;i++)
           if (c->army[i].broken_days>0){ c->army[i].broken_days-= nd; if (c->army[i].broken_days<0) c->army[i].broken_days=0; }
       /* L2 — LE RALLIEMENT : le compte à rebours s'égrène ; à zéro, les fuyards se
        * REFORMENT — l'effectif remonte à la cible (40-60 % de l'avant-déroute, JAMAIS
        * au-dessus : les déserteurs reviennent, les morts non), la brisure se lève. */
-      for (int i=0;i<SCPS_MAX_COUNTRY;i++){
+      for (int i=0;i<CAMPAIGN_ARMY_CAP;i++){
           FieldArmy *a2=&c->army[i];
           if (a2->rally_days<=0.f) continue;
           a2->rally_days -= (float)nd;
@@ -672,17 +852,18 @@ void campaign_tick(Campaign *c, const World *w, const WorldEconomy *e,
           c->n_rallies++;
       }
       /* L2 — « une fois par GUERRE » : la paix relâche le ralliement consommé. */
-      if (dp) for (int i=0;i<SCPS_MAX_COUNTRY;i++){
+      if (dp) for (int i=0;i<CAMPAIGN_ARMY_CAP;i++){
           if (!c->army[i].rally_used || c->army[i].rally_days>0.f) continue;
           bool at_war=false;
+          int owner=c->army[i].owner;
           for (int b=0;b<SCPS_MAX_COUNTRY;b++)
-              if (b!=i && diplo_status(dp,i,b)==DIPLO_WAR){ at_war=true; break; }
+              if (b!=owner && diplo_status(dp,owner,b)==DIPLO_WAR){ at_war=true; break; }
           if (!at_war) c->army[i].rally_used=false;
       }
     }
 
     /* 2. avancement : on consomme dt_days à travers les étapes ET le siège. */
-    for (int i=0;i<SCPS_MAX_COUNTRY;i++){
+    for (int i=0;i<CAMPAIGN_ARMY_CAP;i++){
         FieldArmy *a=&c->army[i];
         if (!a->active) continue;
         if (a->phase==FA_BATTLE) continue;            /* ÉPINGLÉE : le champ la tient */
@@ -715,6 +896,10 @@ void campaign_tick(Campaign *c, const World *w, const WorldEconomy *e,
                     a->days_left = a->leg_days;
                 }
             } else if (a->phase==FA_SIEGE){
+                bool leader=true;
+                for (int j=0;j<i;j++) if (c->army[j].active && c->army[j].owner==a->owner
+                    && c->army[j].loc==a->loc && c->army[j].phase==FA_SIEGE){ leader=false; break; }
+                if (!leader){ a->phase=FA_IDLE; a->dest=-1; a->next=-1; break; }
                 if (t < a->days_left){ a->days_left-=t; t=0.f; break; }
                 t -= a->days_left; a->days_left=0.f;
                 a->taken++;
@@ -751,6 +936,7 @@ void campaign_tick(Campaign *c, const World *w, const WorldEconomy *e,
             } else break;                                        /* FA_IDLE */
         }
     }
+    for (int owner=0;owner<SCPS_MAX_COUNTRY;owner++) corps_count_sync(c,owner);
 }
 
 /* ---- Lecteurs --------------------------------------------------------- */
@@ -764,15 +950,19 @@ FieldPhase campaign_phase(const Campaign *c, int o){
     return (o>=0 && o<SCPS_MAX_COUNTRY) ? c->army[o].phase : FA_IDLE;
 }
 long campaign_units(const Campaign *c, int o){
-    if (o<0 || o>=SCPS_MAX_COUNTRY) return 0;
-    return force_units(&c->army[o].force);
+    return campaign_corps_units(c,o);
+}
+long campaign_corps_units(const Campaign *c, int id){
+    const FieldArmy *a=campaign_corps_const(c,id); return a?force_units(&a->force):0;
 }
 int campaign_taken(const Campaign *c, int o){
     return (o>=0 && o<SCPS_MAX_COUNTRY) ? c->army[o].taken : 0;
 }
 long campaign_disband(Campaign *c, int o, ArmyState *dst_host_army){
-    if (!c || o<0 || o>=SCPS_MAX_COUNTRY) return 0;
-    FieldArmy *a=&c->army[o];
+    return campaign_disband_corps(c,o,dst_host_army);
+}
+long campaign_disband_corps(Campaign *c, int id, ArmyState *dst_host_army){
+    FieldArmy *a=campaign_corps(c,id); if (!a) return 0;
     long packets = force_units(&a->force);            /* ce qu'on dissout (UI / restitution) */
     int posture = a->posture;                          /* on garde le réglage joueur */
     /* LOT 1 — les SURVIVANTS rentrent (host reflète enfin ce qui revient du front) ;
@@ -784,6 +974,7 @@ long campaign_disband(Campaign *c, int o, ArmyState *dst_host_army){
     a->legs=0; a->battles=0; a->broken_days=0;
     a->sail_transports=0; a->sail_days=0.f; a->land_at_port=false; a->intercept_done=false;
     a->posture=posture;
+    corps_count_sync(c,a->owner);
     return packets;
 }
 const char *campaign_phase_name(FieldPhase ph){
@@ -801,22 +992,32 @@ const char *campaign_phase_name(FieldPhase ph){
 
 /* ---- RENFORT (« remplir ») ------------------------------------------------- */
 bool campaign_can_refill(const Campaign *c, const WorldEconomy *econ, int owner){
-    if (!campaign_active(c,owner) || !econ) return false;
-    int loc = campaign_location(c, owner);
-    return loc>=0 && loc<econ->n_regions && econ->region[loc].owner==owner;  /* chez soi */
+    return campaign_can_refill_corps(c,econ,owner);
+}
+bool campaign_can_refill_corps(const Campaign *c, const WorldEconomy *econ, int id){
+    const FieldArmy *a=campaign_corps_const(c,id);
+    return a && a->active && econ && a->loc>=0 && a->loc<econ->n_regions
+        && econ->region[a->loc].owner==a->owner;
 }
 void campaign_refill_cost(const Campaign *c, int owner, long *men, long *mat){
+    campaign_refill_corps_cost(c,owner,men,mat);
+}
+void campaign_refill_corps_cost(const Campaign *c, int id, long *men, long *mat){
     long m=0, mt=0;
-    if (owner>=0 && owner<SCPS_MAX_COUNTRY){
-        const ArmyState *a=&c->army[owner].force;
+    const FieldArmy *fa=campaign_corps_const(c,id);
+    if (fa){
+        const ArmyState *a=&fa->force;
         for (int i=0;i<a->n_units;i++) if (a->units[i].count>0){ m+=POP_PER_UNIT; mt+=2; } /* 1 paquet + ~2 mat/arme */
     }
     if (men) *men=m;
     if (mat) *mat=mt;
 }
 int campaign_refill(Campaign *c, int owner, WorldEconomy *econ){
-    if (owner<0 || owner>=SCPS_MAX_COUNTRY || !econ) return 0;
-    ArmyState *a=&c->army[owner].force;
+    return campaign_refill_corps(c,owner,econ);
+}
+int campaign_refill_corps(Campaign *c, int id, WorldEconomy *econ){
+    FieldArmy *fa=campaign_corps(c,id); if (!fa || !econ) return 0;
+    int owner=fa->owner; ArmyState *a=&fa->force;
     int n=a->n_units, added=0;
     for (int i=0;i<n;i++){
         if (a->units[i].count<=0) continue;
@@ -831,9 +1032,12 @@ int campaign_refill(Campaign *c, int owner, WorldEconomy *econ){
 }
 
 ArmyComposition campaign_composition(const Campaign *c, int o){
+    return campaign_corps_composition(c,o);
+}
+ArmyComposition campaign_corps_composition(const Campaign *c, int id){
     ArmyComposition z; memset(&z,0,sizeof z);
-    if (o<0 || o>=SCPS_MAX_COUNTRY) return z;
-    const ArmyState *a=&c->army[o].force;
+    const FieldArmy *fa=campaign_corps_const(c,id); if (!fa) return z;
+    const ArmyState *a=&fa->force;
     for (int i=0;i<a->n_units;i++){
         long n=a->units[i].count; if (n<=0) continue;
         switch (a->units[i].type){

@@ -36,8 +36,17 @@
 typedef enum { FA_IDLE = 0, FA_MARCH, FA_SIEGE, FA_BATTLE,
                FA_EMBARK, FA_SAIL, FA_LAND, FA_PHASE_COUNT } FieldPhase;
 
+/* Corps manoeuvrables. L'identifiant est stable dans une sauvegarde : le slot 0
+ * conserve volontairement l'ancien index `owner`, puis viennent les slots suivants.
+ * Cette disposition garde les anciens lecteurs du corps principal compatibles tout
+ * en offrant 32 corps indépendants par pays. */
+#define CAMPAIGN_MAX_CORPS 32
+#define CAMPAIGN_ARMY_CAP  (SCPS_MAX_COUNTRY * CAMPAIGN_MAX_CORPS)
+#define CAMPAIGN_CORPS_ID(owner, slot) ((owner) + (slot) * SCPS_MAX_COUNTRY)
+
 /* Une armée expéditionnaire posée sur la carte. */
 typedef struct {
+    int        id;         /* identifiant stable CAMPAIGN_CORPS_ID(owner,slot) */
     bool       active;      /* déployée ? */
     int        owner;       /* pays */
     int        loc;         /* région occupée */
@@ -87,7 +96,8 @@ typedef struct {
 #define CAMPAIGN_MAX_BATTLES 8
 
 typedef struct Campaign {
-    FieldArmy army[SCPS_MAX_COUNTRY];   /* une force expéditionnaire par pays */
+    FieldArmy army[CAMPAIGN_ARMY_CAP];  /* slots stables ; slot 0 = ancien corps principal */
+    int       n_corps[SCPS_MAX_COUNTRY];/* corps actifs par pays (cache sérialisé/validé) */
     int       n_regions;
     /* table de terrain par région (bâtie à l'init depuis le World) */
     Biome     reg_biome [SCPS_MAX_REG];
@@ -133,6 +143,22 @@ int  campaign_get_human(void);   /* lecteur : -1 si aucun (chronique/viewer sans
 bool campaign_order(Campaign *c, const WorldEconomy *econ, int owner,
                     int from_region, int target_region, ArmyState *src_force);
 
+/* API explicite par corps. Les anciens verbes par owner ci-dessous restent des
+ * wrappers sur le corps principal pour les systèmes qui n'ont pas encore besoin
+ * de distinguer les détachements. */
+int  campaign_corps_id(int owner, int slot);
+FieldArmy       *campaign_corps(Campaign *c, int id);
+const FieldArmy *campaign_corps_const(const Campaign *c, int id);
+int  campaign_corps_count(const Campaign *c, int owner);
+int  campaign_corps_id_at(const Campaign *c, int owner, int ordinal);
+int  campaign_raise(Campaign *c, const WorldEconomy *econ, int owner,
+                    int from_region, int target_region, ArmyState *src_force,
+                    long packets);
+bool campaign_redirect_corps(Campaign *c, const WorldEconomy *econ,
+                             const DiploState *dp, int id, int target_region);
+int  campaign_split(Campaign *c, int id, long packets);
+bool campaign_merge(Campaign *c, int dst_id, int src_id);
+
 /* L'EMBARQUEMENT (mer §6) : ordonne la traversée depuis `from_region` (un port
  * RÉEL du pays) vers `target_region` (région CÔTIÈRE). Exige assez de capacité
  * d'emport libre (10 paquets/transport) ; les transports sont RÉSERVÉS jusqu'au
@@ -164,6 +190,14 @@ void campaign_release_transports(Campaign *c, struct NavyState *navy);
 bool campaign_redirect(Campaign *c, const WorldEconomy *econ, const DiploState *dp,
                        int owner, int target_region);
 
+void        campaign_set_corps_posture(Campaign *c, int id, int posture);
+int         campaign_corps_posture(const Campaign *c, int id);
+long        campaign_corps_units(const Campaign *c, int id);
+long        campaign_disband_corps(Campaign *c, int id, ArmyState *dst_host_army);
+bool        campaign_can_refill_corps(const Campaign *c, const WorldEconomy *econ, int id);
+void        campaign_refill_corps_cost(const Campaign *c, int id, long *men, long *mat);
+int         campaign_refill_corps(Campaign *c, int id, WorldEconomy *econ);
+
 /* ---- Lecteurs (membrane : tangibles) ---------------------------------- */
 bool        campaign_active       (const Campaign *c, int owner);
 int         campaign_location     (const Campaign *c, int owner);  /* région ou -1 */
@@ -192,6 +226,7 @@ const char *campaign_phase_name   (FieldPhase ph);
  * de l'UI §4 (« cav / inf / arch »). Tangible, jamais de coordonnée SCPS. */
 typedef struct { long infanterie, archers, cavalerie, mages, total; } ArmyComposition;
 ArmyComposition campaign_composition(const Campaign *c, int owner);
+ArmyComposition campaign_corps_composition(const Campaign *c, int id);
 
 /* (army_host_word RETIRÉ — P1.10 : effectif EXACT affiché sur toute armée.) */
 

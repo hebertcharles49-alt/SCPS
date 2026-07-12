@@ -163,6 +163,7 @@ void scps_country_research_income(ScpsSim *s, int country, ScpsResearchIncome *o
  * Une ARMÉE de campagne par pays (si déployée) : où elle est, vers où elle marche,
  * sa phase (mot + brut pour l'anim), son effectif et sa composition. Tangibles. */
 typedef struct {
+    int         id;         /* identifiant stable du corps */
     int         active;     /* 1 = armée de campagne déployée */
     int         region;     /* loc (où la dessiner ; centroïde via scps_region_centroid) ; -1 */
     int         dest;       /* région-but (ligne de marche) ; -1 = aucune */
@@ -173,6 +174,9 @@ typedef struct {
     long        inf, arch, cav, mages;   /* composition (effectifs) */
 } ScpsArmyInfo;
 void scps_army_info(ScpsSim *s, int country, ScpsArmyInfo *out);
+int  scps_country_corps_count(ScpsSim *s, int country);
+int  scps_country_corps_id(ScpsSim *s, int country, int ordinal);
+void scps_corps_info(ScpsSim *s, int id, ScpsArmyInfo *out);
 
 /* W-GUERRE UI (lot A) — ÉTAT DE GUERRE d'une région (pour les HACHURES de siège/
  * occupation sur la carte) : 0 = paix (rien à hachurer) · 1 = ASSIÉGÉE (une armée
@@ -805,6 +809,13 @@ int  scps_player_posture       (ScpsSim *s, int posture);
 int  scps_player_refill        (ScpsSim *s);
 int  scps_player_navy_build    (ScpsSim *s, int hull);
 int  scps_player_disband       (ScpsSim *s);
+int  scps_player_raise_corps   (ScpsSim *s, long packets, int target_region);
+int  scps_player_split_corps   (ScpsSim *s, int id, long packets);
+int  scps_player_merge_corps   (ScpsSim *s, int dst_id, int src_id);
+int  scps_player_move_corps    (ScpsSim *s, int id, int target_region);
+int  scps_player_corps_posture (ScpsSim *s, int id, int posture);
+int  scps_player_refill_corps  (ScpsSim *s, int id);
+int  scps_player_disband_corps (ScpsSim *s, int id);
 /* LOT P (2026-07-07) — PILLER LA CÔTE : une province CÔTIÈRE d'un AUTRE pays (ni allié,
  * ni pacte), la piraterie restant un acte GRIS (miroir de la course pirate IA : la
  * guerre n'est PAS requise). Exige ≥1 coque PIRATE. ENFILE (drain revalidé) : le MÊME

@@ -128,7 +128,7 @@ int regions_of(const WorldEconomy *e, int c){
 
 static void sim_campaign_defense(Sim *s, World *w) {
     (void)w;
-    for (int k=0; k<SCPS_MAX_COUNTRY; k++) {
+    for (int k=0; k<CAMPAIGN_ARMY_CAP; k++) {
         const FieldArmy *en=&s->camp->army[k];
         if (!en->active || en->phase!=FA_SIEGE) continue;
         if (en->loc<0 || en->loc>=s->econ->n_regions) continue;
@@ -136,10 +136,15 @@ static void sim_campaign_defense(Sim *s, World *w) {
         if (def<0 || def>=SCPS_MAX_COUNTRY || def==en->owner) continue;
         if (def==s->human_player) continue;   /* la sortie défensive du JOUEUR est SA décision (gate IA-off ; human=-1 ⇒ no-op chronique) */
         if (diplo_status(s->dp,def,en->owner)!=DIPLO_WAR) continue;
-        if (campaign_active(s->camp,def) && campaign_phase(s->camp,def)!=FA_IDLE){
-            campaign_redirect(s->camp, s->econ, s->dp, def, en->loc);     /* on déroute l'armée en route */
+        int responder=-1;
+        for(int n=0;n<campaign_corps_count(s->camp,def);n++){
+            int id=campaign_corps_id_at(s->camp,def,n); const FieldArmy *a=campaign_corps_const(s->camp,id);
+            if(a && a->phase!=FA_BATTLE && a->phase<FA_EMBARK && a->broken_days<=0){responder=id;break;}
+        }
+        if (responder>=0){
+            campaign_redirect_corps(s->camp,s->econ,s->dp,responder,en->loc);
         } else if (warhost_units(s->host,def)>0){
-            campaign_order(s->camp, s->econ, def, en->loc, en->loc, &s->host->army[def]);  /* la sortie */
+            campaign_raise(s->camp,s->econ,def,en->loc,en->loc,&s->host->army[def],warhost_units(s->host,def));
         }
     }
 }
@@ -147,8 +152,19 @@ static void sim_campaign_defense(Sim *s, World *w) {
 static void sim_campaign_orders(Sim *s, World *w) {
     for (int c=0; c<w->n_countries && c<SCPS_MAX_COUNTRY; c++) {
         if (c==s->human_player) continue;   /* le JOUEUR projette son armée À LA MAIN (gate IA-off ; human=-1 ⇒ no-op chronique) */
-        if (campaign_active(s->camp,c) && campaign_phase(s->camp,c)!=FA_IDLE) continue; /* déjà en route */
-        if (warhost_units(s->host, c) <= 0) continue;                                   /* rien à projeter */
+        int foes[CAMPAIGN_MAX_CORPS],nfoe=0;
+        for(int e=0;e<w->n_countries && nfoe<CAMPAIGN_MAX_CORPS;e++)
+            if(e!=c && diplo_status(s->dp,c,e)==DIPLO_WAR) foes[nfoe++]=e;
+        if(nfoe<=0) continue;
+        int active_n=campaign_corps_count(s->camp,c);
+        int idle_id=-1;
+        for(int n=0;n<active_n;n++){ int id=campaign_corps_id_at(s->camp,c,n);
+            const FieldArmy *a=campaign_corps_const(s->camp,id);
+            if(a && a->phase==FA_IDLE && a->broken_days<=0){idle_id=id;break;}
+        }
+        if(active_n>=nfoe && idle_id<0) continue; /* doctrine D2 : un corps par front, concentration au-delà */
+        if (warhost_units(s->host,c)<=0 && idle_id<0) continue;
+        int front_enemy=foes[(active_n<nfoe?active_n:0)%nfoe];
         int frontier=-1, target=-1;
         /* B5 — PRIORITÉ DE LIBÉRATION : une de mes régions tenue par un occupant
          * ENNEMI (occupier[r] hostile) est la cible n°1. J'y marche depuis une
@@ -159,7 +175,7 @@ static void sim_campaign_orders(Sim *s, World *w) {
         for (int r=0; r<s->econ->n_regions && frontier<0; r++) {
             if (s->econ->region[r].owner!=c) continue;
             int occ=s->dp->occupier[r];
-            if (occ<0 || occ==c || diplo_status(s->dp,c,occ)!=DIPLO_WAR) continue;
+            if (occ<0 || occ==c || occ!=front_enemy || diplo_status(s->dp,c,occ)!=DIPLO_WAR) continue;
             for (int sn=0; sn<s->econ->n_regions; sn++) {
                 if (!s->econ->adj[r][sn]) continue;
                 if (s->econ->region[sn].owner!=c || s->dp->occupier[sn]>=0) continue;
@@ -172,7 +188,7 @@ static void sim_campaign_orders(Sim *s, World *w) {
             for (int sn=0; sn<s->econ->n_regions; sn++) {
                 if (!s->econ->adj[r][sn]) continue;
                 int ob=s->econ->region[sn].owner;
-                if (ob<0 || ob==c || diplo_status(s->dp,c,ob)!=DIPLO_WAR) continue;
+                if (ob!=front_enemy || diplo_status(s->dp,c,ob)!=DIPLO_WAR) continue;
                 /* P3/doctrine — on n'attaque qu'avec un AVANTAGE DE FORCE (≥1.2× le
                  * défenseur) : sinon l'assaut s'use sur le relief et la guerre tourne à
                  * vide. (La LIBÉRATION de NOTRE sol, plus haut, n'est PAS soumise au seuil.) */
@@ -181,7 +197,13 @@ static void sim_campaign_orders(Sim *s, World *w) {
             }
         }
         if (frontier>=0){
-            campaign_order(s->camp, s->econ, c, frontier, target, &s->host->army[c]);
+            if(idle_id>=0) campaign_redirect_corps(s->camp,s->econ,s->dp,idle_id,target);
+            else {
+                long reserve=warhost_units(s->host,c);
+                int remaining=nfoe-active_n; if(remaining<1) remaining=1;
+                long packets=reserve/remaining; if(packets<1) packets=1;
+                campaign_raise(s->camp,s->econ,c,frontier,target,&s->host->army[c],packets);
+            }
         } else {
             /* pas de frontière TERRESTRE : la guerre passe la mer si un port, des
              * transports et un chemin existent (mer §6/§8 — contraint par le champ). */
@@ -194,7 +216,7 @@ static void sim_campaign_orders(Sim *s, World *w) {
                     if (!s->econ->region[r2].coastal) continue;
                     tgt=r2;
                 }
-                if (tgt>=0)
+                if (tgt>=0 && active_n==0)
                     campaign_order_sea(s->camp, w, s->econ, s->navy, c, port, tgt, &s->host->army[c]);
             }
         }
@@ -220,10 +242,10 @@ static void sim_campaign_year(Sim *s, World *w) {
             if (fb_prev_ph==(int)FA_BATTLE && ph!=(int)FA_BATTLE){
                 bool alive = s->camp->army[hp_fb].active;
                 int foe=-1;                                  /* l'adversaire : une armée ENNEMIE au lieu de l'accrochage */
-                for (int k=0;k<SCPS_MAX_COUNTRY && foe<0;k++){
-                    if (k==hp_fb) continue;
+                for (int k=0;k<CAMPAIGN_ARMY_CAP && foe<0;k++){
                     const FieldArmy *en=&s->camp->army[k];
-                    if (en->loc==fb_prev_loc && diplo_status(s->dp,hp_fb,k)==DIPLO_WAR) foe=k;
+                    if (en->active && en->owner!=hp_fb && en->loc==fb_prev_loc
+                        && diplo_status(s->dp,hp_fb,en->owner)==DIPLO_WAR) foe=en->owner;
                 }
                 feed_push(alive?FEED_BATTLE_WON:FEED_BATTLE_LOST, hp_fb, foe, fb_prev_loc, 0);
             }
@@ -237,7 +259,7 @@ static void sim_campaign_year(Sim *s, World *w) {
          * final au règlement — cf. scps_diplo.c). Lecture seule sur la propriété :
          * la conquête abstraite (diplo_settle) reste la SEULE à faire basculer un
          * territoire. */
-        for (int i=0; i<w->n_countries && i<SCPS_MAX_COUNTRY; i++){
+        for (int i=0; i<CAMPAIGN_ARMY_CAP; i++){
             const FieldArmy *a=&s->camp->army[i];
             if (!a->active || a->phase!=FA_SIEGE) continue;
             if (a->loc<0 || a->loc>=s->econ->n_regions) continue;
@@ -249,7 +271,7 @@ static void sim_campaign_year(Sim *s, World *w) {
         /* RÉCOLTE (couche sim) : chaque siège mené à terme (taken_region) pose une
          * OCCUPATION réelle (région ennemie tenue) ou LIBÈRE (notre région reprise). La
          * propriété ne bascule qu'à la paix (diplo_settle) ; la campagne est restée lectrice. */
-        for (int i=0; i<w->n_countries && i<SCPS_MAX_COUNTRY; i++){
+        for (int i=0; i<CAMPAIGN_ARMY_CAP; i++){
             FieldArmy *a=&s->camp->army[i];
             if (a->taken_region<0) continue;
             int reg=a->taken_region; a->taken_region=-1;
@@ -290,7 +312,7 @@ static void sim_campaign_year(Sim *s, World *w) {
             /* L1 — L'ATTAQUANT NE DORT PAS : après la prise, re-cibler — l'armée
              * ennemie qui assiège NOTRE sol d'abord, sinon la frontière suivante. */
             int ntgt=-1;
-            for (int k=0;k<SCPS_MAX_COUNTRY && ntgt<0;k++){
+            for (int k=0;k<CAMPAIGN_ARMY_CAP && ntgt<0;k++){
                 const FieldArmy *en=&s->camp->army[k];
                 if (!en->active || en->phase!=FA_SIEGE || en->owner==a->owner) continue;
                 if (en->loc<0 || en->loc>=s->econ->n_regions) continue;
@@ -305,7 +327,7 @@ static void sim_campaign_year(Sim *s, World *w) {
                 if (s->dp->occupier[sn]==a->owner) continue;        /* déjà tenue : au suivant */
                 ntgt=sn;
             }
-            if (ntgt>=0 && a->owner!=s->human_player) campaign_redirect(s->camp, s->econ, s->dp, a->owner, ntgt);   /* le JOUEUR re-cible à la main (gate IA-off ; human=-1 ⇒ no-op chronique) */
+            if (ntgt>=0 && a->owner!=s->human_player) campaign_redirect_corps(s->camp, s->econ, s->dp, a->id, ntgt);   /* le JOUEUR re-cible à la main */
         }
     }
 }
@@ -534,6 +556,40 @@ static void sim_cmd_drain(Sim *s, World *w){
                     campaign_order(s->camp, s->econ, p, from, tgt, &s->host->army[p]);
             }
             break; }
+          case CMD_CORPS_RAISE: {
+            long packets=c->a[0]; int tgt=c->a[1];
+            int cap=w->country[p].capital_prov;
+            int from=(cap>=0 && cap<w->n_provinces)?w->province[cap].region:-1;
+            if (packets>0 && tgt>=0 && tgt<s->econ->n_regions && from>=0 && from<s->econ->n_regions
+                && s->econ->region[from].owner==p)
+                campaign_raise(s->camp,s->econ,p,from,tgt,&s->host->army[p],packets);
+            break; }
+          case CMD_CORPS_SPLIT: {
+            int id=c->a[0]; const FieldArmy *a=campaign_corps_const(s->camp,id);
+            if (a && a->active && a->owner==p) campaign_split(s->camp,id,c->a[1]);
+            break; }
+          case CMD_CORPS_MERGE: {
+            int dst=c->a[0], src=c->a[1];
+            const FieldArmy *a=campaign_corps_const(s->camp,dst), *b=campaign_corps_const(s->camp,src);
+            if (a&&b&&a->active&&b->active&&a->owner==p&&b->owner==p) campaign_merge(s->camp,dst,src);
+            break; }
+          case CMD_CORPS_MOVE: {
+            int id=c->a[0], tgt=c->a[1]; const FieldArmy *a=campaign_corps_const(s->camp,id);
+            if (a&&a->active&&a->owner==p&&tgt>=0&&tgt<s->econ->n_regions)
+                campaign_redirect_corps(s->camp,s->econ,s->dp,id,tgt);
+            break; }
+          case CMD_CORPS_POSTURE: {
+            int id=c->a[0], po=c->a[1]; const FieldArmy *a=campaign_corps_const(s->camp,id);
+            if (a&&a->active&&a->owner==p) campaign_set_corps_posture(s->camp,id,po);
+            break; }
+          case CMD_CORPS_REFILL: {
+            int id=c->a[0]; const FieldArmy *a=campaign_corps_const(s->camp,id);
+            if (a&&a->active&&a->owner==p) campaign_refill_corps(s->camp,id,s->econ);
+            break; }
+          case CMD_CORPS_DISBAND: {
+            int id=c->a[0]; const FieldArmy *a=campaign_corps_const(s->camp,id);
+            if (a&&a->active&&a->owner==p) campaign_disband_corps(s->camp,id,&s->host->army[p]);
+            break; }
           case CMD_POSTURE: {
             int po=c->a[0]; if (po<0) po=0; else if (po>2) po=2;     /* 0 prudente · 1 standard · 2 agressive */
             campaign_set_posture(s->camp, p, po);
@@ -547,7 +603,8 @@ static void sim_cmd_drain(Sim *s, World *w){
             navy_order_build(s->navy, w, s->econ, p, (HullType)h);
             break; }
           case CMD_DISBAND:
-            warhost_disband(s->host, s->econ, p);                     /* dissout la réserve levée ; LOT 2 : les armes RENTRENT au stock */
+            if (campaign_active(s->camp,p)) campaign_disband(s->camp,p,&s->host->army[p]);
+            else warhost_disband(s->host, s->econ, p);                /* sinon dissout la réserve levée */
             break;
           case CMD_RAID_COAST: {   /* LOT P — PILLER LA CÔTE (a[0]=province CIBLE, côtière, ennemie) */
             int prov=c->a[0];

@@ -75,6 +75,8 @@ public:
 
     /* ACTEURS SUR LA CARTE (Phase 3) */
     Dictionary army_info(int country);                /* armée de campagne (vide si inactive) */
+    Array      corps_ids(int country);                 /* ids stables des corps actifs */
+    Dictionary corps_info(int id);                    /* un corps explicite */
     int        region_tier(int region) const;         /* tier de ville 0-5 (-1 si non colonisée) */
     int        region_settle_group(int region) const; /* groupe de sprite settlement 0-5 (-1) */
 
@@ -192,6 +194,13 @@ public:
     bool       player_refill();                       /* guerre : recompléter l'armée de campagne */
     bool       player_navy_build(int hull);           /* flotte : mettre une coque en chantier */
     bool       player_disband();                      /* guerre : dissoudre la réserve levée */
+    bool       player_raise_corps(int packets, int target_region);
+    bool       player_split_corps(int id, int packets);
+    bool       player_merge_corps(int dst_id, int src_id);
+    bool       player_move_corps(int id, int target_region);
+    bool       player_corps_posture(int id, int posture);
+    bool       player_refill_corps(int id);
+    bool       player_disband_corps(int id);
     /* LOT P — PILLER LA CÔTE (pillage unifié : 20% du revenu annuel + esclavage si gate).
      * can_raid_coast → { legal:bool, reason:int (0 OK·1 pas côtière·2 allié/pacte·3 CD·4
      * pas de coque pirate), cd_days:int (« côte balafrée — X j ») }. */

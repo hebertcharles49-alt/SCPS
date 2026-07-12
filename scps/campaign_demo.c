@@ -274,6 +274,32 @@ int main(int argc,char**argv){
     ok("l'effectif EXACT se lit (P1.10 : la somme des armes = le total, 4800 hommes)",
        cp.infanterie+cp.archers+cp.cavalerie+cp.mages==cp.total && cp.total*100==4800);
 
+    /* ═══ 5. CORPS MULTIPLES : identité, scission/fusion et front B2 ═══ */
+    printf("\n── 5. Corps multiples : scinder · fusionner · combattre en stack ──\n");
+    int second=campaign_split(camp,A,16);
+    ok("SCINDER crée un second corps stable sans créer de régiments",
+       second>=0 && campaign_corps_count(camp,A)==2
+       && campaign_corps_units(camp,A)+campaign_corps_units(camp,second)==48);
+    ok("FUSIONNER deux corps co-localisés rend le slot et conserve l'effectif",
+       campaign_merge(camp,A,second) && campaign_corps_count(camp,A)==1
+       && campaign_corps_units(camp,A)==48);
+
+    campaign_init(camp2,w,econ);
+    ArmyState poolA=make_force(20,0,0), poolB=make_force(15,0,0);
+    int ca0=campaign_raise(camp2,econ,A,target,target,&poolA,10);
+    int ca1=campaign_raise(camp2,econ,A,target,target,&poolA,10);
+    int cb0=campaign_raise(camp2,econ,B,target,target,&poolB,15);
+    uint32_t stack_rng=0xB2u;
+    campaign_tick(camp2,w,econ,&dp,&stack_rng,1.f);
+    ok("B2 engage UNE bataille et épingle TOUS les corps amis présents",
+       ca0>=0 && ca1>=0 && cb0>=0 && camp2->n_battles==1
+       && camp2->army[ca0].phase==FA_BATTLE && camp2->army[ca1].phase==FA_BATTLE);
+    long stack_before=campaign_corps_units(camp2,ca0)+campaign_corps_units(camp2,ca1);
+    for(int d=0;d<80 && camp2->battle[0].active;d++) campaign_tick(camp2,w,econ,&dp,&stack_rng,1.f);
+    long stack_after=campaign_corps_units(camp2,ca0)+campaign_corps_units(camp2,ca1);
+    ok("les pertes du front sont imputées aux corps réels (jamais à une copie agrégée)",
+       stack_after<=stack_before && camp2->dead_choc+camp2->dead_pursuit>0);
+
 done:
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n",g_pass,g_fail);
