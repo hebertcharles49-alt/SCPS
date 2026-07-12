@@ -488,6 +488,17 @@ month_ticked, display-only) · RUBAN PAUSE centre-haut. ROADMAP restante (par im
 
 # SYNTHÈSE DE SESSION — handoff roulant (2026-07-07, soir)
 
+## Jalon UI du 2026-07-12 — profondeur et rappels
+- Demande : conserver l'esthétique EU4×RimWorld, approfondir l'information et les renvois entre
+  interfaces. Contrainte ferme : **aucune modification de la top bar sans proposition validée**.
+- Livré : `tech_panel.gd` gagne un dossier persistant (état, coût, prérequis, effet, débouchés,
+  feedback de lancement) et des tooltips structurés ; `country_actions.gd` montre l'opinion
+  actuelle face à son équilibre réel, explique les actions disponibles, colore les retours et
+  rappelle où suivre leurs conséquences.
+- Moteur/API/équilibrage inchangés ; `topbar.gd` inchangé.
+- Vérification : import/parse Godot headless RC=0. Audits live bloqués par le crash natif signal
+  11 déjà connu ; validation visuelle en jeu réel encore requise.
+
 > Branche `claude/vibrant-euler-1tgfp3` · **SAVE_VERSION 73** (<v73 refusé) · HEAD `2a6530b`+.
 > Golden re-baseliné par le lot W (archétypes de graine), tenu vert post-merge A+E+M+W.
 > Vague du jour : audit adversarial → 4 lots de fixes en hiérarchie multi-agents

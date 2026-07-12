@@ -22,7 +22,7 @@ var _metab_seen := {}   ## nom héritage (natif à part) → true une fois notif
 var PW := 720.0
 var PH := 560.0
 const HEAD := 52.0          # hauteur d'en-tête (titre + jauges)
-const FOOT := 22.0          # pied (détail du nœud sélectionné)
+const FOOT := 94.0          # dossier persistant du nœud sélectionné
 const METAH := 92.0         # bande de MÉTABOLISATION (le +% recherche + accès par héritage + compte Ascension)
 
 # couleurs d'état (sans bibliothèque d'animation Medusa : on teinte le cercle)
@@ -37,6 +37,8 @@ var _info := {}            # Atom -> dict du nœud (pour le détail au clic)
 var _nodes := []           # le tableau de nœuds (lookup index → nom pour la cible)
 var _built := false
 var _sel := ""             # détail du nœud sélectionné (pied)
+var _sel_node := {}         # nœud sélectionné : dossier détaillé, sans dépendre du survol
+var _sel_flash := ""        # retour immédiat après lancement/refus d'une recherche
 var _close_rect := Rect2()
 
 func _ready() -> void:
@@ -97,6 +99,8 @@ func _on_visibility() -> void:
 func _on_generated() -> void:
 	_built = false
 	_sel = ""
+	_sel_node.clear()
+	_sel_flash = ""
 	_metab_seen.clear()
 	if visible:
 		_build()
@@ -242,12 +246,22 @@ func _make_atom(nd: Dictionary, target: Vector2, rr: float = 13.0):
 	var hov := String(nd.get("hover", ""))
 	var fla := String(nd.get("flavor", ""))
 	var tip := String(nd["name"])
+	var st := int(nd["state"])
+	var states := ["Verrouillée", "Recherchable", "Acquise"]
+	tip += "\n%s · palier %d" % [states[clampi(st, 0, 2)], int(nd.get("tier", 0))]
+	var pr := int(nd.get("prereq", -1))
+	if pr >= 0 and pr < _nodes.size():
+		tip += "\nPrérequis : %s" % String(_nodes[pr].get("name", "?"))
+	if int(nd.get("cost", 0)) > 0 and st != 2:
+		tip += " · %d points" % int(nd["cost"])
 	if hov != "":
 		tip += "\n" + hov
+	var unl := String(nd.get("unlocks", ""))
+	if unl != "":
+		tip += "\nDébouche sur : " + unl
 	if fla != "":
-		tip += "\n— " + fla
+		tip += "\n" + fla
 	atom.tooltip_text = tip
-	var st := int(nd["state"])
 	var col := COL_LOCKED
 	if st == 1:
 		col = COL_AVAIL
@@ -282,10 +296,14 @@ func _on_atom_selected(atom) -> void:
 	var nd = _info.get(atom, null)
 	if nd == null:
 		_sel = ""
+		_sel_node.clear()
+		_sel_flash = ""
 		queue_redraw()
 		return
 	var states := ["verrouillé", "recherchable", "acquis"]
 	var stt := int(nd["state"])
+	_sel_node = nd.duplicate()
+	_sel_flash = ""
 	_sel = "%s — %s · %s" % [String(nd["name"]), String(nd.get("effet", "")), states[clampi(stt, 0, 2)]]
 	if int(nd.get("cost", 0)) > 0 and stt != 2:
 		_sel += " (%d pts)" % int(nd["cost"])
@@ -293,8 +311,11 @@ func _on_atom_selected(atom) -> void:
 	# (l'indice de _atoms == TechId ; la façade enfile CMD_RESEARCH, le déblocage tombe au tick).
 	if stt == 1 and Sim.world != null:
 		var idx := _atoms.find(atom)
-		if idx >= 0 and Sim.world.player_research(idx) != 0:
-			_sel += "   → recherche lancée"
+		if idx >= 0:
+			var ok: bool = Sim.world.player_research(idx) != 0
+			_sel_flash = "Recherche lancée : %s" % String(nd["name"]) if ok else "Recherche refusée : la situation a changé."
+			Sound.play("ui_click")
+			Sim.notify_action()
 	queue_redraw()
 
 func _gui_input(e: InputEvent) -> void:
@@ -350,12 +371,45 @@ func _draw() -> void:
 	VKit.fill(self, Rect2(12, HEAD - 4, PW - 24, 1), VKit.COL_EDGE)
 	# bande de MÉTABOLISATION : le +% recherche + l'accès tech par héritage (la barre)
 	_draw_metab(info)
-	# pied : détail du nœud cliqué + rappel touche
+	# pied : DOSSIER persistant du nœud cliqué. Le survol découvre ; le clic permet de
+	# comparer sans garder la souris immobile (profondeur RimWorld/EU4).
 	VKit.fill(self, Rect2(12, PH - FOOT, PW - 24, 1), VKit.COL_EDGE)
-	if _sel != "":
-		VKit.text(self, Vector2(16, PH - FOOT + 4), VKit.COL_PARCH, _sel, VKit.FS_SMALL)
+	if not _sel_node.is_empty():
+		_draw_selected_node(PH - FOOT + 7.0)
 	else:
-		VKit.text(self, Vector2(16, PH - FOOT + 4), VKit.COL_DIM, "Cliquez un nœud pour son détail.", VKit.FS_SMALL)
+		VKit.text(self, Vector2(16, PH - FOOT + 8), VKit.COL_DIM,
+			"Sélectionnez un nœud : effet, coût, prérequis et débouchés resteront affichés ici.", VKit.FS_SMALL)
+
+func _draw_selected_node(y: float) -> void:
+	var nd: Dictionary = _sel_node
+	var st := int(nd.get("state", 0))
+	var states := ["VERROUILLÉE", "RECHERCHABLE · CLIQUER POUR LANCER", "ACQUISE"]
+	var scol := COL_LOCKED if st == 0 else (COL_AVAIL if st == 1 else COL_UNLOCKED)
+	if bool(nd.get("faustian", false)):
+		scol = COL_FAUST
+	VKit.text(self, Vector2(16, y), VKit.COL_GOLD, String(nd.get("name", "?")), VKit.FS_BIG)
+	VKit.text(self, Vector2(300, y + 2), scol, states[clampi(st, 0, 2)], VKit.FS_SMALL)
+	var meta := "Palier %d" % int(nd.get("tier", 0))
+	var pr := int(nd.get("prereq", -1))
+	if pr >= 0 and pr < _nodes.size():
+		meta += " · Prérequis : %s" % String(_nodes[pr].get("name", "?"))
+	elif bool(nd.get("is_base", false)):
+		meta += " · Fondation"
+	if int(nd.get("cost", 0)) > 0 and st != 2:
+		meta += " · Coût : %d points" % int(nd.get("cost", 0))
+	VKit.text(self, Vector2(16, y + 22), VKit.COL_DIM, meta, VKit.FS_SMALL)
+	var eff := String(nd.get("effet", ""))
+	var unl := String(nd.get("unlocks", ""))
+	if eff != "":
+		VKit.text(self, Vector2(16, y + 39), VKit.COL_PARCH, "Effet : " + eff, VKit.FS_SMALL)
+	if unl != "":
+		VKit.text(self, Vector2(PW * 0.52, y + 39), VKit.COL_PARCH, "Débouche sur : " + unl, VKit.FS_SMALL)
+	var flavor := String(nd.get("flavor", ""))
+	if _sel_flash != "":
+		VKit.text(self, Vector2(16, y + 58), COL_UNLOCKED if _sel_flash.begins_with("Recherche lancée") else COL_FAUST,
+			_sel_flash, VKit.FS_SMALL)
+	elif flavor != "":
+		VKit.text(self, Vector2(16, y + 58), VKit.COL_DIM, flavor, VKit.FS_SMALL)
 
 # ── bande de MÉTABOLISATION : le +% recherche du creuset + l'accès tech par héritage ──
 # Le "+X% recherche" répond à « métabolisation = +% tech visible sous la barre de savoir » ;

@@ -201,10 +201,9 @@ func _draw() -> void:
 		var res_n := int(ca.get("regiments", 0))
 		var res_lbl_w: float = VKit.detail(self, Vector2(x, y), "Réserve : ", VKit.FS)
 		if res_n > 0:
-			var res_val_w: float = VKit.value(self, Vector2(x + res_lbl_w, y), _grp(res_n), VKit.FS)
-			VKit.detail(self, Vector2(x + res_lbl_w + res_val_w, y), " · levée %s" % String(ca.get("levy_name", "—")), VKit.FS)
+			VKit.value(self, Vector2(x + res_lbl_w, y), _grp(res_n), VKit.FS)
 		else:
-			VKit.detail(self, Vector2(x + res_lbl_w, y), "0 · levée %s" % String(ca.get("levy_name", "—")), VKit.FS)
+			VKit.detail(self, Vector2(x + res_lbl_w, y), "0", VKit.FS)
 		y += 18
 		# RECOMPLÉTER (retour joueur : « doit être dans la side bar droite ») — verbe journalisé
 		_refill_rect = Rect2(x, y, 104, 20)

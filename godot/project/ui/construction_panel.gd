@@ -106,6 +106,8 @@ func _draw() -> void:
 			if int(b.get("prev", -1)) >= 0 and not bool(b.get("prev_built", false)):
 				continue   # palier caché : son précédent n'existe pas encore chez nous
 			var on2: bool = bool(b.get("debloque", false))
+			if not on2:
+				continue   # CLARTÉ (retour joueur) : on masque les édifices verrouillés par la tech
 			var btype := int(b.get("type", -1))
 			var leg: Dictionary = _blegal.get(btype, {})
 			var affordable: bool = bool(leg.get("legal", true)) if on2 else false

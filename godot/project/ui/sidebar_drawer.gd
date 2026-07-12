@@ -1028,41 +1028,22 @@ func _servile_act(act: String, qty: int, me: int) -> void:
 		Sound.play("ui_click")
 	queue_redraw()
 
-# ── ARMÉE (sb_panel_armee) : readouts + VERBES joueur (levée/posture/flotte) ──
-const POSTURE_LABELS := ["Prudente", "Standard", "Agressive"]
+# ── ARMÉE (sb_panel_armee) : readouts + VERBES joueur (recruter/flotte). Levée &
+#    posture RETIRÉES (retour joueur : jamais demandées). ──
 const HULL_LABELS := [["+Guerre", 0], ["+Transport", 1], ["+Marchand", 2]]   # HullType : HULL_WAR·HULL_TRANSPORT·HULL_MERCHANT
 
-var _levy_btns := []      # [{rect, delta}] boutons [-]/[+] de la jauge de levée
-var _posture_btns := []   # [{rect, p}] chips de posture
 var _army_btns := []      # [{rect, act}] Recompléter / Dissoudre
 var _navy_btns := []      # [{rect, hull}] +Guerre / +Transport / +Marchand
-var _posture_sel := 1     # dernier clic (affichage seul — aucun lecteur de posture actuelle)
 
 func _draw_armee(x: float, y: float, me: int) -> float:
-	_levy_btns.clear(); _posture_btns.clear(); _army_btns.clear(); _navy_btns.clear()
+	_army_btns.clear(); _navy_btns.clear()
 	var a: Dictionary = Sim.world.country_army(me)
 	UIKit.draw_icon(self, "menu_army", Vector2(x, y - 1), 18)
 	VKit.value(self, Vector2(x + 22, y), "force mobilisée : %d régiments" % int(a["regiments"]))
-	y += 22
-	# — Levée : [-] nom [+] (verbe : player_set_levy, journalisé — drainé au tick) —
-	var levy: int = int(a["levy"])
-	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "levée :")
-	var bx := x + 52.0
-	var rm := Rect2(bx, y - 2, 16, 16)
-	VKit.fill(self, rm, VKit.COL_PANEL2); VKit.box(self, rm, VKit.COL_EDGE if levy <= 0 else VKit.COL_GOLD)
-	VKit.text(self, Vector2(bx + 5, y - 1), VKit.COL_DIM if levy <= 0 else VKit.COL_GOLD, "−", VKit.FS_SMALL)
-	if levy > 0:
-		_levy_btns.append({"rect": rm, "delta": -1})
-	bx += 20
-	var lw := VKit.text_w(String(a["levy_name"]), VKit.FS) + 8.0
-	VKit.text(self, Vector2(bx, y), VKit.COL_GOLD, String(a["levy_name"]))
-	bx += lw + 4
-	var rp := Rect2(bx, y - 2, 16, 16)
-	VKit.fill(self, rp, VKit.COL_PANEL2); VKit.box(self, rp, VKit.COL_EDGE if levy >= 3 else VKit.COL_GOLD)
-	VKit.text(self, Vector2(bx + 5, y - 1), VKit.COL_DIM if levy >= 3 else VKit.COL_GOLD, "+", VKit.FS_SMALL)
-	if levy < 3:
-		_levy_btns.append({"rect": rp, "delta": 1})
 	y += 24
+	# (levée + posture RETIRÉES — retour joueur : jamais demandées. Le joueur compose son
+	#  armée à la main via « Composer l'armée » ci-dessous ; le recrutement ne dépend pas
+	#  de la levée côté moteur.)
 	var ar: Dictionary = Sim.world.army_info(me)
 	if bool(ar.get("active", false)):
 		VKit.text(self, Vector2(x, y), VKit.COL_GOLD,
@@ -1075,22 +1056,6 @@ func _draw_armee(x: float, y: float, me: int) -> float:
 	else:
 		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "(pas d'armée de campagne déployée)", VKit.FS_SMALL)
 		y += 20
-	# — Posture : 3 chips (verbe : player_posture) — surbrillance = l'état MOTEUR (reader v49) —
-	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "posture :", VKit.FS_SMALL)
-	y += 16
-	var post_now: int = int(a.get("posture", _posture_sel))
-	var cx := x
-	for p in range(POSTURE_LABELS.size()):
-		var label: String = POSTURE_LABELS[p]
-		var tw := VKit.text_w(label, VKit.FS_SMALL) + 12.0
-		var active := (post_now == p)
-		var r := Rect2(cx, y, tw, 18)
-		VKit.fill(self, r, VKit.COL_GOLD if active else VKit.COL_PANEL2)
-		VKit.box(self, r, VKit.COL_EDGE)
-		VKit.text(self, Vector2(cx + 6, y + 1), VKit.COL_PANEL if active else VKit.COL_PARCH, label, VKit.FS_SMALL)
-		_posture_btns.append({"rect": r, "p": p})
-		cx += tw + 4
-	y += 26
 	# — Recompléter / Dissoudre (verbes : player_refill / player_disband) —
 	var b1w := VKit.text_w("Recompléter", VKit.FS_SMALL) + 14.0
 	var r1 := Rect2(x, y, b1w, 18)
@@ -1109,7 +1074,7 @@ func _draw_armee(x: float, y: float, me: int) -> float:
 	y += 20
 	# — Flotte : mise en chantier (verbe : player_navy_build) — bateau gravé par coque
 	var hull_boat := ["sheet24_topbar_boats_menu_11", "sheet24_topbar_boats_menu_13", "sheet24_topbar_boats_menu_10"]
-	cx = x
+	var cx := x
 	for it in HULL_LABELS:
 		var label: String = it[0]
 		var hull: int = it[1]
@@ -1133,28 +1098,38 @@ func _draw_armee(x: float, y: float, me: int) -> float:
 	#    = verrouillée (tech/éthos) ; clic = player_recruit (journalisé). ──
 	_unit_btns.clear()
 	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Composer l'armée", VKit.FS_SMALL)
-	y += 18
-	var units: Array = Sim.world.unit_roster(me)
+	y += 16
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "clic pour lever une unité", VKit.FS_SMALL)
+	y += 16
+	# CLARTÉ (retour joueur) : on n'affiche QUE les unités RECRUTABLES (les verrouillées
+	# par la tech disparaissent — plus de tuiles mortes cliquées dans le vide).
+	var rec: Array = []
+	for u in Sim.world.unit_roster(me):
+		if bool(u.get("recrutable", false)):
+			rec.append(u)
 	var ucell := 40.0
-	var ucols := int((DW - 2.0 * x) / ucell)
-	for i in range(units.size()):
-		var u: Dictionary = units[i]
-		var on: bool = bool(u.get("recrutable", false))
+	var ucols := maxi(1, int((DW - 2.0 * x) / ucell))
+	if rec.is_empty():
+		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "(aucune unité disponible — recherche militaire requise)", VKit.FS_SMALL)
+		y += 18
+	for i in range(rec.size()):
+		var u: Dictionary = rec[i]
 		var ur := Rect2(x + (i % ucols) * ucell, y + (i / ucols) * ucell, ucell - 4.0, ucell - 4.0)
 		var ut: Texture2D = UIKit.unit_sprite(int(u.get("type", -1)))
 		if ut != null:
-			draw_texture_rect(ut, ur, false, Color.WHITE if on else Color(0.5, 0.5, 0.55, 0.6))
+			draw_texture_rect(ut, ur, false)
 		else:
 			VKit.fill(self, ur, VKit.COL_PANEL2)
 			VKit.text(self, ur.position + Vector2(2, 10), VKit.COL_DIM, String(u.get("nom", "")).substr(0, 5), VKit.FS_SMALL)
-		VKit.box(self, ur, VKit.COL_GOLD if on else VKit.COL_EDGE)
-		if not on:
-			VKit.text(self, ur.position + Vector2(ur.size.x - 12, 0), VKit.COL_GOLD, "✦", VKit.FS_SMALL)
-		_unit_btns.append({"rect": ur, "type": int(u.get("type", -1)), "nom": String(u.get("nom", "")), "on": on})
-		_tips.append([ur, "%s — %s · %s\nCoût : %s · Entretien : %.1f or/100" % [
-			String(u.get("nom", "")), String(u.get("classe", "")), String(u.get("arme", "")),
+		VKit.box(self, ur, VKit.COL_GOLD)
+		_unit_btns.append({"rect": ur, "type": int(u.get("type", -1)), "nom": String(u.get("nom", "")), "on": true})
+		# HOVER (retour joueur) : la CATÉGORIE tactique + les contres en CATÉGORIES (pas la
+		# liste complète des unités) + coût/entretien.
+		_tips.append([ur, "%s — %s · %s\nEfficace contre : %s\nFaible contre : %s\nCoût : %s · Entretien : %.1f or/100" % [
+			String(u.get("nom", "")), String(u.get("categorie", "")), String(u.get("arme", "")),
+			String(u.get("fort", "—")), String(u.get("faible", "—")),
 			String(u.get("cout", "")), float(u.get("entretien_or10", 5)) / 10.0]])
-	y += ceilf(units.size() / float(ucols)) * ucell + 4.0
+	y += ceilf(rec.size() / float(ucols)) * ucell + 4.0
 
 	if _armee_flash != "":
 		VKit.text(self, Vector2(x, y),
@@ -1341,15 +1316,6 @@ func _armee_act(kind: String, val: int) -> void:
 		return
 	Sim.notify_action()   # pause : l'UI se rafraîchit au clic (le drain suit à la reprise)
 	match kind:
-		"levy":
-			w.player_set_levy(val)
-			_armee_flash_ok = true
-			_armee_flash = "⚑ levée réglée — ordre émis"
-		"posture":
-			_posture_sel = val
-			var ok: bool = w.player_posture(val)
-			_armee_flash_ok = ok
-			_armee_flash = ("⚑ posture %s — ordre émis" % POSTURE_LABELS[val]) if ok else "✗ posture — refusé"
 		"refill":
 			var ok: bool = w.player_refill()
 			_armee_flash_ok = ok
@@ -1457,17 +1423,6 @@ func _gui_input(event: InputEvent) -> void:
 					accept_event()
 					return
 		if _tab == 4:
-			for b in _levy_btns:
-				if b.rect.has_point(event.position):
-					var a: Dictionary = Sim.world.country_army(Sim.world.player())
-					_armee_act("levy", clampi(int(a["levy"]) + int(b.delta), 0, 3))
-					accept_event()
-					return
-			for b in _posture_btns:
-				if b.rect.has_point(event.position):
-					_armee_act("posture", int(b.p))
-					accept_event()
-					return
 			for b in _army_btns:
 				if b.rect.has_point(event.position):
 					_armee_act(String(b.act), 0)

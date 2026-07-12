@@ -1715,6 +1715,20 @@ static void sj(char *buf, size_t cap, const char *add, int *n){
     (*n)++;
 }
 
+/* CATÉGORIE tactique d'une unité (le hover joueur : « cavalerie lourde », « distance »…).
+ * Dérivée de l'arme macro (unit_res_arm) + de la monture — 6 catégories seulement. */
+static const char *unit_category_word(UnitType t){
+    Resource arm = unit_res_arm(t);
+    if (arm==RES_MAGE_STAFF || arm==RES_ALCHEMIST_KIT) return "Mage";
+    if (arm==RES_ARMS_RANGED || arm==RES_FIREARM)       return "Distance";
+    const UnitDef *d = unit_def(t);
+    int w = d ? d->weapon : -1;
+    int cav = (w==W_MONTURE_L || w==W_MONTURE_H || w==W_MONTURE_CUIRASSEE || w==W_MONTURE_RAID);
+    int heavy = (arm==RES_ARMS_HEAVY || arm==RES_ENCHANTED_ARMS);
+    if (cav)   return heavy ? "Cavalerie lourde" : "Cavalerie légère";
+    return heavy ? "Infanterie lourde" : "Infanterie légère";
+}
+
 int scps_unit_roster(ScpsSim *s, int country, ScpsUnitDef *out, int max){
     if (!s || !s->ready || !out || max<=0) return 0;
     const TechState *ts = (country>=0 && country<SCPS_MAX_COUNTRY) ? &s->sim.ts[country] : NULL;
@@ -1726,6 +1740,7 @@ int scps_unit_roster(ScpsSim *s, int country, ScpsUnitDef *out, int max){
         o->type   = t;
         o->nom    = sz(unit_name((UnitType)t));
         o->classe = (d->from==LAB_ELITE) ? "Élite" : "Journalier";
+        o->categorie = unit_category_word((UnitType)t);
         o->arme   = sz(weapon_name(d->weapon));
         Resource arm = unit_res_arm((UnitType)t);
         if (arm==RES_NONE) snprintf(g_ucost[t], sizeof g_ucost[t], "%d (fortune)", POP_PER_UNIT);
@@ -1734,10 +1749,11 @@ int scps_unit_roster(ScpsSim *s, int country, ScpsUnitDef *out, int max){
         g_uethos[t][0]=0; { int ne=0; for (int f=0; f<6; f++)        /* éthos : affinité ≥ 2 */
             if (warhost_unit_affinity(f,t) >= 2.f) sj(g_uethos[t], sizeof g_uethos[t], faction_name(f), &ne); }
         o->ethos = g_uethos[t][0] ? g_uethos[t] : "—";
-        g_ufort[t][0]=0; g_ufaible[t][0]=0; { int nf=0, nw=0;       /* contres : >1.5 bat · <0.75 battu */
+        g_ufort[t][0]=0; g_ufaible[t][0]=0; { int nf=0, nw=0;       /* contres en CATÉGORIES (dédup) : >1.5 bat · <0.75 battu */
             for (int j=0; j<U_COUNT; j++){ if (j==t) continue; float m=matchup((UnitType)t,(UnitType)j);
-                if      (m>1.5f  && nf<3) sj(g_ufort[t],   sizeof g_ufort[t],   unit_name((UnitType)j), &nf);
-                else if (m<0.75f && nw<3) sj(g_ufaible[t], sizeof g_ufaible[t], unit_name((UnitType)j), &nw); } }
+                const char *cj = unit_category_word((UnitType)j);
+                if      (m>1.5f  && nf<3 && !strstr(g_ufort[t],   cj)) sj(g_ufort[t],   sizeof g_ufort[t],   cj, &nf);
+                else if (m<0.75f && nw<3 && !strstr(g_ufaible[t], cj)) sj(g_ufaible[t], sizeof g_ufaible[t], cj, &nw); } }
         o->fort   = g_ufort[t][0]   ? g_ufort[t]   : "—";
         o->faible = g_ufaible[t][0] ? g_ufaible[t] : "—";
         o->entretien_or10   = g10;

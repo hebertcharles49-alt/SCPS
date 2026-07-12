@@ -672,11 +672,13 @@ typedef struct {
     int         type;          /* UnitType brut (icône/sélection) */
     const char *nom;           /* unit_name */
     const char *classe;        /* « Journalier » / « Élite » */
+    const char *categorie;     /* CATÉGORIE tactique : Infanterie lourde/légère · Cavalerie
+                                * lourde/légère · Distance · Mage (le hover joueur) */
     const char *arme;          /* weapon_name */
     const char *cout;          /* prix de levée : « 100 Armes légères » (la catégorie macro) */
     const char *ethos;         /* éthos qui le favorisent (affinité ≥ 2), joints ; « — » sinon */
-    const char *fort;          /* « efficace contre » : unités battues (joints) ; « — » sinon */
-    const char *faible;        /* « faible contre » : unités qui le battent ; « — » sinon */
+    const char *fort;          /* « efficace contre » : CATÉGORIES battues (joints) ; « — » sinon */
+    const char *faible;        /* « faible contre » : CATÉGORIES qui le battent ; « — » sinon */
     int         entretien_or10;/* solde : or/100/jour ×10 (uniforme) */
     int         entretien_vivre;/* ration/100/jour */
     int         recrutable;    /* 1 si la tech du pays débloque cette unité */

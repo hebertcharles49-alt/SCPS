@@ -4158,3 +4158,21 @@ inspectée, `git diff --check` sans erreur. Aucun type, lecteur ou verbe moteur 
   (sections Guerre/Alliances/Commerce, boutons pleine largeur) — NON vérifié en probe (la
   graine de probe n'a aucun pays étranger CONNU à l'an-24 : fenêtre jamais ouverte headless) ;
   parse OK, logique `_refresh`/`_act` inchangée. À revoir en jeu réel.
+
+## Profondeur UI sans nouvelle mécanique (2026-07-12)
+- **Découverte (arbre)** : `tech_nodes()` exposait déjà `prereq`, `unlocks`, `cost`, `hover`,
+  `flavor`, palier et état, mais l'arbre n'en gardait qu'une phrase de pied après clic. Le
+  reste dépendait d'un survol volatil. `tech_panel.gd` possède désormais un dossier persistant
+  du nœud : état/action, coût, prérequis nommé, effet et débouchés ; le tooltip reprend la même
+  hiérarchie. Aucun prix, accès ou effet n'est recalculé côté UI.
+- **Découverte (opinion)** : `opinion_summary()` donne à la fois l'opinion courante lissée et
+  les composantes de son point d'équilibre. Leur somme bornée permet d'afficher honnêtement
+  `actuelle → équilibre` et le sens de dérive, sans prédire un délai que la façade n'expose pas.
+- **Rappels** : la fiche pays renvoie contextuellement vers Armée/carte en guerre, vers
+  Marché/provinces sous pacte, et vers la liste Diplomatie sinon. Les actions permises nomment
+  leurs conséquences ; les refus et ordres émis donnent un retour explicite.
+- **Pièges** : les audits `tech_audit`/`diplo_audit` tombent encore sur le crash natif signal 11
+  au démarrage de la simulation. L'import éditeur parse les scripts avec RC=0 ; erreurs annexes
+  attendues : répertoires Godot user:// non inscriptibles et SDK .NET 10.0.6 absent.
+- **Périmètre** : `topbar.gd` non touché. Deux scripts UI seulement : `tech_panel.gd` et
+  `country_actions.gd`. Reste à valider visuellement en jeu réel avec un pays étranger connu.

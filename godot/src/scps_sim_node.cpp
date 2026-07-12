@@ -1001,6 +1001,7 @@ Array ScpsWorld::unit_roster(int country) {
         d["type"]            = u[i].type;
         d["nom"]             = String::utf8(u[i].nom);
         d["classe"]          = String::utf8(u[i].classe);
+        d["categorie"]       = String::utf8(u[i].categorie);
         d["arme"]            = String::utf8(u[i].arme);
         d["cout"]            = String::utf8(u[i].cout);
         d["ethos"]           = String::utf8(u[i].ethos);

@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://b8armyaud001"]
+
+[ext_resource type="Script" path="res://army_audit.gd" id="1_aaudit"]
+
+[node name="ArmyAudit" type="Node"]
+script = ExtResource("1_aaudit")

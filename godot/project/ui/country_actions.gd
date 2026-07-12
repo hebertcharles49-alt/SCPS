@@ -19,9 +19,11 @@ var _head: Label
 var _arms_rect: TextureRect   ## les ARMES du pays cible (héraldique dérivée)
 var _status: Label
 var _opinion_bar: Rect2
+var _opinion_course: Label   ## opinion actuelle → point d'équilibre calculé par ses composantes
 var _sum_lbl: Label
 var _cd_lbl: Label
 var _cb_lbl: Label   ## W-GUERRE-3 : état de l'intrigue fabriquée (en cours / prête / coût)
+var _context_hint: Label   ## rappel des panneaux où suivre les conséquences de la relation
 var _flash: Label
 
 # UI-4 (retour joueur 2026-07-10) : hiérarchie d'actions — Guerre est DESTRUCTIF (rouge
@@ -29,6 +31,14 @@ var _flash: Label
 # Paix/Allier/Pacte/Migration/Embargo restent SECONDAIRES (thème neutre inchangé).
 const BTN_LABELS := {"war": "Guerre", "peace": "Paix", "ally": "Allier", "pact": "Pacte",
 	"migration": "Migration", "embargo": "Embargo"}
+const ACTION_HELP := {
+	"war": "Déclare une guerre. La relation bascule immédiatement ; les opérations se suivent dans l'onglet Armée.",
+	"peace": "Propose une paix blanche. Le pays juge l'offre selon la guerre et son opinion.",
+	"ally": "Propose une alliance bilatérale. L'opinion décide de l'acceptation.",
+	"pact": "Propose un pacte commercial. Il ouvre les échanges et nourrit le contact entre les peuples.",
+	"migration": "Propose un pacte migratoire. Des populations pourront circuler entre les deux pays.",
+	"embargo": "Ferme ou rouvre unilatéralement le commerce avec ce pays ; l'opinion et les routes suivent.",
+}
 var _war_armed := false
 var _war_armed_ms := -100000
 var _war_sb_idle: StyleBoxFlat
@@ -92,6 +102,11 @@ func _build() -> void:
 	_status.add_theme_color_override("font_color", Color(0.62, 0.60, 0.58))
 	col.add_child(_status)
 
+	_opinion_course = Label.new()
+	_opinion_course.add_theme_font_size_override("font_size", 12)
+	_opinion_course.add_theme_color_override("font_color", VKit.COL_PARCH)
+	col.add_child(_opinion_course)
+
 	_sum_lbl = Label.new()
 	_sum_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_sum_lbl.custom_minimum_size = Vector2(PW - 40.0, 0)
@@ -151,6 +166,12 @@ func _build() -> void:
 				b.pressed.connect(func(): _act(verb))
 			col.add_child(b)
 			_btns[verb] = b
+
+	_context_hint = Label.new()
+	_context_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_context_hint.add_theme_font_size_override("font_size", 12)
+	_context_hint.add_theme_color_override("font_color", VKit.COL_DIM)
+	col.add_child(_context_hint)
 
 	_flash = Label.new()
 	_flash.add_theme_color_override("font_color", Color(0.46, 0.74, 0.42))
@@ -219,6 +240,7 @@ func _refresh() -> void:
 	_status.text = "Statut : %s · Opinion : %+d" % [String(rel.get("status", "—")), op]
 	# le RÉSUMÉ : composantes d'opinion + les 3 derniers actes (la mémoire)
 	var parts := PackedStringArray()
+	var opinion_target := 0
 	if w.has_method("opinion_summary"):
 		var ps: Dictionary = w.opinion_summary(_cid)
 		for pk in [["Alliance", "ally"], ["Guerre", "war"], ["Vassalité", "vassal"],
@@ -226,6 +248,14 @@ func _refresh() -> void:
 			var v := int(ps.get(pk[1], 0))
 			if v != 0:
 				parts.append("%s %+d" % [pk[0], v])
+			opinion_target += v
+	opinion_target = clampi(opinion_target, -100, 100)
+	var drift := opinion_target - op
+	var arrow := "→" if drift == 0 else ("↗" if drift > 0 else "↘")
+	var course := "stable" if drift == 0 else ("se réchauffe" if drift > 0 else "se dégrade")
+	_opinion_course.text = "Opinion actuelle %+d  %s  équilibre %+d · %s" % [op, arrow, opinion_target, course]
+	_opinion_course.add_theme_color_override("font_color",
+		VKit.COL_DIM if drift == 0 else (VKit.sense(0.80) if drift > 0 else VKit.sense(0.15)))
 	var mem := PackedStringArray()
 	if w.has_method("diplo_journal"):
 		var me2: int = int(w.player())
@@ -265,6 +295,12 @@ func _refresh() -> void:
 	var at_war: bool = int(psr.get("war", 0)) != 0
 	var allied: bool = int(psr.get("ally", 0)) != 0
 	var has_pact: bool = int(psr.get("pact", 0)) != 0
+	if at_war:
+		_context_hint.text = "À suivre : opérations dans Armée · ravages et occupations sur la carte · mémoire ici."
+	elif allied or has_pact:
+		_context_hint.text = "À suivre : échanges dans Marché · brassage dans les provinces · mémoire diplomatique ici."
+	else:
+		_context_hint.text = "Rappel : clic droit sur un pays ouvre cette fiche ; l'onglet Diplomatie compare tous les voisins."
 	for verb in _btns:
 		if verb == "fabricate":
 			continue   # géré à part plus bas (texte/état dynamiques)
@@ -295,7 +331,7 @@ func _refresh() -> void:
 		elif amber:
 			b.tooltip_text = "il refusera (opinion trop basse)"
 		else:
-			b.tooltip_text = ""
+			b.tooltip_text = String(ACTION_HELP.get(verb, ""))
 	# W-GUERRE-3 — LE CASUS BELLI FABRIQUÉ : « Guerre » reste grisé sans motif gratuit NI
 	# intrigue mûre (can_declare_war le dit déjà côté moteur) ; « Fabriquer » porte l'état
 	# de l'intrigue en cours/mûre/coût — un bouton de CORRUPTION, distinct de la déclaration.
@@ -335,7 +371,10 @@ func _act(verb: String) -> void:
 		"migration": ok = bool(w.player_offer_migration(_cid))
 		"embargo": ok = bool(w.player_embargo(_cid, 1))
 		"fabricate": ok = bool(w.player_fabricate_cb(_cid))
-	_flash.text = "Ordre émis — l'émissaire part." if ok else "Ordre refusé."
+	var action_name := String(BTN_LABELS.get(verb, verb)).to_lower()
+	_flash.text = ("Ordre émis : %s · l'émissaire part." % action_name) if ok \
+		else ("Ordre refusé : %s · survolez l'action pour connaître le verrou." % action_name)
+	_flash.add_theme_color_override("font_color", VKit.sense(0.80) if ok else VKit.sense(0.15))
 	if ok:
 		# l'ÉMISSAIRE PART : on mémorise SON objectif (display-only) pour le menu de droite,
 		# tant qu'il est « en tournée » (diplo_cd). Phrase franche + le pays cible.
