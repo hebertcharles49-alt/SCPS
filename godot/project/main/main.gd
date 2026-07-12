@@ -405,8 +405,13 @@ func _unhandled_input(e: InputEvent) -> void:
 
 ## DÉCLENCHEUR « créateur de foi » : à chaque pas, si le joueur a bâti son 1er édifice
 ## religieux et n'a pas encore de foi, on ouvre le créateur (monde en pause). Une seule fois.
+## MODE OBSERVATEUR : aucune main humaine → on ne prompte pas le joueur pour des décisions
+## d'un empire piloté par l'IA (l'IA les tranche elle-même).
+func _observing() -> bool:
+	return Sim.world != null and Sim.world.has_method("is_observer") and Sim.world.is_observer()
+
 func _on_tick_faith(_year: int) -> void:
-	if _faith_prompted or _religion == null or Sim.world == null:
+	if _faith_prompted or _religion == null or Sim.world == null or _observing():
 		return
 	if not Sim.world.has_method("religion_founding_ready"):
 		return

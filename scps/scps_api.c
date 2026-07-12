@@ -265,6 +265,17 @@ int  scps_country_known(const ScpsSim *s, int c){
     return country_knows(s->sim.human_player, c) ? 1 : 0;
 }
 int  scps_player       (const ScpsSim *s){ return s ? s->sim.player : 0; }
+/* MODE OBSERVATEUR : on retire la MAIN HUMAINE (human_player=-1). Tout est piloté par
+ * l'IA, le brouillard tombe (tout visible), les commandes joueur sont JETÉES au drain.
+ * scps_player() garde le SLOT de focus (empire 0) → les panneaux montrent ce monde. À
+ * appeler APRÈS la genèse (qui rétablit human_player=player). */
+void scps_set_observer(ScpsSim *s, int on){
+    if (!s || !s->ready) return;
+    int p = on ? -1 : s->sim.player;
+    s->sim.human_player = p;
+    warhost_set_human(p); econ_set_human(p); campaign_set_human(p);
+}
+int  scps_is_observer  (const ScpsSim *s){ return (s && s->sim.human_player<0) ? 1 : 0; }
 int  scps_country_count(const ScpsSim *s){ return (s && s->ready) ? s->w->n_countries : 0; }
 int  scps_region_count (const ScpsSim *s){ return (s && s->ready) ? s->sim.econ->n_regions : 0; }
 int  scps_province_count(const ScpsSim *s){ return (s && s->ready) ? s->w->n_provinces : 0; }
@@ -1742,7 +1753,7 @@ static const char *unit_category_word(UnitType t){
     if (arm==RES_MAGE_STAFF || arm==RES_ALCHEMIST_KIT) return "Mage";
     if (arm==RES_ARMS_RANGED || arm==RES_FIREARM)       return "Distance";
     const UnitDef *d = unit_def(t);
-    int w = d ? d->weapon : -1;
+    int w = d ? (int)d->weapon : -1;
     int cav = (w==W_MONTURE_L || w==W_MONTURE_H || w==W_MONTURE_CUIRASSEE || w==W_MONTURE_RAID);
     int heavy = (arm==RES_ARMS_HEAVY || arm==RES_ENCHANTED_ARMS);
     if (cav)   return heavy ? "Cavalerie lourde" : "Cavalerie légère";

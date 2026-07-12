@@ -24,6 +24,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("fog_region_mask"),          &ScpsWorld::fog_region_mask);
     ClassDB::bind_method(D_METHOD("year"),                    &ScpsWorld::year);
     ClassDB::bind_method(D_METHOD("player"),                  &ScpsWorld::player);
+    ClassDB::bind_method(D_METHOD("set_observer", "on"),      &ScpsWorld::set_observer);
+    ClassDB::bind_method(D_METHOD("is_observer"),             &ScpsWorld::is_observer);
     ClassDB::bind_method(D_METHOD("country_count"),           &ScpsWorld::country_count);
     ClassDB::bind_method(D_METHOD("country_province_count", "country"), &ScpsWorld::country_province_count);
     ClassDB::bind_method(D_METHOD("region_count"),            &ScpsWorld::region_count);
@@ -351,6 +353,8 @@ PackedByteArray ScpsWorld::fog_region_mask() {
 
 int     ScpsWorld::year()          const { return scps_year(sim); }
 int     ScpsWorld::player()        const { return scps_player(sim); }
+void    ScpsWorld::set_observer(bool on) { if (sim) scps_set_observer(sim, on ? 1 : 0); }
+bool    ScpsWorld::is_observer() const   { return sim ? scps_is_observer(sim) != 0 : false; }
 int     ScpsWorld::country_count() const { return scps_country_count(sim); }
 int     ScpsWorld::country_province_count(int c) const { return scps_country_province_count(sim, c); }
 int     ScpsWorld::region_count()  const { return scps_region_count(sim); }

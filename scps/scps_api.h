@@ -60,6 +60,8 @@ void scps_map_layer(ScpsSim *s, uint8_t *dst, int layer);
 int    scps_year         (const ScpsSim *s);
 int    scps_day_of_year  (const ScpsSim *s);   /* jour dans l'année 0-364 (date d'affichage) */
 int    scps_player       (const ScpsSim *s);
+void   scps_set_observer (ScpsSim *s, int on);   /* mode observateur : retire la main humaine (tout IA) */
+int    scps_is_observer  (const ScpsSim *s);
 int    scps_country_count(const ScpsSim *s);
 int    scps_region_count (const ScpsSim *s);
 int    scps_province_count(const ScpsSim *s);

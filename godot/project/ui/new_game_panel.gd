@@ -43,6 +43,7 @@ var _seed_edit: LineEdit
 var _rng := RandomNumberGenerator.new()
 var _empire_box: VBoxContainer
 var _empire_rows := []      # [{summary:Label, btn:Button}]
+var _observer_chk: CheckButton   ## « Observateur » : lancer sans jouer d'empire (tout IA)
 var _compos := {}           # slot:int → {heritage,ethos,t0,t1,t2}
 var _creator: Control = null
 
@@ -193,6 +194,11 @@ func _build_ui() -> void:
 	foot.add_child(back_btn)
 	var spacer := Control.new(); spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	foot.add_child(spacer)
+	# MODE OBSERVATEUR : regarder le monde tourner sans jouer d'empire (tout IA).
+	_observer_chk = CheckButton.new()
+	_observer_chk.text = "Observateur"
+	_observer_chk.tooltip_text = "Regardez le monde évoluer sans jouer d'empire — tout est piloté par l'IA."
+	foot.add_child(_observer_chk)
 	var go := Button.new(); go.text = tr("T_NG_LAUNCH")
 	go.add_theme_font_size_override("font_size", 16)
 	go.pressed.connect(_on_lancer)
@@ -333,6 +339,9 @@ func _on_lancer() -> void:
 		Sim.world.set_empire_culture(int(slot), int(c["heritage"]), int(c["ethos"]),
 			int(c["t0"]), int(c["t1"]), int(c["t2"]))
 	Sim.regenerate(seed_v)                        # == chargement == → monde neuf
+	# MODE OBSERVATEUR : retirer la main humaine APRÈS la genèse (qui rétablit human_player).
+	if _observer_chk != null and _observer_chk.button_pressed and Sim.world.has_method("set_observer"):
+		Sim.world.set_observer(true)
 	# le NOM personnalisé du joueur (slot 0) s'applique APRÈS la genèse (elle nomme d'office)
 	var nm := String(_compos.get(0, {}).get("name", ""))
 	if nm != "" and Sim.world.has_method("set_country_name"):

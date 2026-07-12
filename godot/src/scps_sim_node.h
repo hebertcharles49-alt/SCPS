@@ -49,6 +49,8 @@ public:
     /* nombres tangibles (membrane) */
     int     year() const;
     int     player() const;
+    void       set_observer(bool on);
+    bool       is_observer() const;
     int     country_count() const;
     int     country_province_count(int country) const;   /* provinces possédées (topbar EU4) */
     int     province_count() const;                       /* total de provinces du monde */
