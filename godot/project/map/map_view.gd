@@ -30,6 +30,7 @@ var mode := 0                   ## ViewMode de carte (0 terrain · 1 politique �
 var view_mode := VIEW_ISO       ## TOUJOURS ISO (compat overlay : le globe n'existe plus)
 
 var _selected_prov := -1
+var _army_selected := false     ## MODE MARCHE : le pion du joueur est sélectionné, le prochain clic ordonne la destination
 var _press_pos := Vector2.ZERO
 var _dragged := false
 var _himg: Image                ## couche HEIGHT (figée) — lue par l'overlay (relief/ombres)
@@ -137,6 +138,9 @@ func _input(event: InputEvent) -> void:
 				_press_pos = event.position
 				_dragged = false
 			elif not _dragged and get_viewport().gui_get_hovered_control() == null:
+				if _army_selected:
+					_set_army_selected(false)   # CLIC DROIT annule le mode marche
+					return
 				# CLIC DROIT : l'UI diplomatique du pays sous le curseur
 				if Sim.world != null and Sim.world.has_method("province_at"):
 					var wp2 := unproj(get_global_mouse_position().x, get_global_mouse_position().y)
@@ -167,15 +171,39 @@ func _nav_redraw() -> void:
 	if _ground != null:
 		_ground.queue_redraw()
 
+## MODE MARCHE : (dé)sélectionne le pion du joueur et propage l'état à l'overlay (anneau doré).
+func _set_army_selected(on: bool) -> void:
+	_army_selected = on
+	if _overlay != null:
+		_overlay.army_selected = on
+		_overlay.queue_redraw()
+
 func _pick_at_mouse() -> void:
 	if Sim.world == null or not Sim.world.has_method("province_at"):
 		return
+	# clic sur le PION du joueur ? (hit-test en espace local overlay = iso)
+	var hit_army: bool = _overlay != null and _overlay.has_method("point_hits_player_army") \
+		and _overlay.point_hits_player_army(_overlay.get_local_mouse_position())
 	var wp := unproj(get_global_mouse_position().x, get_global_mouse_position().y)
 	var cx := int(floor(wp.x))
 	var cy := int(floor(wp.y))
-	if cx < 0 or cy < 0 or cx >= Sim.world.map_w() or cy >= Sim.world.map_h():
+	var in_map: bool = cx >= 0 and cy >= 0 and cx < Sim.world.map_w() and cy < Sim.world.map_h()
+	var prov: int = Sim.world.province_at(cx, cy) if in_map else -1
+	# ── MOUVEMENT D'ARMÉE (clic-armée → clic-destination) ──
+	if _army_selected:
+		# ce clic ORDONNE la destination — sauf re-clic sur l'armée (= annule).
+		if not hit_army:
+			var dreg: int = Sim.world.province_region(prov) if prov >= 0 else -1
+			if dreg >= 0 and Sim.world.has_method("player_move_army"):
+				Sim.world.player_move_army(dreg)
+				Sim.notify_action()
+		_set_army_selected(false)
 		return
-	var prov: int = Sim.world.province_at(cx, cy)
+	if hit_army:
+		_set_army_selected(true)   # entrer en mode marche (l'anneau doré s'allume)
+		return
+	if not in_map:
+		return
 	_selected_prov = prov
 	if _ground != null:
 		_ground.queue_redraw()

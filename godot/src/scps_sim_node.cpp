@@ -126,6 +126,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_market_buy", "region", "good", "qty", "tier"),  &ScpsWorld::player_market_buy);
     ClassDB::bind_method(D_METHOD("player_market_sell", "region", "good", "qty", "tier"), &ScpsWorld::player_market_sell);
     ClassDB::bind_method(D_METHOD("player_campaign", "from_region", "target_region"), &ScpsWorld::player_campaign);
+    ClassDB::bind_method(D_METHOD("player_move_army", "target_region"), &ScpsWorld::player_move_army);
     ClassDB::bind_method(D_METHOD("player_posture", "posture"),         &ScpsWorld::player_posture);
     ClassDB::bind_method(D_METHOD("player_refill"),                     &ScpsWorld::player_refill);
     ClassDB::bind_method(D_METHOD("player_navy_build", "hull"),         &ScpsWorld::player_navy_build);
@@ -1385,6 +1386,7 @@ bool ScpsWorld::player_route(int ra, int rb, bool maritime) { return sim ? scps_
 bool ScpsWorld::player_market_buy(int region, int good, int qty, int tier)  { return sim ? scps_player_market_buy(sim, region, good, (long)qty, tier) != 0 : false; }
 bool ScpsWorld::player_market_sell(int region, int good, int qty, int tier) { return sim ? scps_player_market_sell(sim, region, good, (long)qty, tier) != 0 : false; }
 bool ScpsWorld::player_campaign(int from_region, int target_region) { return sim ? scps_player_campaign(sim, from_region, target_region) != 0 : false; }
+bool ScpsWorld::player_move_army(int target_region) { return sim ? scps_player_move_army(sim, target_region) != 0 : false; }
 bool ScpsWorld::player_posture(int posture)              { return sim ? scps_player_posture(sim, posture) != 0 : false; }
 bool ScpsWorld::player_refill()                          { return sim ? scps_player_refill(sim) != 0 : false; }
 bool ScpsWorld::player_navy_build(int hull)              { return sim ? scps_player_navy_build(sim, hull) != 0 : false; }

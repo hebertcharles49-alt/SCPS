@@ -112,6 +112,11 @@ var _raws_dirty := true    ## la production a bougé (an-0 nu → extraction ét
 var _region_label := {}   ## région → NOM du siège (bannière de lieu KCD, cache paresseux)
 var _region_anchor := {}  ## région colonisée → assise de ville CALÉE SUR TERRE (centroïde snappé + rabat côtier)
 var _region_seat := {}    ## région colonisée → SIÈGE du tampon : cellule INTÉRIEURE de province (jamais sur une jonction)
+## MOUVEMENT D'ARMÉE (clic-armée → clic-destination) : position ISO cliquable du pion du
+## JOUEUR (garnison OU ost) + rayon, recalculés à chaque _draw ; army_selected = mode marche.
+var army_selected := false
+var _pa_iso := Vector2(-1, -1)
+var _pa_r := 0.0
 var _dress_tex := {}      ## id de marque de terrain (lot 2) → Texture2D (cache)
 var _dressing := []       ## [{pos(monde), id, scale}] — marques de biome semées (display-only)
 var _dressing_dirty := true ## la géo a changé (génération/chargement) → re-semer le dressing
@@ -1557,6 +1562,16 @@ func _process(dt: float) -> void:
 				_roads_dirty = true
 				queue_redraw()
 
+## Anneau doré autour du pion du joueur SÉLECTIONNÉ (mode marche : cliquez une destination).
+func _draw_army_ring(ctr: Vector2, s: float, zoom: float) -> void:
+	var r := s * 0.62
+	draw_arc(ctr, r + 3.0 / zoom, 0.0, TAU, 40, Color(0.10, 0.08, 0.03, 0.7), 4.0 / zoom, true)
+	draw_arc(ctr, r, 0.0, TAU, 40, Color(1.0, 0.86, 0.36, 0.95), 2.4 / zoom, true)
+
+## Le clic (en espace LOCAL de l'overlay = iso) touche-t-il le pion du joueur ?
+func point_hits_player_army(local: Vector2) -> bool:
+	return _pa_iso.x >= 0.0 and local.distance_to(_pa_iso) <= maxf(_pa_r, 6.0)
+
 ## GARNISON : la réserve MOBILISÉE d'un pays (régiments recrutés, PAS en campagne) — un
 ## pion à la capitale, pour qu'une armée levée SE VOIE. Plus petit que l'ost de campagne ;
 ## fog-gaté (les tiennes toujours visibles). Lit country_army/country_capital_region.
@@ -1577,9 +1592,13 @@ func _draw_garrison(w, mv, c: int, zoom: float, human_idx: int) -> void:
 	if rc.x < 0:
 		return
 	var ctr: Vector2 = mv.iso_pos(rc.x, rc.y)
+	var s := _w(zoom, 5.0, 22.0, 48.0)         # plus discret que l'ost de campagne (34..74)
+	if c == human_idx:
+		_pa_iso = ctr ; _pa_r = s * 0.7        # cible cliquable (sélection d'armée)
+		if army_selected:
+			_draw_army_ring(ctr, s, zoom)
 	var pt: Texture2D = HeraldryK.pion(0, c)   # phase repos, teinté au pays
 	if pt != null:
-		var s := _w(zoom, 5.0, 22.0, 48.0)     # plus discret que l'ost de campagne (34..74)
 		draw_texture_rect(pt, Rect2(ctr - Vector2(s * 0.5, s * 0.80), Vector2(s, s)), false, Color(1, 1, 1, 0.80))
 	else:
 		var col := _country_color(c)
@@ -1865,6 +1884,7 @@ func _draw_iso(w, mv: Node2D) -> void:
 	# ── ARMÉES : PION DE PLATEAU (planche 32 — la figurine d'étain posée SUR la
 	#    table, drapeau teinté au pays, la POSE dit la phase) + ligne de marche.
 	#    Ombre de contact = la même pièce en silhouette, décalée SE (front32). ──
+	_pa_iso = Vector2(-1, -1)   # cible cliquable du joueur : recalculée ce frame (garnison OU ost)
 	for c in range(w.country_count()):
 		var a: Dictionary = w.army_info(c)
 		if not bool(a.get("active", false)):
@@ -1885,6 +1905,10 @@ func _draw_iso(w, mv: Node2D) -> void:
 		if rctr.x < 0:
 			continue
 		var ctr: Vector2 = mv.iso_pos(rctr.x, rctr.y)
+		if c == human_idx:
+			_pa_iso = ctr ; _pa_r = _w(zoom, 6.0, 30.0, 64.0) * 0.7   # cible cliquable (ost)
+			if army_selected:
+				_draw_army_ring(ctr, _w(zoom, 6.0, 30.0, 64.0), zoom)
 		var phase: int = a.get("phase_id", 0)
 		var dest: int = a.get("dest", -1)
 		if dest >= 0 and dest != reg:

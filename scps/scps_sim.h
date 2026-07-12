@@ -111,6 +111,11 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
         * MÊME chemin de pillage unifié (20% du revenu annuel + esclavage 5% si
         * gate) que le sac de siège/l'occupation, + pose du CD/balafre. */
        CMD_RAID_COAST,
+       /* MOUVEMENT D'ARMÉE LIBRE (clic-armée → clic-destination, RTS/Stellaris). a[0]=région
+        * cible. Réutilise la campagne : armée EN campagne → campaign_redirect (re-cible, self-
+        * gardé bataille/mer/brisée) ; réserve au repos → campaign_order depuis la CAPITALE.
+        * Arriver sur une région À SOI = l'armée s'y POSE (FA_IDLE) ; ennemie = siège/assaut. */
+       CMD_MOVE_ARMY,
        CMD_COUNT };
 #define SCPS_CMDQ_MAX 64
 typedef struct { uint8_t verb; int32_t a[4]; } PlayerCmd;

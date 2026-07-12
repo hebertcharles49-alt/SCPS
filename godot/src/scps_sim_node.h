@@ -187,6 +187,7 @@ public:
     bool       player_market_buy(int region, int good, int qty, int tier);  /* marché : acheter */
     bool       player_market_sell(int region, int good, int qty, int tier); /* marché : vendre */
     bool       player_campaign(int from_region, int target_region); /* guerre : projeter l'ost */
+    bool       player_move_army(int target_region);                 /* clic-armée → destination (mouvement libre) */
     bool       player_posture(int posture);           /* guerre : 0 prudente · 1 standard · 2 agressive */
     bool       player_refill();                       /* guerre : recompléter l'armée de campagne */
     bool       player_navy_build(int hull);           /* flotte : mettre une coque en chantier */

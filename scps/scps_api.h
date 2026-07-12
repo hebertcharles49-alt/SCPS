@@ -800,6 +800,7 @@ int  scps_player_route         (ScpsSim *s, int ra, int rb, int maritime);
 int  scps_player_market_buy    (ScpsSim *s, int region, int good, long qty, int tier);
 int  scps_player_market_sell   (ScpsSim *s, int region, int good, long qty, int tier);
 int  scps_player_campaign      (ScpsSim *s, int from_region, int target_region);
+int  scps_player_move_army     (ScpsSim *s, int target_region);   /* clic-armée → destination (mouvement libre) */
 int  scps_player_posture       (ScpsSim *s, int posture);
 int  scps_player_refill        (ScpsSim *s);
 int  scps_player_navy_build    (ScpsSim *s, int hull);

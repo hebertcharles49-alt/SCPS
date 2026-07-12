@@ -2593,6 +2593,13 @@ int scps_player_campaign(ScpsSim *s, int from_region, int target_region){
     PlayerCmd c = { CMD_CAMPAIGN, { from_region, target_region, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
+/* Mouvement LIBRE (clic-armée → clic-destination) : l'armée du joueur marche vers
+ * target_region — re-cible si elle est en campagne, sinon se déploie depuis la capitale. */
+int scps_player_move_army(ScpsSim *s, int target_region){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_MOVE_ARMY, { target_region, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
 int scps_player_posture(ScpsSim *s, int posture){
     if (!s || !s->ready) return 0;
     PlayerCmd c = { CMD_POSTURE, { posture, 0, 0, 0 } };

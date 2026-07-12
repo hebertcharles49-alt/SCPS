@@ -522,6 +522,18 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (s->econ->region[from].owner!=p) break;               /* on LANCE depuis une région à soi */
             campaign_order(s->camp, s->econ, p, from, tgt, &s->host->army[p]);
             break; }
+          case CMD_MOVE_ARMY: {   /* clic-armée → clic-destination : mouvement LIBRE */
+            int tgt=c->a[0];
+            if (tgt<0 || tgt>=s->econ->n_regions) break;
+            if (campaign_active(s->camp, p)){
+                campaign_redirect(s->camp, s->econ, s->dp, p, tgt);  /* en campagne : re-cible (self-gardé) */
+            } else {                                                 /* réserve : déployer depuis la capitale */
+                int cap=w->country[p].capital_prov;
+                int from=(cap>=0 && cap<w->n_provinces)? w->province[cap].region : -1;
+                if (from>=0 && from<s->econ->n_regions && s->econ->region[from].owner==p)
+                    campaign_order(s->camp, s->econ, p, from, tgt, &s->host->army[p]);
+            }
+            break; }
           case CMD_POSTURE: {
             int po=c->a[0]; if (po<0) po=0; else if (po>2) po=2;     /* 0 prudente · 1 standard · 2 agressive */
             campaign_set_posture(s->camp, p, po);
