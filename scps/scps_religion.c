@@ -434,6 +434,10 @@ void religion_save(FILE *f){
     int32_t v[4]={g_scholar[i].active,g_scholar[i].role,g_scholar[i].region,g_scholar[i].timer};
     fwrite(v,4,4,f);
   }
+  /* AUDIT P1 : l'ancre du PLAFOND religieux (empires de GENÈSE) — posée une fois à
+   * sim_init, JAMAIS re-dérivable après coup. Sans elle, un reload en PROCESSUS FRAIS
+   * la trouvait à 0 → plafond ramené à 1 foi (l'IA lit religion_empire_ref directement). */
+  int32_t er=g_relig_n_emp_ref; fwrite(&er,4,1,f);
 }
 int religion_load(FILE *f){
   cr_ensure();
@@ -460,6 +464,9 @@ int religion_load(FILE *f){
     g_scholar[i].region=(v[2]>=-1&&v[2]<RELIG_MAX_REGION)?v[2]:-1;
     g_scholar[i].timer=(v[3]>=0&&v[3]<=SCHOLAR_DURATION)?v[3]:0;
     if(g_scholar[i].timer<=0) g_scholar[i].active=0; }
+  /* AUDIT P1 : ancre du plafond religieux (empires de genèse) — restaurée ici, bornée
+   * ≥ 0 (une save forgée à valeur négative retombe à 0 = plafond 1, jamais un index fou). */
+  { int32_t er=0; if(fread(&er,4,1,f)!=1) return 1; g_relig_n_emp_ref=(er>0)?er:0; }
   for(int i=0;i<RELIG_MAX_COUNTRY;i++) cr_recompute(i);              /* P4 : reconstruit le cache d'acc */
   return 0;
 }

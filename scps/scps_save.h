@@ -32,7 +32,11 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 79u           /* v79 : IDENTITÉS CULTURELLES PAR GROUPE — PopGroup et les
+#define SAVE_VERSION 80u           /* v80 : AUDIT save-robustesse — la section RELG gagne l'ancre
+                                    * du plafond religieux (empires de genèse, g_relig_n_emp_ref,
+                                    * P1) ; la section DCRE gagne le flag « décret financé »
+                                    * (g_decree_funded, P4). Deux sections grandissent. <v80 refusé.
+                                    * v79 : IDENTITÉS CULTURELLES PAR GROUPE — PopGroup et les
                                     * agrégats province/région portent culture_id ; ColonyWork
                                     * mémorise la culture des colons ; section CLIN pour les noms
                                     * et filiations. Les blobs ECON changent de taille. <v79 refusé.

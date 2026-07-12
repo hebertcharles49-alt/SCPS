@@ -93,6 +93,116 @@ static bool sv_r(FILE *f, uint32_t tag, void *p, size_t sz){
     return sz==0 || fread(p,sz,1,f)==1;
 }
 
+/* ÉCRIT le PAYLOAD (toutes les sections, dans l'ORDRE) sur `f`. Extrait de scps_save_game
+ * pour être RÉUTILISÉ par le SNAPSHOT transactionnel du chargement (AUDIT P2). Le lecteur
+ * sv_read_payload ci-dessous en est le miroir EXACT — tout changement de sections doit
+ * toucher les DEUX (comme avant, c'était déjà deux blocs jumeaux). */
+static bool sv_write_payload(FILE *f, World *w, Sim *s, int heritage, int ethos){
+    bool ok = true;
+    ok&=sv_w(f,SVT_WRLD, w,        sizeof *w);
+    ok&=sv_w(f,SVT_ECON, s->econ,  sizeof *s->econ);
+    ok&=sv_w(f,SVT_PROS, s->wp,    sizeof *s->wp);
+    ok&=sv_w(f,SVT_LEGI, s->wl,    sizeof *s->wl);
+    ok&=sv_w(f,SVT_NETW, s->net,   sizeof *s->net);
+    ok&=sv_w(f,SVT_TECH, s->ts,    sizeof(TechState)*SCPS_MAX_COUNTRY);
+    ok&=sv_w(f,SVT_STAT, s->sc,    sizeof *s->sc);
+    ok&=sv_w(f,SVT_AGCY, s->ag,    sizeof *s->ag);
+    ok&=sv_w(f,SVT_EVNT, s->ev,    sizeof *s->ev);
+    ok&=sv_w(f,SVT_DRFT, s->drift, sizeof *s->drift);
+    ok&=sv_w(f,SVT_DIPL, s->dp,    sizeof *s->dp);
+    ok&=sv_w(f,SVT_RTES, s->rn,    sizeof *s->rn);
+    ok&=sv_w(f,SVT_RVLT, s->rs,    sizeof *s->rs);
+    ok&=sv_w(f,SVT_MISS, s->missions, sizeof *s->missions);
+    ok&=sv_w(f,SVT_CAMP, s->camp,  sizeof *s->camp);
+    ok&=sv_w(f,SVT_NAVY, s->navy,  sizeof *s->navy);
+    ok&=sv_w(f,SVT_HARM, s->host->army, sizeof s->host->army);
+    ok&=sv_w(f,SVT_HLVY, s->host->levy, sizeof s->host->levy);
+    ok&=sv_w(f,SVT_AIAC, s->ai,    sizeof(AiActor)*SCPS_MAX_COUNTRY);
+    ok&=sv_w(f,SVT_AION, s->ai_on, sizeof(bool)*SCPS_MAX_COUNTRY);
+    { SaveMisc m; memset(&m,0,sizeof m);
+      m.day=s->day; m.year=s->year; m.player=s->player; m.prev_dawned=s->prev_dawned;
+      m.camp_rng=s->camp_rng; m.heritage=(int32_t)heritage; m.ethos=(int32_t)ethos;
+      memcpy(m.prev_owner,s->prev_owner_mo,sizeof m.prev_owner);
+      m.player_age_engaged=(int32_t)s->player_age_engaged;
+      m.diplo_ready_day=(int32_t)s->diplo_ready_day;
+      ok&=sv_w(f,SVT_MISC, &m, sizeof m); }
+    ok&=sv_w(f,SVT_ITRD, NULL,0); intertrade_save(f);
+    ok&=sv_w(f,SVT_AGYS, NULL,0); agency_save(f);
+    ok&=sv_w(f,SVT_DPLS, NULL,0); diplo_save_statics(f);
+    ok&=sv_w(f,SVT_FACT, NULL,0); faction_save(f);
+    ok&=sv_w(f,SVT_CRDT, NULL,0); credit_save(f);
+    ok&=sv_w(f,SVT_PCAP, NULL,0); econ_prodcap_save(f);
+    if (s->eg) ok&=sv_w(f,SV_TAG('E','G','A','M'), s->eg, sizeof *s->eg);
+    ok&=sv_w(f,SVT_CULT, NULL,0); culture_slots_save(f);
+    ok&=sv_w(f,SVT_CLIN, NULL,0); econ_culture_identity_save(f);
+    ok&=sv_w(f,SVT_RELG, NULL,0); religion_save(f);
+    ok&=sv_w(f,SVT_WILD, NULL,0); sim_wild_save(f);
+    ok&=sv_w(f,SVT_EMOB, NULL,0); econ_mobility_save(f);
+    ok&=sv_w(f,SVT_COLC, NULL,0); econ_colony_cd_save(f);
+    ok&=sv_w(f,SVT_TXYR, NULL,0); econ_flux_year_save(f);
+    ok&=sv_w(f,SVT_DCRE, NULL,0); decrees_save(f);
+    ok&=sv_w(f,SVT_FOGV, NULL,0); fog_save(f);
+    return ok;
+}
+
+/* LIT le PAYLOAD depuis `f` DANS l'état vivant (w/s + statics de module). Miroir de
+ * sv_write_payload. Réutilisé pour le SNAPSHOT/RESTAURATION transactionnels (P2) : on lit
+ * d'abord la save chargée ; si elle est rejetée, on relit le snapshot pour RESTAURER. */
+static bool sv_read_payload(FILE *f, World *w, Sim *s, int *out_heritage, int *out_ethos){
+    bool ok=true;
+    ok&=sv_r(f,SVT_WRLD, w,        sizeof *w);
+    ok&=sv_r(f,SVT_ECON, s->econ,  sizeof *s->econ);
+    if (ok){ s->econ->prov_adj = NULL; econ_rebuild_prov_adj(s->econ, w); }
+    ok&=sv_r(f,SVT_PROS, s->wp,    sizeof *s->wp);
+    ok&=sv_r(f,SVT_LEGI, s->wl,    sizeof *s->wl);
+    ok&=sv_r(f,SVT_NETW, s->net,   sizeof *s->net);
+    ok&=sv_r(f,SVT_TECH, s->ts,    sizeof(TechState)*SCPS_MAX_COUNTRY);
+    ok&=sv_r(f,SVT_STAT, s->sc,    sizeof *s->sc);
+    ok&=sv_r(f,SVT_AGCY, s->ag,    sizeof *s->ag);
+    ok&=sv_r(f,SVT_EVNT, s->ev,    sizeof *s->ev);
+    ok&=sv_r(f,SVT_DRFT, s->drift, sizeof *s->drift);
+    ok&=sv_r(f,SVT_DIPL, s->dp,    sizeof *s->dp);
+    ok&=sv_r(f,SVT_RTES, s->rn,    sizeof *s->rn);
+    ok&=sv_r(f,SVT_RVLT, s->rs,    sizeof *s->rs);
+    ok&=sv_r(f,SVT_MISS, s->missions, sizeof *s->missions);
+    ok&=sv_r(f,SVT_CAMP, s->camp,  sizeof *s->camp);
+    ok&=sv_r(f,SVT_NAVY, s->navy,  sizeof *s->navy);
+    ok&=sv_r(f,SVT_HARM, s->host->army, sizeof s->host->army);
+    ok&=sv_r(f,SVT_HLVY, s->host->levy, sizeof s->host->levy);
+    ok&=sv_r(f,SVT_AIAC, s->ai,    sizeof(AiActor)*SCPS_MAX_COUNTRY);
+    ok&=sv_r(f,SVT_AION, s->ai_on, sizeof(bool)*SCPS_MAX_COUNTRY);
+    { SaveMisc m;
+      ok&=sv_r(f,SVT_MISC, &m, sizeof m);
+      if (ok){ s->day=m.day; s->year=m.year; s->player=m.player; s->prev_dawned=m.prev_dawned;
+               s->camp_rng=m.camp_rng;
+               if (m.heritage <0 || m.heritage >=(int32_t)HERITAGE_COUNT) m.heritage =(int32_t)HERITAGE_ADAPTATIF;
+               if (m.ethos<0 || m.ethos>=(int32_t)ETHOS_COUNT)    m.ethos=0;
+               if (out_heritage)  *out_heritage  = (int)m.heritage;
+               if (out_ethos) *out_ethos = (int)m.ethos;
+               memcpy(s->prev_owner_mo,m.prev_owner,sizeof m.prev_owner);
+               s->player_age_engaged = (m.player_age_engaged>=-1 && m.player_age_engaged<1024)
+                                       ? (int)m.player_age_engaged : -1;
+               s->diplo_ready_day = (m.diplo_ready_day>=0 && m.diplo_ready_day<=m.day+120)
+                                    ? (int)m.diplo_ready_day : 0; } }
+    ok&=sv_r(f,SVT_ITRD, NULL,0); ok&=intertrade_load(f);
+    ok&=sv_r(f,SVT_AGYS, NULL,0); ok&=agency_load(f);
+    ok&=sv_r(f,SVT_DPLS, NULL,0); ok&=diplo_load_statics(f);
+    ok&=sv_r(f,SVT_FACT, NULL,0); ok&=faction_load(f);
+    ok&=sv_r(f,SVT_CRDT, NULL,0); ok&=credit_load(f);
+    ok&=sv_r(f,SVT_PCAP, NULL,0); ok&=econ_prodcap_load(f);
+    if (s->eg) ok&=sv_r(f,SV_TAG('E','G','A','M'), s->eg, sizeof *s->eg);
+    ok&=sv_r(f,SVT_CULT, NULL,0); ok&=culture_slots_load(f);
+    ok&=sv_r(f,SVT_CLIN, NULL,0); ok&=econ_culture_identity_load(f);
+    ok&=sv_r(f,SVT_RELG, NULL,0); ok&=(religion_load(f)==0);
+    ok&=sv_r(f,SVT_WILD, NULL,0); ok&=sim_wild_load(f);
+    ok&=sv_r(f,SVT_EMOB, NULL,0); ok&=econ_mobility_load(f);
+    ok&=sv_r(f,SVT_COLC, NULL,0); ok&=econ_colony_cd_load(f);
+    ok&=sv_r(f,SVT_TXYR, NULL,0); ok&=econ_flux_year_load(f);
+    ok&=sv_r(f,SVT_DCRE, NULL,0); ok&=decrees_load(f);
+    ok&=sv_r(f,SVT_FOGV, NULL,0); ok&=fog_load(f);
+    return ok;
+}
+
 bool scps_save_game(int slot, World *w, Sim *s, const WorldParams *params, int setup_heritage, int setup_ethos){
     if (slot<1 || slot>3) return false;
     scps_mkdir("saves");
@@ -107,58 +217,9 @@ bool scps_save_game(int slot, World *w, Sim *s, const WorldParams *params, int s
     { int nreg=0; for (int r=0;r<s->econ->n_regions;r++) if (s->econ->region[r].owner==s->player) nreg++;
       snprintf(h.line,sizeof h.line,"An %d — %s, %d région(s)",
                s->year, (s->player>=0&&s->player<w->n_countries)?w->country[s->player].name:"?", nreg); }
-    bool ok = true;
-    ok&=sv_w(f,SVT_WRLD, w,        sizeof *w);
-    /* ECON : WorldEconomy embarque désormais prov_adj, un POINTEUR TAS (adjacence de
-     * provinces, ~2.7 Mo, possédé par le module econ.c). On écrit le struct tel quel —
-     * les octets du pointeur finissent dans le fichier mais ne sont JAMAIS relus comme
-     * une adresse valide : au chargement on l'écrase à NULL puis on REBÂTIT l'adjacence
-     * (régions ET provinces) + le cache region_rep_prov via econ_build_adjacency, qui
-     * alloue/possède sa propre copie module-static (cf. scps_econ.c g_prov_adj). Ne PAS
-     * faire confiance à la valeur désérialisée du pointeur, jamais. */
-    ok&=sv_w(f,SVT_ECON, s->econ,  sizeof *s->econ);
-    ok&=sv_w(f,SVT_PROS, s->wp,    sizeof *s->wp);
-    ok&=sv_w(f,SVT_LEGI, s->wl,    sizeof *s->wl);
-    ok&=sv_w(f,SVT_NETW, s->net,   sizeof *s->net);
-    ok&=sv_w(f,SVT_TECH, s->ts,    sizeof(TechState)*SCPS_MAX_COUNTRY);
-    ok&=sv_w(f,SVT_STAT, s->sc,    sizeof *s->sc);
-    ok&=sv_w(f,SVT_AGCY, s->ag,    sizeof *s->ag);
-    ok&=sv_w(f,SVT_EVNT, s->ev,    sizeof *s->ev);
-    ok&=sv_w(f,SVT_DRFT, s->drift, sizeof *s->drift);
-    /* SVT_LABO retiré (dissolution LaborEcon : plus d'état labor à sérialiser). */
-    ok&=sv_w(f,SVT_DIPL, s->dp,    sizeof *s->dp);
-    ok&=sv_w(f,SVT_RTES, s->rn,    sizeof *s->rn);
-    ok&=sv_w(f,SVT_RVLT, s->rs,    sizeof *s->rs);
-    ok&=sv_w(f,SVT_MISS, s->missions, sizeof *s->missions);
-    ok&=sv_w(f,SVT_CAMP, s->camp,  sizeof *s->camp);
-    ok&=sv_w(f,SVT_NAVY, s->navy,  sizeof *s->navy);
-    ok&=sv_w(f,SVT_HARM, s->host->army, sizeof s->host->army);
-    ok&=sv_w(f,SVT_HLVY, s->host->levy, sizeof s->host->levy);
-    ok&=sv_w(f,SVT_AIAC, s->ai,    sizeof(AiActor)*SCPS_MAX_COUNTRY);
-    ok&=sv_w(f,SVT_AION, s->ai_on, sizeof(bool)*SCPS_MAX_COUNTRY);
-    { SaveMisc m; memset(&m,0,sizeof m);
-      m.day=s->day; m.year=s->year; m.player=s->player; m.prev_dawned=s->prev_dawned;
-      m.camp_rng=s->camp_rng; m.heritage=(int32_t)setup_heritage; m.ethos=(int32_t)setup_ethos;
-      memcpy(m.prev_owner,s->prev_owner_mo,sizeof m.prev_owner);
-      m.player_age_engaged=(int32_t)s->player_age_engaged;
-      m.diplo_ready_day=(int32_t)s->diplo_ready_day;
-      ok&=sv_w(f,SVT_MISC, &m, sizeof m); }
-    ok&=sv_w(f,SVT_ITRD, NULL,0); intertrade_save(f);
-    ok&=sv_w(f,SVT_AGYS, NULL,0); agency_save(f);
-    ok&=sv_w(f,SVT_DPLS, NULL,0); diplo_save_statics(f);
-    ok&=sv_w(f,SVT_FACT, NULL,0); faction_save(f);
-    ok&=sv_w(f,SVT_CRDT, NULL,0); credit_save(f);
-    ok&=sv_w(f,SVT_PCAP, NULL,0); econ_prodcap_save(f);
-    if (s->eg) ok&=sv_w(f,SV_TAG('E','G','A','M'), s->eg, sizeof *s->eg);
-    ok&=sv_w(f,SVT_CULT, NULL,0); culture_slots_save(f);   /* v36 : cultures composées (joueur + IA) */
-    ok&=sv_w(f,SVT_CLIN, NULL,0); econ_culture_identity_save(f); /* v79 : filiations culturelles */
-    ok&=sv_w(f,SVT_RELG, NULL,0); religion_save(f);        /* v37 : registre religion + liens pays */
-    ok&=sv_w(f,SVT_WILD, NULL,0); sim_wild_save(f);        /* v48 : compteurs de ralliement des hameaux */
-    ok&=sv_w(f,SVT_EMOB, NULL,0); econ_mobility_save(f);   /* v57 : g_friche[] + g_lowsat_streak[][] */
-    ok&=sv_w(f,SVT_COLC, NULL,0); econ_colony_cd_save(f);  /* v61 : répit de colonisation (F1) */
-    ok&=sv_w(f,SVT_TXYR, NULL,0); econ_flux_year_save(f);  /* v62 : MEMBRANE DE DÉCISION — revenu annuel */
-    ok&=sv_w(f,SVT_DCRE, NULL,0); decrees_save(f);         /* v64 : DÉCRETS DU JOUEUR (civics) */
-    ok&=sv_w(f,SVT_FOGV, NULL,0); fog_save(f);             /* v75 : BROUILLARD DE GUERRE (known[][]) */
+    /* PAYLOAD : toutes les sections, dans l'ordre (extrait en sv_write_payload —
+     * partagé avec le SNAPSHOT transactionnel du chargement, AUDIT P2). */
+    bool ok = sv_write_payload(f, w, s, setup_heritage, setup_ethos);
     if (ok && fflush(f)!=0) ok=false;
     long psz = ok ? ftell(f) : -1;
     if (!ok || psz<0){ fclose(f); return false; }
@@ -399,68 +460,25 @@ int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_her
       if (!f){ free(buf); return 1; }
       if (fwrite(buf,1,h.payload,f)!=h.payload){ free(buf); fclose(f); return 1; }
       free(buf); rewind(f); }
+    /* AUDIT P2 — CHARGEMENT TRANSACTIONNEL : on SNAPSHOTe l'état vivant AVANT d'écraser
+     * quoi que ce soit (payload courant → tmpfile). Si la save chargée est REJETÉE (flux
+     * incomplet OU scps_save_sane), on RELIT le snapshot pour RESTAURER — la partie en
+     * cours n'est jamais laissée à moitié écrasée (l'UI gardait une instance corrompue).
+     * heritage/ethos du snapshot = 0 (ignorés : un load rejeté ne les applique pas). */
+    FILE *snap = tmpfile();
+    bool have_snap = (snap != NULL) && sv_write_payload(snap, w, s, 0, 0) && fflush(snap)==0;
+    if (have_snap) rewind(snap);
+
     long p0=ftell(f);
-    bool ok=true;
-    ok&=sv_r(f,SVT_WRLD, w,        sizeof *w);
-    ok&=sv_r(f,SVT_ECON, s->econ,  sizeof *s->econ);
-    /* prov_adj est un POINTEUR TAS — la valeur désérialisée est une adresse d'un AUTRE
-     * process/run, jamais valide ici : écrasée puis REBÂTIE (pure géographie). En revanche
-     * adj[] et region_rep_prov[] sont des ÉTATS SÉRIALISÉS et on les GARDE : les recalculer
-     * à l'état courant divergeait du fil continu (le rep « province la plus peuplée » bouge
-     * avec la pop — sauve-recharge ≠ continuation, pris par scps_viewer --savetest). Le
-     * cache rep désérialisé est BORNÉ par scps_save_sane (P0-1). */
-    if (ok){ s->econ->prov_adj = NULL; econ_rebuild_prov_adj(s->econ, w); }
-    ok&=sv_r(f,SVT_PROS, s->wp,    sizeof *s->wp);
-    ok&=sv_r(f,SVT_LEGI, s->wl,    sizeof *s->wl);
-    ok&=sv_r(f,SVT_NETW, s->net,   sizeof *s->net);
-    ok&=sv_r(f,SVT_TECH, s->ts,    sizeof(TechState)*SCPS_MAX_COUNTRY);
-    ok&=sv_r(f,SVT_STAT, s->sc,    sizeof *s->sc);
-    ok&=sv_r(f,SVT_AGCY, s->ag,    sizeof *s->ag);
-    ok&=sv_r(f,SVT_EVNT, s->ev,    sizeof *s->ev);
-    ok&=sv_r(f,SVT_DRFT, s->drift, sizeof *s->drift);
-    /* SVT_LABO retiré (dissolution LaborEcon). */
-    ok&=sv_r(f,SVT_DIPL, s->dp,    sizeof *s->dp);
-    ok&=sv_r(f,SVT_RTES, s->rn,    sizeof *s->rn);
-    ok&=sv_r(f,SVT_RVLT, s->rs,    sizeof *s->rs);
-    ok&=sv_r(f,SVT_MISS, s->missions, sizeof *s->missions);
-    ok&=sv_r(f,SVT_CAMP, s->camp,  sizeof *s->camp);
-    ok&=sv_r(f,SVT_NAVY, s->navy,  sizeof *s->navy);
-    ok&=sv_r(f,SVT_HARM, s->host->army, sizeof s->host->army);
-    ok&=sv_r(f,SVT_HLVY, s->host->levy, sizeof s->host->levy);
-    ok&=sv_r(f,SVT_AIAC, s->ai,    sizeof(AiActor)*SCPS_MAX_COUNTRY);
-    ok&=sv_r(f,SVT_AION, s->ai_on, sizeof(bool)*SCPS_MAX_COUNTRY);
-    { SaveMisc m;
-      ok&=sv_r(f,SVT_MISC, &m, sizeof m);
-      if (ok){ s->day=m.day; s->year=m.year; s->player=m.player; s->prev_dawned=m.prev_dawned;
-               s->camp_rng=m.camp_rng;
-               if (m.heritage <0 || m.heritage >=(int32_t)HERITAGE_COUNT) m.heritage =(int32_t)HERITAGE_ADAPTATIF;
-               if (m.ethos<0 || m.ethos>=(int32_t)ETHOS_COUNT)    m.ethos=0;
-               if (out_heritage)  *out_heritage  = (int)m.heritage;
-               if (out_ethos) *out_ethos = (int)m.ethos;
-               memcpy(s->prev_owner_mo,m.prev_owner,sizeof m.prev_owner);
-               s->player_age_engaged = (m.player_age_engaged>=-1 && m.player_age_engaged<1024)
-                                       ? (int)m.player_age_engaged : -1;   /* v48 : borné (forge → -1) */
-               s->diplo_ready_day = (m.diplo_ready_day>=0 && m.diplo_ready_day<=m.day+120)
-                                    ? (int)m.diplo_ready_day : 0; } }   /* v50 : borné (forge → dispo) */
-    ok&=sv_r(f,SVT_ITRD, NULL,0); ok&=intertrade_load(f);
-    ok&=sv_r(f,SVT_AGYS, NULL,0); ok&=agency_load(f);
-    ok&=sv_r(f,SVT_DPLS, NULL,0); ok&=diplo_load_statics(f);
-    ok&=sv_r(f,SVT_FACT, NULL,0); ok&=faction_load(f);
-    ok&=sv_r(f,SVT_CRDT, NULL,0); ok&=credit_load(f);
-    ok&=sv_r(f,SVT_PCAP, NULL,0); ok&=econ_prodcap_load(f);
-    if (s->eg) ok&=sv_r(f,SV_TAG('E','G','A','M'), s->eg, sizeof *s->eg);
-    ok&=sv_r(f,SVT_CULT, NULL,0); ok&=culture_slots_load(f);   /* v36 : cultures composées */
-    ok&=sv_r(f,SVT_CLIN, NULL,0); ok&=econ_culture_identity_load(f); /* v79 : filiations culturelles */
-    ok&=sv_r(f,SVT_RELG, NULL,0); ok&=(religion_load(f)==0);   /* v37 : religion + liens pays */
-    ok&=sv_r(f,SVT_WILD, NULL,0); ok&=sim_wild_load(f);        /* v48 : compteurs de ralliement des hameaux */
-    ok&=sv_r(f,SVT_EMOB, NULL,0); ok&=econ_mobility_load(f);   /* v57 : g_friche[] + g_lowsat_streak[][] */
-    ok&=sv_r(f,SVT_COLC, NULL,0); ok&=econ_colony_cd_load(f);  /* v61 : répit de colonisation (F1) */
-    ok&=sv_r(f,SVT_TXYR, NULL,0); ok&=econ_flux_year_load(f);  /* v62 : MEMBRANE DE DÉCISION — revenu annuel */
-    ok&=sv_r(f,SVT_DCRE, NULL,0); ok&=decrees_load(f);         /* v64 : DÉCRETS DU JOUEUR (civics) */
-    ok&=sv_r(f,SVT_FOGV, NULL,0); ok&=fog_load(f);             /* v75 : BROUILLARD DE GUERRE (known[][]) */
+    bool ok = sv_read_payload(f, w, s, out_heritage, out_ethos);
     long p1=ftell(f); fclose(f);
-    if (!ok || (uint32_t)(p1-p0)!=h.payload) return 1;
-    if (!scps_save_sane(w, s, s->player)) return 1;
+    bool good = ok && (uint32_t)(p1-p0)==h.payload && scps_save_sane(w, s, s->player);
+    if (!good) {
+        if (have_snap){ sv_read_payload(snap, w, s, NULL, NULL); fclose(snap); }
+        else if (snap) fclose(snap);
+        return 1;                                    /* échec PROPRE : la partie d'avant est intacte */
+    }
+    if (snap) fclose(snap);
     demography_dyn_id_rebase(s->econ);
     *params=h.params;
     warhost_set_human(s->player);

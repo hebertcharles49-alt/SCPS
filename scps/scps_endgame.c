@@ -1100,12 +1100,16 @@ static void wonder_tick(EndgameState *eg, World *w, WorldEconomy *econ,
         int phase = (eg->merv==MERV_FORGE)?0 : (eg->merv==MERV_SOCIETE)?1 : 2;
         float feed = endgame_empire_consume(econ, eg->merv_country, MERV_RARE[phase], MERV_RARE_PER_YEAR);
         if (feed > 0.f) {                                       /* la rare alimente → on bâtit */
-            eg->merv_progress += 365.f / tune_f("MERV_PHASE_DAYS", 3650.f);
+            /* le COÛT n'est plus contournable (audit) : la progression est PROPORTIONNELLE
+             * à la rare RÉELLEMENT dévorée (feed/MERV_RARE_PER_YEAR ∈ ]0,1]) — 0,01 unité
+             * n'avance plus autant que 2. La charge de Brèche suit la même fraction. */
+            float frac = feed / MERV_RARE_PER_YEAR; if (frac > 1.f) frac = 1.f;
+            eg->merv_progress += frac * 365.f / tune_f("MERV_PHASE_DAYS", 3650.f);
             if (site >= 0 && site < econ->n_regions) {          /* charge-additive (la Brèche se rapproche) */
                 /* RE-KEY PROVINCE : arcane_charge/faust_charge sont PROVINCE-OWNED (Σ-agrégés) —
                  * route sur la représentative (équivalent inline de faust_charge_add(RegionEconomy*)
                  * pour une ProvinceEconomy, même idiome que scps_econ.c:1915). */
-                float ch = tune_f("MERV_CHARGE_PER_TICK", 0.5f);
+                float ch = frac * tune_f("MERV_CHARGE_PER_TICK", 0.5f);
                 int sitep = econ_region_rep_province(econ, site);
                 if (sitep >= 0 && sitep < econ->n_prov) {
                     econ->prov[sitep].arcane_charge += ch;

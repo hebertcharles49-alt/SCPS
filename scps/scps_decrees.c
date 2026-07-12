@@ -289,17 +289,25 @@ bool decree_fire_decision(World *w, WorldEconomy *econ, WorldLegitimacy *wl, int
 
 /* ---- Sérialisation (section DCRE, motif WILD : sim_wild_save/load) ------ */
 void decrees_save(FILE *f){
-    fwrite(g_decree_mask, sizeof g_decree_mask, 1, f);
-    fwrite(g_audit_cd,    sizeof g_audit_cd,    1, f);
+    fwrite(g_decree_mask,   sizeof g_decree_mask,   1, f);
+    fwrite(g_audit_cd,      sizeof g_audit_cd,      1, f);
+    fwrite(g_decree_funded, sizeof g_decree_funded, 1, f);   /* AUDIT P4 : le flag « financé ce mois » */
 }
 bool decrees_load(FILE *f){
-    bool ok = fread(g_decree_mask, sizeof g_decree_mask, 1, f) == 1
-           && fread(g_audit_cd,    sizeof g_audit_cd,    1, f) == 1;
+    bool ok = fread(g_decree_mask,   sizeof g_decree_mask,   1, f) == 1
+           && fread(g_audit_cd,      sizeof g_audit_cd,      1, f) == 1
+           && fread(g_decree_funded, sizeof g_decree_funded, 1, f) == 1;
     if (!ok) return false;
     /* toute valeur désérialisée qui borne une décision SE REVALIDE (jurisprudence RVLT :
      * [-31, 40*365] jours — une save forgée avec un cooldown hors-borne est REFUSÉE net). */
     for (int c=0;c<SCPS_MAX_COUNTRY;c++)
         if (g_audit_cd[c] < -31.f || g_audit_cd[c] > 40.f*365.f) return false;
+    /* AUDIT P4 : le flag « financé » pilote les EFFETS réels ; auparavant NON sérialisé,
+     * il valait 0 (process frais) ou gardait la valeur d'une autre partie jusqu'au prochain
+     * tick mensuel — un ordre émis dans cette fenêtre perdait la remise du décret. Restauré ;
+     * BORNÉ au masque CHOISI (on ne peut financer qu'un décret adopté : jamais un effet fantôme). */
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++)
+        g_decree_funded[c] &= g_decree_mask[c];
     return true;
 }
 void decrees_reset(void){
