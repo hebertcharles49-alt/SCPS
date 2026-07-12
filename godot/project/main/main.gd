@@ -197,6 +197,13 @@ func _ready() -> void:
 		elif _sel_owner >= 0:
 			_country_panel.show_country(_sel_owner))
 
+	# ARMÉE : le pion sélectionné ouvre sa barre de COMMANDEMENT (posture/recompléter/piller/
+	# dissoudre) ; le clic-destination sur la carte donne l'ordre de marche/attaque.
+	var army_panel: Control = load("res://ui/army_panel.gd").new()
+	ui.add_child(army_panel)
+	map.army_selection_changed.connect(army_panel.set_army)
+	army_panel.raid_requested.connect(func(): map.arm_raid())
+
 	# la carte SÉLECTIONNE → on remplit les panneaux (lecture seule de la membrane)
 	map.province_picked.connect(_on_province_picked)
 

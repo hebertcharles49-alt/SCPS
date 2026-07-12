@@ -24,6 +24,7 @@ enum { VIEW_GLOBE = 0, VIEW_ISO = 1 }
 
 signal province_picked(province: int, region: int, owner: int)
 signal country_context(owner: int)   ## CLIC DROIT sur un territoire → l'UI diplomatique du pays
+signal army_selection_changed(on: bool)   ## le pion du joueur est (dé)sélectionné → panneau d'armée
 signal mode_changed(m: int)     ## le mode render a changé (légende, sélecteurs)
 
 var mode := 0                   ## ViewMode de carte (0 terrain · 1 politique · 2 régions · 3 pays)
@@ -31,6 +32,7 @@ var view_mode := VIEW_ISO       ## TOUJOURS ISO (compat overlay : le globe n'exi
 
 var _selected_prov := -1
 var _army_selected := false     ## MODE MARCHE : le pion du joueur est sélectionné, le prochain clic ordonne la destination
+var _raid_mode := false          ## sous-mode PILLAGE : le prochain clic pille la province cible au lieu de marcher
 var _press_pos := Vector2.ZERO
 var _dragged := false
 var _himg: Image                ## couche HEIGHT (figée) — lue par l'overlay (relief/ombres)
@@ -174,9 +176,17 @@ func _nav_redraw() -> void:
 ## MODE MARCHE : (dé)sélectionne le pion du joueur et propage l'état à l'overlay (anneau doré).
 func _set_army_selected(on: bool) -> void:
 	_army_selected = on
+	if not on:
+		_raid_mode = false
 	if _overlay != null:
 		_overlay.army_selected = on
 		_overlay.queue_redraw()
+	army_selection_changed.emit(on)
+
+## PILLAGE : le panneau d'armée arme le sous-mode — le prochain clic pille la province cible.
+func arm_raid() -> void:
+	if _army_selected:
+		_raid_mode = true
 
 func _pick_at_mouse() -> void:
 	if Sim.world == null or not Sim.world.has_method("province_at"):
@@ -189,9 +199,16 @@ func _pick_at_mouse() -> void:
 	var cy := int(floor(wp.y))
 	var in_map: bool = cx >= 0 and cy >= 0 and cx < Sim.world.map_w() and cy < Sim.world.map_h()
 	var prov: int = Sim.world.province_at(cx, cy) if in_map else -1
-	# ── MOUVEMENT D'ARMÉE (clic-armée → clic-destination) ──
+	# ── ORDRES D'ARMÉE (pion sélectionné) ──
 	if _army_selected:
-		# ce clic ORDONNE la destination — sauf re-clic sur l'armée (= annule).
+		if _raid_mode:
+			# sous-mode PILLAGE : ce clic pille la province côtière ciblée (par-province).
+			if not hit_army and prov >= 0 and Sim.world.has_method("player_raid_coast"):
+				Sim.world.player_raid_coast(prov)
+				Sim.notify_action()
+			_set_army_selected(false)
+			return
+		# mode MARCHE : ce clic ORDONNE la destination — sauf re-clic sur l'armée (= annule).
 		if not hit_army:
 			var dreg: int = Sim.world.province_region(prov) if prov >= 0 else -1
 			if dreg >= 0 and Sim.world.has_method("player_move_army"):
