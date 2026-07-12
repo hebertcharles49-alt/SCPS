@@ -393,9 +393,10 @@
      * par jouable (0 = DÉSACTIVE) · WILD_POP graine EXACTE (750 ; WILD_POP_VAR=0 → an-0 LOCKÉ sur
      * la formule, plus de jitter) · WILD_CAP plafond d'accueil (≥2·WILD_POP : la graine TIENT) ·
      * WILD_SPAWN_HOPS rayon BFS (2-3 tuiles : les hameaux restent PRÈS du spawn, jamais à l'autre
-     * bout du monde) · WILD_CULTURE_DISTINCT (1 = culture distincte du voisin) · WILD_DEFECT_YEARS ans
-     * de contact pacifique avant ralliement culturel · WILD_HOARD réserve de brutes · WILD_REGIMENTS
-     * régiments défensifs levés. */ \
+     * bout du monde) · WILD_CULTURE_DISTINCT (1 = culture distincte du voisin) · WILD_DEFECT_YEARS
+     * ans de contact pacifique avant ralliement culturel — 0 = DÉSACTIVÉ (défaut : les Peuples libres
+     * ne rallient jamais seuls, owner change SEULEMENT par conquête/vassalité, comme un pays normal) ·
+     * WILD_HOARD réserve de brutes · WILD_REGIMENTS régiments défensifs levés. */ \
     X(WILD_PER_PLAYABLE,      2.0f) \
     X(WILD_POP,             750.0f) \
     X(WILD_POP_VAR,           0.0f) \
@@ -403,7 +404,7 @@
     X(WILD_FOOD,              8.0f) \
     X(WILD_SPAWN_HOPS,        3.0f) \
     X(WILD_CULTURE_DISTINCT,  1.0f) \
-    X(WILD_DEFECT_YEARS,      8.0f) \
+    X(WILD_DEFECT_YEARS,      0.0f) \
     X(WILD_HOARD,            60.0f) \
     X(WILD_REGIMENTS,         2.0f) \
     /* POOL CITÉ-ÉTAT — réserve TRADABLE de matières brutes (bois/fer/argile/pierre) déposée sur

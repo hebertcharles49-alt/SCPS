@@ -82,7 +82,12 @@ bool sim_wild_load(FILE *f){
  * assimilation_tick / off_culture_fraction / xénophile-xénophobe la digèrent (existant). */
 static void wild_cultural_tick(Sim *s, World *w){
     WorldEconomy *e=s->econ;
-    int defect_years=(int)tune_f("WILD_DEFECT_YEARS", 8.f);
+    int defect_years=(int)tune_f("WILD_DEFECT_YEARS", 0.f);
+    if (defect_years<=0) return;   /* DÉSACTIVÉ (défaut) : les Peuples libres ne rallient
+                                    * JAMAIS d'eux-mêmes — owner ne change QUE par conquête/
+                                    * vassalité, comme un pays normal (retour joueur). 0 =
+                                    * off (PAS « instant », d'où la garde) ; >0 réactive le
+                                    * ralliement culturel après N ans de contact pacifique. */
     for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++){
         RegionEconomy *re=&e->region[r];
         int o=re->owner;
