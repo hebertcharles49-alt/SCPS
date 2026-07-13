@@ -1656,29 +1656,19 @@ void econ_init(WorldEconomy *e, const World *w) {
          * ses manufactures (posées plus haut, sur le raw AVANT coupe) restent l'atelier du
          * monde. (Coupe DÉPLACÉE hors du if/else → frappe TOUTE province.) */
         {
-            int keep = (int)tune_f("REGION_RAW_KEEP", 2.f);
+            /* VOCATION = EXACTEMENT LES 2 BRUTES TIRÉES (pv->resource + pv->resource2), POINT.
+             * On ne garde QUE ce qui a été TIRÉ à la genèse — plus de « top-2 par géologie » (qui
+             * pouvait garder une pierre de construction à la place d'une tirée), plus de protection
+             * argile/pierre/fruit (ces greffes créaient une 3e/4e brute que la tuile « produisait »
+             * sans l'avoir tirée). Le manquant (bâti, nourriture) vient du COMMERCE — la province
+             * n'invente jamais une raw. Seuls les stratégiques RARES (fer céleste / cristal
+             * arcanique) restent : ce sont des SOUS-GISEMENTS géologiques de la tuile (nœuds sur
+             * fer/soufre), l'intrant rare de la chaîne tech — pas une greffe d'éco. */
             bool prot[RES_COUNT]; for (int g=0;g<RES_COUNT;g++) prot[g]=false;
-            /* le GRAIN n'est PLUS protégé : il concourt comme toute brute (food = géologie).
-             * Seuls les stratégiques RARES (fer céleste / cristal arcanique) restent protégés
-             * — sinon la chaîne faustienne/endgame perdrait sa matière (ce n'est pas un
-             * ajustement d'éco : c'est garder l'intrant rare de la tech). */
             prot[RES_CELESTIAL_IRON]=prot[RES_ARCANE_CRYSTAL]=true;
-            /* CONSTRUCTION — argile & pierre PROTÉGÉES de la coupe : le brut de bâti SUIT la géo
-             * (argile aux terres d'eau, pierre au relief) au lieu d'être ÉCRASÉ par les 2 brutes
-             * dominantes. Source géologique BON MARCHÉ (extraction, pas la seule manufacture) ; les
-             * RAW-WORKS restent le SUPPLÉMENT des régions pauvres + la chaîne confort. */
-            prot[RES_CLAY]=prot[RES_STONE]=true;
-            /* FRUIT PROTÉGÉ — « un peu partout » : le repli eau-de-vie doit survivre à la coupe (vocation
-             * mineure base·0.20) sinon le fruit n'existe nulle part et la distillerie-alt est morte. */
-            prot[RES_FRUIT]=true;
-            for (int k=0;k<keep;k++){
-                int best=-1; float bv=0.f;
-                for (int g=1;g<RES_PROD_FIRST;g++){ if (prot[g]||pe->raw_cap[g]<=0.f) continue;
-                    if (pe->raw_cap[g]>bv){ bv=pe->raw_cap[g]; best=g; } }
-                if (best<0) break;
-                prot[best]=true;
-            }
-            for (int g=1;g<RES_PROD_FIRST;g++) if (!prot[g]) pe->raw_cap[g]=0.f;   /* la traîne tombe */
+            if (r >RES_NONE && r <RES_PROD_FIRST) prot[r ]=true;   /* la brute DOMINANTE tirée */
+            if (r2>RES_NONE && r2<RES_PROD_FIRST) prot[r2]=true;   /* la 2e brute tirée */
+            for (int g=1;g<RES_PROD_FIRST;g++) if (!prot[g]) pe->raw_cap[g]=0.f;   /* tout le reste (greffes) tombe */
         }
 
         /* ---- Prix & stock de départ. */
@@ -1773,23 +1763,12 @@ void econ_init(WorldEconomy *e, const World *w) {
         pe->owner=(int16_t)cid;
     }
 
-    /* REFONTE A5 — LA NOURRITURE DU SPAWN (la SEULE règle vivrière ; le reste = GÉOLOGIE).
-     * Chaque EMPIRE naît avec une base vivrière sur sa PROVINCE-CAPITALE : un socle de grain
-     * qui en fait un GRENIER de départ (posé APRÈS la coupe de vocation → protégé). Les
-     * autres provinces tirent leur nourriture de la GÉOLOGIE (grain/poisson dans leur
-     * vocation) et du COMMERCE (pool national + routes). Pas de socle UNIVERSEL : un empire
-     * né sur terre stérile dépend de sa capitale et de ses échanges (la « Mali » qui commerce). */
-    {
-        float spawn_food = tune_f("SPAWN_FOOD_RAW", SPAWN_FOOD_RAW);
-        for (int cid=0; cid<w->n_countries; cid++){
-            PolityRole role=w->country[cid].role;
-            if (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST) continue;
-            int cp=w->country[cid].capital_prov;
-            if (cp<0||cp>=w->n_provinces||cp>=SCPS_MAX_PROV||!e->prov[cp].active) continue;
-            if (e->prov[cp].raw_cap[RES_GRAIN] < spawn_food)
-                e->prov[cp].raw_cap[RES_GRAIN] = spawn_food;   /* grenier de spawn (vocation vivrière garantie) */
-        }
-    }
+    /* SOCLE GRAIN DE CAPITALE — RETIRÉ (demande joueur 2026-07-12) : c'était une greffe qui
+     * AJOUTAIT une brute « grain » à la capitale par-dessus ses 2 tirées → 3 raws, en violation
+     * de « la province ne change JAMAIS de raw à la genèse ». La capitale tire désormais sa
+     * nourriture de sa VOCATION (grain/poisson si tirés) + du STOCK DE KIT (SPAWN_KIT_FOOD, ci-
+     * dessous) + du COMMERCE, comme toute autre province. Un empire né sur tuile stérile dépend
+     * de ses échanges (le modèle « Mali »). SPAWN_FOOD_RAW n'est plus lu. */
 
     /* POOL TRADABLE DES CITÉS-ÉTATS (2026-06-16) : chaque cité-état naît avec une RÉSERVE
      * de matières BRUTES — CS_TRADE_POOL (1000) de BOIS / FER / ARGILE / PIERRE — sur sa
@@ -2753,13 +2732,17 @@ void econ_tick(WorldEconomy *e, float dt) {
             for (int r=1;r<RES_PROD_FIRST;r++) if (re->raw_cap[r]>0.f) alloc_total += (float)re->alloc_raw[r];
             for (int i=0;i<re->n_bld;i++){ int t=re->bld[i].type; if(t>=0&&t<BLD_TYPE_COUNT) alloc_total += (float)re->alloc_bld[t]; }
         }
-        float egeo[RES_COUNT], eeff[RES_COUNT], ew[RES_COUNT], ewsum=0.f;
+        /* SPLIT 50/50 PLAT (demande joueur 2026-07-12) : les bras se répartissent ÉGALEMENT
+         * entre les brutes tirées de la province — plus de pondération par géologie×prix (la
+         * « dérive d'IA » qui affamait la brute moins demandée en un filet fantôme). La DEMANDE
+         * ne pilote plus l'extraction : c'est à l'IA/au joueur d'ajuster via le manager
+         * (alloc_on/alloc_raw, ex. 30/70). 2 brutes ⇒ 50/50 ; N ⇒ 1/N. */
+        float egeo[RES_COUNT], ew[RES_COUNT], ewsum=0.f;
         for (int r=1;r<RES_PROD_FIRST;r++){
             ew[r]=0.f;
             if (re->raw_cap[r]<=0.f) continue;
-            egeo[r] = clampf(re->raw_cap[r]/ext_geo_ref, 0.f, ext_geo_cap);          /* qualité ∈ [0..CAP] */
-            eeff[r] = market_effort(re->price[r], BASE_PRICE[r]);                     /* l'effort suit le prix */
-            ew[r]   = egeo[r]*eeff[r];                                               /* poids d'allocation des bras */
+            egeo[r] = clampf(re->raw_cap[r]/ext_geo_ref, 0.f, ext_geo_cap);          /* qualité ∈ [0..CAP] (module l'OUTPUT, pas le nb d'ouvriers) */
+            ew[r]   = 1.f;                                                            /* poids ÉGAL : split plat */
             ewsum  += ew[r];
         }
         float L_ext = labor_avail*ext_lab_share;   /* main-d'œuvre dédiée à l'extraction (mode AUTO) */
@@ -2779,7 +2762,7 @@ void econ_tick(WorldEconomy *e, float dt) {
             int bt = re->raw_boost[r];                                   /* palier d'exploitation (clampé : save forgée) */
             { int maxt=(int)tune_f("RAW_BOOST_MAX_TIER",8.f); if (bt>maxt) bt=maxt; }
             float rboost = 1.f + tune_f("RAW_BOOST_PER_TIER",0.05f)*(float)bt;
-            float out = workers*EXTRACT_YIELD[r]*dt*egeo[r]*eeff[r]*prod_mult*rboost;  /* /ouvrier/an × dt × qualité × prix × outils × exploitation */
+            float out = workers*EXTRACT_YIELD[r]*dt*egeo[r]*prod_mult*rboost;  /* ouvriers × rendement/an × dt × qualité géo × outils × exploitation — SANS demande (le prix ne throttle plus l'extraction ; la demande = affaire de l'IA/du marché) */
             labor_used += workers;
             S[r] += out;                                               /* dépôt au STOCK NATIONAL */
             supply[r]    += out;

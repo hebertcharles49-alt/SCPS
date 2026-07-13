@@ -3482,6 +3482,32 @@ static float biome_food(Biome b) {
 #define START_W_HAB    0.20f
 #define START_W_RES    0.15f
 
+/* SPAWN CURÉ (demande joueur 2026-07-12) — helpers.
+ * La capitale d'un empire naît sur une tuile FOOD adaptée à son biome, et son territoire
+ * de départ porte bois/fer/argile/pierre À PROXIMITÉ. Tout par REMPLACEMENT (jamais d'ajout :
+ * une tuile a TOUJOURS ≤ 2 brutes — resource/resource2). */
+static bool sw_is_food(Resource r){ return r==RES_GRAIN||r==RES_FISH||r==RES_LIVESTOCK||r==RES_FRUIT; }
+static bool sw_is_strategic(Resource r){ return r==RES_CELESTIAL_IRON||r==RES_ARCANE_CRYSTAL; }
+static bool sw_is_material(Resource r){ return r==RES_WOOD||r==RES_IRON||r==RES_CLAY||r==RES_STONE; }
+static Resource sw_spawn_food(Biome b, bool coastal){
+    if (coastal) return RES_FISH;                                   /* côte = pêche */
+    switch (b){
+        case BIO_PLAINS: case BIO_FARMLAND: case BIO_GRASSLAND: return RES_GRAIN;   /* terres à grain */
+        case BIO_FOREST: case BIO_WOODS: case BIO_JUNGLE: case BIO_MANGROVE: return RES_FRUIT; /* cueillette */
+        default: return RES_LIVESTOCK;   /* steppe/savane/collines/hauts/aride/froid = pastoral */
+    }
+}
+/* aptitude géologique d'un biome à porter un matériau (pour placer le remplacement là où ça a du sens) */
+static bool sw_biome_fits(Biome b, Resource m){
+    switch (m){
+        case RES_WOOD:  return b==BIO_FOREST||b==BIO_WOODS||b==BIO_JUNGLE||b==BIO_MANGROVE||b==BIO_BOG;
+        case RES_IRON:  return b==BIO_HILLS||b==BIO_HIGHLANDS||b==BIO_MOUNTAINS||b==BIO_PEAK||b==BIO_VOLCANO;
+        case RES_CLAY:  return b==BIO_MARSH||b==BIO_BOG||b==BIO_MANGROVE||b==BIO_COAST;
+        case RES_STONE: return b==BIO_HILLS||b==BIO_HIGHLANDS||b==BIO_MOUNTAINS||b==BIO_PEAK||b==BIO_VOLCANO||b==BIO_DRYLANDS;
+        default: return false;
+    }
+}
+
 static void refine_capitals(World *w) {
     /* Eau par province : un seul passage de cellules (river/lake déjà calculés). */
     static bool has_river[SCPS_MAX_PROV], has_lake[SCPS_MAX_PROV];
@@ -3523,6 +3549,35 @@ static void refine_capitals(World *w) {
         }
         if (best<0) continue;
         w->country[c].capital_prov = best;
+        /* ── SPAWN CURÉ : food adapté au biome SUR la capitale + bois/fer/argile/pierre À
+         * PROXIMITÉ (territoire de départ). Empires seulement (les cités-états gardent leur
+         * pool). Tout par REMPLACEMENT — une tuile reste à ≤ 2 brutes (resource/resource2). */
+        if (w->country[c].role==POLITY_PLAYER || w->country[c].role==POLITY_ANTAGONIST){
+            Province *cap=&w->province[best];
+            if (!sw_is_food(cap->resource) && !sw_is_food(cap->resource2))
+                cap->resource = sw_spawn_food(cap->biome_dominant, cap->coastal);   /* la capitale mange sa tuile */
+            Resource want[4]={ RES_WOOD, RES_IRON, RES_CLAY, RES_STONE };
+            for (int m=0;m<4;m++){
+                Resource mat=want[m];
+                bool have=false; int fit=-1, any=-1;
+                for (int ri=0; ri<w->country[c].n_regions && !have; ri++){
+                    int rid=w->country[c].region_ids[ri]; if(rid<0||rid>=w->n_regions) continue;
+                    for (int pi=0; pi<w->region[rid].n_provinces; pi++){
+                        int pid=w->region[rid].province_ids[pi]; if(pid<0||pid>=w->n_provinces) continue;
+                        Province *p=&w->province[pid];
+                        if (p->resource==mat||p->resource2==mat){ have=true; break; }  /* déjà à proximité */
+                        if (pid==best) continue;                                       /* pas la capitale */
+                        if (sw_is_food(p->resource2)||sw_is_strategic(p->resource2)
+                            ||sw_is_material(p->resource2)) continue;                  /* ne pas écraser food/stratégique/un autre matériau déjà posé */
+                        if (fit<0 && sw_biome_fits(p->biome_dominant, mat)) fit=pid;   /* tuile idoine */
+                        if (any<0) any=pid;                                            /* repli */
+                    }
+                }
+                if (have) continue;
+                int tgt=(fit>=0)?fit:any;
+                if (tgt>=0) w->province[tgt].resource2=mat;                            /* REMPLACE la mineure */
+            }
+        }
         const Province *pv=&w->province[best];
         float water = (has_river[best] && pv->coastal) ? 1.0f
                     : (has_river[best] || has_lake[best]) ? 0.7f : 0.0f;
