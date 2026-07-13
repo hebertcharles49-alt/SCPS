@@ -4392,3 +4392,22 @@ Budget : `budget_summary` (gold, monthly_net) + `budget_controls` (taxes/spendin
 **Restes** : pas de lecteur façade culture/foi au grain pays (agrégation UI = approximation
 honnête, pop-pondérée province par province) ; ajouter un `scps_country_culture_mix` moteur
 donnerait l'exact si besoin. Militaire retiré des onglets (contextuel à la sélection de corps).
+
+## [2026-07-13] Godot UI — frise de proportions partagée + sous-onglets province (agent socle parchemin)
+**Découvertes** : aucun lecteur façade ne donne la couleur d'une culture/foi/groupe — seul l'owner de PAYS
+porte un pigment (`scps_sim_node.cpp::border_segments_col`, tagué par owner ; `overlay.gd::_entity_hue`).
+Donc les frises de composition (culture/foi/classe) codent par PALETTE MUETTE parcheminée par RANG
+(dominant = ocre), pas par couleur moteur — display-only assumé. Militaire province : la façade N'EXPOSE
+ni garnison, ni réserves, ni marins par province — seuls `province_defense_pct` (tenue de siège),
+`province_info.defense` (ouvrage/fort, string), relief/climat, agitation/humeur_val/seuil_revolte existent.
+`province_groups(p)` donne `{culture, faith, heritage, klass, percent}` (âmes = ames × percent/100).
+**Widget** : `res://ui/pop_bar.gd` (RefCounted, statique) — `members_from_map(map,total,cap)` →
+`proportion_bar(members,h)` (ColorRect natifs à `size_flags_stretch_ratio`, cadre PanelContainer
+`clip_contents`) + `legend_rows(members,vbox,with_count)` + point d'entrée DRY `build_group(vbox,map,total)`.
+Consommé par `empire_window.gd::_build_population` (Culture/Foi/Classe) ET
+`province_panel_v2.gd::_build_demographie` (culture/foi ; classes gardent leur barre de satisfaction).
+**Pièges** : `Edit replace_all` sur un fichier décale les lignes ⇒ un old_string ultérieur (ici la fonction
+`_legend` supprimée) ne matche plus tant qu'il manque une ligne (le `shown += 1`) — re-Read après tout
+replace_all. Un monolithe (Foi « Sans foi » 97 %) rend UN segment plein-largeur : honnête, voulu.
+**Restes** : `build/province_v2.png` (ancien nom mono-onglet) n'est plus écrit par `province_shot` (il sort
+maintenant 3 PNG : infra/militaire/demo) — fichier stale inoffensif. Aucun rebuild DLL requis (GDScript seul).

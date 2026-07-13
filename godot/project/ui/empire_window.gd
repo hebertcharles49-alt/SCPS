@@ -12,6 +12,7 @@ extends PanelContainer
 
 const ParchTheme  = preload("res://ui/parch_theme.gd")
 const EconomyPage = preload("res://ui/economy_page.gd")
+const PopBar      = preload("res://ui/pop_bar.gd")
 
 const PW := 440.0
 ## Militaire est CONTEXTUEL (barre de commandement à la sélection d'un corps), pas un
@@ -205,12 +206,12 @@ func _build_population(w, me: int) -> void:
 					fn = "Sans foi"
 				faith[fn] = float(faith.get(fn, 0.0)) + wgt
 
-	# CULTURE
+	# CULTURE — frise de proportions (barre segmentée) + légende à pastilles
 	_pop_section(pg, "CULTURE")
-	_legend(pg, cult, total)
+	PopBar.build_group(pg, cult, total)
 	# FOI / RELIGION
 	_pop_section(pg, "FOI / RELIGION")
-	_legend(pg, faith, total)
+	PopBar.build_group(pg, faith, total)
 	# CLASSE (lecteur direct — pop exactes)
 	_pop_section(pg, "CLASSE")
 	var clsmap := {}
@@ -220,7 +221,7 @@ func _build_population(w, me: int) -> void:
 		for cl in d.get("classes", []):
 			clsmap[String(cl.get("nom", "?"))] = float(cl.get("pop", 0))
 			cls_total += float(cl.get("pop", 0))
-	_legend(pg, clsmap, cls_total)
+	PopBar.build_group(pg, clsmap, cls_total)
 
 	# TOP PROVINCES (par âmes)
 	_pop_section(pg, "TOP PROVINCES")
@@ -234,47 +235,6 @@ func _build_population(w, me: int) -> void:
 				break
 			_kv_row(pg, String(rp[1]), _grp(int(rp[0])), ParchTheme.INK)
 			shown += 1
-
-## une légende codée par couleur : swatch + nom + % + effectif, triés décroissants.
-func _legend(pg: VBoxContainer, m: Dictionary, total: float) -> void:
-	if m.is_empty() or total <= 0.0:
-		_dim_line(pg, "—")
-		return
-	var arr := []
-	for k in m:
-		arr.append([float(m[k]), String(k)])
-	arr.sort_custom(func(a, b): return a[0] > b[0])
-	var shown := 0
-	for e in arr:
-		if shown >= 8:
-			break
-		var cnt := float(e[0])
-		if cnt < 1.0:
-			continue
-		var name := String(e[1])
-		var pct := int(round(100.0 * cnt / total))
-		var line := HBoxContainer.new()
-		line.add_theme_constant_override("separation", 6)
-		pg.add_child(line)
-		# swatch de couleur (Panel teinté, clé stable par nom)
-		var sw := Panel.new()
-		sw.custom_minimum_size = Vector2(12, 12)
-		sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		sw.add_theme_stylebox_override("panel",
-			ParchTheme.sb(_key_color(name), ParchTheme.BORDER, 1, 2, 0, 0, 0, 0))
-		line.add_child(sw)
-		var nm := Label.new()
-		nm.theme_type_variation = "RowLabel"
-		nm.text = name
-		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		nm.clip_text = true
-		line.add_child(nm)
-		var pc := Label.new()
-		pc.theme_type_variation = "RowDim"
-		pc.text = "%d %% · %s" % [pct, _grp(int(round(cnt)))]
-		pc.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		line.add_child(pc)
-		shown += 1
 
 # ── ONGLET DIPLOMATIE : relations en lignes (nom + opinion), guerres en tête ──
 func _build_diplomatie(w, me: int) -> void:
@@ -439,14 +399,6 @@ func _kv_row(pg: VBoxContainer, label: String, value: String, col: Color) -> voi
 	line.add_child(val)
 
 # ── util ──────────────────────────────────────────────────────────────────────
-## couleur de LÉGENDE stable par nom (clé visuelle, dérivée du hash — display-only ;
-## aucune prétention de couleur moteur, juste un codage cohérent d'une session à l'autre).
-func _key_color(name: String) -> Color:
-	var h := absi(name.hash())
-	var hue := float(h % 360) / 360.0
-	var sat := 0.42 + float((h / 360) % 100) / 100.0 * 0.28   # 0.42..0.70
-	return Color.from_hsv(hue, sat, 0.72)
-
 ## couleur de score 0-100 (rouge bas / vert haut)
 func _score_col(v: int) -> Color:
 	if v >= 60:

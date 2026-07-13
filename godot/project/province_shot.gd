@@ -4,7 +4,12 @@ extends Node
 ## avance ~30 ans, choisit une province possédée par le joueur, instancie
 ## province_panel_v2, refresh, sauve un PNG 1600×900 centré.
 ##   Godot --path godot/project res://province_shot.tscn -- seed=9 years=30
-const OUT := "C:/Users/Charl/Desktop/SCPS-main/build/province_v2.png"
+const OUTDIR := "C:/Users/Charl/Desktop/SCPS-main/build/"
+const TABS := [
+	[0, "province_infra.png"],
+	[1, "province_militaire.png"],
+	[2, "province_demo.png"],
+]
 
 func _arg(p: String, d: String) -> String:
 	for a in OS.get_cmdline_user_args():
@@ -30,21 +35,26 @@ func _run() -> void:
 		Sim.world.advance_days(360)
 	Sim.generated.emit()
 
-	# une province possédée par le joueur (sinon la première valide)
+	# une province possédée par le joueur, la PLUS DIVERSE (max de groupes) pour que
+	# les frises culture/foi montrent plusieurs segments ; repli : 1re valide.
 	var me: int = int(Sim.world.player()) if Sim.world.has_method("player") else 0
 	var pid := -1
+	var best_groups := -1
 	var n: int = int(Sim.world.province_count()) if Sim.world.has_method("province_count") else 0
 	for p in range(n):
 		var info: Dictionary = Sim.world.province_info(p)
-		if bool(info.get("valide", false)) and int(info.get("owner", -1)) == me:
+		if not bool(info.get("valide", false)) or int(info.get("owner", -1)) != me:
+			continue
+		var ng: int = Sim.world.province_groups(p).size() if Sim.world.has_method("province_groups") else 0
+		if ng > best_groups:
+			best_groups = ng
 			pid = p
-			break
 	if pid < 0:
 		for p in range(n):
 			if bool(Sim.world.province_info(p).get("valide", false)):
 				pid = p
 				break
-	print("PROVINCE pid=", pid, " owner=me?", me)
+	print("PROVINCE pid=", pid, " owner=me?", me, " groups=", best_groups)
 
 	var bg := ColorRect.new()
 	bg.color = Color("2a2622")
@@ -65,17 +75,27 @@ func _run() -> void:
 		panel.show_province(pid)
 	for i in range(8):
 		await get_tree().process_frame
-	panel.reset_size()
-	panel.position = ((Vector2(1600, 900) - panel.size) * 0.5).floor()
-	for i in range(4):
-		await get_tree().process_frame
-	await RenderingServer.frame_post_draw
-	await RenderingServer.frame_post_draw
 
-	var img := get_viewport().get_texture().get_image()
-	var err := img.save_png(OUT)
-	if err == OK:
-		print("SAVED ", OUT, " (", img.get_width(), "x", img.get_height(), ")")
-	else:
-		push_error("save_png failed err=%d" % err)
-	get_tree().quit(0 if err == OK else 1)
+	var ok_all := true
+	for entry in TABS:
+		var idx: int = int(entry[0])
+		var fname: String = String(entry[1])
+		if panel.has_method("select_tab"):
+			panel.select_tab(idx)
+		for i in range(6):
+			await get_tree().process_frame
+		panel.reset_size()
+		panel.position = ((Vector2(1600, 900) - panel.size) * 0.5).floor()
+		for i in range(4):
+			await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		await RenderingServer.frame_post_draw
+		var img := get_viewport().get_texture().get_image()
+		var path := OUTDIR + fname
+		var err := img.save_png(path)
+		if err == OK:
+			print("SAVED ", path, " (", img.get_width(), "x", img.get_height(), ")")
+		else:
+			push_error("save_png failed err=%d for %s" % [err, path])
+			ok_all = false
+	get_tree().quit(0 if ok_all else 1)

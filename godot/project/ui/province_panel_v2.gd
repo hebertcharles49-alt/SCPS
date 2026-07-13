@@ -12,6 +12,7 @@ extends PanelContainer
 const ParchTheme = preload("res://ui/parch_theme.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
+const PopBar = preload("res://ui/pop_bar.gd")
 
 const PW := 356.0   ## largeur plafond (~360, brief)
 
@@ -23,6 +24,7 @@ var _sub_lbl: Label = null
 var _owner_lbl: Label = null
 var _ownersub_lbl: Label = null
 var _tab_group: ButtonGroup = null
+var _tab_btns: Array = []            ## [Button] pour piloter l'onglet actif par code (probe)
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -82,6 +84,7 @@ func _build_shell() -> void:
 	tabs.add_theme_constant_override("separation", 2)
 	tabpanel.add_child(tabs)
 	_tab_group = ButtonGroup.new()
+	_tab_btns.clear()
 	var names := ["Infrastructure", "Militaire", "Démographie"]
 	for i in range(names.size()):
 		var b := Button.new()
@@ -95,6 +98,7 @@ func _build_shell() -> void:
 		var idx := i
 		b.pressed.connect(func(): _tab = idx; refresh())
 		tabs.add_child(b)
+		_tab_btns.append(b)
 
 	# CORPS (fond transparent — laisse voir le parchemin)
 	var bodypanel := PanelContainer.new()
@@ -110,6 +114,14 @@ func show_province(pid: int) -> void:
 	visible = pid >= 0
 	if visible:
 		refresh()
+
+## sélection PUBLIQUE d'un onglet (par code) : met aussi à jour le bouton actif (le
+## soulignement suit). Utilisée par la sonde de capture.
+func select_tab(idx: int) -> void:
+	if idx >= 0 and idx < _tab_btns.size():
+		_tab_btns[idx].button_pressed = true
+	_tab = idx
+	refresh()
 
 func refresh() -> void:
 	var w = Sim.world
@@ -235,40 +247,73 @@ func _build_infrastructure(w, info: Dictionary, cap: Dictionary) -> void:
 				String(b.get("nom", "")), int(b.get("niveau", 0)), int(b.get("ouvriers", 0))]
 			_bld_slot(bg, UIKit.manuf_sprite(String(b.get("nom", ""))), tip)
 
-# ── ONGLET MILITAIRE (léger, pour l'instant) ──────────────────────────────────
+# ── ONGLET MILITAIRE : défense de la province + menace intérieure ─────────────
+## N'INVENTE rien : la façade n'expose ni garnison, ni réserves, ni marins par
+## province — on lit ce qui existe (tenue de siège, ouvrage/fort, terrain, agitation).
 func _build_militaire(w, info: Dictionary, _cap: Dictionary) -> void:
+	# DÉFENSE (tenir la place)
 	_section("DÉFENSE")
 	var def_pct := int(w.province_defense_pct(_pid)) if w.has_method("province_defense_pct") else 100
 	var grid := _grid()
-	_kv(grid, "Tenue de siège", "%+d%%" % (def_pct - 100), ParchTheme.GREEN if def_pct > 100 else ParchTheme.INK)
-	_kv(grid, "Terrain", String(info.get("relief", "—")), ParchTheme.DIM_INK)
+	_kv(grid, "Tenue de siège", "%+d%%" % (def_pct - 100),
+		ParchTheme.GREEN if def_pct > 100 else (ParchTheme.RED if def_pct < 100 else ParchTheme.INK))
 	var dw := String(info.get("defense", ""))
-	if dw != "" and dw != "aucune":
-		_kv(grid, "Ouvrage", dw, ParchTheme.INK)
-	_line("Détail militaire à venir.", "RowDim")
+	_kv(grid, "Ouvrage", dw if (dw != "" and dw != "aucune") else "aucun",
+		ParchTheme.INK if (dw != "" and dw != "aucune") else ParchTheme.DIM_INK)
+	_kv(grid, "Terrain", ("%s · %s" % [String(info.get("relief", "—")), String(info.get("climat", ""))]).strip_edges(),
+		ParchTheme.DIM_INK)
 
-# ── ONGLET DÉMOGRAPHIE (léger, pour l'instant) ────────────────────────────────
+	# MENACE INTÉRIEURE (tenir les gens) — agitation + loyauté + seuil de révolte
+	_section("MENACE INTÉRIEURE")
+	var agit := int(info.get("agitation", 0))
+	if w.has_method("province_agitation"):
+		agit = int(w.province_agitation(_pid).get("value", agit))
+	var grid2 := _grid()
+	_kv(grid2, "Agitation", "%d%%" % agit, ParchTheme.RED if agit >= 50 else ParchTheme.DIM_INK)
+	var mood := int(info.get("humeur_val", 0))
+	_kv(grid2, "Loyauté", "%d%%" % mood, _score_col(mood))
+	if bool(info.get("seuil_revolte", false)):
+		_line("⚠ Au bord de la révolte (agitation %d)" % agit, "Expense")
+
+# ── ONGLET DÉMOGRAPHIE : classes (pop + satisfaction) + frises culture/foi ────
+## Réutilise la MÊME barre de proportions (pop_bar.gd) que l'onglet Population de
+## l'empire — DRY : culture & foi rendus en frises segmentées.
 func _build_demographie(w, info: Dictionary, _cap: Dictionary) -> void:
+	# PEUPLE (résumé)
 	_section("PEUPLE")
 	var grid := _grid()
-	_kv(grid, "Population", _grp(info.get("ames", 0)), ParchTheme.INK)
+	var pop := float(info.get("ames", 0))
+	_kv(grid, "Population", _grp(int(pop)), ParchTheme.INK)
 	_kv(grid, "Héritage", String(info.get("heritage", "—")), ParchTheme.INK)
+
+	# CLASSES (pop + barre de satisfaction — même rangée que l'infrastructure)
+	_section("CLASSES")
+	var cls: Dictionary = w.province_classes(_pid) if w.has_method("province_classes") else {}
+	var csat: Dictionary = w.province_class_sat(_pid) if w.has_method("province_class_sat") else {}
+	var slaves := int(w.province_slave_count(_pid)) if w.has_method("province_slave_count") else 0
+	for row in [["Laboureurs", "laboureurs"], ["Artisans", "artisans"],
+			["Noblesse", "noblesse"], ["Esclaves", "esclaves"]]:
+		var cpop := (slaves if row[1] == "esclaves" else int(cls.get(row[1], 0)))
+		var sv := int(csat.get(row[1], -1))
+		_class_row(String(row[0]), cpop, sv)
+
+	# CULTURE / FOI — frises de proportions (âmes = pop × part du groupe)
 	var groups: Array = w.province_groups(_pid) if w.has_method("province_groups") else []
-	_kv(grid, "Groupes", str(groups.size()), ParchTheme.DIM_INK)
-	if groups.size() > 0:
-		_section("COMPOSITION")
+	if groups.size() > 0 and pop > 0.0:
+		var cmap := {}
+		var fmap := {}
 		for g in groups:
-			var pl := HBoxContainer.new()
-			_body.add_child(pl)
-			var nm := Label.new()
-			nm.theme_type_variation = "RowLabel"
-			nm.text = String(g.get("culture", "?"))
-			nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			pl.add_child(nm)
-			var pc := Label.new()
-			pc.theme_type_variation = "RowDim"
-			pc.text = "%d %%" % int(g.get("percent", 0))
-			pl.add_child(pc)
+			var wgt := pop * float(g.get("percent", 0)) / 100.0
+			var cn := String(g.get("culture", "?"))
+			cmap[cn] = float(cmap.get(cn, 0.0)) + wgt
+			var fn := String(g.get("faith", ""))
+			if fn == "":
+				fn = "Sans foi"
+			fmap[fn] = float(fmap.get(fn, 0.0)) + wgt
+		_section("CULTURE")
+		PopBar.build_group(_body, cmap, pop)
+		_section("FOI / RELIGION")
+		PopBar.build_group(_body, fmap, pop)
 
 # ── PRIMITIVES DE LAYOUT (conteneurs natifs, aucune ligne dessinée) ────────────
 func _section(txt: String) -> void:
