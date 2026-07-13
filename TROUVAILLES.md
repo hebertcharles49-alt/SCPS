@@ -4176,3 +4176,43 @@ inspectée, `git diff --check` sans erreur. Aucun type, lecteur ou verbe moteur 
   attendues : répertoires Godot user:// non inscriptibles et SDK .NET 10.0.6 absent.
 - **Périmètre** : `topbar.gd` non touché. Deux scripts UI seulement : `tech_panel.gd` et
   `country_actions.gd`. Reste à valider visuellement en jeu réel avec un pays étranger connu.
+
+## Budget policy — 4 effets joueur golden-neutres (2026-07-13)
+- **Périmètre** : les 4 effets sont PLAYER-ONLY. `econ_country_budget_mult(e,cid,fam)` rend
+  exactement 1.0 par défaut (IA/chronique ne posent jamais de politique) → tout doit être
+  strictement no-op à mult==1.0. C'est LE garde-fou : `make golden` reste IDENTIQUE et
+  `make determinism` STABLE 5/5 uniquement si aucun effet ne bouge au neutre.
+- **(1) INVEST = boost de K, plus de recirculation** : `scps_econ.c` ~3061 — le facteur
+  `invest_mult` retiré de `depense` (la redépense §B revient à son taux de base). Le curseur
+  agit désormais dans `scps_prosperity.c` ~344 : `kboost = clampf(invest_mult-1,0,1)*0.10`
+  multiplie la contribution `build.K_inst` de chaque région du pays. Lecture HOISTÉE hors de
+  la boucle région (une fois par pays). À ×1.0 → kboost=0 → IDENTIQUE.
+- **(2) ARMÉE** : `scps_warhost.c` ~317 — bloc de DÉSERTION (`wh_shed`) supprimé (la paie et la
+  garde de budget IG restent). Pénalité de MORAL lue au combat dans `scps_campaign.c` : module-
+  static `g_camp_econ` (reposé à l'entrée de `campaign_tick` ET `campaign_battle_factors`),
+  helper `army_pay_morale(owner)`, appliqué dans `stack_force` APRÈS la boucle de fusion
+  (`out->doctrine.moral_mul *= army_pay_morale(owner)`). Piège : `stack_force` prend un
+  `const Campaign*` → passer par econ en param aurait cassé la signature ; le file-static est la
+  voie propre (c'est le motif `g_econ_human`/`g_campaign_human` déjà en place). `scps_math.h`
+  n'était PAS inclus dans scps_campaign.c → ajouté pour `clampf`.
+- **(3) FLOTTE** : `scps_navy.c` ~218 — la ligne `starve_days += (1-navy_mult)*dt` (délabrement
+  sur sous-paie) supprimée (la vraie famine `paid<gold` et les fournitures restent). Moral de
+  paie porté par 2 params `payA,payB` ajoutés à `navy_battle` (`multA*=payA; multB*=payB` après
+  le calcul du courant) ; helper `navy_pay_morale(e,owner)`. 2 appelants : course pirate (side A
+  = pirate `c`, side B = victime) et interception (side A = intercepteur `e`, side B = escorte
+  `owner`) — le `(void)econ;` de `navy_interception_tick` retiré (econ désormais utilisé).
+- **(4) UI valeur en direct** : `sidebar_drawer.gd`. `_draw_multiplier_slider` gagne un param
+  optionnel `live: String=""` (affiché à la place de « ×1.3 », right-aligné au bord ; le curseur
+  ×0,1..×2 est conservé). Enveloppes de dépense → or/mois RÉALISÉ lu des flux `country_budget`
+  (entretien/soldes/marine, ramenés au mois par `30/day_of_year` comme le reste de l'onglet) ;
+  INVEST → « +X % K » (son effet réel post-(1), pas une dépense) ; paie conseiller → `cost_year`
+  en or/an (déjà dans le dict `seat`).
+- **LIMITE (4) taxes** : la façade `budget_controls` (déjà bindée) ne rend que `mult`, et le
+  flux `taxes` est AGRÉGÉ (pas de rendement PAR CLASSE). Impossible d'afficher un revenu fiscal
+  par classe sans nouveau reader façade + rebuild DLL (hors périmètre — « ne pas rebâtir la DLL »).
+  Donc : les curseurs de taxe gardent le multiplicateur, et le rendement fiscal AGRÉGÉ en direct
+  est affiché sur l'en-tête « Fiscalité par classe · rendement N or/mois ». À faire si voulu :
+  reader `scps_tax_by_class` + bump binding.
+- **Vérifs** : golden IDENTIQUE · determinism STABLE 5/5 · scps_api_demo 216/216 · campaign 33/33
+  · navy 20/20 · warhost 6/6 · prosperity 17/17 · econ_tax 8/8 · savetest 9 & 42 = 2 réussis ·
+  0 warning (C) · Godot parse propre (aucun SCRIPT/Parse Error ; la DLL charge, le monde génère).

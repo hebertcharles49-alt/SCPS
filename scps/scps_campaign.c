@@ -11,8 +11,20 @@
 #include "scps_tune.h"   /* Arc J : constantes de calibrage surchargeables */
 #include "scps_navy.h"   /* réservation de transports (accès aux champs, pas d'appel) */
 #include "scps_labor.h"   /* capitale_defense / capitale_max_tier : la défense passive de la capitale */
+#include "scps_math.h"   /* clampf partagé */
 #include <math.h>
 #include <string.h>
+
+/* Curseur ARMÉE (joueur seul) : une armée sous-payée n'a plus le MORAL (elle ne
+ * déserte plus — cf. scps_warhost.c). g_camp_econ est reposé à l'entrée de
+ * campaign_tick / campaign_battle_factors ; à mult>=1.0 le facteur vaut 1.0
+ * (défaut IA/chronique/bancs) ⇒ IDENTIQUE. */
+static const WorldEconomy *g_camp_econ = NULL;
+static float army_pay_morale(int owner){
+    if(!g_camp_econ || owner<0) return 1.f;
+    float m=econ_country_budget_mult(g_camp_econ,owner,BUDGET_ARMY);
+    return m>=1.f ? 1.f : clampf(m,0.35f,1.f);
+}
 
 /* #32 — la MAIN HUMAINE : miroir de g_human_player (scps_warhost.c) / g_econ_human
  * (scps_econ.c). -1 par défaut (chronique/viewer sans joueur : les 2 sites ci-dessous
@@ -505,6 +517,8 @@ static void stack_force(const Campaign *c, int owner, int loc, ArmyState *out){
         }
         army_merge_into(out,&cp);
     }
+    /* Solde impayée → moral amputé (plancher 0.35) ; ×1.0 au neutre ⇒ IDENTIQUE. */
+    out->doctrine.moral_mul *= army_pay_morale(owner);
 }
 static long stack_kill(Campaign *c, int owner, int loc, long packets){
     long total=0; for (int i=0;i<CAMPAIGN_ARMY_CAP;i++) if (stack_member(&c->army[i],owner,loc)) total+=force_units(&c->army[i].force);
@@ -551,6 +565,7 @@ static float bt_terrainA(const Campaign *c, const WorldEconomy *e, int loc, int 
 bool campaign_battle_factors(const Campaign *c, const WorldEconomy *e, int region,
                              CampaignBattleFactors *out){
     if(!out) return false;
+    g_camp_econ = e;   /* curseur ARMÉE : moral de solde lu par stack_force */
     memset(out,0,sizeof *out); out->region=-1; out->terrain_owner=-1;
     if(!c || !e || region<0 || region>=e->n_regions) return false;
     const FieldBattle *bt=NULL;
@@ -867,6 +882,7 @@ static void bt_engage(Campaign *c, int i, int j, int loc){
 void campaign_tick(Campaign *c, const World *w, const WorldEconomy *e,
                    DiploState *dp, uint32_t *rng, float dt_days){
     if (dt_days<=0.f) return;
+    g_camp_econ = e;   /* curseur ARMÉE : moral de solde lu par stack_force */
 
     /* §terrain : une armée dont le PAYS est MORT (annexé → role UNCLAIMED) se DISSOUT
      * — pas de zombie en campagne. (warhost/marine se taisent par le même skip ailleurs.) */

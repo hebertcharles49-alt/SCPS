@@ -311,13 +311,10 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
               float paid = fminf(pay, econ->prov[crpp].treasury);
               econ->prov[crpp].treasury -= paid;
               econ_flux_add(c, FX_SOLDE, -paid);                /* I0 : la ligne soldes */
-              /* Sous-financer la solde n'est pas une remise magique : une part des
-               * hommes déserte chaque année, guerre comprise. Surpayer reste un choix
-               * de trésorerie (réserve de solde), sans bonus militaire artificiel. */
-              if (army_mult < 0.999f){
-                  long desert = (long)((1.f-army_mult)*(float)u*0.20f + 0.5f);
-                  if (desert>0) wh_shed(&h->army[c], econ, c, desert);
-              }
+              /* Sous-financer la solde ne fait plus DÉSERTER (l'armée reste entière) :
+               * elle perd le MORAL — la pénalité est lue au combat (scps_campaign.c,
+               * army_pay_morale ← BUDGET_ARMY). Surpayer reste un choix de trésorerie,
+               * sans bonus militaire artificiel. */
               /* IG — LA GARDE DE BUDGET (le garde-fou anti-famine) : si la capitale ne
                * couvre plus ~3 mois de la solde (pay annuel ×0.25), on DÉGRAISSE (jauge −1)
                * — l'armée cesse de croître et fond, plutôt qu'étrangler le trésor en spirale

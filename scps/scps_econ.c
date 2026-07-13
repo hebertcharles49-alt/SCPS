@@ -3058,8 +3058,10 @@ void econ_tick(WorldEconomy *e, float dt) {
          * d'achat restauré → satisfaction, et le drain C1 sur l'élite est réparé). Le
          * solde subventionne l'expansion (§1). Sans cette sortie, le trésor ×16 asséchait
          * les classes à richesse ~0 → 15 % de satisfaction même quand les biens existent. */
-        float invest_mult = econ_country_budget_mult(e,re->owner,BUDGET_INVEST);
-        float depense = re->treasury * STATE_SPEND_RATE * invest_mult * dt;
+        /* La recirculation du trésor (§B) reste à son taux de BASE : le curseur
+         * INVESTISSEMENT ne la pilote plus. L'enveloppe d'investissement agit
+         * désormais sur le capital institutionnel K (cf. scps_prosperity.c). */
+        float depense = re->treasury * STATE_SPEND_RATE * dt;
         /* I3bis — la redépense LAISSE la réserve d'exploitation : un État ne se vide pas
          * jusqu'au dernier sou (sinon, à trésor 0, il ne peut plus rien bâtir — pas même
          * un grenier — et s'enferme dans la famine). Il circule le SURPLUS, garde de quoi

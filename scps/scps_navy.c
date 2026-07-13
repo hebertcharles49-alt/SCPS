@@ -216,7 +216,8 @@ void navy_tick(NavyState *ns, const World *w, WorldEconomy *econ, struct DiploSt
               /* RE-KEY : payé pour de VRAI (provinces) — la vue seule s'évaporait. */
               float paid = fminf(gold, fmaxf(0.f, re->treasury));
               if (paid < gold) n->starve_days += dt_days;
-              if (navy_mult < 0.999f) n->starve_days += (1.f-navy_mult)*dt_days;
+              /* Sous-payer la marine (curseur NAVY) ne la fait plus se DÉLABRER :
+               * elle perd le MORAL au combat (navy_pay_morale, plus bas). */
               if (paid > 0.f) econ_region_treasury_add(econ, n->home_port, -paid);
               econ_flux_add(c, FX_NAVY, -paid); }            /* I0 : la ligne marine */
             float need=need_y*(dt_days/365.f);
@@ -323,14 +324,24 @@ static float crs_f(uint32_t *r){ return (crs_rng(r)&0xFFFFFF)*(1.f/16777216.f); 
  * dans le dos gagne un multiplicateur), une ACCALMIE de 1 jour, jusqu'à la
  * rupture du moral d'équipage ; la DÉROUTE livre les coques à la POURSUITE
  * (coulées ou PRISES). Renvoie +1 si A l'emporte, -1 si B, 0 si nul. */
+/* Curseur NAVY (joueur seul) : une flotte sous-payée n'a plus le MORAL (elle ne
+ * se délabre plus — cf. plus haut). ×1.0 au neutre (défaut IA/chronique) ⇒ IDENTIQUE. */
+static float navy_pay_morale(const WorldEconomy *e, int owner){
+    if(!e || owner<0) return 1.f;
+    float m=econ_country_budget_mult(e,owner,BUDGET_NAVY);
+    return m>=1.f ? 1.f : clampf(m,0.35f,1.f);
+}
+
 static int navy_battle(const World *w, int cell_x, int cell_y,
                        int shipsA, int shipsB, float curA_dot,
-                       uint32_t *rng, int *lossA, int *lossB, int *prises){
+                       uint32_t *rng, int *lossA, int *lossB, int *prises,
+                       float payA, float payB){
     (void)w; (void)cell_x; (void)cell_y;
     float resA=(float)shipsA, resB=(float)shipsB;            /* moral d'équipage ≈ bordées */
     float res0A=resA+0.01f, res0B=resB+0.01f;
     float multA=1.f+0.35f*clampf(curA_dot,-1.f,1.f);         /* le courant dans le dos ARME */
     float multB=2.f-multA;
+    multA*=payA; multB*=payB;                                /* solde impayée → moral amputé */
     *lossA=*lossB=*prises=0;
     for (int day=0; day<30 && resA>0.25f*res0A && resB>0.25f*res0B; day++){
         if (day%3==2) continue;                              /* accalmie (1 j sur 3) */
@@ -491,7 +502,8 @@ void navy_course_tick(NavyState *ns, const World *w, WorldEconomy *econ,
                     int lA,lB,pr;
                     float effA=(float)n->hull[HULL_PIRATE]*(n->starve_days>0.f?0.7f:1.f);
                     float effB=(float)defense*(ns->n[victim].starve_days>0.f?0.7f:1.f);
-                    int v2=navy_battle(w,0,0,(int)(effA+0.5f),(int)(effB+0.5f),dot,rng,&lA,&lB,&pr);
+                    int v2=navy_battle(w,0,0,(int)(effA+0.5f),(int)(effB+0.5f),dot,rng,&lA,&lB,&pr,
+                                       navy_pay_morale(econ,c),navy_pay_morale(econ,victim));
                     if (lA>n->hull[HULL_PIRATE]) lA=n->hull[HULL_PIRATE];
                     if (lB>ns->n[victim].hull[HULL_WAR]) lB=ns->n[victim].hull[HULL_WAR];
                     n->hull[HULL_PIRATE]-=lA;
@@ -598,7 +610,6 @@ void navy_course_tick(NavyState *ns, const World *w, WorldEconomy *econ,
 
 void navy_interception_tick(NavyState *ns, struct Campaign *camp, const World *w,
                             WorldEconomy *econ, struct DiploState *dp, uint32_t *rng){
-    (void)econ;
     for (int i=0;i<CAMPAIGN_ARMY_CAP;i++){
         FieldArmy *a=&camp->army[i];
         if (!a->active || a->phase!=FA_SAIL || a->intercept_done) continue;
@@ -617,7 +628,8 @@ void navy_interception_tick(NavyState *ns, struct Campaign *camp, const World *w
             float effA=(float)pat->hull[HULL_WAR]*(pat->starve_days>0.f?0.7f:1.f);
             float effB=(float)escort*(esc->starve_days>0.f?0.7f:1.f);
             int v=(escort>0)
-                ? navy_battle(w,0,0,(int)(effA+0.5f),(int)(effB+0.5f),0.f,rng,&lA,&lB,&pr)
+                ? navy_battle(w,0,0,(int)(effA+0.5f),(int)(effB+0.5f),0.f,rng,&lA,&lB,&pr,
+                              navy_pay_morale(econ,e),navy_pay_morale(econ,owner))
                 : (+1);                                        /* sans escorte : PROIE */
             if (escort>0){
                 if (lA>pat->hull[HULL_WAR]) lA=pat->hull[HULL_WAR];

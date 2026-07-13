@@ -341,9 +341,14 @@ void prosperity_tick(WorldProsperity *wp, const World *w,
          * agrège les édifices du pays sur K/P/H, plafond ±5 (rendements
          * décroissants). Un Tribunal monte K, une Citadelle monte H. */
         {
+            /* Curseur INVESTISSEMENT (joueur seul) : l'enveloppe booste le capital
+             * institutionnel K de 0 à +10 % (×1.0 neutre → 0 ; ×2.0 → +10 %).
+             * À mult==1.0 (défaut IA/chronique) kboost=0 ⇒ IDENTIQUE. */
+            float invest_mult = econ_country_budget_mult(econ, cid, BUDGET_INVEST);
+            float kboost = clampf(invest_mult - 1.f, 0.f, 1.f) * 0.10f;
             float bK=0.f, bP=0.f, bH=0.f, bPE=0.f, bArcane=0.f, bEntropy=0.f;
             for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==cid) {
-                bK  += econ->region[r].build.K_inst;
+                bK  += econ->region[r].build.K_inst * (1.f + kboost);
                 bP  += econ->region[r].build.P_open;
                 bH  += econ->region[r].build.H_coerc;
                 bPE += econ->region[r].build.PE_infra;   /* marchés/entrepôts → PE capté */
