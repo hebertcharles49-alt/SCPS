@@ -68,7 +68,13 @@ func _layout() -> void:
 	var w := HANDLE_W if _collapsed else W
 	_maxh = maxf(140.0, vp.y - Frame.TOPBAR_H - Frame.BOTTOMBAR_H)
 	position = Vector2(vp.x - w, Frame.TOPBAR_H)
-	size = Vector2(w, _maxh)
+	# REPLIÉ : le rabat occupe la bande entière. DÉPLIÉ : la hauteur se DÉCOUPE au
+	# contenu (latchée dans _draw) — plus de « brique » pleine hauteur quand rien ne se
+	# passe ; le panneau grandit avec les guerres/notifications, plafonné à _maxh.
+	if _collapsed:
+		size = Vector2(w, _maxh)
+	else:
+		size = Vector2(w, clampf(size.y, 140.0, _maxh))
 
 func _gui_input(e: InputEvent) -> void:
 	if e is InputEventMouseButton and e.pressed and not _collapsed:
@@ -376,6 +382,11 @@ func _draw() -> void:
 				line, VKit.FS_SMALL)
 			y += 16
 
+	# HAUTEUR ADAPTATIVE : le panneau se découpe à SON contenu (plus de brique pleine
+	# hauteur). Latché ici — le bg/scroll de la frame suivante suivent la nouvelle taille.
+	var content_h := clampf(y + 10.0, 140.0, _maxh)
+	if not _collapsed and absf(size.y - content_h) > 2.0:
+		set_deferred("size", Vector2(W, content_h))
 	_maxscroll = maxf(0.0, y + 10.0 - size.y)
 	_scrolloff = clampf(_scrolloff, 0.0, _maxscroll)
 	draw_set_transform(Vector2.ZERO)
