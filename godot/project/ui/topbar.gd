@@ -338,14 +338,14 @@ func _cell(px: float, icon: String, rid_or_val, val: String, dtxt: String, dpos:
 		# la ressource, résolu par resource_sprite(-1, nom) — même sprite que le tiroir Stocks.
 		var rspr: Texture2D = UIKit.resource_sprite(-1, rname)
 		if rspr != null:
-			draw_texture_rect(rspr, Rect2(px, (H - 22.0) * 0.5, 22, 22), false)
+			draw_texture_rect(rspr, Rect2(px, (H - 26.0) * 0.5, 26, 26), false)
 	elif rid >= 0:
 		var spr: Texture2D = UIKit.resource_sprite(rid, "")
 		if spr != null:
-			draw_texture_rect(spr, Rect2(px, (H - 22.0) * 0.5, 22, 22), false)
+			draw_texture_rect(spr, Rect2(px, (H - 26.0) * 0.5, 26, 26), false)
 	elif icon != "":
-		UIKit.draw_icon(self, icon, Vector2(px, (H - 22.0) * 0.5), 22)
-	var tx := px + 26.0
+		UIKit.draw_icon(self, icon, Vector2(px, (H - 26.0) * 0.5), 26)
+	var tx := px + 30.0
 	# la VALEUR de la cellule (chiffre-clé du topbar : trésor/pop/nourriture/savoir/…) —
 	# COL_VALUE par défaut ; un `vcol` explicite (sense() bon/mauvais, ex. revenu net)
 	# reste PRIORITAIRE — ce sens sémantique ne doit jamais être écrasé.
@@ -358,7 +358,7 @@ func _cell(px: float, icon: String, rid_or_val, val: String, dtxt: String, dpos:
 	if dtxt != "":
 		VKit.text(self, Vector2(tx, 26.0), VKit.sense(0.85) if dpos else VKit.sense(0.12), dtxt, VKit.FS_SMALL)
 		wd = VKit.text_w(dtxt, VKit.FS_SMALL)
-	var cw := 26.0 + maxf(wv, wd) + 10.0
+	var cw := 30.0 + maxf(wv, wd) + 10.0
 	if tip != "":
 		_tips.append([Rect2(px - 4.0, 0.0, cw + 8.0, H), tip])
 	# (plus de filet PAR cellule — retour joueur « le bordel » : dans un bloc, les cellules

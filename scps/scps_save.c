@@ -265,6 +265,16 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
             if (s->sc->loyalty[c][st] < 0.f || s->sc->loyalty[c][st] > 100.f) return false;
             if (s->sc->pay[c][st] < 0.f || s->sc->pay[c][st] > 2.f) return false;
         }
+    for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+        for (int k=0;k<CLASS_COUNT;k++){
+            float v=s->econ->tax_mult[c][k];
+            if (v!=0.f && !(v>=0.1f && v<=2.f)) return false;
+        }
+        for (int k=0;k<BUDGET_POLICY_COUNT;k++){
+            float v=s->econ->budget_mult[c][k];
+            if (v!=0.f && !(v>=0.1f && v<=2.f)) return false;
+        }
+    }
     if (w->n_countries <0 || w->n_countries >SCPS_MAX_COUNTRY)   return false;
     if (w->n_continents<0 || w->n_continents>SCPS_MAX_CONTINENT) return false;
     for (int c=0;c<w->n_countries;c++)
@@ -355,6 +365,8 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         if (s->dp->occupier[r] < -1 || s->dp->occupier[r] >= w->n_countries) return false;
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){
         if (s->dp->suzerain[c] < -1 || s->dp->suzerain[c] >= w->n_countries) return false;
+        if (s->dp->reparations_to[c] < -1 || s->dp->reparations_to[c] >= w->n_countries) return false;
+        if (!(s->dp->reparations_days[c]>=0.f && s->dp->reparations_days[c]<=3650.f)) return false;
         if (!(s->dp->v_integration[c]>=0.f && s->dp->v_integration[c]<=1.f)) return false;
         if (!(s->dp->v_annex[c]      >=0.f && s->dp->v_annex[c]      <=1.f)) return false; }
     /* W-GUERRE-3 — intrigues fabriquées : état borné {NONE,MATURING,READY}, jours non
@@ -363,6 +375,7 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
     for (int a=0;a<SCPS_MAX_COUNTRY;a++) for (int b=0;b<SCPS_MAX_COUNTRY;b++){
         if (s->dp->fab_state[a][b] < FAB_NONE || s->dp->fab_state[a][b] > FAB_READY) return false;
         if (s->dp->fab_days[a][b] < 0.f) return false;
+        if (s->dp->fab_region[a][b] < -1 || s->dp->fab_region[a][b] >= s->econ->n_regions) return false;
         if (s->dp->fab_cb[a][b] < CB_NONE || s->dp->fab_cb[a][b] > CB_ANTIPIRATERIE) return false; }
     for (int i=0;i<CAMPAIGN_ARMY_CAP;i++)
         if (s->camp->army[i].taken_region < -1 || s->camp->army[i].taken_region >= s->econ->n_regions) return false;

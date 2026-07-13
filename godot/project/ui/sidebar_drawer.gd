@@ -40,6 +40,9 @@ var _hover_zones := []         # [{rect, text}] survols (sprites de ressource �
 var _hover_text := ""
 var _hover_pos := Vector2.ZERO
 var _focus: Dictionary = {}       # contexte optionnel fourni par le routeur
+var _eco_sliders := []             # multiplicateurs fiscaux/dépenses du panneau Économie
+var _active_slider: Dictionary = {}
+var _slider_preview := {}          # clé -> valeur en attente du prochain drain moteur
 
 func setup(map) -> void:
 	_map = map
@@ -49,7 +52,9 @@ func _ready() -> void:
 	clip_contents = true   # SCROLL générique : le contenu défilé se coupe au bord du tiroir
 	_layout()
 	get_viewport().size_changed.connect(_layout)
-	Sim.ticked.connect(func(_y): if visible: queue_redraw())
+	Sim.ticked.connect(func(_y):
+		_slider_preview.clear()
+		if visible: queue_redraw())
 	hide()
 
 var _hmax := 600.0   ## hauteur MAX (viewport) — la hauteur réelle épouse le contenu (latch _draw)
@@ -316,6 +321,65 @@ func _res_cell(x: float, y: float, res_id: int, name: String, col: Color) -> voi
 const _MAT_RAWS := [9, 24, 25, 13, 36]   # RES_WOOD · RES_CLAY · RES_STONE · RES_IRON · RES_ARMS
 const _MAT_NAMES := {9: "bois", 24: "argile", 25: "pierre", 13: "fer", 36: "armes"}
 
+func _slider_key(data: Dictionary) -> String:
+	return "%s:%d:%d" % [String(data.get("kind", "eco")), int(data.get("family", -1)),
+		int(data.get("index", data.get("seat", -1)))]
+
+func _draw_multiplier_slider(x: float, y: float, label: String, current: float,
+		zones: Array, data: Dictionary, tip: String) -> float:
+	var key := _slider_key(data)
+	var value := float(_slider_preview.get(key, current))
+	value = clampf(value, 0.1, 2.0)
+	var row := Rect2(x - 3.0, y - 2.0, DW - 2.0 * x + 6.0, 22.0)
+	VKit.list_row_bg(self, row, zones.size())
+	VKit.text(self, Vector2(x + 4.0, y + 3.0), VKit.COL_PARCH, label, VKit.FS_SMALL)
+	var track := Rect2(x + 132.0, y + 5.0, 156.0, 8.0)
+	VKit.fill(self, track, Color(0.045, 0.05, 0.05, 1.0))
+	VKit.box(self, track.grow(1.0), VKit.COL_EDGE)
+	var frac := (value - 0.1) / 1.9
+	VKit.fill(self, Rect2(track.position, Vector2(track.size.x * frac, track.size.y)), VKit.COL_GOLD)
+	var kx := track.position.x + track.size.x * frac
+	draw_circle(Vector2(kx, track.get_center().y), 5.0, VKit.COL_PARCH)
+	var val := "×%.1f" % value
+	VKit.value(self, Vector2(x + 300.0, y + 2.0), val, VKit.FS_SMALL)
+	var z := data.duplicate(true)
+	z["rect"] = Rect2(track.position.x - 7.0, y - 1.0, track.size.x + 14.0, 20.0)
+	z["track"] = track
+	z["value"] = value
+	zones.append(z)
+	_hover_zones.append({"rect": row, "text": "%s\n• Plage : ×0,1 à ×2\n• Actuellement : %s" % [tip, val]})
+	return y + 24.0
+
+func _draw_budget_controls(x: float, y: float, me: int) -> float:
+	_eco_sliders.clear()
+	if not Sim.world.has_method("budget_controls"):
+		return y
+	var ctl: Dictionary = Sim.world.budget_controls(me)
+	y = VKit.section(self, x, y, "Pilotage budgétaire")
+	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Fiscalité par classe", VKit.FS_SMALL)
+	y += 18.0
+	for raw in ctl.get("taxes", []):
+		var row: Dictionary = raw
+		y = _draw_multiplier_slider(x, y, String(row.get("name", "Impôt")), float(row.get("mult", 1.0)),
+			_eco_sliders, {"kind": "eco", "family": 0, "index": int(row.get("id", 0))},
+			"Taux visé de cette classe. Monter accroît l'évasion et la grogne au-delà de sa tolérance.")
+	y += 3.0
+	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Dépenses", VKit.FS_SMALL)
+	y += 18.0
+	var spend_tips := [
+		"Réinjecte le trésor dans la richesse des classes et l'activité.",
+		"Finance l'infrastructure. Sous ×1, les bâtiments passent en friche.",
+		"Finance les soldes. Sous ×1, une part des hommes déserte.",
+		"Finance les coques. Sous ×1, leur délabrement s'accélère.",
+	]
+	for raw in ctl.get("spending", []):
+		var row: Dictionary = raw
+		var idx := int(row.get("id", 0))
+		y = _draw_multiplier_slider(x, y, String(row.get("name", "Dépense")), float(row.get("mult", 1.0)),
+			_eco_sliders, {"kind": "eco", "family": 1, "index": idx},
+			spend_tips[idx] if idx >= 0 and idx < spend_tips.size() else "Enveloppe budgétaire nationale.")
+	return y + 3.0
+
 func _draw_mat_line(x: float, y: float, me: int) -> float:
 	if not Sim.world.has_method("country_stocks"):
 		return y
@@ -340,6 +404,7 @@ func _draw_eco(x: float, y: float, me: int) -> float:
 	UIKit.draw_icon(self, "menu_economy", Vector2(x + 4, y + 3), 13)
 	VKit.text(self, Vector2(x + 24, y + 3), VKit.COL_GOLD, "Courbes dans le temps  ▸", VKit.FS_SMALL)
 	y += 28
+	y = _draw_budget_controls(x, y, me)
 	# — Trésor & budget de l'année (la décomposition du flux d'or) —
 	var b: Dictionary = Sim.world.budget_summary(me)
 	UIKit.draw_icon(self, "gold_coin", Vector2(x, y - 1), 16)
@@ -807,23 +872,11 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 				"text": "Loyauté %d/100 · cible actuelle %d/100 → +%.1f pts d'efficacité." % [
 					loyalty, loyalty_target, float(seat.get("eff_loyalty_points", 0.0))]})
 			y += 18
-			# le curseur de PAIE (0.5×/1×/1.5×/2×) — verbe CMD_COUNCIL_PAY, journalisé
+			# le curseur CONTINU de PAIE (×0,1..×2) — verbe CMD_COUNCIL_PAY, journalisé
 			var pay := float(seat.get("pay", 1.0))
-			VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, "Paie", VKit.FS_SMALL)
-			_hover_zones.append({"rect": Rect2(x + 14, y - 2, 40, 16),
-				"text": "Traitement ×%.1f · la loyauté converge actuellement vers %d/100." % [pay, int(seat.get("loyalty_target", loyalty))]})
-			var px := x + 60.0
-			for mult in [0.5, 1.0, 1.5, 2.0]:
-				var lab := "%.1f×" % mult
-				var lw := VKit.text_w(lab, VKit.FS_SMALL) + 10.0
-				var pr := Rect2(px, y - 1, lw, 16)
-				var on := absf(pay - mult) < 0.05
-				VKit.fill(self, pr, VKit.COL_PANEL2 if not on else VKit.sense(0.80))
-				VKit.box(self, pr, VKit.sense(0.80) if on else VKit.COL_EDGE)
-				VKit.text(self, Vector2(pr.position.x + 5, y), VKit.COL_PARCH if on else VKit.COL_DIM, lab, VKit.FS_SMALL)
-				_conseil_btns.append({"rect": pr, "act": "pay", "seat": idx, "slot": 0, "pay": mult})
-				px += lw + 4.0
-			y += 22
+			y = _draw_multiplier_slider(x + 12.0, y, "Paie", pay, _conseil_btns,
+				{"kind": "pay", "family": 2, "seat": idx, "act": "pay", "slot": 0},
+				"Traitement du conseiller. La paie déplace sa cible de loyauté et son coût annuel.")
 			# BONUS FINAL (rang × efficacité) — la DÉCOMPOSITION vit AU SURVOL, jamais à
 			# l'écran (retour joueur) ; membrane : « Administration », jamais « K ».
 			if seat.has("rank_bonus_pct"):
@@ -1610,7 +1663,7 @@ func _marche_act(act: String, res_id: int, me: int) -> void:
 	queue_redraw()
 
 ## Conseil : recruter (siège vacant, slot 0) / renvoyer (siège pourvu) / payer
-## (curseur 0.5×..2×, V2a) — verbes journalisés.
+## (curseur continu ×0,1..×2, V2a) — verbes journalisés.
 func _conseil_act(act: String, seat: int, slot: int, pay: float = 1.0) -> void:
 	var w = Sim.world
 	if w == null:
@@ -1629,7 +1682,40 @@ func _conseil_act(act: String, seat: int, slot: int, pay: float = 1.0) -> void:
 	_conseil_flash = ("⚑ %s — ordre émis" % label) if ok else ("✗ %s — refusé" % label)
 	queue_redraw()
 
+func _slider_value(data: Dictionary, mouse_x: float) -> float:
+	var track: Rect2 = data.get("track", Rect2())
+	if track.size.x <= 0.0:
+		return 1.0
+	var frac := clampf((mouse_x - track.position.x) / track.size.x, 0.0, 1.0)
+	return clampf(roundf((0.1 + frac * 1.9) * 10.0) / 10.0, 0.1, 2.0)
+
+func _apply_multiplier_slider(data: Dictionary, mouse_x: float) -> void:
+	var w = Sim.world
+	if w == null:
+		return
+	var value := _slider_value(data, mouse_x)
+	var key := _slider_key(data)
+	if absf(float(_slider_preview.get(key, -10.0)) - value) < 0.01:
+		return
+	var ok := false
+	if String(data.get("kind", "")) == "pay":
+		ok = bool(w.player_council_pay(int(data.get("seat", -1)), value))
+	elif w.has_method("player_budget_policy"):
+		ok = bool(w.player_budget_policy(int(data.get("family", -1)), int(data.get("index", -1)), value))
+	if ok:
+		_slider_preview[key] = value
+		Sim.notify_action()
+		queue_redraw()
+
 func _gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion and not _active_slider.is_empty() \
+		and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
+		_apply_multiplier_slider(_active_slider, event.position.x)
+		accept_event()
+		return
+	if event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_active_slider.clear()
+		return
 	# HOVER (Marché, LOT UI 2.3) : la ligne sous la souris — immédiat (pas de délai
 	# d'infobulle), c'est ce qui fait apparaître le NOM de la ressource.
 	if event is InputEventMouseMotion and _tab == 3:
@@ -1653,6 +1739,14 @@ func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.position.y < 36.0:
 			return   # en-tête fixe : jamais un clic vers un bouton DÉFILÉ dessous
+		var slider_zones: Array = _eco_sliders if _tab == 0 else (_conseil_btns if _tab == 7 and _conseil_tab == 0 else [])
+		for slider in slider_zones:
+			if slider.has("track") and (slider["rect"] as Rect2).has_point(event.position):
+				_active_slider = slider.duplicate(true)
+				_apply_multiplier_slider(_active_slider, event.position.x)
+				Sound.play("ui_click")
+				accept_event()
+				return
 		if _tab == 0 and _chart_btn.has_point(event.position):   # Économie → ouvre les courbes
 			charts_requested.emit()
 			accept_event()

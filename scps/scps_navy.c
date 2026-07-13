@@ -209,11 +209,14 @@ void navy_tick(NavyState *ns, const World *w, WorldEconomy *econ, struct DiploSt
             /* I9 — LA MARINE SE PAIE (le sink en OR ; les fournitures en biens restent) :
              * ~1.5 or/mois par coque × IPM. Impayé → la flotte affame (starve_days →
              * désarmement existant plus bas) — c'est le « désarme des coques » d'IG. */
-            { float gold = (float)hulls * tune_f("NAVY_UPKEEP_GOLD",1.5f)
-                         * econ_world_ipm(econ) * (at_war?1.5f:1.f) * (dt_days/30.f);
+            { float base_gold = (float)hulls * tune_f("NAVY_UPKEEP_GOLD",1.5f)
+                              * econ_world_ipm(econ) * (at_war?1.5f:1.f) * (dt_days/30.f);
+              float navy_mult = econ_country_budget_mult(econ,c,BUDGET_NAVY);
+              float gold = base_gold * navy_mult;
               /* RE-KEY : payé pour de VRAI (provinces) — la vue seule s'évaporait. */
               float paid = fminf(gold, fmaxf(0.f, re->treasury));
               if (paid < gold) n->starve_days += dt_days;
+              if (navy_mult < 0.999f) n->starve_days += (1.f-navy_mult)*dt_days;
               if (paid > 0.f) econ_region_treasury_add(econ, n->home_port, -paid);
               econ_flux_add(c, FX_NAVY, -paid); }            /* I0 : la ligne marine */
             float need=need_y*(dt_days/365.f);

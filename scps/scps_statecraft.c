@@ -267,6 +267,18 @@ void statecraft_council_dismiss(Statecraft *sc, uint32_t seed, int cid, int seat
     sc->loyalty[cid][seat]=0.f;      /* le siège est vacant : la loyauté n'a plus de sens (repose au prochain hire) */
     sc->pay[cid][seat]=1.f;
 }
+int statecraft_council_kill_all(Statecraft *sc, int cid){
+    if(!sc||cid<0||cid>=SCPS_MAX_COUNTRY)return 0;
+    int killed=0;
+    for(int seat=0;seat<SC_COUNCIL_SEATS;seat++){
+        if(sc->council[cid][seat]>=0)killed++;
+        sc->council[cid][seat]=-1;
+        sc->council_gen[cid][seat]=-1;
+        sc->loyalty[cid][seat]=0.f;
+        sc->pay[cid][seat]=0.f;
+    }
+    return killed;
+}
 /* LES ANNÉES PASSENT (annuel) : la retraite VIDE le siège — l'IA repourvoit au
  * mois suivant (statecraft_council_ai), le joueur par l'UI. */
 void statecraft_council_age_tick(Statecraft *sc, uint32_t seed, int year){
@@ -325,11 +337,11 @@ int statecraft_council_loyalty(const Statecraft *sc, int cid, int seat){
 float statecraft_council_pay(const Statecraft *sc, int cid, int seat){
     if (!sc||cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS) return 1.f;
     float p = sc->pay[cid][seat];
-    return (p>0.f) ? clampf(p, 0.f, 2.f) : 1.f;                            /* legacy (0 = jamais posé) → normal */
+    return (p>0.f) ? clampf(p, 0.1f, 2.f) : 1.f;                          /* 0 = jamais posé → normal */
 }
 void statecraft_council_set_pay(Statecraft *sc, int cid, int seat, float pay){
     if (!sc||cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS) return;
-    sc->pay[cid][seat] = clampf(pay, 0.f, 2.f);
+    sc->pay[cid][seat] = clampf(pay, 0.1f, 2.f);
 }
 /* P3 — écrivain DIRECT de loyauté (mission décennale : réussite/échec du siège
  * responsable). No-op si le siège est VACANT (personne à créditer/blâmer). */

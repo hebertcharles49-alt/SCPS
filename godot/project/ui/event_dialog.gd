@@ -2,9 +2,8 @@ extends Control
 ## EventDialog — LA MEMBRANE DE DÉCISION : un évènement à VRAIE décision (Marbrive…) qui
 ## concerne le joueur ATTEND ici son choix — l'IA ne tranche PAS à sa place (elle en aurait
 ## le pouvoir : les autres pays le font). Modal, met le jeu en PAUSE à l'ouverture (comme
-## event_popup.gd) ; plusieurs décisions en attente s'enchaînent une par une. Le survol
-## d'un bouton montre CE QUE RACONTE le choix (flavor) — jamais un nom SCPS, jamais un
-## nombre de coordonnée : la façade ne passe que des MOTS (scps_pending_event).
+## event_popup.gd) ; plusieurs décisions en attente s'enchaînent une par une. Chaque carte
+## montre directement action, flavor, deltas chiffrés et prix physique résolu par le moteur.
 ## Display-only : le clic ENFILE le choix (scps_player_event_choice, drain déterministe) ;
 ## zéro logique de sim ici.
 
@@ -12,8 +11,8 @@ const VKit = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const EventArt = preload("res://ui/event_art.gd")   ## illustrations par THÈME (réutilisées)
 
-const W := 460.0
-const BTN_H := 34.0
+const W := 600.0
+const BTN_H := 66.0
 const BTN_GAP := 8.0
 const BANNER_H := W / 4.0    ## bannière 4:1 (512×128 → 460×115), sous le bandeau-titre
 
@@ -59,10 +58,13 @@ func _open_slot(slot: int) -> void:
 	queue_redraw()
 
 func _body_lines(situation: String) -> PackedStringArray:
+	return _wrap_lines(situation, W - 40.0, VKit.FS_BIG)
+
+func _wrap_lines(text: String, max_width: float, font_size: int = VKit.FS_SMALL) -> PackedStringArray:
 	var out := PackedStringArray()
 	var line := ""
-	for word in situation.split(" "):
-		if VKit.text_w(line + " " + word, VKit.FS_BIG) > W - 40.0:
+	for word in text.split(" "):
+		if line != "" and VKit.text_w(line + " " + word, font_size) > max_width:
 			out.append(line); line = word
 		else:
 			line = word if line == "" else line + " " + word
@@ -70,15 +72,32 @@ func _body_lines(situation: String) -> PackedStringArray:
 		out.append(line)
 	return out
 
+func _option_height(i: int) -> float:
+	var blurbs: Array = _pending.get("blurbs", [])
+	var effets: Array = _pending.get("effets", [])
+	var flavors: Array = _pending.get("flavors", [])
+	var lines := 0
+	var advisors: Array = _pending.get("advisors", [])
+	if i < advisors.size() and String(advisors[i]) != "":
+		lines += 1
+	for source in [blurbs, effets, flavors]:
+		var txt := String(source[i]) if i < source.size() else ""
+		if txt != "":
+			lines += _wrap_lines(txt, W - 62.0, VKit.FS_SMALL).size()
+	return maxf(BTN_H, 34.0 + float(lines) * 15.0 + 8.0)
+
 func _height() -> float:
 	var n: int = int(_pending.get("n_options", 0))
 	var body_h: float = _body_lines(String(_pending.get("situation", ""))).size() * 22.0
-	return 78.0 + BANNER_H + 6.0 + body_h + 10.0 + n * (BTN_H + BTN_GAP) + 14.0
+	var choices_h := 0.0
+	for i in range(n):
+		choices_h += _option_height(i) + BTN_GAP
+	return 78.0 + BANNER_H + 6.0 + body_h + 10.0 + choices_h + 14.0
 
 func _center() -> void:
 	var vp := get_viewport_rect().size
 	size = Vector2(W, _height())
-	position = Vector2((vp.x - W) * 0.5, (vp.y - size.y) * 0.42)
+	position = Vector2((vp.x - W) * 0.5, maxf(8.0, (vp.y - size.y) * 0.42))
 	queue_redraw()
 
 func _draw() -> void:
@@ -108,23 +127,41 @@ func _draw() -> void:
 	# — LES CHOIX : label plein + liseré doré si survolé —
 	_btn_rects.clear()
 	var labels: Array = _pending.get("labels", [])
+	var blurbs: Array = _pending.get("blurbs", [])
+	var effets: Array = _pending.get("effets", [])
+	var flavors: Array = _pending.get("flavors", [])
+	var gold_delta: Array = _pending.get("gold_delta", [])
 	var n: int = int(_pending.get("n_options", 0))
 	for i in range(n):
-		var r := Rect2(18, y, W - 36.0, BTN_H)
+		var r := Rect2(18, y, W - 36.0, _option_height(i))
 		var hovered := (i == _hover_option)
 		VKit.fill(self, r, VKit.COL_PANEL2 if not hovered else VKit.COL_PANEL_HI)
 		VKit.box(self, r, VKit.COL_GOLD if hovered else VKit.COL_DIM)
 		var lbl := String(labels[i]) if i < labels.size() else "—"
-		VKit.text(self, Vector2(r.position.x + 12, r.position.y + 9), VKit.COL_PARCH, lbl)
+		VKit.text(self, Vector2(r.position.x + 12, r.position.y + 7), VKit.COL_PARCH, lbl)
+		# Prix physique résolu par le moteur au cours courant, toujours visible — 0 compris.
+		var gd := float(gold_delta[i]) if i < gold_delta.size() else 0.0
+		var price := "Gain %+d or" % int(round(gd)) if gd > 0.49 else ("Coût %d or" % int(round(-gd)) if gd < -0.49 else "Coût 0 or")
+		var pcol := VKit.sense(0.82 if gd >= 0.0 else 0.15)
+		VKit.text(self, Vector2(r.end.x - VKit.text_w(price, VKit.FS_SMALL) - 10, r.position.y + 9), pcol, price, VKit.FS_SMALL)
 		# — le VISAGE du choix : la faction qui le porte au conseil (aligné à droite, discret) —
 		var advisors: Array = _pending.get("advisors", [])
 		var adv := String(advisors[i]) if i < advisors.size() else ""
 		if adv != "":
 			var atxt := "— " + adv
 			VKit.text(self, Vector2(r.position.x + r.size.x - VKit.text_w(atxt, VKit.FS_SMALL) - 10,
-				r.position.y + 11), VKit.COL_DIM, atxt, VKit.FS_SMALL)
+				r.position.y + 25), VKit.COL_DIM, atxt, VKit.FS_SMALL)
+		var ty := r.position.y + 25.0 + (15.0 if adv != "" else 0.0)
+		for entry in [[blurbs, VKit.COL_PARCH], [effets, VKit.COL_GOLD], [flavors, VKit.COL_DIM]]:
+			var arr: Array = entry[0]
+			var txt := String(arr[i]) if i < arr.size() else ""
+			if txt == "":
+				continue
+			for line in _wrap_lines(txt, r.size.x - 24.0, VKit.FS_SMALL):
+				VKit.text(self, Vector2(r.position.x + 12, ty), entry[1], line, VKit.FS_SMALL)
+				ty += 15.0
 		_btn_rects.append([r, i])
-		y += BTN_H + BTN_GAP
+		y += r.size.y + BTN_GAP
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:

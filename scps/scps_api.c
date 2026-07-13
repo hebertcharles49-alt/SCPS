@@ -1972,6 +1972,11 @@ int scps_country_relations(ScpsSim *s, int me, ScpsRelation *out, int max){
     for(int c=0; c<s->w->n_countries && n<max; c++){
         if(c==me || s->w->country[c].role==POLITY_UNCLAIMED) continue;
         if(regions_of(s->sim.econ, c) <= 0) continue;   /* pays VIVANT seulement */
+        /* BROUILLARD DE GUERRE : un empire NON DÉCOUVERT n'existe pas pour le joueur — il ne
+         * doit PAS apparaître dans la liste diplo (miroir EXACT de scps_diplo_options, sinon le
+         * panneau montre des pays inconnus aux boutons morts, cf. diplo_audit opt-invalid). Un
+         * partenaire de guerre/alliance/pacte est forcément connu, donc conservé. */
+        if(!country_knows(me, c)) continue;
         DiploStatus st = diplo_status(s->sim.dp, me, c);
         const char *sw;
         if      (st==DIPLO_WAR)                       sw = "Guerre";
@@ -2035,6 +2040,10 @@ int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out){
     out->fabricating_days_left = (fst==FAB_MATURING) ? diplo_fab_days_left(d, p, t) : 0.f;
     out->cb_ready              = (fst==FAB_READY) ? 1:0;
     out->cb_ready_years_left   = (fst==FAB_READY) ? diplo_fab_days_left(d, p, t)/365.f : 0.f;
+    out->claim_region=(fst==FAB_NONE)?diplo_claim_region(s->w,s->sim.econ,d,p,t):diplo_fab_target_region(d,p,t);
+    out->claim_province=(out->claim_region>=0)?econ_region_rep_province(s->sim.econ,out->claim_region):-1;
+    out->claim_name=(out->claim_province>=0&&out->claim_province<s->w->n_provinces)
+                    ?sz(s->w->province[out->claim_province].name):sz("territoire inconnu");
     return 1;
 }
 
@@ -2183,6 +2192,44 @@ int scps_diplo_context(ScpsSim *s, int target, ScpsDiploContext *out){
         out->target_capital_name=sz(s->w->province[cp].name);
     }
     return 1;
+}
+
+int scps_peace_preview(ScpsSim *s,int target,ScpsPeacePreview *out){
+    if(!out)return 0;
+    memset(out,0,sizeof *out); out->target=target;
+    if(!s||!s->ready)return 0;
+    int p=(s->sim.human_player>=0)?s->sim.human_player:s->sim.player;
+    if(p<0||target<0||target>=s->w->n_countries||target==p||!country_knows(p,target))return 0;
+    out->valid=1;out->at_war=diplo_status(s->sim.dp,p,target)==DIPLO_WAR;
+    out->war_score=out->at_war?diplo_war_score(s->sim.dp,p,target):0.f;
+    out->revenue_year=econ_country_tax_year(target);
+    out->revenue_month=out->revenue_year/12.0;
+    out->gold_per_score=out->revenue_month*0.03;
+    out->gold_available=econ_country_gold(s->sim.econ,target);
+    out->gold_max=fmin(out->gold_available,out->gold_per_score*25.0);
+    out->vassal_score=diplo_country_value(s->sim.econ,target);
+    for(int r=0;r<s->sim.econ->n_regions;r++)if(s->sim.econ->region[r].owner==target)out->target_regions++;
+    int free_slots=SCPS_MAX_COUNTRY-s->w->n_countries;
+    for(int c=0;c<s->w->n_countries;c++)if(c!=target&&s->w->country[c].role==POLITY_UNCLAIMED&&regions_of(s->sim.econ,c)==0)free_slots++;
+    out->fragment_possible=(out->target_regions>=2&&free_slots>=out->target_regions-1)?1:0;
+    out->reparations_cost=10;out->humiliate_cost=20;out->pillage_cost=10;
+    out->liberate_cost=50;out->fragment_cost=100;
+    return 1;
+}
+
+int scps_peace_territories(ScpsSim *s,int target,ScpsPeaceTerritory *out,int max){
+    if(!s||!s->ready||!out||max<=0)return 0;
+    int p=(s->sim.human_player>=0)?s->sim.human_player:s->sim.player,n=0;
+    if(p<0||target<0||target>=s->w->n_countries||target==p||!country_knows(p,target))return 0;
+    for(int r=0;r<s->sim.econ->n_regions&&n<max;r++)if(s->sim.econ->region[r].owner==target){
+        int pr=econ_region_rep_province(s->sim.econ,r);
+        out[n].region=r;out[n].province=pr;
+        out[n].name=(pr>=0&&pr<s->w->n_provinces)?sz(s->w->province[pr].name):sz("Territoire");
+        out[n].score_cost=diplo_province_price(s->sim.econ,r);
+        out[n].occupied=(r<SCPS_MAX_REG&&s->sim.dp->occupier[r]==p)?1:0;
+        n++;
+    }
+    return n;
 }
 
 /* #26 — le RÉSUMÉ D'OPINION : ce que `country` pense du JOUEUR, décomposé (l'opinion
@@ -2860,6 +2907,15 @@ int scps_player_make_peace(ScpsSim *s, int target){
     PlayerCmd c = { CMD_MAKE_PEACE, { target, 0, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
+int scps_player_peace_offer(ScpsSim *s,int target,const int *regions,int n_regions,
+                            int gold_score,int flags){
+    if(!s||!s->ready||n_regions<0||n_regions>SCPS_PEACE_MAX_TERRITORIES||
+       gold_score<0||gold_score>25||(!regions&&n_regions>0))return 0;
+    PlayerCmd c={0}; c.verb=CMD_PEACE_OFFER;
+    c.a[0]=target;c.a[1]=flags;c.a[2]=gold_score;c.a[3]=n_regions;
+    for(int i=0;i<n_regions;i++)c.a[4+i]=regions[i];
+    return sim_cmd_push(&s->sim,c)?1:0;
+}
 int scps_player_offer_alliance(ScpsSim *s, int target){
     if (!s || !s->ready) return 0;
     PlayerCmd c = { CMD_OFFER_ALLIANCE, { target, 0, 0, 0 } };
@@ -3209,9 +3265,26 @@ int scps_player_council_dismiss(ScpsSim *s, int seat){
 /* V2a — le curseur de PAIE (0..2) : encodé ×100 pour tenir dans l'entier du journal. */
 int scps_player_council_pay(ScpsSim *s, int seat, float pay){
     if (!s || !s->ready) return 0;
-    if (pay<0.f) pay=0.f; else if (pay>2.f) pay=2.f;
+    if (pay<0.1f) pay=0.1f; else if (pay>2.f) pay=2.f;
     PlayerCmd c = { CMD_COUNCIL_PAY, { seat, (int32_t)(pay*100.f+0.5f), 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+double scps_country_budget_policy(ScpsSim *s, int country, int family, int index){
+    if (!s||!s->ready||country<0||country>=SCPS_MAX_COUNTRY) return 1.0;
+    if (family==0 && index>=0 && index<CLASS_COUNT)
+        return econ_country_tax_mult(s->sim.econ,country,(SocialClass)index);
+    if (family==1 && index>=0 && index<BUDGET_POLICY_COUNT)
+        return econ_country_budget_mult(s->sim.econ,country,(BudgetPolicy)index);
+    return 1.0;
+}
+int scps_player_budget_policy(ScpsSim *s, int family, int index, float mult){
+    if (!s||!s->ready) return 0;
+    if (family==0){ if(index<0||index>=CLASS_COUNT) return 0; }
+    else if (family==1){ if(index<0||index>=BUDGET_POLICY_COUNT) return 0; }
+    else return 0;
+    if (mult<0.1f) mult=0.1f; else if (mult>2.f) mult=2.f;
+    PlayerCmd c={CMD_BUDGET_POLICY,{family,index,(int32_t)(mult*100.f+0.5f),0}};
+    return sim_cmd_push(&s->sim,c)?1:0;
 }
 int scps_player_decree(ScpsSim *s, int id, int on){
     if (!s || !s->ready) return 0;
@@ -3554,7 +3627,31 @@ int scps_pending_event(ScpsSim *s, int slot, ScpsPendingEvent *out){
     out->days_left = (left>0) ? left : 0;
     for (int i=0;i<d->n_options && i<4;i++){
         out->labels[i]  = sz(d->options[i].label);
-        out->flavors[i] = sz(d->options[i].flavor);
+        out->blurbs[i]  = sz((d->options[i].blurb && d->options[i].blurb[0])
+                             ? d->options[i].blurb : d->options[i].label);
+        out->flavors[i] = sz((d->options[i].flavor && d->options[i].flavor[0])
+                             ? d->options[i].flavor : d->options[i].blurb);
+        /* PRIX PHYSIQUE : exactement la formule de resolve_treasury_mois(), évaluée
+         * maintenant avec l'assiette fiscale et l'IPM que le drain emploierait. */
+        { int region = (d->scope==EV_PROVINCE) ? pe.subject
+                       : (d->scope==EV_COUNTRY) ? world_capital_region(s->w,pe.subject) : -1;
+          int cid = (d->scope==EV_COUNTRY) ? pe.subject
+                    : (region>=0 && region<s->sim.econ->n_regions)
+                      ? s->sim.econ->region[region].owner : -1;
+          double proportional = (cid>=0)
+              ? (double)d->options[i].eff.d_treasury_mois
+                * ((double)econ_country_tax_year(cid)/12.0)
+                * (double)econ_world_ipm(s->sim.econ) : 0.0;
+          double fixed = (double)d->options[i].eff.d_treasury;
+          /* apply_region_eff clampe uniquement ce débit historique au liquide de la
+           * province porteuse ; le prix proportionnel, lui, peut réellement créer la dette. */
+          if (fixed<0.0 && region>=0){
+              int pid=econ_region_rep_province(s->sim.econ,region);
+              double have=(pid>=0 && pid<s->sim.econ->n_prov) ? s->sim.econ->prov[pid].treasury : 0.0;
+              if (have<0.0) have=0.0;
+              if (-fixed>have) fixed=-have;
+          }
+          out->gold_delta[i] = fixed + proportional; }
         /* le VISAGE du choix : la faction du hook parle au conseil (membrane : un mot) */
         int fac = d->options[i].hook.faction;
         out->advisors[i] = (fac>=0) ? sz(faction_name(fac)) : "";
@@ -3562,31 +3659,25 @@ int scps_pending_event(ScpsSim *s, int slot, ScpsPendingEvent *out){
          * signes pour les leviers abstraits, CHIFFRES pour le tangible (trésor, pop).
          * Buffers statiques par slot×option (l'hôte copie aussitôt — membrane). */
         {
-            static char eb[8][4][144];
+            static char eb[8][4][256];
             int si = (slot>=0 && slot<8) ? slot : 0;
             char *b = eb[si][i];
             const EvOption *o = &d->options[i];
             int pos = 0, first = 1;
-            #define EB_ADD(...) do{ if(pos < 144) \
-                pos += snprintf(b+pos, 144-pos, __VA_ARGS__); }while(0)
+            #define EB_ADD(...) do{ if(pos < 256) \
+                pos += snprintf(b+pos, 256-pos, __VA_ARGS__); }while(0)
             #define EB_SEP (first ? (first=0, "") : " · ")
-            if (o->eff.d_treasury_mois != 0.f)
-                EB_ADD("%strésor %+d %% du revenu mensuel", EB_SEP, (int)(o->eff.d_treasury_mois*100.f + (o->eff.d_treasury_mois>0?0.5f:-0.5f)));
-            if (o->eff.d_treasury != 0.f)
-                EB_ADD("%strésor %+d or", EB_SEP, (int)o->eff.d_treasury);
             if (o->eff.pop_mult != 0.f && o->eff.pop_mult != 1.f)
                 EB_ADD("%spopulation %+d %%", EB_SEP, (int)((o->eff.pop_mult-1.f)*100.f + (o->eff.pop_mult>1.f?0.5f:-0.5f)));
-            if (o->eff.d_L > 0.f)         EB_ADD("%slégitimité ↑", EB_SEP);
-            else if (o->eff.d_L < 0.f)    EB_ADD("%slégitimité ↓", EB_SEP);
-            if (o->eff.d_agitation > 0.f)      EB_ADD("%sagitation ↑", EB_SEP);
-            else if (o->eff.d_agitation < 0.f) EB_ADD("%sagitation ↓", EB_SEP);
-            if (o->eff.d_K_inst > 0.f)    EB_ADD("%sinstitutions ↑", EB_SEP);
-            if (o->eff.d_H_coerc > 0.f)   EB_ADD("%scoercition bâtie ↑", EB_SEP);
-            if (o->eff.d_food_cap > 0.f)       EB_ADD("%sfertilité ↑", EB_SEP);
-            else if (o->eff.d_food_cap < 0.f)  EB_ADD("%sfertilité ↓", EB_SEP);
-            if (o->eff.d_coercion > 0.f)  EB_ADD("%scoercition ↑", EB_SEP);
-            if (o->eff.d_influence > 0.f)      EB_ADD("%sinfluence ↑", EB_SEP);
-            else if (o->eff.d_influence < 0.f) EB_ADD("%sinfluence ↓", EB_SEP);
+            if (o->eff.d_L != 0.f)          EB_ADD("%slégitimité %+.1f", EB_SEP, o->eff.d_L);
+            if (o->eff.d_agitation != 0.f) EB_ADD("%sagitation %+.0f", EB_SEP, o->eff.d_agitation);
+            if (o->eff.d_K_inst != 0.f)    EB_ADD("%sinstitutions %+.1f", EB_SEP, o->eff.d_K_inst);
+            if (o->eff.d_H_coerc != 0.f)   EB_ADD("%sdéfense bâtie %+.1f", EB_SEP, o->eff.d_H_coerc);
+            if (o->eff.d_food_cap != 0.f)  EB_ADD("%sfertilité %+.1f", EB_SEP, o->eff.d_food_cap);
+            if (o->eff.d_coercion != 0.f)  EB_ADD("%scoercition %+.0f pts", EB_SEP, o->eff.d_coercion*100.f);
+            if (o->eff.d_influence != 0.f) EB_ADD("%sinfluence %+.0f", EB_SEP, o->eff.d_influence);
+            if (o->eff.d_C_global != 0.f)  EB_ADD("%sconnectivité %+.2f", EB_SEP, o->eff.d_C_global);
+            if (o->eff.d_breach != 0.f)    EB_ADD("%sBrèche %+.2f", EB_SEP, o->eff.d_breach);
             if (o->hook.scar_kind != 0)   EB_ADD("%scicatrice durable", EB_SEP);
             if (o->gamble_p > 0.f)        EB_ADD("%spari (%d %%)", EB_SEP, (int)(o->gamble_p*100.f+0.5f));
             #undef EB_SEP

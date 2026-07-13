@@ -309,15 +309,15 @@ static func header(ci: CanvasItem, w: float, title: String) -> Rect2:
 #    renvoie le nouveau y (GDScript n'a pas de int*). ─────────────────────────
 ## HEADER DE SECTION : bande graphite compacte, repère or à gauche, un seul filet.
 static func section(ci: CanvasItem, x: float, y: float, title: String) -> float:
-	y += 6
+	y += 3
 	var bw := 220.0
 	if ci is Control:
 		bw = maxf(80.0, (ci as Control).size.x - 2.0 * x)
-	fill(ci, Rect2(x - 4, y - 3, bw + 8, 20), Color(COL_PANEL2.r, COL_PANEL2.g, COL_PANEL2.b, 0.94))
-	fill(ci, Rect2(x - 4, y - 3, 3.0, 20), COL_GOLD)
-	fill(ci, Rect2(x - 1, y + 16, bw + 5, 1), COL_EDGE)
+	fill(ci, Rect2(x - 4, y - 2, bw + 8, 18), Color(COL_PANEL2.r, COL_PANEL2.g, COL_PANEL2.b, 0.94))
+	fill(ci, Rect2(x - 4, y - 2, 3.0, 18), COL_GOLD)
+	fill(ci, Rect2(x - 1, y + 15, bw + 5, 1), COL_EDGE)
 	text(ci, Vector2(x + 4, y), COL_GOLD, title.to_upper(), FS_SMALL)
-	return y + 24
+	return y + 21
 
 static func row(ci: CanvasItem, x: float, y: float, cat: String, word: String, wc: Color) -> float:
 	text(ci, Vector2(x, y), COL_DIM, cat)
@@ -325,8 +325,8 @@ static func row(ci: CanvasItem, x: float, y: float, cat: String, word: String, w
 	var rw := 220.0
 	if ci is Control:
 		rw = maxf(80.0, (ci as Control).size.x - 2.0 * x)
-	fill(ci, Rect2(x, y + 18.0, rw, 1.0), Color(COL_EDGE.r, COL_EDGE.g, COL_EDGE.b, 0.28))
-	return y + 20
+	fill(ci, Rect2(x, y + 16.0, rw, 1.0), Color(COL_EDGE.r, COL_EDGE.g, COL_EDGE.b, 0.28))
+	return y + 18
 
 ## Ligne de ledger : alternance à peine visible, séparateur bas et sélection à gauche.
 ## Les grandes listes gardent ainsi la densité d'EU4 sans devenir une soupe de texte.

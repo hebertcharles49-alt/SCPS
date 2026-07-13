@@ -281,6 +281,23 @@ int main(int argc, char **argv){
         ok("options diplo : aperçus de consentement ∈ {0,1} (l'opinion #26 prévisualisée)",
            (dop.would_accept_alliance|dop.would_accept_pact|dop.would_accept_migration|dop.would_accept_peace|
             dop.can_offer_alliance|dop.can_offer_pact|dop.can_offer_migration|dop.can_embargo|dop.can_lift_embargo) <= 1);
+        ok("revendication antagoniste : le territoire visé est nommé",
+           dop.claim_region>=0 && dop.claim_province>=0 && dop.claim_name && dop.claim_name[0]);
+        { ScpsPeacePreview pp; ScpsPeaceTerritory pt[SCPS_PEACE_TERRITORY_MAX];
+          int pv=scps_peace_preview(s2,tgt,&pp), nt=scps_peace_territories(s2,tgt,pt,SCPS_PEACE_TERRITORY_MAX);
+          ok("paix : score, revenu mensuel et conversion or physique traversent la façade",
+             pv==1 && pp.valid && pp.at_war && pp.revenue_month>=0.0 &&
+             fabs(pp.gold_per_score-pp.revenue_month*0.03)<0.001 && pp.gold_max<=pp.gold_available+0.001);
+          int rows_ok=(nt==pp.target_regions);
+          for(int i=0;i<nt;i++)rows_ok &= pt[i].region>=0 && pt[i].province>=0 && pt[i].name && pt[i].name[0] && pt[i].score_cost>0.f;
+          ok("paix : chaque territoire porte son nom, son occupation et son vrai prix", rows_ok);
+          ok("paix : coûts fixes et vasselage additif sont physiques",
+             pp.reparations_cost==10&&pp.humiliate_cost==20&&pp.pillage_cost==10&&
+             pp.liberate_cost==50&&pp.fragment_cost==100&&pp.vassal_score>0.f);
+          ScpsDiploOptions still_war;
+          ok("paix : une offre composée s'enfile sans mutation immédiate",
+             scps_player_peace_offer(s2,tgt,NULL,0,0,0)==1 &&
+             scps_diplo_options(s2,tgt,&still_war)==1 && still_war.can_make_peace); }
         { int legal_ok=gotd, reasons_ok=gotd;
           for(int a=0;a<SCPS_DIPLO_ACTION_COUNT && gotd;a++){
               ScpsActionLegal dl;
@@ -644,14 +661,16 @@ int main(int argc, char **argv){
         ScpsSim *sl=scps_sim_new();
         int rc=scps_sim_load(sl, 1);
         ok("chargement OK (rc=0)", rc==0);
-        ok("année + pop restaurées", scps_year(sl)==yr_before && scps_world_pop(sl)==pop_before);
-        ScpsCountryInfo after; scps_country_info(sl, scps_player(sl), &after);
+        ok("année + pop restaurées", rc==0 && scps_year(sl)==yr_before && scps_world_pop(sl)==pop_before);
+        ScpsCountryInfo after; memset(&after,0,sizeof after);
+        if (rc==0) scps_country_info(sl, scps_player(sl), &after);
         printf("   save/load : « %s » (an %d, %ld âmes) → « %s » (an %d, %ld âmes)\n",
                nom_before, yr_before, pop_before, after.nom, scps_year(sl), scps_world_pop(sl));
-        ok("culture du joueur CONSERVÉE (nom = épithète « Havre »)", strncmp(after.nom,"Havre",5)==0);
+        ok("culture du joueur CONSERVÉE (nom = épithète « Havre »)",
+           rc==0 && strncmp(after.nom,"Havre",5)==0);
         /* la partie chargée VIT (le build composé persiste via la section CULT) */
-        scps_sim_advance_days(sl, 365);
-        ok("la partie chargée AVANCE (an +1)", scps_year(sl)==yr_before+1);
+        if (rc==0) scps_sim_advance_days(sl, 365);
+        ok("la partie chargée AVANCE (an +1)", rc==0 && scps_year(sl)==yr_before+1);
         scps_clear_player_culture();
         scps_sim_free(sg); scps_sim_free(sl);
     }
@@ -807,6 +826,12 @@ int main(int argc, char **argv){
         if (n1>n0){
             ok("pending_event lit un slot VALIDE (situation résolue, une option ou plus)",
                scps_pending_event(sp, 0, &pe)==1 && pe.n_options>=1 && pe.situation[0]!='\0');
+            bool options_complete=true;
+            for (int i=0;i<pe.n_options;i++)
+                if (!pe.labels[i] || !pe.labels[i][0] || !pe.blurbs[i] || !pe.blurbs[i][0] ||
+                    !pe.flavors[i] || !pe.flavors[i][0] || !isfinite(pe.gold_delta[i]))
+                    options_complete=false;
+            ok("chaque option expose branchement, texte, flavor et prix physique fini", options_complete);
             ok("player_event_choice ENFILE le choix (mis en file)",
                scps_player_event_choice(sp, 0, 0)==1);
             char chosen[128];
@@ -1287,6 +1312,31 @@ int main(int argc, char **argv){
             ScpsCouncilSeat p2[3]; scps_country_council(sd, me, p2, 3);
             ok("le verbe de paie CLAMPE au drain (une valeur folle → 2.0, jamais un crash)",
                !p2[0].filled || p2[0].pay<=2.f);
+
+            /* Pilotage budgétaire : chaque curseur traverse le journal de commandes,
+             * se quantifie dans le moteur et reste lisible par la même membrane. */
+            ok("budget : valeurs neutres ×1 à la genèse",
+               fabs(scps_country_budget_policy(sd,me,0,CLASS_LABORER)-1.0)<0.01 &&
+               fabs(scps_country_budget_policy(sd,me,1,BUDGET_INVEST)-1.0)<0.01);
+            bool tax_cmd=scps_player_budget_policy(sd,0,CLASS_LABORER,0.1f)!=0;
+            bool inv_cmd=scps_player_budget_policy(sd,1,BUDGET_INVEST,1.7f)!=0;
+            scps_sim_advance_days(sd,1);
+            ok("budget : impôt Laboureurs et investissement sont enfilés",tax_cmd && inv_cmd);
+            ok("budget : les deux curseurs arrivent au moteur (×0.1 / ×1.7)",
+               fabs(scps_country_budget_policy(sd,me,0,CLASS_LABORER)-0.1)<0.01 &&
+               fabs(scps_country_budget_policy(sd,me,1,BUDGET_INVEST)-1.7)<0.01);
+            scps_player_budget_policy(sd,0,CLASS_LABORER,99.f);
+            scps_player_budget_policy(sd,1,BUDGET_INVEST,-4.f);
+            scps_sim_advance_days(sd,1);
+            ok("budget : valeurs folles clampées dans [×0.1, ×2]",
+               fabs(scps_country_budget_policy(sd,me,0,CLASS_LABORER)-2.0)<0.01 &&
+               fabs(scps_country_budget_policy(sd,me,1,BUDGET_INVEST)-0.1)<0.01);
+            ok("budget : familles/indices hors borne refusés",
+               scps_player_budget_policy(sd,9,0,1.f)==0 &&
+               scps_player_budget_policy(sd,0,99,1.f)==0);
+            scps_player_budget_policy(sd,0,CLASS_LABORER,1.f);
+            scps_player_budget_policy(sd,1,BUDGET_INVEST,1.f);
+            scps_sim_advance_days(sd,1);
 
             /* L'état de paire : borné aux 4 valeurs (0..3), lisible pour n'importe quels sièges. */
             int pst = scps_council_pair_state(sd, 0, 1);

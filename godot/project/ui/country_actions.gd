@@ -10,6 +10,8 @@ const VKit = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const InfoRef = preload("res://ui/info_ref.gd")
 const DrawerK = preload("res://ui/sidebar_drawer.gd")   # DACT_LABEL partagé (mémoire datée)
+const Frame = preload("res://ui/frame.gd")
+const OpinionBar = preload("res://ui/opinion_bar.gd")
 
 signal navigate_requested(request: Dictionary)
 
@@ -17,12 +19,14 @@ const PW := 380.0
 
 var _cid := -1
 var _btns := {}          ## verbe → Button
+var _action_details := {} ## verbe → Label toujours visible (verrou · coût · délai · conséquence)
 var _panel: PanelContainer
+var _scroll: ScrollContainer
 var _head: Label
 var _arms_rect: TextureRect   ## les ARMES du pays cible (héraldique dérivée)
 var _status: Label
-var _opinion_bar: Rect2
 var _opinion_course: Label   ## opinion actuelle → point d'équilibre calculé par ses composantes
+var _opinion_widget: Control
 var _sum_lbl: Label
 var _engagement_lbl: Label
 var _capital_btn: Button
@@ -32,19 +36,35 @@ var _cb_lbl: Label   ## W-GUERRE-3 : état de l'intrigue fabriquée (en cours / 
 var _context_hint: Label   ## rappel des panneaux où suivre les conséquences de la relation
 var _flash: Label
 var _legal_by_verb := {} ## verbe -> décision structurée du moteur (autorisé, raison, coût, délai)
+var _econ_box: VBoxContainer
+var _antag_box: VBoxContainer
+var _peace_box: VBoxContainer
+var _peace_open := false
+var _peace_preview := {}
+var _peace_selected := {}       ## region -> true
+var _peace_checks := {}         ## terme -> CheckButton
+var _peace_territory_box: VBoxContainer
+var _peace_gold: HSlider
+var _peace_gold_lbl: Label
+var _peace_total_lbl: Label
+var _peace_submit: Button
+
+const PEACE_FLAGS := {"reparations": 1, "humiliate": 2, "pillage": 4,
+	"liberate": 8, "vassalize": 16, "fragment": 32}
 
 # UI-4 (retour joueur 2026-07-10) : hiérarchie d'actions — Guerre est DESTRUCTIF (rouge
 # sombre + confirmation 2 clics, motif _servile_manumit_armed/province_panel _purge_armed) ;
 # Paix/Allier/Pacte/Migration/Embargo restent SECONDAIRES (thème neutre inchangé).
-const BTN_LABELS := {"war": "Guerre", "peace": "Paix", "ally": "Allier", "pact": "Pacte",
-	"migration": "Migration", "embargo": "Embargo"}
+const BTN_LABELS := {"war": "Déclarer la guerre", "peace": "Faire la paix", "ally": "Proposer une alliance", "pact": "Pacte commercial",
+	"migration": "Pacte migratoire", "embargo": "Embargo"}
 const ACTION_HELP := {
 	"war": "Déclare une guerre. La relation bascule immédiatement ; les opérations se suivent dans l'onglet Armée.",
-	"peace": "Propose une paix blanche. Le pays juge l'offre selon la guerre et son opinion.",
+	"peace": "Ouvre les conditions de paix : territoires, or, réparations, humiliation, pillage, libération, vasselage ou fragmentation.",
 	"ally": "Propose une alliance bilatérale. L'opinion décide de l'acceptation.",
 	"pact": "Propose un pacte commercial. Il ouvre les échanges et nourrit le contact entre les peuples.",
 	"migration": "Propose un pacte migratoire. Des populations pourront circuler entre les deux pays.",
 	"embargo": "Ferme ou rouvre unilatéralement le commerce avec ce pays ; l'opinion et les routes suivent.",
+	"fabricate": "Finance pendant un an une revendication sur le territoire nommé. À maturité, elle ouvre temporairement un casus belli.",
 }
 const DIPLO_ACTION_ID := {
 	"war": 0, "peace": 1, "ally": 2, "pact": 3,
@@ -84,9 +104,17 @@ func _build() -> void:
 	_panel.add_theme_stylebox_override("panel", sb)
 	add_child(_panel)
 
+	_scroll = ScrollContainer.new()
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_panel.add_child(_scroll)
+
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 8)
-	_panel.add_child(col)
+	col.add_theme_constant_override("separation", 4)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_scroll.add_child(col)
 
 	var hrow := HBoxContainer.new()
 	col.add_child(hrow)
@@ -109,22 +137,38 @@ func _build() -> void:
 		Sound.play("ui_parchment_close"))
 	hrow.add_child(closeb)
 
-	_status = Label.new()
-	_status.add_theme_color_override("font_color", Color(0.62, 0.60, 0.58))
-	col.add_child(_status)
+	var resume_head := Label.new()
+	resume_head.text = "RÉSUMÉ DU PAYS"
+	resume_head.add_theme_font_size_override("font_size", 12)
+	resume_head.add_theme_color_override("font_color", VKit.COL_GOLD)
+	col.add_child(resume_head)
+	_sum_lbl = Label.new()
+	_sum_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_sum_lbl.add_theme_font_size_override("font_size", 12)
+	_sum_lbl.add_theme_color_override("font_color", VKit.COL_PARCH)
+	col.add_child(_sum_lbl)
+
+	var opinion_head := Label.new()
+	opinion_head.text = "OPINION  −100 / +100"
+	opinion_head.add_theme_font_size_override("font_size", 12)
+	opinion_head.add_theme_color_override("font_color", VKit.COL_GOLD)
+	col.add_child(opinion_head)
+	_opinion_widget = OpinionBar.new()
+	col.add_child(_opinion_widget)
 
 	_opinion_course = Label.new()
 	_opinion_course.add_theme_font_size_override("font_size", 12)
 	_opinion_course.add_theme_color_override("font_color", VKit.COL_PARCH)
 	col.add_child(_opinion_course)
 
-	_sum_lbl = Label.new()
-	_sum_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_sum_lbl.custom_minimum_size = Vector2(PW - 40.0, 0)
-	_sum_lbl.add_theme_font_size_override("font_size", 12)
-	_sum_lbl.add_theme_color_override("font_color", Color(0.72, 0.70, 0.66))
-	col.add_child(_sum_lbl)
-
+	var status_head := Label.new()
+	status_head.text = "STATUT DIPLOMATIQUE"
+	status_head.add_theme_font_size_override("font_size", 12)
+	status_head.add_theme_color_override("font_color", VKit.COL_GOLD)
+	col.add_child(status_head)
+	_status = Label.new()
+	_status.add_theme_color_override("font_color", Color(0.75, 0.72, 0.68))
+	col.add_child(_status)
 	_engagement_lbl = Label.new()
 	_engagement_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_engagement_lbl.custom_minimum_size = Vector2(PW - 40.0, 0)
@@ -154,43 +198,47 @@ func _build() -> void:
 	_war_sb_press = _mkbox(Color(0.14, 0.04, 0.03), Color(0.46, 0.13, 0.10), 2, true)
 	_war_sb_armed = _mkbox(Color(0.48, 0.12, 0.09), Color(0.95, 0.36, 0.25), 2)
 
-	# RENDU EU4-LIKE (retour joueur 2026-07-11 « l'interface diplo doit avoir le rendu
-	# EU4-like ») : les verbes ne vivent plus dans une grille 3×2 mais dans une LISTE
-	# VERTICALE d'actions GROUPÉES (Guerre · Alliances · Commerce) — chaque action est
-	# une rangée PLEINE LARGEUR alignée à gauche, sous un en-tête de section or, façon
-	# panneau d'interactions d'EU4. Toute la logique (_refresh : grisé/ambre/confirmation
-	# de guerre, _act) est INCHANGÉE — seule la disposition change.
-	var groups := [
-		["Guerre & revendication", [["war", "⚔ Guerre"], ["fabricate", "Fabriquer une revendication"], ["peace", "Paix"]]],
-		["Alliances & pactes", [["ally", "Alliance"], ["pact", "Pacte commercial"]]],
-		["Commerce & migration", [["migration", "Pacte migratoire"], ["embargo", "Embargo"]]],
-	]
-	for grp in groups:
-		var sl := Label.new()
-		sl.text = String(grp[0]).to_upper()
-		sl.add_theme_font_size_override("font_size", 12)
-		sl.add_theme_color_override("font_color", VKit.COL_GOLD)
-		col.add_child(sl)
-		for v in grp[1]:
-			var verb: String = v[0]
-			var b := Button.new()
-			b.text = v[1]
-			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			b.custom_minimum_size = Vector2(0, 32)   # rangée pleine largeur, cible ≥32 px
-			if verb == "war":
-				# DESTRUCTIF : rouge sombre + CONFIRMATION 2 clics (motif _servile_manumit_armed/
-				# province_panel._purge_armed) — jamais exécuté directement au 1er clic.
-				b.add_theme_stylebox_override("normal", _war_sb_idle)
-				b.add_theme_stylebox_override("hover", _war_sb_hover)
-				b.add_theme_stylebox_override("pressed", _war_sb_press)
-				b.add_theme_color_override("font_color", Color(0.94, 0.82, 0.78))
-				b.add_theme_color_override("font_hover_color", Color(1.0, 0.90, 0.86))
-				b.pressed.connect(func(): _war_press())
-			else:
-				b.pressed.connect(func(): _act(verb))
-			col.add_child(b)
-			_btns[verb] = b
+	var actions_head := Label.new()
+	actions_head.text = "ACTIONS DIPLOMATIQUES"
+	actions_head.add_theme_font_size_override("font_size", 12)
+	actions_head.add_theme_color_override("font_color", VKit.COL_GOLD)
+	col.add_child(actions_head)
+	_add_action(col, "ally", "Proposer une alliance")
+	_add_action(col, "war", "⚔ Déclarer la guerre")
+	_add_action(col, "peace", "Faire la paix", func(): _toggle_peace())
+	_peace_box = VBoxContainer.new()
+	_peace_box.add_theme_constant_override("separation", 3)
+	_peace_box.visible = false
+	col.add_child(_peace_box)
+	_build_peace_drawer()
+
+	var eco_toggle := Button.new()
+	eco_toggle.text = "▸ ACTIONS ÉCONOMIQUES"
+	eco_toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	col.add_child(eco_toggle)
+	_econ_box = VBoxContainer.new()
+	_econ_box.add_theme_constant_override("separation", 3)
+	_econ_box.visible = false
+	col.add_child(_econ_box)
+	_add_action(_econ_box, "migration", "Pacte migratoire")
+	_add_action(_econ_box, "pact", "Pacte commercial")
+	eco_toggle.pressed.connect(func():
+		_econ_box.visible = not _econ_box.visible
+		eco_toggle.text = ("▾" if _econ_box.visible else "▸") + " ACTIONS ÉCONOMIQUES")
+
+	var antag_toggle := Button.new()
+	antag_toggle.text = "▸ ACTIONS ANTAGONISTES"
+	antag_toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	col.add_child(antag_toggle)
+	_antag_box = VBoxContainer.new()
+	_antag_box.add_theme_constant_override("separation", 3)
+	_antag_box.visible = false
+	col.add_child(_antag_box)
+	_add_action(_antag_box, "fabricate", "Revendiquer un territoire")
+	_add_action(_antag_box, "embargo", "Embargo")
+	antag_toggle.pressed.connect(func():
+		_antag_box.visible = not _antag_box.visible
+		antag_toggle.text = ("▾" if _antag_box.visible else "▸") + " ACTIONS ANTAGONISTES")
 
 	_context_hint = Label.new()
 	_context_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -202,6 +250,177 @@ func _build() -> void:
 	_flash.add_theme_color_override("font_color", Color(0.46, 0.74, 0.42))
 	col.add_child(_flash)
 	_layout()
+
+func _add_action(parent: VBoxContainer, verb: String, label: String, custom_press: Callable = Callable()) -> void:
+	var b := Button.new()
+	b.text = label
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.custom_minimum_size = Vector2(0, 32)
+	if verb == "war":
+		b.add_theme_stylebox_override("normal", _war_sb_idle)
+		b.add_theme_stylebox_override("hover", _war_sb_hover)
+		b.add_theme_stylebox_override("pressed", _war_sb_press)
+		b.add_theme_color_override("font_color", Color(0.94, 0.82, 0.78))
+		b.pressed.connect(func(): _war_press())
+	elif custom_press.is_valid():
+		b.pressed.connect(custom_press)
+	else:
+		b.pressed.connect(func(): _act(verb))
+	parent.add_child(b)
+	_btns[verb] = b
+	var detail := Label.new()
+	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	detail.add_theme_font_size_override("font_size", 11)
+	detail.add_theme_color_override("font_color", VKit.COL_DIM)
+	parent.add_child(detail)
+	_action_details[verb] = detail
+
+func _build_peace_drawer() -> void:
+	var title := Label.new()
+	title.text = "CONDITIONS DE PAIX"
+	title.add_theme_color_override("font_color", VKit.COL_GOLD)
+	_peace_box.add_child(title)
+	_peace_territory_box = VBoxContainer.new()
+	_peace_territory_box.add_theme_constant_override("separation", 2)
+	_peace_box.add_child(_peace_territory_box)
+	var gold_title := Label.new()
+	gold_title.text = "Or à prendre — 1 score = 3 % du revenu mensuel"
+	gold_title.add_theme_font_size_override("font_size", 11)
+	gold_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_peace_box.add_child(gold_title)
+	_peace_gold = HSlider.new()
+	_peace_gold.min_value = 0
+	_peace_gold.max_value = 25
+	_peace_gold.step = 1
+	_peace_gold.value_changed.connect(func(_v): _peace_update_total())
+	_peace_box.add_child(_peace_gold)
+	_peace_gold_lbl = Label.new()
+	_peace_gold_lbl.add_theme_font_size_override("font_size", 11)
+	_peace_box.add_child(_peace_gold_lbl)
+	var terms := [
+		["reparations", "Réparations de guerre — 10 score", "10 % du revenu mensuel pendant 10 ans"],
+		["humiliate", "Humilier — 20 score", "Tous les conseillers en fonction meurent"],
+		["pillage", "Piller — 10 score", "5 % de chaque stock national est transféré"],
+		["liberate", "Libérer — 50 score", "L'éthos de tout le pays devient le vôtre"],
+		["vassalize", "Vassaliser", "Coût additif de toutes les provinces restantes"],
+		["fragment", "Fragmenter — 100 score", "Chaque région devient une entité indépendante"],
+	]
+	for row in terms:
+		var cb := CheckButton.new()
+		cb.text = row[1]
+		cb.toggled.connect(func(_on): _peace_update_total())
+		_peace_box.add_child(cb)
+		_peace_checks[row[0]] = cb
+		var why := Label.new()
+		why.text = row[2]
+		why.add_theme_font_size_override("font_size", 11)
+		why.add_theme_color_override("font_color", VKit.COL_DIM)
+		why.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_peace_box.add_child(why)
+	_peace_total_lbl = Label.new()
+	_peace_total_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_peace_total_lbl.add_theme_color_override("font_color", VKit.COL_GOLD)
+	_peace_box.add_child(_peace_total_lbl)
+	_peace_submit = Button.new()
+	_peace_submit.text = "Envoyer les conditions"
+	_peace_submit.pressed.connect(func(): _submit_peace())
+	_peace_box.add_child(_peace_submit)
+
+func _toggle_peace() -> void:
+	if _btns.get("peace") == null or (_btns["peace"] as Button).disabled:
+		return
+	_peace_open = not _peace_open
+	_peace_box.visible = _peace_open
+	if _peace_open:
+		_peace_selected.clear()
+		_peace_gold.value = 0
+		for cb in _peace_checks.values():
+			(cb as CheckButton).button_pressed = false
+		_refresh()
+
+func _peace_refresh() -> void:
+	if not _peace_open or Sim.world == null:
+		return
+	_peace_preview = Sim.world.peace_terms(_cid) if Sim.world.has_method("peace_terms") else {}
+	_rebuild_peace_territories()
+	var per := float(_peace_preview.get("gold_per_score", 0.0))
+	var have := float(_peace_preview.get("gold_available", 0.0))
+	_peace_gold.max_value = minf(25.0, floorf(have / per)) if per > 0.0 else 0.0
+	_peace_gold.value = minf(_peace_gold.value, _peace_gold.max_value)
+	var vcost := float(_peace_preview.get("vassal_score", 0.0))
+	(_peace_checks["vassalize"] as CheckButton).text = "Vassaliser — %.1f score" % vcost
+	var frag: CheckButton = _peace_checks["fragment"]
+	frag.disabled = not bool(_peace_preview.get("fragment_possible", false))
+	frag.tooltip_text = "Aucun emplacement de pays disponible" if frag.disabled else "Divise le pays en États d'une région."
+	if frag.disabled:
+		frag.button_pressed = false
+	_peace_update_total()
+
+func _rebuild_peace_territories() -> void:
+	for child in _peace_territory_box.get_children():
+		child.queue_free()
+	var head := Label.new()
+	head.text = "PRENDRE DES TERRITOIRES"
+	head.add_theme_font_size_override("font_size", 11)
+	head.add_theme_color_override("font_color", VKit.COL_GOLD)
+	_peace_territory_box.add_child(head)
+	var still := {}
+	for tr in _peace_preview.get("territories", []):
+		var region := int(tr.get("region", -1))
+		var occupied := bool(tr.get("occupied", false))
+		var cb := CheckButton.new()
+		cb.text = "%s — %.1f score%s" % [String(tr.get("name", "Territoire")),
+			float(tr.get("score_cost", 0.0)), "" if occupied else " — non occupé"]
+		cb.disabled = not occupied
+		cb.button_pressed = occupied and bool(_peace_selected.get(region, false))
+		cb.toggled.connect(func(on: bool):
+			if on: _peace_selected[region] = true
+			else: _peace_selected.erase(region)
+			_peace_update_total())
+		_peace_territory_box.add_child(cb)
+		if cb.button_pressed: still[region] = true
+	_peace_selected = still
+
+func _peace_cost() -> float:
+	var total := float(_peace_gold.value)
+	for tr in _peace_preview.get("territories", []):
+		if _peace_selected.has(int(tr.get("region", -1))):
+			total += float(tr.get("score_cost", 0.0))
+	if (_peace_checks["reparations"] as CheckButton).button_pressed: total += 10.0
+	if (_peace_checks["humiliate"] as CheckButton).button_pressed: total += 20.0
+	if (_peace_checks["pillage"] as CheckButton).button_pressed: total += 10.0
+	if (_peace_checks["liberate"] as CheckButton).button_pressed: total += 50.0
+	if (_peace_checks["vassalize"] as CheckButton).button_pressed: total += float(_peace_preview.get("vassal_score", 0.0))
+	if (_peace_checks["fragment"] as CheckButton).button_pressed: total += 100.0
+	return total
+
+func _peace_update_total() -> void:
+	if _peace_total_lbl == null:
+		return
+	var gold_score := int(round(_peace_gold.value))
+	var gold := minf(float(_peace_preview.get("gold_available", 0.0)),
+		float(gold_score) * float(_peace_preview.get("gold_per_score", 0.0)))
+	_peace_gold_lbl.text = "%d score → %.2f or physique" % [gold_score, gold]
+	var total := _peace_cost()
+	var available := maxf(0.0, float(_peace_preview.get("war_score", 0.0)))
+	var cd := int(Sim.world.diplo_cd()) if Sim.world != null and Sim.world.has_method("diplo_cd") else 0
+	_peace_total_lbl.text = "Coût total %.1f / %.1f score disponible" % [total, available]
+	_peace_total_lbl.add_theme_color_override("font_color", VKit.sense(0.80) if total <= available else VKit.sense(0.15))
+	_peace_submit.disabled = total > available + 0.01 or cd > 0
+	_peace_submit.tooltip_text = ("Émissaire disponible dans %d j" % cd) if cd > 0 else ("Score de guerre insuffisant" if total > available else "Conditions exécutées au prochain tick si elles restent valides.")
+
+func _submit_peace() -> void:
+	var regs := PackedInt32Array()
+	var keys := _peace_selected.keys()
+	keys.sort()
+	for r in keys: regs.append(int(r))
+	var flags := 0
+	for key in PEACE_FLAGS:
+		if (_peace_checks[key] as CheckButton).button_pressed: flags |= int(PEACE_FLAGS[key])
+	var ok := bool(Sim.world.player_peace_offer(_cid, regs, int(round(_peace_gold.value)), flags))
+	_flash.text = "Conditions de paix envoyées." if ok else "Offre de paix refusée à l'enfilement."
+	_flash.add_theme_color_override("font_color", VKit.sense(0.80) if ok else VKit.sense(0.15))
 
 ## petit StyleBoxFlat cuir/bordure (miroir ui_theme._box, dupliqué ici : country_actions
 ## n'a pas licence d'éditer ui_theme.gd, et une couleur DESTRUCTIVE n'a pas sa place dans
@@ -232,8 +451,12 @@ func _war_press() -> void:
 func _layout() -> void:
 	var vp := get_viewport_rect().size
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_panel.custom_minimum_size = Vector2(clampf(vp.x * 0.24, PW, 520.0), 0)
-	_panel.position = Vector2((vp.x - _panel.custom_minimum_size.x) * 0.5, vp.y * 0.20)
+	var drawer_w := clampf(vp.x * 0.28, 420.0, 540.0)
+	# TIROIR DIPLOMATIQUE : attaché au rail gauche, pleine hauteur et défilable. Il ne
+	# flotte plus devant le ledger droit et laisse le théâtre central disponible.
+	_panel.custom_minimum_size = Vector2(drawer_w, 0)
+	_panel.position = Vector2(Frame.SIDEBAR_W, Frame.TOPBAR_H)
+	_panel.size = Vector2(drawer_w, maxf(160.0, vp.y - Frame.TOPBAR_H))
 
 func open_country(cid: int) -> void:
 	if Sim.world == null or cid < 0 or cid == int(Sim.world.player()):
@@ -241,6 +464,10 @@ func open_country(cid: int) -> void:
 	# BROUILLARD : un pays jamais découvert ne se laisse pas approcher (retour joueur)
 	if Sim.world.has_method("country_known") and int(Sim.world.country_known(cid)) == 0:
 		return
+	if _cid != cid:
+		_peace_open = false
+		_peace_selected.clear()
+		if _peace_box != null: _peace_box.visible = false
 	_cid = cid
 	visible = true
 	Sound.play("ui_parchment_open")
@@ -254,7 +481,12 @@ func _refresh() -> void:
 	var w = Sim.world
 	if w == null or _cid < 0:
 		return
-	_head.text = String(w.country_info(_cid).get("nom", "?"))
+	var info: Dictionary = w.country_info(_cid)
+	_head.text = String(info.get("nom", "?"))
+	var roles := {0: "Royaume joueur", 1: "Grande puissance", 2: "Cité-État", 3: "Terre sans État", 4: "Peuple libre"}
+	_sum_lbl.text = "Habitants : %s\nÉthos / régime effectif : %s\nStatut politique : %s · %d territoire(s)" % [
+		str(int(info.get("pop", 0))), String(info.get("ethos", "—")),
+		String(roles.get(int(w.country_role(_cid)), "Entité politique")), int(info.get("regions", 0))]
 	# la relation vue du joueur : statut + opinion (ce que LUI pense de NOUS)
 	var rel := {}
 	for rl in w.country_relations(w.player()):
@@ -262,7 +494,7 @@ func _refresh() -> void:
 			rel = rl
 			break
 	var op := int(rel.get("opinion", 0))
-	_status.text = "Statut : %s · Opinion : %+d" % [String(rel.get("status", "—")), op]
+	_status.text = "Statut : %s" % String(rel.get("status", "—"))
 	# le RÉSUMÉ : composantes d'opinion + les 3 derniers actes (la mémoire)
 	var parts := PackedStringArray()
 	var opinion_target := 0
@@ -278,7 +510,8 @@ func _refresh() -> void:
 	var drift := opinion_target - op
 	var arrow := "→" if drift == 0 else ("↗" if drift > 0 else "↘")
 	var course := "stable" if drift == 0 else ("se réchauffe" if drift > 0 else "se dégrade")
-	_opinion_course.text = "Opinion actuelle %+d  %s  équilibre %+d · %s" % [op, arrow, opinion_target, course]
+	_opinion_widget.set_values(op, opinion_target)
+	_opinion_course.text = "Tendance %s  ·  %s" % [arrow, course]
 	_opinion_course.add_theme_color_override("font_color",
 		VKit.COL_DIM if drift == 0 else (VKit.sense(0.80) if drift > 0 else VKit.sense(0.15)))
 	var mem := PackedStringArray()
@@ -294,8 +527,10 @@ func _refresh() -> void:
 			var by_us: bool = int(a.get("a", -1)) == me2
 			mem.append("an %d · %s" % [int(a.get("year", 0)), String(lab[1] if by_us else lab[0])])
 			nj += 1
-	_sum_lbl.text = ("Pourquoi : " + ", ".join(parts) + "\n" if parts.size() > 0 else "") \
-		+ ("Mémoire : " + " — ".join(mem) if mem.size() > 0 else "Mémoire : aucun acte notable")
+	if parts.size() > 0:
+		_opinion_course.text += "\nFacteurs : " + ", ".join(parts)
+	if mem.size() > 0:
+		_opinion_course.text += "\nMémoire : " + " — ".join(mem)
 	# P8 — engagements, portée et lieux viennent d'un lecteur unique. La fiche ne
 	# reconstitue ni pacte, ni slots d'alliance, ni liaison commerciale.
 	var ctx: Dictionary = w.diplo_context(_cid) if w.has_method("diplo_context") else {}
@@ -326,7 +561,7 @@ func _refresh() -> void:
 			int(ctx.get("open_routes", 0)), shared, float(ctx.get("route_yield", 0.0))]
 		if bool(ctx.get("route_maritime", false)):
 			route += " · mer %.0f j" % float(ctx.get("route_sea_days", 0.0))
-	_engagement_lbl.text = "Engagements : %s\nPortée : %s\nLiaison : %s" % [", ".join(engagements), scope, route]
+	_engagement_lbl.text = "En cours : %s\n%s\n%s" % [", ".join(engagements), scope, route]
 	_capital_region = int(ctx.get("target_capital_region", -1))
 	var capital_name := String(ctx.get("target_capital_name", ""))
 	_capital_btn.text = "⌖ Voir la capitale%s" % (" — " + capital_name if capital_name != "" else "")
@@ -386,33 +621,48 @@ func _refresh() -> void:
 			b.tooltip_text = "il refusera (opinion trop basse)"
 		else:
 			b.tooltip_text = String(ACTION_HELP.get(verb, ""))
+		_update_action_detail(verb, legal, amber)
 	# W-GUERRE-3 — LE CASUS BELLI FABRIQUÉ : « Guerre » reste grisé sans motif gratuit NI
 	# intrigue mûre (can_declare_war le dit déjà côté moteur) ; « Fabriquer » porte l'état
 	# de l'intrigue en cours/mûre/coût — un bouton de CORRUPTION, distinct de la déclaration.
 	var fabricating: bool = bool(op2.get("fabricating", false))
 	var cb_ready: bool = bool(op2.get("cb_ready", false))
 	var cost := float(op2.get("fabricate_cost", 0.0))
+	var claim_name := String(op2.get("claim_name", "territoire inconnu"))
 	var fab_btn: Button = _btns.get("fabricate")
 	if fab_btn != null:
 		var fab_legal: Dictionary = _legal_by_verb.get("fabricate", {})
 		if fabricating:
 			var dleft := int(ceili(float(op2.get("fabricating_days_left", 0.0))))
-			fab_btn.text = "Intrigue en cours (%d j)" % dleft
+			fab_btn.text = "Revendication sur %s — %d j" % [claim_name, dleft]
 			fab_btn.disabled = true
 		elif cb_ready:
 			var yleft := float(op2.get("cb_ready_years_left", 0.0))
-			fab_btn.text = "Revendication prête (expire dans %.1f an)" % yleft
+			fab_btn.text = "%s revendiquée — expire dans %.1f an" % [claim_name, yleft]
 			fab_btn.disabled = true   # rien à refaire tant qu'elle est valide — déclarez la guerre
 		else:
-			fab_btn.text = "Fabriquer une revendication (%d or)" % int(round(cost))
+			fab_btn.text = "Revendiquer %s — %d or" % [claim_name, int(round(cost))]
 			fab_btn.disabled = not bool(fab_legal.get("allowed", false))
-		fab_btn.tooltip_text = _legal_tooltip(fab_legal, "Lance une intrigue qui produira un casus belli temporaire.")
+			fab_btn.tooltip_text = _legal_tooltip(fab_legal, "Lance une intrigue qui produira un casus belli temporaire.")
+		_update_action_detail("fabricate", fab_legal, false)
 	if fabricating:
 		_cb_lbl.text = "Une intrigue mûrit contre ce pays."
 	elif cb_ready:
 		_cb_lbl.text = "Une revendication est prête : déclarez la guerre avant qu'elle ne s'évente."
 	else:
 		_cb_lbl.text = ""
+	# « Faire la paix » est un TIROIR : il reste accessible pendant la guerre même si
+	# l'émissaire est occupé (le bouton d'envoi, lui, porte le cooldown). En paix il
+	# est toujours visible et franchement grisé.
+	var peace_btn: Button = _btns.get("peace")
+	if peace_btn != null:
+		peace_btn.disabled = not bool(ctx.get("at_war", false))
+		peace_btn.text = ("▾ " if _peace_open else "▸ ") + "Faire la paix"
+		if peace_btn.disabled:
+			peace_btn.tooltip_text = "Indisponible en temps de paix"
+			_peace_open = false
+			_peace_box.visible = false
+	_peace_refresh()
 
 func _act(verb: String) -> void:
 	var w = Sim.world
@@ -487,3 +737,39 @@ func _legal_tooltip(legal: Dictionary, help: String) -> String:
 	if missing > 0.0:
 		txt += " · manque %.0f or" % missing
 	return txt
+
+## Une action ne se comprend jamais au survol seulement : cette ligne reste affichée
+## sous le verbe, disponible ou non, avec la conséquence et les nombres du moteur.
+func _update_action_detail(verb: String, legal: Dictionary, amber: bool) -> void:
+	var lbl: Label = _action_details.get(verb)
+	if lbl == null:
+		return
+	var allowed := bool(legal.get("allowed", false))
+	var unilateral := bool(legal.get("unilateral", true))
+	var would_accept := bool(legal.get("would_accept", true))
+	var state := "Disponible"
+	var col := VKit.sense(0.80)
+	if not allowed:
+		state = "Indisponible — %s" % String(legal.get("reason_label", "verrou inconnu"))
+		col = VKit.sense(0.15)
+	elif amber or (not unilateral and not would_accept):
+		state = "Offre légale — refus probable"
+		col = Color(0.95, 0.70, 0.28)
+	elif unilateral:
+		state = "Disponible — décision unilatérale"
+	else:
+		state = "Disponible — acceptation probable"
+	var facts := PackedStringArray()
+	var cost := float(legal.get("cost_gold", 0.0))
+	var missing := float(legal.get("gold_missing", 0.0))
+	var days := int(legal.get("duration_days", 0))
+	if cost > 0.0:
+		facts.append("%.0f or" % cost)
+	if missing > 0.0:
+		facts.append("manque %.0f or" % missing)
+	if days > 0:
+		facts.append("%d j" % days)
+	var consequence := String(ACTION_HELP.get(verb, ""))
+	lbl.text = state + ((" · " + " · ".join(facts)) if not facts.is_empty() else "") \
+		+ (("\n" + consequence) if consequence != "" else "")
+	lbl.add_theme_color_override("font_color", col)

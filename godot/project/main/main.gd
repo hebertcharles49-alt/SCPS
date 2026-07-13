@@ -195,6 +195,7 @@ func _ready() -> void:
 		_nav.go(request))
 	map.country_context.connect(func(owner):
 		if Sim.game_on and owner != Sim.world.player():
+			_sidebar.close()
 			navigate_to(InfoRef.make(InfoRef.COUNTRY, owner), "actions"))
 	_sidebar.open_country.connect(func(cid):
 		_sidebar.close()
@@ -281,6 +282,10 @@ func _ready() -> void:
 	var alerts = load("res://ui/alerts.gd").new()
 	alerts.name = "Alerts"
 	ui.add_child(alerts)
+	# Les alertes ne flottent plus sur la carte : le ledger droit les rend en liste,
+	# tandis que ce nœud conserve leur collecte et leurs actions.
+	alerts.set_ledger_mode(true)
+	esb.set_alert_source(alerts)
 	# AUDIT UI 1.4 : alerts n'a pas de référence à Main → un Callable lu chaque frame
 	# (major_open() n'existe qu'ICI, sur Main, où vivent tous les panneaux majeurs).
 	alerts.major_open_fn = Callable(self, "major_open")
@@ -307,6 +312,8 @@ func _ready() -> void:
 			navigate_to(InfoRef.make(InfoRef.REGION, r), "map")
 	alerts.goto_region.connect(goto_fn)
 	esb.goto_region.connect(goto_fn)
+	esb.open_country.connect(func(cid):
+		navigate_to(InfoRef.make(InfoRef.COUNTRY, cid), "actions"))
 
 	# OYEZ OYEZ : le popup d'évènement (directeur + alertes majeures) — PAUSE + boutons
 	# adaptatifs ; les kinds majeurs du fil y sont ROUTÉS par alerts (popup_requested).

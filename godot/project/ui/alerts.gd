@@ -1,6 +1,6 @@
 extends Control
-## ALERTES (façon EU4/CK3) — la pile des « ÉLÉMENTS EN ATTENTE du gameplay », ancrée au
-## bord DROIT sous la topbar. Chaque alerte = un chip carré à CODE COULEUR par domaine :
+## ALERTES (façon EU4/CK3) — la pile des « ÉLÉMENTS EN ATTENTE du gameplay », rendue
+## en liste par le ledger droit. Chaque alerte garde un CODE COULEUR par domaine :
 ##   ÉTATIQUE violet (conseil vacant, âge à engager) · ARMÉE rouge (guerre sans levée/ost)
 ##   · SOCIAL vert (édifice constructible) · SAVOIR bleu (aucune recherche) · FOI doré
 ##   (fondation prête). Clic = ouvre le panneau concerné (ou exécute le geste) ; survol =
@@ -22,6 +22,7 @@ signal goto_region(r: int)  ## centre la carte sur la région de l'alerte (sièg
 signal popup_requested(e: Dictionary)  ## évènement MAJEUR → le popup OYEZ OYEZ (pause + boutons)
 signal age_recap_requested             ## chip d'âge cliqué → l'ÉCRAN DE CHAPITRE (récap, pause)
 signal open_tech_metab                 ## chip « métabolisation prête » cliqué → ouvre l'arbre tech
+signal ledger_changed                  ## la bande droite redessine sa liste de notifications
 
 const COL_ETAT   := Color(0.55, 0.38, 0.66)   ## violet — étatique
 const COL_ARMEE  := Color(0.72, 0.28, 0.24)   ## rouge — armée
@@ -65,6 +66,19 @@ const POPUP_KINDS := [1, 2, 6, 7, 10]   # guerre · paix (verdict) · révolte �
 var _alerts := []    ## [{icon, col, tip, act, …}] conditions, recalculées à chaque _refresh
 var _events := []    ## [{icon, col, tip, seq}] fil transient (clic = acquitté)
 var _seen_seq := 0   ## dernier seq lu du fil
+var _ledger_mode := false
+
+## Les notifications vivent dans le ledger droit. Le nœud conserve collecte, polling
+## et routage des actions, mais ne dessine plus une seconde colonne flottante sur la carte.
+func set_ledger_mode(on: bool) -> void:
+	_ledger_mode = on
+	_refresh()
+
+func ledger_rows() -> Array:
+	return _stack().duplicate(true)
+
+func ledger_short(al: Dictionary) -> String:
+	return _short(String(al.get("tip", "")))
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -96,11 +110,16 @@ func _refresh() -> void:
 			for ev in Sim.world.feed_poll(_seen_seq):   # on JETTE le fil pré-partie (acquitté)
 				_seen_seq = maxi(_seen_seq, int(ev["seq"]))
 		visible = false
+		ledger_changed.emit()
 		return
-	visible = true
 	_alerts = _collect()
 	_poll_feed()
 	_major_open = major_open_fn.is_valid() and bool(major_open_fn.call())
+	if _ledger_mode:
+		visible = false
+		ledger_changed.emit()
+		return
+	visible = true
 	var n := _rows().size()
 	var vw := get_viewport_rect().size.x
 	# décalé à GAUCHE de l'empire-sidebar (bande droite permanente en jeu) ; la colonne
@@ -307,7 +326,7 @@ func _stack() -> Array:
 ## soustraire sans toucher ce fichier.
 func _rows() -> Array:
 	var st := _stack()
-	if not _major_open:
+	if _ledger_mode or not _major_open:
 		var out := []
 		for al in st:
 			out.append({"kind": "chip", "data": al})
@@ -403,9 +422,15 @@ func _gui_input(event: InputEvent) -> void:
 		accept_event()
 		return
 	var al: Dictionary = row["data"]
+	activate_ledger(al, event.button_index)
+	accept_event()
+
+## Action publique utilisée par les lignes du ledger. Les clics gardent exactement la
+## sémantique des anciennes letters : gauche = agir/acquitter, droite = balayer l'évènement.
+func activate_ledger(al: Dictionary, button_index: int) -> void:
 	# CLIC DROIT = BALAYER (letters RimWorld) : un évènement transient se dismisse sans
 	# agir ; les CONDITIONS persistantes (alerte de fond) restent — elles disent un état.
-	if event.button_index == MOUSE_BUTTON_RIGHT:
+	if button_index == MOUSE_BUTTON_RIGHT:
 		if al.has("seq"):
 			for i in range(_events.size()):
 				if int(_events[i]["seq"]) == int(al["seq"]):
@@ -413,11 +438,9 @@ func _gui_input(event: InputEvent) -> void:
 					break
 			Sound.play("ui_click")
 			_refresh()
-		accept_event()
 		return
-	if event.button_index != MOUSE_BUTTON_LEFT:
+	if button_index != MOUSE_BUTTON_LEFT:
 		return
-	accept_event()
 	Sound.play("ui_click")   # le son du CLIC sur la notification (comme tout clic)
 	if al.has("seq"):
 		# ÉVÈNEMENT : le clic ACQUITTE (et centre la carte si localisé)

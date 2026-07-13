@@ -64,6 +64,14 @@ typedef enum {
     CLASS_COUNT
 } SocialClass;
 
+/* POLITIQUES BUDGÉTAIRES pilotables par le joueur. Toutes sont des multiplicateurs
+ * [0.1,2.0], 1.0 = comportement historique. Une case à 0 dans un monde neuf signifie
+ * aussi 1.0 afin que l'IA et les anciens bancs restent strictement neutres. */
+typedef enum {
+    BUDGET_INVEST=0, BUDGET_UPKEEP, BUDGET_ARMY, BUDGET_NAVY,
+    BUDGET_POLICY_COUNT
+} BudgetPolicy;
+
 typedef struct {
     float pop;            /* effectif */
     float wealth;         /* trésor accumulé (monnaie) */
@@ -469,6 +477,11 @@ typedef struct {
         uint16_t settlers_culture_id; /* nom/filiation au départ, même si la métropole change */
     } colony[SCPS_MAX_COUNTRY];
 
+    /* v82 — fiscalité par CLASSE + enveloppes de dépense nationales. Sérialisées
+     * dans ECON ; 0 = valeur neutre ×1 (voir lecteurs ci-dessous). */
+    float         tax_mult[SCPS_MAX_COUNTRY][CLASS_COUNT];
+    float         budget_mult[SCPS_MAX_COUNTRY][BUDGET_POLICY_COUNT];
+
     /* ── FIN_CHAUD (§27, 2026-07-08) — CUMULS SIM du combustible RÉELLEMENT brûlé
      * (l'offre SERVIE, jamais la demande) : bois de FEU consommé au panier des
      * journaliers (econ_tick, branche générique du marché) + CHARBON consommé en
@@ -804,6 +817,10 @@ bool econ_country_has_tier(int cid, int tier);
 /* Tolérance fiscale [0..1] par ÉTHOS × classe (§7) : le seuil (×satisfaction)
  * au-delà duquel on fuit l'impôt et l'on gronde. Exposé pour les bancs d'essai. */
 float econ_tax_tolerance(Ethos e, SocialClass c);
+float econ_country_tax_mult(const WorldEconomy *e, int cid, SocialClass c);
+float econ_country_budget_mult(const WorldEconomy *e, int cid, BudgetPolicy policy);
+void  econ_country_tax_set(WorldEconomy *e, int cid, SocialClass c, float mult);
+void  econ_country_budget_set(WorldEconomy *e, int cid, BudgetPolicy policy, float mult);
 
 /* §4 (catalogue des biens) — fraction de pop « mal servie » d'une province :
  * une minorité d'une autre SPHÈRE réclame ses variantes ; l'assimilation efface

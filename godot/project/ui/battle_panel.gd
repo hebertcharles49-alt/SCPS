@@ -2,12 +2,13 @@ extends Control
 ## BattlePanel — W-GUERRE UI (lot B). Le clic sur un jeton d'armée (overlay.gd) qui
 ## s'affronte (phase Siège OU Bataille) ouvre ce panneau sobre : les DEUX camps
 ## (nom, effectif, composition inf/arch/cav/mages en barres), la PHASE (mot), les
-## cohésion live (bataille en cours) et le war_score du conflit. Motif
+## cohésion live (bataille en cours). Le score du conflit vit dans le ledger droit. Motif
 ## province_panel/VKit (immediate draw). Lit scps_battle_info (scps_api) via le
 ## binding `battle_info(region)`. Ferme sur Échap (pile _close_topmost de main.gd)
 ## ou sur le ✕. RÈGLE D'OR : zéro logique de sim — lecture pure de la membrane.
 
 const VKit = preload("res://ui/vkit.gd")
+const Frame = preload("res://ui/frame.gd")
 const PW := 350.0
 
 signal close_requested
@@ -25,7 +26,8 @@ func _ready() -> void:
 func _layout() -> void:
 	var vp := get_viewport_rect().size
 	size = Vector2(PW, 540.0)
-	position = Vector2((vp.x - PW) * 0.5, 90.0)
+	position = Vector2(maxf(Frame.SIDEBAR_W + 14.0,
+		vp.x - Frame.LEDGER_W - PW - 12.0), Frame.TOPBAR_H + 12.0)
 
 func open_region(region: int) -> void:
 	_region = region
@@ -181,21 +183,6 @@ func _draw() -> void:
 		y = VKit.row(self, x, y, "Attaquant", "%s hommes" % _grp(int(float(bi.get("loss_atk", 0.0)) * 100.0)), VKit.sense(0.15))
 		y = VKit.row(self, x, y, "Défenseur", "%s hommes" % _grp(int(float(bi.get("loss_def", 0.0)) * 100.0)), VKit.sense(0.15))
 		y += 4
-
-	# ── WAR SCORE (point de vue de l'attaquant, la même jauge que la diplomatie) ──
-	y = VKit.section(self, x, y, "SCORE DE GUERRE")
-	var ws: float = float(bi.get("war_score", 0.0))
-	var wsn := clampf((ws + 100.0) / 200.0, 0.0, 1.0)
-	UIKit_bar(x, y, rw, 14.0, int(clampf(ws, -100.0, 100.0)))
-	VKit.text(self, Vector2(x, y + 18), VKit.sense(wsn), "%+.0f (%s)" % [ws, atk_name])
-	y += 40
-
-func UIKit_bar(x: float, y: float, w: float, h: float, value_signed: int) -> void:
-	# jauge SIGNÉE [-100..100] : même dégradé que VKit.gauge, recentrée sur 0.
-	var v01 := clampi((value_signed + 100) / 2, 0, 100)
-	VKit.gauge(self, x, y, w, h, v01)
-	var midx := x + w * 0.5
-	VKit.fill(self, Rect2(midx - 1, y - 2, 2, h + 4), VKit.COL_DIM)
 
 func _signed_pct(mult_pct: int) -> String:
 	return "%+d%%" % (mult_pct - 100)

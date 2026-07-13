@@ -304,16 +304,25 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
               float sizemult = 1.f + (over>0.f ? over*SOLDE_OVER_K : 0.f);
               /* dial global : REGIMENT_PAY/90 (registre J — neutre à 90, balayable en env). */
               float dial = tune_f("REGIMENT_PAY",1.5f)/SOLDE_PAY_ANCHOR;
-              float pay = typed_pay * sizemult * dial
-                        * (at_war?1.5f:1.f) * lvmult * dt * 12.f;
+              float base_pay = typed_pay * sizemult * dial
+                             * (at_war?1.5f:1.f) * lvmult * dt * 12.f;
+              float army_mult = econ_country_budget_mult(econ,c,BUDGET_ARMY);
+              float pay = base_pay * army_mult;
               float paid = fminf(pay, econ->prov[crpp].treasury);
               econ->prov[crpp].treasury -= paid;
               econ_flux_add(c, FX_SOLDE, -paid);                /* I0 : la ligne soldes */
+              /* Sous-financer la solde n'est pas une remise magique : une part des
+               * hommes déserte chaque année, guerre comprise. Surpayer reste un choix
+               * de trésorerie (réserve de solde), sans bonus militaire artificiel. */
+              if (army_mult < 0.999f){
+                  long desert = (long)((1.f-army_mult)*(float)u*0.20f + 0.5f);
+                  if (desert>0) wh_shed(&h->army[c], econ, c, desert);
+              }
               /* IG — LA GARDE DE BUDGET (le garde-fou anti-famine) : si la capitale ne
                * couvre plus ~3 mois de la solde (pay annuel ×0.25), on DÉGRAISSE (jauge −1)
                * — l'armée cesse de croître et fond, plutôt qu'étrangler le trésor en spirale
                * de friche. En paix seulement : on ne désarme pas sous le feu. */
-              if (!at_war && pay>0.f && econ->prov[crpp].treasury < pay*0.25f && h->levy[c]>0)
+              if (!at_war && base_pay>0.f && econ->prov[crpp].treasury < base_pay*0.25f && h->levy[c]>0)
                   h->levy[c] -= 1;
               /* SYMÉTRIE (2026-07-06) : la jauge REMONTE quand le trésor est confortable —
                * l'ancien code ne la faisait que DESCENDRE (garde de budget), si bien que TOUT
@@ -322,7 +331,7 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                * descend · 1.5× remonte) ; plafonnée à GARDE = le plein plafond de PAIX (les
                * pieds de guerre GUERRE/MASSE restent des choix, pas une escalade auto). */
               else if (!at_war && h->levy[c] < WH_LEVY_GARDE
-                       && econ->prov[crpp].treasury > pay*1.5f)
+                       && econ->prov[crpp].treasury > base_pay*1.5f)
                   h->levy[c] += 1;
           } }
         /* la JAUGE DE LEVÉE module la cadence : basse 0.4× · garde 1× · guerre 1.6× ·

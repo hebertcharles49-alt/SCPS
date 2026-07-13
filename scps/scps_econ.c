@@ -1937,6 +1937,26 @@ float econ_tax_tolerance(Ethos e, SocialClass c){
     if (e<0||e>=ETHOS_COUNT||c<0||c>=CLASS_COUNT) return 0.40f;
     return T[e][c];
 }
+
+static float policy_mult(float raw){
+    return (raw>=0.1f && raw<=2.f) ? raw : 1.f;
+}
+float econ_country_tax_mult(const WorldEconomy *e, int cid, SocialClass c){
+    if (!e||cid<0||cid>=SCPS_MAX_COUNTRY||c<0||c>=CLASS_COUNT) return 1.f;
+    return policy_mult(e->tax_mult[cid][c]);
+}
+float econ_country_budget_mult(const WorldEconomy *e, int cid, BudgetPolicy policy){
+    if (!e||cid<0||cid>=SCPS_MAX_COUNTRY||policy<0||policy>=BUDGET_POLICY_COUNT) return 1.f;
+    return policy_mult(e->budget_mult[cid][policy]);
+}
+void econ_country_tax_set(WorldEconomy *e, int cid, SocialClass c, float mult){
+    if (!e||cid<0||cid>=SCPS_MAX_COUNTRY||c<0||c>=CLASS_COUNT) return;
+    e->tax_mult[cid][c]=clampf(mult,0.1f,2.f);
+}
+void econ_country_budget_set(WorldEconomy *e, int cid, BudgetPolicy policy, float mult){
+    if (!e||cid<0||cid>=SCPS_MAX_COUNTRY||policy<0||policy>=BUDGET_POLICY_COUNT) return;
+    e->budget_mult[cid][policy]=clampf(mult,0.1f,2.f);
+}
 #define STATE_TAX_AMBITION 0.42f   /* le taux que l'État VISE (l'éthos décide ce qui rentre) */
 #define K_TAX_AGIT         0.85f   /* poids de la surtaxe sur la satisfaction (la grogne) */
 /* §B — DÉ-STÉRILISER LE TRÉSOR + FERMER LE CISEAU OFFRE/DEMANDE.
@@ -2956,13 +2976,14 @@ void econ_tick(WorldEconomy *e, float dt) {
             PopStratum *st=&re->strata[c];
             float sat   = clampf(st->satisfaction,0.f,1.f);
             float seuil = econ_tax_tolerance(re->culture.ethos,(SocialClass)c)*(0.40f+0.60f*sat);
-            float evasion   = clampf(STATE_TAX_AMBITION - seuil, 0.f, 1.f);
-            float collected = STATE_TAX_AMBITION * st->wealth * (1.f-evasion) * dt;
+            float ambition = STATE_TAX_AMBITION * econ_country_tax_mult(e,re->owner,(SocialClass)c);
+            float evasion   = clampf(ambition - seuil, 0.f, 1.f);
+            float collected = ambition * st->wealth * (1.f-evasion) * dt;
             if (collected>st->wealth) collected=st->wealth;
             st->wealth   -= collected;
             re->treasury += collected;
             coll[c]=collected; coll_tot+=collected;
-            over_tax[c]   = (STATE_TAX_AMBITION>seuil)?(STATE_TAX_AMBITION-seuil):0.f;
+            over_tax[c]   = (ambition>seuil)?(ambition-seuil):0.f;
         }
         re->over_tax = clampf(over_tax[CLASS_LABORER], 0.f, 1.f);   /* grief des laboureurs → révolte */
         if (re->owner>=0) econ_flux_add(re->owner, FX_TAX, coll_tot);   /* I0 : la ligne des taxes */
@@ -2989,13 +3010,15 @@ void econ_tick(WorldEconomy *e, float dt) {
              * La FRICHE ne frappe que le SURBÂTI : quand l'entretien DÉPASSE le surplus
              * disponible, l'État a trop construit pour ses moyens → la prod s'entaille. */
             float base_up = (infra*BUILD_GOLD_PER_DELTA/tune_f("ENTRETIEN_DIV",ENTRETIEN_DIV)) * 365.f * dt;
+            float upkeep_mult = econ_country_budget_mult(e,re->owner,BUDGET_UPKEEP);
+            float upkeep_order = base_up * upkeep_mult;
             /* FRICHE = SURBÂTI CATASTROPHIQUE : l'entretien dépasse TOUT le trésor (pas juste
              * le surplus au-dessus de la réserve) — l'État ne peut littéralement pas tenir son
              * infra. Une province qui repose sur sa réserve d'exploitation (peu d'infra, peu
              * d'impôt) n'est PAS en friche : elle sous-finance sans la falaise de prod. */
-            bool fr = (base_up > re->treasury);
+            bool fr = (upkeep_mult < 0.999f) || (upkeep_order > re->treasury);
             float surplus = re->treasury - opf;
-            float paid_up = (surplus > 0.f) ? fminf(base_up, surplus) : 0.f;
+            float paid_up = (surplus > 0.f) ? fminf(upkeep_order, surplus) : 0.f;
             re->treasury -= paid_up;                                       /* payé du surplus, la réserve tient */
             if (re->owner>=0) econ_flux_add(re->owner, FX_UPKEEP, -paid_up);  /* I0 : entretien édifices */
             g_friche[pid] = fr;
@@ -3006,8 +3029,8 @@ void econ_tick(WorldEconomy *e, float dt) {
              * manufactures ; une bourse de fonctionnement (le bas de laine qui bâtit) non. */
             if (re->treasury > hof){
                 float mlev=0.f; for (int i=0;i<re->n_bld;i++) mlev += re->bld[i].level;
-                float surcharge = base_up*(ipmf-1.f)                                  /* la part IPM de l'entretien */
-                                + mlev*tune_f("MANUF_UPKEEP_DAY",MANUF_UPKEEP_DAY)*365.f*dt*ipmf;
+                float surcharge = (base_up*(ipmf-1.f)                                  /* la part IPM de l'entretien */
+                                + mlev*tune_f("MANUF_UPKEEP_DAY",MANUF_UPKEEP_DAY)*365.f*dt*ipmf) * upkeep_mult;
                 if (surcharge>0.f){ float pay=fminf(surcharge, re->treasury - hof); re->treasury -= pay;
                     if (re->owner>=0) econ_flux_add(re->owner, FX_ENCADR, -pay); }  /* I0 : surtaxe IPM + encadrement */
             }
@@ -3035,7 +3058,8 @@ void econ_tick(WorldEconomy *e, float dt) {
          * d'achat restauré → satisfaction, et le drain C1 sur l'élite est réparé). Le
          * solde subventionne l'expansion (§1). Sans cette sortie, le trésor ×16 asséchait
          * les classes à richesse ~0 → 15 % de satisfaction même quand les biens existent. */
-        float depense = re->treasury * STATE_SPEND_RATE * dt;
+        float invest_mult = econ_country_budget_mult(e,re->owner,BUDGET_INVEST);
+        float depense = re->treasury * STATE_SPEND_RATE * invest_mult * dt;
         /* I3bis — la redépense LAISSE la réserve d'exploitation : un État ne se vide pas
          * jusqu'au dernier sou (sinon, à trésor 0, il ne peut plus rien bâtir — pas même
          * un grenier — et s'enferme dans la famine). Il circule le SURPLUS, garde de quoi

@@ -12,6 +12,7 @@ const Frame = preload("res://ui/frame.gd")
 const InfoRef = preload("res://ui/info_ref.gd")
 const PW := 348.0   ## élargi (retour joueur 2026-07-10 : « adapte le menu de gauche
                     ## en taille » — la police +1 mordait les jauges à 312)
+const BUILD_TAB_W := 112.0
 
 # HOVERS (point : « je ne sais pas ce qu'est un laborer, ni pourquoi l'humeur varie »).
 const TIPS := {
@@ -57,7 +58,12 @@ func _layout() -> void:
 	# décalée à DROITE du rail + sous le haut, avec une marge — plus une colonne collée.
 	position = Vector2(Frame.SIDEBAR_W + 14.0, Frame.TOPBAR_H + 12.0)
 	var hmax := get_viewport_rect().size.y - Frame.TOPBAR_H - Frame.BOTTOMBAR_H - 24.0
-	size = Vector2(PW, clampf(_ph, 80.0, hmax))
+	size = Vector2(PW + BUILD_TAB_W, clampf(_ph, 80.0, hmax))
+
+func _has_point(point: Vector2) -> bool:
+	# Le bras transparent du Control ne vole pas la carte : seule la fiche et la
+	# languette Construction capturent la souris.
+	return point.x <= PW or (_build_rect.size.x > 0.0 and _build_rect.has_point(point))
 
 func show_province(pid: int) -> void:
 	if pid != _pid:
@@ -97,19 +103,26 @@ func _draw() -> void:
 	var cap: Dictionary = w.province_capitale(_pid)
 
 	var content_y0 := _draw_header(w, info, cap, true)
+	_build_rect = Rect2()
+	if powner == me:
+		_build_rect = Rect2(PW - 1.0, maxf(6.0, content_y0 - 40.0), BUILD_TAB_W, 38.0)
+		VKit.fill(self, _build_rect, VKit.COL_PANEL2)
+		VKit.box(self, _build_rect, VKit.COL_GOLD)
+		UIKit.draw_icon(self, "action_build", _build_rect.position + Vector2(7.0, 5.0), 28)
+		VKit.text(self, _build_rect.position + Vector2(40.0, 10.0), VKit.COL_GOLD, "Construction", VKit.FS_SMALL)
+		_tips.append([_build_rect, "Construction\n• Ouvrir les édifices et manufactures de cette province"])
 
 	# REPLIÉ : la bande-paysage + le nom suffisent — la carte respire.
 	if _collapsed:
 		var wantc := content_y0 + 4.0
 		if absf(_ph - wantc) > 3.0:
 			_ph = wantc
-			set_deferred("size", Vector2(PW, _ph))
+			set_deferred("size", Vector2(PW + BUILD_TAB_W, _ph))
 			queue_redraw()
 		return
 
 	var tips_before := _tips.size()   ## AUDIT 1.3 : tout ce qui suit vit dans le CONTENU
 	_acts.clear()                     ## défilable — les tips DU HEADER (au-dessus) restent.
-	_build_rect = Rect2()
 	_colonize_rect = Rect2()
 	var y := content_y0 - _scrolloff
 
@@ -404,14 +417,6 @@ func _draw() -> void:
 				UIKit.draw_icon(self, "build_hammer", br.position + Vector2(6, 6), bs - 12)
 			_tips.append([br, "%s — niveau %d · %d ouvriers" % [String(b["nom"]), int(b["niveau"]), int(b["ouvriers"])]])
 			bx += bs + 4.0
-		_build_rect = Rect2()
-		if powner == me:
-			# la case « + » : bâtir (pointillé or, hover explicite)
-			_build_rect = Rect2(bx, y, bs, bs)
-			VKit.fill(self, _build_rect, Color(VKit.COL_PANEL2.r, VKit.COL_PANEL2.g, VKit.COL_PANEL2.b, 0.55))
-			VKit.box(self, _build_rect, VKit.COL_GOLD)
-			VKit.text(self, Vector2(bx + bs * 0.5 - 5.0, y + 3.0), VKit.COL_GOLD, "+", VKit.FS_BIG)
-			_tips.append([_build_rect, "Construire — ouvrir le panneau de bâti (unités & édifices)"])
 		y += bs + 10.0
 	if powner == me:
 		pass   # AUDIT 1.3 : Réprimer/Assimiler/Purger/Détail migrent au PIED FIXE (dessiné après)
@@ -482,7 +487,7 @@ func _draw() -> void:
 	var want := clampf(content_y0 + content_h + footer_h + 24.0, 220.0, hmax)
 	if absf(_ph - want) > 3.0:
 		_ph = want
-		set_deferred("size", Vector2(PW, _ph))
+		set_deferred("size", Vector2(PW + BUILD_TAB_W, _ph))
 		queue_redraw()
 	var footer_y0 := _ph - footer_h
 	var visible_h := footer_y0 - content_y0
@@ -500,8 +505,6 @@ func _draw() -> void:
 		var ar: Rect2 = _acts[i][0]
 		if ar.position.y + ar.size.y <= content_y0 or ar.position.y >= footer_y0:
 			_acts.remove_at(i)
-	if _build_rect.size.x > 0 and (_build_rect.position.y + _build_rect.size.y <= content_y0 or _build_rect.position.y >= footer_y0):
-		_build_rect = Rect2()
 	if _colonize_rect.size.x > 0 and (_colonize_rect.position.y + _colonize_rect.size.y <= content_y0 or _colonize_rect.position.y >= footer_y0):
 		_colonize_rect = Rect2()
 

@@ -122,9 +122,24 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
        CMD_CORPS_MOVE,      /* a: id, target */
        CMD_CORPS_REFILL,    /* a: id */
        CMD_CORPS_DISBAND,   /* a: id */
+       /* BUDGET : a[0]=0 fiscalité par classe / 1 enveloppe de dépense,
+        * a[1]=index, a[2]=multiplicateur ×100 (10..200). */
+       CMD_BUDGET_POLICY,
+       /* Offre de paix composée : a={cible, drapeaux, score-or, n régions,
+        * régions...}. Le pays ne peut posséder que 32 régions. */
+       CMD_PEACE_OFFER,
        CMD_COUNT };
 #define SCPS_CMDQ_MAX 64
-typedef struct { uint8_t verb; int32_t a[4]; } PlayerCmd;
+#define SCPS_PEACE_MAX_TERRITORIES 32
+enum {
+    PEACE_REPARATIONS = 1u<<0,
+    PEACE_HUMILIATE   = 1u<<1,
+    PEACE_PILLAGE     = 1u<<2,
+    PEACE_LIBERATE    = 1u<<3,
+    PEACE_VASSALIZE   = 1u<<4,
+    PEACE_FRAGMENT    = 1u<<5
+};
+typedef struct { uint8_t verb; int32_t a[4 + SCPS_PEACE_MAX_TERRITORIES]; } PlayerCmd;
 
 /* L'ÉTAT PLEIN d'une partie (tous les sous-systèmes). Membres alloués sur le tas
  * (sim_alloc) ; les pointeurs sont assignés par l'hôte ou sim_alloc. */

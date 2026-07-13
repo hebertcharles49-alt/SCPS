@@ -6,6 +6,7 @@ extends Control
 ## Montré/caché par map_view.army_selection_changed (main le câble).
 
 const VKit = preload("res://ui/vkit.gd")
+const Frame = preload("res://ui/frame.gd")
 
 signal raid_requested   ## « Piller la côte » → main arme le sous-mode raid de la carte
 signal selection_replaced(ids: Array) ## fusion : le corps survivant devient l'unique sélection
@@ -165,7 +166,10 @@ func _layout() -> void:
 	_panel.reset_size()
 	var w: float = maxf(_panel.size.x, _panel.custom_minimum_size.x)
 	var h: float = _panel.size.y
-	_panel.position = Vector2((vp.x - w) * 0.5, vp.y - h - 96.0)
+	# La carte et les corps restent au centre : la barre de commandement s'ancre
+	# dans la marge gauche, au-dessus de la barre basse.
+	_panel.position = Vector2(Frame.SIDEBAR_W + 14.0,
+		maxf(Frame.TOPBAR_H + 12.0, vp.y - h - Frame.BOTTOMBAR_H - 12.0))
 
 func _refresh() -> void:
 	if Sim.world == null:

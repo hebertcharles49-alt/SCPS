@@ -609,6 +609,134 @@ atteint sa réponse en trois interactions au plus hors saisie de recherche.
   été identifiés par leur heure/PID puis arrêtés. Cette vérification est le verrou commun
   restant de P6 et P10, pas un manque fonctionnel.
 
+### 2026-07-13 — Hiérarchie visuelle et accès immédiat
+
+- `FAIT` — le centre redevient le théâtre de la carte : commandement d'armée ancré
+  à gauche, diplomatie et bataille à droite devant le ledger. Le panneau de bataille
+  ne duplique plus le score de guerre ; seules les modales importantes continuent de
+  prendre le milieu et de mettre le monde en pause.
+- `FAIT` — une section `GUERRES` ouvre le menu droit : un adversaire par ligne, icône
+  agrandie, score brut signé du point de vue joueur et jauge divergente centrée sur
+  zéro. Le clic rejoint directement la fiche diplomatique du pays concerné.
+- `FAIT` — les notifications actives quittent la colonne flottante et deviennent une
+  liste `NOTIFICATIONS` du menu droit. Aucun regroupement automatique ne les masque
+  lorsqu'un panneau s'ouvre ; clic gauche et acquittement droit gardent leurs actions.
+  Le ledger occupe la hauteur disponible et défile, journal compris, au lieu de couper
+  silencieusement ses dernières lignes.
+- `FAIT` — densité revue : sections et rangées communes resserrées, interlignes du
+  ledger réduits. Les icônes de topbar, d'âge, d'émissaire, de guerre, de notification,
+  d'édifice, de manufacture et de ressource sont agrandies et leurs textes réalignés.
+- `FAIT` — les valeurs signées restent signées : un score négatif est affiché tel quel ;
+  seul le dessin de sa jauge est borné. Aucun clamp ne transforme une mauvaise situation
+  en zéro rassurant.
+- `FAIT` — les hovers multilignes sont présentés comme des listes. L'épinglage, qui
+  retenait une carte hors contexte, est supprimé ; la chaîne se ferme dès la sortie de
+  sa hitbox élargie, avec seulement 120 ms pour franchir l'espace vers un sous-hover.
+- `FAIT` — une languette `Construction`, visible sur le bord droit de toute province
+  possédée, ouvre directement le panneau sur cette province. L'ancienne petite case `+`
+  enfouie dans la liste des bâtiments disparaît. Les textes d'ambiance des édifices sont
+  retirés du panneau comme du hover ; restent coûts, durée, recette, stocks et effets.
+- `VÉRIFIÉ` — `git diff --check`, import/analyse Godot headless et `core_demo` **35/35**
+  sont verts. Les scènes Godot exécutées en jeu restent momentanément invérifiables :
+  une scène de référence non modifiée et le test hover terminent tous deux avec le même
+  code d'accès natif pendant que l'instance Godot utilisateur verrouille l'extension.
+  Aucun processus utilisateur n'a été fermé et aucun contrôle visuel automatisé lancé.
+
+### 2026-07-13 — Opinions et pilotage budgétaire
+
+- `FAIT` — toute opinion affichée est désormais une jauge divergente canonique
+  `-100 ← 0 → +100`. La fiche diplomatique montre la valeur actuelle par remplissage,
+  le point d'équilibre par un repère distinct et réserve le texte à la tendance ; la
+  liste diplomatique du menu droit conserve le même langage visuel.
+- `FAIT` — le panneau Économie possède trois curseurs fiscaux indépendants :
+  **Laboureurs**, **Artisans** et **Noblesse**. Chacun couvre `×0,1…×2` par pas de `0,1`
+  et modifie réellement l'ambition de prélèvement de la classe ; évasion, rendement
+  net et grogne continuent de passer par sa tolérance et sa satisfaction.
+- `FAIT` — quatre enveloppes de dépense sont pilotables sur la même plage :
+  **Investissement public**, **Entretien des bâtiments**, **Armée** et **Flotte**.
+  L'investissement règle la remise en circulation du trésor ; le sous-entretien met
+  l'infrastructure en friche ; sous-payer les armées provoque des désertions et
+  sous-payer les flottes accélère leur délabrement. Les valeurs négatives du bilan
+  restent affichées comme telles : les multiplicateurs sont des décisions, pas des
+  clamps cosmétiques sur les résultats.
+- `FAIT` — chaque conseiller dispose maintenant d'un curseur continu de paie
+  `×0,1…×2`, en remplacement des quatre paliers. La valeur commande toujours le coût
+  réel et la cible de loyauté. Un tick moteur ne rompt plus un glisser en cours ; la
+  capture prend fin au relâchement de la souris.
+- `MOTEUR` — les politiques sont journalisées par `CMD_BUDGET_POLICY`, revalidées au
+  drain, lues par une membrane publique et persistées dans `WorldEconomy`. Le format de
+  sauvegarde passe à **v82** ; les anciennes saves sont donc refusées explicitement.
+- `VÉRIFIÉ` — compilation C sans avertissement ; `scps_api_demo` **210/210** (neutralité
+  ×1, round-trip des commandes, valeurs distinctes, clamps, save/load),
+  `statecraft_demo` **74/74**, `econ_tax_demo` **8/8**, `campaign_demo` **33/33**,
+  `navy_demo` **20/20** et `warhost_demo` **6/6**. Le parse Godot headless est propre et
+  l'objet C++ des bindings est compilé. Le déterminisme reste **5/5** avec les hashes
+  historiques inchangés (`1fa06b60`, `fc9e670a`, `a398d0fa`, `ef7f249c`, `835f910f`).
+- `RÉSOLU` — après confirmation qu'aucune fenêtre utilisateur n'était ouverte, le vieux
+  processus Godot sans fenêtre a été fermé et la DLL debug reconstruite. Les nouveaux
+  curseurs et lecteurs sont désormais chargés par la variante de développement.
+
+### 2026-07-13 — Évènements entièrement renseignés
+
+- `FAIT` — chaque décision en attente reste branchée sur le verbe journalisé
+  `CMD_EVENT_CHOICE`; le bouton ne simule aucun résultat côté Godot et le drain
+  revalide toujours le slot et l'option avant d'appeler `pending_event_resolve`.
+- `FAIT` — la membrane d'évènement expose désormais, pour chaque option, le libellé,
+  le texte d'action (`blurb`), le flavor, les effets mécaniques chiffrés et la variation
+  d'or physique signée. Une entrée historique sans flavor dédié retombe explicitement
+  sur son blurb : aucune option affichée ne reste vide.
+- `PRÉCISÉ` — le montant d'or n'est pas recalculé en GDScript. Le lecteur emploie la
+  même assiette que `resolve_treasury_mois` — taxes de l'année / 12 × IPM courant — et
+  reproduit aussi le clamp du vieux coût fixe sur le liquide de la province porteuse.
+  L'UI affiche donc `Coût N or`, `Gain N or` ou `Coût 0 or`, au montant qui serait
+  effectivement appliqué si le choix était drainé à cet instant.
+- `FAIT` — les flèches vagues disparaissent : légitimité, agitation, institutions,
+  défense bâtie, fertilité, coercition, influence, connectivité, Brèche, population et
+  probabilité d'un pari portent leurs deltas numériques. Les cartes de choix affichent
+  directement action, chiffres et flavor ; le survol n'est plus nécessaire pour
+  comprendre la décision.
+- `VÉRIFIÉ` — compilation C et binding C++ ciblé sans avertissement, parse Godot
+  headless propre, `scps_api_demo` **211/211**. Le banc de dialogue exige maintenant
+  autant de textes, flavors, effets et prix finis que d'options.
+- `LIVE` — DLL debug reconstruite puis `event_dialog_audit.tscn` exécuté sur une vraie
+  décision à trois choix : ouverture et pause, trois cartes complètes, choix drainé,
+  fermeture et vitesse restaurée. Résultat **EVENT DIALOG AUDIT OK**.
+
+### 2026-07-13 — Tiroir diplomatique et paix composée
+
+- `FAIT` — la fiche pays est désormais un tiroir latéral à hiérarchie stable : résumé
+  du pays (**habitants, éthos/régime effectif, statut politique, territoires**), opinion
+  canonique `−100/+100`, statut diplomatique et engagements, puis les verbes primaires
+  **Proposer une alliance** et **Déclarer la guerre**. Les lignes sont resserrées ; les
+  conséquences et premiers verrous restent lisibles sans hover.
+- `FAIT` — **Actions économiques** est un sous-tiroir contenant pacte migratoire et
+  pacte commercial. **Actions antagonistes** contient embargo et revendication. Cette
+  dernière nomme maintenant sa cible réelle (`Revendiquer X`) ; le territoire reste
+  épinglé pendant la maturation et jusqu'à consommation/expiration du casus belli.
+- `FAIT` — **Faire la paix** est toujours visible dans la fiche et grisé en temps de
+  paix. En guerre, il ouvre un tiroir imbriqué : territoires nommés et occupés avec le
+  vrai `diplo_province_price`, or, réparations, humiliation, pillage, libération,
+  vassalisation et fragmentation. Le total courant est comparé en permanence au score
+  positif disponible ; l'émissaire ne bloque que l'envoi, jamais la lecture des termes.
+- `MOTEUR` — l'or demandé coûte `0…25` points ; chaque point représente exactement
+  `3 % × revenu mensuel de la cible` (`revenu annuel / 12`), borné par son trésor réel.
+  Les réparations prélèvent physiquement `10 %` du revenu, mensuellement pendant dix
+  ans. Humilier vide les trois sièges du conseil ; piller transfère `5 %` de chaque
+  stock ; libérer impose l'éthos du vainqueur à toutes les provinces et populations ;
+  vassaliser coûte la somme des prix provinciaux ; fragmenter coûte `100` et crée un
+  État vivant par région, dans les emplacements disponibles.
+- `MOTEUR` — une cession de territoire exige l'occupation réelle et réutilise le corps
+  historique du règlement (propriété provinciale, cicatrice, légitimité, rancune,
+  saccage et captifs). Toute offre est revalidée au drain : cible, guerre, doublons,
+  occupation, coûts et score. La paix blanche conserve le consentement de l'IA.
+- `SAVE` — la revendication territoriale épinglée et les dix années de réparations sont
+  persistées dans `DiploState`; le format passe à **v83** et `save_sane` borne les nouveaux
+  champs.
+- `VÉRIFIÉ` — compilation C sans avertissement, extension Godot debug reconstruite,
+  `scps_api_demo` **216/216**, `diplo_demo` **85/85**, `diplo_audit.tscn` vert après instanciation réelle du
+  tiroir, `--savetest` **2/2** (continuité byte-identique + corruption refusée), et
+  déterminisme **5/5** avec les cinq hashes historiques inchangés.
+
 ## Risques suivis
 
 - Les panneaux sont majoritairement construits en code et certains sont custom-drawn :

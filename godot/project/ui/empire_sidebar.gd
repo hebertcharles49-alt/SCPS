@@ -12,6 +12,7 @@ const Frame = preload("res://ui/frame.gd")
 const AlertsK = preload("res://ui/alerts.gd")   # la TABLE DU FIL (FEED_KINDS) partagée
 
 signal goto_region(region: int)
+signal open_country(country: int)
 
 const W := 288.0            ## élargie (retour joueur 2026-07-10 : « laisse respirer »)
 const HANDLE_W := 14.0      ## bande réduite quand la sidebar est REPLIÉE (rabat)
@@ -29,10 +30,22 @@ var _fold := {}             ## titre de section → replié (retour joueur 2026-
                             ## « tous les menus de droite doivent pouvoir se collapser »)
 var _sec_rects := []        ## [{rect, title}] bandeaux cliquables (reconstruit au _draw)
 var _log_rects := []        ## [{rect, region, txt}] lignes localisées du journal
+var _war_rects := []        ## [{rect, country}] guerres actives
+var _notif_rects := []      ## [{rect, data}] notifications actives
+var _alerts_source: Control
+var _scrolloff := 0.0
+var _maxscroll := 0.0
+
+func set_alert_source(source: Control) -> void:
+	_alerts_source = source
+	if source != null and source.has_signal("ledger_changed"):
+		source.connect("ledger_changed", Callable(self, "queue_redraw"))
+	queue_redraw()
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE   # lecture seule : la carte reste cliquable au travers ? Non — bande opaque
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	clip_contents = true
 	_layout()
 	get_viewport().size_changed.connect(_layout)
 	Sim.generated.connect(func(): _log.clear(); _city_names.clear(); _seen_seq = 0; queue_redraw())
@@ -55,9 +68,24 @@ func _layout() -> void:
 	var w := HANDLE_W if _collapsed else W
 	_maxh = maxf(140.0, vp.y - Frame.TOPBAR_H - Frame.BOTTOMBAR_H)
 	position = Vector2(vp.x - w, Frame.TOPBAR_H)
-	size = Vector2(w, _maxh)   # plein cadre au layout ; le _draw re-latche à son contenu
+	size = Vector2(w, _maxh)
 
 func _gui_input(e: InputEvent) -> void:
+	if e is InputEventMouseButton and e.pressed and not _collapsed:
+		if e.button_index == MOUSE_BUTTON_WHEEL_UP or e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			var direction := -1.0 if e.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0
+			_scrolloff = clampf(_scrolloff + direction * 52.0, 0.0, _maxscroll)
+			queue_redraw()
+			accept_event()
+			return
+		# Les notifications acceptent gauche ET droite (agir / acquitter).
+		var np: Vector2 = e.position + Vector2(0.0, _scrolloff)
+		for nr in _notif_rects:
+			if (nr["rect"] as Rect2).has_point(np):
+				if _alerts_source != null and _alerts_source.has_method("activate_ledger"):
+					_alerts_source.call("activate_ledger", nr["data"], e.button_index)
+				accept_event()
+				return
 	if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 		if _handle_rect.has_point(e.position):
 			_collapsed = not _collapsed
@@ -66,7 +94,8 @@ func _gui_input(e: InputEvent) -> void:
 			accept_event()
 			return
 		# ENCART D'ÂGE : clic sur « Engager » → verbe CMD_AGE_ENGAGE (enfilé, déterministe)
-		if not _collapsed and _age_engageable and _age_rect.size.x > 0 and _age_rect.has_point(e.position):
+		var cp: Vector2 = e.position + Vector2(0.0, _scrolloff)
+		if not _collapsed and _age_engageable and _age_rect.size.x > 0 and _age_rect.has_point(cp):
 			if Sim.world != null and Sim.world.has_method("player_age_engage"):
 				Sim.world.player_age_engage()
 				Sound.play("ui_click")
@@ -74,7 +103,7 @@ func _gui_input(e: InputEvent) -> void:
 				queue_redraw()
 			accept_event()
 			return
-		if not _collapsed and _refill_rect.size.x > 0 and _refill_rect.has_point(e.position):
+		if not _collapsed and _refill_rect.size.x > 0 and _refill_rect.has_point(cp):
 			if Sim.world != null and Sim.world.has_method("player_refill"):
 				Sim.world.player_refill()
 				Sound.play("ui_click")
@@ -84,8 +113,14 @@ func _gui_input(e: InputEvent) -> void:
 			return
 		# JOURNAL : une ligne localisée reste un raccourci vers le théâtre de l'évènement.
 		if not _collapsed:
+			for wr in _war_rects:
+				if (wr["rect"] as Rect2).has_point(cp):
+					open_country.emit(int(wr["country"]))
+					Sound.play("ui_click")
+					accept_event()
+					return
 			for lr in _log_rects:
-				if (lr["rect"] as Rect2).has_point(e.position):
+				if (lr["rect"] as Rect2).has_point(cp):
 					var region := int(lr.get("region", -1))
 					if region >= 0:
 						goto_region.emit(region)
@@ -95,7 +130,7 @@ func _gui_input(e: InputEvent) -> void:
 		# PLIAGE PAR SECTION : clic sur un bandeau → replie/déplie son contenu
 		if not _collapsed:
 			for sr in _sec_rects:
-				if (sr["rect"] as Rect2).has_point(e.position):
+				if (sr["rect"] as Rect2).has_point(cp):
 					var t := String(sr["title"])
 					_fold[t] = not bool(_fold.get(t, false))
 					Sound.play("ui_click")
@@ -146,6 +181,8 @@ func _region_name(r: int) -> String:
 
 func _draw() -> void:
 	_log_rects.clear()
+	_war_rects.clear()
+	_notif_rects.clear()
 	if Sim.world == null:
 		return
 	var w = Sim.world
@@ -169,6 +206,8 @@ func _draw() -> void:
 	if hd2 != null:
 		draw_texture_rect(hd2, Rect2(_handle_rect.position - Vector2(2, 0),
 			_handle_rect.size + Vector2(4, 0)), false, Color(1, 1, 1, 0.70))
+	# Le chrome reste fixe ; tout le contenu du ledger défile sous la souris.
+	draw_set_transform(Vector2(0.0, -_scrolloff))
 	var x := 12.0
 	var y := 10.0
 	_sec_rects.clear()
@@ -182,6 +221,12 @@ func _draw() -> void:
 	# ── ÉMISSAIRE (sous l'âge) : disponibilité · temps de retour · objectif du dernier
 	#    envoi diplomatique (retour joueur 2026-07-12) ──
 	y = _draw_emissary(x, y)
+
+	# ── GUERRES : un conflit = une ligne, score signé du point de vue joueur. ──
+	y = _draw_wars(x, y, w, me)
+
+	# ── NOTIFICATIONS ACTIVES : les anciennes letters flottantes vivent ici. ──
+	y = _draw_notifications(x, y)
 
 	# ── VILLES : régions habitées du joueur, triées par âmes ──
 	var cities := []
@@ -201,15 +246,15 @@ func _draw() -> void:
 			VKit.text(self, Vector2(x, y), VKit.COL_PARCH, _region_name(cd[1]))
 			var pg := _grp(cd[0])
 			VKit.value(self, Vector2(W - 14.0 - VKit.text_w(pg), y), pg)
-			y += 18
+			y += 16
 			shown += 1
 		if cities.size() > shown:
 			VKit.text(self, Vector2(x, y), VKit.COL_DIM, "… et %d autres" % (cities.size() - shown))
-			y += 18
+			y += 16
 		if cities.is_empty():
 			VKit.text(self, Vector2(x, y), VKit.COL_DIM, "aucune ville")
-			y += 18
-	y += 6
+			y += 16
+	y += 3
 
 	# ── ARMÉES : l'ost de campagne + la réserve levée ──
 	y = _lsection(x, y, "ARMÉES", Color(0.66, 0.22, 0.18), "")
@@ -221,14 +266,14 @@ func _draw() -> void:
 			var camp_lbl_w: float = VKit.detail(self, Vector2(x, y), "En campagne : ", VKit.FS)
 			var camp_val_w: float = VKit.value(self, Vector2(x + camp_lbl_w, y), _grp(int(ai.get("units", 0))), VKit.FS)
 			VKit.detail(self, Vector2(x + camp_lbl_w + camp_val_w, y), " (%s)" % String(ai.get("phase", "")), VKit.FS)
-			y += 18
+			y += 16
 		var res_n := int(ca.get("regiments", 0))
 		var res_lbl_w: float = VKit.detail(self, Vector2(x, y), "Réserve : ", VKit.FS)
 		if res_n > 0:
 			VKit.value(self, Vector2(x + res_lbl_w, y), _grp(res_n), VKit.FS)
 		else:
 			VKit.detail(self, Vector2(x + res_lbl_w, y), "0", VKit.FS)
-		y += 18
+		y += 16
 		# RECOMPLÉTER (retour joueur : « doit être dans la side bar droite ») — verbe journalisé
 		_refill_rect = Rect2(x, y, 104, 20)
 		VKit.fill(self, _refill_rect, VKit.COL_PANEL2)
@@ -244,7 +289,7 @@ func _draw() -> void:
 			VKit.text(self, Vector2(x + (20 if bt != null else 0), y), VKit.COL_PARCH,
 				"Flotte : %d coque(s) disponibles" % fl)
 			y += 16
-	y += 6
+	y += 3
 
 	# ── COLONISATION : le chantier qui mûrit / la cadence ──
 	if w.has_method("colony_status"):
@@ -268,7 +313,7 @@ func _draw() -> void:
 				VKit.text(self, Vector2(x, y), VKit.COL_DIM,
 					("prochain ordre dans %d j" % cd) if cd > 0 else "aucun chantier (ordre possible)")
 				y += 16
-		y += 6
+		y += 3
 
 	# (COUR & FACTIONS a DÉMÉNAGÉ en TOPBAR — retour joueur 2026-07-10 : « les factions
 	#  doivent être en top bar », doctrine national = topbar. Bonheur/classes/blasons/
@@ -316,8 +361,6 @@ func _draw() -> void:
 			VKit.text(self, Vector2(x, y), VKit.COL_DIM, "rien à signaler")
 			y += 16
 		for e in _log:
-			if y > _maxh - 20.0:   # borné à la BANDE dispo (pas à size.y, qui s'adapte)
-				break
 			var line := "an %d · %s" % [int(e["y"]), String(e["txt"])]
 			var region := int(e.get("region", -1))
 			if region >= 0:
@@ -333,12 +376,15 @@ func _draw() -> void:
 				line, VKit.FS_SMALL)
 			y += 16
 
-	# ── DÉCOUPE AU CONTENU : le panneau s'arrête à sa dernière ligne (latch —
-	# la taille converge en une frame ; l'empreinte STOP cesse de bloquer la carte
-	# sous le vide, retour joueur 2026-07-10 « ADAPTER LA TAILLE DU MENU DE DROITE »).
-	var want := clampf(y + 10.0, 140.0, _maxh)
-	if absf(want - size.y) > 2.0:
-		set_deferred("size", Vector2(size.x, want))
+	_maxscroll = maxf(0.0, y + 10.0 - size.y)
+	_scrolloff = clampf(_scrolloff, 0.0, _maxscroll)
+	draw_set_transform(Vector2.ZERO)
+	if _maxscroll > 0.0:
+		var track := Rect2(W - 5.0, 5.0, 2.0, size.y - 10.0)
+		VKit.fill(self, track, Color(VKit.COL_DIM, 0.35))
+		var thumb_h := maxf(28.0, track.size.y * size.y / (size.y + _maxscroll))
+		var thumb_y := track.position.y + (track.size.y - thumb_h) * (_scrolloff / _maxscroll)
+		VKit.fill(self, Rect2(track.position.x - 1.0, thumb_y, 4.0, thumb_h), VKit.COL_GOLD)
 
 ## ENCART D'ÂGE — dessiné tout en haut de la bande (sous le bloc TEMPS de la topbar,
 ## au-dessus du menu). « Engager : <âge> » AMBRE cliquable quand un âge s'est levé sans
@@ -362,16 +408,16 @@ func _draw_age(x: float, y: float) -> float:
 		_age_rect = r
 		VKit.fill(self, r, Color(0.24, 0.17, 0.07, 0.95))
 		VKit.box(self, r, Color(0.90, 0.72, 0.34))
-		UIKit.draw_icon(self, "fine_age", Vector2(r.position.x + 6, y + 4), 16)
+		UIKit.draw_icon(self, "fine_age", Vector2(r.position.x + 5, y + 2), 22)
 		var lab := "Engager : %s" % nm
 		while VKit.text_w(lab) > r.size.x - 34.0 and lab.length() > 10:
 			lab = lab.substr(0, lab.length() - 2) + "…"
-		VKit.text(self, Vector2(r.position.x + 26, y + 5), Color(0.90, 0.72, 0.34), lab)
+		VKit.text(self, Vector2(r.position.x + 32, y + 5), Color(0.90, 0.72, 0.34), lab)
 		return y + 32.0
 	# âge engagé → ligne de CONTEXTE discrète (l'ère où l'on vit)
-	UIKit.draw_icon(self, "fine_age", Vector2(x, y + 2), 15)
-	VKit.text(self, Vector2(x + 20.0, y + 3), Color(0.72, 0.60, 0.36), "Âge : %s" % nm, VKit.FS_SMALL)
-	return y + 22.0
+	UIKit.draw_icon(self, "fine_age", Vector2(x, y), 22)
+	VKit.text(self, Vector2(x + 28.0, y + 3), Color(0.72, 0.60, 0.36), "Âge : %s" % nm, VKit.FS_SMALL)
+	return y + 20.0
 
 ## ÉMISSAIRE — disponibilité · retour · objectif. Le moteur ne stocke que le cooldown
 ## (diplo_cd) ; l'objectif vient de Sim.emissary_objective (posé au verbe diplo joueur).
@@ -381,12 +427,12 @@ func _draw_emissary(x: float, y: float) -> float:
 	if w == null or not w.has_method("diplo_cd"):
 		return y
 	var cd := int(w.diplo_cd())
-	UIKit.draw_icon(self, "menu_diplomacy", Vector2(x, y + 2), 15)
+	UIKit.draw_icon(self, "menu_diplomacy", Vector2(x, y), 22)
 	if cd <= 0:
-		VKit.text(self, Vector2(x + 20.0, y + 3), Color(0.52, 0.72, 0.48),
+		VKit.text(self, Vector2(x + 28.0, y + 3), Color(0.52, 0.72, 0.48),
 			"Émissaire : disponible", VKit.FS_SMALL)
-		return y + 22.0
-	VKit.text(self, Vector2(x + 20.0, y + 3), Color(0.82, 0.66, 0.36),
+		return y + 20.0
+	VKit.text(self, Vector2(x + 28.0, y + 3), Color(0.82, 0.66, 0.36),
 		"Émissaire : retour dans %d j" % cd, VKit.FS_SMALL)
 	y += 20.0
 	var obj := String(Sim.emissary_objective)
@@ -394,9 +440,73 @@ func _draw_emissary(x: float, y: float) -> float:
 		var lab := "Objectif : %s" % obj
 		while VKit.text_w(lab, VKit.FS_SMALL) > W - x - 12.0 and lab.length() > 12:
 			lab = lab.substr(0, lab.length() - 2) + "…"
-		VKit.text(self, Vector2(x + 20.0, y + 1), VKit.COL_DIM, lab, VKit.FS_SMALL)
-		y += 18.0
+		VKit.text(self, Vector2(x + 28.0, y + 1), VKit.COL_DIM, lab, VKit.FS_SMALL)
+		y += 16.0
 	return y + 4.0
+
+static func war_score_text(score: float) -> String:
+	# Affichage brut : les valeurs négatives sont de l'information, jamais une erreur.
+	return "%+.0f" % score
+
+func _draw_wars(x: float, y: float, w, me: int) -> float:
+	var wars := []
+	for rel in w.country_relations(me):
+		if bool(rel.get("at_war", false)):
+			wars.append(rel)
+	y = _lsection(x, y, "GUERRES", AlertsK.COL_ARMEE, str(wars.size()))
+	if not _folded("GUERRES"):
+		if wars.is_empty():
+			VKit.text(self, Vector2(x, y), VKit.COL_DIM, "aucune guerre", VKit.FS_SMALL)
+			y += 16.0
+		for rel in wars:
+			var cid := int(rel.get("country", -1))
+			var ctx: Dictionary = w.diplo_context(cid) if w.has_method("diplo_context") else {}
+			var score := float(ctx.get("war_score", rel.get("war_score", 0.0)))
+			var rr := Rect2(x - 2.0, y, W - 22.0, 32.0)
+			VKit.list_row_bg(self, rr, _war_rects.size())
+			UIKit.draw_icon(self, "dipl_rivalry", Vector2(x + 2.0, y + 3.0), 26)
+			var nm := String(rel.get("name", w.country_info(cid).get("nom", "?")))
+			while VKit.text_w(nm, VKit.FS_SMALL) > 142.0 and nm.length() > 8:
+				nm = nm.substr(0, nm.length() - 2) + "…"
+			VKit.text(self, Vector2(x + 34.0, y + 4.0), VKit.COL_PARCH, nm, VKit.FS_SMALL)
+			var val := war_score_text(score)
+			var scol := VKit.sense((clampf(score, -100.0, 100.0) + 100.0) / 200.0)
+			VKit.text(self, Vector2(W - 14.0 - VKit.text_w(val), y + 4.0), scol, val)
+			# Jauge divergente autour de zéro ; seule sa longueur est bornée, pas la valeur lue.
+			var bx := x + 34.0
+			var bw := W - bx - 18.0
+			VKit.fill(self, Rect2(bx, y + 23.0, bw, 3.0), VKit.COL_EDGE)
+			var mid := bx + bw * 0.5
+			VKit.fill(self, Rect2(mid - 1.0, y + 20.0, 2.0, 9.0), VKit.COL_DIM)
+			var extent := absf(clampf(score, -100.0, 100.0)) / 100.0 * bw * 0.5
+			VKit.fill(self, Rect2(mid - extent if score < 0.0 else mid, y + 22.0, extent, 5.0), scol)
+			_war_rects.append({"rect": rr, "country": cid, "score": score, "name": nm})
+			y += 34.0
+	return y + 3.0
+
+func _draw_notifications(x: float, y: float) -> float:
+	var rows: Array = _alerts_source.call("ledger_rows") if _alerts_source != null and _alerts_source.has_method("ledger_rows") else []
+	y = _lsection(x, y, "NOTIFICATIONS", Color(0.70, 0.54, 0.28), str(rows.size()))
+	if not _folded("NOTIFICATIONS"):
+		if rows.is_empty():
+			VKit.text(self, Vector2(x, y), VKit.COL_DIM, "rien en attente", VKit.FS_SMALL)
+			y += 16.0
+		for al in rows:
+			var data: Dictionary = al
+			var rr := Rect2(x - 2.0, y, W - 22.0, 34.0)
+			VKit.list_row_bg(self, rr, _notif_rects.size())
+			var col: Color = data.get("col", VKit.COL_GOLD)
+			VKit.fill(self, Rect2(rr.position.x, rr.position.y, 3.0, rr.size.y), col)
+			UIKit.draw_icon(self, String(data.get("icon", "alert_warning")), Vector2(x + 5.0, y + 4.0), 26)
+			var lab := String(_alerts_source.call("ledger_short", data)) if _alerts_source.has_method("ledger_short") else String(data.get("tip", ""))
+			while VKit.text_w(lab, VKit.FS_SMALL) > W - 64.0 and lab.length() > 8:
+				lab = lab.substr(0, lab.length() - 2) + "…"
+			VKit.text(self, Vector2(x + 38.0, y + 9.0), VKit.COL_PARCH, lab, VKit.FS_SMALL)
+			if data.has("seq"):
+				draw_circle(Vector2(W - 16.0, y + 7.0), 3.0, Color(0.95, 0.90, 0.75))
+			_notif_rects.append({"rect": rr, "data": data})
+			y += 36.0
+	return y + 3.0
 
 func _grp(n) -> String:
 	var s := str(absi(int(n)))
@@ -431,6 +541,8 @@ func _folded(title: String) -> bool:
 ## HOVER des bandeaux — politique joueur : nom, raccourci, FACTUEL (pas de leçon ;
 ## les mots turquoise portent les définitions via la cascade).
 const SEC_TIPS := {
+	"GUERRES": "Conflits actifs. Score signé depuis votre point de vue ; clic : ouvrir la diplomatie.",
+	"NOTIFICATIONS": "Conditions et évènements actifs. Clic : agir ; clic droit : acquitter un évènement.",
 	"VILLES": "Vos régions habitées, triées par âmes.",
 	"ARMÉES": "Réserve levée et ost de campagne. Recompléter paie or et matière.",
 	"COLONISATION": "Le chantier de Colonisation en cours et son avancement.",
@@ -441,12 +553,20 @@ const SEC_TIPS := {
 func _get_tooltip(at_position: Vector2) -> String:
 	if _collapsed:
 		return ""
-	if _age_engageable and _age_rect.size.x > 0 and _age_rect.has_point(at_position):
+	var cp := at_position + Vector2(0.0, _scrolloff)
+	if _age_engageable and _age_rect.size.x > 0 and _age_rect.has_point(cp):
 		return "Un âge s'est levé — clic pour l'ENGAGER (une fois par âge)."
+	for wr in _war_rects:
+		if (wr["rect"] as Rect2).has_point(cp):
+			return "%s\n• Score de guerre : %s\n• Clic : ouvrir la diplomatie" % [
+				String(wr.get("name", "?")), war_score_text(float(wr.get("score", 0.0)))]
+	for nr in _notif_rects:
+		if (nr["rect"] as Rect2).has_point(cp):
+			return "Notification\n• %s" % String((nr["data"] as Dictionary).get("tip", ""))
 	for lr in _log_rects:
-		if (lr["rect"] as Rect2).has_point(at_position):
+		if (lr["rect"] as Rect2).has_point(cp):
 			return "%s\nClic : centrer la carte sur le lieu." % String(lr.get("txt", ""))
 	for sr in _sec_rects:
-		if (sr["rect"] as Rect2).has_point(at_position):
+		if (sr["rect"] as Rect2).has_point(cp):
 			return String(SEC_TIPS.get(String(sr["title"]), ""))
 	return ""

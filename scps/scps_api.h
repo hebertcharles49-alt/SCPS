@@ -567,6 +567,10 @@ int scps_country_council(ScpsSim *s, int country, ScpsCouncilSeat *out, int max)
 /* Le curseur de PAIE du joueur (a[1]=paie ×100, 0..200) — verbe journalisé, revalidé
  * au drain (siège pourvu, borné [0,2]). */
 int scps_player_council_pay(ScpsSim *s, int seat, float pay);
+/* BUDGET LIVE : family 0=fiscalité par SocialClass, 1=BudgetPolicy ; valeur [0.1,2].
+ * Le lecteur rend toujours la valeur effective (0 brut dans un monde neuf => 1). */
+double scps_country_budget_policy(ScpsSim *s, int country, int family, int index);
+int    scps_player_budget_policy(ScpsSim *s, int family, int index, float mult);
 /* L'état de la PAIRE (a,b) de sièges du pays courant — 0=neutre 1=rivalité
  * 2=alliance 3=conspiration (V2b y branchera les événements). */
 int scps_council_pair_state(ScpsSim *s, int seat_a, int seat_b);
@@ -690,6 +694,8 @@ typedef struct {
     float fabricating_days_left;   /* jours avant maturité (fabricating==1) */
     int   cb_ready;                 /* une intrigue MÛRE (utilisable) existe contre cette cible */
     float cb_ready_years_left;     /* années avant expiration (cb_ready==1) */
+    int   claim_region, claim_province;
+    const char *claim_name;        /* le territoire concret visé par l'intrigue */
 } ScpsDiploOptions;
 int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out);
 
@@ -727,6 +733,24 @@ typedef struct {
     const char *target_capital_name;
 } ScpsDiploContext;
 int scps_diplo_context(ScpsSim *s, int target, ScpsDiploContext *out);
+
+/* TIROIR DE PAIX : prix lus du moteur, territoires nommés et offre composée. */
+typedef struct {
+    int region, province, occupied;
+    const char *name;
+    float score_cost;
+} ScpsPeaceTerritory;
+typedef struct {
+    int valid, at_war, target;
+    float war_score;
+    double revenue_year, revenue_month, gold_per_score, gold_available, gold_max;
+    float vassal_score;
+    int target_regions, fragment_possible;
+    int reparations_cost, humiliate_cost, pillage_cost, liberate_cost, fragment_cost;
+} ScpsPeacePreview;
+#define SCPS_PEACE_TERRITORY_MAX 32
+int scps_peace_preview(ScpsSim *s, int target, ScpsPeacePreview *out);
+int scps_peace_territories(ScpsSim *s, int target, ScpsPeaceTerritory *out, int max);
 
 /* ── le RÉSUMÉ D'OPINION (#26) : POURQUOI ce pays nous voit ainsi. `total` = l'opinion
  * COURANTE ±100 (lissée) ; le reste = les COMPOSANTES de la cible vers laquelle elle
@@ -933,6 +957,8 @@ int  scps_player_research(ScpsSim *s, int tech);
  * le VERDICT (accepté ?) se lit ensuite dans country_relations (statut/allié/at_war). `target` = cid. */
 int  scps_player_declare_war   (ScpsSim *s, int target);
 int  scps_player_make_peace    (ScpsSim *s, int target);   /* offre de paix BLANCHE (si l'autre cède) */
+int  scps_player_peace_offer   (ScpsSim *s, int target, const int *regions, int n_regions,
+                                int gold_score, int flags);
 int  scps_player_offer_alliance(ScpsSim *s, int target);
 int  scps_player_offer_pact    (ScpsSim *s, int target);
 int  scps_player_offer_migration(ScpsSim *s, int target); /* BRASSAGE : pacte migratoire (échange passif de pop) */
@@ -1061,6 +1087,7 @@ int scps_feed_poll(ScpsSim *s, int after_seq, ScpsFeedEvent *out, int max);
 typedef struct {
     const char *situation;         /* le NOM de l'évènement (résolu — membrane) */
     const char *labels[4];         /* les choix — jusqu'à 4 (le max de la table) */
+    const char *blurbs[4];         /* ce que le choix FAIT, formulé par l'évènement */
     const char *flavors[4];        /* ce que RACONTE chaque choix (tooltip) */
     const char *advisors[4];       /* QUI porte ce choix au conseil (mot de faction, "" si aucun) —
                                     * les trois choix ont des VISAGES : trahir une option = trahir
@@ -1068,6 +1095,7 @@ typedef struct {
     const char *effets[4];         /* l'EFFET MÉCANIQUE en mots+signes (« Ça veut dire quoi ? ») :
                                     * trésor ±N % du revenu mensuel · légitimité ↑/↓ · agitation ↑/↓ ·
                                     * population ±N % · cicatrice durable · pari (N %). "" si neutre. */
+    double gold_delta[4];          /* variation d'or RÉELLE au cours courant : négatif=prix, positif=gain */
     int n_options;
     int region;                    /* -1 si le sujet est un PAYS (EV_COUNTRY) */
     int days_left;                 /* avant auto-résolution (180 j au total) */

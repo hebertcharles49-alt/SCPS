@@ -74,10 +74,20 @@ func _run() -> void:
 			print("  ✓ situation « %s » — %d choix" % [situation, n_opt])
 		var labels: Array = dlg._pending.get("labels", [])
 		var flavors: Array = dlg._pending.get("flavors", [])
-		if labels.size() != n_opt or flavors.size() != n_opt:
-			push_error("event_dialog_audit: labels/flavors incomplets"); viol += 1
+		var blurbs: Array = dlg._pending.get("blurbs", [])
+		var effets: Array = dlg._pending.get("effets", [])
+		var gold_delta: Array = dlg._pending.get("gold_delta", [])
+		if labels.size() != n_opt or flavors.size() != n_opt or blurbs.size() != n_opt \
+			or effets.size() != n_opt or gold_delta.size() != n_opt:
+			push_error("event_dialog_audit: texte/flavor/effets/prix incomplets"); viol += 1
 		else:
-			print("  ✓ %d label(s) + %d flavor(s) — des MOTS, membrane tenue" % [labels.size(), flavors.size()])
+			var complete := true
+			for i in range(n_opt):
+				complete = complete and String(labels[i]) != "" and String(flavors[i]) != "" \
+					and String(blurbs[i]) != "" and is_finite(float(gold_delta[i]))
+			if not complete:
+				push_error("event_dialog_audit: une option sort vide ou sans prix fini"); viol += 1
+			print("  ✓ %d choix branchés : texte + flavor + effets + prix physique" % n_opt)
 
 	# résout le choix 0 — le pending doit disparaître et la vitesse d'avant revenir.
 	if dlg.visible:

@@ -126,6 +126,7 @@ public:
     Dictionary diplo_options(int target);             /* §3 : légalité des verbes diplo contre `target` (boutons grisés) */
     Dictionary diplo_action_legal(int target, int action); /* P4 : premier verrou + coût/délai/consentement */
     Dictionary diplo_context(int target);                  /* P8 : engagements, portée et lieux */
+    Dictionary peace_terms(int target);                    /* score, or et territoires nommés */
     Dictionary opinion_summary(int country);          /* #26 : le RÉSUMÉ d'opinion (total + composantes) */
     Array      diplo_journal(int country);            /* le JOURNAL d'actes daté (sous-détaille de Mémoire) */
     Dictionary country_army(int country);             /* mobilisation + flotte */
@@ -155,6 +156,7 @@ public:
     int        lang_get() const;                       /* I18N : langue moteur active (0/1) */
     Array      country_budget(int country);            /* budget : postes de flux de l'année (signés) */
     Dictionary budget_summary(int country);            /* budget : or · revenus · dépenses · net · crédit · prêteur */
+    Dictionary budget_controls(int country);           /* fiscalité par classe + investissement/entretiens [0.1,2] */
     Dictionary mission_info(int country);              /* mission décennale : texte · récompense · année ·
                                                         * +CARTE 2026-07-10 : resp_seat/resp_name/resp_tier/resp_bonus_pct/
                                                         * reward_gold_adj/reward_qty_adj (récompense PRÉVUE) */
@@ -171,7 +173,7 @@ public:
     /* MEMBRANE DE DÉCISION — la file joueur : un évènement à VRAIE décision qui concerne
      * le joueur ATTEND son choix (pas tranché par l'IA à sa place). */
     int        pending_count();
-    Dictionary pending_event(int slot);               /* {situation,labels:Array,flavors:Array,n_options,region,days_left} */
+    Dictionary pending_event(int slot);               /* situation + options {label,blurb,flavor,effets,gold_delta} */
     bool       player_event_choice(int slot, int option);
     /* LES ANNALES DU RÈGNE — récit SÉLECTIF (lecture seule) : [{year,kind,ligne,region}],
      * TRIÉ par année croissante. N'accroche QUE le pays joueur (scps_events.c). */
@@ -192,6 +194,7 @@ public:
     bool       player_council_hire(int seat, int slot);   /* conseil : pourvoir un siège */
     bool       player_council_dismiss(int seat);      /* conseil : renvoyer */
     bool       player_council_pay(int seat, float pay);   /* V2a : le curseur de paie (0..2) */
+    bool       player_budget_policy(int family, int index, float mult); /* 0=taxe, 1=dépense */
     int        council_pair_state(int seat_a, int seat_b); /* V2a : 0 neutre·1 rivalité·2 alliance·3 conspiration */
     bool       player_decree(int id, bool on);        /* DÉCRETS (civics) : bascule on/off */
     bool       player_route(int ra, int rb, bool maritime); /* commerce : tracer une route */
@@ -230,6 +233,7 @@ public:
     /* §3 — VERBES DIPLO du joueur (proposer → ai_consider_offer évalue) ; true = ordre enfilé */
     bool       player_declare_war(int target);        /* déclarer la guerre */
     bool       player_make_peace(int target);         /* offre de paix blanche */
+    bool       player_peace_offer(int target, const PackedInt32Array &regions, int gold_score, int flags);
     bool       player_offer_alliance(int target);     /* proposer une alliance */
     bool       player_offer_pact(int target);         /* proposer un pacte de commerce */
     bool       player_offer_migration(int target);    /* BRASSAGE : proposer un pacte migratoire */

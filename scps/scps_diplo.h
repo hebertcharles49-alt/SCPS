@@ -62,6 +62,12 @@ typedef struct DiploState {
      * La propriété (region.owner) ne change PAS à l'occupation — seulement à la paix
      * (diplo_settle). conquered[occ][owner] = Σ régions de owner tenues par occ. */
     int16_t     occupier   [SCPS_MAX_REG];
+    /* Paix négociée (interface joueur) : une revendication fabriquée porte enfin
+     * un territoire NOMMÉ ; les réparations sont un flux physique mensuel de 10 %
+     * du revenu pendant dix ans. Ces champs sont sérialisés avec DiploState. */
+    int16_t     fab_region [SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];
+    int16_t     reparations_to[SCPS_MAX_COUNTRY];
+    float       reparations_days[SCPS_MAX_COUNTRY];
     /* RANCUNE NATIONALE (§6) — rancor[a][b] = grief de a contre b qui lui a PRIS des
      * terres. ASYMÉTRIQUE, SURVIT à la paix (le grief reste), décroît sur une
      * génération. Donne à a un casus belli territorial (irrédentisme, sans adjacence)
@@ -237,6 +243,8 @@ void        diplo_war_cb_counts(int out[CB_ANTIPIRATERIE+1]);
 bool        diplo_can_fabricate  (const World *w, const WorldEconomy *econ, const DiploState *d, int a, int b);
 float       diplo_fabricate_cost (const WorldEconomy *econ, int target);
 bool        diplo_fabricate_cb   (World *w, WorldEconomy *econ, DiploState *d, int a, int b, CasusBelli cb);
+int         diplo_claim_region   (const World *w, const WorldEconomy *econ, const DiploState *d, int a, int b);
+int         diplo_fab_target_region(const DiploState *d, int a, int b);
 FabState    diplo_fab_state      (const DiploState *d, int a, int b);
 float       diplo_fab_days_left  (const DiploState *d, int a, int b);
 CasusBelli  diplo_fab_ready_cb   (const DiploState *d, int a, int b);
@@ -289,7 +297,18 @@ void diplo_liberate (DiploState *d, const WorldEconomy *econ, int region);
  * `winner_enslaves` = le vainqueur a-t-il l'Économie servile (résolu par l'appelant).
  * Renvoie le nombre de régions transférées (0 = paix blanche). */
 int  diplo_settle   (DiploState *d, World *w, WorldEconomy *econ, WorldLegitimacy *wl,
-                     int winner, int loser, bool winner_enslaves);
+                      int winner, int loser, bool winner_enslaves);
+/* Briques explicites du tiroir de paix joueur. Le transfert réutilise exactement
+ * le corps du règlement existant (cicatrice, rancune, légitimité, sac, captifs). */
+bool  diplo_peace_transfer_region(DiploState *d, World *w, WorldEconomy *econ,
+                                  WorldLegitimacy *wl, int winner, int loser,
+                                  int region, bool winner_enslaves);
+float diplo_peace_take_gold(World *w, WorldEconomy *econ, int winner, int loser, float wanted);
+float diplo_peace_pillage_stock(World *w, WorldEconomy *econ, int winner, int loser, float fraction);
+void  diplo_peace_force_ethos(World *w, WorldEconomy *econ, int winner, int loser);
+void  diplo_peace_start_reparations(DiploState *d, int winner, int loser);
+void  diplo_reparations_tick(DiploState *d, World *w, WorldEconomy *econ, float dt_days);
+void  diplo_peace_finalize(DiploState *d, World *w, WorldEconomy *econ, int a, int b);
 
 /* SACCAGE (§4 → LOT P 2026-07-07) — une province PRISE est DÉPOUILLÉE une fois : la
  * VALEUR pillée = 20 % du revenu ANNUEL de la VICTIME (`victim_cid`, econ_country_

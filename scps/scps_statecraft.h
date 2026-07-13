@@ -132,6 +132,8 @@ int   statecraft_council_seat_faction(const Statecraft *sc, uint32_t seed, int c
  * levier, jamais un canal parallèle). */
 void  statecraft_council_hire     (Statecraft *sc, uint32_t seed, int cid, int seat, int slot, int gen);
 void  statecraft_council_dismiss  (Statecraft *sc, uint32_t seed, int cid, int seat);
+/* Humiliation de paix : les titulaires meurent, sans grief de renvoi politique. */
+int   statecraft_council_kill_all (Statecraft *sc, int cid);
 /* LES ANNÉES PASSENT (annuel) : tout ministre à l'âge de la retraite VIDE son siège —
  * l'IA repourvoit au mois suivant (statecraft_council_ai), le joueur par l'UI. */
 void  statecraft_council_age_tick (Statecraft *sc, uint32_t seed, int year);

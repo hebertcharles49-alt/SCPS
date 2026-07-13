@@ -83,6 +83,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("diplo_options", "target"),        &ScpsWorld::diplo_options);
     ClassDB::bind_method(D_METHOD("diplo_action_legal", "target", "action"), &ScpsWorld::diplo_action_legal);
     ClassDB::bind_method(D_METHOD("diplo_context", "target"), &ScpsWorld::diplo_context);
+    ClassDB::bind_method(D_METHOD("peace_terms", "target"), &ScpsWorld::peace_terms);
     ClassDB::bind_method(D_METHOD("opinion_summary", "country"),     &ScpsWorld::opinion_summary);
     ClassDB::bind_method(D_METHOD("diplo_journal", "country"),       &ScpsWorld::diplo_journal);
     ClassDB::bind_method(D_METHOD("country_army", "country"),        &ScpsWorld::country_army);
@@ -104,6 +105,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("lang_get"),                       &ScpsWorld::lang_get);
     ClassDB::bind_method(D_METHOD("country_budget", "country"),      &ScpsWorld::country_budget);
     ClassDB::bind_method(D_METHOD("budget_summary", "country"),      &ScpsWorld::budget_summary);
+    ClassDB::bind_method(D_METHOD("budget_controls", "country"),     &ScpsWorld::budget_controls);
     ClassDB::bind_method(D_METHOD("mission_info", "country"),        &ScpsWorld::mission_info);
     ClassDB::bind_method(D_METHOD("country_factions", "country"),    &ScpsWorld::country_factions);
     ClassDB::bind_method(D_METHOD("player_build", "edifice", "region"), &ScpsWorld::player_build, DEFVAL(-1));
@@ -130,6 +132,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_council_hire", "seat", "slot"), &ScpsWorld::player_council_hire);
     ClassDB::bind_method(D_METHOD("player_council_dismiss", "seat"),    &ScpsWorld::player_council_dismiss);
     ClassDB::bind_method(D_METHOD("player_council_pay", "seat", "pay"), &ScpsWorld::player_council_pay);
+    ClassDB::bind_method(D_METHOD("player_budget_policy", "family", "index", "mult"), &ScpsWorld::player_budget_policy);
     ClassDB::bind_method(D_METHOD("council_pair_state", "seat_a", "seat_b"), &ScpsWorld::council_pair_state);
     ClassDB::bind_method(D_METHOD("council_candidates", "seat"),        &ScpsWorld::council_candidates);
     ClassDB::bind_method(D_METHOD("player_decree", "id", "on"),         &ScpsWorld::player_decree);
@@ -161,6 +164,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("country_capital_province", "c"), &ScpsWorld::country_capital_province);
     ClassDB::bind_method(D_METHOD("player_declare_war", "target"),    &ScpsWorld::player_declare_war);
     ClassDB::bind_method(D_METHOD("player_make_peace", "target"),     &ScpsWorld::player_make_peace);
+    ClassDB::bind_method(D_METHOD("player_peace_offer", "target", "regions", "gold_score", "flags"), &ScpsWorld::player_peace_offer);
     ClassDB::bind_method(D_METHOD("player_offer_alliance", "target"), &ScpsWorld::player_offer_alliance);
     ClassDB::bind_method(D_METHOD("player_offer_pact", "target"),     &ScpsWorld::player_offer_pact);
     ClassDB::bind_method(D_METHOD("player_offer_migration", "target"),&ScpsWorld::player_offer_migration);
@@ -972,6 +976,9 @@ Dictionary ScpsWorld::diplo_options(int target) {
     d["fabricating_days_left"]  = ok ? (double)o.fabricating_days_left : 0.0;
     d["cb_ready"]                = (bool)(ok && o.cb_ready);
     d["cb_ready_years_left"]    = ok ? (double)o.cb_ready_years_left : 0.0;
+    d["claim_region"]            = ok ? o.claim_region : -1;
+    d["claim_province"]          = ok ? o.claim_province : -1;
+    d["claim_name"]              = String::utf8(ok&&o.claim_name?o.claim_name:"");
     return d;
 }
 
@@ -1007,6 +1014,33 @@ Dictionary ScpsWorld::diplo_context(int target) {
     d["target_capital_province"]=c.target_capital_province;
     d["target_capital_region"]=c.target_capital_region;
     d["target_capital_name"]=String::utf8(c.target_capital_name?c.target_capital_name:"");
+    return d;
+}
+
+Dictionary ScpsWorld::peace_terms(int target) {
+    Dictionary d; ScpsPeacePreview p{};
+    scps_peace_preview(sim,target,&p);
+    d["valid"]=(bool)p.valid;d["at_war"]=(bool)p.at_war;d["target"]=p.target;
+    d["war_score"]=p.war_score;d["revenue_year"]=p.revenue_year;
+    d["revenue_month"]=p.revenue_month;d["gold_per_score"]=p.gold_per_score;
+    d["gold_available"]=p.gold_available;d["gold_max"]=p.gold_max;
+    d["vassal_score"]=p.vassal_score;d["target_regions"]=p.target_regions;
+    d["fragment_possible"]=(bool)p.fragment_possible;
+    d["reparations_cost"]=p.reparations_cost;d["humiliate_cost"]=p.humiliate_cost;
+    d["pillage_cost"]=p.pillage_cost;d["liberate_cost"]=p.liberate_cost;
+    d["fragment_cost"]=p.fragment_cost;
+    Array rows;
+    if(sim){
+        ScpsPeaceTerritory tr[SCPS_PEACE_TERRITORY_MAX];
+        int n=scps_peace_territories(sim,target,tr,SCPS_PEACE_TERRITORY_MAX);
+        for(int i=0;i<n;i++){
+            Dictionary x;x["region"]=tr[i].region;x["province"]=tr[i].province;
+            x["name"]=String::utf8(tr[i].name?tr[i].name:"");
+            x["score_cost"]=tr[i].score_cost;x["occupied"]=(bool)tr[i].occupied;
+            rows.push_back(x);
+        }
+    }
+    d["territories"]=rows;
     return d;
 }
 
@@ -1423,6 +1457,23 @@ Dictionary ScpsWorld::budget_summary(int country) {
     return d;
 }
 
+Dictionary ScpsWorld::budget_controls(int country) {
+    Dictionary d;
+    Array taxes, spending;
+    static const char *tax_names[3] = {"Laboureurs", "Artisans", "Noblesse"};
+    static const char *spend_names[4] = {"Investissement public", "Entretien des bâtiments", "Armée", "Flotte"};
+    for (int i=0;i<3;i++){
+        Dictionary row; row["id"]=i; row["name"]=String::utf8(tax_names[i]);
+        row["mult"]=scps_country_budget_policy(sim,country,0,i); taxes.push_back(row);
+    }
+    for (int i=0;i<4;i++){
+        Dictionary row; row["id"]=i; row["name"]=String::utf8(spend_names[i]);
+        row["mult"]=scps_country_budget_policy(sim,country,1,i); spending.push_back(row);
+    }
+    d["taxes"]=taxes; d["spending"]=spending;
+    return d;
+}
+
 Dictionary ScpsWorld::mission_info(int country) {
     Dictionary d;
     ScpsMission m;
@@ -1548,17 +1599,21 @@ Dictionary ScpsWorld::pending_event(int slot) {
     d["region"]    = ok ? pe.region : -1;
     d["days_left"] = ok ? pe.days_left : 0;
     d["evid"]      = ok ? pe.evid : -1;   /* clé d'illustration thématique (event_art.gd) */
-    Array labels, flavors, advisors, effets;
+    Array labels, blurbs, flavors, advisors, effets, gold_delta;
     for (int i = 0; i < (ok ? pe.n_options : 0); i++) {
         labels.push_back(String::utf8(pe.labels[i]));
+        blurbs.push_back(String::utf8(pe.blurbs[i]));
         flavors.push_back(String::utf8(pe.flavors[i]));
         advisors.push_back(String::utf8(pe.advisors[i]));
         effets.push_back(String::utf8(pe.effets[i]));
+        gold_delta.push_back(pe.gold_delta[i]);
     }
     d["labels"]   = labels;
+    d["blurbs"]   = blurbs;
     d["flavors"]  = flavors;
     d["advisors"] = advisors;   /* le VISAGE de chaque choix (mot de faction, "" si aucun) */
     d["effets"]   = effets;     /* l'EFFET MÉCANIQUE en clair (« Ça veut dire quoi ? ») */
+    d["gold_delta"] = gold_delta; /* même montant signé que le drain : <0 coût, >0 gain */
     return d;
 }
 bool ScpsWorld::player_event_choice(int slot, int option) {
@@ -1625,6 +1680,7 @@ Dictionary ScpsWorld::action_preview(int region, int verb) {
 bool ScpsWorld::player_council_hire(int seat, int slot)  { return sim ? scps_player_council_hire(sim, seat, slot) != 0 : false; }
 bool ScpsWorld::player_council_dismiss(int seat)         { return sim ? scps_player_council_dismiss(sim, seat) != 0 : false; }
 bool ScpsWorld::player_council_pay(int seat, float pay)  { return sim ? scps_player_council_pay(sim, seat, pay) != 0 : false; }
+bool ScpsWorld::player_budget_policy(int family, int index, float mult) { return sim ? scps_player_budget_policy(sim, family, index, mult) != 0 : false; }
 int  ScpsWorld::council_pair_state(int seat_a, int seat_b) { return sim ? scps_council_pair_state(sim, seat_a, seat_b) : 0; }
 bool ScpsWorld::player_decree(int id, bool on)            { return sim ? scps_player_decree(sim, id, on ? 1 : 0) != 0 : false; }
 bool ScpsWorld::player_route(int ra, int rb, bool maritime) { return sim ? scps_player_route(sim, ra, rb, maritime ? 1 : 0) != 0 : false; }
@@ -1724,6 +1780,12 @@ bool ScpsWorld::player_declare_war(int target) {
 }
 bool ScpsWorld::player_make_peace(int target) {
     return sim ? scps_player_make_peace(sim, target) != 0 : false;
+}
+bool ScpsWorld::player_peace_offer(int target,const PackedInt32Array &regions,int gold_score,int flags){
+    if(!sim||regions.size()>SCPS_PEACE_TERRITORY_MAX)return false;
+    int rr[SCPS_PEACE_TERRITORY_MAX];
+    for(int i=0;i<regions.size();i++)rr[i]=regions[i];
+    return scps_player_peace_offer(sim,target,rr,regions.size(),gold_score,flags)!=0;
 }
 bool ScpsWorld::player_offer_alliance(int target) {
     return sim ? scps_player_offer_alliance(sim, target) != 0 : false;

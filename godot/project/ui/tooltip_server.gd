@@ -7,7 +7,7 @@ extends Control
 ##   3. CASCADE : survoler un mot turquoise DANS un tooltip verrouillé ouvre le
 ##      tooltip-enfant de ce concept (né verrouillé) — récursif, chaque définition
 ##      en appelant d'autres. La chaîne se ferme du plus profond au plus proche
-##      quand la souris quitte les hitbox (grâce 0.3 s).
+##      quand la souris quitte les hitbox élargies.
 ## Display-only : lecture du Control survolé + du registre ui/concepts.gd.
 
 const Concepts = preload("res://ui/concepts.gd")
@@ -17,8 +17,8 @@ signal navigate_requested(request: Dictionary)
 const DELAY := 0.45          ## s de survol stable avant apparition
 const LOCK_AT := 1.0         ## s de survol total avant VERROUILLAGE (hitbox élargie)
 const SUB_DELAY := 0.30      ## s sur un mot turquoise avant d'ouvrir son enfant
-const GROW := 16.0           ## marge de la hitbox élargie (verrouillé)
-const GRACE := 0.30          ## s hors de toute hitbox avant fermeture de la chaîne
+const GROW := 22.0           ## marge de la hitbox élargie (verrouillé)
+const GRACE := 0.12          ## juste assez pour franchir l'espace vers un enfant
 const MAXW := 440.0          ## largeur max d'un panneau
 const MAXDEPTH := 6          ## garde-fou de cascade
 
@@ -31,7 +31,6 @@ var _hover_text := ""
 var _hover_card: Dictionary = {}
 var _t := 0.0                ## temps de survol cumulé sur la source racine
 var _locked := false         ## niveau 0 verrouillé (la cascade est ouverte)
-var _pinned := false         ## carte structurée épinglée : reste jusqu'au lien Fermer
 var _grace := 0.0
 var _sub_level := -1         ## mot turquoise en cours de survol : niveau…
 var _sub_key := ""           ## …concept…
@@ -75,7 +74,7 @@ func _mk_level() -> Dictionary:
 	var lvl := {"panel": panel, "rtl": rtl, "sb": sb}
 	var idx := _levels.size()
 	rtl.meta_hover_started.connect(func(meta):
-		if String(meta).begins_with("nav:") or String(meta) in ["pin", "close"]:
+		if String(meta).begins_with("nav:") or String(meta) == "close":
 			return
 		_sub_level = idx
 		_sub_key = String(meta)
@@ -87,10 +86,6 @@ func _mk_level() -> Dictionary:
 			_sub_t = 0.0)
 	rtl.meta_clicked.connect(func(meta):
 		var mk := String(meta)
-		if mk == "pin":
-			_pinned = true
-			_lock()
-			return
 		if mk == "close":
 			_teardown(0)
 			return
@@ -114,7 +109,6 @@ func _teardown(from_level: int) -> void:
 		_sub_t = 0.0
 	if _levels.is_empty():
 		_locked = false
-		_pinned = false
 		_t = 0.0
 		_grace = 0.0
 
@@ -144,8 +138,6 @@ func _process(delta: float) -> void:
 	if _locked:
 		var depth := _in_chain(mp)
 		if depth < 0:
-			if _pinned:
-				return
 			_grace += delta
 			if _grace >= GRACE:
 				_teardown(0)
@@ -202,8 +194,19 @@ func _process(delta: float) -> void:
 ## FACTUELLE — JAMAIS la définition des concepts dans le corps ; le joueur survole
 ## le MOT TURQUOISE pour l'obtenir (cascade). Aucune ligne méta d'explication.
 func _decorated(text: String, header_key: String = "") -> String:
-	var d: Dictionary = Concepts.decorate(text)
-	var bb := String(d["bb"])
+	var raw_lines := text.split("\n", false)
+	var bb := ""
+	if raw_lines.size() <= 1:
+		bb = String(Concepts.decorate(text).get("bb", text))
+	else:
+		var head := String(raw_lines[0]).strip_edges()
+		bb = "[b]%s[/b]" % String(Concepts.decorate(head).get("bb", head))
+		for i in range(1, raw_lines.size()):
+			var line := String(raw_lines[i]).strip_edges()
+			if line.begins_with("•"):
+				line = line.trim_prefix("•").strip_edges()
+			if line != "":
+				bb += "\n• " + String(Concepts.decorate(line).get("bb", line))
 	if header_key != "":
 		var hic: String = Concepts.icon_of(header_key)
 		var hpre := ("[img=18x18]%s[/img] " % hic) if hic != "" and ResourceLoader.exists(hic) else ""
@@ -231,7 +234,7 @@ func _card_bb(card: Dictionary) -> String:
 	var body := String(card.get("body", ""))
 	var out := "[b]%s[/b]" % String(Concepts.decorate(title).get("bb", title))
 	if state != "" or trend != "":
-		out += "\n[color=#e8d9b0]%s[/color]" % state
+		out += "\n• [color=#e8d9b0]%s[/color]" % state
 		if trend != "":
 			var trend_col := "df746d" if trend_tone == "negative" else "a9c98e"
 			out += "  [color=#%s]%s[/color]" % [trend_col, trend]
@@ -247,9 +250,9 @@ func _card_bb(card: Dictionary) -> String:
 			var decorated := String(Concepts.decorate(txt).get("bb", txt))
 			var tone_col: String = {"positive": "7fd18a", "negative": "df746d",
 				"heading": "d7bd75", "dim": "99917f"}.get(tone, "")
-			out += "\n[color=#%s]%s[/color]" % [tone_col, decorated] if tone_col != "" else "\n" + decorated
+			out += "\n• [color=#%s]%s[/color]" % [tone_col, decorated] if tone_col != "" else "\n• " + decorated
 	if body != "":
-		out += "\n" + String(Concepts.decorate(body).get("bb", body))
+		out += "\n• " + String(Concepts.decorate(body).get("bb", body))
 	var actions: Array = card.get("actions", [])
 	if not actions.is_empty():
 		out += "\n"
@@ -258,7 +261,7 @@ func _card_bb(card: Dictionary) -> String:
 			if action is Dictionary:
 				out += "\n[url=nav:%d][color=#%s]› %s[/color][/url]" % [
 					i, Concepts.COL, String(action.get("label", "Ouvrir"))]
-	out += "\n\n[url=pin][color=#%s]Épingler[/color][/url]  ·  [url=close]Fermer[/url]" % Concepts.COL
+	out += "\n\n[url=close][color=#%s]Fermer[/color][/url]" % Concepts.COL
 	return out
 
 func _lock() -> void:

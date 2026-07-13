@@ -41,6 +41,15 @@ func _run() -> void:
 	if load("res://ui/sidebar_drawer.gd") == null:
 		push_error("diplo_audit: sidebar_drawer.gd ne compile pas")
 		total += 1
+	var country_actions_script: Script = load("res://ui/country_actions.gd")
+	if country_actions_script == null:
+		push_error("diplo_audit: country_actions.gd ne compile pas")
+		total += 1
+	else:
+		var panel = country_actions_script.new()
+		add_child(panel) # exécute _build : le tiroir doit aussi se construire, pas seulement parser
+		await get_tree().process_frame
+		panel.queue_free()
 	for sd in _seeds():
 		total += _audit_seed(sd, _years())
 	print("")
@@ -105,6 +114,16 @@ func _audit_seed(sd: int, years: int) -> int:
 				break
 		if not now_war:
 			viol += 1; flags += " ✗war-no-effect(" + str(war_target) + ")"
+		else:
+			var peace: Dictionary = w.peace_terms(war_target)
+			if not bool(peace.get("valid", false)) or not bool(peace.get("at_war", false)):
+				viol += 1; flags += " ✗peace-preview"
+			var monthly := float(peace.get("revenue_month", 0.0))
+			if absf(float(peace.get("gold_per_score", 0.0)) - monthly * 0.03) > 0.001:
+				viol += 1; flags += " ✗peace-gold"
+			for tr in peace.get("territories", []):
+				if String(tr.get("name", "")) == "" or float(tr.get("score_cost", 0.0)) <= 0.0:
+					viol += 1; flags += " ✗peace-territory"; break
 
 	print("seed ", sd, " an ", w.year(), " | pays ", nc, " | relations ", rels.size(),
 		" | cible guerre ", war_target, (flags if flags != "" else " | OK"))

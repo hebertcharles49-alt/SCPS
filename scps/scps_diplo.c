@@ -103,7 +103,10 @@ void diplo_init(DiploState *d){
     memset(g_intim_cd,0,sizeof g_intim_cd);
     memset(g_war_cb,0,sizeof g_war_cb);   /* télémétrie « guerres motivées » : RAZ par sim */
     g_pil_events=0; g_pil_value=0.0; g_pil_target=0.0; g_enslaved_souls=0;   /* télémétrie « pillage réel » (LOT P) : RAZ par sim */
-    for (int c=0;c<SCPS_MAX_COUNTRY;c++) d->suzerain[c]=-1;   /* tous libres au départ */
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++){
+        d->suzerain[c]=-1; d->reparations_to[c]=-1;
+        for (int b=0;b<SCPS_MAX_COUNTRY;b++) d->fab_region[c][b]=-1;
+    }   /* tous libres au départ ; aucune revendication territoriale implicite */
     for (int r=0;r<SCPS_MAX_REG;r++)     d->occupier[r]=-1;   /* aucune région occupée */
     d->fronde_suz=-1; d->fronde_lead=-1; d->fronde_rng=0x9E3779B9u;
 }
@@ -618,6 +621,33 @@ bool diplo_can_fabricate(const World *w, const WorldEconomy *econ, const DiploSt
     float cost = diplo_fabricate_cost(econ, b);
     return econ_country_gold(econ, a) >= (double)cost;
 }
+/* La revendication vise une terre concrète : priorité à la frontière commune,
+ * puis à la capitale, puis à la terre la plus précieuse de la cible. */
+int diplo_claim_region(const World *w, const WorldEconomy *econ, const DiploState *d, int a, int b){
+    (void)d;
+    if(!w||!econ||a<0||b<0||a>=w->n_countries||b>=w->n_countries||a==b)return -1;
+    int best=-1; float bv=-1.f;
+    for(int r=0;r<econ->n_regions;r++){
+        if(econ->region[r].owner!=b || !econ->region[r].culture.settled)continue;
+        bool border=false;
+        for(int n=0;n<econ->n_regions;n++) if(econ->adj[r][n]&&econ->region[n].owner==a){border=true;break;}
+        if(!border)continue;
+        float v=diplo_province_price(econ,r);
+        if(v>bv){bv=v;best=r;}
+    }
+    if(best>=0)return best;
+    int cp=w->country[b].capital_prov;
+    int cr=(cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
+    if(cr>=0&&cr<econ->n_regions&&econ->region[cr].owner==b)return cr;
+    for(int r=0;r<econ->n_regions;r++) if(econ->region[r].owner==b){
+        float v=diplo_province_price(econ,r); if(v>bv){bv=v;best=r;}
+    }
+    return best;
+}
+int diplo_fab_target_region(const DiploState *d,int a,int b){
+    if(!d||a<0||b<0||a>=SCPS_MAX_COUNTRY||b>=SCPS_MAX_COUNTRY)return -1;
+    return d->fab_region[a][b];
+}
 bool diplo_fabricate_cb(World *w, WorldEconomy *econ, DiploState *d, int a, int b, CasusBelli cb){
     if (!diplo_can_fabricate(w, econ, d, a, b)) return false;
     float cost = diplo_fabricate_cost(econ, b);
@@ -627,6 +657,7 @@ bool diplo_fabricate_cb(World *w, WorldEconomy *econ, DiploState *d, int a, int 
     d->fab_state[a][b] = FAB_MATURING;
     d->fab_days [a][b] = tune_f("FAB_MATURE_DAYS", 365.f);
     d->fab_cb   [a][b] = (int8_t)cb;
+    d->fab_region[a][b] = (int16_t)diplo_claim_region(w,econ,d,a,b);
     return true;
 }
 FabState diplo_fab_state(const DiploState *d, int a, int b){
@@ -646,6 +677,7 @@ CasusBelli diplo_fab_ready_cb(const DiploState *d, int a, int b){
 static void diplo_fab_consume(DiploState *d, int a, int b){
     if (!d||a<0||a>=SCPS_MAX_COUNTRY||b<0||b>=SCPS_MAX_COUNTRY) return;
     d->fab_state[a][b]=FAB_NONE; d->fab_days[a][b]=0.f; d->fab_cb[a][b]=CB_NONE;
+    d->fab_region[a][b]=-1;
 }
 void diplo_fab_tick(DiploState *d, float dt_days){
     if (!d) return;
@@ -1086,6 +1118,97 @@ int diplo_settle(DiploState *d, World *w, WorldEconomy *econ, WorldLegitimacy *w
     if (loser>=0  && loser<w->n_countries  && settle_regions_of(econ,loser)==0)  polity_death(d,w,econ,loser);
     if (winner>=0 && winner<w->n_countries && settle_regions_of(econ,winner)==0) polity_death(d,w,econ,winner);
     return transferred;
+}
+
+bool diplo_peace_transfer_region(DiploState *d, World *w, WorldEconomy *econ,
+                                 WorldLegitimacy *wl, int winner, int loser,
+                                 int region, bool winner_enslaves){
+    if(!d||!w||!econ||!wl||winner<0||loser<0||winner==loser)return false;
+    if(region<0||region>=econ->n_regions||econ->region[region].owner!=loser)return false;
+    /* Même vérité terrain que le règlement historique : une terre demandée doit
+     * être réellement tenue par le vainqueur. */
+    if(d->occupier[region]!=winner)return false;
+    settle_transfer(d,w,econ,wl,winner,loser,region,winner_enslaves);
+    return true;
+}
+
+float diplo_peace_take_gold(World *w,WorldEconomy *econ,int winner,int loser,float wanted){
+    if(!w||!econ||winner<0||loser<0||winner>=w->n_countries||loser>=w->n_countries||winner==loser||wanted<=0.f)return 0.f;
+    int cp=w->country[winner].capital_prov;
+    int dst=(cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
+    float total=0.f;
+    for(int r=0;r<econ->n_regions&&total<wanted;r++)if(econ->region[r].owner==loser){
+        int p=econ_region_rep_province(econ,r); if(p<0||p>=econ->n_prov)continue;
+        float take=fminf(econ->prov[p].treasury,wanted-total);
+        if(take>0.f){econ->prov[p].treasury-=take;total+=take;}
+    }
+    if(dst>=0&&dst<econ->n_regions)econ_region_treasury_add(econ,dst,total);
+    return total;
+}
+
+float diplo_peace_pillage_stock(World *w,WorldEconomy *econ,int winner,int loser,float fraction){
+    if(!w||!econ||winner<0||loser<0||winner>=w->n_countries||loser>=w->n_countries||winner==loser)return 0.f;
+    fraction=clampf(fraction,0.f,1.f);
+    int cp=w->country[winner].capital_prov;
+    int dst=(cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
+    if(dst<0||dst>=econ->n_regions)return 0.f;
+    float moved=0.f;
+    for(int r=0;r<econ->n_regions;r++)if(econ->region[r].owner==loser){
+        for(int g=1;g<RES_COUNT;g++){
+            float want=econ->region[r].stock[g]*fraction;
+            float take=-econ_region_stock_add(econ,r,g,-want);
+            if(take>0.f){econ_region_stock_add(econ,dst,g,take);moved+=take;}
+        }
+    }
+    return moved;
+}
+
+void diplo_peace_force_ethos(World *w,WorldEconomy *econ,int winner,int loser){
+    if(!w||!econ||winner<0||loser<0||winner>=w->n_countries||loser>=w->n_countries||winner==loser)return;
+    Ethos ethos=suz_ethos(w,econ,winner);
+    for(int p=0;p<econ->n_prov;p++)if(econ->prov[p].owner==loser){
+        ProvinceEconomy *pe=&econ->prov[p]; pe->culture.ethos=ethos;
+        for(int g=0;g<pe->pop.n_groups;g++){
+            pe->pop.groups[g].origin.ethos=ethos;
+            pe->pop.groups[g].culture.ethos=ethos;
+        }
+    }
+    for(int r=0;r<econ->n_regions;r++)if(econ->region[r].owner==loser){
+        econ->region[r].culture.ethos=ethos;
+        for(int g=0;g<econ->region[r].pop.n_groups;g++){
+            econ->region[r].pop.groups[g].origin.ethos=ethos;
+            econ->region[r].pop.groups[g].culture.ethos=ethos;
+        }
+    }
+}
+
+void diplo_peace_start_reparations(DiploState *d,int winner,int loser){
+    if(!d||winner<0||loser<0||winner>=SCPS_MAX_COUNTRY||loser>=SCPS_MAX_COUNTRY||winner==loser)return;
+    d->reparations_to[loser]=(int16_t)winner;
+    d->reparations_days[loser]=3650.f;
+}
+
+void diplo_reparations_tick(DiploState *d,World *w,WorldEconomy *econ,float dt_days){
+    if(!d||!w||!econ||dt_days<=0.f)return;
+    for(int loser=0;loser<w->n_countries&&loser<SCPS_MAX_COUNTRY;loser++){
+        int winner=d->reparations_to[loser];
+        if(winner<0||winner>=w->n_countries||d->reparations_days[loser]<=0.f)continue;
+        float due=econ_country_tax_year(loser)*0.10f*(dt_days/365.f);
+        diplo_peace_take_gold(w,econ,winner,loser,due);
+        d->reparations_days[loser]-=dt_days;
+        if(d->reparations_days[loser]<=0.f){d->reparations_days[loser]=0.f;d->reparations_to[loser]=-1;}
+    }
+}
+
+void diplo_peace_finalize(DiploState *d,World *w,WorldEconomy *econ,int a,int b){
+    if(!d||!w||!econ||a<0||b<0||a>=w->n_countries||b>=w->n_countries)return;
+    for(int r=0;r<econ->n_regions&&r<SCPS_MAX_REG;r++){
+        int occ=d->occupier[r],own=econ->region[r].owner;
+        if((occ==a&&own==b)||(occ==b&&own==a))d->occupier[r]=-1;
+    }
+    diplo_make_peace(d,a,b);
+    if(settle_regions_of(econ,a)==0)polity_death(d,w,econ,a);
+    if(settle_regions_of(econ,b)==0)polity_death(d,w,econ,b);
 }
 
 /* PILLAGE_COOLDOWN_Y (anti-re-saccage) est utilisé par diplo_enslave_capture ET

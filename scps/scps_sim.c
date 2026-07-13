@@ -390,6 +390,67 @@ bool sim_cmd_push(Sim *s, PlayerCmd c){
     return true;
 }
 
+static void peace_rebuild_country(World *w,const WorldEconomy *econ,int cid){
+    if(!w||!econ||cid<0||cid>=w->n_countries)return;
+    Country *c=&w->country[cid]; c->n_regions=0;
+    for(int r=0;r<econ->n_regions&&c->n_regions<32;r++)
+        if(econ->region[r].owner==cid)c->region_ids[c->n_regions++]=(int16_t)r;
+    int cr=(c->capital_prov>=0&&c->capital_prov<w->n_provinces)?w->province[c->capital_prov].region:-1;
+    if(cr<0||cr>=econ->n_regions||econ->region[cr].owner!=cid){
+        c->capital_prov=-1;
+        if(c->n_regions>0){int r=c->region_ids[0];if(r>=0&&r<w->n_regions&&w->region[r].n_provinces>0)c->capital_prov=w->region[r].province_ids[0];}
+    }
+}
+
+static int peace_free_country_slot(World *w,const WorldEconomy *econ,int exclude){
+    for(int c=0;c<w->n_countries;c++)
+        if(c!=exclude&&w->country[c].role==POLITY_UNCLAIMED&&regions_of(econ,c)==0)return c;
+    if(w->n_countries>=SCPS_MAX_COUNTRY)return -1;
+    return w->n_countries++;
+}
+
+/* « Fragmenter » : le pays d'origine garde sa région-capitale ; chaque autre
+ * région devient un État indépendant vivant, nommé et piloté par l'IA. */
+static int peace_fragment_country(Sim *s,World *w,int parent){
+    int regs[32],nr=0;
+    for(int r=0;r<s->econ->n_regions&&nr<32;r++)if(s->econ->region[r].owner==parent)regs[nr++]=r;
+    if(nr<2)return 0;
+    int keep=0,cp=w->country[parent].capital_prov;
+    int cr=(cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
+    for(int i=0;i<nr;i++)if(regs[i]==cr){keep=i;break;}
+    int made=0;
+    for(int i=0;i<nr;i++){
+        if(i==keep)continue;
+        int r=regs[i],nid=peace_free_country_slot(w,s->econ,parent);
+        if(nid<0)break;
+        Country *nc=&w->country[nid]; memset(nc,0,sizeof *nc);
+        Heritage her=s->econ->region[r].culture.heritage;
+        Ethos eth=s->econ->region[r].culture.ethos;
+        nc->role=POLITY_ANTAGONIST;
+        nc->continent=(r<w->n_regions)?w->region[r].continent:0;
+        nc->capital_prov=(r<w->n_regions&&w->region[r].n_provinces>0)?w->region[r].province_ids[0]:-1;
+        nc->n_regions=1;nc->region_ids[0]=(int16_t)r;
+        nc->color=country_heritage_color(her,nid);
+        country_make_name(nc->name,(int)sizeof nc->name,her,eth,nid);
+        econ_region_set_owner(s->econ,w,r,nid);
+        econ_aggregate_regions(s->econ);
+        if(r<w->n_regions)w->region[r].country=(int16_t)nid;
+        for(int c=0;c<SCPS_MAX_COUNTRY;c++){
+            s->dp->status[nid][c]=s->dp->status[c][nid]=DIPLO_NEUTRAL;
+            s->dp->cb[nid][c]=s->dp->cb[c][nid]=CB_NONE;
+            s->dp->fab_region[nid][c]=s->dp->fab_region[c][nid]=-1;
+        }
+        s->dp->suzerain[nid]=-1;s->dp->contrat[nid]=CONTRAT_NONE;
+        s->ai_on[nid]=true;
+        ai_actor_init(&s->ai[nid],w,s->econ,nid,w->seed^(uint32_t)(nid*2654435761u));
+        if(s->sc->n_countries<=nid)s->sc->n_countries=nid+1;
+        statecraft_on_secession(s->sc,nid,parent);
+        made++;
+    }
+    peace_rebuild_country(w,s->econ,parent);
+    return made;
+}
+
 /* VIDE le journal de commandes du JOUEUR au point FIXE du tick. Chaque ordre est
  * REVALIDÉ contre l'état COURANT avant dispatch (miroir save_sane : un index périmé
  * — région perdue, edifice/unité hors domaine — est ignoré, jamais déréférencé) puis
@@ -405,7 +466,7 @@ static void sim_cmd_drain(Sim *s, World *w){
          * un ordre arrivé pendant sa tournée est IGNORÉ (l'UI lit scps_diplo_cd et grise). */
         if (c->verb==CMD_DECLARE_WAR || c->verb==CMD_MAKE_PEACE || c->verb==CMD_OFFER_ALLIANCE
          || c->verb==CMD_OFFER_PACT  || c->verb==CMD_OFFER_MIGRATION || c->verb==CMD_EMBARGO
-         || c->verb==CMD_FABRICATE_CB){
+         || c->verb==CMD_FABRICATE_CB || c->verb==CMD_PEACE_OFFER){
             int t = c->a[0];
             if (t<0 || t>=w->n_countries || t==p || regions_of(s->econ, t)<=0) continue;
             if (s->day < s->diplo_ready_day) continue;
@@ -473,6 +534,46 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (diplo_status(s->dp,p,t)!=DIPLO_WAR) break;
             if (ai_consider_offer(w, s->econ, s->wp, s->dp, s->sc, p, t, OFFER_PEACE))
                 diplo_make_peace(s->dp, p, t);                        /* paix BLANCHE si l'autre cède */
+            break; }
+          case CMD_PEACE_OFFER: {
+            int t=c->a[0],flags=c->a[1],gold_score=c->a[2],nr=c->a[3];
+            if(t<0||t>=w->n_countries||t==p||diplo_status(s->dp,p,t)!=DIPLO_WAR)break;
+            if(nr<0||nr>SCPS_PEACE_MAX_TERRITORIES||gold_score<0||gold_score>25)break;
+            if(flags&~(PEACE_REPARATIONS|PEACE_HUMILIATE|PEACE_PILLAGE|PEACE_LIBERATE|PEACE_VASSALIZE|PEACE_FRAGMENT))break;
+            if((flags&PEACE_FRAGMENT)&&(nr>0||gold_score>0||flags!=PEACE_FRAGMENT))break;
+            float cost=(float)gold_score;
+            bool sane=true;
+            for(int k=0;k<nr;k++){
+                int r=c->a[4+k];
+                if(r<0||r>=s->econ->n_regions||s->econ->region[r].owner!=t||s->dp->occupier[r]!=p){sane=false;break;}
+                for(int j=0;j<k;j++)if(c->a[4+j]==r){sane=false;break;}
+                cost+=diplo_province_price(s->econ,r);
+            }
+            if(!sane)break;
+            if(flags&PEACE_REPARATIONS)cost+=10.f;
+            if(flags&PEACE_HUMILIATE)cost+=20.f;
+            if(flags&PEACE_PILLAGE)cost+=10.f;
+            if(flags&PEACE_LIBERATE)cost+=50.f;
+            if(flags&PEACE_VASSALIZE)cost+=diplo_country_value(s->econ,t);
+            if(flags&PEACE_FRAGMENT)cost+=100.f;
+            float available=fmaxf(0.f,diplo_war_score(s->dp,p,t));
+            if(cost>available+0.01f)break;
+            if(cost<=0.01f && !ai_consider_offer(w,s->econ,s->wp,s->dp,s->sc,p,t,OFFER_PEACE))break;
+            bool enslaves=econ_country_can_enslave(w,s->econ,&s->ts[p],p);
+            for(int k=0;k<nr;k++)diplo_peace_transfer_region(s->dp,w,s->econ,s->wl,p,t,c->a[4+k],enslaves);
+            if(nr>0)econ_aggregate_regions(s->econ);
+            if(gold_score>0){
+                float monthly=econ_country_tax_year(t)/12.f;
+                diplo_peace_take_gold(w,s->econ,p,t,(float)gold_score*0.03f*monthly);
+            }
+            if(flags&PEACE_REPARATIONS)diplo_peace_start_reparations(s->dp,p,t);
+            if(flags&PEACE_HUMILIATE)statecraft_council_kill_all(s->sc,t);
+            if(flags&PEACE_PILLAGE)diplo_peace_pillage_stock(w,s->econ,p,t,0.05f);
+            if(flags&PEACE_LIBERATE)diplo_peace_force_ethos(w,s->econ,p,t);
+            if(flags&PEACE_VASSALIZE)diplo_set_vassal(s->dp,p,t,CONTRAT_PROTECTORAT);
+            if(flags&PEACE_FRAGMENT)peace_fragment_country(s,w,t);
+            peace_rebuild_country(w,s->econ,p); peace_rebuild_country(w,s->econ,t);
+            diplo_peace_finalize(s->dp,w,s->econ,p,t);
             break; }
           case CMD_OFFER_ALLIANCE: {
             int t = c->a[0];
@@ -560,6 +661,16 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (seat<0 || seat>=SC_COUNCIL_SEATS) break;
             if (statecraft_council_seated(s->sc,p,seat)<0) break;         /* siège vacant : rien à payer */
             statecraft_council_set_pay(s->sc, p, seat, pay);
+            break; }
+          case CMD_BUDGET_POLICY: {
+            int family=c->a[0], index=c->a[1]; float mult=(float)c->a[2]/100.f;
+            if (family==0){
+                if (index<0 || index>=CLASS_COUNT) break;
+                econ_country_tax_set(s->econ,p,(SocialClass)index,mult);
+            } else if (family==1){
+                if (index<0 || index>=BUDGET_POLICY_COUNT) break;
+                econ_country_budget_set(s->econ,p,(BudgetPolicy)index,mult);
+            }
             break; }
           /* ── §3 — COMMERCE ── */
           case CMD_ROUTE: {
@@ -882,6 +993,9 @@ void sim_day(Sim *s, World *w) {
             if (s->ai_on[c]) statecraft_council_ai(s->sc, w, s->econ, w->seed, c, s->year);   /* Q1 : l'IA pourvoit son siège d'éthos (pool de la génération courante) */
         statecraft_council_loyalty_tick(s->sc, w, s->econ, w->seed, 1.f/12.f);   /* V2a : la loyauté CONVERGE (jamais un saut) */
         PROF(PB_ECON, econ_tick(s->econ, 1.f/12.f));
+        /* Paix négociée : 10 % du revenu mensuel réellement ponctionné pendant
+         * dix ans, après que l'économie du mois a matérialisé son trésor. */
+        diplo_reparations_tick(s->dp,w,s->econ,30.f);
         statecraft_tick(s->sc, w, s->econ, s->wp, s->wl, s->dp, s->rn, 30);
         /* raccords 2/4 (Âges sans ordre imposé) — P mondial (age_P_bonus, Échanges) et le
          * multiplicateur d'intégration (age_integration_mult, Empires) sont lus ICI, DANS

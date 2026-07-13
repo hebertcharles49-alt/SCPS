@@ -466,7 +466,7 @@ int main(int argc, char **argv){
         printf("   Coût mensuel : ×0.5 %.1f, ×1 %.1f, ×2 %.1f\n", cost_half, cost_1x, cost_2x);
         ok("Conseil vivant : payer DOUBLE coûte le double", near_f(cost_2x, cost_1x*2.f, 0.01f));
         ok("Conseil vivant : payer MOINS coûte moins", near_f(cost_half, cost_1x*0.5f, 0.01f));
-        ok("Conseil vivant : le curseur de paie est BORNÉ [0,2]",
+        ok("Conseil vivant : le curseur de paie est BORNÉ [0.1,2]",
            statecraft_council_pay(s.sc,cid,seat)==0.5f &&
            (statecraft_council_set_pay(s.sc,cid,seat,9.f), statecraft_council_pay(s.sc,cid,seat)==2.f));
 

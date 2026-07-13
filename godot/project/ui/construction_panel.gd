@@ -2,7 +2,7 @@ extends Control
 ## ConstructionPanel — le menu de bâti en DEUX ONGLETS (Édifices | Manufactures,
 ## retour joueur 2026-07-10) : une LIGNE LARGE et DESCRIPTIVE par bâtiment —
 ## icônes des RESSOURCES de la recette, EFFET chiffré réel (delta ProvBuild via la
-## façade), FLAVOR cynique. Paliers familiaux masqués tant que le précédent n'est
+## façade). Paliers familiaux masqués tant que le précédent n'est
 ## pas bâti (prev_built). Molette = défilement. Immediate-mode _draw, prix RÉELS.
 
 const VKit = preload("res://ui/vkit.gd")
@@ -12,8 +12,8 @@ const Frame = preload("res://ui/frame.gd")
 signal build_requested(kind: String, type: int)
 
 const PADX := 12
-const RH_ED := 76.0    ## ligne ÉDIFICE (nom+coût / recette / effet / flavor)
-const RH_MF := 42.0    ## ligne MANUFACTURE (nom+or / note)
+const RH_ED := 64.0    ## ligne ÉDIFICE (nom+coût / recette / effet)
+const RH_MF := 44.0    ## ligne MANUFACTURE (nom+or / note)
 const PW := 396.0
 
 var _ph := 360.0       ## hauteur latchée (contenu, borné viewport — le surplus SCROLLE)
@@ -138,7 +138,7 @@ func _draw() -> void:
 	var content_h := 0.0
 
 	if _tab == 0:
-		# ── ÉDIFICES : lignes LARGES — recette en ICÔNES, EFFET chiffré, FLAVOR ──
+		# ── ÉDIFICES : recette en ICÔNES et EFFET chiffré, sans texte d'ambiance. ──
 		for i in range(_builds.size()):
 			var b: Dictionary = _builds[i]
 			if int(b.get("prev", -1)) >= 0 and not bool(b.get("prev_built", false)):
@@ -159,10 +159,10 @@ func _draw() -> void:
 			VKit.box(self, row, Color(VKit.COL_EDGE.r, VKit.COL_EDGE.g, VKit.COL_EDGE.b, 0.5))
 			var tex: Texture2D = UIKit.building_sprite(btype)
 			if tex != null:
-				draw_texture_rect(tex, Rect2(PADX + 4, yrow + 4, 26, 26), false,
+				draw_texture_rect(tex, Rect2(PADX + 4, yrow + 4, 34, 34), false,
 					Color.WHITE if (on2 and affordable) else Color(0.5, 0.5, 0.55, 0.65))
 			var ncol := VKit.COL_PARCH if (on2 and affordable) else VKit.COL_DIM
-			VKit.text(self, Vector2(PADX + 38, yrow + 5), ncol, String(b.get("nom", "")))
+			VKit.text(self, Vector2(PADX + 48, yrow + 5), ncol, String(b.get("nom", "")))
 			if not on2:
 				VKit.text(self, Vector2(PADX + 38 + VKit.text_w(String(b.get("nom", ""))) + 6, yrow + 5),
 					VKit.COL_GOLD, "✦", VKit.FS_SMALL)
@@ -170,17 +170,17 @@ func _draw() -> void:
 			VKit.value(self, Vector2(PADX + rw - VKit.text_w(ctx, VKit.FS_SMALL) - 6, yrow + 6),
 				ctx, VKit.FS_SMALL)
 			# L2 : la RECETTE en icônes de ressource (retour joueur : « icône ressources »)
-			var cx := PADX + 38.0
+			var cx := PADX + 48.0
 			for c in b.get("cost", []):
 				var rnom := String(c.get("res", ""))
 				var rspr: Texture2D = UIKit.resource_icon(rnom)
 				if rspr != null:
-					draw_texture_rect(rspr, Rect2(cx, yrow + 26, 16, 16), false)
-					cx += 19
+					draw_texture_rect(rspr, Rect2(cx, yrow + 27, 20, 20), false)
+					cx += 23
 				else:
-					VKit.text(self, Vector2(cx, yrow + 27), VKit.COL_DIM, rnom + " ", VKit.FS_SMALL)
+					VKit.text(self, Vector2(cx, yrow + 30), VKit.COL_DIM, rnom + " ", VKit.FS_SMALL)
 					cx += VKit.text_w(rnom + " ", VKit.FS_SMALL)
-				VKit.text(self, Vector2(cx, yrow + 27), VKit.COL_PARCH, "×%d" % int(c.get("qty", 0)), VKit.FS_SMALL)
+				VKit.text(self, Vector2(cx, yrow + 30), VKit.COL_PARCH, "×%d" % int(c.get("qty", 0)), VKit.FS_SMALL)
 				cx += VKit.text_w("×%d" % int(c.get("qty", 0)), VKit.FS_SMALL) + 10
 			if not on2:
 				VKit.text(self, Vector2(cx + 4, yrow + 27), VKit.COL_GOLD, "✦ verrou tech", VKit.FS_SMALL)
@@ -190,12 +190,7 @@ func _draw() -> void:
 			# L3 : l'EFFET RÉEL chiffré (delta ProvBuild, façade)
 			var eff := String(b.get("effet", ""))
 			if eff != "":
-				VKit.text(self, Vector2(PADX + 38, yrow + 43), VKit.sense(0.72), _fit(eff, rw - 44.0), VKit.FS_SMALL)
-			# L4 : le FLAVOR cynique
-			var fla := String(b.get("flavor", ""))
-			if fla != "":
-				VKit.text(self, Vector2(PADX + 38, yrow + 58), VKit.COL_DIM,
-					_fit("« %s »" % fla, rw - 44.0), VKit.FS_SMALL)
+				VKit.text(self, Vector2(PADX + 48, yrow + 48), VKit.sense(0.72), _fit(eff, rw - 54.0), VKit.FS_SMALL)
 			var lines := PackedStringArray()
 			if eff != "":
 				lines.append(eff)
@@ -206,8 +201,6 @@ func _draw() -> void:
 				lines.append("✦ verrouillé par la technologie")
 			elif not affordable:
 				lines.append("✗ %s" % _reason_label(leg))
-			if fla != "":
-				lines.append("« %s »" % fla)
 			_hover_zones.append({"rect": row, "head": String(b.get("nom", "")), "lines": lines,
 				"card": _build_info_card(b, leg)})
 			if on2 and affordable:
@@ -238,13 +231,13 @@ func _draw() -> void:
 				VKit.box(self, rowm, Color(VKit.COL_EDGE.r, VKit.COL_EDGE.g, VKit.COL_EDGE.b, 0.5))
 				var mtex: Texture2D = UIKit.manuf_sprite(mnom)
 				if mtex != null:
-					draw_texture_rect(mtex, Rect2(PADX + 4, yrow + 4, 24, 24), false)
-				VKit.text(self, Vector2(PADX + 38, yrow + 4), VKit.COL_PARCH, mnom)
+					draw_texture_rect(mtex, Rect2(PADX + 4, yrow + 4, 32, 32), false)
+				VKit.text(self, Vector2(PADX + 46, yrow + 4), VKit.COL_PARCH, mnom)
 				if mcost > 0:
 					var mctx := "%d or" % mcost
 					VKit.value(self, Vector2(PADX + rw - VKit.text_w(mctx, VKit.FS_SMALL) - 6, yrow + 6),
 						mctx, VKit.FS_SMALL)
-				VKit.text(self, Vector2(PADX + 38, yrow + 23), VKit.COL_DIM,
+				VKit.text(self, Vector2(PADX + 46, yrow + 23), VKit.COL_DIM,
 					"s'élève dans la province visée (bras & intrants locaux)", VKit.FS_SMALL)
 				_hover_zones.append({"rect": rowm, "head": mnom, "lines": PackedStringArray([
 					"Manufacture : s'élève dans la province visée",
