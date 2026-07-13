@@ -92,6 +92,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("country_council", "country"),     &ScpsWorld::country_council);
     ClassDB::bind_method(D_METHOD("decrees_list", "country"),        &ScpsWorld::decrees_list);
     ClassDB::bind_method(D_METHOD("country_revenue_year", "country"), &ScpsWorld::country_revenue_year);
+    ClassDB::bind_method(D_METHOD("tax_class_month", "cls"),          &ScpsWorld::tax_class_month);
     ClassDB::bind_method(D_METHOD("world_ipm"),                       &ScpsWorld::world_ipm);
     ClassDB::bind_method(D_METHOD("unit_roster", "country"),         &ScpsWorld::unit_roster);
     ClassDB::bind_method(D_METHOD("building_roster", "country"),     &ScpsWorld::building_roster);
@@ -1249,6 +1250,9 @@ Array ScpsWorld::decrees_list(int country) {
 /* Assiette des coûts % — hovers quantitatifs (« 3 % du revenu (2033 or) × IPM 1,12 = 68 or/an »). */
 double ScpsWorld::country_revenue_year(int country) {
     return sim ? scps_country_revenue_year(sim, country) : 0.0;
+}
+double ScpsWorld::tax_class_month(int cls) {
+    return sim ? scps_tax_class_month(sim, cls) : 0.0;
 }
 double ScpsWorld::world_ipm() {
     return sim ? scps_world_ipm_now(sim) : 1.0;

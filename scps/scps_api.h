@@ -571,6 +571,9 @@ int scps_player_council_pay(ScpsSim *s, int seat, float pay);
  * Le lecteur rend toujours la valeur effective (0 brut dans un monde neuf => 1). */
 double scps_country_budget_policy(ScpsSim *s, int country, int family, int index);
 int    scps_player_budget_policy(ScpsSim *s, int family, int index, float mult);
+/* Rendement fiscal MENSUEL (or/mois) d'une classe pour le pays du JOUEUR (0=Laborer,
+ * 1=Bourgeois, 2=Élite ; esclave=0). Lecteur PUR — recalculé de l'état, rien de sérialisé. */
+double scps_tax_class_month(ScpsSim *s, int cls);
 /* L'état de la PAIRE (a,b) de sièges du pays courant — 0=neutre 1=rivalité
  * 2=alliance 3=conspiration (V2b y branchera les événements). */
 int scps_council_pair_state(ScpsSim *s, int seat_a, int seat_b);

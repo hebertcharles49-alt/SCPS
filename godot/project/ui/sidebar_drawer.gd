@@ -379,9 +379,14 @@ func _draw_budget_controls(x: float, y: float, me: int) -> float:
 	y += 18.0
 	for raw in ctl.get("taxes", []):
 		var row: Dictionary = raw
+		var cls_idx := int(row.get("id", 0))
+		# le rendement RÉEL de cette classe en or/mois (reader per-capita) — à la place du « % ».
+		var tax_live := ""
+		if Sim.world.has_method("tax_class_month"):
+			tax_live = "%s or/mois" % _grp(int(round(float(Sim.world.tax_class_month(cls_idx)))))
 		y = _draw_multiplier_slider(x, y, String(row.get("name", "Impôt")), float(row.get("mult", 1.0)),
-			_eco_sliders, {"kind": "eco", "family": 0, "index": int(row.get("id", 0))},
-			"Taux visé de cette classe. Monter accroît l'évasion et la grogne au-delà de sa tolérance.")
+			_eco_sliders, {"kind": "eco", "family": 0, "index": cls_idx},
+			"Taux visé de cette classe. Monter accroît l'évasion et la grogne au-delà de sa tolérance.", tax_live)
 	y += 3.0
 	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Dépenses", VKit.FS_SMALL)
 	y += 18.0

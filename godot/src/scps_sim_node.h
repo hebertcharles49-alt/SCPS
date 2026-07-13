@@ -141,6 +141,7 @@ public:
     Array      decrees_list(int country);             /* DÉCRETS (civics) : {id,nom,flavor,plateaux,reforme,active,legal,
                                                         * +2026-07-10 : type/exclusive_id/cost_rate_pct/cost_year/cond_met/cooldown_active} */
     double     country_revenue_year(int country);     /* assiette des coûts % : revenu fiscal annuel (hovers quantitatifs) */
+    double     tax_class_month(int cls);               /* rendement fiscal MENSUEL (or/mois) d'une classe, pays du joueur */
     double     world_ipm();                            /* IPM courant (Indice des Prix Mondiaux — le « × IPM » des coûts) */
 
     /* CONSTRUCTION : roster militaire (22 unités) + édifices (boutons + survol) */

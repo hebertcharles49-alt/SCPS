@@ -4285,3 +4285,28 @@ Golden-safe par construction : `road_conn`=1.0 et coût=0 au sentinel 0 (chroniq
 **Restes** : la ROADS ne module que la contribution PROSPÉRITÉ de C ; si un jour on veut qu'elle
 touche AUSSI le commerce intertrade (routes physiques), c'est un 2e site de lecture à câbler
 (`route_pe`/intertrade), délibérément hors scope ici.
+
+## [2026-07-13] Impôt — assiette WEALTH-% → PER-CAPITA + rendement par classe en or/mois (implémenteur)
+**Découvertes** : la boucle §3b « IMPÔT D'ÉTAT » (`scps_econ.c::econ_tick`, ~ligne 3006) tourne sur
+les PROVINCES (`re=&e->prov[pid]`), PAS les régions — la région n'est que l'agrégat post-tick. `st->pop`
+(`PopStratum.pop`) = l'effectif de classe. `dt=1/12` au tick mensuel ; les bancs appellent `econ_tick(e,1.f)`
+(dt=1 = une ANNÉE) → toute formule per-mois doit porter `×(dt·12)` (=×1 mensuel, =×12 annuel au banc) pour
+rester juste des deux côtés. Refonte : `collected = tax_base[c]·st->pop·mult·(1−evasion)·(dt·12)` où
+`tax_base` = forfait mensuel {Laborer 0.06, Bourgeois 0.15, Élite 0.27, Esclave 0} (tunes registre J
+`TAX_BASE_*`, lus 1×/tick). L'évasion (`ambition=STATE_TAX_AMBITION·mult` vs `seuil=tolérance(éthos,c)·
+(0.4+0.6·sat)`) est INCHANGÉE — c'est le frein d'équilibre. La RENTE d'élite `TAX_RATE 0.38` (ligne 2985,
+tax_pool sur la valeur ajoutée) est un AUTRE mécanisme, pas touché.
+**Pièges** : (1) le `#define TAX_BASE_LABORER 0.06f` (dans le .c) NE COLLISIONNE PAS avec `X(TAX_BASE_LABORER,
+0.06f)` du registre car `scps_tune.c` (qui expanse `SCPS_TUNABLES`) n'inclut pas le .c → la string du nom
+reste littérale ; motif identique à `INVEST_SPEND_FRAC`. (2) `econ_tax_demo` PASSE 8/8 SANS retouche : ses
+assertions sont RELATIVES (Bureau>Domin, contenté>mécontent, surtaxe→grogne) et ne dépendent que de l'évasion
+(inchangée) ; le banc ne donne de la wealth qu'à l'élite (laborer/bourgeois wealth=0 → per-capita capé à 0) →
+trésor = impôt élite comme avant, chiffres 254/321/324/272 non capés (forfait ≪ 1000). La « recalibration
+attendue » n'était pas nécessaire — je l'ai laissé vert plutôt que de bouger un banc juste. (3) Le LECTEUR
+`econ_country_tax_class_month` somme les PROVINCES du pays (pas region[]) pour matcher exactement FX_TAX ;
+il OMET le plafond wealth (négligeable en régime) → rend l'or/mois NOMINAL. Pur, aucun état sérialisé →
+**SAVE_VERSION inchangé 84**, savetest 9/42 byte-identique.
+**Restes** : l'en-tête « Fiscalité par classe · rendement N or/mois » reste le FX_TAX RÉALISÉ (moyenné,
+plafonné) tandis que les 3 valeurs par-classe sont NOMINALES — léger écart de somme assumé (spec le permet).
+DLL Godot NON rebâtie (hors scope) : `tax_class_month` est gardé par `has_method` côté GD (live="" gracieux
+tant que la DLL n'expose pas la méthode).

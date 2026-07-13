@@ -1965,6 +1965,12 @@ double scps_world_ipm_now(ScpsSim *s){
     if (!s || !s->ready) return 1.0;
     return (double)econ_world_ipm(s->sim.econ);
 }
+/* Rendement fiscal MENSUEL (or/mois) d'une classe pour le pays du JOUEUR — lecteur PUR. */
+double scps_tax_class_month(ScpsSim *s, int cls){
+    if (!s || !s->ready || cls<0 || cls>=CLASS_COUNT) return 0.0;
+    int p = (s->sim.human_player>=0) ? s->sim.human_player : s->sim.player;
+    return (double)econ_country_tax_class_month(s->sim.econ, p, (SocialClass)cls);
+}
 
 int scps_country_relations(ScpsSim *s, int me, ScpsRelation *out, int max){
     if(!out || max<=0 || !s || !s->ready || me<0 || me>=s->w->n_countries) return 0;

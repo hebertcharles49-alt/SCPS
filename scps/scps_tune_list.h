@@ -23,6 +23,10 @@
     X(SINK_FLOOR,           500.0f) \
     X(INVEST_SPEND_FRAC,      0.30f) \
     X(ROAD_SPEND_FRAC,        0.15f) \
+    /* §6-7 — IMPÔT PER-CAPITA : forfait MENSUEL par âme et par classe (or/hab/mois). */ \
+    X(TAX_BASE_LABORER,       0.06f) \
+    X(TAX_BASE_BOURGEOIS,     0.15f) \
+    X(TAX_BASE_ELITE,         0.27f) \
     /* I6 — le marché n'est pas 1:1 : marge d'import sur les achats de chantier */ \
     X(IMPORT_MARGIN_OWN,      1.3f) \
     X(IMPORT_MARGIN_THIRD,    1.8f) \

@@ -1978,6 +1978,42 @@ float econ_country_road_conn(const WorldEconomy *e, int cid){
 }
 #define STATE_TAX_AMBITION 0.42f   /* le taux que l'État VISE (l'éthos décide ce qui rentre) */
 #define K_TAX_AGIT         0.85f   /* poids de la surtaxe sur la satisfaction (la grogne) */
+/* IMPÔT PER-CAPITA (§6-7, refonte 2026-07-13) : chaque âme paie un FORFAIT MENSUEL fixe
+ * par classe (or/hab/mois) — l'ESCLAVE 0 (propriété, pas contribuable). Le curseur joueur
+ * (mult 0.02..1.0) module ce forfait ; l'ÉVASION (ambition vs seuil de tolérance) reste
+ * le frein d'équilibre INCHANGÉ. Remplace l'ancienne assiette wealth-%. Dialables (registre J). */
+#define TAX_BASE_LABORER   0.06f
+#define TAX_BASE_BOURGEOIS 0.15f
+#define TAX_BASE_ELITE     0.27f
+
+/* LECTEUR PUR (display) — le rendement fiscal MENSUEL d'une classe pour un pays, en
+ * or/mois, RECALCULÉ de l'état courant : aucun champ sérialisé, zéro accumulateur ⇒
+ * neutre save/déterminisme. Miroir de la boucle 3b (forfait × pop × curseur × (1−évasion)),
+ * sommé sur les PROVINCES du pays (la province EST la vérité éco ; la région n'agrège que
+ * pour l'UI). Omet le plafond wealth (négligeable en régime : forfait ≪ richesse). */
+float econ_country_tax_class_month(const WorldEconomy *e, int cid, SocialClass c){
+    if (!e || cid<0 || cid>=SCPS_MAX_COUNTRY || c<0 || c>=CLASS_COUNT) return 0.f;
+    float base;
+    switch (c){
+        case CLASS_LABORER:   base=tune_f("TAX_BASE_LABORER",   TAX_BASE_LABORER);   break;
+        case CLASS_BOURGEOIS: base=tune_f("TAX_BASE_BOURGEOIS", TAX_BASE_BOURGEOIS); break;
+        case CLASS_ELITE:     base=tune_f("TAX_BASE_ELITE",     TAX_BASE_ELITE);     break;
+        default: return 0.f;   /* CLASS_SLAVE : pas d'impôt */
+    }
+    float mult     = econ_country_tax_mult(e, cid, c);
+    float ambition = STATE_TAX_AMBITION * mult;
+    float total    = 0.f;
+    for (int p=0; p<e->n_prov && p<SCPS_MAX_PROV; p++){
+        const ProvinceEconomy *re=&e->prov[p];
+        if (!re->active || !re->colonized || re->owner!=cid) continue;
+        const PopStratum *st=&re->strata[c];
+        float sat     = clampf(st->satisfaction,0.f,1.f);
+        float seuil   = econ_tax_tolerance(re->culture.ethos,c)*(0.40f+0.60f*sat);
+        float evasion = clampf(ambition - seuil, 0.f, 1.f);
+        total += base * st->pop * mult * (1.f-evasion);
+    }
+    return total;
+}
 /* §B — DÉ-STÉRILISER LE TRÉSOR + FERMER LE CISEAU OFFRE/DEMANDE.
  *  STATE_SPEND_RATE : part ANNUELLE du trésor que l'État REDÉPENSE (×dt/tick) — il ne
  *  hoarde plus, il circule ; réglé pour un trésor à l'ÉQUILIBRE (≈ TAX/SPEND × richesse),
@@ -2677,6 +2713,13 @@ void econ_tick(WorldEconomy *e, float dt) {
     const float ext_geo_cap   = tune_f("EXTRACT_GEO_CAP",     EXTRACT_GEO_CAP);
     const float ext_lab_share = tune_f("EXTRACT_LABOR_SHARE", EXTRACT_LABOR_SHARE);
     const float food_need     = tune_f("FOOD_NEED",           1.0f);   /* A2 : calibrage de la bouche vivrière */
+    /* §6-7 — forfait fiscal MENSUEL par classe (or/hab/mois), lu UNE fois/tick. CLASS_SLAVE=0. */
+    const float tax_base[CLASS_COUNT] = {
+        tune_f("TAX_BASE_LABORER",   TAX_BASE_LABORER),
+        tune_f("TAX_BASE_BOURGEOIS", TAX_BASE_BOURGEOIS),
+        tune_f("TAX_BASE_ELITE",     TAX_BASE_ELITE),
+        0.f,
+    };
 
     for (int pid=0; pid<e->n_prov && pid<SCPS_MAX_PROV; pid++) {
         ProvinceEconomy *re=&e->prov[pid];
@@ -3001,9 +3044,12 @@ void econ_tick(WorldEconomy *e, float dt) {
             PopStratum *st=&re->strata[c];
             float sat   = clampf(st->satisfaction,0.f,1.f);
             float seuil = econ_tax_tolerance(re->culture.ethos,(SocialClass)c)*(0.40f+0.60f*sat);
-            float ambition = STATE_TAX_AMBITION * econ_country_tax_mult(e,re->owner,(SocialClass)c);
+            float mult  = econ_country_tax_mult(e,re->owner,(SocialClass)c);
+            float ambition  = STATE_TAX_AMBITION * mult;   /* pilote l'évasion vs le seuil (INCHANGÉ) */
             float evasion   = clampf(ambition - seuil, 0.f, 1.f);
-            float collected = ambition * st->wealth * (1.f-evasion) * dt;
+            /* REFONTE 2026-07-13 — assiette PER-CAPITA : forfait mensuel × effectif × curseur ×
+             * (1−évasion). ×(dt·12) = ×1 au tick mensuel (dt=1/12) ; au banc (dt=1) = ×12 = une ANNÉE. */
+            float collected = tax_base[c] * st->pop * mult * (1.f-evasion) * (dt*12.f);
             if (collected>st->wealth) collected=st->wealth;
             st->wealth   -= collected;
             re->treasury += collected;
