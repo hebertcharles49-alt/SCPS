@@ -551,6 +551,13 @@ static void culture_to_pc(const Culture *c, PopCulture *p){
     p->structure=c->structure; p->credo=c->credo; p->rel_branch=c->rel_branch;
     p->martial=c->martial; p->econ=c->econ; p->age=c->age;   /* settled/heritage PRÉSERVÉS */
 }
+SyncFeasibility pop_culture_can_syncretize(const PopCulture *a, const PopCulture *b,
+                                           float P, float K){
+    SyncFeasibility none={false,0.f,0.f};
+    if(!a||!b)return none;
+    Culture ca,cb; pc_to_culture(a,&ca); pc_to_culture(b,&cb);
+    return culture_can_syncretize(&ca,&cb,P,K);
+}
 static long g_contact_cryst = 0;   /* cristallisations par contact, cumul de la sim (télémétrie) */
 void demography_contact_reset(void){ g_contact_cryst = 0; }
 long demography_contact_count(void){ return g_contact_cryst; }

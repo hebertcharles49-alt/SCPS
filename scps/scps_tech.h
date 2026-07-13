@@ -251,6 +251,17 @@ int         tech_heritage_access_tier(unsigned access, Heritage r);
 
 /* Prérequis remplis, pas déjà pris, porte arcane ok, ACCÈS de heritage ok ? */
 bool  tech_can_research(const TechState *s, TechId id, unsigned heritage_access);
+/* Première porte opposée par tech_can_research, dans le même ordre. L'âge reste
+ * une règle du module Events et est ajouté par la façade après ce diagnostic. */
+typedef enum {
+    TECH_BLOCK_OK = 0,
+    TECH_BLOCK_INVALID,
+    TECH_BLOCK_ACQUIRED,
+    TECH_BLOCK_HERITAGE,
+    TECH_BLOCK_RUINS,
+    TECH_BLOCK_PREREQUISITE
+} TechResearchBlock;
+TechResearchBlock tech_research_block(const TechState *s, TechId id, unsigned heritage_access);
 /* Applique les deltas SCPS, la charge et le flux ; marque comme acquis.
  * (Le PAIEMENT en points de recherche est géré par l'appelant via tech_cost.) */
 bool  tech_research(TechState *s, TechId id, unsigned heritage_access);

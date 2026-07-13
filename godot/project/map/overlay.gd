@@ -116,6 +116,7 @@ var _region_seat := {}    ## région colonisée → SIÈGE du tampon : cellule I
 ## JOUEUR (garnison OU ost) + rayon, recalculés à chaque _draw ; army_selected = mode marche.
 var army_selected := false                 ## compat panneau historique
 var selected_corps: Array[int] = []
+var move_preview: Dictionary = {}          ## route survolée avant clic (façade campaign, lecture pure)
 var _pa_positions := {}                    ## id -> {pos:Vector2, radius:float}
 var _dress_tex := {}      ## id de marque de terrain (lot 2) → Texture2D (cache)
 var _dressing := []       ## [{pos(monde), id, scale}] — marques de biome semées (display-only)
@@ -1656,6 +1657,30 @@ func _project_segs_iso(mv: Node2D, segs: PackedVector2Array) -> PackedVector2Arr
 	return out
 
 # ════════════════════════ dispatch (parchemin, ISO unique) ════════════════════════
+func _draw_move_preview(w, mv: Node2D, zoom: float) -> void:
+	if move_preview.is_empty():
+		return
+	var legal := bool(move_preview.get("valid", false))
+	var color := Color(0.92, 0.76, 0.28, 0.92) if legal else Color(0.86, 0.24, 0.20, 0.92)
+	var pts := PackedVector2Array()
+	for value in move_preview.get("path", []):
+		var region := int(value)
+		var world_pos: Vector2 = _region_seat.get(region, w.region_centroid(region))
+		if world_pos.x >= 0:
+			pts.append(mv.iso_pos(world_pos.x, world_pos.y))
+	if pts.size() >= 2:
+		draw_polyline(pts, color, 2.4 / maxf(zoom, 0.001), true)
+		for point in pts:
+			draw_circle(point, 2.5 / maxf(zoom, 0.001), color)
+	var target := int(move_preview.get("target_region", -1))
+	if target >= 0:
+		var target_pos: Vector2 = _region_seat.get(target, w.region_centroid(target))
+		if target_pos.x >= 0:
+			var center: Vector2 = mv.iso_pos(target_pos.x, target_pos.y)
+			draw_circle(center, 8.0 / maxf(zoom, 0.001), Color(color, 0.12))
+			draw_arc(center, 8.0 / maxf(zoom, 0.001), 0.0, TAU, 24, color,
+				1.8 / maxf(zoom, 0.001), true)
+
 func _draw() -> void:
 	var w = Sim.world
 	if w == null:
@@ -1895,6 +1920,8 @@ func _draw_iso(w, mv: Node2D) -> void:
 			for s in setts:
 				_draw_banner(w, int(s["r"]), s["ip"], zoom, clampf((zoom - 4.0) / 1.2, 0.0, 1.0))
 
+	_draw_move_preview(w, mv, zoom)
+
 	# ── ARMÉES : PION DE PLATEAU (planche 32 — la figurine d'étain posée SUR la
 	#    table, drapeau teinté au pays, la POSE dit la phase) + ligne de marche.
 	#    Ombre de contact = la même pièce en silhouette, décalée SE (front32). ──
@@ -1962,6 +1989,7 @@ func _draw_iso(w, mv: Node2D) -> void:
 		# COMPTEUR D'EFFECTIF (rendu attendu EU4) : strip à la couleur du pays + « N k »,
 		# taille ÉCRAN constante, posé SOUS le pion — la force se lit sans cliquer.
 		var un := int(a.get("units", 0))
+		if not bool(a.get("units_are_humans", false)): un *= 100
 		if un > 0:
 			var scc := 1.0 / maxf(zoom, 0.0001)
 			var ut := str(un)

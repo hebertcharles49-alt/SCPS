@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://b8cbaud00001"]
+
+[ext_resource type="Script" path="res://cb_audit.gd" id="1_cbaud"]
+
+[node name="CbAudit" type="Node"]
+script = ExtResource("1_cbaud")

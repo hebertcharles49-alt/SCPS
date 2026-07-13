@@ -73,6 +73,7 @@ typedef enum {
     FEED_DIRECTOR,       /* ÉVÈNEMENT DU DIRECTEUR (inondation, peste, créuset…) : v = EvId
                           * (nom résolu à la façade) · region si provincial, sinon a = pays visé.
                           * Poussé par scps_events (non gaté — le FRONT filtre la pertinence). */
+    FEED_BATTLE_DRAW,    /* bataille indécise : deux camps brisés ; pertes packées dans v */
     FEED_COUNT
 } FeedKind;
 typedef struct { int seq, year, kind, a, b, region, v; } FeedEntry;   /* v = valeur libre (score…) */

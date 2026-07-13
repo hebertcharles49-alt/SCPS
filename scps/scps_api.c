@@ -601,7 +601,8 @@ int scps_country_corps_id(ScpsSim *s, int country, int ordinal){
 void scps_corps_info(ScpsSim *s, int id, ScpsArmyInfo *out){
     if(!out) return;
     memset(out, 0, sizeof *out);
-    out->id=id; out->region=-1; out->dest=-1; out->owner=-1; out->phase="";
+    out->id=id; out->region=-1; out->dest=-1; out->next=-1; out->owner=-1;
+    out->phase=""; out->location=""; out->destination=""; out->progress_pct=-1;
     if(!s || !s->ready) return;
     const FieldArmy *a=campaign_corps_const(s->sim.camp,id);
     if(!a || !a->active || a->owner<0 || a->owner>=s->w->n_countries) return;
@@ -611,12 +612,153 @@ void scps_corps_info(ScpsSim *s, int id, ScpsArmyInfo *out){
     out->active   = 1;
     out->region   = a->loc;
     out->dest     = a->dest;
+    out->next     = a->next;
     out->phase_id = (int)ph;
     out->phase    = sz(campaign_phase_name(ph));
-    out->units    = campaign_corps_units(s->sim.camp,id);
+    out->units    = campaign_corps_units(s->sim.camp,id)*100L;
     ArmyComposition comp=campaign_corps_composition(s->sim.camp,id);
-    out->inf = comp.infanterie; out->arch = comp.archers;
-    out->cav = comp.cavalerie;  out->mages = comp.mages;
+    out->inf = comp.infanterie*100L; out->arch = comp.archers*100L;
+    out->cav = comp.cavalerie*100L;  out->mages = comp.mages*100L;
+    int lp=econ_region_rep_province(s->sim.econ,a->loc);
+    int dp=econ_region_rep_province(s->sim.econ,a->dest);
+    out->location=(lp>=0 && lp<s->w->n_provinces)?sz(s->w->province[lp].name):sz("");
+    out->destination=(dp>=0 && dp<s->w->n_provinces)?sz(s->w->province[dp].name):sz("");
+    out->days_left=a->days_left; out->leg_days=a->leg_days;
+    if(a->phase==FA_MARCH && a->leg_days>0.f){
+        float p=1.f-a->days_left/a->leg_days; if(p<0.f)p=0.f; if(p>1.f)p=1.f;
+        out->progress_pct=(int)(p*100.f+0.5f);
+    }
+    out->broken_days=a->broken_days; out->rally_days=a->rally_days;
+    out->rally_units=(long)a->rally_packets*100L;
+    out->taken=a->taken; out->legs=a->legs; out->battles=a->battles;
+}
+
+int scps_corps_move_preview(ScpsSim *s, int id, int target, ScpsMovePreview *out,
+                           int *path, int max_path){
+    if(!out)return 0;
+    memset(out,0,sizeof *out); out->corps_id=id; out->from_region=-1;
+    out->target_region=target; out->from_name=""; out->target_name="";
+    out->reason="Aperçu indisponible"; out->arrival="";
+    if(!s || !s->ready)return 0;
+    const FieldArmy *a=campaign_corps_const(s->sim.camp,id);
+    if(a)out->from_region=a->loc;
+    int fp=econ_region_rep_province(s->sim.econ,out->from_region);
+    int tp=econ_region_rep_province(s->sim.econ,target);
+    if(fp>=0 && fp<s->w->n_provinces)out->from_name=sz(s->w->province[fp].name);
+    if(tp>=0 && tp<s->w->n_provinces)out->target_name=sz(s->w->province[tp].name);
+    float days=0.f; int reason=0,arrival=0;
+    int full_path[SCPS_MAX_REG];
+    int n=campaign_preview_corps(s->sim.camp,s->sim.econ,s->sim.dp,id,target,
+                                 full_path,SCPS_MAX_REG,&days,&reason,&arrival);
+    int path_cap=max_path>0?max_path:0;
+    int copied=n<path_cap?n:path_cap;
+    if(path) for(int i=0;i<copied;i++) path[i]=full_path[i];
+    static const char *why[]={"Route praticable","Corps invalide","Corps engagé en bataille",
+        "Corps en mer ou en débarquement","Corps brisé en déroute","Destination invalide",
+        "Corps sans effectif","Aucune route terrestre"};
+    static const char *arr[]={"Rester sur place","Repositionnement","Marche vers un siège"};
+    out->reason_code=reason; out->reason=sz(why[(reason>=0&&reason<8)?reason:1]);
+    out->arrival_code=arrival; out->arrival=sz(arr[(arrival>=0&&arrival<3)?arrival:0]);
+    out->travel_days=days; out->hops=n>0?n-1:0; out->valid=(reason==0 && n>0);
+    if(out->valid && a){
+        ArmyState projected=a->force;
+        long start_packets=0, lost_packets=0;
+        for(int u=0;u<projected.n_units;u++)
+            if(projected.units[u].count>0) start_packets+=projected.units[u].count;
+        float projected_days=0.f, worst=0.f;
+        int route_n=n<SCPS_MAX_REG?n:SCPS_MAX_REG;
+        for(int i=1;i<route_n;i++){
+            int r=full_path[i]; if(r<0 || r>=s->sim.econ->n_regions)break;
+            float rate=march_attrition_rate(s->sim.camp->reg_biome[r]);
+            if(rate>worst)worst=rate;
+            float leg=army_step_days(&projected,s->sim.camp->reg_biome[r],
+                                     s->sim.camp->reg_height[r],false,false);
+            if(!isfinite(leg))break;
+            projected_days+=leg;
+            lost_packets+=army_march_attrition(&projected,s->sim.camp->reg_biome[r],leg);
+        }
+        if(route_n==n) out->travel_days=projected_days; /* durée après fonte éventuelle d'une ligne lente */
+        long arrival_packets=start_packets-lost_packets;
+        if(arrival_packets<0)arrival_packets=0;
+        out->units_start=start_packets*100L;
+        out->attrition_loss=lost_packets*100L;
+        out->units_arrival=arrival_packets*100L;
+        out->attrition_pct=start_packets>0?(int)(100.f*(float)lost_packets/(float)start_packets+0.5f):0;
+        if(out->attrition_pct<0)out->attrition_pct=0;
+        if(out->attrition_pct>100)out->attrition_pct=100;
+        out->worst_daily_pct10=(int)(worst*1000.f+0.5f);
+    }
+    return copied;
+}
+
+int scps_corps_refill_preview(ScpsSim *s, int id, ScpsRefillPreview *out){
+    if(!out) return 0;
+    memset(out,0,sizeof *out); out->corps_id=id; out->region=-1; out->reason="Corps invalide";
+    if(!s || !s->ready) return 0;
+    int player=(s->sim.human_player>=0)?s->sim.human_player:s->sim.player;
+    const FieldArmy *fa=campaign_corps_const(s->sim.camp,id);
+    if(!fa || !fa->active || fa->owner!=player){out->reason_code=1;return 0;}
+    out->valid=1; out->region=fa->loc;
+
+    ArmyState popsim=fa->force;
+    for(int i=0;i<fa->force.n_units;i++){
+        const Unit *u=&fa->force.units[i];
+        if(u->count<=0) continue;
+        const UnitDef *d=unit_def(u->type); if(!d) continue;
+        out->requested_humans+=POP_PER_UNIT;
+        Resource arm=unit_res_arm(u->type);
+        if(arm>RES_NONE && arm<RES_COUNT){
+            int k=-1;
+            for(int n=0;n<out->n_needs;n++) if(out->need[n].resource==(int)arm){k=n;break;}
+            if(k<0 && out->n_needs<SCPS_REFILL_MAX_NEEDS){
+                k=out->n_needs++; out->need[k].resource=(int)arm;
+                out->need[k].name=sz(resource_name(arm));
+                out->need[k].owned=econ_empire_stock(s->sim.econ,player,arm);
+            }
+            if(k>=0){out->need[k].needed+=POP_PER_UNIT; out->weapons_needed+=POP_PER_UNIT;}
+        }
+        if(army_class_free(&popsim,s->sim.econ,player,d->from)>=POP_PER_UNIT){
+            popsim.pop_by_class_in_army[d->from]+=POP_PER_UNIT;
+            out->population_ready_humans+=POP_PER_UNIT;
+        }
+    }
+    for(int n=0;n<out->n_needs;n++)
+        out->weapons_owned += out->need[n].owned<out->need[n].needed
+                            ? out->need[n].owned : out->need[n].needed;
+
+    /* Garantie conservatrice : même ordre de lignes que le drain, mais uniquement
+     * avec l'arsenal national. Le marché reste une possibilité, jamais une promesse. */
+    ArmyState dry=fa->force;
+    long stock[RES_COUNT]; memset(stock,0,sizeof stock);
+    for(int g=1;g<RES_COUNT;g++) stock[g]=econ_empire_stock(s->sim.econ,player,(Resource)g);
+    for(int i=0;i<fa->force.n_units;i++){
+        const Unit *u=&fa->force.units[i];
+        if(u->count<=0) continue;
+        const UnitDef *d=unit_def(u->type); if(!d) continue;
+        if(army_class_free(&dry,s->sim.econ,player,d->from)<POP_PER_UNIT) continue;
+        Resource arm=unit_res_arm(u->type);
+        if(arm!=RES_NONE){
+            if(arm<=RES_NONE || arm>=RES_COUNT || stock[arm]<POP_PER_UNIT) continue;
+            stock[arm]-=POP_PER_UNIT;
+        }
+        dry.weapons[d->weapon]++;
+        if(army_recruit(&dry,s->sim.econ,player,u->type,1)>0)
+            out->guaranteed_humans+=POP_PER_UNIT;
+    }
+
+    if(!campaign_can_refill_corps(s->sim.camp,s->sim.econ,id)){
+        out->reason_code=2; out->reason="Ravitaillement possible uniquement sur une région nationale";
+    }else if(out->requested_humans<=0){
+        out->reason_code=3; out->reason="Aucune ligne d'unité à renforcer";
+    }else if(out->population_ready_humans<=0){
+        out->reason_code=4; out->reason="Aucune population de la bonne classe n'est mobilisable";
+    }else{
+        out->allowed=1; out->reason_code=0;
+        out->reason=(out->guaranteed_humans>=out->population_ready_humans)
+            ? "Renfort couvert par la population et l'arsenal national"
+            : "Renfort partiel garanti ; le marché peut fournir les armes manquantes";
+    }
+    return out->valid;
 }
 
 /* W-GUERRE UI (lot A) — HACHURES de siège/occupation : cf. header. */
@@ -642,7 +784,9 @@ int scps_region_war_state(ScpsSim *s, int r, int *belligerent_out){
 void scps_battle_info(ScpsSim *s, int r, ScpsBattleInfo *out){
     if(!out) return;
     memset(out, 0, sizeof *out);
-    out->region=-1; out->attacker=-1; out->defender=-1; out->phase="";
+    out->region=-1; out->attacker=-1; out->defender=-1;
+    out->atk_helper=-1; out->def_helper=-1; out->terrain_holder=-1;
+    out->phase=""; out->stage="";
     if(!s || !s->ready || r<0 || r>=s->sim.econ->n_regions) return;
     int owner = s->sim.econ->region[r].owner;
 
@@ -661,38 +805,80 @@ void scps_battle_info(ScpsSim *s, int r, ScpsBattleInfo *out){
         else { out->attacker=A; out->defender=B; }
         out->phase_id=(int)FA_BATTLE; out->phase=sz(campaign_phase_name(FA_BATTLE));
         out->in_battle=1;
-        out->loss_atk = (out->attacker==A)? bt->lossA : bt->lossB;
-        out->loss_def = (out->defender==B)? bt->lossB : bt->lossA;
+        out->loss_atk = floorf((out->attacker==A)?bt->lossA:bt->lossB);
+        out->loss_def = floorf((out->defender==B)?bt->lossB:bt->lossA);
+        out->days=bt->days; out->chocs=bt->chocs;
+        float ma=(bt->resA0>0.f)?bt->resA/bt->resA0:0.f;
+        float mb=(bt->resB0>0.f)?bt->resB/bt->resB0:0.f;
+        if(ma<0.f)ma=0.f;
+        if(ma>1.f)ma=1.f;
+        if(mb<0.f)mb=0.f;
+        if(mb>1.f)mb=1.f;
+        out->atk_morale_pct=(int)(((out->attacker==A)?ma:mb)*100.f+0.5f);
+        out->def_morale_pct=(int)(((out->defender==B)?mb:ma)*100.f+0.5f);
+        int ha=(bt->helpA>=0)?s->sim.camp->army[bt->helpA].owner:-1;
+        int hb=(bt->helpB>=0)?s->sim.camp->army[bt->helpB].owner:-1;
+        out->atk_helper=(out->attacker==A)?ha:hb;
+        out->def_helper=(out->defender==B)?hb:ha;
+        CampaignBattleFactors f;
+        if(campaign_battle_factors(s->sim.camp,s->sim.econ,r,&f)){
+            bool atk_is_a=(out->attacker==f.owner_a);
+            float ta=atk_is_a?f.terrain_a:(1.f/f.terrain_a);
+            float td=1.f/ta;
+            out->stage_id=f.stage; out->stage=sz(f.stage==0?"Choc":"Accalmie");
+            out->terrain_holder=f.terrain_owner; out->river=f.river; out->bridged=f.bridged;
+            out->atk_terrain_pct=(int)(ta*100.f+0.5f); out->def_terrain_pct=(int)(td*100.f+0.5f);
+            out->atk_counter_pct=(int)((atk_is_a?f.counter_a:f.counter_b)*100.f+0.5f);
+            out->def_counter_pct=(int)((atk_is_a?f.counter_b:f.counter_a)*100.f+0.5f);
+            out->balance_atk_pct=atk_is_a?f.balance_a_pct:100-f.balance_a_pct;
+            out->rupture_pct=f.rupture_pct;
+        }
     } else {
-        /* 2) sinon, un SIÈGE en cours (une armée ennemie FA_SIEGE ici) */
-        int besieger=-1;
+        /* 2) sinon, un SIÈGE en cours : occupation ennemie OU libération d'une
+         * région nationale déjà occupée. */
+        int besieger=-1, defender=owner, outcome=0;
+        int occupier=s->sim.dp ? s->sim.dp->occupier[r] : -1;
         for(int k=0;k<CAMPAIGN_ARMY_CAP;k++){
             const FieldArmy *a=&s->sim.camp->army[k];
-            if(a->active && a->phase==FA_SIEGE && a->loc==r && !(owner>=0 && a->owner==owner)){ besieger=a->owner; break; }
+            if(!a->active || a->phase!=FA_SIEGE || a->loc!=r) continue;
+            if(owner>=0 && a->owner==owner){
+                if(occupier<0 || occupier==a->owner) continue;
+                besieger=a->owner; defender=occupier; outcome=1; break;
+            }
+            besieger=a->owner; defender=owner; outcome=0; break;
         }
         if(besieger<0) return;   /* rien à montrer : out reste invalide */
         out->valid=1; out->region=r;
-        out->attacker=besieger; out->defender=owner;
+        out->attacker=besieger; out->defender=defender;
         out->phase_id=(int)FA_SIEGE; out->phase=sz(campaign_phase_name(FA_SIEGE));
+        out->siege_outcome=outcome;
+        CampaignSiegeFactors sf;
+        if(campaign_siege_factors(s->sim.camp,s->sim.econ,r,&sf)){
+            out->siege_days_left=sf.days_left; out->siege_full_days=sf.full_days;
+            out->siege_progress_pct=sf.progress_pct;
+            out->siege_defense=sf.defense_level; out->siege_food_months=sf.food_months;
+            out->siege_terrain_pct=sf.terrain_pct;
+        }
     }
 
-    if(out->attacker>=0 && out->attacker<SCPS_MAX_COUNTRY){
-        ArmyComposition c={0};
-        for(int n=0;n<campaign_corps_count(s->sim.camp,out->attacker);n++){
-            ArmyComposition x=campaign_corps_composition(s->sim.camp,campaign_corps_id_at(s->sim.camp,out->attacker,n));
-            c.infanterie+=x.infanterie;c.archers+=x.archers;c.cavalerie+=x.cavalerie;c.mages+=x.mages;c.total+=x.total;
+    /* Seulement les corps présents sur CE champ et dans CETTE phase. L'ancien
+     * lecteur additionnait toute l'armée nationale, y compris les corps distants. */
+    for(int i=0;i<CAMPAIGN_ARMY_CAP;i++){
+        const FieldArmy *a=&s->sim.camp->army[i];
+        if(!a->active || a->loc!=r)continue;
+        int side=(a->owner==out->attacker)?1:(a->owner==out->defender)?2:0;
+        if(!side)continue;
+        if(out->in_battle){ if(a->phase!=FA_BATTLE)continue; }
+        else if(side==1 && a->phase!=FA_SIEGE)continue;
+        else if(side==2)continue; /* une place assiégée se défend par ses ouvrages */
+        ArmyComposition x=campaign_corps_composition(s->sim.camp,i);
+        if(side==1){
+            out->atk_corps++; out->atk_units+=x.total*100L; out->atk_inf+=x.infanterie*100L;
+            out->atk_arch+=x.archers*100L; out->atk_cav+=x.cavalerie*100L; out->atk_mages+=x.mages*100L;
+        }else{
+            out->def_corps++; out->def_units+=x.total*100L; out->def_inf+=x.infanterie*100L;
+            out->def_arch+=x.archers*100L; out->def_cav+=x.cavalerie*100L; out->def_mages+=x.mages*100L;
         }
-        out->atk_units=c.total; out->atk_inf=c.infanterie; out->atk_arch=c.archers;
-        out->atk_cav=c.cavalerie; out->atk_mages=c.mages;
-    }
-    if(out->defender>=0 && out->defender<SCPS_MAX_COUNTRY){
-        ArmyComposition c={0};
-        for(int n=0;n<campaign_corps_count(s->sim.camp,out->defender);n++){
-            ArmyComposition x=campaign_corps_composition(s->sim.camp,campaign_corps_id_at(s->sim.camp,out->defender,n));
-            c.infanterie+=x.infanterie;c.archers+=x.archers;c.cavalerie+=x.cavalerie;c.mages+=x.mages;c.total+=x.total;
-        }
-        out->def_units=c.total; out->def_inf=c.infanterie; out->def_arch=c.archers;
-        out->def_cav=c.cavalerie; out->def_mages=c.mages;
     }
     if(out->attacker>=0 && out->defender>=0)
         out->war_score = diplo_war_score(s->sim.dp, out->attacker, out->defender);
@@ -817,6 +1003,17 @@ void scps_map_endgame_variant(ScpsSim *s, uint8_t *dst){
 
 /* ---- DÉTAIL DE PROVINCE (port fidèle de viewer.c) --------------------- */
 
+static const char *api_religion_name_id(int rid){
+    static char names[RELIG_MAX][96];
+    if(rid<0 || rid>=g_religion_count)return "Sans foi";
+    const Religion *r=&g_religions[rid];
+    snprintf(names[rid],sizeof names[rid],"%s · %s/%s/%s",credo_name((Credo)r->credo),
+             relig_pole_name((ReligPole)r->traditions[0]),
+             relig_pole_name((ReligPole)r->traditions[1]),
+             relig_pole_name((ReligPole)r->traditions[2]));
+    return names[rid];
+}
+
 int scps_province_groups(ScpsSim *s, int pid, ScpsGroup *out, int max){
     if(!out || max<=0 || !s || !s->ready || pid<0 || pid>=s->w->n_provinces) return 0;
     int reg = s->w->province[pid].region;
@@ -835,6 +1032,7 @@ int scps_province_groups(ScpsSim *s, int pid, ScpsGroup *out, int max){
         }
     }
     GroupReadout gr[SCPS_MAX_GROUPS];
+    const PopGroup *dominant=province_dominant(&pe->pop);
     int ng = province_composition(&pe->pop, s->sim.drift, crown, 5.f, 5.f, gr, SCPS_MAX_GROUPS);
     if(ng>max) ng=max;
     for(int i=0;i<ng;i++){
@@ -842,12 +1040,123 @@ int scps_province_groups(ScpsSim *s, int pid, ScpsGroup *out, int max){
         out[i].culture  = sz(gr[i].culture);
         out[i].lineage  = sz(gr[i].lineage);
         out[i].religion = sz(gr[i].religion);
+        out[i].faith_id = pe->pop.groups[i].faith;
+        out[i].faith    = sz(api_religion_name_id(out[i].faith_id));
+        out[i].dominant = (&pe->pop.groups[i]==dominant)?1:0;
         out[i].klass    = sz(gr[i].klass);
         out[i].etat     = sz(gr[i].etat);
         out[i].loyaute  = sz(label_humeur(gr[i].loyaute));
         out[i].percent  = gr[i].percent;
     }
     return ng;
+}
+
+static int pct10(float v){
+    int x=(int)(v*10.f+0.5f); return x<0?0:(x>100?100:x);
+}
+
+static const char *api_culture_name(uint16_t id, Ethos fallback){
+    const char *name=econ_culture_identity_name(id);
+    return (name&&name[0])?name:ethos_name(fallback);
+}
+
+/* Même projection que demography_contact_tick : le fossé culturel restant est
+ * réduit annuellement de `SYNC_FUSE_RATE × ouverture × portée de la route`, puis
+ * cristallise au contrôle annuel suivant une fois passé sous FUSE_EPS (0,30). */
+static int api_contact_fusion_years(int owner, float distance, float openness, int maritime){
+    if(distance<0.15f)return 0;                 /* déjà dans le noyau culturel commun */
+    if(distance<0.30f)return 1;                 /* cristallisation au prochain contrôle */
+    float rate=tune_f("SYNC_FUSE_RATE",0.10f)*openness*(maritime?1.f:0.5f);
+    if(owner>=0){
+        HeritageBuild hb=culture_build_for((uint32_t)owner);
+        rate*=1.f+tune_f("TRAD_DERIVE_W",1.f)*build_leviers(&hb).derive;
+    }
+    rate=clampf(rate,0.f,0.5f);
+    if(rate<=0.f)return 0;
+    double years=ceil(log(0.30/(double)distance)/log(1.0-(double)rate))+1.0;
+    if(years<1.0)years=1.0;
+    return years>9999.0?9999:(int)years;
+}
+
+int scps_province_culture_context(ScpsSim *s, int pid, ScpsCultureContext *out){
+    if(!out)return 0;
+    memset(out,0,sizeof *out);
+    out->province=pid; out->region=-1; out->owner=-1;
+    out->local_faith_id=-1; out->state_faith_id=-1;
+    out->contact_region=-1; out->contact_country=-1;
+    out->dominant_culture=""; out->dominant_lineage="";
+    out->local_ethos=""; out->ruling_ethos=""; out->relation_to_crown="";
+    out->local_faith="Sans foi"; out->state_faith="Sans foi";
+    out->contact_country_name=""; out->contact_region_name=""; out->contact_culture="";
+    out->fusion_reason="Aucun contact commercial soutenu";
+    if(!s||!s->ready||pid<0||pid>=s->w->n_provinces)return 0;
+    int reg=s->w->province[pid].region;
+    if(reg<0||reg>=s->sim.econ->n_regions||pid>=s->sim.econ->n_prov)return 0;
+    ProvinceEconomy *pe=&s->sim.econ->prov[pid];
+    const PopGroup *dom=province_dominant(&pe->pop);
+    if(!dom)return 0;
+    out->valid=1; out->region=reg; out->owner=pe->owner; out->groups=pe->pop.n_groups;
+    long total=province_total_pop(&pe->pop); if(total<1)total=1;
+    out->dominant_percent=(int)(100*dom->count/total);
+    PopCulture local=group_culture_effective(dom,s->sim.drift);
+    out->dominant_culture=sz(api_culture_name(dom->culture_id,local.ethos));
+    static char lineage[256]; econ_culture_identity_lineage(dom->culture_id,lineage,sizeof lineage);
+    out->dominant_lineage=lineage;
+    const PopCulture *crown=(pe->owner>=0&&pe->owner<s->w->n_countries)
+        ?econ_ruling_culture(s->w,s->sim.econ,pe->owner):NULL;
+    if(!crown)crown=&local;
+    out->local_ethos=sz(ethos_name(local.ethos)); out->ruling_ethos=sz(ethos_name(crown->ethos));
+    out->ethos_drift_pct=(int)(region_ethos_drift(local.ethos,crown->ethos)*100.f+0.5f);
+    out->friction_avg_pct=pct10(province_Dbar(&pe->pop,s->sim.drift));
+    out->friction_max_pct=pct10(province_Dinf(&pe->pop,s->sim.drift));
+    out->relation_to_crown=sz(relation_name(culture_relation_of(
+        local.langue,local.valeurs,local.subsistance,local.parente,local.religion,local.credo,local.rel_branch,
+        crown->langue,crown->valeurs,crown->subsistance,crown->parente,crown->religion,crown->credo,crown->rel_branch)));
+    out->local_faith_id=dom->faith;
+    out->state_faith_id=(pe->owner>=0&&pe->owner<s->w->n_countries)?religion_of_country(pe->owner):-1;
+    out->local_faith=sz(api_religion_name_id(out->local_faith_id));
+    out->state_faith=sz(api_religion_name_id(out->state_faith_id));
+    out->faith_mismatch=(pe->owner>=0&&out->local_faith_id!=out->state_faith_id)?1:0;
+
+    int partner=-1; int sea=0;
+    int rep=econ_region_rep_province(s->sim.econ,reg);
+    RegionEconomy *re=&s->sim.econ->region[reg];
+    if(rep!=pid)out->fusion_reason="Le contact commercial transforme la province-pivot de la région";
+    else if(!pe->culture.settled)out->fusion_reason="Culture locale non sédentarisée";
+    if(s->sim.rn&&rep==pid&&pe->culture.settled&&re->owner>=0)for(int i=0;i<s->sim.rn->n;i++){
+        const TradeRoute *t=&s->sim.rn->route[i];
+        if(!t->open||t->ra<0||t->rb<0||t->ra>=s->sim.econ->n_regions||t->rb>=s->sim.econ->n_regions)continue;
+        int far=t->ra==reg?t->rb:(t->rb==reg?t->ra:-1); if(far<0)continue;
+        int fo=s->sim.econ->region[far].owner;
+        if(fo<0||fo==re->owner)continue;
+        if(s->sim.dp&&diplo_status(s->sim.dp,re->owner,fo)==DIPLO_WAR)continue;
+        int rpf=econ_region_rep_province(s->sim.econ,far);
+        if(rpf<0||rpf>=s->sim.econ->n_prov||s->sim.econ->prov[rpf].pop.n_groups<=0
+           ||!s->sim.econ->prov[rpf].culture.settled)continue;
+        if(t->maritime){partner=far;sea=1;break;}
+        if(partner<0)partner=far;
+    }
+    if(partner>=0){
+        int pp=econ_region_rep_province(s->sim.econ,partner);
+        const PopGroup *pd=province_dominant(&s->sim.econ->prov[pp].pop);
+        if(pd){
+            PopCulture other=group_culture_effective(pd,s->sim.drift);
+            SyncFeasibility f=pop_culture_can_syncretize(&local,&other,5.f,5.f);
+            out->contact=1; out->contact_region=partner; out->contact_maritime=sea;
+            out->contact_country=s->sim.econ->region[partner].owner;
+            if(out->contact_country>=0&&out->contact_country<s->w->n_countries)
+                out->contact_country_name=sz(s->w->country[out->contact_country].name);
+            out->contact_region_name=sz(s->w->province[pp].name);
+            out->contact_culture=sz(api_culture_name(pd->culture_id,other.ethos));
+            float distance=econ_content_dist_faith(&local,&other);
+            out->contact_distance_pct=pct10(distance);
+            out->fusion_open_pct=(int)(f.openness*100.f+0.5f);
+            out->fusion_feasible=f.feasible?1:0;
+            out->fusion_years=f.feasible?api_contact_fusion_years(re->owner,distance,f.openness,sea):0;
+            out->fusion_reason=f.feasible?"Porte de fusion ouverte":"Porte fermée : contact ou institutions insuffisants";
+        }
+    }
+    return 1;
 }
 
 int scps_province_income(ScpsSim *s, int pid, ScpsIncome *out, int max){
@@ -1185,6 +1494,8 @@ int scps_country_stocks(ScpsSim *s, int cid, ScpsStock *out, int max){
         out[n].marche      = sz(label_marche((BandMarche)out[n].market_band));
         out[n].stock       = (long)stk[g];
         out[n].net_day     = net;
+        out[n].supply_month = (float)sup[g];
+        out[n].demand_month = (float)dem[g];
         out[n].price       = (nreg>0) ? (float)(pri[g]/nreg) : 0.f;
         out[n].res_id      = g;
         if(net < -0.05f){ float dj = (float)stk[g]/(-net); out[n].coverage_days = (dj>365.f)?366:(int)dj; }
@@ -1192,6 +1503,78 @@ int scps_country_stocks(ScpsSim *s, int cid, ScpsStock *out, int max){
         n++;
     }
     return n;
+}
+
+int scps_stock_regions(ScpsSim *s, int cid, int good, ScpsStockRegion *out, int max){
+    if(!out || max<=0 || !s || !s->ready || cid<0 || cid>=s->w->n_countries ||
+       good<=RES_NONE || good>=RES_COUNT) return 0;
+    int n=0;
+    for(int r=0;r<s->sim.econ->n_regions;r++){
+        RegionEconomy *re=&s->sim.econ->region[r];
+        if(re->owner!=cid || !re->colonized)continue;
+        if(re->supply[good]<=0.05f && re->demand[good]<=0.05f && re->stock[good]<=0.5f)continue;
+        ScpsStockRegion row;
+        memset(&row,0,sizeof row);
+        row.region=r; row.province=econ_region_rep_province(s->sim.econ,r);
+        row.name=(row.province>=0 && row.province<s->w->n_provinces)
+            ? sz(s->w->province[row.province].name) : sz("Région sans siège");
+        row.stock=(long)re->stock[good];
+        row.supply_month=re->supply[good]; row.demand_month=re->demand[good];
+        float activity=row.supply_month+row.demand_month;
+        if(n>=max){
+            float last=out[max-1].supply_month+out[max-1].demand_month;
+            if(last>activity || (last==activity && out[max-1].region<row.region))continue;
+        }
+        int pos=n;
+        if(pos>=max)pos=max-1;
+        while(pos>0){
+            float prev=out[pos-1].supply_month+out[pos-1].demand_month;
+            if(prev>activity || (prev==activity && out[pos-1].region<row.region))break;
+            if(pos<max)out[pos]=out[pos-1];
+            pos--;
+        }
+        if(pos<max)out[pos]=row;
+        if(n<max)n++;
+    }
+    return n;
+}
+
+int scps_market_quote(ScpsSim *s, int cid, int good, long qty, ScpsMarketQuote *out){
+    if(!out) return 0;
+    memset(out, 0, sizeof *out);
+    out->region=-1; out->hub_region=-1; out->hub_owner=-1; out->hub_name=sz("");
+    if(!s || !s->ready || cid<0 || cid>=s->w->n_countries ||
+       good<=RES_NONE || good>=RES_COUNT || qty<=0) return 0;
+    int reg=scps_country_capital_region(s,cid);
+    WorldEconomy *e=s->sim.econ;
+    if(!e || reg<0 || reg>=e->n_regions || reg>=SCPS_MAX_REG) return 0;
+    RegionEconomy *re=&e->region[reg];
+    int hub=intertrade_region_hub(reg);
+    int howner=(hub>=0 && hub<e->n_regions)?e->region[hub].owner:-1;
+    float margin=re->import_margin; if(margin<1.f) margin=1.f;
+    float price=re->price[good]; if(price<0.2f) price=0.2f;
+    float local=(hub>=0 && hub!=reg)?e->region[hub].stock[good]:0.f;
+    float global=intertrade_global_stock(e,good);
+    if(hub==reg){ global-=re->stock[good]; if(global<0.f) global=0.f; }
+    int gaccess=intertrade_country_has_centre(e,cid) || intertrade_has_global_access(cid);
+    float rem=intertrade_commerce_remaining(cid);
+    long lqty=qty, gqty=qty;
+    if((float)lqty>local) lqty=(long)local;
+    if((float)gqty>global) gqty=(long)global;
+    if((float)lqty>rem) lqty=(long)rem;
+    if((float)gqty>rem) gqty=(long)rem;
+    if(lqty<0) lqty=0;
+    if(gqty<0) gqty=0;
+    if(!gaccess) gqty=0;
+    out->valid=1; out->region=reg; out->hub_region=hub; out->hub_owner=howner;
+    out->hub_name=(howner>=0 && howner<s->w->n_countries)?sz(s->w->country[howner].name):sz("aucun Centre");
+    out->global_access=gaccess; out->price=price; out->margin=margin;
+    out->local_available=local; out->global_available=global;
+    out->commerce_remaining=rem; out->request_qty=qty;
+    out->local_qty=lqty; out->global_qty=gqty;
+    out->local_cost=(double)lqty*(double)price*(double)margin;
+    out->global_cost=(double)gqty*(double)price*(double)margin*2.0;
+    return 1;
 }
 
 int scps_country_trade(ScpsSim *s, int me, int *routes, double *export_gold,
@@ -1336,6 +1719,23 @@ static float cons_efficiency_calc(float K, float loy, float corr){
     return clampf(eff, tune_f("COUNCIL_EFF_MIN",0.50f), tune_f("COUNCIL_EFF_MAX",1.15f));
 }
 static float cons_pct100(float x){ return x*100.f; }   /* fraction → pourcentage (décimales gardées, l'UI arrondit à l'affichage) */
+static void cons_efficiency_parts(float K, float loy, float corr,
+                                  float *base, float *admin, float *loyalty,
+                                  float *corruption, float *preclamp, int *clamped){
+    float b = tune_f("COUNCIL_EFF_BASE", 0.70f) * 100.f;
+    float a = tune_f("COUNCIL_EFF_K_PER", 0.03f) * K * 100.f;
+    float l = tune_f("COUNCIL_EFF_LOY_W", 0.15f) * (loy/100.f) * 100.f;
+    float c = tune_f("COUNCIL_EFF_CORRUPTION_PER_POINT", 0.0035f) * corr * 100.f;
+    float p = b+a+l-c;
+    float lo = tune_f("COUNCIL_EFF_MIN",0.50f)*100.f;
+    float hi = tune_f("COUNCIL_EFF_MAX",1.15f)*100.f;
+    if (base) *base=b;
+    if (admin) *admin=a;
+    if (loyalty) *loyalty=l;
+    if (corruption) *corruption=c;
+    if (preclamp) *preclamp=p;
+    if (clamped) *clamped=(p<lo || p>hi) ? 1 : 0;
+}
 /* Mission décennale — le bonus du siège responsable (miroir de mission_reward_mult,
  * scps_missions.c:120-131, `static` — même formule, aucune valeur inventée). */
 static float cons_mission_reward_mult(const Statecraft *sc, const WorldProsperity *wp,
@@ -1385,6 +1785,12 @@ int scps_country_council(ScpsSim *s, int me, ScpsCouncilSeat *out, int max){
             out[n].rank_bonus_pct  = cons_pct100(rank_mult - 1.f);
             out[n].efficiency_pct  = cons_pct100(eff);
             out[n].final_bonus_pct = cons_pct100((rank_mult-1.f)*eff);
+            cons_efficiency_parts(K, (float)loy, (float)corr,
+                                  &out[n].eff_base_pct, &out[n].eff_admin_points,
+                                  &out[n].eff_loyalty_points, &out[n].eff_corruption_points,
+                                  &out[n].eff_preclamp_pct, &out[n].eff_clamped);
+            out[n].loyalty_target = (int)(statecraft_council_loyalty_target(
+                s->sim.sc, me, seat, seed) + 0.5f);
             out[n].cost_rate_pct   = cons_tier_revenue_rate(tier) * 100.f;
             out[n].cost_year       = (double)statecraft_council_cand_cost(seed, me, seat, slot, sgen, ipm) * 12.0;
             int rlo = 66 - out[n].age, rhi = 73 - out[n].age;
@@ -1401,6 +1807,10 @@ int scps_country_council(ScpsSim *s, int me, ScpsCouncilSeat *out, int max){
             out[n].rank_bonus_pct = 0; out[n].efficiency_pct = 0; out[n].final_bonus_pct = 0;
             out[n].cost_rate_pct = 0.f; out[n].cost_year = 0.0;
             out[n].retire_lo = -1; out[n].retire_hi = -1;
+            out[n].eff_base_pct = 0.f; out[n].eff_admin_points = 0.f;
+            out[n].eff_loyalty_points = 0.f; out[n].eff_corruption_points = 0.f;
+            out[n].eff_preclamp_pct = 0.f; out[n].eff_clamped = 0;
+            out[n].loyalty_target = 0;
         }
         n++;
     }
@@ -1440,6 +1850,11 @@ int scps_council_candidates(ScpsSim *s, int seat, ScpsCouncilCand *out, int max)
         out[n].rank_bonus_pct  = cons_pct100(rank_mult - 1.f);
         out[n].efficiency_pct  = cons_pct100(pred_eff);
         out[n].final_bonus_pct = cons_pct100((rank_mult-1.f)*pred_eff);
+        out[n].predicted_loyalty = (int)(pred_loy + 0.5f);
+        cons_efficiency_parts(K, pred_loy, (float)corr,
+                              &out[n].eff_base_pct, &out[n].eff_admin_points,
+                              &out[n].eff_loyalty_points, &out[n].eff_corruption_points,
+                              &out[n].eff_preclamp_pct, &out[n].eff_clamped);
         out[n].cost_rate_pct   = cons_tier_revenue_rate(tier) * 100.f;
         out[n].cost_year       = (double)out[n].cost * 12.0;
         int rlo = 66 - out[n].age, rhi = 73 - out[n].age;
@@ -1623,6 +2038,153 @@ int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out){
     return 1;
 }
 
+/* P4 — contrat de légalité diplomatique. Une seule fonction nomme le premier
+ * verrou dans le même ordre que le drain : cible → émissaire → règle du verbe.
+ * Le consentement reste une conséquence séparée : une offre peut être légale
+ * mais annoncée comme refusée par le vis-à-vis. */
+int scps_diplo_action_legal(ScpsSim *s, int target, int action, ScpsActionLegal *out){
+    if(!out)return 0;
+    memset(out,0,sizeof *out); out->target=target; out->action=action;
+    out->would_accept=1; out->toggle_on=1;
+    out->reason_code="invalid_target"; out->reason_label="Cible diplomatique invalide ou inconnue";
+    if(!s || !s->ready || action<0 || action>=SCPS_DIPLO_ACTION_COUNT)return 0;
+    ScpsDiploOptions o;
+    if(!scps_diplo_options(s,target,&o))return 0;
+    int p=(s->sim.human_player>=0)?s->sim.human_player:s->sim.player;
+    out->valid=1; out->gold_have=econ_country_gold(s->sim.econ,p);
+    /* Les métadonnées restent lisibles même si l'émissaire est le premier verrou. */
+    switch((ScpsDiploAction)action){
+      case SCPS_DIPLO_WAR: out->unilateral=1; break;
+      case SCPS_DIPLO_PEACE: out->would_accept=o.would_accept_peace; break;
+      case SCPS_DIPLO_ALLIANCE: out->would_accept=o.would_accept_alliance; break;
+      case SCPS_DIPLO_PACT: out->would_accept=o.would_accept_pact; break;
+      case SCPS_DIPLO_MIGRATION: out->would_accept=o.would_accept_migration; break;
+      case SCPS_DIPLO_EMBARGO: out->unilateral=1; out->toggle_on=o.can_embargo?1:0; break;
+      case SCPS_DIPLO_FABRICATE:
+        out->unilateral=1; out->cost_gold=o.fabricate_cost;
+        out->gold_missing=fmax(0.0,out->cost_gold-out->gold_have); break;
+      default: break;
+    }
+    int cd=scps_diplo_cd(s);
+    if(cd>0){
+        out->reason_code="emissary_busy";
+        out->reason_label="Émissaire en tournée";
+        out->duration_days=cd;
+        return 1;
+    }
+    DiploStatus st=diplo_status(s->sim.dp,p,target);
+    #define DIP_OK() do{out->allowed=1;out->reason_code="ok";out->reason_label="Action disponible";}while(0)
+    #define DIP_NO(code,label) do{out->reason_code=(code);out->reason_label=(label);}while(0)
+    switch((ScpsDiploAction)action){
+      case SCPS_DIPLO_WAR:
+        out->unilateral=1;
+        if(o.can_declare_war)DIP_OK();
+        else if(st==DIPLO_WAR)DIP_NO("already_at_war","Déjà en guerre avec ce pays");
+        else if(o.truce_days>0.f){DIP_NO("truce_active","Trêve en cours");out->duration_days=(int)ceilf(o.truce_days);}
+        else DIP_NO("missing_casus_belli","Aucun casus belli utilisable");
+        break;
+      case SCPS_DIPLO_PEACE:
+        out->would_accept=o.would_accept_peace;
+        if(o.can_make_peace)DIP_OK(); else DIP_NO("not_at_war","Vous n'êtes pas en guerre avec ce pays");
+        break;
+      case SCPS_DIPLO_ALLIANCE:
+        out->would_accept=o.would_accept_alliance;
+        if(o.can_offer_alliance)DIP_OK();
+        else if(st==DIPLO_WAR)DIP_NO("at_war","Impossible pendant la guerre");
+        else if(st==DIPLO_ALLIED)DIP_NO("already_allied","Alliance déjà conclue");
+        else DIP_NO("alliance_slots_full","Aucun créneau d'alliance libre");
+        break;
+      case SCPS_DIPLO_PACT:
+        out->would_accept=o.would_accept_pact;
+        if(o.can_offer_pact)DIP_OK();
+        else if(st==DIPLO_WAR)DIP_NO("at_war","Impossible pendant la guerre");
+        else DIP_NO("trade_pact_exists","Pacte commercial déjà conclu");
+        break;
+      case SCPS_DIPLO_MIGRATION:
+        out->would_accept=o.would_accept_migration;
+        if(o.can_offer_migration)DIP_OK();
+        else if(st==DIPLO_WAR)DIP_NO("at_war","Impossible pendant la guerre");
+        else DIP_NO("migration_pact_exists","Pacte migratoire déjà conclu");
+        break;
+      case SCPS_DIPLO_EMBARGO:
+        out->unilateral=1;
+        out->toggle_on=o.can_embargo?1:0;
+        if(o.can_embargo || o.can_lift_embargo)DIP_OK();
+        else DIP_NO("embargo_unavailable","Embargo indisponible");
+        break;
+      case SCPS_DIPLO_FABRICATE:
+        out->unilateral=1; out->cost_gold=o.fabricate_cost;
+        out->gold_missing=fmax(0.0,out->cost_gold-out->gold_have);
+        if(o.can_fabricate){DIP_OK();out->duration_days=(int)tune_f("FAB_MATURE_DAYS",365.f);}
+        else if(o.fabricating){DIP_NO("intrigue_in_progress","Revendication en fabrication");out->duration_days=(int)ceilf(o.fabricating_days_left);}
+        else if(o.cb_ready){DIP_NO("claim_ready","Une revendication est déjà prête");out->duration_days=(int)ceilf(o.cb_ready_years_left*365.f);}
+        else if(out->gold_missing>0.0)DIP_NO("insufficient_gold","Or insuffisant pour financer l'intrigue");
+        else DIP_NO("fabrication_unavailable","Intrigue indisponible pour l'instant");
+        break;
+      default: break;
+    }
+    #undef DIP_OK
+    #undef DIP_NO
+    return 1;
+}
+
+int scps_diplo_context(ScpsSim *s, int target, ScpsDiploContext *out){
+    if(!out)return 0;
+    memset(out,0,sizeof *out);
+    out->target=target; out->contract="";
+    out->route_a=-1; out->route_b=-1; out->route_a_name=""; out->route_b_name="";
+    out->target_capital_province=-1; out->target_capital_region=-1;
+    out->target_capital_name="";
+    if(!s || !s->ready)return 0;
+    int p=(s->sim.human_player>=0)?s->sim.human_player:s->sim.player;
+    if(p<0 || p>=s->w->n_countries || target<0 || target>=s->w->n_countries || target==p)return 0;
+    if(!country_knows(p,target) || regions_of(s->sim.econ,target)<=0)return 0;
+    out->valid=1; out->player=p;
+    DiploStatus st=diplo_status(s->sim.dp,p,target);
+    out->at_war=(st==DIPLO_WAR); out->allied=(st==DIPLO_ALLIED);
+    out->trade_pact=diplo_trade_pact(s->sim.dp,p,target)?1:0;
+    out->migration_pact=diplo_migration_pact(s->sim.dp,p,target)?1:0;
+    out->embargo=intertrade_embargoed(p,target)?1:0;
+    out->truce_days=diplo_truce_days(s->sim.dp,p,target);
+    out->war_score=out->at_war?diplo_war_score(s->sim.dp,p,target):0.f;
+    out->ally_slots_player=diplo_ally_count(s->sim.dp,p);
+    out->ally_slots_target=diplo_ally_count(s->sim.dp,target);
+    out->ally_slots_max=DIPLO_ALLY_SLOTS;
+    if(diplo_suzerain(s->sim.dp,target)==p){
+        out->vassal_direction=1;
+        out->contract=sz(diplo_contrat_name(diplo_contrat(s->sim.dp,target)));
+    }else if(diplo_suzerain(s->sim.dp,p)==target){
+        out->vassal_direction=-1;
+        out->contract=sz(diplo_contrat_name(diplo_contrat(s->sim.dp,p)));
+    }
+    out->trade_value=intertrade_pair_value(p,target);
+    float best=-1.f;
+    for(int i=0;i<s->sim.rn->n;i++){
+        const TradeRoute *r=&s->sim.rn->route[i];
+        if(r->ra<0||r->ra>=s->sim.econ->n_regions||r->rb<0||r->rb>=s->sim.econ->n_regions)continue;
+        int a=s->sim.econ->region[r->ra].owner, b=s->sim.econ->region[r->rb].owner;
+        if(!((a==p&&b==target)||(a==target&&b==p)))continue;
+        out->shared_routes++;
+        if(r->open)out->open_routes++;
+        float score=(r->open?100000.f:0.f)+r->yield;
+        if(score<=best)continue;
+        best=score; out->route_a=r->ra; out->route_b=r->rb;
+        out->route_maritime=r->maritime?1:0; out->route_open=r->open?1:0;
+        out->route_sea_days=r->sea_days; out->route_yield=r->yield;
+        int pa=econ_region_rep_province(s->sim.econ,r->ra);
+        int pb=econ_region_rep_province(s->sim.econ,r->rb);
+        out->route_a_name=(pa>=0&&pa<s->w->n_provinces)?sz(s->w->province[pa].name):sz("Région");
+        out->route_b_name=(pb>=0&&pb<s->w->n_provinces)?sz(s->w->province[pb].name):sz("Région");
+    }
+    int cp=s->w->country[target].capital_prov;
+    if(cp>=0&&cp<s->w->n_provinces){
+        out->target_capital_province=cp;
+        out->target_capital_region=s->w->province[cp].region;
+        out->target_capital_name=sz(s->w->province[cp].name);
+    }
+    return 1;
+}
+
 /* #26 — le RÉSUMÉ D'OPINION : ce que `country` pense du JOUEUR, décomposé (l'opinion
  * courante converge vers la somme des composantes — statecraft_opinion_parts). */
 int scps_opinion_summary(ScpsSim *s, int country, ScpsOpinionParts *out){
@@ -1724,8 +2286,6 @@ void scps_country_army(ScpsSim *s, int cid, ScpsArmy *out){
     out->levy_name = sz(warhost_levy_name(out->levy));
     int f=0; for(int t=0; t<HULL_COUNT; t++) f += s->sim.navy->n[cid].hull[t];
     out->fleet = f;
-    out->posture      = campaign_posture(s->sim.camp, cid);      /* lue du MOTEUR (fin de l'état local UI) */
-    out->posture_name = sz(campaign_posture_name(out->posture));
 }
 
 /* ====================================================================== */
@@ -1983,6 +2543,7 @@ int scps_tech_nodes(ScpsSim *s, ScpsTechNode *out, int max){
     float nprov = (float)s->w->country[p].n_regions;
     TechTreeReadout tt; tech_tree_readout(&s->sim.ts[p], acc, nprov, &tt);
     int n = (tt.n < max) ? tt.n : max;
+    static char path_buf[96][384];
     for(int i=0;i<n;i++){
         const TreeNodeReadout *nd = &tt.node[i];
         out[i].quarter = nd->quarter;  out[i].tier = nd->tier;
@@ -2006,6 +2567,52 @@ int scps_tech_nodes(ScpsSim *s, ScpsTechNode *out, int max){
         const TechNode *tn = tech_node((TechId)i);
         int pr = tn ? (int)tn->prereq : (int)TECH_COUNT;
         out[i].prereq = (pr < (int)TECH_COUNT && pr < n) ? pr : -1;
+        out[i].points_have=tt.points;
+        out[i].points_missing=out[i].cost>tt.points?out[i].cost-tt.points:0;
+        /* P8 — CHEMIN SUGGÉRÉ : l'arbre a un parent unique. On remonte depuis la
+         * cible jusqu'au premier nœud déjà acquis, puis on restitue la chaîne dans
+         * le sens de recherche. Les autres portes restent nommées par reason_label. */
+        out[i].next_step=-1; out[i].steps_remaining=0; path_buf[i][0]='\0';
+        if(nd->state!=2){
+            int chain[TECH_COUNT], k=0, cur=i;
+            while(cur>=0 && cur<n && k<(int)TECH_COUNT && tt.node[cur].state!=2){
+                chain[k++]=cur;
+                const TechNode *ctn=tech_node((TechId)cur);
+                int parent=ctn?(int)ctn->prereq:(int)TECH_COUNT;
+                cur=(parent>=0 && parent<n)?parent:-1;
+            }
+            out[i].steps_remaining=k;
+            if(k>0)out[i].next_step=chain[k-1];
+            int pos=0;
+            for(int q=k-1;q>=0;q--){
+                const char *nm=tt.node[chain[q]].name;
+                pos+=snprintf(path_buf[i]+pos,sizeof path_buf[i]-(size_t)pos,
+                              "%s%s",q==k-1?"":" → ",nm?nm:"?");
+                if(pos>=(int)sizeof path_buf[i]){pos=(int)sizeof path_buf[i]-1;break;}
+            }
+        }
+        out[i].path_label=path_buf[i];
+        out[i].allowed=0; out[i].reason_code="unavailable"; out[i].reason_label="Recherche indisponible";
+        TechResearchBlock block=tech_research_block(&s->sim.ts[p],(TechId)i,acc);
+        if(block==TECH_BLOCK_OK && tn && !ages_tech_researchable(s->sim.wp,tn->theme,tn->tier)){
+            out[i].reason_code="age_locked"; out[i].reason_label="Un âge futur doit encore ouvrir ce palier";
+        }else switch(block){
+          case TECH_BLOCK_OK:
+            out[i].allowed=1; out[i].reason_code="ok"; out[i].reason_label="Recherche disponible"; break;
+          case TECH_BLOCK_ACQUIRED:
+            out[i].reason_code="acquired"; out[i].reason_label="Technologie déjà acquise";
+            out[i].points_missing=0; break;
+          case TECH_BLOCK_HERITAGE:
+            out[i].reason_code="missing_heritage_access";
+            out[i].reason_label="Accès culturel insuffisant pour cette signature"; break;
+          case TECH_BLOCK_RUINS:
+            out[i].reason_code="missing_ruins_access";
+            out[i].reason_label="Accès à des ruines ou reliques requis"; break;
+          case TECH_BLOCK_PREREQUISITE:
+            out[i].reason_code="missing_prerequisite";
+            out[i].reason_label="Technologie précédente non acquise"; break;
+          default: break;
+        }
         /* HOVER CHIFFRÉ (retour joueur : « il faut spécifier COMBIEN ») : le mot mécanique
          * + les NOMBRES réels du nœud — les seuls leviers VIVANTS (dK/dL/dH/dPuissance/
          * fracture/charge/flux + prod%/eff% ; dEco/dMil/dF sont MORTS, jamais affichés).
@@ -2160,6 +2767,14 @@ void scps_budget_summary(ScpsSim *s, int cid, ScpsBudget *out){
     out->expense     = exp;
     out->net         = inc - exp;
     out->credit_line = credit_line(s->w, s->sim.econ, cid);
+    int elapsed=scps_day_of_year(s); if(elapsed<1)elapsed=1;
+    out->monthly_income=inc/(double)elapsed*30.0;
+    out->monthly_expense=exp/(double)elapsed*30.0;
+    out->monthly_net=out->net/(double)elapsed*30.0;
+    int remaining=365-scps_day_of_year(s); if(remaining<0)remaining=0;
+    out->projected_year_end=out->gold+out->monthly_net*((double)remaining/30.0);
+    out->runway_months=(out->monthly_net<0.0)
+        ? (out->gold+out->credit_line)/(-out->monthly_net) : -1.0;
     int cr = credit_of(cid);
     out->creditor = cr;
     if(cr>=0 && cr<s->w->n_countries) out->creditor_name = sz(s->w->country[cr].name);
@@ -2830,20 +3445,28 @@ int scps_country_factions(ScpsSim *s, int cid, ScpsFaction *out, int max,
     if (coup) *coup = 0;
     if (corruption) *corruption = 0;
     if (!s || !s->ready || !out || max<=0 || cid<0 || cid>=s->w->n_countries) return 0;
-    float wgt[FAC_COUNT];
+    float base[FAC_COUNT], wgt[FAC_COUNT], pressure[FAC_COUNT];
+    country_faction_weights(s->w, s->sim.econ, cid, base);
     EthosFaction dom = faction_effective_distribution(s->w, s->sim.econ, cid, wgt);
+    EthosFaction alienated = dom;
+    float coup_raw = faction_coup_breakdown(cid, base, pressure, &alienated);
+    EthosFaction captor = faction_captor(cid);
+    int coup_value = (int)(coup_raw*100.f + 0.5f);
+    int corruption_value = faction_corruption_0_100(cid);
     int n = FAC_COUNT < max ? FAC_COUNT : max;
     for (int f=0; f<n; f++){
         out[f].name     = faction_name((EthosFaction)f);
         out[f].part     = (int)(wgt[f]*100.f + 0.5f);
+        out[f].base_part = (int)(base[f]*100.f + 0.5f);
+        out[f].policy_delta = out[f].part - out[f].base_part;
         out[f].grief    = (int)(faction_grievance(cid, (EthosFaction)f)*100.f + 0.5f);
         out[f].dominant = (f == (int)dom) ? 1 : 0;
+        out[f].coup_pressure = (int)(pressure[f]*100.f + 0.5f);
+        out[f].coup_driver = (coup_value>0 && f == (int)alienated) ? 1 : 0;
+        out[f].captor = (corruption_value>0 && f == (int)captor) ? 1 : 0;
     }
-    if (coup){
-        EthosFaction al;
-        *coup = (int)(faction_coup_tension_c(s->w, s->sim.econ, cid, &al)*100.f + 0.5f);
-    }
-    if (corruption) *corruption = faction_corruption_0_100(cid);
+    if (coup) *coup = coup_value;
+    if (corruption) *corruption = corruption_value;
     return n;
 }
 /* total de provinces COLONISÉES (toutes entités) — la SIGNATURE de souveraineté du front

@@ -79,6 +79,8 @@ public:
     Dictionary army_info(int country);                /* armée de campagne (vide si inactive) */
     Array      corps_ids(int country);                 /* ids stables des corps actifs */
     Dictionary corps_info(int id);                    /* un corps explicite */
+    Dictionary corps_move_preview(int id, int target_region); /* chemin/durée/attrition/issue, lecture pure */
+    Dictionary corps_refill_preview(int id);        /* hommes/armes garantis + motif de refus */
     int        region_tier(int region) const;         /* tier de ville 0-5 (-1 si non colonisée) */
     int        region_settle_group(int region) const; /* groupe de sprite settlement 0-5 (-1) */
 
@@ -97,6 +99,7 @@ public:
 
     /* DÉTAIL DE PROVINCE (port fidèle viewer.c) */
     Array      province_groups(int province);         /* camemberts culture/idéologie */
+    Dictionary province_culture_context(int province);/* P8 : dérive/contact/fusion/foi */
     Array      province_income(int province);         /* RESSOURCES / PRODUCTION */
     Dictionary province_agitation(int province);      /* MODIFICATEURS : { value:int, causes:[{cause,delta,decay}] } */
     Array      province_buildings(int province);      /* MANUFACTURES : [{nom, niveau, ouvriers}] */
@@ -117,8 +120,12 @@ public:
     /* SIDEBAR : agrégats PAYS (read-only) */
     Dictionary country_demo(int country);             /* classes + satisfaction */
     Array      country_stocks(int country);           /* biens : stock · net · couverture · marché */
+    Array      stock_regions(int country, int good);  /* P6 : producteurs/consommateurs territoriaux */
+    Dictionary market_quote(int country, int good, int qty); /* Centre proche + réseau mondial, devis pur */
     Array      country_relations(int country);        /* diplomatie : statut + opinion #26 par pays */
     Dictionary diplo_options(int target);             /* §3 : légalité des verbes diplo contre `target` (boutons grisés) */
+    Dictionary diplo_action_legal(int target, int action); /* P4 : premier verrou + coût/délai/consentement */
+    Dictionary diplo_context(int target);                  /* P8 : engagements, portée et lieux */
     Dictionary opinion_summary(int country);          /* #26 : le RÉSUMÉ d'opinion (total + composantes) */
     Array      diplo_journal(int country);            /* le JOURNAL d'actes daté (sous-détaille de Mémoire) */
     Dictionary country_army(int country);             /* mobilisation + flotte */

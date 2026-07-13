@@ -62,7 +62,7 @@ typedef struct {
                              * la couche sim la lit → occupation/libération, puis remet -1 */
     int        legs;        /* étapes de marche franchies */
     int        battles;     /* batailles livrées */
-    int        posture;     /* §5 sidebar : 0 prudente · 1 standard · 2 agressive (module marche/siège) */
+    int        posture;     /* tombstone SAVE historique, sans effet ni contrôle joueur */
     int        broken_days; /* armée BRISÉE (déroute) : inapte au combat tant que > 0 (se reconstitue) */
     /* L2 — LE RALLIEMENT (H4.3) : une armée en déroute ne s'évapore plus — elle se
      * reforme à 40-60 % de son effectif d'avant-déroute après 30-60 j, UNE fois par
@@ -91,7 +91,7 @@ typedef struct {
     int   days, chocs;     /* durée totale · jours de choc livrés */
     float resA, resB;      /* RÉSERVES de moral (Σ paquets·moral·moral_mul) — ce qui se joue */
     float resA0, resB0;    /* réserves d'ouverture (le seuil de rupture s'y réfère) */
-    float lossA, lossB;    /* report fractionnaire des pertes de CHOC (paquets) */
+    float lossA, lossB;    /* pertes CUMULÉES (paquets, fraction en attente incluse) */
 } FieldBattle;
 #define CAMPAIGN_MAX_BATTLES 8
 
@@ -118,6 +118,36 @@ typedef struct Campaign {
     int   n_sails;                        /* mer §10 : traversées ordonnées */
     float sail_days_sum;                  /* Σ jours de mer des traversées */
 } Campaign;
+
+/* Lecture tactique PURE d'un champ actif. Les puissances sont celles du prochain
+ * choc AVANT son aléa journalier ±15 %, avec les mêmes fonctions que bt_day. */
+typedef struct {
+    int valid, region, owner_a, owner_b;
+    int stage;              /* 0 choc · 1 accalmie */
+    int terrain_owner;      /* pays avantagé par le sol ; -1 si neutre */
+    int river, bridged;
+    float terrain_a;        /* multiplicateur du camp A ; B reçoit l'inverse */
+    float counter_a, counter_b;
+    float power_a, power_b; /* puissance déterministe pré-aléa */
+    int balance_a_pct;      /* part A de power_a+power_b */
+    int rupture_pct;        /* cohésion sous laquelle la déroute devient possible */
+} CampaignBattleFactors;
+bool campaign_battle_factors(const Campaign *c, const WorldEconomy *e, int region,
+                             CampaignBattleFactors *out);
+
+/* Lecture PURE d'un siège en cours. `full_days` recalcule la résistance de
+ * référence avec les ouvrages, vivres et terrain ACTUELS ; `progress_pct` est
+ * donc une estimation d'interface, tandis que `days_left` est le compte à
+ * rebours exact et sérialisé du moteur. */
+typedef struct {
+    int valid, region, owner;
+    float days_left, full_days;
+    int progress_pct;
+    float defense_level, food_months;
+    int terrain_pct;       /* multiplicateur de tenue ×100 */
+} CampaignSiegeFactors;
+bool campaign_siege_factors(const Campaign *c, const WorldEconomy *e, int region,
+                            CampaignSiegeFactors *out);
 
 /* Bâtit la table de terrain par région et remet les armées à zéro. */
 void campaign_init(Campaign *c, const World *w, const WorldEconomy *econ);
@@ -156,6 +186,14 @@ int  campaign_raise(Campaign *c, const WorldEconomy *econ, int owner,
                     long packets);
 bool campaign_redirect_corps(Campaign *c, const WorldEconomy *econ,
                              const DiploState *dp, int id, int target_region);
+/* Aperçu PUR d'une redirection : chemin terrestre exact (régions, départ inclus),
+ * durée estimée des étapes et issue d'arrivée. reason: 0 ok · 1 corps invalide ·
+ * 2 bataille · 3 mer · 4 brisé · 5 cible invalide · 6 force vide · 7 injoignable.
+ * arrival: 0 arrêt sur place · 1 territoire tenu · 2 siège. */
+int campaign_preview_corps(const Campaign *c, const WorldEconomy *econ,
+                           const DiploState *dp, int id, int target_region,
+                           int *path, int max_path, float *days_out,
+                           int *reason_out, int *arrival_out);
 int  campaign_split(Campaign *c, int id, long packets);
 bool campaign_merge(Campaign *c, int dst_id, int src_id);
 
@@ -190,8 +228,6 @@ void campaign_release_transports(Campaign *c, struct NavyState *navy);
 bool campaign_redirect(Campaign *c, const WorldEconomy *econ, const DiploState *dp,
                        int owner, int target_region);
 
-void        campaign_set_corps_posture(Campaign *c, int id, int posture);
-int         campaign_corps_posture(const Campaign *c, int id);
 long        campaign_corps_units(const Campaign *c, int id);
 long        campaign_disband_corps(Campaign *c, int id, ArmyState *dst_host_army);
 bool        campaign_can_refill_corps(const Campaign *c, const WorldEconomy *econ, int id);
@@ -201,14 +237,6 @@ int         campaign_refill_corps(Campaign *c, int id, WorldEconomy *econ);
 /* ---- Lecteurs (membrane : tangibles) ---------------------------------- */
 bool        campaign_active       (const Campaign *c, int owner);
 int         campaign_location     (const Campaign *c, int owner);  /* région ou -1 */
-/* POSTURE (§5 sidebar) : prudente conserve (marche/siège lents), agressive presse.
- * Un palier + un mot — module marche & siège côté campaign, rien ne fuit. */
-#define FA_PRUDENTE  0
-#define FA_STANDARD  1
-#define FA_AGRESSIVE 2
-void        campaign_set_posture  (Campaign *c, int owner, int posture);
-int         campaign_posture      (const Campaign *c, int owner);
-const char *campaign_posture_name (int posture);
 FieldPhase  campaign_phase        (const Campaign *c, int owner);
 long        campaign_units        (const Campaign *c, int owner);  /* paquets de 100 */
 int         campaign_taken        (const Campaign *c, int owner);  /* régions réduites */

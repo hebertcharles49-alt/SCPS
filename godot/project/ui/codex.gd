@@ -1,4 +1,5 @@
 extends Control
+const SearchRank = preload("res://ui/search_rank.gd")
 ## Codex — LE CODEX DES VERBES (menu Échap · ex-F1, parti aux onglets du rail) :
 ## l'enseignement de tout ce que le joueur
 ## PEUT FAIRE. Motif chronique.gd (Control statique scrollable, visible/hide) : zéro
@@ -162,6 +163,15 @@ func toggle() -> void:
 	visible = not visible
 	Sound.play("ui_parchment_open" if visible else "ui_parchment_close")
 
+func open_search(query: String) -> void:
+	visible = true
+	_rebuild()
+	_search_edit.text = query
+	_apply_filter(query)
+	_search_edit.grab_focus()
+	_search_edit.caret_column = _search_edit.text.length()
+	Sound.play("ui_parchment_open")
+
 func _rebuild() -> void:
 	if _list == null:
 		return
@@ -316,7 +326,7 @@ func _on_search_changed(_new_text: String) -> void:
 func _apply_filter(query: String) -> void:
 	if _sections.is_empty():
 		return
-	var q := query.strip_edges().to_lower()
+	var q := SearchRank.normalize(query)
 	for cat in _sections.keys():
 		var sec: Dictionary = _sections[cat]
 		var body: Control = sec["body"]
@@ -334,7 +344,7 @@ func _apply_filter(query: String) -> void:
 			continue
 		var n_match := 0
 		for en in entries:
-			var m: bool = (en["text"] as String).find(q) >= 0
+			var m: bool = SearchRank.score(q, String(en["text"]), String(en["text"])) >= 0
 			(en["ctrl"] as Control).visible = m
 			if m:
 				n_match += 1

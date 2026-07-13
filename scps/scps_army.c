@@ -314,7 +314,7 @@ ArmyDoctrine army_doctrine(const TechState *t){
 
 /* Le POOL par classe du pays `cid` = Σ des strates econ de SES régions (la pop UNIQUE,
  * fin de l'adaptateur LaborEcon) ; moins les paquets déjà affectés à l'armée. */
-static long class_free(const ArmyState *a, const WorldEconomy *econ, int cid, LaborClass cl){
+long army_class_free(const ArmyState *a, const WorldEconomy *econ, int cid, LaborClass cl){
     long pool=0;
     if (econ) for (int r=0;r<econ->n_regions;r++)
         if (econ->region[r].owner==cid) pool += (long)econ->region[r].strata[cl].pop;
@@ -326,7 +326,7 @@ bool army_can_recruit(const ArmyState *a, const WorldEconomy *econ, int cid, Uni
     if (t<0||t>=U_COUNT||count<=0) return false;
     const UnitDef *d=&UNITS[t];
     if (a->weapons[d->weapon] < count) return false;                       /* pas d'armes → pas d'unité */
-    if (class_free(a,econ,cid,d->from) < count*POP_PER_UNIT) return false; /* pas la bonne classe */
+    if (army_class_free(a,econ,cid,d->from) < count*POP_PER_UNIT) return false; /* pas la bonne classe */
     return true;
 }
 

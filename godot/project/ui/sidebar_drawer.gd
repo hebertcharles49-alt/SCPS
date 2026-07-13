@@ -8,6 +8,7 @@ extends Control
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
+const InfoRef = preload("res://ui/info_ref.gd")
 const DX := Frame.SIDEBAR_W + 10.0
 const DY := Frame.TOPBAR_H + 10.0
 const DW := 380.0   ## élargi (retour joueur 2026-07-10 : « laisse respirer, on a de la place »)
@@ -38,6 +39,7 @@ var _diplo_btns := []          # [{rect, act="open", target, nom}] fiches pays c
 var _hover_zones := []         # [{rect, text}] survols (sprites de ressource → nom)
 var _hover_text := ""
 var _hover_pos := Vector2.ZERO
+var _focus: Dictionary = {}       # contexte optionnel fourni par le routeur
 
 func setup(map) -> void:
 	_map = map
@@ -57,11 +59,16 @@ func _layout() -> void:
 	_hmax = maxf(80.0, get_viewport_rect().size.y - DY - 26.0)
 	size = Vector2(DW, minf(size.y, _hmax))
 
-func show_tab(i: int) -> void:
+func show_tab(i: int, context: Dictionary = {}) -> void:
 	_tab = i
+	_focus = context.duplicate(true)
+	if i == 7 and String(context.get("section", "")) == "factions":
+		_conseil_tab = 2
 	_hover_text = ""
 	_servile_manumit_armed = false   # jamais une confirmation qui traverse une fermeture d'onglet
 	_marche_hover_res = -1           # le survol ne survit pas à un changement d'onglet (la sélection, si)
+	if context.has("resource_id"):
+		_marche_selected_res = int(context["resource_id"])
 	visible = i >= 0
 	queue_redraw()
 
@@ -136,7 +143,7 @@ func _draw() -> void:
 	for z in _hover_zones:
 		if (z["rect"] as Rect2).get_center().y < 36.0:
 			continue
-		_tips.append([z["rect"], z["text"]])
+		_tips.append([z["rect"], z["text"], z.get("card", {})])
 
 # ── DÉMOGRAPHIE (sb_panel_demo, read-only) ─────────────────────────────────
 func _draw_demo(x: float, y: float, me: int) -> float:
@@ -163,7 +170,11 @@ func _draw_stocks(x: float, y: float, me: int) -> float:
 	y += 16
 	var row_i := 0
 	for st in Sim.world.country_stocks(me):
-		VKit.list_row_bg(self, Rect2(x - 4, y - 2, DW - 2.0 * x + 8, 18), row_i)
+		var stock_row := Rect2(x - 4, y - 2, DW - 2.0 * x + 8, 18)
+		VKit.list_row_bg(self, stock_row, row_i)
+		if int(_focus.get("resource_id", -1)) == int(st["res_id"]):
+			VKit.box(self, stock_row, VKit.COL_GOLD)
+		_hover_zones.append({"rect": stock_row, "text": _stock_tip(st), "card": _stock_info_card(st)})
 		var col := _marche_col(int(st["market_band"]))
 		_res_cell(x, y, int(st["res_id"]), String(st["name"]), col)
 		VKit.text(self, Vector2(x + 110, y), col, _grp(st["stock"]), VKit.FS_SMALL)
@@ -175,6 +186,118 @@ func _draw_stocks(x: float, y: float, me: int) -> float:
 		y += 18
 		row_i += 1
 	return y
+
+func _stock_tip(st: Dictionary) -> String:
+	var net_month := float(st.get("net_day", 0.0)) * 30.0
+	var tip := "%s — stock %s · %+d/mois · %s" % [String(st.get("name", "Bien")),
+		_grp(st.get("stock", 0)), int(round(net_month)), String(st.get("marche", ""))]
+	var coverage := int(st.get("coverage_days", -1))
+	if coverage >= 0:
+		tip += " · couverture %s" % (">1 an" if coverage >= 366 else "%d j" % coverage)
+	return tip
+
+func _stock_info_card(st: Dictionary) -> Dictionary:
+	var net_month := float(st.get("net_day", 0.0)) * 30.0
+	var coverage := int(st.get("coverage_days", -1))
+	var coverage_text := "stable ou excédentaire" if coverage < 0 else \
+		("> 1 an" if coverage >= 366 else "%d jours" % coverage)
+	var lines: Array = [
+		{"label": "Production", "value": "%.1f / mois" % float(st.get("supply_month", 0.0)), "tone": "positive"},
+		{"label": "Consommation", "value": "%.1f / mois" % float(st.get("demand_month", 0.0)), "tone": "negative"},
+		{"label": "Couverture", "value": coverage_text},
+		{"label": "Prix moyen", "value": "%.2f or" % float(st.get("price", 0.0))},
+	]
+	var actions: Array = [{"label": "Ouvrir ce bien au Marché", "request": InfoRef.request(
+		InfoRef.make(InfoRef.RESOURCE, int(st.get("res_id", -1))), "sidebar", {"tab": 3})}]
+	var territory := _stock_territory_detail(st)
+	lines.append_array(territory.get("lines", []))
+	actions.append_array(territory.get("actions", []))
+	return {
+		"title": String(st.get("name", "Bien")),
+		"state": "stock %s · marché %s" % [_grp(st.get("stock", 0)), String(st.get("marche", ""))],
+		"trend": "%+d / mois" % int(round(net_month)),
+		"trend_tone": "positive" if net_month >= 0.0 else "negative",
+		"lines": lines,
+		"actions": actions,
+	}
+
+## P6 — répond à « où ? » depuis le survol économique : premier territoire
+## producteur et consommateur, chacun ouvrable sur la carte. Le classement vient
+## du lecteur moteur `stock_regions`; aucune géographie n'est reconstruite ici.
+func _stock_territory_detail(st: Dictionary) -> Dictionary:
+	var out := {"lines": [], "actions": []}
+	if Sim.world == null or not Sim.world.has_method("stock_regions"):
+		return out
+	var rows: Array = Sim.world.stock_regions(int(Sim.world.player()), int(st.get("res_id", -1)))
+	var producers: Array = rows.filter(func(row): return float(row.get("supply_month", 0.0)) > 0.05)
+	var consumers: Array = rows.filter(func(row): return float(row.get("demand_month", 0.0)) > 0.05)
+	producers.sort_custom(func(a, b): return float(a.get("supply_month", 0.0)) > float(b.get("supply_month", 0.0)))
+	consumers.sort_custom(func(a, b): return float(a.get("demand_month", 0.0)) > float(b.get("demand_month", 0.0)))
+	var linked := {}
+	if not producers.is_empty():
+		var p: Dictionary = producers[0]
+		out["lines"].append({"label": "Produit surtout à", "value": "%s · %.1f/mois" % [String(p.get("name", "?")), float(p.get("supply_month", 0.0))], "tone": "positive"})
+		var pr := int(p.get("region", -1))
+		if pr >= 0:
+			linked[pr] = true
+			out["actions"].append({"label": "Voir %s sur la carte" % String(p.get("name", "la région")),
+				"request": InfoRef.request(InfoRef.make(InfoRef.REGION, pr), "map")})
+	if not consumers.is_empty():
+		var c: Dictionary = consumers[0]
+		out["lines"].append({"label": "Consommé surtout à", "value": "%s · %.1f/mois" % [String(c.get("name", "?")), float(c.get("demand_month", 0.0))], "tone": "negative"})
+		var cr := int(c.get("region", -1))
+		if cr >= 0 and not linked.has(cr):
+			out["actions"].append({"label": "Voir %s sur la carte" % String(c.get("name", "la région")),
+				"request": InfoRef.request(InfoRef.make(InfoRef.REGION, cr), "map")})
+	return out
+
+func _market_info_card(st: Dictionary, quote: Dictionary = {}) -> Dictionary:
+	var net_month := float(st.get("net_day", 0.0)) * 30.0
+	var coverage := int(st.get("coverage_days", -1))
+	var coverage_text := "stable ou excédentaire" if coverage < 0 else \
+		("> 1 an" if coverage >= 366 else "%d jours" % coverage)
+	var lines: Array = [
+		{"label": "Stock national", "value": _grp(st.get("stock", 0))},
+		{"label": "Production", "value": "%.1f / mois" % float(st.get("supply_month", 0.0)), "tone": "positive"},
+		{"label": "Consommation", "value": "%.1f / mois" % float(st.get("demand_month", 0.0)), "tone": "negative"},
+		{"label": "Couverture", "value": coverage_text},
+	]
+	if bool(quote.get("valid", false)):
+		var margin := float(quote.get("margin", 1.0))
+		var hub_region := int(quote.get("hub_region", -1))
+		var local_qty := int(quote.get("local_qty", 0))
+		var global_qty := int(quote.get("global_qty", 0))
+		lines.append({"label": "Approvisionnement", "value": "devis pour %d unités" % int(quote.get("request_qty", MARCHE_QTY)), "tone": "heading"})
+		lines.append({"label": "Centre proche", "value": "aucun marché accessible" if hub_region < 0 else \
+			"%s · %s disponibles · marge ×%.2f" % [String(quote.get("hub_name", "Centre")),
+				_grp(int(float(quote.get("local_available", 0.0)))), margin],
+			"tone": "negative" if hub_region < 0 else ""})
+		lines.append({"label": "Achat local", "value": "indisponible" if local_qty <= 0 else \
+			"%d unités · ~%d or" % [local_qty, int(round(float(quote.get("local_cost", 0.0))))],
+			"tone": "negative" if local_qty <= 0 else ""})
+		var global_access := bool(quote.get("global_access", false))
+		lines.append({"label": "Réseau mondial", "value": "accès fermé" if not global_access else \
+			"%s disponibles · marge ×%.2f" % [_grp(int(float(quote.get("global_available", 0.0)))), margin * 2.0],
+			"tone": "negative" if not global_access else ""})
+		if global_access:
+			lines.append({"label": "Devis mondial", "value": "indisponible" if global_qty <= 0 else \
+				"%d unités · ~%d or" % [global_qty, int(round(float(quote.get("global_cost", 0.0))))],
+				"tone": "negative" if global_qty <= 0 else ""})
+		lines.append({"label": "Puissance commerciale", "value": "%.0f unités restantes ce mois" % float(quote.get("commerce_remaining", 0.0)), "tone": "dim"})
+	var actions: Array = [{"label": "Voir le stock national", "request": InfoRef.request(
+		InfoRef.make(InfoRef.RESOURCE, int(st.get("res_id", -1))), "sidebar", {"tab": 2})}]
+	var territory := _stock_territory_detail(st)
+	lines.append_array(territory.get("lines", []))
+	actions.append_array(territory.get("actions", []))
+	return {
+		"title": String(st.get("name", "Bien")),
+		"state": "%s · marché %s · %.2f or" % [_marche_category_word(int(st.get("res_id", -1))),
+			String(st.get("marche", "")), float(st.get("price", 0.0))],
+		"trend": "%+d / mois" % int(round(net_month)),
+		"trend_tone": "positive" if net_month >= 0.0 else "negative",
+		"lines": lines,
+		"actions": actions,
+	}
 
 ## cellule d'identité d'une ressource : le SPRITE (assets/scps/pack/resources, par
 ## id), sinon le nom en texte ; survol → le nom dans tous les cas.
@@ -222,28 +345,60 @@ func _draw_eco(x: float, y: float, me: int) -> float:
 	UIKit.draw_icon(self, "gold_coin", Vector2(x, y - 1), 16)
 	VKit.value(self, Vector2(x + 20, y), "Trésor : %s or" % _grp(b["gold"]))
 	y += 18
-	var net: float = b["net"]
+	var doy := maxi(1, int(Sim.world.day_of_year())) if Sim.world.has_method("day_of_year") else 1
+	var month_factor := 30.0 / float(doy)
+	var income_month := float(b.get("monthly_income", float(b["income"]) * month_factor))
+	var expense_month := float(b.get("monthly_expense", float(b["expense"]) * month_factor))
+	var net: float = float(b.get("monthly_net", float(b["net"]) * month_factor))
 	var ncol := VKit.sense(0.80) if net >= 0 else VKit.sense(0.12)
-	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "Budget (an)", VKit.FS_SMALL)
-	VKit.text(self, Vector2(x + 74, y), VKit.sense(0.80), "+%s" % _grp(b["income"]), VKit.FS_SMALL)
-	VKit.text(self, Vector2(x + 138, y), VKit.sense(0.12), "−%s" % _grp(b["expense"]), VKit.FS_SMALL)
-	VKit.text(self, Vector2(x + 206, y), ncol, "net %s%s" % ["+" if net >= 0 else "−", _grp(absf(net))], VKit.FS_SMALL)
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "Solde mensuel", VKit.FS_SMALL)
+	VKit.text(self, Vector2(x + 92, y), ncol,
+		"%s%s or/mois" % ["+" if net >= 0 else "−", _grp(absf(net))], VKit.FS_SMALL)
 	y += 16
 	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "crédit : %s or" % _grp(b["credit_line"]), VKit.FS_SMALL)
 	if int(b.get("creditor", -1)) >= 0:
 		VKit.text(self, Vector2(x + 140, y), VKit.sense(0.30), "dette → %s" % String(b.get("creditor_name", "")), VKit.FS_SMALL)
-	y += 18
-	# postes de flux (signés : revenu vert / dépense rouge) — quelques-uns
-	var shown := 0
+	y += 22
+	var projection := float(b.get("projected_year_end", b.get("gold", 0.0)))
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "fin d'année au rythme actuel", VKit.FS_SMALL)
+	VKit.text(self, Vector2(x + 210, y), VKit.sense(0.80) if projection >= 0.0 else VKit.sense(0.12),
+		"%s or" % _grp(projection), VKit.FS_SMALL)
+	y += 16
+	var runway := float(b.get("runway_months", -1.0))
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "autonomie trésor + crédit", VKit.FS_SMALL)
+	VKit.text(self, Vector2(x + 210, y), VKit.COL_DIM if runway < 0.0 else (VKit.sense(0.12) if runway < 6.0 else VKit.COL_PARCH),
+		"stable" if runway < 0.0 else "%.1f mois" % runway, VKit.FS_SMALL)
+	y += 22
+	var revenues := []
+	var expenses := []
 	for p in Sim.world.country_budget(me):
-		if shown >= 5:   # limite de COMPTE (résumé) — le scroll gère la hauteur désormais
-			break
-		VKit.list_row_bg(self, Rect2(x + 4, y - 1, DW - 2.0 * x - 8, 14), shown)
-		var amt: float = p["amount"]
-		var pcol := VKit.sense(0.78) if amt >= 0 else VKit.sense(0.18)
+		var monthly := float(p["amount"]) * month_factor
+		if monthly >= 0.0:
+			revenues.append({"name": String(p["name"]), "amount": monthly})
+		else:
+			expenses.append({"name": String(p["name"]), "amount": monthly})
+	# Total puis TOUS les postes, séparés par sens comme dans la référence fournie.
+	VKit.fill(self, Rect2(x, y - 3, DW - 2.0 * x, 20), Color(0.08, 0.14, 0.12, 0.92))
+	VKit.text(self, Vector2(x + 6, y), VKit.sense(0.80), "Revenus", VKit.FS_SMALL)
+	VKit.text(self, Vector2(x + 210, y), VKit.sense(0.80), "+%s/mois" % _grp(income_month), VKit.FS_SMALL)
+	y += 20
+	var shown := 0
+	for p in revenues:
+		VKit.list_row_bg(self, Rect2(x + 4, y - 1, DW - 2.0 * x - 8, 16), shown)
 		VKit.text(self, Vector2(x + 8, y), VKit.COL_PARCH, String(p["name"]), VKit.FS_SMALL)
-		VKit.text(self, Vector2(x + 150, y), pcol, "%s%s" % ["+" if amt >= 0 else "−", _grp(absf(amt))], VKit.FS_SMALL)
-		y += 14
+		VKit.text(self, Vector2(x + 210, y), VKit.sense(0.78), "+%s" % _grp(p["amount"]), VKit.FS_SMALL)
+		y += 16
+		shown += 1
+	VKit.fill(self, Rect2(x, y - 3, DW - 2.0 * x, 20), Color(0.16, 0.08, 0.08, 0.92))
+	VKit.text(self, Vector2(x + 6, y), VKit.sense(0.18), "Dépenses", VKit.FS_SMALL)
+	VKit.text(self, Vector2(x + 210, y), VKit.sense(0.18), "−%s/mois" % _grp(expense_month), VKit.FS_SMALL)
+	y += 20
+	shown = 0
+	for p in expenses:
+		VKit.list_row_bg(self, Rect2(x + 4, y - 1, DW - 2.0 * x - 8, 16), shown)
+		VKit.text(self, Vector2(x + 8, y), VKit.COL_PARCH, String(p["name"]), VKit.FS_SMALL)
+		VKit.text(self, Vector2(x + 210, y), VKit.sense(0.18), "−%s" % _grp(absf(float(p["amount"]))), VKit.FS_SMALL)
+		y += 16
 		shown += 1
 	y += 4
 	VKit.fill(self, Rect2(x, y, DW - 2.0 * x, 1), VKit.COL_EDGE)
@@ -436,7 +591,9 @@ func _draw_marche(x: float, y: float, me: int) -> float:
 		_marche_rows.append({"rect": row_rect, "res_id": res_id})
 		var tip := "%s — %s — %s en stock (%.2f or, %s)" % [
 			name, _marche_category_word(res_id), _grp(int(st["stock"])), float(st["price"]), String(st["marche"])]
-		_hover_zones.append({"rect": row_rect, "text": tip})
+		var quote: Dictionary = Sim.world.market_quote(me, res_id, MARCHE_QTY) \
+			if Sim.world.has_method("market_quote") else {}
+		_hover_zones.append({"rect": row_rect, "text": tip, "card": _market_info_card(st, quote)})
 		y += 3
 		VKit.fill(self, Rect2(x, y, DW - 2.0 * x, 1), VKit.COL_EDGE)
 		y += 5
@@ -453,12 +610,104 @@ func _draw_marche(x: float, y: float, me: int) -> float:
 var _conseil_btns := []   # [{rect, act, seat}] boutons Recruter/Renvoyer
 var _conseil_flash := ""
 var _conseil_flash_ok := true
-var _conseil_tab := 0   ## 0 = Gouvernement (sièges) · 1 = Politiques (décrets + servile)
+var _conseil_tab := 0   ## 0 = Gouvernement · 1 = Politiques · 2 = Factions
 var _ctab_btns := []
 ## l'ASSIETTE des coûts % (hovers quantitatifs — « 3 % du revenu (2033 or) × IPM 1,12
 ## = 68 or/an ») : revenu fiscal annuel + IPM, rafraîchis à chaque _draw_conseil.
 var _cons_rev := 0.0
 var _cons_ipm := 1.0
+
+func _council_seat_info_card(seat: Dictionary) -> Dictionary:
+	var loyalty := int(seat.get("loyalty", 0))
+	var target := int(seat.get("loyalty_target", loyalty))
+	return {
+		"title": "%s %s" % [String(seat.get("firstname", "")), String(seat.get("house", ""))],
+		"state": "%s · rang %d · %s" % [String(seat.get("seat", "Conseil")), int(seat.get("tier", 0)), String(seat.get("faction", ""))],
+		"trend": "loyauté %d → cible %d" % [loyalty, target],
+		"trend_tone": "positive" if target >= loyalty else "negative",
+		"lines": [
+			{"label": "Bonus de rang", "value": "+%.1f %%" % float(seat.get("rank_bonus_pct", 0.0))},
+			{"label": "Efficacité", "value": "%.1f %%" % float(seat.get("efficiency_pct", 0.0))},
+			{"label": "Administration", "value": "+%.1f points" % float(seat.get("eff_admin_points", 0.0)), "tone": "positive"},
+			{"label": "Loyauté", "value": "+%.1f points" % float(seat.get("eff_loyalty_points", 0.0)), "tone": "positive"},
+			{"label": "Corruption", "value": "−%.1f points" % float(seat.get("eff_corruption_points", 0.0)), "tone": "negative"},
+			{"label": "Effet net", "value": "+%.1f %% %s" % [float(seat.get("final_bonus_pct", 0.0)), String(seat.get("domain", ""))], "tone": "positive"},
+			{"label": "Traitement", "value": "%s or / an" % _grp(int(round(float(seat.get("cost_year", 0.0)))))},
+		],
+	}
+
+func _council_candidate_info_card(cand: Dictionary) -> Dictionary:
+	return {
+		"title": "%s %s" % [String(cand.get("firstname", "")), String(cand.get("house", ""))],
+		"state": "candidat · rang %d · %s" % [int(cand.get("tier", 0)), String(cand.get("faction", ""))],
+		"trend": "loyauté de départ %d" % int(cand.get("predicted_loyalty", 0)),
+		"trend_tone": "positive" if int(cand.get("predicted_loyalty", 0)) >= 50 else "negative",
+		"lines": [
+			{"label": "Efficacité prévue", "value": "%.1f %%" % float(cand.get("efficiency_pct", 0.0))},
+			{"label": "Administration", "value": "+%.1f points" % float(cand.get("eff_admin_points", 0.0)), "tone": "positive"},
+			{"label": "Loyauté", "value": "+%.1f points" % float(cand.get("eff_loyalty_points", 0.0)), "tone": "positive"},
+			{"label": "Corruption", "value": "−%.1f points" % float(cand.get("eff_corruption_points", 0.0)), "tone": "negative"},
+			{"label": "Effet net", "value": "+%.1f %% %s" % [float(cand.get("final_bonus_pct", 0.0)), String(cand.get("domain", ""))], "tone": "positive"},
+			{"label": "Traitement", "value": "%s or / an" % _grp(int(round(float(cand.get("cost_year", 0.0)))))},
+		],
+	}
+
+func _faction_info_card(fe: Dictionary, coup: int, corruption: int) -> Dictionary:
+	var delta := int(fe.get("policy_delta", 0))
+	var lines: Array = [
+		{"label": "Assise sociale", "value": "%d %%" % int(fe.get("base_part", 0))},
+		{"label": "Effet des politiques", "value": "%+d points" % delta,
+			"tone": "positive" if delta > 0 else ("negative" if delta < 0 else "dim")},
+		{"label": "Rancœur", "value": "%d / 100" % int(fe.get("grief", 0)),
+			"tone": "negative" if int(fe.get("grief", 0)) >= 40 else "dim"},
+		{"label": "Pression de coup", "value": "%d / 100" % int(fe.get("coup_pressure", 0)),
+			"tone": "negative" if bool(fe.get("coup_driver", false)) else "dim"},
+	]
+	if bool(fe.get("captor", false)):
+		lines.append({"label": "Capture de l'État", "value": "faction la plus favorisée", "tone": "negative"})
+	return {
+		"title": String(fe.get("name", "Faction")),
+		"state": "%d %% de soutien%s" % [int(fe.get("part", 0)), " · dominante" if bool(fe.get("dominant", false)) else ""],
+		"trend": "risque national %d / 100" % coup,
+		"trend_tone": "negative" if coup >= 40 else "dim",
+		"lines": lines + [{"label": "Corruption nationale", "value": "%d / 100" % corruption}],
+	}
+
+func _draw_factions(x: float, y: float, me: int) -> float:
+	var fx: Dictionary = Sim.world.country_factions(me) if Sim.world.has_method("country_factions") else {}
+	var coup := int(fx.get("coup", 0))
+	var corruption := int(fx.get("corruption", 0))
+	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Rapport de forces", VKit.FS_BIG)
+	y += 22
+	var summary := "Tension de coup %d / 100 · Corruption %d / 100" % [coup, corruption]
+	VKit.text(self, Vector2(x, y), VKit.sense(0.18 if coup >= 40 else 0.62), summary, VKit.FS_SMALL)
+	_hover_zones.append({"rect": Rect2(x - 2, y - 2, VKit.text_w(summary, VKit.FS_SMALL) + 6, 16),
+		"text": "Le risque vient de la faction signalée ci-dessous ; la corruption mesure la capture cumulée de l'État."})
+	y += 22
+	var row_i := 0
+	for raw in fx.get("list", []):
+		var fe: Dictionary = raw
+		var row := Rect2(x - 4, y - 3, DW - 2.0 * x + 8, 42)
+		VKit.list_row_bg(self, row, row_i)
+		if bool(fe.get("coup_driver", false)):
+			VKit.fill(self, Rect2(row.position, Vector2(3, row.size.y)), VKit.sense(0.15))
+		var name := String(fe.get("name", "Faction"))
+		var suffix := " ★" if bool(fe.get("dominant", false)) else ""
+		VKit.text(self, Vector2(x, y), VKit.COL_PARCH, name + suffix, VKit.FS_SMALL)
+		VKit.text(self, Vector2(DW - x - 42, y), VKit.COL_GOLD, "%d %%" % int(fe.get("part", 0)), VKit.FS_SMALL)
+		y += 15
+		VKit.gauge(self, x, y, DW - 2.0 * x, 7.0, int(fe.get("part", 0)))
+		y += 11
+		var detail := "assise %d %% · politiques %+d · rancœur %d" % [
+			int(fe.get("base_part", 0)), int(fe.get("policy_delta", 0)), int(fe.get("grief", 0))]
+		if bool(fe.get("coup_driver", false)):
+			detail += " · coup %d" % int(fe.get("coup_pressure", 0))
+		VKit.text(self, Vector2(x, y), VKit.COL_DIM, detail, VKit.FS_SMALL)
+		_hover_zones.append({"rect": row, "text": "%s — %d %% de soutien." % [name, int(fe.get("part", 0))],
+			"card": _faction_info_card(fe, coup, corruption)})
+		y += 18
+		row_i += 1
+	return y
 
 func _draw_conseil(x: float, y: float, me: int) -> float:
 	_conseil_btns.clear()
@@ -466,11 +715,11 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 		_cons_rev = float(Sim.world.country_revenue_year(me))
 		_cons_ipm = float(Sim.world.world_ipm())
 	# SOUS-ONGLETS (retour joueur : « diviser l'UI statecraft pour sa lisibilité ») :
-	# GOUVERNEMENT (les sièges du Conseil) / POLITIQUES (décrets + peuple servile).
+	# GOUVERNEMENT / POLITIQUES / FACTIONS : trois lectures, une seule surface.
 	_ctab_btns.clear()
 	var cxx := x
-	for ti in range(2):
-		var lbl: String = ["Gouvernement", "Politiques"][ti]
+	for ti in range(3):
+		var lbl: String = ["Gouvernement", "Politiques", "Factions"][ti]
 		var tww := VKit.text_w(lbl, VKit.FS_SMALL) + 16.0
 		var tr := Rect2(cxx, y, tww, 20)
 		VKit.fill(self, tr, VKit.COL_GOLD if _conseil_tab == ti else VKit.COL_PANEL2)
@@ -493,6 +742,8 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 				(VKit.sense(0.85) if _decret_flash_ok else VKit.sense(0.10)), _decret_flash, VKit.FS_SMALL)
 			y += 16
 		return y
+	if _conseil_tab == 2:
+		return _draw_factions(x, y, me)
 	var idx := 0
 	for seat in Sim.world.country_council(me):
 		var filled := bool(seat["filled"])
@@ -523,7 +774,7 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 			VKit.text(self, Vector2(x + 16, y), VKit.COL_PARCH, pdisp, VKit.FS_SMALL)
 			if idflav != "":
 				_hover_zones.append({"rect": Rect2(x + 14, y - 2, VKit.text_w(pdisp, VKit.FS_SMALL) + 6, 16),
-					"text": "%s — %s" % [idnom, idflav]})
+					"text": "%s — %s" % [idnom, idflav], "card": _council_seat_info_card(seat)})
 			var bw := VKit.text_w("Renvoyer", VKit.FS_SMALL) + 14.0
 			var r := Rect2(DW - 14.0 - bw, y - 1, bw, 16)
 			VKit.fill(self, r, VKit.COL_PANEL2)
@@ -551,15 +802,16 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 			y += 13
 			var lline := "Loyauté %d — %s" % [loyalty, mood]
 			VKit.text(self, Vector2(x + 16, y), VKit.sense(float(loyalty) / 100.0), lline, VKit.FS_SMALL)
+			var loyalty_target := int(seat.get("loyalty_target", loyalty))
 			_hover_zones.append({"rect": Rect2(x + 14, y - 2, VKit.text_w(lline, VKit.FS_SMALL) + 6, 16),
-				"text": "Loyauté %d/100 → +%.1f pts d'efficacité (15 pts à 100). Paie ×0,5 → cible −15 pts · ×2 → +30 pts." % [
-					loyalty, float(loyalty) * 0.15]})
+				"text": "Loyauté %d/100 · cible actuelle %d/100 → +%.1f pts d'efficacité." % [
+					loyalty, loyalty_target, float(seat.get("eff_loyalty_points", 0.0))]})
 			y += 18
 			# le curseur de PAIE (0.5×/1×/1.5×/2×) — verbe CMD_COUNCIL_PAY, journalisé
 			var pay := float(seat.get("pay", 1.0))
 			VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, "Paie", VKit.FS_SMALL)
 			_hover_zones.append({"rect": Rect2(x + 14, y - 2, 40, 16),
-				"text": "Traitement ×%.1f → loyauté cible %+d pts (30 × (paie − 1))." % [pay, int(round((pay - 1.0) * 30.0))]})
+				"text": "Traitement ×%.1f · la loyauté converge actuellement vers %d/100." % [pay, int(seat.get("loyalty_target", loyalty))]})
 			var px := x + 60.0
 			for mult in [0.5, 1.0, 1.5, 2.0]:
 				var lab := "%.1f×" % mult
@@ -579,9 +831,9 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 				var rankp := float(seat["rank_bonus_pct"])
 				var effp := float(seat["efficiency_pct"])
 				var finalp := float(seat["final_bonus_pct"])
-				var kpts := float(seat.get("k_admin", 0.0)) * 3.0
-				var lpts := float(loyalty) * 0.15
-				var cpts := float(int(seat.get("corruption_pct", 0))) * 0.35
+				var kpts := float(seat.get("eff_admin_points", 0.0))
+				var lpts := float(seat.get("eff_loyalty_points", 0.0))
+				var cpts := float(seat.get("eff_corruption_points", 0.0))
 				var bline := "%s +%.1f %%" % [domain, finalp]
 				var bline_lbl_w: float = VKit.detail(self, Vector2(x + 16, y), "%s " % domain, VKit.FS_SMALL)
 				VKit.value(self, Vector2(x + 16 + bline_lbl_w, y), "+%.1f %%" % finalp, VKit.FS_SMALL)
@@ -628,7 +880,7 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 					VKit.text(self, Vector2(cx, y), VKit.COL_PARCH, cpdisp, VKit.FS_SMALL)
 					if cidflav != "":
 						_hover_zones.append({"rect": Rect2(cx - 2, y - 2, VKit.text_w(cpdisp, VKit.FS_SMALL) + 6, 16),
-							"text": "%s — %s" % [cidnom, cidflav]})
+							"text": "%s — %s" % [cidnom, cidflav], "card": _council_candidate_info_card(cand)})
 					y += 15
 					var cfline := "Faction : %s · rang %d · %d ans" % [String(cand.get("faction", "")), int(cand["tier"]), int(cand["age"])]
 					VKit.text(self, Vector2(cx, y), VKit.COL_DIM, cfline, VKit.FS_SMALL)
@@ -641,13 +893,9 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 						var crankp := float(cand["rank_bonus_pct"])
 						var ceffp := float(cand["efficiency_pct"])
 						var cfinalp := float(cand["final_bonus_pct"])
-						# décomposition membrane-safe : Administration/Corruption depuis le SEAT
-						# (mêmes valeurs pays, remplies même vacant) ; loyauté de DÉPART déduite
-						# (efficacité − base 70 − Administration + Corruption — arithmétique sur
-						# les lecteurs réels, aucun chiffre inventé).
-						var ckpts := float(seat.get("k_admin", 0.0)) * 3.0
-						var ccpts := float(int(seat.get("corruption_pct", 0))) * 0.35
-						var clpts := ceffp - 70.0 - ckpts + ccpts
+						var ckpts := float(cand.get("eff_admin_points", 0.0))
+						var ccpts := float(cand.get("eff_corruption_points", 0.0))
+						var clpts := float(cand.get("eff_loyalty_points", 0.0))
 						var cbline := "%s +%.1f %%" % [cdomain, cfinalp]
 						VKit.text(self, Vector2(cx, y), VKit.sense(0.70), cbline, VKit.FS_SMALL)
 						_hover_zones.append({"rect": Rect2(cx - 2, y - 2, VKit.text_w(cbline, VKit.FS_SMALL) + 6, 16),
@@ -1148,6 +1396,12 @@ func _get_tooltip(at_position: Vector2) -> String:
 			return String(t[1])
 	return ""
 
+func get_info_card(at_position: Vector2) -> Dictionary:
+	for t in _tips:
+		if t.size() >= 3 and (t[0] as Rect2).has_point(at_position):
+			return (t[2] as Dictionary).duplicate(true)
+	return {}
+
 # ── FILTRES (sb_panel_filtres) : sélecteur de mode carte, FONCTIONNEL ──────
 func _draw_filtres(x: float, y: float) -> float:
 	_chips.clear()
@@ -1308,7 +1562,7 @@ func _opinion_col(op: int) -> Color:
 	if op < -15: return VKit.sense(0.15)
 	return VKit.COL_DIM
 
-## Armée : levée [-]/[+], posture, recompléter/dissoudre, mise en chantier de coque —
+## Armée : levée [-]/[+], recompléter/dissoudre, mise en chantier de coque —
 ## verbes journalisés (drainés au tick), aucun n'échoue localement sauf navy_build.
 func _armee_act(kind: String, val: int) -> void:
 	var w = Sim.world

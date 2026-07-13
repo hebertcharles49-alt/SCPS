@@ -250,34 +250,52 @@ static void sim_campaign_orders(Sim *s, World *w) {
     }
 }
 
+static int battle_loss_pack(const Campaign *c, int slot, int player){
+    if(!c || slot<0 || slot>=CAMPAIGN_MAX_BATTLES) return 0;
+    const FieldBattle *bt=&c->battle[slot];
+    if(bt->a<0 || bt->a>=CAMPAIGN_ARMY_CAP || bt->b<0 || bt->b>=CAMPAIGN_ARMY_CAP) return 0;
+    int oa=c->army[bt->a].owner, ob=c->army[bt->b].owner;
+    long mine=(oa==player)?(long)bt->lossA:(ob==player)?(long)bt->lossB:0;
+    long theirs=(oa==player)?(long)bt->lossB:(ob==player)?(long)bt->lossA:0;
+    if(mine<0)mine=0;
+    if(mine>65535)mine=65535;
+    if(theirs<0)theirs=0;
+    if(theirs>65535)theirs=65535;
+    uint32_t packed=(uint32_t)mine|((uint32_t)theirs<<16);
+    return (int32_t)packed;
+}
+
 static void sim_campaign_year(Sim *s, World *w) {
     /* L1 — la campagne RESPIRE AU MOIS : la défense intercepte en route, la récolte
      * tombe au fil de l'an et l'attaquant re-cible sans attendre janvier. (Le test
      * de paires de campaign_tick s'évalue désormais 12×/an — deux armées qui se
      * croisent se TROUVENT ; l'ordre frais de projection reste annuel.) */
-    /* FIL D'ÉVÈNEMENTS : observer la BATAILLE RANGÉE du joueur (transition HORS de
-     * FA_BATTLE au fil des mois — gagnée si l'ost tient encore debout, perdue sinon). */
     int hp_fb = s->human_player;
-    int fb_prev_ph  = (hp_fb>=0 && hp_fb<SCPS_MAX_COUNTRY) ? (int)campaign_phase(s->camp, hp_fb) : (int)FA_IDLE;
-    int fb_prev_loc = (hp_fb>=0 && hp_fb<SCPS_MAX_COUNTRY && s->camp->army[hp_fb].active) ? s->camp->army[hp_fb].loc : -1;
     for (int month=0; month<12; month++){
         if (month==0) sim_campaign_orders(s, w);            /* les ordres frais : annuels (inchangé) */
         sim_campaign_defense(s, w);                          /* L1 : la défense marche À LA RENCONTRE */
+        int was_active[CAMPAIGN_MAX_BATTLES], was_days[CAMPAIGN_MAX_BATTLES];
+        int was_a[CAMPAIGN_MAX_BATTLES], was_b[CAMPAIGN_MAX_BATTLES];
+        for(int k=0;k<CAMPAIGN_MAX_BATTLES;k++){
+            was_active[k]=s->camp->battle[k].active?1:0; was_days[k]=s->camp->battle[k].days;
+            was_a[k]=s->camp->battle[k].a; was_b[k]=s->camp->battle[k].b;
+        }
         campaign_tick(s->camp, w, s->econ, s->dp, &s->camp_rng, 365.f/12.f);
         if (hp_fb>=0 && hp_fb<SCPS_MAX_COUNTRY){
-            int ph = (int)campaign_phase(s->camp, hp_fb);
-            if (fb_prev_ph==(int)FA_BATTLE && ph!=(int)FA_BATTLE){
-                bool alive = s->camp->army[hp_fb].active;
-                int foe=-1;                                  /* l'adversaire : une armée ENNEMIE au lieu de l'accrochage */
-                for (int k=0;k<CAMPAIGN_ARMY_CAP && foe<0;k++){
-                    const FieldArmy *en=&s->camp->army[k];
-                    if (en->active && en->owner!=hp_fb && en->loc==fb_prev_loc
-                        && diplo_status(s->dp,hp_fb,en->owner)==DIPLO_WAR) foe=en->owner;
-                }
-                feed_push(alive?FEED_BATTLE_WON:FEED_BATTLE_LOST, hp_fb, foe, fb_prev_loc, 0);
+            for(int k=0;k<CAMPAIGN_MAX_BATTLES;k++){
+                const FieldBattle *bt=&s->camp->battle[k];
+                bool changed=was_active[k] || bt->days!=was_days[k] || bt->a!=was_a[k] || bt->b!=was_b[k];
+                if(!changed || bt->active || bt->a<0 || bt->b<0)continue;
+                int oa=s->camp->army[bt->a].owner, ob=s->camp->army[bt->b].owner;
+                if(oa!=hp_fb && ob!=hp_fb)continue;
+                int mine=(oa==hp_fb)?bt->a:bt->b, foe=(oa==hp_fb)?ob:oa;
+                const FieldArmy *pa=&s->camp->army[mine];
+                bool won=pa->active && pa->broken_days<=0;
+                const FieldArmy *foe_army=&s->camp->army[(oa==hp_fb)?bt->b:bt->a];
+                bool draw=pa->active && foe_army->active && pa->broken_days==15 && foe_army->broken_days==15;
+                feed_push(draw?FEED_BATTLE_DRAW:(won?FEED_BATTLE_WON:FEED_BATTLE_LOST),hp_fb,foe,bt->loc,
+                          battle_loss_pack(s->camp,k,hp_fb));
             }
-            fb_prev_ph = ph;
-            if (s->camp->army[hp_fb].active) fb_prev_loc = s->camp->army[hp_fb].loc;
         }
         campaign_release_transports(s->camp, s->navy);       /* les transports rentrent à la rade */
         /* LOT 4 — LE PILLAGE DE SIÈGE : chaque force EN SIÈGE (occupe/assiège une
@@ -605,24 +623,18 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (a&&a->active&&a->owner==p&&tgt>=0&&tgt<s->econ->n_regions)
                 campaign_redirect_corps(s->camp,s->econ,s->dp,id,tgt);
             break; }
-          case CMD_CORPS_POSTURE: {
-            int id=c->a[0], po=c->a[1]; const FieldArmy *a=campaign_corps_const(s->camp,id);
-            if (a&&a->active&&a->owner==p) campaign_set_corps_posture(s->camp,id,po);
-            break; }
           case CMD_CORPS_REFILL: {
             int id=c->a[0]; const FieldArmy *a=campaign_corps_const(s->camp,id);
-            if (a&&a->active&&a->owner==p) campaign_refill_corps(s->camp,id,s->econ);
+            if (a&&a->active&&a->owner==p&&campaign_can_refill_corps(s->camp,s->econ,id))
+                campaign_refill_corps(s->camp,id,s->econ);
             break; }
           case CMD_CORPS_DISBAND: {
             int id=c->a[0]; const FieldArmy *a=campaign_corps_const(s->camp,id);
             if (a&&a->active&&a->owner==p) campaign_disband_corps(s->camp,id,&s->host->army[p]);
             break; }
-          case CMD_POSTURE: {
-            int po=c->a[0]; if (po<0) po=0; else if (po>2) po=2;     /* 0 prudente · 1 standard · 2 agressive */
-            campaign_set_posture(s->camp, p, po);
-            break; }
           case CMD_REFILL:
-            campaign_refill(s->camp, p, s->econ);                    /* recomplète l'armée de campagne (pool = strates econ) */
+            if (campaign_can_refill(s->camp,s->econ,p))
+                campaign_refill(s->camp, p, s->econ);                /* recomplète sur sol national (pool = strates econ) */
             break;
           case CMD_NAVY_BUILD: {
             int h=c->a[0];

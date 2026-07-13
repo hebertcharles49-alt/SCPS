@@ -145,6 +145,12 @@ EthosFaction faction_effective_distribution(const World *w, const WorldEconomy *
 /* Tension de coup TENANT COMPTE du grief des opposés aliénés par la politique. */
 float faction_coup_tension_c(const World *w, const WorldEconomy *econ,
                              int cid, EthosFaction *out_alienated);
+/* Décompose EXACTEMENT cette tension par faction à partir d'une distribution de
+ * BASE déjà calculée. out[f] = part démographique × opposition à la dominante
+ * + grief politique pondéré ; la valeur retournée est le maximum. Ce lecteur
+ * évite à la façade/UI de recopier COUP_GRIEF_W. */
+float faction_coup_breakdown(int cid, const float base[FAC_COUNT],
+                             float out[FAC_COUNT], EthosFaction *out_alienated);
 
 /* ⚠ age_patron()/faction_age_engage() SUPPRIMÉES (raccord 8, Âges sans ordre
  * imposé, 2026-07-11) — voir le commentaire au-dessus de faction_levers_on_coup

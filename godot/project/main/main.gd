@@ -4,6 +4,8 @@ extends Node
 ## relier la sélection de carte aux panneaux de lecture (la membrane → UI).
 
 const Frame = preload("res://ui/frame.gd")
+const InfoRef = preload("res://ui/info_ref.gd")
+const NavigationHub = preload("res://ui/navigation_hub.gd")
 const UIKit = preload("res://ui/uikit.gd")   # load_img() export-safe (curseur, etc.)
 
 var _prov_panel: Control
@@ -23,12 +25,24 @@ var _page_turn: CanvasLayer    # LA PAGE QUI SE TOURNE : transition d'âge (code
 var _epilogue: Control         # ÉPILOGUE : la fin de partie en une phrase + la frise complète
 var _battle_panel: Control     # W-GUERRE UI (lot B) : panneau de combat, ouvert par clic sur un jeton d'armée
 var _codex: Control            # LE CODEX DES VERBES (touche F1) : tout ce que le joueur peut faire
+var _search_palette: Control   # P5 : Ctrl+K, accès universel aux objets et explications
+var _memory_panel: Control     # P9 : récents, épingles et comparaison live
 var _faith_prompted := false   # le créateur de foi ne s'ouvre qu'UNE fois (1er édifice religieux)
 var _epilogue_shown := false   # l'épilogue ne s'ouvre qu'UNE fois par partie (latch UI)
+var _nav: Node
 var _sel_prov := -1
 var _sel_owner := -1           # dernier propriétaire vu (restaure CountryPanel à la fermeture d'un écran profond)
 
 func _ready() -> void:
+	_nav = NavigationHub.new()
+	_nav.name = "NavigationHub"
+	add_child(_nav)
+	_nav.navigate_requested.connect(_route_navigation)
+	Sim.generated.connect(func(): _nav.clear())
+	Sim.new_game_started.connect(func(_seed): _nav.clear_memory())
+	Sim.game_saved.connect(func(slot): _nav.save_memory(slot))
+	Sim.game_loaded.connect(func(slot): _nav.load_memory(slot))
+
 	# THÈME GLOBAL + feedback de clic : états de bouton visibles (hover/pressed/disabled)
 	# hérités par TOUTE l'UI, flash de clic accroché à chaque BaseButton (présent + futur).
 	var UiTheme := load("res://ui/ui_theme.gd")
@@ -42,7 +56,9 @@ func _ready() -> void:
 	tts.name = "TooltipLayer"
 	tts.layer = 120
 	add_child(tts)
-	tts.add_child(load("res://ui/tooltip_server.gd").new())
+	var tooltip_server = load("res://ui/tooltip_server.gd").new()
+	tts.add_child(tooltip_server)
+	tooltip_server.navigate_requested.connect(func(request): _nav.go(request))
 	_setup_cursor()
 	# les ARMOIRIES dérivent des faits du monde → le cache se vide à chaque genèse
 	Sim.generated.connect(func(): load("res://ui/heraldry.gd").reset())
@@ -64,6 +80,7 @@ func _ready() -> void:
 	var topbar: Control = topbar_script.new()
 	topbar.name = "Topbar"
 	ui.add_child(topbar)
+	topbar.navigate_requested.connect(func(request): _nav.go(request))
 	topbar.tech_requested.connect(func():
 		_tech.visible = not _tech.visible
 		if _tech.visible:
@@ -174,12 +191,14 @@ func _ready() -> void:
 	_country_actions = load("res://ui/country_actions.gd").new()
 	_country_actions.name = "CountryActions"
 	ui.add_child(_country_actions)
+	_country_actions.navigate_requested.connect(func(request: Dictionary):
+		_nav.go(request))
 	map.country_context.connect(func(owner):
 		if Sim.game_on and owner != Sim.world.player():
-			_country_actions.open_country(owner))
+			navigate_to(InfoRef.make(InfoRef.COUNTRY, owner), "actions"))
 	_sidebar.open_country.connect(func(cid):
 		_sidebar.close()
-		_country_actions.open_country(cid))
+		navigate_to(InfoRef.make(InfoRef.COUNTRY, cid), "actions"))
 
 	# ZONE CONTEXTUELLE UNIQUE (retour joueur 2026-07-10, UI-3) : un écran profond
 	# REMPLACE le panneau contextuel qu'il détaille, il ne s'y ajoute jamais — le regard
@@ -197,15 +216,22 @@ func _ready() -> void:
 		elif _sel_owner >= 0:
 			_country_panel.show_country(_sel_owner))
 
-	# ARMÉE : le pion sélectionné ouvre sa barre de COMMANDEMENT (posture/recompléter/piller/
+	# ARMÉE : le pion sélectionné ouvre sa barre de COMMANDEMENT (recompléter/piller/
 	# dissoudre) ; le clic-destination sur la carte donne l'ordre de marche/attaque.
 	var army_panel: Control = load("res://ui/army_panel.gd").new()
 	ui.add_child(army_panel)
 	map.army_selection_changed.connect(army_panel.set_army)
+	map.army_order_feedback.connect(army_panel.show_feedback)
+	map.army_move_preview_changed.connect(army_panel.set_move_preview)
+	army_panel.selection_replaced.connect(map._set_selected_corps)
 	army_panel.raid_requested.connect(func(): map.arm_raid())
 
 	# la carte SÉLECTIONNE → on remplit les panneaux (lecture seule de la membrane)
-	map.province_picked.connect(_on_province_picked)
+	map.province_picked.connect(func(province, region, owner):
+		if province >= 0:
+			navigate_to(InfoRef.make(InfoRef.PROVINCE, province))
+		else:
+			_on_province_picked(province, region, owner))
 
 	# MENU PRINCIPAL (Jouer/Charger/Options/Quitter) par-dessus la carte, au démarrage.
 	# Topmost (ajouté en dernier). Le monde par défaut est déjà généré derrière ; « Lancer
@@ -240,6 +266,15 @@ func _ready() -> void:
 	_codex.name = "Codex"
 	_codex.visible = false
 	ui.add_child(_codex)
+	_search_palette = load("res://ui/search_palette.gd").new()
+	_search_palette.name = "SearchPalette"
+	ui.add_child(_search_palette)
+	_search_palette.navigate_requested.connect(func(request): _nav.go(request))
+	_memory_panel = load("res://ui/memory_panel.gd").new()
+	_memory_panel.name = "CampaignMemory"
+	ui.add_child(_memory_panel)
+	_memory_panel.setup(_nav)
+	_memory_panel.navigate_requested.connect(func(request): _nav.go(request))
 
 	# ALERTES (façon EU4/CK3) : la pile des « éléments en attente » au bord droit —
 	# code couleur par domaine, clic = le panneau concerné (ou le geste direct).
@@ -249,12 +284,9 @@ func _ready() -> void:
 	# AUDIT UI 1.4 : alerts n'a pas de référence à Main → un Callable lu chaque frame
 	# (major_open() n'existe qu'ICI, sur Main, où vivent tous les panneaux majeurs).
 	alerts.major_open_fn = Callable(self, "major_open")
-	alerts.open_tab.connect(func(i): _sidebar.open_tab(i))
+	alerts.open_tab.connect(func(i): navigate_to(InfoRef.make(InfoRef.SIDEBAR_TAB, i), "sidebar"))
 	alerts.open_tech.connect(func():
-		if not _tech.visible:
-			Sound.play("ui_parchment_open")
-		_tech.visible = true
-		_tech.queue_redraw())
+		navigate_to(InfoRef.make(InfoRef.TECH, -1)))
 	alerts.open_construct.connect(func():
 		if not _construct.visible:
 			Sound.play("ui_parchment_open")
@@ -269,17 +301,12 @@ func _ready() -> void:
 	if _tech.has_signal("metab_ready"):
 		_tech.metab_ready.connect(func(nom): alerts.push_metab_ready(nom))
 	alerts.open_tech_metab.connect(func():
-		if not _tech.visible:
-			Sound.play("ui_parchment_open")
-		_tech.visible = true
-		_tech.queue_redraw())
+		navigate_to(InfoRef.make(InfoRef.TECH, -1), "", {"section": "metabolisation"}))
 	var goto_fn := func(r):
-		if r >= 0 and Sim.world != null:
-			var c: Vector2 = Sim.world.region_centroid(r)
-			if c.x >= 0:
-				map._camera.position = map.iso_pos(c.x, c.y)   # centre la carte sur l'alerte
-				map.queue_redraw()
+		if r >= 0:
+			navigate_to(InfoRef.make(InfoRef.REGION, r), "map")
 	alerts.goto_region.connect(goto_fn)
+	esb.goto_region.connect(goto_fn)
 
 	# OYEZ OYEZ : le popup d'évènement (directeur + alertes majeures) — PAUSE + boutons
 	# adaptatifs ; les kinds majeurs du fil y sont ROUTÉS par alerts (popup_requested).
@@ -288,7 +315,7 @@ func _ready() -> void:
 	ui.add_child(popup)
 	alerts.popup_requested.connect(popup.enqueue)
 	popup.goto_region.connect(goto_fn)
-	popup.open_tab.connect(func(i): _sidebar.open_tab(i))
+	popup.open_tab.connect(func(i): navigate_to(InfoRef.make(InfoRef.SIDEBAR_TAB, i), "sidebar"))
 
 	# LES ANNALES DU RÈGNE (touche H) : le récit sélectif de la partie, lecture seule.
 	# Le clic sur une entrée localisée centre la carte (même motif que les alertes).
@@ -350,6 +377,22 @@ func _ready() -> void:
 ## focusés) — le focus clavier reste VIVANT partout (Tab/Entrée, audit 2026-07-10) ;
 ## on ne vole la barre d'espace qu'aux boutons, jamais à un champ de saisie.
 func _input(e: InputEvent) -> void:
+	if e is InputEventKey and e.pressed and not e.echo and e.ctrl_pressed and e.keycode == KEY_M:
+		if _memory_panel != null and Sim.game_on:
+			if _memory_panel.visible:
+				_memory_panel.close_panel()
+			else:
+				_memory_panel.open_panel()
+			get_viewport().set_input_as_handled()
+		return
+	if e is InputEventKey and e.pressed and not e.echo and e.ctrl_pressed and e.keycode == KEY_K:
+		if _search_palette != null and Sim.game_on:
+			if _search_palette.visible:
+				_search_palette.close_palette()
+			else:
+				_search_palette.open_palette()
+			get_viewport().set_input_as_handled()
+		return
 	if not (e is InputEventKey and e.pressed and not e.echo and e.keycode == KEY_SPACE):
 		return
 	var fo := get_viewport().gui_get_focus_owner()
@@ -361,6 +404,16 @@ func _input(e: InputEvent) -> void:
 func _unhandled_input(e: InputEvent) -> void:
 	if not (e is InputEventKey and e.pressed and not e.echo):
 		return
+	var fo := get_viewport().gui_get_focus_owner()
+	if e.alt_pressed and not (fo is LineEdit or fo is TextEdit):
+		if e.keycode == KEY_LEFT and _nav != null:
+			_nav.back()
+			get_viewport().set_input_as_handled()
+			return
+		if e.keycode == KEY_RIGHT and _nav != null:
+			_nav.forward()
+			get_viewport().set_input_as_handled()
+			return
 	match e.keycode:
 		KEY_ESCAPE:
 			# PILE DE FERMETURE : Échap ferme d'abord le panneau flottant visible (un par
@@ -407,6 +460,104 @@ func _unhandled_input(e: InputEvent) -> void:
 ## religieux et n'a pas encore de foi, on ouvre le créateur (monde en pause). Une seule fois.
 ## MODE OBSERVATEUR : aucune main humaine → on ne prompte pas le joueur pour des décisions
 ## d'un empire piloté par l'IA (l'IA les tranche elle-même).
+## Porte publique de la navigation contextuelle. Les contrôles décrivent une cible ;
+## Main reste seul responsable du panneau concret et des règles d'exclusivité.
+func navigate_to(ref: Dictionary, surface: String = "", context: Dictionary = {}) -> bool:
+	if _nav == null:
+		return false
+	return _nav.go(InfoRef.request(ref, surface, context))
+
+func _focus_region(region: int) -> bool:
+	if region < 0 or Sim.world == null:
+		return false
+	var map = get_node_or_null("MapView")
+	if map == null:
+		return false
+	var c: Vector2 = Sim.world.region_centroid(region)
+	if c.x < 0:
+		return false
+	map._camera.position = map.iso_pos(c.x, c.y)
+	map.queue_redraw()
+	return true
+
+## Résolution unique des destinations. Une route invalide échoue sans fermer la vue
+## actuelle et sans reconstituer de donnée métier côté interface.
+func _route_navigation(request: Dictionary) -> void:
+	var ref = request.get("ref", {})
+	if not (ref is Dictionary) or not InfoRef.is_valid(ref):
+		return
+	var kind := String(ref.get("kind", ""))
+	var id = ref.get("id", -1)
+	var context: Dictionary = request.get("context", {})
+	var surface := String(request.get("surface", ""))
+	var map = get_node_or_null("MapView")
+	match kind:
+		InfoRef.SIDEBAR_TAB:
+			if _sidebar != null:
+				_sidebar.open_tab(int(id), context)
+		InfoRef.RESOURCE:
+			if _sidebar != null:
+				var tab := int(context.get("tab", 2))
+				var focus := context.duplicate(true)
+				if typeof(id) == TYPE_INT:
+					focus["resource_id"] = int(id)
+				else:
+					focus["resource_name"] = String(id)
+				_sidebar.open_tab(tab, focus)
+		InfoRef.TECH:
+			if _tech != null and Sim.game_on:
+				var was_visible := _tech.visible
+				_tech.visible = true
+				if not was_visible:
+					Sound.play("ui_parchment_open")
+				if int(id) >= 0 and _tech.has_method("focus_tech"):
+					_tech.focus_tech(int(id))
+				_tech.queue_redraw()
+		InfoRef.CODEX:
+			if _codex != null:
+				_codex.open_search(String(context.get("query", id)))
+		InfoRef.COUNTRY:
+			if Sim.world == null:
+				return
+			var cid := int(id)
+			if surface == "actions" and _country_actions != null and cid != Sim.world.player():
+				_country_actions.open_country(cid)
+			else:
+				_sel_owner = cid
+				if _sidebar != null:
+					_sidebar.close()
+				if _country_panel != null:
+					_country_panel.show_country(cid)
+		InfoRef.PROVINCE:
+			if Sim.world == null:
+				return
+			var pid := int(id)
+			var pi: Dictionary = Sim.world.province_info(pid)
+			if not bool(pi.get("valide", false)):
+				return
+			var region := int(Sim.world.province_region(pid))
+			if map != null:
+				map._selected_prov = pid
+			_on_province_picked(pid, region, int(pi.get("owner", -1)))
+			if surface == "map" or bool(context.get("focus_map", false)):
+				_focus_region(region)
+		InfoRef.REGION:
+			_focus_region(int(id))
+		InfoRef.CORPS:
+			if map == null:
+				return
+			map._set_selected_corps([int(id)])
+			if Sim.world != null and Sim.world.has_method("corps_info"):
+				var army: Dictionary = Sim.world.corps_info(int(id))
+				if bool(context.get("focus_map", true)) and bool(army.get("active", false)):
+					_focus_region(int(army.get("region", -1)))
+		InfoRef.MAP_MODE:
+			if map != null:
+				map.set_mode(int(id))
+		InfoRef.MEMORY:
+			if _memory_panel != null and Sim.game_on:
+				_memory_panel.open_panel(int(context.get("tab", -1)))
+
 func _observing() -> bool:
 	return Sim.world != null and Sim.world.has_method("is_observer") and Sim.world.is_observer()
 
@@ -437,7 +588,7 @@ func _on_tick_endgame(_year: int) -> void:
 ## non nommés par l'audit). alerts.gd lit ceci à CHAQUE frame (via un Callable, il n'a
 ## pas de référence à Main) pour masquer sa pile ordinaire derrière un compteur compact.
 func major_open() -> bool:
-	for p in [_tech, _econ, _codex, _construct, _prov_detail, _country_actions,
+	for p in [_memory_panel, _search_palette, _tech, _econ, _codex, _construct, _prov_detail, _country_actions,
 			_chronique, _age_recap, _epilogue, _religion]:
 		if p != null and p.visible:
 			return true
@@ -446,7 +597,7 @@ func major_open() -> bool:
 ## ferme le PANNEAU FLOTTANT visible le plus haut (un par pression d'Échap), puis la
 ## sélection. true = quelque chose a été fermé (Échap consommé avant le menu).
 func _close_topmost() -> bool:
-	for p in [_construct, _tech, _econ, _religion, _prov_detail, _devpanel, _country_actions, _chronique, _age_recap, _epilogue, _battle_panel, _codex]:
+	for p in [_memory_panel, _search_palette, _construct, _tech, _econ, _religion, _prov_detail, _devpanel, _country_actions, _chronique, _age_recap, _epilogue, _battle_panel, _codex]:
 		if p != null and p.visible:
 			p.visible = false
 			Sound.play("ui_parchment_close")

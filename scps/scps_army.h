@@ -142,6 +142,7 @@ void army_merge_into(ArmyState *dst, ArmyState *src);
 /* Peut-on lever `count` unités de ce type ? (pop libre de la bonne CLASSE +
  * armes en stock). Renvoie false sinon — ce n'est pas un bouton. */
 bool army_can_recruit(const ArmyState *a, const WorldEconomy *econ, int cid, UnitType t, long count);
+long army_class_free(const ArmyState *a, const WorldEconomy *econ, int cid, LaborClass cl);
 /* Lève l'unité : prélève la pop (affectée, PAS retirée du pool) et consomme les
  * armes du tampon (rempli au préalable depuis le marché macro). Renvoie le nb levé.
  * Le POOL par classe est LU des strates econ du pays `cid` (plus de LaborEcon). */

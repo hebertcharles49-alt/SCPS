@@ -169,16 +169,69 @@ typedef struct {
     int         active;     /* 1 = armée de campagne déployée */
     int         region;     /* loc (où la dessiner ; centroïde via scps_region_centroid) ; -1 */
     int         dest;       /* région-but (ligne de marche) ; -1 = aucune */
+    int         next;       /* prochaine étape ; -1 si immobile */
     int         owner;      /* pays (= argument ; pratique côté hôte) */
     int         phase_id;   /* FieldPhase brut 0..6 (pour l'animation) */
     const char *phase;      /* mot de phase (Marche/Siège/Bataille/…) */
     long        units;      /* effectif (= paquets × 100) */
     long        inf, arch, cav, mages;   /* composition (effectifs) */
+    const char *location;   /* nom de la province-siège de `region` */
+    const char *destination;/* nom de la province-siège de `dest`, ou "" */
+    float       days_left;  /* jours restants de l'étape/siège courant */
+    float       leg_days;   /* durée totale de l'étape courante */
+    int         progress_pct;/* progression de l'étape 0..100 ; -1 si sans étape */
+    int         broken_days;/* déroute : jours d'indisponibilité */
+    float       rally_days; /* compte à rebours de reformation */
+    long        rally_units;/* effectif attendu après ralliement */
+    int         taken, legs, battles; /* journal de campagne du corps */
 } ScpsArmyInfo;
 void scps_army_info(ScpsSim *s, int country, ScpsArmyInfo *out);
 int  scps_country_corps_count(ScpsSim *s, int country);
 int  scps_country_corps_id(ScpsSim *s, int country, int ordinal);
 void scps_corps_info(ScpsSim *s, int id, ScpsArmyInfo *out);
+
+typedef struct {
+    int         valid;
+    int         corps_id, from_region, target_region;
+    const char *from_name, *target_name;
+    float       travel_days;
+    int         hops;
+    long        units_start;        /* hommes au départ */
+    long        attrition_loss;     /* hommes projetés, mêmes étapes/terrains que le drain */
+    long        units_arrival;      /* hommes restant à l'arrivée */
+    int         attrition_pct;      /* perte / départ, arrondie et bornée 0..100 */
+    int         worst_daily_pct10;  /* pire taux journalier en dixièmes de % (30 = 3,0 %) */
+    int         reason_code;
+    const char *reason;
+    int         arrival_code;       /* 0 sur place · 1 repositionnement · 2 siège */
+    const char *arrival;
+} ScpsMovePreview;
+/* Retourne le nombre de régions du chemin (départ et cible inclus), borné à max_path
+ * dans path[]. La lecture est pure et suit le même BFS/terrain que la redirection. */
+int scps_corps_move_preview(ScpsSim *s, int id, int target_region,
+                           ScpsMovePreview *out, int *path, int max_path);
+
+#define SCPS_REFILL_MAX_NEEDS 8
+typedef struct {
+    int resource;
+    const char *name;
+    long needed, owned;
+} ScpsRefillNeed;
+typedef struct {
+    int valid, allowed;
+    int corps_id, region;
+    int reason_code;             /* 0 prêt · 1 invalide/étranger · 2 hors sol national · 3 vide · 4 population */
+    const char *reason;
+    long requested_humans;       /* +100 par type d'unité encore présent */
+    long population_ready_humans;/* part dont la classe sociale est disponible */
+    long guaranteed_humans;      /* part couverte maintenant par population + arsenal national */
+    long weapons_needed, weapons_owned;
+    int n_needs;
+    ScpsRefillNeed need[SCPS_REFILL_MAX_NEEDS];
+} ScpsRefillPreview;
+/* Lecture pure. `guaranteed_humans` exclut volontairement les imports : le marché
+ * peut compléter au drain, au prix et au trésor alors courants. */
+int scps_corps_refill_preview(ScpsSim *s, int id, ScpsRefillPreview *out);
 
 /* W-GUERRE UI (lot A) — ÉTAT DE GUERRE d'une région (pour les HACHURES de siège/
  * occupation sur la carte) : 0 = paix (rien à hachurer) · 1 = ASSIÉGÉE (une armée
@@ -198,8 +251,8 @@ int scps_region_war_state(ScpsSim *s, int region, int *belligerent_out);
  * (déjà exposée par pays, réutilisée telle quelle). `war_score` = point de vue de
  * l'ATTAQUANT (diplo_war_score(a,d), [-100..+100], la même jauge que la diplomatie).
  * `in_battle` = 1 si une FieldBattle est ACTIVE sur cette région (chocs/accalmies en
- * cours) — alors `loss_*` portent les pertes CUMULÉES du combat en cours (paquets de
- * 100, report fractionnaire inclus) ; sinon 0 (pas de choc à exposer, seulement le
+ * cours) — `loss_*` portent les pertes cumulées confirmées (paquets de 100) ;
+ * sinon 0 (pas de choc, seulement le
  * siège). `valid`=0 si `region` ne porte ni siège ni bataille (out mis à zéro). */
 typedef struct {
     int    valid;
@@ -208,8 +261,24 @@ typedef struct {
     int    phase_id;    const char *phase;   /* FA_SIEGE ou FA_BATTLE, mot résolu */
     long   atk_units, atk_inf, atk_arch, atk_cav, atk_mages;
     long   def_units, def_inf, def_arch, def_cav, def_mages;
+    int    atk_corps, def_corps;          /* corps LOCAUX réellement engagés */
+    int    atk_helper, def_helper;        /* pays venu en renfort ; -1 si aucun */
     int    in_battle;                   /* 1 = FieldBattle active (chocs en cours) */
-    float  loss_atk, loss_def;          /* pertes de choc cumulées (paquets), si in_battle */
+    int    days, chocs;                 /* cadence lisible du combat en cours */
+    int    atk_morale_pct, def_morale_pct; /* réserve restante / réserve initiale */
+    int    stage_id; const char *stage; /* 0 Choc · 1 Accalmie */
+    int    terrain_holder;              /* pays avantagé ; -1 si neutre */
+    int    river, bridged;
+    int    atk_terrain_pct, def_terrain_pct; /* multiplicateur ×100 */
+    int    atk_counter_pct, def_counter_pct; /* contres de composition ×100 */
+    int    balance_atk_pct;             /* rapport pré-aléa du prochain choc */
+    int    rupture_pct;                 /* seuil de cohésion moteur */
+    float  loss_atk, loss_def;          /* pertes cumulées confirmées (paquets), si in_battle */
+    float  siege_days_left, siege_full_days; /* restant exact / tenue de référence actuelle */
+    int    siege_progress_pct;          /* estimation selon les facteurs actuels */
+    float  siege_defense, siege_food_months;
+    int    siege_terrain_pct;           /* multiplicateur de tenue ×100 */
+    int    siege_outcome;               /* 0 occupation / 1 libération */
     float  war_score;                   /* [-100..+100], point de vue attaquant */
 } ScpsBattleInfo;
 void scps_battle_info(ScpsSim *s, int region, ScpsBattleInfo *out);
@@ -265,11 +334,28 @@ void  scps_map_endgame_variant(ScpsSim *s, uint8_t *dst);
  * composition (camemberts culture/idéologie), les revenus (production), la pop
  * par classe (barre empilée) et l'ossature de capitale. Tous membrane/tangibles. */
 typedef struct {
-    const char *heritage, *culture, *lineage, *religion, *klass, *etat, *loyaute;  /* mots résolus */
+    const char *heritage, *culture, *lineage, *religion, *faith, *klass, *etat, *loyaute;  /* mots résolus */
     int         percent;     /* part de la province */
+    int         faith_id;    /* registre vivant ; -1 = sans foi */
+    int         dominant;    /* groupe culturel dominant réel de la province */
 } ScpsGroup;
 /* remplit out[0..min(n,max)-1] avec les groupes pop ; retourne le nombre écrit. */
 int scps_province_groups(ScpsSim *s, int province, ScpsGroup *out, int max);
+
+typedef struct {
+    int valid, province, region, owner, groups;
+    const char *dominant_culture, *dominant_lineage;
+    int dominant_percent;
+    const char *local_ethos, *ruling_ethos, *relation_to_crown;
+    int ethos_drift_pct, friction_avg_pct, friction_max_pct;
+    int local_faith_id, state_faith_id, faith_mismatch;
+    const char *local_faith, *state_faith;
+    int contact, contact_region, contact_country, contact_maritime;
+    const char *contact_country_name, *contact_region_name, *contact_culture;
+    int contact_distance_pct, fusion_open_pct, fusion_feasible, fusion_years;
+    const char *fusion_reason;
+} ScpsCultureContext;
+int scps_province_culture_context(ScpsSim *s, int province, ScpsCultureContext *out);
 
 typedef struct { const char *source; float per_day; int manufactured; int res_id; } ScpsIncome;
 int scps_province_income(ScpsSim *s, int province, ScpsIncome *out, int max);
@@ -368,12 +454,50 @@ typedef struct {
     const char *marche;     /* état de marché (label_marche) */
     long  stock;
     float net_day;          /* flux net /jour (offre−demande) */
+    float supply_month;     /* offre brute du dernier tick mensuel */
+    float demand_month;     /* demande brute du dernier tick mensuel */
     int   coverage_days;    /* jours de couverture si net<0 (366 = >1 an) ; -1 sinon */
     int   market_band;      /* 0..4 BandMarche (pour la couleur) */
     float price;            /* prix moyen (or) — pour l'onglet Marché */
     int   res_id;           /* indice Resource (enum) — pour le SPRITE de ressource */
 } ScpsStock;
 int scps_country_stocks(ScpsSim *s, int country, ScpsStock *out, int max);
+
+/* Ventilation TERRITORIALE d'un bien : les régions du pays où il est produit,
+ * consommé et stocké, triées par activité décroissante. Le panneau économique
+ * peut ainsi répondre à « où ? » et naviguer vers la carte sans répliquer le moteur. */
+typedef struct {
+    int         region;
+    int         province;       /* province représentative, utile au nom et au futur drill-down */
+    const char *name;
+    long        stock;
+    float       supply_month;
+    float       demand_month;
+} ScpsStockRegion;
+int scps_stock_regions(ScpsSim *s, int country, int good, ScpsStockRegion *out, int max);
+
+/* Devis PUR du bouton Marché depuis la capitale du pays. Les deux étages reflètent
+ * exactement l'actionneur intertrade : Centre proche (marge distance) puis réseau
+ * mondial (marge ×2), sans muter ni réserver les stocks. */
+typedef struct {
+    int         valid;
+    int         region;
+    int         hub_region;
+    int         hub_owner;
+    const char *hub_name;
+    int         global_access;
+    float       price;
+    float       margin;
+    float       local_available;
+    float       global_available;
+    float       commerce_remaining;
+    long        request_qty;
+    long        local_qty;
+    long        global_qty;
+    double      local_cost;
+    double      global_cost;
+} ScpsMarketQuote;
+int scps_market_quote(ScpsSim *s, int country, int good, long qty, ScpsMarketQuote *out);
 
 /* COMMERCE (sb_panel_eco, onglet Commerce, read-only). */
 typedef struct {
@@ -432,6 +556,12 @@ typedef struct {
     int   retire_lo, retire_hi; /* retraite estimée, années restantes [66−âge, 73−âge] ; -1 si vacant */
     float k_admin;          /* K administratif du pays (pour la décomposition du hover) */
     int   corruption_pct;   /* Corruption du pays, 0..100 (pour la décomposition du hover) */
+    /* Décomposition exacte de l'efficacité, déjà convertie en points affichables :
+     * base + administration + loyauté − corruption, avant le clamp moteur. */
+    float eff_base_pct, eff_admin_points, eff_loyalty_points, eff_corruption_points;
+    float eff_preclamp_pct;
+    int   eff_clamped;
+    int   loyalty_target;   /* cible réelle de convergence, 0..100 ; 0 si vacant */
 } ScpsCouncilSeat;
 int scps_country_council(ScpsSim *s, int country, ScpsCouncilSeat *out, int max);
 /* Le curseur de PAIE du joueur (a[1]=paie ×100, 0..200) — verbe journalisé, revalidé
@@ -458,6 +588,10 @@ typedef struct {
     float cost_rate_pct;
     double cost_year;
     int   retire_lo, retire_hi;
+    int   predicted_loyalty;
+    float eff_base_pct, eff_admin_points, eff_loyalty_points, eff_corruption_points;
+    float eff_preclamp_pct;
+    int   eff_clamped;
 } ScpsCouncilCand;
 int scps_council_candidates(ScpsSim *s, int seat, ScpsCouncilCand *out, int max);
 
@@ -558,6 +692,41 @@ typedef struct {
     float cb_ready_years_left;     /* années avant expiration (cb_ready==1) */
 } ScpsDiploOptions;
 int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out);
+
+typedef enum {
+    SCPS_DIPLO_WAR=0, SCPS_DIPLO_PEACE, SCPS_DIPLO_ALLIANCE,
+    SCPS_DIPLO_PACT, SCPS_DIPLO_MIGRATION, SCPS_DIPLO_EMBARGO,
+    SCPS_DIPLO_FABRICATE, SCPS_DIPLO_ACTION_COUNT
+} ScpsDiploAction;
+typedef struct {
+    int valid, allowed, would_accept, unilateral;
+    int target, action;
+    int toggle_on;              /* embargo : 1 décréter · 0 lever */
+    const char *reason_code;    /* code stable du premier verrou */
+    const char *reason_label;   /* libellé résolu */
+    double cost_gold, gold_have, gold_missing;
+    int duration_days;          /* cooldown ou maturation restant(e) */
+} ScpsActionLegal;
+int scps_diplo_action_legal(ScpsSim *s, int target, int action, ScpsActionLegal *out);
+
+/* FICHE DE RELATION : engagements actifs + portée concrète + lieux. Toutes les
+ * valeurs sont lues des mêmes états diplo/intertrade/routes que les actionneurs. */
+typedef struct {
+    int valid, player, target;
+    int at_war, allied, trade_pact, migration_pact, embargo;
+    float truce_days, war_score;
+    int ally_slots_player, ally_slots_target, ally_slots_max;
+    int vassal_direction;       /* +1 cible vassale du joueur · -1 joueur vassal de la cible · 0 */
+    const char *contract;
+    float trade_value;
+    int shared_routes, open_routes;
+    int route_a, route_b, route_maritime, route_open;
+    float route_sea_days, route_yield;
+    const char *route_a_name, *route_b_name;
+    int target_capital_province, target_capital_region;
+    const char *target_capital_name;
+} ScpsDiploContext;
+int scps_diplo_context(ScpsSim *s, int target, ScpsDiploContext *out);
 
 /* ── le RÉSUMÉ D'OPINION (#26) : POURQUOI ce pays nous voit ainsi. `total` = l'opinion
  * COURANTE ±100 (lissée) ; le reste = les COMPOSANTES de la cible vers laquelle elle
@@ -664,8 +833,6 @@ typedef struct {
     int  levy;              /* cran de levée 0-3 */
     const char *levy_name;  /* Basse · Garde · Pied de guerre · Levée en masse */
     int  fleet;             /* total de coques */
-    int  posture;           /* posture de campagne 0 prudente · 1 standard · 2 agressive (lue du moteur) */
-    const char *posture_name;
 } ScpsArmy;
 void scps_country_army(ScpsSim *s, int country, ScpsArmy *out);
 
@@ -775,8 +942,8 @@ int  scps_player_embargo       (ScpsSim *s, int target, int on);
  * religieux) n'est déclarable qu'avec une intrigue MÛRE — cf. scps_diplo_options pour l'état. */
 int  scps_player_fabricate_cb  (ScpsSim *s, int target);
 /* §3 — INTÉRIEUR · COMMERCE · GUERRE (plomberie additive ; ENFILENT, revalidé au drain).
- * `region` = index de région À SOI ; `seat` ∈ [0,3) ; `good` ∈ Resource ; `hull` ∈ HullType ;
- * `posture` 0 prudente/1 standard/2 agressive. Retour = mis-en-file (1) / refus (0). */
+ * `region` = index de région À SOI ; `seat` ∈ [0,3) ; `good` ∈ Resource ; `hull` ∈ HullType.
+ * Retour = mis-en-file (1) / refus (0). */
 int  scps_player_repress       (ScpsSim *s, int region);
 int  scps_player_assimilate    (ScpsSim *s, int region, int creuset);
 int  scps_player_purge         (ScpsSim *s, int region);
@@ -877,7 +1044,7 @@ int  scps_research_target(ScpsSim *s, float *progress01);
  * scps_provlog.h). Les NOMS sont résolus (membrane). Poll incrémental par seq. */
 typedef struct {
     int seq, year, kind, region;   /* region -1 si non localisé */
-    int v;                         /* valeur libre du kind (FEED_PEACE : SCORE de guerre ±100 · FEED_DIRECTOR : EvId) */
+    int v;                         /* PAIX : score ±100 · DIRECTOR : EvId · BATAILLE : pertes packées */
     int a_id, b_id;                /* index pays BRUTS (le filtre de pertinence du front) */
     const char *a_name, *b_name;   /* pays concernés ("" si -1) */
     const char *label;             /* FEED_DIRECTOR : le NOM de l'évènement (résolu) ; "" sinon */
@@ -1036,6 +1203,14 @@ typedef struct {
     const char *effet;    /* l'utilité concrète */
     int  cost;      /* points de recherche (0 pour une base) */
     int  prereq;    /* INDICE du nœud prérequis dans CE tableau (-1 = aucun : une base) — pour tracer les arêtes */
+    int  allowed;   /* 1 = peut devenir la cible de recherche maintenant */
+    const char *reason_code;  /* ok · acquired · missing_* · age_locked */
+    const char *reason_label; /* premier verrou, résolu pour l'interface */
+    int  points_have;         /* réserve courante */
+    int  points_missing;      /* coût restant à accumuler, sans bloquer la sélection */
+    int  next_step;           /* premier nœud non acquis sur la chaîne vers cette tech ; -1 si acquise */
+    int  steps_remaining;     /* nombre de nœuds non acquis, cible comprise */
+    const char *path_label;   /* chaîne résolue « prochaine → … → cible » ; "" si acquise */
     /* PACK FLAVOR (display-only, 2026-07-05) : le survol Medusa (UI Godot) affiche ces deux
      * lignes sous le nom — hover = l'effet mécanique réel (tech_hover), flavor = le mot
      * cynique du conseiller (tech_flavor). "" si absent — jamais NULL côté appelant. */
@@ -1121,6 +1296,11 @@ typedef struct {
     double expense;         /* Σ des dépenses, en valeur absolue (année) */
     double net;             /* income − expense */
     double credit_line;     /* capacité d'emprunt (dette max) */
+    double monthly_income;  /* rythme observé depuis le début de l'année */
+    double monthly_expense;
+    double monthly_net;
+    double projected_year_end; /* trésor projeté au 31 décembre, rythme courant constant */
+    double runway_months;   /* mois avant trésor+crédit épuisés ; -1 si solde non négatif */
     int    creditor;        /* pays prêteur (-1 = aucune dette / aucun prêteur) */
     const char *creditor_name;
 } ScpsBudget;
@@ -1158,8 +1338,13 @@ void scps_mission_info(ScpsSim *s, int cid, ScpsMission *out);
 typedef struct {
     const char *name;    /* mot résolu (faction_name — membrane) */
     int  part;           /* 0-100 : part du spectre effectif */
+    int  base_part;      /* 0-100 : assise démographique avant les politiques */
+    int  policy_delta;   /* points signés : part effective − assise démographique */
     int  grief;          /* 0-100 : rancœur (couve un coup) */
     int  dominant;       /* 0/1 : donne la direction (l'éthos effectif) */
+    int  coup_pressure;  /* 0-100 : contribution exacte à la tension de coup */
+    int  coup_driver;    /* 0/1 : faction qui porte le risque de coup courant */
+    int  captor;         /* 0/1 : faction la plus gorgée par les concessions */
 } ScpsFaction;
 int scps_country_factions(ScpsSim *s, int cid, ScpsFaction *out, int max,
                           int *coup, int *corruption);

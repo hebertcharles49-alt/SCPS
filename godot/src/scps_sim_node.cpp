@@ -48,6 +48,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("army_info", "country"),           &ScpsWorld::army_info);
     ClassDB::bind_method(D_METHOD("corps_ids", "country"),            &ScpsWorld::corps_ids);
     ClassDB::bind_method(D_METHOD("corps_info", "id"),                &ScpsWorld::corps_info);
+    ClassDB::bind_method(D_METHOD("corps_move_preview", "id", "target_region"), &ScpsWorld::corps_move_preview);
+    ClassDB::bind_method(D_METHOD("corps_refill_preview", "id"), &ScpsWorld::corps_refill_preview);
     ClassDB::bind_method(D_METHOD("region_tier", "region"),          &ScpsWorld::region_tier);
     ClassDB::bind_method(D_METHOD("region_settle_group", "region"),  &ScpsWorld::region_settle_group);
     ClassDB::bind_method(D_METHOD("region_war_state", "region"),     &ScpsWorld::region_war_state);
@@ -57,6 +59,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("endgame_region_intensity", "region"), &ScpsWorld::endgame_region_intensity);
     ClassDB::bind_method(D_METHOD("variant_map_image"),              &ScpsWorld::variant_map_image);
     ClassDB::bind_method(D_METHOD("province_groups", "province"),    &ScpsWorld::province_groups);
+    ClassDB::bind_method(D_METHOD("province_culture_context", "province"), &ScpsWorld::province_culture_context);
     ClassDB::bind_method(D_METHOD("province_income", "province"),    &ScpsWorld::province_income);
     ClassDB::bind_method(D_METHOD("province_agitation", "province"), &ScpsWorld::province_agitation);
     ClassDB::bind_method(D_METHOD("province_buildings", "province"), &ScpsWorld::province_buildings);
@@ -74,8 +77,12 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("province_market", "province"),        &ScpsWorld::province_market);
     ClassDB::bind_method(D_METHOD("country_demo", "country"),        &ScpsWorld::country_demo);
     ClassDB::bind_method(D_METHOD("country_stocks", "country"),      &ScpsWorld::country_stocks);
+    ClassDB::bind_method(D_METHOD("stock_regions", "country", "good"), &ScpsWorld::stock_regions);
+    ClassDB::bind_method(D_METHOD("market_quote", "country", "good", "qty"), &ScpsWorld::market_quote);
     ClassDB::bind_method(D_METHOD("country_relations", "country"),   &ScpsWorld::country_relations);
     ClassDB::bind_method(D_METHOD("diplo_options", "target"),        &ScpsWorld::diplo_options);
+    ClassDB::bind_method(D_METHOD("diplo_action_legal", "target", "action"), &ScpsWorld::diplo_action_legal);
+    ClassDB::bind_method(D_METHOD("diplo_context", "target"), &ScpsWorld::diplo_context);
     ClassDB::bind_method(D_METHOD("opinion_summary", "country"),     &ScpsWorld::opinion_summary);
     ClassDB::bind_method(D_METHOD("diplo_journal", "country"),       &ScpsWorld::diplo_journal);
     ClassDB::bind_method(D_METHOD("country_army", "country"),        &ScpsWorld::country_army);
@@ -479,6 +486,7 @@ Dictionary ScpsWorld::army_info(int country) {
     d["owner"]    = a.owner;
     d["phase_id"] = a.phase_id;
     d["phase"]    = String::utf8(a.phase);
+    d["units_are_humans"] = true;
     d["units"]    = (int64_t)a.units;
     d["inf"]      = (int64_t)a.inf;
     d["arch"]     = (int64_t)a.arch;
@@ -495,9 +503,54 @@ Array ScpsWorld::corps_ids(int country) {
 Dictionary ScpsWorld::corps_info(int id) {
     Dictionary d; ScpsArmyInfo a; scps_corps_info(sim,id,&a);
     d["active"]=(bool)a.active; d["id"]=id; if(!a.active) return d;
-    d["region"]=a.region; d["dest"]=a.dest; d["owner"]=a.owner; d["phase_id"]=a.phase_id;
+    d["region"]=a.region; d["dest"]=a.dest; d["next"]=a.next; d["owner"]=a.owner; d["phase_id"]=a.phase_id;
     d["phase"]=String::utf8(a.phase); d["units"]=(int64_t)a.units; d["inf"]=(int64_t)a.inf;
+    d["units_are_humans"]=true;
     d["arch"]=(int64_t)a.arch; d["cav"]=(int64_t)a.cav; d["mages"]=(int64_t)a.mages;
+    d["location"]=String::utf8(a.location); d["destination"]=String::utf8(a.destination);
+    d["days_left"]=a.days_left; d["leg_days"]=a.leg_days; d["progress_pct"]=a.progress_pct;
+    d["broken_days"]=a.broken_days; d["rally_days"]=a.rally_days; d["rally_units"]=(int64_t)a.rally_units;
+    d["taken"]=a.taken; d["legs"]=a.legs; d["battles"]=a.battles;
+    return d;
+}
+
+Dictionary ScpsWorld::corps_move_preview(int id, int target_region) {
+    Dictionary d; ScpsMovePreview p{}; int route[128];
+    int n=sim?scps_corps_move_preview(sim,id,target_region,&p,route,128):0;
+    d["valid"]=(bool)p.valid; d["corps_id"]=p.corps_id;
+    d["from_region"]=p.from_region; d["target_region"]=p.target_region;
+    d["from_name"]=String::utf8(p.from_name); d["target_name"]=String::utf8(p.target_name);
+    d["travel_days"]=p.travel_days; d["hops"]=p.hops;
+    d["units_start"]=(int64_t)p.units_start;
+    d["attrition_loss"]=(int64_t)p.attrition_loss;
+    d["units_arrival"]=(int64_t)p.units_arrival;
+    d["attrition_pct"]=p.attrition_pct;
+    d["worst_daily_pct10"]=p.worst_daily_pct10;
+    d["reason_code"]=p.reason_code; d["reason"]=String::utf8(p.reason);
+    d["arrival_code"]=p.arrival_code; d["arrival"]=String::utf8(p.arrival);
+    Array path; for(int i=0;i<n;i++)path.push_back(route[i]); d["path"]=path;
+    return d;
+}
+
+Dictionary ScpsWorld::corps_refill_preview(int id) {
+    Dictionary d; ScpsRefillPreview p{};
+    scps_corps_refill_preview(sim,id,&p);
+    d["valid"]=(bool)p.valid; d["allowed"]=(bool)p.allowed;
+    d["corps_id"]=p.corps_id; d["region"]=p.region;
+    d["reason_code"]=p.reason_code; d["reason"]=String::utf8(p.reason?p.reason:"");
+    d["requested_humans"]=(int64_t)p.requested_humans;
+    d["population_ready_humans"]=(int64_t)p.population_ready_humans;
+    d["guaranteed_humans"]=(int64_t)p.guaranteed_humans;
+    d["weapons_needed"]=(int64_t)p.weapons_needed;
+    d["weapons_owned"]=(int64_t)p.weapons_owned;
+    Array needs;
+    for(int i=0;i<p.n_needs;i++){
+        Dictionary n; n["resource"]=p.need[i].resource;
+        n["name"]=String::utf8(p.need[i].name?p.need[i].name:"");
+        n["needed"]=(int64_t)p.need[i].needed; n["owned"]=(int64_t)p.need[i].owned;
+        needs.push_back(n);
+    }
+    d["needs"]=needs;
     return d;
 }
 
@@ -524,6 +577,7 @@ Dictionary ScpsWorld::battle_info(int region) {
     d["defender"]  = b.defender;
     d["phase_id"]  = b.phase_id;
     d["phase"]     = String::utf8(b.phase);
+    d["units_are_humans"] = true;
     d["atk_units"] = (int64_t)b.atk_units;
     d["atk_inf"]   = (int64_t)b.atk_inf;
     d["atk_arch"]  = (int64_t)b.atk_arch;
@@ -534,9 +588,35 @@ Dictionary ScpsWorld::battle_info(int region) {
     d["def_arch"]  = (int64_t)b.def_arch;
     d["def_cav"]   = (int64_t)b.def_cav;
     d["def_mages"] = (int64_t)b.def_mages;
+    d["atk_corps"] = b.atk_corps;
+    d["def_corps"] = b.def_corps;
+    d["atk_helper"] = b.atk_helper;
+    d["def_helper"] = b.def_helper;
     d["in_battle"] = (bool)b.in_battle;
+    d["days"]       = b.days;
+    d["chocs"]      = b.chocs;
+    d["atk_morale_pct"] = b.atk_morale_pct;
+    d["def_morale_pct"] = b.def_morale_pct;
+    d["stage_id"] = b.stage_id;
+    d["stage"] = String::utf8(b.stage);
+    d["terrain_holder"] = b.terrain_holder;
+    d["river"] = (bool)b.river;
+    d["bridged"] = (bool)b.bridged;
+    d["atk_terrain_pct"] = b.atk_terrain_pct;
+    d["def_terrain_pct"] = b.def_terrain_pct;
+    d["atk_counter_pct"] = b.atk_counter_pct;
+    d["def_counter_pct"] = b.def_counter_pct;
+    d["balance_atk_pct"] = b.balance_atk_pct;
+    d["rupture_pct"] = b.rupture_pct;
     d["loss_atk"]  = (double)b.loss_atk;
     d["loss_def"]  = (double)b.loss_def;
+    d["siege_days_left"] = (double)b.siege_days_left;
+    d["siege_full_days"] = (double)b.siege_full_days;
+    d["siege_progress_pct"] = b.siege_progress_pct;
+    d["siege_defense"] = (double)b.siege_defense;
+    d["siege_food_months"] = (double)b.siege_food_months;
+    d["siege_terrain_pct"] = b.siege_terrain_pct;
+    d["siege_outcome"] = b.siege_outcome;
     d["war_score"] = (double)b.war_score;
     return d;
 }
@@ -584,6 +664,9 @@ Array ScpsWorld::province_groups(int province) {
         d["culture"]  = String::utf8(g[i].culture);
         d["lineage"]  = String::utf8(g[i].lineage);
         d["religion"] = String::utf8(g[i].religion);
+        d["faith"]     = String::utf8(g[i].faith);
+        d["faith_id"]  = g[i].faith_id;
+        d["dominant"]  = (bool)g[i].dominant;
         d["klass"]    = String::utf8(g[i].klass);
         d["etat"]     = String::utf8(g[i].etat);
         d["loyaute"]  = String::utf8(g[i].loyaute);
@@ -591,6 +674,33 @@ Array ScpsWorld::province_groups(int province) {
         a.push_back(d);
     }
     return a;
+}
+
+Dictionary ScpsWorld::province_culture_context(int province) {
+    Dictionary d; ScpsCultureContext c{};
+    scps_province_culture_context(sim,province,&c);
+    d["valid"]=(bool)c.valid; d["province"]=c.province; d["region"]=c.region; d["owner"]=c.owner;
+    d["groups"]=c.groups; d["dominant_culture"]=String::utf8(c.dominant_culture?c.dominant_culture:"");
+    d["dominant_lineage"]=String::utf8(c.dominant_lineage?c.dominant_lineage:"");
+    d["dominant_percent"]=c.dominant_percent;
+    d["local_ethos"]=String::utf8(c.local_ethos?c.local_ethos:"");
+    d["ruling_ethos"]=String::utf8(c.ruling_ethos?c.ruling_ethos:"");
+    d["relation_to_crown"]=String::utf8(c.relation_to_crown?c.relation_to_crown:"");
+    d["ethos_drift_pct"]=c.ethos_drift_pct; d["friction_avg_pct"]=c.friction_avg_pct;
+    d["friction_max_pct"]=c.friction_max_pct;
+    d["local_faith_id"]=c.local_faith_id; d["state_faith_id"]=c.state_faith_id;
+    d["faith_mismatch"]=(bool)c.faith_mismatch;
+    d["local_faith"]=String::utf8(c.local_faith?c.local_faith:"");
+    d["state_faith"]=String::utf8(c.state_faith?c.state_faith:"");
+    d["contact"]=(bool)c.contact; d["contact_region"]=c.contact_region;
+    d["contact_country"]=c.contact_country; d["contact_maritime"]=(bool)c.contact_maritime;
+    d["contact_country_name"]=String::utf8(c.contact_country_name?c.contact_country_name:"");
+    d["contact_region_name"]=String::utf8(c.contact_region_name?c.contact_region_name:"");
+    d["contact_culture"]=String::utf8(c.contact_culture?c.contact_culture:"");
+    d["contact_distance_pct"]=c.contact_distance_pct; d["fusion_open_pct"]=c.fusion_open_pct;
+    d["fusion_feasible"]=(bool)c.fusion_feasible; d["fusion_years"]=c.fusion_years;
+    d["fusion_reason"]=String::utf8(c.fusion_reason?c.fusion_reason:"");
+    return d;
 }
 
 Array ScpsWorld::province_income(int province) {
@@ -768,6 +878,8 @@ Array ScpsWorld::country_stocks(int country) {
         d["marche"]        = String::utf8(st[i].marche);
         d["stock"]         = (int64_t)st[i].stock;
         d["net_day"]       = st[i].net_day;
+        d["supply_month"]  = st[i].supply_month;
+        d["demand_month"]  = st[i].demand_month;
         d["coverage_days"] = st[i].coverage_days;
         d["market_band"]   = st[i].market_band;
         d["price"]         = st[i].price;
@@ -775,6 +887,48 @@ Array ScpsWorld::country_stocks(int country) {
         a.push_back(d);
     }
     return a;
+}
+
+Array ScpsWorld::stock_regions(int country, int good) {
+    Array a;
+    ScpsStockRegion rows[64];
+    int n=scps_stock_regions(sim,country,good,rows,64);
+    for(int i=0;i<n;i++){
+        Dictionary d;
+        d["region"]=rows[i].region; d["province"]=rows[i].province;
+        d["name"]=String::utf8(rows[i].name);
+        d["stock"]=(int64_t)rows[i].stock;
+        d["supply_month"]=rows[i].supply_month;
+        d["demand_month"]=rows[i].demand_month;
+        a.push_back(d);
+    }
+    return a;
+}
+
+Dictionary ScpsWorld::market_quote(int country, int good, int qty) {
+    Dictionary d;
+    ScpsMarketQuote q{};
+    if (!sim || !scps_market_quote(sim, country, good, (long)qty, &q)) {
+        d["valid"] = false;
+        return d;
+    }
+    d["valid"] = q.valid != 0;
+    d["region"] = q.region;
+    d["hub_region"] = q.hub_region;
+    d["hub_owner"] = q.hub_owner;
+    d["hub_name"] = String::utf8(q.hub_name);
+    d["global_access"] = q.global_access != 0;
+    d["price"] = q.price;
+    d["margin"] = q.margin;
+    d["local_available"] = q.local_available;
+    d["global_available"] = q.global_available;
+    d["commerce_remaining"] = q.commerce_remaining;
+    d["request_qty"] = (int64_t)q.request_qty;
+    d["local_qty"] = (int64_t)q.local_qty;
+    d["global_qty"] = (int64_t)q.global_qty;
+    d["local_cost"] = q.local_cost;
+    d["global_cost"] = q.global_cost;
+    return d;
 }
 
 Array ScpsWorld::country_relations(int country) {
@@ -821,6 +975,41 @@ Dictionary ScpsWorld::diplo_options(int target) {
     return d;
 }
 
+Dictionary ScpsWorld::diplo_action_legal(int target, int action) {
+    Dictionary d; ScpsActionLegal a{};
+    scps_diplo_action_legal(sim,target,action,&a);
+    d["valid"]=(bool)a.valid; d["allowed"]=(bool)a.allowed;
+    d["would_accept"]=(bool)a.would_accept; d["unilateral"]=(bool)a.unilateral;
+    d["target"]=a.target; d["action"]=a.action; d["toggle_on"]=(bool)a.toggle_on;
+    d["reason_code"]=String::utf8(a.reason_code?a.reason_code:"");
+    d["reason_label"]=String::utf8(a.reason_label?a.reason_label:"");
+    d["cost_gold"]=a.cost_gold; d["gold_have"]=a.gold_have;
+    d["gold_missing"]=a.gold_missing; d["duration_days"]=a.duration_days;
+    return d;
+}
+
+Dictionary ScpsWorld::diplo_context(int target) {
+    Dictionary d; ScpsDiploContext c{};
+    scps_diplo_context(sim,target,&c);
+    d["valid"]=(bool)c.valid; d["player"]=c.player; d["target"]=c.target;
+    d["at_war"]=(bool)c.at_war; d["allied"]=(bool)c.allied;
+    d["trade_pact"]=(bool)c.trade_pact; d["migration_pact"]=(bool)c.migration_pact;
+    d["embargo"]=(bool)c.embargo; d["truce_days"]=c.truce_days; d["war_score"]=c.war_score;
+    d["ally_slots_player"]=c.ally_slots_player; d["ally_slots_target"]=c.ally_slots_target;
+    d["ally_slots_max"]=c.ally_slots_max; d["vassal_direction"]=c.vassal_direction;
+    d["contract"]=String::utf8(c.contract?c.contract:""); d["trade_value"]=c.trade_value;
+    d["shared_routes"]=c.shared_routes; d["open_routes"]=c.open_routes;
+    d["route_a"]=c.route_a; d["route_b"]=c.route_b;
+    d["route_maritime"]=(bool)c.route_maritime; d["route_open"]=(bool)c.route_open;
+    d["route_sea_days"]=c.route_sea_days; d["route_yield"]=c.route_yield;
+    d["route_a_name"]=String::utf8(c.route_a_name?c.route_a_name:"");
+    d["route_b_name"]=String::utf8(c.route_b_name?c.route_b_name:"");
+    d["target_capital_province"]=c.target_capital_province;
+    d["target_capital_region"]=c.target_capital_region;
+    d["target_capital_name"]=String::utf8(c.target_capital_name?c.target_capital_name:"");
+    return d;
+}
+
 /* #26 — le RÉSUMÉ d'opinion : total courant + composantes (mémoire, statuts, rancune). */
 Dictionary ScpsWorld::opinion_summary(int country) {
     Dictionary d;
@@ -863,8 +1052,6 @@ Dictionary ScpsWorld::country_army(int country) {
     d["levy"]      = ar.levy;
     d["levy_name"] = String::utf8(ar.levy_name);
     d["fleet"]     = ar.fleet;
-    d["posture"]      = ar.posture;                     /* lue du MOTEUR (fin de l'état local UI) */
-    d["posture_name"] = String::utf8(ar.posture_name);
     return d;
 }
 
@@ -938,6 +1125,13 @@ Array ScpsWorld::country_council(int country) {
         d["retire_hi"]       = seats[i].retire_hi;
         d["k_admin"]         = seats[i].k_admin;
         d["corruption_pct"]  = seats[i].corruption_pct;
+        d["eff_base_pct"]          = seats[i].eff_base_pct;
+        d["eff_admin_points"]      = seats[i].eff_admin_points;
+        d["eff_loyalty_points"]    = seats[i].eff_loyalty_points;
+        d["eff_corruption_points"] = seats[i].eff_corruption_points;
+        d["eff_preclamp_pct"]      = seats[i].eff_preclamp_pct;
+        d["eff_clamped"]           = (bool)seats[i].eff_clamped;
+        d["loyalty_target"]        = seats[i].loyalty_target;
         a.push_back(d);
     }
     return a;
@@ -972,6 +1166,13 @@ Array ScpsWorld::council_candidates(int seat) {
         d["cost_year"]       = c[i].cost_year;
         d["retire_lo"]       = c[i].retire_lo;
         d["retire_hi"]       = c[i].retire_hi;
+        d["predicted_loyalty"]     = c[i].predicted_loyalty;
+        d["eff_base_pct"]          = c[i].eff_base_pct;
+        d["eff_admin_points"]      = c[i].eff_admin_points;
+        d["eff_loyalty_points"]    = c[i].eff_loyalty_points;
+        d["eff_corruption_points"] = c[i].eff_corruption_points;
+        d["eff_preclamp_pct"]      = c[i].eff_preclamp_pct;
+        d["eff_clamped"]           = (bool)c[i].eff_clamped;
         a.push_back(d);
     }
     return a;
@@ -1175,6 +1376,14 @@ Array ScpsWorld::tech_nodes() {
         d["effet"]    = String::utf8(nd[i].effet);
         d["cost"]     = nd[i].cost;
         d["prereq"]   = nd[i].prereq;
+        d["allowed"]  = (bool)nd[i].allowed;
+        d["reason_code"] = String::utf8(nd[i].reason_code);
+        d["reason_label"] = String::utf8(nd[i].reason_label);
+        d["points_have"] = nd[i].points_have;
+        d["points_missing"] = nd[i].points_missing;
+        d["next_step"] = nd[i].next_step;
+        d["steps_remaining"] = nd[i].steps_remaining;
+        d["path_label"] = String::utf8(nd[i].path_label);
         d["hover"]    = String::utf8(nd[i].hover);
         d["flavor"]   = String::utf8(nd[i].flavor);
         a.push_back(d);
@@ -1204,6 +1413,11 @@ Dictionary ScpsWorld::budget_summary(int country) {
     d["expense"]       = b.expense;
     d["net"]           = b.net;
     d["credit_line"]   = b.credit_line;
+    d["monthly_income"] = b.monthly_income;
+    d["monthly_expense"] = b.monthly_expense;
+    d["monthly_net"] = b.monthly_net;
+    d["projected_year_end"] = b.projected_year_end;
+    d["runway_months"] = b.runway_months;
     d["creditor"]      = b.creditor;
     d["creditor_name"] = String::utf8(b.creditor_name);
     return d;
@@ -1243,8 +1457,13 @@ Dictionary ScpsWorld::country_factions(int country) {
         Dictionary e;
         e["name"]     = String::utf8(f[i].name);
         e["part"]     = f[i].part;
+        e["base_part"] = f[i].base_part;
+        e["policy_delta"] = f[i].policy_delta;
         e["grief"]    = f[i].grief;
         e["dominant"] = (bool)f[i].dominant;
+        e["coup_pressure"] = f[i].coup_pressure;
+        e["coup_driver"] = (bool)f[i].coup_driver;
+        e["captor"] = (bool)f[i].captor;
         list.push_back(e);
     }
     d["list"] = list;
@@ -1441,6 +1660,18 @@ Dictionary ScpsWorld::build_legal(int region, int edifice) {
     int legal = sim ? scps_build_legal_ex(sim, region, edifice, &reason) : 0;
     d["legal"]  = (legal != 0);
     d["reason"] = reason;
+    d["allowed"] = (legal != 0); /* contrat UI structuré — alias de migration */
+    const char *code = "structural";
+    const char *label = "indisponible ici (palier, file ou bâtiment existant)";
+    switch (reason) {
+        case 0: code = "ok";                label = "disponible"; break;
+        case 2: code = "insufficient_gold"; label = "or insuffisant"; break;
+        case 3: code = "missing_material";  label = "matière manquante"; break;
+        case 4: code = "missing_tier_tech"; label = "technologie de palier manquante"; break;
+        default: break;
+    }
+    d["reason_code"]  = String::utf8(code);
+    d["reason_label"] = String::utf8(label);
     return d;
 }
 /* Nom d'affichage d'un BuildingType — miroir DISPLAY-ONLY de la table FR de

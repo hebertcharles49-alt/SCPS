@@ -182,6 +182,9 @@ bool        statecraft_council_cand_female   (uint32_t seed, int cid, int seat, 
 int   statecraft_council_loyalty  (const Statecraft *sc, int cid, int seat);       /* 0..100 */
 float statecraft_council_pay      (const Statecraft *sc, int cid, int seat);       /* 0..2 */
 void  statecraft_council_set_pay  (Statecraft *sc, int cid, int seat, float pay);  /* verbe : le curseur de paie */
+/* Cible réelle vers laquelle la loyauté converge : satisfaction de la faction
+ * du titulaire + ajustement de paie, bornée 0..100. Lecture pure pour l'UI. */
+float statecraft_council_loyalty_target(const Statecraft *sc, int cid, int seat, uint32_t seed);
 /* P3 — écrivain DIRECT de loyauté (borné 0-100), pour la mission décennale
  * (réussite/échec) — n'affecte QUE le siège pourvu (no-op si vacant). */
 void  statecraft_council_loyalty_add(Statecraft *sc, int cid, int seat, float delta);

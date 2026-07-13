@@ -349,14 +349,29 @@ float faction_coup_tension_c(const World *w, const WorldEconomy *econ,
      * un éthos rend ses opposés chroniquement aliénés → coups en boucle. Les leviers
      * n'AJOUTENT qu'un grief BORNÉ (∝ politique), purgé par un coup réussi. */
     float base[FAC_COUNT];
-    EthosFaction dom = country_faction_weights(w, econ, cid, base);
+    country_faction_weights(w, econ, cid, base);
+    return faction_coup_breakdown(cid, base, NULL, out);
+}
+
+float faction_coup_breakdown(int cid, const float base[FAC_COUNT],
+                             float out[FAC_COUNT], EthosFaction *alienated){
+    if (!base){
+        if (out) for (int f=0; f<FAC_COUNT; f++) out[f]=0.f;
+        if (alienated) *alienated=FAC_COMMUNAUTAIRE;
+        return 0.f;
+    }
+    int dom=0;
+    for (int f=1; f<FAC_COUNT; f++) if (base[f]>base[dom]) dom=f;
     float best=0.f; int bf=dom;
     for (int f=0; f<FAC_COUNT; f++){
-        if (f==(int)dom) continue;
-        float grief = (cid>=0&&cid<SCPS_MAX_COUNTRY) ? g_lever_grief[cid][f] : 0.f;
-        float t = base[f]*faction_opposition((EthosFaction)f,dom) + COUP_GRIEF_W*grief;
+        float t=0.f;
+        if (f!=dom){
+            float grief = (cid>=0&&cid<SCPS_MAX_COUNTRY) ? g_lever_grief[cid][f] : 0.f;
+            t = base[f]*faction_opposition((EthosFaction)f,(EthosFaction)dom) + COUP_GRIEF_W*grief;
+        }
+        if (out) out[f]=t;
         if (t>best){ best=t; bf=f; }
     }
-    if (out) *out=(EthosFaction)bf;
+    if (alienated) *alienated=(EthosFaction)bf;
     return best;
 }

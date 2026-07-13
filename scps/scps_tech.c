@@ -613,27 +613,31 @@ static Heritage tech_combo_native2(TechId id){
     }
 }
 
-bool tech_can_research(const TechState *s, TechId id, unsigned heritage_access) {
-    if (id<0||id>=TECH_COUNT) return false;
-    if (s->unlocked[id]) return false;
+TechResearchBlock tech_research_block(const TechState *s, TechId id, unsigned heritage_access) {
+    if (!s || id<0||id>=TECH_COUNT) return TECH_BLOCK_INVALID;
+    if (s->unlocked[id]) return TECH_BLOCK_ACQUIRED;
     const TechNode *n=&NODES[id];
     /* PORTE D'ARCHÉTYPE : une tech-signature exige que l'empire ATTEIGNE l'archétype
      * (par sa culture ou un contact de gouvernance — le masque est calculé ainsi côté IA). */
     /* L'accès gradué plafonne à tier 3 (accès PLEIN) ; un nœud tier-4 (combo) exige donc
      * l'accès PLEIN (3) à son/ses héritage(s) — natif OU pleinement métabolisé. */
     int need = n->tier > 3 ? 3 : n->tier;
-    if (n->native!=UNIV && tech_heritage_access_tier(heritage_access, n->native) < need) return false;
+    if (n->native!=UNIV && tech_heritage_access_tier(heritage_access, n->native) < need) return TECH_BLOCK_HERITAGE;
     /* COMBINAISON : certains nœuds exigent un SECOND (et, pour les APEX, un TROISIÈME)
      * archétype (ET), au même tier requis (accès PLEIN aux 2-3 héritages). */
     { Heritage combo=tech_combo_native(id);
-      if (combo!=UNIV && tech_heritage_access_tier(heritage_access, combo) < need) return false;
+      if (combo!=UNIV && tech_heritage_access_tier(heritage_access, combo) < need) return TECH_BLOCK_HERITAGE;
       Heritage combo2=tech_combo_native2(id);
-      if (combo2!=UNIV && tech_heritage_access_tier(heritage_access, combo2) < need) return false; }
+      if (combo2!=UNIV && tech_heritage_access_tier(heritage_access, combo2) < need) return TECH_BLOCK_HERITAGE; }
     /* Porte arcane : les bouts faustiens du Savoir profond exigent une ruine. */
-    if (n->needs_ruins && !s->has_ruins_access) return false;
+    if (n->needs_ruins && !s->has_ruins_access) return TECH_BLOCK_RUINS;
     /* Prérequis : le nœud précédent du quartier doit être acquis. */
-    if (n->prereq!=NONE && !s->unlocked[n->prereq]) return false;
-    return true;
+    if (n->prereq!=NONE && !s->unlocked[n->prereq]) return TECH_BLOCK_PREREQUISITE;
+    return TECH_BLOCK_OK;
+}
+
+bool tech_can_research(const TechState *s, TechId id, unsigned heritage_access) {
+    return tech_research_block(s,id,heritage_access)==TECH_BLOCK_OK;
 }
 
 bool tech_research(TechState *s, TechId id, unsigned heritage_access) {

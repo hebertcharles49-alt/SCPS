@@ -69,6 +69,44 @@ func _reason_word(reason: int) -> String:
 		4: return "tech de palier manquante"
 		_: return "indisponible ici (palier/déjà bâti)"
 
+func _reason_label(result: Dictionary) -> String:
+	var label := String(result.get("reason_label", ""))
+	return label if label != "" else _reason_word(int(result.get("reason", 1)))
+
+func _build_info_card(b: Dictionary, legal: Dictionary) -> Dictionary:
+	var allowed := bool(legal.get("allowed", legal.get("legal", true)))
+	var me: int = Sim.world.player()
+	var ci: Dictionary = Sim.world.country_info(me)
+	var gold_have := int(floor(float(ci.get("or", 0.0))))
+	var gold_need := int(b.get("gold", 0))
+	var lines := [{
+		"label": "Or",
+		"value": "coût %d · trésor %d" % [gold_need, gold_have],
+	}]
+	var stocks := {}
+	if Sim.world.has_method("country_stocks"):
+		for st in Sim.world.country_stocks(me):
+			stocks[String(st.get("name", ""))] = int(st.get("stock", 0))
+	for cost in b.get("cost", []):
+		var name := String(cost.get("res", "Matière"))
+		var need := int(cost.get("qty", 0))
+		var have := int(stocks.get(name, 0))
+		lines.append({
+			"label": name,
+			"value": "recette %d · stock national %d" % [need, have],
+		})
+	var effect := String(b.get("effet", ""))
+	if effect != "":
+		lines.append({"label": "Effet", "value": effect})
+	return {
+		"title": String(b.get("nom", "Construction")),
+		"state": "Constructible" if allowed else "Bloqué — %s" % _reason_label(legal),
+		"trend": "%d jours" % int(b.get("days", 0)),
+		"lines": lines,
+		"body": "Cliquez la ligne pour ordonner le chantier." if allowed else
+			"Premier verrou opposé par le moteur : %s." % _reason_label(legal),
+	}
+
 ## tronque un texte à une largeur en px (petit corps)
 func _fit(s: String, wpx: float) -> String:
 	while VKit.text_w(s, VKit.FS_SMALL) > wpx and s.length() > 6:
@@ -148,7 +186,7 @@ func _draw() -> void:
 				VKit.text(self, Vector2(cx + 4, yrow + 27), VKit.COL_GOLD, "✦ verrou tech", VKit.FS_SMALL)
 			elif not affordable:
 				VKit.text(self, Vector2(cx + 4, yrow + 27), VKit.sense(0.12),
-					"✗ %s" % _reason_word(int(leg.get("reason", 1))), VKit.FS_SMALL)
+					"✗ %s" % _reason_label(leg), VKit.FS_SMALL)
 			# L3 : l'EFFET RÉEL chiffré (delta ProvBuild, façade)
 			var eff := String(b.get("effet", ""))
 			if eff != "":
@@ -167,10 +205,11 @@ func _draw() -> void:
 			if not on2:
 				lines.append("✦ verrouillé par la technologie")
 			elif not affordable:
-				lines.append("✗ %s" % _reason_word(int(leg.get("reason", 1))))
+				lines.append("✗ %s" % _reason_label(leg))
 			if fla != "":
 				lines.append("« %s »" % fla)
-			_hover_zones.append({"rect": row, "head": String(b.get("nom", "")), "lines": lines})
+			_hover_zones.append({"rect": row, "head": String(b.get("nom", "")), "lines": lines,
+				"card": _build_info_card(b, leg)})
 			if on2 and affordable:
 				_click_zones.append({"rect": row, "kind": "build", "type": btype, "nom": String(b.get("nom", ""))})
 			yrow += RH_ED
@@ -247,6 +286,12 @@ func _get_tooltip(at_position: Vector2) -> String:
 			return String(z["head"]) + ("\n" + "\n".join(lines) if lines.size() > 0 else "")
 	return ""
 
+func get_info_card(at_position: Vector2) -> Dictionary:
+	for z in _hover_zones:
+		if (z["rect"] as Rect2).has_point(at_position):
+			return (z.get("card", {}) as Dictionary).duplicate(true)
+	return {}
+
 func _gui_input(e: InputEvent) -> void:
 	if e is InputEventMouseButton and e.pressed:
 		# MOLETTE = défilement par LIGNE entière (les rangées restent alignées)
@@ -309,7 +354,7 @@ func _act(kind: String, type: int, nom: String) -> void:
 			var bl: Dictionary = Sim.world.build_legal(-1, type)
 			if not bool(bl.get("legal", true)):
 				_flash_ok = false
-				_flash = "✗ %s — %s" % [nom, _reason_word(int(bl.get("reason", 1)))]
+				_flash = "✗ %s — %s" % [nom, _reason_label(bl)]
 				Sound.play("ui_click")
 				_refresh()
 				return

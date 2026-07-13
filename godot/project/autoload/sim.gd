@@ -6,6 +6,9 @@ extends Node
 ## Enregistré comme autoload "Sim" dans project.godot.
 
 signal generated()              ## le monde vient d'être (re)généré
+signal new_game_started(seed: int) ## nouvelle identité de monde : mémoire UI à remettre à plat
+signal game_saved(slot: int)       ## sidecars d'interface liés au même emplacement
+signal game_loaded(slot: int)
 signal ticked(year: int)        ## un pas de simulation vient d'avancer (chaque JOUR — carte/anim)
 signal month_ticked(year: int)  ## un MOIS simulé (~30 j) a passé — la CADENCE des chiffres joueur
 
@@ -59,11 +62,15 @@ func regenerate(seed_value: int) -> void:
 	current_seed = seed_value
 	world.generate(seed_value)
 	generated.emit()
+	new_game_started.emit(seed_value)
 
 ## SAUVEGARDE (menu Charger). save_game → bool ; load_game → 0 ok/1 absent/2 ère antérieure
 ## (émet generated sur succès : la carte se redessine) ; save_slots → infos des 3 emplacements.
 func save_game(slot: int) -> bool:
-	return world.save_game(slot) if world != null else false
+	var ok: bool = bool(world.save_game(slot)) if world != null else false
+	if ok:
+		game_saved.emit(slot)
+	return ok
 
 func load_game(slot: int) -> int:
 	if world == null:
@@ -71,6 +78,7 @@ func load_game(slot: int) -> int:
 	var rc: int = world.load_game(slot)
 	if rc == 0:
 		generated.emit()
+		game_loaded.emit(slot)
 	return rc
 
 func save_slots() -> Array:

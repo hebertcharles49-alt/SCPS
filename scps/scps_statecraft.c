@@ -365,7 +365,7 @@ bool statecraft_council_betrayal_ready(const Statecraft *sc, int cid, int seat){
 /* La CIBLE de loyauté d'un siège pourvu : satisfaction de SA faction (1−grief,
  * dans [0,1]) × 100, modulée par la PAIE (payer plus achète de la loyauté,
  * payer moins en coûte) — jamais un +X plat, toujours ancré sur le grief réel. */
-static float council_loyalty_target(const Statecraft *sc, int cid, int seat, uint32_t seed){
+float statecraft_council_loyalty_target(const Statecraft *sc, int cid, int seat, uint32_t seed){
     int slot=statecraft_council_seated(sc,cid,seat);
     if (slot<0) return 50.f;
     int gen=statecraft_council_seated_gen(sc,cid,seat);
@@ -386,7 +386,7 @@ void statecraft_council_loyalty_tick(Statecraft *sc, const World *w, const World
         float rot = faction_capture_total(c);                             /* 0..CAPTURE_MAX(0.85) */
         for (int s=0;s<SC_COUNCIL_SEATS;s++){
             if (statecraft_council_seated(sc,c,s)<0) continue;            /* vacant : rien à faire converger */
-            float tgt = council_loyalty_target(sc,c,s,seed);
+            float tgt = statecraft_council_loyalty_target(sc,c,s,seed);
             float cur = sc->loyalty[c][s];
             /* Asymétrie du rot (motif COERCION_DECAY) : le rot ACCÉLÈRE la chute,
              * jamais la remontée — la corruption aide à tomber, pas à se refaire. */

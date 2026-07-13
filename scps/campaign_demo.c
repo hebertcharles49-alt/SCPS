@@ -86,16 +86,32 @@ int main(int argc,char**argv){
     ok("l'ordre est accepté : la force part vers la région ennemie (itinéraire trouvé)", ordered);
     ok("la force est ACTIVE, posée sur la frontière, EN MARCHE",
        campaign_active(camp,A) && campaign_location(camp,A)==frontier && campaign_phase(camp,A)==FA_MARCH);
+    int route[SCPS_MAX_REG], preview_reason=-1, preview_arrival=-1;
+    float preview_days=-1.f;
+    int next_before=camp->army[A].next, dest_before=camp->army[A].dest;
+    float left_before=camp->army[A].days_left;
+    int route_n=campaign_preview_corps(camp,econ,&dp,A,target,route,SCPS_MAX_REG,
+                                        &preview_days,&preview_reason,&preview_arrival);
+    ok("l'aperçu expose la route complète, sa durée et l'issue SIÈGE avant le clic",
+       route_n>=2 && route[0]==frontier && route[route_n-1]==target
+       && preview_days>0.f && preview_reason==0 && preview_arrival==2);
+    ok("l'aperçu est une LECTURE PURE : il ne modifie pas l'ordre en cours",
+       camp->army[A].next==next_before && camp->army[A].dest==dest_before
+       && camp->army[A].days_left==left_before);
     long u0 = campaign_units(camp,A);
 
     /* ═══ 2. ARRIVÉE → SIÈGE → RÉDUCTION ══════════════════════════════ */
     printf("\n── 2. Arrivée en terre ennemie → SIÈGE (dans le temps) → région réduite ──\n");
-    int arrived=0, besieging=0; float siege_len=0.f;
+    int arrived=0, besieging=0, siege_read_ok=0; float siege_len=0.f;
+    CampaignSiegeFactors siege_read={0};
     for(int it=0; it<800 && campaign_taken(camp,A)==0; it++){
         uint32_t rng = 0x51u + (uint32_t)it*2654435761u;
         campaign_tick(camp, w, econ, &dp, &rng, 5.f);
         if(campaign_location(camp,A)==target) arrived=1;
-        if(campaign_phase(camp,A)==FA_SIEGE){ besieging=1; if(siege_len<=0.f) siege_len=camp->army[A].days_left; }
+        if(campaign_phase(camp,A)==FA_SIEGE){
+            besieging=1; if(siege_len<=0.f) siege_len=camp->army[A].days_left;
+            if(!siege_read_ok) siege_read_ok=campaign_siege_factors(camp,econ,target,&siege_read)?1:0;
+        }
     }
     printf("   étapes franchies %d · arrivée %s · assiégé %s · siège initial ≈ %.0f j · réduite %d\n",
            camp->army[A].legs, arrived?"oui":"non", besieging?"oui":"non", siege_len, campaign_taken(camp,A));
@@ -103,9 +119,25 @@ int main(int argc,char**argv){
     ok("arrivée en terre ennemie colonisée, elle ASSIÈGE plus longtemps que 14 j", besieging && siege_len>14.f);
     ok("le siège abouti RÉDUIT la région (taken=1, puis au repos)",
        campaign_taken(camp,A)==1 && campaign_phase(camp,A)==FA_IDLE);
+    ok("le readout de siege expose restant, resistance, ouvrages, vivres et terrain",
+       siege_read_ok && siege_read.valid && siege_read.owner==A
+       && siege_read.days_left>0.f && siege_read.full_days>=siege_read.days_left
+       && siege_read.defense_level>0.f && siege_read.food_months>=0.f
+       && siege_read.terrain_pct>0 && siege_read.progress_pct>=0 && siege_read.progress_pct<=100);
     ok("la marche n'AUGMENTE jamais les effectifs (l'attrition peut mordre)", campaign_units(camp,A) <= u0);
     ok("NON-INVASIF : econ inchangé — la propriété de la région-but n'a pas bougé",
        econ->region[target].owner == owner_before);
+    ok("le renfort est refusé hors du territoire national, sans consommer d'arsenal",
+       !campaign_can_refill_corps(camp,econ,A) && campaign_refill_corps(camp,A,econ)==0);
+
+    campaign_init(camp2,w,econ);
+    ArmyState militia; army_init(&militia); militia.n_units=1;
+    militia.units[0].type=U_MILICE; militia.units[0].count=1;
+    bool militia_home=campaign_order(camp2,econ,A,frontier,frontier,&militia);
+    long militia_before=campaign_corps_units(camp2,A);
+    int militia_added=campaign_refill_corps(camp2,A,econ);
+    ok("sur sol national, la milice reçoit 100 hommes sans exiger d'armes manufacturées",
+       militia_home && militia_added==1 && campaign_corps_units(camp2,A)==militia_before+1);
 
     /* ═══ 3. BATAILLE DE RENCONTRE : un défenseur conteste la place ════ */
     printf("\n── 3. Quand une armée hostile défend la place, il y a BATAILLE (§2/§3) ──\n");
@@ -115,15 +147,35 @@ int main(int argc,char**argv){
     bool dord = campaign_order(camp2, econ, B, target, target, &defender);  /* B se tient sur target */
     bool aord = campaign_order(camp2, econ, A, frontier, target, &invader);
     ok("le défenseur se tient sur sa région ; l'assaillant marche dessus", dord && aord);
-    int fought=0;
-    for(int it=0; it<800 && !fought; it++){
+    int fought=0, tactical=0; CampaignBattleFactors factors={0};
+    for(int it=0; it<800 && !tactical; it++){
         uint32_t rng = 0x9e3779b9u + (uint32_t)it*40503u;
-        campaign_tick(camp2, w, econ, &dp, &rng, 5.f);
+        campaign_tick(camp2, w, econ, &dp, &rng, 1.f);
         if(camp2->army[A].battles>0 || camp2->army[B].battles>0) fought=1;
+        tactical=campaign_battle_factors(camp2,econ,target,&factors)?1:0;
     }
     printf("   batailles livrées : assaillant %d · défenseur %d\n",
            camp2->army[A].battles, camp2->army[B].battles);
     ok("les deux forces se sont CROISÉES sur la région et ont LIVRÉ BATAILLE", fought);
+    ok("la lecture tactique reprend le champ ACTIF sans le muter",
+       tactical && factors.valid && factors.region==target
+       && factors.owner_a>=0 && factors.owner_b>=0);
+    ok("terrain, contres, rapport et rupture sont FINIS et bornés",
+       factors.terrain_a>0.f && factors.counter_a>0.f && factors.counter_b>0.f
+       && factors.power_a>0.f && factors.power_b>0.f
+       && factors.balance_a_pct>=0 && factors.balance_a_pct<=100
+       && factors.rupture_pct>=0 && factors.rupture_pct<=100);
+    float loss_seen=0.f; int loss_monotonic=1;
+    for(int it=0;it<20 && camp2->battle[0].active;it++){
+        float before=camp2->battle[0].lossA+camp2->battle[0].lossB;
+        uint32_t rng=0xA11CEu+(uint32_t)it*40503u;
+        campaign_tick(camp2,w,econ,&dp,&rng,1.f);
+        float after=camp2->battle[0].lossA+camp2->battle[0].lossB;
+        if(after+1e-6f<before)loss_monotonic=0;
+        if(after>loss_seen)loss_seen=after;
+    }
+    ok("les pertes de bataille sont maintenant CUMULÉES sans retomber au reliquat fractionnaire",
+       loss_monotonic && loss_seen>=1.f);
 
     /* ═══ 3b. L1 — L'INTERCEPTION : l'assiégeant se fait surprendre ═════ */
     printf("\n── 3b. L1 : un assiégeant se fait INTERCEPTER par le défenseur ──\n");

@@ -157,13 +157,10 @@ static float region_food_months(const WorldEconomy *e, int r){
 }
 
 /* ---- Init ------------------------------------------------------------- */
-/* §5 posture (déclarations — définies après campaign_order) */
-static float posture_march_mult(int p);
-static float posture_siege_mult(int p);
 
 void campaign_init(Campaign *c, const World *w, const WorldEconomy *econ){
     memset(c,0,sizeof(*c));
-    for (int i=0;i<CAMPAIGN_ARMY_CAP;i++){ c->army[i].posture=FA_STANDARD;  /* défaut : standard */
+    for (int i=0;i<CAMPAIGN_ARMY_CAP;i++){ c->army[i].posture=1;            /* tombstone SAVE : valeur historique */
                                           c->army[i].taken_region=-1; }    /* memset→0 = région 0 valide : remettre -1 */
     c->n_regions = econ->n_regions;
     for (int r=0; r<econ->n_regions && r<SCPS_MAX_REG; r++){
@@ -218,8 +215,7 @@ bool campaign_order(Campaign *c, const WorldEconomy *econ, int owner,
         corps_count_sync(c,owner); return true;
     }
     a->next=hop; a->phase=FA_MARCH;
-    a->leg_days  = army_step_days(&a->force, c->reg_biome[hop], c->reg_height[hop], false, false)
-                 * posture_march_mult(a->posture);
+    a->leg_days  = army_step_days(&a->force, c->reg_biome[hop], c->reg_height[hop], false, false);
     a->days_left = a->leg_days;
     corps_count_sync(c,owner);
     return true;
@@ -237,13 +233,13 @@ int campaign_raise(Campaign *c, const WorldEconomy *econ, int owner,
     int hop=next_hop(c,econ,from_region,target_region); if (hop<0) return -1;
     int id=CAMPAIGN_CORPS_ID(owner,slot); FieldArmy *a=&c->army[id];
     ArmyState det; if (force_take(&det,src_force,packets)<=0) return -1;
-    int posture=a->posture;
+    int tombstone=a->posture;
     memset(a,0,sizeof *a); a->id=id; a->owner=owner; a->active=true;
     a->loc=from_region; a->dest=target_region; a->next=-1; a->taken_region=-1;
-    a->posture=posture; a->force=det;
+    a->posture=tombstone; a->force=det;
     if (from_region==target_region) a->phase=FA_IDLE;
     else { a->next=hop; a->phase=FA_MARCH;
-           a->leg_days=army_step_days(&a->force,c->reg_biome[hop],c->reg_height[hop],false,false)*posture_march_mult(a->posture);
+           a->leg_days=army_step_days(&a->force,c->reg_biome[hop],c->reg_height[hop],false,false);
            a->days_left=a->leg_days; }
     corps_count_sync(c,owner);
     return id;
@@ -271,9 +267,9 @@ bool campaign_merge(Campaign *c, int dst_id, int src_id){
     if (!dst || !src || dst==src || !dst->active || !src->active || dst->owner!=src->owner) return false;
     if (dst->loc!=src->loc || dst->phase==FA_BATTLE || src->phase==FA_BATTLE || dst->phase>=FA_EMBARK || src->phase>=FA_EMBARK) return false;
     army_merge_into(&dst->force,&src->force);
-    int owner=src->owner, id=src->id, posture=src->posture;
+    int owner=src->owner, id=src->id, tombstone=src->posture;
     memset(src,0,sizeof *src); src->id=id; src->owner=owner; src->loc=src->dest=src->next=-1;
-    src->taken_region=-1; src->posture=posture; src->phase=FA_IDLE;
+    src->taken_region=-1; src->posture=tombstone; src->phase=FA_IDLE;
     corps_count_sync(c,owner);
     return true;
 }
@@ -295,17 +291,64 @@ bool campaign_redirect_corps(Campaign *c, const WorldEconomy *econ, const DiploS
         if (occ==a->owner || (ours && occ<0)){ a->phase=FA_IDLE; a->dest=-1; a->next=-1; return true; }
         a->phase=FA_SIEGE; a->next=-1;
         a->days_left = siege_days(region_defense(econ,a->loc), region_food_months(econ,a->loc),
-                                  terrain_defense_mult(c->reg_biome[a->loc], c->reg_height[a->loc]))
-                     * posture_siege_mult(a->posture);
+                                  terrain_defense_mult(c->reg_biome[a->loc], c->reg_height[a->loc]));
         return true;
     }
     int hop=next_hop(c, econ, a->loc, target_region);
     if (hop<0) return false;                                                     /* injoignable par terre */
     a->dest=target_region; a->next=hop; a->phase=FA_MARCH;
-    a->leg_days  = army_step_days(&a->force, c->reg_biome[hop], c->reg_height[hop], false, false)
-                 * posture_march_mult(a->posture);
+    a->leg_days  = army_step_days(&a->force, c->reg_biome[hop], c->reg_height[hop], false, false);
     a->days_left = a->leg_days;
     return true;
+}
+
+int campaign_preview_corps(const Campaign *c, const WorldEconomy *econ, const DiploState *dp,
+                           int id, int target_region, int *path, int max_path,
+                           float *days_out, int *reason_out, int *arrival_out){
+    if(days_out) *days_out=0.f;
+    if(reason_out) *reason_out=0;
+    if(arrival_out) *arrival_out=0;
+    const FieldArmy *a=campaign_corps_const(c,id);
+    if(!a || !a->active){ if(reason_out)*reason_out=1; return 0; }
+    if(a->phase==FA_BATTLE){ if(reason_out)*reason_out=2; return 0; }
+    if(a->phase>=FA_EMBARK){ if(reason_out)*reason_out=3; return 0; }
+    if(a->broken_days>0){ if(reason_out)*reason_out=4; return 0; }
+    if(!econ || target_region<0 || target_region>=econ->n_regions){ if(reason_out)*reason_out=5; return 0; }
+    if(force_units(&a->force)<=0){ if(reason_out)*reason_out=6; return 0; }
+    int nr=econ->n_regions; if(nr>SCPS_MAX_REG)nr=SCPS_MAX_REG;
+    static int dist[SCPS_MAX_REG], queue[SCPS_MAX_REG];
+    for(int i=0;i<nr;i++)dist[i]=-1;
+    int qh=0,qt=0;
+    if(!region_ok(c,econ,target_region)){ if(reason_out)*reason_out=7; return 0; }
+    dist[target_region]=0; queue[qt++]=target_region;
+    while(qh<qt){
+        int u=queue[qh++];
+        for(int v=0;v<nr;v++){
+            if(!econ->adj[u][v] || dist[v]>=0 || !region_ok(c,econ,v))continue;
+            dist[v]=dist[u]+1; queue[qt++]=v;
+        }
+    }
+    if(a->loc<0 || a->loc>=nr || dist[a->loc]<0){ if(reason_out)*reason_out=7; return 0; }
+    int n=0,cur=a->loc,guard=0;
+    if(path && n<max_path) path[n]=cur;
+    n++;
+    float days=0.f;
+    while(cur!=target_region && guard++<nr){
+        int best=-1,bd=1<<30;
+        for(int v=0;v<nr;v++) if(econ->adj[cur][v] && dist[v]>=0 && dist[v]<bd){bd=dist[v];best=v;}
+        if(best<0 || dist[best]>=dist[cur]){ if(reason_out)*reason_out=7; return 0; }
+        days += army_step_days(&a->force,c->reg_biome[best],c->reg_height[best],false,false);
+        cur=best;
+        if(path && n<max_path) path[n]=cur;
+        n++;
+    }
+    if(cur!=target_region){ if(reason_out)*reason_out=7; return 0; }
+    int ours=econ->region[target_region].owner==a->owner;
+    int occ=dp?dp->occupier[target_region]:-1;
+    if(arrival_out)*arrival_out=(occ==a->owner || (ours && occ<0))?1:2;
+    if(a->loc==target_region && arrival_out && (occ==a->owner || (ours && occ<0))) *arrival_out=0;
+    if(days_out)*days_out=days;
+    return n;
 }
 bool campaign_redirect(Campaign *c, const WorldEconomy *econ, const DiploState *dp,
                        int owner, int target_region){
@@ -369,33 +412,6 @@ void campaign_release_transports(Campaign *c, struct NavyState *navy){
         }
         a->sail_transports=0;
     }
-}
-
-/* ---- POSTURE (§5 sidebar) : prudente marche/assiège LENTEMENT (préserve), -----
- * l'agressive PRESSE (marche vive, siège mené tambour battant). Un palier, un mot. */
-/* POSTURES RETIRÉES (retour joueur : feature jamais demandée, sans intérêt tactique).
- * Les corps roulent tous en régime NEUTRE — ces deux helpers sont conservés inertes
- * (×1.0) pour ne pas toucher les ~8 sites de marche/siège du module de bataille. */
-static float posture_march_mult(int p){ (void)p; return 1.f; }
-static float posture_siege_mult(int p){ (void)p; return 1.f; }
-void campaign_set_posture(Campaign *c, int owner, int posture){
-    campaign_set_corps_posture(c,owner,posture);
-}
-void campaign_set_corps_posture(Campaign *c, int id, int posture){
-    FieldArmy *a=campaign_corps(c,id); if (!a) return;
-    if (posture<FA_PRUDENTE) posture=FA_PRUDENTE;
-    if (posture>FA_AGRESSIVE) posture=FA_AGRESSIVE;
-    a->posture=posture;
-}
-int campaign_posture(const Campaign *c, int owner){
-    return campaign_corps_posture(c,owner);
-}
-int campaign_corps_posture(const Campaign *c, int id){
-    const FieldArmy *a=campaign_corps_const(c,id); return a?a->posture:FA_STANDARD;
-}
-const char *campaign_posture_name(int p){
-    static const char *N[3]={ "prudente","standard","agressive" };
-    return (p>=0&&p<3)?N[p]:"?";
 }
 
 /* ---- La bataille de rencontre (§2/§3 + terrain défensif) -------------- *
@@ -532,6 +548,63 @@ static float bt_terrainA(const Campaign *c, const WorldEconomy *e, int loc, int 
     }
     return terrainA;
 }
+bool campaign_battle_factors(const Campaign *c, const WorldEconomy *e, int region,
+                             CampaignBattleFactors *out){
+    if(!out) return false;
+    memset(out,0,sizeof *out); out->region=-1; out->terrain_owner=-1;
+    if(!c || !e || region<0 || region>=e->n_regions) return false;
+    const FieldBattle *bt=NULL;
+    for(int k=0;k<CAMPAIGN_MAX_BATTLES;k++)
+        if(c->battle[k].active && c->battle[k].loc==region){bt=&c->battle[k];break;}
+    if(!bt || bt->a<0 || bt->b<0) return false;
+    int oa=c->army[bt->a].owner, ob=c->army[bt->b].owner;
+    ArmyState fa,fb; stack_force(c,oa,region,&fa); stack_force(c,ob,region,&fb);
+    if(force_units(&fa)<=0 || force_units(&fb)<=0) return false;
+    out->valid=1; out->region=region; out->owner_a=oa; out->owner_b=ob;
+    out->stage=((bt->cycle%(BT_CHOC_J+BT_ACCALMIE_J))<BT_CHOC_J)?0:1;
+    out->river=c->reg_river[region]?1:0; out->bridged=e->region[region].route_pe>0.f?1:0;
+    out->terrain_a=bt_terrainA(c,e,region,oa,ob);
+    if(out->terrain_a>1.001f)out->terrain_owner=oa;
+    else if(out->terrain_a<0.999f)out->terrain_owner=ob;
+    float bite=tune_f("CTR_BITE",0.6f);
+    out->counter_a=powf(side_counter(&fa,&fb),bite);
+    out->counter_b=powf(side_counter(&fb,&fa),bite);
+    out->power_a=side_power(&fa)*out->terrain_a*out->counter_a;
+    out->power_b=side_power(&fb)/out->terrain_a*out->counter_b;
+    float sum=out->power_a+out->power_b;
+    out->balance_a_pct=(sum>0.f)?(int)(out->power_a/sum*100.f+0.5f):50;
+    if(out->balance_a_pct<0)out->balance_a_pct=0;
+    if(out->balance_a_pct>100)out->balance_a_pct=100;
+    out->rupture_pct=(int)(tune_f("BT_RUPTURE",BT_RUPTURE)*100.f+0.5f);
+    if(out->rupture_pct<0)out->rupture_pct=0;
+    if(out->rupture_pct>100)out->rupture_pct=100;
+    return true;
+}
+
+bool campaign_siege_factors(const Campaign *c, const WorldEconomy *e, int region,
+                            CampaignSiegeFactors *out){
+    if(!out) return false;
+    memset(out,0,sizeof *out); out->region=-1; out->owner=-1;
+    if(!c || !e || region<0 || region>=e->n_regions) return false;
+    const FieldArmy *leader=NULL;
+    for(int i=0;i<CAMPAIGN_ARMY_CAP;i++){
+        const FieldArmy *a=&c->army[i];
+        if(a->active && a->phase==FA_SIEGE && a->loc==region){leader=a;break;}
+    }
+    if(!leader) return false;
+    out->valid=1; out->region=region; out->owner=leader->owner;
+    out->days_left=fmaxf(0.f,leader->days_left);
+    out->defense_level=region_defense(e,region);
+    out->food_months=region_food_months(e,region);
+    float terrain=terrain_defense_mult(c->reg_biome[region],c->reg_height[region]);
+    out->terrain_pct=(int)(terrain*100.f+0.5f);
+    out->full_days=siege_days(out->defense_level,out->food_months,terrain);
+    float p=(out->full_days>0.f)?1.f-out->days_left/out->full_days:0.f;
+    if(p<0.f)p=0.f;
+    if(p>1.f)p=1.f;
+    out->progress_pct=(int)(p*100.f+0.5f);
+    return true;
+}
 /* le SCORE de guerre encaisse (orientation : l'attaquant porte le cb). */
 static void bt_score(DiploState *dp, int win, int lose, float pts){
     if (!dp) return;
@@ -559,8 +632,7 @@ static bool bt_press_siege(Campaign *c, const WorldEconomy *e, const DiploState 
      * le siège, qui ne tombe JAMAIS (la racine des 0 occupations MALGRÉ des batailles
      * gagnées). days_left est sérialisé → sauver/recharger reste fidèle (pas de bump). */
     float full = siege_days(region_defense(e,loc), region_food_months(e,loc),
-                            terrain_defense_mult(c->reg_biome[loc], c->reg_height[loc]))
-               * posture_siege_mult(V->posture);
+                            terrain_defense_mult(c->reg_biome[loc], c->reg_height[loc]));
     V->days_left = fminf(full, tune_f("BT_RELIEF_FALL",30.f));
     return true;
 }
@@ -605,7 +677,7 @@ static float army_cav_frac(const ArmyState *a){
     }
     return tot>0 ? (float)cav/(float)tot : 0.f;
 }
-/* la DÉROUTE : la poursuite fauche (posture, moral restant, terrain de fuite) ; le
+/* la DÉROUTE : la poursuite fauche selon le moral restant et le terrain de fuite ; le
  * vaincu fuit BRISÉ vers sa capitale ; le score encaisse le grand swing. */
 static void bt_rout(Campaign *c, const World *w, const WorldEconomy *e, DiploState *dp,
                     FieldBattle *bt, int loser_side /* 0=A 1=B */){
@@ -616,13 +688,13 @@ static void bt_rout(Campaign *c, const World *w, const WorldEconomy *e, DiploSta
     float vfrac=(loser_side? bt->resA/(bt->resA0+1.f) : bt->resB/(bt->resB0+1.f));
     /* P3 — la curée est ALLÉGÉE (plafond ≤ 12 %, socle 6 %) : une armée battue SURVIT
      * pour revenir — la guerre s'inscrit dans la DURÉE (ré-assauts) au lieu d'annihiler
-     * l'assaillant au premier choc. Toujours poussée par la posture agressive.
+     * l'assaillant au premier choc.
      * H4/L4 — LA CAVALERIE FAIT LA POURSUITE : la part montée du VAINQUEUR pousse la curée
      * ET en RELÈVE le plafond → cavalerie DOMINANTE ⇒ la poursuite DOMINE le choc ;
      * infanterie pure ⇒ le choc peut primer (le slugfest frontal). */
     float cavf=army_cav_frac(&vf);
     float ctrv=side_counter(&vf,&lf);   /* le vainqueur qui CONTRAIT le vaincu fait une curée plus totale */
-    float P=0.06f                                     /* postures retirées : plus de terme de posture */
+    float P=0.06f
           + 0.04f*vfrac + tune_f("CAV_PURSUIT",0.45f)*cavf
           + tune_f("CTR_PURSUIT",0.30f)*fmaxf(0.f, ctrv-1.f);
     if (terrain_combat_bonus(c->reg_biome[bt->loc])>1.10f) P-=0.04f;   /* la montagne couvre la fuite */
@@ -640,6 +712,7 @@ static void bt_rout(Campaign *c, const World *w, const WorldEconomy *e, DiploSta
     if (to_kill<1 && lp>=1) to_kill=1;
     if (!L->rally_used && to_kill>=lp) to_kill=lp-1;   /* L2 : le NOYAU survit pour se rallier */
     long pursued=stack_kill(c,lose_owner,bt->loc,to_kill);
+    if(loser_side) bt->lossB+=(float)pursued; else bt->lossA+=(float)pursued;
     c->dead_pursuit += pursued*100;                                    /* la curée : l'essentiel des morts */
     if (g_campaign_human>=0 && (L->owner==g_campaign_human || V->owner==g_campaign_human))
         c->dead_pursuit_player += pursued*100;   /* #32 : le joueur est belligérant ICI */
@@ -707,18 +780,21 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
         float tA=bt_terrainA(c,e,bt->loc,A->owner,B->owner);
         float ctrA=powf(side_counter(&forceA,&forceB), tune_f("CTR_BITE",0.6f)); /* le contre PRIME sur la qualité brute */
         float ctrB=powf(side_counter(&forceB,&forceA), tune_f("CTR_BITE",0.6f));
-        float pA=side_power(&forceA)*tA*ctrA;   /* postures retirées */
+        float pA=side_power(&forceA)*tA*ctrA;
         float pB=side_power(&forceB)/tA*ctrB;
         pA*=0.85f+0.30f*xs01(rng); pB*=0.85f+0.30f*xs01(rng);
         float tot=pA+pB+1e-3f;
         float dmgk=tune_f("BT_DMG_K",BT_DMG_K);
         bt->resB -= bt->resB0*dmgk*(2.f*pA/tot);
         bt->resA -= bt->resA0*dmgk*(2.f*pB/tot);
+        float prev_lossB=bt->lossB, prev_lossA=bt->lossA;
         bt->lossB += (float)force_units(&forceB)*tune_f("BT_CHOC_MORTS",BT_CHOC_MORTS)*(2.f*pA/tot);
         bt->lossA += (float)force_units(&forceA)*tune_f("BT_CHOC_MORTS",BT_CHOC_MORTS)*(2.f*pB/tot);
         long mB=0,mA=0;
-        if (bt->lossB>=1.f){ mB=stack_kill(c,B->owner,bt->loc,(long)bt->lossB); bt->lossB-=(float)mB; }
-        if (bt->lossA>=1.f){ mA=stack_kill(c,A->owner,bt->loc,(long)bt->lossA); bt->lossA-=(float)mA; }
+        long dueB=(long)bt->lossB-(long)prev_lossB;
+        long dueA=(long)bt->lossA-(long)prev_lossA;
+        if(dueB>0) mB=stack_kill(c,B->owner,bt->loc,dueB);
+        if(dueA>0) mA=stack_kill(c,A->owner,bt->loc,dueA);
         c->dead_choc += (mA+mB)*100;
         if (g_campaign_human>=0 && (A->owner==g_campaign_human || B->owner==g_campaign_human))
             c->dead_choc_player += (mA+mB)*100;   /* #32 : le joueur est belligérant de CETTE bataille */
@@ -741,7 +817,7 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
              * fait tomber les sièges et prendre le terrain (avant : 98 % de décrochages,
              * 0 occupation). Posture prudente = plus prompte à rompre (+0.10). */
             float base=tune_f("BT_DECROCHE",0.22f);
-            float sA=base, sB=base;   /* postures retirées : plus de bonus de décrochage prudent */
+            float sA=base, sB=base;
             int who=(fA<sA && fA<fB-0.08f)?0:(fB<sB && fB<fA-0.08f)?1:-1;
             if (who>=0){
                 FieldArmy *L=&c->army[who?bt->b:bt->a], *V=&c->army[who?bt->a:bt->b];
@@ -749,6 +825,7 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
                 long dc_kill=(long)((float)lp*0.08f+0.5f);
                 if (dc_kill<1 && lp>=1) dc_kill=1;   /* T5 — même plancher qu'en poursuite (cf. bt_rout) */
                 long pursued=stack_kill(c,L->owner,bt->loc,dc_kill);
+                if(who) bt->lossB+=(float)pursued; else bt->lossA+=(float)pursued;
                 c->dead_pursuit+=pursued*100; c->n_disengage++;
                 if (g_campaign_human>=0 && (L->owner==g_campaign_human || V->owner==g_campaign_human))
                     c->dead_pursuit_player += pursued*100;   /* #32 : le joueur est belligérant ICI */
@@ -888,14 +965,12 @@ void campaign_tick(Campaign *c, const World *w, const WorldEconomy *e,
                     a->phase=FA_SIEGE; a->next=-1;                /* ennemie, OU notre terre OCCUPÉE : on assiège (libération) */
                     a->days_left = siege_days(region_defense(e,a->loc),
                                               region_food_months(e,a->loc),
-                                              terrain_defense_mult(c->reg_biome[a->loc], c->reg_height[a->loc]))
-                                 * posture_siege_mult(a->posture);
+                                              terrain_defense_mult(c->reg_biome[a->loc], c->reg_height[a->loc]));
                 } else {
                     int hop=next_hop(c,e,a->loc,a->dest);         /* étape suivante */
                     if (hop<0){ a->phase=FA_IDLE; a->dest=-1; a->next=-1; break; }
                     a->next=hop;
-                    a->leg_days  = army_step_days(&a->force, c->reg_biome[hop], c->reg_height[hop], false, false)
-                                 * posture_march_mult(a->posture);
+                    a->leg_days  = army_step_days(&a->force, c->reg_biome[hop], c->reg_height[hop], false, false);
                     a->days_left = a->leg_days;
                 }
             } else if (a->phase==FA_SIEGE){
@@ -933,8 +1008,7 @@ void campaign_tick(Campaign *c, const World *w, const WorldEconomy *e,
                 a->phase=FA_SIEGE; a->next=-1;                   /* l'ennemi : on assiège depuis la côte */
                 a->days_left = siege_days(region_defense(e,a->loc),
                                           region_food_months(e,a->loc),
-                                          terrain_defense_mult(c->reg_biome[a->loc], c->reg_height[a->loc]))
-                             * posture_siege_mult(a->posture);
+                                          terrain_defense_mult(c->reg_biome[a->loc], c->reg_height[a->loc]));
                 break;
             } else break;                                        /* FA_IDLE */
         }
@@ -967,7 +1041,7 @@ long campaign_disband(Campaign *c, int o, ArmyState *dst_host_army){
 long campaign_disband_corps(Campaign *c, int id, ArmyState *dst_host_army){
     FieldArmy *a=campaign_corps(c,id); if (!a) return 0;
     long packets = force_units(&a->force);            /* ce qu'on dissout (UI / restitution) */
-    int posture = a->posture;                          /* on garde le réglage joueur */
+    int tombstone = a->posture;                        /* conserve la disposition SAVE historique */
     /* LOT 1 — les SURVIVANTS rentrent (host reflète enfin ce qui revient du front) ;
      * NULL = ancien comportement (le détachement s'évapore). */
     if (dst_host_army) army_merge_into(dst_host_army, &a->force);
@@ -976,7 +1050,7 @@ long campaign_disband_corps(Campaign *c, int id, ArmyState *dst_host_army){
     a->days_left=0.f; a->leg_days=0.f; a->taken=0; a->taken_region=-1;
     a->legs=0; a->battles=0; a->broken_days=0;
     a->sail_transports=0; a->sail_days=0.f; a->land_at_port=false; a->intercept_done=false;
-    a->posture=posture;
+    a->posture=tombstone;
     corps_count_sync(c,a->owner);
     return packets;
 }
@@ -1020,14 +1094,21 @@ int campaign_refill(Campaign *c, int owner, WorldEconomy *econ){
 }
 int campaign_refill_corps(Campaign *c, int id, WorldEconomy *econ){
     FieldArmy *fa=campaign_corps(c,id); if (!fa || !econ) return 0;
+    if (!campaign_can_refill_corps(c,econ,id)) return 0;
     int owner=fa->owner; ArmyState *a=&fa->force;
     int n=a->n_units, added=0;
     for (int i=0;i<n;i++){
         if (a->units[i].count<=0) continue;
         UnitType t=a->units[i].type; const UnitDef *d=unit_def(t); if(!d) continue;
+        /* Vérifier la population AVANT de pomper l'arsenal : une classe épuisée
+         * ne doit pas faire disparaître cent armes sans fournir un seul homme. */
+        if (army_class_free(a,econ,owner,d->from) < POP_PER_UNIT) continue;
         /* F6 (Option B) — le RENFORT POMPE les armes MACRO (RES_*) comme la levée : 100 armes = 1
          * paquet, puisées au stock de l'empire (→ demande → fer). Pas d'armes → pas de renfort. */
-        if (econ && econ_arms_take(econ, owner, unit_res_arm(t), POP_PER_UNIT) < POP_PER_UNIT) continue;
+        Resource arm=unit_res_arm(t);
+        if (arm!=RES_NONE && econ_arms_take(econ, owner, arm, POP_PER_UNIT) < POP_PER_UNIT) continue;
+        /* La milice emploie des armes de fortune (RES_NONE) : aucun bien macro
+         * n'est consommé, mais army_recruit attend son jeton d'arme interne. */
         a->weapons[d->weapon] += 1;                       /* le tampon de combat (source : macro) */
         if (army_recruit(a, econ, owner, t, 1)) added++;   /* lève un paquet de 100 (pool = strates du pays) */
     }

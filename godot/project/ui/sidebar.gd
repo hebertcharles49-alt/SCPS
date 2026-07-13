@@ -112,12 +112,12 @@ func setup(map) -> void:
 	if _drawer != null:
 		_drawer.setup(map)
 
-func _on_tab(i: int) -> void:
+func _on_tab(i: int, context: Dictionary = {}) -> void:
 	_sel = -1 if _sel == i else i      # re-cliquer un onglet ouvert le replie
 	for k in range(_btns.size()):
 		_btns[k].selected = (k == _sel)
 		_btns[k].queue_redraw()
-	_drawer.show_tab(_sel)
+	_drawer.show_tab(_sel, context if _sel >= 0 else {})
 	tab_selected.emit(_sel)
 
 ## referme le tiroir (p.ex. quand on sélectionne une province)
@@ -126,9 +126,14 @@ func close() -> void:
 		_on_tab(_sel)   # re-cliquer l'onglet courant → repli
 
 ## OUVRE un onglet donné (les ALERTES y envoient) — no-op s'il est déjà ouvert.
-func open_tab(i: int) -> void:
-	if i >= 0 and _sel != i:
-		_on_tab(i)
+func open_tab(i: int, context: Dictionary = {}) -> void:
+	if i < 0 or i >= TABS.size():
+		return
+	if _sel != i:
+		_on_tab(i, context)
+	else:
+		# Un deep-link actualise le focus sans replier l'onglet déjà ouvert.
+		_drawer.show_tab(i, context)
 
 ## BASCULE un onglet (raccourcis F1-F8 : ouvre, re-presser replie) — borné au roster.
 func toggle_tab(i: int) -> void:

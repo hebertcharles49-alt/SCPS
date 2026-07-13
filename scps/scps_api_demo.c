@@ -14,9 +14,11 @@
 #include "scps_agency.h"     /* LOT T : edifice_tier (le palier de famille) */
 #include "scps_tech.h"       /* LOT T : tech_has_tier (la preuve de tier de recherche) */
 #include "scps_fog.h"        /* DIPLO-FOG : fog_debug_meet_all (découverte forcée, banc seul) */
+#include "scps_factions.h"   /* FAC_COUNT : profondeur du lecteur politique */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 static int g_pass=0, g_fail=0;
 static void ok(const char *what, bool cond){
@@ -90,6 +92,20 @@ int main(int argc, char **argv){
     ok("arbre de tech lu (nœuds + points ≥0)", ntn>0 && ti.points>=0);
     ok("risque faustien BANDÉ (présage résolu, jamais le flottant)", ti.presage[0]!='\0');
     ok("thèmes/fonctions résolus", ti.theme[0][0]!='\0' && ti.function[0][0]!='\0');
+    { int legal_ok=ntn>0, reasons_ok=ntn>0, paths_ok=ntn>0;
+      for(int i=0;i<ntn;i++){
+          legal_ok &= tn[i].allowed==0 || tn[i].allowed==1;
+          legal_ok &= (tn[i].allowed==1)==(tn[i].state==1);
+          legal_ok &= tn[i].points_have>=0 && tn[i].points_missing>=0;
+          reasons_ok &= tn[i].reason_code && tn[i].reason_code[0] && tn[i].reason_label && tn[i].reason_label[0];
+          reasons_ok &= (tn[i].allowed==1)==(strcmp(tn[i].reason_code,"ok")==0);
+          if(tn[i].state==2) paths_ok &= tn[i].next_step==-1 && tn[i].steps_remaining==0 && tn[i].path_label[0]=='\0';
+          else paths_ok &= tn[i].next_step>=0 && tn[i].next_step<ntn && tn[i].steps_remaining>=1 &&
+                           tn[i].path_label && tn[i].path_label[0] && tn[tn[i].next_step].state!=2;
+      }
+      ok("P4 tech : décision structurée cohérente avec l'état moteur", legal_ok);
+      ok("P4 tech : chaque nœud nomme son premier verrou", reasons_ok);
+      ok("P8 tech : chaque cible non acquise expose une chaîne et sa prochaine étape", paths_ok); }
 
     ScpsBudget bg; scps_budget_summary(s, pl0, &bg);
     ScpsFluxLine fx[32]; int nfx = scps_country_budget(s, pl0, fx, 32);
@@ -98,6 +114,34 @@ int main(int argc, char **argv){
     ok("budget : décomposition du flux (postes non vides)", nfx>0);
     ok("budget : net = revenus − dépenses (cohérent)", bg.net==bg.income-bg.expense);
     ok("budget : ligne de crédit ∝ pop (≥0, finie)", bg.credit_line>=0 && bg.credit_line==bg.credit_line);
+    ok("P6 budget : rythmes mensuels et projection sont finis",
+       bg.monthly_income>=0.0 && bg.monthly_expense>=0.0 && bg.monthly_net==bg.monthly_net &&
+       bg.projected_year_end==bg.projected_year_end && bg.runway_months==bg.runway_months);
+    ok("P6 budget : autonomie négative seulement quand le solde est stable",
+       (bg.monthly_net>=0.0 && bg.runway_months<0.0) || (bg.monthly_net<0.0 && bg.runway_months>=0.0));
+
+    ScpsStock market_st[40]; int nmarket_st=scps_country_stocks(s,pl0,market_st,40);
+    ok("marché : au moins un bien vivant exposé", nmarket_st>0);
+    if(nmarket_st>0){
+        ScpsMarketQuote mq;
+        int mqok=scps_market_quote(s,pl0,market_st[0].res_id,10,&mq);
+        ok("marché : devis capital valide et borné", mqok && mq.valid && mq.region>=0 &&
+           mq.margin>=1.f && mq.local_qty>=0 && mq.local_qty<=10 && mq.global_qty>=0 && mq.global_qty<=10);
+        ok("marché : coûts finis/non négatifs et accès mondial cohérent",
+           mq.local_cost>=0.0 && mq.local_cost==mq.local_cost && mq.global_cost>=0.0 &&
+           mq.global_cost==mq.global_cost && (mq.global_access || mq.global_qty==0));
+        ScpsStockRegion sr[64];
+        int nsr=scps_stock_regions(s,pl0,market_st[0].res_id,sr,64), sr_ok=nsr>0, sorted=nsr>0;
+        for(int i=0;i<nsr;i++){
+            sr_ok &= sr[i].region>=0 && sr[i].region<scps_region_count(s) && sr[i].province>=0;
+            sr_ok &= sr[i].name && sr[i].name[0] && sr[i].stock>=0 &&
+                     sr[i].supply_month>=0.f && sr[i].demand_month>=0.f;
+            if(i>0)sorted &= sr[i-1].supply_month+sr[i-1].demand_month+1e-5f >=
+                            sr[i].supply_month+sr[i].demand_month;
+        }
+        ok("P6 économie : producteurs/consommateurs territoriaux nommés et bornés",sr_ok);
+        ok("P6 économie : territoires triés par activité décroissante",sorted);
+    }
 
     ScpsMission ms; scps_mission_info(s, pl0, &ms);
     printf("   mission : %s\n", ms.active ? ms.text : "(aucune active)");
@@ -237,6 +281,20 @@ int main(int argc, char **argv){
         ok("options diplo : aperçus de consentement ∈ {0,1} (l'opinion #26 prévisualisée)",
            (dop.would_accept_alliance|dop.would_accept_pact|dop.would_accept_migration|dop.would_accept_peace|
             dop.can_offer_alliance|dop.can_offer_pact|dop.can_offer_migration|dop.can_embargo|dop.can_lift_embargo) <= 1);
+        { int legal_ok=gotd, reasons_ok=gotd;
+          for(int a=0;a<SCPS_DIPLO_ACTION_COUNT && gotd;a++){
+              ScpsActionLegal dl;
+              legal_ok &= scps_diplo_action_legal(s2,tgt,a,&dl)==1 && dl.valid;
+              legal_ok &= dl.allowed>=0 && dl.allowed<=1 && dl.would_accept>=0 && dl.would_accept<=1;
+              legal_ok &= dl.cost_gold>=0.0 && dl.gold_have>=0.0 && dl.gold_missing>=0.0 && dl.duration_days>=0;
+              reasons_ok &= dl.reason_code && dl.reason_code[0] && dl.reason_label && dl.reason_label[0];
+              reasons_ok &= (dl.allowed==1)==(strcmp(dl.reason_code,"ok")==0);
+          }
+          ScpsActionLegal bad;
+          reasons_ok &= scps_diplo_action_legal(s2,-1,SCPS_DIPLO_WAR,&bad)==0 && !bad.valid
+                     && strcmp(bad.reason_code,"invalid_target")==0;
+          ok("P4 diplo : les 7 verbes exposent une décision bornée", legal_ok);
+          ok("P4 diplo : chaque refus nomme un verrou stable, cible invalide comprise", reasons_ok); }
         ok("scps_build_legal : réponse bornée {0,1} (région · or)",
            (scps_build_legal(s2,-1,0) & ~1)==0);
         /* ── LOT T — la GATE TECH PAR PALIER (edifice_tier ⇐ tech_has_tier) ── */
@@ -347,6 +405,15 @@ int main(int argc, char **argv){
             ok("journal d'actes : la déclaration de guerre est loggée (datée, bonne paire)", has_decl);
             ok("journal d'actes : le plus récent d'abord (seq décroissant)",
                nj<2 || ja[0].year >= ja[nj-1].year);
+            ScpsDiploContext dc;
+            int dctx=scps_diplo_context(s2,tgt,&dc);
+            ok("P8 diplomatie : engagements et capitale traversent la façade",
+               dctx==1 && dc.valid && dc.at_war && dc.target==tgt &&
+               dc.target_capital_province>=0 && dc.target_capital_region>=0);
+            ok("P8 diplomatie : portée commerciale et créneaux d'alliance sont bornés",
+               dc.shared_routes>=dc.open_routes && dc.open_routes>=0 &&
+               dc.ally_slots_player>=0 && dc.ally_slots_player<=dc.ally_slots_max &&
+               dc.ally_slots_target>=0 && dc.ally_slots_target<=dc.ally_slots_max);
         }
     }
 
@@ -999,7 +1066,39 @@ int main(int argc, char **argv){
         {
             scps_sim_advance_days(sd, 365*30);
             int nreg = scps_region_count(sd);
+            ScpsMovePreview bad_move;
+            int move_preview_bounded = scps_corps_move_preview(sd,-1,0,&bad_move,NULL,0)==0
+                && !bad_move.valid && bad_move.reason && bad_move.reason[0];
+            ScpsRefillPreview bad_refill;
+            int refill_preview_bounded = !scps_corps_refill_preview(sd,-1,&bad_refill)
+                && !bad_refill.valid && !bad_refill.allowed && bad_refill.reason && bad_refill.reason[0];
+            int me_refill=scps_player(sd);
+            for(int n=0;n<scps_country_corps_count(sd,me_refill);n++){
+                int id=scps_country_corps_id(sd,me_refill,n); ScpsRefillPreview rp; ScpsArmyInfo ai;
+                scps_corps_info(sd,id,&ai);
+                ScpsMovePreview mp; int route[SCPS_MAX_REG];
+                int rn=scps_corps_move_preview(sd,id,ai.region,&mp,route,SCPS_MAX_REG);
+                if(mp.valid && (rn<1 || route[0]!=ai.region || mp.units_start!=ai.units
+                   || mp.attrition_loss<0 || mp.units_arrival<0
+                   || mp.units_arrival+mp.attrition_loss!=mp.units_start
+                   || mp.attrition_pct<0 || mp.attrition_pct>100
+                   || mp.worst_daily_pct10<0 || !mp.reason || !mp.reason[0])) move_preview_bounded=0;
+                if(!scps_corps_refill_preview(sd,id,&rp) || !rp.valid) {refill_preview_bounded=0;continue;}
+                long need_sum=0;
+                for(int k=0;k<rp.n_needs;k++){
+                    need_sum+=rp.need[k].needed;
+                    if(!rp.need[k].name || !rp.need[k].name[0] || rp.need[k].needed<0 || rp.need[k].owned<0)
+                        refill_preview_bounded=0;
+                }
+                if(rp.n_needs<0 || rp.n_needs>SCPS_REFILL_MAX_NEEDS || need_sum!=rp.weapons_needed
+                   || rp.requested_humans<0 || rp.population_ready_humans<0 || rp.guaranteed_humans<0
+                   || rp.population_ready_humans>rp.requested_humans
+                   || rp.guaranteed_humans>rp.population_ready_humans
+                   || rp.weapons_owned<0 || rp.weapons_owned>rp.weapons_needed
+                   || !rp.reason || !rp.reason[0] || (rp.allowed && rp.reason_code!=0)) refill_preview_bounded=0;
+            }
             int all_bounded=1, coherent=1, seen1=0, seen2=0, any_battle_valid=1, any_battle_owner_ok=1;
+            int battle_local_stack=1, battle_human_units=1, corps_human_units=1, tactical_bounded=1, siege_bounded=1;
             for(int r=0; r<nreg; r++){
                 int belli=-99;
                 int st = scps_region_war_state(sd, r, &belli);
@@ -1016,13 +1115,47 @@ int main(int argc, char **argv){
                     if(bi.defender>=0 && bi.attacker==bi.defender) any_battle_owner_ok=0;
                     if(bi.atk_units<0 || bi.def_units<0) any_battle_valid=0;
                     if(bi.war_score<-100.f || bi.war_score>100.f) any_battle_valid=0;
+                    if(bi.atk_corps<1 || (bi.in_battle && bi.def_corps<1)) battle_local_stack=0;
+                    if(bi.atk_units!=bi.atk_inf+bi.atk_arch+bi.atk_cav+bi.atk_mages) battle_local_stack=0;
+                    if(bi.def_units!=bi.def_inf+bi.def_arch+bi.def_cav+bi.def_mages) battle_local_stack=0;
+                    if(bi.atk_units%100L || bi.def_units%100L) battle_human_units=0;
+                    if(bi.atk_morale_pct<0 || bi.atk_morale_pct>100
+                       || bi.def_morale_pct<0 || bi.def_morale_pct>100) battle_local_stack=0;
+                    if(bi.in_battle && (bi.stage_id<0 || bi.stage_id>1 || !bi.stage || !bi.stage[0]
+                       || bi.atk_terrain_pct<=0 || bi.def_terrain_pct<=0
+                       || bi.atk_counter_pct<=0 || bi.def_counter_pct<=0
+                       || bi.balance_atk_pct<0 || bi.balance_atk_pct>100
+                       || bi.rupture_pct<0 || bi.rupture_pct>100
+                       || bi.loss_atk<0.f || bi.loss_def<0.f
+                       || bi.loss_atk!=floorf(bi.loss_atk) || bi.loss_def!=floorf(bi.loss_def))) tactical_bounded=0;
+                    if(!bi.in_battle && (bi.siege_days_left<0.f || bi.siege_full_days<14.f
+                       || bi.siege_progress_pct<0 || bi.siege_progress_pct>100
+                       || bi.siege_defense<0.f || bi.siege_food_months<0.f
+                       || bi.siege_terrain_pct<=0 || bi.siege_outcome<0 || bi.siege_outcome>1)) siege_bounded=0;
+                    int local_atk=0;
+                    for(int n=0;n<scps_country_corps_count(sd,bi.attacker);n++){
+                        int id=scps_country_corps_id(sd,bi.attacker,n); ScpsArmyInfo ai;
+                        scps_corps_info(sd,id,&ai);
+                        if(ai.active && ai.region==r){
+                            local_atk++;
+                            if(ai.units!=ai.inf+ai.arch+ai.cav+ai.mages || ai.units%100L) corps_human_units=0;
+                        }
+                    }
+                    if(local_atk<1) corps_human_units=0;
                 }
             }
             ok("scps_region_war_state : borné {0,1,2} sur toutes les régions", all_bounded==1);
             ok("belligérant cohérent (−1 ssi paix, sinon un pays valide ≠ owner)", coherent==1);
             ok("scps_battle_info : quand valide, région/pays/effectifs/war_score bornés", any_battle_valid==1 && any_battle_owner_ok==1);
+            ok("scps_battle_info : seuls les corps LOCAUX engagés composent chaque camp", battle_local_stack==1);
+            ok("scps_battle_info : les effectifs exposés sont des HOMMES (paquets × 100)", battle_human_units==1);
+            ok("scps_corps_info : total/composition sont des HOMMES cohérents", corps_human_units==1);
+            ok("scps_corps_move_preview : arrivée = départ - attrition, lecture pure et bornée", move_preview_bounded==1);
+            ok("scps_battle_info : phase/terrain/contres/rapport/rupture tactiques sont bornés", tactical_bounded==1);
             printf("   war_state : %s siège(s) vu(s) · %s occupation(s) vue(s) (30 ans)\n",
                    seen1?"des":"aucun", seen2?"des":"aucune");
+            ok("scps_battle_info : restant/progression/defense/vivres/terrain/issue du siege sont bornes", siege_bounded==1);
+            ok("scps_corps_refill_preview : hommes/armes/garantie/motif sont purs et bornés", refill_preview_bounded==1);
         }
 
         /* ── UI PROVINCE — câblage complet (LOTS 1/3/4/6) : 4 readers additifs, bornés. ── */
@@ -1059,6 +1192,42 @@ int main(int argc, char **argv){
                    any_slave, any_tax, np);
 
             /* scps_province_seed : déterministe (même province → même seed d'un appel à l'autre). */
+            int cultures_seen=0, groups_exact=1, culture_bounded=1, contact_bounded=1;
+            for(int p=0;p<np;p++){
+                ScpsGroup groups[16];
+                int ng=scps_province_groups(sd,p,groups,16);
+                if(ng<=0)continue;
+                cultures_seen++;
+                int dominant=0;
+                for(int i=0;i<ng;i++){
+                    dominant+=groups[i].dominant?1:0;
+                    if(!groups[i].faith||!groups[i].faith[0]||groups[i].faith_id<-1
+                       ||groups[i].percent<0||groups[i].percent>100)groups_exact=0;
+                }
+                if(dominant!=1)groups_exact=0;
+                ScpsCultureContext cc;
+                if(!scps_province_culture_context(sd,p,&cc)||!cc.valid||cc.province!=p
+                   ||cc.region<0||cc.groups<1||!cc.dominant_culture||!cc.dominant_culture[0]
+                   ||!cc.local_ethos||!cc.ruling_ethos||!cc.relation_to_crown
+                   ||!cc.local_faith||!cc.state_faith||!cc.fusion_reason
+                   ||cc.dominant_percent<0||cc.dominant_percent>100
+                   ||cc.ethos_drift_pct<0||cc.ethos_drift_pct>100
+                   ||cc.friction_avg_pct<0||cc.friction_avg_pct>100
+                   ||cc.friction_max_pct<0||cc.friction_max_pct>100)culture_bounded=0;
+                if(cc.contact&&(cc.contact_region<0||cc.contact_country<0
+                   ||!cc.contact_country_name||!cc.contact_country_name[0]
+                   ||!cc.contact_region_name||!cc.contact_region_name[0]
+                   ||!cc.contact_culture||!cc.contact_culture[0]
+                   ||cc.contact_distance_pct<0||cc.contact_distance_pct>100
+                   ||cc.fusion_open_pct<0||cc.fusion_open_pct>100
+                   ||cc.fusion_years<0))contact_bounded=0;
+            }
+            ScpsCultureContext bad_culture;
+            int bad_ok=!scps_province_culture_context(sd,-1,&bad_culture)&&!bad_culture.valid;
+            ok("scps_province_groups : foi vivante + un unique groupe dominant", cultures_seen>0&&groups_exact==1);
+            ok("scps_province_culture_context : identite/Couronne/friction/foi bornees", culture_bounded==1&&bad_ok);
+            ok("scps_province_culture_context : contact/fusion issus des routes et bornes", contact_bounded==1);
+
             int seed_stable=1;
             for (int p=0; p<np && p<50; p++){
                 int a = scps_province_seed(sd, p), b = scps_province_seed(sd, p);
@@ -1087,6 +1256,15 @@ int main(int argc, char **argv){
             ScpsCouncilCand cands[8];
             int nc2 = scps_council_candidates(sd, 0, cands, 8);
             ok("scps_council_candidates expose la pool du siège Savoir", nc2>0);
+            bool cand_parts_ok = nc2>0;
+            for (int i=0;i<nc2;i++){
+                float expected=cands[i].eff_preclamp_pct;
+                if (expected<50.f) expected=50.f;
+                if (expected>115.f) expected=115.f;
+                if (cands[i].predicted_loyalty<45 || cands[i].predicted_loyalty>65 ||
+                    fabsf(cands[i].efficiency_pct-expected)>0.05f) cand_parts_ok=false;
+            }
+            ok("candidats : loyauté prévue + décomposition d'efficacité viennent de la formule moteur", cand_parts_ok);
             if (nc2>0 && !seats[0].filled){
                 scps_player_council_hire(sd, 0, cands[0].slot);
                 scps_sim_advance_days(sd, 5);
@@ -1115,6 +1293,20 @@ int main(int argc, char **argv){
             ok("scps_council_pair_state : borné {neutre,rivalité,alliance,conspiration}", pst>=0 && pst<=3);
             ok("scps_council_pair_state : hors-borne → neutre (0), jamais de crash",
                scps_council_pair_state(sd, -1, 99)==0);
+
+            ScpsFaction fac[8]; int coup=0, corr=0;
+            int nf=scps_country_factions(sd,me,fac,8,&coup,&corr);
+            int sum_eff=0,sum_base=0,drivers=0,max_pressure=0;
+            bool faction_ok=(nf==FAC_COUNT && coup>=0 && coup<=100 && corr>=0 && corr<=100);
+            for(int f=0;f<nf;f++){
+                sum_eff+=fac[f].part; sum_base+=fac[f].base_part;
+                drivers+=fac[f].coup_driver;
+                if(fac[f].coup_pressure>max_pressure) max_pressure=fac[f].coup_pressure;
+                if(fac[f].policy_delta!=fac[f].part-fac[f].base_part) faction_ok=false;
+            }
+            if(sum_eff<98||sum_eff>102||sum_base<98||sum_base>102||
+               drivers!=(coup>0?1:0)||abs(max_pressure-coup)>1) faction_ok=false;
+            ok("factions : assise sociale + effet politique + pression de coup sont cohérents", faction_ok);
         }
         scps_sim_free(sd);
     }

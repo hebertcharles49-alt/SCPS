@@ -9,6 +9,7 @@ extends Control
 const VKit = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
+const InfoRef = preload("res://ui/info_ref.gd")
 const PW := 348.0   ## élargi (retour joueur 2026-07-10 : « adapte le menu de gauche
                     ## en taille » — la police +1 mordait les jauges à 312)
 
@@ -113,16 +114,25 @@ func _draw() -> void:
 	var y := content_y0 - _scrolloff
 
 	# ── HABITANTS + PROSPÉRITÉ (sortie du header : elle y chevauchait paysage & ✕) ──
+	var summary_y := y
 	VKit.value(self, Vector2(x, y), "%s habitants" % _grp(info["ames"]))
 	var gw := 64.0
 	VKit.gauge(self, x + rw - gw, y + 4, gw, 10, int(info["aisance_val"]))
 	var plab := "Prospérité %d" % int(info["aisance_val"])
 	VKit.text(self, Vector2(x + rw - gw - VKit.text_w(plab, VKit.FS_SMALL) - 10, y + 1), VKit.COL_DIM, plab, VKit.FS_SMALL)
 	y += 22
+	var summary_extra := {
+		"tax_year": float(w.province_tax(_pid)),
+		"defense_pct": int(w.province_defense_pct(_pid)),
+	}
+	_tips.append([Rect2(0.0, summary_y - 2.0, PW, 22.0),
+		"Vue d'ensemble : population, capacité, prospérité, agitation, impôts et défense.",
+		_province_summary_card(info, cap, summary_extra)])
 
 	# ── CAMEMBERTS culture / idéologie (ou repli PEUPLE) ──────────────────────
 	var groups: Array = w.province_groups(_pid)
 	if groups.size() > 0:
+		var cultural: Dictionary = w.province_culture_context(_pid) if w.has_method("province_culture_context") else {}
 		var cper := []
 		var ccol := []
 		for i in range(groups.size()):
@@ -132,9 +142,10 @@ func _draw() -> void:
 		var rper := []
 		var rcol := []
 		for g in groups:
-			var idx: int = rnames.find(g["religion"])
+			var faith_name := String(g.get("faith", g.get("religion", "Sans foi")))
+			var idx: int = rnames.find(faith_name)
 			if idx < 0:
-				rnames.append(g["religion"])
+				rnames.append(faith_name)
 				rper.append(g["percent"])
 				rcol.append(VKit.SLICE_PAL[(rnames.size() - 1) % 8])
 			else:
@@ -155,17 +166,42 @@ func _draw() -> void:
 				relig_dom = i
 		# AUDIT 1.2 : les noms de culture/idéologie sont GÉNÉRÉS (parfois longs) — enveloppés/
 		# ellipsés dans leur demi-colonne, jamais hors du panneau ; complets en infobulle.
-		var cul_txt := "Culture · %s" % String(groups[0].get("culture", ""))
+		var dominant_group: Dictionary = groups[0]
+		for raw_group in groups:
+			if bool(raw_group.get("dominant", false)):
+				dominant_group = raw_group
+				break
+		var cul_txt := "Culture · %s" % String(dominant_group.get("culture", ""))
 		var cul_w := (cx2 - pr) - (cx1 - pr) - 6.0
 		VKit.text_wrapped(self, Vector2(cx1 - pr, cyc + pr + 3), VKit.COL_DIM, cul_txt, cul_w, 1, VKit.FS_SMALL)
 		if VKit.text_w(cul_txt, VKit.FS_SMALL) > cul_w:
 			_tips.append([Rect2(cx1 - pr, cyc + pr + 3, cul_w, 16.0), cul_txt])
-		var rel_txt := "Idéologie · %s" % String(rnames[relig_dom])
+		var rel_txt := "Foi · %s" % String(rnames[relig_dom])
 		var rel_w := (x + rw) - (cx2 - pr) - 4.0
 		VKit.text_wrapped(self, Vector2(cx2 - pr, cyc + pr + 3), VKit.COL_DIM, rel_txt, rel_w, 1, VKit.FS_SMALL)
 		if VKit.text_w(rel_txt, VKit.FS_SMALL) > rel_w:
 			_tips.append([Rect2(cx2 - pr, cyc + pr + 3, rel_w, 16.0), rel_txt])
 		y = cyc + pr + 16
+		if not cultural.is_empty():
+			var culture_line := "Dominante %d %% · friction %d %% · dérive %d %%" % [
+				int(cultural.get("dominant_percent", 0)), int(cultural.get("friction_avg_pct", 0)),
+				int(cultural.get("ethos_drift_pct", 0))]
+			VKit.text(self, Vector2(x, y), VKit.COL_PARCH, culture_line, VKit.FS_SMALL)
+			_tips.append([Rect2(x - 2, y - 2, rw + 4, 16), culture_line, _culture_info_card(cultural)])
+			y += 16
+			var contact_line := "Contact : %s" % String(cultural.get("fusion_reason", "aucun partenaire commercial actif"))
+			if bool(cultural.get("contact", false)):
+				var fusion_time := "porte fermée"
+				if bool(cultural.get("fusion_feasible", false)):
+					var years := int(cultural.get("fusion_years", 0))
+					fusion_time = "déjà convergée" if years <= 0 else "fusion ~%d ans" % years
+				contact_line = "Contact : %s · %s · porte %d %% · %s" % [
+					String(cultural.get("contact_culture", "?")),
+					"mer" if bool(cultural.get("contact_maritime", false)) else "terre",
+					int(cultural.get("fusion_open_pct", 0)), fusion_time]
+			VKit.text_wrapped(self, Vector2(x, y), VKit.COL_DIM, contact_line, rw, 1, VKit.FS_SMALL)
+			_tips.append([Rect2(x - 2, y - 2, rw + 4, 16), contact_line, _culture_info_card(cultural)])
+			y += 17
 	else:
 		y = VKit.section(self, x, y, "PEUPLE")
 		y = VKit.row(self, x, y, "Héritage", String(info["heritage"]), VKit.COL_PARCH)
@@ -187,8 +223,11 @@ func _draw() -> void:
 			else:
 				VKit.text(self, Vector2(x + 92, y), VKit.COL_DIM, "—", VKit.FS_SMALL)
 			y += 17
+		var agitation: Dictionary = w.province_agitation(_pid) if w.has_method("province_agitation") else {
+			"value": int(info.get("agitation", 0)), "causes": []}
 		_tips.append([Rect2(0.0, hy0, PW, y - hy0),
-			"La part des BESOINS couverts par classe (vivres, biens, confort — le panier). Basse chez les laboureurs = misère → agitation, révolte."])
+			"La part des BESOINS couverts par classe (vivres, biens, confort — le panier). Basse chez les laboureurs = misère → agitation, révolte.",
+			_province_satisfaction_card(info, csat, agitation)])
 	var moodv := float(info["humeur_val"]) / 100.0
 	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "Loyauté", VKit.FS_SMALL)
 	VKit.gauge(self, x + 92, y + 3, rw - 136, 9, int(info["humeur_val"]))
@@ -767,3 +806,105 @@ func _get_tooltip(at_position: Vector2) -> String:
 		if (t[0] as Rect2).has_point(at_position) and String(t[1]) != "":
 			return String(t[1])
 	return ""
+
+func get_info_card(at_position: Vector2) -> Dictionary:
+	for t in _tips:
+		if t.size() >= 3 and (t[0] as Rect2).has_point(at_position):
+			return (t[2] as Dictionary).duplicate(true)
+	return {}
+
+func _culture_info_card(ctx: Dictionary) -> Dictionary:
+	var lines: Array = [
+		{"label": "Culture dominante", "value": "%s · %d %%" % [String(ctx.get("dominant_culture", "?")), int(ctx.get("dominant_percent", 0))]},
+		{"label": "Rapport à la Couronne", "value": "%s · %s → %s" % [String(ctx.get("relation_to_crown", "?")), String(ctx.get("local_ethos", "?")), String(ctx.get("ruling_ethos", "?"))]},
+		{"label": "Dérive d'éthos", "value": "%d %%" % int(ctx.get("ethos_drift_pct", 0)), "tone": "negative" if int(ctx.get("ethos_drift_pct", 0)) >= 40 else "dim"},
+		{"label": "Friction moyenne / maximale", "value": "%d %% / %d %%" % [int(ctx.get("friction_avg_pct", 0)), int(ctx.get("friction_max_pct", 0))]},
+		{"label": "Foi locale", "value": String(ctx.get("local_faith", "Sans foi"))},
+		{"label": "Foi d'État", "value": String(ctx.get("state_faith", "Sans foi")), "tone": "negative" if bool(ctx.get("faith_mismatch", false)) else "dim"},
+	]
+	var actions: Array = []
+	if bool(ctx.get("contact", false)):
+		lines.append({"label": "Contact", "value": "%s · %s" % [String(ctx.get("contact_country_name", "?")), String(ctx.get("contact_region_name", "?"))], "tone": "heading"})
+		lines.append({"label": "Culture partenaire", "value": String(ctx.get("contact_culture", "?"))})
+		lines.append({"label": "Distance culturelle", "value": "%d %%" % int(ctx.get("contact_distance_pct", 0))})
+		lines.append({"label": "Porte de fusion", "value": "%d %% · %s" % [int(ctx.get("fusion_open_pct", 0)), String(ctx.get("fusion_reason", ""))], "tone": "positive" if bool(ctx.get("fusion_feasible", false)) else "negative"})
+		if bool(ctx.get("fusion_feasible", false)):
+			var years := int(ctx.get("fusion_years", 0))
+			lines.append({"label": "Temps de fusion", "value": "déjà convergée" if years <= 0 else "~%d ans" % years})
+		var cr := int(ctx.get("contact_region", -1))
+		if cr >= 0:
+			actions.append({"label": "Voir le partenaire sur la carte", "request": InfoRef.request(InfoRef.make(InfoRef.REGION, cr), "map")})
+	return {
+		"title": String(ctx.get("dominant_culture", "Culture locale")),
+		"state": "%d groupe(s) · dominante %d %%" % [int(ctx.get("groups", 0)), int(ctx.get("dominant_percent", 0))],
+		"trend": String(ctx.get("fusion_reason", "")),
+		"trend_tone": "positive" if bool(ctx.get("fusion_feasible", false)) else "dim",
+		"lines": lines,
+		"actions": actions,
+	}
+
+func _score_tone(value: int) -> String:
+	if value >= 70:
+		return "positive"
+	if value < 40:
+		return "negative"
+	return ""
+
+func _province_summary_card(info: Dictionary, cap: Dictionary, extra: Dictionary) -> Dictionary:
+	var pop := int(info.get("ames", 0))
+	var housing := int(cap.get("logement_cap", 0))
+	var services := int(cap.get("service_cap", 0))
+	var agitation := int(info.get("agitation", 0))
+	var free_housing := housing - pop
+	var housing_value := "%s / %s" % [_grp(pop), _grp(housing)]
+	if free_housing >= 0:
+		housing_value += " · %s libres" % _grp(free_housing)
+	else:
+		housing_value += " · dépassement %s" % _grp(-free_housing)
+	return {
+		"title": String(info.get("nom", "Province")),
+		"state": "%s · %s · %s" % [String(info.get("climat", "")),
+			String(info.get("relief", "")), String(cap.get("statut", ""))],
+		"trend": "agitation %d" % agitation,
+		"trend_tone": "negative" if agitation >= 60 else "positive",
+		"lines": [
+			{"label": "Population / logement", "value": housing_value,
+				"tone": "negative" if free_housing < 0 else ""},
+			{"label": "Capacité de services", "value": "%s / %s" % [_grp(pop), _grp(services)],
+				"tone": "negative" if services < pop else ""},
+			{"label": "Prospérité", "value": "%d / 100" % int(info.get("aisance_val", 0)),
+				"tone": _score_tone(int(info.get("aisance_val", 0)))},
+			{"label": "Loyauté", "value": "%d / 100" % int(info.get("humeur_val", 0)),
+				"tone": _score_tone(int(info.get("humeur_val", 0)))},
+			{"label": "Impôts levés", "value": "~%s or / an" % _grp(int(round(float(extra.get("tax_year", 0.0)))))},
+			{"label": "Tenue de siège", "value": "%+d%%" % (int(extra.get("defense_pct", 100)) - 100)},
+		],
+		"actions": [{"label": "Ouvrir l'économie nationale", "request": InfoRef.request(
+			InfoRef.make(InfoRef.SIDEBAR_TAB, 0), "sidebar")}],
+	}
+
+func _province_satisfaction_card(info: Dictionary, csat: Dictionary, agitation: Dictionary) -> Dictionary:
+	var lines: Array = []
+	for row in [["Laboureurs", "laboureurs"], ["Artisans", "artisans"],
+		["Noblesse", "noblesse"], ["Esclaves", "esclaves"]]:
+		var value := int(csat.get(row[1], -1))
+		lines.append({"label": row[0], "value": "absents" if value < 0 else "%d / 100" % value,
+			"tone": "dim" if value < 0 else _score_tone(value)})
+	var loyalty := int(info.get("humeur_val", 0))
+	lines.append({"label": "Loyauté locale", "value": "%d / 100" % loyalty, "tone": _score_tone(loyalty)})
+	for cause in agitation.get("causes", []):
+		var delta := float(cause.get("delta", 0.0))
+		var decay := float(cause.get("decay", 0.0))
+		var value := "%+.1f" % delta
+		if decay > 0.0:
+			value += " · résorption %.1f/an" % decay
+		lines.append({"label": String(cause.get("cause", "Cause")), "value": value,
+			"tone": "negative" if delta > 0.0 else "positive"})
+	var agit := int(agitation.get("value", info.get("agitation", 0)))
+	return {
+		"title": "Satisfaction · %s" % String(info.get("nom", "Province")),
+		"state": "besoins couverts par classe",
+		"trend": "agitation %d / 100" % agit,
+		"trend_tone": "negative" if agit >= 60 else "positive",
+		"lines": lines,
+	}

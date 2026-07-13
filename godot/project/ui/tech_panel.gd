@@ -22,7 +22,7 @@ var _metab_seen := {}   ## nom héritage (natif à part) → true une fois notif
 var PW := 720.0
 var PH := 560.0
 const HEAD := 52.0          # hauteur d'en-tête (titre + jauges)
-const FOOT := 94.0          # dossier persistant du nœud sélectionné
+const FOOT := 112.0         # dossier persistant : inclut le chemin suggéré sans chevauchement
 const METAH := 92.0         # bande de MÉTABOLISATION (le +% recherche + accès par héritage + compte Ascension)
 
 # couleurs d'état (sans bibliothèque d'animation Medusa : on teinte le cercle)
@@ -104,6 +104,22 @@ func _on_generated() -> void:
 	_metab_seen.clear()
 	if visible:
 		_build()
+
+## P5 : une technologie trouvée par Ctrl+K ouvre directement son dossier sans
+## déclencher la recherche. Le clic volontaire sur l'atome reste le seul actionneur.
+func focus_tech(id: int) -> void:
+	if not visible:
+		visible = true
+	if not _built:
+		_build()
+	if id < 0 or id >= _nodes.size():
+		return
+	_sel_node = (_nodes[id] as Dictionary).duplicate(true)
+	_sel = String(_sel_node.get("name", ""))
+	_sel_flash = "Ouvert depuis la recherche universelle."
+	if _scroll != null and id < _atoms.size() and _atoms[id] != null:
+		_scroll.ensure_control_visible(_atoms[id])
+	queue_redraw()
 
 # ── construction du graphe Medusa ──────────────────────────────────────────
 func _build() -> void:
@@ -249,11 +265,16 @@ func _make_atom(nd: Dictionary, target: Vector2, rr: float = 13.0):
 	var st := int(nd["state"])
 	var states := ["Verrouillée", "Recherchable", "Acquise"]
 	tip += "\n%s · palier %d" % [states[clampi(st, 0, 2)], int(nd.get("tier", 0))]
+	if not bool(nd.get("allowed", st == 1)) and st != 2:
+		tip += "\nPourquoi : %s" % String(nd.get("reason_label", "Indisponible"))
 	var pr := int(nd.get("prereq", -1))
 	if pr >= 0 and pr < _nodes.size():
 		tip += "\nPrérequis : %s" % String(_nodes[pr].get("name", "?"))
+	if int(nd.get("steps_remaining", 0)) > 1:
+		tip += "\nChemin : %s" % String(nd.get("path_label", ""))
 	if int(nd.get("cost", 0)) > 0 and st != 2:
-		tip += " · %d points" % int(nd["cost"])
+		tip += " · %d points (réserve %d, manque %d)" % [int(nd["cost"]),
+			int(nd.get("points_have", 0)), int(nd.get("points_missing", 0))]
 	if hov != "":
 		tip += "\n" + hov
 	var unl := String(nd.get("unlocks", ""))
@@ -307,9 +328,10 @@ func _on_atom_selected(atom) -> void:
 	_sel = "%s — %s · %s" % [String(nd["name"]), String(nd.get("effet", "")), states[clampi(stt, 0, 2)]]
 	if int(nd.get("cost", 0)) > 0 and stt != 2:
 		_sel += " (%d pts)" % int(nd["cost"])
-	# ACTIONNABLE : un nœud RECHERCHABLE (state==1) cliqué devient la CIBLE de recherche
+	# ACTIONNABLE : la décision structurée du moteur commande le clic ; l'UI ne
+	# reconstruit ni l'accès d'héritage, ni les ruines, ni l'âge, ni les prérequis.
 	# (l'indice de _atoms == TechId ; la façade enfile CMD_RESEARCH, le déblocage tombe au tick).
-	if stt == 1 and Sim.world != null:
+	if bool(nd.get("allowed", stt == 1)) and Sim.world != null:
 		var idx := _atoms.find(atom)
 		if idx >= 0:
 			var ok: bool = Sim.world.player_research(idx) != 0
@@ -384,6 +406,8 @@ func _draw_selected_node(y: float) -> void:
 	var nd: Dictionary = _sel_node
 	var st := int(nd.get("state", 0))
 	var states := ["VERROUILLÉE", "RECHERCHABLE · CLIQUER POUR LANCER", "ACQUISE"]
+	if st == 0 and String(nd.get("reason_label", "")) != "":
+		states[0] = "BLOQUÉE · %s" % String(nd.get("reason_label", ""))
 	var scol := COL_LOCKED if st == 0 else (COL_AVAIL if st == 1 else COL_UNLOCKED)
 	if bool(nd.get("faustian", false)):
 		scol = COL_FAUST
@@ -396,20 +420,28 @@ func _draw_selected_node(y: float) -> void:
 	elif bool(nd.get("is_base", false)):
 		meta += " · Fondation"
 	if int(nd.get("cost", 0)) > 0 and st != 2:
-		meta += " · Coût : %d points" % int(nd.get("cost", 0))
+		meta += " · Coût %d · réserve %d · manque %d" % [int(nd.get("cost", 0)),
+			int(nd.get("points_have", 0)), int(nd.get("points_missing", 0))]
 	VKit.text(self, Vector2(16, y + 22), VKit.COL_DIM, meta, VKit.FS_SMALL)
+	var body_y := y + 39.0
+	if int(nd.get("steps_remaining", 0)) > 1:
+		var ns := int(nd.get("next_step", -1))
+		var next_name := String(_nodes[ns].get("name", "?")) if ns >= 0 and ns < _nodes.size() else "?"
+		var path := "Chemin suggéré : commencer par %s · %d étapes" % [next_name, int(nd.get("steps_remaining", 0))]
+		VKit.text(self, Vector2(16, body_y), VKit.COL_PARCH, path, VKit.FS_SMALL)
+		body_y += 17.0
 	var eff := String(nd.get("effet", ""))
 	var unl := String(nd.get("unlocks", ""))
 	if eff != "":
-		VKit.text(self, Vector2(16, y + 39), VKit.COL_PARCH, "Effet : " + eff, VKit.FS_SMALL)
+		VKit.text(self, Vector2(16, body_y), VKit.COL_PARCH, "Effet : " + eff, VKit.FS_SMALL)
 	if unl != "":
-		VKit.text(self, Vector2(PW * 0.52, y + 39), VKit.COL_PARCH, "Débouche sur : " + unl, VKit.FS_SMALL)
+		VKit.text(self, Vector2(PW * 0.52, body_y), VKit.COL_PARCH, "Débouche sur : " + unl, VKit.FS_SMALL)
 	var flavor := String(nd.get("flavor", ""))
 	if _sel_flash != "":
-		VKit.text(self, Vector2(16, y + 58), COL_UNLOCKED if _sel_flash.begins_with("Recherche lancée") else COL_FAUST,
+		VKit.text(self, Vector2(16, body_y + 19), COL_UNLOCKED if _sel_flash.begins_with("Recherche lancée") else COL_FAUST,
 			_sel_flash, VKit.FS_SMALL)
 	elif flavor != "":
-		VKit.text(self, Vector2(16, y + 58), VKit.COL_DIM, flavor, VKit.FS_SMALL)
+		VKit.text(self, Vector2(16, body_y + 19), VKit.COL_DIM, flavor, VKit.FS_SMALL)
 
 # ── bande de MÉTABOLISATION : le +% recherche du creuset + l'accès tech par héritage ──
 # Le "+X% recherche" répond à « métabolisation = +% tech visible sous la barre de savoir » ;

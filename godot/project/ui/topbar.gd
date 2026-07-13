@@ -13,6 +13,7 @@ extends Control
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
+const InfoRef = preload("res://ui/info_ref.gd")
 const H := Frame.TOPBAR_H
 
 ## (les 5 cellules de MATIÈRES BRUTES bois·argile·pierre·fer·armes, posées le 07-09,
@@ -22,10 +23,12 @@ const H := Frame.TOPBAR_H
 ## alerts.gd (préchargement statique du script, même donnée, un seul calcul).
 
 signal tech_requested
+signal navigate_requested(request: Dictionary)
 
 var _speed_rect := Rect2()
 var _speed_btns := []   ## boutons de vitesse DISCRETS façon RimWorld : [[Rect2, index], …]
 var _savoir_rect := Rect2()
+var _nav_zones: Array = []     ## [{rect, request, hint}] — mêmes coordonnées que le dessin
 # §7 — l'encart d'âge (« Engager : … » / « Âge : … ») a DÉMÉNAGÉ en haut du menu de
 # droite (empire_sidebar.gd), sous le bloc TEMPS — retour joueur 2026-07-11.
 
@@ -72,7 +75,9 @@ func _matter_cell(px: float, w, me: int, rname: String) -> float:
 	var tip := rname
 	if absf(permo) >= 0.5:
 		tip += " %+d/mois" % int(round(permo))
-	return _cell(px, "", "", _grp(int(rp["stock"])), "", true, tip, Color(0, 0, 0, 0), rname)
+	var delta := "%+d/mois" % int(round(permo))
+	return _cell(px, "", "", _grp(int(rp["stock"])), delta, permo >= 0.0,
+		tip, Color(0, 0, 0, 0), rname)
 
 ## LOYAUTÉ du royaume = moyenne de la loyauté des sièges du CONSEIL (0-100) — la fidélité
 ## des grands du royaume envers la couronne (country_council → loyalty). -1 si pas de conseil.
@@ -169,6 +174,70 @@ func _treasury_tip(w, me: int) -> String:
 		tip += "\n" + parts
 	return tip
 
+func _treasury_card(w, me: int, gold: float) -> Dictionary:
+	var doy := maxi(1, int(w.day_of_year())) if w.has_method("day_of_year") else 1
+	var budget: Dictionary = w.budget_summary(me) if w.has_method("budget_summary") else {}
+	var net_month := float(budget.get("monthly_net", float(budget.get("net", 0.0)) / float(doy) * 30.0))
+	var income_lines := []
+	var expense_lines := []
+	if w.has_method("country_budget"):
+		for p in w.country_budget(me):
+			var amount := float(p.get("amount", 0.0)) / float(doy) * 30.0
+			if absf(amount) >= 0.5:
+				var line := {"label": String(p.get("name", "Poste")),
+					"value": "%+d / mois" % int(round(amount)),
+					"tone": "positive" if amount >= 0.0 else "negative"}
+				if amount >= 0.0:
+					income_lines.append(line)
+				else:
+					expense_lines.append(line)
+	var lines := [{"label": "Revenus", "value": "%+d / mois" % int(round(
+		float(budget.get("monthly_income", float(budget.get("income", 0.0)) / float(doy) * 30.0)))),
+		"tone": "heading"}]
+	lines.append_array(income_lines)
+	lines.append({"label": "Dépenses", "value": "−%d / mois" % int(round(
+		float(budget.get("monthly_expense", float(budget.get("expense", 0.0)) / float(doy) * 30.0)))),
+		"tone": "heading"})
+	lines.append_array(expense_lines)
+	lines.append({"label": "Ligne de crédit", "value": "%d or" % int(round(
+		float(budget.get("credit_line", 0.0)))), "tone": "dim"})
+	lines.append({"label": "Fin d'année (projection)", "value": "%s or" % _grp(int(round(
+		float(budget.get("projected_year_end", gold))))),
+		"tone": "positive" if float(budget.get("projected_year_end", gold)) >= 0.0 else "negative"})
+	var runway := float(budget.get("runway_months", -1.0))
+	lines.append({"label": "Autonomie trésor + crédit", "value": "solde stable" if runway < 0.0 else \
+		("< 1 mois" if runway < 1.0 else "%.1f mois" % runway),
+		"tone": "dim" if runway < 0.0 else ("negative" if runway < 6.0 else "")})
+	return {
+		"title": "Trésor",
+		"state": "%s or disponibles" % _grp(int(round(gold))),
+		"trend": "%+d / mois" % int(round(net_month)),
+		"trend_tone": "positive" if net_month >= 0.0 else "negative",
+		"lines": lines,
+	}
+
+func _faction_card(fe: Dictionary, fx: Dictionary, monthly_delta: int) -> Dictionary:
+	var policy := int(fe.get("policy_delta", 0))
+	var lines: Array = [
+		{"label": "Assise sociale", "value": "%d %%" % int(fe.get("base_part", 0))},
+		{"label": "Effet des politiques", "value": "%+d points" % policy,
+			"tone": "positive" if policy > 0 else ("negative" if policy < 0 else "dim")},
+		{"label": "Rancœur", "value": "%d / 100" % int(fe.get("grief", 0)),
+			"tone": "negative" if int(fe.get("grief", 0)) >= 40 else "dim"},
+		{"label": "Pression de coup", "value": "%d / 100" % int(fe.get("coup_pressure", 0)),
+			"tone": "negative" if bool(fe.get("coup_driver", false)) else "dim"},
+		{"label": "Corruption nationale", "value": "%d / 100" % int(fx.get("corruption", 0))},
+	]
+	if bool(fe.get("captor", false)):
+		lines.append({"label": "Capture de l'État", "value": "faction la plus favorisée", "tone": "negative"})
+	return {
+		"title": String(fe.get("name", "Faction")),
+		"state": "%d %% de soutien%s" % [int(fe.get("part", 0)), " · dominante" if bool(fe.get("dominant", false)) else ""],
+		"trend": "%+d / mois" % monthly_delta if monthly_delta != 0 else "stable ce mois",
+		"trend_tone": "positive" if monthly_delta > 0 else ("negative" if monthly_delta < 0 else "dim"),
+		"lines": lines,
+	}
+
 ## LA NOURRITURE EN QUOI+COMBIEN : production vs consommation, bien par bien
 ## (country_stocks → net_day, le flux RÉEL du jour) — pas une leçon sur le Grenier.
 const _FOOD_NAMES := ["Céréales", "Poisson", "Bétail", "Fruits"]
@@ -201,7 +270,7 @@ func _materials_cell(px: float, w, me: int) -> float:
 			line += " (%+d/mois)" % int(round(permo))
 		parts.append(line)
 	# FACE = le total seul (« genre 82 ») ; le détail par matière est dans le HOVER.
-	return _cell(px, "action_build", "", _grp(total), "", true,
+	return _cell(px, "action_build", "", _grp(total), "%+d/mois" % int(round(permo_total)), permo_total >= 0.0,
 		"Matériaux — " + " · ".join(parts))
 
 ## HOVER SAVOIR — direct/franc, chiffres MENSUELS : le revenu de recherche décomposé —
@@ -301,8 +370,30 @@ var _tips: Array = []   ## [[Rect2, texte], …] — reconstruit au _draw, hit-t
 func _get_tooltip(at_position: Vector2) -> String:
 	for t in _tips:
 		if (t[0] as Rect2).has_point(at_position) and String(t[1]) != "":
-			return String(t[1])
+			var tip := String(t[1])
+			for z in _nav_zones:
+				if (z["rect"] as Rect2).has_point(at_position):
+					return tip + "\nClic : " + String(z.get("hint", "ouvrir le détail"))
+			return tip
 	return ""
+
+func _add_nav(rect: Rect2, request: Dictionary, hint: String, card: Dictionary = {}) -> void:
+	_nav_zones.append({"rect": rect, "request": request, "hint": hint, "card": card})
+
+## Contrat lu optionnellement par TooltipServer. Une zone sans carte structurée garde
+## son tooltip texte historique ; la migration peut donc avancer cellule par cellule.
+func get_info_card(at_position: Vector2) -> Dictionary:
+	for z in _nav_zones:
+		if not (z["rect"] as Rect2).has_point(at_position):
+			continue
+		var card: Dictionary = z.get("card", {}).duplicate(true)
+		if card.is_empty():
+			return {}
+		if not card.has("actions"):
+			card["actions"] = [{"label": String(z.get("hint", "Ouvrir")),
+				"request": (z["request"] as Dictionary).duplicate(true)}]
+		return card
+	return {}
 
 var _date: Control = null   ## la date, contrôle ENFANT à cadence QUOTIDIENNE (cf. date_chip.gd)
 
@@ -379,6 +470,7 @@ func _draw() -> void:
 
 	var w = Sim.world
 	_tips.clear()
+	_nav_zones.clear()
 	# (la capsule de chrome à gauche est RETIRÉE — panneaux plats, retour joueur 2026-07-10)
 
 	# LE PAYS JOUÉ — CELLULES façon CK3 (hud.gui : icône + VALEUR empilée sur son DELTA
@@ -448,17 +540,33 @@ func _draw() -> void:
 				var pct := int(round(100.0 * float(tot - int(cs.get("days_left", 0))) / float(tot)))
 				_id_tip += " · colonie en chantier %d %%" % pct
 		_tips.append([nr, _id_tip])
+		_add_nav(nr, InfoRef.request(InfoRef.make(InfoRef.COUNTRY, me)), "ouvrir le royaume")
 		px += nomw + 18
 
 		# ═══ OR — face : le trésor seul. Hover : le REVENU DÉTAILLÉ MENSUEL (impôts ·
 		#     corruption · entretiens · salaires · armée…) via country_budget (I0). ═══
-		px = _cell(px, "fine_coin", "", _grp(ci["or"]), "", true, _treasury_tip(w, me))
+		var treasury_x := px
+		var budget_now: Dictionary = w.budget_summary(me) if w.has_method("budget_summary") else {}
+		var budget_doy := maxi(1, int(w.day_of_year())) if w.has_method("day_of_year") else 1
+		var budget_month := float(budget_now.get("net", 0.0)) / float(budget_doy) * 30.0
+		px = _cell(px, "fine_coin", "", _grp(ci["or"]), "%+d/mois" % int(round(budget_month)),
+			budget_month >= 0.0, _treasury_tip(w, me))
+		_add_nav(Rect2(treasury_x - 4, 0, px - treasury_x, H),
+			InfoRef.request(InfoRef.make(InfoRef.SIDEBAR_TAB, 0), "sidebar", {"section": "budget"}),
+			"ouvrir le budget", _treasury_card(w, me, float(ci["or"])))
 		px = _block_sep(px)
 
 		# ═══ MATÉRIAUX : UN onglet (total bois+argile+pierre) · hover = détail par matière ══
+		var materials_x := px
 		px = _materials_cell(px, w, me)
+		_add_nav(Rect2(materials_x - 4, 0, px - materials_x, H),
+			InfoRef.request(InfoRef.make(InfoRef.SIDEBAR_TAB, 2), "sidebar"), "ouvrir les stocks")
 		# ═══ ARMES : stock + flux mensuel (même modèle) ══
+		var arms_x := px
 		px = _matter_cell(px, w, me, "Armes légères")
+		_add_nav(Rect2(arms_x - 4, 0, px - arms_x, H),
+			InfoRef.request(InfoRef.make(InfoRef.RESOURCE, 36), "sidebar", {"tab": 2}),
+			"ouvrir le stock d'armes")
 		# ═══ NOURRITURE : stock du grenier. La rupture SORT de la cellule → seul le hover
 		#     porte l'income par bien ET « pénurie dans X » (retour joueur : l'UI = le
 		#     nombre, le hover = le détail). ══
@@ -469,14 +577,28 @@ func _draw() -> void:
 			var sname := String(short["name"])
 			_food_full_tip += "\n%s : rupture dans %d j" % [sname, djs]
 		if w.has_method("country_food"):
-			px = _cell(px, "fine_grain", "", _grp(int(w.country_food(me))), "", true, _food_full_tip)
+			var food_x := px
+			var food_month := 0.0
+			if w.has_method("country_stocks"):
+				for stock in w.country_stocks(me):
+					if _FOOD_NAMES.has(String(stock.get("name", ""))):
+						food_month += float(stock.get("net_day", 0.0)) * 30.0
+			px = _cell(px, "fine_grain", "", _grp(int(w.country_food(me))),
+				"%+d/mois" % int(round(food_month)), food_month >= 0.0, _food_full_tip)
+			_add_nav(Rect2(food_x - 4, 0, px - food_x, H),
+				InfoRef.request(InfoRef.make(InfoRef.SIDEBAR_TAB, 2), "sidebar", {"section": "food"}),
+				"ouvrir les stocks alimentaires")
 		px = _block_sep(px)
 
 		# ═══ SAVOIR : le niveau · hover = income de recherche MENSUEL décomposé (Pops ·
 		#     Institutions · Lumière · Métabolisation) · CLIC = l'arbre de technologie. ══
 		var sx0 := px
-		px = _cell(px, "fine_knowledge", "", "%d" % int(ci["savoir"]), "", true, _research_tip(w, me))
+		var research_month := float((w.country_research_income(me) as Dictionary).get("per_day", 0.0)) * 30.0 \
+			if w.has_method("country_research_income") else 0.0
+		px = _cell(px, "fine_knowledge", "", "%d" % int(ci["savoir"]),
+			"%+d/mois" % int(round(research_month)), research_month >= 0.0, _research_tip(w, me))
 		_savoir_rect = Rect2(sx0 - 4, 0, px - sx0, H)
+		_add_nav(_savoir_rect, InfoRef.request(InfoRef.make(InfoRef.TECH, -1)), "ouvrir l'arbre de technologie")
 		px = _block_sep(px)
 
 		# ═══ INFLUENCE DE FACTION : chaque faction · sa PART · sa TENDANCE « +x/mois »
@@ -485,6 +607,7 @@ func _draw() -> void:
 		var flist: Array = fx.get("list", [])
 		var nfac := mini(flist.size(), 4)   # garde-fou de largeur (rarement > 3 factions)
 		for fi in range(nfac):
+			var faction_x := px
 			var fe: Dictionary = flist[fi]
 			var fnm := String(fe.get("name", ""))
 			var part := int(fe.get("part", 0))
@@ -497,11 +620,17 @@ func _draw() -> void:
 				ftip += " · %+d/mois" % fd
 			if grief > 0:
 				ftip += " · rancœur %d" % grief
+			ftip += " · assise %d %% · politiques %+d" % [int(fe.get("base_part", part)), int(fe.get("policy_delta", 0))]
+			if bool(fe.get("coup_driver", false)):
+				ftip += " · porte le risque de coup (%d)" % int(fe.get("coup_pressure", 0))
 			if fi == 0:
 				ftip += "\nTension de coup %d" % coup
 			var fval := ("★ %d%%" % part) if dom else ("%d%%" % part)
 			px = _cell(px, "influence_compass", "", fval, fdtxt, fd >= 0, ftip,
 				VKit.sense(0.20) if (grief >= 60 or coup >= 45) else Color(0, 0, 0, 0))
+			_add_nav(Rect2(faction_x - 4, 0, px - faction_x, H),
+				InfoRef.request(InfoRef.make(InfoRef.SIDEBAR_TAB, 7), "sidebar", {"section": "factions"}),
+				"ouvrir le rapport de forces", _faction_card(fe, fx, fd))
 		px = _block_sep(px)
 
 		# ═══ LOYAUTÉ · PROSPÉRITÉ (jauges 0-100, valeur teintée bon/mauvais — UI-5 :
@@ -513,14 +642,20 @@ func _draw() -> void:
 		if loy < 0:
 			loy = int(ci.get("legitimite", 0))
 			loy_tip = "Loyauté %d / 100 (légitimité)" % loy
+		var loyalty_x := px
 		px = _cell(px, "politics_crown", "", "%d" % loy, "", true, loy_tip,
 			VKit.sense(float(loy) / 100.0))
+		_add_nav(Rect2(loyalty_x - 4, 0, px - loyalty_x, H),
+			InfoRef.request(InfoRef.make(InfoRef.SIDEBAR_TAB, 7), "sidebar"), "ouvrir le conseil")
 		var prosp := int(ci.get("prosperite", 0))
 		var _prosp_tip := "Prospérité — %s (%d / 100)" % [String(ci.get("prosperite_mot", "")), prosp]
 		if not _happy_tip.is_empty():
 			_prosp_tip += "\n" + _happy_tip
+		var prosperity_x := px
 		px = _cell(px, "prosperity_sprout", "", "%d" % prosp, "", true, _prosp_tip,
 			VKit.sense(float(prosp) / 100.0))
+		_add_nav(Rect2(prosperity_x - 4, 0, px - prosperity_x, H),
+			InfoRef.request(InfoRef.make(InfoRef.SIDEBAR_TAB, 1), "sidebar"), "ouvrir la démographie")
 		content_end = px
 
 	# séparateur visuel avant le BLOC TEMPS — ANCRÉ au contenu RÉELLEMENT dessiné (pas
@@ -576,9 +711,21 @@ func _draw() -> void:
 		_tips.append([r, String(stips[i])])
 
 func _gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion:
+		var clickable := _speed_rect.has_point(event.position)
+		for z in _nav_zones:
+			if (z["rect"] as Rect2).has_point(event.position):
+				clickable = true
+				break
+		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if clickable else Control.CURSOR_ARROW
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		for z in _nav_zones:
+			if (z["rect"] as Rect2).has_point(event.position):
+				navigate_requested.emit((z["request"] as Dictionary).duplicate(true))
+				Sound.play("ui_click")
+				return
 		if _savoir_rect.has_point(event.position):
-			tech_requested.emit()
+			tech_requested.emit() # compatibilité pendant la migration des anciens branchements
 		elif _speed_rect.has_point(event.position):
 			# boutons DISCRETS (RimWorld) : on clique LA vitesse voulue
 			for sb in _speed_btns:

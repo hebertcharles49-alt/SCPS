@@ -25,6 +25,8 @@ enum { VIEW_GLOBE = 0, VIEW_ISO = 1 }
 signal province_picked(province: int, region: int, owner: int)
 signal country_context(owner: int)   ## CLIC DROIT sur un territoire → l'UI diplomatique du pays
 signal army_selection_changed(ids: Array) ## corps sélectionnés → panneau d'armée
+signal army_order_feedback(message: String, good: bool) ## ordre de marche → accusé immédiat, sélection conservée
+signal army_move_preview_changed(preview: Dictionary) ## survol destination → route/durée/issue avant clic
 signal mode_changed(m: int)     ## le mode render a changé (légende, sélecteurs)
 
 var mode := 0                   ## ViewMode de carte (0 terrain · 1 politique · 2 régions · 3 pays)
@@ -33,6 +35,8 @@ var view_mode := VIEW_ISO       ## TOUJOURS ISO (compat overlay : le globe n'exi
 var _selected_prov := -1
 var _army_selected := false     ## MODE MARCHE : le pion du joueur est sélectionné, le prochain clic ordonne la destination
 var _selected_corps: Array[int] = []
+var _move_preview: Dictionary = {}
+var _preview_region := -2
 var _raid_mode := false          ## sous-mode PILLAGE : le prochain clic pille la province cible au lieu de marcher
 var _press_pos := Vector2.ZERO
 var _dragged := false
@@ -129,6 +133,8 @@ func _input(event: InputEvent) -> void:
 			else:
 				_box_dragging = true
 			_nav_redraw()
+	elif event is InputEventMouseMotion and _army_selected:
+		_update_move_preview()
 	elif event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
 			_zoom(0.84)
@@ -193,7 +199,10 @@ func _set_selected_corps(ids: Array) -> void:
 		_overlay.army_selected = _army_selected
 		_overlay.selected_corps = _selected_corps.duplicate()
 		_overlay.queue_redraw()
+	_set_move_preview({})
 	army_selection_changed.emit(_selected_corps.duplicate())
+	if _army_selected:
+		_preview_region = -2
 
 func _set_army_selected(on: bool) -> void:
 	if not on: _set_selected_corps([])
@@ -242,13 +251,10 @@ func _pick_at_mouse() -> void:
 		# mode MARCHE : ce clic ORDONNE la destination — sauf re-clic sur l'armée (= annule).
 		if hit_army < 0:
 			var dreg: int = Sim.world.province_region(prov) if prov >= 0 else -1
-			if dreg >= 0 and Sim.world.has_method("player_move_corps"):
-				for id in _selected_corps:
-					var ci: Dictionary = Sim.world.corps_info(id) if Sim.world.has_method("corps_info") else {}
-					if bool(ci.get("active",false)): Sim.world.player_move_corps(id,dreg)
-					elif Sim.world.has_method("player_move_army"): Sim.world.player_move_army(dreg)
+			var issued := _issue_selected_move(dreg, prov)
+			if issued > 0:
 				Sim.notify_action()
-		if hit_army < 0: _set_selected_corps([])
+		# La sélection RESTE active : le panneau montre le passage à « En marche » au drain.
 		return
 	if hit_army >= 0:
 		_set_selected_corps([hit_army])
@@ -267,6 +273,88 @@ func _pick_at_mouse() -> void:
 		if region >= 0:
 			owner = Sim.world.region_owner(region)
 	province_picked.emit(prov, region, owner)
+
+func _issue_selected_move(dreg: int, prov: int = -1) -> int:
+	var issued := 0
+	if Sim.world != null and dreg >= 0 and Sim.world.has_method("player_move_corps"):
+		for id in _selected_corps:
+			var ci: Dictionary = Sim.world.corps_info(id) if Sim.world.has_method("corps_info") else {}
+			if bool(ci.get("active", false)):
+				issued += 1 if Sim.world.player_move_corps(id, dreg) else 0
+			elif Sim.world.has_method("player_move_army"):
+				issued += 1 if Sim.world.player_move_army(dreg) else 0
+	if issued > 0:
+		var destination := "la région %d" % dreg
+		if prov >= 0 and Sim.world.has_method("province_info"):
+			var pi: Dictionary = Sim.world.province_info(prov)
+			destination = String(pi.get("nom", destination))
+		army_order_feedback.emit("Ordre de marche émis vers %s pour %d corps." % [destination, issued], true)
+	else:
+		army_order_feedback.emit("Destination invalide ou corps indisponible.", false)
+	return issued
+
+func _update_move_preview() -> void:
+	if Sim.world == null or not Sim.world.has_method("province_at"):
+		_set_move_preview({})
+		return
+	var wp := unproj(get_global_mouse_position().x, get_global_mouse_position().y)
+	var cx := int(floor(wp.x))
+	var cy := int(floor(wp.y))
+	var target := -1
+	if cx >= 0 and cy >= 0 and cx < Sim.world.map_w() and cy < Sim.world.map_h():
+		var prov := int(Sim.world.province_at(cx, cy))
+		if prov >= 0: target = int(Sim.world.province_region(prov))
+	if target == _preview_region:
+		return
+	_preview_region = target
+	_set_move_preview(_aggregate_move_preview(target))
+
+func _aggregate_move_preview(target_region: int) -> Dictionary:
+	if Sim.world == null or target_region < 0 or not Sim.world.has_method("corps_move_preview"):
+		return {}
+	var previews: Array[Dictionary] = []
+	var max_days := 0.0
+	var invalid := 0
+	var reason := ""
+	var arrival := ""
+	var target_name := ""
+	var path: Array = []
+	var units_start := 0
+	var attrition_loss := 0
+	var units_arrival := 0
+	var worst_daily_pct10 := 0
+	for id in _selected_corps:
+		var p: Dictionary = Sim.world.corps_move_preview(id, target_region)
+		previews.append(p)
+		if not bool(p.get("valid", false)):
+			invalid += 1
+			if reason == "": reason = String(p.get("reason", "Déplacement impossible"))
+		else:
+			max_days = maxf(max_days, float(p.get("travel_days", 0.0)))
+			units_start += int(p.get("units_start", 0))
+			attrition_loss += int(p.get("attrition_loss", 0))
+			units_arrival += int(p.get("units_arrival", 0))
+			worst_daily_pct10 = maxi(worst_daily_pct10, int(p.get("worst_daily_pct10", 0)))
+			if path.is_empty(): path = (p.get("path", []) as Array).duplicate()
+		if arrival == "": arrival = String(p.get("arrival", ""))
+		if target_name == "": target_name = String(p.get("target_name", ""))
+	return {
+		"valid": invalid == 0 and not previews.is_empty(), "target_region": target_region,
+		"target_name": target_name, "travel_days": max_days, "corps_count": previews.size(),
+		"invalid_count": invalid, "reason": reason, "arrival": arrival,
+		"units_start": units_start, "attrition_loss": attrition_loss,
+		"units_arrival": units_arrival,
+		"attrition_pct": int(round(100.0 * float(attrition_loss) / float(units_start))) if units_start > 0 else 0,
+		"worst_daily_pct10": worst_daily_pct10,
+		"path": path, "details": previews,
+	}
+
+func _set_move_preview(preview: Dictionary) -> void:
+	_move_preview = preview.duplicate(true)
+	if _overlay != null:
+		_overlay.move_preview = _move_preview.duplicate(true)
+		_overlay.queue_redraw()
+	army_move_preview_changed.emit(_move_preview.duplicate(true))
 
 # ── verbes publics (boutons de carte) ──
 func toggle_nature() -> void:

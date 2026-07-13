@@ -8,7 +8,10 @@ extends Control
 
 const VKit = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
+const InfoRef = preload("res://ui/info_ref.gd")
 const DrawerK = preload("res://ui/sidebar_drawer.gd")   # DACT_LABEL partagé (mémoire datée)
+
+signal navigate_requested(request: Dictionary)
 
 const PW := 380.0
 
@@ -21,10 +24,14 @@ var _status: Label
 var _opinion_bar: Rect2
 var _opinion_course: Label   ## opinion actuelle → point d'équilibre calculé par ses composantes
 var _sum_lbl: Label
+var _engagement_lbl: Label
+var _capital_btn: Button
+var _capital_region := -1
 var _cd_lbl: Label
 var _cb_lbl: Label   ## W-GUERRE-3 : état de l'intrigue fabriquée (en cours / prête / coût)
 var _context_hint: Label   ## rappel des panneaux où suivre les conséquences de la relation
 var _flash: Label
+var _legal_by_verb := {} ## verbe -> décision structurée du moteur (autorisé, raison, coût, délai)
 
 # UI-4 (retour joueur 2026-07-10) : hiérarchie d'actions — Guerre est DESTRUCTIF (rouge
 # sombre + confirmation 2 clics, motif _servile_manumit_armed/province_panel _purge_armed) ;
@@ -38,6 +45,10 @@ const ACTION_HELP := {
 	"pact": "Propose un pacte commercial. Il ouvre les échanges et nourrit le contact entre les peuples.",
 	"migration": "Propose un pacte migratoire. Des populations pourront circuler entre les deux pays.",
 	"embargo": "Ferme ou rouvre unilatéralement le commerce avec ce pays ; l'opinion et les routes suivent.",
+}
+const DIPLO_ACTION_ID := {
+	"war": 0, "peace": 1, "ally": 2, "pact": 3,
+	"migration": 4, "embargo": 5, "fabricate": 6,
 }
 var _war_armed := false
 var _war_armed_ms := -100000
@@ -113,6 +124,20 @@ func _build() -> void:
 	_sum_lbl.add_theme_font_size_override("font_size", 12)
 	_sum_lbl.add_theme_color_override("font_color", Color(0.72, 0.70, 0.66))
 	col.add_child(_sum_lbl)
+
+	_engagement_lbl = Label.new()
+	_engagement_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_engagement_lbl.custom_minimum_size = Vector2(PW - 40.0, 0)
+	_engagement_lbl.add_theme_font_size_override("font_size", 12)
+	_engagement_lbl.add_theme_color_override("font_color", VKit.COL_PARCH)
+	col.add_child(_engagement_lbl)
+
+	_capital_btn = Button.new()
+	_capital_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_capital_btn.pressed.connect(func():
+		if _capital_region >= 0:
+			navigate_requested.emit(InfoRef.request(InfoRef.make(InfoRef.REGION, _capital_region), "map")))
+	col.add_child(_capital_btn)
 
 	_cd_lbl = Label.new()
 	_cd_lbl.add_theme_color_override("font_color", Color(0.85, 0.65, 0.30))
@@ -271,26 +296,51 @@ func _refresh() -> void:
 			nj += 1
 	_sum_lbl.text = ("Pourquoi : " + ", ".join(parts) + "\n" if parts.size() > 0 else "") \
 		+ ("Mémoire : " + " — ".join(mem) if mem.size() > 0 else "Mémoire : aucun acte notable")
+	# P8 — engagements, portée et lieux viennent d'un lecteur unique. La fiche ne
+	# reconstitue ni pacte, ni slots d'alliance, ni liaison commerciale.
+	var ctx: Dictionary = w.diplo_context(_cid) if w.has_method("diplo_context") else {}
+	var engagements := PackedStringArray()
+	if bool(ctx.get("at_war", false)):
+		engagements.append("guerre (score %+d)" % int(round(float(ctx.get("war_score", 0.0)))))
+	if bool(ctx.get("allied", false)):
+		engagements.append("alliance")
+	if bool(ctx.get("trade_pact", false)):
+		engagements.append("pacte commercial")
+	if bool(ctx.get("migration_pact", false)):
+		engagements.append("pacte migratoire")
+	if bool(ctx.get("embargo", false)):
+		engagements.append("embargo")
+	var vdir := int(ctx.get("vassal_direction", 0))
+	if vdir != 0:
+		engagements.append(("notre vassal" if vdir > 0 else "notre suzerain") +
+			(" · %s" % String(ctx.get("contract", "")) if String(ctx.get("contract", "")) != "" else ""))
+	if engagements.is_empty():
+		engagements.append("aucun engagement actif")
+	var scope := "Alliances : nous %d/%d · eux %d/%d" % [int(ctx.get("ally_slots_player", 0)),
+		int(ctx.get("ally_slots_max", 2)), int(ctx.get("ally_slots_target", 0)), int(ctx.get("ally_slots_max", 2))]
+	var route := "Aucune liaison commerciale directe"
+	var shared := int(ctx.get("shared_routes", 0))
+	if shared > 0:
+		route = "%s ↔ %s · %d/%d route(s) ouverte(s) · rendement %.1f" % [
+			String(ctx.get("route_a_name", "?")), String(ctx.get("route_b_name", "?")),
+			int(ctx.get("open_routes", 0)), shared, float(ctx.get("route_yield", 0.0))]
+		if bool(ctx.get("route_maritime", false)):
+			route += " · mer %.0f j" % float(ctx.get("route_sea_days", 0.0))
+	_engagement_lbl.text = "Engagements : %s\nPortée : %s\nLiaison : %s" % [", ".join(engagements), scope, route]
+	_capital_region = int(ctx.get("target_capital_region", -1))
+	var capital_name := String(ctx.get("target_capital_name", ""))
+	_capital_btn.text = "⌖ Voir la capitale%s" % (" — " + capital_name if capital_name != "" else "")
+	_capital_btn.disabled = _capital_region < 0
+	_capital_btn.tooltip_text = "Centrer la carte sur la capitale de ce pays."
 	# le DIPLOMATE : cooldown → tous les verbes grisés + la raison affichée
 	var cd := int(w.diplo_cd()) if w.has_method("diplo_cd") else 0
 	_cd_lbl.text = ("Émissaire : retour dans %d j" % cd) if cd > 0 else "Émissaire : disponible"
 	var op2: Dictionary = w.diplo_options(_cid) if w.has_method("diplo_options") else {}
-	var can := {
-		"war": bool(op2.get("can_declare_war", false)),
-		"peace": bool(op2.get("can_make_peace", false)),
-		"ally": bool(op2.get("can_offer_alliance", false)),
-		"pact": bool(op2.get("can_offer_pact", false)),
-		"migration": bool(op2.get("can_offer_migration", false)),
-		"embargo": bool(op2.get("can_embargo", false)) or bool(op2.get("can_lift_embargo", false)),
-		"fabricate": bool(op2.get("can_fabricate", false)),
-	}
-	var would := {
-		"ally": bool(op2.get("would_accept_alliance", true)),
-		"pact": bool(op2.get("would_accept_pact", true)),
-		"migration": bool(op2.get("would_accept_migration", true)),
-		"peace": bool(op2.get("would_accept_peace", true)),
-	}
-	# état de relation (langue-indépendant, via opinion_summary) pour NOMMER la raison d'un verbe grisé
+	_legal_by_verb.clear()
+	for legal_verb in DIPLO_ACTION_ID:
+		_legal_by_verb[legal_verb] = _read_legal(w, legal_verb, op2, cd)
+	# L'état de relation ne sert plus qu'au conseil contextuel. La légalité et sa raison
+	# viennent exclusivement de diplo_action_legal : l'UI ne reconstruit aucune règle.
 	var psr: Dictionary = w.opinion_summary(_cid) if w.has_method("opinion_summary") else {}
 	var at_war: bool = int(psr.get("war", 0)) != 0
 	var allied: bool = int(psr.get("ally", 0)) != 0
@@ -305,15 +355,19 @@ func _refresh() -> void:
 		if verb == "fabricate":
 			continue   # géré à part plus bas (texte/état dynamiques)
 		var b: Button = _btns[verb]
-		b.disabled = cd > 0 or not bool(can.get(verb, false))
+		var legal: Dictionary = _legal_by_verb.get(verb, {})
+		b.disabled = not bool(legal.get("allowed", false))
 		if verb == "war" and b.disabled:
 			_war_armed = false          # plus légal ⇒ la confirmation en attente retombe
 		# AMBRE : permis mais l'offre serait REFUSÉE (l'opinion #26 prévisualisée)
-		var amber: bool = (not b.disabled) and would.has(verb) and not bool(would[verb])
+		var amber: bool = (not b.disabled) and not bool(legal.get("unilateral", true)) \
+			and not bool(legal.get("would_accept", true))
 		# UI-5 (retour joueur : « la couleur seule ne suffit pas ») : l'ambre « il
 		# refusera » ne se voyait qu'à la teinte du bouton (invisible avant le survol) —
 		# un « ⚠ » sur le LIBELLÉ double le canal, visible sans survoler.
 		var base_label: String = String(BTN_LABELS.get(verb, verb))
+		if verb == "embargo" and not bool(legal.get("toggle_on", true)):
+			base_label = "Lever l'embargo"
 		if verb == "war":
 			# DESTRUCTIF : le libellé PORTE la confirmation (« Confirmer la guerre ? »),
 			# le fond bascule à un rouge plus vif tant que l'armement tient (4 s).
@@ -325,7 +379,7 @@ func _refresh() -> void:
 			b.modulate = Color(1.0, 0.82, 0.5) if amber else Color(1, 1, 1)
 		# RETOUR JOUEUR : chaque verbe GRISÉ nomme sa raison au survol (« pourquoi je peux pas ? »)
 		if b.disabled:
-			b.tooltip_text = _why_disabled(verb, cd, at_war, allied, has_pact, op2)
+			b.tooltip_text = _legal_tooltip(legal, "")
 		elif verb == "war" and _war_armed:
 			b.tooltip_text = "irréversible — cliquez de nouveau pour confirmer (4 s)"
 		elif amber:
@@ -340,6 +394,7 @@ func _refresh() -> void:
 	var cost := float(op2.get("fabricate_cost", 0.0))
 	var fab_btn: Button = _btns.get("fabricate")
 	if fab_btn != null:
+		var fab_legal: Dictionary = _legal_by_verb.get("fabricate", {})
 		if fabricating:
 			var dleft := int(ceili(float(op2.get("fabricating_days_left", 0.0))))
 			fab_btn.text = "Intrigue en cours (%d j)" % dleft
@@ -350,7 +405,8 @@ func _refresh() -> void:
 			fab_btn.disabled = true   # rien à refaire tant qu'elle est valide — déclarez la guerre
 		else:
 			fab_btn.text = "Fabriquer une revendication (%d or)" % int(round(cost))
-			fab_btn.disabled = cd > 0 or not bool(can.get("fabricate", false))
+			fab_btn.disabled = not bool(fab_legal.get("allowed", false))
+		fab_btn.tooltip_text = _legal_tooltip(fab_legal, "Lance une intrigue qui produira un casus belli temporaire.")
 	if fabricating:
 		_cb_lbl.text = "Une intrigue mûrit contre ce pays."
 	elif cb_ready:
@@ -369,7 +425,9 @@ func _act(verb: String) -> void:
 		"ally": ok = bool(w.player_offer_alliance(_cid))
 		"pact": ok = bool(w.player_offer_pact(_cid))
 		"migration": ok = bool(w.player_offer_migration(_cid))
-		"embargo": ok = bool(w.player_embargo(_cid, 1))
+		"embargo":
+			var embargo_legal: Dictionary = _legal_by_verb.get("embargo", {})
+			ok = bool(w.player_embargo(_cid, 1 if bool(embargo_legal.get("toggle_on", true)) else 0))
 		"fabricate": ok = bool(w.player_fabricate_cb(_cid))
 	var action_name := String(BTN_LABELS.get(verb, verb)).to_lower()
 	_flash.text = ("Ordre émis : %s · l'émissaire part." % action_name) if ok \
@@ -379,11 +437,12 @@ func _act(verb: String) -> void:
 		# l'ÉMISSAIRE PART : on mémorise SON objectif (display-only) pour le menu de droite,
 		# tant qu'il est « en tournée » (diplo_cd). Phrase franche + le pays cible.
 		var target := String(_head.text)
+		var embargo_on := bool(_legal_by_verb.get("embargo", {}).get("toggle_on", true))
 		var obj: String = {
 			"war": "Déclarer la guerre à %s", "peace": "Proposer la paix à %s",
 			"ally": "Proposer une alliance à %s", "pact": "Proposer un pacte à %s",
 			"migration": "Proposer un pacte migratoire à %s",
-			"embargo": "Décréter un embargo contre %s",
+			"embargo": ("Décréter un embargo contre %s" if embargo_on else "Lever l'embargo contre %s"),
 			"fabricate": "Fabriquer une revendication contre %s",
 		}.get(verb, "Émissaire dépêché auprès de %s")
 		Sim.note_emissary(obj % target)
@@ -393,36 +452,38 @@ func _act(verb: String) -> void:
 		Sound.play("ui_click")
 	_refresh()
 
-## la RAISON explicite d'un verbe GRISÉ (retour joueur : « chaque chose grisée doit être nommée »).
-## Dérivée des flags diplo_options + de l'état de relation (opinion_summary), langue-indépendante.
-func _why_disabled(verb: String, cd: int, at_war: bool, allied: bool, has_pact: bool, op2: Dictionary = {}) -> String:
-	if cd > 0:
-		return "émissaire en tournée — de retour dans %d j" % cd
+## Décision structurée fournie par le moteur. Le fallback ne sert qu'aux anciennes DLL
+## de développement verrouillées : il reprend les flags de façade sans déduire la cause.
+func _read_legal(w, verb: String, op2: Dictionary, cd: int) -> Dictionary:
+	if w.has_method("diplo_action_legal"):
+		return w.diplo_action_legal(_cid, int(DIPLO_ACTION_ID[verb]))
+	var allowed := false
 	match verb:
-		"war":
-			# la VRAIE raison (retour joueur « pourquoi je suis en trêve au début ? ») : au
-			# départ il n'y a PAS de trêve — la guerre est bloquée par l'absence de CASUS
-			# BELLI (fabriquez une revendication). On ne dit « trêve » que s'il y en a une.
-			if at_war:
-				return "déjà en guerre avec ce pays"
-			if float(op2.get("truce_days", 0.0)) > 0.0:
-				return "trêve en cours — paix trop récente (%d j)" % int(ceili(float(op2.get("truce_days", 0.0))))
-			if bool(op2.get("fabricating", false)):
-				return "revendication en fabrication (%d j)" % int(ceili(float(op2.get("fabricating_days_left", 0.0))))
-			return "aucun casus belli — fabriquez une revendication d'abord"
-		"peace":
-			return "vous n'êtes pas en guerre avec ce pays"
-		"ally":
-			if at_war: return "impossible : vous êtes en guerre"
-			if allied: return "vous êtes déjà alliés"
-			return "aucun créneau d'alliance libre (de part ou d'autre)"
-		"pact":
-			if at_war: return "impossible : vous êtes en guerre"
-			if has_pact: return "un pacte commercial existe déjà"
-			return "pacte impossible pour l'instant"
-		"migration":
-			if at_war: return "impossible : vous êtes en guerre"
-			return "un pacte migratoire existe déjà"
-		"embargo":
-			return "embargo indisponible pour l'instant"
-	return "indisponible pour l'instant"
+		"war": allowed = bool(op2.get("can_declare_war", false))
+		"peace": allowed = bool(op2.get("can_make_peace", false))
+		"ally": allowed = bool(op2.get("can_offer_alliance", false))
+		"pact": allowed = bool(op2.get("can_offer_pact", false))
+		"migration": allowed = bool(op2.get("can_offer_migration", false))
+		"embargo": allowed = bool(op2.get("can_embargo", false)) or bool(op2.get("can_lift_embargo", false))
+		"fabricate": allowed = bool(op2.get("can_fabricate", false))
+	allowed = allowed and cd <= 0
+	return {
+		"allowed": allowed, "would_accept": true, "unilateral": verb in ["war", "embargo", "fabricate"],
+		"toggle_on": not bool(op2.get("can_lift_embargo", false)),
+		"reason_label": "Disponible" if allowed else ("Émissaire en tournée" if cd > 0 else "Indisponible"),
+		"duration_days": cd if cd > 0 else 0, "cost_gold": float(op2.get("fabricate_cost", 0.0)) if verb == "fabricate" else 0.0,
+		"gold_missing": 0.0,
+	}
+
+func _legal_tooltip(legal: Dictionary, help: String) -> String:
+	var txt := help if bool(legal.get("allowed", false)) and help != "" else String(legal.get("reason_label", "Indisponible"))
+	var days := int(legal.get("duration_days", 0))
+	var cost := float(legal.get("cost_gold", 0.0))
+	var missing := float(legal.get("gold_missing", 0.0))
+	if days > 0:
+		txt += " · %d j" % days
+	if cost > 0.0:
+		txt += " · coût %.0f or" % cost
+	if missing > 0.0:
+		txt += " · manque %.0f or" % missing
+	return txt

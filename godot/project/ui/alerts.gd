@@ -57,6 +57,7 @@ const FEED_KINDS := {
 	8: {"icon": "stability_shield", "col": COL_ARMEE, "fmt": "BATAILLE GAGNÉE contre {b} en région {r} (an {y})"},
 	9: {"icon": "alert_warning",  "col": COL_ARMEE, "fmt": "BATAILLE PERDUE contre {b} — l'ost est brisé (région {r}, an {y})"},
 	10: {"icon": "alert_event_bell", "col": COL_ETAT, "fmt": "{label} — région {r} (an {y})"},   # ÉVÈNEMENT du directeur
+	11: {"icon": "alert_warning", "col": COL_ARMEE, "fmt": "BATAILLE INDÉCISE contre {b} en région {r} (an {y})"},
 }
 ## kinds MAJEURS → popup OYEZ OYEZ (pause + boutons adaptatifs) au lieu d'un chip.
 const POPUP_KINDS := [1, 2, 6, 7, 10]   # guerre · paix (verdict) · révolte · sécession · directeur
@@ -109,7 +110,8 @@ func _refresh() -> void:
 	visible = n > 0
 	queue_redraw()
 
-## VOIE ÉVÈNEMENTS : poll incrémental du fil moteur → chips TRANSIENTS (clic = acquitté).
+## VOIE ÉVÈNEMENTS : poll incrémental du fil moteur → chips TRANSIENTS
+## (clic gauche = lieu si localisé ; clic droit = acquittement seul).
 func _poll_feed() -> void:
 	var w = Sim.world
 	if w == null or not w.has_method("feed_poll"):
@@ -139,6 +141,8 @@ func _poll_feed() -> void:
 			var sc := int(ev.get("v", 0))
 			var verdict := "guerre GAGNÉE" if sc >= 10 else ("guerre PERDUE" if sc <= -10 else "paix blanche")
 			tip += " — %s (score %+d)" % [verdict, sc]
+		if kind == 8 or kind == 9 or kind == 11:
+			tip += " — " + _battle_losses_text(int(ev.get("v", 0)))
 		if kind == 6 and int(ev.get("a_id", -1)) >= 0:
 			# GUERRE CIVILE INCARNÉE (scps_revolt.c spawn_rebel_polity) : {a} porte déjà le
 			# nom du rebelle ("Rebelles de <héritage>") — le fil le NOMME au lieu du générique.
@@ -148,7 +152,11 @@ func _poll_feed() -> void:
 		if kind in POPUP_KINDS:
 			popup_requested.emit(_popup_of(kind, ev, tip))   # MAJEUR → OYEZ OYEZ (pause)
 			continue
-		_events.append({"icon": k["icon"], "col": k["col"], "tip": tip + "  (clic : acquitter)", "seq": int(ev["seq"])})
+		var action := _feed_event_action(kind, int(ev.get("region", -1)))
+		var entry := {"icon": k["icon"], "col": k["col"], "seq": int(ev["seq"])}
+		entry.merge(action)
+		entry["tip"] = tip + ("  (clic : y aller · clic droit : acquitter)" if not action.is_empty() else "  (clic : acquitter)")
+		_events.append(entry)
 	while _events.size() > FEED_MAX:
 		_events.pop_front()   # bornés : les plus récents restent
 
@@ -417,10 +425,12 @@ func _gui_input(event: InputEvent) -> void:
 			if int(_events[i]["seq"]) == int(al["seq"]):
 				_events.remove_at(i)
 				break
-		# certains évènements transients portent une ACTION propre (ex. métabolisation
-		# prête → ouvre l'arbre tech) — routée comme les conditions, en plus de l'acquit.
-		if al.has("act") and String(al["act"]) == "tech_metab":
-			open_tech_metab.emit()
+		# L'évènement est acquitté, puis son action contextuelle est routée : bataille/
+		# siège/pillage → région ; métabolisation → arbre. Le clic droit reste le seul
+		# acquittement sans navigation.
+		match String(al.get("act", "")):
+			"tech_metab": open_tech_metab.emit()
+			"goto": goto_region.emit(int(al.get("region", -1)))
 	else:
 		match String(al.get("act", "")):
 			"council":
@@ -459,3 +469,23 @@ func _get_tooltip(at_position: Vector2) -> String:
 			parts.append("• " + String((it as Dictionary).get("tip", "")))
 		return "%d alerte(s) en attente (fenêtre ouverte) :\n%s" % [items.size(), "\n".join(parts)]
 	return String((row["data"] as Dictionary).get("tip", ""))
+
+static func _grp(n: int) -> String:
+	var s := str(absi(n))
+	var out := ""
+	var count := 0
+	for i in range(s.length() - 1, -1, -1):
+		out = s[i] + out
+		count += 1
+		if count % 3 == 0 and i > 0: out = " " + out
+	return ("-" if n < 0 else "") + out
+
+static func _feed_event_action(kind: int, region: int) -> Dictionary:
+	if region >= 0 and kind in [3, 4, 5, 8, 9, 11]:
+		return {"act": "goto", "region": region}
+	return {}
+
+static func _battle_losses_text(packed: int) -> String:
+	var ours := (packed & 0xffff) * 100
+	var theirs := ((packed >> 16) & 0xffff) * 100
+	return "pertes confirmées : nous %s · ennemi %s" % [_grp(ours), _grp(theirs)]

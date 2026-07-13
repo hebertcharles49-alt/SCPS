@@ -2,13 +2,16 @@ extends Control
 ## EMPIRE SIDEBAR — la bande DROITE permanente (en jeu) : le RÉSUMÉ D'EMPIRE en haut
 ## (villes + habitants · armées · flotte · colonisation en cours) et le LOG de
 ## notifications en bas (le fil, persistant — détails minimes mais exhaustifs).
-## Display-only : tout est LU de la façade ; aucun bouton, aucun verbe.
+## Les données sont LUES de la façade ; seuls les raccourcis de navigation et les
+## verbes déjà assumés par la bande (âge, renfort) sont interactifs.
 
 const VKit = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
 
 const AlertsK = preload("res://ui/alerts.gd")   # la TABLE DU FIL (FEED_KINDS) partagée
+
+signal goto_region(region: int)
 
 const W := 288.0            ## élargie (retour joueur 2026-07-10 : « laisse respirer »)
 const HANDLE_W := 14.0      ## bande réduite quand la sidebar est REPLIÉE (rabat)
@@ -25,6 +28,7 @@ var _age_engageable := false ## retour joueur 2026-07-11 : « sous le temps, au-
 var _fold := {}             ## titre de section → replié (retour joueur 2026-07-10 :
                             ## « tous les menus de droite doivent pouvoir se collapser »)
 var _sec_rects := []        ## [{rect, title}] bandeaux cliquables (reconstruit au _draw)
+var _log_rects := []        ## [{rect, region, txt}] lignes localisées du journal
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE   # lecture seule : la carte reste cliquable au travers ? Non — bande opaque
@@ -78,6 +82,16 @@ func _gui_input(e: InputEvent) -> void:
 				queue_redraw()
 			accept_event()
 			return
+		# JOURNAL : une ligne localisée reste un raccourci vers le théâtre de l'évènement.
+		if not _collapsed:
+			for lr in _log_rects:
+				if (lr["rect"] as Rect2).has_point(e.position):
+					var region := int(lr.get("region", -1))
+					if region >= 0:
+						goto_region.emit(region)
+						Sound.play("ui_click")
+						accept_event()
+						return
 		# PLIAGE PAR SECTION : clic sur un bandeau → replie/déplie son contenu
 		if not _collapsed:
 			for sr in _sec_rects:
@@ -97,14 +111,23 @@ func _poll() -> void:
 		_seen_seq = maxi(_seen_seq, int(ev["seq"]))
 		if not Sim.game_on:
 			continue                              # le fil pré-partie est jeté (vitrine)
-		var meta: Dictionary = AlertsK.FEED_KINDS.get(int(ev.get("kind", 0)), {})
+		var kind := int(ev.get("kind", 0))
+		var meta: Dictionary = AlertsK.FEED_KINDS.get(kind, {})
 		var txt := String(meta.get("fmt", String(ev.get("label", "évènement"))))
 		txt = txt.replace("{a}", String(ev.get("a", "?"))) \
 			.replace("{b}", String(ev.get("b", "?"))) \
 			.replace("{r}", _region_name(int(ev.get("region", -1)))) \
 			.replace("{label}", String(ev.get("label", ""))) \
 			.replace(" (an {y})", "")             # l'an vit déjà en préfixe de ligne
-		_log.push_front({"txt": txt, "y": int(ev.get("year", 0))})
+		if kind in [8, 9, 11]:
+			txt += " — " + AlertsK._battle_losses_text(int(ev.get("v", 0)))
+		var action: Dictionary = AlertsK._feed_event_action(kind, int(ev.get("region", -1)))
+		var region := int(action.get("region", -1)) if String(action.get("act", "")) == "goto" else -1
+		_log.push_front({
+			"txt": txt,
+			"y": int(ev.get("year", 0)),
+			"region": region,
+		})
 	while _log.size() > LOG_MAX:
 		_log.pop_back()
 
@@ -122,6 +145,7 @@ func _region_name(r: int) -> String:
 	return nm
 
 func _draw() -> void:
+	_log_rects.clear()
 	if Sim.world == null:
 		return
 	var w = Sim.world
@@ -295,10 +319,18 @@ func _draw() -> void:
 			if y > _maxh - 20.0:   # borné à la BANDE dispo (pas à size.y, qui s'adapte)
 				break
 			var line := "an %d · %s" % [int(e["y"]), String(e["txt"])]
+			var region := int(e.get("region", -1))
+			if region >= 0:
+				_log_rects.append({
+					"rect": Rect2(x - 2.0, y - 1.0, W - 22.0, 16.0),
+					"region": region,
+					"txt": line,
+				})
 			# tronqué à la largeur (les détails vivent dans les alertes/panneaux)
 			while VKit.text_w(line) > W - 26.0 and line.length() > 8:
 				line = line.substr(0, line.length() - 4) + "…"
-			VKit.text(self, Vector2(x, y), VKit.COL_DIM, line, VKit.FS_SMALL)
+			VKit.text(self, Vector2(x, y), VKit.COL_PARCH if region >= 0 else VKit.COL_DIM,
+				line, VKit.FS_SMALL)
 			y += 16
 
 	# ── DÉCOUPE AU CONTENU : le panneau s'arrête à sa dernière ligne (latch —
@@ -411,6 +443,9 @@ func _get_tooltip(at_position: Vector2) -> String:
 		return ""
 	if _age_engageable and _age_rect.size.x > 0 and _age_rect.has_point(at_position):
 		return "Un âge s'est levé — clic pour l'ENGAGER (une fois par âge)."
+	for lr in _log_rects:
+		if (lr["rect"] as Rect2).has_point(at_position):
+			return "%s\nClic : centrer la carte sur le lieu." % String(lr.get("txt", ""))
 	for sr in _sec_rects:
 		if (sr["rect"] as Rect2).has_point(at_position):
 			return String(SEC_TIPS.get(String(sr["title"]), ""))

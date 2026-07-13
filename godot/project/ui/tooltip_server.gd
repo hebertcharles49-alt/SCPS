@@ -12,6 +12,8 @@ extends Control
 
 const Concepts = preload("res://ui/concepts.gd")
 
+signal navigate_requested(request: Dictionary)
+
 const DELAY := 0.45          ## s de survol stable avant apparition
 const LOCK_AT := 1.0         ## s de survol total avant VERROUILLAGE (hitbox élargie)
 const SUB_DELAY := 0.30      ## s sur un mot turquoise avant d'ouvrir son enfant
@@ -26,8 +28,10 @@ const COL_EDGE_L := Color(0.35, 0.78, 0.76)   ## liseré VERROUILLÉ (turquoise)
 var _levels := []            ## [{panel, rtl, sb}] — niveau 0 = le tooltip racine
 var _hover_ctrl: Control = null
 var _hover_text := ""
+var _hover_card: Dictionary = {}
 var _t := 0.0                ## temps de survol cumulé sur la source racine
 var _locked := false         ## niveau 0 verrouillé (la cascade est ouverte)
+var _pinned := false         ## carte structurée épinglée : reste jusqu'au lien Fermer
 var _grace := 0.0
 var _sub_level := -1         ## mot turquoise en cours de survol : niveau…
 var _sub_key := ""           ## …concept…
@@ -71,6 +75,8 @@ func _mk_level() -> Dictionary:
 	var lvl := {"panel": panel, "rtl": rtl, "sb": sb}
 	var idx := _levels.size()
 	rtl.meta_hover_started.connect(func(meta):
+		if String(meta).begins_with("nav:") or String(meta) in ["pin", "close"]:
+			return
 		_sub_level = idx
 		_sub_key = String(meta)
 		_sub_t = 0.0)
@@ -79,6 +85,23 @@ func _mk_level() -> Dictionary:
 			_sub_level = -1
 			_sub_key = ""
 			_sub_t = 0.0)
+	rtl.meta_clicked.connect(func(meta):
+		var mk := String(meta)
+		if mk == "pin":
+			_pinned = true
+			_lock()
+			return
+		if mk == "close":
+			_teardown(0)
+			return
+		if not mk.begins_with("nav:"):
+			return
+		var ai := int(mk.trim_prefix("nav:"))
+		var actions: Array = lvl.get("actions", [])
+		if ai >= 0 and ai < actions.size():
+			var action = actions[ai]
+			if action is Dictionary and action.get("request", {}) is Dictionary:
+				navigate_requested.emit((action["request"] as Dictionary).duplicate(true)))
 	return lvl
 
 func _teardown(from_level: int) -> void:
@@ -91,6 +114,7 @@ func _teardown(from_level: int) -> void:
 		_sub_t = 0.0
 	if _levels.is_empty():
 		_locked = false
+		_pinned = false
 		_t = 0.0
 		_grace = 0.0
 
@@ -120,6 +144,8 @@ func _process(delta: float) -> void:
 	if _locked:
 		var depth := _in_chain(mp)
 		if depth < 0:
+			if _pinned:
+				return
 			_grace += delta
 			if _grace >= GRACE:
 				_teardown(0)
@@ -150,19 +176,25 @@ func _process(delta: float) -> void:
 	if ctrl != null and is_instance_valid(ctrl) and is_ancestor_of(ctrl):
 		ctrl = _hover_ctrl
 	var text := ""
+	var card: Dictionary = {}
 	if ctrl != null and is_instance_valid(ctrl):
 		text = ctrl.get_tooltip(ctrl.get_local_mouse_position())
-	if ctrl != _hover_ctrl or text != _hover_text:
+		if ctrl.has_method("get_info_card"):
+			var payload = ctrl.call("get_info_card", ctrl.get_local_mouse_position())
+			if payload is Dictionary:
+				card = payload
+	if ctrl != _hover_ctrl or text != _hover_text or var_to_str(card) != var_to_str(_hover_card):
 		_hover_ctrl = ctrl
 		_hover_text = text
+		_hover_card = card.duplicate(true)
 		_t = 0.0
 		_teardown(0)
 		return
-	if text == "":
+	if text == "" and card.is_empty():
 		return
 	_t += delta
 	if _levels.is_empty() and _t >= DELAY:
-		_show_root(text)
+		_show_root(text, card)
 	elif not _levels.is_empty() and _t >= LOCK_AT:
 		_lock()
 
@@ -178,12 +210,56 @@ func _decorated(text: String, header_key: String = "") -> String:
 		bb = "%s[b][color=#%s]%s[/color][/b]\n%s" % [hpre, Concepts.COL, header_key, bb]
 	return bb
 
-func _show_root(text: String) -> void:
+func _show_root(text: String, card: Dictionary = {}) -> void:
 	var lvl := _mk_level()
-	(lvl["rtl"] as RichTextLabel).text = _decorated(text)
+	if card.is_empty():
+		(lvl["rtl"] as RichTextLabel).text = _decorated(text)
+	else:
+		lvl["actions"] = card.get("actions", []).duplicate(true)
+		(lvl["rtl"] as RichTextLabel).text = _card_bb(card)
 	_levels.append(lvl)
 	_anchor = get_global_mouse_position()
 	_place(lvl, _anchor + Vector2(18, 22))
+
+## Payload structuré optionnel. Les contrôles non migrés continuent à fournir une
+## simple String ; les cartes utilisent les mêmes décorations de concepts.
+func _card_bb(card: Dictionary) -> String:
+	var title := String(card.get("title", ""))
+	var state := String(card.get("state", ""))
+	var trend := String(card.get("trend", ""))
+	var trend_tone := String(card.get("trend_tone", "positive"))
+	var body := String(card.get("body", ""))
+	var out := "[b]%s[/b]" % String(Concepts.decorate(title).get("bb", title))
+	if state != "" or trend != "":
+		out += "\n[color=#e8d9b0]%s[/color]" % state
+		if trend != "":
+			var trend_col := "df746d" if trend_tone == "negative" else "a9c98e"
+			out += "  [color=#%s]%s[/color]" % [trend_col, trend]
+	for line in card.get("lines", []):
+		var txt := ""
+		var tone := ""
+		if line is Dictionary:
+			txt = "%s  %s" % [String(line.get("label", "")), String(line.get("value", ""))]
+			tone = String(line.get("tone", ""))
+		else:
+			txt = String(line)
+		if txt != "":
+			var decorated := String(Concepts.decorate(txt).get("bb", txt))
+			var tone_col: String = {"positive": "7fd18a", "negative": "df746d",
+				"heading": "d7bd75", "dim": "99917f"}.get(tone, "")
+			out += "\n[color=#%s]%s[/color]" % [tone_col, decorated] if tone_col != "" else "\n" + decorated
+	if body != "":
+		out += "\n" + String(Concepts.decorate(body).get("bb", body))
+	var actions: Array = card.get("actions", [])
+	if not actions.is_empty():
+		out += "\n"
+		for i in range(actions.size()):
+			var action = actions[i]
+			if action is Dictionary:
+				out += "\n[url=nav:%d][color=#%s]› %s[/color][/url]" % [
+					i, Concepts.COL, String(action.get("label", "Ouvrir"))]
+	out += "\n\n[url=pin][color=#%s]Épingler[/color][/url]  ·  [url=close]Fermer[/url]" % Concepts.COL
+	return out
 
 func _lock() -> void:
 	_locked = true

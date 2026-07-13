@@ -20,17 +20,17 @@ func _run() -> void:
 	print("=== VERBS AUDIT — wiring complet du binding (§3) ===")
 	var viol := 0
 
-	# INVARIANT 0 : les 13 méthodes existent au binding
+	# INVARIANT 0 : les verbes conservés existent au binding (posture militaire supprimée).
 	for m in ["player_repress", "player_assimilate", "player_purge",
 			"player_council_hire", "player_council_dismiss",
 			"player_route", "player_market_buy", "player_market_sell",
-			"player_campaign", "player_posture", "player_refill",
+			"player_campaign", "player_refill",
 			"player_navy_build", "player_disband", "player_set_levy"]:
 		if not w.has_method(m):
 			push_error("verbs_audit: méthode absente : " + m); viol += 1
 	if viol > 0:
 		get_tree().quit(1); return
-	print("  ✓ 14 méthodes présentes au binding")
+	print("  ✓ 13 méthodes présentes au binding")
 
 	w.generate(9)
 	var me: int = w.player()
@@ -48,13 +48,12 @@ func _run() -> void:
 	w.player_market_buy(capr, 1, 10, 0)
 	w.player_market_sell(capr, 1, 5, 0)
 	w.player_campaign(capr, capr)
-	w.player_posture(2)
 	w.player_refill()
 	w.player_navy_build(1)
 	w.player_set_levy(2)
 	w.player_disband()
 	w.advance_days(3)
-	print("  ✓ 14 verbes enfilés + drainés sans crash (an %d)" % w.year())
+	print("  ✓ 13 verbes enfilés + drainés sans crash (an %d)" % w.year())
 
 	# INVARIANT 2 : COLONISER mute (+1 province au joueur)
 	var before: int = w.country_province_count(me)

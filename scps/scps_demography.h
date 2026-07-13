@@ -32,6 +32,10 @@
 /* ---- Fiche EFFECTIVE = origine + pile (recalcul, pas mutation) -------- */
 PopCulture group_culture_effective  (const PopGroup *g, const ModifierStack *drift);
 float      group_agitation_effective(const PopGroup *g, const ModifierStack *drift);
+/* Même porte que demography_contact_tick, appliquée à deux fiches de population
+ * déjà effectives. Évite à la façade de recopier la conversion PopCulture→Culture. */
+SyncFeasibility pop_culture_can_syncretize(const PopCulture *a, const PopCulture *b,
+                                           float P, float K);
 
 /* ---- Lectures de province (§2) --------------------------------------- */
 const PopGroup *province_dominant (const ProvincePop *pp);
