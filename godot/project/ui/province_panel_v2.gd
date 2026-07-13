@@ -302,133 +302,139 @@ func _alloc_apply(idx: int, new_w: int) -> void:
 			w.player_alloc_bld(_region, int(s.get("id", 0)), ww)
 	_fire("répartition ajustée")
 
-## MANUFACTURES (ligne Bourgeois) : chaque manuf bâtie · niveau · [−][+] ; puis le picker « bâtir ».
+## MANUFACTURES (ligne Bourgeois) : une STRIP d'icônes-chips (icône + [−][+] EN LIGNE,
+## nom au HOVER seul), qui enveloppe ; puis les chips « bâtir » (poser) à la suite.
 func _manuf_section(w, mine: bool) -> void:
 	var blds: Array = w.province_buildings(_pid) if w.has_method("province_buildings") else []
-	if blds.is_empty():
+	var legal := []
+	if mine and w.has_method("manuf_legal") and _region >= 0:
+		for bld in range(24):
+			if int(w.manuf_legal(_region, bld)) == 1:
+				legal.append(bld)
+	if blds.is_empty() and legal.is_empty():
 		_line("  aucune manufacture", "RowDim")
+		return
+	var flow := _flow()
 	for b in blds:
 		var nom := String(b.get("nom", ""))
-		_manuf_row(w, mine, nom, int(b.get("niveau", 0)), int(b.get("ouvriers", 0)), int(_name2bld.get(nom, -1)))
-	if mine:
-		_manuf_picker(w)
+		flow.add_child(_manuf_chip(w, mine, nom, int(b.get("niveau", 0)),
+			int(b.get("ouvriers", 0)), int(_name2bld.get(nom, -1))))
+	var mcost := int(w.manuf_cost()) if w.has_method("manuf_cost") else 0
+	for bld in legal:
+		flow.add_child(_build_chip(UIKit.manuf_sprite(String(w.manuf_name(bld))),
+			("Bâtir %s · %d or" % [String(w.manuf_name(bld)), mcost]) if mcost > 0 else ("Bâtir %s" % String(w.manuf_name(bld))),
+			func(): w.player_build_manuf(_region, bld); _fire("%s : chantier lancé" % String(w.manuf_name(bld)))))
 
-func _manuf_row(w, mine: bool, nom: String, niv: int, ouv: int, bid: int) -> void:
+## ÉDIFICES (ligne Élites) : idem — strip d'icônes-chips ([−] démolir · [+] palier), puis « bâtir ».
+func _edifice_section(w, mine: bool) -> void:
+	var edis: Array = w.province_edifices(_pid) if w.has_method("province_edifices") else []
+	var legal := []
+	if mine and w.has_method("build_legal") and _region >= 0:
+		for e in range(32):   # masque edi_built = 32 bits ; build_legal borne
+			if not bool(w.build_legal(_region, e).get("legal", false)):
+				continue
+			var nm := String(w.edifice_name(e)) if w.has_method("edifice_name") else ""
+			if nm != "":
+				legal.append(e)
+	if edis.is_empty() and legal.is_empty():
+		_line("  aucun édifice", "RowDim")
+		return
+	var flow := _flow()
+	for e in edis:
+		flow.add_child(_edi_chip(w, mine, String(e.get("nom", "")), int(e.get("type", -1))))
+	for e in legal:
+		var nom := String(w.edifice_name(e))
+		flow.add_child(_build_chip(UIKit.building_sprite(e), "Bâtir %s" % nom,
+			func(): w.player_build(e, _region); _fire("%s : chantier lancé" % nom)))
+
+# ── LES CHIPS (icône + [−][+] en ligne ; le NOM en hover seul) ────────────────
+## cadre d'un chip : PanelContainer + HBox serrée. `built` = ton plein (bâti) vs ghost (à bâtir).
+func _chip_frame(tip: String, built: bool) -> Array:
+	var pc := PanelContainer.new()
+	var bg := ParchTheme.HEADER_BG if built else ParchTheme.PANEL_BG
+	var bd := ParchTheme.BORDER if built else ParchTheme.DIVIDER
+	pc.add_theme_stylebox_override("panel", ParchTheme.sb(bg, bd, 1, 4, 3, 3, 2, 2))
+	pc.tooltip_text = tip
+	pc.mouse_filter = Control.MOUSE_FILTER_PASS
 	var hb := HBoxContainer.new()
-	hb.add_theme_constant_override("separation", 6)
-	_body.add_child(hb)
-	_icon(hb, UIKit.manuf_sprite(nom), 18)
-	var nm := Label.new()
-	nm.theme_type_variation = "RowLabel"
-	nm.text = nom
-	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	nm.clip_text = true
-	nm.tooltip_text = "niveau %d · %d ouvriers" % [niv, ouv]
-	hb.add_child(nm)
+	hb.add_theme_constant_override("separation", 1)
+	pc.add_child(hb)
+	return [pc, hb]
+
+## un chip de manufacture bâtie : [icône][niv][−][+] — nom + détail au HOVER.
+func _manuf_chip(w, mine: bool, nom: String, niv: int, ouv: int, bid: int) -> Control:
+	var fr := _chip_frame("%s — niveau %d · %d ouvriers" % [nom, niv, ouv], true)
+	var hb: HBoxContainer = fr[1]
+	_icon(hb, UIKit.manuf_sprite(nom), 26)
 	var lv := Label.new()
 	lv.theme_type_variation = "RowDim"
-	lv.text = "niv %d" % niv
-	lv.custom_minimum_size = Vector2(44, 0)
-	lv.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	lv.text = str(niv)
+	lv.add_theme_font_size_override("font_size", 12)
+	lv.custom_minimum_size = Vector2(14, 0)
+	lv.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hb.add_child(lv)
 	if mine and bid >= 0:
-		var minus := _sq_btn("−")
+		var minus := _chip_btn("−")
 		minus.tooltip_text = "baisser le niveau (démolir un cran)"
 		minus.pressed.connect(func(): w.player_manuf_level(_region, bid, -1); _fire("%s : niveau ↓" % nom))
 		hb.add_child(minus)
-		var plus := _sq_btn("+")
+		var plus := _chip_btn("+")
 		plus.tooltip_text = "monter le niveau (payant)"
 		plus.pressed.connect(func(): w.player_manuf_level(_region, bid, 1); _fire("%s : niveau ↑" % nom))
 		hb.add_child(plus)
+	return fr[0]
 
-func _manuf_picker(w) -> void:
-	if _region < 0 or not w.has_method("manuf_legal"):
-		return
-	var mcost := int(w.manuf_cost()) if w.has_method("manuf_cost") else 0
-	var any := false
-	for bld in range(24):
-		if int(w.manuf_legal(_region, bld)) != 1:
-			continue
-		any = true
-		var nom := String(w.manuf_name(bld))
-		var hb := HBoxContainer.new()
-		hb.add_theme_constant_override("separation", 6)
-		_body.add_child(hb)
-		_icon(hb, UIKit.manuf_sprite(nom), 16)
-		var nm := Label.new()
-		nm.theme_type_variation = "RowDim"
-		nm.text = nom
-		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		nm.clip_text = true
-		hb.add_child(nm)
-		var b := bld
-		var btn := _sq_btn(("Bâtir · %d or" % mcost) if mcost > 0 else "Bâtir", 84)
-		btn.pressed.connect(func(): w.player_build_manuf(_region, b); _fire("%s : chantier lancé" % nom))
-		hb.add_child(btn)
-	if not any:
-		_line("  aucune manufacture posable ici", "RowDim")
-
-## ÉDIFICES (ligne Élites) : chaque édifice bâti · [−] démolir · [+] palier ; puis le picker.
-func _edifice_section(w, mine: bool) -> void:
-	var edis: Array = w.province_edifices(_pid) if w.has_method("province_edifices") else []
-	if edis.is_empty():
-		_line("  aucun édifice", "RowDim")
-	for e in edis:
-		_edi_row(w, mine, String(e.get("nom", "")), int(e.get("type", -1)))
-	if mine:
-		_edi_picker(w)
-
-func _edi_row(w, mine: bool, nom: String, type: int) -> void:
-	var hb := HBoxContainer.new()
-	hb.add_theme_constant_override("separation", 6)
-	_body.add_child(hb)
-	_icon(hb, UIKit.building_sprite(type), 18)
-	var nm := Label.new()
-	nm.theme_type_variation = "RowLabel"
-	nm.text = nom
-	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	nm.clip_text = true
-	hb.add_child(nm)
+## un chip d'édifice bâti : [icône][−][+palier?] — nom au HOVER.
+func _edi_chip(w, mine: bool, nom: String, type: int) -> Control:
+	var fr := _chip_frame(nom, true)
+	var hb: HBoxContainer = fr[1]
+	_icon(hb, UIKit.building_sprite(type), 26)
 	if mine and type >= 0:
-		var minus := _sq_btn("−")
+		var minus := _chip_btn("−")
 		minus.tooltip_text = "démolir d'un cran"
 		minus.pressed.connect(func(): w.player_demolish_edifice(_region, type); _fire("%s : démoli d'un cran" % nom))
 		hb.add_child(minus)
-		# « + » seulement si un palier suivant existe ET est légal ici (sinon rien)
 		var succ := int(w.edifice_succ(type)) if w.has_method("edifice_succ") else -1
 		if succ >= 0 and w.has_method("build_legal") and bool(w.build_legal(_region, succ).get("legal", false)):
-			var plus := _sq_btn("+")
+			var plus := _chip_btn("+")
 			plus.tooltip_text = "monter au palier suivant"
 			plus.pressed.connect(func(): w.player_build(succ, _region); _fire("%s : palier suivant" % nom))
 			hb.add_child(plus)
+	return fr[0]
 
-func _edi_picker(w) -> void:
-	if _region < 0 or not w.has_method("build_legal"):
-		return
-	var any := false
-	for e in range(32):   # masque edi_built = 32 bits ; build_legal borne, edifice_name "" hors-borne
-		if not bool(w.build_legal(_region, e).get("legal", false)):
-			continue
-		var nom := String(w.edifice_name(e)) if w.has_method("edifice_name") else ""
-		if nom == "":
-			continue
-		any = true
-		var hb := HBoxContainer.new()
-		hb.add_theme_constant_override("separation", 6)
-		_body.add_child(hb)
-		_icon(hb, UIKit.building_sprite(e), 16)
-		var nm := Label.new()
-		nm.theme_type_variation = "RowDim"
-		nm.text = nom
-		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		nm.clip_text = true
-		hb.add_child(nm)
-		var ee := e
-		var btn := _sq_btn("Bâtir", 60)
-		btn.pressed.connect(func(): w.player_build(ee, _region); _fire("%s : chantier lancé" % nom))
-		hb.add_child(btn)
-	if not any:
-		_line("  aucun édifice posable ici", "RowDim")
+## un chip « à bâtir » (ghost) : [icône][＋] — le NOM + coût au HOVER.
+func _build_chip(tex: Texture2D, tip: String, on_build: Callable) -> Control:
+	var fr := _chip_frame(tip, false)
+	var hb: HBoxContainer = fr[1]
+	_icon(hb, tex, 22)
+	var plus := _chip_btn("＋")
+	plus.tooltip_text = tip
+	plus.pressed.connect(on_build)
+	hb.add_child(plus)
+	return fr[0]
+
+## une strip qui enveloppe (les chips passent à la ligne suivante quand la largeur manque).
+func _flow() -> HFlowContainer:
+	var f := HFlowContainer.new()
+	f.add_theme_constant_override("h_separation", 4)
+	f.add_theme_constant_override("v_separation", 4)
+	_body.add_child(f)
+	return f
+
+## un mini bouton de chip (les [−][+] collés à l'icône).
+func _chip_btn(txt: String) -> Button:
+	var b := Button.new()
+	b.text = txt
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(18, 24)
+	b.add_theme_font_size_override("font_size", 14)
+	b.add_theme_stylebox_override("normal", ParchTheme.sb(ParchTheme.PANEL_BG, ParchTheme.BORDER, 1, 3, 2, 2, 0, 0))
+	b.add_theme_stylebox_override("hover", ParchTheme.sb(Color("f0e6c8"), ParchTheme.TAB_UNDERLINE, 1, 3, 2, 2, 0, 0))
+	b.add_theme_stylebox_override("pressed", ParchTheme.sb(ParchTheme.DIVIDER, ParchTheme.TAB_UNDERLINE, 1, 3, 2, 2, 0, 0))
+	b.add_theme_color_override("font_color", ParchTheme.INK)
+	b.add_theme_color_override("font_hover_color", ParchTheme.INK)
+	b.add_theme_color_override("font_pressed_color", ParchTheme.INK)
+	return b
 
 # ── ONGLET MILITAIRE : défense de la province + menace intérieure ─────────────
 ## N'INVENTE rien : la façade n'expose ni garnison, ni réserves, ni marins par

@@ -38,22 +38,26 @@ func _run() -> void:
 	# les frises culture/foi montrent plusieurs segments ; repli : 1re valide.
 	var me: int = int(Sim.world.player()) if Sim.world.has_method("player") else 0
 	var pid := -1
-	var best_groups := -1
+	var best_score := -1
 	var n: int = int(Sim.world.province_count()) if Sim.world.has_method("province_count") else 0
 	for p in range(n):
 		var info: Dictionary = Sim.world.province_info(p)
 		if not bool(info.get("valide", false)) or int(info.get("owner", -1)) != me:
 			continue
+		# la PLUS développée (manuf + édifices) pour voir les chips + [−][+], départage par diversité
+		var nb: int = Sim.world.province_buildings(p).size() if Sim.world.has_method("province_buildings") else 0
+		var ne: int = Sim.world.province_edifices(p).size() if Sim.world.has_method("province_edifices") else 0
 		var ng: int = Sim.world.province_groups(p).size() if Sim.world.has_method("province_groups") else 0
-		if ng > best_groups:
-			best_groups = ng
+		var score := (nb + ne) * 10 + ng
+		if score > best_score:
+			best_score = score
 			pid = p
 	if pid < 0:
 		for p in range(n):
 			if bool(Sim.world.province_info(p).get("valide", false)):
 				pid = p
 				break
-	print("PROVINCE pid=", pid, " owner=me?", me, " groups=", best_groups)
+	print("PROVINCE pid=", pid, " owner=me?", me, " score=", best_score)
 
 	var bg := ColorRect.new()
 	bg.color = Color("2a2622")
