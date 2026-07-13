@@ -268,11 +268,11 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
     for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
         for (int k=0;k<CLASS_COUNT;k++){
             float v=s->econ->tax_mult[c][k];
-            if (v!=0.f && !(v>=0.1f && v<=2.f)) return false;
+            if (v!=0.f && !(v>=0.02f && v<=2.f)) return false;   /* [0.02,1] réglé joueur ; ≤2 = saves legacy */
         }
         for (int k=0;k<BUDGET_POLICY_COUNT;k++){
             float v=s->econ->budget_mult[c][k];
-            if (v!=0.f && !(v>=0.1f && v<=2.f)) return false;
+            if (v!=0.f && !(v>=0.02f && v<=2.f)) return false;
         }
     }
     if (w->n_countries <0 || w->n_countries >SCPS_MAX_COUNTRY)   return false;

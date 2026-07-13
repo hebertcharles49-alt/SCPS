@@ -337,11 +337,11 @@ int statecraft_council_loyalty(const Statecraft *sc, int cid, int seat){
 float statecraft_council_pay(const Statecraft *sc, int cid, int seat){
     if (!sc||cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS) return 1.f;
     float p = sc->pay[cid][seat];
-    return (p>0.f) ? clampf(p, 0.1f, 2.f) : 1.f;                          /* 0 = jamais posé → normal */
+    return (p>0.f) ? clampf(p, 0.02f, 1.f) : 1.f;                         /* 0 = jamais posé → normal (paie pleine) */
 }
 void statecraft_council_set_pay(Statecraft *sc, int cid, int seat, float pay){
     if (!sc||cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS) return;
-    sc->pay[cid][seat] = clampf(pay, 0.1f, 2.f);
+    sc->pay[cid][seat] = clampf(pay, 0.02f, 1.f);   /* LINÉARISÉ 0–100 % : 1.0 = paie pleine, plus de surpaie ×2 */
 }
 /* P3 — écrivain DIRECT de loyauté (mission décennale : réussite/échec du siège
  * responsable). No-op si le siège est VACANT (personne à créditer/blâmer). */

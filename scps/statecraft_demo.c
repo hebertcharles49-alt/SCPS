@@ -381,16 +381,16 @@ int main(int argc, char **argv){
         /* Remontée : le rot ne doit RIEN accélérer côté hausse. */
         statecraft_init(s.sc, s.w); faction_levers_reset();
         statecraft_council_hire(s.sc, seed, cid, seat, best, 0);
-        statecraft_council_set_pay(s.sc, cid, seat, 2.f);         /* paie double : cible haute, ministre REMONTE */
+        statecraft_council_set_pay(s.sc, cid, seat, 1.f);         /* paie pleine (100 %) : cible haute, ministre REMONTE */
         for (int m=0;m<3;m++) statecraft_council_loyalty_tick(s.sc, s.w, s.econ, seed, 1.f/12.f);
         int rise_no_rot=statecraft_council_loyalty(s.sc,cid,seat);
         statecraft_init(s.sc, s.w); faction_levers_reset();
         statecraft_council_hire(s.sc, seed, cid, seat, best, 0);
-        statecraft_council_set_pay(s.sc, cid, seat, 2.f);
+        statecraft_council_set_pay(s.sc, cid, seat, 1.f);
         for (int k=0;k<20;k++) faction_concede(cid, minf);
         for (int m=0;m<3;m++) statecraft_council_loyalty_tick(s.sc, s.w, s.econ, seed, 1.f/12.f);
         int rise_with_rot=statecraft_council_loyalty(s.sc,cid,seat);
-        printf("   Remontée sur 3 mois (paie ×2) : sans rot %d, avec rot %d\n", rise_no_rot, rise_with_rot);
+        printf("   Remontée sur 3 mois (paie pleine) : sans rot %d, avec rot %d\n", rise_no_rot, rise_with_rot);
         ok("Conseil vivant : le rot n'ACCÉLÈRE PAS la remontée (le rot n'aide jamais à se refaire une vertu)",
            rise_with_rot <= rise_no_rot);
 
@@ -407,7 +407,7 @@ int main(int argc, char **argv){
         ok("Conseil vivant : un ministre à loyauté basse est BETRAYAL_READY", bad_ready);
         statecraft_init(s.sc, s.w); faction_levers_reset();
         statecraft_council_hire(s.sc, seed, cid, seat, best, 0);
-        statecraft_council_set_pay(s.sc, cid, seat, 1.5f);
+        statecraft_council_set_pay(s.sc, cid, seat, 1.f);
         for (int m=0;m<24;m++) statecraft_council_loyalty_tick(s.sc, s.w, s.econ, seed, 1.f/12.f);
         bool good_ready = statecraft_council_betrayal_ready(s.sc,cid,seat);
         ok("Conseil vivant : un ministre choyé (bien payé, aucun grief) N'EST JAMAIS betrayal_ready", !good_ready);
@@ -458,17 +458,15 @@ int main(int argc, char **argv){
         /* (6) LA PAIE COÛTE — le curseur multiplie le coût mensuel. */
         statecraft_init(s.sc, s.w); faction_levers_reset();
         statecraft_council_hire(s.sc, seed, cid, seat, best, 0);
-        float cost_1x = statecraft_council_cost(s.sc, seed, cid, 1.f);
-        statecraft_council_set_pay(s.sc, cid, seat, 2.f);
-        float cost_2x = statecraft_council_cost(s.sc, seed, cid, 1.f);
+        float cost_1x = statecraft_council_cost(s.sc, seed, cid, 1.f);   /* paie PLEINE (1.0) par défaut à l'embauche */
         statecraft_council_set_pay(s.sc, cid, seat, 0.5f);
         float cost_half = statecraft_council_cost(s.sc, seed, cid, 1.f);
-        printf("   Coût mensuel : ×0.5 %.1f, ×1 %.1f, ×2 %.1f\n", cost_half, cost_1x, cost_2x);
-        ok("Conseil vivant : payer DOUBLE coûte le double", near_f(cost_2x, cost_1x*2.f, 0.01f));
-        ok("Conseil vivant : payer MOINS coûte moins", near_f(cost_half, cost_1x*0.5f, 0.01f));
-        ok("Conseil vivant : le curseur de paie est BORNÉ [0.1,2]",
+        printf("   Coût mensuel : 50%% %.1f, 100%% %.1f\n", cost_half, cost_1x);
+        ok("Conseil vivant : payer MOINS coûte moins (50 % → moitié)", near_f(cost_half, cost_1x*0.5f, 0.01f));
+        ok("Conseil vivant : le curseur de paie est BORNÉ [0.02,1.0] (plus de surpaie ×2)",
            statecraft_council_pay(s.sc,cid,seat)==0.5f &&
-           (statecraft_council_set_pay(s.sc,cid,seat,9.f), statecraft_council_pay(s.sc,cid,seat)==2.f));
+           (statecraft_council_set_pay(s.sc,cid,seat,9.f), near_f(statecraft_council_pay(s.sc,cid,seat),1.f,0.001f)) &&
+           (statecraft_council_set_pay(s.sc,cid,seat,0.f), near_f(statecraft_council_pay(s.sc,cid,seat),0.02f,0.001f)));
 
         /* (7) P0-4 — PERSONNE + MAISON : tirages déterministes et VIVANTS (varient
          * avec le candidat) — la maison ne « suit » pas le prénom (tables séparées,

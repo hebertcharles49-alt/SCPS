@@ -69,6 +69,7 @@ typedef enum {
  * aussi 1.0 afin que l'IA et les anciens bancs restent strictement neutres. */
 typedef enum {
     BUDGET_INVEST=0, BUDGET_UPKEEP, BUDGET_ARMY, BUDGET_NAVY,
+    BUDGET_ROADS,   /* entretien des routes : finance la connectivité (−20 %…+10 % C) */
     BUDGET_POLICY_COUNT
 } BudgetPolicy;
 
@@ -772,6 +773,7 @@ typedef enum {
     FX_REDEP,                                         /* redépense publique I3bis (le trésor circule le surplus) */
     FX_CREDIT,                                        /* intérêts de la dette (credit_year_tick) */
     FX_INTRIGUE,                                       /* W-GUERRE-3 : fabrication d'un casus belli (corruption, disparaît) */
+    FX_ROADS,                                         /* entretien des routes (curseur budgétaire joueur) */
     FX_COUNT
 } FluxComp;
 void   econ_flux_add(int cid, FluxComp comp, float amount);   /* incrémente (signé par convention ci-dessus) */
@@ -819,6 +821,10 @@ bool econ_country_has_tier(int cid, int tier);
 float econ_tax_tolerance(Ethos e, SocialClass c);
 float econ_country_tax_mult(const WorldEconomy *e, int cid, SocialClass c);
 float econ_country_budget_mult(const WorldEconomy *e, int cid, BudgetPolicy policy);
+/* ENTRETIEN DES ROUTES → multiplicateur de connectivité pour la prospérité/le commerce.
+ * Curseur non réglé (0, chronique/IA) → 1.0 NEUTRE (golden-safe) ; réglé ∈ [0.02,1] →
+ * −20 % (sous-financé) … +10 % (plein). Voir econ_country_road_conn (scps_econ.c). */
+float econ_country_road_conn(const WorldEconomy *e, int cid);
 void  econ_country_tax_set(WorldEconomy *e, int cid, SocialClass c, float mult);
 void  econ_country_budget_set(WorldEconomy *e, int cid, BudgetPolicy policy, float mult);
 

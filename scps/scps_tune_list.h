@@ -21,6 +21,8 @@
     X(ADMIN_BASE,             0.4f) \
     X(ADMIN_EXP,              1.3f) \
     X(SINK_FLOOR,           500.0f) \
+    X(INVEST_SPEND_FRAC,      0.30f) \
+    X(ROAD_SPEND_FRAC,        0.15f) \
     /* I6 — le marché n'est pas 1:1 : marge d'import sur les achats de chantier */ \
     X(IMPORT_MARGIN_OWN,      1.3f) \
     X(IMPORT_MARGIN_THIRD,    1.8f) \

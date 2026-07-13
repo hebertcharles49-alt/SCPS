@@ -1938,8 +1938,12 @@ float econ_tax_tolerance(Ethos e, SocialClass c){
     return T[e][c];
 }
 
+/* Curseur de PAIE/IMPÔT (joueur seul) : LINÉARISÉ 0–100 % (plus de surpaie/surtaxe ×2,
+ * qui n'a pas de sens). 0 stocké = sentinel « non réglé » (chronique/IA) → 1.0 NEUTRE ;
+ * une valeur réglée par le joueur vit dans [0.02, 1.0] (le setter garantit ≥0.02, jamais
+ * le sentinel 0). L'INVESTISSEMENT est l'EXCEPTION (neutre = 0 %, cf. econ_country_budget_mult). */
 static float policy_mult(float raw){
-    return (raw>=0.1f && raw<=2.f) ? raw : 1.f;
+    return (raw>=0.02f && raw<=1.f) ? raw : 1.f;
 }
 float econ_country_tax_mult(const WorldEconomy *e, int cid, SocialClass c){
     if (!e||cid<0||cid>=SCPS_MAX_COUNTRY||c<0||c>=CLASS_COUNT) return 1.f;
@@ -1947,15 +1951,30 @@ float econ_country_tax_mult(const WorldEconomy *e, int cid, SocialClass c){
 }
 float econ_country_budget_mult(const WorldEconomy *e, int cid, BudgetPolicy policy){
     if (!e||cid<0||cid>=SCPS_MAX_COUNTRY||policy<0||policy>=BUDGET_POLICY_COUNT) return 1.f;
+    /* INVESTISSEMENT : neutre = 0 % (le CONTRAIRE de la paie — chronique/IA = aucun
+     * investissement → 0). On rend le NIVEAU brut ∈ [0,1] (défaut 0), pas le sentinel. */
+    if (policy==BUDGET_INVEST)
+        return clampf(e->budget_mult[cid][policy], 0.f, 1.f);
     return policy_mult(e->budget_mult[cid][policy]);
 }
 void econ_country_tax_set(WorldEconomy *e, int cid, SocialClass c, float mult){
     if (!e||cid<0||cid>=SCPS_MAX_COUNTRY||c<0||c>=CLASS_COUNT) return;
-    e->tax_mult[cid][c]=clampf(mult,0.1f,2.f);
+    e->tax_mult[cid][c]=clampf(mult,0.02f,1.f);   /* 0 % → 0.02 (jamais le sentinel 0), max 1.0 */
 }
 void econ_country_budget_set(WorldEconomy *e, int cid, BudgetPolicy policy, float mult){
     if (!e||cid<0||cid>=SCPS_MAX_COUNTRY||policy<0||policy>=BUDGET_POLICY_COUNT) return;
-    e->budget_mult[cid][policy]=clampf(mult,0.1f,2.f);
+    e->budget_mult[cid][policy]=clampf(mult,0.02f,1.f);
+}
+/* ENTRETIEN DES ROUTES : le curseur d'entretien routier module la CONNECTIVITÉ effective
+ * du pays (part prospérité/commerce) — de −20 % (sous-financé) à +10 % (plein). NON RÉGLÉ
+ * (0 stocké : chronique/IA) → ×1.0 NEUTRE (golden-safe). Rendu comme MULTIPLICATEUR (1+effet)
+ * à appliquer au terme de connectivité au site de LECTURE (jamais un champ muté). */
+float econ_country_road_conn(const WorldEconomy *e, int cid){
+    if (!e||cid<0||cid>=SCPS_MAX_COUNTRY) return 1.f;
+    float s = e->budget_mult[cid][BUDGET_ROADS];
+    if (s <= 0.f) return 1.f;                          /* non réglé = neutre → golden-safe */
+    float frac = clampf((s-0.02f)/0.98f, 0.f, 1.f);   /* joueur 0.02..1.0 → 0..1 */
+    return 1.f + (-0.20f + frac*0.30f);               /* −20 % … +10 % */
 }
 #define STATE_TAX_AMBITION 0.42f   /* le taux que l'État VISE (l'éthos décide ce qui rentre) */
 #define K_TAX_AGIT         0.85f   /* poids de la surtaxe sur la satisfaction (la grogne) */
@@ -1967,6 +1986,12 @@ void econ_country_budget_set(WorldEconomy *e, int cid, BudgetPolicy policy, floa
  *  suit le signal-prix de son bien (prix/base), plafonné — l'offre RÉAGIT à la pénurie. */
 #define STATE_SPEND_RATE       0.30f
 #define PAYROLL_FRACTION       0.60f
+/* CURSEUR INVESTISSEMENT (joueur seul) : part du REVENU MENSUEL prélevée par mois quand
+ * l'enveloppe est à 100 %. À niveau 0 (défaut chronique/IA) : coût NUL → golden-neutre. */
+#define INVEST_SPEND_FRAC      0.30f
+/* CURSEUR ENTRETIEN DES ROUTES (joueur seul) : part du REVENU MENSUEL prélevée par mois au
+ * plein financement. À niveau 0 (défaut chronique/IA) : coût NUL → golden-neutre. */
+#define ROAD_SPEND_FRAC        0.15f
 #define BASE_EXPANSION         0.20f   /* §1 : vitesse d'expansion d'une manufacture, ∝ pénurie */
 #define EXPANSION_PRESSION_CAP 5.0f    /* pénurie max prise en compte (prix/base − 1, plafonné) */
 
@@ -2414,7 +2439,7 @@ const char *econ_flux_name(FluxComp comp){
         "taxes","export","péages+",
         "entretien","cour","admin","encadr.",
         "soldes","marine","audits","péages−","invest.","conseil","import",
-        "chantiers","redépense","intérêts","intrigue" };
+        "chantiers","redépense","intérêts","intrigue","routes" };
     return (comp>=0&&comp<FX_COUNT)?N[comp]:"?";
 }
 float econ_base_price(Resource r){ return (r>RES_NONE && r<RES_COUNT)? BASE_PRICE[r] : 0.f; }
@@ -3544,6 +3569,69 @@ void econ_tick(WorldEconomy *e, float dt) {
      * econ_tick(WorldEconomy*, dt) ne prend pas de World* : econ_aggregate_regions groupe par
      * ProvinceEconomy.region (miroir géo posé à econ_init), jamais par Region.province_ids. */
     econ_aggregate_regions(e);
+
+    /* CURSEUR INVESTISSEMENT — COÛT MENSUEL (JOUEUR seul ; finance le capital
+     * institutionnel K, cf. scps_prosperity.c). Le niveau d'enveloppe INVEST ∈ [0,1]
+     * (défaut 0 = chronique/IA → coût NUL, GOLDEN-NEUTRE) paie chaque mois une fraction
+     * du revenu. econ_tick est MENSUEL ⇒ UNE ponction par empire et par tick, répartie
+     * sur les régions au prorata de leur trésor (post-agrégation : la vue est FRAÎCHE),
+     * par la voie province-safe econ_region_treasury_add ; jamais plus que le trésor
+     * disponible (aucune dette forcée). */
+    {
+        float infl = (e->ipm>0.f)? e->ipm : 1.f;
+        float frac = tune_f("INVEST_SPEND_FRAC", INVEST_SPEND_FRAC);
+        for (int c=0;c<SCPS_MAX_COUNTRY;c++){
+            float lvl = econ_country_budget_mult(e, c, BUDGET_INVEST);   /* niveau RAW 0..1 */
+            if (lvl <= 0.f) continue;                                    /* non réglé (chronique) → rien */
+            float month_income = econ_country_tax_year(c)/12.f * infl;
+            if (month_income <= 0.f) continue;
+            float cost = lvl * month_income * frac;
+            if (cost <= 0.f) continue;
+            float tot=0.f;
+            for (int r=0;r<e->n_regions;r++)
+                if (e->region[r].owner==c && e->region[r].treasury>0.f) tot+=e->region[r].treasury;
+            if (tot<=0.f) continue;              /* pas d'or → on ne force pas la dette */
+            if (cost>tot) cost=tot;              /* borne : jamais plus que le trésor de l'empire */
+            for (int r=0;r<e->n_regions;r++){
+                if (e->region[r].owner!=c || e->region[r].treasury<=0.f) continue;
+                float part = cost * (e->region[r].treasury/tot);
+                float paid = econ_region_treasury_add(e, r, -part);   /* delta signé (négatif) */
+                if (paid!=0.f) econ_flux_add(c, FX_INVEST, paid);      /* I0 : la ligne investissement */
+            }
+        }
+    }
+
+    /* CURSEUR ENTRETIEN DES ROUTES — COÛT MENSUEL (JOUEUR seul ; finance la CONNECTIVITÉ,
+     * cf. econ_country_road_conn + scps_prosperity.c). Le curseur route ∈ [0.02,1] (0 =
+     * chronique/IA) : le coût suit le FINANCEMENT (frac 0..1), min-financé → coût NUL (le
+     * joueur accepte la pénalité de −20 % C pour ne rien payer). Miroir de la ponction
+     * INVEST : province-safe (econ_region_treasury_add), jamais plus que le trésor, aucune
+     * dette forcée. Non réglé → coût NUL, GOLDEN-NEUTRE. */
+    {
+        float infl = (e->ipm>0.f)? e->ipm : 1.f;
+        float frac_r = tune_f("ROAD_SPEND_FRAC", ROAD_SPEND_FRAC);
+        for (int c=0;c<SCPS_MAX_COUNTRY;c++){
+            float s = e->budget_mult[c][BUDGET_ROADS];   /* niveau brut 0..1 (0 = non réglé) */
+            if (s <= 0.f) continue;                      /* non réglé (chronique) → rien */
+            float fund = clampf((s-0.02f)/0.98f, 0.f, 1.f);  /* 0.02..1 → 0..1 (financement) */
+            if (fund <= 0.f) continue;                   /* min-financé → coût nul (−20 % C) */
+            float month_income = econ_country_tax_year(c)/12.f * infl;
+            if (month_income <= 0.f) continue;
+            float cost = fund * month_income * frac_r;
+            if (cost <= 0.f) continue;
+            float tot=0.f;
+            for (int r=0;r<e->n_regions;r++)
+                if (e->region[r].owner==c && e->region[r].treasury>0.f) tot+=e->region[r].treasury;
+            if (tot<=0.f) continue;              /* pas d'or → on ne force pas la dette */
+            if (cost>tot) cost=tot;              /* borne : jamais plus que le trésor de l'empire */
+            for (int r=0;r<e->n_regions;r++){
+                if (e->region[r].owner!=c || e->region[r].treasury<=0.f) continue;
+                float part = cost * (e->region[r].treasury/tot);
+                float paid = econ_region_treasury_add(e, r, -part);   /* delta signé (négatif) */
+                if (paid!=0.f) econ_flux_add(c, FX_ROADS, paid);      /* I0 : la ligne routes */
+            }
+        }
+    }
 }
 
 /* ====================================================================== */

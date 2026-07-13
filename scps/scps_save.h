@@ -32,7 +32,8 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 83u           /* v83 : revendication territoriale nommée + réparations de paix dans DiploState ;
+#define SAVE_VERSION 84u           /* v84 : BUDGET_ROADS (entretien des routes) → budget_mult[][] grandit (blob ECON) + FX_ROADS → g_flux (blob TXYR) ; <v84 refusé.
+                                    * v83 : revendication territoriale nommée + réparations de paix dans DiploState ;
                                     * v81 : ARMÉES MULTIPLES — Campaign sérialise 32 slots stables
                                     * par pays, leur id et le compte de corps actifs. <v81 refusé.
                                     * v80 : AUDIT save-robustesse — la section RELG gagne l'ancre

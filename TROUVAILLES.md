@@ -4216,3 +4216,72 @@ inspectée, `git diff --check` sans erreur. Aucun type, lecteur ou verbe moteur 
 - **Vérifs** : golden IDENTIQUE · determinism STABLE 5/5 · scps_api_demo 216/216 · campaign 33/33
   · navy 20/20 · warhost 6/6 · prosperity 17/17 · econ_tax 8/8 · savetest 9 & 42 = 2 réussis ·
   0 warning (C) · Godot parse propre (aucun SCRIPT/Parse Error ; la DLL charge, le monde génère).
+
+## Budget/paie — or/mois direct + curseurs LINÉARISÉS 0–100 % + invest. À COÛT MENSUEL (2026-07-13)
+- **Refonte de l'entrée précédente** (ci-dessus) : toute valeur budget/paie montrée = **or/mois**
+  DIRECT (jamais or/an, jamais une formule) ; curseurs **0–100 %** (plus de ×2 — surpayer/surtaxer
+  n'a pas de sens) ; l'INVESTISSEMENT gagne un vrai COÛT MENSUEL.
+- **`policy_mult` (scps_econ.c ~1941)** : plage `[0.1,2]` → `[0.02,1.0]`. Le sentinel `0`
+  (non réglé) rend toujours `1.0` neutre (0 < 0.02) → IA/chronique INCHANGÉES. Partagé par TAXE
+  (`econ_country_tax_mult`) ET paie (upkeep/army/navy). Setters `econ_country_tax_set/_budget_set`
+  clampent `[0.02,1.0]` (0 % joueur → 0.02, jamais le sentinel). `statecraft_council_set_pay`/
+  `_pay` idem `[0.02,1.0]`. Façade `scps_player_council_pay`/`_budget_policy` clampent `[0.02,1.0]`.
+- **INVEST = EXCEPTION (neutre = 0 %, pas 1.0)** : `econ_country_budget_mult(BUDGET_INVEST)` rend le
+  **NIVEAU BRUT** `clampf(budget_mult,0,1)` (défaut 0), PAS le sentinel `policy_mult`. Les 3 autres
+  (UPKEEP/ARMY/NAVY) gardent `policy_mult`. K-boost (`scps_prosperity.c ~347`) : `kboost =
+  clampf(invest_level,0,1)*0.10` (0 %→0, golden-safe ; 100 %→+10 % K). **Piège golden** : le
+  changement de retour d'INVEST (chronique passe de 1.0→0.0) est ANNULÉ par le changement simultané
+  du kboost (avant `clampf(1.0-1,…)`=0 ; après `clampf(0,…)`=0) → toujours 0 au neutre. Les deux
+  edits DOIVENT aller ensemble sinon golden casse.
+- **Coût mensuel INVEST (neuf, scps_econ.c fin de `econ_tick`, APRÈS `econ_aggregate_regions`)** :
+  `cost = lvl × (econ_country_tax_year(c)/12 × ipm) × INVEST_SPEND_FRAC(0.30)`, prélevé UNE fois
+  par empire et par tick (econ_tick = MENSUEL, `scps_sim.c:985` `day%30==29`, dt=1/12), réparti sur
+  les régions au prorata de leur trésor via `econ_region_treasury_add` (province-safe), borné au
+  trésor dispo (aucune dette forcée), logué en `FX_INVEST`. `lvl<=0` (chronique) → skip TOTAL →
+  golden-neutre (vérifié IDENTIQUE). Placé APRÈS l'agrégation pour lire `region[].treasury` FRAÎCHE
+  (avant, la vue date du tick précédent). Tune `INVEST_SPEND_FRAC` (registre J, scps_tune_list.h).
+- **UI or/mois (sidebar_drawer.gd)** : `_draw_multiplier_slider` clamp `[0.02,1.0]`, `frac=(v-0.02)/
+  0.98`, libellé sans `live` = « N % » (plus « ×1.3 ») ; hover « 0 à 100 % ». `_slider_value` mappe
+  la piste sur `[0.02,1.0]` (extrême gauche=0.02=« 0 % », droite=1.0=« 100 % »). INVEST → or/mois lu
+  du flux « invest. » (le « +X % K » passe au SURVOL). Paie conseiller (row + cartes + candidats) :
+  or/an → or/mois (÷12, ×paie pour le RÉALISÉ des sièges) ; formules « % revenu × IPM = or/an »
+  RETIRÉES des survols. **Piège GDScript** : `var tip := A if cond else B` sur un `Array[idx]`
+  (Variant) ⇒ Parse Error « can't infer type » → typer `var tip: String = …`.
+- **save_sane (scps_save.c ~271/275)** : borne basse tax/budget `0.1`→`0.02` (garde `≤2` pour les
+  saves legacy). Sinon une valeur joueur 0.02–0.1 serait REFUSÉE au reload. SAVE **non bumpé**.
+- **Bancs recalibrés (intention préservée)** : `statecraft_demo` (paie ×2/9/1.5 → 1.0/borne
+  `[0.02,1]` ; « surpaie achète la loyauté » RETIRÉ — pay_adj max=0 à 100 %) · `scps_api_demo`
+  (invest neutre 1.0→0.0 ; paie/budget bornes → 0.02..1.0).
+- **Restes / hors-périmètre** : DÉCRETS (cost_year en or/an + formule au survol, `_draw_decrees`
+  ~1117) NON touchés (feature distincte, hors de la liste UI du brief) — à convertir si voulu.
+- **Vérifs** : `make golden` IDENTIQUE · `make determinism` STABLE (HASH 7/108/209/310/411
+  inchangés) · scps_api_demo 216/216 · campaign 33/33 · navy 20/20 · warhost 6/6 · prosperity 17/17
+  · econ_tax 8/8 · statecraft 73/73 · savetest 9 & 42 = 2 réussis · 0 warning (C) · Godot parse
+  propre. **SAVE non bumpé** (aucune struct sérialisée ne change). DLL NON rebâtie (aucun reader
+  façade ajouté — le coût invest passe par la ligne de flux FX_INVEST existante).
+
+## [2026-07-13] Budget — BUDGET_ROADS « Entretien des routes » (or → connectivité)
+**Découvertes** : le système budget-policy est ENTIÈREMENT générique — ajouter un `BudgetPolicy`
+avant `BUDGET_POLICY_COUNT` se propage seul au setter/getter/save_sane/drain (`CMD_BUDGET_POLICY`)
+et aux façades `scps_country_budget_policy`/`scps_player_budget_policy` (tous bornés par
+`<BUDGET_POLICY_COUNT`). SEULS points NON génériques à toucher : (1) le binding
+`ScpsWorld::budget_controls` (godot/src/scps_sim_node.cpp:~1464) hardcode `spend_names[4]` +
+`for i<4` → passé à 5 ; (2) le panneau `sidebar_drawer.gd _draw_budget_controls` a un tableau
+`spend_flux`/`spend_tips` indexé par l'`id` de la politique. La connectivité de prospérité vit dans
+`scps_prosperity.c` : `cp->C` (par pays) → `C` (ligne ~262) → `C_pe = scps_babel_gate(C,P)` (le
+terme qui porte PE_interne/PE_externe = la contribution PROSPÉRITÉ) ET `st.C` (la part BRUTE,
+déstabilisante §2.4, scps_order). J'ai modulé UNIQUEMENT `C_pe` (via un `C_road = C*road_conn`),
+`st.C` reste brut — conforme au commentaire existant « la part BRUTE de C reste intacte ».
+**Pièges** : (a) `WorldEconomy` est fwrite'd EN BLOC (`sv_w(SVT_ECON, sizeof *econ)`, scps_save.c:103)
+→ grandir `budget_mult[][BUDGET_POLICY_COUNT]` grandit le blob ⇒ bump SAVE_VERSION obligatoire (83→84).
+(b) `g_flux[][FX_COUNT]` est AUSSI fwrite'd en bloc (section TXYR, `econ_flux_year_save`) → ajouter
+`FX_ROADS` grandit CE blob aussi ; un SEUL bump couvre les deux (même format versionné). ⚠ si on
+ajoute `FX_ROADS` il FAUT ajouter son nom dans le tableau `econ_flux_name` N[FX_COUNT] (initialiseur
+positionnel — un oubli décale « intrigue »/« routes »). (c) Les `spend_tips`/`tax_names` de
+`_draw_budget_controls` sont des LITTÉRAUX BRUTS (pas de `% args`) → un `%` s'affiche tel quel ; ne
+PAS mettre `%%` dedans (contrairement au fragment `tip += "..." % (...)` qui, lui, EST un format).
+Golden-safe par construction : `road_conn`=1.0 et coût=0 au sentinel 0 (chronique ne règle jamais) —
+`C*1.0f` puis `clampf(C,0,10)` avec C∈[0,10] = byte-identique. Golden re-confirmé IDENTIQUE.
+**Restes** : la ROADS ne module que la contribution PROSPÉRITÉ de C ; si un jour on veut qu'elle
+touche AUSSI le commerce intertrade (routes physiques), c'est un 2e site de lecture à câbler
+(`route_pe`/intertrade), délibérément hors scope ici.

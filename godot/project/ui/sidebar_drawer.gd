@@ -327,35 +327,35 @@ func _slider_key(data: Dictionary) -> String:
 
 func _draw_multiplier_slider(x: float, y: float, label: String, current: float,
 		zones: Array, data: Dictionary, tip: String, live: String = "") -> float:
-	## `live` (optionnel) : la VALEUR EN DIRECT (or/mois, or/an, +% K…) affichée à la
-	## place du multiplicateur brut. Le curseur reste ×0,1..×2 ; display-only.
+	## `live` (optionnel) : la VALEUR EN DIRECT (or/mois, +% K…) affichée à la place du
+	## réglage brut. Le curseur est LINÉARISÉ 0–100 % (0.02..1.0) ; display-only.
 	var key := _slider_key(data)
 	var value := float(_slider_preview.get(key, current))
-	value = clampf(value, 0.1, 2.0)
+	value = clampf(value, 0.02, 1.0)
 	var row := Rect2(x - 3.0, y - 2.0, DW - 2.0 * x + 6.0, 22.0)
 	VKit.list_row_bg(self, row, zones.size())
 	VKit.text(self, Vector2(x + 4.0, y + 3.0), VKit.COL_PARCH, label, VKit.FS_SMALL)
 	var track := Rect2(x + 132.0, y + 5.0, 156.0, 8.0)
 	VKit.fill(self, track, Color(0.045, 0.05, 0.05, 1.0))
 	VKit.box(self, track.grow(1.0), VKit.COL_EDGE)
-	var frac := (value - 0.1) / 1.9
+	var frac := (value - 0.02) / 0.98
 	VKit.fill(self, Rect2(track.position, Vector2(track.size.x * frac, track.size.y)), VKit.COL_GOLD)
 	var kx := track.position.x + track.size.x * frac
 	draw_circle(Vector2(kx, track.get_center().y), 5.0, VKit.COL_PARCH)
-	var val := "×%.1f" % value
+	var pct := "%d %%" % int(round(frac * 100.0))
 	if live != "":
-		# right-aligné au bord du tiroir (les montants sont plus larges que « ×1.3 »)
+		# right-aligné au bord du tiroir (les montants sont plus larges que « 60 % »)
 		var lw := VKit.text_w(live, VKit.FS_SMALL)
 		VKit.value(self, Vector2(minf(x + 296.0, DW - 8.0 - lw), y + 2.0), live, VKit.FS_SMALL)
 	else:
-		VKit.value(self, Vector2(x + 300.0, y + 2.0), val, VKit.FS_SMALL)
+		VKit.value(self, Vector2(x + 300.0, y + 2.0), pct, VKit.FS_SMALL)
 	var z := data.duplicate(true)
 	z["rect"] = Rect2(track.position.x - 7.0, y - 1.0, track.size.x + 14.0, 20.0)
 	z["track"] = track
 	z["value"] = value
 	zones.append(z)
-	var cur_txt := val if live == "" else "%s  (curseur %s)" % [live, val]
-	_hover_zones.append({"rect": row, "text": "%s\n• Plage : ×0,1 à ×2\n• Actuellement : %s" % [tip, cur_txt]})
+	var cur_txt := pct if live == "" else "%s  (%s)" % [live, pct]
+	_hover_zones.append({"rect": row, "text": "%s\n• 0 à 100 %%\n• Actuellement : %s" % [tip, cur_txt]})
 	return y + 24.0
 
 func _draw_budget_controls(x: float, y: float, me: int) -> float:
@@ -386,27 +386,30 @@ func _draw_budget_controls(x: float, y: float, me: int) -> float:
 	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Dépenses", VKit.FS_SMALL)
 	y += 18.0
 	var spend_tips := [
-		"Booste le capital institutionnel K (0 à +10 %). La recirculation du trésor reste à son taux de base.",
-		"Finance l'infrastructure. Sous ×1, les bâtiments passent en friche.",
-		"Finance les soldes. Sous ×1, l'armée perd le moral au combat (elle ne déserte plus).",
-		"Finance les coques. Sous ×1, la flotte perd le moral au combat (plus de délabrement).",
+		"Finance le capital institutionnel K (0 à +10 %). Coûte une part du revenu chaque mois.",
+		"Finance l'infrastructure. Sous 100 %, les bâtiments passent en friche.",
+		"Finance les soldes. Sous 100 %, l'armée perd le moral au combat (elle ne déserte plus).",
+		"Finance les coques. Sous 100 %, la flotte perd le moral au combat (plus de délabrement).",
+		"Finance la connectivité (routes) : −20 % (sous-financé) à +10 % de prospérité/commerce. Coûte une part du revenu chaque mois ; au minimum, aucune dépense mais −20 % de connectivité.",
 	]
-	# le poste RÉALISÉ (or/mois) correspondant à chaque enveloppe — invest. n'est plus
-	# une dépense (curseur → boost de K), on affiche donc son effet +% K.
-	var spend_flux := ["", "entretien", "soldes", "marine"]
+	# le poste RÉALISÉ (or/mois) de chaque enveloppe — investissement compris (il coûte
+	# désormais chaque mois, ligne de flux « invest. » ; son effet +% K reste au survol).
+	var spend_flux := ["invest.", "entretien", "soldes", "marine", "routes"]
 	for raw in ctl.get("spending", []):
 		var row: Dictionary = raw
 		var idx := int(row.get("id", 0))
 		var mult := float(row.get("mult", 1.0))
 		var live := ""
-		if idx == 0:
-			live = "+%.0f %% K" % (clampf(mult - 1.0, 0.0, 1.0) * 10.0)
-		elif idx >= 1 and idx < spend_flux.size():
+		if idx >= 0 and idx < spend_flux.size():
 			live = "%s or/mois" % _grp(int(round(absf(float(flux.get(spend_flux[idx], 0.0))))))
+		var tip: String = spend_tips[idx] if idx >= 0 and idx < spend_tips.size() else "Enveloppe budgétaire nationale."
+		if idx == 0:
+			tip += "\n• Effet actuel : +%.0f %% K" % (clampf(mult, 0.0, 1.0) * 10.0)
+		elif idx == 4:
+			var rfrac := clampf((mult - 0.02) / 0.98, 0.0, 1.0)
+			tip += "\n• Effet actuel : %+.0f %% de connectivité" % (-20.0 + rfrac * 30.0)
 		y = _draw_multiplier_slider(x, y, String(row.get("name", "Dépense")), mult,
-			_eco_sliders, {"kind": "eco", "family": 1, "index": idx},
-			spend_tips[idx] if idx >= 0 and idx < spend_tips.size() else "Enveloppe budgétaire nationale.",
-			live)
+			_eco_sliders, {"kind": "eco", "family": 1, "index": idx}, tip, live)
 	return y + 3.0
 
 func _draw_mat_line(x: float, y: float, me: int) -> float:
@@ -726,7 +729,7 @@ func _council_seat_info_card(seat: Dictionary) -> Dictionary:
 			{"label": "Loyauté", "value": "+%.1f points" % float(seat.get("eff_loyalty_points", 0.0)), "tone": "positive"},
 			{"label": "Corruption", "value": "−%.1f points" % float(seat.get("eff_corruption_points", 0.0)), "tone": "negative"},
 			{"label": "Effet net", "value": "+%.1f %% %s" % [float(seat.get("final_bonus_pct", 0.0)), String(seat.get("domain", ""))], "tone": "positive"},
-			{"label": "Traitement", "value": "%s or / an" % _grp(int(round(float(seat.get("cost_year", 0.0)))))},
+			{"label": "Traitement", "value": "%s or / mois" % _grp(int(round(float(seat.get("cost_year", 0.0)) / 12.0 * float(seat.get("pay", 1.0)))))},
 		],
 	}
 
@@ -742,7 +745,7 @@ func _council_candidate_info_card(cand: Dictionary) -> Dictionary:
 			{"label": "Loyauté", "value": "+%.1f points" % float(cand.get("eff_loyalty_points", 0.0)), "tone": "positive"},
 			{"label": "Corruption", "value": "−%.1f points" % float(cand.get("eff_corruption_points", 0.0)), "tone": "negative"},
 			{"label": "Effet net", "value": "+%.1f %% %s" % [float(cand.get("final_bonus_pct", 0.0)), String(cand.get("domain", ""))], "tone": "positive"},
-			{"label": "Traitement", "value": "%s or / an" % _grp(int(round(float(cand.get("cost_year", 0.0)))))},
+			{"label": "Traitement", "value": "%s or / mois" % _grp(int(round(float(cand.get("cost_year", 0.0)) / 12.0)))},
 		],
 	}
 
@@ -901,12 +904,12 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 				"text": "Loyauté %d/100 · cible actuelle %d/100 → +%.1f pts d'efficacité." % [
 					loyalty, loyalty_target, float(seat.get("eff_loyalty_points", 0.0))]})
 			y += 18
-			# le curseur CONTINU de PAIE (×0,1..×2) — verbe CMD_COUNCIL_PAY, journalisé
+			# le curseur de PAIE LINÉARISÉ 0–100 % — verbe CMD_COUNCIL_PAY, journalisé
 			var pay := float(seat.get("pay", 1.0))
-			var pay_live := ("%s or/an" % _grp(int(round(float(seat["cost_year"]))))) if seat.has("cost_year") else ""
+			var pay_live := ("%s or/mois" % _grp(int(round(float(seat["cost_year"]) / 12.0 * pay)))) if seat.has("cost_year") else ""
 			y = _draw_multiplier_slider(x + 12.0, y, "Paie", pay, _conseil_btns,
 				{"kind": "pay", "family": 2, "seat": idx, "act": "pay", "slot": 0},
-				"Traitement du conseiller. La paie déplace sa cible de loyauté et son coût annuel.",
+				"Traitement du conseiller. Payer moins réduit son coût mais fait chuter sa loyauté.",
 				pay_live)
 			# BONUS FINAL (rang × efficacité) — la DÉCOMPOSITION vit AU SURVOL, jamais à
 			# l'écran (retour joueur) ; membrane : « Administration », jamais « K ».
@@ -925,15 +928,13 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 					"text": "Rang : +%.1f %% · Administration : +%.1f pts · Loyauté : +%.1f pts · Corruption : −%.1f pts · Efficacité : %.1f %% ⇒ +%.1f %% net." % [
 						rankp, kpts, lpts, cpts, effp, finalp]})
 				y += 16
-				# PRIX FUSIONNÉ : une seule ligne « N or par an » ; la formule au survol,
-				# en MONTANTS (« 3 % du revenu (2033 or) × IPM 1,12 = 68 or/an »).
-				var rate := float(seat.get("cost_rate_pct", 0.0))
+				# PRIX : une seule ligne en or/mois (le montant RÉALISÉ à la paie actuelle).
 				var cyear := float(seat.get("cost_year", 0.0))
-				var cline := "%s or par an" % _grp(int(round(cyear)))
+				var cmonth := cyear / 12.0 * pay
+				var cline := "%s or / mois" % _grp(int(round(cmonth)))
 				VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, cline, VKit.FS_SMALL)
 				_hover_zones.append({"rect": Rect2(x + 14, y - 2, VKit.text_w(cline, VKit.FS_SMALL) + 6, 16),
-					"text": "%.1f %% du revenu (%s or) × IPM %.2f = %s or par an — prélevé chaque mois (/12)." % [
-						rate, _grp(int(round(_cons_rev))), _cons_ipm, _grp(int(round(cyear)))]})
+					"text": "Traitement prélevé chaque mois sur le trésor, à la paie actuelle."})
 				y += 15
 				var rlo := int(seat.get("retire_lo", -1))
 				var rhi := int(seat.get("retire_hi", -1))
@@ -986,13 +987,12 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 							"text": "Rang : +%.1f %% · Administration : +%.1f pts · Loyauté de départ : +%.1f pts · Corruption : −%.1f pts · Efficacité prévue : %.1f %% ⇒ +%.1f %% net." % [
 								crankp, ckpts, clpts, ccpts, ceffp, cfinalp]})
 						y += 15
-						# PRIX FUSIONNÉ : « N or par an » ; la formule au survol, en MONTANTS.
+						# PRIX : en or/mois (traitement de base du candidat, avant paie).
 						var ccyear := float(cand.get("cost_year", 0.0))
-						var ccline := "%s or par an" % _grp(int(round(ccyear)))
+						var ccline := "%s or / mois" % _grp(int(round(ccyear / 12.0)))
 						VKit.text(self, Vector2(cx, y), VKit.COL_DIM, ccline, VKit.FS_SMALL)
 						_hover_zones.append({"rect": Rect2(cx - 2, y - 2, VKit.text_w(ccline, VKit.FS_SMALL) + 6, 16),
-							"text": "%.1f %% du revenu (%s or) × IPM %.2f = %s or par an — prélevé chaque mois (/12)." % [
-								float(cand.get("cost_rate_pct", 0.0)), _grp(int(round(_cons_rev))), _cons_ipm, _grp(int(round(ccyear)))]})
+							"text": "Traitement de base, prélevé chaque mois une fois le candidat en poste."})
 						y += 15
 						var crlo := int(cand.get("retire_lo", -1))
 						if crlo >= 0:
@@ -1003,9 +1003,9 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 									int(cand["age"]), crlo, int(cand.get("retire_hi", -1))]})
 							y += 15
 					else:
-						# repli binding sans les champs carte : annualisé quand même (prix fusionné).
+						# repli binding sans les champs carte : le coût MENSUEL (cand["cost"]).
 						VKit.text(self, Vector2(cx, y), VKit.COL_DIM,
-							"%d ans · rang %d · %.0f or par an" % [int(cand["age"]), int(cand["tier"]), float(cand["cost"]) * 12.0], VKit.FS_SMALL)
+							"%d ans · rang %d · %.0f or / mois" % [int(cand["age"]), int(cand["tier"]), float(cand["cost"])], VKit.FS_SMALL)
 						y += 15
 					var cw := DW - 32.0
 					var lab := "Recruter"
@@ -1694,7 +1694,7 @@ func _marche_act(act: String, res_id: int, me: int) -> void:
 	queue_redraw()
 
 ## Conseil : recruter (siège vacant, slot 0) / renvoyer (siège pourvu) / payer
-## (curseur continu ×0,1..×2, V2a) — verbes journalisés.
+## (curseur LINÉARISÉ 0–100 %, V2a) — verbes journalisés.
 func _conseil_act(act: String, seat: int, slot: int, pay: float = 1.0) -> void:
 	var w = Sim.world
 	if w == null:
@@ -1718,7 +1718,8 @@ func _slider_value(data: Dictionary, mouse_x: float) -> float:
 	if track.size.x <= 0.0:
 		return 1.0
 	var frac := clampf((mouse_x - track.position.x) / track.size.x, 0.0, 1.0)
-	return clampf(roundf((0.1 + frac * 1.9) * 10.0) / 10.0, 0.1, 2.0)
+	# LINÉARISÉ 0–100 % : extrême gauche = 0.02 (« 0 % »), extrême droite = 1.0 (« 100 % »).
+	return clampf(roundf((0.02 + frac * 0.98) * 100.0) / 100.0, 0.02, 1.0)
 
 func _apply_multiplier_slider(data: Dictionary, mouse_x: float) -> void:
 	var w = Sim.world

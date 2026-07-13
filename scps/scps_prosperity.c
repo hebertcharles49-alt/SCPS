@@ -267,7 +267,13 @@ void prosperity_tick(WorldProsperity *wp, const World *w,
          * hyper-connecté ne tire plus de prospérité de ses liens. La part BRUTE
          * de C (déstabilisante : pression/déréalisation dans scps_order, st.C
          * plus bas) reste intacte — c'est volontaire (la rupture, elle, transite). */
-        float C_pe = scps_babel_gate(C, P);
+        /* ENTRETIEN DES ROUTES (curseur joueur) : la connectivité EFFECTIVE pour la
+         * PROSPÉRITÉ/le commerce (le terme C qui porte le PE) est modulée par le
+         * financement de l'entretien routier — ×0.80 (sous-financé) … ×1.10 (plein).
+         * NON RÉGLÉ (chronique/IA) → ×1.0 ⇒ C_pe IDENTIQUE (golden-safe). La part BRUTE
+         * de C (st.C, déstabilisante — pression/déréalisation §2.4) reste INCHANGÉE. */
+        float C_road = clampf(C * econ_country_road_conn(econ, cid), 0.f, 10.f);
+        float C_pe = scps_babel_gate(C_road, P);
 
         /* PE interne */
         float d_bar_int = cp->profile.D_bar_int;
@@ -342,10 +348,10 @@ void prosperity_tick(WorldProsperity *wp, const World *w,
          * décroissants). Un Tribunal monte K, une Citadelle monte H. */
         {
             /* Curseur INVESTISSEMENT (joueur seul) : l'enveloppe booste le capital
-             * institutionnel K de 0 à +10 % (×1.0 neutre → 0 ; ×2.0 → +10 %).
-             * À mult==1.0 (défaut IA/chronique) kboost=0 ⇒ IDENTIQUE. */
-            float invest_mult = econ_country_budget_mult(econ, cid, BUDGET_INVEST);
-            float kboost = clampf(invest_mult - 1.f, 0.f, 1.f) * 0.10f;
+             * institutionnel K de 0 à +10 % (0 % → 0 ; 100 % → +10 %). Le NIVEAU brut
+             * ∈ [0,1] (défaut 0 = IA/chronique) ⇒ kboost=0 ⇒ IDENTIQUE (golden-neutre). */
+            float invest_level = econ_country_budget_mult(econ, cid, BUDGET_INVEST);
+            float kboost = clampf(invest_level, 0.f, 1.f) * 0.10f;
             float bK=0.f, bP=0.f, bH=0.f, bPE=0.f, bArcane=0.f, bEntropy=0.f;
             for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==cid) {
                 bK  += econ->region[r].build.K_inst * (1.f + kboost);
