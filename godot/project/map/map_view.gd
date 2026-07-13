@@ -136,6 +136,12 @@ func _input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion and _army_selected:
 		_update_move_preview()
 	elif event is InputEventMouseButton:
+		# MOLETTE SUR UN PANNEAU : défile le CONTENU du panneau, ne zoome pas la carte.
+		# _input() voit l'évènement avant le _gui_input des Control ; si un panneau
+		# (Control MOUSE_FILTER_STOP) est sous le curseur, on lui laisse la molette.
+		var _is_wheel: bool = event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN
+		if _is_wheel and event.pressed and get_viewport().gui_get_hovered_control() != null:
+			return
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
 			_zoom(0.84)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:

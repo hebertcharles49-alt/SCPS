@@ -33,6 +33,15 @@ var _nav: Node
 var _sel_prov := -1
 var _sel_owner := -1           # dernier propriétaire vu (restaure CountryPanel à la fermeture d'un écran profond)
 
+# PANNEAUX FLOTTANTS DÉPLAÇABLES (display-only) : glisser par le bandeau-titre.
+# Un simple CLIC sur un bouton d'en-tête ne bouge jamais (aucun mouvement) → le bouton
+# tire encore ; seul un press-puis-déplace fait glisser. C'est la désambiguïsation.
+const DRAG_HEADER_H := 40.0
+var _drag_panel: Control = null
+var _drag_press := Vector2.ZERO
+var _drag_off := Vector2.ZERO
+var _dragging := false
+
 func _ready() -> void:
 	_nav = NavigationHub.new()
 	_nav.name = "NavigationHub"
@@ -171,6 +180,11 @@ func _ready() -> void:
 		_construct.target_pid = _sel_prov
 		_construct.visible = not _construct.visible
 		if _construct.visible:
+			# SE DÉPLIE ATTACHÉ au bord droit du panneau province (juste après la
+			# languette Construction), à sa position COURANTE → suit le panneau quand
+			# on le déplace. Plus de position fixe « en bas / à part ».
+			_construct.position = Vector2(_prov_panel.position.x + _prov_panel.size.x + 6.0,
+										  _prov_panel.position.y)
 			Sound.play("ui_parchment_open")
 		_construct.queue_redraw())
 	# … et depuis l'onglet CONSTRUCTIONS du détail (sa maison désormais)
@@ -378,12 +392,53 @@ func _ready() -> void:
 		if c is Control:
 			c.theme = get_window().theme
 
+	# ENRÔLEMENT « draggable » : chaque panneau flottant devient déplaçable par son
+	# bandeau-titre (cf. _input). Les vars LOCALES army_panel/esb sont encore en scope.
+	for p in [_prov_panel, _country_panel, _construct, _battle_panel, _tech, _econ,
+			_prov_detail, _country_actions, _religion, _codex, _memory_panel,
+			_search_palette, _devpanel, army_panel, esb]:
+		if p != null:
+			p.add_to_group("draggable")
+
 	Sim.set_speed(0)            # monde en pause tant que le menu est ouvert
 
 ## ESPACE = pause, intercepté EN AMONT du focus GUI (_input passe avant les boutons
 ## focusés) — le focus clavier reste VIVANT partout (Tab/Entrée, audit 2026-07-10) ;
 ## on ne vole la barre d'espace qu'aux boutons, jamais à un champ de saisie.
 func _input(e: InputEvent) -> void:
+	# --- GLISSER-DÉPOSER des panneaux flottants (par le bandeau-titre) ---
+	if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT:
+		if e.pressed:
+			var c := get_viewport().gui_get_hovered_control()
+			var p := _drag_top(c)
+			# press dans la BANDE d'en-tête seulement → on arme le glissé (sans consommer
+			# l'event : le panneau reçoit quand même le press, ses boutons d'en-tête tirent)
+			if p != null and p.visible and e.position.y >= p.position.y and e.position.y <= p.position.y + DRAG_HEADER_H:
+				_drag_panel = p
+				_drag_press = e.position
+				_drag_off = e.position - p.position
+				_dragging = false
+		else:
+			_drag_panel = null
+			_dragging = false
+		return
+	if e is InputEventMouseMotion and _drag_panel != null and (e.button_mask & MOUSE_BUTTON_MASK_LEFT):
+		if not is_instance_valid(_drag_panel):
+			_drag_panel = null
+			_dragging = false
+			return
+		if not _dragging and e.position.distance_to(_drag_press) > 6.0:
+			_dragging = true
+		if _dragging:
+			var vp := get_viewport().get_visible_rect().size
+			var np: Vector2 = e.position - _drag_off
+			# garder ≥ 60 px du panneau à l'écran, haut ≥ 0
+			np.x = clamp(np.x, 60.0 - _drag_panel.size.x, vp.x - 60.0)
+			np.y = clamp(np.y, 0.0, vp.y - 60.0)
+			_drag_panel.position = np
+			_drag_panel.queue_redraw()
+			get_viewport().set_input_as_handled()   # ni la carte ni le panneau ne réagissent au glissé
+		return
 	if e is InputEventKey and e.pressed and not e.echo and e.ctrl_pressed and e.keycode == KEY_M:
 		if _memory_panel != null and Sim.game_on:
 			if _memory_panel.visible:
@@ -407,6 +462,14 @@ func _input(e: InputEvent) -> void:
 		return                       # on tape un espace dans un champ : pas de pause
 	Sim.toggle_pause()
 	get_viewport().set_input_as_handled()
+
+## remonte de `c` vers le premier ancêtre (ou lui-même) du groupe « draggable ».
+func _drag_top(c: Node) -> Control:
+	while c != null:
+		if c is Control and c.is_in_group("draggable"):
+			return c
+		c = c.get_parent()
+	return null
 
 func _unhandled_input(e: InputEvent) -> void:
 	if not (e is InputEventKey and e.pressed and not e.echo):
