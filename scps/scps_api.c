@@ -1326,25 +1326,12 @@ long scps_province_slave_count(ScpsSim *s, int pid){
  * (0.42f) — si econ_tick change ce taux, ce reader DOIT suivre (les deux portent
  * le même commentaire de couplage). */
 double scps_province_tax(ScpsSim *s, int pid){
-    if(!s || !s->ready || pid<0 || pid>=s->w->n_provinces || pid>=s->sim.econ->n_prov) return 0.0;
-    const ProvinceEconomy *pe = &s->sim.econ->prov[pid];
-    if(!pe->colonized) return 0.0;
-    const float STATE_TAX_AMBITION_MIRROR = 0.42f;   /* cf. scps_econ.c:1624 (le taux visé, non exposé au .h) */
-    double coll_tot = 0.0;
-    for(int c=0;c<CLASS_COUNT;c++){
-        const PopStratum *st = &pe->strata[c];
-        float sat   = clampf(st->satisfaction, 0.f, 1.f);
-        float seuil = econ_tax_tolerance(pe->culture.ethos, (SocialClass)c) * (0.40f + 0.60f*sat);
-        float evasion   = clampf(STATE_TAX_AMBITION_MIRROR - seuil, 0.f, 1.f);
-        /* Miroir de scps_econ.c:2621 : collected = 0.42·wealth·(1−évasion)·dt où dt est en
-         * ANNÉES par tick (cf. « ×365×dt » ligne 2652) — le taux est donc déjà ANNUEL.
-         * (L'ancien miroir le prenait pour un mensuel et ×12 ⇒ affichait 12× le réel —
-         * les « 6300 or/an » d'un hameau de 750 âmes.) Borné à la richesse de la classe. */
-        float collected_yearly = STATE_TAX_AMBITION_MIRROR * st->wealth * (1.f - evasion);
-        if(collected_yearly > st->wealth) collected_yearly = st->wealth;
-        coll_tot += (double)collected_yearly;
-    }
-    return coll_tot;   /* or/an */
+    /* CORRECTIF 2026-07-14 — l'ancien reader taxait 0.42·WEALTH (le STOCK de richesse) : un
+     * modèle périmé, ~50× trop haut (113k/an pour une province de 5k âmes). La vérité moteur
+     * est PER-CAPITA (forfait × pop × curseur × (1−évasion), scps_econ.c:3090) → on délègue au
+     * lecteur pur dédié, en or/MOIS (l'unité affichée partout — l'annuel est banni). */
+    if(!s || !s->ready || pid<0 || pid>=s->w->n_provinces) return 0.0;
+    return (double)econ_province_tax_month(s->sim.econ, pid);   /* or/MOIS */
 }
 
 /* UI PROVINCE LOT 4 — le TERRAIN comme % de tenue de siège. Réplique

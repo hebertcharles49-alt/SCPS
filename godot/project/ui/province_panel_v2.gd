@@ -90,7 +90,7 @@ func _build_shell() -> void:
 	tabpanel.add_child(tabs)
 	_tab_group = ButtonGroup.new()
 	_tab_btns.clear()
-	var names := ["Infrastructure", "Militaire"]
+	var names := ["Infrastructure", "Région", "Militaire"]
 	for i in range(names.size()):
 		var b := Button.new()
 		b.theme_type_variation = "Tab"
@@ -148,7 +148,8 @@ func refresh() -> void:
 	for c in _body.get_children():
 		c.queue_free()
 	match _tab:
-		1: _build_militaire(w, info, cap)
+		1: _build_region(w, info, cap)
+		2: _build_militaire(w, info, cap)
 		_: _build_infrastructure(w, info, cap)
 	if _flash != "":
 		_line(_flash, "Income")
@@ -183,7 +184,7 @@ func _build_infrastructure(w, info: Dictionary, _cap: Dictionary) -> void:
 	var grid := _grid()
 	_kv(grid, "Population", _grp(info.get("ames", 0)), ParchTheme.INK)
 	var tax := float(w.province_tax(_pid)) if w.has_method("province_tax") else 0.0
-	_kv(grid, "Impôts", "~%s or/an" % _grp(int(round(tax))), ParchTheme.INK)
+	_kv(grid, "Impôts", "~%s or/mois" % _grp(int(round(tax))), ParchTheme.INK)
 	var aisance := int(info.get("aisance_val", 0))
 	_kv(grid, "Prospérité", "%d%%" % aisance, _score_col(aisance))
 	var mood := int(info.get("humeur_val", 0))
@@ -435,6 +436,106 @@ func _chip_btn(txt: String) -> Button:
 	b.add_theme_color_override("font_hover_color", ParchTheme.INK)
 	b.add_theme_color_override("font_pressed_color", ParchTheme.INK)
 	return b
+
+# ── ONGLET RÉGION : l'OUTPUT économique agrégé (la région = N tuiles) ─────────
+## Read-only. La RÉGION est l'unité éco du moteur (les journaliers y sont mis en commun,
+## répartis sur les raws des ~3 tuiles) ; cet onglet en montre le RÉSULTAT : production
+## brute + manufacturée (sommée sur les provinces de la région) + résumé stab/prospérité.
+func _build_region(w, info: Dictionary, _cap: Dictionary) -> void:
+	# agréger l'output sur toutes les provinces de la même région
+	var raws := {}      # source -> [per_day, res_id]
+	var manu := {}      # source -> [per_day, res_id]
+	var n := int(w.province_count()) if w.has_method("province_count") else 0
+	var nprov := 0
+	for p in range(n):
+		if not w.has_method("province_region") or int(w.province_region(p)) != _region:
+			continue
+		nprov += 1
+		if not w.has_method("province_income"):
+			continue
+		for l in w.province_income(p):
+			var nm := String(l.get("source", ""))
+			if nm == "":
+				continue
+			var tgt: Dictionary = manu if bool(l.get("manufactured", false)) else raws
+			var cur: Array = tgt.get(nm, [0.0, int(l.get("res_id", -1))])
+			cur[0] = float(cur[0]) + float(l.get("per_day", 0.0))
+			tgt[nm] = cur
+
+	_section("PRODUCTION — RESSOURCES  ·  %d tuile(s)" % nprov)
+	_output_list(raws)
+	_section("PRODUCTION — MANUFACTURÉS")
+	_output_list(manu)
+
+	# RÉSUMÉ : prospérité + stabilité (jauges de la région)
+	_section("RÉSUMÉ")
+	_gauge("Prospérité", int(info.get("aisance_val", 0)))
+	_gauge("Stabilité", int(info.get("humeur_val", 0)))
+	var agit := int(info.get("agitation", 0))
+	if w.has_method("province_agitation"):
+		agit = int(w.province_agitation(_pid).get("value", agit))
+	_gauge("Ordre", 100 - clampi(agit, 0, 100))
+
+## la liste d'output triée décroissante : icône + nom + « +X/mois » (per_day × 30).
+func _output_list(m: Dictionary) -> void:
+	if m.is_empty():
+		_line("  aucune production", "RowDim")
+		return
+	var rows := []
+	for nm in m:
+		rows.append([nm, float(m[nm][0]), int(m[nm][1])])
+	rows.sort_custom(func(a, b): return float(a[1]) > float(b[1]))
+	for r in rows:
+		var hb := HBoxContainer.new()
+		hb.add_theme_constant_override("separation", 6)
+		_body.add_child(hb)
+		var spr: Texture2D = null
+		if int(r[2]) >= 0:
+			spr = UIKit.resource_sprite(int(r[2]), String(r[0]))
+		if spr == null:
+			spr = UIKit.resource_icon(String(r[0]))
+		_icon(hb, spr, 18)
+		var nm := Label.new()
+		nm.theme_type_variation = "RowLabel"
+		nm.text = String(r[0])
+		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		nm.clip_text = true
+		hb.add_child(nm)
+		var amt := Label.new()
+		amt.theme_type_variation = "Income"
+		amt.text = "+%s/mois" % _grp(int(round(float(r[1]) * 30.0)))
+		amt.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		hb.add_child(amt)
+
+## une jauge de résumé : label + barre + % (couleur de score).
+func _gauge(label: String, v: int) -> void:
+	var hb := HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 8)
+	_body.add_child(hb)
+	var nm := Label.new()
+	nm.theme_type_variation = "RowDim"
+	nm.text = label
+	nm.custom_minimum_size = Vector2(90, 0)
+	hb.add_child(nm)
+	var bar := ProgressBar.new()
+	bar.min_value = 0.0
+	bar.max_value = 100.0
+	bar.value = float(clampi(v, 0, 100))
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(0, 12)
+	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.add_theme_stylebox_override("background",
+		ParchTheme.sb(Color("caa768"), ParchTheme.BORDER, 1, 2, 0, 0, 0, 0))
+	bar.add_theme_stylebox_override("fill",
+		ParchTheme.sb(_score_col(v), Color(0, 0, 0, 0), 0, 2, 0, 0, 0, 0))
+	hb.add_child(bar)
+	var pc := Label.new()
+	pc.theme_type_variation = "RowLabel"
+	pc.text = "%d%%" % clampi(v, 0, 100)
+	pc.custom_minimum_size = Vector2(40, 0)
+	pc.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	pc.add_theme_color_override("font_color", _score_col(v))
+	hb.add_child(pc)
 
 # ── ONGLET MILITAIRE : défense de la province + menace intérieure ─────────────
 ## N'INVENTE rien : la façade n'expose ni garnison, ni réserves, ni marins par

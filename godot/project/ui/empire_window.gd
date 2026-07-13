@@ -247,7 +247,7 @@ func _build_population(w, me: int) -> void:
 			var val := ""
 			match _prov_sort:
 				0: val = "+%.1f/j" % float(rp["res"])
-				1: val = "~%s or/an" % _grp(int(round(float(rp["revenu"]))))
+				1: val = "~%s or/mois" % _grp(int(round(float(rp["revenu"]))))
 				_: val = _grp(int(rp["pop"]))
 			_kv_row(pg, String(rp["nom"]), val, ParchTheme.INK)
 			shown += 1

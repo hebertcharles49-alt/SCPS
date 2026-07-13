@@ -7,7 +7,8 @@ extends Node
 const OUTDIR := "C:/Users/Charl/Desktop/SCPS-main/build/"
 const TABS := [
 	[0, "province_infra.png"],
-	[1, "province_militaire.png"],
+	[1, "province_region.png"],
+	[2, "province_militaire.png"],
 ]
 
 func _arg(p: String, d: String) -> String:

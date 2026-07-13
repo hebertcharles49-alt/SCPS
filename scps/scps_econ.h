@@ -823,6 +823,7 @@ float econ_country_tax_mult(const WorldEconomy *e, int cid, SocialClass c);
 /* Rendement fiscal MENSUEL (or/mois) d'une classe pour un pays — lecteur PUR (recalculé,
  * aucun état sérialisé). Somme sur les provinces du pays du forfait per-capita × (1−évasion). */
 float econ_country_tax_class_month(const WorldEconomy *e, int cid, SocialClass c);
+float econ_province_tax_month(const WorldEconomy *e, int pid);   /* impôt MENSUEL d'une province (or/mois, per-capita) */
 float econ_country_budget_mult(const WorldEconomy *e, int cid, BudgetPolicy policy);
 /* ENTRETIEN DES ROUTES → multiplicateur de connectivité pour la prospérité/le commerce.
  * Curseur non réglé (0, chronique/IA) → 1.0 NEUTRE (golden-safe) ; réglé ∈ [0.02,1] →

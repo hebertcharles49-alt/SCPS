@@ -2014,6 +2014,37 @@ float econ_country_tax_class_month(const WorldEconomy *e, int cid, SocialClass c
     }
     return total;
 }
+
+/* LECTEUR PUR (display) — l'impôt MENSUEL d'UNE province, en or/mois, recalculé de l'état
+ * courant (aucun champ sérialisé). MÊME formule que la boucle 3b du tick (forfait per-capita
+ * × pop × curseur × (1−évasion)), sommée sur les 3 classes — la SEULE vérité fiscale (l'ancien
+ * scps_province_tax taxait 42 % du STOCK de richesse : périmé, ~50× trop haut). */
+float econ_province_tax_month(const WorldEconomy *e, int pid){
+    if (!e || pid<0 || pid>=e->n_prov) return 0.f;
+    const ProvinceEconomy *re=&e->prov[pid];
+    if (!re->active || !re->colonized) return 0.f;
+    float total=0.f;
+    for (int c=0;c<CLASS_COUNT;c++){
+        if (c==CLASS_SLAVE) continue;                       /* pas d'impôt sur les esclaves */
+        float base;
+        switch (c){
+            case CLASS_LABORER:   base=tune_f("TAX_BASE_LABORER",   TAX_BASE_LABORER);   break;
+            case CLASS_BOURGEOIS: base=tune_f("TAX_BASE_BOURGEOIS", TAX_BASE_BOURGEOIS); break;
+            case CLASS_ELITE:     base=tune_f("TAX_BASE_ELITE",     TAX_BASE_ELITE);     break;
+            default: continue;
+        }
+        const PopStratum *st=&re->strata[c];
+        float sat     = clampf(st->satisfaction,0.f,1.f);
+        float seuil   = econ_tax_tolerance(re->culture.ethos,(SocialClass)c)*(0.40f+0.60f*sat);
+        float mult    = econ_country_tax_mult(e, re->owner, (SocialClass)c);
+        float ambition= STATE_TAX_AMBITION * mult;
+        float evasion = clampf(ambition - seuil, 0.f, 1.f);
+        float coll    = base * st->pop * mult * (1.f-evasion);
+        if (coll > st->wealth) coll = st->wealth;           /* même plafond que le tick */
+        total += coll;
+    }
+    return total;   /* or/MOIS */
+}
 /* §B — DÉ-STÉRILISER LE TRÉSOR + FERMER LE CISEAU OFFRE/DEMANDE.
  *  STATE_SPEND_RATE : part ANNUELLE du trésor que l'État REDÉPENSE (×dt/tick) — il ne
  *  hoarde plus, il circule ; réglé pour un trésor à l'ÉQUILIBRE (≈ TAX/SPEND × richesse),

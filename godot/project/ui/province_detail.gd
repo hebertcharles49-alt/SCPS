@@ -678,7 +678,7 @@ func _draw_flux(fx: float, fy: float, fw: float, fh: float, w) -> void:
 	VKit.text(self, Vector2(fx + 344.0, fy), VKit.COL_DIM, "sortie d'atelier", VKit.FS_SMALL)
 	var tax := float(w.province_tax(_pid))
 	if tax > 0.5:
-		var tax_txt := "Impôts : ~%s or/an" % _grp(int(round(tax)))
+		var tax_txt := "Impôts : ~%s or/mois" % _grp(int(round(tax)))
 		VKit.value(self, Vector2(fx + fw - VKit.text_w(tax_txt, VKit.FS_SMALL), fy), tax_txt, VKit.FS_SMALL)
 	var inc: Array = w.province_income(_pid)
 	if inc.is_empty():
