@@ -624,6 +624,32 @@ static void sim_cmd_drain(Sim *s, World *w){
                 econ_flux_add(p, FX_BUILD, -cost);                   /* I0 : la ligne chantiers */
             }
             break; }
+          case CMD_MANUF_LEVEL: {   /* onglet province : monter/descendre le niveau d'une manuf bâtie */
+            int reg=c->a[0], b=c->a[1], dir=(c->a[2]>=0)?1:-1;
+            if (reg<0 || reg>=s->econ->n_regions) break;
+            if (b<0 || b>=BLD_TYPE_COUNT) break;
+            RegionEconomy *re=&s->econ->region[reg];
+            if (re->owner != p || !re->colonized) break;             /* REVALIDE : à soi, peuplée */
+            if (dir>0){
+                /* MONTER = injection de capacité DÉLIBÉRÉE, payante (miroir de la pose). */
+                float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(s->econ)*decree_manuf_cost_mult(p);
+                if (!credit_can_spend(s->econ, w, p, cost)) break;
+                if (econ_manuf_level_delta(s->econ, reg, (BuildingType)b, +1)){
+                    credit_spend(s->econ, w, p, cost);
+                    econ_flux_add(p, FX_BUILD, -cost);               /* I0 : la ligne chantiers */
+                }
+            } else {
+                econ_manuf_level_delta(s->econ, reg, (BuildingType)b, -1);   /* DESCENDRE = démolition libre */
+            }
+            break; }
+          case CMD_DEMOLISH_EDI: {  /* onglet province : démolir un édifice d'un cran */
+            int reg=c->a[0], e=c->a[1];
+            if (reg<0 || reg>=s->econ->n_regions) break;
+            if (e<0 || e>=EDIFICE_COUNT) break;
+            RegionEconomy *re=&s->econ->region[reg];
+            if (re->owner != p) break;                               /* REVALIDE : à soi */
+            agency_demolish_edifice(s->econ, reg, (Edifice)e);
+            break; }
           case CMD_EMBARGO: {
             int t = c->a[0];
             if (t<0 || t>=w->n_countries || t==p || w->country[t].role==POLITY_UNCLAIMED) break;

@@ -1003,6 +1003,7 @@ void  econ_prodcap_save(FILE *f);
 bool  econ_prodcap_load(FILE *f);
 int   bld_min_tier(BuildingType b);                       /* F-arc : tier de capitale requis pour poser la manufacture */
 bool  econ_build_manufacture(WorldEconomy *econ, int region, BuildingType b);  /* F-arc : bâti délibéré (tier+or vérifiés par l'appelant) */
+bool  econ_manuf_level_delta(WorldEconomy *econ, int region, BuildingType b, int dir);  /* le joueur monte/descend d'un CRAN le niveau d'une manuf bâtie (dir ±1 ; sous plancher ⇒ retirée) */
 /* M6 — la MATIÈRE gate la manufacture arcane : Forge ↔ fer céleste, Atelier ↔ cristal,
  * Alambic ↔ salpêtre (raw_cap de la région). true pour les manufactures ordinaires. */
 bool  econ_bld_can_build(const WorldEconomy *e, int region, BuildingType b);

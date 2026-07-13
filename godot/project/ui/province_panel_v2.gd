@@ -14,10 +14,15 @@ const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
 const PopBar = preload("res://ui/pop_bar.gd")
 
-const PW := 356.0   ## largeur plafond (~360, brief)
+const PW := 384.0   ## largeur plafond (lignes par classe + boutons collés)
+const ALLOC_STEP := 10   ## pas de répartition raw (poids 0-100)
 
 var _pid := -1
-var _tab := 0                       ## 0 Infrastructure · 1 Militaire · 2 Démographie
+var _region := -1                   ## région moteur de la province (verbes/alloc region-grain)
+var _alloc := {}                    ## dernier region_alloc (pousser l'allocation COMPLÈTE)
+var _name2bld := {}                 ## nom de manufacture → BuildingType (résout le type pour les verbes)
+var _flash := ""                    ## retour transitoire « ordre émis » (effacé au refresh)
+var _tab := 0                       ## 0 Infrastructure (fusionné) · 1 Militaire
 var _body: VBoxContainer = null     ## corps rebâti à chaque refresh / changement d'onglet
 var _title_lbl: Label = null
 var _sub_lbl: Label = null
@@ -85,7 +90,7 @@ func _build_shell() -> void:
 	tabpanel.add_child(tabs)
 	_tab_group = ButtonGroup.new()
 	_tab_btns.clear()
-	var names := ["Infrastructure", "Militaire", "Démographie"]
+	var names := ["Infrastructure", "Militaire"]
 	for i in range(names.size()):
 		var b := Button.new()
 		b.theme_type_variation = "Tab"
@@ -131,13 +136,22 @@ func refresh() -> void:
 	if not bool(info.get("valide", false)):
 		return
 	var cap: Dictionary = w.province_capitale(_pid)
+	# région moteur + allocation (grain des verbes) + carte nom→BuildingType (résout les types)
+	_region = int(w.province_region(_pid)) if w.has_method("province_region") else -1
+	_alloc = w.region_alloc(_region) if (_region >= 0 and w.has_method("region_alloc")) else {}
+	if _name2bld.is_empty() and w.has_method("manuf_name"):
+		for bld in range(24):   # BLD_TYPE_COUNT (miroir display-only)
+			var nm := String(w.manuf_name(bld))
+			if nm != "" and nm != "?":
+				_name2bld[nm] = bld
 	_update_header(w, info, cap)
 	for c in _body.get_children():
 		c.queue_free()
 	match _tab:
 		1: _build_militaire(w, info, cap)
-		2: _build_demographie(w, info, cap)
 		_: _build_infrastructure(w, info, cap)
+	if _flash != "":
+		_line(_flash, "Income")
 	# hug content après reconstruction (largeur plafonnée par custom_minimum_size)
 	reset_size.call_deferred()
 
@@ -154,25 +168,22 @@ func _update_header(w, info: Dictionary, cap: Dictionary) -> void:
 		_owner_lbl.text = ""
 	_ownersub_lbl.text = String(cap.get("statut", ""))
 
-# ── ONGLET INFRASTRUCTURE (le contenu plein) ──────────────────────────────────
-func _build_infrastructure(w, info: Dictionary, cap: Dictionary) -> void:
-	# TERRAIN
-	_section("TERRAIN")
+# ── ONGLET INFRASTRUCTURE (fusionné : la province PAR CLASSE) ─────────────────
+## Retour joueur 2026-07-13 : Infrastructure + Démographie FONDUES. Chaque CLASSE
+## sociale porte SA colonne d'activité — Journaliers/Esclaves la RÉPARTITION par raw
+## (extraction), Bourgeois les MANUFACTURES, Élites les ÉDIFICES — avec des [−][+]
+## collés (répartition, niveau, poser/démolir). Culture & foi en frises au HOVER.
+func _build_infrastructure(w, info: Dictionary, _cap: Dictionary) -> void:
+	var mine := (int(info.get("owner", -2)) == int(w.player())) if w.has_method("player") else false
+
+	# TERRAIN + statistiques clés (compact)
 	var def_pct := int(w.province_defense_pct(_pid)) if w.has_method("province_defense_pct") else 100
 	_line("%s · %s · tenue de siège %+d%%" % [
 		String(info.get("climat", "")), String(info.get("relief", "")), def_pct - 100], "RowDim")
-
-	# STATISTIQUES clés (label → valeur, couleur sémantique)
-	_section("PROVINCE")
 	var grid := _grid()
 	_kv(grid, "Population", _grp(info.get("ames", 0)), ParchTheme.INK)
 	var tax := float(w.province_tax(_pid)) if w.has_method("province_tax") else 0.0
 	_kv(grid, "Impôts", "~%s or/an" % _grp(int(round(tax))), ParchTheme.INK)
-	var prod_tot := 0.0
-	var inc: Array = w.province_income(_pid) if w.has_method("province_income") else []
-	for l in inc:
-		prod_tot += float(l.get("per_day", 0.0))
-	_kv(grid, "Production", "+%.1f/j" % prod_tot, ParchTheme.GREEN)
 	var aisance := int(info.get("aisance_val", 0))
 	_kv(grid, "Prospérité", "%d%%" % aisance, _score_col(aisance))
 	var mood := int(info.get("humeur_val", 0))
@@ -181,71 +192,243 @@ func _build_infrastructure(w, info: Dictionary, cap: Dictionary) -> void:
 	if w.has_method("province_agitation"):
 		agit = int(w.province_agitation(_pid).get("value", agit))
 	_kv(grid, "Agitation", "%d%%" % agit, ParchTheme.RED if agit >= 50 else ParchTheme.DIM_INK)
-	var dwork := String(info.get("defense", ""))
-	_kv(grid, "Ouvrage", dwork if dwork != "" else "—", ParchTheme.DIM_INK)
 	if bool(info.get("seuil_revolte", false)):
 		_line("⚠ Au bord de la révolte (agitation %d)" % agit, "Expense")
 
-	# CLASSES (pop + petite barre de satisfaction)
-	_section("CLASSES")
+	# PEUPLES — frises culture/foi, DÉTAIL AU HOVER (pas de légende toujours affichée)
+	var pop := float(info.get("ames", 0))
+	var groups: Array = w.province_groups(_pid) if w.has_method("province_groups") else []
+	if groups.size() > 0 and pop > 0.0:
+		var cmap := {}
+		var fmap := {}
+		for g in groups:
+			var wgt := pop * float(g.get("percent", 0)) / 100.0
+			var cn := String(g.get("culture", "?"))
+			cmap[cn] = float(cmap.get(cn, 0.0)) + wgt
+			var fn := String(g.get("faith", ""))
+			if fn == "":
+				fn = "Sans foi"
+			fmap[fn] = float(fmap.get(fn, 0.0)) + wgt
+		_section("PEUPLES  ·  survol → détail")
+		PopBar.build_bar_only(_body, cmap, pop)
+		PopBar.build_bar_only(_body, fmap, pop)
+
+	# CLASSES FUSIONNÉES : chaque classe → sa colonne d'activité (avec [−][+])
 	var cls: Dictionary = w.province_classes(_pid) if w.has_method("province_classes") else {}
 	var csat: Dictionary = w.province_class_sat(_pid) if w.has_method("province_class_sat") else {}
 	var slaves := int(w.province_slave_count(_pid)) if w.has_method("province_slave_count") else 0
-	for row in [["Laboureurs", "laboureurs"], ["Artisans", "artisans"],
-			["Noblesse", "noblesse"], ["Esclaves", "esclaves"]]:
-		var pop := (slaves if row[1] == "esclaves" else int(cls.get(row[1], 0)))
-		var sv := int(csat.get(row[1], -1))
-		_class_row(String(row[0]), pop, sv)
 
-	# RESSOURCES (icône + nom des gisements)
-	_section("RESSOURCES")
-	var res_line := HBoxContainer.new()
-	res_line.add_theme_constant_override("separation", 10)
-	_body.add_child(res_line)
-	var shown := 0
-	for l in inc:
-		if bool(l.get("manufactured", false)):
+	# JOURNALIERS → la terre : répartition par raw
+	_class_row("Journaliers", int(cls.get("laboureurs", 0)), int(csat.get("laboureurs", -1)))
+	_alloc_section(w, mine, 0)
+
+	# BOURGEOIS → les manufactures (poser + niveau)
+	_class_row("Bourgeois", int(cls.get("artisans", 0)), int(csat.get("artisans", -1)))
+	_manuf_section(w, mine)
+
+	# ÉLITES → les édifices (poser + palier)
+	_class_row("Élites", int(cls.get("noblesse", 0)), int(csat.get("noblesse", -1)))
+	_edifice_section(w, mine)
+
+	# ESCLAVES → la terre aussi : répartition par raw (idem journaliers), si présents
+	if slaves > 0:
+		_class_row("Esclaves", slaves, int(csat.get("esclaves", -1)))
+		_alloc_section(w, mine, 0)
+
+# ── SECTIONS PAR CLASSE (interactives) ────────────────────────────────────────
+## RÉPARTITION par raw (kind 0) : une ligne par gisement · part % · [−][+] · ↻ Auto.
+func _alloc_section(w, mine: bool, kind: int) -> void:
+	var sinks: Array = _alloc.get("sinks", [])
+	var any := false
+	for i in range(sinks.size()):
+		var s: Dictionary = sinks[i]
+		if int(s.get("kind", -1)) != kind:
 			continue
-		if shown >= 3:
-			break
-		_res_chip(res_line, int(l.get("res_id", -1)), String(l.get("source", "")))
-		shown += 1
-	if shown == 0:
-		var rnom := String(info.get("ressource", "—"))
-		_res_chip(res_line, -1, rnom)
+		any = true
+		_alloc_row(w, mine, s, i)
+	if not any:
+		_line("  aucune extraction ici", "RowDim")
+		return
+	if mine:
+		var wrap := HBoxContainer.new()
+		wrap.alignment = BoxContainer.ALIGNMENT_END
+		_body.add_child(wrap)
+		var auto := _sq_btn("↻ Auto", 52)
+		auto.tooltip_text = "rendre la répartition au moteur"
+		auto.pressed.connect(func():
+			if _region >= 0:
+				w.player_alloc_auto(_region)
+				_fire("↻ répartition automatique"))
+		wrap.add_child(auto)
 
-	# PRODUCTION (flux réalisés /j)
-	_section("PRODUCTION")
-	if inc.size() == 0:
-		_line("rien de notable", "RowDim")
-	else:
-		for l in inc:
-			var pl := HBoxContainer.new()
-			pl.add_theme_constant_override("separation", 8)
-			_body.add_child(pl)
-			var amt := Label.new()
-			amt.theme_type_variation = "Income"
-			amt.text = "+%.1f/j" % float(l.get("per_day", 0.0))
-			amt.custom_minimum_size = Vector2(56, 0)
-			pl.add_child(amt)
-			_res_chip(pl, int(l.get("res_id", -1)), String(l.get("source", "")))
+func _alloc_row(w, mine: bool, s: Dictionary, idx: int) -> void:
+	var hb := HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 6)
+	_body.add_child(hb)
+	var nm := Label.new()
+	nm.theme_type_variation = "RowDim"
+	nm.text = "   " + String(s.get("name", "?"))
+	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nm.clip_text = true
+	hb.add_child(nm)
+	var pc := Label.new()
+	pc.theme_type_variation = "RowLabel"
+	pc.text = "%d%%" % int(s.get("pct", 0))
+	pc.custom_minimum_size = Vector2(40, 0)
+	pc.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	hb.add_child(pc)
+	if mine:
+		var minus := _sq_btn("−")
+		minus.pressed.connect(func(): _alloc_apply(idx, int(s.get("weight", 0)) - ALLOC_STEP))
+		hb.add_child(minus)
+		var plus := _sq_btn("+")
+		plus.pressed.connect(func(): _alloc_apply(idx, int(s.get("weight", 0)) + ALLOC_STEP))
+		hb.add_child(plus)
 
-	# BÂTIMENTS (grille d'emplacements — icônes du pack, repli libellé)
+## applique une édition d'allocation : pousse l'allocation COMPLÈTE (régler un seul puits
+## mettrait les autres à 0) — région à soi, revalidée au drain. (motif province_detail.)
+func _alloc_apply(idx: int, new_w: int) -> void:
+	var w = Sim.world
+	if w == null or _region < 0:
+		return
+	var sinks: Array = _alloc.get("sinks", [])
+	for i in range(sinks.size()):
+		var s: Dictionary = sinks[i]
+		var ww := (new_w if i == idx else int(s.get("weight", 0)))
+		ww = clampi(ww, 0, 100)
+		if int(s.get("kind", 0)) == 0:
+			w.player_alloc_raw(_region, int(s.get("id", 0)), ww)
+		else:
+			w.player_alloc_bld(_region, int(s.get("id", 0)), ww)
+	_fire("répartition ajustée")
+
+## MANUFACTURES (ligne Bourgeois) : chaque manuf bâtie · niveau · [−][+] ; puis le picker « bâtir ».
+func _manuf_section(w, mine: bool) -> void:
 	var blds: Array = w.province_buildings(_pid) if w.has_method("province_buildings") else []
+	if blds.is_empty():
+		_line("  aucune manufacture", "RowDim")
+	for b in blds:
+		var nom := String(b.get("nom", ""))
+		_manuf_row(w, mine, nom, int(b.get("niveau", 0)), int(b.get("ouvriers", 0)), int(_name2bld.get(nom, -1)))
+	if mine:
+		_manuf_picker(w)
+
+func _manuf_row(w, mine: bool, nom: String, niv: int, ouv: int, bid: int) -> void:
+	var hb := HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 6)
+	_body.add_child(hb)
+	_icon(hb, UIKit.manuf_sprite(nom), 18)
+	var nm := Label.new()
+	nm.theme_type_variation = "RowLabel"
+	nm.text = nom
+	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nm.clip_text = true
+	nm.tooltip_text = "niveau %d · %d ouvriers" % [niv, ouv]
+	hb.add_child(nm)
+	var lv := Label.new()
+	lv.theme_type_variation = "RowDim"
+	lv.text = "niv %d" % niv
+	lv.custom_minimum_size = Vector2(44, 0)
+	lv.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	hb.add_child(lv)
+	if mine and bid >= 0:
+		var minus := _sq_btn("−")
+		minus.tooltip_text = "baisser le niveau (démolir un cran)"
+		minus.pressed.connect(func(): w.player_manuf_level(_region, bid, -1); _fire("%s : niveau ↓" % nom))
+		hb.add_child(minus)
+		var plus := _sq_btn("+")
+		plus.tooltip_text = "monter le niveau (payant)"
+		plus.pressed.connect(func(): w.player_manuf_level(_region, bid, 1); _fire("%s : niveau ↑" % nom))
+		hb.add_child(plus)
+
+func _manuf_picker(w) -> void:
+	if _region < 0 or not w.has_method("manuf_legal"):
+		return
+	var mcost := int(w.manuf_cost()) if w.has_method("manuf_cost") else 0
+	var any := false
+	for bld in range(24):
+		if int(w.manuf_legal(_region, bld)) != 1:
+			continue
+		any = true
+		var nom := String(w.manuf_name(bld))
+		var hb := HBoxContainer.new()
+		hb.add_theme_constant_override("separation", 6)
+		_body.add_child(hb)
+		_icon(hb, UIKit.manuf_sprite(nom), 16)
+		var nm := Label.new()
+		nm.theme_type_variation = "RowDim"
+		nm.text = nom
+		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		nm.clip_text = true
+		hb.add_child(nm)
+		var b := bld
+		var btn := _sq_btn(("Bâtir · %d or" % mcost) if mcost > 0 else "Bâtir", 84)
+		btn.pressed.connect(func(): w.player_build_manuf(_region, b); _fire("%s : chantier lancé" % nom))
+		hb.add_child(btn)
+	if not any:
+		_line("  aucune manufacture posable ici", "RowDim")
+
+## ÉDIFICES (ligne Élites) : chaque édifice bâti · [−] démolir · [+] palier ; puis le picker.
+func _edifice_section(w, mine: bool) -> void:
 	var edis: Array = w.province_edifices(_pid) if w.has_method("province_edifices") else []
-	if blds.size() > 0 or edis.size() > 0:
-		_section("BÂTIMENTS")
-		var bg := GridContainer.new()
-		bg.columns = 8
-		bg.add_theme_constant_override("h_separation", 4)
-		bg.add_theme_constant_override("v_separation", 4)
-		_body.add_child(bg)
-		for e in edis:
-			_bld_slot(bg, UIKit.building_sprite(int(e.get("type", -1))), String(e.get("nom", "")))
-		for b in blds:
-			var tip := "%s — niveau %d · %d ouvriers" % [
-				String(b.get("nom", "")), int(b.get("niveau", 0)), int(b.get("ouvriers", 0))]
-			_bld_slot(bg, UIKit.manuf_sprite(String(b.get("nom", ""))), tip)
+	if edis.is_empty():
+		_line("  aucun édifice", "RowDim")
+	for e in edis:
+		_edi_row(w, mine, String(e.get("nom", "")), int(e.get("type", -1)))
+	if mine:
+		_edi_picker(w)
+
+func _edi_row(w, mine: bool, nom: String, type: int) -> void:
+	var hb := HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 6)
+	_body.add_child(hb)
+	_icon(hb, UIKit.building_sprite(type), 18)
+	var nm := Label.new()
+	nm.theme_type_variation = "RowLabel"
+	nm.text = nom
+	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nm.clip_text = true
+	hb.add_child(nm)
+	if mine and type >= 0:
+		var minus := _sq_btn("−")
+		minus.tooltip_text = "démolir d'un cran"
+		minus.pressed.connect(func(): w.player_demolish_edifice(_region, type); _fire("%s : démoli d'un cran" % nom))
+		hb.add_child(minus)
+		# « + » seulement si un palier suivant existe ET est légal ici (sinon rien)
+		var succ := int(w.edifice_succ(type)) if w.has_method("edifice_succ") else -1
+		if succ >= 0 and w.has_method("build_legal") and bool(w.build_legal(_region, succ).get("legal", false)):
+			var plus := _sq_btn("+")
+			plus.tooltip_text = "monter au palier suivant"
+			plus.pressed.connect(func(): w.player_build(succ, _region); _fire("%s : palier suivant" % nom))
+			hb.add_child(plus)
+
+func _edi_picker(w) -> void:
+	if _region < 0 or not w.has_method("build_legal"):
+		return
+	var any := false
+	for e in range(32):   # masque edi_built = 32 bits ; build_legal borne, edifice_name "" hors-borne
+		if not bool(w.build_legal(_region, e).get("legal", false)):
+			continue
+		var nom := String(w.edifice_name(e)) if w.has_method("edifice_name") else ""
+		if nom == "":
+			continue
+		any = true
+		var hb := HBoxContainer.new()
+		hb.add_theme_constant_override("separation", 6)
+		_body.add_child(hb)
+		_icon(hb, UIKit.building_sprite(e), 16)
+		var nm := Label.new()
+		nm.theme_type_variation = "RowDim"
+		nm.text = nom
+		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		nm.clip_text = true
+		hb.add_child(nm)
+		var ee := e
+		var btn := _sq_btn("Bâtir", 60)
+		btn.pressed.connect(func(): w.player_build(ee, _region); _fire("%s : chantier lancé" % nom))
+		hb.add_child(btn)
+	if not any:
+		_line("  aucun édifice posable ici", "RowDim")
 
 # ── ONGLET MILITAIRE : défense de la province + menace intérieure ─────────────
 ## N'INVENTE rien : la façade n'expose ni garnison, ni réserves, ni marins par
@@ -275,45 +458,44 @@ func _build_militaire(w, info: Dictionary, _cap: Dictionary) -> void:
 	if bool(info.get("seuil_revolte", false)):
 		_line("⚠ Au bord de la révolte (agitation %d)" % agit, "Expense")
 
-# ── ONGLET DÉMOGRAPHIE : classes (pop + satisfaction) + frises culture/foi ────
-## Réutilise la MÊME barre de proportions (pop_bar.gd) que l'onglet Population de
-## l'empire — DRY : culture & foi rendus en frises segmentées.
-func _build_demographie(w, info: Dictionary, _cap: Dictionary) -> void:
-	# PEUPLE (résumé)
-	_section("PEUPLE")
-	var grid := _grid()
-	var pop := float(info.get("ames", 0))
-	_kv(grid, "Population", _grp(int(pop)), ParchTheme.INK)
-	_kv(grid, "Héritage", String(info.get("heritage", "—")), ParchTheme.INK)
+# ── PETITS BOUTONS + retour d'action ──────────────────────────────────────────
+## un bouton compact au thème parchemin (les [−][+] collés, les « Bâtir »).
+func _sq_btn(txt: String, wide := 24) -> Button:
+	var b := Button.new()
+	b.text = txt
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(wide, 20)
+	b.add_theme_font_size_override("font_size", 13)
+	b.add_theme_stylebox_override("normal", ParchTheme.sb(ParchTheme.HEADER_BG, ParchTheme.BORDER, 1, 3, 4, 4, 1, 1))
+	b.add_theme_stylebox_override("hover", ParchTheme.sb(ParchTheme.PANEL_BG, ParchTheme.TAB_UNDERLINE, 1, 3, 4, 4, 1, 1))
+	b.add_theme_stylebox_override("pressed", ParchTheme.sb(ParchTheme.DIVIDER, ParchTheme.TAB_UNDERLINE, 1, 3, 4, 4, 1, 1))
+	b.add_theme_color_override("font_color", ParchTheme.INK)
+	b.add_theme_color_override("font_hover_color", ParchTheme.INK)
+	b.add_theme_color_override("font_pressed_color", ParchTheme.INK)
+	return b
 
-	# CLASSES (pop + barre de satisfaction — même rangée que l'infrastructure)
-	_section("CLASSES")
-	var cls: Dictionary = w.province_classes(_pid) if w.has_method("province_classes") else {}
-	var csat: Dictionary = w.province_class_sat(_pid) if w.has_method("province_class_sat") else {}
-	var slaves := int(w.province_slave_count(_pid)) if w.has_method("province_slave_count") else 0
-	for row in [["Laboureurs", "laboureurs"], ["Artisans", "artisans"],
-			["Noblesse", "noblesse"], ["Esclaves", "esclaves"]]:
-		var cpop := (slaves if row[1] == "esclaves" else int(cls.get(row[1], 0)))
-		var sv := int(csat.get(row[1], -1))
-		_class_row(String(row[0]), cpop, sv)
+## une petite icône du pack (cadrée au slot ; rien si absente).
+func _icon(into: HBoxContainer, tex: Texture2D, sz := 18) -> void:
+	if tex == null:
+		return
+	var tr := TextureRect.new()
+	tr.texture = tex
+	tr.custom_minimum_size = Vector2(sz, sz)
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	into.add_child(tr)
 
-	# CULTURE / FOI — frises de proportions (âmes = pop × part du groupe)
-	var groups: Array = w.province_groups(_pid) if w.has_method("province_groups") else []
-	if groups.size() > 0 and pop > 0.0:
-		var cmap := {}
-		var fmap := {}
-		for g in groups:
-			var wgt := pop * float(g.get("percent", 0)) / 100.0
-			var cn := String(g.get("culture", "?"))
-			cmap[cn] = float(cmap.get(cn, 0.0)) + wgt
-			var fn := String(g.get("faith", ""))
-			if fn == "":
-				fn = "Sans foi"
-			fmap[fn] = float(fmap.get(fn, 0.0)) + wgt
-		_section("CULTURE")
-		PopBar.build_group(_body, cmap, pop)
-		_section("FOI / RELIGION")
-		PopBar.build_group(_body, fmap, pop)
+## un ordre a été émis : flash transitoire + drain live + refresh, effacé après 1,8 s.
+func _fire(msg: String) -> void:
+	_flash = msg
+	if Sim.has_method("notify_action"):
+		Sim.notify_action()
+	refresh()
+	var t := get_tree().create_timer(1.8)
+	t.timeout.connect(func():
+		_flash = ""
+		if visible:
+			refresh())
 
 # ── PRIMITIVES DE LAYOUT (conteneurs natifs, aucune ligne dessinée) ────────────
 func _section(txt: String) -> void:

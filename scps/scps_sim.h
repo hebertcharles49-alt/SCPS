@@ -128,6 +128,11 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
        /* Offre de paix composée : a={cible, drapeaux, score-or, n régions,
         * régions...}. Le pays ne peut posséder que 32 régions. */
        CMD_PEACE_OFFER,
+       /* Retour joueur 2026-07-13 — l'onglet province par classe :
+        * CMD_MANUF_LEVEL  a={région, BuildingType, dir(+1/-1)} : monte (payant) /
+        *   descend (retire sous plancher) le niveau d'une manufacture bâtie.
+        * CMD_DEMOLISH_EDI a={région, Edifice} : démolir un édifice d'un cran. */
+       CMD_MANUF_LEVEL, CMD_DEMOLISH_EDI,
        CMD_COUNT };
 #define SCPS_CMDQ_MAX 64
 #define SCPS_PEACE_MAX_TERRITORIES 32

@@ -66,6 +66,9 @@ const EdificeDef *edifice_def(Edifice e);
  * la pose est-elle bloquée (membre déjà bâti, ou ↑ sans son palier) — pour l'UI. */
 Edifice edifice_prev(Edifice e);
 Edifice edifice_succ(Edifice e);   /* palier suivant (EDIFICE_COUNT = sommet/singleton) */
+/* Retour joueur : DÉMOLIR un édifice d'un CRAN (famille ⇒ palier précédent ; base ⇒ retiré).
+ * Player-only ; jamais appelé par la chronique. true si retiré/dégradé. */
+bool    agency_demolish_edifice(WorldEconomy *econ, int reg, Edifice e);
 Edifice edifice_next_buildable(const WorldEconomy *econ, int region, Edifice base);  /* le ↑ à poser */
 bool    edifice_build_blocked(const WorldEconomy *econ, int region, Edifice e);
 /* LOT T (2026-07-07) — le TIER d'un édifice = sa position dans SA FAMILLE (1 = base,

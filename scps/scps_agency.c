@@ -704,6 +704,29 @@ static void apply_action(WorldEconomy *econ, WorldLegitimacy *wl, ModifierStack 
     }
 }
 
+/* DÉMOLIR un édifice d'un CRAN (retour joueur 2026-07-13) : symétrique de l'AGY_BUILD
+ * ci-dessus. Membre de famille ⇒ retombe au palier précédent (Cathédrale→Temple→
+ * Sanctuaire) ; base/singleton ⇒ retiré. GRAIN PROVINCE (edi_built + build vivent sur
+ * la province représentative ; l'agrégation reflète région au tick). Player-only ⇒
+ * jamais appelé par la chronique (golden intact). true si un édifice a été retiré/dégradé. */
+bool agency_demolish_edifice(WorldEconomy *econ, int reg, Edifice e){
+    if (!econ || reg<0 || reg>=econ->n_regions) return false;
+    if ((int)e<0 || (int)e>=32) return false;                  /* masque edi_built = 32 bits */
+    int pid=econ_region_rep_province(econ, reg);
+    if (pid<0 || pid>=econ->n_prov) return false;
+    ProvinceEconomy *re=&econ->prov[pid];
+    if (!(re->edi_built & (1u<<e))) return false;              /* pas bâti ici */
+    remove_delta(&re->build, &EDIFICES[e].delta);
+    re->edi_built &= ~(1u<<e);
+    if (e==EDI_ENTREPOT && re->n_entrepot>0) re->n_entrepot--; /* E2 §11 : rendre la cap d'entrepôt */
+    Edifice prev=edifice_prev(e);
+    if (prev<EDIFICE_COUNT && (int)prev<32){                   /* dégrade au palier précédent */
+        apply_delta(&re->build, &EDIFICES[prev].delta);
+        re->edi_built |= (1u<<prev);
+    }
+    return true;
+}
+
 void agency_advance(AgencyState *a, World *w, WorldEconomy *econ,
                     WorldLegitimacy *wl, ModifierStack *drift, int days){
     (void)w;

@@ -8,7 +8,6 @@ const OUTDIR := "C:/Users/Charl/Desktop/SCPS-main/build/"
 const TABS := [
 	[0, "province_infra.png"],
 	[1, "province_militaire.png"],
-	[2, "province_demo.png"],
 ]
 
 func _arg(p: String, d: String) -> String:

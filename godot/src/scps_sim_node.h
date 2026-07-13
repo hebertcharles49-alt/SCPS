@@ -219,9 +219,13 @@ public:
     Dictionary can_raid_coast(int prov);
     /* PANNEAU B — poser une MANUFACTURE civile par région (le §NF l'exclut : voici la main). */
     bool       player_build_manuf(int region, int bld);  /* enfile l'ordre (drain revalidé) */
+    bool       player_manuf_level(int region, int bld, int dir);   /* +/- niveau d'une manuf bâtie */
+    bool       player_demolish_edifice(int region, int edifice);   /* démolir un édifice d'un cran */
     int        manuf_legal(int region, int bld);         /* légalité read-only (griser le bouton) */
     int        manuf_cost() const;                       /* le PRIX du chantier (or — même formule que le drain) */
     String     manuf_name(int bld);                      /* nom d'affichage du BuildingType (miroir display-only) */
+    String     edifice_name(int edifice);                /* nom d'un édifice (picker « poser ») */
+    int        edifice_succ(int edifice);                /* palier suivant (le « + » upgrade) */
     /* lot M — LÉGALITÉ d'ÉDIFICE (miroir read-only du drain CMD_BUILD) :
      * { legal:bool, reason:int } — reason 0 OK · 1 structurel · 2 or · 3 matière. */
     Dictionary build_legal(int region, int edifice);

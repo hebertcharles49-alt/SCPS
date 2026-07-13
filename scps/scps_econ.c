@@ -2433,6 +2433,44 @@ bool econ_build_manufacture(WorldEconomy *econ, int region, BuildingType b){
     return true;
 }
 
+/* Le NIVEAU d'une manufacture bâtie, d'un CRAN (dir=+1 monte, -1 descend). Le niveau
+ * est organique (croît §1 à la pénurie) ; ce verbe est une injection/retrait DÉLIBÉRÉ
+ * de capacité par le joueur. dir<0 sous le plancher ⇒ la manufacture est RETIRÉE.
+ * Double-écriture PROVINCE (source) + miroir région[] (comme econ_build_manufacture).
+ * Retour : true si un changement a eu lieu. */
+#define MANUF_LEVEL_STEP 5.f
+bool econ_manuf_level_delta(WorldEconomy *econ, int region, BuildingType b, int dir){
+    if (!econ || region<0 || region>=econ->n_regions || dir==0) return false;
+    int pid=econ_region_rep_province(econ, region);
+    if (pid<0 || pid>=econ->n_prov) return false;
+    ProvinceEconomy *pe=&econ->prov[pid];
+    int bi=-1; for (int i=0;i<pe->n_bld;i++) if (pe->bld[i].type==b){ bi=i; break; }
+    if (bi<0) return false;                                    /* rien à ajuster : pas bâtie */
+    if (dir>0){
+        pe->bld[bi].level += MANUF_LEVEL_STEP;
+    } else {
+        pe->bld[bi].level -= MANUF_LEVEL_STEP;
+        if (pe->bld[bi].level < MANUF_LEVEL_STEP){             /* sous le plancher : on RETIRE le slot */
+            for (int i=bi+1;i<pe->n_bld;i++) pe->bld[i-1]=pe->bld[i];
+            pe->n_bld--;
+        }
+    }
+    /* miroir région[] (informatif — l'agrégation exacte reviendra au prochain econ_tick). */
+    RegionEconomy *re=&econ->region[region];
+    int rbi=-1; for (int i=0;i<re->n_bld;i++) if (re->bld[i].type==b){ rbi=i; break; }
+    if (rbi>=0){
+        if (dir>0) re->bld[rbi].level += MANUF_LEVEL_STEP;
+        else {
+            re->bld[rbi].level -= MANUF_LEVEL_STEP;
+            if (re->bld[rbi].level < MANUF_LEVEL_STEP){
+                for (int i=rbi+1;i<re->n_bld;i++) re->bld[i-1]=re->bld[i];
+                re->n_bld--;
+            }
+        }
+    }
+    return true;
+}
+
 /* I0 — L'INSTRUMENT : décomposition du flux d'or par empire. */
 static double g_flux[SCPS_MAX_COUNTRY][FX_COUNT];
 void econ_flux_add(int cid, FluxComp comp, float amount){

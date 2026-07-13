@@ -788,6 +788,8 @@ int scps_diplo_journal(ScpsSim *s, int country, ScpsDiploAct *out, int max);
  * manquante · 4 tech de palier manquante. */
 int scps_build_legal(ScpsSim *s, int region, int edifice);
 int scps_build_legal_ex(ScpsSim *s, int region, int edifice, int *reason_out);
+const char *scps_edifice_name(int edifice);   /* nom (picker « poser » de l'onglet province) */
+int scps_edifice_succ(int edifice);           /* palier suivant (le « + » ; EDIFICE_COUNT = sommet) */
 
 /* PANNEAU B — le joueur pose une MANUFACTURE civile (le §NF l'exclut : voici la main).
  * bld = BuildingType (l'index que scps_region_alloc nomme déjà). Le verbe ENFILE
@@ -795,6 +797,12 @@ int scps_build_legal_ex(ScpsSim *s, int region, int edifice, int *reason_out);
  * (à soi · civil · slot libre · staffage · tier · intrant nourrissable · or). */
 int scps_player_build_manuf(ScpsSim *s, int region, int bld);
 int scps_manuf_legal(ScpsSim *s, int region, int bld);
+/* Onglet province par classe (retour joueur 2026-07-13) : ajuster le NIVEAU d'un bâtiment
+ * bâti. dir>0 monte (payant, miroir de la pose) ; dir<0 descend d'un cran (retire la manuf
+ * sous le plancher). L'édifice se démolit d'un cran (famille ⇒ palier précédent). ENFILÉS,
+ * revalidés au drain. Le « + » d'un édifice = scps_player_build (palier suivant). */
+int scps_player_manuf_level(ScpsSim *s, int region, int bld, int dir);
+int scps_player_demolish_edifice(ScpsSim *s, int region, int edifice);
 /* le PRIX du chantier de manufacture — LE montant que le drain débite (MANUF_BUILD_COST
  * × ipm, même formule que scps_manuf_legal/CMD_BUILD_MANUF) : or, arrondi (tangible). */
 int scps_manuf_cost(ScpsSim *s);

@@ -52,6 +52,8 @@ static func members_from_map(m: Dictionary, total: float, cap := 8) -> Array:
 
 ## la BARRE seule : cadre parcheminé pleine largeur, ~height px, un ColorRect/membre
 ## (ratio = value). Membres vides ⇒ un segment neutre plein (honnête : monolithe).
+## Le DÉTAIL est en HOVER : chaque segment porte « Nom · N% · effectif », et le cadre
+## entier porte la ventilation COMPLÈTE (pour les tranches trop fines à survoler).
 static func proportion_bar(members: Array, height := 14) -> Control:
 	var frame := PanelContainer.new()
 	frame.add_theme_stylebox_override("panel",
@@ -67,15 +69,32 @@ static func proportion_bar(members: Array, height := 14) -> Control:
 		empty.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		box.add_child(empty)
 		return frame
+	var full := ""
 	for e in members:
 		var seg := ColorRect.new()
 		seg.color = e["color"]
 		seg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		seg.size_flags_stretch_ratio = maxf(float(e["value"]), 0.0001)
 		seg.mouse_filter = Control.MOUSE_FILTER_STOP
-		seg.tooltip_text = "%s · %d%%" % [String(e["name"]), int(e.get("pct", 0))]
+		var lbl := "%s · %d %% · %s" % [String(e["name"]), int(e.get("pct", 0)), _grp(int(round(float(e["value"]))))]
+		seg.tooltip_text = lbl
 		box.add_child(seg)
+		full += lbl + "\n"
+	frame.tooltip_text = full.strip_edges()   # ventilation complète au survol du cadre
+	frame.mouse_filter = Control.MOUSE_FILTER_PASS
 	return frame
+
+## GROUPE HOVER-ONLY : juste la barre (détail au survol), PAS de légende toujours affichée.
+## C'est le mode des panneaux DENSES (fiche province) — le retour joueur « le détail en hover ».
+static func build_bar_only(into: VBoxContainer, m: Dictionary, total: float) -> void:
+	var members := members_from_map(m, total)
+	if members.is_empty():
+		var l := Label.new()
+		l.theme_type_variation = "RowDim"
+		l.text = "—"
+		into.add_child(l)
+		return
+	into.add_child(proportion_bar(members))
 
 ## une ligne de légende par membre : pastille de couleur + nom + « N % · effectif ».
 ## `with_count` off ⇒ « N % » seul (quand la valeur n'est pas des âmes réelles).

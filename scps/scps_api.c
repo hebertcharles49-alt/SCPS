@@ -2329,6 +2329,17 @@ int scps_build_legal_ex(ScpsSim *s, int region, int edifice, int *reason_out){
 int scps_build_legal(ScpsSim *s, int region, int edifice){
     return scps_build_legal_ex(s, region, edifice, NULL);
 }
+/* Nom d'un édifice (pour le picker « poser » de l'onglet province). "" si hors-borne. */
+const char *scps_edifice_name(int edifice){
+    if (edifice<0 || edifice>=EDIFICE_COUNT) return "";
+    const EdificeDef *d = edifice_def((Edifice)edifice);
+    return (d && d->name) ? d->name : "";
+}
+/* Palier SUIVANT d'un édifice (le « + » upgrade). EDIFICE_COUNT = sommet/singleton. */
+int scps_edifice_succ(int edifice){
+    if (edifice<0 || edifice>=EDIFICE_COUNT) return EDIFICE_COUNT;
+    return (int)edifice_succ((Edifice)edifice);
+}
 
 void scps_country_army(ScpsSim *s, int cid, ScpsArmy *out){
     if(!out) return;
@@ -2947,6 +2958,19 @@ int scps_player_fabricate_cb(ScpsSim *s, int target){
 int scps_player_build_manuf(ScpsSim *s, int region, int bld){   /* PANNEAU B : poser une manufacture */
     if (!s || !s->ready) return 0;
     PlayerCmd c = { CMD_BUILD_MANUF, { region, bld, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+/* Onglet province : monter (dir>0, PAYANT) / descendre (dir<0, retire sous plancher) le
+ * niveau d'une manufacture bâtie. Verdict (or/plancher) au drain. */
+int scps_player_manuf_level(ScpsSim *s, int region, int bld, int dir){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_MANUF_LEVEL, { region, bld, (dir>=0)?1:-1, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+/* Onglet province : démolir un édifice d'un cran (famille ⇒ palier précédent). */
+int scps_player_demolish_edifice(ScpsSim *s, int region, int edifice){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_DEMOLISH_EDI, { region, edifice, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
 /* LÉGALITÉ manufacture (miroir READ-ONLY des gates du drain CMD_BUILD_MANUF) :

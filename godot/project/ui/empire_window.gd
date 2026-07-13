@@ -27,6 +27,7 @@ var _tab_group: ButtonGroup = null
 var _tab_btns: Array = []         # [Button] pour piloter l'onglet actif par code (probe)
 var _pages: Array = []            # [Control] une VBox par onglet (visibilité togglée)
 var _eco_page: Control = null     # la page Économie (auto-refresh, curseurs)
+var _prov_sort := 2               # tri des provinces : 0 ressources · 1 revenu · 2 pop
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -183,7 +184,7 @@ func _build_population(w, me: int) -> void:
 	var cult := {}      # nom -> âmes (pondérées)
 	var faith := {}
 	var total := 0.0
-	var prov_pops := []   # [pop, nom] pour Top provinces
+	var prov_rows := []   # {nom, pop, revenu, res} — provinces triables
 	if w.has_method("province_count") and w.has_method("province_info"):
 		for p in range(int(w.province_count())):
 			var info: Dictionary = w.province_info(p)
@@ -193,7 +194,14 @@ func _build_population(w, me: int) -> void:
 			if pop <= 0.0:
 				continue
 			total += pop
-			prov_pops.append([pop, String(info.get("nom", "province %d" % p))])
+			var revenu := float(w.province_tax(p)) if w.has_method("province_tax") else 0.0
+			var res := 0.0   # richesse en gisements bruts (flux brut /j)
+			if w.has_method("province_income"):
+				for l in w.province_income(p):
+					if not bool(l.get("manufactured", false)):
+						res += float(l.get("per_day", 0.0))
+			prov_rows.append({"nom": String(info.get("nom", "province %d" % p)),
+				"pop": pop, "revenu": revenu, "res": res})
 			if not w.has_method("province_groups"):
 				continue
 			for g in w.province_groups(p):
@@ -223,18 +231,54 @@ func _build_population(w, me: int) -> void:
 			cls_total += float(cl.get("pop", 0))
 	PopBar.build_group(pg, clsmap, cls_total)
 
-	# TOP PROVINCES (par âmes)
-	_pop_section(pg, "TOP PROVINCES")
-	prov_pops.sort_custom(func(a, b): return a[0] > b[0])
-	if prov_pops.is_empty():
+	# PROVINCES (triables : ressources · revenu · pop)
+	_pop_section(pg, "PROVINCES")
+	_prov_sort_bar(pg)
+	var keys := ["res", "revenu", "pop"]
+	var key: String = keys[clampi(_prov_sort, 0, 2)]
+	prov_rows.sort_custom(func(a, b): return float(a[key]) > float(b[key]))
+	if prov_rows.is_empty():
 		_dim_line(pg, "aucune province")
 	else:
 		var shown := 0
-		for rp in prov_pops:
-			if shown >= 6:
+		for rp in prov_rows:
+			if shown >= 8:
 				break
-			_kv_row(pg, String(rp[1]), _grp(int(rp[0])), ParchTheme.INK)
+			var val := ""
+			match _prov_sort:
+				0: val = "+%.1f/j" % float(rp["res"])
+				1: val = "~%s or/an" % _grp(int(round(float(rp["revenu"]))))
+				_: val = _grp(int(rp["pop"]))
+			_kv_row(pg, String(rp["nom"]), val, ParchTheme.INK)
 			shown += 1
+
+## la barre « Trier par : Ressources · Revenu · Pop » (boutons parcheminés, actif souligné).
+func _prov_sort_bar(pg: VBoxContainer) -> void:
+	var bar := HBoxContainer.new()
+	bar.add_theme_constant_override("separation", 4)
+	pg.add_child(bar)
+	var lab := Label.new()
+	lab.theme_type_variation = "RowDim"
+	lab.text = "Trier par"
+	bar.add_child(lab)
+	var grp := ButtonGroup.new()
+	var names := ["Ressources", "Revenu", "Pop"]
+	for i in range(names.size()):
+		var b := Button.new()
+		b.theme_type_variation = "Tab"
+		b.toggle_mode = true
+		b.button_group = grp
+		b.text = names[i]
+		b.focus_mode = Control.FOCUS_NONE
+		b.add_theme_font_size_override("font_size", 12)
+		if i == _prov_sort:
+			b.button_pressed = true
+		var idx := i
+		b.pressed.connect(func():
+			_prov_sort = idx
+			var pw = Sim.world
+			_build_population(pw, int(pw.player()) if pw.has_method("player") else 0))
+		bar.add_child(b)
 
 # ── ONGLET DIPLOMATIE : relations en lignes (nom + opinion), guerres en tête ──
 func _build_diplomatie(w, me: int) -> void:

@@ -154,9 +154,13 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_raid_coast", "prov"),         &ScpsWorld::player_raid_coast);
     ClassDB::bind_method(D_METHOD("can_raid_coast", "prov"),            &ScpsWorld::can_raid_coast);
     ClassDB::bind_method(D_METHOD("player_build_manuf", "region", "bld"), &ScpsWorld::player_build_manuf);
+    ClassDB::bind_method(D_METHOD("player_manuf_level", "region", "bld", "dir"), &ScpsWorld::player_manuf_level);
+    ClassDB::bind_method(D_METHOD("player_demolish_edifice", "region", "edifice"), &ScpsWorld::player_demolish_edifice);
     ClassDB::bind_method(D_METHOD("manuf_legal", "region", "bld"),        &ScpsWorld::manuf_legal);
     ClassDB::bind_method(D_METHOD("manuf_cost"),                          &ScpsWorld::manuf_cost);
     ClassDB::bind_method(D_METHOD("manuf_name", "bld"),                   &ScpsWorld::manuf_name);
+    ClassDB::bind_method(D_METHOD("edifice_name", "edifice"),             &ScpsWorld::edifice_name);
+    ClassDB::bind_method(D_METHOD("edifice_succ", "edifice"),             &ScpsWorld::edifice_succ);
     ClassDB::bind_method(D_METHOD("build_legal", "region", "edifice"),    &ScpsWorld::build_legal);
     ClassDB::bind_method(D_METHOD("colonized_total"),               &ScpsWorld::colonized_total);
     ClassDB::bind_method(D_METHOD("colony_status"),                 &ScpsWorld::colony_status);
@@ -1706,6 +1710,12 @@ bool ScpsWorld::player_disband_corps(int id){ return sim?scps_player_disband_cor
 bool ScpsWorld::player_build_manuf(int region, int bld) {
     return sim ? scps_player_build_manuf(sim, region, bld) != 0 : false;
 }
+bool ScpsWorld::player_manuf_level(int region, int bld, int dir) {
+    return sim ? scps_player_manuf_level(sim, region, bld, dir) != 0 : false;
+}
+bool ScpsWorld::player_demolish_edifice(int region, int edifice) {
+    return sim ? scps_player_demolish_edifice(sim, region, edifice) != 0 : false;
+}
 int ScpsWorld::manuf_legal(int region, int bld) {
     return sim ? scps_manuf_legal(sim, region, bld) : 0;
 }
@@ -1752,6 +1762,12 @@ String ScpsWorld::manuf_name(int bld) {
     static const int N_NAMES = (int)(sizeof(NAMES) / sizeof(NAMES[0]));
     if (bld < 0 || bld >= N_NAMES) return String("?");
     return String::utf8(NAMES[bld]);
+}
+String ScpsWorld::edifice_name(int edifice) {
+    return String::utf8(scps_edifice_name(edifice));
+}
+int ScpsWorld::edifice_succ(int edifice) {
+    return scps_edifice_succ(edifice);
 }
 bool ScpsWorld::can_colonize(int prov) {
     return sim ? scps_can_colonize(sim, prov) != 0 : false;
