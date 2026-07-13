@@ -14,6 +14,9 @@ var _sidebar: Control
 var _construct: Control
 var _tech: Control
 var _econ: Control
+var _budget_v2: Control        # PILOTE « grand livre parchemin » (conteneurs natifs + Theme), touche B
+var _prov_panel_v2: Control    # PILOTE fiche province « conteneurs natifs + Theme parchemin », touche V
+var _empire_win: Control       # FENÊTRE EMPIRE à onglets (Économie/Population/Diplomatie/Conseil), touche E
 var _prov_detail: Control
 var _menu: Control
 var _religion: Control
@@ -281,6 +284,27 @@ func _ready() -> void:
 	_codex.name = "Codex"
 	_codex.visible = false
 	ui.add_child(_codex)
+	# PILOTE budget « grand livre parchemin » (conteneurs Godot natifs + Theme, touche B).
+	# COEXISTE avec l'économie existante (economy_panel/sidebar) — ne remplace rien.
+	_budget_v2 = load("res://ui/budget_panel_v2.gd").new()
+	_budget_v2.name = "BudgetPanelV2"
+	_budget_v2.visible = false
+	_budget_v2.add_to_group("draggable")
+	ui.add_child(_budget_v2)
+	# PILOTE fiche province « conteneurs natifs + Theme parchemin » (touche V). COEXISTE
+	# avec province_panel.gd (dessiné à la main) — le pendant province de budget_panel_v2.
+	_prov_panel_v2 = load("res://ui/province_panel_v2.gd").new()
+	_prov_panel_v2.name = "ProvincePanelV2"
+	_prov_panel_v2.visible = false
+	_prov_panel_v2.add_to_group("draggable")
+	ui.add_child(_prov_panel_v2)
+	# FENÊTRE EMPIRE : UNE fenêtre à onglets (Économie · Population · Diplomatie · Conseil,
+	# touche E). L'architecture réelle de gestion — coexiste avec la sidebar/les pilotes.
+	_empire_win = load("res://ui/empire_window.gd").new()
+	_empire_win.name = "EmpireWindow"
+	_empire_win.visible = false
+	_empire_win.add_to_group("draggable")
+	ui.add_child(_empire_win)
 	_search_palette = load("res://ui/search_palette.gd").new()
 	_search_palette.name = "SearchPalette"
 	ui.add_child(_search_palette)
@@ -514,6 +538,29 @@ func _unhandled_input(e: InputEvent) -> void:
 				if _tech.visible:
 					Sound.play("ui_parchment_open")
 				_tech.queue_redraw()
+		KEY_B:
+			# PILOTE budget « grand livre parchemin » (coexiste avec l'éco existante)
+			if _budget_v2 != null and Sim.game_on:
+				_budget_v2.visible = not _budget_v2.visible
+				if _budget_v2.visible and _budget_v2.has_method("refresh"):
+					_budget_v2.refresh()
+		KEY_V:
+			# PILOTE fiche province « conteneurs natifs » (coexiste avec province_panel)
+			if _prov_panel_v2 != null and Sim.game_on:
+				if _prov_panel_v2.visible:
+					_prov_panel_v2.hide()
+				else:
+					var pid := _sel_prov if _sel_prov >= 0 else _first_owned_province()
+					_prov_panel_v2.show_province(pid)
+		KEY_E:
+			# FENÊTRE EMPIRE à onglets (Économie · Population · Diplomatie · Conseil)
+			if _empire_win != null and Sim.game_on:
+				if _empire_win.visible:
+					_empire_win.hide()
+					Sound.play("ui_parchment_close")
+				else:
+					_empire_win.open()
+					Sound.play("ui_parchment_open")
 		KEY_H:
 			if _chronique != null:
 				if _chronique.visible:
@@ -536,6 +583,19 @@ func navigate_to(ref: Dictionary, surface: String = "", context: Dictionary = {}
 	if _nav == null:
 		return false
 	return _nav.go(InfoRef.request(ref, surface, context))
+
+## première province possédée par le joueur (repli quand aucune n'est sélectionnée) — sert
+## d'ouverture par défaut au pilote fiche-province (touche V).
+func _first_owned_province() -> int:
+	var w = Sim.world
+	if w == null or not w.has_method("province_count"):
+		return -1
+	var me: int = int(w.player()) if w.has_method("player") else 0
+	for pid in range(int(w.province_count())):
+		var info: Dictionary = w.province_info(pid)
+		if bool(info.get("valide", false)) and int(info.get("owner", -1)) == me:
+			return pid
+	return 0
 
 func _focus_region(region: int) -> bool:
 	if region < 0 or Sim.world == null:

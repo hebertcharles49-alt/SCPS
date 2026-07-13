@@ -4310,3 +4310,85 @@ il OMET le plafond wealth (négligeable en régime) → rend l'or/mois NOMINAL. 
 plafonné) tandis que les 3 valeurs par-classe sont NOMINALES — léger écart de somme assumé (spec le permet).
 DLL Godot NON rebâtie (hors scope) : `tax_class_month` est gardé par `has_method` côté GD (live="" gracieux
 tant que la DLL n'expose pas la méthode).
+
+## [2026-07-13] Godot UI — pilote budget « conteneurs natifs + Theme » (implémenteur pilote)
+**Découvertes** : un panneau parchemin PROPRE se fait avec `PanelContainer`/`VBox`/`HBox` + un
+`Theme` construit en code (StyleBoxFlat) — zéro `_draw`, la mise en page s'auto-espace.
+`ui/budget_panel_v2.gd` (nouveau, extends PanelContainer, touche B) le prouve : header + barre
+d'onglets (Button `toggle_mode`+`ButtonGroup`, soulignement = stylebox `pressed`) + 2 colonnes
+séparées par un `Panel` diviseur. Fonts : voix serif = `VKit.font_map()` (IMFellEnglishSC), chiffres
+= `VKit.font()` (Alegreya). Câblage façade IDENTIQUE à sidebar_drawer : `budget_summary`/`country_budget`
+/`budget_controls`/`player_budget_policy` — tous `has_method`-gardés.
+**Pièges** :
+- `Theme.set_type_variation(name, base)` REFUSE un `name` qui est une classe Godot BUILT-IN : « TabBar »
+  plante (`theme.cpp:1239 A type associated with a built-in class cannot be marked as a variation`).
+  Renommer (→ `LedTabStrip`). Vérifier TOUT nom de variation contre les classes existantes.
+- La DLL Godot prébâtie ici est ANTÉRIEURE à la source : `budget_controls` runtime rend **4** enveloppes
+  de dépense (pas la 5e « Entretien des routes » du .cpp) et **`tax_class_month` n'est PAS bindé**
+  (`Nonexistent function in base ScpsWorld`). Sans garde `has_method`, un debug crashe ; avec, le panneau
+  affiche gracieusement (j'ai mis un repli « taux N % » lu de `budget_controls.mult`). Confirme l'entrée
+  précédente (2026-07-13, même gap DLL). Ne PAS rebâtir la DLL pour un pilote display-only.
+- Ternaire-INSTRUCTION interdit sur une valeur `void` : `Sim.month_ticked.emit(...) if cond else null`
+  = erreur runtime (l'émission rend void). Écrire un `if` classique.
+- Capture : `--headless` = noir ; la probe DOIT tourner FENÊTRÉE (`budget_shot.tscn`, sans `--headless`) —
+  `save_png` d'un chemin OS absolu marche. Compter ~2-4 min (double worldgen au boot + regenerate).
+**Restes** : onglets Marché/Commerce = coquilles (pilote = Balance seul, comme demandé) ; le bas du
+panneau reste vide quand il n'y a ni rentrée de commerce ni 5e dépense (data-/DLL-dépendant).
+
+## [2026-07-13] Godot UI — Theme parchemin EXTRAIT + fiche province « conteneurs natifs » (implémenteur)
+**Découvertes** : le Theme parchemin du pilote budget est désormais un MODULE PARTAGÉ
+`ui/parch_theme.gd` (extends RefCounted) — `static build() -> Theme` + palette en consts
+(`INK`/`GREEN`/`RED` aliasés sur INCOME/EXPENSE, `PANEL_BG`…`FS_TAB`) + `static sb(...)` (le
+StyleBoxFlat helper, rendu PUBLIC pour les consommateurs : diviseur, barres). Usage :
+`theme = load("res://ui/parch_theme.gd").build()`. `budget_panel_v2.gd` recâblé dessus (pur
+refactor : `budget_v2.png` **byte-identique**, 43620 o avant/après — la preuve que l'extraction
+ne change RIEN). `province_panel_v2.gd` (neuf, extends PanelContainer, touche V, câblé main.gd)
+prouve la réutilisation : header (nom + tier/relief · propriétaire aligné à droite via
+`country_info`) + sous-onglets Vic3 (Infrastructure plein · Militaire/Démographie légers) + grille
+2-col label→valeur (couleur sémantique `_score_col` : Prospérité 1/100 ROUGE, Loyauté 63, Production
+VERTE) + CLASSES (pop + `ProgressBar` de satisfaction, stylée par `add_theme_stylebox_override`
+background/fill via `ParchTheme.sb`) + RESSOURCES/PRODUCTION (icônes pack) + BÂTIMENTS (GridContainer).
+Toutes les lectures façade sont CELLES de province_panel.gd (province_info/capitale/classes/class_sat/
+income/buildings/edifices/agitation/slave_count), `has_method`-gardées. ZÉRO `_draw`. LECTURE SEULE.
+**Pièges** :
+- **TextureRect avale le layout** : `custom_minimum_size` n'est qu'un MINIMUM — une TextureRect prend
+  la taille NATIVE de sa texture (les sprites du pack ~256²) et le panneau EXPLOSE en colonne de
+  plusieurs milliers de px (capturé itération 1). Correctif : `expand_mode = TextureRect.EXPAND_IGNORE_SIZE`
+  (+ `stretch_mode = STRETCH_KEEP_ASPECT_CENTERED`) sur CHAQUE TextureRect. (Déjà noté en mémoire
+  « EXPAND_IGNORE_SIZE trap » — se reprend à chaque nouveau panneau à icônes.)
+- La taille de fenêtre de capture est non-déterministe entre runs (`get_window().size = 1600×900` a
+  rendu 1600×900 OU 1920×1080 selon le run — même code que budget_shot) ; sans incidence, le panneau
+  est centré. `province_shot.{gd,tscn}` = miroir exact de `budget_shot`.
+- `info.defense` (province_info) est le MOT d'ouvrage défensif (« aucune »), PAS une autonomie — l'étiqueter
+  « Autonomie » ment ; relabelé « Ouvrage ». (La tenue de siège % vit déjà dans la ligne TERRAIN.)
+**Restes** : onglets Militaire/Démographie volontairement LÉGERS (le brief « seul Infrastructure plein »).
+Aucun bouton/verbe câblé (vue de LOOK, lecture seule) — les actes (construire/coloniser/gov) restent sur
+province_panel.gd qui COEXISTE. `parch_theme` ne définit PAS de stylebox ProgressBar (fait en override
+local côté province_v2) pour garder l'extraction budget byte-identique.
+
+## [2026-07-13] Godot — fenêtre Empire à onglets (empire_window, agent UI)
+**Découvertes** : la façade N'A PAS de lecteur composition culture/foi au grain PAYS
+(`country_demo` ne rend que les CLASSES). Pour les légendes Population, agréger
+`province_groups(p)` sur les provinces `province_info(p).owner==me` (itérer
+`province_count()`), pondéré par `province_info.ames` × `percent/100`. Le champ groupe
+utile : `culture` · `faith` (nom de foi, "" ⇒ athée) · `percent`. Relations diplo :
+`country_relations(me)` → `{country,name,opinion(±100),status,at_war,allied}`. Factions :
+`country_factions(me)` → `{coup,corruption,list:[{name,part,policy_delta,dominant,coup_driver}]}`.
+Sièges : `country_council(me)` → `[{seat,filled,firstname,house,councilor,faction,loyalty,mood}]`.
+Budget : `budget_summary` (gold, monthly_net) + `budget_controls` (taxes/spending mult) +
+`tax_class_month(cls)` + `country_budget` (flux nommés, ×30/day_of_year → or/mois). Corps :
+`corps_ids(me)` + `corps_info(id)` (enum réel — pas que la sélection carte).
+**Pièges** :
+- `region_centroid(r) → province_at()` tombe SOUVENT hors du territoire du joueur (mesuré :
+  région 71 possédée → province_at rend la province 399, NON possédée, `province_groups`=0).
+  Ne JAMAIS résoudre « la province d'une région » par le centroïde pour agréger ; itérer
+  les provinces par `owner`.
+- Un `Label` avec `clip_text=true` en `SHRINK` dans un HBox a une largeur MINIMALE de 0 →
+  le titre se réduit à un sliver (nom d'empire invisible). Ne pas cliper un titre court.
+- `abs(int)` en GDScript s'infère en Variant → « Warning treated as error ». Utiliser
+  `absi()` (idem `absf`/`clampi`).
+- Touches libres vérifiées : C/G/E/R (aucun `KEY_C/G/E/R` dans godot/project). Les mentions
+  « touche C/R » de CLAUDE.md (culture_creator/religion_panel) sont PÉRIMÉES. E câblée ici.
+**Restes** : pas de lecteur façade culture/foi au grain pays (agrégation UI = approximation
+honnête, pop-pondérée province par province) ; ajouter un `scps_country_culture_mix` moteur
+donnerait l'exact si besoin. Militaire retiré des onglets (contextuel à la sélection de corps).
