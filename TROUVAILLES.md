@@ -623,3 +623,62 @@ Suite de de25550 (CMD_BUILD*/CMD_ALLOC*) : les verbes joueur restants encore ré
   Centre/marché (intertrade) — la doctrine ne les interdit que sur un chemin d'ÉCRITURE JOUEUR
   qui devrait cibler une province précise (repress/assimilate/purge/slave_buy/pop_transfer,
   maintenant réglés) ; le marché/Centre lui-même reste une entité région-structurelle par design.
+
+## CHANTIER MONNAIE — M1 (redevance+réserve) + M2 (frappe) (2026-07-14)
+
+**Découvertes** :
+- **La maison de la réserve** : `WorldEconomy.reserve_gold/reserve_copper[SCPS_MAX_COUNTRY]`
+  (scps_econ.h, juste sous `budget_mult[][]`) — le blob ECON est un `fwrite` brut de la
+  struct entière (scps_save.c:103), donc AUCUN code de sérialisation à écrire : le bump
+  SAVE_VERSION 85→86 + `save_sane` (borne ≥0 et <1e12) suffisent. Le motif credit
+  (`credit_save/load` séparés) n'était PAS nécessaire ici — champ de struct, pas global de module.
+- **Le point fixe de la frappe** : fin d'`econ_tick`, APRÈS le bloc FX_ROADS (les curseurs
+  mensuels par-pays vivent tous là, post-agrégation). La fonction PURE
+  `econ_country_mint_month` (miroir exact) est partagée par le point de MUTATION (econ_tick)
+  et le lecteur façade `scps_country_mint_month` — un seul calcul, jamais deux formules.
+- **econ_tick n'a pas de World*** : la capitale se résout par `re->is_capital` (scan des
+  provinces du pays, motif déjà présent 3× dans scps_econ.c) — `econ_country_capital_prov`,
+  pas `w->country[].capital_prov`.
+- **« Le joueur » côté moteur = `culture_player_cid()`** (scps_heritage, slot 0) : -1 en
+  chronique (personne ne matche) ⇒ tous les pays suivent la politique IA (MINT_AI_SHARE) ;
+  en partie jouée, le pays lié au slot 0 lit son curseur BUDGET_MINT (défaut 0 = golden-neutre
+  pour la part joueur). L'IA n'écrit JAMAIS budget_mult[][BUDGET_MINT].
+- **BUDGET_MINT suit le motif BUDGET_INVEST, pas BUDGET_ROADS** : neutre = 0 % (niveau brut
+  0..1, pas le sentinel 0→1.0 des enveloppes de paie) — sinon « non réglé » aurait frappé 100 %.
+- **UI presque gratuite, confirmé** : `budget_controls` (scps_sim_node.cpp:1480) est une table
+  de noms + `scps_country_budget_policy` ; passer 5→6 postes suffit pour que les TROIS panneaux
+  (budget_panel_v2, economy_page, sidebar_drawer) fassent naître le curseur — seul l'affichage
+  du MONTANT a demandé un cas spécial (idx 5 lit `country_mint_month`, pas un poste de flux
+  en valeur absolue : la frappe est un REVENU au milieu des dépenses).
+- **FX_MINT appendu à FluxComp** ⇒ `g_flux` grandit ⇒ blob TXYR change de taille — couvert
+  par le MÊME bump v86 (documenté scps_save.h).
+
+**Mesures (sweep apparié OFF `SCPS_TUNE=MINT_ROYALTY=0` vs ON, `./chronicle {9,11,42} 3 250 6 12`)** :
+- **Kill-switch PROUVÉ avant re-baseline** : OFF → `make golden` VERT contre le golden PRÉ-M1
+  (hash byte-identique, M1 seul puis M1+M2). ON par défaut : 4/5 graines décalent (l'IA frappe
+  dès l'an 0) → re-baseline commit séparé (d948b4a).
+- Satisfaction Laborer OFF→ON par graine : +11 / −10 / +2 (moyenne +1 pt) — dépasse ±5 PAR
+  GRAINE mais en signes OPPOSÉS = divergence chaotique de trajectoire, pas une dérive
+  systématique ; Bourgeois/Élite dans ±5 partout. IPM : 0.96-1.05 final (borne 0.85-1.35 très
+  large) — AUCUNE montée chez les frappeurs (l'IPM lit or/biens ; la frappe est ~0.1 % de M).
+- Hégémon mortel préservé (2/3·3/3·2/3 ON vs 2/3·2/3·0/3 OFF). Chaînes cuivre VIVANTES :
+  fournitures navales consommées 217k OFF → 196k ON (−9.7 %, cohérent avec 15 % de redevance).
+- Réserve an 250 : or 0-7.3k · cuivre 1.5-22.6k (équilibre ≈ 6.7 ans de redevance à 15 %/an
+  de frappe IA — ni nulle ni explosive) ; frappe 32-397 or/an/monde · 2-11 empires frappeurs.
+- Part de M venant de la frappe ≈ 0.1 % : la planche à billets VA (§1.1 de l'audit M0) domine
+  toujours — c'est M3 qui la convertira, la frappe est prête à prendre le relais.
+
+**Gates** : kill-switch VERT pré-M1 · golden-update+determinism STABLE · make test 38 VERTS/
+0 ROUGE/1 BUILD ÉCHEC (intertrade_demo setenv, pré-existant Windows) · savetest 9 A==B (v86) ·
+fuzz-save 8/8 · scons DLL 0 warning · probe budget_shot : ligne « Réserve : X or · Y cuivre »
+(bandeau) + curseur « Frappe » + « +N or/mois » lisibles (build/budget_v2.png).
+
+**Restes** :
+- **Le rachat du surplus marchand par la Monnaie** (M1 concept, 2e voie) : NON implémenté —
+  mesuré inutile à ce stade : la redevance seule nourrit une réserve VIVANTE (cuivre 1.5-22.6k
+  an 250, 2-11 frappeurs/monde). Si un futur calibrage veut plus d'OR frappable (réserve or
+  fin ≈ centaines seulement — l'or est rare et cher), la 2e voie est la vague suivante désignée.
+- La réserve d'un pays MORT (conquis) reste dans sa case (jamais pillée/transférée) — un pays
+  sans capitale ne frappe plus (cap=-1 ⇒ 0), l'or dort. À raccorder au pillage en M6 (transport).
+- L'UI ne montre la réserve que du JOUEUR (bandeau + ligne Rentrées) ; pas de vue par-pays
+  étranger (espionnage/diplo) — hors périmètre M2.
