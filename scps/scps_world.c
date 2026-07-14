@@ -2901,13 +2901,24 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, Heritage player_heritag
         /* PAS de break : CHAQUE slot WILD (un par hameau) reçoit SON nom + SA couleur, distincts. */
     }
     /* slots WILD réservés mais SANS région (pas de terre viable près du spawn) → repassent UNCLAIMED
-     * (pas de pays WILD vide). w est non-const ici (contrairement à econ_init). */
+     * (pas de pays WILD vide). w est non-const ici (contrairement à econ_init).
+     *
+     * CITÉ-ÉTAT SAUVAGE (modèle Civ6, mission « INDÉPENDANTS. TOUS. ») — capital_prov avait été posé
+     * PLUS HAUT par la boucle générique (ligne ~2205), AVANT même la distribution des rôles : pour un
+     * slot devenu WILD, il pointait donc vers la plus grande province de son territoire hiérarchique
+     * D'ORIGINE (région→pays, pré-rôle) — une province SANS RAPPORT avec le hameau réellement planté
+     * par econ_init/WILD_PLANT (BFS près d'un spawn jouable). Cette « capitale fantôme » est le bug
+     * signalé par le joueur. Fix : la capitale d'un hameau libre EST son unique province — on la relit
+     * directement depuis la propriété économique (econ->prov[].owner), la vérité de terrain posée par
+     * WILD_PLANT, plutôt que depuis la hiérarchie pré-rôle. Un hameau = une province = SA capitale,
+     * triviale (aucune capitale distincte du hameau, comme une cité-état Civ6). */
     for (int c=0;c<w->n_countries;c++){
         if (w->country[c].role!=POLITY_WILD) continue;
-        bool has=false;
-        for (int r=0;r<w->n_regions && r<econ->n_regions;r++)
-            if (econ->region[r].owner==c){ has=true; break; }
-        if (!has) w->country[c].role=POLITY_UNCLAIMED;
+        int hamlet=-1;
+        for (int p=0;p<w->n_provinces && p<econ->n_prov;p++)
+            if (econ->prov[p].owner==c && econ->prov[p].colonized){ hamlet=p; break; }
+        if (hamlet<0){ w->country[c].role=POLITY_UNCLAIMED; w->country[c].capital_prov=-1; continue; }
+        w->country[c].capital_prov=hamlet;
     }
     /* ── UNICITÉ DES NOMS (pas deux pays identiques, mondes HUGE inclus) ── : si le nom d'un pays
      * VIVANT répète celui d'un pays précédent, on RE-TIRE son CORE (l'épithète/préfixe gardé) avec une
