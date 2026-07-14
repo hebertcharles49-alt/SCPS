@@ -2101,7 +2101,24 @@ static void apply_region_eff(EventCtx *cx, int r, const EvEffect *e){
     re->build.H_coerc = fmaxf(0.f, re->build.H_coerc + e->d_H_coerc);
     re->build.food_cap= fmaxf(0.f, re->build.food_cap+ e->d_food_cap);
     re->coercion      = clampf(re->coercion + e->d_coercion, 0.f, 1.f);
-    re->treasury      = fmaxf(0.f, re->treasury + e->d_treasury);
+    { float before_tr=re->treasury;
+      re->treasury    = fmaxf(0.f, re->treasury + e->d_treasury);
+      /* MONNAIE M3b-v2 — item 5 (addendum joueur, « les events sont aussi un sink ») : un
+       * COÛT d'événement (d_treasury<0) n'est plus une destruction pure — un TRANSFERT vers
+       * les 3 classes de LA PROVINCE SUJETTE (42/20/38 par défaut ; le texte narratif de
+       * CHAQUE événement n'est pas triable à ce site GÉNÉRIQUE unique — table par événement
+       * documentée comme reste en TROUVAILLES). Les GAINS (d_treasury>0) restent une
+       * création pure cette vague — non convertis (la contrepartie nommée/la découverte
+       * diégétique exigeraient un site par événement, hors budget). */
+      if (e->d_treasury<0.f){
+          float paid=before_tr-re->treasury; if (paid<0.f) paid=0.f;
+          if (paid>0.f){
+              float wl,wb,we; econ_wage_split(paid,&wl,&wb,&we);
+              re->strata[CLASS_LABORER].wealth   += wl;
+              re->strata[CLASS_BOURGEOIS].wealth += wb;
+              re->strata[CLASS_ELITE].wealth     += we;
+          }
+      } }
     /* ESCLAVAGE — FUITE #9 : un évènement (peste/famine/vague migratoire…) multiplie la pop
      * de TOUTES les strates — mais aucun évènement ne touche les PopGroup (ce module ne les
      * connaît même pas). CLASS_SLAVE en sortait donc désynchronisée de Σgroupes klass==
@@ -2123,7 +2140,15 @@ static void resolve_treasury_mois(EventCtx *cx, int cid, int region, const EvEff
     if (e->d_treasury_mois==0.f || region<0) return;
     float revenu_mois = econ_country_tax_year(cid) / 12.f;
     float montant = e->d_treasury_mois * revenu_mois * econ_world_ipm(cx->econ);
-    econ_region_treasury_add(cx->econ, region, montant);
+    float paid = econ_region_treasury_add(cx->econ, region, montant);
+    /* item 5 : un COÛT (paid<0) → classes 42/20/38 de LA RÉGION sujette (même motif que
+     * apply_region_eff ci-dessus) ; un GAIN (paid>0) reste une création pure cette vague. */
+    if (paid<0.f){
+        float amt=-paid, wl,wb,we; econ_wage_split(amt,&wl,&wb,&we);
+        econ_region_wealth_add(cx->econ, region, CLASS_LABORER,   wl);
+        econ_region_wealth_add(cx->econ, region, CLASS_BOURGEOIS, wb);
+        econ_region_wealth_add(cx->econ, region, CLASS_ELITE,     we);
+    }
 }
 static void apply_effect(EventCtx *cx, EvScope scope, int subject, const EvEffect *e){
     if (scope==EV_WORLD){
