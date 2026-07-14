@@ -782,3 +782,168 @@ fuzz-save 8/8 (216 octets flippés rejetés).
 - Godot DLL non re-buildée (scons) : scps_econ.h a changé (struct ColonyWork)
   — à re-builder avant la prochaine session de jeu (gates M3a n'incluaient pas
   scons ; le moteur C est la vérité).
+
+## CHANTIER MONNAIE — M3b : le flip domestique, STOPPÉ après sweep (monde effondré, 2026-07-14)
+
+**Statut : NON LIVRÉ.** Le mécanisme (Cœur A, compte de marché) est ÉCRIT et
+COMPILE, mais le sweep révèle un monde qui s'effondre (Laborer/Élite → 0 % de
+satisfaction dès l'an 5, pas de reprise à l'an 100) malgré DEUX calibrages
+tentés (les deux leviers explicitement autorisés par le brief). Décision :
+**STOP, ne pas re-baseliner, ne pas forcer** (clause de sortie du brief). Le
+code reste NON COMMITÉ (stash `monnaie-m3b-flip-non-calibre`, à récupérer avec
+`git stash list` / `git stash show -p`) ; seule cette entrée TROUVAILLES est
+committée — elle documente le mécanisme et le diagnostic pour la prochaine
+tentative.
+
+**Le mécanisme implémenté** (scps_econ.c, scps_econ.h, scps_save.{c,h},
+scps_tune_list.h) :
+- `WorldEconomy.market_account[SCPS_MAX_COUNTRY]` (le compte de marché,
+  alimenté par la conso) + `va_country_prev[SCPS_MAX_COUNTRY]` (VA nationale
+  totale du tick PRÉCÉDENT, dénominateur des parts provinciales) — persistés,
+  SAVE_VERSION 88 (non committé, donc jamais publié).
+- **Ordre de tick vérifié** (la question posée par le brief) : dans
+  `econ_tick` (scps_econ.c:2775), la boucle `for (pid...)` traite CHAQUE
+  province de bout en bout (production §1→3, taxe, entretien/cour/admin/
+  redépense, PUIS demande/conso §4→6) AVANT de passer à la province suivante
+  — la production d'une province précède TOUJOURS sa propre consommation, DANS
+  LE MÊME tick. Donc « conso AVANT distribution » est FAUX dans ce moteur :
+  l'intra-tick pur (conso alimente la distribution du MÊME mois) est
+  architecturalement impossible sans scinder la boucle en deux passes
+  complètes sur TOUTES les provinces (production seule, puis taxe+conso) — un
+  refactor bien plus lourd que le brief n'anticipait, écarté (KISS, hors
+  scope). **Persisté avec un lag d'1 tick a donc été choisi** (même motif que
+  le prix national, scps_econ.c:3717 : soldé une fois par pays, projeté pour
+  le tick SUIVANT) — cohérent avec l'idiome existant du fichier.
+- **Ordre-indépendance** (piège évité) : une première version aurait décrémenté
+  `market_account` PROVINCE PAR PROVINCE pendant la boucle — un biais d'ordre
+  pur (les provinces de petit pid siphonneraient les suivantes du même pays,
+  aucun signal économique). Fix : `mkt_snapshot[]` = photo FIXE en tête de
+  tick (scps_econ.c juste avant `for (int pid=0...)`), chaque province calcule
+  sa part `share = va_prov/va_country_prev[owner]` depuis cette photo qui ne
+  bouge PAS pendant la boucle ; les tirages (`mkt_drawn[]`) ne sont appliqués
+  au compte RÉEL qu'à la CLÔTURE (après la boucle complète, scps_econ.c
+  ~3780) — un seul point d'écriture par pays, jamais N.
+- Site conso (§2.1, ex-ligne 3513) : le débit `budget0−wealth` crédite
+  désormais `e->market_account[owner]` (province rattachée à un pays) au lieu
+  du compteur instrument (qui ne mesure plus que les provinces ISOLÉES,
+  owner<0, hors périmètre M3b — fixtures/bancs).
+- Site production (§1.1, ex-ligne 3205) : `wage_pool/profit_pool/tax_pool` ne
+  créditent plus la richesse en entier — SEULE la fraction financée par le
+  compte (`revenue`, plafonnée à `va_prov`, jamais de sur-crédit) est créditée
+  ; le solde non financé alimente `g_va_produced_cum` (l'instrument, qui
+  mesure désormais la création RÉSIDUELLE, pas la VA totale).
+- Tunable `MKT_SMOOTH_MONTHS` (scps_tune_list.h, défaut 3) : le compte ne paie
+  qu'1/N de sa balance par mois (lissage anti-étranglement, `SCPS_TUNE=
+  MKT_SMOOTH_MONTHS=X` sans recompiler).
+
+**Découvertes (le diagnostic qui a coûté cher)** :
+- **Le ratio VA:conso ~6:1 documenté par M3a (TROUVAILLES ligne 712) n'est PAS
+  une anomalie de mesure — c'est un plafond STRUCTUREL de la conso** : la
+  demande de subsistance/confort/luxe est BORNÉE par un panier per-capita
+  (NEED[classe][ressource]×pop), donc SATIABLE — dans l'ancien régime (VA
+  créée sans limite), les ménages étaient toujours assez riches pour acheter
+  100 % de leur panier (budget jamais contraignant), donc conso ≈ coût du
+  panier physique, une quantité relativement STABLE, tandis que VA (le
+  revenu) grossissait sans plafond avec la population/le PIB composé sur 250
+  ans. Convertir VA en « clé de répartition d'un compte alimenté par conso »
+  revient donc, en régime permanent, à plafonner le revenu RÉEL total autour
+  de ~1/6 de son niveau d'avant — une réduction voulue par le contrat
+  (« VA résiduelle ≈ 0 »), mais brutale pour les classes qui n'ont pas de
+  coussin.
+- **Confirmé par sweep apparié 1 sim/seed 9, 6 empires/12 cités, `SCPS_MKTDIAG`
+  activé (stderr, scps_econ.c ~3781, print-only)** : le compte national
+  touche EXACTEMENT 0 plusieurs mois d'affilée dès les premières années (ex.
+  ticks 10-12 et 19-24 d'un même run) — ces mois-là, Laborer touche un salaire
+  NUL (pas réduit : nul), et la taxe per-capita FORFAITAIRE (TAX_BASE_LABORER,
+  scps_tune_list.h — hors scope M3b, INTERDIT d'y toucher) rase ce qu'il en
+  reste (`collected=min(tax_base×pop×mult, wealth)` — clampée à zéro).
+  Résultat : richesse Laborer piégée à ~0, un ÉTAT ABSORBANT (rien ne la fait
+  remonter : 0 richesse ⇒ 0 conso ⇒ 0 crédit au compte de marché ⇒ 0 revenu au
+  tick suivant).
+- **Comparaison directe pré/post-flip, MÊME seed/monde (9, 1 sim, 6 emp/12
+  cités, 100 ans)** : pré-M3b (HEAD=pre-m3b) → Laborer 47 % · Bourgeois 74 % ·
+  Élite 75 % (sain, dans les bandes ou proche) ; post-flip (parts uniformes
+  42/20/38 appliquées à `revenue/va_prov`) → Laborer 0 % · Bourgeois 61 % ·
+  Élite 58 % à l'an 15 (déjà cassé pour Laborer, le reste tenable) mais
+  Laborer RESTE à 0-3 % jusqu'à l'an 100 (pas de reprise). La collapse arrive
+  vite (an 5 : Laborer déjà 0 %, Bourgeois 20 %, Élite 1 %) et ne guérit PAS
+  avec le temps — ce n'est pas un régime transitoire lent, c'est un piège.
+- **Deux calibrages tentés, les deux AUTORISÉS par le brief, AUCUN ne sauve le
+  monde** :
+  1. *Parts en cascade (« qui paie en premier quand le compte manque »)* :
+     essayé salaire→profit→rente (protéger la subsistance d'abord, motif
+     « salaire collant ») — Laborer remonte à peine (0→3 %) mais ÉLITE
+     s'effondre à son tour (58→0 %, puisqu'elle passe désormais TOUJOURS en
+     dernier). Les parts UNIFORMES (ratio identique aux 3 pools) protègent
+     mieux Bourgeois/Élite (58-61 %) mais laissent Laborer à 0 % — aucun
+     ordre de priorité ne peut satisfaire les TROIS classes avec une
+     enveloppe qui ne couvre, en régime permanent, qu'une fraction du
+     besoin total.
+  2. *Lissage temporel (`MKT_SMOOTH_MONTHS` 1/3/12/24/60, sweep par
+     `SCPS_TUNE` sans recompiler)* : AUCUN effet notable sur la satisfaction
+     ni sur la création résiduelle mesurée (~38-42k or/an dans TOUS les cas)
+     — mathématiquement attendu : lisser une balance dans le temps change sa
+     VARIANCE tick-à-tick, jamais sa MOYENNE de long terme (Σ tirages ≈ Σ
+     apports, quel que soit N). Le brief anticipait ce levier pour un
+     étranglement de VOLATILITÉ (ex. un compte qui touche 0 par malchance
+     ponctuelle) — le problème mesuré ici est un déficit de MOYENNE
+     (structurel), que le lissage ne peut PAS corriger par construction.
+- **La théorie de la sortie par les prix ne s'est pas vérifiée en pratique** :
+  intuition avant sweep — moins d'argent en circulation devrait faire BAISSER
+  les prix (`re->price` suit `demand/(stock+offre)`, planché à 0.15×BASE_PRICE
+  — comme par hasard proche de 1/6.67, presque le ratio VA:conso observé), ce
+  qui permettrait à un revenu ~6× plus petit d'acheter le MÊME panier réel.
+  EN PRATIQUE, l'an 5-30 ne montre AUCUNE reprise (Laborer coincé à 0-2 %) —
+  soit `PRICE_INERTIA` est trop lent pour que la déflation compense avant que
+  la taxe ne rase la richesse à zéro (état absorbant, cf. ci-dessus), soit un
+  autre mécanisme bloque l'ajustement ; NON INVESTIGUÉ plus avant (aurait
+  exigé de toucher au prix/l'IPM, explicitement HORS PÉRIMÈTRE M3b).
+
+**Pièges** :
+- Le motif « photo fixe en tête de boucle + accumulateur local + application
+  centralisée à la clôture » (ordre-indépendance) marche bien ICI mais est
+  FACILE à rater : une première rédaction (décrément `market_account` dans la
+  boucle, province par province) compile et TOURNE sans erreur — le bug est
+  un biais STATISTIQUE silencieux (qui siphonne qui selon `pid`), invisible
+  sans sweep dédié comparant l'ordre des provinces.
+- `git stash` puis rebuild : le binaire `chronicle.exe` compilé depuis le
+  stash (pre-m3b) écrase celui du flip dans le même répertoire — bien COPIER
+  (`cp chronicle.exe /tmp/chronicle_prem3b.exe`) avant `git stash pop` +
+  rebuild, sinon la comparaison A/B se fait par erreur contre le MÊME binaire.
+- Build Windows : `make` seul (Bash tool, PATH par défaut) échoue SILENCIEUSEMENT
+  (`Cannot create temporary file in C:\Windows\`) même avec `TMP`/`TEMP` Windows
+  exportés — la mémoire scps-build-windows.md a la bonne incantation
+  (`TMP=/tmp TEMP=/tmp TMPDIR=/tmp`, chemins POSIX, PAS des chemins Windows)
+  DANS un script `.sh` lancé via `MSYSTEM=MINGW64 /d/MSYS2/usr/bin/bash.exe -l
+  script.sh` (le `cd` inline se fait tronquer si passé en `-lc` direct sur une
+  commande longue — un fichier `.sh` est fiable, pas une ligne `-lc`).
+
+**Restes (pour la prochaine tentative M3b)** :
+- **Le sweep apparié complet (9 mondes × 250 ans), `make golden-update`,
+  `make test`, `make determinism`, `--savetest`/`--fuzztest` : AUCUN n'a été
+  lancé** — inutile de mesurer un monde déjà cassé à l'an 5 sur un run court.
+  À refaire en ENTIER une fois un mécanisme viable trouvé.
+- **Pistes NON essayées, à trancher par l'orchestrateur (dépassent le
+  périmètre « flip seul » du brief actuel)** :
+  - Un PLANCHER de revenu minimal (subsistance) financé autrement que par le
+    compte de marché pur — mais tout plancher non adossé à un vendeur réel
+    est, par définition, une re-création (contredit le contrat M3).
+  - Rendre l'impôt per-capita SENSIBLE au revenu réel du tick (proportionnel,
+    pas forfaitaire) le temps de la transition — EXPLICITEMENT interdit par
+    CE brief (« INTERDITS : toucher... à l'impôt per-capita ») ; à
+    re-proposer à l'orchestrateur comme un prérequis M3b plutôt qu'un
+    aparté.
+  - Revoir l'élasticité de la demande (laisser le panier per-capita croître
+    avec la richesse disponible, pas seulement la population) pour que conso
+    puisse RATTRAPER VA en régime permanent — un chantier de démographie/
+    demande, pas un chantier monétaire pur.
+  - Réexaminer si Cœur A (VA-du-tick comme clé de répartition d'un compte
+    conso) est la bonne architecture, ou si une propriété-par-classe
+    (l'alternative écartée dans docs/MONNAIE_CONCEPT.md §M3) éviterait le
+    couplage direct « conso plafonnée ⇒ revenu plafonné » qui a fait
+    s'effondrer ce sweep.
+- Le code du mécanisme (compte de marché, ordre-indépendance, instrument
+  résiduel) reste RÉUTILISABLE tel quel pour la prochaine tentative — c'est le
+  CALIBRAGE (parts/lissage/taxe/demande) qu'il faut résoudre, pas la
+  plomberie. `SCPS_MKTDIAG=1` (stderr, print-only) reste câblé pour
+  ré-instrumenter vite.
