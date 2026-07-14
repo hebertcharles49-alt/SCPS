@@ -92,15 +92,15 @@ billets en GARDANT les trous noirs. Sites déjà identifiés :
 - Gate : sweep apparié OFF/ON ; IPM encore clampé à cette étape.
 
 ### M3 — LA CONSERVATION (le gros œuvre — et ses DEUX cœurs, v2)
-**Cœur A — QUI VEND ?** Fermer la boucle exige un DESTINATAIRE pour chaque dépense de
-consommation. Les stocks sont nationaux, les revenus forfaitaires — « l'acheteur paie
-le producteur » n'a pas de destinataire défini aujourd'hui. **Proposition à discuter** :
-le **COMPTE DE MARCHÉ provincial** — l'acheteur paie le compte de marché de la province
-productrice, qui reverse aux classes au split existant 42/20/38 (les parts forfaitaires
-deviennent la clé de répartition du produit des VENTES, plus une création). L'État ne
-vend rien ; il taxe et péage. Alternatives : propriété par classe (les bourgeois vendent
-les biens manufacturés, les journaliers le brut) — plus riche, plus lourd.
-- [ ] Trancher le vendeur (compte de marché vs propriété par classe).
+**Cœur A — QUI VEND ? — TRANCHÉ (joueur, go M3 2026-07-14)** : le **COMPTE DE MARCHÉ**
+— l'acheteur PAIE ; le produit des ventes est reversé aux provinces PRODUCTRICES
+∝ leur contribution (les stocks étant un pool national, la traçabilité par unité
+n'existe pas — la répartition ∝ valeur produite du tick est la vérité disponible),
+puis aux classes au split existant 42/20/38 (les parts forfaitaires deviennent la CLÉ
+DE RÉPARTITION du produit des ventes, plus une création). L'État ne vend rien ; il
+taxe et péage. (Alternative « propriété par classe » écartée : plus lourde.)
+⚠ RÉVERSIBILITÉ M3 : PAS de kill-switch runtime (deux économies parallèles =
+ingérable) — la réversibilité est PAR COMMIT (vagues séparées + tag `pre-m3`).
 - [ ] Convertir les CRÉATIONS de M0 en ventes (payées par les acheteurs).
 - [ ] Boucher les DESTRUCTIONS de M0 : la consommation crédite le vendeur (:3353) ;
       l'entretien/la cour/l'admin PAIENT quelqu'un (gages, fournisseurs) (:3118).
