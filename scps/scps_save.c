@@ -343,7 +343,9 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         if (cw->dst < -1 || cw->dst >= s->econ->n_prov) return false;
         if (cw->days_left<0 || cw->days_left>2000 || cw->total_days<0 || cw->total_days>2000) return false;
         if (cw->cd_days<0 || cw->cd_days>2000) return false;
-        if (!(cw->yield>=0.f && cw->yield<=1.f) || !(cw->seed_base>=0.f && cw->seed_base<=1e6f)) return false; }
+        if (!(cw->yield>=0.f && cw->yield<=1.f) || !(cw->seed_base>=0.f && cw->seed_base<=1e6f)) return false;
+        for (int k=0;k<CLASS_COUNT;k++)                       /* v87 — MONNAIE M3a : richesse emportée par les colons */
+            if (!(cw->seed_wealth[k]>=0.f && cw->seed_wealth[k]<=1e7f)) return false; }
     if (s->rn->n<0 || s->rn->n>SCPS_MAX_ROUTES) return false;
     for (int i=0;i<s->rn->n;i++){ const TradeRoute *rt=&s->rn->route[i];
         if (rt->ra<0 || rt->ra>=s->econ->n_regions || rt->rb<0 || rt->rb>=s->econ->n_regions) return false;

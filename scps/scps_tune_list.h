@@ -340,6 +340,11 @@
     X(AI_PROJ_HORIZON,       25.0f) \
     X(AI_SAFE_STOCK_MONTHS,   6.0f) \
     X(COLONY_SURVIVE_SEED,    0.5f) \
+    /* MONNAIE M3a : part de la richesse ∝pop que les colons EMPORTENT de la source à la
+     * fondation (1 = plein transfert proportionnel, 0 = aucun prélèvement — colonie
+     * repart à richesse nulle). Calibre la dureté si une source appauvrie freine trop
+     * l'expansion IA (gate anti-gel du sweep, docs/MONNAIE_M0_AUDIT.md §1.2). */ \
+    X(COLONY_WEALTH_SHARE,    1.0f) \
     /* COLONISATION : poids du STEER needs-aware (biais vers les tuiles d'un flux à déficit
      * URGENT) au-dessus du score d'expansion de CAPACITÉ. La capacité reste le défaut (pop
      * saine) ; le besoin oriente la cible quand ça presse. 0 = colonisation aveugle (capacité). */ \

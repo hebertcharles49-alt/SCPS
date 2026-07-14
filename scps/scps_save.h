@@ -32,7 +32,11 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 86u           /* v86 : MONNAIE M1/M2 — réserve métallique par pays
+#define SAVE_VERSION 87u           /* v87 : MONNAIE M3a — colonisation transfert (pas création) :
+                                    * struct ColonyWork gagne seed_wealth[CLASS_COUNT] (richesse
+                                    * emportée par les colons au départ, livrée à l'arrivée) →
+                                    * WorldEconomy grandit (blob ECON) ; <v87 refusé.
+                                    * v86 : MONNAIE M1/M2 — réserve métallique par pays
                                     * (reserve_gold/reserve_copper[SCPS_MAX_COUNTRY], alimentée
                                     * par la redevance minière MINT_ROYALTY) + BUDGET_MINT (curseur
                                     * joueur « Frappe ») → WorldEconomy et budget_mult[][] grandissent

@@ -480,6 +480,11 @@ typedef struct {
         float   yield;           /* rendement à l'arrivée (0..1) */
         PopCulture settlers_culture; /* culture EFFECTIVE au départ du convoi */
         uint16_t settlers_culture_id; /* nom/filiation au départ, même si la métropole change */
+        /* v87 — MONNAIE M3a : richesse EMPORTÉE par les colons au DÉPART (∝ pop partie,
+         * prélevée sur la province SOURCE, PAR CLASSE) — livrée à l'arrivée pour fonder la
+         * colonie ; remplace la création ex nihilo d'econ_seed_population (transfert, pas
+         * une planche à billets). CLASS_SLAVE toujours 0 (l'esclave ne colonise pas, §II.6 H). */
+        float   seed_wealth[CLASS_COUNT];
     } colony[SCPS_MAX_COUNTRY];
 
     /* v82 — fiscalité par CLASSE + enveloppes de dépense nationales. Sérialisées

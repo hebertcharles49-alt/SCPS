@@ -4119,9 +4119,26 @@ bool econ_colonize_province(WorldEconomy *e, const World *w, int src_pid, int ds
      * est donc EXCLU du bassin ponctionnable (spop_free = tout sauf esclave). */
     float spop_free=spop-src->strata[CLASS_SLAVE].pop;
     float take=fminf(COLONY_COST_POP, spop_free*0.25f);
+    /* MONNAIE M3a (ex-M0 §1.2, la colonisation créait de la richesse ex nihilo) : les
+     * colons EMPORTENT leur part — la richesse de la colonie est PRÉLEVÉE sur la province
+     * SOURCE, PROPORTIONNELLEMENT à la pop qui part (même fraction `f` que la ponction
+     * pop ci-dessous, car take*(pop_c/spop_free)/pop_c == take/spop_free pour toute
+     * classe). COLONY_WEALTH_SHARE calibre la dureté du prélèvement (1 = plein ∝pop) —
+     * gate anti-gel : une source appauvrie ne doit pas geler l'expansion, à surveiller
+     * au sweep. Livrée à l'arrivée par econ_colony_day (cw->seed_wealth voyage avec le
+     * convoi, comme cw->seed_base). */
+    float f=clampf(take/fmaxf(spop_free,EPS), 0.f, 1.f)*tune_f("COLONY_WEALTH_SHARE",1.f);
     for (int c=0;c<CLASS_COUNT;c++){
         if (c==CLASS_SLAVE) continue;
         src->strata[c].pop -= take*(src->strata[c].pop/fmaxf(spop_free,EPS));
+        float wtaken=src->strata[c].wealth*f;
+        src->strata[c].wealth -= wtaken;
+        cw->seed_wealth[c]=wtaken;
+        /* MONNAIE M3a — L'INSTRUMENT : prélevé AU DÉPART (le convoi peut mettre jusqu'à 3
+         * ans à arriver, econ_colony_day livre le crédit correspondant à la fondation —
+         * ou jamais si la cible a été prise entre-temps, cf. destruction assumée
+         * ci-dessous). */
+        g_colonization_net_cum -= (double)wtaken;
     }
     cw->src=(int16_t)src_pid; cw->dst=(int16_t)dst_pid;
     cw->days_left=(int16_t)days; cw->total_days=(int16_t)days;
@@ -4149,15 +4166,25 @@ void econ_colony_day(WorldEconomy *e, const World *w){
         if (dst && dst->active && !dst->colonized){
             float seeded=fmaxf(cw->seed_base*cw->yield, 40.f);
             econ_seed_population(dst, seeded);
+            /* MONNAIE M3a : la richesse LIVRÉE est celle EMPORTÉE au départ (cw->seed_wealth,
+             * prélevée sur la source à l'ordre), PAS la formule ex nihilo que
+             * econ_seed_population vient d'écrire — un TRANSFERT, pas une planche à billets. */
+            { double delivered=0.0;
+              for (int c=0;c<CLASS_COUNT;c++){ dst->strata[c].wealth=cw->seed_wealth[c]; delivered+=(double)cw->seed_wealth[c]; }
+              g_colonization_net_cum += delivered; }   /* MONNAIE M3a — L'INSTRUMENT : livré (miroir du -= au départ) */
             dst->colonized=true;
             dst->owner=(int16_t)cid;
             dst->ferveur=1.f;                          /* FERVEUR FONDATRICE (lot 2) */
             colonize_seed_pop_group(dst, cw->dst, (long)seeded,
                                     &cw->settlers_culture,cw->settlers_culture_id);
         }
+        /* si la cible a été prise entre-temps (commentaire ci-dessus, cas rare) : les
+         * colons ET leur richesse sont PERDUS — déjà payés/prélevés au départ, cohérent
+         * avec l'attrition de pop déjà acceptée ici de longue date. */
         cw->src=cw->dst=-1; cw->days_left=cw->total_days=0;
         cw->seed_base=0.f; cw->yield=0.f; cw->settlers_culture_id=0;
         memset(&cw->settlers_culture,0,sizeof cw->settlers_culture);
+        memset(cw->seed_wealth,0,sizeof cw->seed_wealth);
     }
 }
 
@@ -4218,9 +4245,16 @@ static void colonize_from_prov(WorldEconomy *e, int src_pid, int dst_pid, int ci
      * esclave ne part pas coloniser, cf. econ_colonize_province plus haut. */
     float spop_free=spop-src->strata[CLASS_SLAVE].pop;
     float take=fminf(COLONY_COST_POP, spop_free*0.25f);
+    /* MONNAIE M3a (ex-M0 §1.2) : mêmes principes qu'econ_colonize_province — transfert,
+     * pas création. Voie IMMÉDIATE : pas de convoi qui voyage, la richesse est prélevée
+     * ET livrée dans le même appel. */
+    float f=clampf(take/fmaxf(spop_free,EPS), 0.f, 1.f)*tune_f("COLONY_WEALTH_SHARE",1.f);
+    float wealth_seed[CLASS_COUNT]={0.f};
     for (int c=0;c<CLASS_COUNT;c++){
         if (c==CLASS_SLAVE) continue;
         src->strata[c].pop -= take*(src->strata[c].pop/fmaxf(spop_free,EPS));
+        wealth_seed[c]=src->strata[c].wealth*f;
+        src->strata[c].wealth -= wealth_seed[c];
     }
     /* DISPATCH conservatif (terre) : les colons détachés ARRIVENT — on essaime
      * tout ce qu'on a prélevé (plancher = graine minimale), pas de saignée du
@@ -4231,6 +4265,12 @@ static void colonize_from_prov(WorldEconomy *e, int src_pid, int dst_pid, int ci
     PopCulture settlers=sg?sg->culture:src->culture;
     uint16_t settlers_id=sg?sg->culture_id:src->culture_id;
     econ_seed_population(dst, seeded);
+    /* la richesse LIVRÉE est celle EMPORTÉE (wealth_seed), pas la formule ex nihilo
+     * qu'econ_seed_population vient d'écrire — un TRANSFERT, pas une planche à billets. */
+    /* (instrument : rien à accumuler ici — prélèvement et livraison dans le MÊME appel,
+     * net exactement 0 ; seule la voie CONVOI d'econ_colonize_province/econ_colony_day
+     * porte un résidu mesurable — colons perdus en route = richesse détruite, comptée). */
+    for (int c=0;c<CLASS_COUNT;c++) dst->strata[c].wealth=wealth_seed[c];
     dst->colonized=true;
     dst->owner=(int16_t)cid;
     dst->ferveur=1.f;            /* FERVEUR FONDATRICE (lot 2) : la jeune colonie a faim d'avenir */
