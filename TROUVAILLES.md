@@ -1210,3 +1210,145 @@ zéro accumulateur inter-ticks ajouté) · make fuzz-save 8/8.
 - FX_AUDIT/intrigue/part libre de FX_BUILD édifices : destructions documentées.
 - Early game Laborer <50 avant ~l'an 150 : structurel (jeunes économies), à revisiter
   quand la frappe financera la croissance (cf. RESTE MAJEUR).
+
+## CHANTIER MONNAIE — M3c : LE CRÉDIT RÉEL (2026-07-15)
+
+**Statut : CALIBRÉ-LIVRÉ — golden RE-BASELINÉ VERT, tous les gates passés.** Le dernier
+canal magique (scps_econ.c:3516-3519 v88 : le débit de l'achat d'État clampé au trésor
+LOCAL, le reliquat créé sans prêteur) est fermé : péréquation nationale → emprunt aux
+propres classes → emprunt à une cité-état → épuisement mesuré (jamais créé). La dette
+est un PASSIF SÉPARÉ, sérialisé (SAVE_VERSION 89), ventilé par créancier (classes/
+cité-état), avec intérêt réel, amortissement, et rachat de crédit (le marché secondaire).
+
+**L'architecture livrée (scps_credit.c, refonte complète)** :
+- `credit_borrow_local(e,c,need)` — péréquation (Σ surplus des AUTRES provinces du pays,
+  >SINK_FLOOR) PUIS emprunt aux PROPRES classes (élites+bourgeois, ∝ richesse pondérée
+  ELITE_LEND_WEIGHT/BOURGEOIS_LEND_WEIGHT, capacité CLASS_LEND_SHARE/tick). AUCUN
+  World* requis (province-grain pur — econ_tick n'en a pas, ProvinceEconomy::region
+  l'explique déjà). DÉBIT SEUL des deux étages : le crédit a DÉJÀ eu lieu (la VA payée
+  en plein à price_level, scps_econ.c §3) — la chaîne ne fait que trouver QUI, dans le
+  monde, a réellement avancé les pièces. Vérifié algébriquement (pending_buy_debit =
+  local_debit + covered_local + covered_cs + remain_final, ΔM = remain_final SEUL).
+- `credit_borrow_citystate(e,w,c,need)` — emprunt à une cité-état/mercantile-pacifiste
+  solvable (créancier EXISTANT prioritaire — sans quoi `pick_lender` élit le PLUS RICHE
+  CE tick, presque jamais le même d'un tick à l'autre, cf. Pièges). Requiert World*
+  (rôle/éthos du prêteur) : c'est le SEUL étage qui en a besoin.
+- `econ_va_shortfall_pending/resolve` (scps_econ.h) — le pont entre les deux mondes :
+  econ_tick (sans World*) tente péréquation+classes en interne et STOCKE le besoin
+  résiduel dans un snapshot (non sérialisé, écrasé chaque tick) ; `credit_settle_
+  monthly` (scps_sim.c, juste après econ_tick — LUI a w) tente l'étage cité-état et
+  RETRANCHE ce qu'il finance de l'instrument (g_va_produced_cum) — ce qui a été
+  financé après coup n'était PAS une création.
+- `credit_spend` (refonte) : débite le trésor local (peut passer négatif TEMPORAIREMENT),
+  puis appelle `credit_borrow` (la chaîne complète, local+cité-état) pour REMPLIR le
+  trou — contrairement à econ_tick, credit_spend a déjà un World* donc peut le faire
+  en UN appel synchrone (pas de round-trip settle_monthly).
+- `credit_year_tick` (refonte) : intérêt payé du SURPLUS COURANT SEUL (jamais via
+  credit_borrow* — piège n°1 ci-dessous), réparti aux DEUX créanciers ∝ leur part de
+  dette (élite rentière + cité-état) ; amortissement du principal depuis le surplus
+  >COURT_FLOOR ; rachat de crédit (cité-état au trésor oisif rachète la dette-classes
+  à valeur faciale, devient le créancier).
+
+**Pièges (les DEUX bugs de calibrage, invisibles à la relecture)** :
+- **Intérêt payé via credit_borrow* = dette fabriquée sans contrepartie.** Premier jet :
+  `credit_year_tick` finançait l'intérêt en appelant `credit_borrow(e,w,c,interest)`
+  (la MÊME chaîne que credit_spend). Ça COMPILE, ça PASSE credit_demo, mais c'est FAUX :
+  `credit_borrow_citystate` DÉBITE le prêteur (conservateur SEULEMENT si la classe/
+  cité-état débitée "finance" un crédit DÉJÀ accordé ailleurs, cf. l'algèbre ci-dessus)
+  — pour l'intérêt, RIEN n'a été crédité au préalable, donc emprunter pour payer
+  l'intérêt fait DOUBLE emploi : le principal grossit du montant emprunté (g_debt+=
+  covered) ET ce même montant est immédiatement versé au créancier comme "intérêt
+  payé" — la dette explose SANS mouvement réel net côté débiteur. Trouvé PAR le banc
+  invariant (chronicle : "autres" cumulé à 269 % de M(fin) en 250 ans, seed 9). Fix :
+  l'intérêt se paie EXCLUSIVEMENT du surplus courant (`country_surplus`/
+  `debit_surplus_prorata`, jamais credit_borrow*) — s'il manque, l'intérêt de l'année
+  est simplement PLUS PETIT (auto-limité), jamais capitalisé.
+- **Rachat de crédit à COURT_FLOOR (4000) : 0 rachat sur 9 sims.** `pick_lender` élit
+  le PLUS RICHE prêteur éligible CE tick — un créancier-cité-état déjà ACTIF (prêtant
+  chaque mois via credit_settle_monthly) redéploie continûment son capital, il redescend
+  RAREMENT au-dessus de COURT_FLOOR (le seuil de HOARDING, motif FX_COURT/admin) —
+  contrairement à un trésor qui dort. Fix : le seuil d'oisiveté du rachat devient
+  SINK_FLOOR (500, le même bar qu'un prêt normal) — "racheter est un placement sûr,
+  pas moins attractif qu'un nouveau prêt". Passé de 0 à 79-2424 rachats/sim.
+- **Le banc invariant CUMULÉ contre M(t) dérive sans borne.** Premier jet :
+  `autres_cum/M(t)` (le brief dit "M(t)=M(0)+frappe") — mesuré : croît MONOTONE de
+  0 % (an 1) à 269 % (an 249, seed 9), aucun seuil "serré" n'est jamais stable (les
+  composantes ne se COMPENSENT pas d'une année sur l'autre, elles s'ACCUMULENT). Fix :
+  DELTA ANNUEL (pas cumulé depuis la genèse), normalisé par l'ÉCHELLE d'activité
+  CONNUE de l'année (Σ|ΔVA·Δconso·Δcoloniz·Δfrappe|, pas M(t) ni le delta NET — qui
+  peut être petit par pure COMPENSATION de signes opposés, cf. découverte suivante).
+  Résultat : le ratio reste STABLE (quelques dizaines à ~300 % selon l'année), un
+  détecteur de RÉGRESSION viable (1 pic isolé/2200 vérifs à 301 %, sweep {9,11,42}×3×250).
+
+**Découverte structurelle — "autres" (missions/tribut mûri/arbitrage/gains d'événements/
+pillage-stock, M0 §1.3-1.5/1.7/2.12, HORS SCOPE M3c) est DU MÊME ORDRE DE GRANDEUR que
+la VA elle-même** (mesuré : VA +31-95k/an, autres -18 à -80k/an — PAS 10× plus petit
+comme supposé). Un seuil "serré" (quelques %) sur la conservation TOTALE du jeu n'est
+donc PAS atteignable tant que ces sites ne sont PAS convertis à leur tour — le banc
+invariant livré est un DÉTECTEUR DE RÉGRESSION (une EXPLOSION soudaine signale un
+NOUVEAU canal magique), pas une preuve de conservation totale. INVARIANT_DRIFT_FRAC=4.0
+(400 %) au registre J, à resserrer une fois ces sites convertis (M3d ou équivalent).
+
+**Mesures — sweep apparié `./chronicle {9,11,42} 3 250 6 12` (pre-m3c = tag `pre-m3c`,
+worktree, vs HEAD)** :
+
+| seed | dérive M/an pré→v3c | VA résiduelle pré→v3c | Laborer pré→v3c | hégémon pré→v3c |
+|---|---:|---:|---:|---:|
+| 9  | 20536/33251/19133 (moy³) → 10150/10686/10587 | 59288/71140/46695 → 35633/31333/33762 | 53%→49% | 2/3→1/3 |
+| 11 | 35882/35467 (2 sims) → 13539/19607/13648 | 105584/94292 → 88485/61523/48136 | 49%→46% | 2/3→1/3 |
+| 42 | 15786/14648/21486 → 13123/10106/7631 | 73047/60945/105503 → 88276/67425/55278 | 59%→61% | 1/3→0/3 |
+
+Lecture : la dérive nette de M chute de ~45-60 % partout ; la VA résiduelle (LE chiffre
+que M3c cible) baisse de 30-45 % (PAS à ~0 — voir découverte "autres" ci-dessus : le
+reliquat restant migre en bonne partie vers la dette réelle, mesurée, plutôt que d'être
+imprimé). Laborer/Bourgeois/Élite restent dans ou proches des bandes cibles (46-62 % /
+66-79 % / 70-82 %), comparables au pré-M3c (bruit de bifurcation, cf. leçon M3b-v2.1).
+**Hégémon mortel s'affaiblit sur les 3 graines** (2/3→1/3 ×2, 1/3→0/3 ×1) — effet
+MODÉRÉ, RÉCURRENT depuis M3b-v2 (déjà noté "non expliqué" à cette étape-là), plausible :
+des classes qui ne peuvent plus perdre TOUTE leur richesse en création pure (elles la
+prêtent contre un actif, la dette réelle) restent globalement plus riches/stables →
+monde politiquement moins volatil. Hors scope de diagnostiquer plus avant ici.
+
+**La dette VIT (télémétrie chronicle, nouvelle ligne `dette (M3c)`)** : 1.3-4.6M or de
+dette totale/sim en fin de partie (25-34 pays débiteurs/sim), 86-97 % due aux PROPRES
+classes, 3-14 % à une cité-état — RATIO STABLE et cohérent avec le brief ("l'État
+emprunte D'ABORD aux classes") ; 79-2424 rachats/sim (le marché secondaire, actif) ;
+~9-12k épisodes d'épuisement/sim (des tentatives d'emprunt PARTIELLEMENT non couvertes
+— le canal se ferme : mesuré, jamais créé, cf. g_va_produced_cum qui absorbe le résidu).
+AUCUN buyback n'aboutissait avant le fix SINK_FLOOR (voir Pièges).
+
+**Gates passés (tous)** : golden RE-BASELINÉ VERT (diff 5 lignes, hash changé — attendu,
+le circuit monétaire change) · `make test` 38 VERTS/0 ROUGE/1 BUILD ÉCHEC (intertrade_demo,
+setenv, pré-existant Windows) · `make determinism` STABLE (5 graines × 12 ans) ·
+`make determinism-deep` STABLE (200 ans × 2 graines, NOUVEAU — pas lancé aux vagues
+précédentes) · `scps_viewer --savetest 9` : A==B byte-identique (v89, dette sérialisée
+via credit_save/credit_load — SVT_CRDT grandit : 2 float + 1 int16/pays au lieu d'un
+seul int16 g_creditor) + altération d'un octet REFUSÉE · `make fuzz-save` 8/8 (216
+octets flippés, save_sane rejette chaque forge, aucun crash).
+
+**Piège de plomberie (Makefile)** : `scps_econ.c` inclut désormais `scps_credit.h`
+(credit_borrow_local, appelé par econ_tick) — TOUT binaire qui lie `scps_scps_econ.o`
+sans `scps_scps_credit.o` échoue au LINK ("undefined reference"). 22 cibles du Makefile
+(readout_demo, agency_demo, ai_demo, statecraft_demo, la plupart des *_demo) ne
+l'avaient pas — ajouté un `$(OBJDIR)/scps_scps_credit.o` juste après CHAQUE référence à
+`scps_scps_econ.o`, BLOC-AWARE (les continuations `\` du Makefile groupées, pas juste
+la ligne courante — un premier essai en `sed` global a produit des "multiple definition"
+en dupliquant credit.o dans des blocs qui l'avaient DÉJÀ ailleurs, ex. AI_DEMO_OBJS ;
+awk avec un test `$0 ~ /\\[ \t]*$/` s'est avéré capricieux dans ce shell — perl,
+plus prévisible, a fait le job en un passage).
+
+**Restes (hors scope, documentés)** :
+- "autres" (missions/tribut mûri/arbitrage/gains d'événements/pillage-stock, M0
+  §1.3-1.5/1.7/2.12) reste NON converti, du même ordre de grandeur que la VA — LE
+  prochain palier pour un banc invariant réellement "serré" (M3d ?).
+- Épisodes d'épuisement (~9-12k/sim) : le canal ne ferme pas à 100 % — un pays peut
+  encore avoir un besoin que péréquation+classes+cité-état ne couvrent pas ; le
+  reliquat rejoint g_va_produced_cum (mesuré, documenté), jamais un trésor négatif.
+  Non creusé plus avant (bornage suffisant pour le sweep, cf. gates).
+- Hégémon mortel affaibli (2/3→1/3 récurrent) : effet MODÉRÉ, plausiblement lié à la
+  dette réelle (les classes ne s'appauvrissent plus par pure création ratée — elles
+  prêtent contre un actif), NON diagnostiqué en profondeur (hors scope monétaire strict,
+  même verdict que M3b-v2's hégémon amorti).
+- Gameplay de défaut profond (bankruptcy) : explicitement HORS SCOPE (brief) — les
+  hooks existants (credit_of, la dette lisible) restent la seule surface pour une
+  vague future.
