@@ -237,9 +237,16 @@ void trade_tick(WorldEconomy *e, TradeNetwork *net, const uint8_t *link_blocked)
             float received=vol*(1.f-loss);
             econ_region_stock_add(e, importer, r, received);
 
-            /* Revenu de l'exportateur (vente au prix de l'importateur
-             * moins le coût de transport = marge marchande). */
-            float sale_price=imp->price[r]*(1.f-lk->transport_cost);
+            /* MONNAIE M3a : le débité == le crédité, exactement. La perte de
+             * transport est PHYSIQUE (10 % de `transport_cost` du volume expédié
+             * n'arrive jamais, `received` ci-dessus) — pas un second prélèvement
+             * monétaire en plus. `sale_price` doit donc porter la MÊME perte
+             * (`loss`, pas le `transport_cost` brut) : l'exportateur est payé sur
+             * ce qui a RÉELLEMENT été livré (`vol*(1-loss) == received`), au prix
+             * plein de l'importateur — ancienne formule (perte de prix complète
+             * côté vendeur, perte de quantité à 10 % côté acheteur) créait un
+             * trou noir systématique à chaque transaction. */
+            float sale_price=imp->price[r]*(1.f-loss);
             float revenue=vol*sale_price;
             /* Les bourgeois captent le profit commercial (RE-KEY : province + vue). */
             trade_wealth_add(e, exporter, CLASS_BOURGEOIS, revenue);
