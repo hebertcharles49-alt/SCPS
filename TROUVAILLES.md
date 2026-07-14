@@ -67,6 +67,28 @@
 
 ---
 
+## HAMEAUX LIBRES — capitale fantôme corrigée (2026-07-14, worktree w1-wild)
+
+**Mission joueur** : « les WILD avaient une capitale — modèle cité-état Civ6. INDÉPENDANTS. TOUS. »
+
+**Découvertes** :
+- **1 slot-pays = 1 hameau DÉJÀ vrai avant cette mission** (scps_econ.c:1852-1899, `WILD_PLANT`/`wslots[]`) : le vieux modèle « pseudo-empire wild multi-hameaux » décrit dans certains commentaires est un COMMENTAIRE ancien, pas l'état du code — chaque hameau a déjà son cid distinct, sa diplomatie/guerre indépendante (`diplo_status(s->dp,o,best_emp)` déjà par paire de cid, scps_sim.c:105/`wild_cultural_tick`). Rien à changer côté « un slot par entité ».
+- **La vraie « capitale fantôme »** : `build_hierarchy` (scps_world.c:2201-2208) pose `capital_prov` pour TOUS les slots-pays (y compris ceux qui deviendront WILD) AVANT la distribution des rôles — capital_prov pointe alors vers la plus grande province de la RÉGION héritée par l'agglomération territoriale pré-rôle, une province SANS AUCUN RAPPORT avec le hameau réellement planté plus tard par `econ_init`/`WILD_PLANT` (BFS près d'un spawn jouable, scps_econ.c:1873-1897). Un commentaire pré-existant (scps_world.c:2889 avant fix) le savait déjà côté nom/couleur (« le slot WILD réservé n'a pas de capitale ») mais capital_prov lui-même restait fantôme.
+- **`refine_capitals`** (scps_world.c:3522) tourne DANS `world_generate`, donc AVANT `econ_init`/`worldgen_seed_peoples` — aucun conflit d'ordre avec le fix (pas de risque d'écrasement après coup).
+- **capital_prov n'est pas cosmétique pour WILD** : `scps_warhost.c` (lignes 273-403) filtre seulement `role==POLITY_UNCLAIMED`, donc mobilise/défend AU capital_prov pour les WILD aussi (« ils défendent » du contrat) — avec l'ancien capital_prov fantôme, un hameau tentait de défendre une province qu'il NE POSSÉDAIT MÊME PAS. Le fix n'est donc pas qu'un affichage : il corrige potentiellement la défense réelle des hameaux.
+
+**Fix** (scps_world.c, `worldgen_seed_peoples`, bloc juste après le nommage tribal WILD) : au lieu de démonter un slot WILD sans région à `has==false` (test sur `econ->region[].owner`), on cherche directement la province ÉCONOMIQUEMENT possédée par le slot (`econ->prov[p].owner==c && colonized` — doctrine province-grain) et on pose `capital_prov = hamlet` (ou -1 + UNCLAIMED si aucun hameau planté). Diff minimal, aucun champ ajouté/retiré → **pas de bump SAVE_VERSION** (struct Country inchangée).
+
+**Impact save** : les vieilles saves gardent leur capital_prov fantôme (World est désérialisé DIRECTEMENT depuis le fichier — `sv_read_payload`, pas de regen depuis la graine au chargement) ; `save_sane` reste satisfait (capital_prov fantôme est un index de province valide, juste sémantiquement faux) — auto-guérit seulement sur une PARTIE NEUVE. Non bloquant, non traité (hors scope : aucune migration de save demandée).
+
+**Gates** : `make test` 39/40 vert (intertrade_demo = KO Windows pré-existant, inchangé) · golden RE-BASELINÉ (worldgen change confirmé — hash monde a changé) + `make determinism` stable après re-baseline · `make golden` vert · sweep chronicle (seed 9, 3 sims × 250 ans + seed 42) : IPM final moy 1.03 (pic 1.11) ≤ 1.35, satisfaction Laborer/Bourgeois/Élite 50/76/77 %, hameaux WILD semés 6.7/sim, colonisation/guerres/sécessions actives (monde vivant, pas de collapse) · `--savetest 9` byte-identique (A==B) · `--fuzztest` 8/8 (216 octets flippés, save_sane rejette chaque forge).
+
+**Restes** :
+- **Affichage godot/project** : si le front dessine un marqueur « capitale » distinct par-dessus un hameau WILD (icône/étoile), il vivra maintenant sur LA bonne province (plus fantôme) — mais un hameau libre n'a normalement PAS besoin de ce marqueur (sa seule province EST son siège, trivial, modèle Civ6). Un agent UI devrait vérifier si `scps_country_capital_province`/l'icône capitale s'affiche encore sur les hameaux et, si oui, la retirer (ou la garder — décision joueur, hors périmètre INTERDIT godot/project de cette mission).
+- Aucune migration de save pour les parties déjà commencées avant ce fix (capital_prov fantôme y persiste jusqu'à nouvelle partie) — non demandé, documenté ici si jamais ça remonte en bug report.
+
+---
+
 ## RELIGION & CULTURE
 
 **Découvertes** :
