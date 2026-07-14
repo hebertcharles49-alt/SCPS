@@ -288,3 +288,117 @@
 
 **Restes** :
 - intertrade_demo BUILD ÉCHEC = le pré-existant Windows (setenv), inchangé.
+
+### CHANTIER MONNAIE — M0 : L'AUDIT création/destruction (2026-07-14)
+**Découvertes** (docs/MONNAIE_M0_AUDIT.md porte le registre complet — ceci
+n'est QUE ce qui a coûté cher à trouver) :
+- **Deux fonctions homonymes de « transfert » avec des philosophies opposées** :
+  `econ_region_treasury_add` (scps_econ.c:2294) est TOUJOURS un vrai routeur
+  province-safe (débit/crédit réel), mais un appelant peut très bien s'en
+  servir pour CRÉER (un seul côté de l'appel, l'autre compte n'est jamais
+  débité — cf. le tribut « mûri » des vassaux, scps_diplo.c:396, qui crédite
+  le suzerain via cette fonction sans qu'aucun débit vassal n'existe nulle
+  part dans l'appelant). Le nom de la fonction ne garantit RIEN sur la
+  conservation — c'est l'APPELANT qu'il faut lire des deux côtés, jamais
+  s'arrêter à « ça route bien sur la province ».
+- **Deux chemins de construction civile, deux philosophies** : le chantier
+  d'ÉDIFICE joueur (`agency_build_acct`, scps_agency.c:333) est un TRANSFERT
+  parfaitement conservé bout-en-bout (le nu importé paie les sources
+  étrangères via `intertrade_market_consume`, la marge paie la cité-état
+  hôte du péage) ; la construction de MANUFACTURE (joueur ET IA,
+  `CMD_BUILD_MANUF`/`CMD_MANUF_LEVEL` scps_sim.c + `ai_build_civmanuf`/
+  `ai_pay_and_build`/`raw_boost` scps_ai.c) appelle `credit_spend` tout court,
+  SANS jamais router par le marché — l'or disparaît intégralement. Deux
+  verbes qui SE RESSEMBLENT côté joueur (« je bâtis un truc ») ont un
+  comportement monétaire opposé — piège classique pour un audit rapide qui
+  ne suivrait qu'un seul des deux chemins et généraliserait.
+- **`scps_trade.c` (intra-empire) est un module ACTIF distinct
+  d'`scps_intertrade.c` (inter-pays)** — appelé par `scps_sim.c:1204`
+  (`trade_tick`) juste AVANT `intertrade_tick`, chaque jour de tick. Facile à
+  manquer (le nom `scps_trade.c` sans préfixe se confond avec
+  `scps_intertrade.c`) : c'est LUI qui a la fuite systématique (deux formules
+  de perte de transport différentes côté vendeur/acheteur, §2.13 du registre),
+  alors qu'`scps_intertrade.c` est, lui, soigneusement conservé partout
+  (commentaires « CONSERVATION » explicites à chaque site).
+- **`ai_speculate_tick`** (scps_ai.c:2665) : le pays spécule sur SON PROPRE
+  marché avec SON PROPRE trésor (achète dans un hoard privé sous le prix
+  moyen mobile, revend au-dessus) — la seule contrepartie est LUI-MÊME à deux
+  instants différents. Sur un prix mean-reverting (l'IPM borné actuel), la
+  stratégie est structurellement gagnante en moyenne → un site de CRÉATION
+  nette lente mais quasi garanti, invisible dans un grep classique
+  (`econ_region_treasury_add` y apparaît deux fois, symétriques en apparence,
+  mais aux DEUX BOUTS du même compte).
+- **`econ_seed_population` (scps_econ.c:1032) sert DEUX rôles** : la genèse
+  (M(0), légitime) ET la colonisation en cours de partie
+  (`econ_colony_day`/`colonize_from_prov`, scps_econ.c:4017/4099) — cette
+  seconde famille d'appels CRÉE de la richesse à chaque fondation de colonie
+  (la strate colonisée reçoit `wealth=pop×[6/2/0.5]` sans qu'aucune province
+  source ne soit débitée en monnaie, seulement en POPULATION) : absent de la
+  liste de sites « déjà repérés » du brief — un site de création répété tout
+  au long de la partie, pas juste à l'an 0.
+- **L'arbitrage des cités-états double-crédite** (scps_intertrade.c:1046-1066,
+  bloc « M4 ») : la source ET le Centre importateur sont TOUS DEUX crédités
+  en or pour le MÊME mouvement de stock, sans qu'aucun des deux ne soit
+  débité — à ne pas confondre avec les routes régulières
+  (scps_intertrade.c:970-1026), qui sont, elles, parfaitement conservées (même
+  fichier, même style de commentaire « conservation », mais deux blocs très
+  différents à 80 lignes d'écart).
+- **Le pillage/siège monétise le STOCK sans le livrer** : la part liquide du
+  butin (`pp->treasury -= gold`) est un vrai transfert, mais la part en STOCK
+  (scps_diplo.c:1338-1351, 1394-1407) est retirée de la victime et VALORISÉE
+  en or pour l'occupant SANS que le bien physique ne rejoigne le stock de
+  l'occupant (`econ_region_stock_add` du côté occupant est absent) — un
+  pillage de matières premières se change en création d'or pur, adossée à une
+  destruction de matière. Facile à rater car le trésor, LUI, est bien
+  conservé (`-=`/`+=` symétriques) — c'est le silence côté stock occupant
+  qu'il faut remarquer.
+- **Chiffrage (chronicle, print-only, `chronicle_money_mass`/
+  `chronicle_money_flux_accum`, aucun effet golden/déterminisme vérifié)** :
+  M(0) ~ 50-57 k or (dotation de genèse) → M(fin) 20 à 73 MILLIONS après 250
+  ans SANS AUCUNE frappe (×360 à ×1280), sur 9 mondes (3 graines × 3 sims,
+  `./chronicle {9,11,42} 3 250 6 12`). Le recoupement FX_* (les sites déjà
+  instrumentés en `econ_flux_add` — impôt/entretien/cour/admin/redépense/
+  soldes/marine/conseil/audits/chantiers/péages/intérêts/intrigues) est
+  QUASI ÉQUILIBRÉ (création≈destruction à 1-2 % près) : la dérive massive
+  observée n'est PAS pilotée par ces sinks (déjà à peu près calés), mais par
+  le duo NON instrumenté VA-de-production (§1.1, créée) vs consommation
+  (§2.1, détruite) — composés sur 250 ans, la VA (∝ PIB, croissance
+  démographique+techno) distance la consommation (plafonnée au panier de
+  besoins per capita).
+
+**Pièges** :
+- `econ_flux_year_capture()` (appelée chaque année dans la boucle chronicle)
+  APPELLE `econ_flux_reset()` en interne — accumuler le flux `FX_*` sur TOUTE
+  une sim de 250 ans exige de sommer `econ_flux_get` CHAQUE année AVANT cet
+  appel (pas après la boucle : à ce moment-là il ne reste que la dernière
+  année). Piège pour quiconque voudrait un recoupement flux sur la sim
+  entière sans lire `econ_flux_year_capture` d'abord.
+- `RegionEconomy.treasury`/`.strata[].wealth` sont des VUES recalculées
+  ENTIÈREMENT par `econ_aggregate_regions` à chaque tick — sommer `region[]`
+  pour M(t) au lieu de `prov[]` fonctionne EN APPARENCE (même total, la vue
+  est fidèle) mais viole la doctrine province-grain du CLAUDE.md ; j'ai
+  sommé `prov[].treasury` + `prov[].strata[].wealth` directement (télémétrie
+  chronicle) pour rester cohérent avec la charte, même si `region[]` aurait
+  donné le même nombre au tick de mesure.
+
+**Restes / AMBIGU (non tranché, signalé pour M3 plutôt que deviné)** :
+- ~~`scps/scps_diplo.c:1149-1160` (`diplo_peace_pillage_stock`)~~ RÉSOLU en
+  fin de mission : la fonction livre bien le stock au vainqueur
+  (`econ_region_stock_add(econ,dst,g,take)`, ligne 1160) — c'est un pur
+  transfert de MATIÈRE (hors périmètre monnaie, aucun `treasury`/`wealth`
+  touché). Elle contraste d'autant plus avec §2.12 (`diplo_pillage_value`/
+  `diplo_siege_loot`), qui AURAIENT PU faire pareil (le motif existe à 200
+  lignes de distance dans le même fichier) mais monétisent le stock pillé au
+  lieu de le livrer — probablement pas une décision délibérée, plutôt deux
+  fonctions écrites à des moments différents sans se relire l'une l'autre.
+- La frontière DESTRUCTION/DETTE du §2.11 (intérêt annuel sans créancier
+  assigné, scps_credit.c:104-108) est un cas rare (1re année de dette avant
+  qu'un prêteur solvable existe) — pas mesuré séparément dans le chiffrage
+  (noyé dans FX_CREDIT global) ; son poids réel n'est pas connu.
+- Le partage exact entre §1.1 (VA) et §2.1 (consommation) dans la dérive
+  nette n'a PAS été isolé numériquement (seul le recoupement FX_*, qui ne les
+  couvre PAS, a été mesuré) — instrumenter ces deux sites spécifiquement
+  (hors scope M0 : ça toucherait la sim même en ajoutant un `econ_flux_add`
+  dedans, ce que l'interdiction print-only excluait) donnerait le partage
+  exact ; pour M3, le SIGNE (VA > conso) suffit à justifier l'ordre des
+  travaux (Cœur A avant tout).

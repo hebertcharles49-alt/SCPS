@@ -304,6 +304,37 @@ static double dmedian(double *v, int n){
     return (n&1)? v[n/2] : 0.5*(v[n/2-1]+v[n/2]);
 }
 
+/* MONNAIE — M0 (AUDIT, print-only) — M(t) = Σ_provinces treasury + Σ_provinces
+ * Σ_classes wealth (grain PROVINCE, charte : region[].treasury/.strata[].wealth
+ * sont des VUES agrégées — sommer prov[] directement évite tout double-compte
+ * ou décalage de fraîcheur). Lecture PURE, aucun effet sur la sim/le golden. */
+static double chronicle_money_mass(const WorldEconomy *e){
+    if (!e) return 0.0;
+    double m=0.0;
+    int n=e->n_prov; if (n>SCPS_MAX_PROV) n=SCPS_MAX_PROV;
+    for (int p=0;p<n;p++){
+        const ProvinceEconomy *pe=&e->prov[p];
+        m += (double)pe->treasury;
+        for (int c=0;c<CLASS_COUNT;c++) m += (double)pe->strata[c].wealth;
+    }
+    return m;
+}
+/* Recoupement GROSSIER (pas la vérité — cf. docs/MONNAIE_M0_AUDIT.md §7) : Σ des
+ * deltas positifs/négatifs d'econ_flux_get sur TOUS les pays, accumulée année
+ * par année AVANT econ_flux_year_capture (qui RAZ le flux) — ne couvre que les
+ * sites déjà instrumentés en FX_*, pas le registre complet (VA de production,
+ * consommation, colonisation notamment n'ont pas de compteur FX_* dédié). */
+static void chronicle_money_flux_accum(const WorldEconomy *e, int n_countries,
+                                        double *creation_accum, double *destruction_accum){
+    if (!e) return;
+    int nc=n_countries; if (nc>SCPS_MAX_COUNTRY) nc=SCPS_MAX_COUNTRY;
+    for (int c=0;c<nc;c++)
+        for (int k=0;k<FX_COUNT;k++){
+            double v=econ_flux_get(c,(FluxComp)k);
+            if (v>0.0) *creation_accum += v; else if (v<0.0) *destruction_accum += -v;
+        }
+}
+
 int main(int argc, char **argv){
     tune_init();   /* Arc J : lit SCPS_TUNE une fois (nom inconnu → exit 2). */
     /* positionnels FILTRÉS de l'option --hash (le harnais de déterminisme). */
@@ -416,6 +447,10 @@ int main(int argc, char **argv){
         world_generate(w, &p);
         /* silence le bruit de génération : on a déjà tout imprimé par sim plus bas */
         sim_init(&s, w);
+        /* MONNAIE — M0 (AUDIT, print-only) : M(0) juste après la genèse (avant le
+         * premier econ_tick) — la dotation de genèse §5.1 du registre. */
+        double money_m0 = chronicle_money_mass(s.econ);
+        double money_creation_accum = 0.0, money_destruction_accum = 0.0;
         /* LOT 6a — le compteur « régions réduites (campagne) » sous-comptait ×9 :
          * campaign_taken(FieldArmy.taken) est RAZ à CHAQUE nouvel ordre/redirection
          * (campaign_order/campaign_redirect), alors que l'IA réordonne dès qu'une
@@ -572,6 +607,10 @@ int main(int argc, char **argv){
                     if (g_mid_rgt_all_n < 8192) g_mid_rgt_all[g_mid_rgt_all_n++]=rgt;
                 }
             }
+            /* MONNAIE — M0 (AUDIT, print-only) : accumule le flux de CETTE année AVANT
+             * qu'econ_flux_year_capture (ligne suivante) ne le RAZ — recoupement
+             * grossier création/destruction (cf. docs/MONNAIE_M0_AUDIT.md §7). */
+            chronicle_money_flux_accum(s.econ, w->n_countries, &money_creation_accum, &money_destruction_accum);
             econ_flux_year_capture();
             for (int d=0; d<365; d++) sim_day(&s, w);
             /* conquêtes de l'année : régions passées d'un PAYS à un autre (de force) */
@@ -673,6 +712,15 @@ int main(int argc, char **argv){
                 si++;
             }
         }
+
+        /* MONNAIE — M0 (AUDIT, print-only) : M(fin) après la dernière année simulée —
+         * lecture pure (Σ prov[].treasury + Σ prov[].strata[].wealth), AUCUN effet sur
+         * la sim/le golden. Voir docs/MONNAIE_M0_AUDIT.md pour le registre complet des
+         * sites classés CRÉATION/DESTRUCTION/TRANSFERT/DETTE/INITIALISATION. */
+        { double money_mfin = chronicle_money_mass(s.econ);
+          double money_drift_an = (years>0)? (money_mfin-money_m0)/(double)years : 0.0;
+          printf("   masse monétaire : M(0)=%.0f · M(fin)=%.0f · dérive %+.1f/an (création %.0f · destruction %.0f mesurées)\n",
+                 money_m0, money_mfin, money_drift_an, money_creation_accum, money_destruction_accum); }
 
         /* ARMSDIAG — copie des compteurs warhost de CETTE sim (RAZ au prochain sim_init). */
         if (getenv("SCPS_ARMSDIAG")){
