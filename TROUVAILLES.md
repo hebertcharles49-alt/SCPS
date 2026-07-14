@@ -288,3 +288,97 @@
 
 **Restes** :
 - intertrade_demo BUILD ÉCHEC = le pré-existant Windows (setenv), inchangé.
+
+---
+
+## RE-KEY PROVINCE — verbes SOCIAUX + esclavage + réincorporation (2026-07-14, wt/g1-grain)
+
+Suite de de25550 (CMD_BUILD*/CMD_ALLOC*) : les verbes joueur restants encore région-grain
+(REPRESS/ASSIMILATE/PURGE, SLAVE_BUY/SLAVE_SELL, POP_TRANSFER) transférés au PID, patron S0.
+
+**Découvertes — par verbe** :
+- **CMD_REPRESS/ASSIMILATE/PURGE** : `agency_order_repress/_assimilate/_purge` (scps_agency.h/.c)
+  gagnent un `prov` (dernier paramètre, -1=héritage/chemin IA inchangé, ≥0=PID direct) — EXACT
+  miroir d'`agency_build_acct`. `apply_action` (scps_agency.c:651) résolvait DÉJÀ `pid` via
+  `o->prov` en priorité (posé par le RE-KEY précédent pour AGY_BUILD) : REPRESS/ASSIMILATE n'ont
+  demandé AUCUN changement dans `apply_action` — juste enfiler avec `prov` au lieu de `-1`.
+  Seul PURGE a demandé plus : `purge_slice` (appelée à la fois par `agency_advance` — tranches
+  annuelles — et par `apply_action` — dernière tranche) résolvait SON PROPRE pid en interne via
+  `econ_region_rep_province` ; elle gagne un paramètre `prov_hint`, même résolution que apply_action.
+  scps_sim.c : a[0] devient un PID (validé `prov[pid].owner==p`), `region` dérivée via
+  `w->province[pid].region` (pour `o.region`, encore consommé par `wl->L[reg]` — la légitimité
+  reste RÉGION-grain, structurel, hors périmètre) puis passée EN PLUS du PID.
+- **CMD_SLAVE_SELL** : n'a PAS eu besoin de changer `intertrade_slave_sell` — la fonction
+  scanne déjà TOUTES les provinces du vendeur (province-écriture RÉELLE depuis le début) ; le
+  `region` n'y servait qu'à lire `owner` + créditer le trésor du Centre. Le PID côté joueur ne
+  sert donc QUE la revalidation (`prov[pid].owner==p`) ; la région dérivée du pid est passée
+  inchangée à la fonction (le Centre — trésor/prix — reste RÉGION-grain, brief explicite : « le
+  Centre reste la contrepartie »).
+- **CMD_SLAVE_BUY** : à l'inverse, `intertrade_slave_buy` DÉPOSAIT le groupe déporté sur
+  `econ_region_rep_province(region)` — un vrai grain d'écriture indirect. Gagne un `prov` (dernier
+  paramètre, même patron -1/≥0) qui COURT-CIRCUITE cette résolution ; le trésor/prix restent sur
+  `region` (Centre, inchangé). L'IA (`ai_slave_buy_pass`) et les bancs (intertrade_demo) passent -1.
+- **CMD_POP_TRANSFER** : SEUL appelant au monde de `demography_pop_transfer` (aucun chemin IA,
+  confirmé par grep) → RE-KEY complet, pas de dual-mode : les 2 paramètres deviennent
+  `src_prov`/`dst_prov` (PID directs), `econ_region_rep_province` disparaît ENTIÈREMENT de la
+  fonction. Le seul écueil : `migration_move(..., home_reg)` attend une RÉGION (tag culturel
+  « foyer » du groupe déplacé, PopGroup.home_reg — lu par la diffusion/le brassage, PAS un grain
+  d'écriture économique) — remplacé par `spe->region` (le backpointer région de la province
+  source, `ProvinceEconomy.region`, posé à econ_init) au lieu de l'ancien paramètre `src_region`.
+- **scps_action_preview** (aperçu UI-4, hover des 3 leviers) : même conversion — `region` → `prov`
+  direct, `econ_region_rep_province` retiré. C'est un lecteur PUR (aucune mutation) mais devait
+  rester EXACT MIROIR des formules réelles (commentaire du fichier) donc devait cibler le MÊME pid.
+- **Façade + binding + GDScript** : `scps_player_repress/_assimilate/_purge/_slave_buy/_slave_sell/
+  _pop_transfer/_action_preview` (scps_api.c/.h) + D_METHOD/params C++ (godot/src/scps_sim_node.*)
+  renommés `region`→`prov`. Panneaux GDScript : province_panel.gd (`_pid` était DÉJÀ calculé,
+  la traduction `province_region(_pid)` était pure perte pour ces 3 verbes — retirée) ;
+  province_detail.gd `_reinc_owned` listait 1 entrée PAR RÉGION (dédup) — RE-KEY PROVINCE en fait
+  une entrée PAR PROVINCE possédée (le dédup perdait justement le grain qu'on restaure) ;
+  sidebar_drawer.gd/v3_audit.gd avaient DÉJÀ `cap_prov` sous la main (calculé pour autre chose)
+  et traduisaient inutilement en région — juste swap ; verbs_audit.gd garde `capr` (région, pour
+  route/market/campaign — INCHANGÉS) EN PLUS d'un nouveau `cap_prov` pour les 3 verbes sociaux.
+
+**Pièges** :
+- `event_popup.gd` (bouton « Réprimer » d'un évènement de révolte) : l'évènement lui-même est
+  RÉGION-grain À LA SOURCE (le journal de révolte, hors périmètre de cette mission — pas un verbe
+  CMD_* transféré). Pas de lecteur `region→pid` exposé côté binding : résolu côté UI par un scan
+  linéaire `province_region(pid)==region && owner==me` (1re province possédée trouvée) — cf.
+  `_first_owned_prov_in_region`. Accepté comme compromis MINIMAL (pas de nouveau verbe/reader
+  moteur, juste une boucle GDScript cliente) plutôt que de rouvrir le système d'évènements.
+- `scps_api_demo.c` §esclavage/pop_transfer : `cap` venait de `scps_country_capital_region` —
+  swap vers `scps_country_capital_province` (existe déjà) ; le scan « 2e région distincte » devient
+  « 2e province distincte » (`pp!=cap` au lieu de comparer les régions) — plus simple qu'avant.
+- Confirmer qu'un appelant est SEUL avant de retirer une indirection : `demography_pop_transfer`
+  n'avait aucun chemin IA (grep confirmé) → RE-KEY complet sans dual-mode ; `intertrade_slave_buy`
+  EN A un (ai_slave_buy_pass) → dual-mode obligatoire (patron agency_build_acct).
+- Windows/MSYS2 : `make`/`sh` réinitialisent TMP/TEMP à `/tmp` via `/etc/profile` à CHAQUE
+  sous-shell de recipe — un `export TMP=...` posé par un appelant externe (bash Git normal) est
+  invisible aux enfants de `make`. `cc` (natif mingw64) ne comprend pas `/tmp` (chemin POSIX) et
+  retombe sur `C:\Windows\` → « Cannot create temporary file ». Le fix qui MARCHE : lancer TOUT
+  le script de gates (`export` + `make …`) comme UN SEUL appel à `/d/MSYS2/usr/bin/bash.exe
+  script.sh` (un seul process MSYS, l'export survit à ses propres sous-shells) — jamais fragmenter
+  en plusieurs appels Bash-tool séparés (chacun perd l'export de l'autre).
+
+**Restes** :
+- **Inventaire des chemins région-grain volontairement NON transférés** (décision joueur séparée,
+  hors périmètre de cette mission) :
+  - `CMD_ROUTE` (scps_sim.c:712) — un ARC entre deux RÉGIONS (graphe de routes commerciales,
+    `routes_order`/`RouteNetwork`) : la route est structurellement un objet région↔région, pas
+    une propriété de province ; « transférer » n'aurait pas de sens sans redéfinir tout le graphe.
+  - `CMD_MARKET_BUY`/`CMD_MARKET_SELL` (scps_sim.c:718/725) — ciblent un CENTRE (hub commercial
+    inter-régional, `intertrade_market_buy/_sell`, prix/stock résolus via `it_treasury`→
+    `econ_region_rep_province`) : même famille structurelle que le Centre esclave (§ ci-dessus,
+    « le Centre reste la contrepartie ») mais ICI la marchandise ELLE-MÊME (stock du Centre)
+    n'est pas province-ownée contrairement aux esclaves (qui vivent dans `pop.groups`) — rien à
+    re-clencher sur une province précise. Coût du transfert : refonte du modèle de Centre entier.
+  - `CMD_MOVE_ARMY`/`CMD_CAMPAIGN`/`CMD_CORPS_RAISE`/sièges (scps_sim.c:733-758+) — le grain
+    MILITAIRE (FieldArmy, campagnes, warhost) est profondément région-adressé (mouvement sur le
+    graphe des régions, pas des provinces) ; aucune notion de « province de destination » n'existe
+    dans campaign_order/campaign_redirect. Coût du transfert : refonte du moteur de guerre.
+  - Lecteurs `region_owner`/`region_pop`/`region_tier`/`region_settle_group` (scps_api.c, binding
+    godot) — agrégats politiques d'AFFICHAGE (carte région, tooltips), légitimes par charte
+    (§PROVINCE_MODEL : « région = agrégat nommé »). Aucune écriture derrière.
+- `it_treasury`/`econ_region_rep_province` restent vivants et LÉGITIMES dans le sous-système
+  Centre/marché (intertrade) — la doctrine ne les interdit que sur un chemin d'ÉCRITURE JOUEUR
+  qui devrait cibler une province précise (repress/assimilate/purge/slave_buy/pop_transfer,
+  maintenant réglés) ; le marché/Centre lui-même reste une entité région-structurelle par design.

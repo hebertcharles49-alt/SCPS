@@ -113,16 +113,16 @@ func _audit_seed(sd: int, years: int) -> int:
 
 	# ROUND-TRIP : les 3 verbes s'ENFILENT (le drain tranche, silencieux si refusé —
 	# c'est la plomberie qu'on prouve, comme scps_api_demo).
+	# RE-KEY PROVINCE : slave_buy/slave_sell prennent un PID direct (cap_prov).
 	var cap_prov: int = w.country_capital_province(me)
-	var cap_region: int = w.province_region(cap_prov) if cap_prov >= 0 else -1
-	if cap_region >= 0:
+	if cap_prov >= 0:
 		if not bool(w.player_manumit()):
 			viol += 1; flags += " ✗manumit-refuse-enqueue"
 		w.advance_days(2)
-		if not bool(w.player_slave_sell(cap_region, 50)):
+		if not bool(w.player_slave_sell(cap_prov, 50)):
 			viol += 1; flags += " ✗slave_sell-refuse-enqueue"
 		w.advance_days(2)
-		if not bool(w.player_slave_buy(cap_region, 50)):
+		if not bool(w.player_slave_buy(cap_prov, 50)):
 			viol += 1; flags += " ✗slave_buy-refuse-enqueue"
 		w.advance_days(2)
 	else:

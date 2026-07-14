@@ -1071,23 +1071,20 @@ long demography_manumit_region(WorldEconomy *econ, int region){
     return freed;
 }
 
-/* ---- RÉINCORPORATION DE POP (LOT G — CMD_POP_TRANSFER, granularité RÉGION) --- *
+/* ---- RÉINCORPORATION DE POP (LOT G — CMD_POP_TRANSFER, RE-KEY PROVINCE) --- *
  * RELOC_COERCION_BASE mirror : la coercition forcée (scps_econ.c, econ_relocate_pop)
- * frappe la région source proportionnellement à la fraction déplacée — le MÊME prix
+ * frappe la province source proportionnellement à la fraction déplacée — le MÊME prix
  * pour un déplacement de groupes que pour un déplacement de strates brutes. */
 #define POP_TRANSFER_COERCION_BASE 0.25f
-long demography_pop_transfer(WorldEconomy *econ, int src_region, int dst_region,
+long demography_pop_transfer(WorldEconomy *econ, int src_prov, int dst_prov,
                              int klass, long count){
     if (!econ || count<=0) return 0;
-    if (src_region<0 || src_region>=econ->n_regions) return 0;
-    if (dst_region<0 || dst_region>=econ->n_regions) return 0;
-    if (src_region==dst_region) return 0;
+    if (src_prov<0 || src_prov>=econ->n_prov) return 0;
+    if (dst_prov<0 || dst_prov>=econ->n_prov) return 0;
+    if (src_prov==dst_prov) return 0;
     if (klass<0 || klass>=CLASS_COUNT) return 0;
-    int srp=econ_region_rep_province(econ, src_region);
-    int drp=econ_region_rep_province(econ, dst_region);
-    if (srp<0 || srp>=econ->n_prov || drp<0 || drp>=econ->n_prov) return 0;
-    ProvinceEconomy *spe=&econ->prov[srp];
-    ProvinceEconomy *dpe=&econ->prov[drp];
+    ProvinceEconomy *spe=&econ->prov[src_prov];
+    ProvinceEconomy *dpe=&econ->prov[dst_prov];
     if (!spe->colonized || !dpe->colonized) return 0;
     ProvincePop *pp=&spe->pop;
     if (pp->n_groups<=0) return 0;
@@ -1110,7 +1107,10 @@ long demography_pop_transfer(WorldEconomy *econ, int src_region, int dst_region,
         long share=(long)((float)pp->groups[i].count * (float)want / (float)klass_pop);
         if (share>remaining) share=remaining;
         if (share<=0) continue;
-        if (migration_move(pp, &dpe->pop, i, share, demography_dyn_id_next(), pp->groups[i].arrival, src_region)){
+        /* home_reg (tag culturel « foyer », lu par migration_move — PAS un grain
+         * d'écriture économique) reste la RÉGION géographique de la province source :
+         * spe->region (miroir World.province[].region, cf. ProvinceEconomy). */
+        if (migration_move(pp, &dpe->pop, i, share, demography_dyn_id_next(), pp->groups[i].arrival, spe->region)){
             moved += share; remaining -= share;
         }
     }

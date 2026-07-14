@@ -3030,14 +3030,14 @@ int scps_player_manumit(ScpsSim *s){
     PlayerCmd c = { CMD_MANUMIT, { 0,0,0,0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
-int scps_player_slave_sell(ScpsSim *s, int region, long count){
+int scps_player_slave_sell(ScpsSim *s, int prov, long count){   /* RE-KEY PROVINCE : PID direct */
     if (!s || !s->ready || count<=0) return 0;
-    PlayerCmd c = { CMD_SLAVE_SELL, { region, (int32_t)count, 0, 0 } };
+    PlayerCmd c = { CMD_SLAVE_SELL, { prov, (int32_t)count, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
-int scps_player_slave_buy(ScpsSim *s, int region, long count){
+int scps_player_slave_buy(ScpsSim *s, int prov, long count){    /* RE-KEY PROVINCE : PID direct */
     if (!s || !s->ready || count<=0) return 0;
-    PlayerCmd c = { CMD_SLAVE_BUY, { region, (int32_t)count, 0, 0 } };
+    PlayerCmd c = { CMD_SLAVE_BUY, { prov, (int32_t)count, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
 int scps_slave_market(ScpsSim *s, ScpsSlavePoolLine *out, int max, long *total_out, int *can_buy_out){
@@ -3079,10 +3079,11 @@ void scps_slave_prices(ScpsSim *s, int *buy_out, int *sell_out){
     if (buy_out)  *buy_out  = (int)(base*2.f + 0.5f);
 }
 
-/* ── LOT G — RÉINCORPORATION DE POP ──────────────────────────────────────── */
-int scps_player_pop_transfer(ScpsSim *s, int src_region, int dst_region, int klass, long count){
+/* ── LOT G — RÉINCORPORATION DE POP — RE-KEY PROVINCE : src_prov/dst_prov sont
+ * des PID directs (plus d'indirection région). ──────────────────────────────── */
+int scps_player_pop_transfer(ScpsSim *s, int src_prov, int dst_prov, int klass, long count){
     if (!s || !s->ready || count<=0) return 0;
-    PlayerCmd c = { CMD_POP_TRANSFER, { src_region, dst_region, klass, (int32_t)count } };
+    PlayerCmd c = { CMD_POP_TRANSFER, { src_prov, dst_prov, klass, (int32_t)count } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
 
@@ -3165,21 +3166,23 @@ int scps_country_shortages(ScpsSim *s, int country, ScpsShortage *out, int max){
 }
 
 /* ── §3 — INTÉRIEUR · COMMERCE · GUERRE : plomberie additive (même motif que ci-dessus).
- * Tous ENFILENT (différé) ; chaque verbe est REVALIDÉ au drain (région à soi, indices bornés)
- * puis passé au MÊME actionneur que l'IA (agency/statecraft/intertrade/routes/campaign/navy). */
-int scps_player_repress(ScpsSim *s, int region){
+ * Tous ENFILENT (différé) ; chaque verbe est REVALIDÉ au drain puis passé au MÊME
+ * actionneur que l'IA (agency/statecraft/intertrade/routes/campaign/navy). RE-KEY
+ * PROVINCE (2026-07-14) : repress/assimilate/purge prennent un PID direct (indices
+ * bornés + à soi, revalidé au drain) — plus d'indirection région. */
+int scps_player_repress(ScpsSim *s, int prov){
     if (!s || !s->ready) return 0;
-    PlayerCmd c = { CMD_REPRESS, { region, 0, 0, 0 } };
+    PlayerCmd c = { CMD_REPRESS, { prov, 0, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
-int scps_player_assimilate(ScpsSim *s, int region, int creuset){
+int scps_player_assimilate(ScpsSim *s, int prov, int creuset){
     if (!s || !s->ready) return 0;
-    PlayerCmd c = { CMD_ASSIMILATE, { region, creuset?1:0, 0, 0 } };
+    PlayerCmd c = { CMD_ASSIMILATE, { prov, creuset?1:0, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
-int scps_player_purge(ScpsSim *s, int region){
+int scps_player_purge(ScpsSim *s, int prov){
     if (!s || !s->ready) return 0;
-    PlayerCmd c = { CMD_PURGE, { region, 0, 0, 0 } };
+    PlayerCmd c = { CMD_PURGE, { prov, 0, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
 /* miroir de biggest_minority (scps_agency.c:560-573, `static` non-exportée) : le plus
@@ -3206,16 +3209,17 @@ static int ap_biggest_minority(const ProvincePop *pp){
  * ModifierStack scratch pour REPRESS, motif malloc de demography_demo.c/revolt_demo.c —
  * ModifierStack pèse ~112 Ko, sur le TAS, pas la pile — cf. TROUVAILLES stack-overflow
  * Windows). */
-int scps_action_preview(ScpsSim *s, int region, int verb, ScpsActionPreview *out){
+int scps_action_preview(ScpsSim *s, int prov, int verb, ScpsActionPreview *out){
     if (!out) return 0;
     memset(out, 0, sizeof *out);
     if (!s || !s->ready || verb<0 || verb>2) return 0;
     int p = (s->sim.human_player>=0) ? s->sim.human_player : s->sim.player;
     if (p<0 || p>=s->w->n_countries) return 0;
     WorldEconomy *e = s->sim.econ;
-    if (region<0 || region>=e->n_regions || e->region[region].owner!=p) return 0;
-    int pid = econ_region_rep_province(e, region);
-    if (pid<0 || pid>=e->n_prov) return 0;
+    /* RE-KEY PROVINCE : `prov` est un PID direct (miroir EXACT de CMD_REPRESS/
+     * _ASSIMILATE/_PURGE, scps_sim.c) — plus d'indirection econ_region_rep_province. */
+    if (prov<0 || prov>=e->n_prov || e->prov[prov].owner!=p) return 0;
+    int pid = prov;
     ProvinceEconomy *re = &e->prov[pid];
     switch (verb){
       case 0: { /* MATER — AGY_REPRESS, scps_agency.c:670-677 */

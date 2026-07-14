@@ -251,7 +251,7 @@ int main(int argc,char**argv){
         pe->pop.n_groups=1; pe->strata[CLASS_SLAVE].pop=50.f;
         intertrade_slave_sell(e2, 0, 50);   /* pool RARE (50 ≪ RÉFÉRENCE 600) */
         float treas2=pe->treasury;
-        long bought_rare=intertrade_slave_buy(e2, 0, 10, true);
+        long bought_rare=intertrade_slave_buy(e2, 0, 10, true, -1);
         buy_empty_cost=(bought_rare>0)?(treas2-pe->treasury)/(float)bought_rare:0.f;
         intertrade_reset();
         pe->treasury=1e9f;
@@ -261,7 +261,7 @@ int main(int argc,char**argv){
         pe->pop.n_groups=1; pe->strata[CLASS_SLAVE].pop=5000.f;
         intertrade_slave_sell(e2, 0, 5000);   /* pool SURABONDANT (≫ RÉFÉRENCE) */
         float treas3=pe->treasury;
-        long bought_full=intertrade_slave_buy(e2, 0, 10, true);
+        long bought_full=intertrade_slave_buy(e2, 0, 10, true, -1);
         float buy_full_cost=(bought_full>0)?(treas3-pe->treasury)/(float)bought_full:0.f;
         printf("   coût/âme à l'achat : pool RARE %.2f vs pool SURABONDANT %.2f\n", buy_empty_cost, buy_full_cost);
         ok("l'ACHAT est plus CHER quand le pool est RARE qu'abondant",

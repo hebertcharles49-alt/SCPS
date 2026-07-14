@@ -634,7 +634,8 @@ func _act_chips(x: float, y: float, items: Array) -> void:
 ## Chaque chip porte son HOVER de conséquences (façade action_preview si présente, sinon
 ## un texte factuel SANS chiffre inventé — discipline membrane).
 func _draw_gov_actions(x: float, y: float, w) -> void:
-	var reg: int = w.province_region(_pid)
+	# RE-KEY PROVINCE : repress/assimilate/purge/action_preview prennent _pid direct
+	# (plus de traduction via province_region).
 	var cx := x
 	for it in [["Réprimer", "repress"], ["Assimiler", "assimilate"]]:
 		var label: String = it[0]
@@ -645,7 +646,7 @@ func _draw_gov_actions(x: float, y: float, w) -> void:
 		VKit.box(self, r, VKit.COL_GOLD)
 		VKit.text(self, Vector2(cx + 7, y + 3), VKit.COL_PARCH, label, VKit.FS_SMALL)
 		_acts.append([r, verb])
-		_tips.append([r, _action_hover(verb, w, reg)])
+		_tips.append([r, _action_hover(verb, w, _pid)])
 		cx += cw + 6.0
 	# ── PURGER : rouge sombre, destructif, 2 clics ──
 	var plabel := "Confirmer la purge ?" if _purge_armed else "Purger"
@@ -657,7 +658,7 @@ func _draw_gov_actions(x: float, y: float, w) -> void:
 	VKit.text(self, Vector2(cx + 7, y + 3), pcol, plabel, VKit.FS_SMALL)
 	_acts.append([pr, "purge"])
 	_tips.append([pr, "IRRÉVERSIBLE — cliquez de nouveau pour confirmer (4 s)" if _purge_armed
-		else _action_hover("purge", w, reg)])
+		else _action_hover("purge", w, _pid)])
 	cx += pcw + 12.0
 	# ── DÉTAIL : navigation légère, pas un acte — pas de cadre ──
 	var dlabel := "Détail"
@@ -678,11 +679,11 @@ const _ACT_FALLBACK := {
 	"assimilate": "Assimiler — pousse la culture dominante sur les minorités. Réduit la friction culturelle ; prend du temps.",
 	"purge": "Purger — réprime dans le sang la minorité la plus agitée. Pertes de population, chute de satisfaction, risque diplomatique. IRRÉVERSIBLE.",
 }
-func _action_hover(verb: String, w, reg: int) -> String:
+func _action_hover(verb: String, w, pid: int) -> String:
 	var fallback := String(_ACT_FALLBACK.get(verb, ""))
 	if not w.has_method("action_preview") or not _ACT_VERB_ID.has(verb):
 		return fallback
-	var pv: Dictionary = w.action_preview(reg, int(_ACT_VERB_ID[verb]))
+	var pv: Dictionary = w.action_preview(pid, int(_ACT_VERB_ID[verb]))
 	var parts := PackedStringArray()
 	var pop_d := int(pv.get("pop_delta", 0))
 	if pop_d != 0:
@@ -719,11 +720,11 @@ func _act_fire(verb: String) -> void:
 	var reg: int = w.province_region(_pid)
 	match verb:
 		"repress":
-			w.player_repress(reg)
+			w.player_repress(_pid)
 		"assimilate":
-			w.player_assimilate(reg, false)
+			w.player_assimilate(_pid, false)
 		"purge":
-			w.player_purge(reg)
+			w.player_purge(_pid)
 		"detail":
 			detail_requested.emit()
 		"campaign":

@@ -828,12 +828,15 @@ void scps_manuf_recipe(int bld, ScpsManufRecipe *out);
  * L'AFFRANCHISSEMENT (granularité PAYS, une politique) : CMD_MANUMIT, aucun
  * argument (agit sur le joueur). Renvoie 1 si le verbe a pu s'enfiler. */
 int scps_player_manumit(ScpsSim *s);
-/* LE MARCHÉ DES CENTRES : region = une région AU JOUEUR, count = âmes. La vente
- * retire des groupes esclaves du joueur (crédite le pool mondial + l'or) ; l'achat
- * est REVALIDÉ au drain contre le gate éthos/tech (un abolitionniste voit son ordre
- * silencieusement sans effet, comme les offres diplo non consenties). */
-int scps_player_slave_sell(ScpsSim *s, int region, long count);
-int scps_player_slave_buy (ScpsSim *s, int region, long count);
+/* LE MARCHÉ DES CENTRES — RE-KEY PROVINCE : prov = une PROVINCE AU JOUEUR (PID
+ * direct), count = âmes. La vente retire des groupes esclaves du joueur (scanne
+ * TOUTES ses provinces ; crédite le pool mondial + l'or du Centre RÉGION-grain,
+ * inchangé) ; l'achat dépose le groupe déporté SUR `prov` (PID direct, plus de
+ * province représentative) et est REVALIDÉ au drain contre le gate éthos/tech (un
+ * abolitionniste voit son ordre silencieusement sans effet, comme les offres diplo
+ * non consenties). */
+int scps_player_slave_sell(ScpsSim *s, int prov, long count);
+int scps_player_slave_buy (ScpsSim *s, int prov, long count);
 /* LECTEUR (membrane) : le pool mondial par héritage (noms résolus) + le total, et
  * si LE JOUEUR peut acheter maintenant (would_accept-like : un aperçu, pas une garantie
  * — le pool peut se vider avant le drain). */
@@ -845,12 +848,13 @@ int  scps_slave_market(ScpsSim *s, ScpsSlavePoolLine *out, int max, long *total_
  * static : recomposée ici depuis les lecteurs publics — cf. TROUVAILLES lot M). */
 void scps_slave_prices(ScpsSim *s, int *buy_out, int *sell_out);
 
-/* LOT G — RÉINCORPORATION DE POP : déplace `count` âmes de la classe `klass`
- * (SocialClass) de `src_region` vers `dst_region` (les deux AU JOUEUR — le verbe
- * ENFILE, revalidé au drain). Les groupes culturels suivent PROPORTIONNELLEMENT
- * (migration_move : heritage/arrival/integration/klass conservés). Coût : coercition
- * à la source pour les strates LIBRES ; CLASS_SLAVE exempt (on déplace une propriété). */
-int scps_player_pop_transfer(ScpsSim *s, int src_region, int dst_region, int klass, long count);
+/* LOT G — RÉINCORPORATION DE POP — RE-KEY PROVINCE : déplace `count` âmes de la
+ * classe `klass` (SocialClass) de `src_prov` vers `dst_prov` (PID directs, les deux
+ * AU JOUEUR — le verbe ENFILE, revalidé au drain). Les groupes culturels suivent
+ * PROPORTIONNELLEMENT (migration_move : heritage/arrival/integration/klass
+ * conservés). Coût : coercition à la source pour les strates LIBRES ; CLASS_SLAVE
+ * exempt (on déplace une propriété). */
+int scps_player_pop_transfer(ScpsSim *s, int src_prov, int dst_prov, int klass, long count);
 
 /* LOT J — L'APERÇU DE MANUMISSION : ce que l'affranchissement du JOUEUR libérerait
  * MAINTENANT (lecture PURE, aucune mutation) — les mots + les nombres, avant le
@@ -1000,18 +1004,20 @@ int  scps_player_embargo       (ScpsSim *s, int target, int on);
  * religieux) n'est déclarable qu'avec une intrigue MÛRE — cf. scps_diplo_options pour l'état. */
 int  scps_player_fabricate_cb  (ScpsSim *s, int target);
 /* §3 — INTÉRIEUR · COMMERCE · GUERRE (plomberie additive ; ENFILENT, revalidé au drain).
- * `region` = index de région À SOI ; `seat` ∈ [0,3) ; `good` ∈ Resource ; `hull` ∈ HullType.
+ * `seat` ∈ [0,3) ; `good` ∈ Resource ; `hull` ∈ HullType. RE-KEY PROVINCE (2026-07-14) :
+ * repress/assimilate/purge prennent un PID direct (`prov`, plus d'indirection région).
  * Retour = mis-en-file (1) / refus (0). */
-int  scps_player_repress       (ScpsSim *s, int region);
-int  scps_player_assimilate    (ScpsSim *s, int region, int creuset);
-int  scps_player_purge         (ScpsSim *s, int region);
+int  scps_player_repress       (ScpsSim *s, int prov);
+int  scps_player_assimilate    (ScpsSim *s, int prov, int creuset);
+int  scps_player_purge         (ScpsSim *s, int prov);
 /* APERÇU D'ACTION (UI-4, 2026-07-10) — coût · durée · effets · conséquences des TROIS leviers
- * intérieurs, calculés MAINTENANT sur `region` (lecture PURE, aucune mutation — motif de
- * ScpsManumitPreview/scps_build_legal_ex). verb : 0=MATER(AGY_REPRESS) 1=FORMER(AGY_ASSIMILATE)
- * 2=PURGER(AGY_PURGE). Miroir EXACT des formules d'agency_advance/apply_action (scps_agency.c) —
- * les trois sont GRATUITES en or et DÉTERMINISTES (aucun rand() dans scps_agency.c/
- * scps_demography.c) : `risque` porte la conséquence DIFFÉRÉE (masquage/frottement/plancher),
- * pas une chance. Retour 0 si region/verb invalide ou hors du joueur. */
+ * intérieurs, calculés MAINTENANT sur `prov` (PID direct, RE-KEY PROVINCE — lecture PURE,
+ * aucune mutation — motif de ScpsManumitPreview/scps_build_legal_ex). verb : 0=MATER
+ * (AGY_REPRESS) 1=FORMER(AGY_ASSIMILATE) 2=PURGER(AGY_PURGE). Miroir EXACT des formules
+ * d'agency_advance/apply_action (scps_agency.c) — les trois sont GRATUITES en or et
+ * DÉTERMINISTES (aucun rand() dans scps_agency.c/scps_demography.c) : `risque` porte la
+ * conséquence DIFFÉRÉE (masquage/frottement/plancher), pas une chance. Retour 0 si
+ * prov/verb invalide ou hors du joueur. */
 typedef struct {
     float cost_gold;            /* toujours 0.f — les trois leviers sont gratuits en or */
     int   duration_days;        /* durée de l'ordre (30/365/1460) */
@@ -1021,7 +1027,7 @@ typedef struct {
     int   coercition_delta;     /* points de `re->coercion` [0..100] (province) */
     char  risque[96];           /* la conséquence DIFFÉRÉE, en mots (aucune des trois n'est probabiliste) */
 } ScpsActionPreview;
-int  scps_action_preview       (ScpsSim *s, int region, int verb, ScpsActionPreview *out);
+int  scps_action_preview       (ScpsSim *s, int prov, int verb, ScpsActionPreview *out);
 int  scps_player_council_hire  (ScpsSim *s, int seat, int slot);
 int  scps_player_council_dismiss(ScpsSim *s, int seat);
 /* DÉCRETS (civics) : bascule le décret `id` (on=1/0). Revalidé au drain (id borné,

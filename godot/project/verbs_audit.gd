@@ -34,14 +34,17 @@ func _run() -> void:
 
 	w.generate(9)
 	var me: int = w.player()
-	var capr: int = w.province_region(w.country_capital_province(me))
-	if capr < 0:
+	# RE-KEY PROVINCE : repress/assimilate/purge prennent un PID direct (cap_prov) ;
+	# route/market_buy/market_sell/campaign restent RÉGION-grain (capr, inchangé).
+	var cap_prov: int = w.country_capital_province(me)
+	var capr: int = w.province_region(cap_prov)
+	if capr < 0 or cap_prov < 0:
 		push_error("verbs_audit: pas de région-capitale"); get_tree().quit(1); return
 
 	# INVARIANT 1 : chaque verbe s'ENFILE puis se DRAINE sans crash
-	w.player_repress(capr)
-	w.player_assimilate(capr, false)
-	w.player_purge(capr)
+	w.player_repress(cap_prov)
+	w.player_assimilate(cap_prov, false)
+	w.player_purge(cap_prov)
 	w.player_council_hire(0, 0)
 	w.player_council_dismiss(1)
 	w.player_route(capr, (capr + 1) % w.region_count(), false)

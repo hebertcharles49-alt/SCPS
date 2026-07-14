@@ -167,19 +167,26 @@ bool agency_cancel(AgencyState *a, int idx);
 /* ── LES TROIS LEVIERS INTÉRIEURS (brief leviers §2) — des ordres en jours, des
  * coûts SCPS différés. Aucun n'est gratuit, aucun n'est instantané. ──────────── */
 /* MATER (30 j) : la botte — province_apply_coercion (Kuran : l'agitation se TAIT,
- * le grief est MASQUÉ et ressortira amplifié à la levée). H s'écrit (différé). */
-bool agency_order_repress(AgencyState *a, int region);
+ * le grief est MASQUÉ et ressortira amplifié à la levée). H s'écrit (différé).
+ * RE-KEY PROVINCE : `prov` (-1 = héritage, résout la province REPRÉSENTATIVE de
+ * `region` — le chemin de l'IA ; ≥0 = PID DIRECT, posé par le drain CMD_REPRESS
+ * quand le joueur cible une province précise) porte SEUL le grain d'ÉCRITURE
+ * (apply_action) — même patron qu'agency_build_acct. */
+bool agency_order_repress(AgencyState *a, int region, int prov);
 /* FORMER (1 an) : accélère l'assimilation du plus gros groupe minoritaire — écoles,
  * missions, magistrats. `creuset` (tech Droit d'intégration) double l'efficacité.
  * Coercition modérée ; le groupe en formation a l'humeur dégradée le temps de la
- * conversion. NB : former une source de savoir, c'est TARIR son canal syncrétique. */
-bool agency_order_assimilate(AgencyState *a, int region, bool creuset);
+ * conversion. NB : former une source de savoir, c'est TARIR son canal syncrétique.
+ * RE-KEY PROVINCE : `prov`, même patron qu'agency_order_repress ci-dessus. */
+bool agency_order_assimilate(AgencyState *a, int region, bool creuset, int prov);
 /* PURGER (4 ans, par TRANCHES annuelles visibles — arrêtable en cours au prix du
  * gâchis) : les pops du plus gros groupe minoritaire MEURENT (fraction/an), la
  * stabilité plonge (cicatrice + L au plancher + coercition totale), la fracture,
  * H et la CHARGE faustienne s'écrivent (différé → la Brèche se rapproche). L'acte
- * le plus faustien du panneau — il se nomme, sans euphémisme. */
-bool agency_order_purge(AgencyState *a, int region);
+ * le plus faustien du panneau — il se nomme, sans euphémisme.
+ * RE-KEY PROVINCE : `prov`, même patron qu'agency_order_repress ci-dessus (chaque
+ * tranche annuelle ET la dernière via apply_action portent le même PID). */
+bool agency_order_purge(AgencyState *a, int region, int prov);
 #define AGY_PURGE_YEARS 4
 /* Coûts SCPS DIFFÉRÉS des leviers (charge/fracture/H par pays), à DRAINER par le
  * harnais chaque jour vers TechState (agency ne connaît pas ts — séparation). */

@@ -33,11 +33,12 @@ var _manuf_btns := []       # [{rect, bld}] onglet Constructions : boutons « B�
 var _manuf_flash := ""      # retour du dernier ordre de manufacture
 var _manuf_flash_ok := true
 
-# ── LOT G — RÉINCORPORATION DE POP : deux menus déroulants (région A/B, mes régions),
-#    un sélecteur de classe, une quantité, un bouton « Déplacer ». ──
+# ── LOT G — RÉINCORPORATION DE POP : deux menus déroulants (province A/B, mes
+#    provinces — RE-KEY PROVINCE), un sélecteur de classe, une quantité, un bouton
+#    « Déplacer ». ──
 const REINCORP_CLASSES := ["Laboureurs", "Artisans", "Noblesse", "Esclaves"]
 const REINCORP_STEP := 500
-var _reinc_owned := []        # [{region:int, nom:String}] mes régions (rafraîchi par frame)
+var _reinc_owned := []        # [{prov:int, nom:String}] mes provinces (rafraîchi par frame)
 var _reinc_a := 0             # index dans _reinc_owned (source)
 var _reinc_b := 0             # index dans _reinc_owned (destination)
 var _reinc_klass := 0
@@ -328,21 +329,17 @@ func _draw_peuples_actions(x: float, y: float, colw: float, w, info: Dictionary)
 		_reinc_dd_b.visible = false
 	return y
 
-# ── RÉINCORPORATION DE POP : sélecteur de classe + deux menus déroulants (région
-#    A source / B destination, mes régions) + quantité + « Déplacer ». ──
+# ── RÉINCORPORATION DE POP : sélecteur de classe + deux menus déroulants (province
+#    A source / B destination, mes provinces — RE-KEY PROVINCE, une entrée par
+#    province possédée, plus de dédup par région) + quantité + « Déplacer ». ──
 func _refresh_reinc_owned(w) -> void:
 	_reinc_owned.clear()
-	var seen := {}
 	var me := int(w.player())
 	for pid in range(w.province_count()):
 		var pi: Dictionary = w.province_info(pid)
 		if int(pi.get("owner", -2)) != me:
 			continue
-		var region: int = w.province_region(pid)
-		if seen.has(region):
-			continue
-		seen[region] = true
-		_reinc_owned.append({"region": region, "nom": String(pi.get("nom", "région %d" % region))})
+		_reinc_owned.append({"prov": pid, "nom": String(pi.get("nom", "province %d" % pid))})
 
 ## réincorporation, LOT UI 2.5 : menus EMPILÉS (De : / Vers :, plus de côte à côte —
 ## une colonne de ~300px n'a pas la place de deux menus 190px + flèche) ; le bouton
@@ -355,7 +352,7 @@ func _draw_reincorp(x: float, y: float, w, colw: float) -> float:
 	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Réincorporation", VKit.FS_SMALL)
 	y += 18
 	if _reinc_owned.size() < 2:
-		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "il faut au moins DEUX régions à soi", VKit.FS_SMALL)
+		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "il faut au moins DEUX provinces à soi", VKit.FS_SMALL)
 		_reinc_dd_a.visible = false
 		_reinc_dd_b.visible = false
 		return y + 16.0
@@ -813,9 +810,9 @@ func _gui_input(event: InputEvent) -> void:
 						"move":
 							var w3 = Sim.world
 							if w3 != null and _reinc_a < _reinc_owned.size() and _reinc_b < _reinc_owned.size():
-								var ra: int = _reinc_owned[_reinc_a]["region"]
-								var rb: int = _reinc_owned[_reinc_b]["region"]
-								var ok3: bool = w3.player_pop_transfer(ra, rb, _reinc_klass, _reinc_qty)
+								var pa: int = _reinc_owned[_reinc_a]["prov"]
+								var pb: int = _reinc_owned[_reinc_b]["prov"]
+								var ok3: bool = w3.player_pop_transfer(pa, pb, _reinc_klass, _reinc_qty)
 								_reinc_flash_ok = ok3
 								_reinc_flash = ("→ %s — ordre émis" % REINCORP_CLASSES[_reinc_klass]) if ok3 else "✗ refusé"
 								if not ok3:

@@ -536,14 +536,14 @@ bool agency_order_colonize(AgencyState *a, int dst_region, int src_region){
 #define ASSIM_DAYS      365
 #define PURGE_FRAC_AN   0.12f   /* fraction du groupe qui périt par tranche annuelle */
 
-bool agency_order_repress(AgencyState *a, int region){
-    return enqueue(a, AGY_REPRESS, region, 0, REPRESS_DAYS, -1);
+bool agency_order_repress(AgencyState *a, int region, int prov){
+    return enqueue(a, AGY_REPRESS, region, 0, REPRESS_DAYS, prov);
 }
-bool agency_order_assimilate(AgencyState *a, int region, bool creuset){
-    return enqueue(a, AGY_ASSIMILATE, region, creuset?1:0, ASSIM_DAYS, -1);
+bool agency_order_assimilate(AgencyState *a, int region, bool creuset, int prov){
+    return enqueue(a, AGY_ASSIMILATE, region, creuset?1:0, ASSIM_DAYS, prov);
 }
-bool agency_order_purge(AgencyState *a, int region){
-    return enqueue(a, AGY_PURGE, region, 0, AGY_PURGE_YEARS*365, -1);
+bool agency_order_purge(AgencyState *a, int region, int prov){
+    return enqueue(a, AGY_PURGE, region, 0, AGY_PURGE_YEARS*365, prov);
 }
 bool agency_drain_levier_costs(int cid, float *charge, float *fracture, float *H){
     if (cid<0||cid>=SCPS_MAX_COUNTRY) return false;
@@ -583,16 +583,20 @@ static int biggest_minority(const ProvincePop *pp){
     }
     return best;
 }
-/* une TRANCHE annuelle de purge : le groupe meurt par fraction, la province saigne. */
-static void purge_slice(WorldEconomy *econ, WorldLegitimacy *wl, int reg){
+/* une TRANCHE annuelle de purge : le groupe meurt par fraction, la province saigne.
+ * `prov_hint` : -1 = héritage (résout la province REPRÉSENTATIVE de `reg`, le chemin
+ * de l'IA) ; ≥0 = PID DIRECT porté par l'ordre (o->prov, posé par agency_order_purge
+ * quand le joueur cible une province précise) — même patron que apply_action. */
+static void purge_slice(WorldEconomy *econ, WorldLegitimacy *wl, int reg, int prov_hint){
     if (reg<0 || reg>=econ->n_regions) return;             /* P0 : reg vient d'un ordre (potentiellement forgé)
                                                             * — la boucle PURGE d'agency_advance NOUS appelle SANS
                                                             * la garde d'apply_action ; sans ce filtre, &econ->region[reg]
                                                             * + l'écriture pg->count seraient HORS-BORNES. */
     /* RE-KEY PROVINCE : écrire econ->region[reg] directement serait EFFACÉ par le prochain
      * econ_aggregate_regions (region[] est reconstruit EN ENTIER depuis prov[] à chaque
-     * econ_tick) — on route sur la province représentative, qui SURVIT (charte). */
-    int pid=econ_region_rep_province(econ, reg);
+     * econ_tick) — on route sur le PID direct s'il est posé, sinon la province
+     * représentative (charte, chemin IA/héritage inchangé). */
+    int pid=(prov_hint>=0 && prov_hint<econ->n_prov) ? prov_hint : econ_region_rep_province(econ, reg);
     if (pid<0 || pid>=econ->n_prov) return;
     ProvinceEconomy *re=&econ->prov[pid];
     int gi=biggest_minority(&re->pop);
@@ -705,7 +709,7 @@ static void apply_action(WorldEconomy *econ, WorldLegitimacy *wl, ModifierStack 
         case AGY_PURGE:
             /* la DERNIÈRE tranche (les précédentes tombent aux bornes annuelles
              * dans agency_advance) ; la purge achevée se compte. */
-            purge_slice(econ, wl, reg);
+            purge_slice(econ, wl, reg, o->prov);
             g_n_purge++;
             break;
         case AGY_COLONIZE: {
@@ -754,7 +758,7 @@ void agency_advance(AgencyState *a, World *w, WorldEconomy *econ,
         if (o->kind==AGY_PURGE){
             int y0=before/365, y1=o->days_done/365;
             for (int y=y0; y<y1 && y<AGY_PURGE_YEARS-1; y++)
-                purge_slice(econ, wl, o->region);
+                purge_slice(econ, wl, o->region, o->prov);
         }
         if (o->days_done >= o->days_total){
             apply_action(econ, wl, drift, o);
