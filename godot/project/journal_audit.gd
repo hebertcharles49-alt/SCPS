@@ -20,12 +20,17 @@ func _run() -> void:
 	Sim.game_on = true
 	var ui := CanvasLayer.new()
 	add_child(ui)
+	var th = load("res://ui/ui_theme.gd").build()   # le VRAI chrome (main.gd le pose pareil) ; posé
+	# sur les Controls directement — get_window().theme=… ne propage pas de façon fiable quand
+	# cette scène tourne seule en racine (cf. army_panel_shot).
 	var alerts = load("res://ui/alerts.gd").new()
 	alerts.name = "Alerts"
+	alerts.theme = th
 	ui.add_child(alerts)
 	alerts.set_ledger_mode(true)   # comme main.gd : tout le rendu passe par la bande droite
 	var sb = load("res://ui/empire_sidebar.gd").new()
 	sb.name = "EmpireSidebar"
+	sb.theme = th
 	ui.add_child(sb)
 	sb.set_alert_source(alerts)
 	await get_tree().process_frame

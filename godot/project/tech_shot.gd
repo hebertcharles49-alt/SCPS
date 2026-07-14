@@ -40,6 +40,9 @@ func _run() -> void:
 	var lay := CanvasLayer.new()
 	add_child(lay)
 	var tp = load("res://ui/tech_panel.gd").new()
+	# le VRAI chrome (comme main.gd), posé sur le Control directement — get_window().theme=…
+	# ne propage pas de façon fiable quand cette scène tourne seule en racine (cf. army_panel_shot).
+	tp.theme = load("res://ui/ui_theme.gd").build()
 	lay.add_child(tp)
 	for i in range(4):
 		await get_tree().process_frame

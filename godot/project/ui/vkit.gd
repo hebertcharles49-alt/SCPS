@@ -3,34 +3,38 @@ extends RefCounted
 ## primitives immédiates (panel_bg, box, gauge, pie, face, section, row, text).
 ## (consommé via `const VKit = preload("res://ui/vkit.gd")` — robuste en headless,
 ##  pas de dépendance au cache de class_name de l'éditeur).
-## DA EU4 × RIMWORLD : cadre stratégique, héraldique et or vieilli pour la lecture
-## impériale ; surfaces graphite, contrôles francs et densité utilitaire pour le travail.
-## Le parchemin reste dans les illustrations et les titres, jamais comme voile brun
-## uniforme sur toute l'interface. Display-only.
+## DA PARCHEMIN (retour joueur 2026-07-14 : « elle est passée où la DA juste avant ? ») :
+## la palette est RÉALIGNÉE sur ParchTheme (parch_theme.gd, PANEL_BG/BORDER/INK/…) — même
+## famille ivoire/brun/or que les fiches à conteneurs natifs, pour que VKit et ParchTheme
+## soient INDISCERNABLES côte à côte. La SÉMANTIQUE des constantes ne bouge pas (COL_PANEL
+## = fond de panneau, COL_PARCH = texte principal, COL_DIM = texte secondaire, COL_GOLD =
+## accent/structure, COL_EDGE = bordure) — seuls les TONS changent, clair au lieu de sombre.
+## Display-only.
 
-# ── palette (graphite utilitaire / ivoire / or stratégique) ─────────────────
+# ── palette (parchemin ivoire / encre / or fané — alignée sur parch_theme.gd) ───────
 # HIÉRARCHIE TYPO (audit UI 4.3, 4 niveaux — la COULEUR/GRAISSE porte le rang, JAMAIS la
 # taille — les layouts sont vérifiés serré à 1280×720, +1px de police déborde) :
 #   1. TITRE   — `header()`   : COL_PARCH à FS_BIG (fenêtre majeure, le plus net)
 #   2. SECTION — `section()`  : COL_GOLD (bandeau de sous-panneau)
 #   3. VALEUR  — `value()`    : COL_VALUE, LE plus lumineux — le chiffre qui compte
 #   4. DÉTAIL  — `detail()`   : COL_DIM à FS_SMALL — flavor/annexe, contraste réduit
-const COL_PANEL    := Color(0x13/255.0, 0x16/255.0, 0x17/255.0, 0xf8/255.0)   # graphite profond
-const COL_PANEL2   := Color(0x29/255.0, 0x2d/255.0, 0x2e/255.0, 0xfa/255.0)   # acier sombre (chips/champs)
-const COL_PANEL_HI := Color(0x58/255.0, 0x55/255.0, 0x49/255.0, 0x66/255.0)   # sélection chaude, sans brunir le fond
-const COL_GOLD     := Color(0xc8/255.0, 0xa6/255.0, 0x61/255.0, 1.0)          # or vieilli : structure EU4
-const COL_VALUE    := Color(0xf3/255.0, 0xda/255.0, 0x91/255.0, 1.0)          # valeur immédiatement lisible
-const COL_PARCH    := Color(0xe3/255.0, 0xdf/255.0, 0xd2/255.0, 1.0)          # ivoire froid sur graphite
-const COL_DIM      := Color(0x9b/255.0, 0xa0/255.0, 0x99/255.0, 1.0)
-const COL_EDGE     := Color(0x50/255.0, 0x56/255.0, 0x54/255.0, 1.0)          # filet acier, l'or reste un accent
-const COL_SHADOW   := Color(0x02/255.0, 0x03/255.0, 0x03/255.0, 0x90/255.0)
+const COL_PANEL    := Color(0xe7/255.0, 0xd9/255.0, 0xb6/255.0, 1.0)          # parchemin clair — ParchTheme.PANEL_BG
+const COL_PANEL2   := Color(0xd8/255.0, 0xc6/255.0, 0x9a/255.0, 1.0)          # bandeau/chip — ParchTheme.HEADER_BG
+const COL_PANEL_HI := Color(0xc9/255.0, 0xa2/255.0, 0x4b/255.0, 0.30)         # sélection ambrée, sans assombrir le fond
+const COL_GOLD     := Color(0x7a/255.0, 0x5c/255.0, 0x22/255.0, 1.0)          # or fané — ParchTheme.TAB_UNDERLINE
+const COL_VALUE    := Color(0x5b/255.0, 0x4a/255.0, 0x2a/255.0, 1.0)          # valeur immédiatement lisible — ParchTheme.HEADER_INK
+const COL_PARCH    := Color(0x3a/255.0, 0x2f/255.0, 0x1c/255.0, 1.0)          # encre — ParchTheme.INK
+const COL_DIM      := Color(0x8a/255.0, 0x76/255.0, 0x43/255.0, 1.0)          # encre fanée — ParchTheme.DIM_INK
+const COL_EDGE     := Color(0xb3/255.0, 0x9a/255.0, 0x63/255.0, 1.0)          # filet parchemin — ParchTheme.BORDER
+const COL_SHADOW   := Color(0x3a/255.0, 0x2f/255.0, 0x1c/255.0, 0x35/255.0)   # ombre chaude (encre diluée), plus de noir dur
 
-# palette de parts (camemberts, barres empilées) — viewer.c SLICE_PAL[8]
+# palette de parts (camemberts, barres empilées) — viewer.c SLICE_PAL[8], assombrie
+# pour rester lisible sur le fond CLAIR (elle vivait sur graphite auparavant).
 const SLICE_PAL := [
-	Color(0xb8/255.0,0x73/255.0,0x33/255.0), Color(0x4e/255.0,0x8d/255.0,0x8a/255.0),
-	Color(0xc9/255.0,0xa2/255.0,0x4b/255.0), Color(0x7a/255.0,0x5c/255.0,0x99/255.0),
-	Color(0x9a/255.0,0x8f/255.0,0x78/255.0), Color(0x5f/255.0,0x8a/255.0,0xb0/255.0),
-	Color(0xa8/255.0,0x5a/255.0,0x5a/255.0), Color(0x6f/255.0,0x9a/255.0,0x5a/255.0),
+	Color(0x8f/255.0,0x52/255.0,0x22/255.0), Color(0x2f/255.0,0x66/255.0,0x63/255.0),
+	Color(0x8a/255.0,0x6a/255.0,0x1f/255.0), Color(0x55/255.0,0x3d/255.0,0x74/255.0),
+	Color(0x6e/255.0,0x63/255.0,0x4d/255.0), Color(0x35/255.0,0x5f/255.0,0x80/255.0),
+	Color(0x7e/255.0,0x3c/255.0,0x3c/255.0), Color(0x47/255.0,0x70/255.0,0x39/255.0),
 ]
 
 # tailles de police (g_font / g_font_small / g_font_big) — RELEVÉES (audit
@@ -75,14 +79,16 @@ static func font_map() -> Font:
 		_load_fonts()
 	return _font_map if _font_map != null else font()
 
-## sense_color : 0 = rouge … 0.5 = ambre … 1 = vert (viewer.c, ligne 1146)
+## sense_color : 0 = rouge … 0.5 = ambre … 1 = vert (viewer.c, ligne 1146). Tons
+## RICHES d'encre parchemin (rouge/or/vert de ParchTheme, mêmes familles que
+## EXPENSE/GOLD/INCOME) — assez sombres pour rester lisibles sur fond CLAIR.
 static func sense(good: float) -> Color:
 	good = clampf(good, 0.0, 1.0)
 	if good >= 0.5:
 		var t := (good - 0.5) * 2.0
-		return Color(lerpf(0xc8, 0x76, t)/255.0, lerpf(0xa6, 0xa0, t)/255.0, lerpf(0x61, 0x6a, t)/255.0)
+		return Color(lerpf(0x7a, 0x3f, t)/255.0, lerpf(0x5c, 0x6b, t)/255.0, lerpf(0x22, 0x3a, t)/255.0)
 	var u := good * 2.0
-	return Color(lerpf(0xb8, 0xc8, u)/255.0, lerpf(0x5b, 0xa6, u)/255.0, lerpf(0x52, 0x61, u)/255.0)
+	return Color(lerpf(0x9c, 0x7a, u)/255.0, lerpf(0x3b, 0x5c, u)/255.0, lerpf(0x2e, 0x22, u)/255.0)
 
 # ── texte : pos = COIN HAUT-GAUCHE (comme viewer) ; renvoie la largeur ──────
 static func text(ci: CanvasItem, pos: Vector2, col: Color, s: String, size: int = FS) -> float:
@@ -240,11 +246,12 @@ static func panel_bg(ci: CanvasItem, r: Rect2) -> void:
 			# 2026-07-11 : « sans bruit »). Alpha abaissé 0.055→0.032 : senti, pas noisy.
 			ci.draw_texture_rect(g, gr, true, Color(0.78, 0.80, 0.75, 0.016))
 
-## jauge 0-100 : piste noire, remplissage franc, reflet supérieur et graduations.
-## C'est la lecture de travail RimWorld, avec les couleurs sémantiques de SCPS.
+## jauge 0-100 : piste creusée (encre diluée), remplissage franc, reflet supérieur
+## et graduations. Le TROU reste sombre (un puits d'encre, comme un livre de comptes)
+## même sur panneau clair — c'est le remplissage/les graduations qui s'adaptent.
 static func gauge(ci: CanvasItem, x: float, y: float, w: float, h: float, value: int) -> void:
 	value = clampi(value, 0, 100)
-	fill(ci, Rect2(x, y, w, h), Color(0.055, 0.065, 0.065, 1.0))
+	fill(ci, Rect2(x, y, w, h), Color(0x2b/255.0, 0x22/255.0, 0x14/255.0, 1.0))
 	box(ci, Rect2(x - 1, y - 1, w + 2, h + 2), COL_EDGE)
 	var fw := (w - 2.0) * float(value) / 100.0
 	if fw > 0.5:
@@ -252,7 +259,7 @@ static func gauge(ci: CanvasItem, x: float, y: float, w: float, h: float, value:
 		fill(ci, Rect2(x + 1, y + 1, fw, h - 2), Color(fc.r * 0.82, fc.g * 0.82, fc.b * 0.82, 1.0))
 		fill(ci, Rect2(x + 1, y + 1, fw, 1.0), Color(1.0, 1.0, 1.0, 0.24))
 	for mark in [0.25, 0.50, 0.75]:
-		fill(ci, Rect2(x + floor(w * mark), y + 1, 1.0, maxf(1.0, h - 2.0)), Color(0.0, 0.0, 0.0, 0.28))
+		fill(ci, Rect2(x + floor(w * mark), y + 1, 1.0, maxf(1.0, h - 2.0)), Color(1.0, 1.0, 1.0, 0.18))
 
 ## camembert : parts (percent[]) en couleurs (cols[]) — 0 en haut, sens horaire
 static func pie(ci: CanvasItem, center: Vector2, radius: float, percents: Array, cols: Array) -> void:
@@ -294,13 +301,13 @@ static func face(ci: CanvasItem, center: Vector2, r: float, mood: float, lit: bo
 ## démarre à HDR_H + ~8. Remplace les titres nus posés à des y variables.
 const HDR_H := 36.0
 static func header(ci: CanvasItem, w: float, title: String) -> Rect2:
-	fill(ci, Rect2(0, 0, w, HDR_H), Color(0.075, 0.085, 0.086, 0.98))
+	fill(ci, Rect2(0, 0, w, HDR_H), COL_PANEL2)
 	fill(ci, Rect2(0, 0, 4.0, HDR_H), COL_GOLD)
-	fill(ci, Rect2(4.0, 0, maxf(0.0, w - 4.0), 1.0), Color(1.0, 1.0, 1.0, 0.08))
+	fill(ci, Rect2(4.0, 0, maxf(0.0, w - 4.0), 1.0), Color(1.0, 1.0, 1.0, 0.20))
 	text(ci, Vector2(14, 7), COL_PARCH, title, FS_BIG)
 	fill(ci, Rect2(4.0, HDR_H - 1.0, maxf(0.0, w - 4.0), 1), COL_EDGE)
 	var cr := Rect2(w - 31.0, 7.0, 23.0, 23.0)
-	fill(ci, cr, Color(0.04, 0.045, 0.045, 0.9))
+	fill(ci, cr, Color(COL_PANEL.r, COL_PANEL.g, COL_PANEL.b, 0.9))
 	box(ci, cr, COL_EDGE)
 	text(ci, Vector2(cr.position.x + 7, cr.position.y + 3), COL_PARCH, "x")
 	return cr

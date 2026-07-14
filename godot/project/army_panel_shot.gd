@@ -61,6 +61,12 @@ func _run() -> void:
 	var lay := CanvasLayer.new()
 	add_child(lay)
 	var panel: Control = load("res://ui/army_panel.gd").new()
+	# le VRAI chrome (comme main.gd) : posé sur le Control lui-même — get_window().theme=…
+	# ne propage PAS de façon fiable quand la scène tourne seule en racine (pas de retard de
+	# frame qui tienne ; en jeu réel, army_panel est un enfant PROFOND de Main.tscn, déjà
+	# posé APRÈS plusieurs frames de démarrage — ce que ce probe reproduit en visant le
+	# Control directement plutôt que la fenêtre).
+	panel.theme = load("res://ui/ui_theme.gd").build()
 	lay.add_child(panel)
 	for i in range(6):
 		await get_tree().process_frame

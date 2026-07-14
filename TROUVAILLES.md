@@ -234,3 +234,8 @@
 - **Pertes finales par CORPS** : le fil ne porte que le total nous/ennemi de la bataille (packé) ; aucune ventilation par corps engagé. Affiché tel quel (« Nos pertes / Pertes ennemies »).
 - La capture « bataille de choc vivante » (in_battle=1, cohésions + lecture tactique) n'a PAS été obtenue en probe : le monde seed 42 an ~90 a produit un SIÈGE sans sortie défensive (l'ennemi n'a pas de corps de campagne à cet endroit) — la branche bataille est codée au miroir de battle_panel.gd (mêmes clés) et la branche siège + conclusion sont PROUVÉES par PNG ; à revérifier en jeu réel à la première vraie bataille.
 - battle_panel.gd (clic sur le jeton carte) fait désormais doublon PARTIEL de présentation avec la section combat d'army_panel — convergence possible quand le propriétaire de battle_panel repassera dessus (non touché ici, hors périmètre).
+
+### DA parchemin unifiée (2026-07-14, agent interrompu — repris/validé par l'orchestrateur)
+- **Découverte** : TOUT le chrome sombre sortait de 2 fichiers — godot/project/ui/vkit.gd (COL_* consommées par armée/tech/construction/rail/topbar) + ui_theme.gd. Re-skin aux valeurs EXACTES de parch_theme.gd, sémantique conservée (COL_PARCH=texte devient ENCRE, COL_GOLD=accent devient or fané #7a5c22).
+- **Piège** : l'agent est mort en pleine boucle d'itération (captures _zoom_*) — l'orchestrateur a re-passé les 4 probes (armée/tech/construction/journal) : tous parchemin, lisibles, 0 SCRIPT ERROR. Un agent tué ≠ travail perdu : le tree portait un état cohérent.
+- **Restes** : ports STRUCTURELS (conteneurs natifs + squelette onglets) armée/construction/tech encore à faire — le re-skin n'est que la couleur.

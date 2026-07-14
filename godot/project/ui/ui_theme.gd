@@ -1,10 +1,13 @@
 extends RefCounted
-## UI THEME — socle EU4 × RimWorld (graphite, ivoire, accent or) + feedback universel.
-## « Rendre du feedback à chaque bouton qui existe » : (1) des ÉTATS visibles (normal /
-## hover clair / pressed enfoncé / disabled fané) posés au niveau du THÈME de la fenêtre
-## → chaque Button/OptionButton/CheckBox présent ET futur en hérite sans câblage ;
-## (2) un FLASH de clic (pulse de modulate) accroché à CHAQUE BaseButton via le signal
-## d'arbre node_added — universel, aucun panneau à retoucher. Display-only.
+## UI THEME — socle PARCHEMIN (ivoire, encre, or fané) + feedback universel. Réaligné
+## (2026-07-14, retour joueur : « elle est passée où la DA juste avant ? ») sur la même
+## famille de tons que ParchTheme/VKit — les boutons/champs/tooltips du chrome VKit
+## deviennent des chips parchemin au lieu de graphite sombre. « Rendre du feedback à
+## chaque bouton qui existe » : (1) des ÉTATS visibles (normal / hover clair / pressed
+## enfoncé / disabled fané) posés au niveau du THÈME de la fenêtre → chaque Button/
+## OptionButton/CheckBox présent ET futur en hérite sans câblage ; (2) un FLASH de clic
+## (pulse de modulate) accroché à CHAQUE BaseButton via le signal d'arbre node_added —
+## universel, aucun panneau à retoucher. Display-only.
 
 static func _box(bg: Color, border: Color, bw: int = 1, shift_down := false) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
@@ -27,17 +30,17 @@ static func build() -> Theme:
 	if fui != null:
 		th.default_font = fui
 		th.default_font_size = 16   # +1 cran (retour joueur 2026-07-10 : « agrandis la police »)
-	# ── BOUTONS : commandes graphite carrées façon RimWorld, accent or façon EU4.
+	# ── BOUTONS : chips parchemin (chrome VKit désormais aligné sur ParchTheme).
 	# Les planches sheet02 ont des fleurons AU MILIEU des bords → AUCUN 9-slice ne peut les
 	# étirer sans les déformer (le « découpage » raté) ; le cadre plat s'étire NET à toute
-	# taille (survol plus clair, appui enfoncé & sombre, désactivé fané).
-	var normal := _box(Color(0.13, 0.15, 0.15), VKit.COL_EDGE, 1)
-	var hover := _box(Color(0.22, 0.24, 0.23), VKit.COL_GOLD, 2)
-	var press := _box(Color(0.075, 0.085, 0.085), Color(VKit.COL_GOLD.r, VKit.COL_GOLD.g, VKit.COL_GOLD.b, 0.72), 2, true)
-	var disab := _box(Color(0.10, 0.11, 0.11, 0.72), Color(0.28, 0.30, 0.29, 0.65), 1)
+	# taille (survol plus clair, appui enfoncé & plus sombre, désactivé fané).
+	var normal := _box(VKit.COL_PANEL2, VKit.COL_EDGE, 1)
+	var hover := _box(VKit.COL_PANEL, VKit.COL_GOLD, 2)
+	var press := _box(Color(0xc3/255.0, 0xad/255.0, 0x78/255.0), Color(VKit.COL_GOLD.r, VKit.COL_GOLD.g, VKit.COL_GOLD.b, 0.85), 2, true)
+	var disab := _box(Color(VKit.COL_PANEL2.r, VKit.COL_PANEL2.g, VKit.COL_PANEL2.b, 0.55), Color(VKit.COL_EDGE.r, VKit.COL_EDGE.g, VKit.COL_EDGE.b, 0.5), 1)
 	var focus := StyleBoxFlat.new()
 	focus.draw_center = false
-	focus.border_color = Color(VKit.COL_GOLD.r, VKit.COL_GOLD.g, VKit.COL_GOLD.b, 0.72)
+	focus.border_color = Color(VKit.COL_GOLD.r, VKit.COL_GOLD.g, VKit.COL_GOLD.b, 0.85)
 	focus.set_border_width_all(2)
 	focus.set_corner_radius_all(1)
 	for cls in ["Button", "OptionButton", "CheckBox", "MenuButton", "CheckButton"]:
@@ -47,23 +50,23 @@ static func build() -> Theme:
 		th.set_stylebox("disabled", cls, disab)
 		th.set_stylebox("focus", cls, focus)
 		th.set_color("font_color", cls, VKit.COL_PARCH)
-		th.set_color("font_hover_color", cls, Color(1.0, 0.96, 0.83))
+		th.set_color("font_hover_color", cls, VKit.COL_PARCH)
 		th.set_color("font_pressed_color", cls, VKit.COL_GOLD)
-		th.set_color("font_disabled_color", cls, Color(0.48, 0.50, 0.48))
-	# LineEdit : champ lisible + focus doré
-	var le := _box(Color(0.055, 0.065, 0.065), VKit.COL_EDGE)
+		th.set_color("font_disabled_color", cls, Color(VKit.COL_DIM.r, VKit.COL_DIM.g, VKit.COL_DIM.b, 0.65))
+	# LineEdit : champ lisible + focus doré (feuillet blanchi, plus clair que le panneau)
+	var le := _box(Color(0xf2/255.0, 0xea/255.0, 0xd4/255.0), VKit.COL_EDGE)
 	th.set_stylebox("normal", "LineEdit", le)
-	th.set_stylebox("focus", "LineEdit", _box(Color(0.075, 0.085, 0.085), VKit.COL_GOLD, 2))
+	th.set_stylebox("focus", "LineEdit", _box(Color(0xf2/255.0, 0xea/255.0, 0xd4/255.0), VKit.COL_GOLD, 2))
 	th.set_color("font_color", "LineEdit", VKit.COL_PARCH)
-	# Panneaux natifs : même plaque que les panneaux immédiats, sans faux parchemin.
+	# Panneaux natifs : même plaque que les panneaux immédiats, cohérente avec ParchTheme.
 	var native_panel := _box(VKit.COL_PANEL, VKit.COL_EDGE, 1)
 	for cls in ["Panel", "PanelContainer", "PopupPanel"]:
 		th.set_stylebox("panel", cls, native_panel)
-	# TOOLTIP façon EU4 (rendu attendu 2026-07-09) : encart SOMBRE quasi opaque, liseré
-	# OR — le tooltip système gris cassait la charte partout (chaque bouton en a un).
+	# TOOLTIP : encart parchemin quasi opaque, liseré or — le tooltip système gris
+	# cassait la charte partout (chaque bouton en a un). ENCRE sur IVOIRE, pas l'inverse.
 	var tip := StyleBoxFlat.new()
-	tip.bg_color = Color(0.045, 0.052, 0.052, 0.985)
-	tip.border_color = VKit.COL_EDGE
+	tip.bg_color = Color(VKit.COL_PANEL2.r, VKit.COL_PANEL2.g, VKit.COL_PANEL2.b, 0.985)
+	tip.border_color = VKit.COL_GOLD
 	tip.set_border_width_all(1)
 	tip.set_border_width(SIDE_LEFT, 3)
 	tip.set_corner_radius_all(1)

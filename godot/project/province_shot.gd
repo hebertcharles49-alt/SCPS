@@ -136,6 +136,9 @@ func _run() -> void:
 	# le MENU CONSTRUCTION (« Construire… ») — ouvert sur la province choisie, les
 	# deux onglets (édifices + manufactures), pour vérifier la carte-par-bâtiment.
 	var construct: Control = load("res://ui/construction_panel.gd").new()
+	# le VRAI chrome (comme main.gd), posé sur le Control directement — get_window().theme=…
+	# ne propage pas de façon fiable quand cette scène tourne seule en racine (cf. army_panel_shot).
+	construct.theme = load("res://ui/ui_theme.gd").build()
 	lay.add_child(construct)
 	construct.target_pid = pid
 	for entry in CONSTRUCT_TABS:
