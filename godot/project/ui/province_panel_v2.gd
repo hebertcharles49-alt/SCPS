@@ -17,11 +17,18 @@ const PopBar = preload("res://ui/pop_bar.gd")
 const PW := 384.0   ## largeur plafond (lignes par classe + boutons collés)
 const ALLOC_STEP := 10   ## pas de répartition raw (poids 0-100)
 
+## le MENU CONSTRUCTION s'ouvre depuis la fiche (bouton « Construire… ») — kind : 0 Édifices, 1 Manufactures.
+signal build_requested(kind: int)
+
 var _pid := -1
 var _region := -1                   ## région moteur (agrégat lu SEULEMENT par l'onglet RÉGION —
                                      ## RE-KEY PROVINCE : les verbes/alloc utilisent _pid directement)
 var _alloc := {}                    ## dernier province_alloc (pousser l'allocation COMPLÈTE)
 var _name2bld := {}                 ## nom de manufacture → BuildingType (résout le type pour les verbes)
+var _income := {}                   ## dernier province_income : nom du bien → per_day (manufacturés SEULEMENT)
+var _grow_pid := -2                 ## CROISSANCE (display-only) : pid mesuré au refresh précédent
+var _grow_total := -1.0             ## … pop totale à ce refresh
+var _grow_day := -1                 ## … et le jour absolu (year()×365+day_of_year())
 var _flash := ""                    ## retour transitoire « ordre émis » (effacé au refresh)
 var _tab := 0                       ## 0 Infrastructure (fusionné) · 1 Militaire
 var _body: VBoxContainer = null     ## corps rebâti à chaque refresh / changement d'onglet
@@ -116,6 +123,8 @@ func _build_shell() -> void:
 
 # ── API publique ──────────────────────────────────────────────────────────────
 func show_province(pid: int) -> void:
+	if pid != _pid:
+		_grow_pid = -2   # nouvelle province : la CROISSANCE repart de zéro (pas de faux delta)
 	_pid = pid
 	visible = pid >= 0
 	if visible:
@@ -145,6 +154,13 @@ func refresh() -> void:
 			var nm := String(w.manuf_name(bld))
 			if nm != "" and nm != "?":
 				_name2bld[nm] = bld
+	# PRODUCTION manufacturée (chantier 3) : nom du BIEN produit → unités/mois (per_day×30),
+	# pour le hover des chips de manufacture (matché par le bien via manuf_recipe(bld).out).
+	_income.clear()
+	if w.has_method("province_income"):
+		for l in w.province_income(_pid):
+			if bool(l.get("manufactured", false)):
+				_income[String(l.get("source", ""))] = float(l.get("per_day", 0.0))
 	_update_header(w, info, cap)
 	for c in _body.get_children():
 		c.queue_free()
@@ -178,12 +194,24 @@ func _update_header(w, info: Dictionary, cap: Dictionary) -> void:
 func _build_infrastructure(w, info: Dictionary, _cap: Dictionary) -> void:
 	var mine := (int(info.get("owner", -2)) == int(w.player())) if w.has_method("player") else false
 
-	# TERRAIN + statistiques clés (compact)
+	# TERRAIN — hover = image du biome + tenue de siège + habitabilité (chantier 5)
 	var def_pct := int(w.province_defense_pct(_pid)) if w.has_method("province_defense_pct") else 100
-	_line("%s · %s · tenue de siège %+d%%" % [
-		String(info.get("climat", "")), String(info.get("relief", "")), def_pct - 100], "RowDim")
+	_terrain_row(info, def_pct)
 	var grid := _grid()
 	_kv(grid, "Population", _grp(info.get("ames", 0)), ParchTheme.INK)
+	# CROISSANCE (display-only, motif empire_window) : delta signé /mois depuis le
+	# dernier refresh, normalisé sur le jour absolu réel — « — » sans mesure précédente
+	# ou si la province vient de changer (pas de faux delta entre deux provinces).
+	var pop_now := float(info.get("ames", 0))
+	var abs_day := int(w.year()) * 365 + (int(w.day_of_year()) if w.has_method("day_of_year") else 0)
+	if _grow_pid == _pid and _grow_total >= 0.0 and abs_day > _grow_day:
+		var per_month := (pop_now - _grow_total) / float(abs_day - _grow_day) * 30.0
+		var pos := per_month >= 0.0
+		_kv(grid, "Croissance", "%s%s âmes/mois" % ["+" if pos else "−", _grp(int(round(absf(per_month))))],
+			ParchTheme.INCOME if pos else ParchTheme.EXPENSE)
+	else:
+		_kv(grid, "Croissance", "—", ParchTheme.DIM_INK)
+	_grow_pid = _pid; _grow_total = pop_now; _grow_day = abs_day
 	var tax := float(w.province_tax(_pid)) if w.has_method("province_tax") else 0.0
 	_kv(grid, "Impôts", "~%s or/mois" % _grp(int(round(tax))), ParchTheme.INK)
 	var aisance := int(info.get("aisance_val", 0))
@@ -194,6 +222,16 @@ func _build_infrastructure(w, info: Dictionary, _cap: Dictionary) -> void:
 	if w.has_method("province_agitation"):
 		agit = int(w.province_agitation(_pid).get("value", agit))
 	_kv(grid, "Agitation", "%d%%" % agit, ParchTheme.RED if agit >= 50 else ParchTheme.DIM_INK)
+	# LOGEMENTS & SERVICES (chantier 4) : âmes logées/servies sur la capacité — le
+	# BÂTI (manufactures-logements, confort) monte ces plafonds au-delà de la terre nue.
+	var lc := int(info.get("logements_cap", 0))
+	if lc > 0:
+		_kv(grid, "Logements", "%s / %s" % [_grp(info.get("logements_libres", 0)), _grp(lc)],
+			ParchTheme.RED if int(info.get("logements_libres", 0)) <= 0 else ParchTheme.DIM_INK)
+	var sc := int(info.get("services_cap", 0))
+	if sc > 0:
+		_kv(grid, "Services", "%s / %s" % [_grp(info.get("services_libres", 0)), _grp(sc)],
+			ParchTheme.RED if int(info.get("services_libres", 0)) <= 0 else ParchTheme.DIM_INK)
 	if bool(info.get("seuil_revolte", false)):
 		_line("⚠ Au bord de la révolte (agitation %d)" % agit, "Expense")
 
@@ -304,50 +342,43 @@ func _alloc_apply(idx: int, new_w: int) -> void:
 			w.player_alloc_bld(_pid, int(s.get("id", 0)), ww)
 	_fire("répartition ajustée")
 
-## MANUFACTURES (ligne Bourgeois) : une STRIP d'icônes-chips (icône + [−][+] EN LIGNE,
-## nom au HOVER seul), qui enveloppe ; puis les chips « bâtir » (poser) à la suite.
+## MANUFACTURES (ligne Bourgeois) : une STRIP d'icônes-chips DU BÂTI SEUL (icône +
+## [−][+] EN LIGNE, nom+détail au HOVER) — poser un NOUVEAU chantier se fait dans le
+## MENU CONSTRUCTION (bouton « Construire… », retour joueur : plus de chips fantômes ici).
 func _manuf_section(w, mine: bool) -> void:
 	var blds: Array = w.province_buildings(_pid) if w.has_method("province_buildings") else []
-	var legal := []
-	if mine and w.has_method("manuf_legal") and _pid >= 0:
-		for bld in range(24):
-			if int(w.manuf_legal(_pid, bld)) == 1:
-				legal.append(bld)
-	if blds.is_empty() and legal.is_empty():
+	if blds.is_empty():
 		_line("  aucune manufacture", "RowDim")
-		return
-	var flow := _flow()
-	for b in blds:
-		var nom := String(b.get("nom", ""))
-		flow.add_child(_manuf_chip(w, mine, nom, int(b.get("niveau", 0)),
-			int(b.get("ouvriers", 0)), int(_name2bld.get(nom, -1))))
-	var mcost := int(w.manuf_cost()) if w.has_method("manuf_cost") else 0
-	for bld in legal:
-		flow.add_child(_build_chip(UIKit.manuf_sprite(String(w.manuf_name(bld))),
-			("Bâtir %s · %d or" % [String(w.manuf_name(bld)), mcost]) if mcost > 0 else ("Bâtir %s" % String(w.manuf_name(bld))),
-			func(): w.player_build_manuf(_pid, bld); _fire("%s : chantier lancé" % String(w.manuf_name(bld)))))
+	else:
+		var flow := _flow()
+		for b in blds:
+			var nom := String(b.get("nom", ""))
+			flow.add_child(_manuf_chip(w, mine, nom, int(b.get("niveau", 0)),
+				int(b.get("ouvriers", 0)), int(_name2bld.get(nom, -1))))
+	if mine:
+		_construct_btn(1)
 
-## ÉDIFICES (ligne Élites) : idem — strip d'icônes-chips ([−] démolir · [+] palier), puis « bâtir ».
+## ÉDIFICES (ligne Élites) : idem — strip d'icônes-chips DU BÂTI SEUL ([−] démolir ·
+## [+] palier suivant) ; poser un nouvel édifice = le MENU CONSTRUCTION.
 func _edifice_section(w, mine: bool) -> void:
 	var edis: Array = w.province_edifices(_pid) if w.has_method("province_edifices") else []
-	var legal := []
-	if mine and w.has_method("build_legal") and _pid >= 0:
-		for e in range(32):   # masque edi_built = 32 bits ; build_legal borne
-			if not bool(w.build_legal(_pid, e).get("legal", false)):
-				continue
-			var nm := String(w.edifice_name(e)) if w.has_method("edifice_name") else ""
-			if nm != "":
-				legal.append(e)
-	if edis.is_empty() and legal.is_empty():
+	if edis.is_empty():
 		_line("  aucun édifice", "RowDim")
-		return
-	var flow := _flow()
-	for e in edis:
-		flow.add_child(_edi_chip(w, mine, String(e.get("nom", "")), int(e.get("type", -1))))
-	for e in legal:
-		var nom := String(w.edifice_name(e))
-		flow.add_child(_build_chip(UIKit.building_sprite(e), "Bâtir %s" % nom,
-			func(): w.player_build(e, _pid); _fire("%s : chantier lancé" % nom)))
+	else:
+		var flow := _flow()
+		for e in edis:
+			flow.add_child(_edi_chip(w, mine, String(e.get("nom", "")), int(e.get("type", -1))))
+	if mine:
+		_construct_btn(0)
+
+## le bouton « Construire… » (ouvre le MENU CONSTRUCTION sur l'onglet Édifices/
+## Manufactures, la province courante visée — signal câblé côté main.gd).
+func _construct_btn(kind: int) -> void:
+	var wrap := HBoxContainer.new()
+	_body.add_child(wrap)
+	var b := _sq_btn("⚒ Construire…", 108)
+	b.pressed.connect(func(): build_requested.emit(kind))
+	wrap.add_child(b)
 
 # ── LES CHIPS (icône + [−][+] en ligne ; le NOM en hover seul) ────────────────
 ## cadre d'un chip : PanelContainer + HBox serrée. `built` = ton plein (bâti) vs ghost (à bâtir).
@@ -363,9 +394,16 @@ func _chip_frame(tip: String, built: bool) -> Array:
 	pc.add_child(hb)
 	return [pc, hb]
 
-## un chip de manufacture bâtie : [icône][niv][−][+] — nom + détail au HOVER.
+## un chip de manufacture bâtie : [icône][niv][−][+] — nom + détail au HOVER, chantier 3 :
+## « Nom — niveau N · X ouvriers · produit +Y/mois » (le bien réel, matché par manuf_recipe(bld).out).
 func _manuf_chip(w, mine: bool, nom: String, niv: int, ouv: int, bid: int) -> Control:
-	var fr := _chip_frame("%s — niveau %d · %d ouvriers" % [nom, niv, ouv], true)
+	var tip := "%s — niveau %d · %d ouvriers" % [nom, niv, ouv]
+	if bid >= 0 and w.has_method("manuf_recipe"):
+		var rec: Dictionary = w.manuf_recipe(bid)
+		var out_nom := String(rec.get("out", ""))
+		if out_nom != "" and _income.has(out_nom):
+			tip += " · produit +%s %s/mois" % [_grp(int(round(float(_income[out_nom]) * 30.0))), out_nom]
+	var fr := _chip_frame(tip, true)
 	var hb: HBoxContainer = fr[1]
 	_icon(hb, UIKit.manuf_sprite(nom), 26)
 	var lv := Label.new()
@@ -402,17 +440,6 @@ func _edi_chip(w, mine: bool, nom: String, type: int) -> Control:
 			plus.tooltip_text = "monter au palier suivant"
 			plus.pressed.connect(func(): w.player_build(succ, _pid); _fire("%s : palier suivant" % nom))
 			hb.add_child(plus)
-	return fr[0]
-
-## un chip « à bâtir » (ghost) : [icône][＋] — le NOM + coût au HOVER.
-func _build_chip(tex: Texture2D, tip: String, on_build: Callable) -> Control:
-	var fr := _chip_frame(tip, false)
-	var hb: HBoxContainer = fr[1]
-	_icon(hb, tex, 22)
-	var plus := _chip_btn("＋")
-	plus.tooltip_text = tip
-	plus.pressed.connect(on_build)
-	hb.add_child(plus)
 	return fr[0]
 
 ## une strip qui enveloppe (les chips passent à la ligne suivante quand la largeur manque).
@@ -628,6 +655,68 @@ func _grid() -> GridContainer:
 	_body.add_child(g)
 	return g
 
+# ── TERRAIN (chantier 5) : ligne compacte, hover = image du biome + détail ────
+## la carte-hover : image + lignes de texte, construite au moment du survol (Godot
+## rappelle `_make_custom_tooltip` sur la ligne mère, cf. `_terrain_row` ci-dessous).
+class BiomeTip:
+	extends PanelContainer
+	const ParchTheme = preload("res://ui/parch_theme.gd")
+	func setup(tex: Texture2D, lines: PackedStringArray) -> void:
+		add_theme_stylebox_override("panel", ParchTheme.sb(ParchTheme.PANEL_BG, ParchTheme.BORDER, 1, 4, 8, 8, 8, 8))
+		var vb := VBoxContainer.new()
+		vb.add_theme_constant_override("separation", 4)
+		add_child(vb)
+		if tex != null:
+			var tr := TextureRect.new()
+			tr.texture = tex
+			tr.custom_minimum_size = Vector2(220, 104)
+			tr.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+			tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			vb.add_child(tr)
+		for i in range(lines.size()):
+			var lb := Label.new()
+			lb.text = String(lines[i])
+			lb.add_theme_color_override("font_color", ParchTheme.INK if i == 0 else ParchTheme.DIM_INK)
+			lb.add_theme_font_size_override("font_size", 13 if i == 0 else 12)
+			vb.add_child(lb)
+
+## une petite HBoxContainer qui porte le hover-image (le survol NATIF, TooltipServer).
+class TerrainRow:
+	extends HBoxContainer
+	var _tex: Texture2D
+	var _lines := PackedStringArray()
+	func setup(tex: Texture2D, lines: PackedStringArray) -> void:
+		_tex = tex
+		_lines = lines
+		tooltip_text = " "   # non-vide : active le hover natif (le contenu vient de _make_custom_tooltip)
+		mouse_filter = Control.MOUSE_FILTER_STOP
+	func _make_custom_tooltip(_for_text: String) -> Object:
+		var tip := BiomeTip.new()
+		tip.setup(_tex, _lines)
+		return tip
+
+## la ligne TERRAIN : climat/relief + tenue de siège, en un coup d'œil ; le détail
+## (image du biome, habitabilité) attend le survol — rien de plus qu'un chiffre en trop.
+func _terrain_row(info: Dictionary, def_pct: int) -> void:
+	var row := TerrainRow.new()
+	row.custom_minimum_size = Vector2(PW - 28.0, 16.0)
+	var lb := Label.new()
+	lb.theme_type_variation = "RowDim"
+	lb.text = "%s · %s · tenue de siège %+d%%" % [
+		String(info.get("climat", "")), String(info.get("relief", "")), def_pct - 100]
+	lb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(lb)
+	var hab := int(info.get("habitabilite_pct", -1))
+	var lines := PackedStringArray([
+		"%s · %s" % [String(info.get("relief", "")), String(info.get("climat", ""))],
+		"Tenue de siège : %+d%%" % (def_pct - 100),
+	])
+	if hab >= 0:
+		lines.append("Habitabilité : %d%%" % hab)
+	row.setup(UIKit.biome_painting(String(info.get("relief", "")), String(info.get("climat", ""))), lines)
+	_body.add_child(row)
+
 ## une paire label → valeur dans une grille 2-colonnes (valeur alignée à droite, colorée)
 func _kv(grid: GridContainer, label: String, value: String, col: Color) -> void:
 	var lab := Label.new()
@@ -643,7 +732,9 @@ func _kv(grid: GridContainer, label: String, value: String, col: Color) -> void:
 	val.add_theme_color_override("font_color", col)
 	grid.add_child(val)
 
-## une ligne de classe : nom · pop · barre de satisfaction (ProgressBar natif)
+## une ligne de classe : nom + effectif — la satisfaction en petit « N% » coloré, à
+## droite (retour joueur : « les barres pour désigner un job dans sa classe n'ont
+## AUCUN sens » — plus de ProgressBar ici ; le détail (revenu, panier) reste au hover).
 func _class_row(name: String, pop: int, sat: int) -> void:
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", 8)
@@ -651,7 +742,7 @@ func _class_row(name: String, pop: int, sat: int) -> void:
 	var nm := Label.new()
 	nm.theme_type_variation = "RowDim"
 	nm.text = name
-	nm.custom_minimum_size = Vector2(78, 0)
+	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hb.add_child(nm)
 	var pl := Label.new()
 	pl.theme_type_variation = "RowLabel"
@@ -659,22 +750,14 @@ func _class_row(name: String, pop: int, sat: int) -> void:
 	pl.custom_minimum_size = Vector2(58, 0)
 	pl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	hb.add_child(pl)
-	var bar := ProgressBar.new()
-	bar.min_value = 0.0
-	bar.max_value = 100.0
-	bar.value = float(maxi(sat, 0))
-	bar.show_percentage = false
-	bar.custom_minimum_size = Vector2(0, 12)
-	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bar.add_theme_stylebox_override("background",
-		ParchTheme.sb(Color("caa768"), ParchTheme.BORDER, 1, 2, 0, 0, 0, 0))
-	var fill_col := _score_col(sat) if sat >= 0 else ParchTheme.DIM_INK
-	bar.add_theme_stylebox_override("fill",
-		ParchTheme.sb(fill_col, Color(0, 0, 0, 0), 0, 2, 0, 0, 0, 0))
-	if sat < 0:
-		bar.value = 0.0
-		bar.tooltip_text = "aucun"
-	hb.add_child(bar)
+	var sl := Label.new()
+	sl.theme_type_variation = "RowDim"
+	sl.text = ("%d%%" % sat) if sat >= 0 else "—"
+	sl.custom_minimum_size = Vector2(38, 0)
+	sl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	sl.add_theme_color_override("font_color", _score_col(sat) if sat >= 0 else ParchTheme.DIM_INK)
+	sl.tooltip_text = "satisfaction (panier de besoins couverts)" if sat >= 0 else "aucun"
+	hb.add_child(sl)
 
 ## une puce ressource : icône du pack (si dispo) + nom
 func _res_chip(into: HBoxContainer, res_id: int, name: String) -> void:

@@ -10,6 +10,10 @@ const TABS := [
 	[1, "province_region.png"],
 	[2, "province_militaire.png"],
 ]
+const CONSTRUCT_TABS := [
+	[0, "construction_edifices.png"],
+	[1, "construction_manufactures.png"],
+]
 
 func _arg(p: String, d: String) -> String:
 	for a in OS.get_cmdline_user_args():
@@ -101,5 +105,57 @@ func _run() -> void:
 			print("SAVED ", path, " (", img.get_width(), "x", img.get_height(), ")")
 		else:
 			push_error("save_png failed err=%d for %s" % [err, path])
+			ok_all = false
+		if idx == 0:
+			# chantier 5 — le HOVER biome (image + détail) n'apparaît qu'au survol natif
+			# (TooltipServer, un minuteur réel) : on le force manuellement pour PROUVER
+			# que `_make_custom_tooltip` construit bien la carte, sans dépendre du timing.
+			var terrain_row: Node = panel._body.get_child(0) if panel._body.get_child_count() > 0 else null
+			if terrain_row != null and terrain_row.has_method("_make_custom_tooltip"):
+				var tip: Control = terrain_row._make_custom_tooltip("")
+				if tip != null:
+					lay.add_child(tip)
+					tip.position = Vector2(700, 200)
+					for i in range(4):
+						await get_tree().process_frame
+					await RenderingServer.frame_post_draw
+					await RenderingServer.frame_post_draw
+					var himg := get_viewport().get_texture().get_image()
+					var hpath := OUTDIR + "province_biome_hover.png"
+					var herr := himg.save_png(hpath)
+					if herr == OK:
+						print("SAVED ", hpath, " (", himg.get_width(), "x", himg.get_height(), ")")
+					else:
+						push_error("save_png failed err=%d for province_biome_hover.png" % herr)
+						ok_all = false
+					tip.queue_free()
+				else:
+					push_error("_make_custom_tooltip a renvoyé null")
+					ok_all = false
+
+	# le MENU CONSTRUCTION (« Construire… ») — ouvert sur la province choisie, les
+	# deux onglets (édifices + manufactures), pour vérifier la carte-par-bâtiment.
+	var construct: Control = load("res://ui/construction_panel.gd").new()
+	lay.add_child(construct)
+	construct.target_pid = pid
+	for entry in CONSTRUCT_TABS:
+		var cidx: int = int(entry[0])
+		var cfname: String = String(entry[1])
+		if construct.has_method("open_on"):
+			construct.open_on(cidx)
+		for i in range(6):
+			await get_tree().process_frame
+		construct.position = Vector2(200, 60)
+		for i in range(4):
+			await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		await RenderingServer.frame_post_draw
+		var cimg := get_viewport().get_texture().get_image()
+		var cpath := OUTDIR + cfname
+		var cerr := cimg.save_png(cpath)
+		if cerr == OK:
+			print("SAVED ", cpath, " (", cimg.get_width(), "x", cimg.get_height(), ")")
+		else:
+			push_error("save_png failed err=%d for %s" % [cerr, cfname])
 			ok_all = false
 	get_tree().quit(0 if ok_all else 1)

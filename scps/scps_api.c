@@ -528,6 +528,7 @@ void scps_province_info(ScpsSim *s, int pid, ScpsProvInfo *out){
     out->seuil_revolte  = pr.seuil_revolte ? 1 : 0;
     out->logements_libres = pr.logements_libres; out->logements_cap = pr.logements_cap;
     out->services_libres  = pr.services_libres;  out->services_cap  = pr.services_cap;
+    out->habitabilite_pct = (int)(s->w->province[pid].habitability*100.f + 0.5f);
 
     int nm = pr.n_mods; if(nm > SCPS_PROV_MODS) nm = SCPS_PROV_MODS;
     out->n_mods = nm;
@@ -3000,6 +3001,22 @@ int scps_manuf_cost(ScpsSim *s){
     float mult = (p>=0 && p<s->w->n_countries) ? decree_manuf_cost_mult(p) : 1.f;
     float cost = tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(s->sim.econ)*mult;
     return (int)(cost + 0.5f);
+}
+/* LA RECETTE d'une manufacture (menu construction) — lecture pure de RECIPE via les
+ * accesseurs déjà exportés (building_recipe/_qty), noms résolus (resource_name). */
+void scps_manuf_recipe(int bld, ScpsManufRecipe *out){
+    if (!out) return;
+    memset(out, 0, sizeof *out);
+    out->in1 = out->in2 = out->out = out->alt1 = "";
+    if (bld<0 || bld>=BLD_TYPE_COUNT) return;
+    Resource in1, in2, o, alt1; float q1,q2,qout;
+    building_recipe((BuildingType)bld, &in1, &in2, &o);
+    building_recipe_qty((BuildingType)bld, &q1, &q2, &qout);
+    alt1 = building_alt_input((BuildingType)bld);
+    if (in1>RES_NONE && in1<RES_COUNT){ out->in1=sz(resource_name(in1)); out->q1=q1; }
+    if (in2>RES_NONE && in2<RES_COUNT){ out->in2=sz(resource_name(in2)); out->q2=q2; }
+    if (o  >RES_NONE && o  <RES_COUNT){ out->out=sz(resource_name(o));   out->qout=qout; }
+    if (alt1>RES_NONE && alt1<RES_COUNT){ out->alt1=sz(resource_name(alt1)); out->alt1_q=q1; }
 }
 int scps_player_embargo(ScpsSim *s, int target, int on){
     if (!s || !s->ready) return 0;

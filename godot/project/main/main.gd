@@ -298,6 +298,18 @@ func _ready() -> void:
 	_prov_panel_v2.visible = false
 	_prov_panel_v2.add_to_group("draggable")
 	ui.add_child(_prov_panel_v2)
+	# le bouton « Construire… » de la fiche V2 ouvre le MENU CONSTRUCTION sur la
+	# province visée, à l'onglet demandé (0 Édifices · 1 Manufactures).
+	if _prov_panel_v2.has_signal("build_requested"):
+		_prov_panel_v2.build_requested.connect(func(kind: int):
+			_construct.target_pid = _sel_prov
+			if _construct.has_method("open_on"):
+				_construct.open_on(kind)
+			else:
+				_construct.visible = true
+			_construct.position = Vector2(_prov_panel_v2.position.x + _prov_panel_v2.size.x + 6.0,
+										  _prov_panel_v2.position.y)
+			Sound.play("ui_parchment_open"))
 	# FENÊTRE EMPIRE : UNE fenêtre à onglets (Économie · Population · Diplomatie · Conseil,
 	# touche E). L'architecture réelle de gestion — coexiste avec la sidebar/les pilotes.
 	_empire_win = load("res://ui/empire_window.gd").new()

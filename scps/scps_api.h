@@ -121,6 +121,8 @@ typedef struct {
     int         seuil_revolte;          /* 1 si l'agitation a franchi le seuil */
     long        logements_libres, logements_cap;
     long        services_libres,  services_cap;
+    int         habitabilite_pct;       /* 0-100 : vivabilité GÉOGRAPHIQUE pure (Province.habitability),
+                                          * figée à la genèse — le hover du terrain (fiche province). */
     int         n_mods;
     ScpsProvMod mods[SCPS_PROV_MODS];
 } ScpsProvInfo;
@@ -810,6 +812,17 @@ int scps_player_demolish_edifice(ScpsSim *s, int province, int edifice);
 /* le PRIX du chantier de manufacture — LE montant que le drain débite (MANUF_BUILD_COST
  * × ipm, même formule que scps_manuf_legal/CMD_BUILD_MANUF) : or, arrondi (tangible). */
 int scps_manuf_cost(ScpsSim *s);
+/* LA RECETTE d'une manufacture (menu construction, « vérité absolue ») : jusqu'à 2
+ * intrants (le second "" si absent) → 1 produit, + le repli alt1 ("" si aucun). Noms
+ * résolus (resource_name), quantités RÉELLES (RECIPE, par niveau) — lecture pure,
+ * aucune mutation. bld hors-borne ⇒ tout à "". */
+typedef struct {
+    const char *in1; float q1;
+    const char *in2; float q2;   /* "" si une seule entrée */
+    const char *out; float qout;
+    const char *alt1; float alt1_q;   /* repli de in1 ; "" si aucun */
+} ScpsManufRecipe;
+void scps_manuf_recipe(int bld, ScpsManufRecipe *out);
 
 /* ── ESCLAVAGE — la strate CLASS_SLAVE : garder/affranchir/vendre --------------
  * L'AFFRANCHISSEMENT (granularité PAYS, une politique) : CMD_MANUMIT, aucun

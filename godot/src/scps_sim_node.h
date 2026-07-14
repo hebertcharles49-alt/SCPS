@@ -224,6 +224,7 @@ public:
     bool       player_demolish_edifice(int province, int edifice);   /* démolir un édifice d'un cran */
     int        manuf_legal(int province, int bld);         /* légalité read-only (griser le bouton) */
     int        manuf_cost() const;                       /* le PRIX du chantier (or — même formule que le drain) */
+    Dictionary manuf_recipe(int bld) const;               /* la recette réelle (menu construction) */
     String     manuf_name(int bld);                      /* nom d'affichage du BuildingType (miroir display-only) */
     String     edifice_name(int edifice);                /* nom d'un édifice (picker « poser ») */
     int        edifice_succ(int edifice);                /* palier suivant (le « + » upgrade) */

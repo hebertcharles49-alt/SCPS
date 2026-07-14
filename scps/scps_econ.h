@@ -986,6 +986,7 @@ const char *social_class_name(SocialClass c);
 const char *building_name(BuildingType b);
 /* Recette d'un bâtiment (intrants → extrant) — pour la perception IA. */
 void        building_recipe(BuildingType b, Resource *in1, Resource *in2, Resource *out);
+void        building_recipe_qty(BuildingType b, float *q1, float *q2, float *qout);   /* quantités (menu construction) */
 Resource    building_alt_input(BuildingType b);   /* intrant alternatif (repli) — UI d'allocation */
 float       building_recipe_labor(BuildingType b);   /* main-d'œuvre/niveau — pression IA (lot G) */
 /* M6 (forks §14) — le DELTA DE FLUX d'une manufacture arcane : Forge Céleste +1.2 ·

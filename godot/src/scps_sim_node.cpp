@@ -158,6 +158,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_demolish_edifice", "province", "edifice"), &ScpsWorld::player_demolish_edifice);
     ClassDB::bind_method(D_METHOD("manuf_legal", "province", "bld"),        &ScpsWorld::manuf_legal);
     ClassDB::bind_method(D_METHOD("manuf_cost"),                          &ScpsWorld::manuf_cost);
+    ClassDB::bind_method(D_METHOD("manuf_recipe", "bld"),                 &ScpsWorld::manuf_recipe);
     ClassDB::bind_method(D_METHOD("manuf_name", "bld"),                   &ScpsWorld::manuf_name);
     ClassDB::bind_method(D_METHOD("edifice_name", "edifice"),             &ScpsWorld::edifice_name);
     ClassDB::bind_method(D_METHOD("edifice_succ", "edifice"),             &ScpsWorld::edifice_succ);
@@ -432,6 +433,7 @@ Dictionary ScpsWorld::province_info(int province) {
     d["logements_cap"]    = (int64_t)p.logements_cap;
     d["services_libres"]  = (int64_t)p.services_libres;
     d["services_cap"]     = (int64_t)p.services_cap;
+    d["habitabilite_pct"] = p.habitabilite_pct;
     Array mods;
     for (int i = 0; i < p.n_mods; i++) {
         Dictionary m;
@@ -1722,6 +1724,19 @@ int ScpsWorld::manuf_legal(int province, int bld) {
 }
 int ScpsWorld::manuf_cost() const {
     return sim ? scps_manuf_cost(sim) : 0;
+}
+/* LA RECETTE réelle d'une manufacture (menu construction, « vérité absolue ») : noms
+ * résolus + quantités RÉELLES (RECIPE). Ne dépend pas du sim (table de design) mais on
+ * garde la signature membrane-cohérente (const, pas de sim requis). */
+Dictionary ScpsWorld::manuf_recipe(int bld) const {
+    Dictionary d;
+    ScpsManufRecipe r;
+    scps_manuf_recipe(bld, &r);
+    d["in1"] = String::utf8(r.in1);   d["q1"] = r.q1;
+    d["in2"] = String::utf8(r.in2);   d["q2"] = r.q2;
+    d["out"] = String::utf8(r.out);   d["qout"] = r.qout;
+    d["alt1"] = String::utf8(r.alt1); d["alt1_q"] = r.alt1_q;
+    return d;
 }
 /* LÉGALITÉ de construction (lot M, membrane honnête) : miroir read-only des gates du
  * drain CMD_BUILD — legal + la RAISON du refus (0 OK · 1 structurel · 2 or · 3 matière).

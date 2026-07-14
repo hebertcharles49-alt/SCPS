@@ -806,6 +806,14 @@ float building_recipe_labor(BuildingType b){
 Resource building_alt_input(BuildingType b){
     return (b>=0 && b<BLD_TYPE_COUNT) ? RECIPE[b].alt1 : RES_NONE;
 }
+/* QUANTITÉS de la recette (miroir de building_recipe, pour le MENU CONSTRUCTION — la
+ * carte manufacture doit montrer la vraie recette, pas juste les noms). Lecture pure. */
+void building_recipe_qty(BuildingType b, float *q1, float *q2, float *qout){
+    if (b<0 || b>=BLD_TYPE_COUNT){ if(q1)*q1=0.f; if(q2)*q2=0.f; if(qout)*qout=0.f; return; }
+    if (q1)   *q1=RECIPE[b].q1;
+    if (q2)   *q2=RECIPE[b].q2;
+    if (qout) *qout=RECIPE[b].qout;
+}
 
 /* ESCLAVAGE (§II.6, H) — un groupe TENU esclave (klass==CLASS_SLAVE) est présent SANS
  * appartenance : le mécanisme H décompresse la pression d'intégration AVANT le filtre

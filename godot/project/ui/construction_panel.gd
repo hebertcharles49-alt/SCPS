@@ -1,9 +1,10 @@
 extends Control
-## ConstructionPanel — le menu de bâti en DEUX ONGLETS (Édifices | Manufactures,
-## retour joueur 2026-07-10) : une LIGNE LARGE et DESCRIPTIVE par bâtiment —
-## icônes des RESSOURCES de la recette, EFFET chiffré réel (delta ProvBuild via la
-## façade). Paliers familiaux masqués tant que le précédent n'est
-## pas bâti (prev_built). Molette = défilement. Immediate-mode _draw, prix RÉELS.
+## ConstructionPanel — le menu de bâti en DEUX ONGLETS (Édifices | Manufactures),
+## LA VÉRITÉ ABSOLUE (retour joueur 2026-07-14) : une CARTE par bâtiment —
+## Rendement (l'effet réel, delta ProvBuild) / Ressources (la recette, en icônes) /
+## Prix (or + jours) / Prochain palier (edifice_succ, affiché MÊME verrouillé — un
+## bâtiment tech-verrouillé n'est JAMAIS listé comme posable, seulement en tag sur
+## la carte de son palier courant). Molette = défilement. Immediate-mode _draw.
 
 const VKit = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
@@ -12,8 +13,8 @@ const Frame = preload("res://ui/frame.gd")
 signal build_requested(kind: String, type: int)
 
 const PADX := 12
-const RH_ED := 64.0    ## ligne ÉDIFICE (nom+coût / recette / effet)
-const RH_MF := 44.0    ## ligne MANUFACTURE (nom+or / note)
+const RH_ED := 84.0    ## carte ÉDIFICE (nom+prix / rendement / ressources / prochain palier)
+const RH_MF := 58.0    ## carte MANUFACTURE (nom+prix / recette réelle)
 const PW := 396.0
 
 var _ph := 360.0       ## hauteur latchée (contenu, borné viewport — le surplus SCROLLE)
@@ -24,6 +25,7 @@ var _maxscroll := 0.0
 
 var target_pid := -1       ## la PROVINCE visée (posée par main à l'ouverture) — les manufactures y vivent
 var _builds := []
+var _bytype := {}          # type(int) → b(Dictionary) — pour résoudre le « Prochain palier » (edifice_succ)
 var _blegal := {}          # type → {legal, reason} — miroir read-only du drain CMD_BUILD (lot M)
 var _hover_zones := []     # [{rect, head, lines}]
 var _click_zones := []     # [{rect, kind, type}]
@@ -51,6 +53,9 @@ func _refresh() -> void:
 		return
 	var me: int = Sim.world.player()
 	_builds = Sim.world.building_roster(me)
+	_bytype.clear()
+	for b in _builds:
+		_bytype[int(b.get("type", -1))] = b
 	# lot M — la LÉGALITÉ réelle (or/matière/palier, miroir du drain qui refusait en
 	# silence) : rafraîchie au tick, consommée par _draw (griser) et _act (flash honnête).
 	_blegal.clear()
@@ -60,6 +65,14 @@ func _refresh() -> void:
 				var t := int(b.get("type", -1))
 				_blegal[t] = Sim.world.build_legal(-1, t)
 	queue_redraw()
+
+## ouvre le panneau directement sur un onglet (0 Édifices · 1 Manufactures) — appelé
+## depuis la fiche province (bouton « Construire… »).
+func open_on(tab: int) -> void:
+	_tab = clampi(tab, 0, 1)
+	_scrolloff = 0.0
+	visible = true
+	_refresh()
 
 ## la raison du refus, en mot (reason de build_legal : 2 or · 3 matière · 4 tech de palier · 1 structurel)
 func _reason_word(reason: int) -> String:
@@ -107,6 +120,28 @@ func _build_info_card(b: Dictionary, legal: Dictionary) -> Dictionary:
 			"Premier verrou opposé par le moteur : %s." % _reason_label(legal),
 	}
 
+## la RECETTE réelle d'une manufacture, en mots : « Laine ×1.5 (ou Coton) → Étoffe ×2.8 ».
+func _recipe_text(rec: Dictionary) -> String:
+	var in1 := String(rec.get("in1", ""))
+	if in1 == "":
+		return "hors-sol (aucun intrant de tuile)"
+	var s := "%s ×%s" % [in1, _fmt1(rec.get("q1", 0.0))]
+	var in2 := String(rec.get("in2", ""))
+	if in2 != "":
+		s += " + %s ×%s" % [in2, _fmt1(rec.get("q2", 0.0))]
+	var alt1 := String(rec.get("alt1", ""))
+	if alt1 != "" and alt1 != in1:
+		s += " (ou %s)" % alt1
+	var out := String(rec.get("out", ""))
+	if out != "":
+		s += " → %s ×%s" % [out, _fmt1(rec.get("qout", 0.0))]
+	return s
+
+## un nombre à 1 décimale, sans zéro inutile (1.0 → "1", 2.8 → "2.8").
+func _fmt1(v) -> String:
+	var f := float(v)
+	return ("%d" % int(round(f))) if absf(f - round(f)) < 0.05 else ("%.1f" % f)
+
 ## tronque un texte à une largeur en px (petit corps)
 func _fit(s: String, wpx: float) -> String:
 	while VKit.text_w(s, VKit.FS_SMALL) > wpx and s.length() > 6:
@@ -138,17 +173,20 @@ func _draw() -> void:
 	var content_h := 0.0
 
 	if _tab == 0:
-		# ── ÉDIFICES : recette en ICÔNES et EFFET chiffré, sans texte d'ambiance. ──
+		# ── ÉDIFICES : une CARTE par bâtiment — Nom+Prix / Rendement / Ressources /
+		# Prochain palier. Un édifice verrouillé par la tech N'EST JAMAIS listé comme
+		# posable : il n'apparaît qu'en tag « Prochain palier » sur la carte de son
+		# palier COURANT (celui qu'on peut réellement bâtir maintenant).
+		var w = Sim.world
 		for i in range(_builds.size()):
 			var b: Dictionary = _builds[i]
 			if int(b.get("prev", -1)) >= 0 and not bool(b.get("prev_built", false)):
-				continue   # palier caché : son précédent n'existe pas encore chez nous
-			var on2: bool = bool(b.get("debloque", false))
-			if not on2:
-				continue   # CLARTÉ (retour joueur) : on masque les édifices verrouillés par la tech
+				continue   # palier hors de portée : son précédent n'existe pas encore chez nous
+			if not bool(b.get("debloque", false)):
+				continue   # verrouillé par la tech : surfacé en tag sur son prédécesseur, pas ici
 			var btype := int(b.get("type", -1))
 			var leg: Dictionary = _blegal.get(btype, {})
-			var affordable: bool = bool(leg.get("legal", true)) if on2 else false
+			var affordable: bool = bool(leg.get("legal", true))
 			var row := Rect2(PADX, yrow, rw, RH_ED - 4.0)
 			content_h += RH_ED
 			if yrow > _ph or yrow < ly0 - 4.0:
@@ -160,54 +198,64 @@ func _draw() -> void:
 			var tex: Texture2D = UIKit.building_sprite(btype)
 			if tex != null:
 				draw_texture_rect(tex, Rect2(PADX + 4, yrow + 4, 34, 34), false,
-					Color.WHITE if (on2 and affordable) else Color(0.5, 0.5, 0.55, 0.65))
-			var ncol := VKit.COL_PARCH if (on2 and affordable) else VKit.COL_DIM
-			VKit.text(self, Vector2(PADX + 48, yrow + 5), ncol, String(b.get("nom", "")))
-			if not on2:
-				VKit.text(self, Vector2(PADX + 38 + VKit.text_w(String(b.get("nom", ""))) + 6, yrow + 5),
-					VKit.COL_GOLD, "✦", VKit.FS_SMALL)
+					Color.WHITE if affordable else Color(0.5, 0.5, 0.55, 0.65))
+			var ncol := VKit.COL_PARCH if affordable else VKit.COL_DIM
+			# L1 — NOM (gauche) · PRIX + DURÉE (droite)
+			VKit.text(self, Vector2(PADX + 48, yrow + 3), ncol, String(b.get("nom", "")))
 			var ctx := "%d or · %d j" % [int(b.get("gold", 0)), int(b.get("days", 0))]
-			VKit.value(self, Vector2(PADX + rw - VKit.text_w(ctx, VKit.FS_SMALL) - 6, yrow + 6),
+			VKit.value(self, Vector2(PADX + rw - VKit.text_w(ctx, VKit.FS_SMALL) - 6, yrow + 5),
 				ctx, VKit.FS_SMALL)
-			# L2 : la RECETTE en icônes de ressource (retour joueur : « icône ressources »)
+			# L2 — RENDEMENT (l'effet RÉEL, delta ProvBuild — la membrane, pas une promesse)
+			var eff := String(b.get("effet", ""))
+			VKit.text(self, Vector2(PADX + 48, yrow + 21), VKit.sense(0.72), _fit(eff, rw - 54.0), VKit.FS_SMALL)
+			# L3 — RESSOURCES (la recette, en icônes)
 			var cx := PADX + 48.0
-			for c in b.get("cost", []):
+			var cost: Array = b.get("cost", [])
+			for c in cost:
 				var rnom := String(c.get("res", ""))
 				var rspr: Texture2D = UIKit.resource_icon(rnom)
 				if rspr != null:
-					draw_texture_rect(rspr, Rect2(cx, yrow + 27, 20, 20), false)
+					draw_texture_rect(rspr, Rect2(cx, yrow + 38, 20, 20), false)
 					cx += 23
 				else:
-					VKit.text(self, Vector2(cx, yrow + 30), VKit.COL_DIM, rnom + " ", VKit.FS_SMALL)
+					VKit.text(self, Vector2(cx, yrow + 41), VKit.COL_DIM, rnom + " ", VKit.FS_SMALL)
 					cx += VKit.text_w(rnom + " ", VKit.FS_SMALL)
-				VKit.text(self, Vector2(cx, yrow + 30), VKit.COL_PARCH, "×%d" % int(c.get("qty", 0)), VKit.FS_SMALL)
+				VKit.text(self, Vector2(cx, yrow + 41), VKit.COL_PARCH, "×%d" % int(c.get("qty", 0)), VKit.FS_SMALL)
 				cx += VKit.text_w("×%d" % int(c.get("qty", 0)), VKit.FS_SMALL) + 10
-			if not on2:
-				VKit.text(self, Vector2(cx + 4, yrow + 27), VKit.COL_GOLD, "✦ verrou tech", VKit.FS_SMALL)
-			elif not affordable:
-				VKit.text(self, Vector2(cx + 4, yrow + 27), VKit.sense(0.12),
-					"✗ %s" % _reason_label(leg), VKit.FS_SMALL)
-			# L3 : l'EFFET RÉEL chiffré (delta ProvBuild, façade)
-			var eff := String(b.get("effet", ""))
-			if eff != "":
-				VKit.text(self, Vector2(PADX + 48, yrow + 48), VKit.sense(0.72), _fit(eff, rw - 54.0), VKit.FS_SMALL)
+			if cost.is_empty():
+				VKit.text(self, Vector2(cx, yrow + 41), VKit.COL_DIM, "structurel", VKit.FS_SMALL)
+			if not affordable:
+				VKit.text(self, Vector2(cx + 4, yrow + 41), VKit.sense(0.12),
+					_fit("✗ %s" % _reason_label(leg), (PADX + rw) - (cx + 4) - 4.0), VKit.FS_SMALL)
+			# L4 — PROCHAIN PALIER (edifice_succ), affiché MÊME s'il est verrouillé par la tech
+			var succ := int(w.edifice_succ(btype)) if w.has_method("edifice_succ") else -1
+			var succ_b: Dictionary = _bytype.get(succ, {})
+			if not succ_b.is_empty():
+				var slocked := not bool(succ_b.get("debloque", false))
+				VKit.text(self, Vector2(PADX + 48, yrow + 58),
+					VKit.COL_DIM if slocked else VKit.sense(0.65),
+					"Prochain palier : %s%s" % [String(succ_b.get("nom", "")), " (verrou tech)" if slocked else ""],
+					VKit.FS_SMALL)
+			# HOVER : le détail complet, en mots
 			var lines := PackedStringArray()
 			if eff != "":
 				lines.append(eff)
-			for c in b.get("cost", []):
+			for c in cost:
 				lines.append("%s : %d" % [c.get("res", ""), int(c.get("qty", 0))])
 			lines.append("Or : %d   ·   %d jours" % [int(b.get("gold", 0)), int(b.get("days", 0))])
-			if not on2:
-				lines.append("✦ verrouillé par la technologie")
-			elif not affordable:
+			if not affordable:
 				lines.append("✗ %s" % _reason_label(leg))
+			if not succ_b.is_empty():
+				lines.append("Prochain palier : %s" % String(succ_b.get("nom", "")))
 			_hover_zones.append({"rect": row, "head": String(b.get("nom", "")), "lines": lines,
 				"card": _build_info_card(b, leg)})
-			if on2 and affordable:
+			if affordable:
 				_click_zones.append({"rect": row, "kind": "build", "type": btype, "nom": String(b.get("nom", ""))})
 			yrow += RH_ED
 	else:
 		# ── MANUFACTURES — sur la province visée (target_pid, RE-KEY : pid direct) ──
+		# CARTE : Nom + Prix (L1) · la RECETTE réelle intrants → produit (L2, chantier
+		# « vérité absolue » — matcher manuf_recipe(bld), plus une phrase d'ambiance).
 		var w = Sim.world
 		if target_pid < 0:
 			VKit.text(self, Vector2(PADX, yrow), VKit.COL_DIM, "sélectionnez une de vos provinces", VKit.FS_SMALL)
@@ -219,6 +267,8 @@ func _draw() -> void:
 				if int(w.manuf_legal(target_pid, bld)) != 1:
 					continue
 				var mnom := String(w.manuf_name(bld))
+				var rec: Dictionary = w.manuf_recipe(bld) if w.has_method("manuf_recipe") else {}
+				var rtxt := _recipe_text(rec)
 				var rowm := Rect2(PADX, yrow, rw, RH_MF - 4.0)
 				content_h += RH_MF
 				if yrow > _ph or yrow < ly0 - 4.0:
@@ -236,11 +286,10 @@ func _draw() -> void:
 					var mctx := "%d or" % mcost
 					VKit.value(self, Vector2(PADX + rw - VKit.text_w(mctx, VKit.FS_SMALL) - 6, yrow + 6),
 						mctx, VKit.FS_SMALL)
-				VKit.text(self, Vector2(PADX + 46, yrow + 23), VKit.COL_DIM,
-					"s'élève dans la province visée (bras & intrants locaux)", VKit.FS_SMALL)
+				VKit.text(self, Vector2(PADX + 46, yrow + 23), VKit.sense(0.72), _fit(rtxt, rw - 52.0), VKit.FS_SMALL)
 				_hover_zones.append({"rect": rowm, "head": mnom, "lines": PackedStringArray([
-					"Manufacture : s'élève dans la province visée",
-					("Or : %d" % mcost) if mcost > 0 else "coût au drain",
+					"Recette : %s" % rtxt,
+					("Or (chantier) : %d" % mcost) if mcost > 0 else "coût au drain",
 				])})
 				_click_zones.append({"rect": rowm, "kind": "manuf", "type": bld, "nom": mnom})
 				mi += 1
