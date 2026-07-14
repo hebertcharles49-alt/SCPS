@@ -43,6 +43,9 @@
      * intégralement à UNE classe/un siège (pas de ratio à exposer). */ \
     X(UPKEEP_SHARE_LAB,       0.3334f) \
     X(UPKEEP_SHARE_BOURG,     0.3333f) \
+    /* M3b-v2.1 — l'exonération vitale (§6-7) mord jusqu'à CE multiple du panier/tête
+     * (1.0 = le seuil d'origine ; >1 protège une marge au-dessus de la subsistance). */ \
+    X(TAX_EXEMPT_BASKET_MULT,   1.0f) \
     /* §6-7 — IMPÔT PER-CAPITA : forfait MENSUEL par âme et par classe (or/hab/mois). */ \
     X(TAX_BASE_LABORER,       0.06f) \
     X(TAX_BASE_BOURGEOIS,     0.15f) \

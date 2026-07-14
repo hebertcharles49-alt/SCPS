@@ -3350,8 +3350,9 @@ void econ_tick(WorldEconomy *e, float dt) {
              * mobility_tick_region plus bas). Sans ce garde-fou, le forfait rase une richesse
              * déjà proche de 0 — le mécanisme qui a tué M3b v1 (compte touchant 0 plusieurs
              * mois d'affilée → taxe forfaitaire achevant Laborer, état absorbant). */
-            if (st->pop>EPS && pid<SCPS_MAX_PROV && (st->wealth/st->pop) < g_basket_pc[pid][c])
-                collected = 0.f;
+            if (st->pop>EPS && pid<SCPS_MAX_PROV
+                && (st->wealth/st->pop) < g_basket_pc[pid][c]*tune_f("TAX_EXEMPT_BASKET_MULT",1.0f))
+                collected = 0.f;   /* ×multiple du panier — levier de calibrage M3b-v2.1 (registre J) */
             if (collected>st->wealth) collected=st->wealth;
             st->wealth   -= collected;
             re->treasury += collected;
