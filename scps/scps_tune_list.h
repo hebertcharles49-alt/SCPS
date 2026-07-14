@@ -20,6 +20,12 @@
      * déterministe — le joueur a son propre curseur, BUDGET_MINT). */ \
     X(MINT_ROYALTY,          0.15f) \
     X(MINT_AI_SHARE,         0.15f) \
+    /* ÉTALON BIMÉTALLIQUE (v5) : parité FIXE monnaie↔métal — la monnaie est liée à la
+     * RESSOURCE, pas à sa cote. « À calibrer » (joueur) : l'or part à 8/tonne (= son prix
+     * de base — rien ne se recale), le cuivre à 2.6. Le marché flotte AUTOUR (arbitrage
+     * vendre-vs-frapper émergent). */ \
+    X(MINT_PARITY_GOLD,       8.0f) \
+    X(MINT_PARITY_COPPER,     2.6f) \
     /* §G0.4/H7 — le robinet d'or (les bandes de flux) */ \
     X(ENTRETIEN_DIV,        400.0f) \
     X(MANUF_UPKEEP_DAY,       0.05f) \

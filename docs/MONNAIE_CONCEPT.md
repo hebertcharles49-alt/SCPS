@@ -34,12 +34,17 @@ commerce au lieu de frapper la planète uniformément.
    n'est pas qu'un luxe — fournitures navales, armes à feu, horloges, colifichets
    (scps_econ.c:425). Seul le surplus MARCHAND au-delà d'un stock de fonctionnement
    peut rejoindre la réserve monétaire (en sus de la redevance).
-4. **Frappe NEUTRE EN VALEUR — 1:1, pas de Gresham** (v4, décision joueur
-   2026-07-14 — remplace 10:1 puis 5:1) : le métal se convertit en monnaie À SON PRIX
-   DE MARCHÉ courant (1 unité de VALEUR métal = 1 unité de monnaie). Aucun rapport
-   fixe or/cuivre, donc AUCUN arbitrage, aucun métal à privilégier — l'or frappe plus
-   par tonne simplement parce qu'il VAUT plus (prix de base 8 vs 2.6, scps_econ.c:315,
-   et le prix courant flotte). La loi de Gresham est retirée du design.
+4. **ÉTALON BIMÉTALLIQUE — parité FIXE à la ressource** (v5, décision joueur
+   2026-07-14 — remplace la frappe au prix courant de v4) : la monnaie est liée au
+   MÉTAL, pas à sa cote. 1 tonne d'or frappe **MINT_PARITY_GOLD = 8** monnaies
+   (« l'étalon, à calibrer — part sur 8 » = le prix de base, rien ne se recale) ;
+   le cuivre **MINT_PARITY_COPPER = 2.6**. Registre J. Le MARCHÉ de l'or/cuivre
+   continue de flotter AUTOUR de la parité → l'arbitrage devient un CHOIX émergent :
+   vendre son métal quand la joaillerie/l'industrie paie au-dessus de la parité,
+   le frapper quand elle paie en dessous. Aucun métal privilégié par construction.
+   Conséquence d'identité : la monnaie EST du métal frappé — le trésor devient
+   littéralement du métal (M6 en découle), l'invariant M(t)=M(0)+frappe devient
+   physique.
    **Préparatif DÉJÀ implémenté (2026-07-14)** : « à la tonne » — 1 unité de ressource
    est un LOT MASSIF, une tonne d'or n'est pas une pièce → intrants d'or des recettes
    ÷4 (joaillerie 0.8→0.2, parurier 1.0→0.25) : la consommation physique d'or diminue,

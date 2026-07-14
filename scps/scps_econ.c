@@ -2029,8 +2029,12 @@ float econ_country_mint_share(const WorldEconomy *e, int cid){
     return clampf(tune_f("MINT_AI_SHARE", 0.15f), 0.f, 1.f);
 }
 /* Frappe MENSUELLE — fonction PURE, MIROIR EXACT du point fixe d'econ_tick (aucune mutation
- * ici : ni la réserve, ni le trésor, ni le flux ne bougent). Valeur NEUTRE 1:1 au prix courant
- * de la province capitale — aucun rapport fixe or/cuivre (décision 4, v4). */
+ * ici : ni la réserve, ni le trésor, ni le flux ne bougent).
+ * ÉTALON BIMÉTALLIQUE (décision joueur v5, 2026-07-14) : la monnaie est liée au MÉTAL,
+ * pas à sa cote — parité FIXE par définition (MINT_PARITY_* au registre J, « à calibrer » :
+ * l'or part à 8/tonne = son prix de base, le cuivre à 2.6 — rien ne se recale). Le MARCHÉ
+ * de l'or/cuivre continue de flotter AUTOUR de la parité : vendre quand la joaillerie paie
+ * plus, frapper quand elle paie moins — l'arbitrage est ÉMERGENT, aucun métal privilégié. */
 void econ_country_mint_month(const WorldEconomy *e, int cid,
                               float *gold_out, float *copper_out, float *value_out,
                               int *cap_pid_out){
@@ -2041,8 +2045,7 @@ void econ_country_mint_month(const WorldEconomy *e, int cid,
             float share = econ_country_mint_share(e, cid);
             g = e->reserve_gold[cid]   * share / 12.f;
             c = e->reserve_copper[cid] * share / 12.f;
-            const ProvinceEconomy *cp = &e->prov[cap];
-            v = g*cp->price[RES_GOLD] + c*cp->price[RES_COPPER];
+            v = g*tune_f("MINT_PARITY_GOLD", 8.0f) + c*tune_f("MINT_PARITY_COPPER", 2.6f);
         }
     }
     if (gold_out)    *gold_out=g;
