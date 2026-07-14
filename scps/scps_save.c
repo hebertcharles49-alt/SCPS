@@ -278,6 +278,9 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
          * jamais un index, mais une valeur déraisonnable trahirait un fichier forgé/corrompu). */
         if (!(s->econ->reserve_gold[c]  >=0.f && s->econ->reserve_gold[c]  <1.0e12f)) return false;
         if (!(s->econ->reserve_copper[c]>=0.f && s->econ->reserve_copper[c]<1.0e12f)) return false;
+        /* v88 — MONNAIE M3b-v2 : le dénominateur VA (la valeur produite du tick précédent,
+         * base du facteur monétaire price_level) se revalide (≥0, fini — motif reserve_gold). */
+        if (!(s->econ->va_country_prev[c] >=0.f && s->econ->va_country_prev[c] <1.0e12f)) return false;
     }
     if (w->n_countries <0 || w->n_countries >SCPS_MAX_COUNTRY)   return false;
     if (w->n_continents<0 || w->n_continents>SCPS_MAX_CONTINENT) return false;

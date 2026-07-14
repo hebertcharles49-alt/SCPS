@@ -500,6 +500,22 @@ typedef struct {
     float         reserve_gold[SCPS_MAX_COUNTRY];
     float         reserve_copper[SCPS_MAX_COUNTRY];
 
+    /* v88 — MONNAIE M3b-v2 Cœur A : L'ÉTAT ACHÈTE LA PRODUCTION (docs/MONNAIE_CONCEPT.md §M3,
+     * docs/MONNAIE_M0_AUDIT.md). Remplace la v1 (compte de marché séparé, stash
+     * `monnaie-m3b-flip-non-calibre`, abandonnée — TROUVAILLES « CHANTIER MONNAIE — M3b »).
+     * Ici, la CAISSE est le trésor provincial EXISTANT (pas un pool neuf) : `price_level[c]`
+     * (calculé chaque tick, scratch — PAS sérialisé) = la fraction de la valeur produite
+     * (`va_country_prev`, décalée d'1 tick) que la caisse nationale (Σ surplus des trésors
+     * provinciaux, au-dessus de la réserve d'exploitation SINK_FLOOR) peut RÉELLEMENT payer,
+     * bornée à 1 (l'État ne paie jamais une prime). Ce même facteur multiplie ENSUITE le
+     * niveau de prix national (§3 du brief) : l'État REVEND à ce prix mobile, ce qui referme
+     * le circuit (moins de monnaie ⇒ salaires nominaux plus bas ET prix plus bas, panier réel
+     * préservé — le mécanisme anti-6:1). `va_country_prev` mémorise la VA nationale TOTALE du
+     * tick précédent (dénominateur — le vrai total du tick COURANT n'est connu qu'après la
+     * boucle complète des provinces, même lag que le prix national). Persisté (SAVE_VERSION
+     * 88, save_sane borne ≥0 et <1e12, motif reserve_gold). */
+    float         va_country_prev[SCPS_MAX_COUNTRY];
+
     /* ── FIN_CHAUD (§27, 2026-07-08) — CUMULS SIM du combustible RÉELLEMENT brûlé
      * (l'offre SERVIE, jamais la demande) : bois de FEU consommé au panier des
      * journaliers (econ_tick, branche générique du marché) + CHARBON consommé en

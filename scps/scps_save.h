@@ -32,7 +32,16 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 87u           /* v87 : MONNAIE M3a — colonisation transfert (pas création) :
+#define SAVE_VERSION 88u           /* v88 : MONNAIE M3b-v2 — L'ÉTAT ACHÈTE LA PRODUCTION à prix
+                                    * endogène (la CAISSE = le trésor provincial existant, pas un
+                                    * pool neuf) puis REVEND à un niveau de prix national MOBILE
+                                    * par pays (docs/MONNAIE_CONCEPT.md §M3-M4) : seul
+                                    * `va_country_prev[SCPS_MAX_COUNTRY]` (la VA nationale du tick
+                                    * précédent, dénominateur du facteur monétaire price_level,
+                                    * calculé chaque tick en SCRATCH) est sérialisé →
+                                    * WorldEconomy grandit (blob ECON, 1 tableau float[MAX_COUNTRY]
+                                    * de plus, motif reserve_gold) ; <v88 refusé.
+                                    * v87 : MONNAIE M3a — colonisation transfert (pas création) :
                                     * struct ColonyWork gagne seed_wealth[CLASS_COUNT] (richesse
                                     * emportée par les colons au départ, livrée à l'arrivée) →
                                     * WorldEconomy grandit (blob ECON) ; <v87 refusé.

@@ -2878,6 +2878,44 @@ void econ_tick(WorldEconomy *e, float dt) {
         0.f,
     };
 
+    /* MONNAIE M3b-v2 — CŒUR A : « L'ÉTAT ACHÈTE LA PRODUCTION » (docs/MONNAIE_CONCEPT.md §M3,
+     * remplace la v1 « compte de marché » — stash monnaie-m3b-flip-non-calibre, abandonnée :
+     * TROUVAILLES « CHANTIER MONNAIE — M3b »). `price_level[c]` = la fraction de la VA
+     * nationale du tick PRÉCÉDENT (`va_country_prev`, décalage d'1 tick — le vrai total du
+     * tick COURANT n'est connu qu'après la boucle complète) que la CAISSE nationale (Σ
+     * surplus des trésors PROVINCIAUX EXISTANTS, au-dessus de la réserve d'exploitation
+     * SINK_FLOOR — AUCUN pool neuf, doctrine province-grain respectée) peut RÉELLEMENT payer,
+     * bornée à 1 (l'État ne paie jamais une prime au-dessus de la valeur produite — brief :
+     * « prix_achat = min(caisse, valeur)/volume »). CALIBRAGE (sweep seed 9, 250 ans) : un
+     * premier essai avait relevé ce plancher à COURT_FLOOR (4000, le seuil de hoarding) pour
+     * protéger l'entretien de la crowd-out — ça a MARCHÉ pour la friche mais épinglé
+     * `price_level` à 0 quasi en permanence pour les jeunes économies (trésor rarement >4000
+     * en début de partie ⇒ salaire quasi nul, cycles boom/bust au franchissement du seuil).
+     * Le VRAI fix est l'ORDRE, pas le plancher (voir le débit DIFFÉRÉ de l'achat, appliqué
+     * APRÈS entretien/court/admin/redépense, plus bas dans la boucle — ces sinks gardent la
+     * priorité sur la caisse SANS qu'un plancher artificiel ait à le mimer) : SINK_FLOOR
+     * redevient le bon niveau (la même réserve de fonctionnement que l'entretien lui-même).
+     * Calculé UNE FOIS ici, en LECTURE SEULE sur l'état figé au début du tick : aucun biais
+     * d'ordre possible (contrairement à la v1, qui mutait un pool partagé PENDANT la boucle).
+     * Ce MÊME facteur revend ensuite (clôture, PRIX NATIONAL) — un seul circuit cohérent
+     * achat/revente. Les MÉTAUX monétaires (or/cuivre) en sont EXEMPTÉS au site du prix
+     * (price_level→1 pour eux) : l'étalon (v5) reste un numéraire stable pendant que tout le
+     * reste flotte contre lui. */
+    float caisse_snapshot[SCPS_MAX_COUNTRY]={0}, price_level[SCPS_MAX_COUNTRY];
+    { const float opf_pre = tune_f("SINK_FLOOR", SINK_FLOOR);
+      for (int p=0;p<e->n_prov && p<SCPS_MAX_PROV;p++){
+          const ProvinceEconomy *pr=&e->prov[p];
+          if (!pr->active || !pr->colonized) continue;
+          int o=pr->owner; if (o<0||o>=SCPS_MAX_COUNTRY) continue;
+          caisse_snapshot[o] += fmaxf(0.f, pr->treasury - opf_pre);
+      }
+      for (int c=0;c<SCPS_MAX_COUNTRY;c++)
+          price_level[c] = (e->va_country_prev[c]>EPS)
+                          ? clampf(caisse_snapshot[c]/e->va_country_prev[c], 0.f, 1.f)
+                          : 1.f;   /* pas encore de VA de référence (genèse/pays neuf) : prix plein, non contraint */
+    }
+    float va_country_this[SCPS_MAX_COUNTRY]={0};
+
     for (int pid=0; pid<e->n_prov && pid<SCPS_MAX_PROV; pid++) {
         ProvinceEconomy *re=&e->prov[pid];
         if (!re->active || !re->colonized) continue;
@@ -3198,14 +3236,46 @@ void econ_tick(WorldEconomy *e, float dt) {
         }
         re->gdp=gdp;
 
-        /* ---- 3. REVENUS : salaire / profit / RENTE (l'élite vit de la rente) */
-        re->strata[CLASS_LABORER].wealth   += wage_pool;
-        re->strata[CLASS_BOURGEOIS].wealth += profit_pool;
-        re->strata[CLASS_ELITE].wealth     += tax_pool;   /* rente, PAS l'impôt d'État */
-        /* MONNAIE M3a — L'INSTRUMENT (§1.1) : c'est ICI que la VA (extraction+manufacture)
-         * devient de la richesse, sans aucun débit correspondant nulle part — la mesure
-         * pure, print-only, aucun effet sur re->strata. */
-        g_va_produced_cum += (double)(wage_pool+profit_pool+tax_pool);
+        /* ---- 3. REVENUS : salaire / profit / RENTE (l'élite vit de la rente) ----
+         * MONNAIE M3b-v2 — CŒUR A : la VA du tick n'est PLUS créditée en entier ex nihilo —
+         * l'État l'ACHÈTE au prix endogène `price_level[oc]` (calculé en tête de tick,
+         * ci-dessus), appliqué UNIFORMÉMENT aux 3 pools (JAMAIS un rationnement en cascade —
+         * la v1 avait essayé salaire→profit→rente ET un ratio uniforme sur les POOLS : les
+         * deux ont fait s'effondrer une classe, cf. TROUVAILLES « CHANTIER MONNAIE — M3b ».
+         * Ici c'est un facteur de PRIX qui baisse, pas une file d'attente — aucune classe
+         * n'est jamais mise à 0 pendant qu'une autre est payée pleine). Le débit correspondant
+         * frappe LE TRÉSOR DE CETTE PROVINCE (la caisse existante, doctrine province-grain —
+         * price_level est un ratio NATIONAL en lecture seule, appliqué localement, jamais un
+         * pool partagé mutable pendant la boucle : aucun biais d'ordre possible). */
+        float va_prov = wage_pool+profit_pool+tax_pool;
+        float pending_buy_debit = 0.f;   /* MONNAIE M3b-v2 : appliqué APRÈS entretien/court/admin/
+                                          * redépense, plus bas — les sinks EXISTANTS gardent la
+                                          * priorité sur la caisse (protégés, jamais crowd-out par
+                                          * l'achat neuf) ; l'achat absorbe ce qui reste, quitte à
+                                          * pousser le trésor sous sa réserve pour CE tick (auto-
+                                          * correctif : la caisse se refait au tick suivant, taxe +
+                                          * revente — cf. §2.1 plus bas). */
+        if (re->owner>=0 && re->owner<SCPS_MAX_COUNTRY){
+            int oc=re->owner;
+            va_country_this[oc] += va_prov;
+            float pf = price_level[oc];
+            float pay_wage=wage_pool*pf, pay_profit=profit_pool*pf, pay_tax=tax_pool*pf;
+            re->strata[CLASS_LABORER].wealth   += pay_wage;
+            re->strata[CLASS_BOURGEOIS].wealth += pay_profit;
+            re->strata[CLASS_ELITE].wealth     += pay_tax;   /* rente, PAS l'impôt d'État */
+            pending_buy_debit = pay_wage+pay_profit+pay_tax;   /* l'État PAIE — débit différé */
+            /* MONNAIE M3b-v2 — L'INSTRUMENT (§1.1) : ce qui n'a PAS pu être payé (pf<1) reste
+             * une création pure, mesurée — doit fondre vers 0 à mesure que la caisse suit la VA. */
+            g_va_produced_cum += (double)(va_prov - pending_buy_debit);
+        } else {
+            /* province HORS EMPIRE (fixture/banc isolé, owner<0) : pas de pays ⇒ pas de
+             * compte de marché possible — comportement PRÉ-M3b inchangé (création documentée,
+             * hors périmètre M3b qui ne couvre que le grain province RATTACHÉ à un pays). */
+            re->strata[CLASS_LABORER].wealth   += wage_pool;
+            re->strata[CLASS_BOURGEOIS].wealth += profit_pool;
+            re->strata[CLASS_ELITE].wealth     += tax_pool;
+            g_va_produced_cum += (double)va_prov;
+        }
 
         /* ---- 3b. IMPÔT D'ÉTAT (§6-7) : par classe, taux VISÉ borné par le SEUIL
          * = tolérance(éthos,classe) × (0.4 + 0.6·satisfaction du tick passé).
@@ -3223,6 +3293,15 @@ void econ_tick(WorldEconomy *e, float dt) {
             /* REFONTE 2026-07-13 — assiette PER-CAPITA : forfait mensuel × effectif × curseur ×
              * (1−évasion). ×(dt·12) = ×1 au tick mensuel (dt=1/12) ; au banc (dt=1) = ×12 = une ANNÉE. */
             float collected = tax_base[c] * st->pop * mult * (1.f-evasion) * (dt*12.f);
+            /* MONNAIE M3b-v2 — EXONÉRATION SOUS LE PANIER VITAL (brief §4, garde-fou de
+             * transition ; docs/MONNAIE_M3B2_AUDIT_SEUILS.md §1) : le forfait NOMINAL n'est
+             * PAS changé, mais il ne MORD PLUS un ménage déjà sous le coût du panier/tête du
+             * tick PRÉCÉDENT (g_basket_pc — même lecture décalée d'1 tick que
+             * mobility_tick_region plus bas). Sans ce garde-fou, le forfait rase une richesse
+             * déjà proche de 0 — le mécanisme qui a tué M3b v1 (compte touchant 0 plusieurs
+             * mois d'affilée → taxe forfaitaire achevant Laborer, état absorbant). */
+            if (st->pop>EPS && pid<SCPS_MAX_PROV && (st->wealth/st->pop) < g_basket_pc[pid][c])
+                collected = 0.f;
             if (collected>st->wealth) collected=st->wealth;
             st->wealth   -= collected;
             re->treasury += collected;
@@ -3322,6 +3401,23 @@ void econ_tick(WorldEconomy *e, float dt) {
         /* le solde (depense − payroll) a quitté le trésor en DÉPENSE PUBLIQUE (armée,
          * travaux) : il ne s'agit plus de hoarder. L'expansion (§1) est, elle, portée par
          * le signal-prix — le pouvoir d'achat rendu ici en est le carburant indirect. */
+
+        /* MONNAIE M3b-v2 — le débit DIFFÉRÉ de l'achat d'État (§3 plus haut) : appliqué ICI,
+         * APRÈS entretien/court/admin/redépense, pour que ces sinks EXISTANTS gardent la
+         * priorité sur la caisse de début de tick (jamais de crowd-out — CALIBRAGE sweep
+         * seed 9/250 ans : appliqué IMMÉDIATEMENT après §3, l'achat asséchait la même réserve
+         * que l'entretien, qui s'exécute plus tard dans la boucle et ne trouvait plus rien →
+         * friche ×22, 5→110 régions impayées). CLAMPÉ à 0 (jamais de trésor négatif) : un
+         * débit non clampé poussait le trésor très négatif, et la NÉGATIVITÉ elle-même cassait
+         * l'entretien du tick SUIVANT (`upkeep_order > re->treasury` est vrai dès que le trésor
+         * est négatif, quel que soit le montant dû) — un creux d'UN tick devenait une spirale
+         * de plusieurs ticks avant que la taxe ne renfle assez (friche à 38 % des provinces,
+         * seed 9/250 ans). Le reliquat non financé rejoint l'instrument (créé, pas rasé sur le
+         * trésor) — c'est un résidu MESURÉ, documenté, jamais une dette silencieuse (le crédit,
+         * M3c, reste hors scope). */
+        { float debit = fminf(pending_buy_debit, fmaxf(0.f, re->treasury));
+          re->treasury -= debit;
+          if (re->owner>=0) g_va_produced_cum += (double)(pending_buy_debit - debit); }
 
         /* §besoins progressifs — combien de besoins (par ordre de priorité) sont ACTIFS
          * dans cette province : f(niveau de capitale, que la POP débloque). Petit centre →
@@ -3511,9 +3607,16 @@ void econ_tick(WorldEconomy *e, float dt) {
                 }
             }
             re->strata[c].wealth=fmaxf(0.f,budget);
-            /* MONNAIE M3a — L'INSTRUMENT (§2.1) : le panier consommé (budget0−final) part au
-             * STOCK vendu mais AUCUN vendeur n'est crédité — la mesure pure du trou noir. */
-            g_consumption_destroyed_cum += (double)(budget0-re->strata[c].wealth);
+            /* MONNAIE M3b-v2 — « L'ÉTAT REVEND » (brief §2) : le débit de l'acheteur (panier
+             * consommé, budget0−final) est INCHANGÉ, mais l'argent CRÉDITE désormais LE TRÉSOR
+             * DE CETTE PROVINCE (au prix de revente courant, re->price[] — déjà mobile via
+             * price_level, cf. la clôture PRIX NATIONAL) au lieu de disparaître — la caisse qui
+             * a acheté la production (§3 ci-dessus) se refait ainsi, dans la MÊME province,
+             * sans indirection nationale. Une province HORS EMPIRE (owner<0, fixture/banc
+             * isolé) n'a pas d'État pour vendre : elle reste un puits documenté par l'instrument. */
+            { float consumed = budget0-re->strata[c].wealth;
+              if (re->owner>=0 && re->owner<SCPS_MAX_COUNTRY) re->treasury += consumed;
+              else                                            g_consumption_destroyed_cum += (double)consumed; }
             float basket=(need_w>0.f)?met_w/need_w:0.5f;
             /* la surtaxe (§6) gronde : elle ABAISSE la satisfaction → agitation */
             /* CICATRICE D'ANNEXION (étage 3d) : la plaie douce frappe la STABILITÉ — elle ABAISSE
@@ -3717,13 +3820,35 @@ void econ_tick(WorldEconomy *e, float dt) {
 
     }
 
+    /* MONNAIE M3b-v2 — CLÔTURE : `va_country_prev` glisse vers le total RÉEL de CE tick
+     * (va_country_this), le dénominateur de `price_level` au tick SUIVANT. Aucun compte
+     * partagé à solder ici (v1 abandonnée) — les débits/crédits (§3, §2.1) ont déjà frappé
+     * directement le trésor de chaque province, pendant la boucle. */
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++){
+        if (getenv("SCPS_MKTDIAG") && c<4)
+            fprintf(stderr,"[MKTDIAG] tick=%d c=%d caisse=%.1f price_level=%.4f va_this=%.1f va_prev=%.1f\n",
+                    e->tick, c, caisse_snapshot[c], price_level[c], va_country_this[c], e->va_country_prev[c]);
+        e->va_country_prev[c] = va_country_this[c];
+    }
+
     /* PRIX NATIONAL — soldé UNE FOIS par empire sur demande/(pool+offre) NATIONALES (mêmes
      * paliers ⇒ ratio invariant à l'échelle : ni artefact spatial, ni effondrement d'effort),
      * puis PROJETÉ sur re->price de toutes ses provinces (matérialisation). Inertie amorcée du prix
      * national du tick précédent (re->price, uniforme par empire). Itération par index = stable
      * (déterminisme). Les provinces ISOLÉES (owner<0) ont déjà soldé leur prix localement, plus haut. */
     {
-        float infl = (e->ipm>0.f)? e->ipm : 1.f;
+        /* MONNAIE M3b-v2 — PRIX LIBRES (brief §3) : le multiplicateur monétaire n'est plus
+         * l'IPM GLOBAL (`e->ipm`, un seul monde) mais `price_level[c]`, PAR PAYS, calculé en
+         * tête de tick depuis la caisse d'État — « L'ÉTAT REVEND au prix de revente courant,
+         * désormais MOBILE ». IPM neutralisé ICI (double emploi retiré) mais PAS supprimé :
+         * il reste actif pour les provinces ISOLÉES (branche owner<0, plus haut — hors
+         * périmètre M3b) et pour la surcharge d'entretien (`ipmf`, mécanisme distinct). Les
+         * MÉTAUX MONÉTAIRES (or/cuivre) sont EXEMPTÉS de `price_level` (pl=1 pour eux) :
+         * l'étalon (v5, parité fixe monnaie↔métal) reste un numéraire stable — tout le RESTE
+         * flotte contre lui. Le plancher/plafond de prix (0.15×..8×) SUIT désormais
+         * `price_level` au lieu d'ancrer sur BASE_PRICE nu (docs/MONNAIE_M3B2_AUDIT_SEUILS.md
+         * §2) — sinon un plancher figé à la genèse empêcherait la déflation d'équilibre voulue
+         * par ce brief (le piège nommé par le postmortem M3b v1 : « prix RIGIDES »). */
         static float pn[SCPS_MAX_COUNTRY][RES_COUNT];   /* prix national soldé (hors pile) */
         bool done[SCPS_MAX_COUNTRY]; for (int c=0;c<SCPS_MAX_COUNTRY;c++) done[c]=false;
         for (int pid=0; pid<e->n_prov && pid<SCPS_MAX_PROV; pid++){
@@ -3734,10 +3859,11 @@ void econ_tick(WorldEconomy *e, float dt) {
                 done[c]=true;
                 for (int r=0;r<RES_COUNT;r++){
                     if (BASE_PRICE[r]<=0.f){ pn[c][r]=re->price[r]; continue; }
+                    float pl     = (r==RES_GOLD || r==RES_COPPER) ? 1.f : price_level[c];  /* étalon exempté */
                     float avail  = pool[c][r] + supply_nat[c][r];                  /* offre NATIONALE (stock + production) */
-                    float target = BASE_PRICE[r]*infl*clampf(demand_nat[c][r]/(avail+EPS),0.2f,6.f);
+                    float target = BASE_PRICE[r]*pl*clampf(demand_nat[c][r]/(avail+EPS),0.2f,6.f);
                     float p      = re->price[r]*PRICE_INERTIA + target*(1.f-PRICE_INERTIA);  /* amorce = prix national t-1 */
-                    pn[c][r]     = clampf(p, BASE_PRICE[r]*0.15f, BASE_PRICE[r]*8.f);
+                    pn[c][r]     = clampf(p, BASE_PRICE[r]*0.15f*pl, BASE_PRICE[r]*8.f*pl);
                 }
             }
             for (int r=0;r<RES_COUNT;r++) re->price[r]=pn[c][r];   /* PROJECTION : toutes les provinces de l'empire = même prix */
