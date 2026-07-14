@@ -1012,6 +1012,19 @@ void econ_colony_stats(long *founded, long *survival);
  * Pointeurs NULL ignorés individuellement. */
 void econ_money_instrument_get(double *va_produced, double *consumption_destroyed,
                                 double *colonization_net);
+/* MONNAIE M3c — LE CANAL FERMÉ : ce que la péréquation nationale + l'emprunt aux PROPRES
+ * classes (scps_credit.c, credit_borrow_local, appelé en INTERNE par econ_tick — aucun
+ * World* requis) n'ont PAS pu couvrir pour le pays c, CE tick — le besoin restant qui
+ * appelle l'étage CITÉ-ÉTATE de la chaîne (credit_borrow_citystate, QUI requiert un
+ * World* : scps_sim.c seul l'a, via credit_settle_monthly, appelé juste après econ_tick).
+ * Snapshot du tick COURANT (écrasé à chaque appel d'econ_tick, non sérialisé — lu tout de
+ * suite par l'appelant, jamais à cheval sur un reload). */
+float econ_va_shortfall_pending(int c);
+/* Appelée par credit_settle_monthly une fois l'étage CITÉ-ÉTAT tenté : `covered` (<=
+ * econ_va_shortfall_pending(c)) est RETRANCHÉ de l'instrument (g_va_produced_cum) — ce
+ * qui a été financé après coup n'était PAS une création, contrairement à ce que la
+ * comptabilité provisoire d'econ_tick avait dû assumer (résidu mesuré en ATTENDANT). */
+void econ_va_shortfall_resolve(int c, float covered);
 /* L5 — colonie OUTRE-MER : mêmes portes (pop/vivres/cible vierge) mais coût pop ×2.
  * L'appelant (harnais) a vérifié Port + coque + portée de courants. */
 bool econ_colonize_overseas(WorldEconomy *e, int src_rid, int dst_rid, int cid);

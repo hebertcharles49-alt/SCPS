@@ -16,6 +16,7 @@
 #include "scps_factions.h"/* §C3 : faction_capture_total → le « rot » qui mine l'efficacité noble */
 #include "scps_decrees.h" /* ORIENTATIONS DU JOUEUR (2026-07-10) : decree_*_mult(cid) — 1.0 si inactif/IA */
 #include "scps_lang.h"    /* membrane : libellés de filiation traduisibles */
+#include "scps_credit.h"  /* MONNAIE M3c : credit_borrow_local (péréquation+emprunt classes) — AUCUN World* requis */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1083,6 +1084,19 @@ void econ_money_instrument_get(double *va_produced, double *consumption_destroye
     if (va_produced)          *va_produced          = g_va_produced_cum;
     if (consumption_destroyed)*consumption_destroyed = g_consumption_destroyed_cum;
     if (colonization_net)     *colonization_net      = g_colonization_net_cum;
+}
+
+/* MONNAIE M3c — le besoin CITÉ-ÉTAT du tick COURANT (péréquation+classes déjà tentés en
+ * interne par econ_tick) : SNAPSHOT écrasé à chaque tick, non sérialisé (lu tout de suite
+ * par credit_settle_monthly, scps_sim.c — jamais à cheval sur un reload, motif
+ * g_basket_pc/M3b-v2.1). */
+static float g_va_shortfall_cs[SCPS_MAX_COUNTRY];
+float econ_va_shortfall_pending(int c){ return (c>=0&&c<SCPS_MAX_COUNTRY)? g_va_shortfall_cs[c] : 0.f; }
+void econ_va_shortfall_resolve(int c, float covered){
+    if (c<0||c>=SCPS_MAX_COUNTRY||covered<=0.f) return;
+    if (covered>g_va_shortfall_cs[c]) covered=g_va_shortfall_cs[c];
+    g_va_produced_cum -= (double)covered;   /* financé après coup : ce n'était PAS une création */
+    g_va_shortfall_cs[c] -= covered;
 }
 
 /* MEMBRANE DE DÉCISION — le REVENU ANNUEL par pays (voir scps_econ.h). ACCUMULATEUR
@@ -2965,6 +2979,12 @@ void econ_tick(WorldEconomy *e, float dt) {
                           : 1.f;   /* pas encore de VA de référence (genèse/pays neuf) : prix plein, non contraint */
     }
     float va_country_this[SCPS_MAX_COUNTRY]={0};
+    /* MONNAIE M3c — le besoin NATIONAL de péréquation (Σ des reliquats LOCAUX non payés,
+     * §3 plus bas), réglé APRÈS la boucle complète des provinces (credit_borrow_local,
+     * scps_credit.c) — jamais pendant (même précaution d'ordre que caisse_snapshot/
+     * price_level ci-dessus : aucun biais, la péréquation ne CHANGE aucun paiement déjà
+     * fait, elle ne fait que RECHERCHER qui, dans le pays, porte la facture). */
+    float country_shortfall[SCPS_MAX_COUNTRY]={0};
 
     for (int pid=0; pid<e->n_prov && pid<SCPS_MAX_PROV; pid++) {
         ProvinceEconomy *re=&e->prov[pid];
@@ -3485,17 +3505,18 @@ void econ_tick(WorldEconomy *e, float dt) {
          * priorité sur la caisse de début de tick (jamais de crowd-out — CALIBRAGE sweep
          * seed 9/250 ans : appliqué IMMÉDIATEMENT après §3, l'achat asséchait la même réserve
          * que l'entretien, qui s'exécute plus tard dans la boucle et ne trouvait plus rien →
-         * friche ×22, 5→110 régions impayées). CLAMPÉ à 0 (jamais de trésor négatif) : un
-         * débit non clampé poussait le trésor très négatif, et la NÉGATIVITÉ elle-même cassait
-         * l'entretien du tick SUIVANT (`upkeep_order > re->treasury` est vrai dès que le trésor
-         * est négatif, quel que soit le montant dû) — un creux d'UN tick devenait une spirale
-         * de plusieurs ticks avant que la taxe ne renfle assez (friche à 38 % des provinces,
-         * seed 9/250 ans). Le reliquat non financé rejoint l'instrument (créé, pas rasé sur le
-         * trésor) — c'est un résidu MESURÉ, documenté, jamais une dette silencieuse (le crédit,
-         * M3c, reste hors scope). */
+         * friche ×22, 5→110 régions impayées). CLAMPÉ à 0 LOCALEMENT (cette province ne
+         * descend jamais sous 0 elle-même — évite la spirale de friche en cascade nommée
+         * ci-dessus, TOUJOURS vraie). MONNAIE M3c — LE CANAL FERMÉ : le reliquat LOCAL ne
+         * rejoint PLUS directement l'instrument (créé) — il devient le besoin NATIONAL du
+         * PAYS (country_shortfall), réglé une fois la boucle complète (péréquation : le
+         * surplus des AUTRES provinces ; puis emprunt aux classes ; puis, hors boucle,
+         * cité-état — scps_credit.c, credit_borrow_local/credit_settle_monthly). Seul ce
+         * que la chaîne COMPLÈTE ne peut vraiment financer reste un résidu mesuré. */
         { float debit = fminf(pending_buy_debit, fmaxf(0.f, re->treasury));
           re->treasury -= debit;
-          if (re->owner>=0) g_va_produced_cum += (double)(pending_buy_debit - debit); }
+          if (re->owner>=0 && re->owner<SCPS_MAX_COUNTRY)
+              country_shortfall[re->owner] += (pending_buy_debit - debit); }
 
         /* §besoins progressifs — combien de besoins (par ordre de priorité) sont ACTIFS
          * dans cette province : f(niveau de capitale, que la POP débloque). Petit centre →
@@ -3896,6 +3917,24 @@ void econ_tick(WorldEconomy *e, float dt) {
         re->coercion *= COERCION_DECAY;
         if (re->coercion < 0.005f) re->coercion=0.f;
 
+    }
+
+    /* MONNAIE M3c — RÈGLEMENT NATIONAL DE L'ACHAT D'ÉTAT (item 1+2 du brief) : pour chaque
+     * pays, tente D'ABORD la péréquation (le surplus des AUTRES provinces du MÊME pays —
+     * price_level en tenait déjà compte, cf. caisse_snapshot ci-dessus ; le débit peut
+     * désormais RÉELLEMENT l'atteindre) PUIS l'emprunt aux PROPRES classes (élites+
+     * bourgeois, dette RÉELLE — scps_credit.c, credit_borrow_local, AUCUN World* requis).
+     * Le reste, s'il en subsiste, est le besoin CITÉ-ÉTAT du tick — stocké (snapshot,
+     * scps_econ.h) pour credit_settle_monthly (scps_sim.c, qui SEUL a un World*) ; jusque-là
+     * il rejoint l'instrument COMME AVANT (résidu mesuré) — credit_settle_monthly le
+     * retranchera s'il finance après coup (econ_va_shortfall_resolve). */
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++){
+        float need = country_shortfall[c];
+        if (need<=1e-4f){ g_va_shortfall_cs[c]=0.f; continue; }
+        float covered = credit_borrow_local(e, c, need);
+        float remain  = need - covered; if (remain<0.f) remain=0.f;
+        g_va_shortfall_cs[c] = remain;
+        g_va_produced_cum += (double)remain;
     }
 
     /* MONNAIE M3b-v2 — CLÔTURE : `va_country_prev` glisse vers le total RÉEL de CE tick
