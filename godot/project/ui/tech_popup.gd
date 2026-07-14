@@ -10,6 +10,7 @@ extends Control
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
+const ParchTheme = preload("res://ui/parch_theme.gd")
 
 signal closed
 
@@ -69,9 +70,11 @@ func _draw() -> void:
 	var parent_ctrl := get_parent() as Control
 	if parent_ctrl != null:
 		position = ((parent_ctrl.size - size) * 0.5).floor()
-	VKit.panel_bg(self, Rect2(0, 0, W, h))
-	VKit.box(self, Rect2(0, 0, W, h), VKit.COL_GOLD)
-	VKit.text(self, Vector2(16, 12), VKit.COL_GOLD, "Découverte : " + String(_nd.get("name", "?")), VKit.FS_BIG)
+	# CADRE au style ParchTheme (motif tech_panel/construction_panel — le FRÈRE des
+	# fiches, plus la plaque RimWorld) : bord 1px BORDER, coin 3, bandeau HEADER_BG.
+	draw_style_box(ParchTheme.sb(ParchTheme.PANEL_BG, ParchTheme.BORDER, 1, 3, 0, 0, 0, 0), Rect2(0, 0, W, h))
+	draw_style_box(ParchTheme.sb(ParchTheme.HEADER_BG, ParchTheme.BORDER, 0, 0, 0, 0, 0, 0), Rect2(0, 0, W, 38))
+	VKit.text_map(self, Vector2(16, 12), "Découverte : " + String(_nd.get("name", "?")), VKit.FS_BIG, ParchTheme.HEADER_INK, 0)
 	VKit.fill(self, Rect2(12, 38, W - 24, 1), VKit.COL_EDGE)
 	var y := 48.0
 	VKit.detail(self, Vector2(16, y), "Effets :", VKit.FS_SMALL)
@@ -86,8 +89,8 @@ func _draw() -> void:
 		y += 9.0
 		VKit.text_wrapped(self, Vector2(16, y), VKit.COL_DIM, flavor, W - 32.0, 3, VKit.FS_SMALL)
 	_close_rect = Rect2(W - 26, 6, 20, 20)
-	VKit.fill(self, _close_rect, VKit.COL_PANEL2)
-	VKit.box(self, _close_rect, VKit.COL_GOLD)
+	VKit.fill(self, _close_rect, VKit.COL_PANEL)
+	VKit.box(self, _close_rect, VKit.COL_EDGE)
 	VKit.text(self, Vector2(_close_rect.position.x + 6, _close_rect.position.y + 3), VKit.COL_PARCH, "x")
 	var hint := "Cliquer pour fermer"
 	VKit.detail(self, Vector2(W - 16 - VKit.text_w(hint, VKit.FS_SMALL), h - 16), hint, VKit.FS_SMALL)

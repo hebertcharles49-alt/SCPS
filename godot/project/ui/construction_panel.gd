@@ -1,55 +1,176 @@
-extends Control
-## ConstructionPanel — le menu de bâti en DEUX ONGLETS (Édifices | Manufactures),
-## LA VÉRITÉ ABSOLUE (retour joueur 2026-07-14) : une CARTE par bâtiment —
-## Rendement (l'effet réel, delta ProvBuild) / Ressources (la recette, en icônes) /
-## Prix (or + jours) / Prochain palier (edifice_succ, affiché MÊME verrouillé — un
-## bâtiment tech-verrouillé n'est JAMAIS listé comme posable, seulement en tag sur
-## la carte de son palier courant). Molette = défilement. Immediate-mode _draw.
+extends PanelContainer
+## ConstructionPanel — le menu de bâti en DEUX ONGLETS (Édifices | Manufactures), bâti
+## avec des CONTENEURS Godot NATIFS (PanelContainer/VBox/HBox/Grid) + le THEME parchemin
+## PARTAGÉ (parch_theme.gd), MÊME squelette que province_panel_v2/empire_window
+## (HeaderStrip + LedTabStrip + corps ScrollContainer). ZÉRO `_draw`.
+##
+## LA VÉRITÉ ABSOLUE (retour joueur 2026-07-14) : une CARTE par bâtiment — icône + TITRE +
+## prix·durée à droite / ligne d'effet / rangée d'icônes de ressources ×qty / « Prochain
+## palier » (edifice_succ, affiché MÊME verrouillé — un bâtiment tech-verrouillé n'est
+## JAMAIS listé comme posable, seulement en tag sur la carte de son palier courant) /
+## raison de verrou en rouge. Le CONTENU et les gates sont INCHANGÉS : ce fichier est un
+## port de présentation du pilote `_draw` précédent, pas une refonte de logique.
 
-const VKit = preload("res://ui/vkit.gd")
+const ParchTheme = preload("res://ui/parch_theme.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
 
 signal build_requested(kind: String, type: int)
 
-const PADX := 12
-const RH_ED := 84.0    ## carte ÉDIFICE (nom+prix / rendement / ressources / prochain palier)
-const RH_MF := 58.0    ## carte MANUFACTURE (nom+prix / recette réelle)
-const PW := 396.0
-
-var _ph := 360.0       ## hauteur latchée (contenu, borné viewport — le surplus SCROLLE)
-var _tab := 0          ## 0 = Édifices · 1 = Manufactures
-var _tab_rects := []
-var _scrolloff := 0.0
-var _maxscroll := 0.0
+const PW := 440.0
 
 var target_pid := -1       ## la PROVINCE visée (posée par main à l'ouverture) — les manufactures y vivent
 var _builds := []
 var _bytype := {}          # type(int) → b(Dictionary) — pour résoudre le « Prochain palier » (edifice_succ)
 var _blegal := {}          # type → {legal, reason} — miroir read-only du drain CMD_BUILD (lot M)
-var _hover_zones := []     # [{rect, head, lines}]
-var _click_zones := []     # [{rect, kind, type}]
-var _has_hover := false
-var _close_rect := Rect2()
-var _hover_rect := Rect2()
-var _hover_head := ""
-var _hover_lines := PackedStringArray()
-var _hover_pos := Vector2.ZERO
-var _flash := ""           # retour de la dernière action (chantier mis / unité levée / refus)
+var _tab := 0              # 0 = Édifices · 1 = Manufactures
+var _flash := ""           # retour de la dernière action (chantier mis / refus)
 var _flash_ok := true
 
+var _title_lbl: Label = null
+var _tab_group: ButtonGroup = null
+var _tab_btns: Array = []
+var _scroll: ScrollContainer = null
+var _body: VBoxContainer = null
+var _flash_lbl: Label = null
+var _fit_gen := 0          # jeton anti-course : seule la DERNIÈRE mesure différée s'applique
+
+## carte cliquable qui porte SON dossier (get_info_card, lu par le TooltipServer natif
+## au survol) — motif nested class de province_panel_v2 (BiomeTip/TerrainRow).
+class InfoCard:
+	extends PanelContainer
+	var card_data: Dictionary = {}
+	func get_info_card(_at_position: Vector2) -> Dictionary:
+		return card_data.duplicate(true)
+
 func _ready() -> void:
-	size = Vector2(PW, _ph)
-	custom_minimum_size = Vector2(PW, 0)
-	clip_contents = true   # la liste défile SOUS le header (molette)
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	custom_minimum_size = Vector2(PW, 0)
+	theme = ParchTheme.build()
+	_build_shell()
 	Sim.generated.connect(_refresh)
 	Sim.month_ticked.connect(func(_y): _refresh())   # ressources dispo : cadence mensuelle
+	get_viewport().size_changed.connect(_fit_scroll)
 	if Sim.world != null:
 		_refresh()
 
+# ── LE SQUELETTE (header + onglets + corps déroulant) ─────────────────────────
+func _build_shell() -> void:
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 0)
+	add_child(root)
+
+	# HEADER : « Construction — <province visée> » + bouton fermer
+	var head := PanelContainer.new()
+	head.theme_type_variation = "HeaderStrip"
+	root.add_child(head)
+	var hb := HBoxContainer.new()
+	head.add_child(hb)
+	_title_lbl = Label.new()
+	_title_lbl.theme_type_variation = "Title"
+	_title_lbl.text = "Construction"
+	_title_lbl.clip_text = true
+	_title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hb.add_child(_title_lbl)
+	hb.add_child(_close_btn())
+
+	# BARRE D'ONGLETS : Édifices | Manufactures
+	var tabpanel := PanelContainer.new()
+	tabpanel.theme_type_variation = "LedTabStrip"
+	root.add_child(tabpanel)
+	var tabs := HBoxContainer.new()
+	tabs.add_theme_constant_override("separation", 2)
+	tabpanel.add_child(tabs)
+	_tab_group = ButtonGroup.new()
+	_tab_btns.clear()
+	var names := ["Édifices", "Manufactures"]
+	for i in range(names.size()):
+		var b := Button.new()
+		b.theme_type_variation = "Tab"
+		b.toggle_mode = true
+		b.button_group = _tab_group
+		b.text = names[i]
+		b.focus_mode = Control.FOCUS_NONE
+		if i == _tab:
+			b.button_pressed = true
+		var idx := i
+		b.pressed.connect(func(): _tab = idx; _refresh())
+		tabs.add_child(b)
+		_tab_btns.append(b)
+
+	# CORPS (fond transparent, laisse voir le parchemin) : la liste des cartes DÉFILE
+	# (molette native) sous une hauteur bornée au viewport — jamais une fenêtre qui
+	# déborde de l'écran.
+	var bodypanel := PanelContainer.new()
+	bodypanel.theme_type_variation = "Body"
+	root.add_child(bodypanel)
+	_scroll = ScrollContainer.new()
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	bodypanel.add_child(_scroll)
+	_body = VBoxContainer.new()
+	_body.add_theme_constant_override("separation", 8)
+	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_scroll.add_child(_body)
+
+	# retour transitoire (persistant jusqu'à la prochaine action) — TOUJOURS visible,
+	# hors du défilement.
+	_flash_lbl = Label.new()
+	_flash_lbl.theme_type_variation = "Income"
+	_flash_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_flash_lbl.visible = false
+	root.add_child(_flash_lbl)
+
+## bouton fermer, au thème parchemin (motif _sq_btn de province_panel_v2).
+func _close_btn() -> Button:
+	var b := Button.new()
+	b.text = "✕"
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(24, 24)
+	b.add_theme_font_size_override("font_size", 13)
+	b.add_theme_stylebox_override("normal", ParchTheme.sb(ParchTheme.HEADER_BG, ParchTheme.BORDER, 1, 3, 4, 4, 1, 1))
+	b.add_theme_stylebox_override("hover", ParchTheme.sb(ParchTheme.PANEL_BG, ParchTheme.TAB_UNDERLINE, 1, 3, 4, 4, 1, 1))
+	b.add_theme_stylebox_override("pressed", ParchTheme.sb(ParchTheme.DIVIDER, ParchTheme.TAB_UNDERLINE, 1, 3, 4, 4, 1, 1))
+	b.add_theme_color_override("font_color", ParchTheme.INK)
+	b.add_theme_color_override("font_hover_color", ParchTheme.INK)
+	b.add_theme_color_override("font_pressed_color", ParchTheme.INK)
+	b.pressed.connect(func():
+		visible = false
+		Sound.play("ui_parchment_close"))
+	return b
+
+## la fenêtre déroulante HUGGE le contenu, bornée au viewport (moins les barres pleine
+## largeur) — le surplus défile, la fenêtre ne déborde jamais de l'écran. La hauteur
+## mini du contenu n'est fiable qu'après un passage de layout (les cartes viennent
+## d'être ajoutées) : deux frames de grâce, jeton anti-course pour ignorer une mesure
+## périmée si `_refresh()` est rappelé entre-temps (changement d'onglet rapide).
+func _fit_scroll() -> void:
+	if _scroll == null or _body == null:
+		return
+	_fit_gen += 1
+	var gen := _fit_gen
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if gen != _fit_gen or _scroll == null or not is_instance_valid(_scroll):
+		return
+	var vp := get_viewport_rect().size
+	var hmax := clampf(vp.y - Frame.TOPBAR_H - Frame.BOTTOMBAR_H - 40.0, 200.0, 760.0)
+	var want := clampf(_body.get_combined_minimum_size().y, 0.0, hmax)
+	_scroll.custom_minimum_size = Vector2(0, want)
+	reset_size.call_deferred()
+
+## ouvre le panneau directement sur un onglet (0 Édifices · 1 Manufactures) — appelé
+## depuis la fiche province (bouton « Construire… »).
+func open_on(tab: int) -> void:
+	_tab = clampi(tab, 0, 1)
+	if _tab < _tab_btns.size():
+		_tab_btns[_tab].button_pressed = true
+	visible = true
+	_refresh()
+
+# ── RAFRAÎCHISSEMENT ────────────────────────────────────────────────────────────
 func _refresh() -> void:
-	if Sim.world == null:
+	if Sim.world == null or _body == null:
 		return
 	var me: int = Sim.world.player()
 	_builds = Sim.world.building_roster(me)
@@ -57,22 +178,36 @@ func _refresh() -> void:
 	for b in _builds:
 		_bytype[int(b.get("type", -1))] = b
 	# lot M — la LÉGALITÉ réelle (or/matière/palier, miroir du drain qui refusait en
-	# silence) : rafraîchie au tick, consommée par _draw (griser) et _act (flash honnête).
+	# silence) : rafraîchie au tick, consommée pour griser/router le clic honnêtement.
 	_blegal.clear()
 	if Sim.world.has_method("build_legal"):
 		for b in _builds:
 			if bool(b.get("debloque", false)):
 				var t := int(b.get("type", -1))
 				_blegal[t] = Sim.world.build_legal(-1, t)
-	queue_redraw()
+	_update_header()
+	for c in _body.get_children():
+		c.queue_free()
+	match _tab:
+		1: _build_manufactures()
+		_: _build_edifices()
+	_update_flash()
+	_fit_scroll()
 
-## ouvre le panneau directement sur un onglet (0 Édifices · 1 Manufactures) — appelé
-## depuis la fiche province (bouton « Construire… »).
-func open_on(tab: int) -> void:
-	_tab = clampi(tab, 0, 1)
-	_scrolloff = 0.0
-	visible = true
-	_refresh()
+func _update_header() -> void:
+	if target_pid >= 0 and Sim.world.has_method("province_info"):
+		var info: Dictionary = Sim.world.province_info(target_pid)
+		if bool(info.get("valide", false)):
+			_title_lbl.text = "Construction — %s" % String(info.get("nom", "?"))
+			return
+	_title_lbl.text = "Construction"
+
+func _update_flash() -> void:
+	if _flash_lbl == null:
+		return
+	_flash_lbl.visible = _flash != ""
+	_flash_lbl.text = _flash
+	_flash_lbl.theme_type_variation = "Income" if _flash_ok else "Expense"
 
 ## la raison du refus, en mot (reason de build_legal : 2 or · 3 matière · 4 tech de palier · 1 structurel)
 func _reason_word(reason: int) -> String:
@@ -86,6 +221,8 @@ func _reason_label(result: Dictionary) -> String:
 	var label := String(result.get("reason_label", ""))
 	return label if label != "" else _reason_word(int(result.get("reason", 1)))
 
+## dossier complet d'un édifice — consommé par le TooltipServer (get_info_card) ET par
+## le test unitaire build_info_card_test (signature conservée telle quelle).
 func _build_info_card(b: Dictionary, legal: Dictionary) -> Dictionary:
 	var allowed := bool(legal.get("allowed", legal.get("legal", true)))
 	var me: int = Sim.world.player()
@@ -116,7 +253,7 @@ func _build_info_card(b: Dictionary, legal: Dictionary) -> Dictionary:
 		"state": "Constructible" if allowed else "Bloqué — %s" % _reason_label(legal),
 		"trend": "%d jours" % int(b.get("days", 0)),
 		"lines": lines,
-		"body": "Cliquez la ligne pour ordonner le chantier." if allowed else
+		"body": "Cliquez la carte pour ordonner le chantier." if allowed else
 			"Premier verrou opposé par le moteur : %s." % _reason_label(legal),
 	}
 
@@ -142,246 +279,200 @@ func _fmt1(v) -> String:
 	var f := float(v)
 	return ("%d" % int(round(f))) if absf(f - round(f)) < 0.05 else ("%.1f" % f)
 
-## tronque un texte à une largeur en px (petit corps)
-func _fit(s: String, wpx: float) -> String:
-	while VKit.text_w(s, VKit.FS_SMALL) > wpx and s.length() > 6:
-		s = s.substr(0, s.length() - 4) + "…"
-	return s
+# ── ONGLET ÉDIFICES : une CARTE par bâtiment ──────────────────────────────────
+## Un édifice verrouillé par la tech N'EST JAMAIS listé comme posable : il n'apparaît
+## qu'en tag « Prochain palier » sur la carte de son palier COURANT.
+func _build_edifices() -> void:
+	var w = Sim.world
+	if w == null:
+		return
+	var any := false
+	for b in _builds:
+		if int(b.get("prev", -1)) >= 0 and not bool(b.get("prev_built", false)):
+			continue   # palier hors de portée : son précédent n'existe pas encore chez nous
+		if not bool(b.get("debloque", false)):
+			continue   # verrouillé par la tech : surfacé en tag sur son prédécesseur, pas ici
+		any = true
+		_body.add_child(_edifice_card(w, b))
+	if not any:
+		_dim_line("aucun édifice constructible pour l'instant")
 
-func _draw() -> void:
-	_hover_zones.clear()
-	_click_zones.clear()
-	_tab_rects.clear()
-	VKit.panel_bg(self, Rect2(0, 0, PW, _ph))
-	_close_rect = VKit.header(self, PW, "CONSTRUCTION")
+## carte : icône + titre / prix·durée · effet · ressources (icônes ×qty) · prochain
+## palier · raison de verrou. Le CLIC (carte entière, si affordable) ordonne le chantier.
+func _edifice_card(w, b: Dictionary) -> Control:
+	var btype := int(b.get("type", -1))
+	var leg: Dictionary = _blegal.get(btype, {})
+	var affordable: bool = bool(leg.get("legal", true))
+	var nom := String(b.get("nom", ""))
 
-	# ── ONGLETS (retour joueur 2026-07-10) : Édifices | Manufactures ──
-	var tx := PADX
-	var ty := VKit.HDR_H + 6.0
-	for ti in range(2):
-		var lbl: String = ["Édifices", "Manufactures"][ti]
-		var tw := VKit.text_w(lbl, VKit.FS_SMALL) + 18.0
-		var tr := Rect2(tx, ty, tw, 22.0)
-		VKit.fill(self, tr, VKit.COL_GOLD if _tab == ti else VKit.COL_PANEL2)
-		VKit.box(self, tr, VKit.COL_EDGE)
-		VKit.text(self, Vector2(tx + 9, ty + 3), VKit.COL_PANEL if _tab == ti else VKit.COL_PARCH, lbl, VKit.FS_SMALL)
-		_tab_rects.append({"rect": tr, "t": ti})
-		tx += tw + 6
-	var ly0 := ty + 30.0                       # haut de la LISTE (défilable)
-	var rw := PW - 2.0 * PADX - 10.0           # place de la barre latérale
-	var yrow := ly0 - _scrolloff
-	var content_h := 0.0
+	var card := InfoCard.new()
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	var bg := ParchTheme.HEADER_BG if affordable else ParchTheme.PANEL_BG
+	var bd := ParchTheme.BORDER if affordable else ParchTheme.DIVIDER
+	card.add_theme_stylebox_override("panel", ParchTheme.sb(bg, bd, 1, 4, 10, 10, 8, 8))
+	card.card_data = _build_info_card(b, leg)
+	if affordable:
+		card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		card.gui_input.connect(func(e):
+			if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+				_act("build", btype, nom))
 
-	if _tab == 0:
-		# ── ÉDIFICES : une CARTE par bâtiment — Nom+Prix / Rendement / Ressources /
-		# Prochain palier. Un édifice verrouillé par la tech N'EST JAMAIS listé comme
-		# posable : il n'apparaît qu'en tag « Prochain palier » sur la carte de son
-		# palier COURANT (celui qu'on peut réellement bâtir maintenant).
-		var w = Sim.world
-		for i in range(_builds.size()):
-			var b: Dictionary = _builds[i]
-			if int(b.get("prev", -1)) >= 0 and not bool(b.get("prev_built", false)):
-				continue   # palier hors de portée : son précédent n'existe pas encore chez nous
-			if not bool(b.get("debloque", false)):
-				continue   # verrouillé par la tech : surfacé en tag sur son prédécesseur, pas ici
-			var btype := int(b.get("type", -1))
-			var leg: Dictionary = _blegal.get(btype, {})
-			var affordable: bool = bool(leg.get("legal", true))
-			var row := Rect2(PADX, yrow, rw, RH_ED - 4.0)
-			content_h += RH_ED
-			if yrow > _ph or yrow < ly0 - 4.0:
-				yrow += RH_ED
-				continue                        # hors fenêtre (une ligne partielle repeindrait les onglets)
-			if _has_hover and _hover_rect == row:
-				VKit.fill(self, row, Color(0.30, 0.24, 0.15, 0.35))
-			VKit.box(self, row, Color(VKit.COL_EDGE.r, VKit.COL_EDGE.g, VKit.COL_EDGE.b, 0.5))
-			var tex: Texture2D = UIKit.building_sprite(btype)
-			if tex != null:
-				draw_texture_rect(tex, Rect2(PADX + 4, yrow + 4, 34, 34), false,
-					Color.WHITE if affordable else Color(0.5, 0.5, 0.55, 0.65))
-			var ncol := VKit.COL_PARCH if affordable else VKit.COL_DIM
-			# L1 — NOM (gauche) · PRIX + DURÉE (droite)
-			VKit.text(self, Vector2(PADX + 48, yrow + 3), ncol, String(b.get("nom", "")))
-			var ctx := "%d or · %d j" % [int(b.get("gold", 0)), int(b.get("days", 0))]
-			VKit.value(self, Vector2(PADX + rw - VKit.text_w(ctx, VKit.FS_SMALL) - 6, yrow + 5),
-				ctx, VKit.FS_SMALL)
-			# L2 — RENDEMENT (l'effet RÉEL, delta ProvBuild — la membrane, pas une promesse)
-			var eff := String(b.get("effet", ""))
-			VKit.text(self, Vector2(PADX + 48, yrow + 21), VKit.sense(0.72), _fit(eff, rw - 54.0), VKit.FS_SMALL)
-			# L3 — RESSOURCES (la recette, en icônes)
-			var cx := PADX + 48.0
-			var cost: Array = b.get("cost", [])
-			for c in cost:
-				var rnom := String(c.get("res", ""))
-				var rspr: Texture2D = UIKit.resource_icon(rnom)
-				if rspr != null:
-					draw_texture_rect(rspr, Rect2(cx, yrow + 38, 20, 20), false)
-					cx += 23
-				else:
-					VKit.text(self, Vector2(cx, yrow + 41), VKit.COL_DIM, rnom + " ", VKit.FS_SMALL)
-					cx += VKit.text_w(rnom + " ", VKit.FS_SMALL)
-				VKit.text(self, Vector2(cx, yrow + 41), VKit.COL_PARCH, "×%d" % int(c.get("qty", 0)), VKit.FS_SMALL)
-				cx += VKit.text_w("×%d" % int(c.get("qty", 0)), VKit.FS_SMALL) + 10
-			if cost.is_empty():
-				VKit.text(self, Vector2(cx, yrow + 41), VKit.COL_DIM, "structurel", VKit.FS_SMALL)
-			if not affordable:
-				VKit.text(self, Vector2(cx + 4, yrow + 41), VKit.sense(0.12),
-					_fit("✗ %s" % _reason_label(leg), (PADX + rw) - (cx + 4) - 4.0), VKit.FS_SMALL)
-			# L4 — PROCHAIN PALIER (edifice_succ), affiché MÊME s'il est verrouillé par la tech
-			var succ := int(w.edifice_succ(btype)) if w.has_method("edifice_succ") else -1
-			var succ_b: Dictionary = _bytype.get(succ, {})
-			if not succ_b.is_empty():
-				var slocked := not bool(succ_b.get("debloque", false))
-				VKit.text(self, Vector2(PADX + 48, yrow + 58),
-					VKit.COL_DIM if slocked else VKit.sense(0.65),
-					"Prochain palier : %s%s" % [String(succ_b.get("nom", "")), " (verrou tech)" if slocked else ""],
-					VKit.FS_SMALL)
-			# HOVER : le détail complet, en mots
-			var lines := PackedStringArray()
-			if eff != "":
-				lines.append(eff)
-			for c in cost:
-				lines.append("%s : %d" % [c.get("res", ""), int(c.get("qty", 0))])
-			lines.append("Or : %d   ·   %d jours" % [int(b.get("gold", 0)), int(b.get("days", 0))])
-			if not affordable:
-				lines.append("✗ %s" % _reason_label(leg))
-			if not succ_b.is_empty():
-				lines.append("Prochain palier : %s" % String(succ_b.get("nom", "")))
-			_hover_zones.append({"rect": row, "head": String(b.get("nom", "")), "lines": lines,
-				"card": _build_info_card(b, leg)})
-			if affordable:
-				_click_zones.append({"rect": row, "kind": "build", "type": btype, "nom": String(b.get("nom", ""))})
-			yrow += RH_ED
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 4)
+	card.add_child(vb)
+
+	# L1 — icône · titre (gauche) · prix + durée (droite)
+	var row0 := HBoxContainer.new()
+	row0.add_theme_constant_override("separation", 8)
+	row0.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vb.add_child(row0)
+	_icon(row0, UIKit.building_sprite(btype), 34)
+	var title := Label.new()
+	title.theme_type_variation = "RowLabel"
+	title.text = nom
+	title.add_theme_color_override("font_color", ParchTheme.INK if affordable else ParchTheme.DIM_INK)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.clip_text = true
+	row0.add_child(title)
+	var price := Label.new()
+	price.theme_type_variation = "RowDim"
+	price.text = "%d or · %d j" % [int(b.get("gold", 0)), int(b.get("days", 0))]
+	price.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row0.add_child(price)
+
+	# L2 — RENDEMENT (l'effet RÉEL, delta ProvBuild — la membrane, pas une promesse)
+	var eff := String(b.get("effet", ""))
+	if eff != "":
+		var effl := Label.new()
+		effl.theme_type_variation = "RowDim"
+		effl.text = eff
+		effl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		effl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		vb.add_child(effl)
+
+	# L3 — RESSOURCES (la recette, en icônes)
+	var cost: Array = b.get("cost", [])
+	if cost.is_empty():
+		var sl := Label.new()
+		sl.theme_type_variation = "RowDim"
+		sl.text = "structurel"
+		sl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		vb.add_child(sl)
 	else:
-		# ── MANUFACTURES — sur la province visée (target_pid, RE-KEY : pid direct) ──
-		# CARTE : Nom + Prix (L1) · la RECETTE réelle intrants → produit (L2, chantier
-		# « vérité absolue » — matcher manuf_recipe(bld), plus une phrase d'ambiance).
-		var w = Sim.world
-		if target_pid < 0:
-			VKit.text(self, Vector2(PADX, yrow), VKit.COL_DIM, "sélectionnez une de vos provinces", VKit.FS_SMALL)
-			content_h = 24.0
-		elif w.has_method("manuf_legal"):
-			var mcost: int = int(w.manuf_cost()) if w.has_method("manuf_cost") else 0
-			var mi := 0
-			for bld in range(24):   # BLD_TYPE_COUNT (miroir display-only, motif province_detail)
-				if int(w.manuf_legal(target_pid, bld)) != 1:
-					continue
-				var mnom := String(w.manuf_name(bld))
-				var rec: Dictionary = w.manuf_recipe(bld) if w.has_method("manuf_recipe") else {}
-				var rtxt := _recipe_text(rec)
-				var rowm := Rect2(PADX, yrow, rw, RH_MF - 4.0)
-				content_h += RH_MF
-				if yrow > _ph or yrow < ly0 - 4.0:
-					yrow += RH_MF
-					mi += 1
-					continue
-				if _has_hover and _hover_rect == rowm:
-					VKit.fill(self, rowm, Color(0.30, 0.24, 0.15, 0.35))
-				VKit.box(self, rowm, Color(VKit.COL_EDGE.r, VKit.COL_EDGE.g, VKit.COL_EDGE.b, 0.5))
-				var mtex: Texture2D = UIKit.manuf_sprite(mnom)
-				if mtex != null:
-					draw_texture_rect(mtex, Rect2(PADX + 4, yrow + 4, 32, 32), false)
-				VKit.text(self, Vector2(PADX + 46, yrow + 4), VKit.COL_PARCH, mnom)
-				if mcost > 0:
-					var mctx := "%d or" % mcost
-					VKit.value(self, Vector2(PADX + rw - VKit.text_w(mctx, VKit.FS_SMALL) - 6, yrow + 6),
-						mctx, VKit.FS_SMALL)
-				VKit.text(self, Vector2(PADX + 46, yrow + 23), VKit.sense(0.72), _fit(rtxt, rw - 52.0), VKit.FS_SMALL)
-				_hover_zones.append({"rect": rowm, "head": mnom, "lines": PackedStringArray([
-					"Recette : %s" % rtxt,
-					("Or (chantier) : %d" % mcost) if mcost > 0 else "coût au drain",
-				])})
-				_click_zones.append({"rect": rowm, "kind": "manuf", "type": bld, "nom": mnom})
-				mi += 1
-				yrow += RH_MF
-			if mi == 0:
-				VKit.text(self, Vector2(PADX, yrow), VKit.COL_DIM, "aucune manufacture posable ici (intrants/tech)", VKit.FS_SMALL)
-				content_h = 24.0
+		var flow := HFlowContainer.new()
+		flow.add_theme_constant_override("h_separation", 12)
+		flow.add_theme_constant_override("v_separation", 3)
+		flow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		vb.add_child(flow)
+		for c in cost:
+			_cost_chip(flow, String(c.get("res", "")), int(c.get("qty", 0)))
 
-	# hauteur AU CONTENU, bornée au VIEWPORT — le surplus défile (molette + barre)
-	var hmax := get_viewport_rect().size.y - Frame.TOPBAR_H - Frame.BOTTOMBAR_H - 24.0
-	var want := clampf(ly0 + content_h + 28.0, 240.0, hmax)
-	if absf(want - _ph) > 0.5:
-		_ph = want
-		set_deferred("size", Vector2(PW, _ph))
-	_maxscroll = maxf(0.0, content_h - (_ph - ly0 - 24.0))
-	_scrolloff = clampf(_scrolloff, 0.0, _maxscroll)
-	if _maxscroll > 0.0:
-		# BARRE LATÉRALE : piste + pouce ∝ fenêtre/contenu
-		var track := Rect2(PW - 10.0, ly0, 5.0, _ph - ly0 - 24.0)
-		VKit.fill(self, track, VKit.COL_PANEL2)
-		var frac := (track.size.y) / maxf(content_h, 1.0)
-		var thumb_h := maxf(24.0, track.size.y * frac)
-		var thumb_y := track.position.y + (_scrolloff / _maxscroll) * (track.size.y - thumb_h)
-		VKit.fill(self, Rect2(track.position.x, thumb_y, 5.0, thumb_h), VKit.COL_GOLD)
-	# le bandeau d'onglets reste AU-DESSUS de la liste défilée : re-fond + re-dessin léger
-	if _flash != "":
-		VKit.text(self, Vector2(PADX, _ph - 18), (VKit.sense(1.0) if _flash_ok else VKit.sense(0.05)), _flash, VKit.FS_SMALL)
-	# (le détail passe par le TOOLTIP NATIF → TooltipServer : concepts + définitions)
+	# L4 — PROCHAIN PALIER (edifice_succ), affiché MÊME s'il est verrouillé par la tech
+	var succ := int(w.edifice_succ(btype)) if w.has_method("edifice_succ") else -1
+	var succ_b: Dictionary = _bytype.get(succ, {})
+	if not succ_b.is_empty():
+		var slocked := not bool(succ_b.get("debloque", false))
+		var nl := Label.new()
+		nl.theme_type_variation = "RowDim"
+		nl.text = "Prochain palier : %s%s" % [String(succ_b.get("nom", "")), " (verrou tech)" if slocked else ""]
+		if not slocked:
+			nl.add_theme_color_override("font_color", ParchTheme.GREEN)
+		nl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		vb.add_child(nl)
 
-## le TOOLTIP NATIF (→ TooltipServer, mots-concepts) : « Nom\nlignes de coût/refus »
-func _get_tooltip(at_position: Vector2) -> String:
-	for z in _hover_zones:
-		if (z["rect"] as Rect2).has_point(at_position):
-			var lines: PackedStringArray = z["lines"]
-			return String(z["head"]) + ("\n" + "\n".join(lines) if lines.size() > 0 else "")
-	return ""
+	# L5 — raison de verrou, en rouge
+	if not affordable:
+		var rl := Label.new()
+		rl.theme_type_variation = "Expense"
+		rl.text = "✗ %s" % _reason_label(leg)
+		rl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		vb.add_child(rl)
 
-func get_info_card(at_position: Vector2) -> Dictionary:
-	for z in _hover_zones:
-		if (z["rect"] as Rect2).has_point(at_position):
-			return (z.get("card", {}) as Dictionary).duplicate(true)
-	return {}
+	return card
 
-func _gui_input(e: InputEvent) -> void:
-	if e is InputEventMouseButton and e.pressed:
-		# MOLETTE = défilement par LIGNE entière (les rangées restent alignées)
-		var step := RH_ED if _tab == 0 else RH_MF
-		if e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_scrolloff = clampf(_scrolloff + step, 0.0, _maxscroll)
-			queue_redraw()
-			accept_event()
-			return
-		if e.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_scrolloff = clampf(_scrolloff - step, 0.0, _maxscroll)
-			queue_redraw()
-			accept_event()
-			return
-	if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-		if _close_rect.has_point(e.position):
-			visible = false
-			Sound.play("ui_parchment_close")
-			accept_event()
-			return
-		for t in _tab_rects:
-			if (t["rect"] as Rect2).has_point(e.position):
-				_tab = int(t["t"])
-				_scrolloff = 0.0
-				Sound.play("ui_click")
-				queue_redraw()
-				accept_event()
-				return
-	if e is InputEventMouseMotion:
-		var found := false
-		for z in _hover_zones:
-			if z["rect"].has_point(e.position):
-				_has_hover = true
-				_hover_rect = z["rect"]
-				_hover_head = z["head"]
-				_hover_lines = z["lines"]
-				_hover_pos = e.position
-				found = true
-				break
-		if not found:
-			_has_hover = false
-		queue_redraw()
-	elif e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
-		for z in _click_zones:
-			if z["rect"].has_point(e.position):
-				_act(String(z["kind"]), int(z["type"]), String(z["nom"]))
-				break
+## une puce ressource : icône (si dispo) + « Nom ×qty ».
+func _cost_chip(into: Container, name: String, qty: int) -> void:
+	var chip := HBoxContainer.new()
+	chip.add_theme_constant_override("separation", 3)
+	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	into.add_child(chip)
+	_icon(chip, UIKit.resource_icon(name), 18)
+	var lb := Label.new()
+	lb.theme_type_variation = "RowLabel"
+	lb.text = "%s ×%d" % [name, qty]
+	chip.add_child(lb)
 
-## le CLIC agit : on appelle l'actionneur joueur (façade) et on affiche le retour.
+# ── ONGLET MANUFACTURES — sur la province visée (target_pid, RE-KEY : pid direct) ──
+## CARTE : icône + titre + prix (L1) · la RECETTE réelle intrants → produit (L2, chantier
+## « vérité absolue » — matcher manuf_recipe(bld), plus une phrase d'ambiance).
+func _build_manufactures() -> void:
+	var w = Sim.world
+	if w == null:
+		return
+	if target_pid < 0:
+		_dim_line("sélectionnez une de vos provinces")
+		return
+	if not w.has_method("manuf_legal"):
+		return
+	var mcost: int = int(w.manuf_cost()) if w.has_method("manuf_cost") else 0
+	var any := false
+	for bld in range(24):   # BLD_TYPE_COUNT (miroir display-only, motif province_detail)
+		if int(w.manuf_legal(target_pid, bld)) != 1:
+			continue
+		any = true
+		var mnom := String(w.manuf_name(bld))
+		var rec: Dictionary = w.manuf_recipe(bld) if w.has_method("manuf_recipe") else {}
+		_body.add_child(_manuf_card(bld, mnom, _recipe_text(rec), mcost))
+	if not any:
+		_dim_line("aucune manufacture posable ici (intrants/tech)")
+
+func _manuf_card(bld: int, nom: String, recipe_txt: String, mcost: int) -> Control:
+	var card := InfoCard.new()
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	card.add_theme_stylebox_override("panel", ParchTheme.sb(ParchTheme.HEADER_BG, ParchTheme.BORDER, 1, 4, 10, 10, 8, 8))
+	card.card_data = {
+		"title": nom,
+		"state": "Constructible",
+		"trend": ("%d or (chantier)" % mcost) if mcost > 0 else "coût au drain",
+		"lines": [{"label": "Recette", "value": recipe_txt}],
+		"body": "Cliquez la carte pour ordonner le chantier.",
+	}
+	card.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			_act("manuf", bld, nom))
+
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 4)
+	card.add_child(vb)
+
+	var row0 := HBoxContainer.new()
+	row0.add_theme_constant_override("separation", 8)
+	row0.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vb.add_child(row0)
+	_icon(row0, UIKit.manuf_sprite(nom), 32)
+	var title := Label.new()
+	title.theme_type_variation = "RowLabel"
+	title.text = nom
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.clip_text = true
+	row0.add_child(title)
+	if mcost > 0:
+		var price := Label.new()
+		price.theme_type_variation = "RowDim"
+		price.text = "%d or" % mcost
+		price.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		row0.add_child(price)
+
+	var rl := Label.new()
+	rl.theme_type_variation = "RowDim"
+	rl.text = recipe_txt
+	rl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vb.add_child(rl)
+	return card
+
+# ── LE CLIC agit : on appelle l'actionneur joueur (façade) et on affiche le retour ──
 func _act(kind: String, type: int, nom: String) -> void:
 	if Sim.world == null:
 		return
@@ -402,16 +493,31 @@ func _act(kind: String, type: int, nom: String) -> void:
 		var ok: bool = Sim.world.player_build(type, -1)
 		_flash_ok = ok
 		_flash = ("⚒ %s — ordre émis" % nom) if ok else ("✗ %s — file pleine" % nom)
-	elif kind == "manuf":
+	else:
 		var okm: bool = target_pid >= 0 and bool(Sim.world.player_build_manuf(target_pid, type))
 		_flash_ok = okm
 		_flash = ("⚒ %s — chantier ordonné" % nom) if okm else ("✗ %s — refusé" % nom)
-	else:
-		var ok2: bool = Sim.world.player_recruit(type) > 0
-		_flash_ok = ok2
-		_flash = ("⚔ %s — levée ordonnée" % nom) if ok2 else ("✗ %s — file pleine" % nom)
 	if not _flash_ok:
 		Sound.play("ui_click")
 	build_requested.emit(kind, type)
 	_refresh()
-	Sim.notify_action()   # verbe joueur (bâtir / lever) → refresh des chiffres au drain (live)
+	Sim.notify_action()   # verbe joueur (bâtir) → refresh des chiffres au drain (live)
+
+# ── PRIMITIVES DE LAYOUT ──────────────────────────────────────────────────────
+func _dim_line(txt: String) -> void:
+	var l := Label.new()
+	l.theme_type_variation = "RowDim"
+	l.text = txt
+	_body.add_child(l)
+
+## une petite icône du pack (cadrée au slot ; rien si absente) — motif province_panel_v2.
+func _icon(into: Container, tex: Texture2D, sz := 18) -> void:
+	if tex == null:
+		return
+	var tr := TextureRect.new()
+	tr.texture = tex
+	tr.custom_minimum_size = Vector2(sz, sz)
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	into.add_child(tr)

@@ -16,6 +16,7 @@ extends Control
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
+const ParchTheme = preload("res://ui/parch_theme.gd")
 
 ## POPUP « métabolisation prête » (V1b) : quand un héritage NON natif atteint tier 3
 ## (digestion pleine), on notifie UNE FOIS — le fil de la victoire Merveille (paliers
@@ -99,6 +100,17 @@ var _sel := ""             # détail du nœud sélectionné (pied)
 var _sel_node := {}        # nœud sélectionné : dossier détaillé, sans dépendre du survol
 var _sel_flash := ""       # retour immédiat après lancement/refus d'une recherche
 var _close_rect := Rect2()
+# CHROME parchemin (motif ParchTheme, cf. construction_panel/province_panel_v2) — LA
+# STRUCTURE Civ 6 ne bouge pas, seuls cadre/bandeau/pied portent le même style que les
+# fiches à conteneurs natifs (bords 1px BORDER, bandeaux HEADER_BG). Styleboxes CACHÉES
+# (motif VKit._pb_body) : `_draw()` tourne à chaque tick visible, pas de ré-allocation.
+static var _sb_panel: StyleBoxFlat = null
+static var _sb_band: StyleBoxFlat = null
+static func _chrome() -> void:
+	if _sb_panel != null:
+		return
+	_sb_panel = ParchTheme.sb(ParchTheme.PANEL_BG, ParchTheme.BORDER, 1, 3, 0, 0, 0, 0)
+	_sb_band = ParchTheme.sb(ParchTheme.HEADER_BG, ParchTheme.BORDER, 0, 0, 0, 0, 0, 0)
 var _popup: Control = null                 ## le popup de DÉCOUVERTE (tech_popup.gd), enfant persistant
 var _pending_discoveries: Array = []       ## idx de nœuds achevés pendant que le panneau était FERMÉ
 var _last_research_target := -1           ## suivi de la cible — détecte la complétion (miroir sound.gd)
@@ -467,15 +479,22 @@ func _draw() -> void:
 	var w = Sim.world
 	if w == null:
 		return
-	VKit.panel_bg(self, Rect2(0, 0, PW, PH))
+	_chrome()
+	# CADRE : mêmes bords que les fiches à conteneurs natifs (1px BORDER, coin 3) —
+	# plus de plaque RimWorld (ombre/grain/filet or) : le FRÈRE des fiches, pas une
+	# fenêtre à part.
+	draw_style_box(_sb_panel, Rect2(0, 0, PW, PH))
 	var info: Dictionary = w.tech_info()
+	# BANDEAU d'en-tête (motif HeaderStrip) : la même bande HEADER_BG que les fiches,
+	# le titre au corps SERIF (font_map, comme la variation "Title" de ParchTheme).
+	draw_style_box(_sb_band, Rect2(0, 0, PW, HEAD))
 	UIKit.draw_icon(self, "knowledge_book", Vector2(14, 12), 20)
-	VKit.text(self, Vector2(42, 13), VKit.COL_GOLD, "Arbre de technologie", VKit.FS_BIG)
+	VKit.text_map(self, Vector2(42, 13), "Arbre de technologie", VKit.FS_BIG, ParchTheme.HEADER_INK, 0)
 
 	# ✕ — tout panneau se ferme (Échap le ferme aussi via main)
 	_close_rect = Rect2(PW - 26, 6, 20, 20)
-	VKit.fill(self, _close_rect, VKit.COL_PANEL2)
-	VKit.box(self, _close_rect, VKit.COL_GOLD)
+	VKit.fill(self, _close_rect, VKit.COL_PANEL)
+	VKit.box(self, _close_rect, VKit.COL_EDGE)
 	VKit.text(self, Vector2(_close_rect.position.x + 6, _close_rect.position.y + 3), VKit.COL_PARCH, "x")
 
 	var pts_lbl_w: float = VKit.detail(self, Vector2(PW - 250, 13), "Points : ", VKit.FS_SMALL)
@@ -485,19 +504,20 @@ func _draw() -> void:
 	VKit.text(self, Vector2(PW - 250, 30), pcol,
 		"Présage : %s (crise %d%%)" % [String(info.get("presage", "")), crise], VKit.FS_SMALL)
 	# RECHERCHE EN COURS : la cible + sa jauge de progression (research_status)
+	# (x=380 : le titre SERIF est plus large que l'ancien Alegreya — 220 le chevauchait)
 	var rs: Dictionary = w.research_status()
 	var rt := int(rs.get("target", -1))
 	if rt >= 0 and rt < _nodes.size():
 		var rname := String(_nodes[rt].get("name", "?"))
 		var prog := clampf(float(rs.get("progress", 0.0)), 0.0, 1.0)
-		VKit.text(self, Vector2(220, 13), VKit.COL_GOLD, "Recherche : %s" % rname, VKit.FS_SMALL)
-		var bx := 220.0
+		VKit.text(self, Vector2(380, 13), VKit.COL_GOLD, "Recherche : %s" % rname, VKit.FS_SMALL)
+		var bx := 380.0
 		var bw := 200.0
 		VKit.box(self, Rect2(bx, 30, bw, 9), VKit.COL_DIM)
 		VKit.fill(self, Rect2(bx + 1, 31, (bw - 2) * prog, 7), COL_UNLOCKED)
 		VKit.value(self, Vector2(bx + bw + 8, 30), "%d%%" % int(prog * 100.0), VKit.FS_SMALL)
 	else:
-		VKit.text(self, Vector2(220, 13), VKit.COL_DIM, "Recherche : (cliquez une carte recherchable)", VKit.FS_SMALL)
+		VKit.text(self, Vector2(380, 13), VKit.COL_DIM, "Recherche : (cliquez une carte recherchable)", VKit.FS_SMALL)
 	# légende d'état
 	VKit.text(self, Vector2(14, 33), COL_UNLOCKED, "● acquis", VKit.FS_SMALL)
 	VKit.text(self, Vector2(86, 33), COL_AVAIL, "● recherchable", VKit.FS_SMALL)
@@ -515,6 +535,10 @@ func _draw() -> void:
 			VKit.text(self, Vector2(18.0, ly), VKit.COL_GOLD, LANE_NAMES[l], VKit.FS_SMALL)
 		VKit.fill(self, Rect2(_scroll.position.x - 6.0, HEAD, 1.0, PH - HEAD - FOOT - METAH), VKit.COL_EDGE)
 
+	# PIED (bandeau, motif HeaderStrip) : métabolisation + dossier persistant — le même
+	# bandeau HEADER_BG que l'en-tête, pour que le panneau se referme comme une fiche
+	# (bande haute / corps clair / bande basse), pas juste un fond uniforme.
+	draw_style_box(_sb_band, Rect2(0, PH - FOOT - METAH, PW, FOOT + METAH))
 	# bande de MÉTABOLISATION : le +% recherche + l'accès tech par héritage (la barre)
 	_draw_metab(info)
 	# pied : DOSSIER persistant de la carte cliquée. Le survol découvre ; le clic permet
