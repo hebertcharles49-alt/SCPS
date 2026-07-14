@@ -34,13 +34,15 @@ commerce au lieu de frapper la planète uniformément.
    n'est pas qu'un luxe — fournitures navales, armes à feu, horloges, colifichets
    (scps_econ.c:425). Seul le surplus MARCHAND au-delà d'un stock de fonctionnement
    peut rejoindre la réserve monétaire (en sus de la redevance).
-4. **1 or = 10 cuivre à la Monnaie** — en ASSUMANT l'arbitrage (v2) : le marché
-   valorise ~3.1:1 (prix de base 8 vs 2.6, scps_econ.c:315) ; la Monnaie à 10:1 rend
-   la frappe d'or très avantageuse et celle du cuivre marginale. **Choix retenu
-   (recommandé, à valider)** : la frappe privilégie AUTOMATIQUEMENT le métal au
+4. **1 or = 5 cuivre à la Monnaie** (v3, décision joueur 2026-07-14 — ex-10:1) : le
+   marché valorise ~3.1:1 (prix de base 8 vs 2.6, scps_econ.c:315) ; à 5:1 l'arbitrage
+   pro-or subsiste mais reste doux. La frappe privilégie AUTOMATIQUEMENT le métal au
    meilleur arbitrage — la loi de Gresham comme histoire émergente, affichée au menu
-   éco (« la Monnaie frappe l'or »). Repli si le sweep montre un cuivre monétairement
-   mort : recalibrer le rapport marchand.
+   éco. Repli si le sweep montre un cuivre monétairement mort : recalibrer.
+   **Préparatif DÉJÀ implémenté (2026-07-14)** : « à la tonne » — 1 unité de ressource
+   est un LOT MASSIF, une tonne d'or n'est pas une pièce → intrants d'or des recettes
+   ÷4 (joaillerie 0.8→0.2, parurier 1.0→0.25) : la consommation physique d'or diminue,
+   le surplus mintable grossit d'avance.
 5. **L'impôt per-capita NE CHANGE PAS.**
 6. **AUCUNE perte de monnaie** (métaux stables ; un drain serait inéquilibrable).
    L'inflation séculaire est un TRAIT — mais pas une garantie : cf. M4 (vitesse).

@@ -441,7 +441,7 @@ static Recipe RECIPE[BLD_TYPE_COUNT] = {   /* NON-const (MODTOOLS) — labor/qou
      * prouve) ; la sortie est GATÉE par la demande d'élite, et le palier STATUT
      * ne se débloque qu'au tier 4 de capitale (≥4000 âmes) : un bien de GRANDES
      * cités — rare tant que la démographie n'y est pas. Design assumé. */
-    [BLD_JEWELER]   = { RES_GOLD,  0.8f, RES_NONE,          0.f, RES_PRECIOUS_WARE,  0.5f, 1.2f, RES_PEARL, 1.6f },  /* SURCADENCE : l'or/perle est un FILIGRANE — une once rend assez de bijoux pour servir une cour + dégager un surplus à exporter (ratio 2× perle conservé) */
+    [BLD_JEWELER]   = { RES_GOLD,  0.2f, RES_NONE,          0.f, RES_PRECIOUS_WARE,  0.5f, 1.2f, RES_PEARL, 1.6f },  /* À LA TONNE (2026-07-14) : 1 unité de ressource = un LOT MASSIF — une tonne d'or n'est pas une pièce, elle sert PLUSIEURS ateliers. Intrant or ÷4 (0.8→0.2, le vrai filigrane) ; le surplus d'or libéré alimente la future réserve monétaire (docs/MONNAIE_CONCEPT.md). ⚠ l'alt perle (1.6) devient relativement chère — voulu, la perle reste le repli de qui n'a pas d'or. */
     /* ÉTOFFE PRÉCIEUSE — désormais GATÉE PAR LA TEINTURE (murex côtier, ou indigo du
      * bas-pays chaud en repli), comme l'orfèvrerie l'est par l'or. Recette 1:4 :
      * 1 teinture + 4 ÉTOFFES → 1 précieuse. Le précieux est ainsi PLAFONNÉ par la
@@ -504,7 +504,7 @@ static Recipe RECIPE[BLD_TYPE_COUNT] = {   /* NON-const (MODTOOLS) — labor/qou
      * intrants de base, labor bas 1.1 : luxe de NICHE, la demande étant conditionnelle à
      * l'éthos du CONSOMMATEUR — cf. ethos_desired_luxury/econ_tick §confort ci-dessous). */
     [BLD_HEAUMERIE]        = { RES_IRON,   1.0f, RES_COAL,  1.0f, RES_HEAUMES,     1.0f, 1.1f, RES_NONE, 0.f },  /* Dominateur : fer + charbon → heaumes de guerre */
-    [BLD_PARURIER]         = { RES_GOLD,   1.0f, RES_FUR,   1.0f, RES_PARURES,     1.0f, 1.1f, RES_NONE, 0.f },  /* Honneur : or + fourrure → parures de gloire */
+    [BLD_PARURIER]         = { RES_GOLD,   0.25f, RES_FUR,  1.0f, RES_PARURES,     1.0f, 1.1f, RES_NONE, 0.f },  /* Honneur : or + fourrure → parures de gloire. À LA TONNE : intrant or ÷4 (1.0→0.25) — le filigrane, pas le lingot ; la fourrure (matière de volume) reste à 1.0. */
     [BLD_HORLOGER]         = { RES_IRON,   1.0f, RES_COPPER,1.0f, RES_HORLOGES,    1.0f, 1.1f, RES_NONE, 0.f },  /* Ordre : fer + cuivre → horloges réglées */
     [BLD_CHANCELLERIE_LUX] = { RES_WOOD,   1.0f, RES_CLAY,  1.0f, RES_REGISTRES,   1.0f, 1.1f, RES_NONE, 0.f },  /* Bureaucrate : bois + argile → registres scellés */
     [BLD_COMPTOIR_ARTISAN] = { RES_COPPER, 1.0f, RES_SALT,  1.0f, RES_COLIFICHETS, 1.0f, 1.1f, RES_NONE, 0.f },  /* Mercantile : cuivre + sel → colifichets exotiques */
