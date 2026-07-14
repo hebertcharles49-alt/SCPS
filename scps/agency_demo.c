@@ -212,9 +212,19 @@ int main(int argc, char **argv){
         /* Marché de RÉFÉRENCE uniforme (prix=1 partout) : on teste le TIER (la recette :
          * Grenier 40+15+10 unités vs Citadelle 60+220+150), PAS les oscillations du marché. */
         for (int r=0;r<RES_COUNT;r++) re->price[r]=1.0f;
-        re->stock[RES_WOOD]=1000.f; re->stock[RES_IRON]=1000.f; re->stock[RES_CLAY]=1000.f;
-        re->stock[RES_STONE]=1000.f; re->stock[RES_TOOLS]=1000.f; re->stock[RES_PRECIOUS_METAL]=1000.f;
-        re->stock[RES_SALT]=1000.f;   /* gate de matière : la recette de l'édifice doit être SOURÇABLE en propre */
+        /* 2-BRUTES STRICTES (2026-07-13) + RE-KEY : la matière RÉELLE vit sur la PROVINCE —
+         * la consommation du chantier (intertrade_market_consume → centre_take →
+         * econ_region_stock_add) DÉBITE prov[] et ne décrémente la vue region[] que du
+         * prélevé réel. Sous « exactement 2 brutes/tuile », l'empire du banc n'a plus une
+         * miette de pierre en propre : doter la SEULE vue region[] (l'ancienne fixture)
+         * rendait la consommation invisible (débit province = 0). On dote donc LA PROVINCE
+         * porteuse (la réalité) ET la vue (le gate de matière lit l'agrégat). */
+        int rep=econ_region_rep_province(s.econ, s.cap_reg);
+        static const Resource DOTE[]={RES_WOOD,RES_IRON,RES_CLAY,RES_STONE,RES_TOOLS,RES_PRECIOUS_METAL,RES_SALT};
+        for (unsigned k=0;k<sizeof DOTE/sizeof DOTE[0];k++){
+            re->stock[DOTE[k]]=1000.f;   /* gate de matière : la recette de l'édifice doit être SOURÇABLE en propre */
+            if (rep>=0) s.econ->prov[rep].stock[DOTE[k]]=1000.f;
+        }
         re->treasury=100000.f;
         float gold_grenier   = agency_build_gold(s.econ, s.cap_reg, EDI_GRENIER);
         float gold_citadelle = agency_build_gold(s.econ, s.cap_reg, EDI_CITADELLE);
@@ -231,6 +241,7 @@ int main(int argc, char **argv){
         float stone_eaten_grenier = stone_g0 - re->stock[RES_STONE];
         ok("bâtir CONSOMME la matière de l'empire (le stock baisse)", built_g && stone_eaten_grenier > 0.f);
         re->stock[RES_STONE]=1000.f;   /* on RÉ-DOTE pour mesurer le palier supérieur seul */
+        if (rep>=0) s.econ->prov[rep].stock[RES_STONE]=1000.f;   /* la province AUSSI (la réalité débitée) */
         float stone_c0=re->stock[RES_STONE];
         bool built_i = agency_build(s.ag, s.econ, s.w, s.cap_reg, EDI_IRRIGATION);   /* palier vivrier supérieur */
         float stone_eaten_irrig = stone_c0 - re->stock[RES_STONE];
@@ -242,8 +253,10 @@ int main(int argc, char **argv){
          * aucun Centre atteignable (autarcie) ⇒ le gate de matière REFUSE le chantier. */
         int owner=re->owner;
         for (int r=0;r<s.econ->n_regions;r++)
-            if (owner<0 ? r==s.cap_reg : s.econ->region[r].owner==owner)
-                s.econ->region[r].stock[RES_STONE]=0.f;
+            if (owner<0 ? r==s.cap_reg : s.econ->region[r].owner==owner){
+                econ_region_stock_add(s.econ, r, RES_STONE, -1e9f);   /* draine les PROVINCES (la réalité) */
+                s.econ->region[r].stock[RES_STONE]=0.f;               /* et la vue (le gate lit l'agrégat) */
+            }
         int nbefore=s.ag->n;
         bool blocked = agency_build(s.ag, s.econ, s.w, s.cap_reg, EDI_GRENIER);
         ok("pénurie de matière (rien en propre, aucun Centre) : REFUSÉ, pas de chantier",

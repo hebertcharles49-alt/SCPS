@@ -251,6 +251,27 @@ int main(int argc, char **argv){
             pe->build.H_coerc = fmaxf(pe->build.H_coerc, 2.0f);   /* garnison → projeter la force */
             pe->build.food_cap = fmaxf(pe->build.food_cap, 3.f);   /* vivre sans grenier d'urgence — substrat indépendant du monde */
             if (pe->strata[CLASS_LABORER].pop<300.f) pe->strata[CLASS_LABORER].pop=500.f;
+            /* 2-BRUTES STRICTES (2026-07-13) — ÉGALISER AUSSI LE TIRAGE : depuis « exactement
+             * 2 brutes/tuile » + spawn curé, la MAIN de départ (resource/resource2) décide quelles
+             * manufactures civiles sont NOURRISSABLES (gate raw_cap[in1] d'ai_build_civmanuf) —
+             * sur la graine canonique, le Dominateur tirait du cuivre (Comptoir d'artisan posable)
+             * et le Bâtisseur non : UN slot de métabolisme d'écart venu du SOL, pas de la fiche.
+             * Même doctrine que le trésor/stocks ci-dessus (« la SEULE différence = la fiche »),
+             * même idiome que le spawn curé : par REMPLACEMENT, jamais plus de 2 brutes/tuile.
+             * La capitale garde SA nourriture de biome (resource) + bois ; toute autre province
+             * de la région porte cuivre+grain — les trois empires ont la MÊME main. */
+            bool is_cap = (pid == s.w->country[cc].capital_prov);
+            Resource keep = is_cap ? s.w->province[pid].resource : RES_NONE;
+            for (int g=1; g<RES_PROD_FIRST; g++) if (g != (int)keep) pe->raw_cap[g]=0.f;
+            if (is_cap){
+                s.w->province[pid].resource2 = RES_WOOD;
+                pe->raw_cap[RES_WOOD] = 2.0f;
+            } else {
+                s.w->province[pid].resource  = RES_COPPER;
+                s.w->province[pid].resource2 = RES_GRAIN;
+                pe->raw_cap[RES_COPPER] = 3.0f;
+                pe->raw_cap[RES_GRAIN]  = 1.0f;
+            }
         }
     }
     econ_aggregate_regions(s.econ);

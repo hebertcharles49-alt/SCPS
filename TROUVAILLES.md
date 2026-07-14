@@ -271,3 +271,20 @@
 **Restes** :
 - Le flash « ordre émis » n'est plus effacé par minuteur (il persiste jusqu'à la prochaine action/refresh) — comportement de l'ancien panneau conservé, mais un fade à la province_panel_v2 (`_fire`, timer 1,8 s) serait plus cohérent avec la fiche.
 - tech_panel garde tout son contenu interne en VKit immediate-mode (cartes, couloirs, métab, dossier) — le port CHROME est fait, un futur port STRUCTUREL (cartes en Control natifs stylés ParchTheme) reste possible mais la mission l'excluait explicitement.
+
+---
+
+## RÉPARATION BANCS agency_demo + ai_demo (2026-07-14, fixtures — moteur intact)
+
+**Découvertes** :
+- Les 2 bancs rouges (agency_demo 14/16, ai_demo 25/26) n'étaient PAS des héritiers du RE-KEY PROVINCE (de25550) : bisect en worktree (1fdb80d VERT → 2cbd6fc=de25550^ déjà ROUGE, ~8 builds) → l'introducteur est **d07fa3b « 2 brutes/tuile strictes + spawn curé » (2026-07-13, la veille)**. Ses gates étaient golden/determinism/savetest — la suite complète n'a pas tourné (même angle mort que S0 le lendemain : chacun a hérité du rouge de l'autre vague).
+- agency_demo §1 (matière) : la fixture dotait la SEULE vue `region[].stock` ; la consommation du chantier (`intertrade_market_consume` → `centre_take` → `econ_region_stock_add`) débite `prov[]` et ne décrémente la vue que du PRÉLEVÉ RÉEL. Sous 2-brutes strictes, l'empire de la graine 42 n'a plus une miette de pierre en propre → « pierre mangée = 0 » (le gate d'admission, lui, lisait la vue dotée → chantier admis, débit fantôme). Fix fixture : doter AUSSI la province porteuse (`econ_region_rep_province`) ; la pénurie draine les provinces (`econ_region_stock_add(…,-1e9)`) en plus de la vue.
+- ai_demo « le Bâtisseur métabolise AU MOINS AUTANT » : le TIRAGE de départ décide quelles manufactures civiles sont NOURRISSABLES (gate `raw_cap[in1]`, `ai_build_civmanuf`) — graine 9 : le Dominateur tirait du cuivre (p61, 12/9) → Comptoir d'artisan (cuivre+sel) posable ; le Bâtisseur (fruit/charbon + bois/grain) non → 6 vs 5, un slot de métabolisme d'écart venu du SOL, pas de la fiche (AIDIAG : 100 % des builds_other des deux = ai_build_civmanuf, types identiques au Comptoir près). Fix fixture : le bloc « SUBSTRAT ÉGAL » égalise désormais AUSSI la main de tirage (par REMPLACEMENT, jamais >2 brutes/tuile) : capitale = SA food de biome + bois ; autres provinces de la région = cuivre+grain. Résultat : Bâtisseur 7 ≥ Dominateur 6, 26/26 — aucune assertion affaiblie.
+
+**Pièges** :
+- `raw_cap` d'une province est FIGÉ à econ_init (coupe vocation, scps_econ.c ~1666-1680) : une fixture peut l'écrire après init, rien ne le re-coupe en cours de run — re-poser aussi `w->province[].resource/resource2` pour la cohérence des lecteurs de tirage.
+- `AiStats.builds_other` agrège 8 sites (manuf/paybuild/civmanuf/exploit/grenier-faim/civedi-digest/entrepot/marché, scps_ai.c) : pour attribuer un tally, logguer PAR SITE — un écart de 1 est illisible autrement.
+- Bisect Windows/worktree : `git clean -fd` ne purge PAS `build/*.o` (ignorés) → binaires FRANKENSTEIN inter-commits (undefined reference country_knows sur un commit intermédiaire où le Makefile ne liait pas encore scps_fog). Toujours `git clean -fdx build` avant chaque step.
+
+**Restes** :
+- intertrade_demo BUILD ÉCHEC = le pré-existant Windows (setenv), inchangé.
