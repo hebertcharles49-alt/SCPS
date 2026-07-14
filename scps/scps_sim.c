@@ -1040,6 +1040,11 @@ void sim_day(Sim *s, World *w) {
             if (s->ai_on[c]) statecraft_council_ai(s->sc, w, s->econ, w->seed, c, s->year);   /* Q1 : l'IA pourvoit son siège d'éthos (pool de la génération courante) */
         statecraft_council_loyalty_tick(s->sc, w, s->econ, w->seed, 1.f/12.f);   /* V2a : la loyauté CONVERGE (jamais un saut) */
         PROF(PB_ECON, econ_tick(s->econ, 1.f/12.f));
+        /* MONNAIE M3c — l'étage CITÉ-ÉTAT de la chaîne d'emprunt (scps_credit.c) : le SEUL
+         * qui a besoin d'un World* (rôle/éthos du prêteur) — econ_tick lui-même n'en a pas
+         * (péréquation+classes déjà tentés EN INTERNE, cf. econ_va_shortfall_pending).
+         * Appelé ICI, juste après econ_tick, MÊME cadence (mensuelle). */
+        credit_settle_monthly(s->econ, w);
         /* Paix négociée : 10 % du revenu mensuel réellement ponctionné pendant
          * dix ans, après que l'économie du mois a matérialisé son trésor. */
         diplo_reparations_tick(s->dp,w,s->econ,30.f);
