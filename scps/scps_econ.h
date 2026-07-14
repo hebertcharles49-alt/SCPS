@@ -483,6 +483,14 @@ typedef struct {
     float         tax_mult[SCPS_MAX_COUNTRY][CLASS_COUNT];
     float         budget_mult[SCPS_MAX_COUNTRY][BUDGET_POLICY_COUNT];
 
+    /* v86 — MONNAIE M1 : LA RÉSERVE MÉTALLIQUE par pays (docs/MONNAIE_CONCEPT.md). Alimentée
+     * SEULEMENT par la redevance minière (MINT_ROYALTY, à l'extraction) — jamais marchandise,
+     * jamais dans S[]/supply[]/stock. Consommée SEULEMENT par la frappe (M2, BUDGET_MINT /
+     * MINT_AI_SHARE) : monnaie NEUTRE 1:1 au prix courant, créditée au trésor de la province
+     * CAPITALE. MINT_ROYALTY=0 (kill-switch) ⇒ réserve TOUJOURS à 0 ⇒ frappe TOUJOURS nulle. */
+    float         reserve_gold[SCPS_MAX_COUNTRY];
+    float         reserve_copper[SCPS_MAX_COUNTRY];
+
     /* ── FIN_CHAUD (§27, 2026-07-08) — CUMULS SIM du combustible RÉELLEMENT brûlé
      * (l'offre SERVIE, jamais la demande) : bois de FEU consommé au panier des
      * journaliers (econ_tick, branche générique du marché) + CHARBON consommé en

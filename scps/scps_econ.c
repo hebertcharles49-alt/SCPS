@@ -2795,6 +2795,12 @@ void econ_tick(WorldEconomy *e, float dt) {
     const float ext_geo_cap   = tune_f("EXTRACT_GEO_CAP",     EXTRACT_GEO_CAP);
     const float ext_lab_share = tune_f("EXTRACT_LABOR_SHARE", EXTRACT_LABOR_SHARE);
     const float food_need     = tune_f("FOOD_NEED",           1.0f);   /* A2 : calibrage de la bouche vivrière */
+    /* MONNAIE M1 — REDEVANCE MINIÈRE : part de l'or/cuivre EXTRAIT détournée à la réserve
+     * d'État du pays PROPRIÉTAIRE, à la SOURCE (avant tout prix/S[]/supply[] — jamais
+     * marchandise). Le reste (1−MINT_ROYALTY) suit le chemin normal (stock, GDP, salaires/
+     * profit/rente) : les chaînes cuivre (naval/armes/horlogerie) et la joaillerie restent
+     * vivantes. 0 = kill-switch (aucune redevance ⇒ réserve toujours nulle ⇒ frappe nulle). */
+    const float mint_royalty  = tune_f("MINT_ROYALTY", 0.15f);
     /* §6-7 — forfait fiscal MENSUEL par classe (or/hab/mois), lu UNE fois/tick. CLASS_SLAVE=0. */
     const float tax_base[CLASS_COUNT] = {
         tune_f("TAX_BASE_LABORER",   TAX_BASE_LABORER),
@@ -2934,9 +2940,21 @@ void econ_tick(WorldEconomy *e, float dt) {
             float rboost = 1.f + tune_f("RAW_BOOST_PER_TIER",0.05f)*(float)bt;
             float out = workers*EXTRACT_YIELD[r]*dt*egeo[r]*prod_mult*rboost;  /* ouvriers × rendement/an × dt × qualité géo × outils × exploitation — SANS demande (le prix ne throttle plus l'extraction ; la demande = affaire de l'IA/du marché) */
             labor_used += workers;
-            S[r] += out;                                               /* dépôt au STOCK NATIONAL */
-            supply[r]    += out;
-            float value = out*re->price[r];
+            /* MONNAIE M1 — LA REDEVANCE : sur l'or/cuivre SEULEMENT, une part MINT_ROYALTY
+             * de CE tirage est DÉTOURNÉE vers la réserve d'État avant d'entrer au stock —
+             * elle n'est JAMAIS marchandise (jamais S[]/supply[], jamais de prix/GDP/salaire
+             * dessus). Le reste (out_merch) suit le chemin normal, inchangé pour toutes les
+             * autres brutes (mint_royalty=0 ⇒ out_merch=out, comportement d'avant EXACT). */
+            float out_merch = out;
+            if ((r==RES_GOLD || r==RES_COPPER) && owner_>=0 && owner_<SCPS_MAX_COUNTRY && mint_royalty>0.f){
+                float roy = out*mint_royalty;
+                out_merch = out-roy;
+                if (r==RES_GOLD) e->reserve_gold[owner_]   += roy;
+                else             e->reserve_copper[owner_] += roy;
+            }
+            S[r] += out_merch;                                         /* dépôt au STOCK NATIONAL (marchand seul) */
+            supply[r]    += out_merch;
+            float value = out_merch*re->price[r];
             gdp += value;
             wage_pool   += value*WAGE_SHARE;
             profit_pool += value*(1.f-WAGE_SHARE-TAX_RATE);

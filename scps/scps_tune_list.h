@@ -13,6 +13,10 @@
  * Le défaut ici DOIT égaler la valeur passée au site d'appel tune_f("NOM", v).
  */
 #define SCPS_TUNABLES(X) \
+    /* MONNAIE M1 — la redevance minière (docs/MONNAIE_CONCEPT.md). Part de l'or/cuivre
+     * EXTRAIT détournée à la réserve d'État (jamais marchande) — 0 = kill-switch
+     * (redevance/réserve strictement inertes ; la frappe M2 en dépend en aval). */ \
+    X(MINT_ROYALTY,          0.15f) \
     /* §G0.4/H7 — le robinet d'or (les bandes de flux) */ \
     X(ENTRETIEN_DIV,        400.0f) \
     X(MANUF_UPKEEP_DAY,       0.05f) \

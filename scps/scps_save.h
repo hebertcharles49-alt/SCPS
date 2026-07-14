@@ -32,7 +32,11 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 85u           /* v85 : BuildOrder.prov (grain province des chantiers joueur —
+#define SAVE_VERSION 86u           /* v86 : MONNAIE M1 — réserve métallique par pays
+                                    * (reserve_gold/reserve_copper[SCPS_MAX_COUNTRY], alimentée
+                                    * par la redevance minière MINT_ROYALTY, jamais marchande) →
+                                    * WorldEconomy grandit (blob ECON) ; <v86 refusé.
+                                    * v85 : BuildOrder.prov (grain province des chantiers joueur —
                                     * doctrine « la province est la seule réalité économique » :
                                     * CMD_BUILD enfile désormais un PID direct, sans le résoudre via
                                     * la province représentative de la région) → BuildOrder grandit

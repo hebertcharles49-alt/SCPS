@@ -274,6 +274,10 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
             float v=s->econ->budget_mult[c][k];
             if (v!=0.f && !(v>=0.02f && v<=2.f)) return false;
         }
+        /* v86 — MONNAIE M1 : la réserve métallique désérialisée se revalide (≥0, finie —
+         * jamais un index, mais une valeur déraisonnable trahirait un fichier forgé/corrompu). */
+        if (!(s->econ->reserve_gold[c]  >=0.f && s->econ->reserve_gold[c]  <1.0e12f)) return false;
+        if (!(s->econ->reserve_copper[c]>=0.f && s->econ->reserve_copper[c]<1.0e12f)) return false;
     }
     if (w->n_countries <0 || w->n_countries >SCPS_MAX_COUNTRY)   return false;
     if (w->n_continents<0 || w->n_continents>SCPS_MAX_CONTINENT) return false;
