@@ -1,430 +1,676 @@
-extends Control
-## ARMY PANEL — la barre de COMMANDEMENT du pion sélectionné. Statut de l'armée + TOUS les
-## verbes déjà câblés : MARCHE/ATTAQUE (clic-destination sur la carte : à soi = repositionner,
-## ennemie = siège → assaut → occupation & butin), RENFORCER, PILLER la côte,
-## DISSOUDRE. Zéro logique sim : lit army_info/country_army, enfile des verbes journalisés.
-## Montré/caché par map_view.army_selection_changed (main le câble).
+extends PanelContainer
+## ArmyPanel — la barre de COMMANDEMENT du pion sélectionné, PORTÉE au squelette unifié
+## (PanelContainer racine + ParchTheme.build() + HeaderStrip + LedTabStrip + corps VBox
+## rebâti au refresh, CONTENEURS NATIFS, ZÉRO `_draw` — le même patron que
+## province_panel_v2.gd / empire_window.gd). Deux onglets : COMPOSITION (barre d'unités,
+## campagne, actions) et COMBAT (vide hors engagement, temps réel en direct, résultat figé
+## à la conclusion). Zéro logique sim : lit corps_info/army_info/battle_info/region_war_state,
+## enfile des verbes déjà câblés (player_raise_corps, player_refill_corps, player_split_corps,
+## player_merge_corps, player_disband_corps) — port de PRÉSENTATION, aucun verbe changé.
+## Montré/caché par map_view.army_selection_changed (main le câble, cf. main.gd:239-245).
 
+const ParchTheme = preload("res://ui/parch_theme.gd")
+const PopBar = preload("res://ui/pop_bar.gd")
 const VKit = preload("res://ui/vkit.gd")
 const Frame = preload("res://ui/frame.gd")
 
 signal raid_requested   ## « Piller la côte » → main arme le sous-mode raid de la carte
 signal selection_replaced(ids: Array) ## fusion : le corps survivant devient l'unique sélection
 
-var _panel: PanelContainer
-var _head: Label
-var _hint: Label
-var _preview_label: Label
-var _stack_label: Label
-var _refill_label: Label
-var _corps_box: VBoxContainer
-var _flash: Label
-var _flash_ms := -100000
-var _disband_btn: Button
-var _split_btn: Button
-var _merge_btn: Button
-var _refill_btn: Button
-var _disband_armed := false
-var _disband_ms := -100000
+const PW := 420.0
+
 var _selected_ids: Array[int] = []
 var _move_preview: Dictionary = {}
 var _refill_previews: Array[Dictionary] = []
+var _disband_armed := false
+var _disband_ms := -100000
+var _flash := ""
+var _flash_good := true
+var _flash_ms := -100000
+
+var _tab := 0   # 0 Composition · 1 Combat
+var _tab_group: ButtonGroup = null
+var _tab_btns: Array = []           # [Button] pour piloter l'onglet actif par code (probe)
+var _body: VBoxContainer = null     # corps rebâti à chaque refresh / changement d'onglet
+var _title_lbl: Label = null
+var _sub_lbl: Label = null
+var _phase_lbl: Label = null
 
 # ── SECTION COMBAT — vide si aucun combat, EN TEMPS RÉEL (Sim.ticked, chaque jour)
 # sinon, et persiste le RÉSULTAT (victoire/défaite + pertes) jusqu'à re-sélection ou
 # nouveau combat. Lit scps_battle_info/region_war_state ; zéro logique de sim.
-var _combat_section: VBoxContainer
-var _combat_head: Label
-var _combat_body: VBoxContainer
 var _battle_region := -1
 var _battle_live: Dictionary = {}     # dernier battle_info valide vu pour _battle_region
 var _battle_result: Dictionary = {}   # { bi, ws } — figé quand le combat vient de se conclure
 
 func _ready() -> void:
+	mouse_filter = Control.MOUSE_FILTER_STOP
+	custom_minimum_size = Vector2(PW, 0)   # largeur plancher ; hauteur AU CONTENU
+	theme = ParchTheme.build()
+	_build_shell()
 	visible = false
-	mouse_filter = Control.MOUSE_FILTER_IGNORE   # plein écran : laisse passer les clics carte ; seul le panneau STOP
-	_build()
 	get_viewport().size_changed.connect(_layout)
 	Sim.ticked.connect(func(_y): if visible: _refresh())
 
 func _process(_dt: float) -> void:
 	if _disband_armed and Time.get_ticks_msec() - _disband_ms > 4000:
 		_disband_armed = false
-		if visible:
-			_refresh_disband()
-	if _flash != null and _flash.text != "" and Time.get_ticks_msec() - _flash_ms > 3000:
-		_flash.text = ""
+		if visible and _tab == 0:
+			_refresh()
+	if _flash != "" and Time.get_ticks_msec() - _flash_ms > 3000:
+		_flash = ""
+		if visible and _tab == 0:
+			_refresh()
 
 ## appelé par main sur map_view.army_selection_changed(on)
 func set_army(ids: Array) -> void:
 	var new_ids: Array[int] = []
 	for id in ids: new_ids.append(int(id))
 	if new_ids != _selected_ids:
-		# re-sélection : la section combat oublie le combat/résultat qu'elle suivait.
+		# re-sélection : la section combat oublie le combat/résultat qu'elle suivait,
+		# et on revient sur l'onglet Composition (le nouveau corps n'est pas forcément
+		# celui qui combattait).
 		_battle_region = -1
 		_battle_live = {}
 		_battle_result = {}
+		_tab = 0
+		if not _tab_btns.is_empty():
+			_tab_btns[0].button_pressed = true
 	_selected_ids = new_ids
 	visible = not _selected_ids.is_empty()
 	if visible:
 		_disband_armed = false
 		_refresh()
 
-func _build() -> void:
-	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_panel = PanelContainer.new()
-	_panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	_panel.custom_minimum_size = Vector2(400, 0)
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = VKit.COL_PANEL
-	sb.border_color = VKit.COL_EDGE
-	sb.set_border_width_all(1)
-	sb.set_border_width(SIDE_TOP, 3)
-	sb.border_color = VKit.COL_GOLD
-	sb.set_corner_radius_all(3)
-	sb.content_margin_left = 12 ; sb.content_margin_right = 12
-	sb.content_margin_top = 10 ; sb.content_margin_bottom = 10
-	_panel.add_theme_stylebox_override("panel", sb)
-	add_child(_panel)
+# ── LE SQUELETTE (header + onglets + corps) ───────────────────────────────────
+func _build_shell() -> void:
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 0)
+	add_child(root)
 
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 6)
-	_panel.add_child(v)
+	# HEADER : nom/numéro du corps + effectif à gauche · phase courante à droite
+	var head := PanelContainer.new()
+	head.theme_type_variation = "HeaderStrip"
+	root.add_child(head)
+	var hb := HBoxContainer.new()
+	head.add_child(hb)
+	var lcol := VBoxContainer.new()
+	lcol.add_theme_constant_override("separation", 0)
+	lcol.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hb.add_child(lcol)
+	_title_lbl = Label.new()
+	_title_lbl.theme_type_variation = "Title"
+	_title_lbl.text = "⚔ Votre armée"
+	_title_lbl.clip_text = true
+	lcol.add_child(_title_lbl)
+	_sub_lbl = Label.new()
+	_sub_lbl.theme_type_variation = "RowDim"
+	_sub_lbl.text = "—"
+	lcol.add_child(_sub_lbl)
+	var rcol := VBoxContainer.new()
+	rcol.add_theme_constant_override("separation", 0)
+	rcol.size_flags_horizontal = Control.SIZE_SHRINK_END
+	hb.add_child(rcol)
+	_phase_lbl = Label.new()
+	_phase_lbl.theme_type_variation = "RowLabel"
+	_phase_lbl.text = "Réserve"
+	_phase_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	rcol.add_child(_phase_lbl)
 
-	_head = Label.new()
-	_head.add_theme_font_size_override("font_size", VKit.FS_BIG)
-	_head.add_theme_color_override("font_color", VKit.COL_GOLD)
-	v.add_child(_head)
+	# BARRE D'ONGLETS façon Vic3 : Composition · Combat
+	var tabpanel := PanelContainer.new()
+	tabpanel.theme_type_variation = "LedTabStrip"
+	root.add_child(tabpanel)
+	var tabs := HBoxContainer.new()
+	tabs.add_theme_constant_override("separation", 2)
+	tabpanel.add_child(tabs)
+	_tab_group = ButtonGroup.new()
+	_tab_btns.clear()
+	var names := ["Composition", "Combat"]
+	for i in range(names.size()):
+		var b := Button.new()
+		b.theme_type_variation = "Tab"
+		b.toggle_mode = true
+		b.button_group = _tab_group
+		b.text = names[i]
+		b.focus_mode = Control.FOCUS_NONE
+		if i == _tab:
+			b.button_pressed = true
+		var idx := i
+		b.pressed.connect(func(): _tab = idx; _refresh())
+		tabs.add_child(b)
+		_tab_btns.append(b)
 
-	_hint = Label.new()
-	_hint.add_theme_font_size_override("font_size", VKit.FS_SMALL)
-	_hint.add_theme_color_override("font_color", VKit.COL_DIM)
-	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_hint.custom_minimum_size = Vector2(376, 0)
-	_hint.text = "Cliquez une province : à vous → repositionner · ennemie → attaquer (siège, assaut, occupation & butin)."
-	v.add_child(_hint)
-	_preview_label = Label.new()
-	_preview_label.add_theme_font_size_override("font_size", VKit.FS_SMALL)
-	_preview_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_preview_label.visible = false
-	v.add_child(_preview_label)
+	# CORPS (fond transparent — laisse voir le parchemin)
+	var bodypanel := PanelContainer.new()
+	bodypanel.theme_type_variation = "Body"
+	root.add_child(bodypanel)
+	_body = VBoxContainer.new()
+	_body.add_theme_constant_override("separation", 4)
+	bodypanel.add_child(_body)
 
-	_corps_box = VBoxContainer.new()
-	_corps_box.add_theme_constant_override("separation", 2)
-	v.add_child(_corps_box)
-	_stack_label = Label.new()
-	_stack_label.add_theme_font_size_override("font_size", VKit.FS_SMALL)
-	_stack_label.add_theme_color_override("font_color", VKit.COL_GOLD)
-	_stack_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_stack_label.visible = false
-	v.add_child(_stack_label)
-	_refill_label = Label.new()
-	_refill_label.add_theme_font_size_override("font_size", VKit.FS_SMALL)
-	_refill_label.add_theme_color_override("font_color", VKit.COL_PARCH)
-	_refill_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_refill_label.visible = false
-	v.add_child(_refill_label)
+## sélection PUBLIQUE d'un onglet (par code) : met aussi à jour le bouton actif (le
+## soulignement suit). Utilisée par la sonde de capture.
+func select_tab(idx: int) -> void:
+	if idx >= 0 and idx < _tab_btns.size():
+		_tab_btns[idx].button_pressed = true
+	_tab = idx
+	_refresh()
 
-	# (POSTURE retirée — retour joueur : feature sans intérêt, jamais demandée.)
+## un mouvement survolé sur la carte (avant clic) : juste le texte d'aperçu bouge,
+## pas de re-tirage complet des corps/renfort — cette entrée peut arriver à chaque
+## changement de région survolée pendant un glissé.
+func set_move_preview(preview: Dictionary) -> void:
+	_move_preview = preview.duplicate(true)
+	if visible and _tab == 0:
+		_refresh()
 
-	# ACTIONS
-	var ah := HBoxContainer.new()
-	ah.add_theme_constant_override("separation", 4)
-	v.add_child(ah)
-	var bra := Button.new()
-	bra.text = "Lever un corps"
-	bra.tooltip_text = "Détache la moitié de la réserve nationale à la capitale."
-	bra.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bra.pressed.connect(_do_raise)
-	ah.add_child(bra)
-	_refill_btn = Button.new()
-	_refill_btn.text = "Renforcer"
-	_refill_btn.custom_minimum_size = Vector2(0, 34)
-	_refill_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_refill_btn.tooltip_text = "Mobilise une vague de renfort depuis une région nationale."
-	_refill_btn.pressed.connect(_do_refill)
-	ah.add_child(_refill_btn)
-	var brd := Button.new()
-	brd.text = "Piller la côte"
-	brd.custom_minimum_size = Vector2(0, 34)
-	brd.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	brd.tooltip_text = "Arme le pillage : cliquez ensuite une province côtière étrangère (nécessite une coque pirate)."
-	brd.pressed.connect(_do_raid)
-	ah.add_child(brd)
-	_split_btn = Button.new()
-	_split_btn.text = "Scinder"
-	_split_btn.tooltip_text = "Sépare chaque corps sélectionné en deux détachements égaux."
-	_split_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_split_btn.pressed.connect(_do_split)
-	ah.add_child(_split_btn)
-	_merge_btn = Button.new()
-	_merge_btn.text = "Fusionner"
-	_merge_btn.tooltip_text = "Fusionne les corps sélectionnés présents dans la même région."
-	_merge_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_merge_btn.pressed.connect(_do_merge)
-	ah.add_child(_merge_btn)
-	_disband_btn = Button.new()
-	_disband_btn.custom_minimum_size = Vector2(0, 34)
-	_disband_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_disband_btn.pressed.connect(_do_disband)
-	ah.add_child(_disband_btn)
+func show_feedback(message: String, good: bool) -> void:
+	_flash_msg(message, good)
 
-	# ── SECTION COMBAT (native, cachée si rien à montrer) ──────────────────
-	_combat_section = VBoxContainer.new()
-	_combat_section.add_theme_constant_override("separation", 4)
-	_combat_section.visible = false
-	v.add_child(_combat_section)
-	var div := ColorRect.new()
-	div.color = VKit.COL_EDGE
-	div.custom_minimum_size = Vector2(0, 1)
-	_combat_section.add_child(div)
-	_combat_head = Label.new()
-	_combat_head.add_theme_font_size_override("font_size", VKit.FS)
-	_combat_head.add_theme_color_override("font_color", VKit.COL_GOLD)
-	_combat_section.add_child(_combat_head)
-	_combat_body = VBoxContainer.new()
-	_combat_body.add_theme_constant_override("separation", 3)
-	_combat_section.add_child(_combat_body)
-
-	_flash = Label.new()
-	_flash.add_theme_font_size_override("font_size", VKit.FS_SMALL)
-	v.add_child(_flash)
-	_refresh_disband()
-	_layout()
-
-func _layout() -> void:
-	if _panel == null:
-		return
-	var vp := get_viewport_rect().size
-	_panel.reset_size()
-	var w: float = maxf(_panel.size.x, _panel.custom_minimum_size.x)
-	var h: float = _panel.size.y
-	# La carte et les corps restent au centre : la barre de commandement s'ancre
-	# dans la marge gauche, au-dessus de la barre basse.
-	_panel.position = Vector2(Frame.SIDEBAR_W + 14.0,
-		maxf(Frame.TOPBAR_H + 12.0, vp.y - h - Frame.BOTTOMBAR_H - 12.0))
-
+# ── REFRESH : rassemble l'état, rebâtit l'onglet actif ─────────────────────────
 func _refresh() -> void:
-	if Sim.world == null:
+	var w = Sim.world
+	if w == null or _body == null:
 		return
-	var me: int = Sim.world.player()
-	_clear_corps_rows()
-	var total:=0; var inf:=0; var arch:=0; var cav:=0; var mages:=0; var active:=0; var phase:="Réserve"
+	var me := int(w.player())
+	var data := _gather_corps(w, me)
+	_update_header(data)
+	_refresh_combat_state(w, data.regions)
+	if not _tab_btns.is_empty():
+		_tab_btns[1].text = "Combat ⚔" if not _battle_live.is_empty() else "Combat"
+	for c in _body.get_children():
+		c.queue_free()
+	match _tab:
+		1: _build_combat_tab()
+		_: _build_composition_tab(w, me, data)
+	_layout.call_deferred()
+
+## rassemble les corps SÉLECTIONNÉS valides : agrégats (effectif, composition) +
+## la liste brute (pour les lignes détaillées et les gates d'action).
+func _gather_corps(w, me: int) -> Dictionary:
+	var total := 0; var inf := 0; var arch := 0; var cav := 0; var mages := 0; var active := 0
+	var phase := "Réserve"
 	var phases: Array[String] = []
 	var regions: Array[int] = []
 	var corps_data: Array[Dictionary] = []
 	for id in _selected_ids:
-		var a: Dictionary = Sim.world.corps_info(id) if Sim.world.has_method("corps_info") else Sim.world.army_info(me)
-		if not bool(a.get("active",false)): continue
+		var a: Dictionary = w.corps_info(id) if w.has_method("corps_info") else w.army_info(me)
+		if not bool(a.get("active", false)): continue
 		if not bool(a.get("units_are_humans", false)):
 			# Compatibilité avec la DLL debug précédente : elle exposait encore des paquets.
 			for key in ["units", "inf", "arch", "cav", "mages"]:
 				a[key] = int(a.get(key, 0)) * 100
 		corps_data.append(a)
-		active+=1; total+=int(a.get("units",0)); inf+=int(a.get("inf",0)); arch+=int(a.get("arch",0)); cav+=int(a.get("cav",0)); mages+=int(a.get("mages",0)); phase=String(a.get("phase","?"))
+		active += 1
+		total += int(a.get("units", 0)); inf += int(a.get("inf", 0)); arch += int(a.get("arch", 0))
+		cav += int(a.get("cav", 0)); mages += int(a.get("mages", 0))
+		phase = String(a.get("phase", "?"))
 		if phase not in phases: phases.append(phase)
 		var region := int(a.get("region", -1))
 		if region not in regions: regions.append(region)
-	if active>0:
-		var compo := "%s inf · %s dist · %s cav · %s mages" % [_grp(inf),_grp(arch),_grp(cav),_grp(mages)]
-		var phase_summary := phase if phases.size() == 1 else "%d phases" % phases.size()
-		_head.text = "⚔ %d corps — %s · %s hommes" % [active,phase_summary,_grp(total)] if active>1 else "⚔ Votre corps — %s · %s hommes" % [phase,_grp(total)]
-		_hint.text = "%s\nSélection conservée après l'ordre · clic droit pour annuler." % compo
-		for i in range(mini(corps_data.size(), 6)):
-			_add_corps_row(corps_data[i])
-		if corps_data.size() > 6:
-			var more := Label.new()
-			more.text = "… et %d autres corps" % (corps_data.size() - 6)
-			more.add_theme_font_size_override("font_size", VKit.FS_SMALL)
-			more.add_theme_color_override("font_color", VKit.COL_DIM)
-			_corps_box.add_child(more)
+	var reserve := 0
+	if active == 0 and w.has_method("country_army"):
+		reserve = int(w.country_army(me).get("regiments", 0))
+	return {"active": active, "total": total, "inf": inf, "arch": arch, "cav": cav, "mages": mages,
+		"phase": phase, "phases": phases, "regions": regions, "corps_data": corps_data, "reserve": reserve}
+
+func _update_header(data: Dictionary) -> void:
+	var active := int(data.active)
+	var phases: Array = data.phases
+	if active > 0:
+		var corps_data: Array = data.corps_data
+		_title_lbl.text = "⚔ %d corps" % active if active > 1 else "⚔ Corps #%d" % int(corps_data[0].get("id", -1))
+		_sub_lbl.text = "%s hommes · %s inf · %s dist · %s cav · %s mages" % [
+			_grp(int(data.total)), _grp(int(data.inf)), _grp(int(data.arch)), _grp(int(data.cav)), _grp(int(data.mages))]
+		_phase_lbl.text = String(data.phase) if phases.size() == 1 else "%d phases" % phases.size()
 	else:
-		var reg_n := 0
-		if Sim.world.has_method("country_army"):
-			reg_n = int(Sim.world.country_army(me).get("regiments", 0))
-		_head.text = "⚔ Votre armée — réserve : %d régiment(s)" % reg_n
-		_hint.text = "Cliquez une province : à vous → repositionner · ennemie → attaquer (siège, assaut, occupation & butin)."
-	if _merge_btn != null:
-		var merge_ok := active >= 2 and regions.size() == 1
-		for merge_corps in corps_data:
-			var merge_phase_id := int(merge_corps.get("phase_id", 0))
-			if merge_phase_id == 3 or merge_phase_id >= 4: merge_ok = false
-		_merge_btn.disabled = not merge_ok
-		_merge_btn.tooltip_text = "Fusion possible : tous les corps sont au même endroit." if merge_ok else \
-			"Fusion impossible : sélectionnez au moins deux corps co-localisés, hors bataille et hors mer."
-	if _stack_label != null:
-		_stack_label.text = _stack_summary_text(corps_data, regions, total)
-		_stack_label.visible = _stack_label.text != ""
-	if _split_btn != null:
-		var split_ok := active > 0
-		for split_corps in corps_data:
-			var split_phase_id := int(split_corps.get("phase_id", 0))
-			if int(split_corps.get("units", 0)) < 200 or split_phase_id == 3 or split_phase_id >= 4: split_ok = false
-		_split_btn.disabled = not split_ok
-	_refresh_refill()
-	_refresh_disband()
-	_refresh_combat(regions)
-	_layout.call_deferred()
+		_title_lbl.text = "⚔ Votre armée"
+		_sub_lbl.text = "réserve : %d régiment(s)" % int(data.reserve)
+		_phase_lbl.text = "Réserve"
 
-func _clear_corps_rows() -> void:
-	if _corps_box == null:
-		return
-	for child in _corps_box.get_children():
-		_corps_box.remove_child(child)
-		child.queue_free()
+# ── ONGLET COMPOSITION : les corps, la pile, le renfort/l'aperçu, les actions ──
+func _build_composition_tab(w, me: int, data: Dictionary) -> void:
+	var active := int(data.active)
+	var corps_data: Array[Dictionary] = data.corps_data
+	var regions: Array[int] = data.regions
+	if active > 0:
+		_dim_line("Sélection conservée après l'ordre · clic droit pour annuler.")
+		for i in range(mini(corps_data.size(), 6)):
+			_body.add_child(_corps_block(corps_data[i]))
+		if corps_data.size() > 6:
+			_dim_line("… et %d autres corps" % (corps_data.size() - 6))
+		if corps_data.size() >= 2:
+			var gold := _line(_stack_summary_text(corps_data, regions, int(data.total)), "RowLabel")
+			gold.add_theme_color_override("font_color", ParchTheme.HEADER_INK)
+			_body.add_child(gold)
+	else:
+		_dim_line("Cliquez une province : à vous → repositionner · ennemie → attaquer (siège, assaut, occupation & butin).")
 
-func _corps_status_text(a: Dictionary) -> String:
-	var loc := String(a.get("location", ""))
-	if loc == "": loc = "région %d" % int(a.get("region", -1))
-	var phase := String(a.get("phase", "Inconnu"))
-	var text := "Corps #%d · %s · %s · %s hommes" % [int(a.get("id", -1)), loc, phase, _grp(int(a.get("units", 0)))]
-	var dest := String(a.get("destination", ""))
-	if int(a.get("dest", -1)) >= 0:
-		if dest == "": dest = "région %d" % int(a.get("dest", -1))
-		text += " → %s" % dest
-	var progress := int(a.get("progress_pct", -1))
-	if progress >= 0:
-		text += " · %d%% · %.0f j restants" % [progress, float(a.get("days_left", 0.0))]
-	elif float(a.get("days_left", 0.0)) > 0.5:
-		text += " · %.0f j" % float(a.get("days_left", 0.0))
-	if int(a.get("broken_days", 0)) > 0:
-		text += " · BRISÉ %d j" % int(a.get("broken_days", 0))
-	if float(a.get("rally_days", 0.0)) > 0.5:
-		text += " · ralliement %.0f j (%s hommes)" % [float(a.get("rally_days", 0.0)), _grp(int(a.get("rally_units", 0)))]
-	return text
+	_refresh_refill_data(w)
+	if not _refill_previews.is_empty():
+		var totals := _refill_totals(_refill_previews)
+		_body.add_child(_tone_line(_refill_summary_text(_refill_previews),
+			0.75 if int(totals.allowed) > 0 else 0.18))
 
-func _stack_summary_text(corps_data: Array[Dictionary], regions: Array[int], total: int) -> String:
-	if corps_data.size() < 2:
-		return ""
-	if regions.size() != 1:
-		return "Stack dispersé · %d corps dans %d régions · fusion impossible" % [corps_data.size(), regions.size()]
-	for corps in corps_data:
-		var phase_id := int(corps.get("phase_id", 0))
-		if phase_id == 3 or phase_id >= 4:
-			return "Stack · %d corps · %s hommes · fusion bloquée pendant bataille/mer" % [corps_data.size(), _grp(total)]
-	return "Stack · %d corps · %s hommes · fusion → corps #%d (%s hommes)" % [
-		corps_data.size(), _grp(total), int(corps_data[0].get("id", -1)), _grp(total)]
+	if not _move_preview.is_empty():
+		_body.add_child(_tone_line(_move_preview_text(_move_preview), _move_preview_tone()))
 
-func _grp(n: int) -> String:
-	var s := str(absi(n))
-	var out := ""
-	var count := 0
-	for i in range(s.length() - 1, -1, -1):
-		out = s[i] + out
-		count += 1
-		if count % 3 == 0 and i > 0: out = " " + out
-	return ("-" if n < 0 else "") + out
+	_body.add_child(_action_row(w, me, data))
 
-func _split_packets(humans: int) -> int:
-	return maxi(0, humans / 200)
+	if _flash != "":
+		_body.add_child(_tone_line(_flash, 0.80 if _flash_good else 0.20))
 
-## une barre de composition (inf/dist/cav/mages) empilée en conteneurs NATIFS
-## (ColorRect à ratio d'étirement — aucun _draw) ; même langage de couleur que
-## battle_panel._compo_bar (SLICE_PAL 0/1/3/5). Hover = détail du groupe.
-func _compo_bar_native(inf: int, arch: int, cav: int, mages: int) -> Control:
-	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 1)
-	h.custom_minimum_size = Vector2(0, 8)
-	var tot: int = maxi(1, inf + arch + cav + mages)
-	var segs := [["Infanterie", inf, VKit.SLICE_PAL[0]], ["Tirailleurs/archers", arch, VKit.SLICE_PAL[1]],
-		["Cavalerie", cav, VKit.SLICE_PAL[3]], ["Mages", mages, VKit.SLICE_PAL[5]]]
-	for seg in segs:
-		var v: int = seg[1]
-		if v <= 0: continue
-		var cr := ColorRect.new()
-		cr.color = seg[2]
-		cr.custom_minimum_size = Vector2(0, 8)
-		cr.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		cr.size_flags_stretch_ratio = float(v) / float(tot)
-		cr.mouse_filter = Control.MOUSE_FILTER_STOP
-		cr.tooltip_text = "%s · %s hommes (%d%%)" % [seg[0], _grp(v), roundi(100.0 * float(v) / float(tot))]
-		h.add_child(cr)
-	return h
-
-func _add_corps_row(a: Dictionary) -> void:
+## une carte de corps : statut + barre de composition (PopBar, DRY — hover = détail
+## du groupe) + la ligne de campagne (étapes/batailles/régions réduites).
+func _corps_block(a: Dictionary) -> Control:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 1)
-	var row := Label.new()
-	row.text = _corps_status_text(a)
-	row.add_theme_font_size_override("font_size", VKit.FS_SMALL)
-	row.add_theme_color_override("font_color", VKit.COL_PARCH)
-	row.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(row)
+	box.add_child(_line(_corps_status_text(a), "RowLabel"))
 	var inf := int(a.get("inf", 0)); var arch := int(a.get("arch", 0))
 	var cav := int(a.get("cav", 0)); var mages := int(a.get("mages", 0))
 	if inf + arch + cav + mages > 0:
-		box.add_child(_compo_bar_native(inf, arch, cav, mages))
-	# STATS DE COMBAT visibles (pas seulement au survol) : le journal de campagne du
-	# corps — force/moral/bonus-malus détaillés vivent dans la section COMBAT plus bas
-	# tant qu'un affrontement est en cours (aucun reader n'expose un « moral au repos »).
-	var campaign := Label.new()
-	campaign.text = "%d étape(s) · %d bataille(s) · %d région(s) réduite(s)" % [
-		int(a.get("legs", 0)), int(a.get("battles", 0)), int(a.get("taken", 0))]
-	campaign.add_theme_font_size_override("font_size", VKit.FS_SMALL)
-	campaign.add_theme_color_override("font_color", VKit.COL_DIM)
-	box.add_child(campaign)
-	_corps_box.add_child(box)
+		box.add_child(PopBar.proportion_bar(_compo_members(inf, arch, cav, mages), 10))
+	box.add_child(_line("%d étape(s) · %d bataille(s) · %d région(s) réduite(s)" % [
+		int(a.get("legs", 0)), int(a.get("battles", 0)), int(a.get("taken", 0))], "RowDim"))
+	return box
 
-func _refresh_disband() -> void:
-	if _disband_btn == null:
+## membres pour PopBar.proportion_bar (nom/valeur/couleur/pct) — même langage de
+## couleur que battle_panel._compo_bar (SLICE_PAL 0/1/3/5).
+func _compo_members(inf: int, arch: int, cav: int, mages: int) -> Array:
+	var tot: int = maxi(1, inf + arch + cav + mages)
+	var raw := [["Infanterie", inf, VKit.SLICE_PAL[0]], ["Tirailleurs/archers", arch, VKit.SLICE_PAL[1]],
+		["Cavalerie", cav, VKit.SLICE_PAL[3]], ["Mages", mages, VKit.SLICE_PAL[5]]]
+	var out := []
+	for e in raw:
+		var v: int = e[1]
+		if v <= 0: continue
+		out.append({"name": e[0], "value": float(v), "pct": roundi(100.0 * float(v) / float(tot)), "color": e[2]})
+	return out
+
+## la rangée d'ACTIONS : Lever · Renforcer · Piller la côte · Scinder · Fusionner ·
+## Dissoudre — vrais Buttons ParchTheme, désactivés + motif de refus au hover.
+func _action_row(w, me: int, data: Dictionary) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+
+	var raise_btn := _action_btn("Lever un corps",
+		"Détache la moitié de la réserve nationale à la capitale.")
+	raise_btn.pressed.connect(_do_raise)
+	row.add_child(raise_btn)
+
+	var totals := _refill_totals(_refill_previews)
+	var refill_ok := int(totals.allowed) > 0
+	var refill_btn := _action_btn(
+		"Renforcer (+%s)" % _grp(int(totals.requested)) if refill_ok else "Renforcer",
+		_refill_tooltip(_refill_previews))
+	refill_btn.disabled = not refill_ok
+	refill_btn.pressed.connect(_do_refill)
+	row.add_child(refill_btn)
+
+	var raid_btn := _action_btn("Piller la côte",
+		"Arme le pillage : cliquez ensuite une province côtière étrangère (nécessite une coque pirate).")
+	raid_btn.pressed.connect(_do_raid)
+	row.add_child(raid_btn)
+
+	var corps_data: Array = data.corps_data
+	var split_ok := int(data.active) > 0
+	for c in corps_data:
+		var spid := int(c.get("phase_id", 0))
+		if int(c.get("units", 0)) < 200 or spid == 3 or spid >= 4: split_ok = false
+	var split_btn := _action_btn("Scinder", "Sépare chaque corps sélectionné en deux détachements égaux.")
+	split_btn.disabled = not split_ok
+	if not split_ok:
+		split_btn.tooltip_text = "Scission impossible : il faut ≥200 hommes par corps, hors bataille et hors mer."
+	split_btn.pressed.connect(_do_split)
+	row.add_child(split_btn)
+
+	var merge_ok := int(data.active) >= 2 and int((data.regions as Array).size()) == 1
+	for c in corps_data:
+		var mpid := int(c.get("phase_id", 0))
+		if mpid == 3 or mpid >= 4: merge_ok = false
+	var merge_btn := _action_btn("Fusionner",
+		"Fusion possible : tous les corps sont au même endroit." if merge_ok else
+		"Fusion impossible : sélectionnez au moins deux corps co-localisés, hors bataille et hors mer.")
+	merge_btn.disabled = not merge_ok
+	merge_btn.pressed.connect(_do_merge)
+	row.add_child(merge_btn)
+
+	var disband_btn := _action_btn("Confirmer ?" if _disband_armed else "Dissoudre",
+		"Dissout définitivement le(s) corps sélectionné(s)." if not _disband_armed else "Un second clic dissout pour de bon.")
+	disband_btn.add_theme_color_override("font_color", VKit.sense(0.10) if _disband_armed else ParchTheme.INK)
+	disband_btn.pressed.connect(_do_disband)
+	row.add_child(disband_btn)
+
+	return row
+
+func _action_btn(txt: String, tip: String) -> Button:
+	var b := Button.new()
+	b.text = txt
+	b.tooltip_text = tip
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(0, 32)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.add_theme_font_size_override("font_size", 12)
+	b.add_theme_stylebox_override("normal", ParchTheme.sb(ParchTheme.HEADER_BG, ParchTheme.BORDER, 1, 3, 5, 5, 3, 3))
+	b.add_theme_stylebox_override("hover", ParchTheme.sb(ParchTheme.PANEL_BG, ParchTheme.TAB_UNDERLINE, 1, 3, 5, 5, 3, 3))
+	b.add_theme_stylebox_override("pressed", ParchTheme.sb(ParchTheme.DIVIDER, ParchTheme.TAB_UNDERLINE, 1, 3, 5, 5, 3, 3))
+	b.add_theme_stylebox_override("disabled", ParchTheme.sb(ParchTheme.PANEL_BG, ParchTheme.DIVIDER, 1, 3, 5, 5, 3, 3))
+	b.add_theme_color_override("font_color", ParchTheme.INK)
+	b.add_theme_color_override("font_hover_color", ParchTheme.INK)
+	b.add_theme_color_override("font_pressed_color", ParchTheme.INK)
+	b.add_theme_color_override("font_disabled_color", ParchTheme.DIM_INK)
+	return b
+
+# ── ONGLET COMBAT : vide hors engagement · temps réel en direct · résultat figé ─
+func _build_combat_tab() -> void:
+	if not _battle_live.is_empty():
+		_body.add_child(_phase_title(String(_battle_live.get("phase", "?"))))
+		_build_combat_live(_battle_live)
 		return
-	_disband_btn.text = "Confirmer ?" if _disband_armed else "Dissoudre"
-	_disband_btn.add_theme_color_override("font_color",
-		Color(0.92, 0.42, 0.36) if _disband_armed else Color(0.86, 0.55, 0.50))
+	if not _battle_result.is_empty():
+		_body.add_child(_line("COMBAT — TERMINÉ", "Section"))
+		_build_combat_result(_battle_result)
+		return
+	_dim_line("Aucun engagement en cours.")
 
-func _say(msg: String, good: bool) -> void:
-	_flash.text = msg
-	_flash.add_theme_color_override("font_color", VKit.sense(0.80) if good else VKit.sense(0.20))
+## rafraîchit l'état de combat suivi (_battle_region/_battle_live/_battle_result)
+## depuis les régions des corps sélectionnés — bascule AUTOMATIQUEMENT sur l'onglet
+## Combat quand un engagement s'allume (pour ne pas le manquer).
+func _refresh_combat_state(w, regions: Array) -> void:
+	if w == null or not w.has_method("battle_info") or not w.has_method("region_war_state") or regions.is_empty():
+		return
+	var bi := {}
+	var region := -1
+	for r in regions:
+		var cand: Dictionary = w.battle_info(int(r))
+		if bool(cand.get("valid", false)):
+			bi = cand; region = int(r); break
+	if region >= 0:
+		var was_live := not _battle_live.is_empty()
+		_battle_region = region
+		_battle_live = bi.duplicate(true)
+		_battle_result = {}
+		if not was_live and _tab == 0 and not _tab_btns.is_empty():
+			_tab = 1
+			_tab_btns[1].button_pressed = true
+		return
+	if not _battle_live.is_empty() and _battle_region >= 0:
+		var ws: Dictionary = w.region_war_state(_battle_region)
+		_battle_result = {"bi": _battle_live.duplicate(true), "ws": ws.duplicate(true)}
+		_battle_live = {}
+
+func _country_name(cid: int) -> String:
+	if cid < 0 or Sim.world == null:
+		return "—"
+	var info: Dictionary = Sim.world.country_info(cid)
+	return String(info.get("nom", "—"))
+
+func _phase_title(txt: String) -> Label:
+	var l := Label.new()
+	l.theme_type_variation = "RowLabel"
+	l.text = txt
+	l.add_theme_font_size_override("font_size", 16)
+	l.add_theme_color_override("font_color", ParchTheme.HEADER_INK)
+	return l
+
+func _stat_line(label: String, value: String, tone: float = -1.0) -> Control:
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 6)
+	var l := Label.new()
+	l.theme_type_variation = "RowDim"
+	l.text = label
+	l.custom_minimum_size = Vector2(140, 0)
+	h.add_child(l)
+	var v := Label.new()
+	v.theme_type_variation = "RowLabel"
+	v.text = value
+	if tone >= 0.0:
+		v.add_theme_color_override("font_color", VKit.sense(tone))
+	h.add_child(v)
+	return h
+
+func _side_block(bi: Dictionary, is_atk: bool, cid: int, me: int) -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	var prefix := "atk" if is_atk else "def"
+	var role := "Attaquant" if is_atk else "Défenseur"
+	var name_lbl := Label.new()
+	name_lbl.theme_type_variation = "RowLabel"
+	name_lbl.text = "%s — %s%s" % [role, _country_name(cid), "  (VOUS)" if cid == me else ""]
+	name_lbl.add_theme_color_override("font_color", ParchTheme.HEADER_INK if cid == me else ParchTheme.INK)
+	box.add_child(name_lbl)
+	var unit_scale := 1 if bool(bi.get("units_are_humans", false)) else 100
+	var units := int(bi.get(prefix + "_units", 0)) * unit_scale
+	if units > 0:
+		box.add_child(_line("%s hommes · %d corps" % [_grp(units), int(bi.get(prefix + "_corps", 0))], "RowDim"))
+		box.add_child(PopBar.proportion_bar(_compo_members(
+			int(bi.get(prefix + "_inf", 0)) * unit_scale, int(bi.get(prefix + "_arch", 0)) * unit_scale,
+			int(bi.get(prefix + "_cav", 0)) * unit_scale, int(bi.get(prefix + "_mages", 0)) * unit_scale), 10))
+	else:
+		box.add_child(_stat_line("Force", "place forte" if not is_atk else "—"))
+	if bool(bi.get("in_battle", false)) and bi.has(prefix + "_morale_pct"):
+		var mp := clampi(int(bi.get(prefix + "_morale_pct", 0)), 0, 100)
+		box.add_child(_stat_line("Cohésion", "%d%%" % mp, float(mp) / 100.0))
+		box.add_child(_mini_bar(mp))
+	var helper := int(bi.get(prefix + "_helper", -1))
+	if helper >= 0:
+		box.add_child(_stat_line("Renfort", _country_name(helper)))
+	return box
+
+func _mini_bar(v: int) -> ProgressBar:
+	var pb := ProgressBar.new()
+	pb.min_value = 0; pb.max_value = 100; pb.value = v; pb.show_percentage = false
+	pb.custom_minimum_size = Vector2(0, 8)
+	pb.add_theme_stylebox_override("background", ParchTheme.sb(Color("caa768"), ParchTheme.BORDER, 1, 2, 0, 0, 0, 0))
+	pb.add_theme_stylebox_override("fill", ParchTheme.sb(VKit.sense(float(v) / 100.0), Color(0, 0, 0, 0), 0, 2, 0, 0, 0, 0))
+	return pb
+
+func _tactic_block(bi: Dictionary, atk: int, df: int) -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	box.add_child(_line("LECTURE TACTIQUE — %s" % String(bi.get("stage", "—")), "Section"))
+	var holder := int(bi.get("terrain_holder", -1))
+	var terr := "neutre"
+	if holder == atk: terr = "avantage attaquant %+d%%" % (int(bi.get("atk_terrain_pct", 100)) - 100)
+	elif holder == df: terr = "avantage défenseur %+d%%" % (int(bi.get("def_terrain_pct", 100)) - 100)
+	box.add_child(_stat_line("Terrain", terr))
+	if bool(bi.get("river", false)):
+		box.add_child(_stat_line("Rivière", "pontée" if bool(bi.get("bridged", false)) else "non pontée"))
+	box.add_child(_stat_line("Contres", "attaquant %+d%% · défenseur %+d%%" % [
+		int(bi.get("atk_counter_pct", 100)) - 100, int(bi.get("def_counter_pct", 100)) - 100]))
+	var bal := int(bi.get("balance_atk_pct", 50))
+	box.add_child(_stat_line("Rapport pré-aléa", "%d / %d (±15%% au choc)" % [bal, 100 - bal]))
+	box.add_child(_stat_line("Rupture", "sous %d%% de cohésion" % int(bi.get("rupture_pct", 0))))
+	box.add_child(_stat_line("Pertes attaquant", "%s hommes" % _grp(int(float(bi.get("loss_atk", 0.0)) * 100.0)), 0.15))
+	box.add_child(_stat_line("Pertes défenseur", "%s hommes" % _grp(int(float(bi.get("loss_def", 0.0)) * 100.0)), 0.15))
+	return box
+
+func _siege_block(bi: Dictionary) -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	box.add_child(_line("LECTURE DU SIÈGE", "Section"))
+	var sp := clampi(int(bi.get("siege_progress_pct", 0)), 0, 100)
+	box.add_child(_stat_line("Progression estimée", "%d%%" % sp))
+	box.add_child(_mini_bar(sp))
+	box.add_child(_stat_line("Échéance", "%.0f j restants / %.0f j de résistance" % [
+		float(bi.get("siege_days_left", 0.0)), float(bi.get("siege_full_days", 0.0))]))
+	box.add_child(_stat_line("Ouvrages", "défense %.1f" % float(bi.get("siege_defense", 0.0))))
+	box.add_child(_stat_line("Vivres", "%.1f mois" % float(bi.get("siege_food_months", 0.0))))
+	var tp := int(bi.get("siege_terrain_pct", 100))
+	box.add_child(_stat_line("Terrain", "tenue neutre" if tp == 100 else "%+d%% de tenue" % (tp - 100)))
+	box.add_child(_stat_line("À la chute", "libération de la région" if int(bi.get("siege_outcome", 0)) == 1 else "occupation de la région"))
+	return box
+
+func _build_combat_live(bi: Dictionary) -> void:
+	var me := int(Sim.world.player())
+	var atk := int(bi.get("attacker", -1))
+	var df := int(bi.get("defender", -1))
+	var sub := ""
+	if bool(bi.get("in_battle", false)):
+		sub = "Jour %d · %d choc(s) livré(s)" % [int(bi.get("days", 0)), int(bi.get("chocs", 0))]
+	else:
+		sub = "%.0f j restants · %d%% estimés" % [float(bi.get("siege_days_left", 0.0)), int(bi.get("siege_progress_pct", 0))]
+	_body.add_child(_line(sub, "RowDim"))
+	_body.add_child(_side_block(bi, true, atk, me))
+	_body.add_child(_side_block(bi, false, df, me))
+	if bool(bi.get("in_battle", false)):
+		_body.add_child(_tactic_block(bi, atk, df))
+	else:
+		_body.add_child(_siege_block(bi))
+	var ws := float(bi.get("war_score", 0.0))
+	_body.add_child(_stat_line("Score de guerre", "%+.0f (point de vue attaquant)" % ws, 0.5 + ws / 200.0))
+
+## le VERDICT de bataille du FIL (kinds 8/9/11 — le moteur l'a déjà tranché, côté
+## joueur) pour la région suivie ; {} si aucun (siège pur, ou combat IA-vs-IA).
+func _feed_battle_verdict(region: int) -> Dictionary:
+	var w = Sim.world
+	if w == null or not w.has_method("feed_poll") or region < 0:
+		return {}
+	var found := {}
+	for ev in w.feed_poll(0):   # lecture PURE (curseur 0 = tout le ring borné)
+		var kind := int(ev.get("kind", -1))
+		if (kind == 8 or kind == 9 or kind == 11) and int(ev.get("region", -1)) == region:
+			found = ev   # on garde le DERNIER (le ring est chronologique)
+	return found
+
+func _build_combat_result(result: Dictionary) -> void:
+	var bi: Dictionary = result.get("bi", {})
+	var ws: Dictionary = result.get("ws", {})
+	var w = Sim.world
+	var me := int(w.player())
+	var atk := int(bi.get("attacker", -1))
+	var df := int(bi.get("defender", -1))
+	var was_battle := bool(bi.get("in_battle", false))
+	var res_region := int(bi.get("region", _battle_region))
+	# le siège abouti se lit de DEUX façons : région OCCUPÉE par l'attaquant (state 2,
+	# la paix n'a pas encore transféré) OU propriété DÉJÀ basculée (region_owner == atk).
+	var attacker_took := (int(ws.get("state", 0)) == 2 and int(ws.get("belligerent", -1)) == atk)
+	if not attacker_took and res_region >= 0 and atk >= 0 and atk != df \
+			and w.has_method("region_owner"):
+		attacker_took = int(w.region_owner(res_region)) == atk
+	var atk_name := _country_name(atk)
+	var def_name := _country_name(df)
+	var feed := _feed_battle_verdict(res_region) if was_battle and (me == atk or me == df) else {}
+	var head_txt := ""
+	var head_tone := 0.5
+	if not feed.is_empty():
+		# le fil porte le verdict TRANCHÉ par le moteur (8 gagnée · 9 perdue · 11 indécise)
+		var fk := int(feed.get("kind", 11))
+		head_txt = "Bataille gagnée" if fk == 8 else ("Bataille perdue" if fk == 9 else "Bataille indécise")
+		head_tone = 0.85 if fk == 8 else (0.10 if fk == 9 else 0.5)
+	elif was_battle:
+		head_txt = "Bataille conclue"
+	else:
+		# siège pur : le verdict honnête est la DISPOSITION de la place, pas un mot de gloire
+		if me == atk:
+			head_txt = "Siège conclu — région prise" if attacker_took else "Siège conclu — sans la place"
+			head_tone = 0.85 if attacker_took else 0.20
+		elif me == df:
+			head_txt = "Siège conclu — place perdue" if attacker_took else "Siège conclu — place tenue"
+			head_tone = 0.15 if attacker_took else 0.85
+		else:
+			head_txt = "Siège conclu"
+	var head := _line(head_txt, "RowLabel")
+	head.add_theme_font_size_override("font_size", 15)
+	head.add_theme_color_override("font_color", VKit.sense(head_tone))
+	_body.add_child(head)
+	_body.add_child(_line("%s vs %s · %s" % [atk_name, def_name,
+		("%s tient la région." % atk_name) if attacker_took else ("la région reste à %s." % def_name)], "RowDim"))
+	if not feed.is_empty():
+		# pertes CONFIRMÉES par le fil (v = nôtres | ennemies<<16, en paquets de 100)
+		var packed := int(feed.get("v", 0))
+		var ours := (packed & 0xffff) * 100
+		var theirs := ((packed >> 16) & 0xffff) * 100
+		_body.add_child(_stat_line("Nos pertes", "%s hommes" % _grp(ours), 0.15))
+		_body.add_child(_stat_line("Pertes ennemies", "%s hommes" % _grp(theirs), 0.15))
+	else:
+		var loss_atk := int(float(bi.get("loss_atk", 0.0)) * 100.0)
+		var loss_def := int(float(bi.get("loss_def", 0.0)) * 100.0)
+		if loss_atk > 0 or loss_def > 0:
+			_body.add_child(_stat_line("Pertes %s" % atk_name, "%s hommes" % _grp(loss_atk), 0.15))
+			_body.add_child(_stat_line("Pertes %s" % def_name, "%s hommes" % _grp(loss_def), 0.15))
+		else:
+			_body.add_child(_stat_line("Pertes", "aucun choc confirmé (siège seul)"))
+
+# ── VERBES (logique CONSERVÉE à l'identique — port de présentation) ────────────
+func _flash_msg(msg: String, good: bool) -> void:
+	_flash = msg
+	_flash_good = good
 	_flash_ms = Time.get_ticks_msec()
-
-func show_feedback(message: String, good: bool) -> void:
-	_say(message, good)
 	_refresh()
 
-func set_move_preview(preview: Dictionary) -> void:
-	_move_preview = preview.duplicate(true)
-	_refresh_move_preview()
+func _do_refill() -> void:
+	if Sim.world == null or not Sim.world.has_method("player_refill_corps"): return
+	var ok := false
+	for i in range(_selected_ids.size()):
+		var allowed := true
+		if i < _refill_previews.size(): allowed = bool(_refill_previews[i].get("allowed", false))
+		if not allowed: continue
+		ok = Sim.world.player_refill_corps(_selected_ids[i]) or ok
+	if ok and _refill_previews.is_empty():
+		_flash_msg("Recomplètement ordonné.", true) # ancienne DLL debug
+	else:
+		var totals := _refill_totals(_refill_previews)
+		_flash_msg("Vague ordonnée · jusqu'à +%s hommes (%s garantis avant imports)." % [
+			_grp(int(totals.requested)), _grp(int(totals.guaranteed))] if ok else "Rien à renforcer.", ok)
 
-func _move_preview_text(preview: Dictionary) -> String:
-	if preview.is_empty():
-		return ""
-	var count := int(preview.get("corps_count", 0))
-	var target := String(preview.get("target_name", ""))
-	if target == "": target = "région %d" % int(preview.get("target_region", -1))
-	if not bool(preview.get("valid", false)):
-		return "Impossible vers %s · %s (%d/%d corps bloqués)" % [target,
-			String(preview.get("reason", "route refusée")), int(preview.get("invalid_count", count)), count]
-	var text := "Aperçu · %d corps → %s · ~%.0f j · %s" % [count, target,
-		float(preview.get("travel_days", 0.0)), String(preview.get("arrival", "Déplacement"))]
-	var start := int(preview.get("units_start", 0))
-	var loss := int(preview.get("attrition_loss", 0))
-	if start > 0:
-		var arrival := int(preview.get("units_arrival", maxi(0, start - loss)))
-		var pct := int(preview.get("attrition_pct", round(100.0 * float(loss) / float(start))))
-		text += "\nArrivée projetée · %s → %s hommes" % [_grp(start), _grp(arrival)]
-		if loss > 0:
-			text += " · −%s en marche (%d%%)" % [_grp(loss), pct]
-		else:
-			text += " · aucune perte de marche projetée"
-		var worst10 := int(preview.get("worst_daily_pct10", 0))
-		if worst10 > 0:
-			text += " · pire terrain %.1f%%/j" % (float(worst10) / 10.0)
-	return text
+func _do_raise() -> void:
+	if Sim.world == null or not Sim.world.has_method("player_raise_corps"): return
+	var me := int(Sim.world.player())
+	var reserve := int(Sim.world.country_army(me).get("regiments", 0))
+	var capital := int(Sim.world.country_capital_region(me)) if Sim.world.has_method("country_capital_region") else -1
+	var packets := maxi(1, int(reserve / 2))
+	var ok: bool = reserve > 0 and capital >= 0 and Sim.world.player_raise_corps(packets, capital)
+	_flash_msg("Nouveau corps levé à la capitale." if ok else "Réserve insuffisante.", ok)
 
-func _refresh_move_preview() -> void:
-	if _preview_label == null:
+func _do_raid() -> void:
+	raid_requested.emit()   # main arme le sous-mode raid de la carte
+	_flash_msg("Pillage armé — cliquez une province côtière étrangère.", true)
+
+func _do_disband() -> void:
+	if not _disband_armed:
+		_disband_armed = true
+		_disband_ms = Time.get_ticks_msec()
+		_refresh()
 		return
-	_preview_label.text = _move_preview_text(_move_preview)
-	_preview_label.visible = _preview_label.text != ""
-	var tone := 0.75
-	if not bool(_move_preview.get("valid", false)):
-		tone = 0.15
-	elif int(_move_preview.get("attrition_pct", 0)) >= 10:
-		tone = 0.20
-	elif int(_move_preview.get("attrition_pct", 0)) >= 3:
-		tone = 0.48
-	_preview_label.add_theme_color_override("font_color", VKit.sense(tone))
-	_layout.call_deferred()
+	_disband_armed = false
+	if Sim.world != null and Sim.world.has_method("player_disband_corps"):
+		var ok := false
+		for id in _selected_ids: ok = Sim.world.player_disband_corps(id) or ok
+		_flash_msg("Armée dissoute." if ok else "Aucune armée à dissoudre.", ok)
+	else:
+		_refresh()
+
+func _do_split() -> void:
+	if Sim.world == null or not Sim.world.has_method("player_split_corps"): return
+	var ok := false
+	for id in _selected_ids:
+		var a: Dictionary = Sim.world.corps_info(id)
+		# La membrane expose des HOMMES ; la commande moteur attend des paquets de 100.
+		var humans := int(a.get("units", 0))
+		if not bool(a.get("units_are_humans", false)): humans *= 100
+		var half := _split_packets(humans)
+		if half > 0: ok = Sim.world.player_split_corps(id, half) or ok
+	_flash_msg("Scission ordonnée." if ok else "Scission impossible.", ok)
+
+func _do_merge() -> void:
+	if Sim.world == null or not Sim.world.has_method("player_merge_corps") or _selected_ids.size() < 2:
+		_flash_msg("Sélectionnez au moins deux corps au même endroit.", false); return
+	var dst := _selected_ids[0]
+	var ok := false
+	for i in range(1, _selected_ids.size()): ok = Sim.world.player_merge_corps(dst, _selected_ids[i]) or ok
+	_flash_msg("Fusion ordonnée · le corps #%d conserve son identité." % dst if ok else "Les corps doivent être dans la même région.", ok)
+	if ok:
+		selection_replaced.emit([dst])
+
+# ── APERÇUS (données pures — logique CONSERVÉE à l'identique) ──────────────────
+func _refresh_refill_data(w) -> void:
+	_refill_previews.clear()
+	if w == null or not w.has_method("corps_refill_preview"):
+		return
+	for id in _selected_ids:
+		_refill_previews.append(w.corps_refill_preview(id))
 
 func _refill_totals(previews: Array) -> Dictionary:
 	var out := {"valid": 0, "allowed": 0, "requested": 0, "population": 0,
@@ -489,338 +735,107 @@ func _refill_tooltip(previews: Array) -> String:
 		lines.append("Le manque peut être acheté au marché au prix et au trésor du prochain drain.")
 	return "\n".join(lines)
 
-func _refresh_refill() -> void:
-	if _refill_btn == null or _refill_label == null:
-		return
-	_refill_previews.clear()
-	if Sim.world == null or not Sim.world.has_method("corps_refill_preview"):
-		_refill_label.visible = false
-		_refill_btn.disabled = false
-		_refill_btn.text = "Recompléter"
-		_refill_btn.tooltip_text = "Mobilise une vague de renfort depuis une région nationale."
-		return
-	for id in _selected_ids:
-		_refill_previews.append(Sim.world.corps_refill_preview(id))
-	var totals := _refill_totals(_refill_previews)
-	_refill_label.text = _refill_summary_text(_refill_previews)
-	_refill_label.visible = not _refill_previews.is_empty()
-	_refill_label.add_theme_color_override("font_color",
-		VKit.sense(0.75) if int(totals.allowed) > 0 else VKit.sense(0.18))
-	_refill_btn.disabled = int(totals.allowed) <= 0
-	_refill_btn.text = "Renforcer (+%s)" % _grp(int(totals.requested)) if int(totals.allowed) > 0 else "Renforcer"
-	_refill_btn.tooltip_text = _refill_tooltip(_refill_previews)
+func _corps_status_text(a: Dictionary) -> String:
+	var loc := String(a.get("location", ""))
+	if loc == "": loc = "région %d" % int(a.get("region", -1))
+	var phase := String(a.get("phase", "Inconnu"))
+	var text := "Corps #%d · %s · %s · %s hommes" % [int(a.get("id", -1)), loc, phase, _grp(int(a.get("units", 0)))]
+	var dest := String(a.get("destination", ""))
+	if int(a.get("dest", -1)) >= 0:
+		if dest == "": dest = "région %d" % int(a.get("dest", -1))
+		text += " → %s" % dest
+	var progress := int(a.get("progress_pct", -1))
+	if progress >= 0:
+		text += " · %d%% · %.0f j restants" % [progress, float(a.get("days_left", 0.0))]
+	elif float(a.get("days_left", 0.0)) > 0.5:
+		text += " · %.0f j" % float(a.get("days_left", 0.0))
+	if int(a.get("broken_days", 0)) > 0:
+		text += " · BRISÉ %d j" % int(a.get("broken_days", 0))
+	if float(a.get("rally_days", 0.0)) > 0.5:
+		text += " · ralliement %.0f j (%s hommes)" % [float(a.get("rally_days", 0.0)), _grp(int(a.get("rally_units", 0)))]
+	return text
 
-func _do_refill() -> void:
-	if Sim.world != null and Sim.world.has_method("player_refill_corps"):
-		var ok:=false
-		for i in range(_selected_ids.size()):
-			var allowed := true
-			if i < _refill_previews.size(): allowed = bool(_refill_previews[i].get("allowed", false))
-			if not allowed: continue
-			ok = Sim.world.player_refill_corps(_selected_ids[i]) or ok
-		if ok and _refill_previews.is_empty():
-			_say("Recomplètement ordonné.", true) # ancienne DLL debug
+func _stack_summary_text(corps_data: Array[Dictionary], regions: Array[int], total: int) -> String:
+	if corps_data.size() < 2:
+		return ""
+	if regions.size() != 1:
+		return "Stack dispersé · %d corps dans %d régions · fusion impossible" % [corps_data.size(), regions.size()]
+	for corps in corps_data:
+		var phase_id := int(corps.get("phase_id", 0))
+		if phase_id == 3 or phase_id >= 4:
+			return "Stack · %d corps · %s hommes · fusion bloquée pendant bataille/mer" % [corps_data.size(), _grp(total)]
+	return "Stack · %d corps · %s hommes · fusion → corps #%d (%s hommes)" % [
+		corps_data.size(), _grp(total), int(corps_data[0].get("id", -1)), _grp(total)]
+
+func _move_preview_text(preview: Dictionary) -> String:
+	if preview.is_empty():
+		return ""
+	var count := int(preview.get("corps_count", 0))
+	var target := String(preview.get("target_name", ""))
+	if target == "": target = "région %d" % int(preview.get("target_region", -1))
+	if not bool(preview.get("valid", false)):
+		return "Impossible vers %s · %s (%d/%d corps bloqués)" % [target,
+			String(preview.get("reason", "route refusée")), int(preview.get("invalid_count", count)), count]
+	var text := "Aperçu · %d corps → %s · ~%.0f j · %s" % [count, target,
+		float(preview.get("travel_days", 0.0)), String(preview.get("arrival", "Déplacement"))]
+	var start := int(preview.get("units_start", 0))
+	var loss := int(preview.get("attrition_loss", 0))
+	if start > 0:
+		var arrival := int(preview.get("units_arrival", maxi(0, start - loss)))
+		var pct := int(preview.get("attrition_pct", round(100.0 * float(loss) / float(start))))
+		text += "\nArrivée projetée · %s → %s hommes" % [_grp(start), _grp(arrival)]
+		if loss > 0:
+			text += " · −%s en marche (%d%%)" % [_grp(loss), pct]
 		else:
-			var totals := _refill_totals(_refill_previews)
-			_say("Vague ordonnée · jusqu'à +%s hommes (%s garantis avant imports)." % [
-				_grp(int(totals.requested)), _grp(int(totals.guaranteed))] if ok else "Rien à renforcer.", ok)
+			text += " · aucune perte de marche projetée"
+		var worst10 := int(preview.get("worst_daily_pct10", 0))
+		if worst10 > 0:
+			text += " · pire terrain %.1f%%/j" % (float(worst10) / 10.0)
+	return text
 
-func _do_raise() -> void:
-	if Sim.world == null or not Sim.world.has_method("player_raise_corps"): return
-	var me:=int(Sim.world.player())
-	var reserve:=int(Sim.world.country_army(me).get("regiments",0))
-	var capital:=int(Sim.world.country_capital_region(me)) if Sim.world.has_method("country_capital_region") else -1
-	var packets:=maxi(1,int(reserve/2))
-	var ok:bool=reserve>0 and capital>=0 and Sim.world.player_raise_corps(packets,capital)
-	_say("Nouveau corps levé à la capitale." if ok else "Réserve insuffisante.",ok)
+func _move_preview_tone() -> float:
+	if not bool(_move_preview.get("valid", false)):
+		return 0.15
+	if int(_move_preview.get("attrition_pct", 0)) >= 10:
+		return 0.20
+	if int(_move_preview.get("attrition_pct", 0)) >= 3:
+		return 0.48
+	return 0.75
 
-func _do_raid() -> void:
-	raid_requested.emit()   # main arme le sous-mode raid de la carte
-	_say("Pillage armé — cliquez une province côtière étrangère.", true)
+func _split_packets(humans: int) -> int:
+	return maxi(0, humans / 200)
 
-func _do_disband() -> void:
-	if not _disband_armed:
-		_disband_armed = true
-		_disband_ms = Time.get_ticks_msec()
-		_refresh_disband()
-		return
-	_disband_armed = false
-	_refresh_disband()
-	if Sim.world != null and Sim.world.has_method("player_disband_corps"):
-		var ok:=false
-		for id in _selected_ids: ok = Sim.world.player_disband_corps(id) or ok
-		_say("Armée dissoute." if ok else "Aucune armée à dissoudre.", ok)
+# ── LAYOUT — s'ancre en marge gauche, au-dessus de la barre basse ──────────────
+func _layout() -> void:
+	reset_size()
+	var vp := get_viewport_rect().size
+	var h: float = size.y
+	position = Vector2(Frame.SIDEBAR_W + 14.0,
+		maxf(Frame.TOPBAR_H + 12.0, vp.y - h - Frame.BOTTOMBAR_H - 12.0))
 
-func _do_split() -> void:
-	if Sim.world == null or not Sim.world.has_method("player_split_corps"): return
-	var ok:=false
-	for id in _selected_ids:
-		var a: Dictionary=Sim.world.corps_info(id)
-		# La membrane expose des HOMMES ; la commande moteur attend des paquets de 100.
-		var humans := int(a.get("units", 0))
-		if not bool(a.get("units_are_humans", false)): humans *= 100
-		var half:=_split_packets(humans)
-		if half>0: ok=Sim.world.player_split_corps(id,half) or ok
-	_say("Scission ordonnée." if ok else "Scission impossible.",ok)
-
-func _do_merge() -> void:
-	if Sim.world == null or not Sim.world.has_method("player_merge_corps") or _selected_ids.size()<2:
-		_say("Sélectionnez au moins deux corps au même endroit.",false); return
-	var dst:=_selected_ids[0]; var ok:=false
-	for i in range(1,_selected_ids.size()): ok=Sim.world.player_merge_corps(dst,_selected_ids[i]) or ok
-	_say("Fusion ordonnée · le corps #%d conserve son identité." % dst if ok else "Les corps doivent être dans la même région.",ok)
-	if ok:
-		selection_replaced.emit([dst])
-
-# ═══════════════════════ SECTION COMBAT ════════════════════════════════════
-# Vide si aucun des corps sélectionnés n'est engagé. Sinon : phases EN TEMPS
-# RÉEL (rafraîchi à chaque Sim.ticked — le jour, la même cadence que
-# battle_panel.gd). À la conclusion (battle_info retombe invalide), fige un
-# encart RÉSULTAT + PERTES lu de region_war_state (état frais post-combat),
-# persistant jusqu'à re-sélection (set_army) ou nouveau combat.
-
-func _country_name(cid: int) -> String:
-	if cid < 0 or Sim.world == null:
-		return "—"
-	var info: Dictionary = Sim.world.country_info(cid)
-	return String(info.get("nom", "—"))
-
-func _clear_combat_body() -> void:
-	if _combat_body == null: return
-	for child in _combat_body.get_children():
-		_combat_body.remove_child(child)
-		child.queue_free()
-
-func _stat_line(label: String, value: String, tone: float = -1.0) -> Control:
-	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 6)
+# ── PRIMITIVES (mêmes variations de theme que province_panel_v2/empire_window) ──
+func _line(txt: String, variation: String) -> Label:
 	var l := Label.new()
-	l.text = label
-	l.custom_minimum_size = Vector2(118, 0)
-	l.add_theme_font_size_override("font_size", VKit.FS_SMALL)
-	l.add_theme_color_override("font_color", VKit.COL_DIM)
-	h.add_child(l)
-	var v := Label.new()
-	v.text = value
-	v.add_theme_font_size_override("font_size", VKit.FS_SMALL)
-	v.add_theme_color_override("font_color", VKit.COL_PARCH if tone < 0.0 else VKit.sense(tone))
-	h.add_child(v)
-	return h
+	l.theme_type_variation = variation
+	l.text = txt
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size = Vector2(PW - 24.0, 0)
+	return l
 
-func _side_block(bi: Dictionary, is_atk: bool, cid: int, me: int) -> Control:
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 2)
-	var prefix := "atk" if is_atk else "def"
-	var role := "Attaquant" if is_atk else "Défenseur"
-	var name_lbl := Label.new()
-	name_lbl.text = "%s — %s%s" % [role, _country_name(cid), "  (VOUS)" if cid == me else ""]
-	name_lbl.add_theme_font_size_override("font_size", VKit.FS_SMALL)
-	name_lbl.add_theme_color_override("font_color", VKit.COL_GOLD if cid == me else VKit.COL_PARCH)
-	box.add_child(name_lbl)
-	var unit_scale := 1 if bool(bi.get("units_are_humans", false)) else 100
-	var units := int(bi.get(prefix + "_units", 0)) * unit_scale
-	if units > 0:
-		var units_lbl := Label.new()
-		units_lbl.text = "%s hommes · %d corps" % [_grp(units), int(bi.get(prefix + "_corps", 0))]
-		units_lbl.add_theme_font_size_override("font_size", VKit.FS_SMALL)
-		units_lbl.add_theme_color_override("font_color", VKit.COL_PARCH)
-		box.add_child(units_lbl)
-		box.add_child(_compo_bar_native(
-			int(bi.get(prefix + "_inf", 0)) * unit_scale, int(bi.get(prefix + "_arch", 0)) * unit_scale,
-			int(bi.get(prefix + "_cav", 0)) * unit_scale, int(bi.get(prefix + "_mages", 0)) * unit_scale))
-	else:
-		box.add_child(_stat_line("Force", "place forte" if not is_atk else "—"))
-	if bool(bi.get("in_battle", false)) and bi.has(prefix + "_morale_pct"):
-		var mp := clampi(int(bi.get(prefix + "_morale_pct", 0)), 0, 100)
-		box.add_child(_stat_line("Cohésion", "%d%%" % mp, float(mp) / 100.0))
-		var pb := ProgressBar.new()
-		pb.min_value = 0; pb.max_value = 100; pb.value = mp; pb.show_percentage = false
-		pb.custom_minimum_size = Vector2(0, 8)
-		box.add_child(pb)
-	var helper := int(bi.get(prefix + "_helper", -1))
-	if helper >= 0:
-		box.add_child(_stat_line("Renfort", _country_name(helper)))
-	return box
+func _dim_line(txt: String) -> void:
+	_body.add_child(_line(txt, "RowDim"))
 
-func _tactic_block(bi: Dictionary, atk: int, df: int) -> Control:
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 2)
-	var head := Label.new()
-	head.text = "LECTURE TACTIQUE — %s" % String(bi.get("stage", "—"))
-	head.add_theme_font_size_override("font_size", VKit.FS_SMALL)
-	head.add_theme_color_override("font_color", VKit.COL_GOLD)
-	box.add_child(head)
-	var holder := int(bi.get("terrain_holder", -1))
-	var terr := "neutre"
-	if holder == atk: terr = "avantage attaquant %+d%%" % (int(bi.get("atk_terrain_pct", 100)) - 100)
-	elif holder == df: terr = "avantage défenseur %+d%%" % (int(bi.get("def_terrain_pct", 100)) - 100)
-	box.add_child(_stat_line("Terrain", terr))
-	if bool(bi.get("river", false)):
-		box.add_child(_stat_line("Rivière", "pontée" if bool(bi.get("bridged", false)) else "non pontée"))
-	box.add_child(_stat_line("Contres", "attaquant %+d%% · défenseur %+d%%" % [
-		int(bi.get("atk_counter_pct", 100)) - 100, int(bi.get("def_counter_pct", 100)) - 100]))
-	var bal := int(bi.get("balance_atk_pct", 50))
-	box.add_child(_stat_line("Rapport pré-aléa", "%d / %d (±15%% au choc)" % [bal, 100 - bal]))
-	box.add_child(_stat_line("Rupture", "sous %d%% de cohésion" % int(bi.get("rupture_pct", 0))))
-	box.add_child(_stat_line("Pertes attaquant", "%s hommes" % _grp(int(float(bi.get("loss_atk", 0.0)) * 100.0)), 0.15))
-	box.add_child(_stat_line("Pertes défenseur", "%s hommes" % _grp(int(float(bi.get("loss_def", 0.0)) * 100.0)), 0.15))
-	return box
+func _tone_line(txt: String, tone: float) -> Label:
+	var l := _line(txt, "RowLabel")
+	l.add_theme_color_override("font_color", VKit.sense(tone))
+	return l
 
-func _siege_block(bi: Dictionary) -> Control:
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 2)
-	var head := Label.new()
-	head.text = "LECTURE DU SIÈGE"
-	head.add_theme_font_size_override("font_size", VKit.FS_SMALL)
-	head.add_theme_color_override("font_color", VKit.COL_GOLD)
-	box.add_child(head)
-	var sp := clampi(int(bi.get("siege_progress_pct", 0)), 0, 100)
-	box.add_child(_stat_line("Progression estimée", "%d%%" % sp))
-	var pb := ProgressBar.new()
-	pb.min_value = 0; pb.max_value = 100; pb.value = sp; pb.show_percentage = false
-	pb.custom_minimum_size = Vector2(0, 8)
-	box.add_child(pb)
-	box.add_child(_stat_line("Échéance", "%.0f j restants / %.0f j de résistance" % [
-		float(bi.get("siege_days_left", 0.0)), float(bi.get("siege_full_days", 0.0))]))
-	box.add_child(_stat_line("Ouvrages", "défense %.1f" % float(bi.get("siege_defense", 0.0))))
-	box.add_child(_stat_line("Vivres", "%.1f mois" % float(bi.get("siege_food_months", 0.0))))
-	var tp := int(bi.get("siege_terrain_pct", 100))
-	box.add_child(_stat_line("Terrain", "tenue neutre" if tp == 100 else "%+d%% de tenue" % (tp - 100)))
-	box.add_child(_stat_line("À la chute", "libération de la région" if int(bi.get("siege_outcome", 0)) == 1 else "occupation de la région"))
-	return box
-
-func _build_combat_live(bi: Dictionary) -> void:
-	_clear_combat_body()
-	var me := int(Sim.world.player())
-	var atk := int(bi.get("attacker", -1))
-	var df := int(bi.get("defender", -1))
-	var phase_lbl := Label.new()
-	phase_lbl.text = String(bi.get("phase", "?"))
-	phase_lbl.add_theme_font_size_override("font_size", VKit.FS)
-	phase_lbl.add_theme_color_override("font_color", VKit.COL_VALUE)
-	_combat_body.add_child(phase_lbl)
-	var sub := Label.new()
-	if bool(bi.get("in_battle", false)):
-		sub.text = "Jour %d · %d choc(s) livré(s)" % [int(bi.get("days", 0)), int(bi.get("chocs", 0))]
-	else:
-		sub.text = "%.0f j restants · %d%% estimés" % [float(bi.get("siege_days_left", 0.0)), int(bi.get("siege_progress_pct", 0))]
-	sub.add_theme_font_size_override("font_size", VKit.FS_SMALL)
-	sub.add_theme_color_override("font_color", VKit.COL_DIM)
-	_combat_body.add_child(sub)
-	_combat_body.add_child(_side_block(bi, true, atk, me))
-	_combat_body.add_child(_side_block(bi, false, df, me))
-	if bool(bi.get("in_battle", false)):
-		_combat_body.add_child(_tactic_block(bi, atk, df))
-	else:
-		_combat_body.add_child(_siege_block(bi))
-	var ws := float(bi.get("war_score", 0.0))
-	_combat_body.add_child(_stat_line("Score de guerre", "%+.0f (point de vue attaquant)" % ws, 0.5 + ws / 200.0))
-
-## le VERDICT de bataille du FIL (kinds 8/9/11 — le moteur l'a déjà tranché, côté
-## joueur) pour la région suivie ; {} si aucun (siège pur, ou combat IA-vs-IA).
-func _feed_battle_verdict(region: int) -> Dictionary:
-	var w = Sim.world
-	if w == null or not w.has_method("feed_poll") or region < 0:
-		return {}
-	var found := {}
-	for ev in w.feed_poll(0):   # lecture PURE (curseur 0 = tout le ring borné)
-		var kind := int(ev.get("kind", -1))
-		if (kind == 8 or kind == 9 or kind == 11) and int(ev.get("region", -1)) == region:
-			found = ev   # on garde le DERNIER (le ring est chronologique)
-	return found
-
-func _build_combat_result(result: Dictionary) -> void:
-	_clear_combat_body()
-	var bi: Dictionary = result.get("bi", {})
-	var ws: Dictionary = result.get("ws", {})
-	var me := int(Sim.world.player())
-	var atk := int(bi.get("attacker", -1))
-	var df := int(bi.get("defender", -1))
-	var was_battle := bool(bi.get("in_battle", false))
-	var res_region := int(bi.get("region", _battle_region))
-	# le siège abouti se lit de DEUX façons : région OCCUPÉE par l'attaquant (state 2,
-	# la paix n'a pas encore transféré) OU propriété DÉJÀ basculée (region_owner == atk).
-	var attacker_took := (int(ws.get("state", 0)) == 2 and int(ws.get("belligerent", -1)) == atk)
-	if not attacker_took and res_region >= 0 and atk >= 0 and atk != df \
-			and Sim.world.has_method("region_owner"):
-		attacker_took = int(Sim.world.region_owner(res_region)) == atk
-	var atk_name := _country_name(atk)
-	var def_name := _country_name(df)
-	var feed := _feed_battle_verdict(res_region) if was_battle and (me == atk or me == df) else {}
-	var head := Label.new()
-	head.add_theme_font_size_override("font_size", VKit.FS)
-	if not feed.is_empty():
-		# le fil porte le verdict TRANCHÉ par le moteur (8 gagnée · 9 perdue · 11 indécise)
-		var fk := int(feed.get("kind", 11))
-		head.text = "Bataille gagnée" if fk == 8 else ("Bataille perdue" if fk == 9 else "Bataille indécise")
-		head.add_theme_color_override("font_color",
-			VKit.sense(0.80) if fk == 8 else (VKit.sense(0.15) if fk == 9 else VKit.COL_GOLD))
-	elif was_battle:
-		head.text = "Bataille conclue"
-		head.add_theme_color_override("font_color", VKit.COL_GOLD)
-	else:
-		# siège pur : le verdict honnête est la DISPOSITION de la place, pas un mot de gloire
-		if me == atk:
-			head.text = "Siège conclu — région prise" if attacker_took else "Siège conclu — sans la place"
-			head.add_theme_color_override("font_color", VKit.sense(0.80 if attacker_took else 0.25))
-		elif me == df:
-			head.text = "Siège conclu — place perdue" if attacker_took else "Siège conclu — place tenue"
-			head.add_theme_color_override("font_color", VKit.sense(0.15 if attacker_took else 0.80))
-		else:
-			head.text = "Siège conclu"
-			head.add_theme_color_override("font_color", VKit.COL_GOLD)
-	_combat_body.add_child(head)
-	var sub := Label.new()
-	sub.text = "%s vs %s · %s" % [atk_name, def_name,
-		("%s tient la région." % atk_name) if attacker_took else ("la région reste à %s." % def_name)]
-	sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	sub.add_theme_font_size_override("font_size", VKit.FS_SMALL)
-	sub.add_theme_color_override("font_color", VKit.COL_PARCH)
-	_combat_body.add_child(sub)
-	if not feed.is_empty():
-		# pertes CONFIRMÉES par le fil (v = nôtres | ennemies<<16, en paquets de 100)
-		var packed := int(feed.get("v", 0))
-		var ours := (packed & 0xffff) * 100
-		var theirs := ((packed >> 16) & 0xffff) * 100
-		_combat_body.add_child(_stat_line("Nos pertes", "%s hommes" % _grp(ours), 0.15))
-		_combat_body.add_child(_stat_line("Pertes ennemies", "%s hommes" % _grp(theirs), 0.15))
-	else:
-		var loss_atk := int(float(bi.get("loss_atk", 0.0)) * 100.0)
-		var loss_def := int(float(bi.get("loss_def", 0.0)) * 100.0)
-		if loss_atk > 0 or loss_def > 0:
-			_combat_body.add_child(_stat_line("Pertes %s" % atk_name, "%s hommes" % _grp(loss_atk), 0.15))
-			_combat_body.add_child(_stat_line("Pertes %s" % def_name, "%s hommes" % _grp(loss_def), 0.15))
-		else:
-			_combat_body.add_child(_stat_line("Pertes", "aucun choc confirmé (siège seul)"))
-
-func _refresh_combat(regions: Array) -> void:
-	if _combat_section == null: return
-	var w = Sim.world
-	if w == null or not w.has_method("battle_info") or not w.has_method("region_war_state") or regions.is_empty():
-		_combat_section.visible = false
-		return
-	var bi := {}
-	var region := -1
-	for r in regions:
-		var cand: Dictionary = w.battle_info(int(r))
-		if bool(cand.get("valid", false)):
-			bi = cand; region = int(r); break
-	if region >= 0:
-		_battle_region = region
-		_battle_live = bi.duplicate(true)
-		_battle_result = {}   # un combat vivant efface un résultat précédemment affiché
-		_combat_head.text = "COMBAT — %s" % String(bi.get("phase", ""))
-		_build_combat_live(bi)
-		_combat_section.visible = true
-		return
-	# rien de vivant sur les régions du corps : un combat qu'on suivait vient-il de finir ?
-	if not _battle_live.is_empty() and _battle_region >= 0:
-		var ws: Dictionary = w.region_war_state(_battle_region)
-		_battle_result = {"bi": _battle_live.duplicate(true), "ws": ws.duplicate(true)}
-		_battle_live = {}
-	if not _battle_result.is_empty():
-		_combat_head.text = "COMBAT — TERMINÉ"
-		_build_combat_result(_battle_result)
-		_combat_section.visible = true
-		return
-	_combat_section.visible = false
+func _grp(n: int) -> String:
+	var s := str(absi(n))
+	var out := ""
+	var count := 0
+	for i in range(s.length() - 1, -1, -1):
+		out = s[i] + out
+		count += 1
+		if count % 3 == 0 and i > 0: out = " " + out
+	return ("-" if n < 0 else "") + out
