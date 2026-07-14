@@ -509,7 +509,7 @@ func _draw_eco(x: float, y: float, me: int) -> float:
 	var t: Dictionary = Sim.world.country_trade(me)
 	UIKit.draw_icon(self, "menu_economy", Vector2(x, y - 1), 16)
 	VKit.value(self, Vector2(x + 20, y),
-		"%d route(s) · export %d or/an" % [int(t["routes"]), int(t["export_gold"])])
+		"%d route(s) · export %d or/mois" % [int(t["routes"]), int(round(float(t["export_gold"]) / 12.0))])
 	y += 20
 	var partners: Array = t["partners"]
 	if partners.is_empty():
@@ -518,7 +518,7 @@ func _draw_eco(x: float, y: float, me: int) -> float:
 	for p in partners:
 		var col := VKit.sense(0.12) if bool(p["at_war"]) else (VKit.COL_GOLD if bool(p["embargo"]) else VKit.COL_PARCH)
 		VKit.text(self, Vector2(x + 8, y), col, String(p["name"]), VKit.FS_SMALL)
-		VKit.value(self, Vector2(x + 150, y), "%d or/an" % int(p["value"]), VKit.FS_SMALL)
+		VKit.value(self, Vector2(x + 150, y), "%d or/mois" % int(round(float(p["value"]) / 12.0)), VKit.FS_SMALL)
 		VKit.text(self, Vector2(x + 228, y), col, String(p["status"]), VKit.FS_SMALL)
 		y += 15
 	return y
@@ -714,8 +714,8 @@ var _conseil_flash := ""
 var _conseil_flash_ok := true
 var _conseil_tab := 0   ## 0 = Gouvernement · 1 = Politiques · 2 = Factions
 var _ctab_btns := []
-## l'ASSIETTE des coûts % (hovers quantitatifs — « 3 % du revenu (2033 or) × IPM 1,12
-## = 68 or/an ») : revenu fiscal annuel + IPM, rafraîchis à chaque _draw_conseil.
+## l'ASSIETTE des coûts % (hovers quantitatifs — « 3 % du revenu (2033 or) × IPM 1,12 »,
+## résultat affiché en or/mois) : revenu fiscal annuel + IPM, rafraîchis à chaque _draw_conseil.
 var _cons_rev := 0.0
 var _cons_ipm := 1.0
 
@@ -865,7 +865,7 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 		if filled:
 			# CARTE SIÈGE — TERSE (retour joueur 2026-07-10, prime sur la spec doc) :
 			# nom · identité (MOT seul, phrase au survol) · siège rang âge · faction ·
-			# loyauté (jauge) · paie · bonus final · N or par an · retraite. CHAQUE
+			# loyauté (jauge) · paie · bonus final · N or par mois · retraite. CHAQUE
 			# élément a un hover factuel ; les formules/taux vivent AU SURVOL seulement.
 			var fname := String(seat.get("firstname", ""))
 			var house := String(seat.get("house", ""))
@@ -956,7 +956,7 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 			y += 20
 			# l'embauche ÉCLAIRÉE : les CANDIDATS de la pool courante — CARTE TERSE
 			# (retour joueur 2026-07-10) : nom+identité · faction rang âge · bonus final ·
-			# N or par an · retraite. Tout le reste (phrases, taux, décomposition) au SURVOL.
+			# N or par mois · retraite. Tout le reste (phrases, taux, décomposition) au SURVOL.
 			if Sim.world.has_method("council_candidates"):
 				for cand in Sim.world.council_candidates(idx):
 					var cx := x + 16
@@ -1110,7 +1110,7 @@ func _draw_decrets(x: float, y: float, me: int) -> float:
 	return y
 
 # CARTE ORIENTATION — TERSE (retour joueur 2026-07-10) : nom [+RÉFORME] · prix
-# fusionné « N or par an » · exclusivité · bouton. L'effet (plateaux, avec clé+mult)
+# fusionné « N or par mois » · exclusivité · bouton. L'effet (plateaux, avec clé+mult)
 # ET le flavor vivent au SURVOL du nom ; la formule du prix au SURVOL du prix.
 func _draw_decree_card(x: float, y: float, dec: Dictionary, names_by_id: Dictionary) -> float:
 	var id := int(dec["id"])
@@ -1123,15 +1123,16 @@ func _draw_decree_card(x: float, y: float, dec: Dictionary, names_by_id: Diction
 	_hover_zones.append({"rect": Rect2(x, y - 2, VKit.text_w(label, VKit.FS_SMALL), 14),
 		"text": String(dec["plateaux"]) + "\n" + String(dec["flavor"])})
 	y += 15
-	# PRIX FUSIONNÉ : « N or par an » seul ; la formule (taux × revenu × IPM) au survol.
+	# PRIX FUSIONNÉ : « N or par mois » seul ; la formule (taux × revenu × IPM) au survol.
 	var rate := float(dec.get("cost_rate_pct", 0.0))
 	var cyear := float(dec.get("cost_year", 0.0))
-	var cline := ("%s or par an" % _grp(int(round(cyear)))) if rate > 0.0 else "0 or par an"
+	var cmonth := cyear / 12.0
+	var cline := ("%s or par mois" % _grp(int(round(cmonth)))) if rate > 0.0 else "0 or par mois"
 	VKit.text(self, Vector2(x + 8, y), VKit.COL_DIM, cline, VKit.FS_SMALL)
 	if rate > 0.0:
 		_hover_zones.append({"rect": Rect2(x + 6, y - 2, VKit.text_w(cline, VKit.FS_SMALL) + 6, 16),
-			"text": "%.2f %% du revenu (%s or) × IPM %.2f = %s or par an — prélevé chaque mois (/12) ; mois impayé ⇒ sans effet ce mois-là." % [
-				rate, _grp(int(round(_cons_rev))), _cons_ipm, _grp(int(round(cyear)))]})
+			"text": "%.2f %% du revenu (%s or) × IPM %.2f — prélevé chaque mois ; mois impayé ⇒ sans effet ce mois-là." % [
+				rate, _grp(int(round(_cons_rev))), _cons_ipm]})
 	else:
 		_hover_zones.append({"rect": Rect2(x + 6, y - 2, VKit.text_w(cline, VKit.FS_SMALL) + 6, 16),
 			"text": "Aucun prélèvement d'or — la contrepartie est dans l'effet (survolez le nom)."})

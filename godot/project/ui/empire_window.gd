@@ -28,6 +28,8 @@ var _tab_btns: Array = []         # [Button] pour piloter l'onglet actif par cod
 var _pages: Array = []            # [Control] une VBox par onglet (visibilité togglée)
 var _eco_page: Control = null     # la page Économie (auto-refresh, curseurs)
 var _prov_sort := 2               # tri des provinces : 0 ressources · 1 revenu · 2 pop
+var _pop_last_total := -1.0       # CROISSANCE (display-only) : pop totale au refresh précédent
+var _pop_last_day := -1           # … et le jour absolu correspondant (year()×365+day_of_year())
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -213,6 +215,24 @@ func _build_population(w, me: int) -> void:
 				if fn == "":
 					fn = "Sans foi"
 				faith[fn] = float(faith.get(fn, 0.0)) + wgt
+
+	# CROISSANCE — delta signé depuis le refresh précédent (display-only : une
+	# soustraction d'affichage, aucune logique sim), normalisé /mois (30 j) sur le
+	# jour absolu réel (year()×365+day_of_year()) pour rester juste même si les
+	# refresh ne tombent pas pile tous les 30 jours (ouverture fenêtre, changement
+	# d'onglet). « — » tant qu'aucune mesure précédente n'existe.
+	_pop_section(pg, "CROISSANCE")
+	var abs_day := int(w.year()) * 365 + (int(w.day_of_year()) if w.has_method("day_of_year") else 0)
+	if _pop_last_total >= 0.0 and abs_day > _pop_last_day:
+		var per_month := (total - _pop_last_total) / float(abs_day - _pop_last_day) * 30.0
+		var pos := per_month >= 0.0
+		_kv_row(pg, "Croissance",
+			"%s%s âmes/mois" % ["+" if pos else "−", _grp(int(round(absf(per_month))))],
+			ParchTheme.INCOME if pos else ParchTheme.EXPENSE)
+	else:
+		_kv_row(pg, "Croissance", "—", ParchTheme.DIM_INK)
+	_pop_last_total = total
+	_pop_last_day = abs_day
 
 	# CULTURE — frise de proportions (barre segmentée) + légende à pastilles
 	_pop_section(pg, "CULTURE")

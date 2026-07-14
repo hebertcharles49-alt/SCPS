@@ -4,7 +4,7 @@ extends Control
 ## pas tout mettre dans les menus déroulants, expliquer combien ») :
 ##   · onglet HÉRITAGE   : votre affinité technologique — CARTES comparables côte à
 ##                   côte (retour joueur 2026-07-10, Lot 4.4 : « cartes comparables
-##                   vs déroulants ») ; le nom+sphère sur la carte, la LORE complète
+##                   vs déroulants ») ; le nom+un ethnonyme-exemple sur la carte, la LORE complète
 ##                   au survol, l'aperçu détaillé de la carte SÉLECTIONNÉE dessous ;
 ##   · onglet ÉTHOS      : votre orientation politique et culturelle — mêmes cartes
 ##                   comparables (6 options, tiennent en grille à 1280×720) ;
@@ -91,7 +91,7 @@ const C_BAD    := Color(0.82, 0.40, 0.34)
 const C_TITLE  := Color(0.86, 0.70, 0.42)
 
 # données de la façade
-var _her: Array = []                  # héritages : [{id,nom,sphere,exemple}]
+var _her: Array = []                  # héritages : [{id,nom,sphere,exemple}] (sphere = interne, non affiché)
 var _eth: Array = []                  # éthos     : [{id,nom,epithete,hint}]
 var _axis_traits := [[], [], []]      # traditions par axe : [{id,nom,rang,hover}]
 
@@ -209,7 +209,7 @@ func _build_ui() -> void:
 	col.add_child(_tabs)
 
 	# — onglet HÉRITAGE — CARTES comparables (retour joueur 2026-07-10) : 6 héritages,
-	# une carte chacun (nom + sphère), côte à côte plutôt qu'un menu déroulant qu'on
+	# une carte chacun (nom + un ethnonyme-exemple), côte à côte plutôt qu'un menu déroulant qu'on
 	# ouvre un à la fois. L'effet détaillé (chiffré + lore) reste sous les onglets.
 	var t_her := VBoxContainer.new()
 	t_her.name = "Héritage"
@@ -397,7 +397,7 @@ func _load_data() -> void:
 	_her_cards = []
 	for h in _her:
 		var hid := int(h["id"])
-		var hcard := _make_choice_card(String(h["nom"]), String(h["sphere"]))
+		var hcard := _make_choice_card(String(h["nom"]), String(h["exemple"]))
 		# survol = comparaison rapide sans cliquer (la LORE complète reste dans
 		# _her_info pour la carte SÉLECTIONNÉE)
 		hcard.tooltip_text = String(HER_LORE[hid]) if hid >= 0 and hid < HER_LORE.size() else ""
@@ -554,13 +554,13 @@ func _refresh() -> void:
 	var eth := _cur_ethos()
 	var seed := _world_seed()
 
-	# héritage : sphère + ethnonyme-exemple + CE QUE ÇA OUVRE (l'accès d'arbre natif)
+	# héritage : ethnonyme-exemple + CE QUE ÇA OUVRE (l'accès d'arbre natif)
 	# + la LORE de branche (« verbose explicative autorisée »)
 	for h in _her:
 		if int(h["id"]) == her:
 			var hlore := String(HER_LORE[her]) if her >= 0 and her < HER_LORE.size() else ""
-			_her_info.text = "Sphère %s · vos lieux et gens porteront des noms comme « %s ».\n\nAccès natif : la branche « %s » de l'arbre des techs vous est ouverte d'entrée (ses signatures, tier 3). Les autres branches s'ouvrent par le commerce ou par l'intégration de peuples (la métabolisation : déverrouille leurs signatures, accélère votre recherche, escompte les techs répandues).\n\n%s" % [
-				String(h["sphere"]), Sim.world.culture_name(her, seed), String(h["nom"]), hlore]
+			_her_info.text = "Héritage « %s » : vos lieux et gens porteront des noms comme « %s ».\n\nAccès natif : la branche « %s » de l'arbre des techs vous est ouverte d'entrée (ses signatures, tier 3). Les autres branches s'ouvrent par le commerce ou par l'intégration de peuples (la métabolisation : déverrouille leurs signatures, accélère votre recherche, escompte les techs répandues).\n\n%s" % [
+				String(h["nom"]), Sim.world.culture_name(her, seed), String(h["nom"]), hlore]
 			break
 	# éthos : « ça m'apporte quoi » — épithète, hint moteur, LORE mécanique détaillée
 	for e in _eth:

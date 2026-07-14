@@ -306,7 +306,7 @@ func _block_sep(px: float) -> float:
 	return px + 1.0 + 12.0
 
 ## RETOUR JOUEUR UI-3.1 (2026-07-11, docs/UI_RECO_2026-07-10.md §3.1 « topbar
-## simplifiée ») : la barre ne garde que ~8 PERMANENTS (trésor · revenu net annuel ·
+## simplifiée ») : la barre ne garde que ~8 PERMANENTS (trésor · revenu net mensuel ·
 ## pop · nourriture+rupture · recherche · Influence · Corruption · date+vitesse).
 ## Les jauges 0-100 (stabilité/prospérité/légitimité/cohésion), le décompte de
 ## provinces, la colonisation en chantier, le bonheur détaillé et les blasons de
@@ -491,7 +491,7 @@ func _draw() -> void:
 		var CPTips: Dictionary = load("res://ui/country_panel.gd").TIPS
 
 		# RETOUR JOUEUR UI-3.1 (2026-07-11) : la barre ne garde que ~8 PERMANENTS —
-		# trésor · revenu net annuel · pop · nourriture(+rupture) · recherche ·
+		# trésor · revenu net mensuel · pop · nourriture(+rupture) · recherche ·
 		# Influence · Corruption · date+vitesse. Tout le SECONDAIRE d'hier (provinces,
 		# stabilité, prospérité, colonisation en chantier, légitimité, cohésion,
 		# bonheur détaillé, blasons de faction, tension de coup) ne disparaît pas :
