@@ -49,7 +49,15 @@ d'agent moteur doit inclure `make test` complet dans ses gates.**
 - Capture multi-corps jamais faite. Flash « ordre émis » sans fondu.
 - **EXPORT scps.exe : pas fait** — toute la vague UI est committée et vérifiée par
   probes ; l'export est le pas naturel suivant (« au moment opportun »).
-- MONNAIE : attend un « fais-le » explicite du joueur (M0 audit = premier pas sans risque).
+- MONNAIE : **M0+M1+M2 LIVRÉS** (soir du 14) — audit (cb1b506, M imprime ×360-×1280/250 ans),
+  redevance MINT_ROYALTY 0.15 + réserve par pays (a9e3dab, SAVE v86), frappe neutre 1:1
+  via enveloppe BUDGET_MINT (61091df), kill-switch PROUVÉ (MINT_ROYALTY=0 ⇒ golden pré-M1
+  vert), sweep apparié sain (±5 pts, IPM 0.96-1.05, réserve an-250 ni nulle ni explosive).
+  M3 (conservation — QUI VEND + crédit) / M4 (prix locaux) / M5-M6 : décisions séparées.
+- Aussi livrés le 14 après-midi : tri scps_faith SUPPRIMÉ (religion survit) · wilds =
+  cités-états indépendantes (capitale fantôme corrigée + défense réelle) · purge grain
+  région (sociaux/esclavage/pop_transfer → pid) · entretien VISIBLE (cartes + friche).
 
 ## PROCHAIN PAS ATTENDU
-Proposer : export pour tester en vrai, OU readers armée + verbes sociaux pid, OU M0 (audit monétaire, lecture seule).
+Proposer : EXPORT scps.exe (toute l'UI + la monnaie jamais touchées en vrai), OU go M3
+(le gros œuvre conservation — trancher QUI VEND d'abord), OU readers armée restants.
