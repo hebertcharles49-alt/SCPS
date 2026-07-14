@@ -58,6 +58,24 @@ d'agent moteur doit inclure `make test` complet dans ses gates.**
   cités-états indépendantes (capitale fantôme corrigée + défense réelle) · purge grain
   région (sociaux/esclavage/pop_transfer → pid) · entretien VISIBLE (cartes + friche).
 
+## MONNAIE — état au soir du 14 (M3b-v2.1 LIVRÉ, golden VERT)
+- M3a (fixes+instrument, v87) · ÉTALON BIMÉTALLIQUE v5 (parité or 8/t · cuivre 2.6/t,
+  042f4cc) · M3b-v2 circuit d'État+prix libres (815ee1a, v88 : price_level[pays],
+  caisse achète/revend, IPM neutralisé, exonération vitale) · M3b-v2.1 dispatch item 5
+  COMPLET (6 familles, table du joueur : entretien 33/33/33 · péages→bourgeois ·
+  conseil→élites · encadrement→clé · militaire→laborers · manuf-chantiers→gages ·
+  events→classes de la province).
+- MESURES (3 graines × 250 ans) : conso-destruction ≈ 0 (trou noir FERMÉ) · Laborer
+  53/49/59 (bande atteinte ~an 150, convergence monotone, zéro collapse) · HÉGÉMON
+  MORTEL RESTAURÉ par le dispatch (les classes pauvres rendaient le monde docile) ·
+  friche saine · colonisation vivante.
+- RESTE MAJEUR (documenté TROUVAILLES) : la **VA RÉSIDUELLE (47-105k/an) n'a pas
+  fondu** — l'hypothèse « caisse→price_level » n'était pas le canal, c'est le revenu
+  direct qui a agi ; la dérive de M reste 15-30k/an (vs 160-290k pré-M3). Le banc
+  invariant M(t)=M(0)+frappe (M3c) ne passera PAS tant que la VA résiduelle vit.
+  + gains d'événements (créations), FX_AUDIT/FX_BUILD partiels, crédit (M3c).
+
 ## PROCHAIN PAS ATTENDU
-Proposer : EXPORT scps.exe (toute l'UI + la monnaie jamais touchées en vrai), OU go M3
-(le gros œuvre conservation — trancher QUI VEND d'abord), OU readers armée restants.
+Trancher : vague « VA résiduelle » (le dernier grand imprimeur — comprendre son canal
+exact puis le fermer), puis M3c (crédit réel + banc invariant). OU pause monnaie et
+EXPORT scps.exe (rien de tout ça n'a été touché en vrai).
