@@ -429,10 +429,10 @@
      * RENDEMENT DÉGRESSIF (la marge d'achat monte de MARKET_DIST_FALLOFF par saut). */ \
     X(MARKET_DIST_FALLOFF,    0.12f) \
     /* M4 — l'arbitrage des cités-états (leur moteur), BORNÉ : volume/tick capé, spread
-     * MINIMAL pour agir, part CAPTÉE du spread → pas de runaway spéculatif. */ \
+     * MINIMAL pour agir. MONNAIE M3a : le Centre ACHÈTE réellement à la source (UN
+     * mouvement = UN crédit, plus de part captée ex nihilo) — ARB_CAPTURE retiré. */ \
     X(ARB_VOL_CAP,            3.0f) \
     X(ARB_MIN_SPREAD,         0.20f) \
-    X(ARB_CAPTURE,            0.35f) \
     /* S1 (syncrétisme) — LE COMMERCE OUVRE L'ARCHÉTYPE (Venise ← Grèce) : un contact
      * COMMERCIAL soutenu (route OUVERTE) avec une polity qui PORTE l'archétype X creuse
      * la profondeur de contact, sommée sur les ENTITÉS distinctes. La MER pèse FORT

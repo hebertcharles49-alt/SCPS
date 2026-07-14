@@ -24,7 +24,6 @@
  * TRANSIENTE rebâtie chaque mois par econ_aggregate_regions depuis prov[].price (jamais
  * touché ici), puis re-projetée par la formule nationale (pure fonction demand_nat/pool/
  * supply_nat, sans mémoire du nudge). Voir CLAUDE.md « MISSION ÉCO — restes assumés ». */
-#define IT_MARGIN_TO_GOLD 0.50f/* part de la valeur transportée qui devient de l'OR pour l'exportateur */
 #define IT_CHOKE_TOLL  0.12f   /* WG : part de la valeur transportée que SKIME le tenant d'un détroit (transfert exportateur→tenant, modulée par l'étroitesse du goulet) */
 
 static float g_last_value = 0.f;   /* valeur totale échangée au dernier tick (reporting) */
@@ -1047,7 +1046,7 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
      * (l'exportateur source encaisse aussi son or), DÉPLÉTÉ la source, stocke son local ;
      * les prix CONVERGENT. Volume/tick CAPÉ + spread MINIMAL + on ne vide jamais la source
      * → pas de runaway spéculatif ; σ prix reste borné. */
-    { float vcap=tune_f("ARB_VOL_CAP",3.f), minsp=tune_f("ARB_MIN_SPREAD",0.20f), cap=tune_f("ARB_CAPTURE",0.35f);
+    { float vcap=tune_f("ARB_VOL_CAP",3.f), minsp=tune_f("ARB_MIN_SPREAD",0.20f);
       int n=e->n_regions; if(n>SCPS_MAX_REG)n=SCPS_MAX_REG;
       for (int h=0;h<n;h++){ if(!g_centre[h]) continue; RegionEconomy *H=&e->region[h];
         for (int g=1; g<RES_COUNT; g++){
@@ -1060,14 +1059,27 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
             if (src<0 || lp<=sp*(1.f+minsp)) continue;            /* spread trop mince → rien */
             float vol=vcap; if (vol>e->region[src].stock[g]*0.20f) vol=e->region[src].stock[g]*0.20f;  /* ne vide pas la source */
             if (vol<0.5f) continue;
+            /* UN MOUVEMENT = UN CRÉDIT (ex-M0 §1.3, double-crédit corrigé) : la SOURCE
+             * est le vrai vendeur (encaisse SON prix local sp, pas de deuxième crédit
+             * en plus) ; le Centre est le vrai ACHETEUR — il débourse, il ne double pas.
+             * Sa marge de revente (vendre plus tard à lp) reste réelle mais IMPLICITE
+             * (elle vit dans le stock acheté bon marché) : rien à créditer ici pour ça. */
+            float *src_tr=it_treasury(e,src), *h_tr=it_treasury(e,h);
+            if (!src_tr || !h_tr) continue;
+            if (*h_tr<=0.f) continue;                              /* le Centre doit pouvoir payer */
+            float total=vol*sp;
+            if (total>*h_tr){ float k=*h_tr/total; vol*=k; total=*h_tr; }
+            if (vol<0.5f) continue;
             /* RE-KEY : drain/dépôt PROVINCE-persistants — l'or suit le RÉEL pris. */
             vol = -econ_region_stock_add(e, src, g, -vol);
             if (vol<0.5f) continue;
+            total=vol*sp;                                          /* re-aligne si le drain réel < demandé */
             econ_region_stock_add(e, h, g, vol);                 /* le Centre stocke son marché local */
-            { float *src_tr=it_treasury(e,src); if (src_tr) *src_tr += vol*sp*IT_MARGIN_TO_GOLD; } /* l'exportateur source encaisse l'or */
-            float profit=vol*(lp-sp)*cap;                        /* le CE encaisse une PART BORNÉE du spread */
-            { float *h_tr=it_treasury(e,h); if (h_tr) *h_tr += profit; } g_centre_val[h]+=profit;
-            if (H->owner>=0) econ_flux_add(H->owner, FX_EXPORT, profit);
+            *h_tr -= total;                                        /* le Centre PAIE */
+            *src_tr += total;                                      /* la source ENCAISSE (UN SEUL crédit) */
+            g_centre_val[h]+=total;              /* télémétrie : valeur du commerce passée par ce Centre */
+            if (H->owner>=0) econ_flux_add(H->owner, FX_IMPORT, -total);
+            if (e->region[src].owner>=0) econ_flux_add(e->region[src].owner, FX_EXPORT, total);
             /* RETIRÉ (LOT 2, réparations) : même nudge mort que le bloc route ci-dessus —
              * H->price[g]/e->region[src].price[g] sont la vue transiente, écrasée au
              * prochain econ_aggregate_regions puis re-projetée depuis le PRIX NATIONAL.
