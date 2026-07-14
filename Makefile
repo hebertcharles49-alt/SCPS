@@ -240,16 +240,6 @@ DIPLO_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o 
 diplo_demo: $(DIPLO_DEMO_OBJS)
 	$(CC) $(DIPLO_DEMO_OBJS) -o $@ -lm
 
-FAITH_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
-                   $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_decrees.o $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_missions.o $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_scps_intertrade.o $(OBJDIR)/scps_scps_statecraft.o $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_scps_trade.o \
-                   $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_tech.o \
-                   $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_legitimacy.o \
-                   $(OBJDIR)/scps_scps_prosperity.o $(OBJDIR)/scps_scps_heritage.o \
-                   $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o $(OBJDIR)/scps_scps_faith.o \
-                   $(OBJDIR)/scps_faith_demo.o
-faith_demo: $(FAITH_DEMO_OBJS)
-	$(CC) $(FAITH_DEMO_OBJS) -o $@ -lm
-
 FACTIONS_DEMO_OBJS := $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_lang.o \
                       $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_core.o \
                       $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_culture.o \
@@ -630,7 +620,7 @@ endgame_demo: $(ENDGAME_DEMO_OBJS)
 
 # Tous les binaires de bancs (MIROIR de run_tests.sh — à garder synchrone) +
 # les legacy + les outils + les variantes .exe (MSYS2/Windows) et _asan.
-BENCH_BINS := core_demo monde_reel readout_demo heritage_demo tech_demo faith_demo \
+BENCH_BINS := core_demo monde_reel readout_demo heritage_demo tech_demo \
   intertrade_demo routes_demo save_io_demo statecraft_demo pop_demo army_demo \
   demography_demo demography_integ_demo revolt_demo social_demo agency_demo \
   campaign_demo factions_demo econ_tax_demo econ_culture_demo econ_arcane_demo \

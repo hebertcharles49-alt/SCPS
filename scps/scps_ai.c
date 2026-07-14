@@ -1993,8 +1993,9 @@ static float ai_tech_cost_mult(Ethos e, const TechNode *n){
     return clampf(m, 0.6f, 1.6f);                              /* biais borné : jamais un mur */
 }
 /* §4 RELIGION — la posture de la foi régnante sur l'interdit [0..1] (orthodoxe bas
- * ↔ culte haut), lue de l'éthos de la culture-capitale (même barème que scps_faith).
- * L'orthodoxe INTERDIT le faustien (sacrilège) ; le culte le SACRALISE. */
+ * ↔ culte haut), lue de l'éthos de la culture-capitale (barème propre à l'IA, non
+ * dérivé de scps_religion). L'orthodoxe INTERDIT le faustien (sacrilège) ; le
+ * culte le SACRALISE. */
 static float ai_faith_stance(const World *w, const WorldEconomy *econ, int cid){
     if (cid<0||cid>=w->n_countries) return 0.25f;
     int cp=w->country[cid].capital_prov; if (cp<0||cp>=w->n_provinces) return 0.25f;

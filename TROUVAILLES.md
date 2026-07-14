@@ -402,3 +402,26 @@ n'est QUE ce qui a coûté cher à trouver) :
   dedans, ce que l'interdiction print-only excluait) donnerait le partage
   exact ; pour M3, le SIGNE (VA > conso) suffit à justifier l'ordre des
   travaux (Cœur A avant tout).
+
+## TRI scps_faith vs scps_religion — SURVIVANT scps_religion (2026-07-14)
+
+**Découvertes** :
+- **scps_faith était déjà auto-diagnostiqué mort par son propre en-tête** : scps_faith.c:4-10 portait depuis le 2026-07-10 « ⚠ PROTOTYPE INACTIF … n'est appelé QUE par son propre banc … aucun câblage moteur, jamais lu par sim_day/econ/ai. La religion RÉELLEMENT jouée est scps_religion.c ». Grep confirmé : `scps_faith.h` n'était inclus que par scps_faith.c lui-même et faith_demo.c — zéro appelant dans scps_sim.c/scps_ai.c/scps_econ.c/chronicle, zéro référence dans godot/src ou godot/project (le seul hit godot était une variable locale `faith_name` de province_panel.gd, sans rapport — elle lit une clé readout "faith"/"religion" déjà fournie par scps_religion, pas un symbole de scps_faith.h).
+- Le commentaire scps_ai.c:1996 (« même barème que scps_faith ») ne pointait PAS vers du code vivant du module : `ai_faith_stance()` (scps_ai.c:1998-2004) porte déjà sa PROPRE copie inline du barème éthos→posture (0.36/0.30/0.26/0.20/0.14/0.10, identique à `ethos_stance_base()` de scps_faith.c) — la duplication documentée dans le commentaire existait déjà INDÉPENDAMMENT de scps_faith.c, câblée en dur dans l'IA. **Rien à migrer** : supprimer scps_faith ne prive scps_ai.c d'aucune donnée, le comportement de jeu (ai_faith_stance) est intact tel quel.
+- `run_tests.sh` portait DÉJÀ un banc `religion_demo` séparé (13/13 ✓, module vivant) en plus de `faith_demo` — les deux bancs coexistaient dans BENCHES_FULL, aucun n'était un doublon de l'autre (faith_demo testait le prototype mort, religion_demo teste le module composable P1-P8).
+
+**Supprimé** (suppression sèche, rien migré) :
+- `scps/scps_faith.c`, `scps/scps_faith.h`, `scps/faith_demo.c`.
+- Makefile : bloc `FAITH_DEMO_OBJS`/`faith_demo:` (ex-lignes 243-251), `faith_demo` retiré de `BENCH_BINS`.
+- `tools/run_tests.sh` : `faith_demo` retiré de `BENCHES_FULL`.
+- scps_ai.c:1995-1997 : commentaire reformulé (« barème propre à l'IA, non dérivé de scps_religion ») pour ne plus référencer un fichier disparu.
+
+**Preuve de mort** :
+- `make golden` : hash monde IDENTIQUE au golden commité (5 graines × 12 ans) — un module réellement mort ne peut pas bouger le hash, confirmé.
+- `make determinism` : 5 graines stables, mêmes hash qu'avant.
+- `make test` : 38 VERTS / 0 ROUGE / 1 BUILD ÉCHEC (intertrade_demo, pré-existant Windows, documenté ci-dessus) sur **39 bancs** (contre 40 avant : faith_demo disparu, aucun autre changement — religion_demo toujours vert 13/13).
+- `make scps` : compile sans erreur (viewer, membrane intacte).
+
+**Restes** :
+- `docs/EQUILIBRAGE_CULTURE_FOI_2026-07-10.md` (mentionné dans l'ancien en-tête de scps_faith.c comme trace du « double système ») n'a pas été touché — c'est un doc historique, hors périmètre de cette mission (pas de code, pas de câblage).
+- Survivant unique et confirmé : **scps_religion.{c,h}** (composable P1-P8, sérialisée section RELG, seule religion jouée).
