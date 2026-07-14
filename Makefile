@@ -151,7 +151,7 @@ mapshot: $(MAPSHOT_OBJS)
 # ---- Diagnostic éco headless : satisfaction par strate & prix (réglage TAX_RATE) -
 ECON_SCAN_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_render.o \
                   $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_decrees.o $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_missions.o $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_scps_intertrade.o $(OBJDIR)/scps_scps_statecraft.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_legitimacy.o $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_lang.o $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_scps_trade.o \
-                  $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_heritage.o $(OBJDIR)/scps_econ_scan.o
+                  $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_heritage.o $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_econ_scan.o
 econ_scan: $(ECON_SCAN_OBJS)
 	$(CC) $(ECON_SCAN_OBJS) -o $@ -lm
 
