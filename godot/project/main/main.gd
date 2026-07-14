@@ -423,9 +423,12 @@ func _ready() -> void:
 
 	# ⚠ THÈME : la propagation s'arrête au CanvasLayer (ni Control ni Window) — le thème
 	# de la fenêtre n'atteint JAMAIS les panneaux de la couche UI tout seul. On le pose
-	# donc sur CHAQUE Control de premier niveau (leurs enfants en héritent normalement).
+	# donc sur chaque Control de premier niveau QUI N'A PAS LE SIEN : les panneaux du
+	# squelette parchemin (province_v2, empire, budget_v2, armée…) posent ParchTheme.build()
+	# dans leur _ready — l'écraser ici leur retirait les variations (HeaderStrip, Tab…)
+	# en jeu réel, invisible aux probes qui contournent main.gd (piège signalé par D1).
 	for c in ui.get_children():
-		if c is Control:
+		if c is Control and c.theme == null:
 			c.theme = get_window().theme
 
 	# ENRÔLEMENT « draggable » : chaque panneau flottant devient déplaçable par son
