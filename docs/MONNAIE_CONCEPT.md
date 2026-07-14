@@ -34,11 +34,12 @@ commerce au lieu de frapper la planète uniformément.
    n'est pas qu'un luxe — fournitures navales, armes à feu, horloges, colifichets
    (scps_econ.c:425). Seul le surplus MARCHAND au-delà d'un stock de fonctionnement
    peut rejoindre la réserve monétaire (en sus de la redevance).
-4. **1 or = 5 cuivre à la Monnaie** (v3, décision joueur 2026-07-14 — ex-10:1) : le
-   marché valorise ~3.1:1 (prix de base 8 vs 2.6, scps_econ.c:315) ; à 5:1 l'arbitrage
-   pro-or subsiste mais reste doux. La frappe privilégie AUTOMATIQUEMENT le métal au
-   meilleur arbitrage — la loi de Gresham comme histoire émergente, affichée au menu
-   éco. Repli si le sweep montre un cuivre monétairement mort : recalibrer.
+4. **Frappe NEUTRE EN VALEUR — 1:1, pas de Gresham** (v4, décision joueur
+   2026-07-14 — remplace 10:1 puis 5:1) : le métal se convertit en monnaie À SON PRIX
+   DE MARCHÉ courant (1 unité de VALEUR métal = 1 unité de monnaie). Aucun rapport
+   fixe or/cuivre, donc AUCUN arbitrage, aucun métal à privilégier — l'or frappe plus
+   par tonne simplement parce qu'il VAUT plus (prix de base 8 vs 2.6, scps_econ.c:315,
+   et le prix courant flotte). La loi de Gresham est retirée du design.
    **Préparatif DÉJÀ implémenté (2026-07-14)** : « à la tonne » — 1 unité de ressource
    est un LOT MASSIF, une tonne d'or n'est pas une pièce → intrants d'or des recettes
    ÷4 (joaillerie 0.8→0.2, parurier 1.0→0.25) : la consommation physique d'or diminue,
