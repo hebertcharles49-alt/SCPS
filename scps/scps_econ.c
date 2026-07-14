@@ -2442,38 +2442,30 @@ int bld_min_tier(BuildingType b){
     }
 }
 /* POSER une manufacture DÉLIBÉRÉMENT (le joueur/IA la choisit ; pas d'auto-bâti). L'appelant a vérifié
- * le tier + payé l'or. GRAIN PUBLIC historique = région, résolue vers sa PROVINCE représentative
- * (charte : l'économie vit sur la province) — le miroir région[] est aussi mis à jour pour que les
- * lecteurs de la MÊME frame (avant le prochain econ_tick/agrégation) voient déjà le bâtiment.
- * Renvoie true si bâtie (ou déjà présente). */
-bool econ_build_manufacture(WorldEconomy *econ, int region, BuildingType b){
-    if (!econ || region<0 || region>=econ->n_regions) return false;
-    int pid=econ_region_rep_province(econ, region);
-    if (pid<0 || pid>=econ->n_prov) return false;
+ * le tier + payé l'or. RE-KEY PROVINCE (doctrine « la province est la seule réalité économique ») :
+ * `pid` est un index de PROVINCE DIRECT — écriture directe sur econ->prov[pid], AUCUN miroir région[]
+ * (l'agrégation mensuelle econ_aggregate_regions reconstruit region[] EN ENTIER depuis prov[] ; les
+ * panneaux (scps_province_alloc, scps_province_buildings) lisent déjà le grain province, donc la
+ * fraîcheur est immédiate sans double-écriture). Renvoie true si bâtie (ou déjà présente). */
+bool econ_build_manufacture(WorldEconomy *econ, int pid, BuildingType b){
+    if (!econ || pid<0 || pid>=econ->n_prov) return false;
     ProvinceEconomy *pe=&econ->prov[pid];
     int bi=region_ensure_building(pe, b);
     if (bi<0) return false;
     /* une fabrique DÉLIBÉRÉE (payée) naît SUBSTANTIELLE — un vrai atelier, pas une semence : elle
      * produit assez pour armer des régiments (la prod plafonne de toute façon sur l'intrant + les bras). */
     if (pe->bld[bi].level < 5.f) pe->bld[bi].level = 5.f;
-    /* miroir immédiat région[] (informatif — l'agrégation exacte reviendra au prochain econ_tick). */
-    RegionEconomy *re=&econ->region[region];
-    int rbi=-1; for (int i=0;i<re->n_bld;i++) if (re->bld[i].type==b){ rbi=i; break; }
-    if (rbi<0 && re->n_bld<ECON_MAX_BLD){ rbi=re->n_bld++; re->bld[rbi].type=b; re->bld[rbi].workers=0.f; }
-    if (rbi>=0 && re->bld[rbi].level<5.f) re->bld[rbi].level=5.f;
     return true;
 }
 
 /* Le NIVEAU d'une manufacture bâtie, d'un CRAN (dir=+1 monte, -1 descend). Le niveau
  * est organique (croît §1 à la pénurie) ; ce verbe est une injection/retrait DÉLIBÉRÉ
  * de capacité par le joueur. dir<0 sous le plancher ⇒ la manufacture est RETIRÉE.
- * Double-écriture PROVINCE (source) + miroir région[] (comme econ_build_manufacture).
- * Retour : true si un changement a eu lieu. */
+ * RE-KEY PROVINCE : `pid` est un index de PROVINCE DIRECT — écriture SEULE sur econ->prov[pid]
+ * (aucun miroir région[], cf. econ_build_manufacture). Retour : true si un changement a eu lieu. */
 #define MANUF_LEVEL_STEP 5.f
-bool econ_manuf_level_delta(WorldEconomy *econ, int region, BuildingType b, int dir){
-    if (!econ || region<0 || region>=econ->n_regions || dir==0) return false;
-    int pid=econ_region_rep_province(econ, region);
-    if (pid<0 || pid>=econ->n_prov) return false;
+bool econ_manuf_level_delta(WorldEconomy *econ, int pid, BuildingType b, int dir){
+    if (!econ || pid<0 || pid>=econ->n_prov || dir==0) return false;
     ProvinceEconomy *pe=&econ->prov[pid];
     int bi=-1; for (int i=0;i<pe->n_bld;i++) if (pe->bld[i].type==b){ bi=i; break; }
     if (bi<0) return false;                                    /* rien à ajuster : pas bâtie */
@@ -2484,19 +2476,6 @@ bool econ_manuf_level_delta(WorldEconomy *econ, int region, BuildingType b, int 
         if (pe->bld[bi].level < MANUF_LEVEL_STEP){             /* sous le plancher : on RETIRE le slot */
             for (int i=bi+1;i<pe->n_bld;i++) pe->bld[i-1]=pe->bld[i];
             pe->n_bld--;
-        }
-    }
-    /* miroir région[] (informatif — l'agrégation exacte reviendra au prochain econ_tick). */
-    RegionEconomy *re=&econ->region[region];
-    int rbi=-1; for (int i=0;i<re->n_bld;i++) if (re->bld[i].type==b){ rbi=i; break; }
-    if (rbi>=0){
-        if (dir>0) re->bld[rbi].level += MANUF_LEVEL_STEP;
-        else {
-            re->bld[rbi].level -= MANUF_LEVEL_STEP;
-            if (re->bld[rbi].level < MANUF_LEVEL_STEP){
-                for (int i=rbi+1;i<re->n_bld;i++) re->bld[i-1]=re->bld[i];
-                re->n_bld--;
-            }
         }
     }
     return true;

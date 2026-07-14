@@ -262,13 +262,18 @@ void intertrade_seed_citystate_arms(const World *w, WorldEconomy *e){
         uint32_t h = w->seed ^ (uint32_t)c*2654435761u;   /* mélange déterministe seed×index */
         h ^= h>>13; h *= 0x5bd1e995u; h ^= h>>15;
         BuildingType b = ARMS[h % 6u];
-        econ_build_manufacture(e, best, b);
+        /* RE-KEY PROVINCE : econ_build_manufacture prend un PID direct — résolution EXPLICITE
+         * (byte-identique : econ_region_rep_province est le même cache que le module lisait
+         * lui-même auparavant). */
+        int best_pid=econ_region_rep_province(e, best);
+        if (best_pid<0) continue;
+        econ_build_manufacture(e, best_pid, b);
         /* L'ARMURIER À POUDRE bâtit TOUTE la chaîne (3 manufactures, demandée) : charbonnière
          * (bois→charbon) → poudrière (salpêtre+charbon→poudre) → arquebuserie (fer+poudre→feu).
          * On NE FORCE PAS les ressources (discipline : on ne lit que la géographie) — la chaîne
          * MORD là où le salpêtre/fer/bois NATURELS la nourrissent (la genèse répartit ces gisements). */
-        if (b==BLD_ARQUEBUS){ econ_build_manufacture(e, best, BLD_POWDERMILL);
-                              econ_build_manufacture(e, best, BLD_CHARCOAL); }
+        if (b==BLD_ARQUEBUS){ econ_build_manufacture(e, best_pid, BLD_POWDERMILL);
+                              econ_build_manufacture(e, best_pid, BLD_CHARCOAL); }
     }
     refresh_centres(e);
 }

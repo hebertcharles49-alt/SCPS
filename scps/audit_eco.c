@@ -135,7 +135,7 @@ int main(int argc, char **argv){
                     if (cr->stock[RES_STONE]<300.f) cr->stock[RES_STONE]=300.f;
                     if (cr->stock[RES_CLAY] <300.f) cr->stock[RES_CLAY] =300.f; }
                 if (paid_360_year<0 && cap_reg>=0
-                    && agency_build_acct(ag, econ, w, cap_reg, EDI_GARNISON, owner))
+                    && agency_build_acct(ag, econ, w, cap_reg, EDI_GARNISON, owner, -1))   /* -1 : héritage région (banc) */
                     paid_360_year = yr;
             }
             { double g=econ_country_gold(econ, owner);        /* borne 3 : le flux d'or VIT ? */

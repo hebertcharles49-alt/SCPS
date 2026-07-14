@@ -32,7 +32,12 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 84u           /* v84 : BUDGET_ROADS (entretien des routes) → budget_mult[][] grandit (blob ECON) + FX_ROADS → g_flux (blob TXYR) ; <v84 refusé.
+#define SAVE_VERSION 85u           /* v85 : BuildOrder.prov (grain province des chantiers joueur —
+                                    * doctrine « la province est la seule réalité économique » :
+                                    * CMD_BUILD enfile désormais un PID direct, sans le résoudre via
+                                    * la province représentative de la région) → BuildOrder grandit
+                                    * ⇒ sizeof(AgencyState) change (blob AGCY). <v85 refusé.
+                                    * v84 : BUDGET_ROADS (entretien des routes) → budget_mult[][] grandit (blob ECON) + FX_ROADS → g_flux (blob TXYR) ; <v84 refusé.
                                     * v83 : revendication territoriale nommée + réparations de paix dans DiploState ;
                                     * v81 : ARMÉES MULTIPLES — Campaign sérialise 32 slots stables
                                     * par pays, leur id et le compte de corps actifs. <v81 refusé.

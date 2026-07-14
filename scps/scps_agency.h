@@ -67,8 +67,10 @@ const EdificeDef *edifice_def(Edifice e);
 Edifice edifice_prev(Edifice e);
 Edifice edifice_succ(Edifice e);   /* palier suivant (EDIFICE_COUNT = sommet/singleton) */
 /* Retour joueur : DÉMOLIR un édifice d'un CRAN (famille ⇒ palier précédent ; base ⇒ retiré).
- * Player-only ; jamais appelé par la chronique. true si retiré/dégradé. */
-bool    agency_demolish_edifice(WorldEconomy *econ, int reg, Edifice e);
+ * Player-only ; jamais appelé par la chronique. RE-KEY PROVINCE : `prov` est un PID DIRECT
+ * (plus une région à résoudre en interne — l'appelant cible déjà la province). true si
+ * retiré/dégradé. */
+bool    agency_demolish_edifice(WorldEconomy *econ, int prov, Edifice e);
 Edifice edifice_next_buildable(const WorldEconomy *econ, int region, Edifice base);  /* le ↑ à poser */
 bool    edifice_build_blocked(const WorldEconomy *econ, int region, Edifice e);
 /* LOT T (2026-07-07) — le TIER d'un édifice = sa position dans SA FAMILLE (1 = base,
@@ -96,6 +98,11 @@ typedef struct {
     int        param;     /* Edifice (BUILD) | Resource (EXPLOIT) | inutilisé (CLEAR) */
     int        days_total, days_done;
     bool       active;
+    /* RE-KEY PROVINCE (doctrine « la province est la seule réalité économique ») : -1 = héritage
+     * (résout la province REPRÉSENTATIVE de `region` via econ_region_rep_province, le chemin de
+     * l'IA/des bancs) ; ≥0 = PID DIRECT posé par le drain CMD_BUILD (le joueur cible une province
+     * précise, pas sa représentante). Ne change le comportement d'apply_action QUE si ≥0. */
+    int        prov;
 } BuildOrder;
 
 #define SCPS_MAX_BUILDS 512
@@ -116,8 +123,12 @@ bool agency_order_build  (AgencyState *a, int region, Edifice e);
 bool agency_build(AgencyState *a, WorldEconomy *econ, const World *w, int region, Edifice e);
 /* E0.3 — un seul livre d'or : le chantier débite l'or NATIONAL de `owner` via credit_spend
  * (au-delà du trésor → dette, créancier assigné) ; la topbar (econ_country_gold) dit VRAI.
- * Les matériaux sortent toujours du marché régional ; le péage va à la cité-état hôte. */
-bool agency_build_acct(AgencyState *a, WorldEconomy *econ, const World *w, int region, Edifice e, int owner);
+ * Les matériaux sortent toujours du marché régional ; le péage va à la cité-état hôte.
+ * RE-KEY PROVINCE : `prov` (-1 = héritage, résout la province REPRÉSENTATIVE de `region` —
+ * le chemin de l'IA/des bancs ; ≥0 = PID DIRECT, posé par le drain CMD_BUILD quand le joueur
+ * cible une province précise) porte SEUL le grain d'ÉCRITURE (apply_action) — les gates de
+ * cette fonction (géo/tier/matière/or) restent au grain RÉGION (le marché vit sur region[]). */
+bool agency_build_acct(AgencyState *a, WorldEconomy *econ, const World *w, int region, Edifice e, int owner, int prov);
 /* F5 — DOUBLE-COMMANDE : `edifice_build_blocked` ne voit `edi_built` qu'À LA COMPLÉTION (jusqu'à
  * EDIFICES[e].days, ≤ 960j) ; ce helper scanne la FILE en cours (agency_build_acct l'appelle avant
  * le devis) pour refuser une 2e commande du MÊME édifice pour la MÊME région tant que la 1re n'est

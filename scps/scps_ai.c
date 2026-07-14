@@ -980,11 +980,12 @@ static bool empire_has_bld(const WorldEconomy *econ, int cid, BuildingType b){
 /* LOT T (2026-07-07) — GRAIN du T-gate : la province qui va RÉELLEMENT héberger le
  * bâtiment (charte PROVINCE_MODEL.md : l'économie — pop, strates — vit à la PROVINCE),
  * PAS l'agrégat de région (Σ toutes ses provinces, qui peut gonfler le tier au-delà de
- * ce qu'AUCUNE province n'atteint seule). `econ_build_manufacture` résout toujours
- * « region » vers sa province REPRÉSENTATIVE (econ_region_rep_province, scps_econ.c) —
- * c'est CETTE province qu'on gate ici, au lieu du Σ region[].strata d'avant. Repli
- * tier 1 (libre) si aucune province représentative n'existe (fixtures de bancs sans
- * provinces peuplées — même repli sûr que region_carrier_prov). */
+ * ce qu'AUCUNE province n'atteint seule). RE-KEY PROVINCE : `econ_build_manufacture`
+ * prend désormais un PID DIRECT (plus de résolution interne) — les appelants qui
+ * partent d'une région résolvent ICI (econ_region_rep_province, scps_econ.c) la même
+ * province représentative qu'ils gatent. Repli tier 1 (libre) si aucune province
+ * représentative n'existe (fixtures de bancs sans provinces peuplées — même repli
+ * sûr que region_carrier_prov). */
 static int host_province_tier(const WorldEconomy *econ, int region){
     int pid = econ_region_rep_province(econ, region);
     if (pid<0 || pid>=econ->n_prov) return 1;
@@ -1039,16 +1040,22 @@ static void ai_build_manufacture(AiActor *a, const World *w, WorldEconomy *econ)
             if (re->raw_cap[in] > bestcap){ bestcap=re->raw_cap[in]; best=r; }
         }
         if (best<0) continue;                                  /* pas de région avec l'intrant (ou déjà bâtie partout) */
+        /* RE-KEY PROVINCE : econ_build_manufacture prend un PID direct (plus une région à
+         * résoudre en interne) — on résout ICI la province représentative, comme le module
+         * le faisait lui-même auparavant (byte-identique, econ_region_rep_province est un
+         * simple cache posé à econ_build_adjacency). */
+        int best_pid=econ_region_rep_province(econ, best);
+        if (best_pid<0) continue;
         float cost=tune_f("MANUF_BUILD_COST",50.f)*(float)bld_min_tier(b)*econ_world_ipm(econ);
         if (!credit_can_spend(econ, w, a->cid, cost)) continue;   /* bloque seulement au-delà de la ligne de crédit (dette) */
-        if (econ_build_manufacture(econ, best, b)){
+        if (econ_build_manufacture(econ, best_pid, b)){
             credit_spend(econ, w, a->cid, cost); econ_flux_add(a->cid, FX_SOLDE, -cost);   /* débit AU SUCCÈS — pas d'or perdu si la pose échoue */
             a->stats.builds_other++;
             /* FINIR LA CHAÎNE (comme l'armurier à poudre des cités-états) : poudrière (salpêtre+charbon
              * → poudre) + charbonnière (bois → charbon). Le pool national amène le salpêtre d'où qu'il
              * tombe ; le feu a enfin sa poudre, l'arquebusier paraît — au lieu d'une fabrique muette. */
-            if (b==BLD_ARQUEBUS){ econ_build_manufacture(econ, best, BLD_POWDERMILL);
-                                  econ_build_manufacture(econ, best, BLD_CHARCOAL); }
+            if (b==BLD_ARQUEBUS){ econ_build_manufacture(econ, best_pid, BLD_POWDERMILL);
+                                  econ_build_manufacture(econ, best_pid, BLD_CHARCOAL); }
         }
         return;                                                /* une fabrique par tour */
     }
@@ -1074,7 +1081,10 @@ static int ai_pick_host_for(const WorldEconomy *econ, int cid, BuildingType b){
 static bool ai_pay_and_build(AiActor *a, const World *w, WorldEconomy *econ, int region, BuildingType b){
     float cost=tune_f("MANUF_BUILD_COST",50.f)*(float)bld_min_tier(b)*econ_world_ipm(econ);
     if (!credit_can_spend(econ, w, a->cid, cost)) return false;
-    if (!econ_build_manufacture(econ, region, b)) return false;
+    /* RE-KEY PROVINCE : econ_build_manufacture prend un PID direct — résolution EXPLICITE
+     * ici (le module ne le fait plus lui-même), byte-identique à l'ancien comportement. */
+    int pid=econ_region_rep_province(econ, region);
+    if (pid<0 || !econ_build_manufacture(econ, pid, b)) return false;
     credit_spend(econ, w, a->cid, cost); econ_flux_add(a->cid, FX_SOLDE, -cost);   /* débit AU SUCCÈS */
     a->stats.builds_other++;
     return true;
@@ -1185,7 +1195,9 @@ static void ai_build_civmanuf(AiActor *a, const World *w, WorldEconomy *econ, Re
     if (br<0) return;                                                /* toutes les provinces sont (presque) pleines */
     float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(econ);  /* T1 : la moins chère (le développement de base) */
     if (!credit_can_spend(econ, w, a->cid, cost)) return;            /* bloque seulement au-delà de la ligne de crédit */
-    if (econ_build_manufacture(econ, br, bb)){
+    /* RE-KEY PROVINCE : résolution EXPLICITE région→pid (econ_build_manufacture prend un PID). */
+    int br_pid=econ_region_rep_province(econ, br);
+    if (br_pid>=0 && econ_build_manufacture(econ, br_pid, bb)){
         credit_spend(econ, w, a->cid, cost); econ_flux_add(a->cid, FX_SOLDE, -cost);   /* débit AU SUCCÈS */
         a->stats.builds_other++;
     }

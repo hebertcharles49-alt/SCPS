@@ -109,7 +109,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("budget_controls", "country"),     &ScpsWorld::budget_controls);
     ClassDB::bind_method(D_METHOD("mission_info", "country"),        &ScpsWorld::mission_info);
     ClassDB::bind_method(D_METHOD("country_factions", "country"),    &ScpsWorld::country_factions);
-    ClassDB::bind_method(D_METHOD("player_build", "edifice", "region"), &ScpsWorld::player_build, DEFVAL(-1));
+    ClassDB::bind_method(D_METHOD("player_build", "edifice", "province"), &ScpsWorld::player_build, DEFVAL(-1));
     ClassDB::bind_method(D_METHOD("player_recruit", "unit"),         &ScpsWorld::player_recruit);
     ClassDB::bind_method(D_METHOD("player_set_levy", "level"),       &ScpsWorld::player_set_levy);
     ClassDB::bind_method(D_METHOD("player_research", "tech"),        &ScpsWorld::player_research);
@@ -153,15 +153,15 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_disband_corps", "id"), &ScpsWorld::player_disband_corps);
     ClassDB::bind_method(D_METHOD("player_raid_coast", "prov"),         &ScpsWorld::player_raid_coast);
     ClassDB::bind_method(D_METHOD("can_raid_coast", "prov"),            &ScpsWorld::can_raid_coast);
-    ClassDB::bind_method(D_METHOD("player_build_manuf", "region", "bld"), &ScpsWorld::player_build_manuf);
-    ClassDB::bind_method(D_METHOD("player_manuf_level", "region", "bld", "dir"), &ScpsWorld::player_manuf_level);
-    ClassDB::bind_method(D_METHOD("player_demolish_edifice", "region", "edifice"), &ScpsWorld::player_demolish_edifice);
-    ClassDB::bind_method(D_METHOD("manuf_legal", "region", "bld"),        &ScpsWorld::manuf_legal);
+    ClassDB::bind_method(D_METHOD("player_build_manuf", "province", "bld"), &ScpsWorld::player_build_manuf);
+    ClassDB::bind_method(D_METHOD("player_manuf_level", "province", "bld", "dir"), &ScpsWorld::player_manuf_level);
+    ClassDB::bind_method(D_METHOD("player_demolish_edifice", "province", "edifice"), &ScpsWorld::player_demolish_edifice);
+    ClassDB::bind_method(D_METHOD("manuf_legal", "province", "bld"),        &ScpsWorld::manuf_legal);
     ClassDB::bind_method(D_METHOD("manuf_cost"),                          &ScpsWorld::manuf_cost);
     ClassDB::bind_method(D_METHOD("manuf_name", "bld"),                   &ScpsWorld::manuf_name);
     ClassDB::bind_method(D_METHOD("edifice_name", "edifice"),             &ScpsWorld::edifice_name);
     ClassDB::bind_method(D_METHOD("edifice_succ", "edifice"),             &ScpsWorld::edifice_succ);
-    ClassDB::bind_method(D_METHOD("build_legal", "region", "edifice"),    &ScpsWorld::build_legal);
+    ClassDB::bind_method(D_METHOD("build_legal", "province", "edifice"),    &ScpsWorld::build_legal);
     ClassDB::bind_method(D_METHOD("colonized_total"),               &ScpsWorld::colonized_total);
     ClassDB::bind_method(D_METHOD("colony_status"),                 &ScpsWorld::colony_status);
     ClassDB::bind_method(D_METHOD("country_food", "c"),             &ScpsWorld::country_food);
@@ -176,12 +176,12 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_embargo", "target", "on"),  &ScpsWorld::player_embargo);
     ClassDB::bind_method(D_METHOD("player_fabricate_cb", "target"),   &ScpsWorld::player_fabricate_cb);
 
-    /* ALLOCATION DE MAIN-D'ŒUVRE (onglet province) */
-    ClassDB::bind_method(D_METHOD("region_alloc", "region"),              &ScpsWorld::region_alloc);
-    ClassDB::bind_method(D_METHOD("player_alloc_raw", "region", "resource", "weight"), &ScpsWorld::player_alloc_raw);
-    ClassDB::bind_method(D_METHOD("player_alloc_bld", "region", "bld_type", "weight"), &ScpsWorld::player_alloc_bld);
-    ClassDB::bind_method(D_METHOD("player_alloc_input", "region", "bld_type", "input"), &ScpsWorld::player_alloc_input);
-    ClassDB::bind_method(D_METHOD("player_alloc_auto", "region"),         &ScpsWorld::player_alloc_auto);
+    /* ALLOCATION DE MAIN-D'ŒUVRE (onglet province) — RE-KEY : pid direct, jamais une région */
+    ClassDB::bind_method(D_METHOD("province_alloc", "province"),              &ScpsWorld::province_alloc);
+    ClassDB::bind_method(D_METHOD("player_alloc_raw", "province", "resource", "weight"), &ScpsWorld::player_alloc_raw);
+    ClassDB::bind_method(D_METHOD("player_alloc_bld", "province", "bld_type", "weight"), &ScpsWorld::player_alloc_bld);
+    ClassDB::bind_method(D_METHOD("player_alloc_input", "province", "bld_type", "input"), &ScpsWorld::player_alloc_input);
+    ClassDB::bind_method(D_METHOD("player_alloc_auto", "province"),         &ScpsWorld::player_alloc_auto);
     ClassDB::bind_method(D_METHOD("player_pop_transfer", "src_region", "dst_region", "klass", "count"), &ScpsWorld::player_pop_transfer);
     ClassDB::bind_method(D_METHOD("manumit_preview"),                     &ScpsWorld::manumit_preview);
     ClassDB::bind_method(D_METHOD("country_shortages", "country"),        &ScpsWorld::country_shortages);
@@ -1531,8 +1531,8 @@ Dictionary ScpsWorld::country_factions(int country) {
     return d;
 }
 
-bool ScpsWorld::player_build(int edifice, int region) {
-    return sim ? scps_player_build(sim, edifice, region) != 0 : false;
+bool ScpsWorld::player_build(int edifice, int province) {
+    return sim ? scps_player_build(sim, edifice, province) != 0 : false;
 }
 
 int ScpsWorld::player_recruit(int unit) {
@@ -1706,28 +1706,30 @@ bool ScpsWorld::player_move_corps(int id,int target_region){ return sim?scps_pla
 bool ScpsWorld::player_refill_corps(int id){ return sim?scps_player_refill_corps(sim,id)!=0:false; }
 bool ScpsWorld::player_disband_corps(int id){ return sim?scps_player_disband_corps(sim,id)!=0:false; }
 
-/* PANNEAU B — manufacture civile par région : le verbe (enfile) + la légalité (read-only). */
-bool ScpsWorld::player_build_manuf(int region, int bld) {
-    return sim ? scps_player_build_manuf(sim, region, bld) != 0 : false;
+/* PANNEAU B — manufacture civile par PROVINCE (RE-KEY : pid direct) : le verbe (enfile)
+ * + la légalité (read-only). */
+bool ScpsWorld::player_build_manuf(int province, int bld) {
+    return sim ? scps_player_build_manuf(sim, province, bld) != 0 : false;
 }
-bool ScpsWorld::player_manuf_level(int region, int bld, int dir) {
-    return sim ? scps_player_manuf_level(sim, region, bld, dir) != 0 : false;
+bool ScpsWorld::player_manuf_level(int province, int bld, int dir) {
+    return sim ? scps_player_manuf_level(sim, province, bld, dir) != 0 : false;
 }
-bool ScpsWorld::player_demolish_edifice(int region, int edifice) {
-    return sim ? scps_player_demolish_edifice(sim, region, edifice) != 0 : false;
+bool ScpsWorld::player_demolish_edifice(int province, int edifice) {
+    return sim ? scps_player_demolish_edifice(sim, province, edifice) != 0 : false;
 }
-int ScpsWorld::manuf_legal(int region, int bld) {
-    return sim ? scps_manuf_legal(sim, region, bld) : 0;
+int ScpsWorld::manuf_legal(int province, int bld) {
+    return sim ? scps_manuf_legal(sim, province, bld) : 0;
 }
 int ScpsWorld::manuf_cost() const {
     return sim ? scps_manuf_cost(sim) : 0;
 }
 /* LÉGALITÉ de construction (lot M, membrane honnête) : miroir read-only des gates du
- * drain CMD_BUILD — legal + la RAISON du refus (0 OK · 1 structurel · 2 or · 3 matière). */
-Dictionary ScpsWorld::build_legal(int region, int edifice) {
+ * drain CMD_BUILD — legal + la RAISON du refus (0 OK · 1 structurel · 2 or · 3 matière).
+ * RE-KEY : `province` est un PID DIRECT (jamais une région). */
+Dictionary ScpsWorld::build_legal(int province, int edifice) {
     Dictionary d;
     int reason = 1;
-    int legal = sim ? scps_build_legal_ex(sim, region, edifice, &reason) : 0;
+    int legal = sim ? scps_build_legal_ex(sim, province, edifice, &reason) : 0;
     d["legal"]  = (legal != 0);
     d["reason"] = reason;
     d["allowed"] = (legal != 0); /* contrat UI structuré — alias de migration */
@@ -1841,11 +1843,13 @@ Dictionary ScpsWorld::can_raid_coast(int prov) {
     return d;
 }
 
-/* ── ALLOCATION DE MAIN-D'ŒUVRE — la membrane traverse en Dictionary (mots + poids) ── */
-Dictionary ScpsWorld::region_alloc(int region) {
+/* ── ALLOCATION DE MAIN-D'ŒUVRE — la membrane traverse en Dictionary (mots + poids).
+ * RE-KEY PROVINCE : `province` est un PID DIRECT (jamais une région). Le champ Dictionary
+ * "region" garde son nom (compat binding) mais porte désormais un PID. ── */
+Dictionary ScpsWorld::province_alloc(int province) {
     Dictionary out;
     ScpsAlloc al;
-    if (sim) scps_region_alloc(sim, region, &al); else al.region = -1;
+    if (sim) scps_province_alloc(sim, province, &al); else al.region = -1;
     out["region"] = al.region;
     if (al.region < 0) { out["on"] = false; out["pool"] = 0.0f; out["sinks"] = Array(); return out; }
     out["on"]   = al.on != 0;
@@ -1870,17 +1874,17 @@ Dictionary ScpsWorld::region_alloc(int region) {
     out["sinks"] = sinks;
     return out;
 }
-bool ScpsWorld::player_alloc_raw(int region, int resource, int weight) {
-    return sim ? scps_player_alloc_raw(sim, region, resource, weight) != 0 : false;
+bool ScpsWorld::player_alloc_raw(int province, int resource, int weight) {
+    return sim ? scps_player_alloc_raw(sim, province, resource, weight) != 0 : false;
 }
-bool ScpsWorld::player_alloc_bld(int region, int bld_type, int weight) {
-    return sim ? scps_player_alloc_bld(sim, region, bld_type, weight) != 0 : false;
+bool ScpsWorld::player_alloc_bld(int province, int bld_type, int weight) {
+    return sim ? scps_player_alloc_bld(sim, province, bld_type, weight) != 0 : false;
 }
-bool ScpsWorld::player_alloc_input(int region, int bld_type, int input) {
-    return sim ? scps_player_alloc_input(sim, region, bld_type, input) != 0 : false;
+bool ScpsWorld::player_alloc_input(int province, int bld_type, int input) {
+    return sim ? scps_player_alloc_input(sim, province, bld_type, input) != 0 : false;
 }
-bool ScpsWorld::player_alloc_auto(int region) {
-    return sim ? scps_player_alloc_auto(sim, region) != 0 : false;
+bool ScpsWorld::player_alloc_auto(int province) {
+    return sim ? scps_player_alloc_auto(sim, province) != 0 : false;
 }
 
 /* ── LOT G — RÉINCORPORATION DE POP ── */

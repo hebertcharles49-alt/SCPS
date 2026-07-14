@@ -164,7 +164,7 @@ public:
     Dictionary country_factions(int country);          /* spectre de factions : parts/griefs/dominante + coup/corruption */
 
     /* ACTIONS du joueur (la main humaine — mêmes actionneurs que l'IA) */
-    bool       player_build(int edifice, int region); /* enfile un chantier (region<0 ⇒ capitale) ; false = file pleine/hors-domaine */
+    bool       player_build(int edifice, int province); /* enfile un chantier (RE-KEY : province=pid direct, <0 ⇒ capitale) ; false = file pleine/hors-domaine */
     int        player_recruit(int unit);              /* enfile 1 paquet à lever ; 1 = mis en file, 0 = refus d'enfilement */
     void       player_set_levy(int level);            /* enfile le réglage de la jauge de levée 0-3 */
     int        player_research(int tech);             /* fixe la cible de tech (file de 1) ; tech<0 ⇒ annule ; 1 = mis en file */
@@ -217,18 +217,20 @@ public:
      * pas de coque pirate), cd_days:int (« côte balafrée — X j ») }. */
     bool       player_raid_coast(int prov);
     Dictionary can_raid_coast(int prov);
-    /* PANNEAU B — poser une MANUFACTURE civile par région (le §NF l'exclut : voici la main). */
-    bool       player_build_manuf(int region, int bld);  /* enfile l'ordre (drain revalidé) */
-    bool       player_manuf_level(int region, int bld, int dir);   /* +/- niveau d'une manuf bâtie */
-    bool       player_demolish_edifice(int region, int edifice);   /* démolir un édifice d'un cran */
-    int        manuf_legal(int region, int bld);         /* légalité read-only (griser le bouton) */
+    /* PANNEAU B — poser une MANUFACTURE civile par PROVINCE (RE-KEY : pid direct, le
+     * §NF l'exclut : voici la main). */
+    bool       player_build_manuf(int province, int bld);  /* enfile l'ordre (drain revalidé) */
+    bool       player_manuf_level(int province, int bld, int dir);   /* +/- niveau d'une manuf bâtie */
+    bool       player_demolish_edifice(int province, int edifice);   /* démolir un édifice d'un cran */
+    int        manuf_legal(int province, int bld);         /* légalité read-only (griser le bouton) */
     int        manuf_cost() const;                       /* le PRIX du chantier (or — même formule que le drain) */
     String     manuf_name(int bld);                      /* nom d'affichage du BuildingType (miroir display-only) */
     String     edifice_name(int edifice);                /* nom d'un édifice (picker « poser ») */
     int        edifice_succ(int edifice);                /* palier suivant (le « + » upgrade) */
-    /* lot M — LÉGALITÉ d'ÉDIFICE (miroir read-only du drain CMD_BUILD) :
+    /* lot M — LÉGALITÉ d'ÉDIFICE (miroir read-only du drain CMD_BUILD) : RE-KEY,
+     * `province` est un PID DIRECT (jamais une région).
      * { legal:bool, reason:int } — reason 0 OK · 1 structurel · 2 or · 3 matière. */
-    Dictionary build_legal(int region, int edifice);
+    Dictionary build_legal(int province, int edifice);
     int        colonized_total() const;               /* Σ provinces colonisées — signature de souveraineté */
     Dictionary colony_status() const;                 /* v50 : le CHANTIER de colonisation du joueur */
     double     country_food(int c) const;             /* v50 : Σ stock vivrier (topbar) */
@@ -246,13 +248,15 @@ public:
     bool       player_fabricate_cb(int target);       /* W-GUERRE-3 : fabriquer une revendication (payante) */
 
     /* ALLOCATION DE MAIN-D'ŒUVRE (onglet province) — lire les puits + régler les poids.
-     * region_alloc renvoie { region, on:bool, pool:float, sinks:[{kind,id,name,output,in_name,
-     * alt_name,weight,pct,workers,closed,input}] }. Les verbes ENFILENT (revalidé au drain). */
-    Dictionary region_alloc(int region);
-    bool       player_alloc_raw(int region, int resource, int weight);
-    bool       player_alloc_bld(int region, int bld_type, int weight);  /* weight 0 = fermé */
-    bool       player_alloc_input(int region, int bld_type, int input);
-    bool       player_alloc_auto(int region);          /* retour au split AUTO */
+     * RE-KEY PROVINCE : `province` est un PID DIRECT (jamais une région).
+     * province_alloc renvoie { region, on:bool, pool:float, sinks:[{kind,id,name,output,in_name,
+     * alt_name,weight,pct,workers,closed,input}] } — clé "region" gardée (compat GDScript),
+     * elle porte désormais un PID. Les verbes ENFILENT (revalidé au drain). */
+    Dictionary province_alloc(int province);
+    bool       player_alloc_raw(int province, int resource, int weight);
+    bool       player_alloc_bld(int province, int bld_type, int weight);  /* weight 0 = fermé */
+    bool       player_alloc_input(int province, int bld_type, int input);
+    bool       player_alloc_auto(int province);          /* retour au split AUTO */
 
     /* LOT G — RÉINCORPORATION DE POP : déplace `count` âmes de la classe (SocialClass)
      * `klass` de `src_region` vers `dst_region` (toutes deux au joueur). Verbe ENFILE. */

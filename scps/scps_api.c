@@ -2270,23 +2270,28 @@ int scps_diplo_journal(ScpsSim *s, int country, ScpsDiploAct *out, int max){
     return n;
 }
 
-/* §3 — LÉGALITÉ de construction PAR RÉGION : MIROIR EN LECTURE des gates du drain
+/* §3 — LÉGALITÉ de construction PAR PROVINCE : MIROIR EN LECTURE des gates du drain
  * CMD_BUILD → agency_build_acct (scps_agency.c), dans le MÊME ORDRE — le refus
  * rapporté = le premier refus que le drain opposerait. AUCUNE mutation (le drain
  * refuse en silence : ce reader est ce qui rend le bouton honnête).
- * `reason_out` (option) : 0 OK · 1 structurel (région/palier/file/côte) ·
+ * RE-KEY PROVINCE : `province` est un PID DIRECT (jamais une région) ; le gate MATIÈRE
+ * (marché intertrade) reste interne RÉGION, dérivée de la province (comme le drain).
+ * `reason_out` (option) : 0 OK · 1 structurel (province/palier/file/côte) ·
  * 2 or insuffisant · 3 matière manquante (marché atteignable à sec) ·
  * 4 tech de palier manquante (LOT T : edifice_tier ⇐ econ_country_has_tier). */
-int scps_build_legal_ex(ScpsSim *s, int region, int edifice, int *reason_out){
+int scps_build_legal_ex(ScpsSim *s, int province, int edifice, int *reason_out){
     if (reason_out) *reason_out = 1;
     if (!s || !s->ready || edifice<0 || edifice>=EDIFICE_COUNT) return 0;
     int p = (s->sim.human_player>=0) ? s->sim.human_player : s->sim.player;
     if (p<0 || p>=s->w->n_countries) return 0;
-    int reg = region;
-    if (reg<0){ int cp=s->w->country[p].capital_prov; reg = (cp>=0&&cp<s->w->n_provinces)? s->w->province[cp].region : -1; }
+    int pid = province;
+    if (pid<0) pid = s->w->country[p].capital_prov;
     WorldEconomy *e = s->sim.econ;
-    if (reg<0 || reg>=e->n_regions || e->region[reg].owner != p) return 0;
-    /* gates GÉO (miroir agency_build_acct) : port SUR la côte, Centre = débouché */
+    if (pid<0 || pid>=e->n_prov || e->prov[pid].owner != p) return 0;
+    int reg = (pid<s->w->n_provinces) ? s->w->province[pid].region : -1;
+    if (reg<0 || reg>=e->n_regions) return 0;
+    /* gates GÉO (miroir agency_build_acct) : port SUR la côte, Centre = débouché — au grain
+     * RÉGION (le marché/la géo maritime vivent sur region[], dérivée de la province ci-dessus). */
     if (edifice==EDI_PORT && !e->region[reg].coastal) return 0;
     if (edifice==EDI_TRADE_CENTER && !e->region[reg].coastal && !e->region[reg].estuary) return 0;
     if (edifice_build_blocked(e, reg, (Edifice)edifice)) return 0;
@@ -2313,8 +2318,8 @@ int scps_build_legal_ex(ScpsSim *s, int region, int edifice, int *reason_out){
     if (reason_out) *reason_out = 0;
     return 1;
 }
-int scps_build_legal(ScpsSim *s, int region, int edifice){
-    return scps_build_legal_ex(s, region, edifice, NULL);
+int scps_build_legal(ScpsSim *s, int province, int edifice){
+    return scps_build_legal_ex(s, province, edifice, NULL);
 }
 /* Nom d'un édifice (pour le picker « poser » de l'onglet province). "" si hors-borne. */
 const char *scps_edifice_name(int edifice){
@@ -2512,48 +2517,43 @@ int scps_building_roster(ScpsSim *s, int country, ScpsEdificeDef *out, int max){
     return n;
 }
 
-/* ALLOCATION DE MAIN-D'ŒUVRE — lit les PUITS d'une région (brutes extraites + manufactures)
- * avec leur poids et leur emploi. En mode AUTO (alloc_on=0), `weight` reflète une estimation
- * de la part de bras ACTUELLE (manufactures : bras réels ; brutes : part ∝ raw_cap) → l'UI
- * part de la distribution réelle. PUR read (aucun tick, aucun RNG). */
-void scps_region_alloc(ScpsSim *s, int region, ScpsAlloc *out){
+/* ALLOCATION DE MAIN-D'ŒUVRE — lit les PUITS d'une PROVINCE (brutes extraites +
+ * manufactures) avec leur poids et leur emploi. RE-KEY PROVINCE (doctrine « la province
+ * est la seule réalité économique ») : `province` est un PID DIRECT — raw_cap, strates,
+ * bâtiments ET alloc_* sont TOUS lus sur econ->prov[pid] (fraîcheur immédiate, aucun
+ * mélange région/province ; remplace scps_region_alloc). En mode AUTO (alloc_on=0),
+ * `weight` reflète une estimation de la part de bras ACTUELLE (manufactures : bras
+ * réels ; brutes : part ∝ raw_cap) → l'UI part de la distribution réelle. PUR read
+ * (aucun tick, aucun RNG). */
+void scps_province_alloc(ScpsSim *s, int province, ScpsAlloc *out){
     if (!out) return;
     memset(out, 0, sizeof *out);
     out->region = -1;
     if (!s || !s->ready) return;
     WorldEconomy *e = s->sim.econ;
-    if (region<0 || region>=e->n_regions) return;
-    RegionEconomy *re = &e->region[region];
-    /* RE-KEY PROVINCE : alloc_on/alloc_raw/alloc_bld/bld_input sont PROVINCE-OWNED
-     * (miroir, cf. econ_aggregate_regions) — un verbe joueur (scps_player_alloc_*) les
-     * pose sur la province représentative au drain du MÊME jour (scps_sim_advance_days),
-     * mais econ_tick (qui re-dérive region[].alloc_* depuis prov[]) ne tourne QUE
-     * mensuellement — sans lire ICI la province, le panneau verrait l'override 1 mois
-     * en retard. On lit donc alloc_* sur la province (fraîcheur immédiate) ; le reste
-     * (pool/raw_cap/bâtiments, agrégats stables) continue de lire l'agrégat région. */
-    int pid = econ_region_rep_province(e, region);
-    const ProvinceEconomy *pe = (pid>=0 && pid<e->n_prov) ? &e->prov[pid] : NULL;
-    out->region = region;
-    out->on     = pe ? pe->alloc_on : re->alloc_on;
-    out->pool   = re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop;
+    if (province<0 || province>=e->n_prov) return;
+    const ProvinceEconomy *pe = &e->prov[province];
+    out->region = province;
+    out->on     = pe->alloc_on;
+    out->pool   = pe->strata[CLASS_LABORER].pop + pe->strata[CLASS_BOURGEOIS].pop;
     int n=0;
     float estw[SCPS_ALLOC_MAX];   /* estimation de bras par puits (mode AUTO) */
     /* — extraction : part du bassin EXTRACTION (~0.65) répartie ∝ raw_cap — */
-    float sumrc=0.f; for (int g=1;g<RES_PROD_FIRST;g++) if (re->raw_cap[g]>0.f) sumrc+=re->raw_cap[g];
+    float sumrc=0.f; for (int g=1;g<RES_PROD_FIRST;g++) if (pe->raw_cap[g]>0.f) sumrc+=pe->raw_cap[g];
     float L_ext = out->pool * 0.65f;
     for (int g=1; g<RES_PROD_FIRST && n<SCPS_ALLOC_MAX; g++){
-        if (re->raw_cap[g] <= 0.f) continue;
+        if (pe->raw_cap[g] <= 0.f) continue;
         ScpsAllocSink *k = &out->sink[n];
         k->kind=0; k->id=g; k->name=sz(resource_name((Resource)g));
         k->output=NULL; k->closed=0; k->input=-1; k->alt_name=NULL; k->in_name=NULL;
-        estw[n] = (sumrc>1e-6f)? L_ext*re->raw_cap[g]/sumrc : 0.f;
+        estw[n] = (sumrc>1e-6f)? L_ext*pe->raw_cap[g]/sumrc : 0.f;
         k->workers = out->on ? 0.f : estw[n];
-        k->weight  = out->on ? (pe ? pe->alloc_raw[g] : re->alloc_raw[g]) : 0;
+        k->weight  = out->on ? pe->alloc_raw[g] : 0;
         n++;
     }
     /* — manufactures bâties : bras RÉELS (b->workers) — */
-    for (int i=0; i<re->n_bld && n<SCPS_ALLOC_MAX; i++){
-        int b = re->bld[i].type;
+    for (int i=0; i<pe->n_bld && n<SCPS_ALLOC_MAX; i++){
+        int b = pe->bld[i].type;
         if (b<0 || b>=BLD_TYPE_COUNT) continue;
         Resource in1,in2,o; building_recipe((BuildingType)b,&in1,&in2,&o);
         Resource alt = building_alt_input((BuildingType)b);
@@ -2562,16 +2562,16 @@ void scps_region_alloc(ScpsSim *s, int region, ScpsAlloc *out){
         k->output  = (o>RES_NONE)? sz(resource_name(o)) : NULL;
         k->in_name = (in1>RES_NONE)? sz(resource_name(in1)) : NULL;
         k->alt_name= (alt!=RES_NONE)? sz(resource_name(alt)) : NULL;
-        k->input   = (alt!=RES_NONE)? (int)(pe ? pe->bld_input[b] : re->bld_input[b]) : -1;
-        k->closed  = (out->on && (pe ? pe->alloc_bld[b] : re->alloc_bld[b])==0)?1:0;
-        k->workers = re->bld[i].workers;
-        estw[n]    = re->bld[i].workers;
-        k->weight  = out->on ? (pe ? pe->alloc_bld[b] : re->alloc_bld[b]) : 0;
+        k->input   = (alt!=RES_NONE)? (int)pe->bld_input[b] : -1;
+        k->closed  = (out->on && pe->alloc_bld[b]==0)?1:0;
+        k->workers = pe->bld[i].workers;
+        estw[n]    = pe->bld[i].workers;
+        k->weight  = out->on ? pe->alloc_bld[b] : 0;
         n++;
     }
     out->n = n;
     /* mode AUTO : poids = estimation de bras normalisée 0-100 (l'UI part du réel) */
-    if (!re->alloc_on){
+    if (!pe->alloc_on){
         float sw=0.f; for (int i=0;i<n;i++) sw+=estw[i];
         for (int i=0;i<n;i++) out->sink[i].weight = (sw>1e-6f)? (int)(100.f*estw[i]/sw+0.5f) : 0;
     }
@@ -2871,9 +2871,9 @@ void scps_mission_info(ScpsSim *s, int cid, ScpsMission *out){
 /* d'enfilement (0, file pleine ou argument hors domaine) — PAS le verdict        */
 /* d'application (trésor/matière), qui tombe au tick. cf. scps_sim.h.            */
 /* ====================================================================== */
-int scps_player_build(ScpsSim *s, int edifice, int region){
+int scps_player_build(ScpsSim *s, int edifice, int province){
     if (!s || !s->ready || edifice<0 || edifice>=EDIFICE_COUNT) return 0;
-    PlayerCmd c = { CMD_BUILD, { edifice, region, 0, 0 } };   /* region<0 ⇒ capitale (résolu au drain) */
+    PlayerCmd c = { CMD_BUILD, { edifice, province, 0, 0 } };   /* province<0 ⇒ capitale (résolu au drain) */
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
 
@@ -2942,35 +2942,35 @@ int scps_player_fabricate_cb(ScpsSim *s, int target){
     PlayerCmd c = { CMD_FABRICATE_CB, { target, 0, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
-int scps_player_build_manuf(ScpsSim *s, int region, int bld){   /* PANNEAU B : poser une manufacture */
+int scps_player_build_manuf(ScpsSim *s, int province, int bld){   /* PANNEAU B : poser une manufacture — RE-KEY : pid direct */
     if (!s || !s->ready) return 0;
-    PlayerCmd c = { CMD_BUILD_MANUF, { region, bld, 0, 0 } };
+    PlayerCmd c = { CMD_BUILD_MANUF, { province, bld, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
 /* Onglet province : monter (dir>0, PAYANT) / descendre (dir<0, retire sous plancher) le
- * niveau d'une manufacture bâtie. Verdict (or/plancher) au drain. */
-int scps_player_manuf_level(ScpsSim *s, int region, int bld, int dir){
+ * niveau d'une manufacture bâtie. Verdict (or/plancher) au drain. RE-KEY : pid direct. */
+int scps_player_manuf_level(ScpsSim *s, int province, int bld, int dir){
     if (!s || !s->ready) return 0;
-    PlayerCmd c = { CMD_MANUF_LEVEL, { region, bld, (dir>=0)?1:-1, 0 } };
+    PlayerCmd c = { CMD_MANUF_LEVEL, { province, bld, (dir>=0)?1:-1, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
-/* Onglet province : démolir un édifice d'un cran (famille ⇒ palier précédent). */
-int scps_player_demolish_edifice(ScpsSim *s, int region, int edifice){
+/* Onglet province : démolir un édifice d'un cran (famille ⇒ palier précédent). RE-KEY : pid direct. */
+int scps_player_demolish_edifice(ScpsSim *s, int province, int edifice){
     if (!s || !s->ready) return 0;
-    PlayerCmd c = { CMD_DEMOLISH_EDI, { region, edifice, 0, 0 } };
+    PlayerCmd c = { CMD_DEMOLISH_EDI, { province, edifice, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
-/* LÉGALITÉ manufacture (miroir READ-ONLY des gates du drain CMD_BUILD_MANUF) :
- * région au joueur+peuplée · type civil non-faustien à intrant · slot libre ·
+/* LÉGALITÉ manufacture (miroir READ-ONLY des gates du drain CMD_BUILD_MANUF, grain PROVINCE) :
+ * province au joueur+peuplée · type civil non-faustien à intrant · slot libre ·
  * staffage (250/manuf) · tier · intrant nourrissable (ici OU l'empire) · or. */
-int scps_manuf_legal(ScpsSim *s, int region, int bld){
-    if (!s || !s->ready || region<0 || bld<0 || bld>=BLD_TYPE_COUNT) return 0;
+int scps_manuf_legal(ScpsSim *s, int province, int bld){
+    if (!s || !s->ready || province<0 || bld<0 || bld>=BLD_TYPE_COUNT) return 0;
     int p = (s->sim.human_player>=0) ? s->sim.human_player : s->sim.player;
     if (p<0 || p>=s->w->n_countries) return 0;
     const WorldEconomy *e=s->sim.econ;
-    if (region>=e->n_regions) return 0;
-    const RegionEconomy *re=&e->region[region];
-    if (re->owner != p || !re->colonized) return 0;
+    if (province>=e->n_prov) return 0;
+    const ProvinceEconomy *pe=&e->prov[province];
+    if (pe->owner != p || !pe->colonized) return 0;
     if (bld_is_faustian((BuildingType)bld)) return 0;
     Resource in1,in2,out; building_recipe((BuildingType)bld,&in1,&in2,&out); (void)in2;
     /* in1==RES_NONE ≠ dégénéré : les RAW-WORKS (four à brique·carrière·scierie) sont
@@ -2979,13 +2979,13 @@ int scps_manuf_legal(ScpsSim *s, int region, int bld){
     if (out==RES_NONE) return 0;
     if (out==RES_ARMS || out==RES_ARMS_HEAVY || out==RES_ARMS_RANGED || out==RES_FIREARM
         || out==RES_GUNPOWDER || out==RES_ENCHANTED_ARMS || out==RES_ESSENCE || out==RES_FLUX) return 0;
-    for (int i=0;i<re->n_bld;i++) if (re->bld[i].type==(BuildingType)bld) return 0;
-    float rpop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
-    if (rpop < 250.f*(float)(re->n_bld+1)) return 0;
+    for (int i=0;i<pe->n_bld;i++) if (pe->bld[i].type==(BuildingType)bld) return 0;
+    float rpop=pe->strata[CLASS_LABORER].pop+pe->strata[CLASS_BOURGEOIS].pop+pe->strata[CLASS_ELITE].pop;
+    if (rpop < 250.f*(float)(pe->n_bld+1)) return 0;
     if (capitale_max_tier((long)rpop) < bld_min_tier((BuildingType)bld)) return 0;
-    bool feed = (in1==RES_NONE) || (re->raw_cap[in1] > 0.f);   /* hors-sol ⇒ rien à nourrir */
-    for (int r2=0;r2<e->n_regions && !feed;r2++)
-        if (e->region[r2].owner==p && e->region[r2].raw_cap[in1]>0.f) feed=true;
+    bool feed = (in1==RES_NONE) || (pe->raw_cap[in1] > 0.f);   /* hors-sol ⇒ rien à nourrir */
+    for (int pi=0; pi<e->n_prov && !feed; pi++)
+        if (e->prov[pi].owner==p && e->prov[pi].raw_cap[in1]>0.f) feed=true;
     if (!feed) return 0;
     float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(e);
     return credit_can_spend(e, s->w, p, cost) ? 1 : 0;
@@ -3431,24 +3431,24 @@ void scps_debug_set_pirate_hulls(ScpsSim *s, int n){
     if (p<0 || p>=SCPS_MAX_COUNTRY) return;
     s->sim.navy->n[p].hull[HULL_PIRATE] = (n<0)?0:n;
 }
-int scps_player_alloc_raw(ScpsSim *s, int region, int resource, int weight){
+int scps_player_alloc_raw(ScpsSim *s, int province, int resource, int weight){
     if (!s || !s->ready) return 0;
-    PlayerCmd c = { CMD_ALLOC_RAW, { region, resource, weight, 0 } };
+    PlayerCmd c = { CMD_ALLOC_RAW, { province, resource, weight, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
-int scps_player_alloc_bld(ScpsSim *s, int region, int bld_type, int weight){
+int scps_player_alloc_bld(ScpsSim *s, int province, int bld_type, int weight){
     if (!s || !s->ready) return 0;
-    PlayerCmd c = { CMD_ALLOC_BLD, { region, bld_type, weight, 0 } };
+    PlayerCmd c = { CMD_ALLOC_BLD, { province, bld_type, weight, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
-int scps_player_alloc_input(ScpsSim *s, int region, int bld_type, int input){
+int scps_player_alloc_input(ScpsSim *s, int province, int bld_type, int input){
     if (!s || !s->ready) return 0;
-    PlayerCmd c = { CMD_ALLOC_INPUT, { region, bld_type, input, 0 } };
+    PlayerCmd c = { CMD_ALLOC_INPUT, { province, bld_type, input, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
-int scps_player_alloc_auto(ScpsSim *s, int region){
+int scps_player_alloc_auto(ScpsSim *s, int province){
     if (!s || !s->ready) return 0;
-    PlayerCmd c = { CMD_ALLOC_AUTO, { region, 0, 0, 0 } };
+    PlayerCmd c = { CMD_ALLOC_AUTO, { province, 0, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
 

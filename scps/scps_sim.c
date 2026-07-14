@@ -473,15 +473,15 @@ static void sim_cmd_drain(Sim *s, World *w){
             s->diplo_ready_day = s->day + 60;
         }
         switch (c->verb){
-          case CMD_BUILD: {
+          case CMD_BUILD: {   /* RE-KEY PROVINCE : a[1] est un PID direct (jamais une région) */
             int e = c->a[0];
             if (e<0 || e>=EDIFICE_COUNT) break;
-            int cp  = w->country[p].capital_prov;
-            int cap = (cp>=0 && cp<w->n_provinces) ? w->province[cp].region : -1;
-            int reg = (c->a[1] >= 0) ? c->a[1] : cap;            /* a[1]<0 ⇒ capitale par défaut */
-            if (reg<0 || reg>=s->econ->n_regions) break;
-            if (s->econ->region[reg].owner != p) break;          /* REVALIDE : la région est-elle encore au joueur ? */
-            agency_build_acct(s->ag, s->econ, w, reg, (Edifice)e, p);
+            int pid = (c->a[1] >= 0) ? c->a[1] : w->country[p].capital_prov;   /* a[1]<0 ⇒ capitale */
+            if (pid<0 || pid>=s->econ->n_prov) break;
+            if (s->econ->prov[pid].owner != p) break;             /* REVALIDE : la province est-elle encore au joueur ? */
+            int reg = (pid<w->n_provinces) ? w->province[pid].region : -1;
+            if (reg<0 || reg>=s->econ->n_regions) break;          /* le marché/la géo maritime (gates agency_build_acct) restent région */
+            agency_build_acct(s->ag, s->econ, w, reg, (Edifice)e, p, pid);
             break; }
           case CMD_RECRUIT: {
             int u = c->a[0]; long n = (c->a[1] > 0) ? c->a[1] : 1;
@@ -593,12 +593,13 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (ai_consider_offer(w, s->econ, s->wp, s->dp, s->sc, p, t, OFFER_MIGRATION))
                 diplo_set_migration_pact(s->dp, p, t, true);
             break; }
-          case CMD_BUILD_MANUF: {      /* PANNEAU B : le joueur pose une manufacture (miroir des gates IA civiles) */
-            int reg=c->a[0], b=c->a[1];
-            if (reg<0 || reg>=s->econ->n_regions) break;
+          case CMD_BUILD_MANUF: {      /* PANNEAU B : le joueur pose une manufacture — RE-KEY PROVINCE
+                                        * (a[0]=pid direct, miroir des gates IA civiles au grain province) */
+            int pid=c->a[0], b=c->a[1];
+            if (pid<0 || pid>=s->econ->n_prov) break;
             if (b<0 || b>=BLD_TYPE_COUNT) break;
-            RegionEconomy *re=&s->econ->region[reg];
-            if (re->owner != p || !re->colonized) break;             /* REVALIDE : à soi, peuplée */
+            ProvinceEconomy *pe=&s->econ->prov[pid];
+            if (pe->owner != p || !pe->colonized) break;              /* REVALIDE : à soi, peuplée */
             if (bld_is_faustian((BuildingType)b)) break;             /* les transmuteurs restent la voie tech/charge */
             Resource in1,in2,out; building_recipe((BuildingType)b,&in1,&in2,&out); (void)in2;
             /* in1==RES_NONE ≠ dégénéré : les RAW-WORKS (four à brique·carrière·scierie,
@@ -608,47 +609,49 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (out==RES_ARMS || out==RES_ARMS_HEAVY || out==RES_ARMS_RANGED || out==RES_FIREARM
                 || out==RES_GUNPOWDER || out==RES_ENCHANTED_ARMS || out==RES_ESSENCE || out==RES_FLUX)
                 break;                                               /* le CIVIL seulement — l'armement/arcane restent doctrinaux */
-            { bool have=false; for (int i=0;i<re->n_bld;i++) if (re->bld[i].type==(BuildingType)b){ have=true; break; }
-              if (have) break; }                                     /* un type par région : slot déjà rempli */
-            float rpop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
-            if (rpop < 250.f*(float)(re->n_bld+1)) break;            /* = AI_STAFF_PER_MANUF : pas dans le vide */
+            { bool have=false; for (int i=0;i<pe->n_bld;i++) if (pe->bld[i].type==(BuildingType)b){ have=true; break; }
+              if (have) break; }                                     /* un type par province : slot déjà rempli */
+            float rpop=pe->strata[CLASS_LABORER].pop+pe->strata[CLASS_BOURGEOIS].pop+pe->strata[CLASS_ELITE].pop;
+            if (rpop < 250.f*(float)(pe->n_bld+1)) break;            /* = AI_STAFF_PER_MANUF : pas dans le vide */
             if (capitale_max_tier((long)rpop) < bld_min_tier((BuildingType)b)) break;
-            { bool feed = (in1==RES_NONE) || (re->raw_cap[in1] > 0.f);   /* hors-sol ⇒ rien à nourrir */
-              for (int r2=0;r2<s->econ->n_regions && !feed;r2++)
-                  if (s->econ->region[r2].owner==p && s->econ->region[r2].raw_cap[in1]>0.f) feed=true;
+            { bool feed = (in1==RES_NONE) || (pe->raw_cap[in1] > 0.f);   /* hors-sol ⇒ rien à nourrir */
+              for (int pi=0; pi<s->econ->n_prov && !feed; pi++)
+                  if (s->econ->prov[pi].owner==p && s->econ->prov[pi].raw_cap[in1]>0.f) feed=true;
               if (!feed) break; }
             float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(s->econ)*decree_manuf_cost_mult(p);   /* orientation ATELIERS */
             if (!credit_can_spend(s->econ, w, p, cost)) break;
-            if (econ_build_manufacture(s->econ, reg, (BuildingType)b)){
+            if (econ_build_manufacture(s->econ, pid, (BuildingType)b)){
                 credit_spend(s->econ, w, p, cost);
                 econ_flux_add(p, FX_BUILD, -cost);                   /* I0 : la ligne chantiers */
             }
             break; }
-          case CMD_MANUF_LEVEL: {   /* onglet province : monter/descendre le niveau d'une manuf bâtie */
-            int reg=c->a[0], b=c->a[1], dir=(c->a[2]>=0)?1:-1;
-            if (reg<0 || reg>=s->econ->n_regions) break;
+          case CMD_MANUF_LEVEL: {   /* onglet province : monter/descendre le niveau d'une manuf bâtie
+                                     * — RE-KEY PROVINCE (a[0]=pid direct) */
+            int pid=c->a[0], b=c->a[1], dir=(c->a[2]>=0)?1:-1;
+            if (pid<0 || pid>=s->econ->n_prov) break;
             if (b<0 || b>=BLD_TYPE_COUNT) break;
-            RegionEconomy *re=&s->econ->region[reg];
-            if (re->owner != p || !re->colonized) break;             /* REVALIDE : à soi, peuplée */
+            ProvinceEconomy *pe=&s->econ->prov[pid];
+            if (pe->owner != p || !pe->colonized) break;              /* REVALIDE : à soi, peuplée */
             if (dir>0){
                 /* MONTER = injection de capacité DÉLIBÉRÉE, payante (miroir de la pose). */
                 float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(s->econ)*decree_manuf_cost_mult(p);
                 if (!credit_can_spend(s->econ, w, p, cost)) break;
-                if (econ_manuf_level_delta(s->econ, reg, (BuildingType)b, +1)){
+                if (econ_manuf_level_delta(s->econ, pid, (BuildingType)b, +1)){
                     credit_spend(s->econ, w, p, cost);
                     econ_flux_add(p, FX_BUILD, -cost);               /* I0 : la ligne chantiers */
                 }
             } else {
-                econ_manuf_level_delta(s->econ, reg, (BuildingType)b, -1);   /* DESCENDRE = démolition libre */
+                econ_manuf_level_delta(s->econ, pid, (BuildingType)b, -1);   /* DESCENDRE = démolition libre */
             }
             break; }
-          case CMD_DEMOLISH_EDI: {  /* onglet province : démolir un édifice d'un cran */
-            int reg=c->a[0], e=c->a[1];
-            if (reg<0 || reg>=s->econ->n_regions) break;
+          case CMD_DEMOLISH_EDI: {  /* onglet province : démolir un édifice d'un cran
+                                     * — RE-KEY PROVINCE (a[0]=pid direct) */
+            int pid=c->a[0], e=c->a[1];
+            if (pid<0 || pid>=s->econ->n_prov) break;
             if (e<0 || e>=EDIFICE_COUNT) break;
-            RegionEconomy *re=&s->econ->region[reg];
-            if (re->owner != p) break;                               /* REVALIDE : à soi */
-            agency_demolish_edifice(s->econ, reg, (Edifice)e);
+            ProvinceEconomy *pe=&s->econ->prov[pid];
+            if (pe->owner != p) break;                                /* REVALIDE : à soi */
+            agency_demolish_edifice(s->econ, pid, (Edifice)e);
             break; }
           case CMD_EMBARGO: {
             int t = c->a[0];
@@ -808,42 +811,37 @@ static void sim_cmd_drain(Sim *s, World *w){
                 diplo_enslave_capture(w, s->econ, p, region, true);
             navy_mark_raided(s->econ, region);
             break; }
-          /* ── ALLOCATION de main-d'œuvre (onglet province). Tout REVALIDÉ : région ∈ [0,n) ET au
-           *    joueur ; poids clampé ; res/bld bornés. Poser un poids ACTIVE l'override (alloc_on=1).
-           *    RE-KEY PROVINCE : alloc_* sont PROVINCE-OWNED (miroir, cf. econ_aggregate_regions) —
-           *    econ->region[r].alloc_* est un DÉRIVÉ écrasé au prochain econ_tick ; route sur la
-           *    province représentative (le joueur cible une région à l'UI, l'écriture VIT à la
-           *    province, exactement comme econ_tick la relit). ── */
-          case CMD_ALLOC_RAW: {   /* a={region, resource, poids} */
-            int r=c->a[0], g=c->a[1], wt=c->a[2];
-            if (r<0 || r>=s->econ->n_regions || s->econ->region[r].owner!=p) break;
+          /* ── ALLOCATION de main-d'œuvre (onglet province). Tout REVALIDÉ : province ∈ [0,n) ET
+           *    au joueur ; poids clampé ; res/bld bornés. Poser un poids ACTIVE l'override
+           *    (alloc_on=1). RE-KEY PROVINCE (doctrine « la province est la seule réalité
+           *    économique ») : a[0] est un PID DIRECT — plus aucune indirection par
+           *    econ_region_rep_province, l'écriture VIT sur la province ciblée elle-même. ── */
+          case CMD_ALLOC_RAW: {   /* a={province, resource, poids} */
+            int pid=c->a[0], g=c->a[1], wt=c->a[2];
+            if (pid<0 || pid>=s->econ->n_prov || s->econ->prov[pid].owner!=p) break;
             if (g<=RES_NONE || g>=RES_PROD_FIRST) break;
             if (wt<0) wt=0; else if (wt>255) wt=255;
-            int rp=econ_region_rep_province(s->econ,r); if (rp<0||rp>=s->econ->n_prov) break;
-            s->econ->prov[rp].alloc_raw[g]=(uint8_t)wt;
-            s->econ->prov[rp].alloc_on=1;
+            s->econ->prov[pid].alloc_raw[g]=(uint8_t)wt;
+            s->econ->prov[pid].alloc_on=1;
             break; }
-          case CMD_ALLOC_BLD: {   /* a={region, bld_type, poids (0=fermé)} */
-            int r=c->a[0], b=c->a[1], wt=c->a[2];
-            if (r<0 || r>=s->econ->n_regions || s->econ->region[r].owner!=p) break;
+          case CMD_ALLOC_BLD: {   /* a={province, bld_type, poids (0=fermé)} */
+            int pid=c->a[0], b=c->a[1], wt=c->a[2];
+            if (pid<0 || pid>=s->econ->n_prov || s->econ->prov[pid].owner!=p) break;
             if (b<0 || b>=BLD_TYPE_COUNT) break;
             if (wt<0) wt=0; else if (wt>255) wt=255;
-            int rp=econ_region_rep_province(s->econ,r); if (rp<0||rp>=s->econ->n_prov) break;
-            s->econ->prov[rp].alloc_bld[b]=(uint8_t)wt;
-            s->econ->prov[rp].alloc_on=1;
+            s->econ->prov[pid].alloc_bld[b]=(uint8_t)wt;
+            s->econ->prov[pid].alloc_on=1;
             break; }
-          case CMD_ALLOC_INPUT: {   /* a={region, bld_type, intrant(0/1)} */
-            int r=c->a[0], b=c->a[1];
-            if (r<0 || r>=s->econ->n_regions || s->econ->region[r].owner!=p) break;
+          case CMD_ALLOC_INPUT: {   /* a={province, bld_type, intrant(0/1)} */
+            int pid=c->a[0], b=c->a[1];
+            if (pid<0 || pid>=s->econ->n_prov || s->econ->prov[pid].owner!=p) break;
             if (b<0 || b>=BLD_TYPE_COUNT) break;
-            int rp=econ_region_rep_province(s->econ,r); if (rp<0||rp>=s->econ->n_prov) break;
-            s->econ->prov[rp].bld_input[b]=(c->a[2]!=0)?1:0;
+            s->econ->prov[pid].bld_input[b]=(c->a[2]!=0)?1:0;
             break; }
-          case CMD_ALLOC_AUTO: {   /* a={region} : retour au split AUTO */
-            int r=c->a[0];
-            if (r<0 || r>=s->econ->n_regions || s->econ->region[r].owner!=p) break;
-            int rp=econ_region_rep_province(s->econ,r); if (rp<0||rp>=s->econ->n_prov) break;
-            s->econ->prov[rp].alloc_on=0;
+          case CMD_ALLOC_AUTO: {   /* a={province} : retour au split AUTO */
+            int pid=c->a[0];
+            if (pid<0 || pid>=s->econ->n_prov || s->econ->prov[pid].owner!=p) break;
+            s->econ->prov[pid].alloc_on=0;
             break; }
           /* ── ÂGES SANS ORDRE IMPOSÉ (raccord 8) — CMD_AGE_ENGAGE n'applique plus AUCUN
            *    effet moteur (l'ancien vote de faction mondial + bonus de satisfaction sont

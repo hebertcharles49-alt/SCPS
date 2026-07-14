@@ -100,6 +100,10 @@ static const EdificeDef EDIFICES[EDIFICE_COUNT] = {
                            {{RES_WOOD,RES_STONE,RES_CLAY},{10,30,15}} },  /* ÷3 */
 };
 
+/* forward : agency_build_acct (plus bas) enfile directement via enqueue (RE-KEY PROVINCE, prov≥0) —
+ * enqueue elle-même n'est définie que plus loin dans ce fichier. */
+static bool enqueue(AgencyState *a, ActionKind k, int region, int param, int days, int prov);
+
 const EdificeDef *edifice_def(Edifice e){ return (e>=0&&e<EDIFICE_COUNT)?&EDIFICES[e]:NULL; }
 /* K2 — edifice_name() a MIGRÉ au readout (membrane : le moteur n'expose que l'enum
  * Edifice + EDIFICES[].name comme défaut FR de référence ; la traduction vit au readout). */
@@ -326,7 +330,7 @@ float agency_build_gold(const WorldEconomy *econ, int region, Edifice e){
     return agency_build_gold_ex(econ, region, e, NULL);
 }
 
-bool agency_build_acct(AgencyState *a, WorldEconomy *econ, const World *w, int region, Edifice e, int owner){
+bool agency_build_acct(AgencyState *a, WorldEconomy *econ, const World *w, int region, Edifice e, int owner, int prov){
     if (e<0||e>=EDIFICE_COUNT || !econ || region<0 || region>=econ->n_regions) return false;
     if (e==EDI_PORT && !econ->region[region].coastal) return false;   /* un port se bâtit SUR la côte (mer §5) */
     if (e==EDI_TRADE_CENTER && !econ->region[region].coastal && !econ->region[region].estuary)
@@ -389,12 +393,15 @@ bool agency_build_acct(AgencyState *a, WorldEconomy *econ, const World *w, int r
         intertrade_market_consume(econ, region, r, c->qty[k]*mult,
                                   (re->price[r]<BUILD_MIN_PRICE?BUILD_MIN_PRICE:re->price[r]));   /* nu → sources étrangères */
     }
-    bool ok=agency_order_build(a, region, e);      /* enfile le chantier (durée existante) */
+    /* RE-KEY PROVINCE : enfile DIRECTEMENT (au lieu d'agency_order_build) pour porter `prov`
+     * jusqu'à apply_action — seul ce site pose un prov≥0 (le drain CMD_BUILD) ; tous les
+     * autres appelants (agency_build ci-dessous, l'IA) passent -1, comportement INCHANGÉ. */
+    bool ok=enqueue(a, AGY_BUILD, region, (int)e, EDIFICES[e].days, prov);
     if (ok) g_edi_made[e]++;
     return ok;
 }
 bool agency_build(AgencyState *a, WorldEconomy *econ, const World *w, int region, Edifice e){
-    return agency_build_acct(a, econ, w, region, e, (econ&&region>=0&&region<econ->n_regions)?econ->region[region].owner:-1);
+    return agency_build_acct(a, econ, w, region, e, (econ&&region>=0&&region<econ->n_regions)?econ->region[region].owner:-1, -1);
 }
 
 /* DÉPART — chaque EMPIRE (joueur/antagoniste) naît avec un MARCHÉ sur sa capitale :
@@ -490,33 +497,38 @@ bool agency_load(FILE *f){
         && fread(&g_n_purge,sizeof g_n_purge,1,f)==1     && fread(&g_purge_dead,sizeof g_purge_dead,1,f)==1;
 }
 
-static bool enqueue(AgencyState *a, ActionKind k, int region, int param, int days){
+/* `prov` : -1 = héritage (apply_action résout la province représentative de `region` via
+ * econ_region_rep_province, le chemin de TOUTE l'IA/les bancs) ; ≥0 = PID DIRECT posé par le
+ * drain CMD_BUILD (le joueur cible une province précise). Seul agency_build_acct enfile avec
+ * un prov≥0 — tous les autres appels (ci-dessous) passent -1, comportement INCHANGÉ. */
+static bool enqueue(AgencyState *a, ActionKind k, int region, int param, int days, int prov){
     if (a->n>=SCPS_MAX_BUILDS) return false;
     BuildOrder *o=&a->order[a->n++];
     o->kind=k; o->region=region; o->param=param;
     o->days_total=days; o->days_done=0; o->active=true;
+    o->prov=prov;
     return true;
 }
 bool agency_order_build(AgencyState *a, int region, Edifice e){
     if (e<0||e>=EDIFICE_COUNT) return false;
-    return enqueue(a, AGY_BUILD, region, (int)e, EDIFICES[e].days);
+    return enqueue(a, AGY_BUILD, region, (int)e, EDIFICES[e].days, -1);
 }
 bool agency_order_clear(AgencyState *a, int region){
-    return enqueue(a, AGY_CLEAR, region, 0, CLEAR_DAYS);
+    return enqueue(a, AGY_CLEAR, region, 0, CLEAR_DAYS, -1);
 }
 bool agency_order_exploit(AgencyState *a, int region, Resource res){
     if (res<=RES_NONE||res>=RES_COUNT) return false;
-    return enqueue(a, AGY_EXPLOIT, region, (int)res, EXPLOIT_DAYS);
+    return enqueue(a, AGY_EXPLOIT, region, (int)res, EXPLOIT_DAYS, -1);
 }
 #define RELOC_DAYS 90   /* un déplacement de familles prend une saison */
 bool agency_order_relocate(AgencyState *a, int region, int dst_region){
     if (region<0 || dst_region<0 || region==dst_region) return false;
-    return enqueue(a, AGY_RELOCATE, region, dst_region, RELOC_DAYS);
+    return enqueue(a, AGY_RELOCATE, region, dst_region, RELOC_DAYS, -1);
 }
 #define COLONIZE_DAYS 180   /* E1 : le convoi colonisateur marche 6 mois */
 bool agency_order_colonize(AgencyState *a, int dst_region, int src_region){
     if (dst_region<0 || src_region<0 || dst_region==src_region) return false;
-    return enqueue(a, AGY_COLONIZE, dst_region, src_region, COLONIZE_DAYS);
+    return enqueue(a, AGY_COLONIZE, dst_region, src_region, COLONIZE_DAYS, -1);
 }
 
 /* ── LES TROIS LEVIERS INTÉRIEURS (§2) ─────────────────────────────────────── */
@@ -525,13 +537,13 @@ bool agency_order_colonize(AgencyState *a, int dst_region, int src_region){
 #define PURGE_FRAC_AN   0.12f   /* fraction du groupe qui périt par tranche annuelle */
 
 bool agency_order_repress(AgencyState *a, int region){
-    return enqueue(a, AGY_REPRESS, region, 0, REPRESS_DAYS);
+    return enqueue(a, AGY_REPRESS, region, 0, REPRESS_DAYS, -1);
 }
 bool agency_order_assimilate(AgencyState *a, int region, bool creuset){
-    return enqueue(a, AGY_ASSIMILATE, region, creuset?1:0, ASSIM_DAYS);
+    return enqueue(a, AGY_ASSIMILATE, region, creuset?1:0, ASSIM_DAYS, -1);
 }
 bool agency_order_purge(AgencyState *a, int region){
-    return enqueue(a, AGY_PURGE, region, 0, AGY_PURGE_YEARS*365);
+    return enqueue(a, AGY_PURGE, region, 0, AGY_PURGE_YEARS*365, -1);
 }
 bool agency_drain_levier_costs(int cid, float *charge, float *fracture, float *H){
     if (cid<0||cid>=SCPS_MAX_COUNTRY) return false;
@@ -632,9 +644,11 @@ static void apply_action(WorldEconomy *econ, WorldLegitimacy *wl, ModifierStack 
     /* RE-KEY PROVINCE (PROVINCE_MODEL.md) : une action de bâtisseur est PROVINCE-OWNED
      * (bâtiments/ressources/culture/pop locale, charte règle 1) — router directement sur
      * econ->region[reg] serait ÉCRASÉ au prochain econ_tick (econ_aggregate_regions
-     * RECONSTRUIT region[] EN ENTIER depuis prov[]). On écrit sur la province représentative
-     * de la région ; l'agrégation la re-somme/re-reflète au tick suivant. */
-    int pid=econ_region_rep_province(econ, reg);
+     * RECONSTRUIT region[] EN ENTIER depuis prov[]). o->prov (posé par agency_build_acct
+     * quand le drain CMD_BUILD cible une province précise) PORTE le PID direct ; sinon (-1,
+     * TOUTE l'IA/les bancs et les autres kinds d'action) on retombe sur la province
+     * représentative de la région — comportement d'hier, inchangé. */
+    int pid=(o->prov>=0 && o->prov<econ->n_prov) ? o->prov : econ_region_rep_province(econ, reg);
     if (pid<0 || pid>=econ->n_prov) return;
     ProvinceEconomy *re=&econ->prov[pid];
     switch (o->kind){
@@ -706,15 +720,14 @@ static void apply_action(WorldEconomy *econ, WorldLegitimacy *wl, ModifierStack 
 
 /* DÉMOLIR un édifice d'un CRAN (retour joueur 2026-07-13) : symétrique de l'AGY_BUILD
  * ci-dessus. Membre de famille ⇒ retombe au palier précédent (Cathédrale→Temple→
- * Sanctuaire) ; base/singleton ⇒ retiré. GRAIN PROVINCE (edi_built + build vivent sur
- * la province représentative ; l'agrégation reflète région au tick). Player-only ⇒
- * jamais appelé par la chronique (golden intact). true si un édifice a été retiré/dégradé. */
-bool agency_demolish_edifice(WorldEconomy *econ, int reg, Edifice e){
-    if (!econ || reg<0 || reg>=econ->n_regions) return false;
+ * Sanctuaire) ; base/singleton ⇒ retiré. RE-KEY PROVINCE : `prov` est un PID DIRECT
+ * (l'appelant — le drain CMD_DEMOLISH_EDI — cible déjà la province, plus de résolution
+ * via econ_region_rep_province ici). Player-only ⇒ jamais appelé par la chronique
+ * (golden intact). true si un édifice a été retiré/dégradé. */
+bool agency_demolish_edifice(WorldEconomy *econ, int prov, Edifice e){
+    if (!econ || prov<0 || prov>=econ->n_prov) return false;
     if ((int)e<0 || (int)e>=32) return false;                  /* masque edi_built = 32 bits */
-    int pid=econ_region_rep_province(econ, reg);
-    if (pid<0 || pid>=econ->n_prov) return false;
-    ProvinceEconomy *re=&econ->prov[pid];
+    ProvinceEconomy *re=&econ->prov[prov];
     if (!(re->edi_built & (1u<<e))) return false;              /* pas bâti ici */
     remove_delta(&re->build, &EDIFICES[e].delta);
     re->edi_built &= ~(1u<<e);

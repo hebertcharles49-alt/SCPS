@@ -207,17 +207,16 @@ func _draw() -> void:
 				_click_zones.append({"rect": row, "kind": "build", "type": btype, "nom": String(b.get("nom", ""))})
 			yrow += RH_ED
 	else:
-		# ── MANUFACTURES — sur la province visée (target_pid) ──
+		# ── MANUFACTURES — sur la province visée (target_pid, RE-KEY : pid direct) ──
 		var w = Sim.world
-		var mreg: int = w.province_region(target_pid) if target_pid >= 0 else -1
-		if mreg < 0:
+		if target_pid < 0:
 			VKit.text(self, Vector2(PADX, yrow), VKit.COL_DIM, "sélectionnez une de vos provinces", VKit.FS_SMALL)
 			content_h = 24.0
 		elif w.has_method("manuf_legal"):
 			var mcost: int = int(w.manuf_cost()) if w.has_method("manuf_cost") else 0
 			var mi := 0
 			for bld in range(24):   # BLD_TYPE_COUNT (miroir display-only, motif province_detail)
-				if int(w.manuf_legal(mreg, bld)) != 1:
+				if int(w.manuf_legal(target_pid, bld)) != 1:
 					continue
 				var mnom := String(w.manuf_name(bld))
 				var rowm := Rect2(PADX, yrow, rw, RH_MF - 4.0)
@@ -355,8 +354,7 @@ func _act(kind: String, type: int, nom: String) -> void:
 		_flash_ok = ok
 		_flash = ("⚒ %s — ordre émis" % nom) if ok else ("✗ %s — file pleine" % nom)
 	elif kind == "manuf":
-		var mreg2: int = Sim.world.province_region(target_pid) if target_pid >= 0 else -1
-		var okm: bool = mreg2 >= 0 and bool(Sim.world.player_build_manuf(mreg2, type))
+		var okm: bool = target_pid >= 0 and bool(Sim.world.player_build_manuf(target_pid, type))
 		_flash_ok = okm
 		_flash = ("⚒ %s — chantier ordonné" % nom) if okm else ("✗ %s — refusé" % nom)
 	else:

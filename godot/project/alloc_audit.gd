@@ -1,10 +1,11 @@
 extends Node
 ## alloc_audit — le pendant headless de l'onglet MAIN-D'ŒUVRE (binding allocation).
 ##
-## Prouve le chemin GDScript → binding → façade → moteur : region_alloc LIT les puits
+## Prouve le chemin GDScript → binding → façade → moteur : province_alloc LIT les puits
 ## (extraction + manufactures), les verbes player_alloc_* ACTIVENT l'override, ferment
-## un bâtiment (poids 0), et le retour AUTO. Round-trip via le journal déterministe.
-## Sort ≠ 0 si un invariant casse.
+## un bâtiment (poids 0), et le retour AUTO. RE-KEY PROVINCE (doctrine « la province est
+## la seule réalité économique ») : la cible est un PID DIRECT, jamais une région.
+## Round-trip via le journal déterministe. Sort ≠ 0 si un invariant casse.
 ##
 ## Lancer : godot --headless res://alloc_audit.tscn -- seed=9,11,42 years=60
 
@@ -54,19 +55,20 @@ func _audit_seed(sd: int, years: int) -> int:
 	var me: int = w.player()
 	var viol := 0
 	var flags := ""
-	# trouver une région DU JOUEUR colonisée
-	var reg := -1
-	for r in range(w.region_count()):
-		if w.region_owner(r) == me and w.region_colonized(r):
-			reg = r
+	# trouver une PROVINCE DU JOUEUR (RE-KEY : la cible est un pid direct, jamais une région)
+	var pid := -1
+	for p in range(w.province_count()):
+		var pi: Dictionary = w.province_info(p)
+		if bool(pi.get("valide", false)) and int(pi.get("owner", -1)) == me and int(pi.get("ames", 0)) > 0:
+			pid = p
 			break
-	if reg < 0:
-		print("seed ", sd, " | aucune région joueur colonisée (monde fendu ?) — sauté")
+	if pid < 0:
+		print("seed ", sd, " | aucune province joueur colonisée (monde fendu ?) — sauté")
 		return 0
-	# 1. LECTURE : région, bassin>0, puits listés ; mode AUTO au départ
-	var al: Dictionary = w.region_alloc(reg)
+	# 1. LECTURE : province, bassin>0, puits listés ; mode AUTO au départ
+	var al: Dictionary = w.province_alloc(pid)
 	var sinks: Array = al.get("sinks", [])
-	if int(al.get("region", -1)) != reg or float(al.get("pool", 0)) <= 0.0 or sinks.is_empty():
+	if int(al.get("region", -1)) != pid or float(al.get("pool", 0)) <= 0.0 or sinks.is_empty():
 		viol += 1; flags += " ✗read"
 	if bool(al.get("on", true)):
 		viol += 1; flags += " ✗not-auto-start"
@@ -78,28 +80,28 @@ func _audit_seed(sd: int, years: int) -> int:
 		if int(sinks[i].get("kind", 0)) == 0 and kraw < 0: kraw = i
 	# 2. ACTIVER l'override via un poids d'extraction → on=true au drain
 	if kraw >= 0:
-		if not w.player_alloc_raw(reg, int(sinks[kraw].get("id", 0)), 80):
+		if not w.player_alloc_raw(pid, int(sinks[kraw].get("id", 0)), 80):
 			viol += 1; flags += " ✗raw-enqueue"
 		w.advance_days(2)
-		if not bool(w.region_alloc(reg).get("on", false)):
+		if not bool(w.province_alloc(pid).get("on", false)):
 			viol += 1; flags += " ✗override-inactive"
 	# 3. FERMER un bâtiment (poids 0) → closed reflété au readout
 	if kbld >= 0:
 		var bid: int = int(sinks[kbld].get("id", 0))
-		w.player_alloc_bld(reg, bid, 0)
+		w.player_alloc_bld(pid, bid, 0)
 		w.advance_days(2)
 		var closed := false
-		for s in w.region_alloc(reg).get("sinks", []):
+		for s in w.province_alloc(pid).get("sinks", []):
 			if int(s.get("kind", 0)) == 1 and int(s.get("id", 0)) == bid:
 				closed = bool(s.get("closed", false))
 		if not closed:
 			viol += 1; flags += " ✗close"
 	# 4. RETOUR AUTO
-	w.player_alloc_auto(reg)
+	w.player_alloc_auto(pid)
 	w.advance_days(2)
-	if bool(w.region_alloc(reg).get("on", true)):
+	if bool(w.province_alloc(pid).get("on", true)):
 		viol += 1; flags += " ✗auto-revert"
 
-	print("seed ", sd, " an ", w.year(), " | rég ", reg, " | puits ", sinks.size(),
+	print("seed ", sd, " an ", w.year(), " | prov ", pid, " | puits ", sinks.size(),
 		(flags if flags != "" else " | OK"))
 	return viol

@@ -341,35 +341,37 @@ int main(int argc, char **argv){
     }
 
     /* ── ALLOCATION DE MAIN-D'ŒUVRE (onglet province) : lire les puits, poser un poids
-     *    (active l'override), fermer un bâtiment, revenir AUTO — tout via le journal. ── */
+     *    (active l'override), fermer un bâtiment, revenir AUTO — tout via le journal.
+     *    RE-KEY PROVINCE (doctrine « la province est la seule réalité économique ») :
+     *    la cible est un PID DIRECT, plus une région à résoudre. ── */
     {
-        int preg=-1, np=scps_province_count(s2);
+        int ppid=-1, np=scps_province_count(s2);
         for (int pp=0; pp<np; pp++){ ScpsProvInfo pi; scps_province_info(s2,pp,&pi);
-            if (pi.owner==pl){ int rg=scps_province_region(s2,pp); if(rg>=0){ preg=rg; break; } } }
-        ok("alloc : région du joueur trouvée", preg>=0);
-        if (preg>=0){
-            ScpsAlloc al; scps_region_alloc(s2, preg, &al);
-            ok("scps_region_alloc : région lue (bassin>0, puits listés)", al.region==preg && al.pool>0.f && al.n>0);
+            if (pi.owner==pl){ ppid=pp; break; } }
+        ok("alloc : province du joueur trouvée", ppid>=0);
+        if (ppid>=0){
+            ScpsAlloc al; scps_province_alloc(s2, ppid, &al);
+            ok("scps_province_alloc : province lue (bassin>0, puits listés)", al.region==ppid && al.pool>0.f && al.n>0);
             ok("alloc : mode AUTO au départ (on=0)", al.on==0);
             int kbld=-1, kraw=-1;
             for (int i=0;i<al.n;i++){ if(al.sink[i].kind==1 && kbld<0) kbld=i; if(al.sink[i].kind==0 && kraw<0) kraw=i; }
             if (kraw>=0){
-                ok("verbe alloc_raw ENFILÉ", scps_player_alloc_raw(s2, preg, al.sink[kraw].id, 80)==1);
+                ok("verbe alloc_raw ENFILÉ", scps_player_alloc_raw(s2, ppid, al.sink[kraw].id, 80)==1);
                 scps_sim_advance_days(s2, 1);
-                ScpsAlloc al2; scps_region_alloc(s2, preg, &al2);
+                ScpsAlloc al2; scps_province_alloc(s2, ppid, &al2);
                 ok("alloc : override ACTIVÉ au drain (on=1)", al2.on==1);
             }
             if (kbld>=0){
                 int bid=al.sink[kbld].id;
-                scps_player_alloc_bld(s2, preg, bid, 0);   /* poids 0 = fermé */
+                scps_player_alloc_bld(s2, ppid, bid, 0);   /* poids 0 = fermé */
                 scps_sim_advance_days(s2, 1);
-                ScpsAlloc al3; scps_region_alloc(s2, preg, &al3);
+                ScpsAlloc al3; scps_province_alloc(s2, ppid, &al3);
                 int closed=0; for (int i=0;i<al3.n;i++) if(al3.sink[i].kind==1 && al3.sink[i].id==bid) closed=al3.sink[i].closed;
                 ok("alloc : bâtiment FERMÉ (poids 0) reflété au readout", closed==1);
             }
-            scps_player_alloc_auto(s2, preg);
+            scps_player_alloc_auto(s2, ppid);
             scps_sim_advance_days(s2, 1);
-            ScpsAlloc al4; scps_region_alloc(s2, preg, &al4);
+            ScpsAlloc al4; scps_province_alloc(s2, ppid, &al4);
             ok("alloc : retour au mode AUTO", al4.on==0);
         }
     }
@@ -464,24 +466,25 @@ int main(int argc, char **argv){
     }
 
     /* ── PANNEAU B (manufacture joueur) : légalité + verbe enfilé + pose au drain.
-     *    On cherche un couple (région du joueur, type) LÉGAL ; s'il en existe un, la
-     *    pose au drain doit AJOUTER un bâtiment (puits kind==1 de scps_region_alloc). ── */
+     *    RE-KEY PROVINCE : on cherche un couple (PROVINCE du joueur, type) LÉGAL — plus
+     *    une région ; s'il en existe un, la pose au drain doit AJOUTER un bâtiment (puits
+     *    kind==1 de scps_province_alloc). ── */
     {
-        int nreg=scps_region_count(s2);
-        int lr=-1, lb=-1;
-        for (int r=0;r<nreg && lr<0;r++)
-            for (int b=1;b<64 && lr<0;b++)
-                if (scps_manuf_legal(s2, r, b)){ lr=r; lb=b; }
-        printf("   panneau B : couple légal (région %d, type %d)\n", lr, lb);
-        if (lr>=0){
-            ScpsAlloc al; scps_region_alloc(s2, lr, &al);
+        int nprov=scps_province_count(s2);
+        int lp=-1, lb=-1;
+        for (int pp=0;pp<nprov && lp<0;pp++)
+            for (int b=1;b<64 && lp<0;b++)
+                if (scps_manuf_legal(s2, pp, b)){ lp=pp; lb=b; }
+        printf("   panneau B : couple légal (province %d, type %d)\n", lp, lb);
+        if (lp>=0){
+            ScpsAlloc al; scps_province_alloc(s2, lp, &al);
             int nb_before=0; for (int i=0;i<al.n;i++) if (al.sink[i].kind==1) nb_before++;
-            ok("panneau B : verbe BUILD_MANUF enfilé", scps_player_build_manuf(s2, lr, lb)==1);
+            ok("panneau B : verbe BUILD_MANUF enfilé", scps_player_build_manuf(s2, lp, lb)==1);
             scps_sim_advance_days(s2, 2);                    /* le drain pose */
-            scps_region_alloc(s2, lr, &al);
+            scps_province_alloc(s2, lp, &al);
             int nb_after=0; for (int i=0;i<al.n;i++) if (al.sink[i].kind==1) nb_after++;
             ok("panneau B : la manufacture est POSÉE au drain (+1 bâtiment)", nb_after == nb_before+1);
-            ok("panneau B : le même type n'est plus légal (slot rempli)", scps_manuf_legal(s2, lr, lb)==0);
+            ok("panneau B : le même type n'est plus légal (slot rempli)", scps_manuf_legal(s2, lp, lb)==0);
         } else {
             ok("panneau B : aucun couple légal (monde nu précoce) — verbe refusé proprement",
                scps_player_build_manuf(s2, 0, 1)==1);        /* enfilé ; le drain refusera sans crash */

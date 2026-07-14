@@ -384,7 +384,11 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         for (int i=0;i<s->ag->n;i++){ const BuildOrder *o=&s->ag->order[i];
             if (o->region < -1 || o->region >= s->econ->n_regions) return false;
             if ((o->kind==AGY_RELOCATE || o->kind==AGY_COLONIZE) &&
-                (o->param < -1 || o->param >= s->econ->n_regions)) return false; }
+                (o->param < -1 || o->param >= s->econ->n_regions)) return false;
+            /* v85 — BuildOrder.prov (grain province des chantiers joueur) : -1 = héritage
+             * (résolution région→province par le lecteur), ≥0 = PID direct. Borné comme
+             * tout index désérialisé qui adresse un tableau (charte save_sane). */
+            if (o->prov < -1 || o->prov >= s->econ->n_prov) return false; }
     }
     if (s->rs){
         if (s->rs->count < 0 || s->rs->count > REVOLT_MAX) return false;

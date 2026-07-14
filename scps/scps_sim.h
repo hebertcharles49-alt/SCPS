@@ -60,6 +60,9 @@
  * (cmd_n=0) → le drain est un no-op et son hash reste IDENTIQUE (golden intact). */
 /* §3 ajoute les verbes DIPLO (capstone #26 : le joueur PROPOSE, le vis-à-vis ÉVALUE via
  * ai_consider_offer). Étendre = un verbe ici (avant CMD_COUNT) + un case au drain. */
+/* RE-KEY PROVINCE (doctrine « la province est la seule réalité économique ») :
+ * CMD_BUILD a={Edifice, PROVINCE (pid, <0 ⇒ capitale du joueur), 0, 0} — plus une
+ * région à résoudre via econ_region_rep_province. */
 enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
        /* §3 diplo (capstone #26) */
        CMD_DECLARE_WAR, CMD_MAKE_PEACE, CMD_OFFER_ALLIANCE, CMD_OFFER_PACT, CMD_EMBARGO,
@@ -67,7 +70,8 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
        CMD_REPRESS, CMD_ASSIMILATE, CMD_PURGE, CMD_COUNCIL_HIRE, CMD_COUNCIL_DISMISS,
        CMD_ROUTE, CMD_MARKET_BUY, CMD_MARKET_SELL,
        CMD_CAMPAIGN, CMD_REFILL, CMD_NAVY_BUILD, CMD_DISBAND,
-       /* ALLOCATION de main-d'œuvre (onglet province) : poids par puits, fermeture, intrant, retour AUTO */
+       /* ALLOCATION de main-d'œuvre (onglet province) : poids par puits, fermeture, intrant,
+        * retour AUTO. RE-KEY PROVINCE : a[0] est un PID direct (jamais une région). */
        CMD_ALLOC_RAW, CMD_ALLOC_BLD, CMD_ALLOC_INPUT, CMD_ALLOC_AUTO,
        /* §7 — l'ENGAGEMENT D'ÂGE du joueur (l'IA s'engage auto ; le joueur CHOISIT — ce verbe) */
        CMD_AGE_ENGAGE,
@@ -75,9 +79,11 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
        CMD_COLONIZE,
        /* BRASSAGE — le joueur PROPOSE un pacte migratoire (le vis-à-vis ÉVALUE via ai_consider_offer) */
        CMD_OFFER_MIGRATION,
-       /* PANNEAU B — le joueur pose une MANUFACTURE civile (a[0]=région, a[1]=BuildingType).
+       /* PANNEAU B — le joueur pose une MANUFACTURE civile (a[0]=PROVINCE, a[1]=BuildingType).
         * Le §NF exclut le joueur (« il construit à la main ») : voici la main. Gates au
-        * drain = miroir d'ai_build_civmanuf (staffage/tier/intrant/slot libre/or). */
+        * drain = miroir d'ai_build_civmanuf (staffage/tier/intrant/slot libre/or). RE-KEY
+        * PROVINCE (doctrine « la province est la seule réalité économique ») : a[0] est
+        * un pid direct, jamais une région à résoudre via econ_region_rep_province. */
        CMD_BUILD_MANUF,
        /* MEMBRANE DE DÉCISION — le joueur CHOISIT parmi les options d'un évènement en
         * attente (a[0]=slot dans EventsState.pending[], a[1]=option). Revalidé au drain
@@ -128,10 +134,11 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
        /* Offre de paix composée : a={cible, drapeaux, score-or, n régions,
         * régions...}. Le pays ne peut posséder que 32 régions. */
        CMD_PEACE_OFFER,
-       /* Retour joueur 2026-07-13 — l'onglet province par classe :
-        * CMD_MANUF_LEVEL  a={région, BuildingType, dir(+1/-1)} : monte (payant) /
+       /* Retour joueur 2026-07-13 — l'onglet province par classe (RE-KEY PROVINCE : a[0]
+        * est un PID direct, jamais une région) :
+        * CMD_MANUF_LEVEL  a={province, BuildingType, dir(+1/-1)} : monte (payant) /
         *   descend (retire sous plancher) le niveau d'une manufacture bâtie.
-        * CMD_DEMOLISH_EDI a={région, Edifice} : démolir un édifice d'un cran. */
+        * CMD_DEMOLISH_EDI a={province, Edifice} : démolir un édifice d'un cran. */
        CMD_MANUF_LEVEL, CMD_DEMOLISH_EDI,
        CMD_COUNT };
 #define SCPS_CMDQ_MAX 64

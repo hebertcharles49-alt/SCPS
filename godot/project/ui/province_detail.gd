@@ -26,7 +26,7 @@ var _hover_zones := []      # [{rect, text}] survol des entrées de journal (eff
 var _hover_text := ""
 var _hover_pos := Vector2.ZERO
 var _alloc_btns := []       # [{rect, act, sink}] boutons de l'onglet Main-d'œuvre
-var _alloc_cache := {}      # dernier readout region_alloc (pour pousser l'allocation COMPLÈTE)
+var _alloc_cache := {}      # dernier readout province_alloc (pour pousser l'allocation COMPLÈTE)
 var _close_rect := Rect2()
 var _build_btn := Rect2()   # onglet Constructions : « Bâtir… » (ouvre le panneau de construction)
 var _manuf_btns := []       # [{rect, bld}] onglet Constructions : boutons « Bâtir » (manufacture civile)
@@ -459,7 +459,7 @@ func _draw_batiments(x: float, y: float, w) -> void:
 			VKit.text(self, Vector2(x + 380, y), VKit.COL_DIM, _grp(b["ouvriers"]), VKit.FS_SMALL)
 			y += 19
 
-	# — BÂTIR une manufacture civile ICI (région de la province sélectionnée) —
+	# — BÂTIR une manufacture civile ICI (RE-KEY PROVINCE : la province SÉLECTIONNÉE, pid direct) —
 	if not mine or y > PH - 40:
 		return
 	y += 10
@@ -467,14 +467,13 @@ func _draw_batiments(x: float, y: float, w) -> void:
 	y += 10
 	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Bâtir une manufacture", VKit.FS_SMALL)
 	y += 18
-	var region: int = w.province_region(_pid)
 	# lot M — le PRIX du chantier (le montant que le drain débite : MANUF_BUILD_COST×ipm)
 	var mcost: int = int(w.manuf_cost()) if w.has_method("manuf_cost") else 0
 	var any_legal := false
 	for bld in range(24):   # BLD_TYPE_COUNT (miroir display-only côté binding)
 		if y > PH - 22:
 			break
-		if int(w.manuf_legal(region, bld)) != 1:
+		if int(w.manuf_legal(_pid, bld)) != 1:
 			continue
 		any_legal = true
 		var nom := String(w.manuf_name(bld))
@@ -556,12 +555,12 @@ func _draw_empire(x: float, y: float, w) -> void:
 
 # ── ONGLET MAIN-D'ŒUVRE : allocation des bras par PUITS (extraction + manufactures) ──
 #    Régler les % (somme normalisée), FERMER un bâtiment (poids 0), choisir l'INTRANT.
-#    Le joueur ne règle QUE ses régions ; sinon lecture seule. Les verbes ENFILENT (drain).
+#    RE-KEY PROVINCE : la cible est la province SÉLECTIONNÉE (_pid, pid direct) — plus
+#    une région. Le joueur ne règle QUE SES provinces ; sinon lecture seule.
 func _draw_alloc(x: float, y: float, w, info: Dictionary) -> void:
 	_alloc_btns.clear()
-	var region: int = w.province_region(_pid)
 	var mine := (int(info.get("owner", -1)) == int(w.player()))
-	var al: Dictionary = w.region_alloc(region)
+	var al: Dictionary = w.province_alloc(_pid)
 	_alloc_cache = al
 	var on := bool(al.get("on", false))
 	var sinks: Array = al.get("sinks", [])
@@ -634,8 +633,9 @@ func _alloc_btn(bx: float, by: float, label: String, act: String, sink: int) -> 
 	return bx + bw + 4.0
 
 # applique une édition d'allocation : pousse l'allocation COMPLÈTE (un seul puits réglé
-# mettrait les autres à 0) — région à soi, revalidée au drain.
-func _alloc_apply(region: int, idx: int, new_w: int) -> void:
+# mettrait les autres à 0) — RE-KEY PROVINCE : `pid` est un PID direct, province à soi,
+# revalidée au drain.
+func _alloc_apply(pid: int, idx: int, new_w: int) -> void:
 	var w = Sim.world
 	if w == null: return
 	var sinks: Array = _alloc_cache.get("sinks", [])
@@ -644,9 +644,9 @@ func _alloc_apply(region: int, idx: int, new_w: int) -> void:
 		var ww := (new_w if i == idx else int(s.get("weight", 0)))
 		ww = clampi(ww, 0, 100)
 		if int(s.get("kind", 0)) == 0:
-			w.player_alloc_raw(region, int(s.get("id", 0)), ww)
+			w.player_alloc_raw(pid, int(s.get("id", 0)), ww)
 		else:
-			w.player_alloc_bld(region, int(s.get("id", 0)), ww)
+			w.player_alloc_bld(pid, int(s.get("id", 0)), ww)
 
 # ── ONGLET JOURNAL : le fil chronologique des évènements & modificateurs ───────
 func _draw_journal(x: float, y: float, w) -> void:
@@ -759,11 +759,10 @@ func _gui_input(event: InputEvent) -> void:
 					var w2 = Sim.world
 					if w2 == null:
 						return
-					var region2: int = w2.province_region(_pid)
 					var nom2 := String(w2.manuf_name(int(b.bld)))
 					# Les ordres sont ENFILÉS (journal déterministe) : le retour n'est que
 					# « mis en file », pas le verdict d'application (qui tombe au tick).
-					var ok2: bool = w2.player_build_manuf(region2, int(b.bld)); Sim.notify_action()  # → refresh au drain (live)
+					var ok2: bool = w2.player_build_manuf(_pid, int(b.bld)); Sim.notify_action()  # RE-KEY : _pid direct → refresh au drain (live)
 					_manuf_flash_ok = ok2
 					_manuf_flash = ("⚒ %s — ordre émis" % nom2) if ok2 else ("✗ %s — refusé" % nom2)
 					if not ok2:
@@ -777,25 +776,24 @@ func _gui_input(event: InputEvent) -> void:
 				var w = Sim.world
 				if w == null:
 					return
-				var region: int = w.province_region(_pid)
 				var idx: int = b.sink
 				var sinks: Array = _alloc_cache.get("sinks", [])
 				match b.act:
 					"auto":
-						w.player_alloc_auto(region)
+						w.player_alloc_auto(_pid)
 					"minus":
 						if idx >= 0 and idx < sinks.size():
-							_alloc_apply(region, idx, int(sinks[idx].get("weight", 0)) - ALLOC_STEP)
+							_alloc_apply(_pid, idx, int(sinks[idx].get("weight", 0)) - ALLOC_STEP)
 					"plus":
 						if idx >= 0 and idx < sinks.size():
-							_alloc_apply(region, idx, int(sinks[idx].get("weight", 0)) + ALLOC_STEP)
+							_alloc_apply(_pid, idx, int(sinks[idx].get("weight", 0)) + ALLOC_STEP)
 					"close":
 						if idx >= 0 and idx < sinks.size():
 							var cl := bool(sinks[idx].get("closed", false))
-							_alloc_apply(region, idx, (ALLOC_STEP if cl else 0))
+							_alloc_apply(_pid, idx, (ALLOC_STEP if cl else 0))
 					"input":
 						if idx >= 0 and idx < sinks.size():
-							w.player_alloc_input(region, int(sinks[idx].get("id", 0)), 1 - int(sinks[idx].get("input", 0)))
+							w.player_alloc_input(_pid, int(sinks[idx].get("id", 0)), 1 - int(sinks[idx].get("input", 0)))
 				queue_redraw()
 				accept_event()
 				return

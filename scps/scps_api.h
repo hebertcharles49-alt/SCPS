@@ -777,32 +777,36 @@ int scps_opinion_summary(ScpsSim *s, int country, ScpsOpinionParts *out);
  * l'histoire d'avant un chargement repart vide (même charte que le journal province). */
 typedef struct { int year, act, a_id, b_id, delta_now; } ScpsDiploAct;
 int scps_diplo_journal(ScpsSim *s, int country, ScpsDiploAct *out, int max);
-/* §3 — LÉGALITÉ de CONSTRUCTION par RÉGION : 1 si le joueur peut bâtir `edifice` dans `region`
- * MAINTENANT. Miroir READ-ONLY des gates du drain CMD_BUILD (agency_build_acct, même ordre) :
- * région à soi · géo (port/Centre) · palier de FAMILLE · file F5 · TECH DE PALIER (LOT T :
- * edifice_tier ⇐ econ_country_has_tier, T1 libre) · MATIÈRE au marché atteignable · OR.
+/* §3 — LÉGALITÉ de CONSTRUCTION par PROVINCE (RE-KEY : `province` est un PID DIRECT, jamais
+ * une région) : 1 si le joueur peut bâtir `edifice` dans `province` MAINTENANT. Miroir
+ * READ-ONLY des gates du drain CMD_BUILD (agency_build_acct, même ordre) :
+ * province à soi · géo (port/Centre, dérivée de la région de la province) · palier de
+ * FAMILLE · file F5 · TECH DE PALIER (LOT T : edifice_tier ⇐ econ_country_has_tier, T1
+ * libre) · MATIÈRE au marché atteignable (interne région) · OR.
  * Le roster (debloque) gate la tech SPÉCIFIQUE de quelques édifices (Comptoir/Entrepôt,
  * edifice_unlocked) ; ce prédicat gate en plus, pour TOUT édifice de palier ≥2, la PREUVE
- * générique que le pays a atteint ce tier de recherche. region<0 ⇒ capitale.
+ * générique que le pays a atteint ce tier de recherche. province<0 ⇒ capitale.
  * `_ex` rapporte la RAISON du refus : 0 OK · 1 structurel · 2 or insuffisant · 3 matière
  * manquante · 4 tech de palier manquante. */
-int scps_build_legal(ScpsSim *s, int region, int edifice);
-int scps_build_legal_ex(ScpsSim *s, int region, int edifice, int *reason_out);
+int scps_build_legal(ScpsSim *s, int province, int edifice);
+int scps_build_legal_ex(ScpsSim *s, int province, int edifice, int *reason_out);
 const char *scps_edifice_name(int edifice);   /* nom (picker « poser » de l'onglet province) */
 int scps_edifice_succ(int edifice);           /* palier suivant (le « + » ; EDIFICE_COUNT = sommet) */
 
 /* PANNEAU B — le joueur pose une MANUFACTURE civile (le §NF l'exclut : voici la main).
- * bld = BuildingType (l'index que scps_region_alloc nomme déjà). Le verbe ENFILE
- * (drain revalidé) ; la légalité est le miroir read-only des gates du drain
- * (à soi · civil · slot libre · staffage · tier · intrant nourrissable · or). */
-int scps_player_build_manuf(ScpsSim *s, int region, int bld);
-int scps_manuf_legal(ScpsSim *s, int region, int bld);
+ * RE-KEY : `province` est un PID DIRECT (jamais une région). bld = BuildingType (l'index
+ * que scps_province_alloc nomme déjà). Le verbe ENFILE (drain revalidé) ; la légalité est
+ * le miroir read-only des gates du drain (à soi · civil · slot libre · staffage · tier ·
+ * intrant nourrissable · or). */
+int scps_player_build_manuf(ScpsSim *s, int province, int bld);
+int scps_manuf_legal(ScpsSim *s, int province, int bld);
 /* Onglet province par classe (retour joueur 2026-07-13) : ajuster le NIVEAU d'un bâtiment
  * bâti. dir>0 monte (payant, miroir de la pose) ; dir<0 descend d'un cran (retire la manuf
  * sous le plancher). L'édifice se démolit d'un cran (famille ⇒ palier précédent). ENFILÉS,
- * revalidés au drain. Le « + » d'un édifice = scps_player_build (palier suivant). */
-int scps_player_manuf_level(ScpsSim *s, int region, int bld, int dir);
-int scps_player_demolish_edifice(ScpsSim *s, int region, int edifice);
+ * revalidés au drain. Le « + » d'un édifice = scps_player_build (palier suivant). RE-KEY :
+ * `province` est un PID DIRECT (jamais une région). */
+int scps_player_manuf_level(ScpsSim *s, int province, int bld, int dir);
+int scps_player_demolish_edifice(ScpsSim *s, int province, int edifice);
 /* le PRIX du chantier de manufacture — LE montant que le drain débite (MANUF_BUILD_COST
  * × ipm, même formule que scps_manuf_legal/CMD_BUILD_MANUF) : or, arrondi (tangible). */
 int scps_manuf_cost(ScpsSim *s);
@@ -917,7 +921,7 @@ typedef struct {
 int scps_building_roster(ScpsSim *s, int country, ScpsEdificeDef *out, int max);
 
 /* ---- ALLOCATION DE MAIN-D'ŒUVRE (onglet province) ---------------------- *
- * Les PUITS de main-d'œuvre d'une région : chaque brute extraite (kind 0) et chaque
+ * Les PUITS de main-d'œuvre d'une PROVINCE : chaque brute extraite (kind 0) et chaque
  * manufacture bâtie (kind 1). Le joueur règle un POIDS par puits (somme normalisée à
  * 100 %) ; un poids 0 sur une manufacture = FERMÉE. `on` indique si l'override est
  * actif (sinon le moteur répartit en AUTO et `weight` reflète la part ACTUELLE). */
@@ -936,14 +940,17 @@ typedef struct {
 } ScpsAllocSink;
 #define SCPS_ALLOC_MAX 48
 typedef struct {
-    int           region;   /* région lue (-1 si invalide) */
+    int           region;   /* RE-KEY : en réalité un PID de PROVINCE (lu, -1 si invalide) —
+                              * champ nommé `region` pour ne pas remuer le binding/GDScript existant. */
     int           on;       /* override actif ? */
-    float         pool;     /* bassin de bras de la région (journaliers + bourgeois) */
+    float         pool;     /* bassin de bras de la PROVINCE (journaliers + bourgeois) */
     int           n;        /* nombre de puits remplis */
     ScpsAllocSink sink[SCPS_ALLOC_MAX];
 } ScpsAlloc;
-/* Lit l'allocation d'une RÉGION (pas une province : l'unité moteur). PUR read. */
-void scps_region_alloc(ScpsSim *s, int region, ScpsAlloc *out);
+/* RE-KEY PROVINCE (doctrine « la province est la seule réalité économique ») : lit
+ * l'allocation d'une PROVINCE (pid DIRECT) — raws/pool/manufactures/poids TOUS lus sur
+ * econ->prov[pid], fraîcheur immédiate (remplace scps_region_alloc). PUR read. */
+void scps_province_alloc(ScpsSim *s, int province, ScpsAlloc *out);
 
 /* ---- ACTIONS DU JOUEUR (la main humaine sur le pays joueur) ----------- *
  * ENFILÉES dans le journal de commandes (scps_sim.h) : ces verbes n'appliquent
@@ -951,9 +958,10 @@ void scps_region_alloc(ScpsSim *s, int region, ScpsAlloc *out);
  * VIDE à un point fixe (après agency_advance, avant l'IA), chacun REVALIDÉ. Le
  * monde reste DÉTERMINISTE et REJOUABLE (graine + journal). Retour = accepté-
  * dans-la-file, PAS le verdict d'application (trésor/matière), qui tombe au tick. */
-/* Bâtir un édifice. region<0 ⇒ la CAPITALE du joueur ; sinon la région visée (le
- * drain revalide l'appartenance). 1 = mis en file ; 0 = file pleine / argument hors domaine. */
-int  scps_player_build  (ScpsSim *s, int edifice, int region);
+/* Bâtir un édifice. RE-KEY : `province` est un PID DIRECT (jamais une région), <0 ⇒ la
+ * CAPITALE du joueur (le drain revalide l'appartenance). 1 = mis en file ; 0 = file
+ * pleine / argument hors domaine. */
+int  scps_player_build  (ScpsSim *s, int edifice, int province);
 /* Lever 1 paquet (100) d'un TYPE d'unité. 1 = mis en file ; 0 = refus d'enfilement.
  * (Le verdict réel — tech, élite, armes en stock — tombe au drain.) */
 long scps_player_recruit(ScpsSim *s, int unit);
@@ -1035,12 +1043,13 @@ int  scps_raid_cd_days         (ScpsSim *s, int prov);
 /* BANC SEULEMENT (motif intertrade_debug_set_hub_of, lot A) : pose N coques pirate au
  * joueur — le round-trip de scps_api_demo exige une coque. Jamais appelé par le jeu. */
 void scps_debug_set_pirate_hulls(ScpsSim *s, int n);
-/* ALLOCATION (onglet province) — ENFILENT, revalidé au drain (région à soi ; res/bld bornés).
- * Poser un poids ACTIVE l'override de la région ; weight 0 sur un bâtiment = FERMÉ. */
-int  scps_player_alloc_raw     (ScpsSim *s, int region, int resource, int weight);
-int  scps_player_alloc_bld     (ScpsSim *s, int region, int bld_type, int weight);
-int  scps_player_alloc_input   (ScpsSim *s, int region, int bld_type, int input);
-int  scps_player_alloc_auto    (ScpsSim *s, int region);   /* retour au split AUTO */
+/* ALLOCATION (onglet province) — ENFILENT, revalidé au drain (province à soi ; res/bld
+ * bornés). RE-KEY : `province` est un PID DIRECT (jamais une région). Poser un poids
+ * ACTIVE l'override de la province ; weight 0 sur un bâtiment = FERMÉ. */
+int  scps_player_alloc_raw     (ScpsSim *s, int province, int resource, int weight);
+int  scps_player_alloc_bld     (ScpsSim *s, int province, int bld_type, int weight);
+int  scps_player_alloc_input   (ScpsSim *s, int province, int bld_type, int input);
+int  scps_player_alloc_auto    (ScpsSim *s, int province);   /* retour au split AUTO */
 /* §7 — ENGAGEMENT D'ÂGE : l'IA s'engage AUTO au lever d'un âge, le joueur CHOISIT.
  * scps_age_state = l'âge COURANT (-1 = aucun levé), *engaged ← le joueur l'a déjà
  * engagé, name ← son NOM (mot résolu — membrane). scps_player_age_engage ENFILE

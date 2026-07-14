@@ -18,8 +18,9 @@ const PW := 384.0   ## largeur plafond (lignes par classe + boutons collés)
 const ALLOC_STEP := 10   ## pas de répartition raw (poids 0-100)
 
 var _pid := -1
-var _region := -1                   ## région moteur de la province (verbes/alloc region-grain)
-var _alloc := {}                    ## dernier region_alloc (pousser l'allocation COMPLÈTE)
+var _region := -1                   ## région moteur (agrégat lu SEULEMENT par l'onglet RÉGION —
+                                     ## RE-KEY PROVINCE : les verbes/alloc utilisent _pid directement)
+var _alloc := {}                    ## dernier province_alloc (pousser l'allocation COMPLÈTE)
 var _name2bld := {}                 ## nom de manufacture → BuildingType (résout le type pour les verbes)
 var _flash := ""                    ## retour transitoire « ordre émis » (effacé au refresh)
 var _tab := 0                       ## 0 Infrastructure (fusionné) · 1 Militaire
@@ -138,7 +139,7 @@ func refresh() -> void:
 	var cap: Dictionary = w.province_capitale(_pid)
 	# région moteur + allocation (grain des verbes) + carte nom→BuildingType (résout les types)
 	_region = int(w.province_region(_pid)) if w.has_method("province_region") else -1
-	_alloc = w.region_alloc(_region) if (_region >= 0 and w.has_method("region_alloc")) else {}
+	_alloc = w.province_alloc(_pid) if (_pid >= 0 and w.has_method("province_alloc")) else {}
 	if _name2bld.is_empty() and w.has_method("manuf_name"):
 		for bld in range(24):   # BLD_TYPE_COUNT (miroir display-only)
 			var nm := String(w.manuf_name(bld))
@@ -257,8 +258,8 @@ func _alloc_section(w, mine: bool, kind: int) -> void:
 		var auto := _sq_btn("↻ Auto", 52)
 		auto.tooltip_text = "rendre la répartition au moteur"
 		auto.pressed.connect(func():
-			if _region >= 0:
-				w.player_alloc_auto(_region)
+			if _pid >= 0:
+				w.player_alloc_auto(_pid)
 				_fire("↻ répartition automatique"))
 		wrap.add_child(auto)
 
@@ -290,7 +291,7 @@ func _alloc_row(w, mine: bool, s: Dictionary, idx: int) -> void:
 ## mettrait les autres à 0) — région à soi, revalidée au drain. (motif province_detail.)
 func _alloc_apply(idx: int, new_w: int) -> void:
 	var w = Sim.world
-	if w == null or _region < 0:
+	if w == null or _pid < 0:
 		return
 	var sinks: Array = _alloc.get("sinks", [])
 	for i in range(sinks.size()):
@@ -298,9 +299,9 @@ func _alloc_apply(idx: int, new_w: int) -> void:
 		var ww := (new_w if i == idx else int(s.get("weight", 0)))
 		ww = clampi(ww, 0, 100)
 		if int(s.get("kind", 0)) == 0:
-			w.player_alloc_raw(_region, int(s.get("id", 0)), ww)
+			w.player_alloc_raw(_pid, int(s.get("id", 0)), ww)
 		else:
-			w.player_alloc_bld(_region, int(s.get("id", 0)), ww)
+			w.player_alloc_bld(_pid, int(s.get("id", 0)), ww)
 	_fire("répartition ajustée")
 
 ## MANUFACTURES (ligne Bourgeois) : une STRIP d'icônes-chips (icône + [−][+] EN LIGNE,
@@ -308,9 +309,9 @@ func _alloc_apply(idx: int, new_w: int) -> void:
 func _manuf_section(w, mine: bool) -> void:
 	var blds: Array = w.province_buildings(_pid) if w.has_method("province_buildings") else []
 	var legal := []
-	if mine and w.has_method("manuf_legal") and _region >= 0:
+	if mine and w.has_method("manuf_legal") and _pid >= 0:
 		for bld in range(24):
-			if int(w.manuf_legal(_region, bld)) == 1:
+			if int(w.manuf_legal(_pid, bld)) == 1:
 				legal.append(bld)
 	if blds.is_empty() and legal.is_empty():
 		_line("  aucune manufacture", "RowDim")
@@ -324,15 +325,15 @@ func _manuf_section(w, mine: bool) -> void:
 	for bld in legal:
 		flow.add_child(_build_chip(UIKit.manuf_sprite(String(w.manuf_name(bld))),
 			("Bâtir %s · %d or" % [String(w.manuf_name(bld)), mcost]) if mcost > 0 else ("Bâtir %s" % String(w.manuf_name(bld))),
-			func(): w.player_build_manuf(_region, bld); _fire("%s : chantier lancé" % String(w.manuf_name(bld)))))
+			func(): w.player_build_manuf(_pid, bld); _fire("%s : chantier lancé" % String(w.manuf_name(bld)))))
 
 ## ÉDIFICES (ligne Élites) : idem — strip d'icônes-chips ([−] démolir · [+] palier), puis « bâtir ».
 func _edifice_section(w, mine: bool) -> void:
 	var edis: Array = w.province_edifices(_pid) if w.has_method("province_edifices") else []
 	var legal := []
-	if mine and w.has_method("build_legal") and _region >= 0:
+	if mine and w.has_method("build_legal") and _pid >= 0:
 		for e in range(32):   # masque edi_built = 32 bits ; build_legal borne
-			if not bool(w.build_legal(_region, e).get("legal", false)):
+			if not bool(w.build_legal(_pid, e).get("legal", false)):
 				continue
 			var nm := String(w.edifice_name(e)) if w.has_method("edifice_name") else ""
 			if nm != "":
@@ -346,7 +347,7 @@ func _edifice_section(w, mine: bool) -> void:
 	for e in legal:
 		var nom := String(w.edifice_name(e))
 		flow.add_child(_build_chip(UIKit.building_sprite(e), "Bâtir %s" % nom,
-			func(): w.player_build(e, _region); _fire("%s : chantier lancé" % nom)))
+			func(): w.player_build(e, _pid); _fire("%s : chantier lancé" % nom)))
 
 # ── LES CHIPS (icône + [−][+] en ligne ; le NOM en hover seul) ────────────────
 ## cadre d'un chip : PanelContainer + HBox serrée. `built` = ton plein (bâti) vs ghost (à bâtir).
@@ -377,11 +378,11 @@ func _manuf_chip(w, mine: bool, nom: String, niv: int, ouv: int, bid: int) -> Co
 	if mine and bid >= 0:
 		var minus := _chip_btn("−")
 		minus.tooltip_text = "baisser le niveau (démolir un cran)"
-		minus.pressed.connect(func(): w.player_manuf_level(_region, bid, -1); _fire("%s : niveau ↓" % nom))
+		minus.pressed.connect(func(): w.player_manuf_level(_pid, bid, -1); _fire("%s : niveau ↓" % nom))
 		hb.add_child(minus)
 		var plus := _chip_btn("+")
 		plus.tooltip_text = "monter le niveau (payant)"
-		plus.pressed.connect(func(): w.player_manuf_level(_region, bid, 1); _fire("%s : niveau ↑" % nom))
+		plus.pressed.connect(func(): w.player_manuf_level(_pid, bid, 1); _fire("%s : niveau ↑" % nom))
 		hb.add_child(plus)
 	return fr[0]
 
@@ -393,13 +394,13 @@ func _edi_chip(w, mine: bool, nom: String, type: int) -> Control:
 	if mine and type >= 0:
 		var minus := _chip_btn("−")
 		minus.tooltip_text = "démolir d'un cran"
-		minus.pressed.connect(func(): w.player_demolish_edifice(_region, type); _fire("%s : démoli d'un cran" % nom))
+		minus.pressed.connect(func(): w.player_demolish_edifice(_pid, type); _fire("%s : démoli d'un cran" % nom))
 		hb.add_child(minus)
 		var succ := int(w.edifice_succ(type)) if w.has_method("edifice_succ") else -1
-		if succ >= 0 and w.has_method("build_legal") and bool(w.build_legal(_region, succ).get("legal", false)):
+		if succ >= 0 and w.has_method("build_legal") and bool(w.build_legal(_pid, succ).get("legal", false)):
 			var plus := _chip_btn("+")
 			plus.tooltip_text = "monter au palier suivant"
-			plus.pressed.connect(func(): w.player_build(succ, _region); _fire("%s : palier suivant" % nom))
+			plus.pressed.connect(func(): w.player_build(succ, _pid); _fire("%s : palier suivant" % nom))
 			hb.add_child(plus)
 	return fr[0]
 

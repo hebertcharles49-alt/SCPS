@@ -1003,8 +1003,12 @@ float econ_prod_cap   (int country, int good);
 void  econ_prodcap_save(FILE *f);
 bool  econ_prodcap_load(FILE *f);
 int   bld_min_tier(BuildingType b);                       /* F-arc : tier de capitale requis pour poser la manufacture */
-bool  econ_build_manufacture(WorldEconomy *econ, int region, BuildingType b);  /* F-arc : bâti délibéré (tier+or vérifiés par l'appelant) */
-bool  econ_manuf_level_delta(WorldEconomy *econ, int region, BuildingType b, int dir);  /* le joueur monte/descend d'un CRAN le niveau d'une manuf bâtie (dir ±1 ; sous plancher ⇒ retirée) */
+/* RE-KEY PROVINCE : `pid` est un index de PROVINCE DIRECT (plus une région à résoudre via
+ * econ_region_rep_province) — écriture directe sur econ->prov[pid], aucun miroir région[]
+ * (l'agrégation mensuelle econ_aggregate_regions reconstruit region[] depuis prov[] ; les
+ * panneaux lisent le grain province, la fraîcheur est donc immédiate). */
+bool  econ_build_manufacture(WorldEconomy *econ, int pid, BuildingType b);  /* F-arc : bâti délibéré (tier+or vérifiés par l'appelant) */
+bool  econ_manuf_level_delta(WorldEconomy *econ, int pid, BuildingType b, int dir);  /* le joueur monte/descend d'un CRAN le niveau d'une manuf bâtie (dir ±1 ; sous plancher ⇒ retirée) */
 /* M6 — la MATIÈRE gate la manufacture arcane : Forge ↔ fer céleste, Atelier ↔ cristal,
  * Alambic ↔ salpêtre (raw_cap de la région). true pour les manufactures ordinaires. */
 bool  econ_bld_can_build(const WorldEconomy *e, int region, BuildingType b);
