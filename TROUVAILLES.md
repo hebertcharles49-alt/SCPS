@@ -947,3 +947,160 @@ scps_tune_list.h) :
   CALIBRAGE (parts/lissage/taxe/demande) qu'il faut résoudre, pas la
   plomberie. `SCPS_MKTDIAG=1` (stderr, print-only) reste câblé pour
   ré-instrumenter vite.
+
+## CHANTIER MONNAIE — M3b-v2 : le circuit d'État achat/revente (fusion M3b+M4, 2026-07-14)
+
+**Statut : LIVRÉ (3 commits : audit 3a9834c · circuit 815ee1a · fix savetest 65ccb02),
+calibrage PARTIEL — pas de re-baseline golden, gate 1 (sweep apparié aux critères durs)
+pas formellement franchi.** Contrairement à M3b v1 (STOPPÉ, monde effondré — Laborer à
+0 % dès l'an 5, aucune reprise jusqu'à l'an 100), ce mécanisme ne collapse JAMAIS sur
+les 9 sims du sweep (3 seeds × 3 sims × 250 ans) : satisfaction converge
+progressivement, sans piège de pauvreté irréversible. Mais elle n'entre pas fermement
+dans les bandes cibles pour Laborer sur 2/3 seeds — décision : livrer en l'état,
+documenter le residu, PAS de golden-update (décision de l'orchestrateur à reprendre).
+
+**Le mécanisme livré** (remplace intégralement le Cœur A de la v1, stash
+`monnaie-m3b-flip-non-calibre` — le stash a été POP puis le mécanisme RETRAVAILLÉ, pas
+réutilisé tel quel malgré la consigne de réutilisation : le brief v2 change
+l'architecture — « l'État ACHÈTE » remplace « le compte de marché nourri par la conso » —
+seuls les MOTIFS de plomberie ont survécu, pas le code) :
+- `price_level[pays]` = `clampf(caisse_disponible/va_country_prev, 0, 1)` — la CAISSE est
+  le trésor PROVINCIAL EXISTANT agrégé (Σ surplus au-dessus de SINK_FLOOR), AUCUN pool
+  neuf (contrairement à `market_account` en v1, retiré du struct) — calculé UNE FOIS,
+  en LECTURE SEULE, avant la boucle des provinces (aucun biais d'ordre possible, à la
+  différence de la v1 qui mutait un pool partagé PENDANT la boucle).
+- L'État ACHÈTE : wage_pool/profit_pool/tax_pool sont scalés UNIFORMÉMENT par
+  `price_level` (jamais un rationnement en cascade — LA leçon de v1, où les DEUX
+  calibrages avaient chacun fait s'effondrer une classe différente, cf. entrée M3b
+  ci-dessus). C'est un facteur de PRIX qui baisse, pas une file d'attente.
+- L'État REVEND : `price_level` remplace l'IPM GLOBAL au site du prix national (par
+  PAYS désormais, pas par MONDE) — IPM neutralisé LÀ seulement (double emploi retiré),
+  PAS supprimé ailleurs (provinces isolées hors-empire, surcharge d'entretien `ipmf`).
+- Métaux monétaires (or/cuivre) EXEMPTÉS de `price_level` au site du prix (pl=1 pour
+  eux) — l'étalon (v5, parité fixe) reste un numéraire stable pendant que tout le reste
+  flotte contre lui.
+- Le plancher/plafond de prix (0.15×..8×) SUIT désormais `price_level` au lieu
+  d'ancrer sur `BASE_PRICE` nu (docs/MONNAIE_M3B2_AUDIT_SEUILS.md §2) — sinon
+  l'ancrage à la genèse re-crée le piège « prix RIGIDES » nommé par le postmortem v1.
+- Exonération sous le panier vital (brief §4, docs/MONNAIE_M3B2_AUDIT_SEUILS.md §1) :
+  le forfait fiscal per-capita ne mord plus un ménage déjà sous le coût du panier/tête
+  (`g_basket_pc`, lag 1 tick) — la conversion EXACTE du seul seuil qui avait tué v1.
+
+**Découvertes (les DEUX bugs trouvés PAR sweep, invisibles à la relecture)** :
+- **Crowd-out d'ordre (friche ×22)** : un premier essai débitait l'achat d'État
+  IMMÉDIATEMENT après la production (§3, même endroit que le crédit) — la MÊME réserve
+  (SINK_FLOOR) que l'entretien (§E1bis.10), qui s'exécute PLUS TARD dans la boucle,
+  se retrouvait asséchée avant son tour (5→110 régions impayées, seed 9/250 ans, sweep
+  1 sim). Un plancher plus haut (COURT_FLOOR=4000 au lieu de SINK_FLOOR=500) corrige la
+  friche mais épingle `price_level` à 0 quasi en permanence pour les jeunes économies
+  (le trésor dépasse rarement 4000 en début de partie) → cycles boom/bust au
+  franchissement du seuil, VISIBLES au diagnostic `SCPS_MKTDIAG` (price_level alternant
+  exactement 1.0/0.0 tick à tick pendant 50+ ans). **Le vrai fix est l'ORDRE, pas le
+  plancher** : le débit de l'achat est DIFFÉRÉ (stocké dans une variable locale
+  `pending_buy_debit`) et appliqué seulement APRÈS entretien/court/admin/redépense —
+  ces sinks EXISTANTS gardent la priorité sur la caisse de début de tick, SINK_FLOOR
+  redevient le bon niveau pour `price_level` (pas besoin d'un plancher inventé).
+- **Spirale de trésor négatif (friche à 38 % des provinces même avec l'ordre fixé)** :
+  même différé, un débit NON clampé pouvait pousser le trésor très négatif ; le test de
+  friche du tick SUIVANT (`upkeep_order > re->treasury`) est vrai dès que le trésor est
+  négatif QUEL QUE SOIT le montant dû (pas seulement si le montant dépasse le trésor
+  positif) — un creux d'UN tick devenait plusieurs ticks de friche en cascade avant que
+  la taxe ne renfle assez. Fix : clamper le débit à `max(0, treasury)` — le reliquat
+  non financé rejoint l'instrument (`g_va_produced_cum`, un résidu MESURÉ) au lieu
+  d'endetter silencieusement une province. Résultat : friche seed 9/250 ans revenue à
+  13 régions sur 246 colonisées (pré-M3b2 : 5/246 — comparable, plus l'ordre de
+  grandeur).
+- **`can_buy = budget/cost` est bien scale-invariant sous `price_level` UNIFORME, mais
+  ça ne suffit pas à égaliser les classes** : en théorie, scaler budget ET cost par le
+  MÊME facteur ne change PAS le ratio (donc pas la satisfaction RÉELLE) — vérifié vrai
+  en pratique. L'écart Laborer/Bourgeois-Élite observé (Laborer stagne plus bas, plus
+  longtemps) vient d'AILLEURS : (a) la friche pénalise la PRODUCTION (0.6×) avant même
+  que `price_level` n'entre en jeu, frappant plus les provinces à fort `wage_pool` ; (b)
+  Bourgeois/Élite ont un COUSSIN de richesse accumulée (moins souvent budget-contraints,
+  `can_buy` sature déjà à 1 avant le choc) alors que Laborer, subsistant panier par
+  panier, encaisse chaque tick de plein fouet — un effet de RICHESSE ACCUMULÉE, pas du
+  mécanisme prix lui-même.
+- **`g_basket_pc` a cessé d'être scratch** : documenté depuis 2026-07 comme « recalculé
+  ET consommé dans le MÊME passage d'econ_tick, avant toute lecture » (donc non
+  sérialisé, par symétrie avec econ_prodcap_save) — l'exonération fiscale (§4 ci-dessus)
+  le LIT désormais AVANT sa propre écriture du tick (le panier du tick PRÉCÉDENT),
+  exactement le même profil que `g_friche`/`g_lowsat_streak` (déjà sérialisés, même
+  famille de bug). `--savetest 9` divergeait sur le trésor (or=3958.6 vs 3941.1 à
+  day=2095) tant que `g_basket_pc` n'a pas rejoint le blob EMOB — fix committé
+  séparément (65ccb02), aucun nouveau tag ni bump séparé (couvert par le v88 déjà en
+  cours pour `va_country_prev`).
+
+**Pièges** :
+- `git stash pop` sur un fichier où le commit v5 (parité, `scps_tune_list.h`) avait
+  entre-temps ajouté des lignes AU MÊME endroit que la v1 (`MKT_SMOOTH_MONTHS` juste
+  après `MINT_PARITY_COPPER`) → conflit de merge trivial mais RÉEL (les deux blocs
+  coexistaient, juste mal ordonnés) — résolu en gardant les deux, puis
+  `MKT_SMOOTH_MONTHS` a été retiré plus tard (le lissage temporel n'existe plus en v2,
+  remplacé par le facteur de prix).
+- Le worktree `pre-m3b2` (`git worktree add`) pour le sweep apparié se construit sous
+  `C:\Users\Charl\AppData\Local\Temp\wt-...` (pas `/tmp` littéral — le Bash tool et
+  MSYS2 bash.exe ont des racines `/tmp` DIFFÉRENTES sur cette machine ; `git worktree
+  list` donne le vrai chemin Windows, à reconvertir en chemin POSIX `/c/...` pour
+  MSYS2) — piège déjà entrevu par M3a, reconfirmé ici.
+- `SCPS_MKTDIAG` élargi (`c<4` au lieu de `c==0`, la condition d'origine de la v1) a
+  servi à distinguer un VRAI bug (persistance cassée) d'un comportement ORGANIQUE
+  (cycles boom/bust d'une petite économie) — sans élargir à plusieurs pays, le motif
+  « price_level alterne 1.0/0.0 » aurait pu passer pour un bug de persistance de
+  `va_country_prev` alors que c'était `va_country_prev` qui se comportait CORRECTEMENT
+  (persisté, non remis à zéro) et `caisse_snapshot` qui restait authentiquement à 0
+  (petite économie, trésor sous le seuil).
+
+**Mesures — sweep apparié `./chronicle {9,11,42} 3 250 6 12` (pré-M3b2 = tag
+`pre-m3b2`, worktree, vs HEAD)** :
+
+| seed | dérive M/an pré→v2 | réduction | Laborer pré→v2 | Bourgeois pré→v2 | Élite pré→v2 | hégémon pré→v2 |
+|---|---:|---:|---:|---:|---:|---:|
+| 9  | 130.1k→15.1k  | −88 % | 51→44 % | 78→77 % | 73→78 % | 2/3→3/3 |
+| 11 | 217.9k→22.6k  | −90 % | 53→44 % | 77→70 % | 74→71 % | 2/3→0/3 |
+| 42 | 208.7k→19.6k  | −91 % | 64→50 % | 88→79 % | 79→76 % | 2/3→0/3 |
+
+Bandes cibles : Laborer 50-75 %, Bourgeois/Élite 70-90 % (moyenne sur 250 ans, PAS le
+critère « sur toute la durée » du brief — non vérifié dans ce sweep réduit). Lecture :
+la dérive de M chute de 88-91 % partout (l'instrument « création résiduelle » confirme :
+conso ≈ 0/an sur les 9 sims, VA résiduelle ~15-99k/an — en baisse mais PAS à 0, la
+caisse ne suit pas encore parfaitement la VA). Bourgeois/Élite restent dans ou près de
+la bande sur les 3 seeds. **Laborer est SOUS bande sur 2/3 seeds** (44 % vs plancher
+50 %, seed 42 pile à 50 %) — amélioration continue sur la durée (seed 9 : 22 %→51 % de
+l'an 15 à l'an 250, JAMAIS de collapse) mais n'atteint la bande que tardivement
+(~an 200-250 selon la trajectoire an-par-an vérifiée hors-sweep, seed 9 seul). L'hégémon
+mortel, préservé sur seed 9 (3/3, contre 2/3 pré), DISPARAÎT sur 11/42 (0/3, contre 2/3
+pré) — un effet secondaire NON expliqué à ce stade (stabilité politique amortie par le
+nouveau circuit ? à creuser, pas dans le scope de cette mission).
+
+**Gates réellement passés** : `make test` 38 VERTS/0 ROUGE/1 BUILD ÉCHEC (intertrade_demo,
+pré-existant Windows) sur 39 bancs · `make determinism` STABLE (5 graines × 12 ans,
+hashes identiques run A/B) · `scps_viewer --savetest 9` 2/2 (A==B exact, fix EMOB
+appliqué) · `make fuzz-save` 8/8 (216 octets flippés, aucun crash). **Gates PAS
+passés/PAS lancés** : `make golden`/`golden-update` (attendu différent, aucune
+re-baseline committée — décision : ne pas re-baseliner tant que le sweep n'est pas
+formellement conforme, cf. l'interdiction du brief) · `make determinism-deep` (200 ans,
+pas lancé, budget de session) · sweep « sur toute la durée » (seulement moyennes 250
+ans + une trajectoire an-par-an ponctuelle vérifiée à la main sur seed 9 seul — pas les
+9 sims).
+
+**Restes (pour la prochaine tentative)** :
+- **Calibrage fin de Laborer** : deux pistes NON essayées ici (budget de session) —
+  (a) réduire encore la friche résiduelle (13/246 provinces, seed 9/250 ans — la source
+  la plus probable de l'écart Laborer, cf. Découvertes ci-dessus) en creusant POURQUOI
+  la caisse ne suit pas la VA d'assez près (le résidu `g_va_produced_cum` reste
+  ~15-99k/an, pas 0) ; (b) un plancher de `price_level` (ex. 0.7-0.8) qui empêcherait
+  l'achat de descendre trop bas en début de partie — RISQUE : reproduit potentiellement
+  le piège de v1 si mal borné, à sweeper prudemment.
+- **Item 5 du brief (dépenses d'État par famille — entretien/admin/encadrement → gages
+  locaux, cour → élites de la capitale) NON commencé** — hors budget de cette session ;
+  la « famille par famille, commits séparés » du brief reste entièrement à faire.
+- **Le sweep apparié COMPLET aux critères DURS (bandes sur TOUTE la durée, pas la
+  moyenne) n'a pas été exécuté** — seulement un sweep de moyennes (9 sims) + une
+  trajectoire an-par-an (15/50/100/150/250) sur seed 9 seul. À refaire en entier avant
+  toute décision de golden-update.
+- **L'effet hégémon-mortel amorti (11/42 : 2/3→0/3) n'est PAS expliqué** — noté pour un
+  futur diagnostic, pas creusé ici (hors périmètre monétaire strict).
+- `SCPS_MKTDIAG=1` (stderr, print-only, élargi à c<4) reste câblé pour ré-instrumenter
+  vite ; le motif « photo figée avant la boucle, appliquée en lecture seule, débit
+  différé après les sinks existants, clampé à 0 » est le patron RÉUTILISABLE pour toute
+  future dépense d'État distribuée par province (item 5 notamment).
