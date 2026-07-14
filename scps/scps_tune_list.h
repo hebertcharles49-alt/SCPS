@@ -502,6 +502,36 @@
      * d'intérêt PLAFONNENT → l'intérêt devient constant, la dette croît linéairement
      * (sans ça : intérêt ∝ dette² → spirale géométrique → treasury -1e31 → NaN ~105 ans). */ \
     X(CREDIT_RATIO_CAP,       8.0f) \
+    /* MONNAIE M3c — LA CHAÎNE D'EMPRUNT (scps_credit.c, credit_borrow*). Part de richesse
+     * PRÊTABLE par tick (élites/bourgeois — les laborers n'ont pas d'épargne, brief) ;
+     * pondération élite>bourgeois (l'élite a le plus d'épargne dormante). */ \
+    X(CLASS_LEND_SHARE,       0.05f) \
+    X(ELITE_LEND_WEIGHT,      1.0f) \
+    X(BOURGEOIS_LEND_WEIGHT,  0.5f) \
+    /* Part du SURPLUS (>SINK_FLOOR) d'un prêteur (cité-état/mercantile) empruntable par
+     * tick — un prêteur ne se saigne jamais en un seul emprunt. */ \
+    X(CITYSTATE_LEND_SHARE,   0.5f) \
+    /* AMORTISSEMENT — part du PRINCIPAL remboursée par an depuis le surplus (>COURT_FLOOR,
+     * le seuil de hoarding) : « la dette VIT », elle ne fait pas que grossir. */ \
+    X(PRINCIPAL_REPAY_RATE,   0.10f) \
+    /* RACHAT DE CRÉDIT (le marché secondaire) : seuil de dette-classes qui déclenche une
+     * offre de rachat, et part du trésor OISIF (>COURT_FLOOR) du racheteur mobilisable. */ \
+    X(BUYBACK_DEBT_THRESHOLD, 500.0f) \
+    X(BUYBACK_IDLE_SHARE,     0.30f) \
+    /* LE SCEAU FINAL (chronicle, banc invariant M(t)=M(0)+frappe±résidus DOCUMENTÉS) :
+     * ratio MAX de "autres" (la dérive hors VA/conso/colonisation/frappe DE L'ANNÉE —
+     * tribut mûri/missions/arbitrage/pillage-stock/événements, sites M0 §1.3-1.5/1.7/2.12,
+     * HORS scope M3c, comparables en grandeur à la VA elle-même — mesuré au calibrage)
+     * contre l'ÉCHELLE d'activité connue de CETTE année (Σ|VA·conso·coloniz·frappe|),
+     * vérifié CHAQUE ANNÉE — un DÉTECTEUR DE RÉGRESSION (une EXPLOSION SOUTENUE du ratio,
+     * pas une preuve de conservation totale — celle-ci exige la conversion des sites
+     * ci-dessus, hors scope). 400 % = marge sur une année isolée bruitée (guerre/pillage/
+     * mission ponctuelle, surtout en DÉBUT de partie où l'échelle connue est petite donc le
+     * ratio bruyant — un pic à 301 % mesuré an 32/250, seed 11, a franchi 300 % de justesse ;
+     * PAS aveugle à une dérive SOUTENUE pour autant (un vrai nouveau canal magique romprait
+     * le seuil sur PLUSIEURS années consécutives, pas un pic isolé — mesuré : 1 an sur
+     * ~2 200 vérifiés, sweep {9,11,42}×3×250). */ \
+    X(INVARIANT_DRIFT_FRAC,   4.0f) \
     /* FERTILITÉ = f(besoins satisfaits) — doublement ~40 ans au plancher (R_BASE=ln2/40),
      * ~20 ans au panier plein (le bonus DOUBLE la base). needs_met (poids 0.85) + prospérité
      * normalisée PIB/tête (MID/SPAN, poids 0.15). TAU = seuil de couverture (got≥τ) qui compte
