@@ -311,6 +311,9 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
               float paid = fminf(pay, econ->prov[crpp].treasury);
               econ->prov[crpp].treasury -= paid;
               econ_flux_add(c, FX_SOLDE, -paid);                /* I0 : la ligne soldes */
+              /* MONNAIE M3b-v2 — item 5 : la solde → LABORERS (déjà payée depuis le trésor
+               * de LA CAPITALE ci-dessus — même province, aucune indirection nouvelle). */
+              econ->prov[crpp].strata[CLASS_LABORER].wealth += paid;
               /* Sous-financer la solde ne fait plus DÉSERTER (l'armée reste entière) :
                * elle perd le MORAL — la pénalité est lue au combat (scps_campaign.c,
                * army_pay_morale ← BUDGET_ARMY). Surpayer reste un choix de trésorerie,
@@ -394,6 +397,9 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                   float paid = fminf(price, econ->prov[crp2p].treasury);
                   econ->prov[crp2p].treasury -= paid;
                   econ_flux_add(c, FX_SOLDE, -paid);
+                  /* item 5 : le prix de recrutement → LABORERS (recruteurs/intendance),
+                   * même province (capitale, déjà le site du débit). */
+                  econ->prov[crp2p].strata[CLASS_LABORER].wealth += paid;
               }
           } }
         /* F6 — la FORCE D'ARMÉE sur la capitale → nourrit diplo_mil_power, par un CANAL DÉDIÉ

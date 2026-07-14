@@ -219,7 +219,9 @@ void navy_tick(NavyState *ns, const World *w, WorldEconomy *econ, struct DiploSt
               /* Sous-payer la marine (curseur NAVY) ne la fait plus se DÉLABRER :
                * elle perd le MORAL au combat (navy_pay_morale, plus bas). */
               if (paid > 0.f) econ_region_treasury_add(econ, n->home_port, -paid);
-              econ_flux_add(c, FX_NAVY, -paid); }            /* I0 : la ligne marine */
+              econ_flux_add(c, FX_NAVY, -paid);              /* I0 : la ligne marine */
+              /* MONNAIE M3b-v2 — item 5 : les ÉQUIPAGES → LABORERS, même région (rade). */
+              if (paid > 0.f) econ_region_wealth_add(econ, n->home_port, CLASS_LABORER, paid); }
             float need=need_y*(dt_days/365.f);
             re->demand[RES_NAVAL_SUPPLIES]+=need;         /* la demande se VOIT au marché (flux/tick, transitoire assumé) */
             { float got = -econ_region_stock_add(econ, n->home_port, RES_NAVAL_SUPPLIES, -need);   /* RE-KEY */
