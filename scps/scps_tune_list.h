@@ -36,6 +36,13 @@
     X(SINK_FLOOR,           500.0f) \
     X(INVEST_SPEND_FRAC,      0.30f) \
     X(ROAD_SPEND_FRAC,        0.15f) \
+    /* MONNAIE M3b-v2 — item 5 : DISPATCH DES DÉPENSES D'ÉTAT (les puits M0 §2 deviennent des
+     * TRANSFERTS vers les classes qui les servent, plutôt qu'une destruction — décision joueur
+     * 2026-07-14, table en TROUVAILLES « circuit d'État — item 5 »). Seule l'ENTRETIEN a un
+     * partage NON-uniforme-fixe amendable (33/33/33 par défaut) : les autres familles vont
+     * intégralement à UNE classe/un siège (pas de ratio à exposer). */ \
+    X(UPKEEP_SHARE_LAB,       0.3334f) \
+    X(UPKEEP_SHARE_BOURG,     0.3333f) \
     /* §6-7 — IMPÔT PER-CAPITA : forfait MENSUEL par âme et par classe (or/hab/mois). */ \
     X(TAX_BASE_LABORER,       0.06f) \
     X(TAX_BASE_BOURGEOIS,     0.15f) \

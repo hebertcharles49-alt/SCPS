@@ -2006,6 +2006,14 @@ float econ_country_road_conn(const WorldEconomy *e, int cid){
     return 1.f + (-0.20f + frac*0.30f);               /* −20 % … +10 % */
 }
 
+/* MONNAIE M3b-v2 — item 5 : la clé 42/20/38 (WAGE_SHARE/TAX_RATE, §3 ci-dessus) exposée aux
+ * AUTRES modules (events, intertrade…) qui doivent reverser un montant aux 3 classes SANS
+ * dupliquer les constantes (WAGE_SHARE/TAX_RATE restent des #define FILE-LOCAL de ce fichier). */
+void econ_wage_split(float amount, float *lab, float *bourg, float *elite){
+    if (lab)   *lab   = amount*WAGE_SHARE;
+    if (bourg) *bourg = amount*(1.f-WAGE_SHARE-TAX_RATE);
+    if (elite) *elite = amount*TAX_RATE;
+}
 /* MONNAIE M1/M2 (docs/MONNAIE_CONCEPT.md) — province CAPITALE d'un pays au grain WorldEconomy
  * seul (econ_tick n'a pas de World* ; re->is_capital est la vérité posée à econ_build_adjacency/
  * genèse, cf. les scans identiques ailleurs dans ce fichier). -1 si aucune. */
@@ -2284,6 +2292,10 @@ void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
  * plus haut, au-dessus duquel mordent les ponctions anti-thésaurisation (faste/admin/IPM). */
 #define SINK_FLOOR           500.f
 #define DEF_UPKEEP_MULT      1.5f    /* I3 — la famille défensive (H) s'entretient ×1.5 */
+/* MONNAIE M3b-v2 — item 5 : partage 33/33/33 (amendable) de l'entretien reversé aux 3
+ * classes de la province (les 2 premiers tunables, le 3e = 1−lab−bourg, cf. WAGE_SHARE). */
+#define UPKEEP_SHARE_LAB      0.3334f
+#define UPKEEP_SHARE_BOURG    0.3333f
 static bool g_friche[SCPS_MAX_PROV];  /* E1bis.10 : province en friche (entretien/encadrement impayé) */
 static long g_n_friche;               /* télémétrie : provinces en friche au dernier tick */
 long econ_friche_count(void){ return g_n_friche; }
@@ -2435,6 +2447,37 @@ float econ_region_pop_add(WorldEconomy *e, int region, int cls, float delta){
         if (t>0.f){ pe->strata[cls].pop-=t; need-=t; took+=t; }
     }
     rv->strata[cls].pop-=took; if (rv->strata[cls].pop<0.f) rv->strata[cls].pop=0.f;
+    return -took;
+}
+/* MONNAIE M3b-v2 — item 5 : miroir d'econ_region_treasury_add/pop_add pour la RICHESSE d'une
+ * classe — sert au dispatch des dépenses d'État qui restent au grain RÉGION (INVEST/ROADS,
+ * curseurs JOUEUR historiques, cf. §item5 plus bas) : le crédit route sur la province PORTEUSE
+ * (jamais un nouveau pool région), la vue region[] suit pour les lecteurs intra-mois. */
+float econ_region_wealth_add(WorldEconomy *e, int region, int cls, float delta){
+    if (!e || region<0 || region>=e->n_regions || cls<0 || cls>=CLASS_COUNT || delta==0.f) return 0.f;
+    RegionEconomy *rv=&e->region[region];
+    int rep=region_carrier_prov(e,region);
+    if (rep<0){                                   /* FIXTURE (banc) : vue seule */
+        if (delta>0.f){ rv->strata[cls].wealth+=delta; return delta; }
+        float t=rv->strata[cls].wealth; if(t>-delta)t=-delta; if(t<0.f)t=0.f;
+        rv->strata[cls].wealth-=t; return -t;
+    }
+    if (delta>0.f){
+        e->prov[rep].strata[cls].wealth+=delta;
+        rv->strata[cls].wealth+=delta;
+        return delta;
+    }
+    float need=-delta, took=0.f;
+    { float t=e->prov[rep].strata[cls].wealth; if(t>need)t=need;
+      if (t>0.f){ e->prov[rep].strata[cls].wealth-=t; need-=t; took+=t; } }
+    for (int p=0; p<e->n_prov && need>1e-6f; p++){
+        if (p==rep) continue;
+        ProvinceEconomy *pe=&e->prov[p];
+        if (pe->region!=region || !pe->active) continue;
+        float t=pe->strata[cls].wealth; if(t>need)t=need;
+        if (t>0.f){ pe->strata[cls].wealth-=t; need-=t; took+=t; }
+    }
+    rv->strata[cls].wealth-=took; if (rv->strata[cls].wealth<0.f) rv->strata[cls].wealth=0.f;
     return -took;
 }
 
@@ -3351,6 +3394,17 @@ void econ_tick(WorldEconomy *e, float dt) {
             float paid_up = (surplus > 0.f) ? fminf(upkeep_order, surplus) : 0.f;
             re->treasury -= paid_up;                                       /* payé du surplus, la réserve tient */
             if (re->owner>=0) econ_flux_add(re->owner, FX_UPKEEP, -paid_up);  /* I0 : entretien édifices */
+            /* MONNAIE M3b-v2 — item 5 (dispatch des dépenses d'État, décision joueur
+             * 2026-07-14) : l'entretien PAIE les ouvriers/fonctionnaires qui l'assurent —
+             * un TRANSFERT vers les 3 classes de CETTE province (33/33/33, tunable),
+             * plus une destruction pure. */
+            if (paid_up>0.f && re->owner>=0){
+                float sl=tune_f("UPKEEP_SHARE_LAB",UPKEEP_SHARE_LAB), sb=tune_f("UPKEEP_SHARE_BOURG",UPKEEP_SHARE_BOURG);
+                float se=1.f-sl-sb; if (se<0.f) se=0.f;
+                re->strata[CLASS_LABORER].wealth   += paid_up*sl;
+                re->strata[CLASS_BOURGEOIS].wealth += paid_up*sb;
+                re->strata[CLASS_ELITE].wealth     += paid_up*se;
+            }
             g_friche[pid] = fr;
             if (fr) g_n_friche++;
             /* SURCOÛTS ANTI-HOARDING (G0.4 surtaxe IPM sur l'entretien + H7 encadrement des
@@ -3362,14 +3416,27 @@ void econ_tick(WorldEconomy *e, float dt) {
                 float surcharge = (base_up*(ipmf-1.f)                                  /* la part IPM de l'entretien */
                                 + mlev*tune_f("MANUF_UPKEEP_DAY",MANUF_UPKEEP_DAY)*365.f*dt*ipmf) * upkeep_mult;
                 if (surcharge>0.f){ float pay=fminf(surcharge, re->treasury - hof); re->treasury -= pay;
-                    if (re->owner>=0) econ_flux_add(re->owner, FX_ENCADR, -pay); }  /* I0 : surtaxe IPM + encadrement */
+                    if (re->owner>=0){ econ_flux_add(re->owner, FX_ENCADR, -pay);  /* I0 : surtaxe IPM + encadrement */
+                        /* item 5 : encadrement des manufactures → gages, clé 42/20/38 de LA
+                         * PROVINCE (les ouvriers encadrés SONT la classe qui manque). */
+                        re->strata[CLASS_LABORER].wealth   += pay*WAGE_SHARE;
+                        re->strata[CLASS_BOURGEOIS].wealth += pay*(1.f-WAGE_SHARE-TAX_RATE);
+                        re->strata[CLASS_ELITE].wealth     += pay*TAX_RATE; } }
             }
         }
         /* G0.4 — le FASTE de cour : au-delà de 10k, 0.5 %/mois du surplus se dépense
          * (frein au hoarding — un trésor qui gonfle finance le prestige). */
         { float cf=tune_f("COURT_FLOOR",COURT_FLOOR);
           if (re->treasury > cf){ float court=(re->treasury - cf) * tune_f("COURT_RATE",COURT_RATE) * (dt*12.f);
-              re->treasury -= court; if (re->owner>=0) econ_flux_add(re->owner, FX_COURT, -court); } }
+              re->treasury -= court;
+              if (re->owner>=0){
+                  econ_flux_add(re->owner, FX_COURT, -court);
+                  /* item 5 : le faste de cour → richesse des ÉLITES de la CAPITALE (le faste
+                   * ruisselle) — seule famille du dispatch qui n'est PAS locale : la cour
+                   * est un SIÈGE, pas une province quelconque. */
+                  int cap=econ_country_capital_prov(e, re->owner);
+                  if (cap>=0 && cap<e->n_prov) e->prov[cap].strata[CLASS_ELITE].wealth += court;
+              } } }
         /* I3 — ADMIN : la part de cette province dans la bureaucratie du pays. Total pays =
          * base × n^exp ; par province = base × n^(exp−1). Croît avec la TAILLE (×IPM). Du
          * SURPLUS au-dessus du seuil de hoarding : l'admin pèse sur les grands trésors, pas
@@ -3379,7 +3446,10 @@ void econ_tick(WorldEconomy *e, float dt) {
             float admin = tune_f("ADMIN_BASE",ADMIN_BASE)
                         * powf((float)nreg, tune_f("ADMIN_EXP",ADMIN_EXP)-1.f) * ipmf * (dt*12.f);
             float before=re->treasury; re->treasury = fmaxf(hof, re->treasury - admin);
-            econ_flux_add(re->owner, FX_ADMIN, -(before - re->treasury));   /* I0 : la ligne admin */
+            float spent=before - re->treasury;
+            econ_flux_add(re->owner, FX_ADMIN, -spent);   /* I0 : la ligne admin */
+            /* item 5 : admin → BOURGEOIS (clercs/fonctionnaires) de CETTE province. */
+            re->strata[CLASS_BOURGEOIS].wealth += spent;
         }
 
         /* §B (TRÉSOR MORT) — l'État REDÉPENSE : il ne hoarde plus, il CIRCULE. Une masse
@@ -3952,7 +4022,14 @@ void econ_tick(WorldEconomy *e, float dt) {
                 if (e->region[r].owner!=c || e->region[r].treasury<=0.f) continue;
                 float part = cost * (e->region[r].treasury/tot);
                 float paid = econ_region_treasury_add(e, r, -part);   /* delta signé (négatif) */
-                if (paid!=0.f) econ_flux_add(c, FX_INVEST, paid);      /* I0 : la ligne investissement */
+                if (paid!=0.f){
+                    econ_flux_add(c, FX_INVEST, paid);      /* I0 : la ligne investissement */
+                    /* item 5 : investissement public → gages 42/20/38 (même région). */
+                    float amt=-paid;
+                    econ_region_wealth_add(e, r, CLASS_LABORER,   amt*WAGE_SHARE);
+                    econ_region_wealth_add(e, r, CLASS_BOURGEOIS, amt*(1.f-WAGE_SHARE-TAX_RATE));
+                    econ_region_wealth_add(e, r, CLASS_ELITE,     amt*TAX_RATE);
+                }
             }
         }
     }
@@ -3984,7 +4061,11 @@ void econ_tick(WorldEconomy *e, float dt) {
                 if (e->region[r].owner!=c || e->region[r].treasury<=0.f) continue;
                 float part = cost * (e->region[r].treasury/tot);
                 float paid = econ_region_treasury_add(e, r, -part);   /* delta signé (négatif) */
-                if (paid!=0.f) econ_flux_add(c, FX_ROADS, paid);      /* I0 : la ligne routes */
+                if (paid!=0.f){
+                    econ_flux_add(c, FX_ROADS, paid);      /* I0 : la ligne routes */
+                    /* item 5 : entretien des routes → LABORERS (cantonniers), même région. */
+                    econ_region_wealth_add(e, r, CLASS_LABORER, -paid);
+                }
             }
         }
     }

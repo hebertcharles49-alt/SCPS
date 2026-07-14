@@ -610,6 +610,7 @@ int econ_region_rep_province(const WorldEconomy *e, int region);
 float econ_region_stock_add(WorldEconomy *e, int region, int good, float delta);
 float econ_region_treasury_add(WorldEconomy *e, int region, float delta);
 float econ_region_pop_add(WorldEconomy *e, int region, int cls, float delta);
+float econ_region_wealth_add(WorldEconomy *e, int region, int cls, float delta);   /* item 5 M3b-v2 : idem, richesse d'une classe */
 /* Reconstruit region[] EN ENTIER depuis prov[] (le CŒUR d'econ_tick, exposé nu — PURE
  * fonction de prov[], AUCUN effet de temps/dt). Exposée pour les BANCS : un fixture qui
  * pose l'économie directement sur prov[] (charte : la vérité vit là) doit pouvoir rafraîchir
@@ -881,6 +882,7 @@ void  econ_country_budget_set(WorldEconomy *e, int cid, BudgetPolicy policy, flo
 /* MONNAIE M1/M2 (docs/MONNAIE_CONCEPT.md) — province CAPITALE d'un pays (grain province,
  * WorldEconomy seul : econ_tick n'a pas de World*). -1 si aucune (pays mort/sans capitale). */
 int   econ_country_capital_prov(const WorldEconomy *e, int cid);
+void  econ_wage_split(float amount, float *lab, float *bourg, float *elite);   /* item 5 M3b-v2 : la clé 42/20/38 publique */
 /* Part ANNUELLE [0..1] de la réserve frappée CE pays : le curseur joueur (BUDGET_MINT,
  * défaut 0 = golden-neutre) pour le pays du slot 0 (culture_player_cid), la politique FIXE
  * de l'IA (MINT_AI_SHARE, registre J) pour tous les autres — jamais mélangés. */
