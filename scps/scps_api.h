@@ -374,6 +374,9 @@ int scps_province_buildings(ScpsSim *s, int province, ScpsProvBld *out, int max)
 /* les ÉDIFICES de BASE bâtis (grenier, marché, temple, remparts…) — lus du masque
  * edi_built de la province. niveau/ouvriers = 0 (un édifice n'a pas d'équipe). */
 int scps_province_edifices(ScpsSim *s, int province, ScpsProvBld *out, int max);
+/* EN FRICHE (E1bis.10) : entretien/encadrement impayé ⇒ production ×0.6 (FRICHE_FACTOR).
+ * 0/1, PUR (aucun tick) — pour l'alerte de l'onglet Infrastructure. */
+int scps_province_friche(ScpsSim *s, int province);
 
 /* le JOURNAL d'évènements de la province : an + libellé résolu + signe
  * (+1 fléau · -1 faveur · 0 neutre) + HOVER « complet » (effets : production ↓,
@@ -794,6 +797,12 @@ int scps_build_legal(ScpsSim *s, int province, int edifice);
 int scps_build_legal_ex(ScpsSim *s, int province, int edifice, int *reason_out);
 const char *scps_edifice_name(int edifice);   /* nom (picker « poser » de l'onglet province) */
 int scps_edifice_succ(int edifice);           /* palier suivant (le « + » ; EDIFICE_COUNT = sommet) */
+/* ENTRETIEN (2026-07-14, retour joueur « le mécanisme... passé à la trappe ? ») : or/mois
+ * ARRONDI (tangible), miroir EXACT du prélèvement E1bis.10 (econ_edifice_upkeep_month) —
+ * PUR (type d'édifice seul, comme scps_edifice_name/_succ) : le prélèvement réel ne dépend
+ * PAS de la province/du marché régional. Déjà porté par scps_building_roster (champ
+ * `entretien`) ; exposé aussi en autonome pour la fiche province (chip édifice bâti). */
+int scps_edifice_upkeep_month(int edifice);
 
 /* PANNEAU B — le joueur pose une MANUFACTURE civile (le §NF l'exclut : voici la main).
  * RE-KEY : `province` est un PID DIRECT (jamais une région). bld = BuildingType (l'index
@@ -823,6 +832,11 @@ typedef struct {
     const char *alt1; float alt1_q;   /* repli de in1 ; "" si aucun */
 } ScpsManufRecipe;
 void scps_manuf_recipe(int bld, ScpsManufRecipe *out);
+/* ENTRETIEN (2026-07-14) : or/mois ARRONDI, miroir EXACT du terme H7 (encadrement) du
+ * prélèvement E1bis.10 (econ_manuf_upkeep_month) — au NIVEAU BÂTI si la manufacture existe
+ * déjà dans `province` (pid direct), sinon au niveau de NAISSANCE (5, econ_build_manufacture)
+ * pour prévisualiser le coût AU PICKER avant de bâtir. */
+int scps_manuf_upkeep_month(ScpsSim *s, int province, int bld);
 
 /* ── ESCLAVAGE — la strate CLASS_SLAVE : garder/affranchir/vendre --------------
  * L'AFFRANCHISSEMENT (granularité PAYS, une politique) : CMD_MANUMIT, aucun
@@ -922,6 +936,7 @@ typedef struct {
     int           n_cost;
     ScpsBuildCost cost[SCPS_BUILD_COSTS];   /* matériaux : nom de ressource + quantité */
     int           gold;        /* prix OR de la recette au marché de la capitale (agency_build_gold) */
+    int           entretien;   /* or/mois d'entretien une fois bâti (miroir E1bis.10, arrondi) */
     int           days;        /* durée de chantier */
     int           debloque;    /* 1 si la tech du pays l'ouvre */
     int           tier;        /* palier familial (edifice_tier : Sanctuaire 1 → Temple 2 → …) */

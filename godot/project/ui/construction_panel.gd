@@ -350,6 +350,16 @@ func _edifice_card(w, b: Dictionary) -> Control:
 		effl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		vb.add_child(effl)
 
+	# L2bis — ENTRETIEN (retour joueur 2026-07-14 : le moteur le prélève chaque mois, la
+	# carte doit le dire — miroir EXACT E1bis.10, valeur réelle, jamais le calcul).
+	var upk := int(b.get("entretien", 0))
+	if upk > 0:
+		var upkl := Label.new()
+		upkl.theme_type_variation = "RowDim"
+		upkl.text = "Entretien : ~%d or/mois" % upk
+		upkl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		vb.add_child(upkl)
+
 	# L3 — RESSOURCES (la recette, en icônes)
 	var cost: Array = b.get("cost", [])
 	if cost.is_empty():
@@ -422,20 +432,24 @@ func _build_manufactures() -> void:
 		any = true
 		var mnom := String(w.manuf_name(bld))
 		var rec: Dictionary = w.manuf_recipe(bld) if w.has_method("manuf_recipe") else {}
-		_body.add_child(_manuf_card(bld, mnom, _recipe_text(rec), mcost))
+		var upk := int(w.manuf_upkeep_month(target_pid, bld)) if w.has_method("manuf_upkeep_month") else 0
+		_body.add_child(_manuf_card(bld, mnom, _recipe_text(rec), mcost, upk))
 	if not any:
 		_dim_line("aucune manufacture posable ici (intrants/tech)")
 
-func _manuf_card(bld: int, nom: String, recipe_txt: String, mcost: int) -> Control:
+func _manuf_card(bld: int, nom: String, recipe_txt: String, mcost: int, upkeep: int) -> Control:
 	var card := InfoCard.new()
 	card.mouse_filter = Control.MOUSE_FILTER_STOP
 	card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	card.add_theme_stylebox_override("panel", ParchTheme.sb(ParchTheme.HEADER_BG, ParchTheme.BORDER, 1, 4, 10, 10, 8, 8))
+	var info_lines := [{"label": "Recette", "value": recipe_txt}]
+	if upkeep > 0:
+		info_lines.append({"label": "Entretien", "value": "~%d or/mois" % upkeep})
 	card.card_data = {
 		"title": nom,
 		"state": "Constructible",
 		"trend": ("%d or (chantier)" % mcost) if mcost > 0 else "coût au drain",
-		"lines": [{"label": "Recette", "value": recipe_txt}],
+		"lines": info_lines,
 		"body": "Cliquez la carte pour ordonner le chantier.",
 	}
 	card.gui_input.connect(func(e):
@@ -470,6 +484,15 @@ func _manuf_card(bld: int, nom: String, recipe_txt: String, mcost: int) -> Contr
 	rl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	rl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vb.add_child(rl)
+
+	# ENTRETIEN (retour joueur 2026-07-14 : le moteur le prélève chaque mois, la carte
+	# doit le dire — miroir EXACT E1bis.10, au niveau de naissance ici, pas encore bâtie).
+	if upkeep > 0:
+		var upkl := Label.new()
+		upkl.theme_type_variation = "RowDim"
+		upkl.text = "Entretien : ~%d or/mois" % upkeep
+		upkl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		vb.add_child(upkl)
 	return card
 
 # ── LE CLIC agit : on appelle l'actionneur joueur (façade) et on affiche le retour ──

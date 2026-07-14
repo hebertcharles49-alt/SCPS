@@ -234,6 +234,11 @@ func _build_infrastructure(w, info: Dictionary, _cap: Dictionary) -> void:
 			ParchTheme.RED if int(info.get("services_libres", 0)) <= 0 else ParchTheme.DIM_INK)
 	if bool(info.get("seuil_revolte", false)):
 		_line("⚠ Au bord de la révolte (agitation %d)" % agit, "Expense")
+	# FRICHE (E1bis.10) : entretien/encadrement impayé ⇒ production ×0.6 — retour joueur
+	# 2026-07-14 (« le mécanisme d'entretien... passé à la trappe ? ») : le moteur le fait,
+	# il fallait le DIRE.
+	if w.has_method("province_friche") and int(w.province_friche(_pid)) == 1:
+		_line("⚠ En friche — entretien impayé (production ×0.6)", "Expense")
 
 	# PEUPLES — frises culture/foi, DÉTAIL AU HOVER (pas de légende toujours affichée)
 	var pop := float(info.get("ames", 0))
@@ -403,6 +408,10 @@ func _manuf_chip(w, mine: bool, nom: String, niv: int, ouv: int, bid: int) -> Co
 		var out_nom := String(rec.get("out", ""))
 		if out_nom != "" and _income.has(out_nom):
 			tip += " · produit +%s %s/mois" % [_grp(int(round(float(_income[out_nom]) * 30.0))), out_nom]
+	if bid >= 0 and w.has_method("manuf_upkeep_month"):
+		var upk := int(w.manuf_upkeep_month(_pid, bid))
+		if upk > 0:
+			tip += " · entretien ~%d or/mois" % upk
 	var fr := _chip_frame(tip, true)
 	var hb: HBoxContainer = fr[1]
 	_icon(hb, UIKit.manuf_sprite(nom), 26)

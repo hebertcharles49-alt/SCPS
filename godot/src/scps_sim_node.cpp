@@ -64,6 +64,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("province_agitation", "province"), &ScpsWorld::province_agitation);
     ClassDB::bind_method(D_METHOD("province_buildings", "province"), &ScpsWorld::province_buildings);
     ClassDB::bind_method(D_METHOD("province_edifices", "province"),  &ScpsWorld::province_edifices);
+    ClassDB::bind_method(D_METHOD("province_friche", "province"),    &ScpsWorld::province_friche);
     ClassDB::bind_method(D_METHOD("day_of_year"),                    &ScpsWorld::day_of_year);
     ClassDB::bind_method(D_METHOD("country_known", "country"),       &ScpsWorld::country_known);
     ClassDB::bind_method(D_METHOD("province_log", "province"),       &ScpsWorld::province_log);
@@ -159,9 +160,11 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("manuf_legal", "province", "bld"),        &ScpsWorld::manuf_legal);
     ClassDB::bind_method(D_METHOD("manuf_cost"),                          &ScpsWorld::manuf_cost);
     ClassDB::bind_method(D_METHOD("manuf_recipe", "bld"),                 &ScpsWorld::manuf_recipe);
+    ClassDB::bind_method(D_METHOD("manuf_upkeep_month", "province", "bld"), &ScpsWorld::manuf_upkeep_month);
     ClassDB::bind_method(D_METHOD("manuf_name", "bld"),                   &ScpsWorld::manuf_name);
     ClassDB::bind_method(D_METHOD("edifice_name", "edifice"),             &ScpsWorld::edifice_name);
     ClassDB::bind_method(D_METHOD("edifice_succ", "edifice"),             &ScpsWorld::edifice_succ);
+    ClassDB::bind_method(D_METHOD("edifice_upkeep_month", "edifice"),     &ScpsWorld::edifice_upkeep_month);
     ClassDB::bind_method(D_METHOD("build_legal", "province", "edifice"),    &ScpsWorld::build_legal);
     ClassDB::bind_method(D_METHOD("colonized_total"),               &ScpsWorld::colonized_total);
     ClassDB::bind_method(D_METHOD("colony_status"),                 &ScpsWorld::colony_status);
@@ -774,6 +777,9 @@ Array ScpsWorld::province_edifices(int province) {
     }
     return a;
 }
+int ScpsWorld::province_friche(int province) const {
+    return sim ? scps_province_friche(sim, province) : 0;
+}
 
 int ScpsWorld::day_of_year() const { return scps_day_of_year(sim); }
 int ScpsWorld::country_known(int country) const { return scps_country_known(sim, country); }
@@ -1298,6 +1304,7 @@ Array ScpsWorld::building_roster(int country) {
         d["type"]     = b[i].type;
         d["nom"]      = String::utf8(b[i].nom);
         d["gold"]     = b[i].gold;
+        d["entretien"] = b[i].entretien;   /* or/mois une fois bâti (miroir E1bis.10) */
         d["days"]     = b[i].days;
         d["debloque"] = (bool)b[i].debloque;
         d["tier"]       = b[i].tier;
@@ -1725,6 +1732,11 @@ int ScpsWorld::manuf_legal(int province, int bld) {
 int ScpsWorld::manuf_cost() const {
     return sim ? scps_manuf_cost(sim) : 0;
 }
+/* ENTRETIEN/mois d'une manufacture — miroir E1bis.10 (au niveau bâti, ou naissance si
+ * pas encore posée là : le picker prévisualise). */
+int ScpsWorld::manuf_upkeep_month(int province, int bld) const {
+    return sim ? scps_manuf_upkeep_month(sim, province, bld) : 0;
+}
 /* LA RECETTE réelle d'une manufacture (menu construction, « vérité absolue ») : noms
  * résolus + quantités RÉELLES (RECIPE). Ne dépend pas du sim (table de design) mais on
  * garde la signature membrane-cohérente (const, pas de sim requis). */
@@ -1785,6 +1797,9 @@ String ScpsWorld::edifice_name(int edifice) {
 }
 int ScpsWorld::edifice_succ(int edifice) {
     return scps_edifice_succ(edifice);
+}
+int ScpsWorld::edifice_upkeep_month(int edifice) const {
+    return scps_edifice_upkeep_month(edifice);
 }
 bool ScpsWorld::can_colonize(int prov) {
     return sim ? scps_can_colonize(sim, prov) != 0 : false;

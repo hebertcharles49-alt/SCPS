@@ -1233,6 +1233,13 @@ int scps_province_edifices(ScpsSim *s, int pid, ScpsProvBld *out, int max){
     return n;
 }
 
+/* EN FRICHE (E1bis.10) : entretien/encadrement impayé ⇒ prod ×0.6 — miroir PUR de
+ * econ_province_friche (l'état posé par econ_tick, jamais recalculé ici). */
+int scps_province_friche(ScpsSim *s, int pid){
+    if (!s || !s->ready || pid<0 || pid>=s->w->n_provinces) return 0;
+    return econ_province_friche(pid);
+}
+
 /* le JOURNAL d'évènements de la province : les dernières entrées (an + libellé +
  * signe), la PLUS RÉCENTE en tête. Lecture pure du tampon provlog. Retourne n. */
 /* le mot de chaque stat touchée par un évènement (cf. JEFF_*) */
@@ -2333,6 +2340,15 @@ int scps_edifice_succ(int edifice){
     if (edifice<0 || edifice>=EDIFICE_COUNT) return EDIFICE_COUNT;
     return (int)edifice_succ((Edifice)edifice);
 }
+/* ENTRETIEN/mois d'un édifice — miroir EXACT du prélèvement E1bis.10 (econ_edifice_upkeep_month,
+ * scps_econ.c) : le TYPE d'édifice fixe son poids ProvBuild (EDIFICES[e].delta, table statique
+ * lue via edifice_def), le prélèvement réel ne pondère par AUCUN prix de marché — PUR, comme
+ * scps_edifice_name/_succ (pas de ScpsSim/pid : vérifié au site de tick, pas supposé). */
+int scps_edifice_upkeep_month(int edifice){
+    const EdificeDef *d = edifice_def((Edifice)edifice);
+    if (!d) return 0;
+    return (int)(econ_edifice_upkeep_month(&d->delta) + 0.5f);
+}
 
 void scps_country_army(ScpsSim *s, int cid, ScpsArmy *out){
     if(!out) return;
@@ -2495,6 +2511,7 @@ int scps_building_roster(ScpsSim *s, int country, ScpsEdificeDef *out, int max){
         }
         o->n_cost   = nc;
         o->gold     = (cap_reg>=0) ? (int)(agency_build_gold(s->sim.econ, cap_reg, (Edifice)e)+0.5f) : 0;
+        o->entretien= scps_edifice_upkeep_month(e);   /* or/mois, miroir E1bis.10 */
         o->debloque = edifice_unlocked(ts,(Edifice)e) ? 1 : 0;
         /* PALIER FAMILIAL (2026-07-10, « une ligne, un bâtiment ») : l'UI masque un
          * tier tant que le PRÉCÉDENT de la famille n'est bâti nulle part chez nous. */
@@ -3017,6 +3034,20 @@ void scps_manuf_recipe(int bld, ScpsManufRecipe *out){
     if (in2>RES_NONE && in2<RES_COUNT){ out->in2=sz(resource_name(in2)); out->q2=q2; }
     if (o  >RES_NONE && o  <RES_COUNT){ out->out=sz(resource_name(o));   out->qout=qout; }
     if (alt1>RES_NONE && alt1<RES_COUNT){ out->alt1=sz(resource_name(alt1)); out->alt1_q=q1; }
+}
+/* ENTRETIEN/mois d'une manufacture — miroir EXACT du terme H7 de la surcharge E1bis.10
+ * (econ_manuf_upkeep_month, scps_econ.c) : au niveau BÂTI si `bld` existe déjà en
+ * `province` (pid direct, RE-KEY), sinon au niveau de NAISSANCE (5, econ_build_manufacture)
+ * — le picker prévisualise le coût AVANT de bâtir, comme scps_manuf_cost prévisualise
+ * le prix d'achat. */
+int scps_manuf_upkeep_month(ScpsSim *s, int province, int bld){
+    if (!s || !s->ready || province<0 || bld<0 || bld>=BLD_TYPE_COUNT) return 0;
+    const WorldEconomy *e = s->sim.econ;
+    if (province>=e->n_prov) return 0;
+    const ProvinceEconomy *pe = &e->prov[province];
+    float level = 5.f;   /* niveau de naissance (picker : pas encore bâtie ici) */
+    for (int i=0;i<pe->n_bld;i++) if (pe->bld[i].type==(BuildingType)bld){ level=pe->bld[i].level; break; }
+    return (int)(econ_manuf_upkeep_month(e, level) + 0.5f);
 }
 int scps_player_embargo(ScpsSim *s, int target, int on){
     if (!s || !s->ready) return 0;

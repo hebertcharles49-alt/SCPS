@@ -425,3 +425,86 @@ n'est QUE ce qui a coûté cher à trouver) :
 **Restes** :
 - `docs/EQUILIBRAGE_CULTURE_FOI_2026-07-10.md` (mentionné dans l'ancien en-tête de scps_faith.c comme trace du « double système ») n'a pas été touché — c'est un doc historique, hors périmètre de cette mission (pas de code, pas de câblage).
 - Survivant unique et confirmé : **scps_religion.{c,h}** (composable P1-P8, sérialisée section RELG, seule religion jouée).
+
+## ENTRETIEN des jobs de manufacture — le moteur l'avait, l'UI ne le montrait PAS (2026-07-14)
+
+**Retour joueur** : « le mécanisme d'entretien des jobs de manufacture est passé à la
+trappe ? » — un agent précédent (S1) avait conclu à tort que le mécanisme n'existait pas.
+
+**Découvertes** :
+- Le prélèvement RÉEL vit à `scps/scps_econ.c:3118-3163` (§ E1bis.10, dans `econ_tick`),
+  DÉJÀ au grain PROVINCE (`for (int pid=0...) ProvinceEconomy *re=&e->prov[pid]`, ligne
+  2780-2781 — la doctrine province-grain était déjà respectée, contrairement à ce que
+  suggérait le brief de mission). Deux termes : `base_up` (édifices, tous les ticks) et
+  `surcharge` (manufactures H7 + IPM sur `base_up`, seulement si `re->treasury > hof`).
+- **Pourquoi S1 ne l'a pas vu** : le modèle agrège les édifices en DELTAS (`re->build`,
+  une struct `ProvBuild` à 8 champs pondérés : K_inst/H_coerc/P_open/PE_infra/food_cap/
+  port/faith/savoir) — PAS de registre « combien coûte CET édifice précis ». `base_up`
+  lit `infra = Σ(re->build.*)`, jamais une liste d'édifices individuels. Un grep de
+  `EDIFICES[e].delta` OU `re->build` sans lire jusqu'à la ligne 3139 (`base_up = infra *
+  BUILD_GOLD_PER_DELTA / ENTRETIEN_DIV * 365 * dt`) laisse croire qu'aucune valeur
+  par-bâtiment n'est reconstructible — FAUX : `re->edi_built` (bitmask, posé à la
+  construction) donne la PRÉSENCE par édifice, et `EDIFICES[e].delta` (table statique,
+  `scps_agency.c:16-101`, lue via `edifice_def()`) donne le poids ProvBuild FIXE de CE
+  type — assez pour isoler la contribution d'UN SEUL édifice sans registre dédié (la
+  somme pondérée est linéaire : `infra_e = delta.K_inst + delta.H_coerc×DEF_UPKEEP_MULT
+  + …`, indépendante des AUTRES édifices bâtis là).
+- **Piège du brief de mission** : il supposait `build_gold = prix de revient au marché
+  (agency_build_gold)`. FAUX — vérifié au site de tick : `base_up` n'utilise QUE la
+  constante fixe `BUILD_GOLD_PER_DELTA=35` (proxy d'audit), JAMAIS `agency_build_gold`
+  (qui sert UNIQUEMENT au prix d'ACHAT ponctuel, `scps_building_roster.gold`, market-
+  dépendant — deux formules DIFFÉRENTES pour deux usages différents, achat vs entretien).
+  Un lecteur qui aurait suivi le brief à la lettre aurait affiché une valeur qui DÉRIVE du
+  prélèvement réel (bougerait avec le marché régional) au lieu de le MIROITER exactement.
+- `dt` du tick réel est TOUJOURS `1/12` en jeu (`scps_sim.c:1019`, `PROF(PB_ECON,
+  econ_tick(s->econ, 1.f/12.f))` — le seul site d'appel non-banc) : `365×dt` dans
+  `base_up`/`surcharge` = les jours du MOIS, donc la valeur PRÉLEVÉE au tick EST DÉJÀ
+  la valeur mensuelle réelle. Aucune conversion à inventer (doctrine « jamais le calcul,
+  la valeur réelle »).
+- La contribution manufacture (`surcharge`) somme `mlev = Σ bld[i].level` sur TOUTE la
+  province puis multiplie par `MANUF_UPKEEP_DAY×365×dt×ipmf` — encore linéaire par
+  bâtiment (`level_i × C`), donc isolable SANS registre (mais avec `pe->bld[i].level`
+  DÉJÀ par-bâtiment, ce n'était même pas une agrégation à défaire ici).
+
+**Livré** (3 lecteurs purs, miroirs EXACTS, aucune touche au prélèvement) :
+- `econ_edifice_upkeep_month(const ProvBuild *delta)` + `econ_manuf_upkeep_month(const
+  WorldEconomy *e, float level)` + `econ_province_friche(int pid)` — `scps/scps_econ.c`
+  (juste après `econ_friche_count`) / déclarés `scps_econ.h`. Signature DÉLIBÉRÉMENT
+  découplée d'un pid pour l'édifice (le prélèvement réel ne pondère par AUCUN prix
+  régional — un pid aurait été un mensonge d'API, pas une fidélité au moteur).
+- `scps_edifice_upkeep_month(int edifice)` (PUR, sans ScpsSim — même patron que
+  `scps_edifice_name`/`scps_edifice_succ`, déviation ASSUMÉE de la signature suggérée par
+  le brief `(ScpsSim*, pid, edifice)` puisque pid s'est avéré non pertinent) + champ
+  `ScpsEdificeDef.entretien` rempli dans `scps_building_roster` (gratuit, aucun appel
+  Godot supplémentaire pour la carte édifice) ; `scps_manuf_upkeep_month(ScpsSim*, pid,
+  bld)` (niveau bâti si présent, sinon niveau de naissance 5 pour le picker) ;
+  `scps_province_friche(ScpsSim*, pid)` — tous dans `scps_api.{c,h}`.
+- Godot : `ScpsWorld::edifice_upkeep_month`, `::manuf_upkeep_month`, `::province_friche`
+  (`godot/src/scps_sim_node.{h,cpp}`, bind_method ajoutés) + `entretien` dans le
+  Dictionary de `building_roster`.
+- UI : `construction_panel.gd` — ligne « Entretien : ~N or/mois » visible sur CHAQUE
+  carte (édifices via `b.get("entretien")`, manufactures via `manuf_upkeep_month` au
+  niveau de naissance). `province_panel_v2.gd` — hover des chips manuf `· entretien ~N
+  or/mois` ; alerte rouge « ⚠ En friche — entretien impayé (production ×0.6) » dans
+  l'onglet Infrastructure si `province_friche(pid)==1`.
+
+**Valeurs observées** (capture `construction_edifices.png`/`construction_manufactures.png`,
+seed 42, an 90) : Tribunal ~3 or/mois, Garnison ~4 (famille défensive ×1.5, vérifié à la
+main : 1.0×1.5×35/400×365/12 ≈ 3.99), Port ~5, Caravansérail ~2, Marché ~3, Grenier ~3 ;
+manufactures (niveau de naissance 5, IPM ≈1.05 à l'an 90) ~8 or/mois chacune (Apothicaire/
+Poterie/Atelier de sculpture). Aucune province EN FRICHE dans cette capture (le trésor
+tenait) — la ligne d'alerte est codée et miroir de `g_friche[pid]`, mais pas observée en
+image (aurait exigé une province délibérément surbâtie).
+
+**Gates** : `make golden` hash IDENTIQUE (5 graines × 12 ans, lecteurs purs, prélèvement
+INTACT) · `make test` 38 VERTS / 0 ROUGE / 1 BUILD ÉCHEC (intertrade_demo, pré-existant
+Windows) sur 39 bancs · `scons platform=windows target=template_debug` 0 warning ·
+probe `province_shot.tscn` (fenêtré, seed=42 years=90) → 6 PNG sauvés, lignes Entretien
+lisibles sur les captures construction_*.
+
+**Restes** : aucun — livrable complet. Le curseur budget (`upkeep_mult`,
+`BUDGET_UPKEEP`) et le clip trésor (paiement partiel si surplus insuffisant) ne sont
+PAS reflétés dans l'affichage (prix NOMINAL de la carte, comme `scps_manuf_cost` affiche
+le prix d'achat plutôt que le montant réellement débité si le crédit est court) — décision
+assumée, cohérente avec le reste du menu construction (aucune autre carte n'affiche de
+valeur « clippée par la trésorerie du moment »).

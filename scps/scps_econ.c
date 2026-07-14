@@ -2218,6 +2218,32 @@ void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
 static bool g_friche[SCPS_MAX_PROV];  /* E1bis.10 : province en friche (entretien/encadrement impayé) */
 static long g_n_friche;               /* télémétrie : provinces en friche au dernier tick */
 long econ_friche_count(void){ return g_n_friche; }
+int econ_province_friche(int pid){ return (pid>=0 && pid<SCPS_MAX_PROV && g_friche[pid]) ? 1 : 0; }
+
+/* LECTEURS PURS (2026-07-14) — le MENU CONSTRUCTION / la fiche province doivent MONTRER
+ * l'entretien que la boucle ci-dessous (§ E1bis.10, dans econ_tick) PRÉLÈVE chaque tick.
+ * MIROIR EXACT : mêmes constantes (ENTRETIEN_DIV/BUILD_GOLD_PER_DELTA/DEF_UPKEEP_MULT/
+ * MANUF_UPKEEP_DAY), même combinaison pondérée que `infra`/`base_up`/`surcharge` plus bas.
+ * Découplé d'un pid : `infra` et `base_up` ne pondèrent QUE par des deltas ProvBuild × la
+ * constante fixe BUILD_GOLD_PER_DELTA (35, proxy d'audit) — AUCUNE dépendance au prix de
+ * marché régional dans le prélèvement réel (vérifié en lisant le site de tick, pas supposé
+ * — agency_build_gold, market-dépendant, ne sert qu'au PRIX D'ACHAT ponctuel, pas à
+ * l'entretien récurrent). dt du tick réel = 1/12 (mensuel, scps_sim.c) : 365×dt = les jours
+ * du mois, donc la valeur PRÉLEVÉE au tick EST DÉJÀ la valeur mensuelle. Ne reflète NI
+ * upkeep_mult (curseur budget) NI le clip trésor (surplus insuffisant → paiement partiel) :
+ * c'est le prix NOMINAL affiché sur la carte, comme scps_manuf_cost affiche le prix
+ * d'achat plutôt que le montant réellement débité si le crédit est court. */
+float econ_edifice_upkeep_month(const ProvBuild *delta){
+    if (!delta) return 0.f;
+    float infra = delta->K_inst + delta->H_coerc*DEF_UPKEEP_MULT + delta->P_open
+                + delta->PE_infra + delta->food_cap + delta->port
+                + delta->faith + delta->savoir;
+    return (infra*BUILD_GOLD_PER_DELTA/tune_f("ENTRETIEN_DIV",ENTRETIEN_DIV)) * 365.f * (1.f/12.f);
+}
+float econ_manuf_upkeep_month(const WorldEconomy *e, float level){
+    float ipmf = (e && e->ipm>0.f) ? e->ipm : 1.f;
+    return level * tune_f("MANUF_UPKEEP_DAY",MANUF_UPKEEP_DAY) * 365.f * (1.f/12.f) * ipmf;
+}
 
 /* M6 (forks §14) — la table des deltas de flux arcanes (design, lue par le banc).
  * Le PUITS (alambic, négatif) est branché dans econ_tick : l'essence purifiée

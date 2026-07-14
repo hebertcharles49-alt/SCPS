@@ -104,6 +104,7 @@ public:
     Dictionary province_agitation(int province);      /* MODIFICATEURS : { value:int, causes:[{cause,delta,decay}] } */
     Array      province_buildings(int province);      /* MANUFACTURES : [{nom, niveau, ouvriers}] */
     Array      province_edifices(int province);       /* ÉDIFICES de base bâtis : [{nom}] */
+    int        province_friche(int province) const;   /* EN FRICHE (entretien impayé) : 0/1 */
     int        day_of_year() const;                   /* jour 0-364 (date d'affichage) */
     int        country_known(int country) const;      /* BROUILLARD : pays découvert par le joueur ? */
     Array      province_log(int province);            /* JOURNAL : [{year, label, sign}] (récent en tête) */
@@ -225,9 +226,11 @@ public:
     int        manuf_legal(int province, int bld);         /* légalité read-only (griser le bouton) */
     int        manuf_cost() const;                       /* le PRIX du chantier (or — même formule que le drain) */
     Dictionary manuf_recipe(int bld) const;               /* la recette réelle (menu construction) */
+    int        manuf_upkeep_month(int province, int bld) const; /* entretien/mois (niveau bâti, ou naissance si absente) */
     String     manuf_name(int bld);                      /* nom d'affichage du BuildingType (miroir display-only) */
     String     edifice_name(int edifice);                /* nom d'un édifice (picker « poser ») */
     int        edifice_succ(int edifice);                /* palier suivant (le « + » upgrade) */
+    int        edifice_upkeep_month(int edifice) const;  /* entretien/mois d'un édifice (miroir E1bis.10) */
     /* lot M — LÉGALITÉ d'ÉDIFICE (miroir read-only du drain CMD_BUILD) : RE-KEY,
      * `province` est un PID DIRECT (jamais une région).
      * { legal:bool, reason:int } — reason 0 OK · 1 structurel · 2 or · 3 matière. */
