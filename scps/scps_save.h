@@ -32,7 +32,14 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 88u           /* v88 : MONNAIE M3b-v2 — L'ÉTAT ACHÈTE LA PRODUCTION à prix
+#define SAVE_VERSION 89u           /* v89 : MONNAIE M3c — LE CRÉDIT RÉEL : la dette devient un
+                                    * PASSIF SÉPARÉ (scps_credit.c, section SVT_CRDT) ventilé par
+                                    * créancier — to_class (dû aux PROPRES classes du pays) +
+                                    * to_cs (dû à SA cité-état créancière) + cs_id, par pays. La
+                                    * section CRDT grandit (2 float + 1 int16 par pays au lieu d'un
+                                    * seul int16 g_creditor) → <v89 refusé (credit_load lit un
+                                    * format différent, byte-count désaligné).
+                                    * v88 : MONNAIE M3b-v2 — L'ÉTAT ACHÈTE LA PRODUCTION à prix
                                     * endogène (la CAISSE = le trésor provincial existant, pas un
                                     * pool neuf) puis REVEND à un niveau de prix national MOBILE
                                     * par pays (docs/MONNAIE_CONCEPT.md §M3-M4) : seul

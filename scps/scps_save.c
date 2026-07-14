@@ -286,6 +286,14 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
     if (w->n_continents<0 || w->n_continents>SCPS_MAX_CONTINENT) return false;
     for (int c=0;c<w->n_countries;c++)
         if (credit_of(c) < -1 || credit_of(c) >= w->n_countries) return false;
+    /* v89 — MONNAIE M3c : la dette désérialisée (scps_credit.c) se revalide (≥0, finie —
+     * même motif que reserve_gold/va_country_prev, v86/v88) ; credit_of(c) déjà borné
+     * ci-dessus couvre le créancier (cs_id, un INDEX). */
+    for (int c=0;c<w->n_countries;c++){
+        float dc=credit_debt_class(c), ds=credit_debt_citystate(c);
+        if (!(dc>=0.f && dc<1.0e12f)) return false;
+        if (!(ds>=0.f && ds<1.0e12f)) return false;
+    }
     if (w->n_rivers    <0 || w->n_rivers    >SCPS_MAX_RIVERS)    return false;
     for (int i=0;i<w->n_rivers;i++)
         if (w->river[i].len<0 || w->river[i].len>SCPS_RIVER_MAXLEN) return false;
