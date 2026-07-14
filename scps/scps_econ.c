@@ -2683,16 +2683,23 @@ void econ_mobility_reset(void){
  * la fin du run PRÉCÉDENT (celui qui a produit le fichier de save, potentiellement des centaines
  * de jours après le point de sauvegarde), pas la valeur du jour où on a sauvegardé — d'où la
  * divergence tick-side observée par --savetest (Σtreasury dérivant de quelques centièmes à ~15
- * sur les 400 jours suivant un reload). g_basket_pc (recalculé ET consommé dans le MÊME passage
- * de econ_tick, avant toute lecture) et g_n_friche (télémétrie, RAZ en tête de chaque econ_tick)
- * restent SCRATCH à raison — ils ne sont pas sérialisés, par symétrie avec econ_prodcap_save. */
+ * sur les 400 jours suivant un reload). g_n_friche (télémétrie, RAZ en tête de chaque econ_tick)
+ * reste SCRATCH à raison — il n'est pas sérialisé, par symétrie avec econ_prodcap_save.
+ * MONNAIE M3b-v2 (2026-07-14) — g_basket_pc a CESSÉ d'être scratch : l'exonération fiscale sous
+ * le panier vital (§3b, tax_base) le LIT désormais AVANT sa propre écriture de CE tick (le
+ * panier du tick PRÉCÉDENT, le même lag que mobility_tick_region plus bas) — un vrai
+ * accumulateur croisant les ticks, comme g_friche/g_lowsat_streak juste au-dessus (même
+ * savetest fix, même motif). Rejoint le blob EMOB — pas de nouveau tag, pas de bump de
+ * SAVE_VERSION séparé (couvert par le même v88 que va_country_prev). */
 void econ_mobility_save(FILE *f){
     fwrite(g_friche,sizeof g_friche,1,f);
     fwrite(g_lowsat_streak,sizeof g_lowsat_streak,1,f);
+    fwrite(g_basket_pc,sizeof g_basket_pc,1,f);
 }
 bool econ_mobility_load(FILE *f){
     return fread(g_friche,sizeof g_friche,1,f)==1
-        && fread(g_lowsat_streak,sizeof g_lowsat_streak,1,f)==1;
+        && fread(g_lowsat_streak,sizeof g_lowsat_streak,1,f)==1
+        && fread(g_basket_pc,sizeof g_basket_pc,1,f)==1;
 }
 static void mobility_move(ProvinceEconomy *re, int from, int to, float frac){
     float pop=re->strata[from].pop; if (pop<1.f || frac<=0.f) return;
