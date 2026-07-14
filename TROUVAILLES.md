@@ -682,3 +682,103 @@ fuzz-save 8/8 · scons DLL 0 warning · probe budget_shot : ligne « Réserve : 
   sans capitale ne frappe plus (cap=-1 ⇒ 0), l'or dort. À raccorder au pillage en M6 (transport).
 - L'UI ne montre la réserve que du JOUEUR (bandeau + ligne Rentrées) ; pas de vue par-pays
   étranger (espionnage/diplo) — hors périmètre M2.
+
+## CHANTIER MONNAIE — M3a : instrument + 3 fuites de l'audit M0 (2026-07-14)
+
+**Livré** (5 commits : instrument 8de802b · trade 4d77678 · arbitrage 8b8721d ·
+colonisation 1679d09 · re-baseline e83047f) : la ligne chronicle « création
+résiduelle : VA X/an · conso −Y/an · colonisation Z/an · autres W/an » + les
+fixes M0 §2.13 (fuite scps_trade), §1.3 (double-crédit arbitrage), §1.2
+(colonisation ex nihilo → transfert, save v87).
+
+**Découvertes** :
+- **⚠ LE CHIFFRE CLÉ, contre-intuitif : la dérive de M MONTE après les fixes**
+  (moyenne 9 sims : +160.5k/an pre-m3 → +186.8k/an HEAD, +16 %). Ce n'est PAS
+  un échec de conservation : la PLUS GROSSE des 3 anomalies (la fuite
+  scps_trade) était classée §2.13 DESTRUCTION dans l'audit M0 lui-même — un
+  trou noir accidentel qui BRÛLAIT de l'or à chaque transaction intra-empire.
+  La colmater rend cet or au monde ⇒ M monte mécaniquement. Les deux CRÉATIONS
+  retirées (arbitrage ~borné/tick, colonisation ~250 or/fondation ≈ 110/an/sim)
+  sont d'un ordre de grandeur trop petites pour compenser. « Conservation » ≠
+  « dérive plus basse » : l'attente « la dérive doit baisser » ne se réalisera
+  qu'en M3b, quand VA/conso (les deux monstres) seront convertis.
+- **La preuve propre par l'instrument** : cherry-pick du commit instrument
+  (poids-zéro, golden prouvé identique) sur le worktree pre-m3 ⇒ trajectoires
+  BYTE-IDENTIQUES à pre-m3 nu (lignes « masse monétaire » diff-vides sur les
+  9 sims) — on peut donc comparer les CATÉGORIES avant/après fixes : « autres »
+  (tout sauf VA/conso/colonisation) passe de −47.0k/an (pre, moyenne 9 sims) à
+  −38.1k/an (post) : +8.9k/an, la signature de la fuite trade colmatée (les
+  créations retirées tirent dans l'autre sens, plus faiblement). VA mesurée
+  +105k à +402k/an · conso −17k à −63k/an : le ratio ~6:1 VA/conso est LE
+  déséquilibre que M3b doit fermer — la conso ne détruit qu'un sixième de ce
+  que la VA imprime.
+- **L'intention du module scps_trade tranchée** : sa perte de transport est
+  PHYSIQUE (fret perdu en route, `received=vol×(1−loss)` existait déjà côté
+  volume) et il n'a AUCUN percepteur possible (pas de route/caravanier/péage
+  dans ce module, contrairement à intertrade). Fix minimal : le prix vendeur
+  porte la MÊME perte que le volume (`1−loss` au lieu de `1−transport_cost`)
+  ⇒ revenue == cost_imp exactement. L'alternative « créditer la perte à un
+  acteur » aurait exigé d'inventer un détenteur de route intra-empire — hors
+  périmètre, non choisie.
+- **Le vrai vendeur de l'arbitrage = la SOURCE** (elle encaisse SON prix local
+  sp, une fois) ; le Centre est le vrai ACHETEUR (il paie vol×sp de son trésor,
+  borné à son or — motif du bloc routes 80 lignes plus haut). Sa marge devient
+  IMPLICITE : le stock acheté à sp vaut lp sur son marché — il marge à la
+  revente, il ne double pas. IT_MARGIN_TO_GOLD et ARB_CAPTURE supprimés (plus
+  aucun lecteur — ARB_CAPTURE retiré aussi de scps_tune_list.h, sinon tune_init
+  liste un tunable mort).
+- **La colonisation a DEUX voies asymétriques** : le convoi joueur
+  (econ_colonize_province → econ_colony_day, ponction à l'ORDRE, fondation
+  jusqu'à 3 ans plus tard) exige que la richesse VOYAGE — d'où
+  `ColonyWork.seed_wealth[CLASS_COUNT]` (struct sérialisée ⇒ SAVE_VERSION
+  86→87, save_sane borne [0,1e7], blob ECON fwrite brut = aucun code de
+  sérialisation à écrire, motif reserve_gold v86). La voie immédiate
+  (colonize_from_prov, IA + outre-mer) prélève et livre dans le même appel.
+  Colons perdus en route (cible prise entre-temps) = richesse perdue comme la
+  pop — destruction assumée, comptée par l'instrument (catégorie colonisation).
+- **Gate anti-gel VÉRIFIÉ sans calibrage** : fondations moy./sim 110→104 (s9),
+  118→128 (s11), 108→132 (s42) — l'expansion VIT à COLONY_WEALTH_SHARE=1
+  (plein prélèvement ∝pop). Le tunable existe si un monde futur gèle.
+
+**Pièges** :
+- `git worktree add <tag>` + build MSYS2 : le worktree du tag compile dans SON
+  dossier avec SON Makefile — mais `git clean`/`checkout` ne purge pas
+  `build/*.o` (ignorés) : partir d'un worktree NEUF (pas d'un checkout recyclé)
+  évite les binaires frankenstein (même piège que le bisect du 14).
+- Le tag `pre-m3` pointe 05963fc, PAS 0f20639 (« + tag pre-m3 » dans le message
+  de 0f20639 est trompeur — le commit doc est APRÈS le tag) : sim-identiques
+  (0f20639 = doc seul), mais un `git diff pre-m3` inclut le doc.
+- L'ordre des commits a un coût : l'instrument DOIT être committé avant les
+  fixes pour que « golden identique » le prouve seul — mais les hooks
+  colonisation de l'instrument (g_colonization_net_cum -=/+=) n'existent
+  qu'AVEC le fix : le compteur est déclaré/committé avec l'instrument (lit 0),
+  câblé par le fix. Sinon le commit instrument ne compile pas seul.
+
+**Sweep apparié (pre-m3 vs HEAD, `./chronicle {9,11,42} 3 250 6 12`)** :
+- Dérive de M par graine (moy. 3 sims, or/an) : 132.5k→146.2k · 189.6k→231.6k ·
+  159.3k→182.6k (voir LE CHIFFRE CLÉ ci-dessus pour la lecture).
+- Satisfaction Laborer par graine : −10/+13/+1 (signes opposés = chaos, motif
+  M1/M2) ; Bourgeois +1/+6/+1 · Élite −2/+10/−1. IPM final 0.89-1.09 (borné).
+- Hégémon mortel : 2/3·3/3·2/3 pre → 1/3·2/3·1/3 post (préservé partout).
+- Catégorie colonisation : EXACTEMENT 0/an sur les 9 sims post (transfert pur
+  prouvé par la mesure, pas par la lecture du code).
+
+**Gates** : golden IDENTIQUE instrument seul (commit séparé) puis re-baseline
+documentée post-fixes · determinism STABLE · make test 38 VERTS/0 ROUGE/1 BUILD
+ÉCHEC (intertrade_demo setenv, pré-existant Windows) · savetest 9 A==B (v87) ·
+fuzz-save 8/8 (216 octets flippés rejetés).
+
+**Restes** :
+- **M3b (la vague suivante, PAS commencée ici)** : convertir VA (§1.1) en
+  ventes payées par le compte de marché et la conso (§2.1) en crédit vendeur —
+  le tableau de bord « création résiduelle » est prêt, VA/conso doivent fondre
+  vers 0 et la dérive de M avec.
+- Le trésor du Centre borne désormais l'arbitrage (`*h_tr<=0 ⇒ pas d'achat`) :
+  un Centre ruiné n'arbitre plus — voulu (conservation), mais si un calibrage
+  futur trouve les cités-états trop pauvres pour leur « moteur », c'est ici.
+- scps_api_demo/les bancs ne testent PAS seed_wealth explicitement (couvert
+  indirectement par save_io_demo/savetest v87) — un banc dédié « colonie =
+  transfert » serait du luxe pour M3b.
+- Godot DLL non re-buildée (scons) : scps_econ.h a changé (struct ColonyWork)
+  — à re-builder avant la prochaine session de jeu (gates M3a n'incluaient pas
+  scons ; le moteur C est la vérité).
