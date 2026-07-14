@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://b8armypanelshot01"]
+
+[ext_resource type="Script" path="res://army_panel_shot.gd" id="1_apshot"]
+
+[node name="ArmyPanelShot" type="Node"]
+script = ExtResource("1_apshot")
