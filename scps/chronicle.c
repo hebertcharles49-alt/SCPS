@@ -734,10 +734,10 @@ int main(int argc, char **argv){
          * lecture pure (Σ prov[].treasury + Σ prov[].strata[].wealth), AUCUN effet sur
          * la sim/le golden. Voir docs/MONNAIE_M0_AUDIT.md pour le registre complet des
          * sites classés CRÉATION/DESTRUCTION/TRANSFERT/DETTE/INITIALISATION. */
-        { double money_mfin = chronicle_money_mass(s.econ);
-          double money_drift_an = (years>0)? (money_mfin-money_m0)/(double)years : 0.0;
-          printf("   masse monétaire : M(0)=%.0f · M(fin)=%.0f · dérive %+.1f/an (création %.0f · destruction %.0f mesurées)\n",
-                 money_m0, money_mfin, money_drift_an, money_creation_accum, money_destruction_accum); }
+        double money_mfin = chronicle_money_mass(s.econ);
+        double money_drift_an = (years>0)? (money_mfin-money_m0)/(double)years : 0.0;
+        printf("   masse monétaire : M(0)=%.0f · M(fin)=%.0f · dérive %+.1f/an (création %.0f · destruction %.0f mesurées)\n",
+               money_m0, money_mfin, money_drift_an, money_creation_accum, money_destruction_accum);
 
         /* MONNAIE — M1/M2 (print-only) : la frappe (FX_MINT, déjà comptée dans la création
          * ci-dessus) isolée — moyenne/an, réserve fin de partie (jamais consommée entière :
@@ -752,6 +752,25 @@ int main(int argc, char **argv){
           printf("   frappe : %.0f or/an moyen (%d/%d empires frappeurs) · réserve fin %.0f or · %.0f cuivre\n",
                  (years>0)? mint_accum/(double)years : 0.0, n_frappeurs, n_alive_end,
                  reserve_fin_gold, reserve_fin_copper); }
+
+        /* MONNAIE — M3a : L'INSTRUMENT (print-only, docs/MONNAIE_M0_AUDIT.md) — la
+         * création résiduelle PAR CATÉGORIE, le tableau de bord que M3b regardera fondre
+         * vers 0. VA (§1.1) et conso (§2.1) sont mesurées en DIRECT (econ_tick, aucun
+         * compteur FX_* dédié avant M3a) ; colonisation (§1.2) = résidu NET livré−prélevé
+         * de la voie CONVOI (0 sauf colons perdus en route — depuis le fix M3a la
+         * colonisation est un transfert ; la voie immédiate est conservée par
+         * construction, rien à mesurer) ; « autres » = tout le reste de la dérive
+         * (M(fin)−M(0) − VA − conso − colonisation) : le registre non instrumenté
+         * (tribut mûri §1.4, missions §1.5, pillage-stock §2.12, événements §1.7…)
+         * MOINS les sinks FX_* déjà mesurés — un solde, pas une catégorie propre. */
+        { double va_cum=0.0, conso_cum=0.0, coloniz_cum=0.0;
+          econ_money_instrument_get(&va_cum, &conso_cum, &coloniz_cum);
+          double va_an       = (years>0)? va_cum/(double)years : 0.0;
+          double conso_an    = (years>0)? -conso_cum/(double)years : 0.0;
+          double coloniz_an  = (years>0)? coloniz_cum/(double)years : 0.0;
+          double autres_an   = money_drift_an - va_an - conso_an - coloniz_an;
+          printf("   création résiduelle : VA %+.0f/an · conso %+.0f/an · colonisation %+.0f/an · autres %+.0f/an\n",
+                 va_an, conso_an, coloniz_an, autres_an); }
 
         /* ARMSDIAG — copie des compteurs warhost de CETTE sim (RAZ au prochain sim_init). */
         if (getenv("SCPS_ARMSDIAG")){

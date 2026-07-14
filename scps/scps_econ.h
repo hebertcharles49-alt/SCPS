@@ -980,6 +980,15 @@ int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid,
  * fondé par la voie SURVIE anti-spirale (grenier vide, gates de pop/food_sat LEVÉS) —
  * TOUJOURS ⊆ `founded`. Pointeurs NULL ignorés individuellement. */
 void econ_colony_stats(long *founded, long *survival);
+/* MONNAIE M3a — L'INSTRUMENT (print-only, docs/MONNAIE_M0_AUDIT.md) : cumul CUMULATIF
+ * depuis la genèse de CETTE sim (RAZ à econ_init, non sérialisé, motif econ_colony_stats).
+ * `va_produced` (§1.1, extraction+manufacture) et `consumption_destroyed` (§2.1, le panier
+ * des ménages) sont les DEUX sites SANS compteur FX_* dédié (M0 §7). `colonization_net`
+ * (§1.2) est le résidu NET livré−prélevé de la voie convoi — 0 par construction une fois
+ * la colonisation convertie en transfert (fix M3a), sauf colons perdus en route.
+ * Pointeurs NULL ignorés individuellement. */
+void econ_money_instrument_get(double *va_produced, double *consumption_destroyed,
+                                double *colonization_net);
 /* L5 — colonie OUTRE-MER : mêmes portes (pop/vivres/cible vierge) mais coût pop ×2.
  * L'appelant (harnais) a vérifié Port + coque + portée de courants. */
 bool econ_colonize_overseas(WorldEconomy *e, int src_rid, int dst_rid, int cid);

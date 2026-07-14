@@ -1067,6 +1067,24 @@ void econ_colony_stats(long *founded, long *survival){
     if (survival) *survival = g_colony_survival;
 }
 
+/* MONNAIE M3a — L'INSTRUMENT (print-only, docs/MONNAIE_M0_AUDIT.md) : §1.1 (VA) et §2.1
+ * (consommation) sont LA planche à billets et LE trou noir principal, mais n'ont AUCUN
+ * compteur FX_* dédié (M0 §7 : « le recoupement FX_* ... ne couvre PAS la VA de
+ * production, PAS la consommation »). Additions scalaires PURES aux sites de crédit/débit
+ * déjà existants (AUCUNE state simulée/sérialisée nouvelle, poids négligeable, golden
+ * inchangé par construction — vérifié §gate M3a avant tout fix). `g_colonization_net_cum`
+ * (§1.2) est câblé par le fix colonisation lui-même (le résidu livré−prélevé n'existe
+ * comme concept qu'une fois la source du prélèvement posée). Même motif que
+ * g_colony_founded : statics de MODULE, CUMULATIFS sur toute la sim, RAZ à econ_init,
+ * jamais sérialisés. */
+static double g_va_produced_cum=0.0, g_consumption_destroyed_cum=0.0, g_colonization_net_cum=0.0;
+void econ_money_instrument_get(double *va_produced, double *consumption_destroyed,
+                                double *colonization_net){
+    if (va_produced)          *va_produced          = g_va_produced_cum;
+    if (consumption_destroyed)*consumption_destroyed = g_consumption_destroyed_cum;
+    if (colonization_net)     *colonization_net      = g_colonization_net_cum;
+}
+
 /* MEMBRANE DE DÉCISION — le REVENU ANNUEL par pays (voir scps_econ.h). ACCUMULATEUR
  * INTER-TICKS : persiste d'une année sur l'autre → SÉRIALISÉ (motif g_colony_cd/v61 :
  * un reload en garderait sinon la valeur de FIN du run précédent, --savetest diverge).
@@ -1432,6 +1450,7 @@ void econ_init(WorldEconomy *e, const World *w) {
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) for (int g=0;g<RES_COUNT;g++) g_prod_cap[c][g]=-1.f;
     memset(g_colony_cd,0,sizeof g_colony_cd);   /* F1 : RAZ du répit de colonisation (par partie/sim, non sérialisé) */
     g_colony_founded=0; g_colony_survival=0;    /* E7 : RAZ télémétrie colonisation (par partie/sim, non sérialisé) */
+    g_va_produced_cum=0.0; g_consumption_destroyed_cum=0.0; g_colonization_net_cum=0.0;   /* MONNAIE M3a : RAZ instrument (par partie/sim, non sérialisé) */
     econ_flux_reset();                          /* MEMBRANE DE DÉCISION : RAZ le flux courant … */
     memset(g_tax_lastyear,0,sizeof g_tax_lastyear);   /* … et le revenu annuel capté (par partie/sim,
                                                         * un chargement RESTAURE ensuite depuis le save) */
@@ -3180,6 +3199,10 @@ void econ_tick(WorldEconomy *e, float dt) {
         re->strata[CLASS_LABORER].wealth   += wage_pool;
         re->strata[CLASS_BOURGEOIS].wealth += profit_pool;
         re->strata[CLASS_ELITE].wealth     += tax_pool;   /* rente, PAS l'impôt d'État */
+        /* MONNAIE M3a — L'INSTRUMENT (§1.1) : c'est ICI que la VA (extraction+manufacture)
+         * devient de la richesse, sans aucun débit correspondant nulle part — la mesure
+         * pure, print-only, aucun effet sur re->strata. */
+        g_va_produced_cum += (double)(wage_pool+profit_pool+tax_pool);
 
         /* ---- 3b. IMPÔT D'ÉTAT (§6-7) : par classe, taux VISÉ borné par le SEUIL
          * = tolérance(éthos,classe) × (0.4 + 0.6·satisfaction du tick passé).
@@ -3370,6 +3393,7 @@ void econ_tick(WorldEconomy *e, float dt) {
             float units=re->strata[c].pop/100.f*DEMAND_TENSION;   /* /100 hab, tendu +10 % */
             if (units<=0.f){ re->strata[c].satisfaction=0.f; continue; }
             float budget=re->strata[c].wealth;
+            float budget0=budget;   /* MONNAIE M3a — L'INSTRUMENT (§2.1) : snapshot avant les `budget -=` du panier */
             float need_w=0.f, met_w=0.f;   /* pondération par valeur du besoin */
             float comfort_joy=0.f;         /* BONUS poterie/statuaire CONSOMMÉES (luxe qui ÉLÈVE, hors panier) */
             int   nbasket=0, nsat=0;       /* catégories du panier total · satisfaites (got≥τ) */
@@ -3484,6 +3508,9 @@ void econ_tick(WorldEconomy *e, float dt) {
                 }
             }
             re->strata[c].wealth=fmaxf(0.f,budget);
+            /* MONNAIE M3a — L'INSTRUMENT (§2.1) : le panier consommé (budget0−final) part au
+             * STOCK vendu mais AUCUN vendeur n'est crédité — la mesure pure du trou noir. */
+            g_consumption_destroyed_cum += (double)(budget0-re->strata[c].wealth);
             float basket=(need_w>0.f)?met_w/need_w:0.5f;
             /* la surtaxe (§6) gronde : elle ABAISSE la satisfaction → agitation */
             /* CICATRICE D'ANNEXION (étage 3d) : la plaie douce frappe la STABILITÉ — elle ABAISSE
