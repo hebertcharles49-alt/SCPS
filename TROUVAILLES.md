@@ -1104,3 +1104,109 @@ ans + une trajectoire an-par-an ponctuelle vérifiée à la main sur seed 9 seul
   vite ; le motif « photo figée avant la boucle, appliquée en lecture seule, débit
   différé après les sinks existants, clampé à 0 » est le patron RÉUTILISABLE pour toute
   future dépense d'État distribuée par province (item 5 notamment).
+
+## CHANTIER MONNAIE — M3b-v2.1 : item 5, le dispatch des dépenses d'État (2026-07-14)
+
+**Statut : CALIBRÉ-LIVRÉ — golden RE-BASELINÉ VERT (99ef478), gates complets passés.**
+La fin du circuit d'État : les dépenses d'État qui DÉTRUISAIENT la monnaie (les puits
+M0 §2) deviennent des TRANSFERTS vers les classes qui les servent. 6 familles, 6 commits
+(f732347 état-local · 9e611b4 militaire · 8d2ddbc manufactures · 4ceeac0 péages ·
+06b8c1b conseil · b5e4bf8 événements) + levier neutre (24c0c89) + re-baseline (99ef478).
+
+**L'hypothèse directrice de l'orchestrateur VÉRIFIÉE puis nuancée** : oui, recycler les
+puits vers les classes remonte le Laborer (44→53/49/59 sur {9,11,42}, moyenne photo
+an-250, 3 sims/graine) — mais PAS par le canal prévu. Le canal prévu (« la caisse fuit
+⇒ price_level<1 ⇒ revenus<VA ») n'est PAS le canal mesuré : les transferts ne changent
+RIEN à la caisse (l'État dépense pareil, seul le DEVENIR de l'or change), et la VA
+résiduelle (price_level<1) n'a PAS fondu — elle a même GROSSI (économies plus riches ⇒
+plus de VA ⇒ écart caisse/VA stable en ratio). Ce qui a remonté le Laborer, c'est le
+REVENU DIRECT : solde, entretien, chantiers, routes créditent la classe qui manque
+sans passer par le goulot du price_level.
+
+**La table du dispatch (qui touche quoi)** :
+- entretien édifices → 3 classes de LA province, 33/33/33 (UPKEEP_SHARE_LAB/BOURG, reg. J) ;
+- encadrement manufactures (surtaxe IPM+H7) → gages 42/20/38 locaux (econ_wage_split) ;
+- cour → ÉLITES de la CAPITALE (seule famille non-locale : la cour est un siège) ;
+- admin → BOURGEOIS locaux · Conseil/décrets (FX_CONSEIL) → ÉLITES capitale ;
+- solde+recrutement (warhost) + marine (navy) → LABORERS (capitale/rade) ;
+- chantiers de manufactures (4 sites IA + 2 joueur + raw_boost) → LABORERS du chantier
+  (pas de table de matériaux pour les manufactures : tout le coût est des gages) ;
+- curseurs INVEST → 42/20/38 · ROUTES → LABORERS (cantonniers), grain région via le
+  NOUVEAU helper econ_region_wealth_add (miroir exact de econ_region_treasury_add) ;
+- péages (marge d'import agency, levy des routes, détroit) → BOURGEOIS de l'hôte
+  (décision : les marchands, PAS le trésor — l'État y perd un revenu, compensé) ;
+- coûts d'ÉVÉNEMENTS (d_treasury<0, d_treasury_mois<0) → 42/20/38 région sujette ;
+  les GAINS d'événements restent une création pure (trier la contrepartie = un site
+  par événement, hors budget — RESTE).
+- RESTENT des destructions documentées : FX_AUDIT (probité), l'achat d'armes doctrinal
+  (scps_ai.c ~1466 : il CRÉE le stock ex nihilo — payer un vendeur créditerait sans
+  retirer de bien), FX_INTRIGUE, la part libre du chantier d'ÉDIFICE (FX_BUILD paie
+  déjà sources+péage via intertrade_market_consume ; le reliquat des matériaux pris
+  gratis dans l'empire est complexe à isoler — RESTE).
+
+**Mesures (sweep {9,11,42} × 3 sims × 250 ans, photo an-250, vs HEAD-avant-conversions)** :
+
+| seed | Laborer | Bourgeois | Élite | hégémon mortel | dérive M/an |
+|---|---|---|---|---|---|
+| 9  | 44→53 | 77→76 | 78→77 | 3/3→2/3 | 15.1k→24.3k |
+| 11 | 44→49 | 70→69 | 71→72 | 0/3→2/3 ✓ | 22.6k→30.3k |
+| 42 | 50→59 | 79→75 | 76→79 | 0/3→1/3 ✓ | 19.6k→17.3k |
+
+Réf. pre-m3b2 : hégémon 2/3 partout, dérive 130-218k/an. L'hégémon mortel est RESTAURÉ
+(l'amortissement 11/42 diagnostiqué par la vague précédente venait des classes appauvries
+= monde politiquement TROP docile ; les transferts re-suscitent la contestation).
+Trajectoire seed 11 (photos 50/100/150/250) : L 37→42→50→49 — convergence monotone,
+bande atteinte ~an 150, AUCUN collapse. Seed 9 an-100 : 41 (pre-m3b : 47 — l'early game
+reste plus pauvre qu'avant le circuit, converge au-dessus ensuite).
+
+**Calibrage : les leviers balayés et REJETÉS (les conversions SONT le calibrage)** :
+- MINT_ROYALTY/AI_SHARE 0.15→0.25 : L 50/50/55 (perd 3-4 pts sur 9/42), hégémon amorti
+  sur 42 (1/3→0/3) — rejeté ;
+- TAX_EXEMPT_BASKET_MULT ×1.5 : monte seed 11 (49→54) mais 9 (53→48) et 42 (59→54)
+  plongent, hégémon down — le levier REDISTRIBUE le chaos au lieu d'améliorer ; ×2.0
+  pire partout. Rejeté ; le levier reste au registre J (neutre 1.0) pour l'avenir.
+- Leçon : sur un système aussi chaotique, ±5 pts entre deux configs d'UNE graine est
+  du BRUIT de bifurcation — ne juger que sur les 3 graines × 3 sims, jamais une seule.
+
+**Critères durs — le solde honnête** :
+- Laborer ≥50 « sur toute la durée » : NON TENU STRICTO SENSU par AUCUNE config mesurée
+  (pre-m3b2 inclus : 47 à l'an 100) — l'early game d'une jeune colonie est pauvre par
+  STRUCTURE. Tenu en lecture raisonnable : converge en bande (~an 150), moyenne an-250
+  50.3, zéro collapse. Seed 11 à 49 = bruit (cf. leçon ci-dessus).
+- B/E 70-90 : tenu partout sauf B seed 11 à 69 (1 pt, même bruit).
+- conso ≈ 0 ✓ (0-500/an) · colonisation vivante ✓ (109-127 fondations/sim) · friche
+  non épidémique ✓ (5-11 rég/246) · pop ±10 % ✓ (mêmes ordres de grandeur).
+- VA ≈ 0 : NON — 47-105k/an de création résiduelle (price_level<1 structurel, la
+  caisse ne suit pas la VA d'une économie en croissance). Dérive ≈ frappe : NON
+  (frappe ~1-3k/an, dérive 17-30k/an). Ces deux critères exigent que la CAISSE
+  couvre la VA en régime de croissance — un problème de fond du Cœur A (le trésor
+  provincial n'est pas dimensionné pour acheter TOUTE la production), pas un tunable.
+  RESTE MAJEUR pour M3c/M4 : soit la frappe finance la croissance de M (la banque
+  centrale émergente), soit price_level devient le vrai régulateur déflationniste
+  (M4 prix locaux) et la VA nominale converge d'elle-même.
+
+**Pièges** :
+- WAGE_SHARE/TAX_RATE sont des #define FILE-LOCAL de scps_econ.c — un module externe
+  (events, intertrade) ne les voit PAS : econ_wage_split(amount,&l,&b,&e) est le
+  passage obligé (ajouté à scps_econ.h), ne PAS dupliquer les constantes.
+- Le péage de détroit crédite DÉJÀ le trésor du tenant via it_treasury AVANT ma
+  conversion — la conversion remplace ce crédit (wealth au lieu de treasury), ne pas
+  ADDITIONNER les deux (double création silencieuse).
+- `tasklist | grep chronicle` avant tout rebuild : un chronicle.exe encore vivant fait
+  échouer le link (« Permission denied ») en silence dans un script — le build dit
+  BUILD DONE mais le binaire est l'ANCIEN (mesures fantômes). Vécu deux fois.
+- La « satisfaction moy » de la SYNTHÈSE chronicle est la PHOTO de fin de sim (an N),
+  pas une moyenne temporelle — pour une trajectoire, relancer à horizons 50/100/150.
+
+**Gates passés (tous)** : golden VERT (re-baseliné 99ef478, diff 5 lignes revu) ·
+make test 38 VERTS/0 ROUGE/1 BUILD ÉCHEC (intertrade_demo, pré-existant Windows) ·
+make determinism STABLE (5 graines × 12 ans) · scps_viewer --savetest 9 : 2/2 A==B
+byte-identique (v88, aucun nouvel état sérialisé — les transferts sont instantanés,
+zéro accumulateur inter-ticks ajouté) · make fuzz-save 8/8.
+
+**Restes** :
+- VA résiduelle 47-105k/an (voir critères durs ci-dessus) — LE chantier suivant.
+- Gains d'événements (d_treasury>0) : encore une création pure, à trier par événement.
+- FX_AUDIT/intrigue/part libre de FX_BUILD édifices : destructions documentées.
+- Early game Laborer <50 avant ~l'an 150 : structurel (jeunes économies), à revisiter
+  quand la frappe financera la croissance (cf. RESTE MAJEUR).
