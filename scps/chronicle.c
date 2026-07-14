@@ -97,6 +97,19 @@ static void world_class_sat(const WorldEconomy *e, double out[CLASS_COUNT]){
     }
     for (int c=0;c<CLASS_COUNT;c++) out[c] = pw[c]>0 ? 100.0*sw[c]/pw[c] : 0.0;
 }
+/* MONNAIE M4-IP — richesse/tête par CLASSE (pop-pondérée, sur les régions vivantes) : LE
+ * chiffre du critère anti-thésaurisation (se STABILISE en régime = la preuve que l'initiative
+ * privée a un débouché). Miroir exact de world_class_sat (même boucle, wealth au lieu de
+ * satisfaction). */
+static void world_class_wpc(const WorldEconomy *e, double out[CLASS_COUNT]){
+    double ww[CLASS_COUNT]={0}, pw[CLASS_COUNT]={0};
+    for (int r=0;r<e->n_regions;r++){
+        const RegionEconomy *re=&e->region[r];
+        if (!re->active || !re->colonized) continue;
+        for (int c=0;c<CLASS_COUNT;c++){ ww[c]+=(double)re->strata[c].wealth; pw[c]+=(double)re->strata[c].pop; }
+    }
+    for (int c=0;c<CLASS_COUNT;c++) out[c] = pw[c]>0 ? ww[c]/pw[c] : 0.0;
+}
 /* Pays le plus étendu (par régions). */
 static int top_power(const World *w, const WorldEconomy *e, int *out_regions){
     int best=-1, bn=0;
@@ -469,6 +482,8 @@ int main(int argc, char **argv){
     long tot_ligues=0, tot_frondes=0, tot_indep=0, tot_renvers=0, tot_ecrase=0;   /* fronde */
     long tot_bt=0, tot_btj=0, tot_routs=0, tot_rallies=0, tot_mchoc=0, tot_mpour=0, tot_deseng=0, tot_renf=0, tot_nul=0;   /* batailles */
     double tot_sat[CLASS_COUNT]={0}; double tot_trade=0;   /* §distrib : satisfaction par classe + commerce */
+    double tot_wpc[CLASS_COUNT]={0};   /* MONNAIE M4-IP : richesse/tête par classe, fin de sim */
+    long tot_ip_colony=0, tot_ip_manuf=0;   /* MONNAIE M4-IP : initiative privée cumulée */
     long tot_emp_n=0, tot_emp_hub=0;   /* par-empire : moyennes de fin de sim */
     double tot_emp_gold=0, tot_emp_flux=0, tot_emp_imp=0, tot_emp_exp=0, tot_emp_expgold=0;
     long tot_tier_y[3]={0,0,0}; int tot_tier_n[3]={0,0,0};   /* E1 §9 : fenêtres d'accession */
@@ -777,6 +792,9 @@ int main(int argc, char **argv){
                 printf("   an %3d : %2d pays | pop %5.0fk | armée %5.0f | colonisées %3d prov | transf. paix %3d prov | 1er empire %2d rég | prosp %2d stab %2d | %2d révolté(s)\n",
                        snap[si], lv, total_pop(s.econ)/1000.0, total_army(w,s.econ),
                        colonized_provinces(w,s.econ), conq_prov, treg, ap, as_, rv);
+                { double wpc[CLASS_COUNT]; world_class_wpc(s.econ, wpc);
+                  printf("              richesse/tête an %3d : Laborer %.2f · Bourgeois %.2f · Élite %.2f\n",
+                         snap[si-1], wpc[CLASS_LABORER], wpc[CLASS_BOURGEOIS], wpc[CLASS_ELITE]); }
                 si++;
             }
         }
@@ -1137,6 +1155,17 @@ int main(int argc, char **argv){
                  csat[CLASS_LABORER], csat[CLASS_BOURGEOIS], csat[CLASS_ELITE], tradev);
           for (int c=0;c<CLASS_COUNT;c++) tot_sat[c]+=csat[c];
           tot_trade += tradev; }
+        /* MONNAIE M4-IP — richesse/tête par CLASSE, fin de sim (LE critère anti-thésaurisation :
+         * doit se STABILISER en régime — plancher/plafond, plus de croissance sans fin). */
+        { double wpc[CLASS_COUNT]; world_class_wpc(s.econ, wpc);
+          printf("              richesse/tête (M4-IP) : Laborer %.2f · Bourgeois %.2f · Élite %.2f\n",
+                 wpc[CLASS_LABORER], wpc[CLASS_BOURGEOIS], wpc[CLASS_ELITE]);
+          for (int c=0;c<CLASS_COUNT;c++) tot_wpc[c]+=wpc[c]; }
+        /* MONNAIE M4-IP — l'initiative privée : colonies du peuple + manufactures privées,
+         * CUMULATIVES sur cette sim (RAZ à econ_init, motif g_colony_founded/E7). */
+        { long ipc=0, ipm_n=0; econ_ip_stats(&ipc,&ipm_n);
+          printf("              initiative privée : %ld colonie(s) du peuple/sim · %ld manufacture(s) privée(s)/sim\n", ipc, ipm_n);
+          tot_ip_colony+=ipc; tot_ip_manuf+=ipm_n; }
         /* §5 PUISSANCE COMMERCIALE : le pool MENSUEL de volume échangeable (0.04·bourgeois + 0.01·élite,
          * × chaîne commerciale) borne les achats au marché — la preuve d'équilibre = combien il MORD. */
         { long cc_capped=0; double cc_drawn=0.0; intertrade_commerce_diag(&cc_capped,&cc_drawn);
@@ -1701,6 +1730,10 @@ int main(int argc, char **argv){
     printf("   alliances actives (fin de sim) %ld   (moy. %.1f/sim ; la diplomatie respire)\n", tot_alliances, (double)tot_alliances/nsims);
     printf("   satisfaction moy (AVEC distribution) : Laborer %.0f%% · Bourgeois %.0f%% · Élite %.0f%% | commerce/an moy %.0f\n",
            tot_sat[CLASS_LABORER]/nsims, tot_sat[CLASS_BOURGEOIS]/nsims, tot_sat[CLASS_ELITE]/nsims, tot_trade/nsims);
+    printf("   richesse/tête moy fin (M4-IP) : Laborer %.2f · Bourgeois %.2f · Élite %.2f (LE critère anti-thésaurisation : doit se STABILISER en régime)\n",
+           tot_wpc[CLASS_LABORER]/nsims, tot_wpc[CLASS_BOURGEOIS]/nsims, tot_wpc[CLASS_ELITE]/nsims);
+    printf("   initiative privée (M4-IP) .... %ld colonie(s) du peuple (moy. %.1f/sim) · %ld manufacture(s) privée(s) (moy. %.1f/sim)\n",
+           tot_ip_colony, (double)tot_ip_colony/nsims, tot_ip_manuf, (double)tot_ip_manuf/nsims);
     printf("   par empire (fin de sim) ..... trésor moy %.0f or · flux moy %+.1f or/mois (dern. année) · import moy %.1f · export moy %.1f (+%.0f or/an) · hub tenu %ld/%ld\n",
            tot_emp_n? tot_emp_gold/tot_emp_n:0.0,  tot_emp_n? tot_emp_flux/tot_emp_n:0.0,
            tot_emp_n? tot_emp_imp /tot_emp_n:0.0,  tot_emp_n? tot_emp_exp /tot_emp_n:0.0,
