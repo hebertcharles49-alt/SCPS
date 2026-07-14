@@ -1,12 +1,17 @@
 extends Control
-## TechPanel — l'arbre de technologie du JOUEUR (read-only), bascule touche T.
-## Rendu en GRAPHE avec l'addon MEDUSA : un Atom (cercle teinté) par nœud de tech,
-## disposé en RADIAL (angle = quadrant 0-8, rayon = tier 0-5), relié à son prérequis
-## par une arête (GraphSoftLine). La COULEUR dit l'état (verrouillé/recherchable/
-## acquis) ; le bout faustien vire au rouge. Clic sur un nœud → son détail en pied.
-## En-tête : points · présage (bande) · crise %. Lit tech_info/tech_nodes (la façade).
-## ACTIONNABLE : cliquer un nœud RECHERCHABLE le fixe comme cible (player_research) ;
-## l'en-tête montre la recherche EN COURS + sa jauge de progression (research_status).
+## TechPanel — l'arbre de technologie du JOUEUR (read-only sauf le clic « recherche »),
+## bascule touche T. Rendu en TROIS COULOIRS façon Civ 6 : Forge · Société · Savoir,
+## empilés en bandes HORIZONTALES de hauteur FIXE (jamais de scroll vertical) ; les
+## TIERS (0-5) sont des COLONNES qui défilent LATÉRALEMENT (ScrollContainer horizontal
+## seul). Chaque nœud = une CARTE compacte (titre + petites icônes d'effet) ; le détail
+## chiffré (tous les effets) vit au SURVOL (tooltip natif) — jamais de flavor dans la
+## carte ni son dossier. Une flèche légère relie chaque carte à son prérequis.
+## Quand une recherche S'ACHÈVE, un POPUP (tech_popup.gd) affiche effets + flavor —
+## la SEULE apparition du flavor dans tout ce panneau.
+## En-tête : points · présage (bande) · crise % · recherche en cours. Pied : dossier du
+## nœud sélectionné + bande de MÉTABOLISATION (inchangée). Lit tech_info/tech_nodes/
+## heritage_access/merv_metab/research_status (la façade). ACTIONNABLE : cliquer une
+## carte RECHERCHABLE la fixe comme cible (player_research).
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
@@ -22,34 +27,97 @@ var _metab_seen := {}   ## nom héritage (natif à part) → true une fois notif
 var PW := 720.0
 var PH := 560.0
 const HEAD := 52.0          # hauteur d'en-tête (titre + jauges)
-const FOOT := 112.0         # dossier persistant : inclut le chemin suggéré sans chevauchement
+const FOOT := 128.0         # dossier persistant : nom/état/méta/effets (SANS flavor)
 const METAH := 92.0         # bande de MÉTABOLISATION (le +% recherche + accès par héritage + compte Ascension)
 
-# couleurs d'état (sans bibliothèque d'animation Medusa : on teinte le cercle)
+# géométrie des COULOIRS (Civ 6) : 3 bandes de hauteur FIXE, colonnes = TIERS qui défilent
+# latéralement. Aucun de ces nombres ne dépend du nombre de nœuds en hauteur — seule la
+# LARGEUR (nombre de sous-colonnes par tier) grandit avec le contenu.
+const LANE_LABEL_W := 66.0  # colonne de gauche FIGÉE (ne défile pas avec le scroll latéral)
+const TIER_LABEL_H := 18.0  # bandeau "T0..T5" en tête de la zone scrollable
+const CARD_GUTTER  := 6.0
+const CARD_W       := 158.0
+
+# couleurs d'état (sans bibliothèque d'animation Medusa : on teinte la carte)
 const COL_LOCKED   := Color(0.40, 0.40, 0.46)
 const COL_AVAIL    := Color(0.85, 0.60, 0.28)
 const COL_UNLOCKED := Color(0.40, 0.80, 0.46)
 const COL_FAUST    := Color(0.88, 0.24, 0.24)
 
-var _graph                 # Medusa Graph (Control)
-var _atoms := []           # Atom par indice de nœud
-var _info := {}            # Atom -> dict du nœud (pour le détail au clic)
+const LANE_NAMES := ["Savoir", "Forge", "Société"]           # ordre THM_* (scps_tech.h)
+const LANE_INK := [Color(0.35, 0.45, 0.62, 0.85), Color(0.66, 0.34, 0.22, 0.85), Color(0.45, 0.55, 0.30, 0.85)]
+
+## ── CARTE compacte (titre + icônes d'effet), nested class : hit-test = tout le rect
+## (Control par défaut), pas de flavor, tout le détail chiffré vit dans tooltip_text.
+class TechCard extends Control:
+	const CVKit  = preload("res://ui/vkit.gd")
+	const CUIKit = preload("res://ui/uikit.gd")
+	signal activated(idx: int)
+	var idx := -1
+	var title := ""
+	var state_col := Color(0.40, 0.40, 0.46)
+	var locked := false
+	var icons: Array = []
+	var badge: Texture2D = null
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_STOP
+
+	func _gui_input(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			accept_event()
+			activated.emit(idx)
+
+	func _draw() -> void:
+		var r := Rect2(Vector2.ZERO, size)
+		CVKit.fill(self, r, Color(state_col.r, state_col.g, state_col.b, 0.10 if locked else 0.18))
+		CVKit.box(self, r, state_col)
+		var mod := 0.60 if locked else 0.95
+		var text_x := 6.0
+		var show_badge: bool = badge != null and size.y >= 34.0
+		if show_badge:
+			var bs: float = size.y - 6.0
+			draw_texture_rect(badge, Rect2(3.0, 3.0, bs, bs), false, Color(1, 1, 1, mod))
+			text_x = 3.0 + bs + 5.0
+		var tcol := CVKit.COL_DIM if locked else CVKit.COL_PARCH
+		var wrap_w: float = maxf(size.x - text_x - 4.0, 10.0)
+		var max_lines: int = 2 if size.y >= 46.0 else 1
+		CVKit.text_wrapped(self, Vector2(text_x, 3.0), tcol, title, wrap_w, max_lines, CVKit.FS_SMALL)
+		if icons.size() > 0 and size.y >= 40.0:
+			var ix := text_x
+			var iy: float = size.y - 13.0
+			for nm in icons:
+				CUIKit.draw_icon(self, String(nm), Vector2(ix, iy), 11.0, Color(1, 1, 1, mod))
+				ix += 14.0
+
+var _cards: Array = []     # idx nœud → TechCard (ou null)
+var _info := {}            # TechCard -> dict du nœud (non utilisé pour le clic, gardé pour le focus)
 var _nodes := []           # le tableau de nœuds (lookup index → nom pour la cible)
+var _pos := {}             # idx nœud → centre (coordonnées CONTENU, pour les arêtes + le focus)
 var _built := false
 var _sel := ""             # détail du nœud sélectionné (pied)
-var _sel_node := {}         # nœud sélectionné : dossier détaillé, sans dépendre du survol
-var _sel_flash := ""        # retour immédiat après lancement/refus d'une recherche
+var _sel_node := {}        # nœud sélectionné : dossier détaillé, sans dépendre du survol
+var _sel_flash := ""       # retour immédiat après lancement/refus d'une recherche
 var _close_rect := Rect2()
+var _popup: Control = null                 ## le popup de DÉCOUVERTE (tech_popup.gd), enfant persistant
+var _pending_discoveries: Array = []       ## idx de nœuds achevés pendant que le panneau était FERMÉ
+var _last_research_target := -1           ## suivi de la cible — détecte la complétion (miroir sound.gd)
+var _last_research_prog := 0.0
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	size = Vector2(PW, PH)
+	_popup = load("res://ui/tech_popup.gd").new()
+	add_child(_popup)
+	if _popup.has_signal("closed"):
+		_popup.closed.connect(_on_popup_closed)
 	_layout()
 	get_viewport().size_changed.connect(_layout)
 	visibility_changed.connect(_on_visibility)
 	Sim.generated.connect(_on_generated)
 	Sim.ticked.connect(func(_y):
 		_check_metab_ready()          # surveille le franchissement de tier — même panneau FERMÉ
+		_check_research_complete()    # surveille la complétion d'une recherche — même panneau FERMÉ
 		if visible: queue_redraw())
 	hide()
 
@@ -74,12 +142,49 @@ func _check_metab_ready() -> void:
 			_metab_seen[nom] = true
 			metab_ready.emit(nom)
 
+## surveille research_status() : la CIBLE change ⇒ la précédente s'est achevée (≥85 % de
+## progression, même seuil que sound.gd/tech_notif — la recherche annulée à bas % ne compte
+## pas comme une découverte). Le popup ne doit interrompre AUCUN input critique : si le
+## panneau est FERMÉ, la découverte est mise en attente et s'ouvre au prochain visible=true.
+func _check_research_complete() -> void:
+	if Sim.world == null or not Sim.world.has_method("research_status"):
+		return
+	var rs: Dictionary = Sim.world.research_status()
+	var rt := int(rs.get("target", -1))
+	var prog := float(rs.get("progress", 0.0))
+	if _last_research_target >= 0 and rt != _last_research_target and _last_research_prog >= 0.85:
+		_queue_discovery(_last_research_target)
+	_last_research_target = rt
+	_last_research_prog = prog
+
+func _queue_discovery(idx: int) -> void:
+	_pending_discoveries.append(idx)
+	if visible:
+		_flush_pending_discoveries()
+
+func _flush_pending_discoveries() -> void:
+	if _popup == null or _pending_discoveries.is_empty():
+		return
+	if _popup.visible:
+		return   # un popup à la fois — le suivant s'ouvrira à la fermeture de celui-ci
+	var idx: int = _pending_discoveries.pop_front()
+	if Sim.world == null:
+		return
+	var nodes: Array = Sim.world.tech_nodes()
+	if idx < 0 or idx >= nodes.size():
+		return
+	move_child(_popup, get_child_count() - 1)   # toujours au-dessus (cartes/scroll ajoutés depuis)
+	_popup.show_tech(nodes[idx])
+
+func _on_popup_closed() -> void:
+	_flush_pending_discoveries()
+
 func _layout() -> void:
 	var vp := get_viewport_rect().size
 	var pw0 := PW
 	var ph0 := PH
 	# TRÈS grand format (retour joueur 2026-07-10 : « agrandis sérieusement ») — la
-	# géométrie des nœuds est FIXE et généreuse, la hauteur SCROLLE (barre latérale).
+	# géométrie des cartes est FIXE et généreuse, la LARGEUR défile (scroll latéral).
 	# Centré ENTRE le rail gauche et le ledger droit (il passait sous le ledger).
 	var free_x0 := Frame.SIDEBAR_W + 8.0
 	var free_x1 := vp.x - Frame.LEDGER_W - 8.0
@@ -88,13 +193,15 @@ func _layout() -> void:
 	size = Vector2(PW, PH)
 	position = Vector2(free_x0 + (free_x1 - free_x0 - PW) * 0.5, (vp.y - PH) * 0.5)
 	if _built and (absf(PW - pw0) > 1.0 or absf(PH - ph0) > 1.0):
-		_built = false                       # le graphe se rebâtit à la nouvelle taille
+		_built = false                       # la grille se rebâtit à la nouvelle taille
 		if visible:
 			_build()
 
 func _on_visibility() -> void:
 	if visible and not _built and Sim.world != null:
 		_build()
+	if visible:
+		_flush_pending_discoveries()
 
 func _on_generated() -> void:
 	_built = false
@@ -102,11 +209,16 @@ func _on_generated() -> void:
 	_sel_node.clear()
 	_sel_flash = ""
 	_metab_seen.clear()
+	_pending_discoveries.clear()
+	_last_research_target = -1
+	_last_research_prog = 0.0
+	if _popup != null:
+		_popup.visible = false
 	if visible:
 		_build()
 
 ## P5 : une technologie trouvée par Ctrl+K ouvre directement son dossier sans
-## déclencher la recherche. Le clic volontaire sur l'atome reste le seul actionneur.
+## déclencher la recherche. Le clic volontaire sur la carte reste le seul actionneur.
 func focus_tech(id: int) -> void:
 	if not visible:
 		visible = true
@@ -117,150 +229,185 @@ func focus_tech(id: int) -> void:
 	_sel_node = (_nodes[id] as Dictionary).duplicate(true)
 	_sel = String(_sel_node.get("name", ""))
 	_sel_flash = "Ouvert depuis la recherche universelle."
-	if _scroll != null and id < _atoms.size() and _atoms[id] != null:
-		_scroll.ensure_control_visible(_atoms[id])
+	if _scroll != null and id < _cards.size() and _cards[id] != null:
+		_scroll.ensure_control_visible(_cards[id])
 	queue_redraw()
 
-# ── construction du graphe Medusa ──────────────────────────────────────────
+# ── construction de la grille Civ 6 (3 couloirs × colonnes de tiers) ───────────────
 func _build() -> void:
 	if Sim.world == null:
 		return
 	if _scroll != null and is_instance_valid(_scroll):
 		_scroll.queue_free()
-	_atoms.clear()
+	_cards.clear()
 	_info.clear()
+	_pos.clear()
 
 	var nodes: Array = Sim.world.tech_nodes()
 	_nodes = nodes
 	if nodes.is_empty():
 		_built = true
 		return
+	_cards.resize(nodes.size())
 
-	# ── COULOIRS THÉMATIQUES à géométrie FIXE et GÉNÉREUSE (retour joueur 2026-07-10 :
-	# « agrandis sérieusement, barre de scroll latérale, qu'on puisse lire les icônes ») :
-	# rangée 64 px · médaillon ~53 px. La hauteur totale déborde → ScrollContainer. ──
-	var cnt := {}
+	# regroupement par (couloir l, tier t) — l = quartier / 3 (3 quartiers par couloir)
 	var tiers_set := {}
+	var cell := {}   # clé l*100+t → Array[idx]
 	for i in nodes.size():
 		var t := int(nodes[i]["tier"])
 		var l := int(float(int(nodes[i]["quarter"])) / 3.0)
 		tiers_set[t] = true
-		var key := l * 16 + t
-		cnt[key] = int(cnt.get(key, 0)) + 1
+		var key := l * 100 + t
+		var arr: Array = cell.get(key, [])
+		arr.append(i)
+		cell[key] = arr
 	var tiers: Array = tiers_set.keys()
 	tiers.sort()
-	_ncol = tiers.size()
-	_rowh = 64.0
-	var rr := 28.0
-	_lane_rows = [0, 0, 0]
-	for l in range(3):
-		for t in tiers:
-			_lane_rows[l] = maxi(int(_lane_rows[l]), int(cnt.get(l * 16 + int(t), 0)))
-	var total_rows: int = int(_lane_rows[0]) + int(_lane_rows[1]) + int(_lane_rows[2])
-	_lane_y = [26.0, 0.0, 0.0]
-	_lane_y[1] = float(_lane_y[0]) + float(_lane_rows[0]) * _rowh + 16.0
-	_lane_y[2] = float(_lane_y[1]) + float(_lane_rows[1]) * _rowh + 16.0
-	var content_h: float = float(_lane_y[2]) + float(_lane_rows[2]) * _rowh + 26.0
-	var view_w := PW - 24.0
-	var content_w := view_w - 14.0            # place de la barre latérale
-	var colw: float = (content_w - 116.0) / maxf(1.0, float(_ncol))
 
-	# le SCROLL (barre latérale) : fenêtre fixe, contenu haut — fond de couloirs + graphe
+	var view_w := PW - 24.0
+	var lane_area_h: float = PH - HEAD - FOOT - METAH
+	var usable_h: float = maxf(lane_area_h - TIER_LABEL_H, 60.0)
+	_lane_h = usable_h / 3.0
+	_lane_y0 = [TIER_LABEL_H, TIER_LABEL_H + _lane_h, TIER_LABEL_H + 2.0 * _lane_h]
+	# rows_per_cell : viser une carte lisible (2..5 rangées empilées AU MAXIMUM par
+	# sous-colonne) — AUCUN scroll vertical : le contenu déborde en LARGEUR, jamais en hauteur.
+	var lane_avail_h: float = _lane_h - 8.0
+	var rows_per_cell: int = clampi(int(round(lane_avail_h / 58.0)), 2, 5)
+	var card_h: float = (lane_avail_h - float(rows_per_cell - 1) * CARD_GUTTER) / float(rows_per_cell)
+	card_h = maxf(card_h, 26.0)
+	var card_w := CARD_W
+
+	# le SCROLL LATÉRAL SEUL : la colonne des noms de couloir reste FIGÉE à gauche
+	# (dessinée hors du scroll, cf. _draw) ; content_w grandit avec le nombre de tiers/
+	# sous-colonnes, content_h == lane_area_h PILE (jamais plus → aucun scroll vertical).
 	_scroll = ScrollContainer.new()
-	_scroll.position = Vector2(12, HEAD)
-	_scroll.size = Vector2(view_w, PH - HEAD - FOOT - METAH)
-	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_scroll.position = Vector2(12.0 + LANE_LABEL_W, HEAD)
+	_scroll.size = Vector2(view_w - LANE_LABEL_W, lane_area_h)
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	add_child(_scroll)
 	var content := Control.new()
-	content.custom_minimum_size = Vector2(content_w, content_h)
 	_scroll.add_child(content)
 	_bg = Control.new()
 	_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_bg.size = Vector2(content_w, content_h)
 	content.add_child(_bg)
-	_bg.draw.connect(_draw_rings)
+	_bg.draw.connect(_draw_bg)
 
-	# un Graph configuré EN CODE : pas de physique (disposition figée), une ligne
-	# douce grise pour les arêtes, pas de fondu d'amorçage.
-	_graph = Graph.new()
-	_graph.physics_enabled = false
-	_graph.enable_start_up_modulation = false
-	_graph.drag_input = false
-	var line := GraphSoftLine.new()
-	line.connection_color = Color(0.70, 0.66, 0.58, 0.85)
-	line.connection_width = 2.0
-	_graph.graph_lines = line
-	_graph.position = Vector2.ZERO
-	_graph.size = Vector2(content_w, content_h)
-	# ⚠ le Graph n'entre dans l'arbre QU'APRÈS la pose des Atomes (son _ready les recense)
-	_pending_graph_parent = content
-	# placement ANTI-CROISEMENT : colonne par colonne (gauche→droite), chaque nœud d'une
-	# pile (couloir, tier) est trié par la HAUTEUR de son PRÉREQUIS déjà placé (barycentre)
-	# — l'arête coule tout droit au lieu de croiser (l'ancien tri était ALPHABÉTIQUE).
-	_atoms.resize(nodes.size())
-	var rowpos := {}   # idx nœud → yy posé (lu par les colonnes suivantes)
-	for tcol in range(tiers.size()):
-		var t2 := int(tiers[tcol])
-		for l2 in range(3):
-			var col_idx := []
-			for i in nodes.size():
-				if int(nodes[i]["tier"]) == t2 and int(float(int(nodes[i]["quarter"])) / 3.0) == l2:
-					col_idx.append(i)
-			if col_idx.is_empty():
+	# placement TIER PAR TIER (gauche→droite) : chaque tier occupe autant de
+	# SOUS-COLONNES que le couloir le plus chargé en réclame (bornées à `rows_per_cell`
+	# cartes empilées par sous-colonne) — les séparateurs de tier restent alignés
+	# entre les 3 couloirs. Anti-croisement : tri par la position Y du prérequis déjà posé.
+	var rowpos := {}   # idx → Y déjà posé (lu par les tiers suivants)
+	_tier_x.clear()
+	_tier_w.clear()
+	var x_cursor := 10.0
+	for t in tiers:
+		var lane_lists := {}
+		var subcols := 1
+		for l in range(3):
+			var arr: Array = cell.get(l * 100 + int(t), [])
+			if arr.is_empty():
 				continue
-			col_idx.sort_custom(func(a, b):
+			arr = arr.duplicate()
+			arr.sort_custom(func(a, b):
 				var ka: float = rowpos.get(int(nodes[a].get("prereq", -1)), 1e9)
 				var kb: float = rowpos.get(int(nodes[b].get("prereq", -1)), 1e9)
 				if absf(ka - kb) > 0.01:
 					return ka < kb
 				return String(nodes[a]["name"]) < String(nodes[b]["name"]))
-			var k := col_idx.size()
-			var xx: float = 100.0 + colw * float(tcol) + colw * 0.5
-			for j in range(k):
-				var idx: int = col_idx[j]
-				var yy: float = float(_lane_y[l2]) + (float(int(_lane_rows[l2]) - k) * 0.5 + float(j) + 0.5) * _rowh
-				rowpos[idx] = yy
-				var atom = _make_atom(nodes[idx], Vector2(xx, yy), rr)
-				_graph.add_child(atom)
-				_atoms[idx] = atom
-				_info[atom] = nodes[idx]
+			lane_lists[l] = arr
+			subcols = maxi(subcols, int(ceil(float(arr.size()) / float(rows_per_cell))))
+		var tier_w: float = float(subcols) * card_w + float(subcols - 1) * CARD_GUTTER
+		_tier_x[int(t)] = x_cursor
+		_tier_w[int(t)] = tier_w
+		for l in range(3):
+			if not lane_lists.has(l):
+				continue
+			var arr2: Array = lane_lists[l]
+			var lane_top: float = _lane_y0[l] + 4.0
+			for j in range(arr2.size()):
+				var idx: int = arr2[j]
+				var subcol: int = j / rows_per_cell
+				var row: int = j % rows_per_cell
+				var start: int = subcol * rows_per_cell
+				var n_in_subcol: int = mini(rows_per_cell, arr2.size() - start)
+				var block_h: float = float(n_in_subcol) * card_h + float(n_in_subcol - 1) * CARD_GUTTER
+				var by: float = lane_top + (lane_avail_h - block_h) * 0.5 + float(row) * (card_h + CARD_GUTTER)
+				var bx: float = x_cursor + float(subcol) * (card_w + CARD_GUTTER)
+				var card := _make_card(nodes[idx], idx, Vector2(bx, by), card_w, card_h)
+				content.add_child(card)
+				_cards[idx] = card
+				_info[card] = nodes[idx]
+				var center := Vector2(bx + card_w * 0.5, by + card_h * 0.5)
+				_pos[idx] = center
+				rowpos[idx] = center.y
+		x_cursor += tier_w + 26.0   # respiration + place pour le séparateur/étiquette du tier suivant
 
-	_pending_graph_parent.add_child(_graph) # → _ready du Graph : il recense les Atomes
-	# arêtes : chaque nœud relié à son prérequis (indice dans CE tableau)
-	for i in nodes.size():
-		var pr := int(nodes[i].get("prereq", -1))
-		if pr >= 0 and pr < _atoms.size() and _atoms[i] != null and _atoms[pr] != null:
-			_graph.connect_atoms(_atoms[pr], _atoms[i])
-	if _graph.has_signal("atom_selected") and not _graph.atom_selected.is_connected(_on_atom_selected):
-		_graph.atom_selected.connect(_on_atom_selected)
+	_content_w = x_cursor + 14.0
+	content.custom_minimum_size = Vector2(_content_w, lane_area_h)
+	content.size = Vector2(_content_w, lane_area_h)
+	_bg.size = Vector2(_content_w, lane_area_h)
+	_bg.position = Vector2.ZERO
 	_built = true
 	queue_redraw()
 
-## géométrie des COULOIRS (posée par _build, lue par _draw_rings — fonds/étiquettes)
-var _lane_rows: Array = [0, 0, 0]
-var _lane_y: Array = [0.0, 0.0, 0.0]
-var _rowh := 64.0
-var _ncol := 6
-var _scroll: ScrollContainer = null       ## la fenêtre scrollable (barre latérale)
-var _bg: Control = null                   ## fond de couloirs/tiers, DANS le scroll
-var _pending_graph_parent: Control = null ## le parent du Graph (posé après les Atomes)
+## géométrie de la grille (posée par _build, lue par _draw/_draw_bg)
+var _lane_h := 0.0
+var _lane_y0: Array = [0.0, 0.0, 0.0]
+var _tier_x := {}
+var _tier_w := {}
+var _content_w := 0.0
+var _scroll: ScrollContainer = null       ## la fenêtre scrollable (LATÉRALE seule)
+var _bg: Control = null                   ## fond de couloirs/tiers + arêtes, DANS le scroll
 
-func _make_atom(nd: Dictionary, target: Vector2, rr: float = 13.0):
-	var atom = Atom.new()
-	var d = AtomData.new()
-	d.id = StringName("tech_%s" % String(nd["name"]))
-	d.title = String(nd["name"])
-	atom.data = d
-	atom.is_static = true
-	atom.drag_input = false
-	atom.radius = rr
-	atom.size = Vector2(rr * 2.0, rr * 2.0)
-	atom.position = target - Vector2(rr, rr)
-	# PACK FLAVOR — survol (tooltip natif Godot, Atom hérite de Control) : 2 lignes,
-	# le mécanique (hover, ce que le nœud fait vraiment) puis le mot du conseiller (flavor,
-	# cynique à la Civ) — même motif que culture_creator.gd (nom/hover en tooltip_text).
-	var hov := String(nd.get("hover", ""))
-	var fla := String(nd.get("flavor", ""))
+func _make_card(nd: Dictionary, idx: int, pos: Vector2, w: float, h: float) -> TechCard:
+	var card := TechCard.new()
+	card.idx = idx
+	card.position = pos
+	card.size = Vector2(w, h)
+	var st := int(nd["state"])
+	var col := COL_LOCKED
+	if st == 1:
+		col = COL_AVAIL
+	elif st == 2:
+		col = COL_UNLOCKED
+	if bool(nd.get("faustian", false)):
+		col = col.lerp(COL_FAUST, 0.6)
+	card.state_col = col
+	card.locked = (st == 0)
+	card.title = String(nd["name"])
+	card.icons = _effect_icons(nd)
+	card.badge = UIKit.tech_medallion(String(nd["name"]), bool(nd.get("faustian", false)),
+		int(nd["tier"]), int(nd["quarter"]))
+	card.tooltip_text = _tooltip_for(nd)
+	card.activated.connect(_on_card_activated)
+	return card
+
+## mots-clés → icône (le mot mécanique du hover chiffré, PAS le flavor) — la carte
+## affiche 1-3 glyphes compacts, le détail chiffré complet reste au SURVOL (tooltip).
+const ICON_KEYWORDS := [
+	["prospérité", "gold_coin"],
+	["stabilité", "laurel_success"],
+	["coercition", "politics_crown"],
+	["puissance", "action_recruit"],
+	["fracture", "dipl_rivalry"],
+	["production", "build_hammer"],
+	["efficacité", "action_research"],
+	["charge faustienne", "alert_warning"],
+	["flux", "action_trade"],
+]
+func _effect_icons(nd: Dictionary) -> Array:
+	var hov := String(nd.get("hover", "")).to_lower()
+	var out := []
+	for pair in ICON_KEYWORDS:
+		if hov.find(String(pair[0])) >= 0:
+			out.append(String(pair[1]))
+			if out.size() >= 3:
+				break
+	return out
+
+## le détail COMPLET (plusieurs effets) — UNIQUEMENT au survol, JAMAIS de flavor ici.
+func _tooltip_for(nd: Dictionary) -> String:
 	var tip := String(nd["name"])
 	var st := int(nd["state"])
 	var states := ["Verrouillée", "Recherchable", "Acquise"]
@@ -275,52 +422,21 @@ func _make_atom(nd: Dictionary, target: Vector2, rr: float = 13.0):
 	if int(nd.get("cost", 0)) > 0 and st != 2:
 		tip += " · %d points (réserve %d, manque %d)" % [int(nd["cost"]),
 			int(nd.get("points_have", 0)), int(nd.get("points_missing", 0))]
+	var effet := String(nd.get("effet", ""))
+	if effet != "":
+		tip += "\nEffet : " + effet
+	var hov := String(nd.get("hover", ""))
 	if hov != "":
-		tip += "\n" + hov
+		tip += "\nDétail : " + hov
 	var unl := String(nd.get("unlocks", ""))
 	if unl != "":
 		tip += "\nDébouche sur : " + unl
-	if fla != "":
-		tip += "\n" + fla
-	atom.tooltip_text = tip
-	var col := COL_LOCKED
-	if st == 1:
-		col = COL_AVAIL
-	elif st == 2:
-		col = COL_UNLOCKED
-	if bool(nd.get("faustian", false)):
-		col = col.lerp(COL_FAUST, 0.6)
-	atom.color = col
-	# l'état Medusa (LOCKED/AVAILABLE/UNLOCKED) — miroir de l'état moteur
-	match st:
-		1: atom.status = Atom.Status.AVAILABLE
-		2: atom.status = Atom.Status.UNLOCKED
-		_: atom.status = Atom.Status.LOCKED
-	# MÉDAILLON parchemin (nom connu > apex/combo/faustien > fonction du quartier)
-	var md: Texture2D = UIKit.tech_medallion(String(nd["name"]),
-		bool(nd.get("faustian", false)), int(nd["tier"]), int(nd["quarter"]))
-	if md != null:
-		var mr := TextureRect.new()
-		mr.texture = md
-		mr.stretch_mode = TextureRect.STRETCH_SCALE
-		mr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE   # sinon min-size = 256² (texture)
-		var ms := rr * 1.9   # le médaillon domine FRANCHEMENT le disque (retour joueur ×2)
-		mr.size = Vector2(ms, ms)
-		mr.position = Vector2(rr - ms * 0.5, rr - ms * 0.5)
-		mr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		# verrouillé = fané ; le lavis d'état (couleur d'atome) reste lisible derrière
-		mr.modulate = Color(1, 1, 1, 0.55) if st == 0 else Color(1, 1, 1, 0.95)
-		atom.add_child(mr)
-	return atom
+	return tip
 
-func _on_atom_selected(atom) -> void:
-	var nd = _info.get(atom, null)
-	if nd == null:
-		_sel = ""
-		_sel_node.clear()
-		_sel_flash = ""
-		queue_redraw()
+func _on_card_activated(idx: int) -> void:
+	if idx < 0 or idx >= _nodes.size():
 		return
+	var nd: Dictionary = _nodes[idx]
 	var states := ["verrouillé", "recherchable", "acquis"]
 	var stt := int(nd["state"])
 	_sel_node = nd.duplicate()
@@ -330,14 +446,12 @@ func _on_atom_selected(atom) -> void:
 		_sel += " (%d pts)" % int(nd["cost"])
 	# ACTIONNABLE : la décision structurée du moteur commande le clic ; l'UI ne
 	# reconstruit ni l'accès d'héritage, ni les ruines, ni l'âge, ni les prérequis.
-	# (l'indice de _atoms == TechId ; la façade enfile CMD_RESEARCH, le déblocage tombe au tick).
+	# (l'indice de _cards == TechId ; la façade enfile CMD_RESEARCH, le déblocage tombe au tick).
 	if bool(nd.get("allowed", stt == 1)) and Sim.world != null:
-		var idx := _atoms.find(atom)
-		if idx >= 0:
-			var ok: bool = Sim.world.player_research(idx) != 0
-			_sel_flash = "Recherche lancée : %s" % String(nd["name"]) if ok else "Recherche refusée : la situation a changé."
-			Sound.play("ui_click")
-			Sim.notify_action()
+		var ok: bool = Sim.world.player_research(idx) != 0
+		_sel_flash = "Recherche lancée : %s" % String(nd["name"]) if ok else "Recherche refusée : la situation a changé."
+		Sound.play("ui_click")
+		Sim.notify_action()
 	queue_redraw()
 
 func _gui_input(e: InputEvent) -> void:
@@ -348,13 +462,12 @@ func _gui_input(e: InputEvent) -> void:
 			accept_event()
 			return
 
-# ── chrome du panneau : fond + en-tête + pied (le graphe se dessine seul) ───
+# ── chrome du panneau : fond + en-tête + couloirs figés + pied ──────────────
 func _draw() -> void:
 	var w = Sim.world
 	if w == null:
 		return
 	VKit.panel_bg(self, Rect2(0, 0, PW, PH))
-	# (les couloirs/tiers se dessinent sur le FOND scrollable — cf. _draw_rings)
 	var info: Dictionary = w.tech_info()
 	UIKit.draw_icon(self, "knowledge_book", Vector2(14, 12), 20)
 	VKit.text(self, Vector2(42, 13), VKit.COL_GOLD, "Arbre de technologie", VKit.FS_BIG)
@@ -384,23 +497,59 @@ func _draw() -> void:
 		VKit.fill(self, Rect2(bx + 1, 31, (bw - 2) * prog, 7), COL_UNLOCKED)
 		VKit.value(self, Vector2(bx + bw + 8, 30), "%d%%" % int(prog * 100.0), VKit.FS_SMALL)
 	else:
-		VKit.text(self, Vector2(220, 13), VKit.COL_DIM, "Recherche : (cliquez un nœud recherchable)", VKit.FS_SMALL)
+		VKit.text(self, Vector2(220, 13), VKit.COL_DIM, "Recherche : (cliquez une carte recherchable)", VKit.FS_SMALL)
 	# légende d'état
 	VKit.text(self, Vector2(14, 33), COL_UNLOCKED, "● acquis", VKit.FS_SMALL)
 	VKit.text(self, Vector2(86, 33), COL_AVAIL, "● recherchable", VKit.FS_SMALL)
 	VKit.text(self, Vector2(196, 33), COL_LOCKED, "● verrouillé", VKit.FS_SMALL)
 	VKit.text(self, Vector2(286, 33), COL_FAUST, "● faustien", VKit.FS_SMALL)
 	VKit.fill(self, Rect2(12, HEAD - 4, PW - 24, 1), VKit.COL_EDGE)
+
+	# COULOIRS FIGÉS (ne défilent pas avec le scroll latéral) : nom + ruban de couleur,
+	# alignés sur la géométrie posée par _build (_lane_y0/_lane_h).
+	if _scroll != null:
+		for l in range(3):
+			var band_y: float = _scroll.position.y + _lane_y0[l] + 2.0
+			VKit.fill(self, Rect2(10.0, band_y, 3.0, _lane_h - 4.0), LANE_INK[l])
+			var ly: float = _scroll.position.y + _lane_y0[l] + _lane_h * 0.5 - 7.0
+			VKit.text(self, Vector2(18.0, ly), VKit.COL_GOLD, LANE_NAMES[l], VKit.FS_SMALL)
+		VKit.fill(self, Rect2(_scroll.position.x - 6.0, HEAD, 1.0, PH - HEAD - FOOT - METAH), VKit.COL_EDGE)
+
 	# bande de MÉTABOLISATION : le +% recherche + l'accès tech par héritage (la barre)
 	_draw_metab(info)
-	# pied : DOSSIER persistant du nœud cliqué. Le survol découvre ; le clic permet de
-	# comparer sans garder la souris immobile (profondeur RimWorld/EU4).
+	# pied : DOSSIER persistant de la carte cliquée. Le survol découvre ; le clic permet
+	# de comparer sans garder la souris immobile (profondeur RimWorld/EU4). JAMAIS de flavor.
 	VKit.fill(self, Rect2(12, PH - FOOT, PW - 24, 1), VKit.COL_EDGE)
 	if not _sel_node.is_empty():
 		_draw_selected_node(PH - FOOT + 7.0)
 	else:
 		VKit.text(self, Vector2(16, PH - FOOT + 8), VKit.COL_DIM,
-			"Sélectionnez un nœud : effet, coût, prérequis et débouchés resteront affichés ici.", VKit.FS_SMALL)
+			"Sélectionnez une carte : effets, coût, prérequis et débouchés resteront affichés ici.", VKit.FS_SMALL)
+
+## fond de la zone scrollable : bandes de couloir alternées + séparateurs/étiquettes de
+## tier + arêtes de prérequis (dessin léger — le nom du prérequis reste de toute façon
+## nommé au survol si les lignes se croisent trop).
+func _draw_bg() -> void:
+	if _bg == null or not is_instance_valid(_bg):
+		return
+	var gs: Vector2 = _bg.size
+	for l in range(3):
+		if l % 2 == 1:
+			VKit.fill(_bg, Rect2(0.0, _lane_y0[l], gs.x, _lane_h), Color(0.32, 0.27, 0.20, 0.10))
+	var tiers: Array = _tier_x.keys()
+	tiers.sort()
+	for i in tiers.size():
+		var t = tiers[i]
+		var tx: float = _tier_x[t]
+		var tw: float = _tier_w[t]
+		if i > 0:
+			VKit.fill(_bg, Rect2(tx - 13.0, TIER_LABEL_H, 1.0, gs.y - TIER_LABEL_H), Color(0.58, 0.52, 0.42, 0.16))
+		VKit.text(_bg, Vector2(tx + tw * 0.5 - 8.0, 2.0), VKit.COL_DIM, "T%d" % int(t), VKit.FS_SMALL)
+	# arêtes de prérequis : léger trait clair, sous les cartes
+	for i in _nodes.size():
+		var pr := int(_nodes[i].get("prereq", -1))
+		if pr >= 0 and _pos.has(pr) and _pos.has(i):
+			_bg.draw_line(_pos[pr], _pos[i], Color(0.70, 0.66, 0.58, 0.55), 1.5, true)
 
 func _draw_selected_node(y: float) -> void:
 	var nd: Dictionary = _sel_node
@@ -430,53 +579,25 @@ func _draw_selected_node(y: float) -> void:
 		var path := "Chemin suggéré : commencer par %s · %d étapes" % [next_name, int(nd.get("steps_remaining", 0))]
 		VKit.text(self, Vector2(16, body_y), VKit.COL_PARCH, path, VKit.FS_SMALL)
 		body_y += 17.0
+	# EFFETS (plusieurs) — JAMAIS de flavor dans le dossier du menu (mission : le flavor
+	# n'apparaît QUE dans le popup de découverte, cf. tech_popup.gd).
 	var eff := String(nd.get("effet", ""))
-	var unl := String(nd.get("unlocks", ""))
 	if eff != "":
 		VKit.text(self, Vector2(16, body_y), VKit.COL_PARCH, "Effet : " + eff, VKit.FS_SMALL)
+	var unl := String(nd.get("unlocks", ""))
 	if unl != "":
 		VKit.text(self, Vector2(PW * 0.52, body_y), VKit.COL_PARCH, "Débouche sur : " + unl, VKit.FS_SMALL)
-	var flavor := String(nd.get("flavor", ""))
+	var hov := String(nd.get("hover", ""))
 	if _sel_flash != "":
 		VKit.text(self, Vector2(16, body_y + 19), COL_UNLOCKED if _sel_flash.begins_with("Recherche lancée") else COL_FAUST,
 			_sel_flash, VKit.FS_SMALL)
-	elif flavor != "":
-		VKit.text(self, Vector2(16, body_y + 19), VKit.COL_DIM, flavor, VKit.FS_SMALL)
+	elif hov != "":
+		VKit.text_wrapped(self, Vector2(16, body_y + 19), VKit.COL_DIM, "Détail : " + hov, PW - 32.0, 2, VKit.FS_SMALL)
 
 # ── bande de MÉTABOLISATION : le +% recherche du creuset + l'accès tech par héritage ──
 # Le "+X% recherche" répond à « métabolisation = +% tech visible sous la barre de savoir » ;
 # les 6 barres (tier 0-3 en pips + part digérée) sont la « barre de progression par tier » :
 # digérer un peuple OUVRE ses signatures (tier 1 commerce → tier 3 plein/métabolisé).
-# Anneaux de TIER (rayon = profondeur 1-5) — rend la structure en tiers LISIBLE sous le graphe
-# Medusa (l'« arbre cohérent par tier » voulu, sans toucher aux prix/équilibre). Display-only.
-func _draw_rings() -> void:
-	# COULOIRS THÉMATIQUES (miroir du _build), dessinés sur le FOND scrollable (_bg,
-	# coordonnées CONTENU) : fond alterné + ruban de thème + étiquette + tiers.
-	if _bg == null or not is_instance_valid(_bg):
-		return
-	var gs: Vector2 = _bg.size
-	var lane_names := ["Savoir", "Forge", "Société"]          # ordre THM_* (scps_tech.h)
-	var lane_ink := [Color(0.35, 0.45, 0.62, 0.75), Color(0.66, 0.34, 0.22, 0.75), Color(0.45, 0.55, 0.30, 0.75)]
-	for l in range(3):
-		var y0: float = float(_lane_y[l]) - 6.0
-		var lh: float = float(_lane_rows[l]) * _rowh + 12.0
-		if l % 2 == 1:
-			VKit.fill(_bg, Rect2(8.0, y0, gs.x - 16.0, lh), Color(0.32, 0.27, 0.20, 0.10))
-		VKit.fill(_bg, Rect2(8.0, y0, 3.0, lh), lane_ink[l])
-		VKit.text(_bg, Vector2(18.0, y0 + lh * 0.5 - 9.0), VKit.COL_GOLD, lane_names[l], VKit.FS_SMALL)
-	var colw: float = (gs.x - 116.0) / float(maxi(1, _ncol))
-	for t in range(_ncol):
-		var cx: float = 100.0 + colw * float(t)
-		if t > 0:
-			VKit.fill(_bg, Rect2(cx, 8.0, 1.0, gs.y - 16.0), Color(0.58, 0.52, 0.42, 0.14))
-		VKit.text(_bg, Vector2(cx + colw * 0.5 - 8.0, 2.0), VKit.COL_DIM, "T%d" % t, VKit.FS_SMALL)
-
-## DEUX LECTURES DISTINCTES, séparées visuellement (P5 — une seule source de vérité
-## pour la victoire) :
-##   1) « accès aux signatures » = heritage_access() (tech, pop-share, tier 0-3) —
-##      ouvre les nœuds de l'arbre, ne dit RIEN de la victoire Merveille.
-##   2) « compte pour l'Ascension » = merv_metab() (endgame_metab_count) — ce que
-##      wonder_tick gate réellement (X/N du palier courant), la SEULE jauge de victoire.
 func _draw_metab(info: Dictionary) -> void:
 	var y0 := PH - FOOT - METAH
 	VKit.fill(self, Rect2(12, y0, PW - 24, 1), VKit.COL_EDGE)
