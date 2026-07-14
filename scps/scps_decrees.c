@@ -189,6 +189,8 @@ static float decree_spend_capital(const World *w, WorldEconomy *econ, int cid, f
     float take = (have<cost) ? have : cost;
     econ->prov[crp].treasury -= take;
     econ_flux_add(cid, FX_CONSEIL, -take);    /* même ligne que le Conseil : une dépense de cour */
+    /* MONNAIE M3b-v2 — item 5 : Conseil (salaires/corruption) → ÉLITES, capitale. */
+    econ->prov[crp].strata[CLASS_ELITE].wealth += take;
     return take;
 }
 /* ORIENTATION (mensuelle) : TOUT ou RIEN — « trésor insuffisant CE mois ⇒ désactivée et
@@ -203,6 +205,7 @@ static bool decree_afford_capital(const World *w, WorldEconomy *econ, int cid, f
     if (econ->prov[crp].treasury < cost) return false;
     econ->prov[crp].treasury -= cost;
     econ_flux_add(cid, FX_CONSEIL, -cost);
+    econ->prov[crp].strata[CLASS_ELITE].wealth += cost;   /* item 5 : Conseil → élites, capitale */
     return true;
 }
 

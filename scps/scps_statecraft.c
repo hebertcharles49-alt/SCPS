@@ -452,7 +452,8 @@ void statecraft_council_apply(const Statecraft *sc, const World *w, WorldEconomy
         /* RE-KEY PROVINCE : treasury province-owned — route sur la représentative. */
         if (cr>=0 && cr<e->n_regions){
             int crp=econ_region_rep_province(e,cr);
-            if (crp>=0 && crp<e->n_prov){ e->prov[crp].treasury -= cost; econ_flux_add(c, FX_CONSEIL, -cost); }
+            if (crp>=0 && crp<e->n_prov){ e->prov[crp].treasury -= cost; econ_flux_add(c, FX_CONSEIL, -cost);
+                e->prov[crp].strata[CLASS_ELITE].wealth += cost; }   /* item 5 : Conseil → élites, capitale */
         }
     }
 }
