@@ -748,9 +748,13 @@ long intertrade_slave_sell(WorldEconomy *e, int region, long count){
 /* ACHAT — gate ÉTHOS/TECH (miroir diplo_enslave_capture : `can_enslave` passé par
  * l'appelant, comme le combat) : un abolitionniste (ni éthos esclavagiste, ni
  * TECH_ESCLAVAGE) ne peut PAS acheter. Débite l'or (matière réelle : treasury_add
- * signé), tire l'héritage le PLUS NOMBREUX du pool (déterministe), crée/renforce un
- * groupe ARR_DEPORTE/CLASS_SLAVE sur la province représentative de `region`. */
-long intertrade_slave_buy(WorldEconomy *e, int region, long count, bool can_enslave){
+ * signé — le Centre reste la contrepartie, RÉGION-grain, inchangé), tire l'héritage
+ * le PLUS NOMBREUX du pool (déterministe), crée/renforce un groupe ARR_DEPORTE/
+ * CLASS_SLAVE. RE-KEY PROVINCE : `prov` (-1 = héritage, résout la province
+ * REPRÉSENTATIVE de `region` — le chemin IA ; ≥0 = PID DIRECT posé par le drain
+ * CMD_SLAVE_BUY) porte SEUL le grain d'ÉCRITURE (où le groupe déporté atterrit) —
+ * même patron qu'agency_build_acct/agency_order_repress. */
+long intertrade_slave_buy(WorldEconomy *e, int region, long count, bool can_enslave, int prov){
     if (!can_enslave) return 0;
     if (!e || region<0 || region>=e->n_regions || count<=0) return 0;
     RegionEconomy *re=&e->region[region];
@@ -767,7 +771,7 @@ long intertrade_slave_buy(WorldEconomy *e, int region, long count, bool can_ensl
     long can=(long)(*buyer_tr/fmaxf(price,1e-4f));
     if (want>can) want=can;
     if (want<=0) return 0;
-    int pid=econ_region_rep_province(e,region);
+    int pid=(prov>=0 && prov<e->n_prov) ? prov : econ_region_rep_province(e,region);
     if (pid<0 || pid>=e->n_prov) return 0;
     ProvinceEconomy *pe=&e->prov[pid];
     ProvincePop *pp=&pe->pop;

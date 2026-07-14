@@ -949,9 +949,11 @@ int main(int argc, char **argv){
             ok("(aucune réforme trouvée — ignoré)", true);
         }
 
-        /* ── ESCLAVAGE — garder/affranchir/vendre : verbes + conservation des âmes/or ── */
+        /* ── ESCLAVAGE — garder/affranchir/vendre : verbes + conservation des âmes/or ──
+         * RE-KEY PROVINCE : slave_sell/slave_buy prennent un PID direct (`cap` est
+         * désormais la province-capitale, pas sa région). */
         {
-            int cap = scps_country_capital_region(sd, me);
+            int cap = scps_country_capital_province(sd, me);
             ok("esclavage : capitale du joueur trouvée", cap>=0);
             if (cap>=0){
                 /* affranchissement : verbe ENFILÉ (drain no-op sans esclave, mais le verbe
@@ -993,23 +995,24 @@ int main(int argc, char **argv){
             }
 
             /* ── LOT G — RÉINCORPORATION DE POP : verbe enfilé (revalidé au drain :
-             *    A≠B toutes deux au joueur). Le joueur n'a souvent qu'UNE région à la
-             *    genèse (la colonisation joueur est un ordre explicite, CMD_COLONIZE,
-             *    pas autonome) : la logique de fond est vérifiée en isolation par
+             *    A≠B toutes deux au joueur). RE-KEY PROVINCE : A/B sont des PID
+             *    directs. Le joueur n'a souvent qu'UNE province à la genèse (la
+             *    colonisation joueur est un ordre explicite, CMD_COLONIZE, pas
+             *    autonome) : la logique de fond est vérifiée en isolation par
              *    demography_demo (§12, group-level) — ici on prouve la PLOMBERIE façade
-             *    (verbe enfilé + refus A==B), avec l'effet si le monde offre 2 régions. */
+             *    (verbe enfilé + refus A==B), avec l'effet si le monde offre 2 provinces. */
             {
                 int rb=-1, np2=scps_province_count(sd);
                 for (int pp=0; pp<np2 && rb<0; pp++){ ScpsProvInfo pi; scps_province_info(sd,pp,&pi);
-                    if (pi.owner==me){ int rg=scps_province_region(sd,pp); if (rg>=0 && rg!=cap) rb=rg; } }
+                    if (pi.owner==me && pp!=cap) rb=pp; }
                 if (cap>=0 && rb>=0){
-                    ok("verbe POP_TRANSFER enfilé (deux régions distinctes au joueur)",
+                    ok("verbe POP_TRANSFER enfilé (deux provinces distinctes au joueur)",
                        scps_player_pop_transfer(sd, cap, rb, 0 /*CLASS_LABORER*/, 500)==1);
                     scps_sim_advance_days(sd, 2);
                     ok("A==B est refusé (aucun ordre n'aurait de sens)",
                        scps_player_pop_transfer(sd, cap, cap, 0, 500)==1);   /* enfile quand même : REVALIDÉ au drain, pas au push */
                 } else {
-                    ok("(une seule région au joueur — POP_TRANSFER ignoré)", true);
+                    ok("(une seule province au joueur — POP_TRANSFER ignoré)", true);
                     ok("(idem)", true);
                 }
             }

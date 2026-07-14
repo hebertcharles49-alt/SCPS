@@ -1343,9 +1343,9 @@ func _servile_act(act: String, qty: int, me: int) -> void:
 		label = "affranchissement"
 		_servile_manumit_armed = false
 	else:
+		# RE-KEY PROVINCE : slave_buy/slave_sell prennent un PID direct.
 		var cap_prov: int = w.country_capital_province(me)
-		var cap_region: int = w.province_region(cap_prov) if cap_prov >= 0 else -1
-		if cap_region < 0:
+		if cap_prov < 0:
 			_servile_flash_ok = false
 			_servile_flash = "✗ aucune capitale — refusé"
 			Sound.play("ui_click")
@@ -1353,10 +1353,10 @@ func _servile_act(act: String, qty: int, me: int) -> void:
 			return
 		is_trade = true
 		if act == "buy":
-			ok = bool(w.player_slave_buy(cap_region, qty))
+			ok = bool(w.player_slave_buy(cap_prov, qty))
 			label = "achat"
 		else:
-			ok = bool(w.player_slave_sell(cap_region, qty))
+			ok = bool(w.player_slave_sell(cap_prov, qty))
 			label = "vente"
 	_servile_flash_ok = ok
 	_servile_flash = ("⚑ %s — ordre émis" % label) if ok else ("✗ %s — refusé" % label)

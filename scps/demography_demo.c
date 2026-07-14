@@ -413,7 +413,8 @@ int main(int argc, char **argv){
         free(e);
     }
 
-    /* ═══ 12. LOT G — RÉINCORPORATION DE POP (CMD_POP_TRANSFER, granularité RÉGION) ═ */
+    /* ═══ 12. LOT G — RÉINCORPORATION DE POP (CMD_POP_TRANSFER, RE-KEY PROVINCE — les
+     *          2 arguments sont des PID directs, plus une indirection région) ═ */
     printf("\n── 12. Réincorporation de pop : les groupes suivent, le coût frappe la source ──\n");
     {
         WorldEconomy *e=calloc(1,sizeof(WorldEconomy));

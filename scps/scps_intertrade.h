@@ -129,7 +129,9 @@ long  intertrade_market_sell(WorldEconomy *e, int region, int good, long want, i
  * peut PAS acheter). Prix = SLAVE_PRICE×ipm (vente), ×2 à l'achat (double taxe des
  * Centres, motif tier mondial de market_buy). Renvoient les âmes échangées. */
 long  intertrade_slave_sell(WorldEconomy *e, int region, long count);
-long  intertrade_slave_buy (WorldEconomy *e, int region, long count, bool can_enslave);
+/* RE-KEY PROVINCE : `prov` (-1 = héritage/chemin IA ; ≥0 = PID direct posé par le
+ * drain CMD_SLAVE_BUY joueur) porte le grain d'ÉCRITURE — cf. scps_intertrade.c. */
+long  intertrade_slave_buy (WorldEconomy *e, int region, long count, bool can_enslave, int prov);
 void  intertrade_slave_pool(float out[HERITAGE_COUNT]);   /* lecteur (membrane) : âmes au pool par héritage */
 long  intertrade_slave_pool_count(void);                  /* Σ âmes au pool (télémétrie/readout) */
 

@@ -919,13 +919,13 @@ static void ai_interior_turn(AiActor *a, const World *w, WorldEconomy *econ,
     bool martial = (eth==ETHOS_DOMINATEUR||eth==ETHOS_HONNEUR||eth==ETHOS_ORDRE);
     float repress_seuil = martial?0.25f : (eth==ETHOS_BUREAUCRATE)?0.12f : 0.08f;
     if (worst_agit>=0 && worst_sat<repress_seuil){
-        if (agency_order_repress(ag, worst_agit)){ a->next_interior_day=day+AI_INTERIOR_CADENCE; return; }
+        if (agency_order_repress(ag, worst_agit, -1)){ a->next_interior_day=day+AI_INTERIOR_CADENCE; return; }
     }
     /* FORMER — l'art du Bureaucrate (le Creuset) : une grosse minorité mal intégrée,
      * pas de guerre en cours (on ne scolarise pas sous les bombes). */
     bool integrateur = (eth==ETHOS_BUREAUCRATE||eth==ETHOS_ORDRE||eth==ETHOS_PACIFISTE);
     if (!at_war && worst_min>=0 && min_integ<0.40f && (integrateur || a->has_creuset)){
-        if (agency_order_assimilate(ag, worst_min, a->has_creuset)){
+        if (agency_order_assimilate(ag, worst_min, a->has_creuset, -1)){
             a->next_interior_day=day+AI_INTERIOR_CADENCE; return; }
     }
     /* PURGER — seuil TRÈS haut : credo purificateur au trône, OU Dominateur en crise
@@ -936,7 +936,7 @@ static void ai_interior_turn(AiActor *a, const World *w, WorldEconomy *econ,
         bool purificateur = (cr>=0 && econ->region[cr].culture.credo==CREDO_PURIFICATEUR);
         bool dominateur_crise = (eth==ETHOS_DOMINATEUR && v->fracture>6.f && min_integ<0.15f);
         if (purificateur || dominateur_crise){
-            if (agency_order_purge(ag, worst_min)){
+            if (agency_order_purge(ag, worst_min, -1)){
                 a->next_purge_ok_day=day+AI_PURGE_LOCK;
                 a->next_interior_day=day+AI_INTERIOR_CADENCE; return;
             }
@@ -2815,7 +2815,7 @@ static void ai_slave_buy_pass(WorldEconomy *econ, int cid, int rhome){
     if (deficit < 20.0) return;                               /* pas de pénurie mesurable : rien à acheter */
     long ask = (long)(deficit * (double)tune_f("SLAVE_AI_BUY_FRAC",0.20f));
     if (ask<=0) return;
-    long got = intertrade_slave_buy(econ, rhome, ask, true);
+    long got = intertrade_slave_buy(econ, rhome, ask, true, -1);
     if (got>0) g_slave_ai_bought += got;
 }
 

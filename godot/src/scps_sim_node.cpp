@@ -127,10 +127,12 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("can_colonize", "prov"),          &ScpsWorld::can_colonize);
     /* §3 — le RESTE de la surface de verbes (wiring UI complet) : intérieur · conseil ·
      * commerce · guerre. Passe-plats vers scps_player_* (journal déterministe, drain revalidé). */
-    ClassDB::bind_method(D_METHOD("player_repress", "region"),          &ScpsWorld::player_repress);
-    ClassDB::bind_method(D_METHOD("player_assimilate", "region", "creuset"), &ScpsWorld::player_assimilate);
-    ClassDB::bind_method(D_METHOD("player_purge", "region"),            &ScpsWorld::player_purge);
-    ClassDB::bind_method(D_METHOD("action_preview", "region", "verb"),  &ScpsWorld::action_preview);
+    /* RE-KEY PROVINCE (2026-07-14) : repress/assimilate/purge/action_preview prennent
+     * un PID direct ("prov") — plus d'indirection région. */
+    ClassDB::bind_method(D_METHOD("player_repress", "prov"),          &ScpsWorld::player_repress);
+    ClassDB::bind_method(D_METHOD("player_assimilate", "prov", "creuset"), &ScpsWorld::player_assimilate);
+    ClassDB::bind_method(D_METHOD("player_purge", "prov"),            &ScpsWorld::player_purge);
+    ClassDB::bind_method(D_METHOD("action_preview", "prov", "verb"),  &ScpsWorld::action_preview);
     ClassDB::bind_method(D_METHOD("player_council_hire", "seat", "slot"), &ScpsWorld::player_council_hire);
     ClassDB::bind_method(D_METHOD("player_council_dismiss", "seat"),    &ScpsWorld::player_council_dismiss);
     ClassDB::bind_method(D_METHOD("player_council_pay", "seat", "pay"), &ScpsWorld::player_council_pay);
@@ -186,12 +188,13 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_alloc_bld", "province", "bld_type", "weight"), &ScpsWorld::player_alloc_bld);
     ClassDB::bind_method(D_METHOD("player_alloc_input", "province", "bld_type", "input"), &ScpsWorld::player_alloc_input);
     ClassDB::bind_method(D_METHOD("player_alloc_auto", "province"),         &ScpsWorld::player_alloc_auto);
-    ClassDB::bind_method(D_METHOD("player_pop_transfer", "src_region", "dst_region", "klass", "count"), &ScpsWorld::player_pop_transfer);
+    /* RE-KEY PROVINCE : src_prov/dst_prov et prov sont des PID directs (plus de région). */
+    ClassDB::bind_method(D_METHOD("player_pop_transfer", "src_prov", "dst_prov", "klass", "count"), &ScpsWorld::player_pop_transfer);
     ClassDB::bind_method(D_METHOD("manumit_preview"),                     &ScpsWorld::manumit_preview);
     ClassDB::bind_method(D_METHOD("country_shortages", "country"),        &ScpsWorld::country_shortages);
     ClassDB::bind_method(D_METHOD("player_manumit"),                      &ScpsWorld::player_manumit);
-    ClassDB::bind_method(D_METHOD("player_slave_buy", "region", "count"), &ScpsWorld::player_slave_buy);
-    ClassDB::bind_method(D_METHOD("player_slave_sell", "region", "count"), &ScpsWorld::player_slave_sell);
+    ClassDB::bind_method(D_METHOD("player_slave_buy", "prov", "count"), &ScpsWorld::player_slave_buy);
+    ClassDB::bind_method(D_METHOD("player_slave_sell", "prov", "count"), &ScpsWorld::player_slave_sell);
     ClassDB::bind_method(D_METHOD("slave_market"),                        &ScpsWorld::slave_market);
 
     /* CRÉATEUR DE CULTURE */
@@ -1670,20 +1673,21 @@ Dictionary ScpsWorld::player_alerts() {
 bool ScpsWorld::player_colonize(int prov) {
     return sim ? scps_player_colonize(sim, prov) != 0 : false;
 }
-/* §3 — le RESTE de la surface (wiring UI complet) : intérieur · conseil · commerce · guerre. */
-bool ScpsWorld::player_repress(int region)               { return sim ? scps_player_repress(sim, region) != 0 : false; }
-bool ScpsWorld::player_assimilate(int region, bool creuset) { return sim ? scps_player_assimilate(sim, region, creuset ? 1 : 0) != 0 : false; }
-bool ScpsWorld::player_purge(int region)                 { return sim ? scps_player_purge(sim, region) != 0 : false; }
+/* §3 — le RESTE de la surface (wiring UI complet) : intérieur · conseil · commerce · guerre.
+ * RE-KEY PROVINCE : repress/assimilate/purge/action_preview prennent un PID direct. */
+bool ScpsWorld::player_repress(int prov)               { return sim ? scps_player_repress(sim, prov) != 0 : false; }
+bool ScpsWorld::player_assimilate(int prov, bool creuset) { return sim ? scps_player_assimilate(sim, prov, creuset ? 1 : 0) != 0 : false; }
+bool ScpsWorld::player_purge(int prov)                 { return sim ? scps_player_purge(sim, prov) != 0 : false; }
 /* APERÇU D'ACTION (UI-4) : { cost_gold, duration_days, pop_delta, satisfaction_delta,
  * agitation_delta, coercition_delta, risque } — lecture pure, aucune mutation. */
-Dictionary ScpsWorld::action_preview(int region, int verb) {
+Dictionary ScpsWorld::action_preview(int prov, int verb) {
     Dictionary out;
     out["cost_gold"] = 0.0; out["duration_days"] = 0; out["pop_delta"] = 0;
     out["satisfaction_delta"] = 0; out["agitation_delta"] = 0; out["coercition_delta"] = 0;
     out["risque"] = String();
     if (!sim) return out;
     ScpsActionPreview p;
-    if (scps_action_preview(sim, region, verb, &p)) {
+    if (scps_action_preview(sim, prov, verb, &p)) {
         out["cost_gold"]          = (double)p.cost_gold;
         out["duration_days"]      = p.duration_days;
         out["pop_delta"]          = p.pop_delta;
@@ -1917,9 +1921,9 @@ bool ScpsWorld::player_alloc_auto(int province) {
     return sim ? scps_player_alloc_auto(sim, province) != 0 : false;
 }
 
-/* ── LOT G — RÉINCORPORATION DE POP ── */
-bool ScpsWorld::player_pop_transfer(int src_region, int dst_region, int klass, int count) {
-    return sim ? scps_player_pop_transfer(sim, src_region, dst_region, klass, (long)count) != 0 : false;
+/* ── LOT G — RÉINCORPORATION DE POP — RE-KEY PROVINCE : src_prov/dst_prov PID directs ── */
+bool ScpsWorld::player_pop_transfer(int src_prov, int dst_prov, int klass, int count) {
+    return sim ? scps_player_pop_transfer(sim, src_prov, dst_prov, klass, (long)count) != 0 : false;
 }
 /* ── LOT J — L'APERÇU DE MANUMISSION ── */
 Dictionary ScpsWorld::manumit_preview() {
@@ -1952,15 +1956,16 @@ Array ScpsWorld::country_shortages(int country) {
     return a;
 }
 
-/* ── ESCLAVAGE — les 3 verbes orphelins + le lecteur de marché ── */
+/* ── ESCLAVAGE — les 3 verbes orphelins + le lecteur de marché — RE-KEY PROVINCE :
+ * slave_buy/slave_sell prennent un PID direct ── */
 bool ScpsWorld::player_manumit() {
     return sim ? scps_player_manumit(sim) != 0 : false;
 }
-bool ScpsWorld::player_slave_buy(int region, int count) {
-    return sim ? scps_player_slave_buy(sim, region, (long)count) != 0 : false;
+bool ScpsWorld::player_slave_buy(int prov, int count) {
+    return sim ? scps_player_slave_buy(sim, prov, (long)count) != 0 : false;
 }
-bool ScpsWorld::player_slave_sell(int region, int count) {
-    return sim ? scps_player_slave_sell(sim, region, (long)count) != 0 : false;
+bool ScpsWorld::player_slave_sell(int prov, int count) {
+    return sim ? scps_player_slave_sell(sim, prov, (long)count) != 0 : false;
 }
 Dictionary ScpsWorld::slave_market() {
     Dictionary out;

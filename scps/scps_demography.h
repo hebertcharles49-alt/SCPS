@@ -177,19 +177,20 @@ long demography_manumit_count(void);   /* âmes affranchies cumulées (télémé
  * Renvoie le nombre d'âmes affranchies. */
 long demography_manumit_region(WorldEconomy *econ, int region);
 
-/* ---- RÉINCORPORATION DE POP (CMD_POP_TRANSFER, granularité RÉGION, JOUEUR seul) ----- *
- * Déplace `count` âmes de la classe `klass` de `src_region` vers `dst_region`, À
- * TRAVERS toutes les provinces du pays qui portent cette classe dans la région
- * source (proportionnellement à leur poids). Réutilise migration_move : le
- * déplacé GARDE heritage/arrival/integration/klass (une diaspora suit qui elle
- * est — seul le FOYER change), fusion dans un groupe compatible à l'arrivée sinon
- * nouvelle minorité. PLANCHER ANTI-VIDAGE : jamais plus de la MOITIÉ de la classe
- * ciblée dans la région source (même discipline qu'econ_relocate_pop : 50%). LE
- * COÛT : le canal de coercition forcée existant (RELOC_COERCION_BASE, miroir
- * econ_relocate_pop) frappe la région SOURCE — SAUF si klass==CLASS_SLAVE (on
+/* ---- RÉINCORPORATION DE POP (CMD_POP_TRANSFER, RE-KEY PROVINCE, JOUEUR seul) ----- *
+ * Déplace `count` âmes de la classe `klass` de `src_prov` vers `dst_prov` — PID
+ * DIRECT des DEUX côtés (aucune indirection econ_region_rep_province : seul
+ * appelant, le drain CMD_POP_TRANSFER joueur — pas de chemin IA à préserver ici).
+ * Réutilise migration_move : le déplacé GARDE heritage/arrival/integration/klass
+ * (une diaspora suit qui elle est — seul le FOYER, home_reg=région de la province
+ * source, change), fusion dans un groupe compatible à l'arrivée sinon nouvelle
+ * minorité. PLANCHER ANTI-VIDAGE : jamais plus de la MOITIÉ de la classe ciblée
+ * dans la province source (même discipline qu'econ_relocate_pop : 50%). LE COÛT :
+ * le canal de coercition forcée existant (RELOC_COERCION_BASE, miroir
+ * econ_relocate_pop) frappe la province SOURCE — SAUF si klass==CLASS_SLAVE (on
  * déplace une propriété, pas un déplacement forcé de sujets libres ; le sort de
  * l'esclave n'est pas le sien à contester). Renvoie les âmes réellement déplacées. */
-long demography_pop_transfer(WorldEconomy *econ, int src_region, int dst_region,
+long demography_pop_transfer(WorldEconomy *econ, int src_prov, int dst_prov,
                              int klass, long count);
 
 #endif /* SCPS_DEMOGRAPHY_H */

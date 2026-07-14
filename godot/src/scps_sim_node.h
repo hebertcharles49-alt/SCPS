@@ -184,15 +184,16 @@ public:
     bool       player_age_engage();                   /* §7 : engager l'âge courant (une fois par âge) */
     bool       player_colonize(int prov);             /* COLONISATION (charte) : fonder sur une province vierge */
     bool       can_colonize(int prov);                /* read de légalité (griser le bouton Coloniser) */
-    /* §3 — le RESTE de la surface de verbes (wiring UI complet) */
-    bool       player_repress(int region);            /* intérieur : réprimer l'agitation */
-    bool       player_assimilate(int region, bool creuset); /* intérieur : assimiler (creuset = TECH_INTEGRATION) */
-    bool       player_purge(int region);              /* intérieur : purger (coût SCPS différé) */
+    /* §3 — le RESTE de la surface de verbes (wiring UI complet). RE-KEY PROVINCE
+     * (2026-07-14) : PID direct (`prov`), plus d'indirection région. */
+    bool       player_repress(int prov);              /* intérieur : réprimer l'agitation */
+    bool       player_assimilate(int prov, bool creuset); /* intérieur : assimiler (creuset = TECH_INTEGRATION) */
+    bool       player_purge(int prov);                /* intérieur : purger (coût SCPS différé) */
     /* APERÇU D'ACTION (UI-4, 2026-07-10) — { cost_gold, duration_days, pop_delta,
-     * satisfaction_delta, agitation_delta, coercition_delta, risque } sur `region`
+     * satisfaction_delta, agitation_delta, coercition_delta, risque } sur `prov`
      * MAINTENANT, pour les 3 leviers intérieurs (lecture pure, aucune mutation).
      * verb : 0=MATER 1=FORMER 2=PURGER. */
-    Dictionary action_preview(int region, int verb);
+    Dictionary action_preview(int prov, int verb);
     bool       player_council_hire(int seat, int slot);   /* conseil : pourvoir un siège */
     bool       player_council_dismiss(int seat);      /* conseil : renvoyer */
     bool       player_council_pay(int seat, float pay);   /* V2a : le curseur de paie (0..2) */
@@ -262,19 +263,21 @@ public:
     bool       player_alloc_input(int province, int bld_type, int input);
     bool       player_alloc_auto(int province);          /* retour au split AUTO */
 
-    /* LOT G — RÉINCORPORATION DE POP : déplace `count` âmes de la classe (SocialClass)
-     * `klass` de `src_region` vers `dst_region` (toutes deux au joueur). Verbe ENFILE. */
-    bool       player_pop_transfer(int src_region, int dst_region, int klass, int count);
+    /* LOT G — RÉINCORPORATION DE POP — RE-KEY PROVINCE : déplace `count` âmes de la
+     * classe (SocialClass) `klass` de `src_prov` vers `dst_prov` (PID directs, tous
+     * deux au joueur). Verbe ENFILE. */
+    bool       player_pop_transfer(int src_prov, int dst_prov, int klass, int count);
     /* LOT J — L'APERÇU DE MANUMISSION : { souls, n_groups, pct_of_country, friction_after }. */
     Dictionary manumit_preview();
     /* PÉNURIES (UI-2, topbar) — [{nom, res_id, runway_days, structurel}], trié urgence
      * croissante. runway_days = -1.0 si aucun mur en vue. */
     Array      country_shortages(int country);
 
-    /* ESCLAVAGE — les 3 verbes + le lecteur de marché (V3, câblage servile). */
+    /* ESCLAVAGE — les 3 verbes + le lecteur de marché (V3, câblage servile).
+     * RE-KEY PROVINCE : slave_buy/slave_sell prennent un PID direct (`prov`). */
     bool       player_manumit();                       /* affranchit TOUTE la strate esclave du joueur */
-    bool       player_slave_buy(int region, int count); /* achète au pool mondial, livré dans `region` (au joueur) */
-    bool       player_slave_sell(int region, int count);/* vend depuis `region` (au joueur) au pool mondial */
+    bool       player_slave_buy(int prov, int count);   /* achète au pool mondial, livré sur `prov` (au joueur) */
+    bool       player_slave_sell(int prov, int count);  /* vend depuis `prov` (au joueur) au pool mondial */
     /* { total:int, can_buy:bool, lines:[{heritage,count}], price_buy:int, price_sell:int }
      * — le pool des Centres par héritage + le SPREAD courant (achat ×2 / vente ×1, lot M). */
     Dictionary slave_market();

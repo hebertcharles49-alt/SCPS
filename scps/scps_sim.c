@@ -659,21 +659,28 @@ static void sim_cmd_drain(Sim *s, World *w){
             intertrade_order_embargo(p, t, c->a[1]!=0);               /* décret unilatéral (pas d'évaluation) */
             break; }
           /* ── §3 — INTÉRIEUR : les leviers passent par les MÊMES actionneurs que l'IA
-           *    (agency/statecraft) ; toute région est REVALIDÉE (∈ [0,n) ET au joueur). ── */
+           *    (agency/statecraft) ; RE-KEY PROVINCE (a[0] est un PID direct, jamais
+           *    une région) ; toute province est REVALIDÉE (∈ [0,n) ET au joueur). ── */
           case CMD_REPRESS: {
-            int r=c->a[0];
-            if (r<0 || r>=s->econ->n_regions || s->econ->region[r].owner!=p) break;
-            agency_order_repress(s->ag, r);
+            int pid=c->a[0];
+            if (pid<0 || pid>=s->econ->n_prov || s->econ->prov[pid].owner!=p) break;
+            int r = (pid<w->n_provinces) ? w->province[pid].region : -1;
+            if (r<0 || r>=s->econ->n_regions) break;
+            agency_order_repress(s->ag, r, pid);
             break; }
           case CMD_ASSIMILATE: {
-            int r=c->a[0];
-            if (r<0 || r>=s->econ->n_regions || s->econ->region[r].owner!=p) break;
-            agency_order_assimilate(s->ag, r, c->a[1]!=0);            /* a[1] = creuset (TECH_INTEGRATION) */
+            int pid=c->a[0];
+            if (pid<0 || pid>=s->econ->n_prov || s->econ->prov[pid].owner!=p) break;
+            int r = (pid<w->n_provinces) ? w->province[pid].region : -1;
+            if (r<0 || r>=s->econ->n_regions) break;
+            agency_order_assimilate(s->ag, r, c->a[1]!=0, pid);       /* a[1] = creuset (TECH_INTEGRATION) */
             break; }
           case CMD_PURGE: {
-            int r=c->a[0];
-            if (r<0 || r>=s->econ->n_regions || s->econ->region[r].owner!=p) break;
-            agency_order_purge(s->ag, r);
+            int pid=c->a[0];
+            if (pid<0 || pid>=s->econ->n_prov || s->econ->prov[pid].owner!=p) break;
+            int r = (pid<w->n_provinces) ? w->province[pid].region : -1;
+            if (r<0 || r>=s->econ->n_regions) break;
+            agency_order_purge(s->ag, r, pid);
             break; }
           case CMD_COUNCIL_HIRE: {
             int seat=c->a[0], slot=c->a[1];
@@ -920,27 +927,38 @@ static void sim_cmd_drain(Sim *s, World *w){
                 faction_lever_apply(p, FAC_COMMUNAUTAIRE,
                                     tune_f("DECISION_MANUMIT_COMMUNAUTAIRE_BIAS", 0.10f));
             break; }
-          /* ── ESCLAVAGE — le MARCHÉ des Centres. a={region, count}. REVALIDÉ : région au
-           *    joueur (achat/vente sont des actes du PROPRIÉTAIRE de la région). ── */
+          /* ── ESCLAVAGE — le MARCHÉ des Centres. a={pid, count}. RE-KEY PROVINCE :
+           *    a[0] est un PID direct (jamais une région) — les esclaves vivent dans
+           *    les strates de PROVINCE ; le Centre (trésor/prix) reste la contrepartie
+           *    RÉGION-grain, inchangé (intertrade_slave_sell/_buy). REVALIDÉ : la
+           *    province est-elle au joueur (achat/vente sont ses actes) ? SELL scanne
+           *    déjà TOUTES ses provinces (pid n'y sert qu'à la validation + au Centre) ;
+           *    BUY dépose le groupe déporté SUR pid (prov≥0 direct, plus de rep-province). */
           case CMD_SLAVE_SELL: {
-            int r=c->a[0]; long n=c->a[1];
-            if (r<0 || r>=s->econ->n_regions || s->econ->region[r].owner!=p || n<=0) break;
+            int pid=c->a[0]; long n=c->a[1];
+            if (pid<0 || pid>=s->econ->n_prov || s->econ->prov[pid].owner!=p || n<=0) break;
+            int r = (pid<w->n_provinces) ? w->province[pid].region : -1;
+            if (r<0 || r>=s->econ->n_regions) break;
             intertrade_slave_sell(s->econ, r, n);
             break; }
           case CMD_SLAVE_BUY: {
-            int r=c->a[0]; long n=c->a[1];
-            if (r<0 || r>=s->econ->n_regions || s->econ->region[r].owner!=p || n<=0) break;
+            int pid=c->a[0]; long n=c->a[1];
+            if (pid<0 || pid>=s->econ->n_prov || s->econ->prov[pid].owner!=p || n<=0) break;
+            int r = (pid<w->n_provinces) ? w->province[pid].region : -1;
+            if (r<0 || r>=s->econ->n_regions) break;
             bool can = econ_country_can_enslave(w, s->econ, &s->ts[p], p);
-            intertrade_slave_buy(s->econ, r, n, can);
+            intertrade_slave_buy(s->econ, r, n, can, pid);
             break; }
-          /* ── LOT G — RÉINCORPORATION DE POP : a={A, B, klass, count}. REVALIDÉ :
+          /* ── LOT G — RÉINCORPORATION DE POP : a={pidA, pidB, klass, count}. RE-KEY
+           *    PROVINCE : A/B sont des PID directs (plus d'indirection région — seul
+           *    demography_pop_transfer les consomme, aucun chemin IA). REVALIDÉ :
            *    A≠B toutes deux au joueur (les âmes ne quittent que le royaume propre). ── */
           case CMD_POP_TRANSFER: {
-            int ra=c->a[0], rb=c->a[1], klass=c->a[2]; long n=c->a[3];
-            if (ra<0 || ra>=s->econ->n_regions || rb<0 || rb>=s->econ->n_regions || ra==rb) break;
-            if (s->econ->region[ra].owner!=p || s->econ->region[rb].owner!=p) break;
+            int pa=c->a[0], pb=c->a[1], klass=c->a[2]; long n=c->a[3];
+            if (pa<0 || pa>=s->econ->n_prov || pb<0 || pb>=s->econ->n_prov || pa==pb) break;
+            if (s->econ->prov[pa].owner!=p || s->econ->prov[pb].owner!=p) break;
             if (klass<0 || klass>=CLASS_COUNT || n<=0) break;
-            demography_pop_transfer(s->econ, ra, rb, klass, n);
+            demography_pop_transfer(s->econ, pa, pb, klass, n);
             break; }
         }
     }

@@ -132,6 +132,22 @@ func _gui_input(event: InputEvent) -> void:
 			_fire(String(br[1]), int(br[2]))
 			return
 
+## région → 1re province possédée qui s'y trouve (RE-KEY PROVINCE : le bouton
+## « Réprimer » de l'évènement porte une RÉGION — l'évènement de révolte est
+## région-grain à sa source — mais player_repress veut un PID direct ; le journal
+## d'évènement n'est pas dans le périmètre de cette bascule, on résout ici, côté UI).
+func _first_owned_prov_in_region(w, region: int) -> int:
+	if w == null or region < 0:
+		return -1
+	var me := int(w.player())
+	for pid in range(w.province_count()):
+		if int(w.province_region(pid)) != region:
+			continue
+		var pi: Dictionary = w.province_info(pid)
+		if int(pi.get("owner", -2)) == me:
+			return pid
+	return -1
+
 ## le VERBE du bouton — puis l'évènement suivant de la file.
 func _fire(act: String, region: int) -> void:
 	match act:
@@ -140,7 +156,9 @@ func _fire(act: String, region: int) -> void:
 				goto_region.emit(region)
 		"repress":
 			if region >= 0 and Sim.world != null and Sim.world.has_method("player_repress"):
-				Sim.world.player_repress(region)   # verbe journalisé (drainé au tick)
+				var pid := _first_owned_prov_in_region(Sim.world, region)
+				if pid >= 0:
+					Sim.world.player_repress(pid)   # verbe journalisé (drainé au tick)
 		"army":
 			open_tab.emit(4)
 		"diplo":
