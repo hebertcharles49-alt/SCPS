@@ -16,10 +16,7 @@ signal open_country(country: int)
 
 const W := 288.0            ## élargie (retour joueur 2026-07-10 : « laisse respirer »)
 const HANDLE_W := 14.0      ## bande réduite quand la sidebar est REPLIÉE (rabat)
-const LOG_MAX := 18         ## (les factions parties en topbar, le journal respire)
 
-var _seen_seq := 0
-var _log := []              ## [{txt, y(an)}] — fil accumulé (le plus récent en tête)
 var _city_names := {}       ## region → nom (cache, résolu via province_at(siège))
 var _collapsed := false     ## rabat (pièces planche 23 : 01 replier · 02 déplier)
 var _handle_rect := Rect2()
@@ -29,7 +26,7 @@ var _age_engageable := false ## retour joueur 2026-07-11 : « sous le temps, au-
 var _fold := {}             ## titre de section → replié (retour joueur 2026-07-10 :
                             ## « tous les menus de droite doivent pouvoir se collapser »)
 var _sec_rects := []        ## [{rect, title}] bandeaux cliquables (reconstruit au _draw)
-var _log_rects := []        ## [{rect, region, txt}] lignes localisées du journal
+var _journal_rects := []    ## [{rect, data}] lignes du JOURNAL (clic = même action que l'origine)
 var _war_rects := []        ## [{rect, country}] guerres actives
 var _notif_rects := []      ## [{rect, data}] notifications actives
 var _alerts_source: Control
@@ -48,8 +45,9 @@ func _ready() -> void:
 	clip_contents = true
 	_layout()
 	get_viewport().size_changed.connect(_layout)
-	Sim.generated.connect(func(): _log.clear(); _city_names.clear(); _seen_seq = 0; queue_redraw())
-	Sim.month_ticked.connect(func(_y): _poll(); queue_redraw())   # résumé d'empire : cadence mensuelle
+	Sim.generated.connect(func(): _city_names.clear(); queue_redraw())
+	Sim.month_ticked.connect(func(_y): queue_redraw())   # résumé d'empire : cadence mensuelle (le
+		# JOURNAL lui-même est tenu par alerts.gd, rafraîchi via ledger_changed — set_alert_source)
 
 ## ⚠ la visibilité vivait DANS _draw (`visible = Sim.game_on`) : un Control caché ne
 ## redessine JAMAIS → masqué une fois au menu, le ledger ne se remontrait jamais (il
@@ -117,7 +115,9 @@ func _gui_input(e: InputEvent) -> void:
 				queue_redraw()
 			accept_event()
 			return
-		# JOURNAL : une ligne localisée reste un raccourci vers le théâtre de l'évènement.
+		# JOURNAL : le clic route la MÊME action que la notification d'origine (centrer
+		# la carte / ouvrir le panneau concerné) via alerts.gd (résolution UNIQUE,
+		# cf. activate_journal) — jamais reconstruite ici.
 		if not _collapsed:
 			for wr in _war_rects:
 				if (wr["rect"] as Rect2).has_point(cp):
@@ -125,14 +125,12 @@ func _gui_input(e: InputEvent) -> void:
 					Sound.play("ui_click")
 					accept_event()
 					return
-			for lr in _log_rects:
-				if (lr["rect"] as Rect2).has_point(cp):
-					var region := int(lr.get("region", -1))
-					if region >= 0:
-						goto_region.emit(region)
-						Sound.play("ui_click")
-						accept_event()
-						return
+			for jr in _journal_rects:
+				if (jr["rect"] as Rect2).has_point(cp):
+					if _alerts_source != null and _alerts_source.has_method("activate_journal"):
+						_alerts_source.call("activate_journal", jr["data"], e.button_index)
+					accept_event()
+					return
 		# PLIAGE PAR SECTION : clic sur un bandeau → replie/déplie son contenu
 		if not _collapsed:
 			for sr in _sec_rects:
@@ -144,34 +142,11 @@ func _gui_input(e: InputEvent) -> void:
 					accept_event()
 					return
 
-func _poll() -> void:
-	var w = Sim.world
-	if w == null or not w.has_method("feed_poll"):
-		return
-	for ev in w.feed_poll(_seen_seq):
-		_seen_seq = maxi(_seen_seq, int(ev["seq"]))
-		if not Sim.game_on:
-			continue                              # le fil pré-partie est jeté (vitrine)
-		var kind := int(ev.get("kind", 0))
-		var meta: Dictionary = AlertsK.FEED_KINDS.get(kind, {})
-		var txt := String(meta.get("fmt", String(ev.get("label", "évènement"))))
-		txt = txt.replace("{a}", String(ev.get("a", "?"))) \
-			.replace("{b}", String(ev.get("b", "?"))) \
-			.replace("{r}", _region_name(int(ev.get("region", -1)))) \
-			.replace("{label}", String(ev.get("label", ""))) \
-			.replace(" (an {y})", "")             # l'an vit déjà en préfixe de ligne
-		if kind in [8, 9, 11]:
-			txt += " — " + AlertsK._battle_losses_text(int(ev.get("v", 0)))
-		var action: Dictionary = AlertsK._feed_event_action(kind, int(ev.get("region", -1)))
-		var region := int(action.get("region", -1)) if String(action.get("act", "")) == "goto" else -1
-		_log.push_front({
-			"txt": txt,
-			"y": int(ev.get("year", 0)),
-			"region": region,
-		})
-	while _log.size() > LOG_MAX:
-		_log.pop_back()
-
+## RÉSOLUTION DES NOMS DE RÉGION (cache) — utilisée UNIQUEMENT pour l'affichage :
+## les entrées du JOURNAL (alerts.gd, résolution des textes/couleurs/actions) portent
+## un `region` id + un `tip` qui contient encore « région <N> » (numérique, le seul
+## format que le moteur connaît) ; on y substitue ICI le nom lisible, en aval de la
+## résolution — cosmétique de rendu, pas une seconde logique de résolution.
 func _region_name(r: int) -> String:
 	if _city_names.has(r):
 		return _city_names[r]
@@ -185,8 +160,20 @@ func _region_name(r: int) -> String:
 	_city_names[r] = nm
 	return nm
 
+## le texte COMPLET d'une entrée de journal, région substituée en nom lisible quand
+## elle est connue (« région 42 » → « Marbrive ») — utilisé pour la ligne ET le hover.
+## L'an vit déjà en préfixe de ligne (« an %d · … ») : le « (an %d) » du gabarit
+## moteur (FEED_KINDS, cf. alerts.gd) est donc retiré ici (redondance d'affichage
+## seulement — le tip d'origine, lui, n'est jamais réécrit).
+func _journal_full_text(entry: Dictionary, region: int) -> String:
+	var tip := String(entry.get("tip", ""))
+	if region >= 0:
+		tip = tip.replace("région %d" % region, _region_name(region))
+	tip = tip.replace(" (an %d)" % int(entry.get("year", 0)), "")
+	return tip
+
 func _draw() -> void:
-	_log_rects.clear()
+	_journal_rects.clear()
 	_war_rects.clear()
 	_notif_rects.clear()
 	if Sim.world == null:
@@ -360,27 +347,34 @@ func _draw() -> void:
 			VKit.detail(self, Vector2(x + rw_lbl_w + rw_val_w, y), " (an %d)" % int(mi.get("issued_year", 0)), VKit.FS_SMALL)
 			y += 17
 
-	# ── LE LOG : le fil de notifications (persistant, le plus récent en tête) ──
-	y = _lsection(x, y, "JOURNAL", Color(0.45, 0.45, 0.42), str(_log.size()) if not _log.is_empty() else "")
+	# ── LE JOURNAL : TOUTE notification colorée un jour apparue (guerres, batailles,
+	#    révoltes, sécessions, évènements du directeur, conditions de conseil/armée/
+	#    marché/foi/tech…) — persistant (ring ~200, la plus récente en tête), MÊME
+	#    SOURCE que les chips (alerts.gd::journal_rows) : aucune notification n'existe
+	#    qu'en éphémère (règle joueur). Liseré + icône = la couleur d'ORIGINE conservée ;
+	#    clic gauche = même action que la notification (goto/panneau) ; survol = détail
+	#    complet + le nom de lieu résolu (le tip moteur ne porte que le numéro).
+	var jrows: Array = _alerts_source.call("journal_rows") if _alerts_source != null and _alerts_source.has_method("journal_rows") else []
+	y = _lsection(x, y, "JOURNAL", Color(0.45, 0.45, 0.42), str(jrows.size()) if not jrows.is_empty() else "")
 	if not _folded("JOURNAL"):
-		if _log.is_empty():
+		if jrows.is_empty():
 			VKit.text(self, Vector2(x, y), VKit.COL_DIM, "rien à signaler")
 			y += 16
-		for e in _log:
-			var line := "an %d · %s" % [int(e["y"]), String(e["txt"])]
-			var region := int(e.get("region", -1))
-			if region >= 0:
-				_log_rects.append({
-					"rect": Rect2(x - 2.0, y - 1.0, W - 22.0, 16.0),
-					"region": region,
-					"txt": line,
-				})
-			# tronqué à la largeur (les détails vivent dans les alertes/panneaux)
-			while VKit.text_w(line) > W - 26.0 and line.length() > 8:
+		for e in jrows:
+			var entry: Dictionary = e
+			var region := int(entry.get("region", -1))
+			var col: Color = entry.get("col", VKit.COL_DIM)
+			var rr := Rect2(x - 2.0, y, W - 22.0, 20.0)
+			VKit.fill(self, Rect2(rr.position.x, rr.position.y + 1.0, 3.0, rr.size.y - 2.0), col)
+			UIKit.draw_icon(self, String(entry.get("icon", "alert_event_bell")), Vector2(x + 6.0, y + 1.0), 16)
+			var full := _journal_full_text(entry, region)
+			var line := "an %d · %s" % [int(entry.get("year", 0)), full]
+			# tronqué à la largeur (le détail COMPLET reste dans l'infobulle native)
+			while VKit.text_w(line, VKit.FS_SMALL) > W - 52.0 and line.length() > 8:
 				line = line.substr(0, line.length() - 4) + "…"
-			VKit.text(self, Vector2(x, y), VKit.COL_PARCH if region >= 0 else VKit.COL_DIM,
-				line, VKit.FS_SMALL)
-			y += 16
+			VKit.text(self, Vector2(x + 26.0, y + 2.0), VKit.COL_PARCH, line, VKit.FS_SMALL)
+			_journal_rects.append({"rect": rr, "data": entry})
+			y += 20.0
 
 	# HAUTEUR ADAPTATIVE : le panneau se découpe à SON contenu (plus de brique pleine
 	# hauteur). Latché ici — le bg/scroll de la frame suivante suivent la nouvelle taille.
@@ -558,7 +552,7 @@ const SEC_TIPS := {
 	"ARMÉES": "Réserve levée et ost de campagne. Recompléter paie or et matière.",
 	"COLONISATION": "Le chantier de Colonisation en cours et son avancement.",
 	"MISSION": "La mission décennale et sa récompense.",
-	"JOURNAL": "Le fil des évènements passés. Clic sur un bandeau : replier.",
+	"JOURNAL": "Toute notification déjà apparue, couleur d'origine conservée. Clic sur une ligne : même action que la notification ; clic sur le bandeau : replier.",
 }
 
 func _get_tooltip(at_position: Vector2) -> String:
@@ -574,9 +568,15 @@ func _get_tooltip(at_position: Vector2) -> String:
 	for nr in _notif_rects:
 		if (nr["rect"] as Rect2).has_point(cp):
 			return "Notification\n• %s" % String((nr["data"] as Dictionary).get("tip", ""))
-	for lr in _log_rects:
-		if (lr["rect"] as Rect2).has_point(cp):
-			return "%s\nClic : centrer la carte sur le lieu." % String(lr.get("txt", ""))
+	for jr in _journal_rects:
+		if (jr["rect"] as Rect2).has_point(cp):
+			var entry: Dictionary = jr["data"]
+			var region := int(entry.get("region", -1))
+			var full := _journal_full_text(entry, region)
+			var act := String(entry.get("act", ""))
+			var hint := "\nClic : y aller." if act == "goto" else \
+				("\nClic : ouvrir le panneau." if act != "" else "")
+			return "an %d · %s%s" % [int(entry.get("year", 0)), full, hint]
 	for sr in _sec_rects:
 		if (sr["rect"] as Rect2).has_point(cp):
 			return String(SEC_TIPS.get(String(sr["title"]), ""))

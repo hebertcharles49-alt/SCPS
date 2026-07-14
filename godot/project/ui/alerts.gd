@@ -6,6 +6,10 @@ extends Control
 ##   (fondation prête). Clic = ouvre le panneau concerné (ou exécute le geste) ; survol =
 ## tooltip. Display-only : tout est LU de la façade, les clics émettent des signaux —
 ## main câble les panneaux. Recalculé au tick (queue_redraw), jamais un état propre.
+## LE JOURNAL (`_journal`/`journal_rows()`) est la seconde sortie de cette RÉSOLUTION
+## UNIQUE : un ring persistant (JOURNAL_MAX) où TOUTE notification colorée — fil moteur
+## ET conditions — atterrit à son APPARITION, rendu par empire_sidebar.gd (section
+## JOURNAL). Aucune notification n'existe qu'en éphémère (règle joueur).
 
 const VKit = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
@@ -36,6 +40,7 @@ const GAP := 6.0
 const LABELW := 280.0  ## la colonne du LABEL visible (« letters » RimWorld : lisible sans hover)
 const FEED_MAX := 8   ## évènements gardés à l'écran (les plus récents ; clic = acquitté)
 const COL_COMPACT := Color(0.70, 0.62, 0.40)   ## bronze neutre — « le reste attend, hors vue »
+const JOURNAL_MAX := 200   ## le JOURNAL (empire_sidebar.gd, section JOURNAL) : ring persistant
 
 ## AUDIT UI 1.4 (« alertes vs fenêtres majeures ») : Main expose major_open() (une des
 ## fenêtres de lecture/décision — tech/éco/codex/construction/détail/diplomatie/annales/
@@ -68,6 +73,16 @@ var _events := []    ## [{icon, col, tip, seq}] fil transient (clic = acquitté)
 var _seen_seq := 0   ## dernier seq lu du fil
 var _ledger_mode := false
 
+## LE JOURNAL — ring PERSISTANT (JOURNAL_MAX), le plus récent en TÊTE (push_front) ;
+## display-only, jamais sérialisé. Alimenté par CHAQUE notification colorée : les
+## évènements du fil (_poll_feed, TOUS les kinds — chip ET popup) et les conditions
+## dès leur APPARITION (_journal_track_conditions, anti-spam par clé stable). Toute
+## notification qui apparaît en chip/popup DOIT donc s'y retrouver — aucune n'existe
+## qu'en éphémère (règle joueur).
+var _journal := []
+var _journal_seq := 0
+var _prev_cond_keys := {}   ## clés des conditions actives au refresh précédent (edge-detection)
+
 ## Les notifications vivent dans le ledger droit. Le nœud conserve collecte, polling
 ## et routage des actions, mais ne dessine plus une seconde colonne flottante sur la carte.
 func set_ledger_mode(on: bool) -> void:
@@ -80,9 +95,17 @@ func ledger_rows() -> Array:
 func ledger_short(al: Dictionary) -> String:
 	return _short(String(al.get("tip", "")))
 
+## LE JOURNAL — la liste persistante (la plus récente en tête) montrée par la bande
+## droite (empire_sidebar.gd, section JOURNAL). Duplique le tableau (comme
+## ledger_rows) — le lecteur ne mute jamais l'état interne.
+func journal_rows() -> Array:
+	return _journal.duplicate(true)
+
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	Sim.generated.connect(_refresh)
+	Sim.generated.connect(func():
+		_journal.clear(); _journal_seq = 0; _prev_cond_keys.clear()
+		_refresh())
 	Sim.ticked.connect(func(_y): _refresh())
 	get_viewport().size_changed.connect(_refresh)
 	_refresh.call_deferred()
@@ -113,6 +136,7 @@ func _refresh() -> void:
 		ledger_changed.emit()
 		return
 	_alerts = _collect()
+	_journal_track_conditions(_alerts)
 	_poll_feed()
 	_major_open = major_open_fn.is_valid() and bool(major_open_fn.call())
 	if _ledger_mode:
@@ -166,6 +190,11 @@ func _poll_feed() -> void:
 			# GUERRE CIVILE INCARNÉE (scps_revolt.c spawn_rebel_polity) : {a} porte déjà le
 			# nom du rebelle ("Rebelles de <héritage>") — le fil le NOMME au lieu du générique.
 			tip += " — %s" % String(ev["a"])
+		# JOURNAL — TOUTE notification du fil y atterrit (chip ET popup, AVANT le tri
+		# ci-dessous) : rien n'existe qu'en éphémère.
+		var jregion := int(ev.get("region", -1))
+		_push_journal({"icon": k["icon"], "col": k["col"], "tip": tip, "year": int(ev["year"]),
+			"region": jregion, "act": "goto" if jregion >= 0 else "", "kind": kind})
 		if kind == 1:
 			Sound.play("moment_war_horn")   # le COR : une guerre nous est déclarée
 		if kind in POPUP_KINDS:
@@ -299,12 +328,49 @@ func _collect() -> Array:
 ## GDScript côté tech_panel). Clic = ouvre l'arbre tech sur la bande de métabolisation.
 func push_metab_ready(nom: String) -> void:
 	_seen_seq += 1   # partage la numérotation de seq (clic = acquitté, comme le fil moteur)
-	_events.append({"icon": "knowledge_book", "col": COL_SAVOIR,
-		"tip": "Métabolisation : %s prête (clic : voir l'arbre)" % nom,
+	var tip := "Métabolisation : %s prête (clic : voir l'arbre)" % nom
+	_events.append({"icon": "knowledge_book", "col": COL_SAVOIR, "tip": tip,
 		"seq": _seen_seq, "act": "tech_metab"})
 	while _events.size() > FEED_MAX:
 		_events.pop_front()
+	_push_journal({"icon": "knowledge_book", "col": COL_SAVOIR, "tip": tip,
+		"year": int(Sim.world.year()) if Sim.world != null and Sim.world.has_method("year") else 0,
+		"region": -1, "act": "tech_metab"})
 	_refresh()
+
+## empile UNE entrée au journal (ring, la plus récente en tête) — le SEUL point
+## d'écriture (fil moteur, métabolisation, conditions) pour garder la borne unique.
+func _push_journal(entry: Dictionary) -> void:
+	entry["jseq"] = _journal_seq
+	_journal_seq += 1
+	_journal.push_front(entry)
+	while _journal.size() > JOURNAL_MAX:
+		_journal.pop_back()
+
+## clé STABLE d'une condition (ignore ses CHIFFRES, qui dérivent d'un tick à l'autre —
+## « 3 siège(s) vacant(s) » et « 2 siège(s) vacant(s) » sont LA MÊME condition en
+## cours : une seule entrée au journal, à son APPARITION, pas une par tick/variation).
+func _cond_key(al: Dictionary) -> String:
+	var stripped := ""
+	for ch in String(al.get("tip", "")):
+		if ch < "0" or ch > "9":
+			stripped += ch
+	return "%s|%d|%s" % [String(al.get("act", "")), int(al.get("region", -1)), stripped]
+
+## ÉDGE-DETECTION des conditions (_alerts) : une condition qui vient d'APPARAÎTRE
+## (clé absente du refresh précédent) rejoint le journal ; une condition qui PERSISTE
+## ne réécrit rien (sinon le journal se remplirait au tick, pas à l'évènement).
+func _journal_track_conditions(alerts: Array) -> void:
+	var cur := {}
+	var yr := int(Sim.world.year()) if Sim.world != null and Sim.world.has_method("year") else 0
+	for al in alerts:
+		var k := _cond_key(al)
+		cur[k] = true
+		if not _prev_cond_keys.has(k):
+			var e: Dictionary = al.duplicate(true)
+			e["year"] = yr
+			_push_journal(e)
+	_prev_cond_keys = cur
 
 ## la pile AFFICHÉE : les ÉVÈNEMENTS (récents en tête, transients) puis les CONDITIONS.
 func _stack() -> Array:
@@ -448,33 +514,45 @@ func activate_ledger(al: Dictionary, button_index: int) -> void:
 			if int(_events[i]["seq"]) == int(al["seq"]):
 				_events.remove_at(i)
 				break
-		# L'évènement est acquitté, puis son action contextuelle est routée : bataille/
-		# siège/pillage → région ; métabolisation → arbre. Le clic droit reste le seul
-		# acquittement sans navigation.
-		match String(al.get("act", "")):
-			"tech_metab": open_tech_metab.emit()
-			"goto": goto_region.emit(int(al.get("region", -1)))
-	else:
-		match String(al.get("act", "")):
-			"council":
-				open_tab.emit(7)
-			"army":
-				open_tab.emit(4)
-			"market":
-				open_tab.emit(3)
-			"tech":
-				open_tech.emit()
-			"construct":
-				open_construct.emit()
-			"religion":
-				open_religion.emit()
-			"goto":
-				goto_region.emit(int(al.get("region", -1)))
-			"age":
-				# le clic n'ENGAGE plus directement : il ouvre l'ÉCRAN DE CHAPITRE (récap
-				# d'âge, monde en pause) — c'est LÀ que le verbe s'émet, ou pas (« Plus tard »).
-				age_recap_requested.emit()
+	_route_action(al)
 	_refresh()
+
+## Le JOURNAL est un HISTORIQUE : le clic route la MÊME action que la notification
+## d'origine (centrer la carte, ouvrir le panneau…) mais n'ACQUITTE rien — la ligne
+## reste (c'est une trace, pas une pile à vider). Clic gauche seulement (pas de
+## « balayage » d'une entrée déjà passée).
+func activate_journal(al: Dictionary, button_index: int) -> void:
+	if button_index != MOUSE_BUTTON_LEFT:
+		return
+	Sound.play("ui_click")
+	_route_action(al)
+
+## LE ROUTAGE D'ACTION — commun au ledger transient ET au journal permanent. Les deux
+## vocabulaires d'`act` (évènement : tech_metab/goto ; condition : council/army/
+## market/tech/construct/religion/goto/age) sont DISJOINTS ⇒ un seul `match` couvre
+## les deux sans collision (ex-duplication entre les branches has("seq")/sinon).
+func _route_action(al: Dictionary) -> void:
+	match String(al.get("act", "")):
+		"tech_metab":
+			open_tech_metab.emit()
+		"goto":
+			goto_region.emit(int(al.get("region", -1)))
+		"council":
+			open_tab.emit(7)
+		"army":
+			open_tab.emit(4)
+		"market":
+			open_tab.emit(3)
+		"tech":
+			open_tech.emit()
+		"construct":
+			open_construct.emit()
+		"religion":
+			open_religion.emit()
+		"age":
+			# le clic n'ENGAGE plus directement : il ouvre l'ÉCRAN DE CHAPITRE (récap
+			# d'âge, monde en pause) — c'est LÀ que le verbe s'émet, ou pas (« Plus tard »).
+			age_recap_requested.emit()
 
 ## HOVER natif : le tooltip de l'alerte survolée — ou (fenêtre majeure ouverte, ligne
 ## compteur) les tips des alertes repliées, CONCATÉNÉS (audit 1.4 : « hover = les tips
