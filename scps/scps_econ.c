@@ -4797,6 +4797,95 @@ int econ_ip_colonize_tick(WorldEconomy *e){
     return founded;
 }
 
+/* §2 — INVESTISSEMENT PRIVÉ DES BOURGEOIS/ÉLITES (l'épargne qui construit). Trouve,
+ * pour la classe `klass` de cette province, le palier de SON panier le plus URGENT
+ * (NEED_ORDER croissant, motif §besoins progressifs) encore débloqué ici
+ * (active_needs) ET en PÉNURIE (même signal-prix que §NF v2/ai_build_raw_boost :
+ * price ≥ BASE_PRICE×NF_SHORTAGE) dont la recette est NOURRISSABLE dans le royaume
+ * — MIROIR ÉTROIT des gates civiles de CMD_BUILD_MANUF (scps_sim.c) : civil
+ * seulement (pas d'armement/arcane), tier, staffage, intrant présent quelque part
+ * chez le propriétaire. `*out_have` distingue FONDER (slot libre, motif
+ * CMD_BUILD_MANUF) de RENFORCER (slot déjà occupé — souvent par §NF v2, qui sème un
+ * niveau MINIMAL gratuit sans jamais suffire à une pénurie durable — motif
+ * CMD_MANUF_LEVEL « MONTER = injection de capacité DÉLIBÉRÉE, payante ») : sans
+ * cette 2e voie, l'investissement privé serait presque toujours court-circuité par
+ * §NF v2 (qui remplit le slot AVANT, gratuitement, chaque mois — mesuré au sweep :
+ * quasi 0 cible dans un monde 100% IA une fois les slots pré-remplis). Renvoie le
+ * premier candidat trouvé (déterministe : ordre NEED_ORDER puis ordre BuildingType). */
+#define IP_STAFF_PER_MANUF 250.f   /* = AI_STAFF_PER_MANUF (scps_ai.c) / le seuil de CMD_BUILD_MANUF : pas dans le vide */
+static bool ip_find_shortage_building(const WorldEconomy *e, const ProvinceEconomy *pe,
+                                       int owner, int klass, int active_needs,
+                                       BuildingType *out_b, bool *out_have){
+    for (int i=0;i<9 && NEED_ORDER[klass][i]!=RES_NONE;i++){
+        if (i >= active_needs) break;                            /* palier pas encore débloqué ici */
+        Resource want=NEED_ORDER[klass][i];
+        if (BASE_PRICE[want]<=0.f) continue;
+        if (pe->price[want] < BASE_PRICE[want]*NF_SHORTAGE) continue;   /* pas en pénurie ICI */
+        for (int b=0;b<BLD_TYPE_COUNT;b++){
+            const Recipe *rc=&RECIPE[b];
+            if (rc->out != want) continue;
+            if (bld_is_faustian((BuildingType)b)) continue;       /* transmuteurs : voie tech/charge */
+            if (rc->out==RES_ARMS || rc->out==RES_ARMS_HEAVY || rc->out==RES_ARMS_RANGED || rc->out==RES_FIREARM
+                || rc->out==RES_GUNPOWDER || rc->out==RES_ENCHANTED_ARMS || rc->out==RES_ESSENCE || rc->out==RES_FLUX)
+                continue;                                         /* civil seulement — armement/arcane restent doctrinaux */
+            bool have=false; for (int k=0;k<pe->n_bld;k++) if (pe->bld[k].type==(BuildingType)b){ have=true; break; }
+            float rpop=pe->strata[CLASS_LABORER].pop+pe->strata[CLASS_BOURGEOIS].pop+pe->strata[CLASS_ELITE].pop;
+            if (rpop < IP_STAFF_PER_MANUF*(float)(pe->n_bld+1)) continue;   /* sous-staffé : pas dans le vide */
+            if (capitale_max_tier((long)rpop) < bld_min_tier((BuildingType)b)) continue;
+            Resource in1=rc->in1;
+            bool feed = (in1==RES_NONE) || (pe->raw_cap[in1] > 0.f);
+            for (int pi=0; pi<e->n_prov && !feed; pi++)
+                if (e->prov[pi].owner==owner && e->prov[pi].raw_cap[in1]>0.f) feed=true;
+            if (!feed) continue;                                  /* le royaume ne sait pas le nourrir */
+            *out_b=(BuildingType)b; *out_have=have;
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Cadence MENSUELLE (même motif que econ_ip_colonize_tick ci-dessus). Priorité
+ * BOURGEOIS (les entrepreneurs, brief §2) ; l'ÉLITE ne finance que si les
+ * bourgeois n'ont pas la surface (ni le seuil de richesse, ni de cible viable) —
+ * choix le plus simple retenu (pas de co-financement ∝ richesse, brief l'autorise
+ * explicitement). Financement = TRANSFERT PUR au sein de la province : la classe
+ * investisseuse débite, les LABORERS locaux créditent (motif item 5 « chantiers de
+ * manufactures → gages », M3b-v2.1) — jamais le crédit d'État (credit_spend/
+ * credit_borrow*, M3c INTACT par construction). */
+int econ_ip_invest_tick(WorldEconomy *e){
+    if (!e) return 0;
+    int built=0;
+    float wpc_gate=tune_f("IP_INVEST_WPC",12.0f);
+    int nprov=e->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
+    static const int INVESTOR_ORDER[2]={CLASS_BOURGEOIS, CLASS_ELITE};
+    for (int p=0;p<nprov;p++){
+        ProvinceEconomy *pe=&e->prov[p];
+        if (!pe->active || !pe->colonized || pe->owner<0) continue;
+        long rpop_nd=(long)(pe->strata[CLASS_LABORER].pop+pe->strata[CLASS_BOURGEOIS].pop+pe->strata[CLASS_ELITE].pop);
+        int active_needs=1+capitale_max_tier(rpop_nd);            /* miroir exact §4 (demande) */
+        for (int oi=0; oi<2; oi++){
+            int klass=INVESTOR_ORDER[oi];
+            float pop=pe->strata[klass].pop;
+            if (pop<=0.f) continue;
+            float wpc=pe->strata[klass].wealth/pop;
+            if (wpc < wpc_gate) continue;                          /* pas assez de surplus */
+            BuildingType b; bool have;
+            if (!ip_find_shortage_building(e, pe, pe->owner, klass, active_needs, &b, &have)) continue;
+            float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(e);   /* même prix que le civil IA — pas de bonus/malus */
+            if (pe->strata[klass].wealth < cost) continue;         /* peut être RICHE en tête mais la CLASSE pas assez nombreuse : pas d'endettement */
+            bool ok = have ? econ_manuf_level_delta(e, p, b, +1)   /* RENFORCER (motif CMD_MANUF_LEVEL) */
+                           : econ_build_manufacture(e, p, b);      /* FONDER (motif CMD_BUILD_MANUF) */
+            if (ok){
+                pe->strata[klass].wealth -= cost;
+                pe->strata[CLASS_LABORER].wealth += cost;           /* item 5 : gages des artisans locaux */
+                built++; g_ip_manuf_built++;
+            }
+            break;   /* une pose par province par an — la classe suivante attendra l'an prochain */
+        }
+    }
+    return built;
+}
+
 /* ====================================================================== */
 /* MIGRATION INTERNE                                                       */
 /* ====================================================================== */

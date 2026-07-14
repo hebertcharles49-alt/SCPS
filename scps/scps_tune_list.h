@@ -1037,6 +1037,7 @@
      * l'investissement spontané des bourgeois/élites (le peuple agit seul, sans
      * verbe joueur, cadence annuelle — scps_econ.c econ_ip_colonize_tick/
      * econ_ip_invest_tick). À calibrer au sweep (docs/MONNAIE_CONCEPT.md M4). */ \
-    X(IP_COLON_WPC,                    8.0f)
+    X(IP_COLON_WPC,                    8.0f) \
+    X(IP_INVEST_WPC,                  12.0f)
 
 #endif /* SCPS_TUNE_LIST_H */

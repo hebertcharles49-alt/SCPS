@@ -1057,6 +1057,7 @@ void econ_colony_day(WorldEconomy *e, const World *w);
  *     M3b-v2.1) — jamais le crédit d'État (M3c intact par construction).
  * Renvoient le nombre d'actes RÉUSSIS cette année (télémétrie chronicle). */
 int econ_ip_colonize_tick(WorldEconomy *e);
+int econ_ip_invest_tick(WorldEconomy *e);
 /* Télémétrie CUMULATIVE (statics de module, RAZ à econ_init, non sérialisés — motif
  * econ_colony_stats) : compteurs bruts depuis la genèse de CETTE sim. */
 void econ_ip_stats(long *colonies, long *manufs);
