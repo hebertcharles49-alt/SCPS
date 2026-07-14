@@ -1067,6 +1067,14 @@ void econ_colony_stats(long *founded, long *survival){
     if (founded)  *founded  = g_colony_founded;
     if (survival) *survival = g_colony_survival;
 }
+/* MONNAIE M4-IP — même motif (statics de module, RAZ à econ_init, non sérialisés) :
+ * télémétrie de l'initiative privée (déclarée ICI pour être visible d'econ_init,
+ * définie/incrémentée plus bas avec econ_ip_colonize_tick/econ_ip_invest_tick). */
+static long g_ip_colony_founded=0, g_ip_manuf_built=0;
+void econ_ip_stats(long *colonies, long *manufs){
+    if (colonies) *colonies = g_ip_colony_founded;
+    if (manufs)   *manufs   = g_ip_manuf_built;
+}
 
 /* MONNAIE M3a — L'INSTRUMENT (print-only, docs/MONNAIE_M0_AUDIT.md) : §1.1 (VA) et §2.1
  * (consommation) sont LA planche à billets et LE trou noir principal, mais n'ont AUCUN
@@ -1464,6 +1472,7 @@ void econ_init(WorldEconomy *e, const World *w) {
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) for (int g=0;g<RES_COUNT;g++) g_prod_cap[c][g]=-1.f;
     memset(g_colony_cd,0,sizeof g_colony_cd);   /* F1 : RAZ du répit de colonisation (par partie/sim, non sérialisé) */
     g_colony_founded=0; g_colony_survival=0;    /* E7 : RAZ télémétrie colonisation (par partie/sim, non sérialisé) */
+    g_ip_colony_founded=0; g_ip_manuf_built=0;  /* MONNAIE M4-IP : RAZ télémétrie initiative privée (par partie/sim, non sérialisé) */
     g_va_produced_cum=0.0; g_consumption_destroyed_cum=0.0; g_colonization_net_cum=0.0;   /* MONNAIE M3a : RAZ instrument (par partie/sim, non sérialisé) */
     econ_flux_reset();                          /* MEMBRANE DE DÉCISION : RAZ le flux courant … */
     memset(g_tax_lastyear,0,sizeof g_tax_lastyear);   /* … et le revenu annuel capté (par partie/sim,
@@ -4701,6 +4710,89 @@ int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid,
                 g_colony_founded++;   /* E7 : télémétrie cumulative (cité-état — jamais la voie survie) */
             }
         }
+    }
+    return founded;
+}
+
+/* ====================================================================== */
+/* MONNAIE M4-IP — L'INITIATIVE PRIVÉE (docs/MONNAIE_CONCEPT.md)          */
+/* ====================================================================== */
+/* La boucle fermée M3 (conservation) a un effet secondaire prévisible : le panier
+ * de consommation est BORNÉ (§besoins progressifs), donc la richesse des classes
+ * qui produisent PLUS qu'elles ne consomment (bourgeois, élites — rentières de la
+ * dette M3c) s'EMPILE sans débouché — la thésaurisation tue la vélocité. Réponse
+ * du joueur (verbatim) : « les journaliers colonisent spontanément avec leur
+ * trésor ; les bourgeois et les élites investissent dans des manufactures qui
+ * call leur need spontanément. » AUCUN nouveau verbe joueur (c'est du PEUPLE, pas
+ * une politique) — le joueur et l'IA sont traités PAREIL par les deux fonctions
+ * ci-dessous (aucun gate g_econ_human, contrairement à econ_build_tick §NF v2 qui,
+ * lui, EST une politique auto-IA). GRAIN PROVINCE pur (charte). AUCUN état neuf
+ * sérialisé : le déclencheur relit wealth/pop/price du tick courant à chaque appel
+ * — pas d'accumulateur inter-ticks, motif COLC évité par construction (le débit de
+ * richesse suffit à s'auto-limiter d'une année sur l'autre, pas besoin d'un
+ * répit/cadence séparé). */
+
+/* §1 — COLONISATION SPONTANÉE DES JOURNALIERS (l'émigration autofinancée). Mirror
+ * ÉTROIT de colonize_from_prov (même take/f/seed), mais restreint à CLASS_LABORER :
+ * seuls LES JOURNALIERS partent, avec LEUR trésor (bourgeois/élites ne bougent pas
+ * — ce n'est pas l'essaimage d'État qui ponctionne toutes les classes). Transfert
+ * pur (motif M3a « les colons emportent ») : ce qui est prélevé ICI est EXACTEMENT
+ * ce qui est livré À L'ARRIVÉE, net 0 — la colonisation d'ÉTAT (econ_colonize_tick/
+ * econ_colonize_province, cadence/cd/needs-aware) N'EST PAS TOUCHÉE, celle-ci est
+ * un canal SÉPARÉ, plus fruste (pas de score needs-aware, pas de survie anti-
+ * spirale — « c'est du peuple », pas une politique optimisée). */
+static void ip_colonize_laborer(WorldEconomy *e, int src_pid, int dst_pid, int cid){
+    ProvinceEconomy *src=&e->prov[src_pid], *dst=&e->prov[dst_pid];
+    float lab_pop=src->strata[CLASS_LABORER].pop;
+    float take=fminf(COLONY_COST_POP, lab_pop*0.25f);   /* même plafond que colonize_from_prov : ≤25% part, jamais la classe entière */
+    float f=clampf(take/fmaxf(lab_pop,EPS),0.f,1.f)*tune_f("COLONY_WEALTH_SHARE",1.f);
+    float wealth_taken=src->strata[CLASS_LABORER].wealth*f;
+    src->strata[CLASS_LABORER].pop -= take;
+    src->strata[CLASS_LABORER].wealth -= wealth_taken;
+    float seeded=fmaxf(take, COLONY_SEED_POP);
+    const PopGroup *sg=econ_pop_dominant(&src->pop);
+    PopCulture settlers=sg?sg->culture:src->culture;
+    uint16_t settlers_id=sg?sg->culture_id:src->culture_id;
+    econ_seed_population(dst, seeded);   /* pose une richesse ex nihilo (genèse) — ÉCRASÉE juste après par le transfert réel */
+    for (int c=0;c<CLASS_COUNT;c++) dst->strata[c].wealth = (c==CLASS_LABORER) ? wealth_taken : 0.f;
+    dst->colonized=true;
+    dst->owner=(int16_t)cid;
+    dst->ferveur=1.f;                    /* FERVEUR FONDATRICE, comme toute fondation (lot 2) */
+    colonize_seed_pop_group(dst, dst_pid, (long)seeded, &settlers, settlers_id);
+}
+
+/* Cadence MENSUELLE (motif econ_tick/credit_settle_monthly, appelée depuis
+ * scps_sim.c juste après econ_tick — CALIBRAGE sweep : une cadence annuelle + un
+ * débit proportionnel à la pop est un puits négligeable contre la croissance
+ * MENSUELLE composée du salaire ; la cadence mensuelle est l'échelle qui match).
+ * Chaque province SOURCE est jugée SEULE (pas de pays, pas de rôle IA/joueur) : au
+ * plus une fondation par SOURCE par mois (motif « un chantier à la fois » de la
+ * voie joueur, adapté à un acte immédiat/décentralisé). */
+int econ_ip_colonize_tick(WorldEconomy *e){
+    if (!e || !e->prov_adj) return 0;
+    int founded=0;
+    int nprov=e->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
+    float wpc_gate=tune_f("IP_COLON_WPC",8.0f);
+    for (int ps=0; ps<nprov; ps++){
+        ProvinceEconomy *src=&e->prov[ps];
+        if (!src->active || !src->colonized || src->owner<0) continue;
+        float lab_pop=src->strata[CLASS_LABORER].pop;
+        if (lab_pop < COLONY_MIN_POP) continue;                 /* garde-fou : jamais un hameau (motif existant) */
+        if (src->food_sat < COLONY_FOOD_GATE) continue;         /* garde-fou vivrier (motif existant) */
+        float wpc = src->strata[CLASS_LABORER].wealth / fmaxf(lab_pop,EPS);
+        if (wpc < wpc_gate) continue;                           /* pas de surplus à emporter */
+        /* cible : la meilleure province VACANTE adjacente (motif econ_region_best_vacant_prov,
+         * au grain PROVINCE ici — « une province colonisable à portée »). */
+        int best_dst=-1; float best_cap=-1.f;
+        for (int pd=0; pd<nprov; pd++){
+            if (!padj_get(ps,pd)) continue;
+            ProvinceEconomy *dst=&e->prov[pd];
+            if (!dst->active || dst->colonized) continue;
+            if (dst->cap_pop>best_cap){ best_cap=dst->cap_pop; best_dst=pd; }
+        }
+        if (best_dst<0) continue;                               /* rien à portée cette année */
+        ip_colonize_laborer(e, ps, best_dst, src->owner);
+        founded++; g_ip_colony_founded++;
     }
     return founded;
 }

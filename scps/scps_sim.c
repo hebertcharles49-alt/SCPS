@@ -1045,6 +1045,12 @@ void sim_day(Sim *s, World *w) {
          * (péréquation+classes déjà tentés EN INTERNE, cf. econ_va_shortfall_pending).
          * Appelé ICI, juste après econ_tick, MÊME cadence (mensuelle). */
         credit_settle_monthly(s->econ, w);
+        /* MONNAIE M4-IP — L'INITIATIVE PRIVÉE (colonisation du peuple) : cadence MENSUELLE
+         * (motif econ_tick/credit_settle_monthly ci-dessus — le peuple agit seul,
+         * spontanément, joueur/IA traités PAREIL — aucun gate human_player). Calibrage
+         * (sweep) : une cadence annuelle est un puits NÉGLIGEABLE contre la croissance
+         * mensuelle composée du salaire — la cadence mensuelle est l'échelle qui match. */
+        econ_ip_colonize_tick(s->econ);
         /* Paix négociée : 10 % du revenu mensuel réellement ponctionné pendant
          * dix ans, après que l'économie du mois a matérialisé son trésor. */
         diplo_reparations_tick(s->dp,w,s->econ,30.f);

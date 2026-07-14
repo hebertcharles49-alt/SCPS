@@ -1040,6 +1040,26 @@ bool econ_colonize_province(WorldEconomy *e, const World *w, int src_pid, int ds
 /* QUOTIDIEN — mûrit les chantiers de colonisation (cadences, délais, fondation à l'arrivée
  * au rendement log-distance). No-op intégral quand aucun chantier (chronique → golden). */
 void econ_colony_day(WorldEconomy *e, const World *w);
+/* MONNAIE M4-IP — L'INITIATIVE PRIVÉE (docs/MONNAIE_CONCEPT.md, réponse à la
+ * thésaurisation née de la boucle fermée M3) : le PEUPLE agit seul, spontanément —
+ * AUCUN nouveau verbe joueur, GRAIN PROVINCE pur (charte), cadence MENSUELLE (motif
+ * econ_tick/credit_settle_monthly, scps_sim.c — CALIBRAGE sweep : l'annuel était un
+ * puits négligeable contre la croissance mensuelle composée du salaire). PAS d'état neuf
+ * sérialisé : le déclencheur relit `wealth`/`pop`/`price` du tick courant à chaque
+ * appel (télémétrie CUMULATIVE non sérialisée, motif econ_colony_stats).
+ *   econ_ip_colonize_tick : les JOURNALIERS émigrent avec LEUR trésor (richesse/tête
+ *     > IP_COLON_WPC) vers la meilleure province vacante ADJACENTE — transfert pur
+ *     (les colons emportent, motif M3a), la colonisation d'ÉTAT ne bouge pas.
+ *   econ_ip_invest_tick : les BOURGEOIS (puis les ÉLITES, si les bourgeois n'ont pas
+ *     la surface) financent la manufacture du bien de LEUR panier le plus urgent
+ *     ENCORE EN PÉNURIE ici (même signal-prix que §NF v2/ai_build_raw_boost) —
+ *     transfert pur (leur richesse débite, les gages locaux créditent, motif item 5
+ *     M3b-v2.1) — jamais le crédit d'État (M3c intact par construction).
+ * Renvoient le nombre d'actes RÉUSSIS cette année (télémétrie chronicle). */
+int econ_ip_colonize_tick(WorldEconomy *e);
+/* Télémétrie CUMULATIVE (statics de module, RAZ à econ_init, non sérialisés — motif
+ * econ_colony_stats) : compteurs bruts depuis la genèse de CETTE sim. */
+void econ_ip_stats(long *colonies, long *manufs);
 /* RE-KEY PROVINCE — transfert de PROPRIÉTÉ D'UNE RÉGION ENTIÈRE (conquête/annexion/
  * sécession/cataclysme) : pose `new_owner` (et `colonized`) sur TOUTES les provinces
  * membres de `region`. econ->region[r].owner est un DÉRIVÉ (capitale, sinon meilleure

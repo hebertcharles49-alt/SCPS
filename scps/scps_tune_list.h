@@ -1031,6 +1031,12 @@
     X(AGE_TYRANS_H,                    1.75f) \
     X(AGE_TYRANS_DIVERSITY,            1.50f) \
     X(AGE_TYRANS_CONQUEROR_LEVER,      0.08f) \
-    X(AGE_TYRANS_LEGISTE_LEVER,        0.04f)
+    X(AGE_TYRANS_LEGISTE_LEVER,        0.04f) \
+    /* MONNAIE M4-IP — L'INITIATIVE PRIVÉE (docs/MONNAIE_CONCEPT.md) : les seuils de
+     * richesse/tête qui déclenchent l'émigration spontanée des journaliers et
+     * l'investissement spontané des bourgeois/élites (le peuple agit seul, sans
+     * verbe joueur, cadence annuelle — scps_econ.c econ_ip_colonize_tick/
+     * econ_ip_invest_tick). À calibrer au sweep (docs/MONNAIE_CONCEPT.md M4). */ \
+    X(IP_COLON_WPC,                    8.0f)
 
 #endif /* SCPS_TUNE_LIST_H */
