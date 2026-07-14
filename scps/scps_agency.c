@@ -381,7 +381,12 @@ bool agency_build_acct(AgencyState *a, WorldEconomy *econ, const World *w, int r
      * les cités-états deviennent banquières du réseau. */
     if (gold > base_gold + 0.01f && re->import_toll_region >= 0 && re->import_toll_region < econ->n_regions){
         float toll = (gold - base_gold);   /* CONSERVATION : TOUTE la marge → l'hôte (le nu va aux sources via _consume) */
-        econ_region_treasury_add(econ, re->import_toll_region, toll);   /* RE-KEY : sur la PROVINCE (l'agrégat serait effacé) */
+        /* MONNAIE M3b-v2 — item 5 (décision joueur 2026-07-14) : le péage était un revenu
+         * d'ÉTAT (trésor de l'hôte) ; il devient un revenu BOURGEOIS (les marchands qui
+         * tiennent le comptoir) — effet caisse : l'hôte perd ce revenu de trésor (moins de
+         * marge pour entretien/cour/admin), compensé par le fait que ces postes redistribuent
+         * déjà aux classes (item 5 ci-dessus) plutôt que de détruire. */
+        econ_region_wealth_add(econ, re->import_toll_region, CLASS_BOURGEOIS, toll);   /* RE-KEY : sur la PROVINCE */
         if (re->owner>=0) econ_flux_add(re->owner, FX_TOLL_PAID, -toll);                       /* I0 */
         int tro=econ->region[re->import_toll_region].owner; if (tro>=0) econ_flux_add(tro, FX_TOLL_RECV, toll);
     }

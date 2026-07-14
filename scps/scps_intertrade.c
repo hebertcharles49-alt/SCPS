@@ -993,9 +993,13 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
                   if (it_is_precious(g)) { if (down) g_prec_down+=vol; else { g_prec_up+=vol; g_nprec_up++; } }
               } }
             *dst_tr -= total;                                   /* l'acheteur PAIE Y */
-            *src_tr += total;                                   /* le vendeur ENCAISSE Y (trésor réel) */
+            *src_tr += gross;                                   /* le vendeur ENCAISSE le NU (trésor réel) */
             if (src->owner>=0){ econ_flux_add(src->owner, FX_EXPORT, gross);
                                 econ_flux_add(src->owner, FX_TOLL_RECV, total-gross); }  /* I0 */
+            /* MONNAIE M3b-v2 — item 5 (décision joueur 2026-07-14) : le PÉAGE (la marge
+             * total−gross, TRADE_LEVY) → BOURGEOIS de la province exportatrice, plus le
+             * trésor d'État (les marchands qui négocient l'échange, pas la couronne). */
+            if (total>gross) econ_region_wealth_add(e, src_r, CLASS_BOURGEOIS, total-gross);
             if (dst->owner>=0) econ_flux_add(dst->owner, FX_IMPORT, -total);
             /* WG — le tenant du détroit prélève SA part (transfert exportateur→tenant :
              * conservation préservée, l'importateur ne paie pas plus, le verrou skime). */
@@ -1005,7 +1009,9 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
                 if (toll<0.f) toll=0.f;
                 if (toll>0.f){
                     *src_tr -= toll;
-                    float *choke_tr=it_treasury(e,choke_hold_reg); if (choke_tr) *choke_tr += toll;
+                    /* item 5 : le péage de DÉTROIT → BOURGEOIS du tenant (même famille que le
+                     * péage d'échange ci-dessus), plus son trésor d'État. */
+                    econ_region_wealth_add(e, choke_hold_reg, CLASS_BOURGEOIS, toll);
                     if (cid_ok(choke_hold_cid)){
                         g_choke_toll[choke_hold_cid]+=toll; econ_flux_add(choke_hold_cid, FX_TOLL_RECV, toll);
                         g_choke_toll_cumul[choke_hold_cid]+=toll;   /* le CUMUL de sim (la preuve) */
