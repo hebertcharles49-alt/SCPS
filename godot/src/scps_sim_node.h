@@ -59,6 +59,9 @@ public:
     int64_t country_pop(int country) const;
     double  country_gold(int country) const;
     int     country_role(int country) const;          /* 0 joueur · 1 IA · 2 cité-état · 3 vierge · 4 libre · -1 */
+    /* MONNAIE M1/M2 — {gold, copper} réserve métallique + frappe RÉELLE de ce mois (or/mois, miroir exact). */
+    Dictionary country_reserve(int country) const;
+    double  country_mint_month(int country) const;
 
     /* par région */
     int     region_owner(int region) const;

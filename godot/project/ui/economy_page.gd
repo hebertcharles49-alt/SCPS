@@ -13,7 +13,8 @@ const EXPENSE := ParchTheme.EXPENSE
 const DIVIDER := ParchTheme.DIVIDER
 
 # les postes de DÉPENSE pilotables (family 1) portent un curseur ; les autres sont lus.
-const SPEND_HAS_SLIDER := {0: true, 1: true, 2: true, 3: true, 4: true}
+# 5 = Frappe (MONNAIE M2) : même motif que les 5 enveloppes existantes (curseur générique).
+const SPEND_HAS_SLIDER := {0: true, 1: true, 2: true, 3: true, 4: true, 5: true}
 
 var _built := false
 var _left_col: VBoxContainer = null
@@ -127,6 +128,8 @@ func _build_body(me: int) -> void:
 		_row(_left_col, String(row.get("name", "Impôt")), "tax:%d" % cls, "Income", 0, cls)
 	_flux_row(_left_col, "Export", "export", "Income")
 	_flux_row(_left_col, "Péages", "péages+", "Income")
+	# MONNAIE M1 — la réserve métallique (redevance minière), lecteur pur, sans curseur.
+	_row(_left_col, "Réserve", "reserve", "Income")
 
 	# RIGHT — SORTIES : enveloppes pilotables (curseur family 1) + postes LUS Conseil / Cour.
 	_section(_right_col, "SORTIES")
@@ -145,6 +148,11 @@ func _update_values(me: int) -> void:
 	if w.has_method("day_of_year"):
 		doy = maxi(1, int(w.day_of_year()))
 	var mf := 30.0 / float(doy)
+	# MONNAIE M1 — la réserve métallique (redevance minière, jamais marchande).
+	var reserve_lbl: Label = _val_lbls.get("reserve", null)
+	if reserve_lbl != null and w.has_method("country_reserve"):
+		var res: Dictionary = w.country_reserve(me)
+		reserve_lbl.text = "%s or · %s cuivre" % [_grp(int(round(float(res.get("gold", 0.0))))), _grp(int(round(float(res.get("copper", 0.0)))))]
 	# rentrées : impôt par classe (or/mois)
 	var ctl: Dictionary = w.budget_controls(me) if w.has_method("budget_controls") else {}
 	for raw in ctl.get("taxes", []):
@@ -176,10 +184,14 @@ func _update_values(me: int) -> void:
 		var idx := int(row2.get("id", 0))
 		var lbl3: Label = _val_lbls.get("sp:%d" % idx, null)
 		if lbl3 != null:
-			var amt := 0.0
-			if idx >= 0 and idx < spend_flux.size():
-				amt = absf(float(flux.get(spend_flux[idx], 0.0)))
-			lbl3.text = "%s or/mois" % _grp(int(round(amt)))
+			if idx == 5 and w.has_method("country_mint_month"):
+				# MONNAIE M2 — LA FRAPPE : lecteur DÉDIÉ, miroir exact (revenu, pas dépense).
+				lbl3.text = "+%s or/mois" % _grp(int(round(float(w.country_mint_month(me)))))
+			else:
+				var amt := 0.0
+				if idx >= 0 and idx < spend_flux.size():
+					amt = absf(float(flux.get(spend_flux[idx], 0.0)))
+				lbl3.text = "%s or/mois" % _grp(int(round(amt)))
 		var sl2: HSlider = _sliders.get("1:%d" % idx, null)
 		if sl2 != null and not sl2.has_focus():
 			sl2.set_value_no_signal(clampf(float(row2.get("mult", 1.0)) * 100.0, 2.0, 100.0))

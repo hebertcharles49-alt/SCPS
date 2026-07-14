@@ -396,6 +396,7 @@ func _draw_budget_controls(x: float, y: float, me: int) -> float:
 		"Finance les soldes. Sous 100 %, l'armée perd le moral au combat (elle ne déserte plus).",
 		"Finance les coques. Sous 100 %, la flotte perd le moral au combat (plus de délabrement).",
 		"Finance la connectivité (routes) : −20 % (sous-financé) à +10 % de prospérité/commerce. Coûte une part du revenu chaque mois ; au minimum, aucune dépense mais −20 % de connectivité.",
+		"MONNAIE : frappe la réserve métallique (redevance minière) en monnaie, au prix courant du métal. Ne coûte rien au trésor — mais épuise la réserve.",
 	]
 	# le poste RÉALISÉ (or/mois) de chaque enveloppe — investissement compris (il coûte
 	# désormais chaque mois, ligne de flux « invest. » ; son effet +% K reste au survol).
@@ -405,7 +406,9 @@ func _draw_budget_controls(x: float, y: float, me: int) -> float:
 		var idx := int(row.get("id", 0))
 		var mult := float(row.get("mult", 1.0))
 		var live := ""
-		if idx >= 0 and idx < spend_flux.size():
+		if idx == 5 and Sim.world.has_method("country_mint_month"):
+			live = "+%s or/mois" % _grp(int(round(float(Sim.world.country_mint_month(me)))))
+		elif idx >= 0 and idx < spend_flux.size():
 			live = "%s or/mois" % _grp(int(round(absf(float(flux.get(spend_flux[idx], 0.0))))))
 		var tip: String = spend_tips[idx] if idx >= 0 and idx < spend_tips.size() else "Enveloppe budgétaire nationale."
 		if idx == 0:

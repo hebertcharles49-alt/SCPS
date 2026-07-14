@@ -71,6 +71,12 @@ int    scps_country_province_count(const ScpsSim *s, int country);
 long   scps_world_pop    (const ScpsSim *s);
 long   scps_country_pop  (const ScpsSim *s, int country);
 double scps_country_gold (const ScpsSim *s, int country);
+/* MONNAIE M1/M2 (docs/MONNAIE_CONCEPT.md) — la RÉSERVE MÉTALLIQUE (lecteur PUR, jamais
+ * marchandise) : gold_out/copper_out reçoivent la réserve courante. */
+void   scps_country_reserve(const ScpsSim *s, int country, float *gold_out, float *copper_out);
+/* FRAPPE mensuelle RÉELLE (or) — miroir EXACT du point fixe d'econ_tick (même fonction pure,
+ * aucune mutation ici) : la monnaie que CE pays créditera à sa capitale ce mois-ci. */
+double scps_country_mint_month(const ScpsSim *s, int country);
 /* RÔLE de polité (PolityRole) : 0 joueur · 1 antagoniste(IA) · 2 cité-état · 3 vierge · 4 libre ; -1 hors-borne. */
 int    scps_country_role (const ScpsSim *s, int country);
 /* BROUILLARD : le JOUEUR a-t-il DÉCOUVERT ce pays ? (country_knows — la liste diplo ne

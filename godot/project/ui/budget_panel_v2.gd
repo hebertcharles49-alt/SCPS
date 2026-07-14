@@ -17,11 +17,13 @@ const EXPENSE := ParchTheme.EXPENSE
 const DIVIDER := ParchTheme.DIVIDER
 
 # les postes de DÉPENSE pilotables (family 1) portent un curseur ; les autres sont lus.
-const SPEND_HAS_SLIDER := {0: true, 1: true, 2: true, 3: true, 4: true}
+# 5 = Frappe (MONNAIE M2) : même motif que les 5 enveloppes existantes (curseur générique).
+const SPEND_HAS_SLIDER := {0: true, 1: true, 2: true, 3: true, 4: true, 5: true}
 
 var _built := false
 var _treasury_lbl: Label = null
 var _balance_lbl: Label = null
+var _reserve_lbl: Label = null   # MONNAIE M1/M2 — « Réserve : X or · Y cuivre » (lecteur pur)
 var _left_col: VBoxContainer = null
 var _right_col: VBoxContainer = null
 # refs de valeurs vivantes : clé "family:index" -> Label ; sliders idem
@@ -81,6 +83,13 @@ func _build_shell() -> void:
 	_balance_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_balance_lbl.size_flags_horizontal = Control.SIZE_SHRINK_END
 	rcol.add_child(_balance_lbl)
+	# MONNAIE M1 — la réserve métallique (redevance minière), lecteur pur.
+	_reserve_lbl = Label.new()
+	_reserve_lbl.theme_type_variation = "RowDim"
+	_reserve_lbl.text = "—"
+	_reserve_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_reserve_lbl.size_flags_horizontal = Control.SIZE_SHRINK_END
+	rcol.add_child(_reserve_lbl)
 
 	# TAB BAR
 	var tabpanel := PanelContainer.new()
@@ -229,6 +238,10 @@ func _build_body(me: int) -> void:
 
 func _update_values(me: int) -> void:
 	var w = Sim.world
+	# MONNAIE M1 — la réserve métallique (redevance minière, jamais marchande).
+	if w.has_method("country_reserve"):
+		var res: Dictionary = w.country_reserve(me)
+		_reserve_lbl.text = "Réserve : %s or · %s cuivre" % [_grp(int(round(float(res.get("gold", 0.0))))), _grp(int(round(float(res.get("copper", 0.0)))))]
 	# trésor + solde mensuel (vert ≥0 / rouge <0) dans le bandeau
 	if w.has_method("budget_summary"):
 		var b: Dictionary = w.budget_summary(me)
@@ -276,10 +289,15 @@ func _update_values(me: int) -> void:
 		var idx := int(row2.get("id", 0))
 		var lbl3: Label = _val_lbls.get("sp:%d" % idx, null)
 		if lbl3 != null:
-			var amt := 0.0
-			if idx >= 0 and idx < spend_flux.size():
-				amt = absf(float(flux.get(spend_flux[idx], 0.0)))
-			lbl3.text = "%s or/mois" % _grp(int(round(amt)))
+			if idx == 5 and w.has_method("country_mint_month"):
+				# MONNAIE M2 — LA FRAPPE : lecteur DÉDIÉ, miroir exact du point fixe moteur
+				# (pas un poste de FLUX générique — c'est un revenu, pas une dépense).
+				lbl3.text = "+%s or/mois" % _grp(int(round(float(w.country_mint_month(me)))))
+			else:
+				var amt := 0.0
+				if idx >= 0 and idx < spend_flux.size():
+					amt = absf(float(flux.get(spend_flux[idx], 0.0)))
+				lbl3.text = "%s or/mois" % _grp(int(round(amt)))
 		var sl2: HSlider = _sliders.get("1:%d" % idx, null)
 		if sl2 != null and not sl2.has_focus():
 			sl2.set_value_no_signal(clampf(float(row2.get("mult", 1.0)) * 100.0, 2.0, 100.0))

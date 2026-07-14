@@ -1959,9 +1959,11 @@ float econ_country_tax_mult(const WorldEconomy *e, int cid, SocialClass c){
 }
 float econ_country_budget_mult(const WorldEconomy *e, int cid, BudgetPolicy policy){
     if (!e||cid<0||cid>=SCPS_MAX_COUNTRY||policy<0||policy>=BUDGET_POLICY_COUNT) return 1.f;
-    /* INVESTISSEMENT : neutre = 0 % (le CONTRAIRE de la paie — chronique/IA = aucun
-     * investissement → 0). On rend le NIVEAU brut ∈ [0,1] (défaut 0), pas le sentinel. */
-    if (policy==BUDGET_INVEST)
+    /* INVESTISSEMENT / FRAPPE : neutre = 0 % (le CONTRAIRE de la paie — chronique/IA = aucun
+     * investissement/aucune frappe joueur → 0). On rend le NIVEAU brut ∈ [0,1] (défaut 0),
+     * pas le sentinel. BUDGET_MINT : l'IA n'écrit JAMAIS cette case (sa politique est fixe,
+     * MINT_AI_SHARE, lue ailleurs) — ce getter ne sert que le curseur JOUEUR. */
+    if (policy==BUDGET_INVEST || policy==BUDGET_MINT)
         return clampf(e->budget_mult[cid][policy], 0.f, 1.f);
     return policy_mult(e->budget_mult[cid][policy]);
 }
@@ -1983,6 +1985,51 @@ float econ_country_road_conn(const WorldEconomy *e, int cid){
     if (s <= 0.f) return 1.f;                          /* non réglé = neutre → golden-safe */
     float frac = clampf((s-0.02f)/0.98f, 0.f, 1.f);   /* joueur 0.02..1.0 → 0..1 */
     return 1.f + (-0.20f + frac*0.30f);               /* −20 % … +10 % */
+}
+
+/* MONNAIE M1/M2 (docs/MONNAIE_CONCEPT.md) — province CAPITALE d'un pays au grain WorldEconomy
+ * seul (econ_tick n'a pas de World* ; re->is_capital est la vérité posée à econ_build_adjacency/
+ * genèse, cf. les scans identiques ailleurs dans ce fichier). -1 si aucune. */
+int econ_country_capital_prov(const WorldEconomy *e, int cid){
+    if (!e||cid<0||cid>=SCPS_MAX_COUNTRY) return -1;
+    int n=e->n_prov; if (n>SCPS_MAX_PROV) n=SCPS_MAX_PROV;
+    for (int p=0;p<n;p++){
+        const ProvinceEconomy *pe=&e->prov[p];
+        if (pe->active && pe->owner==cid && pe->is_capital) return p;
+    }
+    return -1;
+}
+/* Part ANNUELLE [0..1] de la réserve frappée : curseur JOUEUR (BUDGET_MINT, défaut 0 =
+ * golden-neutre) pour le pays lié au slot 0 (culture_player_cid — -1 hors partie jouée,
+ * p.ex. chronicle : personne ne matche, tout le monde suit alors la politique IA) ; politique
+ * FIXE de l'IA (MINT_AI_SHARE, registre J) pour tous les autres pays. Jamais mélangés : l'IA
+ * n'écrit JAMAIS budget_mult[][BUDGET_MINT] (ce curseur reste un levier joueur pur). */
+float econ_country_mint_share(const WorldEconomy *e, int cid){
+    if (!e||cid<0||cid>=SCPS_MAX_COUNTRY) return 0.f;
+    if (cid==culture_player_cid()) return econ_country_budget_mult(e, cid, BUDGET_MINT);
+    return clampf(tune_f("MINT_AI_SHARE", 0.15f), 0.f, 1.f);
+}
+/* Frappe MENSUELLE — fonction PURE, MIROIR EXACT du point fixe d'econ_tick (aucune mutation
+ * ici : ni la réserve, ni le trésor, ni le flux ne bougent). Valeur NEUTRE 1:1 au prix courant
+ * de la province capitale — aucun rapport fixe or/cuivre (décision 4, v4). */
+void econ_country_mint_month(const WorldEconomy *e, int cid,
+                              float *gold_out, float *copper_out, float *value_out,
+                              int *cap_pid_out){
+    float g=0.f, c=0.f, v=0.f; int cap=-1;
+    if (e && cid>=0 && cid<SCPS_MAX_COUNTRY){
+        cap = econ_country_capital_prov(e, cid);
+        if (cap>=0){
+            float share = econ_country_mint_share(e, cid);
+            g = e->reserve_gold[cid]   * share / 12.f;
+            c = e->reserve_copper[cid] * share / 12.f;
+            const ProvinceEconomy *cp = &e->prov[cap];
+            v = g*cp->price[RES_GOLD] + c*cp->price[RES_COPPER];
+        }
+    }
+    if (gold_out)    *gold_out=g;
+    if (copper_out)  *copper_out=c;
+    if (value_out)   *value_out=v;
+    if (cap_pid_out) *cap_pid_out=cap;
 }
 #define STATE_TAX_AMBITION 0.42f   /* le taux que l'État VISE (l'éthos décide ce qui rentre) */
 #define K_TAX_AGIT         0.85f   /* poids de la surtaxe sur la satisfaction (la grogne) */
@@ -2557,7 +2604,7 @@ const char *econ_flux_name(FluxComp comp){
         "taxes","export","péages+",
         "entretien","cour","admin","encadr.",
         "soldes","marine","audits","péages−","invest.","conseil","import",
-        "chantiers","redépense","intérêts","intrigue","routes" };
+        "chantiers","redépense","intérêts","intrigue","routes","frappe" };
     return (comp>=0&&comp<FX_COUNT)?N[comp]:"?";
 }
 float econ_base_price(Resource r){ return (r>RES_NONE && r<RES_COUNT)? BASE_PRICE[r] : 0.f; }
@@ -3777,6 +3824,22 @@ void econ_tick(WorldEconomy *e, float dt) {
                 if (paid!=0.f) econ_flux_add(c, FX_ROADS, paid);      /* I0 : la ligne routes */
             }
         }
+    }
+
+    /* MONNAIE M2 — LA FRAPPE (point fixe MENSUEL, docs/MONNAIE_CONCEPT.md). Grain PROVINCE :
+     * la monnaie entre au trésor via la province CAPITALE (le canal de l'impôt), jamais
+     * l'indirection région. econ_country_mint_month est la fonction PURE partagée avec le
+     * lecteur façade (scps_country_mint_month) — miroir exact, ici on MUTE (réserve, trésor,
+     * flux I0). MINT_ROYALTY=0 ⇒ réserve toujours nulle ⇒ value toujours nulle ⇒ bloc inerte
+     * (kill-switch, golden-safe). */
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++){
+        float g,cop,val; int cap;
+        econ_country_mint_month(e, c, &g, &cop, &val, &cap);
+        if (val<=0.f || cap<0) continue;
+        e->reserve_gold[c]   = fmaxf(0.f, e->reserve_gold[c]   - g);
+        e->reserve_copper[c] = fmaxf(0.f, e->reserve_copper[c] - cop);
+        e->prov[cap].treasury += val;
+        econ_flux_add(c, FX_MINT, val);   /* I0 : la ligne frappe */
     }
 }
 

@@ -334,6 +334,18 @@ static void chronicle_money_flux_accum(const WorldEconomy *e, int n_countries,
             if (v>0.0) *creation_accum += v; else if (v<0.0) *destruction_accum += -v;
         }
 }
+/* MONNAIE — M1/M2 (print-only) : cumul PAR PAYS de la seule ligne FX_MINT (déjà incluse
+ * dans chronicle_money_flux_accum ci-dessus — recoupement, pas un double-compte séparé de
+ * la masse M(t)) — sert uniquement à isoler « qui frappe » et « combien/an » à l'écran. */
+static void chronicle_mint_flux_accum(const WorldEconomy *e, int n_countries,
+                                       double *mint_accum, double mint_by_country[SCPS_MAX_COUNTRY]){
+    if (!e) return;
+    int nc=n_countries; if (nc>SCPS_MAX_COUNTRY) nc=SCPS_MAX_COUNTRY;
+    for (int c=0;c<nc;c++){
+        double v=econ_flux_get(c,FX_MINT);
+        if (v>0.0){ *mint_accum+=v; mint_by_country[c]+=v; }
+    }
+}
 
 int main(int argc, char **argv){
     tune_init();   /* Arc J : lit SCPS_TUNE une fois (nom inconnu → exit 2). */
@@ -451,6 +463,10 @@ int main(int argc, char **argv){
          * premier econ_tick) — la dotation de genèse §5.1 du registre. */
         double money_m0 = chronicle_money_mass(s.econ);
         double money_creation_accum = 0.0, money_destruction_accum = 0.0;
+        /* MONNAIE — M1/M2 (print-only) : cumul de la frappe (FX_MINT), PAR PAYS (pour
+         * compter les « empires frappeurs » en fin de sim) — même motif snapshot/accum
+         * que money_creation_accum (accumulé chaque année AVANT le RAZ annuel du flux). */
+        double mint_accum = 0.0, mint_by_country[SCPS_MAX_COUNTRY]; memset(mint_by_country,0,sizeof mint_by_country);
         /* LOT 6a — le compteur « régions réduites (campagne) » sous-comptait ×9 :
          * campaign_taken(FieldArmy.taken) est RAZ à CHAQUE nouvel ordre/redirection
          * (campaign_order/campaign_redirect), alors que l'IA réordonne dès qu'une
@@ -611,6 +627,7 @@ int main(int argc, char **argv){
              * qu'econ_flux_year_capture (ligne suivante) ne le RAZ — recoupement
              * grossier création/destruction (cf. docs/MONNAIE_M0_AUDIT.md §7). */
             chronicle_money_flux_accum(s.econ, w->n_countries, &money_creation_accum, &money_destruction_accum);
+            chronicle_mint_flux_accum(s.econ, w->n_countries, &mint_accum, mint_by_country);
             econ_flux_year_capture();
             for (int d=0; d<365; d++) sim_day(&s, w);
             /* conquêtes de l'année : régions passées d'un PAYS à un autre (de force) */
@@ -721,6 +738,20 @@ int main(int argc, char **argv){
           double money_drift_an = (years>0)? (money_mfin-money_m0)/(double)years : 0.0;
           printf("   masse monétaire : M(0)=%.0f · M(fin)=%.0f · dérive %+.1f/an (création %.0f · destruction %.0f mesurées)\n",
                  money_m0, money_mfin, money_drift_an, money_creation_accum, money_destruction_accum); }
+
+        /* MONNAIE — M1/M2 (print-only) : la frappe (FX_MINT, déjà comptée dans la création
+         * ci-dessus) isolée — moyenne/an, réserve fin de partie (jamais consommée entière :
+         * frappe = réserve×part/12, kill-switch MINT_ROYALTY=0 ⇒ tout ce bloc à 0). */
+        { double reserve_fin_gold=0.0, reserve_fin_copper=0.0; int n_frappeurs=0, n_alive_end=0;
+          for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+              reserve_fin_gold   += (double)s.econ->reserve_gold[c];
+              reserve_fin_copper += (double)s.econ->reserve_copper[c];
+              if (mint_by_country[c]>0.0) n_frappeurs++;
+              if (w->country[c].role!=POLITY_UNCLAIMED) n_alive_end++;
+          }
+          printf("   frappe : %.0f or/an moyen (%d/%d empires frappeurs) · réserve fin %.0f or · %.0f cuivre\n",
+                 (years>0)? mint_accum/(double)years : 0.0, n_frappeurs, n_alive_end,
+                 reserve_fin_gold, reserve_fin_copper); }
 
         /* ARMSDIAG — copie des compteurs warhost de CETTE sim (RAZ au prochain sim_init). */
         if (getenv("SCPS_ARMSDIAG")){

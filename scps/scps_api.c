@@ -339,6 +339,21 @@ double scps_country_gold(const ScpsSim *s, int c){
     if(!s || !s->ready) return 0.0;
     return econ_country_gold(s->sim.econ, c);
 }
+void scps_country_reserve(const ScpsSim *s, int c, float *gold_out, float *copper_out){
+    float g=0.f, cp=0.f;
+    if (s && s->ready && c>=0 && c<SCPS_MAX_COUNTRY){
+        g  = s->sim.econ->reserve_gold[c];
+        cp = s->sim.econ->reserve_copper[c];
+    }
+    if (gold_out) *gold_out=g;
+    if (copper_out) *copper_out=cp;
+}
+double scps_country_mint_month(const ScpsSim *s, int c){
+    if(!s || !s->ready) return 0.0;
+    float val=0.f;
+    econ_country_mint_month(s->sim.econ, c, NULL, NULL, &val, NULL);
+    return (double)val;
+}
 int scps_country_role(const ScpsSim *s, int c){
     if(!s || !s->ready || c<0 || c>=s->w->n_countries) return -1;
     return (int)s->w->country[c].role;

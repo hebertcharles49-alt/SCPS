@@ -70,6 +70,10 @@ typedef enum {
 typedef enum {
     BUDGET_INVEST=0, BUDGET_UPKEEP, BUDGET_ARMY, BUDGET_NAVY,
     BUDGET_ROADS,   /* entretien des routes : finance la connectivité (−20 %…+10 % C) */
+    BUDGET_MINT,    /* MONNAIE M2 — part de la réserve métallique frappée/an (0..1, comme
+                     * BUDGET_INVEST : neutre = 0 %, JAMAIS le sentinel-1.0 des autres
+                     * enveloppes — non réglé = aucune frappe, golden-neutre). L'IA n'utilise
+                     * PAS ce curseur (sa politique est fixe, MINT_AI_SHARE, registre J). */
     BUDGET_POLICY_COUNT
 } BudgetPolicy;
 
@@ -794,6 +798,7 @@ typedef enum {
     FX_CREDIT,                                        /* intérêts de la dette (credit_year_tick) */
     FX_INTRIGUE,                                       /* W-GUERRE-3 : fabrication d'un casus belli (corruption, disparaît) */
     FX_ROADS,                                         /* entretien des routes (curseur budgétaire joueur) */
+    FX_MINT,                                          /* MONNAIE M2 : frappe mensuelle (revenu +, réserve → trésor capitale) */
     FX_COUNT
 } FluxComp;
 void   econ_flux_add(int cid, FluxComp comp, float amount);   /* incrémente (signé par convention ci-dessus) */
@@ -851,6 +856,21 @@ float econ_country_budget_mult(const WorldEconomy *e, int cid, BudgetPolicy poli
 float econ_country_road_conn(const WorldEconomy *e, int cid);
 void  econ_country_tax_set(WorldEconomy *e, int cid, SocialClass c, float mult);
 void  econ_country_budget_set(WorldEconomy *e, int cid, BudgetPolicy policy, float mult);
+
+/* MONNAIE M1/M2 (docs/MONNAIE_CONCEPT.md) — province CAPITALE d'un pays (grain province,
+ * WorldEconomy seul : econ_tick n'a pas de World*). -1 si aucune (pays mort/sans capitale). */
+int   econ_country_capital_prov(const WorldEconomy *e, int cid);
+/* Part ANNUELLE [0..1] de la réserve frappée CE pays : le curseur joueur (BUDGET_MINT,
+ * défaut 0 = golden-neutre) pour le pays du slot 0 (culture_player_cid), la politique FIXE
+ * de l'IA (MINT_AI_SHARE, registre J) pour tous les autres — jamais mélangés. */
+float econ_country_mint_share(const WorldEconomy *e, int cid);
+/* Frappe MENSUELLE — fonction PURE (aucune mutation), MIROIR EXACT du point fixe d'econ_tick :
+ * gold_out/copper_out = métal frappé ce mois (réserve × part/100 / 12) ; value_out = monnaie
+ * NEUTRE 1:1 au prix courant de la province capitale (aucun rapport fixe or/cuivre). cap_pid_out
+ * (optionnel, peut être NULL) reçoit la province capitale résolue (-1 si aucune ⇒ tout à 0). */
+void  econ_country_mint_month(const WorldEconomy *e, int cid,
+                               float *gold_out, float *copper_out, float *value_out,
+                               int *cap_pid_out);
 
 /* §4 (catalogue des biens) — fraction de pop « mal servie » d'une province :
  * une minorité d'une autre SPHÈRE réclame ses variantes ; l'assimilation efface

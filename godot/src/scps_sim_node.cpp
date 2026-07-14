@@ -33,6 +33,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("world_pop"),               &ScpsWorld::world_pop);
     ClassDB::bind_method(D_METHOD("country_pop", "country"),  &ScpsWorld::country_pop);
     ClassDB::bind_method(D_METHOD("country_gold", "country"), &ScpsWorld::country_gold);
+    ClassDB::bind_method(D_METHOD("country_reserve", "country"),    &ScpsWorld::country_reserve);
+    ClassDB::bind_method(D_METHOD("country_mint_month", "country"), &ScpsWorld::country_mint_month);
     ClassDB::bind_method(D_METHOD("country_role", "country"), &ScpsWorld::country_role);
     ClassDB::bind_method(D_METHOD("region_owner", "region"),     &ScpsWorld::region_owner);
     ClassDB::bind_method(D_METHOD("region_pop", "region"),       &ScpsWorld::region_pop);
@@ -385,6 +387,13 @@ int     ScpsWorld::province_count() const { return scps_province_count(sim); }
 int64_t ScpsWorld::world_pop()     const { return (int64_t)scps_world_pop(sim); }
 int64_t ScpsWorld::country_pop(int c)  const { return (int64_t)scps_country_pop(sim, c); }
 double  ScpsWorld::country_gold(int c) const { return scps_country_gold(sim, c); }
+Dictionary ScpsWorld::country_reserve(int c) const {
+    Dictionary d; float g=0.f, cp=0.f;
+    scps_country_reserve(sim, c, &g, &cp);
+    d["gold"]=g; d["copper"]=cp;
+    return d;
+}
+double  ScpsWorld::country_mint_month(int c) const { return scps_country_mint_month(sim, c); }
 int     ScpsWorld::country_role(int c) const { return scps_country_role(sim, c); }
 
 int     ScpsWorld::region_owner(int r)     const { return scps_region_owner(sim, r); }
@@ -1481,12 +1490,12 @@ Dictionary ScpsWorld::budget_controls(int country) {
     Dictionary d;
     Array taxes, spending;
     static const char *tax_names[3] = {"Laboureurs", "Artisans", "Noblesse"};
-    static const char *spend_names[5] = {"Investissement public", "Entretien des bâtiments", "Armée", "Flotte", "Entretien des routes"};
+    static const char *spend_names[6] = {"Investissement public", "Entretien des bâtiments", "Armée", "Flotte", "Entretien des routes", "Frappe"};
     for (int i=0;i<3;i++){
         Dictionary row; row["id"]=i; row["name"]=String::utf8(tax_names[i]);
         row["mult"]=scps_country_budget_policy(sim,country,0,i); taxes.push_back(row);
     }
-    for (int i=0;i<5;i++){
+    for (int i=0;i<6;i++){
         Dictionary row; row["id"]=i; row["name"]=String::utf8(spend_names[i]);
         row["mult"]=scps_country_budget_policy(sim,country,1,i); spending.push_back(row);
     }
