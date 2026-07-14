@@ -297,6 +297,7 @@ static double g_adstock_min[7],g_adstock_fin[7],g_adsup_sum[7]; static long g_ad
  * réels (warhost_units) vs limite de force (warhost_force_limit). Gated : lecture seule. */
 static double g_mid_rgt_sum=0.0; static long g_mid_n=0;
 static double g_mid_rgt_all[8192]; static int g_mid_rgt_all_n=0;   /* pour la médiane */
+static bool g_invariant_breach=false;   /* MONNAIE M3c : set par chronicle_invariant_check ci-dessous */
 static int dcmp(const void *a, const void *b){ double x=*(const double*)a-*(const double*)b; return (x<0)?-1:(x>0); }
 static double dmedian(double *v, int n){
     if (n<=0) return -1.0;
@@ -318,6 +319,51 @@ static double chronicle_money_mass(const WorldEconomy *e){
         for (int c=0;c<CLASS_COUNT;c++) m += (double)pe->strata[c].wealth;
     }
     return m;
+}
+/* MONNAIE M3c — LE SCEAU FINAL (banc invariant, print-only + ÉCHOUE BRUYAMMENT) :
+ * M(t) = M(0) + frappe cumulée ± résidus DOCUMENTÉS. Vérifié en DELTA ANNUEL (pas en
+ * cumulé depuis la genèse — un ratio cumulé contre M(t) DÉRIVE sans borne sur 250 ans,
+ * même à comportement stable d'une année sur l'autre : la contribution "autres" d'une
+ * année COMPENSE rarement celle de l'année suivante, elle s'ACCUMULE — mesuré au
+ * calibrage, cf. TROUVAILLES). "documenté" ICI = les TROIS catégories M3a (VA §1.1,
+ * conso §2.1, colonisation §1.2) + la frappe — PAS le registre COMPLET (tribut mûri
+ * §1.4, missions §1.5, arbitrage §1.3, gains d'événements §1.7, pillage-stock §2.12
+ * restent HORS SCOPE M3c, non convertis — leur contribution tombe dans "autres" et
+ * EST du même ordre de grandeur que la VA elle-même, mesuré au calibrage : le seuil
+ * DOIT donc être calibré sur l'ÉCHELLE d'activité de l'année (Σ|composantes connues|),
+ * pas sur M(t) — sinon aucun seuil "serré" n'est atteignable tant que ces sites
+ * ne sont pas convertis à leur tour (RESTE, hors scope de cette mission). Ce banc reste
+ * un DÉTECTEUR DE RÉGRESSION (une explosion soudaine du ratio signale un NOUVEAU canal
+ * magique), pas une preuve de conservation totale du jeu. */
+static double g_inv_prev_m=0.0, g_inv_prev_va=0.0, g_inv_prev_conso=0.0, g_inv_prev_coloniz=0.0, g_inv_prev_mint=0.0;
+static void chronicle_invariant_reset(double m0){
+    g_inv_prev_m=m0; g_inv_prev_va=0.0; g_inv_prev_conso=0.0; g_inv_prev_coloniz=0.0; g_inv_prev_mint=0.0;
+}
+static void chronicle_invariant_check(const WorldEconomy *e, int year, uint32_t seed, int sim,
+                                       double mint_cum_so_far){
+    double m_now = chronicle_money_mass(e);
+    double va_cum=0.0, conso_cum=0.0, coloniz_cum=0.0;
+    econ_money_instrument_get(&va_cum, &conso_cum, &coloniz_cum);
+    double d_m       = m_now - g_inv_prev_m;
+    double d_va       = va_cum - g_inv_prev_va;
+    double d_conso    = conso_cum - g_inv_prev_conso;   /* stocké négatif, motif conso_an=-conso_cum/years */
+    double d_coloniz  = coloniz_cum - g_inv_prev_coloniz;
+    double d_mint     = mint_cum_so_far - g_inv_prev_mint;
+    double documented = d_va + (-d_conso) + d_coloniz + d_mint;
+    double autres     = d_m - documented;
+    /* échelle = Σ|composantes connues| de CETTE année (pas le delta NET, qui peut être
+     * petit par pure compensation de signes opposés — ni M(t), qui dérive sans borne) */
+    double scale = fabs(d_va)+fabs(d_conso)+fabs(d_coloniz)+fabs(d_mint); if (scale<1.0) scale=1.0;
+    double frac = fabs(autres)/scale;
+    double maxfrac = (double)tune_f("INVARIANT_DRIFT_FRAC", 2.0f);
+    if (frac > maxfrac){
+        g_invariant_breach = true;
+        fprintf(stderr, "   ÉCHEC — banc invariant M3c : graine %u sim %d an %d — "
+                "autres=%+.0f/an (%.0f%% de l'échelle connue %.0f, seuil %.0f%%) — dérive HORS-FRAPPE en EXPLOSION\n",
+                seed, sim, year, autres, 100.0*frac, scale, 100.0*maxfrac);
+    }
+    g_inv_prev_m=m_now; g_inv_prev_va=va_cum; g_inv_prev_conso=conso_cum;
+    g_inv_prev_coloniz=coloniz_cum; g_inv_prev_mint=mint_cum_so_far;
 }
 /* Recoupement GROSSIER (pas la vérité — cf. docs/MONNAIE_M0_AUDIT.md §7) : Σ des
  * deltas positifs/négatifs d'econ_flux_get sur TOUS les pays, accumulée année
@@ -462,6 +508,7 @@ int main(int argc, char **argv){
         /* MONNAIE — M0 (AUDIT, print-only) : M(0) juste après la genèse (avant le
          * premier econ_tick) — la dotation de genèse §5.1 du registre. */
         double money_m0 = chronicle_money_mass(s.econ);
+        chronicle_invariant_reset(money_m0);   /* MONNAIE M3c : RAZ l'état "année précédente" du banc invariant */
         double money_creation_accum = 0.0, money_destruction_accum = 0.0;
         /* MONNAIE — M1/M2 (print-only) : cumul de la frappe (FX_MINT), PAR PAYS (pour
          * compter les « empires frappeurs » en fin de sim) — même motif snapshot/accum
@@ -628,6 +675,10 @@ int main(int argc, char **argv){
              * grossier création/destruction (cf. docs/MONNAIE_M0_AUDIT.md §7). */
             chronicle_money_flux_accum(s.econ, w->n_countries, &money_creation_accum, &money_destruction_accum);
             chronicle_mint_flux_accum(s.econ, w->n_countries, &mint_accum, mint_by_country);
+            /* MONNAIE M3c — LE SCEAU FINAL : vérifié ICI (même point que le recoupement
+             * FX_* ci-dessus — état "fin d'année Y-1 / avant tick de l'année Y", mint_accum
+             * et money_mass mutuellement À JOUR au MÊME instant, motif money_creation_accum). */
+            if (yr>0) chronicle_invariant_check(s.econ, yr, seed, k+1, mint_accum);
             econ_flux_year_capture();
             for (int d=0; d<365; d++) sim_day(&s, w);
             /* conquêtes de l'année : régions passées d'un PAYS à un autre (de force) */
@@ -752,6 +803,20 @@ int main(int argc, char **argv){
           printf("   frappe : %.0f or/an moyen (%d/%d empires frappeurs) · réserve fin %.0f or · %.0f cuivre\n",
                  (years>0)? mint_accum/(double)years : 0.0, n_frappeurs, n_alive_end,
                  reserve_fin_gold, reserve_fin_copper); }
+
+        /* MONNAIE M3c — LA DETTE VIT (print-only, docs/MONNAIE_CONCEPT.md §M3 Cœur B) :
+         * dette totale/pays débiteur, part classes vs cité-état, rachats de crédit et
+         * épisodes d'épuisement — la preuve que le canal ferme (des empires empruntent,
+         * remboursent, se font racheter) plutôt qu'imprime. */
+        { double debt_tot=0.0, debt_class=0.0, debt_cs=0.0; int n_debtors=0;
+          for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+              float dc=credit_debt_class(c), ds=credit_debt_citystate(c);
+              if (dc+ds>1.0f){ n_debtors++; debt_class+=dc; debt_cs+=ds; debt_tot+=dc+ds; }
+          }
+          long buybacks=0, defaults=0; credit_stats_get(&buybacks, &defaults);
+          printf("   dette (M3c) : %.0f or totale (%d pays débiteur(s)) — %.0f classes (%.0f%%) · %.0f cité-état (%.0f%%) · %ld rachat(s) · %ld épuisement(s)\n",
+                 debt_tot, n_debtors, debt_class, debt_tot>1.0?100.0*debt_class/debt_tot:0.0,
+                 debt_cs, debt_tot>1.0?100.0*debt_cs/debt_tot:0.0, buybacks, defaults); }
 
         /* MONNAIE — M3a : L'INSTRUMENT (print-only, docs/MONNAIE_M0_AUDIT.md) — la
          * création résiduelle PAR CATÉGORIE, le tableau de bord que M3b regardera fondre
@@ -1818,5 +1883,12 @@ int main(int argc, char **argv){
     warhost_free(s.host); free(s.camp); free(s.ai); free(s.ai_on); free(s.rs); free(s.host);
     free(s.missions);   /* fuyait (6 496 o, vu par LeakSanitizer) */
     free(s.navy); free(s.eg);
+    /* MONNAIE M3c — LE SCEAU FINAL : une dérive hors-frappe non documentée détectée
+     * PENDANT le run (chronicle_invariant_check, annuel) fait ÉCHOUER bruyamment tout le
+     * run — exit ≠0, le motif de gate déjà établi (golden/déterminisme). */
+    if (g_invariant_breach){
+        fprintf(stderr, "\n═══ ÉCHEC — banc invariant M3c : au moins une dérive hors-frappe a dépassé le seuil (voir lignes ÉCHEC ci-dessus) ═══\n");
+        return 1;
+    }
     return 0;
 }
