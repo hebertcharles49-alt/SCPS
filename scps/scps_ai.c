@@ -1050,6 +1050,11 @@ static void ai_build_manufacture(AiActor *a, const World *w, WorldEconomy *econ)
         if (!credit_can_spend(econ, w, a->cid, cost)) continue;   /* bloque seulement au-delà de la ligne de crédit (dette) */
         if (econ_build_manufacture(econ, best_pid, b)){
             credit_spend(econ, w, a->cid, cost); econ_flux_add(a->cid, FX_SOLDE, -cost);   /* débit AU SUCCÈS — pas d'or perdu si la pose échoue */
+            /* MONNAIE M3b-v2 — item 5 : construction de manufacture, « aligne sur le chantier
+             * d'édifice » — pas de table de matériaux pour les manufactures (seule la
+             * PRODUCTION consomme un intrant, jamais la POSE) → tout le coût devient gages
+             * pour la province qui bâtit (les artisans/manœuvres du chantier). */
+            econ->prov[best_pid].strata[CLASS_LABORER].wealth += cost;
             a->stats.builds_other++;
             /* FINIR LA CHAÎNE (comme l'armurier à poudre des cités-états) : poudrière (salpêtre+charbon
              * → poudre) + charbonnière (bois → charbon). Le pool national amène le salpêtre d'où qu'il
@@ -1086,6 +1091,8 @@ static bool ai_pay_and_build(AiActor *a, const World *w, WorldEconomy *econ, int
     int pid=econ_region_rep_province(econ, region);
     if (pid<0 || !econ_build_manufacture(econ, pid, b)) return false;
     credit_spend(econ, w, a->cid, cost); econ_flux_add(a->cid, FX_SOLDE, -cost);   /* débit AU SUCCÈS */
+    /* item 5 : chantier de manufacture → gages (mêmes motifs que ai_build_manufacture). */
+    econ->prov[pid].strata[CLASS_LABORER].wealth += cost;
     a->stats.builds_other++;
     return true;
 }
@@ -1199,6 +1206,8 @@ static void ai_build_civmanuf(AiActor *a, const World *w, WorldEconomy *econ, Re
     int br_pid=econ_region_rep_province(econ, br);
     if (br_pid>=0 && econ_build_manufacture(econ, br_pid, bb)){
         credit_spend(econ, w, a->cid, cost); econ_flux_add(a->cid, FX_SOLDE, -cost);   /* débit AU SUCCÈS */
+        /* item 5 : la pose civile (le brûleur n°1 de M0) → gages (idem ai_build_manufacture). */
+        econ->prov[br_pid].strata[CLASS_LABORER].wealth += cost;
         a->stats.builds_other++;
     }
 }
@@ -1304,6 +1313,8 @@ static bool ai_build_raw_boost(AiActor *a, const World *w, WorldEconomy *econ, c
     if (pick==RES_NONE || pick_region<0) return false;
     if (!credit_can_spend(econ, w, a->cid, cost)) return false;
     credit_spend(econ, w, a->cid, cost); econ_flux_add(a->cid, FX_SOLDE, -cost);
+    /* item 5 : palier d'exploitation → gages (les mineurs/bâtisseurs de la région ciblée). */
+    econ_region_wealth_add(econ, pick_region, CLASS_LABORER, cost);
     econ->region[pick_region].raw_boost[pick]++;              /* +1 palier d'EXPLOITATION (boost d'extraction) */
     a->stats.builds_other++;
     return true;

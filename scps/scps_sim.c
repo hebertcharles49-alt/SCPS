@@ -623,6 +623,10 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (econ_build_manufacture(s->econ, pid, (BuildingType)b)){
                 credit_spend(s->econ, w, p, cost);
                 econ_flux_add(p, FX_BUILD, -cost);                   /* I0 : la ligne chantiers */
+                /* MONNAIE M3b-v2 — item 5 : construction de manufacture (joueur) → gages,
+                 * même motif qu'ai_build_civmanuf (pas de table de matériaux, tout le coût
+                 * paie les artisans de LA province). */
+                pe->strata[CLASS_LABORER].wealth += cost;
             }
             break; }
           case CMD_MANUF_LEVEL: {   /* onglet province : monter/descendre le niveau d'une manuf bâtie
@@ -639,6 +643,7 @@ static void sim_cmd_drain(Sim *s, World *w){
                 if (econ_manuf_level_delta(s->econ, pid, (BuildingType)b, +1)){
                     credit_spend(s->econ, w, p, cost);
                     econ_flux_add(p, FX_BUILD, -cost);               /* I0 : la ligne chantiers */
+                    pe->strata[CLASS_LABORER].wealth += cost;         /* item 5 : idem, gages */
                 }
             } else {
                 econ_manuf_level_delta(s->econ, pid, (BuildingType)b, -1);   /* DESCENDRE = démolition libre */
