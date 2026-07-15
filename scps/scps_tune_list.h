@@ -1158,6 +1158,14 @@
      * trésor de la province-hôte (econ_region_treasury_add) et les bourgeois
      * (econ_region_wealth_add), même montant total, juste le SPLIT qui change.
      * 0 = kill-switch : 100 % bourgeois, chemin legacy byte-identique. */ \
-    X(TOLL_STATE_SHARE,                0.5f)
+    X(TOLL_STATE_SHARE,                0.5f) \
+    /* MONNAIE M5 — R2 : LA RÉSERVE DE GENÈSE (décision joueur 2026-07-15). Un empire
+     * jouable/IA (POLITY_PLAYER/ANTAGONIST) naît désormais avec une réserve MÉTALLIQUE
+     * de départ (le champ M1 reserve_gold/copper, jusqu'ici réservé aux cités-états à
+     * 200/500 via GENESIS_RESERVE_GOLD/COPPER, INTACT) — du seigneuriage early même
+     * sans mine découverte. 0 = kill-switch : réserve empire toujours nulle, chemin
+     * legacy byte-identique. */ \
+    X(GENESIS_RESERVE_GOLD_EMPIRE,   100.0f) \
+    X(GENESIS_RESERVE_COPPER_EMPIRE, 100.0f)
 
 #endif /* SCPS_TUNE_LIST_H */

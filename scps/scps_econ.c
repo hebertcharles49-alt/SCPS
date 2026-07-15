@@ -1566,6 +1566,16 @@ void econ_init(WorldEconomy *e, const World *w) {
                 { int cp=w->country[cid].capital_prov;
                   if (cp>=0 && cp<w->n_provinces && cp<SCPS_MAX_PROV)
                       e->prov[cp].treasury = tune_f("GENESIS_TREASURY_EMPIRE", 2000.f); }
+                /* MONNAIE M5 — R2 (décision joueur 2026-07-15, « réserve d'or et de cuivre
+                 * au début, 100/100 ») : un empire jouable/IA naît AUSSI avec une réserve
+                 * MÉTALLIQUE (le champ M1 reserve_gold/copper, jusqu'ici réservé aux
+                 * cités-états à 200/500, cf. GENESIS_RESERVE_GOLD/COPPER ci-dessous —
+                 * tunables SÉPARÉS, la valeur cité-état ne bouge pas) — du seigneuriage
+                 * early même sans mine découverte : la réserve alimente econ_country_
+                 * mint_month comme n'importe quelle autre (aucune voie neuve). 0 =
+                 * kill-switch, chemin legacy byte-identique (réserve empire nulle). */
+                e->reserve_gold[cid]   = tune_f("GENESIS_RESERVE_GOLD_EMPIRE",   100.f);
+                e->reserve_copper[cid] = tune_f("GENESIS_RESERVE_COPPER_EMPIRE", 100.f);
                 break;
             case POLITY_CITY_STATE:
                 cty_target[cid]=city_cap;
