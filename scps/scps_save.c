@@ -297,6 +297,15 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
          * même motif — [0..30000], le plafond interne de credit_year_tick. */
         int st=credit_insolvent_streak(c);
         if (st<0 || st>30000) return false;
+        /* v92 — MONNAIE M3g : le créancier figé de la SAISIE (cs_id, un INDEX — même
+         * motif que credit_of), sa part [0,1] et le cumul en attente (≥0, fini — motif
+         * reserve_gold) se revalident. */
+        int gcs=credit_garnish_cs_id(c);
+        if (gcs < -1 || gcs >= w->n_countries) return false;
+        float gsh=credit_garnish_cs_share(c);
+        if (!(gsh>=0.f && gsh<=1.f)) return false;
+        float gpd=credit_garnish_cs_pending(c);
+        if (!(gpd>=0.f && gpd<1.0e12f)) return false;
     }
     if (w->n_rivers    <0 || w->n_rivers    >SCPS_MAX_RIVERS)    return false;
     for (int i=0;i<w->n_rivers;i++)

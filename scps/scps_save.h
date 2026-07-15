@@ -32,7 +32,14 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 91u           /* v91 : MONNAIE M3f — LA CONVERGENCE ÉTALON (bonus) : le
+#define SAVE_VERSION 92u           /* v92 : MONNAIE M3g — LA BANQUEROUTE-SAISIE : le blob SVT_CRDT
+                                    * (scps_credit.c) grandit de 3 tableaux neufs (g_garnish_cs_id/
+                                    * g_garnish_cs_share/g_garnish_cs_pending[SCPS_MAX_COUNTRY]) —
+                                    * le créancier D'AVANT-répudiation figé à la banqueroute (part
+                                    * cité-état de la saisie en cours + son cumul mensuel en
+                                    * attente du règlement annuel) → raw fwrite, sizeof change,
+                                    * <v92 refusé (credit_load lit un format différent).
+                                    * v91 : MONNAIE M3f — LA CONVERGENCE ÉTALON (bonus) : le
                                     * blob SVT_EMOB grandit d'un accumulateur inter-ticks neuf
                                     * (g_mint_demand_prev[SCPS_MAX_PROV][2] — la demande semée
                                     * par l'achat de la frappe libre du tick précédent, même lag

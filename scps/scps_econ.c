@@ -3388,9 +3388,36 @@ void econ_tick(WorldEconomy *e, float dt) {
             }
             if (rc->in2!=RES_NONE){ S[rc->in2]-=lim*rc->q2; demand[rc->in2]+=lim*rc->q2; val_in+=lim*rc->q2*re->price[rc->in2];
                 if (rc->in2==RES_COAL) e->fuel_coal_cum += (double)(lim*rc->q2); }   /* FIN_CHAUD : poudrière/forge céleste */
-            float out=lim*rc->qout*prod_mult;   /* outils → productivité */
-            out *= (1.f - 0.5f*re->revolt_scar); /* la cicatrice de révolte ronge la production */
-            out *= (1.f - 0.75f*re->bankruptcy_scar); /* M3d — la banqueroute ronge PLUS FORT (spec « tape fort ») */
+            float out_full=lim*rc->qout*prod_mult;   /* outils → productivité */
+            out_full *= (1.f - 0.5f*re->revolt_scar); /* la cicatrice de révolte ronge la production */
+            /* M3g — LA SAISIE (remplace le malus PLAT −75 % de M3d) : la production
+             * CONTINUE PLEINE (`out_full`, désormais SANS malus) — une part
+             * BANKRUPTCY_GARNISH×bankruptcy_scar de sa VALEUR (décroissante avec la
+             * cicatrice EXISTANTE, aucun nouvel état pour la fraction elle-même) est
+             * CONFISQUÉE au profit des créanciers D'AVANT-répudiation au lieu de
+             * simplement ne jamais exister. `out` (livré au producteur/stock/GDP/
+             * salaires ci-dessous) reste par CONSTRUCTION la valeur EXACTE de l'ancien
+             * malus plat (out_full×(1−garnish) = out_full×(1−0.75×scar)) : bit-
+             * identique quand scar=0 (le cas courant, hors banqueroute), seule la part
+             * confisquée cesse de disparaître — elle est TRANSFÉRÉE (conservation,
+             * doctrine M0/M3f) au lieu d'être détruite. Domestique = wealth crédité ICI
+             * (province-grain) ; cité-état = accumulé pour le règlement annuel
+             * (credit_garnish_note → credit_year_tick, scps_credit.c/h). */
+            float garnish = tune_f("BANKRUPTCY_GARNISH",0.75f) * re->bankruptcy_scar;
+            float out_seized = out_full * garnish;
+            float out = out_full - out_seized;
+            if (out_seized > EPS && owner_>=0 && owner_<SCPS_MAX_COUNTRY){
+                float sval = out_seized * re->price[rc->out];
+                float cs_share = credit_garnish_cs_share(owner_);
+                float cs_val = sval*cs_share, dom_val = sval-cs_val;
+                if (dom_val > EPS){
+                    float ew=tune_f("ELITE_LEND_WEIGHT",1.0f), bw=tune_f("BOURGEOIS_LEND_WEIGHT",0.5f);
+                    float tot=ew+bw; if (tot<=EPS) tot=1.f;
+                    re->strata[CLASS_ELITE].wealth     += dom_val*(ew/tot);
+                    re->strata[CLASS_BOURGEOIS].wealth += dom_val*(bw/tot);
+                }
+                credit_garnish_note(owner_, dom_val, cs_val);
+            }
             /* F-arc ARSENAL — la manufacture d'ARMES verse ×MANUF_ARMS_MULT au STOCK (l'arsenal que
              * la levée POMPE : recrutement = stock/POP_PER_UNIT). Le marché (supply → prix), la valeur
              * ajoutée (PIB plus bas) et la charge faustienne restent sur la sortie de BASE `out` → l'éco

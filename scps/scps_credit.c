@@ -40,13 +40,27 @@ static long g_buybacks=0, g_defaults=0;   /* télémétrie MONDE, RAZ par credit
  * credit_year_tick, consommé par scps_sim.c juste après — RAZ à chaque appel). */
 static long g_bankrupt_forced=0, g_bankrupt_voluntary=0;
 static bool g_forced_pending[SCPS_MAX_COUNTRY];
+/* M3g — LA SAISIE : le créancier D'AVANT-répudiation figé au moment de la banqueroute
+ * (credit_bankruptcy), valide toute la durée de la cicatrice. cs_id=-1 ⇒ tout domestique
+ * (aucun créancier CS à la banqueroute, ou dette-CS nulle). SÉRIALISÉ (v92) — doit
+ * survivre un save/reload pendant la cicatrice (~10 ans, BANKRUPTCY_SCAR_YEARS). */
+static int16_t g_garnish_cs_id[SCPS_MAX_COUNTRY];
+static float   g_garnish_cs_share[SCPS_MAX_COUNTRY];
+/* Accumulateur INTER-TICK (motif EMOB/g_mint_demand_prev) : la part cité-état saisie
+ * CE mois, en attente du règlement ANNUEL (credit_year_tick). SÉRIALISÉ (v92). */
+static float   g_garnish_cs_pending[SCPS_MAX_COUNTRY];
+/* Télémétrie MONDE cumulée CE run — RAZ par credit_init, NON sérialisée (motif
+ * g_buybacks/g_defaults : un compteur de partie, pas un état de simulation). */
+static double  g_garnish_total=0.0, g_garnish_domestic=0.0, g_garnish_cs_tel=0.0;
 
 void credit_init(void){
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){
         g_debt[c].to_class=0.f; g_debt[c].to_cs=0.f; g_debt[c].cs_id=-1; g_debt[c].insolvent_streak=0;
         g_forced_pending[c]=false;
+        g_garnish_cs_id[c]=-1; g_garnish_cs_share[c]=0.f; g_garnish_cs_pending[c]=0.f;
     }
     g_buybacks=0; g_defaults=0; g_bankrupt_forced=0; g_bankrupt_voluntary=0;
+    g_garnish_total=0.0; g_garnish_domestic=0.0; g_garnish_cs_tel=0.0;
 }
 int  credit_of(int c){ return (c>=0&&c<SCPS_MAX_COUNTRY)? g_debt[c].cs_id : -1; }
 float credit_debt_class(int c)     { return (c>=0&&c<SCPS_MAX_COUNTRY)? g_debt[c].to_class : 0.f; }
@@ -421,6 +435,24 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
         g_forced_pending[c] = (g_debt[c].insolvent_streak >= (int16_t)tune_f("BANKRUPTCY_GRACE_YEARS",2.f));
     }
 
+    /* M3g — RÈGLEMENT ANNUEL DE LA SAISIE (part cité-état) : même cadence/motif que le
+     * paiement d'intérêt cs ci-dessus (home_reg + province représentative). Le cumul
+     * mensuel (credit_garnish_note, appelé depuis econ_tick/scps_econ.c) attend ici,
+     * PAS d'accès World* dans econ_tick — la même contrainte que credit_settle_monthly.
+     * DOIT s'exécuter AVANT que g_forced_pending (ci-dessus) ne déclenche une NOUVELLE
+     * banqueroute cette même année (scps_sim.c appelle credit_bankruptcy juste APRÈS ce
+     * retour) — sinon un reliquat de l'ANCIEN créancier serait perdu silencieusement ;
+     * l'ordre est garanti : cette boucle tourne AVANT le retour de credit_year_tick. */
+    for(int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+        float pend=g_garnish_cs_pending[c]; if (pend<=CR_EPS) continue;
+        int L=g_garnish_cs_id[c];
+        if (L>=0 && L<w->n_countries && L!=c){
+            int hc=home_reg(w,L);
+            if (hc>=0&&hc<e->n_regions){ int cp=econ_region_rep_province(e,hc); if (cp>=0&&cp<e->n_prov) e->prov[cp].treasury+=pend; }
+        }
+        g_garnish_cs_pending[c]=0.f;
+    }
+
     /* RACHAT DE CRÉDIT — le marché secondaire (les Fugger) : une cité-état/mercantile au
      * trésor OISIF rachète la dette-CLASSES d'un pays tiers à sa valeur faciale (v1
      * simple et déterministe, brief §5 — pas d'escompte spéculatif). Simplicité : un SEUL
@@ -484,12 +516,27 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
 int credit_bankruptcy(WorldEconomy *e, int c, bool forced){
     if (!e || c<0 || c>=SCPS_MAX_COUNTRY) return -1;
     int L = g_debt[c].cs_id;
+    /* M3g — fige le créancier D'AVANT-répudiation (part CS de la dette totale, AVANT le
+     * wipe ci-dessous) pour toute la saisie à venir (cf. scps_credit.h). Ne réinstaure
+     * RIEN — la répudiation reste TOTALE (motif M3d inchangé) : ceci mémorise seulement
+     * QUI recevra la part cité-état de la production confisquée pendant la cicatrice. */
+    float debt_total_pre = g_debt[c].to_class + g_debt[c].to_cs;
+    if (debt_total_pre > CR_EPS && g_debt[c].to_cs > CR_EPS && L>=0){
+        g_garnish_cs_id[c]    = (int16_t)L;
+        g_garnish_cs_share[c] = g_debt[c].to_cs / debt_total_pre;
+    } else {
+        g_garnish_cs_id[c]    = -1;
+        g_garnish_cs_share[c] = 0.f;
+    }
+    g_garnish_cs_pending[c] = 0.f;   /* un reliquat non réglé d'un cycle précédent est déjà réglé par credit_year_tick avant que g_forced_pending ne déclenche CE tick (ordre garanti, cf. scps_credit.h) */
     g_debt[c].to_class=0.f; g_debt[c].to_cs=0.f; g_debt[c].cs_id=-1; g_debt[c].insolvent_streak=0;
     g_forced_pending[c]=false;
-    /* DÉBUFF −75 % (production/croissance/moral, brief « tape fort ») : la cicatrice
-     * frappe TOUTES les provinces ACTIVES du pays (motif revolt_scar — econ_tick la
-     * décroît sur BANKRUPTCY_SCAR_YEARS, scps_campaign.c lit econ_country_bankruptcy_scar
-     * pour le moral d'armée). */
+    /* CICATRICE (moral d'armée EXPLICITE, brief « l'humiliation ne se calcule pas en
+     * grain » — M3g conserve CE malus tel quel) + le GATE de la SAISIE (M3g remplace le
+     * débuff plat −75 % production/croissance de M3d par une confiscation de VALEUR,
+     * scps_econ.c/scps_credit.h) : la cicatrice frappe TOUTES les provinces ACTIVES du
+     * pays (motif revolt_scar — econ_tick la décroît sur BANKRUPTCY_SCAR_YEARS,
+     * scps_campaign.c lit econ_country_bankruptcy_scar pour le moral d'armée). */
     int n=e->n_prov; if (n>SCPS_MAX_PROV) n=SCPS_MAX_PROV;
     for (int p=0;p<n;p++) if (e->prov[p].owner==c && e->prov[p].active) e->prov[p].bankruptcy_scar=1.f;
     if (forced) g_bankrupt_forced++; else g_bankrupt_voluntary++;
@@ -500,6 +547,36 @@ int credit_bankruptcy(WorldEconomy *e, int c, bool forced){
  * pour chaque pays flaggé (le flag redescend alors via credit_bankruptcy lui-même). */
 bool credit_bankrupt_pending(int c){ return (c>=0 && c<SCPS_MAX_COUNTRY) && g_forced_pending[c]; }
 
+/* M3g — voir scps_credit.h. Lecture pure (aucune mutation) : la part de la saisie qui
+ * ira à la cité-état créancière figée à la dernière banqueroute de `debtor_c`. */
+float credit_garnish_cs_share(int debtor_c){
+    if (debtor_c<0 || debtor_c>=SCPS_MAX_COUNTRY) return 0.f;
+    return (g_garnish_cs_id[debtor_c]>=0) ? g_garnish_cs_share[debtor_c] : 0.f;
+}
+int credit_garnish_cs_id(int debtor_c){
+    return (debtor_c>=0 && debtor_c<SCPS_MAX_COUNTRY) ? (int)g_garnish_cs_id[debtor_c] : -1;
+}
+float credit_garnish_cs_pending(int debtor_c){
+    return (debtor_c>=0 && debtor_c<SCPS_MAX_COUNTRY) ? g_garnish_cs_pending[debtor_c] : 0.f;
+}
+/* M3g — voir scps_credit.h. `domestic_value` est déjà crédité par l'appelant
+ * (scps_econ.c, wealth province-grain) : ici, TÉLÉMÉTRIE seule pour cette part. La part
+ * `cs_value` (si >0) s'accumule pour le règlement annuel (credit_year_tick, ci-dessus). */
+void credit_garnish_note(int debtor_c, float domestic_value, float cs_value){
+    if (domestic_value<0.f) domestic_value=0.f;
+    if (cs_value<0.f) cs_value=0.f;
+    g_garnish_total    += (double)(domestic_value+cs_value);
+    g_garnish_domestic += (double)domestic_value;
+    g_garnish_cs_tel    += (double)cs_value;
+    if (cs_value>CR_EPS && debtor_c>=0 && debtor_c<SCPS_MAX_COUNTRY)
+        g_garnish_cs_pending[debtor_c] += cs_value;
+}
+void credit_garnish_stats(double *total, double *domestic, double *citystate){
+    if (total)     *total=g_garnish_total;
+    if (domestic)  *domestic=g_garnish_domestic;
+    if (citystate) *citystate=g_garnish_cs_tel;
+}
+
 bool credit_save(FILE *f){
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){
         if (fwrite(&g_debt[c].to_class,        sizeof(float),  1,f)!=1) return false;
@@ -507,6 +584,11 @@ bool credit_save(FILE *f){
         if (fwrite(&g_debt[c].cs_id,           sizeof(int16_t),1,f)!=1) return false;
         if (fwrite(&g_debt[c].insolvent_streak,sizeof(int16_t),1,f)!=1) return false;   /* M3d (v90) */
     }
+    /* M3g (v92) — le créancier figé de la saisie + son cumul mensuel en attente
+     * (inter-tick, motif EMOB : doit survivre un save/reload pendant la cicatrice). */
+    if (fwrite(g_garnish_cs_id,    sizeof g_garnish_cs_id,    1,f)!=1) return false;
+    if (fwrite(g_garnish_cs_share, sizeof g_garnish_cs_share, 1,f)!=1) return false;
+    if (fwrite(g_garnish_cs_pending,sizeof g_garnish_cs_pending,1,f)!=1) return false;
     return true;
 }
 bool credit_load(FILE *f){
@@ -519,5 +601,8 @@ bool credit_load(FILE *f){
         if (fread(&g_debt[c].cs_id,           sizeof(int16_t),1,f)!=1) return false;
         if (fread(&g_debt[c].insolvent_streak,sizeof(int16_t),1,f)!=1) return false;    /* M3d (v90) */
     }
+    if (fread(g_garnish_cs_id,    sizeof g_garnish_cs_id,    1,f)!=1) return false;      /* M3g (v92) */
+    if (fread(g_garnish_cs_share, sizeof g_garnish_cs_share, 1,f)!=1) return false;
+    if (fread(g_garnish_cs_pending,sizeof g_garnish_cs_pending,1,f)!=1) return false;
     return true;
 }

@@ -87,4 +87,37 @@ int   credit_bankruptcy(WorldEconomy *e, int c, bool forced);
 bool  credit_bankrupt_pending(int c);
 void  credit_bankruptcy_stats(long *forced, long *voluntary);
 
+/* ---- M3g : LA BANQUEROUTE-SAISIE (décision joueur 2026-07-15) ------------------------
+ * Remplace le malus PLAT −75 % (production/croissance, M3d) par une SAISIE : la
+ * production CONTINUE PLEINE (scps_econ.c retire le malus de `out`), mais une part
+ * BANKRUPTCY_GARNISH(0.75)×bankruptcy_scar de sa VALEUR — décroissante avec la
+ * cicatrice EXISTANTE, aucun nouvel état pour la FRACTION elle-même — est CONFISQUÉE
+ * au profit des créanciers D'AVANT-répudiation plutôt que simplement non-produite :
+ *   - créanciers DOMESTIQUES (les classes rentières du débiteur lui-même) → crédités
+ *     en WEALTH directement par scps_econ.c (province-grain, aucun aller-retour ici) ;
+ *   - la CITÉ-ÉTAT créancière (cs_id figé au moment de la répudiation, credit_bankruptcy)
+ *     → repli TRÉSOR (valeur — le transport PHYSIQUE des biens saisis vers le stock
+ *     étranger est le repli documenté, pas fait ici : complexité hors budget M3g).
+ * L'identité du créancier CS et sa PART de la dette totale (le reste = domestique) sont
+ * figées au moment de la banqueroute (credit_bankruptcy) — la dette elle-même est déjà
+ * répudiée à cet instant (motif M3d, inchangé), donc CETTE mémoire est un état SÉPARÉ
+ * (SAVE_VERSION 92 : g_garnish_cs_id/g_garnish_cs_share/g_garnish_cs_pending). */
+/* Part (0..1) de la saisie qui va à la cité-état créancière figée pour ce débiteur —
+ * 0 si aucun créancier CS n'a été figé à la dernière banqueroute (tout va domestique).
+ * Lecture pure (scps_econ.c, dans la boucle de production — aucun World* requis). */
+float credit_garnish_cs_share(int debtor_c);
+/* Créancier CS figé (-1 = aucun) / cumul en attente (≥0) — lecture pure, réservée à la
+ * revalidation save_sane (scps_save.c, motif credit_of/credit_debt_class) et à la télémétrie. */
+int   credit_garnish_cs_id(int debtor_c);
+float credit_garnish_cs_pending(int debtor_c);
+/* Enregistre UNE saisie (scps_econ.c, par ressource/bâtiment/province/mois) : la part
+ * domestique est déjà créditée par l'appelant (télémétrie seule ici) ; la part cité-état
+ * s'accumule (inter-tick, réglée UNE FOIS/an par credit_year_tick — même cadence que le
+ * paiement d'intérêt cs, même point d'entrée : home_reg + province représentative). */
+void  credit_garnish_note(int debtor_c, float domestic_value, float cs_value);
+/* Télémétrie MONDE cumulée depuis credit_init (RAZ par partie/sim, non sérialisée —
+ * motif g_buybacks/g_defaults) : valeur totale saisie, et sa ventilation domestique vs
+ * cité-état (brief : « télémétrie : valeur saisie/banqueroute, part domestique/CS »). */
+void  credit_garnish_stats(double *total, double *domestic, double *citystate);
+
 #endif /* SCPS_CREDIT_H */
