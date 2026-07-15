@@ -1364,7 +1364,6 @@ float diplo_pillage_value(WorldEconomy *econ, int region, int dst_region, int vi
     int pid=econ_region_rep_province(econ, region);
     if (pid<0 || pid>=econ->n_prov) return 0.f;
     ProvinceEconomy *pp=&econ->prov[pid];
-    RegionEconomy   *re=&econ->region[region];      /* price[] : LECTURE d'agrégat seulement */
     /* M3e — HAMEAU LIBRE (POLITY_WILD) : DÉMONÉTISÉ, aucun revenu à dénominer un pillage
      * (econ_country_tax_year est déjà 0 pour eux, tax loop gatée dans econ_tick) — refus
      * EXPLICITE, pas seulement incident, jamais d'or fantôme. Leurs biens/captifs restent
@@ -1378,13 +1377,21 @@ float diplo_pillage_value(WorldEconomy *econ, int region, int dst_region, int vi
     float gold = fminf(pp->treasury, target);        /* le trésor d'abord (le plus liquide) */
     pp->treasury -= gold; loot += gold;
     float remain = target - loot;
-    for (int g=1; g<RES_COUNT && remain>0.01f; g++){  /* puis le stock, valorisé, pour COMBLER */
-        float price=re->price[g]; if (price<=0.f) continue;
-        float want_qty = remain/price;
-        /* RE-KEY : pris pour de VRAI (provinces) — jamais plus que ce qui existe. */
-        float taken = -econ_region_stock_add(econ, region, g, -fminf(want_qty, re->stock[g]));
-        float val = taken*price;
-        loot += val; remain -= val;
+    /* MONNAIE M3f — item 5 : le RESTE n'est plus monétisé depuis le STOCK (M0 §2.12 —
+     * détruit chez la victime, recréé chez l'occupant, sans aucun débit réel) — il est
+     * LEVÉ sur la RICHESSE (3 classes) de la province victime, bornée à ce qui existe
+     * RÉELLEMENT (jamais négatif) : un vrai débit, pas une conversion de biens en or
+     * fantôme. Le stock physique de la victime n'est plus touché par cette voie —
+     * diplo_peace_pillage_stock reste le mécanisme dédié au butin PHYSIQUE (M0 §3, déjà
+     * un TRANSFERT propre). */
+    if (remain>0.01f){
+        int classes[3]={CLASS_LABORER,CLASS_BOURGEOIS,CLASS_ELITE};
+        for (int ci=0;ci<3 && remain>0.01f;ci++){
+            int c=classes[ci];
+            float w_=pp->strata[c].wealth; if (w_<=0.f) continue;
+            float take=fminf(w_, remain);
+            pp->strata[c].wealth -= take; loot += take; remain -= take;
+        }
     }
     if (dst_region>=0 && dst_region<econ->n_regions && dst_region!=region){
         int dpid=econ_region_rep_province(econ, dst_region);
@@ -1443,16 +1450,15 @@ float diplo_siege_loot(WorldEconomy *econ, int region, int dst_region){
         /* on ne peut prendre que ce qui est RÉELLEMENT au stock (la production a pu
          * être déjà consommée localement dans le même tick) — jamais négatif. */
         float take = -econ_region_stock_add(econ, region, g, -fminf(want, re->stock[g]));
-        if (victim_wild){
-            if (dst_region>=0 && dst_region<econ->n_regions && dst_region!=region)
-                econ_region_stock_add(econ, dst_region, g, take);   /* biens PHYSIQUES, zéro or */
-        } else {
-            loot += take * re->price[g];
-        }
-    }
-    if (!victim_wild && dst_region>=0 && dst_region<econ->n_regions && dst_region!=region){
-        int dpid=econ_region_rep_province(econ, dst_region);
-        if (dpid>=0 && dpid<econ->n_prov) econ->prov[dpid].treasury += loot;  /* fondu dans le trésor du besiégeur */
+        /* MONNAIE M3f — item 5 : le stock pillé est désormais TOUJOURS livré PHYSIQUEMENT
+         * au besiégeur (motif déjà établi par diplo_peace_pillage_stock, M0 §3 TRANSFERT)
+         * — plus de conversion en or fantôme pour la victime NON-wild (M0 §2.12 : « détruit
+         * chez la victime, recréé chez l'occupant » sans aucun débit réel). `loot` reste la
+         * valeur NOTIONNELLE (télémétrie/narration, g_siege_loot_total) mais ne crédite
+         * plus AUCUN trésor. */
+        if (dst_region>=0 && dst_region<econ->n_regions && dst_region!=region)
+            econ_region_stock_add(econ, dst_region, g, take);   /* biens PHYSIQUES, zéro or */
+        if (!victim_wild) loot += take * re->price[g];          /* valeur NOTIONNELLE seule (wild reste à 0) */
     }
     return loot;
 }

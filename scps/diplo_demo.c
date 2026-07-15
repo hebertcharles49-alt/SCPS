@@ -338,9 +338,13 @@ int main(int argc,char**argv){
             ok("après ~5 ans, la province REDEVIENT saccageable", econ->prov[vic_pid].pillage_cd <= 0.f);
 
             /* BORNE : une victime PAUVRE (presque rien à donner) ne rend QUE ce qu'elle a —
-             * jamais d'or/matière fantôme, même si la cible (20% du revenu) est bien plus haute. */
+             * jamais d'or/matière fantôme, même si la cible (20% du revenu) est bien plus haute.
+             * MONNAIE M3f — item 5 : le repli n'est plus le STOCK monétisé (retiré, M0 §2.12)
+             * mais la RICHESSE (3 classes) de la province — « ce qu'elle a » couvre désormais
+             * treasury+wealth : la wealth doit AUSSI être vidée pour tester le vrai plancher. */
             rv->pillage_cd=0.f; rv->treasury=5.f;
             for(int g=1;g<RES_COUNT;g++) rvr->stock[g]=0.f;
+            for(int c=0;c<CLASS_COUNT;c++) rv->strata[c].wealth=0.f;
             float loot3=diplo_pillage_region(econ,vic,occ,vic_cid);
             ok("une victime PAUVRE ne rend QUE ce qu'elle a (borné, pas de fantôme)", loot3<=5.01f);
         } else ok("(monde trop petit pour le test de saccage)", true);
@@ -351,17 +355,24 @@ int main(int argc,char**argv){
     if(econ->n_regions>=2){
         int vic=0, occ=1;
         int vic_pid=econ_region_rep_province(econ,vic), occ_pid=econ_region_rep_province(econ,occ);
-        RegionEconomy *rvr=&econ->region[vic];
+        RegionEconomy *rvr=&econ->region[vic], *ror=&econ->region[occ];
         ProvinceEconomy *rv=&econ->prov[vic_pid], *ro=&econ->prov[occ_pid];
         rv->pillage_cd=0.f;                                  /* province FRAÎCHE (pas déjà sac(c)agée) */
         for(int g=1;g<RES_COUNT;g++){ rvr->stock[g]=100.f; rvr->supply[g]=40.f; rvr->price[g]=1.f; }
         float vic_stock_before=0.f, occ_treas_before=ro->treasury;
+        float occ_stock_before=0.f; for(int g=1;g<RES_COUNT;g++) occ_stock_before+=ror->stock[g];
         for(int g=1;g<RES_COUNT;g++) vic_stock_before += rvr->stock[g];
         float loot=diplo_siege_loot(econ,vic,occ);
         printf("   siège de la région %d → capitale de %d : détourné ce mois = %.0f or-équiv.\n",vic,occ,loot);
         ok("le siège détourne ∝ la PRODUCTION du mois (supply·SIEGE_LOOT_FRAC), pas un or plat",
            loot > 0.f && loot < 40.f*(float)(RES_COUNT-1));   /* borné par 25% de Σ supply valorisée à prix 1 */
-        ok("le trésor du BESIÉGEUR enfle du détourné", ro->treasury > occ_treas_before);
+        /* MONNAIE M3f — item 5 : le stock pillé est livré PHYSIQUEMENT au besiégeur (M0 §2.12 —
+         * fini l'or fantôme recréé sur du stock détruit) — le trésor n'est PLUS crédité, le
+         * STOCK régional du besiégeur enfle à la place ; `loot` reste la valeur NOTIONNELLE. */
+        float occ_stock_after=0.f; for(int g=1;g<RES_COUNT;g++) occ_stock_after+=ror->stock[g];
+        ok("le stock du BESIÉGEUR enfle du détourné (livraison PHYSIQUE, M3f)", occ_stock_after > occ_stock_before);
+        ok("le trésor du besiégeur N'EST PLUS crédité (M3f : livraison physique, pas d'or fantôme)",
+           ro->treasury==occ_treas_before);
         float vic_stock_after=0.f; for(int g=1;g<RES_COUNT;g++) vic_stock_after+=rvr->stock[g];
         ok("la MATIÈRE est RÉELLEMENT PRISE (le stock régional DIMINUE d'autant, pas dupliquée)",
            vic_stock_after < vic_stock_before && (vic_stock_before-vic_stock_after) > 0.f);
