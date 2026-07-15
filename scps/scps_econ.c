@@ -2085,7 +2085,7 @@ int econ_country_capital_prov(const WorldEconomy *e, int cid){
 float econ_country_mint_share(const WorldEconomy *e, int cid){
     if (!e||cid<0||cid>=SCPS_MAX_COUNTRY) return 0.f;
     if (cid==culture_player_cid()) return econ_country_budget_mult(e, cid, BUDGET_MINT);
-    return clampf(tune_f("MINT_AI_SHARE", 0.15f), 0.f, 1.f);
+    return clampf(tune_f("MINT_AI_SHARE", 0.35f), 0.f, 1.f);
 }
 /* Frappe MENSUELLE — fonction PURE, MIROIR EXACT du point fixe d'econ_tick (aucune mutation
  * ici : ni la réserve, ni le trésor, ni le flux ne bougent).
@@ -2104,7 +2104,7 @@ void econ_country_mint_month(const WorldEconomy *e, int cid,
             float share = econ_country_mint_share(e, cid);
             g = e->reserve_gold[cid]   * share / 12.f;
             c = e->reserve_copper[cid] * share / 12.f;
-            v = g*tune_f("MINT_PARITY_GOLD", 8.0f) + c*tune_f("MINT_PARITY_COPPER", 2.6f);
+            v = g*tune_f("MINT_PARITY_GOLD", 16.0f) + c*tune_f("MINT_PARITY_COPPER", 5.2f);
         }
     }
     if (gold_out)    *gold_out=g;
@@ -3012,7 +3012,7 @@ void econ_tick(WorldEconomy *e, float dt) {
      * marchandise). Le reste (1−MINT_ROYALTY) suit le chemin normal (stock, GDP, salaires/
      * profit/rente) : les chaînes cuivre (naval/armes/horlogerie) et la joaillerie restent
      * vivantes. 0 = kill-switch (aucune redevance ⇒ réserve toujours nulle ⇒ frappe nulle). */
-    const float mint_royalty  = tune_f("MINT_ROYALTY", 0.15f);
+    const float mint_royalty  = tune_f("MINT_ROYALTY", 0.35f);
     /* §6-7 — forfait fiscal MENSUEL par classe (or/hab/mois), lu UNE fois/tick. CLASS_SLAVE=0. */
     const float tax_base[CLASS_COUNT] = {
         tune_f("TAX_BASE_LABORER",   TAX_BASE_LABORER),

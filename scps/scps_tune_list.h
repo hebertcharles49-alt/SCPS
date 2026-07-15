@@ -18,14 +18,20 @@
      * marchande) — 0 = kill-switch (redevance/réserve/frappe strictement inertes).
      * MINT_AI_SHARE : part ANNUELLE fixe de la réserve que l'IA frappe (politique fixe,
      * déterministe — le joueur a son propre curseur, BUDGET_MINT). */ \
-    X(MINT_ROYALTY,          0.15f) \
-    X(MINT_AI_SHARE,         0.15f) \
+    X(MINT_ROYALTY,          0.35f) \
+    X(MINT_AI_SHARE,         0.35f) \
     /* ÉTALON BIMÉTALLIQUE (v5) : parité FIXE monnaie↔métal — la monnaie est liée à la
-     * RESSOURCE, pas à sa cote. « À calibrer » (joueur) : l'or part à 8/tonne (= son prix
-     * de base — rien ne se recale), le cuivre à 2.6. Le marché flotte AUTOUR (arbitrage
-     * vendre-vs-frapper émergent). */ \
-    X(MINT_PARITY_GOLD,       8.0f) \
-    X(MINT_PARITY_COPPER,     2.6f) \
+     * RESSOURCE, pas à sa cote. M3e — LA RE-LIQUÉFACTION (décision joueur 2026-07-15,
+     * « si le problème c'est la dette, booster le minting 1:16 ») : parité DOUBLÉE
+     * (8→16 or, 2.6→5.2 cuivre PROPORTIONNEL) — la DÉVALUATION anti-surendettement :
+     * price_level est plafonné à 1 (le système ne peut QUE déflater, jamais s'emballer),
+     * l'injection remplit le manque-à-payer sans risque d'inflation débridée, dilue la
+     * dette NOMINALE figée, éloigne le plafond des 300 %. Royalty/AI_share montés en
+     * PALIERS mesurés (0.15→0.25→0.35, calibrage sweep {9,11,42}×3×250 — cf. TROUVAILLES
+     * M3e) : la parité ×2 SEULE ne vaut que ~650 or/an monde (dérisoire) — c'est le TRIO
+     * (parité + royalty + share) qui porte la re-liquéfaction. */ \
+    X(MINT_PARITY_GOLD,      16.0f) \
+    X(MINT_PARITY_COPPER,     5.2f) \
     /* §G0.4/H7 — le robinet d'or (les bandes de flux) */ \
     X(ENTRETIEN_DIV,        400.0f) \
     /* H7 (M3d re-tarif, décision joueur 2026-07-15) — l'entretien d'UN job = part de son
