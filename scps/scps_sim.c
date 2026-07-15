@@ -932,6 +932,16 @@ static void sim_cmd_drain(Sim *s, World *w){
                 faction_lever_apply(p, FAC_COMMUNAUTAIRE,
                                     tune_f("DECISION_MANUMIT_COMMUNAUTAIRE_BIAS", 0.10f));
             break; }
+          /* ── MONNAIE M3d — LA BANQUEROUTE VOLONTAIRE (granularité PAYS, motif CMD_MANUMIT
+           *    ci-dessus). Répudiation totale (credit_bankruptcy RAZ la dette + pose la
+           *    cicatrice −75% sur toutes les provinces du pays) ; effet diplomatique
+           *    minimal : la CITÉ-ÉTAT créancière frappée (motif §6 rancune diplo_rancor,
+           *    scps_diplo.h) — sim.c a s->dp, credit.c ne l'a pas (hors scope). ── */
+          case CMD_BANKRUPTCY: {
+            int L = credit_bankruptcy(s->econ, p, false /* volontaire */);
+            if (L>=0 && L<w->n_countries)
+                s->dp->rancor[L][p] += tune_f("BANKRUPTCY_RANCOR", 2.0f);
+            break; }
           /* ── ESCLAVAGE — le MARCHÉ des Centres. a={pid, count}. RE-KEY PROVINCE :
            *    a[0] est un PID direct (jamais une région) — les esclaves vivent dans
            *    les strates de PROVINCE ; le Centre (trésor/prix) reste la contrepartie
@@ -1275,6 +1285,17 @@ void sim_day(Sim *s, World *w) {
             diplo_set_faustian(s->dp, c, s->ts[c].charge);  /* souillure faustienne → croisades */
         diplo_tick(s->dp, 365.f);
         credit_year_tick(s->econ, s->wl, w);               /* dette : intérêt annuel (creuse le débiteur, crédite le prêteur) */
+        /* MONNAIE M3d — LA BANQUEROUTE FORCÉE (brief §5b) : « plafond atteint ET insolvable
+         * (chronique) » — credit_year_tick vient de mettre à jour le streak (années
+         * consécutives au plafond) et pose g_forced_pending pour les pays qui viennent de
+         * franchir BANKRUPTCY_GRACE_YEARS. AUCUNE distinction joueur/IA ici (brief : « (b)
+         * FORCÉE » s'applique à tout pays — seule la voie VOLONTAIRE, CMD_BANKRUPTCY, est
+         * joueur seul ; l'IA ne déclenche jamais le verbe, cf. gate). */
+        for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+            if (!credit_bankrupt_pending(c)) continue;
+            int L = credit_bankruptcy(s->econ, c, true /* forcée */);
+            if (L>=0 && L<w->n_countries) s->dp->rancor[L][c] += tune_f("BANKRUPTCY_RANCOR", 2.0f);
+        }
         diplo_suzerainty_tick(s->dp, w, s->econ, s->wp);   /* suzeraineté + FRONDE : tributs, ligues, défections */
         diplo_war_tick(s->dp, w, s->econ, s->wp, 1.0f);
         missions_tick(s->missions, w, s->econ, s->ts, s->sc, s->wp, w->seed, s->year);  /* missions décennales : rythme + récompense (P3 : siège responsable) */

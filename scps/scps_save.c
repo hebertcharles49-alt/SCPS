@@ -293,6 +293,10 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         float dc=credit_debt_class(c), ds=credit_debt_citystate(c);
         if (!(dc>=0.f && dc<1.0e12f)) return false;
         if (!(ds>=0.f && ds<1.0e12f)) return false;
+        /* v90 — MONNAIE M3d : la chronique du plafond (insolvent_streak) se revalide,
+         * même motif — [0..30000], le plafond interne de credit_year_tick. */
+        int st=credit_insolvent_streak(c);
+        if (st<0 || st>30000) return false;
     }
     if (w->n_rivers    <0 || w->n_rivers    >SCPS_MAX_RIVERS)    return false;
     for (int i=0;i<w->n_rivers;i++)
@@ -345,7 +349,10 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         }
         for (int c=0;c<CLASS_COUNT;c++)
             if (!(pe->strata[c].pop>=0.f)) return false;   /* v68 : ESCLAVAGE — la strate servile ne peut être négative */
-        if (!(pe->annex_scar>=0.f && pe->annex_scar<=1.f)) return false; }
+        if (!(pe->annex_scar>=0.f && pe->annex_scar<=1.f)) return false;
+        /* v90 — MONNAIE M3d : la cicatrice de banqueroute (bankruptcy_scar) se revalide
+         * comme annex_scar/revolt_scar, même borne [0..1]. */
+        if (!(pe->bankruptcy_scar>=0.f && pe->bankruptcy_scar<=1.f)) return false; }
     /* v50 — chantiers de colonisation : src/dst indexent prov[] (ou -1), délais/cadence
      * bornés (une forge hors-borne indexerait la fondation ou gèlerait la cadence). */
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){

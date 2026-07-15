@@ -846,6 +846,11 @@ void   econ_flux_year_capture(void);
 /* Le revenu annuel COURANT (dernière capture) d'un pays — 0 hors-borne. Sert de
  * base à d_treasury_mois (EvEffect) : montant = d_treasury_mois × (tax_year/12). */
 float  econ_country_tax_year(int cid);
+/* M3d — la cicatrice de banqueroute d'un PAYS (lecture UI/moral d'armée, scps_campaign.c) :
+ * bankruptcy_scar est posé IDENTIQUE sur toutes les provinces du pays au moment de la
+ * répudiation (credit_bankruptcy) et décroît de la MÊME façon partout (même dt, même
+ * formule) — lit la 1ère province active du pays, 0 si aucune (pas de banqueroute). */
+float  econ_country_bankruptcy_scar(const WorldEconomy *e, int c);
 /* sérialisation de g_tax_lastyear[] (section façade, motif econ_colony_cd_save/load). */
 void   econ_flux_year_save(FILE *f);
 bool   econ_flux_year_load(FILE *f);

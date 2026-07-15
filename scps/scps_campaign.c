@@ -25,6 +25,16 @@ static float army_pay_morale(int owner){
     float m=econ_country_budget_mult(g_camp_econ,owner,BUDGET_ARMY);
     return m>=1.f ? 1.f : clampf(m,0.35f,1.f);
 }
+/* MONNAIE M3d — LE MORAL DE LA BANQUEROUTE (brief §5 : « production, croissance
+ * démographique, MORAL DES ARMÉES » −75 %) : même mécanique que army_pay_morale
+ * ci-dessus (un multiplicateur composé sur doctrine.moral_mul, ×1.0 au neutre ⇒
+ * IDENTIQUE hors banqueroute) — lit econ_country_bankruptcy_scar (bankruptcy_scar,
+ * scps_econ.h, posé par credit_bankruptcy, décroît sur BANKRUPTCY_SCAR_YEARS). */
+static float army_bankruptcy_morale(int owner){
+    if(!g_camp_econ || owner<0) return 1.f;
+    float scar=econ_country_bankruptcy_scar(g_camp_econ,owner);
+    return 1.f - 0.75f*clampf(scar,0.f,1.f);
+}
 
 /* #32 — la MAIN HUMAINE : miroir de g_human_player (scps_warhost.c) / g_econ_human
  * (scps_econ.c). -1 par défaut (chronique/viewer sans joueur : les 2 sites ci-dessous
@@ -519,6 +529,8 @@ static void stack_force(const Campaign *c, int owner, int loc, ArmyState *out){
     }
     /* Solde impayée → moral amputé (plancher 0.35) ; ×1.0 au neutre ⇒ IDENTIQUE. */
     out->doctrine.moral_mul *= army_pay_morale(owner);
+    /* M3d — la banqueroute ronge le moral (−75 % au pic, decay BANKRUPTCY_SCAR_YEARS). */
+    out->doctrine.moral_mul *= army_bankruptcy_morale(owner);
 }
 static long stack_kill(Campaign *c, int owner, int loc, long packets){
     long total=0; for (int i=0;i<CAMPAIGN_ARMY_CAP;i++) if (stack_member(&c->army[i],owner,loc)) total+=force_units(&c->army[i].force);

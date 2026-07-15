@@ -1134,6 +1134,15 @@ float econ_country_tax_year(int cid){
     double cum = econ_flux_get(cid, FX_TAX);
     return (float)(cum * (365.0/(double)days));
 }
+/* M3d — voir scps_econ.h : lit la 1ère province ACTIVE du pays (bankruptcy_scar est posé
+ * IDENTIQUE partout par credit_bankruptcy et décroît de la même façon partout — inutile de
+ * pondérer/agréger, contrairement à revolt_scar qui varie province par province). */
+float econ_country_bankruptcy_scar(const WorldEconomy *e, int c){
+    if (!e || c<0 || c>=SCPS_MAX_COUNTRY) return 0.f;
+    int n=e->n_prov; if (n>SCPS_MAX_PROV) n=SCPS_MAX_PROV;
+    for (int p=0;p<n;p++) if (e->prov[p].owner==c && e->prov[p].active) return e->prov[p].bankruptcy_scar;
+    return 0.f;
+}
 /* econ_flux_year_save/load : définis APRÈS g_flux (plus bas dans le fichier) — la
  * section TXYR (v65) sérialise AUSSI l'instrument de l'année EN COURS. */
 
@@ -1539,9 +1548,24 @@ void econ_init(WorldEconomy *e, const World *w) {
         if (cty_cap[cid]<=0.f) continue;
         switch (w->country[cid].role) {
             case POLITY_PLAYER:
-            case POLITY_ANTAGONIST: cty_target[cid]=empire_cap; break;
-            case POLITY_CITY_STATE: cty_target[cid]=city_cap;   break;
-            default:                cty_target[cid]= 200.f;      break;  /* friche vierge */
+            case POLITY_ANTAGONIST:
+                cty_target[cid]=empire_cap;
+                /* MONNAIE M3d — DOTATION DE GENÈSE (décision joueur 2026-07-15) : un empire
+                 * jouable/IA démarre avec un trésor À SA CAPITALE (doctrine province : « là
+                 * où vit le trésor »). Absorbé par l'invariant M(0), mesuré à l'an 0. */
+                { int cp=w->country[cid].capital_prov;
+                  if (cp>=0 && cp<w->n_provinces && cp<SCPS_MAX_PROV)
+                      e->prov[cp].treasury = tune_f("GENESIS_TREASURY_EMPIRE", 2000.f); }
+                break;
+            case POLITY_CITY_STATE:
+                cty_target[cid]=city_cap;
+                /* idem — réserve MÉTALLIQUE locale (les champs M1 reserve_gold/copper,
+                 * jusqu'ici seedés à 0 : aucune frappe possible avant la 1ère redevance
+                 * minière) — une cité-état marchande naît avec un coffre. */
+                e->reserve_gold[cid]   = tune_f("GENESIS_RESERVE_GOLD",   200.f);
+                e->reserve_copper[cid] = tune_f("GENESIS_RESERVE_COPPER", 500.f);
+                break;
+            default: cty_target[cid]= 200.f; break;  /* friche vierge */
         }
     }
 
@@ -3286,6 +3310,7 @@ void econ_tick(WorldEconomy *e, float dt) {
                 if (rc->in2==RES_COAL) e->fuel_coal_cum += (double)(lim*rc->q2); }   /* FIN_CHAUD : poudrière/forge céleste */
             float out=lim*rc->qout*prod_mult;   /* outils → productivité */
             out *= (1.f - 0.5f*re->revolt_scar); /* la cicatrice de révolte ronge la production */
+            out *= (1.f - 0.75f*re->bankruptcy_scar); /* M3d — la banqueroute ronge PLUS FORT (spec « tape fort ») */
             /* F-arc ARSENAL — la manufacture d'ARMES verse ×MANUF_ARMS_MULT au STOCK (l'arsenal que
              * la levée POMPE : recrutement = stock/POP_PER_UNIT). Le marché (supply → prix), la valeur
              * ajoutée (PIB plus bas) et la charge faustienne restent sur la sortie de BASE `out` → l'éco
@@ -3297,14 +3322,14 @@ void econ_tick(WorldEconomy *e, float dt) {
             S[rc->out]+=out*arms_mult;
             supply[rc->out]+=out;
             /* F3 — SORTIE SECONDAIRE (arme arcane : kit alchimiste, bâton de mage) ∝ production. */
-            if (rc->out2!=RES_NONE){ float o2=lim*rc->qout2*prod_mult*(1.f-0.5f*re->revolt_scar);
+            if (rc->out2!=RES_NONE){ float o2=lim*rc->qout2*prod_mult*(1.f-0.5f*re->revolt_scar)*(1.f-0.75f*re->bankruptcy_scar);
                 float m2 = (res_is_arm(rc->out2) && rc->out2!=RES_ENCHANTED_ARMS) ? tune_f("MANUF_ARMS_MULT", 10.f) : 1.f;
                 S[rc->out2]+=o2*m2; supply[rc->out2]+=o2; }
             /* §B2bis — LE PANIER DE LA FOREUSE : les 6 AUTRES minéraux, ∝ le MÊME `lim` que le fer
              * (même niveau de production, même borne d'essence/main-d'œuvre) — motif out2 (bonus de
              * transmutation, hors PIB/salaires, comme le bâton de mage/kit d'alchimiste ci-dessus). */
             if (b->type==BLD_FOREUSE){
-                float scar_mult=(1.f-0.5f*re->revolt_scar);
+                float scar_mult=(1.f-0.5f*re->revolt_scar)*(1.f-0.75f*re->bankruptcy_scar);
                 for (int fi=0; fi<6; fi++){
                     Resource fr=FOREUSE_BASKET[fi].r; float fq=lim*FOREUSE_BASKET[fi].qty*prod_mult*scar_mult;
                     S[fr]+=fq; supply[fr]+=fq;
@@ -3848,8 +3873,13 @@ void econ_tick(WorldEconomy *e, float dt) {
         re->ferveur        = fmaxf(0.f, re->ferveur        - tune_f("PROVMOD_FERVEUR_DECAY",0.067f)*dt);
         re->reconstruction = fmaxf(0.f, re->reconstruction - tune_f("PROVMOD_RECON_DECAY",  0.10f )*dt);
         re->annex_scar     = fmaxf(0.f, re->annex_scar     - tune_f("ANNEX_SCAR_DECAY",    0.20f )*dt);  /* étage 3d : ~5 ans */
+        /* M3d — CICATRICE DE BANQUEROUTE : décroît sur BANKRUPTCY_SCAR_YEARS (~10 ans),
+         * motif revolt_scar (mais linéaire par ANNÉES-CIBLE plutôt qu'un taux/an fixe —
+         * le tunable EST la durée, pas un taux dérivé). */
+        re->bankruptcy_scar = fmaxf(0.f, re->bankruptcy_scar - (1.f/tune_f("BANKRUPTCY_SCAR_YEARS",10.f))*dt);
         /* (K4b : pillage_cd décrémenté plus haut, pour TOUTE province — pas seulement colonisée.) */
         net_growth *= (1.f - 0.5f*re->revolt_scar);
+        net_growth *= (1.f - 0.75f*re->bankruptcy_scar);   /* M3d — la banqueroute ronge la croissance PLUS FORT */
         /* UTILITÉ DE L'HABITABILITÉ — la terre RUDE peuple moins vite : même malus que la prod,
          * (1−hab)·HAB_MALUS_K, EXEMPTANT la province-siège (départ). */
         if (!re->is_capital)

@@ -140,6 +140,11 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
         *   descend (retire sous plancher) le niveau d'une manufacture bâtie.
         * CMD_DEMOLISH_EDI a={province, Edifice} : démolir un édifice d'un cran. */
        CMD_MANUF_LEVEL, CMD_DEMOLISH_EDI,
+       /* MONNAIE M3d — LA BANQUEROUTE VOLONTAIRE (décision joueur 2026-07-15) : répudiation
+        * TOTALE de la dette du pays (granularité PAYS, une politique — motif CMD_MANUMIT,
+        * pas d'arguments, agit sur p = s->human_player). Débuff −75 % prod/croissance/moral
+        * décroissant (BANKRUPTCY_SCAR_YEARS) + grief de la cité-état créancière frappée. */
+       CMD_BANKRUPTCY,
        CMD_COUNT };
 #define SCPS_CMDQ_MAX 64
 #define SCPS_PEACE_MAX_TERRITORIES 32

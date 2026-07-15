@@ -32,7 +32,14 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 89u           /* v89 : MONNAIE M3c — LE CRÉDIT RÉEL : la dette devient un
+#define SAVE_VERSION 90u           /* v90 : MONNAIE M3d — LA SOUTENABILITÉ + LA BANQUEROUTE :
+                                    * (1) ProvinceEconomy grandit d'un champ neuf,
+                                    * bankruptcy_scar (SVT_ECON, raw fwrite → sizeof change) ;
+                                    * (2) la section SVT_CRDT grandit d'un int16/pays
+                                    * (insolvent_streak, la chronique du plafond) → <v90 refusé
+                                    * (credit_load lit un format différent, byte-count désaligné,
+                                    * MÊME classe de bump que v89).
+                                    * v89 : MONNAIE M3c — LE CRÉDIT RÉEL : la dette devient un
                                     * PASSIF SÉPARÉ (scps_credit.c, section SVT_CRDT) ventilé par
                                     * créancier — to_class (dû aux PROPRES classes du pays) +
                                     * to_cs (dû à SA cité-état créancière) + cs_id, par pays. La

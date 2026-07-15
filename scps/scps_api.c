@@ -3084,6 +3084,12 @@ int scps_player_manumit(ScpsSim *s){
     PlayerCmd c = { CMD_MANUMIT, { 0,0,0,0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
+/* MONNAIE M3d — LA BANQUEROUTE VOLONTAIRE : même moule que scps_player_manumit ci-dessus. */
+int scps_player_bankruptcy(ScpsSim *s){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_BANKRUPTCY, { 0,0,0,0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
 int scps_player_slave_sell(ScpsSim *s, int prov, long count){   /* RE-KEY PROVINCE : PID direct */
     if (!s || !s->ready || count<=0) return 0;
     PlayerCmd c = { CMD_SLAVE_SELL, { prov, (int32_t)count, 0, 0 } };

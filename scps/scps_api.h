@@ -844,6 +844,11 @@ void scps_manuf_recipe(int bld, ScpsManufRecipe *out);
  * pour prévisualiser le coût AU PICKER avant de bâtir. */
 int scps_manuf_upkeep_month(ScpsSim *s, int province, int bld);
 
+/* MONNAIE M3d — LA BANQUEROUTE VOLONTAIRE (2026-07-15) : répudiation TOTALE de la dette
+ * du pays joueur (granularité PAYS, motif CMD_MANUMIT, aucun argument). Renvoie 1 si le
+ * verbe a pu s'enfiler. ⚠ Restes : aucun panneau GDScript (bouton UI hors scope moteur). */
+int scps_player_bankruptcy(ScpsSim *s);
+
 /* ── ESCLAVAGE — la strate CLASS_SLAVE : garder/affranchir/vendre --------------
  * L'AFFRANCHISSEMENT (granularité PAYS, une politique) : CMD_MANUMIT, aucun
  * argument (agit sur le joueur). Renvoie 1 si le verbe a pu s'enfiler. */
