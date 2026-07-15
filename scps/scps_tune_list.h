@@ -28,7 +28,12 @@
     X(MINT_PARITY_COPPER,     2.6f) \
     /* §G0.4/H7 — le robinet d'or (les bandes de flux) */ \
     X(ENTRETIEN_DIV,        400.0f) \
-    X(MANUF_UPKEEP_DAY,       0.05f) \
+    /* H7 (M3d re-tarif, décision joueur 2026-07-15) — l'entretien d'UN job = part de son
+     * assiette fiscale de base (JOB_UPKEEP_TAX_FRAC × ouvriers × TAX_BASE_LABORER × IPM),
+     * divisée par le prix du bien produit (planché à JOB_UPKEEP_PRICE_FLOOR × prix de base) —
+     * remplace l'ancien MANUF_UPKEEP_DAY (flat 0.05/j/niveau). Voir econ_job_upkeep_month. */ \
+    X(JOB_UPKEEP_TAX_FRAC,    0.60f) \
+    X(JOB_UPKEEP_PRICE_FLOOR, 0.5f) \
     X(COURT_FLOOR,         4000.0f) \
     X(COURT_RATE,             0.010f) \
     X(ADMIN_BASE,             0.4f) \

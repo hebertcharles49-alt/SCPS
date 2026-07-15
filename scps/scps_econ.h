@@ -801,13 +801,16 @@ int  econ_province_friche(int pid);
 /* LECTEURS PURS — le MENU CONSTRUCTION doit montrer l'entretien que econ_tick() PRÉLÈVE
  * (retour joueur 2026-07-14 : « le mécanisme d'entretien... passé à la trappe ? » — le
  * moteur le fait, l'UI ne le montrait pas). MIROIR EXACT des formules internes à econ_tick
- * (ENTRETIEN_DIV/BUILD_GOLD_PER_DELTA/DEF_UPKEEP_MULT/MANUF_UPKEEP_DAY, cf. scps_econ.c) —
- * découplées d'un pid : le prix nominal ne pondère PAS par le marché régional (le tick
- * n'utilise QUE ces constantes fixes, vérifié au site de prélèvement, pas supposé). Valeur
- * du tick mensuel réel (dt=1/12, scps_sim.c) = déjà la valeur PAR MOIS, aucune conversion
- * à inventer. */
+ * (ENTRETIEN_DIV/BUILD_GOLD_PER_DELTA/DEF_UPKEEP_MULT pour les édifices, JOB_UPKEEP_TAX_FRAC/
+ * JOB_UPKEEP_PRICE_FLOOR pour les jobs, cf. scps_econ.c) — découplées d'un pid : le prix
+ * nominal ne pondère PAS par le marché régional (le tick n'utilise QUE ces constantes fixes,
+ * vérifié au site de prélèvement, pas supposé). Valeur du tick mensuel réel (dt=1/12,
+ * scps_sim.c) = déjà la valeur PAR MOIS, aucune conversion à inventer. */
 float econ_edifice_upkeep_month(const ProvBuild *delta);     /* poids d'UN édifice (agency lit EDIFICES[e].delta) */
-float econ_manuf_upkeep_month(const WorldEconomy *e, float level);  /* poids d'UNE manufacture, niveau donné */
+/* H7 (M3d re-tarif, décision joueur 2026-07-15) — poids d'UN job : ouvriers effectifs (ou une
+ * estimation labor×niveau en prévisualisation, pas encore bâti) + prix courant du bien qu'il
+ * produit dans SA province (ou 0 → le plancher joue seul, prévisualisation sans marché établi). */
+float econ_job_upkeep_month(const WorldEconomy *e, BuildingType bt, float workers, float price);
 /* I0 — L'INSTRUMENT : décomposition du flux d'or par empire (le robinet, ligne à ligne).
  * Chaque puits/source incrémente sa composante ; le chronicle RAZ par fenêtre et publie
  * la moyenne par empire. Signe : revenus +, dépenses −. Lecture seule, diagnostic. */

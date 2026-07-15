@@ -3050,19 +3050,27 @@ void scps_manuf_recipe(int bld, ScpsManufRecipe *out){
     if (o  >RES_NONE && o  <RES_COUNT){ out->out=sz(resource_name(o));   out->qout=qout; }
     if (alt1>RES_NONE && alt1<RES_COUNT){ out->alt1=sz(resource_name(alt1)); out->alt1_q=q1; }
 }
-/* ENTRETIEN/mois d'une manufacture — miroir EXACT du terme H7 de la surcharge E1bis.10
- * (econ_manuf_upkeep_month, scps_econ.c) : au niveau BÂTI si `bld` existe déjà en
- * `province` (pid direct, RE-KEY), sinon au niveau de NAISSANCE (5, econ_build_manufacture)
- * — le picker prévisualise le coût AVANT de bâtir, comme scps_manuf_cost prévisualise
- * le prix d'achat. */
+/* ENTRETIEN/mois d'une manufacture — miroir EXACT du terme H7 RE-TARIFÉ (M3d, décision
+ * joueur 2026-07-15 : econ_job_upkeep_month, scps_econ.c) : ouvriers EFFECTIFS + prix
+ * COURANT du bien produit si `bld` existe déjà en `province` (pid direct, RE-KEY), sinon
+ * une estimation (labor/niveau × niveau de NAISSANCE 5, econ_build_manufacture ; prix : la
+ * province lit déjà un prix établi si colonisée, sinon 0 → le plancher joue seul) — le
+ * picker prévisualise le coût AVANT de bâtir, comme scps_manuf_cost prévisualise le prix
+ * d'achat.
+ * ⚠ DLL Godot à RE-BUILDER (scons -C godot) : ce lecteur change de formule, le binding
+ * GDExtension embarque l'ancien binaire tant qu'il n'est pas recompilé. */
 int scps_manuf_upkeep_month(ScpsSim *s, int province, int bld){
     if (!s || !s->ready || province<0 || bld<0 || bld>=BLD_TYPE_COUNT) return 0;
     const WorldEconomy *e = s->sim.econ;
     if (province>=e->n_prov) return 0;
     const ProvinceEconomy *pe = &e->prov[province];
-    float level = 5.f;   /* niveau de naissance (picker : pas encore bâtie ici) */
-    for (int i=0;i<pe->n_bld;i++) if (pe->bld[i].type==(BuildingType)bld){ level=pe->bld[i].level; break; }
-    return (int)(econ_manuf_upkeep_month(e, level) + 0.5f);
+    float level = 5.f;      /* niveau de naissance (picker : pas encore bâtie ici) */
+    float workers = -1.f;   /* -1 = pas encore bâtie : estimée labor×niveau plus bas */
+    for (int i=0;i<pe->n_bld;i++) if (pe->bld[i].type==(BuildingType)bld){ level=pe->bld[i].level; workers=pe->bld[i].workers; break; }
+    if (workers<0.f) workers = building_recipe_labor((BuildingType)bld) * level;
+    Resource in1,in2,out; building_recipe((BuildingType)bld,&in1,&in2,&out);
+    float price = (out>RES_NONE && out<RES_COUNT) ? pe->price[out] : 0.f;
+    return (int)(econ_job_upkeep_month(e, (BuildingType)bld, workers, price) + 0.5f);
 }
 int scps_player_embargo(ScpsSim *s, int target, int on){
     if (!s || !s->ready) return 0;

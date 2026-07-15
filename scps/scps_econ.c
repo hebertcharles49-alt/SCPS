@@ -2295,9 +2295,13 @@ void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
 #define ENTRETIEN_DIV         400.f
 #define BUILD_GOLD_PER_DELTA  35.f    /* delta de ProvBuild → or de revient (proxy d'audit) */
 #define FRICHE_FACTOR         0.6f    /* production entaillée tant que l'entretien n'est pas payé */
-/* H7 — ENCADREMENT DES MANUFACTURES (la racine du robinet d'or) : chaque niveau de
- * manufacture active coûte 0.05 or/jour × IPM. Les 55 scieries ne tournent plus gratis. */
-#define MANUF_UPKEEP_DAY      0.05f   /* encadrement impayé → la région passe en friche (0.6× prod), comme l'entretien */
+/* H7 — ENCADREMENT DES MANUFACTURES (la racine du robinet d'or), RE-TARIFÉ (décision joueur
+ * 2026-07-15, chantier M3d) : au lieu d'un flat/niveau, l'entretien d'UN job suit SON
+ * assiette fiscale (les ouvriers qu'il emploie coûtent une fraction de ce qu'ils
+ * paieraient d'impôt de base), divisé par le prix du bien qu'il produit — « un job qui
+ * produit un bien CHER se paie tout seul ». Voir econ_job_upkeep_month plus bas. */
+#define JOB_UPKEEP_TAX_FRAC    0.60f  /* part de l'assiette (ouvriers×TAX_BASE_LABORER) mise à l'entretien */
+#define JOB_UPKEEP_PRICE_FLOOR 0.5f   /* plancher de prix au dénominateur (×prix de base) — anti-explosion déflationniste */
 /* G0.4 — TRAIN DE VIE DE COUR : le trésor est PAR RÉGION (un pays en a plusieurs) →
  * seuil par région calé pour mordre au-delà d'un trésor-pays ~10k (le faste freine le
  * hoarding). 1 %/mois du surplus. */
@@ -2326,8 +2330,8 @@ int econ_province_friche(int pid){ return (pid>=0 && pid<SCPS_MAX_PROV && g_fric
 
 /* LECTEURS PURS (2026-07-14) — le MENU CONSTRUCTION / la fiche province doivent MONTRER
  * l'entretien que la boucle ci-dessous (§ E1bis.10, dans econ_tick) PRÉLÈVE chaque tick.
- * MIROIR EXACT : mêmes constantes (ENTRETIEN_DIV/BUILD_GOLD_PER_DELTA/DEF_UPKEEP_MULT/
- * MANUF_UPKEEP_DAY), même combinaison pondérée que `infra`/`base_up`/`surcharge` plus bas.
+ * MIROIR EXACT : mêmes constantes (ENTRETIEN_DIV/BUILD_GOLD_PER_DELTA/DEF_UPKEEP_MULT pour
+ * les édifices), même combinaison pondérée que `infra`/`base_up`/`surcharge` plus bas.
  * Découplé d'un pid : `infra` et `base_up` ne pondèrent QUE par des deltas ProvBuild × la
  * constante fixe BUILD_GOLD_PER_DELTA (35, proxy d'audit) — AUCUNE dépendance au prix de
  * marché régional dans le prélèvement réel (vérifié en lisant le site de tick, pas supposé
@@ -2344,9 +2348,27 @@ float econ_edifice_upkeep_month(const ProvBuild *delta){
                 + delta->faith + delta->savoir;
     return (infra*BUILD_GOLD_PER_DELTA/tune_f("ENTRETIEN_DIV",ENTRETIEN_DIV)) * 365.f * (1.f/12.f);
 }
-float econ_manuf_upkeep_month(const WorldEconomy *e, float level){
+/* H7 RE-TARIFÉ (M3d, décision joueur 2026-07-15) — « l'entretien des jobs = 60 % des impôts
+ * de base × IPM × 1/prix du bien vendu ». `workers` = ouvriers effectifs du job (b->workers
+ * si bâti, une estimation labor×niveau en prévisualisation) ; `price` = prix courant du bien
+ * qu'il produit dans SA province (0 en prévisualisation sans marché établi — le plancher
+ * joue seul). INDEXATION NOMINALE = ipmf (e->ipm, IPM GLOBAL) : sous prix libres (M3b-v2),
+ * price_level[c] (par-pays, qui gouverne re->price au dénominateur ici) a REMPLACÉ ipmf
+ * pour le PRIX DES BIENS — mais ipmf reste EXPLICITEMENT actif comme "mécanisme distinct"
+ * pour la surcharge d'entretien (cf. commentaire §PRIX NATIONAL, econ_tick) : PAS de double
+ * emploi — price_level mesure l'offre/demande LOCALE du bien produit (au dénominateur, un
+ * job qui produit cher se paie lui-même), ipmf mesure le débasement monétaire SÉCULAIRE
+ * (au numérateur, comme le salaire d'un fonctionnaire suit la frappe) : deux axes distincts. */
+float econ_job_upkeep_month(const WorldEconomy *e, BuildingType bt, float workers, float price){
+    if (bt<0 || bt>=BLD_TYPE_COUNT || workers<=0.f) return 0.f;
     float ipmf = (e && e->ipm>0.f) ? e->ipm : 1.f;
-    return level * tune_f("MANUF_UPKEEP_DAY",MANUF_UPKEEP_DAY) * 365.f * (1.f/12.f) * ipmf;
+    Resource out = RECIPE[bt].out;
+    float base_p = (out>RES_NONE && out<RES_COUNT) ? BASE_PRICE[out] : 1.f;
+    float floor_ = tune_f("JOB_UPKEEP_PRICE_FLOOR", JOB_UPKEEP_PRICE_FLOOR) * base_p;
+    float p = fmaxf(price, floor_); if (p<=EPS) p=1.f;
+    return tune_f("JOB_UPKEEP_TAX_FRAC", JOB_UPKEEP_TAX_FRAC)
+         * (workers * tune_f("TAX_BASE_LABORER", TAX_BASE_LABORER))
+         * ipmf / p;
 }
 
 /* M6 (forks §14) — la table des deltas de flux arcanes (design, lue par le banc).
@@ -3442,9 +3464,18 @@ void econ_tick(WorldEconomy *e, float dt) {
              * réserve d'exploitation. Un trésor qui GONFLE paie un monde cher et ses
              * manufactures ; une bourse de fonctionnement (le bas de laine qui bâtit) non. */
             if (re->treasury > hof){
-                float mlev=0.f; for (int i=0;i<re->n_bld;i++) mlev += re->bld[i].level;
+                /* M3d — Σ entretien/job (econ_job_upkeep_month, MIROIR EXACT lu par
+                 * scps_manuf_upkeep_month) remplace l'ancien mlev*MANUF_UPKEEP_DAY flat.
+                 * *(dt*12.f) : la fonction rend une valeur MENSUELLE (motif COURT_RATE). */
+                float manuf_upkeep=0.f;
+                for (int i=0;i<re->n_bld;i++){
+                    const Building *b=&re->bld[i];
+                    Resource out_r = RECIPE[b->type].out;
+                    float bprice = (out_r>RES_NONE && out_r<RES_COUNT) ? re->price[out_r] : 0.f;
+                    manuf_upkeep += econ_job_upkeep_month(e, b->type, b->workers, bprice);
+                }
                 float surcharge = (base_up*(ipmf-1.f)                                  /* la part IPM de l'entretien */
-                                + mlev*tune_f("MANUF_UPKEEP_DAY",MANUF_UPKEEP_DAY)*365.f*dt*ipmf) * upkeep_mult;
+                                + manuf_upkeep*(dt*12.f)) * upkeep_mult;
                 if (surcharge>0.f){ float pay=fminf(surcharge, re->treasury - hof); re->treasury -= pay;
                     if (re->owner>=0){ econ_flux_add(re->owner, FX_ENCADR, -pay);  /* I0 : surtaxe IPM + encadrement */
                         /* item 5 : encadrement des manufactures → gages, clé 42/20/38 de LA
