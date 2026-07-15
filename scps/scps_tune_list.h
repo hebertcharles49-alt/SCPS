@@ -573,8 +573,12 @@
     /* MONNAIE M3h — LA DÉBASE (décision joueur 2026-07-15, l'étage 2 de l'échelle du
      * désespoir : 1. emprunter → 2. DÉBASER → 3. banqueroute-saisie). La parité (MINT_
      * PARITY_*) EST la définition de l'unité ; DEBASE_MAX borne le multiplicateur de
-     * sur-frappe [0,DEBASE_MAX] (curseur joueur BUDGET_DEBASE 0-100 %). 0 = kill-switch
-     * (aucune sur-frappe possible, golden pré-M3h byte-identique — prouvé au gate).
+     * sur-frappe [0,DEBASE_MAX] (curseur joueur BUDGET_DEBASE 0-100 % ; politique IA
+     * DERNIER RECOURS — DEBASE_AI_ONSET_YEARS : l'IA ne commence à débaser qu'après ce
+     * répit d'années CONSÉCUTIVES au plafond de dette — avant : emprunter seul ; monte
+     * ensuite linéairement jusqu'à BANKRUPTCY_GRACE_YEARS, le saut à la banqueroute
+     * forcée ; JAMAIS pendant une cicatrice active). 0 = kill-switch (aucune sur-frappe
+     * possible, golden pré-M3h byte-identique — prouvé au gate).
      * LE PRIX (jamais un malus plat — K/rot, motif C3_K_HOLLOW/faction_capture) :
      * DEBASE_K_EROSION_RATE points de K_inst/an rongés À LA CAPITALE au débase MAX ;
      * DEBASE_K_HEAL_RATE points/an réparés à l'arrêt (délibérément plus lent que
@@ -582,7 +586,15 @@
      * débase MAX. LE CÂBLAGE FISCAL (tolérance ↓, évasion ↑, gated sur le déficit K
      * créé par la débase — golden-neutre tant qu'aucune débase n'a jamais eu lieu) :
      * DEBASE_TAX_K_REF = le déficit de référence (points) pour une érosion fiscale
-     * MAX ; DEBASE_TAX_EROSION_MAX = la chute de tolérance à ce déficit. */     X(DEBASE_MAX,               1.0f)     X(DEBASE_K_EROSION_RATE,    0.5f)     X(DEBASE_K_HEAL_RATE,       0.10f)     X(DEBASE_ROT_RATE,          0.15f)     X(DEBASE_TAX_K_REF,         2.0f)     X(DEBASE_TAX_EROSION_MAX,   0.35f)     /* DOTATIONS DE GENÈSE (M3d, mordent dès l'an 0 — l'invariant M(0) les absorbe) : trésor
+     * MAX ; DEBASE_TAX_EROSION_MAX = la chute de tolérance à ce déficit. */ \
+    X(DEBASE_MAX,               1.0f) \
+    X(DEBASE_AI_ONSET_YEARS,    2.0f) \
+    X(DEBASE_K_EROSION_RATE,    0.5f) \
+    X(DEBASE_K_HEAL_RATE,       0.10f) \
+    X(DEBASE_ROT_RATE,          0.15f) \
+    X(DEBASE_TAX_K_REF,         2.0f) \
+    X(DEBASE_TAX_EROSION_MAX,   0.35f) \
+    /* DOTATIONS DE GENÈSE (M3d, mordent dès l'an 0 — l'invariant M(0) les absorbe) : trésor
      * de départ d'un empire jouable/IA (à sa capitale) ; réserve métallique locale d'une
      * cité-état (champs M1 reserve_gold/copper). */ \
     X(GENESIS_TREASURY_EMPIRE, 2000.0f) \

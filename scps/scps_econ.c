@@ -2118,9 +2118,20 @@ float econ_country_debase_frac(const WorldEconomy *e, int cid){
     float dmax = tune_f("DEBASE_MAX", 1.0f);
     if (cid==culture_player_cid())
         return clampf(econ_country_budget_mult(e, cid, BUDGET_DEBASE), 0.f, 1.f) * dmax;
-    /* IA : la politique d'État (dernier recours avant la banqueroute forcée) arrive
-     * au commit POLITIQUE IA — 0 en attendant (le curseur JOUEUR seul vit). */
-    return 0.f;
+    /* IA — DERNIER RECOURS avant la banqueroute forcée (l'échelle du désespoir DANS
+     * L'ORDRE : emprunter d'abord — credit_borrow*, jamais court-circuité ici — puis
+     * SEULEMENT débaser une fois au plafond de dette ET l'épuisement chronique établi,
+     * credit_insolvent_streak déjà posé par credit_year_tick, scps_credit.h inclus depuis
+     * M3c). Jamais pendant une cicatrice de banqueroute EN COURS : la banqueroute EST déjà
+     * l'échelon suivant, débaser un pays qui vient de répudier n'a plus de sens. */
+    if (econ_country_bankruptcy_scar(e, cid) > EPS) return 0.f;
+    int onset  = (int)tune_f("DEBASE_AI_ONSET_YEARS", 2.f);
+    int streak = credit_insolvent_streak(cid);
+    if (streak < onset) return 0.f;
+    int grace  = (int)tune_f("BANKRUPTCY_GRACE_YEARS", 5.f);
+    float span = fmaxf(1.f, (float)(grace-onset));
+    float level = clampf((float)(streak-onset)/span, 0.f, 1.f);
+    return level * dmax;
 }
 /* Frappe MENSUELLE — fonction PURE, MIROIR EXACT du point fixe d'econ_tick (aucune mutation
  * ici : ni la réserve, ni le trésor, ni le flux ne bougent).
