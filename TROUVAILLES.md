@@ -1601,3 +1601,113 @@ ligne : « rapporte, ne force pas »).
   GDScript (hors scope explicite du brief : « le bouton UI = Restes »).
 - **Gameplay de crise profonde** (au-delà du débuff −75%/verbe/dotations) : toujours
   hors scope (M3c l'avait déjà noté « une vague future » — inchangé par M3d).
+
+## M3d — SWEEP APPARIÉ DE CONFIRMATION (V1) : BANDE POP CASSÉE, PAS RÉPARÉ (2026-07-15)
+
+**Statut : VÉRIFICATION PURE — AUCUN code moteur touché.** Mission : faire le sweep
+apparié pre-M3d vs HEAD que M3d n'avait pas eu le budget de faire (cf. Restes
+ci-dessus). **Verdict : la bande casse — pop hors ±10 % dans 7/9 sims, + 1 breach
+invariant M3c nouveau (absent pre-M3d). Rien réparé, rien recalibré : rapport à
+l'orchestrateur.**
+
+**Tag `pre-m3d` INEXISTANT** — les tags disponibles sont `pre-m3`, `pre-m3b`,
+`pre-m3b2`, `pre-m3c`, `pre-m4ip`, `pre-monnaie` (aucun n'encadre exactement M3d).
+M4-IP a été livré AVANT M3d (5 commits M4-IP puis 6 commits M3d, cf. `git log
+pre-m4ip..HEAD`) — le vrai « juste avant M3d » est donc le DERNIER commit M4-IP,
+`520d1cf` (TROUVAILLES M4-IP), PAS le tag `pre-m4ip` lui-même (qui pointe AVANT
+M4-IP, donc reviendrait aussi sur M4-IP — comparaison polluée). Worktree créé sur
+`520d1cf` (`git worktree add ../SCPS-v1-prem3d 520d1cf`) : isole M3d SEUL (dotations
+an-0, re-tarif jobs, plafond/refus/taux/tranche/banqueroute), M4-IP présent des DEUX
+côtés.
+
+**Build** : MSYS2 (`D:\MSYS2\usr\bin\bash.exe -lc 'export PATH="/mingw64/bin:/usr/bin:
+$PATH"; make chronicle'`) — RC=0 propre des deux côtés ; vérifié qu'aucun `chronicle.exe`
+ne tournait avant le rebuild HEAD (le piège « link Permission denied silencieux »
+documenté au brief NE S'EST PAS produit, RC vérifié explicitement à chaque build).
+
+**Sweep exécuté** (foreground, une invocation par côté/graine) : `./chronicle
+{9,11,42} 3 250 6 12` — 6 empires + 12 cités-états FIXÉS (au lieu du cycle par défaut
+2→N/5→N), donc un monde PLUS GRAND que les mesures post-seules de M3d lui-même
+(`chronicle 9 1 250` = 2 empires SEULEMENT) — explique pourquoi les comptes absolus
+(banqueroutes, dette) diffèrent fortement des chiffres déjà publiés dans la section
+M3d ci-dessus ; la comparaison qui compte ici est PAIRÉE (même commande, même graine,
+pre-M3d vs HEAD), pas absolue.
+
+**1) INVARIANT M3c — nouveau breach, absent pre-M3d** : HEAD graine 11 sim 1 an 57 —
+`ÉCHEC — banc invariant M3c : autres=-65038/an (407% de l'échelle connue 15987, seuil
+400%) — dérive HORS-FRAPPE en EXPLOSION`. Le MÊME run côté pre-M3d (même graine, mêmes
+paramètres) ne déclenche RIEN. Différent du breach déjà noté par M3d (seed 11 an 86,
+517 %, monde à 2 empires) — donc PAS un doublon, un second point de fragilité sous un
+monde plus grand. Seeds 9 et 42 : HEAD et pre-M3d PASSENT tous les deux, propre. Isolé
+(1/9 sims) mais confirmé CAUSÉ par M3d (absent en paire), pas juste du bruit
+pré-existant — nuance par rapport à la lecture « bruit toléré » de la section M3d
+ci-dessus qui n'avait PAS de comparaison appariée pour trancher.
+
+**2) POPULATION FINALE (an 250, milliers) — LA BANDE CASSE, largement hors ±10 %** :
+
+| graine · sim | pre-M3d | HEAD | Δ |
+|---|---|---|---|
+| 9 · 1 | 362k | 256k | **−29.3 %** |
+| 9 · 2 | 195k |  94k | **−51.8 %** |
+| 9 · 3 | 240k | 241k | +0.4 % |
+| 11 · 1 | 279k | 244k | **−12.5 %** |
+| 11 · 2 | 266k | 219k | **−17.7 %** |
+| 11 · 3 | 344k | 174k | **−49.4 %** |
+| 42 · 1 | 260k | 215k | **−17.3 %** |
+| 42 · 2 | 332k | 308k | −7.2 % |
+| 42 · 3 | 367k | 324k | **−11.7 %** |
+
+Moyenne des 9 paires : **−21.9 %**. Seules 2/9 paires tiennent la bande ±10 %
+(9·3, 42·2) ; 3 paires s'effondrent au-delà de −29 % (jusqu'à −51.8 %). Aucune paire
+ne DÉPASSE +10 % (pas de compensation dans l'autre sens — la suppression est
+systématique, pas du bruit symétrique).
+
+**3) COLONISATION D'ÉTAT crasée en parallèle, COLONISATION DU PEUPLE (M4-IP) intacte
+ou en hausse** — le signal le plus parlant pour la cause :
+
+| graine | fondations d'État (agrégées/3 sims) | Δ | colonies du peuple (M4-IP) | Δ |
+|---|---|---|---|---|
+| 9  | 273 → 251 | −8.1 % | 29 → 31 | +6.9 % |
+| 11 | 373 → 249 | **−33.2 %** | 34 → 35 | +2.9 % |
+| 42 | 422 → 261 | **−38.2 %** | 23 → 33 | **+43.5 %** |
+
+Provinces colonisées cumulées à l'an 200 (3 sims/graine) : 9 : 675→585 (−13 %) ·
+11 : 711→635 (−11 %) · 42 : 669→516 (**−23 %**). La colonisation FINANCÉE PAR L'ÉTAT
+s'effondre pendant que l'initiative privée (financée par l'épargne bourgeois/élite,
+hors trésor national) tient ou grandit — le trou est spécifiquement au TRÉSOR
+NATIONAL, pas un ralentissement moteur général.
+
+**4) Dette/banqueroute (HEAD seul, monde 6 empires fixes — non comparable en absolu
+aux chiffres M3d ci-dessus, monde 2 empires)** : dette/revenu moyen **jamais stabilisé
+sous une valeur saine sur les 9 sims** — oscille 80–270 % tout au long des 150
+premières années (jamais un plancher net comme le « sous 61 % » mesuré par M3d en
+monde plus petit) ; **235–363 banqueroutes FORCÉES par sim** (0 volontaire, attendu
+headless) ; **5 à 14 pays sur ~20-30 SONT AU PLAFOND (300 %) en fin de partie, dans
+LES 9 SIMS SANS EXCEPTION** — un quart à la moitié du monde vit en crise de dette
+permanente à l'an 250, pas une « vague occasionnelle ».
+
+**5) Ce qui NE casse PAS** (donc pas la cause probable) : satisfaction Laborer finale
+comparable pre/HEAD (49 %→45 %, 49 %→58 %, 65 %→57 % par graine — dans le bruit
+inter-graine déjà observé) · IPM final quasi identique (0.85–0.91 des deux côtés,
+pas de signal d'inflation débridée) · friche (régions impayées E1bis.10) comparable
+(5-14 des deux côtés) · hégémon mortel PAREIL OU MEILLEUR à HEAD (stab plancher moy
+41→61, 36→67, 90→83) — les mondes HEAD sont MOINS chaotiques mais PLUS PETITS et PLUS
+PAUVRES : cohérent avec une « extinction lente » plutôt qu'un effondrement violent.
+
+**HYPOTHÈSE (rapportée, pas prouvée — l'orchestrateur tranche)** : le mécanisme
+plafond/taux/banqueroute (ou le re-tarif des jobs, non isolable de la dette avec ce
+seul sweep) affame les trésors NATIONAUX en continu (dette/revenu 80-270 % chronique,
+25-50 % des pays au plafond à TOUT MOMENT observé, pas seulement en fin de partie) —
+ceci coupe le budget colonisation d'État en premier (le poste le plus discrétionnaire),
+qui traîne la population totale vers le bas avec lui (moins de territoire = moins de
+croissance démographique cumulée sur 250 ans). L'initiative privée (M4-IP), qui ne
+transite PAS par le trésor national, absorbe une partie du relais (colonies du
+peuple stables ou en hausse) mais pas assez pour compenser. Les dotations de genèse
+augmentées (M(0) +15 à +35 % selon la graine, cf. section M3d) sont probablement UN
+facteur d'entrée dans la dynamique dette/revenu (plus de monnaie en circulation dès
+l'an 0 peut accélérer les besoins d'emprunt nominal) mais n'explique pas À ELLE SEULE
+un écart aussi asymétrique (jamais de paire au-dessus de +10 %) — cohérent avec un
+effet dette/banqueroute dominant plutôt qu'un simple décalage de barème.
+
+**Nettoyage** : worktree `../SCPS-v1-prem3d` retiré (`git worktree remove`) après
+sweep. Aucun fichier moteur modifié — seul ce TROUVAILLES est commité.
