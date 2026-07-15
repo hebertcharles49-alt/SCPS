@@ -329,6 +329,12 @@ typedef struct {
      * la croissance (distincte de revolt_scar) — qui décroît sur ~5 ans. L'intégration la
      * RABAISSE → la voie patiente paie. Surfacée dans le slot MODIFICATEURS (fléau décroissant). */
     float      annex_scar;
+    /* M3d — CICATRICE DE BANQUEROUTE [0..1] (décision joueur 2026-07-15, « tape fort ») :
+     * une province dont le pays vient de répudier sa dette produit et croît MAL (−75 %,
+     * PLUS SÉVÈRE que revolt_scar) et son armée perd le moral — décroît sur
+     * BANKRUPTCY_SCAR_YEARS (~10 ans, registre J), motif revolt_scar. Sérialisée (SAVE_
+     * VERSION 90) : état neuf, mêmes bornes save_sane [0..1]. */
+    float      bankruptcy_scar;
     /* Anti-saccage (§4 guerre) : une province DÉPOUILLÉE ne peut l'être à nouveau
      * avant ~5 ans (plus rien à prendre) — compteur en années, décroît chaque tick. */
     float      pillage_cd;

@@ -523,6 +523,38 @@
      * offre de rachat, et part du trésor OISIF (>COURT_FLOOR) du racheteur mobilisable. */ \
     X(BUYBACK_DEBT_THRESHOLD, 500.0f) \
     X(BUYBACK_IDLE_SHARE,     0.30f) \
+    /* MONNAIE M3d — LA SOUTENABILITÉ + LA BANQUEROUTE (décision joueur 2026-07-15).
+     * LE PLAFOND : dette max = DEBT_CEILING_YEARS × revenu annuel (econ_country_tax_year).
+     * Au plafond : plus personne ne prête (péréquation EXEMPTÉE — pas de la dette). */ \
+    X(DEBT_CEILING_YEARS,     3.0f) \
+    /* LA TRANCHE : un DRAW de dette (classes OU cité-état, indépendamment) est plafonné à
+     * DEBT_TRANCHE_FRAC × revenu annuel PAR ÉPISODE — un bond s'émet par tranches, pas
+     * d'un coup (le résidu non couvert devient un épuisement mesuré, jamais créé). */ \
+    X(DEBT_TRANCHE_FRAC,      0.20f) \
+    /* LE TAUX (remplace CREDIT_RATE_BASE/CREDIT_RATIO_CAP pour credit_year_tick, M3d) :
+     * taux = BASE + SLOPE×(dette/plafond), clampé [MIN,MAX] — la prime de risque EST le
+     * levier envers le plafond des 300 %, pas la ligne de crédit ∝pop (incrément 1). */ \
+    X(DEBT_RATE_BASE,         0.02f) \
+    X(DEBT_RATE_SLOPE,        0.03f) \
+    X(DEBT_RATE_MIN,          0.02f) \
+    X(DEBT_RATE_MAX,          0.05f) \
+    /* LA BANQUEROUTE : répudiation totale (dette RAZ) ; DÉBUFF −75 % prod/croissance/moral
+     * décroissant sur BANKRUPTCY_SCAR_YEARS (motif revolt_scar, bankruptcy_scar). Le grief
+     * de la cité-état créancière frappée (motif §6 rancune, RANCOR_PER_LOSS=1.0/province
+     * perdue — une répudiation totale pèse plus lourd). FORCÉE (l'IA) : au plafond depuis
+     * BANKRUPTCY_GRACE_YEARS années consécutives (chronique, motif streak EMOB/COLC). */ \
+    X(BANKRUPTCY_SCAR_YEARS,   10.0f) \
+    X(BANKRUPTCY_RANCOR,       2.0f) \
+    /* CALIBRAGE (mesuré, gigasweep court) : 2 ans donnait un cycle défaut→relève→défaut
+     * tous les ~8 ans (7/210 pays/sim sur 250 ans, seed 9) — la cicatrice (10 ans de decay)
+     * n'avait JAMAIS le temps de se refermer. 5 ans double le répit avant le couperet. */ \
+    X(BANKRUPTCY_GRACE_YEARS,  5.0f) \
+    /* DOTATIONS DE GENÈSE (M3d, mordent dès l'an 0 — l'invariant M(0) les absorbe) : trésor
+     * de départ d'un empire jouable/IA (à sa capitale) ; réserve métallique locale d'une
+     * cité-état (champs M1 reserve_gold/copper). */ \
+    X(GENESIS_TREASURY_EMPIRE, 2000.0f) \
+    X(GENESIS_RESERVE_GOLD,    200.0f) \
+    X(GENESIS_RESERVE_COPPER,  500.0f) \
     /* LE SCEAU FINAL (chronicle, banc invariant M(t)=M(0)+frappe±résidus DOCUMENTÉS) :
      * ratio MAX de "autres" (la dérive hors VA/conso/colonisation/frappe DE L'ANNÉE —
      * tribut mûri/missions/arbitrage/pillage-stock/événements, sites M0 §1.3-1.5/1.7/2.12,

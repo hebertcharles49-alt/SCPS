@@ -66,9 +66,25 @@ void  credit_settle_monthly(WorldEconomy *e, const World *w);
 float credit_debt_class(int c);       /* dette due aux PROPRES classes du pays c */
 float credit_debt_citystate(int c);   /* dette due à SA cité-état créancière */
 float credit_debt_total(int c);       /* to_class+to_cs */
+/* M3d — années consécutives au plafond (save_sane la revalide, motif credit_debt_class). */
+int   credit_insolvent_streak(int c);
 /* Compteurs MONDE, cumulés depuis credit_init (RAZ par partie/sim, non sérialisés —
  * même esprit que econ_money_instrument_get) : rachats de crédit et épisodes
  * d'ÉPUISEMENT (need>0 non couvert par la chaîne complète) observés CE run. */
 void  credit_stats_get(long *buybacks, long *defaults);
+
+/* ---- M3d : LA SOUTENABILITÉ + LA BANQUEROUTE (décision joueur 2026-07-15) -----------
+ * LE PLAFOND (brief §1) : dette max = DEBT_CEILING_YEARS × revenu annuel nominal (lecture
+ * UI/télémétrie — credit_borrow_local/citystate l'appliquent déjà en interne). */
+float credit_debt_ceiling(int c);
+/* LA BANQUEROUTE (brief §5) : répudiation TOTALE + cicatrice −75 % (bankruptcy_scar,
+ * scps_econ.h) sur toutes les provinces du pays. `forced` pilote SEULEMENT la télémétrie
+ * (forcée/chronique vs volontaire CMD_BANKRUPTCY) ; retourne l'ex-créancier cité-état
+ * (-1 = aucun) — l'appelant applique l'effet diplomatique (DiploState hors scope credit.c). */
+int   credit_bankruptcy(WorldEconomy *e, int c, bool forced);
+/* Un pays au plafond depuis BANKRUPTCY_GRACE_YEARS années consécutives (posé par
+ * credit_year_tick) : scps_sim.c doit appeler credit_bankruptcy(e,c,true) CE tick. */
+bool  credit_bankrupt_pending(int c);
+void  credit_bankruptcy_stats(long *forced, long *voluntary);
 
 #endif /* SCPS_CREDIT_H */

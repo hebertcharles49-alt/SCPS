@@ -42,6 +42,15 @@ static void setup(WorldEconomy *e, float emp_tres, float cs_tres){
     e->prov[1].strata[CLASS_LABORER].pop=300.f;
     e->region_rep_prov[0]=0; e->region_rep_prov[1]=1;   /* 1 province/région : la représentative est directe */
     econ_aggregate_regions(e);   /* region[] à jour pour econ_country_gold et les lectures du banc */
+    /* M3d — LE PLAFOND + LA TRANCHE (credit_borrow_local/citystate) mordent désormais sur
+     * econ_country_tax_year (le REVENU ANNUEL) : ce banc À LA MAIN ne tourne jamais econ_tick
+     * (aucun tax_year capté) — sans un revenu seedé, la ligne serait TOUJOURS 0 et la chaîne
+     * d'emprunt refuserait tout. On CAPTE un revenu annuel plausible (3000, ceiling=9000,
+     * tranche=600 — au-dessus des besoins testés ~300-350) via le canal officiel
+     * (econ_flux_add+econ_flux_year_capture), pas une valeur seedée à la main. */
+    econ_flux_add(0, FX_TAX, 3000.f);
+    econ_flux_add(1, FX_TAX, 3000.f);
+    econ_flux_year_capture();
 }
 
 int main(void){
