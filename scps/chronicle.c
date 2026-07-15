@@ -350,10 +350,104 @@ static double chronicle_money_mass(const WorldEconomy *e){
  * un DÉTECTEUR DE RÉGRESSION (une explosion soudaine du ratio signale un NOUVEAU canal
  * magique), pas une preuve de conservation totale du jeu. */
 static double g_inv_prev_m=0.0, g_inv_prev_va=0.0, g_inv_prev_conso=0.0, g_inv_prev_coloniz=0.0, g_inv_prev_mint=0.0;
+/* M3e — DIAG (SCPS_INVDIAG, print-only, temporaire pour la chasse au breach graine 11
+ * an 57) : localise la dérive PAR PAYS (money mass Σtreasury+Σwealth de ses provinces,
+ * motif chronicle_money_mass) + corrèle avec les compteurs credit (dette totale monde,
+ * banqueroutes forcées cumulées) — permet de savoir SI le pays qui dérive le plus est
+ * le même qui vient de faire banqueroute CE tick. */
+static double g_inv_prev_percountry[SCPS_MAX_COUNTRY];
+static bool   g_inv_percountry_init=false;
+static double g_inv_prev_wild=0.0;
+static int    g_inv_prev_wild_n=0;
 static void chronicle_invariant_reset(double m0){
     g_inv_prev_m=m0; g_inv_prev_va=0.0; g_inv_prev_conso=0.0; g_inv_prev_coloniz=0.0; g_inv_prev_mint=0.0;
+    g_inv_percountry_init=false;   /* M3e DIAG : RAZ le snapshot par-pays au début de CHAQUE sim */
+    g_inv_prev_wild=0.0; g_inv_prev_wild_n=0;
 }
-static void chronicle_invariant_check(const WorldEconomy *e, int year, uint32_t seed, int sim,
+static double g_inv_prev_prov[SCPS_MAX_PROV];
+static void chronicle_invariant_diag(const WorldEconomy *e, const World *w, int year, uint32_t seed, int sim){
+    double now[SCPS_MAX_COUNTRY]; memset(now,0,sizeof now);
+    double wild=0.0; int wild_n=0;
+    double nowp[SCPS_MAX_PROV]; memset(nowp,0,sizeof nowp);
+    int n=e->n_prov; if (n>SCPS_MAX_PROV) n=SCPS_MAX_PROV;
+    for (int p=0;p<n;p++){
+        double m=(double)e->prov[p].treasury;
+        for (int k=0;k<CLASS_COUNT;k++) m += (double)e->prov[p].strata[k].wealth;
+        nowp[p]=m;
+        int c=e->prov[p].owner;
+        if (c<0||c>=SCPS_MAX_COUNTRY){ wild+=m; wild_n++; } else now[c]+=m;
+    }
+    if (!g_inv_percountry_init){
+        memcpy(g_inv_prev_percountry, now, sizeof now);
+        memcpy(g_inv_prev_prov, nowp, sizeof nowp);
+        g_inv_prev_wild=wild; g_inv_prev_wild_n=wild_n;
+        g_inv_percountry_init=true;
+        return;
+    }
+    /* top 5 provinces WILD (owner<0) par |Δ| + bottom 5 (les plus NÉGATIVES) — localise
+     * le(s) SITE(s) exact(s) du puits (une somme négative peut être distribuée sur des
+     * centaines de petits Δ, invisibles au classement |Δ| seul si les positifs dominent). */
+    int top_p[5]={-1,-1,-1,-1,-1}; double top_d[5]={0,0,0,0,0};
+    int bot_p[5]={-1,-1,-1,-1,-1}; double bot_d[5]={0,0,0,0,0};
+    double wsum_pos=0.0, wsum_neg=0.0; int wneg_n=0, wpos_n=0;
+    for (int p=0;p<n;p++){
+        if (e->prov[p].owner>=0 && e->prov[p].owner<SCPS_MAX_COUNTRY) continue;
+        double d = nowp[p]-g_inv_prev_prov[p];
+        if (d>0){ wsum_pos+=d; wpos_n++; } else if (d<0){ wsum_neg+=d; wneg_n++; }
+        for (int t=0;t<5;t++) if (fabs(d)>fabs(top_d[t])){
+            for (int s=4;s>t;s--){ top_d[s]=top_d[s-1]; top_p[s]=top_p[s-1]; }
+            top_d[t]=d; top_p[t]=p; break;
+        }
+        for (int t=0;t<5;t++) if (d<bot_d[t]){
+            for (int s=4;s>t;s--){ bot_d[s]=bot_d[s-1]; bot_p[s]=bot_p[s-1]; }
+            bot_d[t]=d; bot_p[t]=p; break;
+        }
+    }
+    fprintf(stderr, "      [INVDIAG-WILD] an %d — wpos_n=%d wsum_pos=%+.0f · wneg_n=%d wsum_neg=%+.0f\n",
+            year, wpos_n, wsum_pos, wneg_n, wsum_neg);
+    for (int t=0;t<5;t++) if (top_p[t]>=0){
+        int p=top_p[t];
+        fprintf(stderr, "      [INVDIAG-WILD-TOP] an %d — prov %d Δ=%+.0f (treasury=%.0f pop L/B/E=%.0f/%.0f/%.0f "
+                "active=%d colonized=%d cap_pop=%.0f)\n",
+                year, p, top_d[t], (double)e->prov[p].treasury,
+                (double)e->prov[p].strata[CLASS_LABORER].pop, (double)e->prov[p].strata[CLASS_BOURGEOIS].pop,
+                (double)e->prov[p].strata[CLASS_ELITE].pop,
+                (int)e->prov[p].active, (int)e->prov[p].colonized, (double)e->prov[p].cap_pop);
+    }
+    for (int t=0;t<5;t++) if (bot_p[t]>=0){
+        int p=bot_p[t];
+        fprintf(stderr, "      [INVDIAG-WILD-BOT] an %d — prov %d Δ=%+.0f (treasury=%.0f pop L/B/E=%.0f/%.0f/%.0f "
+                "active=%d colonized=%d cap_pop=%.0f)\n",
+                year, p, bot_d[t], (double)e->prov[p].treasury,
+                (double)e->prov[p].strata[CLASS_LABORER].pop, (double)e->prov[p].strata[CLASS_BOURGEOIS].pop,
+                (double)e->prov[p].strata[CLASS_ELITE].pop,
+                (int)e->prov[p].active, (int)e->prov[p].colonized, (double)e->prov[p].cap_pop);
+    }
+    memcpy(g_inv_prev_prov, nowp, sizeof nowp);
+    int nc = w? w->n_countries : SCPS_MAX_COUNTRY; if (nc>SCPS_MAX_COUNTRY) nc=SCPS_MAX_COUNTRY;
+    int worst=-1; double worstabs=0.0; double sum_owned_d=0.0, sum_pos=0.0, sum_neg=0.0;
+    for (int c=0;c<nc;c++){
+        double d = now[c]-g_inv_prev_percountry[c];
+        sum_owned_d += d; if (d>0) sum_pos+=d; else sum_neg+=d;
+        if (fabs(d)>worstabs){ worstabs=fabs(d); worst=c; }
+    }
+    double d_wild = wild - g_inv_prev_wild;
+    int d_wild_n = wild_n - g_inv_prev_wild_n;
+    double debt_tot=0.0; for (int c=0;c<nc;c++) debt_tot += (double)credit_debt_total(c);
+    long forced=0, vol=0; credit_bankruptcy_stats(&forced,&vol);
+    fprintf(stderr, "   [INVDIAG] graine %u sim %d an %d — pire pays c=%d Δmoney=%+.0f "
+            "(streak=%d ceiling=%.0f debt=%.0f scar=%.2f) — ΣΔowned=%+.0f (pos=%+.0f neg=%+.0f) ΔWILD=%+.0f (n=%d→%+d) "
+            "— Σdette monde=%.0f · banqueroutes forcées cum=%ld\n",
+            seed, sim, year, worst, worst>=0?now[worst]-g_inv_prev_percountry[worst]:0.0,
+            worst>=0?credit_insolvent_streak(worst):-1, worst>=0?credit_debt_ceiling(worst):-1.0,
+            worst>=0?credit_debt_total(worst):-1.0,
+            (worst>=0 && w)? econ_country_bankruptcy_scar(e,worst) : -1.0f,
+            sum_owned_d, sum_pos, sum_neg, d_wild, wild_n, d_wild_n,
+            debt_tot, forced);
+    memcpy(g_inv_prev_percountry, now, sizeof now);
+    g_inv_prev_wild=wild; g_inv_prev_wild_n=wild_n;
+}
+static void chronicle_invariant_check(const WorldEconomy *e, const World *w, int year, uint32_t seed, int sim,
                                        double mint_cum_so_far){
     double m_now = chronicle_money_mass(e);
     double va_cum=0.0, conso_cum=0.0, coloniz_cum=0.0;
@@ -370,11 +464,14 @@ static void chronicle_invariant_check(const WorldEconomy *e, int year, uint32_t 
     double scale = fabs(d_va)+fabs(d_conso)+fabs(d_coloniz)+fabs(d_mint); if (scale<1.0) scale=1.0;
     double frac = fabs(autres)/scale;
     double maxfrac = (double)tune_f("INVARIANT_DRIFT_FRAC", 2.0f);
+    bool diag = getenv("SCPS_INVDIAG")!=NULL;
+    if (diag) chronicle_invariant_diag(e, w, year, seed, sim);
     if (frac > maxfrac){
         g_invariant_breach = true;
         fprintf(stderr, "   ÉCHEC — banc invariant M3c : graine %u sim %d an %d — "
                 "autres=%+.0f/an (%.0f%% de l'échelle connue %.0f, seuil %.0f%%) — dérive HORS-FRAPPE en EXPLOSION\n",
                 seed, sim, year, autres, 100.0*frac, scale, 100.0*maxfrac);
+        if (!diag) chronicle_invariant_diag(e, w, year, seed, sim);   /* toujours localiser un ÉCHEC, même sans SCPS_INVDIAG */
     }
     g_inv_prev_m=m_now; g_inv_prev_va=va_cum; g_inv_prev_conso=conso_cum;
     g_inv_prev_coloniz=coloniz_cum; g_inv_prev_mint=mint_cum_so_far;
@@ -694,7 +791,7 @@ int main(int argc, char **argv){
             /* MONNAIE M3c — LE SCEAU FINAL : vérifié ICI (même point que le recoupement
              * FX_* ci-dessus — état "fin d'année Y-1 / avant tick de l'année Y", mint_accum
              * et money_mass mutuellement À JOUR au MÊME instant, motif money_creation_accum). */
-            if (yr>0) chronicle_invariant_check(s.econ, yr, seed, k+1, mint_accum);
+            if (yr>0) chronicle_invariant_check(s.econ, w, yr, seed, k+1, mint_accum);
             econ_flux_year_capture();
             for (int d=0; d<365; d++) sim_day(&s, w);
             /* conquêtes de l'année : régions passées d'un PAYS à un autre (de force) */

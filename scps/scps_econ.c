@@ -4491,13 +4491,26 @@ void econ_colony_day(WorldEconomy *e, const World *w){
         if (--cw->days_left > 0) continue;
         ProvinceEconomy *dst=(cw->dst<e->n_prov)?&e->prov[cw->dst]:NULL;
         if (dst && dst->active && !dst->colonized){
+            /* M3e — FUITE TROUVÉE (sweep V1, graine 11) : une cible « vacante » (!colonized)
+             * peut porter une richesse RÉSIDUELLE si elle fut colonisée puis DÉ-colonisée
+             * (effondrement/cataclysme/abandon — colonized repasse à false, la wealth NE
+             * l'est pas) — mesuré jusqu'à 260k sur une seule province (SCPS_COLONDIAG).
+             * econ_seed_population (juste après) ÉCRASE re->strata[].wealth par une formule
+             * ex-nihilo, qui elle-même sera écrasée par la livraison RÉELLE ci-dessous — le
+             * résidu préexistant, LUI, ne revenait JAMAIS : snapshoté ICI, ADDITIONNÉ (pas
+             * remplacé) après la livraison — conservateur par construction (cette richesse
+             * était DÉJÀ dans M(t), rien à documenter, elle continue simplement d'exister). */
+            float preexist_wealth[CLASS_COUNT];
+            for (int c=0;c<CLASS_COUNT;c++) preexist_wealth[c]=dst->strata[c].wealth;
             float seeded=fmaxf(cw->seed_base*cw->yield, 40.f);
             econ_seed_population(dst, seeded);
             /* MONNAIE M3a : la richesse LIVRÉE est celle EMPORTÉE au départ (cw->seed_wealth,
              * prélevée sur la source à l'ordre), PAS la formule ex nihilo que
              * econ_seed_population vient d'écrire — un TRANSFERT, pas une planche à billets. */
             { double delivered=0.0;
-              for (int c=0;c<CLASS_COUNT;c++){ dst->strata[c].wealth=cw->seed_wealth[c]; delivered+=(double)cw->seed_wealth[c]; }
+              for (int c=0;c<CLASS_COUNT;c++){
+                  dst->strata[c].wealth=cw->seed_wealth[c]+preexist_wealth[c];
+                  delivered+=(double)cw->seed_wealth[c]; }
               g_colonization_net_cum += delivered; }   /* MONNAIE M3a — L'INSTRUMENT : livré (miroir du -= au départ) */
             dst->colonized=true;
             dst->owner=(int16_t)cid;
@@ -4591,13 +4604,18 @@ static void colonize_from_prov(WorldEconomy *e, int src_pid, int dst_pid, int ci
     const PopGroup *sg=econ_pop_dominant(&src->pop);
     PopCulture settlers=sg?sg->culture:src->culture;
     uint16_t settlers_id=sg?sg->culture_id:src->culture_id;
+    /* M3e — même fuite que econ_colony_day (résidu d'une DÉ-colonisation antérieure,
+     * !colonized n'implique PAS wealth=0) : snapshot AVANT econ_seed_population,
+     * ADDITIONNÉ (pas remplacé) après la livraison — conservateur (déjà dans M(t)). */
+    float preexist_wealth[CLASS_COUNT];
+    for (int c=0;c<CLASS_COUNT;c++) preexist_wealth[c]=dst->strata[c].wealth;
     econ_seed_population(dst, seeded);
     /* la richesse LIVRÉE est celle EMPORTÉE (wealth_seed), pas la formule ex nihilo
      * qu'econ_seed_population vient d'écrire — un TRANSFERT, pas une planche à billets. */
     /* (instrument : rien à accumuler ici — prélèvement et livraison dans le MÊME appel,
      * net exactement 0 ; seule la voie CONVOI d'econ_colonize_province/econ_colony_day
      * porte un résidu mesurable — colons perdus en route = richesse détruite, comptée). */
-    for (int c=0;c<CLASS_COUNT;c++) dst->strata[c].wealth=wealth_seed[c];
+    for (int c=0;c<CLASS_COUNT;c++) dst->strata[c].wealth=wealth_seed[c]+preexist_wealth[c];
     dst->colonized=true;
     dst->owner=(int16_t)cid;
     dst->ferveur=1.f;            /* FERVEUR FONDATRICE (lot 2) : la jeune colonie a faim d'avenir */
@@ -4814,8 +4832,13 @@ static void ip_colonize_laborer(WorldEconomy *e, int src_pid, int dst_pid, int c
     const PopGroup *sg=econ_pop_dominant(&src->pop);
     PopCulture settlers=sg?sg->culture:src->culture;
     uint16_t settlers_id=sg?sg->culture_id:src->culture_id;
+    /* M3e — même fuite que colonize_from_prov (résidu d'une DÉ-colonisation antérieure) :
+     * snapshot AVANT l'écrasement genèse, ADDITIONNÉ après le transfert réel. */
+    float preexist_wealth[CLASS_COUNT];
+    for (int c=0;c<CLASS_COUNT;c++) preexist_wealth[c]=dst->strata[c].wealth;
     econ_seed_population(dst, seeded);   /* pose une richesse ex nihilo (genèse) — ÉCRASÉE juste après par le transfert réel */
-    for (int c=0;c<CLASS_COUNT;c++) dst->strata[c].wealth = (c==CLASS_LABORER) ? wealth_taken : 0.f;
+    for (int c=0;c<CLASS_COUNT;c++)
+        dst->strata[c].wealth = ((c==CLASS_LABORER) ? wealth_taken : 0.f) + preexist_wealth[c];
     dst->colonized=true;
     dst->owner=(int16_t)cid;
     dst->ferveur=1.f;                    /* FERVEUR FONDATRICE, comme toute fondation (lot 2) */
