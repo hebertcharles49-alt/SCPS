@@ -2784,10 +2784,20 @@ static inline float council_m(int owner, int seat){
                                           * misérable — la cause du « 13 % à la pire satisfaction ») */
 static float   g_basket_pc[SCPS_MAX_PROV][CLASS_COUNT];   /* panier/tête capté au tick */
 static uint8_t g_lowsat_streak[SCPS_MAX_PROV][CLASS_COUNT];/* mois consécutifs de sat < 30 % */
+/* MONNAIE M3f — BONUS (convergence prix-métal→parité) : l'achat de la FRAPPE LIBRE
+ * (§M3e) débitait le stock SANS jamais pousser demand[] — le prix restait au niveau
+ * offre/demande MARCHAND seul, l'arbitrage ne se refermait jamais (or 1.6-2.7 vs parité
+ * 16). demand[] est un accumulateur LOCAL remis à 0 CHAQUE tick (aucune mémoire propre —
+ * §3, `float demand[RES_COUNT]={0}`) : le SEUL moyen de faire compter un achat dans le
+ * PROCHAIN calcul de prix est un accumulateur inter-ticks, même lag qu'g_basket_pc/
+ * mobility_tick_region — LU en SEED du tick suivant, ÉCRASÉ (pas cumulé) par la frappe
+ * libre de ce même tick. [0]=or [1]=cuivre. */
+static float   g_mint_demand_prev[SCPS_MAX_PROV][2];
 void econ_mobility_reset(void){
     memset(g_basket_pc,0,sizeof g_basket_pc);
     memset(g_lowsat_streak,0,sizeof g_lowsat_streak);
     memset(g_friche,0,sizeof g_friche); g_n_friche=0;
+    memset(g_mint_demand_prev,0,sizeof g_mint_demand_prev);
 }
 /* SAVETEST FIX (2026-07) — g_friche/g_lowsat_streak sont des ACCUMULATEURS croisant les
  * ticks (le friche d'UN tick lit le calcul du tick PRÉCÉDENT, cf. le lecteur ligne ~1841 vs
@@ -2811,11 +2821,13 @@ void econ_mobility_save(FILE *f){
     fwrite(g_friche,sizeof g_friche,1,f);
     fwrite(g_lowsat_streak,sizeof g_lowsat_streak,1,f);
     fwrite(g_basket_pc,sizeof g_basket_pc,1,f);
+    fwrite(g_mint_demand_prev,sizeof g_mint_demand_prev,1,f);   /* MONNAIE M3f — SAVE_VERSION 91 */
 }
 bool econ_mobility_load(FILE *f){
     return fread(g_friche,sizeof g_friche,1,f)==1
         && fread(g_lowsat_streak,sizeof g_lowsat_streak,1,f)==1
-        && fread(g_basket_pc,sizeof g_basket_pc,1,f)==1;
+        && fread(g_basket_pc,sizeof g_basket_pc,1,f)==1
+        && fread(g_mint_demand_prev,sizeof g_mint_demand_prev,1,f)==1;   /* MONNAIE M3f — SAVE_VERSION 91 */
 }
 /* MONNAIE M3f — item 2 : le miroir DÉBITEUR de econ_wage_split au grain ROYAUME (pas
  * province) — un gain externe (récompense de mission) n'est plus une création : il est
@@ -3108,6 +3120,12 @@ void econ_tick(WorldEconomy *e, float dt) {
         if (!re->active || !re->colonized) continue;
 
         float supply[RES_COUNT]={0}, demand[RES_COUNT]={0};
+        /* MONNAIE M3f — BONUS : seed avec l'achat de la frappe libre du tick PRÉCÉDENT
+         * (g_mint_demand_prev, même lag qu'g_basket_pc) — le SEUL canal qui fait compter
+         * l'achat d'État dans le calcul de prix de CE tick (target=BASE_PRICE×clampf(demand/
+         * avail,…) plus bas). */
+        demand[RES_GOLD]   = g_mint_demand_prev[pid][0];
+        demand[RES_COPPER] = g_mint_demand_prev[pid][1];
         /* « 100 emplois = 100 emplois, qu'ils soient artisans ou bourgeois » : le BASSIN de
          * main-d'œuvre = JOURNALIERS + BOURGEOIS (l'élite, classe dirigeante, ne travaille pas)
          * + ESCLAVES (CLASS_SLAVE — lot esclavage : des bras SANS pression d'intégration).
@@ -4277,6 +4295,10 @@ void econ_tick(WorldEconomy *e, float dt) {
      * FRAC : protège le « stock de fonctionnement » (concept M1 — cuivre naval/armes/
      * horlogerie ne doit jamais être affamé par l'achat d'État). */
     {
+        /* MONNAIE M3f — BONUS : RAZ le seed de démarque (g_mint_demand_prev) — ne garder QUE
+         * la contribution de CE tick (écrasée, pas cumulée d'un tick à l'autre — motif
+         * g_basket_pc). */
+        memset(g_mint_demand_prev,0,sizeof g_mint_demand_prev);
         float buy_frac   = tune_f("MINT_FREE_BUY_FRAC", 0.15f);
         float floor_frac = clampf(tune_f("MINT_FREE_STOCK_FLOOR_FRAC", 0.5f), 0.f, 1.f);
         float infl = (e->ipm>0.f)? e->ipm : 1.f;
@@ -4317,6 +4339,11 @@ void econ_tick(WorldEconomy *e, float dt) {
                  * EN UNE FOIS évite tout double-décompte si on touchait treasury deux fois —
                  * TOUJOURS ≥0 (gate price<parity ci-dessus), donc jamais de dette. */
                 float gain = qty*(parity-price);
+                /* MONNAIE M3f — BONUS : l'achat compte dans la DEMANDE (prochain tick, seed
+                 * g_mint_demand_prev) — attribué à la CAPITALE (déjà la référence de `price`
+                 * ci-dessus, l'endroit où l'arbitrage se lit). mi correspond à FREE_METALS
+                 * (0=or, 1=cuivre), même index que g_mint_demand_prev[][2]. */
+                g_mint_demand_prev[cap][mi] += qty;
                 /* débit STOCK national SEUL (le trésor n'est PAS débité séparément — `gain`
                  * ci-dessous EST déjà net du coût d'achat, cf. commentaire) : prorata des
                  * régions qui portent ce métal (motif ROADS). */

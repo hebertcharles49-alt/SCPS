@@ -32,7 +32,13 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 90u           /* v90 : MONNAIE M3d — LA SOUTENABILITÉ + LA BANQUEROUTE :
+#define SAVE_VERSION 91u           /* v91 : MONNAIE M3f — LA CONVERGENCE ÉTALON (bonus) : le
+                                    * blob SVT_EMOB grandit d'un accumulateur inter-ticks neuf
+                                    * (g_mint_demand_prev[SCPS_MAX_PROV][2] — la demande semée
+                                    * par l'achat de la frappe libre du tick précédent, même lag
+                                    * qu'g_basket_pc) → raw fwrite, sizeof change, <v91 refusé
+                                    * (econ_mobility_load lit un format différent).
+                                    * v90 : MONNAIE M3d — LA SOUTENABILITÉ + LA BANQUEROUTE :
                                     * (1) ProvinceEconomy grandit d'un champ neuf,
                                     * bankruptcy_scar (SVT_ECON, raw fwrite → sizeof change) ;
                                     * (2) la section SVT_CRDT grandit d'un int16/pays
