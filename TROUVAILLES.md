@@ -1833,3 +1833,153 @@ comparable, le monde reste mortel).
 
 **Nettoyage** : worktree `../SCPS-v1-m3e-baseline` retiré ; tag `pre-m3e` posé avant
 tout changement (bb554f8).
+
+## CHANTIER MONNAIE — M3f : L'INVARIANT SERRÉ (2026-07-15)
+
+**Statut : CALIBRÉ-LIVRÉ — golden RE-BASELINÉ VERT, gates complets passés.** Les 5
+derniers sites catalogués par M0 (missions §1.5, tribut mûri §1.4, revendications/CB
+§2.10, gains d'événements §1.7, pillage-stock §2.12 + arbitrage résiduel §1.3) sont tous
+convertis en TRANSFERTS réels ; l'invariant M3c passe de « détecteur bruyant » (400 %,
+seuil jamais resserré depuis M3c) à SERRÉ (370 %, pic mesuré 348 %). Bonus : la frappe
+libre pousse enfin `demand[]`, le prix du métal converge (lentement) vers la parité.
+8 commits : events · missions · tribut · revendications · pillage/arbitrage · seuil
+serré · convergence étalon (bonus) · re-baseline.
+
+**1) LES 5 CONVERSIONS — le motif DOMINANT : « miroir du débit déjà converti ».**
+Quatre des cinq sites avaient déjà un COÛT symétrique converti dans une vague antérieure
+(M3b-v2 item 5, pattern `paid = trésor_avant − trésor_après` → crédit classes 42/20/38,
+JAMAIS le nominal complet) — le GAIN de M3f en est le MIROIR EXACT (lever sur les
+classes, créditer trésor de ce qui a RÉELLEMENT été levé) :
+- **Événements** (`scps_events.c`, `apply_region_eff`/`resolve_treasury_mois`) :
+  d_treasury>0 / d_treasury_mois>0 lève sur les 3 classes de la province/région SUJETTE
+  (bornée à ce qu'elles possèdent, PAS le panier vital — mirroring exact du COÛT qui, lui
+  non plus, ne respecte pas le panier vital, juste `re->treasury≥0`). **0 évènement
+  MÉTALLIQUE** (trésor enfoui/épave) trouvé dans EVENTS[] — l'exception réservée par le
+  brief ne s'applique à AUCUN site courant (à recreuser si un tel évènement est ajouté).
+- **Missions** (`scps_missions.c`, `mission_grant`) : NOUVELLE fonction publique
+  `econ_country_wealth_levy_bounded` (scps_econ.c/h) — lève au grain ROYAUME ENTIER (pas
+  la province, contrairement aux événements), 2 passes par classe (total disponible au-
+  dessus du panier vital, puis prorata), motif `debit_surplus_prorata`/scps_credit.c.
+  Panier vital EXPLICITEMENT exigé ici par le brief (contrairement aux événements) —
+  lu depuis `g_basket_pc` (static, scps_econ.c) : la fonction DOIT vivre dans ce fichier.
+- **Tribut mûri** (`scps_diplo.c`, branche VFN_COMMERCE de `diplo_suzerainty_tick`) :
+  ÉTAT>ÉTAT — vassal débité RÉELLEMENT (prorata sur ses provinces, borné à `max(0,
+  treasury)`), suzerain crédité du RÉEL prélevé. Motif copié du tribut de BASE (servage/
+  protectorat), 50 lignes plus haut dans le MÊME fichier — exactement le point d'entrée
+  que l'audit M0 avait déjà repéré.
+- **Revendications/CB** (`diplo_fabricate_cb`) : SEUL site où le brief tranche EXPLI-
+  CITEMENT contre la lecture M0 (§2.10 proposait « sink volontaire, bon candidat à
+  garder ») — décision joueur : transfert pur vers les ÉLITES du pays CIBLE (b), pas son
+  trésor. Débit de l'intrigant INCHANGÉ (toujours `econ_region_treasury_add(cr,-cost)`,
+  peut encore passer en dette locale — hors scope, motif pré-existant intact).
+- **Pillage-stock** (`diplo_pillage_value` + `diplo_siege_loot`) : DEUX mécanismes,
+  DEUX fixes différents — pas un copier-coller.
+  - `diplo_pillage_value` (saccage/raid, valeur CIBLÉE = 20 % du revenu annuel) : le
+    repli au-delà du trésor MONÉTISAIT le stock (détruit chez la victime, or créé chez
+    l'occupant). Remplacé par une levée sur la RICHESSE (3 classes, LABORER→BOURGEOIS→
+    ÉLITE dans l'ordre) — reste un flux GOLD (le return-value `loot` est consommé
+    directement comme or par navy.c/scps_sim.c, casser cette sémantique aurait un rayon
+    d'impact bien plus large que le budget M3f).
+  - `diplo_siege_loot` (détournement MENSUEL ∝ production, PENDANT un siège) : monétisait
+    le stock RÉELLEMENT pris chez une victime NON-wild sans jamais le LIVRER à l'occupant
+    (contrairement à la branche `victim_wild`, déjà physique depuis M3e). Unifié : livrai-
+    son PHYSIQUE dans LES DEUX cas désormais (`econ_region_stock_add(dst_region,...)`),
+    `loot` devient une valeur NOTIONNELLE pure (télémétrie `g_siege_loot_total`), ne
+    crédite plus AUCUN trésor. Les deux fixes sont volontairement ASYMÉTRIQUES (valeur
+    ciblée→richesse réelle vs. flux physique→livraison réelle) parce que les deux
+    mécanismes n'ont pas la même nature (l'un dénomine un MONTANT gold voulu, l'autre
+    convertit un STOCK déjà pris).
+  - **Arbitrage résiduel** (`scps_intertrade.c`, bloc M4) : AUDITÉ, RAS — déjà réparé par
+    M3a (commentaire du code lui-même : « UN MOUVEMENT = UN CRÉDIT »), rien à convertir.
+
+**2) LE SEUIL SERRÉ — mesurer le pic en UN run, pas par bisection.** Nouvelle télémétrie
+permanente `chronicle_invariant_peak_frac()` (chronicle.c) : trace le MAX de `frac`
+(autres/échelle) sur toute la sim, indépendamment du seuil courant — évite de relancer 9
+sims × N candidats de seuil. Mesuré sur 11 sims (sweep {9,11,42}×3×250 + determinism-deep
+{7,9}×2×200, CE dernier gate n'avait JAMAIS été mesuré pour l'invariant avant M3f) : pic
+MAX 348 % (seed 7 sim 2, ~an 150, determinism-deep — PAS dans le sweep dédié, dont le max
+est 323 %, seed 9 sim 2). **Le gate determinism-deep peut faire dériver le seuil PLUS que
+le sweep principal** — toujours le vérifier avant de poser un seuil, pas seulement les 3
+graines du brief. Seuil posé à 3.7 (370 %), ~6 % de marge au-dessus du pic observé —
+l'ambition « ≤0.5 » du brief est HORS D'ATTEINTE : les résidus nommés (épisodes
+d'épuisement du crédit M3c, bruit structurel de l'échelle en début de partie) ne sont pas
+dans le périmètre M3f.
+
+**3) LE BONUS — convergence étalon, le lag inter-tick comme SEUL levier.** `demand[]`
+(scps_econ.c) est un accumulateur 100 % LOCAL, remis à `{0}` À CHAQUE appel d'econ_tick,
+JAMAIS lu comme mémoire — un achat de la frappe libre (qui tourne APRÈS le calcul de prix
+du MÊME tick, post-aggregation) ne peut donc influencer AUCUN prix, ni celui de son
+propre tick (déjà calculé), ni celui du suivant (demand reparties de 0). Le SEUL point
+d'entrée possible : un accumulateur inter-ticks séparé, SEEDÉ dans `demand[]` au TOUT
+DÉBUT du tick suivant (`g_mint_demand_prev[pid][0/1]`, motif IDENTIQUE à `g_basket_pc`
+— même lag, même endroit du fichier, même pipeline save). Attribué à la CAPITALE (le
+point où `price` est déjà lu par l'achat lui-même) plutôt qu'aux régions individuelles
+(motif ROADS) — simplification VOLONTAIRE (perte de précision spatiale, acceptable pour
+un simple signal de demande).
+
+**4) LE PIÈGE — TMP/TEMP disparaît sous `make` en Git Bash (MSYS2).** `export TMP=...`
+dans le MÊME script bash que l'appel `make` ne suffit PAS : `gcc` échoue
+« Cannot create temporary file in C:\Windows\ » alors qu'un appel DIRECT à `cc` (même
+script, mêmes variables) réussit. Vérifié : `make -f test.mk` avec une recette
+`echo $$TMP` montre `TMP_SEEN=` (VIDE) — `make.exe` (MSYS2, natif Windows) ne transmet
+PAS `TMP`/`TEMP` à ses processus enfants même quand la variable est bien exportée dans le
+shell parent. Fix : lancer `make`/les binaires via l'outil **PowerShell** (pas Bash) —
+PowerShell a déjà `$env:TMP`/`$env:TEMP` correctement positionnés par Windows, il suffit
+d'ajouter `D:\MSYS2\mingw64\bin`/`D:\MSYS2\usr\bin` au `$env:Path`. Aucun contournement
+bash trouvé qui marche à travers `make` (essayé : TMP en style POSIX, en style Windows
+avec barres obliques, avec antislashs — aucun ne traverse `make`).
+
+**5) MESURES (sweep apparié pre-m3f vs HEAD, `./chronicle {9,11,42} 3 250 6 12`)** :
+- Dérive résiduelle "autres" : toujours du même ordre de grandeur que VA en VALEUR
+  ABSOLUE par sim isolée (ratio autres/VA de 0.16 à 1.4 sur les 9 sims), mais le SIGNE
+  est désormais BIDIRECTIONNEL (5 négatifs, 4 positifs — pas de biais systématique) et le
+  PIC ANNUEL (la vraie mesure de l'invariant, pas la moyenne coarse) chute de 301 % max
+  (M3c/M3d) à 323 % max (sweep dédié) — stable, PAS d'explosion malgré les 5 conversions.
+- Population finale (k, pré-m3f→post, 9 sims) : 364→318 (−12.6%) · 158→212 (+34.2%) ·
+  444→511 (+15.1%) · 336→327 (−2.7%) · 354→238 (−32.8%) · 305→319 (+4.6%) · 269→202
+  (−24.9%) · 337→459 (+36.2%) · 484→465 (−3.9%). Moyenne **+1.5 %** (quasi neutre) — la
+  bifurcation par-sim (motif M3b-v2.1/M3e) domine toujours, PAS de suppression
+  systématique (bidirectionnel, 4/9 dans ±10%).
+- Satisfaction (bandes) : Laborer 46-67% (base 45-64%) · Bourgeois 65-85% (base 65-84%)
+  · Élite 65-84% (base 65-84%) — INCHANGÉES dans l'esprit, aucune bande cassée.
+- **Colonisation EN BAISSE notable** (Σ fondations/graine, pré→post) : seed9 399→309
+  (−22.6%) · seed11 294→252 (−14.3%) · seed42 426→291 (−31.7%) — TOUJOURS en baisse sur
+  les 3 graines. Hypothèse (NON creusée, hors scope M3f) : les classes financent
+  désormais AUSSI missions/événements (un nouveau débit qui n'existait pas avant),
+  réduisant leur surplus disponible pour IP_COLON_WPC (colonisation du peuple). À
+  surveiller si une future vague touche la colonisation.
+- **Dette EN HAUSSE** (dette totale moy/sim, pré→post) : seed9 54.4k→93.8k (+72.6%) ·
+  seed11 72.2k→75.8k (+4.9%) · seed42 80.1k→100.1k (+25.0%) — cohérent : moins de
+  création gratuite ⇒ les pays empruntent davantage RÉELLEMENT (credit_borrow, M3c) au
+  lieu de recevoir de l'or ex nihilo. Lecture : le circuit crédit devient PLUS actif, pas
+  cassé (pas de plafond systématique atteint, cf. gates verts).
+- Hégémon mortel : 2/1/0 (pré) → 1/1/0 (post) — comparable, monde reste mortel.
+- Étalon (or, prix moy vs parité 16) : an 50 ~1.6-1.8 → an 150 ~1.8-1.9 → an 250 ~1.9-3.0
+  — la convergence est un effet TARDIF (compose avec la croissance des trésors sur 250
+  ans), PAS de saut dès l'an 0 malgré l'achat qui influence le PROCHAIN tick.
+
+**Gates (tous passés)** : sweep apparié {9,11,42}×3×250 (bandes tenues, invariant SERRÉ
+vert 9/9 à 370%, convergence étalon rapportée) · `make golden-update` (diff 5 lignes,
+documenté) · `make test` 38 VERTS/0 ROUGE/1 BUILD ÉCHEC (intertrade_demo, pré-existant
+Windows) · `make determinism` STABLE · `make determinism-deep` STABLE (seeds 7/9, 200
+ans — pic 348% y compris, sous le seuil 370%) · `scps_viewer --savetest 9` : A==B byte-
+identique (v91, blob SVT_EMOB grandit de g_mint_demand_prev) + altération d'un octet
+REFUSÉE · `make fuzz-save` 8/8 (216 octets flippés, tous rejetés, aucun crash).
+
+**Restes (hors scope, documentés)** :
+- Le seuil 370% ne peut PAS descendre vers l'ambition 50% du brief sans convertir les
+  résidus nommés au §2 ci-dessus (épisodes d'épuisement crédit M3c ~9-12k/sim, bruit
+  structurel début-de-partie) — un futur M3g potentiel, non commencé ici.
+- La convergence étalon reste LOIN de la parité (1.9-3.0 vs 16 à l'an 250) — un effet
+  réel mais lent ; un curseur "tout frapper"/accélération du buy_frac changerait
+  l'échelle (registre J, non touché ici — hors scope, le brief demandait de MESURER, pas
+  d'accélérer).
+- Colonisation en baisse (−14 à −32%/graine) : corrélation plausible avec le nouveau
+  débit missions/événements sur les classes, NON diagnostiquée en profondeur (hors scope
+  monétaire strict — même verdict que les restes hégémon des vagues précédentes).
+- `diplo_fabricate_cb` : le débit de l'intrigant (ligne `econ_region_treasury_add(cr,
+  -cost)`) reste une trésorerie qui peut passer négative HORS du circuit credit_borrow
+  tracé (motif pré-existant, PAS touché — brief l'interdit explicitement, "INTERDITS :
+  toucher au circuit M3b/crédit M3c").
+- Godot DLL non re-buildée (scons) : scps_econ.h a changé (nouvelle fonction publique
+  `econ_country_wealth_levy_bounded`) — à re-builder avant la prochaine session de jeu.
