@@ -416,11 +416,15 @@ static void chronicle_invariant_diag(const WorldEconomy *e, const World *w, int 
     for (int t=0;t<5;t++) if (top_p[t]>=0){
         int p=top_p[t];
         fprintf(stderr, "      [INVDIAG-WILD-TOP] an %d — prov %d Δ=%+.0f (treasury=%.0f pop L/B/E=%.0f/%.0f/%.0f "
-                "active=%d colonized=%d cap_pop=%.0f)\n",
+                "active=%d colonized=%d cap_pop=%.0f wealth L/B/E/S=%.0f/%.0f/%.0f/%.0f region=%d rowner=%d)\n",
                 year, p, top_d[t], (double)e->prov[p].treasury,
                 (double)e->prov[p].strata[CLASS_LABORER].pop, (double)e->prov[p].strata[CLASS_BOURGEOIS].pop,
                 (double)e->prov[p].strata[CLASS_ELITE].pop,
-                (int)e->prov[p].active, (int)e->prov[p].colonized, (double)e->prov[p].cap_pop);
+                (int)e->prov[p].active, (int)e->prov[p].colonized, (double)e->prov[p].cap_pop,
+                (double)e->prov[p].strata[CLASS_LABORER].wealth, (double)e->prov[p].strata[CLASS_BOURGEOIS].wealth,
+                (double)e->prov[p].strata[CLASS_ELITE].wealth, (double)e->prov[p].strata[CLASS_SLAVE].wealth,
+                (int)e->prov[p].region,
+                (e->prov[p].region>=0 && e->prov[p].region<e->n_regions)? (int)e->region[e->prov[p].region].owner : -99);
     }
     for (int t=0;t<5;t++) if (bot_p[t]>=0){
         int p=bot_p[t];
@@ -431,7 +435,6 @@ static void chronicle_invariant_diag(const WorldEconomy *e, const World *w, int 
                 (double)e->prov[p].strata[CLASS_ELITE].pop,
                 (int)e->prov[p].active, (int)e->prov[p].colonized, (double)e->prov[p].cap_pop);
     }
-    memcpy(g_inv_prev_prov, nowp, sizeof nowp);
     int nc = w? w->n_countries : SCPS_MAX_COUNTRY; if (nc>SCPS_MAX_COUNTRY) nc=SCPS_MAX_COUNTRY;
     int worst=-1; double worstabs=0.0; double sum_owned_d=0.0, sum_pos=0.0, sum_neg=0.0;
     for (int c=0;c<nc;c++){
@@ -452,6 +455,32 @@ static void chronicle_invariant_diag(const WorldEconomy *e, const World *w, int 
             (worst>=0 && w)? econ_country_bankruptcy_scar(e,worst) : -1.0f,
             sum_owned_d, sum_pos, sum_neg, d_wild, wild_n, d_wild_n,
             debt_tot, forced);
+    /* M3h DIAG — localiser le PIRE PAYS par province (motif WILD-TOP) : top 3 Δ + ventilation
+     * treasury/wealth par classe — print-only, gated par la MÊME chasse SCPS_INVDIAG. */
+    if (worst>=0 && w){
+        int wt_p[3]={-1,-1,-1}; double wt_d[3]={0,0,0};
+        for (int p=0;p<n;p++){
+            if (e->prov[p].owner!=worst) continue;
+            double d = nowp[p]-g_inv_prev_prov[p];
+            for (int t=0;t<3;t++) if (fabs(d)>fabs(wt_d[t])){
+                for (int s=2;s>t;s--){ wt_d[s]=wt_d[s-1]; wt_p[s]=wt_p[s-1]; }
+                wt_d[t]=d; wt_p[t]=p; break;
+            }
+        }
+        for (int t=0;t<3;t++) if (wt_p[t]>=0){
+            int p=wt_p[t];
+            fprintf(stderr, "      [INVDIAG-WORST] an %d — c=%d prov %d Δ=%+.0f (treasury=%.0f wealth L/B/E/S="
+                    "%.0f/%.0f/%.0f/%.0f pop=%.0f colonized=%d role=%d centre=%d)\n",
+                    year, worst, p, wt_d[t], (double)e->prov[p].treasury,
+                    (double)e->prov[p].strata[CLASS_LABORER].wealth, (double)e->prov[p].strata[CLASS_BOURGEOIS].wealth,
+                    (double)e->prov[p].strata[CLASS_ELITE].wealth, (double)e->prov[p].strata[CLASS_SLAVE].wealth,
+                    (double)(e->prov[p].strata[CLASS_LABORER].pop+e->prov[p].strata[CLASS_BOURGEOIS].pop
+                             +e->prov[p].strata[CLASS_ELITE].pop),
+                    (int)e->prov[p].colonized, (int)w->country[worst].role,
+                    intertrade_country_centre(e, worst));
+        }
+    }
+    memcpy(g_inv_prev_prov, nowp, sizeof nowp);   /* APRÈS le bloc WORST (il lit les deltas) */
     memcpy(g_inv_prev_percountry, now, sizeof now);
     g_inv_prev_wild=wild; g_inv_prev_wild_n=wild_n;
 }
@@ -825,6 +854,26 @@ int main(int argc, char **argv){
                 fprintf(stderr,"   [GARNDIAG] an %d — saisie année=%.0f (cum %.0f : dom %.0f · cs %.0f)\n",
                         yr, gt-garn_prev, gt, gd, gc);
                 garn_prev=gt;
+            }
+            /* MONNAIE M3h — DIAG (SCPS_DEBASEDIAG, print-only, gated : aucun coût hors
+             * mesure) : la VIE D'UNE DÉBASE type — chaque année, chaque pays en débase
+             * ACTIVE (frac>0) ou en RÉMANENCE (debase_kdrain>0 à la capitale) : le
+             * multiplicateur, la dette/plafond, le K_inst restant à la capitale, le
+             * déficit K accumulé (kdrain, ce que la décrue devra réparer), la cicatrice
+             * de banqueroute — la chronologie emprunt → débase → banqueroute → décrue. */
+            if (getenv("SCPS_DEBASEDIAG")){
+                for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+                    float frac=econ_country_debase_frac(s.econ,c);
+                    int cap=econ_country_capital_prov(s.econ,c);
+                    float kdr=(cap>=0)? s.econ->prov[cap].debase_kdrain : 0.f;
+                    if (frac<=1e-4f && kdr<=1e-4f) continue;
+                    fprintf(stderr,"   [DEBASEDIAG] an %d c=%d débase=%.2f streak=%d dette=%.0f/plafond %.0f "
+                            "K_cap=%.2f kdrain=%.2f scar=%.2f rot=%.2f\n",
+                            yr, c, frac, credit_insolvent_streak(c), credit_debt_total(c),
+                            credit_debt_ceiling(c),
+                            (cap>=0)? s.econ->prov[cap].build.K_inst : -1.f, kdr,
+                            econ_country_bankruptcy_scar(s.econ,c), faction_capture_total(c));
+                }
             }
             econ_flux_year_capture();
             for (int d=0; d<365; d++) sim_day(&s, w);
