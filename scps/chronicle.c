@@ -10,6 +10,7 @@
  */
 #define _POSIX_C_SOURCE 199309L   /* PROF : clock_gettime/CLOCK_MONOTONIC visibles sous -std=c99 strict */
 #include "scps_tune.h"
+#include "scps_math.h"   /* clampf partagé (M3d : le taux moyen observé) */
 #include "scps_world.h"
 #include "scps_econ.h"
 #include "scps_trade.h"
@@ -795,6 +796,17 @@ int main(int argc, char **argv){
                 { double wpc[CLASS_COUNT]; world_class_wpc(s.econ, wpc);
                   printf("              richesse/tête an %3d : Laborer %.2f · Bourgeois %.2f · Élite %.2f\n",
                          snap[si-1], wpc[CLASS_LABORER], wpc[CLASS_BOURGEOIS], wpc[CLASS_ELITE]); }
+                /* MONNAIE M3d — TRAJECTOIRE dette/revenu (gate 0, « la dette PLAFONNE-t-elle
+                 * en régime ») : moyenne dette/revenu-annuel des pays AVEC un revenu capté
+                 * (econ_country_tax_year — 0 durant le bootstrap <90j), à chaque instantané. */
+                { double debt_sum=0.0, rev_sum=0.0; int nd=0;
+                  for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+                      float rev=econ_country_tax_year(c);
+                      if (rev>1.f){ debt_sum+=(double)credit_debt_total(c); rev_sum+=(double)rev; nd++; }
+                  }
+                  printf("              dette/revenu an %3d : %.0f%% moyen (%d pays au revenu capté, plafond=%.0f%%)\n",
+                         snap[si-1], rev_sum>1.0?100.0*debt_sum/rev_sum:0.0, nd,
+                         100.0*tune_f("DEBT_CEILING_YEARS",3.0f)); }
                 si++;
             }
         }
@@ -835,6 +847,24 @@ int main(int argc, char **argv){
           printf("   dette (M3c) : %.0f or totale (%d pays débiteur(s)) — %.0f classes (%.0f%%) · %.0f cité-état (%.0f%%) · %ld rachat(s) · %ld épuisement(s)\n",
                  debt_tot, n_debtors, debt_class, debt_tot>1.0?100.0*debt_class/debt_tot:0.0,
                  debt_cs, debt_tot>1.0?100.0*debt_cs/debt_tot:0.0, buybacks, defaults); }
+
+        /* MONNAIE M3d — LA SOUTENABILITÉ + LA BANQUEROUTE (print-only, gate 1) :
+         * banqueroutes FORCÉES (chronique, l'IA aussi) vs VOLONTAIRES (CMD_BANKRUPTCY,
+         * joueur seul — 0 en chronique headless, human_player=-1) + le taux moyen
+         * observé (levier courant) et le nombre de pays AU PLAFOND fin de partie. */
+        { long b_forced=0, b_volunt=0; credit_bankruptcy_stats(&b_forced,&b_volunt);
+          double rate_sum=0.0; int n_rate=0, n_at_ceiling=0;
+          for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+              float dt=credit_debt_total(c); if (dt<=1.f) continue;
+              float ceil_=credit_debt_ceiling(c); if (ceil_<1.f) ceil_=1.f;
+              float lev=dt/ceil_;
+              float rate=clampf(tune_f("DEBT_RATE_BASE",0.02f)+tune_f("DEBT_RATE_SLOPE",0.03f)*lev,
+                                 tune_f("DEBT_RATE_MIN",0.02f), tune_f("DEBT_RATE_MAX",0.05f));
+              rate_sum+=(double)rate; n_rate++;
+              if (lev>=0.98f) n_at_ceiling++;
+          }
+          printf("   banqueroute (M3d) : %ld forcée(s) · %ld volontaire(s) — taux moyen %.2f%% (%d pays endettés) · %d pays AU PLAFOND fin de partie\n",
+                 b_forced, b_volunt, n_rate>0?100.0*rate_sum/(double)n_rate:0.0, n_rate, n_at_ceiling); }
 
         /* MONNAIE — M3a : L'INSTRUMENT (print-only, docs/MONNAIE_M0_AUDIT.md) — la
          * création résiduelle PAR CATÉGORIE, le tableau de bord que M3b regardera fondre
