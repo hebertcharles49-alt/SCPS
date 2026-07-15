@@ -186,9 +186,15 @@
     X(AI_SAVOIR_CATCHUP_FRAC, 0.45f) \
     /* PUISSANCE COMMERCIALE — la POP MARCHANDE produit le volume échangeable au marché (0.04·bourgeois
      * + 0.01·élite /mois) ; la CHAÎNE COMMERCIALE (Σ build.PE_infra) module en % (BLD_PER/point, plafond
-     * BLD_MAX) ; ECO_W = son poids dans la puissance éco diplo. Pool MENSUEL, drainé par les achats. */ \
-    X(COMMERCE_W_BOURGEOIS,   0.04f) \
-    X(COMMERCE_W_ELITE,       0.01f) \
+     * BLD_MAX) ; ECO_W = son poids dans la puissance éco diplo. Pool MENSUEL, drainé par les achats.
+     * M3e — LE TUYAU VERS LES SANS-MINES (décision joueur 2026-07-15) : poids ×5 (0.04→0.20,
+     * 0.01→0.05, calibrage sweep {9,11,42}×3×250 dans la fourchette ×3/×5/×10 proposée) — un
+     * empire sans mine d'or/cuivre IMPORTE le métal via ce volume marchand plus large, et son
+     * profil dette/liquidité en dépend (la frappe libre, M3e ci-dessus, ne mobilise QUE le
+     * métal que le commerce a fait ARRIVER chez lui). Effet SYSTÉMIQUE assumé (tout le
+     * commerce grossit, pas seulement le métal) — surveillé au sweep (marchés qui se vident). */ \
+    X(COMMERCE_W_BOURGEOIS,   0.20f) \
+    X(COMMERCE_W_ELITE,       0.05f) \
     X(COMMERCE_BLD_PER,       0.10f) \
     X(COMMERCE_BLD_MAX,       0.50f) \
     X(COMMERCE_ECO_W,         0.05f) \

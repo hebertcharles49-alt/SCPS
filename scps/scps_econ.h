@@ -970,10 +970,10 @@ void econ_country_heritage_digested(const World *w, const WorldEconomy *econ, in
  * en % (BLD_PER par point de PE_infra bâti, plafond BLD_MAX) ; ECO_W = son poids dans la puissance
  * éco de la diplo (diplo_eco_power). */
 #ifndef COMMERCE_W_BOURGEOIS
-#define COMMERCE_W_BOURGEOIS 0.04f
+#define COMMERCE_W_BOURGEOIS 0.20f   /* M3e — ×5 (0.04→0.20), cf. scps_tune_list.h */
 #endif
 #ifndef COMMERCE_W_ELITE
-#define COMMERCE_W_ELITE     0.01f
+#define COMMERCE_W_ELITE     0.05f   /* M3e — ×5 (0.01→0.05), cf. scps_tune_list.h */
 #endif
 #ifndef COMMERCE_BLD_PER
 #define COMMERCE_BLD_PER     0.10f
