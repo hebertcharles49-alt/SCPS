@@ -159,7 +159,12 @@ static void mission_grant(const World *w, WorldEconomy *econ, Statecraft *sc, co
      * évapore (≤ 30 j). Route par econ_region_stock_add (province représentative
      * d'abord, sœurs en débordement) comme le trésor ci-dessus. */
     int crp=econ_region_rep_province(econ,cr);
-    if (crp>=0 && crp<econ->n_prov) econ->prov[crp].treasury += m->reward_gold * mult;   /* or au trésor */
+    /* MONNAIE M3f — item 2 : la récompense n'est plus une création — elle est LEVÉE sur
+     * les 3 classes de TOUT le royaume (42/20/38, prorata, bornée au panier vital, motif
+     * exonération §3b) ; le trésor ne reçoit que ce qui a RÉELLEMENT été levé (jamais de
+     * dette forcée — un royaume pauvre voit sa mission rapporter MOINS que son nominal). */
+    if (crp>=0 && crp<econ->n_prov)
+        econ->prov[crp].treasury += econ_country_wealth_levy_bounded(econ, cid, m->reward_gold * mult);
     if (m->reward_mat>RES_NONE && m->reward_mat<RES_COUNT)
         econ_region_stock_add(econ, cr, m->reward_mat, m->reward_qty * mult);  /* matières au marché */
     mission_seat_loyalty(sc, cid, m, tune_f("COUNCIL_MISSION_SUCCESS_LOYALTY",5.f));   /* P3 : réussite → +loyauté */

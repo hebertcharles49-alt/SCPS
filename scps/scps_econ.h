@@ -617,6 +617,14 @@ float econ_region_stock_add(WorldEconomy *e, int region, int good, float delta);
 float econ_region_treasury_add(WorldEconomy *e, int region, float delta);
 float econ_region_pop_add(WorldEconomy *e, int region, int cls, float delta);
 float econ_region_wealth_add(WorldEconomy *e, int region, int cls, float delta);   /* item 5 M3b-v2 : idem, richesse d'une classe */
+/* MONNAIE M3f — item 2 (missions) : lève `requested` sur les 3 classes (LABORER/
+ * BOURGEOIS/ELITE, clé 42/20/38) de TOUT le royaume `cid` — prorata de la richesse
+ * DISPONIBLE de chaque province/classe, bornée au panier vital (g_basket_pc, même
+ * garde-fou que l'exonération fiscale §3b) : une classe déjà sous son panier/tête ne
+ * contribue pas, aucune classe n'est mise à sec en-dessous. Ne crée JAMAIS de dette —
+ * renvoie le montant RÉELLEMENT levé (peut être < requested si le royaume est pauvre :
+ * la mission rapporte alors MOINS que son nominal). */
+float econ_country_wealth_levy_bounded(WorldEconomy *e, int cid, float requested);
 /* Reconstruit region[] EN ENTIER depuis prov[] (le CŒUR d'econ_tick, exposé nu — PURE
  * fonction de prov[], AUCUN effet de temps/dt). Exposée pour les BANCS : un fixture qui
  * pose l'économie directement sur prov[] (charte : la vérité vit là) doit pouvoir rafraîchir

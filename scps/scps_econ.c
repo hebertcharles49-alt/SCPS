@@ -2817,6 +2817,44 @@ bool econ_mobility_load(FILE *f){
         && fread(g_lowsat_streak,sizeof g_lowsat_streak,1,f)==1
         && fread(g_basket_pc,sizeof g_basket_pc,1,f)==1;
 }
+/* MONNAIE M3f — item 2 : le miroir DÉBITEUR de econ_wage_split au grain ROYAUME (pas
+ * province) — un gain externe (récompense de mission) n'est plus une création : il est
+ * LEVÉ sur les 3 classes de TOUT le pays, au prorata de la richesse DISPONIBLE de chaque
+ * province (au-dessus du panier vital, même garde-fou que l'exonération fiscale §3b —
+ * TAX_EXEMPT_BASKET_MULT). Deux passes par classe (total disponible, puis prorata) —
+ * aucun tableau intermédiaire, motif debit_surplus_prorata/scps_credit.c. */
+float econ_country_wealth_levy_bounded(WorldEconomy *e, int cid, float requested){
+    if (!e || cid<0 || cid>=SCPS_MAX_COUNTRY || requested<=0.f) return 0.f;
+    int n=e->n_prov; if (n>SCPS_MAX_PROV) n=SCPS_MAX_PROV;
+    float mult = tune_f("TAX_EXEMPT_BASKET_MULT",1.0f);
+    float want[CLASS_COUNT]; memset(want,0,sizeof want);
+    { float wl,wb,we; econ_wage_split(requested,&wl,&wb,&we);
+      want[CLASS_LABORER]=wl; want[CLASS_BOURGEOIS]=wb; want[CLASS_ELITE]=we; }
+    float got=0.f;
+    for (int c=0;c<CLASS_COUNT;c++){
+        if (c!=CLASS_LABORER && c!=CLASS_BOURGEOIS && c!=CLASS_ELITE) continue;
+        if (want[c]<=0.f) continue;
+        float tot=0.f;
+        for (int p=0;p<n;p++){
+            const ProvinceEconomy *pe=&e->prov[p];
+            if (pe->owner!=cid || !pe->active || !pe->colonized) continue;
+            float floor_ = (pe->strata[c].pop>EPS) ? g_basket_pc[p][c]*pe->strata[c].pop*mult : 0.f;
+            float av = pe->strata[c].wealth - floor_; if (av>0.f) tot += av;
+        }
+        if (tot<=EPS) continue;
+        float take_c = fminf(want[c], tot);
+        for (int p=0;p<n;p++){
+            ProvinceEconomy *pe=&e->prov[p];
+            if (pe->owner!=cid || !pe->active || !pe->colonized) continue;
+            float floor_ = (pe->strata[c].pop>EPS) ? g_basket_pc[p][c]*pe->strata[c].pop*mult : 0.f;
+            float av = pe->strata[c].wealth - floor_; if (av<=0.f) continue;
+            float share = take_c*(av/tot);
+            pe->strata[c].wealth -= share;
+            got += share;
+        }
+    }
+    return got;
+}
 static void mobility_move(ProvinceEconomy *re, int from, int to, float frac){
     float pop=re->strata[from].pop; if (pop<1.f || frac<=0.f) return;
     float moved=pop*frac; if (moved<0.01f) return;
