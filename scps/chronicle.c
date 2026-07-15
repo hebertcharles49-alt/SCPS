@@ -930,6 +930,12 @@ int main(int argc, char **argv){
           printf("   frappe : %.0f or/an moyen (%d/%d empires frappeurs) · réserve fin %.0f or · %.0f cuivre\n",
                  (years>0)? mint_accum/(double)years : 0.0, n_frappeurs, n_alive_end,
                  reserve_fin_gold, reserve_fin_copper); }
+        /* MONNAIE M3e — L'ÉTALON (print-only) : prix moyen fin de partie de l'or/cuivre vs
+         * leur parité de frappe — la frappe libre achète sous la parité, donc le prix du
+         * métal devrait CONVERGER vers (rester sous) la parité : la preuve de l'arbitrage. */
+        printf("   étalon (M3e) : or prix moy %.2f (parité %.1f) · cuivre prix moy %.2f (parité %.1f)\n",
+               (double)econ_avg_price(s.econ, RES_GOLD),   (double)tune_f("MINT_PARITY_GOLD",16.0f),
+               (double)econ_avg_price(s.econ, RES_COPPER), (double)tune_f("MINT_PARITY_COPPER",5.2f));
 
         /* MONNAIE M3c — LA DETTE VIT (print-only, docs/MONNAIE_CONCEPT.md §M3 Cœur B) :
          * dette totale/pays débiteur, part classes vs cité-état, rachats de crédit et

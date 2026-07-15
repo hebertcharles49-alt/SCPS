@@ -32,6 +32,15 @@
      * (parité + royalty + share) qui porte la re-liquéfaction. */ \
     X(MINT_PARITY_GOLD,      16.0f) \
     X(MINT_PARITY_COPPER,     5.2f) \
+    /* M3e — LA FRAPPE LIBRE (décision joueur, LE levier probable) : l'État peut ACHETER
+     * le métal or/cuivre de son propre marché (transfert réel, jamais de crédit) puis le
+     * frapper à la parité — mobilise les stocks marchands DORMANTS (cuivre notamment).
+     * MINT_FREE_BUY_FRAC : part du revenu MENSUEL commise à l'achat (par métal, si
+     * l'arbitrage est positif — prix<parité). MINT_FREE_STOCK_FLOOR_FRAC : part du stock
+     * NATIONAL protégée (jamais achetée) — le « stock de fonctionnement » du concept M1
+     * (usages physiques : navale/armes/horlogerie ne doivent pas être affamés). */ \
+    X(MINT_FREE_BUY_FRAC,      0.15f) \
+    X(MINT_FREE_STOCK_FLOOR_FRAC, 0.5f) \
     /* §G0.4/H7 — le robinet d'or (les bandes de flux) */ \
     X(ENTRETIEN_DIV,        400.0f) \
     /* H7 (M3d re-tarif, décision joueur 2026-07-15) — l'entretien d'UN job = part de son

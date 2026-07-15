@@ -4221,6 +4221,84 @@ void econ_tick(WorldEconomy *e, float dt) {
         }
     }
 
+    /* MONNAIE M3e — LA FRAPPE LIBRE (décision joueur 2026-07-15, LE levier probable de la
+     * re-liquéfaction) : l'État peut ACHETER le métal or/cuivre de SON PROPRE marché
+     * (transfert RÉEL — le trésor paie au prix courant national, jamais de crédit) puis
+     * le frapper à la parité — SÉPARÉ de la redevance royale (MINT_ROYALTY, siphonnée à
+     * la SOURCE, jamais marchande, cf. §1 extraction) : ici le métal a DÉJÀ été valorisé/
+     * vendu (VA) avant d'entrer au stock — l'achat est une transaction marchande RÉELLE.
+     * ATOMIQUE (achat+frappe en UNE passe, PAS de round-trip par reserve_gold/copper) —
+     * choix documenté : router le débit d'achat par le MÊME bucket FX_MINT que la frappe
+     * royale aurait exposé chronicle_mint_flux_accum (qui ne somme QUE les FX_MINT
+     * POSITIFS par pays/an, cf. TROUVAILLES M3c) à un net négatif invisible à l'instrument
+     * si achat>frappe un mois donné — l'atomicité (gain=qty×(parité−prix), TOUJOURS ≥0)
+     * élimine ce risque par construction, au prix de ne jamais visiblement remplir
+     * reserve_gold/copper pour cette voie (la redevance royale, elle, continue d'y
+     * transiter normalement). Ne PROCÈDE que si prix<parité (l'arbitrage n'a de sens que
+     * dans CE sens — la frappe ne perd jamais d'argent). Plancher MINT_FREE_STOCK_FLOOR_
+     * FRAC : protège le « stock de fonctionnement » (concept M1 — cuivre naval/armes/
+     * horlogerie ne doit jamais être affamé par l'achat d'État). */
+    {
+        float buy_frac   = tune_f("MINT_FREE_BUY_FRAC", 0.15f);
+        float floor_frac = clampf(tune_f("MINT_FREE_STOCK_FLOOR_FRAC", 0.5f), 0.f, 1.f);
+        float infl = (e->ipm>0.f)? e->ipm : 1.f;
+        static const Resource FREE_METALS[2] = { RES_GOLD, RES_COPPER };
+        for (int c=0;c<SCPS_MAX_COUNTRY;c++){
+            int cap = econ_country_capital_prov(e, c);
+            if (cap<0) continue;
+            float month_income = econ_country_tax_year(c)/12.f * infl;
+            if (month_income<=0.f) continue;
+            /* trésor NATIONAL disponible ce mois (même discipline ROADS/INVEST : jamais
+             * de dette forcée pour un achat — « n'achète que ce que son trésor paie »). */
+            float treas_remaining=0.f;
+            for (int r=0;r<e->n_regions;r++)
+                if (e->region[r].owner==c && e->region[r].treasury>0.f) treas_remaining+=e->region[r].treasury;
+            if (treas_remaining<=0.f) continue;
+            for (int mi=0; mi<2; mi++){
+                if (treas_remaining<=0.f) break;
+                Resource metal = FREE_METALS[mi];
+                bool is_gold = (metal==RES_GOLD);
+                float parity = tune_f(is_gold?"MINT_PARITY_GOLD":"MINT_PARITY_COPPER",
+                                       is_gold?16.0f:5.2f);
+                float price = e->prov[cap].price[metal];
+                if (price<=0.f || price>=parity) continue;   /* arbitrage nul/négatif : pas d'achat */
+                float stock_tot=0.f;
+                for (int r=0;r<e->n_regions;r++) if (e->region[r].owner==c) stock_tot+=e->region[r].stock[metal];
+                float avail_stock = stock_tot*(1.f-floor_frac);
+                if (avail_stock<=0.f) continue;
+                float budget = fminf(buy_frac*month_income, treas_remaining);
+                if (budget<=0.f) continue;
+                float qty = fminf(budget/price, avail_stock);
+                if (qty<=0.f) continue;
+                float cost = qty*price;
+                /* gain = qty×(parité−prix) = qty×parité − cost : DÉJÀ le net de l'achat
+                 * (cost, débité du marché national — cf. stock ci-dessous) ET de la frappe
+                 * (qty×parité, jamais créditée séparément — l'atomicité EST la raison du
+                 * choix : un débit `cost` PUIS un crédit `qty*parité` SÉPARÉS donneraient le
+                 * MÊME total treasury (-cost puis +qty*parité = +gain), mais créditer `gain`
+                 * EN UNE FOIS évite tout double-décompte si on touchait treasury deux fois —
+                 * TOUJOURS ≥0 (gate price<parity ci-dessus), donc jamais de dette. */
+                float gain = qty*(parity-price);
+                /* débit STOCK national SEUL (le trésor n'est PAS débité séparément — `gain`
+                 * ci-dessous EST déjà net du coût d'achat, cf. commentaire) : prorata des
+                 * régions qui portent ce métal (motif ROADS). */
+                float remain=qty;
+                for (int r=0;r<e->n_regions && remain>1e-4f;r++){
+                    if (e->region[r].owner!=c || e->region[r].stock[metal]<=0.f) continue;
+                    float take=fminf(remain, e->region[r].stock[metal]*(qty/fmaxf(stock_tot,EPS)));
+                    if (take<=0.f) continue;
+                    float taken=-econ_region_stock_add(e, r, metal, -take);
+                    remain-=taken;
+                }
+                treas_remaining-=cost;   /* comptabilité de GATE seule (l'affordabilité, pas un débit réel) */
+                /* le gain (parité−prix) frappe DIRECTEMENT au trésor de la capitale (même
+                 * canal que la frappe royale, §M2 ci-dessous) — I0 : même ligne FX_MINT. */
+                e->prov[cap].treasury += gain;
+                econ_flux_add(c, FX_MINT, gain);   /* I0 : la ligne frappe (frappe libre incluse) */
+            }
+        }
+    }
+
     /* MONNAIE M2 — LA FRAPPE (point fixe MENSUEL, docs/MONNAIE_CONCEPT.md). Grain PROVINCE :
      * la monnaie entre au trésor via la province CAPITALE (le canal de l'impôt), jamais
      * l'indirection région. econ_country_mint_month est la fonction PURE partagée avec le
