@@ -2101,16 +2101,21 @@ static void apply_region_eff(EventCtx *cx, int r, const EvEffect *e){
     re->build.H_coerc = fmaxf(0.f, re->build.H_coerc + e->d_H_coerc);
     re->build.food_cap= fmaxf(0.f, re->build.food_cap+ e->d_food_cap);
     re->coercion      = clampf(re->coercion + e->d_coercion, 0.f, 1.f);
-    { float before_tr=re->treasury;
-      re->treasury    = fmaxf(0.f, re->treasury + e->d_treasury);
-      /* MONNAIE M3b-v2 — item 5 (addendum joueur, « les events sont aussi un sink ») : un
+    { /* MONNAIE M3b-v2 — item 5 (addendum joueur, « les events sont aussi un sink ») : un
        * COÛT d'événement (d_treasury<0) n'est plus une destruction pure — un TRANSFERT vers
        * les 3 classes de LA PROVINCE SUJETTE (42/20/38 par défaut ; le texte narratif de
        * CHAQUE événement n'est pas triable à ce site GÉNÉRIQUE unique — table par événement
-       * documentée comme reste en TROUVAILLES). Les GAINS (d_treasury>0) restent une
-       * création pure cette vague — non convertis (la contrepartie nommée/la découverte
-       * diégétique exigeraient un site par événement, hors budget). */
+       * documentée comme reste en TROUVAILLES).
+       * MONNAIE M3f — item 1 : le GAIN (d_treasury>0) est désormais son MIROIR — LEVÉ sur
+       * les mêmes 3 classes (42/20/38), bornée à ce que chaque classe possède (jamais de
+       * négatif, même mécanique que le débit trésor ci-dessous) ; le trésor ne reçoit que ce
+       * qui a RÉELLEMENT été levé. EXCEPTION réservée par le brief pour les trouvailles
+       * explicitement MÉTALLIQUES (trésor enfoui/épave) : AUCUN évènement du registre
+       * EVENTS[] courant n'est de cette nature (0 cas — vérifié, rapport M3f) — l'exception
+       * ne s'applique donc à rien ici, à recreuser si un tel évènement est ajouté. */
       if (e->d_treasury<0.f){
+          float before_tr=re->treasury;
+          re->treasury = fmaxf(0.f, re->treasury + e->d_treasury);
           float paid=before_tr-re->treasury; if (paid<0.f) paid=0.f;
           if (paid>0.f){
               float wl,wb,we; econ_wage_split(paid,&wl,&wb,&we);
@@ -2118,6 +2123,15 @@ static void apply_region_eff(EventCtx *cx, int r, const EvEffect *e){
               re->strata[CLASS_BOURGEOIS].wealth += wb;
               re->strata[CLASS_ELITE].wealth     += we;
           }
+      } else if (e->d_treasury>0.f){
+          float wl,wb,we; econ_wage_split(e->d_treasury,&wl,&wb,&we);
+          float tl=fminf(fmaxf(wl,0.f), re->strata[CLASS_LABORER].wealth);
+          float tb=fminf(fmaxf(wb,0.f), re->strata[CLASS_BOURGEOIS].wealth);
+          float te=fminf(fmaxf(we,0.f), re->strata[CLASS_ELITE].wealth);
+          re->strata[CLASS_LABORER].wealth   -= tl;
+          re->strata[CLASS_BOURGEOIS].wealth -= tb;
+          re->strata[CLASS_ELITE].wealth     -= te;
+          re->treasury += (tl+tb+te);
       } }
     /* ESCLAVAGE — FUITE #9 : un évènement (peste/famine/vague migratoire…) multiplie la pop
      * de TOUTES les strates — mais aucun évènement ne touche les PopGroup (ce module ne les
@@ -2140,14 +2154,25 @@ static void resolve_treasury_mois(EventCtx *cx, int cid, int region, const EvEff
     if (e->d_treasury_mois==0.f || region<0) return;
     float revenu_mois = econ_country_tax_year(cid) / 12.f;
     float montant = e->d_treasury_mois * revenu_mois * econ_world_ipm(cx->econ);
-    float paid = econ_region_treasury_add(cx->econ, region, montant);
-    /* item 5 : un COÛT (paid<0) → classes 42/20/38 de LA RÉGION sujette (même motif que
-     * apply_region_eff ci-dessus) ; un GAIN (paid>0) reste une création pure cette vague. */
-    if (paid<0.f){
-        float amt=-paid, wl,wb,we; econ_wage_split(amt,&wl,&wb,&we);
-        econ_region_wealth_add(cx->econ, region, CLASS_LABORER,   wl);
-        econ_region_wealth_add(cx->econ, region, CLASS_BOURGEOIS, wb);
-        econ_region_wealth_add(cx->econ, region, CLASS_ELITE,     we);
+    /* item 5 : un COÛT (montant<0) → classes 42/20/38 de LA RÉGION sujette (même motif que
+     * apply_region_eff ci-dessus).
+     * MONNAIE M3f — item 1 (mois) : un GAIN (montant>0) est désormais son MIROIR — LEVÉ sur
+     * les mêmes classes (econ_region_wealth_add borne déjà à ce qui existe, jamais de
+     * négatif) ; le trésor ne reçoit que ce qui a RÉELLEMENT été levé. */
+    if (montant<0.f){
+        float paid = econ_region_treasury_add(cx->econ, region, montant);
+        if (paid<0.f){
+            float amt=-paid, wl,wb,we; econ_wage_split(amt,&wl,&wb,&we);
+            econ_region_wealth_add(cx->econ, region, CLASS_LABORER,   wl);
+            econ_region_wealth_add(cx->econ, region, CLASS_BOURGEOIS, wb);
+            econ_region_wealth_add(cx->econ, region, CLASS_ELITE,     we);
+        }
+    } else if (montant>0.f){
+        float wl,wb,we; econ_wage_split(montant,&wl,&wb,&we);
+        float tl = -econ_region_wealth_add(cx->econ, region, CLASS_LABORER,   -wl);
+        float tb = -econ_region_wealth_add(cx->econ, region, CLASS_BOURGEOIS, -wb);
+        float te = -econ_region_wealth_add(cx->econ, region, CLASS_ELITE,     -we);
+        econ_region_treasury_add(cx->econ, region, tl+tb+te);
     }
 }
 static void apply_effect(EventCtx *cx, EvScope scope, int subject, const EvEffect *e){
