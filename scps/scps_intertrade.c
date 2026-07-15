@@ -9,6 +9,7 @@
 #include "scps_agency.h"   /* E2 §10 : lire EDI_COMPTOIR dans le masque d'édifices bâtis */
 #include "scps_tune.h"     /* I6 : marges d'import calibrables */
 #include "scps_provlog.h"  /* le JOURNAL diplomatique (embargo décrété/levé, display) */
+#include "scps_math.h"     /* clampf partagé — MONNAIE M5 R1 (TOLL_STATE_SHARE) */
 #include <math.h>
 #include <string.h>
 #include <stdio.h>
@@ -998,8 +999,18 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
                                 econ_flux_add(src->owner, FX_TOLL_RECV, total-gross); }  /* I0 */
             /* MONNAIE M3b-v2 — item 5 (décision joueur 2026-07-14) : le PÉAGE (la marge
              * total−gross, TRADE_LEVY) → BOURGEOIS de la province exportatrice, plus le
-             * trésor d'État (les marchands qui négocient l'échange, pas la couronne). */
-            if (total>gross) econ_region_wealth_add(e, src_r, CLASS_BOURGEOIS, total-gross);
+             * trésor d'État (les marchands qui négocient l'échange, pas la couronne).
+             * MONNAIE M5 — R1 (décision joueur 2026-07-15, « le toll, 50/50 état-
+             * bourgeois ») : TOLL_STATE_SHARE route désormais une part au trésor —
+             * MÊME montant total (total-gross), juste le split qui change. 0 = tout
+             * bourgeois (legacy byte-identique). */
+            if (total>gross){
+                float toll_lv=total-gross;
+                float st=clampf(tune_f("TOLL_STATE_SHARE",0.5f),0.f,1.f);
+                float state_part=toll_lv*st, bourg_part=toll_lv-state_part;
+                if (state_part>0.f) econ_region_treasury_add(e, src_r, state_part);
+                if (bourg_part>0.f) econ_region_wealth_add(e, src_r, CLASS_BOURGEOIS, bourg_part);
+            }
             if (dst->owner>=0) econ_flux_add(dst->owner, FX_IMPORT, -total);
             /* WG — le tenant du détroit prélève SA part (transfert exportateur→tenant :
              * conservation préservée, l'importateur ne paie pas plus, le verrou skime). */
@@ -1010,8 +1021,13 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
                 if (toll>0.f){
                     *src_tr -= toll;
                     /* item 5 : le péage de DÉTROIT → BOURGEOIS du tenant (même famille que le
-                     * péage d'échange ci-dessus), plus son trésor d'État. */
-                    econ_region_wealth_add(e, choke_hold_reg, CLASS_BOURGEOIS, toll);
+                     * péage d'échange ci-dessus), plus son trésor d'État.
+                     * MONNAIE M5 — R1 : TOLL_STATE_SHARE split trésor/bourgeois (même toll,
+                     * cf. site échange ci-dessus). */
+                    { float st=clampf(tune_f("TOLL_STATE_SHARE",0.5f),0.f,1.f);
+                      float state_part=toll*st, bourg_part=toll-state_part;
+                      if (state_part>0.f) econ_region_treasury_add(e, choke_hold_reg, state_part);
+                      if (bourg_part>0.f) econ_region_wealth_add(e, choke_hold_reg, CLASS_BOURGEOIS, bourg_part); }
                     if (cid_ok(choke_hold_cid)){
                         g_choke_toll[choke_hold_cid]+=toll; econ_flux_add(choke_hold_cid, FX_TOLL_RECV, toll);
                         g_choke_toll_cumul[choke_hold_cid]+=toll;   /* le CUMUL de sim (la preuve) */

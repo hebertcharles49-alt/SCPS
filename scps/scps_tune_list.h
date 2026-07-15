@@ -1149,6 +1149,15 @@
     X(INCOME_TAX,                      1.0f) \
     X(INCOME_TAX_RATE_LABORER,         0.40f) \
     X(INCOME_TAX_RATE_BOURGEOIS,       0.55f) \
-    X(INCOME_TAX_RATE_ELITE,           0.75f)
+    X(INCOME_TAX_RATE_ELITE,           0.75f) \
+    /* MONNAIE M5 — R1 : LE TOLL 50/50 (décision joueur 2026-07-15, « le toll,
+     * 50/50 état-bourgeois »). Les 3 sites de péage (échange inter-empire
+     * TRADE_LEVY, détroit IT_CHOKE_TOLL, marge d'import chantier IMPORT_TOLL_FRAC)
+     * versaient JUSQU'ICI 100 % aux BOURGEOIS de l'hôte (item 5, M3b-v2.1) — l'État
+     * y perdait le revenu. TOLL_STATE_SHARE partage désormais le péage entre le
+     * trésor de la province-hôte (econ_region_treasury_add) et les bourgeois
+     * (econ_region_wealth_add), même montant total, juste le SPLIT qui change.
+     * 0 = kill-switch : 100 % bourgeois, chemin legacy byte-identique. */ \
+    X(TOLL_STATE_SHARE,                0.5f)
 
 #endif /* SCPS_TUNE_LIST_H */

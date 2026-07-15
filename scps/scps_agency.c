@@ -8,6 +8,7 @@
 #include "scps_agency.h"
 #include "scps_intertrade.h"   /* #5 : le marché à 2 étages (devis + déplétion des stocks) */
 #include "scps_credit.h"       /* un seul livre d'or : le chantier débite l'or national (debt-aware) */
+#include "scps_math.h"         /* clampf partagé — MONNAIE M5 R1 (TOLL_STATE_SHARE) */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>   /* getenv : diag de gate (SCPS_GATEDIAG) */
@@ -386,7 +387,13 @@ bool agency_build_acct(AgencyState *a, WorldEconomy *econ, const World *w, int r
          * tiennent le comptoir) — effet caisse : l'hôte perd ce revenu de trésor (moins de
          * marge pour entretien/cour/admin), compensé par le fait que ces postes redistribuent
          * déjà aux classes (item 5 ci-dessus) plutôt que de détruire. */
-        econ_region_wealth_add(econ, re->import_toll_region, CLASS_BOURGEOIS, toll);   /* RE-KEY : sur la PROVINCE */
+        /* MONNAIE M5 — R1 (décision joueur 2026-07-15, « le toll, 50/50 état-bourgeois ») :
+         * TOLL_STATE_SHARE route une part au trésor de l'hôte, le reste aux bourgeois —
+         * MÊME toll total, juste le split (0 = tout bourgeois, legacy byte-identique). */
+        { float st=clampf(tune_f("TOLL_STATE_SHARE",0.5f),0.f,1.f);
+          float state_part=toll*st, bourg_part=toll-state_part;
+          if (state_part>0.f) econ_region_treasury_add(econ, re->import_toll_region, state_part);
+          if (bourg_part>0.f) econ_region_wealth_add(econ, re->import_toll_region, CLASS_BOURGEOIS, bourg_part); }   /* RE-KEY : sur la PROVINCE */
         if (re->owner>=0) econ_flux_add(re->owner, FX_TOLL_PAID, -toll);                       /* I0 */
         int tro=econ->region[re->import_toll_region].owner; if (tro>=0) econ_flux_add(tro, FX_TOLL_RECV, toll);
     }
