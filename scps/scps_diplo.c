@@ -393,7 +393,31 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
                 int spid=econ_region_rep_province(econ, capreg[s]);
                 if      (fn==VFN_AGRAIRE) econ_region_stock_add(econ, capreg[s], RES_GRAIN, base*food);   /* vivres → pool (province) */
                 else if (fn==VFN_MARTIAL){ if (spid>=0&&spid<econ->n_prov) econ->prov[spid].mil_stock+=base*mil; }  /* la levée du vassal */
-                else                     { if (spid>=0&&spid<econ->n_prov) econ->prov[spid].treasury +=base*gold; }  /* l'or marchand */
+                else {
+                    /* MONNAIE M3f — item 3 : le tribut « mûri » (VFN_COMMERCE, l'or marchand)
+                     * était une pure création (M0 §1.4) — ÉTAT > ÉTAT réel désormais : le
+                     * VASSAL est débité RÉELLEMENT (borné à son trésor RÉEL ≥0, prorata sur
+                     * ses provinces — même motif que le tribut de base ligne 332 ci-dessus) ;
+                     * le suzerain ne reçoit que ce qui a RÉELLEMENT été prélevé — le tribut
+                     * ÉCHOUE/SE RÉDUIT si le vassal est pauvre, jamais de création. */
+                    float want=base*gold, avail=0.f;
+                    for (int r2=0;r2<econ->n_regions;r2++){
+                        if (econ->region[r2].owner!=v) continue;
+                        int rp=econ_region_rep_province(econ,r2); if (rp<0||rp>=econ->n_prov) continue;
+                        avail += fmaxf(0.f, econ->prov[rp].treasury);
+                    }
+                    if (want>0.f && avail>0.f){
+                        float take_tot=fminf(want,avail), taken=0.f;
+                        for (int r2=0;r2<econ->n_regions;r2++){
+                            if (econ->region[r2].owner!=v) continue;
+                            int rp=econ_region_rep_province(econ,r2); if (rp<0||rp>=econ->n_prov) continue;
+                            float a=fmaxf(0.f, econ->prov[rp].treasury); if (a<=0.f) continue;
+                            float t=take_tot*(a/avail);
+                            econ->prov[rp].treasury -= t; taken+=t;
+                        }
+                        if (spid>=0&&spid<econ->n_prov) econ->prov[spid].treasury += taken;
+                    }
+                }
             }
             /* (c) ANNEXION-PROCESSUS — un maître ANNEXEUR (Dominateur/Honneur) DIGÈRE un vassal
              *     INTÉGRÉ : durée ∝ prix × (1−DISCOUNT·intégration), payée en or/an ; à 1.0 →
