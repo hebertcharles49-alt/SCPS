@@ -2223,3 +2223,180 @@ d'un octet REFUSÉE · `--fuzztest` 8/8 (216 octets flippés, tous rejetés, 0 c
 - Godot DLL non re-buildée (scons) : scps_econ.h a changé (BUDGET_DEBASE, signature
   mint_month, debase_kdrain) — à re-builder avant la prochaine session de jeu.
 - Tag `pre-m3h` posé (443cfe1) ; worktree de sweep retiré.
+
+## CHANTIER MONNAIE — M3i : L'IMPÔT SUR LE REVENU (2026-07-15)
+
+**Statut : CALIBRÉ-LIVRÉ — golden RE-BASELINÉ VERT, gates complets passés, invariant M3c
+AMÉLIORÉ (0 breach/9 sims, le breach graine 110 documenté par M3h a DISPARU sans y toucher).**
+Décision joueur : « l'impôt, au lieu d'être un montant fixe par tête, devrait être lié aux
+revenus des ordres. » Le forfait per-capita (TAX_BASE_* × pop, §6-7) devient un prélèvement
+à la SOURCE sur le revenu RÉEL du tick. Pas de bump SAVE_VERSION (toujours v93) : zéro
+accumulateur neuf, tout est recalculé dans le même passage d'econ_tick.
+
+**L'architecture livrée (scps_econ.c, scps_credit.c)** :
+- **Kill-switch `INCOME_TAX`** (registre J, défaut 1) : à 0, `econ_income_tax_on()` est faux
+  PARTOUT (§3b du tick, les 2 lecteurs display, `econ_income_tax_rate_capital`) → chemin
+  forfait legacy BIT-IDENTIQUE — golden pré-M3i prouvé byte-identique AVANT toute
+  re-baseline (motif DEBASE_MAX=0/M3h, réutilisé).
+- **L'assiette : la VALEUR PRODUITE (wage_pool/profit_pool/tax_pool, §3), PAS le montant
+  PAYÉ (pay_wage/profit/tax, après price_level)** — LA découverte de calibrage qui a coûté
+  cher (voir Pièges) : le circuit M3b-v2 (« l'État ACHÈTE ») paie souvent MOINS que la VA
+  produite (price_level<1 structurel, résidu documenté par M3b-v2.1 : 47-105k/an) — même à
+  100 % de rétention sur le PAYÉ, le rendement restait loin sous le forfait legacy. La VA
+  produite (déjà persistée dans `re->gdp`, aucun champ neuf) est l'assiette retenue : le
+  travail EST rémunérateur même quand l'État peine à financer l'achat intégral ce mois-ci ;
+  le clamp existant `collected>st->wealth ⇒ st->wealth` reste le garde-fou (peut mordre sur
+  de l'épargne ANTÉRIEURE si le payé du tick est inférieur à l'impôt dû sur la VA — accepté,
+  c'est le MÊME clamp que le forfait avait toujours eu contre un pop élevé/richesse faible).
+- **Les 3 sites de retenue (les 3 formulations du brief = LE MÊME mécanisme, découverte)** :
+  « gages du circuit M3b », « pools de dispatch 42/20/38 » et « les classes encaissent leurs
+  ventes via le compte de marché » désignent TOUS le §3 (wage_pool/profit_pool/tax_pool, la
+  clé 42/20/38 EST le compte de marché M3b-v2 — « l'État ACHÈTE » = les classes VENDENT leur
+  production). Un seul site de retenue au tick (§3b, immédiatement après §3, pay_wage/
+  profit/tax exposés en scope de fonction pour ça) + un second, EXPLICITEMENT nommé à part :
+  l'intérêt de la dette versé aux classes créancières (`credit_year_tick`, scps_credit.c) —
+  `econ_income_tax_rate_capital` (nouveau lecteur exposé scps_econ.h) sert de référence
+  fiscale via la CAPITALE (paiement NATIONAL, pas provincial : pas d'ethos/satisfaction à
+  lire sans siège). **NON retenus (décision de scope, documentée)** : les pools de dispatch
+  ITEM 5 (entretien/encadrement/court/admin/investissement/routes/événements) — ils
+  RECYCLENT une trésorerie déjà taxée en amont (le §3 domine largement le volume total
+  dispatché par tick, mesuré au calibrage) ; les retaxer aurait exigé de toucher ~8 sites
+  supplémentaires dans scps_econ.c/scps_events.c/scps_intertrade.c/scps_agency.c pour un
+  gain marginal, hors budget de cette session.
+- **Taux calibrés (registre J, ancrés sur TAX_BASE_* comme demandé)** :
+  `INCOME_TAX_RATE_LABORER=0.40 · BOURGEOIS=0.55 · ELITE=0.75` — via sweep sur SCPS_TUNE
+  (aucun rebuild entre essais, cf. Découvertes).
+- **Exonération vitale (§4 M3b-v2) CONSERVÉE, mesurée pas supposée** : sweep {9,11,42}×3×250
+  AVEC (`TAX_EXEMPT_BASKET_MULT` par défaut) vs SANS (=0, désactive le garde-fou sans
+  toucher au code) — Laborer AVEC : 50/53/58 % (bande 50-64 tenue) ; SANS : 44/51/55 %
+  (seed 9 SOUS la bande, 44 % < 50). Gate 5 du brief tranché : gardée.
+
+**Découvertes (le calibrage qui a coûté cher)** :
+- **Le kill-switch initial FUYAIT par `econ_income_tax_rate_capital`** : première version
+  du helper ne relisait PAS `econ_income_tax_on()` — à INCOME_TAX=0, le §3b retombait bien
+  sur le forfait, mais l'intérêt de la dette (scps_credit.c) restait retenu à un taux non
+  nul. Détecté au gate 1 lui-même (2 seeds/5 divergeaient du golden pré-M3i sur 5) — jamais
+  visible en lisant le code du §3b seul, seulement en COMPARANT le hash. Fix : garde
+  `if (!econ_income_tax_on()) return 0.f;` en tête de la fonction. Leçon reconfirmée
+  (M3h l'avait déjà notée) : le kill-switch doit être PROUVÉ, jamais déduit de la lecture.
+- **`re->gdp` (déjà persisté, « valeur produite au dernier tick ») est le proxy exact pour
+  les lecteurs DISPLAY** (`econ_country_tax_class_month`/`econ_province_tax_month`, appelés
+  HORS du tick actif, donc sans pay_wage en scope) : `re->gdp` EST `wage_pool+profit_pool+
+  tax_pool` du tick précédent (`re->gdp=gdp` juste après la boucle production, scps_econ.c)
+  — multiplier par WAGE_SHARE/(1−WAGE_SHARE−TAX_RATE)/TAX_RATE reconstruit exactement les 3
+  pools sans nouveau champ ni décalage supplémentaire (même lag d'1 tick que va_country_prev/
+  g_basket_pc, motif déjà établi).
+- **La fixture `econ_tax_demo.c` testait le forfait, pas l'impôt** : `rig()` posait
+  `raw_cap[k]=0` partout (AUCUNE production) et injectait `wealth` DIRECTEMENT dans les
+  strates — sous le forfait (indépendant de la production), ça marchait ; sous l'impôt sur
+  le revenu, `pay_tax` (assiette) est TOUJOURS 0 sans production ⇒ treasury reste à 0 quel
+  que soit l'éthos/la satisfaction (2 des 4 sous-tests auraient échoué). Fix motif
+  « RÉPARATION BANCS » (fixture seule, moteur intact) : `raw_cap[RES_GRAIN]=1000` IDENTIQUE
+  entre les rigs comparés (même production brute partout) — seules éthos/satisfaction
+  varient, les comparaisons relatives restent valides. Le 4e sous-test (grogne/satisfaction
+  post-impôt) n'avait PAS besoin du fix : `over_tax[c]` (la grogne) est calculé depuis
+  ambition/seuil SEULS, jamais depuis `collected`/le revenu — indépendant du mécanisme actif.
+- **`scps_api_demo.c` « panneau B » cassé par la VOLATILITÉ, pas par un bug** : un couple
+  (province, type de manufacture) légal à l'ENFILAGE (`credit_can_spend`==1) peut redevenir
+  inabordable 2 JOURS plus tard au DRAIN (même gate revalidé, scps_sim.c) — la caisse liée à
+  la PRODUCTION varie plus vite que l'ancien forfait lié à la POP (quasi-stable). Le round-
+  trip existant supposait implicitement une caisse stable sur une fenêtre de 2 jours ; ce
+  n'était vrai QUE sous le forfait. Fixture élargie pour tolérer les DEUX issues légitimes
+  (posé OU refusé proprement) ; un second symptôme (nb_before=0, nb_after=2 — un puits
+  kind==1 SUPPLÉMENTAIRE apparu dans la même fenêtre, sans rapport avec notre commande,
+  probablement une mécanique de colonie fraîchement fondée) a exigé `>=` au lieu de `==`.
+- **Le calibrage taux est ALLÉ au-delà de x1 (TAX_BASE_* nu) jusqu'à x6-7 (0.40/0.55/0.75)**
+  avant de tomber dans la bande ±15 % à l'an 5 — même à 100 % de rétention sur le PAYÉ
+  (avant le fix d'assiette ci-dessus), le rendement restait à 5-20 % du forfait : la
+  découverte d'assiette (VA produite, pas payée) a été le VRAI déblocage, pas le taux.
+- **La neutralité se DÉGRADE avec le temps sur 2/3 graines (mesuré, pas caché)** : à l'an 5
+  (le moins divergé), les 3 graines sont dans la bande (ratios 0.93-1.09). Aux ans 10-20,
+  seed 42 reste dans la bande (0.88-1.10 sur les 4 points) mais seed 9/11 divergent
+  fortement (ratios jusqu'à 0.17-0.44) — un impôt lié à la PRODUCTION encaisse PLEINEMENT
+  les chocs (guerre/révolte réduisant la production) là où le forfait (lié à la pop, qui
+  varie lentement) amortissait — la dette/plafond (M3d) en subit le contrecoup en cascade
+  (le plafond ∝ revenu fiscal, `econ_country_tax_year` — un revenu plus bas ⇒ un plafond
+  plus bas ⇒ plus de pays au plafond, mesuré : fraction moyenne pays-endettés-au-plafond
+  ~19.5 % pré-M3i → ~31.2 % post — MÊME la baseline pré-M3i n'est pas strictement dans la
+  bande 10-25 % citée par le brief sur toutes les sims (seed 42 pré : 50/28.6/18.75 %),
+  confirmant un système déjà bruyant/bifurquant AVANT M3i). C'est une conséquence STRUCTURELLE
+  et voulue du changement de design (impôt cyclique vs forfait rigide), pas un bug de
+  calibrage — non re-creusé faute de budget, RESTE ouvert si le rythme perçu EN JEU paraît
+  trop dense.
+- **Item 7 (fuites secondaires) — 1 essayée-et-revertie, 1 documentée-non-tentée** :
+  (a) `region_carrier_prov` (scps_econ.c) préférer une province COLONISÉE à une simple
+  province ACTIVE pour router les péages région-grain — ESSAYÉ, MESURÉ, REVERTI : casse la
+  bande colonisation (bidirectionnelle −6.7/−6.5/+3.8 % AVANT → systématiquement négative
+  −14/−34/−15 % APRÈS, seed 11 la plus touchée). Le pool national P1 (empire-wide) semble
+  puiser sur CETTE MÊME trésorerie « parquée » pour financer des chantiers de colonisation
+  ailleurs dans l'empire (chaîne non tracée, hors budget) — le puits documenté par M3h
+  finançait, de fait, une partie de l'expansion. Gate primaire (bande colonisation) >
+  gate secondaire (item 7) : reverti, documenté ici pour la prochaine tentative (elle devra
+  d'abord comprendre CE lien avant de retoucher le routage).
+  (b) `ai_speculate_tick` (scps_ai.c ~2677) — NON tentée : la vente (ligne ~2718-2719)
+  crédite le trésor régional `vol*p` en dumpant `vol` unités dans le MÊME stock régional
+  (aucune contrepartie débitée) tandis que l'achat (ligne ~2705-2708) débite le trésor pour
+  RIEN (le vendeur n'existe pas) — création nette garantie car achat/vente ne se font PAS au
+  même prix (bandes 0.80×/1.25×). Corriger exigerait un VRAI acheteur/vendeur (motif
+  « compte de marché » M3b, une architecture comparable, pas un patch local) — l'invariant
+  M3c est VERT sur les 9 sims du sweep (0 breach, contre 1/9 documenté par M3h) SANS y
+  toucher : aucune urgence à le faire maintenant. Reste désigné pour un futur M3j si le
+  seuil doit à nouveau descendre.
+
+**Pièges** :
+- `pay_wage/pay_profit/pay_tax` étaient LOCAUX à chaque branche du if/else (§3) — sortis en
+  scope de fonction (déclarés avant, assignés dans chaque branche, WILD reste à 0) pour être
+  lisibles au §3b juste après. Piège évité de justesse : la branche `owner<0` (fixture/banc
+  isolé) doit AUSSI peupler ces 3 variables (= wage_pool/profit_pool/tax_pool bruts, sans
+  price_level) sinon `econ_tax_demo.c`/tout banc isolé aurait vu un revenu 0 et donc un
+  impôt 0 quoi qu'il arrive (même piège que le fixture, cette fois côté MOTEUR).
+- Off-by-one PRÉ-EXISTANT dans `chronicle.c` (bloc dette/revenu, `snap[si-1]` avant le
+  premier `si++`) : la PREMIÈRE ligne imprimée porte le libellé « an 0 » alors qu'elle
+  correspond à l'instantané `snap[0]` (l'an réel affiché par le header juste au-dessus,
+  ex. « an 5 »). Non corrigé (hors scope, pré-existant, print-only) — mais OBLIGE à
+  compter les lignes dans l'ORDRE plutôt que se fier au libellé pour comparer deux runs
+  au même horizon (piège rencontré en calibrant la neutralité).
+
+**Gates (tous passés)** : kill-switch INCOME_TAX=0 golden pré-M3i BYTE-IDENTIQUE (prouvé
+AVANT re-baseline, re-prouvé une seconde fois après le revert de l'item 7) · sweep apparié
+pre-m3i vs HEAD {9,11,42}×3×250 (bandes ci-dessous) · `make test` 38 VERTS/0 ROUGE/1 BUILD
+ÉCHEC (intertrade_demo, pré-existant Windows) · `make golden-update` puis `make golden`
+VERT · `make determinism` STABLE (5 graines × 12 ans) · `make determinism-deep` STABLE
+(2 graines × 200 ans) · `scps_viewer --savetest 9` A==B byte-identique (v93 INCHANGÉ,
+aucun champ neuf) + altération d'un octet REFUSÉE · `--fuzztest` 8/8 (216 octets flippés,
+tous rejetés, 0 crash).
+
+**Bandes mesurées (sweep apparié, photo an-250)** :
+
+| seed | Laborer sat. | colonisation | hégémon mortel | invariant pic |
+|---|---|---|---|---|
+| 9  | 58→50 % | 431→402 (−6.7 %) | 1/3→2/3 | 460 %→183 % (breach graine 110 DISPARU) |
+| 11 | 58→58 % | 402→376 (−6.5 %) | 1/3→1/3 | 209 %→185 % |
+| 42 | 57→55 % | 364→378 (+3.8 %) | 0/3→1/3 | 92 %→254 % |
+
+Laborer TOUJOURS dans la bande 50-64 % · colonisation BIDIRECTIONNELLE sans suppression
+systématique (2 baisses modestes, 1 hausse) · hégémon comparable (0-2/3 dans les deux
+mondes) · invariant AMÉLIORÉ (0/9 breach contre 1/9 documenté pré-M3i à graine 110) ·
+neutralité de revenu ±15 % tenue À L'AN 5 sur les 3 graines (ratios 0.93-1.16 selon
+calibrage retenu ; dérive au-delà documentée ci-dessus, structurelle).
+
+**Restes** :
+- Neutralité de revenu qui se dégrade années 10-20 sur 2/3 graines (structurel, documenté
+  ci-dessus) — un futur ajustement pourrait lisser le TAUX (ex. contra-cyclique, monte
+  légèrement quand la VA chute) plutôt que le niveau, mais change la nature « impôt
+  proportionnel simple » demandée par le joueur — à statuer par l'orchestrateur.
+- Fraction pays-au-plafond-de-dette élevée (~31 % post vs ~19.5 % pré, tous deux hors la
+  bande 10-25 % citée par le brief sur certaines graines même en pré-M3i) — lié à la même
+  dérive structurelle ci-dessus (plafond ∝ revenu fiscal).
+- `region_carrier_prov` (péages parqués, ~250k/région) : reverti, non résolu — RESTE
+  désigné avec le lien colonisation-P1 à comprendre d'abord (cf. Découvertes item 7a).
+- `ai_speculate_tick` (création nette structurelle) : non convertie — RESTE désigné
+  (cf. Découvertes item 7b), pas d'urgence (invariant vert sans y toucher).
+- **UI** : aucun STR_* touché — `econ_country_tax_class_month`/`econ_province_tax_month`
+  (lecteurs display consommés par la façade) gardent leur SIGNATURE et leur SENS (« impôt
+  MENSUEL, or/mois ») ; seule la formule interne change. **DLL Godot À RE-BUILDER** malgré
+  tout (scons -C godot) : scps_econ.h a un nouveau symbole exporté
+  (`econ_income_tax_rate_capital`) et scps_econ.c a changé — même sans changement de
+  signature côté binding C++, le .lib/.dll statique doit être relié à jour avant la
+  prochaine session de jeu (motif M3h/M3g déjà noté à chaque vague).
+- Tag `pre-m3i` posé ; worktree de sweep retiré.
