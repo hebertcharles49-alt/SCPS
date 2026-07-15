@@ -801,6 +801,31 @@ int main(int argc, char **argv){
              * FX_* ci-dessus — état "fin d'année Y-1 / avant tick de l'année Y", mint_accum
              * et money_mass mutuellement À JOUR au MÊME instant, motif money_creation_accum). */
             if (yr>0) chronicle_invariant_check(s.econ, w, yr, seed, k+1, mint_accum);
+            /* MONNAIE M3g — DIAG (SCPS_GARNDIAG, print-only, gated : aucun coût hors
+             * mesure) : la CHRONOLOGIE d'une banqueroute type — chaque année, chaque
+             * pays SOUS CICATRICE : scar (la part saisie = BANKRUPTCY_GARNISH×scar),
+             * pop, satisfaction pop-pondérée, trésor, part cité-état figée ; + le flux
+             * annuel de saisie monde (delta du cumul credit_garnish_stats). */
+            if (getenv("SCPS_GARNDIAG")){
+                static double garn_prev=0.0;   /* diag-only : pas RAZ par sim (le delta an-à-an reste juste, la 1re année de chaque sim ignore le résidu) */
+                double gt=0,gd=0,gc=0; credit_garnish_stats(&gt,&gd,&gc);
+                for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+                    float scar=econ_country_bankruptcy_scar(s.econ,c);
+                    if (scar<=0.01f) continue;
+                    double gpop=0, satw=0, tre=0;
+                    for (int p=0;p<s.econ->n_prov && p<SCPS_MAX_PROV;p++){
+                        const ProvinceEconomy *pe=&s.econ->prov[p];
+                        if (pe->owner!=c || !pe->active || !pe->colonized) continue;
+                        double pp=0; for (int kk=0;kk<CLASS_COUNT;kk++) pp+=pe->strata[kk].pop;
+                        gpop+=pp; satw+=pe->satisfaction*pp; tre+=pe->treasury;
+                    }
+                    fprintf(stderr,"   [GARNDIAG] an %d c=%d scar=%.2f pop=%.0f sat=%.0f%% trésor=%.0f cs_share=%.2f\n",
+                            yr, c, scar, gpop, gpop>0?100.0*satw/gpop:0.0, tre, credit_garnish_cs_share(c));
+                }
+                fprintf(stderr,"   [GARNDIAG] an %d — saisie année=%.0f (cum %.0f : dom %.0f · cs %.0f)\n",
+                        yr, gt-garn_prev, gt, gd, gc);
+                garn_prev=gt;
+            }
             econ_flux_year_capture();
             for (int d=0; d<365; d++) sim_day(&s, w);
             /* conquêtes de l'année : régions passées d'un PAYS à un autre (de force) */
@@ -977,6 +1002,18 @@ int main(int argc, char **argv){
           }
           printf("   banqueroute (M3d) : %ld forcée(s) · %ld volontaire(s) — taux moyen %.2f%% (%d pays endettés) · %d pays AU PLAFOND fin de partie\n",
                  b_forced, b_volunt, n_rate>0?100.0*rate_sum/(double)n_rate:0.0, n_rate, n_at_ceiling); }
+
+        /* MONNAIE M3g — LA BANQUEROUTE-SAISIE (print-only, gate 1) : valeur totale
+         * confisquée aux banqueroutiers CE run, ventilée créanciers domestiques (classes
+         * rentières, wealth) vs cité-état (trésor, repli documenté) — brief : « télémétrie :
+         * valeur saisie/banqueroute, part domestique/cités-états ». */
+        { double g_tot=0.0, g_dom=0.0, g_cs=0.0; credit_garnish_stats(&g_tot,&g_dom,&g_cs);
+          long b_forced2=0, b_volunt2=0; credit_bankruptcy_stats(&b_forced2,&b_volunt2);
+          long n_bankr = b_forced2+b_volunt2;
+          printf("   saisie (M3g) : %.0f or confisqué au total (%.0f/banqueroute moy.) — %.0f domestique (%.0f%%) · %.0f cité-état (%.0f%%)\n",
+                 g_tot, n_bankr>0?g_tot/(double)n_bankr:0.0,
+                 g_dom, g_tot>1.0?100.0*g_dom/g_tot:0.0,
+                 g_cs,  g_tot>1.0?100.0*g_cs/g_tot:0.0); }
 
         /* MONNAIE — M3a : L'INSTRUMENT (print-only, docs/MONNAIE_M0_AUDIT.md) — la
          * création résiduelle PAR CATÉGORIE, le tableau de bord que M3b regardera fondre
