@@ -100,3 +100,29 @@ frappe libre — CMD_BANKRUPTCY n'a pas de bouton) · hégémon affaibli récurr
 Proposer : EXPORT scps.exe (l'UI unifiée + TOUTE la monnaie jamais touchées en vrai
 — le plus gros backlog de test manuel du projet), OU l'UI de la monnaie (rendre
 visible dette/réserve/banqueroute), OU la vague invariant-serré (sites M0 restants).
+
+## MISE À JOUR 2026-07-15 — M3h LA DÉBASE (calibré-livré, v93)
+
+L'étage 2 de l'échelle du désespoir est CÂBLÉ : emprunter (M3c/M3d) → DÉBASER →
+banqueroute-saisie (M3g). Sur-frappe au-delà de la parité (value=parité×(1+débase),
+DEBASE_MAX=1), cash réel compté FX_MINT ; le PRIX passe par les ENTRÉES du moteur :
+K_inst rongé à la capitale (rémanence debase_kdrain, décrue lente), rot des
+Marchands (faction_capture_add, nouvel écrivain continu du g_capture), tolérance
+fiscale ↓ ∝ déficit K (câblage AJOUTÉ — K ne pilotait AUCUN canal fiscal avant).
+Curseur joueur BUDGET_DEBASE (verbe générique + binding, panneau GDScript = Restes) ;
+politique IA déterministe : streak≥2 au plafond → débase progressive → banqueroute
+forcée à streak 5, jamais sous cicatrice. Kill-switch DEBASE_MAX=0 prouvé
+byte-identique pré-M3h. Golden re-baseliné (1 graine/5), test 38/0/1, determinism +
+deep STABLES, savetest v93 A==B, fuzz 8/8.
+ÉCART DOCUMENTÉ : invariant M3c 8/9 — graine 110 (le monde le plus petit du sweep)
+breach 387-460 % vs seuil 370 % (pre : pic 299 %) — AUCUN canal M3h non compté
+(diagnostic complet en TROUVAILLES), c'est le bruit « autres » pré-existant re-tiré
+par la bifurcation ; précédent M3d appliqué (documenté, seuil non élargi).
+TROUVÉ EN CHASSE (pré-existants, candidats M3i) : spéculation IA jamais convertie
+(M0 §1.6, création lente garantie) · péages région-grain PARQUÉS sur des provinces-
+porteuses vides (~250k/province à l'an 250, conservé mais hors circulation).
+
+## PROCHAIN PAS ATTENDU
+M3i (l'invariant qui redescend) : convertir spéculation IA + parking des péages +
+saisie-monétisation M3g — OU l'UI de la monnaie (dette/réserve/banqueroute/débase
+visibles), OU l'EXPORT scps.exe (test manuel du plus gros backlog).

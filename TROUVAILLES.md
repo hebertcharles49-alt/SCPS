@@ -2081,3 +2081,145 @@ rejetés, aucun crash).
 - Colonisation deux graines LÉGÈREMENT au-dessus de la bande M3e +10 % (457 vs 399,
   344 vs 294) : direction saine (jamais en-dessous), non corrigée — freiner la
   colonisation pour rentrer dans une bande serait pervers.
+
+## CHANTIER MONNAIE — M3h : LA DÉBASE (2026-07-15)
+
+**Statut : CALIBRÉ-LIVRÉ avec UN écart documenté — golden VERT (re-baseliné, 1 graine/5),
+gates complets passés SAUF l'invariant sur UNE sim/9 (graine 110, pré-existant exposé, cf.
+Pièges).** L'étage 2 de l'échelle du désespoir (1. emprunter M3c/M3d → 2. DÉBASER →
+3. banqueroute-saisie M3g). 5 commits : levier+télémétrie (v93) · le prix K/rot ·
+politique IA · re-baseline+diag · ce TROUVAILLES.
+
+**L'architecture livrée** :
+- **LE LEVIER** : `econ_country_debase_frac` (scps_econ.c) — multiplicateur [0,DEBASE_MAX=1]
+  appliqué à la parité DANS `econ_country_mint_month` (value=parité×(1+débase), nouveau
+  param `debase_out` = la part sur-frappée, DÉJÀ incluse dans value_out). La sur-frappe est
+  de la monnaie RÉELLE comptée FX_MINT (l'invariant la voit comme frappe légitime),
+  télémétrie séparée (`econ_debase_stats_get` + ligne chronicle « débase (M3h) »).
+  JOUEUR : BUDGET_DEBASE (enveloppe 0-100 %, motif BUDGET_MINT, neutre=0) — le verbe
+  générique CMD_BUDGET_POLICY la couvrait DÉJÀ (family=1, index<BUDGET_POLICY_COUNT :
+  AUCUN nouveau verbe) ; binding = table budget_controls 6→7 postes (le curseur naît seul
+  dans les panneaux existants). SAVE_VERSION 93 (budget_mult grandit + debase_kdrain).
+- **LE PRIX (jamais un malus plat)** : pendant la sur-frappe RÉELLE (dbg>0 — un curseur
+  réglé sans réserve ne coûte RIEN), la capitale perd `DEBASE_K_EROSION_RATE×débase×dt`
+  de **ProvBuild.K_inst** (motif C3_K_HOLLOW, scps_revolt.c:962 — MAIS avec rémanence :
+  `ProvinceEconomy.debase_kdrain` mémorise le déficit, sérialisé v93) ; la DÉCRUE le
+  referme à `DEBASE_K_HEAL_RATE=0.10/an` à l'arrêt. K cascade par les canaux NATIFS
+  (prosperity_tick bK, migration_attractivity, assimilation K_eff — rien re-codé).
+  **LE ROT** : `faction_capture_add(c, FAC_MARCHAND, DEBASE_ROT_RATE×débase×dt)` —
+  nouvel écrivain CONTINU du g_capture existant (même accumulateur/plafond 0.85 que
+  faction_concede, AUCUN faction_lever_apply : l'enrichissement des initiés n'est pas un
+  vote gagné).
+- **LA POLITIQUE IA** : dernier recours AVANT la banqueroute forcée, règle déterministe —
+  `credit_insolvent_streak ≥ DEBASE_AI_ONSET_YEARS(2)` (le plafond de dette CHRONIQUE,
+  pas un pic isolé), progression linéaire jusqu'à BANKRUPTCY_GRACE_YEARS(5) = le saut à
+  l'étage 3 ; JAMAIS pendant une cicatrice active (le pays est DÉJÀ à l'étage 3).
+
+**Découvertes** :
+- **K_inst ne pilotait AUCUN canal fiscal** (vérifié : econ_tax_tolerance est une table
+  ÉTHOS×CLASSE pure, le seuil ne lit que la satisfaction) — le brief demandait « si K ne
+  pilote pas la tolérance fiscale, dis-le et propose le plus petit câblage doctrinal ».
+  Câblage AJOUTÉ : `econ_debase_tax_factor(debase_kdrain)` multiplie le SEUIL de
+  tolérance aux 3 sites (tick §3b + 2 lecteurs purs) — évasion ↑ ET over_tax ↑ (grogne)
+  DÉCOULENT de la formule §7 existante. Gated sur le DÉFICIT K créé par la débase (pas le
+  K_inst brut) : une province jamais débasée = facteur 1.0 bit-identique (kill-switch par
+  construction — c'est CE gate qui permet DEBASE_MAX=0 ⇒ golden pré-M3h byte-identique,
+  prouvé avant re-baseline, motif M1).
+- **La vie d'une débase type (SCPS_DEBASEDIAG, graine 9, c=39)** : dette → plafond
+  (streak 1-2, emprunte encore) → streak 3 : débase 0.33 → streak 4 : débase 0.67,
+  K_cap −0.17, rot +0.05 → streak 5 : BANQUEROUTE forcée (scar 1.0, débase COUPÉE net
+  par le gate cicatrice) → décrue : kdrain 0.50→0.09 en ~5 ans, K_cap se referme,
+  scar décroît. L'échelle emprunt → débase → banqueroute VÉCUE DANS L'ORDRE, mesurée.
+- **Les deux régimes, mesurés** : épisode COURT (c=39, cycles espacés ~15 ans) — kdrain
+  ≈0.5 pt réparé en 5 ans, rot +0.05-0.10/épisode, l'extra-cash aide avant le couperet
+  (RATIONNELLE) ; usage CHRONIQUE (c=100, 97 années en débase/rémanence sur 250) — rot
+  SATURE au plafond 0.85 (an 145 : l'État aux mains des Marchands), K_cap durablement
+  ≈0.1-0.5, tolérance fiscale −35 % max ⇒ évasion permanente (RUINEUSE). Le calibrage
+  cible du brief est atteint SANS balayage dédié : la structure du gate (scar coupe la
+  débase, le rot s'accumule sans rebondir) produit les deux régimes par construction.
+- **La décrue de K est plus courte que « des décennies » pour l'IA** : l'érosion IA est
+  bornée par la fenêtre streak 2→5 (2-3 ans max de débase avant la banqueroute) ⇒ kdrain
+  ≤~0.5 pt ⇒ ~5 ans de heal. Un JOUEUR qui tient le curseur à 100 % SANS être au plafond
+  de dette (pas de banqueroute forcée pour l'arrêter) accumule 0.5 pt/an sans borne — LÀ
+  les décennies (et le rot) mordent. Documenté, pas re-calibré : le régime IA court est
+  voulu (l'IA ne se suicide pas), le régime joueur long est le piège assumé du levier.
+- **Banqueroutes forcées (sweep apparié pre-m3h vs HEAD {9,11,42}×3×250)** : Σ/graine
+  277→308 · 276→309 · 474→406 — la graine la PLUS endettée (42) baisse de −14 % (la
+  débase en absorbe une part), les deux autres remontent légèrement (bruit de
+  bifurcation) ; total 1027→1023 (−0.4 %). « Légère baisse » : tenue sur le monde qui
+  comptait, pas uniforme.
+- **Débase vécue/sim** : 182-983 mois-pays actifs (proxy d'épisodes — un compteur
+  d'épisodes exigerait un état de transition, non posé), 2-154 or/an créés par
+  sur-frappe, 0-2 pays débasent encore en fin de partie (PAS de spirale chronique
+  généralisée — le gate cicatrice + le rot mordent).
+
+**Bandes M3g (sweep apparié, HEAD final onset=2)** : pop finale −4.1 % moyenne,
+BIDIRECTIONNELLE (3↑ dont +17.6 %, 6↓ dont −35.7 % — bruit de bifurcation M3b-v2.1,
+aucune suppression systématique) · satisfaction Laborer 50-63 % (base 50-64 %) ·
+colonisation Σ fondations/graine 457→431 · 344→402 · 420→364 (−5.7 % à +16.9 %,
+bidirectionnel) · dette totale comparable (46-213k pre → 30-181k head), 0-6 pays au
+plafond fin (pre : 1-9) · hégémon mortel 1/1/0 IDENTIQUE pre/head · taux moyen
+2.95-3.86 % (bande [2,5]).
+
+**Pièges** :
+- **L'invariant M3c casse sur UNE sim/9 (graine 110 = seed 9 sim 2) : 396/387 % (onset 1)
+  puis 386/460/370 % (onset 2) vs seuil 370 % — ABSENT pre-m3h (pic 299 %).** Diagnostic
+  poussé (INVDIAG par-année, par-classe, par-province, DEUX calibrages d'onset) : M3h
+  n'introduit AUCUN canal monétaire non compté (la sur-frappe est DANS FX_MINT que le
+  banc documente ; K/rot ne sont pas de la monnaie ; le facteur fiscal change la taille
+  d'un TRANSFERT). La cause est le BRUIT « autres » pré-existant (résidus nommés par M3f :
+  épuisements crédit, saisie-monétisation M3g, spéculation IA auto-contrepartie M0 §1.6
+  JAMAIS convertie) sur le monde à la PLUS PETITE échelle d'activité du sweep (VA ~20k/an,
+  pop 160k, 555+ provinces sauvages) : « autres » y est bidirectionnel ±20-70k/an dans
+  TOUTES les configs (pre inclus — pre sim 3 : +22k/an, head sim 3 de seed 9 : +72k/an
+  SANS breach car échelle 4× plus grande). M3f n'avait laissé que 6 % de marge (pic 348 %
+  → seuil 370 %) : TOUTE vague comportementale re-tire les dés sur ce monde marginal.
+  Précédent M3d appliqué (« un run isolé EXITERA 1 : documenté, pas caché ») ; le seuil
+  n'est PAS élargi (doctrine : resserrer, jamais élargir). Le VRAI fix est de convertir
+  les résidus M0 — un futur M3i, hors budget ici.
+- **La chasse a trouvé un pré-existant CONSERVÉ mais laid : la richesse bourgeoise
+  PARQUÉE sur des provinces-porteuses NON colonisées.** `econ_region_wealth_add` route
+  sur `region_carrier_prov` = la 1re province ACTIVE de la région — pas forcément
+  colonisée/peuplée. Les péages région-grain (détroits intertrade:1014, item 5 M3b-v2)
+  crédités à une région dont la porteuse est vide s'y ACCUMULENT à jamais (mesuré :
+  ~250k sur UNE province à l'an 250, ~15-26k/an monde) : personne ne consomme, personne
+  n'est taxé, la monnaie SORT de la circulation. CONSERVÉ (le payeur est bien débité —
+  vérifié transfert par transfert), donc PAS la cause du breach — mais un puits de
+  liquidité réel. Candidat M3i : router sur la 1re province COLONISÉE de la région (ou
+  du pays tenant).
+- **La spéculation IA (ai_speculate_tick, M0 §1.6) n'a JAMAIS été convertie** — vérifié
+  au fil de la chasse : achat bas/vente haut contre SON PROPRE trésor régional, création
+  nette lente structurellement garantie, toujours dans « autres ». Les 3 fixes M3a
+  étaient trade/arbitrage/colonisation — pas elle. À convertir en M3i si le seuil doit
+  UN JOUR descendre.
+- **Le Bash-tool mange UN niveau d'antislash dans les heredocs** : un `\n` de format C
+  écrit via heredoc python devient un VRAI saut de ligne (« missing terminating " ») ;
+  les continuations `\` de X-macro fusionnent les lignes (COMPILE quand même — les
+  sauts de ligne dans un commentaire /* */ de #define ne terminent pas la directive —
+  mais illisible : commits c1/c2 portent cette verrue cosmétique, réparée en c3).
+  Écrire les scripts python dans un FICHIER (Write tool) et l'exécuter, jamais en
+  heredoc, pour tout contenu à antislashs.
+- Le motif TMP/TEMP (TROUVAILLES M3f) tenu : TOUS les make/binaires via l'outil
+  PowerShell, zéro accroc. `*>` PowerShell écrit toujours de l'UTF-16 (iconv avant grep).
+
+**Gates** : sweep apparié pre-m3h vs HEAD {9,11,42}×3×250 (bandes ci-dessus, échelle
+dans l'ordre, invariant 8/9 verts + 1 breach documenté) · kill-switch DEBASE_MAX=0
+golden pré-M3h byte-identique · `make golden-update` (1 graine/5, diff revu) puis
+`make golden` VERT · `make test` 38 VERTS/0 ROUGE/1 BUILD ÉCHEC (intertrade_demo,
+pré-existant Windows) · `make determinism` STABLE · `make determinism-deep` STABLE
+(7/9 × 200 ans) · `scps_viewer --savetest 9` A==B byte-identique (v93) + altération
+d'un octet REFUSÉE · `--fuzztest` 8/8 (216 octets flippés, tous rejetés, 0 crash).
+
+**Restes** :
+- **Câblage UI GDScript du curseur « Débase »** (le binding/panneau générique le fait
+  naître, mais AUCUN affichage du coût K/rot ni de l'extra or/mois — motif « idx 5 »
+  de la frappe M2) — explicitement Restes par le brief.
+- Le compteur de MOIS-PAYS surestime les « débases/sim » (un épisode = plusieurs mois) —
+  un compteur d'épisodes exigerait un état de transition (flag était-en-débase), non posé.
+- Le breach invariant graine 110 : le fix RÉEL est la conversion des résidus « autres »
+  (spéculation IA §1.6, saisie-monétisation M3g, parking des péages) — M3i désigné.
+- `scps_player_budget_policy` clampe à ≥0.02 (motif paie) : un curseur joueur « 0 % »
+  vaut 2 % de débase — cohérent avec BUDGET_MINT (précédent M2, non touché).
+- Godot DLL non re-buildée (scons) : scps_econ.h a changé (BUDGET_DEBASE, signature
+  mint_month, debase_kdrain) — à re-builder avant la prochaine session de jeu.
+- Tag `pre-m3h` posé (443cfe1) ; worktree de sweep retiré.
