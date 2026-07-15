@@ -340,6 +340,14 @@ typedef struct {
      * BANKRUPTCY_SCAR_YEARS (~10 ans, registre J), motif revolt_scar. Sérialisée (SAVE_
      * VERSION 90) : état neuf, mêmes bornes save_sane [0..1]. */
     float      bankruptcy_scar;
+    /* M3h — LA DÉBASE (décision joueur 2026-07-15, « la débase se contrebalance en
+     * rot/perte de K ») : combien de points de ProvBuild.K_inst la débase a RONGÉS à
+     * la CAPITALE (motif C3_K_HOLLOW, scps_revolt.c — MAIS avec rémanence : ce champ
+     * mémorise le déficit pour le REFERMER lentement quand la débase cesse, contraire-
+     * ment à C3 qui n'a « aucun rebond »). 0 tant qu'aucune débase n'a jamais eu lieu
+     * (golden-neutre) ; décroît vers 0 sur des décennies (DEBASE_K_HEAL_RATE) à l'arrêt.
+     * Sérialisée (SAVE_VERSION 93) : état neuf, borne save_sane [0, 1e6[. */
+    float      debase_kdrain;
     /* Anti-saccage (§4 guerre) : une province DÉPOUILLÉE ne peut l'être à nouveau
      * avant ~5 ans (plus rien à prendre) — compteur en années, décroît chaque tick. */
     float      pillage_cd;

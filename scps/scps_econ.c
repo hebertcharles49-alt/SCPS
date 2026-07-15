@@ -2026,6 +2026,19 @@ float econ_tax_tolerance(Ethos e, SocialClass c){
     return T[e][c];
 }
 
+/* MONNAIE M3h — LA DÉBASE, LE CÂBLAGE FISCAL : « la tolérance fiscale ↓ (évasion ↑) DÉCOULE
+ * de K » (brief). K_inst ne pilotait AUCUN canal fiscal avant M3h (vérifié : econ_tax_
+ * tolerance est une table ÉTHOS×CLASSE pure, le seuil ne lit que satisfaction) — câblage
+ * MINIMAL, gated sur le DÉFICIT créé par la débase (debase_kdrain, PAS le K_inst brut d'une
+ * province jamais débasée) pour rester golden-neutre : une province qui n'a JAMAIS débasé a
+ * debase_kdrain=0 ⇒ facteur=1.0 (IDENTIQUE à avant M3h, kill-switch par construction). Une
+ * institution rongée par la débase se fait moins respecter fiscalement : moins de crédit,
+ * plus d'évasion — cascade native, aucun bonus plat sur l'évasion elle-même. */
+static float econ_debase_tax_factor(float debase_kdrain){
+    float k_ero = clampf(debase_kdrain / tune_f("DEBASE_TAX_K_REF", 2.0f), 0.f, 1.f);
+    return 1.f - tune_f("DEBASE_TAX_EROSION_MAX", 0.35f) * k_ero;
+}
+
 /* Curseur de PAIE/IMPÔT (joueur seul) : LINÉARISÉ 0–100 % (plus de surpaie/surtaxe ×2,
  * qui n'a pas de sens). 0 stocké = sentinel « non réglé » (chronique/IA) → 1.0 NEUTRE ;
  * une valeur réglée par le joueur vit dans [0.02, 1.0] (le setter garantit ≥0.02, jamais
@@ -2173,7 +2186,8 @@ float econ_country_tax_class_month(const WorldEconomy *e, int cid, SocialClass c
         if (!re->active || !re->colonized || re->owner!=cid) continue;
         const PopStratum *st=&re->strata[c];
         float sat     = clampf(st->satisfaction,0.f,1.f);
-        float seuil   = econ_tax_tolerance(re->culture.ethos,c)*(0.40f+0.60f*sat);
+        float seuil   = econ_tax_tolerance(re->culture.ethos,c)*(0.40f+0.60f*sat)
+                        * econ_debase_tax_factor(re->debase_kdrain);   /* M3h */
         float evasion = clampf(ambition - seuil, 0.f, 1.f);
         total += base * st->pop * mult * (1.f-evasion);
     }
@@ -2200,7 +2214,8 @@ float econ_province_tax_month(const WorldEconomy *e, int pid){
         }
         const PopStratum *st=&re->strata[c];
         float sat     = clampf(st->satisfaction,0.f,1.f);
-        float seuil   = econ_tax_tolerance(re->culture.ethos,(SocialClass)c)*(0.40f+0.60f*sat);
+        float seuil   = econ_tax_tolerance(re->culture.ethos,(SocialClass)c)*(0.40f+0.60f*sat)
+                        * econ_debase_tax_factor(re->debase_kdrain);   /* M3h */
         float mult    = econ_country_tax_mult(e, re->owner, (SocialClass)c);
         float ambition= STATE_TAX_AMBITION * mult;
         float evasion = clampf(ambition - seuil, 0.f, 1.f);
@@ -3557,7 +3572,8 @@ void econ_tick(WorldEconomy *e, float dt) {
         for (int c=0;c<CLASS_COUNT && !econ_is_wild_country(owner_);c++){
             PopStratum *st=&re->strata[c];
             float sat   = clampf(st->satisfaction,0.f,1.f);
-            float seuil = econ_tax_tolerance(re->culture.ethos,(SocialClass)c)*(0.40f+0.60f*sat);
+            float seuil = econ_tax_tolerance(re->culture.ethos,(SocialClass)c)*(0.40f+0.60f*sat)
+                         * econ_debase_tax_factor(re->debase_kdrain);   /* M3h */
             float mult  = econ_country_tax_mult(e,re->owner,(SocialClass)c);
             float ambition  = STATE_TAX_AMBITION * mult;   /* pilote l'évasion vs le seuil (INCHANGÉ) */
             float evasion   = clampf(ambition - seuil, 0.f, 1.f);
@@ -4441,11 +4457,27 @@ void econ_tick(WorldEconomy *e, float dt) {
             e->prov[cap].treasury += val;
             econ_flux_add(c, FX_MINT, val);   /* I0 : la ligne frappe (débase INCLUSE — le banc la voit comme frappe légitime) */
         }
-        /* MONNAIE M3h — TÉLÉMÉTRIE de la sur-frappe (le PRIX — K/rot — arrive au
-         * commit suivant) : ne compte que si CE tick a RÉELLEMENT sur-frappé. */
+        /* MONNAIE M3h — LE PRIX DE LA DÉBASE + LA DÉCRUE (voir scps_econ.h) : coûte
+         * SEULEMENT si CE tick a RÉELLEMENT sur-frappé (dbg>0 — un curseur réglé sans
+         * réserve à frapper ne coûte rien) ; sinon la capitale RÉPARE lentement le
+         * déficit accumulé (des décennies, DEBASE_K_HEAL_RATE) — jamais les deux à la
+         * fois. Érosion de K_inst (institution, motif C3_K_HOLLOW scps_revolt.c — MAIS
+         * avec rémanence) + rot des factions (Marchands enrichis, les initiés — motif
+         * faction_capture_add, incrément CONTINU tunable). Grain CAPITALE (même que la
+         * frappe elle-même — la Monnaie EST un acte du siège du pouvoir). */
+        ProvinceEconomy *cp = &e->prov[cap];
         if (dbg>EPS){
+            float debase  = econ_country_debase_frac(e, c);
+            float erosion = tune_f("DEBASE_K_EROSION_RATE", 0.5f) * debase * dt;
+            cp->build.K_inst   = fmaxf(0.f, cp->build.K_inst - erosion);
+            cp->debase_kdrain += erosion;
+            faction_capture_add(c, FAC_MARCHAND, tune_f("DEBASE_ROT_RATE", 0.15f) * debase * dt);
             g_debase_gold_cum += (double)dbg;
             g_debase_country_months++;
+        } else if (cp->debase_kdrain > EPS){
+            float heal = fminf(cp->debase_kdrain, tune_f("DEBASE_K_HEAL_RATE", 0.10f) * dt);
+            cp->build.K_inst   += heal;
+            cp->debase_kdrain  -= heal;
         }
     }
 }

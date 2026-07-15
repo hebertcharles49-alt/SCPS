@@ -134,6 +134,11 @@ void  faction_grievance_add(int cid, EthosFaction f, float amount);
 /* §C3 — la concession a un prix : capture de l'État, lue à l'écran en Corruption. */
 void         faction_concede(int cid, EthosFaction winner);       /* une concession gorge la faction gagnante */
 float        faction_capture_total(int cid);                      /* le « rot » 0..1 (malus noble, K creusé) */
+/* MONNAIE M3h — la DÉBASE gorge lentement une faction : incrément CONTINU (au tick, pas
+ * un saut fixe de concession one-shot) — même accumulateur/plafond que faction_concede
+ * (g_capture, CAPTURE_MAX), AUCUN levier de pouvoir (ce n'est pas un vote gagné, juste
+ * l'enrichissement des initiés). amount≤0 ignoré. */
+void         faction_capture_add(int cid, EthosFaction f, float amount);
 int          faction_corruption_0_100(int cid);                   /* l'indice de Corruption (écran) */
 int          faction_audit(int cid);                              /* I5 — réprime la capture (−20 pts) ; rend la corruption AVANT */
 EthosFaction faction_captor(int cid);                             /* la faction qui tient l'État (survol) */

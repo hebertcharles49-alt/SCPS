@@ -361,7 +361,11 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         if (!(pe->annex_scar>=0.f && pe->annex_scar<=1.f)) return false;
         /* v90 — MONNAIE M3d : la cicatrice de banqueroute (bankruptcy_scar) se revalide
          * comme annex_scar/revolt_scar, même borne [0..1]. */
-        if (!(pe->bankruptcy_scar>=0.f && pe->bankruptcy_scar<=1.f)) return false; }
+        if (!(pe->bankruptcy_scar>=0.f && pe->bankruptcy_scar<=1.f)) return false;
+        /* v93 — MONNAIE M3h : le déficit de K_inst rongé par la débase (debase_kdrain)
+         * se revalide (≥0, fini — motif reserve_gold, PAS un index, un montant de
+         * points K sans plafond dur mais borné large pour rejeter un fichier forgé). */
+        if (!(pe->debase_kdrain>=0.f && pe->debase_kdrain<1.0e6f)) return false; }
     /* v50 — chantiers de colonisation : src/dst indexent prov[] (ou -1), délais/cadence
      * bornés (une forge hors-borne indexerait la fondation ou gèlerait la cadence). */
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){

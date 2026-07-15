@@ -250,6 +250,15 @@ void faction_concede(int cid, EthosFaction winner){
     g_capture[cid][winner] += CAPTURE_PER_CONCESSION;          /* s'accumule, ne rebondit pas */
     faction_lever_apply(cid, winner, CAPTURE_LEVER);           /* le captor monte en pouvoir */
 }
+/* MONNAIE M3h — LA DÉBASE : le même accumulateur g_capture, un incrément CONTINU
+ * (l'appelant décide du rythme, ∝ dt×niveau de débase) au lieu du saut fixe d'une
+ * concession — AUCUN faction_lever_apply ici (ce n'est pas un vote gagné, juste
+ * l'enrichissement passif des initiés). Plafonné par CAPTURE_MAX via faction_capture_
+ * total (la somme brute peut dépasser le plafond en interne, comme faction_concede). */
+void faction_capture_add(int cid, EthosFaction f, float amount){
+    if (cid<0||cid>=SCPS_MAX_COUNTRY||f<0||f>=FAC_COUNT||amount<=0.f) return;
+    g_capture[cid][f] += amount;
+}
 /* Le « rot » 0..1 : part de l'État capturée (toutes factions), plafonnée. */
 float faction_capture_total(int cid){
     if (cid<0||cid>=SCPS_MAX_COUNTRY) return 0.f;
