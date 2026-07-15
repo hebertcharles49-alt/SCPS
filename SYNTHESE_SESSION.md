@@ -1,4 +1,38 @@
-# SYNTHÈSE DE SESSION — handoff roulant (2026-07-14 après-midi)
+# SYNTHÈSE DE SESSION — handoff roulant (2026-07-15 après-midi)
+
+## MONNAIE — ARC COMPLET M0→M3i (save v93, HEAD c901337)
+- **M3h LA DÉBASE** (4942ec9..d83a3dd, v93) : sur-frappe au-delà de la parité (curseur
+  BUDGET_DEBASE), payée en K_inst rongé à la capitale (debase_kdrain sérialisé) + rot
+  factions + évasion émergente (econ_debase_tax_factor — K ne pilotait AUCUN canal
+  fiscal avant). IA : dernier recours avant banqueroute forcée — l'échelle
+  emprunt→débase→banqueroute vécue DANS L'ORDRE (mesuré, graine 9 pays 39 : streak
+  3-4 débase, 5 banqueroute, récupération K en ~5 ans). Deux régimes : crise courte
+  rationnelle / chronique ruineux (rot saturé 0.85). Écart documenté : invariant 8/9,
+  graine 110 breach 387-460 % (bruit pré-existant, pas M3h).
+- **M3i L'IMPÔT SUR LE REVENU** (b409f33..c901337, v93 inchangé) : le forfait
+  per-capita remplacé par la retenue à la source sur les pools 42/20/38 + intérêts
+  créanciers ; taux × valeur produite × curseur × (1−évasion) ; capitale = référence
+  fiscale nationale. Neutralité an 5 : 0.93-1.09. Structurel assumé : l'impôt-production
+  encaisse les chocs (guerre/révolte) que le forfait-pop amortissait. Exonération
+  vitale CONSERVÉE (mesurée : sans elle, Laborer 44 % < bande). Invariant AMÉLIORÉ :
+  0 breach/9 (le breach 110 de M3h a disparu). Kill-switch prouvé ×2 (un bug de fuite
+  trouvé/corrigé dans econ_income_tax_rate_capital).
+- Fuites secondaires : péages porteuses (~250k/région) ESSAYÉ-REVERTI (casse la bande
+  colonisation, lien non tracé avec le pool P1) · ai_speculate_tick documenté non
+  tenté (exige un vrai acheteur/vendeur façon M3b ; invariant vert sans).
+- DLL Godot re-buildée post-M3h ET post-M3i. Tags reverse : pre-m3 … pre-m3i.
+
+## PROCHAIN PAS (au choix du joueur)
+1. **EXPORT scps.exe** — l'UI unifiée + TOUT le chantier monnaie jamais touchés en
+   vrai : le plus gros backlog de test manuel du projet.
+2. **UI DE LA MONNAIE** — réserve/dette/banqueroute/débase invisibles face joueur ;
+   CMD_BANKRUPTCY et le curseur débase n'ont pas de bouton.
+3. **Hégémon affaibli** — signal non-monétaire récurrent, jamais diagnostiqué
+   (candidat : cartes d'influence, mémoire scps-ref-4x-ai-thesis).
+
+---
+
+# (archive) SYNTHÈSE 2026-07-14 après-midi
 
 ## ÉTAT COURANT
 - Branche `claude/vibrant-euler-1tgfp3`, **tree propre**, tout committé jusqu'à `9035a11`.
