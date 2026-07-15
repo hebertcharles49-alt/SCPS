@@ -74,6 +74,11 @@ typedef enum {
                      * BUDGET_INVEST : neutre = 0 %, JAMAIS le sentinel-1.0 des autres
                      * enveloppes — non réglé = aucune frappe, golden-neutre). L'IA n'utilise
                      * PAS ce curseur (sa politique est fixe, MINT_AI_SHARE, registre J). */
+    BUDGET_DEBASE,  /* MONNAIE M3h — LA DÉBASE : part [0,1] de DEBASE_MAX de sur-frappe AU-
+                     * DELÀ de la parité (0..1, motif BUDGET_MINT : neutre = 0 %, golden-safe).
+                     * L'IA n'utilise PAS ce curseur — sa politique est un DERNIER RECOURS
+                     * ÉTAT-DÉPENDANT (credit_insolvent_streak), pas un registre J fixe, cf.
+                     * econ_country_debase_frac. */
     BUDGET_POLICY_COUNT
 } BudgetPolicy;
 
@@ -922,11 +927,24 @@ void  econ_wage_split(float amount, float *lab, float *bourg, float *elite);   /
 float econ_country_mint_share(const WorldEconomy *e, int cid);
 /* Frappe MENSUELLE — fonction PURE (aucune mutation), MIROIR EXACT du point fixe d'econ_tick :
  * gold_out/copper_out = métal frappé ce mois (réserve × part/100 / 12) ; value_out = monnaie
- * NEUTRE 1:1 au prix courant de la province capitale (aucun rapport fixe or/cuivre). cap_pid_out
- * (optionnel, peut être NULL) reçoit la province capitale résolue (-1 si aucune ⇒ tout à 0). */
+ * frappée À LA PARITÉ (aucun rapport fixe or/cuivre), MAJORÉE par la débase (M3h) si active —
+ * la parité EST la définition de l'unité, la débase est l'acte de frapper AU-DELÀ. cap_pid_out
+ * (optionnel, peut être NULL) reçoit la province capitale résolue (-1 si aucune ⇒ tout à 0).
+ * debase_out (optionnel, peut être NULL) reçoit la SEULE part due à la débase, DÉJÀ incluse
+ * dans value_out (télémétrie séparée — le banc invariant voit value_out comme frappe légitime). */
 void  econ_country_mint_month(const WorldEconomy *e, int cid,
                                float *gold_out, float *copper_out, float *value_out,
-                               int *cap_pid_out);
+                               int *cap_pid_out, float *debase_out);
+/* MONNAIE M3h — LA DÉBASE (décision joueur 2026-07-15) : multiplicateur [0, DEBASE_MAX]
+ * appliqué à la parité de frappe (rogner les pièces) — curseur JOUEUR (BUDGET_DEBASE,
+ * motif BUDGET_MINT) pour le pays du slot 0 ; politique D'ÉTAT-DÉPENDANTE pour l'IA
+ * (DERNIER RECOURS avant la banqueroute forcée — monte avec credit_insolvent_streak,
+ * s'arrête net dès qu'une cicatrice de banqueroute est active). Jamais mélangés. */
+float econ_country_debase_frac(const WorldEconomy *e, int cid);
+/* Télémétrie MONDE cumulée depuis econ_init (RAZ par partie/sim, NON sérialisée — motif
+ * credit_stats_get) : valeur totale créée par la débase (extra au-delà de la parité) et
+ * nombre de mois-pays passés en débase active CE run. */
+void  econ_debase_stats_get(double *gold_total, long *country_months);
 
 /* §4 (catalogue des biens) — fraction de pop « mal servie » d'une province :
  * une minorité d'une autre SPHÈRE réclame ses variantes ; l'assimilation efface

@@ -570,7 +570,11 @@
      * tous les ~8 ans (7/210 pays/sim sur 250 ans, seed 9) — la cicatrice (10 ans de decay)
      * n'avait JAMAIS le temps de se refermer. 5 ans double le répit avant le couperet. */ \
     X(BANKRUPTCY_GRACE_YEARS,  5.0f) \
-    /* DOTATIONS DE GENÈSE (M3d, mordent dès l'an 0 — l'invariant M(0) les absorbe) : trésor
+    /* MONNAIE M3h — LA DÉBASE (décision joueur 2026-07-15, l'étage 2 de l'échelle du
+     * désespoir : 1. emprunter → 2. DÉBASER → 3. banqueroute-saisie). La parité (MINT_
+     * PARITY_*) EST la définition de l'unité ; DEBASE_MAX borne le multiplicateur de
+     * sur-frappe [0,DEBASE_MAX] (curseur joueur BUDGET_DEBASE 0-100 %). 0 = kill-switch
+     * (aucune sur-frappe possible, golden pré-M3h byte-identique — prouvé au gate). */     X(DEBASE_MAX,               1.0f)     /* DOTATIONS DE GENÈSE (M3d, mordent dès l'an 0 — l'invariant M(0) les absorbe) : trésor
      * de départ d'un empire jouable/IA (à sa capitale) ; réserve métallique locale d'une
      * cité-état (champs M1 reserve_gold/copper). */ \
     X(GENESIS_TREASURY_EMPIRE, 2000.0f) \

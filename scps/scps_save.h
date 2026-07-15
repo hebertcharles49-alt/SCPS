@@ -32,7 +32,14 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 92u           /* v92 : MONNAIE M3g — LA BANQUEROUTE-SAISIE : le blob SVT_CRDT
+#define SAVE_VERSION 93u           /* v93 : MONNAIE M3h — LA DÉBASE : le blob SVT_ECON (WorldEconomy,
+                                    * raw fwrite) grandit sur DEUX fronts — BUDGET_DEBASE ajouté à
+                                    * BudgetPolicy (budget_mult[][BUDGET_POLICY_COUNT] grandit d'une
+                                    * colonne, le curseur joueur 0-100% « Débase ») + ProvinceEconomy
+                                    * gagne debase_kdrain (le déficit de K_inst rongé par la débase à
+                                    * la capitale, remboursé lentement à l'arrêt) → sizeof change,
+                                    * <v93 refusé (le format WorldEconomy diffère).
+                                    * v92 : MONNAIE M3g — LA BANQUEROUTE-SAISIE : le blob SVT_CRDT
                                     * (scps_credit.c) grandit de 3 tableaux neufs (g_garnish_cs_id/
                                     * g_garnish_cs_share/g_garnish_cs_pending[SCPS_MAX_COUNTRY]) —
                                     * le créancier D'AVANT-répudiation figé à la banqueroute (part

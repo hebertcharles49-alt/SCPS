@@ -1094,6 +1094,15 @@ void econ_money_instrument_get(double *va_produced, double *consumption_destroye
     if (colonization_net)     *colonization_net      = g_colonization_net_cum;
 }
 
+/* MONNAIE M3h — LA DÉBASE : télémétrie MONDE cumulée, même motif (statics de module,
+ * RAZ à econ_init, jamais sérialisés — un compteur de PARTIE, pas un état de simulation). */
+static double g_debase_gold_cum=0.0;
+static long   g_debase_country_months=0;
+void econ_debase_stats_get(double *gold_total, long *country_months){
+    if (gold_total)     *gold_total     = g_debase_gold_cum;
+    if (country_months) *country_months = g_debase_country_months;
+}
+
 /* MONNAIE M3c — le besoin CITÉ-ÉTAT du tick COURANT (péréquation+classes déjà tentés en
  * interne par econ_tick) : SNAPSHOT écrasé à chaque tick, non sérialisé (lu tout de suite
  * par credit_settle_monthly, scps_sim.c — jamais à cheval sur un reload, motif
@@ -1483,6 +1492,7 @@ void econ_init(WorldEconomy *e, const World *w) {
     g_colony_founded=0; g_colony_survival=0;    /* E7 : RAZ télémétrie colonisation (par partie/sim, non sérialisé) */
     g_ip_colony_founded=0; g_ip_manuf_built=0;  /* MONNAIE M4-IP : RAZ télémétrie initiative privée (par partie/sim, non sérialisé) */
     g_va_produced_cum=0.0; g_consumption_destroyed_cum=0.0; g_colonization_net_cum=0.0;   /* MONNAIE M3a : RAZ instrument (par partie/sim, non sérialisé) */
+    g_debase_gold_cum=0.0; g_debase_country_months=0;   /* MONNAIE M3h : RAZ télémétrie débase (par partie/sim, non sérialisé) */
     econ_flux_reset();                          /* MEMBRANE DE DÉCISION : RAZ le flux courant … */
     memset(g_tax_lastyear,0,sizeof g_tax_lastyear);   /* … et le revenu annuel capté (par partie/sim,
                                                         * un chargement RESTAURE ensuite depuis le save) */
@@ -2029,11 +2039,11 @@ float econ_country_tax_mult(const WorldEconomy *e, int cid, SocialClass c){
 }
 float econ_country_budget_mult(const WorldEconomy *e, int cid, BudgetPolicy policy){
     if (!e||cid<0||cid>=SCPS_MAX_COUNTRY||policy<0||policy>=BUDGET_POLICY_COUNT) return 1.f;
-    /* INVESTISSEMENT / FRAPPE : neutre = 0 % (le CONTRAIRE de la paie — chronique/IA = aucun
-     * investissement/aucune frappe joueur → 0). On rend le NIVEAU brut ∈ [0,1] (défaut 0),
-     * pas le sentinel. BUDGET_MINT : l'IA n'écrit JAMAIS cette case (sa politique est fixe,
-     * MINT_AI_SHARE, lue ailleurs) — ce getter ne sert que le curseur JOUEUR. */
-    if (policy==BUDGET_INVEST || policy==BUDGET_MINT)
+    /* INVESTISSEMENT / FRAPPE / DÉBASE : neutre = 0 % (le CONTRAIRE de la paie — chronique/IA
+     * = aucun investissement/aucune frappe/débase joueur → 0). On rend le NIVEAU brut ∈ [0,1]
+     * (défaut 0), pas le sentinel. BUDGET_MINT/BUDGET_DEBASE : l'IA n'écrit JAMAIS ces cases
+     * (leur politique est fixe/état-dépendante ailleurs) — ce getter ne sert que le curseur JOUEUR. */
+    if (policy==BUDGET_INVEST || policy==BUDGET_MINT || policy==BUDGET_DEBASE)
         return clampf(e->budget_mult[cid][policy], 0.f, 1.f);
     return policy_mult(e->budget_mult[cid][policy]);
 }
@@ -2087,30 +2097,49 @@ float econ_country_mint_share(const WorldEconomy *e, int cid){
     if (cid==culture_player_cid()) return econ_country_budget_mult(e, cid, BUDGET_MINT);
     return clampf(tune_f("MINT_AI_SHARE", 0.35f), 0.f, 1.f);
 }
+/* MONNAIE M3h — LA DÉBASE : voir scps_econ.h. La parité (MINT_PARITY_*) EST la définition
+ * de l'unité — ce multiplicateur est l'ACTE d'un souverain de frapper AU-DELÀ (rogner les
+ * pièces), jamais un coût de la parité elle-même. */
+float econ_country_debase_frac(const WorldEconomy *e, int cid){
+    if (!e||cid<0||cid>=SCPS_MAX_COUNTRY) return 0.f;
+    float dmax = tune_f("DEBASE_MAX", 1.0f);
+    if (cid==culture_player_cid())
+        return clampf(econ_country_budget_mult(e, cid, BUDGET_DEBASE), 0.f, 1.f) * dmax;
+    /* IA : la politique d'État (dernier recours avant la banqueroute forcée) arrive
+     * au commit POLITIQUE IA — 0 en attendant (le curseur JOUEUR seul vit). */
+    return 0.f;
+}
 /* Frappe MENSUELLE — fonction PURE, MIROIR EXACT du point fixe d'econ_tick (aucune mutation
  * ici : ni la réserve, ni le trésor, ni le flux ne bougent).
  * ÉTALON BIMÉTALLIQUE (décision joueur v5, 2026-07-14) : la monnaie est liée au MÉTAL,
  * pas à sa cote — parité FIXE par définition (MINT_PARITY_* au registre J, « à calibrer » :
  * l'or part à 8/tonne = son prix de base, le cuivre à 2.6 — rien ne se recale). Le MARCHÉ
  * de l'or/cuivre continue de flotter AUTOUR de la parité : vendre quand la joaillerie paie
- * plus, frapper quand elle paie moins — l'arbitrage est ÉMERGENT, aucun métal privilégié. */
+ * plus, frapper quand elle paie moins — l'arbitrage est ÉMERGENT, aucun métal privilégié.
+ * MONNAIE M3h : la débase MAJORE value_out (1+debase) SANS changer gold_out/copper_out
+ * (même métal tiré de la réserve — l'acte est de frapper CE métal à un cours supérieur à
+ * sa parité, pas de tirer plus de réserve). */
 void econ_country_mint_month(const WorldEconomy *e, int cid,
                               float *gold_out, float *copper_out, float *value_out,
-                              int *cap_pid_out){
-    float g=0.f, c=0.f, v=0.f; int cap=-1;
+                              int *cap_pid_out, float *debase_out){
+    float g=0.f, c=0.f, v=0.f, dbg=0.f; int cap=-1;
     if (e && cid>=0 && cid<SCPS_MAX_COUNTRY){
         cap = econ_country_capital_prov(e, cid);
         if (cap>=0){
             float share = econ_country_mint_share(e, cid);
             g = e->reserve_gold[cid]   * share / 12.f;
             c = e->reserve_copper[cid] * share / 12.f;
-            v = g*tune_f("MINT_PARITY_GOLD", 16.0f) + c*tune_f("MINT_PARITY_COPPER", 5.2f);
+            float v0 = g*tune_f("MINT_PARITY_GOLD", 16.0f) + c*tune_f("MINT_PARITY_COPPER", 5.2f);
+            float debase = econ_country_debase_frac(e, cid);
+            v = v0 * (1.f+debase);
+            dbg = v - v0;
         }
     }
     if (gold_out)    *gold_out=g;
     if (copper_out)  *copper_out=c;
     if (value_out)   *value_out=v;
     if (cap_pid_out) *cap_pid_out=cap;
+    if (debase_out)  *debase_out=dbg;
 }
 #define STATE_TAX_AMBITION 0.42f   /* le taux que l'État VISE (l'éthos décide ce qui rentre) */
 #define K_TAX_AGIT         0.85f   /* poids de la surtaxe sur la satisfaction (la grogne) */
@@ -4403,13 +4432,21 @@ void econ_tick(WorldEconomy *e, float dt) {
      * flux I0). MINT_ROYALTY=0 ⇒ réserve toujours nulle ⇒ value toujours nulle ⇒ bloc inerte
      * (kill-switch, golden-safe). */
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){
-        float g,cop,val; int cap;
-        econ_country_mint_month(e, c, &g, &cop, &val, &cap);
-        if (val<=0.f || cap<0) continue;
-        e->reserve_gold[c]   = fmaxf(0.f, e->reserve_gold[c]   - g);
-        e->reserve_copper[c] = fmaxf(0.f, e->reserve_copper[c] - cop);
-        e->prov[cap].treasury += val;
-        econ_flux_add(c, FX_MINT, val);   /* I0 : la ligne frappe */
+        float g,cop,val,dbg; int cap;
+        econ_country_mint_month(e, c, &g, &cop, &val, &cap, &dbg);
+        if (cap<0) continue;
+        if (val>0.f){
+            e->reserve_gold[c]   = fmaxf(0.f, e->reserve_gold[c]   - g);
+            e->reserve_copper[c] = fmaxf(0.f, e->reserve_copper[c] - cop);
+            e->prov[cap].treasury += val;
+            econ_flux_add(c, FX_MINT, val);   /* I0 : la ligne frappe (débase INCLUSE — le banc la voit comme frappe légitime) */
+        }
+        /* MONNAIE M3h — TÉLÉMÉTRIE de la sur-frappe (le PRIX — K/rot — arrive au
+         * commit suivant) : ne compte que si CE tick a RÉELLEMENT sur-frappé. */
+        if (dbg>EPS){
+            g_debase_gold_cum += (double)dbg;
+            g_debase_country_months++;
+        }
     }
 }
 

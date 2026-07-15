@@ -351,7 +351,7 @@ void scps_country_reserve(const ScpsSim *s, int c, float *gold_out, float *coppe
 double scps_country_mint_month(const ScpsSim *s, int c){
     if(!s || !s->ready) return 0.0;
     float val=0.f;
-    econ_country_mint_month(s->sim.econ, c, NULL, NULL, &val, NULL);
+    econ_country_mint_month(s->sim.econ, c, NULL, NULL, &val, NULL, NULL);
     return (double)val;
 }
 int scps_country_role(const ScpsSim *s, int c){

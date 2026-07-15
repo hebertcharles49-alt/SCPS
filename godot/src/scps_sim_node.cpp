@@ -1490,12 +1490,12 @@ Dictionary ScpsWorld::budget_controls(int country) {
     Dictionary d;
     Array taxes, spending;
     static const char *tax_names[3] = {"Laboureurs", "Artisans", "Noblesse"};
-    static const char *spend_names[6] = {"Investissement public", "Entretien des bâtiments", "Armée", "Flotte", "Entretien des routes", "Frappe"};
+    static const char *spend_names[7] = {"Investissement public", "Entretien des bâtiments", "Armée", "Flotte", "Entretien des routes", "Frappe", "Débase"};
     for (int i=0;i<3;i++){
         Dictionary row; row["id"]=i; row["name"]=String::utf8(tax_names[i]);
         row["mult"]=scps_country_budget_policy(sim,country,0,i); taxes.push_back(row);
     }
-    for (int i=0;i<6;i++){
+    for (int i=0;i<7;i++){
         Dictionary row; row["id"]=i; row["name"]=String::utf8(spend_names[i]);
         row["mult"]=scps_country_budget_policy(sim,country,1,i); spending.push_back(row);
     }

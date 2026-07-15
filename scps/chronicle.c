@@ -1015,6 +1015,22 @@ int main(int argc, char **argv){
                  g_dom, g_tot>1.0?100.0*g_dom/g_tot:0.0,
                  g_cs,  g_tot>1.0?100.0*g_cs/g_tot:0.0); }
 
+        /* MONNAIE M3h — LA DÉBASE (print-only, gate 1) : l'étage 2 de l'échelle du désespoir
+         * (1. emprunter M3c/M3d → 2. DÉBASER → 3. banqueroute-saisie M3g). La valeur EXTRA
+         * créée par la sur-frappe (au-delà de la parité — DÉJÀ comptée dans « frappe »
+         * ci-dessus, FX_MINT, le banc invariant la voit comme frappe légitime) + les
+         * mois-pays passés en débase active CE run (proxy des « débases/sim » — un
+         * comptage d'ÉPISODES distincts exigerait un état de transition dédié, non posé :
+         * ce compte MOIS-PAYS surestime le nombre d'épisodes, documenté) + combien de pays
+         * débasent ENCORE en fin de partie (la preuve que l'échelle tient DANS L'ORDRE :
+         * l'IA n'y entre qu'au plafond de dette chronique, jamais en cicatrice active). */
+        { double debase_gold=0.0; long debase_months=0; econ_debase_stats_get(&debase_gold,&debase_months);
+          int n_debasers_end=0;
+          for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
+              if (econ_country_debase_frac(s.econ,c) > 1e-4f) n_debasers_end++;
+          printf("   débase (M3h) : %.0f or/an moyen créé par sur-frappe (déjà inclus dans la frappe) — %ld mois-pays en débase active (%d pays débasent en fin de partie)\n",
+                 (years>0)? debase_gold/(double)years : 0.0, debase_months, n_debasers_end); }
+
         /* MONNAIE — M3a : L'INSTRUMENT (print-only, docs/MONNAIE_M0_AUDIT.md) — la
          * création résiduelle PAR CATÉGORIE, le tableau de bord que M3b regardera fondre
          * vers 0. VA (§1.1) et conso (§2.1) sont mesurées en DIRECT (econ_tick, aucun
