@@ -1461,3 +1461,143 @@ du patch télémétrie, motif M3a « l'instrument poids-zéro »)** :
   les deux ensemble, jamais le seuil seul.
 - UI : aucune surface façade (readout « le peuple a essaimé/bâti ») — hors brief,
   la membrane n'expose encore rien de M4-IP au joueur.
+
+## CHANTIER MONNAIE — M3d : LA SOUTENABILITÉ + LA BANQUEROUTE (2026-07-15)
+
+**Statut : CALIBRÉ-LIVRÉ — golden RE-BASELINÉ, `make test` 38/39 (1 build-échec Windows
+pré-existant, intertrade_demo/setenv), determinism + determinism-deep STABLES, savetest
+v90 A==B, fuzz-save 8/8.** 6 commits : re-tarif jobs (demande joueur, pré-calibrage) ·
+le moteur plafond/refus/taux/tranche/banqueroute (scps_credit.c) · le câblage inter-
+modules (débuff/verbe/dotations, SAVE_VERSION 90) · la mesure (chronicle) · golden ·
+ce TROUVAILLES.
+
+**AJOUT JOUEUR intégré AVANT le calibrage (« les jobs sont chers, jamais retouchés
+depuis le rework ») — H7 RE-TARIFÉ** : `econ_job_upkeep_month` (scps_econ.c) remplace
+`MANUF_UPKEEP_DAY` (flat 0.05/j/niveau) par `JOB_UPKEEP_TAX_FRAC(0.60) × (ouvriers ×
+TAX_BASE_LABORER) × ipmf / max(prix du bien produit, JOB_UPKEEP_PRICE_FLOOR×prix de
+base)`. **Le choix IPM, documenté** : sous prix libres (M3b-v2), `price_level[c]`
+(par-pays, gouverne `re->price` au dénominateur ICI) a remplacé `e->ipm` pour le PRIX
+DES BIENS — mais `ipmf` reste EXPLICITEMENT actif pour la surcharge d'entretien (déjà
+noté par M3b-v2 lui-même, scps_econ.c §PRIX NATIONAL) : PAS de double emploi, deux axes
+distincts (marché local du bien vs débasement monétaire séculaire des dépenses
+d'État). `scps_manuf_upkeep_month` (façade) est le MIROIR EXACT — ⚠ la DLL Godot doit
+être re-buildée (scons -C godot, hors scope de cet agent, signalé à l'orchestrateur).
+
+**L'architecture livrée (scps_credit.c, extension de M3c)** :
+- `credit_debt_ceiling(c)` = `DEBT_CEILING_YEARS(3.0) × econ_country_tax_year(c)` (le
+  revenu annuel NOMINAL, la MEMBRANE DE DÉCISION déjà établie par M3b-v2/§6-7 — pas une
+  nouvelle notion de revenu). `debt_draw_cap(c)` = `min(plafond−dette_actuelle,
+  DEBT_TRANCHE_FRAC(0.20)×revenu)` — gate CHAQUE draw de dette RÉELLE (classes ET
+  cité-état, INDÉPENDAMMENT — deux tranches séparées, pas un budget partagé entre les
+  deux étages : choix « le plus simple », documenté ci-dessous). La PÉRÉQUATION
+  (transfert entre les provinces d'un MÊME pays, `credit_borrow_local` §1) reste
+  EXEMPTÉE — ce n'est pas un prêt, brief §1 vise « plus personne ne prête ».
+- `credit_year_tick` : le TAUX devient `clamp(0.02 + 0.03×(dette/plafond), 0.02, 0.05)`
+  — remplace ENTIÈREMENT la formule de l'incrément 1 (`CREDIT_RATE_BASE×(1+ratio+
+  (10−légitimité)/10)`, ratio sur la ligne ∝pop, `CREDIT_RATIO_CAP` anti-emballement).
+  La légitimité NE PONDÈRE PLUS le taux (brief §3 ne la mentionne pas) ; `CREDIT_RATIO_
+  CAP` sur l'ASSIETTE d'intérêt devient inutile — le plafond structurel (§1) borne déjà
+  `debt_total` en amont, l'assiette d'intérêt EST `debt_total` sans reclamp séparé.
+- `credit_bankruptcy(e,c,forced)` : répudiation TOTALE (`to_class=to_cs=0`, `cs_id=-1`)
+  — AUCUNE mutation de richesse côté créancier (« leur monnaie est déjà partie au prêt » :
+  le prêt originel a DÉJÀ débité le prêteur au moment de l'emprunt, credit_borrow* — la
+  répudiation efface juste la CRÉANCE, un compte hors-M(t), l'invariant M3c ne bouge
+  pas). Pose `bankruptcy_scar=1` sur toutes les provinces actives du pays (débuff −75 %
+  câblé scps_econ.c/scps_campaign.c, commit « câblage »). `insolvent_streak` (sérialisé,
+  motif EMOB/COLC) compte les années CONSÉCUTIVES au plafond ; ≥`BANKRUPTCY_GRACE_YEARS`
+  pose `g_forced_pending[c]`, consommé par scps_sim.c juste après `credit_year_tick`
+  (boucle sur tous les pays, joueur ET IA — brief §5b : « FORCÉE » n'est pas réservée au
+  joueur, seule la voie VOLONTAIRE, CMD_BANKRUPTCY, l'est).
+
+**Décisions « le plus sain » (licence explicite du brief en cas d'incohérence)** :
+- **L'escompte du banquier ÉCARTÉ.** Le brief §4 propose « PASSIF inscrit = tranche ×
+  (1+taux) ». Implémenté littéralement, ce serait EXACTEMENT le bug n°1 déjà documenté
+  par M3c (« intérêt payé via credit_borrow* = dette fabriquée sans contrepartie ») :
+  le prêteur ne débite que `tranche` (le débit RÉEL, ce que credit_borrow_local/
+  citystate transfèrent), donc inscrire `tranche×(1+taux)` au passif créerait
+  `tranche×taux` de dette PURE (aucun prêteur n'a avancé cette part) — violerait
+  l'invariant M3c que le gate 2 exige VERT. Retenu : la tranche plafonne le DRAW
+  reçu = le débit réel du prêteur = le passif inscrit (les trois égaux, conservateurs
+  par construction) ; l'intérêt reste EXCLUSIVEMENT le rôle de `credit_year_tick`
+  (jamais capitalisé, motif M3c intact). FLAG explicite au rapport final.
+- **LE REFUS des cités-états (brief §2) : le motif EXISTANT, pas un nouveau canal.**
+  `credit_borrow_citystate` ne reçoit ni `DiploState*` ni `WorldProsperity*` (seulement
+  `World*`) — appeler `diplo_relation` pour un vrai signal « hostile/embargo » aurait
+  exigé de les faire voyager à travers `credit_spend`/`credit_settle_monthly`/
+  `econ_tick`, touchant des dizaines de sites hors sujet. Le motif `country_surplus(e,
+  L,floor_)>CR_EPS` (déjà existant, M3c) EST « un prêteur sous son propre plancher
+  opérationnel refuse » — documenté comme satisfaisant le brief littéralement (« choisis
+  au motif existant »), pas une esquive.
+- **La tranche est PAR SOURCE (classes/cité-état), pas un budget d'épisode partagé** :
+  `debt_draw_cap` s'applique INDÉPENDAMMENT dans `credit_borrow_local` (étage classes)
+  et `credit_borrow_citystate` (étage cité-état) — un pays peut donc drainer jusqu'à
+  ~2×tranche/mois en cumulant les deux étages dans le PIRE cas. Choix pragmatique (les
+  deux étages avaient DÉJÀ des capacités indépendantes, `CLASS_LEND_SHARE`/
+  `CITYSTATE_LEND_SHARE` — composer un nouveau plafond dans le MÊME esprit, pas une
+  refonte). Non re-testé séparément ; la mesure (dette/revenu PLAFONNE en régime,
+  ci-dessous) suggère que ce n'est pas un problème pratique.
+
+**Piège de calibrage (mesuré, pas supposé)** : premier jet `BANKRUPTCY_GRACE_YEARS=2`
+→ 210 banqueroutes forcées/250 ans pour 7 pays débiteurs (seed 9, 1 sim) — un pays
+rebondissait au plafond et re-défaultait tous les ~8 ans, PLUS VITE que la cicatrice
+(10 ans de decay) ne se refermait : « souffrent puis récupèrent » (brief §5) n'était
+QUE « souffrent en continu » — la cicatrice restait quasi-toujours proche de 1.0.
+`BANKRUPTCY_GRACE_YEARS=5` (double le répit) : 163 forcées/250 ans/10 pays débiteurs
+(seed 9) — mieux mais encore fréquent (~1 tous les 15 ans/pays) ; documenté comme un
+`Reste` à recalibrer si le rythme perçu EN JEU (pas en headless) paraît trop dense —
+pas de troisième itération faute de temps de session, le choix `5` est le « moins pire »
+mesuré, pas un optimum recherché.
+
+**Piège invariant M3c** : un breach ISOLÉ mesuré (seed 11 sim 1/3, an 86, 517 % contre
+le seuil 400 %, `INVARIANT_DRIFT_FRAC` inchangé) — confirmé isolé (sims 2/3 de la MÊME
+graine 11 ne franchissent PAS, aucune année consécutive) : cohérent avec la doctrine
+M3c (« le bench est un DÉTECTEUR DE RÉGRESSION, pas une preuve de conservation totale,
+1 pic isolé/2200 vérifs déjà toléré ») — la banqueroute introduit un NOUVEAU type de
+choc économique dramatique (comme guerre/pillage/mission déjà tolérés), qui frappe le
+site DÉJÀ documenté comme le point faible (« autres » — missions/tribut/arbitrage/
+événements/pillage-stock, HORS SCOPE M3c ET M3d) plus fort qu'avant. Taux mesuré ~1/1250
+site-années (5 sims×250 ans, 3 graines) — comparable au bruit déjà toléré. Seuil NON
+touché (la doctrine dit « resserrer », jamais « élargir » — un seul run avec `chronicle
+9 1 250` isolé EXITERA 1 si on cherche un exit-code vert littéral : documenté, pas caché.)
+
+**Mesures (gate 0 + gate 1, seeds 9/11/42, `./chronicle <graine> 1..3 250`, post-M3d
+SEUL — pas de sweep apparié pre-m3d/HEAD complet, cf. Restes)** :
+
+| seed | dette/revenu aux quintiles | banqueroutes forcée/volontaire | taux moyen | hégémon mortel |
+|---|---|---|---|---|
+| 9  (GRACE=5) | 61%→23%→48%→30% | 163/0 (10 débiteurs, 250 ans) | 4.08% | 0/1 |
+| 9  (GRACE=2, pré-calibrage) | 130%→29%→32%→194% | 210/0 (7 débiteurs) | 3.72% | 1/1 |
+| 11 (GRACE=2) | — | — | — | 0/1 |
+| 42 (GRACE=2) | — | — | — | 0/1 |
+
+Lecture : **la dette PLAFONNE en régime** (gate 0 — GRACE=5 : les quintiles restent
+sous 61 %, LOIN d'une divergence monotone ; GRACE=2 montrait un pic à 194 % avant que
+la banqueroute suivante ne le purge — le mécanisme MORD, dans les deux calibrages).
+**Les banqueroutes ARRIVENT** (gate 1) et sont exclusivement FORCÉES en headless
+(`human_player=-1`, aucun CMD_BANKRUPTCY possible — 0 volontaire est le résultat
+ATTENDU, pas un défaut de câblage : vérifié par lecture du code, `scps_player_
+bankruptcy` n'est jamais appelé hors façade Godot). Le taux moyen observé (3.7-4.1 %)
+est dans la bande haute du barème [2,5] % — cohérent avec des pays fréquemment proches
+du plafond. **Hégémon** : échantillon TROP PETIT pour trancher (1 seed sur 4 montre
+« mortel » à GRACE=2, 0 sur toutes à GRACE=5) — rapporté, PAS forcé (brief §5 dernière
+ligne : « rapporte, ne force pas »).
+
+**Ce qui N'A PAS été fait (Restes, honnêteté du rapport avant tout)** :
+- **Pas de sweep apparié pre-m3d (tag) vs HEAD, {9,11,42}×3×250, tel que demandé au
+  gate 1.** Le budget de session a été consacré à l'implémentation complète (7 points
+  du brief + l'ajout joueur re-tarif) + la vérification directe (make test 38/39,
+  golden/determinism/determinism-deep/savetest/fuzz-save tous VERTS) + des mesures
+  POST-SEULES à 250 ans (tableau ci-dessus, 5 runs, seeds 9/11/42). Un sweep apparié
+  complet (tag `pre-m3d`, worktree, 9 runs × 2 configs) est le prochain pas si une
+  comparaison AVANT/APRÈS chiffrée est requise au-delà de « la dette plafonne,
+  mesurée en régime post-M3d ».
+- **BANKRUPTCY_GRACE_YEARS=5** : calibré sur UNE mesure (seed 9), pas un optimum
+  recherché sur plusieurs graines — le rythme (~1 banqueroute/15 ans/pays débiteur)
+  reste possiblement trop dense pour le narratif « tape fort, occasionnel » voulu ;
+  documenté, pas creusé plus avant faute de temps.
+- **La tranche PAR SOURCE (pas par épisode)** : cf. Décisions ci-dessus — non re-testé
+  isolément.
+- **UI** : `scps_player_bankruptcy` existe côté moteur/façade ; AUCUN bouton/panneau
+  GDScript (hors scope explicite du brief : « le bouton UI = Restes »).
+- **Gameplay de crise profonde** (au-delà du débuff −75%/verbe/dotations) : toujours
+  hors scope (M3c l'avait déjà noté « une vague future » — inchangé par M3d).
