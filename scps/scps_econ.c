@@ -4003,7 +4003,12 @@ void econ_tick(WorldEconomy *e, float dt) {
         re->bankruptcy_scar = fmaxf(0.f, re->bankruptcy_scar - (1.f/tune_f("BANKRUPTCY_SCAR_YEARS",10.f))*dt);
         /* (K4b : pillage_cd décrémenté plus haut, pour TOUTE province — pas seulement colonisée.) */
         net_growth *= (1.f - 0.5f*re->revolt_scar);
-        net_growth *= (1.f - 0.75f*re->bankruptcy_scar);   /* M3d — la banqueroute ronge la croissance PLUS FORT */
+        /* M3g — LE MALUS PLAT DE CROISSANCE (M3d, −75 %) EST RETIRÉ : la SAISIE (§2
+         * production ci-dessus) prive désormais le marché intérieur de la valeur
+         * confisquée → pénurie RÉELLE (S[] plus bas, needs_met/satisfaction déjà lus
+         * par `bonus` ci-dessus) → la misère est ÉMERGENTE, pas assignée deux fois. Le
+         * malus MORAL DES ARMÉES reste explicite (scps_campaign.c, army_bankruptcy_
+         * morale) — « l'humiliation ne se calcule pas en grain » (brief M3g). */
         /* UTILITÉ DE L'HABITABILITÉ — la terre RUDE peuple moins vite : même malus que la prod,
          * (1−hab)·HAB_MALUS_K, EXEMPTANT la province-siège (départ). */
         if (!re->is_capital)
