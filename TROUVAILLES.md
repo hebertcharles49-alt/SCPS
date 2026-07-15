@@ -1352,3 +1352,112 @@ plus prévisible, a fait le job en un passage).
 - Gameplay de défaut profond (bankruptcy) : explicitement HORS SCOPE (brief) — les
   hooks existants (credit_of, la dette lisible) restent la seule surface pour une
   vague future.
+
+## CHANTIER MONNAIE — M4-IP : L'INITIATIVE PRIVÉE (2026-07-15)
+
+**Statut : CALIBRÉ-LIVRÉ — golden RE-BASELINÉ VERT, gates complets passés.** La réponse
+à la thésaurisation née de la boucle fermée M3 : deux exutoires SPONTANÉS du surplus
+(aucun verbe joueur — le peuple agit seul, joueur/IA traités PAREIL). 5 commits :
+colonisation du peuple (8224910) · investissement privé (799073b) · télémétrie
+(b642b09) · calibrage IP_SHORTAGE (c3549a1) · re-baseline (be1810c).
+
+**Le mécanisme livré (scps_econ.c, fin de section colonisation)** :
+- `econ_ip_colonize_tick` : les JOURNALIERS d'une province où richesse/tête >
+  IP_COLON_WPC (8, registre J) émigrent vers la meilleure province VACANTE adjacente
+  — mirror étroit de colonize_from_prov restreint à CLASS_LABORER (pop ET richesse,
+  ∝ mêmes fractions ⇒ transfert PUR, net 0 par construction, jamais dans l'instrument).
+  Gardes existants réutilisés : COLONY_MIN_POP (500), COLONY_FOOD_GATE, take ≤ 25 %.
+- `econ_ip_invest_tick` : la classe (BOURGEOIS prioritaire ; ÉLITE si les bourgeois
+  n'ont pas la surface — le « plus simple » du brief retenu, pas de co-financement)
+  dont richesse/tête > IP_INVEST_WPC (12) finance la manufacture du bien de SON
+  panier (NEED_ORDER, rang croissant = urgence) en pénurie ICI (prix ≥ IP_SHORTAGE×base)
+  — miroir des gates civiles CMD_BUILD_MANUF (civil seul, tier, staffage, nourrissable
+  royaume). Paiement = TRANSFERT (classe débite → gages laborers locaux, motif item 5) ;
+  JAMAIS credit_spend (M3c intact par construction).
+- Cadence MENSUELLE (juste après credit_settle_monthly, scps_sim.c) ; AUCUN état neuf
+  sérialisé (relit wealth/pop/price du tick — pas d'accumulateur inter-ticks, la
+  jurisprudence COLC évitée par construction) ; télémétrie cumulative non sérialisée
+  (motif econ_colony_stats) + lignes chronicle « richesse/tête » et « initiative privée ».
+
+**Découvertes (ce qui a coûté cher)** :
+- **§NF v2 court-circuite tout investisseur qui attend NF_SHORTAGE** : econ_build_tick
+  (DANS econ_tick, mensuel) sème un bâtiment GRATUIT niveau 1 le mois même où le prix
+  franchit 1.8× — un mécanisme payant au même seuil, exécuté APRÈS econ_tick, ne trouve
+  plus de slot libre. Deux fixes empilés : (a) la voie RENFORCER (slot occupé ⇒
+  econ_manuf_level_delta +1, motif CMD_MANUF_LEVEL « injection de capacité DÉLIBÉRÉE,
+  payante ») — sans elle ~2 manufactures privées/sim ; (b) IP_SHORTAGE=1.4 < 1.8 : la
+  fenêtre s'ouvre AVANT le semis gratuit (« c'est LEUR besoin qui appelle ») — s9 passe
+  de 170 à 611 manufactures privées/sim.
+- **La cadence ANNUELLE était un puits négligeable** : première version au motif
+  econ_colonize_tick (day%365) → 2-5 actes/sim sur 250 ans, invisibles contre la
+  croissance MENSUELLE composée du salaire/profit. Le passage au mensuel (motif
+  credit_settle_monthly) est ce qui rend les compteurs vivants (26-36 colonies,
+  477-1833 manufactures par graine×3sims).
+- **Le paradoxe du stimulus, mesuré** : PLUS d'investissement privé ⇒ richesse/tête
+  bourgeoise PLUS HAUTE (s9 : 611 manuf/sim ⇒ B 81.5 vs 64.4 à 170 manuf/sim) — chaque
+  manufacture ajoute de la VA, dont 20 % renfle le profit bourgeois : l'exutoire
+  auto-alimente la classe qui le finance. L'investissement augmente la VÉLOCITÉ
+  (B→gages L→conso→trésor), pas une baisse mécanique du stock.
+- **IP_COLON_WPC=8 est un seuil d'OUTLIERS voulu** : la richesse/tête Laborer de régime
+  est 2-6 — seules les provinces exceptionnellement prospères essaiment (9-12
+  colonies du peuple/sim). L'abaisser à ~4 ferait saigner 25 % des journaliers CHAQUE
+  MOIS des provinces riches (le wpc ne baisse PAS au départ — prélèvement proportionnel
+  ⇒ la porte reste ouverte) : non tenté, risque démographique documenté ici.
+
+**Sweep apparié (pre-m4ip=c122d1d, worktree, vs HEAD final IP_SHORTAGE=1.4,
+`./chronicle {9,11,42} 3 250 6 12` — le pre INSTRUMENTÉ par cherry-pick print-only
+du patch télémétrie, motif M3a « l'instrument poids-zéro »)** :
+
+| seed | richesse/tête fin L/B/E pré | L/B/E post | satisf. L pré→post | prov colonisées fin | hégémon |
+|---|---|---|---|---|---|
+| 9  | 3.26 / 65.4 / 24.0 | 3.57 / 81.5 / 29.6 | 49→49 | 244→253 | 1/3→1/3 |
+| 11 | 4.83 / 75.5 / 44.6 | 5.66 / 74.0 / 40.9 | 46→49 | 245→269 | 1/3→2/3 |
+| 42 | 3.81 / 41.3 / 32.9 | 2.75 / 40.0 / 37.0 | 61→65 | 207→248 | 0/3→0/3 |
+
+- **Le critère « richesse/tête STABILISÉE » : NON ATTEINT stricto sensu, et le sweep
+  explique pourquoi** — l'exutoire recycle ~50-60 or/acte × quelques centaines d'actes/
+  sim ≈ 1-3 % du stock de classe par partie, contre des moteurs d'accumulation (VA
+  42/20/38 + intérêts M3c aux élites rentières) de deux ordres de grandeur au-dessus.
+  Le débit maximal (1 acte/province/mois, borné par la fenêtre de pénurie qui se
+  referme dès que l'offre suit — la boucle voulue) ne peut PAS épingler un stock de
+  centaines de milliers d'or. Les différences pré/post par classe (B −8 % à +7 % selon
+  la config) sont DANS le bruit de bifurcation (leçon M3b-v2.1 : σ par-sim B = 37-100
+  sur une même graine). Pour un vrai plafond, il faudrait un débit ∝ surplus (pas un
+  coût fixe de manufacture) — un autre design, hors brief.
+- **Ce qui est PROUVÉ tenu** : l'expansion VIT (+9/+24/+41 prov colonisées fin de sim ;
+  les colonies du peuple s'AJOUTENT : 23-34/graine×3sims) · manufactures privées > 0 et
+  PERTINENTES par construction (le bien cherché est un palier NEED_ORDER du panier de
+  la classe investisseuse, en pénurie locale réelle) · satisfaction stable/mieux
+  (L 49→49 · 46→49 · 61→65) · hégémon mortel pas dégradé (1/1/0 → 1/2/0 par graine) ·
+  invariant M3c VERT (dérive M comparable 10-17k/an, dette vivante 55-1840 rachats/sim,
+  conso ≈ 0, colonisation exactement 0 dans l'instrument — transferts purs prouvés par
+  la mesure).
+
+**Pièges** :
+- `econ_seed_population` (réutilisée pour semer la colonie du peuple) écrit une
+  richesse EX NIHILO (genèse) — l'ÉCRASER juste après par la richesse réellement
+  emportée (toutes classes : wealth_taken pour Laborer, 0 pour les autres) est
+  obligatoire, sinon on recrée la planche à billets M0 §1.2 fixée par M3a.
+- Le pre-worktree n'a PAS les readers de télémétrie (econ_ip_stats n'existe pas
+  avant M4-IP) : cherry-pick du patch chronicle PUIS suppression à la main des 2 blocs
+  qui l'appellent — un `git apply` naïf du patch complet ne compile pas sur le tag.
+- Les instantanés « richesse/tête an N » divergent dès l'an 0 entre pré et post :
+  le mécanisme mord au premier tick (pas de warm-up) — ne PAS s'en étonner en
+  comparant les lignes an-0 (golden re-baseliné pour la même raison).
+- Golden : seeds 108/310 IDENTIQUES au pré-M4-IP même après les deux vagues — aucune
+  initiative ne franchit ses seuils en 12 ans sur ces graines : le hash prouve que le
+  mécanisme est GATÉ, pas ambiant.
+
+**Restes** :
+- Le plafond de richesse/tête (le vrai « thésaurisation vaincue ») demande un débit
+  ∝ surplus — soit des actes multiples par fenêtre, soit un coût d'acte qui monte avec
+  la richesse de l'investisseur (co-financement ∝ richesse du brief, non retenu ici
+  par simplicité). À re-proposer comme M4-IP2 si le joueur veut le plateau dur.
+- Les ÉLITES investissent rarement (les bourgeois passent leur gate presque toujours
+  en premier) — leur revenu rentier M3c reste sans exutoire dédié ; le co-financement
+  ∝ richesse les brancherait directement.
+- IP_COLON_WPC=8 : seuil d'outliers assumé (cf. Découvertes) ; un monde futur qui veut
+  des migrations de masse abaissera le seuil ET ajoutera un répit (motif COLONY_CD) —
+  les deux ensemble, jamais le seuil seul.
+- UI : aucune surface façade (readout « le peuple a essaimé/bâti ») — hors brief,
+  la membrane n'expose encore rien de M4-IP au joueur.
