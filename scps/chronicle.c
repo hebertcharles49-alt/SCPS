@@ -350,6 +350,13 @@ static double chronicle_money_mass(const WorldEconomy *e){
  * un DÉTECTEUR DE RÉGRESSION (une explosion soudaine du ratio signale un NOUVEAU canal
  * magique), pas une preuve de conservation totale du jeu. */
 static double g_inv_prev_m=0.0, g_inv_prev_va=0.0, g_inv_prev_conso=0.0, g_inv_prev_coloniz=0.0, g_inv_prev_mint=0.0;
+/* MONNAIE M3f — LE PIC DE LA SIM (print-only, registre J calibrage) : le plus grand
+ * `frac` (autres/échelle) observé sur TOUTE la sim, indépendamment du seuil courant —
+ * permet de mesurer le PLANCHER réellement atteignable de INVARIANT_DRIFT_FRAC sans
+ * bisection (un seul run donne le pic, pas juste un pass/fail au seuil actuel). */
+static double g_inv_max_frac=0.0;
+double chronicle_invariant_peak_frac(void){ return g_inv_max_frac; }
+static void chronicle_invariant_peak_reset(void){ g_inv_max_frac=0.0; }
 /* M3e — DIAG (SCPS_INVDIAG, print-only, temporaire pour la chasse au breach graine 11
  * an 57) : localise la dérive PAR PAYS (money mass Σtreasury+Σwealth de ses provinces,
  * motif chronicle_money_mass) + corrèle avec les compteurs credit (dette totale monde,
@@ -363,6 +370,7 @@ static void chronicle_invariant_reset(double m0){
     g_inv_prev_m=m0; g_inv_prev_va=0.0; g_inv_prev_conso=0.0; g_inv_prev_coloniz=0.0; g_inv_prev_mint=0.0;
     g_inv_percountry_init=false;   /* M3e DIAG : RAZ le snapshot par-pays au début de CHAQUE sim */
     g_inv_prev_wild=0.0; g_inv_prev_wild_n=0;
+    chronicle_invariant_peak_reset();   /* M3f — RAZ le pic à CHAQUE sim (comme le reste de l'état invariant) */
 }
 static double g_inv_prev_prov[SCPS_MAX_PROV];
 static void chronicle_invariant_diag(const WorldEconomy *e, const World *w, int year, uint32_t seed, int sim){
@@ -463,6 +471,7 @@ static void chronicle_invariant_check(const WorldEconomy *e, const World *w, int
      * petit par pure compensation de signes opposés — ni M(t), qui dérive sans borne) */
     double scale = fabs(d_va)+fabs(d_conso)+fabs(d_coloniz)+fabs(d_mint); if (scale<1.0) scale=1.0;
     double frac = fabs(autres)/scale;
+    if (frac > g_inv_max_frac) g_inv_max_frac = frac;   /* M3f — le pic, indépendant du seuil */
     double maxfrac = (double)tune_f("INVARIANT_DRIFT_FRAC", 2.0f);
     bool diag = getenv("SCPS_INVDIAG")!=NULL;
     if (diag) chronicle_invariant_diag(e, w, year, seed, sim);
@@ -987,6 +996,10 @@ int main(int argc, char **argv){
           double autres_an   = money_drift_an - va_an - conso_an - coloniz_an;
           printf("   création résiduelle : VA %+.0f/an · conso %+.0f/an · colonisation %+.0f/an · autres %+.0f/an\n",
                  va_an, conso_an, coloniz_an, autres_an); }
+        /* MONNAIE M3f — LE PIC ANNUEL du banc invariant (indépendant du seuil courant) :
+         * mesure directement le PLANCHER atteignable de INVARIANT_DRIFT_FRAC, un seul run. */
+        printf("   invariant (M3f) : pic annuel autres/échelle %.0f%% (seuil courant %.0f%%)\n",
+               100.0*chronicle_invariant_peak_frac(), 100.0*(double)tune_f("INVARIANT_DRIFT_FRAC",4.0f));
 
         /* ARMSDIAG — copie des compteurs warhost de CETTE sim (RAZ au prochain sim_init). */
         if (getenv("SCPS_ARMSDIAG")){
