@@ -984,9 +984,10 @@ int main(int argc, char **argv){
                       float rev=econ_country_tax_year(c);
                       if (rev>1.f){ debt_sum+=(double)credit_debt_total(c); rev_sum+=(double)rev; nd++; }
                   }
-                  printf("              dette/revenu an %3d : %.0f%% moyen (%d pays au revenu capté, plafond=%.0f%%)\n",
+                  printf("              dette/revenu an %3d : %.0f%% moyen (%d pays au revenu capté, plafond=%.0f%%)"
+                         " · revenu fiscal Σ %.0f or/an (M3i neutralité)\n",
                          snap[si-1], rev_sum>1.0?100.0*debt_sum/rev_sum:0.0, nd,
-                         100.0*tune_f("DEBT_CEILING_YEARS",3.0f)); }
+                         100.0*tune_f("DEBT_CEILING_YEARS",3.0f), rev_sum); }
                 si++;
             }
         }
