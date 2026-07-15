@@ -47,11 +47,19 @@ static void mute_siblings(WorldEconomy *e, int r, int pid){
     }
 }
 
-/* Fige une PROVINCE (LA vérité économique) en banc d'essai fiscal : pas de
- * production (raw_cap=0, 0 bâtiment), seule l'élite a de la richesse → le
- * trésor = l'impôt SUR l'élite. Stock plein → le panier se remplit (la
- * satisfaction ne dépend que de l'impôt). La RÉGION agrège après econ_tick —
- * les lectures e->region[r].* restent valides (1 province ⇒ agrégat = elle). */
+/* Fige une PROVINCE (LA vérité économique) en banc d'essai fiscal : UNE brute (raw_cap,
+ * doctrine ≤2 raws) produit un revenu IDENTIQUE d'un rig() à l'autre (même raw_cap, mêmes
+ * effectifs) — MONNAIE M3i (2026-07-15) : l'impôt est désormais un prélèvement sur le
+ * REVENU réellement versé au tick (pay_wage/pay_profit/pay_tax, scps_econ.c §3b), plus
+ * un forfait × pop indépendant de toute production — sans extraction, le revenu du tick
+ * serait nul et le trésor resterait à 0 quels que soient éthos/satisfaction (l'ancien
+ * fixture, raw_cap=0/n_bld=0, testait le forfait legacy — motif « RÉPARATION BANCS »,
+ * fixture seule, moteur intact). `elite_wealth` reste un solde de départ (hors revenu du
+ * tick) — SEULE la différence d'éthos/satisfaction varie entre deux rigs comparés, le
+ * revenu produit est le même repère : les comparaisons relatives restent valides.
+ * Stock plein → le panier se remplit (la satisfaction ne dépend que de l'impôt). La
+ * RÉGION agrège après econ_tick — les lectures e->region[r].* restent valides (1
+ * province ⇒ agrégat = elle). */
 static void rig(WorldEconomy *e, int r, Ethos ethos, float elite_wealth, float sat){
     int pid=rep_prov(e,r);
     if (pid<0) return;
@@ -60,7 +68,9 @@ static void rig(WorldEconomy *e, int r, Ethos ethos, float elite_wealth, float s
     re->active=true; re->colonized=true; re->culture.settled=true;
     re->culture.ethos=ethos;
     re->n_bld=0;
+    re->alloc_on=false;
     for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; re->stock[k]=1.0e6f; }
+    re->raw_cap[RES_GRAIN]=1000.f;   /* M3i : de quoi produire un revenu comparable entre rigs */
     re->strata[CLASS_LABORER].pop=100.f;   re->strata[CLASS_LABORER].wealth=0.f;
     re->strata[CLASS_BOURGEOIS].pop=100.f; re->strata[CLASS_BOURGEOIS].wealth=0.f;
     re->strata[CLASS_ELITE].pop=100.f;     re->strata[CLASS_ELITE].wealth=elite_wealth;
