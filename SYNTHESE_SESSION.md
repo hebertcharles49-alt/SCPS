@@ -75,7 +75,28 @@ d'agent moteur doit inclure `make test` complet dans ses gates.**
   invariant M(t)=M(0)+frappe (M3c) ne passera PAS tant que la VA résiduelle vit.
   + gains d'événements (créations), FX_AUDIT/FX_BUILD partiels, crédit (M3c).
 
+## MONNAIE — CHANTIER COMPLET au 15/07 matin (M0→M3e + M4-IP, save v90)
+Arc complet en ~24 h : audit (M imprimait ×360-1280) → redevance+réserve → frappe →
+étalon bimétallique (parité or 16/t · cuivre 5.2/t, v5+M3e) → circuit d'État à prix
+libres (price_level≤1 par pays) → dispatch complet des dépenses (table joueur) →
+crédit réel (péréquation→classes→cités-états, passif ventilé, rachats Fugger) →
+initiative privée (colonisation du peuple, investissement bourgeois) → dette
+soutenable (plafond 300 %, taux 2-5 % au levier, banqueroute −75 % scar) → re-
+liquéfaction (royalty/share 0.35, FRAPPE LIBRE = le levier de volume, commerce ×5,
+démonétisation des WILDS, fix invariant = l'écrasement de wealth à la re-fondation
+coloniale, jusqu'à 260k détruits en silence par province).
+MESURES FINALES (apparié 520d1cf vs HEAD, 3 graines×3×250) : invariant VERT 9/9 ·
+pop +16.2 % moy (V1 : −21.9 %) · colonisation totale +23 % · minorité au plafond
+(10-25 %) · dette/revenu respire · IPM 0.85-0.90 SANS inflation (price_level≤1) ·
+banqueroutes vivantes (44-207/sim) · taux 3.0-4.4 %.
+RESTES MONNAIE : conversion des sites M0 restants pour l'invariant SERRÉ (missions,
+tributs, gains d'events, pillage-stock — chacun ~VA-sized) · convergence prix-métal→
+parité (les achats mint ne poussent pas demand[]) · M6 centralisation+transport ·
+**UI DE LA MONNAIE : rien n'est visible face joueur** (réserve/dette/banqueroute/
+frappe libre — CMD_BANKRUPTCY n'a pas de bouton) · hégémon affaibli récurrent
+(signal non-monétaire, à diagnostiquer).
+
 ## PROCHAIN PAS ATTENDU
-Trancher : vague « VA résiduelle » (le dernier grand imprimeur — comprendre son canal
-exact puis le fermer), puis M3c (crédit réel + banc invariant). OU pause monnaie et
-EXPORT scps.exe (rien de tout ça n'a été touché en vrai).
+Proposer : EXPORT scps.exe (l'UI unifiée + TOUTE la monnaie jamais touchées en vrai
+— le plus gros backlog de test manuel du projet), OU l'UI de la monnaie (rendre
+visible dette/réserve/banqueroute), OU la vague invariant-serré (sites M0 restants).
