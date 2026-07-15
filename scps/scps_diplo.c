@@ -676,7 +676,14 @@ bool diplo_fabricate_cb(World *w, WorldEconomy *econ, DiploState *d, int a, int 
     if (!diplo_can_fabricate(w, econ, d, a, b)) return false;
     float cost = diplo_fabricate_cost(econ, b);
     int cr = world_capital_region(w, a);
-    if (cr>=0 && cr<econ->n_regions) econ_region_treasury_add(econ, cr, -cost);  /* l'or SORT et disparaît (corruption) */
+    if (cr>=0 && cr<econ->n_regions) econ_region_treasury_add(econ, cr, -cost);  /* le trésor de l'intrigant SORT (inchangé) */
+    /* MONNAIE M3f — item 4 : « l'or SORT et disparaît » devient un TRANSFERT PUR — la
+     * corruption vise la noblesse ADVERSE (brief joueur, tranche explicitement contre le
+     * motif « sink volontaire » proposé par M0 §2.10) : l'or de l'intrigue crédite les
+     * ÉLITES du pays CIBLE (b), pas son trésor — l'intrigant achète DES gens, pas l'État
+     * qu'il vise. */
+    int crb = world_capital_region(w, b);
+    if (crb>=0 && crb<econ->n_regions) econ_region_wealth_add(econ, crb, CLASS_ELITE, cost);
     econ_flux_add(a, FX_INTRIGUE, -cost);   /* I0 : la ligne dédiée intrigue — distincte de l'admin courante */
     d->fab_state[a][b] = FAB_MATURING;
     d->fab_days [a][b] = tune_f("FAB_MATURE_DAYS", 365.f);
