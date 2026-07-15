@@ -982,6 +982,12 @@ static void sim_cmd_drain(Sim *s, World *w){
 
 void sim_day(Sim *s, World *w) {
     provlog_set_year(s->year);   /* l'an courant pour les pushs d'évènements du directeur (display) */
+    /* M3e — DÉMONÉTISATION DES HAMEAUX LIBRES : le masque PAR-PAYS (rôle POLITY_WILD)
+     * est recalculé ICI, EN TÊTE de journée — coût négligeable (Σn_countries), couvre
+     * TOUT ce qui peut toucher au trésor/wealth d'un hameau ce jour (econ_tick plus bas,
+     * ET les chemins pillage/siège qui n'ont pas de World* — scps_diplo.c les relit via
+     * econ_country_is_wild, motif partagé). */
+    econ_set_wild_mask(w);
     if (s->day % 30 == 0) intertrade_commerce_reset(s->econ);   /* §5 : le pool commercial se refait au ROULEMENT de mois (plein AVANT les achats) */
     PROF(PB_AGENCY, agency_advance(s->ag, w, s->econ, s->wl, s->drift, 1));
     sim_cmd_drain(s, w);   /* JOUEUR : ses ordres s'appliquent ICI, après agency_advance, AVANT l'IA (point fixe) */

@@ -1933,6 +1933,10 @@ void econ_init(WorldEconomy *e, const World *w) {
                 hh ^= hh>>13; hh *= 0x85ebca6bu; hh ^= hh>>16; \
                 float jit=(wvar>0.f)? ((float)(hh % 2001u)/1000.f - 1.f)*wvar : 0.f; /* WILD_POP_VAR=0 → 0 (graine LOCKÉE) */ \
                 econ_seed_population(wpe, fminf(fmaxf(wpop+jit, 50.f), wcap*0.5f)); \
+                /* M3e — DÉMONÉTISATION : econ_seed_population vient d'écrire une richesse EX
+                 * NIHILO (pop×multiplicateur, motif genèse) — un hameau n'a PAS de dotation
+                 * monétaire (M(0) les exclut) : population gardée, wealth RAYÉE. */ \
+                for (int c_=0;c_<CLASS_COUNT;c_++) wpe->strata[c_].wealth=0.f; \
                 wpe->raw_cap[RES_GRAIN]=fmaxf(wpe->raw_cap[RES_GRAIN], wfood); /* raw food FORCÉE : le hameau se nourrit */ \
                 for (int g=1; g<RES_PROD_FIRST; g++) if (wpe->raw_cap[g]>0.f) wpe->stock[g]+=whoard; \
             } while(0)
@@ -2894,6 +2898,26 @@ double econ_country_gold(const WorldEconomy *e, int c){
     return g;
 }
 
+/* M3e — DÉMONÉTISATION DES HAMEAUX LIBRES (POLITY_WILD) : masque PAR-PAYS, recalculé
+ * par l'appelant (sim_day) juste AVANT econ_tick — econ_tick n'a pas de World*, cf.
+ * scps_econ.h. Statique zero-init (tout `false` par défaut) : les ~40 bancs qui
+ * appellent econ_tick sans jamais poser ce masque (aucun hameau dans leurs fixtures)
+ * gardent le comportement PRÉ-M3e à l'identique, aucune régression golden hors graines
+ * qui plantent réellement des hameaux (chronicle/viewer/godot, les seuls à en semer). */
+static bool g_wild_country[SCPS_MAX_COUNTRY];
+void econ_set_wild_mask(const World *w){
+    memset(g_wild_country, 0, sizeof g_wild_country);
+    if (!w) return;
+    int n=w->n_countries; if (n>SCPS_MAX_COUNTRY) n=SCPS_MAX_COUNTRY;
+    for (int c=0;c<n;c++) g_wild_country[c] = (w->country[c].role==POLITY_WILD);
+}
+static inline bool econ_is_wild_country(int c){
+    return (c>=0 && c<SCPS_MAX_COUNTRY) && g_wild_country[c];
+}
+/* Accesseur PUBLIC (scps_diplo.c : pillage/siège n'ont pas de World* non plus, motif
+ * partagé) — même masque, RAZ/reconstruit par sim_day (econ_set_wild_mask) chaque jour. */
+bool econ_country_is_wild(int c){ return econ_is_wild_country(c); }
+
 void econ_tick(WorldEconomy *e, float dt) {
     if (dt<=0.f) dt=1.f;
     e->tick++;
@@ -3381,7 +3405,14 @@ void econ_tick(WorldEconomy *e, float dt) {
                                           * pousser le trésor sous sa réserve pour CE tick (auto-
                                           * correctif : la caisse se refait au tick suivant, taxe +
                                           * revente — cf. §2.1 plus bas). */
-        if (re->owner>=0 && re->owner<SCPS_MAX_COUNTRY){
+        if (econ_is_wild_country(owner_)){
+            /* M3e — HAMEAU LIBRE (POLITY_WILD) : DÉMONÉTISÉ. wage/profit/tax_pool ne sont
+             * qu'une MESURE de la VA déjà reflétée en physique (stock[]/S[], §2 ci-dessus) —
+             * aucune monnaie n'est créée : le hameau n'a pas de « compte de marché », il vit
+             * du panier RÉEL (§5, budget=∞ pour lui plus bas). va_country_this reste à 0
+             * (pas de caisse nationale pour un hameau, cf. price_level plus haut : leur
+             * price_level[owner_] n'est simplement jamais LU par cette branche). */
+        } else if (re->owner>=0 && re->owner<SCPS_MAX_COUNTRY){
             int oc=re->owner;
             va_country_this[oc] += va_prov;
             float pf = price_level[oc];
@@ -3409,7 +3440,9 @@ void econ_tick(WorldEconomy *e, float dt) {
          * La boucle : un peuple CONTENT sous un éthos TOLÉRANT paie fort ;
          * surtaxer un peuple mécontent ne rapporte pas — contenter d'abord. */
         float coll[CLASS_COUNT]={0}, coll_tot=0.f;     /* §B : ce que CHAQUE classe a versé (pour le rendre) */
-        for (int c=0;c<CLASS_COUNT;c++){
+        /* M3e — un hameau (POLITY_WILD) n'a pas d'État : AUCUN impôt (sa wealth reste à 0,
+         * §3 vient de le confirmer — sauter la boucle évite tout résidu float parasite). */
+        for (int c=0;c<CLASS_COUNT && !econ_is_wild_country(owner_);c++){
             PopStratum *st=&re->strata[c];
             float sat   = clampf(st->satisfaction,0.f,1.f);
             float seuil = econ_tax_tolerance(re->culture.ethos,(SocialClass)c)*(0.40f+0.60f*sat);
@@ -3655,7 +3688,12 @@ void econ_tick(WorldEconomy *e, float dt) {
         for (int c=0;c<CLASS_COUNT;c++) {
             float units=re->strata[c].pop/100.f*DEMAND_TENSION;   /* /100 hab, tendu +10 % */
             if (units<=0.f){ re->strata[c].satisfaction=0.f; continue; }
-            float budget=re->strata[c].wealth;
+            /* M3e — HAMEAU LIBRE : budget "infini" — la seule contrainte servie est la
+             * DISPONIBILITÉ physique (can_stock), jamais l'AFFORDABILITÉ (can_buy toujours 1)
+             * — « subsistance en nature » : ils consomment ce qui existe, sans argent. La
+             * wealth réelle (0, jamais créditée par §3) est restaurée juste après la boucle. */
+            bool wh = econ_is_wild_country(owner_);
+            float budget=wh? 1.0e12f : re->strata[c].wealth;
             float budget0=budget;   /* MONNAIE M3a — L'INSTRUMENT (§2.1) : snapshot avant les `budget -=` du panier */
             float need_w=0.f, met_w=0.f;   /* pondération par valeur du besoin */
             float comfort_joy=0.f;         /* BONUS poterie/statuaire CONSOMMÉES (luxe qui ÉLÈVE, hors panier) */
@@ -3770,7 +3808,10 @@ void econ_tick(WorldEconomy *e, float dt) {
                     r_soc_need += need; r_soc_got += need*got;         /* c'est un besoin SOCIAL (confort de statut) */
                 }
             }
-            re->strata[c].wealth=fmaxf(0.f,budget);
+            /* M3e — un hameau ne garde JAMAIS de wealth (budget était fictif, ∞) : la
+             * consommation qui vient d'avoir lieu est PHYSIQUE seule (S[] déjà débité
+             * ci-dessus) — zéro mutation de monnaie, ni instrument (rien n'a été "acheté"). */
+            re->strata[c].wealth = wh? 0.f : fmaxf(0.f,budget);
             /* MONNAIE M3b-v2 — « L'ÉTAT REVEND » (brief §2) : le débit de l'acheteur (panier
              * consommé, budget0−final) est INCHANGÉ, mais l'argent CRÉDITE désormais LE TRÉSOR
              * DE CETTE PROVINCE (au prix de revente courant, re->price[] — déjà mobile via
@@ -3778,7 +3819,7 @@ void econ_tick(WorldEconomy *e, float dt) {
              * a acheté la production (§3 ci-dessus) se refait ainsi, dans la MÊME province,
              * sans indirection nationale. Une province HORS EMPIRE (owner<0, fixture/banc
              * isolé) n'a pas d'État pour vendre : elle reste un puits documenté par l'instrument. */
-            { float consumed = budget0-re->strata[c].wealth;
+            if (!wh){ float consumed = budget0-re->strata[c].wealth;
               if (re->owner>=0 && re->owner<SCPS_MAX_COUNTRY) re->treasury += consumed;
               else                                            g_consumption_destroyed_cum += (double)consumed; }
             float basket=(need_w>0.f)?met_w/need_w:0.5f;

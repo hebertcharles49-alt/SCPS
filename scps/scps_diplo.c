@@ -1134,6 +1134,9 @@ bool diplo_peace_transfer_region(DiploState *d, World *w, WorldEconomy *econ,
 
 float diplo_peace_take_gold(World *w,WorldEconomy *econ,int winner,int loser,float wanted){
     if(!w||!econ||winner<0||loser<0||winner>=w->n_countries||loser>=w->n_countries||winner==loser||wanted<=0.f)return 0.f;
+    /* M3e — un hameau (POLITY_WILD) n'a pas de trésor (démonétisé) : explicite, pas
+     * seulement incident (treasury=0 partout chez lui de toute façon). */
+    if (econ_country_is_wild(loser)) return 0.f;
     int cp=w->country[winner].capital_prov;
     int dst=(cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
     float total=0.f;
@@ -1331,6 +1334,12 @@ float diplo_pillage_value(WorldEconomy *econ, int region, int dst_region, int vi
     if (pid<0 || pid>=econ->n_prov) return 0.f;
     ProvinceEconomy *pp=&econ->prov[pid];
     RegionEconomy   *re=&econ->region[region];      /* price[] : LECTURE d'agrégat seulement */
+    /* M3e — HAMEAU LIBRE (POLITY_WILD) : DÉMONÉTISÉ, aucun revenu à dénominer un pillage
+     * (econ_country_tax_year est déjà 0 pour eux, tax loop gatée dans econ_tick) — refus
+     * EXPLICITE, pas seulement incident, jamais d'or fantôme. Leurs biens/captifs restent
+     * pillables par le sac de siège PHYSIQUE (diplo_siege_loot), pas par cette voie
+     * dénominée-revenu. */
+    if (econ_country_is_wild(victim_cid)) return 0.f;
     float target = tune_f("PILLAGE_INCOME_FRAC", PILLAGE_INCOME_FRAC)
                  * fmaxf(0.f, econ_country_tax_year(victim_cid));
     if (target<=0.f) return 0.f;                    /* victime sans revenu capturé (An-1 court) → rien */
@@ -1390,6 +1399,11 @@ float diplo_siege_loot(WorldEconomy *econ, int region, int dst_region){
     if (pid<0 || pid>=econ->n_prov) return 0.f;
     ProvinceEconomy *pp=&econ->prov[pid];
     if (pp->pillage_cd > 0.f) return 0.f;             /* déjà dépouillée (règlement récent) → rien de plus */
+    /* M3e — HAMEAU LIBRE (POLITY_WILD) victime : PHYSIQUE seul, JAMAIS d'or (démonétisation,
+     * décision joueur 2026-07-15). Un hameau n'a ni tax_year ni trésor pour dénominer un
+     * "loot" monétaire — le stock pris part directement au stock de l'occupant (biens
+     * captifs), aucune conversion en gold ni crédit de trésor. */
+    bool victim_wild = econ_country_is_wild(re->owner);
     float frac = tune_f("SIEGE_LOOT_FRAC", SIEGE_LOOT_FRAC);
     float loot=0.f;
     for (int g=1; g<RES_COUNT; g++){
@@ -1398,9 +1412,14 @@ float diplo_siege_loot(WorldEconomy *econ, int region, int dst_region){
         /* on ne peut prendre que ce qui est RÉELLEMENT au stock (la production a pu
          * être déjà consommée localement dans le même tick) — jamais négatif. */
         float take = -econ_region_stock_add(econ, region, g, -fminf(want, re->stock[g]));
-        loot += take * re->price[g];
+        if (victim_wild){
+            if (dst_region>=0 && dst_region<econ->n_regions && dst_region!=region)
+                econ_region_stock_add(econ, dst_region, g, take);   /* biens PHYSIQUES, zéro or */
+        } else {
+            loot += take * re->price[g];
+        }
     }
-    if (dst_region>=0 && dst_region<econ->n_regions && dst_region!=region){
+    if (!victim_wild && dst_region>=0 && dst_region<econ->n_regions && dst_region!=region){
         int dpid=econ_region_rep_province(econ, dst_region);
         if (dpid>=0 && dpid<econ->n_prov) econ->prov[dpid].treasury += loot;  /* fondu dans le trésor du besiégeur */
     }

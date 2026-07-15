@@ -774,6 +774,17 @@ static inline float econ_avg_price(const WorldEconomy *e, Resource res){
  * les processus cumulatifs (croissance, tech, impôt→trésor) suivent dt, les flux
  * production/consommation s'équilibrent par tick (satisfaction préservée). */
 void econ_tick(WorldEconomy *e, float dt);
+/* M3e — DÉMONÉTISATION DES HAMEAUX LIBRES (POLITY_WILD, décision joueur 2026-07-15) :
+ * econ_tick(WorldEconomy*, dt) n'a pas de World* (province-grain pur, cf. commentaires
+ * existants sur credit_borrow_local) — un masque PAR-PAYS (rôle POLITY_WILD ou non) est
+ * donc caché ici, recalculé par l'appelant (sim_day, AVANT econ_tick, motif rcount) à
+ * chaque jour — coût négligeable (Σn_countries, pas Σprovinces) et robuste à tout
+ * changement de World (chargement de save, worldgen) sans avoir à suivre une dépendance
+ * explicite. Un hameau NE PARTICIPE À AUCUN flux monétaire (achat d'État, taxe,
+ * entretien/admin/cour, crédit) — ses strates consomment le panier RÉEL directement
+ * (satisfaction = disponibilité physique, jamais l'argent) : cf. §3/§5 dans econ_tick. */
+void econ_set_wild_mask(const World *w);
+bool econ_country_is_wild(int c);   /* accesseur PUBLIC du même masque (scps_diplo.c : pillage/siège) */
 void econ_set_human(int cid);   /* §NF skippe les provinces du joueur humain (-1 = aucun) */
 /* Q1 — LE CONSEIL : pose le multiplicateur d'un siège (0=Savoir 1=Société 2=Industrie)
  * pour un pays. Rafraîchi chaque tick par la couche sim depuis l'état conseil. 1.0=neutre. */
