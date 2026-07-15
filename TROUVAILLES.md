@@ -1711,3 +1711,125 @@ effet dette/banqueroute dominant plutôt qu'un simple décalage de barème.
 
 **Nettoyage** : worktree `../SCPS-v1-prem3d` retiré (`git worktree remove`) après
 sweep. Aucun fichier moteur modifié — seul ce TROUVAILLES est commité.
+
+## CHANTIER MONNAIE — M3e : LA RE-LIQUÉFACTION (2026-07-15)
+
+**Statut : CALIBRÉ-LIVRÉ — golden RE-BASELINÉ VERT, gates complets passés.** La réponse
+au verdict V1 (pop −21.9 % moyenne, 7/9 paires cassées, 25-50 % des pays au plafond de
+dette chronique). 6 commits : fix invariant (colonisation) · démonétisation des hameaux
+libres · parité 16 + royalty/share 0.35 · frappe libre · commerce ×5 · re-baseline.
+
+**1) LE FIX D'INVARIANT (le breach graine 11 an 57, −65k/an, 407 %) — PAS la dette.**
+Diagnostiqué par instrumentation par-pays/par-province (SCPS_INVDIAG, chronicle.c, gardée
+— s'auto-déclenche sur tout ÉCHEC du banc) : la dérive vivait sur les provinces WILD/
+non possédées, PAS chez un pays endetté. Cause réelle : **les trois voies de fondation
+coloniale (econ_colony_day, colonize_from_prov, ip_colonize_laborer) posent la richesse
+livrée par ÉCRASEMENT (`=`) — une cible « vacante » (!colonized) qui fut colonisée puis
+DÉ-colonisée (effondrement/cataclysme raye `colonized`, PAS `strata[].wealth`) portait
+une richesse résiduelle DÉTRUITE en silence à la re-fondation** (mesuré SCPS_COLONDIAG :
+jusqu'à 260k sur UNE province, 14 écrasements/250 ans sur la seule graine 11 sim 1).
+Fix : snapshot avant econ_seed_population, ADDITIONNÉ après la livraison (cette richesse
+était déjà dans M(t) — conservateur par construction). Preuve : graine 11 ×3×250 RC=0.
+Les suspects du brief (répudiation de banqueroute, dotations de genèse, débuff −75 %)
+étaient tous INNOCENTS — la répudiation ne mute réellement aucune richesse (vérifiée).
+
+**2) DÉMONÉTISATION DES HAMEAUX LIBRES (décision orchestrateur en cours de mission)** :
+un POLITY_WILD ne touche plus AUCUN flux monétaire — pas de dotation (WILD_PLANT raye la
+wealth ex-nihilo), pas d'achat d'État/salaires, pas d'impôt, consommation EN NATURE
+(budget non contraint, seule la DISPONIBILITÉ physique compte), wealth rayée chaque tick ;
+pillage contre eux = PHYSIQUE seul (stock via diplo_siege_loot), jamais d'or
+(diplo_pillage_value/diplo_peace_take_gold refusent). Mécanique : masque par-pays
+`econ_set_wild_mask` (posé par sim_day en tête de journée — econ_tick n'a pas de World*,
+motif credit_borrow_local) + accesseur public `econ_country_is_wild` (diplo). Zero-init ⇒
+les ~40 bancs sans hameaux gardent le comportement d'avant à l'identique.
+
+**3) LE TRIO + DEUX LEVIERS (sweep apparié 520d1cf vs HEAD, {9,11,42}×3×250, worktree)** :
+- **MINT_PARITY_GOLD 8→16 · COPPER 2.6→5.2** (décision joueur — la dévaluation).
+- **MINT_ROYALTY/MINT_AI_SHARE 0.15→0.35** — DEUX paliers mesurés : 0.25/0.25 (pop moy
+  +10.6 % mais 1/9 en bande, plafond jusqu'à 9 pays/sim) puis 0.35/0.35 (retenu).
+- **FRAPPE LIBRE (MINT_FREE_BUY_FRAC 0.15 · STOCK_FLOOR 0.5)** — l'État achète l'or/
+  cuivre de SON marché (transfert réel, gate prix<parité, jamais de crédit) et frappe à
+  la parité. ATOMIQUE (gain=qty×(parité−prix)≥0, un seul FX_MINT) — un débit/crédit
+  séparé aurait rendu invisible un net négatif à chronicle_mint_flux_accum (positifs
+  seuls). C'est LE levier de volume : frappe monde 0.6-2.0k→3.9-22.4k or/an.
+- **COMMERCE ×5 (W_BOURGEOIS 0.04→0.20 · W_ELITE 0.01→0.05)** — le tuyau du métal vers
+  les sans-mines (la frappe libre ne mobilise que le métal ARRIVÉ chez soi).
+- IP_COLON_WPC **PAS touché** (dernier ressort autorisé, pas nécessaire).
+
+**POPULATION FINALE (an 250, k) — pré-M3d (520d1cf) vs M3e :**
+
+| graine·sim | pré-M3d | M3e | Δ | (V1/M3d seul) |
+|---|---:|---:|---:|---:|
+| 9·1  | 362 | 364 | +0.6 % | (−29.3 %) |
+| 9·2  | 195 | 158 | −19.0 % | (−51.8 %) |
+| 9·3  | 240 | 444 | **+85.0 %** | (+0.4 %) |
+| 11·1 | 279 | 336 | +20.4 % | (−12.5 %) |
+| 11·2 | 266 | 354 | +33.1 % | (−17.7 %) |
+| 11·3 | 344 | 305 | −11.3 % | (−49.4 %) |
+| 42·1 | 260 | 269 | +3.5 % | (−17.3 %) |
+| 42·2 | 332 | 337 | +1.5 % | (−7.2 %) |
+| 42·3 | 367 | 484 | +31.9 % | (−11.7 %) |
+
+Moyenne **+16.2 %** (V1 : −21.9 %). Lecture honnête : la bande ±10 % stricte n'est tenue
+que 3/9 paires — MAIS la SIGNATURE du verdict V1 (suppression SYSTÉMATIQUE, aucune paire
+au-dessus de +10 %) est MORTE : le bruit est BIDIRECTIONNEL (6 hausses dont +85 %, 2
+baisses), compatible avec la bifurcation par-sim déjà documentée (M3b-v2.1 : sigma énorme
+d'une sim à l'autre sur la MÊME graine). Le monde re-liquéfié est en moyenne PLUS
+peuplé que le pré-M3d, jamais plus étranglé.
+
+**COLONISATION (Σ 3 sims/graine) — restaurée :** fondations d'État 9 : 273→399
+(**+46 %**, V1 −8 %) · 11 : 373→294 (−21 %, V1 −33 %) · 42 : 422→426 (+1 %, V1 −38 %) ;
+colonies du peuple (M4-IP) ×3-4.6 (29→133 · 34→99 · 23→68) ; provinces colonisées fin :
+759→1002 (+32 %) · 808→849 (+5 %) · 744→815 (+10 %). TOTALE (État+peuple) : +23 %.
+
+**DETTE — l'objectif central atteint :** pays AU PLAFOND fin de partie 2-6/sim (sur
+~21-30 vivants, 10-25 %) — une MINORITÉ (V1 : 5-14, TOUTES les sims, 25-50 % chronique) ;
+dette/revenu RESPIRE (ex. s9·1 : 110→51→67→56 % ; s11·3 : 73→33→32→16 % — V1 : 80-270 %
+sans plancher) ; banqueroutes forcées 44-207/sim (V1 : 235-363 — l'outil VIT encore) ;
+taux moyen 3.0-4.4 % (bande [2,5]).
+
+**CE QUI TIENT :** invariant M3c VERT 9/9 sims (graine 11 incluse — 2 gains du fix :
+le breach an-57 ET le pic marginal graine 110 an 128/141 disparus au calibrage final) ·
+satisfaction L 46-64 % (base 41-68) · friche 4-13 (base 4-10) · IPM 0.85-0.90 IDENTIQUE
+(la dévaluation N'A PAS d'inflation débridée — price_level plafonné à 1 fait exactement
+ce que le diagnostic joueur prédisait) · hégémon mortel 2/1/0 par graine (base 1/2/0 —
+comparable, le monde reste mortel).
+
+**Pièges (ce qui a coûté cher) :**
+- **« autres » négatif ne veut pas dire pays endetté.** Les suspects monétaires du brief
+  (banqueroute, dotations) étaient un contresens — le bug était dans la COLONISATION,
+  vieux de M3a. La localisation PAR PROVINCE (delta money-mass par pid, top/bot 5) a
+  trouvé en 3 runs ce que la lecture de code ne voyait pas : TOUJOURS instrumenter
+  l'espace (QUI dérive OÙ) avant d'hypothéquer le mécanisme.
+- **`!colonized` n'implique PAS wealth=0.** La dé-colonisation (endgame/cataclysme/
+  vanish) raye le flag, pas les strates. Tout code qui « fonde sur du vierge » doit
+  traiter la cible comme potentiellement RICHE.
+- **L'atomicité de la frappe libre est une contrainte de TÉLÉMÉTRIE** autant que de
+  comptabilité : chronicle_mint_flux_accum ne somme que les FX_MINT>0/an — router l'achat
+  en négatif sur la même ligne l'aurait rendu invisible.
+- **Le découpage de commits par hunks (pick_hunks.awk + git apply --cached) marche** —
+  mais COMPTER les hunks à la main se rate : le hunk principal du fix a failli manquer
+  au commit 1 (rattrapé à l'amend après vérification `git show HEAD | grep @@`) —
+  TOUJOURS vérifier le contenu du commit, pas le stat.
+
+**Restes :**
+- **La convergence prix-métal→parité n'émerge PAS** (or fin 1.6-2.7 vs parité 16 ;
+  cuivre 0.5-0.7 vs 5.2, ligne chronicle « étalon (M3e) ») : les achats de la frappe
+  libre débitent le stock SANS pousser `demand[]` — le prix du métal reste au niveau
+  offre/demande marchand, l'arbitrage reste ouvert en permanence (la Monnaie aspire le
+  surplus au prix bas). Fonctionnel pour la liquidité (le but M3e), mais l'étalon
+  « le marché flotte AUTOUR de la parité » (concept v5) demanderait que l'achat d'État
+  compte dans la demande — design futur.
+- **Réserves cuivre dormantes** : la royalty 0.35 capte plus de cuivre que la frappe
+  0.35/an n'en écoule (réserve fin jusqu'à 110k cuivre s9·1) — bénin (la réserve est
+  hors-M(t)), mais un curseur « tout frapper » changerait l'échelle.
+- La bande pop ±10 % STRICTE par paire reste hors d'atteinte sous la bifurcation par-sim
+  actuelle (sigma ~±30-80 % sur une même graine) — le critère praticable est « pas de
+  suppression systématique + moyenne au-dessus de la baseline », tenu ici. Un critère
+  par-paire exigerait des mondes moins bistables (hors scope monétaire).
+- Palier 0.25/0.25 documenté mesuré-écarté ; IP_COLON_WPC jamais touché.
+- ⚠ La DLL Godot doit être re-buildée (scons -C godot) si un lecteur façade expose la
+  frappe (scps_country_mint_month est partagé) — hors scope de cet agent, à signaler.
+
+**Nettoyage** : worktree `../SCPS-v1-m3e-baseline` retiré ; tag `pre-m3e` posé avant
+tout changement (bb554f8).
