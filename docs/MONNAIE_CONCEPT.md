@@ -130,14 +130,53 @@ ingérable) — la réversibilité est PAR COMMIT (vagues séparées + tag `pre-
 - Gate : pas de runaway ; le sweep raconte Mansa Musa (l'or d'un conquérant déstabilise
   ses PARTENAIRES commerciaux, gradient visible par empire).
 
-### M5 — LES RÉFLEXES MONÉTAIRES IA
+### M5 — LE REVENU PROPRE + L'ASSIETTE (LIVRÉ, 2026-07-15)
+**Statut : CALIBRÉ-LIVRÉ.** Décision joueur : « Le toll, 50/50 état-bourgeois. Réserve d'or et
+de cuivre au début (100/100). La gabelle... mauvaise idée pour l'instant. […] Moi je pars sur
+le toll, la réserve initiale, "paie ton assiette". » Contexte : les États empruntaient AVANT
+d'avoir un fisc (dette mondiale early élevée, sweep graine 9). La gabelle et la régale élargie
+sont REJETÉES (non implémentées).
+- [x] **R1 — LE TOLL 50/50** : les 3 sites de péage (échange inter-empire TRADE_LEVY, détroit,
+      marge d'import chantier) versaient 100 % aux BOURGEOIS (item 5, M3b-v2.1) — l'État y
+      perdait un revenu. `TOLL_STATE_SHARE` (défaut 0.5, registre J) partage désormais entre
+      le trésor de la province-hôte et les bourgeois. Diagnostic : le flux « péages+ » n'était
+      PAS un site mort (il s'alimente, croît avec l'activité commerciale) — il est
+      structurellement PETIT car TRADE_LEVY (10 %) ne taxe que le canal route bilatérale
+      inter-empire (pas le commerce intra-empire scps_trade, pas les Centres) ; calibrage à
+      trancher par le joueur si un revenu plus visible est désiré (cf. TROUVAILLES M5).
+- [x] **R2 — LA RÉSERVE DE GENÈSE 100/100** : `GENESIS_RESERVE_GOLD_EMPIRE`/
+      `GENESIS_RESERVE_COPPER_EMPIRE` (défaut 100/100, registre J) — un empire jouable/IA naît
+      désormais avec une réserve métallique (le champ M1 `reserve_gold`/`reserve_copper`,
+      jusqu'ici réservé aux cités-états à 200/500, INTACT) → seigneuriage early même sans mine.
+      Se frappe par le MÊME canal que la redevance royale (aucune voie neuve).
+- [x] **R3 — « PAIE TON ASSIETTE »** : audit d'abord (TROUVAILLES) — la consommation
+      créditait DÉJÀ le trésor depuis M3b-v2 (« l'État revend »), le « trou » réel était
+      ailleurs : (a) AUCUNE ration n'était GARANTIE (le grain, vital, subissait le même gate
+      d'affordabilité que le confort — le risque de collapse M3b-v1 restait ouvert) et
+      (b) la demande était STRICTEMENT LINÉAIRE à la pop, jamais sensible à la richesse.
+      Câblage : `ASSIETTE_ON` (kill-switch, défaut 1) sépare désormais RES_GRAIN (need_rank==0,
+      universel — « le seigneur garant du stock de grain ») en ration VITALE GARANTIE (servie
+      au stock physique disponible, jamais gatée par l'affordabilité ; payée au mieux, le
+      manquant TOLÉRÉ sans dette) du reste du panier, qui devient ÉLASTIQUE à la richesse
+      (`CONSUME_ELASTIC_K/MIN/MAX`, calibré 0.3/0.8/1.2 — une classe riche consomme jusqu'à
+      +20 % de confort, une pauvre se serre jusqu'à −20 %, référencé au panier/tête du tick
+      précédent `g_basket_pc`). Calibrage plus large (K=0.5, bande 0.5-2.0) cassait la bande
+      Laborer (43-51 % vs 50-64 requis) — resserré après sweep, voir TROUVAILLES.
+- Gate : kill-switches prouvés (golden pre-m5 byte-identique) · sweep apparié {9,11,42}×3×250 ·
+  bandes M3g/h/i tenues · `make test`/determinism/golden/savetest/fuzztest verts. Détail complet
+  (mesures, pièges, découvertes) : TROUVAILLES.md « CHANTIER MONNAIE — M5 ».
+- **Restes** : TRADE_LEVY calibrage (proposé au joueur, non tranché) · gabelle/régale élargie
+  (rejetées pour l'instant) · l'ethos-luxury cross-desire n'est PAS élastique (scope, cf.
+  TROUVAILLES) · UI (part du revenu par source) non câblée (aucun reader façade demandé).
+
+### M6 — LES RÉFLEXES MONÉTAIRES IA
 - [ ] Fuite vers le métal (prix locaux hauts → thésauriser, frapper moins).
 - [ ] Débase de guerre (trésor vide + guerre → frapper fort, assumer l'inflation).
 - [ ] Arbitrage (acheter le métal bon marché du voisin pour le frapper chez soi —
       germe : le spéculateur intertrade).
 - Gate : coordonnées réelles, télémétrie par réflexe, sweep.
 
-### M6 — LA CENTRALISATION FISCALE + LE TRANSPORT (v2 : reformulé)
+### M7 — LA CENTRALISATION FISCALE + LE TRANSPORT (v2 : reformulé)
 Le trésor est DÉJÀ provincial (:2675) — M6 n'est pas une « localisation » mais :
 - [ ] La remontée fiscale devient un TRANSPORT physique vers la capitale (convois,
       délai, interceptables) ; le coffre de la capitale = la cible du sac.

@@ -2400,3 +2400,204 @@ calibrage retenu ; dérive au-delà documentée ci-dessus, structurelle).
   signature côté binding C++, le .lib/.dll statique doit être relié à jour avant la
   prochaine session de jeu (motif M3h/M3g déjà noté à chaque vague).
 - Tag `pre-m3i` posé ; worktree de sweep retiré.
+
+## CHANTIER MONNAIE — M5 : LE REVENU PROPRE + L'ASSIETTE (2026-07-15)
+
+**Statut : CALIBRÉ-LIVRÉ — golden RE-BASELINÉ VERT, gates complets passés.** Décision joueur
+(verbatim) : « Le toll, 50/50 état-bourgeois. Réserve d'or et de cuivre au début (100/100).
+La gabelle... mauvaise idée pour l'instant. Le problème c'est que l'état paie et l'état achète
+mais les ordres ne paient pas, pas vraiment. […] Moi je pars sur le toll, la réserve initiale,
+"paie ton assiette". » Contexte : dette mondiale early élevée (les États empruntent avant
+d'avoir un fisc). Gabelle et régale élargie REJETÉES, non implémentées. 3 commits mécanisme
+(56b2d60 R1 · 3290ae9 R2 · 3574219 R3) + 1 golden (43ca85f).
+
+**R1 — LE TOLL 50/50** : les 3 sites de péage (échange inter-empire `TRADE_LEVY`,
+scps_intertrade.c:1002 ; détroit, scps_intertrade.c:1014-1029 ; marge d'import chantier,
+scps_agency.c:389-396) versaient 100 % aux BOURGEOIS de l'hôte (item 5, M3b-v2.1) — l'État y
+perdait le revenu. `TOLL_STATE_SHARE` (défaut 0.5, registre J) route désormais une part au
+trésor de la province-hôte (`econ_region_treasury_add`) ET une part aux bourgeois
+(`econ_region_wealth_add`) — MÊME montant total débité à l'acheteur, juste le split qui change
+(conservation intacte, vérifié par lecture des 3 sites : le débit `total-gross`/`toll` était
+déjà calculé une seule fois, seule la destination se scinde).
+
+**R2 — LA RÉSERVE DE GENÈSE 100/100** : `GENESIS_RESERVE_GOLD_EMPIRE`/
+`GENESIS_RESERVE_COPPER_EMPIRE` (défaut 100/100, registre J) — un empire jouable/IA
+(`POLITY_PLAYER`/`POLITY_ANTAGONIST`, scps_econ.c ~1575) naît désormais avec une réserve
+métallique de départ (le champ M1 `reserve_gold`/`reserve_copper`), jusqu'ici réservé aux
+cités-états (`POLITY_CITY_STATE`) à 200/500 via `GENESIS_RESERVE_GOLD`/`COPPER` — tunable
+SÉPARÉ, la valeur cité-état ne bouge PAS. Vérifié par lecture (`econ_country_mint_month`,
+scps_econ.c:2146) : la frappe lit `reserve_gold[cid]` pour N'IMPORTE QUEL pays avec une
+capitale (`cap>=0`), aucune voie neuve à câbler — la réserve empire se frappe par le MÊME
+canal que la redevance royale.
+
+**R3 — « PAIE TON ASSIETTE »** :
+- **L'AUDIT (avant tout câblage, demandé par le brief)** : la consommation créditait DÉJÀ le
+  trésor depuis M3b-v2 (2026-07-14, « L'ÉTAT REVEND », scps_econ.c ~4114) — `budget -=
+  need*got*price` débite la richesse de la classe, `re->treasury += consumed` crédite la
+  province. Le « trou » littéral décrit par le joueur (« les ordres ne paient pas, pas
+  vraiment ») N'EXISTAIT PLUS tel quel — measuré, pas supposé, avant de coder quoi que ce
+  soit. Le VRAI trou, trouvé par lecture : (a) AUCUNE ration n'était GARANTIE — le grain
+  (vital) subissait le MÊME gate d'affordabilité (`can_buy=budget/cost`) que le confort,
+  laissant ouvert le risque de collapse M3b-v1 (Laborer 0 % l'an 5, jamais recouvré) si une
+  province devenait pauvre ; (b) la demande (`NEED[c][r]`) est une table STATIQUE par classe,
+  strictement linéaire à la pop, JAMAIS sensible à la richesse — la phrase du joueur
+  (« sans jamais prendre en considération leur bonheur et le nombre de ressources qu'ils
+  ont ») décrit CETTE absence d'élasticité, pas l'absence de paiement.
+- **LE CÂBLAGE** : `ASSIETTE_ON` (kill-switch, défaut 1) sépare RES_GRAIN (`need_rank==0` —
+  vérifié UNIVERSEL : RES_GRAIN est le rang 0 de `NEED_ORDER` pour les 4 classes, y compris
+  CLASS_SLAVE dont le panier ne contient QUE ça — « le seigneur garant du stock de grain »)
+  en ration VITALE GARANTIE : `got=can_stock` SEUL (jamais `×can_buy`, donc jamais 0 % par
+  pauvreté), payée AU MIEUX (`paid=min(cost,budget)`, motif `pending_buy_debit` déjà dans le
+  fichier), le manquant TOLÉRÉ sans dette (pas de `credit_spend`, pas de négatif forcé). Le
+  reste du panier (rang≥1) reste gaté par l'affordabilité ET devient ÉLASTIQUE
+  (`need *= elastic_mult`) : `elastic_mult=clampf(1+K×(ratio-1), MIN, MAX)` où
+  `ratio=(wealth/tête)/g_basket_pc[pid][c]` (le panier/tête du tick PRÉCÉDENT, déjà lagué et
+  déjà utilisé par l'exonération fiscale M3b-v2.1 — même idiome, aucun champ neuf). Neutre
+  (×1) au 1er tick (pas de référence) et à `ASSIETTE_ON=0`.
+- **L'instrument « assiette »** (`g_assiette_revenue_cum`, print-only, RAZ/sim, jamais
+  sérialisé — motif `g_va_produced_cum`) expose ce nouveau revenu à la synthèse chronicle,
+  aucune ligne FX_* n'existait pour lui (FX_TAX/FX_MINT/FX_TOLL_RECV oui, « assiette » non).
+
+**Découvertes** :
+- **Le calibrage initial (K=0.5, bande [0.5,2.0]) CASSAIT la bande Laborer** (43-51 % vs
+  50-64 requis, alors que pré-M5 = 50-58 %) — DIAGNOSTIQUÉ par isolation binaire (pas
+  supposé) : figer `elastic_mult` à exactement 1.0 (CONSUME_ELASTIC_MIN=MAX=1.0) restaure
+  Laborer à 50 % (seed 9, quasi-identique au pré-M5) → la cause est bien l'ÉLASTICITÉ, pas
+  le plancher vital (lui aussi testé seul, neutre). Baisser SEULEMENT le plafond haut
+  (MAX=1.5, K=0.2) n'a RIEN changé (toujours 43 %) — c'est le PLANCHER BAS (MIN=0.5, qui
+  laisse `need` chuter à moitié pour les classes pauvres) qui mordait, PAS l'excès des
+  riches : resserré aux DEUX bouts (K=0.3, MIN=0.8, MAX=1.2 — bande ±20 % au lieu de
+  [-50 %,+100 %]) restaure Laborer 54/56/54 sur {9,11,42}. Le mécanisme reste vrai
+  (« riche consomme plus, pauvre se serre ») mais TIMIDE — un futur calibrage pourrait
+  l'élargir UNE FOIS que la cause exacte de la fragilité au bas de la bande soit comprise
+  (hypothèse non confirmée : le pool national partagé entre provinces d'un même empire fait
+  qu'un `elastic_mult` bas sur UNE classe/province réduit le `need` measured, donc le
+  `need_w` du DÉNOMINATEUR de `basket=met_w/need_w` — en théorie neutre par construction
+  (numérateur et dénominateur scalent pareil), mais measuré NON neutre en pratique ;
+  l'explication la plus probable est un effet de PROPAGATION inter-tick via le pool
+  national partagé — non tracé en détail, budget de session).
+- **Pourquoi le toll (péages+) est si faible : PAS un bug** (diagnostic demandé par le
+  brief) — mesuré (`SCPS_MKTDIAG`-like lecture directe du flux) : « péages+ » +0.1 or/mois/
+  empire à l'an 12, +1.9 à l'an 250 (seed 9) — le flux S'ALIMENTE et CROÎT avec l'activité
+  commerciale (pas un site mort). Il est structurellement PETIT car `TRADE_LEVY` (10 %) ne
+  taxe QUE le canal route bilatérale inter-empire (`scps_intertrade.c`, `ca!=cb`, hors pacte/
+  guerre) — le commerce INTRA-empire (`scps_trade.c`) n'a AUCUN percepteur (confirmé M3a), et
+  les Centres/agency ont leurs PROPRES marges (`IMPORT_TOLL_FRAC`, `IMPORT_MARGIN_*`),
+  DISTINCTES du péage d'échange. Vérifié par corrélation : péages+ ≈ 10 %×export (`FX_EXPORT`,
+  +15 à +19/mois/empire) — exactement le taux TRADE_LEVY appliqué au volume RÉEL du canal.
+  Calibrage NON changé (interdit par le brief) — chiffres proposés en rapport final.
+- **`region_carrier_prov`/péages de détroit parqués (fuite M3h/M3i, item 7)** : NON retouché
+  ici (hors scope R1 — le brief ne demandait que le SPLIT état/bourgeois, pas le routage) ;
+  reste désigné, cf. entrées M3h/M3i.
+- **Portée volontairement RESTREINTE de l'élasticité** (décision de scope, motif M3b-v2.1
+  « NON retenus ») : `need *= elastic_mult` touche le bloc générique (couvre WOOD, TUNIQUE,
+  SALT, REMEDE, FUR, POTTERY, STATUE, EAU_DE_VIE/BEER, PRECIOUS_WARE/CLOTH — la quasi-
+  totalité du panier confort) MAIS PAS le désir croisé éthos (manufactures-signature, bloc
+  séparé après la boucle principale, scps_econ.c ~4034) — un second site aurait dupliqué la
+  logique pour un canal secondaire, hors budget.
+
+**Pièges** :
+- **Le fixture `social_demo.c` test 1 (brasserie) cassait à beer=0.0** (vs 0.7 pré-M5) —
+  PAS un bug moteur, DIAGNOSTIQUÉ par isolation (diag temporaire `SCPS_M5DIAG`, retiré avant
+  commit) : la réserve vivrière EXISTANTE (scps_econ.c ~3463, « le grain nourrit avant de se
+  brasser ») protège déjà la subsistance AVANT la brasserie — la vraie cause est en AVAL : la
+  consommation ÉLASTIQUE de boisson (EAU_DE_VIE/BEER, palier moral) grossit avec la richesse
+  qui monte vite dans ce fixture isolé (owner=-1, pop fixe, production continue sans
+  dépense) — la population boit désormais PLUS de bière au fur et à mesure qu'elle
+  s'enrichit, asséchant le stock que le test mesurait comme « surplus ». Fix RÉPARATION
+  BANC (motif M3i) : niveau de la Brasserie 3→8 (marge de production, moteur intact) —
+  PAS un bug, la conséquence VOULUE de « riche consomme plus de confort » appliquée à un
+  fixture qui n'anticipait pas cette compétition.
+- **`make test` (rebuild des bancs) ne relie PAS `chronicle.exe`** : après le recalibrage
+  des tunables (K/MIN/MAX), `make test` a recompilé `scps_scps_econ.o` (dépendance commune)
+  mais PAS relié `chronicle` (cible Makefile séparée) — un sweep lancé juste après utilisait
+  encore le VIEIL exécutable (défauts K=0.5), produisant des résultats FANTÔMES (Laborer 44 %
+  au lieu de 56 % attendu). Détecté en re-testant en environnement propre (`env | grep SCPS`
+  vide, résultat reproductible). Leçon : après TOUT changement de code partagé, relier
+  EXPLICITEMENT `chronicle`/`scps_viewer` avant de sweeper, ne jamais supposer qu'un autre
+  target Make l'a fait. Deux des trois runs du premier sweep « final » (`seed 11`, `seed 42`)
+  ont dû être REFAITS pour cette raison — les fichiers `/tmp/final_head_s11.txt`/`s42.txt`
+  originaux (Laborer 44/51 %) sont FAUX, remplacés par `/tmp/verify_s11.txt`/`s42.txt`.
+- Un `chronicle.exe` encore vivant (background, tué par erreur en cours de sweep par un
+  `taskkill` préventif avant rebuild) a TRONQUÉ un run (seed 9, 337/536 lignes attendues) —
+  relancé proprement après. Motif déjà noté (M3b-v2.1) : toujours vérifier `wc -l` avant de
+  lire un fichier de sweep produit en arrière-plan.
+- `git add -p` avec réponses pré-écrites (`printf 'n\nn\ny\nn\nn\nn\n' | git add -p fichier`)
+  a permis de SPLITTER un fichier à hunks multiples (R2 seul dans `scps_econ.c`, R3 dans les
+  5 autres) pour des commits granulaires SANS toucher au contenu final — fiable tant que les
+  hunks ne se chevauchent PAS (ici : décl. instrument/RAZ/réserve genèse/boucle conso/crédit
+  trésor sont 6 hunks disjoints, comptés à l'avance sur le diff).
+
+**Mesures (sweep apparié pre-m5 vs HEAD, `{9,11,42}×3×250`, photo an-250)** :
+
+| seed | Laborer sat. | colonisation | hégémon mortel | invariant pic | banqueroutes Σ |
+|---|---|---|---|---|---|
+| 9  | 50→54 % | 402→441 (+9.7 %) | 2/3→1/3 | 227→208 % | 335→345 (+3.0 %) |
+| 11 | 58→56 % | 376→359 (−4.5 %) | 1/3→1/3 | 185→251 % | 302→351 (+16.2 %) |
+| 42 | 55→54 % | 378→433 (+14.6 %) | 1/3→0/3 | 254→180 % | 390→370 (−5.1 %) |
+
+Laborer TOUJOURS dans la bande 50-64 % (après recalibrage, cf. Découvertes) · colonisation
+BIDIRECTIONNELLE sans suppression systématique (2 hausses dont +14.6 %, 1 baisse modeste) ·
+invariant AMÉLIORÉ ou stable, 0/9 breach maintenu (max 251 % vs seuil 370 %) · hégémon mortel
+EN LÉGÈRE BAISSE (Σ4/9→2/9 — documenté, PAS creusé : nombres petits/haute variance, dans
+l'ordre de grandeur déjà toléré par M3i, 0-2/3 par graine) · banqueroutes MIXTES (+3/+16/−5 %,
+pas de tendance nette sur 250 ans malgré le fisc early amélioré — cf. dette/revenu ci-dessous
+pour la lecture EARLY qui, elle, s'améliore nettement).
+
+**Dette mondiale EARLY (seed 9, mesure `dette/revenu` × `revenu fiscal Σ`, via runs courts
+`years=10`/`years=60` pour capter les instantanés an-2/an-12 exacts, snap=années/5)** :
+- an 2 : pré-M5 62 % (Σrevenu 3842/an → dette≈2382) → HEAD 57 % (Σrevenu 3291/an →
+  dette≈1876) — ratio ET absolu en LÉGÈRE baisse.
+- an 12 : pré-M5 371 % (Σrevenu 2666/an → dette≈9889) → HEAD 211 % (Σrevenu 4871/an →
+  dette≈10278) — le RATIO chute fortement (371→211 %, −43 %) car le REVENU fiscal a
+  quasi-doublé (2666→4871, +83 %) grâce au fisc propre R1+R2+R3 ; la dette ABSOLUE ne baisse
+  PAS (elle est même légèrement plus haute) mais devient bien plus SOUTENABLE relative au
+  fisc — exactement le problème nommé par le joueur (« les États empruntent avant d'avoir un
+  fisc ») : ils empruntent encore, mais leur capacité de remboursement a grandi plus vite.
+
+**Ventilation du revenu d'État par source (seed 9, or/an/empire, runs `years=5`/`years=50`
+exacts, flux décomposé × 12 + instrument assiette)** :
+
+| horizon | impôt (taxes) | toll (péages+) | frappe | assiette (NEUVE) | Σ pré-M5 → HEAD |
+|---|---|---|---|---|---|
+| an 5  | 157.2 | 2.4 | 416.4 | 197.9 | 500.4 → 773.9 (+55 %) |
+| an 50 | 271.2 | 4.8 | 97.2  | 127.0 | 343.2 → 500.2 (+46 %) |
+
+« assiette » (R3, inexistante comme LIGNE de revenu avant M5) devient la 2e ou 3e source de
+revenu d'État dès l'an 5 — le « revenu propre dès l'early » demandé par le joueur est mesuré,
+pas supposé. Le vital (grain) TIENT (jamais 0 % par pauvreté, garanti par construction) ; le
+confort RESPIRE (élasticité mesurée qualitativement via le fixture brasserie : la conso de
+boisson grossit avec la richesse, cf. Pièges).
+
+**Gates (tous passés)** : kill-switch `TOLL_STATE_SHARE=0,GENESIS_RESERVE_*_EMPIRE=0,
+ASSIETTE_ON=0` → golden pré-M5 BYTE-IDENTIQUE (prouvé par `--hash` 5 graines×12 ans ET par
+diff texte intégral 250 ans×3 sims, seule différence la bannière `[tune] surcharges actives`)
+· sweep apparié {9,11,42}×3×250 (bandes ci-dessus) · `make test` 38 VERTS/0 ROUGE/1 BUILD
+ÉCHEC (intertrade_demo, pré-existant Windows, INCHANGÉ) + fixture social_demo réparée ·
+`make golden-update` puis `make golden` VERT · `make determinism` STABLE (5 graines×12 ans)
+· `make determinism-deep` STABLE (2 graines×200 ans) · `scps_viewer --savetest 9` A==B
+byte-identique + altération d'un octet REFUSÉE · `--fuzztest` 8/8 (216 octets flippés, tous
+rejetés, 0 crash).
+
+**Restes** :
+- **La fragilité du bas de bande de l'élasticité** (MIN=0.5 cassait Laborer, cause exacte
+  non tracée — hypothèse pool national, cf. Découvertes) — RESTE pour un futur calibrage qui
+  voudrait élargir l'élasticité au-delà de ±20 %.
+- **TRADE_LEVY (calibrage du taux du péage)** — diagnostiqué SAIN mais structurellement
+  PETIT (canal route bilatérale seul) ; chiffres proposés au rapport, NON tranché (décision
+  joueur explicitement réservée par le brief).
+- **Désir croisé éthos (manufactures-signature)** — PAS élastique (scope restreint,
+  documenté ci-dessus) ; candidat pour un futur R3b si le joueur veut l'élasticité partout.
+- **`region_carrier_prov`/péages parqués** (fuite M3h/M3i item 7) — toujours NON résolu,
+  hors scope R1 (split seul demandé, pas le routage).
+- **Hégémon mortel en légère baisse** (Σ4/9→2/9) — documenté, pas creusé (nombres petits,
+  précédent M3i tolère 0-2/3/graine).
+- **UI** : aucun STR_* touché (aucun reader façade demandé par le brief) — le bandeau
+  « Réserve : X or · Y cuivre » (M1/M2) affichera désormais une valeur non-nulle pour un
+  empire dès la genèse, SANS changement de code UI (le lecteur existant lit `reserve_gold`
+  déjà peuplé). **DLL Godot À RE-BUILDER** (scons -C godot) : scps_econ.c/h, scps_intertrade.c,
+  scps_agency.c, chronicle.c ont tous changé (nouveau symbole exporté
+  `econ_assiette_revenue_get`) — motif déjà noté à chaque vague monétaire.
+- Tag `pre-m5` posé (6439489) ; worktree de sweep (`wt-pre-m5`) à retirer après cette
+  session ; scripts d'aide `build_m5.sh`/`build_m5_wt.sh` (non committés, scratch) à
+  supprimer.
