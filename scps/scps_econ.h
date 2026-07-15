@@ -1075,6 +1075,9 @@ void econ_colony_stats(long *founded, long *survival);
  * Pointeurs NULL ignorés individuellement. */
 void econ_money_instrument_get(double *va_produced, double *consumption_destroyed,
                                 double *colonization_net);
+/* MONNAIE M5 — R3 : cumul « assiette » (revenu que la consommation crédite au trésor,
+ * print-only, RAZ par sim, jamais sérialisé — même motif que econ_money_instrument_get). */
+double econ_assiette_revenue_get(void);
 /* MONNAIE M3c — LE CANAL FERMÉ : ce que la péréquation nationale + l'emprunt aux PROPRES
  * classes (scps_credit.c, credit_borrow_local, appelé en INTERNE par econ_tick — aucun
  * World* requis) n'ont PAS pu couvrir pour le pays c, CE tick — le besoin restant qui

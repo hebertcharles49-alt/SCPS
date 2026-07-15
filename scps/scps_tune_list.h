@@ -1166,6 +1166,22 @@
      * sans mine découverte. 0 = kill-switch : réserve empire toujours nulle, chemin
      * legacy byte-identique. */ \
     X(GENESIS_RESERVE_GOLD_EMPIRE,   100.0f) \
-    X(GENESIS_RESERVE_COPPER_EMPIRE, 100.0f)
+    X(GENESIS_RESERVE_COPPER_EMPIRE, 100.0f) \
+    /* MONNAIE M5 — R3 : « PAIE TON ASSIETTE » (décision joueur 2026-07-15). La
+     * consommation (§4-6 d'econ_tick) reste PAYÉE (débit richesse → crédit trésor,
+     * INCHANGÉ depuis M3b-v2) mais se scinde désormais en RATION VITALE (RES_GRAIN,
+     * need_rank==0 — universel, « le seigneur garant du stock de grain ») GARANTIE :
+     * servie à hauteur du stock physique disponible SANS gate d'affordabilité (jamais
+     * 0 % par pauvreté — le garde-fou anti-collapse M3b-v1), payée au mieux (clampée
+     * au budget dispo, le manquant TOLÉRÉ sans dette) ; et AU-DESSUS-DU-VITAL (tout le
+     * reste du panier), qui reste gaté par l'affordabilité ET devient ÉLASTIQUE à la
+     * richesse (CONSUME_ELASTIC_K) : une classe riche (wealth/tête > le panier/tête
+     * du tick précédent, g_basket_pc) consomme plus de confort, une pauvre se serre.
+     * ASSIETTE_ON=0 : kill-switch — chemin M3b-v2 legacy byte-identique (grain gaté
+     * comme le reste, aucune élasticité). */ \
+    X(ASSIETTE_ON,                     1.0f) \
+    X(CONSUME_ELASTIC_K,               0.3f) \
+    X(CONSUME_ELASTIC_MIN,             0.8f) \
+    X(CONSUME_ELASTIC_MAX,             1.2f)
 
 #endif /* SCPS_TUNE_LIST_H */

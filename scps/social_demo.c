@@ -141,7 +141,7 @@ int main(int argc, char **argv){
         for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; re->stock[k]=0.f; re->price[k]=1.0f; }
         re->raw_cap[RES_GRAIN]=30.f;   /* grain ABONDANT : on ne brasse que le SURPLUS */
         re->n_bld=0;
-        re->bld[re->n_bld].type=BLD_BREWERY; re->bld[re->n_bld].level=3.f; re->n_bld++;
+        re->bld[re->n_bld].type=BLD_BREWERY; re->bld[re->n_bld].level=8.f; re->n_bld++;   /* M5 R3 : 3→8, la conso de confort ÉLASTIQUE (richesse en hausse) mord désormais le beer, il faut une marge de PRODUCTION plus large pour que du stock survive à l'assertion */
         re->strata[CLASS_LABORER].pop=400.f; re->strata[CLASS_LABORER].wealth=400.f;
         re->strata[CLASS_BOURGEOIS].pop=80.f; re->strata[CLASS_ELITE].pop=40.f;
         for (int t=0;t<6;t++) econ_tick(e,1.f);

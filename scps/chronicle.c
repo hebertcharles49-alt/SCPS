@@ -1998,6 +1998,11 @@ int main(int argc, char **argv){
           printf("   flux décomposé (I0, dern. année · or/mois/empire) :");
           for (int k=0;k<FX_COUNT;k++) printf(" %s %+.1f", econ_flux_name((FluxComp)k), comp[k]/ne/12.0);
           printf("\n");
+          /* MONNAIE M5 — R3 : « assiette » (revenu que la consommation crédite au trésor,
+           * §4-6) n'a pas de bucket FX_* (mesuré à part, SIM ENTIÈRE — pas dern. année
+           * seule comme la ligne I0 ci-dessus, cf. econ_assiette_revenue_get). */
+          printf("   revenu d'État « assiette » (M5 R3, cumul sim · or/an/empire moy.) : %.1f\n",
+                 econ_assiette_revenue_get()/fmax(1.0,(double)years)/ne);
       } }
     if (getenv("SCPS_MILDIAG") && g_mil_dep_tot>0.0)   /* W-GUERRE-3 : la part militaire du budget, sur TOUTE la fenêtre (bien moins bruyant que la photo I0 dern.-année) */
         printf("   budget militaire (SCPS_MILDIAG) .. soldes+marine = %.1f%% des dépenses d'État cumulées (%.0f / %.0f or) · dont ARMÉE %.1f%% / MARINE %.1f%%\n",

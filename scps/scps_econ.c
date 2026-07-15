@@ -1093,6 +1093,14 @@ void econ_money_instrument_get(double *va_produced, double *consumption_destroye
     if (consumption_destroyed)*consumption_destroyed = g_consumption_destroyed_cum;
     if (colonization_net)     *colonization_net      = g_colonization_net_cum;
 }
+/* MONNAIE M5 — R3 : L'INSTRUMENT « ASSIETTE » (print-only, même motif que g_va_produced_cum
+ * ci-dessus) — le revenu que la consommation (§4-6) crédite au trésor (le seigneur-revendeur,
+ * cf. docs/MONNAIE_CONCEPT.md « L'ÉTAT REVEND », M3b-v2) n'avait JUSQU'ICI aucune ligne dans
+ * la décomposition de flux I0 (FX_TAX/FX_MINT/FX_TOLL_RECV existent, « assiette » non). Statique
+ * de MODULE, cumulatif sur la sim, RAZ à econ_init, JAMAIS sérialisé (mesure seule, aucun effet
+ * sur le monde/le hash). */
+static double g_assiette_revenue_cum=0.0;
+double econ_assiette_revenue_get(void){ return g_assiette_revenue_cum; }
 
 /* MONNAIE M3h — LA DÉBASE : télémétrie MONDE cumulée, même motif (statics de module,
  * RAZ à econ_init, jamais sérialisés — un compteur de PARTIE, pas un état de simulation). */
@@ -1492,6 +1500,7 @@ void econ_init(WorldEconomy *e, const World *w) {
     g_colony_founded=0; g_colony_survival=0;    /* E7 : RAZ télémétrie colonisation (par partie/sim, non sérialisé) */
     g_ip_colony_founded=0; g_ip_manuf_built=0;  /* MONNAIE M4-IP : RAZ télémétrie initiative privée (par partie/sim, non sérialisé) */
     g_va_produced_cum=0.0; g_consumption_destroyed_cum=0.0; g_colonization_net_cum=0.0;   /* MONNAIE M3a : RAZ instrument (par partie/sim, non sérialisé) */
+    g_assiette_revenue_cum=0.0;   /* MONNAIE M5 — R3 : RAZ instrument (même motif) */
     g_debase_gold_cum=0.0; g_debase_country_months=0;   /* MONNAIE M3h : RAZ télémétrie débase (par partie/sim, non sérialisé) */
     econ_flux_reset();                          /* MEMBRANE DE DÉCISION : RAZ le flux courant … */
     memset(g_tax_lastyear,0,sizeof g_tax_lastyear);   /* … et le revenu annuel capté (par partie/sim,
@@ -3944,6 +3953,21 @@ void econ_tick(WorldEconomy *e, float dt) {
             bool wh = econ_is_wild_country(owner_);
             float budget=wh? 1.0e12f : re->strata[c].wealth;
             float budget0=budget;   /* MONNAIE M3a — L'INSTRUMENT (§2.1) : snapshot avant les `budget -=` du panier */
+            /* MONNAIE M5 — R3 « PAIE TON ASSIETTE » (décision joueur 2026-07-15) : au-dessus
+             * du plancher vital, une classe RICHE consomme plus de confort — élasticité au
+             * pouvoir d'achat RELATIF (richesse/tête ÷ coût du panier/tête du tick PRÉCÉDENT,
+             * g_basket_pc — même lag que l'exonération fiscale §3b/M3b-v2.1). Sans référence
+             * (1er tick, g_basket_pc=0) : neutre (×1), pas d'élasticité avant qu'un panier ait
+             * été mesuré. ASSIETTE_ON=0 : figé à 1.0 (chemin M3b-v2 legacy, byte-identique). */
+            float elastic_mult=1.f;
+            if (!wh && tune_f("ASSIETTE_ON",1.f)>0.5f && pid<SCPS_MAX_PROV && units>EPS){
+                float ref=g_basket_pc[pid][c];
+                if (ref>EPS){
+                    float wealth_ratio=(budget0/units)/ref;
+                    elastic_mult=clampf(1.f + tune_f("CONSUME_ELASTIC_K",0.3f)*(wealth_ratio-1.f),
+                                        tune_f("CONSUME_ELASTIC_MIN",0.8f), tune_f("CONSUME_ELASTIC_MAX",1.2f));
+                }
+            }
             float need_w=0.f, met_w=0.f;   /* pondération par valeur du besoin */
             float comfort_joy=0.f;         /* BONUS poterie/statuaire CONSOMMÉES (luxe qui ÉLÈVE, hors panier) */
             int   nbasket=0, nsat=0;       /* catégories du panier total · satisfaites (got≥τ) */
@@ -3953,6 +3977,25 @@ void econ_tick(WorldEconomy *e, float dt) {
                 float need=NEED[c][r]*units*(res_is_food((Resource)r)?food_need*decree_food_need_mult(owner_):1.f);   /* A2 : calibrage de la bouche + orientations RATIONS/FOYERS */
                 if (need<=0.f) continue;
                 if (need_rank(c,(Resource)r) >= active_needs) continue;   /* §progressif : besoin pas encore débloqué → ne pèse pas */
+                /* MONNAIE M5 — R3 : LA RATION VITALE (RES_GRAIN, need_rank==0 — universel,
+                 * « le seigneur garant du stock de grain ») est GARANTIE : servie à hauteur du
+                 * stock physique SEUL, jamais gatée par l'affordabilité (le garde-fou anti-
+                 * collapse M3b-v1 — Laborer 0 % l'an 5, TROUVAILLES) ; payée AU MIEUX (clampée
+                 * au budget dispo, le manquant TOLÉRÉ, PAS de dette — motif pending_buy_debit).
+                 * ASSIETTE_ON=0 : grain retombe sur le chemin générique legacy (bloc sauté). */
+                if (r==RES_GRAIN && !wh && tune_f("ASSIETTE_ON",1.f)>0.5f){
+                    float w=BASE_PRICE[r]*need; need_w+=w;
+                    float can_stock=clampf(S[r]/(need+EPS),0.f,1.f);
+                    float got=can_stock;                          /* GARANTIE : jamais de gate can_buy */
+                    if (got>=tau) nsat++;
+                    S[r]-=need*got;
+                    float paid=fminf(need*got*re->price[r], fmaxf(0.f,budget));   /* au mieux, sans dette */
+                    budget-=paid;
+                    met_w+=w*got;
+                    r_food_need+=need; r_food_got+=need*got;
+                    continue;
+                }
+                need *= elastic_mult;   /* MONNAIE M5 — R3 : au-dessus du vital, la richesse pèse (×1 si figé) */
                 /* ── CONFORT-BONUS (poterie/statuaire) : un LUXE qui ÉLÈVE le bonheur quand SERVI,
                  * SANS pénaliser quand absent (hors panier) — ⇒ « bonheur up ». La demande, elle, est
                  * générée par la boucle DEMANDE (plus haut) → le marché les produit, consommant
@@ -4069,7 +4112,8 @@ void econ_tick(WorldEconomy *e, float dt) {
              * sans indirection nationale. Une province HORS EMPIRE (owner<0, fixture/banc
              * isolé) n'a pas d'État pour vendre : elle reste un puits documenté par l'instrument. */
             if (!wh){ float consumed = budget0-re->strata[c].wealth;
-              if (re->owner>=0 && re->owner<SCPS_MAX_COUNTRY) re->treasury += consumed;
+              if (re->owner>=0 && re->owner<SCPS_MAX_COUNTRY){ re->treasury += consumed;
+                  g_assiette_revenue_cum += (double)consumed; }   /* M5 R3 : instrument print-only, « paie ton assiette » */
               else                                            g_consumption_destroyed_cum += (double)consumed; }
             float basket=(need_w>0.f)?met_w/need_w:0.5f;
             /* la surtaxe (§6) gronde : elle ABAISSE la satisfaction → agitation */
