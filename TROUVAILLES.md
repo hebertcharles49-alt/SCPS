@@ -1983,3 +1983,101 @@ REFUSÉE · `make fuzz-save` 8/8 (216 octets flippés, tous rejetés, aucun cras
   toucher au circuit M3b/crédit M3c").
 - Godot DLL non re-buildée (scons) : scps_econ.h a changé (nouvelle fonction publique
   `econ_country_wealth_levy_bounded`) — à re-builder avant la prochaine session de jeu.
+
+## CHANTIER MONNAIE — M3g : LA BANQUEROUTE-SAISIE (2026-07-15)
+
+**Statut : CALIBRÉ-LIVRÉ — golden RE-BASELINÉ VERT, gates complets passés.** La réponse
+au design joueur « la prod devrait être envoyée aux créanciers » : le malus PLAT −75 %
+production/croissance (M3d) est remplacé par la SAISIE — la production du banqueroutier
+CONTINUE PLEINE, une part `BANKRUPTCY_GARNISH(0.75)×bankruptcy_scar` de sa VALEUR est
+confisquée aux créanciers d'avant-répudiation. 4 commits + ce TROUVAILLES : saisie
+moteur (v92) · misère émergente · télémétrie/verdict colonisation · re-baseline.
+
+**Découvertes** :
+- **La part de saisie est DÉRIVABLE de la scar existante — mais PAS le créancier.** Le
+  brief demandait « PRÉFÈRE dérivable, pas d'état neuf » : la FRACTION l'est
+  (garnish=0.75×scar, la cicatrice M3d décroît déjà linéairement sur
+  BANKRUPTCY_SCAR_YEARS=10) ; l'IDENTITÉ du créancier cité-état et sa PART de la dette,
+  elles, sont détruites par la répudiation elle-même (credit_bankruptcy raye
+  to_class/to_cs/cs_id) — il FAUT les figer au moment de la banqueroute
+  (g_garnish_cs_id/share + le cumul mensuel pending, blob SVT_CRDT, SAVE_VERSION 92).
+- **Le point d'insertion de la saisie est le `out` de la manufacture (scps_econ.c §2)** :
+  `out = out_full×(1−garnish)` reproduit EXACTEMENT l'ancien malus plat côté
+  stock/prix/GDP/salaires (bit-identique à scar=0 — golden 7/108 INCHANGÉS au diff de
+  re-baseline, seuls 209/310/411 bougent) ; la part saisie devient valeur créditée au
+  lieu de ne jamais exister. Domestique (1−cs_share) → wealth élite/bourgeois de la
+  province MÊME (clé ELITE/BOURGEOIS_LEND_WEIGHT, motif intérêt M3c) ; cité-état →
+  cumul inter-tick réglé UNE FOIS/AN par credit_year_tick (motif intérêt cs :
+  econ_tick n'a pas de World*, le règlement annuel si — et il tourne AVANT que
+  g_forced_pending ne déclenche la banqueroute suivante : jamais de reliquat perdu).
+- **CITÉ-ÉTAT : la VALEUR au trésor, pas les biens** — le repli EXPLICITEMENT autorisé
+  par le brief, pris d'emblée : livrer les biens PHYSIQUES au stock du créancier
+  exigerait le pid de destination dans la boucle de production du débiteur (motif
+  diplo_siege_loot, mais par-recette/par-mois) — complexité hors budget, documenté.
+- **VERDICT MISÈRE ÉMERGENTE : le malus popgrowth explicite RETIRÉ EN ENTIER, mesuré.**
+  Le marché privé de 75 %→0 des biens ⇒ needs_met/satisfaction plongent seuls
+  (POP_NEEDS_W 0.85 pilote déjà la croissance). Sweep apparié pre-m3g vs HEAD
+  ({9,11,42}×3×250 6 empires/12 cités-états) : pop finale moyenne **+21.6 %**
+  (bidirectionnel 7↑/2↓, aucune suppression systématique), satisfaction Laborer
+  50-64 % (base 50-67 %), banqueroutes forcées 124/84/163 vs 116/77/194 (l'outil VIT),
+  pays au plafond fin 1/3/9 vs 7/1/9. Le malus MORAL DES ARMÉES reste explicite
+  (scps_campaign.c) — l'humiliation ne se calcule pas en grain.
+- **CHRONOLOGIE d'une banqueroute type (SCPS_GARNDIAG, graine 9)** : an 0 scar=1.00
+  (75 % de la valeur saisie), décroissance linéaire −0.10/an, an 10 scar=0 — la
+  satisfaction du banqueroutier plonge de ~2-4 pts pendant la cicatrice puis REBONDIT
+  au-delà (c=39 : 74 %→70-72 %→76-79 %), la pop continue de croître LENTEMENT
+  (émergent — plus la guillotine plate M3d) ; les débiteurs CHRONIQUES récidivent
+  ~tous les 10 ans (plafond re-atteint dès la cicatrice refermée, motif M3d connu).
+  Saisie mesurée : **17.5-25k or/banqueroute** (≈60 % d'une dette-plafond typique
+  3×revenu — les créanciers récupèrent une fraction MESURÉE, jamais un jackpot),
+  ventilation 8-21 % domestique · 79-92 % cité-état (to_cs domine la dette, motif M3c).
+- **COLONISATION RESTAURÉE SANS TOUCHER AUCUN LEVIER (le point 2 du brief)** :
+  fondations d'État Σ/graine 309→457 · 252→344 · 291→420 (M3e = 399/294/426 : +4.5 à
+  +14.8 % au-dessus — la cible « retour vers M3e ±10 % » atteinte, deux graines
+  légèrement AU-DESSUS, jamais en-dessous) ; colonies du peuple 109→129 · 98→107 ·
+  61→96 (M3e = 133/99/68). L'hypothèse « les levées M3f drainent la richesse » n'a
+  PAS eu à être tranchée : la production des banqueroutiers n'étant plus détruite, sa
+  valeur re-circule (wealth domestique + trésors des cités-états prêteuses qui
+  re-prêtent) — les levées M3f et IP_COLON_WPC restent INTACTS (interdit respecté).
+
+**Pièges** :
+- **La saisie domestique est une MONÉTISATION (biens→wealth), pas un transfert pur** —
+  exactement le motif que M3f a éradiqué ailleurs (pillage-stock). ASSUMÉ ici parce que
+  le brief le prescrit (« reçoivent la valeur en wealth, remboursés en nature ») et
+  l'invariant le TOLÈRE avec une marge énorme : pics 103/140/87 % vs seuil 370 %
+  (pre-m3g : 85/139/89 % — quasi inchangés, l'injection ~9-16k/an se noie dans le
+  bruit « autres » bidirectionnel). Si un futur M3h veut le transfert pur : livrer les
+  biens saisis au stock du créancier (motif diplo_siege_loot) et ne créditer AUCUNE
+  valeur.
+- **Les sorties SECONDAIRES (out2, panier de la FOREUSE) gardent le malus PLAT
+  (1−0.75×scar)** : elles sont hors PIB/salaires (bonus physiques sans circuit de
+  valeur) — les saisir créerait de la monnaie qui n'a JAMAIS été comptée en VA. Choix
+  conservateur documenté, pas un oubli.
+- **PowerShell `*>` écrit de l'UTF-16** : les logs de sweep redirigés ainsi doivent
+  passer par iconv avant grep (les tailles doublent, grep ASCII ne matche rien).
+- Le motif TMP/TEMP (TROUVAILLES M3f) confirmé encore : TOUS les make/binaires lancés
+  via l'outil PowerShell, aucun accroc.
+
+**Gates (tous passés)** : sweep apparié pre-m3g vs HEAD 9/9 sims (bandes tenues, pop
++21.6 % moy, invariant VERT 9/9 au seuil 3.7, colonisation restaurée) · `make
+golden-update` (diff 3 lignes revu, 7/108 identiques) puis `make golden` VERT · `make
+test` 38 VERTS/0 ROUGE/1 BUILD ÉCHEC (intertrade_demo, pré-existant Windows) · `make
+determinism` STABLE · `make determinism-deep` 7/9 STABLE (200 ans) · `scps_viewer
+--savetest 9` A==B byte-identique (v92, blob SVT_CRDT grandit des 3 tableaux garnish)
++ altération d'un octet REFUSÉE · `make fuzz-save` 8/8 (216 octets flippés, tous
+rejetés, aucun crash).
+
+**Restes** :
+- BANKRUPTCY_GARNISH=0.75 (registre J) calibré par CONSTRUCTION (miroir du −75 % M3d),
+  pas re-balayé en isolation — le sweep valide l'ensemble ; un balayage dédié du
+  curseur (0.5/0.6/0.9) reste possible si le rythme de récidive (~10 ans) doit changer.
+- La livraison PHYSIQUE des biens saisis aux cités-états (le premier choix du brief,
+  repli valeur pris) — cf. Pièges, motif diplo_siege_loot.
+- Récidive ~10 ans des débiteurs chroniques : héritée de M3d (GRACE=5, « moins pire »
+  mesuré, jamais optimisé) — inchangée par M3g, le narratif « occasionnel » reste à
+  calibrer si le rythme EN JEU paraît dense.
+- Godot DLL non re-buildée (scons) : scps_credit.h a changé (3 fonctions publiques
+  garnish) — à re-builder avant la prochaine session de jeu.
+- Colonisation deux graines LÉGÈREMENT au-dessus de la bande M3e +10 % (457 vs 399,
+  344 vs 294) : direction saine (jamais en-dessous), non corrigée — freiner la
+  colonisation pour rentrer dans une bande serait pervers.
