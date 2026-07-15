@@ -2175,11 +2175,51 @@ void econ_country_mint_month(const WorldEconomy *e, int cid,
 #define TAX_BASE_BOURGEOIS 0.15f
 #define TAX_BASE_ELITE     0.27f
 
+/* MONNAIE M3i — L'IMPÔT SUR LE REVENU (décision joueur 2026-07-15) : le forfait per-capita
+ * (ci-dessus, TAX_BASE_* — CONSERVÉ comme chemin LEGACY sous INCOME_TAX=0, et comme ANCRE
+ * DE CALIBRAGE des taux ci-dessous) devient un prélèvement à la SOURCE sur le revenu RÉEL
+ * versé à chaque ordre au tick : taux × revenu, pas forfait × pop. Kill-switch INCOME_TAX
+ * (registre J) : à 0, econ_income_tax_on() est faux PARTOUT, chaque site retombe sur le
+ * forfait — golden pré-M3i byte-identique (prouvé au gate, AVANT toute re-baseline). */
+static bool econ_income_tax_on(void){ return tune_f("INCOME_TAX", 1.0f) > 0.5f; }
+static float econ_income_tax_rate(SocialClass c){
+    switch (c){
+        /* Calibrage sweep (docs/MONNAIE_CONCEPT.md, TROUVAILLES M3i) : neutralité de revenu
+         * ±15 % à l'an 5 sur {9,11,42} avec ces 3 taux — l'ANCRE reste TAX_BASE_* (§6-7). */
+        case CLASS_LABORER:   return tune_f("INCOME_TAX_RATE_LABORER",   0.40f);
+        case CLASS_BOURGEOIS: return tune_f("INCOME_TAX_RATE_BOURGEOIS", 0.55f);
+        case CLASS_ELITE:     return tune_f("INCOME_TAX_RATE_ELITE",     0.75f);
+        default: return 0.f;   /* CLASS_SLAVE : pas d'impôt */
+    }
+}
+/* Taux effectif [0,1] pour un paiement qui n'est pas attaché à UNE province précise (ex.
+ * l'intérêt de la dette, scps_credit.c — un revenu NATIONAL, pas provincial) : la CAPITALE
+ * sert de référence fiscale du pays (même motif qu'econ_country_capital_prov ailleurs dans
+ * ce fichier — la capitale EST le siège de l'État). Pas de capitale (pays sans province
+ * active) ⇒ 0 (rien à taxer, rien à perdre : aucun trésor où déposer la retenue). */
+float econ_income_tax_rate_capital(const WorldEconomy *e, int cid, SocialClass c){
+    if (!econ_income_tax_on()) return 0.f;   /* kill-switch INCOME_TAX=0 : legacy, rien à retenir ici */
+    if (!e || cid<0 || cid>=SCPS_MAX_COUNTRY || c==CLASS_SLAVE) return 0.f;
+    int cap = econ_country_capital_prov(e, cid);
+    if (cap<0 || cap>=e->n_prov) return 0.f;
+    const ProvinceEconomy *re=&e->prov[cap];
+    float sat   = clampf(re->strata[c].satisfaction,0.f,1.f);
+    float seuil = econ_tax_tolerance(re->culture.ethos,c)*(0.40f+0.60f*sat)
+                 * econ_debase_tax_factor(re->debase_kdrain);
+    float mult     = econ_country_tax_mult(e,cid,c);
+    float ambition = STATE_TAX_AMBITION * mult;
+    float evasion  = clampf(ambition - seuil, 0.f, 1.f);
+    return econ_income_tax_rate(c) * mult * (1.f-evasion);
+}
+
 /* LECTEUR PUR (display) — le rendement fiscal MENSUEL d'une classe pour un pays, en
  * or/mois, RECALCULÉ de l'état courant : aucun champ sérialisé, zéro accumulateur ⇒
- * neutre save/déterminisme. Miroir de la boucle 3b (forfait × pop × curseur × (1−évasion)),
- * sommé sur les PROVINCES du pays (la province EST la vérité éco ; la région n'agrège que
- * pour l'UI). Omet le plafond wealth (négligeable en régime : forfait ≪ richesse). */
+ * neutre save/déterminisme. Miroir de la boucle 3b (INCOME_TAX=1 : taux × revenu du
+ * DERNIER tick, `re->gdp`×la clé 42/20/38 déjà persistée — le meilleur proxy disponible
+ * hors d'un tick actif, même décalage d'1 tick que va_country_prev/g_basket_pc ; sinon
+ * forfait × pop × curseur × (1−évasion)), sommé sur les PROVINCES du pays (la province
+ * EST la vérité éco ; la région n'agrège que pour l'UI). Omet le plafond wealth
+ * (négligeable en régime). */
 float econ_country_tax_class_month(const WorldEconomy *e, int cid, SocialClass c){
     if (!e || cid<0 || cid>=SCPS_MAX_COUNTRY || c<0 || c>=CLASS_COUNT) return 0.f;
     float base;
@@ -2189,6 +2229,8 @@ float econ_country_tax_class_month(const WorldEconomy *e, int cid, SocialClass c
         case CLASS_ELITE:     base=tune_f("TAX_BASE_ELITE",     TAX_BASE_ELITE);     break;
         default: return 0.f;   /* CLASS_SLAVE : pas d'impôt */
     }
+    bool  inc_on = econ_income_tax_on();
+    float rate   = inc_on ? econ_income_tax_rate(c) : 0.f;
     float mult     = econ_country_tax_mult(e, cid, c);
     float ambition = STATE_TAX_AMBITION * mult;
     float total    = 0.f;
@@ -2200,19 +2242,26 @@ float econ_country_tax_class_month(const WorldEconomy *e, int cid, SocialClass c
         float seuil   = econ_tax_tolerance(re->culture.ethos,c)*(0.40f+0.60f*sat)
                         * econ_debase_tax_factor(re->debase_kdrain);   /* M3h */
         float evasion = clampf(ambition - seuil, 0.f, 1.f);
-        total += base * st->pop * mult * (1.f-evasion);
+        if (inc_on){
+            float income_gross = (c==CLASS_LABORER)   ? re->gdp*WAGE_SHARE
+                                : (c==CLASS_BOURGEOIS) ? re->gdp*(1.f-WAGE_SHARE-TAX_RATE)
+                                :                         re->gdp*TAX_RATE;
+            total += income_gross * rate * mult * (1.f-evasion);
+        } else {
+            total += base * st->pop * mult * (1.f-evasion);
+        }
     }
     return total;
 }
 
 /* LECTEUR PUR (display) — l'impôt MENSUEL d'UNE province, en or/mois, recalculé de l'état
- * courant (aucun champ sérialisé). MÊME formule que la boucle 3b du tick (forfait per-capita
- * × pop × curseur × (1−évasion)), sommée sur les 3 classes — la SEULE vérité fiscale (l'ancien
- * scps_province_tax taxait 42 % du STOCK de richesse : périmé, ~50× trop haut). */
+ * courant (aucun champ sérialisé). MÊME formule que la boucle 3b du tick — voir
+ * econ_country_tax_class_month ci-dessus pour le détail INCOME_TAX on/off. */
 float econ_province_tax_month(const WorldEconomy *e, int pid){
     if (!e || pid<0 || pid>=e->n_prov) return 0.f;
     const ProvinceEconomy *re=&e->prov[pid];
     if (!re->active || !re->colonized) return 0.f;
+    bool inc_on = econ_income_tax_on();
     float total=0.f;
     for (int c=0;c<CLASS_COUNT;c++){
         if (c==CLASS_SLAVE) continue;                       /* pas d'impôt sur les esclaves */
@@ -2230,7 +2279,15 @@ float econ_province_tax_month(const WorldEconomy *e, int pid){
         float mult    = econ_country_tax_mult(e, re->owner, (SocialClass)c);
         float ambition= STATE_TAX_AMBITION * mult;
         float evasion = clampf(ambition - seuil, 0.f, 1.f);
-        float coll    = base * st->pop * mult * (1.f-evasion);
+        float coll;
+        if (inc_on){
+            float income_gross = (c==CLASS_LABORER)   ? re->gdp*WAGE_SHARE
+                                : (c==CLASS_BOURGEOIS) ? re->gdp*(1.f-WAGE_SHARE-TAX_RATE)
+                                :                         re->gdp*TAX_RATE;
+            coll = income_gross * econ_income_tax_rate((SocialClass)c) * mult * (1.f-evasion);
+        } else {
+            coll = base * st->pop * mult * (1.f-evasion);
+        }
         if (coll > st->wealth) coll = st->wealth;           /* même plafond que le tick */
         total += coll;
     }
@@ -2492,6 +2549,20 @@ int econ_region_rep_province(const WorldEconomy *e, int region){
  * et active, sinon la première province active de la région, sinon -1 — ce dernier
  * cas = mondes SYNTHÉTIQUES des bancs (régions sans provinces) où la VUE region[]
  * est le SEUL store : les helpers y retombent sur le comportement d'hier. */
+/* MONNAIE M3i — SECONDAIRE (item 7 du brief, fuite désignée par M3h) : ESSAYÉ puis REVERTI —
+ * préférer une province COLONISÉE à une simple province ACTIVE non peuplée semblait la bonne
+ * idée pour ne plus voir les péages de détroit région-grain (scps_intertrade.c:1014) dormir
+ * sur une porteuse jamais colonisée (~250k/région mesuré par M3h) — mais MESURÉ au sweep
+ * apparié {9,11,42}×3×250 : la colonisation, qui tenait sa bande (bidirectionnelle, −6.7 à
+ * +3.8 %) avec la porteuse ACTIVE d'origine, devient SYSTÉMATIQUEMENT négative avec la
+ * porteuse COLONISÉE (−14 à −34 %, seed 11 la plus touchée) — le pool national P1 (empire-
+ * wide) puise apparemment sur CETTE MÊME trésorerie « parquée » pour financer les chantiers
+ * de colonisation ailleurs dans l'empire (chaîne non tracée en détail, hors budget de cette
+ * session) : le puits de liquidité documenté par M3h finançait, de fait, une partie de
+ * l'expansion. Corriger le routage AURAIT cassé un gate PRIMAIRE (bande colonisation) pour
+ * réparer un problème SECONDAIRE — doctrine « pas d'aventure » : reverti. La fuite ~250k/
+ * région RESTE non convertie ; un futur agent devra d'abord comprendre CE lien avant de
+ * retoucher region_carrier_prov. */
 static int region_carrier_prov(const WorldEconomy *e, int region){
     int rep=econ_region_rep_province(e,region);
     if (rep>=0 && rep<e->n_prov && e->prov[rep].region==region && e->prov[rep].active) return rep;
@@ -3543,6 +3614,10 @@ void econ_tick(WorldEconomy *e, float dt) {
                                           * pousser le trésor sous sa réserve pour CE tick (auto-
                                           * correctif : la caisse se refait au tick suivant, taxe +
                                           * revente — cf. §2.1 plus bas). */
+        /* MONNAIE M3i — portées hors du if/else : §3b (l'impôt SUR LE REVENU) retient CE que
+         * chaque classe vient de toucher CE tick, quelle que soit la branche (WILD reste à 0,
+         * la boucle §3b est de toute façon sautée pour un hameau — cf. plus bas). */
+        float pay_wage=0.f, pay_profit=0.f, pay_tax=0.f;
         if (econ_is_wild_country(owner_)){
             /* M3e — HAMEAU LIBRE (POLITY_WILD) : DÉMONÉTISÉ. wage/profit/tax_pool ne sont
              * qu'une MESURE de la VA déjà reflétée en physique (stock[]/S[], §2 ci-dessus) —
@@ -3554,7 +3629,7 @@ void econ_tick(WorldEconomy *e, float dt) {
             int oc=re->owner;
             va_country_this[oc] += va_prov;
             float pf = price_level[oc];
-            float pay_wage=wage_pool*pf, pay_profit=profit_pool*pf, pay_tax=tax_pool*pf;
+            pay_wage=wage_pool*pf; pay_profit=profit_pool*pf; pay_tax=tax_pool*pf;
             re->strata[CLASS_LABORER].wealth   += pay_wage;
             re->strata[CLASS_BOURGEOIS].wealth += pay_profit;
             re->strata[CLASS_ELITE].wealth     += pay_tax;   /* rente, PAS l'impôt d'État */
@@ -3566,9 +3641,10 @@ void econ_tick(WorldEconomy *e, float dt) {
             /* province HORS EMPIRE (fixture/banc isolé, owner<0) : pas de pays ⇒ pas de
              * compte de marché possible — comportement PRÉ-M3b inchangé (création documentée,
              * hors périmètre M3b qui ne couvre que le grain province RATTACHÉ à un pays). */
-            re->strata[CLASS_LABORER].wealth   += wage_pool;
-            re->strata[CLASS_BOURGEOIS].wealth += profit_pool;
-            re->strata[CLASS_ELITE].wealth     += tax_pool;
+            pay_wage=wage_pool; pay_profit=profit_pool; pay_tax=tax_pool;
+            re->strata[CLASS_LABORER].wealth   += pay_wage;
+            re->strata[CLASS_BOURGEOIS].wealth += pay_profit;
+            re->strata[CLASS_ELITE].wealth     += pay_tax;
             g_va_produced_cum += (double)va_prov;
         }
 
@@ -3578,6 +3654,18 @@ void econ_tick(WorldEconomy *e, float dt) {
          * La boucle : un peuple CONTENT sous un éthos TOLÉRANT paie fort ;
          * surtaxer un peuple mécontent ne rapporte pas — contenter d'abord. */
         float coll[CLASS_COUNT]={0}, coll_tot=0.f;     /* §B : ce que CHAQUE classe a versé (pour le rendre) */
+        /* MONNAIE M3i — le revenu de CE tick, la SOURCE de la retenue quand INCOME_TAX=1.
+         * La VALEUR PRODUITE (wage_pool/profit_pool/tax_pool, §3 — AVANT price_level) est
+         * la bonne assiette, PAS le montant réellement PAYÉ (pay_wage etc, après price_level) :
+         * mesuré au calibrage — price_level<1 structurel (M3b-v2, la caisse ne suit pas la VA
+         * d'une économie en croissance) rend le PAYÉ trop maigre pour ancrer un impôt (même à
+         * 100 % de rétention, le rendement restait loin sous le forfait legacy). La valeur
+         * produite reste la bonne assiette économique : le travail EST rémunérateur même quand
+         * l'État peine à financer l'achat intégral ce mois-ci. */
+        float income_gross[CLASS_COUNT]={0};
+        income_gross[CLASS_LABORER]=wage_pool; income_gross[CLASS_BOURGEOIS]=profit_pool;
+        income_gross[CLASS_ELITE]=tax_pool;   /* CLASS_SLAVE reste à 0 : pas d'impôt (INCHANGÉ) */
+        bool inc_on = econ_income_tax_on();
         /* M3e — un hameau (POLITY_WILD) n'a pas d'État : AUCUN impôt (sa wealth reste à 0,
          * §3 vient de le confirmer — sauter la boucle évite tout résidu float parasite). */
         for (int c=0;c<CLASS_COUNT && !econ_is_wild_country(owner_);c++){
@@ -3588,16 +3676,28 @@ void econ_tick(WorldEconomy *e, float dt) {
             float mult  = econ_country_tax_mult(e,re->owner,(SocialClass)c);
             float ambition  = STATE_TAX_AMBITION * mult;   /* pilote l'évasion vs le seuil (INCHANGÉ) */
             float evasion   = clampf(ambition - seuil, 0.f, 1.f);
-            /* REFONTE 2026-07-13 — assiette PER-CAPITA : forfait mensuel × effectif × curseur ×
-             * (1−évasion). ×(dt·12) = ×1 au tick mensuel (dt=1/12) ; au banc (dt=1) = ×12 = une ANNÉE. */
-            float collected = tax_base[c] * st->pop * mult * (1.f-evasion) * (dt*12.f);
+            float collected;
+            if (inc_on){
+                /* L'IMPÔT SUR LE REVENU (M3i) : retenue à la SOURCE — taux × ce que la classe
+                 * vient d'encaisser CE tick (gages/rente §3, le circuit M3b/compte de marché),
+                 * × curseur joueur, × (1−évasion). Zéro revenu ce tick ⇒ zéro impôt (la douceur
+                 * pour les pauvres est ÉMERGENTE : un ménage qui ne touche presque rien ne peut
+                 * presque rien devoir — l'exonération vitale ci-dessous reste un garde-fou
+                 * SUPPLÉMENTAIRE, cf. gate 5). */
+                collected = income_gross[c] * econ_income_tax_rate((SocialClass)c) * mult * (1.f-evasion);
+            } else {
+                /* REFONTE 2026-07-13 — assiette PER-CAPITA LEGACY (kill-switch INCOME_TAX=0) :
+                 * forfait mensuel × effectif × curseur × (1−évasion). ×(dt·12) = ×1 au tick
+                 * mensuel (dt=1/12) ; au banc (dt=1) = ×12 = une ANNÉE. */
+                collected = tax_base[c] * st->pop * mult * (1.f-evasion) * (dt*12.f);
+            }
             /* MONNAIE M3b-v2 — EXONÉRATION SOUS LE PANIER VITAL (brief §4, garde-fou de
-             * transition ; docs/MONNAIE_M3B2_AUDIT_SEUILS.md §1) : le forfait NOMINAL n'est
-             * PAS changé, mais il ne MORD PLUS un ménage déjà sous le coût du panier/tête du
-             * tick PRÉCÉDENT (g_basket_pc — même lecture décalée d'1 tick que
-             * mobility_tick_region plus bas). Sans ce garde-fou, le forfait rase une richesse
-             * déjà proche de 0 — le mécanisme qui a tué M3b v1 (compte touchant 0 plusieurs
-             * mois d'affilée → taxe forfaitaire achevant Laborer, état absorbant). */
+             * transition ; docs/MONNAIE_M3B2_AUDIT_SEUILS.md §1) : ne mord plus un ménage déjà
+             * sous le coût du panier/tête du tick PRÉCÉDENT (g_basket_pc — même lecture décalée
+             * d'1 tick que mobility_tick_region plus bas). Sans ce garde-fou sous le forfait
+             * legacy, le forfait rasait une richesse déjà proche de 0 — le mécanisme qui a tué
+             * M3b v1. Sous M3i, gate 5 mesure si ce garde-fou reste NÉCESSAIRE (l'impôt sur le
+             * revenu est déjà doux pour les pauvres par construction) ou redondant. */
             if (st->pop>EPS && pid<SCPS_MAX_PROV
                 && (st->wealth/st->pop) < g_basket_pc[pid][c]*tune_f("TAX_EXEMPT_BASKET_MULT",1.0f))
                 collected = 0.f;   /* ×multiple du panier — levier de calibrage M3b-v2.1 (registre J) */

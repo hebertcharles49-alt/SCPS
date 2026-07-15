@@ -1135,6 +1135,20 @@
      * gratuit rase le signal le mois même — l'initiative n'attrapait que des miettes). */ \
     X(IP_COLON_WPC,                    8.0f) \
     X(IP_INVEST_WPC,                  12.0f) \
-    X(IP_SHORTAGE,                     1.4f)
+    X(IP_SHORTAGE,                     1.4f) \
+    /* MONNAIE M3i — L'IMPÔT SUR LE REVENU (décision joueur 2026-07-15, « lié aux revenus
+     * des ordres » plutôt qu'un forfait par tête). Retenue à la SOURCE, au moment où
+     * l'État paie une classe (gages/rente §3 du circuit M3b, intérêt de la dette aux
+     * classes créancières, scps_credit.c) : taux × revenu du tick, PAS forfait × pop.
+     * TAX_BASE_* (§6-7, INCHANGÉS) restent l'ANCRE DE CALIBRAGE (le forfait qu'une
+     * province « moyenne » aurait payé sert de référence de neutralité de revenu,
+     * PAS le mécanisme actif). INCOME_TAX=0 : kill-switch — reprend EXACTEMENT le
+     * chemin forfait legacy (golden pré-M3i byte-identique, prouvé avant re-baseline).
+     * INCOME_TAX_RATE_* : taux effectif [0,1] par classe, calibré au sweep pour une
+     * neutralité de revenu ±15 % années 5-20 (docs/MONNAIE_CONCEPT.md). */ \
+    X(INCOME_TAX,                      1.0f) \
+    X(INCOME_TAX_RATE_LABORER,         0.40f) \
+    X(INCOME_TAX_RATE_BOURGEOIS,       0.55f) \
+    X(INCOME_TAX_RATE_ELITE,           0.75f)
 
 #endif /* SCPS_TUNE_LIST_H */

@@ -917,6 +917,10 @@ float econ_country_tax_mult(const WorldEconomy *e, int cid, SocialClass c);
  * aucun état sérialisé). Somme sur les provinces du pays du forfait per-capita × (1−évasion). */
 float econ_country_tax_class_month(const WorldEconomy *e, int cid, SocialClass c);
 float econ_province_tax_month(const WorldEconomy *e, int pid);   /* impôt MENSUEL d'une province (or/mois, per-capita) */
+/* MONNAIE M3i — L'IMPÔT SUR LE REVENU : taux effectif [0,1] (curseur × (1−évasion)) pour un
+ * paiement NATIONAL non attaché à une province précise (ex. l'intérêt de la dette versé aux
+ * classes créancières, scps_credit.c) — la CAPITALE sert de référence fiscale du pays. */
+float econ_income_tax_rate_capital(const WorldEconomy *e, int cid, SocialClass c);
 float econ_country_budget_mult(const WorldEconomy *e, int cid, BudgetPolicy policy);
 /* ENTRETIEN DES ROUTES → multiplicateur de connectivité pour la prospérité/le commerce.
  * Curseur non réglé (0, chronique/IA) → 1.0 NEUTRE (golden-safe) ; réglé ∈ [0.02,1] →

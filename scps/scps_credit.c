@@ -381,8 +381,25 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
             if (i_class>CR_EPS){   /* l'ÉLITE RENTIÈRE (et le bourgeois-créancier) vivent de l'intérêt d'État */
                 float ew=tune_f("ELITE_LEND_WEIGHT",1.0f), bw=tune_f("BOURGEOIS_LEND_WEIGHT",0.5f);
                 float tot=ew+bw; if (tot<=CR_EPS) tot=1.f;
-                credit_wealth_prorata(e,c,CLASS_ELITE,     i_class*(ew/tot));
-                credit_wealth_prorata(e,c,CLASS_BOURGEOIS, i_class*(bw/tot));
+                float amt_e=i_class*(ew/tot), amt_b=i_class*(bw/tot);
+                /* MONNAIE M3i — RETENUE À LA SOURCE sur l'intérêt versé aux classes créancières
+                 * (brief : « intérêts de la dette versés aux classes créancières » explicitement
+                 * nommé). Pas de province unique ici (le paiement est NATIONAL, prorata sur
+                 * toutes les provinces du pays via credit_wealth_prorata) : la CAPITALE sert de
+                 * référence fiscale (econ_income_tax_rate_capital, scps_econ.c) et reçoit la
+                 * retenue au trésor — kill-switch INCOME_TAX=0 ⇒ taux 0 ⇒ comportement legacy
+                 * EXACT (aucun trésor à créditer, aucune mutation en plus). */
+                float rate_e=econ_income_tax_rate_capital(e,c,CLASS_ELITE);
+                float rate_b=econ_income_tax_rate_capital(e,c,CLASS_BOURGEOIS);
+                float tax_e=amt_e*rate_e, tax_b=amt_b*rate_b;
+                if (tax_e+tax_b>CR_EPS){
+                    int cap=econ_country_capital_prov(e,c);
+                    if (cap>=0 && cap<e->n_prov) e->prov[cap].treasury += tax_e+tax_b;
+                    econ_flux_add(c, FX_TAX, tax_e+tax_b);
+                    amt_e-=tax_e; amt_b-=tax_b;
+                }
+                credit_wealth_prorata(e,c,CLASS_ELITE,     amt_e);
+                credit_wealth_prorata(e,c,CLASS_BOURGEOIS, amt_b);
             }
             if (i_cs>CR_EPS && g_debt[c].cs_id>=0){
                 int hc=home_reg(w,g_debt[c].cs_id);
