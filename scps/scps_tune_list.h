@@ -1035,9 +1035,15 @@
     /* MONNAIE M4-IP — L'INITIATIVE PRIVÉE (docs/MONNAIE_CONCEPT.md) : les seuils de
      * richesse/tête qui déclenchent l'émigration spontanée des journaliers et
      * l'investissement spontané des bourgeois/élites (le peuple agit seul, sans
-     * verbe joueur, cadence annuelle — scps_econ.c econ_ip_colonize_tick/
-     * econ_ip_invest_tick). À calibrer au sweep (docs/MONNAIE_CONCEPT.md M4). */ \
+     * verbe joueur, cadence mensuelle — scps_econ.c econ_ip_colonize_tick/
+     * econ_ip_invest_tick). Calibrés au sweep (docs/MONNAIE_CONCEPT.md M4).
+     * IP_SHORTAGE : seuil de PÉNURIE (prix ≥ ×base) qui ouvre la fenêtre
+     * d'investissement — PLUS BAS que NF_SHORTAGE (1.8, le seuil du semis §NF v2
+     * gratuit) : les riches investissent AVANT la crise (c'est LEUR besoin qui
+     * appelle) et la fenêtre reste ouverte plus longtemps (mesuré : à 1.8 le semis
+     * gratuit rase le signal le mois même — l'initiative n'attrapait que des miettes). */ \
     X(IP_COLON_WPC,                    8.0f) \
-    X(IP_INVEST_WPC,                  12.0f)
+    X(IP_INVEST_WPC,                  12.0f) \
+    X(IP_SHORTAGE,                     1.4f)
 
 #endif /* SCPS_TUNE_LIST_H */

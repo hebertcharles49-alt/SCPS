@@ -4816,11 +4816,12 @@ int econ_ip_colonize_tick(WorldEconomy *e){
 static bool ip_find_shortage_building(const WorldEconomy *e, const ProvinceEconomy *pe,
                                        int owner, int klass, int active_needs,
                                        BuildingType *out_b, bool *out_have){
+    float shortage=tune_f("IP_SHORTAGE",1.4f);   /* < NF_SHORTAGE : les riches investissent AVANT la crise (registre J) */
     for (int i=0;i<9 && NEED_ORDER[klass][i]!=RES_NONE;i++){
         if (i >= active_needs) break;                            /* palier pas encore débloqué ici */
         Resource want=NEED_ORDER[klass][i];
         if (BASE_PRICE[want]<=0.f) continue;
-        if (pe->price[want] < BASE_PRICE[want]*NF_SHORTAGE) continue;   /* pas en pénurie ICI */
+        if (pe->price[want] < BASE_PRICE[want]*shortage) continue;   /* pas en pénurie ICI */
         for (int b=0;b<BLD_TYPE_COUNT;b++){
             const Recipe *rc=&RECIPE[b];
             if (rc->out != want) continue;
