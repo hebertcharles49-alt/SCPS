@@ -176,7 +176,47 @@ sont REJETÉES (non implémentées).
       germe : le spéculateur intertrade).
 - Gate : coordonnées réelles, télémétrie par réflexe, sweep.
 
-### M7 — LA CENTRALISATION FISCALE + LE TRANSPORT (v2 : reformulé)
+### M7 — L'INFLATION SÉCULAIRE + LA DÉCOUVERTE D'OR (LIVRÉ, 2026-07-16)
+**Statut : CALIBRÉ-LIVRÉ.** Décision joueur : « Inflation séculaire (1% par an ?),
+découverte d'or sur certaine tile par évent (0,5N(empire) par game). » Contexte :
+`price_level[c]` (le facteur monétaire M3b-v2) était plafonné à 1.0 en dur — le système
+savait déflater, jamais inflater ; c'était la spec non tenue depuis le début du chantier
+(« pas de perte de monnaie… inflation séculaire = trait historique »).
+- [x] **I1 — LE DÉPLAFONNAGE** : `INFLATION_CAP` (registre J, défaut 1.6) remplace le
+      `1.f` codé en dur de `price_level`. Quand la caisse d'État déborde la VA
+      nationale, les prix montent au-dessus du pair — le MÊME circuit qui revend/paie
+      (M3b-v2) fait toute la transmission, aucun taux codé en dur. Calibré (MINT_ROYALTY/
+      MINT_AI_SHARE montés 0.35→0.6, INFLATION_CAP=1.6) pour une dérive mondiale
+      moyenne dans la cible 0.5-1.5 %/an (mesuré : +0.51 %/an sur le sweep officiel
+      {9,11,42}×250 ; +0.90 %/an à 10 empires fixes — cf. TROUVAILLES M7 pour la
+      variance inter-graines assumée). L'étalon or/cuivre reste EXEMPTÉ (pl=1, la
+      parité fixe est le numéraire) et le déclampage reste PAR PAYS (jamais l'IPM
+      mondial `e->ipm` — la contrainte « pas de déclampage MONDIAL » ci-dessous tient).
+- [x] **I2 — LA DÉCOUVERTE D'OR** : évènement `EVID_GOLD_DISCOVERY` (pays, budget
+      mondial ≈0.5×N(empires)/partie posé à `events_init`). **Conception revue en cours
+      de mission** (décision coordinateur) : la version initiale « slot raw libre »
+      (`resource2==RES_NONE`) s'est mesurée à 0 % d'éligibilité (le worldgen pose une
+      « pincée partout » qui remplit quasi toujours le 2e slot) — remplacée par un
+      **remplacement 1-pour-1 de la ressource COMMUNE mondiale dominante** (tally
+      déterministe à la genèse, hors rares/faustiens/or/cuivre) : la tile éligible porte
+      cette ressource dans un de ses ≤2 slots, l'évent le convertit en RES_GOLD et
+      transfère son `raw_cap` tel quel (≤2 raws respecté PAR CONSTRUCTION). AUCUN
+      modificateur direct — le circuit royalty→réserve→frappe existant (M1/M2) porte
+      tout le choc, émergent (mesuré : le pays découvreur peut voir son indice de prix
+      rester DURABLEMENT au-dessus du monde plusieurs décennies, cf. TROUVAILLES M7).
+- Gate : kill-switch prouvé (`INFLATION_CAP=1.0,GOLD_DISCOVERY_RATE=0,MINT_ROYALTY=0.35,
+  MINT_AI_SHARE=0.35` → golden pré-M7 byte-identique) · `make test` 38/38 (1 build
+  échec pré-existant Windows) · golden re-baseliné · determinism/deep/savetest/fuzztest
+  verts. Détail complet (mesures, pièges, découvertes, le virage de conception I2) :
+  TROUVAILLES.md « CHANTIER MONNAIE — M7 ».
+- **Restes** : variance inter-graines de la dérive I1 non lissée (un effondrement
+  ponctuel possible, assumé comme épisode déflationniste légitime) · sous-réalisation
+  des découvertes d'or (≈52 % du plafond théorique, non recreusé) · effet vivrier local
+  d'une découverte non chiffré en télémétrie dédiée (aucune famine observée en
+  calibrage, mais pas mesuré systématiquement) · SAVE_VERSION 94.
+
+### M8 — LA CENTRALISATION FISCALE + LE TRANSPORT (v2 : reformulé ; ex-M7, renuméroté
+pour laisser place au chantier LIVRÉ ci-dessus)
 Le trésor est DÉJÀ provincial (:2675) — M6 n'est pas une « localisation » mais :
 - [ ] La remontée fiscale devient un TRANSPORT physique vers la capitale (convois,
       délai, interceptables) ; le coffre de la capitale = la cible du sac.

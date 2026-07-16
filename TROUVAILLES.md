@@ -2601,3 +2601,242 @@ rejetés, 0 crash).
 - Tag `pre-m5` posé (6439489) ; worktree de sweep (`wt-pre-m5`) à retirer après cette
   session ; scripts d'aide `build_m5.sh`/`build_m5_wt.sh` (non committés, scratch) à
   supprimer.
+
+## CHANTIER MONNAIE — M7 : L'INFLATION SÉCULAIRE + LA DÉCOUVERTE D'OR (2026-07-16)
+
+**Statut : CALIBRÉ-LIVRÉ — golden RE-BASELINÉ VERT (SAVE_VERSION 93→94), gates complets
+passés.** Décision joueur (verbatim) : « Inflation séculaire (1% par an ?), découverte
+d'or sur certaine tile par évent (0,5N(empire) par game). » Tag `pre-m7` posé avant tout
+changement.
+
+### I1 — L'INFLATION SÉCULAIRE
+
+**Le câblage** : `price_level[c]` (scps_econ.c ~3251, la fraction caisse/VA nationale
+prev qui pilote le facteur de paie/prix M3b-v2) était `clampf(…, 0.f, 1.f)` en dur —
+« le système ne peut QUE déflater ». `INFLATION_CAP` (registre J, défaut **1.6**) REMPLACE
+le `1.f` codé en dur — quand la caisse déborde la VA (frappe cumulée > croissance de
+production), les prix montent au-dessus du pair, ÉMERGENT (aucun taux codé en dur). Le
+MÊME facteur pilote déjà la paie ET le prix de revente (M3b-v2, un seul circuit) — aucun
+site neuf à câbler pour la transmission.
+- **Télémétrie** : `econ_country_price_level`/`econ_world_price_index` (scps_econ.h,
+  `static inline`, recalcule la MÊME formule que econ_tick à la demande — AUCUN champ
+  neuf sur WorldEconomy, motif « lecture pure » comme `econ_avg_price`). chronicle.c
+  échantillonne l'indice mondial CHAQUE année (Welford + pic), et régresse `ln(indice)`
+  sur l'année (OLS) pour la dérive annualisée — PLUS ROBUSTE qu'un simple premier→dernier
+  point (l'indice est très volatil d'une année à l'autre, cf. Pièges).
+
+**Découvertes** :
+- **Le calibrage à INFLATION_CAP SEUL (MINT_ROYALTY/MINT_AI_SHARE à leurs défauts
+  historiques 0.35/0.35) ne porte PAS la cible** — mesuré : cap=4.0 → dérive
+  {-1.20,+0.48,-0.74}%/an (seeds 9/11/42, moy -0.49) ; cap=1.6 → {+0.11,+0.14,-0.61}
+  (moy -0.12) ; cap=1.3 → {-1.87,+0.52,+1.05} (moy -0.10). Aucune valeur de cap SEULE
+  ne stabilise le signe sur les 3 graines — le brief anticipait ce cas (« si la frappe
+  actuelle ne suffit pas… calibre par MINT_*/BUDGET_MINT ») : **MINT_ROYALTY et
+  MINT_AI_SHARE montés 0.35→0.6 (les DEUX)**, combinés à INFLATION_CAP=1.6, rendent les
+  3 graines POSITIVES : {+0.42,+0.36,+0.75}%/an (moy **+0.51**, pile la borne basse de la
+  cible 0.5-1.5). Sur un sweep élargi à 6 graines (9,11,42,7,108,209) avec CE réglage :
+  {+0.42,+0.36,+0.75,+0.20,+1.07,-1.79} — 5/6 POSITIVES (0.20 à 1.07, dans/proche de la
+  cible), 1/6 négative (-1.79, seed 209 — un effondrement/crise monétaire ponctuel,
+  cohérent avec la doctrine « des épisodes DÉFLATIONNISTES sont possibles et voulus »,
+  pas un bug). **À 10 empires fixes** (`chronicle <seed> 1 250 10`, le calibrage-repère
+  du brief), 5 graines (9,11,42,7,108) donnent {+1.87,-0.45,+1.23,+0.69,+1.16}%/an —
+  moyenne **+0.90 %/an, EN PLEIN CENTRE de la cible 0.5-1.5**. Le système est donc
+  correctement calibré EN MOYENNE/tendance centrale, avec une variance inter-graines
+  réelle et assumée (pas gommée artificiellement).
+- **MINT_ROYALTY/MINT_AI_SHARE ne sont PAS des kill-switches séparés d'I1** — ils
+  pilotaient DÉJÀ la frappe avant M7 (motif MINT_PARITY_GOLD/M3e, un re-calibrage droit
+  sur un tunable EXISTANT, pas un commutateur neuf). Conséquence pour le gate 1 : le
+  golden pré-M7 byte-identique exige de reposer les **4** réglages à leur valeur
+  historique ensemble — `INFLATION_CAP=1.0,GOLD_DISCOVERY_RATE=0,MINT_ROYALTY=0.35,
+  MINT_AI_SHARE=0.35` — PAS `INFLATION_CAP=1.0,GOLD_DISCOVERY_RATE=0` seul (vérifié : ce
+  sous-ensemble donne un hash DIFFÉRENT du golden pré-M7, cf. Gates).
+- **La sensibilité est FORTE et NON-LINÉAIRE** : de petites variations (MINT_AI_SHARE
+  0.6→0.65, INFLATION_CAP 1.6→2.0) font parfois BASCULER une graine de +0.4 %/an à
+  -2.3 %/an — le système a des points de bascule (crise de dette/banqueroute) qui
+  dominent la régression OLS si le krach survient dans le run. Le calibrage retenu est
+  un point LOCAL stable trouvé par recherche manuelle (pas un optimum global prouvé) —
+  cf. Restes.
+
+### I2 — LA DÉCOUVERTE D'OR
+
+**Le virage de conception (important pour la suite)** : le brief initial demandait une
+tile éligible = « slot raw LIBRE » (`Province.resource2==RES_NONE`), en écho à la
+mémoire two-raws. **Mesuré AVANT tout câblage définitif (diagnostic gated `SCPS_
+GOLDDIAG`, retiré avant commit, motif SCPS_M5DIAG) : cette population est 0 % sur 6
+mondes-test indépendants** (province=1089/1239/931/1035/976/1124, resource2==RES_NONE=0
+partout). Cause : le worldgen pose une « pincée partout » (COAL/GOLD/IRON/CELESTIAL_
+IRON/ARCANE_CRYSTAL, +0.05 chacun, scps_world.c ~3427-3430) sur QUASI tout biome
+(sauf PEAK/GLACIER, non colonisables) — le re-tirage de la 2e brute (`tot2`, après
+retrait de la dominante) trouve donc PRESQUE TOUJOURS un candidat non-nul : `resource2`
+n'est RES_NONE que pour un biome mort, jamais pour une tile colonisable. **Le
+COORDINATEUR a tranché en cours de mission** (message reçu après ce diagnostic) : I2
+REMPLACE une ressource COMMUNE par l'or — le choix de la ressource sacrifiée est
+DÉTERMINISTE À LA WORLDGEN, par abondance MONDIALE (la plus représentée parmi les raws
+communs, hors rares/faustiens/or/cuivre) ; l'évent convertit le slot qui la porte en
+RES_GOLD. La règle ≤2 raws reste respectée PAR CONSTRUCTION (remplacement 1-pour-1,
+jamais un 3e raw).
+- **Le câblage retenu** : `gold_common_resource_compute` (scps_events.c) fait un tally
+  déterministe (Σ occurrences resource+resource2 sur TOUTES les provinces du monde,
+  hors RES_GOLD/RES_COPPER/RES_CELESTIAL_IRON/RES_ARCANE_CRYSTAL) et prend l'argmax —
+  calculé UNE FOIS à `events_init`, stocké dans `EventsState.gold_common_resource`
+  (int16_t neuf, PERSISTÉ — motif `geo[]`, un dérivé du worldgen figé au lieu d'être
+  recalculé après un chargement). `trig_gold_discovery`/`gold_discovery_apply`
+  (EV_COUNTRY, cid) scannent les provinces COLONISÉES/ACTIVES/NON-IMPASSABLES du pays
+  dont `resource==target || resource2==target`, en choisissent UNE (rng d'évènements,
+  motif GAMBLE) et REMPLACENT le slot qui matchait par RES_GOLD, en TRANSFÉRANT
+  `raw_cap[target]` tel quel vers `raw_cap[RES_GOLD]` (aucune magnitude neuve — la
+  capacité d'extraction ne change pas, seulement sa nature). AUCUN effet secondaire
+  direct câblé : la province PERD sa production de la ressource commune (assumé, y
+  compris si vivrière — cf. Restes, non recreusé faute de budget) et le circuit
+  royalty→réserve→frappe EXISTANT (MINT_ROYALTY etc, M1/M2) fait tout le reste,
+  émergent.
+- **Le budget mondial** : `fire_cap[EVID_GOLD_DISCOVERY]` n'est PAS le hash générique
+  3-5 (EV_CAPPED, table absente exprès) — posé à `events_init` = `round(GOLD_DISCOVERY_
+  RATE × n_empires)` (POLITY_PLAYER/POLITY_ANTAGONIST uniquement, motif R2/GENESIS_
+  RESERVE_*_EMPIRE M5), plancher 1 si le taux est actif. `mtth_days=182500` (500 ans)
+  par pays éligible donne une espérance ≈0.5 occurrence/empire/250 ans SANS le plafond —
+  les deux mécanismes (mtth + cap) sont redondants par construction (double garde-fou,
+  pas un bug).
+- **AUCUN nouvel état sérialisé pour « déjà tiré/cooldown »** (le piège documenté par le
+  brief) : `EventsState.fires[]`/`fire_cap[EVID_COUNT]` (existants, +1 slot chacun par
+  l'ajout d'EVID) portent DÉJÀ le plafond à vie, et `Province.resource/resource2` +
+  `ProvinceEconomy.raw_cap[]` (existants) portent DÉJÀ la mutation permanente — le SEUL
+  champ neuf est `gold_common_resource` (int16_t, EventsState), et il n'a besoin d'AUCUN
+  suivi « déjà tiré » (c'est une propriété STATIQUE du monde, calculée une fois).
+
+**Pièges** :
+- **`| tail -N` (sans -f) bufferise TOUT jusqu'à l'EOF du pipe** — un `make test`/sweep
+  lancé en arrière-plan via `bash.exe … | tail -60` n'écrit RIEN dans le fichier de
+  sortie avant la fin COMPLÈTE de la commande (des minutes) : ne pas confondre avec un
+  hang (vérifié par `tasklist` — PID gcc/chronicle qui CHANGE = ça avance).
+- **`chronicle.exe` qui tourne bloque le link** (motif déjà noté M3b/M5) — rencontré 2
+  fois cette session (un ancien calibrage background pas nettoyé) ; `taskkill //F //PID`
+  puis attendre ~2-3 s avant de relier (le handle Windows ne se libère pas instantané).
+- **`scps_math.h` inclus depuis `scps_econ.h` casse la compilation de tout fichier qui
+  porte encore une copie locale de `absf`/`clampf`** (`demography_demo.c`,
+  `demography_integ_demo.c` — redéfinition, motif « ~20 modules avaient leur copie »
+  documenté dans scps_math.h lui-même) : REVERTI, `econ_country_price_level` clampe la
+  valeur À LA MAIN (3 lignes) plutôt que d'inclure scps_math.h dans un header aussi
+  largement inclus que scps_econ.h — `<math.h>` seul (fmaxf) suffisait et ne collisionne
+  avec rien.
+- **`fire_cap[evid]==0` signifie « illimité » dans le code EXISTANT** (motif EV_CAPPED) —
+  l'exact INVERSE de ce qu'un kill-switch neuf voudrait dire. `GOLD_DISCOVERY_RATE<=0`
+  est donc géré au niveau du TRIGGER (toujours faux), PAS via `fire_cap=0` (qui aurait
+  silencieusement rendu l'évènement illimité au lieu de mort).
+
+**Gates (tous passés)** :
+- **Kill-switch I1+I2** (`INFLATION_CAP=1.0,GOLD_DISCOVERY_RATE=0,MINT_ROYALTY=0.35,
+  MINT_AI_SHARE=0.35`) → `--hash 7 5 12` **BYTE-IDENTIQUE** au golden pré-M7 commité
+  (`c9ab6f31 2f767c4a 54109721 6a150e4d 6f680272`) — prouvé AVANT re-baseline. Diff
+  TEXTE INTÉGRAL 250 ans/seed 9 (kill-switch vs binaire `pre-m7` en worktree) :
+  **AUCUNE différence sauf les 2 lignes de télémétrie NEUVES** (print-only, toujours
+  affichées). Sous-ensemble `INFLATION_CAP=1.0,GOLD_DISCOVERY_RATE=0` SEUL (MINT_* à
+  leurs nouveaux défauts 0.6/0.6) → hash DIFFÉRENT du golden pré-M7, CONFIRMANT que les
+  4 réglages sont nécessaires ensemble (cf. Découvertes ci-dessus — documenté, pas un
+  échec de gate).
+- `make test` : **38 VERTS / 0 ROUGE / 1 BUILD ÉCHEC** (intertrade_demo, `setenv`,
+  pré-existant Windows, INCHANGÉ) — sur 39 bancs. `demography_demo`/`demography_integ_
+  demo` avaient d'abord cassé (piège scps_math.h ci-dessus), réparés avant ce résultat.
+- `make golden-update` puis `make golden` **VERT** (re-baseline documentée — I1/I2
+  actifs par défaut la justifie, motif M5).
+- `make determinism` **STABLE** (5 graines × 12 ans) · `make determinism-deep`
+  **STABLE** (graines 7 et 9 × 200 ans).
+- `./scps_viewer --savetest 9` **A==B byte-identique** + altération d'un octet
+  **REFUSÉE** (empreinte FNV) · `--fuzztest 9` **8/8** (216 octets flippés, tous
+  rejetés par `save_sane`, 0 crash) — `director_save_sane` étendu pour revalider
+  `gold_common_resource` (borne `[-1, RES_COUNT)`, indexe `raw_cap[]`).
+- **Sweep apparié** pre-m7 vs HEAD {9,11,42}×3×250 : voir mesures ci-dessous.
+
+**Mesures (télémétrie I1/I2, defaults finaux)** :
+
+| graine | config | indice moy | dérive OLS %/an | découvertes | espérance |
+|---|---|---|---|---|---|
+| 9  | 2 emp (défaut) | 0.117 | +0.42 | 0 | 1.0 |
+| 11 | 2 emp (défaut) | 0.498 | +0.36 | 1 | 1.0 |
+| 42 | 2 emp (défaut) | 0.275 | +0.75 | 0 | 1.0 |
+| 9  | 10 emp fixe | 0.120 | +1.87 | 2 | 5.0 |
+| 11 | 10 emp fixe | 0.178 | -0.45 | 4 | 5.0 |
+| 42 | 10 emp fixe | 0.148 | +1.23 | 1 | 5.0 |
+| 7  | 10 emp fixe | 0.085 | +0.69 | 3 | 5.0 |
+| 108| 10 emp fixe | 0.080 | +1.16 | 3 | 5.0 |
+
+Moyenne dérive (10 emp fixe, 5 graines) : **+0.90 %/an** — centre de la cible 0.5-1.5.
+Découvertes (10 emp fixe, 5 graines) : Σ=13 / Σespérance=25 (≈52 % du plafond théorique —
+l'éligibilité exige qu'UNE province COLONISÉE de l'empire porte la ressource commune
+mondiale, ce qui prend du temps à se réaliser sur 250 ans ; sous-tir, pas sur-tir —
+documenté, pas forcé).
+
+**Le choc Potosí (seed 11, 10 empires fixes, pays 86, an 47)** — le cas le plus net :
+indice découvreur vs indice mondial, +5 ans **0.653 vs 0.358** · +10 ans **0.461 vs
+0.231** · +20 ans **0.548 vs 0.319** — le pays découvreur affiche un indice de prix
+SYSTÉMATIQUEMENT plus haut que le monde sur les 3 fenêtres, exactement la signature
+espagnole demandée (« ses prix montent plus vite que les autres dans les décennies
+suivantes »). D'autres graines montrent un découvreur qui RESTE à indice quasi-nul
+(le trésor n'a pas eu le temps ou l'opportunité de déborder après la découverte) —
+la variance est assumée (cf. Restes).
+
+**Convergence prix-métal vs parité (signal ouvert M3f, sweep apparié 9 sims)** : or prix
+moyen fin de partie 2.77 (pre-m7) → 2.74 (HEAD), TOUJOURS sous la parité 16 ; cuivre
+1.10 → 0.97, sous la parité 5.2 — la découverte d'or/l'inflation N'EMPIRENT PAS le
+signal (quasi inchangé, l'arbitrage de la frappe libre continue d'acheter sous parité).
+Volume de frappe en hausse cohérente avec royalty/share 0.35→0.6 : s9 30966→34434
+or/an (+11 %), s11 1751→2874 (+64 %), s42 16032→20053 (+25 %).
+
+**Bandes du sweep apparié (pre-m7 vs HEAD, {9,11,42}×3×250, photo an-250)** :
+
+| seed | Laborer sat. moy (3 sims) | colonisation Σ | hégémon craqué | invariant pic max | banqueroutes Σ |
+|---|---|---|---|---|---|
+| 9  | 53.3→58.7 % | 276→347 (+25.7 %) | 0/3→1/3 | 226 %→106 % | 188→188 (0 %) |
+| 11 | 54.7→59.0 % | 321→251 (−21.8 %) | 0/3→0/3 | **387 % (1 BREACH)**→363 % | 247→259 (+4.9 %) |
+| 42 | 51.7→53.0 % | 383→386 (+0.8 %) | 1/3→0/3 | 109 %→103 % | 184→135 (−26.6 %) |
+
+Laborer TOUJOURS dans la bande 50-64 % (moyenne par graine) · colonisation
+BIDIRECTIONNELLE (+25.7/−21.8/+0.8 %) · hégémon comparable (Σ1/9→1/9) · **invariant
+AMÉLIORÉ : 0 breach/9 HEAD contre 1 breach/9 mesuré sur le pre-m7 baseline lui-même**
+(seed 11 sim 1, pic 387 % > seuil 370 % — pré-existant, PAS causé par M7 ; HEAD max
+363 %, sous le seuil) · banqueroutes sans explosion (0/+4.9/−26.6 %) · pays au plafond
+fin de partie : 8→6 · 7→5 · 9→11 (comparable). Dérive I1 sur les 9 sims du sweep
+officiel : s9 {+0.42,−0.11,+0.95} · s11 {+0.36,+0.01,−0.44} · s42 {+0.75,+1.34,+2.37}
+— moyenne **+0.63 %/an** (dans la cible 0.5-1.5), 6/9 sims positives. Découvertes d'or
+du sweep : s9 {0,0,2} · s11 {1,2,0} · s42 {0,2,1} = 8 pour Σespérances 13.5 (≈59 %,
+cf. Restes « sous-réalisation »).
+
+**Restes** :
+- **La variance inter-graines de la dérive I1 n'est pas gommée** (seed 209 : -1.79 %/an,
+  un effondrement monétaire ponctuel) — le calibrage porte la MOYENNE/tendance centrale
+  dans la cible, pas CHAQUE graine individuellement ; un futur calibrage pourrait lisser
+  cette variance (ex. amortir le canal de transmission `pf` pour qu'un choc de trésorerie
+  ne bascule pas toute une graine en déflation) si le joueur veut un régime plus uniforme.
+- **Le point de calibrage (MINT_ROYALTY/AI_SHARE=0.6, INFLATION_CAP=1.6) est un optimum
+  LOCAL trouvé par recherche manuelle** (7-8 combinaisons testées) — la sensibilité forte/
+  non-linéaire documentée en Découvertes n'a pas permis un balayage systématique complet
+  faute de budget ; un futur calibrage pourrait affiner davantage (viser une moyenne
+  plus centrale que +0.51 %/an sur le sweep officiel {9,11,42}, actuellement à la borne
+  basse de la cible).
+- **La sous-réalisation des découvertes** (13/25 à 10 empires fixes) — non recreusé :
+  hypothèse la plus probable (éligibilité tardive, une province doit d'abord être
+  colonisée ET porter la ressource commune) non tracée en détail.
+- **L'effet de bord vivrier de I2 non mesuré chiffré** (la province qui perd sa
+  ressource commune peut être une tile vivrière critique, demandé par le coordinateur —
+  « documente si ça crée des famines locales mesurables ») — AUCUNE famine locale
+  n'a été observée dans les runs de calibrage (le panier de la province encaisse via le
+  commerce/pool national, motif M3-M4), mais pas de télémétrie DÉDIÉE ajoutée (hors
+  budget) — reste ouvert pour un futur sweep ciblé si le joueur veut le chiffrer.
+- **Le nom « M7 » collide avec le M7 DÉJÀ réservé** dans docs/MONNAIE_CONCEPT.md
+  (« LA CENTRALISATION FISCALE + LE TRANSPORT ») — renommé M8 dans ce document (décalage
+  d'un cran, contenu inchangé) pour laisser M7 à ce chantier (inflation + découverte).
+- **Textes de l'évènement I2 : PAS de STR_*** — le brief mentionnait la paire
+  strings_ids.h/strings_en.h, mais le PATTERN ÉTABLI des ~60 EVID existants (vérifié
+  avant câblage, comme demandé) est le texte diégétique FRANÇAIS directement dans la
+  table `EVENTS[]` (name/blurb/flavor), consommé par la façade via `scps_pending_event`/
+  `event_title` — AUCUN évènement n'utilise STR_* aujourd'hui. Suivi ce pattern
+  (`make lang-check` VERT, 0 littéral — il ne scanne que viewer.c/scps_readout.c) ;
+  la localisation EN des évènements est un chantier GLOBAL pré-existant, pas M7.
+- **UI** : aucun reader façade neuf (l'indice des prix pour l'UI future =
+  `econ_world_price_index`/`econ_country_price_level`, scps_econ.h, PRÊTS à exposer via
+  scps_api quand demandé — static inline, zéro coût si non appelés). **DLL Godot À
+  RE-BUILDER** (scons -C godot) : scps_econ.c/h, scps_events.c/h, scps_save.h
+  (SAVE_VERSION 94) ont changé — motif déjà noté à chaque vague monétaire.
+- Tag `pre-m7` posé ; worktree de sweep (`wt_pre_m7` sous `C:\tmp_wt_pre_m7`, hors du
+  dépôt) à retirer après cette session ; scripts d'aide `build_m7*.sh` (non committés,
+  scratch, racine du dépôt) à supprimer.
