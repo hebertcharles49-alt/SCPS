@@ -4047,3 +4047,177 @@ existaient déjà M8/M9).** Tag `pre-ui-monnaie` posé sur 1e18cb8 avant tout ch
   long/dur) pour capturer la ligne en vrai.
 - **EXPORT scps.exe** — toujours pas fait (déjà noté à CHAQUE synthèse depuis le 14) ;
   cette vague ajoute encore de la surface UI jamais testée en dehors des probes headless.
+
+---
+
+## GIGA SWEEP 2026-07-16 — l'œil neuf (100 sims hors-monnaie)
+
+**Mission** : lecture pure (aucun code touché) de `build/giga/seed_*.txt` — 20 graines × 5 sims ×
+250 ans, 100 bilans § BILAN an 250, 532 fiches d'empire. Extraction par script Python (regex,
+`utf-8`/`errors=replace`) → `sims.json`/`empires.json` (scratchpad, non committés). Périmètre
+VOLONTAIREMENT hors-monnaie (banqueroutes/dette/frappe/débase/inflation déjà auditées ailleurs,
+chantiers M0-M12). Chiffres complets dans la réponse de session ; ce qui suit est le résumé qui
+COÛTE cher à retrouver.
+
+**Découvertes par dimension** (n=100 sims sauf mention contraire, n=532 pour les stats par empire) :
+- **Militaire** : guerres 38.5/sim (6-134) ; armes produites 62.4/sim moy. FER se négocie
+  en moyenne à 34 % de son prix de base (2.4) — 9/100 sims à prix FER = 0.0 pur (marché FER mort
+  localement). Les STOCKS ne sont PAS dominés par les armes : Poisson/Céréales/Bétail/Bois
+  cumulent 79 % des stocks #1 par empire, les armes seulement 12 % (toutes catégories
+  confondues : 12.9 % des 4 slots de stock affichés). guerres motivées : territoriale 2233 +
+  subjugation 1139 total, vs économique 54 et anti-piraterie 2 (quasi-mortes). morts CHOC vs
+  POURSUITE = 164 400 vs 973 500 (ratio 5.9x) — la poursuite domine STRUCTURELLEMENT, pas
+  anecdotique.
+- **Tech** : 21.6 % des empires (115/532) à 0 tech, 38.2 % à moins de 6 — la stagnation EST la
+  norme pour plus d'un tiers des empires. p50=17, p90=51, p99=63 (jamais 65+ observé au-delà de
+  2 empires). Corrèle fort avec prosp (r=0.74) et pop (r=0.73), modérément avec stab (r=0.54),
+  QUASIMENT PAS avec le fait de tenir un hub (r=0.07) ni avec la corruption (r=-0.21). Le cas
+  cité en brief (1 empire 61 tech, 3 à zéro) est réel et quasi-identique :
+  seed_9.txt#sim1 = [65, 61, 0, 0, 0] sur 5 empires. Autres spreads extrêmes :
+  seed_1024.txt#sim4 [65,42,41,27,18,0,0], seed_2026.txt#sim5 [63,45,44,43,36,21,0,0,0,0,0]
+  (5 zéros sur 11 empires).
+- **Fins (§27)** : RÉCHAUFFEMENT 63, GRAND HIVER 12, RONCES 12, ENGLOUTISSEMENT 9, SANG 1,
+  AUCUNE 3 (le monde survit intact à l'an 250 — seed_1024.txt#sim1, seed_110.txt#sim4,
+  seed_13.txt#sim3, tous à sang% sous 6 ET feu SOUS SEUIL). MÉCANISME ÉCLAIRCI : "feu ARMÉ"
+  (combustible/tête au-dessus du seuil 2.0) est vrai dans 95/100 sims mais RÉCHAUFFEMENT ne
+  conclut que 63/100 — 32 sims où feu est ARMÉ finissent autrement (GRAND HIVER/RONCES/
+  ENGLOUTISSEMENT/SANG), TOUJOURS à an180 (17/100 fins tombent pile an180) contre an240 pour
+  RÉCHAUFFEMENT (63 fins à an240 pile) : il existe un PREMIER checkpoint (an180, cataclysmes)
+  puis un fallback fixe (an240, RÉCHAUFFEMENT = la fin par défaut si rien d'autre n'a mordu).
+  La ligne "feu :" affiche TOUJOURS le texte "repli RÉCHAUFFEMENT" (100/100, même quand la fin
+  réelle est GRAND HIVER) — c'est un texte de mécanisme fixe, pas une prédiction de la fin
+  réelle. sang% (mémoire des morts / pop vivante, seuil 9%) : moy 1.93 %, max 16.58 %
+  (seed_77.txt#sim2, qui finit quand même en RÉCHAUFFEMENT — la fin SANG n'a mordu qu'UNE
+  fois, seed_512.txt#sim2, à 9.94 % au-dessus du seuil 9 % — cohérent, le seul dépassement
+  mesuré = le seul déclenchement). L'entropie [TERMINAL] (17/100 sims, jusqu'à 175125 sur
+  seed_128.txt#sim3) ne coïncide JAMAIS avec RÉCHAUFFEMENT ni AUCUNE — toujours un des 4
+  cataclysmes durs.
+- **Merveille** : MAX observé sur 100 sims = {1:58, 2:37, 3:5} — JAMAIS 4, 5 ou 6/6. La moitié
+  supérieure du contenu Merveille est un contenu mort dans l'enveloppe testée (250 ans, 2-6
+  empires/sim). paliers toujours "3/4/6" (fixe, non dérivé du monde). Corrélation
+  métabolisation-max% avec palier atteint réelle mais modérée (r=0.46) : palier1 vers moy
+  19.2 % digéré, palier2 vers 34.1 %, palier3 vers 45.3 % — jamais assez pour franchir le
+  palier 3.
+- **Sociologie** : Cohésion quasi gelée (moy 97.65, σ 3.64, min 77) — signal plat, à surveiller
+  si un futur calibrage veut la rendre significative. Corruption : 30.6 % des empires à
+  Corr=0 (PAS mort — p90=48, p99=80, réel dans la queue). Le "pire corrupteur" du monde est
+  tenu par les Conquérants dans 95/100 sims, les Marchands dans 5/100 — AUCUNE autre faction
+  n'apparaît jamais en 100 sims. Zombies (Stab<=10, toujours listés vivants) = 13.3 % de
+  TOUS les empires (71/532) : petits États croupions (2.63 rég moy vs 6.26), Cohésion RESTE
+  haute (95.9 moy) et Légitimité pas si basse (55.5 moy) — la survie zombie tient à la PETITE
+  TAILLE, pas à la légitimité ni à la cohésion qui restent découplées de la stabilité en bas
+  d'échelle. Labels 1er empire : Assise Consentie 63 %, Tyrannique 28 %, Partagée 6 %,
+  Contrainte 3 % — Consentie corrèle Légit moy 77.0 vs Tyrannique 42.7, mais Partagée (64.0) et
+  Contrainte (74.3) cassent une règle simple au seul Légit — la formule exacte du label reste
+  À VÉRIFIER EN SOURCE (pas déduite avec certitude des données seules).
+- **Classes** : au niveau monde (pop-pondéré) Laborer 84.7 % moy / Bourgeois 12.43 % / Élite
+  2.87 % — dérive vers PLUS de Laborer que le départ 80/15/5 (Bourgeois et Élite se
+  contractent légèrement en régime). Au niveau empire (n=532, non pondéré pop) c'est encore
+  plus tassé : J 87.7 %/B 9.1 %/E 3.2 % (les micro-empires, nombreux, sont presque purs
+  Laborer). Esclavage : 1488 âmes serviles au total, mais SEULEMENT 9/100 sims en ont au moins
+  une — quasi-mort à l'échelle du sweep, ZÉRO rachat IA en 100 sims, affranchissements
+  observés dans 2/9 sims seulement.
+- **Cités-états & commerce** : hubs_pct fortement bimodal — 75/100 sims à 100 % pile (dont
+  65/75 avec un volume RÉEL supérieur à 0, 10/75 triviaux 0/0 affichés 100 % par convention),
+  5/100 à 0 %, seulement 20/100 entre les deux. hubs_pct corrèle négativement avec
+  vivier_absorbees (r=-0.45) mais pas parfaitement — sur les 5 sims à 0 %, 4 ont un commerce
+  inter-pays quasi nul (autarcie réelle), 1 (seed_2026.txt#sim3) a un commerce réel (903
+  or/an) qui passe ENTIÈREMENT hors des Centres — un mode "commerce sans hub" existe, distinct
+  de l'autarcie pure. Seuls 6.8 % des empires (36/532) tiennent eux-mêmes un hub.
+- **Âges** : jamais bloqué — min observé 3 âges/sim (jamais 0/1/2), distribution
+  {3:4, 4:13, 5:20, 6:43, 7:20}, moy 5.62.
+- **Faustien** : entropie médiane 14 (quasi-nulle dans l'immense majorité), mais 17/100 sims
+  basculent en régime [TERMINAL] (jusqu'à 175125). foreuse tire dans 3/100 sims seulement
+  (la plus dormante des 3 conso faustiennes), réplicateur 20/100 (jusqu'à 26996), corne 23/100
+  (jusqu'à 9638) — bascules rares mais réelles quand elles arrivent (pas de valeurs
+  intermédiaires, du tout-ou-rien). 613 nœuds faustiens débloqués au total sur 100 sims
+  (environ 6.1/sim) — la RECHERCHE faustienne progresse régulièrement même quand la
+  CONSOMMATION (foreuse/corne/réplicateur) reste éteinte : écart recherche/usage réel.
+- **Autres** : réfugiés — 1 214 556 âmes en fuite vs 1 154 821 âmes de retour (ratio 0.95) sur
+  100 sims : la respiration démographique annoncée par le jeu est confirmée à grande échelle,
+  la migration de guerre est presque toujours transitoire. Accession T3 (3e palier de bâti)
+  JAMAIS atteinte dans 63/100 sims — cohérent avec le chiffre SYNTHÈSE "T1 75 % des provinces
+  pour toujours" que chaque fichier répète. Directeur (F), événements les plus fréquents
+  cumulés (agrégats SYNTHÈSE des 20 fichiers) : L'Année Sans Été (346) devant La Peste
+  Fluviale (287), Le Congrès (250), La Réformatrice (235) — Le Schisme dirigé (11) est le plus
+  rare des événements qui tirent QUAND MÊME (pas mort, juste rare).
+
+**Mécanismes morts** (jamais ou quasi-jamais déclenchés sur 100 sims / 532 empires) :
+1. **Interception navale** : 0 interception, 0 "paquet noyé" sur 100 sims × 250 ans — le
+   commerce maritime sans escorte n'est JAMAIS puni malgré la doctrine du jeu ("le transport
+   sans escorte est une PROIE").
+2. **Merveille paliers 4-6/6** : jamais atteints (max observé 3/6, dans 5 % des sims
+   seulement) — la moitié haute du contenu Merveille est inaccessible dans l'enveloppe testée.
+3. **Rachats IA d'esclaves** : 0/100 sims. Affranchissements : seulement 2/9 sims où
+   l'esclavage existe déjà (donc environ 2/100 au global).
+4. **Guerres anti-piraterie** (2 au total/100 sims) et **guerres économiques** (54 au total,
+   environ 0.5/sim) — motifs de guerre quasi éteints face à territoriale (2233) et subjugation
+   (1139).
+5. **Conso foreuse** : 3/100 sims — la plus dormante des 3 machines faustiennes.
+6. **Coups d'État** (soulèvements) : 1 SEUL sur 100 sims (vs 148 sécessions, 84 concessions,
+   1309 écrasements) — statistiquement résiduel, cohérent avec la note du jeu lui-même
+   ("0 purge, RARE attendu"), mais à ce niveau c'est quasi-mort en pratique.
+7. **Directeur "acharnement"** : toujours 0 sur 100 sims — MAIS c'est un garde-fou VOULU
+   ("acharnement 0, DOIT être 0" dans le texte du jeu lui-même), pas un mécanisme mort par
+   accident — à ne pas confondre avec les points 1-6.
+
+**Les 5 découvertes qui méritent une vague** (classées par impact gameplay) :
+1. **Merveille : la moitié du contenu (paliers 4/5/6 sur 6) n'est jamais visitée en 250 ans.**
+   Palier 3 lui-même n'est franchi que 5/100 fois, et le digéré moyen au palier 1 plafonne à
+   19 %. Si la Merveille est censée être un objectif de fin de partie atteignable, l'écart
+   entre le rythme de métabolisation et le coût des paliers hauts mérite un calibrage — sinon
+   documenter que c'est un contenu d'aspiration long-terme volontairement hors de portée d'un
+   seul run standard.
+2. **RÉCHAUFFEMENT domine parce que c'est le fallback an240, pas parce que c'est le mécanisme
+   gagnant en soi.** Les 4 autres fins ont une fenêtre de déclenchement antérieure (an180) qui,
+   si elle ne mord pas, laisse le monde continuer jusqu'au filet RÉCHAUFFEMENT. Le jeu a DÉJÀ
+   un objectif chiffré de ratio max/min entre fins (vu en SYNTHÈSE : "ratio max/min dispatch
+   99.9:1, cible <=2:1") — sur ce sweep, RÉCHAUFFEMENT (63) vs SANG (1) donne un ratio 63:1,
+   très loin de la cible déjà écrite dans l'outillage. Vague candidate : élargir la fenêtre de
+   déclenchement ou baisser les seuils des 4 autres fins pour qu'elles mordent plus souvent
+   avant le fallback.
+3. **La tech est bimodale et corrèle avec pop/prosp mais PAS avec le fait de tenir un hub
+   commercial (r=0.07).** 38 % des empires stagnent à 5 tech ou moins. La "remise diffusion"
+   existe déjà (doctrine CLAUDE.md) mais 21.6 % restent à 0 tech pur — vérifier si le
+   mécanisme de rattrapage touche vraiment les petits empires isolés ou seulement ceux déjà
+   connectés au commerce.
+4. **Interception navale totalement inerte (0/100 sims)** — le texte du jeu promet une
+   punition du commerce non-escorté qui ne se manifeste jamais dans l'échantillon ; soit le
+   trigger est mal câblé, soit son seuil d'activation n'est jamais atteint aux échelles de
+   sim testées (2-6 empires, 5-9 cités-états).
+5. **Un tiers d'empires "croupions" persistants** (13.3 % Stab<=10 mais Cohés autour de 96 /
+   Légit autour de 55, coups d'État quasi-inexistants (1/100), écrasements dominant les
+   soulèvements 1309 vs 148 sécessions) dessinent une classe d'États stagnants qui ne meurent
+   ni ne se réforment. À documenter comme texture voulue (la longue traîne de l'histoire) ou
+   à traiter avec plus d'ambition IA / rattrapage — actuellement ambigu, PAS un bug identifié,
+   un signal à trancher côté design.
+
+**Pièges d'interprétation** (pour le prochain agent qui rouvre build/giga/) :
+- "stocks Sigma" et "armée" peuvent afficher -0 (négatif de zéro, cosmétique) — un parseur
+  naïf sur \d+ sans signe rate ces lignes silencieusement (perdait 6/532 empires avant
+  correction).
+- "hub OUI" est TOUJOURS en majuscules, "hub non" toujours en minuscules — un regex
+  insensible à la casse sur oui/non seul rate systématiquement les empires hub=OUI.
+- Le type de fin "GRAND HIVER" contient un espace — un regex mono-mot sur "§27 FIN :" rate
+  silencieusement CES fins précises (15 cas perdus avant correction).
+- La ligne "feu :" a DEUX formats : "repli RÉCHAUFFEMENT ARMÉ (seuil ..., après +N ans)" et
+  "repli RÉCHAUFFEMENT sous seuil (seuil ..., après +N ans)" — le second (5/100 sims) n'a PAS
+  de fin §27 associée si aucun autre mécanisme n'a mordu non plus (les 3 sims AUCUNE).
+  "sous seuil" ne veut PAS dire jamais mais pas encore franchi cette sim-ci. Le champ
+  feu_repli_type (RÉCHAUFFEMENT) est un texte de MÉCANISME fixe, pas une prédiction — ne pas
+  le confondre avec fin_type (§27, la fin RÉELLEMENT survenue).
+- "hubs : X% ... (A / B)" peut afficher 100 % avec A=B=0 (convention 0/0 = 100 %) — 10/75 des
+  sims classés hub 100 % n'ont en réalité AUCUN volume de commerce mesuré ; toujours vérifier
+  le dénominateur avant de citer le pourcentage.
+- Le bloc "par événement" (Directeur F) n'existe QU'au niveau SYNTHÈSE (agrégat des 5 sims
+  d'un fichier), pas par sim individuelle — pas de granularité par sim pour ce champ.
+
+**Restes** :
+- Données brutes (sims.json, empires.json, scripts parse_giga.py/analyze*.py) au scratchpad
+  de session, non committées — les chiffres ci-dessus et dans la réponse de session font foi.
+- Le lien exact "label 1er empire" avec les seuils Légit/Cohés/Stab n'a pas été retrouvé avec
+  certitude depuis les données seules (Partagée/Contrainte cassent une règle simple au Légit
+  seul) — à vérifier en source si une vague touche ces labels.
+- "Empires au bord de la Brèche" (22/100 sims) ne semble PAS purement proportionnel à
+  l'entropie monde (des cas à entropie 8-21 ET des cas à entropie de plusieurs milliers) —
+  mécanisme probablement par-empire (tech faustienne individuelle ?), pas vérifié en source.
