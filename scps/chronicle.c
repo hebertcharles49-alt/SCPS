@@ -719,6 +719,24 @@ int main(int argc, char **argv){
          * l'amortisseur se lit là où il est bâti, pas dans la dispersion géo. */
         static double pr_n[SCPS_MAX_REG], pr_mean[SCPS_MAX_REG], pr_m2[SCPS_MAX_REG];
         memset(pr_n,0,sizeof pr_n); memset(pr_mean,0,sizeof pr_mean); memset(pr_m2,0,sizeof pr_m2);
+        /* MONNAIE M7 — I1 (télémétrie, print-only) : L'INFLATION SÉCULAIRE — indice des
+         * prix MONDIAL (econ_world_price_index, la moyenne pondérée-VA des price_level
+         * par pays), échantillonné CHAQUE année (Welford : moyenne/écart-type + pic) ;
+         * premier/dernier échantillon pour la DÉRIVE ANNUALISÉE (cible joueur : 0.5-1.5 %/an
+         * sur 250 ans, docs/MONNAIE_CONCEPT.md M7). */
+        double infl_n=0.0, infl_mean=0.0, infl_m2=0.0;
+        double infl_idx_first=-1.0, infl_idx_last=1.0, infl_idx_peak=1.0;
+        /* Régression OLS de ln(indice) sur l'année (Σt/Σt²/Σy/Σty) — plus ROBUSTE au bruit
+         * qu'un simple premier→dernier échantillon (l'indice est volatil d'une année à
+         * l'autre, cf. TROUVAILLES M7) : la PENTE de cette droite EST la dérive annualisée
+         * moyenne demandée par le brief (cible 0.5-1.5 %/an). */
+        double infl_st=0.0, infl_st2=0.0, infl_sy=0.0, infl_sty=0.0, infl_sn=0.0;
+        /* MONNAIE M7 — I2 (télémétrie, print-only) : LE CHOC POTOSÍ — dès la PREMIÈRE
+         * découverte d'or de CE run, une fenêtre de 20 ans échantillonne l'indice de prix
+         * du PAYS DÉCOUVREUR vs le monde (preuve que ses prix montent plus vite dans les
+         * décennies suivantes — cf. la table gold_discovery_log, scps_events.c). */
+        bool  watch_active=false; int watch_cid=-1, watch_year0=-1, watch_len=0, gold_log_seen=0;
+        float watch_country_idx[21], watch_world_idx[21];
         int war_onsets=0, prev_wars=0, peak_wars=0;
         int peak_rev=0, peak_rev_year=0;
         int min_living=c0;
@@ -916,6 +934,37 @@ int main(int argc, char **argv){
                              + re2->price[RES_TOOLS]/econ_base_price(RES_TOOLS))/3.0;
                   pr_n[r]+=1.0; double d2=ir-pr_mean[r]; pr_mean[r]+=d2/pr_n[r]; pr_m2[r]+=d2*(ir-pr_mean[r]);
               } }
+            /* MONNAIE M7 — I1 — échantillon ANNUEL de l'indice des prix MONDIAL
+             * (econ_world_price_index) : Welford (moyenne/écart-type) + pic + premier/
+             * dernier point (la dérive annualisée se calcule en fin de run). */
+            { float widx = econ_world_price_index(s.econ, w);
+              infl_n+=1.0; double di=widx-infl_mean; infl_mean+=di/infl_n; infl_m2+=di*(widx-infl_mean);
+              if (infl_idx_first<0.0) infl_idx_first=(double)widx;
+              infl_idx_last=(double)widx;
+              if ((double)widx>infl_idx_peak) infl_idx_peak=(double)widx;
+              if (widx>1e-4f){
+                  double t=(double)s.year, y=log((double)widx);
+                  infl_st+=t; infl_st2+=t*t; infl_sy+=y; infl_sty+=t*y; infl_sn+=1.0;
+              }
+              /* MONNAIE M7 — I2 — amorce la fenêtre Potosí sur la TOUTE PREMIÈRE
+               * découverte d'or de ce run (gold_discovery_log[0], scps_events.c). */
+              int gn = gold_discovery_log_count();
+              if (!watch_active && gn>gold_log_seen){
+                  GoldDiscoveryLogEntry ge;
+                  if (gold_discovery_log_at(0,&ge)){
+                      watch_active=true; watch_cid=ge.cid; watch_year0=ge.year; watch_len=0;
+                  }
+              }
+              gold_log_seen=gn;
+              if (watch_active){
+                  int off = s.year - watch_year0;
+                  if (off>=0 && off<=20){
+                      watch_country_idx[off]=econ_country_price_level(s.econ, watch_cid);
+                      watch_world_idx[off]=widx;
+                      if (off+1>watch_len) watch_len=off+1;
+                  }
+              }
+            }
             /* E1 §9 — fenêtres d'ACCESSION : l'année où le premier édifice de chaque
              * palier (360/540/960 j) s'achève quelque part. La loi des prix se LIT. */
             if (tier_year[0]<0 || tier_year[1]<0 || tier_year[2]<0)
@@ -1020,6 +1069,38 @@ int main(int argc, char **argv){
         printf("   étalon (M3e) : or prix moy %.2f (parité %.1f) · cuivre prix moy %.2f (parité %.1f)\n",
                (double)econ_avg_price(s.econ, RES_GOLD),   (double)tune_f("MINT_PARITY_GOLD",16.0f),
                (double)econ_avg_price(s.econ, RES_COPPER), (double)tune_f("MINT_PARITY_COPPER",5.2f));
+
+        /* MONNAIE M7 — I1 (print-only) : L'INFLATION SÉCULAIRE — indice des prix mondial
+         * (1.0 = pair), écart-type, pic, et la DÉRIVE ANNUALISÉE moyenne (croissance
+         * géométrique premier→dernier échantillon) — la preuve de calibrage (cible
+         * joueur : 0.5-1.5 %/an sur 250 ans). INFLATION_CAP=1.0 (kill-switch) doit la
+         * renvoyer à ~0 %/an (reproduction exacte du plafond historique). */
+        { double infl_sd = (infl_n>1.0)? sqrt(infl_m2/infl_n) : 0.0;
+          /* pente OLS de ln(indice) vs année → dérive annualisée MOYENNE (robuste au
+           * bruit d'un seul point premier/dernier, cf. déclaration ci-dessus). */
+          double denom = infl_sn*infl_st2 - infl_st*infl_st;
+          double slope = (infl_sn>1.0 && denom>1e-9) ? (infl_sn*infl_sty - infl_st*infl_sy)/denom : 0.0;
+          double drift_an_ols = exp(slope) - 1.0;
+          printf("   inflation (M7-I1) : indice moy %.3f (σ %.3f, pic %.3f) · premier %.1f%% dernier %.1f%%"
+                 " · dérive annualisée (OLS log) %+.2f %%/an\n",
+                 infl_mean, infl_sd, infl_idx_peak, infl_idx_first*100.0, infl_idx_last*100.0, drift_an_ols*100.0); }
+
+        /* MONNAIE M7 — I2 (print-only) : LA DÉCOUVERTE D'OR — nombre de découvertes de
+         * CE run (vs l'espérance ~0.5×N empires) et, si au moins une a eu lieu, la
+         * chronologie chiffrée d'un choc Potosí type (indice du découvreur vs monde,
+         * +0/+5/+10/+20 ans). */
+        { int ndisc = gold_discovery_log_count();
+          printf("   découverte d'or (M7-I2) : %d découverte(s) ce run (espérance ~%.1f = %.1f×%d empires)\n",
+                 ndisc, 0.5*(double)n_emp, 0.5, n_emp);
+          if (watch_active && watch_len>0){
+              printf("   choc Potosí (M7-I2, pays %d, an %d) : indice découvreur vs monde —", watch_cid, watch_year0);
+              static const int OFF[4]={0,5,10,20};
+              for (int oi=0; oi<4; oi++){
+                  int off=OFF[oi]; if (off>=watch_len) break;
+                  printf("  +%da %.3f/%.3f", off, (double)watch_country_idx[off], (double)watch_world_idx[off]);
+              }
+              printf("\n");
+          } }
 
         /* MONNAIE M3c — LA DETTE VIT (print-only, docs/MONNAIE_CONCEPT.md §M3 Cœur B) :
          * dette totale/pays débiteur, part classes vs cité-état, rachats de crédit et
