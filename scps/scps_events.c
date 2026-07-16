@@ -2247,11 +2247,15 @@ static void apply_region_eff(EventCtx *cx, int r, const EvEffect *e){
        * explicitement MÉTALLIQUES (trésor enfoui/épave) : AUCUN évènement du registre
        * EVENTS[] courant n'est de cette nature (0 cas — vérifié, rapport M3f) — l'exception
        * ne s'applique donc à rien ici, à recreuser si un tel évènement est ajouté. */
+      /* MONNAIE M14 — B6 : dual-write (econ_prov_treasury_credit, motif M11-A2) — apply_
+       * region_eff s'exécute au fil des évènements (world_events_tick, avant OU après
+       * l'agrégation selon l'appelant : chronicle vs sim.c) ; jamais une écriture nue. */
       if (e->d_treasury<0.f){
           float before_tr=re->treasury;
-          re->treasury = fmaxf(0.f, re->treasury + e->d_treasury);
-          float paid=before_tr-re->treasury; if (paid<0.f) paid=0.f;
+          float after_tr = fmaxf(0.f, re->treasury + e->d_treasury);
+          float paid=before_tr-after_tr; if (paid<0.f) paid=0.f;
           if (paid>0.f){
+              econ_prov_treasury_credit(cx->econ, pid, -paid);
               float wl,wb,we; econ_wage_split(paid,&wl,&wb,&we);
               re->strata[CLASS_LABORER].wealth   += wl;
               re->strata[CLASS_BOURGEOIS].wealth += wb;
@@ -2265,7 +2269,7 @@ static void apply_region_eff(EventCtx *cx, int r, const EvEffect *e){
           re->strata[CLASS_LABORER].wealth   -= tl;
           re->strata[CLASS_BOURGEOIS].wealth -= tb;
           re->strata[CLASS_ELITE].wealth     -= te;
-          re->treasury += (tl+tb+te);
+          econ_prov_treasury_credit(cx->econ, pid, tl+tb+te);
       } }
     /* ESCLAVAGE — FUITE #9 : un évènement (peste/famine/vague migratoire…) multiplie la pop
      * de TOUTES les strates — mais aucun évènement ne touche les PopGroup (ce module ne les

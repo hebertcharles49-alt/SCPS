@@ -944,8 +944,13 @@ static void apply_rebel_victory(RevoltState *rs, World *w, WorldEconomy *econ,
                 rb->outcome=OUT_CRUSHED;
                 break;
             }
-            if (caprp>=0&&caprp<econ->n_prov && treas>CONCEDE_TREAS_FLOOR)
-                econ->prov[caprp].treasury=fmaxf(0.f, econ->prov[caprp].treasury-tune_f("CONCEDE_GOLD",CONCEDE_GOLD));  /* acheter la paix */
+            if (caprp>=0&&caprp<econ->n_prov && treas>CONCEDE_TREAS_FLOOR){
+                /* MONNAIE M14 — B6 : revolt_tick s'exécute APRÈS econ_aggregate_regions
+                 * (scps_sim.c) — dual-write (motif M11-A2). */
+                float before_cg=econ->prov[caprp].treasury;
+                float after_cg=fmaxf(0.f, before_cg-tune_f("CONCEDE_GOLD",CONCEDE_GOLD));
+                econ_prov_treasury_credit(econ, caprp, after_cg-before_cg);   /* acheter la paix */
+            }
             if (cid>=0&&cid<SCPS_MAX_COUNTRY) rs->concede_cd[cid]=CONCEDE_CD_DAYS;                    /* 10 ans avant de re-céder */
             pe->satisfaction=clampf(pe->satisfaction+0.20f,0.f,1.f);
             pe->coercion=fmaxf(0.f, pe->coercion-0.4f);

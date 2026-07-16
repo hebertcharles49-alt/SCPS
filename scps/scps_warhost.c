@@ -314,7 +314,9 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                * (paid ajouté = négatif). Clampé à 0 : un trésor à sec ne paie plus rien, ne
                * reçoit jamais. */
               float paid = fmaxf(0.f, fminf(pay, econ->prov[crpp].treasury));
-              econ->prov[crpp].treasury -= paid;
+              /* MONNAIE M14 — B6 : warhost_tick s'exécute APRÈS econ_aggregate_regions
+               * (scps_sim.c) — dual-write (motif M11-A2). */
+              econ_prov_treasury_credit(econ, crpp, -paid);
               econ_flux_add(c, FX_SOLDE, -paid);                /* I0 : la ligne soldes */
               /* MONNAIE M3b-v2 — item 5 : la solde → LABORERS (déjà payée depuis le trésor
                * de LA CAPITALE ci-dessus — même province, aucune indirection nouvelle). */
@@ -402,7 +404,7 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                   /* MONNAIE M14 — B1 : même clamp que la solde ci-dessus — un trésor
                    * négatif ne doit jamais INVERSER le prix de recrutement en revenu. */
                   float paid = fmaxf(0.f, fminf(price, econ->prov[crp2p].treasury));
-                  econ->prov[crp2p].treasury -= paid;
+                  econ_prov_treasury_credit(econ, crp2p, -paid);   /* B6 : dual-write (motif M11-A2) */
                   econ_flux_add(c, FX_SOLDE, -paid);
                   /* item 5 : le prix de recrutement → LABORERS (recruteurs/intendance),
                    * même province (capitale, déjà le site du débit). */

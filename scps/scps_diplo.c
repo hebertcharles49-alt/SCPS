@@ -341,10 +341,12 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
                  * endetté SE FAISAIT PAYER par son suzerain (treasury-=t l'enrichissait,
                  * take négatif appauvrissait le suzerain plus bas). Le tribut ne porte que
                  * sur le trésor RÉEL (≥0) de la province vassale. */
-                float t=fmaxf(0.f, econ->prov[rp].treasury)*frac; econ->prov[rp].treasury-=t; take+=t;
+                float t=fmaxf(0.f, econ->prov[rp].treasury)*frac;
+                econ_prov_treasury_credit(econ, rp, -t);   /* B6 : dual-write (diplo_suzerainty_tick, post-agrégation) */
+                take+=t;
             }
             int scp=econ_region_rep_province(econ,capreg[s]);
-            if (scp>=0 && scp<econ->n_prov) econ->prov[scp].treasury += take;
+            if (scp>=0 && scp<econ->n_prov) econ_prov_treasury_credit(econ, scp, take);
             if (c==CONTRAT_SERVAGE && capreg[v]>=0 && capreg[v]<econ->n_regions){
                 int vcp=econ_region_rep_province(econ,capreg[v]);
                 if (vcp>=0 && vcp<econ->n_prov) econ->prov[vcp].coercion = fminf(1.f, econ->prov[vcp].coercion+0.04f);
@@ -417,9 +419,10 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
                             int rp=econ_region_rep_province(econ,r2); if (rp<0||rp>=econ->n_prov) continue;
                             float a=fmaxf(0.f, econ->prov[rp].treasury); if (a<=0.f) continue;
                             float t=take_tot*(a/avail);
-                            econ->prov[rp].treasury -= t; taken+=t;
+                            econ_prov_treasury_credit(econ, rp, -t);   /* B6 : dual-write (post-agrégation) */
+                            taken+=t;
                         }
-                        if (spid>=0&&spid<econ->n_prov) econ->prov[spid].treasury += taken;
+                        if (spid>=0&&spid<econ->n_prov) econ_prov_treasury_credit(econ, spid, taken);
                     }
                 }
             }
@@ -436,7 +439,7 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
                 int spid=econ_region_rep_province(econ, capreg[s]);
                 float streasury = (spid>=0&&spid<econ->n_prov) ? econ->prov[spid].treasury : 0.f;
                 if (spid>=0 && streasury>=gcost){
-                    econ->prov[spid].treasury-=gcost;
+                    econ_prov_treasury_credit(econ, spid, -gcost);   /* B6 : dual-write (post-agrégation) */
                     float years=fmaxf(1.f, tune_f("AI_ANNEX_YEARS_PER_PRICE",0.5f)*price
                                        *(1.f-tune_f("ANNEX_INTEGRATION_DISCOUNT",0.6f)*d->v_integration[v]));
                     d->v_annex[v]=clampf(d->v_annex[v]+1.f/years,0.f,1.f);
@@ -517,9 +520,16 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
             if (worst>=0){
                 if (es==ETHOS_MERCANTILE && capreg[s0]>=0 && capreg[worst]>=0
                     && econ->region[capreg[s0]].treasury>200.f){
+                    /* MONNAIE M14 — B6 (trouvaille) : écrivait region[].treasury NU, JAMAIS
+                     * prov[] — region[] n'est qu'une VUE reconstruite ENTIÈRE par la PROCHAINE
+                     * econ_aggregate_regions (depuis prov[], inchangé) : le don s'ÉVAPORAIT
+                     * silencieusement au tick suivant (ni donateur appauvri, ni receveur
+                     * enrichi, une fois la vue reconstruite). Résolu sur la province
+                     * représentative + dual-write (motif M11-A2). */
+                    int spr=econ_region_rep_province(econ,capreg[s0]), wpr=econ_region_rep_province(econ,capreg[worst]);
                     float don=econ->region[capreg[s0]].treasury*0.10f;       /* LE DON — il s\'use */
-                    econ->region[capreg[s0]].treasury-=don;
-                    econ->region[capreg[worst]].treasury+=don;
+                    if (spr>=0 && spr<econ->n_prov) econ_prov_treasury_credit(econ, spr, -don);
+                    if (wpr>=0 && wpr<econ->n_prov) econ_prov_treasury_credit(econ, wpr, don);
                     d->v_grief[worst]=fmaxf(0.f, d->v_grief[worst]-0.25f/(1.f+(float)d->v_dons[worst]));
                     if (d->v_dons[worst]<250) d->v_dons[worst]++;
                     d->v_loyal[worst]=3.f*365.f; d->n_lev_don++;
@@ -1178,7 +1188,7 @@ float diplo_peace_take_gold(World *w,WorldEconomy *econ,int winner,int loser,flo
     for(int r=0;r<econ->n_regions&&total<wanted;r++)if(econ->region[r].owner==loser){
         int p=econ_region_rep_province(econ,r); if(p<0||p>=econ->n_prov)continue;
         float take=fminf(econ->prov[p].treasury,wanted-total);
-        if(take>0.f){econ->prov[p].treasury-=take;total+=take;}
+        if(take>0.f){econ_prov_treasury_credit(econ,p,-take);total+=take;}   /* B6 : dual-write */
     }
     if(dst>=0&&dst<econ->n_regions)econ_region_treasury_add(econ,dst,total);
     return total;
@@ -1383,7 +1393,7 @@ float diplo_pillage_value(WorldEconomy *econ, int region, int dst_region, int vi
      * pillage ENRICHISSAIT la victime et APPAUVRISSAIT l'occupant (pp->treasury-=gold
      * l'augmentait, loot négatif se propageant au crédit de l'occupant plus bas). */
     float gold = fminf(fmaxf(0.f, pp->treasury), target);   /* le trésor d'abord (le plus liquide) */
-    pp->treasury -= gold; loot += gold;
+    econ_prov_treasury_credit(econ, pid, -gold); loot += gold;   /* B6 : dual-write */
     float remain = target - loot;
     /* MONNAIE M3f — item 5 : le RESTE n'est plus monétisé depuis le STOCK (M0 §2.12 —
      * détruit chez la victime, recréé chez l'occupant, sans aucun débit réel) — il est
@@ -1403,7 +1413,7 @@ float diplo_pillage_value(WorldEconomy *econ, int region, int dst_region, int vi
     }
     if (dst_region>=0 && dst_region<econ->n_regions && dst_region!=region){
         int dpid=econ_region_rep_province(econ, dst_region);
-        if (dpid>=0 && dpid<econ->n_prov) econ->prov[dpid].treasury += loot;  /* fondu dans le trésor de l'occupant */
+        if (dpid>=0 && dpid<econ->n_prov) econ_prov_treasury_credit(econ, dpid, loot);  /* fondu dans le trésor de l'occupant (B6) */
     }
     g_pil_events++; g_pil_value+=(double)loot; g_pil_target+=(double)target;   /* télémétrie « pillage réel » */
     return loot;
@@ -1646,11 +1656,11 @@ float diplo_reparations(DiploState *d, World *w, WorldEconomy *econ, int a, int 
          * négatif : le PERDANT endetté se faisait PAYER par le vainqueur (treasury-=pay
          * l'enrichissait, le vainqueur perdait `total` plus bas). Trésor RÉEL (≥0) seul. */
         float pay=frac*fmaxf(0.f, econ->prov[rp].treasury);
-        econ->prov[rp].treasury-=pay; total+=pay;       /* indemnité prélevée sur tout le royaume */
+        econ_prov_treasury_credit(econ, rp, -pay); total+=pay;   /* B6 : dual-write, indemnité prélevée sur tout le royaume */
     }
     if (dst>=0&&dst<econ->n_regions){
         int dp=econ_region_rep_province(econ,dst);
-        if (dp>=0&&dp<econ->n_prov) econ->prov[dp].treasury+=total;
+        if (dp>=0&&dp<econ->n_prov) econ_prov_treasury_credit(econ, dp, total);   /* B6 : dual-write */
     }
     return total;
 }
@@ -1671,11 +1681,11 @@ float diplo_loot(World *w, WorldEconomy *econ, int attacker, int defender, float
     for (int r=0;r<econ->n_regions && total<want;r++) if (econ->region[r].owner==defender){
         int rp=econ_region_rep_province(econ,r); if (rp<0||rp>=econ->n_prov) continue;
         float take=fminf(econ->prov[rp].treasury, want-total);
-        if (take>0.f){ econ->prov[rp].treasury-=take; total+=take; }   /* on vide les coffres */
+        if (take>0.f){ econ_prov_treasury_credit(econ, rp, -take); total+=take; }   /* B6 : dual-write, on vide les coffres */
     }
     if (dst>=0&&dst<econ->n_regions){
         int dp=econ_region_rep_province(econ,dst);
-        if (dp>=0&&dp<econ->n_prov) econ->prov[dp].treasury+=total;
+        if (dp>=0&&dp<econ->n_prov) econ_prov_treasury_credit(econ, dp, total);   /* B6 : dual-write */
     }
     return total;
 }

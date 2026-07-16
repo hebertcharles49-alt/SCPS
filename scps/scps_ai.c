@@ -2787,7 +2787,7 @@ void ai_step(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
                 /* RE-KEY PROVINCE : treasury province-owned — route sur la représentative. */
                 int crp=econ_region_rep_province(econ,cr);
                 if (crp>=0 && crp<econ->n_prov && econ->prov[crp].treasury >= cost){
-                    econ->prov[crp].treasury -= cost;
+                    econ_prov_treasury_credit(econ, crp, -cost);   /* B6 : dual-write (motif M11-A2, hygiène) */
                     econ_flux_add(a->cid, FX_AUDIT, -cost);    /* I0 : la ligne audits */
                     faction_audit(a->cid);
                     if (wl) wl->L[cr] = clampf(wl->L[cr] + (corr>50?0.3f:-0.3f), 0.f, 10.f);

@@ -458,7 +458,9 @@ void statecraft_council_apply(const Statecraft *sc, const World *w, WorldEconomy
                  * Même discipline que decree_spend_capital (scps_decrees.c) : on ne paie que
                  * ce que le trésor porte (jamais de dette forcée pour le Conseil). */
                 float take = fminf(cost, fmaxf(0.f, e->prov[crp].treasury));
-                e->prov[crp].treasury -= take; econ_flux_add(c, FX_CONSEIL, -take);
+                /* MONNAIE M14 — B6 : statecraft_council_apply s'exécute APRÈS econ_aggregate_
+                 * regions (scps_sim.c) — dual-write (motif M11-A2). */
+                econ_prov_treasury_credit(e, crp, -take); econ_flux_add(c, FX_CONSEIL, -take);
                 e->prov[crp].strata[CLASS_ELITE].wealth += take;   /* item 5 : Conseil → élites, capitale */
             }
         }

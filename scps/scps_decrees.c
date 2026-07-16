@@ -187,7 +187,10 @@ static float decree_spend_capital(const World *w, WorldEconomy *econ, int cid, f
     if (crp<0 || crp>=econ->n_prov) return 0.f;
     float have = econ->prov[crp].treasury;
     float take = (have<cost) ? have : cost;
-    econ->prov[crp].treasury -= take;
+    /* MONNAIE M14 — B6 : decree_spend_capital est aussi appelée depuis decree_fire_decision
+     * (CMD_DECREE, un VERBE JOUEUR au point de drain — pas seulement decrees_tick) : dual-
+     * write systématique (motif M11-A2), le point d'appel n'étant pas garanti pré-agrégation. */
+    econ_prov_treasury_credit(econ, crp, -take);
     econ_flux_add(cid, FX_CONSEIL, -take);    /* même ligne que le Conseil : une dépense de cour */
     /* MONNAIE M3b-v2 — item 5 : Conseil (salaires/corruption) → ÉLITES, capitale. */
     econ->prov[crp].strata[CLASS_ELITE].wealth += take;
@@ -203,7 +206,7 @@ static bool decree_afford_capital(const World *w, WorldEconomy *econ, int cid, f
     int crp = econ_region_rep_province(econ, cr);
     if (crp<0 || crp>=econ->n_prov) return false;
     if (econ->prov[crp].treasury < cost) return false;
-    econ->prov[crp].treasury -= cost;
+    econ_prov_treasury_credit(econ, crp, -cost);   /* B6 : dual-write (motif M11-A2) */
     econ_flux_add(cid, FX_CONSEIL, -cost);
     econ->prov[crp].strata[CLASS_ELITE].wealth += cost;   /* item 5 : Conseil → élites, capitale */
     return true;

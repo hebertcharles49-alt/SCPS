@@ -163,8 +163,10 @@ static void mission_grant(const World *w, WorldEconomy *econ, Statecraft *sc, co
      * les 3 classes de TOUT le royaume (42/20/38, prorata, bornée au panier vital, motif
      * exonération §3b) ; le trésor ne reçoit que ce qui a RÉELLEMENT été levé (jamais de
      * dette forcée — un royaume pauvre voit sa mission rapporter MOINS que son nominal). */
+    /* MONNAIE M14 — B6 : missions_tick s'exécute APRÈS econ_aggregate_regions (scps_sim.c) —
+     * une écriture prov[] nue laissait region[] périmé jusqu'au mois suivant (motif M11-A2). */
     if (crp>=0 && crp<econ->n_prov)
-        econ->prov[crp].treasury += econ_country_wealth_levy_bounded(econ, cid, m->reward_gold * mult);
+        econ_prov_treasury_credit(econ, crp, econ_country_wealth_levy_bounded(econ, cid, m->reward_gold * mult));
     if (m->reward_mat>RES_NONE && m->reward_mat<RES_COUNT)
         econ_region_stock_add(econ, cr, m->reward_mat, m->reward_qty * mult);  /* matières au marché */
     mission_seat_loyalty(sc, cid, m, tune_f("COUNCIL_MISSION_SUCCESS_LOYALTY",5.f));   /* P3 : réussite → +loyauté */
