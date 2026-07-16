@@ -2176,12 +2176,18 @@ static float econ_satisfaction_tax_factor(float sat){
     return clampf(raw, tune_f("TAX_SAT_FACTOR_MIN",0.5f), tune_f("TAX_SAT_FACTOR_MAX",1.5f));
 }
 
-/* Curseur de PAIE/IMPÔT (joueur seul) : LINÉARISÉ 0–100 % (plus de surpaie/surtaxe ×2,
- * qui n'a pas de sens). 0 stocké = sentinel « non réglé » (chronique/IA) → 1.0 NEUTRE ;
- * une valeur réglée par le joueur vit dans [0.02, 1.0] (le setter garantit ≥0.02, jamais
- * le sentinel 0). L'INVESTISSEMENT est l'EXCEPTION (neutre = 0 %, cf. econ_country_budget_mult). */
+/* MONNAIE M14 — B8 : CLAIM CONFIRMÉ — la décision joueur validée était ×0.1–×2 pour les
+ * impôts ET la paie (conseillers, armée, marine, routes…), mais ce curseur avait été
+ * LINÉARISÉ à [0.02, 1.0] sur un commentaire unilatéral (« plus de surpaie/surtaxe ×2,
+ * qui n'a pas de sens ») — RESTAURÉ à [0.1, 2.0]. save_sane (scps_save.c) validait déjà
+ * jusqu'à 2.0 (commentaire « saves legacy » : la PREUVE que la borne large est
+ * l'ORIGINALE, celle-ci en est la restauration, pas une extension neuve).
+ * Curseur de PAIE/IMPÔT (joueur seul) : 0 stocké = sentinel « non réglé » (chronique/IA)
+ * → 1.0 NEUTRE ; une valeur réglée par le joueur vit dans [0.1, 2.0] (le setter garantit
+ * ≥0.1, jamais le sentinel 0). L'INVESTISSEMENT/FRAPPE/DÉBASE restent l'EXCEPTION
+ * (niveau brut 0..1, PAS concernés par B8 — neutre = 0 %, cf. econ_country_budget_mult). */
 static float policy_mult(float raw){
-    return (raw>=0.02f && raw<=1.f) ? raw : 1.f;
+    return (raw>=0.1f && raw<=2.f) ? raw : 1.f;
 }
 float econ_country_tax_mult(const WorldEconomy *e, int cid, SocialClass c){
     if (!e||cid<0||cid>=SCPS_MAX_COUNTRY||c<0||c>=CLASS_COUNT) return 1.f;
@@ -2199,11 +2205,17 @@ float econ_country_budget_mult(const WorldEconomy *e, int cid, BudgetPolicy poli
 }
 void econ_country_tax_set(WorldEconomy *e, int cid, SocialClass c, float mult){
     if (!e||cid<0||cid>=SCPS_MAX_COUNTRY||c<0||c>=CLASS_COUNT) return;
-    e->tax_mult[cid][c]=clampf(mult,0.02f,1.f);   /* 0 % → 0.02 (jamais le sentinel 0), max 1.0 */
+    e->tax_mult[cid][c]=clampf(mult,0.1f,2.f);   /* B8 : 10 %..200 % (jamais le sentinel 0) */
 }
 void econ_country_budget_set(WorldEconomy *e, int cid, BudgetPolicy policy, float mult){
     if (!e||cid<0||cid>=SCPS_MAX_COUNTRY||policy<0||policy>=BUDGET_POLICY_COUNT) return;
-    e->budget_mult[cid][policy]=clampf(mult,0.02f,1.f);
+    /* B8 : INVEST/MINT/DEBASE restent au niveau brut [0.02,1] historique (leur lecteur
+     * ci-dessus les re-clampe à [0,1] de toute façon — B8 ne les concerne pas, seule la
+     * paie/l'impôt étaient la décision joueur). */
+    if (policy==BUDGET_INVEST || policy==BUDGET_MINT || policy==BUDGET_DEBASE)
+        e->budget_mult[cid][policy]=clampf(mult,0.02f,1.f);
+    else
+        e->budget_mult[cid][policy]=clampf(mult,0.1f,2.f);
 }
 /* ENTRETIEN DES ROUTES : le curseur d'entretien routier module la CONNECTIVITÉ effective
  * du pays (part prospérité/commerce) — de −20 % (sous-financé) à +10 % (plein). NON RÉGLÉ

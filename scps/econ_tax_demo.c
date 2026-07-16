@@ -13,6 +13,7 @@
  */
 #include "scps_world.h"
 #include "scps_econ.h"
+#include "scps_tune.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -139,6 +140,37 @@ int main(int argc, char **argv){
     printf("   satisfaction élite après impôt : sous éthos tolérant %.2f · surtaxée %.2f\n", satTol, satHard);
     ok("l'élite SURTAXÉE (au-delà du seuil) est moins satisfaite que la tolérée",
        satHard < satTol - 0.01f);
+
+    /* ═══ 5. MONNAIE M14 — B8 : le curseur JOUEUR (impôt) va jusqu'à ×2 — décision joueur,
+     * était narrowé à [0.02,1.0]. Le CONTRÔLEUR IA (C3, econ_ai_fiscal_tick, scps_econ.c
+     * ~2310) reste borné à [floor_,1.0] — SON clamp n'est PAS touché par B8 (vérifié par
+     * lecture de code : `clampf(base+delta, floor_, 1.f)` inchangé) ; l'isoler dynamiquement
+     * exigerait de museler TOUT le reste d'un pays généré (l'agrégat pays dilue un choc
+     * mono-province, hors budget de ce banc) — non tenté ici, la distinction est vérifiée
+     * PAR LECTURE, pas par un banc dynamique (TROUVAILLES M14 B8). ═══ */
+    printf("\n── 5. B8 : le curseur joueur (impôt) va jusqu'à ×2 (surtaxe restaurée) ──\n");
+    {
+        int rS=-1, pidS=-1, cidS=-1;
+        for (int r=0; r<e->n_regions && rS<0; r++){
+            int pid=rep_prov(e,r); if (pid<0) continue;
+            if (e->prov[pid].owner>=0){ rS=r; pidS=pid; cidS=e->prov[pid].owner; }
+        }
+        if (rS<0){ ok("(aucune région possédée pour le test B8 — sauté)", true); }
+        else {
+            rig(e, rS, ETHOS_BUREAUCRATE, 1000.f, 0.60f);
+            cidS=e->prov[pidS].owner;   /* rig() ne touche pas owner : ré-affirmé après (mute_siblings/rig n'y touchent pas) */
+            /* le curseur JOUEUR : round-trip jusqu'à 2.0, borné à 0.1 en bas (B8, pas 0.02). */
+            econ_country_tax_set(e, cidS, CLASS_ELITE, 1.8f);
+            ok("B8 : le curseur JOUEUR accepte une surtaxe jusqu'à ×2 (1.8 round-trip)",
+               fabsf(econ_country_tax_mult(e,cidS,CLASS_ELITE)-1.8f)<0.01f);
+            econ_country_tax_set(e, cidS, CLASS_ELITE, 0.05f);
+            ok("B8 : le curseur JOUEUR est borné à 0.1 EN BAS (B8, pas l'ancien 0.02)",
+               fabsf(econ_country_tax_mult(e,cidS,CLASS_ELITE)-0.1f)<0.01f);
+            econ_country_tax_set(e, cidS, CLASS_ELITE, 3.f);
+            ok("B8 : le curseur JOUEUR est borné à 2.0 EN HAUT (3.0 demandé → clampé)",
+               fabsf(econ_country_tax_mult(e,cidS,CLASS_ELITE)-2.f)<0.01f);
+        }
+    }
 
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n", g_pass, g_fail);

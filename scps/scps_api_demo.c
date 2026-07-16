@@ -1361,18 +1361,19 @@ int main(int argc, char **argv){
                 ok("(siège déjà pourvu par l'IA sur cette graine — recrutement sauté)", true);
             }
 
-            /* Le verbe de PAIE : LINÉARISÉ 0–100 % ; clampe à 1.0 même hors-borne. */
+            /* MONNAIE M14 — B8 : RESTAURÉ [0.1, 2.0] (décision joueur, était narrowé à
+             * [0.02,1.0]). Le verbe de PAIE clampe à 2.0 (pas 1.0) même hors-borne. */
             bool pay_ok = scps_player_council_pay(sd, 0, 0.6f) != 0;
             scps_sim_advance_days(sd, 32);
             ScpsCouncilSeat p1[3]; scps_country_council(sd, me, p1, 3);
             ok("scps_player_council_pay : verbe accepté", pay_ok);
             ok("après paie : le curseur reflète la valeur posée (~0.6, si le siège reste pourvu)",
-               !p1[0].filled || (p1[0].pay>0.4f && p1[0].pay<=1.f));
-            scps_player_council_pay(sd, 0, 99.f);   /* hors-borne : DOIT clamper à 1.0 */
+               !p1[0].filled || (p1[0].pay>0.4f && p1[0].pay<=2.f));
+            scps_player_council_pay(sd, 0, 99.f);   /* hors-borne : DOIT clamper à 2.0 (B8) */
             scps_sim_advance_days(sd, 32);
             ScpsCouncilSeat p2[3]; scps_country_council(sd, me, p2, 3);
-            ok("le verbe de paie CLAMPE au drain (une valeur folle → 1.0, jamais un crash)",
-               !p2[0].filled || p2[0].pay<=1.f);
+            ok("le verbe de paie CLAMPE au drain (une valeur folle → 2.0, jamais un crash)",
+               !p2[0].filled || p2[0].pay<=2.f);
 
             /* Pilotage budgétaire : chaque curseur traverse le journal de commandes,
              * se quantifie dans le moteur et reste lisible par la même membrane. */
@@ -1386,11 +1387,14 @@ int main(int argc, char **argv){
             ok("budget : les deux curseurs arrivent au moteur (impôt 0.1 / invest. 0.7)",
                fabs(scps_country_budget_policy(sd,me,0,CLASS_LABORER)-0.1)<0.01 &&
                fabs(scps_country_budget_policy(sd,me,1,BUDGET_INVEST)-0.7)<0.01);
+            /* MONNAIE M14 — B8 : l'impôt (family=0) est RESTAURÉ [0.1,2.0] — une valeur folle
+             * clampe désormais à 2.0 (pas 1.0). L'INVESTISSEMENT reste [0.02,1.0] (B8 ne le
+             * concerne pas — niveau brut, pas une paie/impôt). */
             scps_player_budget_policy(sd,0,CLASS_LABORER,99.f);
             scps_player_budget_policy(sd,1,BUDGET_INVEST,-4.f);
             scps_sim_advance_days(sd,1);
-            ok("budget : valeurs folles clampées dans [0.02, 1.0] (impôt 1.0 / invest. 0.02)",
-               fabs(scps_country_budget_policy(sd,me,0,CLASS_LABORER)-1.0)<0.01 &&
+            ok("budget : l'impôt CLAMPE à 2.0 (B8), l'investissement reste clampé à 0.02",
+               fabs(scps_country_budget_policy(sd,me,0,CLASS_LABORER)-2.0)<0.01 &&
                fabs(scps_country_budget_policy(sd,me,1,BUDGET_INVEST)-0.02)<0.01);
             ok("budget : familles/indices hors borne refusés",
                scps_player_budget_policy(sd,9,0,1.f)==0 &&

@@ -3480,10 +3480,12 @@ int scps_player_council_dismiss(ScpsSim *s, int seat){
     PlayerCmd c = { CMD_COUNCIL_DISMISS, { seat, 0, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
-/* Le curseur de PAIE LINÉARISÉ 0–100 % (0.02..1.0) : encodé ×100 (→ 2..100) pour le journal. */
+/* MONNAIE M14 — B8 : RESTAURÉ [0.1, 2.0] (décision joueur) — était narrowé à [0.02,1.0].
+ * Le curseur de PAIE : encodé ×100 (→ 10..200) pour le journal — scps_sim.c (CMD_COUNCIL_
+ * PAY) attend déjà "a[1] = paie ×100 (0..200)", la borne large ÉTAIT le contrat original. */
 int scps_player_council_pay(ScpsSim *s, int seat, float pay){
     if (!s || !s->ready) return 0;
-    if (pay<0.02f) pay=0.02f; else if (pay>1.f) pay=1.f;
+    if (pay<0.1f) pay=0.1f; else if (pay>2.f) pay=2.f;
     PlayerCmd c = { CMD_COUNCIL_PAY, { seat, (int32_t)(pay*100.f+0.5f), 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
@@ -3500,7 +3502,12 @@ int scps_player_budget_policy(ScpsSim *s, int family, int index, float mult){
     if (family==0){ if(index<0||index>=CLASS_COUNT) return 0; }
     else if (family==1){ if(index<0||index>=BUDGET_POLICY_COUNT) return 0; }
     else return 0;
-    if (mult<0.02f) mult=0.02f; else if (mult>1.f) mult=1.f;   /* LINÉARISÉ 0–100 % (0.02..1.0) */
+    /* MONNAIE M14 — B8 : RESTAURÉ [0.1, 2.0] (impôt/paie, décision joueur) — était narrowé
+     * à [0.02,1.0]. Pré-clamp large [0.02,2.0] (superset) : l'aval (econ_country_tax_set/
+     * econ_country_budget_set) applique la borne FINALE spécifique — INVEST/MINT/DEBASE
+     * (family==1, un sous-ensemble de BudgetPolicy) restent re-clampés à [0.02,1.0] là-bas,
+     * B8 ne les concerne pas. */
+    if (mult<0.02f) mult=0.02f; else if (mult>2.f) mult=2.f;
     PlayerCmd c={CMD_BUDGET_POLICY,{family,index,(int32_t)(mult*100.f+0.5f),0}};
     return sim_cmd_push(&s->sim,c)?1:0;
 }

@@ -463,10 +463,11 @@ int main(int argc, char **argv){
         float cost_half = statecraft_council_cost(s.sc, seed, cid, 1.f);
         printf("   Coût mensuel : 50%% %.1f, 100%% %.1f\n", cost_half, cost_1x);
         ok("Conseil vivant : payer MOINS coûte moins (50 % → moitié)", near_f(cost_half, cost_1x*0.5f, 0.01f));
-        ok("Conseil vivant : le curseur de paie est BORNÉ [0.02,1.0] (plus de surpaie ×2)",
+        /* MONNAIE M14 — B8 : RESTAURÉ [0.1, 2.0] (décision joueur : surpaie/surtaxe ×0.1-×2). */
+        ok("Conseil vivant : le curseur de paie est BORNÉ [0.1,2.0] (B8 — surpaie/surtaxe restaurée)",
            statecraft_council_pay(s.sc,cid,seat)==0.5f &&
-           (statecraft_council_set_pay(s.sc,cid,seat,9.f), near_f(statecraft_council_pay(s.sc,cid,seat),1.f,0.001f)) &&
-           (statecraft_council_set_pay(s.sc,cid,seat,0.f), near_f(statecraft_council_pay(s.sc,cid,seat),0.02f,0.001f)));
+           (statecraft_council_set_pay(s.sc,cid,seat,9.f), near_f(statecraft_council_pay(s.sc,cid,seat),2.f,0.001f)) &&
+           (statecraft_council_set_pay(s.sc,cid,seat,0.f), near_f(statecraft_council_pay(s.sc,cid,seat),0.1f,0.001f)));
 
         /* MONNAIE M14 — B1 (trouvaille du grep généralisé) : statecraft_council_apply
          * débitait `cost` SANS AUCUN clamp — un trésor insuffisant passait NÉGATIF (dette
