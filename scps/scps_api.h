@@ -601,6 +601,12 @@ typedef struct {
 } ScpsFiscalOrder;
 int scps_country_fiscal_orders(ScpsSim *s, int country, ScpsFiscalOrder *out, int max);
 
+/* MONNAIE M10 — P1 : LE PALIER DE BESOINS COURANT d'un pays (0=grain seul, 1=+1 besoin,
+ * etc.) — *out_next_pop reçoit la pop d'empire (NATIONALE) requise pour le palier suivant
+ * (0 si non applicable). Renvoie -1 si pays invalide ou kill-switch (NEEDS_TIER_POP<=0).
+ * Utile à l'UI-MONNAIE (« palier N · prochain à M hab »). */
+int scps_country_needs_tier(ScpsSim *s, int country, long *out_next_pop);
+
 /* MONNAIE M9 — V1 : LA CAPACITÉ D'EMPRUNT PAR ORDRE (panneau éco, décision joueur
  * 2026-07-16) — montant max empruntable MAINTENANT + taux proposé, pour CHAQUE classe
  * (mêmes 3 lignes Laborer/Bourgeois/Élite que ScpsFiscalOrder ci-dessus ; Laborer à 0,

@@ -3152,6 +3152,17 @@ int econ_needs_active_for_country(int cid){
     if (cid<0 || cid>=SCPS_MAX_COUNTRY) return -1;
     return 1 + (int)g_needs_tier_held[cid];
 }
+/* MONNAIE M10 — P1 : le seuil de POP D'EMPIRE (NATIONAL) nécessaire pour que le palier BRUT
+ * k (0-indexé, k=0 → premier besoin au-delà du grain) soit atteint — NEEDS_TIER_POP ×
+ * NEEDS_TIER_GROWTH^k. Lecteur PUR, aucune mutation — sert la façade UI-MONNAIE (« prochain
+ * palier à N hab »). <0 si k<0 ou kill-switch (NEEDS_TIER_POP<=0). */
+float econ_needs_tier_threshold(int k){
+    float base = tune_f("NEEDS_TIER_POP", 3000.f);
+    if (base<=0.f || k<0) return -1.f;
+    float growth = fmaxf(1.05f, tune_f("NEEDS_TIER_GROWTH", 2.0f));
+    float thr = base; for (int i=0;i<k;i++) thr *= growth;
+    return thr;
+}
 /* MONNAIE M10 — P1 : max candidats/classe pour la pré-sélection de palier (rapport M10 §C8 :
  * ~6 biens cœur max/classe, marge incluse). Utilisé par la pré-sélection (province loop,
  * econ_tick) ET par needs_tier_selected ci-dessous — UNE seule définition, deux sites. */

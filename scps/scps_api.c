@@ -2001,6 +2001,24 @@ int scps_country_fiscal_orders(ScpsSim *s, int country, ScpsFiscalOrder *out, in
     return n;
 }
 
+/* MONNAIE M10 — P1 : LE PALIER DE BESOINS COURANT + LE PROCHAIN SEUIL, voir scps_api.h.
+ * Lecteur PUR (econ_needs_active_for_country + econ_needs_tier_threshold, scps_econ.c) — un
+ * MOT tangible (le numéro de palier) + un NOMBRE tangible (la pop d'empire requise pour le
+ * prochain), jamais un flottant moteur (membrane stricte). Renvoie -1 si pays invalide OU
+ * kill-switch (NEEDS_TIER_POP<=0 — le mécanisme legacy n'a pas de « palier pop-empire » à
+ * afficher) ; *out_next_pop reste à 0 dans ce cas. */
+int scps_country_needs_tier(ScpsSim *s, int country, long *out_next_pop){
+    if (out_next_pop) *out_next_pop = 0;
+    if (!s || !s->ready || country<0 || country>=SCPS_MAX_COUNTRY) return -1;
+    int active = econ_needs_active_for_country(country);
+    if (active < 1) return -1;   /* kill-switch : econ_needs_active_for_country a déjà tranché */
+    if (out_next_pop){
+        float thr = econ_needs_tier_threshold(active-1);   /* seuil pour DÉPASSER le palier courant */
+        if (thr > 0.f) *out_next_pop = (long)thr;
+    }
+    return active;
+}
+
 /* MONNAIE M9 — V1 : LA CAPACITÉ D'EMPRUNT PAR ORDRE, voir scps_api.h. Lecteur PUR
  * (credit_class_borrow_capacity + credit_current_rate, scps_credit.c) — mêmes 3 lignes
  * que scps_country_fiscal_orders ci-dessus (Laborer inclus, capacité 0 par construction,

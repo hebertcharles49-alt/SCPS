@@ -982,6 +982,9 @@ float econ_country_class_satisfaction(const WorldEconomy *e, int cid, SocialClas
  * cid hors table : l'appelant retombe alors sur le mécanisme LEGACY (capitale_max_tier, pop
  * locale). Valide APRÈS la pré-passe mensuelle d'econ_tick (cf. scps_econ.c). */
 int   econ_needs_active_for_country(int cid);
+/* MONNAIE M10 — P1 : seuil de pop d'empire pour le palier BRUT k (0-indexé). <0 si k<0 ou
+ * kill-switch. Sert la façade UI-MONNAIE (« prochain palier à N hab »). */
+float econ_needs_tier_threshold(int k);
 
 /* MONNAIE M1/M2 (docs/MONNAIE_CONCEPT.md) — province CAPITALE d'un pays (grain province,
  * WorldEconomy seul : econ_tick n'a pas de World*). -1 si aucune (pays mort/sans capitale). */
