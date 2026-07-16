@@ -3189,3 +3189,154 @@ avant de faire confiance aux colonnes M9.
   monétaire.
 - Tag `pre-m9` confirmé sur 71f1494 (déjà posé par le prédécesseur) ; worktree de sweep
   (`/c/tmp_wt_pre_m9`) à retirer en fin de session.
+
+## DIAG-BANQUEROUTES — LE VERDICT C1 vs C3/C0 (2026-07-16)
+
+**Mission de mesure PURE (aucun changement moteur, HEAD=42373dc intact)** : depuis M8 les
+banqueroutes ont doublé ({188,259,135}→{341,507,353} sur seeds {9,11,42}) et le correctif C0
+de M9 n'a presque rien repris ({365,506,312}). Deux hypothèses à trancher : (principale) le
+coupable est **C1** (le couplage satisfaction→tolérance fiscale, `TAX_SAT_COUPLING`) qui
+réduirait mécaniquement la collecte des pays pauvres ; (secondaire) tenir l'impôt (C0) nuit par
+un AUTRE canal (révoltes, initiative privée). Matrice 2×2 via kill-switches `SCPS_TUNE`
+(aucun code touché) : `TAX_SAT_COUPLING=0` tue C1, `AI_FISCAL_TARGET=0` tue C3, `AI_DEBT_
+FISCAL_COHERENCE=0` tue C0 (voir scps_tune_list.h:1237/1250/1263 pour les kill-switches
+exacts). 4 cellules × seeds {9,11,42} × 3 sims × 250 ans (chronicle.exe, déjà buildé à HEAD,
+mtime vérifié POSTÉRIEUR à tous les .c/.h Monnaie — aucun rebuild nécessaire).
+
+**LE VERDICT : C3 (le contrôleur IA visant 60 % de satisfaction), PAS C1.** C1 est
+statistiquement INNOCENT — le retirer seul (cellule 2) ne change RIEN (banqueroutes Σ 1202,
+même pire que Tout ON). Retirer C3+C0 seul (cellule 3, C1 restant ACTIF) fait retomber les
+banqueroutes Σ à 607, à moins de 5 % AU-DESSUS du niveau pre-m8 (582 ; 580 en cellule 4, la
+validation Tout OFF). **L'hypothèse principale du brief est INFIRMÉE** : le couplage
+satisfaction→tolérance (C1) n'est pas le mécanisme qui affame les caisses — c'est le
+contrôleur C3 lui-même qui écrit `tax_mult` à la baisse.
+
+**La matrice complète (Σ 3 sims/seed, 250 ans)** :
+
+| cellule | banqueroutes Σ | colonisation Σ | revenu fiscal an-150 Σ | Laborer sat. moy | pays au plafond Σ | soulèv. allumés Σ |
+|---|---|---|---|---|---|---|
+| 1. Tout ON (HEAD=M9, défauts) | **1183** (365+506+312) | 287 | 568945 | 55.3 % | 21 | 107 |
+| 2. C1 OFF, C3/C0 ON | **1202** (382+467+353) | 362 | 536950 | 57.7 % | 23 | 104 |
+| 3. C1 ON, C3/C0 OFF | **607** (222+253+132) | 347 | 689511 | 56.7 % | 24 | 158 |
+| 4. Tout OFF | **580** (197+262+121) | 362 | 717470 | 58.7 % | 15 | 91 |
+| pre-m8 (référence brief) | 582 (188+259+135) | — | — | — | — | — |
+
+Détail par graine (banqueroutes) : seed 9 {365,382,222,197} · seed 11 {506,467,253,262} ·
+seed 42 {312,353,132,121} (ordre cellules 1→4). **Cellule 4 reproduit pre-m8 à 0.3 % près en
+Σ** (580 vs 582 ; par graine 197/262/121 vs 188/259/135, écarts ±5-10 % dans le bruit chaotique
+déjà documenté M7/M8) — **AUCUN 3ᵉ facteur, la matrice est saine**. Le seed 9 de la cellule 1
+reproduit EXACTEMENT les 3 chiffres publiés M9 (365/67 fondations/54 % Laborer/181097 or)
+— méthodologie validée bit-pour-bit avant de faire confiance aux 3 autres cellules.
+
+**La preuve mécanique (SCPS_M8DIAG, seed 9, 3 sims, comparaison directe cellule 1 vs
+cellule 3)** : `tax_mult` moyen fin-de-sim (Laborer/Bourgeois/Élite) — cellule 1 (C3 actif) :
+0.88/0.90/0.88 · **0.34**/0.73/0.64 · 0.68/0.79/0.80 (un sim descend jusqu'à 34 % du taux
+neutre) — cellule 3 (C3 mort) : 1.00/1.00/1.00 sur les 3 sims (jamais touché, sentinel neutre).
+Revenu fiscal Σ mensuel correspondant (même sims, même ordre) : cellule 1 = 9984/**691**/3238
+or/mois vs cellule 3 = 21985/1173/4777 or/mois — **C3 ampute le revenu de 30 à 70 % selon le
+sim**, précisément en écrasant `tax_mult` des pays sous 60 % de satisfaction (RELÂCHER, motif
+déjà nommé Restes-M8 « relâcher au moment d'honorer la dette AFFAME le pays »). Le
+gate C0 (`AI_DEBT_FISCAL_COHERENCE=1.0`, DÉJÀ au maximum réglable) ne rattrape que ~1.5 % de
+l'écart (M8 pré-C0 Σ1201 → M9 avec C0 Σ1183, cf. tableau M9 ci-dessus) car son gate est
+RÉACTIF à la proximité du plafond de dette — par le temps qu'un pays est proche du plafond,
+`tax_mult` s'est déjà érodé pendant les années où la « marge » (slack) existait encore
+(econ_ai_fiscal_slack, scps_econ.c:2184 — `rev_ramp` ET `1-lev` sont TOUS DEUX encore hauts
+avant la crise de dette, donc `relax_factor`≈1, donc AUCUN frein pendant l'érosion qui MÈNE à
+la crise). C0 protège contre l'aggravation UNE FOIS à la crise, pas contre la dérive qui y
+mène.
+
+**Découvertes annexes (mesurées, pas la question centrale)** :
+- **Colonisation : un effet d'INTERACTION C1×C3, pas un effet simple** — ni C1 seul
+  (cellule 2, 362, ≈baseline 362) ni C3/C0 seul (cellule 3, 347, ≈baseline) ne suppriment la
+  colonisation isolément, mais les DEUX ENSEMBLE (cellule 1, 287, −21 % vs baseline) le font.
+  Confirme l'hypothèse M8 Restes (« la fiscalité qui monte sur les prospères concurrence le
+  surplus qui finance l'initiative privée M4-IP ») — nécessite C1 ET C3 actifs simultanément
+  pour se manifester, ni l'un ni l'autre seul.
+- **La satisfaction Laborer moyenne varie à peine (55.3-58.7 %, 3.4 pts d'écart) sur les 4
+  cellules** — et est même LA PLUS BASSE en cellule 1 (tout actif, 55.3 %) et LA PLUS HAUTE en
+  cellule 4 (tout mort, 58.7 %), l'INVERSE de ce que C3 est censé accomplir (viser 60 % en
+  RELÂCHANT l'impôt). Le contrôleur double le taux de banqueroute pour un gain de satisfaction
+  au mieux NUL, au pire négatif, à l'échelle du monde headless IA-only — la justification même
+  du contrôleur n'est pas mesurée comme payante ici (peut différer avec un joueur humain qui
+  réagit différemment, non mesuré, hors scope).
+- **Pays au plafond de dette (stock) NE prédit PAS les banqueroutes (flux) de la même façon
+  selon la cellule** — cellule 3 a le PLUS de pays au plafond (24, le maximum des 4 cellules)
+  mais la 2ᵉ MEILLEURE banqueroute Σ (607) : `tax_mult`=1.0 (jamais relâché, C3 mort) donne à
+  ces pays au plafond assez de REVENU pour honorer leur dette malgré le stock élevé — la
+  distinction stock (dette/plafond) vs flux (revenu disponible CE mois) explique pourquoi C0
+  (qui ne regarde QUE le stock/la marge instantanée) ne suffit pas : le vrai levier manquant
+  est le flux (`tax_mult` lui-même), pas la marge de relâchement.
+- **Révoltes (soulèvements allumés Σ) : signal BRUYANT, PAS de verdict propre** — ordre mesuré
+  cellule 4 (tout off, 91) < cellule 2 (C1 off, 104) < cellule 1 (tout ON, 107) < cellule 3
+  (C1 seul actif, C3/C0 morts, **158**, +48 % vs cellule 1). Cellule 3 est un OUTLIER : ni « C3
+  actif protège des révoltes » (cellule 1 n'est pas la pire) ni « C1 seul est pire que tout »
+  (cellule 2, C1 aussi absent, est proche du plancher) n'expliquent proprement pourquoi
+  cellule 3 spécifiquement explose. Hypothèse secondaire du brief (« C0/tenir l'impôt nuit par
+  un canal révoltes ») NI confirmée NI infirmée proprement — 3 graines est trop peu pour ce
+  compteur, historiquement chaotique (motif M7 « sensibilité forte/non-linéaire »).
+  Nécessiterait un sweep dédié (10+ graines) pour trancher, hors budget de cette mission de
+  mesure.
+
+**Pièges de mesure (pour le prochain agent DIAG)** :
+- **`grep -oE "[0-9]+"` sur une ligne contenant `(M3d)` capture le « 3 » du label AVANT le
+  vrai nombre** — piège trouvé en comparant une extraction automatisée (374) à une lecture
+  manuelle de la même ligne (365, correct) : `grep -oE "[0-9]+"` sans ancrage matche « 3 » dans
+  « M3d » PUIS le nombre réel, gonflant chaque somme de +3/sim (soit +9 sur 3 sims). Fix : `sed
+  -E 's/.*M3d\) : ([0-9]+) forcée.*/\1/'` (capture group ancré, pas un grep de chiffres nu).
+  **Toujours valider une extraction automatisée contre AU MOINS une lecture manuelle avant de
+  faire confiance à un sweep complet** — motif déjà utile ici : le seed 9 relu à la main a
+  immédiatement trahi le bug.
+- **`banqueroute (M3d)` est imprimé PAR SIM (fin de partie), PAS agrégé en SYNTHÈSE** — contrai-
+  rement à `colonisation`/`satisfaction moy` (déjà sommés/moyennés sur les nsims par le
+  harnais). Il faut `grep` les 3 lignes (une par sim dans un run `chronicle seed 3 250`) et
+  sommer forcée+volontaire à la main pour obtenir le Σ par graine — piège hérité, déjà implicite
+  dans la notation « Σ » des tableaux M8/M9 mais jamais explicité comme extraction.
+- **`revenu fiscal Σ … or/an (M3i neutralité)` à l'an-150 est aussi PAR SIM**, imprimé à
+  l'instantané `snap[si]` (`years/5, 2/5, 3/5, 4/5` → 50/100/150/200 pour years=250) — grep
+  `"an 150"` puis la ligne suivante contenant `revenu fiscal`, sommer les 3 sims.
+- **Ne JAMAIS combiner `run_in_background:true` du harnais Bash AVEC un `&` shell inline sur
+  la même commande** — testé ici en conditions réelles : `./chronicle.exe … &  echo started`
+  avec `run_in_background:true` a produit un run TRONQUÉ (29 lignes, juste le worldgen, tué
+  silencieusement) car le process enfant survit au shell parent seulement si le PARENT reste
+  vivant jusqu'à `wait` — le harnais considère la commande « terminée » dès l'`echo`, pas après
+  le vrai run. Fix : soit `run_in_background:true` SEUL sur la commande directe (pas de `&`
+  interne), soit un script `.sh` qui backgrounde ET fait `wait` lui-même AVANT de rendre la
+  main (le pattern utilisé ensuite pour la matrice complète, fiable).
+- **`chronicle.exe` déjà présent en racine était bien à jour** (mtime postérieur à TOUS les
+  .c/.h Monnaie touchés depuis M8/M9, vérifié par comparaison explicite avant tout run) —
+  aucun rebuild MSYS2 nécessaire cette fois, mais le réflexe de vérifier reste requis (piège
+  déjà noté M8 : « make test ne relie NI chronicle.exe NI scps_viewer.exe »).
+
+**Restes** :
+- **RECOMMANDATION CHIFFRÉE (estimation raisonnée, PAS un sweep de calibrage dédié — hors
+  budget de cette mission de mesure pure)** : puisque C0 (`AI_DEBT_FISCAL_COHERENCE`) est DÉJÀ
+  au maximum réglable (1.0) et ne rattrape que ~1.5 % de l'écart, un réglage plus agressif de
+  CE curseur ne suffira PAS — son gate est structurellement réactif (regarde le stock/la marge
+  instantanée), pas le flux qui s'érode en amont. Le levier à ajouter serait un **plancher
+  ABSOLU sur `tax_mult` lui-même** (pas sur la marge de relâchement) — aujourd'hui la seule
+  borne basse est le clamp générique `[0.02, 1.0]` (scps_econ.c:2230), sans considération de
+  soutenabilité. Mesuré : sans aucun plancher, `tax_mult` descend jusqu'à 0.34 sur au moins un
+  sim/3 ; avec la cellule 3 (plancher effectif = 1.0, C3 totalement mort) le revenu remonte de
+  21-70 % et les banqueroutes retombent à ~pre-m8. Un plancher intermédiaire autour de
+  **0.75-0.85** (borner RELÂCHER à −15/−25 % du neutre, au lieu de l'actuel −98 % possible)
+  est une ESTIMATION directionnelle raisonnée à partir de ces 4 points, PAS une valeur validée
+  par un balayage dédié — un futur chantier calibrage devrait tester 2-3 points bracketing
+  (ex. 0.6/0.75/0.9) sur le MÊME sweep {9,11,42}×3×250 pour trouver le point qui ramène les
+  banqueroutes Σ vers la bande pre-m8 (~580) sans annuler tout le bénéfice satisfaction visé
+  par C3 (qui, mesuré ici, est de toute façon quasi-nul à l'échelle du monde headless IA-only
+  — voir Découvertes annexes).
+- **La question révoltes/initiative-privée (hypothèse secondaire du brief) reste OUVERTE** —
+  signal trop bruyant sur 3 graines (voir Pièges) pour conclure. Un futur sweep dédié
+  (10+ graines, séparer explicitement pic-de-révolte vs soulèvements-allumés vs guerres-
+  civiles) serait nécessaire avant de trancher si C0/tenir-l'impôt nuit par CE canal.
+- **Interaction C1×C3 sur la colonisation (Découvertes annexes) non creusée davantage** — 4
+  points suffisent à ÉTABLIR l'interaction (ni l'un ni l'autre seul ne suffit) mais pas à la
+  quantifier finement (ex. à quel niveau de TAX_SAT_COUPLING l'effet apparaît-il) — hors scope
+  de cette mission (mesure du couple C1/C3 sur les BANQUEROUTES, la colonisation est un
+  sous-produit noté en passant).
+- Fichiers de sweep bruts (12 runs chronicle, ~59 Ko chacun, stdout complet) dans le scratchpad
+  de session (hors dépôt, non committés) — non conservés dans le repo, seules les Σ/moyennes
+  ci-dessus sont la trace permanente. Script `run_matrix.sh` (bash, non committé) utilisé
+  pour lancer les 3 batches de cellules 2/3/4 en parallèle (3 chronicle.exe simultanés/batch,
+  `wait` avant le batch suivant, marqueurs `cellN_DONE`/`ALL_DONE` explicites — motif déjà
+  requis M3b-v2.1/M7/M8 « toujours attendre un fichier DONE explicite »).
