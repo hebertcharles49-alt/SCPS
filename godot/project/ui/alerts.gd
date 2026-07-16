@@ -320,6 +320,33 @@ func _collect() -> Array:
 		out.append({"icon": "alert_shortage", "col": COL_ECO, "act": "market",
 			"tip": "%s : rupture dans %d jours au rythme actuel (clic : onglet Marché)" % [
 				String(short["name"]), int(short["days"])]})
+	# UI-MONNAIE (2026-07-16) — U4 : LES ÉVÉNEMENTS MONÉTAIRES. CONDITIONS polées (motif
+	# ci-dessus, pas un nouveau canal moteur) : lecteurs PURS (country_bankruptcy_scar/
+	# country_debase_frac), l'édge-detection existante (_journal_track_conditions) fait
+	# le travail « apparition → une ligne au journal ». Découvertes d'or (M7, EVID_GOLD_
+	# DISCOVERY) : DÉJÀ un dilemme à part entière (pending_event/player_event_choice —
+	# « Proclamer la découverte »), plus visible qu'une ligne de journal — non dupliqué ici.
+	if w.has_method("country_bankruptcy_scar") and float(w.country_bankruptcy_scar(me)) > 0.01:
+		out.append({"icon": "alert_warning", "col": COL_ECO, "act": "market",
+			"tip": "BANQUEROUTE — tes créanciers saisissent une part de ta production (cicatrice active, onglet Monnaie)"})
+	if w.has_method("country_debase_frac") and float(w.country_debase_frac(me)) > 0.001:
+		out.append({"icon": "alert_warning", "col": COL_ECO, "act": "market",
+			"tip": "DÉBASE EN COURS — sur-frappe payée en confiance (onglet Monnaie)"})
+	# ADVERSAIRES — parcourt les pays CONNUS SEULEMENT (motif at_war ci-dessus, jamais
+	# le voile de brouillard) : banqueroute/débase d'un voisin, en MOTS, sans navigation
+	# (intel de lecture seule — rien à « aller faire » chez un autre pays).
+	if w.has_method("country_bankruptcy_scar") or w.has_method("country_debase_frac"):
+		for rel in w.country_relations(me):
+			var rcid := int(rel.get("country", -1))
+			if rcid < 0:
+				continue
+			var rnm := String(rel.get("name", "?"))
+			if w.has_method("country_bankruptcy_scar") and float(w.country_bankruptcy_scar(rcid)) > 0.01:
+				out.append({"icon": "alert_warning", "col": COL_ECO, "act": "",
+					"tip": "%s traverse une BANQUEROUTE — ses créanciers saisissent sa production" % rnm})
+			if w.has_method("country_debase_frac") and float(w.country_debase_frac(rcid)) > 0.001:
+				out.append({"icon": "alert_warning", "col": COL_ECO, "act": "",
+					"tip": "%s DÉBASE sa monnaie — sur-frappe au-delà de la parité" % rnm})
 	return out
 
 ## VOIE MÉTABOLISATION (V1b) : tech_panel.gd notifie qu'un héritage NON natif vient
