@@ -600,6 +600,39 @@ typedef struct {
     double revenu_mois;   /* or/mois — scps_tax_class_month, même formule que le tick */
 } ScpsFiscalOrder;
 int scps_country_fiscal_orders(ScpsSim *s, int country, ScpsFiscalOrder *out, int max);
+
+/* MONNAIE M9 — V1 : LA CAPACITÉ D'EMPRUNT PAR ORDRE (panneau éco, décision joueur
+ * 2026-07-16) — montant max empruntable MAINTENANT + taux proposé, pour CHAQUE classe
+ * (mêmes 3 lignes Laborer/Bourgeois/Élite que ScpsFiscalOrder ci-dessus ; Laborer à 0,
+ * la fiche UI grise le bouton — credit_class_borrow_capacity le gate déjà, motif M3c
+ * « les laborers n'ont pas d'épargne »). Lecteur PUR (credit_class_borrow_capacity +
+ * credit_current_rate, scps_credit.c), rien de sérialisé. */
+typedef struct {
+    float montant_max;   /* or empruntable maintenant à cette classe (0 = rien à prêter) */
+    float taux;          /* 0..1 — taux ANNUEL proposé (credit_current_rate, national, même valeur 3 lignes) */
+} ScpsLoanCapacity;
+int scps_country_loan_capacity(ScpsSim *s, int country, ScpsLoanCapacity *out, int max);
+/* LE VERBE : emprunte à la classe `cls` (SocialClass : 0=Laborer,1=Bourgeois,2=Élite —
+ * Laborer/Esclave ne prêtent jamais) `amount` or (<=0 ⇒ le maximum disponible). Enfile
+ * CMD_BORROW_CLASS, revalidé au drain. Retourne 1 si enfilé (0 = file pleine — JAMAIS un
+ * refus : la classe couvre ce qu'elle PEUT, capacité épuisée ≠ refus). */
+int scps_player_borrow_class(ScpsSim *s, int cls, float amount);
+
+/* MONNAIE M9 — V2 : LA DEMANDE D'EMPRUNT DIPLOMATIQUE (décision joueur 2026-07-16) —
+ * l'état de la DERNIÈRE demande, en MOTS (jamais un flottant, doctrine membrane) :
+ * target<0 ⇒ aucune demande cette partie. La résolution est SYNCHRONE au drain
+ * (ai_consider_offer tranche dans le MÊME tick que la demande) — il n'existe pas
+ * d'état « en cours » persistant côté moteur, seulement AUCUNE/ACCORDÉ/REFUSÉ
+ * (STR_LOAN_*, scps_lang.h). */
+int scps_country_loan_request_target(ScpsSim *s, int country);   /* -1 = aucune demande */
+const char *scps_country_loan_status(ScpsSim *s, int country);   /* le MOT résolu */
+/* LE VERBE : demande un prêt à l'État `target` (diplomatie, throttlé par l'émissaire —
+ * scps_diplo_cd). `amount`<=0 ⇒ le maximum structurel. Enfile CMD_REQUEST_LOAN — le
+ * consentement (ai_consider_offer/OFFER_LOAN) est évalué au DRAIN, jamais ici : le
+ * retour 1 signifie seulement « la demande est partie », pas « elle est acceptée »
+ * (lire scps_country_loan_status au tick suivant). */
+int scps_player_request_loan(ScpsSim *s, int target, float amount);
+
 /* L'état de la PAIRE (a,b) de sièges du pays courant — 0=neutre 1=rivalité
  * 2=alliance 3=conspiration (V2b y branchera les événements). */
 int scps_council_pair_state(ScpsSim *s, int seat_a, int seat_b);

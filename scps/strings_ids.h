@@ -404,6 +404,13 @@
     X(STR_CULTURE_PARENTS, "Parents : ") \
     X(STR_CULTURE_RACINES, "Racines : ") \
     X(STR_CULTURE_SUBSTRAT,"Substrat : ") \
-    X(STR_CULTURE_PARENTE, "Parenté")
+    X(STR_CULTURE_PARENTE, "Parenté") \
+    /* MONNAIE M9 — V2 : LA DEMANDE D'EMPRUNT DIPLOMATIQUE, l'état en MOTS (jamais un
+     * flottant, doctrine membrane). La résolution est SYNCHRONE au drain (ai_consider_
+     * offer tranche dans le MÊME tick que la demande) — il n'existe pas d'état
+     * intermédiaire persistant côté moteur, seulement AUCUNE/ACCORDÉ/REFUSÉ. */ \
+    X(STR_LOAN_AUCUNE,  "Aucune demande") \
+    X(STR_LOAN_ACCORDE, "L'État accorde le prêt") \
+    X(STR_LOAN_REFUSE,  "L'État refuse le prêt")
 
 #endif /* SCPS_STRINGS_IDS_H */

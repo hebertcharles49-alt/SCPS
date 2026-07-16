@@ -2001,6 +2001,45 @@ int scps_country_fiscal_orders(ScpsSim *s, int country, ScpsFiscalOrder *out, in
     return n;
 }
 
+/* MONNAIE M9 — V1 : LA CAPACITÉ D'EMPRUNT PAR ORDRE, voir scps_api.h. Lecteur PUR
+ * (credit_class_borrow_capacity + credit_current_rate, scps_credit.c) — mêmes 3 lignes
+ * que scps_country_fiscal_orders ci-dessus (Laborer inclus, capacité 0 par construction,
+ * la fiche UI grise le bouton). */
+int scps_country_loan_capacity(ScpsSim *s, int country, ScpsLoanCapacity *out, int max){
+    if (!out || max<=0 || !s || !s->ready || country<0 || country>=SCPS_MAX_COUNTRY) return 0;
+    int n=0;
+    float taux = credit_current_rate(country);   /* national — la même valeur, 3 lignes (motif satisfaction ci-dessus) */
+    for (int c=0; c<3 && n<max; c++){   /* CLASS_LABORER..CLASS_ELITE seuls (esclave exclu, motif fiscal_orders) */
+        out[n].montant_max = credit_class_borrow_capacity(s->sim.econ, country, (SocialClass)c);
+        out[n].taux         = taux;
+        n++;
+    }
+    return n;
+}
+int scps_player_borrow_class(ScpsSim *s, int cls, float amount){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_BORROW_CLASS, { cls, (int32_t)amount, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+
+/* MONNAIE M9 — V2 : LA DEMANDE D'EMPRUNT DIPLOMATIQUE, voir scps_api.h. Lecteurs PURS
+ * (credit_loan_request_target/_granted, scps_credit.c) + LE VERBE (CMD_REQUEST_LOAN). */
+int scps_country_loan_request_target(ScpsSim *s, int country){
+    if (!s || !s->ready || country<0 || country>=SCPS_MAX_COUNTRY) return -1;
+    return credit_loan_request_target(country);
+}
+const char *scps_country_loan_status(ScpsSim *s, int country){
+    if (!s || !s->ready || country<0 || country>=SCPS_MAX_COUNTRY) return sz(tr(STR_LOAN_AUCUNE));
+    int t = credit_loan_request_target(country);
+    if (t<0) return sz(tr(STR_LOAN_AUCUNE));
+    return sz(tr(credit_loan_request_granted(country) ? STR_LOAN_ACCORDE : STR_LOAN_REFUSE));
+}
+int scps_player_request_loan(ScpsSim *s, int target, float amount){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_REQUEST_LOAN, { target, (int32_t)amount, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+
 int scps_country_relations(ScpsSim *s, int me, ScpsRelation *out, int max){
     if(!out || max<=0 || !s || !s->ready || me<0 || me>=s->w->n_countries) return 0;
     int n=0;

@@ -466,7 +466,7 @@ static void sim_cmd_drain(Sim *s, World *w){
          * un ordre arrivé pendant sa tournée est IGNORÉ (l'UI lit scps_diplo_cd et grise). */
         if (c->verb==CMD_DECLARE_WAR || c->verb==CMD_MAKE_PEACE || c->verb==CMD_OFFER_ALLIANCE
          || c->verb==CMD_OFFER_PACT  || c->verb==CMD_OFFER_MIGRATION || c->verb==CMD_EMBARGO
-         || c->verb==CMD_FABRICATE_CB || c->verb==CMD_PEACE_OFFER){
+         || c->verb==CMD_FABRICATE_CB || c->verb==CMD_PEACE_OFFER || c->verb==CMD_REQUEST_LOAN){
             int t = c->a[0];
             if (t<0 || t>=w->n_countries || t==p || regions_of(s->econ, t)<=0) continue;
             if (s->day < s->diplo_ready_day) continue;
@@ -593,6 +593,15 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (ai_consider_offer(w, s->econ, s->wp, s->dp, s->sc, p, t, OFFER_MIGRATION))
                 diplo_set_migration_pact(s->dp, p, t, true);
             break; }
+          case CMD_REQUEST_LOAN: {   /* MONNAIE M9 — V2 : demander un emprunt à un État (diplomatie) */
+            int t = c->a[0];
+            if (t<0 || t>=w->n_countries || t==p || w->country[t].role==POLITY_UNCLAIMED) break;
+            float amount = (float)c->a[1];   /* <=0 ⇒ le maximum disponible (credit_borrow_state) */
+            float got = 0.f;
+            if (ai_consider_offer(w, s->econ, s->wp, s->dp, s->sc, p, t, OFFER_LOAN))
+                got = credit_borrow_state(s->econ, w, p, t, amount);
+            credit_loan_request_note(p, t, got>0.f);   /* état TRANSIENT pour la façade (MOTS) */
+            break; }
           case CMD_BUILD_MANUF: {      /* PANNEAU B : le joueur pose une manufacture — RE-KEY PROVINCE
                                         * (a[0]=pid direct, miroir des gates IA civiles au grain province) */
             int pid=c->a[0], b=c->a[1];
@@ -712,6 +721,12 @@ static void sim_cmd_drain(Sim *s, World *w){
                 if (index<0 || index>=BUDGET_POLICY_COUNT) break;
                 econ_country_budget_set(s->econ,p,(BudgetPolicy)index,mult);
             }
+            break; }
+          case CMD_BORROW_CLASS: {   /* MONNAIE M9 — V1 : emprunter à un ordre (panneau éco) */
+            int cls = c->a[0];
+            if (cls<0 || cls>=CLASS_COUNT) break;
+            float need = (float)c->a[1];   /* <=0 ⇒ le maximum disponible (credit_borrow_class) */
+            credit_borrow_class(s->econ, p, (SocialClass)cls, need);   /* la classe NE REFUSE PAS */
             break; }
           /* ── §3 — COMMERCE ── */
           case CMD_ROUTE: {

@@ -393,4 +393,7 @@
     X(STR_CULTURE_PARENTS, "Parents: ") \
     X(STR_CULTURE_RACINES, "Roots: ") \
     X(STR_CULTURE_SUBSTRAT,"Substrate: ") \
-    X(STR_CULTURE_PARENTE, "Ancestry")
+    X(STR_CULTURE_PARENTE, "Ancestry") \
+    X(STR_LOAN_AUCUNE,  "No request") \
+    X(STR_LOAN_ACCORDE, "The state grants the loan") \
+    X(STR_LOAN_REFUSE,  "The state refuses the loan")

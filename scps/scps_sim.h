@@ -145,6 +145,16 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
         * pas d'arguments, agit sur p = s->human_player). Débuff −75 % prod/croissance/moral
         * décroissant (BANKRUPTCY_SCAR_YEARS) + grief de la cité-état créancière frappée. */
        CMD_BANKRUPTCY,
+       /* MONNAIE M9 — V1 : « EMPRUNTER À UN ORDRE » (panneau éco, décision joueur 2026-07-16).
+        * a[0]=SocialClass (CLASS_ELITE/CLASS_BOURGEOIS seules prêtent, motif M3c), a[1]=montant
+        * demandé (<=0 ⇒ le MAXIMUM disponible). La classe NE REFUSE JAMAIS — credit_borrow_class
+        * couvre ce qu'elle PEUT (capacité épuisée ≠ refus). */
+       CMD_BORROW_CLASS,
+       /* MONNAIE M9 — V2 : « DEMANDER UN EMPRUNT À UN ÉTAT » (diplomatie, décision joueur
+        * 2026-07-16). a[0]=État cible, a[1]=montant demandé (<=0 ⇒ le maximum structurel,
+        * cf. drain). L'État PEUT REFUSER (ai_consider_offer/OFFER_LOAN — value SUBJECTIVE) —
+        * throttlé par le MÊME émissaire que les autres verbes diplo (1 action/2 mois). */
+       CMD_REQUEST_LOAN,
        CMD_COUNT };
 #define SCPS_CMDQ_MAX 64
 #define SCPS_PEACE_MAX_TERRITORIES 32

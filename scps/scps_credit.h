@@ -120,4 +120,61 @@ void  credit_garnish_note(int debtor_c, float domestic_value, float cs_value);
  * cité-état (brief : « télémétrie : valeur saisie/banqueroute, part domestique/CS »). */
 void  credit_garnish_stats(double *total, double *domestic, double *citystate);
 
+/* ---- V1 (MONNAIE M9) : LE VERBE « EMPRUNTER À UN ORDRE » (panneau éco, décision joueur
+ * 2026-07-16) — l'État emprunte EXPLICITEMENT à UNE SEULE classe (Laborer/Bourgeois/Élite)
+ * de son propre empire ; la classe NE REFUSE JAMAIS (contrairement à V2, un État étranger).
+ * Réutilise le socle M3c (credit_borrow_local §2 : capacité CLASS_LEND_SHARE, plafond+
+ * tranche M3d) — grain NATIONAL (la dette est dans le pool P1, g_debt ci-dessus), créancier
+ * = la strate identifiée (CLASS_ELITE/CLASS_BOURGEOIS ; CLASS_LABORER/CLASS_SLAVE renvoient
+ * 0, aucune épargne, motif M3c). */
+/* Lecture PURE (aucune mutation) — la capacité DISPONIBLE : montant max empruntable MAINTENANT
+ * pour la classe `cls` du pays `c`. Sert le reader façade scps_country_loan_capacity. */
+float credit_class_borrow_capacity(const WorldEconomy *e, int c, SocialClass cls);
+/* LE VERBE : emprunte `need` (<=0 ⇒ le MAXIMUM disponible) à la classe `cls` du pays `c` —
+ * transfert COMPLET (débite la classe, crédite le trésor national via la capitale). Retourne
+ * le montant RÉELLEMENT prêté. AUCUN World* requis (province-grain pur, motif credit_borrow_
+ * local — econ_country_capital_prov scanne prov[] directement). */
+float credit_borrow_class(WorldEconomy *e, int c, SocialClass cls, float need);
+/* Lecture PURE — le TAUX courant du pays c (factorisé hors de credit_year_tick, formule M3d
+ * §3 INCHANGÉE) : sert le reader façade (taux proposé) SANS dupliquer le calcul. */
+float credit_current_rate(int c);
+
+/* ---- V2 (MONNAIE M9) : LA DEMANDE D'EMPRUNT DIPLOMATIQUE (diplomatie, décision joueur
+ * 2026-07-16) — le joueur demande un prêt à un ÉTAT ÉTRANGER de son choix (pas l'auto-
+ * sélection pick_lender de M3c) ; celui-ci PEUT REFUSER — value SUBJECTIVE évaluée par
+ * l'APPELANT (scps_sim.c, ai_consider_offer/OFFER_LOAN, scps_ai.c — relation+confiance+
+ * liquidité+éthos, réutilise diplo_relation/statecraft_opinion EXISTANTS). */
+/* Assume le consentement DÉJÀ acquis (l'appelant l'a obtenu via ai_consider_offer) — fait
+ * SEULEMENT le transfert réel (motif credit_borrow_citystate, mais créancier CHOISI, pas élu ;
+ * transfert COMPLET comme credit_borrow_class ci-dessus, pas un débit-seul). Refuse si le
+ * débiteur a déjà un AUTRE créancier étranger engagé (motif « un seul créancier-cité-état par
+ * pays », M3c). amount<=0 ⇒ le MAXIMUM disponible (motif credit_borrow_class, V1). Retourne
+ * le montant RÉELLEMENT prêté (0 = impossible). */
+float credit_borrow_state(WorldEconomy *e, const World *w, int debtor_c, int lender_c, float amount);
+/* État TRANSIENT de la DERNIÈRE demande (façade/UI — « [État] accorde/refuse », jamais un
+ * flottant). Non sérialisé (motif g_buybacks/g_defaults — un fanion d'UI, pas un état de
+ * simulation ; le PRÊT lui-même, s'il a été accordé, EST réel/sérialisé via g_debt). */
+void  credit_loan_request_note(int debtor_c, int lender_c, bool granted);
+int   credit_loan_request_target(int debtor_c);    /* -1 = aucune demande depuis credit_init */
+bool  credit_loan_request_granted(int debtor_c);   /* valide seulement si target>=0 */
+
+/* ---- V3 (MONNAIE M9) : LES RACHATS À MÉTABOLISATION DISTINCTE (décision joueur 2026-07-16,
+ * « système de rachat de crédit par les cités états et les mercantiles [et pacifistes], leur
+ * métabolisation distincte ») — le RACHAT lui-même (M3c, credit_year_tick, « les Fugger »)
+ * est INCHANGÉ ; ce qu'il RAPPORTE au racheteur diffère désormais par ARCHÉTYPE : cité-état
+ * → influence/vassalité douce (rancor, scps_sim.c a DiploState), mercantile → RIEN de plus
+ * que l'intérêt annuel déjà uniforme (son profit PUR, brief), pacifiste → stabilité/relation
+ * (faction_lever_apply/FAC_COMMUNAUTAIRE, scps_sim.c a Statecraft). */
+enum { LOAN_ARCHETYPE_NONE=0, LOAN_ARCHETYPE_CITYSTATE, LOAN_ARCHETYPE_MERCANTILE, LOAN_ARCHETYPE_PACIFIST };
+/* Flag TRANSIENT posé par credit_year_tick (RAZ en tête de CHAQUE appel) : l'archétype du
+ * racheteur qui vient d'acquérir la dette-classes de `debtor_c` CETTE année, LOAN_ARCHETYPE_
+ * NONE si aucun rachat. Lu par scps_sim.c juste après credit_year_tick (credit.c n'a pas
+ * DiploState/Statecraft) pour appliquer l'effet DISTINCT. RRACHAT_META<=0 : kill-switch —
+ * reste NONE pour tout le monde (golden pré-M9 byte-identique ; le rachat M3c continue de
+ * fonctionner à l'identique, seule la distinction est coupée). */
+int   credit_buyback_archetype(int debtor_c);
+/* Télémétrie MONDE cumulée depuis credit_init (motif g_buybacks/g_defaults) : rachats PAR
+ * ARCHÉTYPE — la preuve chiffrée que les 3 métabolisations sont bien distinctes. */
+void  credit_buyback_stats(long *cs, long *mercantile, long *pacifist);
+
 #endif /* SCPS_CREDIT_H */

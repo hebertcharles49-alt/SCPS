@@ -554,6 +554,7 @@ static int weakest_ally(const AiActor *a, const World *w, const WorldEconomy *ec
     if (out_score) *out_score = (worst>=0)? wv : 0.f;
     return worst;
 }
+static Ethos ai_capital_ethos(const World *w, const WorldEconomy *econ, int cid);   /* forward — V2/OFFER_LOAN */
 /* #26 — `to` ÉVALUE une OFFRE de `from` et l'ACCEPTE/REFUSE (le « code IA évaluer-offre »).
  * Lu de l'OPINION ±100 (mémoire des actes) + la relation STRUCTURELLE + le score de guerre.
  * sc == NULL ⇒ pas de porte d'opinion (décision relation-seule, rétro-compatible bancs). */
@@ -586,6 +587,26 @@ bool ai_consider_offer(const World *w, const WorldEconomy *econ, const WorldPros
             if (diplo_status(d,to,from)==DIPLO_WAR) return false;
             if (diplo_status(d,to,from)==DIPLO_ALLIED) return true;               /* l'alliance suffit */
             return sc && op >= (int)tune_f("AI_OFFER_MIG_OPINION",40.f);          /* sinon, forte confiance */
+        case OFFER_LOAN:
+            /* MONNAIE M9 — V2 : « demander un emprunt à un État » (diplomatie). Value
+             * SUBJECTIVE (relation+confiance+liquidité+éthos), réutilise le calcul diplo
+             * EXISTANT — ne réinvente rien : jamais en guerre · relation structurelle NETTE
+             * positive (motif OFFER_ALLIANCE) · `to` doit avoir SA PROPRE liquidité (ne se
+             * saigne pas pour prêter — AI_LOAN_MIN_LIQUIDITY, même motif COURT_FLOOR déjà
+             * établi côté credit.c pour « un prêteur solvable ») · la CONFIANCE (opinion)
+             * tranche le reste, à deux paliers : un ÉTHOS prêteur NATUREL (mercantile —
+             * l'intérêt l'intéresse ; pacifiste — la stabilité l'intéresse, motif V3/rachat
+             * ci-dessous) se contente d'une confiance ORDINAIRE ; tout autre État (honneur,
+             * dominateur…) exige une confiance FORTE (il n'a pas d'intérêt structurel à
+             * prêter, seule une relation exceptionnelle l'y pousse). */
+            if (diplo_status(d,to,from)==DIPLO_WAR) return false;
+            if (diplo_relation(w,econ,wp,d,to,from).alliance <= 0.f) return false;
+            if (econ_country_gold(econ,to) < (double)tune_f("AI_LOAN_MIN_LIQUIDITY",4000.f)) return false;
+            { Ethos eth = ai_capital_ethos(w,econ,to);
+              bool natural_lender = (eth==ETHOS_MERCANTILE || eth==ETHOS_PACIFISTE);
+              int need_op = (int)tune_f(natural_lender?"AI_OFFER_LOAN_OPINION":"AI_OFFER_LOAN_OPINION_STRICT",
+                                        natural_lender?30.f:60.f);
+              return sc && op >= need_op; }
     }
     return false;
 }

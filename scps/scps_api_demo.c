@@ -338,6 +338,49 @@ int main(int argc, char **argv){
             ok("LOT T build_legal_ex(Temple) : raison bornée 0..4, cohérente avec legal",
                r4>=0 && r4<=4 && ((lg==1)==(r4==0)));
         }
+        /* ── MONNAIE M9 — V1 : « EMPRUNTER À UN ORDRE » (panneau éco) — lecteur capacité
+         * (3 lignes Laborer/Bourgeois/Élite, Laborer toujours 0) + le verbe : la classe
+         * NE REFUSE JAMAIS (capacité épuisée ≠ refus), le trésor est crédité au drain. */
+        {
+            ScpsLoanCapacity lc[3]; int nlc = scps_country_loan_capacity(s2, pl, lc, 3);
+            ok("V1 capacité d'emprunt : 3 lignes (Laborer/Bourgeois/Élite)", nlc==3);
+            ok("V1 capacité : Laborer ne prête jamais (motif M3c, aucune épargne)",
+               nlc==3 && lc[0].montant_max==0.f);
+            double gold0 = scps_country_gold(s2, pl);
+            int cls = 1;   /* CLASS_BOURGEOIS (scps_econ.h) — le prêteur ordinaire */
+            float cap = (nlc==3) ? lc[cls].montant_max : 0.f;
+            int enq = scps_player_borrow_class(s2, cls, -1.f);   /* <=0 ⇒ le MAXIMUM disponible */
+            ok("V1 verbe EMPRUNTER À UN ORDRE : ordre ENFILÉ", enq==1);
+            scps_sim_advance_days(s2, 1);                         /* le drain applique */
+            double gold1 = scps_country_gold(s2, pl);
+            printf("   V1 emprunt à l'ordre (Bourgeois) : capacité annoncée %.0f or (taux %.1f%%/an) — trésor %.0f -> %.0f (%+.0f)\n",
+                   (double)cap, (nlc==3)?(double)(lc[cls].taux*100.f):0.0, gold0, gold1, gold1-gold0);
+            ok("V1 verbe EMPRUNTER À UN ORDRE : APPLIQUÉ au drain (trésor crédité de la capacité annoncée)",
+               cap<=0.5f ? (gold1>=gold0-0.01) : (gold1 > gold0 + 0.5*(double)cap));
+        }
+        /* ── MONNAIE M9 — V2 : « DEMANDER UN EMPRUNT À UN ÉTAT » (diplomatie) — un État PEUT
+         * REFUSER (ai_consider_offer/OFFER_LOAN, value SUBJECTIVE) ; on sollicite plusieurs
+         * cibles (throttlées par le MÊME émissaire — 1 acte/2 mois) et on lit le MOT résolu
+         * (jamais un flottant, doctrine membrane). */
+        {
+            scps_sim_advance_days(s2, 70);   /* purge tout cooldown émissaire laissé par les verbes diplo ci-dessus */
+            int granted=0, refused=0, none=0, tried=0;
+            for (int c=0; c<nc2 && tried<6; c++){
+                if (c==pl) continue;
+                tried++;
+                scps_player_request_loan(s2, c, -1.f);   /* <=0 ⇒ le maximum structurel */
+                scps_sim_advance_days(s2, 65);            /* > le cooldown émissaire (60j) : la demande part et se résout */
+                int tgt = scps_country_loan_request_target(s2, pl);
+                const char *word = scps_country_loan_status(s2, pl);
+                if (tgt==c && strstr(word,"accorde")) granted++;
+                else if (tgt==c) refused++;
+                else none++;
+            }
+            printf("   V2 demande d'emprunt diplomatique (%d cible(s) sollicitée(s)) : %d accordé(s) · %d refusé(s) · %d sans effet\n",
+                   tried, granted, refused, none);
+            ok("V2 verbe DEMANDER UN EMPRUNT : au moins une demande RÉSOLUE en mot (accordé ou refusé)",
+               (granted+refused) > 0);
+        }
     }
 
     /* ── ALLOCATION DE MAIN-D'ŒUVRE (onglet province) : lire les puits, poser un poids

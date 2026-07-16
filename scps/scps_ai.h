@@ -170,7 +170,10 @@ long   ai_slave_buy_count(void);
  * Lue de l'OPINION (±100, mémoire des actes) + la relation structurelle + le score de guerre.
  * Le verbe diplo JOUEUR (§3) et la diplo IA-IA passent par CE chemin → consentement BILATÉRAL.
  * sc == NULL ⇒ pas de porte d'opinion (décision relation-seule, rétro-compatible bancs). */
-typedef enum { OFFER_ALLIANCE = 0, OFFER_PEACE, OFFER_TRADE_PACT, OFFER_MIGRATION } OfferKind;
+/* MONNAIE M9 — V2 : OFFER_LOAN — `from` DEMANDE un prêt à `to` (diplomatie). `to` PEUT
+ * REFUSER (contrairement à V1, sa propre classe qui ne refuse jamais) — value SUBJECTIVE
+ * (relation+confiance+liquidité+éthos), cf. le case dédié dans ai_consider_offer. */
+typedef enum { OFFER_ALLIANCE = 0, OFFER_PEACE, OFFER_TRADE_PACT, OFFER_MIGRATION, OFFER_LOAN } OfferKind;
 bool   ai_consider_offer(const World *w, const WorldEconomy *econ, const WorldProsperity *wp,
                          const DiploState *d, const Statecraft *sc, int from, int to, OfferKind kind);
 
