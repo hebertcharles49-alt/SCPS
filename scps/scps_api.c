@@ -1982,6 +1982,25 @@ double scps_tax_class_month(ScpsSim *s, int cls){
     return (double)econ_country_tax_class_month(s->sim.econ, p, (SocialClass)cls);
 }
 
+/* MONNAIE M8 — C2 : LE CURSEUR FISCAL PAR ORDRE, vue COMBINÉE (taux + satisfaction +
+ * rendement) pour un pays QUELCONQUE (pas seulement le joueur — l'IA aussi, pour un
+ * futur panneau diplomatique/renseignement). Assemble 3 lectures PURES déjà existantes
+ * (scps_country_budget_policy family=0, econ_country_class_satisfaction, econ_country_
+ * tax_class_month) — aucun champ neuf, aucune mutation, rien de sérialisé. 3 lignes
+ * Laborer/Bourgeois/Élite (l'esclave n'est pas imposable, INCHANGÉ). */
+int scps_country_fiscal_orders(ScpsSim *s, int country, ScpsFiscalOrder *out, int max){
+    if (!out || max<=0 || !s || !s->ready || country<0 || country>=SCPS_MAX_COUNTRY) return 0;
+    int n=0;
+    for (int c=0; c<3 && n<max; c++){   /* CLASS_LABORER..CLASS_ELITE seuls (esclave exclu) */
+        float sat = econ_country_class_satisfaction(s->sim.econ, country, (SocialClass)c);
+        out[n].taux         = econ_country_tax_mult(s->sim.econ, country, (SocialClass)c);
+        out[n].satisfaction = (sat>=0.f) ? (int)(100.f*sat + 0.5f) : -1;
+        out[n].revenu_mois  = (double)econ_country_tax_class_month(s->sim.econ, country, (SocialClass)c);
+        n++;
+    }
+    return n;
+}
+
 int scps_country_relations(ScpsSim *s, int me, ScpsRelation *out, int max){
     if(!out || max<=0 || !s || !s->ready || me<0 || me>=s->w->n_countries) return 0;
     int n=0;

@@ -585,6 +585,21 @@ int    scps_player_budget_policy(ScpsSim *s, int family, int index, float mult);
 /* Rendement fiscal MENSUEL (or/mois) d'une classe pour le pays du JOUEUR (0=Laborer,
  * 1=Bourgeois, 2=Élite ; esclave=0). Lecteur PUR — recalculé de l'état, rien de sérialisé. */
 double scps_tax_class_month(ScpsSim *s, int cls);
+
+/* MONNAIE M8 — C2 : LE CURSEUR FISCAL PAR ORDRE, la vue COMBINÉE pour l'UI-MONNAIE à
+ * venir (taux + satisfaction + rendement, les 3 en un seul appel — le curseur
+ * scps_country_budget_policy(family=0,…)/scps_player_budget_policy et le rendement
+ * scps_tax_class_month existent DÉJÀ PAR ORDRE depuis avant le chantier MONNAIE
+ * (tax_mult[cid][c], commit 92efb58 — aucun nouveau verbe créé ici, cf. TROUVAILLES
+ * M8) ; ce lecteur ne fait qu'assembler les 3 lectures existantes pour un pays
+ * quelconque, PUR, rien de sérialisé). 3 lignes (Laborer/Bourgeois/Élite — les
+ * esclaves ne sont pas imposables, INCHANGÉ). */
+typedef struct {
+    float  taux;          /* 0..1 — curseur effectif (tax_mult), 1.0 = neutre */
+    int    satisfaction;  /* 0..100, agrégat PAYS pondéré pop (province-grain, cf. scps_country_demo) */
+    double revenu_mois;   /* or/mois — scps_tax_class_month, même formule que le tick */
+} ScpsFiscalOrder;
+int scps_country_fiscal_orders(ScpsSim *s, int country, ScpsFiscalOrder *out, int max);
 /* L'état de la PAIRE (a,b) de sièges du pays courant — 0=neutre 1=rivalité
  * 2=alliance 3=conspiration (V2b y branchera les événements). */
 int scps_council_pair_state(ScpsSim *s, int seat_a, int seat_b);

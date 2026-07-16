@@ -967,6 +967,10 @@ float econ_country_budget_mult(const WorldEconomy *e, int cid, BudgetPolicy poli
 float econ_country_road_conn(const WorldEconomy *e, int cid);
 void  econ_country_tax_set(WorldEconomy *e, int cid, SocialClass c, float mult);
 void  econ_country_budget_set(WorldEconomy *e, int cid, BudgetPolicy policy, float mult);
+/* MONNAIE M8 — C2 : satisfaction AGRÉGÉE d'une classe pour un pays entier (pondérée
+ * pop, province-grain), −1 si la classe est absente. Sert le lecteur façade
+ * scps_country_fiscal_orders (scps_api.c). */
+float econ_country_class_satisfaction(const WorldEconomy *e, int cid, SocialClass c);
 
 /* MONNAIE M1/M2 (docs/MONNAIE_CONCEPT.md) — province CAPITALE d'un pays (grain province,
  * WorldEconomy seul : econ_tick n'a pas de World*). -1 si aucune (pays mort/sans capitale). */

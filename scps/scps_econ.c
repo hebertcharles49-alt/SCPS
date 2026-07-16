@@ -2125,6 +2125,25 @@ float econ_country_road_conn(const WorldEconomy *e, int cid){
     return 1.f + (-0.20f + frac*0.30f);               /* −20 % … +10 % */
 }
 
+/* MONNAIE M8 — C2 : satisfaction AGRÉGÉE d'une classe pour un pays entier — pondérée
+ * pop, PROVINCE-grain (jamais econ_region_rep_province), −1 si la classe est absente
+ * du pays. Sert le lecteur façade scps_country_fiscal_orders (scps_api.c) — un seul
+ * site de vérité pour « la satisfaction nationale d'un ordre ». */
+float econ_country_class_satisfaction(const WorldEconomy *e, int cid, SocialClass c){
+    if (!e||cid<0||cid>=SCPS_MAX_COUNTRY||c<0||c>=CLASS_COUNT) return -1.f;
+    double wsum=0.0, psum=0.0;
+    for (int p=0;p<e->n_prov && p<SCPS_MAX_PROV;p++){
+        const ProvinceEconomy *re=&e->prov[p];
+        if (!re->active || !re->colonized || re->owner!=cid) continue;
+        double pop = re->strata[c].pop;
+        if (pop<=0.0) continue;
+        wsum += (double)re->strata[c].satisfaction * pop;
+        psum += pop;
+    }
+    if (psum<=0.0) return -1.f;
+    return clampf((float)(wsum/psum), 0.f, 1.f);
+}
+
 /* MONNAIE M3b-v2 — item 5 : la clé 42/20/38 (WAGE_SHARE/TAX_RATE, §3 ci-dessus) exposée aux
  * AUTRES modules (events, intertrade…) qui doivent reverser un montant aux 3 classes SANS
  * dupliquer les constantes (WAGE_SHARE/TAX_RATE restent des #define FILE-LOCAL de ce fichier). */
