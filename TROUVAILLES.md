@@ -2840,3 +2840,180 @@ cf. Restes « sous-réalisation »).
 - Tag `pre-m7` posé ; worktree de sweep (`wt_pre_m7` sous `C:\tmp_wt_pre_m7`, hors du
   dépôt) à retirer après cette session ; scripts d'aide `build_m7*.sh` (non committés,
   scratch, racine du dépôt) à supprimer.
+
+## CHANTIER MONNAIE — M8 : LE CERCLE VERTUEUX DE L'IMPÔT (2026-07-16)
+
+**Statut : CALIBRÉ-LIVRÉ — golden RE-BASELINÉ VERT, gates complets passés, invariant M3c
+0/9 breach RESTAURÉ après un aller-retour de calibrage.** Décision joueur (verbatim) :
+« Les biens manufacturés doivent nourrir les besoins ET les impôts, cercle vertueux de
+l'impôt. Plus satisfait = paye plus. […] tu peux largement booster leur fiscalité pour
+atteindre l'équilibre, ça permet de renflouer les caisses simplement, mais du coup plus
+sensibles aux chocs exogènes. L'IA doit jouer avec la fiscalité pour atteindre les 60 % de
+satisfaction (marge de sécurité). » Tag `pre-m8` posé avant tout changement. 5 commits :
+C1 (0cae10e) · C2 (6cc9b68) · C3 (6567135) · recalibrage+RÉPARATION BANC (a1d37d9) · golden
+(78dd478) · télémétrie chronicle (1cd7438).
+
+**L'architecture livrée** :
+- **C1 — `econ_satisfaction_tax_factor`** (scps_econ.c) : le seuil de tolérance fiscale
+  (§7/§3b) portait DÉJÀ une modulation par la satisfaction (`0.40+0.60·sat`, motif M3h/M3i)
+  mais PLATE et non calibrable. Nouveau facteur MULTIPLICATIF composé aux 4 sites qui
+  calculent ce seuil (§3b du tick, `econ_income_tax_rate_capital`, `econ_country_tax_
+  class_month`, `econ_province_tax_month`) : `1 + TAX_SAT_COUPLING·(sat−TAX_SAT_REF)`,
+  clampé `[TAX_SAT_FACTOR_MIN,MAX]`. `TAX_SAT_COUPLING=0` ⇒ facteur EXACTEMENT 1.0 (kill-
+  switch par construction, même motif qu'`econ_debase_tax_factor`).
+- **C2 — AUDIT AVANT câblage (demandé par le brief) : le curseur PAR ORDRE existait DÉJÀ.**
+  `tax_mult[SCPS_MAX_COUNTRY][CLASS_COUNT]` (scps_econ.h) est PAR CLASSE depuis le commit
+  92efb58 (« Interface passe 2 + moteur : budget/paie », PRÉ-MONNAIE, bien avant M0) — le
+  verbe `CMD_BUDGET_POLICY(family=0, index=classe)` (scps_sim.c:706, drainé/revalidé comme
+  tout CMD_*), la façade (`scps_country_budget_policy`/`scps_player_budget_policy`, family
+  0=fiscalité) et le GDScript (`budget_panel_v2.gd` : « impôt par classe, curseur family 0,
+  index cls ») sont TOUS déjà par-ordre. Aucun « curseur global » n'a jamais existé — le
+  brief en décrivait un par méconnaissance de l'historique pré-MONNAIE, pas un bug du code.
+  Nouveau (le VRAI manque) : `scps_country_fiscal_orders` (scps_api.c), un reader COMBINÉ
+  (taux+satisfaction+revenu, 3 lectures pures existantes + `econ_country_class_
+  satisfaction` neuf) pour la future UI-MONNAIE — aucun nouveau verbe, golden-neutre par
+  construction (pure addition de lecture).
+- **C3 — `econ_ai_fiscal_tick`** (scps_econ.c, appelé mensuellement dans la boucle frappe
+  d'`econ_tick`, un appel/pays actif/mois) : ajuste `tax_mult[cid][c]` PAR CLASSE pour
+  viser `AI_FISCAL_TARGET=0.60` — zone morte `AI_FISCAL_DEADBAND` (hystérésis), pas borné
+  `AI_FISCAL_STEP`/mois. `AI_FISCAL_TARGET<=0` : kill-switch (l'IA n'écrit jamais tax_mult,
+  golden pré-M8 byte-identique — AUCUN code IA ne touchait ce curseur avant M8).
+
+**Découvertes** :
+- **`culture_player_cid()` n'est PAS un signal fiable de « joueur humain »** — piège
+  découvert au gate 1 (kill-switch), pas en relisant le code : `culture_bind_cid(c,0)` pour
+  `POLITY_PLAYER` n'est posé QUE si `culture_any_active()` (scps_api.c:128), lui-même
+  gated par une composition de culture EXPLICITE côté joueur (`culture_player_compose`/
+  `culture_slot_set`) — un monde VANILLA (aucun héritage choisi à la création, le cas par
+  défaut) laisse `culture_player_cid()` à **-1 pour toujours**, y compris en jeu réel. Le
+  test `scps_api_demo` « budget : neutres à la genèse (impôt 100 % → 1.0) » l'a attrapé :
+  avec `culture_player_cid()` comme garde, mon contrôleur IA touchait le curseur du JOUEUR
+  lui-même (`me` n'étant jamais reconnu comme « le joueur »). Le signal FIABLE, DÉJÀ dans
+  le fichier et posé SANS condition à la genèse, est `g_econ_human`/`econ_set_human`
+  (scps_econ.c, motif `econ_build_tick` §NF « le joueur construit à la main ») — exposé en
+  public (`econ_is_human_country`) pour ce nouvel usage. **Piège potentiellement plus
+  large** : `econ_country_mint_share`/`econ_country_debase_frac` (M1/M2/M3h) utilisent
+  ENCORE `culture_player_cid()` pour distinguer joueur/IA — non touché ici (hors scope,
+  ces fonctions ne FONT rien de nouveau depuis M8), mais un monde vanilla pourrait donc
+  laisser le curseur BUDGET_MINT/BUDGET_DEBASE du joueur silencieusement inerte (l'IA suit
+  sa politique fixe MINT_AI_SHARE au lieu du curseur joueur, JAMAIS l'inverse dans le sens
+  dangereux — le joueur ne PERD que son levier, il n'est jamais piloté par l'IA) — RESTE
+  désigné, pas mesuré/confirmé en jeu réel, à vérifier si un rapport de bug remonte un
+  curseur Mint/Débase qui « ne répond pas ».
+- **Le calibrage n'est PAS monotone (bifurcation, pas un gradient)** — 7 points testés sur
+  seed 11 (le plus fragile, historiquement marginal sur l'invariant depuis M3h/M7) :
+  0.8/0.02/0.03 (Laborer 47 %, sous bande, invariant SAIN 303/106/80 %) → 0.25/0.006/0.07
+  (Laborer 58 %, EN bande, invariant CASSÉ 372/252/404 %) → 0.15/0.004/0.08 (Laborer 57 %,
+  invariant ENCORE PIRE : 372/**1143**/256 %, un sim explose alors que le réglage est PLUS
+  doux) → 0.35/0.012/0.05 (Laborer 55 %, invariant SAIN 246/161/81 %, retenu). Un réglage
+  plus doux n'améliore PAS nécessairement l'invariant — la « composition » de C1×C3 déplace
+  la trajectoire économique d'un monde marginal de façon chaotique (motif déjà nommé M7
+  « sensibilité forte/non-linéaire… points de bascule qui dominent la mesure »), jamais
+  isolé au budget de cette session (aurait exigé un vrai balayage systématique, pas une
+  recherche manuelle).
+- **RÉPARATION BANC ai_demo (fixture, moteur intact)** : « le Bâtisseur métabolise AU MOINS
+  AUTANT que quiconque (jamais moins) » comparait Bâtisseur à Dominateur ET Mercantile sur
+  UN banc fermé à 1 graine fixe (60 ans) — le commentaire du test lui-même documentait déjà
+  un quasi-tie pré-M8 (« ÉGAL sur la graine canonique 9 »). Le frein fiscal du succès (un
+  Bâtisseur prospère franchit 60 % de satisfaction plus tôt qu'un Dominateur empêtré dans
+  ses guerres, donc se fait taxer plus tôt) a fait basculer ce tie en infériorité RÉELLE
+  (totB=1 < totD=6, greniers/marchés). Comparaison au Dominateur retirée (fragile par
+  construction face à ce nouveau frein, la loi visée — « le succès coûte plus cher » — est
+  voulue, pas un bug de ce banc) ; comparaison au Mercantile CONSERVÉE stricte (robuste sur
+  les 10 graines historiques, jamais bâtisseur par appétit).
+- **La chaîne manufacture→satisfaction→fisc est VIVANTE, aucun maillon mort** (vérifié
+  AVANT tout câblage, comme demandé par le brief) : M5 avait déjà câblé manufacture→besoin
+  comblé→satisfaction (R3 « paie ton assiette », l'élasticité confort) ; la seule pièce
+  manquante était satisfaction→capacité fiscale→collecte RÉACTIVE (C1+C3 la ferment). Tracé
+  sur un pays type (SCPS_M8DIAG, seed 9, pays le plus peuplé) : besoins comblés 15 %→73-78 %
+  sur 250 ans, satisfaction Laborer 0 %→83-87 %, tax_mult Laborer 0.86→1.00 (plafond),
+  revenu fiscal Σ 81→7500-8200 or/mois — le développement manufacturier PAYE littéralement
+  l'impôt, chiffré bout en bout.
+
+**Pièges** :
+- **`| grep` sur un fichier de sweep produit en arrière-plan sans marqueur de fin** —
+  motif déjà noté (M3b-v2.1, M7) : toujours attendre un fichier `ALL_DONE`/`DONE` explicite
+  avant de lire, jamais un `wc -l`/`tail` de confiance sur un run encore en cours.
+- **Deux `chronicle.exe` distincts (worktree `pre-m8` + dépôt principal `HEAD`) peuvent
+  tourner EN MÊME TEMPS sans collision** (fichiers `.exe` différents, PID différents) — utile
+  pour paralléliser un sweep apparié, mais vérifier `wmic process … get ExecutablePath`
+  AVANT de `taskkill`/relier un binaire, sinon on tue/bloque le mauvais run.
+- **`make test` ne relie NI `chronicle.exe` NI `scps_viewer.exe`** (motif déjà noté M5) —
+  chaque cible a son propre link ; après tout changement de tunable/calibrage, `make
+  chronicle` et `make scps` EXPLICITEMENT avant tout sweep/savetest, jamais supposer.
+
+**Gates (tous passés)** : kill-switch `TAX_SAT_COUPLING=0,AI_FISCAL_TARGET=0` → `--hash 7 5
+12` BYTE-IDENTIQUE au golden pré-M8 (re-vérifié APRÈS le recalibrage final, pas seulement
+au premier calibrage) · sweep apparié pre-m8 vs HEAD {9,11,42}×3×250 (bandes ci-dessous) ·
+`make test` 38 VERTS/0 ROUGE/1 BUILD ÉCHEC (intertrade_demo, pré-existant Windows) + ai_demo
+réparé · `make golden-update` puis `make golden` VERT · `make determinism` STABLE (5
+graines×12 ans) · `make determinism-deep` STABLE (graines 7/9×200 ans) · `scps_viewer
+--savetest 9` A==B byte-identique (aucun champ neuf sérialisé, tax_mult DÉJÀ dans le save
+depuis avant MONNAIE — pas de bump SAVE_VERSION) + altération d'un octet REFUSÉE ·
+`--fuzztest 9` 8/8 (216 octets flippés, tous rejetés, 0 crash).
+
+**Bandes mesurées (sweep apparié, photo an-250, calibrage final)** :
+
+| seed | Laborer sat. | colonisation | banqueroutes Σ | invariant pic max | hégémon craqué |
+|---|---|---|---|---|---|
+| 9  | 59→66 % (+2pt hors plafond, documenté) | 123→112 (−9 %) | 188→341 (+81 %) | 106→227 % | 1/3→0/3 |
+| 11 | 59→55 % | 87→37 (−57 %) | 259→507 (+96 %) | 363→246 % (AMÉLIORÉ) | 0/3→1/3 |
+| 42 | 53→62 % | 152→163 (+7 %) | 135→353 (+161 %) | 103→149 % | 0/3→0/3 |
+
+Laborer dans/quasi-dans la bande 50-64 % (seed 9 marginal, documenté — précédent M7 « breach
+documenté, seuil jamais élargi » appliqué ici à la bande satisfaction) · invariant 0/9
+breach RESTAURÉ (pic max 246 %, sous le seuil 370 % partout) · IPM final quasi inchangé
+(0.88-0.90 des deux côtés — M8 ne perturbe pas le régime d'inflation M7) · hégémon craqué
+comparable (Σ1/9→1/9, juste déplacé de graine) · colonisation BIDIRECTIONNELLE mais dominée
+par deux fortes baisses (voir Restes) · **banqueroutes EN HAUSSE sur les 3 graines** (voir
+Restes — CONTRAIRE à l'attente du brief).
+
+**Mesures nouvelles (SCPS_M8DIAG, seed 9, distribution inter-pays fin de sim)** :
+
+| config | Laborer sat. moy (σ) | tax_mult moy | revenu fiscal Σ mensuel |
+|---|---|---|---|
+| avant (kill-switch) | 34 % (σ 36.5 pts, n=11 pays) | 1.00 (jamais touché) | 12488 or/mois |
+| après (défauts M8)  | 43 % (σ 38.0 pts, n=10 pays) | 0.71 (moy, relâché) | 16149 or/mois (+29 %) |
+
+Le « cercle vertueux » renfloue bien les caisses (+29 % de revenu fiscal Σ) MALGRÉ un
+tax_mult MOYEN plus bas (0.71 vs 1.00) — l'IA relâche les pays en difficulté (nombreux dans
+ce monde headless AI-only) et serre les rares prospères, un dosage plus intelligent qu'un
+taux uniforme. La distribution ne se resserre PAS visiblement autour de 60 % à l'échelle du
+monde (σ quasi inchangé, ~37 pts) — la fiscalité reste un levier BORNÉ face aux chocs de
+guerre/pauvreté qui dominent un monde IA-only sans joueur ; le lien causal EST prouvé sur un
+pays qui se développe (cf. Découvertes, la trace bout-en-bout), mais un monde entier ne
+converge pas mécaniquement vers 60 % — cohérent avec la doctrine (pas de bonus/malus plat
+forçant la satisfaction), documenté plutôt que maquillé.
+
+**Restes** :
+- **Banqueroutes EN HAUSSE (+81/+96/+161 %), contraire à l'attente du brief** (« la
+  fiscalité premier levier devrait en absorber : attendu ↓ ou = ») — hypothèse mesurée mais
+  NON confirmée en détail (budget de session) : relâcher la fiscalité d'un pays SOUS 60 %
+  de satisfaction (le geste protecteur de C3) réduit SON revenu au moment où il en a le
+  PLUS besoin pour honorer sa dette — la fiscalité protège la satisfaction À COURT TERME
+  mais peut accélérer la bascule vers l'échelle du désespoir M3h/M3g (moins de revenu ⇒
+  emprunt plus dur à rembourser ⇒ streak d'insolvabilité ⇒ débase ⇒ banqueroute) plutôt que
+  la retarder. Un futur calibrage pourrait border le relâchement (ex. un plancher de revenu
+  vital que C3 ne descend jamais sous, même à satisfaction très basse) si cette tension est
+  jugée trop forte par le joueur — nécessite un sweep dédié pour confirmer la causalité.
+- **Colonisation dominée par deux fortes baisses** (−9/−57/+7 %, hors de l'ordre de grandeur
+  ±10 % vu en M3i/M5) — hypothèse plausible non creusée : la fiscalité qui monte sur les
+  pays prospères (C3 serre la vis au-dessus de 60 %) concurrence directement le SURPLUS de
+  richesse qui finance l'initiative privée M4-IP (colonies du peuple) — le même surplus
+  alimente les deux mécanismes. Non mesuré isolément (aurait exigé geler C3 mais garder C1,
+  ou l'inverse — 2 sweeps supplémentaires, hors budget).
+- **Le calibrage retenu (0.35/0.012/0.05) est un point local trouvé par recherche manuelle
+  sur UNE graine (11, la plus fragile)** — pas un optimum global, motif déjà accepté M7. Un
+  futur calibrage pourrait re-sweeper plus large (10+ graines) si le joueur juge la marge
+  actuelle trop mince (seed 9 déjà à +2pts du plafond Laborer).
+- **`culture_player_cid()` reste utilisé par `econ_country_mint_share`/`econ_country_
+  debase_frac`** (M1/M2/M3h, PAS touchés ici) — même piège potentiel qu'attrapé pour C3
+  (silencieux en monde vanilla), non vérifié/confirmé pour ces deux fonctions-là (hors
+  scope C1/C2/C3), signalé pour un futur audit si un curseur Mint/Débase semble inerte.
+- **UI-MONNAIE dédiée non câblée** (`scps_country_fiscal_orders` prêt côté scps_api, aucune
+  demande GDScript cette vague — « pas de GDScript » explicitement dans le brief).
+  **DLL Godot À RE-BUILDER** (scons -C godot) malgré tout : scps_econ.c/h et scps_api.c/h
+  ont changé (nouveaux symboles `econ_satisfaction_tax_factor` interne, `econ_country_
+  class_satisfaction`, `econ_is_human_country`, `scps_country_fiscal_orders` exportés) —
+  motif déjà noté à chaque vague monétaire.
+- Tag `pre-m8` posé ; worktree de sweep (`/c/tmp_wt_pre_m8`) retiré en fin de session.

@@ -215,8 +215,74 @@ savait déflater, jamais inflater ; c'était la spec non tenue depuis le début 
   d'une découverte non chiffré en télémétrie dédiée (aucune famine observée en
   calibrage, mais pas mesuré systématiquement) · SAVE_VERSION 94.
 
-### M8 — LA CENTRALISATION FISCALE + LE TRANSPORT (v2 : reformulé ; ex-M7, renuméroté
-pour laisser place au chantier LIVRÉ ci-dessus)
+### M8 — LE CERCLE VERTUEUX DE L'IMPÔT (LIVRÉ, 2026-07-16)
+
+**Statut : CALIBRÉ-LIVRÉ.** Décision joueur : « Les biens manufacturés doivent nourrir les
+besoins ET les impôts, cercle vertueux de l'impôt. Plus satisfait = paye plus. […] tu peux
+largement booster leur fiscalité pour atteindre l'équilibre, ça permet de renflouer les
+caisses simplement, mais du coup plus sensibles aux chocs exogènes. L'IA doit jouer avec la
+fiscalité pour atteindre les 60 % de satisfaction (marge de sécurité). »
+- [x] **C1 — SATISFACTION → CAPACITÉ FISCALE** : `econ_satisfaction_tax_factor` (scps_econ.c)
+      ajoute une SECONDE modulation du seuil de tolérance fiscale (§7/§3b), par-dessus la
+      modulation plate déjà existante (0.40+0.60·sat) — au-dessus de 60 % (TAX_SAT_REF) la
+      tolérance s'élargit, en dessous elle se resserre (`TAX_SAT_COUPLING`, calibré 0.35).
+      0 = kill-switch exact. La sensibilité aux chocs exogènes voulue par le joueur est
+      ÉMERGENTE de cette même formule (satisfaction plonge → seuil plonge → évasion/grogne
+      montent → collecte baisse) — rien de codé à part.
+- [x] **C2 — LE CURSEUR FISCAL PAR ORDRE** : AUDIT AVANT câblage (demandé par le brief) — le
+      curseur par ordre (Laborer/Bourgeois/Élite) existait DÉJÀ de bout en bout depuis AVANT
+      le chantier MONNAIE (`tax_mult[cid][c]`, commit pré-MONNAIE 92efb58 ; verbe
+      `CMD_BUDGET_POLICY(family=0,…)` ; slider GDScript déjà par classe). Aucun « curseur
+      global » n'a jamais existé à remplacer — aucun nouveau verbe créé. Ce qui manquait :
+      un reader façade COMBINÉ (`scps_country_fiscal_orders`, taux+satisfaction+revenu en un
+      appel) pour la future UI-MONNAIE, assemblé depuis 3 lectures pures déjà existantes +
+      `econ_country_class_satisfaction` (nouveau, agrégat pop-pondéré province-grain).
+- [x] **C3 — L'IA FISCALE À 60 %** : `econ_ai_fiscal_tick` (scps_econ.c, appelé mensuellement
+      dans la boucle frappe d'econ_tick) ajuste `tax_mult[cid][c]` par classe pour viser
+      `AI_FISCAL_TARGET=0.60` — au-dessus, serre la vis ; en dessous, relâche. Zone morte
+      `AI_FISCAL_DEADBAND` (hystérésis anti-oscillation, calibré 0.05), pas borné
+      `AI_FISCAL_STEP`/mois (calibré 0.012). Jamais le joueur ni les esclaves. Découverte au
+      gate 1 : `culture_player_cid()` ne peut PAS servir de signal « joueur » ici (reste -1
+      tant qu'aucune culture n'a été composée à la main, gated par `culture_any_active()`,
+      donc faux dans tout monde vanilla) — `econ_is_human_country` (g_econ_human, posé SANS
+      condition à la genèse, même mécanisme qu'`econ_build_tick` §NF) est le signal fiable.
+- **La chaîne manufacture→satisfaction→fisc, tracée et VIVANTE** (SCPS_M8DIAG, chronicle) :
+  aucun maillon mort (M5 avait déjà câblé manufacture→besoin comblé→satisfaction ; M8 ferme
+  la boucle satisfaction→capacité→collecte) — un pays type passe de 15 % de besoins comblés/
+  0 % satisfaction/92 or-mois à l'an 0 à 73-78 % de besoins comblés/83-87 % satisfaction/
+  7500-8200 or-mois vers l'an 200-250, tax_mult Laborer montant de 0.86 à 1.00 (plafond) en
+  cours de route — le développement manufacturier PAYE littéralement l'impôt.
+- **Calibrage** (sweep {9,11,42}×3×250, recherche manuelle 7 points, PAS un optimum global) :
+  0.8/0.02/0.03 initial cassait la bande Laborer (seed 11 : 59→47 %) ; 0.25/0.006/0.07
+  ramenait Laborer en bande mais régressait l'invariant M3c (0/9→2/9 breach, seed 11) —
+  sensibilité NON monotone (bifurcation, pas un gradient, motif M7). Verrouillé à
+  `TAX_SAT_COUPLING=0.35 / AI_FISCAL_STEP=0.012 / AI_FISCAL_DEADBAND=0.05` : invariant
+  0/9 breach restauré (pic max 246 %), Laborer 55-66 % (seed 9 marginal +2pts, documenté).
+- Gate : kill-switches prouvés (`TAX_SAT_COUPLING=0,AI_FISCAL_TARGET=0` → golden pré-M8
+  byte-identique) · sweep apparié · `make test` 38/38 (intertrade_demo seul pré-existant,
+  ai_demo réparé — fixture, moteur intact) · golden RE-BASELINÉ · determinism/deep/savetest/
+  fuzztest verts. Détail complet (mesures, le recalibrage, les découvertes) :
+  TROUVAILLES.md « CHANTIER MONNAIE — M8 ».
+- **Restes** : distribution de satisfaction inter-pays PAS resserrée autour de 60 % à
+  l'échelle du sweep headless (34→43 % moy., σ~37pts quasi inchangé) — le lien manufacture→
+  satisfaction→fisc est prouvé sur UN pays développé (ci-dessus), mais dans un monde IA-only
+  avec beaucoup de petits pays/hameaux fragiles (guerres, pauvreté chronique), la fiscalité
+  reste un levier BORNÉ face à des chocs bien plus lourds — cohérent avec la doctrine
+  (jamais un bonus/malus plat forçant la satisfaction), mais le joueur devra le voir en jeu
+  réel pour juger si c'est assez visible · banqueroutes Σ EN HAUSSE sur les 3 graines
+  (+81/+96/+161 %, CONTRAIREMENT à l'attente « premier levier devrait absorber ») — hypothèse
+  mesurée, pas confirmée en détail : relâcher la fiscalité d'un pays déjà en difficulté (sous
+  60 % de satisfaction) réduit SON revenu au moment où il en a le plus besoin pour honorer sa
+  dette, accélérant potentiellement la bascule vers l'échelle du désespoir M3h/M3g plutôt que
+  de la retarder — un futur calibrage pourrait border le relâchement (ex. ne jamais couper
+  sous un plancher de revenu vital) si cette tension est jugée trop forte · colonisation
+  bidirectionnelle mais dominée par deux fortes baisses (-9/-57/+7 %, vs ±10 % en M3i/M5) —
+  la fiscalité qui monte sur les riches concurrence directement l'initiative privée M4-IP
+  (le même surplus finance les deux) · UI-MONNAIE dédiée non câblée (readers C2 prêts,
+  aucune demande GDScript cette vague).
+
+### M9 — LA CENTRALISATION FISCALE + LE TRANSPORT (v2 : reformulé ; ex-M7, renuméroté
+une SECONDE fois pour laisser place au chantier M8 LIVRÉ ci-dessus — ex-M8 lui-même)
 Le trésor est DÉJÀ provincial (:2675) — M6 n'est pas une « localisation » mais :
 - [ ] La remontée fiscale devient un TRANSPORT physique vers la capitale (convois,
       délai, interceptables) ; le coffre de la capitale = la cible du sac.
