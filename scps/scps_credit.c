@@ -491,6 +491,9 @@ bool credit_loan_request_granted(int debtor_c){
 void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w){
     (void)wl;   /* M3d : le taux ne lit plus la légitimité (brief §3, remplace l'incrément 1) */
     float floor_=tune_f("SINK_FLOOR",500.f);
+    /* V3 (MONNAIE M9) — RAZ le fanion TRANSIENT « rachat de l'année » (motif g_forced_pending :
+     * un flag lu par scps_sim.c juste après CET appel, jamais à cheval sur deux années). */
+    for(int c=0;c<SCPS_MAX_COUNTRY;c++) g_buyback_archetype[c]=LOAN_ARCHETYPE_NONE;
     for(int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
         float debt_total = g_debt[c].to_class + g_debt[c].to_cs;
         if (debt_total<=CR_EPS){
@@ -661,6 +664,26 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
         g_debt[c].to_cs    += amount;
         g_debt[c].cs_id     = (int16_t)L;                    /* le racheteur DEVIENT le créancier */
         g_buybacks++;
+        /* V3 (MONNAIE M9) — L'ARCHÉTYPE du racheteur, pour la MÉTABOLISATION DISTINCTE
+         * (télémétrie ICI, l'EFFET diplomatique/politique — rancor/faction_lever — dans
+         * scps_sim.c juste après credit_year_tick, credit.c n'a pas DiploState/Statecraft).
+         * Même priorité de classification que pick_lender/l'éligibilité ci-dessus : rôle
+         * CITÉ-ÉTAT d'abord, sinon l'éthos MERCANTILE/PACIFISTE (les deux seuls autres
+         * éligibles). RRACHAT_META<=0 : kill-switch — aucune classification/télémétrie/
+         * effet en aval (golden pré-M9 byte-identique ; le RACHAT lui-même, M3c, continue
+         * de fonctionner à l'IDENTIQUE — seule la distinction est coupée). */
+        if (tune_f("RRACHAT_META", 1.0f) > 0.f){
+            int arche;
+            if (w->country[L].role==POLITY_CITY_STATE) arche=LOAN_ARCHETYPE_CITYSTATE;
+            else {
+                Ethos et=country_ethos(e,w,L);
+                arche = (et==ETHOS_PACIFISTE) ? LOAN_ARCHETYPE_PACIFIST : LOAN_ARCHETYPE_MERCANTILE;
+            }
+            g_buyback_archetype[c]=(int8_t)arche;
+            if (arche==LOAN_ARCHETYPE_CITYSTATE)      g_buyback_cs++;
+            else if (arche==LOAN_ARCHETYPE_PACIFIST)  g_buyback_pacifist++;
+            else                                       g_buyback_mercantile++;
+        }
     }
 }
 
@@ -704,6 +727,23 @@ int credit_bankruptcy(WorldEconomy *e, int c, bool forced){
  * scps_sim.c le lit juste après credit_year_tick et exécute credit_bankruptcy(e,c,true)
  * pour chaque pays flaggé (le flag redescend alors via credit_bankruptcy lui-même). */
 bool credit_bankrupt_pending(int c){ return (c>=0 && c<SCPS_MAX_COUNTRY) && g_forced_pending[c]; }
+
+/* V3 (MONNAIE M9) — voir scps_credit.h. Flag TRANSIENT posé par credit_year_tick (le RACHAT
+ * DE CRÉDIT, plus haut) : LOAN_ARCHETYPE_NONE si le pays n'a subi/bénéficié d'AUCUN rachat
+ * cette année. scps_sim.c le lit juste après credit_year_tick pour appliquer la
+ * MÉTABOLISATION DISTINCTE (rancor pour une cité-état, faction_lever_apply pour un
+ * pacifiste — mercantile ne reçoit RIEN de plus que l'intérêt annuel déjà uniforme, son
+ * « profit pur » du brief). */
+int credit_buyback_archetype(int debtor_c){
+    return (debtor_c>=0 && debtor_c<SCPS_MAX_COUNTRY) ? (int)g_buyback_archetype[debtor_c] : LOAN_ARCHETYPE_NONE;
+}
+/* Télémétrie MONDE cumulée depuis credit_init (motif g_buybacks/g_defaults) : rachats PAR
+ * ARCHÉTYPE — la preuve chiffrée que les 3 métabolisations sont bien distinctes (chronicle). */
+void credit_buyback_stats(long *cs, long *mercantile, long *pacifist){
+    if (cs)         *cs=g_buyback_cs;
+    if (mercantile) *mercantile=g_buyback_mercantile;
+    if (pacifist)   *pacifist=g_buyback_pacifist;
+}
 
 /* M3g — voir scps_credit.h. Lecture pure (aucune mutation) : la part de la saisie qui
  * ira à la cité-état créancière figée à la dernière banqueroute de `debtor_c`. */

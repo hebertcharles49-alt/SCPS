@@ -1306,6 +1306,28 @@ void sim_day(Sim *s, World *w) {
             diplo_set_faustian(s->dp, c, s->ts[c].charge);  /* souillure faustienne → croisades */
         diplo_tick(s->dp, 365.f);
         credit_year_tick(s->econ, s->wl, w);               /* dette : intérêt annuel (creuse le débiteur, crédite le prêteur) */
+        /* MONNAIE M9 — V3 : LES RACHATS À MÉTABOLISATION DISTINCTE (credit_year_tick vient de
+         * classer l'archétype du racheteur de l'année, credit_buyback_archetype — credit.c n'a
+         * pas DiploState/Statecraft, l'effet POLITIQUE vit ici, motif BANKRUPTCY_RANCOR
+         * ci-dessous). Le RACHAT lui-même (M3c, « les Fugger ») est INCHANGÉ ; seul ce qu'il
+         * RAPPORTE au racheteur diffère désormais : cité-état → influence/vassalité douce
+         * (rancor ALLÉGÉE — entrée moteur EXISTANTE, symétrique de BANKRUPTCY_RANCOR qui
+         * l'ALOURDIT) ; pacifiste → stabilité/relation (faction_lever_apply/FAC_COMMUNAUTAIRE,
+         * motif CMD_MANUMIT) ; mercantile → RIEN de plus — son « profit pur » (brief) EST
+         * déjà l'intérêt annuel uniforme que credit_year_tick vient de verser ci-dessus, la
+         * DISTINCTION mercantile est précisément l'ABSENCE de levier politique. RRACHAT_META
+         * <=0 (scps_credit.c) : kill-switch — aucun archétype ≠ NONE n'est jamais posé, cette
+         * boucle est un no-op total (golden pré-M9 byte-identique). */
+        for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+            int arche = credit_buyback_archetype(c);
+            if (arche==LOAN_ARCHETYPE_NONE) continue;
+            int L = credit_of(c);   /* le créancier ACTUEL — le racheteur que credit_year_tick vient de classer */
+            if (L<0 || L>=w->n_countries) continue;
+            if (arche==LOAN_ARCHETYPE_CITYSTATE)
+                s->dp->rancor[c][L] = fmaxf(0.f, s->dp->rancor[c][L] - tune_f("BUYBACK_CS_GOODWILL",1.0f));
+            else if (arche==LOAN_ARCHETYPE_PACIFIST)
+                faction_lever_apply(c, FAC_COMMUNAUTAIRE, tune_f("BUYBACK_PACIFIST_LEVER",0.05f));
+        }
         /* MONNAIE M3d — LA BANQUEROUTE FORCÉE (brief §5b) : « plafond atteint ET insolvable
          * (chronique) » — credit_year_tick vient de mettre à jour le streak (années
          * consécutives au plafond) et pose g_forced_pending pour les pays qui viennent de

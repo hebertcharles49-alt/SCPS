@@ -1152,6 +1152,14 @@ int main(int argc, char **argv){
                  debt_tot, n_debtors, debt_class, debt_tot>1.0?100.0*debt_class/debt_tot:0.0,
                  debt_cs, debt_tot>1.0?100.0*debt_cs/debt_tot:0.0, buybacks, defaults); }
 
+        /* MONNAIE M9 — V3 : LES RACHATS À MÉTABOLISATION DISTINCTE (print-only, gate 3) —
+         * la preuve CHIFFRÉE que les 3 archétypes (cité-état/mercantile/pacifiste) sont
+         * bien distincts (credit_buyback_stats, cumulé depuis credit_init CE run). Somme
+         * ≤ `buybacks` ci-dessus (RRACHAT_META=0 ⇒ les 3 restent à 0, kill-switch). */
+        { long bb_cs=0, bb_merc=0, bb_pac=0; credit_buyback_stats(&bb_cs, &bb_merc, &bb_pac);
+          printf("   rachats métabolisation (M9-V3) : %ld cité-état · %ld mercantile · %ld pacifiste\n",
+                 bb_cs, bb_merc, bb_pac); }
+
         /* MONNAIE M3d — LA SOUTENABILITÉ + LA BANQUEROUTE (print-only, gate 1) :
          * banqueroutes FORCÉES (chronique, l'IA aussi) vs VOLONTAIRES (CMD_BANKRUPTCY,
          * joueur seul — 0 en chronique headless, human_player=-1) + le taux moyen
