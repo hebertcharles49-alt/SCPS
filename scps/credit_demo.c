@@ -439,6 +439,61 @@ int main(void){
            gold_final >= -0.5);
     }
 
+    /* ── 15. B3 : L'AMORTISSEMENT SUR DETTE PÉRIMÉE — conservation Σ reçus == Σ payés ── */
+    printf("\n── 15. B3 : amortissement sur dette périmée — conservation Σ reçus == Σ payés ──\n");
+    {
+        /* CLAIM : `debt_total` (credit_year_tick) est capturé AVANT l'échéance ; l'échéance
+         * réduit g_debt[c].to_class/to_cs MAIS PAS `debt_total` lui-même — l'amortissement,
+         * juste après, répartissait `repay` avec ce dénominateur PÉRIMÉ : dette 100 → échéance
+         * 10 → to_class=90 → amortissement 10 réparti 10×90/100=9 aux classes + 1 à la branche
+         * cité-état MÊME SANS dette étrangère (jamais crédité, cs_id=-1) — le débiteur paie 10,
+         * les créanciers reçoivent 9 : 1 détruit. Fixture : dette 100 % CLASSES (aucune
+         * cité-état), trésor GRAS (surplus des DEUX seuils SINK_FLOOR/COURT_FLOOR) pour que
+         * échéance ET amortissement mordent la MÊME année — INCOME_TAX=0 isole la conservation
+         * treasury<->wealth (sans une 3e case fiscale à additionner). */
+        memset(e, 0, sizeof(WorldEconomy));
+        w->n_countries=1; w->n_provinces=1;
+        w->country[0].role=POLITY_PLAYER; w->country[0].capital_prov=0;
+        w->province[0].region=0;
+        e->n_prov=1; e->n_regions=1;
+        e->prov[0].owner=0; e->prov[0].region=0; e->prov[0].active=true; e->prov[0].colonized=true;
+        e->prov[0].is_capital=true;
+        e->prov[0].strata[CLASS_LABORER].pop=1000.f;
+        e->prov[0].strata[CLASS_ELITE].wealth=100000.f;     /* capacité de prêt large */
+        e->prov[0].strata[CLASS_BOURGEOIS].wealth=100000.f;
+        e->prov[0].treasury=60000.f;                         /* GRAS : surplus au-dessus de COURT_FLOOR aussi */
+        e->region_rep_prov[0]=0;
+        econ_aggregate_regions(e);
+        econ_flux_add(0, FX_TAX, 30000.f); econ_flux_year_capture();   /* plafond de dette large */
+        tune_set("INCOME_TAX", 0.f);
+        credit_init();
+        float borrowed = credit_borrow_class(e, 0, CLASS_ELITE, 1000.f);
+        econ_aggregate_regions(e);
+        printf("   emprunt accordé=%.1f · dette inscrite=%.1f (classes=%.1f, cité-état=%.1f)\n",
+               (double)borrowed, (double)credit_debt_total(0), (double)credit_debt_class(0),
+               (double)credit_debt_citystate(0));
+        ok("setup B3 : l'emprunt est bien accordé (capacité large)", borrowed>900.f);
+        ok("setup B3 : la dette est 100% CLASSES (aucune cité-état créancière)",
+           credit_debt_citystate(0)==0.f && credit_debt_class(0)>0.f);
+
+        double treas_before  = e->prov[0].treasury;
+        double wealth_before = (double)e->prov[0].strata[CLASS_ELITE].wealth
+                              + (double)e->prov[0].strata[CLASS_BOURGEOIS].wealth;
+        credit_year_tick(e, wl, w);
+        double treas_after  = e->prov[0].treasury;
+        double wealth_after = (double)e->prov[0].strata[CLASS_ELITE].wealth
+                             + (double)e->prov[0].strata[CLASS_BOURGEOIS].wealth;
+        double treas_lost    = treas_before - treas_after;
+        double wealth_gained = wealth_after - wealth_before;
+        printf("   après échéance+amortissement : trésor perdu=%.3f, richesse classes gagnée=%.3f (écart=%.4f)\n",
+               treas_lost, wealth_gained, treas_lost-wealth_gained);
+        ok("B3 : le débiteur a RÉELLEMENT payé (échéance+amortissement ont mordu le trésor)",
+           treas_lost > 1.0);
+        ok("B3 : CONSERVATION EXACTE — Σ reçu par les créanciers == Σ payé par le débiteur (0 destruction)",
+           fabs(treas_lost - wealth_gained) < 0.05);
+        tune_set("INCOME_TAX", 1.f);   /* redéfinit le défaut */
+    }
+
     printf("\n═══ BILAN : %d réussis, %d échoués ═══\n", g_pass, g_fail);
     free(w); free(e); free(wl);
     return g_fail?1:0;

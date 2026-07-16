@@ -625,14 +625,27 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
 
         /* AMORTISSEMENT — un pays au trésor GRAS rembourse une part du PRINCIPAL depuis
          * son surplus (au-dessus de COURT_FLOOR, le seuil de hoarding — même réserve que
-         * le faste de cour) : "la dette VIT" — elle ne fait pas que grossir. */
+         * le faste de cour) : "la dette VIT" — elle ne fait pas que grossir.
+         * MONNAIE M14 — B3 : `debt_total` ci-dessus est capturé AVANT l'échéance (ligne
+         * 549) — l'échéance vient de RÉDUIRE g_debt[c].to_class/to_cs (ci-dessus, `fixed`)
+         * mais PAS `debt_total` lui-même (variable locale, jamais réassignée). Répartir
+         * `repay` avec `g_debt[c].to_class/debt_total` (numérateur POST-échéance, dénominateur
+         * PRÉ-échéance) désaligne la fraction : dette 100 % classes → échéance 10 → to_class
+         * passe à 90 → amortissement 10 réparti 10×90/100=9 aux classes + 1 à la branche
+         * cité-état MÊME SANS dette étrangère (r_cs=1, jamais crédité : cs_id resterait -1
+         * tant qu'aucun emprunt étranger n'a eu lieu) — le débiteur paie 10 (debit_surplus_
+         * prorata sur `repay`=10 intégral), les créanciers ne reçoivent que 9 : 1 unité de
+         * monnaie DÉTRUITE par tick, chaque année, pour tout pays qui amortit. Recapturer
+         * `debt_total` ICI (après l'échéance, juste avant l'amortissement) referme l'écart :
+         * numérateur et dénominateur redeviennent la MÊME photo. */
+        float debt_total_amort = g_debt[c].to_class + g_debt[c].to_cs;
         float hof=tune_f("COURT_FLOOR",4000.f);
         float surplus=country_surplus(e,c,hof);
-        if (surplus>CR_EPS){
-            float repay=fminf(debt_total, fminf(surplus, debt_total*tune_f("PRINCIPAL_REPAY_RATE",0.10f)));
+        if (surplus>CR_EPS && debt_total_amort>CR_EPS){
+            float repay=fminf(debt_total_amort, fminf(surplus, debt_total_amort*tune_f("PRINCIPAL_REPAY_RATE",0.10f)));
             if (repay>CR_EPS){
                 debit_surplus_prorata(e,c,hof,repay);
-                float r_class=repay*(g_debt[c].to_class/debt_total), r_cs=repay-r_class;
+                float r_class=repay*(g_debt[c].to_class/debt_total_amort), r_cs=repay-r_class;
                 if (r_class>CR_EPS){
                     float ew=tune_f("ELITE_LEND_WEIGHT",1.0f), bw=tune_f("BOURGEOIS_LEND_WEIGHT",0.5f);
                     float tot=ew+bw; if (tot<=CR_EPS) tot=1.f;
