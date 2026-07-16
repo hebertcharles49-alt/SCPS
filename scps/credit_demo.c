@@ -16,9 +16,11 @@
 #include "scps_legitimacy.h"
 #include "scps_credit.h"
 #include "scps_types.h"
+#include "scps_tune.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 static int g_pass=0, g_fail=0;
 static void ok(const char *what, bool cond){
@@ -154,6 +156,226 @@ int main(void){
     econ_aggregate_regions(e);
     ok("l'intérêt CREUSE encore le joueur", econ_country_gold(e,P) < p_before);
     ok("l'intérêt CRÉDITE le prêteur du joueur", e->prov[credit_of(P)].treasury > len_before);
+
+    /* ═══════════════════════════════════════════════════════════════════════════════
+     * MONNAIE M11 — LA VAGUE AUDIT-SOL : A4, les 5 contrôles qui manquaient. Chaque
+     * nouveau contrôle est écrit pour ÉCHOUER sur pre-m11 et PASSER sur HEAD (prouvé
+     * séparément par le rapport de mission, pas ici). */
+
+    /* — 8. A2 : cohérence immédiate prov[cap].treasury == region[].treasury SANS
+     * ré-agrégation manuelle. Les tests 1-7 ci-dessus ré-agrègent à la main après CHAQUE
+     * mutation (setup(), motif « même idiome que forks_demo.c/social_demo.c ») — ce
+     * contrôle ne le fait PAS après credit_year_tick : la vérité doit tenir SEULE. — */
+    printf("\n── 8. A2 : cohérence immédiate SANS ré-agrégation manuelle ──\n");
+    credit_init(); setup(e, 100.f, 5000.f);
+    credit_spend(e,w,0,400.f); econ_aggregate_regions(e);    /* SETUP (motif test 2) : établit un créancier */
+    e->prov[0].treasury = 600.f; econ_aggregate_regions(e);  /* SETUP (motif test 3) : redote le débiteur */
+    credit_year_tick(e, wl, w);   /* AUCUNE ré-agrégation manuelle après CET appel */
+    ok("le trésor du DÉBITEUR (empire, intérêt payé) reste cohérent prov==region SANS ré-agrégation manuelle",
+       fabsf(e->prov[0].treasury - e->region[0].treasury) < 1e-2f);
+    ok("le trésor du CRÉANCIER (cité-état, intérêt reçu) reste cohérent prov==region SANS ré-agrégation manuelle",
+       fabsf(e->prov[1].treasury - e->region[1].treasury) < 1e-2f);
+
+    /* — 9. A3 v2 : L'INTÉRÊT FIXE À L'ORIGINATION (décision joueur, en cours de mission —
+     * remplace l'arriéré-qui-capitalise v1 : « 1000 à 5 % ⇒ tu rembourses 1050, pas +5 %/an »).
+     * DEBT_FIXED=0 (legacy) : la dette inscrite == le montant RÉEL emprunté, aucun markup ;
+     * DEBT_FIXED=1 : le markup (taux courant, credit_current_rate) est figé À L'EMPRUNT — et
+     * ne grossit JAMAIS ensuite, même après des ANNÉES d'échéances totalement impayées
+     * (« fixe veut dire fixe », pas de capitalisation). — */
+    printf("\n── 9. A3 v2 : l'intérêt FIXE à l'origination (DEBT_FIXED) ──\n");
+    credit_init(); setup(e, 100.f, 5000.f);
+    tune_set("DEBT_FIXED", 0.f);
+    float borrowed_legacy9 = credit_borrow_citystate(e,w,0,400.f); econ_aggregate_regions(e);
+    float debt_legacy9 = credit_debt_total(0);
+    printf("   emprunté=%.1f · dette inscrite (DEBT_FIXED=0)=%.1f\n", borrowed_legacy9, debt_legacy9);
+    ok("DEBT_FIXED=0 (legacy) : la dette inscrite == le montant RÉEL emprunté (aucun markup)",
+       fabsf(debt_legacy9 - borrowed_legacy9) < 1.f);
+
+    credit_init(); setup(e, 100.f, 5000.f);
+    tune_set("DEBT_FIXED", 1.f);
+    float borrowed_fixed9 = credit_borrow_citystate(e,w,0,400.f); econ_aggregate_regions(e);
+    float debt_fixed9 = credit_debt_total(0);
+    printf("   emprunté=%.1f · dette inscrite (DEBT_FIXED=1)=%.1f (markup à l'origination=%.1f, taux=%.1f%%)\n",
+           borrowed_fixed9, debt_fixed9, debt_fixed9-borrowed_fixed9,
+           100.0*(debt_fixed9/borrowed_fixed9-1.0));
+    ok("DEBT_FIXED=1 : la dette inscrite INCLUT le markup à l'origination (> montant RÉELLEMENT emprunté)",
+       debt_fixed9 > borrowed_fixed9 + 1.f);
+
+    e->prov[0].treasury = 0.f; econ_aggregate_regions(e);   /* AUCUN surplus : l'échéance sera TOTALEMENT impayée */
+    float debt_before9c = credit_debt_total(0);
+    for (int yr9=0; yr9<10; yr9++) credit_year_tick(e, wl, w);
+    ok("DEBT_FIXED=1 : 10 ans d'échéances TOTALEMENT impayées NE FONT PAS grossir la dette (fixe veut dire fixe)",
+       credit_debt_total(0) <= debt_before9c + 1e-3f);
+
+    /* — 10. A3 v2 : des ÉCHÉANCES impayées SUR UNE DETTE SUBSTANTIELLE ⇒ streak d'impayés ⇒
+     * banqueroute FORCÉE — SANS jamais approcher le plafond (reproduit puis corrige le
+     * scénario exact de l'audit : « un pays à 200 % sans trésor qui ne dépense plus ne fait
+     * JAMAIS faillite »). Revenu SAIN (tax_year=3000 ⇒ plafond=9000, large marge) — aucun
+     * artifice d'effondrement du plafond requis ici (contrairement à v1) : le streak
+     * d'impayés réagit désormais SEUL. Dette empruntée en 6 tranches (credit_borrow_citystate,
+     * 600 chacune — la tranche/tick M3d — pour dépasser DEBT_DEFAULT_THRESHOLD=3000, le
+     * plancher « dette qui compte », calibrage sweep, cf. scps_credit.c) : le trivial ne fait
+     * PAS faillite, le substantiel SI. — */
+    printf("\n── 10. A3 v2 : des échéances impayées ⇒ streak ⇒ banqueroute forcée ──\n");
+    credit_init(); setup(e, 100.f, 5000.f);
+    tune_set("DEBT_FIXED", 0.f);
+    for (int b10=0;b10<6;b10++) credit_borrow_citystate(e,w,0,600.f);
+    econ_aggregate_regions(e);
+    e->prov[0].treasury = 0.f; econ_aggregate_regions(e);   /* aucun surplus : impayé TOTAL chaque année */
+    float ceiling10 = credit_debt_ceiling(0);
+    printf("   dette=%.0f · plafond=%.0f (large marge — motif audit « 200%% sans trésor »)\n",
+           credit_debt_total(0), ceiling10);
+    ok("la dette est LARGEMENT sous le plafond (le test isole le défaut d'échéance, pas le plafond)",
+       credit_debt_total(0) < ceiling10 * 0.5f);
+    bool forced_legacy=false;
+    for (int yr10=0; yr10<20 && !forced_legacy; yr10++){
+        credit_year_tick(e, wl, w);
+        if (credit_bankrupt_pending(0)) forced_legacy=true;
+    }
+    ok("DEBT_FIXED=0 (legacy) : 20 ans d'impayés TOTAUX, dette SOUS le plafond ⇒ JAMAIS de "
+       "banqueroute forcée — le bug de l'audit reproduit", !forced_legacy);
+
+    credit_init(); setup(e, 100.f, 5000.f);
+    tune_set("DEBT_FIXED", 1.f);
+    for (int b10=0;b10<6;b10++) credit_borrow_citystate(e,w,0,600.f);
+    econ_aggregate_regions(e);
+    e->prov[0].treasury = 0.f; econ_aggregate_regions(e);
+    ok("la dette SUBSTANTIELLE dépasse le plancher « dette qui compte » (DEBT_DEFAULT_THRESHOLD)",
+       credit_debt_total(0) > 3000.f);
+    bool forced_fixed=false; int yr_forced=-1;
+    for (int yr10=0; yr10<20 && !forced_fixed; yr10++){
+        credit_year_tick(e, wl, w);
+        if (credit_bankrupt_pending(0)){ forced_fixed=true; yr_forced=yr10+1; }
+    }
+    printf("   DEBT_FIXED=1 : banqueroute forcée %s (streak=%d, dette finale=%.0f, plafond=%.0f)\n",
+           forced_fixed?"DÉCLENCHÉE":"jamais déclenchée", credit_insolvent_streak(0),
+           credit_debt_total(0), credit_debt_ceiling(0));
+    if (forced_fixed) printf("      → à l'an %d (dette TOUJOURS sous le plafond)\n", yr_forced);
+    ok("DEBT_FIXED=1 (A3 v2) : des échéances impayées déclenchent NATURELLEMENT la banqueroute "
+       "forcée SANS jamais atteindre le plafond (le défaut réel)",
+       forced_fixed && credit_debt_total(0) < credit_debt_ceiling(0));
+
+    /* — le PLANCHER « dette qui compte » (DEBT_DEFAULT_THRESHOLD) : un résidu TRIVIAL, jamais
+     * remboursable (même trésor 0 à vie), NE fait PAS faillite — seule une dette substantielle
+     * l'engage. Calibrage (sweep {9,11,42}×3×250, 4 points) : sans ce plancher, Σ banqueroutes
+     * explosait de 583 à ~1950 QUELLE QUE SOIT DEBT_DUE_FRAC (n'importe quel résidu comptait) —
+     * à 3000 (retenu), Σ 795 (+36 %, sous le doublement) ET invariant 0/9. — */
+    credit_init(); setup(e, 100.f, 5000.f);
+    tune_set("DEBT_FIXED", 1.f);
+    credit_borrow_citystate(e,w,0,50.f); econ_aggregate_regions(e);   /* trivial : bien SOUS le plancher */
+    e->prov[0].treasury = 0.f; econ_aggregate_regions(e);
+    bool forced_trivial=false;
+    for (int yr10=0; yr10<20 && !forced_trivial; yr10++){
+        credit_year_tick(e, wl, w);
+        if (credit_bankrupt_pending(0)) forced_trivial=true;
+    }
+    printf("   dette TRIVIALE=%.0f (< plancher 3000) · 20 ans d'impayés : banqueroute forcée %s\n",
+           credit_debt_total(0), forced_trivial?"DÉCLENCHÉE (ANOMALIE)":"jamais déclenchée (attendu)");
+    ok("le PLANCHER « dette qui compte » protège un résidu TRIVIAL de la banqueroute forcée",
+       !forced_trivial);
+
+    /* — 11. Banqueroute FORCÉE effective + LA SAISIE post-faillite (M3g), sur l'état
+     * laissé par le test 10 (g_forced_pending[0] vrai, créancier cs=1). — */
+    printf("\n── 11. Banqueroute forcée + saisie post-faillite ──\n");
+    long forced_before11, vol_before11; credit_bankruptcy_stats(&forced_before11,&vol_before11);
+    int L11 = credit_bankruptcy(e, 0, true /* forcée */);
+    ok("la banqueroute FORCÉE répudie la dette (RAZ)", credit_debt_total(0)==0.f);
+    ok("le créancier répudié est bien la cité-état identifiée", L11==1);
+    long forced_after11, vol_after11; credit_bankruptcy_stats(&forced_after11,&vol_after11);
+    ok("la télémétrie « forcée » s'incrémente (pas « volontaire »)",
+       forced_after11==forced_before11+1 && vol_after11==vol_before11);
+    ok("la cicatrice de banqueroute est posée sur la province", e->prov[0].bankruptcy_scar > 0.f);
+    ok("le créancier D'AVANT-répudiation est figé pour la saisie (M3g)",
+       credit_garnish_cs_id(0)==1 && credit_garnish_cs_share(0) > 0.f);
+    credit_garnish_note(0, 50.f, 30.f);   /* motif econ_tick §confiscation : 30 or de part cité-état */
+    ok("la part cité-état de la saisie s'accumule (en attente du règlement annuel)",
+       credit_garnish_cs_pending(0) > 29.f);
+    double cs_treas_before11 = (double)e->prov[1].treasury;
+    credit_year_tick(e, wl, w);
+    ok("LA SAISIE post-faillite règle la part cité-état au créancier figé (motif M3g)",
+       (double)e->prov[1].treasury > cs_treas_before11 + 29.0);
+    ok("le règlement de la saisie ne laisse AUCUN reliquat (pending RAZ)", credit_garnish_cs_pending(0)==0.f);
+
+    /* — 12. Banqueroute VOLONTAIRE (CMD_BANKRUPTCY, joueur) — repartie à zéro. — */
+    printf("\n── 12. Banqueroute volontaire ──\n");
+    credit_init(); setup(e, 100.f, 5000.f);
+    credit_spend(e,w,0,400.f); econ_aggregate_regions(e);
+    ok("une dette réelle existe avant la répudiation volontaire", credit_debt_total(0) > 0.f);
+    long fb12, vb12; credit_bankruptcy_stats(&fb12,&vb12);
+    credit_bankruptcy(e, 0, false /* volontaire */);
+    ok("la banqueroute VOLONTAIRE répudie aussi la dette (RAZ)", credit_debt_total(0)==0.f);
+    long fa12, va12; credit_bankruptcy_stats(&fa12,&va12);
+    ok("la télémétrie « volontaire » s'incrémente (pas « forcée »)", va12==vb12+1 && fa12==fb12);
+
+    /* — 13. A1 : LA FRAPPE À PARITÉ PLEINE + CONSERVATION (frappe royale+libre,
+     * MINT_FULL_PARITY). Fixture directe à un pays/une province (econ_tick ne prend pas
+     * de World* — motif econ_tax_demo.c, ici allégé sans world_generate). Trésor posé
+     * EXACTEMENT à SINK_FLOOR (500) : au-dessus, la redépense publique I3bis
+     * (scps_econ.c §I3bis, « le trou DÉJÀ documenté de l'instrument » — sans pop/impôt
+     * ici, coll_tot=0, la part payroll de la redépense ne revient à AUCUNE classe) est un
+     * SITE DE DESTRUCTION distinct, connu, HORS SCOPE M11 (M0/M3c l'ont déjà classé) —
+     * l'annuler ici isole PROPREMENT la conservation à CE que A1 change. */
+    printf("\n── 13. A1 : la frappe à parité pleine + conservation ──\n");
+    tune_set("DEBT_FIXED", 1.f);   /* redéfinit le défaut pour la suite (motif tests 9/10) */
+    memset(e, 0, sizeof(WorldEconomy));
+    credit_init();
+    e->n_prov=1; e->n_regions=1;
+    e->prov[0].owner=0; e->prov[0].region=0;
+    e->prov[0].active=true; e->prov[0].colonized=true; e->prov[0].is_capital=true;
+    e->region_rep_prov[0]=0;
+    e->prov[0].treasury=500.f;            /* == SINK_FLOOR : la redépense I3bis (hors scope) reste nulle */
+    e->reserve_gold[0]=120.f;             /* réserve d'État (royalty en nature) : frappe ROYALE, DÉJÀ à parité pleine */
+    e->prov[0].stock[RES_GOLD]=1000.f;    /* marché privé : frappe LIBRE (A1) */
+    e->prov[0].price[RES_GOLD]=8.f;       /* < MINT_PARITY_GOLD (16) : arbitrage positif */
+    econ_aggregate_regions(e);
+    econ_flux_add(0, FX_TAX, 12000.f); econ_flux_year_capture();   /* revenu annuel plausible (motif setup()) */
+
+    double m_before13 = (double)e->prov[0].treasury;
+    for (int k13=0;k13<CLASS_COUNT;k13++) m_before13 += (double)e->prov[0].strata[k13].wealth;
+    float reserve_before13 = e->reserve_gold[0];
+    float stock_before13   = e->prov[0].stock[RES_GOLD];
+
+    tune_set("MINT_FULL_PARITY", 1.f);
+    econ_tick(e, 1.f/12.f);
+
+    ok("prov[cap].treasury == region[].treasury SANS ré-agrégation manuelle APRÈS la frappe (A2)",
+       fabsf(e->prov[0].treasury - e->region[0].treasury) < 1e-2f);
+    ok("la réserve d'État a été prélevée (frappe royale, § M2)", e->reserve_gold[0] < reserve_before13);
+    ok("le stock de marché a RÉELLEMENT diminué (le métal quitte le marché, frappe libre A1)",
+       e->prov[0].stock[RES_GOLD] < stock_before13);
+    double wealth_after13=0.0; for (int k13=0;k13<CLASS_COUNT;k13++) wealth_after13 += (double)e->prov[0].strata[k13].wealth;
+    ok("A1 : un vendeur RÉEL a été payé pour son métal (richesse des classes > 0)", wealth_after13 > 1.0);
+
+    double m_after13 = (double)e->prov[0].treasury + wealth_after13;
+    double frappe13  = (double)econ_flux_get(0, FX_MINT);
+    printf("   M avant=%.1f · M après=%.1f (Δ=%.1f) · FX_MINT (vraie création, royale+libre)=%.1f\n",
+           m_before13, m_after13, m_after13-m_before13, frappe13);
+    ok("CONSERVATION : ΔM == la VRAIE création (FX_MINT), à l'arrondi près (l'invariant sous A1)",
+       fabs((m_after13 - m_before13) - frappe13) < 1.0);
+
+    /* kill-switch : sans A1, la frappe libre ne paie JAMAIS le vendeur — reproduit le
+     * bug de l'audit (richesse des classes reste nulle, seul le gain net était crédité). */
+    memset(e, 0, sizeof(WorldEconomy));
+    e->n_prov=1; e->n_regions=1;
+    e->prov[0].owner=0; e->prov[0].region=0;
+    e->prov[0].active=true; e->prov[0].colonized=true; e->prov[0].is_capital=true;
+    e->region_rep_prov[0]=0;
+    e->prov[0].treasury=500.f;
+    e->prov[0].stock[RES_GOLD]=1000.f;
+    e->prov[0].price[RES_GOLD]=8.f;
+    econ_aggregate_regions(e);
+    econ_flux_add(0, FX_TAX, 12000.f); econ_flux_year_capture();
+    float stock_legacy_before13 = e->prov[0].stock[RES_GOLD];
+    tune_set("MINT_FULL_PARITY", 0.f);
+    econ_tick(e, 1.f/12.f);
+    double wealth_legacy13=0.0; for (int k13=0;k13<CLASS_COUNT;k13++) wealth_legacy13 += (double)e->prov[0].strata[k13].wealth;
+    printf("   MINT_FULL_PARITY=0 (legacy) : stock %.1f→%.1f (métal disparu) · richesse classes=%.2f (jamais payé) · FX_MINT=%.1f\n",
+           stock_legacy_before13, e->prov[0].stock[RES_GOLD], wealth_legacy13, (double)econ_flux_get(0, FX_MINT));
+    ok("MINT_FULL_PARITY=0 (legacy pré-M11) : reproduit le bug de l'audit — AUCUN vendeur payé",
+       wealth_legacy13 < 1e-3);
+    ok("MINT_FULL_PARITY=0 (legacy pré-M11) : le métal disparaît quand même du marché (le trou de l'audit)",
+       e->prov[0].stock[RES_GOLD] < stock_legacy_before13);
+    tune_set("MINT_FULL_PARITY", 1.f);   /* redéfinit le défaut */
 
     printf("\n═══ BILAN : %d réussis, %d échoués ═══\n", g_pass, g_fail);
     free(w); free(e); free(wl);
