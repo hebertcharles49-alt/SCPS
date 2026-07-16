@@ -2058,6 +2058,32 @@ static float econ_debase_tax_factor(float debase_kdrain){
     return 1.f - tune_f("DEBASE_TAX_EROSION_MAX", 0.35f) * k_ero;
 }
 
+/* MONNAIE M8 — C1 : « LE CERCLE VERTUEUX DE L'IMPÔT » (décision joueur 2026-07-16,
+ * « plus satisfait = paye plus… un ordre à 70 % tu peux largement booster leur
+ * fiscalité, ça permet de renflouer les caisses simplement, mais du coup plus
+ * sensibles aux chocs exogènes »). Le seuil de tolérance fiscale (ce bloc) porte
+ * DÉJÀ une modulation par la satisfaction du tick précédent (0.40+0.60·sat, §7/
+ * §3b) — mais elle est PLATE (même ×0.40..1.00 quel que soit l'éthos/la marge de
+ * l'IA C3) et non calibrable. Ce facteur AJOUTE une seconde modulation, gated,
+ * autour d'une RÉFÉRENCE (TAX_SAT_REF — le même 60 % que la cible IA C3, cf.
+ * econ_ai_fiscal_tick, sans coupler le CODE — juste le nombre) : au-dessus, la
+ * tolérance s'ÉLARGIT (le peuple content absorbe un fisc plus lourd sans fuir
+ * ni gronder plus que la formule §7 ne le prévoit déjà) ; en dessous, elle se
+ * RESSERRE (« se cabre vite » — la même mécanique évasion/grogne §3b amplifiée,
+ * JAMAIS un bonus/malus plat sur l'impôt lui-même). TAX_SAT_COUPLING=0 : facteur
+ * EXACTEMENT 1.0 quel que soit sat → kill-switch par construction (golden pré-M8
+ * byte-identique, même motif qu'econ_debase_tax_factor à debase_kdrain=0). La
+ * sensibilité aux chocs exogènes (satisfaction plonge → seuil plonge → évasion/
+ * grogne montent → collecte baisse) est ÉMERGENTE de cette même formule, pas
+ * codée à part — c'est le prix du cercle vertueux, mesuré au sweep. */
+static float econ_satisfaction_tax_factor(float sat){
+    float coupling = tune_f("TAX_SAT_COUPLING", 0.8f);
+    if (coupling<=0.f) return 1.f;                     /* kill-switch exact */
+    float ref = tune_f("TAX_SAT_REF", 0.60f);
+    float raw = 1.f + coupling*(clampf(sat,0.f,1.f)-ref);
+    return clampf(raw, tune_f("TAX_SAT_FACTOR_MIN",0.5f), tune_f("TAX_SAT_FACTOR_MAX",1.5f));
+}
+
 /* Curseur de PAIE/IMPÔT (joueur seul) : LINÉARISÉ 0–100 % (plus de surpaie/surtaxe ×2,
  * qui n'a pas de sens). 0 stocké = sentinel « non réglé » (chronique/IA) → 1.0 NEUTRE ;
  * une valeur réglée par le joueur vit dans [0.02, 1.0] (le setter garantit ≥0.02, jamais
@@ -2224,7 +2250,8 @@ float econ_income_tax_rate_capital(const WorldEconomy *e, int cid, SocialClass c
     const ProvinceEconomy *re=&e->prov[cap];
     float sat   = clampf(re->strata[c].satisfaction,0.f,1.f);
     float seuil = econ_tax_tolerance(re->culture.ethos,c)*(0.40f+0.60f*sat)
-                 * econ_debase_tax_factor(re->debase_kdrain);
+                 * econ_debase_tax_factor(re->debase_kdrain)
+                 * econ_satisfaction_tax_factor(sat);   /* M8 C1 */
     float mult     = econ_country_tax_mult(e,cid,c);
     float ambition = STATE_TAX_AMBITION * mult;
     float evasion  = clampf(ambition - seuil, 0.f, 1.f);
@@ -2259,7 +2286,8 @@ float econ_country_tax_class_month(const WorldEconomy *e, int cid, SocialClass c
         const PopStratum *st=&re->strata[c];
         float sat     = clampf(st->satisfaction,0.f,1.f);
         float seuil   = econ_tax_tolerance(re->culture.ethos,c)*(0.40f+0.60f*sat)
-                        * econ_debase_tax_factor(re->debase_kdrain);   /* M3h */
+                        * econ_debase_tax_factor(re->debase_kdrain)   /* M3h */
+                        * econ_satisfaction_tax_factor(sat);          /* M8 C1 */
         float evasion = clampf(ambition - seuil, 0.f, 1.f);
         if (inc_on){
             float income_gross = (c==CLASS_LABORER)   ? re->gdp*WAGE_SHARE
@@ -2294,7 +2322,8 @@ float econ_province_tax_month(const WorldEconomy *e, int pid){
         const PopStratum *st=&re->strata[c];
         float sat     = clampf(st->satisfaction,0.f,1.f);
         float seuil   = econ_tax_tolerance(re->culture.ethos,(SocialClass)c)*(0.40f+0.60f*sat)
-                        * econ_debase_tax_factor(re->debase_kdrain);   /* M3h */
+                        * econ_debase_tax_factor(re->debase_kdrain)   /* M3h */
+                        * econ_satisfaction_tax_factor(sat);          /* M8 C1 */
         float mult    = econ_country_tax_mult(e, re->owner, (SocialClass)c);
         float ambition= STATE_TAX_AMBITION * mult;
         float evasion = clampf(ambition - seuil, 0.f, 1.f);
@@ -3700,7 +3729,8 @@ void econ_tick(WorldEconomy *e, float dt) {
             PopStratum *st=&re->strata[c];
             float sat   = clampf(st->satisfaction,0.f,1.f);
             float seuil = econ_tax_tolerance(re->culture.ethos,(SocialClass)c)*(0.40f+0.60f*sat)
-                         * econ_debase_tax_factor(re->debase_kdrain);   /* M3h */
+                         * econ_debase_tax_factor(re->debase_kdrain)   /* M3h */
+                         * econ_satisfaction_tax_factor(sat);          /* M8 C1 */
             float mult  = econ_country_tax_mult(e,re->owner,(SocialClass)c);
             float ambition  = STATE_TAX_AMBITION * mult;   /* pilote l'évasion vs le seuil (INCHANGÉ) */
             float evasion   = clampf(ambition - seuil, 0.f, 1.f);

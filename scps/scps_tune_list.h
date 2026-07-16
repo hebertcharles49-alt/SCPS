@@ -1213,6 +1213,20 @@
     X(ASSIETTE_ON,                     1.0f) \
     X(CONSUME_ELASTIC_K,               0.3f) \
     X(CONSUME_ELASTIC_MIN,             0.8f) \
-    X(CONSUME_ELASTIC_MAX,             1.2f)
+    X(CONSUME_ELASTIC_MAX,             1.2f) \
+    /* MONNAIE M8 — C1 : « LE CERCLE VERTUEUX DE L'IMPÔT » (décision joueur 2026-07-16,
+     * « plus satisfait = paye plus… un ordre à 70 % tu peux largement booster leur
+     * fiscalité, mais du coup plus sensibles aux chocs exogènes »). Seconde modulation
+     * du seuil de tolérance fiscale (§7/§3b, scps_econ.c econ_satisfaction_tax_factor),
+     * PAR-DESSUS la modulation plate déjà existante (0.40+0.60·sat) : au-dessus de
+     * TAX_SAT_REF la tolérance s'ÉLARGIT, en dessous elle se RESSERRE — TAX_SAT_COUPLING
+     * pilote la pente, TAX_SAT_FACTOR_MIN/MAX bornent l'excursion. 0 = kill-switch EXACT
+     * (facteur toujours 1.0, golden pré-M8 byte-identique). TAX_SAT_REF partage le même
+     * nombre que AI_FISCAL_TARGET ci-dessous (la « marge de sécurité » 60 %, décision
+     * joueur) SANS coupler le CODE — deux tunables indépendants, même valeur par défaut. */ \
+    X(TAX_SAT_COUPLING,                0.8f) \
+    X(TAX_SAT_REF,                     0.60f) \
+    X(TAX_SAT_FACTOR_MIN,              0.5f) \
+    X(TAX_SAT_FACTOR_MAX,              1.5f)
 
 #endif /* SCPS_TUNE_LIST_H */
