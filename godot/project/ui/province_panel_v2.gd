@@ -25,7 +25,7 @@ var _region := -1                   ## région moteur (agrégat lu SEULEMENT par
                                      ## RE-KEY PROVINCE : les verbes/alloc utilisent _pid directement)
 var _alloc := {}                    ## dernier province_alloc (pousser l'allocation COMPLÈTE)
 var _name2bld := {}                 ## nom de manufacture → BuildingType (résout le type pour les verbes)
-var _income := {}                   ## dernier province_income : nom du bien → per_day (manufacturés SEULEMENT)
+var _income := {}                   ## dernier province_income : nom du bien → [per_day, res_id] (raws ET manufacturés)
 var _grow_pid := -2                 ## CROISSANCE (display-only) : pid mesuré au refresh précédent
 var _grow_total := -1.0             ## … pop totale à ce refresh
 var _grow_day := -1                 ## … et le jour absolu (year()×365+day_of_year())
@@ -154,13 +154,14 @@ func refresh() -> void:
 			var nm := String(w.manuf_name(bld))
 			if nm != "" and nm != "?":
 				_name2bld[nm] = bld
-	# PRODUCTION manufacturée (chantier 3) : nom du BIEN produit → unités/mois (per_day×30),
-	# pour le hover des chips de manufacture (matché par le bien via manuf_recipe(bld).out).
+	# PRODUCTION (raws ET manufacturés, UI-MONNAIE) : nom du bien → [per_day, res_id].
+	# Sert (a) le hover des chips de manufacture (matché par le bien via manuf_recipe(bld).out,
+	# chantier 3) ET (b) les LIGNES D'EXTRACTION brute (Journaliers) — « X t/mois × prix
+	# courant = Y/mois » (province_res_price, UI-MONNAIE 2026-07-16).
 	_income.clear()
 	if w.has_method("province_income"):
 		for l in w.province_income(_pid):
-			if bool(l.get("manufactured", false)):
-				_income[String(l.get("source", ""))] = float(l.get("per_day", 0.0))
+			_income[String(l.get("source", ""))] = [float(l.get("per_day", 0.0)), int(l.get("res_id", -1))]
 	_update_header(w, info, cap)
 	for c in _body.get_children():
 		c.queue_free()
@@ -309,10 +310,17 @@ func _alloc_section(w, mine: bool, kind: int) -> void:
 func _alloc_row(w, mine: bool, s: Dictionary, idx: int) -> void:
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", 6)
+	# UI-MONNAIE — LES PRIX EN DIRECT (« combien de tonnes vais-je produire, combien ça
+	# rapporte instant T ») : le détail en MOTS au SURVOL de la ligne (jamais le calcul à
+	# l'écran, doctrine UI) — la face garde son % de répartition tel quel.
+	var res_name := String(s.get("name", "?"))
+	var ptip := res_name + _price_line(w, res_name)
+	hb.tooltip_text = ptip
+	hb.mouse_filter = Control.MOUSE_FILTER_STOP
 	_body.add_child(hb)
 	var nm := Label.new()
 	nm.theme_type_variation = "RowDim"
-	nm.text = "   " + String(s.get("name", "?"))
+	nm.text = "   " + res_name
 	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	nm.clip_text = true
 	hb.add_child(nm)
@@ -399,6 +407,27 @@ func _chip_frame(tip: String, built: bool) -> Array:
 	pc.add_child(hb)
 	return [pc, hb]
 
+## UI-MONNAIE (2026-07-16) — « combien de tonnes vais-je produire, combien ça rapporte
+## instant T » : la VALEUR RÉELLE d'un bien de LA province (prix NATIONAL projeté,
+## province_res_price) — jamais le calcul brut à l'écran, ce texte EST le hover complet
+## (« prix national N × M t/mois = P/mois »). "" si le bien n'a ni production ni prix
+## connu (rien à ajouter au hover appelant).
+func _price_line(w, res_name: String) -> String:
+	if not _income.has(res_name) or not w.has_method("province_res_price"):
+		return ""
+	var pair: Array = _income[res_name]
+	var res_id := int(pair[1])
+	if res_id < 0:
+		return ""
+	var tonnage_month := float(pair[0]) * 30.0
+	if tonnage_month <= 0.0:
+		return ""
+	var price := float(w.province_res_price(_pid, res_id))
+	if price <= 0.0:
+		return ""
+	var value_month := tonnage_month * price
+	return " · prix national %.2f × %s t/mois = %s/mois" % [price, _grp(int(round(tonnage_month))), _grp(int(round(value_month)))]
+
 ## un chip de manufacture bâtie : [icône][niv][−][+] — nom + détail au HOVER, chantier 3 :
 ## « Nom — niveau N · X ouvriers · produit +Y/mois » (le bien réel, matché par manuf_recipe(bld).out).
 func _manuf_chip(w, mine: bool, nom: String, niv: int, ouv: int, bid: int) -> Control:
@@ -407,7 +436,8 @@ func _manuf_chip(w, mine: bool, nom: String, niv: int, ouv: int, bid: int) -> Co
 		var rec: Dictionary = w.manuf_recipe(bid)
 		var out_nom := String(rec.get("out", ""))
 		if out_nom != "" and _income.has(out_nom):
-			tip += " · produit +%s %s/mois" % [_grp(int(round(float(_income[out_nom]) * 30.0))), out_nom]
+			tip += " · produit +%s %s/mois" % [_grp(int(round(float(_income[out_nom][0]) * 30.0))), out_nom]
+			tip += _price_line(w, out_nom)
 	if bid >= 0 and w.has_method("manuf_upkeep_month"):
 		var upk := int(w.manuf_upkeep_month(_pid, bid))
 		if upk > 0:

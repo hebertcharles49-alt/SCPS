@@ -39,6 +39,12 @@ var _last_pop := 0
 var _d_gold := 0.0
 var _d_pop := 0
 
+## UI-MONNAIE — L'INDICE DES PRIX NATIONAL (country_price_level) : même patron que
+## _last_gold/_d_gold ci-dessus, photo mensuelle (display-only, aucun état moteur —
+## le reader lui-même est PUR et recalculé, on ne fait qu'observer sa VARIATION).
+var _last_price_lvl := 1.0
+var _d_price_lvl := 0.0
+
 ## INFLUENCE DE FACTION — la « tendance » demandée : chaque faction voit sa PART du
 ## spectre bouger d'un mois à l'autre (le decay du moteur, mesuré à la source). On
 ## photographie la part de chaque faction (par NOM) au roulement du mois et on affiche
@@ -428,6 +434,10 @@ func _on_tick(_year: int) -> void:
 			_d_pop = p - _last_pop
 			_last_gold = g
 			_last_pop = p
+			if w.has_method("country_price_level"):
+				var pl := float(w.country_price_level(me))
+				_d_price_lvl = pl - _last_price_lvl
+				_last_price_lvl = pl
 			# tendance des factions : delta mensuel de la PART de chaque faction (le decay observé)
 			if w.has_method("country_factions"):
 				var fx: Dictionary = w.country_factions(me)
@@ -554,6 +564,17 @@ func _draw() -> void:
 		_add_nav(Rect2(treasury_x - 4, 0, px - treasury_x, H),
 			InfoRef.request(InfoRef.make(InfoRef.SIDEBAR_TAB, 0), "sidebar", {"section": "budget"}),
 			"ouvrir le budget", _treasury_card(w, me, float(ci["or"])))
+
+		# ═══ PRIX — UI-MONNAIE : l'indice des prix NATIONAL (1.0 = neutre), un mot + un
+		#     chiffre (doctrine topbar) ; le détail (tendance /mois, MOTS) au survol seulement
+		#     — jamais le calcul à l'écran. Onglet Monnaie (panneau B) = le détail complet. ══
+		if w.has_method("country_price_level"):
+			var price_lvl := float(w.country_price_level(me))
+			var price_pct := (_d_price_lvl / price_lvl * 100.0) if price_lvl > 0.0 else 0.0
+			var price_dtxt := ("%+.1f%%/mois" % price_pct) if absf(price_pct) >= 0.05 else ""
+			var price_word := "stables" if absf(price_pct) < 0.05 else ("en hausse" if price_pct > 0.0 else "en baisse")
+			px = _cell(px, "action_trade", "", "%.2f" % price_lvl, price_dtxt, price_pct <= 0.0,
+				"Prix : %.2f — %s\n(1.00 = neutre ; onglet Monnaie pour le détail)" % [price_lvl, price_word])
 		px = _block_sep(px)
 
 		# ═══ MATÉRIAUX : UN onglet (total bois+argile+pierre) · hover = détail par matière ══
