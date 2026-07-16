@@ -285,6 +285,26 @@ public:
      * — le pool des Centres par héritage + le SPREAD courant (achat ×2 / vente ×1, lot M). */
     Dictionary slave_market();
 
+    /* UI-MONNAIE (2026-07-16) — l'arc M0→M12 rendu visible : réserve/frappe/débase déjà
+     * bindés plus haut (country_reserve/country_mint_month/budget_controls/
+     * player_budget_policy) — ici, la DETTE, l'EMPRUNT (ordre + État), la BANQUEROUTE
+     * VOLONTAIRE, les CURSEURS FISCAUX par ordre, et les PRIX EN DIRECT (province +
+     * national + mondial). Tous les verbes moteur EXISTAIENT déjà (M9) — SEULE la
+     * façade GDScript manquait (cf. TROUVAILLES.md, M8/M9). */
+    Dictionary country_debt(int country);              /* { to_class, to_cs, total, taux, creditor, creditor_name } */
+    Array      country_fiscal_orders(int country);      /* 3 lignes {taux, satisfaction, revenu_mois} Laborer/Bourgeois/Élite */
+    Array      country_loan_capacity(int country);       /* 3 lignes {montant_max, taux} Laborer/Bourgeois/Élite */
+    bool       player_borrow_class(int cls, float amount); /* V1 : emprunte à SA classe (<=0 ⇒ le max) */
+    int        country_loan_request_target(int country) const; /* -1 = aucune demande cette partie */
+    String     country_loan_status(int country);         /* le MOT résolu : aucune/accordé/refusé */
+    bool       player_request_loan(int target, float amount); /* V2 : demande un prêt à un État (<=0 ⇒ le max) */
+    bool       player_bankruptcy();                       /* la banqueroute VOLONTAIRE (répudiation totale) */
+    double     country_price_level(int country) const;   /* indice des prix national (1.0 = neutre) */
+    double     world_price_index() const;                 /* indice des prix mondial (pondéré VA) */
+    float      country_debase_frac(int country) const;    /* débase EFFECTIVE de ce mois (0 = inactif) */
+    float      country_bankruptcy_scar(int country) const; /* cicatrice de banqueroute (0 = aucune) */
+    float      province_res_price(int province, int res_id) const; /* prix courant d'un bien dans une province */
+
     /* CRÉATEUR DE CULTURE (façon Stellaris) — listes + validation + aperçu + composition.
      * Membrane : des MOTS et des SIGNES (pas de levier brut). Pur (aucun sim) → utilisable
      * AVANT generate() ; set_player_culture grave la compo À la prochaine generate(). */

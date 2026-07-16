@@ -77,6 +77,26 @@ void   scps_country_reserve(const ScpsSim *s, int country, float *gold_out, floa
 /* FRAPPE mensuelle RÉELLE (or) — miroir EXACT du point fixe d'econ_tick (même fonction pure,
  * aucune mutation ici) : la monnaie que CE pays créditera à sa capitale ce mois-ci. */
 double scps_country_mint_month(const ScpsSim *s, int country);
+/* UI-MONNAIE (2026-07-16) — L'INDICE DES PRIX national d'un pays : miroir PUR
+ * d'econ_country_price_level (scps_econ.h, même formule, aucun état neuf) — 1.0 = neutre
+ * (aucune caisse au-dessus du plancher SINK_FLOOR). Sert le hover « prix national N ×
+ * quantité = valeur/mois » (fiche province) et la topbar éco. */
+double scps_country_price_level(const ScpsSim *s, int country);
+/* L'INDICE MONDIAL — miroir d'econ_world_price_index (moyenne pondérée par la VA de
+ * chaque pays). 1.0 si aucune économie encore installée. */
+double scps_world_price_index(const ScpsSim *s);
+/* UI-MONNAIE — LA DÉBASE EFFECTIVE de CE mois (0..DEBASE_MAX), miroir d'econ_country_
+ * debase_frac : pour le pays du JOUEUR, c'est le curseur BUDGET_DEBASE × DEBASE_MAX (même
+ * lecture que budget_controls/scps_country_budget_policy family=1 index=6, exprimée en
+ * fraction directe plutôt qu'en curseur brut) ; pour un pays IA, la politique état-
+ * dépendante (dernier recours avant banqueroute forcée, credit_insolvent_streak). >0 ⇒
+ * « actif » (rouge, alerte — sert aussi le poll adversaire du journal U4). Lecteur PUR. */
+float scps_country_debase_frac(const ScpsSim *s, int country);
+/* UI-MONNAIE — LA CICATRICE DE BANQUEROUTE (0..1, miroir d'econ_country_bankruptcy_scar)
+ * d'un pays QUELCONQUE : sert le hover « saisie en cours » (soi-même, motif M3g) et le
+ * poll adversaire (journal U4, une banqueroute étrangère récente). 0 = aucune banqueroute
+ * active. Lecteur PUR. */
+float scps_country_bankruptcy_scar(const ScpsSim *s, int country);
 /* RÔLE de polité (PolityRole) : 0 joueur · 1 antagoniste(IA) · 2 cité-état · 3 vierge · 4 libre ; -1 hors-borne. */
 int    scps_country_role (const ScpsSim *s, int country);
 /* BROUILLARD : le JOUEUR a-t-il DÉCOUVERT ce pays ? (country_knows — la liste diplo ne
@@ -413,6 +433,14 @@ long scps_province_slave_count(ScpsSim *s, int province);
  * commentaire — scps_econ.c ne l'expose pas dans le .h, valeur 0.42f). */
 double scps_province_tax(ScpsSim *s, int province);
 
+/* UI-MONNAIE (2026-07-16) — LE PRIX COURANT d'UNE ressource dans une province
+ * (ProvinceEconomy.price[res], le PRIX NATIONAL projeté sur la province, doctrine « pool
+ * national P1 » — même champ que scps_province_market ci-dessus, mais SANS son filtre
+ * dominante+2-lignes) : sert à joindre CHAQUE ligne de scps_province_income (jusqu'à 6,
+ * res_id inclus) à son prix pour « X t/mois × prix courant = Y/mois » (fiche province).
+ * res_id/province hors-borne ⇒ 0 (jamais négatif, motif scps_province_market). */
+float scps_province_res_price(const ScpsSim *s, int province, int res_id);
+
 /* UI PROVINCE — LOT 4 : le TERRAIN comme % de tenue de siège. DÉRIVE en lisible
  * ce que le moteur APPLIQUE déjà au siège (terrain_defense_mult(biome,height),
  * scps_army.c) — ⚠ scps_army.{h,c} sont en cours d'édition PARALLÈLE (agent
@@ -606,6 +634,23 @@ int scps_country_fiscal_orders(ScpsSim *s, int country, ScpsFiscalOrder *out, in
  * (0 si non applicable). Renvoie -1 si pays invalide ou kill-switch (NEEDS_TIER_POP<=0).
  * Utile à l'UI-MONNAIE (« palier N · prochain à M hab »). */
 int scps_country_needs_tier(ScpsSim *s, int country, long *out_next_pop);
+
+/* UI-MONNAIE (2026-07-16) — LA DETTE, vue COMBINÉE pour l'onglet Monnaie : ventilation
+ * par créancier (PROPRES classes agrégées / créancier cité-état-OU-état-étranger courant
+ * — credit_debt_class/_citystate/_total, scps_credit.c ; un seul créancier étranger à la
+ * fois, motif M3c/M9 « un seul créancier-cité-état par pays ») + le TAUX proposé pour un
+ * NOUVEL emprunt (credit_current_rate, même lecture que ScpsLoanCapacity.taux ci-dessous)
+ * + le créancier courant (miroir de ScpsBudget.creditor/creditor_name). Lecteur PUR, rien
+ * de sérialisé. */
+typedef struct {
+    float  to_class;        /* dette due aux PROPRES classes (Bourgeois+Élite agrégés) */
+    float  to_cs;            /* dette due au créancier cité-état/étranger courant */
+    float  total;            /* to_class+to_cs (credit_debt_total) */
+    float  taux;              /* 0..1 — taux ANNUEL proposé (credit_current_rate) */
+    int    creditor;          /* pays créancier CS/étranger (-1 = aucun) */
+    const char *creditor_name;
+} ScpsDebt;
+void scps_country_debt(ScpsSim *s, int country, ScpsDebt *out);
 
 /* MONNAIE M9 — V1 : LA CAPACITÉ D'EMPRUNT PAR ORDRE (panneau éco, décision joueur
  * 2026-07-16) — montant max empruntable MAINTENANT + taux proposé, pour CHAQUE classe

@@ -354,6 +354,24 @@ double scps_country_mint_month(const ScpsSim *s, int c){
     econ_country_mint_month(s->sim.econ, c, NULL, NULL, &val, NULL, NULL);
     return (double)val;
 }
+/* UI-MONNAIE — miroirs PURS d'econ_country_price_level/econ_world_price_index (scps_econ.h,
+ * MONNAIE M7 — I1) : jamais exposés à la façade avant cette vague. */
+double scps_country_price_level(const ScpsSim *s, int c){
+    if(!s || !s->ready) return 1.0;
+    return (double)econ_country_price_level(s->sim.econ, c);
+}
+double scps_world_price_index(const ScpsSim *s){
+    if(!s || !s->ready) return 1.0;
+    return (double)econ_world_price_index(s->sim.econ, s->w);
+}
+float scps_country_debase_frac(const ScpsSim *s, int c){
+    if(!s || !s->ready || c<0 || c>=SCPS_MAX_COUNTRY) return 0.f;
+    return econ_country_debase_frac(s->sim.econ, c);
+}
+float scps_country_bankruptcy_scar(const ScpsSim *s, int c){
+    if(!s || !s->ready || c<0 || c>=SCPS_MAX_COUNTRY) return 0.f;
+    return econ_country_bankruptcy_scar(s->sim.econ, c);
+}
 int scps_country_role(const ScpsSim *s, int c){
     if(!s || !s->ready || c<0 || c>=s->w->n_countries) return -1;
     return (int)s->w->country[c].role;
@@ -1430,6 +1448,16 @@ int scps_province_market(ScpsSim *s, int pid, ScpsMarketLine *out, int max, cons
     return n;
 }
 
+/* UI-MONNAIE — LE PRIX COURANT d'une ressource quelconque de la province (voir
+ * scps_api.h) : même champ que scps_province_market (pe->price[]) mais SANS le filtre
+ * dominante+2-lignes — sert à joindre CHAQUE ligne de scps_province_income à son prix. */
+float scps_province_res_price(const ScpsSim *s, int pid, int res_id){
+    if(!s || !s->ready || pid<0 || pid>=s->w->n_provinces || pid>=s->sim.econ->n_prov) return 0.f;
+    if(res_id<0 || res_id>=RES_COUNT) return 0.f;
+    float p = s->sim.econ->prov[pid].price[res_id];
+    return p>0.f ? p : 0.f;
+}
+
 void scps_province_capitale(ScpsSim *s, int pid, ScpsCapitale *out){
     if(!out) return;
     memset(out, 0, sizeof *out); out->statut = "";
@@ -2017,6 +2045,22 @@ int scps_country_needs_tier(ScpsSim *s, int country, long *out_next_pop){
         if (thr > 0.f) *out_next_pop = (long)thr;
     }
     return active;
+}
+
+/* UI-MONNAIE — LA DETTE, vue COMBINÉE (voir scps_api.h) : ventilation to_class/to_cs +
+ * total + taux proposé + créancier courant. Lecteur PUR, aucune mutation. */
+void scps_country_debt(ScpsSim *s, int country, ScpsDebt *out){
+    if (!out) return;
+    memset(out, 0, sizeof *out);
+    out->creditor = -1; out->creditor_name = "";
+    if (!s || !s->ready || country<0 || country>=SCPS_MAX_COUNTRY) return;
+    out->to_class = credit_debt_class(country);
+    out->to_cs    = credit_debt_citystate(country);
+    out->total    = credit_debt_total(country);
+    out->taux     = credit_current_rate(country);
+    int cr = credit_of(country);
+    out->creditor = cr;
+    if (cr>=0 && cr<s->w->n_countries) out->creditor_name = sz(s->w->country[cr].name);
 }
 
 /* MONNAIE M9 — V1 : LA CAPACITÉ D'EMPRUNT PAR ORDRE, voir scps_api.h. Lecteur PUR

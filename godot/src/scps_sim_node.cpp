@@ -199,6 +199,21 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_slave_sell", "prov", "count"), &ScpsWorld::player_slave_sell);
     ClassDB::bind_method(D_METHOD("slave_market"),                        &ScpsWorld::slave_market);
 
+    /* UI-MONNAIE (2026-07-16) — dette/emprunt/banqueroute/fiscalité/prix, voir scps_sim_node.h. */
+    ClassDB::bind_method(D_METHOD("country_debt", "country"),             &ScpsWorld::country_debt);
+    ClassDB::bind_method(D_METHOD("country_fiscal_orders", "country"),    &ScpsWorld::country_fiscal_orders);
+    ClassDB::bind_method(D_METHOD("country_loan_capacity", "country"),    &ScpsWorld::country_loan_capacity);
+    ClassDB::bind_method(D_METHOD("player_borrow_class", "cls", "amount"), &ScpsWorld::player_borrow_class);
+    ClassDB::bind_method(D_METHOD("country_loan_request_target", "country"), &ScpsWorld::country_loan_request_target);
+    ClassDB::bind_method(D_METHOD("country_loan_status", "country"),      &ScpsWorld::country_loan_status);
+    ClassDB::bind_method(D_METHOD("player_request_loan", "target", "amount"), &ScpsWorld::player_request_loan);
+    ClassDB::bind_method(D_METHOD("player_bankruptcy"),                   &ScpsWorld::player_bankruptcy);
+    ClassDB::bind_method(D_METHOD("country_price_level", "country"),      &ScpsWorld::country_price_level);
+    ClassDB::bind_method(D_METHOD("world_price_index"),                   &ScpsWorld::world_price_index);
+    ClassDB::bind_method(D_METHOD("country_debase_frac", "country"),      &ScpsWorld::country_debase_frac);
+    ClassDB::bind_method(D_METHOD("country_bankruptcy_scar", "country"),  &ScpsWorld::country_bankruptcy_scar);
+    ClassDB::bind_method(D_METHOD("province_res_price", "province", "res_id"), &ScpsWorld::province_res_price);
+
     /* CRÉATEUR DE CULTURE */
     ClassDB::bind_method(D_METHOD("heritage_list"),                  &ScpsWorld::heritage_list);
     ClassDB::bind_method(D_METHOD("ethos_list"),                     &ScpsWorld::ethos_list);
@@ -2000,6 +2015,82 @@ Dictionary ScpsWorld::slave_market() {
     out["price_buy"]  = pb;
     out["price_sell"] = ps;
     return out;
+}
+
+/* ── UI-MONNAIE (2026-07-16) — dette/emprunt/banqueroute/fiscalité/prix : chaque verbe/
+ * lecteur moteur EXISTAIT DÉJÀ (M8/M9) — seule cette façade manquait (TROUVAILLES.md). ── */
+Dictionary ScpsWorld::country_debt(int country) {
+    Dictionary d;
+    d["to_class"] = 0.0; d["to_cs"] = 0.0; d["total"] = 0.0; d["taux"] = 0.0;
+    d["creditor"] = (int64_t)(-1); d["creditor_name"] = String();
+    if (!sim) return d;
+    ScpsDebt deb;
+    scps_country_debt(sim, country, &deb);
+    d["to_class"] = (double)deb.to_class;
+    d["to_cs"] = (double)deb.to_cs;
+    d["total"] = (double)deb.total;
+    d["taux"] = (double)deb.taux;
+    d["creditor"] = (int64_t)deb.creditor;
+    d["creditor_name"] = String::utf8(deb.creditor_name);
+    return d;
+}
+Array ScpsWorld::country_fiscal_orders(int country) {
+    Array a;
+    if (!sim) return a;
+    ScpsFiscalOrder fo[3];
+    int n = scps_country_fiscal_orders(sim, country, fo, 3);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["taux"] = (double)fo[i].taux;
+        d["satisfaction"] = fo[i].satisfaction;
+        d["revenu_mois"] = fo[i].revenu_mois;
+        a.push_back(d);
+    }
+    return a;
+}
+Array ScpsWorld::country_loan_capacity(int country) {
+    Array a;
+    if (!sim) return a;
+    ScpsLoanCapacity lc[3];
+    int n = scps_country_loan_capacity(sim, country, lc, 3);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["montant_max"] = (double)lc[i].montant_max;
+        d["taux"] = (double)lc[i].taux;
+        a.push_back(d);
+    }
+    return a;
+}
+bool ScpsWorld::player_borrow_class(int cls, float amount) {
+    return sim ? scps_player_borrow_class(sim, cls, amount) != 0 : false;
+}
+int ScpsWorld::country_loan_request_target(int country) const {
+    return sim ? scps_country_loan_request_target(sim, country) : -1;
+}
+String ScpsWorld::country_loan_status(int country) {
+    if (!sim) return String();
+    return String::utf8(scps_country_loan_status(sim, country));
+}
+bool ScpsWorld::player_request_loan(int target, float amount) {
+    return sim ? scps_player_request_loan(sim, target, amount) != 0 : false;
+}
+bool ScpsWorld::player_bankruptcy() {
+    return sim ? scps_player_bankruptcy(sim) != 0 : false;
+}
+double ScpsWorld::country_price_level(int country) const {
+    return sim ? scps_country_price_level(sim, country) : 1.0;
+}
+double ScpsWorld::world_price_index() const {
+    return sim ? scps_world_price_index(sim) : 1.0;
+}
+float ScpsWorld::country_debase_frac(int country) const {
+    return sim ? scps_country_debase_frac(sim, country) : 0.f;
+}
+float ScpsWorld::country_bankruptcy_scar(int country) const {
+    return sim ? scps_country_bankruptcy_scar(sim, country) : 0.f;
+}
+float ScpsWorld::province_res_price(int province, int res_id) const {
+    return sim ? scps_province_res_price(sim, province, res_id) : 0.f;
 }
 
 /* ── CRÉATEUR DE CULTURE — la membrane traverse en Dictionary (mots + signes) ── */
