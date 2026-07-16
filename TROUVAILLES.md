@@ -3340,3 +3340,34 @@ mène.
   pour lancer les 3 batches de cellules 2/3/4 en parallèle (3 chronicle.exe simultanés/batch,
   `wait` avant le batch suivant, marqueurs `cellN_DONE`/`ALL_DONE` explicites — motif déjà
   requis M3b-v2.1/M7/M8 « toujours attendre un fichier DONE explicite »).
+
+## RAPPORT ÉCONOMIE/SATISFACTION — LECTURE M10 (2026-07-16)
+
+**Mission lecture seule** (aucun build/run — un diagnostic tournait en parallèle, cf. entrée
+DIAG-BANQUEROUTES ci-dessus) : `docs/RAPPORT_ECONOMIE_SATISFACTION.md` répond aux questions
+A/B/C du brief M10 (« paliers de besoins »), chaque fait sourcé fichier:ligne.
+
+**Piège notable pour M10** : `needs_met` (scps_econ.c:4283) et `satisfaction`
+(scps_econ.c:4277-4278) sont DEUX métriques structurellement non comparables — `needs_met` =
+`nsat/nbasket` où `nbasket` compte le panier MATURE COMPLET indépendamment du tier débloqué
+(`active_needs`), alors que `satisfaction` = `basket+comfort_joy−over_tax·K−annex_scar·W`
+n'est calculée QUE sur les besoins actifs mais soustrait des termes SANS RAPPORT avec les
+biens (grogne fiscale, cicatrice d'annexion), sans plancher protégé avant le `clampf(0,1)`.
+La trace M8DIAG « besoins comblés 15 % / satisfaction Laborer 0 % » à l'an 0 vient de LÀ, pas
+d'un bug — et PAS d'un verrouillage par tier comme on pourrait le supposer : à la genèse d'un
+empire jouable/IA (`EMPIRE_SEED=4000`, scps_econ.c:1818), `capitale_max_tier(4000)=4`
+(scps_labor.c:42-51) débloque déjà `active_needs=5`, soit la QUASI-TOTALITÉ du panier Laborer/
+Élite dès le tick 1 — le vrai goulot est la capacité de production (aucune manufacture bâtie,
+tirage ≤2 raws/tuile, une seule province colonisée), PAS le tier.
+
+**Second piège** : le rang 1 (2e besoin, débloqué dès la fondation) du Laborer (80 % de la
+pop, CLASS_SHARE, scps_econ.c:600) est EAU_DE_VIE — un bien MANUFACTURÉ (scps_econ.c:582) —
+alors que Bourgeois/Élite ont un BRUT en rang 1 (SALT/FUR). Aucune frontière raw/manufacturé
+propre n'existe au premier palier pour la classe majoritaire ; un M10 « raws d'abord » devra
+ré-ordonner `NEED_ORDER`, pas l'étendre.
+
+**Reste** : le partage exact du delta 15 %→0 % à l'an 0 (combien vient du `basket` faible vs
+de `over_tax` déjà actif au tick 1 sur le défaut de genèse satisfaction=0.5) n'est PAS confirmé
+par un run — seulement plausible par les constantes du code (STATE_TAX_AMBITION=0.42 vs table
+`econ_tax_tolerance`, scps_econ.c:2027-2046,2320). Un `SCPS_M8DIAG` étendu (imprimer basket/
+comfort_joy/over_tax séparément) serait le prochain pas si M10 a besoin du chiffre exact.
