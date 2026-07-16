@@ -1672,6 +1672,24 @@ void econ_init(WorldEconomy *e, const World *w) {
         }
     }
 
+    /* FAUSTIEN X1 — L'IMPLANTATION (mission 2026-07-16, décision joueur « booster
+     * l'implantation de fer céleste et de cristaux sur la map ») : la densité des
+     * NŒUDS RICHES (le modulo qui décide 1 tirage riche / N tuiles éligibles, ci-
+     * dessous) DOUBLE sous FAUSTIEN_BOOST (défaut ON) — la plupart des empires
+     * doivent avoir l'OPTION faustienne À PORTÉE, sans que ce soit partout.
+     * Legacy : arcane 1/4, céleste 1/9. Boosté : arcane 1/2 (×2), céleste 1/4.5→1/4
+     * (~×2.25, calibré densité mesurée SCPS_FORGEDIAG, cf. TROUVAILLES.md). Ces deux
+     * ressources restent des SOUS-GISEMENTS PROTÉGÉS (prot[RES_CELESTIAL_IRON]/
+     * prot[RES_ARCANE_CRYSTAL] plus bas) — JAMAIS une 3e brute : la règle ≤2 raws
+     * (charte/two-raws) reste INTACTE, aucune greffe de slot. Kill-switch
+     * FAUSTIEN_BOOST=0 restaure les divisors LEGACY EXACTS (golden pre-faustien
+     * byte-identique). */
+    bool faust_boost = tune_f("FAUSTIEN_BOOST", 1.f) > 0.f;
+    uint32_t faust_arcane_div  = faust_boost ? (uint32_t)tune_f("FAUST_ARCANE_DIV",    2.f) : 4u;
+    uint32_t faust_celest_div  = faust_boost ? (uint32_t)tune_f("FAUST_CELESTIAL_DIV", 4.f) : 9u;
+    if (faust_arcane_div < 1u) faust_arcane_div = 1u;
+    if (faust_celest_div < 1u) faust_celest_div = 1u;
+
     /* ---- Passe 3 : peuplement de CHAQUE PROVINCE (charte : l'économie brute
      * VIT ici — pop/strates/raw_cap/bâtiments/vocation par PROVINCE). -------- */
     for (int pid=0; pid<w->n_provinces && pid<SCPS_MAX_PROV; pid++) {
@@ -1777,15 +1795,15 @@ void econ_init(WorldEconomy *e, const World *w) {
             pe->raw_cap[RES_CLAY]  += subsist * 0.08f;
             pe->raw_cap[RES_STONE] += subsist * 0.05f;
             if (coastal) pe->raw_cap[RES_FISH] += subsist * 0.10f;
-            /* — ARCANE : cristal des nœuds telluriques (nœud riche 1/4 + voile diffus 0.2) — */
+            /* — ARCANE : cristal des nœuds telluriques (nœud riche 1/N, X1 + voile diffus 0.2) — */
             if (pe->raw_cap[RES_SULFUR]>0.f || pe->raw_cap[RES_PRECIOUS_METAL]>0.f){
                 pe->raw_cap[RES_ARCANE_CRYSTAL] += 0.2f;                                   /* voile diffus */
-                if (((uint32_t)(pid*2654435761u) % 4u)==0u) pe->raw_cap[RES_ARCANE_CRYSTAL] += 1.0f;  /* + nœud riche */
+                if (((uint32_t)(pid*2654435761u) % faust_arcane_div)==0u) pe->raw_cap[RES_ARCANE_CRYSTAL] += 1.0f;  /* + nœud riche */
             }
-            /* — Fer céleste : météorique (nœud riche 1/9 + voile diffus 0.2) — */
+            /* — Fer céleste : météorique (nœud riche 1/N, X1 + voile diffus 0.2) — */
             if (pe->raw_cap[RES_IRON]>0.f){
                 pe->raw_cap[RES_CELESTIAL_IRON] += 0.2f;                                   /* voile diffus */
-                if (((uint32_t)(pid*40503u+7u) % 9u)==0u) pe->raw_cap[RES_CELESTIAL_IRON] += 0.8f;     /* + nœud riche */
+                if (((uint32_t)(pid*40503u+7u) % faust_celest_div)==0u) pe->raw_cap[RES_CELESTIAL_IRON] += 0.8f;     /* + nœud riche */
             }
             /* — MANUFACTURES implantées là où l'intrant est extrait (cohérence de la chaîne) — */
             if (pe->raw_cap[RES_WOOL] > 0.f){ region_ensure_building(pe,BLD_TEXTILE);
@@ -1814,12 +1832,12 @@ void econ_init(WorldEconomy *e, const World *w) {
             for (int i=0;i<pe->n_bld;i++)
                 pe->bld[i].level = 0.5f + invest*0.01f;
         } else {
-            /* EMPIRE / JOUEUR — nœuds stratégiques RARES (plus de voile diffus), puis VOCATION. */
+            /* EMPIRE / JOUEUR — nœuds stratégiques RARES (plus de voile diffus, X1 densité), puis VOCATION. */
             if (pe->raw_cap[RES_SULFUR]>0.f || pe->raw_cap[RES_PRECIOUS_METAL]>0.f){
-                if (((uint32_t)(pid*2654435761u) % 4u)==0u) pe->raw_cap[RES_ARCANE_CRYSTAL] += 1.0f;  /* nœud riche SEUL */
+                if (((uint32_t)(pid*2654435761u) % faust_arcane_div)==0u) pe->raw_cap[RES_ARCANE_CRYSTAL] += 1.0f;  /* nœud riche SEUL */
             }
             if (pe->raw_cap[RES_IRON]>0.f){
-                if (((uint32_t)(pid*40503u+7u) % 9u)==0u) pe->raw_cap[RES_CELESTIAL_IRON] += 0.8f;     /* nœud riche SEUL */
+                if (((uint32_t)(pid*40503u+7u) % faust_celest_div)==0u) pe->raw_cap[RES_CELESTIAL_IRON] += 0.8f;     /* nœud riche SEUL */
             }
             /* WORLDGEN NE POSE AUCUN BÂTIMENT pour l'empire : la carte naît NUE — l'IA/agency
              * élèvent les manufactures DANS LE TEMPS (plus d'implantation au gisement). */
