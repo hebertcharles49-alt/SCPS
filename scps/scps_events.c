@@ -2600,7 +2600,21 @@ static void resolve_choice(EventCtx *cx, int evid, int subject, int oi, int toda
      * est idempotent — merv!=MERV_NONE ⇒ no-op — donc rappelable sans garde ici). */
     if (evid==EVID_MERV_FONDATION && cx->eg && cid>=0){
         int capr = world_capital_region(cx->w, cid);
+        bool was_none = (cx->eg->merv == MERV_NONE);
         endgame_start_wonder(cx->eg, cid, capr);   /* idempotent : no-op si déjà en cours */
+        /* F1 — DIAGNOSTIC (SCPS_RACEDIAG, mission FINS) : capte le DÉMARRAGE réel
+         * du chantier. CORRECTIF DE LECTURE (F1) : trig_merv_fondation (plus haut
+         * dans ce fichier) est STRICTEMENT human-only (`c!=cx->human_player` ⇒
+         * faux) — en chronique/giga (human_player=-1, cx->eg passé NULL par
+         * sim_day de toute façon), ce site ne tire JAMAIS. Ce print confirme
+         * empiriquement l'absence totale de fondation en sweep headless (0/18
+         * mesurés) — la Merveille reste un contenu 100% joueur, cf. TROUVAILLES
+         * §FINS — F1 (le proxy giga « métabolisation MAX X/6 » est un PLAFOND
+         * théorique par empire, jamais une victoire réellement tentée). */
+        if (was_none && cx->eg->merv != MERV_NONE && getenv("SCPS_RACEDIAG"))
+            fprintf(stderr, "[MERVDIAG] an %d : fondation -> pays=%s (%d, %s)\n",
+                    today/365, (cid>=0 && cid<cx->w->n_countries) ? cx->w->country[cid].name : "?",
+                    cid, cid==cx->human_player ? "joueur" : "IA");
     }
     else if (evid==EVID_MERV_ASCENSION && cx->eg && cx->eg->merv_country==cid){
         if (oi==2)      cx->eg->merv = MERV_NONE;         /* Détruire : le monument brisé, la course s'arrête */
