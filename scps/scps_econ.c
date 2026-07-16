@@ -3573,6 +3573,15 @@ void econ_tick(WorldEconomy *e, float dt) {
      * peuplé et le ratio caisse/VA normal reprend la main. PL_GENESIS=1.0 = comportement
      * LEGACY EXACT (kill-switch : la formule redevient `1.f` pour ce cas). */
     const float pl_genesis = tune_f("PL_GENESIS", 0.f);
+    /* MONNAIE M12 — E2 : L'ÉTAT NÉGOCIANT (docs/MONNAIE_CONCEPT.md, décision joueur « l'État
+     * achète à 60 % du prix du marché, tunable »). STATE_BUY_FRAC (défaut 0.60, registre J)
+     * scale UNIQUEMENT ce que l'État PAIE aux 3 pools de gages (§3 plus bas, pay_wage/profit/
+     * tax) — appliqué EN SUS de `price_level` (qui reste, lui, le régulateur caisse/VA global,
+     * INCHANGÉ). La REVENTE (le prix nationale, §clôture plus bas, ET l'assiette M5 R3) reste
+     * au `price_level` PLEIN, jamais réduit par ce facteur — c'est l'ÉCART achat/revente qui
+     * fait la part de l'État (prélevée À LA SOURCE, jamais un bonus/malus plat). Kill-switch
+     * STATE_BUY_FRAC=1.0 : `pf_buy`==`price_level`, comportement LEGACY EXACT. */
+    const float state_buy_frac = tune_f("STATE_BUY_FRAC", 0.60f);
     float caisse_snapshot[SCPS_MAX_COUNTRY]={0}, price_level[SCPS_MAX_COUNTRY];
     { const float opf_pre = tune_f("SINK_FLOOR", SINK_FLOOR);
       for (int p=0;p<e->n_prov && p<SCPS_MAX_PROV;p++){
@@ -3982,7 +3991,12 @@ void econ_tick(WorldEconomy *e, float dt) {
             int oc=re->owner;
             va_country_this[oc] += va_prov;
             float pf = price_level[oc];
-            pay_wage=wage_pool*pf; pay_profit=profit_pool*pf; pay_tax=tax_pool*pf;
+            /* MONNAIE M12 — E2 : l'État négociant — il PAIE à `pf_buy` (price_level ×
+             * STATE_BUY_FRAC), jamais au plein `pf` (sauf kill-switch STATE_BUY_FRAC=1.0).
+             * `pf` seul (SANS state_buy_frac) reste le régulateur de la REVENTE plus bas
+             * (§clôture PRIX NATIONAL, §5 assiette) — l'écart EST la marge d'État. */
+            float pf_buy = pf * state_buy_frac;
+            pay_wage=wage_pool*pf_buy; pay_profit=profit_pool*pf_buy; pay_tax=tax_pool*pf_buy;
             re->strata[CLASS_LABORER].wealth   += pay_wage;
             re->strata[CLASS_BOURGEOIS].wealth += pay_profit;
             re->strata[CLASS_ELITE].wealth     += pay_tax;   /* rente, PAS l'impôt d'État */

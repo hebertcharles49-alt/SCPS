@@ -1387,6 +1387,18 @@
      * payer 100 % de sa toute première VA avec la seule réserve de genèse — la caisse RÉELLE
      * prend le relais dès le tick suivant (`va_country_prev` peuplé). PL_GENESIS=1.0 : legacy
      * EXACT (golden pré-M12 byte-identique). */ \
-    X(PL_GENESIS,                       0.0f)
+    X(PL_GENESIS,                       0.0f) \
+    /* MONNAIE M12 — E2 : STATE_BUY_FRAC — L'ÉTAT NÉGOCIANT (décision joueur verbatim : « Si
+     * l'état achète au prix du marché, c'est un très mauvais négociant. L'état doit prendre sa
+     * part, la taxe, générale. Donc, l'état achète à 60 % du prix du marché, tunable. »).
+     * Multiplie SEULEMENT ce que l'État PAIE aux 3 pools de gages (§3, pay_wage/profit/tax) —
+     * en SUS de `price_level` (le régulateur caisse/VA existant, INCHANGÉ). La REVENTE (prix
+     * national §clôture + assiette M5 R3) reste au `price_level` PLEIN — l'écart achat/revente
+     * EST la taxe générale, prélevée À LA SOURCE, structurellement retenue au trésor (jamais un
+     * bonus/malus plat). RÈGLE DE CALIBRAGE du joueur : le 0.60 NE se recalibre PAS ; si la
+     * bande Laborer casse, on ajuste leur fiscalité explicite et/ou le rendement satisfaction de
+     * leurs biens — jamais ce curseur. 1.0 = kill-switch EXACT (`pf_buy`==`price_level`, legacy
+     * byte-identique). */ \
+    X(STATE_BUY_FRAC,                   0.60f)
 
 #endif /* SCPS_TUNE_LIST_H */
