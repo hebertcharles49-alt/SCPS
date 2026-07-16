@@ -48,7 +48,16 @@ static float society_with_drink(WorldEconomy *e, int r, float subsistance, Resou
     re->culture.subsistance=subsistance; re->owner=-1;   /* polité ISOLÉE : son propre stock, hors pool national (le banc compare UNE région) */
     re->n_bld=0; re->coercion=0.f; re->over_tax=0.f;
     for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; re->stock[k]=0.f; re->price[k]=1.0f; }
-    re->strata[CLASS_LABORER].pop=1000.f; re->strata[CLASS_LABORER].wealth=1e6f;
+    /* MONNAIE M10 — P1 : ce banc rend TOUS les autres biens sociaux du Laborer (FISH/WOOD/
+     * TUNIQUE) triviallement abondants (1e5) POUR isoler le signal boisson — mais depuis P1,
+     * les Kc=active_needs-1 biens les PLUS DISPONIBLES remplissent les paliers (n'importe quel
+     * bien compte) : à pop=1250 (tier 1, Kc=1), les 3 autres biens abondants (score≈1.0)
+     * évincent systématiquement la boisson hors-culture (score≈0.5, DRINK_OFFCULT) de l'UNIQUE
+     * slot — le signal testé disparaît, pas un bug moteur. Pop relevée à 4000 (T4, motif déjà
+     * appliqué par elite_sat_with_luxe ci-dessous) : Kc=4 = n_cand Laborer (EAU_DE_VIE/FISH/
+     * WOOD/TUNIQUE) ⇒ AUCUNE compétition de slot, la boisson compte TOUJOURS, le signal
+     * hors-culture redevient visible. */
+    re->strata[CLASS_LABORER].pop=4000.f; re->strata[CLASS_LABORER].wealth=1e6f;
     re->strata[CLASS_BOURGEOIS].pop=200.f;re->strata[CLASS_BOURGEOIS].wealth=1e6f;
     re->strata[CLASS_ELITE].pop=50.f;     re->strata[CLASS_ELITE].wealth=1e6f;
     /* vivres + tous les biens sociaux NON-boisson, abondants */

@@ -1294,8 +1294,19 @@
      * mesuré ISOLÉMENT avant tout chantier P1). TAX_MULT_FLOOR=0.02 : kill-switch EXACT
      * (plancher identique à l'ancien, golden pré-M10 byte-identique). Le curseur JOUEUR
      * (econ_country_tax_set) garde SON propre 0.02, INTACT — ce plancher ne borne QUE le
-     * contrôleur IA. */ \
-    X(TAX_MULT_FLOOR,                  0.80f) \
+     * contrôleur IA. CALIBRAGE (2026-07-16, sweep de recalage graine 11 an 19-23 — motif M8
+     * « bifurcation, pas un gradient ») : 0.80 (le milieu de la fourchette DIAG) déclenchait un
+     * breach invariant M3c ISOLÉ (graine 11 sim 1, 5 années consécutives, jusqu'à 455 % vs
+     * seuil 370 %) — tracé à un accumulateur WILD (province NON colonisée, richesse Bourgeois
+     * fantôme, INVDIAG-WILD) PRÉ-EXISTANT (motif M3e « chasse au breach graine 11 an 57 »,
+     * chronicle.c — HORS scope M10, cf. TROUVAILLES). Resserré à 0.75 (borne basse de la
+     * fourchette DIAG) : réduit le breach à 2 années (383-389 %, encore hors seuil sur CE seed/
+     * sim précis) — un balayage 0.60-0.85 confirme la non-monotonie (0.70 → 24 échecs, PIRE),
+     * aucune valeur testée ne l'élimine totalement ; 0.75 est le MEILLEUR point mesuré, retenu
+     * plutôt que 0.60/0.65 (à la limite basse de la fourchette recommandée, non testés à plus
+     * large échelle). Reste documenté, PAS un STOP — 1/9 sim/graine, cause pré-existante hors
+     * scope. */ \
+    X(TAX_MULT_FLOOR,                  0.75f) \
     /* MONNAIE M10 — P1 : LES PALIERS DE BESOINS (décision joueur : « driver les besoins sur
      * le nombre d'hab de l'empire… si tu es petit et que an 150 t'as pas grand chose,
      * t'imposes aussi »). Remplace la SOURCE d'active_needs (scps_econ.c, §besoins
