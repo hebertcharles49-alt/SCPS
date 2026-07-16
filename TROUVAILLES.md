@@ -3017,3 +3017,175 @@ forçant la satisfaction), documenté plutôt que maquillé.
   class_satisfaction`, `econ_is_human_country`, `scps_country_fiscal_orders` exportés) —
   motif déjà noté à chaque vague monétaire.
 - Tag `pre-m8` posé ; worktree de sweep (`/c/tmp_wt_pre_m8`) retiré en fin de session.
+
+## CHANTIER MONNAIE — M9 : L'EMPRUNT DEMANDÉ + LA COHÉRENCE FISCALE-DETTE DE L'IA (2026-07-16)
+
+**Contexte de session — un prédécesseur tué en plein vol.** Cette mission a démarré avec un
+arbre de travail DÉJÀ modifié (non committé) : un agent précédent avait implémenté l'essentiel
+de C0/V1/V2/V3 (scps_credit.c/h, scps_econ.c, scps_ai.c/h, scps_sim.c/h, scps_tune_list.h) et
+s'est arrêté au moment de vérifier la compilation — le code NE COMPILAIT PAS (voir Pièges). Le
+travail a été ÉVALUÉ en entier (diff fichier par fichier) avant toute décision : aligné avec le
+brief, bien commenté, réutilisant le socle existant sans voie neuve — ADOPTÉ plutôt que
+recommencé, puis corrigé/complété/testé. Décision documentée ici plutôt que dans un stash.
+
+**Découvertes** :
+- **Le piège du backslash de continuation dans `scps_tune_list.h`** — LA cause du build cassé
+  hérité. `SCPS_TUNABLES(X)` est UNE macro X géante (backslash-continuation ligne à ligne) ;
+  un commentaire multi-ligne `/* … */` À L'INTÉRIEUR peut légitimement omettre le `\` sur ses
+  lignes INTERNES (le commentaire absorbe le saut de ligne EN PHASE 3, après le splicing de
+  phase 2) — mais sa ligne de FERMETURE (celle qui contient `*/`) DOIT porter le `\` si la
+  macro continue après, SINON la directive `#define` se termine LÀ, silencieusement : tout ce
+  qui suit devient du code top-level ordinaire, compilé HORS du contexte macro (où `X` n'est
+  pas encore défini) → une erreur gcc complètement décorrélée (« expected ')' before numeric
+  constant » sur `X(AI_LOAN_MIN_LIQUIDITY, …)`, qui n'a RIEN à voir avec le vrai bug, 25+
+  lignes plus haut). Trouvé TROIS occurrences (fin des blocs commentaires C0/V1, V2, V3) —
+  vérifié après coup avec un awk ciblé (compare le dernier caractère non-blanc de chaque ligne
+  à `\`, sauf la toute dernière ligne de la macro) : aucun autre X-macro du fichier n'a ce
+  défaut. **Un futur ajout à `scps_tune_list.h` avec un commentaire multi-ligne DOIT vérifier
+  que sa ligne `*/` porte bien le `\` si des `X(...)` suivent.**
+- **`region[].treasury` n'est JAMAIS ré-agrégé depuis `prov[].treasury` nulle part dans le
+  moteur** — la découverte la plus coûteuse de la vague. `econ_country_gold` (scps_econ.c
+  :3234), donc `credit_can_spend`, `credit_line`, `audit_eco`, et le lecteur façade
+  `scps_country_gold` lisent TOUS `Σ region[r].treasury`. Ce champ n'est écrit QUE par
+  `econ_region_treasury_add` (le dual-write : `prov[carrier].treasury` ET
+  `region[r].treasury` EN MÊME TEMPS) et, dans un seul endroit historique
+  (scps_diplo.c, tribut vassal), directement. AUCUNE fonction ne fait
+  `region[r].treasury = Σ prov[p].treasury` en périodique — ce n'est PAS une vue reconstruite
+  « à chaque clôture » comme le suggère la doctrine province (CLAUDE.md), c'est un CACHE
+  maintenu à la main par CE SEUL helper. V1 (`credit_borrow_class`) et V2
+  (`credit_borrow_state`) du prédécesseur créditaient `e->prov[cap_pid].treasury` DIRECTEMENT
+  — l'argent versé restait PERMANENTMENT invisible du trésor national (aucun rebuild ne le
+  rattrape jamais). Prouvé par le banc V1 lui-même : « trésor 530 → 530 (+0) » alors que la
+  capacité annoncée était 44 or — corrigé en routant les DEUX verbes par
+  `econ_region_treasury_add(e, e->prov[cap_pid].region, borrow)` (le champ MIRROR
+  `ProvinceEconomy.region` évite tout besoin de `World*` pour V1, motif déjà établi par
+  `econ_country_capital_prov`). Après fix : « trésor 530 → 573 (+44) », exact. **Toute
+  fonction future qui crédite un trésor national pour un usage IMMÉDIAT (même tick) doit
+  passer par `econ_region_treasury_add`, jamais une écriture `prov[].treasury` nue** — le
+  motif `country_gold_prov` (scps_credit.c :178, déjà présent en M3c pour `credit_spend`) est
+  le signal que ce piège était DÉJÀ connu localement, juste pas généralisé.
+- **`credit_borrow_state` (V2, tel qu'hérité) violait la doctrine province EXPLICITEMENT** :
+  `home_reg(w,debtor_c)` + `econ_region_rep_province(e,hr)` pour localiser où déposer l'argent
+  — exactement l'indirection interdite par CLAUDE.md (« JAMAIS l'indirection
+  `econ_region_rep_province` dans un chemin joueur »). Remplacé par
+  `econ_country_capital_prov(e,debtor_c)` (province-grain pur, déjà utilisé par V1) — en
+  prime, `World*` ne sert plus qu'au garde-fou NULL dans cette fonction (le RE-KEY complet
+  n'avait même plus besoin du paramètre pour la logique).
+- **Le contrôleur C0 est un MÉLANGE de succès et d'échec, mesuré honnêtement** (sweep apparié
+  {9,11,42}×3×250 vs pre-m9=M8) : revenu fiscal Σ an-150 maintenu/amélioré sur les 3 graines
+  (+0.6/+47/+3 %), bande Laborer 50-64 % respectée sur les 3 (corrige même le dépassement M8
+  seed 9, 66→54 %), invariant 0/9 breach maintenu (pic max 361 % < 370 %) — MAIS banqueroutes
+  Σ {341→365, 507→506, 353→312} et colonisation {112→67, 37→73, 163→147} : le gate spécial
+  C0 (« banqueroutes vers pre-m8, colonisation pas davantage supprimée ») n'est PAS
+  proprement satisfait sur 2 graines/3 (seed 9 empire sur les deux fronts, seed 42 légèrement
+  pire sur colonisation). Voir Restes pour la décision (STOP PROPRE, pas de forçage).
+- **L'audit V3 (avant câblage, demandé par le brief)** : `pick_lender` (scps_credit.c :161)
+  choisissait déjà le racheteur ÉLIGIBLE (cité-état OU éthos mercantile/pacifiste) le PLUS
+  RICHE, mais UNIFORMÉMENT — aucune distinction de traitement une fois choisi (même taux
+  d'intérêt `credit_year_tick`, aucun effet politique). M9 ajoute la métabolisation SANS
+  toucher au rachat lui-même : cité-état → rancor allégée (symétrique de
+  `BANKRUPTCY_RANCOR`) · pacifiste → `faction_lever_apply`/FAC_COMMUNAUTAIRE (motif
+  `CMD_MANUMIT`) · mercantile → rien de plus (son « profit pur » EST déjà l'intérêt uniforme).
+  Chiffré sur le sweep HEAD (Σ 9 sims) : 1173 cité-état · 96 mercantile · 40 pacifiste — les
+  3 archétypes sont bien exercés, pas seulement le premier.
+- **`AI_LOAN_MIN_LIQUIDITY`/`AI_OFFER_LOAN_OPINION(_STRICT)`/`RRACHAT_META`/
+  `BUYBACK_CS_GOODWILL`/`BUYBACK_PACIFIST_LEVER` étaient déjà tous correctement enregistrés**
+  dans `scps_tune_list.h` par le prédécesseur (juste cassés par le piège backslash ci-dessus)
+  — aucun tunable neuf à ajouter, seulement le bug de continuation à réparer.
+
+**Pièges** :
+- **Le hash gcc trompeur** : « expected ')' before numeric constant » sur la ligne
+  `X(AI_LOAN_MIN_LIQUIDITY, …)` n'avait RIEN à voir avec cette ligne — la vraie cause était
+  25 lignes plus haut (backslash manquant). Toujours remonter au premier point où la macro
+  X-list PERD sa continuation, pas à la ligne que gcc pointe.
+- **`git status`/`git diff` lus juste après la reprise d'un arbre de travail modifié par un
+  processus tiers peuvent sembler incohérents d'un appel à l'autre** (un diff plus court puis
+  plus long sur le MÊME fichier, sans aucune édition de ma part entre les deux) — vérifié ici
+  via `md5sum`/`wc -l` répétés à quelques secondes d'intervalle jusqu'à stabilité AVANT de
+  faire confiance à la lecture. Ne jamais éditer un fichier dont l'état vient d'être lu tant
+  que deux lectures successives ne concordent pas au bit.
+- **`econ_country_gold` (region-grain) et `country_gold_prov`/écritures `prov[]` directes
+  (province-grain) peuvent diverger EN PERMANENCE**, pas juste « le temps d'un tick » — voir
+  Découvertes. Un test qui lit le trésor JUSTE APRÈS un verbe qui écrit `prov[].treasury` doit
+  soit lire au grain province, soit s'assurer que le verbe passe par
+  `econ_region_treasury_add`.
+- **`debit_surplus_prorata` (M3c, PAS touché ici, partagé par `credit_borrow_local` ET V2)
+  débite `prov[].treasury` SANS passer par `econ_region_treasury_add`** — même défaut
+  symétrique côté DÉBIT, mais côté PRÊTEUR (pas le débiteur) : le trésor du prêteur devient
+  potentiellement stale après un prêt V2. Hors scope M9 (fonction pré-existante partagée avec
+  le chemin auto-emprunt M3c déjà golden-baseliné) — signalé pour un futur audit crédit.
+
+**Gates** : kill-switch `AI_DEBT_FISCAL_COHERENCE=0,RRACHAT_META=0` → `--hash 7 5 12`
+BYTE-IDENTIQUE au golden pré-M9 (prouvé AVANT tout re-baseline, aucun verbe V1/V2 jamais émis
+en chronique headless — human_player=-1 par construction) · sweep apparié pre-m9 vs HEAD
+{9,11,42}×3×250 (bandes ci-dessous) · `make test` 38 VERTS/0 ROUGE/1 BUILD ÉCHEC
+(intertrade_demo, pré-existant Windows — confirmé par rebuild direct : `setenv` non déclaré,
+motif déjà documenté M8) + 3 nouvelles assertions banc `scps_api_demo` (V1 emprunt/V2 demande,
+221/221) · `make golden-update` puis `make golden` VERT (re-baseline M9 : les defaults C0/V3
+sont ON, donc le hash change délibérément — prouvé) · `make determinism` STABLE (5 graines×12
+ans) · `make determinism-deep` STABLE (graines 7/9×200 ans) · `scps_viewer --savetest 9` A==B
+byte-identique (aucun champ V1/V2/V3 sérialisé — g_loan_req_*/g_buyback_archetype sont
+TRANSIENTS par construction, motif g_buybacks/g_forced_pending — pas de bump SAVE_VERSION,
+reste 94) + altération d'un octet REFUSÉE · `make fuzz-save` 8/8 (216 octets flippés, tous
+rejetés, 0 crash). ASan/UBSan non disponibles sur ce toolchain MSYS2 (`-lasan`/`-lubsan`
+introuvables — limitation d'environnement déjà pressentie, pas dans la liste de gates
+explicite de ce chantier, non bloquant).
+
+**Bandes mesurées (sweep apparié, Σ 3 sims/seed, pre-m9=M8 vs HEAD=M9)** :
+
+| seed | banqueroutes Σ | colonisation Σ | Laborer sat. moy | invariant pic max | revenu fiscal an-150 Σ |
+|---|---|---|---|---|---|
+| 9  | 341→365 (+7 %, PIRE) | 112→67 (−40 %, PIRE) | 66→54 % (dans bande, corrige M8) | 227→80 % | 180051→181097 (+0.6 %) |
+| 11 | 507→506 (≈0 %) | 37→73 (+97 %, MEILLEUR) | 55→54 % (≈stable) | 246→361 % (proche seuil, 0 breach) | 52467→77001 (+47 %) |
+| 42 | 353→312 (−12 %, mieux) | 163→147 (−10 %, un peu pire) | 62→58 % (≈stable) | 149→105 % | 300688→310847 (+3 %) |
+
+Confirmé : `pre-m9` (worktree tag) reproduit EXACTEMENT les chiffres M8 déjà publiés
+(banqueroutes {341,507,353}, colonisation {112,37,163}) — valide la méthodologie du sweep
+avant de faire confiance aux colonnes M9.
+
+**Mesures nouvelles (chronologie des 3 verbes, bancs `scps_api_demo`/`chronicle`)** :
+- **V1, un emprunt à un ordre** : capacité annoncée 44 or (Bourgeois, taux 2.0 %/an) →
+  `scps_player_borrow_class(s, CLASS_BOURGEOIS, -1)` (max) enfilé → 1 jour de drain → trésor
+  530 → 573 or (+44, exact — la classe n'a PAS refusé).
+- **V2, un refus + un accord d'État** (6 cibles sollicitées, throttlées par l'émissaire 60 j) :
+  0 accordé(s) · 4 refusé(s) · 2 sans effet (cible/cooldown) sur ce monde-banc — au moins une
+  résolution en MOT prouvée (le mécanisme `ai_consider_offer/OFFER_LOAN` tranche réellement,
+  pas de blocage permanent). Sur le sweep HEAD (monde réel, IA-IA n'émet jamais ce verbe —
+  verbe JOUEUR seul), aucune émission (attendu, headless).
+- **V3, les 3 métabolisations chiffrées** (Σ 9 sims, sweep HEAD) : 1173 cité-état ·
+  96 mercantile · 40 pacifiste — les trois archétypes sont bien exercés distinctement, pas
+  seulement l'éligibilité de M3c.
+
+**Restes** :
+- **C0 ne satisfait PAS proprement le gate spécial** (banqueroutes vers pre-m8 ET colonisation
+  pas plus supprimée) sur 2 graines/3 — STOP PROPRE plutôt que forcer un recalibrage à l'aveugle
+  (décision explicitement pré-autorisée par le brief). L'algorithme livré est FIDÈLE à la
+  spécification à 3 points du joueur (jamais couper l'impôt sans marge, DURCIR jamais gaté,
+  piège day-1 couvert) et améliore 3 bandes sur 5 mesurées (revenu, Laborer, invariant) sans
+  jamais régresser un gate dur (0/9 breach, kill-switch exact) — mais l'hypothèse centrale du
+  joueur (« tenir l'impôt réduit les banqueroutes ») ne se vérifie PAS clairement dans ce
+  monde headless IA-only. Hypothèse non confirmée (hors budget) : tenir la fiscalité prolonge
+  une satisfaction/richesse basse qui, par un canal DIFFÉRENT (révoltes, initiative privée
+  M4-IP — déjà signalé comme suspect par les Restes M8), pourrait desservir la solvabilité et
+  l'expansion plutôt que les protéger. Nécessiterait un sweep dédié ISOLANT le terme
+  revenu-plancher du terme dette-levier (geler l'un, varier l'autre) pour trancher la
+  causalité — explicitement hors budget de cette vague.
+- **`debit_surplus_prorata` (voir Pièges)** — le même défaut prov[]/region[] côté DÉBIT,
+  pré-existant M3c, partagé par `credit_borrow_local` (chemin auto-emprunt DÉJÀ golden) et
+  maintenant V2. Non touché (hors scope, casserait potentiellement le golden M3c) — signalé
+  pour un futur audit crédit dédié.
+- **Le mot « étudie » du brief (« étudie / refuse / accorde ») n'a pas de pendant moteur** —
+  la résolution `ai_consider_offer` est SYNCHRONE au drain (même tick que la demande), il
+  n'existe structurellement aucun état « en cours de délibération » persistant à lire au tick
+  suivant. Réduit à 2 mots réels + « aucune demande » (STR_LOAN_AUCUNE/ACCORDE/REFUSE) —
+  décision documentée plutôt qu'un état fantôme inatteignable par le lecteur.
+- **UI-MONNAIE dédiée non câblée** (`scps_country_loan_capacity`/`scps_player_borrow_class`/
+  `scps_country_loan_status`/`scps_player_request_loan` prêts côté scps_api, aucune demande
+  GDScript cette vague — « pas de GDScript » explicitement dans le brief).
+  **DLL Godot À RE-BUILDER** (scons -C godot) : scps_econ.c, scps_credit.c/h, scps_ai.c/h,
+  scps_sim.c/h et scps_api.c/h ont changé (nouveaux symboles exportés
+  `scps_country_loan_capacity`, `scps_player_borrow_class`, `scps_country_loan_request_target`,
+  `scps_country_loan_status`, `scps_player_request_loan`) — motif déjà noté à chaque vague
+  monétaire.
+- Tag `pre-m9` confirmé sur 71f1494 (déjà posé par le prédécesseur) ; worktree de sweep
+  (`/c/tmp_wt_pre_m9`) à retirer en fin de session.

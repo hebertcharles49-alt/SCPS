@@ -281,8 +281,61 @@ fiscalité pour atteindre les 60 % de satisfaction (marge de sécurité). »
   (le même surplus finance les deux) · UI-MONNAIE dédiée non câblée (readers C2 prêts,
   aucune demande GDScript cette vague).
 
-### M9 — LA CENTRALISATION FISCALE + LE TRANSPORT (v2 : reformulé ; ex-M7, renuméroté
-une SECONDE fois pour laisser place au chantier M8 LIVRÉ ci-dessus — ex-M8 lui-même)
+### M9 — L'EMPRUNT DEMANDÉ + LA COHÉRENCE FISCALE-DETTE DE L'IA (LIVRÉ, 2026-07-16)
+
+**Statut : LIVRÉ (C0 mesuré MIXTE, voir Restes).** Décision joueur : « Emprunts demandé oui,
+à faire. Verbe à produire, en diplomatie et en panneau éco […] L'état emprunte d'abord aux
+classes. » + sur le contrôleur fiscal M8 : « Les banqueroutes ne sont pas émergentes, elles
+sont MAL RÉGLÉES. […] Faut viser 60 % ET du pognon. Si il vise 60 day1 ça marche pas : il cut
+ses impôts. »
+- [x] **C0 — LA COHÉRENCE FISCALE-DETTE** : `econ_ai_fiscal_slack` (scps_econ.c) borne le
+      levier RELÂCHER (jamais DURCIR) du contrôleur C3/M8 par la marge de revenu/solvabilité
+      — `AI_FISCAL_REVENUE_FLOOR` (assiette fiscale prouvée, le piège day-1) × la pression de
+      dette (`1 - debt/ceiling`) × l'absence de streak d'insolvabilité chronique. Sans marge :
+      pas=0, le contrôleur TIENT (jamais négatif). `AI_DEBT_FISCAL_COHERENCE=0` : kill-switch
+      EXACT (relax_factor toujours 1.0, golden pré-M9 byte-identique).
+- [x] **V1 — EMPRUNTER À UN ORDRE** (`CMD_BORROW_CLASS`, panneau éco) : l'État emprunte à UNE
+      classe (Élite/Bourgeois — Laborer/Esclave n'ont pas d'épargne, motif M3c) de son propre
+      empire ; la classe NE REFUSE JAMAIS (capacité épuisée ≠ refus). Réutilise le socle M3c
+      (`credit_class_borrow_capacity`/`credit_borrow_class`, plafond+tranche M3d). Reader
+      façade `scps_country_loan_capacity` (montant max + taux, PAR ordre).
+- [x] **V2 — DEMANDER UN EMPRUNT À UN ÉTAT** (`CMD_REQUEST_LOAN`, diplomatie) : le joueur
+      sollicite un État étranger DE SON CHOIX (pas l'auto-sélection `pick_lender` de M3c) ;
+      celui-ci PEUT REFUSER — value SUBJECTIVE (`ai_consider_offer`/`OFFER_LOAN` : jamais en
+      guerre, relation nette positive, liquidité propre du prêteur, confiance — seuil plus bas
+      pour un éthos prêteur naturel mercantile/pacifiste). Reader façade en MOTS
+      (`scps_country_loan_status` : Aucune demande/Accordé/Refusé — STR_LOAN_*, jamais un
+      flottant ; la résolution est SYNCHRONE au drain, aucun état « en cours » persistant).
+- [x] **V3 — LES RACHATS À MÉTABOLISATION DISTINCTE** : le rachat M3c (« les Fugger ») reste
+      INCHANGÉ ; ce qu'il RAPPORTE au racheteur diffère désormais par archétype — cité-état →
+      rancor ALLÉGÉE (influence/vassalité douce) · pacifiste → `faction_lever_apply`/
+      FAC_COMMUNAUTAIRE (stabilité) · mercantile → RIEN de plus (son profit PUR est déjà
+      l'intérêt annuel uniforme). `RRACHAT_META=0` : kill-switch exact.
+- **Piège corrigé (scps_credit.c)** : V1/V2 créditaient `prov[cap_pid].treasury` directement —
+  invisible d'`econ_country_gold`/`credit_can_spend`/`credit_line`/`audit_eco`, qui lisent
+  TOUS `region[].treasury`, jamais ré-agrégé depuis `prov[]` ailleurs dans le moteur. Corrigé
+  via `econ_region_treasury_add` (le SEUL chemin qui tient les deux en phase). V2 utilisait en
+  outre `econ_region_rep_province` — l'indirection région EXPLICITEMENT interdite dans un
+  chemin joueur (doctrine province, CLAUDE.md) — remplacée par `econ_country_capital_prov` +
+  le miroir `ProvinceEconomy.region` (aucun `World*` requis). Détail : TROUVAILLES.md
+  « CHANTIER MONNAIE — M9 ».
+- Gate : kill-switch prouvé (`AI_DEBT_FISCAL_COHERENCE=0,RRACHAT_META=0` → golden pré-M9
+  byte-identique) · sweep apparié {9,11,42}×3×250 · `make test` 38/39 (intertrade_demo seul
+  pré-existant) · golden RE-BASELINÉ · determinism/deep/savetest/fuzztest verts.
+- **Restes (C0, mesuré MIXTE — STOP PROPRE plutôt que forcer)** : banqueroutes Σ M8→M9
+  {341→365, 507→506, 353→312} (seed 9 EMPIRE, 11 quasi inchangé, 42 amélioré ~12 %) —
+  l'objectif « effacer la hausse M8 » n'est PAS clairement atteint · colonisation M8→M9
+  {112→67, 37→73, 163→147} (seed 9 et 42 DAVANTAGE supprimées, seed 11 très amélioré) — gate
+  « pas davantage supprimée » ÉCHOUE sur 2/3 graines. En contrepartie : revenu fiscal Σ an-150
+  maintenu/amélioré sur les 3 graines (+0.6 / +47 / +3 %), bande Laborer 50-64 % RESPECTÉE sur
+  les 3 (corrige même le dépassement M8 seed 9), invariant 0/9 breach maintenu. Hypothèse non
+  confirmée (hors budget, sweep dédié requis) : tenir la fiscalité plutôt que la relâcher
+  prolonge une satisfaction/richesse basse qui, via un canal DIFFÉRENT (révoltes, initiative
+  privée M4-IP), pourrait desservir exactement ce que C0 cherche à protéger — la tension que
+  M8 avait déjà anticipée sans la confirmer.
+
+### M10 — LA CENTRALISATION FISCALE + LE TRANSPORT (v3 : reformulé ; ex-M7, renuméroté une
+seconde fois pour M8 LIVRÉ, une troisième fois pour M9 LIVRÉ ci-dessus)
 Le trésor est DÉJÀ provincial (:2675) — M6 n'est pas une « localisation » mais :
 - [ ] La remontée fiscale devient un TRANSPORT physique vers la capitale (convois,
       délai, interceptables) ; le coffre de la capitale = la cible du sac.
