@@ -992,7 +992,14 @@ static bool endgame_heritage_metabolized_detail(const World *w, const WorldEcono
     float ratio = (float)(dig / tot);
     if (ratio_out) *ratio_out = ratio;
     if (dig_out) *dig_out = dig;
-    return ratio >= tune_f("METAB_MERV_RATIO", 0.60f) && dig >= (double)tune_f("METAB_MERV_MIN", 500.f);
+    /* F3 (mission FINS, 2026-07-16) : la voie diaspora seule bouge sous FINS_RACE
+     * (cf. scps_tune_list.h RACE_METAB_MERV_RATIO) — le seuil legacy 0.60 rendait
+     * « 4+ héritages métabolisés » un plafond jamais franchi (giga post-TECH :
+     * MAX observé 3/6 sur 100 mondes). METAB_MERV_MIN INCHANGÉ (le plancher
+     * d'âmes reste le même, seul le ratio d'intégration requis baisse). */
+    float ratio_req = (tune_f("FINS_RACE", 1.f) > 0.f) ? tune_f("RACE_METAB_MERV_RATIO", 0.25f)
+                                                        : tune_f("METAB_MERV_RATIO", 0.60f);
+    return ratio >= ratio_req && dig >= (double)tune_f("METAB_MERV_MIN", 500.f);
 }
 
 static bool endgame_heritage_metabolized(const World *w, const WorldEconomy *econ, int cid, int h) {
@@ -1076,7 +1083,11 @@ void endgame_heritage_detail(const World *w, const WorldEconomy *econ, const Tec
         }
         int dia_pct = 0;
         if (dig > 0.0) {
-            float req = tune_f("METAB_MERV_RATIO", 0.60f);
+            /* F3 : même seuil effectif que endgame_heritage_metabolized_detail
+             * (RACE_METAB_MERV_RATIO sous FINS_RACE) — la barre affichée doit
+             * matcher la barre qui GATE réellement, jamais deux vérités. */
+            float req = (tune_f("FINS_RACE", 1.f) > 0.f) ? tune_f("RACE_METAB_MERV_RATIO", 0.25f)
+                                                          : tune_f("METAB_MERV_RATIO", 0.60f);
             dia_pct = (req > 0.f) ? (int)(100.f * ratio / req + 0.5f) : 0;
             if (dia_pct > 100) dia_pct = 100;
         }
@@ -1120,6 +1131,22 @@ static void endgame_empire_vanish(World *w, WorldEconomy *econ, int player) {
  * monde) SONT RETIRÉES du verdict (la thèse du contact métabolisé remplace la
  * conquête totale). `ts` sert au gate de palier (endgame_metab_count_ts lit
  * ts[].arch_depth — la profondeur de contact, MAX-ée avec la métabolisation). */
+/* ── F1 — DIAGNOSTIC MERVEILLE (SCPS_RACEDIAG, mission FINS, 2026-07-16) : imprime
+ * au DÉMARRAGE du chantier et à CHAQUE transition de palier — répond à « quel
+ * palier précis bloque, à quelle distance ». Sans ce print, le seul signal dispo
+ * (chronicle P4 "métabolisation MAX X/6") est un plafond THÉORIQUE par empire,
+ * indépendant de savoir si quiconque a RÉELLEMENT lancé le chantier
+ * (EVID_MERV_FONDATION, event-driven — peut toucher un pays IA, pas seulement
+ * le joueur). Print-only, OFF par défaut, déterminisme intact. */
+static void mervdiag_transition(const EndgameState *eg, const World *w, int year, const char *what) {
+    if (!getenv("SCPS_RACEDIAG")) return;
+    static const char *MN[] = { "NONE","FORGE","FORGE_DONE","SOCIETE","SOCIETE_DONE","SAVOIR","SAVOIR_DONE","ASCENDED" };
+    int mi = (int)eg->merv; if (mi < 0 || mi > 7) mi = 0;
+    const char *nm = (eg->merv_country >= 0 && eg->merv_country < w->n_countries) ? w->country[eg->merv_country].name : "?";
+    fprintf(stderr, "[MERVDIAG] an %d : %s -> merv=%s pays=%s (%d) progress=%.2f\n",
+            year, what, MN[mi], nm, eg->merv_country, (double)eg->merv_progress);
+}
+
 static void wonder_tick(EndgameState *eg, World *w, WorldEconomy *econ,
                         const TechState ts[], int player, int year) {
     if (eg->merv == MERV_NONE || eg->merv == MERV_ASCENDED) return;
@@ -1148,15 +1175,16 @@ static void wonder_tick(EndgameState *eg, World *w, WorldEconomy *econ,
                     econ->prov[sitep].faust_charge += ch;
                 }
             }
-            if (eg->merv_progress >= 1.0f) { eg->merv_progress = 0.f; eg->merv = (MervPhase)(eg->merv + 1); }
+            if (eg->merv_progress >= 1.0f) { eg->merv_progress = 0.f; eg->merv = (MervPhase)(eg->merv + 1); mervdiag_transition(eg, w, year, "palier bouclé"); }
         }
         return;
     }
     /* palier bouclé : enchaîne, ou VICTOIRE dès SAVOIR bouclé (décision #2). */
-    if (eg->merv == MERV_FORGE_DONE)        eg->merv = MERV_SOCIETE;
-    else if (eg->merv == MERV_SOCIETE_DONE) eg->merv = MERV_SAVOIR;
+    if (eg->merv == MERV_FORGE_DONE)        { eg->merv = MERV_SOCIETE; mervdiag_transition(eg, w, year, "enchaîne SOCIÉTÉ"); }
+    else if (eg->merv == MERV_SOCIETE_DONE) { eg->merv = MERV_SAVOIR; mervdiag_transition(eg, w, year, "enchaîne SAVOIR"); }
     else if (eg->merv == MERV_SAVOIR_DONE) {
         eg->merv = MERV_ASCENDED;
+        mervdiag_transition(eg, w, year, "VICTOIRE");
         if (!eg->fired) {
             eg->fired = true; eg->fin = FIN_ASCENSION; eg->fin_year = year;
             endgame_faction_react(FIN_ASCENSION, player);
@@ -1313,6 +1341,40 @@ static void findiag_fire(const EndgameState *eg, const WorldEconomy *econ,
         endgame_fuel_ratio(eg, econ), (double)tune_f("FUEL_FALLBACK_MIN", 4.0f));
 }
 
+/* ── F1 — DIAGNOSTIC DES COURSES (SCPS_RACEDIAG, mission FINS, 2026-07-16) ──────
+ * Print-only, env-gaté (stderr, OFF par défaut — déterminisme intact, aucun état
+ * muté). Publie, à CHAQUE checkpoint (tous les 10 ans depuis l'ouverture 180),
+ * la DISTANCE de chaque fin à son seuil : entropie/ENTROPY_FIN (le gate COMMUN à
+ * EAU/RONCES/FROID/SANG — tant qu'il n'est pas franchi, AUCUNE des quatre ne peut
+ * même être évaluée), sang/ENDGAME_BLOOD_FRAC (le second gate, SOUS l'ombrelle
+ * entropie — un monde peut saigner sans jamais y avoir droit si l'entropie ne
+ * suit pas), feu/FUEL_FALLBACK_MIN (le fallback CHAUD, indépendant de l'entropie
+ * depuis le REPLI 2026-07-08b), et les PARTS de production essence/flux/fer (le
+ * poids relatif dans la loterie EAU/RONCES/FROID UNE FOIS l'entropie franchie —
+ * pas un seuil individuel, RONCES/FROID/EAU n'en ont pas : elles ne concourent
+ * QUE via cette loterie, jamais indépendamment). Répond à « quelle fin était la
+ * plus proche quand le fallback a conclu » sans relancer un sweep aveugle. */
+static void racediag_tick(const EndgameState *eg, const WorldEconomy *econ,
+                          const WorldProsperity *wp, int year) {
+    if (!getenv("SCPS_RACEDIAG")) return;
+    int open = (int)tune_f("ENDGAME_YEAR_OPEN", 180.f);
+    if (year < open) return;
+    if ((year - open) % 10 != 0) return;
+    double c0 = (double)wp->faust_consumed[0], c1 = (double)wp->faust_consumed[1], c2 = (double)wp->faust_consumed[2];
+    double prod_tot = c0 + c1 + c2;
+    double ent = (double)wp->entropy, ent_fin = (double)tune_f("ENTROPY_FIN", 55.f);
+    double sang = endgame_blood_ratio(eg, econ), sang_fin = (double)tune_f("ENDGAME_BLOOD_FRAC", 0.09f);
+    double feu = endgame_fuel_ratio(eg, econ), feu_fin = (double)tune_f("FUEL_FALLBACK_MIN", 2.0f);
+    fprintf(stderr,
+        "[RACEDIAG] an %d : entropie %.1f/%.0f (%.0f%%) | sang %.4f/%.2f (%.0f%%) | "
+        "feu %.2f/%.1f (%.0f%%) | parts essence=%.2f flux=%.2f fer=%.2f | fired=%s\n",
+        year, ent, ent_fin, 100.0 * ent / (ent_fin > 0.0 ? ent_fin : 1.0),
+        sang, sang_fin, 100.0 * sang / (sang_fin > 0.0 ? sang_fin : 1.0),
+        feu, feu_fin, 100.0 * feu / (feu_fin > 0.0 ? feu_fin : 1.0),
+        prod_tot > 0.0 ? c0 / prod_tot : 0.0, prod_tot > 0.0 ? c1 / prod_tot : 0.0,
+        prod_tot > 0.0 ? c2 / prod_tot : 0.0, eg->fired ? "oui" : "non");
+}
+
 /* ── C2 — sélecteur + déclencheur (latch : un seul déclenchement) ──────────── */
 static void endgame_select_and_fire(EndgameState *eg, const World *w,
                                      WorldEconomy *econ, const WorldProsperity *wp,
@@ -1330,9 +1392,74 @@ static void endgame_select_and_fire(EndgameState *eg, const World *w,
     }
 
     /* Gate temporel : les 3 apocalypses ne peuvent éclore avant ENDGAME_YEAR_OPEN. */
-    if (year < (int)tune_f("ENDGAME_YEAR_OPEN", 180.f)) return;
+    int year_open = (int)tune_f("ENDGAME_YEAR_OPEN", 180.f);
+    if (year < year_open) return;
 
-    if (wp->entropy < tune_f("ENTROPY_FIN", 50.f)) {
+    /* ═══ F2 — LA COURSE RECALIBRÉE (mission FINS, 2026-07-16, cf. TROUVAILLES.md
+     * §FINS — F1/F2) ═══ Kill-switch registre J FINS_RACE : =0 restaure la
+     * sélection LEGACY EXACTE octet-pour-octet (golden pre-fins — SANG reste
+     * gaté DERRIÈRE l'entropie partagée, ENTROPY_FIN=55/FUEL_FALLBACK_MIN=2.0
+     * d'origine, sélection ci-dessous inchangée). =1 (défaut) : DIAGNOSTIC F1
+     * mesuré (18 sims, SCPS_RACEDIAG/SCPS_FINDIAG) — les 3 apocalypses lottery
+     * (EAU/RONCES/FROID) ET SANG étaient TOUTES gatées derrière le MÊME seuil
+     * ENTROPY_FIN=55, alimenté quasi exclusivement par la charge de tech
+     * faustienne (ENTROPY_TECH_W) : l'entropie observée est BIMODALE (mondes
+     * calmes plafonnant 3-15, jamais assez pour franchir même un seuil abaissé
+     * raisonnable ; mondes faustiens franchissant 55 puis s'envolant à
+     * 1000-14000+ sans jamais repasser sous la barre) — SANG en particulier
+     * n'avait aucune chance : un monde très sanglant (ratio jusqu'à 6.6 %
+     * mesuré hors-TERMINAL) ne pousse l'entropie que de ratio×ENTROPY_BLOOD_W
+     * (8.0) ≈ 0.5 pt, loin des 55 requis — SANG ne pouvait fleurir QUE dans un
+     * monde ÉGALEMENT faustien, une coïncidence quasi jamais mesurée (giga :
+     * SANG 1/100). FIX : SANG DÉCOUPLÉ du gate d'entropie partagé (même
+     * précédent que CHAUD, déjà indépendant depuis le REPLI 2026-07-08b — « le
+     * combustible n'agit qu'en repli, jamais un second seuil parallèle » —
+     * étendu ici à SANG, qui EST déjà documenté comme « visage dominant, pas un
+     * second seuil » dans son propre commentaire plus bas : la lettre du code
+     * n'avait pas suivi l'esprit). RACE_ENTROPY_FIN (55→35→25, deux passes) et
+     * RACE_FUEL_FALLBACK_MIN (2.0→6.0→7.0, deux passes, registre J,
+     * indépendamment calibrables) recalibrés sur re-giga 20×5×250 — voir
+     * TROUVAILLES/scps_tune_list.h pour les chiffres avant/après/entre-deux.
+     * Seuils SANG/RONCES/FROID/EAU eux-mêmes INCHANGÉS (SANG_
+     * MEMORY_HL, ENDGAME_BLOOD_FRAC, FIN_BASE_*, THORN_*, COLD_RAMP_PER_YEAR) —
+     * le levier F2 est la PORTE (qui a le droit d'être évalué), pas le mérite
+     * (le seuil que chaque fin doit encore franchir une fois évaluée). */
+    bool race = tune_f("FINS_RACE", 1.f) > 0.f;
+
+    if (race) {
+        double br = endgame_blood_ratio(eg, econ);
+        bool sang_ok = br >= (double)tune_f("ENDGAME_BLOOD_FRAC", 0.09f);
+        if (sang_ok && campaign_get_human() >= 0)
+            sang_ok = endgame_blood_player_share(eg) >= (double)tune_f("BLOOD_PLAYER_SHARE", 0.25f);
+        if (sang_ok) {
+            /* Foyer SANG : la région vivante la plus ravagée (max revolt_scar) —
+             * IDENTIQUE au bloc SANG legacy plus bas (même calcul, dupliqué ici
+             * pour l'évaluer AVANT le gate d'entropie plutôt qu'après). */
+            int worst = -1; float worst_scar = -1.f;
+            for (int r = 0; r < econ->n_regions && r < SCPS_MAX_REG; r++) {
+                if (econ->region[r].owner < 0) continue;
+                if (econ->region[r].revolt_scar > worst_scar) { worst_scar = econ->region[r].revolt_scar; worst = r; }
+            }
+            eg->epicenter_reg   = (worst >= 0) ? worst : -1;
+            eg->fauteur_country = (worst >= 0) ? econ->region[worst].owner : -1;
+            eg->fin_year = year;
+            eg->fin   = FIN_SANG;
+            eg->fired = true;
+            sang_step(eg, w, econ);
+            if (getenv("SCPS_EXODIAG")) {
+                int nmarked = 0; float sum = 0.f;
+                for (int r2 = 0; r2 < econ->n_regions && r2 < SCPS_MAX_REG; r2++)
+                    if (eg->sang_scar[r2] > 0.f) { nmarked++; sum += eg->sang_scar[r2]; }
+                fprintf(stderr, "[EXODIAG] sang_step (amorçage) : %d région(s) marquée(s), somme scar %.2f\n", nmarked, (double)sum);
+            }
+            endgame_faction_react(FIN_SANG, eg->fauteur_country);
+            findiag_fire(eg, econ, wp, year, "sang-decouple");
+            return;
+        }
+    }
+
+    float ent_gate = race ? tune_f("RACE_ENTROPY_FIN", 25.f) : tune_f("ENTROPY_FIN", 55.f);
+    if (wp->entropy < ent_gate) {
         /* ── REPLI COMBUSTIBLE (FIN_CHAUD, seconde position) ────────────────────
          * Demande joueur : « fin pour fill le gap, elle entre en seconde position
          * derrière celle prévue à la base — solution de repli. » Le monde est SOUS
@@ -1350,10 +1477,17 @@ static void endgame_select_and_fire(EndgameState *eg, const World *w,
          * BIEN avant ce délai chez ceux qui en ont une → la priorité est structurelle,
          * pas un garde). Passé ce délai sans fin, si le monde a assez BRÛLÉ, le ciel le
          * rattrape. Le délai est LONG (les fins naturelles sortent jusqu'à ~l'an 240) →
-         * le réchauffement ne prend, en pratique, que les mondes restés sans fin. */
+         * le réchauffement ne prend, en pratique, que les mondes restés sans fin.
+         * F2 : RACE_FUEL_FALLBACK_MIN (2.0→6.0→7.0, deux passes) — mesuré F1,
+         * 95/100 mondes du giga avaient feu ARMÉ à l'ancien seuil (quasi tout monde
+         * prospère brûle assez) ; relevé pour que seuls les mondes RÉELLEMENT
+         * industriels/lourds brûlent — les autres atteignent l'an 250 SANS fin
+         * (AUCUNE), une issue honnête (cf. scps_tune_list.h pour la distribution
+         * mesurée qui a guidé les deux passes). */
         int delay = (int)tune_f("FUEL_FALLBACK_DELAY", 60.f);
-        if (year >= (int)tune_f("ENDGAME_YEAR_OPEN", 180.f) + delay
-            && endgame_fuel_ratio(eg, econ) >= (double)tune_f("FUEL_FALLBACK_MIN", 4.0f)) {
+        float fuel_gate = race ? tune_f("RACE_FUEL_FALLBACK_MIN", 7.0f) : tune_f("FUEL_FALLBACK_MIN", 2.0f);
+        if (year >= year_open + delay
+            && endgame_fuel_ratio(eg, econ) >= (double)fuel_gate) {
             /* Foyer = le grand brasier : la région vivante la plus saturée d'entropie
              * si connue, sinon l'empire le plus faustien (pattern du sélecteur normal ;
              * l'épicentre du réchauffement est symbolique — chaud_step agit globalement). */
@@ -1403,37 +1537,43 @@ static void endgame_select_and_fire(EndgameState *eg, const World *w,
      * au sélecteur normal (rare dominant / hash), le monde a saigné mais pas par
      * lui. Aucune main humaine (chronique/viewer, défaut -1) : la garde est
      * INACTIVE (comportement inchangé, le seul test reste ENDGAME_BLOOD_FRAC
-     * comme avant #32 — golden intact par construction). */
-    bool sang_ok = endgame_blood_ratio(eg, econ) >= (double)tune_f("ENDGAME_BLOOD_FRAC", 0.20f);
-    if (sang_ok && campaign_get_human() >= 0)
-        sang_ok = endgame_blood_player_share(eg) >= (double)tune_f("BLOOD_PLAYER_SHARE", 0.25f);
-    if (sang_ok) {
-        /* Foyer SANG : la région vivante la plus ravagée (max revolt_scar), pas
-         * forcément le foyer d'entropie (le sang a SA propre géographie). */
-        int worst = -1; float worst_scar = -1.f;
-        for (int r = 0; r < econ->n_regions && r < SCPS_MAX_REG; r++) {
-            if (econ->region[r].owner < 0) continue;
-            if (econ->region[r].revolt_scar > worst_scar) { worst_scar = econ->region[r].revolt_scar; worst = r; }
+     * comme avant #32 — golden intact par construction).
+     * F2 (FINS_RACE=1, défaut) : ce bloc est désormais LEGACY-ONLY — SANG est
+     * évalué plus tôt, DÉCOUPLÉ de l'entropie (cf. le bloc `if (race) {...}`
+     * au sommet de cette fonction). Gardé ici mot pour mot (kill-switch
+     * FINS_RACE=0 ⇒ golden pre-fins byte-identique). */
+    if (!race) {
+        bool sang_ok = endgame_blood_ratio(eg, econ) >= (double)tune_f("ENDGAME_BLOOD_FRAC", 0.20f);
+        if (sang_ok && campaign_get_human() >= 0)
+            sang_ok = endgame_blood_player_share(eg) >= (double)tune_f("BLOOD_PLAYER_SHARE", 0.25f);
+        if (sang_ok) {
+            /* Foyer SANG : la région vivante la plus ravagée (max revolt_scar), pas
+             * forcément le foyer d'entropie (le sang a SA propre géographie). */
+            int worst = -1; float worst_scar = -1.f;
+            for (int r = 0; r < econ->n_regions && r < SCPS_MAX_REG; r++) {
+                if (econ->region[r].owner < 0) continue;
+                if (econ->region[r].revolt_scar > worst_scar) { worst_scar = econ->region[r].revolt_scar; worst = r; }
+            }
+            if (worst >= 0) {
+                eg->epicenter_reg = worst;
+                eg->fauteur_country = econ->region[worst].owner;
+            }
+            eg->fin   = FIN_SANG;
+            eg->fired = true;
+            /* AMORÇAGE : sang_step (ci-dessus, l'unique fonction du mécanisme depuis
+             * 2026-07-11) fait aussi office de sang_seed — marque + plancher en un seul
+             * appel ; le switch d'endgame_tick le rappellera chaque année ensuite. */
+            sang_step(eg, w, econ);
+            if (getenv("SCPS_EXODIAG")) {
+                int nmarked = 0; float sum = 0.f;
+                for (int r2 = 0; r2 < econ->n_regions && r2 < SCPS_MAX_REG; r2++)
+                    if (eg->sang_scar[r2] > 0.f) { nmarked++; sum += eg->sang_scar[r2]; }
+                fprintf(stderr, "[EXODIAG] sang_step (amorçage) : %d région(s) marquée(s), somme scar %.2f\n", nmarked, (double)sum);
+            }
+            endgame_faction_react(FIN_SANG, eg->fauteur_country);
+            findiag_fire(eg, econ, wp, year, "sang");
+            return;
         }
-        if (worst >= 0) {
-            eg->epicenter_reg = worst;
-            eg->fauteur_country = econ->region[worst].owner;
-        }
-        eg->fin   = FIN_SANG;
-        eg->fired = true;
-        /* AMORÇAGE : sang_step (ci-dessus, l'unique fonction du mécanisme depuis
-         * 2026-07-11) fait aussi office de sang_seed — marque + plancher en un seul
-         * appel ; le switch d'endgame_tick le rappellera chaque année ensuite. */
-        sang_step(eg, w, econ);
-        if (getenv("SCPS_EXODIAG")) {
-            int nmarked = 0; float sum = 0.f;
-            for (int r2 = 0; r2 < econ->n_regions && r2 < SCPS_MAX_REG; r2++)
-                if (eg->sang_scar[r2] > 0.f) { nmarked++; sum += eg->sang_scar[r2]; }
-            fprintf(stderr, "[EXODIAG] sang_step (amorçage) : %d région(s) marquée(s), somme scar %.2f\n", nmarked, (double)sum);
-        }
-        endgame_faction_react(FIN_SANG, eg->fauteur_country);
-        findiag_fire(eg, econ, wp, year, "sang");
-        return;
     }
 
     /* Sélecteur EAU/RONCES/FROID : loterie unique pondérée par le climat RÉEL du
@@ -1476,6 +1616,10 @@ void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
                 eg->fired ? " [" : "", eg->fired ? FN[fn_i] : "",
                 eg->fired ? "]" : "");
     }
+
+    /* F1 — diagnostic des courses (SCPS_RACEDIAG, print-only, avant le fire du
+     * tick pour capter l'état qui A MENÉ à la décision de ce tick). */
+    racediag_tick(eg, econ, wp, year);
 
     /* C2 — pas encore déclenché : tester le seuil combiné et latcher (+ amorcer). */
     if (!eg->fired) {

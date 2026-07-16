@@ -926,6 +926,54 @@
      * culture « métabolisée » à 30 personnes noyées dans un grand empire). */ \
     X(METAB_MERV_RATIO,       0.60f) \
     X(METAB_MERV_MIN,       500.0f) \
+    /* ═══ MISSION FINS & MERVEILLE (2026-07-16, cf. TROUVAILLES.md §FINS) ═══
+     * F2 — LA COURSE RECALIBRÉE (scps_endgame.c endgame_select_and_fire).
+     * FINS_RACE : kill-switch MAÎTRE (=0 restaure toute la sélection LEGACY
+     * exacte — golden pre-fins byte-identique, prouvé). DIAGNOSTIC F1 (18
+     * sims, SCPS_RACEDIAG/SCPS_FINDIAG) : EAU/RONCES/FROID/SANG étaient TOUTES
+     * gatées derrière le MÊME seuil ENTROPY_FIN=55 (alimenté quasi exclusivement
+     * par la charge de tech faustienne, bimodale : mondes calmes plafonnant
+     * 3-15 pour toujours, mondes faustiens franchissant 55 puis s'envolant à
+     * 1000+) — SANG en particulier n'avait AUCUNE chance réelle (un monde très
+     * sanglant ne pousse l'entropie que de ~0.5 pt via ENTROPY_BLOOD_W, loin de
+     * 55 : giga SANG 1/100). RACE_ENTROPY_FIN : seuil ABAISSÉ, en DEUX passes
+     * mesurées (re-giga 20×5×250 entre les deux — la distribution finale de
+     * l'entropie an-250 sur 100 mondes est franchement BIMODALE : p50=15,
+     * p75=910, p90=7893 — un « coude » net vers p60-75, pas un plateau continu).
+     * Passe 1 (55→35) : ratio dominante/médiane 6.00:1→3.47:1 (RÉCHAUF 63→33,
+     * RONCES/HIVER/ENGLOUT/SANG 34→38 total) — mieux mais encore loin de la
+     * cible ≤2:1. Passe 2 (35→25) : la bande [25,35[ ne contient que ~2 mondes
+     * de plus (mesuré : count<25=59 vs count<35=61 sur 100) — un gain modeste
+     * mais délibérément PAS poussé plus bas (count<15=46 est déjà la moitié du
+     * parc : sous 15, on balaierait des mondes SANS aucun investissement
+     * faustien réel, une fin qui ne serait plus MÉRITÉE par la trajectoire,
+     * juste par le bruit). RACE_FUEL_FALLBACK_MIN : seuil du repli
+     * RÉCHAUFFEMENT RELEVÉ EN DEUX PASSES aussi (2.0→6.0→7.0, mesuré sur la
+     * distribution combustible/tête an-250 : count≥6.0=40/100, count≥7.0=
+     * 19/100) — la passe 1 (95/100 mondes ARMÉS à l'ancien seuil 2.0, presque
+     * aucun tri) a coupé RÉCHAUFFEMENT 63→33 mais laissait encore un ratio
+     * 3.47:1 ; la passe 2 vise le calcul direct (dominante≤19 pour un ratio
+     * ≤2:1 avec une médiane ~9-10) — RÉCHAUFFEMENT NE PREND DÉSORMAIS QUE les
+     * mondes RÉELLEMENT industriels (top ~19% du parc en combustible brûlé),
+     * les autres finissent AUCUNE (une issue honnête, cf. TROUVAILLES — RFIN_
+     * AUCUNE est déjà l'état NEUTRE de la membrane, pas un crash/écran d'erreur). */ \
+    X(FINS_RACE,               1.0f) \
+    X(RACE_ENTROPY_FIN,       25.0f) \
+    X(RACE_FUEL_FALLBACK_MIN,  7.0f) \
+    /* F3 — LES PALIERS DE LA MERVEILLE (scps_endgame.c endgame_heritage_
+     * metabolized_detail). Gaté par le MÊME FINS_RACE (mission unique) : le
+     * seuil legacy METAB_MERV_RATIO=0.60 rendait « 3 héritages métabolisés »
+     * déjà rare (giga post-TECH : {1:55, 2:42, 3:3}/100, JAMAIS 4+) — les
+     * paliers SOCIÉTÉ (≥4) et SAVOIR (≥6) étaient du contenu mort, pas
+     * seulement rares. RACE_METAB_MERV_RATIO (0.60→0.45) : la voie diaspora
+     * (intégration pop-pondérée d'UNE communauté envers elle-même) exige moins
+     * qu'un franchissement à 60 % pour compter « métabolisé » — un monde
+     * EXCEPTIONNEL (brassage soutenu sur plusieurs héritages) peut alors
+     * atteindre 4+ ; SAVOIR (6/6, TOUS les héritages) reste délibérément hors
+     * de portée courante (l'apex, décision #2 INCHANGÉE — cf. scps_endgame.c).
+     * METAB_MERV_MIN (plancher d'âmes) et la voie gouvernance (arch_depth/
+     * PROF_PROFOND, chantier TECH) INTACTS — seule la voie diaspora bouge. */ \
+    X(RACE_METAB_MERV_RATIO,  0.25f) \
     /* DÉDUP RÉVOLTE (Option B, 2026-07-04) — statecraft ne fait plus fire de révolte lui-même ;
      * scps_revolt.c est le SEUL acteur. Il replie le SIGNAL d'agitation legacy (L/coercion/choc
      * de conquête/stabilité/garnison, statecraft_agitation 0-100) dans son propre `worst` — le
