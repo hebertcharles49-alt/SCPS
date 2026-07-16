@@ -1129,6 +1129,16 @@ int main(int argc, char **argv){
                     capture_age_snap(&age_snap[a], s.year, w, &s);   /* marché·or·tech figés à l'avènement */
                     printf("   an %3d  ÂGE : %s\n", s.year, age_name((AgeId)a));
                 }
+            /* TECHDIAG : snapshot périodique cid/role/ai_on (naissances tardives, AI muette). */
+            if (getenv("SCPS_TECHDIAG") && (s.year%25==0)){
+                for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+                    if (regions_of(s.econ,c)==0 && !s.ai_on[c]) continue;
+                    fprintf(stderr,"[TDSNAP] y=%d c=%d nom=%s role=%d ai_on=%d cap=%d nreg=%d pop=%.0f nu=%d\n",
+                            s.year, c, w->country[c].name, (int)w->country[c].role, s.ai_on[c]?1:0,
+                            w->country[c].capital_prov, regions_of(s.econ,c),
+                            ai_country_population(w,s.econ,c), s.ts[c].n_unlocked);
+                }
+            }
             int wa = wars_active(w, s.dp);
             /* §G2 — SCPS_AMPLDIAG : la COURBE D'AMPLITUDE année par année (la preuve
              * que l'amplitude MONTE après un choc — guerre/révolte/T haute — et
@@ -1545,7 +1555,14 @@ int main(int argc, char **argv){
             printf("              empires vivants (%d) — métriques 0-100 :\n", ne);
             for (int a=0;a<ne;a++){ int c=idx[a];
                 CountryReadout cr=country_readout(s.wp,s.ts,w,c);
-                int ctech = s.ai_on[c]? s.ai[c].stats.techs : 0;
+                /* TECH (2026-07-16) — la fiche affiche le SAVOIR DU PAYS (nœuds recherchés,
+                 * n_unlocked − socle tier-0), plus le compteur de l'ACTEUR (stats.techs) :
+                 * un fragment de cataclysme qui HÉRITE de l'arbre parent affichait « 0
+                 * tech » (acteur neuf) alors que le pays porte 60 nœuds — l'artefact
+                 * derrière le « 22 % zéro-tech » du giga sweep (bilan mesuré à an 250,
+                 * fragments nés an 240 SANS IA). stats.techs reste lisible via TDMAP. */
+                int base0=0; for (int id=0;id<TECH_COUNT;id++) if (tech_is_base((TechId)id)) base0++;
+                int ctech = s.ts[c].n_unlocked - base0; if (ctech<0) ctech=0;
                 printf("                · %-16s %3d rég · pop %5.0fk · Stab %3d Prosp %3d Légit %3d Cohés %3d Corr %3d · %2d tech%s\n",
                        w->country[c].name, regions_of(s.econ,c), ai_country_population(w,s.econ,c)/1000.0,
                        cr.m_stabilite.value, cr.m_prosperite.value, cr.m_legitimite.value, cr.m_cohesion.value,
@@ -1984,6 +2001,22 @@ int main(int argc, char **argv){
             if (nn>0)
                 printf("   [SAVOIRDIAG] Sigma-savoir-bati/empire moy %.2f . savoir/tete/an moy %.4f . banque recherche moy %.0f (n=%d)\n",
                        sum_lib/nn, sum_pc/nn, sum_bank/nn, nn);
+        }
+
+        /* TECHDIAG (env SCPS_TECHDIAG, print-only) : la table cid<->nom au bilan, pour
+         * mapper les traces [TD] (stderr, scps_ai.c) aux fiches d'empire. */
+        if (getenv("SCPS_TECHDIAG")){
+            for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+                if (regions_of(s.econ,c)==0 && !s.ai_on[c]) continue;
+                double lib=0.0;
+                for (int r=0;r<s.econ->n_regions;r++)
+                    if (s.econ->region[r].owner==c) lib += s.econ->region[r].build.savoir;
+                fprintf(stderr,"[TDMAP] c=%d nom=%s role=%d ai_on=%d nreg=%d pop=%.0f nu=%d tk=%d pts=%.0f sav=%.1f lib=%.1f\n",
+                        c, w->country[c].name, (int)w->country[c].role, s.ai_on[c]?1:0,
+                        regions_of(s.econ,c), ai_country_population(w,s.econ,c),
+                        s.ts[c].n_unlocked, s.ai_on[c]?s.ai[c].stats.techs:-1,
+                        s.ts[c].research_points, econ_country_savoir(s.econ,c), lib);
+            }
         }
 
         /* SYNCRÉTISME (§tech culturelle) : les nœuds à PORTE D'ARCHÉTYPE (ex-signatures de
