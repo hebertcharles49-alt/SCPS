@@ -18,7 +18,14 @@ const DIVIDER := ParchTheme.DIVIDER
 
 # les postes de DÉPENSE pilotables (family 1) portent un curseur ; les autres sont lus.
 # 5 = Frappe (MONNAIE M2) : même motif que les 5 enveloppes existantes (curseur générique).
+# NB : 6 = Débase existe aussi (family 1) mais N'EST PAS ajouté ici — la page Balance
+# (SORTIES) n'a pas de ligne de flux pour elle (spend_flux, _update_values) ; son curseur
+# DÉDIÉ vit dans l'onglet MONNAIE (UI-MONNAIE 2026-07-16, _build_monnaie), hors périmètre
+# de cette liste historique.
 const SPEND_HAS_SLIDER := {0: true, 1: true, 2: true, 3: true, 4: true, 5: true}
+
+const TABS := ["Balance", "Monnaie", "Marché", "Commerce"]
+const CLASS_NAMES := ["Journaliers", "Bourgeois", "Élite"]   # SocialClass 0-2 (curseurs fiscaux/emprunt)
 
 var _built := false
 var _treasury_lbl: Label = null
@@ -32,6 +39,22 @@ var _sliders := {}
 # lignes LUES : clé de _val_lbls -> nom de poste de flux (country_budget)
 var _flux_of := {}
 var _tab_group: ButtonGroup = null
+var _tab := 0
+var _tab_btns: Array = []
+var _pages: Array = []
+
+# ── UI-MONNAIE (2026-07-16) — l'onglet MONNAIE (page 1) ───────────────────────────
+var _monnaie_page: VBoxContainer = null
+var _monnaie_built := false
+var _m_val_lbls := {}     # clé -> Label de valeur (rafraîchi en place)
+var _m_sliders := {}      # "family:index" -> HSlider (fiscal/frappe/débase)
+var _m_loan_btns := {}    # classe (0..2) -> Button « Emprunter… »
+var _m_loan_armed := {}   # classe -> bool (confirmation UI-4, 4 s)
+var _m_loan_armed_ms := {}
+var _m_bankrupt_btn: Button = null
+var _m_bankrupt_armed := false
+var _m_bankrupt_armed_ms := -100000
+var _m_debase_warn: Label = null
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -45,8 +68,34 @@ func _ready() -> void:
 	if Sim.has_signal("month_ticked"):
 		Sim.month_ticked.connect(func(_y): refresh())
 	if Sim.has_signal("generated"):
-		Sim.generated.connect(func(): _built = false; refresh())
+		Sim.generated.connect(func(): _built = false; _monnaie_built = false; refresh())
 	refresh()
+
+## la fenêtre de confirmation « Banqueroute »/« Emprunter » (4 s) retombe même en pause
+## (motif country_actions.gd _war_press — jamais de popup modal, doctrine UI-4).
+func _process(_dt: float) -> void:
+	if _m_bankrupt_armed and Time.get_ticks_msec() - _m_bankrupt_armed_ms > 4000:
+		_m_bankrupt_armed = false
+		if visible and _tab == 1:
+			_update_monnaie(int(Sim.world.player()) if Sim.world != null and Sim.world.has_method("player") else 0)
+	for cls in _m_loan_armed.keys():
+		if bool(_m_loan_armed[cls]) and Time.get_ticks_msec() - int(_m_loan_armed_ms.get(cls, 0)) > 4000:
+			_m_loan_armed[cls] = false
+			if visible and _tab == 1:
+				_update_monnaie(int(Sim.world.player()) if Sim.world != null and Sim.world.has_method("player") else 0)
+
+func _select_tab(idx: int) -> void:
+	_tab = idx
+	for i in range(_pages.size()):
+		_pages[i].visible = (i == idx)
+	refresh()
+
+## sélection PUBLIQUE d'un onglet (par code) : met aussi à jour le bouton actif (le
+## soulignement suit). Utilisée par la sonde de capture (motif empire_window.gd).
+func select_tab(idx: int) -> void:
+	if idx >= 0 and idx < _tab_btns.size():
+		_tab_btns[idx].button_pressed = true
+	_select_tab(idx)
 
 # ── LE SQUELETTE (conteneurs natifs) ─────────────────────────────────────────
 func _build_shell() -> void:
@@ -91,7 +140,11 @@ func _build_shell() -> void:
 	_reserve_lbl.size_flags_horizontal = Control.SIZE_SHRINK_END
 	rcol.add_child(_reserve_lbl)
 
-	# TAB BAR
+	# TAB BAR — UI-MONNAIE (2026-07-16) : les 3 onglets étaient posés mais JAMAIS câblés
+	# (aucun .pressed.connect — TROUVAILLES.md) ; « Monnaie » rejoint « Marché » désormais
+	# WIRÉS (motif page-stack d'empire_window.gd). « Commerce » reste un onglet VIDE
+	# (comportement inchangé : cliquer dessus ne faisait déjà rien) — hors périmètre de
+	# cette mission (routes commerciales, pas la monnaie).
 	var tabpanel := PanelContainer.new()
 	tabpanel.theme_type_variation = "LedTabStrip"
 	root.add_child(tabpanel)
@@ -99,38 +152,67 @@ func _build_shell() -> void:
 	tabs.add_theme_constant_override("separation", 2)
 	tabpanel.add_child(tabs)
 	_tab_group = ButtonGroup.new()
-	for i in ["Balance", "Marché", "Commerce"]:
+	_tab_btns.clear()
+	for i in range(TABS.size()):
 		var b := Button.new()
 		b.theme_type_variation = "Tab"
 		b.toggle_mode = true
 		b.button_group = _tab_group
-		b.text = String(i)
+		b.text = TABS[i]
 		b.focus_mode = Control.FOCUS_NONE
-		if String(i) == "Balance":
+		if i == _tab:
 			b.button_pressed = true
+		var idx := i
+		b.pressed.connect(func(): _select_tab(idx))
 		tabs.add_child(b)
+		_tab_btns.append(b)
 
-	# BODY (deux colonnes + diviseur)
+	# CORPS : les 4 pages coexistent, une seule visible (motif empire_window.gd).
 	var bodypanel := PanelContainer.new()
 	bodypanel.theme_type_variation = "Body"
 	bodypanel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	root.add_child(bodypanel)
-	var body := HBoxContainer.new()
-	body.add_theme_constant_override("separation", 12)
-	bodypanel.add_child(body)
+	var stack := VBoxContainer.new()
+	bodypanel.add_child(stack)
+	_pages.clear()
 
+	# PAGE 0 — Balance : deux colonnes + diviseur (INCHANGÉ, comportement d'origine).
+	var page0 := HBoxContainer.new()
+	page0.add_theme_constant_override("separation", 12)
+	stack.add_child(page0)
+	_pages.append(page0)
 	_left_col = VBoxContainer.new()
 	_left_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	body.add_child(_left_col)
-
+	page0.add_child(_left_col)
 	var div := Panel.new()
 	div.custom_minimum_size = Vector2(1, 0)
 	div.add_theme_stylebox_override("panel", ParchTheme.sb(DIVIDER, Color(0, 0, 0, 0), 0, 0, 0, 0, 0, 0))
-	body.add_child(div)
-
+	page0.add_child(div)
 	_right_col = VBoxContainer.new()
 	_right_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	body.add_child(_right_col)
+	page0.add_child(_right_col)
+
+	# PAGE 1 — Monnaie : bâtie UNE FOIS (curseurs persistants, motif page0/EconomyPage),
+	# valeurs rafraîchies en place.
+	_monnaie_page = VBoxContainer.new()
+	_monnaie_page.add_theme_constant_override("separation", 4)
+	_monnaie_page.visible = false
+	stack.add_child(_monnaie_page)
+	_pages.append(_monnaie_page)
+
+	# PAGE 2 — Marché : lue seule (reconstruite à chaque refresh, motif empire_window
+	# onglets Population/Diplomatie — aucun curseur à préserver).
+	var page2 := VBoxContainer.new()
+	page2.add_theme_constant_override("separation", 4)
+	page2.visible = false
+	stack.add_child(page2)
+	_pages.append(page2)
+
+	# PAGE 3 — Commerce : VIDE (hors périmètre, cf. commentaire ci-dessus).
+	var page3 := VBoxContainer.new()
+	page3.visible = false
+	stack.add_child(page3)
+	_pages.append(page3)
 
 ## une tête de section
 func _section(col: VBoxContainer, txt: String) -> void:
@@ -194,10 +276,36 @@ func refresh() -> void:
 	if w == null:
 		return
 	var me: int = int(w.player()) if w.has_method("player") else 0
-	if not _built:
-		_build_body(me)
-		_built = true
-	_update_values(me)
+	_update_header(w, me)
+	match _tab:
+		1:
+			if not _monnaie_built:
+				_build_monnaie(me)
+				_monnaie_built = true
+			_update_monnaie(me)
+		2:
+			_build_marche(me)
+		3:
+			pass   # Commerce : page vide, hors périmètre
+		_:
+			if not _built:
+				_build_body(me)
+				_built = true
+			_update_values(me)
+
+## le BANDEAU (trésor + solde + réserve) : commun aux 4 onglets, rafraîchi TOUJOURS
+## (motif empire_window._update_header) — extrait de _update_values (UI-MONNAIE).
+func _update_header(w, me: int) -> void:
+	if w.has_method("country_reserve"):
+		var res: Dictionary = w.country_reserve(me)
+		_reserve_lbl.text = "Réserve : %s or · %s cuivre" % [_grp(int(round(float(res.get("gold", 0.0))))), _grp(int(round(float(res.get("copper", 0.0)))))]
+	if w.has_method("budget_summary"):
+		var b: Dictionary = w.budget_summary(me)
+		_treasury_lbl.text = "%s or" % _grp(int(b.get("gold", 0)))
+		var net := float(b.get("monthly_net", 0.0))
+		var pos := net >= 0.0
+		_balance_lbl.text = "%s%s or/mois" % ["+" if pos else "−", _grp(int(round(absf(net))))]
+		_balance_lbl.add_theme_color_override("font_color", INCOME if pos else EXPENSE)
 
 ## construit les LIGNES à partir de budget_controls (une fois — puis on ne fait
 ## que rafraîchir les valeurs, pour ne pas perdre l'état de glisse des curseurs).
@@ -238,18 +346,6 @@ func _build_body(me: int) -> void:
 
 func _update_values(me: int) -> void:
 	var w = Sim.world
-	# MONNAIE M1 — la réserve métallique (redevance minière, jamais marchande).
-	if w.has_method("country_reserve"):
-		var res: Dictionary = w.country_reserve(me)
-		_reserve_lbl.text = "Réserve : %s or · %s cuivre" % [_grp(int(round(float(res.get("gold", 0.0))))), _grp(int(round(float(res.get("copper", 0.0)))))]
-	# trésor + solde mensuel (vert ≥0 / rouge <0) dans le bandeau
-	if w.has_method("budget_summary"):
-		var b: Dictionary = w.budget_summary(me)
-		_treasury_lbl.text = "%s or" % _grp(int(b.get("gold", 0)))
-		var net := float(b.get("monthly_net", 0.0))
-		var pos := net >= 0.0
-		_balance_lbl.text = "%s%s or/mois" % ["+" if pos else "−", _grp(int(round(absf(net))))]
-		_balance_lbl.add_theme_color_override("font_color", INCOME if pos else EXPENSE)
 	# facteur mois (flux annuel → mensuel)
 	var doy := 1
 	if w.has_method("day_of_year"):
@@ -301,6 +397,331 @@ func _update_values(me: int) -> void:
 		var sl2: HSlider = _sliders.get("1:%d" % idx, null)
 		if sl2 != null and not sl2.has_focus():
 			sl2.set_value_no_signal(clampf(float(row2.get("mult", 1.0)) * 100.0, 2.0, 100.0))
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── UI-MONNAIE (2026-07-16) — ONGLET MONNAIE : réserve/frappe/débase/dette/emprunt/
+# banqueroute/fiscalité, l'arc M0→M12 rendu visible. Chaque verbe/lecteur moteur
+# EXISTAIT déjà (M1→M9) — seule cette façade manquait (cf. TROUVAILLES.md).
+# ══════════════════════════════════════════════════════════════════════════════
+
+## une ligne : label … valeur (colorée), + curseur optionnel — MÊME moule que `_row`
+## mais stocke dans _m_val_lbls/_m_sliders (dicts SÉPARÉS de la page Balance : le
+## curseur family=1 index=5/6, family=0 index=0..2 existe déjà sur d'autres pages —
+## partager le dict casserait le rafraîchissement de l'onglet non visible).
+func _m_row(parent: VBoxContainer, label: String, key: String, value_variation: String,
+		slider_family := -1, slider_index := -1) -> void:
+	var line := HBoxContainer.new()
+	parent.add_child(line)
+	var lab := Label.new()
+	lab.theme_type_variation = "RowLabel"
+	lab.text = label
+	line.add_child(lab)
+	var sp := Control.new()
+	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	line.add_child(sp)
+	var val := Label.new()
+	val.theme_type_variation = value_variation
+	val.text = "—"
+	val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	line.add_child(val)
+	_m_val_lbls[key] = val
+	if slider_family >= 0:
+		var s := HSlider.new()
+		s.min_value = 2.0
+		s.max_value = 100.0
+		s.step = 1.0
+		s.value = 100.0
+		s.custom_minimum_size = Vector2(140, 14)
+		s.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		var fam := slider_family
+		var idx := slider_index
+		s.value_changed.connect(func(v): _apply_slider(fam, idx, v))
+		parent.add_child(s)
+		_m_sliders["%d:%d" % [slider_family, slider_index]] = s
+
+## bâtit l'onglet UNE FOIS (curseurs persistants — ne pas perdre l'état de glisse) ;
+## _update_monnaie rafraîchit les valeurs à chaque tick/changement d'onglet.
+func _build_monnaie(me: int) -> void:
+	_m_val_lbls.clear()
+	_m_sliders.clear()
+	_m_loan_btns.clear()
+	for c in _monnaie_page.get_children():
+		c.queue_free()
+
+	_section(_monnaie_page, "RÉSERVE MÉTALLIQUE")
+	_m_row(_monnaie_page, "Réserve", "reserve", "Income")
+
+	_section(_monnaie_page, "FRAPPE")
+	_m_row(_monnaie_page, "Frappe", "mint_flow", "Income")
+	_m_row(_monnaie_page, "Part de la réserve frappée", "mint_slider", "RowLabel", 1, 5)
+
+	_section(_monnaie_page, "DÉBASE")
+	_m_row(_monnaie_page, "Débase", "debase_state", "Expense")
+	_m_row(_monnaie_page, "Sur-frappe au-delà de la parité", "debase_slider", "RowLabel", 1, 6)
+	_m_debase_warn = Label.new()
+	_m_debase_warn.theme_type_variation = "RowDim"
+	_m_debase_warn.autowrap_mode = TextServer.AUTOWRAP_WORD
+	_m_debase_warn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_m_debase_warn.custom_minimum_size = Vector2(0, 32)
+	_m_debase_warn.text = "⚠ sur-frappe payée en confiance — ronge la réserve de confiance (K) de la capitale, attise les marchands."
+	_monnaie_page.add_child(_m_debase_warn)
+
+	_section(_monnaie_page, "DETTE")
+	_m_row(_monnaie_page, "Dette totale", "debt_total", "Expense")
+	_m_row(_monnaie_page, "Aux ordres du royaume", "debt_class", "Expense")
+	_m_row(_monnaie_page, "Au créancier", "debt_cs", "Expense")
+	_m_row(_monnaie_page, "Taux proposé (nouvel emprunt)", "debt_rate", "RowLabel")
+	_m_row(_monnaie_page, "Échéance — réglée 1×/an", "debt_due", "Expense")
+
+	_section(_monnaie_page, "EMPRUNTER À UN ORDRE")
+	for cls in range(3):
+		var b := Button.new()
+		b.focus_mode = Control.FOCUS_NONE
+		b.text = "…"
+		var c2 := cls
+		b.pressed.connect(func(): _m_loan_press(c2))
+		_monnaie_page.add_child(b)
+		_m_loan_btns[cls] = b
+
+	_section(_monnaie_page, "BANQUEROUTE VOLONTAIRE")
+	var bw := Label.new()
+	bw.theme_type_variation = "RowDim"
+	bw.autowrap_mode = TextServer.AUTOWRAP_WORD
+	bw.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bw.custom_minimum_size = Vector2(0, 32)
+	bw.text = "Répudie TOUTE la dette : tes créanciers saisiront une part de ta production pendant ~10 ans (cicatrice −75 %, decroissante) ; ton armée vacille."
+	_monnaie_page.add_child(bw)
+	_m_bankrupt_btn = Button.new()
+	_m_bankrupt_btn.focus_mode = Control.FOCUS_NONE
+	_m_bankrupt_btn.pressed.connect(_m_bankrupt_press)
+	_monnaie_page.add_child(_m_bankrupt_btn)
+
+	_section(_monnaie_page, "FISCALITÉ PAR ORDRE")
+	for cls in range(3):
+		_m_row(_monnaie_page, CLASS_NAMES[cls], "fiscal:%d" % cls, "RowLabel", 0, cls)
+
+func _m_loan_press(cls: int) -> void:
+	var w = Sim.world
+	if w == null:
+		return
+	if not bool(_m_loan_armed.get(cls, false)):
+		_m_loan_armed[cls] = true
+		_m_loan_armed_ms[cls] = Time.get_ticks_msec()
+		_update_monnaie(int(w.player()) if w.has_method("player") else 0)
+		return
+	_m_loan_armed[cls] = false
+	if w.has_method("player_borrow_class"):
+		w.player_borrow_class(cls, -1.0)   # <=0 ⇒ le maximum disponible
+		if Sim.has_method("notify_action"):
+			Sim.notify_action()
+	_update_monnaie(int(w.player()) if w.has_method("player") else 0)
+
+func _m_bankrupt_press() -> void:
+	var w = Sim.world
+	if w == null:
+		return
+	if not _m_bankrupt_armed:
+		_m_bankrupt_armed = true
+		_m_bankrupt_armed_ms = Time.get_ticks_msec()
+		_update_monnaie(int(w.player()) if w.has_method("player") else 0)
+		return
+	_m_bankrupt_armed = false
+	if w.has_method("player_bankruptcy"):
+		w.player_bankruptcy()
+		if Sim.has_method("notify_action"):
+			Sim.notify_action()
+	_update_monnaie(int(w.player()) if w.has_method("player") else 0)
+
+func _update_monnaie(me: int) -> void:
+	var w = Sim.world
+	if w == null:
+		return
+	# RÉSERVE
+	if w.has_method("country_reserve"):
+		var res: Dictionary = w.country_reserve(me)
+		_set_m("reserve", "%s or · %s cuivre" % [_grp(int(round(float(res.get("gold", 0.0))))), _grp(int(round(float(res.get("copper", 0.0)))))])
+	# FRAPPE + curseur (mult lu via budget_controls — même valeur que la Balance)
+	var ctl: Dictionary = w.budget_controls(me) if w.has_method("budget_controls") else {}
+	var mint_mult := 1.0
+	var debase_mult := 0.0
+	for raw in ctl.get("spending", []):
+		var row: Dictionary = raw
+		var idx := int(row.get("id", -1))
+		if idx == 5:
+			mint_mult = float(row.get("mult", 0.0))
+		elif idx == 6:
+			debase_mult = float(row.get("mult", 0.0))
+	if w.has_method("country_mint_month"):
+		_set_m("mint_flow", "+%s or/mois" % _grp(int(round(float(w.country_mint_month(me))))))
+	_set_m("mint_slider", "%d %%" % int(round(mint_mult * 100.0)))
+	_sync_slider("1:5", mint_mult * 100.0)
+	# DÉBASE : la fraction EFFECTIVE (pas seulement le curseur — country_debase_frac
+	# reflète le kill-switch DEBASE_MAX/la cicatrice de banqueroute).
+	var debase_frac := float(w.country_debase_frac(me)) if w.has_method("country_debase_frac") else 0.0
+	var debase_active := debase_frac > 0.001
+	_set_m("debase_state", ("active — +%.0f %%" % (debase_frac * 100.0)) if debase_active else "inactive",
+		ParchTheme.EXPENSE if debase_active else ParchTheme.DIM_INK)
+	_set_m("debase_slider", "%d %%" % int(round(debase_mult * 100.0)))
+	_sync_slider("1:6", debase_mult * 100.0)
+	if _m_debase_warn != null:
+		_m_debase_warn.add_theme_color_override("font_color", ParchTheme.EXPENSE if debase_active else ParchTheme.DIM_INK)
+	# DETTE
+	if w.has_method("country_debt"):
+		var deb: Dictionary = w.country_debt(me)
+		var total := float(deb.get("total", 0.0))
+		var to_class := float(deb.get("to_class", 0.0))
+		var to_cs := float(deb.get("to_cs", 0.0))
+		var taux := float(deb.get("taux", 0.0))
+		var creditor := int(deb.get("creditor", -1))
+		var creditor_name := String(deb.get("creditor_name", ""))
+		_set_m("debt_total", "%s or" % _grp(int(round(total))), ParchTheme.EXPENSE if total > 0.5 else ParchTheme.DIM_INK)
+		_set_m("debt_class", "%s or" % _grp(int(round(to_class))))
+		_set_m("debt_cs", ("%s : %s or" % [creditor_name, _grp(int(round(to_cs)))]) if creditor >= 0 and to_cs > 0.5 else "—")
+		_set_m("debt_rate", "%.1f %%/an" % (taux * 100.0))
+		_set_m("debt_due", "~%s or/an" % _grp(int(round(total * taux))) if total > 0.5 else "—")
+	# EMPRUNTER À UN ORDRE
+	if w.has_method("country_loan_capacity"):
+		var caps: Array = w.country_loan_capacity(me)
+		for cls in range(mini(3, caps.size())):
+			var c: Dictionary = caps[cls]
+			var montant := float(c.get("montant_max", 0.0))
+			var taux2 := float(c.get("taux", 0.0))
+			var btn: Button = _m_loan_btns.get(cls, null)
+			if btn == null:
+				continue
+			var armed := bool(_m_loan_armed.get(cls, false))
+			if armed:
+				btn.text = "Confirmer l'emprunt aux %s ?" % CLASS_NAMES[cls]
+			else:
+				btn.text = "Emprunter aux %s — max %s or (taux %.1f %%/an)" % [CLASS_NAMES[cls], _grp(int(round(montant))), taux2 * 100.0]
+			btn.disabled = montant <= 0.5 and not armed
+			btn.tooltip_text = "" if montant > 0.5 else "cet ordre n'a rien à prêter maintenant"
+	# BANQUEROUTE
+	if _m_bankrupt_btn != null:
+		_m_bankrupt_btn.text = "Confirmer la banqueroute ?" if _m_bankrupt_armed else "Répudier la dette (banqueroute)"
+		_m_bankrupt_btn.modulate = Color(1.0, 0.55, 0.5) if _m_bankrupt_armed else Color(1, 1, 1)
+	# FISCALITÉ PAR ORDRE — taux (curseur) + satisfaction (l'info qui rend le levier
+	# jouable : « Bourgeois 70 % → tu peux serrer »).
+	if w.has_method("country_fiscal_orders"):
+		var fo: Array = w.country_fiscal_orders(me)
+		for cls in range(mini(3, fo.size())):
+			var f: Dictionary = fo[cls]
+			var sat := int(f.get("satisfaction", -1))
+			var taux3 := float(f.get("taux", 1.0))
+			var revenu := float(f.get("revenu_mois", 0.0))
+			var sat_txt := ("%d %% sat." % sat) if sat >= 0 else "—"
+			_set_m("fiscal:%d" % cls, "%s · %s or/mois" % [sat_txt, _grp(int(round(revenu)))],
+				_score_col(sat) if sat >= 0 else ParchTheme.DIM_INK)
+			_sync_slider("0:%d" % cls, taux3 * 100.0)
+			var lbl: Label = _m_val_lbls.get("fiscal:%d" % cls, null)
+			if lbl != null:
+				lbl.mouse_filter = Control.MOUSE_FILTER_STOP   # sans ça, pas de survol (Label ignore la souris par défaut)
+				lbl.tooltip_text = "taux %d %% — %s" % [int(round(taux3 * 100.0)),
+					("marge : peut serrer" if sat >= 60 else ("fragile : baisser plutôt que casser" if sat >= 0 and sat < 40 else ""))]
+
+func _set_m(key: String, text: String, col: Color = Color(0, 0, 0, 0)) -> void:
+	var lbl: Label = _m_val_lbls.get(key, null)
+	if lbl == null:
+		return
+	lbl.text = text
+	if col.a > 0.0:
+		lbl.add_theme_color_override("font_color", col)
+
+func _sync_slider(key: String, pct: float) -> void:
+	var s: HSlider = _m_sliders.get(key, null)
+	if s != null and not s.has_focus():
+		s.set_value_no_signal(clampf(pct, 2.0, 100.0))
+
+## couleur de score 0-100 (rouge bas / vert haut) — motif empire_window._score_col.
+func _score_col(v: int) -> Color:
+	if v >= 60:
+		return ParchTheme.GREEN
+	if v < 40:
+		return ParchTheme.RED
+	return ParchTheme.INK
+
+# ── ONGLET MARCHÉ (U2) : prix courants par bien + tendance /mois ──────────────
+## lue seule (reconstruite à chaque refresh — pas de curseur à préserver, motif
+## empire_window onglets Population/Diplomatie). La TENDANCE est un suivi CLIENT
+## (historique local, non sérialisé, motif economy_panel.gd) : le moteur n'expose pas
+## de delta de prix, on OBSERVE la variation d'un refresh à l'autre.
+var _marche_hist := {}   # res_id -> {"prev": float, "day": int}
+
+func _build_marche(me: int) -> void:
+	var pg: VBoxContainer = _pages[2]
+	for c in pg.get_children():
+		c.queue_free()
+	var w = Sim.world
+	if not w.has_method("country_stocks"):
+		var d := Label.new()
+		d.theme_type_variation = "RowDim"
+		d.text = "(marché indisponible)"
+		pg.add_child(d)
+		return
+	_section(pg, "PRIX COURANTS")
+	var abs_day := int(w.year()) * 365 + (int(w.day_of_year()) if w.has_method("day_of_year") else 0)
+	var rows: Array = w.country_stocks(me)
+	rows.sort_custom(func(a, b): return float(a.get("price", 0.0)) > float(b.get("price", 0.0)))
+	var shown := 0
+	for raw in rows:
+		var st: Dictionary = raw
+		var price := float(st.get("price", 0.0))
+		if price <= 0.0:
+			continue
+		var rid := int(st.get("res_id", -1))
+		var nm := String(st.get("name", "?"))
+		var line := HBoxContainer.new()
+		line.add_theme_constant_override("separation", 6)
+		pg.add_child(line)
+		var lab := Label.new()
+		lab.theme_type_variation = "RowLabel"
+		lab.text = nm
+		lab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		lab.clip_text = true
+		line.add_child(lab)
+		var band := Label.new()
+		band.theme_type_variation = "RowDim"
+		band.text = String(st.get("marche", ""))
+		band.custom_minimum_size = Vector2(80, 0)
+		line.add_child(band)
+		# tendance : delta depuis le dernier ÉCHANTILLON observé (motif topbar _d_gold),
+		# affiché /mois (doctrine : jamais un calcul, jamais l'annuel).
+		var dtxt := ""
+		var dcol := ParchTheme.DIM_INK
+		if rid >= 0 and _marche_hist.has(rid):
+			var h: Dictionary = _marche_hist[rid]
+			var prev := float(h.get("prev", price))
+			var pday := int(h.get("day", abs_day))
+			if abs_day > pday and prev > 0.0:
+				var pct := (price - prev) / prev * 100.0 / float(abs_day - pday) * 30.0
+				if absf(pct) >= 0.05:
+					dtxt = "%s%.1f %%/mois" % ["↗ +" if pct > 0.0 else "↘ ", pct]
+					dcol = ParchTheme.INCOME if pct > 0.0 else ParchTheme.EXPENSE
+				else:
+					dtxt = "→ stable"
+		var tr := Label.new()
+		tr.theme_type_variation = "RowDim"
+		tr.text = dtxt
+		tr.custom_minimum_size = Vector2(90, 0)
+		tr.add_theme_color_override("font_color", dcol)
+		line.add_child(tr)
+		var val := Label.new()
+		val.theme_type_variation = "Income"
+		val.text = "%.2f" % price
+		val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		val.custom_minimum_size = Vector2(56, 0)
+		line.add_child(val)
+		if rid >= 0:
+			_marche_hist[rid] = {"prev": price, "day": abs_day}
+		shown += 1
+	if shown == 0:
+		_dim_line(pg, "aucun prix observé")
+
+func _dim_line(pg: VBoxContainer, txt: String) -> void:
+	var l := Label.new()
+	l.theme_type_variation = "RowDim"
+	l.text = txt
+	pg.add_child(l)
 
 # ── util : séparateur de milliers (fin espace insécable) ──────────────────────
 func _grp(n: int) -> String:
