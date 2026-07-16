@@ -1,6 +1,48 @@
-# SYNTHÈSE DE SESSION — handoff roulant (2026-07-16 soir)
+# SYNTHÈSE DE SESSION — handoff roulant (2026-07-16 nuit)
 
-## MONNAIE — ARC 2 COMPLET M5→M12 (save v95, HEAD b05dca6)
+## UI-MONNAIE — U1-U4 LIVRÉS (HEAD 0f2f9de, DLL rebuild scons)
+La seule tâche ouverte de la synthèse précédente (« UI-MONNAIE ») est FAITE : l'arc
+M0→M12 est maintenant VISIBLE et JOUABLE côté Godot. Tag `pre-ui-monnaie` posé sur
+1e18cb8. 6 commits (readers+binding · U1 onglet Monnaie · U2 prix en direct · U3
+emprunt diplo · U4 journal · probe monnaie_shot). Détail complet : TROUVAILLES.md
+§« CHANTIER UI-MONNAIE ».
+- **U1** : onglet MONNAIE neuf dans `budget_panel_v2.gd` (Balance/Marché existaient,
+  jamais câblés — page-stack ajoutée) — réserve, frappe+curseur, débase+curseur+
+  avertissement, dette (total/ordres/créancier/taux/échéance), 3 boutons d'emprunt
+  (confirmation UI-4), banqueroute volontaire (bouton rouge, conséquences en mots
+  AVANT, confirmation UI-4), 3 curseurs fiscaux AVEC satisfaction en regard. Onglet
+  Marché câblé (prix + tendance /mois, suivi client).
+- **U2** : `province_panel_v2.gd` — hover « prix national N × M t/mois = P/mois » sur
+  les raws ET manufactures (nouveau reader `scps_province_res_price`) ; `topbar.gd` —
+  cellule ÉCONOMIE « Prix » (indice national, tendance au survol).
+- **U3** : `country_actions.gd` — bouton « Demander un emprunt » (ACTIONS ÉCONOMIQUES),
+  état en mots (accordé/refusé/aucune demande).
+- **U4** : `alerts.gd` — 4 conditions monétaires (banqueroute/débase, soi + adversaires
+  connus), motif édge-detection existant, zéro nouveau canal moteur.
+- **6 nouveaux readers scps_api** (PURS, aucun verbe neuf — tous existaient déjà M8/M9,
+  juste jamais bindés) : `scps_country_debt`, `scps_country_price_level`,
+  `scps_world_price_index`, `scps_country_debase_frac`, `scps_country_bankruptcy_scar`,
+  `scps_province_res_price`. Binding Godot complet (scps_sim_node.h/.cpp).
+- Vérifié : `scons` propre, probe `monnaie_shot.gd` (6 PNG, zéro SCRIPT ERROR),
+  `make lang-check` 0=0 (aucun fichier C-viewer touché — la doctrine STR_* ne couvre
+  QUE le viewer console, pas le GDScript, précédent confirmé sur tout le codebase UI).
+- **Piège découvert** : `--headless` HANG (pas juste noir) sur ce toolchain pour toute
+  probe qui capture un PNG (`frame_post_draw` n'arrive jamais) — tourner SANS
+  `--headless` (fenêtré, GPU réel répond, le process quitte proprement quand même).
+
+## RESTES UI-MONNAIE (voir TROUVAILLES pour le détail)
+- « Gros emprunts d'États voisins » (dernier item U4) NON fait — pas de seuil scale-
+  invariant honnête sans un reader `debt_ceiling`/PIB-pays.
+- Hover prix (U2) confirmé CORRECT par lecteur (console) mais pas confirmé BEAU à
+  l'écran avec un vrai nombre non-nul (monde de test sans province à or/cuivre).
+- Journal U4 (banqueroute/débase) jamais observé EN CONDITIONS RÉELLES (aucune
+  banqueroute survenue dans le monde de test) — mécanisme à haute confiance, non
+  visuellement prouvé en action.
+- EXPORT scps.exe — toujours pas fait (backlog de test manuel au plus haut historique).
+
+---
+
+# (archive) SYNTHÈSE 2026-07-16 soir — MONNAIE ARC 2 COMPLET M5→M12 (save v95, HEAD b05dca6)
 Journée du 16 : sept vagues moteur enchaînées, chacune taguée (pre-m5 … pre-m12).
 - **M5** revenu propre + assiette (toll 50/50 · réserve genèse 100/100 · conso payée
   déjà vraie depuis M3b — le vrai trou : ration vitale garantie + élasticité richesse).

@@ -3919,3 +3919,131 @@ place si le joueur veut alléger un ordre : INCOME_TAX_RATE_* / TAX_BASE_*.
   symboles econ_pldiag_*, tunables M12) — motif noté à chaque vague monétaire.
 - Worktree de sweep `/c/tmp_wt_pre_m12` retiré en fin de session ; fichiers de sweep bruts
   au scratchpad (sweep_m12/), non committés — les Σ ci-dessus font foi.
+
+---
+
+## CHANTIER UI-MONNAIE — rendre visible l'arc M0→M12 face joueur (2026-07-16)
+
+**Statut : LIVRÉ (U1-U4) — façade GDScript pure, moteur JAMAIS touché hors 6 nouveaux
+readers scps_api (pure lecture, aucun verbe neuf, tous les verbes nécessaires
+existaient déjà M8/M9).** Tag `pre-ui-monnaie` posé sur 1e18cb8 avant tout changement.
+6 commits (23b7671 readers+binding · 8eb38d8 U1 · d51a0eb U2 · e44029e U3 · ca46b83 U4
+· 0f2f9de probe).
+
+**Découvertes** :
+- **`scps_country_fiscal_orders`/`scps_country_loan_capacity`/`scps_player_borrow_class`/
+  `scps_country_loan_request_target`/`scps_country_loan_status`/`scps_player_request_loan`/
+  `scps_player_bankruptcy` existaient TOUS déjà côté scps_api.c depuis M8/M9 mais
+  N'ÉTAIENT JAMAIS BINDÉS côté Godot** (grep confirmé sur scps_sim_node.cpp AVANT cette
+  vague : zéro occurrence) — exactement ce que TROUVAILLES M8/M9 avait signalé en Reste
+  (« aucune demande GDScript cette vague »). Cette vague n'a donc eu besoin d'AUCUN
+  nouveau verbe côté C : seulement 6 nouveaux READERS PURS (scps_country_debt,
+  scps_country_price_level, scps_world_price_index, scps_country_debase_frac,
+  scps_country_bankruptcy_scar, scps_province_res_price) + le binding manquant.
+- **`budget_controls` (scps_sim_node.cpp) exposait DÉJÀ le mult BUDGET_DEBASE (index 6,
+  "Débase")** — `spend_names[7]` incluait déjà "Débase" avant cette vague, seul
+  `SPEND_HAS_SLIDER` (economy_page.gd/budget_panel_v2.gd) s'arrêtait à l'index 5 (Frappe).
+  Décision : NE PAS ajouter 6 à `SPEND_HAS_SLIDER` (aurait ajouté un curseur Débase à la
+  page Balance existante, hors périmètre de cette mission — le curseur dédié vit dans le
+  nouvel onglet Monnaie). Documenté en commentaire pour le prochain agent qui grep.
+- **`ProvinceEconomy.price[res]` (le champ que lit `scps_province_market`) EST le « prix
+  national » projeté sur la province** (doctrine pool national P1, confirmé en lisant
+  econ_tick §PRIX NATIONAL, scps_econ.c ~4866-4902 : le prix est soldé UNE FOIS par
+  empire puis PROJETÉ identique sur toutes ses provinces) — `scps_province_res_price`
+  (nouveau reader) n'est donc PAS un nouveau concept, juste le MÊME champ sans le filtre
+  dominante+2-lignes de `scps_province_market` (qui aurait fait rater les raws hors du
+  top-3 d'une province à plus de 2 biens vivants).
+- **Un pays au price_level≈0 (caisse sous SINK_FLOOR partout) voit TOUS ses prix non-
+  précieux retomber à leur PLANCHER quasi-nul** (`pn[c][r]=clampf(p, BASE_PRICE*0.15*pl,
+  BASE_PRICE*8*pl)` avec `pl→0` ⇒ plancher→0), SAUF or/cuivre (exemptés de `pl`,
+  `pl=1.f` toujours pour RES_GOLD/RES_COPPER) — mesuré en LIVE sur seed 9 an 59
+  (`country_price_level(me)=1.0` — le lecteur télémétrie renvoie le neutre 1.0 par le
+  garde `va_country_prev<=1e-6f`, MAIS les prix RÉELS de la province retombent à 0 pour
+  Céréales/Fer tandis que Cuivre=0.52/Or=1.6 restent vivants) — PAS un bug du nouveau
+  reader (vérifié : valeurs DIFFÉRENCIÉES et cohérentes par ressource, pas une constante),
+  c'est le comportement DÉJÀ DOCUMENTÉ « convergence prix-métal→parité toujours molle »
+  (RESTES M3f/M9). L'UI (`_price_line`, province_panel_v2.gd) gère ce cas PROPREMENT :
+  prix≤0 ⇒ AUCUNE ligne affichée (jamais un « × 0 = 0/mois » qui aurait l'air cassé).
+- **`lang-check` ne couvre PAS le Godot/GDScript** — le cliquet (`make lang-check`) ne
+  scanne QUE `scps/viewer.c` + `scps/scps_readout.c` (les primitives du viewer CONSOLE
+  SDL-free), jamais `godot/project/ui/*.gd`. Toute la doctrine « STR_* obligatoire » de
+  CLAUDE.md §langue s'applique donc, EN PRATIQUE, au texte ORIGINAIRE DU MOTEUR C (mots
+  résolus traversant la façade, ex. STR_LOAN_*) — le texte de CHROME GDScript (labels,
+  titres de section, avertissements écrits par l'UI elle-même) est écrit en littéraux
+  FR directs PARTOUT dans le code existant (confirmé : economy_page.gd, empire_window.gd,
+  country_actions.gd… zéro wrapping STR_* sur leurs propres libellés). Cette vague a
+  suivi ce PRÉCÉDENT ÉTABLI (tous les textes neufs de l'onglet Monnaie/Marché/emprunt/
+  journal sont des littéraux GDScript) plutôt que la lettre de la doctrine — décision
+  documentée ici pour qu'un futur agent ne soit pas surpris de ne trouver AUCUN STR_*
+  neuf malgré beaucoup de texte joueur neuf. `make lang-check` confirmé 0=0 (base
+  inchangée, aucun fichier C-viewer touché).
+
+**Pièges** :
+- **`--headless` HANG (jamais noir, carrément bloquant) sur ce toolchain pour toute
+  probe qui capture un PNG** (`await RenderingServer.frame_post_draw` n'arrive jamais —
+  aucune erreur, juste un process qui ne termine plus, `timeout` externe nécessaire pour
+  le débloquer). Les docstrings de `shot_ui.gd`/`budget_shot.gd` avertissaient déjà
+  « FENÊTRÉE (--headless = noir) » mais le comportement RÉEL observé ici est pire qu'un
+  simple rendu noir : un hang total. Solution : lancer SANS `--headless` (fenêtré, un
+  vrai GPU répond — RTX 5080 détecté dans ce run) ; le process se termine proprement
+  (`get_tree().quit(0)`) même en fenêtré, aucune interaction manuelle nécessaire.
+- **`Edit` (l'outil de remplacement de blocs) échoue silencieusement sur de GROS blocs
+  multi-lignes contenant des tirets cadratins «—» / guillemets français «« »» / accents**
+  (« String to replace not found » malgré une copie fidèle depuis `Read`) — cause exacte
+  non identifiée (probablement une normalisation Unicode NFC/NFD divergente entre la
+  lecture et l'écriture de l'outil). Contournement fiable qui a marché à chaque fois :
+  ancrer sur une ligne PLUS COURTE et moins chargée en caractères spéciaux, OU basculer
+  sur `sed`/heredoc (Bash) pour l'insertion brute suivie d'une correction d'INDENTATION
+  ciblée (`sed -i '<L1>,<L2>s/^\t//'`) — RELIRE ensuite au byte près (`cat -A`) pour
+  vérifier l'imbrication de tabulations (piège JUMEAU ci-dessous).
+- **Un bloc inséré via `sed ... r fichier.txt` hérite de l'indentation du fichier SOURCE,
+  PAS du point d'insertion** — deux fois cette vague (country_actions.gd ligne ~658,
+  alerts.gd ligne ~322), le nouveau bloc est atterri UNE tabulation trop profond
+  (imbriqué dans le `if`/`else` précédent au lieu d'être son SIBLING), un bug d'exécution
+  SILENCIEUX en GDScript (pas d'erreur de parse — juste un code qui ne s'exécute que dans
+  la mauvaise branche). Toujours `cat -A` + compter les `^I` après une insertion `sed r`,
+  jamais faire confiance à l'indentation du texte source tel quel.
+- **`var x := cond_expr if bool else 0.0` peut échouer l'inférence de type GDScript**
+  (« Cannot infer the type of "x" ») quand `cond_expr` est un appel dont le type de
+  retour n'est pas visible au même niveau que le littéral `0.0` de repli — typer
+  EXPLICITEMENT (`var x: float = ...`) plutôt que `:=` dès qu'un ternaire mélange un
+  appel de méthode Godot (`w.method(...)`) et un littéral.
+- **Le `_prov_detail`/`province_detail.gd` (touche ouverte au clic sur une province) et
+  le `_prov_panel_v2`/`province_panel_v2.gd` (touche V, ATTACHÉ à `main.gd` KEY_V) sont
+  DEUX panneaux province DISTINCTS qui coexistent** — le brief nommait `province_panel_v2.gd`
+  comme LE modèle (« c'est le modèle ») : confirmé exact, `main.gd:562` (`KEY_V`) toggle
+  bien `_prov_panel_v2`, pas `_prov_detail`. Un agent qui grepperait juste "province"
+  pourrait éditer le mauvais fichier (3 variantes vivent dans `godot/project/ui/` :
+  `province_panel.gd` legacy immediate-mode, `province_detail.gd`, `province_panel_v2.gd`).
+
+**Restes** :
+- **« Gros emprunts d'États voisins » (brief U4, dernier item) NON implémenté** — aucun
+  seuil scale-invariant honnête disponible (pas de reader `credit_debt_ceiling`/PIB-pays
+  exposé à la façade) pour distinguer « grosse dette » chez un petit pays vs un empire ;
+  plutôt qu'inventer un seuil absolu arbitraire (bruyant, non calibré), le point a été
+  documenté comme Reste. Un futur reader `scps_country_debt_ceiling` (miroir de
+  `credit_debt_ceiling`, scps_credit.c) permettrait `debt_total/ceiling` — un ratio
+  scale-invariant propre pour cette condition.
+- **`_price_line` (province_panel_v2.gd) n'a été visuellement confirmé QUE dans le cas
+  « aucun prix » (0, ligne omise) et via la console (valeurs différenciées correctes)** —
+  le monde de test (seed 9, an 59, économie IA-only faible) n'avait aucune province à
+  soi produisant or/cuivre (les seuls biens restés à prix non-nul dans ce run) pour
+  capturer un hover NON-VIDE en PNG. Le mécanisme est prouvé CORRECT (lecteur + formule),
+  pas prouvé BEAU à l'écran avec un vrai nombre — à revérifier en jeu réel/un monde plus
+  mûr si un doute visuel remonte.
+- **La « tendance » du Marché (onglet Marché, budget_panel_v2.gd) est un suivi CLIENT
+  non testé sur plusieurs mois consécutifs** (le probe ne capture qu'un seul refresh —
+  premier passage, `_marche_hist` vide, donc AUCUNE tendance affichée cette fois-ci,
+  seulement le prix courant) — la logique delta/mois est écrite et raisonnée (motif
+  `topbar._d_gold`) mais son affichage réel (flèche ↗/↘, %/mois) reste À VÉRIFIER visuellement
+  sur un run qui laisse le panneau ouvert plusieurs ticks mensuels.
+- **Le journal U4 (bankruptcy/débase adverses) n'a JAMAIS été observé en conditions
+  réelles** (seed 9 an 59 : `country_bankruptcy_scar`/`country_debase_frac` à 0 partout,
+  aucune condition n'est apparue — « JOURNAL · rien à signaler » confirmé dans les
+  captures) — le MÉCANISME est identique au motif « conseil vacant » déjà éprouvé
+  (édge-detection existante), donc à haute confiance, mais SANS preuve visuelle d'une
+  ligne réellement apparue au journal pour une banqueroute. Un futur agent pourrait
+  forcer une banqueroute (`CMD_BANKRUPTCY` sur un pays IA en dette, ou un monde plus
+  long/dur) pour capturer la ligne en vrai.
+- **EXPORT scps.exe** — toujours pas fait (déjà noté à CHAQUE synthèse depuis le 14) ;
+  cette vague ajoute encore de la surface UI jamais testée en dehors des probes headless.
