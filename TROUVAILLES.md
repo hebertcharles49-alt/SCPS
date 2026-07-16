@@ -4221,3 +4221,194 @@ COÛTE cher à retrouver.
 - "Empires au bord de la Brèche" (22/100 sims) ne semble PAS purement proportionnel à
   l'entropie monde (des cas à entropie 8-21 ET des cas à entropie de plusieurs milliers) —
   mécanisme probablement par-empire (tech faustienne individuelle ?), pas vérifié en source.
+
+---
+
+## CHANTIER TECH — la refonte du moteur de recherche (2026-07-16)
+
+**Statut : LIVRÉ — zéro-tech 21.6 % → 3.7 % (giga 100 sims), ancre leaders ±0 % (max 65
+identique), bandes M12 TENUES, golden RE-BASELINÉ VERT, kill-switch TECHPOP=0 prouvé
+byte-identique.** Tag `pre-tech` posé sur 1e09502. Commits : 7bb0c3c (T0 diag IA) ·
+ddfc57b (T0 diag chronicle + fiche honnête) · c2bddc7 (T1a adoption/héritage) ·
+fc6c493 (T1b f_satisfaction) · golden + cet append (commit suivant). SAVE_VERSION 95
+INCHANGÉ (aucune struct sérialisée touchée — ai_on était déjà SVT_AION, les paires de
+succession sont des statics transitoires hors save).
+
+### LA DÉCOUVERTE CENTRALE — le brief ciblait le mauvais site
+
+`re->tech` (scps_econ.c:4786, `wealth×TECH_RATE×satisfaction×savoir_mult`) est un
+accumulateur **VESTIGIAL** : tracé exhaustif — il n'est lu QUE par econ_print_region/
+econ_print_summary (debug console jamais appelé par chronicle) et social_demo (fixture).
+Le « N tech » du giga = `stats.techs` (acteur IA) = `TechState.n_unlocked`, alimenté par
+le pipeline RÉEL : `econ_country_savoir` (scps_econ.c:896, Σ pop_classe×SAVOIR_W_* ×
+(1+%bibliothèque clampé 0.33)) → `research_points` (scps_ai.c ai_research_step ×4.5
+AI_RESEARCH_INCOME_W × yield institutions ×(1+métabolisation) ; miroir joueur
+scps_sim.c:1036) → `tech_research`. **La formule décidée par le joueur (pop × bâtiments %
+× satisfaction % × métabolisation %) existait DÉJÀ aux ¾ dans ce pipeline** — il ne
+manquait que f_satisfaction (aucun terme de satisfaction nulle part dans le chemin réel).
+
+### LE VRAI GOULOT DES 22 % — ai_on=0, pas la formule (mesuré SCPS_TECHDIAG)
+
+Diag seed 9 ×5×250 : les **8/8 empires zéro-tech du bilan étaient `ai_on=0`** — des pays
+SANS IA à vie (research_points=0 pour toujours), pas des pays pauvres (Ligue Brenyan :
+10 rég, 57k pop, savoir 160/an... et 0 point accumulé en 250 ans). Deux familles :
+1. **Les FRAGMENTS du resplit de cataclysme §27** (scps_endgame.c:326-341, eau/chaleur,
+   an 180-240) : nés hors du canal révolte (aucun `last_spawned`), memset nu —
+   `capital_prov=0` (la province 0 d'AUTRUI), `n_regions=0`, arbre vierge, JAMAIS
+   adoptés par la boucle IA de scps_sim.c:1169 (qui ne tournait QUE le mois d'une
+   sécession-révolte). 63/100 sims finissent RÉCHAUFFEMENT an 240 + 9 ENGLOUTISSEMENT
+   ⇒ ~1-3 fragments/sim mesurés à an 250 = le gros des 115/532. La distribution
+   « bimodale 0 ou 27+ » était donc UN ARTEFACT DE MESURE : des fragments nés 10 ans
+   avant le bilan, sans IA, arbre à 6 nœuds de base.
+2. **Les sécessions MANQUÉES par la course d'agrégat** : `secede_to_country` re-clé les
+   provinces mais `regions_of` lit `region[].owner` (rafraîchi au econ_tick SUIVANT) ;
+   `rs->last_spawned` est RAZ en tête de chaque revolt_tick ⇒ raté une fois = mort à
+   vie (mesuré : « Agraire libre » c=13 seed 9 sim 5, terrien, ai_on=0).
+
+**Bibliothèques : PAS le discriminateur.** Σ build.savoir ≈ 0.0 pour presque TOUS les
+empires — y compris les leaders à 65 techs (TDMAP : Estroris 0.0, Cogexel 0.0,
+Merwickka 0.0 ; max observé 5.5). Le facteur bâtiments réel est [×1..×1.33] (jamais
+bloquant — le « plancher tradition orale » demandé par le brief existait déjà : c'est
+le 1 de (1+pct)) ; le vrai levier bâtiment est la chaîne de TECHS Savoir·Production
+(Scriptorium→Université, yield ×1..×2.5) qui, elle, tire. Le planificateur IA
+(EDI_BIBLIOTHEQUE, catch-up LOT I) n'a PAS été touché — pas le bug, pas « ciblé et sûr ».
+
+### T1 — LES FIXES (tous gatés TECHPOP, kill-switch maître)
+
+- **T1a adoption** : la boucle d'adoption tourne CHAQUE mois (O(n_pays), idempotente par
+  ai_on) ; l'orphelin ANTAGONIST terrien (capital≥0, regions_of>0) est adopté dès agrégats
+  frais, `peace_rebuild_country` recale capitale/region_ids avant `ai_actor_init`.
+- **T1a succession** : le resplit §27 fait naître le successeur COMPLET (capital_prov,
+  region_ids) et enregistre {enfant, parent} (statics transitoires scps_endgame.c,
+  readers endgame_succession_count/get) ; scps_sim.c consomme le MÊME tick :
+  **ts[enfant]=ts[parent]** (le savoir survit à la fragmentation — mêmes gens, mêmes
+  livres), research_points repart à 0 (la banque reste à la couronne).
+- **T1b f_satisfaction** : dans `econ_country_savoir` (source unique IA+joueur+façade) —
+  `f_sat = TECHPOP_SAT_FLOOR(0.5) + TECHPOP_SAT_SPAN(0.75)×sat_pop_pondérée` ∈
+  [0.5..1.25], ~×1.0 à 67 % de satisfaction (ancre leaders préservée), la misère RALENTIT
+  sans jamais éteindre — décision joueur « du ×1,XXX pas du ×0 ». Satisfaction lue
+  pop-pondérée sur les régions du pays, MÊME boucle/grain que la base existante.
+- **T1d fiche honnête (display-only)** : « N tech » de la fiche chronicle =
+  `n_unlocked − socle tier-0` (le savoir DU PAYS) au lieu de `stats.techs` (compteur
+  d'ACTEUR remis à 0 à l'init) — un héritier de 65 nœuds affichait 0. stats.techs reste
+  lisible via TDMAP (SCPS_TECHDIAG).
+- **Kill-switch TECHPOP=0** : formule savoir legacy EXACTE (expression intacte) + adoption
+  OFF + héritage OFF + succession-complète OFF ⇒ `SCPS_TUNE=TECHPOP=0 make golden` VERT
+  vs golden pre-tech (prouvé 2×, dont sur le binaire final avant re-baseline) ; empreinte
+  moteur 250 ans identique (âges/or/PIB/fins seed 9 ×5 : diff vide).
+
+### T2 — L'AUDIT SAT-RENDEMENT (tableau site par site)
+
+| Site (fichier:ligne) | Formule | Famille | Verdict |
+|---|---|---|---|
+| scps_econ.c:4786 `re->tech += wealth×TECH_RATE×sat×savoir_mult×council×(1−rot)` | multiplicatif, ×0 possible | RENDEMENT | **VESTIGIAL** (re->tech jamais lu par le jeu) — INTACT, décision documentée |
+| scps_econ.c:4822 diaspora×DIASPORA_TECH_RATE×innovation → re->tech | additif | RENDEMENT | même accumulateur MORT — INTACT ; la vraie f_métabolisation est AI_METAB_RES_W×econ_country_metabolized (déjà planchée ×1) |
+| econ_country_savoir (neuf) f_sat | multiplicatif borné [0.5..1.25] | RENDEMENT | **LE SEUL SITE REMAPPÉ** (ajout, tunables TECHPOP_SAT_*) |
+| econ_satisfaction_tax_factor (2136, lu 4×) | 1+coupling×(sat−ref), clampé [0.5..1.5] | POLITIQUE (tolérance fiscale M8 C1) | déjà borné, sémantique design — INTACT |
+| seuil fiscal ×(0.40+0.60×sat) (3846/4044) | plancher structurel 0.40 | POLITIQUE | INTACT |
+| croissance POP_SAT_W×max(0,sat−0.5) (4351) | bonus additif asymétrique, jamais négatif | RENDEMENT (démo) | déjà conforme « jamais ×0 » — INTACT |
+| promotion ≥50 % (3354) / démotion <30 % 2 mois (3369) | seuils | POLITIQUE (mobilité) | INTACT |
+| aisance=sat×10 (demography:139, legitimacy:66) | échelle | POLITIQUE (légitimité) | INTACT |
+| prosperity unmet=(1−sat)×pop (141) | charge | POLITIQUE (pression PE) | INTACT |
+| scps_ai.c:922 ciblage pire-sat | comparaison | POLITIQUE (priorisation) | INTACT |
+| scps_events.c:389/412/447 seuils sat | gates | POLITIQUE (dilemmes) | INTACT |
+| scps_revolt.c:917/950 (+0.15/+0.20) | ÉCRITURE | — | INTACT |
+
+Aucun site ambigu restant. **Conclusion : le seul multiplicateur ×0-capable de rendement
+était la ligne tech élite, vestigiale** — la décision joueur s'implémente entièrement
+dans le pipeline réel (f_sat neuf borné).
+
+### T3 — L'ABLATION PRE-MONNAIE (verdict d'attribution)
+
+Worktree manuel `pre-monnaie` (589036e), build séparé, frame {9,11,42}×3×250 :
+**pre-monnaie 17/44 zéro-tech (38.6 %) vs pre-tech (M12) 9/39 (23.1 %)**.
+Verdict : **PRÉEXISTANT** — le zéro-tech précède tout l'arc monnaie (il était même PLUS
+fréquent avant ; le bug ai_on/cataclysme est structurel, très antérieur). Le lien
+« pression fiscale élites >100 % → tech » supposé par le brief est CADUC : le pipeline
+réel ne lit NI la richesse d'élite NI la pression fiscale (la ligne richesse-élite est
+vestigiale) — la pression M12 sur les élites n'a jamais touché la recherche.
+
+### T4 — LE CALIBRAGE ET LA PREUVE
+
+**Sweep apparié** (frame M11/M12 `<seed> 3 250`, pre-tech = TECHPOP=0 du binaire HEAD,
+moteur prouvé identique — reproduit banqueroutes M12 28=12+0+16 À L'UNITÉ) :
+
+| métrique | pre-tech | HEAD | verdict |
+|---|---|---|---|
+| zéro-tech | 9/39 (23.1 %) | **1/35 (2.9 %)** | cible <5 % ATTEINTE |
+| banqueroutes Σ | 28 (12+0+16) | 27 (12+2+13) | bande TENUE |
+| dette early an 2-3 Σ (9 sims dédiés `3 3`) | 0 | **0** | 9/9 — gate M12 tenu |
+| Laborer sat moy (fin) | 72/60/61 % | 74/76/66 % | tenue (au-dessus — jamais vers le bas) |
+| colonisation Σ | 315 | 347 | +10 %, bord de bande, positif |
+| invariant M3f | 9/9 sous seuil (62-154 % vs 370 %) | 9/9 sous seuil | 0/9 breach TENU |
+| leaders max/seed | 65/48/56 | 65/48/56 | ancre ±0 % |
+
+**RE-GIGA 20×5×250** (build/giga_tech/, vs build/giga/ pre-tech du même jour) :
+
+| métrique | pre-tech (100 sims) | HEAD (100 sims) |
+|---|---|---|
+| zéro-tech | 115/532 (21.6 %) | **19/509 (3.7 %)** |
+| <6 techs | 38.2 % | 19.6 % (bimodalité effondrée) |
+| p50 · p90 · max | 17 · 50 · 65 | 27 · 56 · **65** (ancre) |
+| fins | RÉCHAUF 63 · RONCES 12 · HIVER 12 · ENGLOUT 9 · SANG 1 | RÉCHAUF **63** · RONCES 15 · HIVER 11 · ENGLOUT 9 |
+| Merveille métab max | {1:58, 2:37, 3:5} | {1:55, 2:42, 3:3} |
+| entropie [TERMINAL] | 17 | **17** (mesuré : la Brèche ne s'emballe PAS) |
+| nœuds faustiens Σ | 613 | 712 (+16 %, fins inchangées) |
+| nœuds recherchés Σ (acteurs) | 20 947 | 20 321 (l'ACTIVITÉ de recherche est stable — c'est la distribution qui change) |
+| banqueroutes Σ | 335 | 289 |
+| dette monde fin Σ | 94.3k | 81.6k |
+| invariant breaches | 5/100 | **3/100** |
+| Laborer sat moy | 60.1 % | 62.1 % |
+
+Les 19 zéro-tech restants : TOUS des micro-États « X libre » 1-région, pop 0-7k, nés
+tard d'une sécession — IA vivante, juste pas encore leur premier nœud. Honnête.
+**RÉCHAUFFEMENT reste 63/100** : l'attendu « <63 » ne s'est PAS matérialisé à l'échelle
+(le paired 3-graines montrait 3 RONCES de plus, mais à 100 sims le fallback an-240
+domine toujours — les fenêtres an-180 dépendent de l'entropie/charge, pas du nombre de
+mondes techés). Mesuré, pas présumé — la vague « fenêtres des fins » (item 2 du giga
+sweep l'œil neuf) reste le levier pour la diversité des fins.
+
+**Gates (tous passés)** : (1) kill-switch golden byte-identique 2× ✓ · (2) sweeps
+ci-dessus ✓ · (3) make test 38 VERTS/0 ROUGE (intertrade_demo seul, setenv Windows
+pré-existant) · credit_demo 48/48 ✓ · golden RE-BASELINÉ puis VERT ✓ · determinism
+STABLE (5×12 ans) ✓ · determinism-deep STABLE (7/9 ×200 ans) ✓ · savetest 9 A==B
+byte-identique (day=2095 pop=60472.2 or=16811.2) + octet altéré REFUSÉ ✓ · fuzz-save
+8/8 (216 octets, 0 crash) ✓ · lang-check 0=0 ✓.
+
+**Pièges** :
+- **Le compteur « N tech » de la fiche était un compteur d'ACTEUR, pas de PAYS** —
+  `stats.techs` meurt avec l'acteur (ai_actor_init) ; toute télémétrie qui compare des
+  pays nés en cours de partie doit lire `n_unlocked − socle`. Les agrégats « nœuds
+  déverrouillés/sim » (chronicle:1795, capture_age_snap) restent en stats.techs
+  (activité), c'est VOULU.
+- **`region[].owner` est rafraîchi au econ_tick suivant** : tout code qui teste
+  `regions_of` le mois d'un transfert de provinces lit du PÉRIMÉ — la sécession-split
+  (scps_sim.c:436) appelait déjà econ_aggregate_regions explicitement, le canal révolte
+  non. Une boucle mensuelle idempotente coûte moins cher qu'une resynchro par site.
+- **Un flag one-shot (`last_spawned`) comme déclencheur d'une boucle de rattrapage =
+  un raté irrécupérable** — préférer l'idempotence périodique.
+- **`grep "· ?[0-9]+ tech"` rate les `·  0 tech` (deux espaces, %2d)** — compter les
+  zéro-tech avec `"·  0 tech"` exactement (piège de parse giga, déjà mordu 2×).
+- Les fins des sims changent AVANT l'endgame quand on active TECHPOP : l'adoption tourne
+  dès le mois 1 (orphelins précoces) et f_sat change les revenus dès l'an 1 — la
+  divergence de trajectoire est TOTALE, ne comparer que des agrégats statistiques.
+
+**Restes** :
+- **DLL Godot À RE-BUILDER** (`scons -C godot`) : scps_econ.c, scps_tune_list.h,
+  scps_endgame.c/h, scps_sim.c, scps_ai.c ont changé — motif noté à chaque vague. Aucun
+  fichier godot/ touché (interdit de vague) ; aucun reader façade neuf nécessaire (la
+  fiche tech façade lit déjà TechState — vérifier à l'occasion que l'UI arbre affiche
+  n_unlocked, pas un compteur d'acteur).
+- **La diversité des FINS n'a pas bougé (63/100 RÉCHAUFFEMENT)** — la vague « fenêtres
+  an-180 / seuils des 4 fins » (giga sweep l'œil neuf, item 2) reste à faire ; la tech
+  seule ne suffit pas.
+- **L'héritage de l'arbre aux sécessions-RÉVOLTE** (pas cataclysme) : délibérément NON
+  fait (elles recherchent déjà, naissent tôt, design à trancher — un peuple qui fait
+  sécession emporte-t-il les bibliothèques royales ?). Candidat si le joueur veut moins
+  de micro-États à 0-5 techs.
+- **Le planificateur IA ne bâtit presque jamais de Bibliothèque** (Σ build.savoir ≈ 0
+  partout, leaders compris) — le bonus [×1..×1.33] est quasi latent ; si un jour on veut
+  que la brique BÂTIE compte, c'est un calibrage agency dédié (LOT I n'a pas suffi).
+- Fichiers de sweep bruts : build/giga_tech/, build/paired_tech/, build/ablation_tech/,
+  build/techdiag/ — scratch locaux non commis, les Σ ci-dessus font foi.
+- Worktree `/c/tmp_wt_premonnaie` retiré en fin de mission.
