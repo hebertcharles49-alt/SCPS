@@ -20,16 +20,77 @@
 #include <string.h>
 #include <math.h>
 
+/* MONNAIE M14 — B9 : `setenv` n'existe PAS sous MinGW-w64 (msvcrt n'implémente pas
+ * l'API POSIX, même avec _POSIX_C_SOURCE — un #define qui n'a jamais eu de prise ici :
+ * ce banc ne BUILDAIT jamais sous Windows, motif du « 38/39 pré-existant » cité à
+ * chaque vague). Shim portable : _putenv_s (CRT Windows, <stdlib.h>) sous _WIN32,
+ * setenv POSIX partout ailleurs — comportement identique (variable posée, écrasée si
+ * déjà présente). */
+#ifdef _WIN32
+static void scps_setenv(const char *name, const char *value){ _putenv_s(name, value); }
+#else
+static void scps_setenv(const char *name, const char *value){ setenv(name, value, 1); }
+#endif
+
 static int g_pass=0,g_fail=0;
 static void ok(const char*w,bool c){ printf("   %s %s\n",c?"✓":"✗",w); if(c)g_pass++; else g_fail++; }
-static double wsum(const WorldEconomy *e){ double s=0.0; for(int r=0;r<e->n_regions;r++) s+=e->region[r].treasury; return s; }
+/* B9 : LA MONNAIE totale du monde = trésor + richesse des 3 classes (le MÊME périmètre
+ * que l'invariant M(t) ailleurs, ex. credit_demo.c « M avant/après ») — treasury SEUL
+ * ignore le péage (TRADE_LEVY, M5-R1) qui verse la MOITIÉ de sa marge aux BOURGEOIS en
+ * richesse, pas au trésor (item 5, scps_intertrade.c ~1010) : un échange RÉEL (zéro
+ * faucet/sink) déplace bien treasury→wealth pour cette part, jamais treasury→treasury
+ * seul — wsum() doit compter les DEUX pour mesurer une VRAIE conservation. */
+static double wsum(const WorldEconomy *e){
+    double s=0.0;
+    for(int r=0;r<e->n_regions;r++){
+        s += e->region[r].treasury;
+        for (int c=0;c<CLASS_COUNT;c++) s += e->region[r].strata[c].wealth;
+    }
+    return s;
+}
+/* MONNAIE M14 — B9 : intertrade_tick/intertrade_market_* résolvent stock/prix/trésor au
+ * grain PROVINCE (it_treasury, econ_region_stock_add — motif RE-KEY PROVINCE) ; ce banc,
+ * jamais compilé sous Windows avant B9 (motif setenv), posait sa fixture UNIQUEMENT sur
+ * region[] (la VUE) — invisible aux mutations RÉELLES (le GATE lit region[].stock, mais
+ * le DÉBIT mord prov[], jamais seedé ⇒ moved≈0 ⇒ AUCUN échange, jamais démasqué faute de
+ * build). `mirror_prov` pousse la fixture posée sur region[] vers la province
+ * représentative (owner reste sur region[] SEUL, lu directement par intertrade_tick pour
+ * l'appartenance) ; `econ_aggregate_regions` après CHAQUE tick tire les mutations RÉELLES
+ * (prov[]) de retour vers region[] pour que les assertions (qui lisent region[]) voient
+ * l'état RÉEL post-échange. */
+static void mirror_prov(WorldEconomy *e, int region){
+    if (region<0 || region>=e->n_regions) return;
+    RegionEconomy *rv=&e->region[region];
+    int rep = econ_region_rep_province(e, region);
+    int n = e->n_prov; if (n>SCPS_MAX_PROV) n=SCPS_MAX_PROV;
+    /* B9 : econ_aggregate_regions ÉLIT region[].owner depuis prov[] (capitale, sinon la
+     * province la plus peuplée — scps_econ.c econ_aggregate_regions) et SOMME stock/
+     * treasury sur TOUTES les provinces membres — un simple poke de la représentative
+     * laisse les SŒURS polluer la Σ (et l'élection d'owner ignorer notre poke). On aligne
+     * TOUTES les provinces de la région : owner partout, stock/trésor/prix sur la
+     * REPRÉSENTATIVE seule, sœurs à ZÉRO (stock/trésor — jamais leur owner, motif ci-haut). */
+    bool put=false;
+    for (int p=0;p<n;p++){
+        ProvinceEconomy *pv=&e->prov[p];
+        if (pv->region!=region) continue;
+        pv->owner = rv->owner;
+        if (!put && (p==rep || rep<0)){
+            for (int g=0; g<RES_COUNT; g++){ pv->stock[g]=rv->stock[g]; pv->price[g]=rv->price[g]; }
+            pv->treasury = rv->treasury;
+            put=true;
+        } else {
+            for (int g=0; g<RES_COUNT; g++) pv->stock[g]=0.f;
+            pv->treasury = 0.f;
+        }
+    }
+}
 
 int main(int argc,char**argv){
     uint32_t seed=(argc>1)?(uint32_t)strtoul(argv[1],NULL,10):42u;
     /* M4 — ce banc ISOLE le commerce de ROUTES (inter-pays). On coupe la passe d'arbitrage
      * des cités-états (ARB_VOL_CAP=0), qui sinon importerait du RÉSEAU vers nos Centres de
      * test (comportement légitime, mais hors sujet ici ; sa preuve est la chronique). */
-    setenv("SCPS_TUNE","ARB_VOL_CAP=0",1);
+    scps_setenv("SCPS_TUNE","ARB_VOL_CAP=0");
     World*w=malloc(sizeof(World)); WorldEconomy*econ=malloc(sizeof(WorldEconomy));
     if(!w||!econ){fprintf(stderr,"OOM\n");return 1;}
 
@@ -40,6 +101,11 @@ int main(int argc,char**argv){
     WorldParams p=worldparams_default(seed);
     world_generate(w,&p);
     econ_init(econ,w); gen_population(w,econ); worldgen_seed_peoples(w,econ,HERITAGE_ADAPTATIF);
+    /* B9 : region[] n'a JAMAIS été agrégé depuis prov[] à ce point (aucun econ_tick n'a
+     * encore tourné) — wsum() (Σ region[].treasury, la conservation testée plus bas)
+     * lirait sinon un état PÉRIMÉ/incohérent avec prov[] (la vérité, seedée par gen_
+     * population) avant le 1er tick, faussant le AVANT/APRÈS de la conservation. */
+    econ_aggregate_regions(econ);
     /* P3.20 — la GÂCHE du réseau : sans Centre commercial, pas de commerce
      * inter-pays. On sème les hubs (géographiques) et l'on teste ENTRE hubs. */
     intertrade_reset();
@@ -56,21 +122,26 @@ int main(int argc,char**argv){
     rn.route[0].ra=ra; rn.route[0].rb=rb; rn.route[0].maritime=true; rn.route[0].open=true;
     rn.route[0].capacity=120.f; rn.n=1;
 
-    /* A bon marché + surplus ; B cher + pénurie → le bien doit remonter A→B. */
+    /* A bon marché + surplus ; B cher + pénurie → le bien doit remonter A→B.
+     * B9 : mirror_prov pousse la fixture vers la province représentative (RE-KEY). */
     #define SETUP() do{ econ->region[ra].owner=0; econ->region[rb].owner=1; \
         econ->region[ra].stock[g]=500.f; econ->region[ra].price[g]=1.0f; econ->region[ra].treasury=0.f; \
-        econ->region[rb].stock[g]=0.f;   econ->region[rb].price[g]=6.0f; econ->region[rb].treasury=100000.f; }while(0)
-    /* CONSERVATION : Σ trésor du monde — invariant sur tout commerce/pump (zéro faucet, zéro sink). */
+        econ->region[rb].stock[g]=0.f;   econ->region[rb].price[g]=6.0f; econ->region[rb].treasury=100000.f; \
+        mirror_prov(econ,ra); mirror_prov(econ,rb); }while(0)
+    /* CONSERVATION : Σ monnaie du monde (wsum = trésor+richesse, B9 — le péage TRADE_LEVY
+     * verse la moitié de sa marge aux BOURGEOIS en richesse, pas au trésor, item 5/M5-R1) —
+     * invariant sur tout commerce/pump (zéro faucet, zéro sink). */
     /* ---- 1. Une route inter-pays PORTE des goods ---- */
     printf("\n── 1. La grande route porte des goods (arbitrage + or à l'exportateur) ──\n");
     SETUP();
     double w0=wsum(econ);
     intertrade_tick(econ,&rn,&dp);
+    econ_aggregate_regions(econ);   /* B9 : tire les mutations RÉELLES (prov[]) vers region[] (lecture) */
     printf("   après le tick : B reçoit %.0f unités · A encaisse %.0f or · valeur échangée %.0f\n",
            econ->region[rb].stock[g], econ->region[ra].treasury, intertrade_imports_value(econ));
     ok("le bien REMONTE la pente de prix (l'importateur B reçoit)", econ->region[rb].stock[g] > 0.f);
     ok("l'EXPORTATEUR A encaisse de l'or", econ->region[ra].treasury > 0.f);
-    ok("CONSERVATION : Σ trésor du monde INCHANGÉ par le commerce (zéro faucet/sink)", fabs(wsum(econ)-w0) < 1e-2);
+    ok("CONSERVATION : Σ monnaie du monde (trésor+richesse) INCHANGÉE par le commerce (zéro faucet/sink)", fabs(wsum(econ)-w0) < 1e-2);
     ok("un échange a eu lieu (valeur > 0)", intertrade_imports_value(econ) > 0.f);
     ok("la route marchande est ACTIVE pour les deux pays",
        intertrade_active_routes(econ,&rn,&dp,0)==1 && intertrade_active_routes(econ,&rn,&dp,1)==1);
@@ -89,6 +160,7 @@ int main(int argc,char**argv){
     SETUP();
     diplo_make_peace(&dp,0,1);
     intertrade_tick(econ,&rn,&dp);
+    econ_aggregate_regions(econ);   /* B9 */
     ok("après la paix, le commerce REPREND (B reçoit de nouveau)", econ->region[rb].stock[g] > 0.f);
 
     /* ---- 4. Intra-pays ≠ commerce inter-pays ---- */
@@ -115,12 +187,15 @@ int main(int argc,char**argv){
         econ->region[pr].stock[RES_WOOD]=0.f;          /* le joueur n'a RIEN */
         econ->region[pr].treasury=100000.f;
         econ->region[ra].stock[RES_WOOD]=500.f;        /* le marché (Centre ra) EN a */
+        mirror_prov(econ,pr); mirror_prov(econ,ra);     /* B9 */
         intertrade_tick(econ,&rn,&dp);                 /* (re)bâtit la carte + écrit pr.import_margin */
+        econ_aggregate_regions(econ);                   /* B9 */
         ok("pr est bien rattaché au Centre ra (son marché régional)", intertrade_region_hub(pr)==ra);
         float marge=econ->region[pr].import_margin; if(marge<1.f)marge=1.f;
         float tres0=econ->region[pr].treasury, hub0=econ->region[ra].stock[RES_WOOD];
         double wb0=wsum(econ);
         long spent=0; long got=intertrade_market_buy(econ,pr,RES_WOOD,50,0,&spent);
+        econ_aggregate_regions(econ);                   /* B9 : market_buy mord prov[] */
         printf("   achat 50 bois : reçu %ld · payé %ld or · marge ×%.2f · prix attendu %ld\n",
                got, spent, marge, (long)(50*1.0f*marge+0.5f));
         ok("le joueur REÇOIT son bois (50)", got==50 && econ->region[pr].stock[RES_WOOD]==50.f);
@@ -131,8 +206,10 @@ int main(int argc,char**argv){
         ok("CONSERVATION : l'achat ne crée ni ne détruit d'or (acheteur −cost == hub +cost)", fabs(wsum(econ)-wb0) < 1e-2);
         /* UNIQUEMENT s'il est dispo : marché vidé → achat nul, trésor intact */
         econ->region[ra].stock[RES_WOOD]=0.f;
+        mirror_prov(econ,ra);                           /* B9 */
         float tres1=econ->region[pr].treasury;
         long got2=intertrade_market_buy(econ,pr,RES_WOOD,50,0,&spent);
+        econ_aggregate_regions(econ);                   /* B9 */
         ok("marché VIDE → aucun achat (« uniquement s'il est dispo »), trésor intact",
            got2==0 && spent==0 && econ->region[pr].treasury==tres1);
     }
@@ -145,7 +222,9 @@ int main(int argc,char**argv){
     econ->region[ra].stock[RES_WOOD]=200.f;
     econ->region[ra].price[RES_WOOD]=2.f;
     econ->region[ra].treasury=5000.f;
+    mirror_prov(econ,ra);                           /* B9 : la fixture doit aussi VIVRE au grain province */
     intertrade_tick(econ,&rn,&dp);                 /* (re)bâtit la carte : ra est son propre hub */
+    econ_aggregate_regions(econ);
     float s0=econ->region[ra].stock[RES_WOOD], t0=econ->region[ra].treasury;
     long xp=0;
     long xb=intertrade_market_buy (econ,ra,RES_WOOD,50,0,&xp);   /* tier 0, hub==ra */
@@ -162,15 +241,20 @@ int main(int argc,char**argv){
         int X=-1, Y=-1;                                    /* X = chantier (vide), Y = sœur (riche), même empire 0 */
         for (int r=0;r<econ->n_regions;r++){ if (X<0) X=r; else { Y=r; break; } }
         econ->region[X].owner=0; econ->region[Y].owner=0;
-        for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==0) econ->region[r].stock[RES_STONE]=0.f;
+        /* B9 : ZÉRO toutes les provinces de l'empire 0 (pas seulement region[]) — sinon un
+         * reliquat de genèse dans une AUTRE province owner==0 fausserait la conso empire-aware
+         * (elle puiserait ailleurs que Y, cassant l'égalité stricte Y==y0-100 testée plus bas). */
+        for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==0){ econ->region[r].stock[RES_STONE]=0.f; mirror_prov(econ,r); }
         econ->region[Y].stock[RES_STONE]=300.f;            /* la SŒUR a la pierre ; X n'a RIEN */
         econ->region[X].price[RES_STONE]=2.f;
+        mirror_prov(econ,X); mirror_prov(econ,Y);           /* B9 : la conso mord prov[], pas region[] */
         float av = intertrade_market_avail(econ, X, RES_STONE);
         float ib=0.f; float gold = intertrade_buy_cost(econ, X, RES_STONE, 100.f, 2.f, &ib);
         ok("le GATE voit la matière de la sœur (avail ≥ besoin)", av >= 100.f-1e-3f);
         ok("le DEVIS est GRATUIT (matière d'empire = 0 or, NU d'import = 0)", gold < 1e-3f && ib < 1e-3f);
         float y0=econ->region[Y].stock[RES_STONE];
         intertrade_market_consume(econ, X, RES_STONE, 100.f, econ->region[X].price[RES_STONE]);
+        econ_aggregate_regions(econ);   /* B9 : la conso a mordu prov[] — tirer l'état RÉEL vers region[] */
         ok("la CONSO puise la SŒUR Y (−100), X reste vide",
            fabsf(econ->region[Y].stock[RES_STONE]-(y0-100.f))<1e-2f && econ->region[X].stock[RES_STONE]<1e-3f);
     }
@@ -182,11 +266,13 @@ int main(int argc,char**argv){
     if (pr>=0) {
         diplo_declare_war(&dp,0,1);                        /* guerre 0-1 : pas de trade au tick (stocks figés) */
         econ->region[pr].owner=0; econ->region[ra].owner=1; econ->region[rb].owner=1;
-        for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==0) econ->region[r].stock[RES_STONE]=0.f;
-        for (int r=0;r<econ->n_regions;r++) if (intertrade_has_centre(r) && r!=ra) econ->region[r].stock[RES_STONE]=0.f;
+        for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==0){ econ->region[r].stock[RES_STONE]=0.f; mirror_prov(econ,r); }
+        for (int r=0;r<econ->n_regions;r++) if (intertrade_has_centre(r) && r!=ra){ econ->region[r].stock[RES_STONE]=0.f; mirror_prov(econ,r); }
         econ->region[ra].stock[RES_STONE]=200.f;           /* le SEUL Centre porteur — et il est ÉTRANGER */
         econ->region[pr].price[RES_STONE]=1.0f;
+        mirror_prov(econ,ra); mirror_prov(econ,rb); mirror_prov(econ,pr);   /* B9 */
         intertrade_tick(econ,&rn,&dp);                     /* carte + cache (guerre ⇒ aucun trade ne bouge les stocks) */
+        econ_aggregate_regions(econ);                       /* B9 */
         if (intertrade_region_hub(pr)==ra && econ->region[ra].owner!=econ->region[pr].owner){
             float marge=econ->region[pr].import_margin; if(marge<1.f)marge=1.f;
             float av=intertrade_market_avail(econ,pr,RES_STONE);
@@ -198,6 +284,7 @@ int main(int argc,char**argv){
             ok("la BASE DU PÉAGE est positive (devis − NU = marge de transport > 0)", gold-ib > 1e-3f);
             float ra0=econ->region[ra].stock[RES_STONE];
             intertrade_market_consume(econ,pr,RES_STONE,100.f, econ->region[pr].price[RES_STONE]);
+            econ_aggregate_regions(econ);                    /* B9 */
             ok("la CONSO importe bien du Centre étranger ra (−100)",
                fabsf(econ->region[ra].stock[RES_STONE]-(ra0-100.f))<1e-2f);
         } else {

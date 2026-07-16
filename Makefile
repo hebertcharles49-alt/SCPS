@@ -268,7 +268,7 @@ INTERTRADE_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religi
                    $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_scps_intertrade.o \
                    $(OBJDIR)/scps_intertrade_demo.o
 intertrade_demo: $(INTERTRADE_DEMO_OBJS)
-	$(CC) $(INTERTRADE_DEMO_OBJS) -o $@ -lm
+	$(CC) $(INTERTRADE_DEMO_OBJS) -o $@ -lm -Wl,--stack,8388608
 
 WARHOST_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
                    $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_scps_decrees.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_trade.o \
