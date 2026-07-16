@@ -584,7 +584,10 @@ static const Resource NEED_ORDER[CLASS_COUNT][9] = {
     [CLASS_ELITE]     = { RES_GRAIN, RES_FUR, RES_PAPER, RES_EAU_DE_VIE, RES_PRECIOUS_WARE, RES_STATUE, RES_NONE },
     [CLASS_SLAVE]     = { RES_GRAIN, RES_NONE },   /* le plancher vital seul : rang 0, toujours débloqué (active_needs>=1) */
 };
-/* rang de priorité d'un besoin (0 = vital) ; 99 = hors panier (jamais débloqué). */
+/* rang de priorité d'un besoin (0 = vital) ; 99 = hors panier (jamais débloqué). MONNAIE
+ * M10 — P1 : le panier CŒUR n'est plus GATÉ par ce rang quand le palier pop-empire est actif
+ * (« n'importe quel bien compte, peu importe l'ordre » — décision joueur ; §4/§5 d'econ_tick,
+ * gardé UNIQUEMENT pour le chemin LEGACY, kill-switch NEEDS_TIER_POP<=0, golden-safe). */
 static int need_rank(int c, Resource r){
     if (c<0||c>=CLASS_COUNT) return 99;
     for (int i=0;i<9 && NEED_ORDER[c][i]!=RES_NONE;i++) if (NEED_ORDER[c][i]==r) return i;
@@ -3094,11 +3097,60 @@ static uint8_t g_lowsat_streak[SCPS_MAX_PROV][CLASS_COUNT];/* mois consécutifs 
  * mobility_tick_region — LU en SEED du tick suivant, ÉCRASÉ (pas cumulé) par la frappe
  * libre de ce même tick. [0]=or [1]=cuivre. */
 static float   g_mint_demand_prev[SCPS_MAX_PROV][2];
+/* MONNAIE M10 — P1 : LE PALIER DE BESOINS (grain NATIONAL — par PAYS, jamais province,
+ * doctrine CLAUDE.md « pop d'empire/fiscalité ») — g_needs_tier_held[cid] est le palier
+ * EFFECTIF, hystérétique (motif g_basket_pc/g_lowsat_streak juste au-dessus) : ratchet qui
+ * monte INSTANTANÉMENT avec la pop (un palier atteint se sert dès qu'il l'est) et décroît
+ * LENTEMENT si la pop retombe (peste/guerre, NEEDS_TIER_DECAY_YEARS ~5 ans) — jamais un
+ * couperet. Accumulateur inter-ticks : SÉRIALISÉ (même blob EMOB, cf. econ_mobility_save/
+ * load ci-dessous), RAZ sur démarrage frais (econ_mobility_reset). */
+static float   g_needs_tier_held[SCPS_MAX_COUNTRY];
 void econ_mobility_reset(void){
     memset(g_basket_pc,0,sizeof g_basket_pc);
     memset(g_lowsat_streak,0,sizeof g_lowsat_streak);
     memset(g_friche,0,sizeof g_friche); g_n_friche=0;
     memset(g_mint_demand_prev,0,sizeof g_mint_demand_prev);
+    memset(g_needs_tier_held,0,sizeof g_needs_tier_held);
+}
+/* Le palier BRUT (géométrique, ~×2/palier, décision joueur) qu'une pop d'EMPIRE atteint —
+ * PUR, sans hystérésis (utilitaire du ratchet ci-dessous). base=NEEDS_TIER_POP (T1) ;
+ * NEEDS_TIER_GROWTH (déf. 2.0) le facteur ; NEEDS_TIER_MAX borne (déf. 10, largement au-delà
+ * du nombre de biens distincts qu'une classe consomme — rapport M10 §C8, ~6 max). */
+static int econ_needs_tier_raw(float pop, float base){
+    float growth  = fmaxf(1.05f, tune_f("NEEDS_TIER_GROWTH", 2.0f));
+    int   maxtier = (int)tune_f("NEEDS_TIER_MAX", 10.f);
+    int   raw = 0; float thr = base;
+    while (raw<maxtier && pop>=thr){ raw++; thr*=growth; }
+    return raw;
+}
+/* Met à jour LE RATCHET d'un pays (appelé UNE fois/mois/pays, pré-passe d'econ_tick — cf.
+ * site d'appel) : monte au niveau BRUT dès qu'il est atteint, descend au taux
+ * NEEDS_TIER_DECAY_YEARS (dt en ANNÉES, cadence mensuelle dt=1/12 → −1 palier après ~5 ans
+ * sous le seuil brut, PAS un cliquet absolu — un effondrement DURABLE finit par redescendre
+ * le panier exigé, motif brief « décroissance lente »). */
+static void econ_needs_tier_update(int cid, float pop, float dt, float base){
+    int raw = econ_needs_tier_raw(pop, base);
+    if (cid<0 || cid>=SCPS_MAX_COUNTRY) return;
+    float held = g_needs_tier_held[cid];
+    if ((float)raw > held) held = (float)raw;                    /* monte INSTANTANÉMENT */
+    else if ((float)raw < held) {
+        float decay_years = fmaxf(0.1f, tune_f("NEEDS_TIER_DECAY_YEARS", 5.f));
+        held -= dt/decay_years;
+        if (held < (float)raw) held = (float)raw;                /* jamais SOUS le brut courant */
+    }
+    if (held<0.f) held=0.f;
+    g_needs_tier_held[cid]=held;
+}
+/* LECTEUR PUBLIC — la SOURCE UNIQUE d'active_needs pour un pays (remplace le « miroir exact »
+ * dupliqué §4 tick/M4-IP par UN SEUL appel, cf. sites d'usage). NEEDS_TIER_POP<=0 (kill-
+ * switch) ou cid hors table : sentinel -1, l'appelant retombe sur le mécanisme LEGACY
+ * (capitale_max_tier, pop LOCALE de la province) — golden pré-M10 byte-identique. Valide
+ * uniquement APRÈS la pré-passe d'econ_tick du mois courant (tout appelant DANS la même
+ * cadence mensuelle, motif M4-IP appelé après econ_tick, lit la valeur à jour). */
+int econ_needs_active_for_country(int cid){
+    if (tune_f("NEEDS_TIER_POP", 3000.f) <= 0.f) return -1;
+    if (cid<0 || cid>=SCPS_MAX_COUNTRY) return -1;
+    return 1 + (int)g_needs_tier_held[cid];
 }
 /* SAVETEST FIX (2026-07) — g_friche/g_lowsat_streak sont des ACCUMULATEURS croisant les
  * ticks (le friche d'UN tick lit le calcul du tick PRÉCÉDENT, cf. le lecteur ligne ~1841 vs
@@ -3123,12 +3175,21 @@ void econ_mobility_save(FILE *f){
     fwrite(g_lowsat_streak,sizeof g_lowsat_streak,1,f);
     fwrite(g_basket_pc,sizeof g_basket_pc,1,f);
     fwrite(g_mint_demand_prev,sizeof g_mint_demand_prev,1,f);   /* MONNAIE M3f — SAVE_VERSION 91 */
+    fwrite(g_needs_tier_held,sizeof g_needs_tier_held,1,f);     /* MONNAIE M10 — P1 — SAVE_VERSION 95 */
 }
 bool econ_mobility_load(FILE *f){
-    return fread(g_friche,sizeof g_friche,1,f)==1
+    bool ok = fread(g_friche,sizeof g_friche,1,f)==1
         && fread(g_lowsat_streak,sizeof g_lowsat_streak,1,f)==1
         && fread(g_basket_pc,sizeof g_basket_pc,1,f)==1
         && fread(g_mint_demand_prev,sizeof g_mint_demand_prev,1,f)==1;   /* MONNAIE M3f — SAVE_VERSION 91 */
+    if (!ok) return false;
+    if (fread(g_needs_tier_held,sizeof g_needs_tier_held,1,f)!=1) return false;   /* MONNAIE M10 — P1 */
+    /* save_sane : un palier hystérétique désérialisé est REVALIDÉ — il ne borne ni boucle ni
+     * index de tableau ailleurs (lu via econ_needs_active_for_country, déjà bornée par son
+     * propre cid<SCPS_MAX_COUNTRY), mais un NaN/inf corromprait la comparaison du ratchet
+     * (raw>held) — clamp défensif, motif CLAUDE.md « toute valeur désérialisée se revalide ». */
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++) g_needs_tier_held[c]=clampf(g_needs_tier_held[c],0.f,32.f);
+    return true;
 }
 /* MONNAIE M3f — item 2 : le miroir DÉBITEUR de econ_wage_split au grain ROYAUME (pas
  * province) — un gain externe (récompense de mission) n'est plus une création : il est
@@ -3352,6 +3413,16 @@ void econ_tick(WorldEconomy *e, float dt) {
     /* OUTILS — l'usure du PARC NATIONAL se fait UNE fois/tick (un ×0.97 par-province
      * sur un pool partagé le décaierait N fois). tools_pc lira ce parc déjà usé. */
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) if (epop[c]>0.f) pool[c][RES_TOOLS]*=0.97f;
+
+    /* MONNAIE M10 — P1 : LE PALIER DE BESOINS — pré-passe UNE fois/pays/mois, AVANT la boucle
+     * par-province (epop[] = Σ Laborer+Bourgeois+Élite du pays, DÉJÀ calculé ci-dessus, MÊME
+     * définition que rpop_nd au site de lecture §besoins progressifs plus bas). dt est en
+     * ANNÉES ici (cadence mensuelle econ_tick(e,1.f/12.f) — cf. scps_sim.c) : le ratchet décroît
+     * de dt/NEEDS_TIER_DECAY_YEARS par appel. NEEDS_TIER_POP<=0 : kill-switch — on NE TOUCHE PAS
+     * g_needs_tier_held (econ_needs_active_for_country renvoie -1 de toute façon, chemin LEGACY
+     * golden-safe pour tout appelant, cf. scps_econ.h). */
+    { float ntp = tune_f("NEEDS_TIER_POP", 3000.f);
+      if (ntp>0.f) for (int c=0;c<SCPS_MAX_COUNTRY;c++) econ_needs_tier_update(c, epop[c], dt, ntp); }
 
     /* REFONTE A0/A2 — les leviers éco labor-bound, lus UNE fois/tick (SCPS_TUNE-ables). */
     const float ext_geo_ref   = tune_f("EXTRACT_GEO_REF",     EXTRACT_GEO_REF);
@@ -4040,13 +4111,24 @@ void econ_tick(WorldEconomy *e, float dt) {
           if (re->owner>=0 && re->owner<SCPS_MAX_COUNTRY)
               country_shortfall[re->owner] += (pending_buy_debit - debit); }
 
-        /* §besoins progressifs — combien de besoins (par ordre de priorité) sont ACTIFS
-         * dans cette province : f(niveau de capitale, que la POP débloque). Petit centre →
-         * 2 besoins (les bases) ; grande capitale → tout le panier (statut compris). Un
-         * besoin non encore débloqué ne crée NI demande NI manque de satisfaction. */
+        /* §besoins progressifs — combien de besoins sont ACTIFS pour CE PAYS : depuis MONNAIE
+         * M10 — P1 (décision joueur : « driver les besoins sur le nombre d'hab de l'empire… si
+         * tu es petit et que an 150 t'as pas grand chose, t'imposes aussi »), piloté par la POP
+         * TOTALE DE L'EMPIRE (grain NATIONAL, jamais province — doctrine CLAUDE.md), palier
+         * GÉOMÉTRIQUE hystérétique (econ_needs_active_for_country, pré-calculé en tête de tick).
+         * Legacy INCHANGÉ (kill-switch NEEDS_TIER_POP<=0, OU province ISOLÉE owner_<0 —
+         * fixture/banc, aucun empire à sommer) : pop LOCALE de CETTE province seule. */
         long rpop_nd = (long)(re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop
                             + re->strata[CLASS_ELITE].pop);
-        int active_needs = 1 + capitale_max_tier(rpop_nd);   /* tier 1 → 2 besoins, +1 par tier */
+        int active_needs;
+        { int nat = (owner_>=0) ? econ_needs_active_for_country(owner_) : -1;
+          active_needs = (nat>=1) ? nat : (1 + capitale_max_tier(rpop_nd)); }
+        /* MONNAIE M10 — P1 : LE KILL-SWITCH EXACT — NEEDS_TIER_POP<=0 doit reproduire le
+         * mécanisme byte-pour-byte, pas seulement la VALEUR d'active_needs : le panier
+         * « n'importe quel bien compte » (§4/§5 plus bas) reste GATÉ par need_rank (comme
+         * avant M10) tant que p1_on est faux — sinon même une active_needs identique
+         * produirait un basket/needs_met DIFFÉRENT (poids égal vs value-weighted). */
+        bool p1_on = tune_f("NEEDS_TIER_POP", 3000.f) > 0.f;
 
         /* ---- 4. DEMANDE de consommation par strate ---------------------
          * §2 (CORRECTIF D'INTÉGRATION) : la demande des paliers VARIANTES suit la
@@ -4062,7 +4144,13 @@ void econ_tick(WorldEconomy *e, float dt) {
             for (int r=0;r<RES_COUNT;r++) {
                 float need=NEED[c][r];
                 if (need<=0.f) continue;
-                if (need_rank(c,(Resource)r) >= active_needs) continue;   /* besoin pas encore débloqué */
+                /* MONNAIE M10 — P1 : si le palier pop-empire est actif, plus de gate rang ICI —
+                 * « n'importe quel bien consommable distinct servi compte, peu importe l'ordre »
+                 * (décision joueur). Chaque bien du panier est alors TOUJOURS demandé (borné par
+                 * le SEUL vrai frein économique : disponibilité/budget en §5) ; le palier ne
+                 * borne plus QUI est acheté, seulement COMBIEN de biens distincts SERVIS comptent
+                 * (sélection en §5). Kill-switch (p1_on faux) : gate LEGACY exact restauré. */
+                if (!p1_on && need_rank(c,(Resource)r) >= active_needs) continue;
                 if (res_is_food((Resource)r)) need*=food_need*decree_food_need_mult(owner_);            /* A2 : calibrage de la bouche + orientations RATIONS/FOYERS */
                 Resource tgt=(Resource)r;
                 if      (r==RES_EAU_DE_VIE)          tgt=preferred_drink(&re->culture);
@@ -4134,38 +4222,52 @@ void econ_tick(WorldEconomy *e, float dt) {
                                         tune_f("CONSUME_ELASTIC_MIN",0.8f), tune_f("CONSUME_ELASTIC_MAX",1.2f));
                 }
             }
-            float need_w=0.f, met_w=0.f;   /* pondération par valeur du besoin */
+            /* need_w/met_w : l'ANCIENNE échelle value-weighted (basket LEGACY, p1_on faux — ET
+             * la réf. g_basket_pc/l'élasticité M5, INTACTE dans LES DEUX modes). nbasket/nsat :
+             * le compte LEGACY (panier mature complet, indép. du palier). MONNAIE M10 — P1 (p1_on
+             * vrai) : basket/needs_met sont recalculés APRÈS la boucle à poids ÉGAL sur les
+             * candidats SERVIS (cand_r/cand_got, grain_got) — sélection en fin de bloc, ci-dessous. */
+            float need_w=0.f, met_w=0.f;
             float comfort_joy=0.f;         /* BONUS poterie/statuaire CONSOMMÉES (luxe qui ÉLÈVE, hors panier) */
-            int   nbasket=0, nsat=0;       /* catégories du panier total · satisfaites (got≥τ) */
+            int   nbasket=0, nsat=0;       /* LEGACY : catégories du panier total · satisfaites (got≥τ) */
             for (int rr=0;rr<RES_COUNT;rr++)
-                if (NEED[c][rr]>0.f && rr!=RES_POTTERY && rr!=RES_STATUE) nbasket++;   /* panier COMPLET hors confort-bonus */
+                if (NEED[c][rr]>0.f && rr!=RES_POTTERY && rr!=RES_STATUE) nbasket++;   /* panier COMPLET hors confort-bonus (LEGACY only, harmless si p1_on) */
+            float grain_got=0.f;           /* P1 : le palier 0, TOUJOURS compté à part — jamais un candidat parmi d'autres */
+            enum { NEEDS_CAND_MAX = 8 };   /* max candidats/classe (rapport M10 §C8 : ~6, marge incluse) */
+            int   cand_r[NEEDS_CAND_MAX]; float cand_got[NEEDS_CAND_MAX]; int n_cand=0;
             for (int r=0;r<RES_COUNT;r++) {
                 float need=NEED[c][r]*units*(res_is_food((Resource)r)?food_need*decree_food_need_mult(owner_):1.f);   /* A2 : calibrage de la bouche + orientations RATIONS/FOYERS */
                 if (need<=0.f) continue;
-                if (need_rank(c,(Resource)r) >= active_needs) continue;   /* §progressif : besoin pas encore débloqué → ne pèse pas */
-                /* MONNAIE M5 — R3 : LA RATION VITALE (RES_GRAIN, need_rank==0 — universel,
-                 * « le seigneur garant du stock de grain ») est GARANTIE : servie à hauteur du
-                 * stock physique SEUL, jamais gatée par l'affordabilité (le garde-fou anti-
-                 * collapse M3b-v1 — Laborer 0 % l'an 5, TROUVAILLES) ; payée AU MIEUX (clampée
-                 * au budget dispo, le manquant TOLÉRÉ, PAS de dette — motif pending_buy_debit).
-                 * ASSIETTE_ON=0 : grain retombe sur le chemin générique legacy (bloc sauté). */
+                /* MONNAIE M10 — P1 : si le palier pop-empire est actif, plus de gate rang ICI
+                 * (même motif que §4 demande, cf. plus haut) — chaque bien du panier est TOUJOURS
+                 * tenté, borné par le SEUL vrai frein économique (S[]/budget) ; le palier ne
+                 * borne plus QUI est acheté, seulement COMBIEN de biens distincts SERVIS comptent
+                 * (sélection après cette boucle). Kill-switch (p1_on faux) : gate LEGACY exact. */
+                if (!p1_on && need_rank(c,(Resource)r) >= active_needs) continue;
+                /* MONNAIE M5 — R3 : LA RATION VITALE (RES_GRAIN, universel, « le seigneur
+                 * garant du stock de grain ») est GARANTIE : servie à hauteur du stock physique
+                 * SEUL, jamais gatée par l'affordabilité (le garde-fou anti-collapse M3b-v1 —
+                 * Laborer 0 % l'an 5, TROUVAILLES) ; payée AU MIEUX (clampée au budget dispo, le
+                 * manquant TOLÉRÉ, PAS de dette — motif pending_buy_debit). ASSIETTE_ON=0 : grain
+                 * retombe sur le chemin générique legacy plus bas (r==RES_GRAIN y est reconnu et
+                 * route vers grain_got, JAMAIS un candidat — cf. commentaire là-bas). */
                 if (r==RES_GRAIN && !wh && tune_f("ASSIETTE_ON",1.f)>0.5f){
                     float w=BASE_PRICE[r]*need; need_w+=w;
                     float can_stock=clampf(S[r]/(need+EPS),0.f,1.f);
                     float got=can_stock;                          /* GARANTIE : jamais de gate can_buy */
-                    if (got>=tau) nsat++;
+                    grain_got=got;
+                    if (got>=tau) nsat++;                          /* LEGACY tally */
                     S[r]-=need*got;
                     float paid=fminf(need*got*re->price[r], fmaxf(0.f,budget));   /* au mieux, sans dette */
                     budget-=paid;
-                    met_w+=w*got;
+                    met_w+=w*got;                                  /* LEGACY tally */
                     r_food_need+=need; r_food_got+=need*got;
                     continue;
                 }
                 need *= elastic_mult;   /* MONNAIE M5 — R3 : au-dessus du vital, la richesse pèse (×1 si figé) */
                 /* ── CONFORT-BONUS (poterie/statuaire) : un LUXE qui ÉLÈVE le bonheur quand SERVI,
-                 * SANS pénaliser quand absent (hors panier) — ⇒ « bonheur up ». La demande, elle, est
-                 * générée par la boucle DEMANDE (plus haut) → le marché les produit, consommant
-                 * argile/pierre (la demande qui entretient les raw-works). */
+                 * SANS pénaliser quand absent (hors panier) — INCHANGÉ (hors scope M10 P1 : ni un
+                 * palier ni un candidat, cf. brief — seul le panier CŒUR est redéfini). */
                 if (r==RES_POTTERY || r==RES_STATUE){
                     float can_stock=clampf(S[r]/(need+EPS),0.f,1.f);
                     float cost=need*can_stock*re->price[r];
@@ -4175,12 +4277,11 @@ void econ_tick(WorldEconomy *e, float dt) {
                     comfort_joy += tune_f("COMFORT_JOY",0.08f) * got;   /* luxe SERVI → bonheur (par bien) */
                     continue;                                            /* HORS panier : aucune pénalité si absent */
                 }
-                /* ── Palier MORAL (boisson) : VARIANTE culturelle bière/eau-de-vie ──
-                 * On sert la boisson PRÉFÉRÉE de la culture locale d'abord ; la
-                 * mauvaise ne comble qu'à moitié (un métallurgiste boude le eau-de-vie). */
+                /* ── Palier BOISSON : VARIANTE culturelle bière/eau-de-vie — UN SEUL candidat
+                 * générique (« la boisson »), peu importe laquelle sert (bonne/mauvaise à moitié,
+                 * INCHANGÉ). */
                 if (r==RES_EAU_DE_VIE){
-                    float w_d=BASE_PRICE[RES_EAU_DE_VIE]*need;   /* valeur du palier (réf. eau-de-vie) */
-                    need_w+=w_d;
+                    float w_d=BASE_PRICE[RES_EAU_DE_VIE]*need; need_w+=w_d;
                     Resource pref=preferred_drink(&re->culture);
                     Resource alt =(pref==RES_BEER)?RES_EAU_DE_VIE:RES_BEER;
                     float cs_p=clampf(S[pref]/(need+EPS),0.f,1.f);
@@ -4195,13 +4296,12 @@ void econ_tick(WorldEconomy *e, float dt) {
                     float got_a=cs_a*cb_a;
                     S[alt]-=need*got_a; budget-=need*got_a*re->price[alt];
                     float got=clampf(got_p + DRINK_OFFCULT*got_a, 0.f, 1.f);
-                    met_w+=w_d*got; r_soc_need+=need; r_soc_got+=need*got;
-                    if (got>=tau) nsat++;
+                    met_w+=w_d*got; r_soc_need+=need; r_soc_got+=need*got;   /* LEGACY tally */
+                    if (got>=tau) nsat++;                                    /* LEGACY tally */
+                    if (n_cand<NEEDS_CAND_MAX){ cand_r[n_cand]=r; cand_got[n_cand]=got; n_cand++; }
                     continue;
                 }
-                /* ── Palier STATUT (luxe d'élite) : VARIANTE culturelle ──
-                 * orfèvrerie (martial) OU étoffe précieuse (raffiné) ; le mauvais
-                 * luxe ne flatte qu'à moitié (l'élite conquise reste sur sa faim). */
+                /* ── Palier STATUT (luxe d'élite) : VARIANTE culturelle — UN SEUL candidat. */
                 if (r==RES_PRECIOUS_WARE){
                     Resource pref=preferred_luxe(&re->culture);
                     Resource alt =(pref==RES_PRECIOUS_WARE)?RES_PRECIOUS_CLOTH:RES_PRECIOUS_WARE;
@@ -4218,38 +4318,41 @@ void econ_tick(WorldEconomy *e, float dt) {
                     float got_a=cs_a*cb_a;
                     S[alt]-=need*got_a; budget-=need*got_a*re->price[alt];
                     float got=clampf(got_p + LUXE_OFFCULT*got_a, 0.f, 1.f);
-                    met_w+=w_l*got; r_soc_need+=need; r_soc_got+=need*got;
-                    if (got>=tau) nsat++;
+                    met_w+=w_l*got; r_soc_need+=need; r_soc_got+=need*got;   /* LEGACY tally */
+                    if (got>=tau) nsat++;                                    /* LEGACY tally */
+                    if (n_cand<NEEDS_CAND_MAX){ cand_r[n_cand]=r; cand_got[n_cand]=got; n_cand++; }
                     continue;
                 }
-                float w=BASE_PRICE[r]*need;          /* importance ~ valeur */
-                need_w+=w;
-                float can_stock=clampf(S[r]/(need+EPS),0.f,1.f);
-                float cost=need*can_stock*re->price[r];
-                float can_buy=(cost>0.f)?clampf(budget/cost,0.f,1.f):1.f;
-                float got=can_stock*can_buy;
-                if (got>=tau) nsat++;
-                /* consomme stock & budget (pool national) */
-                S[r]-=need*got;
-                /* FIN_CHAUD (§27) : le BOIS DE FEU réellement SERVI charge le ciel —
-                 * l'offre servie (need×got), jamais la demande. Cumul SIM monotone,
-                 * lu en delta par l'endgame (motif Campaign.dead_choc). */
-                if (r==RES_WOOD) e->fuel_wood_cum += (double)(need*got);
-                budget-=need*got*re->price[r];
-                met_w+=w*got;
-                /* couverture par palier : les vivres VS le reste */
-                if (r==RES_GRAIN||r==RES_FISH||r==RES_LIVESTOCK){ r_food_need+=need; r_food_got+=need*got; }
-                else                                            { r_soc_need +=need; r_soc_got +=need*got; }
+                /* ── générique (SALT/CLOTH/REMEDE/FUR/WOOD/TUNIQUE/FISH…) : un candidat par bien
+                 * distinct — INCLUT GRAIN si ASSIETTE_ON=0 (chemin legacy M3b-v2, la ration vitale
+                 * retombe ici comme avant M5, mais reste le palier 0 séparé, JAMAIS un candidat). */
+                {
+                    float w=BASE_PRICE[r]*need;          /* importance ~ valeur */
+                    need_w+=w;
+                    float can_stock=clampf(S[r]/(need+EPS),0.f,1.f);
+                    float cost=need*can_stock*re->price[r];
+                    float can_buy=(cost>0.f)?clampf(budget/cost,0.f,1.f):1.f;
+                    float got=can_stock*can_buy;
+                    if (got>=tau) nsat++;                              /* LEGACY tally */
+                    /* consomme stock & budget (pool national) */
+                    S[r]-=need*got;
+                    /* FIN_CHAUD (§27) : le BOIS DE FEU réellement SERVI charge le ciel —
+                     * l'offre servie (need×got), jamais la demande. Cumul SIM monotone,
+                     * lu en delta par l'endgame (motif Campaign.dead_choc). */
+                    if (r==RES_WOOD) e->fuel_wood_cum += (double)(need*got);
+                    budget-=need*got*re->price[r];
+                    met_w+=w*got;                                       /* LEGACY tally */
+                    /* couverture par palier : les vivres VS le reste */
+                    if (r==RES_GRAIN||r==RES_FISH||r==RES_LIVESTOCK){ r_food_need+=need; r_food_got+=need*got; }
+                    else                                            { r_soc_need +=need; r_soc_got +=need*got; }
+                    if (r==RES_GRAIN) grain_got=got;                /* ASSIETTE_ON=0 : palier 0 legacy, jamais un candidat */
+                    else if (n_cand<NEEDS_CAND_MAX){ cand_r[n_cand]=r; cand_got[n_cand]=got; n_cand++; }
+                }
             }
-            /* ── DÉSIR CROISÉ (manufactures signature d'éthos) : un VRAI BESOIN DU PANIER
-             * (demande joueur : « un levier réel sur la satisfaction, quitte à ce qu'elle tombe
-             * un peu en début de partie »). Contrairement à poterie/statuaire (confort-bonus
-             * hors-panier), le luxe de l'éthos OPPOSÉ PÈSE dans le panier (need_w/met_w) : NON
-             * servi ⇒ basket BAISSE ⇒ satisfaction TOMBE (au début, quand personne ne le produit
-             * ni ne l'importe) ; SERVI ⇒ elle remonte. C'est le LEVIER : la pression qui pousse à
-             * produire/commercer le luxe. Laborer+Élite, gaté position tardive (MIN_TIER), bien
-             * conditionnel à l'éthos DOMINANT de la province (ethos_desired_luxury). Poids MODÉRÉ
-             * (BASE_PRICE·need — comme la statuaire, ~8 % du panier) pour « un peu », pas un choc. */
+            /* ── DÉSIR CROISÉ (manufactures signature d'éthos) : depuis M10, un candidat
+             * GÉNÉRIQUE DE PLUS (plus un terme à part garanti) — « n'importe quel bien compte »
+             * s'applique aussi à lui : gardé TARDIF (ETHOS_LUXURY_MIN_TIER, INCHANGÉ), mais s'il
+             * est servi, il concourt pour un palier comme les autres, pas au-delà. */
             if ((c==CLASS_LABORER || c==CLASS_ELITE) && active_needs>=(int)tune_f("ETHOS_LUXURY_MIN_TIER",ETHOS_LUXURY_MIN_TIER)){
                 Resource desired = ethos_desired_luxury(re->culture.ethos);
                 float need = ETHOS_LUXURY_NEED[c]*units;
@@ -4261,9 +4364,10 @@ void econ_tick(WorldEconomy *e, float dt) {
                     float can_buy=(cost>0.f)?clampf(budget/cost,0.f,1.f):1.f;
                     float got=can_stock*can_buy;
                     S[desired]-=need*got; budget-=need*got*re->price[desired];
-                    met_w += w*got;                                    /* servi → couvert ; absent → pénalité (need_w monté, met_w non) */
-                    nbasket++; if (got>=tau) nsat++;                   /* une catégorie de panier de plus */
+                    met_w += w*got;                                    /* LEGACY tally : servi → couvert ; absent → pénalité */
+                    nbasket++; if (got>=tau) nsat++;                   /* LEGACY tally : une catégorie de panier de plus */
                     r_soc_need += need; r_soc_got += need*got;         /* c'est un besoin SOCIAL (confort de statut) */
+                    if (n_cand<NEEDS_CAND_MAX){ cand_r[n_cand]=desired; cand_got[n_cand]=got; n_cand++; }
                 }
             }
             /* M3e — un hameau ne garde JAMAIS de wealth (budget était fictif, ∞) : la
@@ -4281,14 +4385,43 @@ void econ_tick(WorldEconomy *e, float dt) {
               if (re->owner>=0 && re->owner<SCPS_MAX_COUNTRY){ re->treasury += consumed;
                   g_assiette_revenue_cum += (double)consumed; }   /* M5 R3 : instrument print-only, « paie ton assiette » */
               else                                            g_consumption_destroyed_cum += (double)consumed; }
-            float basket=(need_w>0.f)?met_w/need_w:0.5f;
+            /* MONNAIE M10 — P1 : SÉLECTION DES PALIERS (kill-switch p1_on faux : basket/nbasket/
+             * nsat LEGACY inchangés, calculés ci-dessus). p1_on vrai — « n'importe quel bien…
+             * peu importe l'ordre » (décision joueur) : les Kc=active_needs−1 candidats les MIEUX
+             * SERVIS remplissent les paliers restants (grain = palier 0, TOUJOURS compté à part)
+             * — tri par insertion (n_cand ≤ NEEDS_CAND_MAX=8), égalité tranchée par ID ressource
+             * (déterministe, sans signification gameplay — un candidat NON sélectionné a quand
+             * même été VRAIMENT consommé/payé ci-dessus, aucun rollback : seule la COMPTABILITÉ
+             * de satisfaction l'exclut, « un bien ne compte que pour un slot »). basket ET
+             * needs_met jugent tous deux contre CES paliers actifs SEULS — RAPPORT M10
+             * §implications 1/2 : un petit empire qui comble parfaitement ses 2 paliers est à
+             * 100 %, jamais 15 % d'un panier mature fantôme. Poids ÉGAL par palier (pas la valeur
+             * marchande) : « on se satisfait autant de bière que de papier ». */
+            float basket;
+            if (p1_on){
+                int Kc = active_needs - 1; if (Kc<0) Kc=0; if (Kc>n_cand) Kc=n_cand;
+                for (int i=1;i<n_cand;i++){
+                    float gv=cand_got[i]; int rv=cand_r[i]; int j=i-1;
+                    while (j>=0 && (cand_got[j]<gv || (cand_got[j]==gv && cand_r[j]>rv))){
+                        cand_got[j+1]=cand_got[j]; cand_r[j+1]=cand_r[j]; j--;
+                    }
+                    cand_got[j+1]=gv; cand_r[j+1]=rv;
+                }
+                float sel_sum=0.f; int sel_sat=0;
+                for (int i=0;i<Kc;i++){ sel_sum+=cand_got[i]; if (cand_got[i]>=tau) sel_sat++; }
+                nbasket = 1 + Kc;
+                nsat    = (grain_got>=tau?1:0) + sel_sat;
+                basket  = (grain_got + sel_sum) / (float)nbasket;
+            } else {
+                basket = (need_w>0.f) ? met_w/need_w : 0.5f;   /* LEGACY exact */
+            }
             /* la surtaxe (§6) gronde : elle ABAISSE la satisfaction → agitation */
             /* CICATRICE D'ANNEXION (étage 3d) : la plaie douce frappe la STABILITÉ — elle ABAISSE
              * la satisfaction (donc l'agitation monte) sans toucher la croissance (≠ revolt_scar). */
             re->strata[c].satisfaction=clampf(basket + comfort_joy - over_tax[c]*K_TAX_AGIT
                                               - re->annex_scar*tune_f("ANNEX_SAT_W",0.5f), 0.f, 1.f);
             if (pid<SCPS_MAX_PROV) g_basket_pc[pid][c]=(units>0.f)?need_w/units:0.f;  /* E0.7 : panier/tête */
-            float nm_c=(nbasket>0)?(float)nsat/(float)nbasket:0.f;   /* part BRUTE du panier couverte */
+            float nm_c=(nbasket>0)?(float)nsat/(float)nbasket:0.f;   /* part du panier ACTIF couverte (M10 : dénominateur scopé, p1_on vrai) */
             nmsum += nm_c*re->strata[c].pop; nmpop += re->strata[c].pop;
         }
         re->needs_met = (nmpop>0.f)? clampf(nmsum/nmpop,0.f,1.f) : 0.f;   /* pilote la fertilité (avant la croissance) */
@@ -5564,7 +5697,11 @@ int econ_ip_invest_tick(WorldEconomy *e){
         ProvinceEconomy *pe=&e->prov[p];
         if (!pe->active || !pe->colonized || pe->owner<0) continue;
         long rpop_nd=(long)(pe->strata[CLASS_LABORER].pop+pe->strata[CLASS_BOURGEOIS].pop+pe->strata[CLASS_ELITE].pop);
-        int active_needs=1+capitale_max_tier(rpop_nd);            /* miroir exact §4 (demande) */
+        /* MONNAIE M10 — P1 : même SOURCE UNIQUE que §4/§5 d'econ_tick (econ_needs_active_
+         * for_country) — pe->owner ici est déjà >=0 (gate ligne ci-dessus) ; -1 (kill-switch)
+         * retombe sur le legacy pop LOCALE, à l'identique de l'ancien "miroir exact". */
+        int active_needs; { int nat=econ_needs_active_for_country(pe->owner);
+            active_needs = (nat>=1) ? nat : (1+capitale_max_tier(rpop_nd)); }
         for (int oi=0; oi<2; oi++){
             int klass=INVESTOR_ORDER[oi];
             float pop=pe->strata[klass].pop;

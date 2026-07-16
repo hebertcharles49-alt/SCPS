@@ -976,6 +976,13 @@ void  econ_country_budget_set(WorldEconomy *e, int cid, BudgetPolicy policy, flo
  * scps_country_fiscal_orders (scps_api.c). */
 float econ_country_class_satisfaction(const WorldEconomy *e, int cid, SocialClass c);
 
+/* MONNAIE M10 — P1 : le palier de besoins ACTIF d'un pays (1+tier hystérétique, pop NATIONALE
+ * d'empire — jamais province) — LA source unique lue par econ_tick §besoins progressifs ET
+ * par le miroir M4-IP (ip_find_shortage_building). -1 si kill-switch (NEEDS_TIER_POP<=0) ou
+ * cid hors table : l'appelant retombe alors sur le mécanisme LEGACY (capitale_max_tier, pop
+ * locale). Valide APRÈS la pré-passe mensuelle d'econ_tick (cf. scps_econ.c). */
+int   econ_needs_active_for_country(int cid);
+
 /* MONNAIE M1/M2 (docs/MONNAIE_CONCEPT.md) — province CAPITALE d'un pays (grain province,
  * WorldEconomy seul : econ_tick n'a pas de World*). -1 si aucune (pays mort/sans capitale). */
 int   econ_country_capital_prov(const WorldEconomy *e, int cid);

@@ -32,7 +32,13 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 94u           /* v94 : MONNAIE M7 — I2 LA DÉCOUVERTE D'OR : EvId gagne
+#define SAVE_VERSION 95u           /* v95 : MONNAIE M10 — P1 LES PALIERS DE BESOINS : le blob
+                                    * EMOB (econ_mobility_save/load, scps_econ.c) grandit d'un
+                                    * accumulateur inter-ticks neuf, g_needs_tier_held[SCPS_MAX_
+                                    * COUNTRY] (float, le palier de besoins hystérétique PAR PAYS,
+                                    * motif g_basket_pc/g_lowsat_streak) → sizeof change, <v95
+                                    * refusé (econ_mobility_load lit un format différent).
+                                    * v94 : MONNAIE M7 — I2 LA DÉCOUVERTE D'OR : EvId gagne
                                     * EVID_GOLD_DISCOVERY (ajouté en FIN d'énumération, avant
                                     * EVID_COUNT — tous les EVID existants gardent leur valeur) →
                                     * le blob SVT_EVNT (EventsState, raw fwrite) grandit : fires[]/

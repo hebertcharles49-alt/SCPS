@@ -1295,6 +1295,26 @@
      * (plancher identique à l'ancien, golden pré-M10 byte-identique). Le curseur JOUEUR
      * (econ_country_tax_set) garde SON propre 0.02, INTACT — ce plancher ne borne QUE le
      * contrôleur IA. */ \
-    X(TAX_MULT_FLOOR,                  0.80f)
+    X(TAX_MULT_FLOOR,                  0.80f) \
+    /* MONNAIE M10 — P1 : LES PALIERS DE BESOINS (décision joueur : « driver les besoins sur
+     * le nombre d'hab de l'empire… si tu es petit et que an 150 t'as pas grand chose,
+     * t'imposes aussi »). Remplace la SOURCE d'active_needs (scps_econ.c, §besoins
+     * progressifs) : au lieu de capitale_max_tier(pop LOCALE de la province), un NOUVEAU
+     * palier GÉOMÉTRIQUE (~×2, décision joueur confirmée) piloté par la POP TOTALE DE
+     * L'EMPIRE (grain NATIONAL — doctrine CLAUDE.md « pop d'empire/fiscalité »), HYSTÉRÉTIQUE
+     * (g_needs_tier_held, motif g_basket_pc/g_lowsat_streak : monte INSTANTANÉMENT, descend
+     * LENTEMENT sur NEEDS_TIER_DECAY_YEARS si la pop retombe — jamais un couperet).
+     * NEEDS_TIER_POP<=0 : kill-switch EXACT — active_needs retombe sur le mécanisme LEGACY
+     * (capitale_max_tier, pop locale), golden pré-M10 byte-identique (cf. econ_needs_active_
+     * for_country, scps_econ.c). Calibrage NEEDS_TIER_POP=3000 : un empire de genèse
+     * (EMPIRE_SEED=4000) atteint le palier 1 (grain + 1 besoin) mais PAS le palier 2 (seuil
+     * 6000) — « au plus UN besoin de plus » (décision joueur) ; une cité-état (CITY_SEED=2000)
+     * reste au palier 0 (grain seul). NEEDS_TIER_MAX borne le palier au nombre de biens
+     * distincts qu'une classe peut effectivement consommer (rapport M10 §C8 : ~6 max) — au-
+     * delà, plus de biens à servir de toute façon. */ \
+    X(NEEDS_TIER_POP,                  3000.0f) \
+    X(NEEDS_TIER_GROWTH,               2.0f) \
+    X(NEEDS_TIER_MAX,                  10.0f) \
+    X(NEEDS_TIER_DECAY_YEARS,          5.0f)
 
 #endif /* SCPS_TUNE_LIST_H */
