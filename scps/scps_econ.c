@@ -2872,21 +2872,30 @@ float econ_region_treasury_add(WorldEconomy *e, int region, float delta){
     if (delta>0.f){
         e->prov[rep].treasury+=delta; rv->treasury+=delta; return delta;
     }
-    float need=-delta;
-    /* débit : d'abord le liquide (clampé à 0), le RÉSIDU va sur la porteuse
-     * (peut passer négatif = dette, philosophie credit_spend). */
+    float need=-delta, took=0.f;
+    /* débit : d'abord le liquide (clampé à 0) de la porteuse, puis des sœurs de la
+     * région. MONNAIE M14 — B2(a) : le résidu NON couvert n'est PLUS forcé en dette
+     * FANTÔME (prov[].treasury négatif hors CountryDebt — sans intérêt, sans créancier,
+     * hors plafond, hors banqueroute, cf. TROUVAILLES M14). Les 3 appelants ACTUELS de
+     * cette fonction en delta négatif (INVEST/ROADS/frappe libre, scps_econ.c) bornent
+     * déjà leur montant au trésor disponible — ce clamp est pour eux un no-op mesuré ;
+     * il ferme la fonction pour tout appelant qui ne pré-clampe PAS (trouvé : diplo_
+     * fabricate_cb, scps_diplo.c, débite UNE SEULE région alors que diplo_can_fabricate
+     * vérifie le trésor TOTAL du pays — un vrai chemin de dette fantôme avant ce fix).
+     * Sémantique : « clampé-réduit » (paiement partiel), même discipline que les
+     * dépenses d'État déjà bornées — le montant RÉELLEMENT débité (`took`) est retourné
+     * (signé négatif), pas le `delta` demandé. */
     { float t=e->prov[rep].treasury; if(t<0.f)t=0.f; if(t>need)t=need;
-      e->prov[rep].treasury-=t; need-=t; }
+      e->prov[rep].treasury-=t; need-=t; took+=t; }
     for (int p=0; p<e->n_prov && need>1e-6f; p++){
         if (p==rep) continue;
         ProvinceEconomy *pe=&e->prov[p];
         if (pe->region!=region || !pe->active) continue;
         float t=pe->treasury; if(t<0.f)t=0.f; if(t>need)t=need;
-        if (t>0.f){ pe->treasury-=t; need-=t; }
+        if (t>0.f){ pe->treasury-=t; need-=t; took+=t; }
     }
-    if (need>1e-6f) e->prov[rep].treasury-=need;   /* le reste en dette */
-    rv->treasury+=delta;
-    return delta;
+    rv->treasury-=took;
+    return -took;
 }
 float econ_region_pop_add(WorldEconomy *e, int region, int cls, float delta){
     if (!e || region<0 || region>=e->n_regions || cls<0 || cls>=CLASS_COUNT || delta==0.f) return 0.f;

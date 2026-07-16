@@ -543,6 +543,14 @@ int main(int argc, char **argv){
          * peuple pas vraiment prov[].strata) — region[].treasury reste la vue STABLE que
          * econ_region_treasury_add garantit TOUJOURS de bouger (même en mode fixture). */
         s.econ->prov[rp].owner=(int16_t)cid; s.econ->prov[rp].active=true;
+        /* MONNAIE M14 — B2(a) : econ_region_treasury_add ne force PLUS un résidu non couvert
+         * en dette fantôme — elle CLAMPE au trésor réellement disponible (et ne crédite les
+         * classes qu'à hauteur du RÉELLEMENT pris, motif déjà tenu par apply_region_eff/
+         * d_treasury). Une province NUE (trésor ~0, jamais semé par ce banc) ne peut donc
+         * plus « payer » un coût d_treasury_mois : on sème un trésor pour que le test
+         * mesure le VRAI comportement (un coût RÉELLEMENT servi), pas un artefact de fixture. */
+        s.econ->prov[rp].treasury = 5000.f;
+        econ_aggregate_regions(s.econ);
         float before = s.econ->region[capr].treasury;
         /* on force le trigger de Marbrive et on le laisse tirer (chronique : human=-1, résolution IA immédiate).
          * RE-KEY PROVINCE : on écrit sur la province représentative (region[] est un agrégat recalculé).

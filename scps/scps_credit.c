@@ -434,18 +434,37 @@ void credit_settle_monthly(WorldEconomy *e, const World *w){
 /* Débite le trésor RÉEL d'un pays (ad-hoc : chantiers/soldes/manufactures…). Passe par
  * la province représentative (capitale, charte — RE-KEY PROVINCE, cf. M3b-v1). Si le
  * trésor NET manque, DÉCLENCHE la chaîne d'emprunt (péréquation→classes→cité-état) au
- * lieu de laisser "monnaie négative" : c'est le refonte item 6 du brief M3c. */
+ * lieu de laisser "monnaie négative" : c'est le refonte item 6 du brief M3c.
+ * MONNAIE M14 — B2 : DEUX trous fermés ICI.
+ * (b-TOCTOU) `credit_can_spend` lit econ_country_gold (region[]-grain) ; les deux
+ * écritures ci-dessous étaient des `prov[pid].treasury +=/-=` NUES — region[] restait
+ * PÉRIMÉ jusqu'à la PROCHAINE econ_aggregate_regions. Deux credit_spend consécutifs
+ * dans le même mois (ex. deux verbes joueur) pouvaient donc TOUS DEUX passer can_spend
+ * sur la même vue stale. Remplacé par econ_prov_treasury_credit (dual-write immédiat,
+ * motif A2/M11) — can_spend voit désormais l'état À JOUR après CHAQUE credit_spend.
+ * (b-résidu) si la chaîne d'emprunt ÉCHOUE à couvrir `short_` en ENTIER (covered<short_),
+ * le résidu n'est PLUS laissé en dette FANTÔME (motif B2(a), econ_region_treasury_add) :
+ * la dépense est RÉALISÉE PARTIELLEMENT — on rend à la province la fraction non
+ * financée (choix documenté TROUVAILLES M14 : credit_spend est `void`, appelé par ~10
+ * sites SANS vérifier de retour — réaliser partiellement plutôt que refuser en silence
+ * est la sémantique la plus simple qui ferme le trou sans toucher aux appelants). Sous
+ * l'invariant "le pays n'entre jamais dans credit_spend déjà en déficit fantôme" (garanti
+ * par CE MÊME correctif, appliqué partout), le pays ressort avec country_gold_prov(e,c)
+ * >= 0 : jamais de dette hors CountryDebt introduite PAR credit_spend lui-même. */
 void credit_spend(WorldEconomy *e, const World *w, int c, float cost){
+    if (cost==0.f) return;
     int hr=home_reg(w,c); if(hr<0||hr>=e->n_regions) return;
     int pid=econ_region_rep_province(e, hr); if(pid<0||pid>=e->n_prov) return;
-    e->prov[pid].treasury-=cost;
+    econ_prov_treasury_credit(e, pid, -cost);
     float short_=(float)(-country_gold_prov(e,c));   /* découvert NET du pays, s'il y en a un */
     if (short_>CR_EPS){
         float covered=credit_borrow(e,w,c,short_);
         /* le trésor RÉEL couvert doit revenir dans la province représentative (c'est
          * elle qui a essuyé le débit ci-dessus) — les autres provinces/classes/prêteurs
          * ont, eux, été DÉBITÉS par la chaîne (péréquation/classes/cité-état). */
-        e->prov[pid].treasury += covered;
+        econ_prov_treasury_credit(e, pid, covered);
+        if (covered+CR_EPS < short_)
+            econ_prov_treasury_credit(e, pid, short_-covered);   /* B2(b) : rend le reliquat NON financé */
     }
 }
 

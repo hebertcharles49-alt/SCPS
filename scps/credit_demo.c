@@ -377,6 +377,68 @@ int main(void){
        e->prov[0].stock[RES_GOLD] < stock_legacy_before13);
     tune_set("MINT_FULL_PARITY", 1.f);   /* redéfinit le défaut */
 
+    /* ── 14. B2 : LE TRÉSOR FANTÔME (econ_region_treasury_add) + LE TOCTOU can_spend/spend ── */
+    printf("\n── 14. B2 : le trésor fantôme + le TOCTOU can_spend/spend ──\n");
+    {
+        /* B2(a) — econ_region_treasury_add ne force plus un résidu non couvert en dette
+         * FANTÔME (prov[].treasury négatif hors CountryDebt — sans intérêt, créancier,
+         * plafond ni banqueroute) : CLAMPÉ au trésor réellement disponible, et retourne
+         * le montant RÉELLEMENT pris (pas la demande nominale). */
+        memset(e, 0, sizeof(WorldEconomy));
+        e->n_prov=1; e->n_regions=1;
+        e->prov[0].owner=0; e->prov[0].region=0; e->prov[0].active=true; e->prov[0].colonized=true;
+        e->prov[0].treasury=0.f;
+        e->region_rep_prov[0]=0;
+        econ_aggregate_regions(e);
+        float paidB2a = econ_region_treasury_add(e, 0, -300.f);
+        ok("B2(a) : une région SANS trésor ne peut RIEN payer (paid==0, pas de résidu fantôme)",
+           paidB2a==0.f);
+        ok("B2(a) : la province ne descend JAMAIS sous zéro par ce chemin",
+           e->prov[0].treasury >= 0.f);
+        e->prov[0].treasury=100.f;
+        econ_aggregate_regions(e);
+        float paidB2a2 = econ_region_treasury_add(e, 0, -300.f);
+        printf("   région à 100 or, débit demandé 300 → payé RÉELLEMENT %.1f (clampé, pas 300)\n",
+               (double)-paidB2a2);
+        ok("B2(a) : un débit PARTIEL rend EXACTEMENT ce qui existait (100), jamais plus",
+           fabs(-paidB2a2 - 100.f) < 0.01f);
+        ok("B2(a) : la province est à ZÉRO, jamais négative (aucune dette fantôme introduite)",
+           e->prov[0].treasury >= -0.001f && e->prov[0].treasury < 0.01f);
+
+        /* B2(b) — LE TOCTOU can_spend/spend : can_spend lit region[]-grain (econ_country_
+         * gold) ; credit_spend n'écrivait QUE prov[] (nu, non dual-write) — deux dépenses
+         * successives dans le même mois voyaient TOUTES DEUX la vue AVANT la première
+         * (stale) et pouvaient donc être TOUTES DEUX autorisées. */
+        setup(e, 100.f, 5000.f); credit_init();
+        float room0 = credit_line(w,e,0);
+        printf("   ligne de crédit = %.0f\n", (double)room0);
+        ok("B2(b) setup : une grosse dépense (550, proche de la ligne) est autorisée",
+           credit_can_spend(e,w,0,550.f));
+        credit_spend(e,w,0,550.f);
+        double gold_after1 = econ_country_gold(e,0);
+        printf("   après la 1re dépense (550) : or nation = %.1f, dette = %.1f\n",
+               gold_after1, (double)credit_debt_total(0));
+        ok("B2(b) : le trésor NET ne passe jamais négatif (financé par la chaîne)",
+           gold_after1 >= -0.5);
+        bool second_ok = credit_can_spend(e,w,0,100.f);
+        printf("   une 2e dépense (100) sur le MÊME solde : %s\n", second_ok?"autorisée":"REFUSÉE");
+        ok("B2(b) : la 2e dépense reflète le solde À JOUR (pas la vue périmée d'avant la 1re)",
+           !second_ok);
+
+        /* B2(b) — CHAÎNE D'EMPRUNT ÉPUISÉE : un besoin qui dépasse TOUTE la chaîne
+         * (péréquation+classes+cité-état, elle-même pauvre ici) ne laisse PLUS un résidu
+         * en dette fantôme — la dépense se RÉALISE PARTIELLEMENT (choix documenté
+         * TROUVAILLES M14 : le pays paie ce qu'il PEUT lever, jamais moins que zéro). */
+        setup(e, 50.f, 50.f);   /* cité-état PAUVRE aussi : la chaîne s'épuise tout de suite */
+        credit_init();
+        credit_spend(e,w,0,100000.f);   /* bien au-delà de TOUTE capacité de la chaîne */
+        double gold_final = econ_country_gold(e,0);
+        printf("   dépense DÉMESURÉE (100000) contre une chaîne épuisée : or national final = %.2f\n",
+               gold_final);
+        ok("B2(b) : chaîne d'emprunt épuisée ⇒ le pays ne finit JAMAIS avec un trésor négatif",
+           gold_final >= -0.5);
+    }
+
     printf("\n═══ BILAN : %d réussis, %d échoués ═══\n", g_pass, g_fail);
     free(w); free(e); free(wl);
     return g_fail?1:0;
