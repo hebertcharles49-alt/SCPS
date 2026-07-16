@@ -17,9 +17,19 @@
      * MINT_ROYALTY : part de l'or/cuivre EXTRAIT détournée à la réserve d'État (jamais
      * marchande) — 0 = kill-switch (redevance/réserve/frappe strictement inertes).
      * MINT_AI_SHARE : part ANNUELLE fixe de la réserve que l'IA frappe (politique fixe,
-     * déterministe — le joueur a son propre curseur, BUDGET_MINT). */ \
-    X(MINT_ROYALTY,          0.35f) \
-    X(MINT_AI_SHARE,         0.35f) \
+     * déterministe — le joueur a son propre curseur, BUDGET_MINT).
+     * MONNAIE M7 — I1 (calibrage, 0.35→0.6 les DEUX) : le brief autorise EXPLICITEMENT
+     * les leviers EXISTANTS (MINT_*) si le seul déplafonnage de price_level (INFLATION_
+     * CAP) ne suffit PAS à porter la dérive séculaire ~0.5-1.5 %/an — mesuré : à 0.35/
+     * 0.35 (INFLATION_CAP seul variant 1.3→4.0), la dérive reste proche de 0 voire
+     * négative sur le sweep {9,11,42}×250 (cf. TROUVAILLES M7) ; à 0.6/0.6 + INFLATION_
+     * CAP=1.6, les 3 graines deviennent POSITIVES (+0.36 à +0.75 %/an, moyenne +0.51).
+     * ⚠ CES DEUX VALEURS NE SONT PLUS UN KILL-SWITCH SÉPARÉ (elles pilotaient DÉJÀ la
+     * frappe avant M7, motif MINT_PARITY_GOLD/M3e — un re-calibrage droit, pas un
+     * commutateur) : le golden pré-M7 EXIGE de les reposer à 0.35/0.35 EN PLUS
+     * d'INFLATION_CAP=1.0/GOLD_DISCOVERY_RATE=0 (les 4 réglages historiques ensemble). */ \
+    X(MINT_ROYALTY,          0.6f) \
+    X(MINT_AI_SHARE,         0.6f) \
     /* ÉTALON BIMÉTALLIQUE (v5) : parité FIXE monnaie↔métal — la monnaie est liée à la
      * RESSOURCE, pas à sa cote. M3e — LA RE-LIQUÉFACTION (décision joueur 2026-07-15,
      * « si le problème c'est la dette, booster le minting 1:16 ») : parité DOUBLÉE
@@ -41,6 +51,27 @@
      * (usages physiques : navale/armes/horlogerie ne doivent pas être affamés). */ \
     X(MINT_FREE_BUY_FRAC,      0.15f) \
     X(MINT_FREE_STOCK_FLOOR_FRAC, 0.5f) \
+    /* MONNAIE M7 — I1 : L'INFLATION SÉCULAIRE (docs/MONNAIE_CONCEPT.md, décision joueur
+     * 2026-07-16 « pas de perte de monnaie, ce sont des métaux stables… inflation
+     * séculaire = trait historique »). `price_level[c]` (scps_econ.c, la fraction de la
+     * caisse d'État sur la VA nationale prev) était PLAFONNÉ à 1.0 en dur (le système
+     * savait déflater, jamais inflater) — INFLATION_CAP REMPLACE ce 1.0 codé en dur par
+     * un garde-fou HAUT tunable : quand la caisse déborde la VA (la frappe cumulée croît
+     * plus vite que la production), les prix montent AU-DESSUS du pair — émergent, jamais
+     * un taux codé en dur. 1.0 = kill-switch EXACT (reproduit le plafond historique —
+     * ⚠ COMBINÉ à MINT_ROYALTY=0.35/MINT_AI_SHARE=0.35, cf. leur commentaire : le golden
+     * pré-M7 byte-identique exige les 3 réglages historiques ensemble, pas INFLATION_CAP
+     * seul). Calibré par sweep {9,11,42}×250 : 4.0 seul → dérive proche de 0/négative ;
+     * 1.6 + MINT_ROYALTY/AI_SHARE=0.6 → 3 graines positives, moyenne +0.51 %/an (cf.
+     * TROUVAILLES M7 pour le détail du sweep et la variance inter-graines observée). */ \
+    X(INFLATION_CAP,          1.6f) \
+    /* MONNAIE M7 — I2 : LA DÉCOUVERTE D'OR (le choc Potosí, décision joueur : « découverte
+     * d'or sur certaine tile par évent, 0,5×N(empire) par game »). Espérance du plafond
+     * MONDIAL de tirs de EVID_GOLD_DISCOVERY = round(GOLD_DISCOVERY_RATE × n_empires),
+     * posé à events_init (scps_events.c) — PAS le hash générique 3-5 (EV_CAPPED). 0 (ou
+     * moins) = kill-switch EXACT (le trigger reste toujours faux, cf. trig_gold_
+     * discovery) — golden pré-M7 byte-identique. */ \
+    X(GOLD_DISCOVERY_RATE,    0.5f) \
     /* §G0.4/H7 — le robinet d'or (les bandes de flux) */ \
     X(ENTRETIEN_DIV,        400.0f) \
     /* H7 (M3d re-tarif, décision joueur 2026-07-15) — l'entretien d'UN job = part de son

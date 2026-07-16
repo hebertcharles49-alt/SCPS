@@ -3239,6 +3239,15 @@ void econ_tick(WorldEconomy *e, float dt) {
      * achat/revente. Les MÉTAUX monétaires (or/cuivre) en sont EXEMPTÉS au site du prix
      * (price_level→1 pour eux) : l'étalon (v5) reste un numéraire stable pendant que tout le
      * reste flotte contre lui. */
+    /* MONNAIE M7 — I1 : L'INFLATION SÉCULAIRE (docs/MONNAIE_CONCEPT.md, décision joueur
+     * 2026-07-16). Le plafond HAUT de price_level n'est plus 1.0 codé en dur (« le système
+     * ne peut QUE déflater ») — INFLATION_CAP (registre J, défaut 4.0, garde-fou de
+     * SÉCURITÉ NUMÉRIQUE, pas un taux d'inflation choisi) laisse le ratio caisse/VA
+     * dépasser le pair quand la frappe cumulée (jamais détruite, cf. l'invariant
+     * M(t)=M(0)+frappe) croît plus vite que la production réelle : trop de monnaie chasse
+     * trop peu de biens, ÉMERGENT — 1.0 reproduit EXACTEMENT l'ancien comportement
+     * (kill-switch de gate, golden pré-M7 byte-identique). */
+    const float inflation_cap = tune_f("INFLATION_CAP", 4.0f);
     float caisse_snapshot[SCPS_MAX_COUNTRY]={0}, price_level[SCPS_MAX_COUNTRY];
     { const float opf_pre = tune_f("SINK_FLOOR", SINK_FLOOR);
       for (int p=0;p<e->n_prov && p<SCPS_MAX_PROV;p++){
@@ -3249,7 +3258,7 @@ void econ_tick(WorldEconomy *e, float dt) {
       }
       for (int c=0;c<SCPS_MAX_COUNTRY;c++)
           price_level[c] = (e->va_country_prev[c]>EPS)
-                          ? clampf(caisse_snapshot[c]/e->va_country_prev[c], 0.f, 1.f)
+                          ? clampf(caisse_snapshot[c]/e->va_country_prev[c], 0.f, inflation_cap)
                           : 1.f;   /* pas encore de VA de référence (genèse/pays neuf) : prix plein, non contraint */
     }
     float va_country_this[SCPS_MAX_COUNTRY]={0};

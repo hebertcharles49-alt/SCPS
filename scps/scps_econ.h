@@ -34,6 +34,7 @@
 #define SCPS_ECON_H
 
 #include <stdio.h>          /* FILE* : helpers de save (prod_cap) */
+#include <math.h>           /* fmaxf : MONNAIE M7 — econ_country_price_level (inline ci-dessous) */
 #include "scps_types.h"
 #include "scps_culture.h"   /* PopCulture embarque les traits dérivés (Ethos, …) */
 #include "scps_heritage.h"   /* couche biologique : heritage + traits (leviers) */
@@ -789,6 +790,44 @@ static inline float econ_avg_price(const WorldEconomy *e, Resource res){
     double s=0.0; int n=0;
     for (int r=0;r<e->n_regions;r++) if (e->region[r].colonized){ s+=e->region[r].price[res]; n++; }
     return n? (float)(s/n):0.f;
+}
+
+/* MONNAIE M7 — I1 (télémétrie/UI, lecture seule) : RECALCULE `price_level[cid]` à
+ * l'identique du bloc en tête d'econ_tick (scps_econ.c, « caisse_snapshot ») — même
+ * formule, mêmes tunables (SINK_FLOOR/INFLATION_CAP), AUCUN état neuf : la caisse
+ * nationale (Σ surplus des trésors provinciaux au-dessus de SINK_FLOOR) sur la VA
+ * nationale du tick précédent, plafonnée à INFLATION_CAP. Coût : Σprovinces DU PAYS —
+ * appelée par la chronique une fois/an, jamais par le moteur (pas de doublon d'état). */
+static inline float econ_country_price_level(const WorldEconomy *e, int cid){
+    if (!e || cid<0 || cid>=SCPS_MAX_COUNTRY) return 1.f;
+    if (e->va_country_prev[cid]<=1e-6f) return 1.f;
+    float caisse=0.f; const float floor_=tune_f("SINK_FLOOR", 500.f);
+    for (int p=0;p<e->n_prov && p<SCPS_MAX_PROV;p++){
+        const ProvinceEconomy *pr=&e->prov[p];
+        if (!pr->active || !pr->colonized || pr->owner!=cid) continue;
+        caisse += fmaxf(0.f, pr->treasury - floor_);
+    }
+    /* clamp manuel (pas de scps_math.h ici : redéfinirait absf/clampf pour tout
+     * inclueur transitif de scps_econ.h — plusieurs bancs portent encore une copie
+     * locale, cf. demography_demo.c). */
+    float ratio = caisse/e->va_country_prev[cid], cap = tune_f("INFLATION_CAP", 4.0f);
+    if (ratio!=ratio) return 0.f;   /* NaN garde-fou, motif clampf */
+    return ratio<0.f ? 0.f : (ratio>cap ? cap : ratio);
+}
+
+/* MONNAIE M7 — I1 (télémétrie) : l'INDICE DES PRIX MONDIAL — moyenne des price_level
+ * par pays, pondérée par leur VA (poids économique réel, pas un pays par tête) ; 1.0 =
+ * neutre/aucune économie encore installée. Lu par chronicle.c pour la dérive séculaire. */
+static inline float econ_world_price_index(const WorldEconomy *e, const World *w){
+    if (!e || !w) return 1.f;
+    double wsum=0.0, num=0.0;
+    for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY; c++){
+        if (w->country[c].role!=POLITY_PLAYER && w->country[c].role!=POLITY_ANTAGONIST) continue;
+        float va = e->va_country_prev[c]; if (va<=1e-6f) continue;
+        num  += (double)va * (double)econ_country_price_level(e, c);
+        wsum += (double)va;
+    }
+    return (wsum>1e-6) ? (float)(num/wsum) : 1.f;
 }
 
 /* Avance la simulation d'un pas. dt = années/tick (1 en annuel, 1/12 en mensuel) :
