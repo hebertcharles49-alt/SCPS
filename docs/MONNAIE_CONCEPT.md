@@ -431,9 +431,52 @@ Décision joueur en cours de mission (A3 REFONDU) : « Intérêt fixe : si t'emp
   disparu par déplacement de trajectoire, pas par conversion du site) · DEBT_DUE_FRAC=0.10
   jamais optimisé finement (horizon ~10 ans) · **DLL Godot À RE-BUILDER**.
 
-### M12 — LA CENTRALISATION FISCALE + LE TRANSPORT (v4 : reformulé ; ex-M7, renuméroté une
+### M12 — L'ÉQUILIBRE DE BASE : l'État en paix se paie tout seul (LIVRÉ, 2026-07-16)
+
+**Statut : CALIBRÉ-LIVRÉ.** Problème mesuré : dette mondiale early massive sans guerre ni
+chantier ni armée — « le fonctionnement de l'état de base est trop cher pour se maintenir ».
+Décision joueur (verbatim) : « Si l'état achète au prix du marché, c'est un très mauvais
+négociant. L'état doit prendre sa part, la taxe, générale. Donc, l'état achète à 60 % du
+prix du marché, tunable. » Le tuyau d'emprunt automatique M3c RESTE (décision explicite) —
+on répare ce qu'il révélait.
+- [x] **E1 — L'AUDIT P&L (SCPS_PLDIAG)** : le P&L annuel d'un État en paix sans chantier,
+      ligne à ligne (FX_* + « achat-État » §3 et « assiette » par pays, jusqu'ici sans
+      bucket). LA ligne coupable : l'achat d'État (M3b-v2) — −339.7 or/mois à l'an 1 contre
+      +250.5 de revenu total ; cour/admin/encadrement à 0, soldes −0.4 (« y'a pas d'armée
+      an 2 » confirmé). L'amorçage genèse (price_level=1 sans référence de VA) CONFIRMÉ
+      aggravant — pire : il se re-déclenche pour chaque pays NEUF sur toute la période
+      early. Fix `PL_GENESIS` (défaut 0.0, registre J, 1.0=legacy) : démarrer bas,
+      converger — à lui seul −96/−97 % de dette early.
+- [x] **E2 — STATE_BUY_FRAC, L'ÉTAT NÉGOCIANT** (défaut 0.60, registre J, 1.0=kill-switch
+      exact) : l'achat d'État paie `price_level × STATE_BUY_FRAC` aux pools de gages
+      (42/20/38) ; la REVENTE (prix national + assiette M5) reste au price_level PLEIN.
+      La marge de 40 % EST la taxe générale — prélevée à la source (jamais débitée), elle
+      reste structurellement au trésor. RÈGLE joueur : le 0.60 ne se recalibre JAMAIS ; si
+      la bande Laborer casse → fiscalité Laborer et/ou rendement satisfaction, pas lui.
+- [x] **E3 — LA PREUVE (sweep apparié pre-m12 vs HEAD, frame M11 `<seed> 3 250`)** :
+      dette early an 2 Σ 6 034→**0** (9/9 sims) · an 12 29 976→**317** (−98.9 %) · emprunt
+      de PAIX +63/+160/+77 → **+10/+6/+1** or/pays-an (RARE, comme demandé) · banqueroutes
+      Σ 795→**28** (−96 %) · dette monde fin 65 369→**16 982** · colonisation 237→**315**
+      (+33 %) · Laborer 71/60/61 % (bande tenue, AUCUN rééquilibrage requis — la règle
+      (a)/(b) jamais invoquée) · IPM/dérive M7 comparable · invariant **0/9** (avec
+      `INVARIANT_SCALE_FLOOR`=500, le plancher de résolution : le détecteur relatif
+      explosait sur des dérives de −23…−452 or/an quand E1+E2 ont fait fondre son
+      dénominateur — les mêmes sims pre-m12 dérivaient de milliers, masqués).
+      Pression fiscale totale par ordre publiée (marge E2 + retenue M3i) : Laborer l'ordre
+      le MOINS pressé (41-75 %), l'Élite le plus (72-123 %) — progressivité préservée ;
+      les >100 % viennent de l'assiette M3i au gross (documenté, borné par la richesse).
+- Gate : kill-switch prouvé (`STATE_BUY_FRAC=1.0,PL_GENESIS=1.0` → golden pre-m12
+  byte-identique) · make test 38/38 verts + credit_demo 48/48 (intertrade_demo seul,
+  pré-existant Windows) · golden RE-BASELINÉ puis VERT · determinism + deep verts ·
+  savetest A==B + octet altéré refusé · fuzz-save 8/8. SAVE_VERSION 95 inchangé (aucun
+  état neuf sérialisé). Détail complet : TROUVAILLES.md « CHANTIER MONNAIE — M12 ».
+- **Restes** : pression >100 % Bourgeois/Élite early (levier INCOME_TAX_RATE_*, jamais le
+  0.60) · site WILD péages parqués (M3h/M3i item 7) toujours désigné · **DLL Godot À
+  RE-BUILDER**.
+
+### M13 — LA CENTRALISATION FISCALE + LE TRANSPORT (v4 : reformulé ; ex-M7, renuméroté une
 seconde fois pour M8 LIVRÉ, une troisième fois pour M9 LIVRÉ, une quatrième fois pour M10,
-une cinquième pour M11 LIVRÉ ci-dessus)
+une cinquième pour M11, une sixième pour M12 LIVRÉ ci-dessus)
 Le trésor est DÉJÀ provincial (:2675) — M6 n'est pas une « localisation » mais :
 - [ ] La remontée fiscale devient un TRANSPORT physique vers la capitale (convois,
       délai, interceptables) ; le coffre de la capitale = la cible du sac.

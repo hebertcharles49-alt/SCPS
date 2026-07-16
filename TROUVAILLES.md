@@ -3754,3 +3754,168 @@ Bande documentée, pas de recalibrage demandé.
   chaque vague monétaire.
 - Worktree de sweep `/c/tmp_wt_pre_m11` retiré en fin de session ; fichiers de sweep bruts
   (21 runs chronicle) au scratchpad, non committés — seules les Σ ci-dessus font foi.
+
+## CHANTIER MONNAIE — M12 : L'ÉQUILIBRE DE BASE (2026-07-16)
+
+**Statut : CALIBRÉ-LIVRÉ — golden RE-BASELINÉ VERT, gates complets passés, LA dette de
+fonctionnement early ÉLIMINÉE (an 2 : Σ 6034→0 sur 9 sims ; an 12 : 29 976→317, −98.9 %).**
+Décisions joueur (verbatim) : « le fonctionnement de l'état de base est trop cher pour se
+maintenir » · « Si l'état achète au prix du marché, c'est un très mauvais négociant. L'état
+doit prendre sa part, la taxe, générale. Donc, l'état achète à 60 % du prix du marché,
+tunable. » · règle de calibrage : « Si la bande Laborer prend, c'est que leurs taxes sont
+trop élevées ET que leurs biens ne donnent pas assez de satisfaction » — le 0.60 ne se
+recalibre JAMAIS. Tag `pre-m12` posé sur bedc7df (M11). 5 commits : E1 (73c21ef) ·
+E2 (d8c9561) · E3 diags (28ffae9) · golden (d55345c) · docs (ce commit). SAVE_VERSION 95
+INCHANGÉ (aucun nouvel état sérialisé — tout est tunable registre J + statics print-only).
+
+**E1 — LE TABLEAU P&L DE L'ÉTAT DE BASE (SCPS_PLDIAG, la mesure d'abord).** États jouables
+EN PAIX SANS CHANTIER (filtre : ni DIPLO_WAR ni FX_BUILD actif l'année), moyenne pondérée
+{9,11,42}×3 sims (frame 6 empires/12 cités, 160 ans), or/mois/empire, AVANT tout fix
+(pre-m12 exact) :
+
+| an | taxes | frappe | assiette | **achat-État** | entretien | soldes | marine | import | redépense | solde |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1  | +103.6 | +90.3 | +56.6 | **−339.7** | −2.8 | −0.4 | 0.0 | −35.3 | −24.8 | ~−152 |
+| 3  | +34.2 | +56.0 | +20.0 | **−74.7** | −1.0 | −7.7 | −17.5 | −4.5 | −3.2 | ~+1 |
+| 5  | +27.6 | +26.5 | +16.2 | **−58.9** | −0.6 | −5.7 | −6.1 | −1.1 | −2.1 | ~−5 |
+| 12 | +21.0 | +23.3 | +3.1  | **−23.6** | −0.0 | −3.6 | −21.0 | −1.8 | −0.1 | ~−4 |
+| 50 | +104.1 | +55.5 | +62.0 | **−163.3** | −3.7 | −8.3 | −25.7 | −5.2 | −6.5 | ~+10 |
+| 150| +4.1 | +15.8 | +1.2 | **−1.4** | 0.0 | −4.5 | −13.0 | −3.2 | −0.1 | ~−1 |
+
+LA LIGNE COUPABLE est « achat-État » (le circuit M3b-v2 : l'État achète la VA au
+price_level) : −339.7/mois à l'an 1 contre +250.5 de revenu TOTAL — cour/admin/encadrement
+sont à 0.00 partout (gatés par COURT_FLOOR/hoarding, jamais atteints en early), l'entretien
+est dérisoire (−0.04 à −3.7), les soldes confirment « y'a pas d'armée an 2 » (−0.4). Aucun
+autre suspect ne tient la comparaison. (« achat-État » et « assiette » par pays n'avaient
+AUCUN bucket FX_* — câblés print-only pour ce tableau, econ_pldiag_*.)
+
+**E1 — L'AMORÇAGE GENÈSE : CONFIRMÉ AGGRAVANT, mesuré pas supposé.** scps_econ.c ~3568 :
+`price_level=1.f` codé en dur quand `va_country_prev<=EPS` (« prix plein, non contraint »).
+Le piège est PIRE que le brief le pensait : la branche se re-déclenche pour CHAQUE
+pays/cité-état NOUVEAU tout du long des 12 premières années (pas une fois à la genèse du
+monde) — un pays qui produit son premier tick de VA tente de la payer à 100 % avec sa seule
+réserve de genèse M5 (100 or), le déficit devient country_shortfall ⇒ péréquation ⇒ emprunt
+aux classes ⇒ LA dette de fonctionnement. Patch expérimental isolé (0.f au lieu de 1.f,
+AVANT E2) : dette Σ an-2 6034→239 (−96 %), an-12 29 976→782 (−97 %) sur {9,11,42}×3. Livré
+`PL_GENESIS` (défaut 0.0, registre J, 1.0 = legacy byte-identique) : « démarrer bas,
+converger » — dès le 2e tick, `va_country_prev` est peuplé et le ratio caisse/VA reprend.
+
+**E2 — STATE_BUY_FRAC (le cœur).** `pf_buy = price_level × STATE_BUY_FRAC` (défaut 0.60)
+au SEUL site §3 (pay_wage/profit/tax) ; la REVENTE (prix national §clôture + assiette M5)
+reste au price_level PLEIN. La marge de 40 % n'est jamais « versée » nulle part — elle
+n'est simplement JAMAIS DÉBITÉE du trésor (prélèvement à la source, pas un flux). La vie
+d'un achat d'État type : AVANT — province produit VA 100, l'État doit 100×pf aux classes,
+caisse insuffisante ⇒ dette ; APRÈS — l'État paie 60×pf (42/20/38), garde 40×pf, revend au
+plein prix ⇒ l'écart couvre le fonctionnement, l'emprunt de paix disparaît. WILD/hameaux
+(démonétisés) et provinces owner<0 (fixtures) : INTACTS (pas d'État, pas de marge).
+
+**E3 — LE SWEEP APPARIÉ (frame M11 : `./chronicle <seed> 3 250`, empires variables — LE
+frame des références 795/66k/237, vérifié : pre-m12 le reproduit EXACTEMENT ; le frame
+`6 12` des vagues M3b/M3c donne des absolus ~2× plus gros, piège de comparaison notable)** :
+
+| métrique | pre-m12 (M11) | HEAD (M12) | verdict |
+|---|---|---|---|
+| dette early an 2 Σ (9 sims) | 6 034 | **0** | ZÉRO — 9/9 sims |
+| dette early an 12 Σ | 29 976 | **317** | −98.9 % |
+| emprunt de PAIX (or/pays-an) | +62.8/+160.3/+77.3 | **+10.4/+6.4/+1.1** | −84 à −99 % — l'emprunt de paix est devenu RARE |
+| emprunt de GUERRE (or/pays-an) | +491.3/+156.2/+108.9 | +10.8/+2.5/+3.2 | la dette résiduelle est minuscule, du même ordre guerre/paix |
+| banqueroutes Σ | 795 (252+315+228) | **28** (12+0+16) | −96 % (gate ≤795 : ÉCRASÉ) |
+| dette monde fin Σ | 65 369 | **16 982** | gate ≤66k : LARGEMENT tenu |
+| colonisation Σ (fondations) | 237 | **315** | +33 % — pas de suppression, au contraire |
+| Laborer sat. | 66/60/62 % | **71/60/61 %** | bande TENUE (plancher 50) — AUCUN rééquilibrage requis |
+| Bourgeois / Élite | 77/62/72 · 71/60/57 | 70/84/87 · 69/82/68 | dans/au-dessus des bandes |
+| IPM final moyen (dérive M7) | 0.97/0.90/0.90 | 0.94/0.92/0.87 | comparable |
+| invariant M3c | 0/9 | **0/9** (avec plancher de résolution) | cf. Découvertes |
+
+La règle du joueur (baisser la fiscalité Laborer / monter le rendement satisfaction) n'a
+PAS été invoquée : la bande n'a pas cassé — elle est montée sur seed 9 (66→71).
+
+**LA PRESSION FISCALE TOTALE PAR ORDRE (PLDIAG-FISC, seed 9 sim 1 HEAD, (marge E2 +
+retenue M3i)/(paie plein-prix), curseurs M8 et évasion inclus dans la retenue)** :
+
+| an | Laborer | Bourgeois | Élite |
+|---:|---:|---:|---:|
+| 2   | 41 %  | 102 % | 72 %  |
+| 12  | 75 %  | 93 %  | 123 % |
+| 50  | 51 %  | 88 %  | 98 %  |
+| 150 | 54 %  | 78 %  | 93 %  |
+
+Progressivité PRÉSERVÉE : le Laborer est l'ordre le MOINS pressé (l'exonération panier
+vital annule sa retenue en early — marge 40 % quasi seule), l'Élite le plus. Les pressions
+>100 % (Bourgeois an 2, Élite an 12) viennent d'un fait DOCUMENTÉ : l'assiette M3i est le
+income_gross (les pools PLEINS, avant price_level ET avant STATE_BUY_FRAC — décision M3i
+« la valeur produite est la bonne assiette ») — en période de pf bas, la retenue peut
+dépasser le reçu (bornée par la richesse, jamais négative). C'est LE levier (a) déjà en
+place si le joueur veut alléger un ordre : INCOME_TAX_RATE_* / TAX_BASE_*.
+
+**Découvertes** :
+- **Le banc invariant M3c a perdu son dénominateur PAR LE SUCCÈS de la vague.** Détecteur :
+  |autres|/échelle, échelle = Σ|composantes documentées| de l'année, plancher 1.0. E1+E2
+  font fondre la création résiduelle M3b (~0 dans les petites économies saines : l'État
+  COUVRE son achat) ⇒ échelle ~1 ⇒ le ratio explosait sur des dérives ABSOLUES minuscules :
+  2 sims du seed 11 en « breach » à −23…−452 or/an (« 42324 % ») pendant que les MÊMES sims
+  pre-m12 portaient des autres de −1884 à −9680 or/an, masqués par leur grosse échelle
+  (comparaison des lignes « création résiduelle » : HEAD autres −66 à −311/an de moyenne
+  sur les sims incriminées — les PLUS PROPRES du tableau). Fix : INVARIANT_SCALE_FLOOR
+  (registre J, 500 = la barre SINK_FLOOR) — un plancher ne peut que RÉDUIRE un ratio,
+  aucune détection historique (échelles de milliers) masquée. Résultat 0/9. Leçon : un
+  détecteur RELATIF meurt quand son dénominateur tend vers 0 — re-vérifier chaque banc
+  normalisé après toute vague qui améliore la grandeur qui le normalise.
+- **Les références absolues d'un sweep ne voyagent PAS entre frames.** Le premier sweep
+  (frame `6 12`, celui documenté par M3b/M3c) donnait pre-m12 = 1447 banqueroutes — 2× la
+  référence M11 (795). La référence M11 vit sur le frame VARIABLE (`<seed> 3 250`, empires
+  2→4) — retrouvé par bissection d'invocation (le frame variable reproduit 252/315/228 et
+  colonisation 237 À L'UNITÉ PRÈS). Les DEUX frames concluent pareil en RELATIF
+  (banqueroutes −96 %/−98 %, dette early −97 %/−100 %). Toujours ancrer le frame avant
+  de comparer des absolus inter-missions.
+- **La retenue M3i assise sur le gross est mécaniquement AMPLIFIÉE par E2** (pression >100 %
+  possible, cf. tableau) — cohérent (« la valeur produite reste la bonne assiette »), borné
+  par la richesse, mais à garder en tête si un futur calibrage veut réduire la pression d'un
+  ordre : c'est le taux M3i qu'il faut toucher, pas le 0.60 (règle joueur).
+- **L'hégémon/late-game n'est pas perturbé** : IPM 0.87-0.94 (vs 0.90-0.97), satisfactions
+  fin de partie dans les bandes, colonisation +33 % — le circuit d'État plus riche finance
+  DAVANTAGE d'expansion, pas moins.
+
+**Pièges** :
+- **`/*` DANS un commentaire de fin de ligne** : « (même cadence que FX_*/g_flux) » — le
+  `*/` de `FX_*/` FERME le commentaire, `g_flux)` devient du code ⇒ erreur de compile
+  sibylline (« g_flux undeclared »). Espacer : `FX_* / g_flux`.
+- **Un chronicle.exe encore vivant bloque le link en silence** (motif M3b-v2.1/M5/M8,
+  revécu) : le premier rebuild E3 a échoué « Permission denied » pendant que le sweep
+  tournait — TOUJOURS `tasklist | grep chronicle` avant relink, et JAMAIS relink pendant
+  un sweep.
+- **Les runs `years=3` capturent l'an 2 exact** (snap=années/5 ne suffit pas en early) —
+  motif M5 reconfirmé : mesurer l'early par des runs COURTS dédiés, pas des snapshots.
+- **Le patch de mesure worktree** (BORROWDIAG copié dans pre-m12 pour la colonne PRE du
+  sweep) : print-only, jamais committé, worktree détruit en fin de mission — le pattern
+  légitime pour instrumenter une baseline sans réécrire l'histoire.
+
+**Gates (tous passés)** :
+1. **Kill-switch prouvé** : `STATE_BUY_FRAC=1.0,PL_GENESIS=1.0` → hash 7/108/209/310/411
+   BYTE-IDENTIQUE au golden pre-m12 (8868515e/7cf6e226/cacb2485/7d457acd/70c0436e),
+   re-vérifié sur le binaire FINAL avant re-baseline ✓. (PL_GENESIS=1.0 gate E1 seul ;
+   STATE_BUY_FRAC=1.0 seul diverge comme attendu, E1 restant actif.)
+2. **Sweep apparié** : tableau ci-dessus, chaque preuve chiffrée ✓.
+3. **make test COMPLET** : 38 VERTS / 0 ROUGE / 1 BUILD ÉCHEC (intertrade_demo, setenv,
+   pré-existant Windows) · credit_demo 48/48 ✓ · golden RE-BASELINÉ puis VERT ✓ ·
+   determinism STABLE (5 graines × 12 ans, A==B) ✓ · determinism-deep STABLE (graines
+   7/9 × 200 ans) ✓ · `scps_viewer --savetest 9` : A==B byte-identique (day=2095
+   pop=60472.2 or=16811.2 identiques) + altération d'un octet REFUSÉE ✓ · `make fuzz-save`
+   8/8 (216 octets flippés, aucun crash) ✓.
+4. Cet append + commits granulaires FR ✓.
+
+**Restes** :
+- **La pression fiscale >100 % sur Bourgeois/Élite en early** (assiette M3i au gross ×
+  marge E2) — documentée, PAS un bug (bornée par la richesse), mais un candidat si le
+  joueur trouve les ordres hauts trop pressés en début de partie : baisser
+  INCOME_TAX_RATE_BOURGEOIS/ELITE, jamais le 0.60.
+- **Le solde de l'état de base reste légèrement négatif certaines années early** (~−4 à
+  −5/mois an 5-12 au P&L) — mais SANS dette (l'écart est absorbé par la caisse qui se
+  refait à la revente) ; la dette mesurée an 2/an 12 est ~0. Rien à faire, documenté.
+- **Le site WILD des péages parqués (M3h/M3i item 7)** — toujours désigné (inchangé par
+  M12), la vague dédiée « région-carrier → province colonisée » reste à faire.
+- **UI-MONNAIE** : aucun reader façade neuf (le brief n'en demandait pas). **DLL Godot À
+  RE-BUILDER** (scons -C godot) : scps_econ.c/h et scps_tune_list.h ont changé (nouveaux
+  symboles econ_pldiag_*, tunables M12) — motif noté à chaque vague monétaire.
+- Worktree de sweep `/c/tmp_wt_pre_m12` retiré en fin de session ; fichiers de sweep bruts
+  au scratchpad (sweep_m12/), non committés — les Σ ci-dessus font foi.
