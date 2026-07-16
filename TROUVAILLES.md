@@ -3371,3 +3371,195 @@ de `over_tax` déjà actif au tick 1 sur le défaut de genèse satisfaction=0.5)
 par un run — seulement plausible par les constantes du code (STATE_TAX_AMBITION=0.42 vs table
 `econ_tax_tolerance`, scps_econ.c:2027-2046,2320). Un `SCPS_M8DIAG` étendu (imprimer basket/
 comfort_joy/over_tax séparément) serait le prochain pas si M10 a besoin du chiffre exact.
+
+## CHANTIER MONNAIE — M10 : LES PALIERS DE BESOINS + LE PLANCHER FISCAL (2026-07-16)
+
+**Statut : CALIBRÉ-LIVRÉ (1 Reste net documenté, PAS un STOP).** Décision joueur (verbatim) :
+« Les paliers de satisfaction augmentent avec la pop ? C'est ça l'issue ! Si tu demandes tout
+day 1 forcément que la satisfaction va imploser. Si tu es petit et que an 150 t'as pas grand
+chose, t'imposes aussi. Driver les besoins sur le nombre d'hab de l'empire. Chaque palier, un
+besoin (universel, on se satisfait autant de bière que de papier, peu importe l'ordre). » +
+seuils GÉOMÉTRIQUES validés. Tag `pre-m10` posé sur 563ec2b. 4 commits : P0 (da0b65e) · P1
+(dc3204f) · correctif audit (1cd2e80) · reader façade (e3b3a50). SAVE_VERSION 94→95.
+
+**L'ARCHITECTURE LIVRÉE** :
+- **P0 — LE PLANCHER FISCAL** : `econ_ai_fiscal_tick` (C3, scps_econ.c) borne désormais sa
+  case basse à `TAX_MULT_FLOOR` (défaut 0.75) au lieu du `0.02` générique — le curseur JOUEUR
+  (`econ_country_tax_set`) garde SON propre 0.02, intact ; seul le CONTRÔLEUR IA est bridé.
+  `TAX_MULT_FLOOR=0.02` : kill-switch exact.
+- **P1 — LES PALIERS DE BESOINS** : `active_needs` (§besoins progressifs, `econ_tick`) change
+  de SOURCE — remplacé par `econ_needs_active_for_country` (nouveau, scps_econ.c/.h), un
+  palier GÉOMÉTRIQUE (`NEEDS_TIER_POP=3000` × `NEEDS_TIER_GROWTH=2.0`^k, plafonné
+  `NEEDS_TIER_MAX=10`) piloté par la POP TOTALE DE L'EMPIRE (`epop[]`, déjà agrégée en tête
+  d'`econ_tick` — AUCUN nouveau scan), HYSTÉRÉTIQUE (`g_needs_tier_held[SCPS_MAX_COUNTRY]`,
+  ratchet : monte instantanément, décroît sur `NEEDS_TIER_DECAY_YEARS=5` si la pop retombe —
+  motif `g_basket_pc`/`g_lowsat_streak`, même blob EMOB sérialisé). Le miroir M4-IP
+  (`ip_find_shortage_building`, dupliquait le calcul avant M10) lit désormais la MÊME source.
+  Le panier CŒUR n'est plus gaté par `NEED_ORDER`/rang fixe : une PRÉ-SÉLECTION par classe
+  (nouveau bloc, AVANT §4 demande ET §5 consommation) retient les Kc=active_needs−1 biens les
+  PLUS DISPONIBLES (stock/besoin, lu AVANT tout achat — un critère économique, pas l'ordre
+  d'itération) ; seuls ceux-là (+grain, toujours palier 0 + confort-bonus poterie/statuaire,
+  toujours hors panier, INCHANGÉ) sont même TENTÉS. `basket` (satisfaction) et `needs_met`
+  (nsat/nbasket) jugent tous deux contre CES paliers actifs seuls, à POIDS ÉGAL (pas la valeur
+  marchande) — corrige le bug identifié au RAPPORT M10 §implications 1/2 (dénominateur =
+  panier mature complet, indépendant du tier). L'élasticité M5 (`g_basket_pc`, value-weighted)
+  et la ration vitale sont INTACTES. `NEEDS_TIER_POP=0` : kill-switch — legacy EXACT (gate par
+  rang restauré, formule value-weighted restaurée, pas seulement la valeur numérique
+  d'`active_needs`).
+- **Reader façade** : `scps_country_needs_tier` (scps_api.c/.h) — palier courant + pop
+  requise pour le suivant, pure addition golden-neutre.
+
+**Découvertes** :
+- **`epop[]` (accumulé en tête d'`econ_tick` pour le pool national/prix) est EXACTEMENT la
+  pop d'empire dont P1 avait besoin** (Laborer+Bourgeois+Élite, même définition que `rpop_nd`
+  local) — aucun nouveau scan par-pays, juste un pré-passe légère qui écrit
+  `g_needs_tier_held[]` avant la boucle par-province (scps_econ.c, entre l'usure des outils et
+  les leviers labor-bound). `econ_ip_invest_tick` tourne DANS LA MÊME cadence mensuelle, APRÈS
+  `econ_tick` (scps_sim.c:1073-1085) — son miroir lit donc la valeur du MOIS COURANT, pas
+  celle du mois précédent.
+- **AUDIT EXTERNE (revue indépendante, avant tout sweep) : le premier jet de P1 laissait le
+  palier limiter la SATISFACTION, pas la CONSOMMATION** — en retirant le gate par rang de §4/
+  §5 sans le remplacer, TOUS les biens du panier cœur étaient demandés et ACHETÉS (S[]/budget
+  débités), seuls les K mieux SERVIS comptant ensuite pour `basket`/`needs_met` (sélection
+  APRÈS coup, triée sur `got`). Deux défauts réels : (1) une strate pauvre dépensait sa
+  richesse dans des biens qui ne lui rapportaient JAMAIS de satisfaction (fuite de richesse,
+  contresens économique) ; (2) la sélection dépendait implicitement de l'ORDRE d'itération des
+  ID ressource (qui avait pu acheter EN PREMIER, donc épuiser le budget partagé, avant que les
+  autres candidats soient tentés) — « peu importe l'ordre » n'était vrai que pour le calcul
+  final, pas pour QUI recevait l'argent. **Corrigé par une PRÉ-SÉLECTION** (lecture pure de
+  `S[]`/besoin, calculée AVANT tout achat, pour CHAQUE classe, AVANT §4 ET §5) — les biens NON
+  retenus ne sont ni demandés ni achetés du tout. Leçon généralisable : un mécanisme
+  « n'importe lequel des N compte » DOIT décider QUI compte AVANT la dépense, jamais après —
+  sélectionner après coup sur un résultat déjà consommé (budget déjà débité) ne fait que
+  déplacer le biais, pas l'éliminer.
+- **Le score de pré-sélection des biens VARIANTS (boisson/luxe) doit être BLENDÉ, pas juste la
+  variante préférée** — piège trouvé en réparant `social_demo` (pas en le lisant à l'avance) :
+  scorer un candidat EAU_DE_VIE/PRECIOUS_WARE par `S[preferred]/besoin` SEUL note un bien
+  hors-culture mais SUBSTITUABLE (l'alternative abondante) comme TOTALEMENT indisponible
+  (score≈0), l'évinçant systématiquement d'un slot rare — alors qu'il atteint réellement
+  `got≈0.5` via le mélange `DRINK_OFFCULT`/`LUXE_OFFCULT`. Fix : le score MIROIR la formule de
+  consommation réelle (`cs_p + offcult·cs_a`), pas un raccourci.
+- **La chaîne manufacture→satisfaction→fisc, tracée bout-en-bout (SCPS_M8DIAG, seed 9,
+  floor=0.75 final)** : un pays SAIN (pays 0, sim 1) : besoins comblés 45→100→98 %,
+  satisfaction Laborer 36→100→90 %, **tax_mult Laborer RESTE À 1.00 DU DÉBUT À LA FIN** (jamais
+  relâché — C3 SERRE, ne brade jamais, un pays qui a de quoi payer), revenu fiscal
+  103→346→28008 or/mois (×272 sur 250 ans). Un pays EN DIFFICULTÉ (pays 35, sim 2) : besoins
+  comblés plafonnent à 33 %, satisfaction Laborer 21-43 %, **tax_mult COLLE AU PLANCHER 0.75
+  dès l'an 75 et n'en bouge plus** (P0 en action : avant M10, ce même pays aurait continué à
+  s'éroder vers 0.34 comme mesuré par DIAG-BANQUEROUTES ; désormais 0.75 est le pire qu'il
+  puisse atteindre) — revenu quasi nul (0-1 or/mois) mais STABLE, pas en chute libre.
+- **`needs_tier_eff[]` (tableau local intermédiaire de la première ébauche) s'est avéré
+  inutile** — remplacé par un lecteur PUBLIC unique (`econ_needs_active_for_country`) qui lit
+  directement `g_needs_tier_held[]` (déjà à jour après la pré-passe) : DRY, et sert aussi le
+  miroir M4-IP sans dupliquer la logique de calcul.
+
+**Pièges** :
+- **Le kill-switch « valeur identique » ne suffit PAS pour un mécanisme qui change de
+  FORMULE, pas seulement de PARAMÈTRE** — première itération : `NEEDS_TIER_POP=0` faisait
+  retomber `active_needs` sur sa valeur legacy EXACTE (`1+capitale_max_tier(pop locale)`),
+  mais la boucle §4/§5 restait ENTIÈREMENT ungated (gate par rang supprimé sans condition) —
+  résultat : `basket`/`needs_met` utilisaient la NOUVELLE formule (poids égal, sélection) même
+  au kill-switch, avec la MÊME valeur numérique d'`active_needs` que l'ancienne — golden pré-
+  M10 PAS byte-identique (`--hash 7 5 12` divergent dès la 1ʳᵉ graine), détecté immédiatement
+  par le gate 1. Fix : un booléen `p1_on` explicite thread À TRAVERS §4 ET §5, chaque branche
+  gardant SES DEUX chemins (accumulateurs LEGACY `met_w`/`nsat`/`nbasket` calculés EN PARALLÈLE
+  et harmless quand inutilisés, jamais supprimés). Leçon : quand un kill-switch doit prouver
+  un golden byte-identique, VÉRIFIER qu'il coupe TOUTE la chaîne de calcul modifiée, pas
+  seulement la valeur d'entrée qui la pilote — un test au premier `--hash` AVANT tout sweep
+  (comme prescrit par le brief) l'a attrapé en une commande, pas en 250 ans de sweep.
+- **`social_demo` « chacun sa boisson » a cassé APRÈS le correctif audit, pas avant** — la
+  pré-sélection par disponibilité fait GAGNER les biens abondants contre un bien hors-culture
+  pénalisé quand `Kc<n_cand` (compétition de slot) ; le fixture isolait le signal boisson en
+  rendant TOUS les AUTRES biens sociaux triviallement abondants (1e5) à pop=1250 (tier 1,
+  Kc=1) — l'exact scénario où la compétition masque le signal testé. `elite_sat_with_luxe`
+  (même fichier) ne l'a PAS attrapé car il utilisait DÉJÀ pop=4100 (tier 4, Kc=4=n_cand,
+  aucune compétition) — un précédent qu'il suffisait de suivre, pas un bug nouveau à inventer.
+  Leçon : un fixture qui isole un signal en rendant « tout le reste trivial » peut désormais
+  faire le CONTRAIRE de ce qu'il visait — le trivial devient le concurrent qui évince le signal.
+- **Le breach invariant M3c isolé (graine 11, sim 1, an 19-23) est un accumulateur WILD
+  PRÉ-EXISTANT, pas un bug P0/P1** — `[INVDIAG-WILD-TOP]` montre une province NON colonisée
+  (`colonized=0`, pop L/B/E=0/0/0) avec une richesse BOURGEOISE fantôme (`wealth...B=11411`,
+  croissant tick après tick) : un accumulateur de richesse déjà documenté par un diagnostic
+  DÉDIÉ *pré-existant* (`chronicle.c:360`, « M3e DIAG… temporaire pour la chasse au breach
+  graine 11 an 57 » — cette fragilité PRÉCÈDE M10 de plusieurs vagues). Isolé par kill-switch
+  matriciel (30 ans, seed 11) : P0 SEUL (P1 mort) → 10 échecs ; P1 SEUL (P0 mort) → 0 échec ;
+  les deux → 6 ; ni l'un ni l'autre → 0. P0 est le déclencheur (déplace la trajectoire fiscale
+  assez pour faire buter le pays sur ce leak pré-existant), P1 ATTÉNUE (10→6) sans l'effacer.
+  Balayage `TAX_MULT_FLOOR` 0.60-0.85 : NON-MONOTONE (0.70 → 24 échecs, PIRE que 0.80 ; 0.60/
+  0.65/0.75 → 2 chacun) — motif M8 « bifurcation, pas un gradient », confirmé une fois de plus.
+  0.75 retenu (meilleur point mesuré), 2 années résiduelles (383-389 % vs seuil 370 %) — cause
+  HORS scope M10 (confirmée par le coordinateur : vague corrective séparée prévue sur
+  « frappe libre »/« trésor prov/region »), documentée en Restes, PAS un STOP.
+- **`m10_diag_trace.sh` référençant un worktree déjà retiré (`git worktree remove`) échoue
+  SILENCIEUSEMENT sur SA branche en arrière-plan (`&`), écrasant le fichier de sortie précédent
+  par un message d'erreur d'une ligne** — motif déjà noté (M3b-v2.1, « toujours vérifier
+  `wc -l` avant de faire confiance à un fichier de sweep produit en arrière-plan ») ; ici
+  appliqué à UN fichier sur deux (le second, indépendant, réussissait). Les 2 traces
+  pré-m10/HEAD ne peuvent PAS être régénérées après `git worktree remove` sans recréer le
+  worktree — retenir la donnée AVANT de nettoyer, pas après.
+
+**Mesures (sweep apparié pre-m10 vs HEAD, `{9,11,42}×3×250`, floor=0.75 final)** :
+
+| seed | banqueroutes Σ | colonisation Σ | Laborer sat. finale | revenu fiscal an-150 Σ | invariant pic max |
+|---|---|---|---|---|---|
+| 9  | 365→165 (−55 %) | 67→67 (=) | 54→66 % (+2pt hors plafond) | 181097→263699 (+46 %) | 80→89 % |
+| 11 | 506→265 (−48 %) | 73→69 (−5 %) | 54→70 % (+6pt hors plafond) | 77001→53302 (−31 %) | 361→**389 %** (2 ans, BREACH) |
+| 42 | 312→153 (−51 %) | 147→127 (−14 %) | 58→62 % (dans bande) | 310847→402381 (+29 %) | 105→108 % |
+| **Σ** | **1183→583** | **287→263** | — | **568945→719382 (+26 %)** | — |
+
+Banqueroutes Σ **583, à 0.2 % de la cible pre-m8 (582)** — le résultat DIAG anticipé, atteint
+quasi exactement · colonisation STABLE/saine (aucune suppression massive, l'interaction C1×C3
+du DIAG — la fiscalité qui monte concurrence l'initiative privée — ne se manifeste plus dans
+ces proportions une fois les paliers atteignables) · revenu fiscal Σ +26 % (2/3 graines
+améliorées, seed 11 régresse -31 %, cf. Restes) · Laborer 2/3 graines AU-DESSUS du plafond
+50-64 % historique (seed 9 +2pt, seed 11 +6pt ; seed 42 dans bande) — la bande elle-même a été
+calibrée SOUS l'ancien système (dénominateur gonflé artificiellement) et mérite probablement
+un réexamen, pas un signe de régression · invariant 8/9 sain, 1/9 breach net documenté
+(graine 11 sim 1, cause pré-existante hors scope).
+
+**Gates** :
+1. **Kill-switch prouvé** (`TAX_MULT_FLOOR=0.02,NEEDS_TIER_POP=0` → `--hash 7 5 12`
+   BYTE-IDENTIQUE au golden pré-M10, re-vérifié à CHAQUE itération du correctif) ✓.
+2. **Sweep apparié** — bandes ci-dessus ; gate spécial banqueroutes Σ 583 ≤ 700 (cible 582)
+   ✓ LARGEMENT atteint.
+3. **`make test`** 38/38 verts (intertrade_demo seul, pré-existant Windows) + `social_demo`
+   réparé (fixture, moteur intact) ✓ · **golden RE-BASELINÉ** (defaults P0/P1 actifs) ✓ ·
+   `make determinism` STABLE (5 graines×12 ans) ✓ · `make determinism-deep` STABLE (graines
+   7/9×200 ans) ✓ · `scps_viewer --savetest 9` A==B byte-identique + octet altéré REFUSÉ ✓ ·
+   `make fuzz-save` 8/8 (216 octets, 0 crash) ✓.
+4. **Cet append TROUVAILLES** + commits granulaires français ✓.
+
+**Restes** :
+- **Invariant M3c : 1/9 breach net** (graine 11 sim 1, an 19-23, 383-389 % vs seuil 370 %) —
+  cause TRACÉE (accumulateur WILD pré-existant, `chronicle.c:360`, hors scope M10, cf.
+  Pièges), PAS résolue (le coordinateur a explicitement demandé de ne pas y toucher, une vague
+  corrective séparée est prévue sur « frappe libre »/« trésor prov/region »). Un futur audit
+  crédit/trésor devrait re-tester ce sim UNE FOIS ce leak corrigé.
+- **Revenu fiscal seed 11 régresse (-31 %)** — l'ÉCONOMIE de cette graine est structurellement
+  plus faible sur PLUSIEURS métriques (commerce/an 420→359, pays au plafond variable) ; le
+  floor=0.75 (moins strict que 0.80) donne à C3 plus de marge pour RELÂCHER un pays en peine
+  vers son objectif satisfaction (70 % atteint, dépassant même le plafond band historique) au
+  prix du revenu agrégé. Non isolé plus finement (aurait exigé un sweep dédié gelant floor vs
+  la bande Laborer) — signalé, pas creusé, hors budget de cette vague.
+- **La bande Laborer 50-64 % (héritée de M7/M8) n'a probablement plus le bon calibrage** —
+  P1 corrige un dénominateur ARTIFICIELLEMENT gonflé (needs_met/basket contre le panier mature
+  complet au lieu des paliers actifs) qui déprimait mécaniquement la satisfaction sous
+  l'ancien système ; 2/3 graines dépassent désormais 64 % en fin de partie. Ce n'est PAS un
+  signe que P1 « triche » — c'est la conséquence directe et attendue du bug corrigé — mais la
+  bande elle-même (motif M7 « seuil jamais élargi ») mérite un réexamen dédié par le joueur
+  plutôt qu'un élargissement décidé unilatéralement ici.
+- **UI-MONNAIE dédiée non câblée** (`scps_country_needs_tier` prêt côté scps_api, aucune
+  demande GDScript cette vague). **DLL Godot À RE-BUILDER** (scons -C godot) : scps_econ.c/h
+  et scps_api.c/h ont changé (nouveaux symboles exportés `econ_needs_active_for_country`,
+  `econ_needs_tier_threshold`, `scps_country_needs_tier`) — motif déjà noté à chaque vague
+  monétaire.
+- **`needs_tier_selected`/la pré-sélection ne re-teste PAS le confort-bonus (poterie/
+  statuaire)** — laissé UNGATÉ par le palier (toujours tenté, hors panier, décision de scope
+  documentée dans le code) ; un futur chantier pourrait vouloir les inclure dans la
+  compétition de slot si le joueur juge que « tout bien devrait compter également, poterie
+  comprise » — hors du périmètre « panier cœur » explicite de ce brief.
+- Fichiers de sweep bruts (12+ runs chronicle, worktree `/c/tmp_wt_pre_m10` retiré en fin de
+  session) non conservés dans le repo — seules les Σ/moyennes ci-dessus sont la trace
+  permanente. Scripts `m10_p2_sweep.sh`/`isolate_breach.sh`/`extract_p2.sh` (bash, non
+  committés, scratchpad) utilisés pour le sweep et l'isolation du breach — motif déjà requis
+  M3b-v2.1/M7/M8/DIAG « toujours attendre un fichier DONE explicite ».

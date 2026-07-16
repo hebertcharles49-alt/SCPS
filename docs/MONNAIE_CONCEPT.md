@@ -334,8 +334,60 @@ ses impôts. »
   privée M4-IP), pourrait desservir exactement ce que C0 cherche à protéger — la tension que
   M8 avait déjà anticipée sans la confirmer.
 
-### M10 — LA CENTRALISATION FISCALE + LE TRANSPORT (v3 : reformulé ; ex-M7, renuméroté une
-seconde fois pour M8 LIVRÉ, une troisième fois pour M9 LIVRÉ ci-dessus)
+### M10 — LES PALIERS DE BESOINS + LE PLANCHER FISCAL (LIVRÉ, 2026-07-16)
+
+**Statut : CALIBRÉ-LIVRÉ (1 breach invariant net documenté, cause hors scope — PAS un STOP).**
+Contexte : DIAG-BANQUEROUTES avait établi que le contrôleur fiscal C3 (M8), pas le couplage
+C1, affamait le fisc en relâchant `tax_mult` jusqu'à 0.34 sur les pays les plus fragiles —
+30-70 % de collecte en moins — parce que le panier de besoins STATIQUE rendait la satisfaction
+inachetable (`EMPIRE_SEED=4000` débloquait déjà 5/5 du panier Laborer dès le tick 1, mais
+aucune manufacture n'existait encore pour le servir : 15 % de besoins comblés, 0 % de
+satisfaction, mesuré au RAPPORT_ECONOMIE_SATISFACTION.md). Décision joueur (verbatim) :
+« Les paliers de satisfaction augmentent avec la pop ? C'est ça l'issue ! Si tu demandes tout
+day 1 forcément que la satisfaction va imploser. Si tu es petit et que an 150 t'as pas grand
+chose, t'imposes aussi. Driver les besoins sur le nombre d'hab de l'empire. Chaque palier, un
+besoin (universel, on se satisfait autant de bière que de papier, peu importe l'ordre). » +
+seuils GÉOMÉTRIQUES (palier≈pop×2) validés ensuite ; plancher `tax_mult` du DIAG confirmé.
+
+- [x] **P0 — LE PLANCHER FISCAL** : `econ_ai_fiscal_tick` (C3) borne sa case basse à
+      `TAX_MULT_FLOOR` (défaut 0.75, calibré — cf. Découvertes) au lieu du 0.02 générique. Le
+      curseur JOUEUR (`econ_country_tax_set`) garde son propre 0.02, intact.
+- [x] **P1 — LES PALIERS DE BESOINS** : `active_needs` piloté par la POP TOTALE DE L'EMPIRE
+      (grain NATIONAL, jamais province), palier GÉOMÉTRIQUE (`NEEDS_TIER_POP=3000` ×
+      `NEEDS_TIER_GROWTH=2.0`, un empire de genèse à 4000 hab n'a que le palier 0-1),
+      HYSTÉRÉTIQUE (`g_needs_tier_held`, ratchet — monte instantanément, décroît sur 5 ans si
+      la pop retombe). Le panier CŒUR n'est plus gaté par un rang fixe par classe
+      (`NEED_ORDER`) : une PRÉ-SÉLECTION (disponibilité, calculée AVANT tout achat) retient
+      les Kc=active_needs-1 biens distincts les mieux disponibles, à POIDS ÉGAL — « on se
+      satisfait autant de bière que de papier ». `basket`/`needs_met` jugent contre les
+      paliers ACTIFS seuls (corrige le dénominateur artificiellement gonflé de l'ancien
+      système). `NEEDS_TIER_POP=0` : kill-switch legacy exact.
+- **Correctif audit (avant tout sweep)** : le premier jet retirait le gate SANS le remplacer —
+  tous les biens du panier étaient achetés, seuls les K mieux servis comptant après coup pour
+  la satisfaction (fuite de richesse des strates pauvres + dépendance cachée à l'ordre des ID
+  ressource). Corrigé par une pré-sélection PURE (lecture, pas de mutation) qui gate l'ACHAT
+  lui-même. Détail : TROUVAILLES.md « CHANTIER MONNAIE — M10 ».
+- Gate : kill-switch prouvé (`TAX_MULT_FLOOR=0.02,NEEDS_TIER_POP=0` → golden pré-M10
+  byte-identique) · sweep apparié {9,11,42}×3×250 (bandes ci-dessous) · `make test` 38/38
+  verts (intertrade_demo pré-existant + `social_demo` réparé) · golden RE-BASELINÉ ·
+  determinism/deep/savetest/fuzz-save verts.
+- **Bandes mesurées (Σ 3 graines, floor=0.75 final)** : banqueroutes Σ 1183→**583** (cible
+  pre-m8 582, atteinte à 0.2 % près) · colonisation Σ 287→263 (stable, pas de suppression) ·
+  revenu fiscal an-150 Σ 568945→719382 (+26 %, 2/3 graines améliorées) · Laborer fin de partie
+  54-58 %→62-70 % (2/3 graines dépassent le plafond historique 64 % — conséquence ATTENDUE du
+  dénominateur corrigé, pas une triche) · invariant 8/9 sain, 1/9 breach net (graine 11 sim 1,
+  383-389 % vs seuil 370 %, 2 années).
+- **Restes** : le breach invariant restant est TRACÉ (accumulateur WILD pré-existant, motif
+  `chronicle.c` « chasse au breach graine 11 an 57 », HORS scope M10, une vague corrective
+  séparée est prévue) — pas résolu ici sur consigne explicite. Revenu fiscal graine 11 en
+  RECUL (-31 %, économie structurellement plus faible sur cette graine). La bande Laborer
+  50-64 % (héritée de M7/M8) mérite un réexamen — calibrée sous l'ancien système bogué.
+  UI-MONNAIE non câblée (`scps_country_needs_tier` prêt côté scps_api). **DLL Godot À
+  RE-BUILDER**.
+
+### M11 — LA CENTRALISATION FISCALE + LE TRANSPORT (v4 : reformulé ; ex-M7, renuméroté une
+seconde fois pour M8 LIVRÉ, une troisième fois pour M9 LIVRÉ, une quatrième fois pour M10
+LIVRÉ ci-dessous)
 Le trésor est DÉJÀ provincial (:2675) — M6 n'est pas une « localisation » mais :
 - [ ] La remontée fiscale devient un TRANSPORT physique vers la capitale (convois,
       délai, interceptables) ; le coffre de la capitale = la cible du sac.
