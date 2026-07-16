@@ -1077,15 +1077,19 @@ void econ_country_heritage_digested(const World *w, const WorldEconomy *econ, in
 #define AI_RESEARCH_INCOME_W 4.5f
 #endif
 /* SAVOIR — fallbacks compilés (registre scps_tune_list.h) : la POP produit la recherche
- * (0.01·élite + 0.005·bourgeois + 0.001·journalier /an), la bibliothèque module en % (PER, plafond MAX). */
+ * (0.02·élite + 0.01·bourgeois + 0.002·journalier /an), la bibliothèque module en % (PER, plafond MAX).
+ * ×2 (2026-07-16, décision joueur « doubler le rendement de la pop par tech ») — sweep apparié
+ * 18 sims : médiane 37→48 techs, machines faustiennes ×1.7-2.8, zéro-tech 1→0, fins plus
+ * variées (réchauffement ↓, engloutissement ↑ via l'entropie-par-usage), Laborer/banqueroutes/
+ * invariant intacts. */
 #ifndef SAVOIR_W_ELITE
-#define SAVOIR_W_ELITE     0.01f
+#define SAVOIR_W_ELITE     0.02f
 #endif
 #ifndef SAVOIR_W_BOURGEOIS
-#define SAVOIR_W_BOURGEOIS 0.005f
+#define SAVOIR_W_BOURGEOIS 0.01f
 #endif
 #ifndef SAVOIR_W_LABORER
-#define SAVOIR_W_LABORER   0.001f
+#define SAVOIR_W_LABORER   0.002f
 #endif
 #ifndef SAVOIR_LIB_PER
 #define SAVOIR_LIB_PER     0.067f
