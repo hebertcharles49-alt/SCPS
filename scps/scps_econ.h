@@ -846,6 +846,10 @@ void econ_tick(WorldEconomy *e, float dt);
 void econ_set_wild_mask(const World *w);
 bool econ_country_is_wild(int c);   /* accesseur PUBLIC du même masque (scps_diplo.c : pillage/siège) */
 void econ_set_human(int cid);   /* §NF skippe les provinces du joueur humain (-1 = aucun) */
+/* MONNAIE M8 — C3 : signal FIABLE « cid == la main humaine ? » (g_econ_human, posé SANS
+ * condition à la genèse — contrairement à culture_player_cid() qui reste -1 tant
+ * qu'aucune culture n'a été composée à la main, cf. scps_econ.c). */
+int  econ_is_human_country(int cid);
 /* Q1 — LE CONSEIL : pose le multiplicateur d'un siège (0=Savoir 1=Société 2=Industrie)
  * pour un pays. Rafraîchi chaque tick par la couche sim depuis l'état conseil. 1.0=neutre. */
 void econ_set_council_mult(int cid, int seat, float m);

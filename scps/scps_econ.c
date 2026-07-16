@@ -2127,8 +2127,9 @@ float econ_country_road_conn(const WorldEconomy *e, int cid){
 
 /* MONNAIE M8 — C2 : satisfaction AGRÉGÉE d'une classe pour un pays entier — pondérée
  * pop, PROVINCE-grain (jamais econ_region_rep_province), −1 si la classe est absente
- * du pays. Sert le lecteur façade scps_country_fiscal_orders (scps_api.c) — un seul
- * site de vérité pour « la satisfaction nationale d'un ordre ». */
+ * du pays. Sert le lecteur façade scps_country_fiscal_orders (scps_api.c) ET, depuis
+ * C3 ci-dessous, econ_ai_fiscal_tick — un seul site de vérité pour « la satisfaction
+ * nationale d'un ordre ». */
 float econ_country_class_satisfaction(const WorldEconomy *e, int cid, SocialClass c){
     if (!e||cid<0||cid>=SCPS_MAX_COUNTRY||c<0||c>=CLASS_COUNT) return -1.f;
     double wsum=0.0, psum=0.0;
@@ -2142,6 +2143,44 @@ float econ_country_class_satisfaction(const WorldEconomy *e, int cid, SocialClas
     }
     if (psum<=0.0) return -1.f;
     return clampf((float)(wsum/psum), 0.f, 1.f);
+}
+
+/* MONNAIE M8 — C3 : LE CONTRÔLEUR FISCAL IA (décision joueur 2026-07-16, « l'IA doit
+ * jouer avec la fiscalité pour atteindre les 60 % de satisfaction, marge de sécurité »).
+ * Ajuste tax_mult[cid][c] (le MÊME curseur PAR ORDRE que le joueur, econ_country_tax_set —
+ * aucune voie neuve) pour VISER AI_FISCAL_TARGET de satisfaction PAR CLASSE : au-dessus,
+ * serre la vis (+mult, « renfloue ») ; en dessous, relâche (−mult). Cadence MENSUELLE
+ * (un appel par tick économique, cf. site d'appel dans la boucle frappe) avec un pas
+ * BORNÉ (AI_FISCAL_STEP) et une zone MORTE (AI_FISCAL_DEADBAND, l'hystérésis anti-
+ * oscillation — aucun ressort ne bouge tant que sat reste à ±deadband de la cible).
+ * Jamais le joueur (econ_is_human_country exclu — SON curseur, cf. econ_country_tax_set)
+ * ni les esclaves (non imposables, INCHANGÉ §6-7). Grain NATIONAL en ÉCRITURE
+ * (tax_mult[cid][c], la topbar) — la satisfaction LUE, elle, s'agrège depuis les
+ * PROVINCES du pays (doctrine province-grain, jamais econ_region_rep_province), via
+ * econ_country_class_satisfaction (C2) juste au-dessus. AI_FISCAL_TARGET<=0 :
+ * kill-switch — la fonction retourne avant d'écrire quoi que ce soit ⇒ tax_mult reste
+ * au sentinel 0 pour toute IA (jamais touché avant M8) ⇒ golden pré-M8 byte-identique.
+ * L'IA garde l'échelle du désespoir M3h/M3g EN AVAL (emprunt→débase→banqueroute) : ce
+ * contrôleur ne les court-circuite pas, il agit tous les mois AVANT qu'un pays n'ait
+ * besoin d'y recourir — la fiscalité devient le PREMIER levier par construction
+ * temporelle (mensuel, natif à econ_tick), pas par un ordre d'appel forcé. */
+static void econ_ai_fiscal_tick(WorldEconomy *e, int cid){
+    float target = tune_f("AI_FISCAL_TARGET", 0.60f);
+    if (target<=0.f) return;                            /* kill-switch */
+    if (econ_is_human_country(cid)) return;              /* le joueur garde SON curseur */
+    float deadband = tune_f("AI_FISCAL_DEADBAND", 0.03f);
+    float step     = tune_f("AI_FISCAL_STEP", 0.02f);
+    for (int c=0;c<CLASS_COUNT;c++){
+        if (c==CLASS_SLAVE) continue;                    /* non-imposable — rien à piloter */
+        float sat = econ_country_class_satisfaction(e, cid, (SocialClass)c);
+        if (sat<0.f) continue;                            /* classe absente du pays — rien à piloter */
+        float cur  = e->tax_mult[cid][c];
+        float base = (cur>=0.02f && cur<=1.f) ? cur : 1.f;   /* sentinel non réglé → part du NEUTRE (policy_mult) */
+        float err  = sat - target;
+        if (fabsf(err) <= deadband) continue;            /* zone morte — l'hystérésis */
+        float next = clampf(base + (err>0.f? step : -step), 0.02f, 1.f);
+        e->tax_mult[cid][c] = next;
+    }
 }
 
 /* MONNAIE M3b-v2 — item 5 : la clé 42/20/38 (WAGE_SHARE/TAX_RATE, §3 ci-dessus) exposée aux
@@ -2387,6 +2426,15 @@ float econ_province_tax_month(const WorldEconomy *e, int pid){
 #define NF_REALM_MIN 0.5f   /* intrant « fournissable » s'il est extrait/produit ≥ ça quelque part dans le pays */
 static int g_econ_human = -1;
 void econ_set_human(int cid){ g_econ_human = cid; }
+/* MONNAIE M8 — C3 : « est-ce le pays de la main humaine ? » — g_econ_human (ci-dessus,
+ * §NF) est le signal FIABLE (posé SANS condition à la genèse, scps_api.c/viewer.c),
+ * contrairement à culture_player_cid() qui reste -1 tant qu'aucune culture n'a été
+ * COMPOSÉE À LA MAIN (gated par culture_any_active(), scps_api.c ~L128) — un monde
+ * « vanilla » (défaut, aucun héritage choisi) ne le lie JAMAIS. econ_ai_fiscal_tick
+ * DOIT utiliser CELUI-CI (découvert au gate 1 : le test scps_api_demo « budget :
+ * neutres à la genèse » cassait avec culture_player_cid, la fixture ne composant
+ * jamais de culture — cf. TROUVAILLES M8). */
+int econ_is_human_country(int cid){ return cid>=0 && cid==g_econ_human; }
 static void econ_build_tick(WorldEconomy *e){
     /* 1. disponibilité d'intrant À L'ÉCHELLE DU PAYS (extraction + offre, n'importe où). */
     static float owner_avail[SCPS_MAX_COUNTRY][RES_COUNT];
@@ -4674,6 +4722,7 @@ void econ_tick(WorldEconomy *e, float dt) {
         float g,cop,val,dbg; int cap;
         econ_country_mint_month(e, c, &g, &cop, &val, &cap, &dbg);
         if (cap<0) continue;
+        econ_ai_fiscal_tick(e, c);   /* MONNAIE M8 — C3 : la fiscalité, PREMIER levier IA, cadence mensuelle */
         if (val>0.f){
             e->reserve_gold[c]   = fmaxf(0.f, e->reserve_gold[c]   - g);
             e->reserve_copper[c] = fmaxf(0.f, e->reserve_copper[c] - cop);

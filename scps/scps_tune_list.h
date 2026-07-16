@@ -1227,6 +1227,16 @@
     X(TAX_SAT_COUPLING,                0.8f) \
     X(TAX_SAT_REF,                     0.60f) \
     X(TAX_SAT_FACTOR_MIN,              0.5f) \
-    X(TAX_SAT_FACTOR_MAX,              1.5f)
+    X(TAX_SAT_FACTOR_MAX,              1.5f) \
+    /* MONNAIE M8 — C3 : LE CONTRÔLEUR FISCAL IA (décision joueur 2026-07-16, « l'IA doit
+     * jouer avec la fiscalité pour atteindre les 60 % de satisfaction, marge de sécurité »).
+     * econ_ai_fiscal_tick (scps_econ.c) ajuste tax_mult[cid][c] PAR CLASSE, cadence
+     * mensuelle, zone morte AI_FISCAL_DEADBAND (hystérésis anti-oscillation), pas borné
+     * AI_FISCAL_STEP par mois. AI_FISCAL_TARGET<=0 : kill-switch — l'IA n'écrit JAMAIS
+     * tax_mult (golden pré-M8 byte-identique, comportement inchangé depuis avant M8 où
+     * aucun code IA ne touchait ce curseur). */ \
+    X(AI_FISCAL_TARGET,                0.60f) \
+    X(AI_FISCAL_DEADBAND,              0.03f) \
+    X(AI_FISCAL_STEP,                  0.02f)
 
 #endif /* SCPS_TUNE_LIST_H */
