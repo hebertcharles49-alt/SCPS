@@ -4648,3 +4648,251 @@ ci-dessous pour la vague suivante.
   lecture, réutilisable) — scratch locaux, les tableaux ci-dessus font foi. Worktree
   `/c/Users/Charl/Desktop/SCPS-prefins-wt` (build pre-fins pour comparaison) à
   retirer en fin de mission (`git worktree remove`).
+
+---
+
+## MISSION FAUSTIEN — LES MACHINES GÉNÉREUSES (2026-07-16)
+
+**Statut : LIVRÉ, X1-X6 tous implémentés et gatés `FAUSTIEN_BOOST` (défaut ON), kill-
+switch prouvé byte-identique, `make test` 38/38, golden re-baseliné VERT, determinism
++ deep VERT, savetest 4/4 seeds + fuzz-save 8/8 VERT, gate AUCUNE=0 PROUVÉ sur le
+paired sweep complet (0/9 côté HEAD vs 2/9 pre-faustien).** Tag `pre-faustien` posé
+SUR 2ffa76c (posé APRÈS coup — le tag doit toujours précéder la première édition, pas
+un souci ici car un tag pointe un commit existant indépendamment de l'ordre des
+commandes, mais pour la prochaine vague : `git tag` AVANT le premier `Edit`, pas
+après). 4 commits séparés (X1 · X2/X3/X4 combinés · X5/X6 combinés · registre+golden)
+— voir Pièges pour pourquoi X2/X3/X4 et X5/X6 ne sont PAS 4 commits distincts.
+
+### X1 — L'implantation (scps_econ.c econ_init, genèse)
+
+Densité du « nœud riche » (fer céleste/cristal arcanique, SOUS-GISEMENTS protégés,
+JAMAIS une 3e brute — `prot[RES_CELESTIAL_IRON]=prot[RES_ARCANE_CRYSTAL]=true`
+inconditionnel, ligne ~1845) doublée via 2 divisors tunables sur le modulo existant
+(`FAUST_ARCANE_DIV` 4→2, `FAUST_CELESTIAL_DIV` 9→4), appliqués IDENTIQUEMENT aux
+2 sites de spawn (cité-état ET empire/joueur — code dupliqué historique, les 2 mis à
+jour). **Mesuré** (`SCPS_FORGEDIAG`, région-grain, 9 sims pairés {9,11,42}×3×250) :
+fer céleste 12.89→19.11 régions/sim moy (+48 %) ; cristal arcane 8.22→8.44 (+3 %,
+quasi plat À CETTE TAILLE D'ÉCHANTILLON). Le mécanisme est mathématiquement correct
+(propriété de SOUS-ENSEMBLE : `%2==0` ⊇ `%4==0`, donc JAMAIS de baisse — vérifié 0
+décroissance sur les 9 paires) mais le pool de tuiles ÉLIGIBLES pour l'arcane (celles
+qui tirent déjà soufre/métal précieux) est petit et FIGÉ par graine (indépendant de
+X1) — à cette taille, le doublement du taux ne se traduit pas forcément en un
+doublement du COMPTE observé. Une mesure à plus grand N confirmerait la convergence
+vers ×2 en espérance ; hors budget de cette mission (plafond ~30 sims).
+
+### X2 — Le rendement (scps_econ.c econ_tick, manufacture)
+
+`FAUST_YIELD_MULT=2.0` multiplie `out_full` (sortie primaire) des 3 machines
+SEULEMENT (`bld_is_faustian` : foreuse/réplicateur/corne) + le panier bonus de la
+Foreuse — PAS la Forge céleste ni l'Atelier de mage (consomment les mêmes raws mais
+ne sont pas nommées « les 3 machines » par la mission ; hors scope, non touchées).
+Site unique : juste après `out_full *= (1.f - 0.5f*re->revolt_scar)`, AVANT la saisie
+M3g (donc le boost de rendement TRAVERSE aussi la mécanique de banqueroute-saisie
+existante sans dupliquer de logique).
+
+### X3 — Chaque usage pousse vers la fin (scps_econ.c, hook faust_charge unique)
+
+Étend le canal existant : `spawn = out * FAUST_SPAWN_CHARGE` (inchangé, ∝ SORTIE)
+reçoit un second terme `+= (lim*rc->q1) * ENTROPY_PER_USE` (0.10 défaut) ∝ L'INTRANT
+BRÛLÉ CE TICK (essence/flux/fer céleste). Les deux termes alimentent LA MÊME variable
+`spawn` avant d'être appliqués à `arcane_charge`/`faust_charge` — un seul point
+d'entrée, pas un second hook parallèle (discipline « hook UNIQUE »). Conséquence
+directe : X2 (rendement ↑) fait consommer plus vite ⇒ pousse plus fort vers la fin —
+les deux chantiers se renforcent PAR CONSTRUCTION, pas par coïncidence.
+
+### X4 — Les 3 machines, « pas de jaloux » (scps_econ.c)
+
+- **Foreuse** : le panier était DÉJÀ le lot complet (7/7 « brutes minérales » du
+  catalogue : fer + cuivre/charbon/soufre/salpêtre/or/métal précieux — rien à
+  ajouter). Ratio 2:1 INTERPRÉTÉ brut-commun (cuivre+charbon+soufre+salpêtre,
+  Σqty=8.0) : brut-précieux (or+métal précieux) — `FAUST_FOREUSE_PRECIOUS_MULT=5.0`
+  porte or 0.5→2.5 et métal précieux 0.3→1.5 (Σ=4.0, EXACTEMENT 2:1). **Découverte
+  collatérale** : le panier bonus de la Foreuse ne passait PAS par la redevance
+  minière (`MINT_ROYALTY`, appliquée seulement à l'EXTRACTION section §1, jamais à la
+  MANUFACTURE section §2 où vit le panier) — sans correction, le levier « inflation »
+  du brief aurait été un NO-OP pur (le lot dépose l'or directement en marchandise,
+  jamais en réserve). Fix : l'or/cuivre du panier passe désormais par LA MÊME
+  redevance que l'extraction (`mint_royalty → e->reserve_gold/copper`), gaté
+  `FAUSTIEN_BOOST`. L'inflation suit donc ÉMERGEMMENT le canal royalty→réserve→frappe
+  (M7) existant — mesuré : IPM final quasi identique HEAD/PRE sur les 3 seeds pairés
+  (0.91/0.91, 0.93/0.90, 0.87/0.87) — la foreuse tire trop rarement (1/9 sims) dans
+  cet échantillon pour que le signal d'inflation émerge visiblement ; le CÂBLAGE est
+  correct et prouvé (royalty testée gatée), l'EFFET AGRÉGÉ reste à confirmer à plus
+  grande échelle.
+- **Corne** : `+ RES_EAU_DE_VIE` ∝ `lim` (motif out2, comme le bâton de mage/kit
+  d'alchimiste — hors PIB/salaires, un supplément de transmutation), `FAUST_CORNE_
+  ALCOHOL_QTY=2.0`.
+- **Réplicateur** : `+ pop growth` via un NOUVEAU `PMOD_MUTATION` (scps_econ.h
+  `ECON_PROVMOD_BODY`, la macro qui alimente déjà gibier/halieutique/abondance/admin
+  dans l'entrée DÉMO `demo` — JAMAIS un `+pop` plat) : intensité ∝ niveau du bâtiment
+  (fenêtre 0..4, motif PMOD_ADMIN), `FAUST_MUTATION_K=0.20`. Face joueur : `STR_PMOD_
+  MUTATION_NOM/EFF` (« Mutations », scps_readout.c switch + strings_ids.h/
+  strings_en.h) — un nouveau CAS dans le switch province-mods, `PMOD_COUNT` étendu
+  (non sérialisé, `ProvModHit` est un tableau-pile local, aucun bump SAVE_VERSION).
+
+**Usage mesuré (paired sweep, 9 sims/côté) — HONNÊTE, PAS CE QUI ÉTAIT ESPÉRÉ** : au
+moins UNE machine active (conso>0) dans 4/9 sims côté HEAD vs 6-7/9 côté pre-faustien
+(1 point PRE illisible, sortie stderr/stdout interleavée par `[FORGEDIAG]`). Le
+rendement (X2) et l'usage-pousse-la-fin (X3) sont câblés et VÉRIFIÉS actifs quand une
+machine tourne (spawn/faust_charge mesurés cohérents avec la formule), mais la
+DÉCISION de construire une machine (gate tech débloquée + heuristique `econ_build_
+tick`/IA, scps_ai.c) n'a PAS été touchée par cette mission (hors scope explicite :
+« ne pas toucher au code hors sujet ») — X1 change SEULEMENT le raw_cap au sol, ce qui
+peut faire dévier le tirage de recherche/construction d'un empire par effet papillon
+(divergence chaotique déjà documentée dans la vague FINS pour un phénomène analogue),
+sans qu'on puisse trancher à n=9 si le taux de construction RÉEL a bougé dans un sens
+ou dans l'autre. **Ne pas lire ce chiffre comme une régression du chantier** : c'est
+un signal bruité à un échantillon 11× plus petit que le giga qui avait mesuré la
+baseline (3/100, 20/100, 23/100) — un futur giga (hors budget ici, « PAS DE GIGA »
+imposé par le joueur) trancherait proprement si la question revient.
+
+### X5 — Le réchauffement redevient le backup universel (scps_endgame.c)
+
+**Correction joueur FERME reçue EN COURS de mission** (le brief initial disait
+« AUCUNE ~0 attendu », le joueur a explicitement corrigé : « = 0 DÉFINITIF, pas de
+sans-fin, c'est réchauffement si y'a rien »). `endgame_select_and_fire` : la branche
+`if (wp->entropy < ent_gate) { ... }` (le monde n'a PAS de fin naturelle) contenait un
+second gate (`fuel_ratio >= fuel_gate`) qui laissait un monde « sobre » sans fin du
+tout. Sous `FAUSTIEN_BOOST` (nouveau, PAS `FINS_RACE` — un second gate indépendant
+posé À CÔTÉ pour que `FAUSTIEN_BOOST=0` seul suffise à restaurer l'ancien
+comportement SANS toucher `FINS_RACE`), ce second gate est cour-circuité
+(`fuel_ok = true` inconditionnel) : passé `FUEL_FALLBACK_DELAY` ans après l'ouverture
+de l'endgame, RÉCHAUFFEMENT tire, UN VRAI ELSE FINAL. `fuel_gate` reste CALCULÉ
+(diagnostic/priorité future si un 2e repli apparaissait un jour — aucun arbitrage
+câblé, un seul repli existe à ce jour) mais ne bloque plus rien. **Gate mesuré (pas
+supposé)** : sweep pairé {9,11,42}×3×250 → **0/9 sims « aucune » côté HEAD** (vs 2/9
+côté pre-faustien, cohérent avec le ~44 % mesuré au giga FINS 100-sims pré-vague).
+**Cas limite vérifié EN SOURCE** (demandé par la correction joueur, point 3) : un
+monde qui dégénère avant l'an 240 (empires absorbés) — `chaud_step` (le seul handler
+de `FIN_CHAUD`) est STRUCTURELLEMENT GLOBAL (boucle sur TOUTES les régions
+`0..nr`, jamais indexé par `epi`/`fauteur`) et `endgame_faction_react` garde déjà
+`fauteur<0` (early return) — AUCUN chemin de crash ou de « sans-fin fantôme » identifié ;
+`chronicle.c`'s boucle principale (`for yr<years`) ne s'arrête JAMAIS tôt sur
+élimination d'empires (aucun `break` trouvé), donc `endgame_tick` tourne TOUJOURS
+jusqu'à `years`, le checkpoint an-240 est TOUJOURS atteint tant que la sim dure au
+moins 240 ans.
+
+### X6 — Merveille à 400 (scps_endgame.c endgame_heritage_metabolized_detail)
+
+`FAUST_METAB_MERV_MIN=400` (500 legacy), MÊME motif ternaire que `RACE_METAB_MERV_
+RATIO` (mission FINS) mais gaté `FAUSTIEN_BOOST` (chantier différent). La Merveille
+reste STRICTEMENT joueur-gatée (`human_player`, double garde `trig_merv_fondation` +
+`eg=NULL` en chronique — NON touché, décision confirmée : pas d'IA). Injouable à
+mesurer en headless (déjà diagnostiqué mission FINS, F1) — un réglage pour les
+parties RÉELLES, pas prouvable par sweep.
+
+### GATES (tous mesurés)
+
+1. **Kill-switch `FAUSTIEN_BOOST=0`** : `chronicle --hash 7 5 12` byte-identique au
+   golden pre-faustien (5/5 graines), vérifié CONTRE LE COMMIT FINAL (pas seulement
+   en cours de route).
+2. **Sweep pairé** {9,11,42}×3×250 (pre-faustien vs HEAD, worktree
+   `SCPS-prefaustien-wt`, RETIRÉ en fin de mission) : 9 sims/côté. AUCUNE : 0/9 HEAD
+   vs 2/9 pre-faustien (gate X5 PROUVÉ). Densité X1 : +48 %/+3 % (ci-dessus).
+   Banqueroutes forcées cumulées : 22 (HEAD) vs 27 (pre-faustien) — même ordre de
+   grandeur que la bande de référence (~27). Laborer satisfaction moy par run : HEAD
+   {72,71,53} vs PRE {76,73,65} — **HEAD systématiquement 2-12 pts SOUS pre-faustien**
+   sur les 3 seeds, dont UN passage sous la bande de référence 60-71 (seed 42 : 53 %)
+   — plausiblement le PRIX thématique de X3 (plus d'entropie ⇒ plus de cataclysmes
+   qui stressent les régions avant de les engloutir) mais PAS re-calibré dans cette
+   mission (budget « PAS DE GIGA » épuisé par les gates obligatoires) — **Reste**
+   explicite pour la prochaine vague si le joueur juge l'écart trop grand. Tech nœuds
+   débloqués : ordre de grandeur inchangé (574/586, 223/242, 886/904 HEAD/PRE) — pas
+   de régression visible. Inflation IPM : quasi identique (voir X4 ci-dessus).
+3. **`make test`** : 38 VERTS / 0 ROUGE / `intertrade_demo` seul BUILD ÉCHEC
+   (pré-existant Windows, documenté CLAUDE.md) — vérifié 2× (avant split des commits,
+   après — sur le HEAD final committé).
+4. **golden** : RE-BASELINÉ (X1 change la genèse par défaut, anticipé au brief) —
+   `make golden` VERT sur le nouveau golden, kill-switch prouvé AVANT re-baseline
+   (point 1).
+5. **determinism** (5×12 ans) STABLE · **determinism-deep** (2×200 ans, graines 7/9)
+   STABLE — les deux avec `FAUSTIEN_BOOST=1` (défaut), donc l'endgame (X5/X6) est
+   RÉELLEMENT exercé par le run 200 ans (`ENDGAME_YEAR_OPEN=180`).
+6. **savetest** : 4/4 graines (7/9/11/42) A==B byte-identique + altération d'un octet
+   REFUSÉE à chaque fois. **fuzz-save** : 8/8, 216 octets flippés, aucun crash
+   (warning `SCPS_TUNE actif ≠ sauvegarde` attendu, artefact du fuzzing).
+7. **lang-check** : 0 littéraux neufs (base inchangée) — les 2 nouvelles chaînes
+   (`STR_PMOD_MUTATION_NOM/EFF`) sont passées par le canal STR_* obligatoire dès
+   l'écriture, jamais un littéral face-joueur brut.
+8. **ASan** : toujours indisponible sur ce toolchain MSYS2 (limitation
+   d'environnement pré-existante, documentée mission FINS) — hors gates listés dans
+   ce brief.
+
+### Pièges
+
+- **La redevance minière (`MINT_ROYALTY`) ne couvre QUE la section EXTRACTION de
+  `econ_tick`** (§1, brutes tirées du sol) — PAS la section MANUFACTURE (§2, où vivent
+  out2/paniers bonus). Tout futur bonus qui dépose de l'or/cuivre en dehors de la §1
+  DOIT router MANUELLEMENT vers `e->reserve_gold/copper` (motif copié depuis la §1,
+  lignes ~3796-3807) s'il doit compter pour l'inflation M7 — sinon c'est un NO-OP
+  silencieux (le lot se serait déposé en stock marchand direct, jamais vu par la
+  frappe). Découvert en implémentant X4 (Foreuse), aurait pu passer inaperçu sans
+  relire `econ_tick` section par section.
+- **`ProvModHit`/`ECON_PROVMOD_BODY` (scps_econ.h) est une macro PARTAGÉE** entre
+  `ProvinceEconomy` et `RegionEconomy` (2 instanciations, `provmod_collect_prov` et
+  `provmod_collect`) — tout nouveau champ lu dans la macro (ex. `(re)->n_bld`/
+  `(re)->bld[]` pour PMOD_MUTATION) doit exister à L'IDENTIQUE sur LES DEUX structs
+  (vérifié : les deux ont bien `bld[]`/`n_bld`, la région étant une VUE agrégée qui
+  MIRRORE les bâtiments, cf. chronicle.c `s.econ->region[r].bld[b].type` déjà
+  utilisé ailleurs) — sinon erreur de compilation sur UNE seule des deux
+  instanciations, facile à rater si on ne compile que `_prov`.
+- **`git worktree remove` supprime AUSSI le `build/` non-tracké** du worktree — les
+  fichiers de sweep bruts (`build/paired_faustien/pre_*.txt`) qui n'ont pas été
+  copiés AVANT le retrait sont PERDUS. Pour cette mission, les chiffres agrégés
+  avaient déjà été extraits et consignés (ci-dessus) avant le retrait, mais UN point
+  de données (PRE seed11 sim2, conso foreuse) est resté illisible dans la capture
+  interleavée `stdout`/`SCPS_FORGEDIAG` `stderr` et n'a pas pu être re-extrait après
+  coup. Prochaine fois : `mkdir` un dossier de rapport HORS du worktree et y COPIER
+  (pas juste rediriger dans le worktree) les sorties brutes AVANT tout
+  `git worktree remove`.
+- **`SCPS_FORGEDIAG=1` mélange `stdout` (le rapport normal chronicle) et `stderr`
+  (les lignes `[FORGEDIAG]`) sur le MÊME flux si on redirige `2>&1`** — une ligne
+  `[FORGEDIAG]` peut atterrir AU MILIEU d'une ligne `stdout` non terminée (tampon),
+  rendant certains chiffres illisibles par un grep naïf (`conso f[FORGEDIAG]...`).
+  Pour une mesure fiable : rediriger séparément (`1>out.txt 2>err.txt`), jamais
+  `2>&1` quand les deux flux impriment activement en parallèle sur un run long.
+- **Tag posé APRÈS les premières éditions** (le brief demandait `git tag pre-faustien`
+  EN TOUT DÉBUT — fait seulement une fois la moitié du code déjà écrite, mais AVANT
+  tout commit, donc récupéré proprement en taguant le commit `2ffa76c` explicite
+  plutôt que `HEAD`). Fonctionne car un tag peut pointer n'importe quel commit déjà
+  existant, mais SI un commit avait déjà été fait par erreur avant le tag, le tag
+  aurait pointé le MAUVAIS commit. Prochaine vague : le TOUT premier geste après
+  lecture du brief, avant même d'ouvrir un fichier.
+
+### Restes
+
+- **Laborer satisfaction HEAD systématiquement sous pre-faustien** (2-12 pts,
+  1 seed sous la bande de référence 60-71 %) — plausiblement le prix thématique de
+  X3 (plus d'entropie mondiale ⇒ plus de cataclysmes qui stressent AVANT
+  d'engloutir), pas re-calibré ici (budget épuisé par les gates). Un futur giga
+  (hors « PAS DE GIGA » de cette mission) devrait confirmer si c'est un effet
+  systématique ou du bruit de 3 seeds, et si oui, quel levier (X2 `FAUST_YIELD_MULT`
+  trop haut ? X3 `ENTROPY_PER_USE` trop lourd ?) le corrige sans désarmer X3.
+- **Densité arcane crystal (X1) quasi plate à n=9** (8.22→8.44) malgré le doublement
+  du taux (div 4→2) — le mécanisme est mathématiquement correct (sous-ensemble,
+  vérifié 0 décroissance) mais le pool éligible (tuiles soufre/métal précieux) est
+  trop petit pour que l'effet se voie à cette taille d'échantillon. Une mesure à
+  plus grand N (giga futur) confirmerait la convergence attendue vers ×2.
+- **Usage des 3 machines (conso>0) mesuré PLUS BAS côté HEAD que pre-faustien**
+  (4/9 vs 6-7/9) — contre-intuitif vs l'intention X2 (booster le rendement pour
+  motiver la construction), mais la mission n'a PAS touché le gate tech-débloquée ni
+  l'heuristique de construction IA (scps_ai.c, hors scope explicite) : X1 fait
+  seulement dévier le raw_cap au sol, ce qui peut faire diverger CHAOTIQUEMENT le
+  chemin de recherche d'un empire sur 250 ans sans lien causal direct avec le
+  rendement des machines elles-mêmes. Si une future vague veut PROUVER que le
+  rendement boosté fait construire plus, il faudra soit un giga (hors budget ici),
+  soit toucher `econ_build_tick`/l'IA de construction (hors scope de CETTE mission,
+  décision délibérée de ne pas y toucher).
+- **Inflation « foreuse-or » câblée mais pas mesurée à l'échelle** (royalty
+  maintenant appliquée au panier, IPM quasi identique HEAD/PRE sur 3 seeds car la
+  foreuse ne tire que dans 1/9 sims de cet échantillon) — le mécanisme est prouvé
+  correct (le code fait ce qu'il dit), l'AMPLEUR de l'effet agrégé sur un monde
+  reste à confirmer à plus grande échelle.
+- **DLL Godot À RE-BUILDER** (`scons -C godot`) — `scps_econ.c/h`, `scps_endgame.c`,
+  `scps_readout.c`, `scps_tune_list.h`, `strings_ids.h`/`strings_en.h` ont TOUS
+  changé (nouveaux tunables + nouveau PMOD affiché en façade). Aucun fichier
+  `godot/` touché (interdit de vague respecté) — le rebuild lui-même n'a PAS été
+  fait (hors périmètre outillage de cette mission, comme les vagues précédentes).
+- Fichiers de sweep bruts : `build/paired_faustien/head_{9,11,42}.txt` (côté HEAD
+  seulement — le côté pre-faustien a été perdu au retrait du worktree, cf. Pièges) —
+  scratch local, les chiffres consignés ci-dessus font foi.
