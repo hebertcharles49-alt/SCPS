@@ -385,9 +385,55 @@ seuils GÉOMÉTRIQUES (palier≈pop×2) validés ensuite ; plancher `tax_mult` d
   UI-MONNAIE non câblée (`scps_country_needs_tier` prêt côté scps_api). **DLL Godot À
   RE-BUILDER**.
 
-### M11 — LA CENTRALISATION FISCALE + LE TRANSPORT (v4 : reformulé ; ex-M7, renuméroté une
-seconde fois pour M8 LIVRÉ, une troisième fois pour M9 LIVRÉ, une quatrième fois pour M10
-LIVRÉ ci-dessous)
+### M11 — LA VAGUE AUDIT-SOL : frappe à parité pleine · trésor une-seule-vérité · le défaut
+réel · bancs crédit (LIVRÉ, 2026-07-16)
+
+**Statut : CALIBRÉ-LIVRÉ.** Origine : un audit externe (4 claims, TOUS confirmés au code).
+Décision joueur en cours de mission (A3 REFONDU) : « Intérêt fixe : si t'empruntes 1000 à
+5 %, tu rembourses 1050, pas +5 % par an. »
+- [x] **A1 — LA FRAPPE À PARITÉ PLEINE** (`MINT_FULL_PARITY`, kill-switch) : la frappe LIBRE
+      (M3e, marché privé) ne payait le vendeur NULLE PART — le crédit trésor était le seul
+      `gain=qty×(parité−prix)`, le `cost` une variable de gate jamais débitée : une pièce de
+      16 frappée d'un métal coté 8 n'ajoutait que 8 à M. Désormais : le trésor PAIE le
+      vendeur (débit réel prorata régions, crédité aux 3 classes 42/20/38 des régions qui ont
+      fourni le métal) PUIS crée à la PARITÉ PLEINE — FX_MINT compte la VRAIE création,
+      le contrat « métal → monnaie à parité fixe » est TENU. La frappe ROYALE (réserve
+      d'État, royalty en nature) créait DÉJÀ à parité pleine — inchangée (deux chemins, deux
+      règles, chacun cohérent).
+- [x] **A2 — LE TRÉSOR UNE-SEULE-VÉRITÉ** (doctrine PROVINCE, non gatable — golden
+      re-baseliné, décision documentée) : les frappes et credit_year_tick écrivaient
+      `prov[].treasury` NU après l'agrégation ⇒ econ_country_gold/solvabilité lisaient un
+      trésor périmé (un mois pour la frappe, jusqu'à un an pour l'intérêt annuel). Nouveau
+      helper `econ_prov_treasury_credit` (dual-write prov+region, province déjà résolue) +
+      CONTRAT « qui écrit quand » en tête d'econ_aggregate_regions + debit_surplus_prorata
+      dual-write (le Reste M9 côté prêteur, fermé). Le masque du banc (credit_demo.c:103)
+      RETIRÉ — le banc prouve la cohérence sans ré-agrégation manuelle.
+- [x] **A3 — L'INTÉRÊT FIXE + LE DÉFAUT RÉEL** (`DEBT_FIXED`, kill-switch ; remplace la rente
+      annuelle composée M3d) : chaque emprunt inscrit un forfait FIGÉ à l'origination
+      (montant×(1+taux courant)) — jamais recalculé, jamais capitalisé. Service annuel =
+      ÉCHÉANCE MINIMALE (`DEBT_DUE_FRAC`=0.10 du stock) payée du surplus seul, qui ÉTEINT le
+      stock. Une échéance manquée sur une dette substantielle (`DEBT_DEFAULT_THRESHOLD`=3000,
+      calibré 4 points) nourrit insolvent_streak ⇒ banqueroute forcée après 5 ans — le défaut
+      RÉEL existe enfin (pré-M11 : un pays sous plafond qui ne payait plus JAMAIS rien ne
+      faisait JAMAIS faillite). L'IA (C0/M3h débase) lit le MÊME streak : l'échelle du
+      désespoir s'enclenche naturellement.
+- [x] **A4 — LES BANCS** : credit_demo 20→48 contrôles (banqueroutes volontaire/forcée,
+      impayés multi-années⇒défaut, saisie post-faillite, frappe/conservation ΔM==FX_MINT,
+      cohérence prov==region SANS masque, kill-switches) — prouvés ROUGES sur pre-m11
+      (42/48) et VERTS sur HEAD (48/48).
+- **Bandes (sweep apparié {9,11,42}×3×250)** : banqueroutes Σ 583→795 (+36 %, le défaut vit,
+  sous le doublement toléré — calibré en 4 points de DEBT_DEFAULT_THRESHOLD) · invariant
+  **0/9 breach (AMÉLIORÉ vs 1/9 : le breach graine 11 documenté M10 disparaît)** ·
+  colonisation −10 % (bande tolérée) · Laborer comparable · dette monde fin de partie
+  597k→66k or (la dette S'ÉTEINT) · convergence prix-métal→parité PAS améliorée (signal M3f
+  toujours ouvert). Détail : TROUVAILLES.md « CHANTIER MONNAIE — M11 ».
+- **Restes** : site WILD péages parqués (M3h/M3i item 7) toujours désigné (le breach a
+  disparu par déplacement de trajectoire, pas par conversion du site) · DEBT_DUE_FRAC=0.10
+  jamais optimisé finement (horizon ~10 ans) · **DLL Godot À RE-BUILDER**.
+
+### M12 — LA CENTRALISATION FISCALE + LE TRANSPORT (v4 : reformulé ; ex-M7, renuméroté une
+seconde fois pour M8 LIVRÉ, une troisième fois pour M9 LIVRÉ, une quatrième fois pour M10,
+une cinquième pour M11 LIVRÉ ci-dessus)
 Le trésor est DÉJÀ provincial (:2675) — M6 n'est pas une « localisation » mais :
 - [ ] La remontée fiscale devient un TRANSPORT physique vers la capitale (convois,
       délai, interceptables) ; le coffre de la capitale = la cible du sac.

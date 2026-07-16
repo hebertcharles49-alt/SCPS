@@ -3563,3 +3563,194 @@ un réexamen, pas un signe de régression · invariant 8/9 sain, 1/9 breach net 
   permanente. Scripts `m10_p2_sweep.sh`/`isolate_breach.sh`/`extract_p2.sh` (bash, non
   committés, scratchpad) utilisés pour le sweep et l'isolation du breach — motif déjà requis
   M3b-v2.1/M7/M8/DIAG « toujours attendre un fichier DONE explicite ».
+
+## CHANTIER MONNAIE — M11 : LA VAGUE AUDIT-SOL (2026-07-16)
+
+**Statut : CALIBRÉ-LIVRÉ — golden RE-BASELINÉ VERT, gates complets passés, invariant M3c
+AMÉLIORÉ (0/9 breach au calibrage final, le breach graine 11 an 19-23 documenté M10 a DISPARU
+sans y toucher directement — l'optionnel du brief pris PAR EFFET DE BORD du calibrage A3).**
+Origine : un audit externe (revue indépendante), 4 claims — CHAQUE claim vérifié AU CODE avant
+correctif. Tag `pre-m11` posé sur d8efa34 (M10). A3 REFONDU en cours de mission sur décision
+joueur (« intérêt FIXE : 1000 à 5 % ⇒ tu rembourses 1050, pas +5 %/an » — la v1
+arriéré-qui-capitalise, déjà implémentée et testée, a été REMPLACÉE, cf. Découvertes).
+
+**LES 4 CLAIMS DE L'AUDIT — verdicts** :
+- **A1 (frappe sous parité) : CONFIRMÉ.** scps_econ.c ~4973 pré-M11 (bloc frappe LIBRE M3e) :
+  le crédit trésor était `gain = qty×(parité−prix)` SEUL ; `cost` n'était qu'une variable de
+  GATE (`treas_remaining-=cost` commenté « comptabilité de GATE seule ») — jamais débitée,
+  jamais versée à un vendeur. Le métal du marché disparaissait sans contrepartie (prouvé au
+  banc : stock 1000→974, richesse classes 0.00, FX_MINT 266.7 = le gain seul). La frappe
+  ROYALE (réserve d'État, econ_country_mint_month) était DÉJÀ correcte : `v0 = g×PARITY_GOLD +
+  cop×PARITY_COPPER` = parité pleine, métal prélevé en nature (royalty), rien à payer — les
+  DEUX chemins ont des règles différentes et c'est CORRECT (le brief l'anticipait).
+- **A2 (trésor périmé un mois) : CONFIRMÉ, périmètre PLUS LARGE que le claim.** econ_
+  aggregate_regions() (econ_tick ~4865) matérialise prov[]→region[] AVANT les deux frappes ;
+  les frappes créditaient `prov[cap].treasury` NU ⇒ econ_country_gold/credit_can_spend/
+  credit_line/audit_eco (tous region[]-grain) lisaient un trésor périmé un mois. EN PLUS du
+  claim : credit_year_tick (intérêts, amortissement-vers-cs, saisie M3g — 4 sites d'écriture
+  nue) pouvait laisser la vue périmée jusqu'à UN AN ; et debit_surplus_prorata (le débiteur
+  UNIVERSEL de toute la chaîne crédit, signalé « Reste » par M9) ne débitait JAMAIS region[].
+  Le masque du banc (credit_demo.c:103 pré-M11, econ_aggregate_regions manuel après
+  credit_year_tick) confirmé — RETIRÉ, le banc passe sans (contrôle 8, ROUGE sur pre-m11).
+- **A3 (pas de défaut réel) : CONFIRMÉ.** scps_credit.c ~521 pré-M11 : `covered+CR_EPS <
+  interest ⇒ g_defaults++` — une statistique MONDE, ni capitalisée, ni arriéré ;
+  insolvent_streak (~591) ne réagissait QU'au plafond. Prouvé au banc : 20 ans d'impayés
+  TOTAUX, dette sous plafond ⇒ JAMAIS de banqueroute forcée (contrôle 10-legacy, le scénario
+  exact « un pays à 200 % sans trésor ne fait JAMAIS faillite »).
+- **A4 (bancs manquants) : CONFIRMÉ.** credit_demo pré-M11 = 20 contrôles, aucun sur
+  banqueroute volontaire/forcée, impayés multi-années, saisie post-faillite,
+  frappe/conservation, cohérence prov==region sans masque.
+
+**L'ARCHITECTURE LIVRÉE** :
+- **A1 — LA FRAPPE À PARITÉ PLEINE** (`MINT_FULL_PARITY`, défaut 1, kill-switch exact) : la
+  frappe libre PAIE désormais le vendeur (débit trésor réel prorata régions, motif ROADS ;
+  crédité aux 3 classes de CHAQUE région qui a fourni le métal, clé 42/20/38 item 5) PUIS crée
+  à la PARITÉ PLEINE (`econ_prov_treasury_credit(e, cap, qty*parity)` + FX_MINT = la VRAIE
+  création). Chiffres banc (fixture 1 province, or coté 8, parité 16) : legacy FX_MINT=266.7
+  (gain seul) → A1 FX_MINT=512.7 (parité pleine, royale 120×16/12/mois incluse), vendeur payé
+  150 or de richesse classes, conservation ΔM==FX_MINT exacte à l'arrondi.
+- **A2 — LE TRÉSOR UNE-SEULE-VÉRITÉ** : nouveau helper `econ_prov_treasury_credit(e,pid,delta)`
+  (scps_econ.c/h — dual-write prov[pid]+region[], pour une province DÉJÀ résolue : différent
+  d'econ_region_treasury_add qui résout via region_carrier_prov et peut router sur un cache
+  rep_prov PÉRIMÉ) ; le CONTRAT « qui écrit quand » documenté en tête d'econ_aggregate_regions
+  (RÈGLE : tout écrivain monétaire post-agrégation passe par econ_region_treasury_add si cible
+  = ensemble, econ_prov_treasury_credit si cible = province résolue, JAMAIS `treasury +=` nu) ;
+  les 2 frappes + 4 sites credit_year_tick convertis ; debit_surplus_prorata dual-write (ferme
+  le Reste M9 côté PRÊTEUR). Choix documenté : dual-write O(1) par écriture plutôt qu'une
+  seconde agrégation O(n_prov) — rien demandé aux futurs lecteurs, seulement aux écrivains.
+- **A3 v2 — L'INTÉRÊT FIXE + LE DÉFAUT RÉEL** (`DEBT_FIXED` défaut 1, kill-switch exact ;
+  remplace la v1 arriéré-qui-capitalise sur décision joueur en cours de mission) :
+  `debt_origination(c, borrow)` = borrow×(1+credit_current_rate(c)) FIGÉ à l'emprunt, appliqué
+  aux 4 sites d'origination (credit_borrow_local §2, credit_borrow_class V1,
+  credit_borrow_citystate, credit_borrow_state V2) — JAMAIS au rachat V3 (une créance qui
+  change de mains n'est pas une origination). credit_year_tick : plus de rente annuelle sur le
+  stock — une ÉCHÉANCE MINIMALE (`DEBT_DUE_FRAC`=0.10 × stock) payée du surplus SEUL, qui
+  ÉTEINT le stock (le flux rembourse principal+markup blended) ; l'impayé ne capitalise JAMAIS
+  (« fixe veut dire fixe ») mais nourrit insolvent_streak si la dette dépasse
+  `DEBT_DEFAULT_THRESHOLD` (3000, cf. calibrage) ⇒ banqueroute forcée après
+  BANKRUPTCY_GRACE_YEARS (5) — le OU (plafond OU impayé-substantiel) est LE cœur du correctif.
+  Retenue M3i : sous fixed, seule la part INTÉRÊT de chaque remboursement (taux/(1+taux)) est
+  un revenu imposable — le principal remboursé n'est pas un gain.
+- **A4 — LES BANCS** : credit_demo 20→48 contrôles. Nouveaux : cohérence prov==region SANS
+  ré-agrégation manuelle (post-credit_year_tick ET post-frappe) · markup à l'origination +
+  kill-switch · « fixe veut dire fixe » (10 ans d'impayés, dette inchangée) · défaut réel
+  (impayés ⇒ streak ⇒ banqueroute forcée SOUS le plafond) + legacy qui reproduit le bug ·
+  plancher dette-qui-compte (résidu trivial protégé) · banqueroute forcée + télémétrie +
+  cicatrice + saisie M3g réglée au créancier figé · banqueroute volontaire · conservation
+  frappe ΔM==FX_MINT + kill-switch A1. PROUVÉ ROUGE SUR PRE-M11 : le banc HEAD compilé contre
+  le moteur pre-m11 (worktree) → 42/48, les 6 échecs = exactement les contrôles neufs (A2×3,
+  A3-markup, A3-défaut, A1-vendeur).
+
+**Découvertes** :
+- **La refonte A3 v1→v2 en plein vol** : la v1 (l'arriéré capitalise aux conditions du prêt,
+  DEBT_ARREARS) était IMPLÉMENTÉE, TESTÉE (46/46) et golden-safe quand la décision joueur est
+  tombée (« intérêt fixe... pas +5 % par an »). REFONDUE proprement plutôt que rapiécée : le
+  tunable DEBT_ARREARS retiré (jamais commité), DEBT_FIXED introduit — la leçon : quand le
+  MODÈLE change (composé→fixe), remplacer le mécanisme entier, pas superposer deux régimes.
+- **La fraction d'échéance n'était PAS le levier de calibrage — la LARGEUR du déclencheur
+  l'était.** DEBT_DUE_FRAC balayé 0.02/0.03/0.05/0.10 : Σ banqueroutes ~1900-2000 sur TOUS les
+  points (bifurcation, pas un gradient — motif M7/M8 confirmé une fois de plus). Le vrai
+  coupable : n'importe quel RÉSIDU de dette (même 51 or) d'un pays qui ne repasse jamais
+  SINK_FLOOR de trésor déclenchait le streak. Fix : DEBT_DEFAULT_THRESHOLD (plancher « dette
+  qui compte », DÉLIBÉRÉMENT séparé de BUYBACK_DEBT_THRESHOLD — coupler les deux aurait fait
+  dériver le taux de rachat en calibrant le défaut). Balayage 4 points : sans plancher ~1950
+  (+234 %) · 500 → 1110 (+90 %) · 1500 → 910 (+56 %) · 3000 → 795 (+36 %, retenu).
+- **Le calibrage A3 à 3000 fait DISPARAÎTRE le breach invariant graine 11** (an 19-23,
+  383-389 %, l'accumulateur WILD pré-existant documenté M10) : 0/9 breach sur le sweep final
+  contre 1/9 pre-m11 — l'optionnel du brief (« si ton contrat A2 règle naturellement ce site,
+  prends-le ») obtenu par le chemin A3 : les trajectoires de dette plus courtes (le stock
+  s'éteint, 597k→66k or de dette monde fin de partie) déplacent la trajectoire de la graine
+  hors de la zone du leak. Le SITE WILD lui-même (péages parqués sur porteuses non colonisées,
+  M3h/M3i item 7) N'EST PAS résolu — au seuil 1500 un breach APPARAISSAIT ailleurs (graine 112
+  sim 2, an 114-147, 400-408 %) : la fragilité se déplace avec la trajectoire, le leak
+  sous-jacent reste désigné pour une vague dédiée.
+- **A1 ne rapproche PAS (encore) le prix du métal de la parité** — l'espoir du brief mesuré
+  honnêtement : or prix moyen 3.00→2.74 (parité 16), cuivre 0.94→0.83 (parité 5.2) — bruit
+  inter-graines dominant, PAS d'amélioration. Cause plausible (non creusée, hors budget) : le
+  vendeur payé est la RICHESSE des classes (wealth), pas le mécanisme de PRIX — le signal
+  demande de la frappe (g_mint_demand_prev, M3f) existait déjà et n'a pas changé d'échelle.
+  Le signal M3f « convergence prix-métal→parité » reste OUVERT.
+- **La dérive M7 tient** : moyenne 9 sims −0.10 %/an (pre −0.32 %/an), fourchette ±3 %/an
+  dominée par la bifurcation par-sim (variance déjà assumée M7). M(fin) croît davantage sous
+  A1 (ex. graine 9 sim 1 : 21.1M→41.4M) — la création à parité pleine est PLUS de monnaie,
+  cohérent par construction, l'invariant la compte comme frappe documentée.
+
+**Pièges** :
+- **`credit_spend` passe par la PÉRÉQUATION avant d'emprunter** — un banc qui veut une dette
+  PRÉCISE (pour tester le plancher du défaut) doit emprunter par `credit_borrow_citystate`
+  DIRECT : via credit_spend, la péréquation absorbe une partie du besoin et la dette inscrite
+  est plus petite que la dépense (400 dépensés ⇒ ~300 de dette sur le fixture — le contrôle 10
+  v1 échouait pour CETTE raison, pas un bug moteur).
+- **Le fixture conservation (contrôle 13) doit poser le trésor EXACTEMENT à SINK_FLOOR (500)** :
+  au-dessus, la redépense publique I3bis (STATE_SPEND_RATE, scps_econ.c) mord le surplus et,
+  SANS pop/impôt dans le fixture (coll_tot=0), la part payroll ne revient à AUCUNE classe — un
+  site de destruction DISTINCT, déjà classé par M0, qui fausse ΔM==FX_MINT de −25 or/tick.
+  L'annuler par construction isole proprement ce que A1 change.
+- **`tune_set` sur un nom inconnu est un no-op silencieux** — le banc HEAD tourne contre le
+  moteur pre-m11 (preuve du ROUGE) sans erreur : les tune_set("DEBT_FIXED"/"MINT_FULL_PARITY")
+  n'existent pas dans son registre, les contrôles legacy passent, les contrôles neufs échouent
+  — exactement le comportement voulu pour la preuve, mais à savoir pour tout futur banc
+  bi-époque.
+- **Piège d'extraction déjà documenté (DIAG) reconfirmé** : `grep -oE "[0-9]+"` sur la ligne
+  banqueroute capture le « 3 » de « (M3d) » — TOUJOURS le sed ancré
+  `s/.*: ([0-9]+) forcée.*/\1/`.
+
+**Bandes mesurées (sweep apparié pre-m11 vs HEAD final=seuil 3000, {9,11,42}×3×250)** :
+
+| métrique | pre-m11 (M10) | HEAD (M11) | verdict |
+|---|---|---|---|
+| banqueroutes Σ | 583 (165+265+153) | **795** (252+315+228) | +36 % — le défaut VIT (impayés réels), SOUS le doublement |
+| colonisation Σ | 263 | 237 | −10 %, dans la bande ±10 % tolérée M3i/M5 |
+| Laborer sat. moy | 66/70/62 % | 66/60/62 % | comparable (graine 11 −10 pts, bruit) |
+| invariant | 1/9 breach (graine 11 an 19-23) | **0/9 breach** | AMÉLIORÉ — breach M10 disparu |
+| dérive prix M7 | −0.32 %/an moy | −0.10 %/an moy | comparable, variance inter-sims dominante |
+| hégémon craqué | 1/9 | 2/9 | compteur chaotique, comparable |
+| dette monde fin | 596 888 or | 66 369 or | la dette S'ÉTEINT enfin (échéances + défauts réels) |
+| rachats Σ (V3 vit) | 2361 | 2091 | le marché secondaire vit toujours |
+| convergence or/cuivre | 3.00 / 0.94 | 2.74 / 0.83 | PAS d'amélioration (signal M3f toujours ouvert) |
+
+Élites rentières : le flux annuel qu'elles reçoivent n'est PLUS une rente perpétuelle
+(intérêt sur un stock immortel) mais l'ANNUITÉ d'un prêt qui s'éteint (principal+markup) —
+en contrepartie le capital REVIENT (remboursé ou cashout rachat) au lieu de rester une
+créance morte ; les rachats V3 (2091 vs 2361) prouvent que le circuit rentier vit toujours.
+Bande documentée, pas de recalibrage demandé.
+
+**Gates (tous passés)** :
+1. Claims vérifiés au code AVANT correctif (ci-dessus) ✓.
+2. Kill-switches : `MINT_FULL_PARITY=0,DEBT_FIXED=0` → hash 02560620/7cf6e226/076966e2/
+   10e5c90e/a83ca87f — DIFFÉRENT du golden pre-m11 par le SEUL effet A2 (dual-writes region[] :
+   frappe via econ_prov_treasury_credit, debit_surplus_prorata, intérêts/saisie), fix
+   d'ordonnancement NON gatable proprement — LA décision documentée que le brief autorisait
+   explicitement. Preuve interne : les kill-switches coupent bien A1 (gain seul, vendeur jamais
+   payé — contrôle 13) et A3 (aucun markup, streak plafond seul — contrôles 9/10) au banc ✓.
+3. Sweep apparié (tableau ci-dessus) ✓ — banqueroutes recalibrées 2 fois (v1 → seuil 500 →
+   1500 → 3000), mesuré jamais déclaré.
+4. `make test` 38 verts/0 rouge + credit_demo 48/48 (intertrade_demo seul, pré-existant
+   Windows setenv — reconfirmé par build direct) · nouveaux contrôles ROUGES sur pre-m11
+   (42/48, les 6 échecs = les contrôles neufs) et VERTS sur HEAD ✓ · golden RE-BASELINÉ puis
+   VERT ✓ · determinism STABLE ✓ · determinism-deep STABLE (7/9×200 ans) ✓ · savetest 9 A==B
+   byte-identique + octet altéré REFUSÉ ✓ (aucun nouvel état sérialisé : le markup vit dans
+   to_class/to_cs existants, underpaid est intra-appel, streak réutilise le champ v90 —
+   SAVE_VERSION inchangé 95) · fuzz-save 8/8 (216 octets, 0 crash) ✓.
+5. Cet append + commits granulaires FR ✓.
+
+**Restes** :
+- **Le site WILD des péages parqués (M3h/M3i item 7) toujours PAS résolu** — le breach graine
+  11 a disparu par déplacement de trajectoire (calibrage A3), pas par conversion du site ; au
+  seuil 1500 un breach équivalent apparaissait ailleurs (graine 112 sim 2). La vague dédiée
+  « région-carrier → province colonisée » reste désignée.
+- **Convergence prix-métal→parité (signal M3f)** : A1 ne l'améliore pas — le vendeur payé
+  enrichit la classe, pas le mécanisme de prix. Si le joueur veut la convergence, le canal à
+  regarder est le POIDS du seed de demande de frappe (g_mint_demand_prev) dans le solde du
+  prix national, pas le paiement.
+- **DEBT_DUE_FRAC=0.10 posé, jamais optimisé finement** (la fraction s'est avérée un
+  non-levier sur la bande banqueroutes ; son VRAI effet est la vitesse d'extinction du stock —
+  visible dans « dette monde fin » 597k→66k) — un futur calibrage joueur pourrait vouloir un
+  horizon de remboursement différent (~10 ans actuellement).
+- **UI-MONNAIE** : aucun reader façade neuf demandé cette vague (les readers M9
+  loan_capacity/loan_status exposent déjà credit_current_rate — le taux affiché EST désormais
+  le taux FIXE proposé à l'origination, cohérent sans changement). **DLL Godot À RE-BUILDER**
+  (scons -C godot) : scps_econ.c/h, scps_credit.c, scps_tune_list.h ont changé — motif noté à
+  chaque vague monétaire.
+- Worktree de sweep `/c/tmp_wt_pre_m11` retiré en fin de session ; fichiers de sweep bruts
+  (21 runs chronicle) au scratchpad, non committés — seules les Σ ci-dessus font foi.
