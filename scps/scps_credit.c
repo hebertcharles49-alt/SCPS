@@ -23,7 +23,13 @@
 #define CR_EPS 1e-4f
 
 typedef struct {
-    float   to_class;    /* dette due aux PROPRES classes du pays (élites+bourgeois, agrégé) */
+    /* MONNAIE M14 — B5 : VENTILÉE PAR ORDRE (SAVE_VERSION 96, ex-`to_class` agrégé) — un
+     * emprunt 100 % bourgeois remboursait pourtant aux poids FIXES Élite/Bourgeois
+     * (ELITE_LEND_WEIGHT/BOURGEOIS_LEND_WEIGHT) : les élites touchaient une créance
+     * qu'elles n'avaient jamais avancée. `credit_debt_class(c)` reste l'AGRÉGAT
+     * (to_elite+to_bourgeois) — contrat externe INCHANGÉ (save_sane, UI, chronicle). */
+    float   to_elite;      /* dette due AUX ÉLITES du pays (ce qu'elles ont RÉELLEMENT prêté) */
+    float   to_bourgeois;  /* dette due AUX BOURGEOIS du pays (ce qu'ils ont RÉELLEMENT prêté) */
     float   to_cs;        /* dette due à LA cité-état créancière (agrégé) */
     int16_t cs_id;         /* pays créancier cité-état, -1 = aucun */
     /* M3d — années CONSÉCUTIVES passées AU PLAFOND (credit_year_tick) : la « chronique »
@@ -72,7 +78,8 @@ static long g_buyback_cs=0, g_buyback_mercantile=0, g_buyback_pacifist=0;
 
 void credit_init(void){
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){
-        g_debt[c].to_class=0.f; g_debt[c].to_cs=0.f; g_debt[c].cs_id=-1; g_debt[c].insolvent_streak=0;
+        g_debt[c].to_elite=0.f; g_debt[c].to_bourgeois=0.f; g_debt[c].to_cs=0.f;
+        g_debt[c].cs_id=-1; g_debt[c].insolvent_streak=0;
         g_forced_pending[c]=false;
         g_garnish_cs_id[c]=-1; g_garnish_cs_share[c]=0.f; g_garnish_cs_pending[c]=0.f;
         g_loan_req_target[c]=-1; g_loan_req_granted[c]=false;
@@ -83,7 +90,14 @@ void credit_init(void){
     g_buyback_cs=0; g_buyback_mercantile=0; g_buyback_pacifist=0;
 }
 int  credit_of(int c){ return (c>=0&&c<SCPS_MAX_COUNTRY)? g_debt[c].cs_id : -1; }
-float credit_debt_class(int c)     { return (c>=0&&c<SCPS_MAX_COUNTRY)? g_debt[c].to_class : 0.f; }
+/* B5 — l'AGRÉGAT (contrat externe INCHANGÉ : save_sane/UI/chronicle continuent de lire
+ * "la dette aux classes", peu importe la ventilation interne par ordre). */
+float credit_debt_class(int c)     { return (c>=0&&c<SCPS_MAX_COUNTRY)? g_debt[c].to_elite+g_debt[c].to_bourgeois : 0.f; }
+/* B5 — LA VENTILATION PAR ORDRE (lecture pure, UI/télémétrie/save_sane) : ce que CHAQUE
+ * ordre a RÉELLEMENT prêté à l'État — plus les poids fixes ELITE/BOURGEOIS_LEND_WEIGHT
+ * (ceux-là restent la capacité de PRÊT, un concept différent de la créance DÉJÀ inscrite). */
+float credit_debt_elite(int c)     { return (c>=0&&c<SCPS_MAX_COUNTRY)? g_debt[c].to_elite : 0.f; }
+float credit_debt_bourgeois(int c) { return (c>=0&&c<SCPS_MAX_COUNTRY)? g_debt[c].to_bourgeois : 0.f; }
 float credit_debt_citystate(int c) { return (c>=0&&c<SCPS_MAX_COUNTRY)? g_debt[c].to_cs    : 0.f; }
 float credit_debt_total(int c)     { return credit_debt_class(c)+credit_debt_citystate(c); }
 int   credit_insolvent_streak(int c){ return (c>=0&&c<SCPS_MAX_COUNTRY)? (int)g_debt[c].insolvent_streak : 0; }
@@ -111,6 +125,18 @@ float credit_debt_ceiling(int c){
 static float debt_draw_cap(int c){
     float ceiling = credit_debt_ceiling(c);
     float room = ceiling - credit_debt_total(c); if (room<0.f) room=0.f;
+    /* MONNAIE M14 — B4 : le MARKUP figé à l'origination (debt_origination, DEBT_FIXED —
+     * borrow×(1+taux)) inscrit PLUS que le réel emprunté au passif. Emprunter `room` en
+     * pièces réelles inscrirait room×(1+taux) > room au passif — le plafond ÉMIS pouvait
+     * donc dépasser `ceiling` par SIMPLE COMPTABILITÉ (jamais un défaut de solvabilité, un
+     * défaut d'arithmétique). Réserver le markup : le headroom RÉEL (en pièces) est
+     * room/(1+taux) — au maximum, borrow×(1+taux)==room exactement, jamais plus. Taux lu
+     * AVANT tout emprunt (même convention que debt_origination). DEBT_FIXED=0 (kill-switch,
+     * même levier que M11-A3) : aucun markup, headroom=room, comportement INCHANGÉ. */
+    if (tune_f("DEBT_FIXED", 1.0f) > 0.f){
+        float rate = credit_current_rate(c);
+        room = room / (1.f + rate);
+    }
     float tranche = tune_f("DEBT_TRANCHE_FRAC", 0.20f) * fmaxf(0.f, econ_country_tax_year(c));
     return fminf(room, tranche);
 }
@@ -305,8 +331,11 @@ float credit_borrow_local(WorldEconomy *e, int c, float need){
 
     /* 2) EMPRUNT AUX PROPRES CLASSES — ∝ richesse (élites pondérées plus que bourgeois,
      * les laborers n'ont pas d'épargne), capacité PAR TICK plafonnée (registre J) : la
-     * classe "prête" (sa richesse baisse) en échange d'une créance RÉELLE (g_debt.to_class,
-     * remboursée+intérêt via credit_year_tick). DÉBIT seul ici aussi (même raison). */
+     * classe "prête" (sa richesse baisse) en échange d'une créance RÉELLE (g_debt.to_elite/
+     * to_bourgeois, remboursée+intérêt via credit_year_tick). DÉBIT seul ici aussi (même
+     * raison). MONNAIE M14 — B5 : la créance est inscrite SÉPARÉMENT par ordre prêteur
+     * (b_elite→to_elite, b_bourg→to_bourgeois) — ELITE/BOURGEOIS_LEND_WEIGHT restent la
+     * capacité de PRÊT (∝ richesse pondérée), pas la clé de remboursement. */
     float ew=tune_f("ELITE_LEND_WEIGHT",1.0f), bw=tune_f("BOURGEOIS_LEND_WEIGHT",0.5f);
     float share=tune_f("CLASS_LEND_SHARE",0.05f);
     float cap_e=0.f, cap_b=0.f; country_lendable(e,c,ew,bw,&cap_e,&cap_b);
@@ -317,7 +346,14 @@ float credit_borrow_local(WorldEconomy *e, int c, float need){
         float b_elite = borrow*(cap_e/cap_tot), b_bourg = borrow-b_elite;
         if (b_elite>CR_EPS) debit_wealth_prorata(e,c,CLASS_ELITE,b_elite);
         if (b_bourg>CR_EPS) debit_wealth_prorata(e,c,CLASS_BOURGEOIS,b_bourg);
-        g_debt[c].to_class += debt_origination(c, borrow);   /* MONNAIE M11 — A3 v2 : forfait figé */
+        /* B5 : UN SEUL appel à debt_origination (le taux, fonction du levier AVANT cette
+         * dette, doit être identique pour les deux parts — sinon inscrire to_elite PUIS
+         * to_bourgeois ferait dériver le taux de la 2e part, motif "figé À L'ORIGINATION"
+         * violé) — le forfait total est ensuite ventilé ∝ b_elite/b_bourg (même ratio que
+         * le réel prêté, le taux étant uniforme sur tout le borrow). */
+        float origination = debt_origination(c, borrow);
+        if (b_elite>CR_EPS) g_debt[c].to_elite     += origination*(b_elite/borrow);
+        if (b_bourg>CR_EPS) g_debt[c].to_bourgeois += origination*(b_bourg/borrow);
         covered += borrow;
     }
     return covered;
@@ -358,7 +394,11 @@ float credit_borrow_class(WorldEconomy *e, int c, SocialClass cls, float need){
     float borrow = (need>CR_EPS) ? fminf(need, cap) : cap;
     if (borrow<=CR_EPS) return 0.f;
     debit_wealth_prorata(e, c, cls, borrow);
-    g_debt[c].to_class += debt_origination(c, borrow);   /* MONNAIE M11 — A3 v2 : forfait figé */
+    /* MONNAIE M14 — B5 : ce verbe cible UNE SEULE classe (cls, ELITE ou BOURGEOIS déjà
+     * garanti par credit_class_borrow_capacity ci-dessus) — la créance va DIRECTEMENT à
+     * son ordre réel, jamais l'agrégat. */
+    if (cls==CLASS_ELITE) g_debt[c].to_elite     += debt_origination(c, borrow);
+    else                  g_debt[c].to_bourgeois += debt_origination(c, borrow);   /* MONNAIE M11 — A3 v2 : forfait figé */
     /* LE DÉPÔT : econ_region_treasury_add (PAS une écriture prov[].treasury directe) — c'est
      * le SEUL chemin qui tient region[].treasury EN PHASE avec prov[] (econ_country_gold,
      * credit_can_spend, credit_line, audit_eco lisent TOUS region[] ; region[].treasury n'est
@@ -546,9 +586,9 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
      * un flag lu par scps_sim.c juste après CET appel, jamais à cheval sur deux années). */
     for(int c=0;c<SCPS_MAX_COUNTRY;c++) g_buyback_archetype[c]=LOAN_ARCHETYPE_NONE;
     for(int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
-        float debt_total = g_debt[c].to_class + g_debt[c].to_cs;
+        float debt_total = g_debt[c].to_elite + g_debt[c].to_bourgeois + g_debt[c].to_cs;
         if (debt_total<=CR_EPS){
-            g_debt[c].to_class=0.f; g_debt[c].to_cs=0.f; g_debt[c].cs_id=-1;
+            g_debt[c].to_elite=0.f; g_debt[c].to_bourgeois=0.f; g_debt[c].to_cs=0.f; g_debt[c].cs_id=-1;
             g_debt[c].insolvent_streak=0; g_forced_pending[c]=false;   /* M3d : pas de dette, pas de chronique */
             continue;
         }
@@ -577,12 +617,19 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
         if (underpaid) g_defaults++;   /* échéance/intérêt de l'année sous-servi (auto-limité) */
 
         if (covered>CR_EPS){
-            float i_class=covered*(g_debt[c].to_class/debt_total);
+            float i_class=covered*((g_debt[c].to_elite+g_debt[c].to_bourgeois)/debt_total);
             float i_cs   =covered-i_class;
+            /* MONNAIE M14 — B5 : ventilé ∝ la ventilation RÉELLE de la créance (ce que
+             * CHAQUE ordre a EFFECTIVEMENT prêté) — plus les poids fixes ELITE/BOURGEOIS_
+             * LEND_WEIGHT (l'ancien bug : un emprunt 100 % bourgeois remboursait quand même
+             * l'élite à son poids fixe, même en l'absence de toute créance élite). Calculé
+             * ICI (portée du bloc `covered`) pour servir À LA FOIS le versement (ci-dessous)
+             * ET la réduction du passif (plus bas, même ratio — sinon la créance se réduit
+             * sur une clé différente de celle qui a été payée). */
+            float class_tot=g_debt[c].to_elite+g_debt[c].to_bourgeois;
+            float share_e=(class_tot>CR_EPS)?(g_debt[c].to_elite/class_tot):0.5f;
             if (i_class>CR_EPS){   /* l'ÉLITE RENTIÈRE (et le bourgeois-créancier) vivent du flux de remboursement */
-                float ew=tune_f("ELITE_LEND_WEIGHT",1.0f), bw=tune_f("BOURGEOIS_LEND_WEIGHT",0.5f);
-                float tot=ew+bw; if (tot<=CR_EPS) tot=1.f;
-                float amt_e=i_class*(ew/tot), amt_b=i_class*(bw/tot);
+                float amt_e=i_class*share_e, amt_b=i_class-amt_e;
                 /* MONNAIE M3i — RETENUE À LA SOURCE sur le REVENU des classes créancières
                  * (brief : « intérêts de la dette versés aux classes créancières » explicitement
                  * nommé). `fixed` : SEULE la part INTÉRÊT de CHAQUE remboursement est un revenu
@@ -617,8 +664,12 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
              * (l'intérêt pré-M11 ne remboursait rien — comportement EXACT, cf. le contrôle
              * historique « le principal n'a pas grossi rien qu'à payer l'intérêt »). */
             if (fixed){
-                g_debt[c].to_class -= i_class; if (g_debt[c].to_class<0.f) g_debt[c].to_class=0.f;
-                g_debt[c].to_cs    -= i_cs;    if (g_debt[c].to_cs<0.f)    g_debt[c].to_cs=0.f;
+                /* B5 : réduit CHAQUE créance de sa part RÉELLE de i_class (share_e, la MÊME
+                 * clé que le versement ci-dessus) — jamais l'agrégat. */
+                float i_e=i_class*share_e, i_b=i_class-i_e;
+                g_debt[c].to_elite     -= i_e; if (g_debt[c].to_elite<0.f)     g_debt[c].to_elite=0.f;
+                g_debt[c].to_bourgeois -= i_b; if (g_debt[c].to_bourgeois<0.f) g_debt[c].to_bourgeois=0.f;
+                g_debt[c].to_cs        -= i_cs; if (g_debt[c].to_cs<0.f)       g_debt[c].to_cs=0.f;
             }
         }
         econ_flux_add(c, FX_CREDIT, -covered);   /* I0 : la ligne intérêts/échéance (montant RÉELLEMENT servi) */
@@ -638,26 +689,30 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
          * monnaie DÉTRUITE par tick, chaque année, pour tout pays qui amortit. Recapturer
          * `debt_total` ICI (après l'échéance, juste avant l'amortissement) referme l'écart :
          * numérateur et dénominateur redeviennent la MÊME photo. */
-        float debt_total_amort = g_debt[c].to_class + g_debt[c].to_cs;
+        float debt_total_amort = g_debt[c].to_elite + g_debt[c].to_bourgeois + g_debt[c].to_cs;
         float hof=tune_f("COURT_FLOOR",4000.f);
         float surplus=country_surplus(e,c,hof);
         if (surplus>CR_EPS && debt_total_amort>CR_EPS){
             float repay=fminf(debt_total_amort, fminf(surplus, debt_total_amort*tune_f("PRINCIPAL_REPAY_RATE",0.10f)));
             if (repay>CR_EPS){
                 debit_surplus_prorata(e,c,hof,repay);
-                float r_class=repay*(g_debt[c].to_class/debt_total_amort), r_cs=repay-r_class;
+                float class_tot_a=g_debt[c].to_elite+g_debt[c].to_bourgeois;
+                float r_class=repay*(class_tot_a/debt_total_amort), r_cs=repay-r_class;
+                /* MONNAIE M14 — B5 : même correctif que l'échéance ci-dessus — ventilé ∝ la
+                 * ventilation RÉELLE de la créance (share_a), plus les poids fixes. */
+                float share_a=(class_tot_a>CR_EPS)?(g_debt[c].to_elite/class_tot_a):0.5f;
+                float r_e=r_class*share_a, r_b=r_class-r_e;
                 if (r_class>CR_EPS){
-                    float ew=tune_f("ELITE_LEND_WEIGHT",1.0f), bw=tune_f("BOURGEOIS_LEND_WEIGHT",0.5f);
-                    float tot=ew+bw; if (tot<=CR_EPS) tot=1.f;
-                    credit_wealth_prorata(e,c,CLASS_ELITE,     r_class*(ew/tot));
-                    credit_wealth_prorata(e,c,CLASS_BOURGEOIS, r_class*(bw/tot));
+                    credit_wealth_prorata(e,c,CLASS_ELITE,     r_e);
+                    credit_wealth_prorata(e,c,CLASS_BOURGEOIS, r_b);
                 }
                 if (r_cs>CR_EPS && g_debt[c].cs_id>=0){
                     int hc=home_reg(w,g_debt[c].cs_id);
                     if (hc>=0&&hc<e->n_regions){ int cp=econ_region_rep_province(e,hc); if (cp>=0&&cp<e->n_prov) econ_prov_treasury_credit(e, cp, r_cs); }   /* MONNAIE M11 — A2 */
                 }
-                g_debt[c].to_class -= r_class; if (g_debt[c].to_class<0.f) g_debt[c].to_class=0.f;
-                g_debt[c].to_cs    -= r_cs;    if (g_debt[c].to_cs<0.f)    g_debt[c].to_cs=0.f;
+                g_debt[c].to_elite     -= r_e; if (g_debt[c].to_elite<0.f)     g_debt[c].to_elite=0.f;
+                g_debt[c].to_bourgeois -= r_b; if (g_debt[c].to_bourgeois<0.f) g_debt[c].to_bourgeois=0.f;
+                g_debt[c].to_cs        -= r_cs; if (g_debt[c].to_cs<0.f)       g_debt[c].to_cs=0.f;
             }
         }
         if (g_debt[c].to_cs<=CR_EPS) g_debt[c].cs_id=-1;
@@ -684,7 +739,7 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
          * le couperet, jamais un pic isolé. g_forced_pending est un flag TRANSIENT : scps_
          * sim.c l'exécute juste après credit_year_tick (RAZ dette + cicatrice + effet diplo,
          * motif CMD_MANUMIT — sim.c orchestre, credit.c fait le cœur). */
-        float debt_final = g_debt[c].to_class + g_debt[c].to_cs;
+        float debt_final = g_debt[c].to_elite + g_debt[c].to_bourgeois + g_debt[c].to_cs;
         float ceiling_final = credit_debt_ceiling(c);
         bool ceiling_hit = (debt_final >= ceiling_final - CR_EPS && ceiling_final>CR_EPS);
         bool debt_meaningful = (debt_final > tune_f("DEBT_DEFAULT_THRESHOLD", 1500.f));
@@ -737,7 +792,8 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
     float ishare =tune_f("BUYBACK_IDLE_SHARE",0.30f);
     float ifloor=tune_f("SINK_FLOOR",500.f);
     for(int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
-        if (g_debt[c].to_class<=bthresh) continue;
+        float to_class_tot=g_debt[c].to_elite+g_debt[c].to_bourgeois;
+        if (to_class_tot<=bthresh) continue;
         int L=-1;
         if (g_debt[c].cs_id>=0){
             int cand=g_debt[c].cs_id;
@@ -751,17 +807,20 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
         }
         if (getenv("SCPS_BUYBACKDIAG"))
             fprintf(stderr,"[BUYBACKDIAG] c=%d to_class=%.0f cs_id=%d L=%d surplus(L)=%.0f\n",
-                    c, g_debt[c].to_class, g_debt[c].cs_id, L, L>=0?country_surplus(e,L,ifloor):-1.f);
+                    c, (double)to_class_tot, g_debt[c].cs_id, L, L>=0?country_surplus(e,L,ifloor):-1.f);
         if (L<0) continue;
         float idle=country_surplus(e,L,ifloor)*ishare;
-        float amount=fminf(g_debt[c].to_class, idle);
+        float amount=fminf(to_class_tot, idle);
         if (amount<=CR_EPS) continue;
         debit_surplus_prorata(e,L,ifloor,amount);            /* le racheteur paie face value */
-        float ew=tune_f("ELITE_LEND_WEIGHT",1.0f), bw=tune_f("BOURGEOIS_LEND_WEIGHT",0.5f);
-        float tot=ew+bw; if (tot<=CR_EPS) tot=1.f;
-        credit_wealth_prorata(e,c,CLASS_ELITE,     amount*(ew/tot));   /* les classes créancières sont CASHÉES OUT */
-        credit_wealth_prorata(e,c,CLASS_BOURGEOIS, amount*(bw/tot));
-        g_debt[c].to_class -= amount;
+        /* MONNAIE M14 — B5 : les créanciers CASHÉS OUT sont les VRAIS prêteurs (∝ ce que
+         * CHACUN a réellement avancé), plus les poids fixes ELITE/BOURGEOIS_LEND_WEIGHT. */
+        float share_bb=(to_class_tot>CR_EPS)?(g_debt[c].to_elite/to_class_tot):0.5f;
+        float amt_e_bb=amount*share_bb, amt_b_bb=amount-amt_e_bb;
+        credit_wealth_prorata(e,c,CLASS_ELITE,     amt_e_bb);
+        credit_wealth_prorata(e,c,CLASS_BOURGEOIS, amt_b_bb);
+        g_debt[c].to_elite     -= amt_e_bb; if (g_debt[c].to_elite<0.f)     g_debt[c].to_elite=0.f;
+        g_debt[c].to_bourgeois -= amt_b_bb; if (g_debt[c].to_bourgeois<0.f) g_debt[c].to_bourgeois=0.f;
         g_debt[c].to_cs    += amount;
         g_debt[c].cs_id     = (int16_t)L;                    /* le racheteur DEVIENT le créancier */
         g_buybacks++;
@@ -802,7 +861,7 @@ int credit_bankruptcy(WorldEconomy *e, int c, bool forced){
      * wipe ci-dessous) pour toute la saisie à venir (cf. scps_credit.h). Ne réinstaure
      * RIEN — la répudiation reste TOTALE (motif M3d inchangé) : ceci mémorise seulement
      * QUI recevra la part cité-état de la production confisquée pendant la cicatrice. */
-    float debt_total_pre = g_debt[c].to_class + g_debt[c].to_cs;
+    float debt_total_pre = g_debt[c].to_elite + g_debt[c].to_bourgeois + g_debt[c].to_cs;
     if (debt_total_pre > CR_EPS && g_debt[c].to_cs > CR_EPS && L>=0){
         g_garnish_cs_id[c]    = (int16_t)L;
         g_garnish_cs_share[c] = g_debt[c].to_cs / debt_total_pre;
@@ -811,7 +870,7 @@ int credit_bankruptcy(WorldEconomy *e, int c, bool forced){
         g_garnish_cs_share[c] = 0.f;
     }
     g_garnish_cs_pending[c] = 0.f;   /* un reliquat non réglé d'un cycle précédent est déjà réglé par credit_year_tick avant que g_forced_pending ne déclenche CE tick (ordre garanti, cf. scps_credit.h) */
-    g_debt[c].to_class=0.f; g_debt[c].to_cs=0.f; g_debt[c].cs_id=-1; g_debt[c].insolvent_streak=0;
+    g_debt[c].to_elite=0.f; g_debt[c].to_bourgeois=0.f; g_debt[c].to_cs=0.f; g_debt[c].cs_id=-1; g_debt[c].insolvent_streak=0;
     g_forced_pending[c]=false;
     /* CICATRICE (moral d'armée EXPLICITE, brief « l'humiliation ne se calcule pas en
      * grain » — M3g conserve CE malus tel quel) + le GATE de la SAISIE (M3g remplace le
@@ -878,7 +937,10 @@ void credit_garnish_stats(double *total, double *domestic, double *citystate){
 
 bool credit_save(FILE *f){
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){
-        if (fwrite(&g_debt[c].to_class,        sizeof(float),  1,f)!=1) return false;
+        /* MONNAIE M14 — B5 (v96) : to_class agrégé → to_elite+to_bourgeois (ventilé PAR
+         * ORDRE) — struct CountryDebt AGRANDIE, SAVE_VERSION bumpé. */
+        if (fwrite(&g_debt[c].to_elite,        sizeof(float),  1,f)!=1) return false;
+        if (fwrite(&g_debt[c].to_bourgeois,    sizeof(float),  1,f)!=1) return false;
         if (fwrite(&g_debt[c].to_cs,           sizeof(float),  1,f)!=1) return false;
         if (fwrite(&g_debt[c].cs_id,           sizeof(int16_t),1,f)!=1) return false;
         if (fwrite(&g_debt[c].insolvent_streak,sizeof(int16_t),1,f)!=1) return false;   /* M3d (v90) */
@@ -895,7 +957,8 @@ bool credit_load(FILE *f){
      * (scps_save.c), même convention que credit_of/reserve_gold/va_country_prev :
      * cette fonction ne fait QUE désérialiser. */
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){
-        if (fread(&g_debt[c].to_class,        sizeof(float),  1,f)!=1) return false;
+        if (fread(&g_debt[c].to_elite,        sizeof(float),  1,f)!=1) return false;    /* B5 (v96) */
+        if (fread(&g_debt[c].to_bourgeois,    sizeof(float),  1,f)!=1) return false;    /* B5 (v96) */
         if (fread(&g_debt[c].to_cs,           sizeof(float),  1,f)!=1) return false;
         if (fread(&g_debt[c].cs_id,           sizeof(int16_t),1,f)!=1) return false;
         if (fread(&g_debt[c].insolvent_streak,sizeof(int16_t),1,f)!=1) return false;    /* M3d (v90) */

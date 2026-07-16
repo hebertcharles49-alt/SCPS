@@ -63,7 +63,12 @@ float credit_borrow(WorldEconomy *e, const World *w, int c, float need);
 void  credit_settle_monthly(WorldEconomy *e, const World *w);
 
 /* ---- Lecture (UI/diplo/télémétrie chronicle) ---------------------------------------- */
-float credit_debt_class(int c);       /* dette due aux PROPRES classes du pays c */
+float credit_debt_class(int c);       /* dette due aux PROPRES classes du pays c (AGRÉGAT elite+bourgeois) */
+/* MONNAIE M14 — B5 : LA VENTILATION PAR ORDRE (v96) — ce que CHAQUE ordre a RÉELLEMENT
+ * prêté à l'État (et se voit rembourser en proportion, plus les poids fixes ELITE/
+ * BOURGEOIS_LEND_WEIGHT qui ne bornent que la CAPACITÉ de prêt). */
+float credit_debt_elite(int c);
+float credit_debt_bourgeois(int c);
 float credit_debt_citystate(int c);   /* dette due à SA cité-état créancière */
 float credit_debt_total(int c);       /* to_class+to_cs */
 /* M3d — années consécutives au plafond (save_sane la revalide, motif credit_debt_class). */

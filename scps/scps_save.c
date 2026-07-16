@@ -293,6 +293,13 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         float dc=credit_debt_class(c), ds=credit_debt_citystate(c);
         if (!(dc>=0.f && dc<1.0e12f)) return false;
         if (!(ds>=0.f && ds<1.0e12f)) return false;
+        /* v96 — MONNAIE M14 — B5 : la ventilation PAR ORDRE se revalide INDIVIDUELLEMENT
+         * (≥0, finie) — sans ceci, un save corrompu pourrait porter to_elite très négatif
+         * compensé par to_bourgeois très positif (la SOMME lue ci-dessus resterait valide,
+         * mais chaque champ individuellement ne le serait pas). */
+        float de=credit_debt_elite(c), db=credit_debt_bourgeois(c);
+        if (!(de>=0.f && de<1.0e12f)) return false;
+        if (!(db>=0.f && db<1.0e12f)) return false;
         /* v90 — MONNAIE M3d : la chronique du plafond (insolvent_streak) se revalide,
          * même motif — [0..30000], le plafond interne de credit_year_tick. */
         int st=credit_insolvent_streak(c);

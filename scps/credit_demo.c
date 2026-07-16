@@ -494,6 +494,114 @@ int main(void){
         tune_set("INCOME_TAX", 1.f);   /* redéfinit le défaut */
     }
 
+    /* ── 16. B4 : debt_draw_cap RÉSERVE LE MARKUP — la dette inscrite ne crève JAMAIS le plafond ── */
+    printf("\n── 16. B4 : le markup réservé — dette inscrite ≤ plafond, TOUJOURS ──\n");
+    {
+        /* CLAIM : debt_draw_cap rendait `room = ceiling - debt_total` en PIÈCES, mais
+         * debt_origination inscrit borrow×(1+taux) au passif (DEBT_FIXED) — emprunter
+         * `room` en pièces inscrit PLUS que `room` de dette : le plafond ÉMIS pouvait
+         * dépasser `ceiling` par simple comptabilité. On emprunte le MAXIMUM disponible
+         * (need<=0) en boucle, à CHAQUE pas, et on vérifie l'invariant dette ≤ plafond. */
+        memset(e, 0, sizeof(WorldEconomy));
+        w->n_countries=1; w->n_provinces=1;
+        w->country[0].role=POLITY_PLAYER; w->country[0].capital_prov=0;
+        w->province[0].region=0;
+        e->n_prov=1; e->n_regions=1;
+        e->prov[0].owner=0; e->prov[0].region=0; e->prov[0].active=true; e->prov[0].colonized=true;
+        e->prov[0].is_capital=true;
+        e->prov[0].strata[CLASS_LABORER].pop=1000.f;
+        e->prov[0].strata[CLASS_ELITE].wealth=1.0e8f;   /* capacité de prêt QUASI illimitée : le plafond seul mord */
+        e->prov[0].treasury=100.f;
+        e->region_rep_prov[0]=0;
+        econ_aggregate_regions(e);
+        econ_flux_add(0, FX_TAX, 3000.f); econ_flux_year_capture();   /* ceiling=9000, tranche=600 */
+        credit_init();
+        bool breach=false; float worst=0.f;
+        for (int i=0;i<60;i++){
+            float before=credit_debt_total(0);
+            float got = credit_borrow_class(e, 0, CLASS_ELITE, -1.f);   /* -1 ⇒ le MAXIMUM disponible */
+            float ceil_now = credit_debt_ceiling(0);
+            float after = credit_debt_total(0);
+            if (after > ceil_now + 0.5f){ breach=true; float over=after-ceil_now; if(over>worst) worst=over; }
+            if (got<=0.f) break;   /* capacité épuisée : plus rien à emprunter */
+            (void)before;
+        }
+        printf("   dette finale=%.2f · plafond=%.2f · dépassement max observé=%.3f\n",
+               (double)credit_debt_total(0), (double)credit_debt_ceiling(0), (double)worst);
+        ok("B4 : emprunter le MAXIMUM disponible, à répétition, ne fait JAMAIS dépasser le plafond",
+           !breach);
+        ok("B4 : la dette finale colle au plafond (le headroom RÉEL est bien épuisé, pas gaspillé)",
+           credit_debt_total(0) > credit_debt_ceiling(0)*0.95f);
+
+        /* kill-switch : DEBT_FIXED=0 ⇒ aucun markup, comportement INCHANGÉ (headroom=room nu). */
+        tune_set("DEBT_FIXED", 0.f);
+        memset(e, 0, sizeof(WorldEconomy));
+        e->n_prov=1; e->n_regions=1;
+        e->prov[0].owner=0; e->prov[0].region=0; e->prov[0].active=true; e->prov[0].colonized=true;
+        e->prov[0].is_capital=true;
+        e->prov[0].strata[CLASS_LABORER].pop=1000.f;
+        e->prov[0].strata[CLASS_ELITE].wealth=1.0e8f;
+        e->prov[0].treasury=100.f;
+        e->region_rep_prov[0]=0;
+        econ_aggregate_regions(e);
+        econ_flux_add(0, FX_TAX, 3000.f); econ_flux_year_capture();
+        credit_init();
+        for (int i=0;i<60;i++){ float got=credit_borrow_class(e,0,CLASS_ELITE,-1.f); if (got<=0.f) break; }
+        printf("   DEBT_FIXED=0 (legacy) : dette finale=%.2f · plafond=%.2f (headroom nu, aucun markup)\n",
+               (double)credit_debt_total(0), (double)credit_debt_ceiling(0));
+        ok("kill-switch DEBT_FIXED=0 : la dette COLLE exactement au plafond (pas de markup à réserver)",
+           fabs(credit_debt_total(0) - credit_debt_ceiling(0)) < 1.0f);
+        tune_set("DEBT_FIXED", 1.f);   /* redéfinit le défaut */
+    }
+
+    /* ── 17. B5 : LA VENTILATION PAR ORDRE — un emprunt 100% bourgeois REMBOURSE le bourgeois ── */
+    printf("\n── 17. B5 : la ventilation par ordre — un emprunt 100%% bourgeois ne paie PLUS l'élite ──\n");
+    {
+        /* CLAIM : l'emprunt V1 (credit_borrow_class) agrégeait tout dans un SEUL to_class,
+         * remboursé aux poids FIXES ELITE/BOURGEOIS_LEND_WEIGHT (1.0/0.5) — un emprunt
+         * 100% BOURGEOIS (l'élite n'a RIEN prêté) remboursait quand même l'élite à hauteur
+         * de son poids fixe (ew/(ew+bw)=67%) : une créance FANTÔME versée à un non-prêteur. */
+        memset(e, 0, sizeof(WorldEconomy));
+        w->n_countries=1; w->n_provinces=1;
+        w->country[0].role=POLITY_PLAYER; w->country[0].capital_prov=0;
+        w->province[0].region=0;
+        e->n_prov=1; e->n_regions=1;
+        e->prov[0].owner=0; e->prov[0].region=0; e->prov[0].active=true; e->prov[0].colonized=true;
+        e->prov[0].is_capital=true;
+        e->prov[0].strata[CLASS_LABORER].pop=1000.f;
+        e->prov[0].strata[CLASS_ELITE].wealth=100000.f;      /* présente, mais ne PRÊTE JAMAIS */
+        e->prov[0].strata[CLASS_BOURGEOIS].wealth=100000.f;  /* LA SEULE prêteuse */
+        e->prov[0].treasury=60000.f;
+        e->region_rep_prov[0]=0;
+        econ_aggregate_regions(e);
+        econ_flux_add(0, FX_TAX, 30000.f); econ_flux_year_capture();
+        tune_set("INCOME_TAX", 0.f);
+        credit_init();
+        float borrowed = credit_borrow_class(e, 0, CLASS_BOURGEOIS, 1000.f);   /* 100% BOURGEOIS */
+        econ_aggregate_regions(e);
+        printf("   emprunt 100%% bourgeois=%.1f → ventilation : élite=%.1f, bourgeois=%.1f\n",
+               (double)borrowed, (double)credit_debt_elite(0), (double)credit_debt_bourgeois(0));
+        ok("B5 setup : l'emprunt est accordé", borrowed>900.f);
+        ok("B5 : la créance est ventilée SUR LE VRAI PRÊTEUR (élite=0, bourgeois>0)",
+           credit_debt_elite(0)==0.f && credit_debt_bourgeois(0)>0.f);
+
+        float elite_wealth_before = e->prov[0].strata[CLASS_ELITE].wealth;
+        float bourg_wealth_before = e->prov[0].strata[CLASS_BOURGEOIS].wealth;
+        credit_year_tick(e, wl, w);   /* échéance + amortissement de l'année */
+        float elite_wealth_after = e->prov[0].strata[CLASS_ELITE].wealth;
+        float bourg_wealth_after = e->prov[0].strata[CLASS_BOURGEOIS].wealth;
+        printf("   après échéance+amortissement : élite %.2f→%.2f · bourgeois %.2f→%.2f\n",
+               (double)elite_wealth_before, (double)elite_wealth_after,
+               (double)bourg_wealth_before, (double)bourg_wealth_after);
+        ok("B5 : l'ÉLITE (qui n'a RIEN prêté) ne reçoit AUCUN remboursement (créance fantôme fermée)",
+           fabs(elite_wealth_after - elite_wealth_before) < 0.01f);
+        ok("B5 : le BOURGEOIS (le VRAI prêteur) est RÉELLEMENT remboursé (richesse en hausse)",
+           bourg_wealth_after > bourg_wealth_before + 1.0f);
+        ok("B5 : la créance élite reste à ZÉRO après le service (jamais inscrite pour commencer)",
+           credit_debt_elite(0)==0.f);
+        tune_set("INCOME_TAX", 1.f);   /* redéfinit le défaut */
+    }
+
     printf("\n═══ BILAN : %d réussis, %d échoués ═══\n", g_pass, g_fail);
     free(w); free(e); free(wl);
     return g_fail?1:0;

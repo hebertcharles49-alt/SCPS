@@ -32,7 +32,14 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 95u           /* v95 : MONNAIE M10 — P1 LES PALIERS DE BESOINS : le blob
+#define SAVE_VERSION 96u           /* v96 : MONNAIE M14 — B5 LA VENTILATION PAR ORDRE : CountryDebt
+                                    * (scps_credit.c, credit_save/credit_load) remplace le champ
+                                    * agrégé `to_class` par DEUX champs `to_elite`/`to_bourgeois`
+                                    * (la créance RÉELLE de chaque ordre, plus le poids fixe de
+                                    * remboursement — un emprunt 100% bourgeois ne rembourse plus
+                                    * l'élite) → le blob CREDIT grandit d'un float/pays → sizeof
+                                    * change, <v96 refusé (credit_load lit un format différent).
+                                    * v95 : MONNAIE M10 — P1 LES PALIERS DE BESOINS : le blob
                                     * EMOB (econ_mobility_save/load, scps_econ.c) grandit d'un
                                     * accumulateur inter-ticks neuf, g_needs_tier_held[SCPS_MAX_
                                     * COUNTRY] (float, le palier de besoins hystérétique PAR PAYS,
