@@ -1,6 +1,48 @@
-# SYNTHÈSE DE SESSION — handoff roulant (2026-07-15 après-midi)
+# SYNTHÈSE DE SESSION — handoff roulant (2026-07-16 soir)
 
-## MONNAIE — ARC COMPLET M0→M3i (save v93, HEAD c901337)
+## MONNAIE — ARC 2 COMPLET M5→M12 (save v95, HEAD b05dca6)
+Journée du 16 : sept vagues moteur enchaînées, chacune taguée (pre-m5 … pre-m12).
+- **M5** revenu propre + assiette (toll 50/50 · réserve genèse 100/100 · conso payée
+  déjà vraie depuis M3b — le vrai trou : ration vitale garantie + élasticité richesse).
+- **M7** inflation séculaire ÉMERGENTE (+0.90 %/an à 10 empires, INFLATION_CAP 1.6 +
+  MINT_* 0.6 — déplafonner seul ne suffisait pas) + DÉCOUVERTE D'OR par remplacement
+  de la ressource commune dominante (slot-libre = 0 % éligible) ; choc Potosí 2× monde.
+- **M8** cercle vertueux (satisfaction→capacité fiscale · curseurs PAR ORDRE · IA
+  fiscale 60 %) — mais banqueroutes ×2 : le contrôleur bradait tax_mult à 0.34.
+- **DIAG matrice C1×C3** : verdict = le contrôleur (C3), pas le couplage (C1).
+- **M10** PALIERS DE BESOINS pop-empire (le système actif_needs existant était mort-né
+  — tier 4 dès tick 1 ; needs_met jugeait contre le panier mature) : 1 besoin/palier,
+  universel, générique, gate l'ACHAT (correctif audit), plancher tax_mult 0.75 →
+  banqueroutes 1183→583, revenu +26 %.
+- **M11** AUDIT-SOL 4/4 confirmés : frappe à parité pleine (vendeur payé), trésor
+  une-seule-vérité (contrat en tête d'econ_aggregate_regions, plus de treasury+= nu),
+  INTÉRÊT FIXE à l'origination (1000→1050, jamais plus) + défaut réel (échéances
+  impayées→streak→faillite), credit_demo 20→48. Dette monde fin 597k→66k.
+- **M12** ÉQUILIBRE DE BASE : la ligne coupable = l'achat d'État (−340/mois an 1 vs
+  +250 de revenu total) + amorçage genèse price_level=1 re-déclenché 12 ans/pays neuf.
+  STATE_BUY_FRAC 0.60 (la taxe générale, INTOUCHABLE — règle joueur : si Laborer casse,
+  baisser LEURS taxes + monter leurs biens, jamais le 0.60) + PL_GENESIS prudent.
+  RÉSULTAT : dette an 2 = 0 (9/9 sims), an 12 −98.9 %, banqueroutes 795→28, emprunt de
+  paix rare (+63→+10 or/pays-an), colonisation +33 %, Laborer 60-71 % tenue, invariant 0/9.
+- Doctrine actée : l'emprunt automatique au négatif RESTE ; l'emprunt sert l'urgence,
+  pas le fonctionnement — c'est le BUDGET qu'on répare, pas le tuyau.
+- DLL Godot re-buildée après CHAQUE vague. Piège agents récurrent (4/6 vagues) :
+  « j'attends le moniteur d'arrière-plan » — relancer avec boucle de poll BLOQUANTE.
+
+## PROCHAIN PAS (au choix du joueur)
+1. **UI-MONNAIE** (#114, la seule tâche ouverte) : réserve/dette/banqueroute/débase +
+   curseurs fiscaux par ordre + verbes d'emprunt (éco+diplo) + PRIX EN DIRECT (« combien
+   de tonnes vais-je produire, combien ça rapporte instant T » — readers déjà prêts).
+2. **EXPORT scps.exe** — M5→M12 jamais touché par un humain ; le backlog de test manuel
+   du projet au plus haut historique.
+3. Restes moteur : convergence prix-métal→parité toujours molle (payer le vendeur n'a
+   pas suffi — signal M3f) · pression fiscale >100 % Bourgeois/Élites certaines époques
+   (borné par la richesse, levier INCOME_TAX_RATE_*) · banqueroutes à 28/9 sims — le
+   défaut est-il devenu TROP rare ? (à juger en jeu) · site WILD graine 11 désigné.
+
+---
+
+# (archive) SYNTHÈSE 2026-07-15 — MONNAIE ARC 1 M0→M3i (save v93, HEAD c901317)
 - **M3h LA DÉBASE** (4942ec9..d83a3dd, v93) : sur-frappe au-delà de la parité (curseur
   BUDGET_DEBASE), payée en K_inst rongé à la capitale (debase_kdrain sérialisé) + rot
   factions + évasion émergente (econ_debase_tax_factor — K ne pilotait AUCUN canal
