@@ -32,7 +32,21 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 93u           /* v93 : MONNAIE M3h — LA DÉBASE : le blob SVT_ECON (WorldEconomy,
+#define SAVE_VERSION 94u           /* v94 : MONNAIE M7 — I2 LA DÉCOUVERTE D'OR : EvId gagne
+                                    * EVID_GOLD_DISCOVERY (ajouté en FIN d'énumération, avant
+                                    * EVID_COUNT — tous les EVID existants gardent leur valeur) →
+                                    * le blob SVT_EVNT (EventsState, raw fwrite) grandit : fires[]/
+                                    * fire_cap[EVID_COUNT] (+1 uint8_t chacun) ET un champ neuf
+                                    * `gold_common_resource` (int16_t, la ressource commune
+                                    * mondiale dominante — décision joueur, remplace « slot libre »,
+                                    * calculée UNE FOIS à events_init puis PERSISTÉE, motif geo[])
+                                    * → sizeof change, <v94 refusé (events_load lit un format
+                                    * différent). AUCUN autre blob ne change : I1 (le déplafonnage
+                                    * de price_level, INFLATION_CAP) et le remplacement de tile
+                                    * lui-même (resource/resource2/raw_cap sur Province/
+                                    * ProvinceEconomy) réutilisent des champs DÉJÀ sérialisés —
+                                    * SVT_ECON et le blob World (province[]) INCHANGÉS en taille.
+                                    * v93 : MONNAIE M3h — LA DÉBASE : le blob SVT_ECON (WorldEconomy,
                                     * raw fwrite) grandit sur DEUX fronts — BUDGET_DEBASE ajouté à
                                     * BudgetPolicy (budget_mult[][BUDGET_POLICY_COUNT] grandit d'une
                                     * colonne, le curseur joueur 0-100% « Débase ») + ProvinceEconomy

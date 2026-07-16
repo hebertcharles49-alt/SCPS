@@ -192,6 +192,11 @@ typedef enum {
     EVID_TOLERANCE_CREDO,     /* C2 : le décret de tolérance (religion_fracture_level) */
     EVID_LETTRE_PERIME,       /* C3 : le lettré porte une face périmée (religion_scholar_drift) */
     EVID_PRATIQUE_DERIVE,     /* C4 : la pratique dérive de la foi professée (religion_credo_drift) */
+    /* ═══ MONNAIE M7 — I2 : LA DÉCOUVERTE D'OR (docs/MONNAIE_CONCEPT.md, le choc
+     * Potosí) — une veine d'or REMPLACE la ressource commune mondiale dominante sur
+     * une tile qui la porte (décision joueur ; ≤2 raws par construction) d'un empire
+     * (pays, budget MONDIAL ~0.5×N(empires)/partie, plafond posé à events_init). ═══ */
+    EVID_GOLD_DISCOVERY,
     EVID_COUNT
 } EvId;
 
@@ -407,6 +412,13 @@ typedef struct {
      * l'ENFILAGE joueur comme à la résolution IA (l'évènement « a eu lieu »). */
     uint8_t      fires[EVID_COUNT];
     uint8_t      fire_cap[EVID_COUNT];
+    /* MONNAIE M7 — I2 : LA RESSOURCE COMMUNE MONDIALE DOMINANTE (docs/MONNAIE_CONCEPT.md,
+     * décision joueur — remplace « slot libre »). Calculée UNE FOIS à events_init (tally
+     * déterministe resource/resource2 sur TOUTES les provinces du monde, hors rares/
+     * faustiens/or/cuivre — cf. gold_common_resource_compute, scps_events.c) puis
+     * PERSISTÉE (même motif que `geo[]` : un dérivé du worldgen figé au lieu d'être
+     * recalculé après un chargement). -1 = aucune commune trouvée (monde dégénéré). */
+    int16_t      gold_common_resource;
 } EventsState;
 
 /* ===================================================================== */
@@ -604,10 +616,18 @@ long  events_lettre_perime_fired(void);
 long  events_pratique_derive_fired(void);
 
 /* PLAFOND DE TIRS À VIE — lecteurs (UI/bancs) : le plafond MONDIAL d'un évènement
- * (0 = illimité ; sinon 3-5, tiré de la graine à events_init) et le compteur
+ * (0 = illimité ; sinon 3-5, tiré de la graine à events_init — SAUF EVID_GOLD_
+ * DISCOVERY, dont le plafond scale avec n_empires, cf. events_init) et le compteur
  * courant (tous deux état sérialisé EventsState). */
 int   events_fire_cap(const EventsState *ev, int evid);
 int   events_fire_count(const EventsState *ev, int evid);
+
+/* MONNAIE M7 — I2 — TÉLÉMÉTRIE DE LA DÉCOUVERTE D'OR (print-only, motif g_*_fired :
+ * statics de module, RAZ à events_init, PAS sérialisés — la chronique les lit en fin
+ * de run pour raconter un choc Potosí type : an, pays découvreur, province touchée). */
+typedef struct { int16_t year; int16_t cid; int16_t pid; } GoldDiscoveryLogEntry;
+int  gold_discovery_log_count(void);
+bool gold_discovery_log_at(int i, GoldDiscoveryLogEntry *out);
 
 /* ---- Garde-fou membrane : aucun nom SCPS dans les textes joueur -------- */
 bool  events_text_clean(void);

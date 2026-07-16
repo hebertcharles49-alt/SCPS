@@ -99,6 +99,25 @@ long events_tolerance_credo_fired(void){ return g_tolerance_credo_fired; }
 long events_lettre_perime_fired(void){ return g_lettre_perime_fired; }
 long events_pratique_derive_fired(void){ return g_pratique_derive_fired; }
 
+/* MONNAIE M7 — I2 — même motif (anneau de module, RAZ à events_init, PAS sérialisé) :
+ * la chronologie des découvertes d'or (an/pays/province), pour raconter un choc
+ * Potosí type sans ajouter d'état sérialisé (le mécanisme lui-même n'a besoin
+ * d'AUCUN nouvel état — resource2/raw_cap sont DÉJÀ sérialisés, cf. gold_discovery_apply). */
+static GoldDiscoveryLogEntry g_gold_discovery_log[32];
+static int g_gold_discovery_log_n=0;
+static void gold_discovery_log_push(int year,int cid,int pid){
+    if (g_gold_discovery_log_n>=32) return;
+    g_gold_discovery_log[g_gold_discovery_log_n].year=(int16_t)year;
+    g_gold_discovery_log[g_gold_discovery_log_n].cid =(int16_t)cid;
+    g_gold_discovery_log[g_gold_discovery_log_n].pid =(int16_t)pid;
+    g_gold_discovery_log_n++;
+}
+int gold_discovery_log_count(void){ return g_gold_discovery_log_n; }
+bool gold_discovery_log_at(int i, GoldDiscoveryLogEntry *out){
+    if (i<0 || i>=g_gold_discovery_log_n || !out) return false;
+    *out = g_gold_discovery_log[i]; return true;
+}
+
 /* signe d'un effet pour le journal : +1 fléau · -1 faveur · 0 neutre */
 static int ev_sign(const EvEffect *e){
     if (e->d_agitation>0.1f || e->d_L<-0.1f || e->pop_mult<0.999f) return +1;
@@ -159,11 +178,49 @@ static bool is_forest(Biome b){ return b==BIO_FOREST||b==BIO_WOODS||b==BIO_JUNGL
 static bool is_arid (Biome b){ return b==BIO_DESERT||b==BIO_DRYLANDS||b==BIO_SAVANNA||b==BIO_STEPPE||b==BIO_COASTAL_DESERT; }
 static bool is_lowland(Biome b){ return b==BIO_PLAINS||b==BIO_FARMLAND||b==BIO_GRASSLAND||b==BIO_MARSH||b==BIO_MANGROVE||b==BIO_BOG; }
 
+/* MONNAIE M7 — I2 : LA RESSOURCE COMMUNE MONDIALE DOMINANTE (décision joueur, remplace
+ * « slot libre » — la population de tiles à slot RES_NONE s'est mesurée à 0 % sur 6
+ * mondes-test, cf. TROUVAILLES M7). Tally DÉTERMINISTE (Σ occurrences resource+resource2
+ * sur TOUTES les provinces du monde), hors rares/faustiens (RES_CELESTIAL_IRON/
+ * RES_ARCANE_CRYSTAL — jamais touchés, sous-gisements géologiques) et hors les MÉTAUX
+ * MONÉTAIRES eux-mêmes (RES_GOLD/RES_COPPER — remplacer l'or par l'or n'aurait aucun
+ * sens). Argmax déterministe (égalité : le plus petit id Resource, balayage d'index
+ * croissant) — aucun rng, pure fonction du monde (identique à la genèse ou après un
+ * chargement, cf. le commentaire de gold_common_resource sur EventsState). */
+static int16_t gold_common_resource_compute(const World *w){
+    long counts[RES_COUNT]={0};
+    for (int p=0; p<w->n_provinces && p<SCPS_MAX_PROV; p++){
+        Resource r1=w->province[p].resource, r2=w->province[p].resource2;
+        if (r1>RES_NONE && r1<RES_PROD_FIRST) counts[r1]++;
+        if (r2>RES_NONE && r2<RES_PROD_FIRST) counts[r2]++;
+    }
+    counts[RES_GOLD]=0; counts[RES_COPPER]=0;
+    counts[RES_CELESTIAL_IRON]=0; counts[RES_ARCANE_CRYSTAL]=0;
+    int best=-1; long bestn=0;
+    for (int r=1;r<RES_PROD_FIRST;r++)
+        if (counts[r]>bestn){ bestn=counts[r]; best=r; }
+    return (int16_t)best;
+}
+
 static void events_fire_caps_seed(EventsState *ev, uint32_t seed);  /* défini avec fire_event */
 void events_init(EventsState *ev, const World *w, uint32_t seed){
     memset(ev,0,sizeof(*ev));
     ev->rng = seed ? seed : 0xA17F23C5u;
     events_fire_caps_seed(ev, ev->rng);   /* PLAFOND DE TIRS À VIE : 3-5 par évènement plafonné */
+    /* MONNAIE M7 — I2 : le plafond MONDIAL de LA DÉCOUVERTE D'OR n'est PAS le hash
+     * générique 3-5 (EV_CAPPED, EVID_GOLD_DISCOVERY volontairement ABSENT de cette
+     * table) — il SCALE avec n_empires (décision joueur : « 0,5×N(empire) par game »,
+     * docs/MONNAIE_CONCEPT.md). GOLD_DISCOVERY_RATE<=0 (kill-switch) laisse le trigger
+     * TOUJOURS faux (trig_gold_discovery) — la valeur posée ici devient alors sans
+     * effet (jamais atteinte, jamais lue par un tir). */
+    { int n_emp=0;
+      for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
+          if (w->country[c].role==POLITY_PLAYER || w->country[c].role==POLITY_ANTAGONIST) n_emp++;
+      float rate = tune_f("GOLD_DISCOVERY_RATE", 0.5f);
+      ev->fire_cap[EVID_GOLD_DISCOVERY] = (rate>0.f && n_emp>=1)
+          ? (uint8_t)fmaxf(1.f, roundf(rate*(float)n_emp)) : 0u; }
+    g_gold_discovery_log_n=0;   /* MONNAIE M7 — I2 : RAZ par partie/sim, comme g_wild_spawned */
+    ev->gold_common_resource = gold_common_resource_compute(w);
     /* ÂGES SANS ORDRE IMPOSÉ : AUCUNE chronologie fixe, AUCUN minimum d'Aube — chaque
      * âge devient éligible dès que son déclencheur matériel est vrai (dès l'an 0, en
      * théorie). year_eligible[a]=-1 = pas encore éligible ; last_dawn_year très bas
@@ -845,6 +902,65 @@ static bool trig_lettre_perime(const EventCtx *cx, int c){
 static bool trig_pratique_derive(const EventCtx *cx, int c){
     if (c<0 || c>=cx->w->n_countries) return false;
     return religion_credo_drift(cx->w, cx->econ, c) > 0.45f;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * MONNAIE M7 — I2 : LA DÉCOUVERTE D'OR (pays, docs/MONNAIE_CONCEPT.md).
+ * RÈGLE ≤2 RAWS STRICTE (mémoire two-raws, non négociable) — REMPLACEMENT 1-POUR-1
+ * (décision joueur, remplace la version « slot libre » initiale : mesurée à 0 %
+ * d'éligibilité sur 6 mondes-test, cf. TROUVAILLES M7 — la « pincée partout » du
+ * worldgen laisse pratiquement jamais resource2==RES_NONE). Une tile éligible porte,
+ * dans UN de ses ≤2 slots, LA RESSOURCE COMMUNE MONDIALE DOMINANTE
+ * (`ev->gold_common_resource`, calculée UNE FOIS à events_init — jamais les rares/
+ * faustiens, jamais l'or/cuivre eux-mêmes). L'évent CONVERTIT ce slot en RES_GOLD —
+ * jamais une 3e raw, jamais un slot différent de celui qui matchait. AUCUN
+ * modificateur direct : la province PERD sa production de la ressource commune (le
+ * prix du filon, assumé — y compris si vivrière) et GAGNE l'or à la MÊME magnitude
+ * (le raw_cap transféré tel quel) — le circuit royalty→réserve→frappe déjà existant
+ * (MINT_ROYALTY etc, M1/M2) fait tout le reste, ÉMERGENT. */
+static bool trig_gold_discovery(const EventCtx *cx, int c){
+    if (tune_f("GOLD_DISCOVERY_RATE", 0.5f) <= 0.f) return false;   /* kill-switch */
+    if (c<0 || c>=cx->w->n_countries || !cx->econ) return false;
+    Resource target = (Resource)cx->ev->gold_common_resource;
+    if (target<=RES_NONE || target>=RES_PROD_FIRST) return false;   /* monde dégénéré (garde-fou) */
+    PolityRole role = cx->w->country[c].role;
+    if (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST) return false;
+    for (int p=0; p<cx->econ->n_prov && p<SCPS_MAX_PROV; p++){
+        const ProvinceEconomy *pe=&cx->econ->prov[p];
+        if (!pe->active || !pe->colonized || pe->impassable || pe->owner!=c) continue;
+        const Province *pv=&cx->w->province[p];
+        if (pv->resource!=target && pv->resource2!=target) continue;
+        return true;
+    }
+    return false;
+}
+/* Choisit UNE province éligible de `cid` (déterministe, rng D'ÉVÈNEMENTS — même
+ * idiome que le PARI/GAMBLE de resolve_choice), REMPLACE le slot qui portait la
+ * ressource commune dominante par RES_GOLD et TRANSFÈRE son raw_cap tel quel (la
+ * capacité d'extraction ne change pas de magnitude, seulement de nature — pas de
+ * bonus plat inventé). */
+static void gold_discovery_apply(EventCtx *cx, int cid, int today){
+    if (!cx->econ || !cx->w) return;
+    Resource target = (Resource)cx->ev->gold_common_resource;
+    if (target<=RES_NONE || target>=RES_PROD_FIRST) return;
+    int16_t cand[SCPS_MAX_PROV]; int n=0;
+    for (int p=0; p<cx->econ->n_prov && p<SCPS_MAX_PROV; p++){
+        const ProvinceEconomy *pe=&cx->econ->prov[p];
+        if (!pe->active || !pe->colonized || pe->impassable || pe->owner!=cid) continue;
+        const Province *pv=&cx->w->province[p];
+        if (pv->resource!=target && pv->resource2!=target) continue;
+        cand[n++]=(int16_t)p;
+    }
+    if (n<=0) return;
+    int idx=(int)(frand(&cx->ev->rng)*(float)n); if (idx>=n) idx=n-1; if (idx<0) idx=0;
+    int pid=cand[idx];
+    Province *pv=&cx->w->province[pid];
+    if (pv->resource==target)       pv->resource  = RES_GOLD;   /* remplace la DOMINANTE */
+    else if (pv->resource2==target) pv->resource2 = RES_GOLD;   /* remplace la MINEURE */
+    ProvinceEconomy *pe=&cx->econ->prov[pid];
+    pe->raw_cap[RES_GOLD] += pe->raw_cap[target];   /* transfert 1-pour-1, aucune magnitude neuve */
+    pe->raw_cap[target] = 0.f;
+    gold_discovery_log_push(today/365, cid, pid);
 }
 
 /* ===================================================================== */
@@ -1982,6 +2098,24 @@ static const EventDef EVENTS[EVID_COUNT] = {
           { .d_K_inst=0.3f, .d_L=0.3f, .d_agitation=-6.f, .unlock_branch=-1 },
           0.2f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=2190 },
           "Écrivons ce que le peuple pratique déjà. Pour une fois, les docteurs suivront les fidèles." } }, 3 },
+
+    /* ═══ MONNAIE M7 — I2 : LA DÉCOUVERTE D'OR (pays). Les DEUX options ne
+     * touchent QUE l'agitation/la légitimité (flavor) — AUCUN d_treasury/
+     * d_treasury_mois : l'or ne tombe pas du ciel dans le trésor, la vocation de
+     * la tile (posée par gold_discovery_apply, resolve_choice) est le SEUL canal
+     * économique, et il est commun aux deux choix. ═══ */
+    [EVID_GOLD_DISCOVERY] = { EVID_GOLD_DISCOVERY, EV_COUNTRY, "Une veine d'or affleure",
+        trig_gold_discovery, 182500.f, NULL, {
+        { "Proclamer la découverte",
+          "Des prospecteurs remontent des paillettes d'un ruisseau, puis une veine franche sous la roche. En quelques semaines, la nouvelle a voyagé plus vite qu'aucune caravane.",
+          { .d_L=0.3f, .d_agitation=10.f, .unlock_branch=-1 },
+          0.6f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=3650 },
+          "Proclamons-le : que les registres consignent la trouvaille, que les prospecteurs affluent sous notre bannière et notre garde." },
+        { "Exploiter en silence",
+          "Des prospecteurs remontent des paillettes d'un ruisseau, puis une veine franche sous la roche. En quelques semaines, la nouvelle a voyagé plus vite qu'aucune caravane.",
+          { .d_L=-0.2f, .d_agitation=2.f, .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=3650 },
+          "Ne disons rien à la cour des voisins. Une mine tranquille rapporte plus longtemps qu'une ruée bruyante." } }, 2 },
 };
 
 const EventDef *event_def(int evid){ return (evid>=0&&evid<EVID_COUNT)?&EVENTS[evid]:NULL; }
@@ -2443,6 +2577,11 @@ static void resolve_choice(EventCtx *cx, int evid, int subject, int oi, int toda
      * d'effet) — cid = le pays propriétaire (event_owner_of, déjà résolu ci-dessus). */
     if (evid==EVID_CHAINES_RAPPORTENT && oi==2 && cid>=0 && cx->econ)
         demography_manumit_country(cx->econ, cid);
+    /* MONNAIE M7 — I2 : LA DÉCOUVERTE D'OR — la vocation de la tile (resource2/raw_cap)
+     * est posée ICI, COMMUNE aux deux options (cf. le commentaire de la table) — le
+     * canal royalty→réserve→frappe existant fait le reste, émergent. */
+    if (evid==EVID_GOLD_DISCOVERY && cid>=0 && cx->econ && cx->w)
+        gold_discovery_apply(cx, cid, today);
     /* PONT EFFONDRÉ CONSOMME la cicatrice qui l'a fait mûrir (une cicatrice = un tir —
      * sinon le trigger la relirait ENCORE mûre au prochain scan et re-déclencherait). */
     if (evid==EVID_PONT_EFFONDRE) decision_memory_consume(cx->ev, subject, SCAR_SABOTAGE_CHANTIER, today);
@@ -3499,6 +3638,11 @@ bool director_save_sane(const EventsState *ev, int max_subject){
         if (D->mem[i].subject < -1 || D->mem[i].subject >= max_subject) return false;
     }
     if (D->omens < 0) return false;
+    /* MONNAIE M7 — I2 : `gold_common_resource` INDEXE raw_cap[RES_COUNT] (gold_discovery_
+     * apply/trig_gold_discovery, scps_events.c) — un save forgé hors-borne serait un accès
+     * tableau hors limites, jamais déréférencé (motif reserve_gold/va_country_prev). -1 =
+     * aucune commune trouvée (monde dégénéré, valeur légitime). */
+    if (ev->gold_common_resource < -1 || ev->gold_common_resource >= RES_COUNT) return false;
     return true;
 }
 
@@ -3959,6 +4103,10 @@ void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
             frand(&ev->rng) < mtth_p(EVENTS[EVID_FUSILS_REVIENNENT].mtth_days,days)) fire_event(&cx,EVID_FUSILS_REVIENNENT,c);
         if (EVENTS[EVID_SAVANTS_ENNEMI].trigger(&cx,c) &&
             frand(&ev->rng) < mtth_p(EVENTS[EVID_SAVANTS_ENNEMI].mtth_days,days)) fire_event(&cx,EVID_SAVANTS_ENNEMI,c);
+        /* MONNAIE M7 — I2 : LA DÉCOUVERTE D'OR — même court-circuit (trigger && frand),
+         * plafond MONDIAL posé à events_init (PAS le hash générique EV_CAPPED). */
+        if (EVENTS[EVID_GOLD_DISCOVERY].trigger(&cx,c) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_GOLD_DISCOVERY].mtth_days,days)) fire_event(&cx,EVID_GOLD_DISCOVERY,c);
     }
 
     /* 2septies. V2b — Merveille (LOT 1) + Conseil (LOT 2) + contenu débloqué (LOT 3).
