@@ -656,6 +656,20 @@ int main(int argc, char **argv){
         world_generate(w, &p);
         /* silence le bruit de génération : on a déjà tout imprimé par sim plus bas */
         sim_init(&s, w);
+        /* MONNAIE M8 — DIAG (SCPS_M8DIAG, print-only) : le pays TRACÉ pour la chaîne
+         * manufacture→satisfaction→fisc (le plus peuplé parmi PLAYER/ANTAGONIST — un
+         * empire réel, pas un hameau/cité-état). Choisi une fois par sim (le monde
+         * change de graine à chaque k). -1 si aucun candidat (monde dégénéré). */
+        int m8_track_cid=-1;
+        if (getenv("SCPS_M8DIAG")){
+            long best=-1;
+            for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+                if (w->country[c].role!=POLITY_PLAYER && w->country[c].role!=POLITY_ANTAGONIST) continue;
+                long pop=0; for(int r=0;r<s.econ->n_regions;r++){ const RegionEconomy *re=&s.econ->region[r];
+                    if (re->owner==c && re->colonized) for(int cc=0;cc<CLASS_COUNT;cc++) pop+=(long)re->strata[cc].pop; }
+                if (pop>best){ best=pop; m8_track_cid=c; }
+            }
+        }
         /* MONNAIE — M0 (AUDIT, print-only) : M(0) juste après la genèse (avant le
          * premier econ_tick) — la dotation de genèse §5.1 du registre. */
         double money_m0 = chronicle_money_mass(s.econ);
@@ -895,6 +909,28 @@ int main(int argc, char **argv){
             }
             econ_flux_year_capture();
             for (int d=0; d<365; d++) sim_day(&s, w);
+            /* MONNAIE M8 — DIAG (SCPS_M8DIAG, print-only) : la chaîne manufacture→besoin
+             * comblé→satisfaction→capacité fiscale→impôt, tracée sur LE pays choisi
+             * ci-dessus, échantillonnée tous les 25 ans (assez pour voir la tendance
+             * sans noyer la sortie). needs_met (province capitale) = proxy « le panier
+             * (dont manufacturé) est-il couvert ? » ; satisfaction/tax_mult/revenu
+             * Laborer = le reste de la chaîne. Un choc exogène (guerre/famine) se lit
+             * comme un décrochage simultané besoins↓/satisfaction↓/tax_mult↓/revenu↓. */
+            if (getenv("SCPS_M8DIAG") && m8_track_cid>=0 && (yr%25==0 || yr==years-1)){
+                int cap = econ_country_capital_prov(s.econ, m8_track_cid);
+                if (cap>=0 && cap<s.econ->n_prov){
+                    const ProvinceEconomy *pe=&s.econ->prov[cap];
+                    float nm  = pe->needs_met;
+                    float sat = econ_country_class_satisfaction(s.econ, m8_track_cid, CLASS_LABORER);
+                    float txm = econ_country_tax_mult(s.econ, m8_track_cid, CLASS_LABORER);
+                    double rev = econ_country_tax_class_month(s.econ, m8_track_cid, CLASS_LABORER)
+                               + econ_country_tax_class_month(s.econ, m8_track_cid, CLASS_BOURGEOIS)
+                               + econ_country_tax_class_month(s.econ, m8_track_cid, CLASS_ELITE);
+                    fprintf(stderr, "[M8DIAG] pays %d an %3d : besoins comblés %3.0f%% (capitale) · "
+                            "satisfaction Laborer %3.0f%% · tax_mult Laborer %.2f · revenu fiscal Σ %5.0f or/mois\n",
+                            m8_track_cid, yr, 100.0*nm, sat>=0.f?100.0*sat:-1.0, txm, rev);
+                }
+            }
             /* conquêtes de l'année : régions passées d'un PAYS à un autre (de force) */
             for (int r=0;r<s.econ->n_regions && r<SCPS_MAX_REG;r++){
                 int16_t no=s.econ->region[r].owner, po=prev_owner[r];
@@ -1485,6 +1521,36 @@ int main(int argc, char **argv){
                  csat[CLASS_LABORER], csat[CLASS_BOURGEOIS], csat[CLASS_ELITE], tradev);
           for (int c=0;c<CLASS_COUNT;c++) tot_sat[c]+=csat[c];
           tot_trade += tradev; }
+        /* MONNAIE M8 — DIAG (SCPS_M8DIAG, print-only) : la DISTRIBUTION inter-pays de la
+         * satisfaction/du curseur fiscal par ordre, fin de sim — la ligne "satisfaction
+         * (pop-pondérée)" ci-dessus n'est qu'UNE moyenne mondiale ; ici, la moyenne+écart-
+         * type sur les PAYS (chaque pays pesant pour un, pas pour sa pop) — l'IA à 60 %
+         * doit se voir comme une distribution RESSERRÉE autour de 60, pas juste un chiffre
+         * mondial correct par compensation. + le revenu fiscal Σ mensuel, tous pays. */
+        if (getenv("SCPS_M8DIAG")){
+            double sw[3]={0,0,0}, sw2[3]={0,0,0}; long sn[3]={0,0,0};
+            double tw[3]={0,0,0}; long tn[3]={0,0,0};
+            double rev_tot=0.0;
+            for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+                if (w->country[c].role==POLITY_UNCLAIMED) continue;
+                for (int cl=CLASS_LABORER; cl<=CLASS_ELITE; cl++){
+                    float sat = econ_country_class_satisfaction(s.econ, c, (SocialClass)cl);
+                    if (sat>=0.f){ sw[cl]+=sat; sw2[cl]+=(double)sat*sat; sn[cl]++; }
+                    tw[cl] += econ_country_tax_mult(s.econ, c, (SocialClass)cl); tn[cl]++;
+                    rev_tot += econ_country_tax_class_month(s.econ, c, (SocialClass)cl);
+                }
+            }
+            const char *cn[3]={"Laborer","Bourgeois","Élite  "};
+            fprintf(stderr, "[M8DIAG] distribution fiscale INTER-PAYS (fin de sim, chaque pays pèse 1) :\n");
+            for (int cl=0; cl<3; cl++){
+                double mean = sn[cl]>0? sw[cl]/sn[cl] : 0.0;
+                double var  = sn[cl]>0? sw2[cl]/sn[cl]-mean*mean : 0.0; if (var<0) var=0;
+                double tmean= tn[cl]>0? tw[cl]/tn[cl] : 0.0;
+                fprintf(stderr, "  %s satisfaction moy %3.0f%% (σ %4.1f pts, n=%ld pays) · tax_mult moy %.2f\n",
+                        cn[cl], 100.0*mean, 100.0*sqrt(var), sn[cl], tmean);
+            }
+            fprintf(stderr, "  revenu fiscal Σ mensuel (tous pays, 3 ordres) : %.0f or/mois\n", rev_tot);
+        }
         /* MONNAIE M4-IP — richesse/tête par CLASSE, fin de sim (LE critère anti-thésaurisation :
          * doit se STABILISER en régime — plancher/plafond, plus de croissance sans fin). */
         { double wpc[CLASS_COUNT]; world_class_wpc(s.econ, wpc);
