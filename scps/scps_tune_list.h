@@ -1249,6 +1249,43 @@
      * balayage 7 points (priorité : 0 breach invariant, la bande Laborer suit en second). */ \
     X(AI_FISCAL_TARGET,                0.60f) \
     X(AI_FISCAL_DEADBAND,              0.05f) \
-    X(AI_FISCAL_STEP,                  0.012f)
+    X(AI_FISCAL_STEP,                  0.012f) \
+    /* MONNAIE M9 — C0 : LA COHÉRENCE FISCALE-DETTE DE L'IA (correctif du contrôleur C3
+     * ci-dessus, décision joueur confirmée après mesure du sweep M8 : « pas émergent, MAL
+     * RÉGLÉ… faut viser 60% ET du pognon… si elle vise 60 day1 elle cut ses impôts »).
+     * econ_ai_fiscal_slack (scps_econ.c) borne le levier RELÂCHER de C3 par la marge de
+     * revenu/solvabilité — AI_DEBT_FISCAL_COHERENCE pilote la force du gate (0 = kill-
+     * switch EXACT, relax_factor toujours 1.0, golden pré-M9 byte-identique ; 1 = plein
+     * respect de la marge calculée). AI_FISCAL_REVENUE_FLOOR (or/an) est le plancher
+     * d'assiette fiscale PROUVÉE en-deçà duquel AUCUNE relâche n'est permise (le piège
+     * day-1 : econ_country_tax_year retourne 0 sous 90j par construction — ramp lissée
+     * au-delà, motif econ_debase_tax_factor). */ \
+    X(AI_DEBT_FISCAL_COHERENCE,        1.0f) \
+    X(AI_FISCAL_REVENUE_FLOOR,         200.0f) \
+    /* MONNAIE M9 — V1 : « EMPRUNTER À UN ORDRE » (panneau éco). Le verbe (CMD_BORROW_CLASS,
+     * scps_credit.c credit_borrow_class) réutilise EN ENTIER le socle M3c/M3d existant
+     * (ELITE/BOURGEOIS_LEND_WEIGHT, CLASS_LEND_SHARE, DEBT_CEILING_YEARS, DEBT_TRANCHE_FRAC —
+     * AUCUN tunable neuf n'était nécessaire ici). */ \
+    /* MONNAIE M9 — V2 : « DEMANDER UN EMPRUNT À UN ÉTAT » (diplomatie). AI_LOAN_MIN_LIQUIDITY :
+     * le prêteur doit avoir SA PROPRE liquidité (motif COURT_FLOOR/SINK_FLOOR déjà établis,
+     * « un prêteur solvable ») avant même d'envisager la relation/l'opinion. AI_OFFER_LOAN_
+     * OPINION : le seuil de confiance pour un ÉTHOS prêteur NATUREL (mercantile/pacifiste,
+     * motif credit_borrow_citystate) ; AI_OFFER_LOAN_OPINION_STRICT : le seuil, plus haut,
+     * pour tout autre État (aucun intérêt structurel à prêter — seule une relation
+     * exceptionnelle l'y pousse). Voir ai_consider_offer/OFFER_LOAN, scps_ai.c. */ \
+    X(AI_LOAN_MIN_LIQUIDITY,           4000.0f) \
+    X(AI_OFFER_LOAN_OPINION,           30.0f) \
+    X(AI_OFFER_LOAN_OPINION_STRICT,    60.0f) \
+    /* MONNAIE M9 — V3 : LES RACHATS À MÉTABOLISATION DISTINCTE. RRACHAT_META pilote LA
+     * distinction elle-même (0 = kill-switch EXACT — le rachat M3c continue de fonctionner à
+     * l'identique, seule la classification/l'effet politique en aval sont coupés, golden
+     * pré-M9 byte-identique). BUYBACK_CS_GOODWILL : l'allègement de rancor (cité-état →
+     * influence/vassalité douce, symétrique de BANKRUPTCY_RANCOR qui l'alourdit).
+     * BUYBACK_PACIFIST_LEVER : la force du vote faction_lever_apply/FAC_COMMUNAUTAIRE
+     * (pacifiste → stabilité/relation, motif DECISION_MANUMIT_COMMUNAUTAIRE_BIAS). Mercantile
+     * ne reçoit AUCUN tunable neuf : son profit EST déjà l'intérêt annuel uniforme. */ \
+    X(RRACHAT_META,                    1.0f) \
+    X(BUYBACK_CS_GOODWILL,             1.0f) \
+    X(BUYBACK_PACIFIST_LEVER,          0.05f)
 
 #endif /* SCPS_TUNE_LIST_H */
