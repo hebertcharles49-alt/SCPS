@@ -1366,7 +1366,27 @@ void econ_heat_refresh(WorldEconomy *e, const World *w, float heat) {
  * §4 charte) continuent de lire RegionEconomy tel quel. World*-FREE : groupe par
  * ProvinceEconomy.region (posé à econ_init) — econ_tick(WorldEconomy*, dt) n'a pas
  * de World* et ne doit pas en gagner un (signature publique préservée). Voir le
- * contrat détaillé en tête de fichier (agrégation Σ / pop-pondérée / max / capitale). */
+ * contrat détaillé en tête de fichier (agrégation Σ / pop-pondérée / max / capitale).
+ *
+ * MONNAIE M11 — A2 : LE CONTRAT « QUI ÉCRIT QUAND » (trésor une-seule-vérité). Cet appel,
+ * dans econ_tick, tombe APRÈS la boucle par-province (impôts/production/entretien/cour —
+ * déjà écrits sur prov[].treasury pendant la boucle, donc DÉJÀ reflétés ici) mais AVANT les
+ * curseurs INVEST/ROADS et les DEUX frappes (royale + libre) qui suivent dans econ_tick — ces
+ * écrivains-là mutent le trésor APRÈS que cette vue a été figée pour le mois. AUDIT confirmé
+ * (M11) : INVEST/ROADS étaient DÉJÀ corrects (econ_region_treasury_add, dual-write) ; les DEUX
+ * frappes ne l'étaient PAS (écriture prov[cap].treasury nue) — de même credit_year_tick
+ * (scps_credit.c, l'intérêt/l'amortissement/la saisie annuels, appelé un mois quelconque après
+ * la dernière agrégation) écrivait aussi nu. RÈGLE DÉSORMAIS : tout écrivain monétaire qui
+ * s'exécute APRÈS ce point (dans econ_tick OU plus tard dans l'année, credit_year_tick) DOIT
+ * passer par econ_region_treasury_add (grain région, prorata) si la cible est UN ENSEMBLE de
+ * provinces, ou econ_prov_treasury_credit (grain province, ci-dessus) si la cible est UNE
+ * province déjà résolue — JAMAIS `prov[pid].treasury +=` nu. Sans cette discipline,
+ * econ_country_gold/credit_can_spend/credit_line/audit_eco (tous region[]-grain) lisent un
+ * trésor périmé jusqu'à la PROCHAINE agrégation (un mois pour un oubli dans econ_tick, jusqu'à
+ * un an pour un oubli dans credit_year_tick). Choix documenté (vs. ré-agréger une seconde fois
+ * en fin de tick) : le dual-write ciblé est O(1) par écriture au lieu d'un O(n_prov) répété, et
+ * ne demande RIEN aux futurs lecteurs — seulement aux futurs ÉCRIVAINS post-agrégation de
+ * choisir le bon helper (grep `treasury +=` / `treasury -=` APRÈS ce point pour auditer). */
 void econ_aggregate_regions(WorldEconomy *e){
     /* STATIC (hors pile) : RegionEconomy pèse ~3 Ko × SCPS_MAX_REG (832) ≈ 2.5 Mo — bien
      * au-delà d'une pile de thread (1 Mo sur Windows, cf. CLAUDE.md campaign/warhost_demo).
@@ -2856,6 +2876,25 @@ float econ_region_wealth_add(WorldEconomy *e, int region, int cls, float delta){
     }
     rv->strata[cls].wealth-=took; if (rv->strata[cls].wealth<0.f) rv->strata[cls].wealth=0.f;
     return -took;
+}
+
+/* MONNAIE M11 — A2 : voir scps_econ.h. Écrit prov[pid].treasury ET region[].treasury EN UN
+ * GESTE (Σ incrémentale — exactement ce qu'econ_aggregate_regions recomputerait au tick
+ * suivant) SANS passer par region_carrier_prov/econ_region_rep_province : la province est
+ * déjà connue avec certitude par l'appelant (capitale résolue LIVE par
+ * econ_country_capital_prov, jamais le cache region_rep_prov qui ne se reconstruit qu'à
+ * econ_build_adjacency — genèse/cataclysme §27 — et peut donc pointer une capitale PÉRIMÉE
+ * si elle a bougé depuis). Utilisé par tout écrivain monétaire APRÈS econ_aggregate_regions()
+ * dans le même tick/année (frappe royale+libre ci-dessous ; intérêts/amortissement/saisie de
+ * credit_year_tick, scps_credit.c) — SANS CE GESTE, econ_country_gold/credit_can_spend/
+ * credit_line/audit_eco (tous region[]-grain) lisent un trésor périmé jusqu'à la PROCHAINE
+ * agrégation (un mois entier pour la frappe, jusqu'à un an pour l'intérêt annuel). */
+float econ_prov_treasury_credit(WorldEconomy *e, int pid, float delta){
+    if (!e || pid<0 || pid>=e->n_prov || delta==0.f) return 0.f;
+    e->prov[pid].treasury += delta;
+    int r = e->prov[pid].region;
+    if (r>=0 && r<e->n_regions) e->region[r].treasury += delta;
+    return delta;
 }
 
 /* M6 — la MATIÈRE gate l'arcane (design §4.2 : la rareté EST le verrou). GRAIN PUBLIC
@@ -4915,17 +4954,24 @@ void econ_tick(WorldEconomy *e, float dt) {
      * le frapper à la parité — SÉPARÉ de la redevance royale (MINT_ROYALTY, siphonnée à
      * la SOURCE, jamais marchande, cf. §1 extraction) : ici le métal a DÉJÀ été valorisé/
      * vendu (VA) avant d'entrer au stock — l'achat est une transaction marchande RÉELLE.
-     * ATOMIQUE (achat+frappe en UNE passe, PAS de round-trip par reserve_gold/copper) —
-     * choix documenté : router le débit d'achat par le MÊME bucket FX_MINT que la frappe
-     * royale aurait exposé chronicle_mint_flux_accum (qui ne somme QUE les FX_MINT
-     * POSITIFS par pays/an, cf. TROUVAILLES M3c) à un net négatif invisible à l'instrument
-     * si achat>frappe un mois donné — l'atomicité (gain=qty×(parité−prix), TOUJOURS ≥0)
-     * élimine ce risque par construction, au prix de ne jamais visiblement remplir
-     * reserve_gold/copper pour cette voie (la redevance royale, elle, continue d'y
-     * transiter normalement). Ne PROCÈDE que si prix<parité (l'arbitrage n'a de sens que
-     * dans CE sens — la frappe ne perd jamais d'argent). Plancher MINT_FREE_STOCK_FLOOR_
-     * FRAC : protège le « stock de fonctionnement » (concept M1 — cuivre naval/armes/
-     * horlogerie ne doit jamais être affamé par l'achat d'État). */
+     * Ne PROCÈDE que si prix<parité (l'arbitrage n'a de sens que dans CE sens — la frappe
+     * ne perd jamais d'argent). Plancher MINT_FREE_STOCK_FLOOR_FRAC : protège le « stock
+     * de fonctionnement » (concept M1 — cuivre naval/armes/horlogerie ne doit jamais être
+     * affamé par l'achat d'État).
+     * MONNAIE M11 — A1 (audit externe confirmé — voir MINT_FULL_PARITY, scps_tune_list.h) :
+     * pré-M11, ce bloc était « ATOMIQUE » (achat+frappe fondus en un seul crédit `gain` =
+     * qty×(parité−prix)) — le `cost` d'achat n'était JAMAIS réellement débité (une variable
+     * de GATE seule) ni versé à quiconque : le métal du marché disparaissait du stock SANS
+     * contrepartie, la création RÉELLE restait sous la parité pleine (une pièce de 16
+     * frappée d'un métal coté 8 n'ajoutait que 8 à M). MINT_FULL_PARITY=1 (défaut) sépare
+     * désormais les deux gestes : le trésor PAIE réellement `cost` (débit RÉEL réparti sur
+     * les trésors régionaux du pays, motif ROADS/INVEST, crédité aux 3 classes de CHAQUE
+     * région qui a fourni le métal — item 5, 42/20/38) PUIS la Monnaie crée à la PARITÉ
+     * PLEINE (qty×parité, FX_MINT reçoit la VRAIE création, pas le seul gain net). Le gain
+     * NOMINAL du trésor reste identique (−cost+qty×parité = gain) ; le débit+crédit
+     * treasury→wealth est invariant-NEUTRE par construction (motif ROADS/UPKEEP/COURT :
+     * un transfert égal ne bouge pas M(t), cf. chronicle_invariant_check). 0 = kill-switch
+     * EXACT (legacy : `gain` seul crédité, golden pré-M11 byte-identique). */
     {
         /* MONNAIE M3f — BONUS : RAZ le seed de démarque (g_mint_demand_prev) — ne garder QUE
          * la contribution de CE tick (écrasée, pas cumulée d'un tick à l'autre — motif
@@ -4963,22 +5009,19 @@ void econ_tick(WorldEconomy *e, float dt) {
                 float qty = fminf(budget/price, avail_stock);
                 if (qty<=0.f) continue;
                 float cost = qty*price;
-                /* gain = qty×(parité−prix) = qty×parité − cost : DÉJÀ le net de l'achat
-                 * (cost, débité du marché national — cf. stock ci-dessous) ET de la frappe
-                 * (qty×parité, jamais créditée séparément — l'atomicité EST la raison du
-                 * choix : un débit `cost` PUIS un crédit `qty*parité` SÉPARÉS donneraient le
-                 * MÊME total treasury (-cost puis +qty*parité = +gain), mais créditer `gain`
-                 * EN UNE FOIS évite tout double-décompte si on touchait treasury deux fois —
-                 * TOUJOURS ≥0 (gate price<parity ci-dessus), donc jamais de dette. */
+                /* gain = qty×(parité−prix) = qty×parité − cost : le delta NOMINAL du trésor,
+                 * IDENTIQUE dans les deux modes MINT_FULL_PARITY (ci-dessous) — ce qui change
+                 * est la provenance : payé réellement (A1) ou jamais débité (legacy). TOUJOURS
+                 * ≥0 (gate price<parity ci-dessus), donc jamais de dette. */
                 float gain = qty*(parity-price);
                 /* MONNAIE M3f — BONUS : l'achat compte dans la DEMANDE (prochain tick, seed
                  * g_mint_demand_prev) — attribué à la CAPITALE (déjà la référence de `price`
                  * ci-dessus, l'endroit où l'arbitrage se lit). mi correspond à FREE_METALS
                  * (0=or, 1=cuivre), même index que g_mint_demand_prev[][2]. */
                 g_mint_demand_prev[cap][mi] += qty;
-                /* débit STOCK national SEUL (le trésor n'est PAS débité séparément — `gain`
-                 * ci-dessous EST déjà net du coût d'achat, cf. commentaire) : prorata des
-                 * régions qui portent ce métal (motif ROADS). */
+                /* débit STOCK national — le métal quitte RÉELLEMENT le marché dans LES DEUX
+                 * modes MINT_FULL_PARITY (prorata des régions qui portent ce métal, motif
+                 * ROADS). */
                 float remain=qty;
                 for (int r=0;r<e->n_regions && remain>1e-4f;r++){
                     if (e->region[r].owner!=c || e->region[r].stock[metal]<=0.f) continue;
@@ -4987,11 +5030,44 @@ void econ_tick(WorldEconomy *e, float dt) {
                     float taken=-econ_region_stock_add(e, r, metal, -take);
                     remain-=taken;
                 }
-                treas_remaining-=cost;   /* comptabilité de GATE seule (l'affordabilité, pas un débit réel) */
-                /* le gain (parité−prix) frappe DIRECTEMENT au trésor de la capitale (même
-                 * canal que la frappe royale, §M2 ci-dessous) — I0 : même ligne FX_MINT. */
-                e->prov[cap].treasury += gain;
-                econ_flux_add(c, FX_MINT, gain);   /* I0 : la ligne frappe (frappe libre incluse) */
+                treas_remaining-=cost;   /* gate seule pour le métal SUIVANT de la boucle mi */
+                if (tune_f("MINT_FULL_PARITY", 1.0f) > 0.5f){
+                    /* MONNAIE M11 — A1 : PAYER LE VENDEUR — débit RÉEL réparti sur les trésors
+                     * régionaux du pays (motif ROADS/INVEST : jamais plus que le trésor
+                     * disponible, aucune dette forcée), crédité aux 3 classes de CHAQUE région
+                     * qui a fourni le métal (item 5, clé 42/20/38) — le marché est RÉELLEMENT
+                     * compensé, jamais une saisie silencieuse. */
+                    float tot_pay=0.f;
+                    for (int r=0;r<e->n_regions;r++)
+                        if (e->region[r].owner==c && e->region[r].treasury>0.f) tot_pay+=e->region[r].treasury;
+                    if (tot_pay>0.f){
+                        float pay_budget = fminf(cost, tot_pay);
+                        for (int r=0;r<e->n_regions;r++){
+                            if (e->region[r].owner!=c || e->region[r].treasury<=0.f) continue;
+                            float part = pay_budget * (e->region[r].treasury/tot_pay);
+                            float paid = econ_region_treasury_add(e, r, -part);   /* delta signé (négatif) */
+                            if (paid!=0.f){
+                                float amt=-paid;
+                                econ_region_wealth_add(e, r, CLASS_LABORER,   amt*WAGE_SHARE);
+                                econ_region_wealth_add(e, r, CLASS_BOURGEOIS, amt*(1.f-WAGE_SHARE-TAX_RATE));
+                                econ_region_wealth_add(e, r, CLASS_ELITE,     amt*TAX_RATE);
+                            }
+                        }
+                    }
+                    /* CRÉER À PARITÉ PLEINE (qty×parité, pas seulement `gain`) — même canal
+                     * que la frappe royale (§M2 ci-dessous), province CAPITALE, dual-write
+                     * région (A2, econ_prov_treasury_credit). FX_MINT reçoit la VRAIE création
+                     * (l'invariant M(t)=M(0)+frappe voit `documented` grossir de `cost` en
+                     * plus, exactement compensé par le transfert treasury→wealth ci-dessus —
+                     * neutre par construction, motif ROADS/UPKEEP/COURT). */
+                    econ_prov_treasury_credit(e, cap, qty*parity);
+                    econ_flux_add(c, FX_MINT, qty*parity);   /* I0 : la vraie création (frappe libre) */
+                } else {
+                    /* kill-switch MINT_FULL_PARITY=0 : comportement LEGACY EXACT — `gain` seul
+                     * crédité, aucun débit réel (golden pré-M11 byte-identique pour CE bloc). */
+                    econ_prov_treasury_credit(e, cap, gain);
+                    econ_flux_add(c, FX_MINT, gain);   /* I0 : la ligne frappe (frappe libre incluse) */
+                }
             }
         }
     }
@@ -5001,7 +5077,14 @@ void econ_tick(WorldEconomy *e, float dt) {
      * l'indirection région. econ_country_mint_month est la fonction PURE partagée avec le
      * lecteur façade (scps_country_mint_month) — miroir exact, ici on MUTE (réserve, trésor,
      * flux I0). MINT_ROYALTY=0 ⇒ réserve toujours nulle ⇒ value toujours nulle ⇒ bloc inerte
-     * (kill-switch, golden-safe). */
+     * (kill-switch, golden-safe). La VALEUR (val) est DÉJÀ à parité pleine (g×MINT_PARITY_GOLD
+     * + cop×MINT_PARITY_COPPER, cf. econ_country_mint_month) — ce métal sort de la RÉSERVE
+     * D'ÉTAT (royalty EN NATURE, §1 extraction, déjà propriété de l'État) : rien à payer, A1
+     * ne concerne QUE la frappe LIBRE ci-dessus (marché privé). MONNAIE M11 — A2 : le crédit
+     * passe désormais par econ_prov_treasury_credit (dual-write region[], cf. le CONTRAT en
+     * tête d'econ_aggregate_regions) — pré-M11 une écriture `prov[cap].treasury +=` nue
+     * laissait region[].treasury (donc econ_country_gold/credit_can_spend/solvabilité) périmé
+     * jusqu'à l'agrégation du mois suivant. */
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){
         float g,cop,val,dbg; int cap;
         econ_country_mint_month(e, c, &g, &cop, &val, &cap, &dbg);
@@ -5010,7 +5093,7 @@ void econ_tick(WorldEconomy *e, float dt) {
         if (val>0.f){
             e->reserve_gold[c]   = fmaxf(0.f, e->reserve_gold[c]   - g);
             e->reserve_copper[c] = fmaxf(0.f, e->reserve_copper[c] - cop);
-            e->prov[cap].treasury += val;
+            econ_prov_treasury_credit(e, cap, val);
             econ_flux_add(c, FX_MINT, val);   /* I0 : la ligne frappe (débase INCLUSE — le banc la voit comme frappe légitime) */
         }
         /* MONNAIE M3h — LE PRIX DE LA DÉBASE + LA DÉCRUE (voir scps_econ.h) : coûte

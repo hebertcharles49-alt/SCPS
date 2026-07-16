@@ -51,6 +51,21 @@
      * (usages physiques : navale/armes/horlogerie ne doivent pas être affamés). */ \
     X(MINT_FREE_BUY_FRAC,      0.15f) \
     X(MINT_FREE_STOCK_FLOOR_FRAC, 0.5f) \
+    /* MONNAIE M11 — A1 : LA FRAPPE À PARITÉ PLEINE (audit externe confirmé, scps_econ.c
+     * ~4973 pré-M11 : le gain crédité était SEULEMENT qty×(parité−prix), le `cost` restait
+     * une variable de GATE jamais débitée ni versée à un vendeur — le métal du marché
+     * disparaissait sans contrepartie, la création réelle était SOUS la parité pleine).
+     * MINT_FULL_PARITY=1 : le trésor PAIE réellement le vendeur (débit réel réparti sur
+     * les trésors régionaux du pays, motif ROADS/INVEST, crédité aux 3 classes de CHAQUE
+     * région qui a fourni le métal, clé 42/20/38) PUIS crée à la PARITÉ PLEINE (qty×parité,
+     * pas seulement le gain net) — le seigneuriage (parité−prix payé) reste le même delta
+     * de trésor nominal, mais désormais un vendeur RÉEL a été payé (conservation stricte :
+     * la création totale du système = parité pleine, pas juste le gain nominal du trésor).
+     * 0 = kill-switch EXACT (legacy : gain seul crédité, aucun débit réel — golden pré-M11
+     * byte-identique). Le mint ROYAL (réserve d'État, MINT_ROYALTY) N'EST PAS concerné : il
+     * créait DÉJÀ à parité pleine (le métal est prélevé en nature, déjà propriété de
+     * l'État — rien à payer), cf. econ_country_mint_month. */ \
+    X(MINT_FULL_PARITY,        1.0f) \
     /* MONNAIE M7 — I1 : L'INFLATION SÉCULAIRE (docs/MONNAIE_CONCEPT.md, décision joueur
      * 2026-07-16 « pas de perte de monnaie, ce sont des métaux stables… inflation
      * séculaire = trait historique »). `price_level[c]` (scps_econ.c, la fraction de la
@@ -590,6 +605,43 @@
     X(DEBT_RATE_SLOPE,        0.03f) \
     X(DEBT_RATE_MIN,          0.02f) \
     X(DEBT_RATE_MAX,          0.05f) \
+    /* MONNAIE M11 — A3 v2 : L'INTÉRÊT FIXE + L'ÉCHÉANCE MINIMALE (décision joueur, en cours
+     * de mission, REMPLACE la v1 « arriéré qui capitalise » — verbatim : « Intérêt fixe : si
+     * t'empruntes 1000 à 5 %, tu rembourses 1050, pas +5 % par an. »). Audit externe confirmé
+     * au départ (scps_credit.c ~521 pré-M11 : un intérêt sous-servi n'incrémentait que
+     * g_defaults, jamais un arriéré, n'alimentait PAS insolvent_streak — un pays au principal
+     * sous DEBT_CEILING_YEARS×revenu ne faisait JAMAIS faillite même sans jamais rien payer).
+     * DEBT_FIXED=1 (défaut) : chaque emprunt (credit_borrow_local/class/citystate/state)
+     * inscrit un FORFAIT figé À L'ORIGINATION — la dette ajoutée = montant réellement transféré
+     * × (1+credit_current_rate(c) au moment du prêt) — le taux ne bouge plus jamais pour CE
+     * prêt (pas de service annuel composé, pas de capitalisation d'impayé : « fixe veut dire
+     * fixe »). Le défaut RÉEL passe par une ÉCHÉANCE MINIMALE ANNUELLE (DEBT_DUE_FRAC du
+     * stock, ci-dessous) payée du surplus SEUL (jamais empruntée, jamais capitalisée si
+     * impayée) : une tranche manquée nourrit DIRECTEMENT le streak d'impayés (remplace le
+     * streak « au plafond SEUL » de l'audit) — l'échelle emprunter→débaser→banqueroute-saisie
+     * (M3h/M3g) s'enclenche NATURELLEMENT. 0 = kill-switch EXACT : emprunts SANS markup,
+     * service d'intérêt ANNUEL sur le stock (comportement pré-M11), streak au plafond SEUL —
+     * golden pré-M11 byte-identique. */ \
+    X(DEBT_FIXED,             1.0f) \
+    /* La tranche minimale ANNUELLE due sur le stock de dette (fixed, ci-dessus) — payée du
+     * surplus, jamais empruntée. Horizon ~1/DEBT_DUE_FRAC ans pour éteindre une dette qui ne
+     * grossit plus jamais. CALIBRAGE (sweep {9,11,42}×3×250, mesuré) : la FRACTION seule
+     * n'est PAS le levier — 0.02/0.03/0.05/0.10 donnent TOUS Σ banqueroutes ~1900-2000
+     * (bifurcation, pas un gradient, motif M7/M8) — c'est DEBT_DEFAULT_THRESHOLD (ci-dessous)
+     * qui calibre réellement l'échelle. */ \
+    X(DEBT_DUE_FRAC,          0.10f) \
+    /* Le PLANCHER « dette qui compte » — SEUL un stock DÉPASSANT ce seuil peut alimenter le
+     * streak d'impayés (échéance manquée, ci-dessous) : un résidu trivial, jamais remboursable
+     * par un pays qui ne repasse plus SINK_FLOOR de trésor, ne mérite pas la banqueroute.
+     * DÉLIBÉRÉMENT séparé de BUYBACK_DEBT_THRESHOLD (le seuil du RACHAT DE CRÉDIT, un
+     * mécanisme DIFFÉRENT, INCHANGÉ) — coupler les deux aurait fait dériver le taux de rachat
+     * en calibrant le taux de défaut. CALIBRAGE (sweep {9,11,42}×3×250, 4 points mesurés) :
+     * SANS plancher, Σ banqueroutes 583→~1950 (+234 %, n'importe quel résidu comptait,
+     * quelle que soit DEBT_DUE_FRAC 0.02-0.10) ; à 500 → 1110 (+90 %) ; à 1500 → 910
+     * (+56 %) ; à 3000 → 795 (+36 %, SOUS le doublement toléré) ET invariant M3c 0/9
+     * breach — MEILLEUR que pre-m11 (1/9 : le breach graine 11 documenté M10 DISPARAÎT à
+     * ce point). 3000 retenu. */ \
+    X(DEBT_DEFAULT_THRESHOLD, 3000.0f) \
     /* LA BANQUEROUTE : répudiation totale (dette RAZ) ; DÉBUFF −75 % prod/croissance/moral
      * décroissant sur BANKRUPTCY_SCAR_YEARS (motif revolt_scar, bankruptcy_scar). Le grief
      * de la cité-état créancière frappée (motif §6 rancune, RANCOR_PER_LOSS=1.0/province

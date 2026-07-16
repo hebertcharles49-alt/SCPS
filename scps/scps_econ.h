@@ -631,6 +631,17 @@ float econ_region_stock_add(WorldEconomy *e, int region, int good, float delta);
 float econ_region_treasury_add(WorldEconomy *e, int region, float delta);
 float econ_region_pop_add(WorldEconomy *e, int region, int cls, float delta);
 float econ_region_wealth_add(WorldEconomy *e, int region, int cls, float delta);   /* item 5 M3b-v2 : idem, richesse d'une classe */
+/* MONNAIE M11 — A2 : crédit/débit du trésor d'UNE province DÉJÀ RÉSOLUE par l'appelant
+ * (capitale via econ_country_capital_prov, créancier via econ_region_rep_province…) —
+ * tient region[].treasury EN PHASE dans le MÊME geste (Σ incrémentale, pas une résolution
+ * "province représentative" séparée). Différent d'econ_region_treasury_add (grain RÉGION,
+ * prorata sur les provinces-sœurs si la représentative ne suffit pas) : ICI la province est
+ * déjà connue avec certitude (pas de risque de region_rep_prov périmé si la capitale a
+ * bougé depuis le dernier econ_build_adjacency) — usage : tout écrivain monétaire APRÈS
+ * econ_aggregate_regions() qui connaît sa province cible EXACTE (frappe, intérêts/
+ * amortissement/saisie de credit_year_tick). Rend le delta appliqué (identique à delta,
+ * pid hors borne ⇒ 0). */
+float econ_prov_treasury_credit(WorldEconomy *e, int pid, float delta);
 /* MONNAIE M3f — item 2 (missions) : lève `requested` sur les 3 classes (LABORER/
  * BOURGEOIS/ELITE, clé 42/20/38) de TOUT le royaume `cid` — prorata de la richesse
  * DISPONIBLE de chaque province/classe, bornée au panier vital (g_basket_pc, même
