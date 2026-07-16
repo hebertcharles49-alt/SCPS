@@ -1,6 +1,34 @@
-# SYNTHÈSE DE SESSION — handoff roulant (2026-07-16 nuit)
+# SYNTHÈSE DE SESSION — handoff roulant (2026-07-16 nuit, mise à jour post-FAUSTIEN)
 
-## UI-MONNAIE — U1-U4 LIVRÉS (HEAD 0f2f9de, DLL rebuild scons)
+## TECH + FINS + FAUSTIEN — 3 vagues moteur livrées après l'UI-MONNAIE (HEAD a8658f5)
+- **TECH** (pre-tech, 6 commits) : le 22 % d'empires à zéro tech = des pays SANS IA
+  (ai_on=0 — fragments de resplit cataclysme §27 jamais adoptés + course d'agrégat des
+  sécessions). Fix : adoption mensuelle idempotente + héritage de l'arbre parent +
+  f_satisfaction [0.5..1.25] dans econ_country_savoir (la formule joueur pop×classes×
+  bâtiments×métabolisation existait déjà aux ¾ — SAVOIR_W_*). Zéro-tech 21.6→3.7 %
+  (giga), médiane 17→27, ancre max 65 intacte. ⚠ re->tech (econ:4786) = VESTIGE (ne
+  nourrit rien — a trompé 2 audits, documenté Piège). Verdict pre-monnaie : PRÉEXISTANT
+  (38.6 % avant le chantier monnaie).
+- **FINS** (pre-fins, 3 commits) : 4 fins gatées derrière ENTROPY_FIN=55 (bimodal —
+  quasi aucun monde dans la bande) ; SANG découplé, ENTROPY_FIN 25, fallback 2→7 ⇒
+  ratio 6:1→1.8:1 mais AUCUNE 44/100. Merveille : fondation HUMAN_PLAYER-gatée — jamais
+  mesurable en headless (tous les chiffres « métab MAX x/6 » = plafond théorique).
+- **FAUSTIEN** (pre-faustien, 5 commits) : décisions joueur — spawn fer céleste +48 %,
+  FAUST_YIELD_MULT 2.0, ENTROPY_PER_USE 0.10 (chaque usage pousse vers la fin), foreuse
+  = lot 7/7 au ratio 2:1 commun:précieux (+ redevance minière ENFIN branchée sur le
+  panier → inflation émergente), corne +alcool, réplicateur +PMOD_MUTATION, RÉCHAUFFEMENT
+  = BACKUP INCONDITIONNEL (« AUCUNE == 0 définitif » — gate prouvé 0/9), Merveille 400.
+  RESTES : Laborer −2/−12 pts (prix de X3, non recalibré — À SURVEILLER), usage machines
+  toujours dormant à n=9 (gate IA de construction non touché), inflation-foreuse câblée
+  non mesurée à l'échelle.
+- **RÈGLE JOUEUR NOUVELLE** : GIGA sweeps SUR DEMANDE SEULEMENT (CPU) — appariés 3×3 =
+  standard, plafond ~30-40 sims/vague (mémoire scps-sweep-budget).
+- DLL rebuildée après chaque vague. Backlog : M13 (#119 — fuite invariant 3/100,
+  découvertes or 47 %, inflation déflationniste à l'échelle) · arbitrages joueur en
+  attente (mécanismes morts œil-neuf, tech→rendement ?) · EXPORT scps.exe (toujours
+  le plus gros backlog de test manuel).
+
+## UI-MONNAIE — U1-U4 LIVRÉS (0f2f9de, DLL rebuild scons)
 La seule tâche ouverte de la synthèse précédente (« UI-MONNAIE ») est FAITE : l'arc
 M0→M12 est maintenant VISIBLE et JOUABLE côté Godot. Tag `pre-ui-monnaie` posé sur
 1e18cb8. 6 commits (readers+binding · U1 onglet Monnaie · U2 prix en direct · U3
