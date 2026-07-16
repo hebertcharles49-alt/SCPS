@@ -4412,3 +4412,239 @@ byte-identique (day=2095 pop=60472.2 or=16811.2) + octet altéré REFUSÉ ✓ ·
 - Fichiers de sweep bruts : build/giga_tech/, build/paired_tech/, build/ablation_tech/,
   build/techdiag/ — scratch locaux non commis, les Σ ci-dessus font foi.
 - Worktree `/c/tmp_wt_premonnaie` retiré en fin de mission.
+
+---
+
+## CHANTIER FINS & MERVEILLE — la course recalibrée (2026-07-16)
+
+**Statut : F1 (diagnostic) et F2 (course) LIVRÉS et validés (ratio cible ≤2:1 ATTEINT,
+1.80:1 mesuré). F3 (paliers Merveille) PARTIELLEMENT livré — proxy 4+/6 amélioré 0%→1%
+sur 100 sims, cible 5-15% NON atteinte (écart honnête, diagnostiqué ci-dessous).** Tag
+`pre-fins` posé sur 4f228f4 avant tout changement. Kill-switch `FINS_RACE=0` prouvé
+BYTE-IDENTIQUE au pre-fins sur 5 graines × 250 ans (`chronicle --hash 7 5 250`), vérifié
+3 FOIS (une par calibrage) — pas seulement le golden 12 ans qui n'exerce jamais
+l'endgame (ENDGAME_YEAR_OPEN=180). SAVE_VERSION INCHANGÉ (aucune struct sérialisée
+touchée — 4 tunables neufs, registre J pur, + 2 fonctions diag print-only).
+
+### F1 — LE DIAGNOSTIC DES COURSES (la découverte qui change tout)
+
+Instrumenté `SCPS_RACEDIAG` (scps_endgame.c : `racediag_tick` à chaque checkpoint
+10 ans depuis l'an 180, `mervdiag_transition` à chaque palier Merveille + fondation ;
+scps_events.c : print au site EVID_MERV_FONDATION). Mesuré sur 18 sims-diagnostic (6
+graines × 3, hors giga) AVANT tout code touché, PUIS confirmé sur les 300 sims des 3
+re-giga :
+
+1. **Les 5 fins ne courent PAS 5 courses indépendantes — 4 d'entre elles
+   (EAU/RONCES/FROID/SANG) étaient TOUTES gatées derrière le MÊME seuil
+   `ENTROPY_FIN=55`**, alimenté quasi exclusivement par la charge de tech faustienne
+   (`ENTROPY_TECH_W=0.20 × Σts[].charge`, un accumulateur SANS décrue, contrairement
+   à sang/feu qui décroissent). L'entropie finale (an 250) sur 100 mondes est
+   franchement BIMODALE (giga pre-fins) : p50=15, p75=910, p90=7893, p95=11540,
+   max=62660 — un « coude » net entre p60 et p75, pas un plateau continu. count<15=46,
+   count<25=59, count<35=61, count<55=65 : la bande [15,55[ ne contient qu'environ 15
+   mondes « moyennement faustiens » sur 100, le reste est soit à plat (jamais
+   d'investissement faustien réel) soit déjà en train de s'envoler vers le régime
+   [TERMINAL] (seuil `ENTROPY_TERMINAL=4000`, 17/100 sims, DISJOINT du fallback comme
+   voulu — vérifié inchangé à 17/100 sur les 3 re-giga).
+2. **SANG était structurellement quasi-inatteignable, PAS juste rare** : même dans le
+   monde le plus sanglant hors-TERMINAL mesuré au diagnostic (ratio 6.6 %, déjà sous
+   le seuil `ENDGAME_BLOOD_FRAC=9 %` de toute façon), la contribution à l'entropie
+   (`ratio×ENTROPY_BLOOD_W(8.0)`) plafonne à ~0.5 pt — à des kilomètres des 55 requis.
+   SANG ne pouvait fleurir QUE dans un monde ÉGALEMENT faustien, une coïncidence
+   quasi jamais mesurée (giga pré-FINS : SANG 1/100, ce seul cas — seed_512#sim2 —
+   à 9.94 % de ratio, cohérent avec le seuil 9 % : pas un hasard d'entropie, un monde
+   réellement à la fois très sanglant ET faustien).
+3. **Le fallback RÉCHAUFFEMENT captait quasi tout le reste par construction, pas par
+   mérite** : `FUEL_FALLBACK_MIN=2.0` était si bas que 95/100 mondes du giga
+   pré-FINS avaient le combustible ARMÉ (feu/tête mesuré 3.4-9.3 dans l'échantillon,
+   distribution complète an-250 : p50=5.6, p67=6.2, p75=6.7, p90=7.4) — le seuil ne
+   triait presque rien.
+4. **Merveille — le vrai bloqueur n'est PAS le palier, c'est que le chantier ne
+   démarre JAMAIS en sweep headless.** `trig_merv_fondation` (scps_events.c) est
+   STRICTEMENT `human_player`-gaté (double garde : `cx->human_player<0` renvoie faux
+   ET chronicle passe `eg=NULL` à `world_events_tick` de toute façon — commentaire
+   DÉJÀ présent dans le code, non touché : « un banc qui passerait un eg non-NULL en
+   chronique... ne doit JAMAIS fonder la Merveille à la place de l'IA »). Un garde-fou
+   DÉLIBÉRÉ, documenté, PAS un bug — confirmé empiriquement par `[MERVDIAG] fondation`
+   posé au site de fondation : **0 occurrence sur 18 sims-diagnostic ET sur les 300
+   sims des 3 re-giga**. Conséquence : FIN_ASCENSION ne peut JAMAIS apparaître en
+   sweep headless (confirmé : absente des 5 fins observées dans les 3 re-giga), et le
+   chiffre chronicle « métabolisation MAX X/6 » n'a JAMAIS mesuré une victoire
+   tentée — c'est un PLAFOND théorique par empire (`endgame_metab_count` est pur,
+   indépendant de l'état `merv`). Décision documentée : NE PAS ouvrir la Merveille à
+   l'IA (le garde-fou reste intact, hors-scope de cette mission) — F3 recalibre le
+   PLAFOND (le seul proxy mesurable en headless), pas qui a le droit de bâtir.
+
+### F2 — LA COURSE RECALIBRÉE (leviers, tous sous `FINS_RACE`)
+
+1. **SANG DÉCOUPLÉ du gate d'entropie partagé** (scps_endgame.c,
+   `endgame_select_and_fire`) — même précédent que CHAUD (déjà indépendant depuis le
+   REPLI 2026-07-08b : « le combustible n'agit qu'en repli, jamais un second seuil
+   parallèle »), étendu à SANG qui EST déjà documenté comme « visage dominant, pas un
+   second seuil » dans son propre commentaire legacy — la lettre du code n'avait pas
+   suivi l'esprit. Évalué EN PREMIER chaque tick, indépendamment de l'entropie
+   mondiale. `ENDGAME_BLOOD_FRAC=9 %` LUI-MÊME INCHANGÉ (déjà calibré à « une
+   génération qui perd un cinquième du monde ») — seule la PORTE bouge, pas le
+   mérite. Le bloc SANG legacy est GARDÉ mot pour mot, enveloppé `if (!race)`
+   (kill-switch `FINS_RACE=0` ⇒ golden pre-fins byte-identique, prouvé).
+2. **`RACE_ENTROPY_FIN` : deux passes mesurées** (55→35→25, re-giga 20×5×250 entre
+   les deux). Passe 1 (35) : ratio dominante/médiane 6.00:1→3.47:1 — mieux, encore
+   loin de la cible. Passe 2 (25) : la bande [25,35[ ne contient que ~2 mondes de
+   plus (count<25=59 vs count<35=61) — gain modeste et DÉLIBÉRÉMENT pas poussé plus
+   bas (count<15=46 est déjà la moitié du parc ; en-dessous, on balaierait des mondes
+   SANS aucun investissement faustien réel — une fin non MÉRITÉE, juste du bruit).
+3. **`RACE_FUEL_FALLBACK_MIN` : deux passes mesurées** (2.0→6.0→7.0). Passe 1 (6.0) :
+   RÉCHAUFFEMENT 63→33 (giga), ratio encore 3.47:1. Passe 2 (7.0, calculée depuis la
+   distribution combustible/tête an-250 : count≥7.0=19/100, visant dominante≤19 pour
+   ratio≤2:1 avec médiane~9-10) : RÉCHAUFFEMENT 33→16, ratio ATTEINT (1.80:1).
+   RÉCHAUFFEMENT ne prend désormais que le ~top 19 % du parc en combustible
+   RÉELLEMENT brûlé — les autres finissent AUCUNE, une issue honnête (vérifiée :
+   `RFIN_AUCUNE`/scps_readout.c est l'état NEUTRE par défaut de la membrane — pas un
+   crash ni un écran d'erreur, la partie continue normalement).
+4. RONCES/FROID/EAU (`FIN_BASE_*`, `FIN_PROD_W_*`) et `SANG_MEMORY_HL`, `THORN_*`,
+   `COLD_RAMP_PER_YEAR` : INCHANGÉS (déjà calibrés dans une vague antérieure — le
+   levier F2 est la PORTE qui décide qui a le droit d'être évalué, pas le mérite de
+   chaque fin une fois évaluée).
+
+**Distribution des fins — AVANT (giga pré-FINS, 100 sims) → APRÈS (re-giga final,
+100 sims, `RACE_ENTROPY_FIN=25`/`RACE_FUEL_FALLBACK_MIN=7.0`)** :
+
+| fin | avant | après |
+|---|---|---|
+| RÉCHAUFFEMENT | 63 | 16 |
+| RONCES | 12 | 18 |
+| GRAND HIVER | 12 | 13 |
+| ENGLOUTISSEMENT | 9 | 7 |
+| SANG | 1 | 2 |
+| AUCUNE | 3 | 44 |
+| **ratio dominante/médiane des 4 autres** | **6.00:1** | **1.80:1 (cible ≤2:1 ATTEINTE)** |
+
+**Le prix de la cible : AUCUNE passe de 3 à 44 sur 100.** C'est une conséquence
+DÉLIBÉRÉE et mesurée du levier #3 — la mission l'anticipait explicitement (« les
+autres mondes atteignent l'an 250 SANS fin s'il le faut... une issue honnête ») — mais
+44 % est un chiffre BEAUCOUP plus élevé que l'attente naïve d'une lecture rapide du
+brief, et mérite d'être su AVANT de le voir en jeu : près d'un monde sur deux du re-giga
+n'atteint plus AUCUNE des 5 fins en 250 ans (contre quasi tous avant). Signal à trancher
+côté design si une future vague veut un filet moins large (un `RACE_FUEL_FALLBACK_MIN`
+intermédiaire ~6.0-6.5 aurait donné un ratio ~2.5-3:1 avec un AUCUNE plus proche de
+30 % — un compromis existe si 44 % s'avère trop haut à l'usage).
+
+### F3 — LES PALIERS DE LA MERVEILLE (partiel, écart honnête)
+
+`RACE_METAB_MERV_RATIO` (voie diaspora d'`endgame_heritage_metabolized_detail`, la
+seule touchée — `METAB_MERV_MIN` et la voie gouvernance `arch_depth`/`PROF_PROFOND`,
+chantier TECH, INTACTS) : deux passes mesurées.
+
+| passe | ratio | metab MAX (n=100) | palier proxy ≥4/6 |
+|---|---|---|---|
+| pré-FINS | 0.60 (legacy) | {1:58, 2:37, 3:5} | 0/100 (0 %) |
+| F3 passe 1 | 0.45 | {1:52, 2:43, 3:5} | 0/100 (0 %) |
+| F3 passe 2 | 0.25 | {1:46, 2:43, 3:10, 4:1} | **1/100 (1 %)** |
+
+**Cible 5-15 % NON atteinte** malgré un abaissement agressif (0.60→0.25, plus de la
+moitié). count=3 a doublé (5→10) et un premier count=4 est apparu (0→1), donc le
+levier POUSSE dans le bon sens, mais trop faiblement pour la cible. Diagnostic honnête
+(mesuré, pas supposé) : le proxy `endgame_metab_count` = natif + Σ(contact_deep OU
+diaspora_ok) sur 5 héritages étrangers ; count=4 exige que 3 des 5 franchissent l'UNE
+des deux voies. La voie gouvernance (`arch_depth≥PROF_PROFOND`, chantier TECH,
+INTACTE par construction de cette mission) n'a pas bougé ; seule la voie diaspora a
+été assouplie, et son AUTRE garde — `METAB_MERV_MIN=500` âmes intégrées — N'A PAS été
+touchée (décision documentée au moment de F3, cf. plus haut) : possible qu'elle soit
+maintenant le facteur BLOQUANT plutôt que le ratio, mais pas mesuré (aurait exigé une
+4e re-giga complète — ~15-20 min de plus — hors budget de cette mission). **Restes**
+ci-dessous pour la vague suivante.
+
+### GATES (tous mesurés, aucun déclaré sans chiffre)
+
+1. **Kill-switch `FINS_RACE=0`** : `chronicle --hash 7 5 250` IDENTIQUE au pre-fins,
+   vérifié 3× (une fois par calibrage F2/F3) — byte-identique, exerce réellement
+   l'endgame (250 ans ≫ ENDGAME_YEAR_OPEN=180), contrairement au golden 12 ans.
+2. **Sweep apparié** {9,11,42}×3×250 (pre-fins vs HEAD, valeurs F2 passe 1) : 9/9
+   sims comparés, distribution cohérente avec la direction attendue (RÉCHAUF 4→3,
+   RONCES 3→4, 1 ENGLOUTISSEMENT→RONCES par tir 2 ans plus tôt — même trajectoire,
+   MÉRITÉ), Merveille metab 2/9 sims en hausse, banqueroutes/dette comparables
+   (petites dérives dues à la trajectoire post-tir-décalé, cohérentes, pas
+   d'alarme).
+3. **Re-giga 20×5×250 × 3 passes** (build/giga_fins/, giga_fins2/, giga_fins3/) :
+   voir tableaux F2/F3 ci-dessus. Ratio ≤2:1 ATTEINT (1.80:1). Merveille proxy 4+
+   NON atteint (1 % vs 5-15 % cible).
+4. **make test** : 38 VERTS / 0 ROUGE / intertrade_demo seul BUILD ÉCHEC (setenv
+   Windows pré-existant, documenté CLAUDE.md) — vérifié 3× (après F2 passe 1, après
+   F2 passe 2, après F3 finale), endgame_demo 119/119 ✓ à chaque fois (aucune
+   fixture cassée).
+5. **golden** : `hash monde IDENTIQUE au golden commité` — AUCUNE re-baseline
+   nécessaire (le golden 12 ans n'exerce jamais l'endgame, ENDGAME_YEAR_OPEN=180 —
+   prévisible a priori, confirmé a posteriori).
+6. **determinism** (5×12 ans) : STABLE. **determinism-deep** (2×200 ans) : les 2
+   graines (7, 9) STABLES.
+7. **savetest** : 9/9 A==B byte-identique (day=2095, runs consécutifs, seeds
+   internes variables) + altération d'un octet REFUSÉE à chaque fois (empreinte).
+8. **fuzz-save** : 8/8 réussis (216 octets flippés, save_sane a rejeté chaque
+   forge, aucun crash) — le warning `[save] SCPS_TUNE actif ≠ sauvegarde` observé
+   est un artefact ATTENDU du fuzzing (byte-flip sur le checksum tune), pas une
+   régression : `good` doit être vrai pour l'atteindre, ce que confirme le BILAN
+   8/8.
+9. **ASan/UBSan** : INDISPONIBLE sur ce toolchain MSYS2 (`ld: cannot find -lasan`/
+   `-lubsan`) — limitation d'ENVIRONNEMENT pré-existante (le paquet mingw-w64 gcc
+   installé ne fournit pas les sanitizers), pas une régression de cette mission ;
+   hors la liste explicite des gates de ce brief (qui ne mentionne pas ASan), noté
+   pour une vague outillage future.
+10. **lang-check** : 0 littéraux face-joueur (base 0) — aucun texte STR_* neuf
+    (tous les prints ajoutés sont diagnostic FR, stderr, `SCPS_RACEDIAG`-gaté).
+
+### Pièges
+
+- `tune_f("X", def)` : le littéral `def` au site d'appel n'est QU'un repli si `X`
+  n'est PAS dans le registre `scps_tune_list.h` — dès qu'il l'y est, la valeur du
+  REGISTRE gagne TOUJOURS (piège de lecture déjà mordu : scps_endgame.c appelait
+  `tune_f("FUEL_FALLBACK_MIN", 4.0f)` en commentaire de code alors que le registre
+  disait 2.0 — le seuil RÉELLEMENT actif était 2.0, le littéral 4.0 n'était qu'une
+  relique jamais lue).
+- Backslash de continuation X-macro manquant sur UNE SEULE ligne de commentaire
+  FERMANTE (`*/`) dans `scps_tune_list.h` → erreur de parse GCC à des dizaines de
+  lignes plus loin (« expected ')' before numeric constant » sur le `X()` SUIVANT, pas
+  sur la ligne fautive). Règle : les lignes de commentaire À L'INTÉRIEUR d'un bloc
+  n'ont PAS besoin de `\` individuellement (translation phase 3 avale les retours-ligne
+  du commentaire AVANT que phase 2/4 ne compte les lignes de la macro), mais la
+  DERNIÈRE ligne du commentaire (celle avec `*/`) EN A besoin pour rester dans la
+  macro.
+- `chronicle.exe` qui tourne (sweep en cours) bloque `ld` au link (« cannot open
+  output file chronicle.exe: Permission denied ») — MAIS `scps_viewer`/les `_demo`
+  binaires sont des fichiers SÉPARÉS : `make test`/ASan/savetest peuvent tourner EN
+  PARALLÈLE d'un giga sweep chronicle sans conflit (économise ~30 min sur cette
+  mission — 3 gates lancés pendant les re-giga plutôt qu'en série).
+- La Merveille est RÉELLEMENT injouable en headless (double garde
+  `human_player<0` + `eg=NULL` passé par chronicle/`world_events_tick`) — tout
+  chiffre giga qui la mentionne (« métabolisation MAX ») est un PLAFOND, jamais une
+  victoire observée ; ne jamais le présenter comme un taux de victoire sans le
+  qualifier explicitement.
+- `git add -p` sur un fichier aux hunks fortement interleavés (3 chantiers dans la
+  même fonction `endgame_select_and_fire`) : les limites de hunk RÉELLES de git ne
+  correspondent pas forcément à ce qu'un `git diff --unified=N` laisse deviner —
+  une réponse y/n pipée à l'aveugle a sur-inclus un hunk voisin non voulu (74 lignes
+  de contexte F2 collées à une hunk F1). Vérifier `git diff --cached` après CHAQUE
+  session `add -p`, jamais faire confiance à la séquence de réponses seule ; sur un
+  fichier à hunks trop imbriqués, préférer committer le fichier ENTIER avec un
+  message qui couvre les chantiers réellement mélangés plutôt qu'une fausse
+  granularité.
+
+### Restes
+
+- **Merveille palier 4+ toujours hors cible (1 % vs 5-15 %)** — le levier restant
+  non essayé : `METAB_MERV_MIN` (plancher d'âmes, 500, INCHANGÉ dans cette mission)
+  pourrait être le facteur bloquant réel plutôt que le ratio — introduire
+  `RACE_METAB_MERV_MIN` (même gate `FINS_RACE`) et re-giga serait le prochain pas
+  logique, ~20 min de compute, non fait faute de budget.
+- **AUCUNE à 44 %** — beaucoup plus haut que l'intuition naïve du brief ; un futur
+  arbitrage design pourrait vouloir un `RACE_FUEL_FALLBACK_MIN` intermédiaire
+  (~6.0-6.5) qui garderait un ratio ~2.5-3:1 (au-dessus de la cible stricte mais
+  sous l'ancien 6.00:1) avec un AUCUNE plus proche de 30 % — compromis non exploré
+  faute de budget (aurait exigé une 4e re-giga).
+- **DLL Godot À RE-BUILDER** (`scons -C godot`) si le front lit `endgame_readout`
+  ou tout tunable neuf — `scps_endgame.c/h`, `scps_events.c`, `scps_tune_list.h` ont
+  changé. Aucun fichier `godot/` touché (interdit de vague respecté).
+- Fichiers de sweep bruts : `build/giga_fins/`, `build/giga_fins2/`,
+  `build/giga_fins3/`, `build/paired_fins/`, `build/parse_fins.py` (script de
+  lecture, réutilisable) — scratch locaux, les tableaux ci-dessus font foi. Worktree
+  `/c/Users/Charl/Desktop/SCPS-prefins-wt` (build pre-fins pour comparaison) à
+  retirer en fin de mission (`git worktree remove`).
