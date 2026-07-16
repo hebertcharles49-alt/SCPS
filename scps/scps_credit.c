@@ -127,6 +127,23 @@ float credit_current_rate(int c){
                   tune_f("DEBT_RATE_MIN",0.02f), tune_f("DEBT_RATE_MAX",0.05f));
 }
 
+/* MONNAIE M11 — A3 v2 : L'INTÉRÊT FIXE (voir DEBT_FIXED, scps_tune_list.h — décision joueur
+ * « si t'empruntes 1000 à 5 %, tu rembourses 1050, pas +5 % par an »). Le MONTANT DE DETTE
+ * à inscrire pour un emprunt de `borrow` (le RÉEL transféré, INCHANGÉ — seul ce qui va au
+ * PASSIF change) : le taux courant (credit_current_rate, formule M3d INCHANGÉE) est lu ICI,
+ * AVANT toute mutation de g_debt par l'appelant (le levier reflète la situation PRÉ-prêt,
+ * convention de cotation) et FIGÉ pour ce prêt — le forfait n'est JAMAIS recalculé ensuite.
+ * DEBT_FIXED=0 : kill-switch — renvoie `borrow` nu (comportement pré-M11 exact, aucun
+ * markup). Appelée aux 4 sites d'origination (credit_borrow_local/class/citystate/state) ;
+ * jamais au rachat (V3/M9 : une créance qui change de mains n'est pas une NOUVELLE
+ * origination, sa valeur reste le restant dû, INCHANGÉ). */
+static float debt_origination(int c, float borrow){
+    if (borrow<=CR_EPS) return borrow;
+    if (tune_f("DEBT_FIXED", 1.0f) <= 0.f) return borrow;
+    float rate = credit_current_rate(c);
+    return borrow * (1.f + rate);
+}
+
 static int home_reg(const World *w, int c){
     if(!w||c<0||c>=w->n_countries) return -1;
     int cp=w->country[c].capital_prov;
@@ -192,7 +209,17 @@ static float country_surplus(const WorldEconomy *e, int c, float floor_){
     return s;
 }
 /* Débite `amount` (<=country_surplus(e,c,floor_)) au PRORATA du surplus de chaque
- * province — aucune ne descend sous floor_ par construction (amount borné par l'appelant). */
+ * province — aucune ne descend sous floor_ par construction (amount borné par l'appelant).
+ * MONNAIE M11 — A2 : tient region[].treasury EN PHASE à CHAQUE débit (motif
+ * econ_prov_treasury_credit) — cette fonction est le SEUL débiteur partagé de TOUTE la
+ * chaîne de crédit (emprunt local/cité-état/état, intérêt, amortissement, rachat) ;
+ * corriger ICI ferme d'un coup tous les sites qui l'appellent, y compris ceux qui
+ * s'exécutent APRÈS econ_aggregate_regions (credit_year_tick, credit_settle_monthly,
+ * les verbes joueur) — motif signalé « Reste » par TROUVAILLES M9 (« côté PRÊTEUR, hors
+ * scope M9, signalé pour un futur audit crédit »). Appelée AUSSI depuis l'intérieur
+ * d'econ_tick (credit_borrow_local, AVANT agrégation) : la double écriture y est un
+ * no-op inoffensif (region[] est de toute façon réécrit EN ENTIER par l'agrégation qui
+ * suit). */
 static void debit_surplus_prorata(WorldEconomy *e, int c, float floor_, float amount){
     if (amount<=CR_EPS) return;
     float tot=country_surplus(e,c,floor_); if (tot<=CR_EPS) return;
@@ -202,6 +229,8 @@ static void debit_surplus_prorata(WorldEconomy *e, int c, float floor_, float am
         float s=fmaxf(0.f, e->prov[p].treasury - floor_); if (s<=0.f) continue;
         float share=amount*(s/tot);
         e->prov[p].treasury -= share;
+        int r=e->prov[p].region;
+        if (r>=0 && r<e->n_regions) e->region[r].treasury -= share;
     }
 }
 /* Σ richesse LENDABLE (élites+bourgeois, pondérées) d'un pays — les laborers n'ont pas
@@ -288,7 +317,7 @@ float credit_borrow_local(WorldEconomy *e, int c, float need){
         float b_elite = borrow*(cap_e/cap_tot), b_bourg = borrow-b_elite;
         if (b_elite>CR_EPS) debit_wealth_prorata(e,c,CLASS_ELITE,b_elite);
         if (b_bourg>CR_EPS) debit_wealth_prorata(e,c,CLASS_BOURGEOIS,b_bourg);
-        g_debt[c].to_class += borrow;
+        g_debt[c].to_class += debt_origination(c, borrow);   /* MONNAIE M11 — A3 v2 : forfait figé */
         covered += borrow;
     }
     return covered;
@@ -329,7 +358,7 @@ float credit_borrow_class(WorldEconomy *e, int c, SocialClass cls, float need){
     float borrow = (need>CR_EPS) ? fminf(need, cap) : cap;
     if (borrow<=CR_EPS) return 0.f;
     debit_wealth_prorata(e, c, cls, borrow);
-    g_debt[c].to_class += borrow;
+    g_debt[c].to_class += debt_origination(c, borrow);   /* MONNAIE M11 — A3 v2 : forfait figé */
     /* LE DÉPÔT : econ_region_treasury_add (PAS une écriture prov[].treasury directe) — c'est
      * le SEUL chemin qui tient region[].treasury EN PHASE avec prov[] (econ_country_gold,
      * credit_can_spend, credit_line, audit_eco lisent TOUS region[] ; region[].treasury n'est
@@ -377,7 +406,7 @@ float credit_borrow_citystate(WorldEconomy *e, const World *w, int c, float need
     float borrow=fminf(need, avail);
     if (borrow<=CR_EPS) return 0.f;
     debit_surplus_prorata(e,L,floor_,borrow);   /* DÉBIT seul (même raison que credit_borrow_local) */
-    g_debt[c].to_cs += borrow;
+    g_debt[c].to_cs += debt_origination(c, borrow);   /* MONNAIE M11 — A3 v2 : forfait figé */
     g_debt[c].cs_id = (int16_t)L;
     return borrow;
 }
@@ -463,7 +492,7 @@ float credit_borrow_state(WorldEconomy *e, const World *w, int debtor_c, int len
         int reg = e->prov[cap_pid].region;
         if (reg>=0 && reg<e->n_regions) econ_region_treasury_add(e, reg, borrow);
     }
-    g_debt[debtor_c].to_cs += borrow;
+    g_debt[debtor_c].to_cs += debt_origination(debtor_c, borrow);   /* MONNAIE M11 — A3 v2 : forfait figé */
     g_debt[debtor_c].cs_id = (int16_t)lender_c;
     return borrow;
 }
@@ -482,12 +511,15 @@ bool credit_loan_request_granted(int debtor_c){
     return (debtor_c>=0 && debtor_c<SCPS_MAX_COUNTRY) && g_loan_req_granted[debtor_c];
 }
 
-/* INTÉRÊT ANNUEL = la rétroaction (rentier). Taux ↑ avec le ratio de dette TOTALE
- * (to_class+to_cs) ET la chute de légitimité. Financé par credit_borrow (la MÊME chaîne
- * — si le trésor national ne suffit pas, l'État réemprunte pour honorer l'intérêt,
- * plafonné comme tout emprunt : jamais d'argent créé). Réparti aux DEUX créanciers ∝
- * leur part de la dette. Puis AMORTISSEMENT (surplus substantiel → rembourse le
- * principal) et RACHAT DE CRÉDIT (le marché secondaire). */
+/* MONNAIE M11 — A3 v2 : LE SERVICE ANNUEL = la rétroaction (rentier), désormais une
+ * ÉCHÉANCE MINIMALE sur un stock dont le markup est FIGÉ à l'origination (DEBT_FIXED,
+ * scps_tune_list.h — decision joueur « 1000 à 5 % ⇒ tu rembourses 1050, pas +5 %/an » ;
+ * kill-switch=0 restaure l'intérêt ANNUEL composé M3d pré-M11 EXACT). Payé du SURPLUS
+ * SEUL (jamais emprunté, jamais capitalisé si impayé — le manquant nourrit le streak
+ * d'IMPAYÉS, cf. plus bas : LE défaut réel). Réparti aux DEUX créanciers ∝ leur part de
+ * la dette. Puis AMORTISSEMENT (surplus substantiel → rembourse le stock plus vite) et
+ * RACHAT DE CRÉDIT (le marché secondaire, INCHANGÉ — une créance qui change de mains
+ * n'est pas une nouvelle origination). */
 void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w){
     (void)wl;   /* M3d : le taux ne lit plus la légitimité (brief §3, remplace l'incrément 1) */
     float floor_=tune_f("SINK_FLOOR",500.f);
@@ -501,44 +533,55 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
             g_debt[c].insolvent_streak=0; g_forced_pending[c]=false;   /* M3d : pas de dette, pas de chronique */
             continue;
         }
-        /* M3d §3 — LE TAUX (remplace l'incrément 1 : plus de légitimité/ligne∝pop) :
-         * taux = BASE + SLOPE×(dette/plafond), clampé [MIN,MAX] — la prime de risque EST
-         * le levier envers le plafond des 300 % (brief : « le service croissant étouffe la
-         * dépense, la spirale espagnole émergente, voulue »). Le plafond CAPE STRUCTURELLEMENT
-         * debt_total (credit_borrow* refusent au-delà, §1) : plus besoin d'un CREDIT_RATIO_CAP
-         * séparé sur l'ASSIETTE d'intérêt (idebt de l'incrément 1) — l'assiette EST debt_total. */
-        float rate=credit_current_rate(c);   /* V1 (M9) — factorisé, formule M3d §3 INCHANGÉE */
-        float interest=debt_total*rate;
+        /* MONNAIE M11 — A3 v2 : L'INTÉRÊT FIXE + L'ÉCHÉANCE MINIMALE (voir DEBT_FIXED,
+         * scps_tune_list.h — décision joueur, remplace le service d'intérêt ANNUEL composé
+         * de M3d). `fixed` : chaque prêt porte déjà son markup (debt_origination, figé à
+         * l'origination) — plus AUCUNE rente annuelle sur le stock ; à la place, une
+         * ÉCHÉANCE MINIMALE (DEBT_DUE_FRAC × stock) est DUE chaque année, payée du surplus
+         * SEUL (jamais empruntée, motif M3d inchangé), et RÉDUIT le stock (elle ÉTEINT une
+         * part de la créance — motif amortissement). `!fixed` (kill-switch) : le service
+         * d'intérêt ANNUEL M3d pré-M11 EXACT (le stock ne bouge JAMAIS, l'intérêt ne
+         * rembourse rien). */
+        bool fixed = tune_f("DEBT_FIXED", 1.0f) > 0.f;
+        float rate_now = credit_current_rate(c);   /* V1 (M9) — factorisé, formule M3d INCHANGÉE */
+        float charge = fixed ? (debt_total * tune_f("DEBT_DUE_FRAC", 0.10f)) : (debt_total * rate_now);
 
-        /* L'intérêt se paie du SURPLUS COURANT du pays SEUL (jamais via credit_borrow*,
-         * qui EMPRUNTE et grossirait le PRINCIPAL du même montant qu'on vient de "payer" —
-         * un double-compte qui fabriquerait de la dette sans contrepartie réelle). Si le
-         * surplus ne suffit pas, l'intérêt de cette année-là est simplement PLUS PETIT
-         * (auto-limité) — jamais capitalisé, jamais créé. */
+        /* L'échéance/l'intérêt se paie du SURPLUS COURANT du pays SEUL (jamais via
+         * credit_borrow*, qui EMPRUNTE et grossirait le stock du même montant qu'on vient de
+         * "payer" — un double-compte qui fabriquerait de la dette sans contrepartie réelle).
+         * Si le surplus ne suffit pas, le service de cette année-là est simplement PLUS PETIT
+         * (auto-limité) — jamais capitalisé, jamais créé (« fixe veut dire fixe »). */
         float avail=country_surplus(e,c,floor_);
-        float covered=fminf(interest, avail);
+        float covered=fminf(charge, avail);
         if (covered>CR_EPS) debit_surplus_prorata(e,c,floor_,covered);
-        if (covered+CR_EPS < interest) g_defaults++;   /* intérêt de l'année sous-servi (auto-limité) */
+        bool underpaid = (covered+CR_EPS < charge);
+        if (underpaid) g_defaults++;   /* échéance/intérêt de l'année sous-servi (auto-limité) */
+
         if (covered>CR_EPS){
             float i_class=covered*(g_debt[c].to_class/debt_total);
             float i_cs   =covered-i_class;
-            if (i_class>CR_EPS){   /* l'ÉLITE RENTIÈRE (et le bourgeois-créancier) vivent de l'intérêt d'État */
+            if (i_class>CR_EPS){   /* l'ÉLITE RENTIÈRE (et le bourgeois-créancier) vivent du flux de remboursement */
                 float ew=tune_f("ELITE_LEND_WEIGHT",1.0f), bw=tune_f("BOURGEOIS_LEND_WEIGHT",0.5f);
                 float tot=ew+bw; if (tot<=CR_EPS) tot=1.f;
                 float amt_e=i_class*(ew/tot), amt_b=i_class*(bw/tot);
-                /* MONNAIE M3i — RETENUE À LA SOURCE sur l'intérêt versé aux classes créancières
+                /* MONNAIE M3i — RETENUE À LA SOURCE sur le REVENU des classes créancières
                  * (brief : « intérêts de la dette versés aux classes créancières » explicitement
-                 * nommé). Pas de province unique ici (le paiement est NATIONAL, prorata sur
-                 * toutes les provinces du pays via credit_wealth_prorata) : la CAPITALE sert de
-                 * référence fiscale (econ_income_tax_rate_capital, scps_econ.c) et reçoit la
-                 * retenue au trésor — kill-switch INCOME_TAX=0 ⇒ taux 0 ⇒ comportement legacy
-                 * EXACT (aucun trésor à créditer, aucune mutation en plus). */
+                 * nommé). `fixed` : SEULE la part INTÉRÊT de CHAQUE remboursement est un revenu
+                 * (taux/(1+taux) du flux, décision joueur A3 v2) — la part PRINCIPAL rembourse
+                 * un capital déjà prêté, ce n'est pas un gain. `!fixed` (legacy) : TOUT le flux
+                 * ÉTAIT de l'intérêt (comportement pré-M11 exact). Pas de province unique ici
+                 * (le paiement est NATIONAL, prorata sur toutes les provinces du pays via
+                 * credit_wealth_prorata) : la CAPITALE sert de référence fiscale
+                 * (econ_income_tax_rate_capital, scps_econ.c) et reçoit la retenue au trésor —
+                 * kill-switch INCOME_TAX=0 ⇒ taux 0 ⇒ comportement legacy EXACT. */
+                float ifrac = fixed ? (rate_now/(1.f+rate_now)) : 1.f;
+                float taxable_e=amt_e*ifrac, taxable_b=amt_b*ifrac;
                 float rate_e=econ_income_tax_rate_capital(e,c,CLASS_ELITE);
                 float rate_b=econ_income_tax_rate_capital(e,c,CLASS_BOURGEOIS);
-                float tax_e=amt_e*rate_e, tax_b=amt_b*rate_b;
+                float tax_e=taxable_e*rate_e, tax_b=taxable_b*rate_b;
                 if (tax_e+tax_b>CR_EPS){
                     int cap=econ_country_capital_prov(e,c);
-                    if (cap>=0 && cap<e->n_prov) e->prov[cap].treasury += tax_e+tax_b;
+                    if (cap>=0 && cap<e->n_prov) econ_prov_treasury_credit(e, cap, tax_e+tax_b);   /* MONNAIE M11 — A2 */
                     econ_flux_add(c, FX_TAX, tax_e+tax_b);
                     amt_e-=tax_e; amt_b-=tax_b;
                 }
@@ -547,10 +590,19 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
             }
             if (i_cs>CR_EPS && g_debt[c].cs_id>=0){
                 int hc=home_reg(w,g_debt[c].cs_id);
-                if (hc>=0&&hc<e->n_regions){ int cp=econ_region_rep_province(e,hc); if (cp>=0&&cp<e->n_prov) e->prov[cp].treasury+=i_cs; }
+                if (hc>=0&&hc<e->n_regions){ int cp=econ_region_rep_province(e,hc); if (cp>=0&&cp<e->n_prov) econ_prov_treasury_credit(e, cp, i_cs); }   /* MONNAIE M11 — A2 */
+            }
+            /* `fixed` : le remboursement ÉTEINT une part du stock (principal+markup blended,
+             * motif amortissement ci-dessous) — « rembourses 1050 » se solde en RÉDUISANT la
+             * créance de ce qui a été payé. `!fixed` (legacy) : le stock NE bouge PAS ici
+             * (l'intérêt pré-M11 ne remboursait rien — comportement EXACT, cf. le contrôle
+             * historique « le principal n'a pas grossi rien qu'à payer l'intérêt »). */
+            if (fixed){
+                g_debt[c].to_class -= i_class; if (g_debt[c].to_class<0.f) g_debt[c].to_class=0.f;
+                g_debt[c].to_cs    -= i_cs;    if (g_debt[c].to_cs<0.f)    g_debt[c].to_cs=0.f;
             }
         }
-        econ_flux_add(c, FX_CREDIT, -covered);   /* I0 : la ligne intérêts (montant RÉELLEMENT servi) */
+        econ_flux_add(c, FX_CREDIT, -covered);   /* I0 : la ligne intérêts/échéance (montant RÉELLEMENT servi) */
 
         /* AMORTISSEMENT — un pays au trésor GRAS rembourse une part du PRINCIPAL depuis
          * son surplus (au-dessus de COURT_FLOOR, le seuil de hoarding — même réserve que
@@ -570,7 +622,7 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
                 }
                 if (r_cs>CR_EPS && g_debt[c].cs_id>=0){
                     int hc=home_reg(w,g_debt[c].cs_id);
-                    if (hc>=0&&hc<e->n_regions){ int cp=econ_region_rep_province(e,hc); if (cp>=0&&cp<e->n_prov) e->prov[cp].treasury+=r_cs; }
+                    if (hc>=0&&hc<e->n_regions){ int cp=econ_region_rep_province(e,hc); if (cp>=0&&cp<e->n_prov) econ_prov_treasury_credit(e, cp, r_cs); }   /* MONNAIE M11 — A2 */
                 }
                 g_debt[c].to_class -= r_class; if (g_debt[c].to_class<0.f) g_debt[c].to_class=0.f;
                 g_debt[c].to_cs    -= r_cs;    if (g_debt[c].to_cs<0.f)    g_debt[c].to_cs=0.f;
@@ -578,17 +630,34 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
         }
         if (g_debt[c].to_cs<=CR_EPS) g_debt[c].cs_id=-1;
 
-        /* M3d §5 — LA BANQUEROUTE FORCÉE : « plafond atteint ET insolvable (épuisement
-         * CHRONIQUE) ». Motif des grâces existantes (g_lowsat_streak/g_colony_cd, EMOB/
-         * COLC) : un compteur d'années CONSÉCUTIVES au plafond (ré-évalué APRÈS intérêt+
-         * amortissement de CETTE année, sur la dette FINALE) — BANKRUPTCY_GRACE_YEARS
-         * (2 ans, registre J) de répit avant le couperet, jamais un pic isolé. g_forced_
-         * pending est un flag TRANSIENT : scps_sim.c l'exécute juste après credit_year_
-         * tick (RAZ dette + cicatrice + effet diplo, motif CMD_MANUMIT — sim.c orchestre,
-         * credit.c fait le cœur). */
+        /* M3d §5 / MONNAIE M11 — A3 v2 — LA BANQUEROUTE FORCÉE : « plafond atteint OU
+         * échéance/intérêt chroniquement IMPAYÉ SUR UNE DETTE SUBSTANTIELLE » (le OU est le
+         * CŒUR de A3 v2 — l'audit : un pays sous le plafond qui ne paie PLUS JAMAIS RIEN
+         * restait, pré-M11, hors de portée de la banqueroute forcée). `fixed` : le streak
+         * réagit à `underpaid` (échéance manquée CETTE année) EN PLUS du plafond — MAIS
+         * SEULEMENT si `debt_final` dépasse DEBT_DEFAULT_THRESHOLD (registre J, DÉLIBÉRÉMENT
+         * distinct de BUYBACK_DEBT_THRESHOLD — le seuil du RACHAT DE CRÉDIT, un mécanisme
+         * DIFFÉRENT, INCHANGÉ ici). CALIBRAGE (sweep {9,11,42}×3×250, mesuré) : sans ce
+         * plancher, N'IMPORTE QUEL résidu de dette (même quelques or, jamais remboursable par
+         * un pays qui ne repasse JAMAIS SINK_FLOOR de trésor) déclenchait la banqueroute
+         * forcée après BANKRUPTCY_GRACE_YEARS années — Σ banqueroutes 583→~1950 QUELLE QUE
+         * SOIT DEBT_DUE_FRAC (0.02 à 0.10, bifurcation pas un gradient, motif M7/M8) : la
+         * FRACTION n'était PAS le vrai levier, la LARGEUR du déclencheur l'était. Avec le
+         * plancher : seule une dette VRAIMENT substantielle, jamais servie pendant 5 ans,
+         * fait faillite — le défaut RÉEL, pas le résidu trivial. `!fixed` (legacy) :
+         * SEULEMENT le plafond (comportement pré-M11 exact, le bug de l'audit reproduit tel
+         * quel). Motif des grâces existantes (g_lowsat_streak/g_colony_cd, EMOB/COLC) : un
+         * compteur d'années CONSÉCUTIVES en défaut (ré-évalué APRÈS échéance/intérêt+
+         * amortissement de CETTE année) — BANKRUPTCY_GRACE_YEARS (registre J) de répit avant
+         * le couperet, jamais un pic isolé. g_forced_pending est un flag TRANSIENT : scps_
+         * sim.c l'exécute juste après credit_year_tick (RAZ dette + cicatrice + effet diplo,
+         * motif CMD_MANUMIT — sim.c orchestre, credit.c fait le cœur). */
         float debt_final = g_debt[c].to_class + g_debt[c].to_cs;
         float ceiling_final = credit_debt_ceiling(c);
-        if (debt_final >= ceiling_final - CR_EPS && ceiling_final>CR_EPS){
+        bool ceiling_hit = (debt_final >= ceiling_final - CR_EPS && ceiling_final>CR_EPS);
+        bool debt_meaningful = (debt_final > tune_f("DEBT_DEFAULT_THRESHOLD", 1500.f));
+        bool in_default = fixed ? (ceiling_hit || (underpaid && debt_meaningful)) : ceiling_hit;
+        if (in_default){
             if (g_debt[c].insolvent_streak < 30000) g_debt[c].insolvent_streak++;
         } else {
             g_debt[c].insolvent_streak = 0;
@@ -609,7 +678,7 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
         int L=g_garnish_cs_id[c];
         if (L>=0 && L<w->n_countries && L!=c){
             int hc=home_reg(w,L);
-            if (hc>=0&&hc<e->n_regions){ int cp=econ_region_rep_province(e,hc); if (cp>=0&&cp<e->n_prov) e->prov[cp].treasury+=pend; }
+            if (hc>=0&&hc<e->n_regions){ int cp=econ_region_rep_province(e,hc); if (cp>=0&&cp<e->n_prov) econ_prov_treasury_credit(e, cp, pend); }   /* MONNAIE M11 — A2 */
         }
         g_garnish_cs_pending[c]=0.f;
     }
