@@ -1146,6 +1146,14 @@ void econ_money_instrument_get(double *va_produced, double *consumption_destroye
 /* MONNAIE M5 — R3 : cumul « assiette » (revenu que la consommation crédite au trésor,
  * print-only, RAZ par sim, jamais sérialisé — même motif que econ_money_instrument_get). */
 double econ_assiette_revenue_get(void);
+/* MONNAIE M12 — E1 : le P&L PAR PAYS, PAR ANNÉE (print-only, jamais sérialisé) — deux
+ * lignes SANS bucket FX_* : l'achat d'État §3 (pending_buy_debit) et l'assiette M5 R3 PAR
+ * PAYS (économ_assiette_revenue_get ci-dessus est MONDE seul). econ_pldiag_reset() doit être
+ * appelé UNE FOIS/an (chronicle, même point qu'econ_flux_year_capture) pour que les getters
+ * reflètent l'année COURANTE seule, pas un cumul sim entière. */
+void   econ_pldiag_reset(void);
+double econ_pldiag_buyprod_get(int cid);
+double econ_pldiag_assiette_get(int cid);
 /* MONNAIE M3c — LE CANAL FERMÉ : ce que la péréquation nationale + l'emprunt aux PROPRES
  * classes (scps_credit.c, credit_borrow_local, appelé en INTERNE par econ_tick — aucun
  * World* requis) n'ont PAS pu couvrir pour le pays c, CE tick — le besoin restant qui

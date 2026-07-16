@@ -1378,6 +1378,15 @@
     X(NEEDS_TIER_POP,                  3000.0f) \
     X(NEEDS_TIER_GROWTH,               2.0f) \
     X(NEEDS_TIER_MAX,                  10.0f) \
-    X(NEEDS_TIER_DECAY_YEARS,          5.0f)
+    X(NEEDS_TIER_DECAY_YEARS,          5.0f) \
+    /* MONNAIE M12 — E1 : L'AMORÇAGE PRUDENT (audit-mesure : sweep {9,11,42}×3, dette Σ an-2/
+     * an-12 en chute de ~97 % avec PL_GENESIS=0 vs le legacy 1.0 codé en dur — cf. TROUVAILLES
+     * « CHANTIER MONNAIE — M12 »). Un pays SANS référence de VA (`va_country_prev<=EPS` —
+     * genèse OU tout pays/cité-état FRAÎCHEMENT fondé, le cas se re-déclenche tout du long des
+     * 12 premières années, pas une seule fois) démarre BAS (rien payé) plutôt que de tenter de
+     * payer 100 % de sa toute première VA avec la seule réserve de genèse — la caisse RÉELLE
+     * prend le relais dès le tick suivant (`va_country_prev` peuplé). PL_GENESIS=1.0 : legacy
+     * EXACT (golden pré-M12 byte-identique). */ \
+    X(PL_GENESIS,                       0.0f)
 
 #endif /* SCPS_TUNE_LIST_H */

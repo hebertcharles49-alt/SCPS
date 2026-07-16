@@ -907,7 +907,39 @@ int main(int argc, char **argv){
                             econ_country_bankruptcy_scar(s.econ,c), faction_capture_total(c));
                 }
             }
+            /* MONNAIE M12 — E1 : DIAG P&L DE L'ÉTAT DE BASE (SCPS_PLDIAG, print-only, gated —
+             * aucun coût hors mesure). Le P&L d'un État EN PAIX SANS CHANTIER, ligne à ligne
+             * (chaque FX_* + achat-État §3, qui n'a PAS de bucket FX_* — econ_pldiag_buyprod_get
+             * — + assiette M5 R3 PAR PAYS, econ_pldiag_assiette_get), moyenné sur les pays
+             * JOUABLES (PLAYER/ANTAGONIST) NI en guerre NI en chantier actif (|FX_BUILD|≈0)
+             * CETTE année — le filtre « état de base » du brief. Capturé JUSTE AVANT
+             * econ_flux_year_capture (même point que SCPS_MILDIAG/EARLYDIAG ci-dessus) : le
+             * flux de CETTE année, pas encore RAZ. Fenêtre : an 1-12 PRIORITAIRE, puis an 50/150
+             * (le brief). */
+            if (getenv("SCPS_PLDIAG") && yr>0 && (yr<=12 || yr==50 || yr==150)){
+                int npl=0; double sumfx[FX_COUNT]={0}, sum_buy=0.0, sum_ass=0.0;
+                for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+                    PolityRole rl=w->country[c].role;
+                    if (rl!=POLITY_PLAYER && rl!=POLITY_ANTAGONIST) continue;
+                    bool at_war=false;
+                    for (int b=0;b<w->n_countries;b++)
+                        if (b!=c && diplo_status(s.dp,c,b)==DIPLO_WAR){ at_war=true; break; }
+                    if (at_war) continue;
+                    double build = econ_flux_get(c,FX_BUILD);
+                    if (fabs(build) > 1e-3) continue;   /* chantier actif ce tick — hors « état de base » */
+                    npl++;
+                    for (int k=0;k<FX_COUNT;k++) sumfx[k]+=econ_flux_get(c,(FluxComp)k);
+                    sum_buy += econ_pldiag_buyprod_get(c);
+                    sum_ass += econ_pldiag_assiette_get(c);
+                }
+                if (npl>0){
+                    fprintf(stderr,"   [PLDIAG] an %d (n=%d état(s) de base, paix sans chantier, or/mois/empire) —", yr, npl);
+                    for (int k=0;k<FX_COUNT;k++) fprintf(stderr," %s %+.2f", econ_flux_name((FluxComp)k), sumfx[k]/npl/12.0);
+                    fprintf(stderr," achat-État %+.2f assiette %+.2f\n", sum_buy/npl/12.0, sum_ass/npl/12.0);
+                }
+            }
             econ_flux_year_capture();
+            econ_pldiag_reset();   /* MONNAIE M12 — E1 : RAZ annuelle (même cadence que FX_* / g_flux) */
             for (int d=0; d<365; d++) sim_day(&s, w);
             /* MONNAIE M8 — DIAG (SCPS_M8DIAG, print-only) : la chaîne manufacture→besoin
              * comblé→satisfaction→capacité fiscale→impôt, tracée sur LE pays choisi

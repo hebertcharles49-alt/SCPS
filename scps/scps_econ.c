@@ -1105,6 +1105,22 @@ void econ_money_instrument_get(double *va_produced, double *consumption_destroye
 static double g_assiette_revenue_cum=0.0;
 double econ_assiette_revenue_get(void){ return g_assiette_revenue_cum; }
 
+/* MONNAIE M12 — E1 : L'AUDIT P&L DE L'ÉTAT DE BASE (print-only, PAR PAYS, RAZ ANNUELLE —
+ * chronicle appelle econ_pldiag_reset() au même point qu'econ_flux_year_capture ; motif
+ * DIFFÉRENT de g_va_produced_cum/g_assiette_revenue_cum ci-dessus, qui sont cumulatifs SIM
+ * ENTIÈRE : celui-ci veut une PHOTO PAR ANNÉE pour le tableau P&L du brief M12 (« an 1-12
+ * PRIORITAIRE, puis an 50, an 150 »). Statics de MODULE, JAMAIS sérialisés (diagnostic de
+ * mission, aucun effet sur le monde/le hash). Deux lignes qui n'ont PAS de bucket FX_*
+ * existant : l'achat d'État §3 (pending_buy_debit — LA ligne suspecte du brief) et
+ * l'assiette M5 R3 (aujourd'hui MONDE seule, ici PAR PAYS pour le P&L). */
+static double g_pldiag_buyprod[SCPS_MAX_COUNTRY], g_pldiag_assiette[SCPS_MAX_COUNTRY];
+void   econ_pldiag_reset(void){
+    memset(g_pldiag_buyprod,0,sizeof g_pldiag_buyprod);
+    memset(g_pldiag_assiette,0,sizeof g_pldiag_assiette);
+}
+double econ_pldiag_buyprod_get(int cid){ return (cid>=0&&cid<SCPS_MAX_COUNTRY)? g_pldiag_buyprod[cid] : 0.0; }
+double econ_pldiag_assiette_get(int cid){ return (cid>=0&&cid<SCPS_MAX_COUNTRY)? g_pldiag_assiette[cid] : 0.0; }
+
 /* MONNAIE M3h — LA DÉBASE : télémétrie MONDE cumulée, même motif (statics de module,
  * RAZ à econ_init, jamais sérialisés — un compteur de PARTIE, pas un état de simulation). */
 static double g_debase_gold_cum=0.0;
@@ -3541,6 +3557,22 @@ void econ_tick(WorldEconomy *e, float dt) {
      * trop peu de biens, ÉMERGENT — 1.0 reproduit EXACTEMENT l'ancien comportement
      * (kill-switch de gate, golden pré-M7 byte-identique). */
     const float inflation_cap = tune_f("INFLATION_CAP", 4.0f);
+    /* MONNAIE M12 — E1 : L'AMORÇAGE PRUDENT (docs/MONNAIE_CONCEPT.md, brief M12 « l'État
+     * naissant paie plein tarif avant d'avoir une caisse »). AUDIT confirmé au sweep apparié
+     * (chronicle --hash/--pldiag, pre-m12 vs patch local) : le `1.f` codé en dur ci-dessous
+     * (« pas encore de VA de référence ⇒ prix plein, non contraint ») force un pays qui vient
+     * de produire son PREMIER tick de VA à tenter de payer 100 % de cette VA à ses classes,
+     * quelle que soit sa caisse (souvent juste la réserve de genèse M5, 100 or) — le déficit
+     * non couvert devient aussitôt `country_shortfall` (péréquation puis emprunt aux classes,
+     * scps_credit.c) : LA source dominante de la dette early mesurée par le brief (an 2 : Σ
+     * dette −97 % sur le sweep {9,11,42}×3 avec PL_GENESIS=0 vs 1 ; an 12 : −97 % aussi — la
+     * branche « pas de référence » se re-déclenche pour chaque pays/cité-état NOUVEAU tout du
+     * long des 12 premières années, pas seulement à la genèse du monde). PL_GENESIS (défaut
+     * 0.0, registre J) remplace le 1.f : un pays sans référence démarre BAS (rien payé encore,
+     * comme l'exige « démarrer bas, converger ») — dès son 2e tick, `va_country_prev` est
+     * peuplé et le ratio caisse/VA normal reprend la main. PL_GENESIS=1.0 = comportement
+     * LEGACY EXACT (kill-switch : la formule redevient `1.f` pour ce cas). */
+    const float pl_genesis = tune_f("PL_GENESIS", 0.f);
     float caisse_snapshot[SCPS_MAX_COUNTRY]={0}, price_level[SCPS_MAX_COUNTRY];
     { const float opf_pre = tune_f("SINK_FLOOR", SINK_FLOOR);
       for (int p=0;p<e->n_prov && p<SCPS_MAX_PROV;p++){
@@ -3552,7 +3584,7 @@ void econ_tick(WorldEconomy *e, float dt) {
       for (int c=0;c<SCPS_MAX_COUNTRY;c++)
           price_level[c] = (e->va_country_prev[c]>EPS)
                           ? clampf(caisse_snapshot[c]/e->va_country_prev[c], 0.f, inflation_cap)
-                          : 1.f;   /* pas encore de VA de référence (genèse/pays neuf) : prix plein, non contraint */
+                          : pl_genesis;   /* MONNAIE M12 — E1 : plus de VA de référence (genèse/pays neuf) : démarrer BAS, converger (pl_genesis=1.0 legacy) */
     }
     float va_country_this[SCPS_MAX_COUNTRY]={0};
     /* MONNAIE M3c — le besoin NATIONAL de péréquation (Σ des reliquats LOCAUX non payés,
@@ -4174,8 +4206,10 @@ void econ_tick(WorldEconomy *e, float dt) {
          * que la chaîne COMPLÈTE ne peut vraiment financer reste un résidu mesuré. */
         { float debit = fminf(pending_buy_debit, fmaxf(0.f, re->treasury));
           re->treasury -= debit;
-          if (re->owner>=0 && re->owner<SCPS_MAX_COUNTRY)
-              country_shortfall[re->owner] += (pending_buy_debit - debit); }
+          if (re->owner>=0 && re->owner<SCPS_MAX_COUNTRY){
+              country_shortfall[re->owner] += (pending_buy_debit - debit);
+              g_pldiag_buyprod[re->owner] -= (double)debit;   /* E1 diag : la dépense RÉELLE (signe FX_*, dépense négative) */
+          } }
 
         /* §besoins progressifs — combien de besoins sont ACTIFS pour CE PAYS : depuis MONNAIE
          * M10 — P1 (décision joueur : « driver les besoins sur le nombre d'hab de l'empire… si
@@ -4529,7 +4563,8 @@ void econ_tick(WorldEconomy *e, float dt) {
              * isolé) n'a pas d'État pour vendre : elle reste un puits documenté par l'instrument. */
             if (!wh){ float consumed = budget0-re->strata[c].wealth;
               if (re->owner>=0 && re->owner<SCPS_MAX_COUNTRY){ re->treasury += consumed;
-                  g_assiette_revenue_cum += (double)consumed; }   /* M5 R3 : instrument print-only, « paie ton assiette » */
+                  g_assiette_revenue_cum += (double)consumed;   /* M5 R3 : instrument print-only, « paie ton assiette » */
+                  g_pldiag_assiette[re->owner] += (double)consumed; }   /* E1 diag : la MÊME ligne, PAR PAYS */
               else                                            g_consumption_destroyed_cum += (double)consumed; }
             /* MONNAIE M10 — P1 : kill-switch p1_on faux ⇒ basket/nbasket/nsat LEGACY inchangés
              * (calculés ci-dessus). p1_on vrai — « n'importe quel bien… peu importe l'ordre »
