@@ -2440,10 +2440,16 @@ static bool ai_resource_famine(const WorldEconomy *econ, int cid, Resource g){
     return demand > supply*1.15f + 1.f && stock < demand;
 }
 
+/* TECHDIAG (print-only, env SCPS_TECHDIAG) : trace le pipeline de recherche IA —
+ * income accumulé, chemins d'épargne (early-return), pick final. Aucun effet d'état. */
+static int g_techdiag = -1;
+#define TDIAG(...) do{ if(g_techdiag>0) fprintf(stderr, __VA_ARGS__); }while(0)
+
 void ai_research_step(AiActor *a, TechState *ts, const World *w,
                       const WorldEconomy *econ, const RouteNetwork *rn,
                       const WorldProsperity *wp, int day){
     if (!ts || day < a->next_research_day) return;
+    if (g_techdiag<0) g_techdiag = (getenv("SCPS_TECHDIAG")!=NULL);
     a->next_research_day = day + AI_RESEARCH_CADENCE;
     /* §4c — le gate de l'esclavage, RAFRAÎCHI AVANT tout early-return (piège pris au
      * SLAVEDIAG : CINQ returns d'épargne/famine plus bas sautaient ce bloc — un empire
@@ -2479,6 +2485,9 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
     income *= (1.f + tune_f("AI_METAB_RES_W",AI_METAB_RES_W)
                      * econ_country_metabolized(w, econ, a->cid));
     ts->research_points += income;
+    TDIAG("[TD] d=%d c=%d sav=%.1f yld=%.2f inc=%.1f pts=%.1f nu=%d tk=%d\n",
+          day, a->cid, econ_country_savoir(econ,a->cid), tech_research_yield(ts),
+          income, ts->research_points, ts->n_unlocked, a->stats.techs);
     ai_sync_refresh(w, econ, rn, ts, a->cid);                   /* §4-13 : cache la profondeur + loquette la diffusion (+ S1 : le commerce) */
     /* BARRE D'ACCÈS (Temps 2) : tier par héritage = MAX(profondeur cachée, métabolisation). */
     float metab[HERITAGE_COUNT]; econ_country_heritage_digested(w, econ, a->cid, metab);
@@ -2505,7 +2514,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
     if (pick!=TECH_FOREUSE && tech_can_research(ts, TECH_FOREUSE, access)
         && ai_age_tier_open(wp, tech_node(TECH_FOREUSE)->theme, tech_node(TECH_FOREUSE)->tier)){
         AiView vg = ai_observe(wp, w, econ, a->cid);
-        if (vg.chain_gap==RES_IRON) return;        /* on garde les points : la foreuse d'abord */
+        if (vg.chain_gap==RES_IRON){ TDIAG("[TD] d=%d c=%d HOLD FOREUSE\n",day,a->cid); return; }  /* on garde les points : la foreuse d'abord */
     }
     /* FAU5 — LA PENTE TOURNE : la famine de BOIS/NOURRITURE court à son transmuteur (réplicateur/
      * corne), MAIS l'IA PÈSE l'échappatoire contre la Brèche — au BORD (proximité de crise élevée)
@@ -2518,7 +2527,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
             TechId step=ai_step_toward(ts, tgt, access, wp);
             if (step!=TECH_COUNT){
                 float sc=ai_effective_cost(step, nprov, ai_capital_ethos(w,econ,a->cid), a->cid);
-                if (ts->research_points < sc) return;      /* on ÉPARGNE pour le pas suivant */
+                if (ts->research_points < sc){ TDIAG("[TD] d=%d c=%d HOLD FAMINE step=%d cost=%.0f\n",day,a->cid,(int)step,sc); return; }  /* on ÉPARGNE pour le pas suivant */
                 pick=step;                                 /* on AVANCE vers l'échappatoire */
             }
         }
@@ -2548,7 +2557,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
                         ? savoir_chain[k] : ai_step_toward(ts,savoir_chain[k],access,wp);
           if (step==TECH_COUNT) break;                        /* chaîne non viable (accès) — n'insiste pas */
           float sc = ai_effective_cost(step, nprov, ai_capital_ethos(w,econ,a->cid), a->cid);
-          if (ts->research_points < sc) return;                /* on ÉPARGNE pour le maillon suivant */
+          if (ts->research_points < sc){ TDIAG("[TD] d=%d c=%d HOLD SAVOIR step=%d cost=%.0f\n",day,a->cid,(int)step,sc); return; }  /* on ÉPARGNE pour le maillon suivant */
           pick = step; palier_hold = true;                     /* AVANCE ; les branches suivantes s'inclinent */
           break;
       } }
@@ -2584,7 +2593,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
             }
             if (t2step!=TECH_COUNT){
                 float sc=ai_effective_cost(t2step, nprov, ai_capital_ethos(w,econ,a->cid), a->cid);
-                if (ts->research_points < sc) return;       /* pas les moyens : on ÉPARGNE (et TIENT) */
+                if (ts->research_points < sc){ TDIAG("[TD] d=%d c=%d HOLD T2 step=%d cost=%.0f\n",day,a->cid,(int)t2step,sc); return; }  /* pas les moyens : on ÉPARGNE (et TIENT) */
                 pick = t2step;                              /* on AVANCE vers le palier */
                 palier_hold = true;                         /* PRIORITÉ : les épargnes S1/S3/S4 s'inclinent */
             }
@@ -2613,7 +2622,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
                 if (cc<sigcost){ sig=(TechId)id; sigcost=cc; }                /* la moins chère d'abord */
             }
             if (sig!=TECH_COUNT){
-                if (ts->research_points < sigcost) return;                    /* pas les moyens : on ÉPARGNE (et TIENT) */
+                if (ts->research_points < sigcost){ TDIAG("[TD] d=%d c=%d HOLD SIG step=%d cost=%.0f\n",day,a->cid,(int)sig,sigcost); return; }  /* pas les moyens : on ÉPARGNE (et TIENT) */
                 pick = sig;                                                   /* assez de Savoir : on ACQUIERT la greffe */
             }
         }
@@ -2637,7 +2646,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
             TechId step=ai_step_toward(ts, TECH_FORGE_RUNES, access, wp);
             if (step!=TECH_COUNT){
                 float sc=ai_effective_cost(step, nprov, ai_capital_ethos(w,econ,a->cid), a->cid);
-                if (ts->research_points < sc) return;                      /* on ÉPARGNE pour le pas suivant */
+                if (ts->research_points < sc){ TDIAG("[TD] d=%d c=%d HOLD S3 step=%d cost=%.0f\n",day,a->cid,(int)step,sc); return; }  /* on ÉPARGNE pour le pas suivant */
                 pick=step;                                                 /* on AVANCE vers l'emblème */
             }
         }
@@ -2663,12 +2672,14 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
           TechId step=ai_step_toward(ts, tgt, access, wp);
           if (step!=TECH_COUNT){
               float sc=ai_effective_cost(step, nprov, eth, a->cid);
-              if (ts->research_points < sc) return;              /* on ÉPARGNE pour le pas suivant */
+              if (ts->research_points < sc){ TDIAG("[TD] d=%d c=%d HOLD S4 step=%d cost=%.0f\n",day,a->cid,(int)step,sc); return; }  /* on ÉPARGNE pour le pas suivant */
               pick=step;                                         /* on AVANCE vers la tech d'unité */
           }
       } }
+    if (pick==TECH_COUNT) TDIAG("[TD] d=%d c=%d NOPICK pts=%.1f\n",day,a->cid,ts->research_points);
     if (pick!=TECH_COUNT){
         float cost = ai_effective_cost(pick, nprov, ai_capital_ethos(w,econ,a->cid), a->cid);
+        TDIAG("[TD] d=%d c=%d PICK=%d cost=%.0f pts=%.1f\n",day,a->cid,(int)pick,cost,ts->research_points);
         if (ts->research_points >= cost && tech_research(ts, pick, access)){
             ts->research_points -= cost;
             a->stats.techs++;
