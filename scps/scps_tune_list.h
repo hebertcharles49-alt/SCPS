@@ -974,6 +974,50 @@
      * METAB_MERV_MIN (plancher d'âmes) et la voie gouvernance (arch_depth/
      * PROF_PROFOND, chantier TECH) INTACTS — seule la voie diaspora bouge. */ \
     X(RACE_METAB_MERV_RATIO,  0.25f) \
+    /* ═══ MISSION FAUSTIEN — LES MACHINES GÉNÉREUSES (2026-07-16, cf. TROUVAILLES.md
+     * §FAUSTIEN) ═══ FAUSTIEN_BOOST : kill-switch MAÎTRE de toute la vague (X1-X6,
+     * scps_econ.c genèse/tick + scps_endgame.c) — =0 restaure le comportement
+     * pre-faustien EXACT (golden byte-identique, tag pre-faustien), =1 (défaut)
+     * l'active. Décision joueur : « chaque usage de ressource faustienne doit
+     * POUSSER vers la fin ; pas de jaloux entre les 3 machines ; le réchauffement
+     * redevient le backup UNIVERSEL ». X1 — L'IMPLANTATION (scps_econ.c, genèse) :
+     * FAUST_ARCANE_DIV/FAUST_CELESTIAL_DIV divisent le modulo du « nœud riche »
+     * (1/N tuiles éligibles) — legacy 4/9, boosté 2/4 (~×2 / ×2.25 densité). Les 2
+     * ressources restent des SOUS-GISEMENTS PROTÉGÉS (jamais une 3e brute, règle
+     * ≤2 raws intacte). X2 — LE RENDEMENT (scps_econ.c, manufacture) :
+     * FAUST_YIELD_MULT multiplie la sortie PRIMAIRE des 3 machines (foreuse/
+     * réplicateur/corne SEULEMENT — pas la Forge céleste/l'Atelier de mage, hors
+     * scope) + le panier bonus de la Foreuse. X3 — CHAQUE USAGE POUSSE VERS LA FIN
+     * (scps_econ.c, hook faust_charge unique) : ENTROPY_PER_USE ajoute une charge
+     * d'entropie ∝ l'INTRANT BRÛLÉ (lim×q1 — essence/flux/fer céleste), EN PLUS du
+     * spawn ∝ sortie existant (FAUST_SPAWN_CHARGE, INCHANGÉ) — actionner la machine
+     * coûte, pas seulement produire. X4 — LES 3 MACHINES (scps_econ.c) :
+     * FAUST_FOREUSE_PRECIOUS_MULT relève or/métal précieux du panier Foreuse pour
+     * atteindre EXACTEMENT le ratio 2(commun):1(précieux) documenté (0.5→2.5,
+     * 0.3→1.5 ; Σcommun=8.0/Σprécieux=4.0) — l'or/cuivre du panier passe désormais
+     * par la MÊME redevance que l'extraction normale (mint_royalty), l'inflation
+     * suit ÉMERGEMMENT royalty→réserve→frappe (M7), aucun hack direct.
+     * FAUST_CORNE_ALCOHOL_QTY : bonus EAU_DE_VIE ∝ lim (motif out2, comme le bâton
+     * de mage). FAUST_MUTATION_K (scps_econ.h ECON_PROVMOD_BODY) : le Réplicateur
+     * actif nudge la DÉMOGRAPHIE via l'entrée K existante (PMOD_MUTATION), jamais
+     * un +pop plat. X5 — LE BACKUP UNIVERSEL (scps_endgame.c
+     * endgame_select_and_fire) : gaté par CE MÊME FAUSTIEN_BOOST (pas un tunable
+     * séparé) — voir le commentaire au site d'appel pour le détail (le fallback
+     * RÉCHAUFFEMENT devient un vrai else final inconditionnel, correction joueur
+     * FERME : « = 0 DÉFINITIF, pas de sans-fin »). X6 — MERVEILLE À 400
+     * (scps_endgame.c endgame_heritage_metabolized_detail) : FAUST_METAB_MERV_MIN
+     * descend le plancher d'âmes digérées 500→400 — la Merveille reste STRICTEMENT
+     * joueur-gatée (non touché), injouable à mesurer en headless (F1, mission
+     * FINS) — un réglage pour les parties réelles. */ \
+    X(FAUSTIEN_BOOST,          1.0f) \
+    X(FAUST_ARCANE_DIV,        2.0f) \
+    X(FAUST_CELESTIAL_DIV,     4.0f) \
+    X(FAUST_YIELD_MULT,        2.0f) \
+    X(ENTROPY_PER_USE,         0.10f) \
+    X(FAUST_FOREUSE_PRECIOUS_MULT, 5.0f) \
+    X(FAUST_CORNE_ALCOHOL_QTY, 2.0f) \
+    X(FAUST_MUTATION_K,        0.20f) \
+    X(FAUST_METAB_MERV_MIN,  400.0f) \
     /* DÉDUP RÉVOLTE (Option B, 2026-07-04) — statecraft ne fait plus fire de révolte lui-même ;
      * scps_revolt.c est le SEUL acteur. Il replie le SIGNAL d'agitation legacy (L/coercion/choc
      * de conquête/stabilité/garnison, statecraft_agitation 0-100) dans son propre `worst` — le
