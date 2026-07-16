@@ -2227,7 +2227,18 @@ static void econ_ai_fiscal_tick(WorldEconomy *e, int cid){
          * solvabilité, motif brief C0 point 1. RELÂCHER (err<0) SEUL est mis à l'échelle par
          * la marge (relax_factor=0 ⇒ pas=0 ⇒ TIENT exactement, jamais négatif). */
         float eff_step = (err>0.f) ? step : step*relax_factor;
-        float next = clampf(base + (err>0.f? eff_step : -eff_step), 0.02f, 1.f);
+        /* MONNAIE M10 — P0 : LE PLANCHER FISCAL (DIAG-BANQUEROUTES, TROUVAILLES 2026-07-16,
+         * « le levier manquant est le flux (tax_mult), pas la marge de relâchement » —
+         * mesuré : C3 seul descend tax_mult jusqu'à 0.34 en amputant 30-70 % du fisc, C0
+         * (la marge/slack ci-dessus) ne rattrape que ~1.5 % de l'écart car son gate est
+         * RÉACTIF au stock de dette, pas au flux qui s'érode en amont). Aucun État ne
+         * détruit 98 % de son fisc pour du confort — TAX_MULT_FLOOR borne la case basse de
+         * CE contrôleur (C3) seul, PAS le curseur joueur (econ_country_tax_set garde son
+         * 0.02 propre, INTACT — un joueur humain peut toujours couper son propre impôt à
+         * l'os s'il le veut). TAX_MULT_FLOOR=0.02 : kill-switch EXACT (plancher identique à
+         * l'ancien, golden pré-M10 byte-identique). */
+        float floor_ = clampf(tune_f("TAX_MULT_FLOOR", 0.80f), 0.02f, 1.f);
+        float next = clampf(base + (err>0.f? eff_step : -eff_step), floor_, 1.f);
         e->tax_mult[cid][c] = next;
     }
 }

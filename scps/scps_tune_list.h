@@ -1286,6 +1286,15 @@
      * ne reçoit AUCUN tunable neuf : son profit EST déjà l'intérêt annuel uniforme. */ \
     X(RRACHAT_META,                    1.0f) \
     X(BUYBACK_CS_GOODWILL,             1.0f) \
-    X(BUYBACK_PACIFIST_LEVER,          0.05f)
+    X(BUYBACK_PACIFIST_LEVER,          0.05f) \
+    /* MONNAIE M10 — P0 : LE PLANCHER FISCAL (DIAG-BANQUEROUTES, TROUVAILLES 2026-07-16,
+     * décision joueur informée par la mesure : « le levier manquant est le flux tax_mult,
+     * pas la marge C0 »). econ_ai_fiscal_tick (scps_econ.c, C3) borne désormais sa case
+     * basse à TAX_MULT_FLOOR au lieu du 0.02 générique — calibré 0.75-0.85 (reco DIAG,
+     * mesuré ISOLÉMENT avant tout chantier P1). TAX_MULT_FLOOR=0.02 : kill-switch EXACT
+     * (plancher identique à l'ancien, golden pré-M10 byte-identique). Le curseur JOUEUR
+     * (econ_country_tax_set) garde SON propre 0.02, INTACT — ce plancher ne borne QUE le
+     * contrôleur IA. */ \
+    X(TAX_MULT_FLOOR,                  0.80f)
 
 #endif /* SCPS_TUNE_LIST_H */
