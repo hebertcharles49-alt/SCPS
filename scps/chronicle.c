@@ -372,6 +372,18 @@ static void chronicle_invariant_reset(double m0){
     g_inv_prev_wild=0.0; g_inv_prev_wild_n=0;
     chronicle_invariant_peak_reset();   /* M3f — RAZ le pic à CHAQUE sim (comme le reste de l'état invariant) */
 }
+/* MONNAIE M12 — E3 : DIAG « emprunt de paix vs guerre » (SCPS_BORROWDIAG, print-only,
+ * gated). Le brief demande la PREUVE que la dette se corrèle aux guerres/chocs/chantiers
+ * (pas au fonctionnement de base). Chaque année, pour chaque pays JOUABLE, le delta de
+ * `credit_debt_total` (une HAUSSE = un nouvel emprunt net, une baisse = remboursement/
+ * défaut — non compté) est bucketé PAIX/GUERRE selon `diplo_status` CE tick — cumulé sur
+ * TOUTE la fenêtre (années × pays-années), imprimé une fois en fin de run. Statics de
+ * MODULE, RAZ par SIM (même point que chronicle_invariant_reset), jamais sérialisés. */
+static float  g_bw_prev_debt[SCPS_MAX_COUNTRY];
+static bool   g_bw_init=false;
+static double g_bw_gain_peace=0.0, g_bw_gain_war=0.0;
+static long   g_bw_cy_peace=0, g_bw_cy_war=0;   /* pays-années échantillonnés, PAIX vs GUERRE */
+static void chronicle_borrowdiag_reset(void){ g_bw_init=false; }
 static double g_inv_prev_prov[SCPS_MAX_PROV];
 static void chronicle_invariant_diag(const WorldEconomy *e, const World *w, int year, uint32_t seed, int sim){
     double now[SCPS_MAX_COUNTRY]; memset(now,0,sizeof now);
@@ -497,8 +509,22 @@ static void chronicle_invariant_check(const WorldEconomy *e, const World *w, int
     double documented = d_va + (-d_conso) + d_coloniz + d_mint;
     double autres     = d_m - documented;
     /* échelle = Σ|composantes connues| de CETTE année (pas le delta NET, qui peut être
-     * petit par pure compensation de signes opposés — ni M(t), qui dérive sans borne) */
-    double scale = fabs(d_va)+fabs(d_conso)+fabs(d_coloniz)+fabs(d_mint); if (scale<1.0) scale=1.0;
+     * petit par pure compensation de signes opposés — ni M(t), qui dérive sans borne).
+     * MONNAIE M12 — E3 : PLANCHER DE RÉSOLUTION (INVARIANT_SCALE_FLOOR, registre J). Le
+     * détecteur M3c normalisait par l'activité documentée de l'année, plancher 1.0 — tant
+     * que la création résiduelle M3b restait grosse (VA payée partiellement, des milliers
+     * d'or/an), le dénominateur ne s'effondrait jamais. E1+E2 la font fondre vers ~0 dans
+     * les petites économies saines (l'État couvre son achat) : le ratio explosait alors sur
+     * des dérives ABSOLUES minuscules (mesuré au sweep M12 : autres −23 à −452 or/an sur
+     * échelle 1-7 ⇒ « 42324 % » — pendant que les MÊMES sims pre-m12 portaient des autres
+     * de −1884 à −9680 or/an, masqués par leur grosse échelle). Le détecteur cible les
+     * EXPLOSIONS (un nouveau canal magique est de l'ordre de la VA, des dizaines de
+     * milliers d'or/an) — sous le plancher, le ratio n'a plus de sens physique. 500 = la
+     * même barre que SINK_FLOOR (la réserve d'exploitation — l'ordre de grandeur du bruit
+     * de fond d'une petite économie). Le plancher ne peut que RÉDUIRE un ratio : aucune
+     * détection historique (échelles de milliers) n'aurait été masquée. */
+    double scale = fabs(d_va)+fabs(d_conso)+fabs(d_coloniz)+fabs(d_mint);
+    { double sfloor = (double)tune_f("INVARIANT_SCALE_FLOOR", 500.f); if (sfloor<1.0) sfloor=1.0; if (scale<sfloor) scale=sfloor; }
     double frac = fabs(autres)/scale;
     if (frac > g_inv_max_frac) g_inv_max_frac = frac;   /* M3f — le pic, indépendant du seuil */
     double maxfrac = (double)tune_f("INVARIANT_DRIFT_FRAC", 2.0f);
@@ -674,6 +700,7 @@ int main(int argc, char **argv){
          * premier econ_tick) — la dotation de genèse §5.1 du registre. */
         double money_m0 = chronicle_money_mass(s.econ);
         chronicle_invariant_reset(money_m0);   /* MONNAIE M3c : RAZ l'état "année précédente" du banc invariant */
+        chronicle_borrowdiag_reset();   /* MONNAIE M12 — E3 : RAZ le snapshot dette par-pays au début de CHAQUE sim */
         double money_creation_accum = 0.0, money_destruction_accum = 0.0;
         /* MONNAIE — M1/M2 (print-only) : cumul de la frappe (FX_MINT), PAR PAYS (pour
          * compter les « empires frappeurs » en fin de sim) — même motif snapshot/accum
@@ -907,6 +934,28 @@ int main(int argc, char **argv){
                             econ_country_bankruptcy_scar(s.econ,c), faction_capture_total(c));
                 }
             }
+            /* MONNAIE M12 — E3 : DIAG « emprunt de paix vs guerre » (SCPS_BORROWDIAG). Delta
+             * annuel de credit_debt_total PAR PAYS JOUABLE, bucketé PAIX/GUERRE — seules les
+             * HAUSSES comptent (un nouvel emprunt net ; une baisse = remboursement, pas un
+             * emprunt). RAZ chaque sim (chronicle_borrowdiag_reset ci-dessus), imprimé une
+             * fois en fin de run (SYNTHÈSE). */
+            if (getenv("SCPS_BORROWDIAG")){
+                for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+                    PolityRole rl=w->country[c].role;
+                    if (rl!=POLITY_PLAYER && rl!=POLITY_ANTAGONIST) continue;
+                    float dnow=credit_debt_total(c);
+                    if (g_bw_init){
+                        float delta=dnow-g_bw_prev_debt[c];
+                        bool at_war=false;
+                        for (int b=0;b<w->n_countries;b++)
+                            if (b!=c && diplo_status(s.dp,c,b)==DIPLO_WAR){ at_war=true; break; }
+                        if (at_war){ g_bw_cy_war++; if (delta>0.f) g_bw_gain_war += (double)delta; }
+                        else       { g_bw_cy_peace++; if (delta>0.f) g_bw_gain_peace += (double)delta; }
+                    }
+                    g_bw_prev_debt[c]=dnow;
+                }
+                g_bw_init=true;
+            }
             /* MONNAIE M12 — E1 : DIAG P&L DE L'ÉTAT DE BASE (SCPS_PLDIAG, print-only, gated —
              * aucun coût hors mesure). Le P&L d'un État EN PAIX SANS CHANTIER, ligne à ligne
              * (chaque FX_* + achat-État §3, qui n'a PAS de bucket FX_* — econ_pldiag_buyprod_get
@@ -936,6 +985,33 @@ int main(int argc, char **argv){
                     fprintf(stderr,"   [PLDIAG] an %d (n=%d état(s) de base, paix sans chantier, or/mois/empire) —", yr, npl);
                     for (int k=0;k<FX_COUNT;k++) fprintf(stderr," %s %+.2f", econ_flux_name((FluxComp)k), sumfx[k]/npl/12.0);
                     fprintf(stderr," achat-État %+.2f assiette %+.2f\n", sum_buy/npl/12.0, sum_ass/npl/12.0);
+                }
+                /* MONNAIE M12 — E3 : LA PRESSION FISCALE TOTALE PAR ORDRE (tous les pays
+                 * jouables, pas seulement l'état de base — le prélèvement cumulé réel du
+                 * brief) : marge E2 + retenue M3i (curseurs M8/évasion inclus), rapportés à
+                 * la paie plein-prix (marge+reçu). */
+                {
+                    double mg[CLASS_COUNT]={0}, pd[CLASS_COUNT]={0}, cl[CLASS_COUNT]={0}; int nf=0;
+                    for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+                        PolityRole rl=w->country[c].role;
+                        if (rl!=POLITY_PLAYER && rl!=POLITY_ANTAGONIST) continue;
+                        nf++;
+                        for (int k=0;k<CLASS_COUNT;k++){
+                            double m,p,co; econ_pldiag_fiscal_get(c,k,&m,&p,&co);
+                            mg[k]+=m; pd[k]+=p; cl[k]+=co;
+                        }
+                    }
+                    if (nf>0){
+                        fprintf(stderr,"   [PLDIAG-FISC] an %d (n=%d jouables, or/mois/empire) —", yr, nf);
+                        const char *CN[3]={"Laborer","Bourgeois","Élite"};
+                        for (int k=0;k<3;k++){
+                            double full=mg[k]+pd[k], taken=mg[k]+cl[k];
+                            fprintf(stderr," %s marge %.2f retenue %.2f reçu %.2f pression %.0f%%",
+                                    CN[k], mg[k]/nf/12.0, cl[k]/nf/12.0, pd[k]/nf/12.0,
+                                    full>1e-9? 100.0*taken/full : 0.0);
+                        }
+                        fprintf(stderr,"\n");
+                    }
                 }
             }
             econ_flux_year_capture();
@@ -2191,6 +2267,10 @@ int main(int argc, char **argv){
           printf("   revenu d'État « assiette » (M5 R3, cumul sim · or/an/empire moy.) : %.1f\n",
                  econ_assiette_revenue_get()/fmax(1.0,(double)years)/ne);
       } }
+    if (getenv("SCPS_BORROWDIAG") && (g_bw_cy_peace+g_bw_cy_war)>0)   /* MONNAIE M12 — E3 : la dette se corrèle-t-elle aux guerres ? */
+        printf("   emprunt net PAIX vs GUERRE (SCPS_BORROWDIAG, or/pays-an) : paix %+.1f (n=%ld pays-an) · guerre %+.1f (n=%ld pays-an)\n",
+               g_bw_cy_peace>0?g_bw_gain_peace/(double)g_bw_cy_peace:0.0, g_bw_cy_peace,
+               g_bw_cy_war>0?g_bw_gain_war/(double)g_bw_cy_war:0.0, g_bw_cy_war);
     if (getenv("SCPS_MILDIAG") && g_mil_dep_tot>0.0)   /* W-GUERRE-3 : la part militaire du budget, sur TOUTE la fenêtre (bien moins bruyant que la photo I0 dern.-année) */
         printf("   budget militaire (SCPS_MILDIAG) .. soldes+marine = %.1f%% des dépenses d'État cumulées (%.0f / %.0f or) · dont ARMÉE %.1f%% / MARINE %.1f%%\n",
                100.0*g_mil_sol_tot/g_mil_dep_tot, g_mil_sol_tot, g_mil_dep_tot,

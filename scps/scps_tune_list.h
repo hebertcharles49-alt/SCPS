@@ -1399,6 +1399,14 @@
      * bande Laborer casse, on ajuste leur fiscalité explicite et/ou le rendement satisfaction de
      * leurs biens — jamais ce curseur. 1.0 = kill-switch EXACT (`pf_buy`==`price_level`, legacy
      * byte-identique). */ \
-    X(STATE_BUY_FRAC,                   0.60f)
+    X(STATE_BUY_FRAC,                   0.60f)     /* MONNAIE M12 — E3 : PLANCHER DE RÉSOLUTION du banc invariant M3c (chronicle.c,
+     * mesure seule — jamais lu par le moteur). E1+E2 font fondre la création résiduelle
+     * M3b vers ~0 : le dénominateur du détecteur (l'activité documentée de l'année)
+     * s'effondrait à ~1 dans les petites économies saines, faisant exploser le ratio sur
+     * des dérives absolues MINUSCULES (−23 à −452 or/an — vs −1884 à −9680 or/an sur les
+     * mêmes sims pre-m12, masqués par leur grosse échelle). Sous ce plancher, le ratio n'a
+     * plus de sens : le détecteur cible des EXPLOSIONS de l'ordre de la VA (dizaines de
+     * milliers d'or/an). Un plancher ne peut que réduire un ratio — aucune détection
+     * historique masquée. 1.0 (ou moins) = comportement legacy exact. */     X(INVARIANT_SCALE_FLOOR,          500.0f)
 
 #endif /* SCPS_TUNE_LIST_H */

@@ -1154,6 +1154,11 @@ double econ_assiette_revenue_get(void);
 void   econ_pldiag_reset(void);
 double econ_pldiag_buyprod_get(int cid);
 double econ_pldiag_assiette_get(int cid);
+/* MONNAIE M12 — E3 : la pression fiscale totale PAR ORDRE (print-only, RAZ annuelle avec le
+ * reste du pldiag) — margin = la marge d'État E2 (plein-prix − payé, la « taxe générale »),
+ * paid = le reçu réel de la classe (§3), coll = la retenue M3i (curseurs M8 + évasion
+ * inclus, §3b). Pression totale = (margin+coll)/(margin+paid). Pointeurs NULL ignorés. */
+void econ_pldiag_fiscal_get(int cid, int cls, double *margin, double *paid, double *coll);
 /* MONNAIE M3c — LE CANAL FERMÉ : ce que la péréquation nationale + l'emprunt aux PROPRES
  * classes (scps_credit.c, credit_borrow_local, appelé en INTERNE par econ_tick — aucun
  * World* requis) n'ont PAS pu couvrir pour le pays c, CE tick — le besoin restant qui

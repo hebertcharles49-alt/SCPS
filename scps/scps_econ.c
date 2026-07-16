@@ -1114,12 +1114,30 @@ double econ_assiette_revenue_get(void){ return g_assiette_revenue_cum; }
  * existant : l'achat d'État §3 (pending_buy_debit — LA ligne suspecte du brief) et
  * l'assiette M5 R3 (aujourd'hui MONDE seule, ici PAR PAYS pour le P&L). */
 static double g_pldiag_buyprod[SCPS_MAX_COUNTRY], g_pldiag_assiette[SCPS_MAX_COUNTRY];
+/* MONNAIE M12 — E3 : LA PRESSION FISCALE TOTALE PAR ORDRE (print-only, même motif). Trois
+ * lignes PAR CLASSE, cumulées par an : la MARGE d'État E2 (paiement plein-prix − paiement
+ * réel à STATE_BUY_FRAC — la « taxe générale » prélevée à la source), le REÇU réel (pay_*),
+ * et la RETENUE M3i (coll[c], qui inclut déjà les curseurs M8 tax_mult + l'évasion). La
+ * pression publiée = (marge + retenue)/(marge + reçu) — la part de la paie plein-prix que
+ * l'État retient, tous canaux confondus. */
+static double g_pldiag_margin[SCPS_MAX_COUNTRY][CLASS_COUNT];
+static double g_pldiag_paid  [SCPS_MAX_COUNTRY][CLASS_COUNT];
+static double g_pldiag_coll  [SCPS_MAX_COUNTRY][CLASS_COUNT];
 void   econ_pldiag_reset(void){
     memset(g_pldiag_buyprod,0,sizeof g_pldiag_buyprod);
     memset(g_pldiag_assiette,0,sizeof g_pldiag_assiette);
+    memset(g_pldiag_margin,0,sizeof g_pldiag_margin);
+    memset(g_pldiag_paid,0,sizeof g_pldiag_paid);
+    memset(g_pldiag_coll,0,sizeof g_pldiag_coll);
 }
 double econ_pldiag_buyprod_get(int cid){ return (cid>=0&&cid<SCPS_MAX_COUNTRY)? g_pldiag_buyprod[cid] : 0.0; }
 double econ_pldiag_assiette_get(int cid){ return (cid>=0&&cid<SCPS_MAX_COUNTRY)? g_pldiag_assiette[cid] : 0.0; }
+void econ_pldiag_fiscal_get(int cid, int cls, double *margin, double *paid, double *coll){
+    bool ok = (cid>=0&&cid<SCPS_MAX_COUNTRY&&cls>=0&&cls<CLASS_COUNT);
+    if (margin) *margin = ok? g_pldiag_margin[cid][cls] : 0.0;
+    if (paid)   *paid   = ok? g_pldiag_paid[cid][cls]   : 0.0;
+    if (coll)   *coll   = ok? g_pldiag_coll[cid][cls]   : 0.0;
+}
 
 /* MONNAIE M3h — LA DÉBASE : télémétrie MONDE cumulée, même motif (statics de module,
  * RAZ à econ_init, jamais sérialisés — un compteur de PARTIE, pas un état de simulation). */
@@ -4001,6 +4019,13 @@ void econ_tick(WorldEconomy *e, float dt) {
             re->strata[CLASS_BOURGEOIS].wealth += pay_profit;
             re->strata[CLASS_ELITE].wealth     += pay_tax;   /* rente, PAS l'impôt d'État */
             pending_buy_debit = pay_wage+pay_profit+pay_tax;   /* l'État PAIE — débit différé */
+            /* MONNAIE M12 — E3 diag : la marge E2 (plein-prix − payé) et le reçu, par classe. */
+            g_pldiag_margin[oc][CLASS_LABORER]   += (double)(wage_pool*pf   - pay_wage);
+            g_pldiag_margin[oc][CLASS_BOURGEOIS] += (double)(profit_pool*pf - pay_profit);
+            g_pldiag_margin[oc][CLASS_ELITE]     += (double)(tax_pool*pf    - pay_tax);
+            g_pldiag_paid[oc][CLASS_LABORER]     += (double)pay_wage;
+            g_pldiag_paid[oc][CLASS_BOURGEOIS]   += (double)pay_profit;
+            g_pldiag_paid[oc][CLASS_ELITE]       += (double)pay_tax;
             /* MONNAIE M3b-v2 — L'INSTRUMENT (§1.1) : ce qui n'a PAS pu être payé (pf<1) reste
              * une création pure, mesurée — doit fondre vers 0 à mesure que la caisse suit la VA. */
             g_va_produced_cum += (double)(va_prov - pending_buy_debit);
@@ -4077,6 +4102,9 @@ void econ_tick(WorldEconomy *e, float dt) {
         }
         re->over_tax = clampf(over_tax[CLASS_LABORER], 0.f, 1.f);   /* grief des laboureurs → révolte */
         if (re->owner>=0) econ_flux_add(re->owner, FX_TAX, coll_tot);   /* I0 : la ligne des taxes */
+        /* MONNAIE M12 — E3 diag : la retenue M3i (curseurs M8 + évasion inclus), par classe. */
+        if (re->owner>=0 && re->owner<SCPS_MAX_COUNTRY)
+            for (int c=0;c<CLASS_COUNT;c++) g_pldiag_coll[re->owner][c] += (double)coll[c];
 
         /* E1bis.10 — ENTRETIEN : l'infra bâtie se paie chaque tick ; impayé → FRICHE.
          * G0.4 : l'entretien suit l'IPM (un monde cher coûte plus cher à tenir). */
