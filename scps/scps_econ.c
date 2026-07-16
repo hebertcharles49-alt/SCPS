@@ -899,7 +899,7 @@ float econ_country_savoir(const WorldEconomy *econ, int cid){
     float we=tune_f("SAVOIR_W_ELITE",SAVOIR_W_ELITE)*decree_w,
           wb=tune_f("SAVOIR_W_BOURGEOIS",SAVOIR_W_BOURGEOIS)*decree_w,
           wl=tune_f("SAVOIR_W_LABORER",SAVOIR_W_LABORER)*decree_w;
-    double base=0.0, lib=0.0;
+    double base=0.0, lib=0.0, satw=0.0, popw=0.0;
     for (int r=0;r<econ->n_regions;r++){
         const RegionEconomy *re=&econ->region[r];   /* strata & build : l'AGRÉGAT RÉGION est la vue fiable (cf. puissance commerciale / trade) */
         if (re->owner!=cid) continue;
@@ -907,10 +907,27 @@ float econ_country_savoir(const WorldEconomy *econ, int cid){
               + (double)wb*re->strata[CLASS_BOURGEOIS].pop
               + (double)wl*re->strata[CLASS_LABORER].pop;
         lib  += (double)re->build.savoir;   /* branche bibliothèque : bibliothèque/monastère/observatoire */
+        {   /* TECH — satisfaction POP-PONDÉRÉE de l'empire (même grain/même boucle que la base) */
+            double rp = (double)re->strata[CLASS_ELITE].pop
+                      + (double)re->strata[CLASS_BOURGEOIS].pop
+                      + (double)re->strata[CLASS_LABORER].pop;
+            satw += (double)re->satisfaction*rp; popw += rp;
+        }
     }
     float pct=(float)(lib*tune_f("SAVOIR_LIB_PER",SAVOIR_LIB_PER)), mx=tune_f("SAVOIR_LIB_MAX",SAVOIR_LIB_MAX);
     if (pct<0.f) pct=0.f;
     if (pct>mx)  pct=mx;
+    /* TECH (2026-07-16) — f_satisfaction : MOTEUR BORNÉ, jamais ×0 (décision joueur « du
+     * ×1,XXX pas du ×0 »). f_sat = FLOOR + SPAN·sat ∈ [0.5 .. 1.25] au défaut (~×1.0 à 67 %
+     * de satisfaction : l'ancre des leaders tient ; la misère RALENTIT sans jamais éteindre).
+     * TECHPOP=0 ⇒ chemin legacy EXACT (expression intacte, byte-identique). */
+    if (tune_f("TECHPOP",1.f)>0.f){
+        float sat  = (popw>0.0) ? (float)(satw/popw) : 1.f;   /* pays sans pop : neutre (base=0 de toute façon) */
+        float fsat = (popw>0.0) ? tune_f("TECHPOP_SAT_FLOOR",0.5f)
+                                + tune_f("TECHPOP_SAT_SPAN",0.75f)*clampf(sat,0.f,1.f)
+                                : 1.f;
+        return (float)base*(1.f+pct)*fsat;
+    }
     return (float)base*(1.f+pct);   /* base annuelle × (1 + % bibliothèque) */
 }
 

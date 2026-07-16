@@ -226,6 +226,16 @@
     X(SAVOIR_W_LABORER,       0.001f) \
     X(SAVOIR_LIB_PER,         0.067f) \
     X(SAVOIR_LIB_MAX,         0.33f) \
+    /* TECH (vague 2026-07-16) — décision joueur « la satisfaction est un moteur de rendement,
+     * du ×1,XXX pas du ×0 » : le savoir national (econ_country_savoir) est modulé par la
+     * satisfaction POP-PONDÉRÉE de l'empire, BORNÉE [FLOOR .. FLOOR+SPAN] (défaut [0.5..1.25],
+     * ~×1.0 à 67 % de satisfaction — l'ancre des leaders tient). TECHPOP est le kill-switch
+     * MAÎTRE de la vague : 0 ⇒ (a) f_sat ≡ 1 (formule savoir legacy EXACTE), (b) adoption des
+     * pays orphelins (ai_on) OFF, (c) héritage de l'arbre aux successeurs de cataclysme OFF
+     * — golden pre-tech byte-identique par construction. */ \
+    X(TECHPOP,                1.0f) \
+    X(TECHPOP_SAT_FLOOR,      0.5f) \
+    X(TECHPOP_SAT_SPAN,       0.75f) \
     /* LOT I — CATCH-UP DE SAVOIR : un pays sous CATCHUP_FRAC × médiane mondiale (savoir/tête)
      * bâtit sa Bibliothèque/Monastère quel que soit son éthos (Dominateur/Mercantile/Bureaucrate
      * compris) — la panne mesurée était la FRÉQUENCE de pose (éthos-gated 2/6), pas le revenu. */ \
