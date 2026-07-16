@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://b8monnaieshot01"]
+
+[ext_resource type="Script" path="res://monnaie_shot.gd" id="1_mshot"]
+
+[node name="MonnaieShot" type="Node"]
+script = ExtResource("1_mshot")

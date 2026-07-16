@@ -142,3 +142,4 @@ gigasweep_*.log
 
 # Probe UI screenshots (shot_ui.gd, hors make)
 godot/project/shots_ui/
+godot/project/shots_monnaie/
