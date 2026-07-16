@@ -211,6 +211,24 @@ static void region_centroid(const World *w, int r, int *ox, int *oy) {
     else       { *ox = SCPS_W / 2;    *oy = SCPS_H / 2;    }
 }
 
+/* TECH (2026-07-16) — LES SUCCESSIONS DE CATACLYSME : chaque fragment né d'un resplit
+ * (eau/chaleur) est enregistré {enfant, parent} dans des statics TRANSITOIRES (RAZ en tête
+ * d'endgame_tick, consommés le MÊME appel par scps_sim.c : héritage de l'arbre de tech +
+ * adoption IA). Hors save (rien à sérialiser : la paire ne survit jamais au tick). */
+static int g_succ_child[SCPS_MAX_COUNTRY], g_succ_parent[SCPS_MAX_COUNTRY];
+static int g_succ_n = 0;
+void endgame_succession_reset(void){ g_succ_n = 0; }
+int  endgame_succession_count(void){ return g_succ_n; }
+void endgame_succession_get(int i, int *child, int *parent){
+    if (i<0 || i>=g_succ_n){ if(child)*child=-1; if(parent)*parent=-1; return; }
+    if (child)  *child  = g_succ_child[i];
+    if (parent) *parent = g_succ_parent[i];
+}
+static void endgame_succession_record(int child, int parent){
+    if (g_succ_n >= SCPS_MAX_COUNTRY) return;
+    g_succ_child[g_succ_n] = child; g_succ_parent[g_succ_n] = parent; g_succ_n++;
+}
+
 /* Un slot de pays RÉUTILISABLE (UNCLAIMED, ne tient aucune région), sinon agrandit
  * la table — copie de l'idiome de la sécession (scps_revolt). */
 static int endgame_free_slot(World *w, const WorldEconomy *econ, int avoid) {
@@ -338,6 +356,18 @@ static int cataclysm_resplit_empire(World *w, WorldEconomy *econ, int country) {
                             econ_region_set_owner(econ, w, regs[i], newc);
                             region_set_country(w, regs[i], newc);
                         }
+                        /* TECH — le successeur naît COMPLET : capitale + region_ids (avant : le
+                         * memset laissait capital_prov=0 — la province 0 d'AUTRUI — et n_regions=0,
+                         * un pays fantôme jamais adopté par l'IA, 0 tech à vie ; mesuré TECHDIAG).
+                         * Gaté TECHPOP (kill-switch de vague : 0 ⇒ trajectoire legacy exacte). */
+                        if (tune_f("TECHPOP",1.f)>0.f){
+                            nc->n_regions = 0;
+                            for (int i = 0; i < nr; i++) if (comp[i] == k && nc->n_regions < 32)
+                                nc->region_ids[nc->n_regions++] = (int16_t)regs[i];
+                            nc->capital_prov = (firstreg < w->n_regions && w->region[firstreg].n_provinces > 0)
+                                             ? w->region[firstreg].province_ids[0] : -1;
+                        }
+                        endgame_succession_record(newc, country);   /* héritage/adoption : scps_sim.c (gatés TECHPOP) */
                         born++;
                     } else {                               /* table pleine : perdu */
                         for (int i = 0; i < nr; i++) if (comp[i] == k) {
@@ -1428,6 +1458,7 @@ void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
                   RouteNetwork *rn, NavyState *navy, DiploState *dp,
                   Campaign *camp, int player, int year) {
     (void)rn; (void)navy; (void)dp;
+    endgame_succession_reset();   /* TECH : les paires {enfant,parent} vivent UN tick (consommées par sim_day) */
     if (!eg || !wp) return;
 
     /* C1 — élargir l'entropie (savoir faustien + Âge de la Brèche + morts de guerre). */

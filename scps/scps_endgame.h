@@ -158,6 +158,13 @@ void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
                   RouteNetwork *rn, NavyState *navy, DiploState *dp,
                   Campaign *camp, int player, int year);
 
+/* TECH (2026-07-16) — LES SUCCESSIONS DE CATACLYSME : les fragments nés du resplit
+ * (eau/chaleur) du DERNIER endgame_tick, en paires {enfant, parent}. Transitoire (RAZ en
+ * tête de chaque endgame_tick, hors save) — consommé le même tick par scps_sim.c :
+ * héritage de l'arbre de tech (le savoir survit à la fragmentation) + adoption IA. */
+int  endgame_succession_count(void);
+void endgame_succession_get(int i, int *child, int *parent);
+
 /* Démarre la Merveille d'Ascension (ordre agency JOUEUR uniquement ; l'IA ne la
  * poursuit pas). No-op si déjà en cours. */
 void endgame_start_wonder(EndgameState *eg, int player, int capital_region);

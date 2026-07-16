@@ -1166,13 +1166,27 @@ void sim_day(Sim *s, World *w) {
         } });
         PROF(PB_REVOLT, { revolt_scan(s->rs, w, s->econ, s->drift, s->sc, s->dp, s->camp, 30);
         revolt_tick(s->rs, w, s->econ, s->drift, s->wl, s->wp, s->dp, s->camp, s->sc, 30); });
-        if (s->rs->last_spawned>=0){
+        /* TECH (2026-07-16) — L'ADOPTION DES ORPHELINS, GÉNÉRALISÉE (gaté TECHPOP) : la
+         * boucle ne tournait QUE le mois d'une sécession (last_spawned) — deux familles de
+         * pays restaient SANS IA À VIE, 0 tech, mesuré TECHDIAG (seed 9 : 8/8 empires
+         * zéro-tech du bilan étaient ai_on=0) :
+         *   1. les FRAGMENTS de cataclysme §27 (resplit eau/chaleur an 180-240 — aucun
+         *      last_spawned : nés hors du canal révolte) ;
+         *   2. les sécessions MANQUÉES par la course d'agrégat (secede_to_country re-clé
+         *      les provinces mais regions_of lit region[].owner, rafraîchi au econ_tick
+         *      SUIVANT — le flag last_spawned était déjà retombé).
+         * Désormais la boucle tourne CHAQUE mois (O(n_pays), idempotente par ai_on) —
+         * l'orphelin est adopté dès que ses agrégats le montrent terrien. */
+        if (s->rs->last_spawned>=0 || tune_f("TECHPOP",1.f)>0.f){
             /* un pays vient de naître : on donne vie (IA) à tout sécessionniste
              * vivant pas encore piloté (plusieurs peuvent éclore le même mois). */
             for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
                 if (s->ai_on[c]) continue;
                 if (w->country[c].role==POLITY_ANTAGONIST && w->country[c].capital_prov>=0
                     && regions_of(s->econ,c)>0){
+                    /* orphelin d'un cataclysme : recale capitale/region_ids depuis les
+                     * agrégats FRAIS avant d'armer l'acteur (miroir peace_rebuild_country). */
+                    if (tune_f("TECHPOP",1.f)>0.f) peace_rebuild_country(w, s->econ, c);
                     s->ai_on[c]=true;
                     ai_actor_init(&s->ai[c], w, s->econ, c, w->seed ^ (uint32_t)(c*2654435761u));
                     /* #26bis — LA MÉMOIRE DU SÉCESSIONNISTE : né d'une guerre civile, le
@@ -1280,6 +1294,21 @@ void sim_day(Sim *s, World *w) {
         if (s->eg){
             FinType fin_before = s->eg->fin; MervPhase merv_before = s->eg->merv;
             endgame_tick(s->eg, w, s->econ, s->wp, s->ts, s->rn, s->navy, s->dp, s->camp, s->player, s->year);
+            /* TECH (2026-07-16) — L'HÉRITAGE DU SAVOIR : un fragment né du resplit de
+             * cataclysme (eau/chaleur) porte l'arbre de tech de son parent — le savoir ne
+             * s'évapore pas dans la fragmentation (mêmes gens, mêmes livres). La banque de
+             * recherche (research_points) reste à la couronne : le fragment repart à 0.
+             * L'ADOPTION IA (ai_on) suit au prochain mois (boucle d'adoption, agrégats
+             * frais). Gaté TECHPOP (kill-switch de vague : 0 ⇒ legacy, fragments muets). */
+            if (tune_f("TECHPOP",1.f)>0.f){
+                int nsc = endgame_succession_count();
+                for (int i=0;i<nsc;i++){
+                    int ch=-1, pa=-1; endgame_succession_get(i,&ch,&pa);
+                    if (ch<0||ch>=SCPS_MAX_COUNTRY||pa<0||pa>=SCPS_MAX_COUNTRY||ch==pa) continue;
+                    s->ts[ch] = s->ts[pa];
+                    s->ts[ch].research_points = 0.f;
+                }
+            }
             /* ANNALES — LA FIN DU MONDE (§27/Merveille) : n'accroche QUE le joueur (le récit
              * DU joueur ; en chronique human_player=-1 ⇒ golden intact PAR CONSTRUCTION).
              * Poids PLEIN (100) : c'est le fait le plus lourd d'une partie. */
