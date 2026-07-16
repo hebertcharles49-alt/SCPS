@@ -3570,6 +3570,11 @@ void econ_tick(WorldEconomy *e, float dt) {
      * profit/rente) : les chaînes cuivre (naval/armes/horlogerie) et la joaillerie restent
      * vivantes. 0 = kill-switch (aucune redevance ⇒ réserve toujours nulle ⇒ frappe nulle). */
     const float mint_royalty  = tune_f("MINT_ROYALTY", 0.35f);
+    /* MISSION FAUSTIEN (2026-07-16) — kill-switch MAÎTRE de X2/X3/X4 (rendement des 3
+     * machines, entropie-par-usage, panier foreuse/mutations réplicateur/alcool corne).
+     * =0 restaure le comportement pre-faustien EXACT (golden byte-identique) ; =1
+     * (défaut) active la vague. Lu UNE fois/tick (comme mint_royalty ci-dessus). */
+    const bool faust_boost = tune_f("FAUSTIEN_BOOST", 1.f) > 0.f;
     /* §6-7 — forfait fiscal MENSUEL par classe (or/hab/mois), lu UNE fois/tick. CLASS_SLAVE=0. */
     const float tax_base[CLASS_COUNT] = {
         tune_f("TAX_BASE_LABORER",   TAX_BASE_LABORER),
@@ -3931,6 +3936,17 @@ void econ_tick(WorldEconomy *e, float dt) {
                 if (rc->in2==RES_COAL) e->fuel_coal_cum += (double)(lim*rc->q2); }   /* FIN_CHAUD : poudrière/forge céleste */
             float out_full=lim*rc->qout*prod_mult;   /* outils → productivité */
             out_full *= (1.f - 0.5f*re->revolt_scar); /* la cicatrice de révolte ronge la production */
+            /* FAUSTIEN X2 — LE RENDEMENT (mission 2026-07-16, décision joueur « augmenter
+             * le rendement de l'utilité de leurs bâtiments liés faustien ») : la sortie
+             * PRIMAIRE des 3 machines génŽreuses (foreuse→fer, réplicateur→bois, corne→
+             * nourriture) est boostée sous FAUSTIEN_BOOST — le giga avait mesuré la
+             * foreuse dormante (conso 3/100 sims, la plus rare des 3) : sans une vraie
+             * RAISON d'y aller (rendement), ni l'IA ni le joueur n'investissent. N'affecte
+             * QUE ces 3 sorties primaires (pas le panier bonus foreuse, boosté séparément
+             * plus bas ; pas la Forge céleste/l'Atelier de mage, hors scope — ce ne sont
+             * pas les « 3 machines » nommées par la mission). Kill-switch FAUSTIEN_BOOST=0
+             * ⇒ ×1 (legacy exact, golden pre-faustien byte-identique). */
+            if (faust_boost && bld_is_faustian(b->type)) out_full *= tune_f("FAUST_YIELD_MULT", 2.0f);
             /* M3g — LA SAISIE (remplace le malus PLAT −75 % de M3d) : la production
              * CONTINUE PLEINE (`out_full`, désormais SANS malus) — une part
              * BANKRUPTCY_GARNISH×bankruptcy_scar de sa VALEUR (décroissante avec la
@@ -3978,10 +3994,45 @@ void econ_tick(WorldEconomy *e, float dt) {
              * transmutation, hors PIB/salaires, comme le bâton de mage/kit d'alchimiste ci-dessus). */
             if (b->type==BLD_FOREUSE){
                 float scar_mult=(1.f-0.5f*re->revolt_scar)*(1.f-0.75f*re->bankruptcy_scar);
+                /* FAUSTIEN X4 — LA FOREUSE, « le lot complet » (mission 2026-07-16, décision
+                 * joueur « la foreuse donne le lot de minerais complet, devrait aussi booster
+                 * l'inflation »). Le lot ancre déjà les 7/7 « brutes minérales » du catalogue
+                 * (fer, rc->out ci-dessus + les 6 du panier) — RIEN à ajouter côté catalogue.
+                 * Ratio « 2 (faibles) : 1 (manufacturée) » — INTERPRÉTATION documentée : la
+                 * foreuse ne sort QUE du brut (pas de bien manufacturé), donc 2:1 se lit
+                 * brut-COMMUN (cuivre/charbon/soufre/salpêtre, Σqty=8.0) : brut-PRÉCIEUX
+                 * (or/métal précieux) — FAUST_FOREUSE_PRECIOUS_MULT porte or 0.5→2.5 et métal
+                 * précieux 0.3→1.5 (Σ=4.0, exactement 2:1). L'or/cuivre du lot passe désormais
+                 * par la MÊME redevance que l'extraction normale (mint_royalty → reserve_gold/
+                 * reserve_copper) : l'inflation suit ÉMERGEMMENT le canal royalty→réserve→
+                 * frappe existant (M7), AUCUN hack direct. Kill-switch FAUSTIEN_BOOST=0 ⇒ lot
+                 * legacy exact (0.5/0.3, aucune redevance sur le panier — golden byte-identique). */
+                float yield_mult = faust_boost ? tune_f("FAUST_YIELD_MULT", 2.0f) : 1.f;
+                float precious_mult = faust_boost ? tune_f("FAUST_FOREUSE_PRECIOUS_MULT", 5.0f) : 1.f;
                 for (int fi=0; fi<6; fi++){
-                    Resource fr=FOREUSE_BASKET[fi].r; float fq=lim*FOREUSE_BASKET[fi].qty*prod_mult*scar_mult;
-                    S[fr]+=fq; supply[fr]+=fq;
+                    Resource fr=FOREUSE_BASKET[fi].r; float qty=FOREUSE_BASKET[fi].qty;
+                    if (fr==RES_GOLD || fr==RES_PRECIOUS_METAL) qty *= precious_mult;
+                    float fq=lim*qty*yield_mult*prod_mult*scar_mult;
+                    float fq_merch=fq;
+                    if (faust_boost && (fr==RES_GOLD || fr==RES_COPPER)
+                        && owner_>=0 && owner_<SCPS_MAX_COUNTRY && mint_royalty>0.f){
+                        float roy = fq*mint_royalty;
+                        fq_merch = fq-roy;
+                        if (fr==RES_GOLD) e->reserve_gold[owner_]   += roy;
+                        else              e->reserve_copper[owner_] += roy;
+                    }
+                    S[fr]+=fq_merch; supply[fr]+=fq_merch;
                 }
+            }
+            /* FAUSTIEN X4 — LA CORNE, « + alcool » (mission 2026-07-16, décision joueur « la
+             * corne devrait également fournir de l'alcool », « pas de jaloux »). Bonus EAU_DE_
+             * VIE ∝ lim, MÊME motif que le panier de la Foreuse ci-dessus (hors PIB/salaires,
+             * un supplément de transmutation) — la sortie primaire (nourriture) est INCHANGÉE.
+             * Kill-switch FAUSTIEN_BOOST=0 ⇒ rien (golden pre-faustien byte-identique). */
+            if (faust_boost && b->type==BLD_CORNE){
+                float scar_mult=(1.f-0.5f*re->revolt_scar)*(1.f-0.75f*re->bankruptcy_scar);
+                float fq = lim * tune_f("FAUST_CORNE_ALCOHOL_QTY", 2.0f) * prod_mult * scar_mult;
+                S[RES_EAU_DE_VIE]+=fq; supply[RES_EAU_DE_VIE]+=fq;
             }
             b->workers=rc->labor*lim;
             labor_used+=b->workers;
@@ -3991,6 +4042,17 @@ void econ_tick(WorldEconomy *e, float dt) {
             if (b->type==BLD_MAGE_WORKSHOP) re->arcane_charge += out;   /* arcane ordinaire : IMMÉDIAT seul (per-tick, comme avant) — équivalent inline de faust_charge_add(RegionEconomy*) pour une ProvinceEconomy */
             else if (bld_is_faustian(b->type)){
                 float spawn = out * tune_f("FAUST_SPAWN_CHARGE", 0.15f);
+                /* FAUSTIEN X3 — CHAQUE USAGE POUSSE VERS LA FIN (mission 2026-07-16, cœur
+                 * thématique) : étend le canal existant. Au-delà du spawn ∝ SORTIE (ci-dessus,
+                 * inchangé), l'INTRANT BRÛLÉ ce tick (lim*rc->q1 — essence/flux/fer céleste,
+                 * littéralement « l'usage » de la machine) charge l'entropie EN PLUS, ∝
+                 * ENTROPY_PER_USE. Le pacte devient plus lourd à mesure qu'on l'ACTIONNE, pas
+                 * seulement à mesure qu'il PRODUIT — un rendement plus haut (X2) consomme plus
+                 * vite, donc pousse plus fort vers la fin : la machine généreuse reste damnante.
+                 * Avec ENTROPY_FIN=25 (acquis FINS), plus d'usage ⇒ plus de mondes qui percent
+                 * le seuil — VOULU. Kill-switch FAUSTIEN_BOOST=0 ⇒ canal legacy seul (golden
+                 * pre-faustien byte-identique). */
+                if (faust_boost) spawn += (lim*rc->q1) * tune_f("ENTROPY_PER_USE", 0.10f);
                 re->arcane_charge += spawn;      /* l'IMMÉDIAT (flux du tick) */
                 re->faust_charge  += spawn;      /* FAU1 : et l'entropie CUMULÉE (la pente vers la Brèche) */
                 int k=(b->type==BLD_FOREUSE)?0:(b->type==BLD_REPLICATEUR)?1:2;   /* essence · flux · fer céleste */

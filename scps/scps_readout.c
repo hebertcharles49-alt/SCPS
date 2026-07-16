@@ -842,6 +842,9 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
                 case PMOD_ANNEX_SCAR:
                     m->nom = tr(STR_PMOD_ANNEX_NOM); m->effet = tr(STR_PMOD_ANNEX_EFF);
                     m->faveur = false; pr.n_mods++; break;
+                case PMOD_MUTATION:
+                    m->nom = tr(STR_PMOD_MUTATION_NOM); m->effet = tr(STR_PMOD_MUTATION_EFF);
+                    m->faveur = true;  pr.n_mods++; break;
                 default: break;
             }
         }

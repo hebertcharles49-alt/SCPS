@@ -683,7 +683,9 @@ void econ_heat_refresh(WorldEconomy *e, const World *w, float heat);
 typedef enum { PMOD_NONE=0, PMOD_CICATRICE, PMOD_ABONDANCE,
                PMOD_FERVEUR, PMOD_RECONSTRUCTION, PMOD_LIMON,
                PMOD_GIBIER, PMOD_HALIEUTIQUE, PMOD_ADMIN,
-               PMOD_ANNEX_SCAR, PMOD_COUNT } ProvModKind;
+               PMOD_ANNEX_SCAR,
+               PMOD_MUTATION,   /* FAUSTIEN X4 (2026-07-16) : Réplicateur actif — la démo, jamais un +pop plat */
+               PMOD_COUNT } ProvModKind;
 typedef struct {
     uint8_t kind;        /* ProvModKind */
     float   intensity;   /* [0..1] — vivacité (pour la bande d'affichage) */
@@ -783,6 +785,26 @@ static inline float econ_region_effcap(const RegionEconomy *re){ ECON_EFFCAP_BOD
             (out)[n].kind = PMOD_ADMIN; (out)[n].intensity = k/4.f; \
             (out)[n].demo_bonus = tune_f("PROVMOD_ADMIN_K", 0.06f) * k; \
             n++; \
+        } \
+        /* FAUSTIEN X4 — LE RÉPLICATEUR, « + pop growth (mutations) » (mission 2026-07-16,
+         * décision joueur « pas de jaloux » : la foreuse a son panier, la corne son alcool,
+         * le réplicateur a SA démo). Une province qui exploite un Réplicateur ACTIF (flux→
+         * bois) voit sa DÉMOGRAPHIE nudgée — MÊME entrée K que gibier/halieutique/abondance
+         * ci-dessus, JAMAIS un +pop flat (doctrine « on lit des coordonnées, on n'assigne
+         * jamais un modificateur »). Intensité ∝ niveau du bâtiment (fenêtre 0..4, motif
+         * PMOD_ADMIN). Gaté FAUSTIEN_BOOST : =0 ⇒ legacy exact (golden pre-faustien byte-
+         * identique). Face joueur : MOTS (« mutations », STR_PMOD_MUTATION_*), jamais un
+         * chiffre moteur. */ \
+        if (tune_f("FAUSTIEN_BOOST", 1.f) > 0.f){ \
+            float repl_lvl = 0.f; \
+            for (int bi = 0; bi < (re)->n_bld; bi++) \
+                if ((re)->bld[bi].type == BLD_REPLICATEUR) repl_lvl += (re)->bld[bi].level; \
+            if (repl_lvl > 0.f && n < (max)){ \
+                float inten = repl_lvl/4.f; if (inten > 1.f) inten = 1.f; \
+                (out)[n].kind = PMOD_MUTATION; (out)[n].intensity = inten; \
+                (out)[n].demo_bonus = tune_f("FAUST_MUTATION_K", 0.20f) * inten; \
+                n++; \
+            } \
         } \
         return n; \
     } while (0)

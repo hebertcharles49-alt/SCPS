@@ -363,6 +363,8 @@
     X(STR_PMOD_ADMIN_EFF,      "Solid institutions keep order and services: sheltered from disorder, families prosper.") \
     X(STR_PMOD_ANNEX_NOM,      "Recent Annexation") \
     X(STR_PMOD_ANNEX_EFF,      "A province torn from its former master by annexation carries a wound of pride: stability stays brittle and the mood sulks until minds have settled under the new banner.") \
+    X(STR_PMOD_MUTATION_NOM,   "Mutations") \
+    X(STR_PMOD_MUTATION_EFF,   "The Replicator transmutes flux into wood at great yield — but something else transmutes too: bodies adapt, multiply faster. A blessing that is not without a price.") \
     /* GLOSSARY concept TITLES (hover_*) — twin order; definitions reuse STR_HOVER_*. */ \
     X(STR_GLOSS_STAB,      "Stability") \
     X(STR_GLOSS_LEGIT,     "Legitimacy") \
