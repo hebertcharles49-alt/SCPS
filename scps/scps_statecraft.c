@@ -452,8 +452,15 @@ void statecraft_council_apply(const Statecraft *sc, const World *w, WorldEconomy
         /* RE-KEY PROVINCE : treasury province-owned — route sur la représentative. */
         if (cr>=0 && cr<e->n_regions){
             int crp=econ_region_rep_province(e,cr);
-            if (crp>=0 && crp<e->n_prov){ e->prov[crp].treasury -= cost; econ_flux_add(c, FX_CONSEIL, -cost);
-                e->prov[crp].strata[CLASS_ELITE].wealth += cost; }   /* item 5 : Conseil → élites, capitale */
+            if (crp>=0 && crp<e->n_prov){
+                /* MONNAIE M14 — B1 (trouvaille du grep généralisé) : `cost` était débité SANS
+                 * clamp — un trésor insuffisant passait négatif (dette fantôme, motif B2(a)).
+                 * Même discipline que decree_spend_capital (scps_decrees.c) : on ne paie que
+                 * ce que le trésor porte (jamais de dette forcée pour le Conseil). */
+                float take = fminf(cost, fmaxf(0.f, e->prov[crp].treasury));
+                e->prov[crp].treasury -= take; econ_flux_add(c, FX_CONSEIL, -take);
+                e->prov[crp].strata[CLASS_ELITE].wealth += take;   /* item 5 : Conseil → élites, capitale */
+            }
         }
     }
 }

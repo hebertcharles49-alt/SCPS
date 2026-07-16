@@ -468,6 +468,28 @@ int main(int argc, char **argv){
            (statecraft_council_set_pay(s.sc,cid,seat,9.f), near_f(statecraft_council_pay(s.sc,cid,seat),1.f,0.001f)) &&
            (statecraft_council_set_pay(s.sc,cid,seat,0.f), near_f(statecraft_council_pay(s.sc,cid,seat),0.02f,0.001f)));
 
+        /* MONNAIE M14 — B1 (trouvaille du grep généralisé) : statecraft_council_apply
+         * débitait `cost` SANS AUCUN clamp — un trésor insuffisant passait NÉGATIF (dette
+         * fantôme, motif B2(a)), contrairement au frère decree_spend_capital qui clampe
+         * déjà. On pose un trésor capital SOUS le coût mensuel et on vérifie qu'il ne
+         * descend jamais sous zéro. */
+        statecraft_council_set_pay(s.sc, cid, seat, 1.f);
+        { int crB1=cap_region(s.w,cid);
+          int crpB1=(crB1>=0&&crB1<s.econ->n_regions)?econ_region_rep_province(s.econ,crB1):-1;
+          if (crpB1>=0){
+              float costB1 = statecraft_council_cost(s.sc, seed, cid, 1.f) * (1.f/12.f) * 12.f;
+              s.econ->prov[crpB1].treasury = costB1*0.5f;   /* la moitié SEULEMENT du coût mensuel */
+              float tre0=s.econ->prov[crpB1].treasury;
+              statecraft_council_apply(s.sc, s.w, s.econ, s.wp, seed, 1.f/12.f);
+              float tre1=s.econ->prov[crpB1].treasury;
+              printf("   B1 : coût Conseil=%.1f, trésor %.1f→%.1f (jamais négatif)\n", costB1, tre0, tre1);
+              ok("B1 : le Conseil ne pousse JAMAIS le trésor de la capitale sous zéro (clampé)",
+                 tre1 >= -0.01f);
+              ok("B1 : le Conseil paie ce qu'il PEUT (trésor consommé, pas laissé intact)",
+                 tre1 < tre0);
+          } else ok("(capitale introuvable pour le test B1 Conseil)", true);
+        }
+
         /* (7) P0-4 — PERSONNE + MAISON : tirages déterministes et VIVANTS (varient
          * avec le candidat) — la maison ne « suit » pas le prénom (tables séparées,
          * salts distincts). */

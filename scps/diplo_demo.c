@@ -347,6 +347,20 @@ int main(int argc,char**argv){
             for(int c=0;c<CLASS_COUNT;c++) rv->strata[c].wealth=0.f;
             float loot3=diplo_pillage_region(econ,vic,occ,vic_cid);
             ok("une victime PAUVRE ne rend QUE ce qu'elle a (borné, pas de fantôme)", loot3<=5.01f);
+
+            /* MONNAIE M14 — B1 (trouvaille du grep généralisé) : SANS clamp, `fminf(pp->
+             * treasury, target)` avec un trésor NÉGATIF renvoyait un `gold` négatif — le
+             * pillage ENRICHISSAIT la victime RUINÉE et APPAUVRISSAIT l'occupant. */
+            rv->pillage_cd=0.f; rv->treasury=-800.f;
+            for(int g=1;g<RES_COUNT;g++) rvr->stock[g]=0.f;
+            for(int c=0;c<CLASS_COUNT;c++) rv->strata[c].wealth=0.f;
+            float occ_before=ro->treasury, vic_before=rv->treasury;
+            float loot4=diplo_pillage_region(econ,vic,occ,vic_cid);
+            printf("   victime RUINÉE (trésor %.0f) → butin = %.1f (occupant %.1f→%.1f)\n",
+                   vic_before, loot4, occ_before, ro->treasury);
+            ok("B1 : une victime RUINÉE (trésor négatif) ne rapporte AUCUN butin négatif (loot4==0)", loot4==0.f);
+            ok("B1 : le trésor de l'OCCUPANT n'est jamais RÉDUIT par un sac (pillage jamais un coût)",
+               ro->treasury >= occ_before-0.01f);
         } else ok("(monde trop petit pour le test de saccage)", true);
     }
 
@@ -452,6 +466,21 @@ int main(int argc,char**argv){
             diplo_init(dp);
             ok("un MATCH NUL (score sous le seuil) n'extorque aucune indemnité",
                diplo_reparations(dp,w,econ,A,B)==0.f);
+
+            /* MONNAIE M14 — B1 : LES RÉPARATIONS NE DOIVENT JAMAIS INVERSER LE PAIEMENT —
+             * `frac` d'un trésor NÉGATIF (le perdant est déjà ruiné) était négatif : le
+             * PERDANT endetté se faisait PAYER par le VAINQUEUR. */
+            diplo_init(dp); diplo_declare_war_cb(dp,A,B,CB_TERRITORIAL);
+            dp->battle_score[A][B]=50.f; dp->conquered[A][B]=5;
+            for(int p=0;p<econ->n_prov;p++) if(econ->prov[p].owner==B) econ->prov[p].treasury=-2000.f;
+            int capAp2=econ_region_rep_province(econ,capA);
+            if (capAp2>=0){ econ->prov[capAp2].treasury=1000.f; }
+            float capA1=(capAp2>=0)?econ->prov[capAp2].treasury:0.f;
+            float rep2=diplo_reparations(dp,w,econ,A,B);
+            printf("   perdant RUINÉ (trésor -2000/province) → indemnité extorquée = %.1f or\n", rep2);
+            ok("B1 : un perdant RUINÉ ne rapporte AUCUNE indemnité négative (rep2==0)", rep2==0.f);
+            ok("B1 : le trésor du vainqueur n'est jamais RÉDUIT par une réparation d'un perdant ruiné",
+               capAp2<0 || econ->prov[capAp2].treasury >= capA1-0.01f);
         } else ok("(monde trop petit pour le test de paix proportionnelle)", true);
     }
 
@@ -669,6 +698,27 @@ int main(int argc,char**argv){
             for(int t=0;t<25;t++){ dp->v_grief[V]=0.05f; diplo_suzerainty_tick(dp,w,econ,wp); }
             ok("après ~25 ans de paix, le lien a MÛRI (intégration ≥0.6) et reste BORNÉE ≤1",
                dp->v_integration[V]>=0.6f && dp->v_integration[V]<=1.f);
+
+            /* MONNAIE M14 — B1 : LE TRIBUT NE DOIT JAMAIS INVERSER LE PAIEMENT — `frac` d'un
+             * trésor vassal NÉGATIF était négatif : le vassal ENDETTÉ se faisait PAYER par
+             * son suzerain (le suzerain perdait `take`, le vassal le recevait). */
+            { int capVp=(capV>=0)?econ_region_rep_province(econ,capV):-1;
+              int capSp3=(capS>=0)?econ_region_rep_province(econ,capS):-1;
+              if (capVp>=0 && capSp3>=0){
+                  econ->prov[capVp].treasury  = -1000.f;   /* le vassal est RUINÉ */
+                  econ->prov[capSp3].treasury = 500.f;
+                  float suz0=econ->prov[capSp3].treasury, vas0=econ->prov[capVp].treasury;
+                  diplo_suzerainty_tick(dp,w,econ,wp);
+                  float suz1=econ->prov[capSp3].treasury, vas1=econ->prov[capVp].treasury;
+                  printf("   vassal endetté (%.0f) → tribut : suzerain %.1f→%.1f · vassal %.1f→%.1f\n",
+                         (double)vas0, (double)suz0, (double)suz1, (double)vas0, (double)vas1);
+                  ok("B1 : un vassal ENDETTÉ ne fait PAS payer son suzerain (trésor suzerain jamais réduit par le tribut)",
+                     suz1 >= suz0 - 0.01f);
+                  ok("B1 : le tribut d'un vassal ruiné ne lui CRÉDITE rien (trésor vassal jamais remonté par le tribut)",
+                     vas1 <= vas0 + 0.01f);
+              } else ok("(capitales introuvables pour le test B1 tribut)", true);
+            }
+
             /* (c) DIGESTION : maître ANNEXEUR + vassal bien intégré (amorcé près du terme) → absorption. */
             if(capS>=0) econ->region[capS].culture.ethos=ETHOS_DOMINATEUR;
             dp->v_integration[V]=0.9f; dp->v_annex[V]=0.95f;

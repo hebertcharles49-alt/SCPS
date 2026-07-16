@@ -337,7 +337,11 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
             for (int r=0;r<econ->n_regions;r++){
                 if (econ->region[r].owner!=v) continue;
                 int rp=econ_region_rep_province(econ,r); if (rp<0||rp>=econ->n_prov) continue;
-                float t=econ->prov[rp].treasury*frac; econ->prov[rp].treasury-=t; take+=t;
+                /* MONNAIE M14 — B1 : `frac` d'un trésor NÉGATIF est négatif — le vassal
+                 * endetté SE FAISAIT PAYER par son suzerain (treasury-=t l'enrichissait,
+                 * take négatif appauvrissait le suzerain plus bas). Le tribut ne porte que
+                 * sur le trésor RÉEL (≥0) de la province vassale. */
+                float t=fmaxf(0.f, econ->prov[rp].treasury)*frac; econ->prov[rp].treasury-=t; take+=t;
             }
             int scp=econ_region_rep_province(econ,capreg[s]);
             if (scp>=0 && scp<econ->n_prov) econ->prov[scp].treasury += take;
@@ -1374,7 +1378,11 @@ float diplo_pillage_value(WorldEconomy *econ, int region, int dst_region, int vi
                  * fmaxf(0.f, econ_country_tax_year(victim_cid));
     if (target<=0.f) return 0.f;                    /* victime sans revenu capturé (An-1 court) → rien */
     float loot=0.f;
-    float gold = fminf(pp->treasury, target);        /* le trésor d'abord (le plus liquide) */
+    /* MONNAIE M14 — B1 (trouvaille du grep généralisé, hors les 4 sites cités par l'audit) :
+     * sans le clamp, une victime au trésor NÉGATIF renvoyait un `gold` négatif — le
+     * pillage ENRICHISSAIT la victime et APPAUVRISSAIT l'occupant (pp->treasury-=gold
+     * l'augmentait, loot négatif se propageant au crédit de l'occupant plus bas). */
+    float gold = fminf(fmaxf(0.f, pp->treasury), target);   /* le trésor d'abord (le plus liquide) */
     pp->treasury -= gold; loot += gold;
     float remain = target - loot;
     /* MONNAIE M3f — item 5 : le RESTE n'est plus monétisé depuis le STOCK (M0 §2.12 —
@@ -1634,7 +1642,10 @@ float diplo_reparations(DiploState *d, World *w, WorldEconomy *econ, int a, int 
     float total=0.f;
     for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==loser){
         int rp=econ_region_rep_province(econ,r); if (rp<0||rp>=econ->n_prov) continue;
-        float pay=frac*econ->prov[rp].treasury;
+        /* MONNAIE M14 — B1 : même défaut que le tribut — `frac` d'un trésor NÉGATIF est
+         * négatif : le PERDANT endetté se faisait PAYER par le vainqueur (treasury-=pay
+         * l'enrichissait, le vainqueur perdait `total` plus bas). Trésor RÉEL (≥0) seul. */
+        float pay=frac*fmaxf(0.f, econ->prov[rp].treasury);
         econ->prov[rp].treasury-=pay; total+=pay;       /* indemnité prélevée sur tout le royaume */
     }
     if (dst>=0&&dst<econ->n_regions){

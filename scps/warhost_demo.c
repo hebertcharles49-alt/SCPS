@@ -106,6 +106,36 @@ int main(int argc,char**argv){
         ok("la PAIX démobilise : un pays en paix lève MOINS qu'un pays en guerre", ucp < ua);
     } else ok("(pas de 3e pays pour comparer paix vs guerre)", true);
 
+    /* MONNAIE M14 — B1 : LE TRÉSOR NÉGATIF NE DOIT JAMAIS INVERSER LE PAIEMENT.
+     * `fminf(pay, treasury)` avec treasury<0 rendait `paid` NÉGATIF : le trésor
+     * RECEVAIT (treasury -= paid l'augmentait), la solde devenait un revenu (FX_SOLDE
+     * positif) et la richesse des Laborers, qui reçoit `paid`, passait sous zéro.
+     * ca a toujours des unités (ua>0, LOT 1 ci-dessus) et est toujours EN GUERRE (dp) —
+     * un tick de plus doit tenter la solde. On pose son trésor CAPITAL à −500 et on
+     * vide la richesse Laborer pour isoler l'effet. */
+    printf("\n── LOT 1.5 (B1) : trésor négatif → paid==0, jamais un revenu ──\n");
+    { int cp3=w->country[ca].capital_prov;
+      int cr3=(cp3>=0)?w->province[cp3].region:-1;
+      int crp3=(cr3>=0&&cr3<econ->n_regions)?econ_region_rep_province(econ,cr3):-1;
+      if (crp3>=0 && crp3<econ->n_prov){
+          econ->prov[crp3].treasury = -500.f;
+          econ->prov[crp3].strata[CLASS_LABORER].wealth = 0.f;
+          float tre0 = econ->prov[crp3].treasury;
+          warhost_tick(&h,w,econ,&dp,NULL,1.f);
+          float tre1 = econ->prov[crp3].treasury;
+          printf("   trésor capital (ca=%d) avant=%.1f → après=%.1f · Laborer wealth=%.2f\n",
+                 ca, tre0, tre1, econ->prov[crp3].strata[CLASS_LABORER].wealth);
+          ok("trésor négatif : la solde ne PAIE plus rien (paid==0, treasury inchangé, pas de revenu)",
+             tre1<=tre0+0.01f);
+          ok("trésor négatif : la richesse Laborer ne passe PAS sous zéro par ce chemin",
+             econ->prov[crp3].strata[CLASS_LABORER].wealth >= 0.f);
+      } else ok("(capitale ca introuvable pour le test B1)", true);
+    }
+    /* LOT 1.5 a tourné un tick de warhost_tick DE PLUS (la mobilisation continue même à
+     * trésor sec) — reflète l'effectif COURANT avant le disband de LOT 2 (sinon LOT 2
+     * compare au décompte périmé d'AVANT ce tick, faux négatif indépendant de B1). */
+    ua = warhost_units(&h,ca);
+
     /* LOT 2 — warhost_disband REND les armes (aligné sur wh_shed, le downsizing
      * naturel de paix) : le stock macro du pays APRÈS disband doit valoir le stock
      * AVANT (Σ conservée), la réserve levée s'étant fondue dedans plutôt que dans

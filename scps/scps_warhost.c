@@ -308,7 +308,12 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                              * (at_war?1.5f:1.f) * lvmult * dt * 12.f;
               float army_mult = econ_country_budget_mult(econ,c,BUDGET_ARMY);
               float pay = base_pay * army_mult;
-              float paid = fminf(pay, econ->prov[crpp].treasury);
+              /* MONNAIE M14 — B1 : un trésor NÉGATIF inversait le paiement — fminf(pay,
+               * treasury<0) rendait `paid` négatif : le trésor RECEVAIT, la solde devenait
+               * un revenu (FX_SOLDE positif) et la richesse des Laborers passait sous zéro
+               * (paid ajouté = négatif). Clampé à 0 : un trésor à sec ne paie plus rien, ne
+               * reçoit jamais. */
+              float paid = fmaxf(0.f, fminf(pay, econ->prov[crpp].treasury));
               econ->prov[crpp].treasury -= paid;
               econ_flux_add(c, FX_SOLDE, -paid);                /* I0 : la ligne soldes */
               /* MONNAIE M3b-v2 — item 5 : la solde → LABORERS (déjà payée depuis le trésor
@@ -394,7 +399,9 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
               int crp2p=(crp2>=0&&crp2<econ->n_regions)?econ_region_rep_province(econ,crp2):-1;
               if (crp2p>=0 && crp2p<econ->n_prov){
                   float price = (float)grown * tune_f("REGIMENT_PRICE",12.f) * econ_world_ipm(econ);
-                  float paid = fminf(price, econ->prov[crp2p].treasury);
+                  /* MONNAIE M14 — B1 : même clamp que la solde ci-dessus — un trésor
+                   * négatif ne doit jamais INVERSER le prix de recrutement en revenu. */
+                  float paid = fmaxf(0.f, fminf(price, econ->prov[crp2p].treasury));
                   econ->prov[crp2p].treasury -= paid;
                   econ_flux_add(c, FX_SOLDE, -paid);
                   /* item 5 : le prix de recrutement → LABORERS (recruteurs/intendance),
