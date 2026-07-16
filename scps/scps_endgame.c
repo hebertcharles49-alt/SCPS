@@ -995,11 +995,20 @@ static bool endgame_heritage_metabolized_detail(const World *w, const WorldEcono
     /* F3 (mission FINS, 2026-07-16) : la voie diaspora seule bouge sous FINS_RACE
      * (cf. scps_tune_list.h RACE_METAB_MERV_RATIO) — le seuil legacy 0.60 rendait
      * « 4+ héritages métabolisés » un plafond jamais franchi (giga post-TECH :
-     * MAX observé 3/6 sur 100 mondes). METAB_MERV_MIN INCHANGÉ (le plancher
-     * d'âmes reste le même, seul le ratio d'intégration requis baisse). */
+     * MAX observé 3/6 sur 100 mondes). METAB_MERV_MIN INCHANGÉ à l'époque (Reste
+     * documenté) — repris ici. */
     float ratio_req = (tune_f("FINS_RACE", 1.f) > 0.f) ? tune_f("RACE_METAB_MERV_RATIO", 0.25f)
                                                         : tune_f("METAB_MERV_RATIO", 0.60f);
-    return ratio >= ratio_req && dig >= (double)tune_f("METAB_MERV_MIN", 500.f);
+    /* X6 — MERVEILLE À 400 (mission FAUSTIEN, 2026-07-16, décision joueur) : le plancher
+     * d'âmes digérées (le Reste laissé par F3) descend 500→400 sous FAUSTIEN_BOOST. La
+     * Merveille reste STRICTEMENT joueur-gatée (endgame_start_wonder/trig_merv_fondation,
+     * scps_events.c, double garde human_player — NON touchée, décision confirmée : ne PAS
+     * ouvrir à l'IA) ; ce plancher n'affecte QUE le calcul de métabolisation d'un héritage
+     * pour un pays humain. Injouable à mesurer en headless (F1 : la Merveille ne fonde
+     * JAMAIS en sweep, human_player<0) — un réglage pour les parties RÉELLES, documenté
+     * mais non prouvable par giga. Kill-switch FAUSTIEN_BOOST=0 restaure 500 (legacy). */
+    float merv_min = (tune_f("FAUSTIEN_BOOST", 1.f) > 0.f) ? tune_f("FAUST_METAB_MERV_MIN", 400.f) : tune_f("METAB_MERV_MIN", 500.f);
+    return ratio >= ratio_req && dig >= (double)merv_min;
 }
 
 static bool endgame_heritage_metabolized(const World *w, const WorldEconomy *econ, int cid, int h) {
@@ -1425,6 +1434,12 @@ static void endgame_select_and_fire(EndgameState *eg, const World *w,
      * le levier F2 est la PORTE (qui a le droit d'être évalué), pas le mérite
      * (le seuil que chaque fin doit encore franchir une fois évaluée). */
     bool race = tune_f("FINS_RACE", 1.f) > 0.f;
+    /* MISSION FAUSTIEN (2026-07-16) — kill-switch MAÎTRE de la vague X1-X6 (worldgen/
+     * rendement/entropie-par-usage/3 machines/backup universel/Merveille 400) : =0
+     * restaure EXACTEMENT le comportement pre-faustien (golden pre-faustien byte-
+     * identique), =1 (défaut) l'active. Lu ICI pour X5 (le backup universel, plus bas) ;
+     * les autres chantiers le lisent à leur propre site (scps_econ.c genèse/tick). */
+    bool faust_boost = tune_f("FAUSTIEN_BOOST", 1.f) > 0.f;
 
     if (race) {
         double br = endgame_blood_ratio(eg, econ);
@@ -1483,11 +1498,22 @@ static void endgame_select_and_fire(EndgameState *eg, const World *w,
          * prospère brûle assez) ; relevé pour que seuls les mondes RÉELLEMENT
          * industriels/lourds brûlent — les autres atteignent l'an 250 SANS fin
          * (AUCUNE), une issue honnête (cf. scps_tune_list.h pour la distribution
-         * mesurée qui a guidé les deux passes). */
+         * mesurée qui a guidé les deux passes).
+         * ═══ X5 — LE BACKUP UNIVERSEL (mission FAUSTIEN, 2026-07-16) ═══ CORRECTION
+         * JOUEUR FERME (relayée en cours de mission) : « Non, pas environ 0. = 0
+         * DÉFINITIF, pas de sans-fin, c'est réchauffement si y'a rien. » Le fallback
+         * devient un VRAI else final, SANS AUCUN critère résiduel — sous FAUSTIEN_BOOST
+         * (défaut ON), passé le délai, RÉCHAUFFEMENT tire, POINT (fuel_gate n'est plus
+         * qu'un signal calculé pour le diagnostic/une éventuelle PRIORITÉ future entre
+         * plusieurs replis armés — à ce jour il n'existe qu'UN SEUL repli, FIN_CHAUD :
+         * aucun arbitrage n'est donc câblé, le signal est juste PRÉSERVÉ pour ne rien
+         * jeter). Kill-switch FAUSTIEN_BOOST=0 restaure le fuel_gate comme un VRAI
+         * garde (comportement pre-faustien EXACT, golden byte-identique). */
         int delay = (int)tune_f("FUEL_FALLBACK_DELAY", 60.f);
+        bool delay_reached = (year >= year_open + delay);
         float fuel_gate = race ? tune_f("RACE_FUEL_FALLBACK_MIN", 7.0f) : tune_f("FUEL_FALLBACK_MIN", 2.0f);
-        if (year >= year_open + delay
-            && endgame_fuel_ratio(eg, econ) >= (double)fuel_gate) {
+        bool fuel_ok = faust_boost ? true : (endgame_fuel_ratio(eg, econ) >= (double)fuel_gate);
+        if (delay_reached && fuel_ok) {
             /* Foyer = le grand brasier : la région vivante la plus saturée d'entropie
              * si connue, sinon l'empire le plus faustien (pattern du sélecteur normal ;
              * l'épicentre du réchauffement est symbolique — chaud_step agit globalement). */
