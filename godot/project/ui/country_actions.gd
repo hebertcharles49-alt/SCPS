@@ -222,6 +222,11 @@ func _build() -> void:
 	col.add_child(_econ_box)
 	_add_action(_econ_box, "migration", "Pacte migratoire")
 	_add_action(_econ_box, "pact", "Pacte commercial")
+	# UI-MONNAIE (2026-07-16) — U3 : L'EMPRUNT D'ÉTAT (MONNAIE M9 V2). Verbe et lecteurs
+	# à PART (player_request_loan/country_loan_status) — pas dans DIPLO_ACTION_ID/diplo_
+	# action_legal (motif « fabricate », géré hors boucle générique ci-dessous). Le detail
+	# Label posé par _add_action (motif fab_btn) porte l'état « [État] étudie/accorde/refuse ».
+	_add_action(_econ_box, "request_loan", "Demander un emprunt", func(): _loan_press())
 	eco_toggle.pressed.connect(func():
 		_econ_box.visible = not _econ_box.visible
 		eco_toggle.text = ("▾" if _econ_box.visible else "▸") + " ACTIONS ÉCONOMIQUES")
@@ -587,7 +592,7 @@ func _refresh() -> void:
 	else:
 		_context_hint.text = "Rappel : clic droit sur un pays ouvre cette fiche ; l'onglet Diplomatie compare tous les voisins."
 	for verb in _btns:
-		if verb == "fabricate":
+		if verb == "fabricate" or verb == "request_loan":
 			continue   # géré à part plus bas (texte/état dynamiques)
 		var b: Button = _btns[verb]
 		var legal: Dictionary = _legal_by_verb.get(verb, {})
@@ -651,6 +656,23 @@ func _refresh() -> void:
 		_cb_lbl.text = "Une revendication est prête : déclarez la guerre avant qu'elle ne s'évente."
 	else:
 		_cb_lbl.text = ""
+	# UI-MONNAIE — U3 : L'EMPRUNT D'ÉTAT. Grisé par le MÊME émissaire (cd) que les
+	# autres verbes ; l'état de la DERNIÈRE demande (country_loan_status, mot résolu
+	# côté moteur — « [État] accorde/refuse le prêt »/« Aucune demande ») s'affiche
+	# SEULEMENT si elle concerne CE pays (country_loan_request_target == _cid).
+	var loan_btn: Button = _btns.get("request_loan")
+	if loan_btn != null:
+		loan_btn.disabled = cd > 0
+		loan_btn.tooltip_text = ("Émissaire en tournée — retour dans %d j" % cd) if cd > 0 \
+			else "Demande un prêt à ce pays (le maximum structurel). L'État peut refuser."
+		var loan_detail: Label = _action_details.get("request_loan")
+		if loan_detail != null and w.has_method("player"):
+			var me3 := int(w.player())
+			var target := int(w.country_loan_request_target(me3)) if w.has_method("country_loan_request_target") else -1
+			if target == _cid and w.has_method("country_loan_status"):
+				loan_detail.text = String(w.country_loan_status(me3))
+			else:
+				loan_detail.text = "Aucune demande en cours auprès de ce pays."
 	# « Faire la paix » est un TIROIR : il reste accessible pendant la guerre même si
 	# l'émissaire est occupé (le bouton d'envoi, lui, porte le cooldown). En paix il
 	# est toujours visible et franchement grisé.
@@ -700,6 +722,22 @@ func _act(verb: String) -> void:
 		Sound.play("moment_war_horn")
 	elif not ok:
 		Sound.play("ui_click")
+	_refresh()
+
+## UI-MONNAIE — U3 : L'EMPRUNT D'ÉTAT (player_request_loan, CMD_REQUEST_LOAN — motif _act,
+## mais un verbe À PART : la résolution SYNCHRONE au drain n'a pas de « would_accept »
+## préalable comme les autres offres diplo, motif M9 « pas d'état en cours »).
+func _loan_press() -> void:
+	var w = Sim.world
+	if w == null or _cid < 0:
+		return
+	var ok := bool(w.player_request_loan(_cid, -1.0)) if w.has_method("player_request_loan") else false   # <=0 ⇒ le maximum
+	_flash.text = ("Ordre émis : demander un emprunt · l'émissaire part." if ok \
+		else "Ordre refusé : demander un emprunt · survolez l'action pour connaître le verrou.")
+	_flash.add_theme_color_override("font_color", VKit.sense(0.80) if ok else VKit.sense(0.15))
+	if ok:
+		Sim.note_emissary("Demander un emprunt à %s" % String(_head.text))
+	Sound.play("ui_click")
 	_refresh()
 
 ## Décision structurée fournie par le moteur. Le fallback ne sert qu'aux anciennes DLL
