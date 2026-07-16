@@ -1223,8 +1223,18 @@
      * pilote la pente, TAX_SAT_FACTOR_MIN/MAX bornent l'excursion. 0 = kill-switch EXACT
      * (facteur toujours 1.0, golden pré-M8 byte-identique). TAX_SAT_REF partage le même
      * nombre que AI_FISCAL_TARGET ci-dessous (la « marge de sécurité » 60 %, décision
-     * joueur) SANS coupler le CODE — deux tunables indépendants, même valeur par défaut. */ \
-    X(TAX_SAT_COUPLING,                0.8f) \
+     * joueur) SANS coupler le CODE — deux tunables indépendants, même valeur par défaut.
+     * CALIBRAGE (sweep {9,11,42}×3×250, cf. TROUVAILLES M8 — recherche manuelle, 7
+     * points testés, PAS un optimum global prouvé, motif M7 « sensibilité forte/non-
+     * linéaire ») : 0.8 initial cassait la bande Laborer (seed 11 : 59→47 %, sous 50).
+     * Resserré à 0.25 : Laborer rentrait DANS la bande MAIS régressait l'invariant M3c
+     * sur seed 11 (0/9 breach pré-M8 → 2/9 avec ce réglage, 372/404 % > seuil 370 %) —
+     * la sensibilité n'est PAS monotone (0.15, encore plus doux, a fait EXPLOSER un sim
+     * à 1143 % — bifurcation, pas un gradient). Reverrouillé à 0.35 après un balayage
+     * de 7 points : seed 11 repasse 0 breach (max 246 %), Laborer 55-66 % sur les 3
+     * graines (seed 9 marginal +2pts au-dessus du plafond 64, documenté — précédent
+     * M7 « breach documenté, seuil jamais élargi », appliqué ici à la bande Laborer). */ \
+    X(TAX_SAT_COUPLING,                0.35f) \
     X(TAX_SAT_REF,                     0.60f) \
     X(TAX_SAT_FACTOR_MIN,              0.5f) \
     X(TAX_SAT_FACTOR_MAX,              1.5f) \
@@ -1234,9 +1244,11 @@
      * mensuelle, zone morte AI_FISCAL_DEADBAND (hystérésis anti-oscillation), pas borné
      * AI_FISCAL_STEP par mois. AI_FISCAL_TARGET<=0 : kill-switch — l'IA n'écrit JAMAIS
      * tax_mult (golden pré-M8 byte-identique, comportement inchangé depuis avant M8 où
-     * aucun code IA ne touchait ce curseur). */ \
+     * aucun code IA ne touchait ce curseur). CALIBRAGE : calibré ENSEMBLE avec TAX_SAT_
+     * COUPLING ci-dessus (jamais isolément) — 0.012/0.05 est le point retenu du même
+     * balayage 7 points (priorité : 0 breach invariant, la bande Laborer suit en second). */ \
     X(AI_FISCAL_TARGET,                0.60f) \
-    X(AI_FISCAL_DEADBAND,              0.03f) \
-    X(AI_FISCAL_STEP,                  0.02f)
+    X(AI_FISCAL_DEADBAND,              0.05f) \
+    X(AI_FISCAL_STEP,                  0.012f)
 
 #endif /* SCPS_TUNE_LIST_H */

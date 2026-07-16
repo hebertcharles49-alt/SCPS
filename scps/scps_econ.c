@@ -2077,7 +2077,7 @@ static float econ_debase_tax_factor(float debase_kdrain){
  * grogne montent → collecte baisse) est ÉMERGENTE de cette même formule, pas
  * codée à part — c'est le prix du cercle vertueux, mesuré au sweep. */
 static float econ_satisfaction_tax_factor(float sat){
-    float coupling = tune_f("TAX_SAT_COUPLING", 0.8f);
+    float coupling = tune_f("TAX_SAT_COUPLING", 0.35f);
     if (coupling<=0.f) return 1.f;                     /* kill-switch exact */
     float ref = tune_f("TAX_SAT_REF", 0.60f);
     float raw = 1.f + coupling*(clampf(sat,0.f,1.f)-ref);
@@ -2168,8 +2168,8 @@ static void econ_ai_fiscal_tick(WorldEconomy *e, int cid){
     float target = tune_f("AI_FISCAL_TARGET", 0.60f);
     if (target<=0.f) return;                            /* kill-switch */
     if (econ_is_human_country(cid)) return;              /* le joueur garde SON curseur */
-    float deadband = tune_f("AI_FISCAL_DEADBAND", 0.03f);
-    float step     = tune_f("AI_FISCAL_STEP", 0.02f);
+    float deadband = tune_f("AI_FISCAL_DEADBAND", 0.05f);
+    float step     = tune_f("AI_FISCAL_STEP", 0.012f);
     for (int c=0;c<CLASS_COUNT;c++){
         if (c==CLASS_SLAVE) continue;                    /* non-imposable — rien à piloter */
         float sat = econ_country_class_satisfaction(e, cid, (SocialClass)c);
