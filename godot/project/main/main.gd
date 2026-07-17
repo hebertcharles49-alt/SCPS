@@ -36,6 +36,15 @@ var _nav: Node
 var _sel_prov := -1
 var _sel_owner := -1           # dernier propriétaire vu (restaure CountryPanel à la fermeture d'un écran profond)
 
+# ── UI-POLISH #13 : PILE « dernier ouvert » + exclusivité des panneaux MAJEURS ────────
+# Échap doit fermer le panneau au PREMIER PLAN (le dernier ouvert), pas un ordre fixe
+# arbitraire ; et un panneau MAJEUR (Trésor/Diplomatie) doit refermer les POPUPS
+# FLOTTANTS non ancrés (Construction) à l'ouverture — la fiche province, contextuelle-
+# ancrée, coexiste toujours (jamais dans cette liste). Un SEUL point d'écoute par
+# panneau (`visibility_changed`) : marche quel que soit le chemin de code qui a posé
+# `.visible` (raccourci, bouton, signal…), sans toucher aux dizaines de sites d'ouverture.
+var _panel_stack: Array = []
+
 # PANNEAUX FLOTTANTS DÉPLAÇABLES (display-only) : glisser par le bandeau-titre.
 # Un simple CLIC sur un bouton d'en-tête ne bouge jamais (aucun mouvement) → le bouton
 # tire encore ; seul un press-puis-déplace fait glisser. C'est la désambiguïsation.
@@ -317,6 +326,28 @@ func _ready() -> void:
 	_empire_win.visible = false
 	_empire_win.add_to_group("draggable")
 	ui.add_child(_empire_win)
+
+	# UI-POLISH #13 — la pile d'Échap : chaque panneau suivi s'auto-empile/désempile via
+	# SON PROPRE visibility_changed (peu importe le chemin de code qui a posé .visible).
+	# _construct = le seul POPUP FLOTTANT non ancré de la liste ; _budget_v2/_empire_win/
+	# _country_actions = MAJEURS (Trésor/Diplomatie) — leur ouverture referme _construct.
+	# La fiche province (_prov_panel/_prov_panel_v2/_country_panel), contextuelle-ancrée,
+	# N'EST PAS dans cette liste : elle coexiste toujours (règle joueur explicite).
+	for maj in [_budget_v2, _empire_win, _country_actions]:
+		if maj != null:
+			var m: Control = maj
+			m.visibility_changed.connect(func():
+				_panel_stack.erase(m)
+				if m.visible:
+					_panel_stack.append(m)
+					if _construct != null and _construct.visible:
+						_construct.visible = false)
+	if _construct != null:
+		_construct.visibility_changed.connect(func():
+			_panel_stack.erase(_construct)
+			if _construct.visible:
+				_panel_stack.append(_construct))
+
 	_search_palette = load("res://ui/search_palette.gd").new()
 	_search_palette.name = "SearchPalette"
 	ui.add_child(_search_palette)
@@ -732,17 +763,37 @@ func _on_tick_endgame(_year: int) -> void:
 ## (moins `_devpanel` outil de MOD et `_battle_panel` déjà son propre panneau de combat,
 ## non nommés par l'audit). alerts.gd lit ceci à CHAQUE frame (via un Callable, il n'a
 ## pas de référence à Main) pour masquer sa pile ordinaire derrière un compteur compact.
+## UI-POLISH #13 (cartographie UI 284bc3b) : `_budget_v2`/`_empire_win`/`_prov_panel_v2`
+## étaient ABSENTS d'ici aussi (même bug de non-enrôlement que `_close_topmost` — ajoutés
+## après coup, jamais raccordés aux listes « panneau majeur » historiques) : le Trésor ou
+## la fenêtre Diplomatie ouverts ne masquaient pas la pile d'alertes ordinaire derrière
+## le compteur compact, contrairement aux autres écrans profonds.
 func major_open() -> bool:
 	for p in [_memory_panel, _search_palette, _tech, _econ, _codex, _construct, _prov_detail, _country_actions,
-			_chronique, _age_recap, _epilogue, _religion]:
+			_chronique, _age_recap, _epilogue, _religion, _budget_v2, _empire_win, _prov_panel_v2]:
 		if p != null and p.visible:
 			return true
 	return false
 
 ## ferme le PANNEAU FLOTTANT visible le plus haut (un par pression d'Échap), puis la
 ## sélection. true = quelque chose a été fermé (Échap consommé avant le menu).
+## UI-POLISH #13 : Échap ferme d'abord le DERNIER panneau OUVERT (Trésor/Diplomatie/
+## Construction — pile `_panel_stack`, cf. leur wiring `visibility_changed`), puis
+## retombe sur l'ordre historique fixe pour tout le reste (aucun de ces panneaux N'A
+## de notion d'ordre d'ouverture, un ordre arbitraire raisonnable suffit). `_budget_v2`/
+## `_empire_win`/`_prov_panel_v2` étaient ABSENTS de cette liste (bug historique : Échap
+## ne les fermait jamais, sautait direct au menu PAR-DESSUS eux) — ajoutés en repli.
 func _close_topmost() -> bool:
-	for p in [_memory_panel, _search_palette, _construct, _tech, _econ, _religion, _prov_detail, _devpanel, _country_actions, _chronique, _age_recap, _epilogue, _battle_panel, _codex]:
+	while not _panel_stack.is_empty():
+		var top: Control = _panel_stack[_panel_stack.size() - 1]
+		_panel_stack.remove_at(_panel_stack.size() - 1)
+		if top != null and is_instance_valid(top) and top.visible:
+			top.visible = false
+			Sound.play("ui_parchment_close")
+			return true
+	for p in [_memory_panel, _search_palette, _construct, _tech, _econ, _religion, _prov_detail,
+			_devpanel, _country_actions, _chronique, _age_recap, _epilogue, _battle_panel, _codex,
+			_budget_v2, _empire_win, _prov_panel_v2]:
 		if p != null and p.visible:
 			p.visible = false
 			Sound.play("ui_parchment_close")
