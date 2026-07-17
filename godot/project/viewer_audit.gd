@@ -55,7 +55,11 @@ func _audit_seed(sd: int, years: int) -> int:
 	Sim.generated.emit()                 # le front-end rebâtit décor/structures/routes sur le monde âgé
 	for _f in range(8):
 		await get_tree().process_frame
-	_map._enter_iso(Vector2(w.map_w() * 0.5, w.map_h() * 0.5))
+	# ANCIEN _enter_iso (globe→iso) DISPARU depuis l'unification ISO unique — on pose la caméra
+	# directement (même geste que shot_parch.gd) à un zoom de lecture (routes/décor/bourgs actifs).
+	_map._camera.position = _map.iso_pos(w.map_w() * 0.5, w.map_h() * 0.5)
+	_map._camera.zoom = Vector2(4.0, 4.0)
+	_map.queue_redraw()
 	for _f2 in range(3):
 		await get_tree().process_frame
 	var ov = _map.get_node_or_null("Overlay")
@@ -91,9 +95,10 @@ func _audit_seed(sd: int, years: int) -> int:
 		elif ov._in_river_water(rf, c.x, c.y):
 			road_river += 1
 
-	# Télémétrie PONTS : nombre de modules posés (les franchissements détectés).
-	ov._build_bridges(_map)
-	var bridges: int = ov._bridges.size()
+	# Télémétrie PONTS : nombre de franchissements détectés (ov._ink_bridges, peuplé par
+	# _ensure_roads()/_augment_roads() DÉJÀ appelé via le signal Sim.generated ci-dessus —
+	# ancien _build_bridges/_bridges disparus avec la réécriture en ponts d'ENCRE vectoriels).
+	var bridges: int = ov._ink_bridges.size()
 
 	var viol := 0
 	var flags := ""
