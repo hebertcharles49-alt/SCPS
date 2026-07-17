@@ -646,7 +646,15 @@ typedef struct {
     float  to_class;        /* dette due aux PROPRES classes (Bourgeois+Élite agrégés) */
     float  to_cs;            /* dette due au créancier cité-état/étranger courant */
     float  total;            /* to_class+to_cs (credit_debt_total) */
-    float  taux;              /* 0..1 — taux ANNUEL proposé (credit_current_rate) */
+    float  taux;              /* 0..1 — taux ANNUEL proposé pour un NOUVEL emprunt (credit_current_rate) */
+    /* MONNAIE M14 — B7 : L'ÉCHÉANCE RÉELLEMENT PRÉLEVÉE cette année sur la dette EXISTANTE
+     * — DISTINCTE de `taux` (qui n'est QUE le taux d'origination d'un futur emprunt, jamais
+     * appliqué à la dette déjà inscrite sous DEBT_FIXED). Sous DEBT_FIXED (défaut, M11) :
+     * total×DEBT_DUE_FRAC (10 %/an du stock, credit_year_tick) — PAS total×taux (2-5 %),
+     * l'erreur que l'UI affichait. Legacy (DEBT_FIXED=0) : total×taux (l'ancien service
+     * d'intérêt composé, EXACT). Lecteur PUR — reflète la MÊME formule que credit_year_tick,
+     * jamais une constante dupliquée côté façade/GDScript. */
+    float  due;
     int    creditor;          /* pays créancier CS/étranger (-1 = aucun) */
     const char *creditor_name;
 } ScpsDebt;

@@ -9,6 +9,7 @@
  * de déterminisme que l'hôte Godot héritera tant qu'il n'AFFICHE que.
  */
 #include "scps_api.h"
+#include "scps_tune.h"       /* MONNAIE M14 — B7 : tune_f/tune_set (DEBT_FIXED/DEBT_DUE_FRAC) */
 #include "scps_religion.h"   /* P3 : test de persistance religion */
 #include "scps_provlog.h"    /* DACT_* : le journal d'actes diplomatique */
 #include "scps_agency.h"     /* LOT T : edifice_tier (le palier de famille) */
@@ -357,6 +358,42 @@ int main(int argc, char **argv){
                    (double)cap, (nlc==3)?(double)(lc[cls].taux*100.f):0.0, gold0, gold1, gold1-gold0);
             ok("V1 verbe EMPRUNTER À UN ORDRE : APPLIQUÉ au drain (trésor crédité de la capacité annoncée)",
                cap<=0.5f ? (gold1>=gold0-0.01) : (gold1 > gold0 + 0.5*(double)cap));
+
+            /* MONNAIE M14 — B7 : LA VRAIE ÉCHÉANCE (scps_country_debt.due) — DISTINCTE de
+             * `taux` (le taux d'ORIGINATION d'un futur emprunt, jamais celui qui prélève sur
+             * la dette EXISTANTE sous DEBT_FIXED : 10 %/an du stock, credit_year_tick). Le
+             * bug de l'UI (budget_panel_v2.gd) affichait total*taux (2-5 %) — bien EN DESSOUS
+             * de la vraie échéance (10 %). credit_debt_ceiling exige >90j de revenu CAPTÉ
+             * (bootstrap, motif M3d) — si le V1 ci-dessus tombe trop tôt (cap==0), on
+             * réessaie ICI après un an supplémentaire, dédié à B7. */
+            if (cap<=0.5f){
+                scps_sim_advance_days(s2, 366);
+                ScpsLoanCapacity lc2[3]; int nlc2 = scps_country_loan_capacity(s2, pl, lc2, 3);
+                float cap2 = (nlc2==3) ? lc2[1].montant_max : 0.f;
+                if (cap2>0.5f){
+                    scps_player_borrow_class(s2, 1, -1.f);
+                    scps_sim_advance_days(s2, 1);
+                    cap = cap2;
+                }
+            }
+            if (cap>0.5f){
+                ScpsDebt deb; scps_country_debt(s2, pl, &deb);
+                float expect_fixed = deb.total * tune_f("DEBT_DUE_FRAC", 0.10f);
+                printf("   B7 : dette totale=%.0f · taux origination=%.1f%% · échéance RÉELLE=%.1f (attendu %.1f, DEBT_DUE_FRAC)\n",
+                       (double)deb.total, (double)(deb.taux*100.f), (double)deb.due, (double)expect_fixed);
+                ok("B7 : sous DEBT_FIXED, l'échéance == total×DEBT_DUE_FRAC (PAS total×taux)",
+                   fabsf(deb.due - expect_fixed) < 0.5f);
+                ok("B7 : l'échéance RÉELLE diverge du calcul BUGUÉ total×taux (la preuve du bug fermé)",
+                   fabsf(deb.due - deb.total*deb.taux) > 0.5f);
+                /* kill-switch DEBT_FIXED=0 : legacy, due==total*taux EXACT (comportement pré-M11). */
+                tune_set("DEBT_FIXED", 0.f);
+                ScpsDebt deb_legacy; scps_country_debt(s2, pl, &deb_legacy);
+                ok("B7 kill-switch DEBT_FIXED=0 : legacy, due==total*taux EXACT",
+                   fabsf(deb_legacy.due - deb_legacy.total*deb_legacy.taux) < 0.01f);
+                tune_set("DEBT_FIXED", 1.f);   /* redéfinit le défaut */
+            } else {
+                ok("(pas de dette réelle contractée — test B7 sauté)", true);
+            }
         }
         /* ── MONNAIE M9 — V2 : « DEMANDER UN EMPRUNT À UN ÉTAT » (diplomatie) — un État PEUT
          * REFUSER (ai_consider_offer/OFFER_LOAN, value SUBJECTIVE) ; on sollicite plusieurs

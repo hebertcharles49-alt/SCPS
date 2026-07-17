@@ -602,6 +602,34 @@ int main(void){
         tune_set("INCOME_TAX", 1.f);   /* redéfinit le défaut */
     }
 
+    /* ── 18. B7 : LA VRAIE ÉCHÉANCE (façade scps_country_debt.due) — mêmes primitives
+     * que scps_api.c (credit_debt_total/credit_current_rate/tune_f), sans passer par
+     * ScpsSim (organique, sujet aux aléas d'une économie simulée — cf. scps_api_demo.c
+     * où ce même calcul est aussi vérifié quand la fixture s'y prête). ── */
+    printf("\n── 18. B7 : l'échéance affichée == total×DEBT_DUE_FRAC, PAS total×taux ──\n");
+    {
+        setup(e, 100.f, 5000.f); credit_init();
+        credit_spend(e,w,0,550.f);   /* fait naître une dette réelle (motif §2) */
+        float total = credit_debt_total(0), taux = credit_current_rate(0);
+        ok("setup B7 : une dette réelle existe", total > 1.f);
+        /* la MÊME formule que scps_country_debt (scps_api.c) : reproduite ici pour
+         * vérifier la RELATION, jamais une constante dupliquée côté GDScript. */
+        bool fixed = tune_f("DEBT_FIXED", 1.0f) > 0.f;
+        float due = fixed ? (total * tune_f("DEBT_DUE_FRAC", 0.10f)) : (total * taux);
+        float due_bugged = total * taux;   /* l'ANCIEN calcul de budget_panel_v2.gd, le bug */
+        printf("   dette=%.1f · taux origination=%.1f%% · échéance RÉELLE=%.1f · ancien calcul buggé=%.1f\n",
+               (double)total, (double)(taux*100.f), (double)due, (double)due_bugged);
+        ok("B7 : sous DEBT_FIXED (défaut), l'échéance == 10%% du stock (DEBT_DUE_FRAC), pas le taux",
+           fixed && fabsf(due - total*0.10f) < 0.5f);
+        ok("B7 : l'échéance RÉELLE est SENSIBLEMENT PLUS GRANDE que l'ancien calcul buggé (taux 2-5%%)",
+           due > due_bugged * 1.5f);
+        tune_set("DEBT_FIXED", 0.f);
+        float due_legacy = (tune_f("DEBT_FIXED",1.f)>0.f) ? (total*tune_f("DEBT_DUE_FRAC",0.10f)) : (total*taux);
+        ok("B7 kill-switch DEBT_FIXED=0 : legacy, échéance==total×taux EXACT (comportement pré-M11)",
+           fabsf(due_legacy - due_bugged) < 0.01f);
+        tune_set("DEBT_FIXED", 1.f);   /* redéfinit le défaut */
+    }
+
     printf("\n═══ BILAN : %d réussis, %d échoués ═══\n", g_pass, g_fail);
     free(w); free(e); free(wl);
     return g_fail?1:0;

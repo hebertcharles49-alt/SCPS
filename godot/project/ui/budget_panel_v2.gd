@@ -572,13 +572,19 @@ func _update_monnaie(me: int) -> void:
 		var to_class := float(deb.get("to_class", 0.0))
 		var to_cs := float(deb.get("to_cs", 0.0))
 		var taux := float(deb.get("taux", 0.0))
+		# MONNAIE M14 — B7 : `due` est l'échéance RÉELLEMENT prélevée (credit_year_tick,
+		# scps_credit.c — 10 %/an du stock sous DEBT_FIXED) — `taux` n'est QUE le taux
+		# d'origination d'un NOUVEL emprunt, jamais appliqué à la dette déjà inscrite ;
+		# l'ancien calcul (total*taux, 2-5 %) affichait un montant bien trop bas. Reader
+		# dédié (scps_api.c scps_country_debt) — aucune constante dupliquée ici.
+		var due := float(deb.get("due", 0.0))
 		var creditor := int(deb.get("creditor", -1))
 		var creditor_name := String(deb.get("creditor_name", ""))
 		_set_m("debt_total", "%s or" % _grp(int(round(total))), ParchTheme.EXPENSE if total > 0.5 else ParchTheme.DIM_INK)
 		_set_m("debt_class", "%s or" % _grp(int(round(to_class))))
 		_set_m("debt_cs", ("%s : %s or" % [creditor_name, _grp(int(round(to_cs)))]) if creditor >= 0 and to_cs > 0.5 else "—")
 		_set_m("debt_rate", "%.1f %%/an" % (taux * 100.0))
-		_set_m("debt_due", "~%s or/an" % _grp(int(round(total * taux))) if total > 0.5 else "—")
+		_set_m("debt_due", "~%s or/an" % _grp(int(round(due))) if total > 0.5 else "—")
 	# EMPRUNTER À UN ORDRE
 	if w.has_method("country_loan_capacity"):
 		var caps: Array = w.country_loan_capacity(me)

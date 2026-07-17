@@ -2058,6 +2058,12 @@ void scps_country_debt(ScpsSim *s, int country, ScpsDebt *out){
     out->to_cs    = credit_debt_citystate(country);
     out->total    = credit_debt_total(country);
     out->taux     = credit_current_rate(country);
+    /* MONNAIE M14 — B7 : la VRAIE échéance annuelle — MÊME formule que credit_year_tick
+     * (scps_credit.c), jamais dupliquée en dur côté GDScript. */
+    {
+        bool fixed = tune_f("DEBT_FIXED", 1.0f) > 0.f;
+        out->due = fixed ? (out->total * tune_f("DEBT_DUE_FRAC", 0.10f)) : (out->total * out->taux);
+    }
     int cr = credit_of(country);
     out->creditor = cr;
     if (cr>=0 && cr<s->w->n_countries) out->creditor_name = sz(s->w->country[cr].name);

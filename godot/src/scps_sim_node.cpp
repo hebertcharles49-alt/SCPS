@@ -2021,7 +2021,7 @@ Dictionary ScpsWorld::slave_market() {
  * lecteur moteur EXISTAIT DÉJÀ (M8/M9) — seule cette façade manquait (TROUVAILLES.md). ── */
 Dictionary ScpsWorld::country_debt(int country) {
     Dictionary d;
-    d["to_class"] = 0.0; d["to_cs"] = 0.0; d["total"] = 0.0; d["taux"] = 0.0;
+    d["to_class"] = 0.0; d["to_cs"] = 0.0; d["total"] = 0.0; d["taux"] = 0.0; d["due"] = 0.0;
     d["creditor"] = (int64_t)(-1); d["creditor_name"] = String();
     if (!sim) return d;
     ScpsDebt deb;
@@ -2030,6 +2030,8 @@ Dictionary ScpsWorld::country_debt(int country) {
     d["to_cs"] = (double)deb.to_cs;
     d["total"] = (double)deb.total;
     d["taux"] = (double)deb.taux;
+    /* MONNAIE M14 — B7 : l'échéance RÉELLE (10 %/an du stock sous DEBT_FIXED, PAS total×taux). */
+    d["due"] = (double)deb.due;
     d["creditor"] = (int64_t)deb.creditor;
     d["creditor_name"] = String::utf8(deb.creditor_name);
     return d;
