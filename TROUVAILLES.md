@@ -6328,3 +6328,15 @@ chasse révèle une chaîne »). Invariant apparié M3f 0/9 breach tenu (les deu
 - Tag `pre-m16` posé · worktree `C:/tmp_wt_pre_m16` à retirer après session · binaires
   `chronicle_pre_m16.exe`/`chronicle_head_m16.exe`/`chronicle_c2test.exe` et scratch
   `m16_sweep*/` (non committés, nettoyés du dépôt) — restaient dans le scratchpad de session.
+
+---
+
+## CARTOGRAPHIE UI — la carte existe, tout brief UI l'embarque (2026-07-17)
+
+**`docs/CARTOGRAPHIE_UI.md`** (HEAD `296a8c2`, lecture seule sur `godot/project`) :
+37 surfaces + carte de l'information (3-clics) + 22 raccourcis/34 verbes/6 curseurs
++ le carnet de chasse doctrine (Échap ne ferme pas V/B/E · 3 fiches province aux
+classes renommées · religion introuvable après fondation). **Tout digest de mission
+UI futur EMBARQUE ce document** au lieu de refouiller l'interface à l'aveugle — et
+toute vague UI le met à jour dans le MÊME commit que ses changements (règle en tête
+du fichier).
