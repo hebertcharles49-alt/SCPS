@@ -307,11 +307,17 @@ func _footer_btn(label: String, tip: String, cb: Callable) -> Button:
 	return b
 
 ## une note discrète du pied (raison grisée, feedback transitoire) — pas un bouton.
+## PIÈGE (D1, trouvé en capture réelle) : dans un HFlowContainer, un Label enveloppé
+## SANS largeur plancher explicite peut se voir allouer une largeur quasi nulle par le
+## flow, et l'autowrap se replie alors LETTRE PAR LETTRE (une colonne d'un caractère de
+## large) au lieu de mot par mot — `custom_minimum_size.x` fixe (motif déjà utilisé par
+## `_line()`) force le flow à donner sa PROPRE ligne à la note, largeur pleine.
 func _footer_note(txt: String) -> void:
 	var lb := Label.new()
 	lb.theme_type_variation = "RowDim"
 	lb.text = txt
 	lb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lb.custom_minimum_size = Vector2(PW - 24.0, 0)
 	_footer.add_child(lb)
 
 func _refresh_footer() -> void:
