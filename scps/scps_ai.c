@@ -2706,6 +2706,20 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
 #define SPEC_VOL_ABS    50.f    /* B1 — et au plus 50 unités par geste (plafond dur) */
 #define SPEC_SELL_FRAC  0.15f   /* B1 — vente EN FILET : 15 % du magot par tick (était 50 %) */
 #define SPEC_COOLDOWN   1        /* B1 — repos d'un tick (≈30 j) après un geste sur un bien */
+/* M15 — F2 : LE DERNIER SITE M0 (§1.6). Legacy : l'achat débitait le trésor régional
+ * pour RIEN (le vendeur n'existait pas) et la vente créditait le MÊME trésor pour
+ * RIEN (aucun acheteur débité) — buy-low/sell-high garantissait une CRÉATION nette
+ * (résidu mesuré +9k/an sur 209s3, M13 P3/TROUVAILLES). Conservé : le spéculateur
+ * ACHÈTE réellement (le trésor paie, la contrepartie = les classes qui possèdent
+ * économiquement le stock retiré du marché — même clé 42/20/38 que le « compte de
+ * marché » M3b/STATE_BUY_FRAC, scps_econ.c) et REVEND réellement (la contrepartie
+ * naturelle — un acheteur nommé — n'existe pas ; le pot le plus proche de la
+ * sémantique est LE MARCHÉ DE LA RÉGION, donc les MÊMES classes, débitées — le gain
+ * du spéculateur est BORNÉ par ce qu'elles peuvent réellement payer, jamais ex
+ * nihilo). SPECULATE_CONSERVED=0 : legacy EXACT (golden pré-M15 byte-identique). */
+#define SPEC_WAGE_SHARE   0.42f  /* miroir WAGE_SHARE (scps_econ.c) */
+#define SPEC_PROFIT_SHARE 0.20f  /* miroir 1−WAGE_SHARE−TAX_RATE (scps_econ.c) */
+#define SPEC_TAX_SHARE    0.38f  /* miroir TAX_RATE (scps_econ.c) */
 void ai_speculate_tick(AiActor *a, WorldEconomy *econ){
     if (!a || !econ) return;
     int hub = intertrade_country_centre(econ, a->cid);
@@ -2737,7 +2751,14 @@ void ai_speculate_tick(AiActor *a, WorldEconomy *econ){
                 vol = -econ_region_stock_add(econ, hub, g, -vol);
                 if (vol>=1.f){
                     a->hoard[g]+=vol; held+=vol;
-                    econ_region_treasury_add(econ, hub, -vol*p);
+                    float paid = -econ_region_treasury_add(econ, hub, -vol*p);   /* réellement débité (clampé) */
+                    if (tune_f("SPECULATE_CONSERVED",1.f)>0.f && paid>0.f){
+                        /* F2 : la contrepartie réelle — les classes qui possédaient le
+                         * stock retiré du marché encaissent (compte de marché M3b). */
+                        econ_region_wealth_add(econ, hub, CLASS_LABORER,   paid*SPEC_WAGE_SHARE);
+                        econ_region_wealth_add(econ, hub, CLASS_BOURGEOIS, paid*SPEC_PROFIT_SHARE);
+                        econ_region_wealth_add(econ, hub, CLASS_ELITE,     paid*SPEC_TAX_SHARE);
+                    }
                     a->stats.spec_vol+=vol; a->stats.spec_gold-=vol*p; a->stats.spec_buys++;
                     a->spec_cd[g]=SPEC_COOLDOWN;
                 }
@@ -2748,7 +2769,18 @@ void ai_speculate_tick(AiActor *a, WorldEconomy *econ){
             if (vol>=1.f){
                 a->hoard[g]-=vol;
                 econ_region_stock_add(econ, hub, g, vol);        /* le bien REVIENT au marché (RE-KEY : province) */
-                econ_region_treasury_add(econ, hub, vol*p);
+                float gain = vol*p;
+                if (tune_f("SPECULATE_CONSERVED",1.f)>0.f){
+                    /* F2 : pas d'acheteur nommé — le pot le plus proche de la sémantique
+                     * est le marché de la région (les mêmes classes) : débitées RÉELLEMENT
+                     * (clampé, jamais négatif) ; le gain effectif est BORNÉ par ce qu'elles
+                     * peuvent payer, jamais ex nihilo. */
+                    float paidL=-econ_region_wealth_add(econ, hub, CLASS_LABORER,   -gain*SPEC_WAGE_SHARE);
+                    float paidB=-econ_region_wealth_add(econ, hub, CLASS_BOURGEOIS, -gain*SPEC_PROFIT_SHARE);
+                    float paidE=-econ_region_wealth_add(econ, hub, CLASS_ELITE,     -gain*SPEC_TAX_SHARE);
+                    gain = paidL+paidB+paidE;   /* conservation stricte : le trésor n'encaisse que le RÉELLEMENT prélevé */
+                }
+                econ_region_treasury_add(econ, hub, gain);
                 a->stats.spec_vol+=vol; a->stats.spec_gold+=vol*p; a->stats.spec_sells++;
                 a->spec_cd[g]=SPEC_COOLDOWN;
             }

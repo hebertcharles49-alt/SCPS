@@ -1568,6 +1568,23 @@
      * mêmes sims pre-m12, masqués par leur grosse échelle). Sous ce plancher, le ratio n'a
      * plus de sens : le détecteur cible des EXPLOSIONS de l'ordre de la VA (dizaines de
      * milliers d'or/an). Un plancher ne peut que réduire un ratio — aucune détection
-     * historique masquée. 1.0 (ou moins) = comportement legacy exact. */     X(INVARIANT_SCALE_FLOOR,          500.0f)
+     * historique masquée. 1.0 (ou moins) = comportement legacy exact. */     X(INVARIANT_SCALE_FLOOR,          500.0f) \
+    /* MONNAIE M15 — F2 : LE DERNIER SITE M0 (§1.6, ai_speculate_tick, scps_ai.c). Legacy :
+     * achat/vente contre SON PROPRE trésor à deux instants différents, aucune contrepartie
+     * réelle débitée/créditée — création nette structurellement garantie (buy-low/sell-high),
+     * résiduelle mais réelle (+9k/an mesuré sur la sous-graine 209s3, cf. TROUVAILLES M13 P3).
+     * =1 : achat/vente ROUTENT sur les classes du hub (compte de marché M3b, clé 42/20/38) —
+     * conservation stricte, le gain du spéculateur est borné par ce qu'elles peuvent payer.
+     * 0 = kill-switch EXACT (legacy, golden pré-M15 byte-identique). */ \
+    X(SPECULATE_CONSERVED,             1.0f) \
+    /* MARITIME M15 — F4 : LE CHOKE AU CHEMIN RÉEL (reste MARITIME N2). world_route_chokepoint
+     * (scps_world.c) teste le SEGMENT DROIT entre les deux ancres — la route/lane RÉELLE peut
+     * contourner un détroit que le segment croise (péage payé sans le franchir) ou en
+     * traverser un que le segment rate. world_route_chokepoint_path teste CHAQUE cellule du
+     * plus court chemin marin réel (même Dijkstra que world_sea_days, prédécesseurs retenus)
+     * — posé UNE FOIS à la création de la route (scps_routes.c routes_order), jamais au tick.
+     * 0 = legacy EXACT (segment droit, golden pré-M15 byte-identique) — défaut PRUDENT tant
+     * que l'effet péage (qui paie quoi) n'est pas mesuré au sweep, cf. TROUVAILLES M15 F4. */ \
+    X(CHOKE_REAL_PATH,                  0.0f)
 
 #endif /* SCPS_TUNE_LIST_H */
