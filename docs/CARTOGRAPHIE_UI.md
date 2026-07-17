@@ -10,6 +10,14 @@
 > une PHOTO à HEAD `296a8c2` ; les fichiers marqués « en évolution » peuvent avoir
 > bougé depuis. Toute ambiguïté non tranchable à la lecture du code est notée
 > « à vérifier en jeu », jamais inventée.
+>
+> **MISE À JOUR UI-DOCTRINE (D1-D3, 2026-07-18, HEAD `d557685`)** : `province_panel.gd`
+> (legacy) est SUPPRIMÉ — `province_panel_v2.gd` est désormais LA SEULE fiche province
+> (clic-carte + touche V), avec le pied d'actions gouvernemental/diplomatique/colonisation
+> porté depuis le legacy. Le Créateur de Foi est rebranché (touche R + lien dans la
+> Fenêtre Empire → Population). Les curseurs fiscaux de la Fenêtre Empire → Économie
+> sont passés en LECTURE SEULE (lien vers le Trésor). Tous les détails ci-dessous sont
+> corrigés en place (pas une note à part) ; §D.1 garde l'historique barré pour mémoire.
 
 ---
 
@@ -62,20 +70,19 @@ de la famille ivoire/brun/or) — seulement cette duplication de constantes.
 
 | Surface | Fichier | Ouverture | Ancrage | Thème | Structure | Fermeture |
 |---|---|---|---|---|---|---|
-| **Fiche province (legacy)** | `ui/province_panel.gd` | clic sur une province (`main.gd:790-808`, AUTOMATIQUE) | flottant, `(Frame.SIDEBAR_W+14, Frame.TOPBAR_H+12)` | VKit (dessin immédiat) | plat, repliable, pied fixe d'actions | ✕ ou Échap (`_close_topmost`, via `_clear_selection`) |
-| **Fiche province V2** — « le modèle » (TROUVAILLES) | `ui/province_panel_v2.gd` | touche **V** (`main.gd:562-569`) | flottant, **même ancre exacte** que la fiche legacy (`province_panel_v2.gd:45`) | ParchTheme (conteneurs natifs) | 3 onglets : Infrastructure · **Région** (vue agrégée nommée, conforme doctrine) · Militaire | Échap (pile `_panel_stack`, corrigé UI-POLISH — ni ✕ propre, cadre non fixé) |
-| Détail de province (sous-onglets) | `ui/province_detail.gd` | bouton « Détail » de la fiche legacy (`province_panel.gd` → `detail_requested`, `main.gd:106-111`) | flottant, même ancre que V2 | VKit (dessin immédiat) | 6 sous-onglets : Peuples · Production · Constructions · Journal · Main-d'œuvre · Contexte | ✕ ou Échap ; REMPLACE la fiche province tant qu'il est ouvert (zone contextuelle unique, `main.gd:221-230`) |
+| **Fiche province — LA SEULE** (D1-UNIFICATION, ex-legacy+V2) | `ui/province_panel_v2.gd` | clic sur une province (`main.gd::_on_province_picked`, AUTOMATIQUE) OU touche **V** (bascule visibilité) | flottant, `(Frame.SIDEBAR_W+14, Frame.TOPBAR_H+12)` | ParchTheme (conteneurs natifs) | 3 onglets (Infrastructure · **Région**, vue agrégée nommée · Militaire) + PIED D'ACTIONS fixe hors-onglets (Réprimer/Assimiler/Purger 2-clics/Détail si mienne · Coloniser si vierge légale · Attaquer/Route/Piller si étrangère) | ✕ (nouveau) ou Échap (`_clear_selection`, UN seul appui — retiré de la liste générique `_close_topmost`/`major_open`, cf. §D.1.2 note) |
+| Détail de province (sous-onglets) | `ui/province_detail.gd` | bouton « Détail… » du pied d'actions (`province_panel_v2.gd` → `detail_requested`, `main.gd`) | flottant, même ancre que la fiche | VKit (dessin immédiat) | 6 sous-onglets : Peuples · Production · Constructions · Journal · Main-d'œuvre · Contexte | ✕ ou Échap ; REMPLACE la fiche province tant qu'il est ouvert (zone contextuelle unique, `main.gd`) |
 | **Menu Construction** | `ui/construction_panel.gd` | bouton « Construire… » (fiche V2, détail, ou détail-onglet Constructions) — **aucun raccourci clavier direct** | flottant, se colle au bord droit du panneau appelant (`main.gd:182-200`) | ParchTheme | 2 onglets : Édifices · Manufactures ; une CARTE par bâtiment (icône+prix+effet+entretien+ressources+« Prochain palier ») | ✕ |
 | Panneau pays (étranger) | `ui/country_panel.gd` | clic sur une province d'un pays ≠ joueur | flottant, coin haut-droit (à gauche du rail D) | VKit | plat, 5 jauges + mission | ✕ ou Échap |
 | **Fenêtre diplomatique par pays** | `ui/country_actions.gd` | clic droit sur la carte, ou liste Diplomatie (tiroir F7) | flottant, tiroir collé au rail G (28 % largeur viewport, 420-540 px) | palette locale (`VKit.COL_PANEL`/`COL_EDGE` directement) | plat + 2 tiroirs repliables (Actions économiques / Actions antagonistes) + tiroir « Conditions de paix » | ✕ ou Échap |
-| **Fenêtre Empire** (gestion) | `ui/empire_window.gd` | touche **E** (`main.gd:570-578`) | flottant, `(150,80)` | ParchTheme | 4 onglets : Économie (réutilise `economy_page.gd`) · Population · Diplomatie · Conseil | Échap (pile `_panel_stack`, corrigé UI-POLISH) |
+| **Fenêtre Empire** (gestion) | `ui/empire_window.gd` | touche **E** (`main.gd:570-578`) | flottant, `(150,80)` | ParchTheme | 4 onglets : **Économie** (réutilise `economy_page.gd`, LECTURE SEULE depuis D1.2 — lien « Régler… → Trésor (B) ») · **Population** (section Foi/Religion porte un lien « Foi d'État : X (R) », D2) · Diplomatie · Conseil | Échap (pile `_panel_stack`, corrigé UI-POLISH) |
 | **Trésor / Budget V2** | `ui/budget_panel_v2.gd` | touche **B** (`main.gd:556-561`) | flottant, `(120,90)` | ParchTheme | 4 onglets : Balance · Monnaie · Marché · **Commerce (vide, hors périmètre assumé)** | Échap (pile `_panel_stack`, corrigé UI-POLISH) |
 | Économie dans le temps (graphes) | `ui/economy_panel.gd` | tiroir Économie (F1) → bouton « Courbes dans le temps » (`sidebar.gd::charts_requested`) | flottant, centré, adaptatif | VKit + Easy Charts (`LineChart`) | plat, menu déroulant de métrique (Population/Trésor/Prospérité) | ✕ |
 | **Arbre de technologie** | `ui/tech_panel.gd` | touche **T** (`main.gd:546-555`), ou clic Savoir topbar (legacy), ou navigation (`InfoRef.TECH`) | flottant, quasi plein-cadre entre rail G et rail D | ParchTheme (chrome) + dessin immédiat (grille) | 3 couloirs horizontaux (Savoir/Forge/Société) × colonnes de paliers défilantes ; pied = dossier du nœud sélectionné + bande de métabolisation | ✕ ou Échap |
 | Popup de découverte technologique | `ui/tech_popup.gd` | automatique, enfant de `tech_panel.gd`, à la complétion d'une recherche (≥85 % puis cible change) | flottant, centré sur `tech_panel` | ParchTheme | plat (effets + flavor) | bouton propre |
 | **Panneau Armée** | `ui/army_panel.gd` | sélection d'un pion armée sur la carte (`map.army_selection_changed`) | flottant bas-gauche, au-dessus de la barre basse | ParchTheme | 2 onglets : Composition · Combat (bascule AUTOMATIQUE sur Combat si un engagement s'allume) | désélection sur la carte (pas dans la pile Échap) |
 | Panneau de combat (siège/bataille) | `ui/battle_panel.gd` | clic sur une région en guerre/un jeton (`main.gd:813-816`) | flottant, coin haut-droit (avant le rail D) | VKit (dessin immédiat) | plat | ✕ ou Échap |
-| **Créateur de foi / Religion** | `ui/religion_panel.gd` | **automatique** au 1ᵉʳ édifice religieux (`main.gd:709-717`, une fois) OU clic sur l'alerte « fondation prête » (`alerts.gd:290-293` → `main.gd:350-352`) | plein écran (voile + panneau centré) | palette locale (référence `VKit.COL_PANEL`) | plat : Crédo + 3 traditions + section Lettré + bouton Schisme | bouton « Fermer » (`closed` → reprise du jeu) — **⚠ voir §D.1, aucun autre déclencheur** |
+| **Créateur de foi / Religion** | `ui/religion_panel.gd` | **automatique** au 1ᵉʳ édifice religieux (`main.gd`, une fois) OU clic sur l'alerte « fondation prête » (`alerts.gd`) OU **touche R** (D2, rebranchée) OU lien « Foi d'État : X (R) » (Fenêtre Empire → Population, D2) | plein écran (voile + panneau centré) | palette locale (référence `VKit.COL_PANEL`) | plat : Crédo + 3 traditions + section Lettré + bouton Schisme | bouton « Fermer », touche **R**, ou Échap (`visibility_changed`, D2 — le jeu reprend quel que soit le chemin, corrigé un blocage en pause via Échap) |
 | Codex des verbes | `ui/codex.gd` | menu Échap → bouton « Codex » (`menu_root.gd:156` → `main.gd:262-265`) ; ou recherche universelle (`InfoRef.CODEX`) | plein écran centré | palette locale | 6 catégories repliables + recherche + sommaire cliquable | bouton « Fermer » ou Échap |
 | Les Annales du Règne (chronique) | `ui/chronique.gd` | touche **H** (`main.gd:579-585`) | plein écran centré | palette locale (panneau référence `VKit.COL_PANEL`) | frise chronologique, hauteur adaptative au nombre de faits | ✕/Échap |
 | Écran de chapitre (récap d'âge) | `ui/age_recap.gd` | clic sur le chip « Engager : <âge> » (rail D) → `alerts.age_recap_requested` | plein écran, PRÉCÉDÉ d'une transition (`page_turn.gd`) | palette locale | plat : bilan + tranche d'annales de l'âge + bouton « Engager l'âge suivant »/« Plus tard » | Échap ou bouton |
@@ -96,8 +103,9 @@ de la famille ivoire/brun/or) — seulement cette duplication de constantes.
   `ledger_rows()`/`journal_rows()`. À vérifier en jeu si un mode « chips flottants sur
   la carte » est encore accessible autrement (aucun site d'appel `set_ledger_mode(false)`
   trouvé).
-- `province_panel.gd` (legacy) et `province_panel_v2.gd` peuvent être visibles
-  **simultanément**, à la MÊME ancre — cf. §D.1.
+- ~~`province_panel.gd` (legacy) et `province_panel_v2.gd` peuvent être visibles
+  simultanément, à la MÊME ancre~~ **CORRIGÉ (UI-DOCTRINE D1, 2026-07-18)** :
+  `province_panel.gd` est supprimé, `province_panel_v2.gd` est LA seule fiche province.
 
 ---
 
@@ -117,15 +125,15 @@ Profondeur mesurée depuis l'écran de jeu NU (carte + chrome permanent visible)
 | Banqueroute volontaire | Panneau B → onglet Monnaie | **2** (+1 confirmation) | `budget_panel_v2.gd:486-497` |
 | Indice des prix national | Topbar, cellule Prix | **0** (survol = tendance /mois) | `topbar.gd:571-577` |
 | Prix courant par ressource | Panneau B → onglet Marché | **2** | `budget_panel_v2.gd:656-724` |
-| Prix d'une ressource dans UNE province | Fiche V2 (touche V) → survol d'une ligne d'allocation | **1** (+ survol) | `province_panel_v2.gd:415-429` (`province_res_price`) |
+| Prix d'une ressource dans UNE province | Fiche province (clic/V) → survol d'une ligne d'allocation | **1** (+ survol) | `province_panel_v2.gd` (`province_res_price`) |
 | Satisfaction/bonheur agrégé pays | Topbar, cellule Population (survol) | **0** (survol seulement) | `topbar.gd:510-529` |
 | Satisfaction par classe (pays) | Fenêtre Empire (E) → onglet Population, section CLASSE | **2** | `empire_window.gd:243-252` |
-| Satisfaction par classe (province) | Fiche V2 (V) → onglet Infrastructure, ligne de classe | **1** | `province_panel_v2.gd:777-799` |
+| Satisfaction par classe (province) | Fiche province (clic/V) → onglet Infrastructure, ligne de classe | **1** | `province_panel_v2.gd:777-799` |
 | Pop / composition par classe (pays) | Rail G, tiroir Démographie (F2) | **1** | `sidebar_drawer.gd::_draw_demo` |
 | Pop / classes + culture + foi (pays, barres) | Fenêtre Empire (E) → onglet Population | **2** | `empire_window.gd:181-273` |
 | Production/ressources (pays) | Rail G, tiroir Stocks (F3) | **1** | `sidebar_drawer.gd` |
-| Production (province, brute+manufacturée) | Fiche V2 (V) → onglet Région (agrégat) | **1** | `province_panel_v2.gd:511-535` |
-| Entretien d'un édifice/manufacture | Fiche V2 (V), hover sur le chip bâti | **1** (+ survol) | `province_panel_v2.gd:441-444,491-495` |
+| Production (province, brute+manufacturée) | Fiche province (clic/V) → onglet Région (agrégat) | **1** | `province_panel_v2.gd:511-535` |
+| Entretien d'un édifice/manufacture | Fiche province (clic/V), hover sur le chip bâti | **1** (+ survol) | `province_panel_v2.gd:441-444,491-495` |
 | Entretien avant construction (devis) | Menu Construction, carte du bâtiment | **2** (province puis Construire…) | `construction_panel.gd:353-361,488-495` |
 | Arbre de tech / recherche en cours | Touche T | **1** | `tech_panel.gd` |
 | Revenu de recherche décomposé | Topbar, cellule Savoir (survol) | **0** (survol) | `topbar.gd:282-301` |
@@ -133,8 +141,8 @@ Profondeur mesurée depuis l'écran de jeu NU (carte + chrome permanent visible)
 | Diplo détail par pays (mémoire, engagements, verbes) | Clic droit carte / liste diplo → fenêtre pays | **1-2** | `country_actions.gd` |
 | Armée sélectionnée (composition, combat) | Clic sur un pion sur la carte | **1** | `army_panel.gd` |
 | Levée / réserve nationale | Rail G, tiroir Armée (F5) | **1** | `sidebar_drawer.gd::_draw_armee` |
-| Religion d'État (nom, éligibilité schisme) | ⚠ **introuvable après la fondation** — cf. §D.1 | **∞** | `religion_panel.gd` (aucun opener restant) |
-| Culture/religion de la province (barres) | Fiche V2 (V) → onglet Infrastructure, section PEUPLES | **1** | `province_panel_v2.gd:244-260` |
+| Religion d'État (nom, éligibilité schisme) | Touche **R** (D2, rebranchée) | **0** | `religion_panel.gd` (+ lien Fenêtre Empire → Population) |
+| Culture/religion de la province (barres) | Fiche province (clic/V) → onglet Infrastructure, section PEUPLES | **1** | `province_panel_v2.gd` |
 | Culture/foi agrégées du pays | Fenêtre Empire (E) → onglet Population | **2** | `empire_window.gd:181-217` |
 | Entropie / destin du monde | Bandeau haut-centre | **0** (si entropie ≥ 25 %) | `endgame_banner.gd` |
 | Compte pour l'Ascension (Merveille) | Touche T, pied du panneau (bande métabolisation) | **1** | `tech_panel.gd:676-709` |
@@ -142,9 +150,11 @@ Profondeur mesurée depuis l'écran de jeu NU (carte + chrome permanent visible)
 | Faction — tendance /mois | Topbar (survol) | **0** | `topbar.gd:625-654` |
 
 ⚠ **Au-delà de 3 clics** : aucune donnée identifiée n'exige plus de 2 clics/touches
-pour être atteinte (le pire cas mesuré est 2). Le seul dépassement réel est
-**qualitatif, pas quantitatif** : la religion d'État redevient **introuvable** (profondeur
-infinie) une fois fondée, faute de porte d'entrée restante dans l'UI — cf. §D.1 finding 4.
+pour être atteinte (le pire cas mesuré est 2). ~~Le seul dépassement réel était
+QUALITATIF : la religion d'État redevenait introuvable (profondeur infinie) une
+fois fondée~~ — **CORRIGÉ (UI-DOCTRINE D2, 2026-07-18)** : touche R (profondeur 0)
++ lien Fenêtre Empire → Population (profondeur 2). AUDIT RE-VÉRIFIÉ après D1-D3 :
+0 dépassement, qualitatif ou quantitatif, restant.
 
 ---
 
@@ -166,9 +176,10 @@ infinie) une fois fondée, faute de porte d'entrée restante dans l'UI — cf. �
 | F10 | DevPanel (MODTOOLS, tunables live) | `main.gd:537-539` |
 | T | Arbre de technologie | `main.gd:546-555` |
 | B | Trésor / Budget V2 | `main.gd:556-561` |
-| V | Fiche province V2 | `main.gd:562-569` |
+| V | Fiche province (LA seule, D1) — bascule visibilité | `main.gd` |
 | E | Fenêtre Empire | `main.gd:570-578` |
 | H | Les Annales du Règne | `main.gd:579-585` |
+| R | Créateur de Foi (D2, rebranchée) — bascule visibilité | `main.gd` |
 | C | Créateur d'empire (mode autonome, en jeu) | `culture_creator.gd:29` |
 | `+`/Pavé+ | Vitesse plus rapide | `main.gd:586-587` |
 | `-`/Pavé− | Vitesse plus lente | `main.gd:588-589` |
@@ -179,10 +190,10 @@ infinie) une fois fondée, faute de porte d'entrée restante dans l'UI — cf. �
 | Alt+→ | Navigation : avance | `main.gd:522-525` |
 | ↑/↓/Entrée/Échap | navigation interne à la Recherche universelle (une fois ouverte) | `search_palette.gd:219-227` |
 
-**⚠ Absent malgré la documentation en commentaire** : `KEY_R` pour rouvrir le
-Créateur de Foi — le commentaire `religion_panel.gd:6-7` (« Aussi rouvrable à la
-touche R ») et `main.gd:268` (« Rouvrable à la touche R ») ne correspondent à
-**aucun** `KEY_R` dans tout `godot/project` (grep confirmé, 0 occurrence). Voir §D.1.
+**~~⚠ Absent malgré la documentation en commentaire : `KEY_R`~~ CORRIGÉ (UI-DOCTRINE
+D2, 2026-07-18)** : `KEY_R` rebranché dans `main.gd::_unhandled_input`, bascule
+`religion_panel.gd` — les commentaires `religion_panel.gd:6` et `main.gd` qui le
+documentaient sont désormais exacts.
 
 **Pas de raccourci direct** (ouverture uniquement par clic/bouton) : Menu
 Construction, panneau pays étranger, fenêtre diplomatique, panneau de combat,
@@ -218,8 +229,8 @@ table déclarative et le code réel (aucune section « Monnaie » dans `codex.gd
 
 | Curseur | Où | Plage | Verbe/tunable derrière |
 |---|---|---|---|
-| Taux d'imposition par classe (×3) | Panneau B → Balance ; **dupliqué** Fenêtre Empire → Économie | 2-100 % | `player_budget_policy(0, classe, mult)` |
-| Enveloppes de dépense (×6, dont Frappe) | Panneau B → Balance ; **dupliqué** Fenêtre Empire → Économie | 2-100 % | `player_budget_policy(1, poste, mult)` |
+| Taux d'imposition par classe (×3) | Panneau B → Balance **seul** (UI-DOCTRINE D1.2 : Fenêtre Empire → Économie est passée lecture seule) | 2-100 % | `player_budget_policy(0, classe, mult)` |
+| Enveloppes de dépense (×6, dont Frappe) | Panneau B → Balance **seul** (idem D1.2) | 2-100 % | `player_budget_policy(1, poste, mult)` |
 | Part de la réserve frappée | Panneau B → Monnaie | 2-100 % | `player_budget_policy(1, 5, mult)` |
 | Sur-frappe (débase) au-delà de la parité | Panneau B → Monnaie | 2-100 % | `player_budget_policy(1, 6, mult)` |
 | Fiscalité par ordre (×3, Monnaie) | Panneau B → Monnaie | 2-100 % | `player_budget_policy(0, classe, mult)` — **même curseur que « Balance », dict séparé** (`_m_sliders` vs `_sliders`) |
@@ -266,60 +277,57 @@ membrane MOTS). Constat froid, sourcé fichier:ligne — pas un procès.
    Construction (popup flottant non ancré) — la fiche province coexiste
    toujours. Vérifié en probe réelle (`uipolish_shot.gd`).
 
-2. **Trois fiches province coexistent, avec des noms de classe INCOHÉRENTS.**
-   `province_panel.gd` (legacy, dessin immédiat, s'ouvre AUTOMATIQUEMENT au clic
-   sur une province, `main.gd:790-808`) et `province_panel_v2.gd` (conteneurs
-   natifs, touche V, documenté « le modèle » par TROUVAILLES.md) partagent
-   l'ANCRE EXACTE `(Frame.SIDEBAR_W+14, Frame.TOPBAR_H+12)` (`province_panel.gd:59`
-   vs `province_panel_v2.gd:45`) — les deux peuvent être visibles simultanément,
-   empilées au même endroit. Pire : ils NOMMENT différemment la même classe
-   sociale — « Laboureurs/Artisans/Noblesse » (`province_panel.gd:19-21,229-230,
-   256,892-893`) contre « Journaliers/Bourgeois/Élites » (`province_panel_v2.gd:
-   268,272,276`) pour la MÊME clé moteur (`province_classes()` → `laboureurs`/
-   `artisans`/`noblesse`). Un joueur qui bascule entre les deux fiches voit sa
-   population changer de nom.
+2. ~~**Trois fiches province coexistent, avec des noms de classe INCOHÉRENTS.**~~
+   **CORRIGÉ (UI-DOCTRINE D1, 2026-07-18).** `province_panel.gd` (legacy) est
+   SUPPRIMÉ ; `province_panel_v2.gd` est LA seule fiche province, ouverte au clic
+   ET à la touche V, avec le pied d'actions (Réprimer/Assimiler/Purger/Détail/
+   Coloniser/diplomatie) porté depuis le legacy. Nomenclature CANONIQUE
+   (Journaliers/Bourgeois/Élites) alignée partout (`province_detail.gd`,
+   `topbar.gd`). `province_detail.gd` (le « détail », sous-onglets) reste une
+   surface distincte ASSUMÉE — elle REMPLACE la fiche au lieu de coexister avec
+   elle (zone contextuelle unique), pas un doublon au même sens.
 
-3. **Les curseurs fiscaux/budgétaires sont réimplémentés (pas partagés) dans deux
-   fenêtres.** `economy_page.gd` (onglet Économie de la Fenêtre Empire, touche E,
-   lignes 33-79) et `budget_panel_v2.gd` (onglet Balance, touche B, lignes
-   226-256) portent le MÊME curseur — même `family`/`index`, même verbe
-   `player_budget_policy` — mais deux `HSlider`/`Label` DISTINCTS, sans lien entre
-   eux. Ouvrir les deux fenêtres à la fois affiche deux curseurs indépendants
-   pour le MÊME réglage moteur ; rien ne les synchronise hors un `refresh()`
-   déclenché par le tick mensuel — doublon d'interaction entre fenêtres, pas
-   seulement d'information.
+3. ~~**Les curseurs fiscaux/budgétaires sont réimplémentés (pas partagés) dans deux
+   fenêtres.**~~ **CORRIGÉ (UI-DOCTRINE D1.2, 2026-07-18).** `economy_page.gd`
+   (onglet Économie de la Fenêtre Empire) est passé LECTURE SEULE
+   (`interactive = false`) — le Trésor (`budget_panel_v2.gd`, onglet Balance)
+   reste la SEULE surface de réglage ; un lien explicite (« Régler… → Trésor (B) »)
+   fait la jonction. Le doublon INTERNE à `budget_panel_v2.gd` (onglet Balance vs
+   Monnaie, `_sliders` vs `_m_sliders`, même fenêtre) n'est PAS touché — hors
+   mandat D1 (nommait explicitement `economy_page.gd` vs `budget_panel_v2.gd`).
 
-4. **Le Créateur de Foi devient introuvable après la fondation.**
-   `religion_panel.gd` ne s'ouvre que par deux portes : automatiquement au 1ᵉʳ
-   édifice religieux (`main.gd:709-717`, une fois par partie) ou via l'alerte
-   « fondation prête » (`alerts.gd:290-293`, condition `religion_founding_ready`)
-   — CETTE condition devient FAUSSE dès qu'une religion existe. Aucune autre
-   porte n'existe : pas de raccourci (`KEY_R` documenté en commentaire mais
-   absent du code, grep confirmé zéro occurrence), pas d'entrée de menu, pas
-   d'onglet dans la Fenêtre Empire ou le tiroir Conseil. Le Schisme et le
-   recrutement/renouvellement du Lettré — verbes câblés et FONCTIONNELS
-   (`religion_panel.gd:242-270`) — deviennent inaccessibles au joueur dès la
-   1ʳᵉ fondation, sauf à rouvrir manuellement le fichier de sauvegarde avant.
+4. ~~**Le Créateur de Foi devient introuvable après la fondation.**~~ **CORRIGÉ
+   (UI-DOCTRINE D2, 2026-07-18).** `KEY_R` rebranché (`main.gd::_unhandled_input`,
+   bascule visibilité) + un lien « Foi d'État : X (R) » dans la Fenêtre Empire →
+   Population (section FOI/RELIGION). Corrigé en passant : fermer via Échap
+   laissait le jeu en PAUSE indéfiniment (le signal `closed` ne tirait que depuis
+   le bouton « Fermer ») — remplacé par `visibility_changed`, couvre tout chemin.
 
-5. **Un flux mensualisable encore affiché « or/an ».** `province_panel.gd:317`
-   (« Impôts ~%s or/an ») et `province_panel.gd:883` (info-carte, « Impôts
-   levés — ~%s or / an ») violent la doctrine « toute valeur PAR MOIS » pour un
-   flux RÉEL (l'impôt de province, pas un cooldown discret) — un agent
-   précédent avait déjà repéré ces deux lignes le 2026-07-14 (TROUVAILLES.md,
-   lot linéarisation) et les avait sciemment laissées « hors périmètre, un
-   autre agent la possède » : trois jours de sessions plus tard, toujours pas
-   corrigées.
+5. ~~**Un flux mensualisable encore affiché « or/an ».**~~ **CORRIGÉ (UI-DOCTRINE
+   D1, 2026-07-18 — par suppression du fichier).** Les deux lignes
+   (`province_panel.gd:317,883`) ont disparu avec le fichier legacy.
+   `province_panel_v2.gd` affichait déjà « Impôts ~%s or/mois » (conforme). Un
+   balayage D3 a trouvé 2 AUTRES résidus (hors des 5 graves d'origine) :
+   `budget_panel_v2.gd` (« Échéance » de dette, reformulée en cadence explicite
+   plutôt qu'un calcul mensuel fictif — le prélèvement est RÉELLEMENT annuel,
+   `credit_year_tick`) et `province_detail.gd` (en-tête « Production en direct
+   (par an) », reliquat du retrait du ×365 — corrigé en « (par jour) », l'unité
+   réellement affichée par les barres).
 
 ### D.2 — Autres écarts constatés
 
-- **Doublon de vue budgétaire à QUATRE endroits distincts** (pas seulement les
-  curseurs du D.1.3) : le tiroir Économie du rail G (`sidebar_drawer.gd::
-  _draw_eco`), le panneau B (Balance), la Fenêtre Empire → Économie
-  (`economy_page.gd`) et les courbes (`economy_panel.gd`) montrent chacun une
-  vue partielle et redondante du même trésor/revenu nationaux, avec des
-  agencements et parfois des chiffres légèrement différents (mensualisation
-  recalculée séparément dans chaque fichier — quatre implémentations de
-  `_grp()`/normalisation /mois trouvées, une par fichier).
+- **Doublon de VUE budgétaire à QUATRE endroits distincts** (INFORMATION seule,
+  distinct de l'INTERACTION corrigée en D.1.3) : le tiroir Économie du rail G
+  (`sidebar_drawer.gd::_draw_eco`), le panneau B (Balance), la Fenêtre Empire →
+  Économie (`economy_page.gd`, lecture seule depuis D1.2) et les courbes
+  (`economy_panel.gd`) montrent chacun une vue partielle et redondante du même
+  trésor/revenu nationaux, avec des agencements et parfois des chiffres
+  légèrement différents (mensualisation recalculée séparément dans chaque
+  fichier — quatre implémentations de `_grp()`/normalisation /mois trouvées,
+  une par fichier). NON touché par D1 (mandat scopé à `economy_page.gd` vs
+  `budget_panel_v2.gd`, l'interaction, pas les 4 vues) — reste un doublon de
+  LECTURE assumé (chacune sert un contexte différent : tiroir permanent,
+  panneau dédié, fenêtre de gestion, historique).
 - **`alerts.gd` : une pile d'alertes entièrement câblée mais qui ne se dessine
   jamais.** `set_ledger_mode(true)` est posé sans condition (`main.gd:337`) — le
   chemin `_draw()`/`_draw_chip()`/`_draw_compact()` de ce fichier (476-502) est
@@ -348,26 +356,34 @@ membrane MOTS). Constat froid, sourcé fichier:ligne — pas un procès.
   moins grave que D.1.1 car il se ferme par désélection sur la carte (clic
   droit / re-sélection), mais reste une exception non documentée à la règle
   « tout panneau affiché doit pouvoir être dismiss [par Échap] ».
-- **Trois variantes de « fiche province » au total** en comptant
-  `province_detail.gd` (déjà signalé comme coexistence assumée par
-  TROUVAILLES.md 2026-07-16) — la doctrine « la fiche province ne montre que
-  SES champs » est respectée par CHACUNE prise séparément, mais leur nombre
-  (3 fichiers, ~2600 lignes cumulées, 2 jeux de vocabulaire) contredit
-  « la solution la plus simple d'abord » du même CLAUDE.md.
+- ~~**Trois variantes de « fiche province » au total**~~ **RÉDUIT À DEUX
+  (UI-DOCTRINE D1, 2026-07-18)** : `province_panel.gd` (legacy, 944 lignes) est
+  supprimé. Restent `province_panel_v2.gd` (LA fiche, ~1090 lignes) et
+  `province_detail.gd` (le détail, sous-onglets, ~840 lignes, REMPLACE la fiche
+  plutôt que d'y coexister — zone contextuelle unique) — un jeu de vocabulaire
+  UNIQUE (Journaliers/Bourgeois/Élites) partout désormais.
 
 ---
 
 ## Sommaire chiffré
 
-- **37 surfaces** inventoriées en §A (5 écrans plein-écran shell, 8 éléments de
-  chrome permanent, 24 fenêtres/panneaux contextuels), plus les 8 sous-onglets
-  du tiroir gauche et les 6 sous-onglets du détail province comptés à part.
-- **22 raccourcis clavier** globaux câblés (`main.gd`) + 4 raccourcis internes à
-  la Recherche universelle.
-- **34 verbes joueur** catalogués par le Codex lui-même (+ 3 verbes Monnaie non
-  catalogués, trouvés dans le code).
-- **6 points d'implémentation de curseur** (`HSlider`), dont 2 dupliquent
-  strictement le même réglage moteur dans deux fenêtres différentes.
-- **0 information** mesurée à plus de 2 clics de profondeur — le seul dépassement
-  du principe des 3 clics est qualitatif (une fonctionnalité entière devient
-  injoignable, pas seulement lointaine).
+> **Mis à jour UI-DOCTRINE D1-D3 (2026-07-18)** — les comptes ci-dessous reflètent
+> la purge D1 (fiche province : 3→2 fichiers) ; le reste de la photo §A/B/C est
+> inchangé sauf mention contraire dans le corps du texte ci-dessus.
+
+- **36 surfaces** inventoriées en §A (5 écrans plein-écran shell, 8 éléments de
+  chrome permanent, 23 fenêtres/panneaux contextuels — `province_panel.gd`
+  legacy retiré), plus les 8 sous-onglets du tiroir gauche et les 6 sous-onglets
+  du détail province comptés à part.
+- **23 raccourcis clavier** globaux câblés (`main.gd` — `R` ajouté, D2) + 4
+  raccourcis internes à la Recherche universelle.
+- **34 verbes joueur** catalogués par le Codex lui-même (+ 3 verbes Monnaie
+  toujours non catalogués — D.2, non touché par cette vague).
+- **6 points d'implémentation de curseur** (`HSlider`), dont 1 dupliquait
+  strictement le même réglage moteur dans DEUX FENÊTRES différentes — **corrigé
+  (D1.2)** : `economy_page.gd` est lecture seule. Le doublon INTERNE à
+  `budget_panel_v2.gd` (Balance vs Monnaie, même fenêtre, `_sliders` vs
+  `_m_sliders`) reste, non mandaté par D1.
+- **0 information** mesurée à plus de 2 clics de profondeur — le seul
+  dépassement qualitatif du principe des 3 clics (la religion d'État
+  injoignable après fondation) est **corrigé (D2)**.
