@@ -128,6 +128,12 @@ int  world_chokepoints(const World *w, const Chokepoint **out);
  * son goulet est proche du segment ET « entre » les deux bouts. -1 si la route n'en
  * croise aucun. (Le plus étroit gagne si plusieurs.) */
 int  world_route_chokepoint(const World *w, int ax, int ay, int bx, int by);
+/* M15 — F4 : miroir CHEMIN RÉEL de world_route_chokepoint (registre J CHOKE_REAL_PATH) —
+ * teste chaque cellule du plus court chemin marin (le même Dijkstra que world_sea_days)
+ * au lieu du segment droit. cap_days = même contrat que world_sea_days_capped. -1 =
+ * bassins séparés ou aucun détroit franchi. À appeler à la création d'une route
+ * (rare), jamais au tick. */
+int  world_route_chokepoint_path(const World *w, int ax, int ay, int bx, int by, float cap_days);
 /* Le TENANT actuel d'un détroit = le pays propriétaire de sa région-flanc (-1 si
  * vierge / index hors borne). `owner_of_region` mappe région→pays (econ->region.owner). */
 int  world_chokepoint_holder(const World *w, int choke_idx,

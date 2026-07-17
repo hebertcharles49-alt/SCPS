@@ -4606,6 +4606,42 @@ static int  sea_heap_pop(void){
     return top;
 }
 
+/* M15 — F4 : prédécesseur du Dijkstra marin, pour le CHEMIN (world_route_chokepoint_path)
+ * — même statique-par-époque que g_sea_dist/g_sea_pos, jamais sérialisé (transitoire, le
+ * temps d'un appel). -1 = racine (s) ou cellule jamais relâchée cette époque. */
+static int g_sea_from[SCPS_N];
+
+/* Le CŒUR du Dijkstra directionnel (extrait de world_sea_days_capped SANS aucun changement
+ * de comportement — même ordre d'opérations flottantes, même early-exit — pour être
+ * réutilisé PAR LE CHEMIN (world_route_chokepoint_path, F4) sans dupliquer la boucle).
+ * cap_days < 0 → sans borne. Renvoie la distance (ou -1 = injoignable dans ce rayon) ;
+ * g_sea_from[] est peuplé pour CHAQUE cellule relâchée cette époque (backtrace valide
+ * uniquement immédiatement après cet appel, avant tout autre appel qui avance l'époque). */
+static float sea_dijkstra_core(const World *w, int s, int t, float cap_days){
+    if (++g_sea_epoch==0){ memset(g_sea_seen,0,sizeof g_sea_seen); g_sea_epoch=1; }  /* nouvelle époque (wrap géré) */
+    g_sea_hn=0; sea_visit(s); g_sea_dist[s]=0.f; g_sea_from[s]=-1; sea_heap_push(s);
+    static const int DX[8]={1,-1,0,0,1,1,-1,-1}, DY[8]={0,0,1,-1,1,-1,1,-1};
+    float result=-1.f;
+    while (g_sea_hn>0){
+        int i=sea_heap_pop();
+        if (cap_days>=0.f && g_sea_dist[i]>cap_days) break;   /* au-delà du rayon : injoignable */
+        if (i==t){ result=g_sea_dist[i]; break; }
+        int x=i%SCPS_W, y=i/SCPS_W;
+        for (int k=0;k<8;k++){
+            int X=x+DX[k], Y=y+DY[k];
+            if (X<0||Y<0||X>=SCPS_W||Y>=SCPS_H) continue;
+            int j=scps_idx(X,Y);
+            if (!w->cell[j].sea) continue;
+            sea_visit(j);                                  /* dist[j]/pos[j] à jour pour cette époque */
+            float nd=g_sea_dist[i]+sea_step_days(w,i,DX[k],DY[k],j);
+            if (nd<g_sea_dist[j]){
+                g_sea_dist[j]=nd; g_sea_from[j]=i;
+                if (g_sea_pos[j]<0) sea_heap_push(j); else sea_heap_up(g_sea_pos[j]);
+            }
+        }
+    }
+    return result;
+}
 /* cap_days < 0 → sans borne (distance exacte, comportement d'origine). cap_days ≥ 0
  * → Dijkstra pope par distance CROISSANTE, donc dès qu'on dépasse la borne la cible
  * est hors d'atteinte DANS CE RAYON et on rend -1. La borne coupe l'exploration des
@@ -4628,28 +4664,7 @@ float world_sea_days_capped(const World *w, int ax, int ay, int bx, int by, floa
         }
         if (g_sea_memo_key[sl]==SEA_MEMO_EMPTY){ mfree=(int)sl; break; }
     }
-    if (++g_sea_epoch==0){ memset(g_sea_seen,0,sizeof g_sea_seen); g_sea_epoch=1; }  /* nouvelle époque (wrap géré) */
-    g_sea_hn=0; sea_visit(s); g_sea_dist[s]=0.f; sea_heap_push(s);
-    static const int DX[8]={1,-1,0,0,1,1,-1,-1}, DY[8]={0,0,1,-1,1,-1,1,-1};
-    float result=-1.f;
-    while (g_sea_hn>0){
-        int i=sea_heap_pop();
-        if (cap_days>=0.f && g_sea_dist[i]>cap_days) break;   /* au-delà du rayon : injoignable */
-        if (i==t){ result=g_sea_dist[i]; break; }
-        int x=i%SCPS_W, y=i/SCPS_W;
-        for (int k=0;k<8;k++){
-            int X=x+DX[k], Y=y+DY[k];
-            if (X<0||Y<0||X>=SCPS_W||Y>=SCPS_H) continue;
-            int j=scps_idx(X,Y);
-            if (!w->cell[j].sea) continue;
-            sea_visit(j);                                  /* dist[j]/pos[j] à jour pour cette époque */
-            float nd=g_sea_dist[i]+sea_step_days(w,i,DX[k],DY[k],j);
-            if (nd<g_sea_dist[j]){
-                g_sea_dist[j]=nd;
-                if (g_sea_pos[j]<0) sea_heap_push(j); else sea_heap_up(g_sea_pos[j]);
-            }
-        }
-    }
+    float result = sea_dijkstra_core(w, s, t, cap_days);
     /* mémorise : distance EXACTE, ou bassins séparés (-1) SEULEMENT si calcul sans
      * borne (un -1 borné est ambigu et resterait à recalculer si le cap grandit). */
     if (mfree>=0 && (result>=0.f || cap_days<0.f)){
@@ -4736,6 +4751,41 @@ int world_route_chokepoint(const World *w, int ax, int ay, int bx, int by){
         float thresh=(float)(g_choke[k].width)+5.f;
         if (d2 > thresh*thresh) continue;
         if (g_choke[k].width<best_w){ best_w=g_choke[k].width; best=k; }
+    }
+    return best;
+}
+/* M15 — F4 : LE CHOKE AU CHEMIN RÉEL (registre J CHOKE_REAL_PATH). world_route_chokepoint
+ * ci-dessus teste le SEGMENT DROIT ax,ay→bx,by — la route/lane RÉELLE (le même Dijkstra
+ * que world_sea_days, cabotage + courants) peut contourner un détroit que le segment
+ * croise, ou en traverser un qu'il rate. Ce lecteur teste CHAQUE cellule du plus court
+ * chemin marin RÉEL (sea_dijkstra_core, prédécesseurs g_sea_from) contre la même table de
+ * détroits, même seuil de largeur, même marge de bout ]8,92[% (ni à l'embouchure d'un
+ * port). cap_days = même contrat que world_sea_days_capped. N'utilise PAS le mémo
+ * distance (appelé à la création d'une route SEULEMENT, scps_routes.c, jamais au tick —
+ * rare, pas de raison de cacher). -1 = bassins séparés, chemin trop court, ou aucun
+ * détroit franchi. */
+int world_route_chokepoint_path(const World *w, int ax, int ay, int bx, int by, float cap_days){
+    chokepoints_ensure(w);
+    if (g_n_choke<=0) return -1;
+    if (ax<0||ay<0||bx<0||by<0||ax>=SCPS_W||ay>=SCPS_H||bx>=SCPS_W||by>=SCPS_H) return -1;
+    int s=scps_idx(ax,ay), t=scps_idx(bx,by);
+    if (!w->cell[s].sea || !w->cell[t].sea) return -1;
+    float result = sea_dijkstra_core(w, s, t, cap_days);
+    if (result<0.f) return -1;
+    int len=0; for (int cur=t; cur!=-1 && len<SCPS_N; cur=g_sea_from[cur]) len++;
+    if (len<3) return -1;                                    /* trop court pour distinguer un « milieu » */
+    int lo=(int)((float)len*0.08f), hi=(int)((float)len*0.92f);
+    int best=-1, best_w=0x7FFFFFFF, idx=0;
+    for (int cur=t; cur!=-1 && idx<len; cur=g_sea_from[cur], idx++){
+        if (idx<lo || idx>hi) continue;                      /* trop près d'un bout : pas « franchi » */
+        int px=cur%SCPS_W, py=cur/SCPS_W;
+        for (int k=0;k<g_n_choke;k++){
+            float dx=(float)(px-g_choke[k].sx), dy=(float)(py-g_choke[k].sy);
+            float d2=dx*dx+dy*dy;
+            float thresh=(float)(g_choke[k].width)+5.f;      /* même tolérance que le segment droit */
+            if (d2 > thresh*thresh) continue;
+            if (g_choke[k].width<best_w){ best_w=g_choke[k].width; best=k; }
+        }
     }
     return best;
 }

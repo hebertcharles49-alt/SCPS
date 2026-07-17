@@ -9,6 +9,7 @@
 #include <string.h>
 #include <math.h>
 #include "scps_math.h"   /* absf partagé */
+#include "scps_tune.h"   /* M15 — F4 : CHOKE_REAL_PATH */
 
 void routes_init(RouteNetwork *rn){ memset(rn,0,sizeof(*rn)); }
 
@@ -63,8 +64,13 @@ bool routes_order(RouteNetwork *rn, const World *w, const WorldEconomy *econ,
             t->days_ba=world_sea_days_capped(w,bx,by,ax,ay, 2.f*SEA_ROUTE_MAX_DAYS);
             /* WG — LE DÉTROIT que cette route FRANCHIT (géographie statique, posée une
              * fois) : son goulet est sur le chemin des deux ancres ⇒ la région-flanc le
-             * contrôle, et son propriétaire encaisse le péage (intertrade). */
-            int ck=world_route_chokepoint(w,ax,ay,bx,by);
+             * contrôle, et son propriétaire encaisse le péage (intertrade).
+             * M15 — F4 : CHOKE_REAL_PATH bascule le test du SEGMENT DROIT (legacy) au
+             * CHEMIN RÉEL (le même Dijkstra que sea_days ci-dessus) — posé UNE FOIS ici,
+             * à la création, jamais au tick. 0 = legacy exact (golden pré-M15 intact). */
+            int ck = (tune_f("CHOKE_REAL_PATH",0.f)>0.f)
+                     ? world_route_chokepoint_path(w,ax,ay,bx,by, 2.f*SEA_ROUTE_MAX_DAYS)
+                     : world_route_chokepoint(w,ax,ay,bx,by);
             if (ck>=0){
                 const Chokepoint *tab=NULL; int nck=world_chokepoints(w,&tab);
                 if (tab && ck<nck){ t->choke_region=tab[ck].region; t->choke_block=tab[ck].blockade; }
