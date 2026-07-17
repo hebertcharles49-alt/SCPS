@@ -4465,6 +4465,199 @@ int scps_road_path(ScpsSim *s, int i, ScpsRoadPt *out, int max, int *level){
     return n;
 }
 
+/* ============ LANES MARITIMES (le portulan) — miroir MARIN de road_paths ========== *
+ * A* port-à-port sur les cellules de MER (jamais les lacs — piège documenté : un lac
+ * priority-flood porte biome SHALLOW donc cell.sea≠0 ; on teste cell.lake), reliant
+ * les ROUTES DE COMMERCE maritimes RÉELLES (RouteNetwork — les paires port-à-port
+ * dont les deux bouts sont séparés par la mer), pas toutes les paires possibles.
+ * Coût de base UNIFORME + CABOTAGE (léger bonus le long des côtes : les lanes
+ * historiques longent, elles ne coupent plein océan que par nécessité) + « les lanes
+ * attirent les lanes » (corridor ×0.30, même principe que le terrestre → les tracés
+ * voisins FUSIONNENT en couloirs au lieu de se dédoubler). Caché par SIGNATURE du
+ * réseau maritime (recalcul quand le commerce bouge, jamais au tick). Display-only,
+ * hors sim → déterminisme intact, golden-neutre. Kill-switch : SEA_LANES=0 → rien ne
+ * se calcule, 0 lane. */
+typedef struct {
+    int16_t x[API_ROAD_PATH_MAX], y[API_ROAD_PATH_MAX];
+    int len, open, choke_region, ra, rb;
+} ApiLane;
+static ApiLane  *g_lanes = NULL;
+static int       g_nlanes = 0;
+static uint64_t  g_lane_sig = 0;
+static uint8_t  *g_lanemask = NULL;   /* 1 = cellule sur une lane déjà tracée (attire) */
+
+static float api_lane_cost(const World *w, int x, int y){
+    const Cell *c = scps_cellc(w, x, y);
+    if (!c->sea || c->lake) return -1.f;           /* terre & LACS : infranchissables */
+    float cost = 1.f;                              /* le large : coût uniforme */
+    if (c->sea==SEA_CABOTAGE)   cost = 0.72f;      /* le cabotage : la lane longe la côte */
+    else if (c->sea==SEA_MORTE) cost = 1.35f;      /* le désert liquide se contourne (miroir sea_step_days) */
+    if (g_lanemask && g_lanemask[scps_idx(x,y)]) cost *= 0.30f;   /* les lanes attirent les lanes */
+    return cost;
+}
+/* Même squelette qu'api_road_astar (tas partagé g_a*, générations) mais coût MARIN et
+ * boîte ÉLARGIE (±96 : contourner une masse terrestre écarte bien plus qu'un col). */
+static bool api_lane_astar(const World *w, int ax, int ay, int bx, int by, ApiLane *out){
+    if(ax<0||ay<0||ax>=SCPS_W||ay>=SCPS_H||bx<0||by<0||bx>=SCPS_W||by>=SCPS_H) return false;
+    if(!g_ag){
+        g_ag=(float*)malloc(sizeof(float)*SCPS_N); g_afrom=(int*)malloc(sizeof(int)*SCPS_N);
+        g_agen=(int*)calloc(SCPS_N,sizeof(int)); g_aclosed=(int*)calloc(SCPS_N,sizeof(int));
+        g_aheapf=(float*)malloc(sizeof(float)*SCPS_N); g_aheapi=(int*)malloc(sizeof(int)*SCPS_N);
+        if(!g_ag||!g_afrom||!g_agen||!g_aclosed||!g_aheapf||!g_aheapi) return false;
+    }
+    int minx=(ax<bx?ax:bx)-96, maxx=(ax>bx?ax:bx)+96, miny=(ay<by?ay:by)-96, maxy=(ay>by?ay:by)+96;
+    if(minx<0) minx=0;
+    if(miny<0) miny=0;
+    if(maxx>=SCPS_W) maxx=SCPS_W-1;
+    if(maxy>=SCPS_H) maxy=SCPS_H-1;
+    g_acurgen++; g_aheap_n=0;
+    int s=scps_idx(ax,ay), goal=scps_idx(bx,by);
+    g_ag[s]=0.f; g_afrom[s]=-1; g_agen[s]=g_acurgen;
+    aheap_push(hypotf((float)(bx-ax),(float)(by-ay))*0.30f, s);   /* h ≤ coût réel min (corridor ×0.30) : admissible */
+    static const int dx8[8]={1,-1,0,0,1,1,-1,-1}, dy8[8]={0,0,1,-1,1,-1,1,-1};
+    bool found=false; int guard=0;
+    while(g_aheap_n>0 && guard++<900000){
+        int cur=aheap_pop();
+        if(g_aclosed[cur]==g_acurgen) continue;
+        g_aclosed[cur]=g_acurgen;
+        if(cur==goal){ found=true; break; }
+        int cxx=cur%SCPS_W, cyy=cur/SCPS_W;
+        for(int d=0;d<8;d++){
+            int nx=cxx+dx8[d], ny=cyy+dy8[d];
+            if(nx<minx||nx>maxx||ny<miny||ny>maxy) continue;
+            int ni=scps_idx(nx,ny);
+            if(g_aclosed[ni]==g_acurgen) continue;
+            float cc=api_lane_cost(w,nx,ny); if(cc<0.f) continue;
+            float ng=g_ag[cur]+(d<4?1.f:1.41421f)*cc;
+            if(g_agen[ni]==g_acurgen && g_ag[ni]<=ng) continue;
+            g_ag[ni]=ng; g_afrom[ni]=cur; g_agen[ni]=g_acurgen;
+            aheap_push(ng+hypotf((float)(bx-nx),(float)(by-ny))*0.30f, ni);
+        }
+    }
+    if(!found) return false;
+    static int tmp[4096]; int tn=0;
+    for(int cur=goal; cur!=-1 && tn<4096; cur=g_afrom[cur]) tmp[tn++]=cur;
+    int stepd=(tn>API_ROAD_PATH_MAX)?(tn/API_ROAD_PATH_MAX+1):1;
+    out->len=0;
+    for(int k=tn-1;k>=0 && out->len<API_ROAD_PATH_MAX;k-=stepd){
+        out->x[out->len]=(int16_t)(tmp[k]%SCPS_W); out->y[out->len]=(int16_t)(tmp[k]/SCPS_W); out->len++;
+    }
+    return out->len>=2;
+}
+/* Lissage moyenne-mobile GARDÉ-EAU : un sommet lissé qui quitterait la mer (baie
+ * concave) reprend sa position d'origine — le piège « api_road_smooth n'est pas
+ * water-aware » (TROUVAILLES : route dans la mer), pris à l'inverse : une lane ne
+ * monte jamais sur la terre ni sur un lac. */
+static void api_lane_smooth(const World *w, ApiLane *p){
+    if(p->len<3) return;
+    static int16_t nx[API_ROAD_PATH_MAX], ny[API_ROAD_PATH_MAX];
+    for(int pass=0; pass<3; pass++){
+        nx[0]=p->x[0]; ny[0]=p->y[0]; nx[p->len-1]=p->x[p->len-1]; ny[p->len-1]=p->y[p->len-1];
+        for(int k=1;k<p->len-1;k++){
+            int sx=(p->x[k-1]+2*p->x[k]+p->x[k+1])/4;
+            int sy=(p->y[k-1]+2*p->y[k]+p->y[k+1])/4;
+            const Cell *c=scps_cellc(w,sx,sy);
+            if(!c->sea || c->lake){ sx=p->x[k]; sy=p->y[k]; }   /* gardé-eau */
+            nx[k]=(int16_t)sx; ny[k]=(int16_t)sy;
+        }
+        memcpy(p->x,nx,sizeof(int16_t)*p->len); memcpy(p->y,ny,sizeof(int16_t)*p->len);
+    }
+}
+static void api_lane_stamp(const ApiLane *p){
+    if(!g_lanemask) return;
+    for(int k=0;k<p->len;k++){ int rx=p->x[k], ry=p->y[k];
+        for(int dy=-1;dy<=1;dy++) for(int dx=-1;dx<=1;dx++){
+            int nx=rx+dx, ny=ry+dy;
+            if(nx>=0&&ny>=0&&nx<SCPS_W&&ny<SCPS_H) g_lanemask[ny*SCPS_W+nx]=1; } }
+}
+static void api_sea_lanes_build(ScpsSim *s){
+    const World *w=s->w;
+    if(!s->sim.econ || !s->sim.rn){ g_nlanes=0; return; }
+    if(tune_f("SEA_LANES",1.f)<=0.f){ g_nlanes=0; g_lane_sig=0; return; }   /* kill-switch : rien ne se calcule */
+    const RouteNetwork *rn=s->sim.rn;
+    /* signature : photo des routes maritimes (paire + ouverte) — change quand le commerce bouge */
+    uint64_t sig=1469598103934665603ull;
+    for(int i=0;i<rn->n;i++){
+        const TradeRoute *t=&rn->route[i];
+        if(!t->maritime) continue;
+        sig=(sig^(uint64_t)((uint64_t)(t->ra*100003)+(uint64_t)(t->rb*613)+(t->open?1u:0u)))*1099511628211ull;
+    }
+    if(sig==g_lane_sig && g_lanes) return;          /* commerce inchangé → cache valide */
+    g_lane_sig=sig;
+    if(!g_lanes){ g_lanes=(ApiLane*)malloc(sizeof(ApiLane)*SCPS_MAX_ROUTES); if(!g_lanes){ g_nlanes=0; return; } }
+    if(!g_lanemask) g_lanemask=(uint8_t*)calloc(SCPS_N,1);
+    if(g_lanemask) memset(g_lanemask,0,SCPS_N);
+    g_nlanes=0;
+    /* les lanes COURTES d'abord (miroir terrestre : les longues se rabattent sur les
+     * corridors déjà stampés) — tri stable par jours de mer, l'index départage. */
+    static int order[SCPS_MAX_ROUTES]; int nm=0;
+    for(int i=0;i<rn->n && nm<SCPS_MAX_ROUTES;i++) if(rn->route[i].maritime) order[nm++]=i;
+    for(int a=1;a<nm;a++){ int v=order[a]; int b=a-1;
+        while(b>=0 && rn->route[order[b]].sea_days>rn->route[v].sea_days){ order[b+1]=order[b]; b--; }
+        order[b+1]=v; }
+    for(int k=0;k<nm && g_nlanes<SCPS_MAX_ROUTES;k++){
+        const TradeRoute *t=&rn->route[order[k]];
+        if(t->ra<0||t->rb<0||t->ra>=s->sim.econ->n_regions||t->rb>=s->sim.econ->n_regions) continue;
+        int ax,ay,bx,by;
+        if(!world_region_sea_anchor(w,t->ra,&ax,&ay)) continue;
+        if(!world_region_sea_anchor(w,t->rb,&bx,&by)) continue;
+        ApiLane *ln=&g_lanes[g_nlanes];
+        if(!api_lane_astar(w,ax,ay,bx,by,ln)) continue;   /* bassins séparés/hors boîte : pas de lane */
+        api_lane_smooth(w,ln);
+        api_lane_stamp(ln);
+        ln->open=t->open?1:0; ln->choke_region=t->choke_region;
+        ln->ra=t->ra; ln->rb=t->rb;
+        g_nlanes++;
+    }
+}
+int scps_sea_lanes_build(ScpsSim *s){
+    if(!s || !s->ready) return 0;
+    api_sea_lanes_build(s);
+    return g_nlanes;
+}
+int scps_sea_lane_path(ScpsSim *s, int i, ScpsRoadPt *out, int max,
+                       int *open, int *choke_region, int *ra, int *rb){
+    if(!s || !s->ready || !out || max<=0 || i<0 || i>=g_nlanes) return 0;
+    const ApiLane *p=&g_lanes[i];
+    int n=p->len; if(n>max) n=max;
+    for(int k=0;k<n;k++){ out[k].x=(float)p->x[k]+0.5f; out[k].y=(float)p->y[k]+0.5f; }   /* centre cellule */
+    if(open)         *open=p->open;
+    if(choke_region) *choke_region=p->choke_region;
+    if(ra)           *ra=p->ra;
+    if(rb)           *rb=p->rb;
+    return n;
+}
+
+/* N3 — LA TRAVERSÉE (lecture pure) : miroir des gardes de campaign_order_sea, sans
+ * rien exécuter — l'UI sait AVANT de cliquer si la réserve peut embarquer et en
+ * combien de jours. Membrane : jours entiers, comptes de coques, ids tangibles. */
+int scps_sea_travel(ScpsSim *s, int target_region, ScpsSeaTravel *out){
+    if(!s || !s->ready || !out) return 0;
+    memset(out,0,sizeof *out);
+    out->days=-1; out->port_region=-1;
+    int p=(s->sim.human_player>=0)?s->sim.human_player:s->sim.player;
+    if(p<0 || p>=SCPS_MAX_COUNTRY || !s->sim.econ || !s->sim.navy || !s->sim.host) return 0;
+    const WorldEconomy *e=s->sim.econ;
+    if(target_region<0 || target_region>=e->n_regions) return 0;
+    int port=navy_best_port(s->w,e,p);
+    out->port_region=port;
+    long packets=warhost_units(s->sim.host,p);           /* la réserve dimensionne le convoi */
+    out->transports_need=(int)((packets+9)/10); if(out->transports_need<1) out->transports_need=1;
+    { int free_tr=s->sim.navy->n[p].hull[HULL_TRANSPORT]-s->sim.navy->n[p].at_sea;
+      out->transports_free=(free_tr>0)?free_tr:0; }
+    for(int en=0;en<SCPS_MAX_COUNTRY;en++)               /* coques §3 : le blocus tient le port */
+        if(s->sim.navy->n[en].mission==NAVY_BLOCUS && s->sim.navy->n[en].mission_target==p
+           && s->sim.navy->n[en].hull[HULL_WAR]>0){ out->blocked=1; break; }
+    if(port<0 || target_region==port) return 1;          /* renseigné, traversée impossible */
+    if(!e->region[target_region].coastal) return 1;      /* on atterrit par la côte */
+    float days=navy_sea_days_regions(s->w,port,target_region);
+    if(days<0.f) return 1;                               /* bassins séparés */
+    out->days=(int)ceilf(days);
+    out->possible=(packets>0 && !out->blocked
+                   && out->transports_free>=out->transports_need) ? 1 : 0;
+    return 1;
+}
+
 /* ====================================================================== */
 /* CRÉATEUR DE CULTURE — listes, validation, aperçu, composition (voir .h)  */
 /* La membrane : des MOTS (noms, axes, épithètes) et des SIGNES. Pur (aucun  */

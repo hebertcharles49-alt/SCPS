@@ -261,6 +261,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("region_border_segments", "region"), &ScpsWorld::region_border_segments);
     ClassDB::bind_method(D_METHOD("province_border_segments", "prov"), &ScpsWorld::province_border_segments);
     ClassDB::bind_method(D_METHOD("road_paths"),                     &ScpsWorld::road_paths);
+    ClassDB::bind_method(D_METHOD("sea_paths"),                      &ScpsWorld::sea_paths);
+    ClassDB::bind_method(D_METHOD("sea_travel", "target_region"),    &ScpsWorld::sea_travel);
 
     /* couches brutes (scps_map_layer) — int en clair côté GDScript :
      * 0 = HEIGHT · 1 = SEA · 2 = BIOME · 3 = COAST · 4 = WATER · 5 = RIVER · 6 = CLIFF */
@@ -2443,4 +2445,42 @@ Array ScpsWorld::road_paths() {
         a.push_back(d);
     }
     return a;
+}
+
+Array ScpsWorld::sea_paths() {
+    Array a;
+    if (!sim) return a;
+    int np = scps_sea_lanes_build(sim);
+    static const int MAXPT = 1400;
+    static ScpsRoadPt pts[MAXPT];
+    for (int i = 0; i < np; i++) {
+        int open = 0, choke = -1, ra = -1, rb = -1;
+        int n = scps_sea_lane_path(sim, i, pts, MAXPT, &open, &choke, &ra, &rb);
+        if (n < 2) continue;
+        PackedVector2Array pv;
+        pv.resize(n);
+        for (int k = 0; k < n; k++) pv.set(k, Vector2(pts[k].x, pts[k].y));
+        Dictionary d;
+        d["points"] = pv;
+        d["open"]   = open;
+        d["choke"]  = choke;
+        d["ra"]     = ra;
+        d["rb"]     = rb;
+        a.push_back(d);
+    }
+    return a;
+}
+
+Dictionary ScpsWorld::sea_travel(int target_region) {
+    Dictionary d;
+    if (!sim) return d;
+    ScpsSeaTravel st;
+    if (!scps_sea_travel(sim, target_region, &st)) return d;
+    d["possible"]        = st.possible;
+    d["days"]            = st.days;
+    d["port_region"]     = st.port_region;
+    d["transports_need"] = st.transports_need;
+    d["transports_free"] = st.transports_free;
+    d["blocked"]         = st.blocked;
+    return d;
 }

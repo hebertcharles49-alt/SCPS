@@ -1365,6 +1365,17 @@
      * pas « legacy ») : =0 restaure le chemin LEGACY EXACT (une porteuse vide reste un
      * percepteur comme avant M13, golden byte-identique). */ \
     X(TOLL_NEEDS_KEEPER,               1.0f) \
+    /* MARITIME (2026-07-17) — N2 : LES LANES MARITIMES (portulan). Reader façade
+     * PUR (scps_sea_lanes_build : A* port-à-port sur les cellules mer, display-only,
+     * hors tick) — 0 = kill-switch : aucune lane ne se calcule, la carte redevient
+     * muette sur la mer, sim byte-identique dans les DEUX cas (jamais lu au tick). */ \
+    X(SEA_LANES,                       1.0f) \
+    /* MARITIME (2026-07-17) — N3 : LA TRAVERSÉE JOUEUR. CMD_MOVE_ARMY replie sur
+     * campaign_order_sea (embarquement à la rade) quand AUCUN chemin terrestre
+     * n'existe — le geste que l'IA avait déjà (guerre outre-mer). Ne s'exécute QUE
+     * sur commande joueur (journal CMD_*) : la chronique headless n'en émet jamais,
+     * golden intact. 0 = kill-switch : refus terrestre legacy exact. */ \
+    X(SEA_TRAVEL,                      1.0f) \
     /* MONNAIE M5 — R2 : LA RÉSERVE DE GENÈSE (décision joueur 2026-07-15). Un empire
      * jouable/IA (POLITY_PLAYER/ANTAGONIST) naît désormais avec une réserve MÉTALLIQUE
      * de départ (le champ M1 reserve_gold/copper, jusqu'ici réservé aux cités-états à

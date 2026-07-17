@@ -1379,6 +1379,32 @@ typedef struct { float x, y; } ScpsRoadPt;
 int scps_roads_build(ScpsSim *s);
 int scps_road_path(ScpsSim *s, int i, ScpsRoadPt *out, int max, int *level);
 
+/* LANES MARITIMES (portulan) — le miroir MARIN de road_paths : A* port-à-port sur les
+ * cellules de MER (jamais les lacs), reliant les routes de COMMERCE maritimes réelles
+ * (RouteNetwork). Cabotage (bonus côtier) + corridors (« les lanes attirent les
+ * lanes », ×0.30). Display-only, caché par signature du réseau maritime — recalcul
+ * quand le commerce bouge, jamais au tick. Kill-switch : SEA_LANES=0 → 0 lane.
+ * `scps_sea_lane_path` remplit la i-ème (points = centres de cellule) ; *open = route
+ * ouverte (vs en formation), *choke_region = la région-flanc du DÉTROIT que la route
+ * paie (péage intertrade, -1 sans), *ra et *rb = les régions des deux ports. */
+int scps_sea_lanes_build(ScpsSim *s);
+int scps_sea_lane_path(ScpsSim *s, int i, ScpsRoadPt *out, int max,
+                       int *open, int *choke_region, int *ra, int *rb);
+
+/* N3 — LA TRAVERSÉE (lecture pure, membrane : jours entiers + ids tangibles) : la
+ * réserve du joueur peut-elle embarquer vers `target_region`, et en combien de JOURS
+ * de mer ? Miroir exact des gardes de campaign_order_sea (port à soi, côte à
+ * l'arrivée, transports libres, blocus) SANS rien exécuter. */
+typedef struct {
+    int possible;          /* 1 = la traversée partirait aujourd'hui */
+    int days;              /* jours de mer port→côte (arrondi haut ; -1 = pas de chemin) */
+    int port_region;       /* la rade d'embarquement (meilleur port) ; -1 sans port */
+    int transports_need;   /* coques transport nécessaires pour la réserve actuelle */
+    int transports_free;   /* coques transport disponibles (hors mer) */
+    int blocked;           /* 1 = un blocus ennemi tient le port */
+} ScpsSeaTravel;
+int scps_sea_travel(ScpsSim *s, int target_region, ScpsSeaTravel *out);
+
 /* ====================================================================== */
 /* LECTURES DE FENÊTRES (read-only) : arbre de tech · budget · missions     */
 /* La membrane : des MOTS résolus + des nombres TANGIBLES (or, points,      */

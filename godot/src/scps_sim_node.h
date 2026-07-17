@@ -368,6 +368,17 @@ public:
      * Dictionary { points: PackedVector2Array (centres de cellule) · level: int
      * 0=artère/1=desserte/2=mineure }. Port de roads_ensure_cache de viewer.c. */
     Array road_paths();
+
+    /* LANES MARITIMES (portulan) : Array de Dictionary { points: PackedVector2Array
+     * (centres de cellule, mer seulement — jamais un lac) · open: int · choke: int
+     * (région-flanc du détroit payé, -1) · ra/rb: int (régions des deux ports) }.
+     * Miroir marin de road_paths (scps_sea_lanes_build, cache par signature). */
+    Array sea_paths();
+
+    /* N3 — LA TRAVERSÉE (lecture pure) : { possible, days, port_region,
+     * transports_need, transports_free, blocked } pour la réserve du joueur vers
+     * `target_region` (miroir des gardes de campaign_order_sea, sans exécuter). */
+    Dictionary sea_travel(int target_region);
 };
 
 } // namespace godot
