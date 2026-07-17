@@ -4490,8 +4490,24 @@ static float api_lane_cost(const World *w, int x, int y){
     const Cell *c = scps_cellc(w, x, y);
     if (!c->sea || c->lake) return -1.f;           /* terre & LACS : infranchissables */
     float cost = 1.f;                              /* le large : coût uniforme */
-    if (c->sea==SEA_CABOTAGE)   cost = 0.72f;      /* le cabotage : la lane longe la côte */
-    else if (c->sea==SEA_MORTE) cost = 1.35f;      /* le désert liquide se contourne (miroir sea_step_days) */
+    if (c->sea==SEA_CABOTAGE){
+        cost = 0.85f;   /* la rive IMMÉDIATE : praticable, mais COLLÉE au trait de côte
+                         * — une lane qui y court se fond dans le contour dessiné
+                         * (mesuré : illisible au zoom de lecture, graine 42) */
+    } else {
+        /* la VOIE DE CABOTAGE lisible : la 2e rangée d'eau (voisine du littoral) est
+         * la moins chère — la lane longe la côte à 1-2 cellules du trait. */
+        int ring2=0;
+        for (int dy=-1;dy<=1 && !ring2;dy++) for (int dx=-1;dx<=1;dx++){
+            if(!dx&&!dy) continue;
+            int nx=x+dx, ny=y+dy;
+            if(nx<0||ny<0||nx>=SCPS_W||ny>=SCPS_H) continue;
+            const Cell *n=scps_cellc(w,nx,ny);
+            if(n->sea==SEA_CABOTAGE && !n->lake){ ring2=1; break; }
+        }
+        if (ring2) cost = 0.72f;
+        else if (c->sea==SEA_MORTE) cost = 1.35f;  /* le désert liquide se contourne (miroir sea_step_days) */
+    }
     if (g_lanemask && g_lanemask[scps_idx(x,y)]) cost *= 0.30f;   /* les lanes attirent les lanes */
     return cost;
 }
@@ -4563,12 +4579,27 @@ static void api_lane_smooth(const World *w, ApiLane *p){
         memcpy(p->x,nx,sizeof(int16_t)*p->len); memcpy(p->y,ny,sizeof(int16_t)*p->len);
     }
 }
+/* Tampon EXACT (pas la marge ±1 des routes terrestres) : sur un coût marin UNIFORME,
+ * une BANDE au rabais laisse le 2e A* errer n'importe où dedans (à terre le relief
+ * départage, en mer non) — mesuré : paires parallèles à ~0.3 cellule dans la bande de
+ * 3. La ligne SEULE au rabais force le partage de tracé cellule à cellule. */
 static void api_lane_stamp(const ApiLane *p){
     if(!g_lanemask) return;
-    for(int k=0;k<p->len;k++){ int rx=p->x[k], ry=p->y[k];
-        for(int dy=-1;dy<=1;dy++) for(int dx=-1;dx<=1;dx++){
-            int nx=rx+dx, ny=ry+dy;
-            if(nx>=0&&ny>=0&&nx<SCPS_W&&ny<SCPS_H) g_lanemask[ny*SCPS_W+nx]=1; } }
+    for(int k=0;k<p->len;k++){
+        int rx=p->x[k], ry=p->y[k];
+        if(rx>=0&&ry>=0&&rx<SCPS_W&&ry<SCPS_H) g_lanemask[ry*SCPS_W+rx]=1;
+        /* DDA vers le point suivant : la DÉCIMATION (stepd>1 au-delà d'API_ROAD_PATH_MAX
+         * cellules) troue la ligne — une ligne au rabais TROUÉE ferait zigzaguer le
+         * suiveur entre les points discountés. */
+        if(k+1<p->len){
+            int nx2=p->x[k+1], ny2=p->y[k+1];
+            int steps=abs(nx2-rx)>abs(ny2-ry)?abs(nx2-rx):abs(ny2-ry);
+            for(int t2=1;t2<steps;t2++){
+                int ix=rx+(nx2-rx)*t2/steps, iy=ry+(ny2-ry)*t2/steps;
+                if(ix>=0&&iy>=0&&ix<SCPS_W&&iy<SCPS_H) g_lanemask[iy*SCPS_W+ix]=1;
+            }
+        }
+    }
 }
 static void api_sea_lanes_build(ScpsSim *s){
     const World *w=s->w;
