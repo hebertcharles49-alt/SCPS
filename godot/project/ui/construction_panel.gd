@@ -352,11 +352,14 @@ func _edifice_card(w, b: Dictionary) -> Control:
 
 	# L2bis — ENTRETIEN (retour joueur 2026-07-14 : le moteur le prélève chaque mois, la
 	# carte doit le dire — miroir EXACT E1bis.10, valeur réelle, jamais le calcul).
+	# UI-POLISH #7 : le « ~ » était un artefact GDScript pur — la valeur elle-même est
+	# DÉJÀ un miroir exact (arrondi au gold près, scps_edifice_upkeep_month) ; le joueur
+	# veut le prix réel, pas un signe d'approximation qui n'a jamais existé côté moteur.
 	var upk := int(b.get("entretien", 0))
 	if upk > 0:
 		var upkl := Label.new()
 		upkl.theme_type_variation = "RowDim"
-		upkl.text = "Entretien : ~%d or/mois" % upk
+		upkl.text = "Entretien : %d or/mois" % upk
 		upkl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		vb.add_child(upkl)
 
@@ -444,7 +447,7 @@ func _manuf_card(bld: int, nom: String, recipe_txt: String, mcost: int, upkeep: 
 	card.add_theme_stylebox_override("panel", ParchTheme.sb(ParchTheme.HEADER_BG, ParchTheme.BORDER, 1, 4, 10, 10, 8, 8))
 	var info_lines := [{"label": "Recette", "value": recipe_txt}]
 	if upkeep > 0:
-		info_lines.append({"label": "Entretien", "value": "~%d or/mois" % upkeep})
+		info_lines.append({"label": "Entretien", "value": "%d or/mois" % upkeep})
 	card.card_data = {
 		"title": nom,
 		"state": "Constructible",
@@ -490,7 +493,7 @@ func _manuf_card(bld: int, nom: String, recipe_txt: String, mcost: int, upkeep: 
 	if upkeep > 0:
 		var upkl := Label.new()
 		upkl.theme_type_variation = "RowDim"
-		upkl.text = "Entretien : ~%d or/mois" % upkeep
+		upkl.text = "Entretien : %d or/mois" % upkeep
 		upkl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		vb.add_child(upkl)
 	return card
