@@ -1,4 +1,21 @@
-# SYNTHÈSE DE SESSION — handoff roulant (2026-07-17 après-midi, post-MARITIME)
+# SYNTHÈSE DE SESSION — handoff roulant (2026-07-17 soir — M15 + EXPORT : « Termine tout » FAIT)
+
+## M15 FINITIONS + EXPORT scps.exe (HEAD 53d82aa + dist)
+- **M15** (pre-m15, 5 commits) : F1 inflation — l'option A MESURÉE D'ABORD et DÉGRADANTE
+  (−0.40 %/an) ⇒ option B retenue (INFLATION_CAP seul 1.6→2.0) : dérive moyenne **+0.17 %/an,
+  positive pour la première fois**, bandes tenues · F2 ai_speculate_tick (le dernier site M0)
+  converti en transferts conservés — résidu 209s3 halvé (+8.3k→+4.6k/an, un autre site porte
+  le reste) · F3 ré-embarquement d'un corps actif (golden-neutre) · F4 choke-au-chemin-réel
+  LIVRÉ GATÉ OFF — le chemin réel fait tomber le péage de détroit à 0 partout (les lanes
+  évitent les goulets) : DÉCISION JOUEUR avant activation. Gates 39/39, DLL debug+release.
+- **EXPORT** : packaging/windows/dist_godot/scps.exe (289 Mo, PCK embarqué, DLL release
+  KERNEL32-only) — SMOKE TEST VERT en PATH System32 seul (worldgen graine 9 « archipel »
+  complet, exit 0). Le jeu complet — 15 vagues monnaie + UI-MONNAIE + TECH/FINS/FAUSTIEN +
+  ROUTES/ANTISPAG/MARITIME + savoir×2 — est ENTRE LES MAINS DU JOUEUR pour la première fois.
+- DÉCISIONS JOUEUR EN ATTENTE : activer F4 (choke réel = tuer le péage de détroit) ou le
+  laisser mort · le résidu +4.6k/an de 209s3 (l'autre site, non identifié) · les mécanismes
+  morts de l'œil-neuf (coups d'État 1/100, esclavage 9/100, morts-poursuite 5.9×, cohésion
+  gelée) · élargir la fenêtre d'exode de fin (13/100 sims seulement) · tech→rendement ?
 
 ## M13 + ROUTES + ANTISPAG + MARITIME (HEAD d135da2, save v96, 39/39)
 - **M13** (pre-m13, 4 commits) : « si y'a personne, y'a pas de péage » — 3 sites région-grain
