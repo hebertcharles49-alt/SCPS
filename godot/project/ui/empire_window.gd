@@ -253,7 +253,7 @@ func _build_population(w, me: int) -> void:
 	# rouvre le Schisme et le recrutement du Lettré, verbes câblés mais orphelins.
 	var faith_btn := Button.new()
 	var has_faith := int(w.religion_of_country(me)) >= 0 if w.has_method("religion_of_country") else false
-	faith_btn.text = ("Foi d'État : %s → Schisme / Lettré (R)" % String(w.religion_name(me))) \
+	faith_btn.text = ("Foi d'État : %s (R)" % String(w.religion_name(me))) \
 		if (has_faith and w.has_method("religion_name")) else "Fonder une religion (R)"
 	faith_btn.focus_mode = Control.FOCUS_NONE
 	faith_btn.tooltip_text = "Ouvre le Créateur de Foi : crédo, traditions, schisme, recrutement du Lettré."

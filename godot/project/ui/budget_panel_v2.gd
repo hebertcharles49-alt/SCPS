@@ -607,7 +607,13 @@ func _update_monnaie(me: int) -> void:
 		_set_m("debt_class", "%s or" % _grp(int(round(to_class))))
 		_set_m("debt_cs", ("%s : %s or" % [creditor_name, _grp(int(round(to_cs)))]) if creditor >= 0 and to_cs > 0.5 else "—")
 		_set_m("debt_rate", "%.1f %%/an" % (taux * 100.0))
-		_set_m("debt_due", "~%s or/an" % _grp(int(round(due))) if total > 0.5 else "—")
+		# D3 — RÉSIDU DOCTRINE : `due` est un prélèvement RÉELLEMENT annuel (credit_year_tick,
+		# scps_credit.c, 1×/an) — pas un flux continu comme l'impôt. « or/an » resterait
+		# ambigu (lu comme un débit récurrent /mois mal étiqueté, cf. le bug province_panel.
+		# gd:317 corrigé en D1) ; la cadence est dite en toutes lettres au lieu du calcul
+		# fictif due/12 (qui ne correspond à AUCUN prélèvement réel — VALEUR RÉELLE, jamais
+		# le calcul).
+		_set_m("debt_due", "~%s or (prélevés 1×/an)" % _grp(int(round(due))) if total > 0.5 else "—")
 	# EMPRUNTER À UN ORDRE
 	if w.has_method("country_loan_capacity"):
 		var caps: Array = w.country_loan_capacity(me)

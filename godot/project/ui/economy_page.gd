@@ -157,7 +157,7 @@ func _build_body(me: int) -> void:
 	# réglage (le Trésor, touche B) plutôt que de dupliquer les curseurs.
 	if not interactive:
 		var link := Button.new()
-		link.text = "Régler la fiscalité et les dépenses → Trésor (B)"
+		link.text = "Régler… → Trésor (B)"
 		link.focus_mode = Control.FOCUS_NONE
 		link.tooltip_text = "Ouvre le Trésor (onglet Balance) : c'est là que se règlent taux d'imposition et enveloppes."
 		link.pressed.connect(func(): open_budget_requested.emit())

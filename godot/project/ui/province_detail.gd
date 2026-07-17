@@ -670,7 +670,10 @@ func _draw_journal(x: float, y: float, w) -> void:
 
 # ── ONGLET PRODUCTION : flux +X/j par bien (sprite de ressource dessous) ───────
 func _draw_flux(fx: float, fy: float, fw: float, fh: float, w) -> void:
-	VKit.text(self, Vector2(fx, fy), VKit.COL_GOLD, "Production en direct (par an)", VKit.FS_SMALL)
+	# D3 — RÉSIDU DOCTRINE : l'en-tête disait « (par an) », reliquat d'avant le retrait du
+	# ×365 (cf. commentaire plus bas, « calibrage Anno ») — les barres affichent /j depuis,
+	# l'en-tête ne suivait plus l'unité réellement montrée.
+	VKit.text(self, Vector2(fx, fy), VKit.COL_GOLD, "Production en direct (par jour)", VKit.FS_SMALL)
 	VKit.fill(self, Rect2(fx + 200.0, fy + 2.0, 9, 9), VKit.COL_GOLD)
 	VKit.text(self, Vector2(fx + 214.0, fy), VKit.COL_DIM, "ressource brute", VKit.FS_SMALL)
 	VKit.fill(self, Rect2(fx + 330.0, fy + 2.0, 9, 9), VKit.SLICE_PAL[7])
