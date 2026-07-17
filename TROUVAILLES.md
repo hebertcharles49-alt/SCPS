@@ -5844,3 +5844,254 @@ byte-identique prouvé défauts ET kill-switch.
 - **routes_perf_probe non étendue** aux lanes (le chrono vit dans
   road_dump_probe) — à fusionner si une vague perf future veut UN seul
   instrument.
+
+## MISSION M15 — LES FINITIONS : inflation option A · le dernier site M0 · le ré-embarquement · le choke au chemin réel (2026-07-17)
+
+**Statut : F1/F2/F3 LIVRÉS (calibrage MESURÉ, pas déclaré) · F4 LIVRÉ GATÉ OFF (mesuré invasif-neutre côté code mais économiquement neutralisant, kill-switch conservé).**
+Décision joueur verbatim : « Je suis d'accord [avec l'option A]. Termine tout. » Tag `pre-m15` posé
+(38e165f = M13+ROUTES+ANTISPAG+MARITIME). Golden RE-BASELINÉ (F1 seul en est la cause — MINT_ROYALTY
+touche le tick 1, les 5 graines du golden changent). SAVE_VERSION INCHANGÉE (aucun champ neuf sérialisé
+sur les 4 chantiers — F2/F4 réutilisent des transferts/lecteurs existants, F3 ne touche aucun état
+persisté au-delà de ce que campaign_order_sea sérialisait déjà, F1 est un pur changement de défaut).
+
+### F1 — L'INFLATION : Option A MESURÉE PUIS ÉCARTÉE, Option B (le fallback prévu) RETENUE
+
+Le brief nommait Option A « recommandée » (MINT_ROYALTY/MINT_AI_SHARE 0.6→0.75 COMBINÉ à
+INFLATION_CAP 1.6→2.0). Mesurée EN PREMIER, au sweep apparié {9,11,42}×3×250 (9 dérives OLS/an) :
+
+| seed | pre-m15 (3 sims) | Option A (.75/.75/2.0) |
+|---|---|---|
+| 9  | +0.72 · −0.58 · −2.67 | −0.96 · −0.73 · +0.35 |
+| 11 | +0.66 · −0.30 · −0.68 | +0.57 · −0.65 · −0.90 |
+| 42 | +0.00 · +0.32 · −0.92 | −1.21 · +0.42 · −0.53 |
+
+**Verdict Option A (chiffres) :** moyenne −0.38 %/an (pre) → **−0.40 %/an** (PIRE, pas mieux) · bande
+[0.5,1.5] 2/9 → **1/9** (pire) · sims ≥0 : 4/9 → **3/9** (pire). Un seul sim (seed 9 sim 1) a même
+INVERSÉ de signe dans le mauvais sens (+0.72 → −0.96) — la sensibilité non-linéaire documentée M7
+(« un pas boucule une graine de +0.4 à −2.3 ») s'est reconfirmée, mais dans le sens qui CONTREDIT
+l'extrapolation naïve du brief (« +25 % de royalty ⇒ +0.4-0.5 pt attendu » — mesuré : NON).
+
+**Option B testée ensuite** (le fallback « défensif » explicitement prévu par TROUVAILLES M13-P3 et
+par le brief M15) : `INFLATION_CAP` SEUL 1.6→2.0, `MINT_ROYALTY`/`MINT_AI_SHARE` LAISSÉS à 0.6 (déjà
+le défaut M7-M13, INCHANGÉS) :
+
+| seed | pre-m15 (3 sims) | HEAD — Option B, le SHIPPÉ (3 sims) |
+|---|---|---|
+| 9  | +0.72 · −0.58 · −2.67 | +0.74 · +0.65 · +0.69 |
+| 11 | +0.66 · −0.30 · −0.68 | +0.76 · +0.85 · +0.83 |
+| 42 | +0.00 · +0.32 · −0.92 | +0.77 · +0.72 · +0.51 |
+
+Verdict : moyenne **−0.38 → +0.166 %/an** (POSITIVE, la cible) · bande [0.5,1.5] 2/9 → **3/9** · sims
+≥0 : 4/9 → **4/9** (tenu, comparable). Saturation du cap (pic==valeur exacte) : pre-m15 (cap 1.6)
+4/9 sims saturés ; HEAD (cap 2.0) 3/9 clairement saturés + 1 très proche (1.998) — PAS le net recul
+espéré (la mécanique pousse plusieurs sims JUSQU'AU plafond quel que soit l'endroit où il est posé :
+un plafond plus haut n'arrête pas la course, il la déplace).
+
+**Décision : Option B retenue, PAS Option A** — au titre du mandat explicite du brief : « le joueur a
+acté la DIRECTION, pas le chiffre au centime… recalibre ENTRE 0.6-0.75/1.6-2.0 et documente ». 0.6 est
+la borne BASSE de cette fenêtre (donc dans le mandat), Option A a été mesurée EN PREMIER par respect
+de la lettre de la décision, puis écartée sur preuve chiffrée qu'elle DÉGRADAIT l'objectif que le
+joueur avait fixé (moyenne positive, majorité ≥0) — mesurer, ne pas déclarer.
+
+**Bandes vérifiées (Option B, sweep apparié {9,11,42}×3×250) :**
+- **Laborer fin de partie** (satisfaction pop-pondérée) : pre-m15 {86,64,51 / 81,65,84 / 61,74,64}
+  moy 70.0 → HEAD {74,65,69 / 76,85,83 / 77,72,51} moy 72.4 — dans la référence ~67-77, TENU (même
+  variance chaotique inter-graines que tout l'arc M8-M14, rien de neuf).
+- **Banqueroutes forcées** Σ 24 → **48** (×2, motif M11 « sous le doublement toléré » — à la limite,
+  concentré sur UNE sim (seed 9 sim 1 : 1→21) dont l'indice de prix talonne le nouveau plafond
+  (pic 1.998/2.0) — chaotique, documenté, PAS une explosion générale (2 des 3 graines quasi stables).
+- **Colonisation** Σ 369 → 343 (−7 %, BIDIRECTIONNELLE : seed 9 −41 %, seed 11 +5 %, seed 42 +15 % —
+  motif M13 confirmé, pas d'effondrement).
+- **Invariant M3f** : 0/9 breach des DEUX côtés sur le sweep officiel {9,11,42} (aucune ligne ÉCHEC
+  stderr) — TENU.
+- **Fins (§27)** : 3/3 sims finies par graine, DEUX côtés, AUCUNE==0, variées (EAU/RONCES/GRAND
+  HIVER/RÉCHAUFFEMENT selon la graine) — TENU.
+- **Dette early (an 0, dette/revenu moyen)** : très majoritairement ~0 des DEUX côtés MAIS 2/9 sims
+  HEAD montrent un pic transitoire (111 % et 69 %, vs 1 % et 28 % pre-m15 sur les MÊMES sims) —
+  RÉSOUT en quelques décennies (13 %→5 %→0 % à an 50/100/150 pour le cas 111 %) et l'état de dette
+  fin de partie reste négligeable (531 or, confiné à UN cité-état, 0 % classes). Un essai
+  intermédiaire (`INFLATION_CAP=1.8`, royalty/share=0.6) a été mesuré pour voir si ce pic
+  s'atténuait : NON (spikes similaires à 56 %/47 %) ET la dérive moyenne y est PIRE (−0.27 %/an) —
+  le pic de dette early n'est pas une fonction monotone du cap (même caractère chaotique que le
+  reste de cet arc), pas de meilleur point trouvé dans la fenêtre autorisée. **RESTE désigné**
+  (ci-dessous), documenté honnêtement plutôt que masqué.
+
+### F2 — AI_SPECULATE_TICK : conversion en transferts conservés (scps_ai.c)
+
+Audit du site (M0 §1.6, jamais converti depuis 4 vagues) : à l'ACHAT, `econ_region_treasury_add(hub,
+-vol*p)` débitait le trésor régional pour RIEN (aucun vendeur crédité) — DESTRUCTION ; à la VENTE,
+`econ_region_treasury_add(hub, +vol*p)` créditait pour RIEN (aucun acheteur débité) — CRÉATION.
+Buy-low/sell-high garantissait une création nette structurelle (le spread devient un gain pur).
+
+**Conversion** : le trésor du hub paie/reçoit EXACTEMENT comme avant (mêmes lignes), mais chaque
+mouvement route désormais sur les 3 classes du hub via `econ_region_wealth_add` (le miroir wealth
+d'`econ_region_treasury_add`, déjà utilisé par le circuit M3b/STATE_BUY_FRAC) à la clé 42/20/38
+(WAGE_SHARE/profit/TAX_RATE miroir des #define scps_econ.c, dupliqués localement en SPEC_WAGE_SHARE/
+SPEC_PROFIT_SHARE/SPEC_TAX_SHARE — scps_ai.c et scps_econ.c sont deux unités de traduction, pas de
+symbole partagé pour ces #define). À l'achat : les classes ENCAISSENT (elles « possédaient »
+économiquement le stock retiré du marché — le compte de marché M3b). À la vente : PAS de contrepartie
+nommée (aucun acheteur réel) → « le pot le plus proche de la sémantique » = LE MARCHÉ DE LA RÉGION,
+donc les MÊMES classes, DÉBITÉES (`econ_region_wealth_add` avec delta négatif, clampé par
+construction — jamais en dessous de 0) ; le gain RÉEL crédité au trésor = la SOMME des montants
+réellement prélevés (`paidL+paidB+paidE`), jamais le nominal `vol*p` si les classes n'ont pas
+assez — conservation STRICTE par construction, jamais ex nihilo. `SPECULATE_CONSERVED=0` : legacy
+EXACT (golden pré-M15 byte-identique, prouvé au gate 1).
+
+**La mesure du résidu 209s3** (run ciblé `./chronicle 7 5 250`, sim 3 = graine 209 dérivée — le
+sous-seed exact désigné par M13 P1/P3) a révélé un PIÈGE de mesure : comparer pre-m15 (F1+F2 legacy)
+à HEAD (F1+F2 nouveaux) CONFOND les deux chantiers — le résidu bouge de +8282/an à −10652/an, mais
+CE saut est presque ENTIÈREMENT dû à F1 (INFLATION_CAP=2.0), pas à F2 : `SPECULATE_CONSERVED=0` vs
+`=1` À DÉFAUTS F1 IDENTIQUES (les nouveaux 0.6/0.6/2.0) donne −10678/an vs −10652/an — un delta de
+26/an, DANS LE BRUIT. **Comparaison ISOLÉE correcte** (F1 gelé à LEGACY 0.6/0.6/1.6, SEUL F2 bascule) :
+`SPECULATE_CONSERVED=0` (= pre-m15 pur) → **+8282/an** ; `=1` (F2 seul) → **+4569/an** — RÉDUIT de
+~45 %, dans la bonne direction, mais PAS ~0 : un autre site non converti porte le reste (le pic annuel
+invariant reste identique — 371 % — à la MÊME année an 17, preuve que ce pic précis n'est pas porté
+par la spéculation). Sous les défauts F1 NOUVEAUX (le shippé), l'effet de F2 devient invisible (26/an
+sur un total de −10652 dominé par autre chose) — F1 a changé le site DOMINANT du résidu sur cette
+sous-graine, sans rapport avec la spéculation. **Verdict honnête : F2 marche (mesuré, ~45 % de
+réduction en isolation), mais n'était PAS la cause principale du résidu 209s3 tel qu'observé
+aujourd'hui — la conversion est correcte et conservée, le résidu restant est un AUTRE site.**
+
+Effet sur l'IA marchande : `spec_buys`/`spec_sells` (télémétrie stats, non affectée par la
+conversion — le VOLUME de spéculation reste identique, seul le CIRCUIT monétaire change) — aucune
+mesure de disparition de la spéculation observée (le trésor du hub paie/reçoit les MÊMES montants
+qu'avant en général, sauf clamp rare quand les classes sont trop pauvres pour absorber la vente).
+
+### F3 — LE RÉ-EMBARQUEMENT (scps_campaign.c/.h, scps_sim.c)
+
+Nouvelle fonction `campaign_redirect_corps_sea` (scps_campaign.c) — miroir de la seconde moitié de
+`campaign_order_sea` mais appliquée à un corps DÉJÀ ACTIF EN PLACE (pas de src_force à transférer,
+pas de reset taken/legs/battles — même discipline « L1 » que `campaign_redirect_corps`). Le port de
+départ est la position ACTUELLE du corps (`a->loc`), PAS une capitale : le corps doit déjà TENIR un
+port pour embarquer (aucune marche automatique vers la côte — la solution la plus simple qui
+respecte « mêmes conditions » du brief). N'est appelée QUE depuis le dispatch scps_sim.c
+(CMD_MOVE_ARMY branche « en campagne », CMD_CORPS_MOVE) — jamais depuis `campaign_redirect_corps`
+lui-même, le chemin PARTAGÉ avec l'IA (scps_sim.c ~145/191/227, INTACT) : golden-neutre PAR
+CONSTRUCTION, même motif que N3 (MARITIME) — confirmé au gate 1 (kill-switch SEA_TRAVEL=0 ET =1
+donnent le golden pré-M15 identique, puisque chronicle n'émet jamais ces CMD_*).
+
+**Le cas armée-en-mer** : `campaign_redirect_corps_sea` garde EXACTEMENT le même garde que le
+redirect terrestre (`a->phase>=FA_EMBARK` → refus) — un corps déjà en traversée (FA_EMBARK/FA_SAIL/
+FA_LAND) refuse PROPREMENT les DEUX replis (terre ET mer), aucune corruption d'état, aucun crash :
+la traversée en cours doit finir avant tout nouveau redirect. Choix documenté, pas une couille
+silencieuse — cohérent avec `campaign_split`/`campaign_merge` qui gardent déjà `phase>=FA_EMBARK`.
+
+Réutilise le kill-switch SEA_TRAVEL existant (M15 « hérite » comme demandé, aucun tunable neuf).
+Pas de banc dédié ajouté (même précédent que N3/MARITIME, qui n'en avait pas non plus) — correction
+assurée par le miroir exact des gardes de `campaign_order_sea` (déjà prouvé par campaign_demo
+33/33) + la preuve golden-neutre.
+
+### F4 — LE CHOKE AU CHEMIN RÉEL (scps_world.c/.h, scps_routes.c) — LIVRÉ, GATÉ OFF PAR DÉFAUT
+
+Architecture : `choke_region` est posé UNE FOIS à `routes_order` (scps_routes.c, création de la
+route) par `world_route_chokepoint` — un test de SEGMENT DROIT entre les deux ancres marines. Le
+CHEMIN RÉEL (l'A* de la lane, scps_api.c) vit dans la FAÇADE — display-only, hors tick, PAS
+partagé avec le moteur par design (la membrane). Plutôt que dupliquer cet A* borné (±96, coût
+cabotage/esthétique) dans le moteur, réutilisation du Dijkstra marin EXISTANT
+(`world_sea_days_capped`, scps_world.c — DÉJÀ appelé deux fois à la création de chaque route pour
+`days_ab`/`days_ba`) : extrait en `sea_dijkstra_core` (refactor PUR, comportement identique,
+prédécesseurs `g_sea_from[]` désormais retenus) + nouvelle `world_route_chokepoint_path` qui
+backtrace le plus court chemin et teste CHAQUE cellule (pas de segment décimé — aucun risque de
+« sauter » un détroit étroit) contre la table des détroits, même seuil/marge que le test segment.
+Kill-switch `CHOKE_REAL_PATH` (défaut **0**, registre J) au SEUL call-site `routes_order`.
+
+**Gate 1 (byte-identique)** : PASSÉ — `CHOKE_REAL_PATH=0` (défaut) reproduit `world_route_chokepoint`
+EXACTEMENT (même appel), et le refactor `sea_dijkstra_core` est un pur déplacement de code (aucun
+opérande flottant réordonné) — confirmé par le golden pré-M15 byte-identique avec TOUS les
+kill-switches legacy.
+
+**La mesure économique (le vrai verdict F4)** : sweep apparié {9,11,42}×3×250,
+`CHOKE_REAL_PATH=1` vs le défaut 0 — le péage de détroit (déjà documenté STRUCTURELLEMENT PETIT par
+M13/M5) tombe à **ZÉRO sur les 9 sims** (0 route taxée, 0 or/sim, 0/9 sims avec péage encaissé) alors
+que le segment droit (défaut) collectait quelque chose sur 3/9 sims (2, 0(marginal), 28 or/sim). Ce
+n'est PAS une redistribution (qui paie quoi change) mais une DISPARITION quasi-totale du mécanisme :
+le chemin RÉEL (cabotage préféré, 2e rangée d'eau à coût 0.72, la rive à 0.85) évite systématiquement
+les détroits les plus étroits quand une route côtière plus longue existe — alors que le segment
+droit (« à vol d'oiseau » entre deux ports) les traverse plus volontiers par pur hasard géométrique.
+Un effet LARGE en relatif (100 % → 0 % de collecte) sur une base déjà minuscule en absolu.
+
+**Décision : PAS activé par défaut** — conforme à la clause de prudence du brief (« n'active par
+défaut QUE si les bandes tiennent ») : la bande ici ne « casse » pas au sens d'un effondrement
+économique (le flux était déjà ~0), mais le résultat est AMBIGU (le mécanisme devient inerte plutôt
+que corrigé) et mérite une décision joueur avant d'être la valeur par défaut — surtout tant que
+TRADE_LEVY/le calibrage global des péages (Reste M5/M13, jamais tranché) rend toute l'économie du
+détroit marginale de toute façon. Le code est LIVRÉ, testé, golden-neutre par défaut, disponible
+derrière le kill-switch pour une future vague qui voudrait la trancher.
+
+### Pièges
+
+- **Les défauts d'un tunable REGISTRÉ vivent en UN SEUL endroit** (`scps_tune_list.h`, l'X-macro) —
+  le second argument de `tune_f(nom, x)` au call-site est un FALLBACK MORT dès que `nom` est dans le
+  registre (`tune_f` renvoie TOUJOURS `t->val` si `find(nom)` réussit, jamais le `x` de l'appelant :
+  scps_tune.c `float tune_f(...){ ... return t ? t->val : def; }`). scps_econ.c/h portaient des
+  littéraux PÉRIMÉS depuis M7 (0.35/4.0 alors que le registre disait 0.6/1.6) — morts en pratique
+  mais trompeurs pour tout lecteur futur ; corrigés par hygiène (M15-F1) SANS changer le
+  comportement (dead code, vérifié).
+- **`#define SCPS_TUNABLES(X) \` survit à un commentaire multi-ligne SANS backslash sur CHAQUE
+  ligne** : un commentaire C `/* … */` ouvert avant la fin d'une ligne non-continuée ABSORBE les
+  retours à la ligne suivants (la suppression des commentaires, phase 3, tourne AVANT la
+  détection des directives, phase 4, même si la troncature de ligne par `\`, phase 2, a déjà
+  fini plus tôt) — piège purement de LECTURE (le fichier compile déjà comme ça depuis M12), noté
+  pour tout futur append en fin de registre : il FAUT un `\` explicite sur la DERNIÈRE entrée
+  avant d'en ajouter une nouvelle si elle n'est pas immédiatement précédée d'un commentaire ouvert.
+- **Isoler l'effet d'UN chantier dans un sweep qui en empile PLUSIEURS exige de geler les autres
+  via SCPS_TUNE** — comparer pre-m15 à HEAD final confond F1+F2+F3(neutre)+F4(off) ; la mesure du
+  résidu 209s3 a d'abord donné un résultat FAUX (attribué à F2 un saut de −10652/an qui vient à
+  99,8 % de F1) avant correction (F1 gelé à legacy, seul SPECULATE_CONSERVED bascule). Motif à
+  retenir pour toute vague future qui empile plusieurs chantiers dans le même sweep apparié.
+- **Le Dijkstra marin (`world_sea_days_capped`) n'est PAS borné en boîte** (contrairement à l'A*
+  de la façade, ±96) — il explore tout l'océan atteignable sous le `cap_days`, avec mémo (s,t)
+  PAR SEED. `sea_dijkstra_core` (le cœur extrait) NE mémorise PAS quand appelé pour le CHEMIN
+  (`world_route_chokepoint_path`) — c'est voulu (rare, à la création de route seulement — jamais
+  au tick), mais tout futur appelant qui voudrait le chemin en masse devrait ajouter son propre
+  cache.
+- **`g_sea_from[]` n'est valide qu'IMMÉDIATEMENT après l'appel qui l'a peuplé** (statique par
+  époque, comme `g_sea_dist`/`g_sea_pos` — tout appel suivant à `sea_dijkstra_core` avance
+  l'époque et invalide la backtrace précédente). Aucun souci actuel (chaque appelant backtrace
+  avant tout autre appel), mais un piège pour un futur usage concurrent/différé.
+
+### Gates
+
+1. **Kill-switches** (F2 `SPECULATE_CONSERVED=0` + F4 `CHOKE_REAL_PATH=0`, déjà le défaut de F4) +
+   F1 reposé à ses valeurs pré-M15 (`MINT_ROYALTY=0.6,MINT_AI_SHARE=0.6,INFLATION_CAP=1.6`) via
+   SCPS_TUNE ⇒ `--hash 7 5 12` **BYTE-IDENTIQUE** au golden pre-m15 commité — prouvé AVANT toute
+   re-baseline, puis RE-PROUVÉ après le revirement Option A→B (le code n'avait pas changé sur cet
+   axe, seul le DÉFAUT du registre a bougé) ✓.
+2. **Sweep apparié** {9,11,42}×3×250 : F1 (9 dérives × 3 configs, ci-dessus) · bandes Laborer/
+   banqueroutes/colonisation/invariant/fins/dette-early (ci-dessus, toutes documentées, 1 reste
+   désigné) · F2 run ciblé 209s3 (isolé correctement, ci-dessus) · F4 flux péages détroit
+   (ci-dessus, décision OFF documentée) ✓.
+3. `make test` **39/39** verts (aucune régression, aucun warning nouveau sur les fichiers touchés)
+   · `make golden-update` + `make golden` VERT (re-baseline F1, les 5 graines changent — attendu,
+   MINT_ROYALTY touche le tick 1) · `make determinism` STABLE (5 graines × 12 ans) ·
+   `make determinism-deep` STABLE (graines 7 et 9 × 200 ans) · `scps_viewer --savetest` A==B
+   byte-identique + octet altéré REFUSÉ sur les 3 graines 9/11/42 · `--fuzztest 9` 8/8 (216
+   octets, 0 crash) · `make lang-check` OK (0 littéraux).
+4. Cet append + commits granulaires FR (F1/F2/F3/F4 séparés + golden) · DLL Godot rebuildée
+   (debug + release, scons ×2 — scps_ai.c/scps_campaign.c/.h/scps_econ.c/.h/scps_routes.c/
+   scps_sim.c/scps_tune_list.h/scps_world.c/.h ont tous changé, aucun binding/GDScript touché).
+
+### Restes
+
+- **Dette early transitoire sur 2/9 sims** (Option B, 111 % et 69 % à an 0, résolu en ~50-150 ans,
+  fin de partie négligeable) — pas de meilleur point trouvé dans la fenêtre autorisée
+  (0.6-0.75/1.6-2.0), caractère chaotique confirmé (non-monotone en `INFLATION_CAP`, testé à 1.8).
+  Candidat pour une future vague : amortir `pf`/le canal de transmission plutôt que recalibrer
+  royalty/share/cap — la piste STRUCTURELLE déjà nommée par M13-P3 (c) et M7 Restes.
+- **Le résidu 209s3 post-F2 (+4569/an isolé, invariant pic 371 % à an 17) SURVIT** — un AUTRE site
+  non converti porte le reste ; candidats non explorés cette vague : saisie-monétisation M3g,
+  parking résiduel hors P1 (M13). Nécessite un audit M0-style dédié, pas une extrapolation.
+- **F4 livré mais OFF par défaut** — le code est prêt, prouvé golden-neutre, économiquement
+  neutre-à-inerte sur le sweep mesuré ; décision joueur requise avant activation (et TRADE_LEVY/
+  calibrage péage général, Reste M5/M13, devrait probablement être tranché AVANT que le choke au
+  chemin réel ait un enjeu économique visible).
+- **Option A du brief (« recommandée ») a été mesurée PIRE que le statu quo** sur cet exact sweep
+  — signal fort que l'extrapolation linéaire des leviers M7 (« +25 % de royalty ⇒ +0.4-0.5 pt »)
+  ne tient PAS dans ce régime (le système est déjà saturé/chaotique à 0.6, ajouter plus de
+  frappe ne pousse pas la moyenne, elle nourrit surtout les queues déflationnistes qui la tirent
+  vers le bas — hypothèse cohérente avec M13-P3(c), non confirmée en détail cette vague).
+- **DLL Godot À RE-BUILDER** — fait cette vague (debug + release), mentionné pour mémoire du
+  protocole (motif répété M3h→M14).
+- Tag `pre-m15` posé · worktree `C:/tmp_wt_pre_m15` à retirer après session · binaires
+  `chronicle_pre_m15.exe`/`chronicle_head_m15.exe` et `m15_sweep/` (scratch, non committés) à
+  nettoyer du dépôt.
