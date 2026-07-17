@@ -764,8 +764,21 @@ static void sim_cmd_drain(Sim *s, World *w){
             } else {                                                 /* réserve : déployer depuis la capitale */
                 int cap=w->country[p].capital_prov;
                 int from=(cap>=0 && cap<w->n_provinces)? w->province[cap].region : -1;
-                if (from>=0 && from<s->econ->n_regions && s->econ->region[from].owner==p)
-                    campaign_order(s->camp, s->econ, p, from, tgt, &s->host->army[p]);
+                if (from>=0 && from<s->econ->n_regions && s->econ->region[from].owner==p){
+                    /* MARITIME N3 — pas de chemin TERRESTRE (campaign_order refuse) :
+                     * la levée embarque à la RADE. campaign_order_sea revalide TOUT
+                     * (port à soi, côte à l'arrivée, transports libres, blocus, chemin
+                     * de courants) — échec silencieux sinon, même contrat que le refus
+                     * terrestre. L'IA savait déjà traverser (guerre outre-mer,
+                     * plus haut) ; ce repli donne le MÊME geste au joueur.
+                     * Kill-switch : SEA_TRAVEL=0 → comportement legacy exact. */
+                    if (!campaign_order(s->camp, s->econ, p, from, tgt, &s->host->army[p])
+                        && tune_f("SEA_TRAVEL",1.f)>0.f){
+                        int port=navy_best_port(w,s->econ,p);
+                        if (port>=0)
+                            campaign_order_sea(s->camp, w, s->econ, s->navy, p, port, tgt, &s->host->army[p]);
+                    }
+                }
             }
             break; }
           case CMD_CORPS_RAISE: {
