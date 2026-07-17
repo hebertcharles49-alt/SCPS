@@ -330,7 +330,8 @@ func _gauge_line(ci: Dictionary, cptips: Dictionary, key: String) -> String:
 		glyph = " ▼"
 	return "%s %d%s" % [String(cptips.get(key, key)), gv, glyph]
 
-## CELLULE DE RESSOURCE façon CK3 (hud.gui:6148-6207) : icône 22 px à gauche, VALEUR
+## CELLULE DE RESSOURCE façon CK3 (hud.gui:6148-6207) : icône 32 px à gauche (UI-DOCTRINE
+## D7 : 26→32, la cellule fait 48 px de haut, la marge le permettait), VALEUR
 ## empilée sur son DELTA (vert si ≥0, rouge sinon), séparateur vertical léger. `icon` =
 ## pièce du pack d'icônes OU `rid` ≥ 0 = sprite de ressource. `tip` = le HOVER (retour
 ## joueur : « un explicatif sur chaque display ») ; `vcol.a > 0` teinte la valeur.
@@ -344,14 +345,14 @@ func _cell(px: float, icon: String, rid_or_val, val: String, dtxt: String, dpos:
 		# la ressource, résolu par resource_sprite(-1, nom) — même sprite que le tiroir Stocks.
 		var rspr: Texture2D = UIKit.resource_sprite(-1, rname)
 		if rspr != null:
-			draw_texture_rect(rspr, Rect2(px, (H - 26.0) * 0.5, 26, 26), false)
+			draw_texture_rect(rspr, Rect2(px, (H - 32.0) * 0.5, 32, 32), false)
 	elif rid >= 0:
 		var spr: Texture2D = UIKit.resource_sprite(rid, "")
 		if spr != null:
-			draw_texture_rect(spr, Rect2(px, (H - 26.0) * 0.5, 26, 26), false)
+			draw_texture_rect(spr, Rect2(px, (H - 32.0) * 0.5, 32, 32), false)
 	elif icon != "":
-		UIKit.draw_icon(self, icon, Vector2(px, (H - 26.0) * 0.5), 26)
-	var tx := px + 30.0
+		UIKit.draw_icon(self, icon, Vector2(px, (H - 32.0) * 0.5), 32)
+	var tx := px + 36.0
 	# la VALEUR de la cellule (chiffre-clé du topbar : trésor/pop/nourriture/savoir/…) —
 	# COL_VALUE par défaut ; un `vcol` explicite (sense() bon/mauvais, ex. revenu net)
 	# reste PRIORITAIRE — ce sens sémantique ne doit jamais être écrasé.
@@ -364,7 +365,7 @@ func _cell(px: float, icon: String, rid_or_val, val: String, dtxt: String, dpos:
 	if dtxt != "":
 		VKit.text(self, Vector2(tx, 26.0), VKit.sense(0.85) if dpos else VKit.sense(0.12), dtxt, VKit.FS_SMALL)
 		wd = VKit.text_w(dtxt, VKit.FS_SMALL)
-	var cw := 30.0 + maxf(wv, wd) + 10.0
+	var cw := 36.0 + maxf(wv, wd) + 10.0   # (UI-DOCTRINE D7 : icône 26→32, marge +4 assortie)
 	if tip != "":
 		_tips.append([Rect2(px - 4.0, 0.0, cw + 8.0, H), tip])
 	# (plus de filet PAR cellule — retour joueur « le bordel » : dans un bloc, les cellules
@@ -496,7 +497,10 @@ func _draw() -> void:
 		if parms != null:
 			draw_texture_rect(parms, Rect2(px - 3, (H - 30.0) * 0.5, 30, 30), false)
 		else:
-			UIKit.draw_icon(self, "politics_crown", Vector2(px, cy - 2), 18)
+			# UI-DOCTRINE D7 : 18→26 px — même emplacement que les armes qu'elle remplace
+			# (30×30 ci-dessus), légèrement plus petite pour rester sous l'avance fixe
+			# de 30 px sans déborder sur la cellule suivante.
+			UIKit.draw_icon(self, "politics_crown", Vector2(px + 2.0, (H - 26.0) * 0.5), 26)
 		px += 30
 		var CPTips: Dictionary = load("res://ui/country_panel.gd").TIPS
 

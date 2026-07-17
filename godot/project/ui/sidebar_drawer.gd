@@ -93,8 +93,8 @@ func _draw_header(x: float) -> void:
 	VKit.fill(self, Rect2(0, 0, DW, 36), VKit.COL_PANEL2)
 	VKit.fill(self, Rect2(0, 0, 4.0, 36), VKit.COL_GOLD)
 	VKit.fill(self, Rect2(4, 35, DW - 4, 1), VKit.COL_EDGE)
-	UIKit.draw_icon(self, TAB_ICON[_tab], Vector2(x + 2, 8), 20)
-	VKit.text(self, Vector2(x + 30, 7), VKit.COL_VALUE, TAB_NAME[_tab], VKit.FS_BIG)
+	UIKit.draw_icon(self, TAB_ICON[_tab], Vector2(x + 2, 5), 26)   # UI-DOCTRINE D7 : 20→26 (bandeau 36 px)
+	VKit.text(self, Vector2(x + 36, 7), VKit.COL_VALUE, TAB_NAME[_tab], VKit.FS_BIG)
 
 func _draw() -> void:
 	if _tab < 0:
@@ -164,7 +164,7 @@ func _draw_demo(x: float, y: float, me: int) -> float:
 	for cl in d["classes"]:
 		VKit.list_row_bg(self, Rect2(x - 4, y - 2, DW - 2.0 * x + 8, 19), row_i)
 		var pct: int = 0 if total == 0 else int(round(100.0 * int(cl["pop"]) / total))
-		UIKit.draw_icon(self, "population_group", Vector2(x, y), 14)
+		UIKit.draw_icon(self, "population_group", Vector2(x, y), 16)   # UI-DOCTRINE D7 : 14→16
 		VKit.text(self, Vector2(x + 20, y), VKit.COL_PARCH, String(cl["nom"]), VKit.FS_SMALL)
 		VKit.text(self, Vector2(x + 110, y), VKit.COL_PARCH, "%s (%d%%)" % [_grp(cl["pop"]), pct], VKit.FS_SMALL)
 		UIKit.bar(self, Rect2(x + 200, y, 84, 12), int(cl["satisfaction"]))
@@ -447,7 +447,7 @@ func _draw_eco(x: float, y: float, me: int) -> float:
 	_chart_btn = Rect2(x, y, DW - 2.0 * x, 20.0)
 	VKit.fill(self, _chart_btn, VKit.COL_PANEL2)
 	VKit.box(self, _chart_btn, VKit.COL_GOLD)
-	UIKit.draw_icon(self, "menu_economy", Vector2(x + 4, y + 3), 13)
+	UIKit.draw_icon(self, "menu_economy", Vector2(x + 4, y + 2), 16)   # UI-DOCTRINE D7 : 13→16 (assorti aux 16 px voisins de cet onglet)
 	VKit.text(self, Vector2(x + 24, y + 3), VKit.COL_GOLD, "Courbes dans le temps  ▸", VKit.FS_SMALL)
 	y += 28
 	y = _draw_budget_controls(x, y, me)
@@ -868,7 +868,7 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 		if pt != null:
 			draw_texture_rect(pt, Rect2(x - 2, y - 3, 20, 20), false)
 		else:
-			UIKit.draw_icon(self, "menu_council", Vector2(x, y - 1), 16)
+			UIKit.draw_icon(self, "menu_council", Vector2(x, y - 1), 20)   # UI-DOCTRINE D7 : 16→20 (assorti au buste 20×20 du siège pourvu, ligne ~869)
 		VKit.text(self, Vector2(x + 20, y), VKit.COL_GOLD, String(seat["seat"]))
 		y += 18
 		if filled:
@@ -1385,8 +1385,8 @@ var _navy_btns := []      # [{rect, hull}] +Guerre / +Transport / +Marchand
 func _draw_armee(x: float, y: float, me: int) -> float:
 	_army_btns.clear(); _navy_btns.clear()
 	var a: Dictionary = Sim.world.country_army(me)
-	UIKit.draw_icon(self, "menu_army", Vector2(x, y - 1), 18)
-	VKit.value(self, Vector2(x + 22, y), "force mobilisée : %d régiments" % int(a["regiments"]))
+	UIKit.draw_icon(self, "menu_army", Vector2(x, y - 1), 22)   # UI-DOCTRINE D7 : 18→22 (ligne à y+=24, la marge le permet)
+	VKit.value(self, Vector2(x + 26, y), "force mobilisée : %d régiments" % int(a["regiments"]))
 	y += 24
 	# (levée + posture RETIRÉES — retour joueur : jamais demandées. Le joueur compose son
 	#  armée à la main via « Composer l'armée » ci-dessous ; le recrutement ne dépend pas
@@ -1416,8 +1416,8 @@ func _draw_armee(x: float, y: float, me: int) -> float:
 	VKit.text(self, Vector2(b2x + 7, y + 1), VKit.COL_GOLD, "Dissoudre", VKit.FS_SMALL)
 	_army_btns.append({"rect": r2, "act": "disband"})
 	y += 26
-	UIKit.draw_icon(self, "harbor_anchor", Vector2(x, y - 1), 16)
-	VKit.value(self, Vector2(x + 20, y), "Flotte : %d coque(s)" % int(a["fleet"]))
+	UIKit.draw_icon(self, "harbor_anchor", Vector2(x, y - 1), 18)   # UI-DOCTRINE D7 : 16→18
+	VKit.value(self, Vector2(x + 22, y), "Flotte : %d coque(s)" % int(a["fleet"]))
 	y += 20
 	# — Flotte : mise en chantier (verbe : player_navy_build) — bateau gravé par coque
 	var hull_boat := ["sheet24_topbar_boats_menu_11", "sheet24_topbar_boats_menu_13", "sheet24_topbar_boats_menu_10"]
