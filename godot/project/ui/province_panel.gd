@@ -1,4 +1,4 @@
-extends Control
+﻿extends Control
 ## ProvincePanel — PORT FIDÈLE de draw_province_panel (viewer.c). _draw immédiat
 ## avec VKit (mêmes couleurs, mêmes widgets). Lit la membrane via la façade
 ## (province_info + groups + income + classes + capitale). Display-only.
@@ -22,6 +22,20 @@ const TIPS := {
 	"humeur":     "La loyauté de la province : monte avec l'ordre et la satisfaction ; chute sous la surtaxe, la coercition et les cicatrices.",
 }
 var _tips: Array = []
+
+## UI-POLISH #9 : la prospérité (pe->prosperity) part à 0 tant qu'AUCUN tick économique
+## n'a tourné (GDP pas encore accumulé, scps_econ.c) — vrai pour TOUTE province colonisée
+## au tout premier jour, alors que les tuiles SAUVAGES affichent déjà leur 50 % neutre
+## (repli fixe). Résultat à l'écran : la capitale tier 4 à 0 % à côté d'un hameau vide à
+## 50 % — l'inversion la plus lisible qui soit. Fix DISPLAY seul (l'amorçage moteur est
+## un Reste documenté, décision joueur) : au jour 1 an 0, un score à 0 est un TRANSITOIRE
+## « pas encore mesuré », pas une vraie valeur — on le dit avec un « — » plutôt qu'un 0.
+func _is_pre_settlement(w) -> bool:
+	if w == null or not w.has_method("year"):
+		return false
+	if int(w.year()) != 0:
+		return false
+	return (int(w.day_of_year()) if w.has_method("day_of_year") else 0) <= 1
 
 signal build_requested
 signal close_requested   ## ✕ — la désélection pleine vit dans main (_clear_selection)
@@ -130,9 +144,14 @@ func _draw() -> void:
 	var summary_y := y
 	VKit.value(self, Vector2(x, y), "%s habitants" % _grp(info["ames"]))
 	var gw := 64.0
-	VKit.gauge(self, x + rw - gw, y + 4, gw, 10, int(info["aisance_val"]))
-	var plab := "Prospérité %d" % int(info["aisance_val"])
+	var aisance_v := int(info["aisance_val"])
+	var pre_settle := aisance_v <= 0 and _is_pre_settlement(w)
+	VKit.gauge(self, x + rw - gw, y + 4, gw, 10, 0 if pre_settle else aisance_v)
+	var plab := "Prospérité —" if pre_settle else "Prospérité %d" % aisance_v
 	VKit.text(self, Vector2(x + rw - gw - VKit.text_w(plab, VKit.FS_SMALL) - 10, y + 1), VKit.COL_DIM, plab, VKit.FS_SMALL)
+	if pre_settle:
+		_tips.append([Rect2(x + rw - gw - 80.0, y - 2.0, 140.0, 20.0),
+			"Pas encore mesurée — la première clôture économique n'a pas eu lieu (jour 1)."])
 	y += 22
 	var summary_extra := {
 		"tax_year": float(w.province_tax(_pid)),
@@ -216,14 +235,14 @@ func _draw() -> void:
 			_tips.append([Rect2(x - 2, y - 2, rw + 4, 16), contact_line, _culture_info_card(cultural)])
 			y += 17
 	else:
-		y = VKit.section(self, x, y, "PEUPLE")
-		y = VKit.row(self, x, y, "Héritage", String(info["heritage"]), VKit.COL_PARCH)
+		y = VKit.section(self, x, y, "PEUPLE", PW)
+		y = VKit.row(self, x, y, "Héritage", String(info["heritage"]), VKit.COL_PARCH, PW)
 
 	# ── SATISFACTION par CLASSE (retour joueur : « humeur » → satisfaction, une barre
 	#    par pop, la strate SERVILE visible même vide) + la LOYAUTÉ (l'ex-humeur =
 	#    légitimité locale, un AUTRE concept — gardée en ligne compacte, tip dédié). ──
 	var hy0 := y
-	y = VKit.section(self, x, y, "SATISFACTION")
+	y = VKit.section(self, x, y, "SATISFACTION", PW)
 	if w.has_method("province_class_sat"):
 		var csat: Dictionary = w.province_class_sat(_pid)
 		for srow in [["Laboureurs", "laboureurs"], ["Artisans", "artisans"],
@@ -259,7 +278,7 @@ func _draw() -> void:
 	cc.append(Color(0.28, 0.26, 0.24))   # gris sombre — distincte des classes libres
 	cnames.append("Esclaves")
 	var tot: float = maxf(1.0, cp[0] + cp[1] + cp[2] + slaves)
-	y = VKit.section(self, x, y, "POPULATION")
+	y = VKit.section(self, x, y, "POPULATION", PW)
 	var bh := 12.0
 	var acc := 0.0
 	var nseg := cp.size()
@@ -282,7 +301,7 @@ func _draw() -> void:
 	# ── RESSOURCES + PRODUCTION ───────────────────────────────────────────────
 	var inc: Array = w.province_income(_pid)
 	var yres := y
-	y = VKit.section(self, x, y, "RESSOURCES")
+	y = VKit.section(self, x, y, "RESSOURCES", PW)
 	_tips.append([Rect2(0.0, yres, PW, 30.0),
 		"Ce que la terre DONNE ici (les deux gisements majeurs). La province les extrait selon ses bras et les prix."])
 	# chaque ressource porte son ICÔNE (retour joueur) — sprite du pack + nom
@@ -320,7 +339,7 @@ func _draw() -> void:
 			"Ce que la couronne LÈVE ici par an : ~42 % de la richesse des classes, rogné par l'évasion quand la satisfaction baisse ou que l'éthos tolère mal l'impôt."])
 	y += 22
 	var yprod := y
-	y = VKit.section(self, x, y, "PRODUCTION")
+	y = VKit.section(self, x, y, "PRODUCTION", PW)
 	_tips.append([Rect2(0.0, yprod, PW, 30.0),
 		"Les flux RÉALISÉS, en unités par JOUR : extraction des gisements + sortie des ateliers. Suit les bras disponibles et les prix du marché."])
 	if inc.size() == 0:
@@ -349,10 +368,10 @@ func _draw() -> void:
 		y += 22
 
 	# ── CAPITALE — chaque ligne porte son POURQUOI au survol (retour joueur) ──
-	y = VKit.section(self, x, y, "CAPITALE")
+	y = VKit.section(self, x, y, "CAPITALE", PW)
 	_tips.append([Rect2(0.0, y, PW, 20.0),
 		"Le rang du bourg : il monte avec la POPULATION (2 000 âmes = tier 2 … 10 000 = tier 7) et ouvre des bâtiments de palier."])
-	y = VKit.row(self, x, y, "Statut", "%s · tier %d" % [cap.get("statut", ""), int(cap.get("tier", 0))], VKit.COL_GOLD)
+	y = VKit.row(self, x, y, "Statut", "%s · tier %d" % [cap.get("statut", ""), int(cap.get("tier", 0))], VKit.COL_GOLD, PW)
 	var libres: int = int(cap.get("logement_cap", 0)) - int(cap.get("pop", 0))
 	_tips.append([Rect2(0.0, y, PW, 20.0),
 		"Âmes logées / capacité : ½ vient de la terre nue, le reste du BÂTI (manufactures-logements, confort). Plein = la croissance s'étouffe."])
@@ -361,14 +380,14 @@ func _draw() -> void:
 	var housing_txt := "%s/%s" % [_grp(cap.get("pop", 0)), _grp(cap.get("logement_cap", 0))]
 	if libres < 0:
 		housing_txt = "⚠ " + housing_txt
-	y = VKit.row(self, x, y, "Logement", housing_txt, VKit.COL_VALUE if libres >= 0 else VKit.sense(0.12))
+	y = VKit.row(self, x, y, "Logement", housing_txt, VKit.COL_VALUE if libres >= 0 else VKit.sense(0.12), PW)
 	_tips.append([Rect2(0.0, y, PW, 20.0),
 		"Âmes servies / capacité de SERVICES (échoppes, bains, cultes) : au-delà, le confort décroche."])
-	y = VKit.row(self, x, y, "Services", "%s/%s" % [_grp(cap.get("pop", 0)), _grp(cap.get("service_cap", 0))], VKit.COL_VALUE)
+	y = VKit.row(self, x, y, "Services", "%s/%s" % [_grp(cap.get("pop", 0)), _grp(cap.get("service_cap", 0))], VKit.COL_VALUE, PW)
 	if int(cap.get("prod_pct", 0)) > 0:
 		_tips.append([Rect2(0.0, y, PW, 20.0),
 			"Le bonus de production du bourg : OUTILS en circulation + édifices de savoir-faire + tier — il multiplie extraction et ateliers de la province."])
-		y = VKit.row(self, x, y, "Productivité", "+%d%%" % int(cap["prod_pct"]), VKit.sense(0.7))
+		y = VKit.row(self, x, y, "Productivité", "+%d%%" % int(cap["prod_pct"]), VKit.sense(0.7), PW)
 
 	# ── ACTIONS CONTEXTUELLES (selon la propriété ; chaque verbe est journalisé,
 	#    le drain revalide) : à MOI = construire + intérieur + détail · VIERGE légale =
@@ -382,7 +401,7 @@ func _draw() -> void:
 	var edis: Array = w.province_edifices(_pid) if w.has_method("province_edifices") else []
 	if blds.size() > 0 or edis.size() > 0 or powner == me:
 		var ybld := y
-		y = VKit.section(self, x, y, "BÂTIMENTS")
+		y = VKit.section(self, x, y, "BÂTIMENTS", PW)
 		_tips.append([Rect2(0.0, ybld, PW, 30.0),
 			"Les édifices et manufactures ÉLEVÉS ici. Le palier suit le TIER du bourg (population) et les techs."])
 		var bs := 28.0
@@ -566,12 +585,15 @@ func _draw_header(w, info: Dictionary, cap: Dictionary, record: bool) -> float:
 		y = bioh + 10.0
 
 	# ✕ (fermer) + chevron (REPLIER — retour joueur : « barre gauche à adapter/rétractable »)
+	# UI-POLISH #6 : fond graphite quasi-noir sous une glyphe COL_PARCH (encre SOMBRE) —
+	# les deux boutons rendaient comme des carrés sombres illisibles (« ■ ■ » signalés au
+	# balayage) au lieu du « x »/« +/– » attendu. Fond parchemin (le glyphe redevient net).
 	_close_rect = Rect2(PW - 20, 3, 16, 16)
-	VKit.fill(self, _close_rect, Color(0.04, 0.045, 0.045, 0.92))
+	VKit.fill(self, _close_rect, VKit.COL_PANEL2)
 	VKit.box(self, _close_rect, VKit.COL_EDGE)
 	VKit.text(self, Vector2(_close_rect.position.x + 4, _close_rect.position.y + 1), VKit.COL_PARCH, "x")
 	_collapse_rect = Rect2(PW - 40, 3, 16, 16)
-	VKit.fill(self, _collapse_rect, Color(0.04, 0.045, 0.045, 0.92))
+	VKit.fill(self, _collapse_rect, VKit.COL_PANEL2)
 	VKit.box(self, _collapse_rect, VKit.COL_EDGE)
 	VKit.text(self, Vector2(_collapse_rect.position.x + 4, _collapse_rect.position.y + 1),
 		VKit.COL_PARCH, "+" if _collapsed else "–")
@@ -854,6 +876,14 @@ func _score_tone(value: int) -> String:
 		return "negative"
 	return ""
 
+## UI-POLISH #9 : même garde day-1 que la ligne d'en-tête (_is_pre_settlement), pour la
+## carte de survol du résumé — évite d'y répéter le faux « 0 / 100 » en cascade.
+func _prosperity_card_value(info: Dictionary) -> String:
+	var v := int(info.get("aisance_val", 0))
+	if v <= 0 and _is_pre_settlement(Sim.world):
+		return "— (pas encore mesurée)"
+	return "%d / 100" % v
+
 func _province_summary_card(info: Dictionary, cap: Dictionary, extra: Dictionary) -> Dictionary:
 	var pop := int(info.get("ames", 0))
 	var housing := int(cap.get("logement_cap", 0))
@@ -876,7 +906,7 @@ func _province_summary_card(info: Dictionary, cap: Dictionary, extra: Dictionary
 				"tone": "negative" if free_housing < 0 else ""},
 			{"label": "Capacité de services", "value": "%s / %s" % [_grp(pop), _grp(services)],
 				"tone": "negative" if services < pop else ""},
-			{"label": "Prospérité", "value": "%d / 100" % int(info.get("aisance_val", 0)),
+			{"label": "Prospérité", "value": _prosperity_card_value(info),
 				"tone": _score_tone(int(info.get("aisance_val", 0)))},
 			{"label": "Loyauté", "value": "%d / 100" % int(info.get("humeur_val", 0)),
 				"tone": _score_tone(int(info.get("humeur_val", 0)))},
