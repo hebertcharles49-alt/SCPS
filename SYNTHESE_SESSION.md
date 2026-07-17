@@ -1,4 +1,30 @@
-# SYNTHÈSE DE SESSION — handoff roulant (2026-07-17, mise à jour post-M14)
+# SYNTHÈSE DE SESSION — handoff roulant (2026-07-17 après-midi, post-MARITIME)
+
+## M13 + ROUTES + ANTISPAG + MARITIME (HEAD d135da2, save v96, 39/39)
+- **M13** (pre-m13, 4 commits) : « si y'a personne, y'a pas de péage » — 3 sites région-grain
+  gatés par econ_region_has_keeper (la PORTEUSE, pas region.colonized qui ne mordait jamais) ;
+  colonisation TENUE (−3.1 % bidirectionnelle vs le −14/−34 % du re-routage M3i) ; les 3
+  breaches du giga avaient DÉJÀ disparu sur pre-m13 (tués par TECH→M14) — résidu +9k/an
+  sous seuil, suspect suivant : ai_speculate_tick · découvertes d'or 52→81 % (goulot =
+  éligibilité 32 %, MTTH boost) · P3 inflation : proposition NON landée (CAP sature 8/18
+  sims ; options A: MINT 0.75+CAP 2.0 / B: cap seul / C: amortir pf) — DÉCISION JOUEUR.
+- **ROUTES** (pre-routes) : le pathfinding terrestre existait depuis juin (A* terrain-aware,
+  corridors ×0.30, cache) — la vague a RÉPARÉ viewer_audit (qui mentait « OK » à vide) et
+  les routes-en-mer (19→1, 18→1), purgé 30 lignes mortes, perf 25 ms COLD.
+- **ANTISPAG** (pre-antispag) : spaghetti −46.5 % (3279→1753 paires) — magnétisme R=1.4/2
+  passes + épaisseur ∝ multiplicité + dédup ponts ; la 1re métrique MENTAIT (66 % = bruit
+  de phase) ; consensus de grille essayé-mesuré-PIRE-reverti ; résidu = faisceaux légitimes,
+  plateau ~47 % (au-delà : matching arc-length, Restes).
+- **MARITIME** (pre-maritime, 5 commits) : la mer savait tout mais ne montrait rien
+  (world_sea_days = Dijkstra complet SANS chemin ; armées IA embarquaient déjà, le joueur
+  n'avait AUCUN geste). N2 lanes port-à-port (A* mer-pas-lacs, cabotage rail 2e rangée,
+  tampon exact, cache, sea_paths(), CPU 78 ms COLD/0.04 WARM) · N3 CMD_MOVE_ARMY replie
+  sur l'embarquement (SEA_TRAVEL, golden-neutre) + reader sea_travel() · N4 portulan
+  pointillés (dédup par bin — les tirets déphasés faisaient un trait plein ; la boucle de
+  tirets qui HANGEAIT 11 min corrigée) · golden byte-identique AUX DÉFAUTS (zéro re-baseline)
+  · DLL debug+release. Piège : biome SHALLOW des lacs ⇒ cell.sea≠0 n'exclut PAS les lacs.
+- RESTES NOUVEAUX : ré-embarquement d'un corps actif (verbe manquant) · choke segment-droit
+  vs chemin réel · P3 inflation à trancher · ai_speculate_tick (le dernier site M0) · EXPORT.
 
 ## M14 AUDIT-2 + SAVOIR ×2 (HEAD 76994fa, SAVE v96, make test 39/39 — PREMIÈRE)
 - **SAVOIR ×2** (ee79945) : SAVOIR_W_* doublés (décision joueur, testé par override avant
