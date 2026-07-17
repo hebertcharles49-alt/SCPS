@@ -1,20 +1,31 @@
 extends VBoxContainer
-## EconomyPage — le CORPS du grand livre (deux colonnes Rentrées/Sorties + curseurs),
-## extrait pour être RÉUTILISÉ comme onglet « Économie » de la fenêtre Empire. C'est le
-## pendant « page onglet » du corps de budget_panel_v2 (le pilote garde le sien ; on ne
-## le touche pas). Display-only : lit la façade (budget_controls / tax_class_month /
-## country_budget / budget_summary), pilote les curseurs par le verbe joueur EXISTANT
-## player_budget_policy. Aucun `_draw` : conteneurs natifs + Theme parchemin.
-
+## EconomyPage — le CORPS du grand livre (deux colonnes Rentrées/Sorties), extrait pour
+## être RÉUTILISÉ comme onglet « Économie » de la fenêtre Empire.
+##
+## D1-UNIFICATION (2026-07-18) : cette page était REBÂTIE en doublon interactif de
+## budget_panel_v2.gd (onglet Balance, touche B) — MÊME verbe joueur
+## (player_budget_policy), même family/index, mais deux HSlider DISTINCTS sans lien
+## entre eux (cartographie UI §D.1.3). Décision : LE TRÉSOR (budget_panel_v2, poli
+## récemment) reste la SEULE surface de RÉGLAGE ; cette page redevient LECTURE SEULE
+## (interactive=false) — les valeurs restent visibles ici (vue d'ensemble légitime de
+## la Fenêtre Empire), un lien explicite renvoie régler au Trésor. Le pilote budget_v2
+## garde ses propres curseurs, non touché.
 const ParchTheme = preload("res://ui/parch_theme.gd")
 
 const INCOME  := ParchTheme.INCOME
 const EXPENSE := ParchTheme.EXPENSE
 const DIVIDER := ParchTheme.DIVIDER
 
-# les postes de DÉPENSE pilotables (family 1) portent un curseur ; les autres sont lus.
-# 5 = Frappe (MONNAIE M2) : même motif que les 5 enveloppes existantes (curseur générique).
+# les postes de DÉPENSE pilotables (family 1) portent un curseur EN MODE interactif ;
+# les autres sont lus. 5 = Frappe (MONNAIE M2) : même motif que les 5 enveloppes.
 const SPEND_HAS_SLIDER := {0: true, 1: true, 2: true, 3: true, 4: true, 5: true}
+
+## D1-UNIFICATION : false ici (Fenêtre Empire, doublon retiré) — le RÉGLAGE vit
+## uniquement au Trésor (budget_panel_v2.gd, onglet Balance). Un futur appelant qui
+## voudrait de VRAIS curseurs ailleurs peut repasser ceci à true (comportement
+## d'origine préservé, juste plus le défaut).
+var interactive := true
+signal open_budget_requested   ## « Régler… » (mode non-interactif) → ouvrir le Trésor (B)
 
 var _built := false
 var _left_col: VBoxContainer = null
@@ -69,7 +80,7 @@ func _row(col: VBoxContainer, label: String, key: String, value_variation: Strin
 	val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	line.add_child(val)
 	_val_lbls[key] = val
-	if slider_family >= 0:
+	if slider_family >= 0 and interactive:
 		var s := HSlider.new()
 		s.min_value = 2.0
 		s.max_value = 100.0
@@ -141,6 +152,16 @@ func _build_body(me: int) -> void:
 			1 if has_slider else -1, idx if has_slider else -1)
 	_flux_row(_right_col, "Conseil", "conseil", "Expense")
 	_flux_row(_right_col, "Cour", "cour", "Expense")
+
+	# D1-UNIFICATION : lecture seule ici → lien explicite vers l'UNIQUE surface de
+	# réglage (le Trésor, touche B) plutôt que de dupliquer les curseurs.
+	if not interactive:
+		var link := Button.new()
+		link.text = "Régler la fiscalité et les dépenses → Trésor (B)"
+		link.focus_mode = Control.FOCUS_NONE
+		link.tooltip_text = "Ouvre le Trésor (onglet Balance) : c'est là que se règlent taux d'imposition et enveloppes."
+		link.pressed.connect(func(): open_budget_requested.emit())
+		add_child(link)
 
 func _update_values(me: int) -> void:
 	var w = Sim.world

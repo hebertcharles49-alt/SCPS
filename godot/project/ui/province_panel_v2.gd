@@ -1,24 +1,37 @@
 extends PanelContainer
-## ProvincePanelV2 — la fiche PROVINCE bâtie avec des CONTENEURS Godot NATIFS
-## (PanelContainer/VBox/HBox/Grid/Margin) + le THEME parchemin PARTAGÉ (parch_theme.gd).
-## ZÉRO `_draw` : la mise en page s'auto-espace, la hauteur suit le contenu.
-## COEXISTE avec province_panel.gd (ne le touche pas) — c'est le pendant « conteneurs
-## natifs » du concept parchemin, comme budget_panel_v2 l'a fait pour le budget.
+## ProvincePanelV2 — LA fiche PROVINCE (D1-UNIFICATION, 2026-07-18) : bâtie avec des
+## CONTENEURS Godot NATIFS (PanelContainer/VBox/HBox/Grid/Margin) + le THEME parchemin
+## PARTAGÉ (parch_theme.gd). ZÉRO `_draw` : la mise en page s'auto-espace, la hauteur
+## suit le contenu — c'est le pendant « conteneurs natifs » du concept parchemin, comme
+## budget_panel_v2 l'a fait pour le budget.
 ##
-## Display-only, LECTURE SEULE : lit la MÊME membrane que province_panel (province_info,
-## province_capitale, province_classes/class_sat, income, buildings/edifices…), tout
-## `has_method`-gardé. Bascule touche V (câblée dans main.gd). Sous-onglets façon Vic3.
+## SEULE fiche province du jeu : province_panel.gd (legacy, dessin immédiat, nomenclature
+## divergente Laboureurs/Artisans/Noblesse) est SUPPRIMÉ — cette fiche s'ouvre au clic
+## sur une province (main.gd::_on_province_picked) ET à la touche V (bascule visibilité).
+## Le PIED D'ACTIONS (Réprimer/Assimiler/Purger/Détail/Coloniser/diplomatie) et le ✕ sont
+## portés depuis le legacy ; le reste (chips bâti seul, /mois, hover) était déjà le
+## modèle doctrine avant cette unification.
+##
+## Display-only, LECTURE SEULE (sauf le pied d'actions, verbes joueur EXISTANTS) : lit
+## la MÊME membrane que toujours (province_info, province_capitale, province_classes/
+## class_sat, income, buildings/edifices…), tout `has_method`-gardé. Sous-onglets façon Vic3.
 
 const ParchTheme = preload("res://ui/parch_theme.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
 const PopBar = preload("res://ui/pop_bar.gd")
+const Concepts = preload("res://ui/concepts.gd")
 
 const PW := 384.0   ## largeur plafond (lignes par classe + boutons collés)
 const ALLOC_STEP := 10   ## pas de répartition raw (poids 0-100)
 
 ## le MENU CONSTRUCTION s'ouvre depuis la fiche (bouton « Construire… ») — kind : 0 Édifices, 1 Manufactures.
 signal build_requested(kind: int)
+## D1-UNIFICATION (ex-province_panel.gd legacy, supprimé) : cette fiche est désormais
+## LA SEULE fiche province — elle reçoit donc le câblage réel qui manquait (fermeture,
+## navigation vers le détail, verbes gouvernementaux/diplomatiques/colonisation).
+signal close_requested    ## ✕ — la désélection pleine vit dans main (_clear_selection)
+signal detail_requested   ## « Détail… » — ouvre province_detail (peuples/production/journal/main-d'œuvre)
 
 var _pid := -1
 var _region := -1                   ## région moteur (agrégat lu SEULEMENT par l'onglet RÉGION —
@@ -38,6 +51,10 @@ var _owner_lbl: Label = null
 var _ownersub_lbl: Label = null
 var _tab_group: ButtonGroup = null
 var _tab_btns: Array = []            ## [Button] pour piloter l'onglet actif par code (probe)
+var _footer: Control = null          ## PIED D'ACTIONS (ex-legacy _draw_gov_actions) — TOUJOURS visible,
+                                      ## hors du corps à onglets (motif « pied fixe » porté de province_panel.gd)
+var _purge_armed := false            ## UI-4 : Purger EXIGE 2 clics (motif servile_manumit_armed), 4 s
+var _colonize_ms := -100000          ## horloge MUR du dernier ordre de colonisation (feedback 3 s)
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -88,6 +105,13 @@ func _build_shell() -> void:
 	_ownersub_lbl.text = ""
 	_ownersub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(_ownersub_lbl)
+	# ✕ FERMER (D1-UNIFICATION) : tout panneau affiché doit pouvoir être dismiss — la
+	# fiche legacy avait son ✕, celle-ci ne l'avait pas (Échap seul y menait, et
+	# seulement après avoir vidé la pile des panneaux flottants).
+	var closeb := _sq_btn("×", 22)
+	closeb.tooltip_text = "Fermer"
+	closeb.pressed.connect(func(): close_requested.emit())
+	hb.add_child(closeb)
 
 	# BARRE D'ONGLETS façon Vic3
 	var tabpanel := PanelContainer.new()
@@ -120,6 +144,19 @@ func _build_shell() -> void:
 	_body = VBoxContainer.new()
 	_body.add_theme_constant_override("separation", 4)
 	bodypanel.add_child(_body)
+
+	# PIED D'ACTIONS (D1-UNIFICATION) : verbes gouvernementaux/diplomatiques/colonisation
+	# + « Détail… » — TOUJOURS visible, HORS du corps à onglets (le gouvernement d'une
+	# province n'est pas propre à un onglet). Motif « pied fixe » porté de la fiche
+	# legacy (province_panel.gd, supprimée) ; reconstruit à chaque refresh() selon le
+	# statut réel de la province (mienne / colonisable / ennemie / étrangère en paix).
+	var footerpanel := PanelContainer.new()
+	footerpanel.theme_type_variation = "HeaderStrip"
+	root.add_child(footerpanel)
+	_footer = HFlowContainer.new()
+	_footer.add_theme_constant_override("h_separation", 6)
+	_footer.add_theme_constant_override("v_separation", 4)
+	footerpanel.add_child(_footer)
 
 # ── API publique ──────────────────────────────────────────────────────────────
 func show_province(pid: int) -> void:
@@ -171,6 +208,7 @@ func refresh() -> void:
 		_: _build_infrastructure(w, info, cap)
 	if _flash != "":
 		_line(_flash, "Income")
+	_build_footer(w, info)
 	# hug content après reconstruction (largeur plafonnée par custom_minimum_size)
 	reset_size.call_deferred()
 
@@ -186,6 +224,195 @@ func _update_header(w, info: Dictionary, cap: Dictionary) -> void:
 	else:
 		_owner_lbl.text = ""
 	_ownersub_lbl.text = String(cap.get("statut", ""))
+
+# ── PIED D'ACTIONS (D1-UNIFICATION, ex-province_panel.gd::_draw_gov_actions) ──────
+## Reconstruit à chaque refresh() : MIENNE → Réprimer/Assimiler/Purger/Détail ·
+## VIERGE colonisable → Coloniser · VIERGE non colonisable → raison grisée ·
+## ÉTRANGÈRE en guerre → Attaquer ici · ÉTRANGÈRE en paix → Route terre/mer (+
+## Piller la côte si légal). Chaque verbe est journalisé (drain revalide) ; les
+## hover portent les conséquences réelles (action_preview) — jamais un chiffre inventé.
+const _ACT_VERB_ID := {"repress": 0, "assimilate": 1, "purge": 2}
+const _ACT_FALLBACK := {
+	"repress": "Réprimer — mate l'agitation par la force. Baisse l'agitation ; hausse la coercition et le ressentiment.",
+	"assimilate": "Assimiler — pousse la culture dominante sur les minorités. Réduit la friction culturelle ; prend du temps.",
+	"purge": "Purger — réprime dans le sang la minorité la plus agitée. Pertes de population, chute de satisfaction, risque diplomatique. IRRÉVERSIBLE.",
+}
+func _build_footer(w, info: Dictionary) -> void:
+	if _footer == null:
+		return
+	for c in _footer.get_children():
+		c.queue_free()
+	var me := int(w.player()) if w.has_method("player") else -1
+	var powner := int(info.get("owner", -2))
+	if powner == me:
+		_footer_btn("Réprimer", _action_hover(w, "repress"), func(): _act_fire("repress"))
+		_footer_btn("Assimiler", _action_hover(w, "assimilate"), func(): _act_fire("assimilate"))
+		var plabel := "Confirmer la purge ?" if _purge_armed else "Purger"
+		var ptip := ("IRRÉVERSIBLE — cliquez de nouveau pour confirmer (4 s)" if _purge_armed
+			else _action_hover(w, "purge"))
+		var pbtn := _footer_btn(plabel, ptip, func(): _on_purge_pressed())
+		pbtn.add_theme_color_override("font_color", Color(0.86, 0.32, 0.22) if _purge_armed else Color(0.6, 0.20, 0.15))
+		pbtn.add_theme_color_override("font_hover_color", Color(0.86, 0.32, 0.22) if _purge_armed else Color(0.6, 0.20, 0.15))
+		_footer_btn("Détail…", "Ouvrir le détail complet de la province (peuples, production, bâti, journal, main-d'œuvre).",
+			func(): detail_requested.emit())
+	elif w.has_method("can_colonize") and w.can_colonize(_pid):
+		_footer_btn("Coloniser", "Fonder une colonie ici (le joueur colonise toute terre vierge à portée).", func(): _do_colonize(w))
+		if Time.get_ticks_msec() - _colonize_ms < 3000:
+			_footer_note("Ordre émis — la colonne part sous peu")
+	elif powner < 0:
+		var why := "aucune de vos provinces n'est prête (pop ≥ 800, nourrie)"
+		if w.has_method("colony_status"):
+			var cs: Dictionary = w.colony_status()
+			if bool(cs.get("active", false)):
+				var ctot := maxi(1, int(cs.get("total_days", 1)))
+				var cpct := int(round(100.0 * float(ctot - int(cs.get("days_left", 0))) / float(ctot)))
+				why = "colonie déjà en chantier (%d %%)" % cpct
+			elif int(cs.get("cd_days", 0)) > 0:
+				why = "une colonie par an — encore %d j" % int(cs.get("cd_days", 0))
+		_footer_note("Coloniser : " + why)
+	elif powner >= 0 and powner != me:
+		var dop: Dictionary = w.diplo_options(powner) if w.has_method("diplo_options") else {}
+		if bool(dop.get("can_make_peace", false)):
+			_footer_btn("Attaquer ici", "Projette l'ost depuis votre capitale sur cette région (guerre en cours).", func(): _act_fire("campaign"))
+		else:
+			_footer_btn("Route terre", "Ouvre une route commerciale terrestre depuis votre capitale.", func(): _act_fire("route_land"))
+			_footer_btn("Route mer", "Ouvre une route commerciale maritime depuis votre capitale.", func(): _act_fire("route_sea"))
+		if w.has_method("can_raid_coast"):
+			var rd: Dictionary = w.can_raid_coast(_pid)
+			if bool(rd.get("legal", false)):
+				_footer_btn("Piller la côte", "Razzia unifiée : 20 % du revenu annuel de la cible (+ risque de razzia).", func(): _act_fire("raid_coast"))
+			else:
+				var rr := int(rd.get("reason", 1))
+				if rr == 3:
+					_footer_note("Côte balafrée — %d j" % int(rd.get("cd_days", 0)))
+				elif rr == 4:
+					_footer_note("Piller la côte : aucune coque pirate")
+
+## un bouton d'action du pied (label auto-large, thème parchemin, hover = conséquences).
+func _footer_btn(label: String, tip: String, cb: Callable) -> Button:
+	var b := Button.new()
+	b.text = label
+	b.tooltip_text = tip
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(0, 22)
+	b.add_theme_font_size_override("font_size", 13)
+	b.add_theme_stylebox_override("normal", ParchTheme.sb(ParchTheme.HEADER_BG, ParchTheme.BORDER, 1, 3, 8, 8, 3, 3))
+	b.add_theme_stylebox_override("hover", ParchTheme.sb(ParchTheme.PANEL_BG, ParchTheme.TAB_UNDERLINE, 1, 3, 8, 8, 3, 3))
+	b.add_theme_stylebox_override("pressed", ParchTheme.sb(ParchTheme.DIVIDER, ParchTheme.TAB_UNDERLINE, 1, 3, 8, 8, 3, 3))
+	b.add_theme_color_override("font_color", ParchTheme.INK)
+	b.add_theme_color_override("font_hover_color", ParchTheme.INK)
+	b.add_theme_color_override("font_pressed_color", ParchTheme.INK)
+	b.pressed.connect(cb)
+	_footer.add_child(b)
+	return b
+
+## une note discrète du pied (raison grisée, feedback transitoire) — pas un bouton.
+func _footer_note(txt: String) -> void:
+	var lb := Label.new()
+	lb.theme_type_variation = "RowDim"
+	lb.text = txt
+	lb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_footer.add_child(lb)
+
+func _refresh_footer() -> void:
+	var w = Sim.world
+	if w == null or _pid < 0:
+		return
+	var info: Dictionary = w.province_info(_pid)
+	if bool(info.get("valide", false)):
+		_build_footer(w, info)
+
+## Purger EXIGE 2 clics (irréversible) — 1er clic ARME (4 s), 2e clic CONFIRME.
+func _on_purge_pressed() -> void:
+	if not _purge_armed:
+		_purge_armed = true
+		Sound.play("ui_click")
+		_refresh_footer()
+		var t := get_tree().create_timer(4.0)
+		t.timeout.connect(func():
+			if _purge_armed:
+				_purge_armed = false
+				if visible:
+					_refresh_footer())
+	else:
+		_purge_armed = false
+		_act_fire("purge")
+
+## COLONISER : verbe distinct (feedback « ordre émis » 3 s, horloge MUR indépendante
+## du tick — motif province_panel.gd legacy).
+func _do_colonize(w) -> void:
+	if _pid < 0 or not w.has_method("player_colonize"):
+		return
+	w.player_colonize(_pid)
+	Sim.notify_action()
+	_colonize_ms = Time.get_ticks_msec()
+	Sound.play("ui_click")
+	refresh()
+	var t := get_tree().create_timer(3.05)
+	t.timeout.connect(func(): if visible: _refresh_footer())
+
+## conséquences AVANT décision (retour joueur UI-4) : lit action_preview si la façade
+## l'expose (verbe 0=RÉPRIMER 1=ASSIMILER 2=PURGER ; clés EXACTES du binding
+## scps_sim_node.cpp:1276), sinon un texte factuel SANS chiffre inventé — la membrane
+## ne promet jamais un nombre que le moteur ne donne pas.
+func _action_hover(w, verb: String) -> String:
+	var fallback := String(_ACT_FALLBACK.get(verb, ""))
+	if not w.has_method("action_preview") or not _ACT_VERB_ID.has(verb):
+		return fallback
+	var pv: Dictionary = w.action_preview(_pid, int(_ACT_VERB_ID[verb]))
+	var parts := PackedStringArray()
+	var pop_d := int(pv.get("pop_delta", 0))
+	if pop_d != 0:
+		parts.append("%+d habitants" % pop_d)
+	var sat_d := int(pv.get("satisfaction_delta", 0))
+	if sat_d != 0:
+		parts.append("satisfaction %+d" % sat_d)
+	var agit_d := int(pv.get("agitation_delta", 0))
+	if agit_d != 0:
+		parts.append("agitation %+d" % agit_d)
+	var coerc_d := int(pv.get("coercition_delta", 0))
+	if coerc_d != 0:
+		parts.append("coercition %+d" % coerc_d)
+	var gold_d := int(round(float(pv.get("cost_gold", 0.0))))
+	if gold_d != 0:
+		parts.append("%d or" % gold_d)
+	var days_d := int(pv.get("duration_days", 0))
+	if days_d != 0:
+		parts.append("%d j" % days_d)
+	var risk := String(pv.get("risque", ""))
+	if parts.is_empty() and risk == "":
+		return fallback
+	var txt := (" · ".join(parts)) if not parts.is_empty() else fallback
+	if risk != "":
+		txt += (" · " if not parts.is_empty() else " ") + "risque : %s" % risk
+	return txt
+
+## dispatch d'un verbe de pied → le VERBE journalisé (drainé au tick, revalidé là-bas).
+func _act_fire(verb: String) -> void:
+	var w = Sim.world
+	if w == null or _pid < 0:
+		return
+	var reg: int = w.province_region(_pid) if w.has_method("province_region") else -1
+	match verb:
+		"repress":
+			w.player_repress(_pid)
+		"assimilate":
+			w.player_assimilate(_pid, false)
+		"purge":
+			w.player_purge(_pid)
+		"campaign":
+			var capr: int = w.province_region(w.country_capital_province(w.player()))
+			if capr >= 0 and reg >= 0:
+				w.player_campaign(capr, reg)
+				Sound.play("moment_army_march")
+		"route_land", "route_sea":
+			var capr2: int = w.province_region(w.country_capital_province(w.player()))
+			if capr2 >= 0 and reg >= 0:
+				w.player_route(capr2, reg, verb == "route_sea")
+		"raid_coast":
+			w.player_raid_coast(_pid)
+	Sim.notify_action()
+	refresh()
 
 # ── ONGLET INFRASTRUCTURE (fusionné : la province PAR CLASSE) ─────────────────
 ## Retour joueur 2026-07-13 : Infrastructure + Démographie FONDUES. Chaque CLASSE
@@ -227,7 +454,7 @@ func _build_infrastructure(w, info: Dictionary, _cap: Dictionary) -> void:
 	# BÂTI (manufactures-logements, confort) monte ces plafonds au-delà de la terre nue.
 	var lc := int(info.get("logements_cap", 0))
 	if lc > 0:
-		_kv(grid, "Logements", "%s / %s" % [_grp(info.get("logements_libres", 0)), _grp(lc)],
+		_kv(grid, "Logement", "%s / %s" % [_grp(info.get("logements_libres", 0)), _grp(lc)],
 			ParchTheme.RED if int(info.get("logements_libres", 0)) <= 0 else ParchTheme.DIM_INK)
 	var sc := int(info.get("services_cap", 0))
 	if sc > 0:
@@ -757,11 +984,18 @@ func _terrain_row(info: Dictionary, def_pct: int) -> void:
 	_body.add_child(row)
 
 ## une paire label → valeur dans une grille 2-colonnes (valeur alignée à droite, colorée)
+## D4 — GLOSSAIRE HOVER : le LABEL de la ligne porte la définition du terme s'il est
+## un concept connu (registre CENTRALISÉ ui/concepts.gd, consommé aussi par le Codex
+## et la cascade du TooltipServer) — zéro littéral de définition ici.
 func _kv(grid: GridContainer, label: String, value: String, col: Color) -> void:
 	var lab := Label.new()
 	lab.theme_type_variation = "RowDim"
 	lab.text = label
 	lab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var def := Concepts.def_of(label)
+	if def != "":
+		lab.tooltip_text = def
+		lab.mouse_filter = Control.MOUSE_FILTER_STOP
 	grid.add_child(lab)
 	var val := Label.new()
 	val.theme_type_variation = "RowLabel"

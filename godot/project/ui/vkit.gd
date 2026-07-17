@@ -315,17 +315,14 @@ static func header(ci: CanvasItem, w: float, title: String) -> Rect2:
 # ── sections & rangées (ui_section / ui_row). y est un [valeur] muté → on
 #    renvoie le nouveau y (GDScript n'a pas de int*). ─────────────────────────
 ## HEADER DE SECTION : bande graphite compacte, repère or à gauche, un seul filet.
-## `w_override` (UI-POLISH #1) : certains appelants (province_panel.gd) ont un `size.x`
-## PLUS LARGE que leur fond visible (une bande latérale hors-fond réservée à un onglet
-## collé, ex. BUILD_TAB_W) — sans cet override, `bw` déduit de `ci.size.x` déborde du
-## PANEL_BG réel. Passer la largeur VISIBLE (ex. PW) force le bandeau à s'arrêter au
-## bord du panneau ; -1 = comportement historique (déduit de `ci.size.x`).
-static func section(ci: CanvasItem, x: float, y: float, title: String, w_override: float = -1.0) -> float:
+## D1-UNIFICATION (2026-07-18) : `w_override` (UI-POLISH #1) n'avait plus qu'un seul
+## appelant — province_panel.gd (legacy, supprimé, remplacé par province_panel_v2.gd
+## qui n'utilise pas VKit.section/row) — retiré, redevenu déduit de `ci.size.x` pour
+## tous les appelants restants (battle_panel.gd, empire_sidebar.gd, sidebar_drawer.gd).
+static func section(ci: CanvasItem, x: float, y: float, title: String) -> float:
 	y += 3
 	var bw := 220.0
-	if w_override > 0.0:
-		bw = maxf(80.0, w_override - 2.0 * x)
-	elif ci is Control:
+	if ci is Control:
 		bw = maxf(80.0, (ci as Control).size.x - 2.0 * x)
 	fill(ci, Rect2(x - 4, y - 2, bw + 8, 18), Color(COL_PANEL2.r, COL_PANEL2.g, COL_PANEL2.b, 0.94))
 	fill(ci, Rect2(x - 4, y - 2, 3.0, 18), COL_GOLD)
@@ -333,13 +330,11 @@ static func section(ci: CanvasItem, x: float, y: float, title: String, w_overrid
 	text(ci, Vector2(x + 4, y), COL_GOLD, title.to_upper(), FS_SMALL)
 	return y + 21
 
-static func row(ci: CanvasItem, x: float, y: float, cat: String, word: String, wc: Color, w_override: float = -1.0) -> float:
+static func row(ci: CanvasItem, x: float, y: float, cat: String, word: String, wc: Color) -> float:
 	text(ci, Vector2(x, y), COL_DIM, cat)
 	text(ci, Vector2(x + 104, y), wc, word)
 	var rw := 220.0
-	if w_override > 0.0:
-		rw = maxf(80.0, w_override - 2.0 * x)
-	elif ci is Control:
+	if ci is Control:
 		rw = maxf(80.0, (ci as Control).size.x - 2.0 * x)
 	fill(ci, Rect2(x, y + 16.0, rw, 1.0), Color(COL_EDGE.r, COL_EDGE.g, COL_EDGE.b, 0.28))
 	return y + 18

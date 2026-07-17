@@ -523,7 +523,7 @@ func _draw() -> void:
 				bglyph = " ▲"
 			elif sat_avg <= 33.0:
 				bglyph = " ▼"
-			_happy_tip = "Bonheur %d %%%s (Laboureurs %d · Artisans %d · Noblesse %d)" % [
+			_happy_tip = "Bonheur %d %%%s (Journaliers %d · Bourgeois %d · Élites %d)" % [
 				int(round(sat_avg)), bglyph,
 				int(clst[0].get("satisfaction", 0)), int(clst[1].get("satisfaction", 0)),
 				int(clst[2].get("satisfaction", 0))]

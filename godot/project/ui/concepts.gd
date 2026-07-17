@@ -75,6 +75,17 @@ const DEFS := {
 	"Route commerciale": {"d": "Un lien de négoce ouvert : deux ports + deux marchés + (pacte ou même couronne). La distance module le rendement, jamais ne le tue.", "i": "layer_road"},
 	"Port": {"d": "La rade d'une région côtière : sans port, ni route de mer ni flotte.", "i": "harbor_anchor"},
 	"Colonisation": {"d": "La fondation d'une province vierge : une colonne part, mûrit selon la distance, et la ferveur fondatrice porte les premières années.", "i": "settlement_cluster"},
+	"Impôts": {"d": "La part de la richesse levée par la couronne, par mois — rognée par l'évasion quand la satisfaction baisse ou que l'éthos tolère mal l'impôt.", "i": "tax_ledger"},
+	"Services": {"d": "Les âmes SERVIES (échoppes, bains, cultes) sur la capacité que porte le bâti — au-delà, le confort décroche.", "i": "capital_tower"},
+	"Friche": {"d": "Un édifice ou une manufacture dont l'entretien reste impayé : sa production tombe à 60 % tant que la dette n'est pas résorbée.", "i": "alert_warning"},
+	"Entretien": {"d": "Le coût récurrent d'un bâti, par mois — impayé, la province tombe EN FRICHE.", "i": "tax_ledger"},
+	"Palier": {"d": "Le rang suivant d'un édifice : chaque palier suit le TIER du bourg et déverrouille de nouveaux effets.", "i": "layer_terrain"},
+	# ── monnaie ──
+	"Débase": {"d": "La frappe au-delà de la parité : elle gonfle la masse en circulation et dilue la valeur de la monnaie.", "i": "corruption_coin"},
+	"Parité": {"d": "Le taux de conversion fixe entre l'or et le cuivre (16 pour 5,2) : l'étalon de toute la monnaie d'État.", "i": "debt_scales"},
+	"Étalon": {"d": "La règle de conversion fixe qui ancre la monnaie du royaume — frapper au-delà, c'est la débase.", "i": "gold_coin"},
+	"Péage": {"d": "La taxe perçue sur une route commerciale à son passage — un revenu tiers, pas un coût du joueur.", "i": "layer_road"},
+	"Détroit": {"d": "Un passage maritime resserré : il concentre le commerce qui le traverse, d'où sa valeur stratégique.", "i": "layer_river"},
 }
 
 static var _re: RegEx = null

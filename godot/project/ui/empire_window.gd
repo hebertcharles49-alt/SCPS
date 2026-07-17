@@ -4,15 +4,18 @@ extends PanelContainer
 ## CONTENEURS Godot NATIFS + le THEME parchemin PARTAGÉ (parch_theme.gd). ZÉRO `_draw` :
 ## la mise en page s'auto-espace, la hauteur suit le contenu.
 ##
-## Display-only, LECTURE SEULE (sauf les curseurs budgétaires de l'onglet Économie, qui
-## enfilent le verbe joueur EXISTANT player_budget_policy) : chaque page lit la MÊME
-## membrane que les panneaux d'aujourd'hui (budget_controls, country_relations, corps_ids,
-## country_factions, country_council, province_groups…), tout `has_method`-gardé.
+## Display-only, LECTURE SEULE (l'onglet Économie est READ-ONLY depuis D1-UNIFICATION,
+## 2026-07-18 : le réglage fiscal/budgétaire vit uniquement au Trésor, touche B — cf.
+## economy_page.gd) : chaque page lit la MÊME membrane que les panneaux d'aujourd'hui
+## (budget_controls, country_relations, corps_ids, country_factions, country_council,
+## province_groups…), tout `has_method`-gardé.
 ## Bascule touche E (câblée dans main.gd). COEXISTE avec budget_panel_v2 / la sidebar.
 
 const ParchTheme  = preload("res://ui/parch_theme.gd")
 const EconomyPage = preload("res://ui/economy_page.gd")
 const PopBar      = preload("res://ui/pop_bar.gd")
+
+signal open_budget_requested   ## onglet Économie → « Régler… » → main.gd ouvre le Trésor (B)
 
 const PW := 440.0
 ## Militaire est CONTEXTUEL (barre de commandement à la sélection d'un corps), pas un
@@ -113,8 +116,11 @@ func _build_shell() -> void:
 	var stack := VBoxContainer.new()
 	bodypanel.add_child(stack)
 	_pages.clear()
-	# 0 — Économie : la page réutilisable (curseurs + valeurs vivantes).
+	# 0 — Économie : la page réutilisable (valeurs vivantes, LECTURE SEULE ici —
+	# D1-UNIFICATION : le réglage vit uniquement au Trésor, touche B).
 	_eco_page = EconomyPage.new()
+	_eco_page.interactive = false
+	_eco_page.open_budget_requested.connect(func(): open_budget_requested.emit())
 	stack.add_child(_eco_page)
 	_pages.append(_eco_page)
 	# 1-4 — pages LUES : VBox rebâtis à chaque refresh.

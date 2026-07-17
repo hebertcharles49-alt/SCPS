@@ -1,7 +1,8 @@
 extends Node
 ## province_ui_audit — le pendant headless du câblage UI PROVINCE (5 readers additifs).
 ##
-## Prouve, via le binding LIVE, que : (0) province_panel.gd et province_detail.gd
+## Prouve, via le binding LIVE, que : (0) province_panel_v2.gd (D1-UNIFICATION : LA
+## fiche province, province_panel.gd legacy supprimé) et province_detail.gd
 ## compilent ; (1) province_slave_count est borné (≥0) ; (2) province_tax est fini
 ## et ≥0 ; (3) province_defense_pct est borné [100,1000] (100=neutre plaine) ; (4)
 ## province_seed est déterministe et non-négatif sur une province valide, -1 hors-
@@ -41,8 +42,8 @@ func _run() -> void:
 	print("=== PROVINCE UI AUDIT — câblage complet (5 readers) ===")
 	var total := 0
 	# INVARIANT 0 : les panneaux qui CONSOMMENT la membrane compilent.
-	if load("res://ui/province_panel.gd") == null:
-		push_error("province_ui_audit: province_panel.gd ne compile pas")
+	if load("res://ui/province_panel_v2.gd") == null:
+		push_error("province_ui_audit: province_panel_v2.gd ne compile pas")
 		total += 1
 	if load("res://ui/province_detail.gd") == null:
 		push_error("province_ui_audit: province_detail.gd ne compile pas")

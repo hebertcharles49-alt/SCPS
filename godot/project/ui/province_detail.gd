@@ -36,7 +36,7 @@ var _manuf_flash_ok := true
 # ── LOT G — RÉINCORPORATION DE POP : deux menus déroulants (province A/B, mes
 #    provinces — RE-KEY PROVINCE), un sélecteur de classe, une quantité, un bouton
 #    « Déplacer ». ──
-const REINCORP_CLASSES := ["Laboureurs", "Artisans", "Noblesse", "Esclaves"]
+const REINCORP_CLASSES := ["Journaliers", "Bourgeois", "Élites", "Esclaves"]   # D1-UNIFICATION : nomenclature canonique
 const REINCORP_STEP := 500
 var _reinc_owned := []        # [{prov:int, nom:String}] mes provinces (rafraîchi par frame)
 var _reinc_a := 0             # index dans _reinc_owned (source)
@@ -225,7 +225,9 @@ func _draw_peuples_apercu(x: float, y: float, colw: float, w, info: Dictionary, 
 	var slaves: int = int(w.province_slave_count(_pid))
 	var ccnt := [int(cls["laboureurs"]), int(cls["artisans"]), int(cls["noblesse"])]
 	var cc := [VKit.SLICE_PAL[0], VKit.SLICE_PAL[1], VKit.SLICE_PAL[3]]
-	var cnames := ["Laboureurs", "Artisans", "Noblesse"]
+	# D1-UNIFICATION : nomenclature CANONIQUE (Journaliers/Bourgeois/Élites — celle du
+	# moteur/doctrine), alignée sur province_panel_v2.gd (LA fiche province).
+	var cnames := ["Journaliers", "Bourgeois", "Élites"]
 	if slaves > 0:
 		ccnt.append(slaves)
 		cc.append(Color(0.28, 0.26, 0.24))

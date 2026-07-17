@@ -31,8 +31,9 @@ func _run() -> void:
 	tb.theme = th
 	ui.add_child(tb)
 
-	# — panneau province : une province du joueur (bande de biome) —
-	var pp = load("res://ui/province_panel.gd").new()
+	# — panneau province (D1-UNIFICATION : province_panel_v2.gd, LA fiche province) :
+	#   une province du joueur (bande de biome au survol du terrain) —
+	var pp = load("res://ui/province_panel_v2.gd").new()
 	pp.theme = th
 	ui.add_child(pp)
 	var pid := -1

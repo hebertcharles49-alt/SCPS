@@ -8,7 +8,6 @@ const InfoRef = preload("res://ui/info_ref.gd")
 const NavigationHub = preload("res://ui/navigation_hub.gd")
 const UIKit = preload("res://ui/uikit.gd")   # load_img() export-safe (curseur, etc.)
 
-var _prov_panel: Control
 var _country_panel: Control
 var _sidebar: Control
 var _construct: Control
@@ -108,17 +107,6 @@ func _ready() -> void:
 			Sound.play("ui_parchment_open")
 		_tech.queue_redraw())
 
-	_prov_panel = load("res://ui/province_panel.gd").new()
-	_prov_panel.name = "ProvincePanel"
-	ui.add_child(_prov_panel)
-	_prov_panel.close_requested.connect(_clear_selection)   # ✕ = désélection pleine
-	_prov_panel.detail_requested.connect(func():
-		if _prov_detail != null and _sel_prov >= 0:
-			_prov_detail.show_province(_sel_prov)            # le DÉTAIL (main-d'œuvre & cie) s'ouvre enfin
-			_prov_detail.visible = true
-			Sound.play("ui_parchment_open")
-			_prov_detail.queue_redraw())
-
 	_country_panel = load("res://ui/country_panel.gd").new()
 	_country_panel.name = "CountryPanel"
 	ui.add_child(_country_panel)
@@ -135,7 +123,7 @@ func _ready() -> void:
 	ui.add_child(_sidebar)
 	_sidebar.setup(map)                       # le tiroir Filtres pilote la carte
 	# tiroir ouvert ⇒ on cache le panneau de province (même bande, exclusifs)
-	_sidebar.tab_selected.connect(func(i): if i >= 0: _prov_panel.show_province(-1))
+	_sidebar.tab_selected.connect(func(i): if i >= 0: _prov_panel_v2.show_province(-1))
 
 	# barres de carte : sélecteur de mode (bas-gauche) + zoom (bas-droite)
 	var controls = load("res://ui/controls.gd").new()
@@ -186,19 +174,9 @@ func _ready() -> void:
 	_prov_detail.visible = false
 	ui.add_child(_prov_detail)
 
-	# Construction depuis le panneau province → toggle du panneau de construction
-	# (target_pid = la province visée : les MANUFACTURES s'y élèvent — lot 5)
-	_prov_panel.build_requested.connect(func():
-		_construct.target_pid = _sel_prov
-		_construct.visible = not _construct.visible
-		if _construct.visible:
-			# SE DÉPLIE ATTACHÉ au bord droit du panneau province (juste après la
-			# languette Construction), à sa position COURANTE → suit le panneau quand
-			# on le déplace. Plus de position fixe « en bas / à part ».
-			_construct.position = Vector2(_prov_panel.position.x + _prov_panel.size.x + 6.0,
-										  _prov_panel.position.y)
-			Sound.play("ui_parchment_open")
-		_construct.queue_redraw())
+	# Construction depuis le panneau province V2 (ex-legacy, D1-UNIFICATION) : le
+	# wiring build_requested vit désormais avec l'instanciation de _prov_panel_v2
+	# (plus bas) — la fiche province est UNIQUE, ce site double n'existe plus.
 	# … et depuis l'onglet CONSTRUCTIONS du détail (sa maison désormais)
 	_prov_detail.build_requested.connect(func():
 		_construct.target_pid = _sel_prov
@@ -234,9 +212,9 @@ func _ready() -> void:
 	# la probe shot_ui (qui pose `.visible` en direct, hors des signaux dédiés).
 	_prov_detail.visibility_changed.connect(func():
 		if _prov_detail.visible:
-			_prov_panel.visible = false             # le détail REMPLACE le panneau province
+			_prov_panel_v2.visible = false             # le détail REMPLACE le panneau province
 		elif _sel_prov >= 0:
-			_prov_panel.show_province(_sel_prov))    # fermeture du détail → le panneau REVIENT
+			_prov_panel_v2.show_province(_sel_prov))    # fermeture du détail → le panneau REVIENT
 	_country_actions.visibility_changed.connect(func():
 		if _country_actions.visible:
 			_country_panel.visible = false           # la fenêtre diplo REMPLACE le panneau pays
@@ -300,14 +278,23 @@ func _ready() -> void:
 	_budget_v2.visible = false
 	_budget_v2.add_to_group("draggable")
 	ui.add_child(_budget_v2)
-	# PILOTE fiche province « conteneurs natifs + Theme parchemin » (touche V). COEXISTE
-	# avec province_panel.gd (dessiné à la main) — le pendant province de budget_panel_v2.
+	# LA fiche province (D1-UNIFICATION, 2026-07-18) : conteneurs natifs + Theme
+	# parchemin, doctrine « bâti seul + hover + /mois ». province_panel.gd (legacy,
+	# dessin immédiat, nomenclature divergente Laboureurs/Artisans/Noblesse) est
+	# SUPPRIMÉ — cette fiche reçoit désormais le clic-carte ET la touche V.
 	_prov_panel_v2 = load("res://ui/province_panel_v2.gd").new()
 	_prov_panel_v2.name = "ProvincePanelV2"
 	_prov_panel_v2.visible = false
 	_prov_panel_v2.add_to_group("draggable")
 	ui.add_child(_prov_panel_v2)
-	# le bouton « Construire… » de la fiche V2 ouvre le MENU CONSTRUCTION sur la
+	_prov_panel_v2.close_requested.connect(_clear_selection)   # ✕ = désélection pleine
+	_prov_panel_v2.detail_requested.connect(func():
+		if _prov_detail != null and _sel_prov >= 0:
+			_prov_detail.show_province(_sel_prov)            # le DÉTAIL (main-d'œuvre & cie) s'ouvre enfin
+			_prov_detail.visible = true
+			Sound.play("ui_parchment_open")
+			_prov_detail.queue_redraw())
+	# le bouton « Construire… » de la fiche ouvre le MENU CONSTRUCTION sur la
 	# province visée, à l'onglet demandé (0 Édifices · 1 Manufactures).
 	if _prov_panel_v2.has_signal("build_requested"):
 		_prov_panel_v2.build_requested.connect(func(kind: int):
@@ -326,12 +313,20 @@ func _ready() -> void:
 	_empire_win.visible = false
 	_empire_win.add_to_group("draggable")
 	ui.add_child(_empire_win)
+	# D1-UNIFICATION : l'onglet Économie de la Fenêtre Empire est lecture seule — son
+	# lien « Régler… » ouvre LE Trésor (seule surface de réglage fiscal/budgétaire).
+	if _empire_win.has_signal("open_budget_requested"):
+		_empire_win.open_budget_requested.connect(func():
+			if _budget_v2 != null:
+				_budget_v2.visible = true
+				if _budget_v2.has_method("refresh"):
+					_budget_v2.refresh())
 
 	# UI-POLISH #13 — la pile d'Échap : chaque panneau suivi s'auto-empile/désempile via
 	# SON PROPRE visibility_changed (peu importe le chemin de code qui a posé .visible).
 	# _construct = le seul POPUP FLOTTANT non ancré de la liste ; _budget_v2/_empire_win/
 	# _country_actions = MAJEURS (Trésor/Diplomatie) — leur ouverture referme _construct.
-	# La fiche province (_prov_panel/_prov_panel_v2/_country_panel), contextuelle-ancrée,
+	# La fiche province (_prov_panel_v2/_country_panel), contextuelle-ancrée,
 	# N'EST PAS dans cette liste : elle coexiste toujours (règle joueur explicite).
 	for maj in [_budget_v2, _empire_win, _country_actions]:
 		if maj != null:
@@ -464,7 +459,7 @@ func _ready() -> void:
 
 	# ENRÔLEMENT « draggable » : chaque panneau flottant devient déplaçable par son
 	# bandeau-titre (cf. _input). Les vars LOCALES army_panel/esb sont encore en scope.
-	for p in [_prov_panel, _country_panel, _construct, _battle_panel, _tech, _econ,
+	for p in [_country_panel, _construct, _battle_panel, _tech, _econ,
 			_prov_detail, _country_actions, _religion, _codex, _memory_panel,
 			_search_palette, _devpanel, army_panel, esb]:
 		if p != null:
@@ -591,7 +586,8 @@ func _unhandled_input(e: InputEvent) -> void:
 				if _budget_v2.visible and _budget_v2.has_method("refresh"):
 					_budget_v2.refresh()
 		KEY_V:
-			# PILOTE fiche province « conteneurs natifs » (coexiste avec province_panel)
+			# LA fiche province (D1-UNIFICATION) : bascule visibilité — sans province
+			# sélectionnée, ouvre la première possédée par le joueur.
 			if _prov_panel_v2 != null and Sim.game_on:
 				if _prov_panel_v2.visible:
 					_prov_panel_v2.hide()
@@ -763,14 +759,17 @@ func _on_tick_endgame(_year: int) -> void:
 ## (moins `_devpanel` outil de MOD et `_battle_panel` déjà son propre panneau de combat,
 ## non nommés par l'audit). alerts.gd lit ceci à CHAQUE frame (via un Callable, il n'a
 ## pas de référence à Main) pour masquer sa pile ordinaire derrière un compteur compact.
-## UI-POLISH #13 (cartographie UI 284bc3b) : `_budget_v2`/`_empire_win`/`_prov_panel_v2`
+## UI-POLISH #13 (cartographie UI 284bc3b) : `_budget_v2`/`_empire_win`
 ## étaient ABSENTS d'ici aussi (même bug de non-enrôlement que `_close_topmost` — ajoutés
 ## après coup, jamais raccordés aux listes « panneau majeur » historiques) : le Trésor ou
 ## la fenêtre Diplomatie ouverts ne masquaient pas la pile d'alertes ordinaire derrière
 ## le compteur compact, contrairement aux autres écrans profonds.
+## D1-UNIFICATION : `_prov_panel_v2` (LA fiche province) n'est PAS un panneau majeur — elle
+## s'ouvre au moindre clic de province, une interaction ROUTINIÈRE, pas un écran profond ;
+## la classer « majeure » aurait fait collapse la pile d'alertes en continu (retiré ici).
 func major_open() -> bool:
 	for p in [_memory_panel, _search_palette, _tech, _econ, _codex, _construct, _prov_detail, _country_actions,
-			_chronique, _age_recap, _epilogue, _religion, _budget_v2, _empire_win, _prov_panel_v2]:
+			_chronique, _age_recap, _epilogue, _religion, _budget_v2, _empire_win]:
 		if p != null and p.visible:
 			return true
 	return false
@@ -781,8 +780,12 @@ func major_open() -> bool:
 ## Construction — pile `_panel_stack`, cf. leur wiring `visibility_changed`), puis
 ## retombe sur l'ordre historique fixe pour tout le reste (aucun de ces panneaux N'A
 ## de notion d'ordre d'ouverture, un ordre arbitraire raisonnable suffit). `_budget_v2`/
-## `_empire_win`/`_prov_panel_v2` étaient ABSENTS de cette liste (bug historique : Échap
+## `_empire_win` étaient ABSENTS de cette liste (bug historique : Échap
 ## ne les fermait jamais, sautait direct au menu PAR-DESSUS eux) — ajoutés en repli.
+## D1-UNIFICATION : `_prov_panel_v2` (LA fiche province, contextuelle-ancrée) N'EST PAS
+## dans cette liste générique — comme la fiche legacy avant elle, elle se ferme en UN
+## SEUL Échap via `_clear_selection()` ci-dessous (pleine désélection : panneau ET
+## contour doré de la carte), pas via un hide() sec qui laisserait la sélection en l'air.
 func _close_topmost() -> bool:
 	while not _panel_stack.is_empty():
 		var top: Control = _panel_stack[_panel_stack.size() - 1]
@@ -793,12 +796,12 @@ func _close_topmost() -> bool:
 			return true
 	for p in [_memory_panel, _search_palette, _construct, _tech, _econ, _religion, _prov_detail,
 			_devpanel, _country_actions, _chronique, _age_recap, _epilogue, _battle_panel, _codex,
-			_budget_v2, _empire_win, _prov_panel_v2]:
+			_budget_v2, _empire_win]:
 		if p != null and p.visible:
 			p.visible = false
 			Sound.play("ui_parchment_close")
 			return true
-	if (_prov_panel != null and _prov_panel.visible) or (_country_panel != null and _country_panel.visible):
+	if (_prov_panel_v2 != null and _prov_panel_v2.visible) or (_country_panel != null and _country_panel.visible):
 		_clear_selection()
 		return true
 	return false
@@ -827,8 +830,8 @@ func _setup_cursor() -> void:
 func _clear_selection() -> void:
 	_sel_prov = -1
 	_sel_owner = -1
-	if _prov_panel != null:
-		_prov_panel.show_province(-1)
+	if _prov_panel_v2 != null:
+		_prov_panel_v2.show_province(-1)
 	if _country_panel != null:
 		_country_panel.show_country(-1)
 	var map := get_node_or_null("MapView")
@@ -842,7 +845,7 @@ func _on_province_picked(province: int, region: int, owner: int) -> void:
 	if Sim.world == null:
 		return
 	if province < 0:
-		_prov_panel.show_province(-1)         # clic en mer → on referme
+		_prov_panel_v2.show_province(-1)         # clic en mer → on referme
 		_country_panel.show_country(-1)
 		return
 	if _sidebar != null:
@@ -852,7 +855,7 @@ func _on_province_picked(province: int, region: int, owner: int) -> void:
 	# ZONE CONTEXTUELLE UNIQUE (UI-3) : un écran profond déjà ouvert garde la main —
 	# on ne réaffiche pas le panneau qu'il a remplacé par-dessus lui.
 	if _prov_detail == null or not _prov_detail.visible:
-		_prov_panel.show_province(province)
+		_prov_panel_v2.show_province(province)
 	if _country_actions == null or not _country_actions.visible:
 		_country_panel.show_country(owner)        # -1 (terre libre) → panneau caché
 	if _prov_detail != null and _prov_detail.visible:
