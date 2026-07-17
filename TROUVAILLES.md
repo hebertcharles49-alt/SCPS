@@ -6095,3 +6095,236 @@ derrière le kill-switch pour une future vague qui voudrait la trancher.
 - Tag `pre-m15` posé · worktree `C:/tmp_wt_pre_m15` à retirer après session · binaires
   `chronicle_pre_m15.exe`/`chronicle_head_m15.exe` et `m15_sweep/` (scratch, non committés) à
   nettoyer du dépôt.
+
+## MISSION M16 — LES CHOKES ÉMERGENTS + LA CHASSE AU DERNIER RÉSIDU (2026-07-17)
+
+**Statut : C1 et C2 LIVRÉS, mesurés, gate 1 passé (kill-switches byte-identiques), golden
+re-baseliné.** Décision joueur verbatim : « Bonne idée [les chokes par concentration de
+trafic]. Termine les derniers correctifs. » Tag `pre-m16` posé (a096716 = M15 shippé).
+
+### C1 — LES CHOKES ÉMERGENTS (scps_world.c, scps_routes.c, scps_sim.c)
+
+**Le mécanisme livré** : `world_chokepoints_emergent_rebuild` (scps_world.c) remplace la
+table STATIQUE (WG, posée à la genèse par la seule forme géométrique) par une table
+DÉRIVÉE de la concentration de trafic réel — appelée périodiquement (`routes_recompute_
+chokes`, scps_sim.c, MÊME cadence que la création de routes maritimes IA, `day%180==29`,
+une seule fois par mois-cadencé pour tout le réseau, pas par pays). Pour chaque route
+maritime OUVERTE, backtrace son plus court chemin marin RÉEL (`sea_dijkstra_core`,
+prédécesseurs `g_sea_from[]`, hérité de M15-F4) et compte le passage. `world_chokepoints()`
+sert la table ACTIVE (émergente si `CHOKE_EMERGENT=1`, statique sinon) à TOUS les lecteurs
+existants (chronicle telemetry, `world_chokepoint_holder`) sans changement de signature.
+Route creation (`routes_order`) pose désormais un placeholder NEUTRE (-1, aucun péage)
+quand l'émergence est active — la concentration est une propriété du RÉSEAU ENTIER, pas
+d'une route seule à sa création ; la reconstruction périodique (≤180 j) réassigne TOUTES
+les routes vivantes d'un coup, jamais plus de 180 j sans assignation correcte.
+
+**Le critère de concentration retenu** (les deux tunables, le plus exigeant gagne) :
+`CHOKE_MIN_ROUTES` (plancher ABSOLU, défaut 2 — la « concentration » exige au moins deux
+routes distinctes, jamais une route seule sur son propre chemin) et `CHOKE_MIN_FRAC`
+(plancher RELATIF, défaut 15 % du trafic maritime RÉELLEMENT mesurable — pas le nombre
+brut de routes, cf. piège ci-dessous). Choisi pour être robuste aux mondes petits (2-3
+routes maritimes, le plancher absolu domine) ET grands (100+ routes, 15 % évite qu'un pur
+hasard de 3 routes qui se croisent sur un océan immense passe pour un goulet mondial).
+
+**Sort de la table statique** : REMPLACÉE (pas un fallback) quand `CHOKE_EMERGENT=1` — un
+monde sans trafic maritime rapporte honnêtement 0 goulet émergent (`g_choke_em`/`g_n_choke_em`
+zero-init statique, jamais un résidu d'un appel précédent, JAMAIS un fallback silencieux
+vers la table statique qui aurait pu tromper la mesure). La table statique
+(`compute_chokepoints`/`g_choke`) reste INTACTE, calculée à la genèse comme avant (coût
+négligeable, ~2M visites de cellule une fois), servie uniquement quand `CHOKE_EMERGENT=0`.
+
+**Chokes émergents/monde et collecte (sweep apparié {9,11,42}×3×250 ans, pre-m16 vs HEAD)** :
+
+| seed | pre-m16 statique (goulets/sim · tenus/sim · routes taxées · or/sim · sims payés) | HEAD émergent |
+|---|---|---|
+| 9  | 22.3 · 6.0 · 2 · 2 or/sim · 1/3  | 6.7 · 4.0 · 6 · **111 or/sim** · 1/3 |
+| 11 | 21.7 · 6.7 · 0 · 0 or/sim · 1/3  | 4.0 · 2.3 · 0 · 0 or/sim · 1/3 |
+| 42 | 20.3 · 6.7 · 1 · 28 or/sim · 1/3 | 1.7 · 1.7 · 2 · 20 or/sim · **2/3** |
+
+**Verdict (le but !)** : collecte VIVANTE sur **4/9 sims** (111/0/20 or/sim) contre **3/9**
+en statique (2/0/28 or/sim, la référence M15) et **0/9** en chemin-réel-sans-émergence
+(M15-F4, le mécanisme mort que M16 corrige) — le péage de détroit vit, bat les DEUX
+références, reste petit en absolu (aucune explosion, même ordre de grandeur que le
+statique). Nombre de goulets/monde chute fortement (20-22 statique → 2-7 émergent) : c'est
+ATTENDU et SAIN — la géométrie voyait des dizaines de « détroits » potentiels (toute forme
+étroite), le trafic réel n'en frappe qu'une poignée (là où tout le monde EST FORCÉ de
+passer), exactement la définition d'un goulet économique vs géographique.
+
+**Coût CPU (mesuré, seed 9, 60 ans, 1 sim)** : le PREMIER piège de perf — `cap_days`
+hérité de la création de route (2×SEA_ROUTE_MAX_DAYS=120 j) exclut ~80 % des routes
+maritimes OUVERTES du calcul de concentration (« injoignable DANS CE RAYON », pas « pas de
+chemin » — la portée de route est VIRTUELLE depuis V3, routes_order accepte des paires
+bien au-delà de 120 j réels). À ce cap, 31 routes vivantes → 6 seulement avaient un chemin
+mesurable → 0 goulet détecté, silencieusement FAUX (pas un vrai « pas de concentration »).
+Remonté à 8×SEA_ROUTE_MAX_DAYS=480 j (mesuré : 78 % de couverture, contre 19 % à 120 j,
+83 % à l'infini-mais-inabordable) — compromis EXPLICITE coût/couverture, documenté au
+call-site (`routes_recompute_chokes`). Coût mesuré : ~0.5-0.9 s/an-jeu à ce cap (world
+1024×512, dizaines de routes), optimisé ×2 par le cache footprint-par-route (ci-dessous) —
+ACCEPTABLE pour un rebuild PÉRIODIQUE (180 j, jamais au tick) mais non négligeable sur un
+sweep 250 ans (~3-6 min/sim). `determinism-deep` (200 ans ×2 graines ×2 runs) et le sweep
+gate ont tous deux tourné dans un temps raisonnable ; noté en Restes pour une éventuelle
+optimisation incrémentale future.
+
+### Pièges (C1)
+
+- **Le comptage CELLULE-EXACTE mesure 0 goulet même avec 31-55 routes vivantes** — deux
+  routes maritimes qui empruntent « le même » détroit par cabotage ne repassent QUASIMENT
+  JAMAIS par la cellule exacte (chacune peut border la côte à ±quelques cellules, tie-break
+  du Dijkstra compris — les coûts de cabotage sont assez uniformes pour que plusieurs
+  chemins soient équi-optimaux). Fix : agréger par BUCKET (grille de WG_CHOKE_DEDUP
+  cellules de côté — même échelle que le rayon de fusion de grappe existant, pas une
+  nouvelle constante), une route comptant AU PLUS UNE FOIS par bucket traversé.
+- **Le dédup par simple RAYON entre pics de buckets SOUS-FUSIONNE** — un détroit large
+  déborde souvent plusieurs buckets adjacents, chacun qualifiant à son propre compte ; deux
+  pics de buckets voisins peuvent être plus loin l'un de l'autre que le rayon de dédup →
+  mesuré : 24 « chokes » (le plafond `WG_MAX_CHOKE`) pour UN SEUL corridor trafiqué. Fix :
+  fusion par COMPOSANTE CONNEXE de buckets qualifiants (BFS 4-connexe sur la grille de
+  buckets, bornée — `CHOKE_NB` est petit, ~1650 pour ce monde) — tout un corridor large
+  devient UNE seule grappe, la cellule représentante = le pic fin DANS la composante.
+- **`cap_days=-1` (sans borne) est PIRE que le cap 120 j pour la perf, pas meilleur** —
+  intuition initiale : « backtrace TOUTES les routes vivantes » (le brief) suggérait
+  d'enlever le cap. Mesuré : une paire en bassins RÉELLEMENT séparés fait explorer TOUT le
+  bassin atteignable avant de conclure « injoignable » (le garde-fou `cap_days` de
+  `sea_dijkstra_core` EST ce qui borne ce coût — un run de 60 ans a dépassé 3 min 20 sans
+  finir, tué). Le cap doit rester FINI ; 8× (480 j) est le compromis mesuré, pas un choix
+  arbitraire.
+- **La passe 2 (assignation par route) n'a PAS besoin d'un second Dijkstra** — le premier
+  passage (comptage) a DÉJÀ visité chaque cellule du chemin réel de chaque route ; mémoriser
+  le footprint de buckets par route (`g_route_bucket[i][]`, plafonné à 96 buckets/route,
+  généreux) pendant la passe 1 et le RÉUTILISER en passe 2 élimine la moitié du coût
+  Dijkstra (mesuré : 76 s → 44 s sur le même run seed 9/60 ans) sans changer le résultat.
+- **Le seuil de concentration doit se calculer sur `n_valid` (routes avec un chemin
+  mesurable), PAS `n` brut (routes vivantes)** — à `cap_days` fini, certaines routes restent
+  hors de portée (bassins séparés OU juste loin) ; diluer le seuil sur `n` brut sous-compte
+  la concentration RÉELLE dès qu'un monde a plusieurs mers indépendantes ou beaucoup de
+  liens virtuels longue distance.
+- **Bootstrap de route À LA CRÉATION doit rester -1 (jamais consulter le cache émergent
+  cross-appel)** — tenté puis écarté : faire lire par `routes_order` la table émergente
+  COURANTE au moment de la création aurait introduit un piège savetest A==B EXACTEMENT du
+  type déjà documenté pour `g_sea_from[]` (M15) — la table émergente d'un process qui a
+  DÉJÀ avancé loin (ex. la continuation A d'un savetest, jusqu'à l'an 1000) diffère de celle
+  d'un process qui vient de RECHARGER une sauvegarde à l'an 600 (continuation B) même si le
+  RouteNetwork chargé est identique, parce que le cache module-static ne se réinitialise pas
+  au chargement. Le fix (placeholder -1, jamais de lecture cross-appel à la création) rend
+  `world_chokepoints_emergent_rebuild` une fonction PURE de (w, routes passées) à l'instant
+  de l'appel — aucune dépendance à l'historique du process, sûr à travers save/reload PAR
+  CONSTRUCTION (prouvé : savetest 3 graines A==B).
+
+### C2 — LE DERNIER RÉSIDU (scps_econ.c)
+
+**Audit M0 dédié** (docs/MONNAIE_M0_AUDIT.md relu contre le code ACTUEL, pas seulement le
+texte du doc — daté, plusieurs sites qu'il liste « ouverts » sont en fait déjà convertis) :
+§1.3 (arbitrage cités-états), §1.4 (tribut mûri), §1.5 (récompenses de mission), §1.7
+(événements d_treasury), §2.1 (consommation, « L'ÉTAT REVEND » M3b-v2), §2.2/§2.3/§2.4/§2.5
+(entretien/encadrement/cour/admin, tous item 5), §2.8 (construction manufacture, joueur ET
+IA), §2.11 (intérêt de dette), §2.12 (pillage/siège), §2.13 (marge trade.c) sont TOUS déjà
+conservés par M3f (items 1-5) ou M3a/M3b-v2/M12/M13/M14 — le programme M0→M3 est bien plus
+avancé qu'il n'y paraissait en relisant seulement le doc d'origine.
+
+**LE site identifié** : §2.6, la redépense publique (`scps_econ.c`, `econ_tick`, la boucle
+par province). Chaque mois, l'État dépense `depense = trésor × STATE_SPEND_RATE(0.30) × dt`
+du surplus ; `PAYROLL_FRACTION` (0.60) revient aux 3 classes au prorata de l'impôt versé
+(déjà un TRANSFERT conservé) — mais le SOLDE (`depense − payroll`, 40 % de la dépense,
+« armée, travaux » selon le commentaire d'origine) ne créditait PERSONNE. Contrairement aux
+sinks déjà convertis (souvent bornés au surplus au-dessus d'un seuil de hoarding, ou gatés
+par condition rare), celui-ci est ACTIF chaque mois sur CHAQUE province au surplus et SCALE
+directement avec le trésor — candidat le plus probable identifié par audit (confirmé par la
+mesure ci-dessous, pas seulement déduit).
+
+**La conversion** : le solde rejoint `CLASS_LABORER` de LA MÊME province — même famille que
+FX_SOLDE/FX_NAVY déjà convertis (item 5 : « armée, travaux » = soldats + travailleurs de
+chantier, le mot du commentaire d'origine pointe déjà vers cette classe). Aucun flux FX_*
+nouveau (FX_REDEP reste la vérité TRÉSOR, inchangée — la conversion n'ajoute qu'un crédit de
+richesse manquant, exactement le motif des items 5 voisins). Kill-switch
+`REDEP_REMAINDER_CONSERVED` (défaut 1) : =0 legacy EXACT (golden pré-M16 byte-identique).
+
+**Mesure du résidu 209s3** (`./chronicle 7 5 250`, sim 3 = graine 209 — le sous-seed exact
+désigné par M13, C2 ISOLÉ via `CHOKE_EMERGENT=0` sur LES DEUX côtés, motif de mesure du
+piège M15-F2 réappliqué) :
+
+| config | 209s3 « autres »/an |
+|---|---|
+| legacy (F1+F2 shippés, C2 OFF) | **−10652** |
+| C2 ON (défaut) | **−8610** |
+
+Réduction **~19 %** sur la graine désignée — RÉEL mais PAS ~0. Effet MIXTE sur les 4 autres
+sims du même sweep (seed7 : +38706→+42719 pire ; seed108 : −19007→−25173 pire ; seed310 :
+−17563→−43343 bien pire ; seed411 : −56779→−42429 mieux) — non-monotone, seed-dépendant,
+cohérent avec TOUT l'arc M7-M15 (chaque calibrage économique mesuré dans ce dépôt montre la
+même sensibilité chaotique, cf. M15-F1 « un pas boucule une graine de +0.4 à −2.3 »). Le
+crédit ajouté est RÉEL et CONSERVÉ (plus de destruction pure à ce site précis, vérifié en
+isolation), mais son effet en aval (LABORER plus riche → consommation/production/marché
+différents → cascade) se propage de façon imprévisible selon la trajectoire — un résultat
+HONNÊTE, pas un échec de la conversion elle-même.
+
+**Verdict** : la conversion est CORRECTE (site identifié par audit, confirmé dominant par
+construction — actif/scalant contre les autres candidats bornés/gatés), mesurée (réduction
+réelle sur la graine désignée), mais le résidu ne tombe PAS à ~0 — un « nouveau plancher
+honnête », consistant avec l'attente du brief (« ou le nouveau plancher honnête... si la
+chasse révèle une chaîne »). Invariant apparié M3f 0/9 breach tenu (les deux côtés).
+
+### Pièges (C2)
+
+- **Le doc d'audit M0 est un instantané, pas une vérité vivante** — relire le CODE ACTUEL
+  aux lignes citées (pas seulement le texte du .md) a révélé que la majorité des sites
+  « ouverts » listés par `docs/MONNAIE_M0_AUDIT.md` sont déjà convertis par des missions
+  ultérieures (M3f items 1-5, M3b-v2, M12-M14) — un audit basé uniquement sur le doc aurait
+  chassé des fantômes. Motif à retenir : toujours re-vérifier un audit textuel contre le
+  code avant de baser une décision dessus.
+- **Isoler C2 d'un chantier voisin (C1) exige de geler l'AUTRE via SCPS_TUNE** — même piège
+  que M15 (« comparer pre-m16 à HEAD confond C1+C2 ») : la mesure du résidu 209s3 a été
+  faite avec `CHOKE_EMERGENT=0` explicite des DEUX côtés dès le départ (leçon apprise de
+  M15-F2, pas re-découverte à la dure cette fois).
+
+### Gates (C1 + C2)
+
+1. **Kill-switches** : `SCPS_TUNE=CHOKE_EMERGENT=0,REDEP_REMAINDER_CONSERVED=0` ⇒
+   `--hash 7 5 12` **BYTE-IDENTIQUE** au golden pre-m16 commité (les 5 graines) — prouvé
+   AVANT toute re-baseline, RE-PROUVÉ après les deux commits combinés ✓. Défauts (C1+C2
+   tous deux ON) : les 5 hash CHANGENT (attendu, C2 touche `econ_tick` dès le premier
+   mois ; C1 ne bouge QUE seed 7 à 12 ans seul, les 4 autres n'ont pas encore de route
+   maritime dans cette fenêtre courte).
+2. **Sweep apparié** {9,11,42}×3×250 : C1 collecte de péage (tableau ci-dessus, 4/9 vs 3/9
+   statique vs 0/9 réf. F4) · invariant M3f 0/9 breach (les deux côtés, 0 ÉCHEC stderr) ·
+   banqueroutes Σ 48→52 (comparable, pas d'explosion) · fins variées présentes (RÉCHAUFFEMENT
+   an 240, GRAND HIVER an 180, AUCUNE à 0) · C2 run ciblé 209s3 isolé (tableau ci-dessus) ✓.
+3. `make test` **39/39** verts · `make golden-update` + `make golden` VERT (re-baseline
+   C1+C2 combinés, les 5 graines changent — attendu) · `make determinism` STABLE (5 graines
+   × 12 ans) · `make determinism-deep` STABLE (graines 7 et 9 × 200 ans, malgré le coût C1) ·
+   `scps_viewer --savetest` A==B byte-identique + octet altéré REFUSÉ ×3 graines (9/11/42) ·
+   `--fuzztest 9` **8/8** (216 octets, 0 crash) · `make lang-check` OK (0 littéraux, inclus
+   dans `make test`) ✓.
+4. Cet append + commits granulaires FR (C1 9cebf9d, C2 11d9034, golden+TROUVAILLES à suivre)
+   · DLL Godot REBUILDÉE (debug + release, scons ×2, exit 0 les deux) — seul
+   `scps_sim_node.cpp` a recompilé (aucun binding/GDScript touché par C1/C2) ; l'export
+   `scps.exe` (Godot editor) suit cette vague séparément, hors portée CLI.
+
+### Restes
+
+- **Le résidu 209s3 après C2 (~−8610/an) SURVIT** — réduit de ~19 % vs legacy, pas à 0. Une
+  CHAÎNE de sites plus petits (non individuellement dominants, cf. le classement de l'audit :
+  audits anti-corruption `scps_ai.c` FX_AUDIT gaté, `CONCEDE_GOLD` révolte scps_revolt.c
+  ~947-952 SANS AUCUN `econ_flux_add` — pas même tracké au niveau grossier — et la branche
+  achat-de-stock-d'armes `scps_ai.c` ~1486-1502 non taguée item 5) reste probablement la
+  piste — nécessiterait un accumulateur dédié par site (motif `g_va_produced_cum`) pour
+  chiffrer chacun avant de choisir lequel convertir en premier. `CONCEDE_GOLD` en particulier
+  n'a MÊME PAS de télémétrie FX_* grossière — le candidat le plus « invisible » du registre.
+- **Coût CPU C1 (~0.5-0.9 s/an-jeu au cap 480j)** — acceptable pour cette vague (rebuild
+  périodique 180j, jamais au tick) mais NON négligeable sur un sweep long. Piste
+  d'optimisation non explorée (écartée pour risque de piège savetest, cf. Pièges ci-dessus) :
+  un cache PERSISTANT du footprint par route À TRAVERS les appels de rebuild (pas seulement
+  au sein d'un appel) — nécessiterait un ancrage explicite sur l'historique déterministe du
+  process (haute-marque de `rn->n`) pour rester sûr au reload, non tenté cette vague.
+- **`SCPS_EMDIAG`** (env-gaté, print-only, scps_world.c) laissé dans le dépôt — diagnostic
+  n/n_valid/max_bucket/cap_days par appel de rebuild, motif `SCPS_CHOKEDIAG` — utile pour
+  calibrer `CHOKE_MIN_ROUTES`/`CHOKE_MIN_FRAC`/le cap dans une vague future.
+- **Carte Godot** : les chokes émergents ne sont PAS dessinés (aucun GDScript touché,
+  conforme aux interdits de la mission) — si un jour la carte doit les montrer, le lecteur
+  `world_chokepoints()` sert déjà la table active, prêt à être exposé via `scps_api.c` sur le
+  même modèle que les lanes maritimes (MARITIME N2).
+- **`CHOKE_MIN_ROUTES=2`/`CHOKE_MIN_FRAC=0.15`/le cap `8×SEA_ROUTE_MAX_DAYS`** : calibrage
+  RAISONNABLE mesuré sur 3 graines, pas un optimum balayé (contrainte de temps de cette
+  vague) — une future vague de calibrage dédiée pourrait affiner sur un sweep plus large.
+- Tag `pre-m16` posé · worktree `C:/tmp_wt_pre_m16` à retirer après session · binaires
+  `chronicle_pre_m16.exe`/`chronicle_head_m16.exe`/`chronicle_c2test.exe` et scratch
+  `m16_sweep*/` (non committés, nettoyés du dépôt) — restaient dans le scratchpad de session.
