@@ -1,4 +1,21 @@
-# SYNTHÈSE DE SESSION — handoff roulant (2026-07-17 soir — M15 + EXPORT : « Termine tout » FAIT)
+# SYNTHÈSE DE SESSION — handoff roulant (2026-07-17 nuit — M16 + RE-EXPORT : session close)
+
+## M16 — CHOKES ÉMERGENTS + LE DERNIER RÉSIDU (HEAD b64816d, re-export FRAIS)
+- **C1** : les détroits se dérivent du TRAFIC RÉEL (backtrace Dijkstra de chaque route,
+  agrégation par BUCKET — les cellules exactes ne se partagent jamais, piège mesuré 0
+  détection avant ce fix — fusion par composante connexe, rebuild 180 j). 2-7 chokes/monde
+  (vs 20-24 statiques) ; collecte VIVANTE 4/9 sims (111/0/20 or) vs 0/9 à l'échec M15-F4 ;
+  CHOKE_REAL_PATH défaut, table statique REMPLACÉE (kill-switch CHOKE_EMERGENT=0 = M15
+  exact). ⚠ CPU ~0.5-0.9 s/an-jeu — à SENTIR en partie réelle (micro-saccades
+  semestrielles possibles ; piste cache persistant documentée, écartée piège savetest).
+- **C2** : LE site du résidu = la REDÉPENSE PUBLIQUE (§2.6 M0) — 40 % de la dépense
+  mensuelle d'État ne créditait PERSONNE (destruction pure). Convertie → Laborers de la
+  province. Résidu 209s3 −19 % ; une chaîne de petits sites reste (CONCEDE_GOLD révolte
+  nommé, sans télémétrie) — plancher honnête documenté.
+- Gates : 39/39, golden re-baseliné vert, invariant 0/9, savetest, fuzz, DLL debug+release.
+- **RE-EXPORT scps.exe** (21:08, 289 Mo) — smoke test VERT en PATH System32 seul.
+  L'exécutable contient TOUT : M0→M16, UI-MONNAIE, TECH/FINS/FAUSTIEN, ROUTES/ANTISPAG/
+  MARITIME, savoir×2, chokes émergents.
 
 ## M15 FINITIONS + EXPORT scps.exe (HEAD 53d82aa + dist)
 - **M15** (pre-m15, 5 commits) : F1 inflation — l'option A MESURÉE D'ABORD et DÉGRADANTE
