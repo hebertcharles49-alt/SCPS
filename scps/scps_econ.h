@@ -849,7 +849,7 @@ static inline float econ_country_price_level(const WorldEconomy *e, int cid){
     /* clamp manuel (pas de scps_math.h ici : redéfinirait absf/clampf pour tout
      * inclueur transitif de scps_econ.h — plusieurs bancs portent encore une copie
      * locale, cf. demography_demo.c). */
-    float ratio = caisse/e->va_country_prev[cid], cap = tune_f("INFLATION_CAP", 4.0f);
+    float ratio = caisse/e->va_country_prev[cid], cap = tune_f("INFLATION_CAP", 2.0f);   /* M15-F1 : fallback aligné (dead code, cf. scps_econ.c econ_country_mint_share) */
     if (ratio!=ratio) return 0.f;   /* NaN garde-fou, motif clampf */
     return ratio<0.f ? 0.f : (ratio>cap ? cap : ratio);
 }

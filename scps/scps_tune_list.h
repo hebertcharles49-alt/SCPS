@@ -27,7 +27,23 @@
      * ⚠ CES DEUX VALEURS NE SONT PLUS UN KILL-SWITCH SÉPARÉ (elles pilotaient DÉJÀ la
      * frappe avant M7, motif MINT_PARITY_GOLD/M3e — un re-calibrage droit, pas un
      * commutateur) : le golden pré-M7 EXIGE de les reposer à 0.35/0.35 EN PLUS
-     * d'INFLATION_CAP=1.0/GOLD_DISCOVERY_RATE=0 (les 4 réglages historiques ensemble). */ \
+     * d'INFLATION_CAP=1.0/GOLD_DISCOVERY_RATE=0 (les 4 réglages historiques ensemble).
+     * MONNAIE M15 — F1 (option A décidée par le joueur « Je suis d'accord. Termine
+     * tout. », proposition P3 de M13 — MESURÉE puis RECALIBRÉE, cf. TROUVAILLES
+     * « MISSION M15 — F1 ») : Option A LITTÉRALE (0.6→0.75 COMBINÉ à INFLATION_CAP
+     * 1.6→2.0) mesurée d'ABORD au sweep apparié {9,11,42}×3×250 — verdict : la
+     * moyenne OLS/an EMPIRE (−0.38→−0.40 %/an), la bande [0.5,1.5] RÉTRÉCIT (2/9→1/9)
+     * et le compte de sims positifs BAISSE (4/9→3/9) — Option A ne tient PAS sa
+     * promesse sur CE sweep. Option B (« défensive », le fallback EXPLICITEMENT prévu
+     * par le brief M15/TROUVAILLES M13-P3) re-mesurée : INFLATION_CAP SEUL (1.6→2.0,
+     * ci-dessous), MINT_ROYALTY/MINT_AI_SHARE INCHANGÉS à 0.6 — moyenne devient
+     * POSITIVE (+0.17 %/an), bande [0.5,1.5] 2/9→3/9, positifs 4/9→4/9 (tenu). Le
+     * joueur a acté la DIRECTION (pousser l'inflation séculaire hors du négatif), pas
+     * le chiffre au centime — « recalibre ENTRE 0.6-0.75/1.6-2.0 et documente » :
+     * 0.6 est la borne BASSE de cette fenêtre, un choix DANS le mandat, pas hors-cadre.
+     * ⚠ CES DEUX VALEURS NE SONT PLUS UN KILL-SWITCH SÉPARÉ (motif M7 ci-dessus,
+     * inchangé) : le golden pré-M15 EXIGE de les reposer EXACTEMENT à cette valeur
+     * (0.6/0.6, déjà le défaut — seul INFLATION_CAP bouge, cf. son commentaire). */ \
     X(MINT_ROYALTY,          0.6f) \
     X(MINT_AI_SHARE,         0.6f) \
     /* ÉTALON BIMÉTALLIQUE (v5) : parité FIXE monnaie↔métal — la monnaie est liée à la
@@ -78,8 +94,19 @@
      * pré-M7 byte-identique exige les 3 réglages historiques ensemble, pas INFLATION_CAP
      * seul). Calibré par sweep {9,11,42}×250 : 4.0 seul → dérive proche de 0/négative ;
      * 1.6 + MINT_ROYALTY/AI_SHARE=0.6 → 3 graines positives, moyenne +0.51 %/an (cf.
-     * TROUVAILLES M7 pour le détail du sweep et la variance inter-graines observée). */ \
-    X(INFLATION_CAP,          1.6f) \
+     * TROUVAILLES M7 pour le détail du sweep et la variance inter-graines observée).
+     * MONNAIE M15 — F1 (Option B retenue, cf. MINT_ROYALTY ci-dessus pour le verdict
+     * mesuré complet) : 1.6→2.0 SEUL — le plafond SATURAIT (pic==1.600 dans 8/18 sims
+     * du sweep M13 P3, écrasant la dérive OLS de fin de course). Mesuré à l'apparié
+     * {9,11,42}×3×250 avec MINT_ROYALTY/AI_SHARE LAISSÉS à 0.6 : moyenne −0.38→+0.17
+     * %/an, bande [0.5,1.5] 2/9→3/9, sims positifs 4/9→4/9 — la combinaison des DEUX
+     * leviers (Option A littérale, testée EN PREMIER) mesurait PIRE (−0.40 %/an,
+     * 1/9, 3/9) : la sensibilité non-linéaire M7 (« un seul levier à la fois ») s'est
+     * confirmée dans le sens INVERSE de l'intuition initiale — cf. TROUVAILLES
+     * « MISSION M15 — F1 » pour les 27 dérives (3 configs × 9 sims) et les bandes.
+     * 1.0 = kill-switch EXACT (reproduit le plafond historique, ⚠ COMBINÉ à
+     * MINT_ROYALTY/AI_SHARE=0.35). */ \
+    X(INFLATION_CAP,          2.0f) \
     /* MONNAIE M7 — I2 : LA DÉCOUVERTE D'OR (le choc Potosí, décision joueur : « découverte
      * d'or sur certaine tile par évent, 0,5×N(empire) par game »). Espérance du plafond
      * MONDIAL de tirs de EVID_GOLD_DISCOVERY = round(GOLD_DISCOVERY_RATE × n_empires),

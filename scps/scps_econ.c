@@ -2375,7 +2375,7 @@ int econ_country_capital_prov(const WorldEconomy *e, int cid){
 float econ_country_mint_share(const WorldEconomy *e, int cid){
     if (!e||cid<0||cid>=SCPS_MAX_COUNTRY) return 0.f;
     if (cid==culture_player_cid()) return econ_country_budget_mult(e, cid, BUDGET_MINT);
-    return clampf(tune_f("MINT_AI_SHARE", 0.35f), 0.f, 1.f);
+    return clampf(tune_f("MINT_AI_SHARE", 0.6f), 0.f, 1.f);   /* M15-F1 : le fallback DOIT égaler le défaut registre (scps_tune_list.h) — mort en pratique (tune_f trouve TOUJOURS le nom enregistré), corrigé pour ne pas mentir au lecteur */
 }
 /* MONNAIE M3h — LA DÉBASE : voir scps_econ.h. La parité (MINT_PARITY_*) EST la définition
  * de l'unité — ce multiplicateur est l'ACTE d'un souverain de frapper AU-DELÀ (rogner les
@@ -3614,7 +3614,7 @@ void econ_tick(WorldEconomy *e, float dt) {
      * marchandise). Le reste (1−MINT_ROYALTY) suit le chemin normal (stock, GDP, salaires/
      * profit/rente) : les chaînes cuivre (naval/armes/horlogerie) et la joaillerie restent
      * vivantes. 0 = kill-switch (aucune redevance ⇒ réserve toujours nulle ⇒ frappe nulle). */
-    const float mint_royalty  = tune_f("MINT_ROYALTY", 0.35f);
+    const float mint_royalty  = tune_f("MINT_ROYALTY", 0.6f);   /* M15-F1 : fallback aligné sur le défaut registre (dead code en pratique, cf. commentaire MINT_AI_SHARE) */
     /* MISSION FAUSTIEN (2026-07-16) — kill-switch MAÎTRE de X2/X3/X4 (rendement des 3
      * machines, entropie-par-usage, panier foreuse/mutations réplicateur/alcool corne).
      * =0 restaure le comportement pre-faustien EXACT (golden byte-identique) ; =1
@@ -3659,7 +3659,7 @@ void econ_tick(WorldEconomy *e, float dt) {
      * M(t)=M(0)+frappe) croît plus vite que la production réelle : trop de monnaie chasse
      * trop peu de biens, ÉMERGENT — 1.0 reproduit EXACTEMENT l'ancien comportement
      * (kill-switch de gate, golden pré-M7 byte-identique). */
-    const float inflation_cap = tune_f("INFLATION_CAP", 4.0f);
+    const float inflation_cap = tune_f("INFLATION_CAP", 2.0f);   /* M15-F1 : fallback aligné sur le défaut registre (dead code en pratique, cf. commentaire MINT_AI_SHARE) */
     /* MONNAIE M12 — E1 : L'AMORÇAGE PRUDENT (docs/MONNAIE_CONCEPT.md, brief M12 « l'État
      * naissant paie plein tarif avant d'avoir une caisse »). AUDIT confirmé au sweep apparié
      * (chronicle --hash/--pldiag, pre-m12 vs patch local) : le `1.f` codé en dur ci-dessous
