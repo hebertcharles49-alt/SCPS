@@ -2601,23 +2601,30 @@ static const char *const EDI_FLAVOR[EDIFICE_COUNT] = {
 };
 
 /* l'EFFET RÉEL d'un édifice, composé de son delta ProvBuild (membrane : les MOTS
- * du jeu + les chiffres du moteur, jamais une promesse). Buffer statique par type. */
+ * du jeu + les chiffres du moteur, jamais une promesse). Buffer statique par type.
+ * UI-POLISH #7 (directive joueur 2026-07-17, extension membrane) : « ouverture +1.0 »,
+ * « coercition +1.0 »… étaient des COORDONNÉES MOTEUR nues (K_inst/H_coerc/P_open/
+ * PE_infra/food_cap/faith/savoir, des unités internes SANS ancrage joueur — « rien de
+ * tout ça n'est métriquement relié à quoi que ce soit » pour qui lit l'écran) — la
+ * parenthèse (déjà le bon texte : « tient la province, ronge la loyauté »…) reste ;
+ * seul le nombre nu disparaît. Le GATE (val>0.001f) est inchangé : un édifice qui
+ * n'apporte rien sur cet axe ne l'affiche toujours pas. */
 static const char *api_edifice_effet(Edifice e){
     static char eb[EDIFICE_COUNT][176];
     const EdificeDef *d = edifice_def(e);
     if (!d) return "";
     char *b = eb[e]; b[0]=0;
     int len=0, first=1;
-    #define EF_ADD(fmt, val, label) do{ if((val)>0.001f){ \
-        len += snprintf(b+len, sizeof eb[e]-(size_t)len, "%s" fmt, first?"":" · ", (double)(val)); \
+    #define EF_ADD(word, val, label) do{ if((val)>0.001f){ \
+        len += snprintf(b+len, sizeof eb[e]-(size_t)len, "%s%s", first?"":" · ", (word)); \
         len += snprintf(b+len, sizeof eb[e]-(size_t)len, "%s", (label)); first=0; } }while(0)
-    EF_ADD("institutions +%.1f", d->delta.K_inst,  " (stabilité, capacité)");
-    EF_ADD("coercition +%.1f",   d->delta.H_coerc, " (tient la province, ronge la loyauté)");
-    EF_ADD("ouverture +%.1f",    d->delta.P_open,  " (perméabilité, routes)");
-    EF_ADD("prospérité +%.1f",   d->delta.PE_infra," (capte l'échange local)");
-    EF_ADD("vivres +%.1f",       d->delta.food_cap," (rendement & réserve, démographie)");
-    EF_ADD("foi +%.1f",          d->delta.faith,   " (apaise l'agitation, soutient la loyauté)");
-    EF_ADD("savoir +%.1f",       d->delta.savoir,  " (recherche locale)");
+    EF_ADD("institutions", d->delta.K_inst,  " (stabilité, capacité)");
+    EF_ADD("coercition",   d->delta.H_coerc, " (tient la province, ronge la loyauté)");
+    EF_ADD("ouverture",    d->delta.P_open,  " (perméabilité, routes)");
+    EF_ADD("prospérité",   d->delta.PE_infra," (capte l'échange local)");
+    EF_ADD("vivres",       d->delta.food_cap," (rendement & réserve, démographie)");
+    EF_ADD("foi",          d->delta.faith,   " (apaise l'agitation, soutient la loyauté)");
+    EF_ADD("savoir",       d->delta.savoir,  " (recherche locale)");
     #undef EF_ADD
     if (d->delta.port > 0.001f){
         len += snprintf(b+len, sizeof eb[e]-(size_t)len, "%sport (rade réelle : routes de mer, flotte)", first?"":" · ");
