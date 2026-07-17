@@ -165,10 +165,20 @@ func _region_name(r: int) -> String:
 ## L'an vit déjà en préfixe de ligne (« an %d · … ») : le « (an %d) » du gabarit
 ## moteur (FEED_KINDS, cf. alerts.gd) est donc retiré ici (redondance d'affichage
 ## seulement — le tip d'origine, lui, n'est jamais réécrit).
+## UI-POLISH #10 : « la région %d »/« La région %d » portait un article FIGÉ (féminin,
+## accordé sur « région ») qui ne convient plus une fois substitué par un nom de
+## PROVINCE au genre propre (ex. « la Désert Brûlant » — désert est masculin en
+## français). On retire l'article ET le mot « région » ensemble : le nom propre se
+## suffit à lui-même (« Désert Brûlant ne mange qu'à 45 % » — pas d'article requis
+## devant un nom propre, comme pour toute ville). Le repli nu « région %d » (ex. dans
+## « notre région %d », genre-neutre) reste couvert en dernier.
 func _journal_full_text(entry: Dictionary, region: int) -> String:
 	var tip := String(entry.get("tip", ""))
 	if region >= 0:
-		tip = tip.replace("région %d" % region, _region_name(region))
+		var nm := _region_name(region)
+		tip = tip.replace("la région %d" % region, nm)
+		tip = tip.replace("La région %d" % region, nm)
+		tip = tip.replace("région %d" % region, nm)
 	tip = tip.replace(" (an %d)" % int(entry.get("year", 0)), "")
 	return tip
 
