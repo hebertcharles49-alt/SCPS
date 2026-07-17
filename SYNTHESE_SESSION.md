@@ -1,4 +1,29 @@
-# SYNTHÈSE DE SESSION — handoff roulant (2026-07-17 nuit — M16 + RE-EXPORT : session close)
+# SYNTHÈSE DE SESSION — handoff roulant (2026-07-18 — LE GRAND POLISH UI, validé par screens joueur)
+
+## L'ARC UI 17-18/07 : inspection réelle → cartographie → UI-POLISH → UI-DOCTRINE (HEAD 51b1001)
+- **L'inspection à la souris de l'orchestrateur** (computer-use sur l'export réel) a catalogué
+  13 défauts que les probes ne voyaient pas — leçon : LES PROBES ISOLÉES MENTENT PAR CONTEXTE,
+  la boucle de vérité = jeu réel + screens joueur.
+- **CARTOGRAPHIE UI** (docs/CARTOGRAPHIE_UI.md, règle : toute vague UI la met à jour dans son
+  commit) : 37 surfaces · 22 raccourcis · 34+3 verbes · 6 curseurs · le carnet de chasse.
+- **UI-POLISH** (11 commits) : les 13 défauts corrigés — débords VKit (w_override→PW), header
+  Diplomatie graphite→parchemin, banqueroute ROUGE, « ~ » entretiens retirés (valeurs exactes),
+  membrane cartes (coordonnées moteur nues tuées, scps_api), grammaire famine, tooltips
+  (mouvement synthétique post-clic), curseurs Trésor alignés sur leur ligne, Échap/pile LIFO.
+  DÉCOUVERTE FONDATRICE : le panneau branché était province_panel.gd LEGACY, pas v2.
+- **CODEX (l'outil du joueur)** : enrôlé — sa config le rend PLANNING-ONLY (auditeur, pas
+  exécutant). Diagnostic icônes rendu : assets innocents, tailles topbar 26px coupables.
+- **UI-DOCTRINE** (12 commits) : D1 la PURGE — province_panel_v2 = LA seule fiche (legacy 944
+  lignes supprimé, câblage porté : ✕/actions/Coloniser/Attaquer/V), economy_page lecture seule
+  → le Trésor est l'unique surface de réglage fiscal · D2 Créateur de Foi rebranché (R, ∞→0)
+  + bug pause-pour-toujours corrigé · D3 or/an purgés · D4 glossaire 27 termes (+2 bugs : clé
+  « Credo » sans accent morte depuis toujours, le (?i) Godot ne replie pas les majuscules
+  accentuées) · D5 LE GROS GAIN : les coûts de construction MENTAIENT de +15 % à +75 % (le
+  multiplicateur d'extension ×(1+0.15·régions) jamais affiché) — corrigé façade · D6 tuning
+  sonore (4 curseurs, bus existants, user://audio.cfg) · D7 rail-médaillons = FAUX POSITIF
+  (l'art des PNG eux-mêmes) ; tailles topbar 26→32, tiroir remonté ; RESTE : re-dessiner l'art
+  des icônes (chantier ART futur). Audit 3-clics final : 0 dépassement (pire cas 2).
+- Re-export scps.exe FRAIS (322 Mo, smoke vert). VALIDATION EN ATTENTE : screens joueur.
 
 ## M16 — CHOKES ÉMERGENTS + LE DERNIER RÉSIDU (HEAD b64816d, re-export FRAIS)
 - **C1** : les détroits se dérivent du TRAFIC RÉEL (backtrace Dijkstra de chaque route,
