@@ -61,4 +61,12 @@ void routes_advance(RouteNetwork *rn, const World *w, WorldEconomy *econ, int da
 float routes_pe_for_region   (const RouteNetwork *rn, int region);
 int   routes_count_for_region(const RouteNetwork *rn, int region);
 
+/* M16 — C1 : LES CHOKES ÉMERGENTS — réassigne choke_region/choke_block de TOUTES les
+ * routes maritimes OUVERTES d'après la CONCENTRATION DE TRAFIC réelle du réseau entier
+ * (world_chokepoints_emergent_rebuild, scps_world.h). À appeler PÉRIODIQUEMENT
+ * (scps_sim.c, ≤180 j), jamais au tick — coût O(routes × longueur de chemin). Kill-switch
+ * registre J CHOKE_EMERGENT (défaut 1) : =0 ⇒ no-op (la table statique posée à la
+ * création par routes_order reste seule vérité, comportement M15 exact). */
+void routes_recompute_chokes(RouteNetwork *rn, const World *w);
+
 #endif /* SCPS_ROUTES_H */

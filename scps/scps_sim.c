@@ -1186,6 +1186,12 @@ void sim_day(Sim *s, World *w) {
                 }
             }
         } });
+        /* M16 — C1 : LES CHOKES ÉMERGENTS — même cadence (180 j) que la création de
+         * routes maritimes IA ci-dessus, appelée UNE FOIS (pas par pays) APRÈS que tout
+         * le monde a fini d'en créer ce mois-ci : le réseau entier est reconcilié le
+         * jour même (aucune route neuve n'attend un cycle de plus pour son assignation
+         * réelle). No-op si CHOKE_EMERGENT=0 (routes_recompute_chokes). */
+        if (s->day%180==29) routes_recompute_chokes(s->rn, w);
         PROF(PB_REVOLT, { revolt_scan(s->rs, w, s->econ, s->drift, s->sc, s->dp, s->camp, 30);
         revolt_tick(s->rs, w, s->econ, s->drift, s->wl, s->wp, s->dp, s->camp, s->sc, 30); });
         /* TECH (2026-07-16) — L'ADOPTION DES ORPHELINS, GÉNÉRALISÉE (gaté TECHPOP) : la

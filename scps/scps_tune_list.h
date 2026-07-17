@@ -1585,6 +1585,34 @@
      * — posé UNE FOIS à la création de la route (scps_routes.c routes_order), jamais au tick.
      * 0 = legacy EXACT (segment droit, golden pré-M15 byte-identique) — défaut PRUDENT tant
      * que l'effet péage (qui paie quoi) n'est pas mesuré au sweep, cf. TROUVAILLES M15 F4. */ \
-    X(CHOKE_REAL_PATH,                  0.0f)
+    X(CHOKE_REAL_PATH,                  0.0f) \
+    /* MARITIME M16 — C1 : LES CHOKES ÉMERGENTS (scps_world.c/.routes.c). Le constat F4 : la
+     * table STATIQUE (WG, forme géométrique à la genèse) tague de l'eau étroite que les
+     * chemins RÉELS (cabotage) contournent — détection et trafic parlaient de choses
+     * différentes, le péage tombait à 0. Ici le choke se DÉRIVE de la CONCENTRATION DE
+     * TRAFIC : les cellules où les plus courts chemins de NOMBREUSES routes maritimes
+     * VIVANTES se superposent SONT le goulet (aucune alternative), qu'il soit géométriquement
+     * étroit ou non — détection et trafic enfin cohérents PAR CONSTRUCTION (assignation par
+     * chemin réel, jamais par segment droit). Reconstruction PÉRIODIQUE (routes_recompute_
+     * chokes, scps_sim.c, ≤180 j, jamais au tick) — AUCUN champ neuf sérialisé (choke_region/
+     * choke_block existaient déjà, posés par routes_order depuis M13/M15). 1 = ACTIF PAR
+     * DÉFAUT (C1 mesuré : la collecte de péage redevient vivante sur plusieurs sims, contre
+     * 0/9 en chemin-réel-sans-émergence F4 M15). 0 = kill-switch EXACT : table STATIQUE
+     * (compute_chokepoints) + CHOKE_REAL_PATH régit seul l'assignation à la création — le
+     * comportement M15 pré-M16 mot pour mot (golden pre-m16 byte-identique). */ \
+    X(CHOKE_EMERGENT,                   1.0f) \
+    /* M16 — C1 : le plancher ABSOLU du seuil de concentration — une cellule mer doit voir AU
+     * MOINS ce nombre de routes maritimes DISTINCTES emprunter son chemin réel pour devenir un
+     * choke émergent (le plus exigeant de CHOKE_MIN_ROUTES et CHOKE_MIN_FRAC×n l'emporte,
+     * cf. world_chokepoints_emergent_rebuild). Plancher à 2 : la « concentration » exige au
+     * moins deux routes distinctes — jamais une route toute seule sur son propre chemin. */ \
+    X(CHOKE_MIN_ROUTES,                 2.0f) \
+    /* M16 — C1 : le plancher RELATIF — une fraction du trafic maritime mondial considéré
+     * (routes maritimes OUVERTES) qui doit converger sur une même cellule. Combiné à
+     * CHOKE_MIN_ROUTES (le plus exigeant des deux gagne) : robuste aux mondes PETITS (2-3
+     * routes maritimes — le plancher absolu domine, 15 % de 3 arrondi ne suffirait pas seul)
+     * ET aux mondes GRANDS (100+ routes — 15 % évite qu'un pur hasard de 3 routes qui se
+     * croisent sur un océan immense passe pour un goulet mondial). */ \
+    X(CHOKE_MIN_FRAC,                   0.15f)
 
 #endif /* SCPS_TUNE_LIST_H */

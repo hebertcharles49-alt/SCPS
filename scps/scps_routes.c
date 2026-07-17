@@ -62,15 +62,21 @@ bool routes_order(RouteNetwork *rn, const World *w, const WorldEconomy *econ,
         if (world_region_sea_anchor(w,ra,&ax,&ay) && world_region_sea_anchor(w,rb,&bx,&by)){
             t->days_ab=world_sea_days_capped(w,ax,ay,bx,by, 2.f*SEA_ROUTE_MAX_DAYS);  /* route acceptée : legs < borne → exact */
             t->days_ba=world_sea_days_capped(w,bx,by,ax,ay, 2.f*SEA_ROUTE_MAX_DAYS);
-            /* WG — LE DÉTROIT que cette route FRANCHIT (géographie statique, posée une
-             * fois) : son goulet est sur le chemin des deux ancres ⇒ la région-flanc le
-             * contrôle, et son propriétaire encaisse le péage (intertrade).
-             * M15 — F4 : CHOKE_REAL_PATH bascule le test du SEGMENT DROIT (legacy) au
-             * CHEMIN RÉEL (le même Dijkstra que sea_days ci-dessus) — posé UNE FOIS ici,
-             * à la création, jamais au tick. 0 = legacy exact (golden pré-M15 intact). */
-            int ck = (tune_f("CHOKE_REAL_PATH",0.f)>0.f)
+            /* WG — LE DÉTROIT que cette route FRANCHIT.
+             * M16 — C1 : LES CHOKES ÉMERGENTS (défaut ON, registre J CHOKE_EMERGENT) — la
+             * concentration de trafic est une propriété du RÉSEAU ENTIER, pas d'une route
+             * seule à sa création : on pose ICI un placeholder NEUTRE (-1, aucun péage) ;
+             * routes_recompute_chokes (plus bas, appelée périodiquement par scps_sim.c,
+             * ≤180 j) l'assigne d'après le trafic réel dès le prochain passage — jamais
+             * plus de 180 j sans assignation correcte. CHOKE_EMERGENT=0 : legacy M15 EXACT
+             * (table statique, posée UNE FOIS ici comme avant — CHOKE_REAL_PATH bascule le
+             * test du SEGMENT DROIT au CHEMIN RÉEL, 0 = golden pré-M15 intact). */
+            int ck = -1;
+            if (tune_f("CHOKE_EMERGENT",1.f)<=0.f){
+                ck = (tune_f("CHOKE_REAL_PATH",0.f)>0.f)
                      ? world_route_chokepoint_path(w,ax,ay,bx,by, 2.f*SEA_ROUTE_MAX_DAYS)
                      : world_route_chokepoint(w,ax,ay,bx,by);
+            }
             if (ck>=0){
                 const Chokepoint *tab=NULL; int nck=world_chokepoints(w,&tab);
                 if (tab && ck<nck){ t->choke_region=tab[ck].region; t->choke_block=tab[ck].blockade; }
@@ -155,4 +161,48 @@ int routes_count_for_region(const RouteNetwork *rn, int region){
     for (int i=0;i<rn->n;i++) if (rn->route[i].open &&
         (rn->route[i].ra==region||rn->route[i].rb==region)) n++;
     return n;
+}
+
+/* M16 — C1 : LES CHOKES ÉMERGENTS — reconstruction PÉRIODIQUE (scps_sim.c, ≤180 j,
+ * jamais au tick). Rassemble les ancres de TOUTES les routes maritimes OUVERTES (le
+ * trafic RÉEL — une route encore en formation ne porte encore aucune cargaison),
+ * DÉTERMINISTE (ordre de RouteNetwork, aucun tirage), délègue le calcul de
+ * concentration à world_chokepoints_emergent_rebuild (scps_world.c), puis réécrit
+ * choke_region/choke_block de CHAQUE route considérée — AUCUN champ neuf : les deux
+ * mêmes champs sérialisés que posait déjà routes_order (SAVE_VERSION inchangée).
+ * CHOKE_EMERGENT=0 : no-op — la table statique posée à la création reste seule
+ * vérité (comportement M15 exact, gate 1). */
+void routes_recompute_chokes(RouteNetwork *rn, const World *w){
+    if (!rn || !w) return;
+    if (tune_f("CHOKE_EMERGENT",1.f)<=0.f) return;
+    int ax[SCPS_MAX_ROUTES], ay[SCPS_MAX_ROUTES], bx[SCPS_MAX_ROUTES], by[SCPS_MAX_ROUTES];
+    int ridx[SCPS_MAX_ROUTES];
+    int n=0;
+    for (int i=0;i<rn->n && n<SCPS_MAX_ROUTES;i++){
+        TradeRoute *t=&rn->route[i];
+        if (!t->maritime || !t->open) continue;
+        int a_x,a_y,b_x,b_y;
+        if (!world_region_sea_anchor(w,t->ra,&a_x,&a_y)) continue;
+        if (!world_region_sea_anchor(w,t->rb,&b_x,&b_y)) continue;
+        ax[n]=a_x; ay[n]=a_y; bx[n]=b_x; by[n]=b_y; ridx[n]=i; n++;
+    }
+    int out_choke[SCPS_MAX_ROUTES];
+    /* cap_days = 8×SEA_ROUTE_MAX_DAYS, volontairement PLUS LARGE que le cap 2× de la
+     * création de route : mesuré (EMDIAG, seed 9) que le cap 2× exclut ~80 % des routes
+     * maritimes OUVERTES du calcul (« injoignable dans CE rayon » — pas « pas de chemin » :
+     * la portée de route est désormais VIRTUELLE, cf. V3 routes_order) avant même de
+     * pouvoir compter la concentration — la table émergente restait vide alors que 31-55
+     * routes étaient vivantes. SANS BORNE (-1) mesuré ENSUITE bien PIRE : une paire
+     * réellement en bassins séparés fait explorer tout le bassin atteignable (le garde-fou
+     * `cap_days` de sea_dijkstra_core EST ce qui borne ce coût — le retirer l'enlève aussi).
+     * 8× est un compromis mesuré : couvre l'essentiel du trafic réel sans perdre le
+     * garde-fou de coût sur les paires génuinement séparées. */
+    world_chokepoints_emergent_rebuild(w, ax,ay,bx,by, n, 8.f*SEA_ROUTE_MAX_DAYS, out_choke);
+    const Chokepoint *tab=NULL; int nck=world_chokepoints(w,&tab);
+    for (int k=0;k<n;k++){
+        TradeRoute *t=&rn->route[ridx[k]];
+        int ck=out_choke[k];
+        if (ck>=0 && tab && ck<nck){ t->choke_region=tab[ck].region; t->choke_block=tab[ck].blockade; }
+        else { t->choke_region=-1; t->choke_block=0.f; }
+    }
 }

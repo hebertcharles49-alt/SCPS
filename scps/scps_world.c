@@ -3883,6 +3883,16 @@ static Chokepoint g_choke[WG_MAX_CHOKE];
 static int        g_n_choke=0;
 static uint32_t   g_choke_seed=0xFFFFFFFFu;
 
+/* M16 — C1 : LES CHOKES ÉMERGENTS — table SÉPARÉE (jamais mêlée à g_choke ci-dessus,
+ * qui reste EXACTE pour le kill-switch CHOKE_EMERGENT=0 / gate 1). g_n_choke_em=0 par
+ * défaut (zero-init statique) : AUCUN choke tant qu'aucun rebuild n'a eu lieu — un
+ * monde jeune (avant la 1re route maritime ouverte) rapporte honnêtement 0 goulet,
+ * jamais un résidu d'un appel précédent (world_chokepoints_emergent_rebuild REMPLACE
+ * intégralement la table à CHAQUE appel, ci-dessous — aucun état à réinitialiser au
+ * chargement d'une sauvegarde, aucun piège savetest A==B). */
+static Chokepoint g_choke_em[WG_MAX_CHOKE];
+static int        g_n_choke_em=0;
+
 /* le long de l'axe (dx,dy), distance (≤ lim) à la 1re cellule de TERRE depuis (x,y) ;
  * -1 si pas de terre dans la limite. *lx,*ly = cette cellule de terre. */
 static int strait_reach(const World *w, int x, int y, int dx, int dy, int lim, int *lx, int *ly){
@@ -4720,7 +4730,13 @@ bool world_region_sea_anchor(const World *w, int region, int *sx, int *sy){
 static void chokepoints_ensure(const World *w){
     if (g_choke_seed!=w->seed) compute_chokepoints((World*)w);
 }
+/* M16 — C1 : quelle table sert de VÉRITÉ — l'émergente (trafic réel, défaut) ou la
+ * statique (forme géométrique, kill-switch CHOKE_EMERGENT=0, comportement M15 exact). */
 int world_chokepoints(const World *w, const Chokepoint **out){
+    if (tune_f("CHOKE_EMERGENT",1.f)>0.f){
+        if (out) *out=g_choke_em;
+        return g_n_choke_em;
+    }
     chokepoints_ensure(w);
     if (out) *out=g_choke;
     return g_n_choke;
@@ -4791,9 +4807,205 @@ int world_route_chokepoint_path(const World *w, int ax, int ay, int bx, int by, 
 }
 int world_chokepoint_holder(const World *w, int choke_idx,
                             const int16_t *owner_of_region, int n_regions){
-    chokepoints_ensure(w);
-    if (choke_idx<0 || choke_idx>=g_n_choke) return -1;
-    int rg=g_choke[choke_idx].region;
+    const Chokepoint *tab=NULL; int n=world_chokepoints(w,&tab);   /* M16 — C1 : table ACTIVE */
+    if (choke_idx<0 || choke_idx>=n) return -1;
+    int rg=tab[choke_idx].region;
     if (rg<0 || !owner_of_region || rg>=n_regions) return -1;
     return owner_of_region[rg];
+}
+
+/* M16 — C1 : même critère de TENANT que compute_chokepoints ci-dessus (région côtière la
+ * plus proche du goulet, ±WG_STRAIT_MAX) — DUPLIQUÉ plutôt que factorisé pour ne JAMAIS
+ * risquer compute_chokepoints (gate 1 : golden byte-identique avec CHOKE_EMERGENT=0). */
+static int16_t choke_em_find_tenant(const World *w, int gx, int gy){
+    int best_r=-1; int32_t bd=0x7FFFFFFF;
+    for (int dy=-WG_STRAIT_MAX;dy<=WG_STRAIT_MAX;dy++) for (int dx=-WG_STRAIT_MAX;dx<=WG_STRAIT_MAX;dx++){
+        int X=gx+dx, Y=gy+dy;
+        if (X<0||Y<0||X>=SCPS_W||Y>=SCPS_H) continue;
+        const Cell *c=&w->cell[scps_idx(X,Y)];
+        if (c->sea || !c->coast || c->region<0 || c->region>=w->n_regions) continue;
+        int32_t d2=dx*dx+dy*dy;
+        if (d2<bd){ bd=d2; best_r=c->region; }
+    }
+    return (int16_t)best_r;
+}
+
+/* M16 — C1 : compteur de passage par cellule mer — TRANSITOIRE (remis à zéro à CHAQUE
+ * rebuild, jamais lu entre deux appels) ; réutilise le buffer SCPS_N comme g_sea_dist
+ * etc. ci-dessus. Sert UNIQUEMENT à choisir la cellule REPRÉSENTANTE (le pic) d'un
+ * bucket qualifiant, ci-dessous — la détection elle-même est au grain du BUCKET. */
+static uint16_t g_sea_traffic[SCPS_N];
+
+/* M16 — C1 — LE GRAIN DE DÉTECTION EST LE BUCKET, PAS LA CELLULE (piège mesuré : deux
+ * routes qui empruntent « le même » détroit par cabotage ne repassent QUASIMENT JAMAIS
+ * par la cellule EXACTE — chacune peut border la côte à ±quelques cellules, tie-break
+ * du Dijkstra compris — le comptage cellule-exacte a mesuré 0 goulet sur seed 9/11 alors
+ * que 31 à 55 routes maritimes étaient OUVERTES ; le trafic existe, il est juste ÉTALÉ.
+ * On agrège donc par case de CHOKE_BUCKET (même échelle que WG_CHOKE_DEDUP, le rayon de
+ * fusion de grappe déjà utilisé plus bas — pas une nouvelle constante arbitraire) : une
+ * route compte AU PLUS UNE FOIS par bucket qu'elle traverse (sinon un long détour dans
+ * le même bucket gonflerait le compte d'UNE SEULE route). */
+#define CHOKE_BUCKET WG_CHOKE_DEDUP
+#define CHOKE_BW ((SCPS_W+CHOKE_BUCKET-1)/CHOKE_BUCKET)
+#define CHOKE_BH ((SCPS_H+CHOKE_BUCKET-1)/CHOKE_BUCKET)
+#define CHOKE_NB (CHOKE_BW*CHOKE_BH)
+static uint16_t g_choke_bucket_cnt[CHOKE_NB];      /* routes DISTINCTES qui traversent ce bucket */
+static int      g_choke_bucket_to_em[CHOKE_NB];    /* -1, sinon l'index dans g_choke_em (passe 2) */
+
+/* M16 — C1 — LE FOOTPRINT DE BUCKETS par route, mémorisé en PASSE 1 pour éviter de
+ * retracer le Dijkstra une SECONDE fois en passe 2 (le coût dominant de ce rebuild —
+ * mesuré ~1.3 s/an-jeu à cap_days=8×60 sur seed 9 avec DEUX Dijkstra/route ; ce cache
+ * ramène à UN SEUL). CHOKE_MAX_ROUTES miroir de SCPS_MAX_ROUTES (scps_routes.h — sens de
+ * dépendance inverse, scps_world.c ne l'inclut pas). CHOKE_MAX_RB : généreux (un trajet
+ * cabotage à cap_days=480 touche rarement plus que quelques dizaines de buckets de 18
+ * cellules) — un dépassement (rarissime) tronque silencieusement, DÉTERMINISTE (même
+ * ordre à chaque appel), imprécision mineure acceptable pour un péage périodique. */
+#define CHOKE_MAX_ROUTES 256
+#define CHOKE_MAX_RB 96
+static int16_t g_route_bucket[CHOKE_MAX_ROUTES][CHOKE_MAX_RB];
+static int8_t  g_route_nb[CHOKE_MAX_ROUTES];
+
+int world_chokepoints_emergent_rebuild(const World *w, const int *ax, const int *ay,
+                                        const int *bx, const int *by, int n,
+                                        float cap_days, int *out_choke){
+    for (int i=0;i<n;i++) out_choke[i]=-1;
+    memset(g_sea_traffic, 0, sizeof g_sea_traffic);
+    memset(g_choke_bucket_cnt, 0, sizeof g_choke_bucket_cnt);
+    for (int b=0;b<CHOKE_NB;b++) g_choke_bucket_to_em[b]=-1;
+    for (int i=0;i<n && i<CHOKE_MAX_ROUTES;i++) g_route_nb[i]=0;
+    /* PASSE 1 — CONCENTRATION : le chemin RÉEL (Dijkstra marin, mêmes prédécesseurs
+     * g_sea_from que F4/world_route_chokepoint_path) de chaque route vivante ; chaque
+     * cellule intermédiaire (hors la marge d'embouchure ]8%,92%[, même marge que F4)
+     * incrémente g_sea_traffic (fin, pour le pic) ET le bucket qu'elle habite, AU PLUS
+     * UNE FOIS par route par bucket (`touched`, remis à zéro à CHAQUE route — DÉTERMINISTE,
+     * ordre d'entrée = ordre de RouteNetwork, aucun tirage) — le footprint est aussi
+     * mémorisé dans g_route_bucket[i][] pour la passe 2. */
+    bool touched[CHOKE_NB];
+    int n_valid=0;   /* routes qui ont un chemin marin RÉEL exploitable — le vrai dénominateur
+                      * de la concentration (pas `n` brut, cf. piège ci-dessous). */
+    for (int i=0;i<n;i++){
+        if (ax[i]<0||ay[i]<0||bx[i]<0||by[i]<0) continue;
+        if (ax[i]>=SCPS_W||ay[i]>=SCPS_H||bx[i]>=SCPS_W||by[i]>=SCPS_H) continue;
+        int s=scps_idx(ax[i],ay[i]), t=scps_idx(bx[i],by[i]);
+        if (!w->cell[s].sea || !w->cell[t].sea) continue;
+        float result=sea_dijkstra_core(w,s,t,cap_days);
+        if (result<0.f) continue;   /* bassins séparés (cap_days=-1 : injoignable EST définitif) */
+        int len=0; for (int cur=t; cur!=-1 && len<SCPS_N; cur=g_sea_from[cur]) len++;
+        if (len<3) continue;
+        n_valid++;
+        int lo=(int)((float)len*0.08f), hi=(int)((float)len*0.92f);
+        memset(touched, 0, sizeof touched);
+        int idx=0, nb=0;
+        bool rec = (i<CHOKE_MAX_ROUTES);
+        for (int cur=t; cur!=-1 && idx<len; cur=g_sea_from[cur], idx++){
+            if (idx<lo||idx>hi) continue;
+            if (g_sea_traffic[cur]<0xFFFF) g_sea_traffic[cur]++;
+            int cx=cur%SCPS_W, cy=cur/SCPS_W;
+            int b=(cy/CHOKE_BUCKET)*CHOKE_BW+(cx/CHOKE_BUCKET);
+            if (!touched[b]){
+                touched[b]=true;
+                if (g_choke_bucket_cnt[b]<0xFFFF) g_choke_bucket_cnt[b]++;
+                if (rec && nb<CHOKE_MAX_RB) g_route_bucket[i][nb++]=(int16_t)b;
+            }
+        }
+        if (rec) g_route_nb[i]=(int8_t)nb;
+    }
+    if (getenv("SCPS_EMDIAG")){
+        int maxb=0; for (int b=0;b<CHOKE_NB;b++) if (g_choke_bucket_cnt[b]>maxb) maxb=g_choke_bucket_cnt[b];
+        fprintf(stderr,"[EMDIAG] n=%d n_valid=%d max_bucket=%d cap_days=%.1f\n", n, n_valid, maxb, cap_days);
+    }
+    /* SEUIL — le critère le plus SIMPLE et robuste petit/grand monde : un plancher
+     * ABSOLU (CHOKE_MIN_ROUTES routes distinctes s'y superposent) ET jamais moins que
+     * CHOKE_MIN_FRAC du trafic maritime RÉELLEMENT mesurable (n_valid — PAS `n` : à
+     * cap_days=-1 la seule raison qu'une route soit exclue est un bassin SÉPARÉ, jamais
+     * une simple distance — diluer sur `n` sous-compterait la concentration RÉELLE dès
+     * qu'un monde a plusieurs mers indépendantes) — le plus EXIGEANT des deux gagne.
+     * Empêche un monde à 2 routes de déclarer un choke sur sa SEULE route (concentration
+     * exige ≥2) ET empêche un monde à 200 routes de déclarer un choke sur un croisement
+     * de 3 routes par pur hasard (0 % significatif à cette échelle). */
+    int thr_abs = (int)tune_f("CHOKE_MIN_ROUTES", 2.f);
+    float frac  = tune_f("CHOKE_MIN_FRAC", 0.15f);
+    int thr_frac = (int)ceilf(frac*(float)n_valid);
+    int threshold = (thr_abs>thr_frac) ? thr_abs : thr_frac;
+    if (threshold<2) threshold=2;   /* concentration = au moins 2 routes distinctes, jamais 1 */
+    /* GRAPPES — un détroit large déborde souvent PLUSIEURS buckets ADJACENTS (chacun
+     * qualifiant à son compte) : un dédup par simple RAYON entre pics (comme
+     * compute_chokepoints) sous-fusionne ici, car deux pics de buckets voisins peuvent
+     * être plus loin l'un de l'autre que WG_CHOKE_DEDUP (mesuré : 24 « chokes » — le
+     * plafond WG_MAX_CHOKE — pour un seul corridor trafiqué). Fusion par COMPOSANTE
+     * CONNEXE de buckets qualifiants (4-adjacence sur la grille de buckets, BFS borné —
+     * CHOKE_NB est petit) : TOUT un corridor large devient UNE seule grappe. Balayage
+     * bucket en ordre croissant (déterministe, aucun tirage) pour l'ordre des composantes
+     * (donc pour QUI gagne le plafond WG_MAX_CHOKE si un monde en propose plus). */
+    g_n_choke_em=0;
+    for (int k=0;k<WG_MAX_CHOKE;k++){ g_choke_em[k].sx=g_choke_em[k].sy=-1; g_choke_em[k].region=-1; g_choke_em[k].width=0; g_choke_em[k].blockade=0.f; }
+    { bool qual[CHOKE_NB], visited[CHOKE_NB];
+      int queue[CHOKE_NB];
+      for (int b=0;b<CHOKE_NB;b++){ qual[b]=(g_choke_bucket_cnt[b]>=threshold); visited[b]=false; }
+      for (int b0=0;b0<CHOKE_NB;b0++){
+          if (!qual[b0] || visited[b0]) continue;
+          /* BFS 4-connexe sur la grille de buckets — accumule la composante ENTIÈRE
+           * (queue[0..qn)) et son PIC de sévérité (comp_w = le bucket le plus trafiqué
+           * de la composante — pas la somme : une route qui longe 3 buckets du même
+           * détroit ne doit compter qu'UNE fois dans la sévérité). */
+          int qh=0, qn=0; queue[qn++]=b0; visited[b0]=true;
+          int comp_w=g_choke_bucket_cnt[b0];
+          while (qh<qn){
+              int b=queue[qh++];
+              if (g_choke_bucket_cnt[b]>comp_w) comp_w=g_choke_bucket_cnt[b];
+              int bxg=b%CHOKE_BW, byg=b/CHOKE_BW;
+              static const int NX[4]={1,-1,0,0}, NY[4]={0,0,1,-1};
+              for (int k=0;k<4;k++){
+                  int nbx=bxg+NX[k], nby=byg+NY[k];
+                  if (nbx<0||nby<0||nbx>=CHOKE_BW||nby>=CHOKE_BH) continue;
+                  int nb=nby*CHOKE_BW+nbx;
+                  if (!qual[nb] || visited[nb]) continue;
+                  visited[nb]=true; queue[qn++]=nb;
+              }
+          }
+          /* la cellule REPRÉSENTANTE = le pic fin (g_sea_traffic, une vraie cellule mer)
+           * PARMI toutes les cellules des buckets de la composante. */
+          int px=-1, py=-1, pk=-1;
+          for (int qi=0; qi<qn; qi++){
+              int b=queue[qi]; int bxg=b%CHOKE_BW, byg=b/CHOKE_BW;
+              int x0=bxg*CHOKE_BUCKET, y0=byg*CHOKE_BUCKET;
+              int x1=x0+CHOKE_BUCKET; if (x1>SCPS_W) x1=SCPS_W;
+              int y1=y0+CHOKE_BUCKET; if (y1>SCPS_H) y1=SCPS_H;
+              for (int y=y0;y<y1;y++) for (int x=x0;x<x1;x++){
+                  int c=g_sea_traffic[scps_idx(x,y)];
+                  if (c>pk){ pk=c; px=x; py=y; }
+              }
+          }
+          if (px<0 || g_n_choke_em>=WG_MAX_CHOKE) continue;
+          g_choke_em[g_n_choke_em].sx=(int16_t)px; g_choke_em[g_n_choke_em].sy=(int16_t)py;
+          g_choke_em[g_n_choke_em].width=(int16_t)comp_w;
+          for (int qi=0; qi<qn; qi++) g_choke_bucket_to_em[queue[qi]]=g_n_choke_em;
+          g_n_choke_em++;
+      }
+    }
+    /* TENANT + BLOCUS (le blocus VIT de la SÉVÉRITÉ de la concentration — quelle part
+     * du trafic maritime mondial n'a d'autre choix que ce point précis — même plage
+     * [0.4,1.0] que la table statique, mais l'entrée est la fraction, pas l'étroitesse). */
+    for (int k=0;k<g_n_choke_em;k++){
+        g_choke_em[k].region = choke_em_find_tenant(w, g_choke_em[k].sx, g_choke_em[k].sy);
+        float sev = (n_valid>0) ? clampf((float)g_choke_em[k].width/(float)n_valid, 0.f, 1.f) : 0.f;
+        g_choke_em[k].blockade = clampf(0.4f + 0.6f*sev, 0.f, 1.f);
+    }
+    /* PASSE 2 — ASSIGNATION : réutilise le FOOTPRINT de buckets mémorisé en passe 1
+     * (g_route_bucket[i][]) — AUCUN second Dijkstra (le coût dominant, désormais évité :
+     * la passe 1 a déjà visité chaque cellule du chemin réel de la route, inutile de le
+     * refaire). Le PLUS trafiqué gagne si le chemin traverse plusieurs grappes retenues.
+     * Les routes au-delà de CHOKE_MAX_ROUTES (n dépasse le footprint mémorisé — ne
+     * devrait jamais arriver, l'appelant borne déjà à SCPS_MAX_ROUTES) restent -1. */
+    for (int i=0;i<n && i<CHOKE_MAX_ROUTES;i++){
+        if (g_n_choke_em<=0) break;
+        int best=-1, best_w=-1;
+        for (int j=0;j<g_route_nb[i];j++){
+            int k=g_choke_bucket_to_em[g_route_bucket[i][j]];
+            if (k<0) continue;
+            if (g_choke_em[k].width>best_w){ best_w=g_choke_em[k].width; best=k; }
+        }
+        out_choke[i]=best;
+    }
+    return g_n_choke_em;
 }

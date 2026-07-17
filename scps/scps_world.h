@@ -139,4 +139,24 @@ int  world_route_chokepoint_path(const World *w, int ax, int ay, int bx, int by,
 int  world_chokepoint_holder(const World *w, int choke_idx,
                              const int16_t *owner_of_region, int n_regions);
 
+/* M16 — C1 : LES CHOKES ÉMERGENTS (registre J CHOKE_EMERGENT, défaut ON). Remplace la
+ * table STATIQUE ci-dessus (posée à la genèse par la seule FORME) par une table dérivée
+ * de la CONCENTRATION DE TRAFIC réelle : là où les plus courts chemins de NOMBREUSES
+ * routes maritimes se superposent, c'est un vrai goulet (aucune alternative — tout le
+ * monde y passe), qu'il soit géométriquement étroit ou non. ax/ay/bx/by[0..n) = les
+ * ancres RÉSOLUES (world_region_sea_anchor, fait par l'appelant) de chaque route
+ * maritime VIVANTE, même ordre que l'appelant (déterministe — ordre de RouteNetwork,
+ * aucun tirage) ; cap_days = même contrat que world_sea_days_capped. Reconstruit
+ * ENTIÈREMENT la table interne (remplace le résultat du précédent appel — jamais un
+ * résidu inter-appels, aucune dépendance à l'historique du process : un rebuild est une
+ * fonction PURE de (w, les ancres passées) à cet instant, sûr à travers save/reload).
+ * Écrit dans out_choke[i] l'index (dans world_chokepoints(), qui renvoie CETTE table
+ * quand CHOKE_EMERGENT=1) du choke que la route i franchit RÉELLEMENT, -1 sinon. Renvoie
+ * le nombre de chokes émergents retenus. Coût : O(n × longueur de chemin) × 2 passes
+ * (comptage de la concentration, puis assignation par route) — à appeler PÉRIODIQUEMENT
+ * (scps_routes.c routes_recompute_chokes, scps_sim.c ≤180 j), JAMAIS au tick. */
+int world_chokepoints_emergent_rebuild(const World *w, const int *ax, const int *ay,
+                                        const int *bx, const int *by, int n,
+                                        float cap_days, int *out_choke);
+
 #endif /* SCPS_WORLD_H */
