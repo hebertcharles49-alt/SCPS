@@ -239,7 +239,7 @@ func _build_info_card(b: Dictionary, legal: Dictionary) -> Dictionary:
 			stocks[String(st.get("name", ""))] = int(st.get("stock", 0))
 	for cost in b.get("cost", []):
 		var name := String(cost.get("res", "Matière"))
-		var need := int(cost.get("qty", 0))
+		var need := _cost_qty_real(int(cost.get("qty", 0)))
 		var have := int(stocks.get(name, 0))
 		lines.append({
 			"label": name,
@@ -278,6 +278,25 @@ func _recipe_text(rec: Dictionary) -> String:
 func _fmt1(v) -> String:
 	var f := float(v)
 	return ("%d" % int(round(f))) if absf(f - round(f)) < 0.05 else ("%.1f" % f)
+
+## AUDIT D5 (2026-07-18) — le multiplicateur d'ÉTENDUE : `scps_building_roster`
+## (scps_api.c) rapporte la recette NUE (d->cost.qty[k], sans le facteur), mais le drain
+## réel (agency_build_acct, scps_agency.c:411-416 : `mult = agency_extent_mult(...)`,
+## consomme `c->qty[k]*mult`) et le gate de légalité (scps_build_legal_ex, scps_api.c:
+## 2454-2461 : `ext = 1.f + 0.15f*nreg`) appliquent TOUS DEUX ce facteur — seul le
+## nombre affiché sur la puce l'omettait (l'or affiché, lui, l'inclut déjà via
+## agency_build_gold). Rejoué ICI depuis `country_info().regions` (même compte que
+## agency_extent_mult : régions possédées par le joueur) plutôt que d'ajouter un lecteur
+## C, pour rester dans le seul fichier de ce chantier (D5).
+func _extent_mult() -> float:
+	var me: int = Sim.world.player()
+	var nreg := int(Sim.world.country_info(me).get("regions", 0))
+	return 1.0 + 0.15 * float(nreg)
+
+## la quantité RÉELLEMENT débitée d'une ligne de recette (miroir de `c->qty[k]*mult`
+## consommé par agency_build_acct) — arrondie comme le moteur (+0.5).
+func _cost_qty_real(qty_base: int) -> int:
+	return int(round(float(qty_base) * _extent_mult()))
 
 # ── ONGLET ÉDIFICES : une CARTE par bâtiment ──────────────────────────────────
 ## Un édifice verrouillé par la tech N'EST JAMAIS listé comme posable : il n'apparaît
@@ -378,7 +397,7 @@ func _edifice_card(w, b: Dictionary) -> Control:
 		flow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		vb.add_child(flow)
 		for c in cost:
-			_cost_chip(flow, String(c.get("res", "")), int(c.get("qty", 0)))
+			_cost_chip(flow, String(c.get("res", "")), _cost_qty_real(int(c.get("qty", 0))))
 
 	# L4 — PROCHAIN PALIER (edifice_succ), affiché MÊME s'il est verrouillé par la tech
 	var succ := int(w.edifice_succ(btype)) if w.has_method("edifice_succ") else -1

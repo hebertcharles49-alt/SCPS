@@ -6707,3 +6707,90 @@ telle quelle aurait RETIRÉ des verbes joueur fonctionnels du jeu.
 - **`army_panel.gd` toujours hors de la pile Échap** (`main.gd::major_open`/
   `_close_topmost` ne le listent pas) — signalé en D.2, non mandaté par cette vague,
   non touché.
+
+## MISSION UI-DOCTRINE — D5 : les ressources prises exactes (Menu Construction)
+
+### Découvertes
+
+- **Écart réel trouvé et corrigé** : `scps_building_roster` (`scps/scps_api.c:2654-2659`)
+  rapporte la recette NUE d'un édifice (`d->cost.qty[k]`, un int arrondi `+0.5f`) — mais
+  le drain réel (`agency_build_acct`, `scps/scps_agency.c:410-417`) consomme
+  `c->qty[k]*mult` où `mult = agency_extent_mult(econ, region)` (§7, `scps_agency.c:
+  297-303`) = `1 + 0.15·(régions possédées par le pays)`. Même le gate de légalité
+  (`scps_build_legal_ex`, `scps/scps_api.c:2454-2461`) applique CE MÊME facteur pour
+  décider si la matière est suffisante — seule la QUANTITÉ AFFICHÉE sur la puce
+  ressource (`_cost_chip`, construction_panel.gd) l'omettait. L'OR affiché, lui, était
+  déjà juste (`o->gold` = `agency_build_gold`, qui inclut `ext` en interne) — seul le
+  chiffre "×qty" à côté de l'icône ressource mentait, systématiquement PAR DÉFAUT
+  (même à 1 seule région : facteur ×1.15) et de PLUS EN PLUS pour un grand empire
+  (ex. 5 régions ⇒ ×1.75, donc la quantité réellement débitée dépasse de 75 % le
+  chiffre affiché avant ce correctif).
+- **Corrigé dans le SEUL fichier autorisé** (`construction_panel.gd`), sans toucher
+  `scps_api.c` ni rebuilder la DLL : ajout de `_extent_mult()`/`_cost_qty_real()`
+  (lignes ~282-299) qui rejouent la formule `1+0.15·nreg` depuis
+  `country_info(me).get("regions", 0)` — un champ DÉJÀ exposé et déjà consommé
+  ailleurs dans l'UI (country_panel.gd, memory_panel.gd, search_palette.gd…), donc
+  fiable et sans lecteur C à ajouter. Appliqué aux DEUX affichages de coût : la puce
+  visible de la carte (`_edifice_card`, ligne ~400) ET la ligne « recette N · stock
+  national M » du tooltip (`_build_info_card`, ligne ~242).
+- **Champs vérifiés SANS écart** (audit complet `scps_build_legal_ex` ↔
+  `agency_build_acct`, ordre des gates IDENTIQUE — port/estuaire, doublon/file, palier
+  tech, matière, or) : `days` (aucun multiplicateur nulle part, `EDIFICES[e].days`
+  brut des deux côtés) ; `gold` édifice (`o->gold` déjà ext-inclus via
+  `agency_build_gold`, ET calculé sur `cap_reg` = capitale — cohérent car le verbe
+  `player_build(type, -1)` construit TOUJOURS à la capitale côté façade, jamais sur
+  `target_pid`) ; `mcost` manufacture (`scps_manuf_cost` = formule EXACTE du drain
+  CMD_BUILD_MANUF, `MANUF_BUILD_COST*econ_world_ipm*decree_manuf_cost_mult`, déjà
+  documenté et vérifié identique) ; recette manufacture affichée (`_recipe_text`, via
+  `manuf_recipe`→`building_recipe_qty`) — c'est un RATIO de recette (commentaire
+  scps_econ.c:813 : « pour le MENU CONSTRUCTION »), pas une quantité absolue par tick,
+  donc rien à corriger. `entretien` (upkeep, édifice ET manuf) est documenté CÔTÉ
+  MOTEUR (`scps_econ.c:2760-2762`) comme un prix NOMINAL — pas le montant réellement
+  clippé si le crédit est court — exactement le même choix assumé que pour
+  `scps_manuf_cost` : intentionnel, pas un écart.
+
+### Pièges
+
+- **`agency_extent_mult` (§7, "l'ÉTENDUE renchérit ses institutions") est une formule
+  HARDCODÉE (`1.f + 0.15f*nreg`), PAS un tunable `tune_f`** — la dupliquer côté
+  GDScript (au lieu d'exposer un nouveau lecteur C) est un choix délibéré (rester dans
+  le seul fichier autorisé, éviter un rebuild DLL) mais FRAGILE : si un futur agent
+  change ce `0.15f` engine-side sans toucher `construction_panel.gd:291-299`, l'écart
+  revient. Commentaire laissé en place citant les deux sites source
+  (`scps_agency.c:297`, `scps_api.c:2454-2456`) pour qu'un grep sur `0.15` les
+  retrouve ensemble.
+- **Le harness de capture fenêtrée (motif `uipolish_shot.gd`) peut afficher un
+  dialogue MODAL "Fermeture anormale détectée"** (`ui/feedback.gd:88-98`,
+  `ConfirmationDialog`) par-dessus toute l'UI si une session précédente a été TUÉE
+  par un timeout (le drapeau `user://session_running.flag` n'est effacé qu'à la
+  fermeture PROPRE) — le nettoyage fait par `uipolish_shot.gd`/`shot_ui.gd` en tout
+  début de `_ready()` (avant `load(Main.tscn)`) ne suffit PAS : `feedback.gd` est
+  ajouté comme enfant nommé `"Feedback"` de `_main` (`main.gd:459-461`) et lit son
+  PROPRE flag dans SON `_ready()`, qui tourne pendant l'instanciation de Main.tscn,
+  donc AVANT que le nettoyage de la probe n'ait d'effet utile. Fix appliqué dans
+  `d5_resources_shot.gd` (`_dismiss_crash_dialog()`) : chercher
+  `_main.get_node_or_null("Feedback")`, puis `queue_free()` tout `ConfirmationDialog`
+  enfant avant la première capture. Un futur agent de screenshot devrait copier ce
+  motif (le dialogue masque la moitié du panneau sinon).
+- Les numéros de ligne cités dans `docs/CARTOGRAPHIE_UI.md` pour
+  `construction_panel.gd` (ligne « Entretien avant construction ») ont DÉCALÉ de ~18
+  lignes après l'ajout de `_extent_mult()`/`_cost_qty_real()` — remis à jour dans le
+  même commit (353-361,488-495 → 372-383,510-517) ; à surveiller pour toute future
+  édition de ce fichier (les refs de ligne dans ce doc pourrissent vite, pas de
+  mécanisme anti-dérive).
+
+### Restes
+
+- Rien d'ouvert côté ressources-prises pour le Menu Construction : l'or, les jours,
+  les quantités de matière (édifice) et le prix de manufacture sont maintenant tous
+  des miroirs exacts du drain. Le tooltip province (`province_panel_v2.gd`, lu mais
+  PAS touché — hors périmètre D5) n'affiche que des grandeurs de PRODUCTION déjà
+  bâtie (via `manuf_recipe(bid).out` matché à `_income`), pas des coûts de
+  construction — aucun écart de même nature à y chercher.
+- Si un futur agent ajoute la possibilité de bâtir un édifice sur une province AUTRE
+  que la capitale (actuellement `player_build(type, -1)` fige toujours la capitale
+  côté Édifices), il faudra revoir `o->gold` (actuellement calculé sur `cap_reg`
+  fixe, `scps_api.c:2661`) ET la nouvelle correction ressources (`_extent_mult()`
+  reste valide tel quel — le facteur ne dépend que du NOMBRE de régions du pays, pas
+  de LAQUELLE — mais `o->gold`, lui, deviendrait faux si le prix marché varie par
+  région).

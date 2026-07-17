@@ -134,7 +134,8 @@ Profondeur mesurée depuis l'écran de jeu NU (carte + chrome permanent visible)
 | Production/ressources (pays) | Rail G, tiroir Stocks (F3) | **1** | `sidebar_drawer.gd` |
 | Production (province, brute+manufacturée) | Fiche province (clic/V) → onglet Région (agrégat) | **1** | `province_panel_v2.gd:511-535` |
 | Entretien d'un édifice/manufacture | Fiche province (clic/V), hover sur le chip bâti | **1** (+ survol) | `province_panel_v2.gd:441-444,491-495` |
-| Entretien avant construction (devis) | Menu Construction, carte du bâtiment | **2** (province puis Construire…) | `construction_panel.gd:353-361,488-495` |
+| Entretien avant construction (devis) | Menu Construction, carte du bâtiment | **2** (province puis Construire…) | `construction_panel.gd:372-383,510-517` |
+| Coût matières avant construction (devis, quantités RÉELLES débitées) | Menu Construction, carte du bâtiment (puces ×qty) | **2** (province puis Construire…) | `construction_panel.gd:291-299,400` — AUDIT D5 (2026-07-18) : `scps_building_roster` (scps_api.c) renvoie la recette nue, sans le multiplicateur d'ÉTENDUE que le drain applique réellement (`agency_build_acct`, scps_agency.c:411-416) ; `_extent_mult()`/`_cost_qty_real()` le rejouent côté façade depuis `country_info().regions` pour que la puce affiche la quantité vraiment consommée |
 | Arbre de tech / recherche en cours | Touche T | **1** | `tech_panel.gd` |
 | Revenu de recherche décomposé | Topbar, cellule Savoir (survol) | **0** (survol) | `topbar.gd:282-301` |
 | Diplo/relations (liste, opinion, guerres) | Rail G, tiroir Diplomatie (F7) | **1** | `sidebar_drawer.gd::_draw_diplo` |

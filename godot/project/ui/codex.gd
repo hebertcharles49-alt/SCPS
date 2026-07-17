@@ -27,6 +27,11 @@ const DOMAINS := [
 		{"nom": "Mettre une coque en chantier (marine)", "ou": "Tiroir Armée (sidebar), section Flotte", "regle": "coût en cuivre (depuis le retrait du métal) ; nécessite un port"},
 		{"nom": "Lancer une campagne (attaquer une région)", "ou": "Panneau province (chip « Attaquer ici », depuis une région ennemie voisine)", "regle": "revalidé au drain : région à soi comme origine, chemin BFS existant — silencieux si échoue"},
 	]],
+	["Monnaie", [
+		{"nom": "Emprunter à un ordre (classe)", "ou": "Panneau Trésor (B) → onglet Monnaie, un bouton par classe", "regle": "≤0 demandé ⇒ le maximum disponible ; confirmation en 2 clics"},
+		{"nom": "Emprunt d'État (à un pays)", "ou": "Fenêtre diplomatique par pays → « Demander un emprunt »", "regle": "≤0 demandé ⇒ le maximum ; le vis-à-vis évalue (opinion, capacité)"},
+		{"nom": "Banqueroute volontaire", "ou": "Panneau Trésor (B) → onglet Monnaie", "regle": "efface la dette au prix d'une cicatrice de crédit ; confirmation en 2 clics, IRRÉVERSIBLE"},
+	]],
 	["Peuples", [
 		{"nom": "Réprimer une région (agitation)", "ou": "Panneau province (chip « Réprimer »)", "regle": "fait baisser l'agitation au prix de la légitimité/coercition"},
 		{"nom": "Assimiler (creuset culturel)", "ou": "Panneau province (chip « Assimiler »)", "regle": "pousse la région vers la culture dominante de l'empire"},
@@ -51,8 +56,8 @@ const DOMAINS := [
 		{"nom": "Engager l'âge courant", "ou": "Chip topbar « Engager : <âge> » → écran de récap d'âge", "regle": "l'IA s'engage automatiquement ; le joueur choisit son moment — une fois par âge"},
 	]],
 	["Foi & Savoir", [
-		{"nom": "Fonder / rallier une religion", "ou": "Créateur de foi (s'ouvre seul au 1er édifice religieux bâti)", "regle": "sous le plafond mondial (⌈empires/3⌉ racines) : au-delà, on RALLIE une foi existante au lieu d'en fonder une"},
-		{"nom": "Provoquer un schisme", "ou": "Panneau Religion (si rouvert)", "regle": "plafonné à 2 sectes par racine ; grisé au plafond"},
+		{"nom": "Fonder / rallier une religion", "ou": "Créateur de foi (s'ouvre seul au 1er édifice religieux bâti, rouvrable ensuite à la touche R)", "regle": "sous le plafond mondial (⌈empires/3⌉ racines) : au-delà, on RALLIE une foi existante au lieu d'en fonder une"},
+		{"nom": "Provoquer un schisme", "ou": "Créateur de foi (touche R, ou Fenêtre Empire → Population → « Foi d'État »)", "regle": "plafonné à 2 sectes par racine ; grisé au plafond"},
 		{"nom": "Composer sa culture (héritage/éthos/traditions)", "ou": "Créateur de culture, écran Nouvelle Partie SEULEMENT (avant la genèse)", "regle": "1 héritage + 1 éthos + 3 traditions (une par axe) ; fige le pays du joueur à la régénération"},
 	]],
 	["Fin de partie", [
