@@ -18,6 +18,12 @@
 > Fenêtre Empire → Population). Les curseurs fiscaux de la Fenêtre Empire → Économie
 > sont passés en LECTURE SEULE (lien vers le Trésor). Tous les détails ci-dessous sont
 > corrigés en place (pas une note à part) ; §D.1 garde l'historique barré pour mémoire.
+>
+> **CLÔTURE UI-DOCTRINE (D1-D7 complets, 2026-07-18, HEAD `49dcacb`+)** : la vague
+> entière est livrée — D4 glossaire hover (§C.4), D5 coûts matières exacts (§B ligne
+> « Coût matières »), D6 tuning sonore (§A.1 Options), D7 tailles d'icônes (verdict
+> rail-médaillons : FAUX POSITIF, l'art des PNG `menu_*` est lui-même un médaillon —
+> aucun doublon de code, cf. TROUVAILLES D7). Audit 3-clics final : cf. fin de §B.
 
 ---
 
@@ -154,8 +160,17 @@ Profondeur mesurée depuis l'écran de jeu NU (carte + chrome permanent visible)
 pour être atteinte (le pire cas mesuré est 2). ~~Le seul dépassement réel était
 QUALITATIF : la religion d'État redevenait introuvable (profondeur infinie) une
 fois fondée~~ — **CORRIGÉ (UI-DOCTRINE D2, 2026-07-18)** : touche R (profondeur 0)
-+ lien Fenêtre Empire → Population (profondeur 2). AUDIT RE-VÉRIFIÉ après D1-D3 :
-0 dépassement, qualitatif ou quantitatif, restant.
++ lien Fenêtre Empire → Population (profondeur 2).
+
+**AUDIT 3-CLICS FINAL (clôture UI-DOCTRINE D1-D7, 2026-07-18)** — re-vérifié après
+la vague complète : 0 dépassement, qualitatif ou quantitatif. Les SURFACES AJOUTÉES
+par la vague respectent toutes le principe : religion d'État **0** (touche R) ·
+pied d'actions de la fiche province **1** (clic province — les verbes Réprimer/
+Assimiler/Purger/Coloniser/Routes y sont désormais, ex-legacy) · volumes sonores
+**2** (Échap → Options, écran de menu) · coût matières RÉEL d'un bâtiment **2**
+(inchangé en profondeur, désormais EXACT — audit D5) · définitions de glossaire
+**+survol** sur des labels déjà à ≤ 2 (D4, jamais un clic de plus). Les tailles
+d'icônes (D7) ne changent aucune profondeur.
 
 ---
 
