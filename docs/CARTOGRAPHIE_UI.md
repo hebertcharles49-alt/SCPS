@@ -63,13 +63,13 @@ de la famille ivoire/brun/or) — seulement cette duplication de constantes.
 | Surface | Fichier | Ouverture | Ancrage | Thème | Structure | Fermeture |
 |---|---|---|---|---|---|---|
 | **Fiche province (legacy)** | `ui/province_panel.gd` | clic sur une province (`main.gd:790-808`, AUTOMATIQUE) | flottant, `(Frame.SIDEBAR_W+14, Frame.TOPBAR_H+12)` | VKit (dessin immédiat) | plat, repliable, pied fixe d'actions | ✕ ou Échap (`_close_topmost`, via `_clear_selection`) |
-| **Fiche province V2** — « le modèle » (TROUVAILLES) | `ui/province_panel_v2.gd` | touche **V** (`main.gd:562-569`) | flottant, **même ancre exacte** que la fiche legacy (`province_panel_v2.gd:45`) | ParchTheme (conteneurs natifs) | 3 onglets : Infrastructure · **Région** (vue agrégée nommée, conforme doctrine) · Militaire | **AUCUNE** (ni ✕, ni Échap — cf. §D.1) |
+| **Fiche province V2** — « le modèle » (TROUVAILLES) | `ui/province_panel_v2.gd` | touche **V** (`main.gd:562-569`) | flottant, **même ancre exacte** que la fiche legacy (`province_panel_v2.gd:45`) | ParchTheme (conteneurs natifs) | 3 onglets : Infrastructure · **Région** (vue agrégée nommée, conforme doctrine) · Militaire | Échap (pile `_panel_stack`, corrigé UI-POLISH — ni ✕ propre, cadre non fixé) |
 | Détail de province (sous-onglets) | `ui/province_detail.gd` | bouton « Détail » de la fiche legacy (`province_panel.gd` → `detail_requested`, `main.gd:106-111`) | flottant, même ancre que V2 | VKit (dessin immédiat) | 6 sous-onglets : Peuples · Production · Constructions · Journal · Main-d'œuvre · Contexte | ✕ ou Échap ; REMPLACE la fiche province tant qu'il est ouvert (zone contextuelle unique, `main.gd:221-230`) |
 | **Menu Construction** | `ui/construction_panel.gd` | bouton « Construire… » (fiche V2, détail, ou détail-onglet Constructions) — **aucun raccourci clavier direct** | flottant, se colle au bord droit du panneau appelant (`main.gd:182-200`) | ParchTheme | 2 onglets : Édifices · Manufactures ; une CARTE par bâtiment (icône+prix+effet+entretien+ressources+« Prochain palier ») | ✕ |
 | Panneau pays (étranger) | `ui/country_panel.gd` | clic sur une province d'un pays ≠ joueur | flottant, coin haut-droit (à gauche du rail D) | VKit | plat, 5 jauges + mission | ✕ ou Échap |
 | **Fenêtre diplomatique par pays** | `ui/country_actions.gd` | clic droit sur la carte, ou liste Diplomatie (tiroir F7) | flottant, tiroir collé au rail G (28 % largeur viewport, 420-540 px) | palette locale (`VKit.COL_PANEL`/`COL_EDGE` directement) | plat + 2 tiroirs repliables (Actions économiques / Actions antagonistes) + tiroir « Conditions de paix » | ✕ ou Échap |
-| **Fenêtre Empire** (gestion) | `ui/empire_window.gd` | touche **E** (`main.gd:570-578`) | flottant, `(150,80)` | ParchTheme | 4 onglets : Économie (réutilise `economy_page.gd`) · Population · Diplomatie · Conseil | **AUCUNE** (cf. §D.1) |
-| **Trésor / Budget V2** | `ui/budget_panel_v2.gd` | touche **B** (`main.gd:556-561`) | flottant, `(120,90)` | ParchTheme | 4 onglets : Balance · Monnaie · Marché · **Commerce (vide, hors périmètre assumé)** | **AUCUNE** (cf. §D.1) |
+| **Fenêtre Empire** (gestion) | `ui/empire_window.gd` | touche **E** (`main.gd:570-578`) | flottant, `(150,80)` | ParchTheme | 4 onglets : Économie (réutilise `economy_page.gd`) · Population · Diplomatie · Conseil | Échap (pile `_panel_stack`, corrigé UI-POLISH) |
+| **Trésor / Budget V2** | `ui/budget_panel_v2.gd` | touche **B** (`main.gd:556-561`) | flottant, `(120,90)` | ParchTheme | 4 onglets : Balance · Monnaie · Marché · **Commerce (vide, hors périmètre assumé)** | Échap (pile `_panel_stack`, corrigé UI-POLISH) |
 | Économie dans le temps (graphes) | `ui/economy_panel.gd` | tiroir Économie (F1) → bouton « Courbes dans le temps » (`sidebar.gd::charts_requested`) | flottant, centré, adaptatif | VKit + Easy Charts (`LineChart`) | plat, menu déroulant de métrique (Population/Trésor/Prospérité) | ✕ |
 | **Arbre de technologie** | `ui/tech_panel.gd` | touche **T** (`main.gd:546-555`), ou clic Savoir topbar (legacy), ou navigation (`InfoRef.TECH`) | flottant, quasi plein-cadre entre rail G et rail D | ParchTheme (chrome) + dessin immédiat (grille) | 3 couloirs horizontaux (Savoir/Forge/Société) × colonnes de paliers défilantes ; pied = dossier du nœud sélectionné + bande de métabolisation | ✕ ou Échap |
 | Popup de découverte technologique | `ui/tech_popup.gd` | automatique, enfant de `tech_panel.gd`, à la complétion d'une recherche (≥85 % puis cible change) | flottant, centré sur `tech_panel` | ParchTheme | plat (effets + flavor) | bouton propre |
@@ -257,15 +257,14 @@ membrane MOTS). Constat froid, sourcé fichier:ligne — pas un procès.
 
 ### D.1 — Les 5 plus graves
 
-1. **Échap ne ferme pas trois fenêtres majeures.** `province_panel_v2.gd` (V),
-   `budget_panel_v2.gd` (B) et `empire_window.gd` (E) sont ABSENTES à la fois de
-   `_close_topmost()` (`main.gd:745`) et de `major_open()` (`main.gd:736`) — alors
-   que le commentaire posé sur `KEY_ESCAPE` dit explicitement « tout panneau
-   affiché doit pouvoir être dismiss » (`main.gd:530`), et que `tech_panel.gd`/
-   `construction_panel.gd`/etc. (mêmes squelette et doctrine, à conteneurs
-   natifs) SONT bien dans la liste. Un joueur qui ouvre B/V/E ne peut les
-   refermer qu'en re-pressant la MÊME touche — Échap ouvre le menu par-dessus au
-   lieu de fermer le panneau au premier plan.
+1. ~~**Échap ne ferme pas trois fenêtres majeures.**~~ **CORRIGÉ (UI-POLISH,
+   2026-07-18, item 13, TROUVAILLES.md).** `province_panel_v2.gd` (V),
+   `budget_panel_v2.gd` (B) et `empire_window.gd` (E) sont désormais dans
+   `_close_topmost()`/`major_open()` (`main.gd`) — Échap ferme le panneau au
+   PREMIER PLAN (pile `_panel_stack`, un point d'écoute `visibility_changed` par
+   panneau) ; ouvrir un panneau MAJEUR (Trésor/Diplomatie) referme aussi
+   Construction (popup flottant non ancré) — la fiche province coexiste
+   toujours. Vérifié en probe réelle (`uipolish_shot.gd`).
 
 2. **Trois fiches province coexistent, avec des noms de classe INCOHÉRENTS.**
    `province_panel.gd` (legacy, dessin immédiat, s'ouvre AUTOMATIQUEMENT au clic
