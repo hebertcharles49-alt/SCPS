@@ -4373,7 +4373,22 @@ void econ_tick(WorldEconomy *e, float dt) {
                 re->strata[c].wealth += payroll * (coll[c]/coll_tot);   /* on rend à chacun ∝ sa contribution */
         /* le solde (depense − payroll) a quitté le trésor en DÉPENSE PUBLIQUE (armée,
          * travaux) : il ne s'agit plus de hoarder. L'expansion (§1) est, elle, portée par
-         * le signal-prix — le pouvoir d'achat rendu ici en est le carburant indirect. */
+         * le signal-prix — le pouvoir d'achat rendu ici en est le carburant indirect.
+         * MONNAIE M16 — C2 : LE DERNIER RÉSIDU M0 (§2.6) — ce solde ne créditait PERSONNE :
+         * une DESTRUCTION pure, ACTIVE CHAQUE mois sur CHAQUE province au surplus, qui
+         * SCALE avec le trésor (pas une constante) — mesuré (audit M0 dédié, TROUVAILLES
+         * M16) comme le site DOMINANT restant après M15-F2 (ai_speculate_tick n'expliquait
+         * que ~45 % du résidu 209s3). Même famille que FX_SOLDE/FX_NAVY déjà convertis
+         * (item 5, « armée, travaux » → les LABORER qui la touchent, soldats et
+         * travailleurs de chantier) : crédité à CLASS_LABORER de CETTE province — aucun
+         * flux FX_* nouveau (FX_REDEP au-dessus reste la vérité TRÉSOR, inchangée ; ceci
+         * n'ajoute qu'un crédit de richesse manquant, comme les items 5 voisins).
+         * Kill-switch REDEP_REMAINDER_CONSERVED (défaut 1) : =0 legacy EXACT (le solde
+         * disparaît, golden pré-M16 byte-identique). */
+        if (tune_f("REDEP_REMAINDER_CONSERVED",1.f)>0.f){
+            float remainder = depense - payroll;
+            if (remainder>0.f) re->strata[CLASS_LABORER].wealth += remainder;
+        }
 
         /* MONNAIE M3b-v2 — le débit DIFFÉRÉ de l'achat d'État (§3 plus haut) : appliqué ICI,
          * APRÈS entretien/court/admin/redépense, pour que ces sinks EXISTANTS gardent la

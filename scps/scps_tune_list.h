@@ -1613,6 +1613,14 @@
      * routes maritimes — le plancher absolu domine, 15 % de 3 arrondi ne suffirait pas seul)
      * ET aux mondes GRANDS (100+ routes — 15 % évite qu'un pur hasard de 3 routes qui se
      * croisent sur un océan immense passe pour un goulet mondial). */ \
-    X(CHOKE_MIN_FRAC,                   0.15f)
+    X(CHOKE_MIN_FRAC,                   0.15f) \
+    /* MONNAIE M16 — C2 : LE DERNIER RÉSIDU M0 (§2.6, scps_econ.c ~4368-4380, la redépense
+     * publique). Le solde (depense − payroll, « armée, travaux ») ne créditait personne —
+     * DESTRUCTION pure, mensuelle, sur CHAQUE province au surplus, scalant avec le trésor.
+     * Site DOMINANT du résidu 209s3 restant après M15-F2 (audit M0 dédié, TROUVAILLES M16).
+     * 1 (défaut) : le solde rejoint CLASS_LABORER de la province (même famille que FX_SOLDE/
+     * FX_NAVY déjà convertis, item 5). 0 = kill-switch EXACT (le solde disparaît, golden
+     * pré-M16 byte-identique). */ \
+    X(REDEP_REMAINDER_CONSERVED,        1.0f)
 
 #endif /* SCPS_TUNE_LIST_H */
