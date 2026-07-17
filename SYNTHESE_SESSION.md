@@ -1,4 +1,24 @@
-# SYNTHÈSE DE SESSION — handoff roulant (2026-07-16 nuit, mise à jour post-FAUSTIEN)
+# SYNTHÈSE DE SESSION — handoff roulant (2026-07-17, mise à jour post-M14)
+
+## M14 AUDIT-2 + SAVOIR ×2 (HEAD 76994fa, SAVE v96, make test 39/39 — PREMIÈRE)
+- **SAVOIR ×2** (ee79945) : SAVOIR_W_* doublés (décision joueur, testé par override avant
+  bascule) — médiane 37→48 techs, machines faustiennes ×1.7-2.8, zéro-tech 0, golden
+  INCHANGÉ (aucune tech ne tombe en 12 ans).
+- **M14** (10 commits, tag pre-m14) — audit externe n°2, 9/9 confirmés : B1 trésor
+  négatif n'inverse plus les paiements (6 sites, grep généralisé) · B2 dette fantôme
+  fermée (econ_region_treasury_add) + TOCTOU can_spend/spend · B3 amortissement sur
+  dette périmée = 10.2 or DÉTRUITS/tick mesurés au banc → 0.004 résidu float · B4
+  markup réservé au plafond · B5 CountryDebt ventilé to_elite/to_bourgeois (v96 —
+  l'emprunt bourgeois ne rembourse plus les élites) · B6 une-seule-vérité COMPLÉTÉE
+  (17 sites convertis, dont le don mercantile de fronde qui s'évaporait) · B7 échéance
+  UI corrigée (~4.6× trop basse ; ScpsDebt.due, DLL debug+release rebuildées) · B8
+  sliders restaurés [0.1, 2.0] (la spec joueur) · B9 setenv shim + stack + fixture ⇒
+  **39/39 bancs Windows pour la première fois**. Sweep apparié : invariant 0/9 des
+  deux côtés, banqueroutes −8 %, colonisation +16 %, dette trackée ×3.1 (la fantôme
+  devenue visible — le but).
+- RESTES : site WILD péages parqués (désigné depuis M11, toujours ouvert) · M13 (#119 —
+  breaches giga ~3/100, découvertes or 47 %, inflation déflationniste à l'échelle) ·
+  arbitrages joueur dormants (mécanismes morts œil-neuf, tech→rendement) · EXPORT.
 
 ## TECH + FINS + FAUSTIEN — 3 vagues moteur livrées après l'UI-MONNAIE (HEAD a8658f5)
 - **TECH** (pre-tech, 6 commits) : le 22 % d'empires à zéro tech = des pays SANS IA
