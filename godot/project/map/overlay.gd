@@ -219,6 +219,8 @@ const SEL_GOLD := Color(0.86, 0.68, 0.26)   ## or de sélection (net, au-dessus 
 var _roads := []          ## [{points, level, nprov, key}] — réseau de routes (façade + méta locale)
 var _road_start := {}     ## clé de route → ANNÉE de début de chantier (croissance 1 an/province)
 var _roads_dirty := true  ## le réseau commercial a pu bouger → recharger les routes
+var _road_net := {}       ## ANTISPAG cache : polylignes consolidées (dédup + tier d'épaisseur), voir _ensure_road_network
+var _road_net_valid := false  ## false ⇒ à reconstruire (réseau changé OU un chantier grandit encore)
 var _rivers := []         ## [Vector3(x, y, ang)] — nuage de points (façade) gardé pour l'anti-bâti SUR le fil
 var _river_hash := {}     ## hash spatial du fil de rivière (Vector2 par cellule) — snap des frontières
 var _mv: Node2D = null    ## le MapView parent (porte la projection GLOBE monde→écran)
@@ -249,8 +251,32 @@ const ROAD_FOREST_A := 0.38   ## SOUS LA CANOPÉE : la route se devine — relev
 #  · ASSETS : mobilier semé à l'ARC (espacement RÉGULIER, indépendant de la densité de points).
 const ROAD_RESAMPLE := 2.0       ## pas d'échantillonnage du tracé (cellules) → points réguliers
 const ROAD_SNAP_TRIM := 4.5      ## rayon de nettoyage des points près de l'ancre de ville (cellules)
-const SPAG_DIST := 1.5           ## MESURE TEMPORAIRE (baseline ANTISPAG A1) — pas dans la version tag
-const SPAG_COS := 0.90
+# ── ANTISPAG (2026-07-17) : consolidation VISUELLE des routes en TRONCS — display-only, aucune
+# sémantique. Le magnétisme de couloir existait déjà (nearest-point glouton, rayon 0.65 cellule,
+# voisinage ±1, une seule passe) : renforcé (rayon → ROAD_MAGNET_R, ±ROAD_MAGNET_RING, 2 passes).
+# ESSAYÉ PUIS ABANDONNÉ (mesuré, cf. TROUVAILLES) : un CONSENSUS DE GRILLE (chaque point vote dans
+# une cellule, ≥2 routes dans la cellule ⇒ toutes fusionnent sur le CENTROÏDE) — plus simple sur le
+# papier, mais le centroïde n'est ni sur l'un ni l'autre tracé d'origine et n'a AUCUNE conscience de
+# la continuité le long de la route : une cellule qui capte incidemment un CROISEMENT (pas un couloir
+# partagé) tire un point isolé loin de ses voisins → zigzag artificiel qui a mesurément AUGMENTÉ le
+# spaghetti (dump JSON + analyse hors-Godot : avant 1108 paires réelles [écart ≥0.25 cellule],
+# grille 1878 — pire). Le glouton nearest-point, lui, ne réassigne un point QUE vers une position qui
+# existe déjà sur une autre route (jamais une moyenne inédite) : plus prudent, mesuré meilleur. Rayon
+# élargi jusqu'à 2.2 / 4 passes testé aussi (cf. TROUVAILLES) : plafonne vers ~47-48 % quel que soit
+# le rayon au-delà de ~1.4 (2 passes suffisent — testé jusqu'à 4, aucun gain de plus) ; retenu R=1.4
+# comme meilleur compromis efficacité/prudence (au-delà, rayon > un pas de rééchantillonnage entier
+# = risque de coller des routes qui se croisent sans corridor commun, pour un gain marginal +1.6 pt).
+const ROAD_MAGNET_R := 1.4               ## cellules — rayon de collage (était 0.65)
+const ROAD_MAGNET_R2 := ROAD_MAGNET_R * ROAD_MAGNET_R
+const ROAD_MAGNET_RING := 3              ## voisinage de cellules de hash sondé (couvre ROAD_MAGNET_R)
+const ROAD_MAGNET_PASSES := 2            ## convergence : 2 passes suffisent (mesuré, cf. TROUVAILLES)
+const ROAD_MULT_TIERS := 3               ## paliers d'épaisseur ∝ MULTIPLICITÉ (combien de routes logiques
+                                          ## empruntent le même tronçon) — 1 capillaire, 2-3 dessertes, 4+ tronc
+const ROAD_TIER_WSCALE := [1.0, 1.28, 1.55]  ## facteur d'épaisseur par palier (indices 0..2 ↔ tier 1..3)
+const SPAG_DIST := 1.5                   ## cellules — métrique « spaghetti » : 2 segments à moins de ça…
+const SPAG_COS := 0.90                   ## …et quasi-parallèles (cos > .90 ⇒ ~25°) sans être fusionnés…
+const SPAG_MIN_OFFSET := 0.25            ## …ET séparés d'un ÉCART PERPENDICULAIRE réel (cf. découverte
+## ci-dessous — sans ce filtre la mesure comptait aussi des paires SANS écart visible)
 # NOTE (mission ROUTES, audit 2026-07-17) : une PREMIÈRE piste « routes en tuiles autotile cardinal
 # + ponts en sprites modulaires » a été esquissée ici (consts ROADS_IN_SHADER/USE_ROAD_TILES/
 # ROUTE_GRID_K/…, vars _road_tiles/_route_meshes/_bridge_tex/_bridges) puis ABANDONNÉE au profit du
@@ -1265,9 +1291,14 @@ func _ensure_roads(prebuild := false) -> void:
 		return
 	_roads = w.road_paths()
 	_augment_roads(w)
+	_road_net_valid = false   # ANTISPAG : le réseau a changé → les polylignes consolidées se refont
 	# les PONTS : là où le tracé LISSE traverse l'eau de rivière carvée — milieu + tangente.
+	# Dédup (`bkey`) : après magnétisme renforcé, 2 routes qui PARTAGENT un franchissement
+	# convergent sur des points quasi-identiques — sans ça le même pont s'ajoutait 2× (overdraw
+	# inoffensif mais trompeur pour un futur audit qui compterait les ponts).
 	_ink_bridges.clear()
 	var rfb: Image = _carved_river_field()
+	var bseen := {}
 	if rfb != null:
 		for rd0 in _roads:
 			var pts0: PackedVector2Array = rd0["points"]
@@ -1280,7 +1311,10 @@ func _ensure_roads(prebuild := false) -> void:
 					var mid: Vector2 = pts0[clampi((inw0 + k) / 2, 0, pts0.size() - 1)]
 					var t0: Vector2 = (pts0[mini(k, pts0.size() - 1)] - pts0[maxi(inw0 - 1, 0)]).normalized()
 					if t0.length() > 0.5:
-						_ink_bridges.append({"w": mid, "t": t0})
+						var bkey := str(int(round(mid.x * 2.0))) + "_" + str(int(round(mid.y * 2.0)))
+						if not bseen.has(bkey):
+							bseen[bkey] = true
+							_ink_bridges.append({"w": mid, "t": t0})
 					inw0 = -1
 	for rd in _roads:
 		if not _road_start.has(rd["key"]):
@@ -1297,7 +1331,6 @@ func _augment_roads(w) -> void:
 	var sea: Image = w.layer_image(LAYER_WATER)
 	var rf: Image = _carved_river_field()
 	var mv := _mv_ref()
-	var bundle := {}   # hash spatial (cellule 1.0) des points DÉJÀ tracés — magnétisme de couloir
 	for rd in _roads:
 		var pts: PackedVector2Array = rd["points"]
 		# PROVINCES traversées (cadence du chantier 1 an/province) — sur le tracé BRUT (A*).
@@ -1325,43 +1358,61 @@ func _augment_roads(w) -> void:
 			if _region_anchor.has(rb):
 				var a1: Vector2 = _region_anchor[rb]
 				pts = _snap_endpoint(pts, mv.tile_anchor_world(a1.x, a1.y), false)
-		# 3) ANTI-DÉDOUBLEMENT — le MAGNÉTISME DE COULOIR : un point qui passe à ≤ 0.65 cellule
-		#    d'une route DÉJÀ tracée se COLLE dessus → les A* voisins PARTAGENT la chaussée au
-		#    lieu de dessiner deux lignes parallèles « far-west ». Les 3 points d'about restent
-		#    libres (le raccord au bourg prime). Hash spatial, une passe par route.
-		for k in range(3, pts.size() - 3):
-			var p5: Vector2 = pts[k]
-			var gx := int(floor(p5.x))
-			var gy := int(floor(p5.y))
-			var bestd := 0.42          # 0.65² : rayon de collage au couloir
-			var bestp := p5
-			for oy in range(-1, 2):
-				for ox in range(-1, 2):
-					var kk := (gx + ox) * 100000 + (gy + oy)
-					if bundle.has(kk):
-						for q5 in bundle[kk]:
-							var dd: float = p5.distance_squared_to(q5)
-							if dd < bestd:
-								bestd = dd
-								bestp = q5
-			pts[k] = bestp
-		for k in range(pts.size()):    # cette route ENTRE dans le couloir commun
-			var kk2 := int(floor(pts[k].x)) * 100000 + int(floor(pts[k].y))
-			if not bundle.has(kk2):
-				bundle[kk2] = []
-			bundle[kk2].append(pts[k])
 		rd["ra"] = ra            # mémorisé : le bâti du bourg s'organise le long des routes de SA ville
 		rd["rb"] = rb
 		rd["points"] = pts
+	# 3) ANTI-DÉDOUBLEMENT — le MAGNÉTISME DE COULOIR (ANTISPAG A2, renforcé) : un point qui passe
+	#    à ≤ ROAD_MAGNET_R cellules d'une route DÉJÀ tracée se COLLE dessus → les A* voisins
+	#    PARTAGENT la chaussée au lieu de dessiner deux lignes quasi-parallèles. Les 3 points
+	#    d'about restent libres (le raccord au bourg prime). ITÉRATIF (ROAD_MAGNET_PASSES) : une
+	#    route traitée TÔT (peu d'attracteurs encore posés) profite, à la passe suivante, des
+	#    attracteurs ajoutés PLUS TARD par des routes voisines — sans ça l'ordre de `_roads`
+	#    biaisait quel tracé « gagnait » le couloir commun.
+	for _pass in range(ROAD_MAGNET_PASSES):
+		var bundle := {}   # hash spatial (cellule 1.0) des points DÉJÀ tracés CETTE passe
+		for rd in _roads:
+			var pts: PackedVector2Array = rd["points"]
+			for k in range(3, pts.size() - 3):
+				var p5: Vector2 = pts[k]
+				var gx := int(floor(p5.x))
+				var gy := int(floor(p5.y))
+				var bestd := ROAD_MAGNET_R2
+				var bestp := p5
+				for oy in range(-ROAD_MAGNET_RING, ROAD_MAGNET_RING + 1):
+					for ox in range(-ROAD_MAGNET_RING, ROAD_MAGNET_RING + 1):
+						var kk := (gx + ox) * 100000 + (gy + oy)
+						if bundle.has(kk):
+							for q5 in bundle[kk]:
+								var dd: float = p5.distance_squared_to(q5)
+								if dd < bestd:
+									bestd = dd
+									bestp = q5
+				pts[k] = bestp
+			for k in range(pts.size()):    # cette route ENTRE dans le couloir commun
+				var kk2 := int(floor(pts[k].x)) * 100000 + int(floor(pts[k].y))
+				if not bundle.has(kk2):
+					bundle[kk2] = []
+				bundle[kk2].append(pts[k])
+			rd["points"] = pts
 
-## range un tronçon de route dans son bucket (artère/desserte × plein/sous-canopée).
-func _road_bucket(run: PackedVector2Array, mv, is_main: bool, in_forest: bool,
-		pm: Array, pn: Array, pmf: Array, pnf: Array) -> void:
+## clé quantizée (résolution ROAD_SEGKEY_RES) d'un SEGMENT — identité pour la dédup/multiplicité
+## de `_ensure_road_network` (tronc consolidé). Volontairement COARSE (0.5 cellule, pas 0.25) :
+## découverte (cf. TROUVAILLES) — même après magnétisme réussi, l'échantillonnage indépendant de
+## 2 routes déphase légèrement où tombe le « joint » entre segments (écart perpendiculaire quasi
+## nul, ~0.02-0.1 cellule, mais assez pour rater une clé à 0.25). Élargir la clé fait reconnaître
+## ces quasi-doublons comme le MÊME tronçon (dédup + comptage de multiplicité plus fidèles), SANS
+## toucher aux points RENDUS (seule la décision « déjà encré ? » utilise cette clé, pas le tracé).
+const ROAD_SEGKEY_RES := 2.0    ## points / cellule (2.0 ⇒ résolution 0.5 cellule)
+func _seg_key(a: Vector2, b: Vector2) -> String:
+	var ka := int(a.x * ROAD_SEGKEY_RES) * 8388608 + int(a.y * ROAD_SEGKEY_RES)
+	var kb := int(b.x * ROAD_SEGKEY_RES) * 8388608 + int(b.y * ROAD_SEGKEY_RES)
+	return str(mini(ka, kb)) + "_" + str(maxi(ka, kb))
+
+## range un tronçon de route dans son bucket (artère/desserte × sous-canopée × TIER d'épaisseur).
+func _road_bucket(polys: Dictionary, run: PackedVector2Array, mv, is_main: bool, in_forest: bool, tier: int) -> void:
 	var ip := _road_iso(run, mv)
-	if is_main:
-		(pmf if in_forest else pm).append(ip)
-	else:
-		(pnf if in_forest else pn).append(ip)
+	var bkey: String = ("main" if is_main else "minor") + str(tier) + ("f" if in_forest else "")
+	(polys[bkey] as Array).append(ip)
 
 ## projette une polyligne MONDE en iso (helper du dessin de routes).
 func _road_iso(poly: PackedVector2Array, mv) -> PackedVector2Array:
@@ -1393,14 +1444,109 @@ func _road_partial(pts: PackedVector2Array, frac: float) -> PackedVector2Array:
 		out.append(pts[i + 1])
 	return out
 
-## MESURE TEMPORAIRE (baseline ANTISPAG A1, PAS dans la version tag — juste copiée pour mesurer
-## la métrique AVANT sur la géométrie EXISTANTE, avant tout changement de _augment_roads).
-const SPAG_MIN_OFFSET := 0.25
+## ANTISPAG A2 — reconstruit (ou sert du CACHE) les polylignes ROUTE consolidées : dédup EXACTE des
+## tronçons partagés (un couloir commun ne s'encre qu'UNE fois, à la première route qui le porte)
+## + TIER d'épaisseur ∝ MULTIPLICITÉ (combien de routes logiques empruntent le tronçon — « troncs
+## épais, capillaires fins »). Caché : reconstruit SEULEMENT si `_road_net_valid` est tombé (réseau
+## changé, cf. `_ensure_roads`) OU si un chantier grandit encore (frac<1 quelque part — la
+## croissance organique change le tracé PARTIEL affiché à chaque frame). Un monde mûr stable ne
+## repaie donc plus ce coût par frame (budget mesuré : cf. TROUVAILLES, <1 ms sur un monde mûr).
+func _ensure_road_network() -> void:
+	var growing := false
+	for rd in _roads:
+		var st: int = _road_start.get(rd["key"], Sim.day_count)
+		var nprov: int = maxi(1, int(rd.get("nprov", 1)))
+		if float(Sim.day_count - st) / (float(nprov) * 365.0) < 1.0:
+			growing = true
+			break
+	if _road_net_valid and not growing:
+		return
+	var mv := _mv_ref()
+	# PASSE 1 : multiplicité de chaque tronçon (clé quantizée) sur la portion BÂTIE de chaque route.
+	var mult := {}
+	var built_polys := []
+	for rd in _roads:
+		var pts: PackedVector2Array = rd["points"]
+		if pts.size() < 2:
+			built_polys.append(PackedVector2Array())
+			continue
+		var st: int = _road_start.get(rd["key"], Sim.day_count)
+		var nprov: int = maxi(1, int(rd.get("nprov", 1)))
+		var frac := clampf(float(Sim.day_count - st) / (float(nprov) * 365.0), 0.0, 1.0)
+		var poly := _road_partial(pts, frac)
+		built_polys.append(poly)
+		if poly.size() < 2:
+			continue
+		for k in range(poly.size() - 1):
+			var kseg := _seg_key(poly[k], poly[k + 1])
+			mult[kseg] = int(mult.get(kseg, 0)) + 1
+	# PASSE 2 : construit les polylignes par bucket (artère/desserte × sous-canopée × tier), en
+	# dédupliquant (un tronçon déjà encré par une route précédente ne se redessine pas).
+	var polys := {}
+	for t in range(1, ROAD_MULT_TIERS + 1):
+		polys["main%d" % t] = []
+		polys["minor%d" % t] = []
+		polys["main%df" % t] = []
+		polys["minor%df" % t] = []
+	var seen := {}
+	for ri in range(_roads.size()):
+		var rd: Dictionary = _roads[ri]
+		var poly: PackedVector2Array = built_polys[ri]
+		if poly.size() < 2:
+			continue
+		var is_main: bool = int(rd.get("level", 1)) <= 0
+		var run := PackedVector2Array()
+		var run_forest := false
+		var run_tier := 1
+		for k in range(poly.size() - 1):
+			var a7: Vector2 = poly[k]
+			var b7: Vector2 = poly[k + 1]
+			var kseg := _seg_key(a7, b7)
+			var mid := (a7 + b7) * 0.5
+			var inf := _forest_at(int(mid.x), int(mid.y))
+			var tier := clampi(int(mult.get(kseg, 1)), 1, ROAD_MULT_TIERS)
+			if seen.has(kseg) or (run.size() >= 2 and (inf != run_forest or tier != run_tier)):
+				if run.size() >= 2:
+					_road_bucket(polys, run, mv, is_main, run_forest, run_tier)
+				run = PackedVector2Array()
+				if seen.has(kseg):
+					continue
+			seen[kseg] = true
+			if run.is_empty():
+				run.append(a7)
+				run_forest = inf
+				run_tier = tier
+			run.append(b7)
+		if run.size() >= 2:
+			_road_bucket(polys, run, mv, is_main, run_forest, run_tier)
+	_road_net = polys
+	_road_net_valid = true
+
+## distance PERPENDICULAIRE du milieu de `s` à la droite portée par le segment `o` (projection —
+## retire la composante LE LONG de `o`, ne garde que l'écart LATÉRAL). Décisif pour la métrique
+## spaghetti : cf. découverte ci-dessous, deux segments peuvent avoir des milieux proches SANS
+## être visuellement décalés (juste déphasés le long de la MÊME droite).
 func _perp_offset(smid: Vector2, oa: Vector2, odir: Vector2) -> float:
 	var d: Vector2 = smid - oa
 	var along: float = d.dot(odir)
 	return (d - odir * along).length()
 
+## ANTISPAG A1 — MÉTRIQUE de spaghetti (utilisée par viewer_audit) : compte les SEGMENTS qui ont
+## encore un voisin PROCHE (< SPAG_DIST cellules, milieu à milieu), QUASI-PARALLÈLE (cos > SPAG_COS)
+## ET RÉELLEMENT DÉCALÉ (écart perpendiculaire ≥ SPAG_MIN_OFFSET), appartenant à une AUTRE route
+## logique. Le test d'ÉCART (pas une comparaison de clé — DÉLIBÉRÉ, voir découverte) EST le critère
+## de fusion : deux segments à écart quasi nul sont déjà visuellement la MÊME encre, peu importe si
+## leurs clés de dédup (`_seg_key`, utilisées ailleurs pour le rendu) coïncident ou non.
+## DÉCOUVERTE (analyse hors-Godot, cf. TROUVAILLES) : sans le filtre SPAG_MIN_OFFSET, la mesure
+## comptait ~78-82 % de FAUX POSITIFS — des paires de segments dont le tracé A* CONVERGE déjà
+## (magnétisme réussi, sommets partagés) mais dont l'ÉCHANTILLONNAGE indépendant par route déphase
+## la DÉCOUPE en segments (le « joint » entre 2 segments ne tombe pas au même endroit sur les 2
+## tracés) → écart perpendiculaire quasi nul (médiane 0.02-0.1 cellule, donc SOUS le pixel à tout
+## zoom de lecture) : c'est de l'encre redondante INVISIBLE, pas du spaghetti VISIBLE. Le vrai
+## défaut signalé par le joueur — deux traits visuellement écartés — ne représentait qu'environ
+## 15-20 % du total brut. Filtrer par écart perpendiculaire isole le signal réel. Hash spatial
+## (cellule SPAG_DIST) pour rester linéaire même sur un monde à plusieurs milliers de points.
+## Mesuré en cellules (espace monde), pas en pixels écran : indépendant du zoom.
 func _count_spaghetti_segments() -> int:
 	var segs := []
 	for ri in range(_roads.size()):
@@ -1866,70 +2012,46 @@ func _draw_iso(w, mv: Node2D) -> void:
 	if zoom >= ROAD_ZOOM_MIN:
 		_ensure_roads()
 		if not _roads.is_empty():
-			var polys_main := []
-			var polys_minor := []
-			var polys_main_f := []    # tronçons SOUS LA CANOPÉE (forêt) : la route s'efface
-			var polys_minor_f := []
-			var seen := {}   # dédup : un TRONÇON partagé (couloir commun) ne s'encre qu'UNE fois
-			for ri in range(_roads.size()):
-				var rd: Dictionary = _roads[ri]
-				var pts: PackedVector2Array = rd["points"]
-				if pts.size() < 2:
-					continue
-				# croissance à GRAIN JOUR (l'année entière sautait 0→1 au nouvel an = « instantané ») :
-				# une route POUSSE sur ~1 an par province traversée, visible au fil des ticks.
-				var st: int = _road_start.get(rd["key"], Sim.day_count)
-				var nprov: int = maxi(1, int(rd.get("nprov", 1)))
-				var frac := clampf(float(Sim.day_count - st) / (float(nprov) * 365.0), 0.0, 1.0)
-				var poly := _road_partial(pts, frac)
-				if poly.size() < 2:
-					continue
-				var is_main: bool = int(rd.get("level", 1)) <= 0
-				# découpe en SOUS-POLYLIGNES : segments inédits (dédup) ET homogènes (forêt ou
-				# non) — sous la canopée le tronçon bascule dans le bucket « effacé ».
-				var run := PackedVector2Array()
-				var run_forest := false
-				for k in range(poly.size() - 1):
-					var a7: Vector2 = poly[k]
-					var b7: Vector2 = poly[k + 1]
-					var ka := int(a7.x * 4.0) * 8388608 + int(a7.y * 4.0)
-					var kb := int(b7.x * 4.0) * 8388608 + int(b7.y * 4.0)
-					var kseg := str(mini(ka, kb)) + "_" + str(maxi(ka, kb))
-					var mid := (a7 + b7) * 0.5
-					var inf := _forest_at(int(mid.x), int(mid.y))
-					if seen.has(kseg) or (run.size() >= 2 and inf != run_forest):
-						if run.size() >= 2:
-							_road_bucket(run, mv, is_main, run_forest, polys_main, polys_minor, polys_main_f, polys_minor_f)
-						run = PackedVector2Array()
-						if seen.has(kseg):
-							continue
-					seen[kseg] = true
-					if run.is_empty():
-						run.append(a7)
-						run_forest = inf
-					run.append(b7)
-				if run.size() >= 2:
-					_road_bucket(run, mv, is_main, run_forest, polys_main, polys_minor, polys_main_f, polys_minor_f)
+			# ANTISPAG A2 : polylignes déjà DÉDUPLIQUÉES + réparties par TIER de multiplicité
+			# (cache — cf. `_ensure_road_network`, recalculé seulement si le réseau bouge ou
+			# qu'un chantier grandit encore).
+			_ensure_road_network()
 			# PAR POLYLIGNE (joints RONDS aux coudes) ; l'ordre des passes fait le modelé :
 			# ombre sépia → terre crème → filet de lumière. SOUS LA CANOPÉE : un seul trait
 			# ténu (α×ROAD_FOREST_A) — on DEVINE le chemin entre les masses, il ne coupe plus
-			# la forêt en deux.
-			for pl2 in polys_minor_f:
-				draw_polyline(pl2, Color(ROAD_MINOR_MAIN.r, ROAD_MINOR_MAIN.g, ROAD_MINOR_MAIN.b,
-					ROAD_MINOR_MAIN.a * ROAD_FOREST_A), _w(zoom, 0.36, 0.8, 1.5), true)
-			for pl2 in polys_main_f:
-				draw_polyline(pl2, Color(ROAD_MAIN.r, ROAD_MAIN.g, ROAD_MAIN.b,
-					ROAD_MAIN.a * ROAD_FOREST_A), _w(zoom, 0.62, 1.3, 2.4), true)
-			for pl2 in polys_minor:
-				draw_polyline(pl2, ROAD_MINOR_EDGE, _w(zoom, 0.65, 1.4, 2.6), true)
-			for pl2 in polys_minor:
-				draw_polyline(pl2, ROAD_MINOR_MAIN, _w(zoom, 0.36, 0.8, 1.5), true)
-			for pl2 in polys_main:
-				draw_polyline(pl2, ROAD_EDGE, _w(zoom, 1.1, 2.2, 4.0), true)
-			for pl2 in polys_main:
-				draw_polyline(pl2, ROAD_MAIN, _w(zoom, 0.62, 1.3, 2.4), true)
-			for pl2 in polys_main:
-				draw_polyline(pl2, ROAD_LIGHT, _w(zoom, 0.26, 0.55, 1.0), true)
+			# la forêt en deux. Chaque palier de tier ÉLARGIT le trait (ROAD_TIER_WSCALE) : un
+			# tronc partagé par plusieurs routes logiques s'affiche plus ÉPAIS qu'un capillaire
+			# solo — la hiérarchie visuelle demandée, sans changer une seule couleur.
+			for t in range(1, ROAD_MULT_TIERS + 1):
+				var ws: float = ROAD_TIER_WSCALE[t - 1]
+				for pl2 in _road_net.get("minor%df" % t, []):
+					draw_polyline(pl2, Color(ROAD_MINOR_MAIN.r, ROAD_MINOR_MAIN.g, ROAD_MINOR_MAIN.b,
+						ROAD_MINOR_MAIN.a * ROAD_FOREST_A), _w(zoom, 0.36, 0.8, 1.5) * ws, true)
+			for t in range(1, ROAD_MULT_TIERS + 1):
+				var ws: float = ROAD_TIER_WSCALE[t - 1]
+				for pl2 in _road_net.get("main%df" % t, []):
+					draw_polyline(pl2, Color(ROAD_MAIN.r, ROAD_MAIN.g, ROAD_MAIN.b,
+						ROAD_MAIN.a * ROAD_FOREST_A), _w(zoom, 0.62, 1.3, 2.4) * ws, true)
+			for t in range(1, ROAD_MULT_TIERS + 1):
+				var ws: float = ROAD_TIER_WSCALE[t - 1]
+				for pl2 in _road_net.get("minor%d" % t, []):
+					draw_polyline(pl2, ROAD_MINOR_EDGE, _w(zoom, 0.65, 1.4, 2.6) * ws, true)
+			for t in range(1, ROAD_MULT_TIERS + 1):
+				var ws: float = ROAD_TIER_WSCALE[t - 1]
+				for pl2 in _road_net.get("minor%d" % t, []):
+					draw_polyline(pl2, ROAD_MINOR_MAIN, _w(zoom, 0.36, 0.8, 1.5) * ws, true)
+			for t in range(1, ROAD_MULT_TIERS + 1):
+				var ws: float = ROAD_TIER_WSCALE[t - 1]
+				for pl2 in _road_net.get("main%d" % t, []):
+					draw_polyline(pl2, ROAD_EDGE, _w(zoom, 1.1, 2.2, 4.0) * ws, true)
+			for t in range(1, ROAD_MULT_TIERS + 1):
+				var ws: float = ROAD_TIER_WSCALE[t - 1]
+				for pl2 in _road_net.get("main%d" % t, []):
+					draw_polyline(pl2, ROAD_MAIN, _w(zoom, 0.62, 1.3, 2.4) * ws, true)
+			for t in range(1, ROAD_MULT_TIERS + 1):
+				var ws: float = ROAD_TIER_WSCALE[t - 1]
+				for pl2 in _road_net.get("main%d" % t, []):
+					draw_polyline(pl2, ROAD_LIGHT, _w(zoom, 0.26, 0.55, 1.0) * ws, true)
 			# les PONTS D'ENCRE : deux garde-corps bombés en travers du franchissement de rivière
 			for br in _ink_bridges:
 				var bp: Vector2 = mv.iso_pos((br["w"] as Vector2).x, (br["w"] as Vector2).y)
