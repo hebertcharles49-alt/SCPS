@@ -390,12 +390,22 @@ bool agency_build_acct(AgencyState *a, WorldEconomy *econ, const World *w, int r
         /* MONNAIE M5 — R1 (décision joueur 2026-07-15, « le toll, 50/50 état-bourgeois ») :
          * TOLL_STATE_SHARE route une part au trésor de l'hôte, le reste aux bourgeois —
          * MÊME toll total, juste le split (0 = tout bourgeois, legacy byte-identique). */
-        { float st=clampf(tune_f("TOLL_STATE_SHARE",0.5f),0.f,1.f);
-          float state_part=toll*st, bourg_part=toll-state_part;
-          if (state_part>0.f) econ_region_treasury_add(econ, re->import_toll_region, state_part);
-          if (bourg_part>0.f) econ_region_wealth_add(econ, re->import_toll_region, CLASS_BOURGEOIS, bourg_part); }   /* RE-KEY : sur la PROVINCE */
-        if (re->owner>=0) econ_flux_add(re->owner, FX_TOLL_PAID, -toll);                       /* I0 */
-        int tro=econ->region[re->import_toll_region].owner; if (tro>=0) econ_flux_add(tro, FX_TOLL_RECV, toll);
+        /* MONNAIE M13 — P1 : « si y'a personne, y'a pas de péage » — un hub SANS HABITANT
+         * réel (econ_region_has_keeper faux) ne perçoit RIEN. `gold` (avec la marge) a
+         * déjà été débité plus haut (credit_spend, AVANT ce bloc) : on ne peut pas "ne
+         * jamais facturer" a posteriori, seulement REMBOURSER la marge à SA PROPRE région
+         * (`region`, le chantier lui-même — même pays) pour une conservation triviale
+         * équivalente (coût net = base_gold, comme un hub franc n'aurait jamais surfacturé). */
+        if (!econ_region_has_keeper(econ, re->import_toll_region)){
+            econ_region_treasury_add(econ, region, toll);
+        } else {
+            float st=clampf(tune_f("TOLL_STATE_SHARE",0.5f),0.f,1.f);
+            float state_part=toll*st, bourg_part=toll-state_part;
+            if (state_part>0.f) econ_region_treasury_add(econ, re->import_toll_region, state_part);
+            if (bourg_part>0.f) econ_region_wealth_add(econ, re->import_toll_region, CLASS_BOURGEOIS, bourg_part);   /* RE-KEY : sur la PROVINCE */
+            if (re->owner>=0) econ_flux_add(re->owner, FX_TOLL_PAID, -toll);                       /* I0 */
+            int tro=econ->region[re->import_toll_region].owner; if (tro>=0) econ_flux_add(tro, FX_TOLL_RECV, toll);
+        }
     }
     const BuildCost *c=&EDIFICES[e].cost;          /* … et l'on POMPE les matériaux du marché (vrais stocks) */
     float mult = agency_extent_mult(econ, region); /* §7 : un grand pays consomme plus */

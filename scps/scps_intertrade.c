@@ -951,13 +951,19 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
         /* WG — LE PÉAGE DE DÉTROIT : si la route maritime franchit un goulet (posé à la
          * création) TENU par un TIERS (ni ca ni cb), à la paix avec les deux bouts, son
          * propriétaire SKIME une part de chaque échange (transfert exportateur→tenant,
-         * ∝ étroitesse du goulet). Le verrou rapporte à qui le tient. */
+         * ∝ étroitesse du goulet). Le verrou rapporte à qui le tient.
+         * MONNAIE M13 — P1 : « détroits sauvages = routes franches » — un tenant SANS
+         * HABITANT réel (econ_region_has_keeper faux) ne perçoit RIEN : choke_hold_reg
+         * reste -1, aucun péage ne se calcule plus bas (commerce franc, conservation
+         * triviale — rien ne se prélève, donc rien ne se parque). Coloniser le détroit
+         * (ou reconquérir sa dernière province) COMMENCE à le taxer. */
         int   choke_hold_reg=-1, choke_hold_cid=-1; float choke_rate=0.f; bool choke_tax_route=false;
         if (rt->maritime && rt->choke_region>=0 && rt->choke_region<e->n_regions){
             int hc=e->region[rt->choke_region].owner;
             if (cid_ok(hc) && hc!=ca && hc!=cb
                 && pair_at_peace(dp,hc,ca) && pair_at_peace(dp,hc,cb)
-                && !intertrade_embargoed(hc,ca) && !intertrade_embargoed(hc,cb)){
+                && !intertrade_embargoed(hc,ca) && !intertrade_embargoed(hc,cb)
+                && econ_region_has_keeper(e, rt->choke_region)){
                 choke_hold_reg=rt->choke_region; choke_hold_cid=hc;
                 choke_rate=IT_CHOKE_TOLL*(0.4f+0.6f*rt->choke_block);   /* l'étroitesse durcit le droit */
             }
@@ -978,7 +984,12 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
             if (*dst_tr <= 0.f) continue;
             float price=(pa+pb)*0.5f;            /* médian : les deux bouts y gagnent */
             float gross=vol*price;
-            float total=gross*(1.f+trade_levy);
+            /* MONNAIE M13 — P1 : « si y'a personne, y'a pas de péage » — le péage d'échange
+             * (total-gross) revient à la région EXPORTATRICE (src_r, ci-dessous) ; sans
+             * habitant réel là-bas, le prélèvement N'A PAS LIEU (eff_levy=0 ⇒ total=gross,
+             * l'acheteur ne paie QUE le nu) plutôt que de parquer sur une porteuse vide. */
+            float eff_levy = econ_region_has_keeper(e, src_r) ? trade_levy : 0.f;
+            float total=gross*(1.f+eff_levy);
             if (total > *dst_tr){ float k=*dst_tr/total; vol*=k; gross*=k; total=*dst_tr; }
             if (vol<=0.001f) continue;
             /* RE-KEY : le bien bouge PROVINCE-persistant (la vue seule serait effacée

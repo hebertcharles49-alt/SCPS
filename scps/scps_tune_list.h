@@ -1344,6 +1344,16 @@
      * (econ_region_wealth_add), même montant total, juste le SPLIT qui change.
      * 0 = kill-switch : 100 % bourgeois, chemin legacy byte-identique. */ \
     X(TOLL_STATE_SHARE,                0.5f) \
+    /* MONNAIE M13 — P1 : « SI Y'A PERSONNE, Y'A PAS DE PÉAGE » (décision joueur,
+     * 2026-07-17). Les 3 péages région-grain (TRADE_LEVY, IT_CHOKE_TOLL,
+     * IMPORT_TOLL_FRAC) ne se prélèvent plus vers une région dont la PORTEUSE RÉELLE
+     * (region_carrier_prov — la province qui encaisserait physiquement) n'est PAS
+     * colonisée — cf. TROUVAILLES M3h/M3i item 7, le site WILD des péages parqués sur
+     * une porteuse non colonisée, ~250k/région. Le commerce passe FRANC, rien ne se
+     * collecte, rien ne se parque. 1 = kill-switch INVERSÉ (nommage « needs keeper »,
+     * pas « legacy ») : =0 restaure le chemin LEGACY EXACT (une porteuse vide reste un
+     * percepteur comme avant M13, golden byte-identique). */ \
+    X(TOLL_NEEDS_KEEPER,               1.0f) \
     /* MONNAIE M5 — R2 : LA RÉSERVE DE GENÈSE (décision joueur 2026-07-15). Un empire
      * jouable/IA (POLITY_PLAYER/ANTAGONIST) naît désormais avec une réserve MÉTALLIQUE
      * de départ (le champ M1 reserve_gold/copper, jusqu'ici réservé aux cités-états à

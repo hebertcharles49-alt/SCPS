@@ -621,6 +621,12 @@ void econ_rebuild_prov_adj(WorldEconomy *e, const World *w);
  * représentative, la fait SURVIVRE (l'agrégation la re-somme/re-reflète au tick d'après).
  * -1 si la région n'a aucune province active. */
 int econ_region_rep_province(const WorldEconomy *e, int region);
+/* MONNAIE M13 — P1 : « si y'a personne, y'a pas de péage » — vrai ssi la PORTEUSE RÉELLE
+ * de la région (region_carrier_prov, PAS le simple agrégat region[].colonized) est
+ * elle-même colonisée, OU si le kill-switch TOLL_NEEDS_KEEPER=0 (legacy, toujours vrai).
+ * À consulter AVANT tout péage région-grain (détroit/échange/marge d'import hôte) — cf.
+ * commentaire complet scps_econ.c (le test région-grain seul ne suffisait pas, mesuré). */
+bool econ_region_has_keeper(const WorldEconomy *e, int region);
 /* RE-KEY — écritures PERSISTANTES au grain RÉGION (stock/trésor/pop) : routent sur
  * les PROVINCES (représentative d'abord, débit qui déborde sur les sœurs) ET
  * tiennent la VUE region[] du mois courant. Écrire region[] directement serait

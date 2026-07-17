@@ -2849,6 +2849,30 @@ static int region_carrier_prov(const WorldEconomy *e, int region){
         if (e->prov[p].region==region && e->prov[p].active) return p;
     return -1;
 }
+/* MONNAIE M13 — P1 : « SI Y'A PERSONNE, Y'A PAS DE PÉAGE » (décision joueur, remplace le
+ * re-routage M3i ESSAYÉ-PUIS-REVERTI ci-dessus — cf. TROUVAILLES M3h/M3i item 7/M11/M14
+ * Restes, « le site WILD des péages parqués »). Un péage RÉGION-GRAIN (détroit/échange/
+ * marge d'import hôte — scps_intertrade.c/scps_agency.c, PAS les autres écrivains
+ * econ_region_treasury_add/wealth_add qui créditent leur PROPRE capitale/région, hors
+ * scope) ne se prélève QUE si la PORTEUSE RÉELLE (region_carrier_prov — la province qui
+ * ENCAISSERAIT physiquement, PAS l'agrégat region[].colonized qui ne dit que « au moins
+ * UNE province de la région est colonisée ») est elle-même colonisée. DÉCOUVERTE (testé
+ * empiriquement, cf. TROUVAILLES) : le test région-grain seul ne bouge JAMAIS un hash
+ * (0 diff sur 250 ans/seed 9) — la fuite M3h est le CACHE porteuse (représentative/
+ * première active, JAMAIS colonisée dans son test) DANS une région par ailleurs peuplée,
+ * pas une région entièrement vide. Contrairement à M3i (re-router VERS une autre province
+ * colonisée, ce qui a cassé la colonisation), P1 ne re-route RIEN : si la porteuse n'a pas
+ * de gardien, le prélèvement N'A PAS LIEU — le payeur garde son or, rien ne se parque
+ * ailleurs (conservation triviale, pas de nouveau puits). GAMEPLAY émergent voulu :
+ * détroits sauvages = routes franches ; coloniser la porteuse d'un détroit (ou son hub
+ * commercial) = commencer à le taxer. Kill-switch `TOLL_NEEDS_KEEPER` (registre J, défaut
+ * 1) : à 0, TOUJOURS vrai — chemin LEGACY exact (golden pré-M13 byte-identique). */
+bool econ_region_has_keeper(const WorldEconomy *e, int region){
+    if (tune_f("TOLL_NEEDS_KEEPER", 1.f) <= 0.f) return true;
+    if (!e || region<0 || region>=e->n_regions) return false;
+    int carrier = region_carrier_prov(e, region);
+    return (carrier>=0 && carrier<e->n_prov && e->prov[carrier].colonized);
+}
 float econ_region_stock_add(WorldEconomy *e, int region, int good, float delta){
     if (!e || region<0 || region>=e->n_regions || good<=RES_NONE || good>=RES_COUNT || delta==0.f) return 0.f;
     RegionEconomy *rv=&e->region[region];
