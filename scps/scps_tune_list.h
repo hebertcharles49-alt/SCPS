@@ -87,6 +87,17 @@
      * moins) = kill-switch EXACT (le trigger reste toujours faux, cf. trig_gold_
      * discovery) — golden pré-M7 byte-identique. */ \
     X(GOLD_DISCOVERY_RATE,    0.5f) \
+    /* MONNAIE M13 — P2 : LE SOUS-TIR DES DÉCOUVERTES (mesuré au giga M7 : 94/200 ≈ 47% de
+     * l'espérance, 42 mondes à zéro). DIAGNOSTIQUÉ (SCPS_GOLDDIAG2, print-only, retiré) :
+     * PAS le plafond ni un cooldown — l'ÉLIGIBILITÉ (province colonisée + ressource commune)
+     * n'est vraie que 32.4% des vérifications (5 sims×10 empires fixes×250 ans) — la
+     * colonisation ramone tard, le mtth nominal (182500j=500 ans, scps_events.c) suppose
+     * une éligibilité PLEINE dès l'an 0. GOLD_DISCOVERY_MTTH_BOOST divise le mtth effectif
+     * (accélère le tirage EN PROPORTION inverse de la fraction éligible mesurée, 1/0.324≈
+     * 3.0) — SEUL le call-site scps_events.c (§2septies) est concerné, ni l'éligibilité ni
+     * le plafond mondial ne changent. 1.0 = kill-switch EXACT (mtth nominal legacy, sous-
+     * tir M7 assumé) — golden pré-M13 byte-identique. */ \
+    X(GOLD_DISCOVERY_MTTH_BOOST, 3.0f) \
     /* §G0.4/H7 — le robinet d'or (les bandes de flux) */ \
     X(ENTRETIEN_DIV,        400.0f) \
     /* H7 (M3d re-tarif, décision joueur 2026-07-15) — l'entretien d'UN job = part de son

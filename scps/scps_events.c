@@ -4122,9 +4122,22 @@ void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
         if (EVENTS[EVID_SAVANTS_ENNEMI].trigger(&cx,c) &&
             frand(&ev->rng) < mtth_p(EVENTS[EVID_SAVANTS_ENNEMI].mtth_days,days)) fire_event(&cx,EVID_SAVANTS_ENNEMI,c);
         /* MONNAIE M7 — I2 : LA DÉCOUVERTE D'OR — même court-circuit (trigger && frand),
-         * plafond MONDIAL posé à events_init (PAS le hash générique EV_CAPPED). */
+         * plafond MONDIAL posé à events_init (PAS le hash générique EV_CAPPED).
+         * MONNAIE M13 — P2 : le goulot mesuré (DIAG SCPS_GOLDDIAG2, cf. TROUVAILLES) N'EST
+         * PAS le plafond ni un cooldown — c'est L'ÉLIGIBILITÉ ELLE-MÊME : un pays n'a une
+         * province COLONISÉE portant la ressource commune qu'une fraction du temps de
+         * partie (mesuré 32.4% des vérifications, 5 sims×10 empires fixes×250 ans — la
+         * colonisation ramone tard, le mtth nominal (182500j=500 ans) suppose une
+         * éligibilité PLEINE dès l'an 0). GOLD_DISCOVERY_MTTH_BOOST (registre J, défaut
+         * 3.0 ≈ 1/0.324, calibré sur cette mesure) accélère le tirage EN PROPORTION
+         * inverse pour restaurer l'espérance 0,5×N SUR LA FENÊTRE RÉELLEMENT ÉLIGIBLE —
+         * 1.0 = kill-switch : mtth nominal inchangé (chemin LEGACY exact, sous-tir mesuré
+         * M7/M13 assumé). Ne touche NI l'éligibilité (toujours la vraie province, ≤2 raws
+         * par REMPLACEMENT, intact) NI le plafond mondial (fire_cap, intact). */
         if (EVENTS[EVID_GOLD_DISCOVERY].trigger(&cx,c) &&
-            frand(&ev->rng) < mtth_p(EVENTS[EVID_GOLD_DISCOVERY].mtth_days,days)) fire_event(&cx,EVID_GOLD_DISCOVERY,c);
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_GOLD_DISCOVERY].mtth_days
+                                      / fmaxf(0.01f, tune_f("GOLD_DISCOVERY_MTTH_BOOST",3.0f)),
+                                      days)) fire_event(&cx,EVID_GOLD_DISCOVERY,c);
     }
 
     /* 2septies. V2b — Merveille (LOT 1) + Conseil (LOT 2) + contenu débloqué (LOT 3).
