@@ -16,6 +16,7 @@ const EconomyPage = preload("res://ui/economy_page.gd")
 const PopBar      = preload("res://ui/pop_bar.gd")
 
 signal open_budget_requested   ## onglet Économie → « Régler… » → main.gd ouvre le Trésor (B)
+signal open_religion_requested ## D2 : onglet Population → « Foi d'État… » → main.gd ouvre le Créateur de Foi (R)
 
 const PW := 440.0
 ## Militaire est CONTEXTUEL (barre de commandement à la sélection d'un corps), pas un
@@ -246,6 +247,18 @@ func _build_population(w, me: int) -> void:
 	# FOI / RELIGION
 	_pop_section(pg, "FOI / RELIGION")
 	PopBar.build_group(pg, faith, total)
+	# D2 — le Créateur de Foi (religion_panel.gd) devenait INJOIGNABLE dès la 1re
+	# fondation (ses deux seules portes — 1er édifice religieux, alerte de fondation —
+	# ne se redéclenchent jamais) : un lien explicite ici (+ la touche R, main.gd)
+	# rouvre le Schisme et le recrutement du Lettré, verbes câblés mais orphelins.
+	var faith_btn := Button.new()
+	var has_faith := int(w.religion_of_country(me)) >= 0 if w.has_method("religion_of_country") else false
+	faith_btn.text = ("Foi d'État : %s → Schisme / Lettré (R)" % String(w.religion_name(me))) \
+		if (has_faith and w.has_method("religion_name")) else "Fonder une religion (R)"
+	faith_btn.focus_mode = Control.FOCUS_NONE
+	faith_btn.tooltip_text = "Ouvre le Créateur de Foi : crédo, traditions, schisme, recrutement du Lettré."
+	faith_btn.pressed.connect(func(): open_religion_requested.emit())
+	pg.add_child(faith_btn)
 	# CLASSE (lecteur direct — pop exactes)
 	_pop_section(pg, "CLASSE")
 	var clsmap := {}

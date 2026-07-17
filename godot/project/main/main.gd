@@ -252,12 +252,19 @@ func _ready() -> void:
 				_codex.toggle())
 
 	# RELIGION — le CRÉATEUR DE FOI : s'ouvre quand le joueur bâtit son 1er édifice religieux
-	# (avant, le monde est ATHÉE). Rouvrable à la touche R. Caché par défaut.
+	# (avant, le monde est ATHÉE). Rouvrable à la touche R (D2) OU depuis l'onglet
+	# Population de la Fenêtre Empire. Caché par défaut.
 	_religion = load("res://ui/religion_panel.gd").new()
 	_religion.name = "ReligionPanel"
 	_religion.visible = false
 	ui.add_child(_religion)
-	_religion.closed.connect(func(): Sim.set_speed(2))   # fermer le créateur → le jeu reprend
+	# D2 : le jeu reprend à la FERMETURE, quel que soit le CHEMIN (bouton « Fermer »,
+	# Échap via _close_topmost, ou la touche R) — motif `visibility_changed` déjà
+	# utilisé pour la pile d'Échap (UI-POLISH #13), plus robuste que le seul signal
+	# `closed` (qui ne tirait que depuis le bouton — Échap laissait le jeu en PAUSE).
+	_religion.visibility_changed.connect(func():
+		if not _religion.visible:
+			Sim.set_speed(2))
 	Sim.ticked.connect(_on_tick_faith)                   # surveille la pose du 1er édifice religieux
 
 	_devpanel = load("res://ui/devpanel.gd").new()       # MODTOOLS : tunables live (F10)
@@ -321,6 +328,12 @@ func _ready() -> void:
 				_budget_v2.visible = true
 				if _budget_v2.has_method("refresh"):
 					_budget_v2.refresh())
+	# D2 — le Créateur de Foi (touche R aussi, cf. _unhandled_input) : même route que
+	# le lien de l'onglet Population.
+	if _empire_win.has_signal("open_religion_requested"):
+		_empire_win.open_religion_requested.connect(func():
+			if _religion != null:
+				_religion.open())
 
 	# UI-POLISH #13 — la pile d'Échap : chaque panneau suivi s'auto-empile/désempile via
 	# SON PROPRE visibility_changed (peu importe le chemin de code qui a posé .visible).
@@ -610,6 +623,17 @@ func _unhandled_input(e: InputEvent) -> void:
 					Sound.play("ui_parchment_close")
 				else:
 					_chronique.open()
+		KEY_R:
+			# D2 — le Créateur de Foi (religion_panel.gd) : le commentaire du fichier
+			# documentait déjà « rouvrable à la touche R » mais aucun KEY_R n'existait
+			# nulle part dans le projet (cartographie UI §D.1.4/§C.1) — rebranché ici.
+			# Une fois fondée, la foi devient sinon INJOIGNABLE (Schisme, Lettré orphelins).
+			if _religion != null and Sim.game_on:
+				if _religion.visible:
+					_religion.hide()
+					Sound.play("ui_parchment_close")
+				else:
+					_religion.open()
 		KEY_EQUAL, KEY_PLUS, KEY_KP_ADD:
 			Sim.faster()
 		KEY_MINUS, KEY_KP_SUBTRACT:
