@@ -5370,3 +5370,178 @@ contredisait le commentaire ET le code actif
   que par crop pixel-à-pixel — les cellules fautives (1-19 sur ~2000-4000) n'ont pas été
   localisées une à une avant/après, la preuve quantitative reproductible étant plus fiable qu'une
   chasse visuelle sur un si petit nombre de pixels à trouver à l'aveugle.
+
+## CHANTIER MONNAIE — M13 : PÉAGES-SANS-PÉAGER + LES RESTES DU GIGA (2026-07-17)
+
+**Statut : LIVRÉ — P1+P2 committés, golden RE-BASELINÉ VERT, gates complets passés,
+P3 = mesure + proposition NON landée (décision joueur).** Décision joueur verbatim (P1) :
+« si y'a personne, y'a pas de péage ». Tag `pre-m13` posé (0b1af83 = M14). Save v96 INCHANGÉ
+(aucun champ neuf, aucun accumulateur neuf — P1 est un gate de prélèvement, P2 un diviseur
+de mtth au call-site).
+
+### P1 — L'AUDIT COMPLET des prélèvements région-grain (demandé par le brief)
+
+Méthode : grep exhaustif de TOUS les écrivains `econ_region_treasury_add`/`econ_region_
+wealth_add` en delta POSITIF (un péage = un crédit vers un tiers potentiellement vide).
+Trois sites de PÉAGE, tous gatés ; tout le reste crédite la PROPRE région/capitale de
+l'écrivain (colonisée par construction — un pays a une capitale peuplée) :
+
+| site | fichier:ligne | qui perçoit | gate posé |
+|---|---|---|---|
+| péage d'échange TRADE_LEVY | scps_intertrade.c:~990 | région EXPORTATRICE (état 50/bourgeois 50, TOLL_STATE_SHARE) | `eff_levy=0` si pas de gardien — l'acheteur ne paie QUE le nu (total=gross) |
+| péage de détroit IT_CHOKE_TOLL | scps_intertrade.c:~1020 | région du TENANT tiers (choke_hold_reg) | éligibilité : `choke_hold_reg` reste -1 — routes franches, aucun calcul plus bas |
+| marge d'import hôte (chantier) | scps_agency.c:~395 | hub le plus proche (import_toll_region, cité-état hôte) | marge REMBOURSÉE à la région du chantier (le débit credit_spend précède le bloc — coût net = base_gold) |
+
+NON-péages vérifiés un à un (crédits vers sa PROPRE assiette, hors scope) : dépôts
+d'emprunt (scps_credit.c:411/552 — région-siège de l'emprunteur), vente d'esclaves
+(intertrade:744 — le vendeur a une pop par construction), spéculation IA (scps_ai.c:2740/
+2751 — hub Centre, trésor propre), navy/diplo/events/decrees/missions/statecraft/warhost/
+revolt (capitale ou région ciblée peuplée). Les péages à percepteur PAYS identifié
+(choke_hold_cid) ne sont concernés QUE via leur région de crédit (le crédit est
+région-grain même si le flux FX est pays-grain).
+
+**LA DÉCOUVERTE CENTRALE (a coûté un aller-retour)** : le gate NAÏF région-grain
+(`region[].colonized`) ne mord JAMAIS — 0 diff sur 250 ans/seed 9, hashes identiques.
+`region[].colonized` = « au moins UNE province de la région est colonisée » ; or la fuite
+M3h est la PORTEUSE (`region_carrier_prov` = représentative sinon 1re ACTIVE, jamais
+testée colonisée) DANS une région par ailleurs peuplée. Le gate CORRECT teste la porteuse
+elle-même : `econ_region_has_keeper` (scps_econ.c, exporté scps_econ.h) = la porteuse
+réelle est colonisée. LÀ le hash bouge (2/5 graines à 12 ans) et la trajectoire 250 ans
+diverge fortement. Contrairement au M3i reverti (re-router VERS une colonisée = déplacer
+le magot), P1 ne re-route RIEN : pas de collecte du tout, conservation triviale.
+
+**LE LIEN P1 (la caisse parquée finançait la colonisation) : TENU, pas cassé.** Sweep
+apparié pre-m13 vs HEAD {9,11,42}×3×250 — fondations : 137→126 (−8.0 %) · 111→113
+(+1.8 %) · 133→130 (−2.3 %), Σ 381→369 (−3.1 %), BIDIRECTIONNELLE — rien à voir avec le
+−14/−34 % du re-routage M3i. Lecture : assécher la collecte À LA SOURCE laisse l'argent
+chez les MARCHANDS/acheteurs (il continue de circuler) au lieu de le déplacer dans une
+autre poche d'État — le pool P1 ne perd qu'un magot marginal, pas son fonds de roulement.
+AUCUN financement colonial explicite à câbler (le plan de secours du brief n'a pas été
+nécessaire).
+
+**Les breaches ciblés (le site était-il LE site ? réponse : NON — pour ces graines-là,
+c'était déjà réglé en amont).** Runs ciblés sur les sous-graines fautives exactes du
+giga (2s1 407 % · 209s3 794 % · 312s4 515 %), pics invariant par sim :
+
+| sous-graine | giga (2026-07-16) | pre-m13 (M14) | HEAD (P1) |
+|---|---|---|---|
+| graine 2 sim 1 | **407 %** (breach an 39) | 99 % | 99 % |
+| graine 209 sim 3 | **794 %** (breach an 101) | 371 % (marginal) | 371 % (marginal) |
+| graine 312 sim 4 | **515 %** (breach an 77) | 97 % | 97 % |
+
+Les breaches du giga ont DISPARU dès la baseline pre-m13 : le giga (16:00 le 07-16)
+prédatait TECH/FINS/FAUSTIEN/M11/M12/M14 — l'arc a déplacé les trajectoires (motif
+« déplacement, pas conversion » déjà vu M11). P1 les GARDE absents (pics identiques ou
+légèrement mieux) mais ne peut pas être crédité de leur disparition. HONNÊTE : sur graine
+209 sim 3, la dérive positive résiduelle (+8712/an pre, +9122/an HEAD, pic 371 % vs seuil
+370 %) SURVIT à P1 — le site des péages parqués n'est PAS la cause de CE résidu-là ; le
+prochain candidat reste la spéculation IA §1.6 (ai_speculate_tick, jamais convertie,
+cf. M3i item 7b).
+
+### P2 — LE GOULOT RÉEL des découvertes d'or (M7-I2, 94/200 au giga)
+
+Diagnostic PRINT-ONLY d'abord (SCPS_GOLDDIAG2, gated getenv, RETIRÉ avant commit) :
+compteur appels/éligibles dans trig_gold_discovery, 5 sims × 10 empires fixes × 250 ans —
+**5 041 058 appels, 1 635 078 éligibles = 32,4 %**. Le goulot n'est NI le plafond
+(fire_cap jamais saturé sur les runs à 0 découverte) NI un cooldown : c'est l'ÉLIGIBILITÉ
+(≥1 province colonisée du pays portant la ressource commune) qui n'existe qu'un tiers du
+temps — le mtth nominal (182500 j = 500 ans) suppose une éligibilité pleine dès l'an 0,
+d'où ~47-59 % de réalisation. Fix LE PLUS SIMPLE qui respecte xs32 et ≤2-raws :
+`GOLD_DISCOVERY_MTTH_BOOST` (défaut 3.0 ≈ 1/0.324) divise le mtth au SEUL call-site
+(scps_events.c §2septies) — éligibilité et plafond INTACTS, le rng d'évènements inchangé
+(même frand, même séquence, seule la probabilité comparée change). Kill-switch =1.0 :
+mtth nominal legacy. **Mesuré à l'apparié : 7/13.5 (52 %) → 11/13.5 (81 %) — cible ≥80 %
+ATTEINTE.**
+
+### P3 — L'INFLATION À L'ÉCHELLE (mesure + proposition, RIEN de landé)
+
+Dérive OLS %/an par sim (apparié, photo complète) :
+
+| seed | pre-m13 (3 sims) | HEAD (3 sims) |
+|---|---|---|
+| 9  | +1.06 · −1.01 · −1.94 | +0.72 · −0.58 · −2.67 |
+| 11 | +0.66 · −0.26 · −0.85 | +0.66 · −0.30 · −0.68 |
+| 42 | −0.00 · +0.67 · −1.45 | +0.00 · +0.32 · −0.92 |
+
+Moyenne : **−0.35 %/an pre → −0.38 %/an HEAD** · dans la cible [0.5,1.5] : 3/9 → 2/9.
+(a) **P1 ne change PAS la donne monétaire** — l'hypothèse du brief (« l'argent des péages
+restant chez les marchands = plus de liquidité ») est mesurée NULLE sur la dérive : le
+volume des péages sauvages est trop petit face à la frappe. (b) Le sous-tir confirme le
+giga (−1.24 %/an moyen, 12/100 dans la cible) à l'échelle apparié. (c) **Observation
+neuve : INFLATION_CAP=1.6 SATURE** — pic == 1.600 exactement dans 8/18 sims (le clamp
+écrase la dérive OLS en fin de course quand l'indice colle au plafond) ; et les queues
+déflationnistes (−1.45/−1.94/−2.67) dominent la moyenne — ce sont les CRISES
+(dette/banqueroute → effondrement de l'indice), pas le niveau de frappe.
+
+**LA PROPOSITION (décision joueur, non committée)** :
+- **Option A (recommandée)** : `MINT_ROYALTY 0.6→0.75` + `MINT_AI_SHARE 0.6→0.75`
+  (extrapolation du levier M7 : 0.35→0.6 avait rendu la moyenne positive ; +25 % ici
+  ≈ +0.4-0.5 pt attendu) COMBINÉ à `INFLATION_CAP 1.6→2.0` (décoince le plafond que
+  8/18 sims touchent). Espérance : moyenne −0.4 → +0.3..+0.6 %/an, plus de sims en cible.
+- **Option B (défensive)** : `INFLATION_CAP 1.6→2.0` SEUL, re-mesurer — la sensibilité
+  non-linéaire documentée M7 (une graine bascule de +0.4 à −2.3 sur un petit pas) plaide
+  pour un levier à la fois.
+- **Le fix STRUCTUREL** (hors calibrage) : amortir le canal de transmission `pf` pour
+  qu'une crise de trésorerie n'effondre pas l'indice entier (déjà nommé par M7 Restes,
+  « lisser la variance ») — c'est la queue déflationniste qui tue la moyenne, pas le
+  centre. Tout land exige un sweep apparié dédié (bascules M7).
+
+### Pièges
+
+- **`region[].colonized` est un agrégat MENTEUR pour un gate de porteuse** — il dit
+  « quelqu'un vit QUELQUE PART dans la région », pas « la province qui ENCAISSE est
+  peuplée ». Tout futur gate qui veut conditionner un flux région-grain sur l'habitant
+  réel doit tester `region_carrier_prov` (le même choix de province que l'écriture
+  elle-même), sinon le gate ne mord jamais (mesuré : 0 diff/250 ans).
+- **Les lignes ÉCHEC du banc invariant M3c vont sur STDERR** — un run `2>/dev/null`
+  les JETTE (le premier lot de runs ciblés a dû être doublé d'un grep sur les pics
+  stdout ; les sweeps suivants capturent `2> fichier.err`). Le « pic annuel » stdout
+  est le comparateur fiable ; l'ÉCHEC stderr est le verdict formel.
+- **`chronicle.exe` qui tourne bloque le link** (motif M3b/M5/M7, remordu 1×) — les
+  sweeps de cette vague tournent sur une COPIE de l'exe dans le scratchpad, laissant
+  le binaire du dépôt libre pour make test/golden/determinism en parallèle.
+- **Le giga de référence (build/giga/) prédate l'arc TECH→M14** — comparer un HEAD
+  courant aux breaches du giga exige d'abord de re-passer les MÊMES sous-graines sur la
+  baseline COURANTE (pre-m13) : 3 breaches sur 3 avaient déjà disparu AVANT M13, la
+  comparaison giga-vs-HEAD seule aurait attribué à P1 un mérite qui revient à M8-M14.
+- **Le heredoc bash a remordu** (motif M3h « antislashs mangés ») sur CE fichier même —
+  l'append TROUVAILLES contenant backticks+apostrophes casse le heredoc quoté ;
+  Write tool + `cat fichier >> TROUVAILLES.md`, jamais un heredoc pour du contenu riche.
+
+### Gates (tous passés)
+
+1. **Kill-switch** `TOLL_NEEDS_KEEPER=0,GOLD_DISCOVERY_MTTH_BOOST=1` → `--hash 7 5 12`
+   BYTE-IDENTIQUE au golden pre-m13 commité (prouvé AVANT re-baseline) ✓.
+2. **Sweep apparié** pre-m13 vs HEAD {9,11,42}×3×250 : colonisation Σ 381→369 (−3.1 %,
+   bidirectionnelle, bande tenue — LE gate du lien P1) · Laborer 61/78/60→67/77/66 %
+   (bande M14 tenue) · banqueroutes forcées Σ 18→24 (compteur chaotique, motif M7/M11 ;
+   seed 42 porte tout) · dette M3c early ~0 des deux côtés · « or net<0 » Σ 22→18 ·
+   tech Σ 1761→1714 (−2.7 %), AUCUN zéro-tech · fins §27 : 18/18 sims finies, AUCUNE==0,
+   variées (ENGLOUT./RONCES/RÉCHAUF./GRAND HIVER) · **invariant 0/9 breach des DEUX côtés**
+   (stderr capturé) · découvertes 7→11/13.5 (52→81 %, cible P2 ≥80 % ✓).
+3. **Runs ciblés breaches** (giga sub-seeds 2s1/209s3/312s4) : tableau ci-dessus ✓ —
+   verdict honnête « déjà réglé en amont, P1 conserve ».
+4. `make test` **39/39** (standard M14 tenu) · `make golden-update` + `make golden` VERT
+   (re-baseline documentée, 3 graines/5 changent) · `make determinism` STABLE ·
+   `make determinism-deep` STABLE (graines 7 et 9 × 200 ans) · `scps_viewer --savetest 9`
+   A==B byte-identique (v96) + octet altéré REFUSÉ · `--fuzztest 9` 8/8 (216 octets,
+   0 crash) · lang-check OK (0 littéraux).
+5. Cet append + 3 commits granulaires FR (P1 697ac7b · P2 ed1809f · golden d9d754e).
+
+### Restes
+
+- **La dérive positive résiduelle graine 209 sim 3 (+9122/an, pic 371 % vs seuil 370 %)
+  SURVIT à P1** — le site des péages parqués n'était pas SA cause ; le candidat désigné
+  reste `ai_speculate_tick` (M0 §1.6, jamais converti — cf. M3i item 7b, architecture
+  « compte de marché » requise, pas un patch local).
+- **P3 non landé par design** — la proposition chiffrée ci-dessus attend la décision
+  joueur + un sweep apparié dédié (bascules non-linéaires M7).
+- **La saisie M3g s'effondre sur les runs P1** (seed 9 : 117627→14 or confisqué sur une
+  sim observée en run exploratoire 1-sim) — cohérent (moins de magots parqués à saisir
+  en banqueroute), non re-mesuré à l'apparié (la banqueroute reste vivante : Σ 24
+  forcées), à surveiller à la prochaine vague crédit.
+- **DLL Godot À RE-BUILDER** (scons -C godot) : scps_econ.c/h (nouveau symbole exporté
+  `econ_region_has_keeper`), scps_intertrade.c, scps_agency.c, scps_events.c,
+  scps_tune_list.h ont changé — aucun binding/GDScript touché, mais le moteur statique
+  de la DLL doit être relié (motif M3h/M3i/M5).
+- Tag `pre-m13` posé · worktree de sweep `C:/tmp_wt_pre_m13` à retirer après session.
