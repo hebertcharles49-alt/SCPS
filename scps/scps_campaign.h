@@ -228,6 +228,16 @@ void campaign_release_transports(Campaign *c, struct NavyState *navy);
 bool campaign_redirect(Campaign *c, const WorldEconomy *econ, const DiploState *dp,
                        int owner, int target_region);
 
+/* M15 — F3 : redirige un corps ACTIF vers `target_region` en repliant sur
+ * l'EMBARQUEMENT (mêmes conditions que campaign_order_sea : port ami à SA
+ * position actuelle, côte à l'arrivée, transports libres, blocus) — pour le cas
+ * où campaign_redirect_corps refuse (cible injoignable par terre). N'appeler QUE
+ * depuis le dispatch des verbes joueur (jamais le chemin partagé avec l'IA) :
+ * golden-neutre par construction. false si déjà en mer, brisée, pas de port à
+ * soi, pas de côte d'arrivée, pas assez de transports, ou blocus. */
+bool campaign_redirect_corps_sea(Campaign *c, const World *w, const WorldEconomy *econ,
+                                 struct NavyState *navy, int id, int target_region);
+
 long        campaign_corps_units(const Campaign *c, int id);
 long        campaign_disband_corps(Campaign *c, int id, ArmyState *dst_host_army);
 bool        campaign_can_refill_corps(const Campaign *c, const WorldEconomy *econ, int id);

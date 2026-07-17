@@ -419,6 +419,52 @@ bool campaign_order_sea(Campaign *c, const World *w, const WorldEconomy *econ,
     return true;
 }
 
+/* M15 — F3 : LE RÉ-EMBARQUEMENT. Un corps ACTIF que le redirect terrestre refuse
+ * (cible injoignable par terre) peut replier sur la mer, AUX MÊMES CONDITIONS que
+ * campaign_order_sea (port ami, côte à l'arrivée, transports libres, blocus) — sauf
+ * que le port de départ est la position ACTUELLE du corps (a->loc), pas une
+ * capitale : le corps doit déjà TENIR un port pour embarquer, aucune marche
+ * automatique vers la côte (la solution la plus simple qui marche — mêmes
+ * conditions, pas une redécouverte du meilleur port). Armée déjà EN MER
+ * (phase>=FA_EMBARK) : refus PROPRE (une traversée en cours ne se redirige pas —
+ * elle doit débarquer d'abord), même discipline que campaign_split/campaign_merge.
+ * N'est appelée QUE depuis le dispatch des verbes joueur (scps_sim.c CMD_MOVE_ARMY/
+ * CMD_CORPS_MOVE) — campaign_redirect_corps (partagé avec l'IA, scps_sim.c ~145/
+ * 191/227) reste INTACT : golden-neutre par construction, comme N3 (MARITIME). */
+bool campaign_redirect_corps_sea(Campaign *c, const World *w, const WorldEconomy *econ,
+                                 struct NavyState *navy, int id, int target_region){
+    if (!c || !w || !econ || !navy) return false;
+    FieldArmy *a=campaign_corps(c,id);
+    if (!a) return false;
+    if (!a->active || a->phase==FA_BATTLE || a->phase>=FA_EMBARK) return false;  /* épinglée / déjà en mer */
+    if (a->broken_days>0) return false;                                          /* brisée : elle fuit */
+    if (target_region<0 || target_region>=econ->n_regions || a->loc==target_region) return false;
+    if (force_units(&a->force)<=0) return false;
+    const RegionEconomy *pr=&econ->region[a->loc];
+    if (pr->owner!=a->owner || pr->build.port<=0.f || !pr->coastal) return false;   /* le corps doit TENIR un port */
+    if (!econ->region[target_region].coastal) return false;                        /* on atterrit par la côte */
+    int ax,ay,bx,by;
+    if (!world_region_sea_anchor(w,a->loc,&ax,&ay))        return false;
+    if (!world_region_sea_anchor(w,target_region,&bx,&by)) return false;
+    float days=world_sea_days(w,ax,ay,bx,by);
+    if (days<0.f) return false;                                                    /* bassins séparés */
+    long packets=force_units(&a->force);
+    int need_tr=(int)((packets+9)/10); if (need_tr<1) need_tr=1;                   /* 1 transport = 10 paquets */
+    if (navy->n[a->owner].hull[HULL_TRANSPORT]-navy->n[a->owner].at_sea < need_tr) return false;
+    for (int e=0;e<SCPS_MAX_COUNTRY;e++)                                           /* coques §3 : le BLOCUS tient le port */
+        if (navy->n[e].mission==NAVY_BLOCUS && navy->n[e].mission_target==a->owner
+            && navy->n[e].hull[HULL_WAR]>0) return false;
+    a->dest=target_region; a->next=-1; a->phase=FA_EMBARK;
+    a->leg_days = 4.f + (float)packets/15.f;             /* charger 1 000 hommes prend des jours */
+    a->days_left= a->leg_days;
+    a->sail_days=days; a->sail_transports=need_tr;
+    a->intercept_done=false;
+    a->land_at_port = (econ->region[target_region].build.port>0.f);
+    navy->n[a->owner].at_sea += need_tr;                  /* la flotte est ENGAGÉE jusqu'au débarquement */
+    c->n_sails++; c->sail_days_sum += days;
+    return true;
+}
+
 /* Rend à la flotte les transports des armées revenues à terre (ou mortes). */
 void campaign_release_transports(Campaign *c, struct NavyState *navy){
     if (!navy) return;

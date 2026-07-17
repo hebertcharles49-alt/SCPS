@@ -760,7 +760,13 @@ static void sim_cmd_drain(Sim *s, World *w){
             int tgt=c->a[0];
             if (tgt<0 || tgt>=s->econ->n_regions) break;
             if (campaign_active(s->camp, p)){
-                campaign_redirect(s->camp, s->econ, s->dp, p, tgt);  /* en campagne : re-cible (self-gardé) */
+                if (!campaign_redirect(s->camp, s->econ, s->dp, p, tgt)  /* en campagne : re-cible (self-gardé) */
+                    && tune_f("SEA_TRAVEL",1.f)>0.f){
+                    /* M15 — F3 : le corps actif ne rejoint pas par terre — repli sur
+                     * l'embarquement DEPUIS SA POSITION ACTUELLE (mêmes conditions que
+                     * le déploiement initial ci-dessous : port ami, transports, blocus). */
+                    campaign_redirect_corps_sea(s->camp, w, s->econ, s->navy, p, tgt);
+                }
             } else {                                                 /* réserve : déployer depuis la capitale */
                 int cap=w->country[p].capital_prov;
                 int from=(cap>=0 && cap<w->n_provinces)? w->province[cap].region : -1;
@@ -800,8 +806,11 @@ static void sim_cmd_drain(Sim *s, World *w){
             break; }
           case CMD_CORPS_MOVE: {
             int id=c->a[0], tgt=c->a[1]; const FieldArmy *a=campaign_corps_const(s->camp,id);
-            if (a&&a->active&&a->owner==p&&tgt>=0&&tgt<s->econ->n_regions)
-                campaign_redirect_corps(s->camp,s->econ,s->dp,id,tgt);
+            if (a&&a->active&&a->owner==p&&tgt>=0&&tgt<s->econ->n_regions){
+                if (!campaign_redirect_corps(s->camp,s->econ,s->dp,id,tgt)
+                    && tune_f("SEA_TRAVEL",1.f)>0.f)
+                    campaign_redirect_corps_sea(s->camp, w, s->econ, s->navy, id, tgt);  /* M15 — F3 */
+            }
             break; }
           case CMD_CORPS_REFILL: {
             int id=c->a[0]; const FieldArmy *a=campaign_corps_const(s->camp,id);
