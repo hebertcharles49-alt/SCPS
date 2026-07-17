@@ -6587,3 +6587,123 @@ sont les seules suspectes relevées en cours de route.
   exact — grep confirmé) plutôt que mesuré ; `core_demo` (35/35) et
   `make lang-check` (0=0) ont tourné. Un futur agent qui doute peut lancer
   `make golden` en 2 minutes pour clore le doute definitivement.
+
+---
+
+## MISSION UI-DOCTRINE — D1/D2/D3 (2026-07-18, en cours)
+
+**Statut D1-D3 : livrés (tag `pre-uidoctrine` posé avant tout changement).**
+D1 = purge des doublons (fiche province + curseurs fiscaux) ; D2 = accès Créateur de
+Foi ; D3 = résidus « or/an » restants + rasoir sur mes propres libellés. D4-D7 (glossaire
+hover, ressources exactes, options/audio, icônes) suivent dans des commits séparés.
+
+### Le piège fondateur (encore un) — le brief nommait la bonne fiche cette fois
+
+Contrairement à UI-POLISH (qui avait édité `province_panel.gd` legacy en croyant
+éditer `province_panel_v2.gd`), le brief UI-DOCTRINE nommait EXPLICITEMENT les deux
+fichiers et demandait un AUDIT avant de choisir — bonne pioche : `province_panel_v2.gd`
+était bien déjà « le modèle » (doctrine bâti-seul/hover/mois déjà respectée, conteneurs
+natifs). Le vrai travail n'était PAS de choisir mais de PORTER le câblage réel (fermer,
+pied d'actions gouvernemental/diplomatique/colonisation) de legacy vers v2 — v2 n'avait
+JAMAIS eu de bouton Coloniser, Réprimer/Assimiler/Purger, ni de chips diplo
+(Attaquer/Route/Piller) : elle était fonctionnellement incomplète en display-only pur,
+pas juste « différente ». Une unification qui aurait juste supprimé legacy et laissé v2
+telle quelle aurait RETIRÉ des verbes joueur fonctionnels du jeu.
+
+### Découvertes
+
+- **`province_panel_v2.gd` classait encore comme « pilote secondaire »** dans
+  `main.gd::major_open()` ET dans la liste générique de `_close_topmost()` — un statut
+  hérité de l'époque où elle n'était qu'un panneau derrière la touche V (usage rare).
+  Une fois promue fiche PAR DÉFAUT (clic sur CHAQUE province, l'interaction la plus
+  fréquente du jeu), ces deux inclusions devenaient des BUGS DE COMPORTEMENT, pas
+  juste des reliquats cosmétiques : `major_open()==true` en continu aurait fait
+  collapse la pile d'alertes du rail droit à CHAQUE sélection de province ; et la
+  présence dans la liste générique de `_close_topmost()` faisait qu'un Échap se
+  contentait de `.visible=false` (sans `_clear_selection()`) — il fallait DEUX Échap
+  pour effacer le contour doré de sélection sur la carte, contre UN seul avant
+  (comportement historique de legacy, jamais dans cette liste). Retiré des deux ; la
+  fiche province garde son propre chemin de fermeture dédié (`_clear_selection`, motif
+  legacy, en fin de `_close_topmost()`).
+- **`vkit.gd::section()/row()` avait un paramètre `w_override` devenu MORT** après la
+  suppression de legacy — son SEUL appelant sur tout le projet (UI-POLISH #1 l'avait
+  ajouté spécifiquement pour `province_panel.gd`). Retiré (grep confirmé : 0 appelant
+  restant passe un 6e argument) plutôt que laissé comme code mort — exactement le
+  piège que ce fichier documentait déjà pour d'autres cas (« le code mort UI a englouti
+  une vague entière »).
+- **Le signal `closed` de `religion_panel.gd` ne tirait QUE depuis le bouton
+  « Fermer »** — fermer via Échap (déjà câblé dans `_close_topmost()` AVANT cette
+  mission, juste jamais testé en pratique faute d'accès normal au panneau) laissait
+  `Sim.set_speed(2)` jamais appelé : le jeu restait en PAUSE indéfiniment. Un bug
+  DORMANT depuis la création du panneau, invisible tant que la SEULE porte d'entrée
+  était le déclenchement automatique à la 1re fondation (rare, une fois par partie) —
+  révélé par le fait même de rebrancher un accès répétable (touche R). Remplacé le
+  point d'écoute par `visibility_changed` (motif déjà établi par UI-POLISH #13 pour la
+  pile d'Échap) : couvre TOUT chemin de fermeture sans dépendre d'un signal
+  spécifique à UN SEUL site d'émission.
+- **`economy_page.gd` réutilisée par `empire_window.gd`** : plutôt que de choisir entre
+  « déplacer le code des curseurs » (risque de casser budget_panel_v2, qui a sa PROPRE
+  copie) ou « supprimer l'onglet Économie de la Fenêtre Empire » (perte d'info), un
+  simple flag `interactive: bool` (défaut `true`, posé à `false` par l'appelant Fenêtre
+  Empire) suffit : la MÊME fonction `_row()` construit soit un curseur soit rien, zéro
+  duplication de template. Le lien de retour (« Régler… → Trésor (B) ») est un signal
+  qui remonte 2 niveaux (economy_page vers empire_window vers main.gd), motif déjà
+  utilisé partout dans ce fichier pour la navigation croisée entre panneaux.
+- **`province_ui_audit.gd`/`series2_audit.gd` chargeaient `province_panel.gd` en DUR**
+  (`load("res://ui/province_panel.gd")`) — une suppression de fichier sans grep
+  PRÉALABLE sur TOUT `godot/project/**` (pas juste `ui/`) aurait cassé ces deux probes
+  headless/fenêtrées silencieusement (échec seulement au PROCHAIN lancement, pas à la
+  compilation du reste du projet). `tests/province_info_card_test.gd` testait carrément
+  des MÉTHODES internes de legacy (`_province_summary_card`/`_province_satisfaction_card`,
+  le système de cartes de survol structurées `get_info_card`) — v2 ne l'a jamais eu
+  (elle utilise `tooltip_text` natif partout, plus simple) : pas de portage possible sans
+  réinventer le système, donc RETIRÉ (le test testait une fonctionnalité qui n'existe
+  plus, pas une régression).
+
+### Pièges
+
+- **Toucher `main.gd` en HUIT points dispersés pour UNE seule unification** (var
+  déclaration, instanciation+signaux, `_on_province_picked`, `_clear_selection`,
+  `_close_topmost` deux listes, `major_open`, `_sidebar.tab_selected`, `_prov_detail.
+  visibility_changed`) — grep sur `_prov_panel` seul (sans le suffixe `_v2`) après
+  chaque lot d'edits est le seul moyen fiable de ne rien oublier ; un seul site manqué
+  (`_on_province_picked` par ex.) aurait laissé le clic-carte planté sur un panneau qui
+  n'existe plus, donc un crash immédiat au premier clic, pas une dégradation silencieuse.
+- **`Godot_v4.6.3-stable_mono_win64_console.exe --headless --path godot/project
+  res://main/Main.tscn --quit-after 180` est un filet de sécurité RAPIDE (~15 s) pour
+  toute chirurgie sur `main.gd`** — boot complet (genèse + `_ready()` de TOUT le shell)
+  sans lancer une seule probe dédiée ; grep la sortie sur SCRIPT ERROR, parse, Invalid
+  get, Nonexistent, Attempt to call (les warnings de leak RID/CanvasItem à la sortie
+  sont du bruit de cleanup Godot, pas des régressions). À relancer après CHAQUE lot de
+  modifications à `main.gd`, pas seulement à la fin.
+- **Un bouton `Button.new()` sans style dans un contexte ParchTheme (v2) hérite du
+  thème PAR DÉFAUT de la fenêtre (`ui_theme.gd`), pas de ParchTheme** — ParchTheme ne
+  stylise QUE ses `theme_type_variation` nommées (Tab, HeaderStrip…), jamais la classe
+  `Button` de base (déjà documenté par UI-POLISH pour le bouton banqueroute). Tout
+  nouveau bouton de v2 (pied d'actions, fermer, lien Trésor/Foi) doit poser ses propres
+  `add_theme_stylebox_override` — copié le motif de `_sq_btn()`/`_chip_btn()` déjà dans
+  le fichier plutôt que d'inventer un 3e style.
+- **Un heredoc bash riche en apostrophes françaises peut faire échouer le tool Bash**
+  (« unexpected EOF while looking for matching '' ») — probablement un ré-encapsulage
+  de la commande entière par le harness. Contournement : écrire le texte via l'outil
+  Write dans un fichier scratchpad, puis `cat scratch >> cible` en deux chemins courts,
+  zéro contenu littéral riche en apostrophes sur la ligne de commande elle-même. Piège
+  jumeau : passer un CHEMIN WINDOWS À BACKSLASHES à ce même tool Bash (Git Bash/POSIX)
+  casse pareil — toujours des slashs avant (`/c/Users/...`), jamais `C:\Users\...`.
+
+### Restes
+
+- **Doublon interne à `budget_panel_v2.gd`** (onglet Balance vs Monnaie, `_sliders` vs
+  `_m_sliders`, MÊME fenêtre) — cartographié (§C.3), PAS dans le mandat D1 (qui nommait
+  explicitement `economy_page.gd` vs `budget_panel_v2.gd`, deux FENÊTRES). Un futur
+  agent pourrait fusionner les deux dicts si le joueur le signale.
+- **Doublon de VUE (lecture seule) à quatre endroits** (tiroir Économie, Trésor,
+  Fenêtre Empire, courbes) — assumé, chacun sert un CONTEXTE différent (permanent vs
+  dédié vs gestion vs historique) ; non réduit par cette mission.
+- **Codex désynchronisé** (verbes Monnaie 2026-07-16 absents de `codex.gd::DOMAINS`) —
+  catalogué en D.2, pas dans le texte mandaté par D3 (or/an + membrane + rasoir +
+  couleurs), donc non touché. Correctif trivial pour un futur agent (3 entrées à
+  ajouter).
+- **`army_panel.gd` toujours hors de la pile Échap** (`main.gd::major_open`/
+  `_close_topmost` ne le listent pas) — signalé en D.2, non mandaté par cette vague,
+  non touché.
