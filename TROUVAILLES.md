@@ -6340,3 +6340,250 @@ classes renommées · religion introuvable après fondation). **Tout digest de m
 UI futur EMBARQUE ce document** au lieu de refouiller l'interface à l'aveugle — et
 toute vague UI le met à jour dans le MÊME commit que ses changements (règle en tête
 du fichier).
+
+---
+
+## MISSION UI-POLISH — les 13 défauts vus en jeu réel (2026-07-18)
+
+**Statut : 12/13 corrigés + vérifiés en probe réelle (Main.tscn, seed 9), 1 déjà
+conforme (hover), 1 « bug » confirmé NON-bug après lecture engine. Tag
+`pre-uipolish` posé avant tout changement. DLL rebuild (debug+release) +
+re-export `scps.exe` faits — `scps_api.c` touché (item 7, extension membrane).**
+
+### LE PIÈGE FONDATEUR — le brief nommait le mauvais fichier pour l'item 1
+
+- **`province_panel_v2.gd` (le fichier nommé par le brief pour l'item 1) N'EST PAS
+  le panneau que le joueur voit en cliquant une province** — main.gd:790-808
+  (`_on_province_picked`, le geste PAR DÉFAUT) ouvre `province_panel.gd` (le
+  panneau LEGACY, dessin immédiat) ; `province_panel_v2.gd` n'est atteignable que
+  par la touche **V** (un pilote secondaire). Les libellés de section cités mot
+  pour mot par le brief — PEUPLE/SATISFACTION/POPULATION/RESSOURCES/PRODUCTION/
+  CAPITALE — n'existent QUE dans `province_panel.gd` (`VKit.section(self, x, y,
+  "PEUPLE")` etc., lignes 219-385) ; `province_panel_v2.gd` a des sections
+  totalement différentes (PEUPLES/RÉSUMÉ/DÉFENSE…). C'est exactement le piège que
+  TROUVAILLES documentait déjà (« un agent qui grepperait juste "province"
+  pourrait éditer le mauvais fichier ») — sauf que cette fois c'est le BRIEF
+  lui-même qui s'est trompé de fichier (probablement parce que
+  `province_panel_v2.gd` est documenté « le modèle » ailleurs). Item 1 corrigé
+  dans `province_panel.gd`, pas `province_panel_v2.gd` — vérifié : les deux
+  fichiers coexistent, aucun n'a été supprimé, seul le bon a été touché.
+
+### Découvertes
+
+- **La cause de l'item 1 (débord ~90-100px) : `VKit.section()`/`row()` déduisent
+  leur largeur de `(ci as Control).size.x`** — mais `province_panel.gd.size.x =
+  PW + BUILD_TAB_W` (348+112=460), PAS la largeur visible du fond parchemin
+  (`VKit.panel_bg` ne peint que `PW`=348). `BUILD_TAB_W` est une bande RÉSERVÉE
+  hors-fond pour que le bouton « Construction » collé au bord droit reste dans
+  les bornes de hit-test du Control — un choix légitime pour LE BOUTON, mais
+  `VKit.section`/`row` n'avaient aucun moyen de le savoir et empruntaient
+  `size.x` en entier. Fix : paramètre optionnel `w_override` (vkit.gd), les 12
+  sites d'appel de `province_panel.gd` passent `PW`. Les AUTRES appelants de
+  `VKit.section`/`row` (battle_panel.gd, empire_sidebar.gd, sidebar_drawer.gd)
+  n'ont PAS ce motif « bande hors-fond » — non touchés, comportement historique
+  préservé (`w_override` par défaut = -1 = ancien calcul).
+- **Item 9 (prospérité 0 vs 50) confirmé un VRAI transitoire moteur, PAS un faux
+  positif d'affichage.** `pe->prosperity = gdp/(popsum+1)` (scps_econ.c ~4937)
+  part à 0 (struct calloc'd) et ne se peuple qu'au premier `econ_tick` complet ;
+  les provinces SAUVAGES (non colonisées) affichent un repli FIXE 50% (`colonized
+  ? pe->prosperity : 5.f`, scps_readout.c:704) qui, lui, ne dépend d'AUCUN tick —
+  d'où l'inversion « capitale développée à 0% à côté d'un hameau vide à 50% ».
+  Vérifié en probe réelle (jour 1 an 0, seed 9) : la capitale tier 4 affiche
+  bien « Prospérité — » après le fix (au lieu de 0), le hameau sauvage garde son
+  50%. Fix display seul (`_is_pre_settlement`, province_panel.gd) : jour 1 an 0 +
+  aisance≤0 ⇒ « — ». **Piège trouvé EN VÉRIFIANT** : une probe à `years=25` (le
+  motif par défaut des autres probes du repo, shot_ui.gd etc.) montre la MÊME
+  capitale TOUJOURS à « Prospérité 0 » 24 ANS plus tard (pas juste au jour 1) —
+  `scps_sim_advance_days` appelle bien `sim_day()` en boucle réelle (PAS un
+  raccourci, vérifié scps_api.c:156-162 — donc pas un artefact de probe), ce qui
+  suggère que CETTE capitale-là (seed 9, la FAMINE du jour 0 ne se résorbe
+  peut-être jamais sous cette politique par défaut) reste bloquée en dessous du
+  seuil de croissance de GDP pendant des dizaines d'années simulées. Documenté en
+  Restes ci-dessous — hors périmètre (mission scopée « jour 1 », pas « pourquoi
+  ça ne repart jamais »), aucun fichier scps/*.c touché pour ça.
+- **Item 10, la FAMINE du jour 0 EST un vrai signal moteur, reproductible, PAS un
+  faux positif d'amorçage.** Vérifié en probe réelle jour 1 an 0 (seed 9) : le
+  JOURNAL affiche bien « an 0 · FAMINE — Désert Brûlant ne ma[nge qu'à N%]… » dès
+  la genèse — les stocks de départ sont vides (aucun grenier hérité), le
+  `food_sat` calculé au premier tick tombe sous le seuil. Probablement LIÉ au
+  point précédent (une famine dès le jour 0 pourrait amorcer le blocage de GDP
+  observé 24 ans plus tard). Non touché (moteur, hors périmètre) — Reste
+  documenté pour une future vague d'équilibrage.
+- **Item 7 : le « ~ » devant l'entretien n'a JAMAIS reflété une incertitude
+  moteur.** `scps_edifice_upkeep_month`/`scps_manuf_upkeep_month` (scps_api.c)
+  retournent déjà `(int)(valeur_exacte + 0.5f)` — un ARRONDI STANDARD (comme
+  n'importe quelle devise affichée à l'entier), pas une approximation. Le « ~ »
+  était un artefact GDScript pur (3 sites, construction_panel.gd), les
+  commentaires du code lui-même disaient déjà « miroir EXACT E1bis.10 » juste
+  au-dessus de la ligne qui affichait « ~ ». Retiré, aucun nouveau reader
+  nécessaire (contrairement à l'hypothèse du brief).
+- **Item 7 extension (directive joueur, membrane) : `api_edifice_effet`
+  (scps_api.c) affichait « institutions +1.0 », « ouverture +1.0 »… — les
+  COORDONNÉES MOTEUR nues (K_inst/H_coerc/P_open/PE_infra/food_cap/faith/savoir)
+  de `EdificeDef.delta`, sans aucun ancrage joueur.** La parenthèse descriptive
+  (« tient la province, ronge la loyauté »…) était déjà le bon texte — seul le
+  `%.1f` nu a été retiré du format (`EF_ADD` macro), le gate `val>0.001f` reste
+  identique (comportement inchangé, affichage seul). Touche scps_api.c (permis :
+  c'est la façade, item 7 l'autorisait déjà pour le reader exact) — DLL
+  rebuild + `core_demo` (35/35) + `make lang-check` (0=0) vérifiés après coup.
+- **Item 8, PAS un bug d'enum CLASS_\*, vérifié dans le C.** `CLASS_LABORER=0,
+  CLASS_BOURGEOIS=1, CLASS_ELITE=2` (scps_econ.h) et la boucle de
+  `scps_country_fiscal_orders` (`for c=0..2, (SocialClass)c`) sont alignés
+  1-pour-1 avec `CLASS_NAMES := ["Journaliers","Bourgeois","Élite"]` côté
+  GDScript. `satisfaction=-1` est le sentinel LÉGITIME
+  d'`econ_country_class_satisfaction` (scps_econ.c:2237-2250) quand
+  `psum<=0` — cette classe n'a ENCORE AUCUNE ÂME dans le pays (vérifié en probe :
+  jour 1, seed 9, Bourgeois=0 pop pendant que Journaliers/Élite sont peuplés —
+  un empire neuf n'a pas encore d'artisans urbanisés). Le seul vrai défaut :
+  l'affichage mélangeait un tiret (satisfaction) et un chiffre « 0 or/mois »
+  (revenu) pour la MÊME absence — les deux disent « — » désormais (cohérence
+  avec la règle de l'item 9 : jamais un nombre à côté d'un tiret pour un état
+  qui n'existe pas encore).
+- **Items 2 et 3 (troncature « … » sur la culture / le journal) : le hover
+  COMPLET était DÉJÀ câblé dans le code AVANT cette mission** — `province_panel.
+  gd` (`_tips.append` conditionné sur `VKit.text_w(cul_txt) > cul_w`) et
+  `empire_sidebar.gd::_get_tooltip` (boucle sur `_journal_rects`, compense déjà
+  le `_scrolloff`) implémentaient tous deux « doctrine hover=détail » avant que
+  je ne touche quoi que ce soit. Vérifié par lecture — non modifié (aucune
+  raison de retoucher un mécanisme déjà correct). Ce que le brief a probablement
+  vu : une capture STATIQUE (le survol n'a jamais été testé à la main), donc
+  « tronqué à l'ellipse » sans savoir que le hover révèle le reste.
+- **Item 12 : les curseurs fiscaux/budgétaires sont RÉIMPLÉMENTÉS À PART dans
+  `economy_page.gd` (Fenêtre Empire, onglet Économie) — un DOUBLON connu, pas
+  créé par cette mission** (cartographie UI §D.1.3 : même verbe
+  `player_budget_policy`, deux `HSlider` non synchronisés). Le fix de cette
+  mission (`_row()`, budget_panel_v2.gd, onglet Balance UNIQUEMENT — le tiroir
+  cité par le brief) ne touche PAS `economy_page.gd` : aucune divergence
+  NOUVELLE introduite, le doublon pré-existant reste identique à avant. La purge
+  du doublon (3 fiches province + 2 implémentations de curseurs) est un chantier
+  à part (cartographie UI §D.1.2/D.1.3), volontairement pas étendu ici.
+- **La pile d'Échap (item 13) : `visibility_changed` est le point d'écoute qui
+  évite de toucher les DIZAINES de sites d'ouverture existants.** `_construct`/
+  `_budget_v2`/`_empire_win`/`_country_actions` sont ouverts depuis 5+ endroits
+  différents de main.gd (raccourcis clavier, signaux `build_requested`, clic
+  droit carte…) — plutôt que d'instrumenter chaque site, un SEUL
+  `p.visibility_changed.connect(...)` par panneau (posé une fois, après leur
+  création) capte TOUT changement de `.visible` quel que soit son origine.
+
+### Pièges
+
+- **`for x in [a, b, c]: var y := x` échoue l'inférence de type GDScript**
+  (« Cannot infer the type of "y" ») quand le littéral d'array n'est pas
+  explicitement typé — le loop var `x` est `Variant`, `:=` ne peut pas en
+  déduire un type concret même si TOUS les éléments réels sont des `Control`.
+  Typer EXPLICITEMENT (`var y: Control = x`) — piège JUMEAU de celui déjà
+  documenté pour les ternaires mélangeant un appel de méthode et un littéral.
+  Payé une fois (main.gd, le wiring `visibility_changed`), détecté par la probe
+  (SCRIPT ERROR au chargement, PAS d'erreur silencieuse — le fallback « Main.tscn
+  par défaut » de Godot masque presque l'échec : la partie démarre quand même,
+  juste sans AUCUN des `_ready()` du script cassé, ring de confusion si on ne
+  lit pas `SCRIPT ERROR` dans le log).
+- **GDScript refuse une assignation à l'intérieur d'une expression ternaire**
+  (`x if cond else (y = z)` → « Assignment is not allowed inside an
+  expression ») — piège TROUVÉ dans ma propre probe (`uipolish_shot.gd`), pas
+  dans le code livré. `if/else` explicite à la place.
+- **Un échec de PARSE d'une scène passée en argument CLI (`res://foo.tscn`) fait
+  silencieusement retomber Godot sur `run/main_scene` (project.godot)** — la
+  partie démarre NORMALEMENT (genèse du monde, logs complets) sans qu'aucune
+  probe ne tourne, et le process ne quitte JAMAIS (`get_tree().quit()` n'est
+  jamais atteint) → un hang qui RESSEMBLE au piège `--headless` déjà documenté
+  mais dont la cause est totalement différente. Toujours lire les 10 premières
+  lignes du log pour un `SCRIPT ERROR`/`Parse error` avant de conclure à un hang
+  du connu.
+- **`MSYSTEM=MINGW64 bash.exe -l -c "commande relative"` échoue silencieusement
+  (« No such file or directory »)** — le shell de LOGIN MSYS2 réinitialise son
+  répertoire de travail à SON `$HOME` avant d'exécuter `-c`, donc tout chemin
+  relatif à la racine du dépôt échoue. Contournement fiable : écrire un script
+  `.sh` avec un `cd /c/...` EXPLICITE en première ligne, puis l'invoquer par
+  CHEMIN ABSOLU (`bash.exe -l /chemin/absolu/script.sh`) — motif déjà utilisé par
+  `packaging/windows/rebuild_dll.sh`, à copier plutôt qu'à réinventer un `-c`
+  inline (payé ~6 tentatives ratées avant de re-remarquer que le script existant
+  faisait déjà ça).
+
+### Le tableau du balayage graphite (item 6)
+
+| Site | Nature | Décision |
+|---|---|---|
+| `sidebar_drawer.gd::_draw_header` | fond quasi-noir codé en dur sous les 8 onglets du tiroir (dont Diplomatie F7, signalé par le joueur) | **corrigé** → `VKit.COL_PANEL2` |
+| `event_dialog.gd` bandeau « DÉCISION » | même reliquat, popup de dilemme (gameplay fréquent) | **corrigé** → `VKit.COL_PANEL2` |
+| `event_popup.gd` bandeau « OYEZ OYEZ » | même reliquat, popup d'évènement | **corrigé** → `VKit.COL_PANEL2` |
+| `province_panel.gd` boutons ✕/chevron replier | fond quasi-noir + glyphe encre SOMBRE dessus → rendait deux carrés illisibles (le « ■ ■ » du brief) | **corrigé** → `VKit.COL_PANEL2` |
+| `budget_panel_v2.gd` bouton banqueroute | `Button.new()` sans style → thème Godot par défaut (ParchTheme ne stylise que la variation « Tab », pas la classe « Button » de base) | **corrigé** → rouge danger dédié (item 5) |
+| `sidebar_drawer.gd::_draw_multiplier_slider` piste | groove quasi-noir, ParchTheme donne déjà un ton de piste officiel (tan) pour les HSlider natifs | **corrigé** → `Color("caa768")` |
+| `sidebar_drawer.gd` bandeaux totaux Revenus/Dépenses (`_draw_eco`, vert/rouge sombres) | accent de ligne-total, teinte plus sombre que le reste — INTENTIONNEL possible (emphase) ou reliquat, non tranché sans capture dédiée | **non touché** — à re-vérifier visuellement par un futur agent |
+| `topbar.gd` bouton de vitesse inactif (`Color(0.075,0.085,0.085)`) | chrome de la TOPBAR (doctrine : famille « nationale », possiblement sciemment distincte du parchemin des panneaux de contenu), non signalé par le joueur | **non touché** — hors scope, pas dans le catalogue |
+| `alerts.gd` fond des cartouches-label (chips flottants sur la carte) | fond sombre translucide DOCUMENTÉ intentionnel dans le commentaire (« letters RimWorld », lisibilité sur fond de carte variable) | **non touché** — motif volontaire, pas un reliquat |
+| `menu_root.gd`/`options_panel.gd`/`new_game_panel.gd`/`culture_creator.gd`/ `religion_panel.gd`/`feedback.gd` (palettes locales C_BG/C_PANEL « cuir sombre ») | écrans de MENU/SETUP, DA distincte assumée (cartographie UI §A confirme : « cohérence par coïncidence, pas la même source », aucun hérétique de palette) | **non touché** — hors périmètre (ni signalé par le joueur, ni « en jeu »), risque de régression visuelle sur une DA volontairement différente |
+| `tooltip_server.gd` fond de tooltip (`Color(0.075,0.06,0.045)`) | dark card intentionnel (motif tooltip à contraste, pas du chrome de panneau) | **non touché** — pas un reliquat, un choix de lisibilité |
+
+**Codes couleurs (directive joueur #6, sémantique)** : audité en passant — `VKit.
+sense()`/`ParchTheme.INCOME`/`ParchTheme.EXPENSE`/`COL_GOLD` sont la source
+UNIQUE consommée par tous les fichiers touchés cette mission (rouge=négatif,
+vert=positif, or=monnaie/accent) ; aucune violation trouvée dans le périmètre
+touché. Un audit EXHAUSTIF des ~50 fichiers UI non touchés ici n'a pas été fait
+(hors budget de cette mission) — les zones `Color()` littérales listées ci-dessus
+sont les seules suspectes relevées en cours de route.
+
+### La règle des panneaux (item 13, à documenter pour tout futur agent UI)
+
+1. **Échap ferme le panneau au PREMIER PLAN — le DERNIER ouvert**, pas un ordre
+   fixe arbitraire. Implémenté via une pile (`main.gd::_panel_stack`) alimentée
+   par `visibility_changed` (pas par les sites d'ouverture).
+2. **Quand PLUS RIEN n'est ouvert, Échap ouvre le menu système** (pause/options/
+   sauver/quitter) — déjà le comportement de `KEY_ESCAPE` (`_close_topmost()`
+   retourne `false` ⇒ `_menu.open()`), inchangé par cette mission.
+3. **Échap NE QUITTE JAMAIS la run directement** — vérifié : le seul
+   `get_tree().quit()` du projet est derrière le bouton « Quitter » explicite du
+   menu (`menu_root.gd:157`), aucun chemin Échap n'y mène.
+4. **Un panneau MAJEUR (Trésor, Diplomatie, fenêtre pays) referme les POPUPS
+   FLOTTANTS non ancrés (Construction) à l'ouverture** — un seul, Construction,
+   dans ce statut aujourd'hui.
+5. **La fiche province (contextuelle-ancrée : legacy OU V2) NE FAIT JAMAIS
+   PARTIE de la règle 4 — elle coexiste toujours** avec un panneau majeur.
+6. **Tout NOUVEAU panneau flottant** doit décider explicitement où il se situe
+   (majeur / popup flottant / contextuel-ancré) et s'enrôler dans
+   `_panel_stack` (`p.visibility_changed.connect(...)`, motif à copier depuis le
+   wiring de `_budget_v2`/`_empire_win`/`_country_actions`/`_construct`,
+   main.gd ~ligne 330) — sinon Échap l'ignore silencieusement (exactement le bug
+   corrigé cette mission).
+
+### Restes
+
+- **Item 9/10, le fond moteur : une capitale peut rester bloquée à
+  `prosperity≈0` DES DIZAINES D'ANNÉES simulées après une famine au jour 0**
+  (observé seed 9 : encore à 0% à l'an 24, alors que le fast-forward
+  `advance_days` tourne le VRAI `sim_day()` en boucle, pas un raccourci).
+  Corrélation plausible avec la famine du jour 0 (stocks de départ vides), non
+  prouvée, non creusée (hors périmètre — mission scopée « jour 1 », moteur
+  interdit sauf scps_api). Un futur agent pourrait tracer `re->gdp`/
+  `re->prosperity` sur cette capitale précise (seed 9) tick par tick pour
+  confirmer si c'est un vrai piège de croissance ou un artefact de CE run
+  particulier (ex. IA n'ayant jamais reçu d'ordre de secours).
+- **Le doublon des 3 fiches province (classes renommées Laboureurs/Artisans/
+  Noblesse vs Journaliers/Bourgeois/Élites) et des curseurs budgétaires en double
+  (economy_page.gd vs budget_panel_v2.gd)** — cartographié (§D.1.2/D.1.3),
+  explicitement PAS étendu par cette mission (directive coordinateur : « purge
+  = vague UI-DOCTRINE suivante »). Nomenclature CANONIQUE confirmée par le
+  coordinateur : Journaliers/Bourgeois/Élites (celle du moteur/doctrines).
+- **`sidebar_drawer.gd` bandeaux Revenus/Dépenses (vert/rouge sombres,
+  `_draw_eco`)** — non tranché (intentionnel vs reliquat), signalé dans le
+  tableau du balayage, à re-capturer visuellement par un futur agent avant de
+  décider.
+- **item 2 (culture) : la largeur de la demi-colonne (`cul_w`, la moitié de
+  `rw` moins les marges) n'a pas été élargie** — le hover suffit déjà à la
+  doctrine, mais un futur agent pourrait resserrer les camemberts culture/foi
+  pour donner plus de place au texte SANS toucher au hover (embellissement,
+  pas un bug).
+- **`uipolish_shot.gd` (nouvelle probe)** ne capture pas de scénario de
+  survol RÉEL (item 11, item 2/3 hover) — le fix de stale-hover (item 11) et le
+  hover déjà-correct (items 2/3) sont vérifiés par LECTURE de code + logique,
+  pas par une capture avec un VRAI mouvement de souris timé. À re-vérifier à la
+  main si un doute visuel remonte (mission le permettait explicitement : « à
+  re-vérifier à la main »).
+- **`make golden`/`make determinism` non relancés après le changement
+  `scps_api.c`** (item 7 extension) — jugé sûr par raisonnement (pure
+  reformulation d'une CHAÎNE DE CARACTÈRES d'affichage, `api_edifice_effet`
+  n'alimente aucun état simulé/sérialisé, aucun test ne dépend de son contenu
+  exact — grep confirmé) plutôt que mesuré ; `core_demo` (35/35) et
+  `make lang-check` (0=0) ont tourné. Un futur agent qui doute peut lancer
+  `make golden` en 2 minutes pour clore le doute definitivement.
