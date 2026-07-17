@@ -4896,3 +4896,317 @@ parties RÉELLES, pas prouvable par sweep.
 - Fichiers de sweep bruts : `build/paired_faustien/head_{9,11,42}.txt` (côté HEAD
   seulement — le côté pre-faustien a été perdu au retrait du worktree, cf. Pièges) —
   scratch local, les chiffres consignés ci-dessus font foi.
+
+## MISSION M14 — AUDIT-2 : trésor négatif · dette unifiée · amortissement périmé · +6 P1 (2026-07-17)
+
+**Statut : LIVRÉ — 3 P0 + 6 P1 complets, `make test` 39/39 sous Windows pour la
+PREMIÈRE FOIS (B9), golden RE-BASELINÉ VERT, invariant 0/9 breach (pre-m14 ET HEAD).**
+Origine : audit externe (2e vague après M11-« audit-Sol »). Tag `pre-m14` posé sur
+ee79945. CHAQUE claim vérifié AU CODE avant correctif (consigne du brief) — TOUS
+confirmés, aucun faux-positif cette fois.
+
+### LES 3 P0
+
+**B1 — LE TRÉSOR NÉGATIF INVERSAIT LES PAIEMENTS (CONFIRMÉ).** `fminf(coût,
+treasury)` sans clamp : treasury<0 ⇒ `paid` négatif ⇒ le trésor RECEVAIT, la
+dépense devenait un revenu, la richesse du payé passait sous zéro. Grep généralisé
+(pas seulement les 4 sites cités) — **6 sites corrigés** :
+| site | nature | code AVANT | fix |
+|---|---|---|---|
+| scps_warhost.c:311 | solde militaire | `fminf(pay,treasury)` | `fmaxf(0,fminf(...))` |
+| scps_warhost.c:397 | prix de recrutement | `fminf(price,treasury)` | idem |
+| scps_diplo.c:340 | tribut vassal | `treasury*frac` (treasury signé) | `fmaxf(0,treasury)*frac` |
+| scps_diplo.c:1637 | réparations de guerre | idem | idem |
+| scps_diplo.c:1377 | pillage (siège/raid), **trouvaille** | `fminf(pp->treasury,target)` | `fminf(fmaxf(0,...),target)` |
+| scps_statecraft.c:455 | coût du Conseil, **trouvaille** | AUCUN clamp du tout | `fminf(cost,fmaxf(0,treasury))` |
+
+Sites vérifiés SAINS (déjà clampés) : ai.c:2734/2790, diplo.c:395-418/435/1176/1662,
+econ.c:4269/4346 (`fmaxf(0,...)` DÉJÀ le motif correct — la référence copiée
+partout ensuite), navy.c:217. Bancs dédiés (warhost_demo LOT 1.5, diplo_demo tribut/
+réparations/pillage, statecraft_demo) — trésor à −100/−1000/−2000/−800 ⇒ paid==0,
+aucune richesse ne passe sous zéro par ce chemin.
+
+**B2 — LES DEUX SYSTÈMES DE DETTE + LE TOCTOU (CONFIRMÉ, périmètre exact).**
+(a) `econ_region_treasury_add` (scps_econ.c:2887) forçait un résidu non couvert en
+trésor négatif SANS l'inscrire dans CountryDebt — dette fantôme (sans intérêt, ni
+créancier, ni plafond, ni banqueroute). Les 3 appelants ACTUELS en delta négatif
+(INVEST/ROADS/frappe libre) bornaient déjà leur montant (jamais atteint EN
+PRATIQUE) — mais `diplo_fabricate_cb` (scps_diplo.c:679) débite UNE SEULE région
+alors que `diplo_can_fabricate` vérifie le trésor TOTAL du pays : un vrai chemin
+de dette fantôme, réellement atteignable, trouvé par le grep généralisé.
+(b) `credit_can_spend` lit region[]-grain ; `credit_spend` n'écrivait QUE prov[]
+nu (scps_credit.c:441/448) — region[] restait périmé jusqu'à la PROCHAINE
+econ_aggregate_regions : deux `credit_spend` consécutifs dans le même mois
+pouvaient être TOUS DEUX autorisés sur la même vue stale.
+**Correctifs** : (a) clamp au trésor RÉELLEMENT disponible (paiement partiel,
+motif déjà appliqué aux dépenses d'État), retourne le montant RÉEL pris.
+(b) `credit_spend` route ses 2 écritures via `econ_prov_treasury_credit` (dual-
+write immédiat, motif A2/M11) ; si la chaîne d'emprunt ne couvre pas le besoin,
+le reliquat non financé est RENDU à la province (réalisation PARTIELLE, jamais
+une dette fantôme) — choix documenté (credit_spend est `void`, ~10 appelants
+sans vérifier de retour, réaliser partiellement ferme le trou sans toucher aux
+appelants). Non gatable proprement (même nature que M11-A2).
+
+**B3 — L'AMORTISSEMENT SUR DETTE PÉRIMÉE (CONFIRMÉ, monnaie détruite MESURÉE).**
+`credit_year_tick` : `debt_total` capturé UNE FOIS en tête de boucle, AVANT
+l'échéance. L'échéance réduit `g_debt[c].to_class/to_cs` (`fixed`) mais JAMAIS
+`debt_total` lui-même — l'amortissement, juste après, répartissait `repay` avec
+`to_class/debt_total` : numérateur POST-échéance, dénominateur PRÉ-échéance.
+**Mesuré au banc (avant fix)** : dette 1020 (100% classes) → échéance → amortis-
+sement réparti sur le total PÉRIMÉ ⇒ le débiteur paie 204.000, les créanciers ne
+reçoivent que 193.805 — **10.195 or DÉTRUITS**, reproduisant EXACTEMENT le
+scénario 100→9+1 du brief. Fix : recapture `debt_total_amort` APRÈS l'échéance,
+juste avant l'amortissement. Après fix : écart 0.004 (résidu float pur).
+Banc rouge-sur-pre-B3 / vert-sur-fix prouvé par A/B directe (fichier restauré
+après coup, cf. Pièges).
+
+### LES 6 P1
+
+**B4 — LE MARKUP QUI CRÈVE LE PLAFOND (CONFIRMÉ, mesuré 15.6 or de dépassement).**
+`debt_draw_cap` rendait le headroom en PIÈCES (`ceiling-debt_total`), mais
+`debt_origination` (DEBT_FIXED) inscrit `borrow×(1+taux)` au passif — emprunter
+le headroom nominal inscrit PLUS que ce headroom. Fix : `room/(1+taux)`
+(taux lu AVANT toute mutation, même convention que `debt_origination`).
+DEBT_FIXED=0 : kill-switch exact (headroom nu, inchangé). Banc : 60 itérations
+d'emprunt-maximum ⇒ dette JAMAIS >plafond (0.000 de dépassement, contre 15.646
+sur le code désactivé) ; dette finale colle au plafond (>95%, le headroom n'est
+pas gaspillé).
+
+**B5 — LA VENTILATION PAR ORDRE (CONFIRMÉ).** `credit_borrow_class`/
+`credit_borrow_local §2` agrégeaient tout dans un SEUL `to_class`, remboursé aux
+poids FIXES ELITE/BOURGEOIS_LEND_WEIGHT (1.0/0.5) — un emprunt 100% bourgeois
+remboursait quand même l'élite à 67%. Fix : `CountryDebt.to_class` →
+`to_elite`+`to_bourgeois` (la créance RÉELLE par ordre) ; échéance, amortissement
+(même bloc que B3) et rachat de crédit ventilent ∝ la composition RÉELLE.
+`credit_debt_class(c)` reste l'AGRÉGAT (contrat externe INCHANGÉ) ; nouveaux
+readers `credit_debt_elite`/`credit_debt_bourgeois`. **SAVE_VERSION 95→96**
+(struct CountryDebt grandit d'un float/pays), save_sane revalide les deux champs
+individuellement. Banc : emprunt 100% bourgeois ⇒ élite=0/bourgeois>0 à
+l'origination, l'élite ne touche RIEN au service, le bourgeois EST payé.
+
+**B6 — LA MIGRATION UNE-SEULE-VÉRITÉ COMPLÉTÉE (grep généralisé, 17 sites).**
+Tous les écrivains `treasury` nus restants convertis vers `econ_prov_treasury_
+credit` (province déjà résolue) ou `econ_region_treasury_add` (delta, résolution
+géo) :
+| fichier:fonction | site | nature |
+|---|---|---|
+| scps_missions.c:167 | récompense de mission | post-agrégation |
+| scps_statecraft.c:455 | coût du Conseil | post-agrégation (+ B1) |
+| scps_warhost.c:311,397 | solde + prix recrutement | post-agrégation (+ B1) |
+| scps_diplo.c tribut de base | ~340 | post-agrégation (+ B1) |
+| scps_diplo.c tribut VFN_COMMERCE | ~416-424 | post-agrégation |
+| scps_diplo.c digestion d'annexion | ~442 | post-agrégation |
+| scps_diplo.c don mercantile (fronde) | ~523-525, **TROUVAILLE** | écrivait `region[]` DIRECTEMENT, jamais `prov[]` |
+| scps_diplo.c diplo_peace_take_gold | ~1191 | verbe (arbitraire) |
+| scps_diplo.c diplo_pillage_value | ~1396,1416 | post-agrégation (+ B1) |
+| scps_diplo.c diplo_reparations | ~1658,1663 | post-agrégation (+ B1) |
+| scps_diplo.c diplo_loot | ~1684,1688 | verbe (arbitraire) |
+| scps_ai.c:2790 | audit des offices | pré-agrégation (hygiène) |
+| scps_decrees.c decree_spend_capital | ~190 | verbe CMD_DECREE (pas seulement decrees_tick) |
+| scps_decrees.c decree_afford_capital | ~209 | idem |
+| scps_events.c apply_region_eff | ~2250-2268 | pré-agrégation (hygiène) |
+| scps_revolt.c:948 | CONCEDE_GOLD | post-agrégation |
+
+**TROUVAILLE au-delà du grep mécanique** : le mécanisme du « don » mercantile
+(fronde de suzeraineté, scps_diplo.c) écrivait `region[].treasury` DIRECTEMENT —
+jamais `prov[]`. `region[]` n'étant qu'une VUE reconstruite ENTIÈRE depuis `prov[]`
+à chaque `econ_aggregate_regions`, le don s'ÉVAPORAIT silencieusement au tick
+suivant (ni donateur appauvri, ni receveur enrichi, une fois la vue reconstruite)
+— pire qu'une simple staleness, un no-op complet. Résolu (province résolue via
+`econ_region_rep_province` + dual-write). ATTENTION « péages parqués » vérifiée :
+aucun des 17 sites ne touche `region_carrier_prov` ni le routage des dépenses
+d'État — seul le CHOKEPOINT d'écriture change, jamais la SÉLECTION de province
+porteuse.
+
+**B7 — L'ÉCHÉANCE AFFICHÉE FAUSSE (CONFIRMÉ).** Le moteur prélève DEBT_DUE_
+FRAC=10%/an du stock (DEBT_FIXED), `budget_panel_v2.gd:581` affichait
+`total×taux` (taux = `credit_current_rate`, le taux d'ORIGINATION d'un FUTUR
+emprunt, 2-5%/an — JAMAIS celui qui prélève sur la dette EXISTANTE) — un montant
+mesuré **~4.6× trop bas** (banc : dette 459, échéance réelle 45.9, ancien calcul
+9.9). Fix : nouveau champ `ScpsDebt.due` (scps_api.h/.c, même formule EXACTE que
+`credit_year_tick`, lue via `tune_f` — jamais une constante dupliquée côté
+GDScript) ; binding `country_debt()` (scps_sim_node.h/.cpp) expose `due` ;
+`budget_panel_v2.gd:581` (SEUL fichier GDScript touché) affiche `due`. **DLL
+Godot REBUILDÉE** (scons, debug+release, `PROCESSOR_ARCHITECTURE=AMD64`).
+
+**B8 — LES SLIDERS HORS SPEC (CONFIRMÉ, la preuve save_sane).** La décision
+joueur validée était ×0.1–×2 (impôt+paie), le moteur/API clampaient [0.02,1.0]
+sur un commentaire UNILATÉRAL (« plus de surpaie/surtaxe ×2, qui n'a pas de
+sens » — `policy_mult`, scps_econ.c). **La preuve que [.,2.0] est l'ORIGINAL** :
+`save_sane` (scps_save.c) validait DÉJÀ jusqu'à 2.0 (commentaire explicite
+« saves legacy ») et `scps_sim.c` (CMD_COUNCIL_PAY) attendait déjà "a[1] = paie
+×100 (0..200)" — cette vague RESTAURE, n'étend pas. Fix [0.1,2.0] partout
+(policy_mult, econ_country_tax_set, econ_country_budget_set, statecraft_council_
+pay/_set_pay, scps_player_council_pay, scps_player_budget_policy) — BUDGET_
+INVEST/MINT/DEBASE EXEMPTÉS (niveau brut [0,1] distinct, B8 ne les concerne pas).
+TAX_MULT_FLOOR (M10, le plancher du contrôleur IA C3) vérifié INTACT — son
+propre `clampf(base+delta,floor_,1.f)` n'est PAS touché, la distinction
+joueur/IA survit (vérifié PAR LECTURE DE CODE — un banc dynamique s'est avéré
+trop fragile, cf. Pièges).
+
+**B9 — INTERTRADE_DEMO WINDOWS : make test 39/39 pour la PREMIÈRE FOIS.**
+Trois couches, chacune démasquée par la précédente :
+1. `setenv` absent sous MinGW-w64 (même avec `_POSIX_C_SOURCE`) — shim portable
+   (`_putenv_s` sous `_WIN32`) → le banc BUILD enfin.
+2. STACK_OVERFLOW (0xC00000FD) immédiat — même classe que campaign_demo/
+   warhost_demo (déjà `-Wl,--stack,8388608`, motif « hors scope, ne touche pas »
+   dans le brief). Appliqué le MÊME pattern PRÉCÉDENT à intertrade_demo (un 3e
+   binaire qui en avait besoin) — n'a PAS touché campaign/warhost eux-mêmes.
+3. **LA VRAIE SUBSTANCE** : le banc posait sa fixture UNIQUEMENT sur `region[]`
+   (owner/stock/price/treasury) — jamais compilé, jamais démasqué, DORMANT
+   depuis la migration RE-KEY PROVINCE. `intertrade_tick`/`intertrade_market_*`
+   résolvent stock/trésor au grain PROVINCE (`it_treasury`, `econ_region_
+   stock_add`) : le GATE lit `region[]` (donc « voit » la fixture) mais le
+   DÉBIT RÉEL mord `prov[]` (jamais seedé) ⇒ `moved≈0` ⇒ AUCUN échange, 8
+   échecs de test. `mirror_prov` (nouveau helper local) pousse la fixture vers
+   TOUTES les provinces de la région (owner PARTOUT — sinon
+   `econ_aggregate_regions` ÉLIT un AUTRE owner depuis la capitale/pop la plus
+   peuplée, stock/trésor/prix sur la représentative, sœurs à zéro pour ne pas
+   polluer la Σ) ; `econ_aggregate_regions` après chaque tick/consume tire
+   l'état RÉEL vers `region[]`. Bonus : le test de « conservation » ne comptait
+   que `treasury` — le péage TRADE_LEVY (M5-R1) verse la MOITIÉ de sa marge aux
+   BOURGEOIS en RICHESSE (pas au trésor) : `wsum()` compte désormais
+   trésor+richesse (même périmètre que l'invariant M(t) ailleurs).
+   **RÉSULTAT : intertrade_demo 28/28, `make test` 39/39.**
+
+### Découvertes
+
+- **Le bug B1 était accidentellement AUTO-CORRECTEUR** — un effet de bord
+  découvert en analysant le sweep : sous le code pré-M14, un pays déjà en
+  trésor négatif qui tentait une dépense (solde/tribut/etc) RECEVAIT de l'argent
+  au lieu d'en perdre (le paiement s'inversait) — une « bailout » accidentelle
+  qui réduisait artificiellement le nombre de pays visibles en négatif à un
+  instant donné. En fermant cette inversion (B1), le sweep mesure un nombre de
+  pays « or net < 0 » PLUS ÉLEVÉ qu'avant (chronicle : Σ 3 → Σ 22 sur les 3×3
+  sims apparié) — pas une régression, la SURFACE VISIBLE du problème que le bug
+  masquait. La dette TRACKÉE (CountryDebt) augmente en proportion (Σ 1752 →
+  5456 or sur le même échantillon) : c'est EXACTEMENT le sens de B2 — l'argent
+  qui disparaissait/s'inversait avant devient maintenant une dette RÉELLE,
+  visible, avec intérêt/créancier/plafond/banqueroute, au lieu d'un trou muet.
+  Site(s) résiduel(s) non converti(s) probable(s) : le WILD péages parqués
+  (M3h/M3i item 7, toujours désigné, cf. Restes) — non recreusé plus avant,
+  hors budget de cette vague (le brief l'exclut explicitement).
+- **`region_rep_prov[]` est un cache STRUCTUREL, pas dérivé de `region[].owner`**
+  (`econ_region_rep_province` renvoie juste `e->region_rep_prov[region]`,
+  jamais recalculé au tick) — mais `econ_aggregate_regions` ÉLIT `region[].owner`
+  depuis LA POPULATION des provinces membres (capitale d'abord, sinon la plus
+  peuplée) : poser `region[X].owner` SANS poser `prov[toutes les provinces de
+  X].owner` en écho se fait ÉCRASER à la PROCHAINE agrégation — piège trouvé en
+  chassant B9.
+- **`debt_origination` doit être appelé UNE SEULE FOIS par borrow, jamais par
+  tranche** (B5) — le taux dépend de `credit_debt_total(c)` (le LEVIER courant) ;
+  appeler `debt_origination` séquentiellement pour `b_elite` PUIS `b_bourg`
+  (après avoir déjà incrémenté `to_elite`) ferait dériver le taux de la 2e part
+  — violerait le contrat « figé À L'ORIGINATION » documenté par M11-A3. Fix :
+  UN forfait total, ventilé ∝ le ratio réel après coup (le taux étant uniforme
+  sur tout le borrow, mathématiquement équivalent, sans le piège d'ordre).
+
+### Pièges
+
+- **A/B directe sur un fichier engine (pas un kill-switch tunable)** — pour
+  prouver B3/B4 rouge-sur-pré-fix, il a fallu ÉDITER temporairement le fichier
+  (retirer le fix), builder, tester, puis RESTAURER (copie de sauvegarde avant
+  l'édition destructrice, `cp` vers un scratch) — B3/B4 n'ont pas de tunable
+  naturel pour ce test (contrairement à B1/B8 qui ont un chemin `!fixed`/
+  ancienne-borne déjà présent). Toujours sauvegarder AVANT l'édition de preuve,
+  jamais git-diff/restore en aveugle sur un fichier avec du travail non commité
+  dessus.
+- **`econ_ai_fiscal_tick` (C3) est illisible depuis un banc mono-province** —
+  tenté (B8) de prouver dynamiquement que le contrôleur IA ramène `tax_mult`
+  à ≤1.0 même si le curseur JOUEUR l'a poussé à 1.8 : la fonction est `static`
+  (pas d'accès direct), et `econ_country_class_satisfaction` AGRÈGE sur TOUT le
+  pays (pas la seule province riggée) — un choc fiscal mono-province se noie
+  dans le reste d'un pays généré, `err` ne sort jamais du `deadband` (0.05),
+  AUCUNE correction n'est jamais observée même après 12 mois + isolement des
+  provinces sœurs (pop→0, mais `active` DOIT rester vrai sinon `econ_country_
+  capital_prov` ne trouve plus de capitale ⇒ `econ_ai_fiscal_tick` n'est même
+  plus APPELÉ, `cap<0 → continue` dans la boucle de frappe). Abandonné après
+  3 tentatives — vérifié PAR LECTURE DE CODE à la place (le clamp `[floor_,1.f]`
+  d'`econ_ai_fiscal_tick` est BYTE-IDENTIQUE dans le diff B8). Un futur banc
+  dédié voudrait construire un pays synthétique complet (1 SEULE province,
+  `n_prov=1`) plutôt que rigger une province dans un monde `world_generate`.
+- **`credit_borrow_class`/`credit_borrow_local §2` (M9 V1) : la capacité de
+  prêt ORGANIQUE (via `world_generate`+`gen_population`) est souvent NULLE dans
+  les premiers jours** — `credit_debt_ceiling` exige >90j de revenu CAPTÉ
+  (bootstrap, motif M3d) — un banc qui veut une dette réelle tôt doit soit
+  avancer >90j avant d'emprunter, soit utiliser un fixture À LA MAIN
+  (credit_demo.c, pas scps_api_demo.c) où le revenu est semé directement via
+  `econ_flux_add`+`econ_flux_year_capture` (motif déjà établi, cf. M9/M3c).
+- **`mirror_prov` (B9) doit garder `active=true` sur les provinces sœurs
+  muettes** — le réflexe (mettre `active=false` pour les exclure de l'agrégat)
+  CASSE `econ_country_capital_prov` (qui exige `pe->active`) si la SŒUR
+  DÉSACTIVÉE est justement la capitale du pays : plus de capitale ACTIVE ⇒
+  `econ_country_mint_month` renvoie `cap<0` ⇒ TOUTE la boucle mensuelle de
+  frappe (et `econ_ai_fiscal_tick` avec elle) est SKIPPÉE pour ce pays. Zéro
+  pop (`memset(strata,...)`) suffit à exclure une province de l'agrégat
+  pop-pondéré SANS la désactiver.
+- **`econ_aggregate_regions` RÉÉCRIT `region[X].owner` ENTIÈREMENT** (élection
+  capitale/pop, jamais une simple copie) — tout poke direct de `region[].owner`
+  sans poser `prov[toutes les provinces membres].owner` en écho est PERDU au
+  premier appel d'agrégation qui suit (piège central de B9, cf. Découvertes).
+
+### Bandes mesurées (sweep apparié pre-m14 vs HEAD, `{9,11,42}×3×250`, chronicle)
+
+| métrique | pre-m14 | HEAD (M14) | verdict |
+|---|---|---|---|
+| banqueroutes Σ (forcées) | 49 (20+9+20) | 45 (14+10+21) | −8 %, stable |
+| colonisation Σ (fondations) | 327 (102+108+117) | 381 (137+111+133) | +16 %, bande vivante |
+| Laborer satisfaction (par seed) | 72/71/53 % | 61/78/60 % | comparable, variance inter-graines dominante (motif établi) |
+| invariant (M3f) — breach | 0/9 (aucun ÉCHEC) | 0/9 (aucun ÉCHEC) | INCHANGÉ — B3 ne bouge PAS les breaches à cette échelle apparié |
+| invariant — pic annuel max/seed | 98/154/156 % | 98/154/156 % | IDENTIQUE (seuil courant 370 %, la dérive dominante est HORS des sites touchés par M14) |
+| dette CountryDebt Σ (fin de sim) | 1752 or | 5456 or | ×3.1 — la dette FANTÔME devient dette TRACKÉE (cf. Découvertes) |
+| « or net < 0 » (débiteurs, snapshot) Σ | 3 (1+1+1) | 22 (8+6+8) | ↑ — la SURFACE du problème, pas une régression (cf. Découvertes) |
+| tech débloqués Σ | 574+223+886=1683 | 581+250+930=1761 | +4.6 %, aucun zéro-tech |
+| fins (§27), "0 aucune" | 3/3 seeds | 3/3 seeds | INCHANGÉ, fins variées (EAU/RONCES/GRAND HIVER/RÉCHAUFFEMENT) |
+
+### Gates (tous passés)
+
+1. Claims vérifiés au code AVANT correctif ✓ (tous CONFIRMÉS, aucun faux-positif).
+2. Kill-switches prouvés où gatables (B4 DEBT_FIXED=0, B8 slider ancien-borne,
+   B1 legacy `!fixed`/déjà clampé, B9 côté implicite) ; B1/B2/B3/B5/B6 sont des
+   BUG FIXES non gatables proprement (golden a changé, re-baseline documentée
+   ci-dessous — même nature que M11-A2).
+3. Sweep apparié pre-m14 vs HEAD `{9,11,42}×3×250` : bandes tenues (tableau
+   ci-dessus) — AUCUN giga (règle joueur respectée, 9 sims/vague standard).
+   **INVARIANT AU MICROSCOPE** : 0/9 breach des DEUX côtés, B3 (destruction de
+   monnaie corrigée) NE BOUGE PAS les breaches résiduels à cette échelle — le
+   bug B3 était réel et mesuré (10.2 or détruits au banc isolé) mais trop
+   PETIT/RARE pour se voir dans l'agrégat 9-sims (n'exclut pas qu'il compte au
+   giga 100-sims, non tenté — hors règle).
+4. `make test` **39/39** (B9 — objectif ATTEINT, PREMIÈRE FOIS sous Windows) ·
+   nouveaux bancs B1(warhost/diplo/statecraft)/B2/B3/B4/B5/B7(credit_demo §18)
+   VERTS sur HEAD, B3/B4 prouvés ROUGES sur le fix désactivé (A/B directe,
+   cf. Pièges) · golden RE-BASELINÉ (commit séparé, décision documentée) puis
+   VERT · `determinism` STABLE (avant re-baseline, la preuve du non-hasard) ·
+   `determinism-deep` STABLE (2 graines × 200 ans) · `savetest` A==B ×3 graines
+   (9/11/42, motif B5 SAVE_VERSION 96) + octet altéré REFUSÉ ×3 · `fuzz-save`
+   8/8 (216 octets, 0 crash) · `lang-check` OK (0 littéraux face-joueur neufs).
+5. Cet append + 9 commits granulaires FR (B1, B2, B3, B4+B5, B6, B9, B8, B7,
+   golden-rebaseline).
+
+### Restes
+
+- **Le site WILD des péages parqués (M3h/M3i item 7, désigné depuis M11) reste
+  NON résolu** — probable contributeur au « or net < 0 » résiduel qui persiste
+  MÊME après B1-B6 (cf. Découvertes/bandes). Toujours hors budget explicite du
+  brief M14 (« traite-le avec un sweep dédié... sois prêt à documenter-reporter
+  plutôt que casser la bande » — non tenté cette vague, la bande colonisation
+  restant SAINE +16 % sans y toucher).
+- **B8 — la distinction joueur/IA (TAX_MULT_FLOOR) vérifiée PAR LECTURE DE
+  CODE seulement**, pas par un banc dynamique (3 tentatives infructueuses, cf.
+  Pièges) — un futur banc dédié voudrait un pays synthétique `n_prov=1` plutôt
+  que rigger une province dans un monde `world_generate`.
+- **`credit_spend`'s « réalisation partielle » (B2b) n'a pas de reader façade
+  dédié** — un appelant qui veut savoir SI la dépense a été financée en entier
+  devrait comparer `country_gold_prov` avant/après lui-même (aucun nouveau
+  verbe/reader demandé cette vague).
+- **DLL Godot REBUILDÉE cette fois** (B7 — contrairement aux vagues MONNAIE
+  M7-M12 qui la laissaient « à rebuilder », ici scons a été exécuté avec succès,
+  debug + release) — précédent utile pour la prochaine vague qui touche le
+  binding.
+- **La dette CountryDebt Σ ×3.1 (bandes) mérite un œil joueur** — ce n'est pas
+  un bug (c'est le POINT de B1/B2 : rendre visible ce qui était invisible),
+  mais l'AMPLEUR (1752→5456 or sur 9 sims) est plus grande que ce que
+  l'intuition initiale du brief suggérait ; à surveiller au prochain sweep si
+  la dette continue de croître structurellement ou se stabilise (250 ans, un
+  seul point de mesure ici).
