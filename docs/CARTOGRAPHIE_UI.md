@@ -250,14 +250,56 @@ Menu Construction (chaque carte), arbre de tech (chaque nœud), fenêtre
 diplomatique (chaque verbe grisé nomme sa raison), Codex (mots-concepts
 turquoise cliquables, cascade récursive).
 
+**MISE À JOUR UI-DOCTRINE D4 (glossaire hover, 2026-07-18)** : `ui/concepts.gd`
+(le registre `DEFS`, déjà la source unique consommée par `TooltipServer`/Codex)
+est passé de 66 à 68 entrées (+ « Frappe », + « Dette » — monnaie, jamais
+définis alors que centraux au Trésor) et une CORRECTION (la clé « Credo » sans
+accent ne matchait JAMAIS le mot réellement affiché « Crédo » — corrigée,
+c'était une définition morte depuis sa création). Un nouveau lecteur PUBLIC,
+`Concepts.def_of_label(label)`, généralise `def_of()` (correspondance EXACTE)
+à un label qui CONTIENT un concept plutôt que de l'être (casse/pluriel
+tolérés, réutilise le moteur de `decorate()`) — au passage, corrige un piège
+vérifié du moteur RegEx de Godot : `(?i)` NE replie PAS la casse des
+majuscules ACCENTUÉES (« DÉBASE » ne matchait pas la clé « Débase » malgré le
+flag case-insensitive) — contourné en abaissant la casse via `String.to_lower()`
+(qui, lui, replie correctement les accents français) avant l'appariement.
+Câblage effectif (motif `province_panel_v2.gd::_kv` : le label porte
+`tooltip_text = Concepts.def_of(...)`, jamais la valeur affichée) : le Trésor
+(`budget_panel_v2.gd`, `_row`/`_m_row`/`_section` génériques — Débase, Parité,
+Péages, Dette, Frappe, Entretien… tout libellé de ligne/section qui nomme un
+concept) ; la Fenêtre Empire (`empire_window.gd`, `_pop_section`/`_kv_row`
+génériques + Vassal/Suzerain → Vassalité et la colonne Opinion, onglet
+Diplomatie, + le domaine de siège de Conseil) ; la fenêtre diplomatique par
+pays (`country_actions.gd` : en-tête Opinion, statut Vassal/Suzerain, case
+Vassaliser) ; le panneau pays étranger (`country_panel.gd` : Éthos) ;
+l'arbre de technologie (`tech_panel.gd` : Ascension, Métabolisation, le
+couloir Savoir — nouveau mécanisme `_tips`/`_get_tooltip`, panneau en dessin
+immédiat pur) ; le panneau de combat (`battle_panel.gd` : Siège — même
+mécanisme `_tips`, zéro hover existant avant) ; le panneau Armée
+(`army_panel.gd` : Siège, section « LECTURE DU SIÈGE ») ; le Créateur de Foi
+(`religion_panel.gd` : Crédo, Tradition, Schisme, Fonder/Rallier) ; les
+courbes d'économie (`economy_panel.gd` : le sélecteur de métrique porte la
+définition de la métrique choisie). **Collision de sens ÉVITÉE
+délibérément** : « Cohésion » désigne le MORAL de bataille dans
+`army_panel.gd`/`battle_panel.gd` (pas la Cohésion nationale de
+`concepts.gd`) — ces libellés-là restent volontairement SANS hover généré
+(un câblage aveugle aurait affiché la MAUVAISE définition). `construction_panel.gd`
+et `memory_panel.gd` sont restés INTACTS : le premier route déjà tout son
+survol via `get_info_card`/`Concepts.decorate()` (Or/Effet/Recette/Entretien
+manufacture déjà décorés automatiquement) et toucher ses lignes « Entretien »/
+« Palier » édifice exigerait de modifier `_build_info_card()`, le territoire
+CONCURRENT de l'audit coûts D5 sur ce même fichier ; le second n'a aucun
+Label par ligne (un seul `RichTextLabel` en tableau BBCode) — le motif
+`_kv`/`tooltip_text` ne s'y applique pas sans réinventer un système.
+
 **Sans hover riche identifié** (texte simple ou aucun) : Menu principal, Options,
 Nouvelle Partie, écran Charger, DevPanel (hors `tooltip_text` natif ponctuel),
 popups d'évènement (`event_popup.gd`/`event_dialog.gd` — l'effet mécanique est
 DANS la carte, pas au survol, par construction — « le hover donne l'effet AVANT
-le flavor » y est déjà la règle donc rien à ajouter), Épilogue, Récap d'âge. Ce
-sont majoritairement des écrans de LECTURE SEULE / one-shot où le hover n'ajoute
-rien — inventaire fourni pour nourrir le glossaire universel d'une future vague
-UI-DOCTRINE, pas un manque en soi.
+le flavor » y est déjà la règle donc rien à ajouter), Épilogue, Récap d'âge,
+Mémoire de campagne (`memory_panel.gd`, tableau de comparaison en BBCode — cf.
+D4 ci-dessus). Ce sont majoritairement des écrans de LECTURE SEULE / one-shot
+où le hover n'ajoute rien.
 
 ---
 

@@ -10,6 +10,7 @@ extends PanelContainer
 ## Le POINT du pilote : sortir de la « brique dessinée à la main ». Concept 3.
 
 const ParchTheme = preload("res://ui/parch_theme.gd")   # THEME parchemin PARTAGÉ (palette + styleboxes)
+const Concepts = preload("res://ui/concepts.gd")   # D4 — glossaire hover (registre centralisé)
 
 # palette réutilisée hors du Theme (couleur du solde mensuel + diviseur) — source unique : ParchTheme
 const INCOME  := ParchTheme.INCOME
@@ -214,11 +215,16 @@ func _build_shell() -> void:
 	stack.add_child(page3)
 	_pages.append(page3)
 
-## une tête de section
+## une tête de section — D4 : porte la définition du concept si le titre en nomme un
+## (« DÉBASE », « FRAPPE »… — casse/pluriel tolérés, cf. Concepts.def_of_label).
 func _section(col: VBoxContainer, txt: String) -> void:
 	var l := Label.new()
 	l.theme_type_variation = "Section"
 	l.text = txt
+	var def := Concepts.def_of_label(txt)
+	if def != "":
+		l.tooltip_text = def
+		l.mouse_filter = Control.MOUSE_FILTER_STOP
 	col.add_child(l)
 
 ## une ligne : label … valeur (colorée) [· curseur optionnel, MÊME rangée — UI-POLISH
@@ -236,6 +242,12 @@ func _row(col: VBoxContainer, label: String, key: String, value_variation: Strin
 	var lab := Label.new()
 	lab.theme_type_variation = "RowLabel"
 	lab.text = label
+	# D4 — glossaire hover : si le libellé nomme un concept du registre (ex. « Péages »,
+	# « Sur-frappe au-delà de la parité »), sa définition vit derrière le survol.
+	var def := Concepts.def_of_label(label)
+	if def != "":
+		lab.tooltip_text = def
+		lab.mouse_filter = Control.MOUSE_FILTER_STOP
 	line.add_child(lab)
 	var sp := Control.new()
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -423,6 +435,11 @@ func _m_row(parent: VBoxContainer, label: String, key: String, value_variation: 
 	var lab := Label.new()
 	lab.theme_type_variation = "RowLabel"
 	lab.text = label
+	# D4 — même motif que _row() : le libellé porte la définition s'il nomme un concept.
+	var def := Concepts.def_of_label(label)
+	if def != "":
+		lab.tooltip_text = def
+		lab.mouse_filter = Control.MOUSE_FILTER_STOP
 	line.add_child(lab)
 	var sp := Control.new()
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL

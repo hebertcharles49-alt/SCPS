@@ -13,6 +13,7 @@ const ParchTheme = preload("res://ui/parch_theme.gd")
 const PopBar = preload("res://ui/pop_bar.gd")
 const VKit = preload("res://ui/vkit.gd")
 const Frame = preload("res://ui/frame.gd")
+const Concepts = preload("res://ui/concepts.gd")   # D4 — glossaire hover
 
 signal raid_requested   ## « Piller la côte » → main arme le sous-mode raid de la carte
 signal selection_replaced(ids: Array) ## fusion : le corps survivant devient l'unique sélection
@@ -489,7 +490,15 @@ func _tactic_block(bi: Dictionary, atk: int, df: int) -> Control:
 func _siege_block(bi: Dictionary) -> Control:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 2)
-	box.add_child(_line("LECTURE DU SIÈGE", "Section"))
+	var siege_head := _line("LECTURE DU SIÈGE", "Section")
+	# D4 — glossaire hover : « Cohésion » plus bas dans ce même onglet est le MORAL de
+	# bataille (moteur), pas la Cohésion nationale de concepts.gd — collision volontairement
+	# NON câblée (mauvaise définition sinon) ; « Siège » n'a, lui, qu'un seul sens ici.
+	var sdef := Concepts.def_of("Siège")
+	if sdef != "":
+		siege_head.tooltip_text = sdef
+		siege_head.mouse_filter = Control.MOUSE_FILTER_STOP
+	box.add_child(siege_head)
 	var sp := clampi(int(bi.get("siege_progress_pct", 0)), 0, 100)
 	box.add_child(_stat_line("Progression estimée", "%d%%" % sp))
 	box.add_child(_mini_bar(sp))

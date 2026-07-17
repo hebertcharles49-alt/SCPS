@@ -10,6 +10,7 @@ extends Control
 signal closed   ## le panneau se ferme → le jeu reprend (main.gd)
 
 const VKit = preload("res://ui/vkit.gd")
+const Concepts = preload("res://ui/concepts.gd")   # D4 — glossaire hover
 const C_BG    := Color(0.02, 0.025, 0.025, 0.76)
 const C_PANEL := VKit.COL_PANEL
 const C_EDGE  := Color(0.55, 0.42, 0.78)        # liseré violet (religion)
@@ -73,6 +74,11 @@ func _build_ui() -> void:
 
 	col.add_child(HSeparator.new())
 	var cl := Label.new(); cl.text = "Crédo"; cl.add_theme_color_override("font_color", C_EDGE)
+	# D4 — glossaire hover : le titre de section nomme le concept sans jamais l'expliquer
+	# ailleurs dans ce panneau (les crédos listés ci-dessous sont des NOMS propres, pas
+	# le mot « Crédo » lui-même).
+	cl.tooltip_text = Concepts.def_of("Crédo")
+	cl.mouse_filter = Control.MOUSE_FILTER_STOP
 	col.add_child(cl)
 	_credo_opt = OptionButton.new()
 	_credo_opt.item_selected.connect(func(_i): _refresh())
@@ -80,6 +86,8 @@ func _build_ui() -> void:
 
 	var tl := Label.new(); tl.text = "Trois traditions (axes distincts)"
 	tl.add_theme_color_override("font_color", C_EDGE)
+	tl.tooltip_text = Concepts.def_of("Tradition")
+	tl.mouse_filter = Control.MOUSE_FILTER_STOP
 	col.add_child(tl)
 	for i in range(3):
 		var opt := OptionButton.new()
@@ -122,6 +130,7 @@ func _build_ui() -> void:
 	var sp := Control.new(); sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	foot.add_child(sp)
 	_schism_btn = Button.new(); _schism_btn.text = "Schisme"
+	_schism_btn.tooltip_text = Concepts.def_of("Schisme")   # D4 — glossaire hover
 	_schism_btn.pressed.connect(_on_schism)
 	foot.add_child(_schism_btn)
 	_found_btn = Button.new(); _found_btn.text = "Fonder"
@@ -179,6 +188,7 @@ func _refresh() -> void:
 		_state_lbl.text = "Foi d'État : %s%s" % [String(Sim.world.religion_name(me)), emot]
 		_schism_btn.disabled = (elig == 0)
 		_found_btn.disabled = true
+		_found_btn.tooltip_text = ""   # D4 — le bouton « Fonder » (désactivé ici) ne porte plus rien à définir
 	else:
 		var can := true
 		if Sim.world.has_method("religion_can_found"):
@@ -189,6 +199,8 @@ func _refresh() -> void:
 		else:
 			_state_lbl.text = "Le monde a atteint son nombre de religions (⌈empires/3⌉) — vous RALLIEZ une foi existante."
 			_found_btn.text = "Rallier une foi"
+		# D4 — « Rallier une foi » nomme le concept (Foi) ; « Fonder » seul, non.
+		_found_btn.tooltip_text = Concepts.def_of_label(_found_btn.text)
 		_schism_btn.disabled = true
 	for i in range(3):
 		_trad_tip[i].text = _pole_tip(_cur_pole(i))

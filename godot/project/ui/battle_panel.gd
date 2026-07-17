@@ -9,12 +9,14 @@ extends Control
 
 const VKit = preload("res://ui/vkit.gd")
 const Frame = preload("res://ui/frame.gd")
+const Concepts = preload("res://ui/concepts.gd")   # D4 — glossaire hover
 const PW := 350.0
 
 signal close_requested
 
 var _region := -1
 var _close_rect := Rect2()
+var _tips: Array = []   ## D4 — [ [Rect2, définition], … ] reconstruit à chaque _draw (motif country_panel.gd)
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -66,6 +68,7 @@ func _compo_bar(x: float, y: float, w: float, inf: int, arch: int, cav: int, mag
 	return y + bh + 4.0
 
 func _draw() -> void:
+	_tips.clear()   # D4 — repeuplé plus bas par ce même _draw() (motif country_panel.gd)
 	var w = Sim.world
 	if w == null or _region < 0:
 		return
@@ -154,7 +157,15 @@ func _draw() -> void:
 
 	# ── SIÈGE : compte à rebours exact + causes de la résistance ───────────
 	if not bool(bi.get("in_battle", false)) and bi.has("siege_days_left"):
+		var siege_head_y := y
 		y = VKit.section(self, x, y, "LECTURE DU SIÈGE")
+		# D4 — glossaire hover : ce panneau n'a AUCUN survol nulle part ailleurs (dessin
+		# immédiat, zéro Control par ligne) — « Cohésion » plus bas (moral de bataille,
+		# moteur) reste volontairement NON câblé : ce n'est pas la Cohésion nationale de
+		# concepts.gd, un hover ici donnerait la MAUVAISE définition.
+		var sdef := Concepts.def_of("Siège")
+		if sdef != "":
+			_tips.append([Rect2(x - 4.0, siege_head_y + 1.0, rw + 8.0, 18.0), sdef])
 		var sp := clampi(int(bi.get("siege_progress_pct", 0)), 0, 100)
 		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "Progression estimée %d%%" % sp, VKit.FS_SMALL)
 		VKit.gauge(self, x + 132, y + 1, rw - 132, 9, sp)
@@ -183,6 +194,14 @@ func _draw() -> void:
 		y = VKit.row(self, x, y, "Attaquant", "%s hommes" % _grp(int(float(bi.get("loss_atk", 0.0)) * 100.0)), VKit.sense(0.15))
 		y = VKit.row(self, x, y, "Défenseur", "%s hommes" % _grp(int(float(bi.get("loss_def", 0.0)) * 100.0)), VKit.sense(0.15))
 		y += 4
+
+## D4 — HOVER natif (motif country_panel.gd) : ce panneau est en dessin immédiat pur
+## (zéro Control par ligne) — Godot appelle ceci au survol, on rend la zone touchée.
+func _get_tooltip(at_position: Vector2) -> String:
+	for t in _tips:
+		if (t[0] as Rect2).has_point(at_position) and String(t[1]) != "":
+			return String(t[1])
+	return ""
 
 func _signed_pct(mult_pct: int) -> String:
 	return "%+d%%" % (mult_pct - 100)

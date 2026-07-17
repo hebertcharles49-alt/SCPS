@@ -14,6 +14,7 @@ extends PanelContainer
 const ParchTheme  = preload("res://ui/parch_theme.gd")
 const EconomyPage = preload("res://ui/economy_page.gd")
 const PopBar      = preload("res://ui/pop_bar.gd")
+const Concepts    = preload("res://ui/concepts.gd")   # D4 — glossaire hover
 
 signal open_budget_requested   ## onglet Économie → « Régler… » → main.gd ouvre le Trésor (B)
 signal open_religion_requested ## D2 : onglet Population → « Foi d'État… » → main.gd ouvre le Créateur de Foi (R)
@@ -359,6 +360,12 @@ func _build_diplomatie(w, me: int) -> void:
 		var st := Label.new()
 		st.theme_type_variation = "RowDim"
 		st.text = String(r.get("status", ""))
+		# D4 — « Vassal »/« Suzerain » sont un mot-DIRECT du statut (pas le nom exact de la
+		# clé DEFS « Vassalité ») : la colonne n'a aucun hover sinon (statut = un seul mot,
+		# jamais orné d'une phrase qui porterait le concept comme dans les autres onglets).
+		if st.text == "Vassal" or st.text == "Suzerain":
+			st.tooltip_text = Concepts.def_of("Vassalité")
+			st.mouse_filter = Control.MOUSE_FILTER_STOP
 		line.add_child(st)
 		var op := int(r.get("opinion", 0))
 		var val := Label.new()
@@ -367,6 +374,10 @@ func _build_diplomatie(w, me: int) -> void:
 		val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		val.custom_minimum_size = Vector2(44, 0)
 		val.add_theme_color_override("font_color", _diverge_col(op))
+		# D4 — la colonne « opinion » n'a aucun en-tête de colonne (juste des +N chiffrés) :
+		# le survol du nombre porte la définition, seul endroit où l'apprendre dans cet onglet.
+		val.tooltip_text = Concepts.def_of("Opinion")
+		val.mouse_filter = Control.MOUSE_FILTER_STOP
 		line.add_child(val)
 
 # ── ONGLET CONSEIL : factions (soutien + tendance) + sièges (titulaire + loyauté) ─
@@ -426,6 +437,12 @@ func _build_conseil(w, me: int) -> void:
 		post.theme_type_variation = "RowDim"
 		post.text = String(seat.get("seat", "Siège"))
 		post.custom_minimum_size = Vector2(120, 0)
+		# D4 — le domaine du siège (« Savoir »/« Société »/« Industrie ») nomme parfois
+		# directement un concept du registre (Savoir).
+		var pdef := Concepts.def_of_label(post.text)
+		if pdef != "":
+			post.tooltip_text = pdef
+			post.mouse_filter = Control.MOUSE_FILTER_STOP
 		line2.add_child(post)
 		var filled := bool(seat.get("filled", false))
 		var who := Label.new()
@@ -452,10 +469,16 @@ func _build_conseil(w, me: int) -> void:
 			line2.add_child(ll)
 
 # ── PRIMITIVES DE PAGE ────────────────────────────────────────────────────────
+## D4 — porte la définition du concept si le titre en nomme un (« FOI / RELIGION »,
+## « FACTIONS · tension de coup… » — casse/pluriel tolérés, Concepts.def_of_label).
 func _pop_section(pg: VBoxContainer, txt: String) -> void:
 	var l := Label.new()
 	l.theme_type_variation = "Section"
 	l.text = txt
+	var def := Concepts.def_of_label(txt)
+	if def != "":
+		l.tooltip_text = def
+		l.mouse_filter = Control.MOUSE_FILTER_STOP
 	pg.add_child(l)
 
 func _dim_line(pg: VBoxContainer, txt: String) -> void:
@@ -464,7 +487,8 @@ func _dim_line(pg: VBoxContainer, txt: String) -> void:
 	l.text = txt
 	pg.add_child(l)
 
-## une ligne label … valeur (colorée)
+## une ligne label … valeur (colorée) — D4 : le label porte la définition s'il nomme
+## un concept (motif _pop_section/province_panel_v2._kv).
 func _kv_row(pg: VBoxContainer, label: String, value: String, col: Color) -> void:
 	var line := HBoxContainer.new()
 	pg.add_child(line)
@@ -473,6 +497,10 @@ func _kv_row(pg: VBoxContainer, label: String, value: String, col: Color) -> voi
 	lab.text = label
 	lab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	lab.clip_text = true
+	var def := Concepts.def_of_label(label)
+	if def != "":
+		lab.tooltip_text = def
+		lab.mouse_filter = Control.MOUSE_FILTER_STOP
 	line.add_child(lab)
 	var val := Label.new()
 	val.theme_type_variation = "RowLabel"

@@ -44,7 +44,7 @@ const DEFS := {
 	"Productivité": {"d": "Le rendement du travail : extraction, ateliers et recherche.", "i": "development_tools"},
 	# ── foi ──
 	"Foi": {"d": "La religion d'État : fondée au premier temple, elle nourrit la légitimité et peut se fendre en schismes.", "i": "faith_candle"},
-	"Credo": {"d": "Le tempérament d'une foi : pluraliste (tolère), évangéliste (convertit) ou purificateur (impose).", "i": "faith_candle"},
+	"Crédo": {"d": "Le tempérament d'une foi : pluraliste (tolère), évangéliste (convertit) ou purificateur (impose).", "i": "faith_candle"},
 	"Schisme": {"d": "Une foi qui se fend : la secte-fille emporte les régions distantes ou mal tenues (2 sectes max par racine).", "i": "faith_candle"},
 	# ── arcane & fin de partie ──
 	"Affinité arcane": {"d": "L'accès à la branche Magie de l'arbre. Chaque pas y est une pente faustienne.", "i": "action_research"},
@@ -86,6 +86,8 @@ const DEFS := {
 	"Étalon": {"d": "La règle de conversion fixe qui ancre la monnaie du royaume — frapper au-delà, c'est la débase.", "i": "gold_coin"},
 	"Péage": {"d": "La taxe perçue sur une route commerciale à son passage — un revenu tiers, pas un coût du joueur.", "i": "layer_road"},
 	"Détroit": {"d": "Un passage maritime resserré : il concentre le commerce qui le traverse, d'où sa valeur stratégique.", "i": "layer_river"},
+	"Frappe": {"d": "La conversion de la réserve métallique en monnaie de compte, au taux fixé par la Parité — au-delà, c'est la Débase.", "i": "gold_coin"},
+	"Dette": {"d": "L'emprunt d'État aux ordres ou à un pays : intérêt annuel, saisie de production si tu la répudies (banqueroute).", "i": "debt_scales"},
 }
 
 static var _re: RegEx = null
@@ -117,6 +119,26 @@ static func def_of(k: String) -> String:
 
 static func icon_of(k: String) -> String:
 	return (ICON_DIR + String(DEFS[k]["i"]) + ".png") if DEFS.has(k) else ""
+
+## D4 — GLOSSAIRE HOVER : comme def_of(), mais tolère un LABEL qui contient un concept
+## plutôt que de L'ÊTRE exactement (casse indifférente, pluriel toléré, ex. « Entretien
+## des bâtiments » → la définition d'Entretien, « Péages » → Péage) — réutilise le MÊME
+## moteur de correspondance que decorate() (mots-bornés, clé la plus longue d'abord), pas
+## une seconde règle à maintenir. Le PREMIER concept trouvé dans le texte gagne. Pour les
+## panneaux dont le libellé moteur n'est pas le nom nu du concept (cf. province_panel_v2.
+## gd::_kv, qui n'a besoin, lui, que de la correspondance EXACTE).
+static func def_of_label(label: String) -> String:
+	if DEFS.has(label):
+		return def_of(label)
+	# PIÈGE VÉRIFIÉ : `(?i)` (PCRE2, moteur RegEx de Godot) NE REPLIE PAS la casse des
+	# majuscules ACCENTUÉES — « DÉBASE » ne matche PAS la clé « Débase » malgré le flag
+	# case-insensitive (testé : « Débase »/« débase »/« SIÈGE » minuscule matchent tous,
+	# seul le COUPLE majuscule-accentuée→clé échoue). `String.to_lower()` de Godot, lui,
+	# replie correctement les accents français — on abaisse la casse AVANT decorate() :
+	# seul l'APPARIEMENT compte ici (pas la casse affichée d'un BBCode, contrairement à
+	# decorate() en usage hover normal, qu'on ne touche donc pas).
+	var found: Array = decorate(label.to_lower()).get("defs", [])
+	return def_of(String(found[0])) if not found.is_empty() else ""
 
 ## DÉCORE un texte : {bb: BBCode, defs: [Nom, …] (uniques)}. Chaque concept devient
 ## un LIEN [url=CLÉ] turquoise — inerte tant que le RichTextLabel ignore la souris,

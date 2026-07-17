@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://d4gloss001"]
+
+[ext_resource type="Script" path="res://d4_glossary_shot.gd" id="1_d4gl"]
+
+[node name="D4GlossaryShot" type="Node"]
+script = ExtResource("1_d4gl")

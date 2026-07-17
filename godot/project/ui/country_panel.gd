@@ -5,6 +5,7 @@ extends Control
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
+const Concepts = preload("res://ui/concepts.gd")   # D4 — glossaire hover
 const PW := 322.0
 const PH := 240.0   ## raccourci : les jauges internes d'un royaume ÉTRANGER ne s'affichent plus
 const MARGIN := 8.0
@@ -86,7 +87,10 @@ func _draw() -> void:
 	VKit.box(self, _close_rect, VKit.COL_GOLD)
 	VKit.text(self, Vector2(_close_rect.position.x + 4, _close_rect.position.y + 1), VKit.COL_PARCH, "x")
 	y += 24
-	VKit.detail(self, Vector2(x, y), "%s · %d régions" % [info["ethos"], int(info["regions"])], VKit.FS)
+	var eth_w: float = VKit.detail(self, Vector2(x, y), "%s · %d régions" % [info["ethos"], int(info["regions"])], VKit.FS)
+	# D4 — glossaire hover : cette ligne nomme l'ÉTHOS de ce royaume sans jamais expliquer
+	# le mot lui-même ailleurs dans ce panneau étranger (display-only, aucune jauge interne).
+	_tips.append([Rect2(x, y - 2.0, eth_w, 16.0), Concepts.def_of("Éthos")])
 	y += 22
 	# pop, avec son icône (l'ESTIMATION extérieure — ce qui se voit d'un royaume) —
 	# LA valeur principale du panneau étranger : la taille du peuple.

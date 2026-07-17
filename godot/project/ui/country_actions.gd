@@ -12,6 +12,7 @@ const InfoRef = preload("res://ui/info_ref.gd")
 const DrawerK = preload("res://ui/sidebar_drawer.gd")   # DACT_LABEL partagé (mémoire datée)
 const Frame = preload("res://ui/frame.gd")
 const OpinionBar = preload("res://ui/opinion_bar.gd")
+const Concepts = preload("res://ui/concepts.gd")   # D4 — glossaire hover
 
 signal navigate_requested(request: Dictionary)
 
@@ -152,6 +153,9 @@ func _build() -> void:
 	opinion_head.text = "OPINION  −100 / +100"
 	opinion_head.add_theme_font_size_override("font_size", 12)
 	opinion_head.add_theme_color_override("font_color", VKit.COL_GOLD)
+	# D4 — glossaire hover : la jauge n'a autrement AUCUN survol nommant le concept.
+	opinion_head.tooltip_text = Concepts.def_of("Opinion")
+	opinion_head.mouse_filter = Control.MOUSE_FILTER_STOP
 	col.add_child(opinion_head)
 	_opinion_widget = OpinionBar.new()
 	col.add_child(_opinion_widget)
@@ -315,6 +319,10 @@ func _build_peace_drawer() -> void:
 		var cb := CheckButton.new()
 		cb.text = row[1]
 		cb.toggled.connect(func(_on): _peace_update_total())
+		# D4 — « Vassaliser » nomme directement le concept (le libellé porte son propre
+		# coût en score, pas le mot « Vassalité » lui-même — sinon aucun survol ne l'explique).
+		if row[0] == "vassalize":
+			cb.tooltip_text = Concepts.def_of("Vassalité")
 		_peace_box.add_child(cb)
 		_peace_checks[row[0]] = cb
 		var why := Label.new()
@@ -499,7 +507,15 @@ func _refresh() -> void:
 			rel = rl
 			break
 	var op := int(rel.get("opinion", 0))
-	_status.text = "Statut : %s" % String(rel.get("status", "—"))
+	var stat_word := String(rel.get("status", "—"))
+	_status.text = "Statut : %s" % stat_word
+	# D4 — « Vassal »/« Suzerain » sont un mot NU (pas la clé DEFS « Vassalité ») :
+	# sans ce mapping manuel, ce statut n'a jamais de survol nommant le concept.
+	if stat_word == "Vassal" or stat_word == "Suzerain":
+		_status.tooltip_text = Concepts.def_of("Vassalité")
+		_status.mouse_filter = Control.MOUSE_FILTER_STOP
+	else:
+		_status.tooltip_text = ""
 	# le RÉSUMÉ : composantes d'opinion + les 3 derniers actes (la mémoire)
 	var parts := PackedStringArray()
 	var opinion_target := 0

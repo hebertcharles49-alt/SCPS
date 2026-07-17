@@ -17,6 +17,7 @@ const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
 const ParchTheme = preload("res://ui/parch_theme.gd")
+const Concepts = preload("res://ui/concepts.gd")   # D4 — glossaire hover
 
 ## POPUP « métabolisation prête » (V1b) : quand un héritage NON natif atteint tier 3
 ## (digestion pleine), on notifie UNE FOIS — le fil de la victoire Merveille (paliers
@@ -115,6 +116,7 @@ var _popup: Control = null                 ## le popup de DÉCOUVERTE (tech_popu
 var _pending_discoveries: Array = []       ## idx de nœuds achevés pendant que le panneau était FERMÉ
 var _last_research_target := -1           ## suivi de la cible — détecte la complétion (miroir sound.gd)
 var _last_research_prog := 0.0
+var _tips: Array = []   ## D4 — [ [Rect2, définition], … ] reconstruit à chaque _draw (motif country_panel.gd)
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -445,6 +447,14 @@ func _tooltip_for(nd: Dictionary) -> String:
 		tip += "\nDébouche sur : " + unl
 	return tip
 
+## D4 — HOVER natif (motif country_panel.gd) : Godot appelle ceci au survol de tout
+## point du panneau sans Control dédié → on rend la définition de la zone touchée.
+func _get_tooltip(at_position: Vector2) -> String:
+	for t in _tips:
+		if (t[0] as Rect2).has_point(at_position) and String(t[1]) != "":
+			return String(t[1])
+	return ""
+
 func _on_card_activated(idx: int) -> void:
 	if idx < 0 or idx >= _nodes.size():
 		return
@@ -480,6 +490,7 @@ func _draw() -> void:
 	if w == null:
 		return
 	_chrome()
+	_tips.clear()   # D4 — repeuplé plus bas par ce même _draw() (motif country_panel.gd)
 	# CADRE : mêmes bords que les fiches à conteneurs natifs (1px BORDER, coin 3) —
 	# plus de plaque RimWorld (ombre/grain/filet or) : le FRÈRE des fiches, pas une
 	# fenêtre à part.
@@ -533,6 +544,10 @@ func _draw() -> void:
 			VKit.fill(self, Rect2(10.0, band_y, 3.0, _lane_h - 4.0), LANE_INK[l])
 			var ly: float = _scroll.position.y + _lane_y0[l] + _lane_h * 0.5 - 7.0
 			VKit.text(self, Vector2(18.0, ly), VKit.COL_GOLD, LANE_NAMES[l], VKit.FS_SMALL)
+			# D4 — le couloir « Savoir » nomme directement un concept du registre.
+			if LANE_NAMES[l] == "Savoir":
+				var lw: float = VKit.text_w(LANE_NAMES[l], VKit.FS_SMALL)
+				_tips.append([Rect2(18.0, ly - 2.0, lw + 4.0, 16.0), Concepts.def_of("Savoir")])
 		VKit.fill(self, Rect2(_scroll.position.x - 6.0, HEAD, 1.0, PH - HEAD - FOOT - METAH), VKit.COL_EDGE)
 
 	# PIED (bandeau, motif HeaderStrip) : métabolisation + dossier persistant — le même
@@ -629,7 +644,10 @@ func _draw_metab(info: Dictionary) -> void:
 	UIKit.draw_icon(self, "knowledge_book", Vector2(14, y0 + 4), 14)
 	var mlbl_w: float = VKit.detail(self, Vector2(36, y0 + 5), "Peuples intégrés : ", VKit.FS_SMALL)
 	var mval_w: float = VKit.value(self, Vector2(36 + mlbl_w, y0 + 5), "+%d%%" % mp, VKit.FS_SMALL)
-	VKit.detail(self, Vector2(36 + mlbl_w + mval_w, y0 + 5), " de recherche", VKit.FS_SMALL)
+	var mtail_w: float = VKit.detail(self, Vector2(36 + mlbl_w + mval_w, y0 + 5), " de recherche", VKit.FS_SMALL)
+	# D4 — « Peuples intégrés » EST la Métabolisation (le mot moteur, jamais montré tel
+	# quel côté joueur — cf. doctrine cultures « jamais espèce/sphère »).
+	_tips.append([Rect2(36.0, y0 + 3.0, mlbl_w + mval_w + mtail_w, 16.0), Concepts.def_of("Métabolisation")])
 	if Sim.world == null:
 		return
 
@@ -687,10 +705,14 @@ func _draw_metab(info: Dictionary) -> void:
 	var ry2 := y0 + 68.0
 	var req_txt := (" — requis palier : %d" % mreq) if mreq > 0 else ""
 	var asc_lbl_w: float = VKit.detail(self, Vector2(16, ry2 - 12), "Compte pour l'Ascension : ", VKit.FS_SMALL)
-	VKit.value(self, Vector2(16 + asc_lbl_w, ry2 - 12), "%d/%d" % [mcount, m], VKit.FS_SMALL)
+	var asc_val_w0: float = VKit.value(self, Vector2(16 + asc_lbl_w, ry2 - 12), "%d/%d" % [mcount, m], VKit.FS_SMALL)
+	var asc_row_w := asc_lbl_w + asc_val_w0
 	if req_txt != "":
 		var asc_val_w: float = VKit.text_w("%d/%d" % [mcount, m], VKit.FS_SMALL)
-		VKit.detail(self, Vector2(16 + asc_lbl_w + asc_val_w, ry2 - 12), req_txt, VKit.FS_SMALL)
+		var asc_tail_w: float = VKit.detail(self, Vector2(16 + asc_lbl_w + asc_val_w, ry2 - 12), req_txt, VKit.FS_SMALL)
+		asc_row_w += asc_tail_w
+	# D4 — glossaire hover : la seule jauge de victoire du panneau, sans autre survol.
+	_tips.append([Rect2(16.0, ry2 - 14.0, asc_row_w, 16.0), Concepts.def_of("Ascension")])
 	for i in m:
 		var h2: Dictionary = mh[i]
 		var x2 := 16.0 + i * cw2

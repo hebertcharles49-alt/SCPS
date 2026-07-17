@@ -9,6 +9,7 @@ extends Control
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const VKitDropdown = preload("res://ui/vkit_dropdown.gd")
+const Concepts = preload("res://ui/concepts.gd")   # D4 — glossaire hover
 const LINECHART = preload("res://addons/easy_charts/control_charts/LineChart/line_chart.tscn")
 # taille ADAPTATIVE à la fenêtre (recalculée dans _layout ; plancher = l'ancienne taille fixe)
 var PW := 720.0
@@ -56,6 +57,7 @@ func _ready() -> void:
 		names.append(String(m["name"]))
 	_dropdown.setup(names, 0)
 	_dropdown.selected.connect(_on_metric)
+	_update_metric_tip()
 	Sim.generated.connect(_on_generated)
 	Sim.ticked.connect(_on_tick)
 	hide()
@@ -81,9 +83,18 @@ func _gui_input(e: InputEvent) -> void:
 
 func _on_metric(idx: int) -> void:
 	_sel = clampi(idx, 0, METRICS.size() - 1)
+	_update_metric_tip()
 	if visible:
 		_replot()
 	queue_redraw()
+
+## D4 — le sélecteur de métrique (« Population »/« Trésor »/« Prospérité ») n'a
+## AUCUN autre survol dans ce panneau (graphe tiers Easy Charts) : le nom de la
+## métrique choisie porte sa définition si elle en a une (Population n'en a pas).
+func _update_metric_tip() -> void:
+	if _dropdown == null:
+		return
+	_dropdown.tooltip_text = Concepts.def_of_label(String(METRICS[_sel]["name"]))
 
 func _on_generated() -> void:
 	_years.clear()

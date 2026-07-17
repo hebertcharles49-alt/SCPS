@@ -6998,3 +6998,127 @@ chevauchement de texte sur les 6 sites du tiroir + la topbar.
   serrée (~18 px), pas de marge visible pour grandir sans empiéter sur la ligne suivante.
   Si un retour joueur les signale comme encore petites, elles ont une marge de ~2 px
   disponible (16→18 max avant collision).
+
+---
+
+## MISSION UI-DOCTRINE — D4 : glossaire hover (2026-07-18)
+
+**Statut : livré.** 2 entrées `concepts.gd::DEFS` ajoutées (Frappe, Dette) + 1 correction
+(clé « Credo » sans accent → « Crédo », morte depuis sa création — ne matchait jamais le
+mot réellement affiché), 1 fonction publique ajoutée (`Concepts.def_of_label()`), ~25
+libellés/sections câblés en `tooltip_text` sur 9 fichiers de panneau (`army_panel.gd`,
+`battle_panel.gd`, `budget_panel_v2.gd`, `country_actions.gd`, `country_panel.gd`,
+`economy_panel.gd`, `empire_window.gd`, `religion_panel.gd`, `tech_panel.gd`). Boot
+headless + `make lang-check` (0=0, inchangé) verts après chaque lot. `construction_panel.gd`
+et `memory_panel.gd` volontairement NON touchés (raisons ci-dessous).
+
+### Découvertes
+
+- **Piège moteur VÉRIFIÉ (pas supposé) : `(?i)` de Godot (RegEx, moteur PCRE2) NE replie
+  PAS la casse des majuscules ACCENTUÉES.** `Concepts.def_of_label("DÉBASE")` (un titre de
+  section tout en capitales, motif standard de tous les panneaux à conteneurs de ce projet)
+  retournait `""` alors que `Concepts.def_of_label("Débase")`/`"débase"`/`"SIÈGE"` (minuscule)
+  fonctionnaient tous. Testé isolément (`--headless --script`, motif jetable) : `"DÉBASE".to_lower()`
+  donne bien `"débase"` (Godot `String.to_lower()` replie CORRECTEMENT les accents français,
+  contrairement au moteur RegEx). Fix dans `def_of_label()` : abaisser la casse du label AVANT
+  `decorate()`, jamais touché le `(?i)` du `_regex()` partagé (utilisé par `decorate()` PARTOUT
+  dans le hover du jeu — une modif là aurait un rayon d'effet hors mandat D4). Sans ce détour,
+  TOUS les titres de section en capitales-accentuées de ce chantier (« DÉBASE » notamment)
+  auraient silencieusement affiché AUCUN hover malgré un code d'appel qui semblait correct —
+  un bug qu'une simple relecture de code n'aurait PAS révélé (il faut l'exécuter pour le voir).
+- **Collision de sens confirmée par grep AVANT tout câblage, pas après coup** : « Cohésion »
+  désigne le MORAL de bataille dans `army_panel.gd`/`battle_panel.gd` (`atk_morale_pct`/
+  `def_morale_pct`, lecteur `battle_info`), un concept COMPLÈTEMENT différent de la Cohésion
+  NATIONALE (unité des cultures) déjà définie dans `concepts.gd::DEFS`. Un câblage générique
+  aveugle du label → `def_of_label()` sur ces deux fichiers aurait affiché la MAUVAISE
+  définition (le pire résultat possible pour un glossaire — plus trompeur que zéro hover).
+  Vérifié explicitement AVANT d'écrire le moindre wiring générique (`_stat_line` d'army_panel.gd
+  n'a PAS été câblé du tout pour cette raison — le seul terme qui y matchait DEFS était
+  justement ce faux-ami). Un futur agent qui verrait « Cohésion » sans hover dans ces deux
+  fichiers ne doit PAS le corriger par réflexe — c'est voulu.
+- **`country_panel.gd` a du code mort non touché (`ROWS`/`TIPS`/`_gauge_row`, lignes
+  13-34 et 129-133)** : 5 jauges (Stabilité/Prospérité/Légitimité/Cohésion/Savoir) et leur
+  fonction de rendu, plus jamais appelées depuis que la doctrine « le panneau pays ÉTRANGER
+  ne montre plus les jauges internes » (retour joueur 2026-07-10, commentaire déjà en place
+  ligne 97-100) a retiré leur site d'appel dans `_draw()`. Repéré en cherchant où ajouter un
+  hover — ni ajouté ni supprimé (hors mandat D4, signalé séparément par `spawn_task`).
+- **`scps_sim_node.cpp::budget_controls()` (ligne ~1509) renvoie encore les noms de classe
+  LEGACY** (`"Laboureurs", "Artisans", "Noblesse"`) pour les lignes d'IMPÔT du Trésor, alors
+  que `budget_panel_v2.gd::CLASS_NAMES` (Fiscalité par ordre, onglet Monnaie) et tout le reste
+  du jeu utilisent la nomenclature CANONIQUE confirmée par UI-DOCTRINE D1
+  (Journaliers/Bourgeois/Élite). Les DEUX noms cohabitent dans la MÊME fenêtre Trésor selon
+  l'onglet (Balance affiche « Laboureurs », Monnaie affiche « Journaliers » pour la MÊME
+  classe). `scps_sim_node.cpp` est hors périmètre D4 (ni un panneau `ui/*.gd`, ni autorisé par
+  le brief) — non touché, signalé ici pour la prochaine vague qui touchera ce fichier.
+- **`tech_panel.gd` et `battle_panel.gd` n'avaient STRICTEMENT AUCUN mécanisme de hover**
+  (dessin immédiat pur, zéro `Control` par ligne, zéro `_get_tooltip` existant — grep
+  `tooltip_text` = 1 hit dans tech_panel.gd, l'assignation de `card.tooltip_text`, la SEULE
+  déjà câblée ; 0 hit dans battle_panel.gd). Le motif `_tips: Array` + `_get_tooltip(at_position)`
+  déjà établi dans `country_panel.gd` (posé avant D4, pour « Influence ») a été COPIÉ tel quel
+  dans les deux — la seule différence : mes tips stockent la DÉFINITION COMPLÈTE
+  (`Concepts.def_of(...)`) plutôt que le nom nu du concept, pour suivre le motif `_kv()`
+  QUE LE BRIEF DEMANDAIT explicitement de copier (province_panel_v2.gd, hors mandat D4,
+  jamais touché) — les deux conventions coexistent maintenant dans le même fichier
+  `country_panel.gd` (l'ancienne tip « Influence » = mot nu, ma nouvelle tip « Éthos » =
+  définition complète) : assumé, pas une incohérence à corriger (ne pas toucher au hover
+  DÉJÀ fonctionnel d'un autre agent).
+
+### Pièges
+
+- **Un survol souris SIMULÉ (`Input.warp_mouse()` + `InputEventMouseMotion` de synthèse)
+  échoue de façon reproductible dans une probe fenêtrée de ce projet.** Cible en espace
+  canvas (159,202) (= `Control.get_global_rect().get_center()`) → `Input.warp_mouse()` puis
+  `get_viewport().get_mouse_position()` rapporte (132.5, 168.3) — un ratio constant ~5/6, PAS
+  un simple stretch `project.godot` (`viewport_width/height` = 1600×900, IDENTIQUE à
+  `get_window().size` posé par la probe — donc pas un mismatch stretch évident). Cause exacte
+  NON creusée (hors budget de cette mission — le brief autorise EXPLICITEMENT le repli texte
+  quand le survol minuté est trop coûteux à fiabiliser). Contournement : capture du panneau
+  RÉEL (contenu vérifié) + `print()` du `tooltip_text` résolu juste avant chaque capture — les
+  DEUX preuves ensemble (screenshot du panneau + texte exact imprimé) suffisent à démontrer
+  le câblage sans un pixel de tooltip visible. Un futur agent qui voudrait un VRAI pixel de
+  tooltip en probe devra d'abord percer ce ratio de coordonnées (piste : `content_scale_factor`
+  du viewport racine, ou un DPI de fenêtre différent du `window/size` déclaré).
+- **`def_of_label()` (nouvelle fonction) pêche le PREMIER concept trouvé dans le texte, pas
+  le plus pertinent.** Exemple vérifié : `def_of_label("Sur-frappe au-delà de la parité")`
+  matche à la fois « Frappe » (dans « Sur-frappe », le tiret n'est PAS un caractère de mot
+  pour la frontière regex `(?<![\wÀ-ÿ])`, donc « frappe » y est bien un mot ENTIER du point
+  de vue du moteur) ET « Parité » — le premier gagne (« Frappe »). Pas un bug dans ce cas
+  précis (la définition de Frappe référence elle-même la Débase, reste pertinente) mais un
+  comportement à connaître avant de réutiliser `def_of_label()` sur un label à PLUSIEURS
+  concepts : il ne choisit pas le "meilleur", juste le premier positionnellement.
+- **Un tiret (« Sur-frappe ») n'est PAS une frontière de mot bloquante pour le moteur de
+  `concepts.gd`** — la classe de caractères de bordure est `[\wÀ-ÿ]` (lettres/chiffres/
+  underscore + Latin étendu), qui EXCLUT le tiret. Un concept comme « Frappe » peut donc
+  matcher à l'INTÉRIEUR d'un mot composé à trait d'union sans qu'on s'y attende — à vérifier
+  avant d'ajouter un nouveau terme DEFS court et courant (risque de faux-positifs dans des
+  mots composés existants ailleurs dans le jeu).
+
+### Restes
+
+- **`construction_panel.gd` NON touché, délibérément.** Tout le rendu de carte
+  (édifice/manufacture) route DÉJÀ son survol via `get_info_card()` (consommé par
+  `TooltipServer::_card_bb()`, qui appelle `Concepts.decorate()` sur CHAQUE ligne — Or/Effet/
+  Recette/Entretien de manufacture sont donc DÉJÀ décorés turquoise automatiquement, sans
+  rien à ajouter). Les labels ENFANTS de la carte (titre/prix/entretien édifice/prochain
+  palier/raison de verrou) sont TOUS `mouse_filter = MOUSE_FILTER_IGNORE` DÉLIBÉRÉMENT (pour
+  que le survol de N'IMPORTE OÙ sur la carte montre la MÊME carte structurée) — leur donner
+  un `tooltip_text` individuel serait INERTE (la souris ne s'arrête jamais sur eux) sans
+  AUSSI changer leur `mouse_filter`, ce qui romprait le design « toute la carte = une seule
+  cible de survol ». Les deux VRAIS trous (édifice : « Entretien »/« Palier » absents des
+  `lines` de `_build_info_card()`, alors que la manufacture LES A déjà) exigent de toucher
+  `_build_info_card()` — explicitement le territoire de l'audit COÛTS D5 en cours sur ce
+  même fichier au moment de cette mission (brief D4 : « ne touche PAS aux chiffres de
+  coût »). Un futur agent (après D5) pourrait ajouter ces deux lignes à `_build_info_card()`
+  une fois le terrain dégagé.
+- **`memory_panel.gd` NON touché, délibérément.** L'onglet Comparer construit un SEUL
+  `RichTextLabel` en tableau BBCode (`_snapshot()`/`_refresh_compare()`) — les libellés de
+  ligne (Stabilité/Prospérité/Cohésion/Agitation…) sont des CELLULES de texte BBCode, pas des
+  `Label` individuels : le motif `_kv()`/`tooltip_text` ne s'y applique pas sans réinventer un
+  système de survol PAR CELLULE (meta_hover sur un RichTextLabel unique, jamais câblé nulle
+  part dans ce projet pour un usage NON-tooltip) — jugé hors du rasoir « solution la plus
+  simple » pour cette mission. Un futur agent pourrait au moins COLORER (`Concepts.decorate()`
+  sur le label de chaque ligne, sans lien cliquable) pour un gain visuel minimal, si demandé.
+- **`scps_sim_node.cpp::budget_controls()` noms de classe legacy** (Laboureurs/Artisans/
+  Noblesse vs Journaliers/Bourgeois/Élite) — cf. Découvertes ci-dessus, hors périmètre D4.
+- **Le doublon des 3 fiches province et des curseurs budgétaires** (cf. missions D1/D2/D3
+  précédentes) reste inchangé — non touché par D4, mandat glossaire seul.
