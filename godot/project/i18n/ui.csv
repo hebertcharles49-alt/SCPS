@@ -19,6 +19,11 @@ T_OPT_LANG,Langue,Language
 T_OPT_FULLSCREEN,Plein écran,Fullscreen
 T_OPT_SCALE,Échelle de l'interface,UI scale
 T_OPT_HINT,La langue s'applique au menu et aux textes du moteur ; les panneaux en jeu suivront à mesure de la migration.,Applies to the menu and engine texts; in-game panels will follow as the migration proceeds.
+T_OPT_SOUND_TITLE,Son,Sound
+T_OPT_VOL_MASTER,Volume général,Master volume
+T_OPT_VOL_MUSIC,Musique,Music
+T_OPT_VOL_SFX,Effets,Effects
+T_OPT_VOL_UI,Clics d'interface,UI clicks
 T_NG_TITLE,Nouvelle partie,New game
 T_NG_WORLD,Monde,World
 T_NG_SIZE,Taille,Size

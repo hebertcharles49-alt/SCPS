@@ -50,7 +50,7 @@ de la famille ivoire/brun/or) — seulement cette duplication de constantes.
 | Menu principal (Jouer/Charger/Options/Codex/Quitter) | `main/main.gd` instancie `ui/menu_root.gd` | au boot ; réouvert par Échap en jeu (`main.gd:531,536`) | plein écran, par-dessus la carte | palette locale (`menu_root.gd:14-20`) | plat (5 boutons) | bouton propre à chaque sous-écran (`_show(_main)`) |
 | Nouvelle Partie | `ui/new_game_panel.gd` | bouton « Jouer » du menu | plein écran (fils de `menu_root`) | palette locale | plat : slider taille + liste d'empires (slot 0=joueur, 1..N=IA) | bouton « Retour » (`signal back`) |
 | Créateur d'empire/culture | `ui/culture_creator.gd` | depuis un slot de Nouvelle Partie **ou** touche **C** en jeu (mode « autonome », commentaire `culture_creator.gd:29`) | plein écran | palette locale | onglets natifs (`TabContainer`, seul autre du projet avec `memory_panel.gd`) : Héritage · Éthos · Traditions · Identité | bouton propre (`cancelled`/`started`/`composed`) |
-| Options (langue, plein écran, échelle UI) | `ui/options_panel.gd` | bouton « Options » du menu | plein écran | palette locale | plat | bouton « Retour » |
+| Options (langue, plein écran, échelle UI, son : 4 curseurs Général/Musique/Effets/UI) | `ui/options_panel.gd` | bouton « Options » du menu | plein écran | palette locale | plat (section « Son » séparée par un `HSeparator`) | bouton « Retour » |
 | Charger / Sauvegarder | `menu_root.gd::_build_load()` | bouton « Charger » du menu | plein écran | palette locale | liste de slots (Sauver/Charger par ligne) | bouton « Retour » |
 
 ### A.2 — Chrome permanent (visible en jeu en continu)

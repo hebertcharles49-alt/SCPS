@@ -1,5 +1,6 @@
 extends Control
-## OptionsPanel — l'écran Options du shell : LANGUE (Français / English) et PLEIN ÉCRAN.
+## OptionsPanel — l'écran Options du shell : LANGUE (Français / English), PLEIN ÉCRAN,
+## ÉCHELLE et SON (4 curseurs de volume).
 ##
 ## Persisté dans user://options.cfg (motif ConfigFile de audio/sound.gd). La langue
 ## s'applique DEUX étages à la fois : TranslationServer.set_locale (le chrome Godot,
@@ -9,6 +10,11 @@ extends Control
 ##
 ## `boot()` est appelé par menu_root AVANT de poser le moindre tr() — la config
 ## sauvée gouverne les textes dès la première construction du menu.
+##
+## SON : les curseurs pilotent DIRECTEMENT `Sound.get_vol`/`set_vol` (bus AudioServer,
+## cf. audio/sound.gd) — application à chaud + persistance sont déjà gérées côté Sound
+## (user://audio.cfg, un fichier SÉPARÉ de options.cfg). Ce panneau ne stocke ni ne
+## sauve aucun état de volume lui-même, il se contente de lire/écrire via Sound.
 
 signal back
 signal language_changed   ## les textes tr() sont posés à la construction → le menu se rebâtit
@@ -164,6 +170,17 @@ func _build_ui() -> void:
 	srow.add_child(sopt)
 	col.add_child(srow)
 
+	# ── SON : 4 curseurs de volume (bus déjà câblés côté Sound, cf. audio/sound.gd) ──
+	col.add_child(HSeparator.new())
+	var son_title := Label.new(); son_title.text = tr("T_OPT_SOUND_TITLE")
+	son_title.add_theme_font_size_override("font_size", 16)
+	son_title.add_theme_color_override("font_color", C_DIM)
+	col.add_child(son_title)
+	col.add_child(_vol_row("Master", "T_OPT_VOL_MASTER"))
+	col.add_child(_vol_row("Ambiance", "T_OPT_VOL_MUSIC"))
+	col.add_child(_vol_row("Moments", "T_OPT_VOL_SFX"))
+	col.add_child(_vol_row("UI", "T_OPT_VOL_UI"))
+
 	var hint := Label.new(); hint.text = tr("T_OPT_HINT")
 	hint.add_theme_color_override("font_color", C_DIM)
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -194,3 +211,25 @@ func _on_scale(i: int) -> void:
 	ui_scale = SCALES[clampi(i, 0, SCALES.size() - 1)]
 	_save_cfg()
 	_apply()
+
+
+## une ligne curseur de volume (label + HSlider 0-100 %) — motif calqué sur langue/
+## échelle ci-dessus. `Sound.get_vol`/`set_vol` appliquent À CHAUD (AudioServer) et se
+## PERSISTENT déjà eux-mêmes (user://audio.cfg) : rien à sauver ici, `bus` est le nom
+## EXACT du bus AudioServer ("Master" | "Ambiance" | "Moments" | "UI").
+func _vol_row(bus: String, label_key: String) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	var lab := Label.new(); lab.text = tr(label_key)
+	lab.custom_minimum_size = Vector2(150, 0)
+	lab.add_theme_color_override("font_color", C_TEXT)
+	row.add_child(lab)
+	var sl := HSlider.new()
+	sl.min_value = 0.0
+	sl.max_value = 100.0
+	sl.step = 1.0
+	sl.value = Sound.get_vol(bus) * 100.0
+	sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sl.value_changed.connect(func(v: float): Sound.set_vol(bus, v / 100.0))
+	row.add_child(sl)
+	return row

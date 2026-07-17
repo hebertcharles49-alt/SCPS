@@ -6794,3 +6794,207 @@ telle quelle aurait RETIRÉ des verbes joueur fonctionnels du jeu.
   reste valide tel quel — le facteur ne dépend que du NOMBRE de régions du pays, pas
   de LAQUELLE — mais `o->gold`, lui, deviendrait faux si le prix marché varie par
   région).
+
+## MISSION UI-DOCTRINE — D6 : options + tuning sonore (2026-07-18)
+
+**Statut : livré.** 4 curseurs de volume (Général/Musique/Effets/UI-clics) ajoutés à
+l'écran Options, câblés sur l'infra `Sound` déjà entièrement écrite (`audio/sound.gd`).
+
+### Découvertes
+
+- **L'infra `Sound.get_vol`/`set_vol` existait déjà en entier** — bus AudioServer
+  `Master`/`Ambiance`/`Moments`/`UI` (`default_bus_layout.tres`), application À CHAUD
+  (`AudioServer.set_bus_volume_db`) et persistance (`user://audio.cfg`, ConfigFile)
+  DÉJÀ écrites et fonctionnelles. La tâche s'est réduite à 4 lignes d'appel côté
+  `options_panel.gd` — aucune touche à `sound.gd` ni au bus layout, comme prévu par le
+  brief. Gain de temps énorme par rapport à une tâche qui aurait dû construire le mixage
+  depuis zéro.
+- **Structure plate suffisante** — 3 réglages existants (Langue, Plein écran, Échelle) +
+  4 curseurs de son tiennent dans le même `PanelContainer` de 520px sans déborder
+  (vérifié par capture, cf. `shots_uidoctrine_d6/02_options_son.png`). Un simple
+  `HSeparator` + un label de section « Son » (petit, `C_DIM`) suffit à distinguer le
+  bloc — PAS de `TabContainer` : rasoir d'Occam respecté (« pas d'usine à gaz »), motif
+  déjà en place dans le fichier (aucune classe imbriquée, aucun nouveau composant).
+- **Mapping bus retenu** (identique au brief) : Général→`"Master"`, Musique→`"Ambiance"`,
+  Effets→`"Moments"`, UI-clics→`"UI"` — noms de bus vérifiés caractère pour caractère
+  contre `sound.gd` (`BUS_UI`/`BUS_AMB`/`BUS_MOM`/"Master").
+
+### Pièges
+
+- **`--headless --path godot/project --import` (la commande documentée dans
+  `docs/I18N.md` et `packaging/windows/build_godot.sh`) N'A PAS régénéré
+  `ui.fr.translation`/`ui.en.translation` après l'édit du CSV**, malgré un exit code 0 et
+  un `[ DONE ] _update_scan_actions` propre — les nouvelles clés (`T_OPT_SOUND_TITLE`
+  etc.) restaient absentes des binaires compilés, donc affichées EN CLAIR (`tr()` renvoie
+  la clé brute) dans la capture. Cause suspectée mais NON élucidée : sur cette machine/ce
+  build (mono, `.NET Sdk not found` au démarrage de CHAQUE run éditeur), le pipeline
+  `EditorFileSystem` liste bien `ui.csv` comme item à traiter (« Analyse des actions »)
+  mais ne semble jamais exécuter l'import réel (aucun `.godot/imported/ui.csv-*.md5`
+  recréé, `ui.csv.import` lui-même pas régénéré après suppression volontaire pour test).
+  **PIÈGE JUMEAU découvert en creusant** : supprimer `ui.csv.import` pour « forcer » un
+  reimport est CONTRE-PRODUCTIF — ce sidecar porte `importer="csv_translation"` (le CSV
+  seul est ambigu, Godot ne sait pas qu'il doit produire des `Translation` sans cette
+  metadata) ; sans lui, même un rescan complet ne redéclenche pas le bon importeur.
+  **Contournement qui MARCHE, fiable et rejouable** : un script GDScript autonome
+  (`extends SceneTree`, lancé via `--headless --script res://x.gd`) qui relit `ui.csv`
+  à la main (`FileAccess.get_csv_line()`), construit deux `Translation` (locale fr/en,
+  `add_message` par ligne), les compresse via `OptimizedTranslation.generate(from)`
+  (exactement l'appel interne de l'importeur `csv_translation` quand `compress=1`), puis
+  `ResourceSaver.save()` vers `res://i18n/ui.fr.translation`/`ui.en.translation` — ces
+  APIs sont disponibles hors-éditeur (`SceneTree`/`Translation`/`ResourceSaver` sont des
+  classes runtime, pas des services de l'éditeur), donc fiables même quand
+  `EditorFileSystem` headless est capricieux. Script temporaire, PAS commité (supprimé
+  après usage) ; à réutiliser tel quel si un futur agent retouche `ui.csv` et voit le
+  même symptôme (littéraux `T_XXX` bruts à l'écran au lieu du texte traduit).
+- **Vérifier le rendu réel d'un ajout `i18n/ui.csv` NE SE PROUVE PAS par lecture de
+  code** — le CSV et le `tr()` sont syntaxiquement corrects même quand le binaire compilé
+  est périmé ; seule une capture fenêtrée (ou un grep direct dans le `.translation`
+  binaire, `grep -a "MaClé" ui.fr.translation`) révèle le désync. Repéré uniquement grâce
+  à la capture demandée par le brief — sans elle, le bug (clés brutes affichées) serait
+  passé inaperçu jusqu'au premier retour joueur.
+
+### Restes
+
+- Rien côté périmètre D6 — les 4 curseurs sont fonctionnels, persistés (Sound gère déjà
+  `user://audio.cfg`), traduits FR/EN, et la capture confirme un rendu sobre sans
+  dépassement visuel. Le mécanisme de reimport headless défaillant (ci-dessus) mérite
+  d'être investigué une fois pour toutes par un futur agent si un AUTRE chantier D
+  touche `i18n/ui.csv` et retombe sur le même symptôme — pourrait être lié au build mono
+  spécifiquement (`.NET Sdk not found`) plutôt qu'à Godot en général ; non confirmé,
+  hors budget de cette mission.
+
+## MISSION UI-DOCTRINE — D7 : tailles d'icônes (rail/topbar/tiroir) (2026-07-18)
+
+**Statut : livré.** Diagnostic Codex hérité (planning-only, ne pouvait pas écrire) exécuté
+tel quel — topbar (cellules 26→32, couronne 18→26) + tiroir (6 sites 13-20px → 16-26px
+selon la place disponible) ; rail gauche et barres de carte du bas AUCUN changement
+(faux positif / déjà correct, voir ci-dessous).
+
+### Le verdict doublon (piste à vérifier en premier, demandée par le brief) : FAUX POSITIF
+
+Le retour joueur « médaillons ronds à fond bronze quasi indistincts » décrit bien la
+RÉALITÉ visuelle du rail, mais ce n'est PAS un doublon de code. Trois preuves :
+1. `main/main.gd` n'instancie qu'UN SEUL script pour le rail (`res://ui/sidebar.gd`,
+   ligne 121) — grep de `SIDEBAR_W`/`draw_circle` sur tout `godot/project` : aucun
+   second constructeur de rail, aucun `draw_circle` dans `sidebar.gd`.
+2. `icon_button.gd::_draw()` confirmé lu en entier : `bg == ""` (le cas du rail,
+   `setup_icon(nom, BTN, "")`) ne peint RIEN sous l'icône — juste un léger surlignage
+   hover/sélection (fond plein + soulignement or). Zéro fond de chrome, zéro médaillon
+   peint par le CODE.
+3. Les PNG eux-mêmes (`assets/scps/ui/icons/menu_economy.png`, `menu_army.png`,
+   `menu_diplomacy.png`, inspectés visuellement) SONT dessinés comme des médaillons
+   ronds à cadre bronze perlé DANS L'ART — balance de justice/casque spartiate/poignée
+   de main, chacun encerclé d'un cadre circulaire sombre avec des points de bordure.
+   C'est le style de TOUT le pack `menu_*`, cohérent, pas un accident.
+
+Capture `01_rail_topbar_seuls.png` (zoom rail) confirme : le glyphe utile occupe
+seulement le centre du médaillon, une bonne partie des 52×52 px alloués est du
+padding/cadre baked-in au PNG — d'où la sensation « petits et interchangeables » même
+avec des boutons de 52 px déjà agrandis (le rail avait DÉJÀ été élargi lors d'une
+mission antérieure, cf. commentaire `sidebar.gd:16` « retour joueur : très très
+petits »). Conclusion : **pas touché `sidebar.gd`** (conforme au brief : faux positif
+= ne pas toucher) ; `docs/CARTOGRAPHIE_UI.md` non modifié (pas de doublon structurel à
+documenter).
+
+### Tailles avant/après (par fichier)
+
+**`godot/project/ui/topbar.gd`** (`_cell()`, cellules façon CK3, cellule = 48 px de
+haut) :
+- icône de cellule (ressource par nom / rid / icon générique) : **26 → 32 px** (3
+  sites : sprite ressource nommée, sprite ressource par rid, `UIKit.draw_icon`
+  générique — les trois partagent le même bloc `if/elif/elif`) ; `tx` (offset texte)
+  30→36, `cw` (largeur de cellule) 30.0→36.0 pour garder le même espacement relatif.
+- couronne de repli (`politics_crown`, quand le pays n'a pas d'héraldique dérivée) :
+  **18 → 26 px**, repositionnée pour rester centrée dans le même emplacement que les
+  armes 30×30 qu'elle remplace (avance fixe de 30 px inchangée, donc pas de
+  débordement sur la cellule suivante).
+
+**`godot/project/ui/sidebar_drawer.gd`** (6 sites, taille choisie SELON la place
+disponible dans chaque ligne, pas une taille uniforme) :
+- en-tête d'onglet (`TAB_ICON`, bandeau 36 px) : **20 → 26 px**.
+- ligne de classe démographique (`population_group`, ligne 19-20 px de haut) :
+  **14 → 16 px** (modeste : la ligne est serrée, pas de marge pour 24-28).
+- bouton « Courbes dans le temps » (`menu_economy`, bouton 20 px) : **13 → 16 px**
+  (choisi pour matcher les 16 px DÉJÀ utilisés par ses voisins immédiats du même
+  onglet Économie — `gold_coin` et `menu_economy`/commerce, tous deux déjà à 16,
+  laissés INCHANGÉS car déjà appropriés à leur ligne ~18 px, pas de sur-correction).
+- siège de conseil vacant (`menu_council`, repli quand pas de buste de conseiller) :
+  **16 → 20 px**, choisi pour matcher le buste PORTRAIT 20×20 déjà dessiné dans le
+  même emplacement quand le siège EST pourvu (ligne ~869) — cohérence visuelle entre
+  les deux états du même slot.
+- en-tête Armée (`menu_army`, ligne avec y+=24, de la marge) : **18 → 22 px**, texte
+  décalé x+22→x+26.
+- ligne Flotte (`harbor_anchor`, ligne avec y+=20) : **16 → 18 px**, texte décalé
+  x+20→x+22.
+
+**`godot/project/ui/sidebar.gd`** : PAS TOUCHÉ (faux positif, voir plus haut — déjà à
+52 px nu, doctrine respectée).
+
+**`godot/project/ui/controls.gd`** (barres de carte bas-gauche/droite) : PAS TOUCHÉ —
+déjà `const BTN := 52.0` avec le même commentaire « retour joueur : très très petits »
+que `sidebar.gd`, donc déjà corrigé lors d'une mission antérieure. Vérifié par lecture
+complète du fichier (5 icônes mode + 1 nature + 3 zoom, toutes via `IconButton` à
+BTN=52) : aucun sous-dimensionnement résiduel.
+
+### Contraste
+
+Vérifié par capture (6 PNG, `shots_uidoctrine_d7/`) : les glyphes d'encre sombre se
+détachent toujours nettement du fond parchemin après agrandissement — AUCUN halo/
+contour ajouté (la taille seule suffisait, conforme à la doctrine « solution la plus
+simple d'abord »). Zoom Python/PIL sur les crops confirme lisibilité propre sans
+chevauchement de texte sur les 6 sites du tiroir + la topbar.
+
+### Découvertes
+
+- **Le drift de commentaire préexistant `topbar.gd:333`** (« icône 22 px à gauche »)
+  alors que le code dessinait déjà 26 px avant cette mission — corrigé au passage
+  (commentaire mis à jour vers la valeur réelle 32 px) puisque je touchais ce bloc de
+  toute façon.
+- **`controls.gd` et `sidebar.gd` partagent LE MÊME commentaire historique** (« retour
+  joueur : très très petits », `BTN := 52.0`) — preuve que ces deux surfaces avaient
+  déjà reçu une passe d'agrandissement lors d'une mission UI antérieure, contrairement
+  à `topbar.gd`/`sidebar_drawer.gd` qui ne l'avaient jamais eue. Explique pourquoi le
+  diagnostic Codex ne les mentionnait pas comme sous-dimensionnées.
+
+### Pièges
+
+- **Le tool Edit a échoué de façon intermittente sur des `old_string` MULTI-LIGNES
+  pourtant caractère-pour-caractère identiques au contenu relu juste avant** (topbar.gd,
+  4 tentatives sur le même bloc de 12 lignes, 3 échecs « String to replace not found »
+  malgré une comparaison `cat -A` ne montrant aucun caractère invisible suspect). Le
+  contournement qui a fonctionné à chaque fois : réduire l'`old_string` à UNE SEULE
+  ligne unique dans le fichier (au besoin avec `replace_all: true` si la ligne apparaît
+  plusieurs fois avec le même remplacement). Cause exacte non élucidée (peut-être une
+  limite de longueur/normalisation du diff interne à l'outil sur ce run) — un futur
+  agent qui rencontre « String to replace not found » sur un bloc qu'il vient de lire
+  mot pour mot devrait essayer immédiatement de découper en édits d'une ligne plutôt
+  que de perdre du temps à ré-inspecter l'encodage.
+- **Envoyer plusieurs `Edit` en parallèle (un seul message, plusieurs tool_use) sur LE
+  MÊME fichier ne garantit pas un ordre séquentiel propre** — un des 4 edits parallèles
+  est passé, les 3 autres ont échoué comme si le fichier qu'ils visaient n'avait pas
+  encore reçu la modification précédente (ou l'inverse). Sur un fichier édité en PLUSIEURS
+  passes successives, préférer des `Edit` séquentiels (un par un, en vérifiant) plutôt
+  que de les grouper — le gain de parallélisme ne vaut pas le risque de désynchronisation
+  sur des edits qui se chevauchent dans le même fichier.
+
+### Restes
+
+- **Le padding/cadre baked-in des PNG `menu_*`** (médaillon rond, glyphe central minoritaire
+  dans les 52×52 px alloués) reste la cause RÉELLE de la sensation « quasi indistincts » du
+  rail — hors périmètre D7 (édition de contenu binaire interdite par le brief, lecture
+  seule). Un futur agent ART (pas layout) pourrait recadrer/agrandir le glyphe utile DANS
+  le PNG lui-même (crop du cadre bronze, ou variante « sans cadre » pour le rail spécifiquement,
+  vu que `sidebar.gd` dessine déjà l'icône nue — le cadre du PNG double alors visuellement
+  le cadre-hover du code).
+- **La couronne de repli `politics_crown` (topbar, 26 px après cette mission) n'a pas été
+  vérifiée visuellement en situation réelle** — le pays de test (Clans Dornyana, seed 9)
+  a une héraldique dérivée valide (`heraldry.gd::arms()` non-null), donc le chemin `else`
+  (couronne) n'a jamais été exercé dans les 6 captures. Le changement est un simple
+  nombre (18→26) dans un `UIKit.draw_icon` déjà utilisé ailleurs à cette taille, risque
+  jugé faible, mais un futur agent qui doute peut forcer `heraldry.gd::arms()` à retourner
+  `null` en probe pour vérifier à l'œil.
+- **`sidebar_drawer.gd::_draw_eco()` (icônes gold_coin/menu_economy déjà à 16 px, lignes
+  ~456/519) volontairement LAISSÉES INCHANGÉES** — jugées déjà proportionnées à leur ligne
+  serrée (~18 px), pas de marge visible pour grandir sans empiéter sur la ligne suivante.
+  Si un retour joueur les signale comme encore petites, elles ont une marge de ~2 px
+  disponible (16→18 max avant collision).

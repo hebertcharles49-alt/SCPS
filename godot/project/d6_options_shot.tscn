@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://b8d6optshot1"]
+
+[ext_resource type="Script" path="res://d6_options_shot.gd" id="1_d6o"]
+
+[node name="D6OptionsShot" type="Node"]
+script = ExtResource("1_d6o")
