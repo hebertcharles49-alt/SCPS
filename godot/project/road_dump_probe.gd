@@ -36,6 +36,13 @@ func _run() -> void:
 	print("SAVED ", out.size(), " routes")
 	# MARITIME N4 : le même dump pour les LANES (ov._lanes, post _augment_lanes) + la
 	# visibilité fog des deux bouts — diagnostic du spaghetti MARIN et du cadrage probe.
+	# + CHRONO façade : COLD (1re construction moteur) / WARM (cache signature).
+	var t0 := Time.get_ticks_usec()
+	var _n0: int = (Sim.world.sea_paths() as Array).size()
+	var t1 := Time.get_ticks_usec()
+	var _n1: int = (Sim.world.sea_paths() as Array).size()
+	var t2 := Time.get_ticks_usec()
+	print("SEA_PATHS cold=", (t1 - t0) / 1000.0, " ms  warm=", (t2 - t1) / 1000.0, " ms")
 	ov._ensure_lanes()
 	var lout := []
 	for ln in ov._lanes:

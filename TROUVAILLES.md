@@ -5693,3 +5693,154 @@ déflationnistes (−1.45/−1.94/−2.67) dominent la moyenne — ce sont les C
   scps_tune_list.h ont changé — aucun binding/GDScript touché, mais le moteur statique
   de la DLL doit être relié (motif M3h/M3i/M5).
 - Tag `pre-m13` posé · worktree de sweep `C:/tmp_wt_pre_m13` à retirer après session.
+
+## MARITIME — N1-N4 : lanes maritimes VISIBLES + navigation joueur (2026-07-17)
+
+Mission joueur verbatim : « il faut des tiles maritimes pour qu'on voie les routes
+maritimes / qu'on puisse naviguer. » Tag `pre-maritime` posé (66c694f). Save v96
+INCHANGÉ (aucun champ neuf : N2/N4 = readers display-only hors tick, N3 = repli sur
+`campaign_order_sea` EXISTANT, aucun accumulateur neuf). Golden JAMAIS re-baseliné :
+byte-identique prouvé défauts ET kill-switch.
+
+### N1 — L'AUDIT : la mer savait déjà presque tout, mais ne MONTRAIT rien
+- `world_sea_days_capped` (scps_world.c:4614) : un Dijkstra DIRECTIONNEL sur les
+  cellules mer existe depuis longtemps — cabotage (SEA_CABOT_DAY fixe), mortes
+  pénalisées, courants directionnels (v̂·d̂), mémo (s,t)→jours par graine. MAIS il ne
+  mémorise QUE la distance — aucun chemin, donc rien à dessiner. C'est LA raison du
+  constat ROUTES (« aucun reader n'expose de lanes ») : la géométrie existait en
+  creux dans le coût, jamais en points.
+- Les routes de COMMERCE maritimes existent (RouteNetwork, `routes_order` exige
+  l'édifice PORT sur côte aux DEUX bouts — le critère de « port » le plus naturel
+  du moteur) ; l'IA en crée ≤ 3 par rade tous les 180 j (scps_sim.c:1150) ; le
+  détroit payé (`choke_region`) est posé à la CRÉATION par un test de SEGMENT DROIT
+  entre les deux ancres (world_route_chokepoint), PAS par le chemin réel.
+- Les ARMÉES traversaient DÉJÀ : `campaign_order_sea` (FA_EMBARK→FA_SAIL→FA_LAND,
+  1 transport/10 paquets, blocus refusé, durée = world_sea_days, interception par
+  les patrouilles ennemies en mer) — mais SEULE L'IA l'appelait (guerre outre-mer
+  sans frontière terrestre, scps_sim.c:247). CMD_MOVE_ARMY refusait SILENCIEUSEMENT
+  toute cible sans chemin terrestre (`next_hop<0`). Le joueur n'avait AUCUN geste.
+- La marine (scps_navy.c) : 4 coques, chantier/entretien/famine, missions
+  RADE/ESCORTE/BLOCUS/INTERCEPTION, course/raids/saignée, colonisation outre-mer
+  ≤ 90 j. Tout ABSTRAIT (aucune position en mer hors la cellule-nid des pirates).
+- **cell.lake ≠ visible water, CONFIRMÉ ET AGGRAVÉ** : les lacs priority-flood
+  portent `biome=BIO_SHALLOW` (scps_world.c:1588) ⇒ ils entrent dans le masque
+  marin `seam` ⇒ `cell.sea=SEA_CABOTAGE` ! `cell.sea≠0` n'exclut donc PAS les
+  lacs — tout A* marin doit tester `cell.lake` explicitement.
+
+### N2 — LES LANES (scps_api.c, miroir marin de road_paths)
+- `scps_sea_lanes_build`/`scps_sea_lane_path` + binding `sea_paths()` : A*
+  port-à-port sur `cell.sea && !cell.lake`, paires = les routes maritimes RÉELLES
+  du RouteNetwork (pas toutes les paires), lissage moyenne-mobile GARDÉ-EAU (le
+  piège « api_road_smooth n'est pas water-aware » pris à l'inverse), cache par
+  SIGNATURE (ra/rb/open des routes maritimes), kill-switch SEA_LANES=0 (registre J).
+  Boîte A* ±96 (contourner une masse terrestre écarte plus qu'un col). Chaque lane
+  expose open/choke_region/ra/rb (membrane : coordonnées + ids).
+- **LE COÛT MARIN UNIFORME CHANGE LES RÈGLES DU CORRIDOR** (2 itérations mesurées,
+  dump JSON + Python) : (1) le tampon ±1 des routes terrestres laisse le 2e A*
+  errer dans une bande de 3 cellules toutes à ×0.30 — à terre le relief départage,
+  en mer RIEN ⇒ paires parallèles à ~0.3 cellule. Tampon EXACT (ligne seule + DDA
+  anti-trous de décimation) ⇒ partage cellule-à-cellule (d=0.000 vérifié). (2) le
+  cabotage sur l'anneau littoral IMMÉDIAT colle la lane AU trait de côte (fondue
+  dans le contour dessiné, illisible). Le RAIL = la 2e RANGÉE d'eau (voisine du
+  littoral) à 0.72, la rive immédiate à 0.85 ⇒ la lane longe à 1-2 cellules du
+  trait ET les lanes voisines partagent le même rail.
+- Coût CPU (probe, graine 9 an 120, 12 lanes dont une transocéanique) :
+  **COLD ≈ 78 ms · WARM ≈ 0.04 ms** (cache signature). Graine 42 : 18 ms. Sous le
+  seuil « >100 ms → incrémentalise » ; recalcul SEULEMENT quand le commerce
+  maritime change, jamais au tick.
+- Cohérence CHOKES : câblée EN LECTURE — chaque lane porte le `choke_region` de sa
+  route (posé par le test de segment droit d'intertrade, la vérité du péage M13,
+  INTACTE). L'écart possible segment-droit vs chemin-réel est documenté en Restes.
+
+### N3 — « QU'ON PUISSE NAVIGUER » = donner au joueur le geste que l'IA avait
+- CMD_MOVE_ARMY (déploiement depuis la réserve) : si `campaign_order` refuse (pas
+  de chemin TERRESTRE), repli sur `campaign_order_sea` depuis la meilleure rade —
+  qui revalide TOUT (port à soi, côte à l'arrivée, transports libres, blocus,
+  chemin de courants). Kill-switch SEA_TRAVEL=0. La durée est DÉJÀ ∝ au chemin
+  réel de mer (world_sea_days = le même modèle de coût que les lanes).
+- Reader PUR `scps_sea_travel` + binding `sea_travel(target_region)` :
+  possible/days/port_region/transports_need/transports_free/blocked — le miroir
+  des gardes de campaign_order_sea SANS exécuter, pour l'UI future.
+- GOLDEN-NEUTRE par construction : le repli ne s'exécute QUE sur commande joueur
+  (journal CMD_*) — la chronique headless n'en émet jamais. Prouvé : golden
+  byte-identique avec SEA_TRAVEL=1 (défaut) ET =0.
+
+### Pièges (au-delà de ceux déjà cités)
+- **La boucle de tirets a HANGÉ un run d'audit (11 min de CPU + OOM)** : quand la
+  phase flottante tend vers la frontière dash/gap, `run = DASH - phase` devient
+  ~1e-10 et fmod re-rend la même phase — la boucle n'avance plus ET appende des
+  paires dégénérées jusqu'à l'épuisement mémoire (« realloc_static mem null »).
+  Plancher ε (0.005 cellule) sur la progression. Tout walker d'arc paramétré par
+  fmod doit garantir un pas minimal.
+- **Des tirets déphasés se comblent mutuellement** : N lanes partagent un corridor
+  cellule-identique mais chacune pose ses tirets avec SA phase ⇒ les blancs de
+  l'une sont remplis par les tirets des autres = trait SOLIDE (mesuré graine 42,
+  5 lanes côte sud). Dédup par bin d'1 CELLULE sur le milieu de tiret (le « déjà
+  encré ? » des routes porté à la mer) — bin 0.5 insuffisant (le résidu de
+  divergence entre lanes plafonne à ~0.3-1 cellule et passe entre les bins).
+- **Seuil lac au byte : 111, pas 110** — la mer exige height<0.43 ⇒ byte
+  trunc(h×255+0.5) ≤ 110, le lac carvé (0.434) donne 111 ; un seuil ≥110 flague
+  la mer littorale 0.428-0.43 (mesuré : 56-65 faux positifs « lane-lac »/graine).
+- **Le « joueur » des mondes probe ne connaît RIEN de la mer** : fog = la
+  connaissance du pays-joueur, passif en probe (aucun port, aucune route
+  maritime, capitale enclavée sur les 3 graines) ⇒ tout gate fog par-lane rend la
+  carte muette en probe ET double-cache ce que le VOILE (dessiné après, au pixel
+  près) couvre déjà. Le voile EST le « sous le fog rien » ; probe : shot_parch
+  fog=0 (flag overlay.fog_off, jamais posé par le jeu).
+- **La DLL doit être rebuildée après TOUT ajout à scps_tune_list.h** : un
+  SCPS_TUNE avec un nom que la DLL chargée ne connaît pas fait exit(2) DANS le
+  process Godot (crash muet au regenerate) — le kill-switch « marchait » côté
+  make/chronicle mais tuait le front jusqu'au rebuild.
+- Le piège --headless (écran noir) tient ; fenêtré pour toute capture. Le tail
+  d'un process piped ne flush qu'à l'EOF — un run « silencieux » n'est pas un run
+  fini (vérifier le process, pas le fichier).
+
+### Gates (tous passés, dans l'ordre)
+1. **Kill-switch** : `SCPS_TUNE=SEA_LANES=0,SEA_TRAVEL=0` ⇒ `make golden` VERT
+   (byte-identique au golden pre-maritime commité) — ET golden VERT aux DÉFAUTS
+   aussi (N2/N4 hors tick, N3 joueur-seul) : AUCUNE re-baseline.
+2. Pas de sweep apparié (N3 ne change PAS la sim par défaut — l'IA naviguait
+   déjà) : runs de sanité chronicle {9,11,42}×60 ans sans crash, conformément au
+   brief (« sinon runs courts de sanité »).
+3. `make test` **39/39** · `make determinism` STABLE · `make determinism-deep`
+   STABLE (graines 7/9 × 200 ans) · savetest 9/11/42 A==B + octet altéré REFUSÉ
+   ×3 · fuzztest 8/8 (216 octets, 0 crash) · lang-check OK (0 littéraux).
+4. viewer_audit ÉTENDU (invariants lane-terre/lane-lac DURS) : **VERT 3 graines**
+   — lanes 12/10/8 (toutes ouvertes), lane-lac 0, lane-terre 0, route-mer-path
+   1/1/0 inchangé (le garde-fou ROUTES tient). Spaghetti (métrique étendue aux
+   lanes, paires même-média) : 1381/1237/1420 dont routes-seules 588/607/558.
+5. DLL REBUILDÉE : debug ET release (scons OK ×2).
+
+### Preuve visuelle (PNG dans godot/project/, gitignorés)
+- `maritime_before_s9_z26.png` (kill-switch SEA_LANES=0 : mer muette) vs
+  `maritime_after_s9_z26.png` (mêmes vue/graine : lanes pointillées).
+- `maritime_after_s9_corridor_z4.png` — LE tronc partagé (3 lanes → UN pointillé)
+  le long de la côte sud, ancré au port : la convention portulan.
+- `maritime_after_s9_port_z5.png` — le raccord au quai (snap) + cabotage.
+- `maritime_after_s42_z3.png` — graine continentale : pointillés à 1-2 cellules
+  du trait de côte, distincts du contour.
+
+### Restes
+- **Cohérence chokes segment-vs-chemin NON mesurée systématiquement** : la lane
+  expose le choke_region de sa route (la vérité du PÉAGE, test de segment droit
+  d'intertrade — M13 intact), mais une lane réelle pourrait contourner le goulet
+  que le segment croise (ou traverser un goulet que le segment rate). Rare sur
+  les graines vues (1 lane à choke sur 12 / 1 sur 8) ; si un jour le péage doit
+  suivre le CHEMIN réel, le test « la lane passe-t-elle près de (sx,sy) du
+  choke » est trivial à écrire côté moteur — décision éco, pas géométrique.
+- **Le verbe N3 ne couvre que le DÉPLOIEMENT depuis la réserve** : un corps ACTIF
+  à terre ne peut pas ré-embarquer via CMD_MOVE_ARMY (campaign_redirect reste
+  terrestre) — le tour du monde en plusieurs sauts de mer exige de rappeler la
+  levée d'abord. Verbe manquant documenté (CMD_CORPS_* + embarquement).
+- **`sea_travel()` exposé mais AUCUNE UI ne le consomme encore** — le panneau
+  armée devrait afficher « traversée : N j · M transports (K libres) » au survol
+  d'une cible outre-mer.
+- **Les lanes des routes EN FORMATION (open=0) ne se dessinent pas** (choix : pas
+  d'encre avant l'ouverture) — une « lane fantôme » en croissance façon chantier
+  de route terrestre serait cohérente mais n'a pas été demandée.
+- **Spag marin résiduel ~790/630/860** = éventails de divergence entre lanes de
+  destinations différentes (légitime, même conclusion que l'ANTISPAG terrestre) ;
+  la piste arc-length matching reste la même.
+- **routes_perf_probe non étendue** aux lanes (le chrono vit dans
+  road_dump_probe) — à fusionner si une vague perf future veut UN seul
+  instrument.
