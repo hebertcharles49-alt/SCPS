@@ -34,4 +34,22 @@ func _run() -> void:
 	f.store_string(JSON.stringify(out))
 	f.close()
 	print("SAVED ", out.size(), " routes")
+	# MARITIME N4 : le même dump pour les LANES (ov._lanes, post _augment_lanes) + la
+	# visibilité fog des deux bouts — diagnostic du spaghetti MARIN et du cadrage probe.
+	ov._ensure_lanes()
+	var lout := []
+	for ln in ov._lanes:
+		var lpts: PackedVector2Array = ln["points"]
+		var larr := []
+		for p in lpts:
+			larr.append([p.x, p.y])
+		lout.append({"open": int(ln.get("open", 0)), "choke": int(ln.get("choke", -1)),
+			"ra": int(ln.get("ra", -1)), "rb": int(ln.get("rb", -1)),
+			"fog_ra": ov._fog_visible_region(int(ln.get("ra", -1))),
+			"fog_rb": ov._fog_visible_region(int(ln.get("rb", -1))),
+			"pts": larr})
+	var lf := FileAccess.open("res://" + _arg("lanes=", "lanes.json"), FileAccess.WRITE)
+	lf.store_string(JSON.stringify(lout))
+	lf.close()
+	print("SAVED ", lout.size(), " lanes")
 	get_tree().quit(0)

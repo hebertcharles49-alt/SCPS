@@ -26,6 +26,23 @@ func _run() -> void:
 		if ov != null:
 			ov.nature_mode = true
 			ov.queue_redraw()
+	# fog=0 (PROBE, mission MARITIME) : saute le VOILE — le « joueur » passif d'un monde
+	# probe ne connaît presque rien, le voile masquerait tout ce qu'on veut photographier.
+	if _arg("fog=", "1") == "0":
+		var ov2 := _map.get_node_or_null("Overlay")
+		if ov2 != null:
+			ov2.fog_off = true
+			ov2.queue_redraw()
+	if _arg("lanedbg=", "0") == "1":
+		var ov3 := _map.get_node_or_null("Overlay")
+		if ov3 != null:
+			ov3._ensure_lanes()
+			var nd := 0
+			for dd in ov3._lane_dashes:
+				nd += (dd as PackedVector2Array).size()
+			print("LANEDBG lanes=", ov3._lanes.size(), " dash-pts=", nd, " dirty=", ov3._lanes_dirty)
+			if not ov3._lane_dashes.is_empty() and (ov3._lane_dashes[0] as PackedVector2Array).size() >= 2:
+				print("LANEDBG dash0=", (ov3._lane_dashes[0] as PackedVector2Array)[0])
 	var zoom := float(_arg("zoom=", "0"))
 	# cap=1 : centre sur la CAPITALE DU JOUEUR (évite de deviner des coordonnées monde)
 	var def_cx: String = str(Sim.world.map_w() * 0.5)

@@ -125,6 +125,9 @@ var _dress_clear := []    ## [[Vector2, r²]] — la CLAIRIÈRE des bourgs (aucu
 var _canopy_batches := [] ## [{mm: MultiMesh, tex}] — la canopée servie en MULTIMESH (un draw/essence),
                           ## rebâtie avec le dressing ; instances en espace MONDE (coût par-frame nul)
 var _canopy_mesh: ArrayMesh = null ## quad partagé des arbres (pied à l'origine, y vers le bas)
+var fog_off := false      ## PROBE SEULEMENT (shot_parch fog=0) : saute le VOILE de guerre — pour
+                          ## PHOTOGRAPHIER routes/lanes dans un monde probe où le « joueur » passif
+                          ## ne connaît presque rien (display-only, jamais posé par le jeu)
 var nature_mode := false  ## MODE NATURE : on ne montre QUE le terrain + le dressing (pas de frontières/
                           ## villes/routes/armées/noms) — la carte « vierge », touche N. Display-only.
 var _country_names := []  ## nom de chaque pays (figé au générate) — pour les étiquettes d'empire
@@ -221,6 +224,10 @@ var _road_start := {}     ## clé de route → ANNÉE de début de chantier (cro
 var _roads_dirty := true  ## le réseau commercial a pu bouger → recharger les routes
 var _road_net := {}       ## ANTISPAG cache : polylignes consolidées (dédup + tier d'épaisseur), voir _ensure_road_network
 var _road_net_valid := false  ## false ⇒ à reconstruire (réseau changé OU un chantier grandit encore)
+var _lanes := []          ## PORTULAN : [{points, open, choke, ra, rb}] — lanes maritimes (sea_paths + méta)
+var _lane_dashes := []    ## par lane : PackedVector2Array de PAIRES iso (tirets prêts pour draw_multiline)
+var _lanes_dirty := true  ## le commerce maritime a pu bouger → recharger les lanes
+var _lanes_day := -999999 ## jour sim du dernier rafraîchissement (re-poll SEA_LANE_POLL_DAYS)
 var _rivers := []         ## [Vector3(x, y, ang)] — nuage de points (façade) gardé pour l'anti-bâti SUR le fil
 var _river_hash := {}     ## hash spatial du fil de rivière (Vector2 par cellule) — snap des frontières
 var _mv: Node2D = null    ## le MapView parent (porte la projection GLOBE monde→écran)
@@ -251,6 +258,17 @@ const ROAD_FOREST_A := 0.38   ## SOUS LA CANOPÉE : la route se devine — relev
 #  · ASSETS : mobilier semé à l'ARC (espacement RÉGULIER, indépendant de la densité de points).
 const ROAD_RESAMPLE := 2.0       ## pas d'échantillonnage du tracé (cellules) → points réguliers
 const ROAD_SNAP_TRIM := 4.5      ## rayon de nettoyage des points près de l'ancre de ville (cellules)
+# ── PORTULAN (mission MARITIME N4) : les LANES maritimes en POINTILLÉS d'encre — la
+# convention des portulans (actée joueur). Plus FINES que les routes terrestres, ancrées
+# aux ports par le snap existant, JAMAIS sur un lac (l'A* moteur les exclut : cellules
+# MER seulement), sous le fog RIEN (les deux bouts doivent être connus). Le tracé vient
+# du MOTEUR (sea_paths(), cache par signature du commerce maritime — la membrane : des
+# coordonnées) ; ici on ne fait que lisser GARDÉ-MER, ancrer, magnétiser et pointiller.
+const SEA_LANE_INK := Color(0.24, 0.20, 0.28, 0.62)  ## l'encre froide du trait de mer
+const SEA_LANE_DASH := 1.1        ## longueur d'un tiret (cellules monde)
+const SEA_LANE_GAP := 0.9         ## le blanc entre tirets
+const SEA_LANE_MAGNET_PASSES := 2 ## magnétisme MARIN (mêmes réglages ANTISPAG, bundle lanes seul)
+const SEA_LANE_POLL_DAYS := 180   ## re-poll du commerce maritime (il évolue sans conquête)
 # ── ANTISPAG (2026-07-17) : consolidation VISUELLE des routes en TRONCS — display-only, aucune
 # sémantique. Le magnétisme de couloir existait déjà (nearest-point glouton, rayon 0.65 cellule,
 # voisinage ±1, une seule passe) : renforcé (rayon → ROAD_MAGNET_R, ±ROAD_MAGNET_RING, 2 passes).
@@ -313,6 +331,10 @@ func _on_generated() -> void:
 	_dressing_dirty = true      # … et le dressing de terrain (biome semé)
 	_roads_dirty = true
 	_road_start.clear()         # chantiers remis à zéro (le monde neuf rebâtit ses routes)
+	_lanes_dirty = true         # PORTULAN : monde neuf → lanes maritimes à recharger
+	_lanes = []
+	_lane_dashes = []
+	_lanes_day = -999999
 	_region_label.clear()       # bannières de lieux : noms recachés (monde neuf)
 	_town_cache.clear()         # urbaniste : plans de bourgs recalculés (routes neuves)
 	_sea_img = null             # couches eau recachées (quais)
@@ -549,6 +571,11 @@ func _on_tick(_year: int) -> void:
 		_owner_sig = sig       # refaire frontières ET réseau de routes (villes neuves/captées)
 		_borders_dirty = true
 		_roads_dirty = true
+		_lanes_dirty = true    # PORTULAN : un port conquis/fondé peut recâbler le commerce
+	if Sim.day_count - _lanes_day >= SEA_LANE_POLL_DAYS:
+		_lanes_dirty = true    # PORTULAN : le commerce maritime évolue SANS conquête (routes
+		                       # ordonnées/ouvertes au fil des ans) → re-poll semestriel ; le
+		                       # cache moteur (signature) rend le poll quasi gratuit si rien n'a bougé
 	_ensure_roads()            # date les chantiers neufs dès maintenant (même non zoomé)
 	_refresh_war_regions()     # W-GUERRE UI (lot A) : sièges/occupations bougent AU TICK, pas aux frontières
 	queue_redraw()
@@ -1395,6 +1422,149 @@ func _augment_roads(w) -> void:
 				bundle[kk2].append(pts[k])
 			rd["points"] = pts
 
+## PORTULAN — charge les lanes maritimes depuis le moteur (sea_paths, cache par signature
+## du commerce) puis les prépare (lissage gardé-MER, ancrage aux ports, magnétisme marin,
+## tirets pré-calculés). Garde has_method : une DLL antérieure à la mission MARITIME
+## laisse simplement la mer muette.
+func _ensure_lanes() -> void:
+	if not _lanes_dirty:
+		return
+	var w = Sim.world
+	if w == null or not w.has_method("sea_paths"):
+		return
+	_lanes = w.sea_paths()
+	_augment_lanes(w)
+	_lanes_day = Sim.day_count
+	_lanes_dirty = false
+
+## PORTULAN : le pendant marin d'_augment_roads — resample + Chaikin GARDÉ-MER (l'inverse
+## des routes : un coin coupé qui QUITTERAIT l'eau retombe sur le sommet d'origine), snap
+## des extrémités à l'ancre du bourg-PORT (le raccord au quai), magnétisme de couloir
+## ENTRE LANES seulement (jamais collées aux routes de terre — deux médias), puis les
+## TIRETS (paires iso) pré-calculés une fois pour toutes.
+func _augment_lanes(w) -> void:
+	var sea: Image = w.layer_image(LAYER_WATER)
+	var mv := _mv_ref()
+	for ln in _lanes:
+		var pts: PackedVector2Array = ln["points"]
+		pts = _resample_polyline(pts, ROAD_RESAMPLE)
+		pts = _chaikin_sea(pts, sea)
+		pts = _chaikin_sea(pts, sea)
+		if mv != null and mv.has_method("tile_anchor_world"):
+			var ra: int = int(ln.get("ra", -1))
+			var rb: int = int(ln.get("rb", -1))
+			if _region_anchor.has(ra):
+				var a0: Vector2 = _region_anchor[ra]
+				pts = _snap_endpoint(pts, mv.tile_anchor_world(a0.x, a0.y), true)
+			if _region_anchor.has(rb):
+				var a1: Vector2 = _region_anchor[rb]
+				pts = _snap_endpoint(pts, mv.tile_anchor_world(a1.x, a1.y), false)
+		ln["points"] = pts
+	# le MAGNÉTISME MARIN (mêmes réglages ANTISPAG que la terre, bundle SÉPARÉ) : les
+	# corridors moteur (×0.30) font le gros ; ceci recolle les résidus de déphasage.
+	for _pass in range(SEA_LANE_MAGNET_PASSES):
+		var bundle := {}
+		for ln in _lanes:
+			var pts: PackedVector2Array = ln["points"]
+			for k in range(3, pts.size() - 3):
+				var p5: Vector2 = pts[k]
+				var gx := int(floor(p5.x))
+				var gy := int(floor(p5.y))
+				var bestd := ROAD_MAGNET_R2
+				var bestp := p5
+				for oy in range(-ROAD_MAGNET_RING, ROAD_MAGNET_RING + 1):
+					for ox in range(-ROAD_MAGNET_RING, ROAD_MAGNET_RING + 1):
+						var kk := (gx + ox) * 100000 + (gy + oy)
+						if bundle.has(kk):
+							for q5 in bundle[kk]:
+								var dd: float = p5.distance_squared_to(q5)
+								if dd < bestd:
+									bestd = dd
+									bestp = q5
+				pts[k] = bestp
+			for k in range(pts.size()):
+				var kk2 := int(floor(pts[k].x)) * 100000 + int(floor(pts[k].y))
+				if not bundle.has(kk2):
+					bundle[kk2] = []
+				bundle[kk2].append(pts[k])
+			ln["points"] = pts
+	_lane_dashes.clear()
+	if mv == null:
+		return
+	# DÉDUP DES TIRETS (le « déjà encré ? » des routes, porté à la mer) : plusieurs lanes
+	# partagent un corridor CELLULE-IDENTIQUE (tampon exact moteur + magnétisme) mais
+	# chacune poserait ses tirets avec SA phase propre — les blancs de l'une comblés par
+	# les tirets des autres = un trait SOLIDE (mesuré graine 42, 5 lanes sur la côte sud).
+	# Une clé de demi-cellule sur le milieu de tiret : le corridor ne s'encre qu'UNE fois,
+	# avec UNE phase — le pointillé du portulan survit à la multiplicité.
+	var seen := {}
+	for ln in _lanes:
+		_lane_dashes.append(_lane_dash_iso(ln["points"], mv, seen))
+
+## Chaikin GARDÉ-MER (portulan) : le miroir exact de _chaikin_safe — un point coupé qui
+## SORTIRAIT de l'eau reprend le coin d'origine ; la lane épouse la côte sans jamais
+## monter dessus. (Les extrémités, ancrées au quai par _snap_endpoint APRÈS, sont les
+## seuls points de terre légitimes du tracé.)
+func _chaikin_sea(pts: PackedVector2Array, sea: Image) -> PackedVector2Array:
+	if pts.size() < 3:
+		return pts
+	var out := PackedVector2Array()
+	out.append(pts[0])
+	for i in range(pts.size() - 1):
+		var a: Vector2 = pts[i]
+		var b: Vector2 = pts[i + 1]
+		var q := a.lerp(b, 0.25)
+		var r := a.lerp(b, 0.75)
+		out.append(q if _is_sea_cell(sea, int(q.x), int(q.y)) else a)
+		out.append(r if _is_sea_cell(sea, int(r.x), int(r.y)) else b)
+	out.append(pts[pts.size() - 1])
+	return out
+
+## découpe une polyligne MONDE en TIRETS (dash/gap en cellules, phase continue le long
+## de l'arc — le pointillé ne « saute » pas aux sommets), projetés iso : des PAIRES de
+## points prêtes pour draw_multiline. Pré-calculé dans _augment_lanes (iso_pos est une
+## projection fixe monde→iso ; la caméra vit dans le canvas transform).
+func _lane_dash_iso(pts: PackedVector2Array, mv, seen: Dictionary) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	if pts.size() < 2:
+		return out
+	var period := SEA_LANE_DASH + SEA_LANE_GAP
+	var t := 0.0
+	for i in range(pts.size() - 1):
+		var a: Vector2 = pts[i]
+		var b: Vector2 = pts[i + 1]
+		var seg := a.distance_to(b)
+		if seg < 0.0001:
+			continue
+		var s := 0.0
+		while s < seg - 0.0001:
+			var phase := fmod(t, period)
+			var in_dash := phase < SEA_LANE_DASH
+			# PIÈGE FLOTTANT (a HANGÉ un run d'audit — 11 min de CPU) : quand phase tend
+			# vers la frontière dash/gap, `run` peut devenir ~0 et la boucle ne PROGRESSE
+			# plus (fmod re-rend la même phase). Plancher ε : la progression est garantie,
+			# l'erreur de phase (≤ 0.005 cellule) est invisible sous le pixel.
+			var run := maxf((SEA_LANE_DASH - phase) if in_dash else (period - phase), 0.005)
+			run = minf(run, seg - s)
+			if run < 0.0049:
+				run = minf(0.005, seg - s + 0.001)   # dernier pas : sortir quoi qu'il arrive
+			if in_dash:
+				var p0 := a.lerp(b, clampf(s / seg, 0.0, 1.0))
+				var p1 := a.lerp(b, clampf((s + run) / seg, 0.0, 1.0))
+				var mid := (p0 + p1) * 0.5
+				# bin de 1 CELLULE (pas 0.5) : le résidu de divergence entre lanes d'un même
+				# corridor plafonne à ~0.3-1 cellule (cf. TROUVAILLES) — un bin plus fin
+				# laissait les tirets déphasés des lanes voisines COMBLER les blancs (trait
+				# solide par morceaux, mesuré graine 42).
+				var dk := str(int(floor(mid.x))) + "_" + str(int(floor(mid.y)))
+				if not seen.has(dk):        # dédup : un corridor partagé ne s'encre qu'UNE fois
+					seen[dk] = true
+					out.append(mv.iso_pos(p0.x, p0.y))
+					out.append(mv.iso_pos(p1.x, p1.y))
+			s += run
+			t += run
+	return out
+
 ## clé quantizée (résolution ROAD_SEGKEY_RES) d'un SEGMENT — identité pour la dédup/multiplicité
 ## de `_ensure_road_network` (tronc consolidé). Volontairement COARSE (0.5 cellule, pas 0.25) :
 ## découverte (cf. TROUVAILLES) — même après magnétisme réussi, l'échantillonnage indépendant de
@@ -1556,7 +1726,20 @@ func _count_spaghetti_segments() -> int:
 			var b: Vector2 = pts[k + 1]
 			if a.distance_to(b) < 0.05:
 				continue
-			segs.append({"a": a, "mid": (a + b) * 0.5, "dir": (b - a).normalized(), "route": ri})
+			segs.append({"a": a, "mid": (a + b) * 0.5, "dir": (b - a).normalized(), "route": ri, "sea": false})
+	# PORTULAN (MARITIME N4) : la métrique COUVRE les lanes — même défaut, même mesure
+	# (le magnétisme marin travaille dès l'entrée). Les paires MIXTES terre/mer ne
+	# comptent pas (une route côtière et une lane de cabotage qui longent la même côte
+	# sont deux MÉDIAS, pas un doublon d'encre) : le test "sea"=="sea" plus bas.
+	for li in range(_lanes.size()):
+		var lpts: PackedVector2Array = _lanes[li]["points"]
+		for k in range(lpts.size() - 1):
+			var a2: Vector2 = lpts[k]
+			var b2: Vector2 = lpts[k + 1]
+			if a2.distance_to(b2) < 0.05:
+				continue
+			segs.append({"a": a2, "mid": (a2 + b2) * 0.5, "dir": (b2 - a2).normalized(),
+				"route": _roads.size() + li, "sea": true})
 	var grid := {}
 	for si in range(segs.size()):
 		var c: Vector2 = segs[si]["mid"]
@@ -1580,6 +1763,8 @@ func _count_spaghetti_segments() -> int:
 					var o: Dictionary = segs[sj]
 					if o["route"] == s["route"]:
 						continue
+					if bool(o["sea"]) != bool(s["sea"]):
+						continue          # médias différents (terre vs mer) : jamais un doublon
 					if (s["mid"] as Vector2).distance_to(o["mid"]) > SPAG_DIST:
 						continue
 					if absf((s["dir"] as Vector2).dot(o["dir"])) < SPAG_COS:
@@ -2067,6 +2252,27 @@ func _draw_iso(w, mv: Node2D) -> void:
 						bp + o3 + bperp * (bw * 0.5 * float(sgn)),   # le bombé du tablier
 						bp + bt * bl + o3]), TOWN_INK, biw, true)
 
+		# ── PORTULAN (MARITIME N4) : les LANES maritimes en POINTILLÉS d'encre — plus
+		#    fines que les routes de terre, ancrées aux ports. Le moteur (sea_paths)
+		#    garantit des cellules de MER seulement — jamais un lac, jamais la terre
+		#    (hors l'ancrage au quai). Une route encore en FORMATION n'a pas d'encre.
+		#    SOUS LE FOG RIEN : le VOILE d'encre (_fog_tex, dessiné APRÈS, en fin de
+		#    _draw_iso) couvre la mer inconnue AU PIXEL PRÈS — même mécanisme que les
+		#    routes terrestres (non gatées elles non plus). Un gate par-lane « les deux
+		#    bouts connus » a été ESSAYÉ puis retiré : il double-cachait ce que le voile
+		#    couvre déjà ET aurait caché, depuis TON port, la lane qui part vers
+		#    l'horizon inconnu (le geste portulan même). ──
+		_ensure_lanes()
+		if not _lanes.is_empty():
+			var lane_w := _w(zoom, 0.28, 0.8, 1.5)   # un SEUL trait fin (la terre en superpose 3 :
+			                                         # le composite terrestre reste plus épais)
+			for li in range(_lanes.size()):
+				var ln: Dictionary = _lanes[li]
+				if int(ln.get("open", 0)) == 0:
+					continue
+				if li < _lane_dashes.size() and (_lane_dashes[li] as PackedVector2Array).size() >= 2:
+					draw_multiline(_lane_dashes[li], SEA_LANE_INK, lane_w, true)
+
 	# ── VILLES : VIGNETTES gravées (pack bourgs/, lot U) — cité t1-t7, cité-état & hameau libre
 	# (familles DÉDIÉES). CENTRÉES sur le SIÈGE intérieur de province (≠ jonction ; le centroïde
 	# brut tombe pile à l'intersection des provinces). Cité-état (rôle 2) & hameau libre (rôle 4)
@@ -2298,8 +2504,9 @@ func _draw_iso(w, mv: Node2D) -> void:
 
 	# ── BROUILLARD DE GUERRE (étape 1/2) : le VOILE — AU-DESSUS de tout (terrain, routes,
 	#    villes, armées, noms, épicentre) pour qu'il obscurcisse vraiment ce qu'il couvre.
-	#    Encre estompée (esprit parchemin, jamais noir pur) — cf. fog_image() (scps_sim_node). ──
-	if not nature_mode and _fog_tex != null:
+	#    Encre estompée (esprit parchemin, jamais noir pur) — cf. fog_image() (scps_sim_node).
+	#    fog_off = PROBE seulement (shot_parch fog=0) : photographier sous le voile. ──
+	if not nature_mode and not fog_off and _fog_tex != null:
 		var fp0: Vector2 = mv.iso_pos(0, 0)
 		var fp1: Vector2 = mv.iso_pos(w.map_w(), w.map_h())
 		# LA PAGE HORS-MONDE voilée AUSSI : le voile ne couvrait que le rect carte — en zoom

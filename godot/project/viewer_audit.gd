@@ -100,6 +100,34 @@ func _audit_seed(sd: int, years: int) -> int:
 	# ancien _build_bridges/_bridges disparus avec la réécriture en ponts d'ENCRE vectoriels).
 	var bridges: int = ov._ink_bridges.size()
 
+	# INVARIANT 4 (PORTULAN, mission MARITIME N4) : la LANE maritime vit sur l'EAU DE MER —
+	# jamais la terre (hors les ~4 points d'about, ancrés au QUAI du bourg-port par
+	# _snap_endpoint : la seule terre légitime du tracé), JAMAIS un lac (l'A* moteur teste
+	# cell.lake — le piège « un lac priority-flood porte biome SHALLOW donc cell.sea≠0 »).
+	# Lac ≈ eau visible (LAYER_WATER) AU-DESSUS du niveau de mer. Seuil BYTE : la mer
+	# exige height < SEA_LEVEL=0.43 → byte = trunc(h×255+0.5) ≤ 110 ; le lac carvé est
+	# posé à SEA_LEVEL+0.004=0.434 → byte 111 ; le lac d'accès (flag sans height) garde
+	# sa hauteur de TERRE (> 0.43 → ≥ 111). Donc eau ∧ byte ≥ 111 ⇔ lac — 110 est
+	# AMBIGU (mer littorale 0.428-0.43) et a d'abord faussement flagué 56-65 points de
+	# cabotage par graine (off-by-one mesuré, cf. TROUVAILLES).
+	ov._ensure_lanes()
+	var him: Image = w.layer_image(0)    # SCPS_LAYER_HEIGHT
+	var lane_cells := {}
+	var lane_land := 0
+	var lane_lake := 0
+	var lanes_open := 0
+	for lnd in ov._lanes:
+		if int(lnd.get("open", 0)) == 1:
+			lanes_open += 1
+		var lpts: PackedVector2Array = lnd["points"]
+		for k in range(4, lpts.size() - 4):     # jamais les abouts (le quai est à terre, voulu)
+			var lp: Vector2 = lpts[k]
+			lane_cells[Vector2i(int(lp.x), int(lp.y))] = true
+			if not ov._is_sea_cell(sea, int(lp.x), int(lp.y)):
+				lane_land += 1
+			elif int(him.get_pixel(int(lp.x), int(lp.y)).r * 255.0 + 0.5) >= 111:
+				lane_lake += 1
+
 	# TÉLÉMÉTRIE SPAGHETTI (mission ANTISPAG A1/A3) : segments de tracé qui ont encore un voisin
 	# proche-et-parallèle appartenant à une AUTRE route sans être fusionnés — la mesure du retour
 	# joueur « faisceaux de routes parallèles/redondantes ». Voir overlay.gd::_count_spaghetti_segments.
@@ -122,9 +150,18 @@ func _audit_seed(sd: int, years: int) -> int:
 	# AVANT/APRÈS entre deux runs de cette même sonde, pas un invariant dur en soi.
 	if spag > 0:
 		flags += " ⚠spaghetti(" + str(spag) + ")"
+	# PORTULAN : la lane sur un LAC est un invariant DUR (l'A* moteur doit l'exclure) ;
+	# la lane à TERRE (hors abouts) aussi — le lissage est gardé-mer des deux côtés.
+	if lane_lake > 0:
+		viol += 1
+		flags += " ✗lane-lac(" + str(lane_lake) + ")"
+	if lane_land > 0:
+		viol += 1
+		flags += " ✗lane-terre(" + str(lane_land) + ")"
 	print("seed ", sd, " an ", w.year(),
 		" | decor ", ov._decor.size(), " | struct ", ov._structures.size(),
 		" | route ", road_cells.size(), "c (fleuve ", road_river, ")",
 		" | ponts ", bridges,
+		" | lanes ", ov._lanes.size(), " (ouvertes ", lanes_open, ", ", lane_cells.size(), "c)",
 		(flags if flags != "" else " | OK"))
 	return viol
