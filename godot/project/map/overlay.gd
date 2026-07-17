@@ -249,36 +249,12 @@ const ROAD_FOREST_A := 0.38   ## SOUS LA CANOPÉE : la route se devine — relev
 #  · ASSETS : mobilier semé à l'ARC (espacement RÉGULIER, indépendant de la densité de points).
 const ROAD_RESAMPLE := 2.0       ## pas d'échantillonnage du tracé (cellules) → points réguliers
 const ROAD_SNAP_TRIM := 4.5      ## rayon de nettoyage des points près de l'ancre de ville (cellules)
-
-# ── ROUTES EN TUILES (autotile cardinal, pack « SCPS Full Terrain Tiles ») ──────────────────────
-# Chaque cellule-losange traversée par une route reçoit une TUILE plate 256² choisie par le masque
-# CARDINAL de ses 4 voisins (n=1,e=2,s=4,w=8). Posée en SPLAT iso ÉLARGI à bord ALPHA-fondu (blend
-# TRÈS PROFOND) → les tuiles cardinales-adjacentes se CHEVAUCHENT et FUSIONNENT dans le terrain ; les
-# pas diagonaux sont COMBLÉS (cellule intermédiaire) pour qu'aucun lien ne soit seulement diagonal.
-const ROADS_IN_SHADER := true    ## les routes sont rendues au niveau TERRAIN (iso_blend) → overlay muet
-const DRAW_BRIDGES := true        ## asset pont réparé (alpha OK) → ponts réactivés
-const USE_ROAD_TILES := true
-const ROUTE_GRID_K := 5          ## DOIT égaler map_view.TILE_K (cellules-monde par losange)
-const ROUTE_SURFACE := "road_cobble"
-const ROUTE_SPLAT_EXP := 1.6     ## extension des arêtes CONNECTÉES (chevauchement du voisin → continuité)
-const ROUTE_CORE_A := 0.96       ## alpha de la route (cœur + arêtes connectées)
-var _road_tex := {}              ## masque cardinal 1-15 → Array[Texture2D] (variantes)
-var _road_tiles := []            ## [{ctr:Vector2(iso), tex, mask}] — splats précalculés
-var _road_tiles_dirty := true    ## le réseau a bougé → recalculer la pose
-var _route_meshes := {}          ## masque → ArrayMesh : splat UNIDIRECTIONNEL (plein LE LONG de la route,
-                                 ## fondu EN TRAVERS — comme une rivière), bâti/caché par masque
-
-# ── PONTS (kit modulaire RGBA) : là où une route franchit un FLEUVE (le moteur l'y route déjà), on
-# pose start→span×N→end en overlay AU-DESSUS de l'eau. Orientation EW (horizontal écran) / NS (vertical)
-# selon la direction du franchissement. Sprite 384² centré sur le centre de la tuile-route (losange). ──
-var _bridge_tex := {}            ## "ew_start".."ns_end" → Texture2D
-var _bridges := []               ## [{tex, tl:Vector2(iso coin haut-gauche), sz:float}]
-var _bridges_dirty := true
-
-# ── ROUTE EN COBBLES TRANSPARENTS : la tuile cobble (RGBA épars) est traitée comme une VRAIE TUILE, pas
-# un sprite — échantillonnée au niveau TERRAIN (iso_blend) sur le plan du sol (UV losange), donc à l'angle
-# iso correct, exactement comme `cliff_atlas`. iso_ground charge la tuile et la passe au shader ; l'overlay
-# n'a plus rien à poser pour la route (seuls les PONTS restent en overlay, eux sont au-dessus de l'eau). ──
+# NOTE (mission ROUTES, audit 2026-07-17) : une PREMIÈRE piste « routes en tuiles autotile cardinal
+# + ponts en sprites modulaires » a été esquissée ici (consts ROADS_IN_SHADER/USE_ROAD_TILES/
+# ROUTE_GRID_K/…, vars _road_tiles/_route_meshes/_bridge_tex/_bridges) puis ABANDONNÉE au profit du
+# rendu vectoriel ci-dessous (chemin de terre à 3 traits + ponts d'ENCRE `_ink_bridges`, plus bas) —
+# retirée ici car 100 % morte (0 lecture, seulement des écritures de flag) et trompeuse (le
+# commentaire prétendait « overlay muet », faux : c'est CE fichier qui dessine tout). Voir TROUVAILLES.
 
 func _ready() -> void:
 	Sim.ticked.connect(_on_tick)
@@ -305,8 +281,6 @@ func _on_generated() -> void:
 	_set_rivers()
 	_himg_l = null              # monde neuf → recharger les caches de lumière (relief + albedo)
 	_alb_l = null
-	_road_tiles_dirty = true    # monde neuf → reposer les tuiles de route
-	_bridges_dirty = true       # … et les ponts
 	_borders_dirty = true       # monde neuf → frontières ET routes à refaire
 	_dressing_dirty = true      # … et le dressing de terrain (biome semé)
 	_roads_dirty = true
@@ -542,8 +516,6 @@ func _max_dry_size(sea: Image, base: Vector2) -> float:
 func _on_tick(_year: int) -> void:
 	_raws_dirty = true         # l'extraction a pu s'établir (an-0 nu) → recache les brutes au prochain dessin RESSOURCES
 	_update_top_cap()          # le titre de « plus grande capitale » peut changer → la vignette t7 suit
-	_road_tiles_dirty = true   # le réseau a pu croître/changer → reposer les tuiles de route
-	_bridges_dirty = true      # … et les ponts (un franchissement neuf)
 	var sig := _owner_signature(Sim.world)
 	if sig != _owner_sig:      # la souveraineté a changé (conquête/colonisation) →
 		_owner_sig = sig       # refaire frontières ET réseau de routes (villes neuves/captées)
@@ -1474,6 +1446,41 @@ func _resample_polyline(pts: PackedVector2Array, spacing: float) -> PackedVector
 		out.append(endp)
 	return out
 
+## RATTRAPE un point qui tombe en MER/LAC (jamais la rivière : un fleuve se FRANCHIT, au pont —
+## ce n'est pas une erreur) — le lissage MOTEUR (`api_road_smooth`, moyenne mobile 3 passes,
+## non water-aware) peut tirer un sommet dans l'eau sur une côte concave serrée ; `_chaikin_safe`
+## ne garde que ses PROPRES coins coupés (il retombe sur le sommet d'origine comme « sûr » sans le
+## vérifier) → le sommet fautif SURVIT jusqu'au rendu (retour joueur/audit : « route dans la mer »,
+## viewer_audit ⚠route-mer-path). Recherche en anneaux croissants (rayon ≤ ROAD_WATER_SNAP_R
+## cellules) la terre la plus proche — même esprit que `api_snap_land` côté moteur, mais ici
+## PUREMENT display : on ne fait QUE corriger le TRACÉ dessiné, aucune sémantique ne bouge.
+const ROAD_WATER_SNAP_R := 4
+func _snap_water_points(pts: PackedVector2Array, sea: Image) -> PackedVector2Array:
+	if sea == null:
+		return pts
+	var out := pts.duplicate()
+	for i in range(1, out.size() - 1):    # jamais les extrémités (déjà ancrées par _snap_endpoint)
+		var p: Vector2 = out[i]
+		if not _is_sea_cell(sea, int(p.x), int(p.y)):
+			continue
+		var best := p
+		var bestd := INF
+		for R in range(1, ROAD_WATER_SNAP_R + 1):
+			for dy in range(-R, R + 1):
+				for dx in range(-R, R + 1):
+					if maxi(absi(dx), absi(dy)) != R:
+						continue                       # anneau R seul (pas le disque entier — pas de biais diagonal)
+					var q: Vector2 = p + Vector2(dx, dy)
+					if _is_sea_cell(sea, int(q.x), int(q.y)):
+						continue
+					var dd := p.distance_squared_to(q)
+					if dd < bestd:
+						bestd = dd; best = q
+			if bestd < INF:
+				break                                  # cet anneau a livré une terre → inutile d'élargir
+		out[i] = best
+	return out
+
 ## Chaikin (corner-cutting) GARDÉ-EAU : un point coupé qui tomberait en eau (mer/lac/rivière) est
 ## remplacé par le coin d'origine → la route se LISSE partout SAUF à la côte, qu'elle continue d'épouser.
 func _chaikin_safe(pts: PackedVector2Array, sea: Image, rf: Image) -> PackedVector2Array:
@@ -1496,6 +1503,7 @@ func _smooth_resample_road(pts: PackedVector2Array, sea: Image, rf: Image) -> Pa
 	if pts.size() < 3:
 		return pts
 	var rs := _resample_polyline(pts, ROAD_RESAMPLE)
+	rs = _snap_water_points(rs, sea)
 	rs = _chaikin_safe(rs, sea, rf)
 	rs = _chaikin_safe(rs, sea, rf)
 	return rs
