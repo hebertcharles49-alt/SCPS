@@ -249,6 +249,8 @@ const ROAD_FOREST_A := 0.38   ## SOUS LA CANOPÉE : la route se devine — relev
 #  · ASSETS : mobilier semé à l'ARC (espacement RÉGULIER, indépendant de la densité de points).
 const ROAD_RESAMPLE := 2.0       ## pas d'échantillonnage du tracé (cellules) → points réguliers
 const ROAD_SNAP_TRIM := 4.5      ## rayon de nettoyage des points près de l'ancre de ville (cellules)
+const SPAG_DIST := 1.5           ## MESURE TEMPORAIRE (baseline ANTISPAG A1) — pas dans la version tag
+const SPAG_COS := 0.90
 # NOTE (mission ROUTES, audit 2026-07-17) : une PREMIÈRE piste « routes en tuiles autotile cardinal
 # + ponts en sprites modulaires » a été esquissée ici (consts ROADS_IN_SHADER/USE_ROAD_TILES/
 # ROUTE_GRID_K/…, vars _road_tiles/_route_meshes/_bridge_tex/_bridges) puis ABANDONNÉE au profit du
@@ -1390,6 +1392,57 @@ func _road_partial(pts: PackedVector2Array, frac: float) -> PackedVector2Array:
 		acc += seg
 		out.append(pts[i + 1])
 	return out
+
+## MESURE TEMPORAIRE (baseline ANTISPAG A1, PAS dans la version tag — juste copiée pour mesurer
+## la métrique AVANT sur la géométrie EXISTANTE, avant tout changement de _augment_roads).
+const SPAG_MIN_OFFSET := 0.25
+func _perp_offset(smid: Vector2, oa: Vector2, odir: Vector2) -> float:
+	var d: Vector2 = smid - oa
+	var along: float = d.dot(odir)
+	return (d - odir * along).length()
+
+func _count_spaghetti_segments() -> int:
+	var segs := []
+	for ri in range(_roads.size()):
+		var pts: PackedVector2Array = _roads[ri]["points"]
+		for k in range(pts.size() - 1):
+			var a: Vector2 = pts[k]
+			var b: Vector2 = pts[k + 1]
+			if a.distance_to(b) < 0.05:
+				continue
+			segs.append({"a": a, "mid": (a + b) * 0.5, "dir": (b - a).normalized(), "route": ri})
+	var grid := {}
+	for si in range(segs.size()):
+		var c: Vector2 = segs[si]["mid"]
+		var gk := Vector2i(int(floor(c.x / SPAG_DIST)), int(floor(c.y / SPAG_DIST)))
+		if not grid.has(gk):
+			grid[gk] = []
+		grid[gk].append(si)
+	var flagged := {}
+	for si in range(segs.size()):
+		var s: Dictionary = segs[si]
+		var c: Vector2 = s["mid"]
+		var gk := Vector2i(int(floor(c.x / SPAG_DIST)), int(floor(c.y / SPAG_DIST)))
+		for oy in range(-1, 2):
+			for ox in range(-1, 2):
+				var nk := gk + Vector2i(ox, oy)
+				if not grid.has(nk):
+					continue
+				for sj in grid[nk]:
+					if sj <= si:
+						continue
+					var o: Dictionary = segs[sj]
+					if o["route"] == s["route"]:
+						continue
+					if (s["mid"] as Vector2).distance_to(o["mid"]) > SPAG_DIST:
+						continue
+					if absf((s["dir"] as Vector2).dot(o["dir"])) < SPAG_COS:
+						continue
+					if _perp_offset(s["mid"], o["a"], o["dir"]) < SPAG_MIN_OFFSET:
+						continue
+					flagged[si] = true
+					flagged[sj] = true
+	return flagged.size()
 
 ## SNAP d'extrémité : retire les points qui tanglent dans le rayon de l'ancre, puis raccorde l'ancre
 ## (pied des marches de l'asset) au 1er point survivant → approche RADIALE nette (toujours ≥ 2 points).

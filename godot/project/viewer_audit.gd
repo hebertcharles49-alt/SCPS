@@ -100,6 +100,11 @@ func _audit_seed(sd: int, years: int) -> int:
 	# ancien _build_bridges/_bridges disparus avec la réécriture en ponts d'ENCRE vectoriels).
 	var bridges: int = ov._ink_bridges.size()
 
+	# TÉLÉMÉTRIE SPAGHETTI (mission ANTISPAG A1/A3) : segments de tracé qui ont encore un voisin
+	# proche-et-parallèle appartenant à une AUTRE route sans être fusionnés — la mesure du retour
+	# joueur « faisceaux de routes parallèles/redondantes ». Voir overlay.gd::_count_spaghetti_segments.
+	var spag: int = ov._count_spaghetti_segments()
+
 	var viol := 0
 	var flags := ""
 	# Invariants DURS = assets RENDUS dans l'eau (la membrane : on ne pose rien sur l'eau).
@@ -113,6 +118,10 @@ func _audit_seed(sd: int, years: int) -> int:
 	# sur l'eau (gate !water_here) ; c'est un signal sur le PATHING moteur, pas un rendu fautif.
 	if road_sea > 0:
 		flags += " ⚠route-mer-path(" + str(road_sea) + ")"
+	# Info (pas un échec viewer — pas de seuil « zéro » assumé) : la métrique ANTISPAG, comparée
+	# AVANT/APRÈS entre deux runs de cette même sonde, pas un invariant dur en soi.
+	if spag > 0:
+		flags += " ⚠spaghetti(" + str(spag) + ")"
 	print("seed ", sd, " an ", w.year(),
 		" | decor ", ov._decor.size(), " | struct ", ov._structures.size(),
 		" | route ", road_cells.size(), "c (fleuve ", road_river, ")",
