@@ -106,8 +106,10 @@ func _draw() -> void:
 	size = Vector2(W, _height())
 	VKit.panel_bg(self, Rect2(0, 0, W, size.y))
 	VKit.box(self, Rect2(0, 0, W, size.y), VKit.COL_EDGE)
-	# — bandeau : « UNE DÉCISION S'IMPOSE » —
-	VKit.fill(self, Rect2(0, 0, W, 34), Color(0.075, 0.085, 0.086, 0.985))
+	# — bandeau : « UNE DÉCISION S'IMPOSE » — UI-POLISH #6 : même reliquat graphite que
+	# sidebar_drawer.gd/event_popup.gd (Color(0.075,0.085,0.086) codée en dur, oubliée
+	# par le re-skin DA parchemin — TROUVAILLES §DA parchemin a7c9945).
+	VKit.fill(self, Rect2(0, 0, W, 34), VKit.COL_PANEL2)
 	VKit.fill(self, Rect2(0, 0, 4, 34), VKit.COL_GOLD)
 	VKit.fill(self, Rect2(4, 33, W - 4, 1), VKit.COL_EDGE)
 	var head := "— UNE DÉCISION S'IMPOSE —"

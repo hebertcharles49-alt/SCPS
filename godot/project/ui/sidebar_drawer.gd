@@ -86,12 +86,15 @@ var _scroll := {}         ## {tab: offset px}
 var _maxscroll := 0.0     ## du DERNIER _draw (pour la molette)
 
 func _draw_header(x: float) -> void:
-	# titre stratégique fixe, mais surface carrée et utilitaire.
-	VKit.fill(self, Rect2(0, 0, DW, 36), Color(0.075, 0.085, 0.086, 0.985))
+	# UI-POLISH #4/#6 : c'était le DERNIER bandeau graphite du tiroir (un reliquat pré-DA
+	# parchemin — Color(0.075,0.085,0.086) codée en dur au lieu des constantes VKit déjà
+	# re-skinnées, cf. TROUVAILLES §DA parchemin) — visible sur les 8 onglets, le plus
+	# flagrant sur Diplomatie (F7). Bandeau HeaderStrip (motif ParchTheme) au lieu du noir.
+	VKit.fill(self, Rect2(0, 0, DW, 36), VKit.COL_PANEL2)
 	VKit.fill(self, Rect2(0, 0, 4.0, 36), VKit.COL_GOLD)
 	VKit.fill(self, Rect2(4, 35, DW - 4, 1), VKit.COL_EDGE)
 	UIKit.draw_icon(self, TAB_ICON[_tab], Vector2(x + 2, 8), 20)
-	VKit.text(self, Vector2(x + 30, 7), VKit.COL_PARCH, TAB_NAME[_tab], VKit.FS_BIG)
+	VKit.text(self, Vector2(x + 30, 7), VKit.COL_VALUE, TAB_NAME[_tab], VKit.FS_BIG)
 
 func _draw() -> void:
 	if _tab < 0:
@@ -336,7 +339,10 @@ func _draw_multiplier_slider(x: float, y: float, label: String, current: float,
 	VKit.list_row_bg(self, row, zones.size())
 	VKit.text(self, Vector2(x + 4.0, y + 3.0), VKit.COL_PARCH, label, VKit.FS_SMALL)
 	var track := Rect2(x + 132.0, y + 5.0, 156.0, 8.0)
-	VKit.fill(self, track, Color(0.045, 0.05, 0.05, 1.0))
+	# UI-POLISH #6 : piste de curseur graphite (groove quasi-noir) — ParchTheme.build()
+	# donne DÉJÀ le ton de piste officiel des HSlider natifs (Color("caa768"), tan) ;
+	# ce curseur immédiat-mode (onglet Économie du tiroir) en divergeait seul.
+	VKit.fill(self, track, Color("caa768"))
 	VKit.box(self, track.grow(1.0), VKit.COL_EDGE)
 	var frac := (value - 0.02) / 0.98
 	VKit.fill(self, Rect2(track.position, Vector2(track.size.x * frac, track.size.y)), VKit.COL_GOLD)

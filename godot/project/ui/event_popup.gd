@@ -84,8 +84,11 @@ func _draw() -> void:
 		var fs := minf(W, size.y) * 0.72
 		draw_texture_rect(flg, Rect2((W - fs) * 0.5, (size.y - fs) * 0.5, fs, fs),
 			false, Color(1, 1, 1, 0.10))
-	# — LE CRIEUR : bandeau sombre + « ⚜ OYEZ OYEZ ⚜ » doré, reconnaissable entre tous —
-	VKit.fill(self, Rect2(0, 0, W, 34), Color(0.075, 0.085, 0.086, 0.985))
+	# — LE CRIEUR : bandeau + « ⚜ OYEZ OYEZ ⚜ » doré, reconnaissable entre tous — UI-POLISH
+	# #6 : le bandeau était SOMBRE (même reliquat graphite que sidebar_drawer.gd/
+	# event_dialog.gd, Color(0.075,0.085,0.086) codée en dur, oubliée par le re-skin DA
+	# parchemin) ; passé au HeaderStrip parchemin, cohérent avec le reste du panneau.
+	VKit.fill(self, Rect2(0, 0, W, 34), VKit.COL_PANEL2)
 	VKit.fill(self, Rect2(0, 0, 4, 34), VKit.COL_GOLD)
 	VKit.fill(self, Rect2(4, 33, W - 4, 1), VKit.COL_EDGE)
 	var oy := "— OYEZ  OYEZ —"
