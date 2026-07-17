@@ -50,6 +50,29 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 
+## UI-POLISH #11 (spec joueur corrigée : dismiss par MOUVEMENT hors cible, PAS par clic) —
+## la règle reste « visible tant que la souris est sur la cible, disparaît dès qu'elle la
+## quitte » ; le bug n'était PAS dans cette règle mais dans sa DÉTECTION : Godot ne
+## recalcule `gui_get_hovered_control()` qu'au prochain évènement de MOUVEMENT — un clic
+## qui fait apparaître un nouveau panneau SOUS une souris IMMOBILE (ex. « Construction »
+## ouvre le menu construction sans que la souris bouge) laisse le survol PÉRIMÉ pointer
+## sur l'ancien bouton, dont le tooltip reste donc rendu PAR-DESSUS le nouveau panneau.
+## Fix : après tout clic, on POUSSE un mouvement souris SYNTHÉTIQUE (position inchangée)
+## pour forcer Godot à refaire le hit-test — la cible « quittée » (couverte) est alors
+## correctement détectée comme telle, et le tooltip suit la règle normale.
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		call_deferred("_refresh_hover_after_click")
+
+func _refresh_hover_after_click() -> void:
+	var vp := get_viewport()
+	if vp == null:
+		return
+	var mm := InputEventMouseMotion.new()
+	mm.position = vp.get_mouse_position()
+	mm.global_position = mm.position
+	Input.parse_input_event(mm)
+
 ## fabrique un étage (panneau + RichText) — ajouté par-dessus les précédents
 func _mk_level() -> Dictionary:
 	var panel := PanelContainer.new()
