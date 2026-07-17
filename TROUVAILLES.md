@@ -5210,3 +5210,163 @@ Trois couches, chacune démasquée par la précédente :
   l'intuition initiale du brief suggérait ; à surveiller au prochain sweep si
   la dette continue de croître structurellement ou se stabilise (250 ans, un
   seul point de mesure ici).
+
+## ROUTES — R1-R4 : audit + pathfinding déjà-là + « routes dans la mer » corrigées (2026-07-17)
+
+Mission joueur : « raffiner le pathfinding et l'esthétique des routes sur la carte ». Propriété
+de fichiers : `godot/project/**` exclusivement (aucun `scps/*.c/h`, aucun `godot/src/*`, aucun
+`scons`/`make` — cohabitation stricte avec l'agent MOTEUR M13 en parallèle sur
+`scps_intertrade.c`/`scps_econ.c`/`scps_events.c`). Tag `pre-routes` posé sur HEAD (0b1af83)
+avant tout changement.
+
+### Découverte capitale (R1) : le pathfinding demandé (R2) était DÉJÀ FAIT — engine A*
+terrain-aware, committé 5512fc9 (juin), raffiné depuis par une dizaine de commits
+- Avant de dessiner quoi que ce soit, l'audit a trouvé que TOUT ce que R2 demandait (coûts
+  plaine/pente/montagne, eau interdite sauf gué/pont, convergence en jonctions Y/T/X, cache,
+  déterminisme) est DÉJÀ implémenté CÔTÉ MOTEUR : `scps_api.c:4220-4466`
+  (`api_road_astar`/`api_roads_build`/`scps_road_path`), exposé par le binding `road_paths()`
+  (`godot/src/scps_sim_node.cpp:2427`). Coûts exacts : plat `1+height*7`, forêt +2.5, jungle +5,
+  collines/hautes-terres +5, montagnes +16, pic +45, franchissement de fleuve +7 (jamais un mur —
+  le pont vient après côté façade), mer/lac = coût `-1` = INFRANCHISSABLE (contournée par l'A*).
+  Convergence : une cellule déjà sur un corridor tracé voit son coût ×0.30 → « les routes
+  attirent les routes », jonctions Y/T/X au lieu de spaghetti parallèle. Cache par SIGNATURE
+  (photo colonisation/owner) — recalcul UNIQUEMENT quand le réseau de villes bouge, jamais au tick.
+- Par-dessus, `godot/project/map/overlay.gd` fait déjà un traitement FRONT-END complet et
+  display-only (respecte la membrane) : snap d'extrémité au bourg (`_snap_endpoint`),
+  ré-échantillonnage à pas constant (`_resample_polyline`), Chaikin gardé-eau ×2
+  (`_chaikin_safe`), magnétisme de couloir (dédup des tronçons partagés dans `_augment_roads`),
+  croissance organique 1 an/province (`_road_partial`), rendu en 3-traits d'encre
+  (sépia/crème/clair) avec fondu SOUS canopée (`ROAD_FOREST_A`), ponts d'encre (`_ink_bridges`)
+  aux franchissements route×rivière. Tout ça remonte à 5512fc9 (juin, « roads: réseau de routes
+  reliant les villes ») + des commits de raffinement ultérieurs (« CARTE — LA ROUTE SOUS LA
+  CANOPÉE », « passe de finition », pointillé « carte au trésor » ESSAYÉ PUIS ABANDONNÉ pour la
+  lisibilité) — AUCUN de cette mission.
+- Conclusion assumée : PAS de pathfinding GDScript réimplémenté (aurait dupliqué/contredit la
+  vérité moteur — contraire à « la solution la plus simple » et « ne pas toucher au code
+  hors-sujet »). Le travail réel de cette vague : auditer/mesurer l'existant, TROUVER et CORRIGER
+  un vrai défaut visuel, réparer l'outil de non-régression qui aurait dû l'attraper, purger le
+  code mort qui brouille la lecture pour un futur agent.
+
+### Découverte : `viewer_audit.gd` (l'audit de non-régression front-end) était CASSÉ et
+mentait « OK » depuis l'unification ISO / la réécriture des ponts en encre
+- Il appelait DEUX méthodes disparues : `map_view.gd::_enter_iso(...)` et
+  `overlay.gd::_build_bridges(...)` (mortes depuis l'unification en rendu ISO unique et la
+  réécriture des ponts en `_ink_bridges` vectoriels). L'erreur (« Nonexistent function ») avorte
+  SILENCIEUSEMENT `_audit_seed()` avant tout invariant ; `total` reste à 0 →
+  **« VIEWER AUDIT OK » s'affichait alors que ZÉRO invariant n'avait tourné**, sur les 3 graines
+  de la commande documentée dans son propre en-tête. Personne ne l'a remarqué parce qu'un script
+  GDScript qui plante sur un appel invalide n'interrompt NI le process NI le exit code.
+- Réparé (`viewer_audit.gd:56-61`, `:98-100`) : caméra posée directement (même geste que
+  `shot_parch.gd` : `_camera.position`/`_camera.zoom`) au lieu de `_enter_iso` ; les ponts se
+  lisent dans `ov._ink_bridges` (déjà peuplé par `_ensure_roads()`, appelé via le signal
+  `Sim.generated` juste avant — aucun appel-builder à refaire).
+- Une fois réparé, l'audit a IMMÉDIATEMENT trouvé un vrai défaut (Découverte suivante) — la
+  preuve qu'un audit qui ment « OK » est pire qu'un audit qui manque : il masque activement le
+  problème au lieu de le signaler.
+
+### Découverte + correctif (R2/R3) : « routes dans la mer », mesuré et corrigé
+- Root cause : le lissage MOTEUR (`api_road_smooth`, moyenne mobile 3 passes, `scps_api.c:4312`)
+  n'est PAS water-aware — sur une côte concave serrée il peut tirer un sommet du tracé A* (qui,
+  lui, ne foule jamais la mer : coût `-1` = infranchissable) DANS la mer. Le front-end a bien un
+  Chaikin « gardé-eau » (`_chaikin_safe`) mais il ne protège que ses PROPRES coins interpolés
+  (q/r) — il retombe sur les sommets D'ORIGINE (a/b) comme « sûrs » SANS les vérifier, donc un
+  sommet fautif hérité du moteur survivait jusqu'au rendu final.
+- Mesuré via `viewer_audit.gd` (réparé) AVANT correctif, `seed=9,11,42 years=120` :
+  `route-mer-path` = 19 cellules (seed 9), 18 (seed 11), sur ~1700-2300 cellules de tracé chacune.
+- Corrigé DISPLAY-ONLY (aucune sémantique, aucun fichier moteur touché) : nouvelle passe
+  `_snap_water_points()` (`overlay.gd`, insérée avant les 2 Chaikin dans
+  `_smooth_resample_road`) — pour tout sommet INTERNE (jamais les extrémités, déjà ancrées au
+  bourg par `_snap_endpoint`) tombant en MER/LAC (jamais la rivière — un fleuve se FRANCHIT, ce
+  n'est pas un défaut), cherche en anneaux croissants (rayon ≤4 cellules) la terre la plus proche
+  et l'y substitue. Même esprit qu'`api_snap_land` côté moteur, mais purement côté tracé affiché.
+- Après correctif, MÊME probe : `route-mer-path` = 1 (seed 9), 1 (seed 11), 0 (seed 42) —
+  19→1 et 18→1 (>94 % de réduction). `decor 0 | struct 0` (bâti/décor jamais dans l'eau) était
+  DÉJÀ propre des deux côtés — seul le TRACÉ de route en profitait.
+
+### Découverte : code mort — un système de « routes en tuiles » ABANDONNÉ, jamais nettoyé,
+contredisait le commentaire ET le code actif
+- `overlay.gd` portait un bloc de consts/vars (`ROADS_IN_SHADER`, `USE_ROAD_TILES`,
+  `ROUTE_GRID_K`, `ROUTE_SURFACE`, `ROUTE_SPLAT_EXP`, `ROUTE_CORE_A`, `_road_tex`, `_road_tiles`,
+  `_road_tiles_dirty`, `_route_meshes`, `_bridge_tex`, `_bridges`, `_bridges_dirty`) pour une
+  piste « routes en autotile cardinal au niveau terrain + ponts en sprites modulaires » — 100 %
+  morte (grep confirmé : zéro lecture, seulement 2 sites d'écriture de flag qui ne servaient plus
+  à rien). Le commentaire affirmait même « overlay MUET » pour les routes — FAUX, c'est CE MÊME
+  fichier qui les dessine (le bloc 3-traits d'encre juste en dessous). Purgé (~30 lignes) avec une
+  note qui explique pourquoi, pour qu'un futur agent ne perde pas de temps à croire qu'un système
+  de tuiles est actif.
+
+### Perf mesurée (demandée par le brief — « mesure le coût du pathfinding »)
+- `godot/project/routes_perf_probe.gd`/`.tscn` (nouvelle probe) chronomètre `w.road_paths()`
+  (l'appel façade qui déclenche `scps_roads_build`) : COLD (1re construction) / WARM (même
+  signature, cache C) / REBUILD (signature changée par 20 ans de colonisation en plus).
+- Mesuré sur un monde MÛR (seed 9, an 250, 163→172 routes, 4381 points) : **COLD/REBUILD ≈
+  25-26 ms**, **WARM ≈ 0.2-0.3 ms** (cache quasi gratuit). Seed 42 (an 250, 125 routes) : mêmes
+  ordres de grandeur. Très en dessous du seuil « >100 ms → incrémentalise » du brief — aucune
+  action nécessaire, le cache-par-signature déjà en place (recalcul SEULEMENT au changement de
+  réseau de villes, jamais au tick) suffit largement. `_snap_water_points` (mon ajout) ne coûte
+  rien de mesurable (ring-search borné, déclenché seulement sur les ~0-19 sommets déjà en mer,
+  pas sur les milliers d'autres).
+
+### Pièges
+- Le binaire Godot n'est PAS à la racine du dépôt (contrairement au brief) — il est dans
+  `Godot_v4.6.3-stable_mono_win64/Godot_v4.6.3-stable_mono_win64_console.exe` (un niveau plus
+  bas). `--headless` donne bien un écran noir (piège confirmé) ; fenêtré marche, le process quitte
+  proprement (`get_tree().quit(0)`).
+- `shot_parch.gd zoom=0` (fit) cadre la carte ENTIÈRE, mais tôt en partie (an 15-60) le brouillard
+  de guerre masque tout sauf le territoire du joueur → le screenshot « fit » est presque tout noir
+  et INUTILE pour juger des routes ; préférer `cap=1` + un zoom ≥ ROAD_ZOOM_MIN (2.5).
+- Le lissage 3-passes moving-average CÔTÉ MOTEUR (`api_road_smooth`) n'est PAS water-aware —
+  piège pour qui suppose que « l'A* garantit un tracé jamais en mer » : vrai du tracé BRUT, plus
+  après le lissage (cf. correctif ci-dessus).
+- `viewer_audit.gd` avortait SILENCIEUSEMENT (invalid-call → retour tôt → `total` reste 0 →
+  « OK ») : à vérifier explicitement (lire les SCRIPT ERROR dans les logs, pas seulement le
+  verdict final) pour tout probe/audit similaire — un « OK » n'est une preuve que si on a
+  confirmé que le corps a bien tourné.
+- Godot lance 2× le pipeline de génération de monde par run de probe (log « territoires... »
+  etc. répété) — normal (Sim.regenerate() + le `_ready()` initial), pas un bug.
+
+### Restes
+- **Convention maritime en pointillé (portulan) NON implémentée — aucun reader façade n'expose
+  de routes maritimes.** L'A* moteur exclut structurellement la mer (coût `-1`) ; nulle part un
+  concept de « route maritime » séparé (aucune lecture intertrade/navy exposée à la carte). Sur
+  les mondes archipel (l'archétype même du seed 9 testé), les villes d'îles séparées restent donc
+  SANS lien visuel inter-île (le réseau garantit une route à toute ville joignable PAR TERRE
+  seulement — « île isolée d'1 ville : rien », `scps_api.c:4433`). Ajouter des routes maritimes
+  pointillées demanderait un reader MOTEUR nouveau (hors propriété de fichiers cette vague) : à
+  documenter comme piste pour une future mission MOTEUR+CARTE conjointe.
+- **Épaisseur par VOLUME de commerce non exposée** — le rendu utilise déjà le repli
+  explicitement prévu par la doctrine (rang/tier de ville max aux deux bouts → niveau
+  artère/desserte), donc CONFORME à la mission telle qu'écrite (« volume si exposé, SINON rang
+  hub/route »). Si un futur agent MOTEUR expose un volume de trafic par route, le point d'accroche
+  façade est `rd["level"]` (déjà consommé par `_road_bucket`/le choix artère-vs-desserte dans
+  `_draw_iso`).
+- **Les 2 cellules « route-mer » résiduelles** (seed 9 ×1, seed 11 ×1, sur ~4000 cellules) ne
+  sont pas chassées plus loin — sub-pixel, invisibles à l'écran, rendement décroissant
+  (discipline anti-scope-creep). Root cause probable : un sommet à la limite du rayon
+  `ROAD_WATER_SNAP_R=4` sur une presqu'île très fine — un rayon plus large réglerait
+  vraisemblablement le dernier cas si jamais ça devient visible en jeu.
+- **Aucun fichier moteur touché** cette vague (aucun `scps/*.c/h`, aucun `godot/src/*`, aucun
+  `scons`) — conforme à la cohabitation stricte avec l'agent MOTEUR M13 (`scps_agency.c`/
+  `scps_econ.c`/`.h`/`scps_events.c`/`scps_intertrade.c`/`scps_tune_list.h` vus modifiés en
+  parallèle dans `git status`, non touchés, non commités par moi).
+- **`make test`/`scons` non lancés** (consigne explicite de la mission) — changements 100 %
+  GDScript (`godot/project/**`), vérifiés par exécution directe des probes (`shot_parch`,
+  `viewer_audit`, `routes_perf_probe`) via le binaire Godot déjà buildé, pas par la suite `make`.
+
+### Preuve visuelle (avant/après, PNG dans `godot/project/`, gitignorés — non committés)
+- `routes_before_s9_fit.png` — R1, le piège « fit + brouillard » (presque tout noir).
+- `routes_before_s9_z3.png` / `routes_before_s9_z5.png` — R1, seed 9 an 15, cap=1, zoom 3.0/5.0 :
+  réseau naissant, un tronçon qui hugs la rive entre deux lacs.
+- `routes_before_s9_y60_z28.png` / `routes_before_s9_y60_z8.png` — AVANT, seed 9 an 60 : jonction
+  Y propre entre 3 bourgs. `routes_after_s9_y60_z8.png` — APRÈS (même vue) : stable.
+- `routes_before_s11_y200_z3.png` / `routes_before_s11_y200_z6.png` — AVANT, seed 11 an 200 :
+  réseau mature à 5 bourgs, plusieurs jonctions T/Y, hiérarchie de tracé.
+  `routes_after_s11_y200_z6.png` — APRÈS (même vue) : stable.
+- `routes_before_s42_y180_z55.png` / `routes_before_s42_y180_z9.png` — AVANT, seed 42 an 180 :
+  réseau à 6 bourgs sur relief accidenté (montagnes contournées au moindre coût, pas en ligne
+  droite), PONT D'ENCRE confirmé visuellement (crop `crop_bridge3.png`, franchissement
+  route×rivière près de Pré Vert). `routes_after_s42_y180_z55.png` — APRÈS : stable.
+- Correctif « route-mer » prouvé par TÉLÉMÉTRIE (`viewer_audit.gd`, chiffres ci-dessus) plutôt
+  que par crop pixel-à-pixel — les cellules fautives (1-19 sur ~2000-4000) n'ont pas été
+  localisées une à une avant/après, la preuve quantitative reproductible étant plus fiable qu'une
+  chasse visuelle sur un si petit nombre de pixels à trouver à l'aveugle.
