@@ -5371,6 +5371,154 @@ contredisait le commentaire ET le code actif
   localisées une à une avant/après, la preuve quantitative reproductible étant plus fiable qu'une
   chasse visuelle sur un si petit nombre de pixels à trouver à l'aveugle.
 
+## ANTISPAG — A1-A3 : consolidation visuelle des routes en troncs, ~47 % (PAS 70 %, honnête) (2026-07-17)
+
+Mission joueur : « y'a toujours des spaghettis de routes » — consolider VISUELLEMENT les tronçons
+partagés en troncs, display-only. Propriété : `godot/project/**` exclusivement (cohabitation
+stricte avec l'agent MOTEUR M13, en parallèle sur `scps_agency.c`/`scps_econ.c`/`.h`/
+`scps_events.c`/`scps_intertrade.c`/`scps_tune_list.h` — 4 commits de leur côté pendant cette
+vague, zéro fichier partagé, zéro conflit). Tag `pre-antispag` posé sur HEAD (4ef00b6) avant tout
+changement. Suite directe de la vague ROUTES d'hier (cf. section précédente) : magnétisme existant
+0.65 cellule/±1/1 passe, dédup exact 0.25 cellule dans la boucle de dessin.
+
+### A1 — la métrique a d'abord MENTI par excès (découverte capitale, avant tout code de fix)
+- 1re version de `_count_spaghetti_segments()` (segments proches < 1.5 cellule + quasi-parallèles,
+  cos > 0.90, routes différentes, clé de segment différente) : **66 % des segments flagués** sur
+  les 3 graines (3815/4137/3643). Un chiffre absurdement élevé pour un réseau où le pathfinding a
+  déjà un bonus corridor ×0.30 côté moteur.
+- Diagnostic hors-Godot (probe `road_dump_probe.gd`/`.tscn`, nouveau — sérialise `ov._roads` en
+  JSON, analysé en Python pur, stdlib only, aucune dépendance) : histogramme de l'ÉCART
+  PERPENDICULAIRE réel entre paires flaguées → **77-82 % ont un écart < 0.1 cellule** (médiane
+  0.02-0.1). Root cause : même quand 2 routes CONVERGENT déjà (magnétisme réussi, sommets
+  partagés), l'échantillonnage (`_resample_polyline`, pas 2.0 cellules) et le Chaikin sont faits
+  INDÉPENDAMMENT par route → le « joint » entre segments consécutifs ne tombe pas à la même
+  abscisse sur les 2 tracés → clé de segment différente MALGRÉ un tracé pixel-identique. C'est de
+  l'encre redondante INVISIBLE (sous le pixel à tout zoom de lecture), pas le spaghetti VISIBLE
+  signalé par le joueur. Le vrai signal (écart ≥ 0.25 cellule, un tracé réellement DÉCALÉ) ne
+  représentait que ~15-20 % du total brut.
+- Corrigé : `_perp_offset()` (projection du milieu d'un segment sur la droite portée par l'autre)
+  + `SPAG_MIN_OFFSET := 0.25`. Le test de clé (`o["key"]==s["key"]`) a été RETIRÉ de la métrique
+  (redondant avec le filtre d'écart, et couplait la mesure à la résolution de `_seg_key` utilisée
+  ailleurs pour le rendu — mauvaise séparation des responsabilités). **Leçon générale** : une
+  métrique de proximité géométrique SANS test d'écart perpendiculaire mesure la DENSITÉ du réseau,
+  pas le défaut visuel — à refaire pour toute mesure « ces 2 tracés se ressemblent trop ».
+- Chiffre AVANT retenu (métrique corrigée, `viewer_audit.gd`, seed=9,11,42 years=120) :
+  **1108 / 1113 / 1058** segments spaghetti (total 3279).
+
+### A2 — la consolidation : magnétisme renforcé + itéré, PAS un consensus de grille (essayé, pire)
+- Renforcé l'existant (`_augment_roads`, `overlay.gd`) : rayon de collage 0.65→**1.4 cellule**
+  (`ROAD_MAGNET_R`), voisinage de recherche ±1→±3 cellules (`ROAD_MAGNET_RING`, doit couvrir le
+  rayon), **2 passes** (`ROAD_MAGNET_PASSES` — une route traitée tôt dans `_roads` profite, à la
+  2e passe, des attracteurs posés plus tard par des routes voisines ; sans ça l'ordre de `_roads`
+  biaisait quel tracé « gagnait » le couloir commun).
+- **ESSAYÉ PUIS ABANDONNÉ, mesuré pire** : un consensus de grille (chaque point vote dans une
+  cellule de résolution ~1.3 ; toute cellule visitée par ≥2 routes fusionne TOUS ses points sur
+  leur CENTROÏDE) — séduisant sur le papier (une seule passe, pas d'ordre, pas de plafond glouton),
+  mais le centroïde n'est ni sur l'un ni l'autre tracé d'origine et ignore la CONTINUITÉ le long de
+  la route : une cellule qui capte incidemment un CROISEMENT (pas un couloir partagé) tire un point
+  isolé loin de ses voisins → zigzag artificiel. Mesuré (dump JSON + Python) : 1108 → **1878**
+  (pire que l'AVANT). Reverté sans hésiter — la métrique avait attrapé la régression avant tout
+  jugement à l'œil.
+- Rayon/passes balayés (dump+analyse offline, sans repasser par Godot à chaque essai) :
+  R=0.95→25 %, R=1.4→**47 %**, R=2.2→48 %, 4 passes à R=1.4 → identique à 2 passes (convergence
+  atteinte, 0 gain). **Plateau structurel** au-delà de R≈1.4, quel que soit le rayon ou le nombre
+  de passes — le glouton nearest-point (contrairement au consensus de grille) ne réassigne un point
+  QUE vers une position déjà existante sur une autre route, jamais une moyenne inédite : plus
+  prudent, mais son plafond de convergence ne bouge pas avec plus d'essais. Retenu R=1.4/2 passes
+  (meilleur compromis efficacité/prudence — au-delà, le rayon dépasse un pas de rééchantillonnage
+  entier, risque de coller des routes qui se CROISENT sans corridor commun, pour +1.6 pt).
+- `_seg_key()` (dédup/multiplicité du rendu, `_ensure_road_network`) élargie 0.25→**0.5 cellule**
+  (`ROAD_SEGKEY_RES`) — même découverte que A1 : capte les quasi-doublons déphasés pour la
+  dédup/comptage de multiplicité SANS toucher aux points rendus (seule la décision « déjà encré ? »
+  utilise cette clé). Découplée de la métrique (qui n'utilise plus de clé du tout, cf. A1).
+- **HIÉRARCHIE (tronc/capillaire)** : `_ensure_road_network()` (nouveau, remplace l'ancienne
+  construction inline dans `_draw_iso`) compte la MULTIPLICITÉ de chaque tronçon (combien de routes
+  logiques l'empruntent, sur la clé `_seg_key`) et bucket en 3 TIERS (`ROAD_MULT_TIERS`,
+  `ROAD_TIER_WSCALE := [1.0, 1.28, 1.55]`) — un tronc partagé s'affiche jusqu'à 55 % plus épais
+  qu'un capillaire solo, sans toucher une seule couleur. CACHÉ (`_road_net_valid`, invalidé par
+  `_ensure_roads()` quand le réseau bouge) : un monde mûr STABLE (aucun chantier en cours) ne
+  repaie plus ce coût par frame.
+- Bonus (repéré en marge, pas le cœur de la mission) : `_ink_bridges` pouvait compter le MÊME pont
+  2× (2 routes qui partagent un franchissement, chacune l'ajoutait indépendamment — jamais de dédup
+  avant cette vague). Dédup ajoutée (`bkey`, arrondi 0.5 cellule sur le milieu). Ponts : 40/14/40
+  (AVANT, non dédupliqués) → 27/13/28 (APRÈS) — la baisse reflète des doublons littéraux retirés
+  (crops vérifiés : les franchissements réels restent tous dessinés), pas des ponts perdus.
+
+### A3 — la preuve : ~47 % de réduction MESURÉE, PAS les 70 % ciblés — dit honnêtement
+- `viewer_audit.gd seed=9,11,42 years=120` (probe ROUTES d'hier, réutilisée + 1 ligne de
+  télémétrie) : **1108→588 (−47 %) / 1113→607 (−45 %) / 1058→558 (−47 %)**, total 3279→1753
+  (**−46.5 %**). Sous la cible ≥70 % du brief — cause racine identifiée (plateau du glouton
+  nearest-point, cf. A2), pas un bug non-investigué.
+- **Pourquoi pas 70 %** (signalé explicitement, pas caché) : une fois la métrique corrigée du bruit
+  de phase (A1), ce qui RESTE flagué est en bonne partie des FAISCEAUX LÉGITIMES — plusieurs routes
+  vers des destinations DIFFÉRENTES qui quittent le même bourg dans une direction proche et restent
+  côte à côte un moment avant de diverger (un vrai carrefour à spokes multiples, pas un doublon).
+  Ceux-là ne DOIVENT pas fusionner (display-only : fusionner deux routes vers 2 villes différentes
+  romprait la lisibilité de destination). Le consensus de grille (A2) aurait pu pousser plus loin
+  MAIS au prix de distordre les tracés (mesuré pire, reverté) — la marge restante est le prix d'une
+  méthode PRUDENTE (jamais de position inédite) plutôt qu'un signe de travail inachevé.
+- Invariants re-passés APRÈS (aucune régression) : `route-mer-path` inchangé (1/1/0, identique
+  avant/après) — le garde-fou d'hier tient. `decor-eau`/`struct-eau` = 0/0 les 3 graines (déjà
+  propre, resté propre). `VIEWER AUDIT OK` (0 violation dure) sur les 2 runs.
+- Preuve VISUELLE (crops PNG, scratchpad — non committés, même convention qu'hier) : diff-image
+  amplifiée (`ImageChops.difference` ×8, Python/Pillow) confirme un déplacement RÉEL de quasi
+  CHAQUE segment dans une zone de convergence dense (seed 42, hub « Bois Profond », 4-5 bourgs) —
+  pas cosmétique. À l'œil nu SANS diff, l'effet est PRÉSENT mais SUBTIL à ce zoom (le faisceau
+  passe de ~3-4 traits visibles à ~2-3) : la métrique (espace cellule, indépendante du zoom) est
+  plus fiable que la lecture visuelle directe pour juger un écart de 0.25-1 cellule.
+- CPU (mission : « <~50 ms sur grand monde, sinon incrémental ») : `_ensure_road_network()` mesuré
+  **~23 ms COLD** sur un monde mûr (seed 9, an 250, 140 routes) — sous le seuil. Le cache
+  (`_road_net_valid`) est gardé (skip) tant qu'AUCUNE route n'est en chantier ET que le réseau n'a
+  pas bougé ; en pratique une colonisation ACTIVE garde presque toujours une route en croissance
+  quelque part → le cache n'engage pleinement qu'en fin de partie/empire stable. Reste sous budget
+  même à froid systématique (23 ms < 50 ms) : aucune incrémentalisation nécessaire cette vague.
+
+### Pièges
+- Le piège `--headless` (écran noir) documenté hier tient toujours — fenêtré obligatoire pour
+  `shot_parch`/`road_dump_probe`/`viewer_audit`.
+- Une métrique de « proximité + parallélisme » SANS test d'écart perpendiculaire mesure la densité
+  du réseau (combien de segments ont un voisin proche), pas le défaut visuel — piège central de
+  cette vague (cf. A1), a fait perdre du temps à d'abord élargir un rayon de collage contre une
+  cible-fantôme (66 % → 47 % de la MÊME métrique naïve en élargissant le rayon, alors que le vrai
+  signal filtré bougeait à peine — deux mesures avant/après avec la métrique NAÏVE auraient
+  semblé « ça ne marche pas » alors que le vrai signal (corrigé) montrait +47 %).
+- Un centroïde de plusieurs points n'est PAS un point sûr en géométrie de tracé : il n'appartient à
+  AUCUN des tracés d'origine et casse la continuité locale si la cellule capte un croisement plutôt
+  qu'un couloir partagé. Le glouton nearest-point (réassigner vers une position déjà EXISTANTE)
+  est plus lent à converger mais ne peut pas inventer une position aberrante.
+- Le dump JSON + analyse Python hors-Godot (stdlib pur, aucune dépendance — pas de matplotlib/numpy
+  disponibles dans l'environnement) a été le levier de vitesse déterminant : itérer un paramètre de
+  magnétisme (rayon, passes) coûte 1 relance Godot (~15-20 s) + un script Python (<1 s) au lieu de
+  relancer `viewer_audit` (3 graines, ~35 s) à chaque essai — utilisé pour BALAYER 5 configurations
+  avant de choisir R=1.4/2 passes.
+- La Browser pane (`mcp__Claude_Browser__computer` screenshot) a systématiquement timeout dans cet
+  environnement (testé sur un serveur `python -m http.server` local, plusieurs tabs, plusieurs
+  cibles) — abandonné au profit de `Read` direct sur les PNG produits par `shot_parch.gd` (qui,
+  eux, fonctionnent normalement) + crops Pillow pour zoomer une région précise.
+
+### Restes
+- **Cible 70 % non atteinte (~47 % livré)** — cause racine identifiée et documentée (A3), pas un
+  abandon silencieux. Piste pour une future vague : un algorithme de consolidation conscient de la
+  CONTINUITÉ (matching par ARC-LENGTH le long de runs plutôt que point-à-point ou grille-centroïde)
+  pourrait pousser plus loin sans le risque de distorsion du consensus de grille — hors budget de
+  cette vague (la piste grille a déjà coûté un aller-retour mesuré-puis-reverté).
+- **Cache `_road_net_valid` sous-utilisé en pratique** — une empire en croissance active a presque
+  toujours une route en chantier quelque part, donc le cache reste souvent invalidé (`growing=true`)
+  et le monde repaie ~20-23 ms/tick. Sous budget (mesuré), mais une future optimisation pourrait
+  scinder le cache PAR ROUTE (ne reconstruire que le sous-ensemble en croissance) plutôt que
+  tout-ou-rien.
+- **`road_dump_probe.gd`/`.tscn`** (nouveau, gardé — même esprit que `routes_perf_probe.gd`
+  d'hier) : sérialise `ov._roads` en JSON pour analyse hors-Godot. Utile à toute future vague qui
+  doit raisonner sur la géométrie exacte du réseau de routes sans relancer `viewer_audit` à chaque
+  essai.
+- **Aucun fichier moteur touché** (aucun `scps/*.c/h`, aucun `godot/src/*`, aucun `scons`/`make`)
+  — l'agent MOTEUR M13 a commité 4× en parallèle (`scps_agency.c`/`scps_econ.c`/`.h`/
+  `scps_events.c`/`scps_intertrade.c`/`scps_tune_list.h`) pendant cette vague, zéro fichier
+  partagé, zéro conflit, vérifié à chaque `git status`.
+- **`make test`/`scons` non lancés** (consigne explicite) — changements 100 % GDScript
+  (`godot/project/**`), vérifiés par `viewer_audit.gd`/`shot_parch.gd`/`road_dump_probe.gd` via le
+  binaire Godot déjà buildé.
+
 ## CHANTIER MONNAIE — M13 : PÉAGES-SANS-PÉAGER + LES RESTES DU GIGA (2026-07-17)
 
 **Statut : LIVRÉ — P1+P2 committés, golden RE-BASELINÉ VERT, gates complets passés,
