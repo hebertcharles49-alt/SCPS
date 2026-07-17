@@ -7122,3 +7122,57 @@ et `memory_panel.gd` volontairement NON touchés (raisons ci-dessous).
   Noblesse vs Journaliers/Bourgeois/Élite) — cf. Découvertes ci-dessus, hors périmètre D4.
 - **Le doublon des 3 fiches province et des curseurs budgétaires** (cf. missions D1/D2/D3
   précédentes) reste inchangé — non touché par D4, mandat glossaire seul.
+
+---
+
+## MISSION UI-DOCTRINE — CLÔTURE D1-D7 (2026-07-18)
+
+**Vague COMPLÈTE.** Sept chantiers, cinq agents (D1-D3 orchestrateur en direct ;
+D4/D5/D6/D7 en parallèle sur le MÊME arbre — la cohabitation multi-agents sans
+worktree a tenu, au prix de deux collisions de commit bénignes, voir Pièges).
+Commits : D1 `8c090ec` + fix `0f8d6a7` · D2 `878b163` · D3 `d557685` · carto
+`987fb23`/`e6331ca` · Codex `e323c33` (contient AUSSI le D5 co-commité) · D6
+`0025a85` · D7 `aee53ee` · D4 `49dcacb`. Tag `pre-uidoctrine` = état avant tout.
+
+### Vérifications finales (toutes VERTES)
+- Boot headless Main.tscn : zéro SCRIPT ERROR, relancé après chaque chantier ET en clôture.
+- `make lang-check` : 0 littéraux (base 0), inchangé.
+- `core_demo` : 35/35.
+- Audit 3-clics final : 0 dépassement (cartographie §B, clôture datée).
+- Captures en contexte réel (Main.tscn fenêtré, jamais --headless) :
+  `shots_uidoctrine_d1/` (6, dont AVANT via worktree jetable sur le tag) ·
+  `shots_uidoctrine_d4/` (6) · `shots_uidoctrine_d5/` (2) · `shots_uidoctrine_d6/`
+  (2) · `shots_uidoctrine_d7/` (6).
+- Re-export `scps.exe` : `packaging/windows/build_godot.sh` (DLL release rebuildée
+  + import + export « Windows Desktop », PCK embarqué) — voir le résultat du run
+  dans le rapport de mission ; dist_godot/ est gitignoré comme toujours.
+
+### Pièges (nouveaux, au-delà de ceux des sections D1-D7 ci-dessus)
+
+- **Deux commits co-mélangés par la cohabitation multi-agents sur le MÊME arbre** :
+  l'index git est PARTAGÉ — un `git add` + `commit` de l'agent A peut embarquer les
+  fichiers stagés au même moment par l'agent B (arrivé : D5 absorbé dans le commit
+  Codex `e323c33` ; l'append TROUVAILLES de D7 co-commité par D6 `0025a85`). AUCUNE
+  perte de contenu (les diffs sont intacts, `git show <hash> -- <fichier>` le
+  prouve), seuls les MESSAGES de commit ne listent pas tout. Leçon : pour une
+  prochaine vague parallèle, soit sérialiser les commits (un slot de commit à la
+  fois, annoncé), soit vrais worktrees par agent. On n'a PAS réécrit l'historique
+  (amend/rebase interdits avec d'autres agents actifs dessus).
+- **Attendre un sous-agent : le poll bloquant en avant-plan est le SEUL réveil
+  fiable** (10e occurrence du piège « rien ne te réveillera » documentée par le
+  coordinateur). Motif qui marche : boucle `while true` foreground avec un doube
+  critère de sortie — le commit attendu apparaît dans `git log` (succès) OU l'arbre
+  n'a plus bougé depuis 6 minutes (mort présumée, on reprend soi-même le reste).
+  Jamais un simple « j'attends la notification ».
+
+### Restes (fin de vague — pour une prochaine mission)
+
+- L'art des PNG `menu_*` du rail (médaillon bronze bakés DANS l'image, glyphe
+  central minoritaire dans les 52 px) — la vraie cause du rail « quasi indistinct »
+  (verdict D7) ; chantier ART, pas code.
+- Le blocage `prosperity≈0` post-famine an-0 (seed 9, hérité d'UI-POLISH) — moteur,
+  jamais dans le périmètre de cette vague.
+- Doublon interne budget_panel_v2 (Balance vs Monnaie, `_sliders`/`_m_sliders`) et
+  doublon de VUE budgétaire ×4 (lecture seule, assumé) — catalogués §C.3/§D.2.
+- `army_panel.gd` hors pile Échap (assumé : fermeture par désélection carte).
+- Code mort signalé par D4 dans country_panel.gd (`ROWS`/`TIPS`/`_gauge_row`).
