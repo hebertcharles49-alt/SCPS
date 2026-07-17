@@ -221,11 +221,17 @@ func _section(col: VBoxContainer, txt: String) -> void:
 	l.text = txt
 	col.add_child(l)
 
-## une ligne : label … valeur (colorée), + curseur optionnel dessous.
+## une ligne : label … valeur (colorée) [· curseur optionnel, MÊME rangée — UI-POLISH
+## #12 : le curseur vivait en SIBLING sous la ligne (une ligne label/valeur, puis une
+## ligne curseur juste en dessous, 3px d'écart) — à la densité du panneau, l'œil ne
+## sait plus quel curseur appartient à quelle ligne (tassés, rythme uniforme). Il vit
+## maintenant DANS la même HBoxContainer, colonne dédiée à droite de la valeur : plus
+## d'ambiguïté ligne↔curseur, sans toucher à la structure onglets/colonnes.
 ## Retourne la clé (pour retrouver le Label de valeur en refresh).
 func _row(col: VBoxContainer, label: String, key: String, value_variation: String,
 		slider_family := -1, slider_index := -1) -> void:
 	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation", 8)
 	col.add_child(line)
 	var lab := Label.new()
 	lab.theme_type_variation = "RowLabel"
@@ -238,6 +244,7 @@ func _row(col: VBoxContainer, label: String, key: String, value_variation: Strin
 	val.theme_type_variation = value_variation
 	val.text = "—"
 	val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	val.custom_minimum_size = Vector2(64, 0)   # colonne de valeur fixe : le curseur qui suit ne "danse" pas
 	line.add_child(val)
 	_val_lbls[key] = val
 	if slider_family >= 0:
@@ -246,13 +253,14 @@ func _row(col: VBoxContainer, label: String, key: String, value_variation: Strin
 		s.max_value = 100.0
 		s.step = 1.0
 		s.value = 100.0
-		# compact : curseur ~140px aligné à gauche sous la ligne (plus pleine largeur).
-		s.custom_minimum_size = Vector2(140, 14)
-		s.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		# colonne DÉDIÉE à droite de la valeur, SUR la rangée qu'il contrôle.
+		s.custom_minimum_size = Vector2(96, 14)
+		s.size_flags_horizontal = Control.SIZE_SHRINK_END
+		s.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		var fam := slider_family
 		var idx := slider_index
 		s.value_changed.connect(func(v): _apply_slider(fam, idx, v))
-		col.add_child(s)
+		line.add_child(s)
 		_sliders["%d:%d" % [slider_family, slider_index]] = s
 
 ## une ligne LUE (or/mois) d'un poste de flux nommé, sans curseur.
@@ -493,6 +501,21 @@ func _build_monnaie(me: int) -> void:
 	_monnaie_page.add_child(bw)
 	_m_bankrupt_btn = Button.new()
 	_m_bankrupt_btn.focus_mode = Control.FOCUS_NONE
+	# UI-POLISH #5 : bouton NU (aucun override) retombait au thème Godot par défaut
+	# (graphite) faute de style "Button" de base dans ParchTheme (qui ne définit que la
+	# variation "Tab") — doctrine UI-4 : danger = rouge sombre, même famille que le ruban
+	# Pause (topbar.gd, Color(0.38,0.08,0.07) fond / Color(0.78,0.62,0.30) liseré or).
+	var bsb := ParchTheme.sb(Color(0.38, 0.08, 0.07, 0.94), Color(0.78, 0.62, 0.30), 1, 3, 10, 10, 6, 6)
+	var bsb_hover := ParchTheme.sb(Color(0.48, 0.11, 0.09, 0.96), Color(0.78, 0.62, 0.30), 1, 3, 10, 10, 6, 6)
+	var bsb_pressed := ParchTheme.sb(Color(0.30, 0.06, 0.05, 0.96), Color(0.78, 0.62, 0.30), 2, 3, 10, 10, 6, 6)
+	_m_bankrupt_btn.add_theme_stylebox_override("normal", bsb)
+	_m_bankrupt_btn.add_theme_stylebox_override("hover", bsb_hover)
+	_m_bankrupt_btn.add_theme_stylebox_override("pressed", bsb_pressed)
+	_m_bankrupt_btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	var bcream := Color(0.94, 0.88, 0.74)
+	_m_bankrupt_btn.add_theme_color_override("font_color", bcream)
+	_m_bankrupt_btn.add_theme_color_override("font_hover_color", bcream)
+	_m_bankrupt_btn.add_theme_color_override("font_pressed_color", bcream)
 	_m_bankrupt_btn.pressed.connect(_m_bankrupt_press)
 	_monnaie_page.add_child(_m_bankrupt_btn)
 
@@ -605,7 +628,10 @@ func _update_monnaie(me: int) -> void:
 	# BANQUEROUTE
 	if _m_bankrupt_btn != null:
 		_m_bankrupt_btn.text = "Confirmer la banqueroute ?" if _m_bankrupt_armed else "Répudier la dette (banqueroute)"
-		_m_bankrupt_btn.modulate = Color(1.0, 0.55, 0.5) if _m_bankrupt_armed else Color(1, 1, 1)
+		# UI-POLISH #5 : le bouton est DÉJÀ rouge danger par défaut (stylebox dédié
+		# ci-dessus) — armé, on l'ÉCLAIRCIT (au lieu de l'assombrir comme le ferait
+		# l'ancien modulate 1.0/0.55/0.5 multiplié sur un fond déjà sombre).
+		_m_bankrupt_btn.modulate = Color(1.35, 1.2, 1.15) if _m_bankrupt_armed else Color(1, 1, 1)
 	# FISCALITÉ PAR ORDRE — taux (curseur) + satisfaction (l'info qui rend le levier
 	# jouable : « Bourgeois 70 % → tu peux serrer »).
 	if w.has_method("country_fiscal_orders"):
@@ -615,15 +641,29 @@ func _update_monnaie(me: int) -> void:
 			var sat := int(f.get("satisfaction", -1))
 			var taux3 := float(f.get("taux", 1.0))
 			var revenu := float(f.get("revenu_mois", 0.0))
+			# UI-POLISH #8 — VÉRIFIÉ, PAS UN BUG D'ENUM : satisfaction=-1 est le sentinel
+			# légitime d'econ_country_class_satisfaction (scps_econ.c) quand cet ORDRE n'a
+			# ENCORE aucune âme dans le pays (ex. Bourgeois en tout début de partie — les
+			# Journaliers/Élite peuvent très bien être peuplés pendant que Bourgeois=0).
+			# « — · 0 or/mois » mélangeait un « rien à mesurer » (tiret) et un chiffre
+			# (zéro) pour la MÊME absence : les deux disent « — » désormais (cohérence
+			# avec la règle #9 : jamais un nombre à côté d'un tiret pour un état inexistant).
 			var sat_txt := ("%d %% sat." % sat) if sat >= 0 else "—"
-			_set_m("fiscal:%d" % cls, "%s · %s or/mois" % [sat_txt, _grp(int(round(revenu)))],
+			var revenu_txt := _grp(int(round(revenu))) if sat >= 0 else "—"
+			_set_m("fiscal:%d" % cls, "%s · %s or/mois" % [sat_txt, revenu_txt],
 				_score_col(sat) if sat >= 0 else ParchTheme.DIM_INK)
 			_sync_slider("0:%d" % cls, taux3 * 100.0)
 			var lbl: Label = _m_val_lbls.get("fiscal:%d" % cls, null)
 			if lbl != null:
 				lbl.mouse_filter = Control.MOUSE_FILTER_STOP   # sans ça, pas de survol (Label ignore la souris par défaut)
-				lbl.tooltip_text = "taux %d %% — %s" % [int(round(taux3 * 100.0)),
-					("marge : peut serrer" if sat >= 60 else ("fragile : baisser plutôt que casser" if sat >= 0 and sat < 40 else ""))]
+				var hint := ""
+				if sat < 0:
+					hint = "aucun %s dans ce pays pour l'instant" % CLASS_NAMES[cls]
+				elif sat >= 60:
+					hint = "marge : peut serrer"
+				elif sat < 40:
+					hint = "fragile : baisser plutôt que casser"
+				lbl.tooltip_text = "taux %d %% — %s" % [int(round(taux3 * 100.0)), hint]
 
 func _set_m(key: String, text: String, col: Color = Color(0, 0, 0, 0)) -> void:
 	var lbl: Label = _m_val_lbls.get(key, null)
