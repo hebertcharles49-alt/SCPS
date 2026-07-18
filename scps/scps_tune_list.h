@@ -1314,6 +1314,7 @@
     X(AGE_HERO_FACTION_LEVER,          0.08f) \
     X(AGE_HERO_REFUSED_GRIEF,          0.08f) \
     X(AGE_BREACH_CHARGE,               6.0f) \
+    X(AGE_BREACH_MIN_YEAR,             120.0f) \
     X(AGE_BREACH_FLUX,                 1.50f) \
     X(AGE_BREACH_TRANSGRESSEUR_LEVER,  0.12f) \
     X(AGE_LUMIERES_SAVOIR_MEAN,        5.0f) \

@@ -3220,8 +3220,14 @@ static bool age_trig_empires(World *w, WorldEconomy *econ, WorldProsperity *wp, 
     for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++) if (per_country[c] >= need_one) return true;
     return false;
 }
-static bool age_trig_breach(World *w, WorldEconomy *econ, WorldProsperity *wp, const TechState ts[]){
+static bool age_trig_breach(World *w, WorldEconomy *econ, WorldProsperity *wp, const TechState ts[], int year){
     (void)w;(void)econ;(void)wp; if(!ts) return false;
+    /* PLANCHER ANNÉE (décision joueur 2026-07-18 « la fin du monde an 57 c'est triste ») :
+     * l'Âge de la Brèche est un âge TARDIF, jamais un accident de premier acte — même si la
+     * charge faustienne franchit son seuil tôt (savoir rapide + faustien tentant). 0 = pas
+     * de plancher (comportement d'avant). Distinct du gate §27 ENDGAME_YEAR_OPEN=180 (la
+     * fin du monde réelle) : ceci ne fait qu'ajourner l'ÂGE-présage. */
+    if ((float)year < tune_f("AGE_BREACH_MIN_YEAR",120.f)) return false;
     float charge_min = tune_f("AGE_BREACH_CHARGE",6.0f);
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) if (ts[c].charge > charge_min) return true;
     return false;
@@ -3424,7 +3430,7 @@ bool events_check_ages(EventsState *ev, World *w, WorldEconomy *econ,
     trig[AGE_EXCHANGE]     = age_trig_exchange(w,econ,wp,ts);
     trig[AGE_DISCOVERY]    = age_trig_discovery(w,econ,wp,ts);
     trig[AGE_EMPIRES]      = age_trig_empires(w,econ,wp,ts,wl);
-    trig[AGE_BREACH]       = age_trig_breach(w,econ,wp,ts);
+    trig[AGE_BREACH]       = age_trig_breach(w,econ,wp,ts,year);
     trig[AGE_LUMIERES]     = age_trig_lumieres(w,wp);
     trig[AGE_SOULEVEMENTS] = age_trig_soulevements(ev,w,wp);
     trig[AGE_TYRANS]       = age_trig_tyrans(ev,w,wp);
