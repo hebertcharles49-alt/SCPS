@@ -64,6 +64,18 @@ static DWORD WINAPI tee_pump(LPVOID p){
     }
     return 0;
 }
+/* ASSISTANT (chronicle lancé SANS argument dans un terminal) : un entier avec
+ * défaut + bornes, Entrée = défaut. Purement UI — hors sim, hors runs automatiques. */
+static int chr_ask_int(const char *label, int defv, int lo, int hi){
+    char line[64];
+    printf("  %s [%d] : ", label, defv); fflush(stdout);
+    if (!fgets(line,sizeof line,stdin)) return defv;
+    const char *p=line; while (*p==' '||*p=='\t') p++;
+    if (*p=='\n'||*p=='\r'||*p=='\0') return defv;
+    int v=atoi(p);
+    if (v<lo) v=lo; else if (v>hi) v=hi;
+    return v;
+}
 #endif
 
 
@@ -616,6 +628,29 @@ int main(int argc, char **argv){
     int fix_cont  = (np>5)?atoi(pos[5]):0;       /* >0 : continents FIXES (mer §8 : bancs 2..4) */
     if (nsims<1) nsims=1;
     if (years<1) years=1;
+
+#ifdef _WIN32
+    /* ASSISTANT DE LANCEMENT — chronicle démarré SANS argument dans un vrai terminal
+     * (double-clic ou « chronicle » nu) : trois questions pour qu'un néophyte puisse
+     * bâtir un monde. Ignoré si des arguments sont donnés (power-user) ou sous
+     * pipe/redirection (golden/déterminisme/sweeps → défauts, byte-identique). */
+    if (np==0 && _isatty(_fileno(stdin)) && _isatty(_fileno(stdout))){
+        unsigned suggest = (unsigned)time(NULL) * 2654435761u;   /* graine « au dé » — suggestion UI, PAS la sim */
+        if (suggest==0) suggest=1;
+        printf("\n═══ Chronique de SCPS — bâtir un monde à observer ═══\n");
+        printf("Trois questions. Appuyez sur Entrée pour garder la valeur entre crochets.\n\n");
+        char line[64];
+        printf("  Graine du monde [%u au hasard] : ", suggest); fflush(stdout);
+        if (fgets(line,sizeof line,stdin)){
+            const char *p=line; while (*p==' '||*p=='\t') p++;
+            base = (*p=='\n'||*p=='\r'||*p=='\0') ? suggest : (uint32_t)strtoul(p,NULL,10);
+        } else base = suggest;
+        fix_emp = chr_ask_int("Nombre d'empires (2 à 12)", 6, 2, 12);
+        years   = chr_ask_int("Durée en années (50 à 500)", 250, 50, 500);
+        nsims   = 1;   /* un seul monde à regarder vivre (pas un balayage) */
+        printf("\n→ Monde %u · %d empires · %d ans.\n", base, fix_emp, years);
+    }
+#endif
 
     World *w = malloc(sizeof(World));
     Sim s;
