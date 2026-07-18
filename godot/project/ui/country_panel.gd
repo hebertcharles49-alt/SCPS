@@ -10,15 +10,6 @@ const PW := 322.0
 const PH := 240.0   ## raccourci : les jauges internes d'un royaume ÉTRANGER ne s'affichent plus
 const MARGIN := 8.0
 
-# métrique → (libellé, nom d'icône du pack)
-const ROWS := [
-	["stabilite",  "Stabilité",  "stability_shield"],
-	["prosperite", "Prospérité", "prosperity_sprout"],
-	["legitimite", "Légitimité", "politics_crown"],
-	["cohesion",   "Cohésion",   "happiness_medallion"],
-	["savoir",     "Savoir",     "knowledge_book"],
-]
-
 # HOVERS (retour joueur 2026-07-10, « quoi + combien ») : le hover ne DÉFINIT
 # plus le concept (c'était une redite du codex) — il donne juste son NOM. Le mot
 # lui-même est déjà décoré turquoise et cliquable par le TooltipServer (lit
@@ -128,13 +119,6 @@ func _draw() -> void:
 				rew += (" + " if rg > 0 else "") + "%d %s" % [rq, String(mis.get("reward_mat", ""))]
 			var rew_x: float = VKit.detail(self, Vector2(x + 4, y), "prime : ", VKit.FS_SMALL)
 			VKit.value(self, Vector2(x + 4 + rew_x, y), rew, VKit.FS_SMALL)
-
-## icône · libellé · jauge texturée · CHIFFRE (plus de mot de bande — chiffre + nom seuls)
-func _gauge_row(x: float, y: float, label: String, icon: String, value: int) -> void:
-	UIKit.draw_icon(self, icon, Vector2(x, y - 1), 18)
-	VKit.text(self, Vector2(x + 22, y), VKit.COL_DIM, label, VKit.FS_SMALL)
-	UIKit.bar(self, Rect2(x + 96, y, 88, 14), value)
-	VKit.text(self, Vector2(x + 190, y), VKit.COL_PARCH, str(value), VKit.FS_SMALL)
 
 func _grp(n) -> String:
 	var s := str(absi(int(n)))
