@@ -48,6 +48,22 @@
 #include <time.h>   /* PROF : horloge monotone (profiler de boucle, OFF par défaut) */
 #ifdef _WIN32
 #include <windows.h>   /* SetConsoleOutputCP : la console lit l'UTF-8 (accents FR + · ═ ★), sinon mojibake CP-850 */
+#include <io.h>        /* _pipe/_dup/_dup2/_isatty/_fileno — l'export .txt interactif (tee du flux) */
+#include <fcntl.h>     /* _O_BINARY */
+/* EXPORT .TXT (interactif SEULEMENT) : un fil lit un tube branché sur stdout et
+ * recopie chaque octet À L'ÉCRAN *et* dans un fichier — capture TOUT (y compris
+ * les lignes worldgen des autres modules). Armé UNIQUEMENT si stdin ET stdout
+ * sont un vrai terminal : sous redirection/pipe (golden, déterminisme, sweeps),
+ * le flux reste byte-identique et AUCUNE question n'est posée. */
+typedef struct { int rfd; int screen_fd; FILE *tf; } TeeCtx;
+static DWORD WINAPI tee_pump(LPVOID p){
+    TeeCtx *c=(TeeCtx*)p; char buf[8192]; int n;
+    while ((n=_read(c->rfd,buf,(unsigned)sizeof buf))>0){
+        _write(c->screen_fd,buf,(unsigned)n);          /* l'écran réel */
+        if (c->tf) fwrite(buf,1,(size_t)n,c->tf);       /* le fichier .txt */
+    }
+    return 0;
+}
 #endif
 
 
@@ -616,6 +632,29 @@ int main(int argc, char **argv){
     if (!w||!s.econ||!s.wp||!s.wl||!s.net||!s.ts||!s.sc||!s.ag||!s.ev||!s.drift
         ||!s.dp||!s.rn||!s.ai||!s.ai_on||!s.rs||!s.host||!s.missions||!s.camp||!s.navy||!s.eg){
         fprintf(stderr,"OOM\n"); return 1; }
+
+#ifdef _WIN32
+    /* EXPORT .TXT — armement du tee (terminal interactif seulement, cf. tee_pump). */
+    int    tee_on=0, tee_saved=-1;
+    HANDLE tee_th=NULL; FILE *tee_f=NULL; char tee_path[80]={0};
+    if (_isatty(_fileno(stdout)) && _isatty(_fileno(stdin))){
+        int pfd[2];
+        if (_pipe(pfd,1<<16,_O_BINARY)==0){
+            snprintf(tee_path,sizeof tee_path,"chronicle_%lu_%dx%d.txt",(unsigned long)base,nsims,years);
+            tee_f=fopen(tee_path,"w");   /* mode texte : \n → \r\n (Notepad-friendly) */
+            if (tee_f){
+                fputc(0xEF,tee_f); fputc(0xBB,tee_f); fputc(0xBF,tee_f);   /* BOM UTF-8 : accents propres même sous vieux éditeur */
+                fflush(stdout);
+                tee_saved=_dup(_fileno(stdout));                 /* l'écran réel, sauvé */
+                _dup2(pfd[1],_fileno(stdout)); _close(pfd[1]);   /* stdout → tube */
+                setvbuf(stdout,NULL,_IONBF,0);                   /* affichage LIVE (pas de rétention dans le tube) */
+                static TeeCtx ctx; ctx.rfd=pfd[0]; ctx.screen_fd=tee_saved; ctx.tf=tee_f;
+                tee_th=CreateThread(NULL,0,tee_pump,&ctx,0,NULL);
+                tee_on=1;
+            } else { _close(pfd[0]); _close(pfd[1]); }
+        }
+    }
+#endif
 
     printf("══════════════════════════════════════════════════════════════════════\n");
     if (fix_emp>0 || fix_cs>0)
@@ -2481,6 +2520,22 @@ int main(int argc, char **argv){
     warhost_free(s.host); free(s.camp); free(s.ai); free(s.ai_on); free(s.rs); free(s.host);
     free(s.missions);   /* fuyait (6 496 o, vu par LeakSanitizer) */
     free(s.navy); free(s.eg);
+#ifdef _WIN32
+    /* EXPORT .TXT — démontage du tee + la question o/n (interactif seulement). */
+    if (tee_on){
+        fflush(stdout);
+        _dup2(tee_saved,_fileno(stdout));      /* restaure l'écran ; ferme l'ancien fd1 (bout écriture du tube) → le fil videra puis verra EOF */
+        WaitForSingleObject(tee_th,INFINITE);  /* attendre que le fil ait recopié le DERNIER octet (il écrit encore dans tee_saved) */
+        CloseHandle(tee_th);
+        _close(tee_saved);
+        if (tee_f) fclose(tee_f);
+        printf("\nExporter le résultat vers « %s » ? (o/n) : ", tee_path);
+        fflush(stdout);
+        int rep=getchar();
+        if (rep=='o'||rep=='O'||rep=='y'||rep=='Y') printf("→ enregistré : %s\n", tee_path);
+        else { remove(tee_path); printf("→ non conservé.\n"); }
+    }
+#endif
     /* MONNAIE M3c — LE SCEAU FINAL : une dérive hors-frappe non documentée détectée
      * PENDANT le run (chronicle_invariant_check, annuel) fait ÉCHOUER bruyamment tout le
      * run — exit ≠0, le motif de gate déjà établi (golden/déterminisme). */
