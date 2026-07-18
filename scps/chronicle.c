@@ -46,6 +46,9 @@
 #include <stdarg.h>
 #include <math.h>   /* sqrt : σ du lissage des prix (E3 §16) */
 #include <time.h>   /* PROF : horloge monotone (profiler de boucle, OFF par défaut) */
+#ifdef _WIN32
+#include <windows.h>   /* SetConsoleOutputCP : la console lit l'UTF-8 (accents FR + · ═ ★), sinon mojibake CP-850 */
+#endif
 
 
 #define CORR_CAPTURED 30   /* §C3 : seuil « polity tenue par une faction » (corr 0-100) */
@@ -569,6 +572,14 @@ static void chronicle_mint_flux_accum(const WorldEconomy *e, int n_countries,
 }
 
 int main(int argc, char **argv){
+#ifdef _WIN32
+    /* Le texte de la chronique est de l'UTF-8 (source française : é/è/à + · ═ ★ ✦). La
+     * console Windows par défaut est en CP-850/CP-1252 → mojibake (« caractères étranges »).
+     * On force la sortie ET l'entrée en 65001 = UTF-8. Sans effet si la sortie est
+     * redirigée (fichier/pipe reçoit déjà l'UTF-8 brut, correct). */
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+#endif
     tune_init();   /* Arc J : lit SCPS_TUNE une fois (nom inconnu → exit 2). */
     /* positionnels FILTRÉS de l'option --hash (le harnais de déterminisme). */
     const char *pos[8]; int np=0, hash_mode=0;
