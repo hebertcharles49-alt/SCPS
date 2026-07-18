@@ -3227,7 +3227,7 @@ static bool age_trig_breach(World *w, WorldEconomy *econ, WorldProsperity *wp, c
      * charge faustienne franchit son seuil tôt (savoir rapide + faustien tentant). 0 = pas
      * de plancher (comportement d'avant). Distinct du gate §27 ENDGAME_YEAR_OPEN=180 (la
      * fin du monde réelle) : ceci ne fait qu'ajourner l'ÂGE-présage. */
-    if ((float)year < tune_f("AGE_BREACH_MIN_YEAR",120.f)) return false;
+    if ((float)year < tune_f("AGE_BREACH_MIN_YEAR",180.f)) return false;
     float charge_min = tune_f("AGE_BREACH_CHARGE",6.0f);
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) if (ts[c].charge > charge_min) return true;
     return false;
