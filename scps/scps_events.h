@@ -553,6 +553,11 @@ void  ages_hero_fire(EventsState *ev, World *w, WorldEconomy *econ, WorldLegitim
                      const TechState ts[], DiploState *dp, EndgameState *eg,
                      MissionsState *ms, int cid, int seat, int slot, int gen,
                      int human_player);
+/* L'ÂGE DE LA BRÈCHE, éveillé DE L'EXTÉRIEUR (par sim.c, le tick où une fin
+ * faustienne/entropique tombe) — même patron que ages_hero_fire : hors scan,
+ * l'avènement est déjà mérité au moment de l'appel. Idempotent. */
+void  ages_breach_fire(EventsState *ev, World *w, WorldEconomy *econ,
+                       WorldLegitimacy *wl, WorldProsperity *wp, const TechState ts[]);
 /* Verdict du MOTEUR agrégé : combien de pays sont en mode révolutionnaire
  * (SI<5 & pression≥fracture) — la masse critique des Soulèvements, sans aucun
  * code de révolution dédié. */

@@ -1322,6 +1322,14 @@ void sim_day(Sim *s, World *w) {
         if (s->eg){
             FinType fin_before = s->eg->fin; MervPhase merv_before = s->eg->merv;
             endgame_tick(s->eg, w, s->econ, s->wp, s->ts, s->rn, s->navy, s->dp, s->camp, s->player, s->year);
+            /* L'ÂGE DE LA BRÈCHE ÉTIQUETTE LA FIN (décision joueur 2026-07-19 : fin↔âge
+             * synchro) : quand l'endgame vient de poser une fin FAUSTIENNE/ENTROPIQUE
+             * (EAU/FROID/RONCES/CHAUD) CE tick, l'âge s'éveille le MÊME tick — jamais
+             * orphelin après la fin. SANG/ASCENSION exclus. Kill-switch BREACH_AGE_ON_FIN. */
+            if (s->ev && tune_f("BREACH_AGE_ON_FIN",1.f)!=0.f && fin_before==FIN_AUCUNE
+                && (s->eg->fin==FIN_EAU||s->eg->fin==FIN_FROID||s->eg->fin==FIN_RONCES||s->eg->fin==FIN_CHAUD)
+                && !ages_dawned(s->ev,AGE_BREACH))
+                ages_breach_fire(s->ev, w, s->econ, s->wl, s->wp, s->ts);
             /* TECH (2026-07-16) — L'HÉRITAGE DU SAVOIR : un fragment né du resplit de
              * cataclysme (eau/chaleur) porte l'arbre de tech de son parent — le savoir ne
              * s'évapore pas dans la fragmentation (mêmes gens, mêmes livres). La banque de

@@ -3430,7 +3430,11 @@ bool events_check_ages(EventsState *ev, World *w, WorldEconomy *econ,
     trig[AGE_EXCHANGE]     = age_trig_exchange(w,econ,wp,ts);
     trig[AGE_DISCOVERY]    = age_trig_discovery(w,econ,wp,ts);
     trig[AGE_EMPIRES]      = age_trig_empires(w,econ,wp,ts,wl);
-    trig[AGE_BREACH]       = age_trig_breach(w,econ,wp,ts,year);
+    /* BREACH_AGE_ON_FIN (défaut) : l'Âge de la Brèche N'EST PLUS scanné — il est éveillé
+     * par sim.c le tick d'une fin faustienne (synchro fin↔âge). =0 : chemin LEGACY (charge
+     * > seuil ET year >= AGE_BREACH_MIN_YEAR, comme avant). */
+    trig[AGE_BREACH]       = (tune_f("BREACH_AGE_ON_FIN",1.f)!=0.f) ? false
+                                                                     : age_trig_breach(w,econ,wp,ts,year);
     trig[AGE_LUMIERES]     = age_trig_lumieres(w,wp);
     trig[AGE_SOULEVEMENTS] = age_trig_soulevements(ev,w,wp);
     trig[AGE_TYRANS]       = age_trig_tyrans(ev,w,wp);
@@ -3524,6 +3528,17 @@ void ages_hero_fire(EventsState *ev, World *w, WorldEconomy *econ, WorldLegitima
     }
     EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp,eg,human_player,ms};
     fire_event(&cx, evid, cid);
+}
+
+/* L'ÂGE DE LA BRÈCHE, éveillé par sim.c au tick d'une fin faustienne/entropique
+ * (décision joueur 2026-07-19 : la fin du monde et l'Âge de la Brèche synchro).
+ * Même chemin d'éveil qu'un âge normal (age_dawn = effets breach_flux/pressure),
+ * une seule fois. Aucun événement à pousser (l'âge N'A PAS d'event dédié). */
+void ages_breach_fire(EventsState *ev, World *w, WorldEconomy *econ,
+                      WorldLegitimacy *wl, WorldProsperity *wp, const TechState ts[]){
+    if (!ev || !w) return;
+    if (!ev->ages.dawned[AGE_BREACH])
+        age_dawn(ev, w->seed, AGE_BREACH, w, econ, wp, wl, ts);
 }
 
 /* ===================================================================== */
