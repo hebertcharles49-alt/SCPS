@@ -3779,6 +3779,36 @@ static void dir_region_eff(EventCtx *cx, int r, float dL, float dAgit, float dTr
     apply_effect(cx, EV_PROVINCE, r, &e);
 }
 
+/* `build.food_cap` est province-owned : la région n'en expose que la somme.
+ * Une hausse se pose sur la représentative ; une baisse est consommée parmi
+ * les provinces membres sans jamais passer sous zéro, donc le delta régional
+ * reste exact même si la représentative seule ne porte pas assez de capacité. */
+static void dir_region_food_cap_add(WorldEconomy *econ, int r, float delta){
+    if (!econ || r<0 || r>=econ->n_regions || delta==0.f) return;
+    int rep=econ_region_rep_province(econ,r);
+    if (delta>0.f){
+        if (rep>=0 && rep<econ->n_prov) econ->prov[rep].build.food_cap += delta;
+    } else {
+        float left=-delta;
+        if (rep>=0 && rep<econ->n_prov){
+            float take=fminf(left, fmaxf(0.f,econ->prov[rep].build.food_cap));
+            econ->prov[rep].build.food_cap-=take; left-=take;
+        }
+        for (int p=0;p<econ->n_prov && p<SCPS_MAX_PROV && left>0.f;p++){
+            ProvinceEconomy *pe=&econ->prov[p];
+            if (p==rep || pe->region!=r) continue;
+            float take=fminf(left, fmaxf(0.f,pe->build.food_cap));
+            pe->build.food_cap-=take; left-=take;
+        }
+    }
+    /* Le directeur et l'UI relisent region[] avant le prochain econ_tick : projeter
+     * immédiatement la somme, sans en faire une seconde source de vérité. */
+    float total=0.f;
+    for (int p=0;p<econ->n_prov && p<SCPS_MAX_PROV;p++)
+        if (econ->prov[p].region==r) total+=econ->prov[p].build.food_cap;
+    econ->region[r].build.food_cap=total; /* REGION_MIRROR_OK : projection depuis prov[] */
+}
+
 /* Trouve un SUJET valide pour l'événement `id` (lit l'état du monde + anti-acharnement).
  * subject = pays (scope pays), région (scope région), continent (scope continent),
  * ou a·MAX+b (Amnistie). Renvoie false si rien d'éligible. */
@@ -3895,14 +3925,14 @@ static void dir_apply(EventCtx *cx, int id, int subject, int day){
             for (int r=0;r<econ->n_regions && r<w->n_regions;r++)
                 if (w->region[r].continent==ct && econ->region[r].colonized && dir_ok_region(D,day,r,true)){
                     dir_region_eff(cx,r,0.f,8.f,0.f,1.f);
-                    econ->region[r].build.food_cap=fmaxf(0.f, econ->region[r].build.food_cap-2.f);  /* fertilité ↓ → famines */
+                    dir_region_food_cap_add(econ,r,-2.f);       /* fertilité ↓ → famines (vérité province) */
                     dir_touch(D,day,r,econ->region[r].owner,true);
                 } } break;
         case DIR_MOISSONS: { int ct=subject;
             if (ct>=0 && ct<SCPS_MAX_CONTINENT) D->cont_cd_until[ct]=day+DIR_CONT_CD;  /* G0.1 : repos continent 25 ans */
             for (int r=0;r<econ->n_regions && r<w->n_regions;r++)
                 if (w->region[r].continent==ct && econ->region[r].colonized && dir_ok_region(D,day,r,false)){
-                    econ->region[r].build.food_cap += 1.5f;          /* fertilité ↑ (IPM ↓ émergera en §C) */
+                    dir_region_food_cap_add(econ,r,1.5f);       /* fertilité ↑ (IPM ↓ émergera en §C) */
                     dir_touch(D,day,r,econ->region[r].owner,false);
                 } } break;
         case DIR_CONCILE:  dir_country_eff(cx,subject, 1.5f,-8.f,0.f,0.f);  dir_touch(D,day,world_capital_region(w,subject),subject,false); break;

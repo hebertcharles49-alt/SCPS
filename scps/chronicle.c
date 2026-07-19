@@ -571,8 +571,8 @@ static void chronicle_invariant_check(const WorldEconomy *e, const World *w, int
     g_inv_prev_m=m_now; g_inv_prev_va=va_cum; g_inv_prev_conso=conso_cum;
     g_inv_prev_coloniz=coloniz_cum; g_inv_prev_mint=mint_cum_so_far;
 }
-/* Recoupement GROSSIER (pas la vérité — cf. docs/MONNAIE_M0_AUDIT.md §7) : Σ des
- * deltas positifs/négatifs d'econ_flux_get sur TOUS les pays, accumulée année
+/* Recoupement GROSSIER des FLUX D'ÉTAT (pas une création/destruction monétaire —
+ * cf. docs/MONNAIE_M0_AUDIT.md §7) : Σ des deltas positifs/négatifs d'econ_flux_get sur TOUS les pays, accumulée année
  * par année AVANT econ_flux_year_capture (qui RAZ le flux) — ne couvre que les
  * sites déjà instrumentés en FX_*, pas le registre complet (VA de production,
  * consommation, colonisation notamment n'ont pas de compteur FX_* dédié). */
@@ -1263,7 +1263,7 @@ int main(int argc, char **argv){
                        colonized_provinces(w,s.econ), conq_prov, treg, ap, as_, rv);
                 { double wpc[CLASS_COUNT]; world_class_wpc(s.econ, wpc);
                   printf("              richesse/tête an %3d : Laborer %.2f · Bourgeois %.2f · Élite %.2f\n",
-                         snap[si-1], wpc[CLASS_LABORER], wpc[CLASS_BOURGEOIS], wpc[CLASS_ELITE]); }
+                          snap[si], wpc[CLASS_LABORER], wpc[CLASS_BOURGEOIS], wpc[CLASS_ELITE]); }
                 /* MONNAIE M3d — TRAJECTOIRE dette/revenu (gate 0, « la dette PLAFONNE-t-elle
                  * en régime ») : moyenne dette/revenu-annuel des pays AVEC un revenu capté
                  * (econ_country_tax_year — 0 durant le bootstrap <90j), à chaque instantané. */
@@ -1274,7 +1274,7 @@ int main(int argc, char **argv){
                   }
                   printf("              dette/revenu an %3d : %.0f%% moyen (%d pays au revenu capté, plafond=%.0f%%)"
                          " · revenu fiscal Σ %.0f or/an (M3i neutralité)\n",
-                         snap[si-1], rev_sum>1.0?100.0*debt_sum/rev_sum:0.0, nd,
+                         snap[si], rev_sum>1.0?100.0*debt_sum/rev_sum:0.0, nd,
                          100.0*tune_f("DEBT_CEILING_YEARS",3.0f), rev_sum); }
                 si++;
             }
@@ -1286,8 +1286,11 @@ int main(int argc, char **argv){
          * sites classés CRÉATION/DESTRUCTION/TRANSFERT/DETTE/INITIALISATION. */
         double money_mfin = chronicle_money_mass(s.econ);
         double money_drift_an = (years>0)? (money_mfin-money_m0)/(double)years : 0.0;
-        printf("   masse monétaire : M(0)=%.0f · M(fin)=%.0f · dérive %+.1f/an (création %.0f · destruction %.0f mesurées)\n",
-               money_m0, money_mfin, money_drift_an, money_creation_accum, money_destruction_accum);
+        printf("   masse monétaire : M(0)=%.0f · M(fin)=%.0f · dérive %+.1f/an\n",
+               money_m0, money_mfin, money_drift_an);
+        printf("   recoupement FX d'État (INCOMPLET, transferts inclus) : entrants %.0f · sortants %.0f · net %+.0f\n",
+               money_creation_accum, money_destruction_accum,
+               money_creation_accum-money_destruction_accum);
 
         /* MONNAIE — M1/M2 (print-only) : la frappe (FX_MINT, déjà comptée dans la création
          * ci-dessus) isolée — moyenne/an, réserve fin de partie (jamais consommée entière :
@@ -1409,8 +1412,8 @@ int main(int argc, char **argv){
           printf("   débase (M3h) : %.0f or/an moyen créé par sur-frappe (déjà inclus dans la frappe) — %ld mois-pays en débase active (%d pays débasent en fin de partie)\n",
                  (years>0)? debase_gold/(double)years : 0.0, debase_months, n_debasers_end); }
 
-        /* MONNAIE — M3a : L'INSTRUMENT (print-only, docs/MONNAIE_M0_AUDIT.md) — la
-         * création résiduelle PAR CATÉGORIE, le tableau de bord que M3b regardera fondre
+        /* MONNAIE — M3a : L'INSTRUMENT (print-only, docs/MONNAIE_M0_AUDIT.md) — le
+         * RÉSIDU DE PÉRIMÈTRE par catégorie, le tableau de bord que M3b regardera fondre
          * vers 0. VA (§1.1) et conso (§2.1) sont mesurées en DIRECT (econ_tick, aucun
          * compteur FX_* dédié avant M3a) ; colonisation (§1.2) = résidu NET livré−prélevé
          * de la voie CONVOI (0 sauf colons perdus en route — depuis le fix M3a la
@@ -1425,7 +1428,7 @@ int main(int argc, char **argv){
           double conso_an    = (years>0)? -conso_cum/(double)years : 0.0;
           double coloniz_an  = (years>0)? coloniz_cum/(double)years : 0.0;
           double autres_an   = money_drift_an - va_an - conso_an - coloniz_an;
-          printf("   création résiduelle : VA %+.0f/an · conso %+.0f/an · colonisation %+.0f/an · autres %+.0f/an\n",
+          printf("   résidu de périmètre : VA %+.0f/an · conso %+.0f/an · colonisation %+.0f/an · autres %+.0f/an\n",
                  va_an, conso_an, coloniz_an, autres_an); }
         /* MONNAIE M3f — LE PIC ANNUEL du banc invariant (indépendant du seuil courant) :
          * mesure directement le PLANCHER atteignable de INVARIANT_DRIFT_FRAC, un seul run. */

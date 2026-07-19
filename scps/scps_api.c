@@ -4683,7 +4683,7 @@ int scps_sea_travel(ScpsSim *s, int target_region, ScpsSeaTravel *out){
     out->transports_need=(int)((packets+9)/10); if(out->transports_need<1) out->transports_need=1;
     { int free_tr=s->sim.navy->n[p].hull[HULL_TRANSPORT]-s->sim.navy->n[p].at_sea;
       out->transports_free=(free_tr>0)?free_tr:0; }
-    for(int en=0;en<SCPS_MAX_COUNTRY;en++)               /* coques §3 : le blocus tient le port */
+    for(int en=0;en<SCPS_MAX_COUNTRY;en++)               /* risque visible : le blocus guette le départ */
         if(s->sim.navy->n[en].mission==NAVY_BLOCUS && s->sim.navy->n[en].mission_target==p
            && s->sim.navy->n[en].hull[HULL_WAR]>0){ out->blocked=1; break; }
     if(port<0 || target_region==port) return 1;          /* renseigné, traversée impossible */
@@ -4691,7 +4691,7 @@ int scps_sea_travel(ScpsSim *s, int target_region, ScpsSeaTravel *out){
     float days=navy_sea_days_regions(s->w,port,target_region);
     if(days<0.f) return 1;                               /* bassins séparés */
     out->days=(int)ceilf(days);
-    out->possible=(packets>0 && !out->blocked
+    out->possible=(packets>0
                    && out->transports_free>=out->transports_need) ? 1 : 0;
     return 1;
 }

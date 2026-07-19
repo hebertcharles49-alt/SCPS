@@ -274,6 +274,12 @@ static void sim_campaign_year(Sim *s, World *w) {
     for (int month=0; month<12; month++){
         if (month==0) sim_campaign_orders(s, w);            /* les ordres frais : annuels (inchangé) */
         sim_campaign_defense(s, w);                          /* L1 : la défense marche À LA RENCONTRE */
+        /* Les convois FA_EMBARK/FA_SAIL n'existent que dans CETTE boucle de campagne : les
+         * intercepter dans le bloc mensuel de sim_day arrivait douze fois AVANT
+         * sim_campaign_year, puis campaign_tick les résolvait sans jamais exposer
+         * leur phase de voile à la marine. La chasse doit donc précéder le tick qui
+         * fait avancer/résout le convoi, à la même maille mensuelle. */
+        navy_interception_tick(s->navy, s->camp, w, s->econ, s->dp, &s->camp_rng);
         int was_active[CAMPAIGN_MAX_BATTLES], was_days[CAMPAIGN_MAX_BATTLES];
         int was_a[CAMPAIGN_MAX_BATTLES], was_b[CAMPAIGN_MAX_BATTLES];
         for(int k=0;k<CAMPAIGN_MAX_BATTLES;k++){
@@ -630,7 +636,7 @@ static void sim_cmd_drain(Sim *s, World *w){
             float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(s->econ)*decree_manuf_cost_mult(p);   /* orientation ATELIERS */
             if (!credit_can_spend(s->econ, w, p, cost)) break;
             if (econ_build_manufacture(s->econ, pid, (BuildingType)b)){
-                credit_spend(s->econ, w, p, cost);
+                if (!credit_spend(s->econ, w, p, cost)) break;
                 econ_flux_add(p, FX_BUILD, -cost);                   /* I0 : la ligne chantiers */
                 /* MONNAIE M3b-v2 — item 5 : construction de manufacture (joueur) → gages,
                  * même motif qu'ai_build_civmanuf (pas de table de matériaux, tout le coût
@@ -650,7 +656,7 @@ static void sim_cmd_drain(Sim *s, World *w){
                 float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(s->econ)*decree_manuf_cost_mult(p);
                 if (!credit_can_spend(s->econ, w, p, cost)) break;
                 if (econ_manuf_level_delta(s->econ, pid, (BuildingType)b, +1)){
-                    credit_spend(s->econ, w, p, cost);
+                    if (!credit_spend(s->econ, w, p, cost)) break;
                     econ_flux_add(p, FX_BUILD, -cost);               /* I0 : la ligne chantiers */
                     pe->strata[CLASS_LABORER].wealth += cost;         /* item 5 : idem, gages */
                 }
@@ -764,7 +770,7 @@ static void sim_cmd_drain(Sim *s, World *w){
                     && tune_f("SEA_TRAVEL",1.f)>0.f){
                     /* M15 — F3 : le corps actif ne rejoint pas par terre — repli sur
                      * l'embarquement DEPUIS SA POSITION ACTUELLE (mêmes conditions que
-                     * le déploiement initial ci-dessous : port ami, transports, blocus). */
+                     * le déploiement initial ci-dessous : port ami, transports). */
                     campaign_redirect_corps_sea(s->camp, w, s->econ, s->navy, p, tgt);
                 }
             } else {                                                 /* réserve : déployer depuis la capitale */
@@ -773,7 +779,7 @@ static void sim_cmd_drain(Sim *s, World *w){
                 if (from>=0 && from<s->econ->n_regions && s->econ->region[from].owner==p){
                     /* MARITIME N3 — pas de chemin TERRESTRE (campaign_order refuse) :
                      * la levée embarque à la RADE. campaign_order_sea revalide TOUT
-                     * (port à soi, côte à l'arrivée, transports libres, blocus, chemin
+                     * (port à soi, côte à l'arrivée, transports libres, chemin
                      * de courants) — échec silencieux sinon, même contrat que le refus
                      * terrestre. L'IA savait déjà traverser (guerre outre-mer,
                      * plus haut) ; ce repli donne le MÊME geste au joueur.
@@ -1135,8 +1141,7 @@ void sim_day(Sim *s, World *w) {
         PROF(PB_NAVY_M, { navy_tick(s->navy, w, s->econ, s->dp, 30.f);   /* chantier + entretien : MENSUEL (ex-quotidien) */
         navy_colonize_tick(s->navy, w, s->econ, 30.f, s->human_player);   /* mer §8 : on découvre ce que la volta touche (le JOUEUR colonise à la main) */
         navy_course_tick(s->navy, w, s->econ, s->dp, s->rn, &s->camp_rng, s->ts,
-                         -1, 30.f);   /* coques : la course (raids - saignee - blocus - verdicts) */
-        navy_interception_tick(s->navy, s->camp, w, s->econ, s->dp, &s->camp_rng); });   /* les convois se chassent */
+                         -1, 30.f); });   /* coques : la course (raids - saignee - blocus - verdicts) */
         /* IA navale FRUGALE (mer §5/§8) : un pays côtier prospère bâtit son port,
          * puis un transport, puis tente la route MARITIME — décision par éthos
          * (les poids fins viendront avec la passe course). */

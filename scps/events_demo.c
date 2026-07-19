@@ -12,8 +12,8 @@
  *      chez le mécaniste Mercantile — quatre récits, un seul déclencheur.
  *   3. ÂGES émergents : ils n'arrivent pas à DATE mais quand le monde ATTEINT un
  *      état ; à l'avènement, une coordonnée globale bouge + un palier s'ouvre.
- *   4. BRÈCHE : pousser la charge faustienne fait advenir l'Âge de la Brèche →
- *      pression mondiale (l'endgame).
+ *   4. BRÈCHE : le départ d'une fin entropique fait advenir l'Âge de la Brèche →
+ *      pression mondiale ; la charge seule ne déclenche plus l'étiquette d'âge.
  *   5. Aucun nom SCPS dans les textes d'évènement.
  */
 #include "scps_world.h"
@@ -325,22 +325,27 @@ int main(int argc, char **argv){
       } else ok("(monde trop petit pour le test des Empires — ignoré)", true);
     }
 
-    /* ═══ 5. L'ÂGE DE LA BRÈCHE — l'endgame faustien ═══════════════════ */
-    printf("\n── 5. Pousser la Magie fait advenir la Brèche (pression mondiale) ──\n");
+    /* ═══ 5. L'ÂGE DE LA BRÈCHE — synchronisé avec la fin entropique ═══ */
+    printf("\n── 5. Une fin entropique fait advenir la Brèche (pression mondiale) ──\n");
     ok("avant : la Brèche dort", !ages_dawned(s.ev,AGE_BREACH));
-    s.ts[0].charge=7.0f;                              /* une démesure faustienne quelque part (>AGE_BREACH_CHARGE=6) */
+    s.ts[0].charge=7.0f;                              /* ancien déclencheur legacy */
     advance_until_age(s.ev,s.w,s.econ,s.wp,s.wl,s.ts, AGE_BREACH, 10);
+    ok("la charge faustienne seule ne déclare PLUS la Brèche sous BREACH_AGE_ON_FIN",
+       !ages_dawned(s.ev,AGE_BREACH));
+    /* Miroir du raccord de production scps_sim.c : transition FIN_AUCUNE → une fin
+     * entropique, puis éveil une fois par ages_breach_fire. */
+    ages_breach_fire(s.ev,s.w,s.econ,s.wl,s.wp,s.ts);
     printf("   Brèche : éveillée=%d  pression mondiale=%.1f  flux faustien mondial=%.1f  palier Magie/5=%d\n",
            ages_dawned(s.ev,AGE_BREACH), ages_breach_pressure(s.ev), s.wp->age_breach_flux,
            ages_tier_open(s.wp,THM_SAVOIR,5));
-    ok("la charge faustienne fait advenir l'Âge de la Brèche", ages_dawned(s.ev,AGE_BREACH));
+    ok("le raccord de fin entropique fait advenir l'Âge de la Brèche", ages_dawned(s.ev,AGE_BREACH));
     ok("la Brèche monte la pression de fin MONDIALE (flux faustien global → déréalisation)",
        ages_breach_pressure(s.ev)>0.f && s.wp->age_breach_flux>0.f);
 
     /* Dispersion : les âges sont advenus à des MOMENTS distincts (états atteints
      * l'un après l'autre), pas tous en même temps — AUCUN ORDRE IMPOSÉ (le throttle
      * « au plus un âge par an » les espace, sans jamais fixer LEQUEL vient d'abord). */
-    ok("Échanges et Brèche sont advenus par PALIERS d'état (tech dispersée, pas un minuteur)",
+    ok("Échanges et Brèche sont advenus par des ÉTATS du monde, pas un minuteur",
        ages_dawned(s.ev,AGE_EXCHANGE) && ages_dawned(s.ev,AGE_BREACH));
     /* NETTOYAGE DE SECTION — events_init() (appelé en tête de CHAQUE section
      * suivante) referme `ev` (dawned[]/year_eligible[] repartent à zéro), mais

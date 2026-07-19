@@ -526,13 +526,14 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
                      * silencieusement au tick suivant (ni donateur appauvri, ni receveur
                      * enrichi, une fois la vue reconstruite). Résolu sur la province
                      * représentative + dual-write (motif M11-A2). */
-                    int spr=econ_region_rep_province(econ,capreg[s0]), wpr=econ_region_rep_province(econ,capreg[worst]);
                     float don=econ->region[capreg[s0]].treasury*0.10f;       /* LE DON — il s\'use */
-                    if (spr>=0 && spr<econ->n_prov) econ_prov_treasury_credit(econ, spr, -don);
-                    if (wpr>=0 && wpr<econ->n_prov) econ_prov_treasury_credit(econ, wpr, don);
-                    d->v_grief[worst]=fmaxf(0.f, d->v_grief[worst]-0.25f/(1.f+(float)d->v_dons[worst]));
-                    if (d->v_dons[worst]<250) d->v_dons[worst]++;
-                    d->v_loyal[worst]=3.f*365.f; d->n_lev_don++;
+                    float paid=-econ_region_treasury_add(econ,capreg[s0],-don);
+                    if (paid>0.f){
+                        econ_region_treasury_add(econ,capreg[worst],paid);
+                        d->v_grief[worst]=fmaxf(0.f, d->v_grief[worst]-0.25f/(1.f+(float)d->v_dons[worst]));
+                        if (d->v_dons[worst]<250) d->v_dons[worst]++;
+                        d->v_loyal[worst]=3.f*365.f; d->n_lev_don++;
+                    }
                 } else if ((es==ETHOS_PACIFISTE||es==ETHOS_BUREAUCRATE) && d->contrat[worst]==CONTRAT_SERVAGE){
                     d->contrat[worst]=CONTRAT_PROTECTORAT;                    /* ADOUCIR le contrat */
                     d->v_grief[worst]=fmaxf(0.f,d->v_grief[worst]-0.30f);
@@ -656,6 +657,8 @@ bool diplo_can_fabricate(const World *w, const WorldEconomy *econ, const DiploSt
     if (a<0||a>=w->n_countries||b<0||b>=w->n_countries||a==b) return false;
     if (a>=SCPS_MAX_COUNTRY||b>=SCPS_MAX_COUNTRY) return false;
     if (d->fab_state[a][b]!=FAB_NONE) return false;   /* une intrigue à la fois PAR CIBLE (pas de doublon) */
+    int ca=world_capital_region(w,a), cb=world_capital_region(w,b);
+    if (ca<0 || ca>=econ->n_regions || cb<0 || cb>=econ->n_regions) return false;
     float cost = diplo_fabricate_cost(econ, b);
     return econ_country_gold(econ, a) >= (double)cost;
 }
@@ -689,16 +692,31 @@ int diplo_fab_target_region(const DiploState *d,int a,int b){
 bool diplo_fabricate_cb(World *w, WorldEconomy *econ, DiploState *d, int a, int b, CasusBelli cb){
     if (!diplo_can_fabricate(w, econ, d, a, b)) return false;
     float cost = diplo_fabricate_cost(econ, b);
-    int cr = world_capital_region(w, a);
-    if (cr>=0 && cr<econ->n_regions) econ_region_treasury_add(econ, cr, -cost);  /* le trésor de l'intrigant SORT (inchangé) */
+    /* Le gate est NATIONAL : le débit doit donc l'être aussi. L'ancien code contrôlait
+     * Σ pays mais clampait UNE capitale, puis créditait malgré tout le coût nominal aux
+     * élites adverses. On prélève maintenant exactement sur toutes les régions du pays. */
+    float taken[SCPS_MAX_REG]={0};
+    float paid=0.f;
+    for (int r=0;r<econ->n_regions && paid+1e-3f<cost;r++){
+        if (econ->region[r].owner!=a) continue;
+        float ask=cost-paid;
+        float got=-econ_region_treasury_add(econ,r,-ask);
+        if (got>0.f){ taken[r]=got; paid+=got; }
+    }
+    if (paid+1e-3f<cost){
+        /* Garde atomique contre une vue incohérente : restitution aux régions exactes. */
+        for (int r=0;r<econ->n_regions;r++) if (taken[r]>0.f)
+            econ_region_treasury_add(econ,r,taken[r]);
+        return false;
+    }
     /* MONNAIE M3f — item 4 : « l'or SORT et disparaît » devient un TRANSFERT PUR — la
      * corruption vise la noblesse ADVERSE (brief joueur, tranche explicitement contre le
      * motif « sink volontaire » proposé par M0 §2.10) : l'or de l'intrigue crédite les
      * ÉLITES du pays CIBLE (b), pas son trésor — l'intrigant achète DES gens, pas l'État
      * qu'il vise. */
     int crb = world_capital_region(w, b);
-    if (crb>=0 && crb<econ->n_regions) econ_region_wealth_add(econ, crb, CLASS_ELITE, cost);
-    econ_flux_add(a, FX_INTRIGUE, -cost);   /* I0 : la ligne dédiée intrigue — distincte de l'admin courante */
+    if (crb>=0 && crb<econ->n_regions) econ_region_wealth_add(econ, crb, CLASS_ELITE, paid);
+    econ_flux_add(a, FX_INTRIGUE, -paid);   /* I0 : la ligne dédiée intrigue — distincte de l'admin courante */
     d->fab_state[a][b] = FAB_MATURING;
     d->fab_days [a][b] = tune_f("FAB_MATURE_DAYS", 365.f);
     d->fab_cb   [a][b] = (int8_t)cb;

@@ -201,7 +201,8 @@ bool campaign_merge(Campaign *c, int dst_id, int src_id);
  * RÉEL du pays) vers `target_region` (région CÔTIÈRE). Exige assez de capacité
  * d'emport libre (10 paquets/transport) ; les transports sont RÉSERVÉS jusqu'au
  * débarquement. `navy` mutable (réservation). `src_force` TRANSFÉRÉ (LOT 1, même
- * contrat que campaign_order). false si pas de port / pas de flotte / mer
+ * contrat que campaign_order). Un blocus n'interdit pas le départ : il expose le
+ * convoi à l'interception physique. false si pas de port / pas de flotte / mer
  * infranchissable / force vide (src_force INCHANGÉ alors). */
 struct NavyState;
 bool campaign_order_sea(Campaign *c, const World *w, const WorldEconomy *econ,
@@ -230,11 +231,12 @@ bool campaign_redirect(Campaign *c, const WorldEconomy *econ, const DiploState *
 
 /* M15 — F3 : redirige un corps ACTIF vers `target_region` en repliant sur
  * l'EMBARQUEMENT (mêmes conditions que campaign_order_sea : port ami à SA
- * position actuelle, côte à l'arrivée, transports libres, blocus) — pour le cas
+ * position actuelle, côte à l'arrivée, transports libres) — pour le cas
  * où campaign_redirect_corps refuse (cible injoignable par terre). N'appeler QUE
  * depuis le dispatch des verbes joueur (jamais le chemin partagé avec l'IA) :
  * golden-neutre par construction. false si déjà en mer, brisée, pas de port à
- * soi, pas de côte d'arrivée, pas assez de transports, ou blocus. */
+ * soi, pas de côte d'arrivée ou pas assez de transports. Un blocus expose ensuite
+ * le corps à l'interception ; il ne transforme pas la mer en mur. */
 bool campaign_redirect_corps_sea(Campaign *c, const World *w, const WorldEconomy *econ,
                                  struct NavyState *navy, int id, int target_region);
 

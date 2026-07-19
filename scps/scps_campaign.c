@@ -398,9 +398,6 @@ bool campaign_order_sea(Campaign *c, const World *w, const WorldEconomy *econ,
     if (days<0.f) return false;                                                 /* bassins séparés */
     int need_tr=(int)((packets+9)/10); if (need_tr<1) need_tr=1;                /* 1 transport = 10 paquets */
     if (navy->n[owner].hull[HULL_TRANSPORT]-navy->n[owner].at_sea < need_tr) return false;
-    for (int e=0;e<SCPS_MAX_COUNTRY;e++)                                        /* coques §3 : le BLOCUS tient le port */
-        if (navy->n[e].mission==NAVY_BLOCUS && navy->n[e].mission_target==owner
-            && navy->n[e].hull[HULL_WAR]>0) return false;
     FieldArmy *a=&c->army[owner];
     if (a->active && force_units(&a->force)>0)
         army_merge_into(src_force, &a->force);            /* le reliquat rentre (et VIDE a->force) AVANT l'embarquement */
@@ -421,7 +418,7 @@ bool campaign_order_sea(Campaign *c, const World *w, const WorldEconomy *econ,
 
 /* M15 — F3 : LE RÉ-EMBARQUEMENT. Un corps ACTIF que le redirect terrestre refuse
  * (cible injoignable par terre) peut replier sur la mer, AUX MÊMES CONDITIONS que
- * campaign_order_sea (port ami, côte à l'arrivée, transports libres, blocus) — sauf
+ * campaign_order_sea (port ami, côte à l'arrivée, transports libres) — sauf
  * que le port de départ est la position ACTUELLE du corps (a->loc), pas une
  * capitale : le corps doit déjà TENIR un port pour embarquer, aucune marche
  * automatique vers la côte (la solution la plus simple qui marche — mêmes
@@ -451,9 +448,6 @@ bool campaign_redirect_corps_sea(Campaign *c, const World *w, const WorldEconomy
     long packets=force_units(&a->force);
     int need_tr=(int)((packets+9)/10); if (need_tr<1) need_tr=1;                   /* 1 transport = 10 paquets */
     if (navy->n[a->owner].hull[HULL_TRANSPORT]-navy->n[a->owner].at_sea < need_tr) return false;
-    for (int e=0;e<SCPS_MAX_COUNTRY;e++)                                           /* coques §3 : le BLOCUS tient le port */
-        if (navy->n[e].mission==NAVY_BLOCUS && navy->n[e].mission_target==a->owner
-            && navy->n[e].hull[HULL_WAR]>0) return false;
     a->dest=target_region; a->next=-1; a->phase=FA_EMBARK;
     a->leg_days = 4.f + (float)packets/15.f;             /* charger 1 000 hommes prend des jours */
     a->days_left= a->leg_days;

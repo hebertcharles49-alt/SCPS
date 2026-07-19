@@ -25,12 +25,12 @@ void  credit_init(void);                                       /* RAZ dette + cr
 int   credit_of(int c);                                        /* créancier CITÉ-ÉTAT de c (-1 = aucun) — readout/diplo/save_sane */
 float credit_line(const World *w, const WorldEconomy *e, int c); /* plafond ÉMERGENT (taille éco) — gate de credit_can_spend, inchangé */
 bool  credit_can_spend(const WorldEconomy *e, const World *w, int c, float cost);
-/* Dépense ad-hoc (agency/warhost/navy/ai/decrees…) : débite le trésor local ; si le
- * découvert dépasse ce que la province peut porter, DÉCLENCHE la chaîne d'emprunt
- * (credit_borrow) au lieu de laisser le trésor "monnaie négative". Un résidu peut
- * subsister SEULEMENT à épuisement total (péréquation+classes+cité-état insuffisants) —
- * cas rare, PAS de gameplay de banqueroute (hors scope M3c). */
-void  credit_spend(WorldEconomy *e, const World *w, int c, float cost);
+/* Dépense ad-hoc (agency/ai/decrees…) : transaction TOUT OU RIEN. True seulement si
+ * le coût entier a été débité et, si le trésor national manque, financé par les
+ * classes puis un prêteur étranger. La péréquation interne n'est pas un financement
+ * d'un déficit national. True seulement si le coût entier a été débité et, si
+ * nécessaire, financé par des prêteurs physiques. Aucun effet partiel. */
+bool  credit_spend(WorldEconomy *e, const World *w, int c, float cost);
 /* Intérêt annuel (rentier) + amortissement + rachat de crédit (cités-états/mercantiles
  * rachètent la dette-classes à sa valeur faciale). Refonte M3c : opère sur les DEUX
  * compartiments de dette (to_class/to_cs) au lieu d'un g_creditor implicite. */
@@ -53,8 +53,8 @@ float credit_borrow_local(WorldEconomy *e, int c, float need);
  * priorité, sinon le plus riche éligible) : trésor RÉEL du prêteur, capacité/tick
  * plafonnée. Requiert World* (rôle/éthos du prêteur — hors grain WorldEconomy seul). */
 float credit_borrow_citystate(WorldEconomy *e, const World *w, int c, float need);
-/* La chaîne COMPLÈTE (local PUIS cité-état) — utilisée par credit_spend, qui dispose
- * déjà d'un World*. */
+/* La chaîne COMPLÈTE (péréquation locale PUIS classes PUIS cité-état), réservée aux
+ * besoins comptables locaux ; credit_spend emploie classes+cité-état sans péréquation. */
 float credit_borrow(WorldEconomy *e, const World *w, int c, float need);
 /* Appelée UNE FOIS/mois par scps_sim.c juste après econ_tick (qui a accumulé le besoin
  * résiduel NATIONAL — péréquation+classes déjà tentés en interne, cf.

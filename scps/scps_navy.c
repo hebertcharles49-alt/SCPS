@@ -434,7 +434,7 @@ void navy_course_tick(NavyState *ns, const World *w, WorldEconomy *econ,
                 /* l'Ordre patrouille ses eaux ; en guerre, le BLOCUS du port ennemi.
                  * Dominateur ET Bureaucrate ARMENT des bordées (sans elles, blocus
                  * et interception restaient lettre morte — 0/308 au balayage). */
-                if (e==ETHOS_DOMINATEUR || e==ETHOS_BUREAUCRATE){
+                if (e==ETHOS_ORDRE || e==ETHOS_DOMINATEUR || e==ETHOS_BUREAUCRATE){
                     if (n->build_hull<0 && n->hull[HULL_WAR]<2)
                         navy_order_build(ns,w,econ,c,HULL_WAR);
                     int foe=-1, foe_any=-1;
@@ -602,7 +602,7 @@ void navy_course_tick(NavyState *ns, const World *w, WorldEconomy *econ,
 
 /* ════════════════════════════════════════════════════════════════════════
  * L'INTERCEPTION (coques §3 — le job FINI) : les transports pleins sont des
- * cibles stratégiques. Un convoi hostile en mer (FA_SAIL) croise les
+ * cibles stratégiques. Un convoi hostile qui embarque ou navigue croise les
  * patrouilles d'INTERCEPTION : l'escorte du convoi (les bordées de son
  * pays), c'est tout ce qui le sépare du fond — un transport sans escorte
  * MEURT SEUL. La bataille réutilise les phases ; le convoi coulé NOIE ses
@@ -614,13 +614,23 @@ void navy_interception_tick(NavyState *ns, struct Campaign *camp, const World *w
                             WorldEconomy *econ, struct DiploState *dp, uint32_t *rng){
     for (int i=0;i<CAMPAIGN_ARMY_CAP;i++){
         FieldArmy *a=&camp->army[i];
-        if (!a->active || a->phase!=FA_SAIL || a->intercept_done) continue;
+        /* L'embarquement doit être exposé lui aussi : une traversée courte peut
+         * passer EMBARK→SAIL→LAND à l'intérieur d'un unique tick mensuel et ne
+         * serait sinon jamais observable par la marine. */
+        if (!a->active || (a->phase!=FA_EMBARK && a->phase!=FA_SAIL) || a->intercept_done) continue;
         int owner=a->owner;
         if (owner<0||owner>=SCPS_MAX_COUNTRY) continue;
         for (int e=0;e<w->n_countries && e<SCPS_MAX_COUNTRY;e++){
             if (e==owner) continue;
             Navy *pat=&ns->n[e];
-            if (pat->mission!=NAVY_INTERCEPTION || pat->hull[HULL_WAR]<1) continue;
+            /* Une bordée en BLOCUS est déjà devant les ports de SA cible : elle
+             * doit chasser les convois de ce pays au même titre qu'une patrouille
+             * d'interception. Avant ce raccord, la doctrine Dominateur/Bureaucrate
+             * choisissait presque toujours BLOCUS quand l'ennemi avait un port,
+             * puis devenait paradoxalement aveugle à ses transports. */
+            bool hunting = pat->mission==NAVY_INTERCEPTION
+                        || (pat->mission==NAVY_BLOCUS && pat->mission_target==owner);
+            if (!hunting || pat->hull[HULL_WAR]<1) continue;
             if (diplo_status(dp,e,owner)!=DIPLO_WAR) continue;
             if (crs_f(rng)>0.45f) continue;                   /* la mer est grande : on ne trouve pas toujours */
             a->intercept_done=true;                            /* une chasse par traversée */
@@ -642,7 +652,10 @@ void navy_interception_tick(NavyState *ns, struct Campaign *camp, const World *w
             }
             if (v>0){                                          /* le convoi COULE */
                 long pk=0;
-                { ArmyComposition ac=campaign_composition(camp,owner); pk=ac.total; }
+                /* `i` est l'identité du CORPS intercepté. Passer `owner` relisait
+                 * l'ancien corps principal du pays et faussait les noyés dès qu'un
+                 * détachement secondaire prenait la mer. */
+                { ArmyComposition ac=campaign_corps_composition(camp,i); pk=ac.total; }
                 int tr=a->sail_transports;
                 esc->hull[HULL_TRANSPORT]-=tr; if (esc->hull[HULL_TRANSPORT]<0) esc->hull[HULL_TRANSPORT]=0;
                 esc->at_sea-=tr; if (esc->at_sea<0) esc->at_sea=0;

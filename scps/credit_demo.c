@@ -86,8 +86,9 @@ int main(void){
      * négatif, un passif RÉEL est enregistré, et le PRÊTEUR voit son trésor baisser. */
     printf("\n── 2. Dépenser au-delà du trésor local ──\n");
     double cs_gold_before = e->prov[1].treasury;
-    credit_spend(e,w,0,400.f);
+    bool spent2=credit_spend(e,w,0,400.f);
     econ_aggregate_regions(e);
+    ok("la dépense est validée EN ENTIER", spent2);
     ok("le trésor net NE passe PLUS négatif (dette RÉELLE, pas imprimée)", econ_country_gold(e,0) >= -1e-3);
     ok("un créancier solvable est assigné (la cité-état)", credit_of(0)==1);
     ok("un passif RÉEL est enregistré (dette-cité-état > 0)", credit_debt_citystate(0) > 0.f);
@@ -117,12 +118,17 @@ int main(void){
     econ_aggregate_regions(e);
     ok("le principal DIMINUE depuis un trésor gras", credit_debt_total(0) < debt_before2);
 
-    /* — 5. plafond sans prêteur solvable : la chaîne échoue, le trésor reste ce qu'il
-     * peut payer localement (jamais négatif au-delà de ce qu'aucune source ne couvre) — */
+    /* — 5. plafond sans prêteur solvable : l'action entière est refusée, sans paiement
+     * partiel ni effet gratuit chez l'appelant. — */
     printf("\n── 5. Aucun prêteur solvable ──\n");
     credit_init(); setup(e, 100.f, 0.f);           /* cité-état INSOLVABLE (trésor 0) */
     ok("au-delà de la ligne : toujours REFUSÉ (le plafond émerge, sans prêteur)", !credit_can_spend(e,w,0,700.f));
-    credit_spend(e,w,0,400.f);
+    ok("une dépense sous la ligne THÉORIQUE mais sans fonds physiques est REFUSÉE au préflight",
+       !credit_can_spend(e,w,0,400.f));
+    float cash5=e->prov[0].treasury;
+    bool spent5=credit_spend(e,w,0,400.f);
+    ok("la transaction non finançable retourne false", !spent5);
+    ok("le refus est ATOMIQUE : le trésor reste inchangé", fabsf(e->prov[0].treasury-cash5)<0.001f);
     ok("aucun prêteur solvable => aucun créancier assigné", credit_of(0) < 0);
 
     /* — 6. save/load préserve la dette — */
@@ -425,18 +431,36 @@ int main(void){
         ok("B2(b) : la 2e dépense reflète le solde À JOUR (pas la vue périmée d'avant la 1re)",
            !second_ok);
 
-        /* B2(b) — CHAÎNE D'EMPRUNT ÉPUISÉE : un besoin qui dépasse TOUTE la chaîne
-         * (péréquation+classes+cité-état, elle-même pauvre ici) ne laisse PLUS un résidu
-         * en dette fantôme — la dépense se RÉALISE PARTIELLEMENT (choix documenté
-         * TROUVAILLES M14 : le pays paie ce qu'il PEUT lever, jamais moins que zéro). */
+        /* B2(b) — CHAÎNE D'EMPRUNT ÉPUISÉE : aucun paiement partiel. */
         setup(e, 50.f, 50.f);   /* cité-état PAUVRE aussi : la chaîne s'épuise tout de suite */
         credit_init();
-        credit_spend(e,w,0,100000.f);   /* bien au-delà de TOUTE capacité de la chaîne */
+        bool huge_spent=credit_spend(e,w,0,100000.f);   /* bien au-delà de TOUTE capacité de la chaîne */
         double gold_final = econ_country_gold(e,0);
-        printf("   dépense DÉMESURÉE (100000) contre une chaîne épuisée : or national final = %.2f\n",
-               gold_final);
-        ok("B2(b) : chaîne d'emprunt épuisée ⇒ le pays ne finit JAMAIS avec un trésor négatif",
-           gold_final >= -0.5);
+        printf("   dépense DÉMESURÉE (100000) refusée : or national final = %.2f\n", gold_final);
+        ok("B2(b) : chaîne épuisée ⇒ transaction REFUSÉE", !huge_spent);
+        ok("B2(b) : le refus ne prélève PAS même les 50 pièces disponibles",
+           fabs(gold_final-50.0)<0.01);
+
+        /* Une sœur riche ne finance pas un déficit NET : la péréquation déplace l'or
+         * dans le pays, elle n'en ajoute pas. Ancien credit_spend la comptait pourtant
+         * comme couverture et laissait le total national négatif. */
+        memset(e,0,sizeof(*e)); credit_init();
+        w->n_provinces=3; e->n_prov=3; e->n_regions=3;
+        w->province[0].region=0; w->province[1].region=1; w->province[2].region=2;
+        e->prov[0].owner=0; e->prov[0].region=0; e->prov[0].active=e->prov[0].colonized=true; e->prov[0].treasury=100.f;
+        e->prov[1].owner=0; e->prov[1].region=1; e->prov[1].active=e->prov[1].colonized=true; e->prov[1].treasury=1000.f;
+        e->prov[2].owner=1; e->prov[2].region=2; e->prov[2].active=e->prov[2].colonized=true; e->prov[2].treasury=0.f;
+        e->prov[0].strata[CLASS_LABORER].pop=4000.f;
+        e->region_rep_prov[0]=0; e->region_rep_prov[1]=1; e->region_rep_prov[2]=2;
+        econ_aggregate_regions(e);
+        econ_flux_add(0,FX_TAX,3000.f); econ_flux_year_capture();
+        ok("B2(c) : une sœur riche ne rend PAS finançable une dépense supérieure à l'or NATIONAL",
+           !credit_can_spend(e,w,0,1400.f));
+        bool perq_spent=credit_spend(e,w,0,1400.f);
+        ok("B2(c) : la fausse couverture par péréquation est refusée", !perq_spent);
+        ok("B2(c) : refus atomique, les deux trésors provinciaux sont inchangés",
+           fabsf(e->prov[0].treasury-100.f)<0.01f && fabsf(e->prov[1].treasury-1000.f)<0.01f);
+        w->n_provinces=2;
     }
 
     /* ── 15. B3 : L'AMORTISSEMENT SUR DETTE PÉRIMÉE — conservation Σ reçus == Σ payés ── */
@@ -578,6 +602,9 @@ int main(void){
         tune_set("INCOME_TAX", 0.f);
         credit_init();
         float borrowed = credit_borrow_class(e, 0, CLASS_BOURGEOIS, 1000.f);   /* 100% BOURGEOIS */
+        ok("B5/A2 : le débit de richesse reste cohérent prov==region SANS ré-agrégation",
+           fabsf(e->prov[0].strata[CLASS_BOURGEOIS].wealth
+                -e->region[0].strata[CLASS_BOURGEOIS].wealth)<0.01f);
         econ_aggregate_regions(e);
         printf("   emprunt 100%% bourgeois=%.1f → ventilation : élite=%.1f, bourgeois=%.1f\n",
                (double)borrowed, (double)credit_debt_elite(0), (double)credit_debt_bourgeois(0));
@@ -590,6 +617,9 @@ int main(void){
         credit_year_tick(e, wl, w);   /* échéance + amortissement de l'année */
         float elite_wealth_after = e->prov[0].strata[CLASS_ELITE].wealth;
         float bourg_wealth_after = e->prov[0].strata[CLASS_BOURGEOIS].wealth;
+        ok("B5/A2 : les remboursements gardent aussi la vue régionale à jour immédiatement",
+           fabsf(e->prov[0].strata[CLASS_BOURGEOIS].wealth
+                -e->region[0].strata[CLASS_BOURGEOIS].wealth)<0.01f);
         printf("   après échéance+amortissement : élite %.2f→%.2f · bourgeois %.2f→%.2f\n",
                (double)elite_wealth_before, (double)elite_wealth_after,
                (double)bourg_wealth_before, (double)bourg_wealth_after);

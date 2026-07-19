@@ -221,15 +221,26 @@ void trade_tick(WorldEconomy *e, TradeNetwork *net, const uint8_t *link_blocked)
 
             /* Volume limité par la capacité du lien et le surplus exportateur. */
             float vol=fminf(surplus, lk->capacity);
-            /* Un importateur ne prend pas plus qu'il ne peut payer. */
+            /* Un importateur ne prend pas plus qu'il ne peut payer. La richesse
+             * disponible est celle de SES classes vivantes. L'ancien code testait
+             * par erreur la population de l'EXPORTATEUR, puis créditait le vendeur
+             * avant de savoir si l'acheteur pouvait réellement payer : une différence
+             * de composition sociale suffisait à créer de l'or. */
             float pop_imp=0.f;
-            for(int c=0;c<CLASS_COUNT;c++) pop_imp+=imp->strata[c].pop;
+            float payer_wealth=0.f;
+            for(int c=0;c<CLASS_COUNT;c++){
+                float pop=imp->strata[c].pop;
+                if(pop>0.f){ pop_imp+=pop; payer_wealth+=fmaxf(0.f,imp->strata[c].wealth); }
+            }
             float demand_est=pop_imp*0.01f;   /* estimation grossière */
             vol=fminf(vol,demand_est);
+            float loss=lk->transport_cost*0.10f;
+            float unit_cost=(1.f-loss)*imp->price[r];
+            if (unit_cost<=EPS || payer_wealth<=EPS) continue;
+            vol=fminf(vol,payer_wealth/unit_cost);
             if (vol<=EPS) continue;
 
             /* Transport : petite perte de fret. */
-            float loss=lk->transport_cost*0.10f;
             /* RE-KEY : le bien bouge PROVINCE-persistant (écrire la seule vue region[]
              * serait effacé à la clôture) — on livre le RÉEL pris à l'exportateur. */
             vol = -econ_region_stock_add(e, exporter, r, -vol);
@@ -246,25 +257,27 @@ void trade_tick(WorldEconomy *e, TradeNetwork *net, const uint8_t *link_blocked)
              * plein de l'importateur — ancienne formule (perte de prix complète
              * côté vendeur, perte de quantité à 10 % côté acheteur) créait un
              * trou noir systématique à chaque transaction. */
-            float sale_price=imp->price[r]*(1.f-loss);
-            float revenue=vol*sale_price;
-            /* Les bourgeois captent le profit commercial (RE-KEY : province + vue). */
-            trade_wealth_add(e, exporter, CLASS_BOURGEOIS, revenue);
-            /* L'importateur paie. */
+            /* L'importateur paie D'ABORD. Le débit est réparti entre SES classes
+             * vivantes au prorata de leur richesse ; la dernière absorbe le reliquat
+             * flottant. Comme `revenue <= payer_wealth`, aucun clamp ne peut rendre le
+             * paiement partiel. */
             float cost_imp=received*imp->price[r];
-            /* Le coût est réparti entre les strates au prorata du besoin. */
-            float need_tot=0.f;
+            float paid=0.f;
+            int last=-1;
+            for(int c=0;c<CLASS_COUNT;c++)
+                if(imp->strata[c].pop>0.f && imp->strata[c].wealth>EPS) last=c;
             for(int c=0;c<CLASS_COUNT;c++){
-                float pop=exp->strata[c].pop;
-                if(pop>0.f) need_tot+=imp->strata[c].wealth;
+                float wealth=fmaxf(0.f,imp->strata[c].wealth);
+                if(imp->strata[c].pop<=0.f || wealth<=EPS) continue;
+                float pay=(c==last)?(cost_imp-paid):(cost_imp*(wealth/payer_wealth));
+                if(pay>wealth) pay=wealth;
+                if(pay<0.f) pay=0.f;
+                trade_wealth_add(e, importer, c, -pay);
+                paid+=pay;
             }
-            if(need_tot>EPS){
-                for(int c=0;c<CLASS_COUNT;c++){
-                    float share=(imp->strata[c].wealth/need_tot);
-                    float pay=cost_imp*share;
-                    trade_wealth_add(e, importer, c, -pay);   /* RE-KEY : province + vue (clampé ≥0) */
-                }
-            }
+            /* Le vendeur ne reçoit JAMAIS plus que ce qui a physiquement quitté
+             * l'acheteur. `paid` et `revenue` ne diffèrent que d'un éventuel arrondi. */
+            trade_wealth_add(e, exporter, CLASS_BOURGEOIS, paid);
 
             /* Convergence de prix : 20% vers la moyenne après le flux. */
             float mid=(pa+pb)*0.5f;
@@ -278,7 +291,7 @@ void trade_tick(WorldEconomy *e, TradeNetwork *net, const uint8_t *link_blocked)
                 fl->rb=(int16_t)(diff>0?ra:rb);   /* importateur */
                 fl->good=(Resource)r;
                 fl->volume=vol;
-                fl->value=vol*fmaxf(pa,pb);
+                fl->value=paid;
             }
         }
     }

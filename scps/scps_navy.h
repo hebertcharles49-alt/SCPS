@@ -131,9 +131,12 @@ extern long g_navy_raid_slaves;
 void navy_mark_raided(WorldEconomy *econ, int region);
 
 /* L'INTERCEPTION (coques §3, le job FINI) : les navires de combat en mission
- * INTERCEPTION forcent la bataille aux CONVOIS hostiles qui traversent — un
- * transport sans escorte est une proie ; l'armée coulée SOMBRE (paquets noyés).
- * À appeler au pas mensuel, après la course. */
+ * INTERCEPTION, ainsi que le BLOCUS devant les ports de sa cible, forcent la
+ * bataille aux CONVOIS hostiles qui embarquent ou traversent — un transport sans
+ * escorte est une proie ; l'armée coulée SOMBRE (paquets noyés). Le blocus expose
+ * donc physiquement le départ, mais ne l'interdit jamais par une garde booléenne.
+ * À appeler au pas mensuel DE CAMPAGNE, après les ordres et avant campaign_tick :
+ * c'est l'intervalle où le convoi est encore observable en FA_EMBARK/FA_SAIL. */
 struct Campaign;
 void navy_interception_tick(NavyState *ns, struct Campaign *camp, const World *w,
                             WorldEconomy *econ, struct DiploState *dp, uint32_t *rng);

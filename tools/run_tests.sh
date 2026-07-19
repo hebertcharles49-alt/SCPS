@@ -15,6 +15,9 @@ set -u
 cd "$(dirname "$0")/.."
 
 mode="${1:-full}"
+BUILD_LOG_DIR="${TMPDIR:-build/tmp}"
+mkdir -p "$BUILD_LOG_DIR"
+BUILD_LOG="$BUILD_LOG_DIR/k3_build.log"
 
 # Le gardien COMPLET : tout banc auto-vérifiant non-SDL. audit_eco & lang_demo
 # sont désormais INCLUS — les bornes de l'arc « une économie » et le lexique du
@@ -28,7 +31,7 @@ BENCHES_FULL=(
   econ_production_demo missions_demo ai_demo diplo_demo warhost_demo
   events_demo structural_demo forks_demo prosperity_demo credit_demo cap_demo
   endgame_demo audit_eco lang_demo scps_api_demo culture_demo navy_demo
-  religion_demo
+  religion_demo trade_demo
 )
 
 # Le sous-ensemble RAPIDE : la colonne vertébrale (worldgen/readout/éco/IA),
@@ -58,7 +61,7 @@ red_list="" build_list="" timeout_list=""
 printf "%-26s %s\n" "BANC" "RÉSULTAT"
 printf '%.0s-' {1..50}; echo
 for b in "${BENCHES[@]}"; do
-  if ! make "$b" >/tmp/k3_build.log 2>&1; then
+  if ! make "$b" >"$BUILD_LOG" 2>&1; then
     printf "%-26s \033[31mBUILD ÉCHEC\033[0m\n" "$b"
     buildfail=$((buildfail+1)); build_list="$build_list $b"; continue
   fi

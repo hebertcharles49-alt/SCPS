@@ -375,7 +375,7 @@ bool agency_build_acct(AgencyState *a, WorldEconomy *econ, const World *w, int r
      * (au-delà du trésor → dette, créancier assigné). Bloque seulement au-delà de la
      * ligne de crédit ; sinon le chantier passe et l'or peut filer négatif. */
     if (!credit_can_spend(econ, w, owner, gold)){ g_edi_nogold[e]++; return false; }
-    credit_spend(econ, w, owner, gold);
+    if (!credit_spend(econ, w, owner, gold)){ g_edi_nogold[e]++; return false; }
     if (owner>=0) econ_flux_add(owner, FX_BUILD, -gold);   /* I0 : la ligne chantiers (le trou de l'instrument) */
     /* I6/#5 — LE PÉAGE : la marge au-dessus du nu (transport + double taxe mondiale)
      * versée à la cité-état hôte (le hub le plus proche) — transfert, pas destruction :

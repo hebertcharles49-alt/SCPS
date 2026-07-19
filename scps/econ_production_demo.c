@@ -86,6 +86,31 @@ int main(int argc, char **argv){
     world_generate(w,&p); econ_init(e,w); gen_population(w,e);
     if (e->n_regions<3){ fprintf(stderr,"monde trop petit\n"); return 1; }
 
+    /* Régression province → agrégat : raw_boost vit sur ProvinceEconomy ;
+     * RegionEconomy n'en est que le max calculé. L'ancien écrivain IA posait le
+     * palier sur le miroir, donc l'agrégation suivante le faisait disparaître. */
+    printf("\n── 0. Le palier d'exploitation provincial survit à l'agrégation ──\n");
+    {
+        int probe_r=0, probe_p=-1;
+        uint8_t before=0;
+        for (int p0=0;p0<e->n_prov && p0<SCPS_MAX_PROV;p0++) if (e->prov[p0].region==probe_r){
+            if (probe_p<0 || e->prov[p0].raw_boost[RES_WOOD]>=before){
+                probe_p=p0; before=e->prov[p0].raw_boost[RES_WOOD];
+            }
+        }
+        bool room=(probe_p>=0 && before<UINT8_MAX);
+        uint8_t raised=room?(uint8_t)(before+1u):before;
+        if (room) e->prov[probe_p].raw_boost[RES_WOOD]=raised;
+        econ_aggregate_regions(e);
+        bool once=room && e->region[probe_r].raw_boost[RES_WOOD]==raised;
+        econ_aggregate_regions(e);
+        bool twice=room && e->region[probe_r].raw_boost[RES_WOOD]==raised;
+        ok("le palier provincial est projeté dans la région", once);
+        ok("une seconde agrégation ne fait pas disparaître le palier", twice);
+        if (room) e->prov[probe_p].raw_boost[RES_WOOD]=before;
+        econ_aggregate_regions(e);   /* restitue la fixture avant les mesures de production */
+    }
+
     /* ═══ 1. La chaîne réelle (DIRECTE) ═════════════════════════════════ */
     printf("\n── 1. Atelier d'outillage (fer + bois → outils, DIRECT — plus de métal) ──\n");
     /* Région 1 : l'atelier sort des OUTILS directement du fer + bois. */

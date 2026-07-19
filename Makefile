@@ -170,6 +170,11 @@ ECON_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(O
 econ_demo: $(ECON_DEMO_OBJS)
 	$(CC) $(ECON_DEMO_OBJS) -o $@ -lm
 
+# ---- Commerce régional : règlement atomique biens ↔ monnaie -------------
+TRADE_DEMO_OBJS := $(OBJDIR)/scps_scps_trade.o $(OBJDIR)/scps_trade_demo.o
+trade_demo: $(TRADE_DEMO_OBJS)
+	$(CC) $(TRADE_DEMO_OBJS) -o $@ -lm
+
 ECON_TAX_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_render.o \
                   $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_scps_decrees.o $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_missions.o $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_scps_intertrade.o $(OBJDIR)/scps_scps_statecraft.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_legitimacy.o $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_lang.o $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_scps_trade.o \
                   $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_heritage.o $(OBJDIR)/scps_econ_tax_demo.o
@@ -460,7 +465,8 @@ golden-update: chronicle
 # hors-bornes) ; (2) fuzz d'octets du fichier → game_load ne plante JAMAIS.
 # HORS `make test` (~50 s ; idéal sous un build ASan).
 fuzz-save: scps_viewer
-	@out=$$(./scps_viewer --fuzztest 9 2>&1); rc=$$?; \
+	@mkdir -p build/tmp; \
+	 out=$$(TMP="$(CURDIR)/build/tmp" TEMP="$(CURDIR)/build/tmp" TMPDIR="$(CURDIR)/build/tmp" ./scps_viewer --fuzztest 9 2>&1); rc=$$?; \
 	 printf '%s\n' "$$out" | grep -E "BILAN|✗|flippés"; \
 	 if [ $$rc -eq 0 ]; then echo "fuzz-save OK"; else echo "fuzz-save ÉCHEC (rc=$$rc)"; exit 1; fi
 .PHONY: fuzz-save
@@ -474,8 +480,10 @@ fuzz-save: scps_viewer
 # (un objet, pas une source) et miniz.h reste introuvable faute de -Ithird_party.
 CHRONICLE_SRCS := $(patsubst $(OBJDIR)/scps_%.o,scps/%.c,\
                     $(filter-out $(OBJDIR)/tp_miniz.o,$(CHRONICLE_OBJS)))
+SAN_CC ?= $(shell if [ -x /clang64/bin/clang ]; then echo /clang64/bin/clang; \
+                  elif command -v clang >/dev/null 2>&1; then echo clang; else echo $(CC); fi)
 asan: $(CHRONICLE_SRCS)
-	$(CC) -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer \
+	$(SAN_CC) -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer -pthread \
 	      -Wall -Wextra -std=c99 -Ithird_party $(MINIZ_FLAGS) \
 	      $(CHRONICLE_SRCS) third_party/miniz.c -o chronicle_asan -lm
 
@@ -626,7 +634,7 @@ BENCH_BINS := core_demo monde_reel readout_demo heritage_demo tech_demo \
   campaign_demo factions_demo econ_tax_demo econ_culture_demo econ_arcane_demo \
   econ_production_demo missions_demo ai_demo diplo_demo warhost_demo \
   events_demo structural_demo forks_demo prosperity_demo credit_demo cap_demo \
-  endgame_demo audit_eco lang_demo scps_api_demo econ_demo culture_demo navy_demo
+  endgame_demo audit_eco lang_demo scps_api_demo econ_demo culture_demo navy_demo trade_demo
 TOOL_BINS := scps_viewer scps_dump scps_batch chronicle chronicle_asan econ_scan
 
 clean:
@@ -689,6 +697,31 @@ membrane-check:
 	echo "membrane-check OK : $(words $(MEMBRANE_FILES)) fichiers renderer — ni scps_core.h ni symbole-cœur (cloison tenue)"
 .PHONY: membrane-check
 
+# ---- region-write-check : la région économique est une VUE, pas une vérité ----
+# Champs persistants dont la source de vérité vit sur ProvinceEconomy. On exclut
+# explicitement les bancs (fixtures) et on autorise seulement :
+#   - scps_econ.c / scps_credit.c : agrégation et transaction atomique documentée ;
+#   - les seuls couples fichier+champ de bootstrap/miroir immédiat ci-dessous.
+# Toute nouvelle écriture de production ailleurs doit passer par prov[]/un helper.
+REGION_WRITE_ALLOW_RE := ^scps/scps_econ\.c:|^scps/scps_credit\.c:|^scps/scps_demography\.c:.*\.culture_id|^scps/scps_world\.c:.*\.culture|^scps/scps_diplo\.c:.*\.(culture|pop)
+REGION_PERSIST_FIELDS := culture|culture_id|pop|build|edi_built|raw_cap|raw_boost|stock|treasury|strata|gdp|cap_pop|coercion|arcane_charge|faust_charge|faust_consumed|mil_stock|revolt_scar|annex_scar|bankruptcy_scar|owner|colonized
+region-write-check:
+	@pattern='(?:->|\.)region\s*\[[^]]+\]\s*\.\s*($(REGION_PERSIST_FIELDS))(?:\s*\[[^]]+\])?(?:\s*\.[A-Za-z_][A-Za-z0-9_]*)?\s*(?:\+\+|--|[+*/-]=|(?<![=!<>])=(?!=))'; \
+	if command -v rg >/dev/null 2>&1; then \
+	  hits=$$(rg --pcre2 -n --glob '*.c' --glob '!**/*_demo.c' "$$pattern" scps || true); \
+	else \
+	  hits=$$(grep -Prn --include='*.c' --exclude='*_demo.c' "$$pattern" scps || true); \
+	fi; \
+	hits=$$(printf '%s\n' "$$hits" | grep -v 'REGION_MIRROR_OK' | grep -vE '$(REGION_WRITE_ALLOW_RE)' || true); \
+	if [ -n "$$hits" ]; then \
+	  echo "region-write-check ÉCHEC : écriture directe dans un miroir RegionEconomy persistant"; \
+	  printf '%s\n' "$$hits"; \
+	  echo "Écrire la vérité ProvinceEconomy, ou documenter un couple fichier+champ dans REGION_WRITE_ALLOW_RE."; \
+	  exit 1; \
+	fi; \
+	echo "region-write-check OK : aucun écrivain de production hors allowlist"
+.PHONY: region-write-check
+
 # ---- calibrate-smoke : le pilote de calibrage (Arc J3) tourne de bout en bout ----
 calibrate-smoke: chronicle
 	@python3 tools/calibrate.py --param ENTRETIEN_DIV:300:500:200 \
@@ -700,14 +733,14 @@ calibrate-smoke: chronicle
 # membrane-check ET lang-check sont en DÉPENDANCE : les deux cliquets (cloison
 # readout→renderer, ratchet de localisation) sont gardés AVANT les bancs, et
 # leur rc≠0 stoppe `make test` (propagation native).
-test: membrane-check lang-check
+test: membrane-check lang-check region-write-check
 	@BANC_TIMEOUT=240 bash tools/run_tests.sh full   # scps_api_demo ≈132 s (170 assertions × sim pluriannuelle) > 120 s défaut
 .PHONY: test
 
 # ---- make smoke : feedback RAPIDE (la colonne vertébrale en quelques secondes) ----
 # Les deux cliquets + un sous-ensemble de bancs (worldgen/éco/IA + bornes audit &
 # langue). Pour la boucle serrée du dev ; le gardien COMPLET reste `make test`.
-smoke: membrane-check lang-check
+smoke: membrane-check lang-check region-write-check
 	@bash tools/run_tests.sh smoke
 .PHONY: smoke
 
@@ -716,6 +749,6 @@ smoke: membrane-check lang-check
 # sur un run court. Tout ce qui doit être vert avant de toucher au cœur.
 full-test: test determinism golden asan
 	@echo "── full-test : ASan+UBSan sur un run court (doit rester muet) ──"
-	@./chronicle_asan 7 1 20 6 12 >/dev/null
+	@PATH=/clang64/bin:$$PATH ./chronicle_asan 7 1 20 6 12 >/dev/null
 	@echo "full-test OK : bancs + déterminisme + ASan/UBSan tous verts"
 .PHONY: full-test

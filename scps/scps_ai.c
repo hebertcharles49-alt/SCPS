@@ -1070,7 +1070,8 @@ static void ai_build_manufacture(AiActor *a, const World *w, WorldEconomy *econ)
         float cost=tune_f("MANUF_BUILD_COST",50.f)*(float)bld_min_tier(b)*econ_world_ipm(econ);
         if (!credit_can_spend(econ, w, a->cid, cost)) continue;   /* bloque seulement au-delà de la ligne de crédit (dette) */
         if (econ_build_manufacture(econ, best_pid, b)){
-            credit_spend(econ, w, a->cid, cost); econ_flux_add(a->cid, FX_SOLDE, -cost);   /* débit AU SUCCÈS — pas d'or perdu si la pose échoue */
+            if (!credit_spend(econ, w, a->cid, cost)) return;
+            econ_flux_add(a->cid, FX_SOLDE, -cost);   /* débit AU SUCCÈS — pas d'or perdu si la pose échoue */
             /* MONNAIE M3b-v2 — item 5 : construction de manufacture, « aligne sur le chantier
              * d'édifice » — pas de table de matériaux pour les manufactures (seule la
              * PRODUCTION consomme un intrant, jamais la POSE) → tout le coût devient gages
@@ -1111,7 +1112,8 @@ static bool ai_pay_and_build(AiActor *a, const World *w, WorldEconomy *econ, int
      * ici (le module ne le fait plus lui-même), byte-identique à l'ancien comportement. */
     int pid=econ_region_rep_province(econ, region);
     if (pid<0 || !econ_build_manufacture(econ, pid, b)) return false;
-    credit_spend(econ, w, a->cid, cost); econ_flux_add(a->cid, FX_SOLDE, -cost);   /* débit AU SUCCÈS */
+    if (!credit_spend(econ, w, a->cid, cost)) return false;
+    econ_flux_add(a->cid, FX_SOLDE, -cost);   /* débit AU SUCCÈS */
     /* item 5 : chantier de manufacture → gages (mêmes motifs que ai_build_manufacture). */
     econ->prov[pid].strata[CLASS_LABORER].wealth += cost;
     a->stats.builds_other++;
@@ -1226,7 +1228,8 @@ static void ai_build_civmanuf(AiActor *a, const World *w, WorldEconomy *econ, Re
     /* RE-KEY PROVINCE : résolution EXPLICITE région→pid (econ_build_manufacture prend un PID). */
     int br_pid=econ_region_rep_province(econ, br);
     if (br_pid>=0 && econ_build_manufacture(econ, br_pid, bb)){
-        credit_spend(econ, w, a->cid, cost); econ_flux_add(a->cid, FX_SOLDE, -cost);   /* débit AU SUCCÈS */
+        if (!credit_spend(econ, w, a->cid, cost)) return;
+        econ_flux_add(a->cid, FX_SOLDE, -cost);   /* débit AU SUCCÈS */
         /* item 5 : la pose civile (le brûleur n°1 de M0) → gages (idem ai_build_manufacture). */
         econ->prov[br_pid].strata[CLASS_LABORER].wealth += cost;
         a->stats.builds_other++;
@@ -1303,18 +1306,20 @@ static bool ai_build_raw_boost(AiActor *a, const World *w, WorldEconomy *econ, c
     float payback  = tune_f("RAW_BOOST_PAYBACK", 8.f);
     float per_tier = tune_f("RAW_BOOST_PER_TIER", 0.05f);
     float cost     = tune_f("RAW_BOOST_COST", 40.f) * econ_world_ipm(econ);
-    Resource pick=RES_NONE; float urgent=1e30f; int pick_region=-1;
+    Resource pick=RES_NONE; float urgent=1e30f; int pick_region=-1, pick_pid=-1;
     for (int r=1;r<RES_PROD_FIRST;r++){
         bool struct_trio = (r==RES_WOOD || r==RES_CLAY || r==RES_STONE) && fc->struct_deficit[r];
         if (fc->runway[r] >= safety && !struct_trio) continue;   /* (1) ni pénurie de runway, ni déficit STRUCTUREL du bâti */
-        int br=-1; float bcap=0.f;
-        for (int rr=0;rr<econ->n_regions;rr++){
-            RegionEconomy *re=&econ->region[rr];
-            if (re->owner!=a->cid || !re->colonized) continue;
-            if (re->raw_cap[r] <= 0.f || re->raw_boost[r] >= max_tier) continue;  /* brute ABSENTE ou au plafond */
-            if (re->raw_cap[r] > bcap){ bcap=re->raw_cap[r]; br=rr; }              /* la province la + riche */
+        int br=-1, bp=-1; float bcap=0.f;
+        for (int p=0;p<econ->n_prov && p<SCPS_MAX_PROV;p++){
+            ProvinceEconomy *pe=&econ->prov[p];
+            int rr=pe->region;
+            if (!pe->active || pe->owner!=a->cid || !pe->colonized) continue;
+            if (rr<0 || rr>=econ->n_regions) continue;
+            if (pe->raw_cap[r] <= 0.f || pe->raw_boost[r] >= max_tier) continue;  /* brute ABSENTE ou au plafond */
+            if (pe->raw_cap[r] > bcap){ bcap=pe->raw_cap[r]; br=rr; bp=p; }       /* la province la + riche */
         }
-        if (br<0) continue;
+        if (br<0 || bp<0) continue;
         /* (2) ROI : +5% de l'extraction ANNUELLE (supply×12) × prix RÉGIONAL (rareté incluse). NB
          * mesuré (E5) : sur le trio bâti, ce gate REJETTE ~73% des tentatives (matériaux bon
          * marché → val_year souvent <2 pour un cost≈40) — c'est la MÊME mécanique que l'existant
@@ -1329,14 +1334,18 @@ static bool ai_build_raw_boost(AiActor *a, const World *w, WorldEconomy *econ, c
          * réel (qui est toujours ≥0) pour gagner le argmin, sans écraser l'ordre ENTRE
          * plusieurs déficits structurels (le plus urgent des trois l'emporte quand même). */
         float u = struct_trio ? (fc->runway[r] - 1.0e6f) : fc->runway[r];
-        if (u < urgent){ urgent=u; pick=(Resource)r; pick_region=br; }
+        if (u < urgent){ urgent=u; pick=(Resource)r; pick_region=br; pick_pid=bp; }
     }
-    if (pick==RES_NONE || pick_region<0) return false;
+    if (pick==RES_NONE || pick_region<0 || pick_pid<0) return false;
     if (!credit_can_spend(econ, w, a->cid, cost)) return false;
-    credit_spend(econ, w, a->cid, cost); econ_flux_add(a->cid, FX_SOLDE, -cost);
+    if (!credit_spend(econ, w, a->cid, cost)) return false;
+    econ_flux_add(a->cid, FX_SOLDE, -cost);
     /* item 5 : palier d'exploitation → gages (les mineurs/bâtisseurs de la région ciblée). */
     econ_region_wealth_add(econ, pick_region, CLASS_LABORER, cost);
-    econ->region[pick_region].raw_boost[pick]++;              /* +1 palier d'EXPLOITATION (boost d'extraction) */
+    /* RE-KEY PROVINCE : raw_boost VIT sur ProvinceEconomy. region[] n'est que le
+     * max agrégé des provinces et sera reconstruit au prochain econ_tick ; y écrire
+     * directement faisait disparaître le palier à l'agrégation suivante. */
+    econ->prov[pick_pid].raw_boost[pick]++;                   /* +1 palier d'EXPLOITATION (boost d'extraction) */
     a->stats.builds_other++;
     return true;
 }
@@ -1495,7 +1504,8 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
                      * roster léger (Piquier/Lancier/Épéiste/Cav légère/Lame franche/Cav de raid,
                      * cf. unit_res_arm, scps_army.c:109) : c'est déjà LE bon bien, pas besoin
                      * d'en changer, seulement de le déposer pour de vrai. */
-                    credit_spend(econ, w, a->cid, cost); econ_region_stock_add(econ, hr, RES_ARMS_LIGHT, 20.f);
+                    if (!credit_spend(econ, w, a->cid, cost)) return;
+                    econ_region_stock_add(econ, hr, RES_ARMS_LIGHT, 20.f);
                     econ_flux_add(a->cid, FX_SOLDE, -cost);          /* I0 : la ligne militaire */
                     a->stats.builds_h++;                             /* l'arsenal = sa largeur martiale */
                     faction_lever_apply(a->cid, FAC_CONQUERANT, AI_LEVER_BUILD);

@@ -848,6 +848,40 @@ int main(int argc,char**argv){
                 ok("(monde trop petit pour une 3e cible : test cooldown inter-cibles sauté)", true);
             }
 
+            /* Régression atomique : le gate lit l'or NATIONAL. Si la capitale n'a qu'une
+             * fraction du prix mais qu'une province sœur porte le reste, le débit doit
+             * parcourir les deux — et les élites cibles ne reçoivent jamais plus que payé. */
+            {
+                World *tw=calloc(1,sizeof(*tw)); WorldEconomy *te=calloc(1,sizeof(*te));
+                DiploState *td=calloc(1,sizeof(*td));
+                bool fixture=tw&&te&&td;
+                if (fixture){
+                    tw->n_countries=2; tw->n_provinces=3;
+                    tw->country[0].capital_prov=0; tw->country[1].capital_prov=2;
+                    tw->province[0].region=0; tw->province[1].region=1; tw->province[2].region=2;
+                    te->n_prov=3; te->n_regions=3;
+                    for(int p2=0;p2<3;p2++){
+                        te->prov[p2].owner=(p2==2)?1:0; te->prov[p2].region=p2;
+                        te->prov[p2].active=true; te->prov[p2].colonized=true;
+                    }
+                    te->prov[0].is_capital=true; te->prov[2].is_capital=true;
+                    te->prov[0].treasury=50.f; te->prov[1].treasury=250.f;
+                    te->prov[2].strata[CLASS_ELITE].pop=10.f;
+                    econ_aggregate_regions(te); diplo_init(td);
+                    econ_flux_reset(); econ_flux_add(1,FX_TAX,100.f); econ_flux_year_capture();
+                    float split_cost=diplo_fabricate_cost(te,1); /* 200 */
+                    double gold0=econ_country_gold(te,0);
+                    float elite0=te->prov[2].strata[CLASS_ELITE].wealth;
+                    bool split_ok=diplo_fabricate_cb(tw,te,td,0,1,CB_TERRITORIAL);
+                    ok("fabrication multi-province : la transaction réussit avec l'or NATIONAL réparti", split_ok);
+                    ok("fabrication multi-province : le pays paie EXACTEMENT le prix complet",
+                       fabs((gold0-econ_country_gold(te,0))-(double)split_cost)<0.01);
+                    ok("fabrication multi-province : les élites cibles reçoivent EXACTEMENT ce qui a été payé",
+                       fabsf((te->prov[2].strata[CLASS_ELITE].wealth-elite0)-split_cost)<0.01f);
+                } else ok("fixture fabrication multi-province allouée",false);
+                free(tw); free(te); free(td);
+            }
+
             /* save_sane : l'état de fabrication (borné) survit à un aller-retour trivial via
              * les bornes déjà vérifiées ailleurs (scps_save_sane) — ici on vérifie juste que
              * les accesseurs restent DÉFINIS hors-borne (jamais de déréférencement). */

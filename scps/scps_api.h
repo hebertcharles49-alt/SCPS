@@ -1394,14 +1394,15 @@ int scps_sea_lane_path(ScpsSim *s, int i, ScpsRoadPt *out, int max,
 /* N3 — LA TRAVERSÉE (lecture pure, membrane : jours entiers + ids tangibles) : la
  * réserve du joueur peut-elle embarquer vers `target_region`, et en combien de JOURS
  * de mer ? Miroir exact des gardes de campaign_order_sea (port à soi, côte à
- * l'arrivée, transports libres, blocus) SANS rien exécuter. */
+ * l'arrivée, transports libres) SANS rien exécuter. Le blocus est exposé comme
+ * RISQUE d'interception, jamais comme interdiction abstraite. */
 typedef struct {
     int possible;          /* 1 = la traversée partirait aujourd'hui */
     int days;              /* jours de mer port→côte (arrondi haut ; -1 = pas de chemin) */
     int port_region;       /* la rade d'embarquement (meilleur port) ; -1 sans port */
     int transports_need;   /* coques transport nécessaires pour la réserve actuelle */
     int transports_free;   /* coques transport disponibles (hors mer) */
-    int blocked;           /* 1 = un blocus ennemi tient le port */
+    int blocked;           /* 1 = blocus ennemi présent : départ possible mais exposé */
 } ScpsSeaTravel;
 int scps_sea_travel(ScpsSim *s, int target_region, ScpsSeaTravel *out);
 
