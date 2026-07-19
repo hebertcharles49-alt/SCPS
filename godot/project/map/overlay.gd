@@ -99,7 +99,7 @@ const BOURG_W_T1 := 3.2
 const BOURG_W_T7 := 7.5
 const BOURG_W_CS := 6.0      ## cité-état : une fière cité à dôme (entre t5 et t6)
 const BOURG_W_WILD := 2.8    ## hameau sauvage : discret (tour de guet)
-var _bourg_tex := {}         ## id de vignette → {tex, foot, cw} (cache paresseux ; {} si l'asset manque)
+var _bourg_tex := {}         ## id de vignette → {tex, shadow, foot, cw} (cache paresseux ; {} si asset absent)
 var _top_cap_region := -1    ## région-capitale la PLUS PEUPLÉE du monde → la vignette t7 (unique)
 
 
@@ -205,11 +205,12 @@ const WASH_FADE_HI := 4.5  ## zoom où le terrain a (presque) tout repris
 # dépend côté moteur) : un voile d'encre sombre ESTOMPÉ (jamais noir pur, esprit
 # parchemin) sur ce que le joueur ne connaît pas encore ; grain RÉGION (_fog_mask,
 # 0/1) pour griser/cacher villes, armées et noms ENNEMIS tombant dans le voile — les
-# tiens (owner==player) restent TOUJOURS visibles. Rebâti à la MÊME cadence que le
-# lavis politique (_rebuild_borders) : la connaissance ne peut changer que si la
-# souveraineté a bougé (_owner_signature couvre déjà ce cas). ──
+# tiens (owner==player) restent TOUJOURS visibles. Le brouillard a son PROPRE cycle :
+# la visibilité change aussi au passage d'une année/ère, sans mouvement de frontière. ──
 var _fog_tex: ImageTexture = null
 var _fog_mask: PackedByteArray = PackedByteArray()   ## région → 0 voilée / 1 visible (vide = pas encore bâti → fail-open)
+var _fog_dirty := true
+var _fog_year := -1
 ## VRAI si la région `r` est visible (fail-open tant que _fog_mask n'a pas encore été bâti).
 func _fog_visible_region(r: int) -> bool:
 	if _fog_mask.is_empty() or r < 0 or r >= _fog_mask.size():
@@ -328,6 +329,9 @@ func _on_generated() -> void:
 	_himg_l = null              # monde neuf → recharger les caches de lumière (relief + albedo)
 	_alb_l = null
 	_borders_dirty = true       # monde neuf → frontières ET routes à refaire
+	_fog_dirty = true           # monde neuf/save chargé → connaissance et rayon à recharger
+	_fog_year = -1
+	_fog_mask = PackedByteArray()
 	_dressing_dirty = true      # … et le dressing de terrain (biome semé)
 	_roads_dirty = true
 	_road_start.clear()         # chantiers remis à zéro (le monde neuf rebâtit ses routes)
@@ -570,8 +574,11 @@ func _on_tick(_year: int) -> void:
 	if sig != _owner_sig:      # la souveraineté a changé (conquête/colonisation) →
 		_owner_sig = sig       # refaire frontières ET réseau de routes (villes neuves/captées)
 		_borders_dirty = true
+		_fog_dirty = true      # les sources de visibilité territoriales ont bougé
 		_roads_dirty = true
 		_lanes_dirty = true    # PORTULAN : un port conquis/fondé peut recâbler le commerce
+	if _year != _fog_year:
+		_fog_dirty = true      # rayon d'exploration/ère et connaissance évoluent annuellement
 	if Sim.day_count - _lanes_day >= SEA_LANE_POLL_DAYS:
 		_lanes_dirty = true    # PORTULAN : le commerce maritime évolue SANS conquête (routes
 		                       # ordonnées/ouvertes au fil des ans) → re-poll semestriel ; le
@@ -614,6 +621,24 @@ func _owner_signature(w) -> int:
 	if w.has_method("colonized_total"):
 		sig = (sig * 1000003 + int(w.colonized_total())) & 0x3fffffff
 	return sig
+
+## Recharge le voile ET son masque régional indépendamment des frontières. Le moteur
+## fait évoluer la connaissance/rayon chaque année : l'owner-signature ne suffit pas.
+func _refresh_fog() -> void:
+	var w = Sim.world
+	if w == null:
+		return
+	if w.has_method("fog_image"):
+		var fimg: Image = w.fog_image()
+		if fimg != null:
+			if _fog_tex == null or _fog_tex.get_size() != Vector2(fimg.get_size()):
+				_fog_tex = ImageTexture.create_from_image(fimg)
+			else:
+				_fog_tex.update(fimg)
+	if w.has_method("fog_region_mask"):
+		_fog_mask = w.fog_region_mask()
+	_fog_year = int(w.year())
+	_fog_dirty = false
 
 ## reconstruit les segments de frontière (région + pays) depuis la façade (port bseg).
 func _rebuild_borders() -> void:
@@ -720,19 +745,6 @@ func _rebuild_borders() -> void:
 				_pol_tex = ImageTexture.create_from_image(pimg)
 			else:
 				_pol_tex.update(pimg)
-	# BROUILLARD DE GUERRE (etape 1/2) : meme cadence que le lavis politique - la
-	# connaissance ne peut changer que si la souverainete a bouge (fog_update est
-	# annuel, pure fonction d'econ->adj + ownership, tous deux couverts par
-	# _owner_signature ci-dessus).
-	if w.has_method("fog_image"):
-		var fimg: Image = w.fog_image()
-		if fimg != null:
-			if _fog_tex == null or _fog_tex.get_size() != Vector2(fimg.get_size()):
-				_fog_tex = ImageTexture.create_from_image(fimg)
-			else:
-				_fog_tex.update(fimg)
-	if w.has_method("fog_region_mask"):
-		_fog_mask = w.fog_region_mask()
 	_sel_prov_cache = -2                                 # la géographie/souveraineté a bougé → recache la sélection
 	_owner_sig = _owner_signature(w)
 	_borders_dirty = false
@@ -1201,10 +1213,12 @@ func _draw_band(mv: Node2D, segs: PackedVector2Array, nrms: PackedVector2Array, 
 	var have_n := nrms.size() * 2 >= segs.size()
 	if have_n:
 		var lw := _w(zoom, 0.55, 1.8, 3.4)
+		var wash_offsets := [0.45, 1.07, 2.20]
+		var wash_alphas := [0.34, 0.20, 0.06]
 		for k in range(3):
 			# ⚠ _b_norm porte la normale EXTÉRIEURE (héritée de la façade) → l'intérieur est à -n
-			var off := -(0.45 + 0.62 * float(k))
-			var a: float = [0.34, 0.20, 0.10][k]
+			var off: float = -float(wash_offsets[k])
+			var a: float = float(wash_alphas[k])
 			var proj := PackedVector2Array()
 			proj.resize(segs.size())
 			for i in range(0, segs.size() - 1, 2):
@@ -1952,6 +1966,7 @@ func _process(dt: float) -> void:
 			if sig != _owner_sig:
 				_owner_sig = sig
 				_borders_dirty = true
+				_fog_dirty = true
 				_roads_dirty = true
 				queue_redraw()
 
@@ -2094,6 +2109,8 @@ func _draw_iso(w, mv: Node2D) -> void:
 	var vp := get_viewport_rect().size
 	var INK := Color(0.20, 0.14, 0.09, 0.95)         # encre brun-sépia (le trait de plume)
 	var human_idx := int(w.player())   # BROUILLARD : les tiens (owner==human_idx) restent TOUJOURS visibles
+	if _fog_dirty:
+		_refresh_fog()                   # cycle indépendant : année/ère OU souveraineté
 
 	# ── LAVIS POLITIQUE (aquarelle) : le territoire teinté SOUS tout — la carte DIT qui tient
 	#    quoi d'un regard au plan large ; le lavis s'efface vers le zoom profond (le terrain parle). ──
@@ -2532,7 +2549,9 @@ func _draw_iso(w, mv: Node2D) -> void:
 ## tête de fichier. Il ne reste ici que l'ENCRE partagée (ponts/quais/barque, les seuls
 ## éléments encore composés au monde : ils dépendent du rivage) et le cache de plan.
 const TOWN_INK    := Color(0.23, 0.17, 0.11, 0.60)   ## cerne d'encre (éclairci, jamais noir)
-const TOWN_SHADOW := Color(0.20, 0.15, 0.10, 0.10)   ## ombre portée (souffle)
+const TOWN_SHADOW := Color(0.20, 0.15, 0.10, 0.16)   ## ombre portée douce, projetée au sol
+const TOWN_SHADOW_WILD_MUL := 0.60                    ## hameau libre : empreinte plus discrète
+const BOURG_ALPHA_WILD := 0.70                        ## moins présent qu'une ville administrée
 const QUAY_WOOD   := Color(0.44, 0.32, 0.22, 0.70)   ## planches de quai (bois patiné, glacis)
 const BOAT_WOOD   := Color(0.37, 0.27, 0.19, 0.74)   ## coque (bois sombre, glacis)
 var _town_cache := {}       ## region → {sid, quays, boat} (voir _build_quays / _draw_settlement)
@@ -2614,9 +2633,27 @@ func _bourg_get(id: String) -> Dictionary:
 			if used.size.x > 0:
 				foot = float(used.position.y + used.size.y) / float(img.get_height())
 				cwf = float(used.size.x) / float(img.get_width())
-		entry = {"tex": tex, "foot": foot, "cw": cwf}
+		entry = {"tex": tex, "shadow": _bourg_shadow(img), "foot": foot, "cw": cwf}
 	_bourg_tex[id] = entry
 	return entry
+
+## Silhouette d'ombre construite UNE fois par vignette depuis son alpha. On travaille
+## sur une image 4× plus petite puis on la remonte en bilinéaire : contour doux sans
+## convolution coûteuse ni boucle 256² au premier affichage de chaque variante.
+func _bourg_shadow(src: Image) -> ImageTexture:
+	if src == null or src.is_empty():
+		return null
+	var full := src.get_size()
+	var sw := maxi(8, full.x >> 2)
+	var sh := maxi(8, full.y >> 2)
+	var small := src.duplicate()
+	small.resize(sw, sh, Image.INTERPOLATE_LANCZOS)
+	for y in range(sh):
+		for x in range(sw):
+			var alpha: float = small.get_pixel(x, y).a
+			small.set_pixel(x, y, Color(1.0, 1.0, 1.0, alpha))
+	small.resize(full.x, full.y, Image.INTERPOLATE_BILINEAR)
+	return ImageTexture.create_from_image(small)
 
 ## charge (paresseux) une MARQUE DE TERRAIN par id → Texture2D (cache). Cherche dans lot 3 (biomes plats/
 ## eau) PUIS lot 2 (relief/forêt/désert) — les ids sont uniques entre lots. Fallback Image.load (PNG brut).
@@ -2996,9 +3033,21 @@ func _draw_settlement(w, r: int, role: int, ctr: Vector2, ip: Vector2, zoom: flo
 	var fw := wpx / maxf(float(bg["cw"]), 0.4)            # cadre 256² tel que le CONTENU couvre cwld
 	var rect := Rect2(ip - Vector2(fw * 0.5, fw * float(bg["foot"])), Vector2(fw, fw))
 	var tex: Texture2D = bg["tex"]
-	draw_texture_rect(tex, Rect2(rect.position + Vector2(fw, fw) * 0.040, rect.size), false, TOWN_SHADOW)
+	var shadow: Texture2D = bg.get("shadow", null)
+	if shadow != null:
+		# Le sprite n'est plus simplement décalé : sa silhouette est comprimée contre
+		# le pied et étirée vers le SE, comme une ombre couchée sur la carte.
+		var sh_h := fw * 0.30
+		var sh_w := fw * 1.08
+		var sh_foot := float(bg["foot"])
+		var sh_pos := Vector2(ip.x - sh_w * 0.50 + fw * 0.075,
+			ip.y - sh_h * sh_foot + fw * 0.040)
+		var sh_a := TOWN_SHADOW.a * (TOWN_SHADOW_WILD_MUL if is_wild else 1.0)
+		draw_texture_rect(shadow, Rect2(sh_pos, Vector2(sh_w, sh_h)), false,
+			Color(TOWN_SHADOW.r, TOWN_SHADOW.g, TOWN_SHADOW.b, sh_a))
 	var vj := 0.93 + 0.10 * _h1(float(r) * 5.7)           # GLAZE : valeur jittée par région (vie)
-	draw_texture_rect(tex, rect, false, Color(vj, vj, vj * 0.99, BOURG_ALPHA))
+	var town_a := BOURG_ALPHA_WILD if is_wild else BOURG_ALPHA
+	draw_texture_rect(tex, rect, false, Color(vj, vj, vj * 0.99, town_a))
 
 ## BANNIÈRE DE LIEU (référence KCD) : chip parchemin + liseré d'encre + NOM du siège +
 ## pastille au pigment du propriétaire — taille ÉCRAN constante, posée AU-DESSUS du tampon.

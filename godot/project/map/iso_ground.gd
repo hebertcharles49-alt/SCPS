@@ -33,6 +33,7 @@ const VARIANT_COL := {
 }
 var _variant_map: ImageTexture = null
 var _variant_year := -1
+var _season_preview_day := -1       ## probe visuel seulement ; -1 = calendrier moteur
 
 func _ready() -> void:
 	Sim.generated.connect(_on_generated)
@@ -71,20 +72,36 @@ func _make_noise() -> NoiseTexture2D:
 func is_active() -> bool:
 	return _active
 
+func _set_season(w) -> void:
+	var mat := material as ShaderMaterial
+	if mat == null or w == null or not w.has_method("day_of_year"):
+		return
+	var day := _season_preview_day if _season_preview_day >= 0 else int(w.day_of_year())
+	mat.set_shader_parameter("season01", float(day % 365) / 365.0)
+
+## Harnais de capture : change uniquement la palette, sans faire vivre le monde.
+func _set_season_preview(day: int) -> void:
+	_season_preview_day = clampi(day, -1, 364)
+	_set_season(Sim.world)
+	queue_redraw()
+
 func _on_generated() -> void:
 	_active = true
+	_season_preview_day = -1
 	_bmap = null            # nouveau monde → recharge biome + débit
 	_river_map = null
 	_river_field = null
 	_cliff_map = null        # falaises : recalculées pour le monde neuf
 	_variant_map = null      # V3 : nouvelle partie → efface le lavis d'une fin antérieure
 	_variant_year = -1
+	_set_season(Sim.world)
 	queue_redraw()
 
 func _on_tick(_y: int) -> void:
 	var w = Sim.world
 	if w == null:
 		return
+	_set_season(w)
 	var eg: Dictionary = w.endgame_info()
 	# les biomes ne bougent qu'en FIN §27 (cataclysme) → recharge + re-dessin alors
 	if int(eg.get("fin", 0)) > 0:
@@ -116,6 +133,7 @@ func _draw() -> void:
 	# + champ de débit des rivières (carvé CPU) + bruit (grain/warp). Aucun atlas de sprites.
 	var mat := material as ShaderMaterial
 	if mat != null:
+		_set_season(w)
 		if _bmap == null:
 			_bmap = ImageTexture.create_from_image(bio)
 		if _river_map == null:

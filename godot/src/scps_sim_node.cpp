@@ -9,8 +9,38 @@
 #include <godot_cpp/variant/packed_vector2_array.hpp>
 #include <vector>    /* political_image : tampon owner int16 (boucle 512k cellules en C++) */
 #include <cstring>
+#include <cstdint>
 
 using namespace godot;
+
+/* Grain de lavis politique, stable et a basse frequence. Les quatre valeurs
+ * aux coins d'une maille de 24 cellules sont interpolees : le pigment varie
+ * doucement, sans bruit pixel ni trame visible. */
+static float political_wash_hash(int x, int y, int owner) {
+    uint32_t v = (uint32_t)x * 0x9e3779b9u;
+    v ^= (uint32_t)y * 0x85ebca6bu;
+    v ^= (uint32_t)(owner + 1) * 0xc2b2ae35u;
+    v ^= v >> 16;
+    v *= 0x7feb352du;
+    v ^= v >> 15;
+    return (float)(v & 0xffffu) / 65535.0f;
+}
+
+static float political_wash_grain(int x, int y, int owner) {
+    const int step = 24;
+    int gx = x / step, gy = y / step;
+    float fx = (float)(x % step) / (float)step;
+    float fy = (float)(y % step) / (float)step;
+    fx = fx * fx * (3.0f - 2.0f * fx);
+    fy = fy * fy * (3.0f - 2.0f * fy);
+    float a = political_wash_hash(gx,     gy,     owner);
+    float b = political_wash_hash(gx + 1, gy,     owner);
+    float c = political_wash_hash(gx,     gy + 1, owner);
+    float d = political_wash_hash(gx + 1, gy + 1, owner);
+    float ab = a + (b - a) * fx;
+    float cd = c + (d - c) * fx;
+    return 0.95f + 0.10f * (ab + (cd - ab) * fy); /* pigment +/-5 % */
+}
 
 void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("generate", "seed"),        &ScpsWorld::generate);
@@ -314,9 +344,11 @@ Ref<Image> ScpsWorld::political_image(PackedColorArray pal) {
             int o = own[(size_t)i];
             if (o < 0 || o >= np) continue;
             Color c = pal[o];
-            dst[i*4+0] = (uint8_t)CLAMP((int)(c.r * 255.0f + 0.5f), 0, 255);
-            dst[i*4+1] = (uint8_t)CLAMP((int)(c.g * 255.0f + 0.5f), 0, 255);
-            dst[i*4+2] = (uint8_t)CLAMP((int)(c.b * 255.0f + 0.5f), 0, 255);
+            int x = (int)(i % w), y = (int)(i / w);
+            float grain = political_wash_grain(x, y, o);
+            dst[i*4+0] = (uint8_t)CLAMP((int)(c.r * grain * 255.0f + 0.5f), 0, 255);
+            dst[i*4+1] = (uint8_t)CLAMP((int)(c.g * grain * 255.0f + 0.5f), 0, 255);
+            dst[i*4+2] = (uint8_t)CLAMP((int)(c.b * grain * 255.0f + 0.5f), 0, 255);
             dst[i*4+3] = (uint8_t)CLAMP((int)(c.a * 255.0f + 0.5f), 0, 255);
         }
     }
@@ -373,7 +405,12 @@ Ref<Image> ScpsWorld::fog_image() {
              * fine et déjà très opaque, plus de « fenêtre » sur la carte au front. */
             uint8_t a = (d >= FOG_RAMP || d == 255) ? 255
                       : (uint8_t)(255.0f * (0.62f + 0.38f * (float)d / (float)FOG_RAMP));
-            dst[i*4+0] = 24; dst[i*4+1] = 19; dst[i*4+2] = 14;   /* encre sépia sombre (#18130e) */
+            int x = (int)(i % w), y = (int)(i / w);
+            float parchment = political_wash_grain(x, y, -1);
+            int hatch = ((x + y) % 14 < 2) ? 1 : 0; /* hachure diagonale large et discrète */
+            dst[i*4+0] = (uint8_t)CLAMP((int)(24.0f * parchment + hatch + 0.5f), 0, 255);
+            dst[i*4+1] = (uint8_t)CLAMP((int)(19.0f * parchment + hatch + 0.5f), 0, 255);
+            dst[i*4+2] = (uint8_t)CLAMP((int)(14.0f * parchment + hatch + 0.5f), 0, 255);
             dst[i*4+3] = a;                                      /* opaque au cœur, rampe au front */
         }
     }

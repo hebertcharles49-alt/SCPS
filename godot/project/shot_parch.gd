@@ -1,8 +1,10 @@
 extends Node
 ## shot_parch — capture de la carte PARCHEMIN (nouveau rendu unique). Probe de rendu, hors make.
 ## Lancer (fenêtré ; --headless donne du noir) :
-##   Godot --path godot/project res://shot_parch.tscn -- seed=9 years=0 zoom=0 out=parch.png
+##   Godot --path godot/project res://shot_parch.tscn -- seed=9 years=0 day=0 season_day=-1 zoom=0 out=parch.png
 ##   zoom=0 → fit (carte entière) ; zoom>0 → cadrage à (cx,cy) monde.
+## `season_day=0..364` force uniquement la palette du shader sur un monde FIGÉ ;
+## `day=` avance réellement la simulation et reste réservé aux captures d'état.
 var _map: Node2D = null
 func _ready() -> void:
 	get_window().size = Vector2i(1600, 900)
@@ -17,7 +19,10 @@ func _run() -> void:
 	Sim.regenerate(int(_arg("seed=", "9")))
 	await get_tree().process_frame; await get_tree().process_frame
 	if Sim.world == null: push_error("no world"); get_tree().quit(1); return
-	for i in range(int(_arg("years=", "0"))): Sim.world.advance_days(360)
+	for i in range(int(_arg("years=", "0"))): Sim.world.advance_days(365)
+	var season_day := clampi(int(_arg("day=", "0")), 0, 364)
+	if season_day > 0:
+		Sim.world.advance_days(season_day)
 	Sim.generated.emit()
 	for i in range(8): await get_tree().process_frame
 	# mode NATURE (nature=1) : carte vierge — terrain + dressing seuls, sans frontières/villes.
@@ -107,6 +112,14 @@ func _run() -> void:
 			ov3.queue_redraw()
 		_map.queue_redraw()
 		await get_tree().process_frame
+	# Preview SAISONNIÈRE sur monde figé : le sol conserve cet override pendant ses
+	# redraws, sans avancer la date ni laisser `_draw()` réappliquer le calendrier.
+	var season_override := int(_arg("season_day=", "-1"))
+	if season_override >= 0:
+		var ground := _map.get_node_or_null("IsoGround")
+		if ground != null and ground.has_method("_set_season_preview"):
+			ground._set_season_preview(season_override)
+			await get_tree().process_frame
 	await RenderingServer.frame_post_draw
 	await RenderingServer.frame_post_draw
 	var out: String = "res://" + _arg("out=", "parch.png")

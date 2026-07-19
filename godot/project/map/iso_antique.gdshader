@@ -30,6 +30,7 @@ uniform float jitter_freq : hint_range(0.02, 0.5) = 0.12; // échelle des taches
 // (ardoise profond EAU · ardoise pâle FROID · olive sombre RONCES · terre cuite
 // SANG — ASCENSION reste hors gate, pas de lavis sombre). 1 seul tap, coût nul
 // au repos (fin==0 ⇒ variant_on==0 ⇒ la branche entière est sautée).
+uniform float season01 : hint_range(0.0, 1.0) = 0.0;      // day/365: world palette, independent from endgame
 uniform sampler2D variant_map : filter_linear;
 uniform vec3 variant_col = vec3(0.35, 0.48, 0.62);
 uniform float variant_on = 0.0;
@@ -240,8 +241,13 @@ void fragment() {
 					vec2 ctan = vec2(-cgr.y, cgr.x) / cgl;                 // tangente à la côte
 					float ct = dot(cell, ctan);                            // abscisse LE LONG du rivage
 					float cph = texture(noise_tex, cell * 0.07 + vec2(4.2, 8.8)).r * 5.0;   // phase jittée (casse la régularité)
-					float tick = smoothstep(0.55, 0.80, sin(ct * 2.6 + cph));               // traits plus fins, ~2.4 cellules
-					col = mix(col, vec3(0.24, 0.20, 0.15), tick * cfx * 0.85);              // encre brune FRANCHE
+					float tick_phase = ct * 2.6 + cph;
+					float tick = smoothstep(0.55, 0.80, sin(tick_phase));                    // traits plus fins, ~2.4 cellules
+					// Environ une hachure sur deux se resserre vers le coeur de la bande rocheuse.
+					float tick_id = floor((tick_phase + 1.5708) / 6.283185);
+					float short_tick = step(0.5, fract(sin(tick_id * 12.9898 + 4.1414) * 43758.5453));
+					float tick_len = mix(cfx, smoothstep(0.16, 0.55, cf), short_tick);
+					col = mix(col, vec3(0.24, 0.20, 0.15), tick * tick_len * 0.85);         // encre brune FRANCHE
 				}
 			}
 		}
@@ -328,6 +334,13 @@ void fragment() {
 		// drame de la fin teinte la carte, il ne l'efface pas). Gate à coût nul (fin==0 ⇒
 		// variant_on==0, le tap est sauté). RENFORCE la mutation physique déjà peinte par le
 		// terrain (rebiome/sink/thorns) — il ne la remplace pas.
+		// World season: subtle, strongest on relief and dry land. This precedes
+		// variant_map deliberately so endgame remains the dominant final wash.
+		float summer = 0.5 + 0.5 * cos((season01 - 0.5) * 6.283185);
+		vec3 season_col = mix(vec3(0.72, 0.78, 0.83), vec3(0.90, 0.78, 0.55), summer);
+		float season_zone = 0.018 + rd * 0.012 + ((b >= 7 && b <= 11) ? 0.010 : 0.0);
+		col = mix(col, season_col, clamp(season_zone, 0.0, 0.040));
+
 		if (variant_on > 0.5) {
 			float vi = texture(variant_map, cw / map_size).r;
 			col = mix(col, variant_col, clamp(vi, 0.0, 1.0) * variant_k);

@@ -51,7 +51,7 @@ func _audit_seed(sd: int, years: int) -> int:
 	Sim.regenerate(sd)
 	var w = Sim.world
 	for _i in range(years):
-		w.advance_days(360)
+		w.advance_days(365)
 	Sim.generated.emit()                 # le front-end rebâtit décor/structures/routes sur le monde âgé
 	for _f in range(8):
 		await get_tree().process_frame
@@ -63,8 +63,8 @@ func _audit_seed(sd: int, years: int) -> int:
 	for _f2 in range(3):
 		await get_tree().process_frame
 	var ov = _map.get_node_or_null("Overlay")
-	if ov == null:
-		push_error("viewer_audit: pas d'Overlay")
+	if ov == null or not ov.has_method("_carved_river_field"):
+		push_error("viewer_audit: Overlay absent ou script non chargé")
 		return 99
 	var sea: Image = w.layer_image(4)    # SCPS_LAYER_WATER (mer/lac)
 	var rf: Image = ov._carved_river_field()

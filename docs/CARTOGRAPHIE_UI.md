@@ -24,6 +24,15 @@
 > « Coût matières »), D6 tuning sonore (§A.1 Options), D7 tailles d'icônes (verdict
 > rail-médaillons : FAUX POSITIF, l'art des PNG `menu_*` est lui-même un médaillon —
 > aucun doublon de code, cf. TROUVAILLES D7). Audit 3-clics final : cf. fin de §B.
+>
+> **MISE À JOUR CARTE PARCHEMIN (2026-07-19)** : les bourgs portent désormais une
+> ombre douce réellement projetée depuis leur silhouette et mise en cache ; les hameaux
+> libres sont plus discrets. Le fog possède son propre cycle d'invalidation annuel et
+> territorial, reste opaque au cœur et reçoit un grain sépia. Le sol suit une saison
+> `day_of_year/365` très légère, appliquée avant le lavis d'endgame ; le lavis politique
+> varie à basse fréquence par pays et les falaises cassent la régularité de leurs ticks.
+> Les routes et montagnes sont volontairement inchangées : les premières rejoignent déjà
+> les bourgs sous les vignettes, les secondes ont déjà leurs deux échelles de détail.
 
 ---
 
