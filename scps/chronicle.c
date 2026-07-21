@@ -1301,7 +1301,7 @@ int main(int argc, char **argv){
               if (mint_by_country[c]>0.0) n_frappeurs++;
               if (w->country[c].role!=POLITY_UNCLAIMED) n_alive_end++;
           }
-          printf("   frappe : %.0f or/an moyen (%d/%d empires frappeurs) · réserve fin %.0f or · %.0f cuivre\n",
+          printf("   frappe : %.0f or/an moyen (Σ MONDE — %d/%d empires frappeurs) · réserve fin %.0f or · %.0f cuivre\n",
                  (years>0)? mint_accum/(double)years : 0.0, n_frappeurs, n_alive_end,
                  reserve_fin_gold, reserve_fin_copper); }
         /* MONNAIE M3e — L'ÉTALON (print-only) : prix moyen fin de partie de l'or/cuivre vs
@@ -1444,7 +1444,7 @@ int main(int argc, char **argv){
           int n_debasers_end=0;
           for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
               if (econ_country_debase_frac(s.econ,c) > 1e-4f) n_debasers_end++;
-          printf("   débase (M3h) : %.0f or/an moyen créé par sur-frappe (déjà inclus dans la frappe) — %ld mois-pays en débase active (%d pays débasent en fin de partie)\n",
+          printf("   débase (M3h) : %.0f or/an moyen créé par sur-frappe (Σ MONDE, déjà inclus dans la frappe) — %ld mois-pays en débase active (%d pays débasent en fin de partie)\n",
                  (years>0)? debase_gold/(double)years : 0.0, debase_months, n_debasers_end); }
 
         /* MONNAIE — M3a : L'INSTRUMENT (print-only, docs/MONNAIE_M0_AUDIT.md) — le
