@@ -646,7 +646,12 @@ typedef struct {
     float  to_class;        /* dette due aux PROPRES classes (Bourgeois+Élite agrégés) */
     float  to_cs;            /* dette due au créancier cité-état/étranger courant */
     float  total;            /* to_class+to_cs (credit_debt_total) */
-    float  taux;              /* 0..1 — taux ANNUEL proposé pour un NOUVEL emprunt (credit_current_rate) */
+    float  taux;              /* 0..1 — coût forfaitaire proposé pour un NOUVEL emprunt */
+    float  annual_revenue;    /* revenu fiscal annuel servant d'assiette au risque */
+    float  leverage;          /* dette/revenu annuel, en années de revenu */
+    float  available;         /* crédit physique encore disponible maintenant */
+    float  foreign_exposure;  /* exposition du créancier étranger courant à ce pays */
+    float  foreign_room;      /* nouvelles pièces que ce créancier peut encore avancer */
     /* MONNAIE M14 — B7 : L'ÉCHÉANCE RÉELLEMENT PRÉLEVÉE cette année sur la dette EXISTANTE
      * — DISTINCTE de `taux` (qui n'est QUE le taux d'origination d'un futur emprunt, jamais
      * appliqué à la dette déjà inscrite sous DEBT_FIXED). Sous DEBT_FIXED (défaut, M11) :
@@ -660,6 +665,19 @@ typedef struct {
 } ScpsDebt;
 void scps_country_debt(ScpsSim *s, int country, ScpsDebt *out);
 
+/* Cotation d'un prêt bilatéral AVANT envoi de la demande : le consentement diplomatique
+ * reste distinct, mais réserve et limites physiques sont entièrement visibles. */
+typedef struct {
+    float montant_max;       /* principal transférable maintenant */
+    float taux;              /* coût forfaitaire proposé à l'origination */
+    float lender_surplus;    /* liquidité du prêteur au-dessus de sa réserve */
+    float exposure;          /* créance de ce prêteur sur ce débiteur */
+    float exposure_limit;    /* borne courante sur cette paire */
+    float portfolio_exposure;/* toutes les créances de ce prêteur */
+    int   blocked_by_other_creditor;
+} ScpsStateLoanQuote;
+void scps_country_loan_quote(ScpsSim *s, int debtor, int lender, ScpsStateLoanQuote *out);
+
 /* MONNAIE M9 — V1 : LA CAPACITÉ D'EMPRUNT PAR ORDRE (panneau éco, décision joueur
  * 2026-07-16) — montant max empruntable MAINTENANT + taux proposé, pour CHAQUE classe
  * (mêmes 3 lignes Laborer/Bourgeois/Élite que ScpsFiscalOrder ci-dessus ; Laborer à 0,
@@ -668,7 +686,7 @@ void scps_country_debt(ScpsSim *s, int country, ScpsDebt *out);
  * credit_current_rate, scps_credit.c), rien de sérialisé. */
 typedef struct {
     float montant_max;   /* or empruntable maintenant à cette classe (0 = rien à prêter) */
-    float taux;          /* 0..1 — taux ANNUEL proposé (credit_current_rate, national, même valeur 3 lignes) */
+    float taux;          /* 0..1 — coût forfaitaire proposé (national, même valeur 3 lignes) */
 } ScpsLoanCapacity;
 int scps_country_loan_capacity(ScpsSim *s, int country, ScpsLoanCapacity *out, int max);
 /* LE VERBE : emprunte à la classe `cls` (SocialClass : 0=Laborer,1=Bourgeois,2=Élite —

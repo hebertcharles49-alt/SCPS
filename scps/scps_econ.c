@@ -2268,23 +2268,10 @@ float econ_country_class_satisfaction(const WorldEconomy *e, int cid, SocialClas
  * contrôleur ne les court-circuite pas, il agit tous les mois AVANT qu'un pays n'ait
  * besoin d'y recourir — la fiscalité devient le PREMIER levier par construction
  * temporelle (mensuel, natif à econ_tick), pas par un ordre d'appel forcé. */
-/* MONNAIE M9 — C0 : LA COHÉRENCE FISCALE-DETTE DE L'IA (correctif du contrôleur C3 ci-dessus,
- * décision joueur 2026-07-16, confirmée après mesure du sweep M8 : « les banqueroutes ne sont
- * pas émergentes, elles sont MAL RÉGLÉES. Faut viser 60% ET du pognon. Si elle vise 60 day1 ça
- * marche pas : elle cut ses impôts »). C3 SEUL vise la satisfaction — rien ne l'empêchait de
- * RELÂCHER la fiscalité d'un pays qui n'a justement PAS les moyens de se le permettre : (a) la
- * dette proche du plafond (mesuré M8 : banqueroutes +81/+96/+161% — relâcher au moment d'honorer
- * la dette AFFAME le pays au lieu de le protéger), ou (b) le piège DAY-1 — satisfaction à 0% dès
- * la genèse (aucun développement encore) déclenche la relâche dès le premier mois, AVANT même
- * que le pays ait une assiette fiscale prouvée, l'appauvrissant par construction.
- * LE PLANCHER (formulation coordinateur) : le levier RELÂCHER (et lui SEUL — DURCIR reste
- * toujours permis, ça ne menace jamais la solvabilité) n'agit qu'à hauteur de la MARGE de
- * revenu/solvabilité disponible — jamais un malus plat, une réduction PROGRESSIVE du PAS au
- * fur et à mesure que la marge se réduit. Sans marge (aucune assiette fiscale prouvée, OU dette
- * proche du plafond, OU streak d'insolvabilité déjà chronique) : le contrôleur TIENT
- * (pas=0, jamais négatif) — la satisfaction ne se pousse plus QUE par le développement (M5/M8,
- * manufactures → besoins comblés → satisfaction), jamais par la baisse d'impôt. Le 60% reste la
- * cible VISÉE, pas un impératif payé en insolvabilité. */
+/* Le contrôleur fiscal n'anticipe PAS le risque de dette : l'État reste politiquement myope,
+ * conformément au modèle de rationnement par les créanciers. Seul le bootstrap day-1 reste
+ * protégé : avant toute assiette mesurée, une satisfaction encore vide ne doit pas provoquer
+ * mécaniquement une baisse d'impôt. Dès le revenu observé, la dette ne bride plus le choix. */
 static float econ_ai_fiscal_slack(int cid){
     /* (a) ASSIETTE FISCALE PROUVÉE : econ_country_tax_year retourne 0 sous 90 jours (bootstrap,
      * déterministe) ET tant qu'aucun revenu réel n'a été mesuré — le piège day-1 se lit ICI par
@@ -2294,18 +2281,7 @@ static float econ_ai_fiscal_slack(int cid){
     float floor_   = tune_f("AI_FISCAL_REVENUE_FLOOR", 200.f);
     float tax_year = econ_country_tax_year(cid);
     float rev_ramp = clampf(tax_year/fmaxf(floor_,1.f), 0.f, 1.f);
-    /* (b) PRESSION DE DETTE : lecteurs DÉJÀ existants (credit_debt_ceiling/credit_debt_total,
-     * motif econ_country_debase_frac qui les lit déjà pour la MÊME échelle du désespoir M3h) —
-     * aucun plafond mesurable (ceiling≈0, donc AUCUN revenu prouvé non plus) se lit comme la
-     * pression MAXIMALE, pas nulle (le day-1 n'a structurellement pas encore de ceiling). */
-    float ceiling = credit_debt_ceiling(cid);
-    float lev     = (ceiling>1.f) ? clampf(credit_debt_total(cid)/ceiling, 0.f, 1.f) : 1.f;
-    float slack   = fminf(rev_ramp, 1.f-lev);
-    /* streak d'insolvabilité CHRONIQUE (déjà posé par credit_year_tick, § plafond) : le MÊME
-     * signal que l'IA utilise pour déclencher sa propre débase (échelon suivant) — aucune marge
-     * une fois qu'on y est, quel que soit le ratio instantané ce mois-ci. */
-    if (credit_insolvent_streak(cid) > 0) slack = 0.f;
-    return clampf(slack, 0.f, 1.f);
+    return rev_ramp;
 }
 static void econ_ai_fiscal_tick(WorldEconomy *e, int cid){
     float target = tune_f("AI_FISCAL_TARGET", 0.60f);
@@ -2313,10 +2289,9 @@ static void econ_ai_fiscal_tick(WorldEconomy *e, int cid){
     if (econ_is_human_country(cid)) return;              /* le joueur garde SON curseur */
     float deadband = tune_f("AI_FISCAL_DEADBAND", 0.05f);
     float step     = tune_f("AI_FISCAL_STEP", 0.012f);
-    /* C0 — AI_DEBT_FISCAL_COHERENCE=0 : relax_factor EXACTEMENT 1.0 quel que soit cid → chemin
-     * M8 pur, kill-switch par construction (golden pré-M9 byte-identique, même motif que
-     * TAX_SAT_COUPLING=0/econ_satisfaction_tax_factor). */
-    float coherence = tune_f("AI_DEBT_FISCAL_COHERENCE", 1.0f);
+    /* Le coefficient ne porte plus aucune prudence de dette ; il ne lisse que le bootstrap
+     * de l'assiette fiscale. */
+    float coherence = tune_f("AI_FISCAL_BOOTSTRAP_COHERENCE", 1.0f);
     float relax_factor = 1.f;
     if (coherence>0.f) relax_factor = 1.f - coherence*(1.f - econ_ai_fiscal_slack(cid));
     for (int c=0;c<CLASS_COUNT;c++){
@@ -2387,7 +2362,7 @@ float econ_country_debase_frac(const WorldEconomy *e, int cid){
         return clampf(econ_country_budget_mult(e, cid, BUDGET_DEBASE), 0.f, 1.f) * dmax;
     /* IA — DERNIER RECOURS avant la banqueroute forcée (l'échelle du désespoir DANS
      * L'ORDRE : emprunter d'abord — credit_borrow*, jamais court-circuité ici — puis
-     * SEULEMENT débaser une fois au plafond de dette ET l'épuisement chronique établi,
+     * SEULEMENT débaser une fois le marché du refinancement fermé ET l'impayé chronique établi,
      * credit_insolvent_streak déjà posé par credit_year_tick, scps_credit.h inclus depuis
      * M3c). Jamais pendant une cicatrice de banqueroute EN COURS : la banqueroute EST déjà
      * l'échelon suivant, débaser un pays qui vient de répudier n'a plus de sens. */

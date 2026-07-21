@@ -474,6 +474,27 @@ on répare ce qu'il révélait.
   0.60) · site WILD péages parqués (M3h/M3i item 7) toujours désigné · **DLL Godot À
   RE-BUILDER**.
 
+### M14 — LE MARCHÉ DU CRÉDIT RATIONNÉ PAR LES PRÊTEURS (LIVRÉ, 2026-07-21)
+
+Cette tranche **remplace** le plafond administratif de 300 % et la prudence fiscale liée à
+la dette documentés dans M3d/M9 ; ces sections restent l'historique des versions antérieures.
+
+- [x] Le taux d'un nouveau contrat suit une courbe convexe de `dette/revenu fiscal annuel`.
+      Le ratio peut dépasser 3 : aucun plafond de dette ne ferme le marché côté débiteur.
+- [x] Chaque ordre prête sur patrimoine réel et borne son exposition à l'État. Chaque État
+      prêteur conserve `SINK_FLOOR`, borne son portefeuille total et sa concentration sur un
+      débiteur. La dette déjà inscrite est déduite de ces marges.
+- [x] L'échéance annuelle est payée sur surplus puis refinancée par transfert physique tant
+      qu'un prêteur garde de la marge. Le streak de défaut ne commence qu'après rationnement.
+- [x] Un créancier étranger ne change jamais silencieusement : remboursement, rachat ou
+      banqueroute sont les seuls chemins de sortie.
+- [x] La façade expose revenu, ratio, taux, capacité, réserve et exposition. La télémétrie
+      Chronicle publie dettes structurelles ≥3x, ratio maximal et marchés fermés.
+- [x] Aucun état persistant neuf : les expositions sont dérivées du livre existant ; le format
+      de sauvegarde ne change pas.
+- **Validation ciblée** : `credit_demo` 85/85 ; compilation Chronicle/API/Godot et parse
+  headless propres. Aucun sweep d'équilibrage lancé sans accord.
+
 ### M13 — LA CENTRALISATION FISCALE + LE TRANSPORT (v4 : reformulé ; ex-M7, renuméroté une
 seconde fois pour M8 LIVRÉ, une troisième fois pour M9 LIVRÉ, une quatrième fois pour M10,
 une cinquième pour M11, une sixième pour M12 LIVRÉ ci-dessus)

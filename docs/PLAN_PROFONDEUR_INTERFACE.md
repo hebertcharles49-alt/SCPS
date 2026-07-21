@@ -737,6 +737,27 @@ atteint sa réponse en trois interactions au plus hors saisie de recherche.
   tiroir, `--savetest` **2/2** (continuité byte-identique + corruption refusée), et
   déterminisme **5/5** avec les cinq hashes historiques inchangés.
 
+### 2026-07-21 — Crédit rationné par les prêteurs
+
+- `FAIT` — suppression des deux murs côté débiteur : ligne proportionnelle à la population
+  et plafond dette/revenu à 300 %. Le ratio dette/revenu reste une information et devient
+  l'assiette d'un taux convexe ; il n'interdit jamais l'emprunt.
+- `FAIT` — chaque ordre et chaque État prêteur conserve une réserve liquide, une limite de
+  portefeuille et une limite d'exposition au débiteur. Les créances existantes consomment
+  réellement cette marge ; le rachat de dette respecte les mêmes bornes.
+- `FAIT` — le service annuel emploie d'abord le surplus du débiteur, puis tente un
+  refinancement physique. Le défaut ne commence que si l'échéance reste impayée après
+  fermeture du marché ; le créancier étranger courant ne peut plus être remplacé
+  silencieusement par un autre.
+- `FAIT` — l'IA débitrice ne relâche plus sa fiscalité en fonction d'une prudence de dette :
+  seul le garde bootstrap day-1 subsiste. Le rationnement vient des prêteurs.
+- `FAIT UI` — l'onglet Monnaie affiche revenu annuel, dette/revenu, taux fixe proposé,
+  crédit disponible, exposition et marge du créancier. Le tiroir diplomatique cote avant
+  clic le montant, le taux, le surplus du prêteur, l'exposition et la cause de blocage.
+- `VÉRIFIÉ CIBLÉ` — `credit_demo` **85/85**, `scps_api_demo` **226/226**, compilation de
+  `chronicle` sans avertissement, extension Godot debug reconstruite et parse headless
+  propre. Aucun sweep n'a été lancé sans accord.
+
 ## Risques suivis
 
 - Les panneaux sont majoritairement construits en code et certains sont custom-drawn :

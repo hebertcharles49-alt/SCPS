@@ -490,11 +490,11 @@ static void chronicle_invariant_diag(const WorldEconomy *e, const World *w, int 
     double debt_tot=0.0; for (int c=0;c<nc;c++) debt_tot += (double)credit_debt_total(c);
     long forced=0, vol=0; credit_bankruptcy_stats(&forced,&vol);
     fprintf(stderr, "   [INVDIAG] graine %u sim %d an %d — pire pays c=%d Δmoney=%+.0f "
-            "(streak=%d ceiling=%.0f debt=%.0f scar=%.2f) — ΣΔowned=%+.0f (pos=%+.0f neg=%+.0f) ΔWILD=%+.0f (n=%d→%+d) "
+            "(streak=%d revenu=%.0f debt=%.0f ratio=%.2fx scar=%.2f) — ΣΔowned=%+.0f (pos=%+.0f neg=%+.0f) ΔWILD=%+.0f (n=%d→%+d) "
             "— Σdette monde=%.0f · banqueroutes forcées cum=%ld\n",
             seed, sim, year, worst, worst>=0?now[worst]-g_inv_prev_percountry[worst]:0.0,
-            worst>=0?credit_insolvent_streak(worst):-1, worst>=0?credit_debt_ceiling(worst):-1.0,
-            worst>=0?credit_debt_total(worst):-1.0,
+            worst>=0?credit_insolvent_streak(worst):-1, worst>=0?credit_annual_revenue(worst):-1.0,
+            worst>=0?credit_debt_total(worst):-1.0, worst>=0?credit_debt_ratio(worst):-1.0,
             (worst>=0 && w)? econ_country_bankruptcy_scar(e,worst) : -1.0f,
             sum_owned_d, sum_pos, sum_neg, d_wild, wild_n, d_wild_n,
             debt_tot, forced);
@@ -1011,10 +1011,10 @@ int main(int argc, char **argv){
                     int cap=econ_country_capital_prov(s.econ,c);
                     float kdr=(cap>=0)? s.econ->prov[cap].debase_kdrain : 0.f;
                     if (frac<=1e-4f && kdr<=1e-4f) continue;
-                    fprintf(stderr,"   [DEBASEDIAG] an %d c=%d débase=%.2f streak=%d dette=%.0f/plafond %.0f "
+                    fprintf(stderr,"   [DEBASEDIAG] an %d c=%d débase=%.2f streak=%d dette=%.0f revenu=%.0f ratio=%.2fx "
                             "K_cap=%.2f kdrain=%.2f scar=%.2f rot=%.2f\n",
                             yr, c, frac, credit_insolvent_streak(c), credit_debt_total(c),
-                            credit_debt_ceiling(c),
+                            credit_annual_revenue(c), credit_debt_ratio(c),
                             (cap>=0)? s.econ->prov[cap].build.K_inst : -1.f, kdr,
                             econ_country_bankruptcy_scar(s.econ,c), faction_capture_total(c));
                 }
@@ -1272,10 +1272,9 @@ int main(int argc, char **argv){
                       float rev=econ_country_tax_year(c);
                       if (rev>1.f){ debt_sum+=(double)credit_debt_total(c); rev_sum+=(double)rev; nd++; }
                   }
-                  printf("              dette/revenu an %3d : %.0f%% moyen (%d pays au revenu capté, plafond=%.0f%%)"
+                  printf("              dette/revenu an %3d : %.0f%% moyen (%d pays au revenu capté, aucun plafond)"
                          " · revenu fiscal Σ %.0f or/an (M3i neutralité)\n",
-                         snap[si], rev_sum>1.0?100.0*debt_sum/rev_sum:0.0, nd,
-                         100.0*tune_f("DEBT_CEILING_YEARS",3.0f), rev_sum); }
+                         snap[si], rev_sum>1.0?100.0*debt_sum/rev_sum:0.0, nd, rev_sum); }
                 si++;
             }
         }
@@ -1366,23 +1365,24 @@ int main(int argc, char **argv){
           printf("   rachats métabolisation (M9-V3) : %ld cité-état · %ld mercantile · %ld pacifiste\n",
                  bb_cs, bb_merc, bb_pac); }
 
-        /* MONNAIE M3d — LA SOUTENABILITÉ + LA BANQUEROUTE (print-only, gate 1) :
-         * banqueroutes FORCÉES (chronique, l'IA aussi) vs VOLONTAIRES (CMD_BANKRUPTCY,
-         * joueur seul — 0 en chronique headless, human_player=-1) + le taux moyen
-         * observé (levier courant) et le nombre de pays AU PLAFOND fin de partie. */
+        /* CRÉDIT RATIONNÉ — taux moyen, distribution dette/revenu et fermeture effective
+         * des prêteurs en fin de partie. */
         { long b_forced=0, b_volunt=0; credit_bankruptcy_stats(&b_forced,&b_volunt);
-          double rate_sum=0.0; int n_rate=0, n_at_ceiling=0;
+          double rate_sum=0.0; int n_rate=0, n_structural=0, n_market_closed=0; float max_lev=0.f;
           for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
               float dt=credit_debt_total(c); if (dt<=1.f) continue;
-              float ceil_=credit_debt_ceiling(c); if (ceil_<1.f) ceil_=1.f;
-              float lev=dt/ceil_;
-              float rate=clampf(tune_f("DEBT_RATE_BASE",0.02f)+tune_f("DEBT_RATE_SLOPE",0.03f)*lev,
-                                 tune_f("DEBT_RATE_MIN",0.02f), tune_f("DEBT_RATE_MAX",0.05f));
+              float lev=credit_debt_ratio(c);
+              float rate=credit_current_rate(c);
               rate_sum+=(double)rate; n_rate++;
-              if (lev>=0.98f) n_at_ceiling++;
+              if (lev>max_lev) max_lev=lev;
+              if (lev>=3.f) n_structural++;
+              int L=credit_of(c);
+              if (L>=0 && credit_state_borrow_capacity(s.econ,c,L)<=1.f) n_market_closed++;
           }
-          printf("   banqueroute (M3d) : %ld forcée(s) · %ld volontaire(s) — taux moyen %.2f%% (%d pays endettés) · %d pays AU PLAFOND fin de partie\n",
-                 b_forced, b_volunt, n_rate>0?100.0*rate_sum/(double)n_rate:0.0, n_rate, n_at_ceiling); }
+          printf("   crédit rationné : %ld banqueroute(s) forcée(s) · %ld volontaire(s) — taux moyen %.2f%% (%d pays endettés)"
+                 " · %d dette(s) structurelle(s) ≥3x · max %.2fx · %d marché(s) étranger(s) fermé(s)\n",
+                 b_forced, b_volunt, n_rate>0?100.0*rate_sum/(double)n_rate:0.0, n_rate,
+                 n_structural, (double)max_lev, n_market_closed); }
 
         /* MONNAIE M3g — LA BANQUEROUTE-SAISIE (print-only, gate 1) : valeur totale
          * confisquée aux banqueroutiers CE run, ventilée créanciers domestiques (classes

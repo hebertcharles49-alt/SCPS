@@ -1,8 +1,8 @@
 /*
  * scps_credit.c — DETTE & PRÊTS — M3c : LE CRÉDIT RÉEL. Voir scps_credit.h.
  *
- * Le plafond n'est pas une constante : il ÉMERGE de la capacité à rembourser (taille
- * éco, credit_line — INCHANGÉ). Ce qui change (M3c) : un emprunt DÉPLACE des pièces qui
+ * La dette n'a pas de plafond dette/revenu : le taux monte avec le levier et chaque
+ * prêteur rationne selon ses réserves et son exposition. Un emprunt DÉPLACE des pièces qui
  * existent déjà (péréquation nationale, puis les PROPRES classes du pays, puis une
  * cité-état solvable) au lieu de laisser le trésor passer "monnaie négative". La dette
  * est un PASSIF SÉPARÉ (CountryDebt), ventilé par créancier ; l'intérêt annuel CRÉDITE
@@ -32,7 +32,7 @@ typedef struct {
     float   to_bourgeois;  /* dette due AUX BOURGEOIS du pays (ce qu'ils ont RÉELLEMENT prêté) */
     float   to_cs;        /* dette due à LA cité-état créancière (agrégé) */
     int16_t cs_id;         /* pays créancier cité-état, -1 = aucun */
-    /* M3d — années CONSÉCUTIVES passées AU PLAFOND (credit_year_tick) : la « chronique »
+    /* Années CONSÉCUTIVES d'échéance substantielle impayée APRÈS refinancement : la chronique
      * qui déclenche la banqueroute FORCÉE (BANKRUPTCY_GRACE_YEARS). Sérialisée (v90) —
      * inter-ticks (persiste d'une année sur l'autre), motif EMOB/COLC/TXYR. */
     int16_t insolvent_streak;
@@ -109,44 +109,26 @@ void credit_bankruptcy_stats(long *forced, long *voluntary){
     if (forced)    *forced=g_bankrupt_forced;
     if (voluntary) *voluntary=g_bankrupt_voluntary;
 }
-/* M3d — LE PLAFOND (brief §1) : dette max = DEBT_CEILING_YEARS × revenu annuel NOMINAL
- * (econ_country_tax_year — la MEMBRANE DE DÉCISION déjà établie, cf. d_treasury_mois).
- * 0 revenu (bootstrap <90j, cf. econ_country_tax_year) ⇒ plafond 0 : AUCUN emprunt tant que
- * le pays n'a encore rien perçu — cohérent (mesuré/documenté au rapport, pas un bug). */
-float credit_debt_ceiling(int c){
-    return tune_f("DEBT_CEILING_YEARS", 3.0f) * fmaxf(0.f, econ_country_tax_year(c));
+/* Le revenu fiscal annuel est la MESURE de solvabilité, jamais une autorisation. Il sert
+ * au prix du risque ; aucun multiple de ce revenu ne ferme administrativement le marché. */
+float credit_annual_revenue(int c){
+    return fmaxf(0.f, econ_country_tax_year(c));
 }
-/* LE DRAW MAXIMAL d'un pays MAINTENANT — l'intersection du plafond (headroom restant) et
- * de LA TRANCHE (brief §4 : DEBT_TRANCHE_FRAC × revenu annuel, PAR SOURCE — classes et
- * cité-état ont chacune leur propre tranche, motif des capacités déjà indépendantes
- * CLASS_LEND_SHARE/CITYSTATE_LEND_SHARE). Ne mord QUE la dette RÉELLE (credit_borrow_local
- * l'applique APRÈS la péréquation, qui n'est pas un prêt — brief §1 « plus personne ne
- * prête », la péréquation ne prête personne, elle redistribue le pays à lui-même). */
+float credit_debt_ratio(int c){
+    float revenue=fmaxf(credit_annual_revenue(c), tune_f("DEBT_REVENUE_FLOOR",200.f));
+    return credit_debt_total(c)/fmaxf(revenue,1.f);
+}
+/* PRIME DE RISQUE CONVEXE : les premières années de revenu restent finançables ; au-delà,
+ * chaque nouvelle tranche devient rapidement plus chère. Le plafond haut est purement
+ * numérique (un contrat ne peut pas inscrire un float arbitraire), pas un plafond de dette. */
 static float credit_rate_at(int c, float debt_total){
-    float ceiling = credit_debt_ceiling(c); if (ceiling<1.f) ceiling=1.f;
-    float lev = debt_total/ceiling;
-    return clampf(tune_f("DEBT_RATE_BASE",0.02f) + tune_f("DEBT_RATE_SLOPE",0.03f)*lev,
-                  tune_f("DEBT_RATE_MIN",0.02f), tune_f("DEBT_RATE_MAX",0.05f));
+    float revenue=fmaxf(credit_annual_revenue(c), tune_f("DEBT_REVENUE_FLOOR",200.f));
+    float lev=debt_total/fmaxf(revenue,1.f);
+    float rate=tune_f("DEBT_RATE_BASE",0.02f)
+              + tune_f("DEBT_RATE_LINEAR",0.015f)*lev
+              + tune_f("DEBT_RATE_QUAD",0.0075f)*lev*lev;
+    return clampf(rate, tune_f("DEBT_RATE_MIN",0.02f), tune_f("DEBT_RATE_MAX",0.50f));
 }
-static float debt_draw_cap_at(int c, float debt_total){
-    float ceiling = credit_debt_ceiling(c);
-    float room = ceiling - debt_total; if (room<0.f) room=0.f;
-    /* MONNAIE M14 — B4 : le MARKUP figé à l'origination (debt_origination, DEBT_FIXED —
-     * borrow×(1+taux)) inscrit PLUS que le réel emprunté au passif. Emprunter `room` en
-     * pièces réelles inscrirait room×(1+taux) > room au passif — le plafond ÉMIS pouvait
-     * donc dépasser `ceiling` par SIMPLE COMPTABILITÉ (jamais un défaut de solvabilité, un
-     * défaut d'arithmétique). Réserver le markup : le headroom RÉEL (en pièces) est
-     * room/(1+taux) — au maximum, borrow×(1+taux)==room exactement, jamais plus. Taux lu
-     * AVANT tout emprunt (même convention que debt_origination). DEBT_FIXED=0 (kill-switch,
-     * même levier que M11-A3) : aucun markup, headroom=room, comportement INCHANGÉ. */
-    if (tune_f("DEBT_FIXED", 1.0f) > 0.f){
-        float rate = credit_rate_at(c, debt_total);
-        room = room / (1.f + rate);
-    }
-    float tranche = tune_f("DEBT_TRANCHE_FRAC", 0.20f) * fmaxf(0.f, econ_country_tax_year(c));
-    return fminf(room, tranche);
-}
-static float debt_draw_cap(int c){ return debt_draw_cap_at(c, credit_debt_total(c)); }
 
 /* V1 (MONNAIE M9) — le TAUX courant (lecture PURE, aucune mutation) : factorisé hors de
  * credit_year_tick (même formule EXACTE, M3d §3 — aucune constante changée) pour servir le
@@ -179,39 +161,17 @@ static int home_reg(const World *w, int c){
     int cp=w->country[c].capital_prov;
     return (cp>=0&&cp<w->n_provinces)? w->province[cp].region : -1;
 }
-static double cpop(const WorldEconomy *e, int c){
-    double p=0.0; int n=e->n_regions; if(n>SCPS_MAX_REG)n=SCPS_MAX_REG;
-    for(int r=0;r<n;r++) if(e->region[r].owner==c)
-        for(int k=0;k<CLASS_COUNT;k++) p+=e->region[r].strata[k].pop;
-    return p;
-}
-/* PLAFOND ÉMERGENT — capacité à rembourser ∝ taille éco (pop). INCHANGÉ par M3c (gate de
- * credit_can_spend seulement — la chaîne d'emprunt RÉELLE, elle, a ses propres capacités
- * par étage, cf. plus bas). La légitimité entre dans le TAUX (credit_year_tick). */
+static float credit_external_capacity(const WorldEconomy *e, const World *w, int c);
+/* « Ligne de crédit » devient une lecture du marché : ce que les prêteurs physiques sont
+ * prêts à avancer MAINTENANT. Elle ne dépend plus de la population du débiteur. */
 float credit_line(const World *w, const WorldEconomy *e, int c){
-    (void)w; return tune_f("CREDIT_LINE_BASE",0.5f) * (float)cpop(e,c);
+    return credit_external_capacity(e,w,c);
 }
 
 /* éthos pays = éthos de la culture de sa région-capitale (convention scps_ai.c). */
 static Ethos country_ethos(const WorldEconomy *e, const World *w, int c){
     int hr=home_reg(w,c);
     return (hr>=0&&hr<e->n_regions)? e->region[hr].culture.ethos : ETHOS_COUNT;
-}
-/* PRÊTEUR ÉLIGIBLE : cité-état OU mercantile/pacifiste, ≠ c, avec du surplus RÉEL
- * (au-dessus de SINK_FLOOR — un prêteur ne se saigne pas lui-même). Le plus riche. */
-static int pick_lender(const WorldEconomy *e, const World *w, int c, float floor_){
-    int best=-1; float bests=0.f;
-    for(int k=0;k<w->n_countries && k<SCPS_MAX_COUNTRY;k++){
-        if(k==c) continue;
-        bool lender=(w->country[k].role==POLITY_CITY_STATE);
-        if(!lender){ Ethos et=country_ethos(e,w,k); lender=(et==ETHOS_MERCANTILE||et==ETHOS_PACIFISTE); }
-        if(!lender) continue;
-        float s=0.f; int n=e->n_prov; if(n>SCPS_MAX_PROV)n=SCPS_MAX_PROV;
-        for(int p=0;p<n;p++) if(e->prov[p].owner==k && e->prov[p].active && e->prov[p].colonized) s += fmaxf(0.f, e->prov[p].treasury - floor_);
-        if (s<=0.f) continue;
-        if (s>bests){ bests=s; best=k; }
-    }
-    return best;
 }
 /* or NET d'un pays lu DIRECTEMENT sur prov[] (Σ) — contrepartie province-fraîche
  * d'econ_country_gold (qui lit region[], un DÉRIVÉ pas encore ré-agrégé juste après
@@ -225,38 +185,74 @@ static double country_gold_prov(const WorldEconomy *e, int c){
 static float country_surplus(const WorldEconomy *e, int c, float floor_);
 static void country_lendable(const WorldEconomy *e, int c, float ew, float bw,
                              float *cap_elite, float *cap_bourg);
+static float state_lending_capacity_at(const WorldEconomy *e, int debtor, int lender,
+                                       float debt_total_for_rate);
+static float class_lending_capacity_at(const WorldEconomy *e, int c, SocialClass cls,
+                                       float debt_total_for_rate);
+
+/* Exposition inscrite au bilan d'un prêteur étranger. Les intérêts forfaitaires font
+ * partie de la créance : ils consomment donc eux aussi la limite d'exposition. */
+float credit_state_exposure(int debtor, int lender){
+    if (debtor<0 || debtor>=SCPS_MAX_COUNTRY || lender<0 || lender>=SCPS_MAX_COUNTRY) return 0.f;
+    return (g_debt[debtor].cs_id==lender) ? g_debt[debtor].to_cs : 0.f;
+}
+float credit_state_total_exposure(int lender){
+    if (lender<0 || lender>=SCPS_MAX_COUNTRY) return 0.f;
+    float total=0.f;
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++)
+        if (g_debt[c].cs_id==lender) total+=g_debt[c].to_cs;
+    return total;
+}
+
+/* PRÊTEUR AUTOMATIQUE : cité-État ou puissance mercantile/pacifiste. On choisit non plus
+ * le plus gros trésor brut, mais la meilleure capacité APRÈS réserve, portefeuille total
+ * et concentration sur ce débiteur. */
+static int pick_lender_at(const WorldEconomy *e, const World *w, int c, float debt_for_rate){
+    int best=-1; float best_room=0.f;
+    for(int k=0;k<w->n_countries && k<SCPS_MAX_COUNTRY;k++){
+        if(k==c) continue;
+        bool lender=(w->country[k].role==POLITY_CITY_STATE);
+        if(!lender){ Ethos et=country_ethos(e,w,k); lender=(et==ETHOS_MERCANTILE||et==ETHOS_PACIFISTE); }
+        if(!lender) continue;
+        float room=state_lending_capacity_at(e,c,k,debt_for_rate);
+        if (room>best_room){ best_room=room; best=k; }
+    }
+    return best;
+}
+static int pick_lender(const WorldEconomy *e, const World *w, int c){
+    return pick_lender_at(e,w,c,credit_debt_total(c));
+}
 
 /* Capacité PHYSIQUE de la chaîne ad-hoc, sans mutation. La péréquation est absente :
  * déplacer des pièces entre provinces d'un même pays ne couvre jamais un déficit NET
  * national. Les deux sources de financement sont donc les classes, puis le prêteur
- * étranger, avec le plafond recalculé après l'origination du premier étage. */
-static int eligible_lender(const WorldEconomy *e, const World *w, int c, float floor_){
+ * étranger, avec un taux recalculé après l'origination du premier étage. */
+static int eligible_lender_at(const WorldEconomy *e, const World *w, int c, float debt_for_rate){
     int L=g_debt[c].cs_id;
-    if (L>=0 && L<w->n_countries && L!=c){
+    if (g_debt[c].to_cs>CR_EPS){
+        /* Une créance étrangère existante ne change jamais silencieusement de propriétaire.
+         * Si ce créancier ne refinance plus, le marché étranger est fermé jusqu'au rachat,
+         * remboursement ou défaut. */
+        if (L<0 || L>=w->n_countries || L==c) return -1;
         bool lender=(w->country[L].role==POLITY_CITY_STATE);
         if (!lender){ Ethos et=country_ethos(e,w,L); lender=(et==ETHOS_MERCANTILE||et==ETHOS_PACIFISTE); }
-        if (lender && country_surplus(e,L,floor_)>CR_EPS) return L;
+        if (lender && state_lending_capacity_at(e,c,L,debt_for_rate)>CR_EPS) return L;
+        return -1;
     }
-    return pick_lender(e,w,c,floor_);
+    return pick_lender_at(e,w,c,debt_for_rate);
 }
 static float credit_external_capacity(const WorldEconomy *e, const World *w, int c){
-    float ew=tune_f("ELITE_LEND_WEIGHT",1.0f), bw=tune_f("BOURGEOIS_LEND_WEIGHT",0.5f);
-    float share=tune_f("CLASS_LEND_SHARE",0.05f);
-    float cap_e=0.f, cap_b=0.f; country_lendable(e,c,ew,bw,&cap_e,&cap_b);
     float debt0=credit_debt_total(c);
-    float from_classes=fminf((cap_e+cap_b)*share, debt_draw_cap_at(c,debt0));
+    float cap_e=class_lending_capacity_at(e,c,CLASS_ELITE,debt0);
+    float cap_b=class_lending_capacity_at(e,c,CLASS_BOURGEOIS,debt0);
+    float from_classes=cap_e+cap_b;
     float debt1=debt0;
     if (from_classes>CR_EPS){
         float factor=(tune_f("DEBT_FIXED",1.f)>0.f) ? 1.f+credit_rate_at(c,debt0) : 1.f;
         debt1 += from_classes*factor;
     }
-    float floor_=tune_f("SINK_FLOOR",500.f);
-    int L=eligible_lender(e,w,c,floor_);
-    float from_state=0.f;
-    if (L>=0){
-        float avail=country_surplus(e,L,floor_)*tune_f("CITYSTATE_LEND_SHARE",0.5f);
-        from_state=fminf(avail,debt_draw_cap_at(c,debt1));
-    }
+    int L=eligible_lender_at(e,w,c,debt1);
+    float from_state=(L>=0)?state_lending_capacity_at(e,c,L,debt1):0.f;
     return from_classes+from_state;
 }
 bool credit_can_spend(const WorldEconomy *e, const World *w, int c, float cost){
@@ -265,9 +261,6 @@ bool credit_can_spend(const WorldEconomy *e, const World *w, int c, float cost){
     if (hr<0 || hr>=e->n_regions || econ_region_rep_province(e,hr)<0) return false;
     if (cost<=CR_EPS) return true;
     double gold=country_gold_prov(e,c);
-    /* Le plafond historique reste une porte de politique économique. */
-    double room=(double)credit_line(w,e,c)-(double)credit_debt_total(c);
-    if (gold-(double)cost < -room-CR_EPS) return false;
     double need=(double)cost-gold;
     return need<=CR_EPS || need<=(double)credit_external_capacity(e,w,c)+CR_EPS;
 }
@@ -281,6 +274,43 @@ static float country_surplus(const WorldEconomy *e, int c, float floor_){
     for(int p=0;p<n;p++) if(e->prov[p].owner==c && e->prov[p].active && e->prov[p].colonized)
         s += fmaxf(0.f, e->prov[p].treasury - floor_);
     return s;
+}
+
+/* Capacité d'un prêteur d'État. Le capital prêtable est son surplus liquide PLUS ses
+ * créances encore vivantes. Deux bornes distinctes s'appliquent : taille du portefeuille
+ * total, puis concentration sur le débiteur. `room_face` est une valeur de créance ; on
+ * réserve le markup du nouveau contrat pour renvoyer des pièces réellement transférables. */
+static float state_face_room(const WorldEconomy *e, int debtor, int lender){
+    if (!e || debtor<0 || debtor>=SCPS_MAX_COUNTRY || lender<0 || lender>=SCPS_MAX_COUNTRY
+        || debtor==lender) return 0.f;
+    if (g_debt[debtor].to_cs>CR_EPS && g_debt[debtor].cs_id!=lender) return 0.f;
+    float liquid=country_surplus(e,lender,tune_f("SINK_FLOOR",500.f));
+    float total_exp=credit_state_total_exposure(lender);
+    float debtor_exp=credit_state_exposure(debtor,lender);
+    float capital=liquid+total_exp;
+    float total_limit=capital*tune_f("LENDER_PORTFOLIO_SHARE",0.75f);
+    float debtor_limit=capital*tune_f("LENDER_DEBTOR_SHARE",0.35f);
+    float total_room=fmaxf(0.f,total_limit-total_exp);
+    float debtor_room=fmaxf(0.f,debtor_limit-debtor_exp);
+    return fminf(total_room,debtor_room);
+}
+static float state_lending_capacity_at(const WorldEconomy *e, int debtor, int lender,
+                                       float debt_total_for_rate){
+    float liquid=country_surplus(e,lender,tune_f("SINK_FLOOR",500.f));
+    float draw=liquid*tune_f("CITYSTATE_LEND_SHARE",0.5f);
+    float room_face=state_face_room(e,debtor,lender);
+    float factor=(tune_f("DEBT_FIXED",1.f)>0.f)?1.f+credit_rate_at(debtor,debt_total_for_rate):1.f;
+    return fmaxf(0.f,fminf(draw,room_face/fmaxf(factor,1.f)));
+}
+float credit_state_borrow_capacity(const WorldEconomy *e, int debtor, int lender){
+    return state_lending_capacity_at(e,debtor,lender,credit_debt_total(debtor));
+}
+float credit_state_liquid_surplus(const WorldEconomy *e, int lender){
+    if (!e || lender<0 || lender>=SCPS_MAX_COUNTRY) return 0.f;
+    return country_surplus(e,lender,tune_f("SINK_FLOOR",500.f));
+}
+float credit_state_exposure_limit(const WorldEconomy *e, int debtor, int lender){
+    return credit_state_exposure(debtor,lender)+state_face_room(e,debtor,lender);
 }
 /* Débite `amount` (<=country_surplus(e,c,floor_)) au PRORATA du surplus de chaque
  * province — aucune ne descend sous floor_ par construction (amount borné par l'appelant).
@@ -318,6 +348,25 @@ static void country_lendable(const WorldEconomy *e, int c, float ew, float bw, f
     }
     if (cap_elite) *cap_elite = el*ew;
     if (cap_bourg) *cap_bourg = bo*bw;
+}
+
+/* Les ordres ont eux aussi une exposition finie. Sans cette borne, un refinancement par
+ * la même classe rendrait les pièces puis les reprêterait indéfiniment, tandis que la
+ * créance grossirait du markup. Le patrimoine liquide et la créance forment son capital ;
+ * l'État ne peut en absorber qu'une fraction. */
+static float class_lending_capacity_at(const WorldEconomy *e, int c, SocialClass cls,
+                                       float debt_total_for_rate){
+    if (!e || c<0 || c>=SCPS_MAX_COUNTRY || (cls!=CLASS_ELITE && cls!=CLASS_BOURGEOIS)) return 0.f;
+    float ew=tune_f("ELITE_LEND_WEIGHT",1.f), bw=tune_f("BOURGEOIS_LEND_WEIGHT",0.5f);
+    float cap_e=0.f, cap_b=0.f; country_lendable(e,c,ew,bw,&cap_e,&cap_b);
+    float liquid=(cls==CLASS_ELITE)?cap_e:cap_b;
+    float exposure=(cls==CLASS_ELITE)?g_debt[c].to_elite:g_debt[c].to_bourgeois;
+    float capital=liquid+exposure;
+    float limit=capital*tune_f("CLASS_EXPOSURE_SHARE",0.50f);
+    float room_face=fmaxf(0.f,limit-exposure);
+    float factor=(tune_f("DEBT_FIXED",1.f)>0.f)?1.f+credit_rate_at(c,debt_total_for_rate):1.f;
+    float per_draw=liquid*tune_f("CLASS_LEND_SHARE",0.05f);
+    return fmaxf(0.f,fminf(per_draw,room_face/fmaxf(factor,1.f)));
 }
 /* Débite `amount` de la richesse ÉLITE (ou BOURGEOIS) d'un pays, au prorata province par
  * province (même motif que debit_surplus_prorata, sur strata[cls].wealth). */
@@ -367,15 +416,12 @@ static void credit_wealth_prorata(WorldEconomy *e, int c, int cls, float amount)
 
 static float credit_borrow_classes(WorldEconomy *e, int c, float need){
     if (!e || c<0 || c>=SCPS_MAX_COUNTRY || need<=CR_EPS) return 0.f;
-    float rem_capped=fminf(need,debt_draw_cap(c));
-    if (rem_capped<=CR_EPS) return 0.f;
-    float ew=tune_f("ELITE_LEND_WEIGHT",1.0f), bw=tune_f("BOURGEOIS_LEND_WEIGHT",0.5f);
-    float share=tune_f("CLASS_LEND_SHARE",0.05f);
-    float cap_e=0.f, cap_b=0.f; country_lendable(e,c,ew,bw,&cap_e,&cap_b);
-    cap_e*=share; cap_b*=share;
+    float debt0=credit_debt_total(c);
+    float cap_e=class_lending_capacity_at(e,c,CLASS_ELITE,debt0);
+    float cap_b=class_lending_capacity_at(e,c,CLASS_BOURGEOIS,debt0);
     float cap_tot=cap_e+cap_b;
     if (cap_tot<=CR_EPS) return 0.f;
-    float borrow=fminf(rem_capped,cap_tot);
+    float borrow=fminf(need,cap_tot);
     float b_elite=borrow*(cap_e/cap_tot), b_bourg=borrow-b_elite;
     if (b_elite>CR_EPS) debit_wealth_prorata(e,c,CLASS_ELITE,b_elite);
     if (b_bourg>CR_EPS) debit_wealth_prorata(e,c,CLASS_BOURGEOIS,b_bourg);
@@ -405,20 +451,14 @@ float credit_borrow_local(WorldEconomy *e, int c, float need){
 
 /* Capacité d'emprunt DISPONIBLE (lecture PURE, aucune mutation) pour la classe `cls` du pays
  * `c` — l'intersection de la capacité PAR CLASSE (même formule que credit_borrow_local §2 :
- * CLASS_LEND_SHARE × richesse pondérée ELITE/BOURGEOIS_LEND_WEIGHT) et du plafond+tranche
- * STRUCTUREL du pays (debt_draw_cap, M3d — partagé avec la chaîne auto). CLASS_LABORER/
+ * CLASS_LEND_SHARE × richesse pondérée ELITE/BOURGEOIS_LEND_WEIGHT) et de son exposition
+ * de l'EXPOSITION de cet ordre (class_lending_capacity_at). CLASS_LABORER/
  * CLASS_SLAVE : toujours 0 (aucune épargne, motif M3c déjà établi "les laborers n'ont pas
  * d'épargne") — la fiche UI grise le bouton, aucun refus à coder côté verbe (décision joueur :
  * « l'ordre ne refuse pas », il n'y a simplement rien à prêter). Sert le reader façade
  * scps_country_loan_capacity (montant max + credit_current_rate, le taux proposé). */
 float credit_class_borrow_capacity(const WorldEconomy *e, int c, SocialClass cls){
-    if (!e || c<0 || c>=SCPS_MAX_COUNTRY) return 0.f;
-    if (cls!=CLASS_ELITE && cls!=CLASS_BOURGEOIS) return 0.f;
-    float ew=tune_f("ELITE_LEND_WEIGHT",1.0f), bw=tune_f("BOURGEOIS_LEND_WEIGHT",0.5f);
-    float share=tune_f("CLASS_LEND_SHARE",0.05f);
-    float cap_e=0.f, cap_b=0.f; country_lendable(e,c,ew,bw,&cap_e,&cap_b);
-    float cap = (cls==CLASS_ELITE) ? cap_e*share : cap_b*share;
-    return fminf(cap, debt_draw_cap(c));
+    return class_lending_capacity_at(e,c,cls,credit_debt_total(c));
 }
 /* LE VERBE : emprunt EXPLICITE à UNE SEULE classe choisie par le joueur (décision 2026-07-16,
  * « panneau éco, c'est l'ordre qui prête… l'état emprunte d'abord aux classes ») — même étage/
@@ -457,37 +497,11 @@ float credit_borrow_class(WorldEconomy *e, int c, SocialClass cls, float need){
 
 float credit_borrow_citystate(WorldEconomy *e, const World *w, int c, float need){
     if (!e || !w || c<0 || c>=SCPS_MAX_COUNTRY || need<=CR_EPS) return 0.f;
-    /* M3d — LE PLAFOND + LA TRANCHE (brief §1/§4), même motif que credit_borrow_local
-     * (cette fonction n'a PAS de péréquation : toute la fonction est de la vraie dette). */
-    need = fminf(need, debt_draw_cap(c));
-    if (need<=CR_EPS) return 0.f;
-    float floor_=tune_f("SINK_FLOOR",500.f);
-    float share=tune_f("CITYSTATE_LEND_SHARE",0.5f);
-
-    /* prêteur : le créancier EXISTANT s'il est encore éligible/solvable (on ne
-     * fragmente pas la dette-cité-état — simplicité v1, brief §5), sinon le plus riche
-     * prêteur éligible (pick_lender).
-     * M3d §2 — LE REFUS (« les cités-états PEUVENT refuser… trésor sous leur propre
-     * plancher ») : DÉJÀ le motif ICI — `country_surplus(e,L,floor_)>CR_EPS` (existing_ok)
-     * et `pick_lender` (n'élit qu'un pays au surplus RÉEL >SINK_FLOOR) refusent TOUS DEUX
-     * un prêteur sous son propre plancher opérationnel. Choix documenté (brief : « choisis
-     * au motif existant ») — pas de nouveau mécanisme relation/embargo (aurait exigé de
-     * faire voyager DiploState/WorldProsperity jusqu'ici, à travers credit_spend/
-     * credit_settle_monthly/econ_tick : hors scope, « la solution la plus simple »). */
-    int L=g_debt[c].cs_id;
-    bool existing_ok=false;
-    if (L>=0 && L<w->n_countries && L!=c){
-        bool lender=(w->country[L].role==POLITY_CITY_STATE);
-        if (!lender){ Ethos et=country_ethos(e,w,L); lender=(et==ETHOS_MERCANTILE||et==ETHOS_PACIFISTE); }
-        existing_ok = lender && (country_surplus(e,L,floor_)>CR_EPS);
-    }
-    if (!existing_ok) L=pick_lender(e,w,c,floor_);
+    int L=eligible_lender_at(e,w,c,credit_debt_total(c));
     if (L<0) return 0.f;
-
-    float avail=country_surplus(e,L,floor_)*share;
-    float borrow=fminf(need, avail);
+    float borrow=fminf(need,state_lending_capacity_at(e,c,L,credit_debt_total(c)));
     if (borrow<=CR_EPS) return 0.f;
-    debit_surplus_prorata(e,L,floor_,borrow);   /* DÉBIT seul (même raison que credit_borrow_local) */
+    debit_surplus_prorata(e,L,tune_f("SINK_FLOOR",500.f),borrow);   /* DÉBIT seul (même raison que credit_borrow_local) */
     g_debt[c].to_cs += debt_origination(c, borrow);   /* MONNAIE M11 — A3 v2 : forfait figé */
     g_debt[c].cs_id = (int16_t)L;
     return borrow;
@@ -581,7 +595,7 @@ bool credit_spend(WorldEconomy *e, const World *w, int c, float cost){
  * les a pas, motif M3d §2 « le refus des cités-états, le motif existant ») via
  * ai_consider_offer/OFFER_LOAN (scps_ai.c) — cette fonction ASSUME le consentement DÉJÀ acquis
  * et ne fait QUE le transfert réel, au MÊME motif que credit_borrow_citystate (débit réel du
- * prêteur, plafond+tranche M3d du débiteur) mais LE CRÉANCIER EST CHOISI PAR LE JOUEUR (pas
+ * prêteur, réserve+exposition du créancier) mais LE CRÉANCIER EST CHOISI PAR LE JOUEUR (pas
  * pick_lender) — n'importe quel État étranger, pas seulement cité-état/mercantile/pacifiste
  * (réservés à V3, le RACHAT, ci-dessous). Un SEUL créancier étranger à la fois (motif « un
  * SEUL créancier-cité-état par pays », M3c) : refuse si le débiteur a déjà un AUTRE créancier
@@ -590,22 +604,17 @@ bool credit_spend(WorldEconomy *e, const World *w, int c, float cost){
  * ci-dessus) : DÉBITE le prêteur ET CRÉDITE le trésor du débiteur (contrairement à
  * credit_borrow_citystate qui ne fait que DÉBITER pour combler un besoin déjà tracé ailleurs
  * par l'appelant — ce verbe est autonome). Retourne le montant RÉELLEMENT prêté (0 =
- * impossible : déjà un autre créancier, plafond atteint, ou prêteur sans surplus). */
+     * impossible : déjà un autre créancier, réserve ou exposition du prêteur épuisée). */
 float credit_borrow_state(WorldEconomy *e, const World *w, int debtor_c, int lender_c, float amount){
     if (!e || !w || debtor_c<0 || debtor_c>=SCPS_MAX_COUNTRY || lender_c<0 || lender_c>=SCPS_MAX_COUNTRY
         || debtor_c==lender_c) return 0.f;
     if (g_debt[debtor_c].to_cs>CR_EPS && g_debt[debtor_c].cs_id>=0 && g_debt[debtor_c].cs_id!=(int16_t)lender_c)
         return 0.f;   /* déjà engagé avec un AUTRE créancier étranger */
-    /* amount<=0 ⇒ le MAXIMUM disponible (motif credit_borrow_class, V1) — le joueur demande
-     * « autant que possible » plutôt qu'un montant précis. */
-    float need = (amount>CR_EPS) ? fminf(amount, debt_draw_cap(debtor_c)) : debt_draw_cap(debtor_c);
-    if (need<=CR_EPS) return 0.f;
-    float floor_=tune_f("SINK_FLOOR",500.f);
-    float share=tune_f("CITYSTATE_LEND_SHARE",0.5f);   /* même capacité/tick que l'auto-emprunt cité-état */
-    float avail=country_surplus(e,lender_c,floor_)*share;
-    float borrow=fminf(need, avail);
+    /* amount<=0 ⇒ le MAXIMUM réellement disponible chez CE prêteur. */
+    float avail=credit_state_borrow_capacity(e,debtor_c,lender_c);
+    float borrow=(amount>CR_EPS)?fminf(amount,avail):avail;
     if (borrow<=CR_EPS) return 0.f;
-    debit_surplus_prorata(e,lender_c,floor_,borrow);
+    debit_surplus_prorata(e,lender_c,tune_f("SINK_FLOOR",500.f),borrow);
     /* LE DÉPÔT chez le DÉBITEUR (motif credit_borrow_class, V1) : la CAPITALE-province
      * (econ_country_capital_prov, province-grain pur) + econ_region_treasury_add — JAMAIS
      * econ_region_rep_province dans un chemin joueur (doctrine province, CLAUDE.md) et
@@ -641,7 +650,7 @@ bool credit_loan_request_granted(int debtor_c){
  * ÉCHÉANCE MINIMALE sur un stock dont le markup est FIGÉ à l'origination (DEBT_FIXED,
  * scps_tune_list.h — decision joueur « 1000 à 5 % ⇒ tu rembourses 1050, pas +5 %/an » ;
  * kill-switch=0 restaure l'intérêt ANNUEL composé M3d pré-M11 EXACT). Payé du SURPLUS
- * SEUL (jamais emprunté, jamais capitalisé si impayé — le manquant nourrit le streak
+ * puis REFINANCÉE tant qu'un prêteur l'accepte ; le reliquat nourrit le streak
  * d'IMPAYÉS, cf. plus bas : LE défaut réel). Réparti aux DEUX créanciers ∝ leur part de
  * la dette. Puis AMORTISSEMENT (surplus substantiel → rembourse le stock plus vite) et
  * RACHAT DE CRÉDIT (le marché secondaire, INCHANGÉ — une créance qui change de mains
@@ -653,7 +662,12 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
      * un flag lu par scps_sim.c juste après CET appel, jamais à cheval sur deux années). */
     for(int c=0;c<SCPS_MAX_COUNTRY;c++) g_buyback_archetype[c]=LOAN_ARCHETYPE_NONE;
     for(int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
-        float debt_total = g_debt[c].to_elite + g_debt[c].to_bourgeois + g_debt[c].to_cs;
+        /* Photo des créances D'AVANT service. Un refinancement crée une NOUVELLE créance
+         * avant que l'ancienne échéance soit versée ; les bénéficiaires du versement restent
+         * pourtant les anciens créanciers, dans leurs proportions d'avant refinancement. */
+        float old_elite=g_debt[c].to_elite, old_bourg=g_debt[c].to_bourgeois, old_cs=g_debt[c].to_cs;
+        int old_cs_id=g_debt[c].cs_id;
+        float debt_total = old_elite + old_bourg + old_cs;
         if (debt_total<=CR_EPS){
             g_debt[c].to_elite=0.f; g_debt[c].to_bourgeois=0.f; g_debt[c].to_cs=0.f; g_debt[c].cs_id=-1;
             g_debt[c].insolvent_streak=0; g_forced_pending[c]=false;   /* M3d : pas de dette, pas de chronique */
@@ -664,7 +678,7 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
          * de M3d). `fixed` : chaque prêt porte déjà son markup (debt_origination, figé à
          * l'origination) — plus AUCUNE rente annuelle sur le stock ; à la place, une
          * ÉCHÉANCE MINIMALE (DEBT_DUE_FRAC × stock) est DUE chaque année, payée du surplus
-         * SEUL (jamais empruntée, motif M3d inchangé), et RÉDUIT le stock (elle ÉTEINT une
+         * puis refinancée, et RÉDUIT le stock payé (elle ÉTEINT une
          * part de la créance — motif amortissement). `!fixed` (kill-switch) : le service
          * d'intérêt ANNUEL M3d pré-M11 EXACT (le stock ne bouge JAMAIS, l'intérêt ne
          * rembourse rien). */
@@ -672,19 +686,28 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
         float rate_now = credit_current_rate(c);   /* V1 (M9) — factorisé, formule M3d INCHANGÉE */
         float charge = fixed ? (debt_total * tune_f("DEBT_DUE_FRAC", 0.10f)) : (debt_total * rate_now);
 
-        /* L'échéance/l'intérêt se paie du SURPLUS COURANT du pays SEUL (jamais via
-         * credit_borrow*, qui EMPRUNTE et grossirait le stock du même montant qu'on vient de
-         * "payer" — un double-compte qui fabriquerait de la dette sans contrepartie réelle).
-         * Si le surplus ne suffit pas, le service de cette année-là est simplement PLUS PETIT
-         * (auto-limité) — jamais capitalisé, jamais créé (« fixe veut dire fixe »). */
+        /* Le service puise d'abord dans le surplus du débiteur. Le reliquat peut être
+         * REFINANCÉ : les prêteurs avancent alors de vraies pièces, qui repartent aussitôt
+         * vers les créanciers de l'ancienne tranche. Avec le même créancier, le mouvement
+         * de trésor s'annule mais son exposition augmente du nouveau contrat — exactement
+         * un rollover. Une exposition saturée ferme donc ce canal sans prudence artificielle
+         * du débiteur. */
         float avail=country_surplus(e,c,floor_);
-        float covered=fminf(charge, avail);
-        if (covered>CR_EPS) debit_surplus_prorata(e,c,floor_,covered);
+        float cash_paid=fminf(charge, avail);
+        if (cash_paid>CR_EPS) debit_surplus_prorata(e,c,floor_,cash_paid);
+        float refinanced=0.f, rem_due=charge-cash_paid;
+        if (rem_due>CR_EPS){
+            refinanced=credit_borrow_classes(e,c,rem_due);
+            rem_due-=refinanced;
+            if (rem_due>CR_EPS) refinanced+=credit_borrow_citystate(e,w,c,rem_due);
+        }
+        float covered=cash_paid+refinanced;
         bool underpaid = (covered+CR_EPS < charge);
         if (underpaid) g_defaults++;   /* échéance/intérêt de l'année sous-servi (auto-limité) */
 
         if (covered>CR_EPS){
-            float i_class=covered*((g_debt[c].to_elite+g_debt[c].to_bourgeois)/debt_total);
+            float old_class=old_elite+old_bourg;
+            float i_class=covered*(old_class/debt_total);
             float i_cs   =covered-i_class;
             /* MONNAIE M14 — B5 : ventilé ∝ la ventilation RÉELLE de la créance (ce que
              * CHAQUE ordre a EFFECTIVEMENT prêté) — plus les poids fixes ELITE/BOURGEOIS_
@@ -693,8 +716,7 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
              * ICI (portée du bloc `covered`) pour servir À LA FOIS le versement (ci-dessous)
              * ET la réduction du passif (plus bas, même ratio — sinon la créance se réduit
              * sur une clé différente de celle qui a été payée). */
-            float class_tot=g_debt[c].to_elite+g_debt[c].to_bourgeois;
-            float share_e=(class_tot>CR_EPS)?(g_debt[c].to_elite/class_tot):0.5f;
+            float share_e=(old_class>CR_EPS)?(old_elite/old_class):0.5f;
             if (i_class>CR_EPS){   /* l'ÉLITE RENTIÈRE (et le bourgeois-créancier) vivent du flux de remboursement */
                 float amt_e=i_class*share_e, amt_b=i_class-amt_e;
                 /* MONNAIE M3i — RETENUE À LA SOURCE sur le REVENU des classes créancières
@@ -721,8 +743,8 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
                 credit_wealth_prorata(e,c,CLASS_ELITE,     amt_e);
                 credit_wealth_prorata(e,c,CLASS_BOURGEOIS, amt_b);
             }
-            if (i_cs>CR_EPS && g_debt[c].cs_id>=0){
-                int hc=home_reg(w,g_debt[c].cs_id);
+            if (i_cs>CR_EPS && old_cs_id>=0){
+                int hc=home_reg(w,old_cs_id);
                 if (hc>=0&&hc<e->n_regions){ int cp=econ_region_rep_province(e,hc); if (cp>=0&&cp<e->n_prov) econ_prov_treasury_credit(e, cp, i_cs); }   /* MONNAIE M11 — A2 */
             }
             /* `fixed` : le remboursement ÉTEINT une part du stock (principal+markup blended,
@@ -784,11 +806,9 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
         }
         if (g_debt[c].to_cs<=CR_EPS) g_debt[c].cs_id=-1;
 
-        /* M3d §5 / MONNAIE M11 — A3 v2 — LA BANQUEROUTE FORCÉE : « plafond atteint OU
-         * échéance/intérêt chroniquement IMPAYÉ SUR UNE DETTE SUBSTANTIELLE » (le OU est le
-         * CŒUR de A3 v2 — l'audit : un pays sous le plafond qui ne paie PLUS JAMAIS RIEN
-         * restait, pré-M11, hors de portée de la banqueroute forcée). `fixed` : le streak
-         * réagit à `underpaid` (échéance manquée CETTE année) EN PLUS du plafond — MAIS
+        /* LA BANQUEROUTE FORCÉE : une échéance reste chroniquement IMPAYÉE SUR UNE DETTE
+         * SUBSTANTIELLE APRÈS que les prêteurs ont refusé de la refinancer. Le streak
+         * réagit à `underpaid` (échéance encore manquée CETTE année) — MAIS
          * SEULEMENT si `debt_final` dépasse DEBT_DEFAULT_THRESHOLD (registre J, DÉLIBÉRÉMENT
          * distinct de BUYBACK_DEBT_THRESHOLD — le seuil du RACHAT DE CRÉDIT, un mécanisme
          * DIFFÉRENT, INCHANGÉ ici). CALIBRAGE (sweep {9,11,42}×3×250, mesuré) : sans ce
@@ -799,18 +819,15 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
          * FRACTION n'était PAS le vrai levier, la LARGEUR du déclencheur l'était. Avec le
          * plancher : seule une dette VRAIMENT substantielle, jamais servie pendant 5 ans,
          * fait faillite — le défaut RÉEL, pas le résidu trivial. `!fixed` (legacy) :
-         * SEULEMENT le plafond (comportement pré-M11 exact, le bug de l'audit reproduit tel
-         * quel). Motif des grâces existantes (g_lowsat_streak/g_colony_cd, EMOB/COLC) : un
+         * Motif des grâces existantes (g_lowsat_streak/g_colony_cd, EMOB/COLC) : un
          * compteur d'années CONSÉCUTIVES en défaut (ré-évalué APRÈS échéance/intérêt+
          * amortissement de CETTE année) — BANKRUPTCY_GRACE_YEARS (registre J) de répit avant
          * le couperet, jamais un pic isolé. g_forced_pending est un flag TRANSIENT : scps_
          * sim.c l'exécute juste après credit_year_tick (RAZ dette + cicatrice + effet diplo,
          * motif CMD_MANUMIT — sim.c orchestre, credit.c fait le cœur). */
         float debt_final = g_debt[c].to_elite + g_debt[c].to_bourgeois + g_debt[c].to_cs;
-        float ceiling_final = credit_debt_ceiling(c);
-        bool ceiling_hit = (debt_final >= ceiling_final - CR_EPS && ceiling_final>CR_EPS);
         bool debt_meaningful = (debt_final > tune_f("DEBT_DEFAULT_THRESHOLD", 1500.f));
-        bool in_default = fixed ? (ceiling_hit || (underpaid && debt_meaningful)) : ceiling_hit;
+        bool in_default = underpaid && debt_meaningful;
         if (in_default){
             if (g_debt[c].insolvent_streak < 30000) g_debt[c].insolvent_streak++;
         } else {
@@ -868,16 +885,16 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
             if (!lender && cand>=0 && cand<w->n_countries && cand!=c){
                 Ethos et=country_ethos(e,w,cand); lender=(et==ETHOS_MERCANTILE||et==ETHOS_PACIFISTE);
             }
-            if (lender && country_surplus(e,cand,ifloor)>CR_EPS) L=cand;
+            if (lender && state_face_room(e,c,cand)>CR_EPS) L=cand;
         } else {
-            L=pick_lender(e,w,c,ifloor);   /* aucun créancier encore assigné : le plus riche éligible */
+            L=pick_lender(e,w,c);   /* aucun créancier encore assigné : le plus de capacité nette */
         }
         if (getenv("SCPS_BUYBACKDIAG"))
             fprintf(stderr,"[BUYBACKDIAG] c=%d to_class=%.0f cs_id=%d L=%d surplus(L)=%.0f\n",
                     c, (double)to_class_tot, g_debt[c].cs_id, L, L>=0?country_surplus(e,L,ifloor):-1.f);
         if (L<0) continue;
         float idle=country_surplus(e,L,ifloor)*ishare;
-        float amount=fminf(to_class_tot, idle);
+        float amount=fminf(to_class_tot, fminf(idle,state_face_room(e,c,L)));
         if (amount<=CR_EPS) continue;
         debit_surplus_prorata(e,L,ifloor,amount);            /* le racheteur paie face value */
         /* MONNAIE M14 — B5 : les créanciers CASHÉS OUT sont les VRAIS prêteurs (∝ ce que
@@ -950,7 +967,7 @@ int credit_bankruptcy(WorldEconomy *e, int c, bool forced){
     if (forced) g_bankrupt_forced++; else g_bankrupt_voluntary++;
     return L;
 }
-/* Flag TRANSIENT posé par credit_year_tick (streak au plafond ≥ BANKRUPTCY_GRACE_YEARS) —
+/* Flag TRANSIENT posé par credit_year_tick (streak d'impayés ≥ BANKRUPTCY_GRACE_YEARS) —
  * scps_sim.c le lit juste après credit_year_tick et exécute credit_bankruptcy(e,c,true)
  * pour chaque pays flaggé (le flag redescend alors via credit_bankruptcy lui-même). */
 bool credit_bankrupt_pending(int c){ return (c>=0 && c<SCPS_MAX_COUNTRY) && g_forced_pending[c]; }

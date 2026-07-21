@@ -114,7 +114,7 @@ int main(int argc, char **argv){
            bg.gold, bg.income, bg.expense, bg.net, nfx, bg.credit_line);
     ok("budget : décomposition du flux (postes non vides)", nfx>0);
     ok("budget : net = revenus − dépenses (cohérent)", bg.net==bg.income-bg.expense);
-    ok("budget : ligne de crédit ∝ pop (≥0, finie)", bg.credit_line>=0 && bg.credit_line==bg.credit_line);
+    ok("budget : crédit disponible des prêteurs (≥0, fini)", bg.credit_line>=0 && bg.credit_line==bg.credit_line);
     ok("P6 budget : rythmes mensuels et projection sont finis",
        bg.monthly_income>=0.0 && bg.monthly_expense>=0.0 && bg.monthly_net==bg.monthly_net &&
        bg.projected_year_end==bg.projected_year_end && bg.runway_months==bg.runway_months);
@@ -354,7 +354,7 @@ int main(int argc, char **argv){
             ok("V1 verbe EMPRUNTER À UN ORDRE : ordre ENFILÉ", enq==1);
             scps_sim_advance_days(s2, 1);                         /* le drain applique */
             double gold1 = scps_country_gold(s2, pl);
-            printf("   V1 emprunt à l'ordre (Bourgeois) : capacité annoncée %.0f or (taux %.1f%%/an) — trésor %.0f -> %.0f (%+.0f)\n",
+            printf("   V1 emprunt à l'ordre (Bourgeois) : capacité annoncée %.0f or (taux fixe %.1f%%) — trésor %.0f -> %.0f (%+.0f)\n",
                    (double)cap, (nlc==3)?(double)(lc[cls].taux*100.f):0.0, gold0, gold1, gold1-gold0);
             ok("V1 verbe EMPRUNTER À UN ORDRE : APPLIQUÉ au drain (trésor crédité de la capacité annoncée)",
                cap<=0.5f ? (gold1>=gold0-0.01) : (gold1 > gold0 + 0.5*(double)cap));
@@ -363,8 +363,8 @@ int main(int argc, char **argv){
              * `taux` (le taux d'ORIGINATION d'un futur emprunt, jamais celui qui prélève sur
              * la dette EXISTANTE sous DEBT_FIXED : 10 %/an du stock, credit_year_tick). Le
              * bug de l'UI (budget_panel_v2.gd) affichait total*taux (2-5 %) — bien EN DESSOUS
-             * de la vraie échéance (10 %). credit_debt_ceiling exige >90j de revenu CAPTÉ
-             * (bootstrap, motif M3d) — si le V1 ci-dessus tombe trop tôt (cap==0), on
+             * de la vraie échéance (10 %). Si les classes n'ont encore aucune épargne
+             * mobilisable (bootstrap), on
              * réessaie ICI après un an supplémentaire, dédié à B7. */
             if (cap<=0.5f){
                 scps_sim_advance_days(s2, 366);
@@ -379,6 +379,8 @@ int main(int argc, char **argv){
             if (cap>0.5f){
                 ScpsDebt deb; scps_country_debt(s2, pl, &deb);
                 float expect_fixed = deb.total * tune_f("DEBT_DUE_FRAC", 0.10f);
+                ok("crédit rationné visible : revenu, levier et capacité disponible sont exposés",
+                   deb.annual_revenue>=0.f && deb.leverage>=0.f && deb.available>=0.f);
                 printf("   B7 : dette totale=%.0f · taux origination=%.1f%% · échéance RÉELLE=%.1f (attendu %.1f, DEBT_DUE_FRAC)\n",
                        (double)deb.total, (double)(deb.taux*100.f), (double)deb.due, (double)expect_fixed);
                 ok("B7 : sous DEBT_FIXED, l'échéance == total×DEBT_DUE_FRAC (PAS total×taux)",
@@ -402,10 +404,18 @@ int main(int argc, char **argv){
         {
             scps_sim_advance_days(s2, 70);   /* purge tout cooldown émissaire laissé par les verbes diplo ci-dessus */
             int granted=0, refused=0, none=0, tried=0;
+            bool quote_checked=false;
             for (int c=0; c<nc2 && tried<6; c++){
                 if (c==pl) continue;
                 tried++;
-                scps_player_request_loan(s2, c, -1.f);   /* <=0 ⇒ le maximum structurel */
+                if (!quote_checked){
+                    ScpsStateLoanQuote q; scps_country_loan_quote(s2,pl,c,&q);
+                    ok("V2 cotation AVANT demande : capacité/réserve/exposition sont bornées et lisibles",
+                       q.montant_max>=0.f && q.lender_surplus>=0.f && q.exposure>=0.f
+                       && q.exposure_limit+0.01f>=q.exposure && q.portfolio_exposure+0.01f>=q.exposure);
+                    quote_checked=true;
+                }
+                scps_player_request_loan(s2, c, -1.f);   /* <=0 ⇒ le maximum réellement offert */
                 scps_sim_advance_days(s2, 65);            /* > le cooldown émissaire (60j) : la demande part et se résout */
                 int tgt = scps_country_loan_request_target(s2, pl);
                 const char *word = scps_country_loan_status(s2, pl);

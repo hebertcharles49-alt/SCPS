@@ -614,23 +614,18 @@
     /* Le FOND du TRIO de bâti (bois/pierre/argile, econ_build_reserve) : ce qu'une région GARDE avant
      * d'exporter son surplus — sans quoi l'export auto la vide et le gate de chantier la refuse. */ \
     X(BUILD_RESERVE_BULK,     15.0f) /* recalé avec la 2e passe de coûts (÷3 sur 540/960j) : le fond de réserve suit l'échelle des chantiers */ \
-    /* DETTE (scps_credit, incrément 1) — la ligne de crédit ÉMERGE de la taille éco (capacité à
-     * rembourser ∝ pop) ; le taux price le risque (ratio de dette + chute de légitimité). */ \
-    X(CREDIT_LINE_BASE,       0.5f) \
-    X(CREDIT_RATE_BASE,       0.05f) \
-    /* ANTI-EMBALLEMENT de la dette : au-delà de ce ratio dette/ligne, taux ET assiette
-     * d'intérêt PLAFONNENT → l'intérêt devient constant, la dette croît linéairement
-     * (sans ça : intérêt ∝ dette² → spirale géométrique → treasury -1e31 → NaN ~105 ans). */ \
-    X(CREDIT_RATIO_CAP,       8.0f) \
-    /* MONNAIE M3c — LA CHAÎNE D'EMPRUNT (scps_credit.c, credit_borrow*). Part de richesse
-     * PRÊTABLE par tick (élites/bourgeois — les laborers n'ont pas d'épargne, brief) ;
-     * pondération élite>bourgeois (l'élite a le plus d'épargne dormante). */ \
+    /* CRÉDIT RATIONNÉ PAR LES PRÊTEURS — aucun plafond dette/revenu côté débiteur. Les
+     * ordres prêtent par tirages successifs, mais leur exposition à l'État ne peut dépasser
+     * CLASS_EXPOSURE_SHARE de leur capital (liquidités pondérées + créance existante). */ \
     X(CLASS_LEND_SHARE,       0.05f) \
+    X(CLASS_EXPOSURE_SHARE,   0.50f) \
     X(ELITE_LEND_WEIGHT,      1.0f) \
     X(BOURGEOIS_LEND_WEIGHT,  0.5f) \
-    /* Part du SURPLUS (>SINK_FLOOR) d'un prêteur (cité-état/mercantile) empruntable par
-     * tick — un prêteur ne se saigne jamais en un seul emprunt. */ \
+    /* Un État prêteur conserve SINK_FLOOR, ne mobilise qu'une part du surplus par tirage,
+     * borne son portefeuille total et borne séparément son exposition à UN débiteur. */ \
     X(CITYSTATE_LEND_SHARE,   0.5f) \
+    X(LENDER_PORTFOLIO_SHARE, 0.75f) \
+    X(LENDER_DEBTOR_SHARE,    0.35f) \
     /* AMORTISSEMENT — part du PRINCIPAL remboursée par an depuis le surplus (>COURT_FLOOR,
      * le seuil de hoarding) : « la dette VIT », elle ne fait pas que grossir. */ \
     X(PRINCIPAL_REPAY_RATE,   0.10f) \
@@ -638,41 +633,34 @@
      * offre de rachat, et part du trésor OISIF (>COURT_FLOOR) du racheteur mobilisable. */ \
     X(BUYBACK_DEBT_THRESHOLD, 500.0f) \
     X(BUYBACK_IDLE_SHARE,     0.30f) \
-    /* MONNAIE M3d — LA SOUTENABILITÉ + LA BANQUEROUTE (décision joueur 2026-07-15).
-     * LE PLAFOND : dette max = DEBT_CEILING_YEARS × revenu annuel (econ_country_tax_year).
-     * Au plafond : plus personne ne prête (péréquation EXEMPTÉE — pas de la dette). */ \
-    X(DEBT_CEILING_YEARS,     3.0f) \
-    /* LA TRANCHE : un DRAW de dette (classes OU cité-état, indépendamment) est plafonné à
-     * DEBT_TRANCHE_FRAC × revenu annuel PAR ÉPISODE — un bond s'émet par tranches, pas
-     * d'un coup (le résidu non couvert devient un épuisement mesuré, jamais créé). */ \
-    X(DEBT_TRANCHE_FRAC,      0.20f) \
-    /* LE TAUX (remplace CREDIT_RATE_BASE/CREDIT_RATIO_CAP pour credit_year_tick, M3d) :
-     * taux = BASE + SLOPE×(dette/plafond), clampé [MIN,MAX] — la prime de risque EST le
-     * levier envers le plafond des 300 %, pas la ligne de crédit ∝pop (incrément 1). */ \
+    /* PRIX DU RISQUE : x=dette/revenu fiscal annuel ; taux=BASE+LINEAR·x+QUAD·x².
+     * DEBT_REVENUE_FLOOR évite une singularité pendant les 90 jours de bootstrap fiscal.
+     * DEBT_RATE_MAX est une borne numérique de contrat, jamais une interdiction d'emprunter. */ \
+    X(DEBT_REVENUE_FLOOR,    200.0f) \
     X(DEBT_RATE_BASE,         0.02f) \
-    X(DEBT_RATE_SLOPE,        0.03f) \
+    X(DEBT_RATE_LINEAR,       0.015f) \
+    X(DEBT_RATE_QUAD,         0.0075f) \
     X(DEBT_RATE_MIN,          0.02f) \
-    X(DEBT_RATE_MAX,          0.05f) \
+    X(DEBT_RATE_MAX,          0.50f) \
     /* MONNAIE M11 — A3 v2 : L'INTÉRÊT FIXE + L'ÉCHÉANCE MINIMALE (décision joueur, en cours
      * de mission, REMPLACE la v1 « arriéré qui capitalise » — verbatim : « Intérêt fixe : si
      * t'empruntes 1000 à 5 %, tu rembourses 1050, pas +5 % par an. »). Audit externe confirmé
      * au départ (scps_credit.c ~521 pré-M11 : un intérêt sous-servi n'incrémentait que
      * g_defaults, jamais un arriéré, n'alimentait PAS insolvent_streak — un pays au principal
-     * sous DEBT_CEILING_YEARS×revenu ne faisait JAMAIS faillite même sans jamais rien payer).
+     * sous l'ancien plafond dette/revenu ne faisait JAMAIS faillite même sans jamais rien payer).
      * DEBT_FIXED=1 (défaut) : chaque emprunt (credit_borrow_local/class/citystate/state)
      * inscrit un FORFAIT figé À L'ORIGINATION — la dette ajoutée = montant réellement transféré
      * × (1+credit_current_rate(c) au moment du prêt) — le taux ne bouge plus jamais pour CE
      * prêt (pas de service annuel composé, pas de capitalisation d'impayé : « fixe veut dire
      * fixe »). Le défaut RÉEL passe par une ÉCHÉANCE MINIMALE ANNUELLE (DEBT_DUE_FRAC du
-     * stock, ci-dessous) payée du surplus SEUL (jamais empruntée, jamais capitalisée si
-     * impayée) : une tranche manquée nourrit DIRECTEMENT le streak d'impayés (remplace le
-     * streak « au plafond SEUL » de l'audit) — l'échelle emprunter→débaser→banqueroute-saisie
+     * stock, ci-dessous) payée du surplus puis REFINANCÉE tant qu'un prêteur garde de la
+     * réserve et de l'exposition disponible : une tranche encore manquée nourrit le streak
+     * d'impayés — l'échelle emprunter→débaser→banqueroute-saisie
      * (M3h/M3g) s'enclenche NATURELLEMENT. 0 = kill-switch EXACT : emprunts SANS markup,
-     * service d'intérêt ANNUEL sur le stock (comportement pré-M11), streak au plafond SEUL —
-     * golden pré-M11 byte-identique. */ \
+     * service d'intérêt ANNUEL sur le stock. */ \
     X(DEBT_FIXED,             1.0f) \
     /* La tranche minimale ANNUELLE due sur le stock de dette (fixed, ci-dessus) — payée du
-     * surplus, jamais empruntée. Horizon ~1/DEBT_DUE_FRAC ans pour éteindre une dette qui ne
+     * surplus ou refinancée. Horizon ~1/DEBT_DUE_FRAC ans pour éteindre une dette qui ne
      * grossit plus jamais. CALIBRAGE (sweep {9,11,42}×3×250, mesuré) : la FRACTION seule
      * n'est PAS le levier — 0.02/0.03/0.05/0.10 donnent TOUS Σ banqueroutes ~1900-2000
      * (bifurcation, pas un gradient, motif M7/M8) — c'est DEBT_DEFAULT_THRESHOLD (ci-dessous)
@@ -1465,22 +1453,14 @@
     X(AI_FISCAL_TARGET,                0.60f) \
     X(AI_FISCAL_DEADBAND,              0.05f) \
     X(AI_FISCAL_STEP,                  0.012f) \
-    /* MONNAIE M9 — C0 : LA COHÉRENCE FISCALE-DETTE DE L'IA (correctif du contrôleur C3
-     * ci-dessus, décision joueur confirmée après mesure du sweep M8 : « pas émergent, MAL
-     * RÉGLÉ… faut viser 60% ET du pognon… si elle vise 60 day1 elle cut ses impôts »).
-     * econ_ai_fiscal_slack (scps_econ.c) borne le levier RELÂCHER de C3 par la marge de
-     * revenu/solvabilité — AI_DEBT_FISCAL_COHERENCE pilote la force du gate (0 = kill-
-     * switch EXACT, relax_factor toujours 1.0, golden pré-M9 byte-identique ; 1 = plein
-     * respect de la marge calculée). AI_FISCAL_REVENUE_FLOOR (or/an) est le plancher
-     * d'assiette fiscale PROUVÉE en-deçà duquel AUCUNE relâche n'est permise (le piège
-     * day-1 : econ_country_tax_year retourne 0 sous 90j par construction — ramp lissée
-     * au-delà, motif econ_debase_tax_factor). */ \
-    X(AI_DEBT_FISCAL_COHERENCE,        1.0f) \
+    /* Le contrôleur fiscal ne se discipline plus en fonction de la dette : ce sont les
+     * prêteurs qui bornent le système. Ce gate ne protège que le bootstrap day-1, avant
+     * qu'une assiette fiscale réelle soit mesurée. */ \
+    X(AI_FISCAL_BOOTSTRAP_COHERENCE,   1.0f) \
     X(AI_FISCAL_REVENUE_FLOOR,         200.0f) \
     /* MONNAIE M9 — V1 : « EMPRUNTER À UN ORDRE » (panneau éco). Le verbe (CMD_BORROW_CLASS,
-     * scps_credit.c credit_borrow_class) réutilise EN ENTIER le socle M3c/M3d existant
-     * (ELITE/BOURGEOIS_LEND_WEIGHT, CLASS_LEND_SHARE, DEBT_CEILING_YEARS, DEBT_TRANCHE_FRAC —
-     * AUCUN tunable neuf n'était nécessaire ici). */ \
+     * scps_credit.c credit_borrow_class) réutilise le capital et la limite d'exposition
+     * propres à chaque ordre. */ \
     /* MONNAIE M9 — V2 : « DEMANDER UN EMPRUNT À UN ÉTAT » (diplomatie). AI_LOAN_MIN_LIQUIDITY :
      * le prêteur doit avoir SA PROPRE liquidité (motif COURT_FLOOR/SINK_FLOOR déjà établis,
      * « un prêteur solvable ») avant même d'envisager la relation/l'opinion. AI_OFFER_LOAN_

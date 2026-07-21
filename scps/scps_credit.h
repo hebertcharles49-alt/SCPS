@@ -23,7 +23,7 @@
 
 void  credit_init(void);                                       /* RAZ dette + créancier */
 int   credit_of(int c);                                        /* créancier CITÉ-ÉTAT de c (-1 = aucun) — readout/diplo/save_sane */
-float credit_line(const World *w, const WorldEconomy *e, int c); /* plafond ÉMERGENT (taille éco) — gate de credit_can_spend, inchangé */
+float credit_line(const World *w, const WorldEconomy *e, int c); /* crédit physique disponible maintenant (classes + meilleur prêteur) */
 bool  credit_can_spend(const WorldEconomy *e, const World *w, int c, float cost);
 /* Dépense ad-hoc (agency/ai/decrees…) : transaction TOUT OU RIEN. True seulement si
  * le coût entier a été débité et, si le trésor national manque, financé par les
@@ -71,24 +71,29 @@ float credit_debt_elite(int c);
 float credit_debt_bourgeois(int c);
 float credit_debt_citystate(int c);   /* dette due à SA cité-état créancière */
 float credit_debt_total(int c);       /* to_class+to_cs */
-/* M3d — années consécutives au plafond (save_sane la revalide, motif credit_debt_class). */
+/* Années consécutives avec échéance substantielle encore impayée APRÈS refinancement. */
 int   credit_insolvent_streak(int c);
 /* Compteurs MONDE, cumulés depuis credit_init (RAZ par partie/sim, non sérialisés —
  * même esprit que econ_money_instrument_get) : rachats de crédit et épisodes
  * d'ÉPUISEMENT (need>0 non couvert par la chaîne complète) observés CE run. */
 void  credit_stats_get(long *buybacks, long *defaults);
 
-/* ---- M3d : LA SOUTENABILITÉ + LA BANQUEROUTE (décision joueur 2026-07-15) -----------
- * LE PLAFOND (brief §1) : dette max = DEBT_CEILING_YEARS × revenu annuel nominal (lecture
- * UI/télémétrie — credit_borrow_local/citystate l'appliquent déjà en interne). */
-float credit_debt_ceiling(int c);
+/* ---- SOLVABILITÉ + RATIONNEMENT PAR LES PRÊTEURS ------------------------------------
+ * Le ratio dette/revenu PRIXE le risque ; il n'interdit jamais un emprunt. */
+float credit_annual_revenue(int c);
+float credit_debt_ratio(int c);          /* années de revenu fiscal nécessaires pour couvrir le stock */
+float credit_state_exposure(int debtor, int lender);
+float credit_state_total_exposure(int lender);
+float credit_state_borrow_capacity(const WorldEconomy *e, int debtor, int lender);
+float credit_state_liquid_surplus(const WorldEconomy *e, int lender);
+float credit_state_exposure_limit(const WorldEconomy *e, int debtor, int lender);
 /* LA BANQUEROUTE (brief §5) : répudiation TOTALE + cicatrice −75 % (bankruptcy_scar,
  * scps_econ.h) sur toutes les provinces du pays. `forced` pilote SEULEMENT la télémétrie
  * (forcée/chronique vs volontaire CMD_BANKRUPTCY) ; retourne l'ex-créancier cité-état
  * (-1 = aucun) — l'appelant applique l'effet diplomatique (DiploState hors scope credit.c). */
 int   credit_bankruptcy(WorldEconomy *e, int c, bool forced);
-/* Un pays au plafond depuis BANKRUPTCY_GRACE_YEARS années consécutives (posé par
- * credit_year_tick) : scps_sim.c doit appeler credit_bankruptcy(e,c,true) CE tick. */
+/* Un pays dont une échéance substantielle reste impayée BANKRUPTCY_GRACE_YEARS années
+ * après épuisement du refinancement : scps_sim.c exécute la banqueroute forcée. */
 bool  credit_bankrupt_pending(int c);
 void  credit_bankruptcy_stats(long *forced, long *voluntary);
 
@@ -128,8 +133,8 @@ void  credit_garnish_stats(double *total, double *domestic, double *citystate);
 /* ---- V1 (MONNAIE M9) : LE VERBE « EMPRUNTER À UN ORDRE » (panneau éco, décision joueur
  * 2026-07-16) — l'État emprunte EXPLICITEMENT à UNE SEULE classe (Laborer/Bourgeois/Élite)
  * de son propre empire ; la classe NE REFUSE JAMAIS (contrairement à V2, un État étranger).
- * Réutilise le socle M3c (credit_borrow_local §2 : capacité CLASS_LEND_SHARE, plafond+
- * tranche M3d) — grain NATIONAL (la dette est dans le pool P1, g_debt ci-dessus), créancier
+ * Réutilise le socle M3c (credit_borrow_local §2 : capacité CLASS_LEND_SHARE + limite
+ * d'exposition) — grain NATIONAL (la dette est dans le pool P1, g_debt ci-dessus), créancier
  * = la strate identifiée (CLASS_ELITE/CLASS_BOURGEOIS ; CLASS_LABORER/CLASS_SLAVE renvoient
  * 0, aucune épargne, motif M3c). */
 /* Lecture PURE (aucune mutation) — la capacité DISPONIBLE : montant max empruntable MAINTENANT

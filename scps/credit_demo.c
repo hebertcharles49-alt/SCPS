@@ -4,7 +4,7 @@
  *   make credit_demo && ./credit_demo
  *
  * Scénario à la main (pas de world_generate) : un empire PAUVRE + une cité-état
- * RICHE voisine. On prouve : la ligne de crédit ÉMERGE de la taille éco ; dépenser
+ * RICHE voisine. On prouve : la ligne de crédit ÉMERGE des réserves/expositions des prêteurs ; dépenser
  * au-delà du trésor local NE LAISSE PLUS le trésor net passer négatif — la chaîne
  * d'emprunt (péréquation → classes → cité-état) avance de VRAIES pièces et enregistre
  * un passif RÉEL ; le prêteur voit RÉELLEMENT son trésor baisser ; l'intérêt annuel
@@ -40,16 +40,12 @@ static void setup(WorldEconomy *e, float emp_tres, float cs_tres){
     e->prov[0].treasury=emp_tres;
     e->prov[1].owner=1; e->prov[1].region=1; e->prov[1].active=true; e->prov[1].colonized=true;
     e->prov[1].treasury=cs_tres;
-    e->prov[0].strata[CLASS_LABORER].pop=1000.f;   /* pop => ligne de crédit > 0 */
+    e->prov[0].strata[CLASS_LABORER].pop=1000.f;
     e->prov[1].strata[CLASS_LABORER].pop=300.f;
     e->region_rep_prov[0]=0; e->region_rep_prov[1]=1;   /* 1 province/région : la représentative est directe */
     econ_aggregate_regions(e);   /* region[] à jour pour econ_country_gold et les lectures du banc */
-    /* M3d — LE PLAFOND + LA TRANCHE (credit_borrow_local/citystate) mordent désormais sur
-     * econ_country_tax_year (le REVENU ANNUEL) : ce banc À LA MAIN ne tourne jamais econ_tick
-     * (aucun tax_year capté) — sans un revenu seedé, la ligne serait TOUJOURS 0 et la chaîne
-     * d'emprunt refuserait tout. On CAPTE un revenu annuel plausible (3000, ceiling=9000,
-     * tranche=600 — au-dessus des besoins testés ~300-350) via le canal officiel
-     * (econ_flux_add+econ_flux_year_capture), pas une valeur seedée à la main. */
+    /* Le revenu annuel ne ferme plus le marché : il cote seulement le taux. On le sème par
+     * le canal officiel pour que les assertions de ratio/taux aient une assiette connue. */
     econ_flux_add(0, FX_TAX, 3000.f);
     econ_flux_add(1, FX_TAX, 3000.f);
     econ_flux_year_capture();
@@ -72,13 +68,17 @@ int main(void){
     setup(e, 100.f, 5000.f);
     credit_init();
 
-    /* — 1. la ligne de crédit émerge de la taille éco — */
+    /* — 1. la ligne de crédit émerge des prêteurs, pas de la population du débiteur — */
     float line0 = credit_line(w,e,0);
-    printf("\n── 1. Ligne de crédit (∝ pop) = %.0f ──\n", line0);
-    ok("la ligne de crédit ÉMERGE de la pop (> 0)", line0 > 0.f);
+    printf("\n── 1. Crédit disponible (réserves + exposition) = %.0f ──\n", line0);
+    ok("la ligne de crédit ÉMERGE des fonds physiques du prêteur (> 0)", line0 > 0.f);
+    e->prov[0].strata[CLASS_LABORER].pop*=10.f; econ_aggregate_regions(e);
+    ok("multiplier la population du débiteur ne fabrique AUCUNE capacité de prêt",
+       fabsf(credit_line(w,e,0)-line0)<0.01f);
+    e->prov[0].strata[CLASS_LABORER].pop/=10.f; econ_aggregate_regions(e);
     ok("dans le trésor : autorisé", credit_can_spend(e,w,0,50.f));
-    ok("au-delà du trésor mais SOUS la ligne : autorisé (la chaîne d'emprunt avancera)", credit_can_spend(e,w,0,400.f));
-    ok("au-delà de la ligne : REFUSÉ (plafond émergent)", !credit_can_spend(e,w,0,700.f));
+    ok("au-delà du trésor mais sous la liquidité offerte : autorisé", credit_can_spend(e,w,0,700.f));
+    ok("au-delà des réserves/expositions des prêteurs : refusé", !credit_can_spend(e,w,0,100.f+line0+10.f));
 
     /* — 2. dépenser au-delà du trésor local : la chaîne d'emprunt avance de VRAIES
      * pièces (péréquation vide ici — 1 seule province/pays — puis classes SANS
@@ -118,12 +118,12 @@ int main(void){
     econ_aggregate_regions(e);
     ok("le principal DIMINUE depuis un trésor gras", credit_debt_total(0) < debt_before2);
 
-    /* — 5. plafond sans prêteur solvable : l'action entière est refusée, sans paiement
+    /* — 5. sans prêteur solvable : l'action entière est refusée, sans paiement
      * partiel ni effet gratuit chez l'appelant. — */
     printf("\n── 5. Aucun prêteur solvable ──\n");
     credit_init(); setup(e, 100.f, 0.f);           /* cité-état INSOLVABLE (trésor 0) */
-    ok("au-delà de la ligne : toujours REFUSÉ (le plafond émerge, sans prêteur)", !credit_can_spend(e,w,0,700.f));
-    ok("une dépense sous la ligne THÉORIQUE mais sans fonds physiques est REFUSÉE au préflight",
+    ok("sans réserve chez un prêteur : aucune ligne de crédit", credit_line(w,e,0)<=1e-4f);
+    ok("une dépense sans fonds physiques est REFUSÉE au préflight",
        !credit_can_spend(e,w,0,400.f));
     float cash5=e->prov[0].treasury;
     bool spent5=credit_spend(e,w,0,400.f);
@@ -207,59 +207,51 @@ int main(void){
     ok("DEBT_FIXED=1 : la dette inscrite INCLUT le markup à l'origination (> montant RÉELLEMENT emprunté)",
        debt_fixed9 > borrowed_fixed9 + 1.f);
 
-    e->prov[0].treasury = 0.f; econ_aggregate_regions(e);   /* AUCUN surplus : l'échéance sera TOTALEMENT impayée */
+    e->prov[0].treasury = 0.f;
+    e->prov[1].treasury = 500.f; econ_aggregate_regions(e); /* prêteur AU PLANCHER : aucun refinancement */
     float debt_before9c = credit_debt_total(0);
     for (int yr9=0; yr9<10; yr9++) credit_year_tick(e, wl, w);
     ok("DEBT_FIXED=1 : 10 ans d'échéances TOTALEMENT impayées NE FONT PAS grossir la dette (fixe veut dire fixe)",
        credit_debt_total(0) <= debt_before9c + 1e-3f);
 
-    /* — 10. A3 v2 : des ÉCHÉANCES impayées SUR UNE DETTE SUBSTANTIELLE ⇒ streak d'impayés ⇒
-     * banqueroute FORCÉE — SANS jamais approcher le plafond (reproduit puis corrige le
-     * scénario exact de l'audit : « un pays à 200 % sans trésor qui ne dépense plus ne fait
-     * JAMAIS faillite »). Revenu SAIN (tax_year=3000 ⇒ plafond=9000, large marge) — aucun
-     * artifice d'effondrement du plafond requis ici (contrairement à v1) : le streak
-     * d'impayés réagit désormais SEUL. Dette empruntée en 6 tranches (credit_borrow_citystate,
-     * 600 chacune — la tranche/tick M3d — pour dépasser DEBT_DEFAULT_THRESHOLD=3000, le
-     * plancher « dette qui compte », calibrage sweep, cf. scps_credit.c) : le trivial ne fait
-     * PAS faillite, le substantiel SI. — */
-    printf("\n── 10. A3 v2 : des échéances impayées ⇒ streak ⇒ banqueroute forcée ──\n");
-    credit_init(); setup(e, 100.f, 5000.f);
-    tune_set("DEBT_FIXED", 0.f);
-    for (int b10=0;b10<6;b10++) credit_borrow_citystate(e,w,0,600.f);
-    econ_aggregate_regions(e);
-    e->prov[0].treasury = 0.f; econ_aggregate_regions(e);   /* aucun surplus : impayé TOTAL chaque année */
-    float ceiling10 = credit_debt_ceiling(0);
-    printf("   dette=%.0f · plafond=%.0f (large marge — motif audit « 200%% sans trésor »)\n",
-           credit_debt_total(0), ceiling10);
-    ok("la dette est LARGEMENT sous le plafond (le test isole le défaut d'échéance, pas le plafond)",
-       credit_debt_total(0) < ceiling10 * 0.5f);
-    bool forced_legacy=false;
-    for (int yr10=0; yr10<20 && !forced_legacy; yr10++){
-        credit_year_tick(e, wl, w);
-        if (credit_bankrupt_pending(0)) forced_legacy=true;
-    }
-    ok("DEBT_FIXED=0 (legacy) : 20 ans d'impayés TOTAUX, dette SOUS le plafond ⇒ JAMAIS de "
-       "banqueroute forcée — le bug de l'audit reproduit", !forced_legacy);
+    /* — 10. Une échéance est roulée tant que le créancier accepte ; une fois son exposition
+     * saturée, l'impayé devient un vrai défaut et nourrit la banqueroute. — */
+    printf("\n── 10. Refinancement ouvert, puis rationnement et défaut ──\n");
+    credit_init(); setup(e, 100.f, 40000.f); tune_set("DEBT_FIXED",1.f);
+    credit_borrow_citystate(e,w,0,1000.f); econ_aggregate_regions(e);
+    e->prov[0].treasury=0.f; econ_aggregate_regions(e);
+    float debt_before_roll=credit_debt_total(0);
+    credit_year_tick(e,wl,w);
+    ok("une échéance sans trésor est REFINANCÉE tant que le créancier a de la marge",
+       credit_insolvent_streak(0)==0);
+    ok("le rollover a un coût : la créance augmente seulement du markup du nouveau contrat",
+       credit_debt_total(0)>debt_before_roll);
 
-    credit_init(); setup(e, 100.f, 5000.f);
-    tune_set("DEBT_FIXED", 1.f);
-    for (int b10=0;b10<6;b10++) credit_borrow_citystate(e,w,0,600.f);
+    /* Remplit la concentration du créancier sur ce débiteur, sans plafond dette/revenu. */
+    for (int b10=0;b10<30 && credit_state_borrow_capacity(e,0,1)>1.f;b10++)
+        credit_borrow_citystate(e,w,0,1.0e9f);
     econ_aggregate_regions(e);
-    e->prov[0].treasury = 0.f; econ_aggregate_regions(e);
-    ok("la dette SUBSTANTIELLE dépasse le plancher « dette qui compte » (DEBT_DEFAULT_THRESHOLD)",
-       credit_debt_total(0) > 3000.f);
+    e->prov[0].treasury=0.f; econ_aggregate_regions(e);
+    printf("   dette=%.0f · revenu=%.0f · ratio=%.2fx · marge prêteur=%.2f\n",
+           credit_debt_total(0),credit_annual_revenue(0),credit_debt_ratio(0),
+           credit_state_borrow_capacity(e,0,1));
+    ok("la dette peut dépasser 300%% du revenu : aucun mur côté débiteur",
+       credit_debt_ratio(0)>3.f);
+    ok("le créancier ferme le robinet lorsque SON exposition au débiteur est pleine",
+       credit_state_borrow_capacity(e,0,1)<=1.f);
+    ok("la dette SUBSTANTIELLE dépasse le plancher qui exclut les résidus triviaux",
+       credit_debt_total(0)>tune_f("DEBT_DEFAULT_THRESHOLD",3000.f));
     bool forced_fixed=false; int yr_forced=-1;
     for (int yr10=0; yr10<20 && !forced_fixed; yr10++){
         credit_year_tick(e, wl, w);
         if (credit_bankrupt_pending(0)){ forced_fixed=true; yr_forced=yr10+1; }
     }
-    printf("   DEBT_FIXED=1 : banqueroute forcée %s (streak=%d, dette finale=%.0f, plafond=%.0f)\n",
+    printf("   banqueroute forcée %s (streak=%d, dette finale=%.0f, ratio=%.2fx)\n",
            forced_fixed?"DÉCLENCHÉE":"jamais déclenchée", credit_insolvent_streak(0),
-           credit_debt_total(0), credit_debt_ceiling(0));
-    if (forced_fixed) printf("      → à l'an %d (dette TOUJOURS sous le plafond)\n", yr_forced);
-    ok("DEBT_FIXED=1 (A3 v2) : des échéances impayées déclenchent NATURELLEMENT la banqueroute "
-       "forcée SANS jamais atteindre le plafond (le défaut réel)",
-       forced_fixed && credit_debt_total(0) < credit_debt_ceiling(0));
+           credit_debt_total(0), credit_debt_ratio(0));
+    if (forced_fixed) printf("      → à l'an %d après fermeture du marché\n", yr_forced);
+    ok("des échéances encore impayées APRÈS refinancement déclenchent la banqueroute forcée",
+       forced_fixed);
 
     /* — le PLANCHER « dette qui compte » (DEBT_DEFAULT_THRESHOLD) : un résidu TRIVIAL, jamais
      * remboursable (même trésor 0 à vie), NE fait PAS faillite — seule une dette substantielle
@@ -269,7 +261,7 @@ int main(void){
     credit_init(); setup(e, 100.f, 5000.f);
     tune_set("DEBT_FIXED", 1.f);
     credit_borrow_citystate(e,w,0,50.f); econ_aggregate_regions(e);   /* trivial : bien SOUS le plancher */
-    e->prov[0].treasury = 0.f; econ_aggregate_regions(e);
+    e->prov[0].treasury = 0.f; e->prov[1].treasury=500.f; econ_aggregate_regions(e);
     bool forced_trivial=false;
     for (int yr10=0; yr10<20 && !forced_trivial; yr10++){
         credit_year_tick(e, wl, w);
@@ -426,8 +418,11 @@ int main(void){
                gold_after1, (double)credit_debt_total(0));
         ok("B2(b) : le trésor NET ne passe jamais négatif (financé par la chaîne)",
            gold_after1 >= -0.5);
-        bool second_ok = credit_can_spend(e,w,0,100.f);
-        printf("   une 2e dépense (100) sur le MÊME solde : %s\n", second_ok?"autorisée":"REFUSÉE");
+        float room_after=credit_line(w,e,0);
+        float second_cost=room_after+100.f;
+        bool second_ok = credit_can_spend(e,w,0,second_cost);
+        printf("   une 2e dépense (%.0f, au-delà de la marge RESTANTE %.0f) : %s\n",
+               (double)second_cost,(double)room_after,second_ok?"autorisée":"REFUSÉE");
         ok("B2(b) : la 2e dépense reflète le solde À JOUR (pas la vue périmée d'avant la 1re)",
            !second_ok);
 
@@ -518,48 +513,14 @@ int main(void){
         tune_set("INCOME_TAX", 1.f);   /* redéfinit le défaut */
     }
 
-    /* ── 16. B4 : debt_draw_cap RÉSERVE LE MARKUP — la dette inscrite ne crève JAMAIS le plafond ── */
-    printf("\n── 16. B4 : le markup réservé — dette inscrite ≤ plafond, TOUJOURS ──\n");
+    /* ── 16. Aucun plafond débiteur : la dette va au-delà de 3x le revenu, puis l'ordre
+     * ferme le marché sur SA limite d'exposition. ── */
+    printf("\n── 16. Dette sans plafond, bornée par l'exposition du prêteur ──\n");
     {
-        /* CLAIM : debt_draw_cap rendait `room = ceiling - debt_total` en PIÈCES, mais
-         * debt_origination inscrit borrow×(1+taux) au passif (DEBT_FIXED) — emprunter
-         * `room` en pièces inscrit PLUS que `room` de dette : le plafond ÉMIS pouvait
-         * dépasser `ceiling` par simple comptabilité. On emprunte le MAXIMUM disponible
-         * (need<=0) en boucle, à CHAQUE pas, et on vérifie l'invariant dette ≤ plafond. */
         memset(e, 0, sizeof(WorldEconomy));
         w->n_countries=1; w->n_provinces=1;
         w->country[0].role=POLITY_PLAYER; w->country[0].capital_prov=0;
         w->province[0].region=0;
-        e->n_prov=1; e->n_regions=1;
-        e->prov[0].owner=0; e->prov[0].region=0; e->prov[0].active=true; e->prov[0].colonized=true;
-        e->prov[0].is_capital=true;
-        e->prov[0].strata[CLASS_LABORER].pop=1000.f;
-        e->prov[0].strata[CLASS_ELITE].wealth=1.0e8f;   /* capacité de prêt QUASI illimitée : le plafond seul mord */
-        e->prov[0].treasury=100.f;
-        e->region_rep_prov[0]=0;
-        econ_aggregate_regions(e);
-        econ_flux_add(0, FX_TAX, 3000.f); econ_flux_year_capture();   /* ceiling=9000, tranche=600 */
-        credit_init();
-        bool breach=false; float worst=0.f;
-        for (int i=0;i<60;i++){
-            float before=credit_debt_total(0);
-            float got = credit_borrow_class(e, 0, CLASS_ELITE, -1.f);   /* -1 ⇒ le MAXIMUM disponible */
-            float ceil_now = credit_debt_ceiling(0);
-            float after = credit_debt_total(0);
-            if (after > ceil_now + 0.5f){ breach=true; float over=after-ceil_now; if(over>worst) worst=over; }
-            if (got<=0.f) break;   /* capacité épuisée : plus rien à emprunter */
-            (void)before;
-        }
-        printf("   dette finale=%.2f · plafond=%.2f · dépassement max observé=%.3f\n",
-               (double)credit_debt_total(0), (double)credit_debt_ceiling(0), (double)worst);
-        ok("B4 : emprunter le MAXIMUM disponible, à répétition, ne fait JAMAIS dépasser le plafond",
-           !breach);
-        ok("B4 : la dette finale colle au plafond (le headroom RÉEL est bien épuisé, pas gaspillé)",
-           credit_debt_total(0) > credit_debt_ceiling(0)*0.95f);
-
-        /* kill-switch : DEBT_FIXED=0 ⇒ aucun markup, comportement INCHANGÉ (headroom=room nu). */
-        tune_set("DEBT_FIXED", 0.f);
-        memset(e, 0, sizeof(WorldEconomy));
         e->n_prov=1; e->n_regions=1;
         e->prov[0].owner=0; e->prov[0].region=0; e->prov[0].active=true; e->prov[0].colonized=true;
         e->prov[0].is_capital=true;
@@ -570,12 +531,19 @@ int main(void){
         econ_aggregate_regions(e);
         econ_flux_add(0, FX_TAX, 3000.f); econ_flux_year_capture();
         credit_init();
-        for (int i=0;i<60;i++){ float got=credit_borrow_class(e,0,CLASS_ELITE,-1.f); if (got<=0.f) break; }
-        printf("   DEBT_FIXED=0 (legacy) : dette finale=%.2f · plafond=%.2f (headroom nu, aucun markup)\n",
-               (double)credit_debt_total(0), (double)credit_debt_ceiling(0));
-        ok("kill-switch DEBT_FIXED=0 : la dette COLLE exactement au plafond (pas de markup à réserver)",
-           fabs(credit_debt_total(0) - credit_debt_ceiling(0)) < 1.0f);
-        tune_set("DEBT_FIXED", 1.f);   /* redéfinit le défaut */
+        float rate_start=credit_current_rate(0);
+        for (int i=0;i<60;i++){
+            float got = credit_borrow_class(e, 0, CLASS_ELITE, -1.f);   /* -1 ⇒ le MAXIMUM disponible */
+            if (got<=0.f) break;   /* capacité épuisée : plus rien à emprunter */
+        }
+        printf("   dette finale=%.0f · revenu=%.0f · ratio=%.1fx · taux %.1f%% → %.1f%% · marge ordre=%.2f\n",
+               (double)credit_debt_total(0),(double)credit_annual_revenue(0),(double)credit_debt_ratio(0),
+               (double)(rate_start*100.f),(double)(credit_current_rate(0)*100.f),
+               (double)credit_class_borrow_capacity(e,0,CLASS_ELITE));
+        ok("la dette franchit largement l'ancien mur de 300%%",credit_debt_ratio(0)>3.f);
+        ok("le taux monte fortement avec le ratio dette/revenu",credit_current_rate(0)>rate_start+0.10f);
+        ok("l'ordre rationne ensuite le débiteur parce que SON exposition est pleine",
+           credit_class_borrow_capacity(e,0,CLASS_ELITE)<=1.f);
     }
 
     /* ── 17. B5 : LA VENTILATION PAR ORDRE — un emprunt 100% bourgeois REMBOURSE le bourgeois ── */

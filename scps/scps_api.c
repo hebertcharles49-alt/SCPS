@@ -2058,6 +2058,9 @@ void scps_country_debt(ScpsSim *s, int country, ScpsDebt *out){
     out->to_cs    = credit_debt_citystate(country);
     out->total    = credit_debt_total(country);
     out->taux     = credit_current_rate(country);
+    out->annual_revenue = credit_annual_revenue(country);
+    out->leverage       = credit_debt_ratio(country);
+    out->available      = credit_line(s->w,s->sim.econ,country);
     /* MONNAIE M14 — B7 : la VRAIE échéance annuelle — MÊME formule que credit_year_tick
      * (scps_credit.c), jamais dupliquée en dur côté GDScript. */
     {
@@ -2066,7 +2069,26 @@ void scps_country_debt(ScpsSim *s, int country, ScpsDebt *out){
     }
     int cr = credit_of(country);
     out->creditor = cr;
-    if (cr>=0 && cr<s->w->n_countries) out->creditor_name = sz(s->w->country[cr].name);
+    if (cr>=0 && cr<s->w->n_countries){
+        out->creditor_name    = sz(s->w->country[cr].name);
+        out->foreign_exposure= credit_state_exposure(country,cr);
+        out->foreign_room    = credit_state_borrow_capacity(s->sim.econ,country,cr);
+    }
+}
+
+void scps_country_loan_quote(ScpsSim *s, int debtor, int lender, ScpsStateLoanQuote *out){
+    if (!out) return;
+    memset(out,0,sizeof *out);
+    if (!s || !s->ready || debtor<0 || lender<0 || debtor>=s->w->n_countries
+        || lender>=s->w->n_countries || debtor==lender) return;
+    int current=credit_of(debtor);
+    out->blocked_by_other_creditor=(credit_debt_citystate(debtor)>1e-4f && current!=lender)?1:0;
+    out->montant_max       = credit_state_borrow_capacity(s->sim.econ,debtor,lender);
+    out->taux              = credit_current_rate(debtor);
+    out->lender_surplus    = credit_state_liquid_surplus(s->sim.econ,lender);
+    out->exposure          = credit_state_exposure(debtor,lender);
+    out->exposure_limit    = credit_state_exposure_limit(s->sim.econ,debtor,lender);
+    out->portfolio_exposure=credit_state_total_exposure(lender);
 }
 
 /* MONNAIE M9 — V1 : LA CAPACITÉ D'EMPRUNT PAR ORDRE, voir scps_api.h. Lecteur PUR
