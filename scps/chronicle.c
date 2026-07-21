@@ -1311,6 +1311,38 @@ int main(int argc, char **argv){
                (double)econ_avg_price(s.econ, RES_GOLD),   (double)tune_f("MINT_PARITY_GOLD",16.0f),
                (double)econ_avg_price(s.econ, RES_COPPER), (double)tune_f("MINT_PARITY_COPPER",5.2f));
 
+        /* LE TABLEAU DE BORD MÉTALLIQUE (blindage 2026-07-21) : extraction mondiale des
+         * deux métaux, redevance siphonnée, réserves fin VENTILÉES apparié/célibataire (la
+         * jauge de sécheresse du monde), stocks marché fin, et la frappe PAR CANAL — la
+         * somme des 4 canaux recoupe FX_MINT cumulé (écart affiché : auto-vérifiant). */
+        { double xg,xc,rg,rc; econ_metal_stats_get(&xg,&xc,&rg,&rc);
+          double mp,mo,mb,mf; econ_mint_channel_stats_get(&mp,&mo,&mb,&mf);
+          double res_paired=0.0, res_single=0.0, stock_g=0.0, stock_c=0.0;
+          for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+              double a=(double)s.econ->reserve_gold[c], b=(double)s.econ->reserve_copper[c];
+              res_paired += 2.0*((a<b)?a:b);
+              res_single += (a>b)?(a-b):(b-a);
+          }
+          for (int r=0;r<s.econ->n_regions;r++){
+              stock_g += (double)s.econ->region[r].stock[RES_GOLD];
+              stock_c += (double)s.econ->region[r].stock[RES_COPPER];
+          }
+          double mint_sum = mp+mo+mb+mf;
+          printf("   métal (monde) : extrait or %.0f t · cuivre %.0f t — redevance or %.0f · cuivre %.0f (royalty %.2f)\n",
+                 xg, xc, rg, rc, (double)tune_f("MINT_ROYALTY",0.6f));
+          printf("   réserves d'État fin : apparié %.0f t · CÉLIBATAIRE %.0f t (la jauge de sécheresse) · stocks marché or %.0f · cuivre %.0f\n",
+                 res_paired, res_single, stock_g, stock_c);
+          printf("   frappe ventilée : paires %.0f (%.0f%%) · sur-frappe %.0f · BILLON %.0f (%.0f%%) · libre %.0f — Σ %.0f (écart vs FX_MINT %.1f)\n",
+                 mp, mint_sum>1.0?100.0*mp/mint_sum:0.0, mo,
+                 mb, mint_sum>1.0?100.0*mb/mint_sum:0.0, mf,
+                 mint_sum, mint_sum-mint_accum);
+          printf("   étalon actif : alliage %s (1+1=%.0f) · parités %.1f/%.1f · royalty %.2f · share IA %.2f · billon %s · sécheresse %s (plancher %.1f t)\n",
+                 tune_f("MINT_ALLOY",1.f)>0.f?"OUI":"non", (double)tune_f("MINT_ALLOY_VALUE",32.f),
+                 (double)tune_f("MINT_PARITY_GOLD",16.f), (double)tune_f("MINT_PARITY_COPPER",5.2f),
+                 (double)tune_f("MINT_ROYALTY",0.6f), (double)tune_f("MINT_AI_SHARE",0.6f),
+                 tune_f("DEBASE_BILLON",1.f)>0.f?"OUI":"non",
+                 tune_f("DEBASE_DROUGHT",1.f)>0.f?"OUI":"non", (double)tune_f("DROUGHT_PAIR_MIN",1.0f)); }
+
         /* MONNAIE M7 — I1 (print-only) : L'INFLATION SÉCULAIRE — indice des prix mondial
          * (1.0 = pair), écart-type, pic, et la DÉRIVE ANNUALISÉE moyenne (croissance
          * géométrique premier→dernier échantillon) — la preuve de calibrage (cible
@@ -1383,9 +1415,9 @@ int main(int argc, char **argv){
            * le déclenche jamais) — 0 attendu en headless, PAS une métrique morte (faux trou
            * signalé au gigasweep 2026-07-21 ; le banc credit_demo §12 exerce le chemin). */
           printf("   crédit rationné : %ld banqueroute(s) forcée(s) · %ld volontaire(s) [verbe joueur] — taux moyen %.2f%% (%d pays endettés)"
-                 " · %d dette(s) structurelle(s) ≥3x · max %.2fx · %d marché(s) étranger(s) fermé(s)\n",
+                 " · %d dette(s) structurelle(s) ≥3x · max %.2fx · %d marché(s) étranger(s) fermé(s) · %ld prêteur(s) ruiné(s)\n",
                  b_forced, b_volunt, n_rate>0?100.0*rate_sum/(double)n_rate:0.0, n_rate,
-                 n_structural, (double)max_lev, n_market_closed); }
+                 n_structural, (double)max_lev, n_market_closed, credit_lender_ruins()); }
 
         /* MONNAIE M3g — LA BANQUEROUTE-SAISIE (print-only, gate 1) : valeur totale
          * confisquée aux banqueroutiers CE run, ventilée créanciers domestiques (classes

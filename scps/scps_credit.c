@@ -45,6 +45,7 @@ static long g_buybacks=0, g_defaults=0;   /* télémétrie MONDE, RAZ par credit
  * motif g_buybacks/g_defaults). g_forced_pending est un flag TRANSIENT (posé par
  * credit_year_tick, consommé par scps_sim.c juste après — RAZ à chaque appel). */
 static long g_bankrupt_forced=0, g_bankrupt_voluntary=0;
+static long g_lender_ruins=0;   /* RUINE DU CRÉANCIER : prêteurs effondrés par répudiation (télémétrie, motif g_bankrupt_*) */
 static bool g_forced_pending[SCPS_MAX_COUNTRY];
 /* M3g — LA SAISIE : le créancier D'AVANT-répudiation figé au moment de la banqueroute
  * (credit_bankruptcy), valide toute la durée de la cicatrice. cs_id=-1 ⇒ tout domestique
@@ -85,7 +86,7 @@ void credit_init(void){
         g_loan_req_target[c]=-1; g_loan_req_granted[c]=false;
         g_buyback_archetype[c]=LOAN_ARCHETYPE_NONE;
     }
-    g_buybacks=0; g_defaults=0; g_bankrupt_forced=0; g_bankrupt_voluntary=0;
+    g_buybacks=0; g_defaults=0; g_bankrupt_forced=0; g_bankrupt_voluntary=0; g_lender_ruins=0;
     g_garnish_total=0.0; g_garnish_domestic=0.0; g_garnish_cs_tel=0.0;
     g_buyback_cs=0; g_buyback_mercantile=0; g_buyback_pacifist=0;
 }
@@ -109,6 +110,7 @@ void credit_bankruptcy_stats(long *forced, long *voluntary){
     if (forced)    *forced=g_bankrupt_forced;
     if (voluntary) *voluntary=g_bankrupt_voluntary;
 }
+long credit_lender_ruins(void){ return g_lender_ruins; }   /* RUINE DU CRÉANCIER (télémétrie chronicle) */
 /* Le revenu fiscal annuel est la MESURE de solvabilité, jamais une autorisation. Il sert
  * au prix du risque ; aucun multiple de ce revenu ne ferme administrativement le marché. */
 float credit_annual_revenue(int c){
@@ -968,6 +970,23 @@ int credit_bankruptcy(WorldEconomy *e, int c, bool forced){
         g_garnish_cs_share[c] = 0.f;
     }
     g_garnish_cs_pending[c] = 0.f;   /* un reliquat non réglé d'un cycle précédent est déjà réglé par credit_year_tick avant que g_forced_pending ne déclenche CE tick (ordre garanti, cf. scps_credit.h) */
+    /* LA RUINE DU CRÉANCIER (décision joueur 2026-07-21, « la banqueroute va tuer des
+     * cités-états/empires prêteurs ») : si la créance ANÉANTIE dépasse LENDER_RUIN_SHARE du
+     * capital du prêteur externe (liquide + créances vivantes — la MÊME assiette que ses
+     * limites d'exposition, mesurée AVANT le wipe), le prêteur prend LUI-MÊME la cicatrice
+     * de banqueroute : effondrement institutionnel (les Bardi), sa propre mémoire-prêteur
+     * (lender_locked_out) le verrouille, misère → révoltes/conquête achèvent — AUCUN
+     * mécanisme neuf en aval. Par construction (LENDER_DEBTOR_SHARE au prêt), la ruine
+     * exige un prêteur APPAUVRI DEPUIS : son capital restant EST la créance du failli. */
+    { float ruin_share = tune_f("LENDER_RUIN_SHARE", 0.5f);
+      if (ruin_share > 0.f && L>=0 && L<SCPS_MAX_COUNTRY && L!=c && g_debt[c].to_cs > CR_EPS){
+          float cap_L = country_surplus(e,L,tune_f("SINK_FLOOR",500.f)) + credit_state_total_exposure(L);
+          if (cap_L > CR_EPS && g_debt[c].to_cs > ruin_share*cap_L){
+              int nn=e->n_prov; if (nn>SCPS_MAX_PROV) nn=SCPS_MAX_PROV;
+              for (int p=0;p<nn;p++) if (e->prov[p].owner==L && e->prov[p].active) e->prov[p].bankruptcy_scar=1.f;
+              g_lender_ruins++;
+          }
+      } }
     g_debt[c].to_elite=0.f; g_debt[c].to_bourgeois=0.f; g_debt[c].to_cs=0.f; g_debt[c].cs_id=-1; g_debt[c].insolvent_streak=0;
     g_forced_pending[c]=false;
     /* CICATRICE (moral d'armée EXPLICITE, brief « l'humiliation ne se calcule pas en

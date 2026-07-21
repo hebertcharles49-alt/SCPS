@@ -99,7 +99,16 @@ EX = [
     ("dettes_struct",  re.compile(r"(\d+) dette\(s\) structurelle")),
     ("ratio_max",      re.compile(r"≥3x · max (\d+\.?\d*)x")),
     ("marches_fermes", re.compile(r"(\d+) marché\(s\) étranger\(s\) fermé")),
+    ("preteurs_ruines",re.compile(r"(\d+) prêteur\(s\) ruiné")),
     ("invariant_pic",  re.compile(r"pic annuel autres/échelle (\d+)%")),
+    # ── TABLEAU DE BORD MÉTALLIQUE (blindage chronicle 2026-07-21) ──
+    ("extrait_or",     re.compile(r"extrait or (\d+) t")),
+    ("extrait_cuivre", re.compile(r"extrait or \d+ t · cuivre (\d+) t")),
+    ("res_apparie",    re.compile(r"apparié (\d+) t")),
+    ("res_celibataire",re.compile(r"CÉLIBATAIRE (\d+) t")),
+    ("frappe_paires",  re.compile(r"frappe ventilée : paires (\d+)")),
+    ("frappe_billon",  re.compile(r"BILLON (\d+)")),
+    ("frappe_libre",   re.compile(r"BILLON \d+ \(\d+%\) · libre (\d+)")),
 ]
 
 def parse_log(path):
@@ -172,7 +181,9 @@ def main():
               "conso_foreuse","conso_corne","esclaves_pool","affranchis2","brassage_flux",
               "interceptions","debiteurs_ornet","dette_or","debiteurs_m3c","epuisements",
               "banq_forcees","banq_volontaires","taux_moyen","dettes_struct","ratio_max",
-              "marches_fermes","invariant_pic"]:
+              "marches_fermes","preteurs_ruines","invariant_pic",
+              "extrait_or","extrait_cuivre","res_apparie","res_celibataire",
+              "frappe_paires","frappe_billon","frappe_libre"]:
         print(f"  {c:16s} {dist([r.get(c) for r in rows])}")
     print("\n── FINS §27 (type × an) ──")
     fins = {}

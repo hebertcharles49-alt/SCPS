@@ -709,6 +709,43 @@ int main(void){
         ok("MINT_ALLOY=0 (kill-switch) : le per-métal legacy frappe l'or SEUL (comportement pré-alliage)",
            e->reserve_gold[0] < 119.f);
         tune_set("MINT_ALLOY", 1.f);   /* redéfinit le défaut */
+
+        /* (e) LE BILLON-SÉCHERESSE (décision joueur 2026-07-21) : réserve 120 or / 0 cuivre
+         * — paires MORTES. La débase-sécheresse IA (déséquilibre (max−min)/max = 1) frappe
+         * l'or CÉLIBATAIRE à sa vieille parité, et le coût M3h (érosion K_inst) mord. */
+        memset(e, 0, sizeof(WorldEconomy));
+        e->n_prov=1; e->n_regions=1;
+        e->prov[0].owner=0; e->prov[0].region=0;
+        e->prov[0].active=true; e->prov[0].colonized=true; e->prov[0].is_capital=true;
+        e->region_rep_prov[0]=0;
+        e->prov[0].treasury=500.f;
+        e->prov[0].build.K_inst=10.f;         /* pour MESURER l'érosion (le prix du billon) */
+        e->reserve_gold[0]=120.f;             /* aucun cuivre : sécheresse totale */
+        econ_aggregate_regions(e);
+        econ_flux_add(0, FX_TAX, 12000.f); econ_flux_year_capture();
+        econ_tick(e, 1.f/12.f);
+        double bill19 = (double)econ_flux_get(0, FX_MINT);
+        printf("   billon : or célibataire frappé=%.2f (réserve 120→%.1f) · K_inst 10→%.3f\n",
+               bill19, (double)e->reserve_gold[0], (double)e->prov[0].build.K_inst);
+        ok("BILLON : la sécheresse débase — l'or CÉLIBATAIRE frappe (la monnaie survit aux paires mortes)",
+           bill19 > 1.0 && e->reserve_gold[0] < 119.f);
+        ok("BILLON : le prix du désespoir mord (érosion K_inst, machinerie M3h telle quelle)",
+           e->prov[0].build.K_inst < 10.f - 1e-4f);
+
+        /* kill-switch DEBASE_DROUGHT=0 : sans le déclencheur sécheresse, paires mortes = rien. */
+        memset(e, 0, sizeof(WorldEconomy));
+        e->n_prov=1; e->n_regions=1;
+        e->prov[0].owner=0; e->prov[0].region=0;
+        e->prov[0].active=true; e->prov[0].colonized=true; e->prov[0].is_capital=true;
+        e->region_rep_prov[0]=0;
+        e->prov[0].treasury=500.f; e->reserve_gold[0]=120.f;
+        econ_aggregate_regions(e);
+        econ_flux_add(0, FX_TAX, 12000.f); econ_flux_year_capture();
+        tune_set("DEBASE_DROUGHT", 0.f);
+        econ_tick(e, 1.f/12.f);
+        ok("DEBASE_DROUGHT=0 (kill-switch) : paires mortes SANS sécheresse ⇒ aucune frappe (l'or attend)",
+           econ_flux_get(0, FX_MINT) < 0.5f && e->reserve_gold[0] > 119.f);
+        tune_set("DEBASE_DROUGHT", 1.f);   /* redéfinit le défaut */
     }
 
     /* ── 20. LA MÉMOIRE DU PRÊTEUR (décision joueur 2026-07-21, « Édouard III a tué les
@@ -753,6 +790,52 @@ int main(void){
         for (int p20=0;p20<np20;p20++) if (e->prov[p20].owner==0) e->prov[p20].bankruptcy_scar=0.f;
         ok("mémoire : cicatrice GUÉRIE ⇒ le marché rouvre (l'exclusion suit la cicatrice, aucun timer)",
            credit_line(w,e,0) > 1.f);
+    }
+
+    /* ── 21. LA RUINE DU CRÉANCIER (décision joueur 2026-07-21, « la banqueroute va tuer
+     * des cités-états/empires prêteurs ») : la répudiation qui anéantit la MAJEURE part du
+     * capital du prêteur externe l'effondre (cicatrice) ; un prêteur RICHE encaisse. ── */
+    printf("\n── 21. La ruine du créancier : les Bardi meurent, les Fugger encaissent ──\n");
+    {
+        /* (a) prêteur RICHE : la créance perdue est une fraction mineure de son capital. */
+        memset(e, 0, sizeof(WorldEconomy));
+        w->n_countries=2; w->n_provinces=2;
+        w->country[0].role=POLITY_PLAYER;     w->country[0].capital_prov=0;
+        w->country[1].role=POLITY_CITY_STATE; w->country[1].capital_prov=1;
+        w->province[0].region=0; w->province[1].region=1;
+        e->n_regions=2;
+        setup(e, 100.f, 5000.f); credit_init();
+        credit_spend(e,w,0,550.f); econ_aggregate_regions(e);
+        ok("setup 21 : la cité-état est créancière (dette externe réelle)", credit_debt_citystate(0) > 100.f);
+        long ruins_a = credit_lender_ruins();
+        credit_bankruptcy(e, 0, true);
+        ok("ruine : un prêteur RICHE encaisse la répudiation (aucune cicatrice — les Fugger)",
+           e->prov[1].bankruptcy_scar == 0.f && credit_lender_ruins() == ruins_a);
+
+        /* (b) prêteur APPAUVRI DEPUIS le prêt : son capital restant EST la créance → ruine. */
+        e->prov[0].bankruptcy_scar=0.f; e->prov[1].bankruptcy_scar=0.f;   /* guérir (mémoire du prêteur) */
+        credit_init(); setup(e, 100.f, 5000.f);
+        credit_spend(e,w,0,550.f); econ_aggregate_regions(e);
+        e->prov[1].treasury = 400.f;   /* le prêteur a FONDU depuis (< SINK_FLOOR : surplus 0, capital ≈ la créance) */
+        econ_aggregate_regions(e);
+        long ruins_b = credit_lender_ruins();
+        credit_bankruptcy(e, 0, true);
+        ok("ruine : la créance anéantie > moitié du capital ⇒ le prêteur S'EFFONDRE (cicatrice — les Bardi)",
+           e->prov[1].bankruptcy_scar > 0.9f);
+        ok("ruine : la télémétrie compte le prêteur ruiné", credit_lender_ruins() == ruins_b+1);
+        ok("ruine : le ruiné ne peut plus RIEN emprunter lui-même (sa cicatrice le verrouille — lender_locked_out)",
+           credit_state_borrow_capacity(e,1,0)==0.f && credit_class_borrow_capacity(e,1,CLASS_ELITE)==0.f);
+
+        /* (c) kill-switch LENDER_RUIN_SHARE=0 : même appauvrissement, aucune ruine. */
+        e->prov[0].bankruptcy_scar=0.f; e->prov[1].bankruptcy_scar=0.f;
+        credit_init(); setup(e, 100.f, 5000.f);
+        credit_spend(e,w,0,550.f); econ_aggregate_regions(e);
+        e->prov[1].treasury = 400.f; econ_aggregate_regions(e);
+        tune_set("LENDER_RUIN_SHARE", 0.f);
+        credit_bankruptcy(e, 0, true);
+        ok("LENDER_RUIN_SHARE=0 (kill-switch) : aucun effondrement de prêteur (comportement pré-ruine)",
+           e->prov[1].bankruptcy_scar == 0.f);
+        tune_set("LENDER_RUIN_SHARE", 0.5f);   /* redéfinit le défaut */
     }
 
     printf("\n═══ BILAN : %d réussis, %d échoués ═══\n", g_pass, g_fail);

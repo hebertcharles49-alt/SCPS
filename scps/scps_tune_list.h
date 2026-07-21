@@ -92,6 +92,19 @@
      * 0 = kill-switch EXACT (deux canaux indépendants, golden pré-alliage byte-identique). */ \
     X(MINT_ALLOY,              1.0f) \
     X(MINT_ALLOY_VALUE,       32.0f) \
+    /* LE BILLON (décision joueur 2026-07-21, « dévaluer progressivement pour garder une
+     * monnaie ») : sous alliage, la DÉBASE frappe le métal NON APPARIÉ (célibataire) à sa
+     * VIEILLE parité (16/5.2) × niveau de débase — violer l'étalon pour garder une monnaie
+     * (le vellón castillan). Compté en sur-frappe (dbg) : érosion K_inst + rot des factions
+     * s'appliquent tels quels (M3h). 0 = débase multiplicative pure (inerte quand paires=0). */ \
+    X(DEBASE_BILLON,           1.0f) \
+    /* LA SÉCHERESSE MONÉTAIRE : l'IA débase quand ses PAIRES meurent (min(réserves) sous
+     * DROUGHT_PAIR_MIN) — niveau = déséquilibre de réserve (max−min)/max, qui monte
+     * NATURELLEMENT à mesure que le métal célibataire s'accumule (progressif, émergent,
+     * aucune horloge neuve). S'ajoute (max) au déclencheur streak-d'insolvabilité existant.
+     * Le JOUEUR garde son curseur (la sécheresse ne pilote que l'IA). 0 = kill-switch. */ \
+    X(DEBASE_DROUGHT,          1.0f) \
+    X(DROUGHT_PAIR_MIN,        1.0f) \
     /* MONNAIE M7 — I1 : L'INFLATION SÉCULAIRE (docs/MONNAIE_CONCEPT.md, décision joueur
      * 2026-07-16 « pas de perte de monnaie, ce sont des métaux stables… inflation
      * séculaire = trait historique »). `price_level[c]` (scps_econ.c, la fraction de la
@@ -644,6 +657,15 @@
      * durée d'exclusion EST la vie de la cicatrice (émergent, aucun timer neuf). 0 = kill-
      * switch EXACT (les prêteurs oublient instantanément, golden byte-identique). */ \
     X(LENDER_MEMORY,          1.0f) \
+    /* LA RUINE DU CRÉANCIER (décision joueur 2026-07-21, « la banqueroute va tuer des
+     * cités-états/empires prêteurs ») : à la répudiation, si la créance ANÉANTIE dépasse
+     * LENDER_RUIN_SHARE du capital du prêteur externe (liquide + créances vivantes — la
+     * même assiette que ses limites d'exposition), le prêteur prend LUI-MÊME la cicatrice
+     * de banqueroute : effondrement institutionnel, sa propre mémoire-prêteur le verrouille,
+     * misère → révoltes/conquête achèvent (les Bardi : ruinés puis dépecés). Par construction
+     * (LENDER_DEBTOR_SHARE 0.35 au prêt), la ruine exige un prêteur APPAUVRI DEPUIS le prêt
+     * — dont le capital restant EST la créance du failli. ≤0 = kill-switch. */ \
+    X(LENDER_RUIN_SHARE,      0.5f) \
     /* AMORTISSEMENT — part du PRINCIPAL remboursée par an depuis le surplus (>COURT_FLOOR,
      * le seuil de hoarding) : « la dette VIT », elle ne fait pas que grossir. */ \
     X(PRINCIPAL_REPAY_RATE,   0.10f) \

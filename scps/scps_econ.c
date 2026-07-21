@@ -1164,6 +1164,26 @@ void econ_debase_stats_get(double *gold_total, long *country_months){
     if (gold_total)     *gold_total     = g_debase_gold_cum;
     if (country_months) *country_months = g_debase_country_months;
 }
+/* LE TABLEAU DE BORD MÉTALLIQUE (2026-07-21, blindage chronicle) — même motif : statics
+ * de module, RAZ à econ_init, jamais sérialisés (télémétrie de PARTIE, print-only). */
+static double g_metal_ext[2]={0.0,0.0};   /* extraction MONDIALE cumulée [0]=or [1]=cuivre (t) */
+static double g_metal_roy[2]={0.0,0.0};   /* redevance siphonnée vers les réserves d'État (t) */
+static double g_mint_pairs_cum=0.0;       /* frappe royale LÉGITIME (paires × valeur d'alliage ; per-métal si MINT_ALLOY=0) */
+static double g_mint_over_cum=0.0;        /* sur-frappe MULTIPLICATIVE (v0 × débase) */
+static double g_mint_billon_cum=0.0;      /* BILLON (métal célibataire frappé à sa vieille parité) */
+static double g_mint_free_cum=0.0;        /* frappe LIBRE (achat de métal au marché) */
+void econ_metal_stats_get(double *ext_gold, double *ext_copper, double *roy_gold, double *roy_copper){
+    if (ext_gold)   *ext_gold   = g_metal_ext[0];
+    if (ext_copper) *ext_copper = g_metal_ext[1];
+    if (roy_gold)   *roy_gold   = g_metal_roy[0];
+    if (roy_copper) *roy_copper = g_metal_roy[1];
+}
+void econ_mint_channel_stats_get(double *pairs, double *overstrike, double *billon, double *free_mint){
+    if (pairs)      *pairs      = g_mint_pairs_cum;
+    if (overstrike) *overstrike = g_mint_over_cum;
+    if (billon)     *billon     = g_mint_billon_cum;
+    if (free_mint)  *free_mint  = g_mint_free_cum;
+}
 
 /* MONNAIE M3c — le besoin CITÉ-ÉTAT du tick COURANT (péréquation+classes déjà tentés en
  * interne par econ_tick) : SNAPSHOT écrasé à chaque tick, non sérialisé (lu tout de suite
@@ -1576,6 +1596,8 @@ void econ_init(WorldEconomy *e, const World *w) {
     g_va_produced_cum=0.0; g_consumption_destroyed_cum=0.0; g_colonization_net_cum=0.0;   /* MONNAIE M3a : RAZ instrument (par partie/sim, non sérialisé) */
     g_assiette_revenue_cum=0.0;   /* MONNAIE M5 — R3 : RAZ instrument (même motif) */
     g_debase_gold_cum=0.0; g_debase_country_months=0;   /* MONNAIE M3h : RAZ télémétrie débase (par partie/sim, non sérialisé) */
+    g_metal_ext[0]=g_metal_ext[1]=0.0; g_metal_roy[0]=g_metal_roy[1]=0.0;   /* tableau de bord métallique : RAZ (même motif) */
+    g_mint_pairs_cum=0.0; g_mint_over_cum=0.0; g_mint_billon_cum=0.0; g_mint_free_cum=0.0;
     econ_flux_reset();                          /* MEMBRANE DE DÉCISION : RAZ le flux courant … */
     memset(g_tax_lastyear,0,sizeof g_tax_lastyear);   /* … et le revenu annuel capté (par partie/sim,
                                                         * un chargement RESTAURE ensuite depuis le save) */
@@ -2369,10 +2391,21 @@ float econ_country_debase_frac(const WorldEconomy *e, int cid){
     if (econ_country_bankruptcy_scar(e, cid) > EPS) return 0.f;
     int onset  = (int)tune_f("DEBASE_AI_ONSET_YEARS", 2.f);
     int streak = credit_insolvent_streak(cid);
-    if (streak < onset) return 0.f;
     int grace  = (int)tune_f("BANKRUPTCY_GRACE_YEARS", 5.f);
     float span = fmaxf(1.f, (float)(grace-onset));
-    float level = clampf((float)(streak-onset)/span, 0.f, 1.f);
+    float level = (streak >= onset) ? clampf((float)(streak-onset)/span, 0.f, 1.f) : 0.f;
+    /* LA SÉCHERESSE MONÉTAIRE (décision joueur 2026-07-21, « dévaluer progressivement pour
+     * garder une monnaie ») : sous alliage, quand les PAIRES meurent (min(réserves) sous
+     * DROUGHT_PAIR_MIN) et que du métal CÉLIBATAIRE s'accumule, l'IA débase — le niveau EST
+     * le déséquilibre de réserve (max−min)/max : il monte NATURELLEMENT avec la sécheresse
+     * (progressif, émergent, aucune horloge neuve). max() avec l'échelle streak existante,
+     * jamais une somme (les deux détresses ne s'additionnent pas, la pire commande). */
+    if (tune_f("DEBASE_DROUGHT", 1.0f) > 0.f && tune_f("MINT_ALLOY", 1.0f) > 0.f){
+        float rg=e->reserve_gold[cid], rc=e->reserve_copper[cid];
+        float mn=fminf(rg,rc), mx=fmaxf(rg,rc);
+        if (mn < tune_f("DROUGHT_PAIR_MIN", 1.0f) && mx > EPS)
+            level = fmaxf(level, (mx-mn)/mx);
+    }
     return level * dmax;
 }
 /* Frappe MENSUELLE — fonction PURE, MIROIR EXACT du point fixe d'econ_tick (aucune mutation
@@ -2395,25 +2428,40 @@ void econ_country_mint_month(const WorldEconomy *e, int cid,
         cap = econ_country_capital_prov(e, cid);
         if (cap>=0){
             float share = econ_country_mint_share(e, cid);
-            float v0;
+            float debase = econ_country_debase_frac(e, cid);
             if (tune_f("MINT_ALLOY", 1.0f) > 0.f){
                 /* L'ALLIAGE (décision joueur 2026-07-21) : la Monnaie frappe des PAIRES
                  * 1t or + 1t cuivre = MINT_ALLOY_VALUE (32 = 16×2 — le cuivre allié monte
                  * à la parité or). Loi du minimum : le métal RARE borne la frappe, l'autre
                  * s'accumule en réserve sans frapper (il attend son appariement). */
-                float pair = fminf(e->reserve_gold[cid], e->reserve_copper[cid]) * share / 12.f;
+                float mn = fminf(e->reserve_gold[cid], e->reserve_copper[cid]);
+                float pair = mn * share / 12.f;
                 g = pair; c = pair;
-                v0 = pair * tune_f("MINT_ALLOY_VALUE", 32.0f);
+                float v0 = pair * tune_f("MINT_ALLOY_VALUE", 32.0f);
+                v = v0 * (1.f+debase);
+                /* LE BILLON (décision joueur 2026-07-21) : la débase frappe AUSSI le métal
+                 * CÉLIBATAIRE (au-dessus des paires) à sa VIEILLE parité × niveau — violer
+                 * l'étalon pour garder une monnaie (le vellón). Du métal RÉEL sort de la
+                 * réserve (contrairement à la sur-frappe multiplicative) ; la valeur entre
+                 * dans dbg → tous les coûts M3h (érosion K, rot) s'appliquent tels quels. */
+                if (debase > 0.f && tune_f("DEBASE_BILLON", 1.0f) > 0.f){
+                    float lg = (e->reserve_gold[cid]   - mn) * share / 12.f * debase;
+                    float lc = (e->reserve_copper[cid] - mn) * share / 12.f * debase;
+                    if (lg > 0.f || lc > 0.f){
+                        v += lg*tune_f("MINT_PARITY_GOLD", 16.0f) + lc*tune_f("MINT_PARITY_COPPER", 5.2f);
+                        g += lg; c += lc;
+                    }
+                }
+                dbg = v - v0;
             } else {
                 /* kill-switch MINT_ALLOY=0 : deux canaux INDÉPENDANTS (comportement
                  * pré-alliage EXACT, golden byte-identique). */
                 g = e->reserve_gold[cid]   * share / 12.f;
                 c = e->reserve_copper[cid] * share / 12.f;
-                v0 = g*tune_f("MINT_PARITY_GOLD", 16.0f) + c*tune_f("MINT_PARITY_COPPER", 5.2f);
+                float v0 = g*tune_f("MINT_PARITY_GOLD", 16.0f) + c*tune_f("MINT_PARITY_COPPER", 5.2f);
+                v = v0 * (1.f+debase);
+                dbg = v - v0;
             }
-            float debase = econ_country_debase_frac(e, cid);
-            v = v0 * (1.f+debase);
-            dbg = v - v0;
         }
     }
     if (gold_out)    *gold_out=g;
@@ -3839,11 +3887,14 @@ void econ_tick(WorldEconomy *e, float dt) {
              * dessus). Le reste (out_merch) suit le chemin normal, inchangé pour toutes les
              * autres brutes (mint_royalty=0 ⇒ out_merch=out, comportement d'avant EXACT). */
             float out_merch = out;
+            if (r==RES_GOLD || r==RES_COPPER)
+                g_metal_ext[r==RES_GOLD?0:1] += (double)out;   /* tableau de bord : extraction MONDIALE (royalty comprise) */
             if ((r==RES_GOLD || r==RES_COPPER) && owner_>=0 && owner_<SCPS_MAX_COUNTRY && mint_royalty>0.f){
                 float roy = out*mint_royalty;
                 out_merch = out-roy;
                 if (r==RES_GOLD) e->reserve_gold[owner_]   += roy;
                 else             e->reserve_copper[owner_] += roy;
+                g_metal_roy[r==RES_GOLD?0:1] += (double)roy;   /* tableau de bord : redevance siphonnée */
             }
             S[r] += out_merch;                                         /* dépôt au STOCK NATIONAL (marchand seul) */
             supply[r]    += out_merch;
@@ -4049,12 +4100,15 @@ void econ_tick(WorldEconomy *e, float dt) {
                     if (fr==RES_GOLD || fr==RES_PRECIOUS_METAL) qty *= precious_mult;
                     float fq=lim*qty*yield_mult*prod_mult*scar_mult;
                     float fq_merch=fq;
+                    if (fr==RES_GOLD || fr==RES_COPPER)
+                        g_metal_ext[fr==RES_GOLD?0:1] += (double)fq;   /* tableau de bord : extraction faustienne comprise */
                     if (faust_boost && (fr==RES_GOLD || fr==RES_COPPER)
                         && owner_>=0 && owner_<SCPS_MAX_COUNTRY && mint_royalty>0.f){
                         float roy = fq*mint_royalty;
                         fq_merch = fq-roy;
                         if (fr==RES_GOLD) e->reserve_gold[owner_]   += roy;
                         else              e->reserve_copper[owner_] += roy;
+                        g_metal_roy[fr==RES_GOLD?0:1] += (double)roy;
                     }
                     S[fr]+=fq_merch; supply[fr]+=fq_merch;
                 }
@@ -5274,10 +5328,12 @@ void econ_tick(WorldEconomy *e, float dt) {
                     }
                     econ_prov_treasury_credit(e, cap, qty*av);
                     econ_flux_add(c, FX_MINT, qty*av);        /* I0 : la vraie création (paire entière) */
+                    g_mint_free_cum += (double)(qty*av);      /* tableau de bord : frappe LIBRE */
                 } else {
                     float gain = qty*(av-p_pair);             /* kill-switch A1 : gain net seul (legacy) */
                     econ_prov_treasury_credit(e, cap, gain);
                     econ_flux_add(c, FX_MINT, gain);
+                    g_mint_free_cum += (double)gain;          /* tableau de bord : frappe LIBRE */
                 }
                 continue;                                     /* la PAIRE remplace les deux passes métal */
             }
@@ -5351,11 +5407,13 @@ void econ_tick(WorldEconomy *e, float dt) {
                      * neutre par construction, motif ROADS/UPKEEP/COURT). */
                     econ_prov_treasury_credit(e, cap, qty*parity);
                     econ_flux_add(c, FX_MINT, qty*parity);   /* I0 : la vraie création (frappe libre) */
+                    g_mint_free_cum += (double)(qty*parity); /* tableau de bord : frappe LIBRE */
                 } else {
                     /* kill-switch MINT_FULL_PARITY=0 : comportement LEGACY EXACT — `gain` seul
                      * crédité, aucun débit réel (golden pré-M11 byte-identique pour CE bloc). */
                     econ_prov_treasury_credit(e, cap, gain);
                     econ_flux_add(c, FX_MINT, gain);   /* I0 : la ligne frappe (frappe libre incluse) */
+                    g_mint_free_cum += (double)gain;   /* tableau de bord : frappe LIBRE */
                 }
             }
         }
@@ -5380,6 +5438,22 @@ void econ_tick(WorldEconomy *e, float dt) {
         if (cap<0) continue;
         econ_ai_fiscal_tick(e, c);   /* MONNAIE M8 — C3 : la fiscalité, PREMIER levier IA, cadence mensuelle */
         if (val>0.f){
+            /* VENTILATION (tableau de bord, print-only) : re-dérive les canaux depuis les
+             * réserves AVANT débit — paires légitimes vs sur-frappe multiplicative vs billon
+             * (le reliquat de dbg). Per-métal (MINT_ALLOY=0) : tout hors-dbg est légitime. */
+            if (tune_f("MINT_ALLOY", 1.0f) > 0.f){
+                float sh_ = econ_country_mint_share(e, c);
+                float db_ = econ_country_debase_frac(e, c);
+                float v0_ = fminf(e->reserve_gold[c], e->reserve_copper[c]) * sh_ / 12.f
+                            * tune_f("MINT_ALLOY_VALUE", 32.0f);
+                g_mint_pairs_cum  += (double)v0_;
+                g_mint_over_cum   += (double)(v0_*db_);
+                g_mint_billon_cum += (double)dbg - (double)(v0_*db_) > 0.0
+                                     ? (double)dbg - (double)(v0_*db_) : 0.0;
+            } else {
+                g_mint_pairs_cum += (double)(val - dbg);
+                g_mint_over_cum  += (double)dbg;
+            }
             e->reserve_gold[c]   = fmaxf(0.f, e->reserve_gold[c]   - g);
             e->reserve_copper[c] = fmaxf(0.f, e->reserve_copper[c] - cop);
             econ_prov_treasury_credit(e, cap, val);

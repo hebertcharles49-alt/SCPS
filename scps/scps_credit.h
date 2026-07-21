@@ -96,6 +96,9 @@ int   credit_bankruptcy(WorldEconomy *e, int c, bool forced);
  * après épuisement du refinancement : scps_sim.c exécute la banqueroute forcée. */
 bool  credit_bankrupt_pending(int c);
 void  credit_bankruptcy_stats(long *forced, long *voluntary);
+/* RUINE DU CRÉANCIER : prêteurs externes effondrés par répudiation (créance anéantie >
+ * LENDER_RUIN_SHARE de leur capital) — cumulé depuis credit_init, télémétrie chronicle. */
+long  credit_lender_ruins(void);
 
 /* ---- M3g : LA BANQUEROUTE-SAISIE (décision joueur 2026-07-15) ------------------------
  * Remplace le malus PLAT −75 % (production/croissance, M3d) par une SAISIE : la

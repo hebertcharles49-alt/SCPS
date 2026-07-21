@@ -1053,6 +1053,12 @@ float econ_country_debase_frac(const WorldEconomy *e, int cid);
  * credit_stats_get) : valeur totale créée par la débase (extra au-delà de la parité) et
  * nombre de mois-pays passés en débase active CE run. */
 void  econ_debase_stats_get(double *gold_total, long *country_months);
+/* LE TABLEAU DE BORD MÉTALLIQUE (blindage chronicle 2026-07-21) — cumulés PARTIE, print-only :
+ * extraction mondiale or/cuivre (t, redevance comprise) + redevance siphonnée, et la frappe
+ * VENTILÉE par canal : paires légitimes · sur-frappe multiplicative · billon · frappe libre
+ * (Σ des 4 == FX_MINT cumulé, auto-vérifiable côté chronicle). */
+void  econ_metal_stats_get(double *ext_gold, double *ext_copper, double *roy_gold, double *roy_copper);
+void  econ_mint_channel_stats_get(double *pairs, double *overstrike, double *billon, double *free_mint);
 
 /* §4 (catalogue des biens) — fraction de pop « mal servie » d'une province :
  * une minorité d'une autre SPHÈRE réclame ses variantes ; l'assimilation efface
