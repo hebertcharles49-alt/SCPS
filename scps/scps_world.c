@@ -2196,7 +2196,7 @@ static void build_hierarchy(World *w, int want_empires, int want_cities) {
     }
     for (int r=0;r<nreg;r++)
         w->region[r].color=province_palette(r*7+3);
-    gen_region_names(w);   /* toponymie ésotérique/humaine/naine/clanique par environnement */
+    gen_region_names(w);   /* toponymie par héritage (ésotérique/adaptative/métallurgiste/clanique) selon l'environnement */
 
     /* Capitale de pays = province la plus fertile (proxy) — via aire faute
      * de fertilité stockée sur la province ; on prend la plus vaste. */

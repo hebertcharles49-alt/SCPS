@@ -1044,7 +1044,7 @@ void diplo_liberate(DiploState *d, const WorldEconomy *econ, int region){
  * DÉPLACÉ DANS LE TEMPS (de la guerre à la table de paix). Comportement identique :
  * bascule de propriété, cicatrice, fulgurance, rancune, légitimité, saccage, captifs. */
 static void settle_transfer(DiploState *d, World *w, WorldEconomy *econ, WorldLegitimacy *wl,
-                            int winner, int loser, int region, bool winner_enslaves){
+                            int winner, int loser, int region, float winner_slave_frac){
     float price = diplo_province_price(econ, region);   /* prix INTACT (avant le saccage) */
     /* RE-KEY PROVINCE : econ->region[region] est un DÉRIVÉ (econ_aggregate_regions le
      * reconstruit ENTIER à chaque econ_tick) — un simple re->owner=winner ici serait
@@ -1076,7 +1076,7 @@ static void settle_transfer(DiploState *d, World *w, WorldEconomy *econ, WorldLe
      * EXPLICITEMENT à diplo_pillage_region (region[].owner a DÉJÀ basculé au
      * gagnant quelques lignes plus haut). */
     if (diplo_pillage_fresh(econ, region))
-        diplo_enslave_capture(w, econ, winner, region, winner_enslaves);  /* §4c : gate = TECH_ESCLAVAGE/éthos */
+        diplo_enslave_capture(w, econ, winner, region, winner_slave_frac);  /* §4c : la fraction résolue par l'appelant (0=abolition · 5% coutume · 15% tech) */
     diplo_pillage_region(econ, region, dst, loser);     /* saccage : 20% du revenu annuel → capitale */
     d->occupier[region] = -1;                           /* possédée : ce n'est plus une occupation */
 }
@@ -1134,7 +1134,7 @@ static void polity_death(DiploState *d, World *w, WorldEconomy *econ, int dead){
  * croissant. Le reste des occupations (deux sens) est RELÂCHÉ ; la paix solde le
  * bras-de-fer ; un vaincu à 0 région MEURT. Renvoie le nombre de régions transférées. */
 int diplo_settle(DiploState *d, World *w, WorldEconomy *econ, WorldLegitimacy *wl,
-                 int winner, int loser, bool winner_enslaves){
+                 int winner, int loser, float winner_slave_frac){
     if (!d||!w||!econ) return 0;
     int transferred=0;
     if (winner>=0 && winner<w->n_countries && loser>=0 && loser<w->n_countries && winner!=loser){
@@ -1142,7 +1142,7 @@ int diplo_settle(DiploState *d, World *w, WorldEconomy *econ, WorldLegitimacy *w
         for (int r=0;r<econ->n_regions && r<SCPS_MAX_REG;r++)
             if (d->occupier[r]==winner && econ->region[r].owner==loser
                 && econ->region[r].culture.settled) list[n++]=r;
-        if (winner_enslaves && getenv("SCPS_SLAVEDIAG"))
+        if (winner_slave_frac>0.f && getenv("SCPS_SLAVEDIAG"))
             fprintf(stderr,"[SLAVEDIAG]   diplo_settle winner=%d loser=%d n=%d budget=%.1f conq_value=%.1f\n",
                     winner, loser, n, diplo_war_budget(d,w,econ,winner,loser), d->conq_value[winner][loser]);
         /* tri (pipeline diplo, étage 2 — butin NEEDS-DRIVEN) : adjacentes au vainqueur d'abord,
@@ -1167,7 +1167,7 @@ int diplo_settle(DiploState *d, World *w, WorldEconomy *econ, WorldLegitimacy *w
         for (int k=0;k<n;k++){
             int r=list[k]; float price=diplo_province_price(econ,r);
             if (d->conq_value[winner][loser] + price > budget) break;   /* budget épuisé */
-            settle_transfer(d,w,econ,wl,winner,loser,r,winner_enslaves);
+            settle_transfer(d,w,econ,wl,winner,loser,r,winner_slave_frac);
             transferred++;
         }
     }
@@ -1185,13 +1185,13 @@ int diplo_settle(DiploState *d, World *w, WorldEconomy *econ, WorldLegitimacy *w
 
 bool diplo_peace_transfer_region(DiploState *d, World *w, WorldEconomy *econ,
                                  WorldLegitimacy *wl, int winner, int loser,
-                                 int region, bool winner_enslaves){
+                                 int region, float winner_slave_frac){
     if(!d||!w||!econ||!wl||winner<0||loser<0||winner==loser)return false;
     if(region<0||region>=econ->n_regions||econ->region[region].owner!=loser)return false;
     /* Même vérité terrain que le règlement historique : une terre demandée doit
      * être réellement tenue par le vainqueur. */
     if(d->occupier[region]!=winner)return false;
-    settle_transfer(d,w,econ,wl,winner,loser,region,winner_enslaves);
+    settle_transfer(d,w,econ,wl,winner,loser,region,winner_slave_frac);
     return true;
 }
 
@@ -1311,9 +1311,9 @@ bool diplo_pillage_fresh(const WorldEconomy *econ, int region){
  * DEUX doivent désormais toujours accompagner un même évènement de sac). La
  * fraîcheur cross-temps est vérifiée par l'APPELANT via diplo_pillage_fresh, UNE FOIS,
  * avant d'invoquer enslave_capture ET pillage_region ensemble. */
-long diplo_enslave_capture(const World *w, WorldEconomy *econ, int conqueror, int region, bool enslaves){
-    if (getenv("SCPS_SLAVEDIAG")) fprintf(stderr,"[SLAVEDIAG] enslave_capture appelé conqueror=%d region=%d enslaves=%d\n",conqueror,region,(int)enslaves);
-    if (!enslaves) return 0;                                          /* société sans l'Économie servile/éthos conquérant */
+long diplo_enslave_capture(const World *w, WorldEconomy *econ, int conqueror, int region, float frac){
+    if (getenv("SCPS_SLAVEDIAG")) fprintf(stderr,"[SLAVEDIAG] enslave_capture appelé conqueror=%d region=%d frac=%.2f\n",conqueror,region,(double)frac);
+    if (frac<=0.f) return 0;                                          /* abolition (pacifiste) — la fraction est résolue par l'appelant */
     if (conqueror<0||conqueror>=w->n_countries||region<0||region>=econ->n_regions) return 0;
     int cp=w->country[conqueror].capital_prov;
     int crr=(cp>=0&&cp<w->n_provinces)? w->province[cp].region : -1;
@@ -1328,7 +1328,7 @@ long diplo_enslave_capture(const World *w, WorldEconomy *econ, int conqueror, in
     int gi=-1; long best=0;
     for (int i=0;i<src->n_groups;i++) if (src->groups[i].count>best){ best=src->groups[i].count; gi=i; }
     if (gi<0){ if (getenv("SCPS_SLAVEDIAG")) fprintf(stderr,"[SLAVEDIAG]   -> gi<0 (src n_groups=%d)\n",src->n_groups); return 0; }  /* province non groupée → rien à déporter ici */
-    long captives=(long)((float)src->groups[gi].count*tune_f("SLAVE_FRACTION", 0.05f));
+    long captives=(long)((float)src->groups[gi].count*frac);   /* 5% coutume · 15% avec la TECH (econ_country_slave_fraction) */
     if (captives<=0) return 0;
     /* le cœur doit DÉJÀ être représenté en groupes : injecter dans une région
      * mono-groupe (n_groups=0) masquerait sa population native (repli ignoré dès

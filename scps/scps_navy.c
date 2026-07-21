@@ -531,11 +531,11 @@ void navy_course_tick(NavyState *ns, const World *w, WorldEconomy *econ,
                      * dst_region = le meilleur port du pirate (le butin y est crédité). */
                     int hp=navy_best_port(w,econ,c);
                     float loot = diplo_pillage_value(econ, best, hp, victim);
-                    /* RAZZIA (esclavage §4c) — 5% de la pop de la province razziée
-                     * (SLAVE_FRACTION), SI le pirate a le gate esclavagiste (tech OU éthos
-                     * conquérant — miroir econ_country_can_enslave, comme le sac de siège). */
-                    if (ts && econ_country_can_enslave(w, econ, &ts[c], c))
-                        if (diplo_enslave_capture(w, econ, c, best, true) > 0) g_navy_raid_slaves++;
+                    /* RAZZIA (esclavage §4c → 2026-07-21, pratique universelle) — la
+                     * fraction résolue par econ_country_slave_fraction (0 = abolition ·
+                     * 5 % coutume · 15 % tech), diplo l'exécute telle quelle. */
+                    if (ts){ float nf = econ_country_slave_fraction(w, econ, &ts[c], c);
+                        if (nf > 0.f && diplo_enslave_capture(w, econ, c, best, nf) > 0) g_navy_raid_slaves++; }
                     navy_mark_raided(econ, best);   /* balafre+CD (partagé avec CMD_RAID_COAST) */
                     n->raids_done++; n->loot_gold+=loot;
                     if (identified && victim>=0) diplo_pirate_grief(dp,victim,c,COURSE_GRIEF_RAID);

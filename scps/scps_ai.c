@@ -1629,6 +1629,11 @@ static int ai_owned_regions(const WorldEconomy *econ, int cid){
  * dont ai_strat_turn n'a pas l'acteur sous la main). Dérivé de la tech : non sauvegardé. */
 static bool g_ai_enslave[SCPS_MAX_COUNTRY];
 static bool ai_enslaves(int cid){ return (cid>=0&&cid<SCPS_MAX_COUNTRY) ? g_ai_enslave[cid] : false; }
+/* LA FRACTION DÉPORTÉE (2026-07-21) : cache jumeau de g_ai_enslave (0 = abolition/
+ * pacifiste · 5 % coutume · 15 % tech), rafraîchi au même bloc §4c — le règlement
+ * d'un TIERS (capitulation) la lit aussi. */
+static float g_ai_slave_frac[SCPS_MAX_COUNTRY];
+static float ai_slave_frac_of(int cid){ return (cid>=0&&cid<SCPS_MAX_COUNTRY) ? g_ai_slave_frac[cid] : 0.f; }
 /* §terrain : valeur cumulée des régions du `loser` que `winner` OCCUPE (ce que le
  * règlement pourra transférer) — l'arbitrage « budget couvert par les occupations ». */
 static float ai_occupied_value(const DiploState *d, const WorldEconomy *econ, int winner, int loser){
@@ -1663,7 +1668,7 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
                     bool occ_any = (b<SCPS_MAX_COUNTRY) && diplo->conquered[a->cid][b]>0;
                     if (!occ_any && diplo->war_years[a->cid][b] < AI_CONSOLIDATE_GRACE_Y) continue;
                     if (getenv("SCPS_SLAVEDIAG")) fprintf(stderr,"[SLAVEDIAG] settle(consolidate) a->cid=%d can_enslave=%d ethos=%d brake=%.2f war_years=%.1f\n",a->cid,(int)a->can_enslave,(int)ai_capital_ethos(w,econ,a->cid),brake,diplo->war_years[a->cid][b]);
-                    diplo_settle(diplo, w, econ, wl, a->cid, b, a->can_enslave);  /* solde : garde l'occupé, relâche le reste */
+                    diplo_settle(diplo, w, econ, wl, a->cid, b, ai_slave_frac_of(a->cid));  /* solde : garde l'occupé, relâche le reste */
                 }
             a->peace_lock_until = day + AI_PEACE_LOCK;       /* hystérésis : on digère */
             a->stats.consolidations++;
@@ -1766,7 +1771,7 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
             if (diplo_war_budget(diplo,w,econ,b,a->cid) >= AI_ANNEX_FRAC*diplo_country_value(econ,a->cid)) continue;
             diplo_reparations(diplo, w, econ, a->cid, b);               /* le vaincu indemnise le vainqueur */
             if (getenv("SCPS_SLAVEDIAG")) fprintf(stderr,"[SLAVEDIAG] settle(surrender) winner_b=%d ai_enslaves(b)=%d\n",b,(int)ai_enslaves(b));
-            diplo_settle(diplo, w, econ, wl, b, a->cid, ai_enslaves(b)); /* capitulation : b ANNEXE ce qu'il occupe (peut nous TUER) */
+            diplo_settle(diplo, w, econ, wl, b, a->cid, ai_slave_frac_of(b)); /* capitulation : b ANNEXE ce qu'il occupe (peut nous TUER) */
         }
     }
 
@@ -1831,7 +1836,7 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
             else
                 ai_impose_contract(a, w, econ, diplo, b);    /* §leviers : imposer plutôt qu'annexer */
             if (getenv("SCPS_SLAVEDIAG")) fprintf(stderr,"[SLAVEDIAG] settle(main) a->cid=%d can_enslave=%d ethos=%d occ=%d\n",a->cid,(int)a->can_enslave,(int)ai_capital_ethos(w,econ,a->cid),occ);
-            int got = diplo_settle(diplo, w, econ, wl, a->cid, b, a->can_enslave);  /* la propriété change ICI */
+            int got = diplo_settle(diplo, w, econ, wl, a->cid, b, ai_slave_frac_of(a->cid));  /* la propriété change ICI */
             a->credit_war -= 1.f; a->stats.conquests += got;
             if (got>0) faction_lever_apply(a->cid, FAC_CONQUERANT, AI_LEVER_WAR);    /* §4 : prendre AVANCE les Conquérants */
         }
@@ -2411,6 +2416,16 @@ static TechId ai_pick_tech(const AiActor *a, const TechState *ts, const World *w
          * usage réel pour l'Entrepôt, pas une lubie. */
         if (id==TECH_HALLES && a->credit_trade>=1.f)
             score += AI_HALLES_HUNGER;
+        /* ÉCONOMIE SERVILE (2026-07-21) : la coutume comme TROPISME de recherche (jamais
+         * un déblocage gratuit — la tech se choisit et se paie, verrou-assoupli). La
+         * coutume tire LA CHAÎNE : sans Conscription l'esclavage n'est jamais ÉLIGIBLE
+         * (prereq — mesuré SLAVEDIAG : can=0 pendant 60 ans, la branche armée délaissée
+         * par les éthos marchands) → les maillons (Caserne→Conscription) reçoivent le
+         * DEMI-bonus tant que la cible n'est pas prise. Éthos porteurs : Dominateur/
+         * Honneur (la razzia) ET Ordre (les hilotes — la société de discipline). */
+        /* (2026-07-21 : l'ex-tropisme ESCLAVAGE retiré — la PRATIQUE est universelle
+         * (can_enslave=true), la tech n'est plus qu'une doctrine d'approfondissement
+         * qui se prend, ou pas, au score normal.) */
         score -= 0.002f*cost;      /* à score égal : le plus proche (le moins cher) d'abord */
         if (score>bestscore){ bestscore=score; best=id; }
     }
@@ -2461,17 +2476,17 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
     if (!ts || day < a->next_research_day) return;
     if (g_techdiag<0) g_techdiag = (getenv("SCPS_TECHDIAG")!=NULL);
     a->next_research_day = day + AI_RESEARCH_CADENCE;
-    /* §4c — le gate de l'esclavage, RAFRAÎCHI AVANT tout early-return (piège pris au
-     * SLAVEDIAG : CINQ returns d'épargne/famine plus bas sautaient ce bloc — un empire
-     * HONNEUR coincé en épargne gardait can_enslave=0 pour toujours, la capture ne
-     * tournait jamais). ÉQUILIBRAGE 2026-07-10 (docs/EQUILIBRAGE_CULTURE_FOI_2026-07-10.md
-     * §ÉTHOS/priorité 4) : REVERT PARTIEL du lot brassage (« l'éthos CONQUÉRANT déporte
-     * par COUTUME ») — décision joueur, l'esclavage exige désormais la TECH (Économie
-     * servile) pour TOUS les éthos, sans exception Dominateur/Honneur. Volume faible
-     * (SLAVE_FRACTION), diffusion faible (METAB_DIFFUSE_SLAVE) : tunables INTACTS,
-     * seul le gate change. */
-    a->can_enslave = ts->unlocked[TECH_ESCLAVAGE];
-    if (a->cid>=0 && a->cid<SCPS_MAX_COUNTRY) g_ai_enslave[a->cid]=a->can_enslave;  /* cache pour le règlement d'un TIERS */
+    /* §4c — LA PRATIQUE EST UNIVERSELLE (décision joueur 2026-07-21 : « l'esclavage a
+     * été une dynamique mondiale, quel que soit le peuple ») : can_enslave=1 par défaut,
+     * 0 par l'ABOLITION (le pacifiste aujourd'hui — econ_country_can_enslave, la seule
+     * source). La TECH ne gate plus : elle INTENSIFIE la fraction (5→15 %,
+     * econ_country_slave_fraction). Remplace le gate-tech du 2026-07-10 (mesuré mort :
+     * 0 âme en 120 ans, la chaîne Caserne→Conscription→Esclavage jamais gravie). */
+    a->can_enslave = econ_country_can_enslave(w, econ, ts, a->cid);
+    if (a->cid>=0 && a->cid<SCPS_MAX_COUNTRY){
+        g_ai_enslave[a->cid]=a->can_enslave;                                   /* cache pour le règlement d'un TIERS */
+        g_ai_slave_frac[a->cid]=econ_country_slave_fraction(w, econ, ts, a->cid);
+    }
     a->has_creuset = ts->unlocked[TECH_INTEGRATION]; /* §leviers : le Creuset forme mieux */
     a->has_halles  = ts->unlocked[TECH_HALLES];      /* E3 : l'IA stockeuse exige les Halles */
     float nprov = (float)w->country[a->cid].n_regions;   /* coût des techs ∝ √N (provinces), découplé de la pop */
@@ -2949,10 +2964,11 @@ void ai_slave_trade_year(World *w, WorldEconomy *econ, const AiActor ai[], const
         if (ai[cid].can_enslave) ai_slave_buy_pass(econ, cid, (rhome>=0)?rhome:rany);
         if (slaves<=0.0 || rhome<0) continue;
         if (!ai[cid].can_enslave){
-            /* L'ABOLITIONNISTE N'EN GARDE PAS : les âmes serviles échues (conquête d'un
-             * esclavagiste, groupes migrés, éthos qui a glissé) sont AFFRANCHIES — la
-             * coutume ne les tient pas. C'est AUSSI ce qui fait vivre le canal de
-             * métabolisation (l'affranchi diffuse plein). Plancher anti-bruit. */
+            /* L'ABOLI AFFRANCHIT (2026-07-21) : can_enslave est universel SAUF abolition
+             * (le pacifiste aujourd'hui, un décret demain — econ_country_can_enslave est
+             * la seule source). Les âmes serviles échues (conquête, migration, éthos qui
+             * a glissé) sont AFFRANCHIES — la coutume ne les tient pas. C'est AUSSI ce
+             * qui garde vivant le canal de métabolisation (l'affranchi diffuse plein). */
             if (slaves >= 10.0) demography_manumit_country(econ, cid);
             continue;
         }

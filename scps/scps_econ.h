@@ -597,6 +597,10 @@ const PopCulture *econ_ruling_culture(const World *w, const WorldEconomy *econ, 
 /* ESCLAVAGE — gate ACHETEUR au marché des Centres (miroir du gate de capture IA) :
  * TECH_ESCLAVAGE débloquée OU éthos conquérant (Dominateur/Honneur) de la couronne. */
 bool econ_country_can_enslave(const World *w, const WorldEconomy *econ, const TechState *ts, int cid);
+/* La FRACTION déportée (2026-07-21) : 0 = abolition (pacifiste aujourd'hui) · 5 % coutume
+ * mondiale · 15 % avec la TECH (l'économie servile institutionnalisée). Résolue par qui
+ * possède TechState ; diplo exécute la fraction, sans jamais lire la tech. */
+float econ_country_slave_fraction(const World *w, const WorldEconomy *econ, const TechState *ts, int cid);
 
 /* Initialise pops, capacités d'extraction et manufactures à partir de la
  * géographie/ressources du monde déjà généré. */

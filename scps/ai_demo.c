@@ -535,7 +535,7 @@ int main(int argc, char **argv){
         prosperity_tick(s.wp,s.w,s.econ,s.net,s.ts,s.wl);
         diplo_init(s.dp); diplo_declare_war_cb(s.dp, cidD, R, CB_TERRITORIAL);
         diplo_occupy(s.dp, s.econ, cidD, rr[0]); diplo_occupy(s.dp, s.econ, cidD, rr[1]);
-        int gotA=diplo_settle(s.dp, s.w, s.econ, s.wl, cidD, R, false);
+        int gotA=diplo_settle(s.dp, s.w, s.econ, s.wl, cidD, R, 0.f);
         /* RE-KEY PROVINCE : settle_transfer route owner via econ_region_set_owner (province-
          * grain, cf. scps_diplo.c:803) — l'agrégat region[].owner ne bouge qu'au PROCHAIN
          * econ_tick ; on le rafraîchit à la main pour lire un état à jour tout de suite. */
@@ -552,7 +552,7 @@ int main(int argc, char **argv){
         prosperity_tick(s.wp,s.w,s.econ,s.net,s.ts,s.wl);
         diplo_init(s.dp); diplo_declare_war_cb(s.dp, cidD, R, CB_TERRITORIAL);
         diplo_occupy(s.dp, s.econ, cidD, rr[0]); diplo_occupy(s.dp, s.econ, cidD, rr[1]);
-        diplo_settle(s.dp, s.w, s.econ, s.wl, cidD, R, false);
+        diplo_settle(s.dp, s.w, s.econ, s.wl, cidD, R, 0.f);
         econ_aggregate_regions(s.econ);   /* même idiome que le cas (A) juste au-dessus */
         int rA=0; for (int r=0;r<s.econ->n_regions;r++) if (s.econ->region[r].owner==R) rA++;
         /* RÉGRESSION MOTEUR (RE-KEY PROVINCE, non un artefact de banc — cf. rapport) :

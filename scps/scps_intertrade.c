@@ -741,7 +741,30 @@ long intertrade_slave_sell(WorldEconomy *e, int region, long count){
         remaining -= take; sold += take;
     }
     if (sold<=0) return 0;
-    econ_region_treasury_add(e, region, (float)sold*price);
+    { float value=(float)sold*price;
+      if (tune_f("SLAVE_MARKET_CONSERVED",1.f)>0.f){
+          /* LA CONSERVATION (2026-07-21) : le marché servile créditait le vendeur EX
+           * NIHILO — invisible tant que le marché était MORT ; VIVIFIÉ (la pratique
+           * universelle), le trou crevait l'invariant M3c à 2000 % (graine 108 an 16,
+           * mesuré à l'apparié). La contrepartie RÉELLE : le CENTRE du vendeur paie de
+           * son trésor, le reliquat vient des classes du marché régional (motif F2/
+           * SPECULATE_CONSERVED, clé 42/20/38). Le vendeur n'encaisse QUE ce qui est
+           * réellement payé — prix cassé émergent si le payeur est pauvre, jamais une
+           * création. 0 = legacy EX NIHILO exact (kill-switch). */
+          int hub=intertrade_country_centre(e,cid);
+          float paid=0.f;
+          if (hub>=0 && hub<e->n_regions && hub!=region)
+              paid = -econ_region_treasury_add(e,hub,-value);
+          if (paid < value - 1e-3f){
+              float rest=value-paid;
+              paid += -econ_region_wealth_add(e,region,CLASS_LABORER,  -rest*0.42f);
+              paid += -econ_region_wealth_add(e,region,CLASS_BOURGEOIS,-rest*0.20f);
+              paid += -econ_region_wealth_add(e,region,CLASS_ELITE,    -rest*0.38f);
+          }
+          econ_region_treasury_add(e, region, paid);
+      } else {
+          econ_region_treasury_add(e, region, value);
+      } }
     return sold;
 }
 
@@ -800,7 +823,24 @@ long intertrade_slave_buy(WorldEconomy *e, int region, long count, bool can_ensl
     }
     pe->strata[CLASS_SLAVE].pop += (float)want;
     g_slave_pool[h] -= (float)want;
-    *buyer_tr -= (float)want*price;
+    { float total=(float)want*price;
+      if (tune_f("SLAVE_MARKET_CONSERVED",1.f)>0.f){
+          /* LA CONSERVATION (2026-07-21, miroir de la vente) : l'or de l'acheteur ne
+           * DISPARAÎT plus — le CENTRE encaisse la transaction (sa marge du tier
+           * mondial), sinon les classes du marché régional. Débit via treasury_add
+           * (clampé + dual-write region[], remplace l'écrit nu *buyer_tr). */
+          float paid = -econ_region_treasury_add(e,region,-total);
+          int hub=intertrade_country_centre(e,cid);
+          if (hub>=0 && hub<e->n_regions && hub!=region)
+              econ_region_treasury_add(e,hub,paid);
+          else {
+              econ_region_wealth_add(e,region,CLASS_LABORER,  paid*0.42f);
+              econ_region_wealth_add(e,region,CLASS_BOURGEOIS,paid*0.20f);
+              econ_region_wealth_add(e,region,CLASS_ELITE,    paid*0.38f);
+          }
+      } else {
+          *buyer_tr -= total;   /* legacy : l'or disparaissait (kill-switch) */
+      } }
     return want;
 }
 

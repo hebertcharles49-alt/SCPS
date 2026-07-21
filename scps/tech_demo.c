@@ -99,13 +99,17 @@ int main(void){
        !tech_can_research(&f,TECH_FORGE_RUNES, human|tech_heritage_bit(HERITAGE_METALLURGISTE)));
     ok("MÉTALLURGISTE + ARCANE (ésotérique en contact) : la Forge à runes se GREFFE (combo §syncrétique)",
        tech_can_research(&f,TECH_FORGE_RUNES, human|tech_heritage_bit(HERITAGE_METALLURGISTE)|tech_heritage_bit(HERITAGE_ESOTERIQUE)));
-    ok("un empire MÉTALLURGISTE+ÉSOTÉRIQUE la recherche (native naine + combo ésotérique réunis)",
+    ok("un empire MÉTALLURGISTE+ÉSOTÉRIQUE la recherche (native métallurgiste + combo ésotérique réunis)",
        tech_can_research(&f,TECH_FORGE_RUNES, tech_heritage_bit(HERITAGE_METALLURGISTE)|tech_heritage_bit(HERITAGE_ESOTERIQUE)));
-    ok("la signature HALFELINE (Abondance) est la MOINS faustienne (charge nulle)",
+    ok("la signature AGRAIRE (Abondance) est la MOINS faustienne (charge nulle)",
        !tech_node(TECH_ABONDANCE)->faustian && tech_node(TECH_ABONDANCE)->charge==0.f &&
        tech_node(TECH_ABONDANCE)->native==HERITAGE_AGRAIRE);
-    ok("l'Esclavage est la signature CLANIQUE (la tech d'asservissement, gate du §4c)",
-       tech_node(TECH_ESCLAVAGE)->native==HERITAGE_CLANIQUE && tech_node(TECH_ESCLAVAGE)->faustian);
+    /* VERROU ASSOUPLI (décision joueur 2026-07-21) : l'Esclavage n'est PLUS la signature
+     * clanique — UNIVERSEL tier 2 (un choix de civilisation précoce), FAUSTIEN inchangé
+     * (la traite nourrit la Brèche). Remplace l'assertion signature-CLANIQUE du §4c. */
+    ok("l'Esclavage est UNIVERSEL (verrou assoupli 2026-07-21) et reste FAUSTIEN (la démesure)",
+       tech_node(TECH_ESCLAVAGE)->native==HERITAGE_COUNT && tech_node(TECH_ESCLAVAGE)->faustian
+       && tech_node(TECH_ESCLAVAGE)->tier==2 && tech_node(TECH_ESCLAVAGE)->prereq==TECH_CONSCRIPTION);
 
     /* ---- 7. LE COÛT QUI SCALE ∝ √N (provinces), SOUS-LINÉAIRE ---------- */
     printf("\n── 7. Le coût qui scale ∝ √N (provinces) — wide récompensé sous-linéairement ──\n");

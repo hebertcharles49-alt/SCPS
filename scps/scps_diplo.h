@@ -294,15 +294,16 @@ void diplo_liberate (DiploState *d, const WorldEconomy *econ, int region);
  * (adjacentes d'abord, puis prix croissant) et BORNÉES par diplo_war_budget (§5) ;
  * le reste des occupations (deux sens) est relâché, la paix solde le bras-de-fer.
  * Un vaincu réduit à 0 région MEURT (role→UNCLAIMED, relations & vassalité dénouées).
- * `winner_enslaves` = le vainqueur a-t-il l'Économie servile (résolu par l'appelant).
+ * `winner_slave_frac` = la fraction déportée par le vainqueur (0 = abolition ·
+ * 5 % coutume · 15 % tech — econ_country_slave_fraction, résolue par l'appelant).
  * Renvoie le nombre de régions transférées (0 = paix blanche). */
 int  diplo_settle   (DiploState *d, World *w, WorldEconomy *econ, WorldLegitimacy *wl,
-                      int winner, int loser, bool winner_enslaves);
+                      int winner, int loser, float winner_slave_frac);
 /* Briques explicites du tiroir de paix joueur. Le transfert réutilise exactement
  * le corps du règlement existant (cicatrice, rancune, légitimité, sac, captifs). */
 bool  diplo_peace_transfer_region(DiploState *d, World *w, WorldEconomy *econ,
                                   WorldLegitimacy *wl, int winner, int loser,
-                                  int region, bool winner_enslaves);
+                                  int region, float winner_slave_frac);
 float diplo_peace_take_gold(World *w, WorldEconomy *econ, int winner, int loser, float wanted);
 float diplo_peace_pillage_stock(World *w, WorldEconomy *econ, int winner, int loser, float fraction);
 void  diplo_peace_force_ethos(World *w, WorldEconomy *econ, int winner, int loser);
@@ -352,16 +353,16 @@ void diplo_pillage_stats(long *events, double *value, double *target, long *soul
  * unifié (LOT P) — hors scope, non touchée. */
 float diplo_siege_loot(WorldEconomy *econ, int region, int dst_region);
 
-/* ESCLAVAGE (§4c → LOT P 2026-07-07) — une société ASSERVISSANTE (TECH_ESCLAVAGE OU
- * éthos conquérant Dominateur/Honneur, `can_enslave` résolu par l'appelant) déporte
- * SLAVE_FRACTION (registre J, 5 %) de la population prise vers son CŒUR (capitale) :
- * un groupe DIASPORA non-intégré (restif) de culture étrangère → le D̄ du maître
- * monte, la fracture s'installe au centre. Renvoie le nombre de captifs ; 0 si
- * `enslaves` est faux. Ne pose PLUS son propre pillage_cd (LOT P : toujours appelée
- * aux côtés de diplo_pillage_region, gatée UNE FOIS par diplo_pillage_fresh).
- * Appelée par settle_transfer, l'occupation-capture (scps_sim.c) et la course
- * pirate (scps_navy.c) ; exposée pour le banc d'essai. */
-long diplo_enslave_capture(const World *w, WorldEconomy *econ, int conqueror, int region, bool enslaves);
+/* ESCLAVAGE (§4c → 2026-07-21, LA PRATIQUE UNIVERSELLE) — le conquérant déporte `frac`
+ * de la population prise vers son CŒUR (capitale) : un groupe DIASPORA non-intégré
+ * (restif) de culture étrangère → le D̄ du maître monte, la fracture s'installe au
+ * centre. `frac` est RÉSOLUE PAR L'APPELANT (econ_country_slave_fraction : 0 =
+ * abolition/pacifiste · 5 % coutume mondiale · 15 % avec la TECH Économie servile —
+ * diplo ne lit jamais la tech). Renvoie le nombre de captifs ; 0 si frac<=0. Ne pose
+ * PLUS son propre pillage_cd (LOT P : toujours appelée aux côtés de
+ * diplo_pillage_region, gatée UNE FOIS par diplo_pillage_fresh). Appelée par
+ * settle_transfer et la course pirate (scps_navy.c) ; exposée pour le banc d'essai. */
+long diplo_enslave_capture(const World *w, WorldEconomy *econ, int conqueror, int region, float frac);
 
 void diplo_tick(DiploState *d, float dt);   /* usure de guerre (war_years++) + trêve/momentum */
 

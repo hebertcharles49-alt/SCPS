@@ -142,7 +142,7 @@ int main(int argc,char**argv){
                 econ->region[r].stock[RES_ENCHANTED_ARMS]=8000.f; econ->region[r].stock[RES_ARMS]=8000.f; }
         }
         diplo_occupy(dp,econ,player,target);
-        int got=diplo_settle(dp,w,econ,wl,player,tgt_owner,false);
+        int got=diplo_settle(dp,w,econ,wl,player,tgt_owner,0.f);
         /* RE-KEY PROVINCE : settle_transfer route owner sur les PROVINCES membres —
          * econ->region[target].owner ne se re-dérive qu'au prochain econ_tick (aggregate).
          * On vérifie directement au grain province (econ_region_rep_province). */
@@ -446,7 +446,7 @@ int main(int argc,char**argv){
             for(int r=0;r<econ->n_regions;r++) if(econ->region[r].owner==B && econ->region[r].culture.settled){ if(Br1<0)Br1=r; else if(Br2<0){Br2=r;break;} }
             if(Br1>=0 && Br2>=0){
                 diplo_occupy(dp,econ,A,Br1); diplo_occupy(dp,econ,A,Br2);   /* deux régions INVESTIES */
-                int got=diplo_settle(dp,w,econ,wl,A,B,false);               /* B surarmé → budget marginal */
+                int got=diplo_settle(dp,w,econ,wl,A,B,0.f);               /* B surarmé → budget marginal */
                 ok("le budget BORNE la prise : B surarmé → la paix ne transfère pas tout l'occupé",
                    got < 2);
             } else ok("(pas de cible nette pour le test de bornage)", true);
@@ -553,7 +553,7 @@ int main(int argc,char**argv){
                 }
                 /* UNE perte (occuper puis régler) : la rancune se POSE (B garde ≥1 région). */
                 diplo_init(dp); diplo_declare_war_cb(dp,A,B,CB_TERRITORIAL);
-                diplo_occupy(dp,econ,A,Br1); diplo_settle(dp,w,econ,wl,A,B,false);
+                diplo_occupy(dp,econ,A,Br1); diplo_settle(dp,w,econ,wl,A,B,0.f);
                 float rancor_one=diplo_rancor(dp,B,A);
                 econ->region[Br1].owner=(int16_t)B;          /* on rend Br1 à B */
                 ok("perdre une province POSE la rancune sur le dépossédé", rancor_one >= 0.9f);
@@ -561,7 +561,7 @@ int main(int argc,char**argv){
                  * ANÉANTI verrait sa rancune éteinte par sa MORT (on teste le dépossédé vivant). */
                 if(Bn>=3 && Br2>=0){
                     diplo_init(dp); diplo_declare_war_cb(dp,A,B,CB_TERRITORIAL);
-                    diplo_occupy(dp,econ,A,Br1); diplo_occupy(dp,econ,A,Br2); diplo_settle(dp,w,econ,wl,A,B,false);
+                    diplo_occupy(dp,econ,A,Br1); diplo_occupy(dp,econ,A,Br2); diplo_settle(dp,w,econ,wl,A,B,0.f);
                     ok("perdre PLUS de terres CREUSE la rancune (∝ ce qui est arraché)",
                        diplo_rancor(dp,B,A) >= rancor_one + 0.9f);
                 } else ok("(monde trop petit pour la rancune ∝ pertes : B survivrait à peine)", true);
@@ -591,13 +591,14 @@ int main(int argc,char**argv){
             foe.integration=1.f; foe.L=5.f; foe.drift_id=222; foe.origin_sphere=heritage_sphere(HERITAGE_CLANIQUE);
             econ->prov[srcP].pop.n_groups=1; econ->prov[srcP].pop.groups[0]=foe;
 
-            /* GATE = esclavagiste (TECH_ESCLAVAGE OU éthos conquérant, résolu par l'appelant) : booléen.
-             * LOT P (2026-07-07) : SLAVE_FRACTION calée à 5% (règle joueur verbatim, ex-0.08) —
-             * la déportation apporte (savoir arraché, diffusion faible) sans jamais dominer. */
-            long captives=diplo_enslave_capture(w,econ,A,srcR,/*enslaves*/true);
-            printf("   captifs déportés au cœur : %ld (sur 4000, ~5%%)\n",captives);
-            ok("un esclavagiste DÉPORTE une FRACTION FAIBLE (~5 %) de la population prise",
-               captives>0 && captives<=300);
+            /* GATE = esclavagiste (TECH_ESCLAVAGE, résolu par l'appelant) : booléen.
+             * HISTORIQUE : LOT P 2026-07-07 « 5% » (ex-0.08). RÉVISÉ 2026-07-21 (décision
+             * joueur « Montons le stock — une économie servile doit être possible ») :
+             * SLAVE_FRACTION 15% — la capture redevient un PILIER démographique. */
+            long captives=diplo_enslave_capture(w,econ,A,srcR,/*frac tech*/0.15f);
+            printf("   captifs déportés au cœur : %ld (sur 4000, ~15%%)\n",captives);
+            ok("un esclavagiste DÉPORTE une fraction SUBSTANTIELLE (~15 %) de la population prise",
+               captives>=400 && captives<=800);
             ok("la capitale gagne un GROUPE de plus — les captifs au cœur",
                econ->prov[capP].pop.n_groups==2);
             PopGroup *g=&econ->prov[capP].pop.groups[econ->prov[capP].pop.n_groups-1];
@@ -609,7 +610,7 @@ int main(int argc,char**argv){
                econ->prov[srcP].pop.groups[0].count < 4000);
             /* GATE : sans la TECH d'asservissement (enslaves=false), personne n'est asservi. */
             ok("sans la TECH d'asservissement (TECH_ESCLAVAGE), personne n'est capturé",
-               diplo_enslave_capture(w,econ,A,srcR,/*enslaves*/false)==0);
+               diplo_enslave_capture(w,econ,A,srcR,/*abolition*/0.f)==0);
         } else ok("(monde trop petit pour le test d'esclavage)", true);
     }
 

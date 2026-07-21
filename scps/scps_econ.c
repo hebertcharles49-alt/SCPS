@@ -759,16 +759,28 @@ const PopCulture *econ_ruling_culture(const World *w, const WorldEconomy *econ, 
     return (cr >= 0 && cr < econ->n_regions) ? &econ->region[cr].culture : NULL;
 }
 
-/* ESCLAVAGE — le gate ACHETEUR (miroir de scps_ai.c: le gate qui institue la capture,
- * `a->can_enslave`, réévalué ici en LECTURE SEULE pour le VERBE JOUEUR/marché).
- * ÉQUILIBRAGE 2026-07-10 (docs/EQUILIBRAGE_CULTURE_FOI_2026-07-10.md §ÉTHOS/priorité 4) :
- * REVERT PARTIEL du lot brassage — décision joueur, l'esclavage exige désormais la
- * TECH (Économie servile) pour TOUS, l'ancienne exception d'éthos conquérant
- * (Dominateur/Honneur « déporte par coutume ») est RETIRÉE. w/econ/cid gardés dans la
- * signature (miroir scps_ai.c, tous les appelants inchangés) mais ne servent plus. */
+/* ESCLAVAGE — LA PRATIQUE EST UNIVERSELLE (décision joueur 2026-07-21 : « l'esclavage
+ * a été une dynamique mondiale pendant très longtemps, quel que soit le peuple » —
+ * remplace le gate-tech du 2026-07-10, mesurablement mort : 0 âme en 120 ans, la
+ * chaîne Caserne→Conscription→Esclavage jamais gravie). can_enslave=1 PAR DÉFAUT ;
+ * il tombe à 0 par l'ABOLITION — aujourd'hui l'éthos PACIFISTE (« consentement
+ * seul ») ; un futur décret/évènement d'abolition n'aura qu'à basculer CETTE
+ * fonction (tous les chemins la lisent). La TECH ne gate plus : elle INTENSIFIE
+ * (cf. econ_country_slave_fraction ci-dessous). */
 bool econ_country_can_enslave(const World *w, const WorldEconomy *econ, const TechState *ts, int cid){
-    (void)w; (void)econ; (void)cid;
-    return ts && ts->unlocked[TECH_ESCLAVAGE];
+    (void)ts;
+    const PopCulture *pc = econ_ruling_culture(w, econ, cid);
+    return !(pc && pc->ethos==ETHOS_PACIFISTE);
+}
+/* La FRACTION déportée à la conquête/razzia : 0 si abolition (can_enslave faux) ·
+ * SLAVE_FRACTION (5 %, la coutume mondiale) sans la tech · SLAVE_FRACTION_TECH
+ * (15 %, l'ÉCONOMIE SERVILE institutionnalisée) avec — « la tech passe de 5 à 15 %
+ * le servage » (décision joueur 2026-07-21). Résolue par QUI possède TechState
+ * (IA/sim/navy) ; diplo EXÉCUTE la fraction reçue, sans jamais lire la tech. */
+float econ_country_slave_fraction(const World *w, const WorldEconomy *econ, const TechState *ts, int cid){
+    if (!econ_country_can_enslave(w, econ, ts, cid)) return 0.f;
+    return (ts && ts->unlocked[TECH_ESCLAVAGE]) ? tune_f("SLAVE_FRACTION_TECH", 0.15f)
+                                                : tune_f("SLAVE_FRACTION",      0.05f);
 }
 
 /* TENSION DE DEMANDE : +10 % de besoins partout (appliqué au facteur `units`) → une
@@ -4959,7 +4971,38 @@ void econ_tick(WorldEconomy *e, float dt) {
              * (diplo_enslave_capture), l'achat au pool (intertrade_slave_buy) et — en repli — les
              * écritures déjà synchronisées avec un groupe réel (manumission, mobilisation de
              * révolte) : AUCUNE croissance générique, organique ou plancher. */
-            if (c==CLASS_SLAVE){ if (st->pop<0.f) st->pop=0.f; }
+            if (c==CLASS_SLAVE){
+                /* LA REPRODUCTION SERVILE (décision joueur 2026-07-21 — le gel intégral
+                 * était le patch anti-fantôme FUITE #1 devenu doctrine en douce, jamais
+                 * une décision : « contre-historique »). Réparé en croissant STRATE ET
+                 * GROUPES ENSEMBLE : la strate (float) porte la fraction, les groupes
+                 * reçoivent les âmes ENTIÈRES (delta au plus GROS groupe servile —
+                 * déterministe, ±1 âme d'écart max, l'invariant 11c tient par
+                 * construction). GATE anti-fantôme CONSERVÉ : aucun groupe servile réel
+                 * ⇒ aucune croissance (le résidu de strate s'écrase, comportement FUITE
+                 * #1 intact). Pas de plancher-1 (une province sans esclave le reste).
+                 * SLAVE_GROWTH=0 : kill-switch EXACT (gel historique). */
+                float sg = tune_f("SLAVE_GROWTH", 1.0f);
+                long gsum=0; int gbig=-1; long gbigc=-1;
+                for (int gi=0; gi<re->pop.n_groups; gi++){
+                    const PopGroup *gg=&re->pop.groups[gi];
+                    if (gg->klass!=CLASS_SLAVE || gg->count<=0) continue;
+                    gsum += gg->count;
+                    if (gg->count>gbigc){ gbigc=gg->count; gbig=gi; }
+                }
+                if (sg>0.f && gsum>0 && gbig>=0){
+                    st->pop *= 1.f + net_growth*sg;
+                    if (st->pop<0.f) st->pop=0.f;
+                    long delta = (long)st->pop - gsum;        /* les âmes ENTIÈRES nées/perdues */
+                    if (delta!=0){
+                        PopGroup *gb=&re->pop.groups[gbig];
+                        if (delta<0 && gb->count+delta<0){    /* famine : jamais un count négatif */
+                            delta = -gb->count;
+                        }
+                        gb->count += delta;
+                    }
+                } else if (st->pop<0.f) st->pop=0.f;
+            }
             else { st->pop *= 1.f + net_growth; if (st->pop<1.f) st->pop=1.f; }
             satsum+=st->satisfaction*st->pop; popsum+=st->pop;
         }

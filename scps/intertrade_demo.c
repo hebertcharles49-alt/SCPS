@@ -301,6 +301,15 @@ int main(int argc,char**argv){
         ProvinceEconomy *pe=&e2->prov[0];
         pe->owner=0; pe->active=true; pe->colonized=true; pe->region=0;
         pe->treasury=1e9f;
+        /* CONSERVATION (2026-07-21) : le marché servile a désormais un PAYEUR RÉEL (le
+         * Centre, sinon les classes du marché régional — SLAVE_MARKET_CONSERVED). Cette
+         * fixture sans Centre dote donc ses classes : sans elles le vendeur encaisse 0
+         * (comportement conservé CORRECT) et la respiration du prix devient invisible
+         * au trésor que le banc mesure. */
+        pe->strata[CLASS_LABORER].wealth=1e7f;
+        pe->strata[CLASS_BOURGEOIS].wealth=1e7f;
+        pe->strata[CLASS_ELITE].wealth=1e7f;
+        econ_aggregate_regions(e2);
         intertrade_reset();   /* pool à SEC (0 âme, toutes origines) */
         pe->pop.groups[0].klass=CLASS_SLAVE; pe->pop.groups[0].count=1000;
         pe->pop.groups[0].heritage=HERITAGE_CLANIQUE; pe->pop.groups[0].origin_sphere=SPHERE_ETRANGERS;

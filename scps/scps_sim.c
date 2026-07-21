@@ -565,8 +565,8 @@ static void sim_cmd_drain(Sim *s, World *w){
             float available=fmaxf(0.f,diplo_war_score(s->dp,p,t));
             if(cost>available+0.01f)break;
             if(cost<=0.01f && !ai_consider_offer(w,s->econ,s->wp,s->dp,s->sc,p,t,OFFER_PEACE))break;
-            bool enslaves=econ_country_can_enslave(w,s->econ,&s->ts[p],p);
-            for(int k=0;k<nr;k++)diplo_peace_transfer_region(s->dp,w,s->econ,s->wl,p,t,c->a[4+k],enslaves);
+            float slave_frac=econ_country_slave_fraction(w,s->econ,&s->ts[p],p);   /* 0=abolition · 5% coutume · 15% tech */
+            for(int k=0;k<nr;k++)diplo_peace_transfer_region(s->dp,w,s->econ,s->wl,p,t,c->a[4+k],slave_frac);
             if(nr>0)econ_aggregate_regions(s->econ);
             if(gold_score>0){
                 float monthly=econ_country_tax_year(t)/12.f;

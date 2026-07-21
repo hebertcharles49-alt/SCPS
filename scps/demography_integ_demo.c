@@ -20,6 +20,7 @@
 #include "scps_prosperity.h"
 #include "scps_modifier.h"
 #include "scps_demography.h"
+#include "scps_tune.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -141,6 +142,45 @@ int main(int argc, char **argv){
     const PopGroup *dom2=province_dominant(&econ->prov[rP].pop);
     ok("la culture de la province = celle du groupe dominant (la dominante mène)",
        dom2 && cdist(&econ->prov[rP].culture,&dom2->culture)<0.01f);
+
+    /* ═══ E. LA REPRODUCTION SERVILE (décision joueur 2026-07-21) ═══════════════
+     * Le gel intégral (patch anti-fantôme FUITE #1) n'était PAS une décision : les
+     * serviles se reproduisent désormais (strate ET groupes ENSEMBLE, invariant 11c
+     * ±1 par construction). SLAVE_GROWTH=0 = le gel historique EXACT. */
+    printf("\n── E. Reproduction servile : strate ET groupes croissent ensemble ──\n");
+    {
+        ProvincePop *ep=&econ->prov[rP].pop;
+        PopGroup s2; memset(&s2,0,sizeof s2);
+        s2.heritage=HERITAGE_CLANIQUE; s2.origin_sphere=SPHERE_ETRANGERS;
+        s2.origin=mc; s2.culture=mc; s2.klass=CLASS_SLAVE; s2.arrival=ARR_DEPORTE;
+        s2.count=2000; s2.L=2.f; s2.integration=0.05f; s2.diaspora=true; s2.drift_id=50001;
+        ep->groups[ep->n_groups++]=s2;
+        econ->prov[rP].strata[CLASS_SLAVE].pop += 2000.f;   /* la strate jumelle (invariant) */
+        float slave0=econ->prov[rP].strata[CLASS_SLAVE].pop;
+        float lab0  =econ->prov[rP].strata[CLASS_LABORER].pop;
+        for (int t=0;t<15;t++) econ_tick(econ, 1.f);
+        float slave1=econ->prov[rP].strata[CLASS_SLAVE].pop;
+        float lab1  =econ->prov[rP].strata[CLASS_LABORER].pop;
+        long gsum1=0; for (int i=0;i<ep->n_groups;i++)
+            if (ep->groups[i].klass==CLASS_SLAVE) gsum1+=ep->groups[i].count;
+        printf("   15 ans : serviles %.0f→%.0f · journaliers %.0f→%.0f · Σ groupes=%ld\n",
+               (double)slave0,(double)slave1,(double)lab0,(double)lab1,gsum1);
+        /* LE CONTRAT (SLAVE_GROWTH=1) : même destin démographique que les libres — dans
+         * les DEUX sens (cette fixture DÉCROÎT : surpeuplée par les injections §B/E —
+         * mesuré : ratios 0.8845 vs 0.8844, identiques à 1e-4). On teste le TAUX. */
+        float ratio_slv = slave1/fmaxf(slave0,1.f), ratio_lab = lab1/fmaxf(lab0,1.f);
+        ok("les serviles VIVENT la même démographie que les libres (taux égaux, plus jamais le gel)",
+           absf(ratio_slv - ratio_lab) < 0.02f && absf(ratio_slv - 1.f) > 0.005f);
+        ok("l'invariant 11c TIENT : strate == Σ groupes serviles (±1, la strate porte la fraction)",
+           absf(slave1 - (float)gsum1) < 1.f);
+        /* kill-switch : le gel historique exact. */
+        tune_set("SLAVE_GROWTH", 0.f);
+        float slave_k=econ->prov[rP].strata[CLASS_SLAVE].pop;
+        for (int t=0;t<8;t++) econ_tick(econ, 1.f);
+        ok("SLAVE_GROWTH=0 (kill-switch) : la strate servile est FIGÉE (le gel pré-2026-07-21)",
+           absf(econ->prov[rP].strata[CLASS_SLAVE].pop - slave_k) < 0.5f);
+        tune_set("SLAVE_GROWTH", 1.f);   /* redéfinit le défaut */
+    }
 
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n", g_pass, g_fail);

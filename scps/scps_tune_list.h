@@ -325,15 +325,31 @@
      * soumis diffusent PLEIN (1.0, câblé) ; le DÉPORTÉ (esclave) diffuse FAIBLE — savoir
      * arraché, fragmenté, réprimé (janissaire/forge/créole : réel mais mineur). */ \
     X(METAB_DIFFUSE_SLAVE,   0.30f) \
-    /* SLAVE_FRACTION — part de la population prise déportée à chaque pillage/razzia/occupation
-     * d'un esclavagiste (tech Économie servile OU éthos conquérant Dominateur/Honneur). LOT P
-     * (2026-07-07, règle joueur verbatim « 5% de la pop locale ») : calé à 5% — l'esclavage
-     * apporte (savoir arraché) sans jamais dominer — volume faible × diffusion faible
-     * (METAB_DIFFUSE_SLAVE). Ex-0.08 (brassage 2026-07-03) ; le joueur a fixé la valeur EXACTE. */ \
+    /* LA PRATIQUE UNIVERSELLE (décision joueur 2026-07-21 : « l'esclavage a été une
+     * dynamique mondiale, quel que soit le peuple ») : can_enslave=1 par défaut, 0 par
+     * l'ABOLITION (pacifiste — econ_country_can_enslave). SLAVE_FRACTION = la COUTUME
+     * mondiale (5 %, tout conquérant) ; SLAVE_FRACTION_TECH = l'ÉCONOMIE SERVILE
+     * institutionnalisée (« la tech passe de 5 à 15 % le servage ») — couplées à la
+     * REPRODUCTION SERVILE (SLAVE_GROWTH ci-dessous). Historique : LOT P 07-07 5 %
+     * gaté-tech ; gate-tech 07-10 (mesuré mort : 0 âme en 120 ans). */ \
     X(SLAVE_FRACTION,        0.05f) \
+    X(SLAVE_FRACTION_TECH,   0.15f) \
+    /* LA REPRODUCTION SERVILE (décision joueur 2026-07-21 : « je n'ai jamais décidé que
+     * les esclaves ne se reproduisent pas — contre-historique ») : multiplicateur du
+     * net_growth provincial appliqué à la strate servile (1.0 = même fécondité que les
+     * libres ; le gel intégral était un PATCH anti-fantôme (FUITE #1) devenu doctrine en
+     * douce — réparé en croissant strate ET groupes ensemble, cf. scps_econ.c §croissance).
+     * 0 = kill-switch EXACT (gel historique, golden byte-identique). */ \
+    X(SLAVE_GROWTH,          1.0f) \
     /* SLAVE_PRICE — prix de base d'une âme au marché des Centres (×ipm à la vente, ×2
      * ipm à l'achat — la double taxe du tier mondial, motif de intertrade_market_buy). */ \
     X(SLAVE_PRICE,           40.0f) \
+    /* LA CONSERVATION DU MARCHÉ SERVILE (2026-07-21) : la vente créditait le vendeur EX
+     * NIHILO et l'achat DÉTRUISAIT l'or du client — trou M0 invisible tant que le marché
+     * était mort, révélé par la pratique universelle (invariant M3c crevé à 2000 %,
+     * graine 108 an 16). Conservé : le CENTRE paie/encaisse (sinon les classes du marché
+     * régional, motif SPECULATE_CONSERVED). 0 = legacy ex-nihilo exact (kill-switch). */ \
+    X(SLAVE_MARKET_CONSERVED, 1.0f) \
     /* PACTE MIGRATOIRE (BRASSAGE) — l'échange passif annuel : fraction du groupe dominant qui
      * migre (×0..2 selon l'attractivité relative de la destination) + plancher anti-poussière.
      * LOT G (2026-07-08) — DEUX taux (`demography_migration_pact_tick`) : FRAC (canal ouvert

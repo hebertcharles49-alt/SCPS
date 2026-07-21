@@ -211,7 +211,12 @@ static const TechNode NODES[TECH_COUNT] = {
     0,0,0.5f, 0,2.0f, 0, 0, 0, 0, 0, false,
     "+10 % au moral (doctrine) · permet le Lancier de choc & la Garde d'escorte",
     "Une armée courageuse gagne parfois. Une armée qui sait où dormir, manger et frapper gagne plus souvent." },
-[TECH_ESCLAVAGE] = { "Économie servile","Marché aux esclaves", THM_SOCIETE,FN_ARMEE,3, TECH_ORGANISATION, true,false,HERITAGE_CLANIQUE,
+/* VERROU ASSOUPLI (décision joueur 2026-07-21, « une économie servile doit être
+ * possible ») : tier 3→2, prereq Organisation→Conscription, nativité Clanique→UNIVERSELLE
+ * — accessible TÔT à qui la CHOISIT (un choix de civilisation, jamais une coutume
+ * gratuite : le gate tech-pour-tous du 2026-07-10 reste la loi). FAUSTIENNE inchangée
+ * (charge 2.0) : la traite reste une démesure qui nourrit la Brèche. */
+[TECH_ESCLAVAGE] = { "Économie servile","Marché aux esclaves", THM_SOCIETE,FN_ARMEE,2, TECH_CONSCRIPTION, true,false,UNIV,
     0,0,0, 3.0f,2.0f, 1.0f, 3.0f, 0, 0, 2.0f, false,
     "⚠ ouvre la traite servile · +15 % au moral (doctrine) · +coercition · forte fracture interne",
     "Les comptes étaient irréprochables : tant de chaînes, tant de bras, tant de profit. Seuls les noms avaient disparu des colonnes." },
@@ -273,7 +278,7 @@ static const TechNode NODES[TECH_COUNT] = {
 [TECH_ALLIAGES_NAINS] = { "Alliages des profondeurs","Fonderie de bronze", THM_FORGE,FN_ARMEE,1, TECH_COLLECTE_ARGILE, false,false,HERITAGE_METALLURGISTE,
     0,0.3f,0, 0,0, 0, 0, 0, 0, 0, false,
     "+5 % aux dégâts (doctrine) · légère stabilité — métallurgie de fond",
-    "Le métal des profondeurs plia sans rompre. Le maître nain, lui, ne plia pas même devant les remerciements du roi." },
+    "Le métal des profondeurs plia sans rompre. Le maître forgeron, lui, ne plia pas même devant les remerciements du roi." },
 [TECH_GRAVURE_RUNES] = { "Gravure runique","Rune-forge", THM_FORGE,FN_ARMEE,2, TECH_ALLIAGES_NAINS, false,false,HERITAGE_METALLURGISTE,
     0,0.3f,0, 0,0, 0, 0, 0.5f, 0.10f, 0.50f, false,
     "+10 % aux dégâts (doctrine) · +puissance brute (runes) · flux 0,1 · charge 0,5",
