@@ -62,6 +62,7 @@ public:
     /* MONNAIE M1/M2 — {gold, copper} réserve métallique + frappe RÉELLE de ce mois (or/mois, miroir exact). */
     Dictionary country_reserve(int country) const;
     double  country_mint_month(int country) const;
+    Dictionary country_mint_detail(int country) const;   /* UI-ALLIAGE : paires/billon/valeur/débase du mois */
 
     /* par région */
     int     region_owner(int region) const;

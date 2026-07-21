@@ -65,6 +65,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("country_gold", "country"), &ScpsWorld::country_gold);
     ClassDB::bind_method(D_METHOD("country_reserve", "country"),    &ScpsWorld::country_reserve);
     ClassDB::bind_method(D_METHOD("country_mint_month", "country"), &ScpsWorld::country_mint_month);
+    ClassDB::bind_method(D_METHOD("country_mint_detail", "country"), &ScpsWorld::country_mint_detail);
     ClassDB::bind_method(D_METHOD("country_role", "country"), &ScpsWorld::country_role);
     ClassDB::bind_method(D_METHOD("region_owner", "region"),     &ScpsWorld::region_owner);
     ClassDB::bind_method(D_METHOD("region_pop", "region"),       &ScpsWorld::region_pop);
@@ -449,6 +450,13 @@ Dictionary ScpsWorld::country_reserve(int c) const {
     return d;
 }
 double  ScpsWorld::country_mint_month(int c) const { return scps_country_mint_month(sim, c); }
+Dictionary ScpsWorld::country_mint_detail(int c) const {
+    /* UI-ALLIAGE : la frappe PHYSIQUE du mois (paires, billon or/cuivre, valeur, débase). */
+    Dictionary d; float pair=0.f, bg=0.f, bc=0.f, v=0.f, dbg=0.f;
+    scps_country_mint_detail(sim, c, &pair, &bg, &bc, &v, &dbg);
+    d["pair"]=pair; d["billon_gold"]=bg; d["billon_copper"]=bc; d["value"]=v; d["debase"]=dbg;
+    return d;
+}
 int     ScpsWorld::country_role(int c) const { return scps_country_role(sim, c); }
 
 int     ScpsWorld::region_owner(int r)     const { return scps_region_owner(sim, r); }

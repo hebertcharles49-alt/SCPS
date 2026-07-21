@@ -77,6 +77,12 @@ void   scps_country_reserve(const ScpsSim *s, int country, float *gold_out, floa
 /* FRAPPE mensuelle RÉELLE (or) — miroir EXACT du point fixe d'econ_tick (même fonction pure,
  * aucune mutation ici) : la monnaie que CE pays créditera à sa capitale ce mois-ci. */
 double scps_country_mint_month(const ScpsSim *s, int country);
+/* UI-ALLIAGE (2026-07-21) : le détail PHYSIQUE de la frappe du mois — paires fondues (t),
+ * métal CÉLIBATAIRE fondu par le billon (or/cuivre, t), valeur créée, part débase (or).
+ * Dérivé de la seule fonction pure (pair=min(g,c), exact par construction). */
+void   scps_country_mint_detail(const ScpsSim *s, int country, float *pair_t,
+                                float *billon_gold_t, float *billon_copper_t,
+                                float *value, float *debase_value);
 /* UI-MONNAIE (2026-07-16) — L'INDICE DES PRIX national d'un pays : miroir PUR
  * d'econ_country_price_level (scps_econ.h, même formule, aucun état neuf) — 1.0 = neutre
  * (aucune caisse au-dessus du plancher SINK_FLOOR). Sert le hover « prix national N ×

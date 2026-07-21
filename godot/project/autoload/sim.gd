@@ -61,6 +61,13 @@ func regenerate(seed_value: int) -> void:
 		return
 	current_seed = seed_value
 	world.generate(seed_value)
+	# DÉPART FISCAL DOUX (retour joueur 2026-07-21 : « le slider part au fond à 100 % ») :
+	# une PARTIE NEUVE pose l'impôt joueur à 20 % par ordre — marge de progression, pas
+	# un fisc au taquet dès l'an 0. Verbe joueur (jamais l'IA) ; un CHARGEMENT de save
+	# ne repasse PAS ici (load_game → game_loaded) : le curseur sauvé reste souverain.
+	if world.has_method("player_budget_policy"):
+		for cls in range(3):
+			world.player_budget_policy(0, cls, 0.2)
 	generated.emit()
 	new_game_started.emit(seed_value)
 

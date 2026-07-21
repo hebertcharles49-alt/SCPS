@@ -11,14 +11,14 @@ extends RefCounted
 
 const VKit = preload("res://ui/vkit.gd")
 
-# ── PALETTE PARCHEMIN (concept 3) ─────────────────────────────────────────────
-const PANEL_BG      := Color("e7d9b6")
+# ── PALETTE PARCHEMIN (concept 3 — JAUNIE, retour joueur 2026-07-21 « trop blanc ») ──
+const PANEL_BG      := Color("e9d59c")
 const BORDER        := Color("b39a63")
-const HEADER_BG     := Color("d8c69a")
-const TABBAR_BG     := Color("dfcfa4")
+const HEADER_BG     := Color("d9c184")
+const TABBAR_BG     := Color("e0cb8e")
 const TAB_UNDERLINE := Color("7a5c22")
-const DIVIDER       := Color("c3ad78")
-const ROW_ALT       := Color("ded0aa")   # ligne alternée discrète
+const DIVIDER       := Color("c2a96a")
+const ROW_ALT       := Color("dfcc90")   # ligne alternée discrète
 const INK           := Color("3a2f1c")   # texte primaire
 const DIM_INK       := Color("8a7643")   # labels / têtes de section
 const HEADER_INK    := Color("5b4a2a")   # titres
@@ -33,8 +33,12 @@ const FS_ROW     := 13
 const FS_SECTION := 11
 const FS_TAB     := 13
 
-# ── LE THEME : tout le style ici, une seule fois ──────────────────────────────
+# ── LE THEME : tout le style ici, une seule fois (CACHE : tous les panneaux le partagent) ──
+static var _cached: Theme = null
+
 static func build() -> Theme:
+	if _cached != null:
+		return _cached
 	var th := Theme.new()
 	var serif: Font = VKit.font_map()   # IMFell English SC — la voix « parchemin »
 	var body: Font = VKit.font()        # Alegreya Sans — lisible pour les chiffres
@@ -42,16 +46,17 @@ static func build() -> Theme:
 		th.default_font = serif
 	th.default_font_size = FS_ROW
 
-	# 1. le PANNEAU (parchemin, bord 1px, coin 3)
-	th.set_stylebox("panel", "PanelContainer", sb(PANEL_BG, BORDER, 1, 3, 10, 10, 8, 8))
+	# 1. le PANNEAU (parchemin GRAINÉ : bruit déterministe tuilé, bord 1px — 9-slice
+	#    TILE pour que le grain ne s'étire jamais ; retour joueur 2026-07-21)
+	th.set_stylebox("panel", "PanelContainer", grain_sb(PANEL_BG, BORDER, 10, 10, 8, 8))
 
 	# 2. bandeau HEADER (variation)
 	th.set_type_variation("HeaderStrip", "PanelContainer")
-	th.set_stylebox("panel", "HeaderStrip", sb(HEADER_BG, BORDER, 0, 0, 12, 12, 7, 7))
+	th.set_stylebox("panel", "HeaderStrip", grain_sb(HEADER_BG, Color(0,0,0,0), 12, 12, 7, 7))
 
 	# 3. barre d'ONGLETS (variation — nom NON built-in : « TabBar » est une classe Godot)
 	th.set_type_variation("LedTabStrip", "PanelContainer")
-	th.set_stylebox("panel", "LedTabStrip", sb(TABBAR_BG, BORDER, 0, 0, 6, 6, 0, 0))
+	th.set_stylebox("panel", "LedTabStrip", grain_sb(TABBAR_BG, Color(0,0,0,0), 6, 6, 0, 0))
 
 	# 4. corps (variation, fond transparent — laisse voir le parchemin)
 	th.set_type_variation("Body", "PanelContainer")
@@ -95,7 +100,46 @@ static func build() -> Theme:
 	# séparation par défaut des conteneurs
 	th.set_constant("separation", "VBoxContainer", 3)
 	th.set_constant("separation", "HBoxContainer", 8)
+	_cached = th
 	return th
+
+## Parchemin GRAINÉ : StyleBoxTexture 9-slice dont le centre TUILE (le grain ne
+## s'étire jamais). Bruit DÉTERMINISTE (LCG seedé fixe — display-only, mais autant
+## rester reproductible d'un lancement à l'autre), ±3 % de luminance : « petit »
+## bruit de texture, jamais du sel-et-poivre. Bordure 1px dessinée DANS la texture ;
+## coins adoucis (le pixel de coin en alpha).
+static var _grain_cache := {}
+static func grain_sb(bg: Color, border: Color, ml: int, mr: int, mt: int, mb: int) -> StyleBoxTexture:
+	var key := "%s|%s" % [bg.to_html(), border.to_html()]
+	var tex: ImageTexture = _grain_cache.get(key, null)
+	if tex == null:
+		var d := 48
+		var img := Image.create(d, d, false, Image.FORMAT_RGBA8)
+		var seed_ := 0x5C95_1337
+		for y in range(d):
+			for x in range(d):
+				seed_ = int((seed_ * 1103515245 + 12345) & 0x7FFFFFFF)
+				var n := (float(seed_ % 1000) / 1000.0 - 0.5) * 0.06   # ±3 % de luminance
+				var c := Color(clampf(bg.r + n, 0, 1), clampf(bg.g + n, 0, 1), clampf(bg.b + n * 0.7, 0, 1), bg.a)
+				img.set_pixel(x, y, c)
+		if border.a > 0.0:
+			for i in range(d):
+				img.set_pixel(i, 0, border); img.set_pixel(i, d - 1, border)
+				img.set_pixel(0, i, border); img.set_pixel(d - 1, i, border)
+			for p in [Vector2i(0, 0), Vector2i(d - 1, 0), Vector2i(0, d - 1), Vector2i(d - 1, d - 1)]:
+				img.set_pixelv(p, Color(border, 0.0))   # coin adouci
+		tex = ImageTexture.create_from_image(img)
+		_grain_cache[key] = tex
+	var s := StyleBoxTexture.new()
+	s.texture = tex
+	s.set_texture_margin_all(6.0)             # 9-slice : bords stables…
+	s.axis_stretch_horizontal = StyleBoxTexture.AXIS_STRETCH_MODE_TILE   # …centre TUILÉ
+	s.axis_stretch_vertical = StyleBoxTexture.AXIS_STRETCH_MODE_TILE
+	s.content_margin_left = float(ml)
+	s.content_margin_right = float(mr)
+	s.content_margin_top = float(mt)
+	s.content_margin_bottom = float(mb)
+	return s
 
 static func _label_variation(th: Theme, name: String, f: Font, sz: int, col: Color) -> void:
 	th.set_type_variation(name, "Label")

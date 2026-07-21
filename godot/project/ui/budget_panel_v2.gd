@@ -55,7 +55,6 @@ var _m_loan_armed_ms := {}
 var _m_bankrupt_btn: Button = null
 var _m_bankrupt_armed := false
 var _m_bankrupt_armed_ms := -100000
-var _m_debase_warn: Label = null
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -264,7 +263,9 @@ func _row(col: VBoxContainer, label: String, key: String, value_variation: Strin
 		s.min_value = 2.0
 		s.max_value = 100.0
 		s.step = 1.0
-		s.value = 100.0
+		# fiscal (famille 0) : 20 % — départ doux (retour joueur 2026-07-21) ; le premier
+		# refresh resynchronise de toute façon sur la valeur moteur.
+		s.value = 20.0 if slider_family == 0 else 100.0
 		# colonne DÉDIÉE à droite de la valeur, SUR la rangée qu'il contrôle.
 		s.custom_minimum_size = Vector2(96, 14)
 		s.size_flags_horizontal = Control.SIZE_SHRINK_END
@@ -373,13 +374,22 @@ func _update_values(me: int) -> void:
 	var mf := 30.0 / float(doy)
 	# rentrées : impôt par classe (or/mois)
 	var ctl: Dictionary = w.budget_controls(me) if w.has_method("budget_controls") else {}
+	# la SATISFACTION en face de l'impôt (retour joueur 2026-07-21) : le levier n'est
+	# lisible qu'avec sa contrepartie — « 12 or/mois · 58 % » (le prix social du taux).
+	var fo_sat := {}
+	if w.has_method("country_fiscal_orders"):
+		var fo_b: Array = w.country_fiscal_orders(me)
+		for cls_b in range(mini(3, fo_b.size())):
+			fo_sat[cls_b] = int(fo_b[cls_b].get("satisfaction", -1))
 	for raw in ctl.get("taxes", []):
 		var row: Dictionary = raw
 		var cls := int(row.get("id", 0))
 		var lbl: Label = _val_lbls.get("tax:%d" % cls, null)
 		if lbl != null:
 			if w.has_method("tax_class_month"):
-				lbl.text = "%s or/mois" % _grp(int(round(float(w.tax_class_month(cls)))))
+				var sat_i := int(fo_sat.get(cls, -1))
+				var base_txt := "%s or/mois" % _grp(int(round(float(w.tax_class_month(cls)))))
+				lbl.text = ("%s · %d %%" % [base_txt, sat_i]) if sat_i >= 0 else base_txt
 			else:
 				# repli honnête si le lecteur par-classe n'existe pas (DLL antérieure) :
 				# on montre le taux visé (mult), la seule donnée disponible.
@@ -455,7 +465,9 @@ func _m_row(parent: VBoxContainer, label: String, key: String, value_variation: 
 		s.min_value = 2.0
 		s.max_value = 100.0
 		s.step = 1.0
-		s.value = 100.0
+		# fiscal (famille 0) : 20 % — départ doux (retour joueur 2026-07-21) ; le premier
+		# refresh resynchronise de toute façon sur la valeur moteur.
+		s.value = 20.0 if slider_family == 0 else 100.0
 		s.custom_minimum_size = Vector2(140, 14)
 		s.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 		var fam := slider_family
@@ -478,18 +490,17 @@ func _build_monnaie(me: int) -> void:
 
 	_section(_monnaie_page, "FRAPPE")
 	_m_row(_monnaie_page, "Frappe", "mint_flow", "Income")
+	_m_row(_monnaie_page, "Métal fondu", "mint_metal", "RowLabel")
 	_m_row(_monnaie_page, "Part de la réserve frappée", "mint_slider", "RowLabel", 1, 5)
 
+	# DÉBASE — des MÉTRIQUES, pas des phrases (retour joueur 2026-07-21) : la monnaie
+	# qu'elle produit, la matière qu'elle absorbe (billon), l'effet prix. Le POURQUOI
+	# (confiance rongée, marchands) vit au HOVER (glossaire D4), jamais dans le corps.
 	_section(_monnaie_page, "DÉBASE")
 	_m_row(_monnaie_page, "Débase", "debase_state", "Expense")
+	_m_row(_monnaie_page, "Billon fondu", "debase_metal", "Expense")
+	_m_row(_monnaie_page, "Prix", "debase_prices", "RowLabel")
 	_m_row(_monnaie_page, "Sur-frappe au-delà de la parité", "debase_slider", "RowLabel", 1, 6)
-	_m_debase_warn = Label.new()
-	_m_debase_warn.theme_type_variation = "RowDim"
-	_m_debase_warn.autowrap_mode = TextServer.AUTOWRAP_WORD
-	_m_debase_warn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_m_debase_warn.custom_minimum_size = Vector2(0, 32)
-	_m_debase_warn.text = "⚠ sur-frappe payée en confiance — ronge la réserve de confiance (K) de la capitale, attise les marchands."
-	_monnaie_page.add_child(_m_debase_warn)
 
 	_section(_monnaie_page, "DETTE")
 	_m_row(_monnaie_page, "Dette totale", "debt_total", "Expense")
@@ -599,16 +610,28 @@ func _update_monnaie(me: int) -> void:
 		_set_m("mint_flow", "+%s or/mois" % _grp(int(round(float(w.country_mint_month(me))))))
 	_set_m("mint_slider", "%d %%" % int(round(mint_mult * 100.0)))
 	_sync_slider("1:5", mint_mult * 100.0)
-	# DÉBASE : la fraction EFFECTIVE (pas seulement le curseur — country_debase_frac
-	# reflète le kill-switch DEBASE_MAX/la cicatrice de banqueroute).
-	var debase_frac := float(w.country_debase_frac(me)) if w.has_method("country_debase_frac") else 0.0
-	var debase_active := debase_frac > 0.001
-	_set_m("debase_state", ("active — +%.0f %%" % (debase_frac * 100.0)) if debase_active else "inactive",
+	# DÉBASE PHYSIQUE (retour joueur 2026-07-21) : la monnaie produite (or/mois), la
+	# matière absorbée (billon, t/mois), l'effet prix (indice national) — le % seul ne
+	# disait rien. country_mint_detail = la fonction PURE partagée (paires/billon/débase).
+	var md: Dictionary = w.country_mint_detail(me) if w.has_method("country_mint_detail") else {}
+	var pair_t := float(md.get("pair", 0.0))
+	var bill_g := float(md.get("billon_gold", 0.0))
+	var bill_c := float(md.get("billon_copper", 0.0))
+	var dbg_or := float(md.get("debase", 0.0))
+	_set_m("mint_metal", ("%.1f or · %.1f cuivre t/mois" % [pair_t + bill_g, pair_t + bill_c])
+		if pair_t + bill_g + bill_c > 0.05 else "—")
+	var debase_active := dbg_or > 0.05
+	_set_m("debase_state", ("+%s or/mois" % _grp(int(round(dbg_or)))) if debase_active else "—",
 		ParchTheme.EXPENSE if debase_active else ParchTheme.DIM_INK)
+	_set_m("debase_metal", ("%.1f or · %.1f cuivre t/mois" % [bill_g, bill_c])
+		if bill_g + bill_c > 0.05 else "—",
+		ParchTheme.EXPENSE if bill_g + bill_c > 0.05 else ParchTheme.DIM_INK)
+	if w.has_method("country_price_level"):
+		var pl := float(w.country_price_level(me))
+		_set_m("debase_prices", "×%.2f" % pl,
+			ParchTheme.EXPENSE if pl > 1.05 else (ParchTheme.INCOME if pl < 0.95 else ParchTheme.DIM_INK))
 	_set_m("debase_slider", "%d %%" % int(round(debase_mult * 100.0)))
 	_sync_slider("1:6", debase_mult * 100.0)
-	if _m_debase_warn != null:
-		_m_debase_warn.add_theme_color_override("font_color", ParchTheme.EXPENSE if debase_active else ParchTheme.DIM_INK)
 	# DETTE
 	if w.has_method("country_debt"):
 		var deb: Dictionary = w.country_debt(me)

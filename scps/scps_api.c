@@ -354,6 +354,22 @@ double scps_country_mint_month(const ScpsSim *s, int c){
     econ_country_mint_month(s->sim.econ, c, NULL, NULL, &val, NULL, NULL);
     return (double)val;
 }
+/* UI-ALLIAGE (2026-07-21) : le détail PHYSIQUE de la frappe du mois — paires fondues,
+ * métal CÉLIBATAIRE fondu par le billon (or/cuivre), valeur produite, part débase.
+ * Dérivé de la SEULE fonction pure : sous alliage g=pair+billon_or et c=pair+billon_cu
+ * (l'excédent ne vit que d'UN côté) ⇒ pair=min(g,c) EXACT, aucun état interne lu. */
+void scps_country_mint_detail(const ScpsSim *s, int c, float *pair_t,
+                              float *billon_gold_t, float *billon_copper_t,
+                              float *value, float *debase_value){
+    float g=0.f, cp=0.f, v=0.f, dbg=0.f; int cap=-1;
+    if (s && s->ready) econ_country_mint_month(s->sim.econ, c, &g, &cp, &v, &cap, &dbg);
+    float pair = fminf(g, cp);
+    if (pair_t)          *pair_t          = pair;
+    if (billon_gold_t)   *billon_gold_t   = g - pair;
+    if (billon_copper_t) *billon_copper_t = cp - pair;
+    if (value)           *value           = v;
+    if (debase_value)    *debase_value    = dbg;
+}
 /* UI-MONNAIE — miroirs PURS d'econ_country_price_level/econ_world_price_index (scps_econ.h,
  * MONNAIE M7 — I1) : jamais exposés à la façade avant cette vague. */
 double scps_country_price_level(const ScpsSim *s, int c){
@@ -2640,13 +2656,17 @@ static const char *api_edifice_effet(Edifice e){
     #define EF_ADD(word, val, label) do{ if((val)>0.001f){ \
         len += snprintf(b+len, sizeof eb[e]-(size_t)len, "%s%s", first?"":" · ", (word)); \
         len += snprintf(b+len, sizeof eb[e]-(size_t)len, "%s", (label)); first=0; } }while(0)
-    EF_ADD("institutions", d->delta.K_inst,  " (stabilité, capacité)");
-    EF_ADD("coercition",   d->delta.H_coerc, " (tient la province, ronge la loyauté)");
-    EF_ADD("ouverture",    d->delta.P_open,  " (perméabilité, routes)");
-    EF_ADD("prospérité",   d->delta.PE_infra," (capte l'échange local)");
-    EF_ADD("vivres",       d->delta.food_cap," (rendement & réserve, démographie)");
-    EF_ADD("foi",          d->delta.faith,   " (apaise l'agitation, soutient la loyauté)");
-    EF_ADD("savoir",       d->delta.savoir,  " (recherche locale)");
+    /* LEXIQUE 4X (décision joueur 2026-07-21 : « Ouverture ne veut rien dire ») — les
+     * axes moteur parlent la langue des 4X : Développement (K_inst), Sécurité (H_coerc),
+     * Prospérité (PE_infra + P_open FUSIONNÉS — « Prospérité = PE, ouverture », une seule
+     * ligne, jamais deux), Logement (food_cap — la jauge qui gate la démographie),
+     * Service (faith — l'aménité qui apaise), Savoir. Mots stables, jamais le modèle. */
+    EF_ADD("développement", d->delta.K_inst,  " (stabilité, capacité)");
+    EF_ADD("sécurité",      d->delta.H_coerc, " (tient la province, ronge la loyauté)");
+    EF_ADD("prospérité",    fmaxf(d->delta.PE_infra, d->delta.P_open), " (échange, routes)");
+    EF_ADD("logement",      d->delta.food_cap," (rendement & réserve, démographie)");
+    EF_ADD("service",       d->delta.faith,   " (apaise l'agitation, soutient la loyauté)");
+    EF_ADD("savoir",        d->delta.savoir,  " (recherche locale)");
     #undef EF_ADD
     if (d->delta.port > 0.001f){
         len += snprintf(b+len, sizeof eb[e]-(size_t)len, "%sport (rade réelle : routes de mer, flotte)", first?"":" · ");
