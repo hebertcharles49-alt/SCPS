@@ -487,6 +487,10 @@ func _build_monnaie(me: int) -> void:
 
 	_section(_monnaie_page, "RÉSERVE MÉTALLIQUE")
 	_m_row(_monnaie_page, "Réserve", "reserve", "Income")
+	# L'ALLIAGE face joueur (2026-07-21) : la frappe exige la PAIRE or+cuivre — l'apparié
+	# frappera, le célibataire ATTEND son pair (la jauge de sécheresse du royaume).
+	_m_row(_monnaie_page, "Apparié", "reserve_paired", "Income")
+	_m_row(_monnaie_page, "Célibataire", "reserve_single", "RowLabel")
 
 	_section(_monnaie_page, "FRAPPE")
 	_m_row(_monnaie_page, "Frappe", "mint_flow", "Income")
@@ -594,7 +598,18 @@ func _update_monnaie(me: int) -> void:
 	# RÉSERVE
 	if w.has_method("country_reserve"):
 		var res: Dictionary = w.country_reserve(me)
-		_set_m("reserve", "%s or · %s cuivre" % [_grp(int(round(float(res.get("gold", 0.0))))), _grp(int(round(float(res.get("copper", 0.0)))))])
+		var rg := float(res.get("gold", 0.0))
+		var rc := float(res.get("copper", 0.0))
+		_set_m("reserve", "%s or · %s cuivre" % [_grp(int(round(rg))), _grp(int(round(rc)))])
+		# apparié = min (frappera en paires) · célibataire = l'écart (attend son pair) —
+		# pure PRÉSENTATION des deux chiffres déjà exposés (aucune mécanique côté GDScript).
+		var paired := minf(rg, rc)
+		var single := absf(rg - rc)
+		_set_m("reserve_paired", ("%s paires" % _grp(int(round(paired)))) if paired >= 0.5 else "—",
+			ParchTheme.INCOME if paired >= 0.5 else ParchTheme.DIM_INK)
+		var single_metal := "or" if rg > rc else "cuivre"
+		_set_m("reserve_single", ("%s %s" % [_grp(int(round(single))), single_metal]) if single >= 0.5 else "—",
+			ParchTheme.EXPENSE if single > paired * 4.0 and single >= 0.5 else ParchTheme.DIM_INK)
 	# FRAPPE + curseur (mult lu via budget_controls — même valeur que la Balance)
 	var ctl: Dictionary = w.budget_controls(me) if w.has_method("budget_controls") else {}
 	var mint_mult := 1.0

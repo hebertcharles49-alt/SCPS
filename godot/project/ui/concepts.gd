@@ -86,6 +86,8 @@ const DEFS := {
 	# ── monnaie ──
 	"Débase": {"d": "La frappe au-delà de la parité : elle gonfle la masse en circulation et dilue la valeur de la monnaie. Elle ronge la confiance des institutions de la capitale et attise les marchands — un prix qui se répare sur des décennies.", "i": "corruption_coin"},
 	"Billon fondu": {"d": "Le métal célibataire (sans son pair d'alliage) que la Débase frappe quand même, à sa vieille parité : la mauvaise monnaie qui garde le royaume liquide.", "i": "corruption_coin"},
+	"Apparié": {"d": "La part de la réserve qui a son pair : chaque tonne d'or mariée à sa tonne de cuivre frappera la bonne monnaie d'alliage.", "i": "gold_coin"},
+	"Célibataire": {"d": "Le métal en trop, sans pair à épouser : il attend — mine, commerce ou conquête de l'autre métal — ou finit en billon si la Débase s'en mêle.", "i": "corruption_coin"},
 	"Métal fondu": {"d": "La matière réellement convertie en monnaie ce mois-ci : l'alliage exige une tonne d'or POUR une tonne de cuivre — le métal rare borne tout.", "i": "gold_coin"},
 	"Parité": {"d": "Le taux de conversion fixe entre l'or et le cuivre (16 pour 5,2) : l'étalon de toute la monnaie d'État.", "i": "debt_scales"},
 	"Étalon": {"d": "La règle de conversion fixe qui ancre la monnaie du royaume — frapper au-delà, c'est la débase.", "i": "gold_coin"},
