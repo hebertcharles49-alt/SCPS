@@ -291,9 +291,10 @@ public:
      * VOLONTAIRE, les CURSEURS FISCAUX par ordre, et les PRIX EN DIRECT (province +
      * national + mondial). Tous les verbes moteur EXISTAIENT déjà (M9) — SEULE la
      * façade GDScript manquait (cf. TROUVAILLES.md, M8/M9). */
-    Dictionary country_debt(int country);              /* { to_class, to_cs, total, taux, due, creditor, creditor_name } — B7 : due = l'échéance RÉELLE, PAS total*taux */
+    Dictionary country_debt(int country);              /* dette, revenu, levier, taux et marge de refinancement */
     Array      country_fiscal_orders(int country);      /* 3 lignes {taux, satisfaction, revenu_mois} Laborer/Bourgeois/Élite */
     Array      country_loan_capacity(int country);       /* 3 lignes {montant_max, taux} Laborer/Bourgeois/Élite */
+    Dictionary country_loan_quote(int debtor, int lender); /* réserve/exposition/capacité d'un prêt bilatéral */
     bool       player_borrow_class(int cls, float amount); /* V1 : emprunte à SA classe (<=0 ⇒ le max) */
     int        country_loan_request_target(int country) const; /* -1 = aucune demande cette partie */
     String     country_loan_status(int country);         /* le MOT résolu : aucune/accordé/refusé */

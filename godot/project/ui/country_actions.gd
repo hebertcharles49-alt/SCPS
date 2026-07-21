@@ -678,17 +678,35 @@ func _refresh() -> void:
 	# SEULEMENT si elle concerne CE pays (country_loan_request_target == _cid).
 	var loan_btn: Button = _btns.get("request_loan")
 	if loan_btn != null:
-		loan_btn.disabled = cd > 0
-		loan_btn.tooltip_text = ("Émissaire en tournée — retour dans %d j" % cd) if cd > 0 \
-			else "Demande un prêt à ce pays (le maximum structurel). L'État peut refuser."
 		var loan_detail: Label = _action_details.get("request_loan")
-		if loan_detail != null and w.has_method("player"):
+		if w.has_method("player"):
 			var me3 := int(w.player())
-			var target := int(w.country_loan_request_target(me3)) if w.has_method("country_loan_request_target") else -1
-			if target == _cid and w.has_method("country_loan_status"):
-				loan_detail.text = String(w.country_loan_status(me3))
+			var quote: Dictionary = w.country_loan_quote(me3, _cid) if w.has_method("country_loan_quote") else {}
+			var loan_max := float(quote.get("montant_max", 0.0))
+			var loan_rate := float(quote.get("taux", 0.0))
+			var exposure := float(quote.get("exposure", 0.0))
+			var exposure_limit := float(quote.get("exposure_limit", 0.0))
+			var lender_surplus := float(quote.get("lender_surplus", 0.0))
+			var other_creditor := bool(quote.get("blocked_by_other_creditor", false))
+			loan_btn.disabled = cd > 0 or loan_max <= 0.5
+			var reason := ""
+			if cd > 0:
+				reason = "Émissaire en tournée — retour dans %d j" % cd
+			elif other_creditor:
+				reason = "Indisponible : une autre dette étrangère doit d'abord être éteinte."
+			elif loan_max <= 0.5:
+				reason = "Indisponible : réserve ou limite d'exposition du prêteur atteinte."
 			else:
-				loan_detail.text = "Aucune demande en cours auprès de ce pays."
+				reason = "Demander jusqu'à %s or ; l'État conserve sa décision diplomatique." % _grp(int(round(loan_max)))
+			loan_btn.tooltip_text = "%s\n• Taux fixe : %.1f %%\n• Exposition : %s / %s or\n• Surplus liquide : %s or" % [
+				reason, loan_rate * 100.0, _grp(int(round(exposure))), _grp(int(round(exposure_limit))),
+				_grp(int(round(lender_surplus)))]
+			if loan_detail != null:
+				var target := int(w.country_loan_request_target(me3)) if w.has_method("country_loan_request_target") else -1
+				var status := String(w.country_loan_status(me3)) if target == _cid and w.has_method("country_loan_status") else "Aucune demande antérieure auprès de ce pays."
+				loan_detail.text = "%s\nDisponible : %s or · %.1f %% fixe · exposition %s/%s" % [
+					status, _grp(int(round(loan_max))), loan_rate * 100.0,
+					_grp(int(round(exposure))), _grp(int(round(exposure_limit)))]
 	# « Faire la paix » est un TIROIR : il reste accessible pendant la guerre même si
 	# l'émissaire est occupé (le bouton d'envoi, lui, porte le cooldown). En paix il
 	# est toujours visible et franchement grisé.
@@ -827,3 +845,14 @@ func _update_action_detail(verb: String, legal: Dictionary, amber: bool) -> void
 	lbl.text = state + ((" · " + " · ".join(facts)) if not facts.is_empty() else "") \
 		+ (("\n" + consequence) if consequence != "" else "")
 	lbl.add_theme_color_override("font_color", col)
+
+func _grp(n: int) -> String:
+	var s := str(int(abs(n)))
+	var out := ""
+	var c := 0
+	for i in range(s.length() - 1, -1, -1):
+		out = s[i] + out
+		c += 1
+		if c % 3 == 0 and i > 0:
+			out = " " + out
+	return ("−" if n < 0 else "") + out

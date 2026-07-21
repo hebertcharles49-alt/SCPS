@@ -495,7 +495,11 @@ func _build_monnaie(me: int) -> void:
 	_m_row(_monnaie_page, "Dette totale", "debt_total", "Expense")
 	_m_row(_monnaie_page, "Aux ordres du royaume", "debt_class", "Expense")
 	_m_row(_monnaie_page, "Au créancier", "debt_cs", "Expense")
-	_m_row(_monnaie_page, "Taux proposé (nouvel emprunt)", "debt_rate", "RowLabel")
+	_m_row(_monnaie_page, "Revenu fiscal annuel", "debt_revenue", "Income")
+	_m_row(_monnaie_page, "Dette / revenu", "debt_leverage", "RowLabel")
+	_m_row(_monnaie_page, "Crédit disponible maintenant", "debt_available", "RowLabel")
+	_m_row(_monnaie_page, "Exposition / marge du créancier", "debt_exposure", "RowLabel")
+	_m_row(_monnaie_page, "Taux proposé (coût fixe)", "debt_rate", "RowLabel")
 	_m_row(_monnaie_page, "Échéance — réglée 1×/an", "debt_due", "Expense")
 
 	_section(_monnaie_page, "EMPRUNTER À UN ORDRE")
@@ -612,6 +616,11 @@ func _update_monnaie(me: int) -> void:
 		var to_class := float(deb.get("to_class", 0.0))
 		var to_cs := float(deb.get("to_cs", 0.0))
 		var taux := float(deb.get("taux", 0.0))
+		var annual_revenue := float(deb.get("annual_revenue", 0.0))
+		var leverage := float(deb.get("leverage", 0.0))
+		var available := float(deb.get("available", 0.0))
+		var foreign_exposure := float(deb.get("foreign_exposure", 0.0))
+		var foreign_room := float(deb.get("foreign_room", 0.0))
 		# MONNAIE M14 — B7 : `due` est l'échéance RÉELLEMENT prélevée (credit_year_tick,
 		# scps_credit.c — 10 %/an du stock sous DEBT_FIXED) — `taux` n'est QUE le taux
 		# d'origination d'un NOUVEL emprunt, jamais appliqué à la dette déjà inscrite ;
@@ -623,7 +632,11 @@ func _update_monnaie(me: int) -> void:
 		_set_m("debt_total", "%s or" % _grp(int(round(total))), ParchTheme.EXPENSE if total > 0.5 else ParchTheme.DIM_INK)
 		_set_m("debt_class", "%s or" % _grp(int(round(to_class))))
 		_set_m("debt_cs", ("%s : %s or" % [creditor_name, _grp(int(round(to_cs)))]) if creditor >= 0 and to_cs > 0.5 else "—")
-		_set_m("debt_rate", "%.1f %%/an" % (taux * 100.0))
+		_set_m("debt_revenue", "%s or/an" % _grp(int(round(annual_revenue))))
+		_set_m("debt_leverage", "%.2f année(s) de revenu" % leverage if total > 0.5 else "0.00")
+		_set_m("debt_available", "%s or" % _grp(int(round(available))), ParchTheme.INCOME if available > 0.5 else ParchTheme.EXPENSE)
+		_set_m("debt_exposure", ("%s / +%s or" % [_grp(int(round(foreign_exposure))), _grp(int(round(foreign_room)))]) if creditor >= 0 else "Aucun créancier étranger")
+		_set_m("debt_rate", "%.1f %% forfaitaires" % (taux * 100.0))
 		# D3 — RÉSIDU DOCTRINE : `due` est un prélèvement RÉELLEMENT annuel (credit_year_tick,
 		# scps_credit.c, 1×/an) — pas un flux continu comme l'impôt. « or/an » resterait
 		# ambigu (lu comme un débit récurrent /mois mal étiqueté, cf. le bug province_panel.
@@ -645,7 +658,7 @@ func _update_monnaie(me: int) -> void:
 			if armed:
 				btn.text = "Confirmer l'emprunt aux %s ?" % CLASS_NAMES[cls]
 			else:
-				btn.text = "Emprunter aux %s — max %s or (taux %.1f %%/an)" % [CLASS_NAMES[cls], _grp(int(round(montant))), taux2 * 100.0]
+				btn.text = "Emprunter aux %s — max %s or (%.1f %% fixes)" % [CLASS_NAMES[cls], _grp(int(round(montant))), taux2 * 100.0]
 			btn.disabled = montant <= 0.5 and not armed
 			btn.tooltip_text = "" if montant > 0.5 else "cet ordre n'a rien à prêter maintenant"
 	# BANQUEROUTE

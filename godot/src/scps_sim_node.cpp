@@ -233,6 +233,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("country_debt", "country"),             &ScpsWorld::country_debt);
     ClassDB::bind_method(D_METHOD("country_fiscal_orders", "country"),    &ScpsWorld::country_fiscal_orders);
     ClassDB::bind_method(D_METHOD("country_loan_capacity", "country"),    &ScpsWorld::country_loan_capacity);
+    ClassDB::bind_method(D_METHOD("country_loan_quote", "debtor", "lender"), &ScpsWorld::country_loan_quote);
     ClassDB::bind_method(D_METHOD("player_borrow_class", "cls", "amount"), &ScpsWorld::player_borrow_class);
     ClassDB::bind_method(D_METHOD("country_loan_request_target", "country"), &ScpsWorld::country_loan_request_target);
     ClassDB::bind_method(D_METHOD("country_loan_status", "country"),      &ScpsWorld::country_loan_status);
@@ -2061,6 +2062,8 @@ Dictionary ScpsWorld::slave_market() {
 Dictionary ScpsWorld::country_debt(int country) {
     Dictionary d;
     d["to_class"] = 0.0; d["to_cs"] = 0.0; d["total"] = 0.0; d["taux"] = 0.0; d["due"] = 0.0;
+    d["annual_revenue"] = 0.0; d["leverage"] = 0.0; d["available"] = 0.0;
+    d["foreign_exposure"] = 0.0; d["foreign_room"] = 0.0;
     d["creditor"] = (int64_t)(-1); d["creditor_name"] = String();
     if (!sim) return d;
     ScpsDebt deb;
@@ -2069,10 +2072,31 @@ Dictionary ScpsWorld::country_debt(int country) {
     d["to_cs"] = (double)deb.to_cs;
     d["total"] = (double)deb.total;
     d["taux"] = (double)deb.taux;
+    d["annual_revenue"] = (double)deb.annual_revenue;
+    d["leverage"] = (double)deb.leverage;
+    d["available"] = (double)deb.available;
+    d["foreign_exposure"] = (double)deb.foreign_exposure;
+    d["foreign_room"] = (double)deb.foreign_room;
     /* MONNAIE M14 — B7 : l'échéance RÉELLE (10 %/an du stock sous DEBT_FIXED, PAS total×taux). */
     d["due"] = (double)deb.due;
     d["creditor"] = (int64_t)deb.creditor;
     d["creditor_name"] = String::utf8(deb.creditor_name);
+    return d;
+}
+Dictionary ScpsWorld::country_loan_quote(int debtor, int lender) {
+    Dictionary d;
+    d["montant_max"]=0.0; d["taux"]=0.0; d["lender_surplus"]=0.0;
+    d["exposure"]=0.0; d["exposure_limit"]=0.0; d["portfolio_exposure"]=0.0;
+    d["blocked_by_other_creditor"]=false;
+    if (!sim) return d;
+    ScpsStateLoanQuote q; scps_country_loan_quote(sim,debtor,lender,&q);
+    d["montant_max"]=(double)q.montant_max;
+    d["taux"]=(double)q.taux;
+    d["lender_surplus"]=(double)q.lender_surplus;
+    d["exposure"]=(double)q.exposure;
+    d["exposure_limit"]=(double)q.exposure_limit;
+    d["portfolio_exposure"]=(double)q.portfolio_exposure;
+    d["blocked_by_other_creditor"]=(bool)(q.blocked_by_other_creditor!=0);
     return d;
 }
 Array ScpsWorld::country_fiscal_orders(int country) {
