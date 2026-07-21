@@ -131,6 +131,11 @@ var fog_off := false      ## PROBE SEULEMENT (shot_parch fog=0) : saute le VOILE
 var nature_mode := false  ## MODE NATURE : on ne montre QUE le terrain + le dressing (pas de frontières/
                           ## villes/routes/armées/noms) — la carte « vierge », touche N. Display-only.
 var _country_names := []  ## nom de chaque pays (figé au générate) — pour les étiquettes d'empire
+## POLISH #5 (revue 2026-07-21) : l'ACP des étiquettes d'empire (boucle régions×pays +
+## covariance) tournait À CHAQUE _draw — cachée ici {c → {valid, ip, ang}}, invalidée
+## avec les MÊMES signaux que le fog/les frontières (souveraineté ou visibilité qui bouge).
+var _name_anchor := {}
+var _names_dirty := true
 var _borders := {}        ## 0 = TRAME FINE (provinces+régions) → PackedVector2Array jittée
 # DÉGRADÉ de frontière : un RUBAN par entité, BLENDÉ (N couches du ton EXTÉRIEUR au ton INTÉRIEUR,
 # décalées le long de la normale → vrai dégradé, pas deux traits posés). OUTLINE = CULTURE (héritage,
@@ -329,7 +334,7 @@ func _on_generated() -> void:
 	_himg_l = null              # monde neuf → recharger les caches de lumière (relief + albedo)
 	_alb_l = null
 	_borders_dirty = true       # monde neuf → frontières ET routes à refaire
-	_fog_dirty = true           # monde neuf/save chargé → connaissance et rayon à recharger
+	_fog_dirty = true; _names_dirty = true           # monde neuf/save chargé → connaissance et rayon à recharger
 	_fog_year = -1
 	_fog_mask = PackedByteArray()
 	_dressing_dirty = true      # … et le dressing de terrain (biome semé)
@@ -574,11 +579,11 @@ func _on_tick(_year: int) -> void:
 	if sig != _owner_sig:      # la souveraineté a changé (conquête/colonisation) →
 		_owner_sig = sig       # refaire frontières ET réseau de routes (villes neuves/captées)
 		_borders_dirty = true
-		_fog_dirty = true      # les sources de visibilité territoriales ont bougé
+		_fog_dirty = true; _names_dirty = true      # les sources de visibilité territoriales ont bougé
 		_roads_dirty = true
 		_lanes_dirty = true    # PORTULAN : un port conquis/fondé peut recâbler le commerce
 	if _year != _fog_year:
-		_fog_dirty = true      # rayon d'exploration/ère et connaissance évoluent annuellement
+		_fog_dirty = true; _names_dirty = true      # rayon d'exploration/ère et connaissance évoluent annuellement
 	if Sim.day_count - _lanes_day >= SEA_LANE_POLL_DAYS:
 		_lanes_dirty = true    # PORTULAN : le commerce maritime évolue SANS conquête (routes
 		                       # ordonnées/ouvertes au fil des ans) → re-poll semestriel ; le
@@ -607,7 +612,12 @@ func _refresh_war_regions() -> void:
 			var flat: PackedVector2Array = rc.get("pts", PackedVector2Array())
 			if flat.size() >= 2:
 				polys = _chain_segments(flat)   # segments non ordonnés (bseg) → anneau(x) fermé(s)
-		_war_regions[r] = {"state": st, "belligerent": int(ws.get("belligerent", -1)), "polys": polys}
+		# POLISH #5 (revue 2026-07-21) : le CLIPPING des hachures (Geometry2D.intersect par
+		# trait × poly) vivait dans _draw_war_hatch — À CHAQUE FRAME. Les segments monde ne
+		# dépendent ni du zoom ni de la caméra : précalculés ICI (au rebuild, cadence tick),
+		# le draw ne fait plus que projeter/tracer.
+		_war_regions[r] = {"state": st, "belligerent": int(ws.get("belligerent", -1)),
+			"polys": polys, "hatch": _hatch_segments(polys)}
 
 ## signature de la photo des propriétaires → détecte conquête/colonisation. Le compte de
 ## provinces COLONISÉES y entre : une colonisation INTRA-région ne bouge pas l'owner agrégé
@@ -1261,15 +1271,10 @@ const HATCH_OCC_A := 0.42    ## α d'une région OCCUPÉE (le siège a abouti) �
 ## de capitale, chaînage via _chain_segments). Le clip utilise Geometry2D (intersection
 ## segment×polygone) : chaque ligne de hachure MONDE, tracée en diagonale sur la boîte englobante
 ## du ring, est coupée aux bords réels — pas un rectangle qui déborde de la région.
-func _draw_war_hatch(mv: Node2D, zoom: float, info: Dictionary) -> void:
-	var polys: Array = info.get("polys", [])
-	if polys.is_empty():
-		return
-	var belli: int = int(info.get("belligerent", -1))
-	var st: int = int(info.get("state", 1))
-	var col := _country_color(belli) if belli >= 0 else Color(0.5, 0.1, 0.1)
-	var a: float = HATCH_OCC_A if st == 2 else HATCH_SIEGE_A
-	var w_line := _w(zoom, 0.5, 0.8, 1.6)
+## POLISH #5 : le clipping (coûteux) est PRÉCALCULÉ au rebuild de _war_regions —
+## renvoie les traits [p0,p1, p0,p1, …] en coordonnées MONDE (indépendants du zoom).
+func _hatch_segments(polys: Array) -> PackedVector2Array:
+	var out := PackedVector2Array()
 	for poly in polys:
 		var ring: PackedVector2Array = poly
 		if ring.size() < 3:
@@ -1294,9 +1299,22 @@ func _draw_war_hatch(mv: Node2D, zoom: float, info: Dictionary) -> void:
 			for part in clipped:
 				var pp: PackedVector2Array = part
 				if pp.size() >= 2:
-					draw_line(mv.iso_pos(pp[0].x, pp[0].y), mv.iso_pos(pp[1].x, pp[1].y),
-						Color(col.r, col.g, col.b, a), w_line)
+					out.push_back(pp[0]); out.push_back(pp[1])
 			k += HATCH_STEP
+	return out
+
+func _draw_war_hatch(mv: Node2D, zoom: float, info: Dictionary) -> void:
+	var segs: PackedVector2Array = info.get("hatch", PackedVector2Array())
+	if segs.is_empty():
+		return
+	var belli: int = int(info.get("belligerent", -1))
+	var st: int = int(info.get("state", 1))
+	var col := _country_color(belli) if belli >= 0 else Color(0.5, 0.1, 0.1)
+	var a: float = HATCH_OCC_A if st == 2 else HATCH_SIEGE_A
+	var w_line := _w(zoom, 0.5, 0.8, 1.6)
+	var ink := Color(col.r, col.g, col.b, a)
+	for i in range(0, segs.size() - 1, 2):
+		draw_line(mv.iso_pos(segs[i].x, segs[i].y), mv.iso_pos(segs[i + 1].x, segs[i + 1].y), ink, w_line)
 
 
 ## TRAIT DE PINCEAU : pile de passes translucides (bave d'encre) du LARGE plumé au cœur dense,
@@ -1968,6 +1986,7 @@ func _process(dt: float) -> void:
 				_borders_dirty = true
 				_fog_dirty = true
 				_roads_dirty = true
+				_names_dirty = true
 				queue_redraw()
 
 ## Anneau doré autour du pion du joueur SÉLECTIONNÉ (mode marche : cliquez une destination).
@@ -2416,48 +2435,59 @@ func _draw_iso(w, mv: Node2D) -> void:
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	# ── NOMS D'EMPIRE : SUIVENT LA FORME du pays (axe principal par ACP des centroïdes projetés →
-	#    Chili vertical, Russie en travers de la Sibérie), à l'encre, taille ÉCRAN constante. ──
+	#    Chili vertical, Russie en travers de la Sibérie), à l'encre, taille ÉCRAN constante.
+	#    POLISH #5 : l'ACP est CACHÉE (ancre+angle stables tant que souveraineté/fog ne
+	#    bougent pas — _names_dirty suit les mêmes signaux que frontières/brouillard). ──
+	if _names_dirty:
+		_name_anchor.clear()
+		_names_dirty = false
 	for c in range(w.country_count()):
 		if c >= _country_names.size():
 			break
 		var nm: String = _country_names[c]
 		if nm == "":
 			continue
-		# centroïdes PROJETÉS (espace écran : iso_pos comprime Y → angle visuel correct)
-		var ps := PackedVector2Array()
-		for r in range(w.region_count()):
-			if w.region_owner(r) == c:
-				# BROUILLARD DE GUERRE (étape 1/2) : une région ENNEMIE voilée n'entre pas dans
-				# l'ancre — un pays SANS aucune région visible ne pose plus aucun nom du tout
-				# (ps reste vide → le "continue" existant juste dessous s'en charge).
-				if c != human_idx and not _fog_visible_region(r):
-					continue
-				var rc: Vector2 = w.region_centroid(r)
-				if rc.x >= 0:
-					ps.push_back(mv.iso_pos(rc.x, rc.y))
-		if ps.is_empty():
-			continue      # (1 centroïde = valide : ancre au point, pas d'orientation — l'empire
-			              #  mono-région du DÉPART charte garde son nom ; l'ACP exige ≥2 sinon)
-		# moyenne + matrice de covariance → axe principal (ACP 2D)
-		var mx := 0.0; var my := 0.0
-		for p in ps:
-			mx += p.x; my += p.y
-		mx /= ps.size(); my /= ps.size()
-		var sxx := 0.0; var syy := 0.0; var sxy := 0.0
-		for p in ps:
-			var dx := p.x - mx; var dy := p.y - my
-			sxx += dx * dx; syy += dy * dy; sxy += dx * dy
-		var ang := 0.0
-		# élongation (rapport des valeurs propres) : on n'oriente QUE les pays nettement allongés
-		var tr := sxx + syy
-		var det := sxx * syy - sxy * sxy
-		var disc := sqrt(maxf(tr * tr * 0.25 - det, 0.0))
-		var l1 := tr * 0.5 + disc
-		var l2 := tr * 0.5 - disc
-		if l2 > 0.001 and l1 / l2 > 1.8:
-			ang = 0.5 * atan2(2.0 * sxy, sxx - syy)   # ∈ [-π/2, π/2] : jamais à l'envers
+		if not _name_anchor.has(c):
+			# centroïdes PROJETÉS (espace écran : iso_pos comprime Y → angle visuel correct)
+			var ps := PackedVector2Array()
+			for r in range(w.region_count()):
+				if w.region_owner(r) == c:
+					# BROUILLARD DE GUERRE (étape 1/2) : une région ENNEMIE voilée n'entre pas dans
+					# l'ancre — un pays SANS aucune région visible ne pose plus aucun nom du tout.
+					if c != human_idx and not _fog_visible_region(r):
+						continue
+					var rc: Vector2 = w.region_centroid(r)
+					if rc.x >= 0:
+						ps.push_back(mv.iso_pos(rc.x, rc.y))
+			if ps.is_empty():
+				_name_anchor[c] = {"valid": false}   # (1 centroïde = valide : ancre au point —
+				                                     #  l'empire mono-région garde son nom)
+			else:
+				# moyenne + matrice de covariance → axe principal (ACP 2D)
+				var mx := 0.0; var my := 0.0
+				for p in ps:
+					mx += p.x; my += p.y
+				mx /= ps.size(); my /= ps.size()
+				var sxx := 0.0; var syy := 0.0; var sxy := 0.0
+				for p in ps:
+					var dx := p.x - mx; var dy := p.y - my
+					sxx += dx * dx; syy += dy * dy; sxy += dx * dy
+				var cang := 0.0
+				# élongation (rapport des valeurs propres) : on n'oriente QUE les pays nettement allongés
+				var ctr_ := sxx + syy
+				var det := sxx * syy - sxy * sxy
+				var disc := sqrt(maxf(ctr_ * ctr_ * 0.25 - det, 0.0))
+				var l1 := ctr_ * 0.5 + disc
+				var l2 := ctr_ * 0.5 - disc
+				if l2 > 0.001 and l1 / l2 > 1.8:
+					cang = 0.5 * atan2(2.0 * sxy, sxx - syy)   # ∈ [-π/2, π/2] : jamais à l'envers
+				_name_anchor[c] = {"valid": true, "ip": Vector2(mx, my), "ang": cang}
+		var anc: Dictionary = _name_anchor[c]
+		if not bool(anc.get("valid", false)):
+			continue
+		var ang := float(anc.get("ang", 0.0))
 		# ancre = le BARYCENTRE des centroïdes (espace OUVERT, hors des hubs routiers) → lisible.
-		var ip := Vector2(mx, my)
+		var ip: Vector2 = anc.get("ip", Vector2.ZERO)
 		var lw := VKit.text_w(nm, VKit.FS_SMALL)
 		# CALLIGRAPHIE : AUCUNE boîte (fond transparent) — encre directe + halo papier, le nom écrit à
 		# la plume LE LONG du pays. AGRANDI (1.35→1.9 : lisible au fit, là où la carte se joue) et

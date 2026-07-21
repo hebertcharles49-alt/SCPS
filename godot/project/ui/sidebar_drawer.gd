@@ -9,6 +9,7 @@ const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
 const InfoRef = preload("res://ui/info_ref.gd")
+const TooltipFactory = preload("res://ui/tooltip_factory.gd")   # revue 2026-07-21 #3 : LA formule fiche-de-bien partagée
 const DX := Frame.SIDEBAR_W + 10.0
 const DY := Frame.TOPBAR_H + 10.0
 const DW := 380.0   ## élargi (retour joueur 2026-07-10 : « laisse respirer, on a de la place »)
@@ -195,117 +196,20 @@ func _draw_stocks(x: float, y: float, me: int) -> float:
 		row_i += 1
 	return y
 
+## revue 2026-07-21 #3 : les 4 formules vivent dans ui/tooltip_factory.gd (partagées,
+## typées, testées par tests/stock_info_card_test.gd) — ici : délégations pures.
 func _stock_tip(st: Dictionary) -> String:
-	var net_month := float(st.get("net_day", 0.0)) * 30.0
-	var tip := "%s — stock %s · %+d/mois · %s" % [String(st.get("name", "Bien")),
-		_grp(st.get("stock", 0)), int(round(net_month)), String(st.get("marche", ""))]
-	var coverage := int(st.get("coverage_days", -1))
-	if coverage >= 0:
-		tip += " · couverture %s" % (">1 an" if coverage >= 366 else "%d j" % coverage)
-	return tip
+	return TooltipFactory.stock_tip(st)
 
 func _stock_info_card(st: Dictionary) -> Dictionary:
-	var net_month := float(st.get("net_day", 0.0)) * 30.0
-	var coverage := int(st.get("coverage_days", -1))
-	var coverage_text := "stable ou excédentaire" if coverage < 0 else \
-		("> 1 an" if coverage >= 366 else "%d jours" % coverage)
-	var lines: Array = [
-		{"label": "Production", "value": "%.1f / mois" % float(st.get("supply_month", 0.0)), "tone": "positive"},
-		{"label": "Consommation", "value": "%.1f / mois" % float(st.get("demand_month", 0.0)), "tone": "negative"},
-		{"label": "Couverture", "value": coverage_text},
-		{"label": "Prix moyen", "value": "%.2f or" % float(st.get("price", 0.0))},
-	]
-	var actions: Array = [{"label": "Ouvrir ce bien au Marché", "request": InfoRef.request(
-		InfoRef.make(InfoRef.RESOURCE, int(st.get("res_id", -1))), "sidebar", {"tab": 3})}]
-	var territory := _stock_territory_detail(st)
-	lines.append_array(territory.get("lines", []))
-	actions.append_array(territory.get("actions", []))
-	return {
-		"title": String(st.get("name", "Bien")),
-		"state": "stock %s · marché %s" % [_grp(st.get("stock", 0)), String(st.get("marche", ""))],
-		"trend": "%+d / mois" % int(round(net_month)),
-		"trend_tone": "positive" if net_month >= 0.0 else "negative",
-		"lines": lines,
-		"actions": actions,
-	}
+	return TooltipFactory.stock_info_card(Sim.world, st)
 
-## P6 — répond à « où ? » depuis le survol économique : premier territoire
-## producteur et consommateur, chacun ouvrable sur la carte. Le classement vient
-## du lecteur moteur `stock_regions`; aucune géographie n'est reconstruite ici.
 func _stock_territory_detail(st: Dictionary) -> Dictionary:
-	var out := {"lines": [], "actions": []}
-	if Sim.world == null or not Sim.world.has_method("stock_regions"):
-		return out
-	var rows: Array = Sim.world.stock_regions(int(Sim.world.player()), int(st.get("res_id", -1)))
-	var producers: Array = rows.filter(func(row): return float(row.get("supply_month", 0.0)) > 0.05)
-	var consumers: Array = rows.filter(func(row): return float(row.get("demand_month", 0.0)) > 0.05)
-	producers.sort_custom(func(a, b): return float(a.get("supply_month", 0.0)) > float(b.get("supply_month", 0.0)))
-	consumers.sort_custom(func(a, b): return float(a.get("demand_month", 0.0)) > float(b.get("demand_month", 0.0)))
-	var linked := {}
-	if not producers.is_empty():
-		var p: Dictionary = producers[0]
-		out["lines"].append({"label": "Produit surtout à", "value": "%s · %.1f/mois" % [String(p.get("name", "?")), float(p.get("supply_month", 0.0))], "tone": "positive"})
-		var pr := int(p.get("region", -1))
-		if pr >= 0:
-			linked[pr] = true
-			out["actions"].append({"label": "Voir %s sur la carte" % String(p.get("name", "la région")),
-				"request": InfoRef.request(InfoRef.make(InfoRef.REGION, pr), "map")})
-	if not consumers.is_empty():
-		var c: Dictionary = consumers[0]
-		out["lines"].append({"label": "Consommé surtout à", "value": "%s · %.1f/mois" % [String(c.get("name", "?")), float(c.get("demand_month", 0.0))], "tone": "negative"})
-		var cr := int(c.get("region", -1))
-		if cr >= 0 and not linked.has(cr):
-			out["actions"].append({"label": "Voir %s sur la carte" % String(c.get("name", "la région")),
-				"request": InfoRef.request(InfoRef.make(InfoRef.REGION, cr), "map")})
-	return out
+	return TooltipFactory.territory_detail(Sim.world, st)
 
 func _market_info_card(st: Dictionary, quote: Dictionary = {}) -> Dictionary:
-	var net_month := float(st.get("net_day", 0.0)) * 30.0
-	var coverage := int(st.get("coverage_days", -1))
-	var coverage_text := "stable ou excédentaire" if coverage < 0 else \
-		("> 1 an" if coverage >= 366 else "%d jours" % coverage)
-	var lines: Array = [
-		{"label": "Stock national", "value": _grp(st.get("stock", 0))},
-		{"label": "Production", "value": "%.1f / mois" % float(st.get("supply_month", 0.0)), "tone": "positive"},
-		{"label": "Consommation", "value": "%.1f / mois" % float(st.get("demand_month", 0.0)), "tone": "negative"},
-		{"label": "Couverture", "value": coverage_text},
-	]
-	if bool(quote.get("valid", false)):
-		var margin := float(quote.get("margin", 1.0))
-		var hub_region := int(quote.get("hub_region", -1))
-		var local_qty := int(quote.get("local_qty", 0))
-		var global_qty := int(quote.get("global_qty", 0))
-		lines.append({"label": "Approvisionnement", "value": "devis pour %d unités" % int(quote.get("request_qty", MARCHE_QTY)), "tone": "heading"})
-		lines.append({"label": "Centre proche", "value": "aucun marché accessible" if hub_region < 0 else \
-			"%s · %s disponibles · marge ×%.2f" % [String(quote.get("hub_name", "Centre")),
-				_grp(int(float(quote.get("local_available", 0.0)))), margin],
-			"tone": "negative" if hub_region < 0 else ""})
-		lines.append({"label": "Achat local", "value": "indisponible" if local_qty <= 0 else \
-			"%d unités · ~%d or" % [local_qty, int(round(float(quote.get("local_cost", 0.0))))],
-			"tone": "negative" if local_qty <= 0 else ""})
-		var global_access := bool(quote.get("global_access", false))
-		lines.append({"label": "Réseau mondial", "value": "accès fermé" if not global_access else \
-			"%s disponibles · marge ×%.2f" % [_grp(int(float(quote.get("global_available", 0.0)))), margin * 2.0],
-			"tone": "negative" if not global_access else ""})
-		if global_access:
-			lines.append({"label": "Devis mondial", "value": "indisponible" if global_qty <= 0 else \
-				"%d unités · ~%d or" % [global_qty, int(round(float(quote.get("global_cost", 0.0))))],
-				"tone": "negative" if global_qty <= 0 else ""})
-		lines.append({"label": "Puissance commerciale", "value": "%.0f unités restantes ce mois" % float(quote.get("commerce_remaining", 0.0)), "tone": "dim"})
-	var actions: Array = [{"label": "Voir le stock national", "request": InfoRef.request(
-		InfoRef.make(InfoRef.RESOURCE, int(st.get("res_id", -1))), "sidebar", {"tab": 2})}]
-	var territory := _stock_territory_detail(st)
-	lines.append_array(territory.get("lines", []))
-	actions.append_array(territory.get("actions", []))
-	return {
-		"title": String(st.get("name", "Bien")),
-		"state": "%s · marché %s · %.2f or" % [_marche_category_word(int(st.get("res_id", -1))),
-			String(st.get("marche", "")), float(st.get("price", 0.0))],
-		"trend": "%+d / mois" % int(round(net_month)),
-		"trend_tone": "positive" if net_month >= 0.0 else "negative",
-		"lines": lines,
-		"actions": actions,
-	}
+	return TooltipFactory.market_info_card(Sim.world, st, quote,
+		_marche_category_word(int(st.get("res_id", -1))))
 
 ## cellule d'identité d'une ressource : le SPRITE (assets/scps/pack/resources, par
 ## id), sinon le nom en texte ; survol → le nom dans tous les cas.
