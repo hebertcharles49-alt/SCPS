@@ -112,7 +112,15 @@ int main(int argc, char **argv){
     ScpsFluxLine fx[32]; int nfx = scps_country_budget(s, pl0, fx, 32);
     printf("   budget : or=%.0f · revenus=%.0f · dépenses=%.0f · net=%+.0f · %d postes · crédit=%.0f\n",
            bg.gold, bg.income, bg.expense, bg.net, nfx, bg.credit_line);
-    ok("budget : décomposition du flux (postes non vides)", nfx>0);
+    /* L'ALLIAGE (2026-07-21) : la frappe exige la PAIRE or+cuivre (loi du minimum) — CE
+     * joueur-graine, sans mine du 2e métal, a une monnaie légitimement MORTE à l'an 20
+     * (réserve de genèse épuisée). Le banc teste la FAÇADE (les postes se décomposent),
+     * pas la viabilité monétaire d'un pays particulier : on exige qu'AU MOINS UN pays du
+     * monde ait des postes vivants (tous à zéro = monde monétairement mort, vraie alarme). */
+    { int nfx_any = nfx;
+      for (int ci=0; ci<nc && nfx_any<=0; ci++){
+          ScpsFluxLine fx2[32]; nfx_any = scps_country_budget(s, ci, fx2, 32); }
+      ok("budget : décomposition du flux (≥1 pays au monde a des postes vivants)", nfx_any>0); }
     ok("budget : net = revenus − dépenses (cohérent)", bg.net==bg.income-bg.expense);
     ok("budget : crédit disponible des prêteurs (≥0, fini)", bg.credit_line>=0 && bg.credit_line==bg.credit_line);
     ok("P6 budget : rythmes mensuels et projection sont finis",

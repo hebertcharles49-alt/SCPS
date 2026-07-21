@@ -2384,7 +2384,9 @@ float econ_country_debase_frac(const WorldEconomy *e, int cid){
  * plus, frapper quand elle paie moins — l'arbitrage est ÉMERGENT, aucun métal privilégié.
  * MONNAIE M3h : la débase MAJORE value_out (1+debase) SANS changer gold_out/copper_out
  * (même métal tiré de la réserve — l'acte est de frapper CE métal à un cours supérieur à
- * sa parité, pas de tirer plus de réserve). */
+ * sa parité, pas de tirer plus de réserve).
+ * L'ALLIAGE (MINT_ALLOY=1, décision joueur 2026-07-21) : la frappe royale se fait en
+ * PAIRES min(or,cuivre) valant MINT_ALLOY_VALUE la paire — cf. le commentaire registre J. */
 void econ_country_mint_month(const WorldEconomy *e, int cid,
                               float *gold_out, float *copper_out, float *value_out,
                               int *cap_pid_out, float *debase_out){
@@ -2393,9 +2395,22 @@ void econ_country_mint_month(const WorldEconomy *e, int cid,
         cap = econ_country_capital_prov(e, cid);
         if (cap>=0){
             float share = econ_country_mint_share(e, cid);
-            g = e->reserve_gold[cid]   * share / 12.f;
-            c = e->reserve_copper[cid] * share / 12.f;
-            float v0 = g*tune_f("MINT_PARITY_GOLD", 16.0f) + c*tune_f("MINT_PARITY_COPPER", 5.2f);
+            float v0;
+            if (tune_f("MINT_ALLOY", 1.0f) > 0.f){
+                /* L'ALLIAGE (décision joueur 2026-07-21) : la Monnaie frappe des PAIRES
+                 * 1t or + 1t cuivre = MINT_ALLOY_VALUE (32 = 16×2 — le cuivre allié monte
+                 * à la parité or). Loi du minimum : le métal RARE borne la frappe, l'autre
+                 * s'accumule en réserve sans frapper (il attend son appariement). */
+                float pair = fminf(e->reserve_gold[cid], e->reserve_copper[cid]) * share / 12.f;
+                g = pair; c = pair;
+                v0 = pair * tune_f("MINT_ALLOY_VALUE", 32.0f);
+            } else {
+                /* kill-switch MINT_ALLOY=0 : deux canaux INDÉPENDANTS (comportement
+                 * pré-alliage EXACT, golden byte-identique). */
+                g = e->reserve_gold[cid]   * share / 12.f;
+                c = e->reserve_copper[cid] * share / 12.f;
+                v0 = g*tune_f("MINT_PARITY_GOLD", 16.0f) + c*tune_f("MINT_PARITY_COPPER", 5.2f);
+            }
             float debase = econ_country_debase_frac(e, cid);
             v = v0 * (1.f+debase);
             dbg = v - v0;
@@ -5201,6 +5216,71 @@ void econ_tick(WorldEconomy *e, float dt) {
             for (int r=0;r<e->n_regions;r++)
                 if (e->region[r].owner==c && e->region[r].treasury>0.f) treas_remaining+=e->region[r].treasury;
             if (treas_remaining<=0.f) continue;
+            if (tune_f("MINT_ALLOY", 1.0f) > 0.f){
+                /* L'ALLIAGE (décision joueur 2026-07-21) — la frappe libre achète en PAIRES
+                 * (1t or + 1t cuivre = MINT_ALLOY_VALUE) : arbitrage sur le prix de la PAIRE
+                 * (p_or+p_cu < valeur d'alliage), quantité bornée par le stock DISPONIBLE du
+                 * métal le plus rare (même floor de fonctionnement). Débit stock / paiement
+                 * A1 / création suivent EXACTEMENT les motifs de la boucle legacy ci-dessous
+                 * (deux métaux débités, un seul paiement, une seule création). */
+                float av = tune_f("MINT_ALLOY_VALUE", 32.0f);
+                float p_gold = e->prov[cap].price[RES_GOLD], p_cop = e->prov[cap].price[RES_COPPER];
+                float p_pair = p_gold + p_cop;
+                if (p_gold<=0.f || p_cop<=0.f || p_pair>=av) continue;   /* arbitrage nul/négatif */
+                float stock_g=0.f, stock_c=0.f;
+                for (int r=0;r<e->n_regions;r++) if (e->region[r].owner==c){
+                    stock_g += e->region[r].stock[RES_GOLD];
+                    stock_c += e->region[r].stock[RES_COPPER];
+                }
+                float avail = fminf(stock_g, stock_c)*(1.f-floor_frac);
+                if (avail<=0.f) continue;
+                float budget = fminf(buy_frac*month_income, treas_remaining);
+                if (budget<=0.f) continue;
+                float qty = fminf(budget/p_pair, avail);      /* qty = PAIRES (1t de chaque métal) */
+                if (qty<=0.f) continue;
+                float cost = qty*p_pair;
+                g_mint_demand_prev[cap][0] += qty;            /* les DEUX métaux comptent à la demande */
+                g_mint_demand_prev[cap][1] += qty;
+                for (int mi2=0; mi2<2; mi2++){                /* débit stock : qty de CHAQUE métal */
+                    Resource metal2 = FREE_METALS[mi2];
+                    float stock_tot2 = (mi2==0)? stock_g : stock_c;
+                    float remain=qty;
+                    for (int r=0;r<e->n_regions && remain>1e-4f;r++){
+                        if (e->region[r].owner!=c || e->region[r].stock[metal2]<=0.f) continue;
+                        float take=fminf(remain, e->region[r].stock[metal2]*(qty/fmaxf(stock_tot2,EPS)));
+                        if (take<=0.f) continue;
+                        float taken=-econ_region_stock_add(e, r, metal2, -take);
+                        remain-=taken;
+                    }
+                }
+                if (tune_f("MINT_FULL_PARITY", 1.0f) > 0.5f){
+                    /* A1 : PAYER LE VENDEUR — motif EXACT de la boucle legacy ci-dessous. */
+                    float tot_pay=0.f;
+                    for (int r=0;r<e->n_regions;r++)
+                        if (e->region[r].owner==c && e->region[r].treasury>0.f) tot_pay+=e->region[r].treasury;
+                    if (tot_pay>0.f){
+                        float pay_budget = fminf(cost, tot_pay);
+                        for (int r=0;r<e->n_regions;r++){
+                            if (e->region[r].owner!=c || e->region[r].treasury<=0.f) continue;
+                            float part = pay_budget * (e->region[r].treasury/tot_pay);
+                            float paid = econ_region_treasury_add(e, r, -part);
+                            if (paid!=0.f){
+                                float amt=-paid;
+                                econ_region_wealth_add(e, r, CLASS_LABORER,   amt*WAGE_SHARE);
+                                econ_region_wealth_add(e, r, CLASS_BOURGEOIS, amt*(1.f-WAGE_SHARE-TAX_RATE));
+                                econ_region_wealth_add(e, r, CLASS_ELITE,     amt*TAX_RATE);
+                            }
+                        }
+                    }
+                    econ_prov_treasury_credit(e, cap, qty*av);
+                    econ_flux_add(c, FX_MINT, qty*av);        /* I0 : la vraie création (paire entière) */
+                } else {
+                    float gain = qty*(av-p_pair);             /* kill-switch A1 : gain net seul (legacy) */
+                    econ_prov_treasury_credit(e, cap, gain);
+                    econ_flux_add(c, FX_MINT, gain);
+                }
+                continue;                                     /* la PAIRE remplace les deux passes métal */
+            }
             for (int mi=0; mi<2; mi++){
                 if (treas_remaining<=0.f) break;
                 Resource metal = FREE_METALS[mi];

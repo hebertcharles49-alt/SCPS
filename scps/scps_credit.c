@@ -294,8 +294,21 @@ static float state_face_room(const WorldEconomy *e, int debtor, int lender){
     float debtor_room=fmaxf(0.f,debtor_limit-debtor_exp);
     return fminf(total_room,debtor_room);
 }
+/* LA MÉMOIRE DU PRÊTEUR (décision joueur 2026-07-21, « Édouard III a tué les Bardi ») :
+ * un répudiateur à cicatrice VIVANTE ne trouve AUCUN préteur — ordres, cités-états,
+ * États (les deux fonctions de capacité ci-dessous sont les SEULS étages d'origination,
+ * readers UI/diplo compris). L'exclusion dure ce que dure la cicatrice (~10 ans de
+ * décrue, econ_country_bankruptcy_scar) — émergent, aucun timer neuf. Ferme la boucle
+ * « banqueroute → re-prêt immédiat → re-banqueroute » (16 défauts/2 pays au gigasweep).
+ * LENDER_MEMORY=0 : kill-switch EXACT (oubli instantané, golden byte-identique). */
+static bool lender_locked_out(const WorldEconomy *e, int debtor){
+    return tune_f("LENDER_MEMORY",1.f)>0.f
+        && e && debtor>=0 && debtor<SCPS_MAX_COUNTRY
+        && econ_country_bankruptcy_scar(e,debtor) > CR_EPS;
+}
 static float state_lending_capacity_at(const WorldEconomy *e, int debtor, int lender,
                                        float debt_total_for_rate){
+    if (lender_locked_out(e,debtor)) return 0.f;
     float liquid=country_surplus(e,lender,tune_f("SINK_FLOOR",500.f));
     float draw=liquid*tune_f("CITYSTATE_LEND_SHARE",0.5f);
     float room_face=state_face_room(e,debtor,lender);
@@ -357,6 +370,7 @@ static void country_lendable(const WorldEconomy *e, int c, float ew, float bw, f
 static float class_lending_capacity_at(const WorldEconomy *e, int c, SocialClass cls,
                                        float debt_total_for_rate){
     if (!e || c<0 || c>=SCPS_MAX_COUNTRY || (cls!=CLASS_ELITE && cls!=CLASS_BOURGEOIS)) return 0.f;
+    if (lender_locked_out(e,c)) return 0.f;   /* MÉMOIRE DU PRÊTEUR : les ordres saisis ne re-prêtent pas au répudiateur (cf. lender_locked_out) */
     float ew=tune_f("ELITE_LEND_WEIGHT",1.f), bw=tune_f("BOURGEOIS_LEND_WEIGHT",0.5f);
     float cap_e=0.f, cap_b=0.f; country_lendable(e,c,ew,bw,&cap_e,&cap_b);
     float liquid=(cls==CLASS_ELITE)?cap_e:cap_b;

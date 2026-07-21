@@ -82,6 +82,16 @@
      * créait DÉJÀ à parité pleine (le métal est prélevé en nature, déjà propriété de
      * l'État — rien à payer), cf. econ_country_mint_month. */ \
     X(MINT_FULL_PARITY,        1.0f) \
+    /* L'ALLIAGE (décision joueur 2026-07-21 : « 1 or + 1 cuivre = 32 pièces (16×2) ») : la
+     * Monnaie ne frappe plus chaque métal séparément — elle frappe des PAIRES 1t or + 1t
+     * cuivre valant MINT_ALLOY_VALUE chacune (le cuivre allié MONTE à la parité or : le
+     * seigneuriage de l'alliage). Loi du minimum : la frappe est bornée par le métal RARE,
+     * l'excédent de l'autre reste en réserve (royale) ou au marché (libre — l'achat d'État
+     * n'a lieu que si prix_or+prix_cuivre < la valeur d'alliage). MINT_PARITY_GOLD/COPPER
+     * restent la définition de l'unité pour tout le reste (marché, joaillerie, readers).
+     * 0 = kill-switch EXACT (deux canaux indépendants, golden pré-alliage byte-identique). */ \
+    X(MINT_ALLOY,              1.0f) \
+    X(MINT_ALLOY_VALUE,       32.0f) \
     /* MONNAIE M7 — I1 : L'INFLATION SÉCULAIRE (docs/MONNAIE_CONCEPT.md, décision joueur
      * 2026-07-16 « pas de perte de monnaie, ce sont des métaux stables… inflation
      * séculaire = trait historique »). `price_level[c]` (scps_econ.c, la fraction de la
@@ -626,6 +636,14 @@
     X(CITYSTATE_LEND_SHARE,   0.5f) \
     X(LENDER_PORTFOLIO_SHARE, 0.75f) \
     X(LENDER_DEBTOR_SHARE,    0.35f) \
+    /* LA MÉMOIRE DU PRÊTEUR (décision joueur 2026-07-21, « Édouard III a tué les Bardi ») :
+     * tant que la CICATRICE de banqueroute vit (bankruptcy_scar>0, décrue ~10 ans), AUCUN
+     * prêteur (ordres, cités-états, États) n'ouvre de capacité au répudiateur — la boucle
+     * « banqueroute → re-prêt immédiat → re-banqueroute » (16 défauts/2 pays mesurés au
+     * gigasweep 2026-07-21) se ferme par le PRÊTEUR, jamais une prudence du débiteur. La
+     * durée d'exclusion EST la vie de la cicatrice (émergent, aucun timer neuf). 0 = kill-
+     * switch EXACT (les prêteurs oublient instantanément, golden byte-identique). */ \
+    X(LENDER_MEMORY,          1.0f) \
     /* AMORTISSEMENT — part du PRINCIPAL remboursée par an depuis le surplus (>COURT_FLOOR,
      * le seuil de hoarding) : « la dette VIT », elle ne fait pas que grossir. */ \
     X(PRINCIPAL_REPAY_RATE,   0.10f) \

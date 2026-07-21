@@ -297,6 +297,9 @@ int main(void){
     /* — 12. Banqueroute VOLONTAIRE (CMD_BANKRUPTCY, joueur) — repartie à zéro. — */
     printf("\n── 12. Banqueroute volontaire ──\n");
     credit_init(); setup(e, 100.f, 5000.f);
+    /* GUÉRIR la cicatrice du §11 : setup() ne l'efface pas, et LA MÉMOIRE DU PRÊTEUR (§20)
+     * refuserait sinon l'emprunt qui fait naître la dette de CE banc. */
+    e->prov[0].bankruptcy_scar=0.f; e->prov[1].bankruptcy_scar=0.f;
     credit_spend(e,w,0,400.f); econ_aggregate_regions(e);
     ok("une dette réelle existe avant la répudiation volontaire", credit_debt_total(0) > 0.f);
     long fb12, vb12; credit_bankruptcy_stats(&fb12,&vb12);
@@ -315,6 +318,9 @@ int main(void){
      * l'annuler ici isole PROPREMENT la conservation à CE que A1 change. */
     printf("\n── 13. A1 : la frappe à parité pleine + conservation ──\n");
     tune_set("DEBT_FIXED", 1.f);   /* redéfinit le défaut pour la suite (motif tests 9/10) */
+    tune_set("MINT_ALLOY", 0.f);   /* ce banc teste A1 PER-MÉTAL (or seul, aucun cuivre en fixture) —
+                                    * l'alliage a son banc DÉDIÉ (§19) ; sous MINT_ALLOY=1 la frappe
+                                    * min(or,cuivre)=0 rendrait ces assertions inertes. */
     memset(e, 0, sizeof(WorldEconomy));
     credit_init();
     e->n_prov=1; e->n_regions=1;
@@ -374,6 +380,7 @@ int main(void){
     ok("MINT_FULL_PARITY=0 (legacy pré-M11) : le métal disparaît quand même du marché (le trou de l'audit)",
        e->prov[0].stock[RES_GOLD] < stock_legacy_before13);
     tune_set("MINT_FULL_PARITY", 1.f);   /* redéfinit le défaut */
+    tune_set("MINT_ALLOY", 1.f);         /* redéfinit le défaut (l'alliage, banc dédié §19) */
 
     /* ── 14. B2 : LE TRÉSOR FANTÔME (econ_region_treasury_add) + LE TOCTOU can_spend/spend ── */
     printf("\n── 14. B2 : le trésor fantôme + le TOCTOU can_spend/spend ──\n");
@@ -626,6 +633,126 @@ int main(void){
         ok("B7 kill-switch DEBT_FIXED=0 : legacy, échéance==total×taux EXACT (comportement pré-M11)",
            fabsf(due_legacy - due_bugged) < 0.01f);
         tune_set("DEBT_FIXED", 1.f);   /* redéfinit le défaut */
+    }
+
+    /* ── 19. L'ALLIAGE (décision joueur 2026-07-21 : 1 or + 1 cuivre = 32 pièces) ──
+     * Frappe ROYALE en paires min(or,cuivre) ; frappe LIBRE en paires (achat des DEUX
+     * métaux, arbitrage sur le prix de la paire) ; kill-switch MINT_ALLOY=0 = per-métal. */
+    printf("\n── 19. L'alliage : 1 or + 1 cuivre = 32 (loi du minimum) ──\n");
+    {
+        /* (a) ROYALE — réserve 120 or / 48 cuivre : la paire est bornée par le cuivre. */
+        memset(e, 0, sizeof(WorldEconomy));
+        e->n_prov=1; e->n_regions=1;
+        e->prov[0].owner=0; e->prov[0].region=0;
+        e->prov[0].active=true; e->prov[0].colonized=true; e->prov[0].is_capital=true;
+        e->region_rep_prov[0]=0;
+        e->prov[0].treasury=500.f;            /* == SINK_FLOOR (motif §13 : redépense I3bis nulle) */
+        e->reserve_gold[0]=120.f; e->reserve_copper[0]=48.f;
+        econ_aggregate_regions(e);
+        econ_flux_add(0, FX_TAX, 12000.f); econ_flux_year_capture();
+        tune_set("MINT_ALLOY", 1.f);
+        econ_tick(e, 1.f/12.f);
+        float dg19 = 120.f - e->reserve_gold[0], dc19 = 48.f - e->reserve_copper[0];
+        double mint19 = (double)econ_flux_get(0, FX_MINT);
+        printf("   royale : or prélevé=%.2f · cuivre prélevé=%.2f · FX_MINT=%.2f (attendu paire×32=%.2f)\n",
+               (double)dg19, (double)dc19, mint19, (double)dg19*32.0);
+        ok("ALLIAGE royale : les DEUX métaux sont prélevés en PAIRES égales (1:1)",
+           dg19 > 0.1f && fabsf(dg19-dc19) < 0.01f);
+        ok("ALLIAGE royale : la valeur frappée == paire × MINT_ALLOY_VALUE (32), jamais les parités séparées",
+           fabs(mint19 - (double)dg19*32.0) < 0.5);
+        ok("ALLIAGE royale : l'excédent d'or (métal abondant) RESTE en réserve (loi du minimum)",
+           e->reserve_gold[0] > e->reserve_copper[0] + 60.f);
+
+        /* (b) LIBRE — marché avec les DEUX métaux : achat en paires, les DEUX stocks baissent. */
+        memset(e, 0, sizeof(WorldEconomy));
+        e->n_prov=1; e->n_regions=1;
+        e->prov[0].owner=0; e->prov[0].region=0;
+        e->prov[0].active=true; e->prov[0].colonized=true; e->prov[0].is_capital=true;
+        e->region_rep_prov[0]=0;
+        e->prov[0].treasury=500.f;
+        e->prov[0].stock[RES_GOLD]=1000.f;  e->prov[0].price[RES_GOLD]=8.f;
+        e->prov[0].stock[RES_COPPER]=1000.f; e->prov[0].price[RES_COPPER]=2.f;   /* paire 10 < 32 : arbitrage */
+        econ_aggregate_regions(e);
+        econ_flux_add(0, FX_TAX, 12000.f); econ_flux_year_capture();
+        econ_tick(e, 1.f/12.f);
+        float sg19 = 1000.f - e->prov[0].stock[RES_GOLD], sc19 = 1000.f - e->prov[0].stock[RES_COPPER];
+        printf("   libre : or acheté=%.2f · cuivre acheté=%.2f (paires)\n", (double)sg19, (double)sc19);
+        ok("ALLIAGE libre : l'achat d'État tire les DEUX métaux du marché en paires égales",
+           sg19 > 0.1f && fabsf(sg19-sc19) < 0.5f);
+
+        /* (c) LIBRE, or SEUL au marché : AUCUN achat (pas de cuivre à apparier). */
+        memset(e, 0, sizeof(WorldEconomy));
+        e->n_prov=1; e->n_regions=1;
+        e->prov[0].owner=0; e->prov[0].region=0;
+        e->prov[0].active=true; e->prov[0].colonized=true; e->prov[0].is_capital=true;
+        e->region_rep_prov[0]=0;
+        e->prov[0].treasury=500.f;
+        e->prov[0].stock[RES_GOLD]=1000.f; e->prov[0].price[RES_GOLD]=8.f;   /* cuivre ABSENT */
+        econ_aggregate_regions(e);
+        econ_flux_add(0, FX_TAX, 12000.f); econ_flux_year_capture();
+        econ_tick(e, 1.f/12.f);
+        ok("ALLIAGE libre : l'or SEUL (sans cuivre à apparier) ne se frappe PAS (aucun achat)",
+           e->prov[0].stock[RES_GOLD] > 999.f);
+
+        /* (d) kill-switch : MINT_ALLOY=0 reproduit le per-métal EXACT (l'or seul frappe). */
+        memset(e, 0, sizeof(WorldEconomy));
+        e->n_prov=1; e->n_regions=1;
+        e->prov[0].owner=0; e->prov[0].region=0;
+        e->prov[0].active=true; e->prov[0].colonized=true; e->prov[0].is_capital=true;
+        e->region_rep_prov[0]=0;
+        e->prov[0].treasury=500.f;
+        e->reserve_gold[0]=120.f;             /* aucun cuivre : l'alliage rendrait 0 */
+        econ_aggregate_regions(e);
+        econ_flux_add(0, FX_TAX, 12000.f); econ_flux_year_capture();
+        tune_set("MINT_ALLOY", 0.f);
+        econ_tick(e, 1.f/12.f);
+        ok("MINT_ALLOY=0 (kill-switch) : le per-métal legacy frappe l'or SEUL (comportement pré-alliage)",
+           e->reserve_gold[0] < 119.f);
+        tune_set("MINT_ALLOY", 1.f);   /* redéfinit le défaut */
+    }
+
+    /* ── 20. LA MÉMOIRE DU PRÊTEUR (décision joueur 2026-07-21, « Édouard III a tué les
+     * Bardi ») : cicatrice de banqueroute VIVANTE ⇒ AUCUNE capacité nulle part (ordres,
+     * cités-états, ligne de crédit) ; la décrue de la cicatrice rouvre le marché. ── */
+    printf("\n── 20. La mémoire du prêteur : un répudiateur ne trouve plus personne ──\n");
+    {
+        /* fixture auto-suffisante : le §19 (memset) a laissé n_regions=1 — re-poser le
+         * monde à 2 pays/2 régions AVANT setup() (motif §15/§16 qui reposent w->). */
+        memset(e, 0, sizeof(WorldEconomy));
+        w->n_countries=2; w->n_provinces=2;
+        w->country[0].role=POLITY_PLAYER;     w->country[0].capital_prov=0;
+        w->country[1].role=POLITY_CITY_STATE; w->country[1].capital_prov=1;
+        w->province[0].region=0; w->province[1].region=1;
+        e->n_regions=2;
+        setup(e, 100.f, 5000.f); credit_init();
+        /* guérir la cicatrice héritée du §12 (setup() ne l'efface pas — même motif). */
+        e->prov[0].bankruptcy_scar=0.f; e->prov[1].bankruptcy_scar=0.f;
+        credit_spend(e,w,0,550.f); econ_aggregate_regions(e);   /* une dette réelle naît (motif §2) */
+        ok("setup 20 : AVANT la banqueroute, le marché du crédit est ouvert",
+           credit_line(w,e,0) > 1.f);
+        credit_bankruptcy(e, 0, true /* forcée */);
+        econ_aggregate_regions(e);
+        ok("mémoire : la cicatrice posée, les ORDRES ne prêtent plus (capacité classes == 0)",
+           credit_class_borrow_capacity(e,0,CLASS_ELITE)==0.f
+           && credit_class_borrow_capacity(e,0,CLASS_BOURGEOIS)==0.f);
+        ok("mémoire : les ÉTATS non plus (capacité cité-état == 0)",
+           credit_state_borrow_capacity(e,0,1)==0.f);
+        ok("mémoire : la ligne de crédit ENTIÈRE est fermée (credit_line == 0)",
+           credit_line(w,e,0)==0.f);
+        ok("mémoire : un emprunt forcé ne prête RIEN (0 or, pas un refus partiel)",
+           credit_borrow_class(e,0,CLASS_ELITE,100.f)==0.f);
+        /* Les assertions ci-dessous lisent credit_line (la cité-état riche de setup() — les
+         * classes n'ont AUCUNE épargne dans cette fixture, leur capacité est 0 par nature). */
+        tune_set("LENDER_MEMORY", 0.f);
+        ok("LENDER_MEMORY=0 (kill-switch) : les prêteurs oublient instantanément (marché rouvert)",
+           credit_line(w,e,0) > 1.f);
+        tune_set("LENDER_MEMORY", 1.f);   /* redéfinit le défaut */
+        /* LA DÉCRUE : la cicatrice guérie (~10 ans en jeu ; effacée à la main ici — le banc
+         * teste le SEUIL, pas l'horloge), le marché rouvre — l'exclusion EST la cicatrice. */
+        int np20 = e->n_prov; if (np20>SCPS_MAX_PROV) np20=SCPS_MAX_PROV;
+        for (int p20=0;p20<np20;p20++) if (e->prov[p20].owner==0) e->prov[p20].bankruptcy_scar=0.f;
+        ok("mémoire : cicatrice GUÉRIE ⇒ le marché rouvre (l'exclusion suit la cicatrice, aucun timer)",
+           credit_line(w,e,0) > 1.f);
     }
 
     printf("\n═══ BILAN : %d réussis, %d échoués ═══\n", g_pass, g_fail);
