@@ -84,7 +84,22 @@ EX = [
     ("affranchis2",    re.compile(r"pool des Centres · (\d+) affranchissement")),
     ("brassage_flux",  re.compile(r"brassage : (\d+) flux de pacte")),
     ("interceptions",  re.compile(r"marine : \d+ marin\(s\) embarqués - (\d+) interception")),
-    ("debiteurs",      re.compile(r"dette : (\d+) débiteur")),
+    # ── CRÉDIT (2 lignes distinctes, piège mesuré au gigasweep 2026-07-21) ──
+    # « dette : N débiteur(s) (or net < 0) » = readout INSTANTANÉ or-net-négatif ;
+    # « dette (M3c) : X or totale (N pays débiteur(s)) » = le LIVRE de dette. Ce
+    # parseur confondait les deux (max 12 affiché quand le livre disait 18).
+    ("debiteurs_ornet",re.compile(r"dette : (\d+) débiteur")),
+    ("dette_or",       re.compile(r"dette \(M3c\) : (\d+) or totale")),
+    ("debiteurs_m3c",  re.compile(r"or totale \((\d+) pays débiteur")),
+    ("epuisements",    re.compile(r"(\d+) épuisement")),
+    # ── CRÉDIT RATIONNÉ (refonte 2026-07-21 : le rationnement vit chez les prêteurs) ──
+    ("banq_forcees",   re.compile(r"crédit rationné : (\d+) banqueroute\(s\) forcée")),
+    ("banq_volontaires",re.compile(r"banqueroute\(s\) forcée\(s\) · (\d+) volontaire")),
+    ("taux_moyen",     re.compile(r"taux moyen (\d+\.?\d*)%")),
+    ("dettes_struct",  re.compile(r"(\d+) dette\(s\) structurelle")),
+    ("ratio_max",      re.compile(r"≥3x · max (\d+\.?\d*)x")),
+    ("marches_fermes", re.compile(r"(\d+) marché\(s\) étranger\(s\) fermé")),
+    ("invariant_pic",  re.compile(r"pic annuel autres/échelle (\d+)%")),
 ]
 
 def parse_log(path):
@@ -155,7 +170,9 @@ def main():
               "pool_moy","volume_marche","asym_aval","asym_amont","hubs_pct","prov_colonisees",
               "prov_transferees","alliances","colon_fondations","colon_survie","peage_or","entropie",
               "conso_foreuse","conso_corne","esclaves_pool","affranchis2","brassage_flux",
-              "interceptions","debiteurs"]:
+              "interceptions","debiteurs_ornet","dette_or","debiteurs_m3c","epuisements",
+              "banq_forcees","banq_volontaires","taux_moyen","dettes_struct","ratio_max",
+              "marches_fermes","invariant_pic"]:
         print(f"  {c:16s} {dist([r.get(c) for r in rows])}")
     print("\n── FINS §27 (type × an) ──")
     fins = {}
@@ -176,9 +193,13 @@ def main():
         print(f"  {a:22s} n={len(rs):3d}  pop {med('pop_k'):5.0f}k  guerres {med('guerres_terr'):4.0f}  "
               f"craqué {100*sum(x['craque'] for x in rs)/len(rs):3.0f}%  fins {nf}")
     print("\n── MÉCANISMES À ZÉRO (somme = 0 sur toutes les sims — morts ?) ──")
+    # Verbes JOUEUR-SEUL : 0 attendu en headless (aucun joueur) — signalé sans ⚠.
+    PLAYER_ONLY = {"banq_volontaires"}   # CMD_BANKRUPTCY (scps_sim.c ~1405 : l'IA ne déclenche jamais le verbe)
     for c in [n for n,_ in EX]:
         vals=[r.get(c) for r in rows if r.get(c) is not None]
-        if vals and sum(vals)==0: print(f"  ⚠ {c} = 0 partout ({len(vals)} sims)")
+        if vals and sum(vals)==0:
+            if c in PLAYER_ONLY: print(f"    {c} = 0 partout ({len(vals)} sims) — verbe joueur, normal en headless")
+            else:                print(f"  ⚠ {c} = 0 partout ({len(vals)} sims)")
     print("\n(sims.tsv écrit — la matrice complète pour les coupes fines)")
 
 if __name__ == "__main__":

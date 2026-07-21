@@ -1379,7 +1379,10 @@ int main(int argc, char **argv){
               int L=credit_of(c);
               if (L>=0 && credit_state_borrow_capacity(s.econ,c,L)<=1.f) n_market_closed++;
           }
-          printf("   crédit rationné : %ld banqueroute(s) forcée(s) · %ld volontaire(s) — taux moyen %.2f%% (%d pays endettés)"
+          /* « volontaire(s) » = CMD_BANKRUPTCY, verbe JOUEUR SEUL (scps_sim.c ~1405 : l'IA ne
+           * le déclenche jamais) — 0 attendu en headless, PAS une métrique morte (faux trou
+           * signalé au gigasweep 2026-07-21 ; le banc credit_demo §12 exerce le chemin). */
+          printf("   crédit rationné : %ld banqueroute(s) forcée(s) · %ld volontaire(s) [verbe joueur] — taux moyen %.2f%% (%d pays endettés)"
                  " · %d dette(s) structurelle(s) ≥3x · max %.2fx · %d marché(s) étranger(s) fermé(s)\n",
                  b_forced, b_volunt, n_rate>0?100.0*rate_sum/(double)n_rate:0.0, n_rate,
                  n_structural, (double)max_lev, n_market_closed); }
