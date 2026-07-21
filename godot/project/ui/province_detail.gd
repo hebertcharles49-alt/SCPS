@@ -1,4 +1,5 @@
 extends Control
+const HoverZones = preload("res://ui/hover_zones.gd")   # revue 2026-07-21 #3 : survol partagé
 ## ProvinceDetail — le détail d'une province en SOUS-ONGLETS (touche V), read-only.
 ##   • Peuples    : camembert CULTURE + camembert RELIGION + classes + la jauge
 ##                  d'AGITATION et ses MODIFICATEURS (nom · apport signé · résorption
@@ -22,7 +23,7 @@ const ALLOC_STEP := 10      # pas d'ajustement de poids (clic [−]/[+])
 var _pid := -1
 var _tab := 0
 var _tab_rects := []        # [{rect, idx}] onglets cliquables
-var _hover_zones := []      # [{rect, text}] survol des entrées de journal (effets)
+var _hover := HoverZones.new()   # survol des entrées de journal (stockage/hit-test partagés)
 var _hover_text := ""
 var _hover_pos := Vector2.ZERO
 var _alloc_btns := []       # [{rect, act, sink}] boutons de l'onglet Main-d'œuvre
@@ -97,7 +98,7 @@ func _draw() -> void:
 	if not bool(info.get("valide", false)):
 		VKit.text(self, Vector2(16, HEAD), VKit.COL_DIM, "(aucune province sélectionnée)", VKit.FS_SMALL)
 		return
-	_hover_zones.clear()
+	_hover.clear()
 	var x := 16.0
 	# ── BLASON de la PROVINCE (seed déterministe) + du PAYS PROPRIÉTAIRE, côte à côte ──
 	var Heraldry = load("res://ui/heraldry.gd")
@@ -207,7 +208,7 @@ func _draw_peuples_apercu(x: float, y: float, colw: float, w, info: Dictionary, 
 	VKit.text(self, Vector2(x + 26 + dom_lbl_w + dom_val_w, y + 14), VKit.COL_PARCH, ")", VKit.FS_SMALL)
 	var dom_lineage := String(groups[dom_i].get("lineage", ""))
 	if dom_lineage != "":
-		_hover_zones.append({"rect": Rect2(x + 22, y, colw - 22, 32.0), "text": dom_lineage})
+		_hover.add_dict({"rect": Rect2(x + 22, y, colw - 22, 32.0), "text": dom_lineage})
 	y += 36
 	for i in range(mini(groups.size(), 6)):
 		VKit.fill(self, Rect2(x + 4, y + 3, 9, 9), VKit.SLICE_PAL[i % 8])
@@ -216,7 +217,7 @@ func _draw_peuples_apercu(x: float, y: float, colw: float, w, info: Dictionary, 
 			String(groups[i]["klass"]), String(groups[i]["etat"])], VKit.FS_SMALL)
 		var lineage := String(groups[i].get("lineage", ""))
 		if lineage != "":
-			_hover_zones.append({"rect": Rect2(x, y - 1, colw, 15.0), "text": lineage})
+			_hover.add_dict({"rect": Rect2(x, y - 1, colw, 15.0), "text": lineage})
 		y += 15
 	y += 8
 
@@ -267,7 +268,7 @@ func _draw_peuples_apercu(x: float, y: float, colw: float, w, info: Dictionary, 
 			VKit.text(self, Vector2(x + 22, y), VKit.COL_PARCH, String(m.get("nom", "")), VKit.FS_SMALL)
 			var heff := String(m.get("effet", ""))
 			if heff != "":
-				_hover_zones.append({"rect": Rect2(x, y - 1, colw, 15.0), "text": heff})
+				_hover.add_dict({"rect": Rect2(x, y - 1, colw, 15.0), "text": heff})
 			y += 15
 	return y
 
@@ -403,8 +404,8 @@ func _draw_reincorp(x: float, y: float, w, colw: float) -> float:
 	if not same:
 		_reinc_btns.append({"rect": br, "act": "move"})
 	else:
-		_hover_zones.append({"rect": br,
-			"text": "Source et destination identiques — choisissez deux régions différentes (le moteur refuse un transfert région → elle-même)."})
+		_hover.add(br,
+			"Source et destination identiques — choisissez deux régions différentes (le moteur refuse un transfert région → elle-même).")
 	y += 22
 	if _reinc_flash != "":
 		VKit.text(self, Vector2(x, y), (VKit.sense(0.85) if _reinc_flash_ok else VKit.sense(0.10)), _reinc_flash, VKit.FS_SMALL)
@@ -665,7 +666,7 @@ func _draw_journal(x: float, y: float, w) -> void:
 		VKit.text(self, Vector2(x + 58, y), col, "%s %s" % [mark, String(e["label"])], VKit.FS_SMALL)
 		var ht := String(e.get("hover", ""))
 		if ht != "":
-			_hover_zones.append({"rect": Rect2(x, y - 1, PW - 32.0, 17.0), "text": ht})
+			_hover.add_dict({"rect": Rect2(x, y - 1, PW - 32.0, 17.0), "text": ht})
 		y += 17
 
 # ── ONGLET PRODUCTION : flux +X/j par bien (sprite de ressource dessous) ───────
@@ -735,11 +736,7 @@ func _gui_input(event: InputEvent) -> void:
 			accept_event()
 			return
 	if event is InputEventMouseMotion:
-		var h := ""
-		for z in _hover_zones:
-			if z.rect.has_point(event.position):
-				h = z.text
-				break
+		var h := _hover.hit_text(event.position)
 		if h != _hover_text:
 			_hover_text = h
 			_hover_pos = event.position

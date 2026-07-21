@@ -10,6 +10,7 @@ const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
 const InfoRef = preload("res://ui/info_ref.gd")
 const TooltipFactory = preload("res://ui/tooltip_factory.gd")   # revue 2026-07-21 #3 : LA formule fiche-de-bien partagée
+const HoverZones = preload("res://ui/hover_zones.gd")               # …et LE stockage/hit-test de survol partagé
 const DX := Frame.SIDEBAR_W + 10.0
 const DY := Frame.TOPBAR_H + 10.0
 const DW := 380.0   ## élargi (retour joueur 2026-07-10 : « laisse respirer, on a de la place »)
@@ -37,7 +38,7 @@ var _active_mode := 0
 var _chips := []               # [{rect, mode}] cliquables (Filtres)
 var _chart_btn := Rect2()      # bouton « Courbes dans le temps » (onglet Économie)
 var _diplo_btns := []          # [{rect, act="open", target, nom}] fiches pays cliquables (onglet Diplomatie)
-var _hover_zones := []         # [{rect, text}] survols (sprites de ressource → nom)
+var _hover := HoverZones.new()   # zones de survol (stockage/hit-test partagés — ui/hover_zones.gd)
 var _hover_text := ""
 var _hover_pos := Vector2.ZERO
 var _focus: Dictionary = {}       # contexte optionnel fourni par le routeur
@@ -100,7 +101,7 @@ func _draw_header(x: float) -> void:
 func _draw() -> void:
 	if _tab < 0:
 		return
-	_hover_zones.clear()
+	_hover.clear()
 	_tips.clear()
 	VKit.panel_bg(self, Rect2(0, 0, DW, size.y))
 	VKit.fill(self, Rect2(DW - 1, 3, 1, size.y - 3), VKit.COL_EDGE)
@@ -149,10 +150,7 @@ func _draw() -> void:
 	# les zones de survol passent par le TOOLTIP NATIF (→ TooltipServer : mots-concepts
 	# turquoise + définitions) — les zones DÉFILÉES sous l'en-tête fixe sont écartées
 	# (sinon un fantôme invisible répondrait au survol dans le bandeau de titre).
-	for z in _hover_zones:
-		if (z["rect"] as Rect2).get_center().y < 36.0:
-			continue
-		_tips.append([z["rect"], z["text"], z.get("card", {})])
+	_tips.append_array(_hover.to_tips(36.0))
 
 # ── DÉMOGRAPHIE (sb_panel_demo, read-only) ─────────────────────────────────
 func _draw_demo(x: float, y: float, me: int) -> float:
@@ -183,7 +181,7 @@ func _draw_stocks(x: float, y: float, me: int) -> float:
 		VKit.list_row_bg(self, stock_row, row_i)
 		if int(_focus.get("resource_id", -1)) == int(st["res_id"]):
 			VKit.box(self, stock_row, VKit.COL_GOLD)
-		_hover_zones.append({"rect": stock_row, "text": _stock_tip(st), "card": _stock_info_card(st)})
+		_hover.add(stock_row, _stock_tip(st), _stock_info_card(st))
 		var col := _marche_col(int(st["market_band"]))
 		_res_cell(x, y, int(st["res_id"]), String(st["name"]), col)
 		VKit.text(self, Vector2(x + 110, y), col, _grp(st["stock"]), VKit.FS_SMALL)
@@ -219,7 +217,7 @@ func _res_cell(x: float, y: float, res_id: int, name: String, col: Color) -> voi
 		draw_texture_rect(spr, Rect2(x, y - 3, 18, 18), false)
 	else:
 		VKit.text(self, Vector2(x, y), col, name, VKit.FS_SMALL)
-	_hover_zones.append({"rect": Rect2(x - 2, y - 3, 104, 18), "text": name})
+	_hover.add_dict({"rect": Rect2(x - 2, y - 3, 104, 18), "text": name})
 
 # ── ÉCONOMIE : Budget (econ_flux) + Commerce (intertrade), read-only ───────
 ## MATIÈRES (retour joueur UI-2 : les 5 cellules de brut SORTENT de la topbar) —
@@ -265,7 +263,7 @@ func _draw_multiplier_slider(x: float, y: float, label: String, current: float,
 	z["value"] = value
 	zones.append(z)
 	var cur_txt := pct if live == "" else "%s  (%s)" % [live, pct]
-	_hover_zones.append({"rect": row, "text": "%s\n• 0 à 100 %%\n• Actuellement : %s" % [tip, cur_txt]})
+	_hover.add(row, "%s\n• 0 à 100 %%\n• Actuellement : %s" % [tip, cur_txt])
 	return y + 24.0
 
 func _draw_budget_controls(x: float, y: float, me: int) -> float:
@@ -341,7 +339,7 @@ func _draw_mat_line(x: float, y: float, me: int) -> float:
 		parts.append("%s %s" % [String(_MAT_NAMES[rid]), _grp(smap.get(rid, 0))])
 	var line := "Matières : " + " · ".join(parts)
 	VKit.text(self, Vector2(x, y), VKit.COL_DIM, line, VKit.FS_SMALL)
-	_hover_zones.append({"rect": Rect2(x - 2, y - 3, VKit.text_w(line, VKit.FS_SMALL) + 8, 16),
+	_hover.add_dict({"rect": Rect2(x - 2, y - 3, VKit.text_w(line, VKit.FS_SMALL) + 8, 16),
 		"text": "Stocks nationaux de matières brutes — détail (net/jour, couverture) dans l'onglet Stocks"})
 	return y + 18.0
 
@@ -528,7 +526,7 @@ func _draw_marche(x: float, y: float, me: int) -> float:
 	var cp_tip := "Volume de biens achetable au marché ce mois-ci (0.04/bourgeois + 0.01/élite × la chaîne commerciale)."
 	if cp_bonus > 0:
 		cp_tip += "\nDont +%d %% apportés par vos édifices de commerce." % cp_bonus
-	_hover_zones.append({"rect": Rect2(x - 2, y - 3, 264, 16), "text": cp_tip})
+	_hover.add_dict({"rect": Rect2(x - 2, y - 3, 264, 16), "text": cp_tip})
 	y += 20
 
 	# TRI (3 chips d'en-tête, état persistant PAR SESSION) — clic = trier, reclic sur
@@ -589,7 +587,7 @@ func _draw_marche(x: float, y: float, me: int) -> float:
 		if can_trade:
 			_marche_btns.append({"rect": rb, "act": "buy", "res_id": res_id})
 		else:
-			_hover_zones.append({"rect": rb, "text": "Aucune capitale connue — achat indisponible."})
+			_hover.add(rb, "Aucune capitale connue — achat indisponible.")
 		var lab_s := "Vendre %d" % MARCHE_QTY
 		var sw := maxf(32.0, VKit.text_w(lab_s, VKit.FS_SMALL) + 14.0)
 		var rs := Rect2(ax + bw + 8.0, y, sw, 20.0)
@@ -599,7 +597,7 @@ func _draw_marche(x: float, y: float, me: int) -> float:
 		if can_trade:
 			_marche_btns.append({"rect": rs, "act": "sell", "res_id": res_id})
 		else:
-			_hover_zones.append({"rect": rs, "text": "Aucune capitale connue — vente indisponible."})
+			_hover.add(rs, "Aucune capitale connue — vente indisponible.")
 		y += 24
 
 		var row_rect := Rect2(x - 4.0, row_y0 - 3.0, DW - 2.0 * x + 8.0, y - row_y0 - 2.0)
@@ -608,7 +606,7 @@ func _draw_marche(x: float, y: float, me: int) -> float:
 			name, _marche_category_word(res_id), _grp(int(st["stock"])), float(st["price"]), String(st["marche"])]
 		var quote: Dictionary = Sim.world.market_quote(me, res_id, MARCHE_QTY) \
 			if Sim.world.has_method("market_quote") else {}
-		_hover_zones.append({"rect": row_rect, "text": tip, "card": _market_info_card(st, quote)})
+		_hover.add(row_rect, tip, _market_info_card(st, quote))
 		y += 3
 		VKit.fill(self, Rect2(x, y, DW - 2.0 * x, 1), VKit.COL_EDGE)
 		y += 5
@@ -696,7 +694,7 @@ func _draw_factions(x: float, y: float, me: int) -> float:
 	y += 22
 	var summary := "Tension de coup %d / 100 · Corruption %d / 100" % [coup, corruption]
 	VKit.text(self, Vector2(x, y), VKit.sense(0.18 if coup >= 40 else 0.62), summary, VKit.FS_SMALL)
-	_hover_zones.append({"rect": Rect2(x - 2, y - 2, VKit.text_w(summary, VKit.FS_SMALL) + 6, 16),
+	_hover.add_dict({"rect": Rect2(x - 2, y - 2, VKit.text_w(summary, VKit.FS_SMALL) + 6, 16),
 		"text": "Le risque vient de la faction signalée ci-dessous ; la corruption mesure la capture cumulée de l'État."})
 	y += 22
 	var row_i := 0
@@ -718,7 +716,7 @@ func _draw_factions(x: float, y: float, me: int) -> float:
 		if bool(fe.get("coup_driver", false)):
 			detail += " · coup %d" % int(fe.get("coup_pressure", 0))
 		VKit.text(self, Vector2(x, y), VKit.COL_DIM, detail, VKit.FS_SMALL)
-		_hover_zones.append({"rect": row, "text": "%s — %d %% de soutien." % [name, int(fe.get("part", 0))],
+		_hover.add_dict({"rect": row, "text": "%s — %d %% de soutien." % [name, int(fe.get("part", 0))],
 			"card": _faction_info_card(fe, coup, corruption)})
 		y += 18
 		row_i += 1
@@ -788,19 +786,19 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 			var pdisp := pname + (" · " + idnom if idnom != "" else "")
 			VKit.text(self, Vector2(x + 16, y), VKit.COL_PARCH, pdisp, VKit.FS_SMALL)
 			if idflav != "":
-				_hover_zones.append({"rect": Rect2(x + 14, y - 2, VKit.text_w(pdisp, VKit.FS_SMALL) + 6, 16),
+				_hover.add_dict({"rect": Rect2(x + 14, y - 2, VKit.text_w(pdisp, VKit.FS_SMALL) + 6, 16),
 					"text": "%s — %s" % [idnom, idflav], "card": _council_seat_info_card(seat)})
 			var bw := VKit.text_w("Renvoyer", VKit.FS_SMALL) + 14.0
 			var r := Rect2(DW - 14.0 - bw, y - 1, bw, 16)
 			VKit.fill(self, r, VKit.COL_PANEL2)
 			VKit.box(self, r, VKit.sense(0.12))
 			VKit.text(self, Vector2(r.position.x + 7, y), VKit.sense(0.12), "Renvoyer", VKit.FS_SMALL)
-			_hover_zones.append({"rect": r, "text": "Renvoyer : rancœur +0,10 à sa faction."})
+			_hover.add(r, "Renvoyer : rancœur +0,10 à sa faction.")
 			_conseil_btns.append({"rect": r, "act": "dismiss", "seat": idx, "slot": -1})
 			y += 15
 			var sline := "%s · rang %d · %d ans" % [String(seat["seat"]), int(seat["tier"]), int(seat.get("age", 0))]
 			VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, sline, VKit.FS_SMALL)
-			_hover_zones.append({"rect": Rect2(x + 14, y - 2, VKit.text_w(sline, VKit.FS_SMALL) + 6, 16),
+			_hover.add_dict({"rect": Rect2(x + 14, y - 2, VKit.text_w(sline, VKit.FS_SMALL) + 6, 16),
 				"text": "Rang %d : base du siège ×%s (I ×1 · II ×1,5 · III ×2) = bonus de rang +%.1f %%." % [
 					int(seat["tier"]), ["1", "1,5", "2"][clampi(int(seat["tier"]), 1, 3) - 1], float(seat.get("rank_bonus_pct", 0.0))]})
 			y += 18
@@ -810,7 +808,7 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 			var mood := String(seat.get("mood", ""))
 			var fline := "Faction : %s" % faction
 			VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, fline, VKit.FS_SMALL)
-			_hover_zones.append({"rect": Rect2(x + 14, y - 2, VKit.text_w(fline, VKit.FS_SMALL) + 6, 16),
+			_hover.add_dict({"rect": Rect2(x + 14, y - 2, VKit.text_w(fline, VKit.FS_SMALL) + 6, 16),
 				"text": "Sa faction gagne du pouvoir tant qu'il siège ; loyauté et Corruption décident de combien le bonus est réellement délivré."})
 			y += 15
 			VKit.gauge(self, x + 16, y, DW - 32.0, 8.0, loyalty)
@@ -818,7 +816,7 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 			var lline := "Loyauté %d — %s" % [loyalty, mood]
 			VKit.text(self, Vector2(x + 16, y), VKit.sense(float(loyalty) / 100.0), lline, VKit.FS_SMALL)
 			var loyalty_target := int(seat.get("loyalty_target", loyalty))
-			_hover_zones.append({"rect": Rect2(x + 14, y - 2, VKit.text_w(lline, VKit.FS_SMALL) + 6, 16),
+			_hover.add_dict({"rect": Rect2(x + 14, y - 2, VKit.text_w(lline, VKit.FS_SMALL) + 6, 16),
 				"text": "Loyauté %d/100 · cible actuelle %d/100 → +%.1f pts d'efficacité." % [
 					loyalty, loyalty_target, float(seat.get("eff_loyalty_points", 0.0))]})
 			y += 18
@@ -842,7 +840,7 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 				var bline := "%s +%.1f %%" % [domain, finalp]
 				var bline_lbl_w: float = VKit.detail(self, Vector2(x + 16, y), "%s " % domain, VKit.FS_SMALL)
 				VKit.value(self, Vector2(x + 16 + bline_lbl_w, y), "+%.1f %%" % finalp, VKit.FS_SMALL)
-				_hover_zones.append({"rect": Rect2(x + 14, y - 2, VKit.text_w(bline, VKit.FS_SMALL) + 6, 16),
+				_hover.add_dict({"rect": Rect2(x + 14, y - 2, VKit.text_w(bline, VKit.FS_SMALL) + 6, 16),
 					"text": "Rang : +%.1f %% · Administration : +%.1f pts · Loyauté : +%.1f pts · Corruption : −%.1f pts · Efficacité : %.1f %% ⇒ +%.1f %% net." % [
 						rankp, kpts, lpts, cpts, effp, finalp]})
 				y += 16
@@ -851,7 +849,7 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 				var cmonth := cyear / 12.0 * pay
 				var cline := "%s or / mois" % _grp(int(round(cmonth)))
 				VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, cline, VKit.FS_SMALL)
-				_hover_zones.append({"rect": Rect2(x + 14, y - 2, VKit.text_w(cline, VKit.FS_SMALL) + 6, 16),
+				_hover.add_dict({"rect": Rect2(x + 14, y - 2, VKit.text_w(cline, VKit.FS_SMALL) + 6, 16),
 					"text": "Traitement prélevé chaque mois sur le trésor, à la paie actuelle."})
 				y += 15
 				var rlo := int(seat.get("retire_lo", -1))
@@ -859,7 +857,7 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 				if rlo >= 0:
 					var rline := "Retraite : %d à %d ans" % [rlo, rhi]
 					VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, rline, VKit.FS_SMALL)
-					_hover_zones.append({"rect": Rect2(x + 14, y - 2, VKit.text_w(rline, VKit.FS_SMALL) + 6, 16),
+					_hover.add_dict({"rect": Rect2(x + 14, y - 2, VKit.text_w(rline, VKit.FS_SMALL) + 6, 16),
 						"text": "Départ entre 66 et 73 ans — il en a %d : le siège se libère dans %d à %d ans." % [
 							int(seat.get("age", 0)), rlo, rhi]})
 					y += 15
@@ -882,12 +880,12 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 					var cpdisp := cpname + (" · " + cidnom if cidnom != "" else "")
 					VKit.text(self, Vector2(cx, y), VKit.COL_PARCH, cpdisp, VKit.FS_SMALL)
 					if cidflav != "":
-						_hover_zones.append({"rect": Rect2(cx - 2, y - 2, VKit.text_w(cpdisp, VKit.FS_SMALL) + 6, 16),
+						_hover.add_dict({"rect": Rect2(cx - 2, y - 2, VKit.text_w(cpdisp, VKit.FS_SMALL) + 6, 16),
 							"text": "%s — %s" % [cidnom, cidflav], "card": _council_candidate_info_card(cand)})
 					y += 15
 					var cfline := "Faction : %s · rang %d · %d ans" % [String(cand.get("faction", "")), int(cand["tier"]), int(cand["age"])]
 					VKit.text(self, Vector2(cx, y), VKit.COL_DIM, cfline, VKit.FS_SMALL)
-					_hover_zones.append({"rect": Rect2(cx - 2, y - 2, VKit.text_w(cfline, VKit.FS_SMALL) + 6, 16),
+					_hover.add_dict({"rect": Rect2(cx - 2, y - 2, VKit.text_w(cfline, VKit.FS_SMALL) + 6, 16),
 						"text": "Rang %d : base du siège ×%s (I ×1 · II ×1,5 · III ×2). Sa faction gagnera du pouvoir s'il siège." % [
 							int(cand["tier"]), ["1", "1,5", "2"][clampi(int(cand["tier"]), 1, 3) - 1]]})
 					y += 15
@@ -901,7 +899,7 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 						var clpts := float(cand.get("eff_loyalty_points", 0.0))
 						var cbline := "%s +%.1f %%" % [cdomain, cfinalp]
 						VKit.text(self, Vector2(cx, y), VKit.sense(0.70), cbline, VKit.FS_SMALL)
-						_hover_zones.append({"rect": Rect2(cx - 2, y - 2, VKit.text_w(cbline, VKit.FS_SMALL) + 6, 16),
+						_hover.add_dict({"rect": Rect2(cx - 2, y - 2, VKit.text_w(cbline, VKit.FS_SMALL) + 6, 16),
 							"text": "Rang : +%.1f %% · Administration : +%.1f pts · Loyauté de départ : +%.1f pts · Corruption : −%.1f pts · Efficacité prévue : %.1f %% ⇒ +%.1f %% net." % [
 								crankp, ckpts, clpts, ccpts, ceffp, cfinalp]})
 						y += 15
@@ -909,14 +907,14 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 						var ccyear := float(cand.get("cost_year", 0.0))
 						var ccline := "%s or / mois" % _grp(int(round(ccyear / 12.0)))
 						VKit.text(self, Vector2(cx, y), VKit.COL_DIM, ccline, VKit.FS_SMALL)
-						_hover_zones.append({"rect": Rect2(cx - 2, y - 2, VKit.text_w(ccline, VKit.FS_SMALL) + 6, 16),
+						_hover.add_dict({"rect": Rect2(cx - 2, y - 2, VKit.text_w(ccline, VKit.FS_SMALL) + 6, 16),
 							"text": "Traitement de base, prélevé chaque mois une fois le candidat en poste."})
 						y += 15
 						var crlo := int(cand.get("retire_lo", -1))
 						if crlo >= 0:
 							var crline := "Retraite : %d à %d ans" % [crlo, int(cand.get("retire_hi", -1))]
 							VKit.text(self, Vector2(cx, y), VKit.COL_DIM, crline, VKit.FS_SMALL)
-							_hover_zones.append({"rect": Rect2(cx - 2, y - 2, VKit.text_w(crline, VKit.FS_SMALL) + 6, 16),
+							_hover.add_dict({"rect": Rect2(cx - 2, y - 2, VKit.text_w(crline, VKit.FS_SMALL) + 6, 16),
 								"text": "Départ entre 66 et 73 ans — il en a %d : le siège se libérerait dans %d à %d ans." % [
 									int(cand["age"]), crlo, int(cand.get("retire_hi", -1))]})
 							y += 15
@@ -1033,7 +1031,7 @@ func _draw_decree_card(x: float, y: float, dec: Dictionary, names_by_id: Diction
 	var nom := String(dec["nom"])
 	var label := nom + (" [RÉFORME]" if reforme else "") + (" — actif" if active else "")
 	VKit.text(self, Vector2(x, y), (VKit.sense(0.80) if active else (VKit.COL_PARCH if legal else VKit.COL_DIM)), label, VKit.FS_SMALL)
-	_hover_zones.append({"rect": Rect2(x, y - 2, VKit.text_w(label, VKit.FS_SMALL), 14),
+	_hover.add_dict({"rect": Rect2(x, y - 2, VKit.text_w(label, VKit.FS_SMALL), 14),
 		"text": String(dec["plateaux"]) + "\n" + String(dec["flavor"])})
 	y += 15
 	# PRIX FUSIONNÉ : « N or par mois » seul ; la formule (taux × revenu × IPM) au survol.
@@ -1043,18 +1041,18 @@ func _draw_decree_card(x: float, y: float, dec: Dictionary, names_by_id: Diction
 	var cline := ("%s or par mois" % _grp(int(round(cmonth)))) if rate > 0.0 else "0 or par mois"
 	VKit.text(self, Vector2(x + 8, y), VKit.COL_DIM, cline, VKit.FS_SMALL)
 	if rate > 0.0:
-		_hover_zones.append({"rect": Rect2(x + 6, y - 2, VKit.text_w(cline, VKit.FS_SMALL) + 6, 16),
+		_hover.add_dict({"rect": Rect2(x + 6, y - 2, VKit.text_w(cline, VKit.FS_SMALL) + 6, 16),
 			"text": "%.2f %% du revenu (%s or) × IPM %.2f — prélevé chaque mois ; mois impayé ⇒ sans effet ce mois-là." % [
 				rate, _grp(int(round(_cons_rev))), _cons_ipm]})
 	else:
-		_hover_zones.append({"rect": Rect2(x + 6, y - 2, VKit.text_w(cline, VKit.FS_SMALL) + 6, 16),
+		_hover.add_dict({"rect": Rect2(x + 6, y - 2, VKit.text_w(cline, VKit.FS_SMALL) + 6, 16),
 			"text": "Aucun prélèvement d'or — la contrepartie est dans l'effet (survolez le nom)."})
 	y += 15
 	var excl := int(dec.get("exclusive_id", -1))
 	if excl >= 0 and names_by_id.has(excl):
 		var eline := "⊥ exclusif avec : %s" % String(names_by_id[excl])
 		VKit.text(self, Vector2(x + 8, y), VKit.sense(0.35), eline, VKit.FS_SMALL)
-		_hover_zones.append({"rect": Rect2(x + 6, y - 2, VKit.text_w(eline, VKit.FS_SMALL) + 6, 16),
+		_hover.add_dict({"rect": Rect2(x + 6, y - 2, VKit.text_w(eline, VKit.FS_SMALL) + 6, 16),
 			"text": "Paire radio : activer celle-ci désactive automatiquement l'autre."})
 		y += 15
 	if reforme and active:
@@ -1072,7 +1070,7 @@ func _draw_decree_card(x: float, y: float, dec: Dictionary, names_by_id: Diction
 		if enabled:
 			_decret_btns.append({"rect": r, "id": id, "on": not active})
 		elif not legal:
-			_hover_zones.append({"rect": r, "text": "condition d'entrée non remplie"})
+			_hover.add(r, "condition d'entrée non remplie")
 		y += 20
 	y += 4
 	return y
@@ -1087,7 +1085,7 @@ func _draw_decision_card(x: float, y: float, dec: Dictionary, me: int) -> float:
 	var cooldown := bool(dec.get("cooldown_active", false))
 	var nom := String(dec["nom"])
 	VKit.text(self, Vector2(x, y), VKit.COL_PARCH if legal else VKit.COL_DIM, nom, VKit.FS_SMALL)
-	_hover_zones.append({"rect": Rect2(x, y - 2, VKit.text_w(nom, VKit.FS_SMALL), 14),
+	_hover.add_dict({"rect": Rect2(x, y - 2, VKit.text_w(nom, VKit.FS_SMALL), 14),
 		"text": String(dec["plateaux"]) + "\n" + String(dec["flavor"])})
 	y += 15
 	var cnd := "Condition : %s" % ("remplie" if cond_met else "non remplie")
@@ -1098,7 +1096,7 @@ func _draw_decision_card(x: float, y: float, dec: Dictionary, me: int) -> float:
 	if Sim.world.has_method("country_factions"):
 		corr_now = int(Sim.world.country_factions(me).get("corruption", -1))
 	if corr_now >= 0:
-		_hover_zones.append({"rect": Rect2(x + 6, y - 2, VKit.text_w(cnd, VKit.FS_SMALL) + 6, 16),
+		_hover.add_dict({"rect": Rect2(x + 6, y - 2, VKit.text_w(cnd, VKit.FS_SMALL) + 6, 16),
 			"text": "Corruption %d/100 — exige ≥ 20." % corr_now})
 	y += 15
 	if cooldown:
@@ -1106,7 +1104,7 @@ func _draw_decision_card(x: float, y: float, dec: Dictionary, me: int) -> float:
 		# privé à scps_decrees.c) — on affiche l'état SANS fabriquer de compte à rebours.
 		var cdl := "Cooldown : en cours"
 		VKit.text(self, Vector2(x + 8, y), VKit.sense(0.30), cdl, VKit.FS_SMALL)
-		_hover_zones.append({"rect": Rect2(x + 6, y - 2, VKit.text_w(cdl, VKit.FS_SMALL) + 6, 16),
+		_hover.add_dict({"rect": Rect2(x + 6, y - 2, VKit.text_w(cdl, VKit.FS_SMALL) + 6, 16),
 			"text": "5 ans entre deux audits — réutilisable à la fin du délai."})
 		y += 15
 	# PRIX FUSIONNÉ : « N or (une fois) » ; la formule au survol, en MONTANTS.
@@ -1114,7 +1112,7 @@ func _draw_decision_card(x: float, y: float, dec: Dictionary, me: int) -> float:
 	var cyear := float(dec.get("cost_year", 0.0))
 	var cline := "%s or (une fois)" % _grp(int(round(cyear)))
 	VKit.text(self, Vector2(x + 8, y), VKit.COL_DIM, cline, VKit.FS_SMALL)
-	_hover_zones.append({"rect": Rect2(x + 6, y - 2, VKit.text_w(cline, VKit.FS_SMALL) + 6, 16),
+	_hover.add_dict({"rect": Rect2(x + 6, y - 2, VKit.text_w(cline, VKit.FS_SMALL) + 6, 16),
 		"text": "%.0f %% du revenu (%s or) × IPM %.2f = %s or, prélevé au tir." % [
 			rate, _grp(int(round(_cons_rev))), _cons_ipm, _grp(int(round(cyear)))]})
 	y += 16
@@ -1129,7 +1127,7 @@ func _draw_decision_card(x: float, y: float, dec: Dictionary, me: int) -> float:
 		_decret_btns.append({"rect": r, "id": id, "on": true})
 	else:
 		var reason := "condition non remplie" if not cond_met else ("cooldown en cours" if cooldown else "indisponible")
-		_hover_zones.append({"rect": r, "text": reason})
+		_hover.add(r, reason)
 	y += 22
 	return y
 
@@ -1199,7 +1197,7 @@ func _draw_servile(x: float, y: float, me: int) -> float:
 			if buy_ok:
 				_servile_btns.append({"rect": rb, "act": "buy", "qty": qty})
 			else:
-				_hover_zones.append({"rect": rb, "text": "gate éthos/tech — un pays abolitionniste ne peut pas acheter"})
+				_hover.add(rb, "gate éthos/tech — un pays abolitionniste ne peut pas acheter")
 
 			var lab_s := "Vendre %d" % qty
 			var sw := VKit.text_w(lab_s, VKit.FS_SMALL) + 12.0

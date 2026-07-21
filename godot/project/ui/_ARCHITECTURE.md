@@ -32,13 +32,20 @@ Doc court : les règles que TOUT nouveau panneau suit. L'historique vit dans git
 - Nouveau fichier = typé dès la première ligne ; fichier existant = typer les
   signatures qu'on TOUCHE (ratchet opportuniste, pas de vague big-bang).
 
-## 3. Tooltips — LA FORMULE PARTAGÉE
+## 3. Tooltips — LA FORMULE ET LE SURVOL PARTAGÉS
 
-La formule valeur→icône→fiche vit dans `ui/tooltip_factory.gd` (static). Un
-panneau qui montre un bien/une ressource au survol l'appelle — il ne recompose
-JAMAIS sa propre fiche stock/prix. Le glossaire des CONCEPTS (mots du jeu) reste
-`ui/concepts.gd` (hover décoré par TooltipServer) : factory = les DONNÉES d'un
-bien, concepts = la DÉFINITION d'un mot.
+- La formule valeur→icône→fiche vit dans `ui/tooltip_factory.gd` (static). Un
+  panneau qui montre un bien/une ressource au survol l'appelle — il ne recompose
+  JAMAIS sa propre fiche stock/prix.
+- Les ZONES de survol d'un panneau dessiné vivent dans `ui/hover_zones.gd`
+  (stockage + hit-test + filtre d'en-tête, un seul endroit) : `_hover.clear()`
+  au début du draw, `_hover.add(...)`/`add_dict(...)` pendant, puis SOIT
+  `to_tips(min_y)` vers le TooltipServer (sidebar_drawer), SOIT
+  `hit_text(pos)` pour un tooltip local (province_detail — la fusion vers le
+  serveur est le pas suivant).
+- Le glossaire des CONCEPTS (mots du jeu) reste `ui/concepts.gd` (hover décoré
+  par TooltipServer) : factory = les DONNÉES d'un bien, concepts = la
+  DÉFINITION d'un mot.
 
 ## 4. Les gros fichiers (sidebar_drawer ~2600 · overlay ~3800)
 
