@@ -979,6 +979,8 @@ int scps_manuf_upkeep_month(ScpsSim *s, int province, int bld);
  * du pays joueur (granularité PAYS, motif CMD_MANUMIT, aucun argument). Renvoie 1 si le
  * verbe a pu s'enfiler. ⚠ Restes : aucun panneau GDScript (bouton UI hors scope moteur). */
 int scps_player_bankruptcy(ScpsSim *s);
+/* REMBOURSER (2026-07-21) : le principal, depuis le surplus — amount<=0 = tout. */
+int scps_player_repay(ScpsSim *s, int amount);
 
 /* ── ESCLAVAGE — la strate CLASS_SLAVE : garder/affranchir/vendre --------------
  * L'AFFRANCHISSEMENT (granularité PAYS, une politique) : CMD_MANUMIT, aucun

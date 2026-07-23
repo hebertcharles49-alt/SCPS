@@ -145,6 +145,7 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
         * pas d'arguments, agit sur p = s->human_player). Débuff −75 % prod/croissance/moral
         * décroissant (BANKRUPTCY_SCAR_YEARS) + grief de la cité-état créancière frappée. */
        CMD_BANKRUPTCY,
+       CMD_REPAY,          /* 2026-07-21 (KoH2 « Repay All ») : rembourser VOLONTAIREMENT le principal — a[0]=montant (≤0 : tout ce que le surplus permet) */
        /* MONNAIE M9 — V1 : « EMPRUNTER À UN ORDRE » (panneau éco, décision joueur 2026-07-16).
         * a[0]=SocialClass (CLASS_ELITE/CLASS_BOURGEOIS seules prêtent, motif M3c), a[1]=montant
         * demandé (<=0 ⇒ le MAXIMUM disponible). La classe NE REFUSE JAMAIS — credit_borrow_class

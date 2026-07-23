@@ -240,6 +240,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("country_loan_status", "country"),      &ScpsWorld::country_loan_status);
     ClassDB::bind_method(D_METHOD("player_request_loan", "target", "amount"), &ScpsWorld::player_request_loan);
     ClassDB::bind_method(D_METHOD("player_bankruptcy"),                   &ScpsWorld::player_bankruptcy);
+    ClassDB::bind_method(D_METHOD("player_repay", "amount"),              &ScpsWorld::player_repay);
     ClassDB::bind_method(D_METHOD("country_price_level", "country"),      &ScpsWorld::country_price_level);
     ClassDB::bind_method(D_METHOD("world_price_index"),                   &ScpsWorld::world_price_index);
     ClassDB::bind_method(D_METHOD("country_debase_frac", "country"),      &ScpsWorld::country_debase_frac);
@@ -2146,6 +2147,9 @@ String ScpsWorld::country_loan_status(int country) {
 }
 bool ScpsWorld::player_request_loan(int target, float amount) {
     return sim ? scps_player_request_loan(sim, target, amount) != 0 : false;
+}
+bool ScpsWorld::player_repay(int amount) {
+    return sim ? scps_player_repay(sim, amount) != 0 : false;
 }
 bool ScpsWorld::player_bankruptcy() {
     return sim ? scps_player_bankruptcy(sim) != 0 : false;

@@ -99,6 +99,11 @@ void  credit_bankruptcy_stats(long *forced, long *voluntary);
 /* RUINE DU CRÉANCIER : prêteurs externes effondrés par répudiation (créance anéantie >
  * LENDER_RUIN_SHARE de leur capital) — cumulé depuis credit_init, télémétrie chronicle. */
 long  credit_lender_ruins(void);
+/* LE VERBE « REMBOURSER » (2026-07-21) : remboursement VOLONTAIRE du principal depuis le
+ * surplus (>COURT_FLOOR) — miroir exact de l'amortissement annuel (ventilation ∝ créance
+ * réelle, conservation stricte). amount<=0 = tout ce que le surplus permet. Renvoie le
+ * montant réellement remboursé. Verbe joueur seul (CMD_REPAY) : golden-neutre. */
+float credit_repay_principal(WorldEconomy *e, const World *w, int c, float amount);
 
 /* ---- M3g : LA BANQUEROUTE-SAISIE (décision joueur 2026-07-15) ------------------------
  * Remplace le malus PLAT −75 % (production/croissance, M3d) par une SAISIE : la

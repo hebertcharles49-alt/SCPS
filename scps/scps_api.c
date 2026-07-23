@@ -3265,6 +3265,12 @@ int scps_player_bankruptcy(ScpsSim *s){
     PlayerCmd c = { CMD_BANKRUPTCY, { 0,0,0,0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
+/* LE REMBOURSEMENT VOLONTAIRE (2026-07-21) : amount<=0 = tout ce que le surplus permet. */
+int scps_player_repay(ScpsSim *s, int amount){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_REPAY, { amount, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
 int scps_player_slave_sell(ScpsSim *s, int prov, long count){   /* RE-KEY PROVINCE : PID direct */
     if (!s || !s->ready || count<=0) return 0;
     PlayerCmd c = { CMD_SLAVE_SELL, { prov, (int32_t)count, 0, 0 } };

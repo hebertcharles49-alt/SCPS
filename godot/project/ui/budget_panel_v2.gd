@@ -31,6 +31,12 @@ const CLASS_NAMES := ["Journaliers", "Bourgeois", "Élite"]   # SocialClass 0-2 
 var _built := false
 var _treasury_lbl: Label = null
 var _balance_lbl: Label = null
+const BalanceGraph = preload("res://ui/balance_graph.gd")
+var _graph: Control = null        # la courbe 12 mois (KoH2 2026-07-21, stateful persistant)
+var _borrow_btn: Button = null    # → page Monnaie (le détail par ordre)
+var _repay_btn: Button = null     # CMD_REPAY (armé 4 s, motif banqueroute)
+var _repay_armed := false
+var _repay_armed_ms := -100000
 var _reserve_lbl: Label = null   # MONNAIE M1/M2 — « Réserve : X or · Y cuivre » (lecteur pur)
 var _left_col: VBoxContainer = null
 var _right_col: VBoxContainer = null
@@ -139,6 +145,28 @@ func _build_shell() -> void:
 	_reserve_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_reserve_lbl.size_flags_horizontal = Control.SIZE_SHRINK_END
 	rcol.add_child(_reserve_lbl)
+
+	# LA COURBE DU SOLDE (KoH2, 2026-07-21) : 12 mois d'historique sous le header — la
+	# tendance AVANT les chiffres. Widget persistant (stateful, règle #1).
+	_graph = BalanceGraph.new()
+	root.add_child(_graph)
+	# LES VERBES DE CRÉDIT ENCADRENT LE SOLDE (KoH2) : Emprunter (→ page Monnaie, le
+	# détail par ordre) · Rembourser (CMD_REPAY, armé 4 s motif banqueroute).
+	var verbs := HBoxContainer.new()
+	verbs.add_theme_constant_override("separation", 8)
+	root.add_child(verbs)
+	_borrow_btn = Button.new()
+	_borrow_btn.focus_mode = Control.FOCUS_NONE
+	_borrow_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_borrow_btn.text = "Emprunter"
+	_borrow_btn.pressed.connect(func(): _select_tab(1))
+	verbs.add_child(_borrow_btn)
+	_repay_btn = Button.new()
+	_repay_btn.focus_mode = Control.FOCUS_NONE
+	_repay_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_repay_btn.text = "Rembourser"
+	_repay_btn.pressed.connect(_repay_press)
+	verbs.add_child(_repay_btn)
 
 	# TAB BAR — UI-MONNAIE (2026-07-16) : les 3 onglets étaient posés mais JAMAIS câblés
 	# (aucun .pressed.connect — TROUVAILLES.md) ; « Monnaie » rejoint « Marché » désormais
@@ -292,6 +320,24 @@ func _apply_slider(family: int, index: int, v: float) -> void:
 		Sim.notify_action()
 
 # ── DONNÉES VIVANTES ──────────────────────────────────────────────────────────
+## REMBOURSER (KoH2, CMD_REPAY) : armé 4 s (motif banqueroute), -1 = tout ce que le
+## surplus permet — le moteur borne (jamais un découvert, credit_repay_principal).
+func _repay_press() -> void:
+	var w = Sim.world
+	if w == null:
+		return
+	if not _repay_armed:
+		_repay_armed = true
+		_repay_armed_ms = Time.get_ticks_msec()
+		refresh()
+		return
+	_repay_armed = false
+	if w.has_method("player_repay"):
+		w.player_repay(-1)
+		if Sim.has_method("notify_action"):
+			Sim.notify_action()
+	refresh()
+
 func refresh() -> void:
 	var w = Sim.world
 	if w == null:
@@ -327,6 +373,21 @@ func _update_header(w, me: int) -> void:
 		var pos := net >= 0.0
 		_balance_lbl.text = "%s%s or/mois" % ["+" if pos else "−", _grp(int(round(absf(net))))]
 		_balance_lbl.add_theme_color_override("font_color", INCOME if pos else EXPENSE)
+		# LA COURBE (KoH2) : un point par mois, dédupliqué par étiquette (les refresh
+		# d'ouverture/action ne doublonnent jamais).
+		if _graph != null and w.has_method("year") and w.has_method("day_of_year"):
+			var mo := 1 + int(w.day_of_year()) / 30
+			_graph.push("an %d · m%d" % [int(w.year()), mini(mo, 12)], net)
+		# LES VERBES DE CRÉDIT (KoH2) : montants vivants sur les boutons.
+		if _borrow_btn != null:
+			_borrow_btn.text = "Emprunter — jusqu'à %s or" % _grp(int(round(float(b.get("credit_line", 0.0)))))
+		if _repay_btn != null and w.has_method("country_debt"):
+			var deb_r: Dictionary = w.country_debt(me)
+			var owed := float(deb_r.get("total", 0.0))
+			if _repay_armed and Time.get_ticks_msec() - _repay_armed_ms > 4000:
+				_repay_armed = false
+			_repay_btn.text = "Confirmer le remboursement ?" if _repay_armed else ("Rembourser %s or" % _grp(int(round(owed))))
+			_repay_btn.disabled = owed < 0.5 and not _repay_armed
 
 ## construit les LIGNES à partir de budget_controls (une fois — puis on ne fait
 ## que rafraîchir les valeurs, pour ne pas perdre l'état de glisse des curseurs).
@@ -389,7 +450,11 @@ func _update_values(me: int) -> void:
 			if w.has_method("tax_class_month"):
 				var sat_i := int(fo_sat.get(cls, -1))
 				var base_txt := "%s or/mois" % _grp(int(round(float(w.tax_class_month(cls)))))
-				lbl.text = ("%s · %d %%" % [base_txt, sat_i]) if sat_i >= 0 else base_txt
+				# le MARQUEUR d'humeur (KoH2) : ▲ marge (≥60), ▼ fragile (<40) — se lit sans lire.
+				var mood := ""
+				if sat_i >= 60: mood = " ▲"
+				elif sat_i >= 0 and sat_i < 40: mood = " ▼"
+				lbl.text = ("%s · %d %%%s" % [base_txt, sat_i, mood]) if sat_i >= 0 else base_txt
 			else:
 				# repli honnête si le lecteur par-classe n'existe pas (DLL antérieure) :
 				# on montre le taux visé (mult), la seule donnée disponible.

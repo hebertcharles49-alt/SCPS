@@ -985,6 +985,12 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (L>=0 && L<w->n_countries)
                 s->dp->rancor[L][p] += tune_f("BANKRUPTCY_RANCOR", 2.0f);
             break; }
+          /* ── LE REMBOURSEMENT VOLONTAIRE (2026-07-21, KoH2 « Repay All ») : le miroir
+           *    de l'amortissement annuel, à la main du joueur — conservation stricte
+           *    (credit_repay_principal), a[0]<=0 = tout ce que le surplus permet. ── */
+          case CMD_REPAY: {
+            credit_repay_principal(s->econ, w, p, (float)c->a[0]);
+            break; }
           /* ── ESCLAVAGE — le MARCHÉ des Centres. a={pid, count}. RE-KEY PROVINCE :
            *    a[0] est un PID direct (jamais une région) — les esclaves vivent dans
            *    les strates de PROVINCE ; le Centre (trésor/prix) reste la contrepartie

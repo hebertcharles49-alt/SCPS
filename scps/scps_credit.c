@@ -111,6 +111,7 @@ void credit_bankruptcy_stats(long *forced, long *voluntary){
     if (voluntary) *voluntary=g_bankrupt_voluntary;
 }
 long credit_lender_ruins(void){ return g_lender_ruins; }   /* RUINE DU CRÉANCIER (télémétrie chronicle) */
+
 /* Le revenu fiscal annuel est la MESURE de solvabilité, jamais une autorisation. Il sert
  * au prix du risque ; aucun multiple de ce revenu ne ferme administrativement le marché. */
 float credit_annual_revenue(int c){
@@ -1004,6 +1005,43 @@ int credit_bankruptcy(WorldEconomy *e, int c, bool forced){
  * scps_sim.c le lit juste après credit_year_tick et exécute credit_bankruptcy(e,c,true)
  * pour chaque pays flaggé (le flag redescend alors via credit_bankruptcy lui-même). */
 bool credit_bankrupt_pending(int c){ return (c>=0 && c<SCPS_MAX_COUNTRY) && g_forced_pending[c]; }
+
+/* LE VERBE « REMBOURSER » (2026-07-21, observation joueur KoH2 « Repay All » : se
+ * désendetter ACTIVEMENT est une décision de joueur — l'amortissement annuel seul ne
+ * l'offrait pas). MIROIR EXACT du corps d'amortissement de credit_year_tick (même
+ * plancher COURT_FLOOR, même ventilation ∝ créance réelle, même conservation stricte :
+ * les créanciers reçoivent CE que le débiteur paie, rien d'autre). amount<=0 ⇒ tout ce
+ * que le surplus permet. Verbe joueur seul (drain CMD_REPAY) : golden-neutre. */
+float credit_repay_principal(WorldEconomy *e, const World *w, int c, float amount){
+    if (!e || !w || c<0 || c>=SCPS_MAX_COUNTRY) return 0.f;
+    float debt_total = g_debt[c].to_elite + g_debt[c].to_bourgeois + g_debt[c].to_cs;
+    if (debt_total<=CR_EPS) return 0.f;
+    float hof=tune_f("COURT_FLOOR",4000.f);
+    float surplus=country_surplus(e,c,hof);
+    if (surplus<=CR_EPS) return 0.f;
+    float repay=fminf(debt_total, surplus);
+    if (amount>CR_EPS) repay=fminf(repay, amount);
+    if (repay<=CR_EPS) return 0.f;
+    debit_surplus_prorata(e,c,hof,repay);
+    float class_tot=g_debt[c].to_elite+g_debt[c].to_bourgeois;
+    float r_class=repay*(class_tot/debt_total), r_cs=repay-r_class;
+    float share_e=(class_tot>CR_EPS)?(g_debt[c].to_elite/class_tot):0.5f;
+    float r_e=r_class*share_e, r_b=r_class-r_e;
+    if (r_class>CR_EPS){
+        credit_wealth_prorata(e,c,CLASS_ELITE,     r_e);
+        credit_wealth_prorata(e,c,CLASS_BOURGEOIS, r_b);
+    }
+    if (r_cs>CR_EPS && g_debt[c].cs_id>=0){
+        int hc=home_reg(w,g_debt[c].cs_id);
+        if (hc>=0&&hc<e->n_regions){ int cp=econ_region_rep_province(e,hc); if (cp>=0&&cp<e->n_prov) econ_prov_treasury_credit(e, cp, r_cs); }
+    }
+    g_debt[c].to_elite     -= r_e;  if (g_debt[c].to_elite<0.f)     g_debt[c].to_elite=0.f;
+    g_debt[c].to_bourgeois -= r_b;  if (g_debt[c].to_bourgeois<0.f) g_debt[c].to_bourgeois=0.f;
+    g_debt[c].to_cs        -= r_cs; if (g_debt[c].to_cs<0.f)        g_debt[c].to_cs=0.f;
+    if (g_debt[c].to_cs<=CR_EPS) g_debt[c].cs_id=-1;
+    return repay;
+}
+
 
 /* V3 (MONNAIE M9) — voir scps_credit.h. Flag TRANSIENT posé par credit_year_tick (le RACHAT
  * DE CRÉDIT, plus haut) : LOAN_ARCHETYPE_NONE si le pays n'a subi/bénéficié d'AUCUN rachat

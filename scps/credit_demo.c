@@ -838,6 +838,40 @@ int main(void){
         tune_set("LENDER_RUIN_SHARE", 0.5f);   /* redéfinit le défaut */
     }
 
+    /* ── 22. LE VERBE « REMBOURSER » (2026-07-21, KoH2 « Repay All ») : le principal
+     * fond depuis le surplus, les créanciers ENCAISSENT (conservation stricte),
+     * miroir exact de l'amortissement annuel — mais à la main du joueur. ── */
+    printf("\n── 22. Rembourser : se désendetter est une décision de joueur ──\n");
+    {
+        memset(e, 0, sizeof(WorldEconomy));
+        w->n_countries=2; w->n_provinces=2;
+        w->country[0].role=POLITY_PLAYER;     w->country[0].capital_prov=0;
+        w->country[1].role=POLITY_CITY_STATE; w->country[1].capital_prov=1;
+        w->province[0].region=0; w->province[1].region=1;
+        e->n_regions=2;
+        setup(e, 100.f, 5000.f); credit_init();
+        e->prov[0].bankruptcy_scar=0.f; e->prov[1].bankruptcy_scar=0.f;   /* fixture neuve */
+        credit_spend(e,w,0,550.f); econ_aggregate_regions(e);
+        float debt0=credit_debt_total(0);
+        ok("setup 22 : une dette réelle existe", debt0 > 100.f);
+        /* sans surplus (trésor sous COURT_FLOOR) : rien ne se rembourse — jamais de dette forcée. */
+        ok("sans surplus au-dessus du plancher de cour : le verbe rend 0 (jamais un découvert)",
+           credit_repay_principal(e,w,0,-1.f)==0.f);
+        /* on redote un trésor GRAS puis on rembourse TOUT (amount<=0). */
+        e->prov[0].treasury = 20000.f; econ_aggregate_regions(e);
+        double cs_before22 = (double)e->prov[1].treasury;
+        float repaid = credit_repay_principal(e,w,0,-1.f);
+        econ_aggregate_regions(e);
+        printf("   dette %.1f → %.1f (remboursé %.1f) · trésor cité-état %.1f → %.1f\n",
+               (double)debt0,(double)credit_debt_total(0),(double)repaid,
+               cs_before22,(double)e->prov[1].treasury);
+        ok("REMBOURSER éteint la dette entière quand le surplus le permet",
+           repaid > debt0 - 0.5f && credit_debt_total(0) < 0.5f);
+        ok("CONSERVATION : le créancier cité-état ENCAISSE réellement sa part",
+           (double)e->prov[1].treasury > cs_before22 + 1.0);
+        ok("le créancier soldé est DÉLIÉ (credit_of == -1)", credit_of(0) < 0);
+    }
+
     printf("\n═══ BILAN : %d réussis, %d échoués ═══\n", g_pass, g_fail);
     free(w); free(e); free(wl);
     return g_fail?1:0;

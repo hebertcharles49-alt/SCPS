@@ -300,7 +300,8 @@ public:
     int        country_loan_request_target(int country) const; /* -1 = aucune demande cette partie */
     String     country_loan_status(int country);         /* le MOT résolu : aucune/accordé/refusé */
     bool       player_request_loan(int target, float amount); /* V2 : demande un prêt à un État (<=0 ⇒ le max) */
-    bool       player_bankruptcy();                       /* la banqueroute VOLONTAIRE (répudiation totale) */
+    bool       player_bankruptcy();
+    bool player_repay(int amount);   /* 2026-07-21 : rembourser le principal (<=0 = tout) */                       /* la banqueroute VOLONTAIRE (répudiation totale) */
     double     country_price_level(int country) const;   /* indice des prix national (1.0 = neutre) */
     double     world_price_index() const;                 /* indice des prix mondial (pondéré VA) */
     float      country_debase_frac(int country) const;    /* débase EFFECTIVE de ce mois (0 = inactif) */
