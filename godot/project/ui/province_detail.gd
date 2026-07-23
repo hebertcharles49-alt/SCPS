@@ -24,8 +24,11 @@ var _pid := -1
 var _tab := 0
 var _tab_rects := []        # [{rect, idx}] onglets cliquables
 var _hover := HoverZones.new()   # survol des entrées de journal (stockage/hit-test partagés)
-var _hover_text := ""
-var _hover_pos := Vector2.ZERO
+
+## FUSION TooltipServer (2026-07-21, revue #3 volet hover) : le panneau expose ses zones
+## au serveur (délai, parchemin, mots-concepts en cascade) — le tooltip local est mort.
+func _get_tooltip(at_position: Vector2) -> String:
+	return _hover.hit_text(at_position)
 var _alloc_btns := []       # [{rect, act, sink}] boutons de l'onglet Main-d'œuvre
 var _alloc_cache := {}      # dernier readout province_alloc (pour pousser l'allocation COMPLÈTE)
 var _close_rect := Rect2()
@@ -154,20 +157,8 @@ func _draw() -> void:
 		4: _draw_alloc(x, BODY, w, info)
 		5: _draw_empire(x, BODY, w)
 
-	# tooltip de survol (Journal : les effets de l'entrée)
-	if _hover_text != "":
-		var tip_lines := _hover_text.split("\n")
-		var tw := 0.0
-		for line in tip_lines:
-			tw = maxf(tw, VKit.text_w(String(line), VKit.FS_SMALL) + 14.0)
-		tw = minf(tw, PW - 12.0)
-		var th := 6.0 + 15.0 * float(tip_lines.size())
-		var tx2 := minf(_hover_pos.x + 14.0, PW - tw - 6.0)
-		var ty2 := minf(maxf(4.0, _hover_pos.y - th - 4.0), PH - th - 4.0)
-		VKit.fill(self, Rect2(tx2, ty2, tw, th), VKit.COL_PANEL2)
-		VKit.box(self, Rect2(tx2, ty2, tw, th), VKit.COL_GOLD)
-		for i in range(tip_lines.size()):
-			VKit.text(self, Vector2(tx2 + 7, ty2 + 2 + i * 15), VKit.COL_PARCH, String(tip_lines[i]), VKit.FS_SMALL)
+	# (FUSION 2026-07-21 : le tooltip local est mort — le TooltipServer sert les zones
+	#  via _get_tooltip ci-dessous : délai, style parchemin, mots-concepts en cascade.)
 
 # ── ONGLET PEUPLES : DEUX COLONNES (LOT UI 2.5, 2026-07-11) — aperçu (médaillon de
 #    culture + légende + classes + modificateurs) à GAUCHE, actions (foi + agitation
@@ -735,16 +726,7 @@ func _gui_input(event: InputEvent) -> void:
 			Sound.play("ui_parchment_close")
 			accept_event()
 			return
-	if event is InputEventMouseMotion:
-		var h := _hover.hit_text(event.position)
-		if h != _hover_text:
-			_hover_text = h
-			_hover_pos = event.position
-			queue_redraw()
-		elif h != "":
-			_hover_pos = event.position
-			queue_redraw()
-		return
+	# (FUSION 2026-07-21 : plus de hit-test souris local — _get_tooltip sert le serveur.)
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		# onglet Constructions : « Bâtir… » ouvre le panneau de construction
 		if _tab == 2 and _build_btn.size.x > 0 and _build_btn.has_point(event.position):
@@ -827,7 +809,6 @@ func _gui_input(event: InputEvent) -> void:
 				if _tab != t.idx:
 					Sound.play("ui_click")
 				_tab = t.idx
-				_hover_text = ""
 				queue_redraw()
 				accept_event()
 				return
