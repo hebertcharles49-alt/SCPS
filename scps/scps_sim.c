@@ -348,8 +348,13 @@ static void sim_campaign_year(Sim *s, World *w) {
                      * l'ordre des deux appels ne bloque donc plus l'un l'autre. */
                     if (a->owner>=0 && a->owner<SCPS_MAX_COUNTRY){
                         bool fresh = diplo_pillage_fresh(s->econ, reg);
-                        if (fresh && s->ai[a->owner].can_enslave)
-                            if (diplo_enslave_capture(w, s->econ, a->owner, reg, true) > 0) g_siege_sack_captures++;
+                        /* bool→float (2026-07-21) : `true` promu en frac=1.0 = 100 % de
+                         * déportation SILENCIEUSE (attrapé au SLAVEDIAG kill-switch) — la
+                         * VRAIE fraction (0=abolition · 5% coutume · 15% tech) désormais. */
+                        if (fresh && s->ai[a->owner].can_enslave){
+                            float sf = econ_country_slave_fraction(w, s->econ, &s->ts[a->owner], a->owner);
+                            if (sf > 0.f && diplo_enslave_capture(w, s->econ, a->owner, reg, sf) > 0) g_siege_sack_captures++;
+                        }
                         if (fresh){
                             int cp2=w->country[a->owner].capital_prov;
                             int crr2=(cp2>=0&&cp2<w->n_provinces)? w->province[cp2].region : -1;
@@ -862,8 +867,10 @@ static void sim_cmd_drain(Sim *s, World *w){
              * acte GRIS, miroir de navy_course_tick §4) + esclavage 5% si le joueur a le
              * gate (tech OU éthos conquérant) + balafre/CD partagés (navy_mark_raided). */
             diplo_pillage_value(s->econ, region, navy_best_port(w,s->econ,p), victim);
-            if (econ_country_can_enslave(w, s->econ, &s->ts[p], p))
-                diplo_enslave_capture(w, s->econ, p, region, true);
+            { /* bool→float (2026-07-21) : même correctif que le sac de siège — la VRAIE
+               * fraction, jamais le `true` promu en 100 %. */
+              float sf = econ_country_slave_fraction(w, s->econ, &s->ts[p], p);
+              if (sf > 0.f) diplo_enslave_capture(w, s->econ, p, region, sf); }
             navy_mark_raided(s->econ, region);
             break; }
           /* ── ALLOCATION de main-d'œuvre (onglet province). Tout REVALIDÉ : province ∈ [0,n) ET
