@@ -1,15 +1,5 @@
 extends PanelContainer
-## ConstructionPanel — le menu de bâti en DEUX ONGLETS (Édifices | Manufactures), bâti
-## avec des CONTENEURS Godot NATIFS (PanelContainer/VBox/HBox/Grid) + le THEME parchemin
-## PARTAGÉ (parch_theme.gd), MÊME squelette que province_panel_v2/empire_window
-## (HeaderStrip + LedTabStrip + corps ScrollContainer). ZÉRO `_draw`.
-##
-## LA VÉRITÉ ABSOLUE (retour joueur 2026-07-14) : une CARTE par bâtiment — icône + TITRE +
-## prix·durée à droite / ligne d'effet / rangée d'icônes de ressources ×qty / « Prochain
-## palier » (edifice_succ, affiché MÊME verrouillé — un bâtiment tech-verrouillé n'est
-## JAMAIS listé comme posable, seulement en tag sur la carte de son palier courant) /
-## raison de verrou en rouge. Le CONTENU et les gates sont INCHANGÉS : ce fichier est un
-## port de présentation du pilote `_draw` précédent, pas une refonte de logique.
+## Menu de bâti (Édifices | Manufactures), conteneurs natifs + parch_theme, zéro _draw.
 
 const ParchTheme = preload("res://ui/parch_theme.gd")
 const UIKit = preload("res://ui/uikit.gd")
@@ -19,12 +9,12 @@ signal build_requested(kind: String, type: int)
 
 const PW := 440.0
 
-var target_pid := -1       ## la PROVINCE visée (posée par main à l'ouverture) — les manufactures y vivent
+var target_pid := -1
 var _builds := []
-var _bytype := {}          # type(int) → b(Dictionary) — pour résoudre le « Prochain palier » (edifice_succ)
-var _blegal := {}          # type → {legal, reason} — miroir read-only du drain CMD_BUILD (lot M)
-var _tab := 0              # 0 = Édifices · 1 = Manufactures
-var _flash := ""           # retour de la dernière action (chantier mis / refus)
+var _bytype := {}          # type → b (prochain palier)
+var _blegal := {}          # type → {legal,reason} miroir drain
+var _tab := 0              # 0 édifices · 1 manuf
+var _flash := ""
 var _flash_ok := true
 
 var _title_lbl: Label = null
@@ -33,10 +23,8 @@ var _tab_btns: Array = []
 var _scroll: ScrollContainer = null
 var _body: VBoxContainer = null
 var _flash_lbl: Label = null
-var _fit_gen := 0          # jeton anti-course : seule la DERNIÈRE mesure différée s'applique
+var _fit_gen := 0          # anti-course : dernière mesure seule
 
-## carte cliquable qui porte SON dossier (get_info_card, lu par le TooltipServer natif
-## au survol) — motif nested class de province_panel_v2 (BiomeTip/TerrainRow).
 class InfoCard:
 	extends PanelContainer
 	var card_data: Dictionary = {}
@@ -49,18 +37,16 @@ func _ready() -> void:
 	theme = ParchTheme.build()
 	_build_shell()
 	Sim.generated.connect(_refresh)
-	Sim.month_ticked.connect(func(_y): _refresh())   # ressources dispo : cadence mensuelle
+	Sim.month_ticked.connect(func(_y): _refresh())
 	get_viewport().size_changed.connect(_fit_scroll)
 	if Sim.world != null:
 		_refresh()
 
-# ── LE SQUELETTE (header + onglets + corps déroulant) ─────────────────────────
 func _build_shell() -> void:
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 0)
 	add_child(root)
 
-	# HEADER : « Construction — <province visée> » + bouton fermer
 	var head := PanelContainer.new()
 	head.theme_type_variation = "HeaderStrip"
 	root.add_child(head)
@@ -74,7 +60,6 @@ func _build_shell() -> void:
 	hb.add_child(_title_lbl)
 	hb.add_child(_close_btn())
 
-	# BARRE D'ONGLETS : Édifices | Manufactures
 	var tabpanel := PanelContainer.new()
 	tabpanel.theme_type_variation = "LedTabStrip"
 	root.add_child(tabpanel)
@@ -98,9 +83,6 @@ func _build_shell() -> void:
 		tabs.add_child(b)
 		_tab_btns.append(b)
 
-	# CORPS (fond transparent, laisse voir le parchemin) : la liste des cartes DÉFILE
-	# (molette native) sous une hauteur bornée au viewport — jamais une fenêtre qui
-	# déborde de l'écran.
 	var bodypanel := PanelContainer.new()
 	bodypanel.theme_type_variation = "Body"
 	root.add_child(bodypanel)
@@ -113,15 +95,12 @@ func _build_shell() -> void:
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_scroll.add_child(_body)
 
-	# retour transitoire (persistant jusqu'à la prochaine action) — TOUJOURS visible,
-	# hors du défilement.
 	_flash_lbl = Label.new()
 	_flash_lbl.theme_type_variation = "Income"
 	_flash_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_flash_lbl.visible = false
 	root.add_child(_flash_lbl)
 
-## bouton fermer, au thème parchemin (motif _sq_btn de province_panel_v2).
 func _close_btn() -> Button:
 	var b := Button.new()
 	b.text = "✕"
@@ -139,11 +118,7 @@ func _close_btn() -> Button:
 		Sound.play("ui_parchment_close"))
 	return b
 
-## la fenêtre déroulante HUGGE le contenu, bornée au viewport (moins les barres pleine
-## largeur) — le surplus défile, la fenêtre ne déborde jamais de l'écran. La hauteur
-## mini du contenu n'est fiable qu'après un passage de layout (les cartes viennent
-## d'être ajoutées) : deux frames de grâce, jeton anti-course pour ignorer une mesure
-## périmée si `_refresh()` est rappelé entre-temps (changement d'onglet rapide).
+## hug-content borné au viewport ; hauteur fiable après 2 frames (jeton anti-course).
 func _fit_scroll() -> void:
 	if _scroll == null or _body == null:
 		return
@@ -159,8 +134,6 @@ func _fit_scroll() -> void:
 	_scroll.custom_minimum_size = Vector2(0, want)
 	reset_size.call_deferred()
 
-## ouvre le panneau directement sur un onglet (0 Édifices · 1 Manufactures) — appelé
-## depuis la fiche province (bouton « Construire… »).
 func open_on(tab: int) -> void:
 	_tab = clampi(tab, 0, 1)
 	if _tab < _tab_btns.size():
@@ -168,7 +141,6 @@ func open_on(tab: int) -> void:
 	visible = true
 	_refresh()
 
-# ── RAFRAÎCHISSEMENT ────────────────────────────────────────────────────────────
 func _refresh() -> void:
 	if Sim.world == null or _body == null:
 		return
@@ -177,8 +149,6 @@ func _refresh() -> void:
 	_bytype.clear()
 	for b in _builds:
 		_bytype[int(b.get("type", -1))] = b
-	# lot M — la LÉGALITÉ réelle (or/matière/palier, miroir du drain qui refusait en
-	# silence) : rafraîchie au tick, consommée pour griser/router le clic honnêtement.
 	_blegal.clear()
 	if Sim.world.has_method("build_legal"):
 		for b in _builds:
@@ -209,7 +179,7 @@ func _update_flash() -> void:
 	_flash_lbl.text = _flash
 	_flash_lbl.theme_type_variation = "Income" if _flash_ok else "Expense"
 
-## la raison du refus, en mot (reason de build_legal : 2 or · 3 matière · 4 tech de palier · 1 structurel)
+## reason build_legal → mot (2 or · 3 matière · 4 tech de palier · 1 structurel)
 func _reason_word(reason: int) -> String:
 	match reason:
 		2: return "or insuffisant"
@@ -221,8 +191,7 @@ func _reason_label(result: Dictionary) -> String:
 	var label := String(result.get("reason_label", ""))
 	return label if label != "" else _reason_word(int(result.get("reason", 1)))
 
-## dossier complet d'un édifice — consommé par le TooltipServer (get_info_card) ET par
-## le test unitaire build_info_card_test (signature conservée telle quelle).
+## get_info_card (TooltipServer) + test build_info_card_test — garder la signature.
 func _build_info_card(b: Dictionary, legal: Dictionary) -> Dictionary:
 	var allowed := bool(legal.get("allowed", legal.get("legal", true)))
 	var me: int = Sim.world.player()
@@ -257,7 +226,6 @@ func _build_info_card(b: Dictionary, legal: Dictionary) -> Dictionary:
 			"Premier verrou opposé par le moteur : %s." % _reason_label(legal),
 	}
 
-## la RECETTE réelle d'une manufacture, en mots : « Laine ×1.5 (ou Coton) → Étoffe ×2.8 ».
 func _recipe_text(rec: Dictionary) -> String:
 	var in1 := String(rec.get("in1", ""))
 	if in1 == "":
@@ -274,33 +242,21 @@ func _recipe_text(rec: Dictionary) -> String:
 		s += " → %s ×%s" % [out, _fmt1(rec.get("qout", 0.0))]
 	return s
 
-## un nombre à 1 décimale, sans zéro inutile (1.0 → "1", 2.8 → "2.8").
 func _fmt1(v) -> String:
 	var f := float(v)
 	return ("%d" % int(round(f))) if absf(f - round(f)) < 0.05 else ("%.1f" % f)
 
-## AUDIT D5 (2026-07-18) — le multiplicateur d'ÉTENDUE : `scps_building_roster`
-## (scps_api.c) rapporte la recette NUE (d->cost.qty[k], sans le facteur), mais le drain
-## réel (agency_build_acct, scps_agency.c:411-416 : `mult = agency_extent_mult(...)`,
-## consomme `c->qty[k]*mult`) et le gate de légalité (scps_build_legal_ex, scps_api.c:
-## 2454-2461 : `ext = 1.f + 0.15f*nreg`) appliquent TOUS DEUX ce facteur — seul le
-## nombre affiché sur la puce l'omettait (l'or affiché, lui, l'inclut déjà via
-## agency_build_gold). Rejoué ICI depuis `country_info().regions` (même compte que
-## agency_extent_mult : régions possédées par le joueur) plutôt que d'ajouter un lecteur
-## C, pour rester dans le seul fichier de ce chantier (D5).
+## roster rapporte la recette NUE ; drain + gate appliquent ext=1+0.15·nreg. Rejoué ici (D5).
 func _extent_mult() -> float:
 	var me: int = Sim.world.player()
 	var nreg := int(Sim.world.country_info(me).get("regions", 0))
 	return 1.0 + 0.15 * float(nreg)
 
-## la quantité RÉELLEMENT débitée d'une ligne de recette (miroir de `c->qty[k]*mult`
-## consommé par agency_build_acct) — arrondie comme le moteur (+0.5).
+## qty débitée = base×ext, arrondi moteur (+0.5).
 func _cost_qty_real(qty_base: int) -> int:
 	return int(round(float(qty_base) * _extent_mult()))
 
-# ── ONGLET ÉDIFICES : une CARTE par bâtiment ──────────────────────────────────
-## Un édifice verrouillé par la tech N'EST JAMAIS listé comme posable : il n'apparaît
-## qu'en tag « Prochain palier » sur la carte de son palier COURANT.
+## Édifice tech-verrouillé : jamais listé, seulement en tag « Prochain palier ».
 func _build_edifices() -> void:
 	var w = Sim.world
 	if w == null:
@@ -308,16 +264,14 @@ func _build_edifices() -> void:
 	var any := false
 	for b in _builds:
 		if int(b.get("prev", -1)) >= 0 and not bool(b.get("prev_built", false)):
-			continue   # palier hors de portée : son précédent n'existe pas encore chez nous
+			continue   # précédent absent
 		if not bool(b.get("debloque", false)):
-			continue   # verrouillé par la tech : surfacé en tag sur son prédécesseur, pas ici
+			continue   # verrouillé tech (surfacé en tag)
 		any = true
 		_body.add_child(_edifice_card(w, b))
 	if not any:
 		_dim_line("aucun édifice constructible pour l'instant")
 
-## carte : icône + titre / prix·durée · effet · ressources (icônes ×qty) · prochain
-## palier · raison de verrou. Le CLIC (carte entière, si affordable) ordonne le chantier.
 func _edifice_card(w, b: Dictionary) -> Control:
 	var btype := int(b.get("type", -1))
 	var leg: Dictionary = _blegal.get(btype, {})
@@ -340,7 +294,6 @@ func _edifice_card(w, b: Dictionary) -> Control:
 	vb.add_theme_constant_override("separation", 4)
 	card.add_child(vb)
 
-	# L1 — icône · titre (gauche) · prix + durée (droite)
 	var row0 := HBoxContainer.new()
 	row0.add_theme_constant_override("separation", 8)
 	row0.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -359,7 +312,6 @@ func _edifice_card(w, b: Dictionary) -> Control:
 	price.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	row0.add_child(price)
 
-	# L2 — RENDEMENT (l'effet RÉEL, delta ProvBuild — la membrane, pas une promesse)
 	var eff := String(b.get("effet", ""))
 	if eff != "":
 		var effl := Label.new()
@@ -369,11 +321,6 @@ func _edifice_card(w, b: Dictionary) -> Control:
 		effl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		vb.add_child(effl)
 
-	# L2bis — ENTRETIEN (retour joueur 2026-07-14 : le moteur le prélève chaque mois, la
-	# carte doit le dire — miroir EXACT E1bis.10, valeur réelle, jamais le calcul).
-	# UI-POLISH #7 : le « ~ » était un artefact GDScript pur — la valeur elle-même est
-	# DÉJÀ un miroir exact (arrondi au gold près, scps_edifice_upkeep_month) ; le joueur
-	# veut le prix réel, pas un signe d'approximation qui n'a jamais existé côté moteur.
 	var upk := int(b.get("entretien", 0))
 	if upk > 0:
 		var upkl := Label.new()
@@ -382,7 +329,6 @@ func _edifice_card(w, b: Dictionary) -> Control:
 		upkl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		vb.add_child(upkl)
 
-	# L3 — RESSOURCES (la recette, en icônes)
 	var cost: Array = b.get("cost", [])
 	if cost.is_empty():
 		var sl := Label.new()
@@ -399,7 +345,6 @@ func _edifice_card(w, b: Dictionary) -> Control:
 		for c in cost:
 			_cost_chip(flow, String(c.get("res", "")), _cost_qty_real(int(c.get("qty", 0))))
 
-	# L4 — PROCHAIN PALIER (edifice_succ), affiché MÊME s'il est verrouillé par la tech
 	var succ := int(w.edifice_succ(btype)) if w.has_method("edifice_succ") else -1
 	var succ_b: Dictionary = _bytype.get(succ, {})
 	if not succ_b.is_empty():
@@ -412,7 +357,6 @@ func _edifice_card(w, b: Dictionary) -> Control:
 		nl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		vb.add_child(nl)
 
-	# L5 — raison de verrou, en rouge
 	if not affordable:
 		var rl := Label.new()
 		rl.theme_type_variation = "Expense"
@@ -422,7 +366,6 @@ func _edifice_card(w, b: Dictionary) -> Control:
 
 	return card
 
-## une puce ressource : icône (si dispo) + « Nom ×qty ».
 func _cost_chip(into: Container, name: String, qty: int) -> void:
 	var chip := HBoxContainer.new()
 	chip.add_theme_constant_override("separation", 3)
@@ -434,9 +377,6 @@ func _cost_chip(into: Container, name: String, qty: int) -> void:
 	lb.text = "%s ×%d" % [name, qty]
 	chip.add_child(lb)
 
-# ── ONGLET MANUFACTURES — sur la province visée (target_pid, RE-KEY : pid direct) ──
-## CARTE : icône + titre + prix (L1) · la RECETTE réelle intrants → produit (L2, chantier
-## « vérité absolue » — matcher manuf_recipe(bld), plus une phrase d'ambiance).
 func _build_manufactures() -> void:
 	var w = Sim.world
 	if w == null:
@@ -448,7 +388,7 @@ func _build_manufactures() -> void:
 		return
 	var mcost: int = int(w.manuf_cost()) if w.has_method("manuf_cost") else 0
 	var any := false
-	for bld in range(24):   # BLD_TYPE_COUNT (miroir display-only, motif province_detail)
+	for bld in range(24):   # BLD_TYPE_COUNT
 		if int(w.manuf_legal(target_pid, bld)) != 1:
 			continue
 		any = true
@@ -507,8 +447,6 @@ func _manuf_card(bld: int, nom: String, recipe_txt: String, mcost: int, upkeep: 
 	rl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vb.add_child(rl)
 
-	# ENTRETIEN (retour joueur 2026-07-14 : le moteur le prélève chaque mois, la carte
-	# doit le dire — miroir EXACT E1bis.10, au niveau de naissance ici, pas encore bâtie).
 	if upkeep > 0:
 		var upkl := Label.new()
 		upkl.theme_type_variation = "RowDim"
@@ -517,15 +455,10 @@ func _manuf_card(bld: int, nom: String, recipe_txt: String, mcost: int, upkeep: 
 		vb.add_child(upkl)
 	return card
 
-# ── LE CLIC agit : on appelle l'actionneur joueur (façade) et on affiche le retour ──
+## Ordres ENFILÉS (appliqués au tick) ; build_legal au clic sinon le drain refuse en silence.
 func _act(kind: String, type: int, nom: String) -> void:
 	if Sim.world == null:
 		return
-	# Les ordres sont ENFILÉS (journal déterministe) : ils s'appliquent au prochain
-	# tick (après agency_advance). En pause, l'ordre attend la reprise. Le retour
-	# n'est donc que « mis en file », pas le verdict d'application (qui tombe au tick).
-	# lot M — le drain refuse en SILENCE (or/matière) : on ne dit « ordre émis » que
-	# si build_legal passe AU MOMENT DU CLIC ; sinon on nomme le refus.
 	if kind == "build":
 		if Sim.world.has_method("build_legal"):
 			var bl: Dictionary = Sim.world.build_legal(-1, type)
@@ -546,16 +479,14 @@ func _act(kind: String, type: int, nom: String) -> void:
 		Sound.play("ui_click")
 	build_requested.emit(kind, type)
 	_refresh()
-	Sim.notify_action()   # verbe joueur (bâtir) → refresh des chiffres au drain (live)
+	Sim.notify_action()
 
-# ── PRIMITIVES DE LAYOUT ──────────────────────────────────────────────────────
 func _dim_line(txt: String) -> void:
 	var l := Label.new()
 	l.theme_type_variation = "RowDim"
 	l.text = txt
 	_body.add_child(l)
 
-## une petite icône du pack (cadrée au slot ; rien si absente) — motif province_panel_v2.
 func _icon(into: Container, tex: Texture2D, sz := 18) -> void:
 	if tex == null:
 		return
