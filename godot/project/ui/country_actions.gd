@@ -102,7 +102,7 @@ func _build() -> void:
 	sb.set_border_width_all(1)
 	sb.set_border_width(SIDE_TOP, 3)
 	sb.set_corner_radius_all(1)
-	sb.set_content_margin_all(14)
+	sb.set_content_margin_all(10)   # RÉDUIT (retour joueur 2026-07-21 « trop chunky ») : 14→10
 	_panel.add_theme_stylebox_override("panel", sb)
 	add_child(_panel)
 
@@ -465,12 +465,21 @@ func _war_press() -> void:
 func _layout() -> void:
 	var vp := get_viewport_rect().size
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var drawer_w := clampf(vp.x * 0.28, 420.0, 540.0)
-	# TIROIR DIPLOMATIQUE : attaché au rail gauche, pleine hauteur et défilable. Il ne
-	# flotte plus devant le ledger droit et laisse le théâtre central disponible.
+	# TIROIR DIPLOMATIQUE — RÉDUIT/DÉCOLLÉ/DÉFILABLE (retour joueur 2026-07-21 « trop
+	# chunky ») : plus étroit (0.28→0.24, 420-540→360-440), DÉCOLLÉ du rail/topbar par une
+	# marge, et sa hauteur HUG le contenu VISIBLE au lieu du plein écran — au-delà d'un
+	# plafond, le ScrollContainer existant prend le relais (la barre n'apparaissait jamais
+	# tant que le panneau se forçait à toute la hauteur).
+	var margin := 12.0
+	var drawer_w := clampf(vp.x * 0.24, 360.0, 440.0)
+	_panel.position = Vector2(Frame.SIDEBAR_W + margin, Frame.TOPBAR_H + margin)
+	var ceiling := maxf(160.0, vp.y - Frame.TOPBAR_H - 2.0 * margin)
+	var content_h := 160.0
+	if _scroll != null and _scroll.get_child_count() > 0:
+		# +20 = les content_margin haut+bas du panneau (10×2) autour du scroll
+		content_h = (_scroll.get_child(0) as Control).get_combined_minimum_size().y + 20.0
 	_panel.custom_minimum_size = Vector2(drawer_w, 0)
-	_panel.position = Vector2(Frame.SIDEBAR_W, Frame.TOPBAR_H)
-	_panel.size = Vector2(drawer_w, maxf(160.0, vp.y - Frame.TOPBAR_H))
+	_panel.size = Vector2(drawer_w, clampf(content_h, 160.0, ceiling))
 
 func open_country(cid: int) -> void:
 	if Sim.world == null or cid < 0 or cid == int(Sim.world.player()):
@@ -720,6 +729,9 @@ func _refresh() -> void:
 			_peace_open = false
 			_peace_box.visible = false
 	_peace_refresh()
+	# la hauteur SUIT le contenu visible (guerre/paix/sections repliées changent le total) —
+	# recalculée au refresh pour que le panneau reste compact et la barre de scroll juste.
+	_layout()
 
 func _act(verb: String) -> void:
 	var w = Sim.world
