@@ -182,14 +182,13 @@ func _update_flash() -> void:
 ## reason build_legal → mot (2 or · 3 matière · 4 tech de palier · 1 structurel)
 func _reason_word(reason: int) -> String:
 	match reason:
-		2: return "or insuffisant"
-		3: return "matière manquante"
-		4: return "tech de palier manquante"
+		2: return "Nécessite : plus d'or"
+		3: return "Nécessite : matière"
+		4: return "Nécessite : tech de palier"
 		_: return "indisponible ici (palier/déjà bâti)"
 
 func _reason_label(result: Dictionary) -> String:
-	var label := String(result.get("reason_label", ""))
-	return label if label != "" else _reason_word(int(result.get("reason", 1)))
+	return _reason_word(int(result.get("reason", 1)))
 
 ## get_info_card (TooltipServer) + test build_info_card_test — garder la signature.
 func _build_info_card(b: Dictionary, legal: Dictionary) -> Dictionary:
@@ -351,7 +350,7 @@ func _edifice_card(w, b: Dictionary) -> Control:
 		var slocked := not bool(succ_b.get("debloque", false))
 		var nl := Label.new()
 		nl.theme_type_variation = "RowDim"
-		nl.text = "Prochain palier : %s%s" % [String(succ_b.get("nom", "")), " (verrou tech)" if slocked else ""]
+		nl.text = "Déverrouille : %s%s" % [String(succ_b.get("nom", "")), " (verrou tech)" if slocked else ""]
 		if not slocked:
 			nl.add_theme_color_override("font_color", ParchTheme.GREEN)
 		nl.mouse_filter = Control.MOUSE_FILTER_IGNORE
