@@ -2704,14 +2704,14 @@ static const char *api_edifice_effet(Edifice e){
     if (!d) return "";
     char *b = eb[e]; b[0]=0;
     int len=0, first=1;
-    /* LEXIQUE 4X : mot = métrique, chiffre = force de l'édifice ; détail au hover. */
+    /* mot = métrique 0-100, chiffre = force de l'édifice ; détail au hover.
+     * Institutions (K) + coercition (H) fondues en « capacité administrative ». */
     #define EF_ADD(word, val) do{ float _v=(val); if(_v>0.001f){ \
         char _n[16]; \
         if (fabsf(_v-(float)(long)(_v+0.5f))<0.05f) snprintf(_n,sizeof _n,"%ld",(long)(_v+0.5f)); \
         else snprintf(_n,sizeof _n,"%.1f",_v); \
         len += snprintf(b+len, sizeof eb[e]-(size_t)len, "%s+%s %s", first?"":" · ", _n, (word)); first=0; } }while(0)
-    EF_ADD("développement", d->delta.K_inst);
-    EF_ADD("sécurité",      d->delta.H_coerc);
+    EF_ADD("capacité administrative", d->delta.K_inst + d->delta.H_coerc);
     EF_ADD("prospérité",    fmaxf(d->delta.PE_infra, d->delta.P_open));
     EF_ADD("logement",      d->delta.food_cap);
     EF_ADD("service",       d->delta.faith);
