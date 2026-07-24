@@ -110,14 +110,10 @@ de la famille ivoire/brun/or) — seulement cette duplication de constantes.
 | DevPanel (MODTOOLS) | `ui/devpanel.gd` | **F10** (`main.gd:537-539`) | flottant centré | palette locale | liste filtrable de ~168 tunables (champ texte par tunable, PAS de slider) | F10 à nouveau, ou Échap |
 
 **Surfaces NON instanciées / mortes ou à vérifier en jeu :**
-- `alerts.gd` ne dessine plus rien à l'écran : `set_ledger_mode(true)` est posé en dur
-  par `main.gd:337`, donc `visible` reste toujours `false` (`alerts.gd:143,146`) — tout
-  son rendu de « chip empilé » (`_draw`, `_draw_chip`, `_draw_compact`, `CHIP`/`LABELW`)
-  est du code MORT dans l'état actuel : la collecte et le routage restent la
-  RÉSOLUTION UNIQUE, consommée exclusivement par `empire_sidebar.gd` via
-  `ledger_rows()`/`journal_rows()`. À vérifier en jeu si un mode « chips flottants sur
-  la carte » est encore accessible autrement (aucun site d'appel `set_ledger_mode(false)`
-  trouvé).
+- `alerts.gd` est un nœud DATA-ONLY (rendu flottant RETIRÉ le 2026-07-24, cf. §D.2) : il
+  collecte, route et alimente le journal, mais ne DESSINE plus rien. `set_ledger_mode(true)`
+  posé en dur par `main.gd` subsiste par compat (no-op). Unique surface de notification :
+  `empire_sidebar.gd` via `ledger_rows()`/`journal_rows()`.
 - ~~`province_panel.gd` (legacy) et `province_panel_v2.gd` peuvent être visibles
   simultanément, à la MÊME ancre~~ **CORRIGÉ (UI-DOCTRINE D1, 2026-07-18)** :
   `province_panel.gd` est supprimé, `province_panel_v2.gd` est LA seule fiche province.
@@ -395,18 +391,15 @@ membrane MOTS). Constat froid, sourcé fichier:ligne — pas un procès.
   `budget_panel_v2.gd`, l'interaction, pas les 4 vues) — reste un doublon de
   LECTURE assumé (chacune sert un contexte différent : tiroir permanent,
   panneau dédié, fenêtre de gestion, historique).
-- **`alerts.gd` : une pile d'alertes entièrement câblée mais qui ne se dessine
-  jamais.** `set_ledger_mode(true)` est posé sans condition (`main.gd:337`) — le
-  chemin `_draw()`/`_draw_chip()`/`_draw_compact()` de ce fichier (476-502) est
-  mort dans l'état actuel du jeu ; seule sa collecte (`_collect()`, `_poll_feed()`)
-  sert, consommée par `empire_sidebar.gd`. Rien d'illégitime en soi, mais ~150
-  lignes de rendu jamais atteintes méritent un commentaire au fichier (absent
-  aujourd'hui) plutôt qu'une découverte au prochain audit.
-- **Codex désynchronisé du code réel.** Les verbes de l'onglet Monnaie
-  (emprunt d'État, banqueroute volontaire, emprunt à un ordre — tous
-  UI-MONNAIE 2026-07-16) n'ont pas d'entrée dans `codex.gd::DOMAINS` — le
-  Codex prétend documenter « tout ce que le joueur peut faire », il en a
-  raté trois verbes récents.
+- ~~**`alerts.gd` : une pile d'alertes câblée mais qui ne se dessine jamais.**~~
+  **RÉSOLU (2026-07-24, 248df9d)** : le rendu flottant mort est RETIRÉ
+  (`_draw`/`_draw_chip`/`_draw_compact`/`_gui_input`/`_get_tooltip`/`_rows`/`_process`
+  + constantes CHIP/GAP/LABELW/COL_COMPACT + preloads VKit/UIKit/Frame + le sous-système
+  `major_open_fn`/`major_open()`). alerts.gd est désormais un nœud data-only ; deadness
+  prouvée par graphe de références avant coupe.
+- ~~**Codex désynchronisé du code réel.**~~ **RÉSOLU** : `codex.gd::DOMAINS` porte
+  désormais une section « Monnaie » (emprunt à un ordre, emprunt d'État, banqueroute
+  volontaire) — cf. `codex.gd:30-34`.
 - **Menu Construction sans raccourci clavier ni entrée de menu directe** — la
   SEULE information de « ce qu'un bâtiment coûte AVANT de posséder une
   province » (l'entretien, les recettes) exige : sélectionner une province à
@@ -419,10 +412,9 @@ membrane MOTS). Constat froid, sourcé fichier:ligne — pas un procès.
   `VKit`/`ParchTheme`. Aucune dérive visuelle constatée aujourd'hui (les
   valeurs sont proches), mais un futur changement de palette centrale ne les
   atteindra pas automatiquement — dette silencieuse, pas un bug visible.
-- **`army_panel.gd` hors de la pile Échap** (`main.gd:745` ne le liste pas) —
-  moins grave que D.1.1 car il se ferme par désélection sur la carte (clic
-  droit / re-sélection), mais reste une exception non documentée à la règle
-  « tout panneau affiché doit pouvoir être dismiss [par Échap] ».
+- ~~**`army_panel.gd` hors de la pile Échap.**~~ **RÉSOLU (2026-07-24)** : `_close_topmost`
+  désélectionne l'armée au tier « sélection » (`map._set_selected_corps([])`), le panneau
+  suit — même traitement que la fiche province/pays.
 - ~~**Trois variantes de « fiche province » au total**~~ **RÉDUIT À DEUX
   (UI-DOCTRINE D1, 2026-07-18)** : `province_panel.gd` (legacy, 944 lignes) est
   supprimé. Restent `province_panel_v2.gd` (LA fiche, ~1090 lignes) et

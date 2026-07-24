@@ -802,6 +802,13 @@ func _close_topmost() -> bool:
 			p.visible = false
 			Sound.play("ui_parchment_close")
 			return true
+	# ARMÉE sélectionnée (army_panel, piloté par la sélection carte) : Échap la DÉSÉLECTIONNE
+	# — le panneau suit (army_selection_changed → set_army([])). Comble « army_panel hors pile
+	# Échap » (CARTOGRAPHIE_UI §D.2) : même tier « sélection » que province/pays, pas un hide sec.
+	var mv := get_node_or_null("MapView")
+	if mv != null and not mv._selected_corps.is_empty():
+		mv._set_selected_corps([])
+		return true
 	if (_prov_panel_v2 != null and _prov_panel_v2.visible) or (_country_panel != null and _country_panel.visible):
 		_clear_selection()
 		return true
