@@ -54,9 +54,9 @@ static func build() -> Theme:
 		th.set_color("font_pressed_color", cls, VKit.COL_GOLD)
 		th.set_color("font_disabled_color", cls, Color(VKit.COL_DIM.r, VKit.COL_DIM.g, VKit.COL_DIM.b, 0.65))
 	# LineEdit : champ lisible + focus doré (feuillet blanchi, plus clair que le panneau)
-	var le := _box(Color(0xf2/255.0, 0xea/255.0, 0xd4/255.0), VKit.COL_EDGE)
+	var le := _box(Color(0xe7/255.0, 0xd6/255.0, 0xa8/255.0), VKit.COL_EDGE)
 	th.set_stylebox("normal", "LineEdit", le)
-	th.set_stylebox("focus", "LineEdit", _box(Color(0xf2/255.0, 0xea/255.0, 0xd4/255.0), VKit.COL_GOLD, 2))
+	th.set_stylebox("focus", "LineEdit", _box(Color(0xe7/255.0, 0xd6/255.0, 0xa8/255.0), VKit.COL_GOLD, 2))
 	th.set_color("font_color", "LineEdit", VKit.COL_PARCH)
 	# Panneaux natifs : même plaque que les panneaux immédiats, cohérente avec ParchTheme.
 	var native_panel := _box(VKit.COL_PANEL, VKit.COL_EDGE, 1)

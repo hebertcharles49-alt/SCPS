@@ -18,8 +18,8 @@ extends RefCounted
 #   2. SECTION — `section()`  : COL_GOLD (bandeau de sous-panneau)
 #   3. VALEUR  — `value()`    : COL_VALUE, LE plus lumineux — le chiffre qui compte
 #   4. DÉTAIL  — `detail()`   : COL_DIM à FS_SMALL — flavor/annexe, contraste réduit
-const COL_PANEL    := Color(0xe7/255.0, 0xd9/255.0, 0xb6/255.0, 1.0)          # parchemin clair — ParchTheme.PANEL_BG
-const COL_PANEL2   := Color(0xd8/255.0, 0xc6/255.0, 0x9a/255.0, 1.0)          # bandeau/chip — ParchTheme.HEADER_BG
+const COL_PANEL    := Color(0xda/255.0, 0xc4/255.0, 0x8f/255.0, 1.0)          # parchemin SÉPIA (assombri/réchauffé 2026-07-24) — ParchTheme.PANEL_BG
+const COL_PANEL2   := Color(0xcb/255.0, 0xb3/255.0, 0x7c/255.0, 1.0)          # bandeau/chip sépia — ParchTheme.HEADER_BG
 const COL_PANEL_HI := Color(0xc9/255.0, 0xa2/255.0, 0x4b/255.0, 0.30)         # sélection ambrée, sans assombrir le fond
 const COL_GOLD     := Color(0x7a/255.0, 0x5c/255.0, 0x22/255.0, 1.0)          # or fané — ParchTheme.TAB_UNDERLINE
 const COL_VALUE    := Color(0x5b/255.0, 0x4a/255.0, 0x2a/255.0, 1.0)          # valeur immédiatement lisible — ParchTheme.HEADER_INK

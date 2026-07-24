@@ -12,13 +12,13 @@ extends RefCounted
 const VKit = preload("res://ui/vkit.gd")
 
 # ── PALETTE PARCHEMIN (concept 3 — JAUNIE, retour joueur 2026-07-21 « trop blanc ») ──
-const PANEL_BG      := Color("e9d59c")
-const BORDER        := Color("b39a63")
-const HEADER_BG     := Color("d9c184")
-const TABBAR_BG     := Color("e0cb8e")
+const PANEL_BG      := Color("e1c986")   # parchemin SÉPIA (assombri/réchauffé 2026-07-24)
+const BORDER        := Color("ab9159")
+const HEADER_BG     := Color("cfb46f")
+const TABBAR_BG     := Color("d6bd7a")
 const TAB_UNDERLINE := Color("7a5c22")
-const DIVIDER       := Color("c2a96a")
-const ROW_ALT       := Color("dfcc90")   # ligne alternée discrète
+const DIVIDER       := Color("b89e5f")
+const ROW_ALT       := Color("d5bf7c")   # ligne alternée discrète
 const INK           := Color("3a2f1c")   # texte primaire
 const DIM_INK       := Color("8a7643")   # labels / têtes de section
 const HEADER_INK    := Color("5b4a2a")   # titres
