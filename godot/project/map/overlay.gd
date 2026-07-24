@@ -2481,7 +2481,7 @@ func _draw_iso(w, mv: Node2D) -> void:
 				var l2 := ctr_ * 0.5 - disc
 				if l2 > 0.001 and l1 / l2 > 1.8:
 					cang = 0.5 * atan2(2.0 * sxy, sxx - syy)   # ∈ [-π/2, π/2] : jamais à l'envers
-				_name_anchor[c] = {"valid": true, "ip": Vector2(mx, my), "ang": cang}
+				_name_anchor[c] = {"valid": true, "ip": Vector2(mx, my), "ang": cang, "ext": l1}
 		var anc: Dictionary = _name_anchor[c]
 		if not bool(anc.get("valid", false)):
 			continue
@@ -2514,7 +2514,7 @@ func _draw_iso(w, mv: Node2D) -> void:
 		# grossit donc à l'écran en zoomant, jusqu'au fondu (le relais KCD des bannières).
 		var nsc: float
 		if is_emp:
-			var span := clampf(2.8 * sqrt(maxf(l1, 0.0)) + 16.0, 22.0, 220.0)   # étendue-monde du nom
+			var span := clampf(2.8 * sqrt(maxf(float(anc.get("ext", 0.0)), 0.0)) + 16.0, 22.0, 220.0)   # étendue-monde du nom
 			nsc = span / maxf(tw, 1.0)
 		else:
 			nsc = 1.1 / zoom                              # petites entités : chip écran-constant
