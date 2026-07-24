@@ -985,7 +985,14 @@ static bool endgame_heritage_metabolized_detail(const World *w, const WorldEcono
             if ((int)g->heritage != h) continue;
             tot += (double)g->count;
             float df = endgame_diffuse_coeff(g->arrival);
-            if (df > 0.f) dig += (double)g->count * (double)clampf(g->integration, 0.f, 1.f) * (double)df;
+            /* CONTRIBUTION SERVILE INVOLONTAIRE (2026-07-21, miroir de metab_eff_integration
+             * — copie délibérée, endgame ne lie pas scps_econ) : l'esclave TENU pèse un
+             * PLANCHER au numérateur, il n'est plus un pur poids-mort du dénominateur qui
+             * effondre le ratio d'Ascension. Adoucit (sans annuler) « l'esclavage recule
+             * la Merveille » : la traite reste sous-optimale, plus un mur. */
+            float ig = clampf(g->integration, 0.f, 1.f);
+            if (g->klass==CLASS_SLAVE) ig = fmaxf(ig, tune_f("SLAVE_METAB_FLOOR", 0.15f));
+            if (df > 0.f) dig += (double)g->count * (double)ig * (double)df;
         }
     }
     if (tot <= 0.0) return false;

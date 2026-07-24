@@ -885,6 +885,19 @@ static float metab_diffuse_coeff(uint8_t arrival){
     }
 }
 
+/* L'INTÉGRATION EFFECTIVE DE MÉTABOLISATION (décision joueur 2026-07-21, « les esclaves
+ * ont toujours contribué, involontairement, à certains progrès — contribution limitée,
+ * mais contribution ») : l'esclave TENU (klass CLASS_SLAVE) contribue un PLANCHER — le
+ * savoir-faire arraché (forgeron, bâtisseur, pédagogue razzié) transmis SANS assimilation
+ * volontaire. DISTINCT de l'integration, qui représente l'assimilation CHOISIE et monte à
+ * l'affranchissement : le plancher est un MINIMUM (un esclave acculturé de longue date
+ * garde son integration réelle si elle dépasse). SLAVE_METAB_FLOOR=0 : comportement
+ * pré-2026-07-21 EXACT (contribution servile tenue = nulle, golden byte-identique). */
+static float metab_eff_integration(const PopGroup *g){
+    float ig = clampf(g->integration, 0.f, 1.f);
+    if (g->klass==CLASS_SLAVE) ig = fmaxf(ig, tune_f("SLAVE_METAB_FLOOR", 0.15f));
+    return ig;
+}
 /* Ventile un groupe entre les héritages qu'il INCARNE. Tant que les peuples
  * cohabitent, le chemin historique arrival × integration reste la porte. Après
  * fusion démographique, la composition enregistrée remplace le groupe disparu :
@@ -895,10 +908,10 @@ static float metab_group_mix(const PopGroup *g, float out[HERITAGE_COUNT]){
     for(int h=0;h<HERITAGE_COUNT;h++) out[h]=0.f;
     if(econ_culture_identity_heritage_mix(g->culture_id,out)){
         if(g->arrival==ARR_NATIF) return 1.f;
-        return metab_diffuse_coeff(g->arrival)*clampf(g->integration,0.f,1.f);
+        return metab_diffuse_coeff(g->arrival)*metab_eff_integration(g);
     }
     if(g->heritage>=0 && g->heritage<HERITAGE_COUNT) out[g->heritage]=1.f;
-    return metab_diffuse_coeff(g->arrival)*clampf(g->integration,0.f,1.f);
+    return metab_diffuse_coeff(g->arrival)*metab_eff_integration(g);
 }
 
 /* SAVOIR — la POP produit la recherche (même patron que la puissance commerciale) : Σ des trois

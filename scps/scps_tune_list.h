@@ -325,6 +325,14 @@
      * soumis diffusent PLEIN (1.0, câblé) ; le DÉPORTÉ (esclave) diffuse FAIBLE — savoir
      * arraché, fragmenté, réprimé (janissaire/forge/créole : réel mais mineur). */ \
     X(METAB_DIFFUSE_SLAVE,   0.30f) \
+    /* CONTRIBUTION SERVILE INVOLONTAIRE (décision joueur 2026-07-21 : « les esclaves ont
+     * toujours contribué, involontairement, à certains progrès — limité, mais réel »).
+     * Plancher d'intégration-équivalente d'un esclave TENU pour la métabolisation
+     * (recherche ET Merveille) : le savoir-faire arraché transmis sans assimilation
+     * volontaire. Contribution effective = METAB_DIFFUSE_SLAVE × ce plancher = 0.30×0.15
+     * ≈ 4.5 % de ce qu'un migrant intégré apporte — limité. 0 = comportement pré-2026-
+     * 07-21 (esclave tenu = 0 contribution, golden byte-identique). */ \
+    X(SLAVE_METAB_FLOOR,     0.15f) \
     /* LA PRATIQUE UNIVERSELLE (décision joueur 2026-07-21 : « l'esclavage a été une
      * dynamique mondiale, quel que soit le peuple ») : can_enslave=1 par défaut, 0 par
      * l'ABOLITION (pacifiste — econ_country_can_enslave). SLAVE_FRACTION = la COUTUME
