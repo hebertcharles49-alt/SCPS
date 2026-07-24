@@ -23,10 +23,11 @@ const CFG_PATH := "user://options.cfg"
 
 # palette (charte parchemin du shell — miroir menu_root)
 const C_PANEL := Color(0.07, 0.06, 0.05, 0.84)
-const C_EDGE  := Color(0.79, 0.64, 0.29)
-const C_TEXT  := Color(0.88, 0.86, 0.82)
-const C_DIM   := Color(0.66, 0.62, 0.56)
-const C_TITLE := Color(0.90, 0.76, 0.48)
+const ShellPalette = preload("res://ui/shell_palette.gd")
+const C_EDGE  := ShellPalette.EDGE
+const C_TEXT  := ShellPalette.TEXT
+const C_DIM   := ShellPalette.DIM
+const C_TITLE := ShellPalette.TITLE
 
 ## Les LOCALES offertes — index de l'OptionButton. Les noms sont des ENDONYMES
 ## (jamais traduits : « Français » se lit en français quelle que soit la langue).

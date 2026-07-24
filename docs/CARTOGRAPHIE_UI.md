@@ -56,7 +56,13 @@ d'âge, boîtes d'évènement) redéfinissent chacun leur PROPRE jeu de constant
 `menu_root.gd:14-20`, `options_panel.gd:19-23`, `new_game_panel.gd:18-23`) plutôt que
 de référencer `VKit`/`ParchTheme` — les valeurs sont proches (cohérence par
 coïncidence), pas la même source. Aucun hérétique de PALETTE trouvé (rien en dehors
-de la famille ivoire/brun/or) — seulement cette duplication de constantes.
+de la famille ivoire/brun/or). **CONSOLIDÉ (2026-07-24)** : les quatre ACCENTS
+(EDGE or · TEXT · DIM · TITLE) des 6 écrans « cuir sombre » (menu_root, options,
+new_game, culture_creator, feedback, religion) référencent désormais `ui/shell_palette.gd`
+— source UNIQUE, teinte canonique = famille menu. Restent locaux À DESSEIN : les ALPHAS de
+voile (C_BG) et de panneau (C_PANEL), STRUCTURELS (plein écran opaque vs modale translucide),
+et le violet du Créateur de Foi (surcharge de domaine). Cette famille reste DISTINCTE du
+thème parchemin in-game (VKit/ParchTheme) — délibéré, les menus ne sont pas du parchemin.
 
 ### A.1 — Écrans plein écran (shell, avant/hors partie)
 
@@ -215,6 +221,12 @@ d'icônes (D7) ne changent aucune profondeur.
 D2, 2026-07-18)** : `KEY_R` rebranché dans `main.gd::_unhandled_input`, bascule
 `religion_panel.gd` — les commentaires `religion_panel.gd:6` et `main.gd` qui le
 documentaient sont désormais exacts.
+
+**DOCTRINE RACCOURCIS (joueur, 2026-07-24)** : l'UI est PILOTÉE À LA SOURIS — tout
+s'ouvre par bouton. Seuls **F10** (DevPanel), **Échap** (pile de fermeture), **Espace**
+(pause) et **Ctrl+K** (recherche) sont des raccourcis clavier CANONIQUES. Les touches-
+lettres héritées (T/B/V/E/H/R, F1-F8) « survivent pour l'instant » mais ne sont plus la
+direction : ne rien AJOUTER au clavier (un futur ménage pourra les retirer).
 
 **Pas de raccourci direct** (ouverture uniquement par clic/bouton) : Menu
 Construction, panneau pays étranger, fenêtre diplomatique, panneau de combat,
@@ -400,18 +412,17 @@ membrane MOTS). Constat froid, sourcé fichier:ligne — pas un procès.
 - ~~**Codex désynchronisé du code réel.**~~ **RÉSOLU** : `codex.gd::DOMAINS` porte
   désormais une section « Monnaie » (emprunt à un ordre, emprunt d'État, banqueroute
   volontaire) — cf. `codex.gd:30-34`.
-- **Menu Construction sans raccourci clavier ni entrée de menu directe** — la
-  SEULE information de « ce qu'un bâtiment coûte AVANT de posséder une
-  province » (l'entretien, les recettes) exige : sélectionner une province à
-  soi (1) → bouton Construire (2). Conforme à la doctrine des 3 clics, mais
-  c'est la seule fenêtre « majeure » (au sens `major_open()`) sans TOUCHE
-  dédiée alors que Tech/Budget/Province/Empire/Annales en ont toutes une.
-- **Panneaux shell : palette dupliquée, pas de source unique.** Cf. remarque
-  d'ouverture de la section A — 13 fichiers redéfinissent `C_BG/C_PANEL/
-  C_EDGE/C_TEXT/C_DIM/C_TITLE` en littéraux plutôt que de référencer
-  `VKit`/`ParchTheme`. Aucune dérive visuelle constatée aujourd'hui (les
-  valeurs sont proches), mais un futur changement de palette centrale ne les
-  atteindra pas automatiquement — dette silencieuse, pas un bug visible.
+- ~~**Menu Construction sans raccourci clavier.**~~ **NON — INTENTIONNEL (doctrine
+  joueur 2026-07-24)** : l'UI est PILOTÉE À LA SOURIS ; seuls **F10, Échap, Espace et
+  Ctrl+K** (recherche) sont des raccourcis clavier canoniques. Construction est
+  contextuel (province sélectionnée → bouton Construire) : une touche globale n'aurait
+  pas de cible. Les touches-lettres héritées (T/B/V/E/H/R, F1-F8) survivent « pour
+  l'instant » mais ne sont plus la direction — NE RIEN AJOUTER au clavier.
+- ~~**Panneaux shell : palette dupliquée, pas de source unique.**~~ **RÉSOLU
+  (2026-07-24)** : les 6 fichiers cuir-sombre (pas 13 : surcompte) partagent
+  `ui/shell_palette.gd` pour leurs 4 accents (EDGE/TEXT/DIM/TITLE). Reteinter le
+  shell = une seule édition. Les alphas voile/panneau (structurels) et le violet
+  religion (domaine) restent locaux, à dessein.
 - ~~**`army_panel.gd` hors de la pile Échap.**~~ **RÉSOLU (2026-07-24)** : `_close_topmost`
   désélectionne l'armée au tier « sélection » (`map._set_selected_corps([])`), le panneau
   suit — même traitement que la fiche province/pays.

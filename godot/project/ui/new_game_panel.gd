@@ -17,10 +17,11 @@ const Creator = preload("res://ui/culture_creator.gd")
 # palette
 const C_BG    := Color(0.04, 0.03, 0.02, 0.92)
 const C_PANEL := Color(0.10, 0.08, 0.055, 0.98)   # cuir sombre
-const C_EDGE  := Color(0.79, 0.64, 0.29)          # or vieilli
-const C_TEXT  := Color(0.88, 0.86, 0.82)
-const C_DIM   := Color(0.62, 0.60, 0.58)
-const C_TITLE := Color(0.86, 0.70, 0.42)
+const ShellPalette = preload("res://ui/shell_palette.gd")
+const C_EDGE  := ShellPalette.EDGE
+const C_TEXT  := ShellPalette.TEXT
+const C_DIM   := ShellPalette.DIM
+const C_TITLE := ShellPalette.TITLE
 
 # presets de TAILLE : clé tr() (i18n/ui.csv) → [n_empires, n_city_states]
 const SIZES := [

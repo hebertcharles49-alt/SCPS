@@ -83,12 +83,13 @@ const HER_LORE := [
 # palette (cohérente avec le chrome sombre du jeu)
 const C_BG     := Color(0.04, 0.03, 0.02, 0.74)   # voile plein écran
 const C_PANEL  := Color(0.10, 0.08, 0.055, 0.98)  # cuir sombre
-const C_EDGE   := Color(0.79, 0.64, 0.29)         # liseré or vieilli
-const C_TEXT   := Color(0.88, 0.86, 0.82)
-const C_DIM    := Color(0.62, 0.60, 0.58)
+const ShellPalette = preload("res://ui/shell_palette.gd")
+const C_EDGE   := ShellPalette.EDGE
+const C_TEXT   := ShellPalette.TEXT
+const C_DIM    := ShellPalette.DIM
 const C_GOOD   := Color(0.46, 0.74, 0.42)
 const C_BAD    := Color(0.82, 0.40, 0.34)
-const C_TITLE  := Color(0.86, 0.70, 0.42)
+const C_TITLE  := ShellPalette.TITLE
 
 # données de la façade
 var _her: Array = []                  # héritages : [{id,nom,sphere,exemple}] (sphere = interne, non affiché)
