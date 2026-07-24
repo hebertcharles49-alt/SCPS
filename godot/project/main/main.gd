@@ -375,9 +375,6 @@ func _ready() -> void:
 	# tandis que ce nœud conserve leur collecte et leurs actions.
 	alerts.set_ledger_mode(true)
 	esb.set_alert_source(alerts)
-	# AUDIT UI 1.4 : alerts n'a pas de référence à Main → un Callable lu chaque frame
-	# (major_open() n'existe qu'ICI, sur Main, où vivent tous les panneaux majeurs).
-	alerts.major_open_fn = Callable(self, "major_open")
 	alerts.open_tab.connect(func(i): navigate_to(InfoRef.make(InfoRef.SIDEBAR_TAB, i), "sidebar"))
 	alerts.open_tech.connect(func():
 		navigate_to(InfoRef.make(InfoRef.TECH, -1)))
@@ -777,26 +774,6 @@ func _on_tick_endgame(_year: int) -> void:
 	if fin > 0:
 		_epilogue_shown = true
 		_epilogue.open(fin)
-
-## AUDIT UI 1.4 (« alertes vs fenêtres majeures ») : vrai si l'une des FENÊTRES MAJEURES
-## de lecture/décision joueur est ouverte — le même sous-ensemble de `_close_topmost`
-## (moins `_devpanel` outil de MOD et `_battle_panel` déjà son propre panneau de combat,
-## non nommés par l'audit). alerts.gd lit ceci à CHAQUE frame (via un Callable, il n'a
-## pas de référence à Main) pour masquer sa pile ordinaire derrière un compteur compact.
-## UI-POLISH #13 (cartographie UI 284bc3b) : `_budget_v2`/`_empire_win`
-## étaient ABSENTS d'ici aussi (même bug de non-enrôlement que `_close_topmost` — ajoutés
-## après coup, jamais raccordés aux listes « panneau majeur » historiques) : le Trésor ou
-## la fenêtre Diplomatie ouverts ne masquaient pas la pile d'alertes ordinaire derrière
-## le compteur compact, contrairement aux autres écrans profonds.
-## D1-UNIFICATION : `_prov_panel_v2` (LA fiche province) n'est PAS un panneau majeur — elle
-## s'ouvre au moindre clic de province, une interaction ROUTINIÈRE, pas un écran profond ;
-## la classer « majeure » aurait fait collapse la pile d'alertes en continu (retiré ici).
-func major_open() -> bool:
-	for p in [_memory_panel, _search_palette, _tech, _econ, _codex, _construct, _prov_detail, _country_actions,
-			_chronique, _age_recap, _epilogue, _religion, _budget_v2, _empire_win]:
-		if p != null and p.visible:
-			return true
-	return false
 
 ## ferme le PANNEAU FLOTTANT visible le plus haut (un par pression d'Échap), puis la
 ## sélection. true = quelque chose a été fermé (Échap consommé avant le menu).

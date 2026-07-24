@@ -5,15 +5,13 @@ extends Control
 ##   · SOCIAL vert (édifice constructible) · SAVOIR bleu (aucune recherche) · FOI doré
 ##   (fondation prête). Clic = ouvre le panneau concerné (ou exécute le geste) ; survol =
 ## tooltip. Display-only : tout est LU de la façade, les clics émettent des signaux —
-## main câble les panneaux. Recalculé au tick (queue_redraw), jamais un état propre.
+## main câble les panneaux. NŒUD DATA-ONLY : il collecte et route, il ne DESSINE plus rien
+## (le rendu flottant sur carte a été retiré au profit de la bande droite, empire_sidebar.gd).
 ## LE JOURNAL (`_journal`/`journal_rows()`) est la seconde sortie de cette RÉSOLUTION
 ## UNIQUE : un ring persistant (JOURNAL_MAX) où TOUTE notification colorée — fil moteur
 ## ET conditions — atterrit à son APPARITION, rendu par empire_sidebar.gd (section
 ## JOURNAL). Aucune notification n'existe qu'en éphémère (règle joueur).
 
-const VKit = preload("res://ui/vkit.gd")
-const UIKit = preload("res://ui/uikit.gd")
-const Frame = preload("res://ui/frame.gd")
 ## worst_shortage() — même dérivation que la cellule « déficit » du bloc ÉCONOMIE
 ## de la topbar (UI-2) : un seul calcul, préchargé statiquement (DRY).
 const Topbar = preload("res://ui/topbar.gd")
@@ -35,19 +33,8 @@ const COL_SAVOIR := Color(0.37, 0.54, 0.70)   ## bleu — savoir
 const COL_FOI    := Color(0.79, 0.64, 0.30)   ## doré — foi
 const COL_ECO    := Color(0.78, 0.52, 0.22)   ## orange — économie/commerce
 
-const CHIP := 30.0
-const GAP := 6.0
-const LABELW := 280.0  ## la colonne du LABEL visible (« letters » RimWorld : lisible sans hover)
-const FEED_MAX := 8   ## évènements gardés à l'écran (les plus récents ; clic = acquitté)
-const COL_COMPACT := Color(0.70, 0.62, 0.40)   ## bronze neutre — « le reste attend, hors vue »
+const FEED_MAX := 8   ## évènements gardés dans le fil transient (les plus récents ; clic = acquitté)
 const JOURNAL_MAX := 200   ## le JOURNAL (empire_sidebar.gd, section JOURNAL) : ring persistant
-
-## AUDIT UI 1.4 (« alertes vs fenêtres majeures ») : Main expose major_open() (une des
-## fenêtres de lecture/décision — tech/éco/codex/construction/détail/diplomatie/annales/
-## chapitre/épilogue/religion — est ouverte) ; alerts.gd n'a pas de référence à Main, donc
-## un Callable posé par main.gd juste après avoir instancié ce panneau (cf. main.gd).
-var major_open_fn: Callable = Callable()
-var _major_open := false
 
 ## LA TABLE DU FIL (FeedKind → présentation) — AJOUTER UN ÉVÈNEMENT = une ligne ici
 ## (+ la valeur enum + le feed_push au site d'observation, cf. scps_provlog.h).
@@ -71,7 +58,6 @@ const POPUP_KINDS := [1, 2, 6, 7, 10]   # guerre · paix (verdict) · révolte �
 var _alerts := []    ## [{icon, col, tip, act, …}] conditions, recalculées à chaque _refresh
 var _events := []    ## [{icon, col, tip, seq}] fil transient (clic = acquitté)
 var _seen_seq := 0   ## dernier seq lu du fil
-var _ledger_mode := false
 
 ## LE JOURNAL — ring PERSISTANT (JOURNAL_MAX), le plus récent en TÊTE (push_front) ;
 ## display-only, jamais sérialisé. Alimenté par CHAQUE notification colorée : les
@@ -83,10 +69,10 @@ var _journal := []
 var _journal_seq := 0
 var _prev_cond_keys := {}   ## clés des conditions actives au refresh précédent (edge-detection)
 
-## Les notifications vivent dans le ledger droit. Le nœud conserve collecte, polling
-## et routage des actions, mais ne dessine plus une seconde colonne flottante sur la carte.
-func set_ledger_mode(on: bool) -> void:
-	_ledger_mode = on
+## COMPAT : ce nœud pouvait jadis dessiner une colonne flottante sur la carte (ledger_mode
+## false) OU déléguer à la bande droite (true) ; le rendu flottant a été retiré, la bande
+## droite est l'unique surface. Conservé pour les appelants (main.gd, journal_audit.gd).
+func set_ledger_mode(_on: bool) -> void:
 	_refresh()
 
 func ledger_rows() -> Array:
@@ -102,27 +88,16 @@ func journal_rows() -> Array:
 	return _journal.duplicate(true)
 
 func _ready() -> void:
-	mouse_filter = Control.MOUSE_FILTER_STOP
+	visible = false                             # nœud DATA-ONLY : il ne s'affiche jamais
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	Sim.generated.connect(func():
 		_journal.clear(); _journal_seq = 0; _prev_cond_keys.clear()
 		_refresh())
 	Sim.ticked.connect(func(_y): _refresh())
-	get_viewport().size_changed.connect(_refresh)
 	_refresh.call_deferred()
 
-## AUDIT 1.4 : `major_open` bascule sur un simple `.visible = false` posé par un tas de
-## sites différents (fermeture par ✕, par Échap, par un signal…) — aucun d'eux ne
-## PRÉVIENT alerts.gd. On le SURVEILLE donc à chaque frame (le Callable est bon marché)
-## et on ne redessine/retaille que lors d'un CHANGEMENT effectif.
-func _process(_dt: float) -> void:
-	if not major_open_fn.is_valid():
-		return
-	var mo := bool(major_open_fn.call())
-	if mo != _major_open:
-		_refresh()
-
-## recalcule la pile + repositionne le contrôle (il n'occupe QUE sa colonne de chips —
-## jamais un plein-écran qui mangerait les clics de la carte).
+## recalcule la RÉSOLUTION (conditions + fil transient + journal) puis notifie la bande
+## droite (empire_sidebar.gd). Data-only : aucun visible/position/redraw ici.
 func _refresh() -> void:
 	# GATE : tant que la PARTIE n'a pas commencé (menu/setup), aucune alerte ni popup —
 	# le monde de fond tourne pour la vitrine, ses évènements ne concernent pas le joueur.
@@ -132,26 +107,12 @@ func _refresh() -> void:
 		if Sim.world != null and Sim.world.has_method("feed_poll"):
 			for ev in Sim.world.feed_poll(_seen_seq):   # on JETTE le fil pré-partie (acquitté)
 				_seen_seq = maxi(_seen_seq, int(ev["seq"]))
-		visible = false
 		ledger_changed.emit()
 		return
 	_alerts = _collect()
 	_journal_track_conditions(_alerts)
 	_poll_feed()
-	_major_open = major_open_fn.is_valid() and bool(major_open_fn.call())
-	if _ledger_mode:
-		visible = false
-		ledger_changed.emit()
-		return
-	visible = true
-	var n := _rows().size()
-	var vw := get_viewport_rect().size.x
-	# décalé à GAUCHE de l'empire-sidebar (bande droite permanente en jeu) ; la colonne
-	# porte désormais le LABEL visible (façon « letters » RimWorld) + le chip
-	position = Vector2(vw - CHIP - LABELW - 10.0 - (Frame.LEDGER_W + 6.0 if Sim.game_on else 0.0), Frame.TOPBAR_H + 10.0)
-	size = Vector2(CHIP + LABELW, maxf(1.0, n * (CHIP + GAP)))
-	visible = n > 0
-	queue_redraw()
+	ledger_changed.emit()
 
 ## VOIE ÉVÈNEMENTS : poll incrémental du fil moteur → chips TRANSIENTS
 ## (clic gauche = lieu si localisé ; clic droit = acquittement seul).
@@ -407,34 +368,6 @@ func _stack() -> Array:
 	st.append_array(_alerts)
 	return st
 
-## AUDIT 1.4 : les LIGNES effectivement affichées. Fenêtre majeure FERMÉE → une ligne par
-## alerte/évènement (pile normale, INCHANGÉE — « fermeture ⇒ pile restaurée telle quelle »
-## est vrai PAR CONSTRUCTION : rien n'est perdu, tout est recalculé de `_alerts`/`_events`).
-## Fenêtre majeure OUVERTE → les items « CRITIQUES » (`item.critical == true`) restent un
-## par un, le RESTE se replie en UNE ligne compteur « N ⚠ ». Aucune alerte n'est typée
-## critique aujourd'hui : les décisions réellement urgentes (guerre/révolte/sécession/
-## directeur, `event_dialog.gd`/`event_popup.gd`) ouvrent déjà leur PROPRE modale
-## au-dessus de tout, indépendamment de major_open — rien dans CETTE pile n'a besoin
-## d'échapper au repli. Le champ reste lu pour qu'un futur type d'alerte puisse s'y
-## soustraire sans toucher ce fichier.
-func _rows() -> Array:
-	var st := _stack()
-	if _ledger_mode or not _major_open:
-		var out := []
-		for al in st:
-			out.append({"kind": "chip", "data": al})
-		return out
-	var out := []
-	var collapsed := []
-	for al in st:
-		if bool(al.get("critical", false)):
-			out.append({"kind": "chip", "data": al})
-		else:
-			collapsed.append(al)
-	if collapsed.size() > 0:
-		out.append({"kind": "compact", "items": collapsed})
-	return out
-
 ## label COURT dérivé du tip (coupé au tiret/parenthèse, tronqué) — le texte VISIBLE
 ## de la « letter » (façon RimWorld : la notification se lit sans survol).
 func _short(tip: String) -> String:
@@ -451,72 +384,6 @@ func _short(tip: String) -> String:
 	if s.length() > 42:
 		s = s.substr(0, 41) + "…"
 	return s
-
-## un CHIP normal (alerte/évènement) à la ligne `y` — factorisé de l'ancien _draw()
-## unique pour être partagé avec la vue « fenêtre majeure » (items critiques, 1.4).
-func _draw_chip(al: Dictionary, y: float) -> void:
-	var c: Color = al["col"]
-	# LE CARTOUCHE-LABEL (letters RimWorld) : texte lisible sans hover, aligné à
-	# droite contre le chip, fond sombre translucide + liseré au domaine.
-	var lab := _short(String(al.get("tip", "")))
-	if lab != "":
-		var lw := VKit.text_w(lab, VKit.FS_SMALL) + 14.0
-		var lr := Rect2(LABELW - lw, y + 3, lw, CHIP - 6)
-		VKit.fill(self, lr, Color(0.07, 0.055, 0.04, 0.88))
-		VKit.box(self, lr, Color(c, 0.75))
-		VKit.text(self, Vector2(lr.position.x + 7, y + 7), VKit.COL_PARCH, lab, VKit.FS_SMALL)
-	var r := Rect2(LABELW, y, CHIP, CHIP)
-	VKit.fill(self, r, VKit.COL_PANEL)
-	draw_rect(r, c, false, 2.0)                       # le CODE COULEUR : liseré épais du domaine
-	draw_rect(Rect2(LABELW, y + CHIP - 4, CHIP, 4), c)  # + socle plein (lisible en périphérie)
-	UIKit.draw_icon(self, String(al["icon"]), Vector2(LABELW + 5, y + 3), 20)
-	if al.has("seq"):                                  # ÉVÈNEMENT : pastille « neuf » en coin
-		draw_circle(Vector2(LABELW + CHIP - 4, y + 4), 3.0, Color(0.95, 0.90, 0.75))
-
-## AUDIT 1.4 : le COMPTEUR compact « N ⚠ » qui remplace la pile ordinaire quand une
-## fenêtre majeure est ouverte — même ancrage/gabarit qu'un chip normal (couleur neutre,
-## pas de code-domaine puisqu'il en résume plusieurs).
-func _draw_compact(n: int, y: float) -> void:
-	var lab := "%d ⚠" % n
-	var lw := VKit.text_w(lab, VKit.FS_SMALL) + 14.0
-	var lr := Rect2(LABELW - lw, y + 3, lw, CHIP - 6)
-	VKit.fill(self, lr, Color(0.07, 0.055, 0.04, 0.88))
-	VKit.box(self, lr, Color(COL_COMPACT.r, COL_COMPACT.g, COL_COMPACT.b, 0.75))
-	VKit.text(self, Vector2(lr.position.x + 7, y + 7), VKit.COL_PARCH, lab, VKit.FS_SMALL)
-	var r := Rect2(LABELW, y, CHIP, CHIP)
-	VKit.fill(self, r, VKit.COL_PANEL)
-	draw_rect(r, COL_COMPACT, false, 2.0)
-	draw_rect(Rect2(LABELW, y + CHIP - 4, CHIP, 4), COL_COMPACT)
-	UIKit.draw_icon(self, "alert_warning", Vector2(LABELW + 5, y + 3), 20)
-
-func _draw() -> void:
-	# AUDIT 1.4 : lu ICI, à chaque redessin — le seul autre lecteur (_process) ne fait que
-	# détecter le CHANGEMENT pour forcer ce redessin, la valeur qui compte est celle-ci.
-	_major_open = major_open_fn.is_valid() and bool(major_open_fn.call())
-	var y := 0.0
-	for row in _rows():
-		if String(row["kind"]) == "compact":
-			_draw_compact((row["items"] as Array).size(), y)
-		else:
-			_draw_chip(row["data"], y)
-		y += CHIP + GAP
-
-func _gui_input(event: InputEvent) -> void:
-	if not (event is InputEventMouseButton and event.pressed):
-		return
-	var rows := _rows()
-	var idx := int(event.position.y / (CHIP + GAP))
-	if idx < 0 or idx >= rows.size():
-		return
-	var row: Dictionary = rows[idx]
-	if String(row["kind"]) == "compact":
-		# le compteur RÉSUME plusieurs alertes — rien d'univoque à cibler ; fermer la
-		# fenêtre majeure restaure la pile cliquable telle quelle (aucune perte).
-		accept_event()
-		return
-	var al: Dictionary = row["data"]
-	activate_ledger(al, event.button_index)
-	accept_event()
 
 ## Action publique utilisée par les lignes du ledger. Les clics gardent exactement la
 ## sémantique des anciennes letters : gauche = agir/acquitter, droite = balayer l'évènement.
@@ -580,23 +447,6 @@ func _route_action(al: Dictionary) -> void:
 			# le clic n'ENGAGE plus directement : il ouvre l'ÉCRAN DE CHAPITRE (récap
 			# d'âge, monde en pause) — c'est LÀ que le verbe s'émet, ou pas (« Plus tard »).
 			age_recap_requested.emit()
-
-## HOVER natif : le tooltip de l'alerte survolée — ou (fenêtre majeure ouverte, ligne
-## compteur) les tips des alertes repliées, CONCATÉNÉS (audit 1.4 : « hover = les tips
-## concaténés »).
-func _get_tooltip(at_position: Vector2) -> String:
-	var rows := _rows()
-	var idx := int(at_position.y / (CHIP + GAP))
-	if idx < 0 or idx >= rows.size():
-		return ""
-	var row: Dictionary = rows[idx]
-	if String(row["kind"]) == "compact":
-		var items: Array = row["items"]
-		var parts := PackedStringArray()
-		for it in items:
-			parts.append("• " + String((it as Dictionary).get("tip", "")))
-		return "%d alerte(s) en attente (fenêtre ouverte) :\n%s" % [items.size(), "\n".join(parts)]
-	return String((row["data"] as Dictionary).get("tip", ""))
 
 static func _grp(n: int) -> String:
 	var s := str(absi(n))
