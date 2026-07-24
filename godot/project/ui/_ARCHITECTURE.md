@@ -2,29 +2,22 @@
 
 Doc court : les règles que TOUT nouveau panneau suit. L'historique vit dans git.
 
-## 0. UNE fenêtre, déclinable — jamais dessinée à la main (2026-07-21)
+## 0. UNE fenêtre native, JAMAIS un système de plus (2026-07-21)
 
-**Tout panneau contextuel est une `WindowPanel` (ui/window_panel.gd), en conteneurs
-NATIFS Godot + ParchTheme.** Godot sait faire des panneaux : plus AUCUN `_draw` /
-`VKit.text` / `draw_rect` pour un panneau — ils partagent UN chrome (header parchemin
-titre·sous-titre·✕ + corps défilable hug-content). Chaque contexte (province, pays,
-empire, armée…) REMPLIT `body()` de Controls natifs.
+**Panneau = conteneurs NATIFS Godot + ParchTheme. Jamais de `_draw`/`VKit.text` pour un
+panneau, et jamais un NOUVEAU composant-fenêtre : le chrome de référence existe déjà.**
 
-```gdscript
-var win := preload("res://ui/window_panel.gd").new()
-parent.add_child(win)
-win.set_header("Nom", "Région · Tier 3")
-win.body().add_child(<Label / ligne native>)
-win.place(top_left, ceiling)      # position + plafond → scroll au-delà
-win.closed.connect(_on_close)
-```
-
-État : la majorité de l'UI est DÉJÀ native (budget_panel_v2, country_actions,
-empire_window, province_panel_v2, construction_panel, army_panel…). RESTENT dessinés :
-`sidebar_drawer` (219 draws) et `province_detail` (114) — les deux gros — plus des
-petits (country_panel, opinion_bar, alerts). RATCHET : chaque panneau touché migre sur
-`WindowPanel` ; migration pilote par pilote, validée à l'écran (le rendu Godot ne se
-teste pas en CI).
+- Le patron de fait : `empire_window` (page-stack) et `budget_panel_v2` (header +
+  onglets + corps défilable). Un nouveau panneau REPREND ce patron — il ne réinvente
+  pas un shell, et surtout on n'ajoute pas un 5e composant à côté.
+- État : la MAJORITÉ est déjà native + sous-onglets (budget, empire_window,
+  province_panel_v2, construction_panel, country_actions…). Ce qui reste VRAIMENT
+  dessiné = **deux fichiers** : `sidebar_drawer` (219 draws) et `province_detail`
+  (114), plus des petits (country_panel, opinion_bar, alerts).
+- RATCHET : le jour où on touche un des 2 dessinés, on le ramène sur le chrome
+  EXISTANT (le style empire_window/budget), pas sur un composant neuf. La dette réelle
+  n'est pas « pas de fenêtre générique », c'est « 2 panneaux encore en _draw » + « le
+  chrome dupliqué entre natifs » — à mutualiser SI on y retouche, pas en big-bang.
 
 ## 1. Rebuild vs widgets persistants — LA RÈGLE
 
