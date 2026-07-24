@@ -2200,7 +2200,8 @@ int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out){
      * bouton serait actif mais la déclaration un no-op silencieux — griser franchement. */
     { CasusBelli cbn = diplo_casus_belli(s->w, s->sim.econ, s->sim.wp, d, p, t, RES_NONE);
       bool has_cb = (cbn!=CB_NONE && !diplo_cb_needs_fabrication(cbn)) || diplo_fab_ready_cb(d,p,t)!=CB_NONE;
-      out->can_declare_war = (!at_war && diplo_truce_days(d,p,t)<=0.f && has_cb) ? 1:0; }
+      out->can_declare_war = (!at_war && diplo_truce_days(d,p,t)<=0.f && has_cb) ? 1:0;
+      out->has_casus_belli = has_cb ? 1:0; }   /* exposé pour la checklist de refus (guerre) */
     out->truce_days         = diplo_truce_days(d,p,t);   /* pour distinguer trêve vs no-CB à l'UI */
     out->can_make_peace     = at_war ? 1:0;
     out->can_offer_alliance = (!at_war && st!=DIPLO_ALLIED && slot) ? 1:0;
@@ -2231,6 +2232,54 @@ int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out){
  * verrou dans le même ordre que le drain : cible → émissaire → règle du verbe.
  * Le consentement reste une conséquence séparée : une offre peut être légale
  * mais annoncée comme refusée par le vis-à-vis. */
+/* LA CHECKLIST DE REFUS (2026-07-21) : décompose l'action en conditions atomiques
+ * NOMMÉES, chacune ✓/✗. Contrat ET(conds)==allowed (prouvé au banc scps_api_demo) :
+ * chaque cond est dérivée des MÊMES variables que le if/else-if d'allowed ci-dessous —
+ * quand un préalable masque une condition (ex. déjà en guerre masque « créneau libre »),
+ * la condition masquée est ✓ (non-bloquante), le préalable ✗ porte le refus. Émissaire =
+ * cond commune (le cooldown global). Appelée aux DEUX sorties (émissaire occupé + fin). */
+static void da_fill_conds(ScpsActionLegal *out, const ScpsDiploOptions *o, int st, int cd){
+    out->n_conds=0;
+    #define GATE(lbl,c) do{ if(out->n_conds<SCPS_GATE_MAX){ \
+        snprintf(out->conds[out->n_conds].label,sizeof out->conds[0].label,"%s",(lbl)); \
+        out->conds[out->n_conds].ok=(c)?1:0; out->n_conds++; } }while(0)
+    int at_war=(st==DIPLO_WAR), allied=(st==DIPLO_ALLIED);
+    GATE("Émissaire disponible", cd<=0);
+    switch((ScpsDiploAction)out->action){
+      case SCPS_DIPLO_WAR:
+        GATE("Pas déjà en guerre", !at_war);
+        GATE("Aucune trêve", o->truce_days<=0.f);
+        GATE("Casus belli utilisable", o->has_casus_belli);
+        break;
+      case SCPS_DIPLO_PEACE:
+        GATE("En guerre avec la cible", o->can_make_peace);
+        break;
+      case SCPS_DIPLO_ALLIANCE:
+        GATE("Pas en guerre", !at_war);
+        GATE("Pas déjà alliés", !allied);
+        GATE("Créneau d'alliance libre", (at_war||allied) ? 1 : o->can_offer_alliance);
+        break;
+      case SCPS_DIPLO_PACT:
+        GATE("Pas en guerre", !at_war);
+        GATE("Pas de pacte commercial en cours", at_war ? 1 : o->can_offer_pact);
+        break;
+      case SCPS_DIPLO_MIGRATION:
+        GATE("Pas en guerre", !at_war);
+        GATE("Pas de pacte migratoire en cours", at_war ? 1 : o->can_offer_migration);
+        break;
+      case SCPS_DIPLO_EMBARGO:
+        GATE("Relation commerçable", o->can_embargo || o->can_lift_embargo);
+        break;
+      case SCPS_DIPLO_FABRICATE:
+        /* fabrique : conds VISIBLES (or, intrigue en cours) — les préalables géométriques
+         * (cible revendicable) restent dans `allowed` ; banc = allowed→conds, pas l'inverse. */
+        GATE("Or suffisant", out->gold_missing<=0.0);
+        GATE("Aucune intrigue déjà lancée", !o->fabricating && !o->cb_ready);
+        break;
+      default: break;
+    }
+    #undef GATE
+}
 int scps_diplo_action_legal(ScpsSim *s, int target, int action, ScpsActionLegal *out){
     if(!out)return 0;
     memset(out,0,sizeof *out); out->target=target; out->action=action;
@@ -2255,13 +2304,14 @@ int scps_diplo_action_legal(ScpsSim *s, int target, int action, ScpsActionLegal 
       default: break;
     }
     int cd=scps_diplo_cd(s);
+    DiploStatus st=diplo_status(s->sim.dp,p,target);
     if(cd>0){
         out->reason_code="emissary_busy";
         out->reason_label="Émissaire en tournée";
         out->duration_days=cd;
+        da_fill_conds(out, &o, st, cd);   /* checklist même quand l'émissaire est le verrou */
         return 1;
     }
-    DiploStatus st=diplo_status(s->sim.dp,p,target);
     #define DIP_OK() do{out->allowed=1;out->reason_code="ok";out->reason_label="Action disponible";}while(0)
     #define DIP_NO(code,label) do{out->reason_code=(code);out->reason_label=(label);}while(0)
     switch((ScpsDiploAction)action){
@@ -2314,6 +2364,7 @@ int scps_diplo_action_legal(ScpsSim *s, int target, int action, ScpsActionLegal 
     }
     #undef DIP_OK
     #undef DIP_NO
+    da_fill_conds(out, &o, st, cd);   /* la checklist de refus (ET(conds)==allowed, cf. banc) */
     return 1;
 }
 

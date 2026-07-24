@@ -47,6 +47,26 @@ Doc court : les règles que TOUT nouveau panneau suit. L'historique vit dans git
   par TooltipServer) : factory = les DONNÉES d'un bien, concepts = la
   DÉFINITION d'un mot.
 
+## 3bis. Refus : la CHECKLIST, jamais une raison figée (2026-07-21)
+
+Un bouton grisé n'affiche PAS une seule raison (le premier verrou) — il affiche au
+hover la LISTE des conditions, chacune ✓ remplie / ✗ manquante (motif CK3/KoH2 « pourquoi
+c'est grisé »). Le joueur voit TOUT ce qu'il faut, pas le premier blocage rencontré.
+
+- **Le moteur expose les conditions** (l'UI ne reconstruit AUCUNE règle) : une struct
+  `ScpsGateCond {label, ok}` remplie côté C, à côté du `allowed`/`reason` existants
+  (additif, rétrocompatible). Cf. `ScpsActionLegal.conds[]` (scps_api.h) rempli par
+  `da_fill_conds` (scps_api.c) — le patron pour les autres refus.
+- **CONTRAT `ET(conds) == allowed`** — garanti au banc (scps_api_demo). Jamais « tout
+  coché mais grisé ». Quand un préalable masque une condition (déjà-en-guerre masque
+  « créneau libre »), la masquée est ✓, le préalable ✗ porte le refus.
+- **Le rendu** : `TooltipFactory.gate_checklist(conds, header)` → ✓/✗ multi-lignes,
+  servi par le TooltipServer. Repli legacy (`reason_label`) si le moteur n'a pas de conds
+  (DLL antérieure).
+- **RATCHET** : diplo (7 verbes) est câblé. Les autres refus (emprunt, esclavage
+  achat/vente, construction, colonisation) suivent le MÊME patron quand on les touche —
+  chacun expose sa gate-list, l'UI la rend avec `gate_checklist`.
+
 ## 4. Les gros fichiers (sidebar_drawer ~2600 · overlay ~3800)
 
 Scission en sous-Controls = le prochain pas naturel, PAS urgent tant que ça

@@ -13,6 +13,7 @@ const DrawerK = preload("res://ui/sidebar_drawer.gd")   # DACT_LABEL partagé (m
 const Frame = preload("res://ui/frame.gd")
 const OpinionBar = preload("res://ui/opinion_bar.gd")
 const Concepts = preload("res://ui/concepts.gd")   # D4 — glossaire hover
+const TooltipFactory = preload("res://ui/tooltip_factory.gd")   # checklist de refus (2026-07-21)
 
 signal navigate_requested(request: Dictionary)
 
@@ -798,7 +799,16 @@ func _read_legal(w, verb: String, op2: Dictionary, cd: int) -> Dictionary:
 	}
 
 func _legal_tooltip(legal: Dictionary, help: String) -> String:
-	var txt := help if bool(legal.get("allowed", false)) and help != "" else String(legal.get("reason_label", "Indisponible"))
+	# CHECKLIST DE REFUS (2026-07-21) : les conditions ✓/✗ du moteur remplacent la raison
+	# figée — le joueur voit TOUT ce qu'il faut, pas juste le premier verrou. En-tête = la
+	# ligne d'aide quand l'action est permise ; sinon les ✗ parlent. Repli legacy si le
+	# moteur ne fournit pas de conds (DLL antérieure).
+	var allowed := bool(legal.get("allowed", false))
+	var conds: Array = legal.get("conds", [])
+	var header := help if allowed and help != "" else ""
+	var txt := TooltipFactory.gate_checklist(conds, header)
+	if txt == "":
+		txt = help if allowed and help != "" else String(legal.get("reason_label", "Indisponible"))
 	var days := int(legal.get("duration_days", 0))
 	var cost := float(legal.get("cost_gold", 0.0))
 	var missing := float(legal.get("gold_missing", 0.0))

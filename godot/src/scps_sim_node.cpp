@@ -1081,6 +1081,13 @@ Dictionary ScpsWorld::diplo_action_legal(int target, int action) {
     d["reason_label"]=String::utf8(a.reason_label?a.reason_label:"");
     d["cost_gold"]=a.cost_gold; d["gold_have"]=a.gold_have;
     d["gold_missing"]=a.gold_missing; d["duration_days"]=a.duration_days;
+    /* LA CHECKLIST DE REFUS (2026-07-21) : [{label, ok}, …] — l'UI la rend en hover. */
+    Array conds;
+    for (int i=0;i<a.n_conds;i++){
+        Dictionary c; c["label"]=String::utf8(a.conds[i].label); c["ok"]=(bool)a.conds[i].ok;
+        conds.push_back(c);
+    }
+    d["conds"]=conds;
     return d;
 }
 

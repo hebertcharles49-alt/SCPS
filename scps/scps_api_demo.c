@@ -307,7 +307,7 @@ int main(int argc, char **argv){
           ok("paix : une offre composée s'enfile sans mutation immédiate",
              scps_player_peace_offer(s2,tgt,NULL,0,0,0)==1 &&
              scps_diplo_options(s2,tgt,&still_war)==1 && still_war.can_make_peace); }
-        { int legal_ok=gotd, reasons_ok=gotd;
+        { int legal_ok=gotd, reasons_ok=gotd, conds_ok=gotd;
           for(int a=0;a<SCPS_DIPLO_ACTION_COUNT && gotd;a++){
               ScpsActionLegal dl;
               legal_ok &= scps_diplo_action_legal(s2,tgt,a,&dl)==1 && dl.valid;
@@ -315,12 +315,21 @@ int main(int argc, char **argv){
               legal_ok &= dl.cost_gold>=0.0 && dl.gold_have>=0.0 && dl.gold_missing>=0.0 && dl.duration_days>=0;
               reasons_ok &= dl.reason_code && dl.reason_code[0] && dl.reason_label && dl.reason_label[0];
               reasons_ok &= (dl.allowed==1)==(strcmp(dl.reason_code,"ok")==0);
+              /* CHECKLIST DE REFUS (2026-07-21) — le CONTRAT : la liste existe, chaque
+               * label est non vide, ET les conds SE COMBINENT en allowed. La FABRIQUE a
+               * des préalables géométriques cachés (allowed⊂conds) : pour elle, allowed→
+               * toutes-cochées seulement ; les 6 verbes structurels : ET(conds)==allowed. */
+              conds_ok &= dl.n_conds>=1 && dl.n_conds<=SCPS_GATE_MAX;
+              int all=1; for(int i=0;i<dl.n_conds;i++){ conds_ok &= dl.conds[i].label[0]!=0; if(!dl.conds[i].ok) all=0; }
+              if(a==SCPS_DIPLO_FABRICATE) conds_ok &= (!dl.allowed || all);      /* allowed → toutes cochées */
+              else                        conds_ok &= (all==dl.allowed);          /* ET(conds) == allowed */
           }
           ScpsActionLegal bad;
           reasons_ok &= scps_diplo_action_legal(s2,-1,SCPS_DIPLO_WAR,&bad)==0 && !bad.valid
                      && strcmp(bad.reason_code,"invalid_target")==0;
           ok("P4 diplo : les 7 verbes exposent une décision bornée", legal_ok);
-          ok("P4 diplo : chaque refus nomme un verrou stable, cible invalide comprise", reasons_ok); }
+          ok("P4 diplo : chaque refus nomme un verrou stable, cible invalide comprise", reasons_ok);
+          ok("checklist de refus : conds nommées · ET(conds)==allowed (fabrique : allowed→conds)", conds_ok); }
         ok("scps_build_legal : réponse bornée {0,1} (région · or)",
            (scps_build_legal(s2,-1,0) & ~1)==0);
         /* ── LOT T — la GATE TECH PAR PALIER (edifice_tier ⇐ tech_has_tier) ── */

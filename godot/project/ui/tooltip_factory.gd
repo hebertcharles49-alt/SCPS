@@ -21,6 +21,20 @@ static func grp(n) -> String:
 			out = " " + out
 	return ("-" + out) if v < 0 else out
 
+## LA CHECKLIST DE REFUS (décision joueur 2026-07-21, motif CK3/KoH2) : rend une liste
+## de conditions [{label, ok}] en ✓/✗ — le « pourquoi c'est grisé » PARTAGÉ par tous les
+## refus (diplo, emprunt, esclavage, construction…). `header` = une ligne de résumé/aide
+## optionnelle en tête. Vide → chaîne vide (l'appelant retombe sur son texte legacy).
+static func gate_checklist(conds: Array, header: String = "") -> String:
+	if conds.is_empty():
+		return header
+	var lines: Array = []
+	if header != "":
+		lines.append(header)
+	for c in conds:
+		lines.append("%s %s" % ["✓" if bool(c.get("ok", false)) else "✗", String(c.get("label", "?"))])
+	return "\n".join(lines)
+
 static func coverage_text(coverage_days: int) -> String:
 	if coverage_days < 0:
 		return "stable ou excédentaire"

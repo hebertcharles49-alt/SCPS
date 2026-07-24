@@ -841,6 +841,7 @@ typedef struct {
     float cb_ready_years_left;     /* années avant expiration (cb_ready==1) */
     int   claim_region, claim_province;
     const char *claim_name;        /* le territoire concret visé par l'intrigue */
+    int   has_casus_belli;         /* CB utilisable MAINTENANT (gratuit OU intrigue mûre) — pour la checklist de refus */
 } ScpsDiploOptions;
 int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out);
 
@@ -849,14 +850,25 @@ typedef enum {
     SCPS_DIPLO_PACT, SCPS_DIPLO_MIGRATION, SCPS_DIPLO_EMBARGO,
     SCPS_DIPLO_FABRICATE, SCPS_DIPLO_ACTION_COUNT
 } ScpsDiploAction;
+/* LA CHECKLIST DE REFUS (décision joueur 2026-07-21, motif CK3/KoH2 « pourquoi c'est
+ * grisé ») : au lieu d'UNE raison figée (le premier verrou), la LISTE des conditions —
+ * chacune ✓ remplie / ✗ manquante — pour un hover qui dit TOUT ce qu'il faut. Contrat :
+ * ET(conds) == allowed (garanti au banc — jamais « tout coché mais grisé »). Pattern
+ * réutilisable par tout refus (diplo aujourd'hui ; emprunt/esclavage/construction à
+ * suivre — cf. godot/project/ui/_ARCHITECTURE.md). */
+#define SCPS_GATE_MAX 8
+typedef struct { char label[64]; int ok; } ScpsGateCond;
+
 typedef struct {
     int valid, allowed, would_accept, unilateral;
     int target, action;
     int toggle_on;              /* embargo : 1 décréter · 0 lever */
-    const char *reason_code;    /* code stable du premier verrou */
-    const char *reason_label;   /* libellé résolu */
+    const char *reason_code;    /* code stable du premier verrou (résumé — CONSERVÉ) */
+    const char *reason_label;   /* libellé résolu (CONSERVÉ, rétrocompat) */
     double cost_gold, gold_have, gold_missing;
     int duration_days;          /* cooldown ou maturation restant(e) */
+    ScpsGateCond conds[SCPS_GATE_MAX];  /* la checklist : ET(conds.ok) == allowed */
+    int n_conds;
 } ScpsActionLegal;
 int scps_diplo_action_legal(ScpsSim *s, int target, int action, ScpsActionLegal *out);
 
