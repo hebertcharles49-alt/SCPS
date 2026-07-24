@@ -1,27 +1,22 @@
 extends Control
-## SidebarDrawer — le TIROIR de la sidebar : s'ouvre à droite du rail (même bande
-## que le panneau de province, mutuellement exclusifs). En-tête à plaque + icône,
-## puis le contenu de l'onglet. Les 8 onglets sont PORTÉS (read-only, lus de la
-## façade) : Économie (budget + commerce), Démographie, Stocks, Marché, Armée,
-## Filtres (pilote la carte), Diplomatie, Conseil. Display-only.
+## Le TIROIR de la sidebar : 8 onglets read-only (Économie/Démographie/Stocks/Marché/Armée/Filtres/Diplomatie/Conseil). Display-only.
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
 const InfoRef = preload("res://ui/info_ref.gd")
-const TooltipFactory = preload("res://ui/tooltip_factory.gd")   # revue 2026-07-21 #3 : LA formule fiche-de-bien partagée
-const HoverZones = preload("res://ui/hover_zones.gd")               # …et LE stockage/hit-test de survol partagé
+const TooltipFactory = preload("res://ui/tooltip_factory.gd")   # formule fiche-de-bien partagée
+const HoverZones = preload("res://ui/hover_zones.gd")               # stockage/hit-test de survol partagé
 const DX := Frame.SIDEBAR_W + 10.0
 const DY := Frame.TOPBAR_H + 10.0
-const DW := 380.0   ## élargi (retour joueur 2026-07-10 : « laisse respirer, on a de la place »)
+const DW := 380.0
 
 const TAB_ICON := ["menu_economy", "menu_demography", "menu_stocks", "menu_market",
 	"menu_army", "menu_filters", "menu_diplomacy", "menu_council"]
 const TAB_NAME := ["Économie", "Démographie", "Stocks", "Marché",
 	"Armée", "Filtres", "Diplomatie", "Conseil"]
 
-# Filtres : modes render_map offerts (culture/foi exigent des teintes → omis).
-# [label, ViewMode]. Groupés comme viewer.c.
+# [label, ViewMode] — modes render_map (culture/foi omis : exigent des teintes).
 const FILT_GROUPS := [
 	["Souveraineté", [["Politique", 1], ["Pays", 3], ["Régions", 2], ["Continents", 4]]],
 	["Gouvernance", [["Stabilité", 13], ["Commerce", 14], ["Guerre", 15], ["Diplomatie", 16]]],
@@ -29,8 +24,8 @@ const FILT_GROUPS := [
 		["Température", 8], ["Ressources", 9], ["Habitabilité", 10]]],
 ]
 
-signal charts_requested        ## Économie → « Courbes dans le temps » : ouvre le panneau Easy Charts
-signal open_country(cid: int)  ## Diplomatie → la FENÊTRE d'actions du pays cliqué
+signal charts_requested        ## → ouvre le panneau Easy Charts
+signal open_country(cid: int)  ## → la fenêtre d'actions du pays cliqué
 
 var _tab := -1
 var _map                       # MapView (pour Filtres → set_mode)
@@ -81,21 +76,15 @@ func show_tab(i: int, context: Dictionary = {}) -> void:
 
 const CONTENT_Y := 46.0   ## haut du CONTENU (sous l'en-tête fixe de 36 px + marge)
 
-## SCROLL GÉNÉRIQUE du tiroir (motif construction_panel) : offset PAR ONGLET,
-## molette, clamp au contenu, clip (clip_contents), barre piste+pouce, EN-TÊTE
-## FIXE redessiné par-dessus le contenu défilé.
+## SCROLL générique : offset par onglet, molette, clamp au contenu, en-tête fixe par-dessus.
 var _scroll := {}         ## {tab: offset px}
 var _maxscroll := 0.0     ## du DERNIER _draw (pour la molette)
 
 func _draw_header(x: float) -> void:
-	# UI-POLISH #4/#6 : c'était le DERNIER bandeau graphite du tiroir (un reliquat pré-DA
-	# parchemin — Color(0.075,0.085,0.086) codée en dur au lieu des constantes VKit déjà
-	# re-skinnées, cf. TROUVAILLES §DA parchemin) — visible sur les 8 onglets, le plus
-	# flagrant sur Diplomatie (F7). Bandeau HeaderStrip (motif ParchTheme) au lieu du noir.
 	VKit.fill(self, Rect2(0, 0, DW, 36), VKit.COL_PANEL2)
 	VKit.fill(self, Rect2(0, 0, 4.0, 36), VKit.COL_GOLD)
 	VKit.fill(self, Rect2(4, 35, DW - 4, 1), VKit.COL_EDGE)
-	UIKit.draw_icon(self, TAB_ICON[_tab], Vector2(x + 2, 5), 26)   # UI-DOCTRINE D7 : 20→26 (bandeau 36 px)
+	UIKit.draw_icon(self, TAB_ICON[_tab], Vector2(x + 2, 5), 26)
 	VKit.text(self, Vector2(x + 36, 7), VKit.COL_VALUE, TAB_NAME[_tab], VKit.FS_BIG)
 
 func _draw() -> void:
@@ -126,9 +115,7 @@ func _draw() -> void:
 		_: VKit.text(self, Vector2(x, y), VKit.COL_DIM, "(panneau à venir — port viewer.c)")
 	var content_h := yend - y   # hauteur RÉELLE du contenu (indépendante de l'offset)
 
-	# HAUTEUR AU CONTENU (règle Stellaris : la fenêtre épouse ce qu'elle montre —
-	# fini la colonne pleine hauteur aux trois quarts vide). Latch différé, borné
-	# au viewport ; AU-DELÀ, le surplus DÉFILE (molette + barre).
+	# la fenêtre épouse le contenu (latch différé, borné au viewport ; au-delà ça défile).
 	var want := clampf(CONTENT_Y + content_h + 12.0, 120.0, _hmax)
 	if absf(want - size.y) > 0.5:
 		set_deferred("size", Vector2(DW, want))
@@ -138,7 +125,6 @@ func _draw() -> void:
 		_scroll[_tab] = _maxscroll
 		queue_redraw()
 
-	# EN-TÊTE FIXE par-dessus le contenu défilé, puis la BARRE (piste + pouce ∝ fenêtre/contenu).
 	_draw_header(x)
 	if _maxscroll > 0.0:
 		var track := Rect2(DW - 9.0, CONTENT_Y, 4.0, size.y - CONTENT_Y - 10.0)
@@ -147,12 +133,9 @@ func _draw() -> void:
 		var thumb_y := track.position.y + (minf(off, _maxscroll) / _maxscroll) * (track.size.y - thumb_h)
 		VKit.fill(self, Rect2(track.position.x, thumb_y, 4.0, thumb_h), VKit.COL_GOLD)
 
-	# les zones de survol passent par le TOOLTIP NATIF (→ TooltipServer : mots-concepts
-	# turquoise + définitions) — les zones DÉFILÉES sous l'en-tête fixe sont écartées
-	# (sinon un fantôme invisible répondrait au survol dans le bandeau de titre).
+	# zones défilées sous l'en-tête fixe écartées (sinon un fantôme répondrait au survol dans le bandeau de titre).
 	_tips.append_array(_hover.to_tips(36.0))
 
-# ── DÉMOGRAPHIE (sb_panel_demo, read-only) ─────────────────────────────────
 func _draw_demo(x: float, y: float, me: int) -> float:
 	var d: Dictionary = Sim.world.country_demo(me)
 	var total: int = int(d["pop_total"])
@@ -163,7 +146,7 @@ func _draw_demo(x: float, y: float, me: int) -> float:
 	for cl in d["classes"]:
 		VKit.list_row_bg(self, Rect2(x - 4, y - 2, DW - 2.0 * x + 8, 19), row_i)
 		var pct: int = 0 if total == 0 else int(round(100.0 * int(cl["pop"]) / total))
-		UIKit.draw_icon(self, "population_group", Vector2(x, y), 16)   # UI-DOCTRINE D7 : 14→16
+		UIKit.draw_icon(self, "population_group", Vector2(x, y), 16)
 		VKit.text(self, Vector2(x + 20, y), VKit.COL_PARCH, String(cl["nom"]), VKit.FS_SMALL)
 		VKit.text(self, Vector2(x + 110, y), VKit.COL_PARCH, "%s (%d%%)" % [_grp(cl["pop"]), pct], VKit.FS_SMALL)
 		UIKit.bar(self, Rect2(x + 200, y, 84, 12), int(cl["satisfaction"]))
@@ -171,7 +154,6 @@ func _draw_demo(x: float, y: float, me: int) -> float:
 		row_i += 1
 	return y
 
-# ── STOCKS (sb_panel_stocks, read-only) ────────────────────────────────────
 func _draw_stocks(x: float, y: float, me: int) -> float:
 	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "bien          stock   net/j   couv.", VKit.FS_SMALL)
 	y += 16
@@ -194,8 +176,7 @@ func _draw_stocks(x: float, y: float, me: int) -> float:
 		row_i += 1
 	return y
 
-## revue 2026-07-21 #3 : les 4 formules vivent dans ui/tooltip_factory.gd (partagées,
-## typées, testées par tests/stock_info_card_test.gd) — ici : délégations pures.
+## les 4 formules vivent dans ui/tooltip_factory.gd (testées par tests/stock_info_card_test.gd) — ici : délégations pures.
 func _stock_tip(st: Dictionary) -> String:
 	return TooltipFactory.stock_tip(st)
 
@@ -209,8 +190,7 @@ func _market_info_card(st: Dictionary, quote: Dictionary = {}) -> Dictionary:
 	return TooltipFactory.market_info_card(Sim.world, st, quote,
 		_marche_category_word(int(st.get("res_id", -1))))
 
-## cellule d'identité d'une ressource : le SPRITE (assets/scps/pack/resources, par
-## id), sinon le nom en texte ; survol → le nom dans tous les cas.
+## identité d'une ressource : le SPRITE (par id), sinon le nom en texte ; survol → le nom.
 func _res_cell(x: float, y: float, res_id: int, name: String, col: Color) -> void:
 	var spr := UIKit.resource_sprite(res_id, name)
 	if spr != null:
@@ -219,10 +199,6 @@ func _res_cell(x: float, y: float, res_id: int, name: String, col: Color) -> voi
 		VKit.text(self, Vector2(x, y), col, name, VKit.FS_SMALL)
 	_hover.add_dict({"rect": Rect2(x - 2, y - 3, 104, 18), "text": name})
 
-# ── ÉCONOMIE : Budget (econ_flux) + Commerce (intertrade), read-only ───────
-## MATIÈRES (retour joueur UI-2 : les 5 cellules de brut SORTENT de la topbar) —
-## ligne compacte en tête, même source que l'ancienne topbar (country_stocks) ; le
-## détail complet (net/j, couverture) vit déjà plus bas dans l'onglet STOCKS.
 const _MAT_RAWS := [9, 24, 25, 13, 36]   # RES_WOOD · RES_CLAY · RES_STONE · RES_IRON · RES_ARMS
 const _MAT_NAMES := {9: "bois", 24: "argile", 25: "pierre", 13: "fer", 36: "armes"}
 
@@ -232,8 +208,7 @@ func _slider_key(data: Dictionary) -> String:
 
 func _draw_multiplier_slider(x: float, y: float, label: String, current: float,
 		zones: Array, data: Dictionary, tip: String, live: String = "") -> float:
-	## `live` (optionnel) : la VALEUR EN DIRECT (or/mois, +% K…) affichée à la place du
-	## réglage brut. Le curseur est LINÉARISÉ 0–100 % (0.02..1.0) ; display-only.
+	## `live` (opt.) : valeur en direct à la place du % brut. Curseur LINÉARISÉ 0–100 % (0.02..1.0).
 	var key := _slider_key(data)
 	var value := float(_slider_preview.get(key, current))
 	value = clampf(value, 0.02, 1.0)
@@ -241,9 +216,6 @@ func _draw_multiplier_slider(x: float, y: float, label: String, current: float,
 	VKit.list_row_bg(self, row, zones.size())
 	VKit.text(self, Vector2(x + 4.0, y + 3.0), VKit.COL_PARCH, label, VKit.FS_SMALL)
 	var track := Rect2(x + 132.0, y + 5.0, 156.0, 8.0)
-	# UI-POLISH #6 : piste de curseur graphite (groove quasi-noir) — ParchTheme.build()
-	# donne DÉJÀ le ton de piste officiel des HSlider natifs (Color("caa768"), tan) ;
-	# ce curseur immédiat-mode (onglet Économie du tiroir) en divergeait seul.
 	VKit.fill(self, track, Color("caa768"))
 	VKit.box(self, track.grow(1.0), VKit.COL_EDGE)
 	var frac := (value - 0.02) / 0.98
@@ -271,8 +243,6 @@ func _draw_budget_controls(x: float, y: float, me: int) -> float:
 	if not Sim.world.has_method("budget_controls"):
 		return y
 	var ctl: Dictionary = Sim.world.budget_controls(me)
-	# — Valeurs EN DIRECT : les postes RÉALISÉS de l'année (country_flux), ramenés au
-	#   mois comme le reste de l'onglet. Les enveloppes de dépense s'y lisent en or/mois. —
 	var doy := maxi(1, int(Sim.world.day_of_year())) if Sim.world.has_method("day_of_year") else 1
 	var mf := 30.0 / float(doy)
 	var flux := {}
@@ -280,7 +250,7 @@ func _draw_budget_controls(x: float, y: float, me: int) -> float:
 		for p in Sim.world.country_budget(me):
 			flux[String(p.get("name", ""))] = float(p.get("amount", 0.0)) * mf   # or/mois signé
 	y = VKit.section(self, x, y, "Pilotage budgétaire")
-	# rendement fiscal AGRÉGÉ en direct (le détail par classe n'est pas exposé par la façade)
+	# rendement fiscal agrégé (le détail par classe n'est pas exposé par la façade)
 	var tax_month: float = absf(float(flux.get("taxes", 0.0)))
 	VKit.text(self, Vector2(x, y), VKit.COL_GOLD,
 		"Fiscalité par classe · rendement %s or/mois" % _grp(int(round(tax_month))), VKit.FS_SMALL)
@@ -288,7 +258,7 @@ func _draw_budget_controls(x: float, y: float, me: int) -> float:
 	for raw in ctl.get("taxes", []):
 		var row: Dictionary = raw
 		var cls_idx := int(row.get("id", 0))
-		# le rendement RÉEL de cette classe en or/mois (reader per-capita) — à la place du « % ».
+		# rendement réel de la classe en or/mois (à la place du %)
 		var tax_live := ""
 		if Sim.world.has_method("tax_class_month"):
 			tax_live = "%s or/mois" % _grp(int(round(float(Sim.world.tax_class_month(cls_idx)))))
@@ -306,8 +276,7 @@ func _draw_budget_controls(x: float, y: float, me: int) -> float:
 		"Finance la connectivité (routes) : −20 % (sous-financé) à +10 % de prospérité/commerce. Coûte une part du revenu chaque mois ; au minimum, aucune dépense mais −20 % de connectivité.",
 		"MONNAIE : frappe la réserve métallique (redevance minière) en monnaie, au prix courant du métal. Ne coûte rien au trésor — mais épuise la réserve.",
 	]
-	# le poste RÉALISÉ (or/mois) de chaque enveloppe — investissement compris (il coûte
-	# désormais chaque mois, ligne de flux « invest. » ; son effet +% K reste au survol).
+	# poste réalisé (or/mois) de chaque enveloppe
 	var spend_flux := ["invest.", "entretien", "soldes", "marine", "routes"]
 	for raw in ctl.get("spending", []):
 		var row: Dictionary = raw
@@ -345,15 +314,13 @@ func _draw_mat_line(x: float, y: float, me: int) -> float:
 
 func _draw_eco(x: float, y: float, me: int) -> float:
 	y = _draw_mat_line(x, y, me)
-	# bouton : les COURBES dans le temps sont DERRIÈRE ce sous-menu (pas affichées d'office)
 	_chart_btn = Rect2(x, y, DW - 2.0 * x, 20.0)
 	VKit.fill(self, _chart_btn, VKit.COL_PANEL2)
 	VKit.box(self, _chart_btn, VKit.COL_GOLD)
-	UIKit.draw_icon(self, "menu_economy", Vector2(x + 4, y + 2), 16)   # UI-DOCTRINE D7 : 13→16 (assorti aux 16 px voisins de cet onglet)
+	UIKit.draw_icon(self, "menu_economy", Vector2(x + 4, y + 2), 16)
 	VKit.text(self, Vector2(x + 24, y + 3), VKit.COL_GOLD, "Courbes dans le temps  ▸", VKit.FS_SMALL)
 	y += 28
 	y = _draw_budget_controls(x, y, me)
-	# — Trésor & budget de l'année (la décomposition du flux d'or) —
 	var b: Dictionary = Sim.world.budget_summary(me)
 	UIKit.draw_icon(self, "gold_coin", Vector2(x, y - 1), 16)
 	VKit.value(self, Vector2(x + 20, y), "Trésor : %s or" % _grp(b["gold"]))
@@ -390,7 +357,6 @@ func _draw_eco(x: float, y: float, me: int) -> float:
 			revenues.append({"name": String(p["name"]), "amount": monthly})
 		else:
 			expenses.append({"name": String(p["name"]), "amount": monthly})
-	# Total puis TOUS les postes, séparés par sens comme dans la référence fournie.
 	VKit.fill(self, Rect2(x, y - 3, DW - 2.0 * x, 20), Color(0.08, 0.14, 0.12, 0.92))
 	VKit.text(self, Vector2(x + 6, y), VKit.sense(0.80), "Revenus", VKit.FS_SMALL)
 	VKit.text(self, Vector2(x + 210, y), VKit.sense(0.80), "+%s/mois" % _grp(income_month), VKit.FS_SMALL)
@@ -416,7 +382,6 @@ func _draw_eco(x: float, y: float, me: int) -> float:
 	y += 4
 	VKit.fill(self, Rect2(x, y, DW - 2.0 * x, 1), VKit.COL_EDGE)
 	y += 8
-	# — Commerce (routes + partenaires) —
 	var t: Dictionary = Sim.world.country_trade(me)
 	UIKit.draw_icon(self, "menu_economy", Vector2(x, y - 1), 16)
 	VKit.value(self, Vector2(x + 20, y),
@@ -434,16 +399,8 @@ func _draw_eco(x: float, y: float, me: int) -> float:
 		y += 15
 	return y
 
-# ── MARCHÉ (sb_panel_marche, table des prix) : Acheter/Vendre MARCHE_QTY sur la
-#    région-capitale (verbes : player_market_buy/_sell, journalisés) — LOT UI 2.3
-#    (2026-07-11) : le nom d'une ressource ne s'affiche QUE sur la ligne survolée/
-#    sélectionnée (densité — les autres n'ont que l'icône, le nom complet reste dans
-#    l'infobulle native) ; boutons PLEINS « Acheter N »/« Vendre N » (≥32px, la
-#    QUANTITÉ est SUR le bouton — avant validation) ; prix / état du marché / actions
-#    sur des LIGNES DISTINCTES (séparation visuelle) ; pénurie/tendu/sain/engorgé =
-#    couleur + MOT (déjà un mot moteur, désormais coloré par bande — jamais la couleur
-#    seule) ; TRI par prix/pénurie/catégorie (3 chips, état persistant PAR SESSION —
-#    variable d'instance, jamais écrit sur disque). ──────────────────────────────
+# MARCHÉ : Acheter/Vendre MARCHE_QTY sur la région-capitale (verbes player_market_buy/_sell, journalisés).
+# Tri par prix/pénurie/catégorie : état persistant PAR SESSION (variable d'instance, jamais sur disque).
 var _marche_btns := []       # [{rect, act, res_id}] boutons Acheter/Vendre
 var _marche_rows := []       # [{rect, res_id}] la ligne ENTIÈRE (survol + sélection)
 var _marche_sort_btns := []  # [{rect, key}] les 3 chips de tri
@@ -454,16 +411,13 @@ var _marche_selected_res := -1  # dernière ligne CLIQUÉE — persiste (comme l
 var _marche_sort_key := ""      # "" (ordre moteur) · "prix" · "penurie" · "categorie"
 var _marche_sort_dir := 1       # 1 = croissant · -1 = décroissant (reclic sur le chip actif)
 const MARCHE_QTY := 10
-## RES_PROD_FIRST (scps/scps_types.h : « tout ce qui est < RES_PROD_FIRST est une
-## ressource brute ») — la frontière brute/manufacturée du MOTEUR, pas une catégorie
-## inventée côté UI. Comptée depuis RES_NONE=0 jusqu'à RES_STONE inclus (26 entrées).
+## frontière brute/manufacturée du MOTEUR (RES_PROD_FIRST, scps/scps_types.h) : RES_NONE=0 → RES_STONE inclus = 26 entrées.
 const MARCHE_CAT_SPLIT := 26
 
 func _marche_category_word(res_id: int) -> String:
 	return "brute" if res_id < MARCHE_CAT_SPLIT else "manufacturée"
 
-## texte tronqué à une largeur MAX (règle 1.2 « ENFERMER les textes ») — le nom
-## COMPLET reste toujours dans l'infobulle native ; l'ellipse est le dernier recours.
+## texte tronqué à une largeur max (le nom complet reste dans l'infobulle native).
 func _fit_text(s: String, max_w: float, fs: int) -> String:
 	if VKit.text_w(s, fs) <= max_w:
 		return s
@@ -472,8 +426,7 @@ func _fit_text(s: String, max_w: float, fs: int) -> String:
 		out = out.substr(0, out.length() - 1)
 	return out + "…"
 
-## tri STABLE (départage par res_id) — AFFICHAGE seulement ; les verbes achat/vente
-## restent adressés par res_id, indépendants de l'ordre montré.
+## tri STABLE (départage par res_id) — AFFICHAGE seulement ; les verbes restent adressés par res_id.
 func _marche_sorted(me: int) -> Array:
 	var arr: Array = Sim.world.country_stocks(me).duplicate()
 	if _marche_sort_key == "":
@@ -514,13 +467,12 @@ func _draw_marche(x: float, y: float, me: int) -> float:
 	var cap_prov: int = Sim.world.country_capital_province(me)
 	if cap_prov >= 0:
 		cap_region = Sim.world.province_region(cap_prov)
-	# §5 PUISSANCE COMMERCIALE : le volume achetable au marché ce mois-ci (borne les achats au marché).
+	# PUISSANCE COMMERCIALE : volume achetable au marché ce mois-ci (borne les achats).
 	var cpow: Dictionary = Sim.world.commerce_power(me)
 	var cp_pool := float(cpow.get("pool", 0.0))
 	var cp_rem := float(cpow.get("remaining", 0.0))
 	var cp_bonus := int(cpow.get("bonus_pct", 0))
 	var cp_col := VKit.sense(clampf(cp_rem / maxf(cp_pool, 1.0), 0.0, 1.0))   # vert plein → rouge à sec
-	# le « +X % édifices » vit au SURVOL (retour joueur : le chiffre inline sans contexte)
 	var cp_lbl := "Puissance comm. : %d / %d ce mois" % [int(round(cp_rem)), int(round(cp_pool))]
 	VKit.text(self, Vector2(x, y), cp_col, cp_lbl, VKit.FS_SMALL)
 	var cp_tip := "Volume de biens achetable au marché ce mois-ci (0.04/bourgeois + 0.01/élite × la chaîne commerciale)."
@@ -529,8 +481,6 @@ func _draw_marche(x: float, y: float, me: int) -> float:
 	_hover.add_dict({"rect": Rect2(x - 2, y - 3, 264, 16), "text": cp_tip})
 	y += 20
 
-	# TRI (3 chips d'en-tête, état persistant PAR SESSION) — clic = trier, reclic sur
-	# le chip actif = inverser le sens (▲/▼).
 	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "Trier :", VKit.FS_SMALL)
 	var scx := x + VKit.text_w("Trier :", VKit.FS_SMALL) + 8.0
 	for it in [["prix", "Prix"], ["penurie", "Pénurie"], ["categorie", "Catégorie"]]:
@@ -567,15 +517,11 @@ func _draw_marche(x: float, y: float, me: int) -> float:
 				VKit.text(self, Vector2(x + 22, y), col, _fit_text(name, 108.0, VKit.FS_SMALL), VKit.FS_SMALL)
 		else:
 			VKit.text(self, Vector2(x, y), col, _fit_text(name, 122.0, VKit.FS_SMALL), VKit.FS_SMALL)
-		# prix — sa propre position, sa propre couleur (bande)
 		VKit.text(self, Vector2(x + 140, y), col, "%.2f or" % float(st["price"]), VKit.FS_SMALL)
-		# état du marché — SÉPARÉ du prix (gap + colonne dédiée) ; couleur + MOT (jamais
-		# la couleur seule — le mot vient déjà du moteur, ex. « pénurie »/« sain »).
+		# état du marché : couleur + MOT (jamais la couleur seule — le mot vient du moteur).
 		VKit.text(self, Vector2(x + 212, y), col, String(st["marche"]), VKit.FS_SMALL)
 		y += 18
 
-		# actions — ligne DISTINCTE (séparée de prix/état) : boutons PLEINS ≥32px de
-		# large ; la QUANTITÉ (MARCHE_QTY) figure SUR le bouton, avant toute validation.
 		var can_trade := cap_region >= 0
 		var ax := x + 8.0
 		var lab_b := "Acheter %d" % MARCHE_QTY
@@ -618,15 +564,13 @@ func _draw_marche(x: float, y: float, me: int) -> float:
 		y += 16
 	return y
 
-# ── CONSEIL (sb_panel_conseil) : [Recruter]/[Renvoyer] par siège (verbes :
-#    player_council_hire/_dismiss, journalisés — drainés au tick) ─────────────
+# CONSEIL : Recruter/Renvoyer par siège (verbes player_council_hire/_dismiss, journalisés).
 var _conseil_btns := []   # [{rect, act, seat}] boutons Recruter/Renvoyer
 var _conseil_flash := ""
 var _conseil_flash_ok := true
 var _conseil_tab := 0   ## 0 = Gouvernement · 1 = Politiques · 2 = Factions
 var _ctab_btns := []
-## l'ASSIETTE des coûts % (hovers quantitatifs — « 3 % du revenu (2033 or) × IPM 1,12 »,
-## résultat affiché en or/mois) : revenu fiscal annuel + IPM, rafraîchis à chaque _draw_conseil.
+## assiette des coûts % (revenu fiscal annuel + IPM, rafraîchis à chaque _draw_conseil).
 var _cons_rev := 0.0
 var _cons_ipm := 1.0
 
@@ -727,8 +671,7 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 	if Sim.world.has_method("country_revenue_year"):
 		_cons_rev = float(Sim.world.country_revenue_year(me))
 		_cons_ipm = float(Sim.world.world_ipm())
-	# SOUS-ONGLETS (retour joueur : « diviser l'UI statecraft pour sa lisibilité ») :
-	# GOUVERNEMENT / POLITIQUES / FACTIONS : trois lectures, une seule surface.
+	# SOUS-ONGLETS : Gouvernement / Politiques / Factions.
 	_ctab_btns.clear()
 	var cxx := x
 	for ti in range(3):
@@ -760,8 +703,7 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 	var idx := 0
 	for seat in Sim.world.country_council(me):
 		var filled := bool(seat["filled"])
-		# BUSTE du conseiller assis (planche 13) — sièges moteur Savoir/Société/Industrie
-		# → Maître des savoirs (06) / Chancelier (01) / Intendant (04) ; fem. par hash du nom.
+		# BUSTE : sièges Savoir/Société/Industrie → portraits [5,0,3] ; fem. par hash du nom.
 		var pt: Texture2D = null
 		if filled:
 			var pmap := [5, 0, 3]
@@ -770,14 +712,10 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 		if pt != null:
 			draw_texture_rect(pt, Rect2(x - 2, y - 3, 20, 20), false)
 		else:
-			UIKit.draw_icon(self, "menu_council", Vector2(x, y - 1), 20)   # UI-DOCTRINE D7 : 16→20 (assorti au buste 20×20 du siège pourvu, ligne ~869)
+			UIKit.draw_icon(self, "menu_council", Vector2(x, y - 1), 20)
 		VKit.text(self, Vector2(x + 20, y), VKit.COL_GOLD, String(seat["seat"]))
 		y += 18
 		if filled:
-			# CARTE SIÈGE — TERSE (retour joueur 2026-07-10, prime sur la spec doc) :
-			# nom · identité (MOT seul, phrase au survol) · siège rang âge · faction ·
-			# loyauté (jauge) · paie · bonus final · N or par mois · retraite. CHAQUE
-			# élément a un hover factuel ; les formules/taux vivent AU SURVOL seulement.
 			var fname := String(seat.get("firstname", ""))
 			var house := String(seat.get("house", ""))
 			var pname := (fname + " " + house).strip_edges() if fname != "" else String(seat["councilor"])
@@ -802,7 +740,6 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 				"text": "Rang %d : base du siège ×%s (I ×1 · II ×1,5 · III ×2) = bonus de rang +%.1f %%." % [
 					int(seat["tier"]), ["1", "1,5", "2"][clampi(int(seat["tier"]), 1, 3) - 1], float(seat.get("rank_bonus_pct", 0.0))]})
 			y += 18
-			# V2a — LE CONSEIL VIVANT : faction (mot) + barre de LOYAUTÉ (rouge→vert) + mot d'ambiance
 			var faction := String(seat.get("faction", ""))
 			var loyalty := int(seat.get("loyalty", 0))
 			var mood := String(seat.get("mood", ""))
@@ -827,8 +764,7 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 				{"kind": "pay", "family": 2, "seat": idx, "act": "pay", "slot": 0},
 				"Traitement du conseiller. Payer moins réduit son coût mais fait chuter sa loyauté.",
 				pay_live)
-			# BONUS FINAL (rang × efficacité) — la DÉCOMPOSITION vit AU SURVOL, jamais à
-			# l'écran (retour joueur) ; membrane : « Administration », jamais « K ».
+			# membrane : « Administration », jamais « K ».
 			if seat.has("rank_bonus_pct"):
 				var domain := String(seat.get("domain", ""))
 				var rankp := float(seat["rank_bonus_pct"])
@@ -844,7 +780,6 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 					"text": "Rang : +%.1f %% · Administration : +%.1f pts · Loyauté : +%.1f pts · Corruption : −%.1f pts · Efficacité : %.1f %% ⇒ +%.1f %% net." % [
 						rankp, kpts, lpts, cpts, effp, finalp]})
 				y += 16
-				# PRIX : une seule ligne en or/mois (le montant RÉALISÉ à la paie actuelle).
 				var cyear := float(seat.get("cost_year", 0.0))
 				var cmonth := cyear / 12.0 * pay
 				var cline := "%s or / mois" % _grp(int(round(cmonth)))
@@ -865,9 +800,6 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 		else:
 			VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, "(siège vacant : la pool se renouvelle par génération)", VKit.FS_SMALL)
 			y += 20
-			# l'embauche ÉCLAIRÉE : les CANDIDATS de la pool courante — CARTE TERSE
-			# (retour joueur 2026-07-10) : nom+identité · faction rang âge · bonus final ·
-			# N or par mois · retraite. Tout le reste (phrases, taux, décomposition) au SURVOL.
 			if Sim.world.has_method("council_candidates"):
 				for cand in Sim.world.council_candidates(idx):
 					var cx := x + 16
@@ -903,7 +835,6 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 							"text": "Rang : +%.1f %% · Administration : +%.1f pts · Loyauté de départ : +%.1f pts · Corruption : −%.1f pts · Efficacité prévue : %.1f %% ⇒ +%.1f %% net." % [
 								crankp, ckpts, clpts, ccpts, ceffp, cfinalp]})
 						y += 15
-						# PRIX : en or/mois (traitement de base du candidat, avant paie).
 						var ccyear := float(cand.get("cost_year", 0.0))
 						var ccline := "%s or / mois" % _grp(int(round(ccyear / 12.0)))
 						VKit.text(self, Vector2(cx, y), VKit.COL_DIM, ccline, VKit.FS_SMALL)
@@ -937,9 +868,7 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 					VKit.box(self, cr, VKit.COL_EDGE)
 			y += 8
 		idx += 1
-	# ── MISSION DÉCENNALE (§ Interface (cartes) « MISSION ») : le siège responsable
-	#    (mission_responsible_seat, moteur — successeur repris à chaque lecture) +
-	#    son bonus + la récompense PRÉVUE (base × rang×efficacité). ──
+	# MISSION DÉCENNALE : siège responsable (mission_responsible_seat) + bonus + récompense prévue.
 	if Sim.world.has_method("mission_info"):
 		var mi: Dictionary = Sim.world.mission_info(me)
 		if bool(mi.get("active", false)):
@@ -968,23 +897,14 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 			var rw_lbl_w2: float = VKit.detail(self, Vector2(x, y), "Récompense prévue : ", VKit.FS_SMALL)
 			VKit.value(self, Vector2(x + rw_lbl_w2, y), rw, VKit.FS_SMALL)
 			y += 16
-	# (Décrets + Peuple servile vivent dans le sous-onglet POLITIQUES — lot 5)
 	if _conseil_flash != "":
 		VKit.text(self, Vector2(x, y),
 			(VKit.sense(0.85) if _conseil_flash_ok else VKit.sense(0.10)), _conseil_flash, VKit.FS_SMALL)
 		y += 16
 	return y
 
-# ── DÉCRETS (sb_panel_decrets) — recâblé 2026-07-10 sur le catalogue orientations/
-#    décisions (docs/CONSEIL_ORIENTATIONS_2026-07-10.md, scps_decrees.h refondu).
-#    Section sous le Conseil (même onglet, sous-onglet Politiques). Chaque ORIENTATION
-#    (type DCR_EDIT/REFORME/POSTURE) DÉPLACE un levier moteur tant qu'elle est active ;
-#    `plateaux` (survol) donne DÉJÀ effet + clé tunable + multiplicateur en mots
-#    (carte orientation). Un ÉDIT se bascule librement (Activer/Désactiver) ; une
-#    RÉFORME activée s'affiche VERROUILLÉE (irréversible). Une DÉCISION (type
-#    DCR_DECISION, ex. Audit des offices) est PONCTUELLE — bouton « Décréter » gaté
-#    par condition d'entrée + cooldown (raison au survol), jamais de toggle on/off.
-#    Grisé si `legal`==0.
+# DÉCRETS : un ÉDIT se bascule librement ; une RÉFORME activée est VERROUILLÉE (irréversible) ;
+# une DÉCISION est PONCTUELLE, gatée par condition + cooldown. Grisé si legal==0.
 const DCR_EDIT := 0
 const DCR_REFORME := 1
 const DCR_POSTURE := 2
@@ -1001,8 +921,7 @@ func _draw_decrets(x: float, y: float, me: int) -> float:
 	if not Sim.world.has_method("decrees_list"):
 		return y
 	var decs: Array = Sim.world.decrees_list(me)
-	# nom par id — pour la note d'exclusivité (« ⊥ exclusif avec : X »), spec §
-	# « Orientations LÉGÈRES » (RATIONS⊥FOYERS · CIRCULATION⊥FRONTIÈRES).
+	# nom par id — pour la note d'exclusivité « ⊥ exclusif avec : X ».
 	var names_by_id := {}
 	for dd in decs:
 		names_by_id[int(dd["id"])] = String(dd["nom"])
@@ -1020,9 +939,6 @@ func _draw_decrets(x: float, y: float, me: int) -> float:
 			y = _draw_decision_card(x, y, dec, me)
 	return y
 
-# CARTE ORIENTATION — TERSE (retour joueur 2026-07-10) : nom [+RÉFORME] · prix
-# fusionné « N or par mois » · exclusivité · bouton. L'effet (plateaux, avec clé+mult)
-# ET le flavor vivent au SURVOL du nom ; la formule du prix au SURVOL du prix.
 func _draw_decree_card(x: float, y: float, dec: Dictionary, names_by_id: Dictionary) -> float:
 	var id := int(dec["id"])
 	var active := bool(dec["active"])
@@ -1034,7 +950,6 @@ func _draw_decree_card(x: float, y: float, dec: Dictionary, names_by_id: Diction
 	_hover.add_dict({"rect": Rect2(x, y - 2, VKit.text_w(label, VKit.FS_SMALL), 14),
 		"text": String(dec["plateaux"]) + "\n" + String(dec["flavor"])})
 	y += 15
-	# PRIX FUSIONNÉ : « N or par mois » seul ; la formule (taux × revenu × IPM) au survol.
 	var rate := float(dec.get("cost_rate_pct", 0.0))
 	var cyear := float(dec.get("cost_year", 0.0))
 	var cmonth := cyear / 12.0
@@ -1075,9 +990,6 @@ func _draw_decree_card(x: float, y: float, dec: Dictionary, names_by_id: Diction
 	y += 4
 	return y
 
-# CARTE DÉCISION (ponctuelle) — TERSE : nom · condition · cooldown éventuel ·
-# « N or (une fois) » · bouton « Décréter ». Effet+flavor au survol du nom ;
-# la formule du coût au survol du prix ; jamais de toggle.
 func _draw_decision_card(x: float, y: float, dec: Dictionary, me: int) -> float:
 	var id := int(dec["id"])
 	var legal := bool(dec["legal"])
@@ -1090,8 +1002,6 @@ func _draw_decision_card(x: float, y: float, dec: Dictionary, me: int) -> float:
 	y += 15
 	var cnd := "Condition : %s" % ("remplie" if cond_met else "non remplie")
 	VKit.text(self, Vector2(x + 8, y), VKit.sense(0.70 if cond_met else 0.15), cnd, VKit.FS_SMALL)
-	# hover QUANTITATIF : la Corruption courante contre le seuil (Audit — seule décision
-	# du catalogue ; lecteur country_factions déjà bindé, aucun chiffre inventé).
 	var corr_now := -1
 	if Sim.world.has_method("country_factions"):
 		corr_now = int(Sim.world.country_factions(me).get("corruption", -1))
@@ -1100,14 +1010,12 @@ func _draw_decision_card(x: float, y: float, dec: Dictionary, me: int) -> float:
 			"text": "Corruption %d/100 — exige ≥ 20." % corr_now})
 	y += 15
 	if cooldown:
-		# le nombre EXACT de jours restants n'est pas exposé par la façade (accumulateur
-		# privé à scps_decrees.c) — on affiche l'état SANS fabriquer de compte à rebours.
+		# jours restants non exposés par la façade — on affiche l'état, pas de compte à rebours inventé.
 		var cdl := "Cooldown : en cours"
 		VKit.text(self, Vector2(x + 8, y), VKit.sense(0.30), cdl, VKit.FS_SMALL)
 		_hover.add_dict({"rect": Rect2(x + 6, y - 2, VKit.text_w(cdl, VKit.FS_SMALL) + 6, 16),
 			"text": "5 ans entre deux audits — réutilisable à la fin du délai."})
 		y += 15
-	# PRIX FUSIONNÉ : « N or (une fois) » ; la formule au survol, en MONTANTS.
 	var rate := float(dec.get("cost_rate_pct", 0.0))
 	var cyear := float(dec.get("cost_year", 0.0))
 	var cline := "%s or (une fois)" % _grp(int(round(cyear)))
@@ -1140,12 +1048,7 @@ func _decret_act(id: int, on: bool) -> void:
 	_decret_flash = ("⚑ décret — ordre émis" if ok else "✗ décret — refusé")
 	queue_redraw()
 
-# ── PEUPLE SERVILE (V3, câblage servile) : section sous Décrets (même onglet
-#    Conseil — c'est une politique intérieure, comme un décret). Le compte d'âmes
-#    (scps_manumit_preview), le POOL des Centres par héritage + prix courant
-#    (scps_slave_market), ACHETER/VENDRE (quantités 50/200, gate abolitionniste
-#    grisé AVEC LE MOT), et AFFRANCHIR avec APERÇU AVANT + confirmation 2 clics
-#    (pas de misclick sur un verbe irréversible).
+# PEUPLE SERVILE : ACHETER/VENDRE (gate abolitionniste grisé + MOT), AFFRANCHIR avec confirmation 2 clics (verbe irréversible).
 var _servile_btns := []   # [{rect, act, qty}]  act: "buy"|"sell"|"manumit_arm"|"manumit_confirm"
 var _servile_flash := ""
 var _servile_flash_ok := true
@@ -1164,14 +1067,13 @@ func _draw_servile(x: float, y: float, me: int) -> float:
 		"âmes serviles : %s (%.1f%% du pays)" % [_grp(souls), float(mp.get("pct_of_country", 0.0))], VKit.FS_SMALL)
 	y += 18
 
-	# le POOL des Centres, par héritage, avec le compte courant.
 	if w.has_method("slave_market"):
 		var mk: Dictionary = w.slave_market()
 		var can_buy := bool(mk.get("can_buy", false))
 		VKit.text(self, Vector2(x, y), VKit.COL_DIM,
 			"marché mondial : %s âme(s)" % _grp(int(mk.get("total", 0))), VKit.FS_SMALL)
 		y += 15
-		# lot M — le SPREAD que le drain débite (achat ×2 double taxe / vente ×1), jamais montré
+		# SPREAD débité au drain (achat ×2 / vente ×1), jamais montré ici.
 		var pb := int(mk.get("price_buy", 0))
 		var ps := int(mk.get("price_sell", 0))
 		if pb > 0 or ps > 0:
@@ -1183,7 +1085,6 @@ func _draw_servile(x: float, y: float, me: int) -> float:
 				"%s — %s" % [String(ln.get("heritage", "?")), _grp(int(ln.get("count", 0)))], VKit.FS_SMALL)
 			y += 14
 
-		# ACHETER / VENDRE — quantités 50/200 ; achat grisé + MOT si non-abolitionniste-eligible.
 		var cap_prov: int = w.country_capital_province(me)
 		var cap_region: int = w.province_region(cap_prov) if cap_prov >= 0 else -1
 		for qty in [50, 200]:
@@ -1214,7 +1115,6 @@ func _draw_servile(x: float, y: float, me: int) -> float:
 			y += 16
 
 	y += 4
-	# AFFRANCHIR — l'APERÇU avant + confirmation 2 clics (verbe irréversible).
 	if souls > 0:
 		VKit.text(self, Vector2(x, y), VKit.COL_DIM,
 			"aperçu : %d groupe(s) · friction attendue %.0f%%" %
@@ -1277,8 +1177,7 @@ func _servile_act(act: String, qty: int, me: int) -> void:
 		Sound.play("ui_click")
 	queue_redraw()
 
-# ── ARMÉE (sb_panel_armee) : readouts + VERBES joueur (recruter/flotte). Levée &
-#    posture RETIRÉES (retour joueur : jamais demandées). ──
+# ARMÉE : readouts + verbes joueur (recruter/flotte).
 const HULL_LABELS := [["+Guerre", 0], ["+Transport", 1], ["+Marchand", 2]]   # HullType : HULL_WAR·HULL_TRANSPORT·HULL_MERCHANT
 
 var _army_btns := []      # [{rect, act}] Recompléter / Dissoudre
@@ -1287,12 +1186,9 @@ var _navy_btns := []      # [{rect, hull}] +Guerre / +Transport / +Marchand
 func _draw_armee(x: float, y: float, me: int) -> float:
 	_army_btns.clear(); _navy_btns.clear()
 	var a: Dictionary = Sim.world.country_army(me)
-	UIKit.draw_icon(self, "menu_army", Vector2(x, y - 1), 22)   # UI-DOCTRINE D7 : 18→22 (ligne à y+=24, la marge le permet)
+	UIKit.draw_icon(self, "menu_army", Vector2(x, y - 1), 22)
 	VKit.value(self, Vector2(x + 26, y), "force mobilisée : %d régiments" % int(a["regiments"]))
 	y += 24
-	# (levée + posture RETIRÉES — retour joueur : jamais demandées. Le joueur compose son
-	#  armée à la main via « Composer l'armée » ci-dessous ; le recrutement ne dépend pas
-	#  de la levée côté moteur.)
 	var ar: Dictionary = Sim.world.army_info(me)
 	if bool(ar.get("active", false)):
 		VKit.text(self, Vector2(x, y), VKit.COL_GOLD,
@@ -1305,7 +1201,7 @@ func _draw_armee(x: float, y: float, me: int) -> float:
 	else:
 		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "(pas d'armée de campagne déployée)", VKit.FS_SMALL)
 		y += 20
-	# — Recompléter / Dissoudre (verbes : player_refill / player_disband) —
+	# Recompléter / Dissoudre (verbes player_refill / player_disband)
 	var b1w := VKit.text_w("Recompléter", VKit.FS_SMALL) + 14.0
 	var r1 := Rect2(x, y, b1w, 18)
 	VKit.fill(self, r1, VKit.COL_PANEL2); VKit.box(self, r1, VKit.COL_GOLD)
@@ -1318,10 +1214,10 @@ func _draw_armee(x: float, y: float, me: int) -> float:
 	VKit.text(self, Vector2(b2x + 7, y + 1), VKit.COL_GOLD, "Dissoudre", VKit.FS_SMALL)
 	_army_btns.append({"rect": r2, "act": "disband"})
 	y += 26
-	UIKit.draw_icon(self, "harbor_anchor", Vector2(x, y - 1), 18)   # UI-DOCTRINE D7 : 16→18
+	UIKit.draw_icon(self, "harbor_anchor", Vector2(x, y - 1), 18)
 	VKit.value(self, Vector2(x + 22, y), "Flotte : %d coque(s)" % int(a["fleet"]))
 	y += 20
-	# — Flotte : mise en chantier (verbe : player_navy_build) — bateau gravé par coque
+	# Flotte : mise en chantier (verbe player_navy_build)
 	var hull_boat := ["sheet24_topbar_boats_menu_11", "sheet24_topbar_boats_menu_13", "sheet24_topbar_boats_menu_10"]
 	var cx := x
 	for it in HULL_LABELS:
@@ -1342,16 +1238,13 @@ func _draw_armee(x: float, y: float, me: int) -> float:
 		cx += tw + 4
 	y += 26
 
-	# ── COMPOSER L'ARMÉE (retour joueur : le RECRUTEMENT vit ICI, pas dans l'UI
-	#    province — l'armée est NATIONALE). Grille de tuiles du roster ; tuile grisée
-	#    = verrouillée (tech/éthos) ; clic = player_recruit (journalisé). ──
+	# COMPOSER L'ARMÉE : le recrutement est NATIONAL (pas dans l'UI province). Clic = player_recruit (journalisé).
 	_unit_btns.clear()
 	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Composer l'armée", VKit.FS_SMALL)
 	y += 16
 	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "clic pour lever une unité", VKit.FS_SMALL)
 	y += 16
-	# CLARTÉ (retour joueur) : on n'affiche QUE les unités RECRUTABLES (les verrouillées
-	# par la tech disparaissent — plus de tuiles mortes cliquées dans le vide).
+	# on n'affiche QUE les unités recrutables (les verrouillées par la tech disparaissent).
 	var rec: Array = []
 	for u in Sim.world.unit_roster(me):
 		if bool(u.get("recrutable", false)):
@@ -1372,8 +1265,6 @@ func _draw_armee(x: float, y: float, me: int) -> float:
 			VKit.text(self, ur.position + Vector2(2, 10), VKit.COL_DIM, String(u.get("nom", "")).substr(0, 5), VKit.FS_SMALL)
 		VKit.box(self, ur, VKit.COL_GOLD)
 		_unit_btns.append({"rect": ur, "type": int(u.get("type", -1)), "nom": String(u.get("nom", "")), "on": true})
-		# HOVER (retour joueur) : la CATÉGORIE tactique + les contres en CATÉGORIES (pas la
-		# liste complète des unités) + coût/entretien.
 		_tips.append([ur, "%s — %s · %s\nEfficace contre : %s\nFaible contre : %s\nCoût : %s · Entretien : %.1f or/100" % [
 			String(u.get("nom", "")), String(u.get("categorie", "")), String(u.get("arme", "")),
 			String(u.get("fort", "—")), String(u.get("faible", "—")),
@@ -1389,7 +1280,7 @@ func _draw_armee(x: float, y: float, me: int) -> float:
 var _armee_flash := ""
 var _armee_flash_ok := true
 var _unit_btns := []   ## composeur d'armée : [{rect, type, nom, on}]
-var _tips: Array = []  ## [[Rect2, texte], …] — hover générique du tiroir (reconstruit au _draw)
+var _tips: Array = []  ## [[Rect2, texte], …]
 
 func _get_tooltip(at_position: Vector2) -> String:
 	for t in _tips:
@@ -1403,7 +1294,6 @@ func get_info_card(at_position: Vector2) -> Dictionary:
 			return (t[2] as Dictionary).duplicate(true)
 	return {}
 
-# ── FILTRES (sb_panel_filtres) : sélecteur de mode carte, FONCTIONNEL ──────
 func _draw_filtres(x: float, y: float) -> float:
 	_chips.clear()
 	if _map != null:
@@ -1428,12 +1318,8 @@ func _draw_filtres(x: float, y: float) -> float:
 		y += 26
 	return y
 
-# ── DIPLOMATIE (sb_panel_diplo) : la LISTE-RÉSUMÉ, SANS boutons — chaque pays connu :
-# nom + statut, BARRE D'OPINION (±100), le POURQUOI (composantes) et la MÉMOIRE datée.
-# Les ACTIONS vivent dans la FENÊTRE PAR PAYS (country_actions) : CLIC sur la ligne
-# (ou clic droit carte) → elle s'ouvre. (Le brouillard de guerre limitera la liste.)
-## le JOURNAL D'ACTES (DiplogAct moteur) : [libellé quand LUI agit, libellé quand NOUS
-## agissons, hostile?] — la sous-détaille datée de « Mémoire ».
+# DIPLOMATIE : liste-résumé read-only ; les ACTIONS vivent dans la fenêtre par pays (clic sur la ligne).
+## JOURNAL D'ACTES (DiplogAct moteur) : [libellé quand LUI agit, quand NOUS agissons, hostile?].
 const DACT_LABEL := {
 	1: ["nous a déclaré la GUERRE", "guerre déclarée par nous", true],
 	2: ["paix signée", "paix signée", false],
@@ -1449,9 +1335,7 @@ const DACT_LABEL := {
 
 func _draw_diplo(x: float, y: float, me: int) -> float:
 	_diplo_btns.clear()
-	# BROUILLARD (retour joueur : « vision diplomatique complète alors qu'on a un fog ») :
-	# un pays JAMAIS DÉCOUVERT n'existe pas dans la liste — filtré D'ABORD pour savoir
-	# si la liste est VRAIMENT vide (LOT UI 2.4 : état vide explicatif).
+	# BROUILLARD : un pays jamais découvert n'existe pas dans la liste — filtré D'ABORD (pour l'état vide explicatif).
 	var rels: Array = []
 	for rel in Sim.world.country_relations(me):
 		var target0: int = int(rel["country"])
@@ -1478,7 +1362,6 @@ func _draw_diplo(x: float, y: float, me: int) -> float:
 			y += VKit.text_wrapped(self, Vector2(x + 18, y), VKit.COL_DIM, line, DW - 2.0 * x - 18.0, 2, VKit.FS_SMALL)
 			y += 4
 		return y + 4.0
-	# UN SEUL hint en tête (il était répété sous CHAQUE pays — bruit, capture 2026-07-09)
 	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "▸ cliquer une fiche : actions diplomatiques", VKit.FS_SMALL)
 	y += 18
 	for rel in rels:
@@ -1487,18 +1370,15 @@ func _draw_diplo(x: float, y: float, me: int) -> float:
 		var at_war: bool = bool(rel["at_war"])
 		var allied: bool = bool(rel["allied"])
 		var col := VKit.sense(0.12) if at_war else (VKit.sense(0.78) if allied else VKit.COL_PARCH)
-		# ligne 1 : nom + statut
 		VKit.text(self, Vector2(x, y), col, String(rel["name"]), VKit.FS_SMALL)
 		VKit.text(self, Vector2(x + 150, y), VKit.COL_DIM, String(rel["status"]), VKit.FS_SMALL)
 		y += 14
-		# ligne 2 : opinion ±100 (ce que CE pays pense de nous)
+		# opinion ±100 = ce que CE pays pense de nous
 		var op: int = int(rel["opinion"])
 		_opinion_bar(x, y, 150.0, op)
 		VKit.text(self, Vector2(x + 158, y - 3), _opinion_col(op), "%+d" % op, VKit.FS_SMALL)
 		y += 14
-		# ligne 2bis : le RÉSUMÉ — POURQUOI (les composantes vers lesquelles l'opinion
-		# converge : statuts actifs · rancune territoriale · MÉMOIRE des actes — trahison,
-		# sécession d'une guerre civile). Seules les composantes NON NULLES s'affichent.
+		# les composantes vers lesquelles l'opinion converge ; seules les NON NULLES s'affichent.
 		var parts: Dictionary = Sim.world.opinion_summary(target)
 		if not parts.is_empty():
 			var tx := x
@@ -1517,9 +1397,7 @@ func _draw_diplo(x: float, y: float, me: int) -> float:
 				drew = true
 			if drew:
 				y += 13
-		# ligne 2ter : le JOURNAL — chaque acte DATÉ (« mémoire » sous-détaillée) : les
-		# 3 plus récents ; un acte de MÉMOIRE (trahison, sécession) porte son poids
-		# RESTANT (décayé) — « s'estompe » quand il a déjà fondu.
+		# JOURNAL : les 3 actes datés les plus récents (le poids RESTANT décayé « s'estompe »).
 		var me2: int = Sim.world.player()
 		var shown := 0
 		for e in Sim.world.diplo_journal(target):
@@ -1537,15 +1415,14 @@ func _draw_diplo(x: float, y: float, me: int) -> float:
 			VKit.text(self, Vector2(x + 6, y), lc, line, VKit.FS_SMALL)
 			y += 12
 			shown += 1
-		# PAS de boutons ici : toute la FICHE est cliquable → la fenêtre d'actions du pays
+		# toute la fiche est cliquable → la fenêtre d'actions du pays (pas de boutons ici)
 		var row_rect := Rect2(x - 4.0, row_y0 - 2.0, DW - 2.0 * x + 8.0, (y - row_y0) + 4.0)
 		_diplo_btns.append({"rect": row_rect, "act": "open", "target": target, "nom": String(rel["name"])})
 		y += 6
 		VKit.fill(self, Rect2(x, y - 3, DW - 2.0 * x, 1), VKit.COL_EDGE)
 	return y
 
-## barre d'opinion ±100 : repère central (zéro), remplissage vert (favorable) ou
-## rouge (hostile) depuis le centre.
+## barre d'opinion ±100 : remplissage vert (favorable) / rouge (hostile) depuis le centre.
 func _opinion_bar(x: float, y: float, w: float, op: int) -> void:
 	VKit.fill(self, Rect2(x, y, w, 8), VKit.COL_PANEL2)
 	VKit.box(self, Rect2(x, y, w, 8), VKit.COL_EDGE)
@@ -1563,8 +1440,7 @@ func _opinion_col(op: int) -> Color:
 	if op < -15: return VKit.sense(0.15)
 	return VKit.COL_DIM
 
-## Armée : levée [-]/[+], recompléter/dissoudre, mise en chantier de coque —
-## verbes journalisés (drainés au tick), aucun n'échoue localement sauf navy_build.
+## Armée : recompléter/dissoudre/chantier — verbes journalisés ; aucun n'échoue localement sauf navy_build.
 func _armee_act(kind: String, val: int) -> void:
 	var w = Sim.world
 	if w == null:
@@ -1610,8 +1486,7 @@ func _marche_act(act: String, res_id: int, me: int) -> void:
 	Sound.play("ui_click")
 	queue_redraw()
 
-## Conseil : recruter (siège vacant, slot 0) / renvoyer (siège pourvu) / payer
-## (curseur LINÉARISÉ 0–100 %, V2a) — verbes journalisés.
+## Conseil : recruter / renvoyer / payer (curseur 0–100 %) — verbes journalisés.
 func _conseil_act(act: String, seat: int, slot: int, pay: float = 1.0) -> void:
 	var w = Sim.world
 	if w == null:
@@ -1619,7 +1494,7 @@ func _conseil_act(act: String, seat: int, slot: int, pay: float = 1.0) -> void:
 	var ok := false
 	var label := "recrutement"
 	if act == "hire":
-		ok = w.player_council_hire(seat, slot)   # le CANDIDAT choisi (embauche éclairée)
+		ok = w.player_council_hire(seat, slot)   # le candidat choisi
 	elif act == "pay":
 		ok = w.player_council_pay(seat, pay)
 		label = "paie"
@@ -1665,8 +1540,7 @@ func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		_active_slider.clear()
 		return
-	# HOVER (Marché, LOT UI 2.3) : la ligne sous la souris — immédiat (pas de délai
-	# d'infobulle), c'est ce qui fait apparaître le NOM de la ressource.
+	# HOVER Marché : ligne sous la souris, immédiat (fait apparaître le nom de la ressource).
 	if event is InputEventMouseMotion and _tab == 3:
 		var hov := -1
 		for r in _marche_rows:
@@ -1730,7 +1604,7 @@ func _gui_input(event: InputEvent) -> void:
 					_armee_act("navy", int(b.hull))
 					accept_event()
 					return
-			# COMPOSEUR D'ARMÉE : clic tuile = levée (journalisée) — lot 5
+			# clic tuile = levée (journalisée)
 			for ub in _unit_btns:
 				if (ub.rect as Rect2).has_point(event.position):
 					if bool(ub.on) and Sim.world != null:

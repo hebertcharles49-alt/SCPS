@@ -1,25 +1,7 @@
 extends Control
-## CultureCreator — la fenêtre « créateur d'empire » façon Stellaris, en ONGLETS
-## (retour joueur 2026-07-10 : « dispatcher avec plusieurs onglets, expliquer,
-## pas tout mettre dans les menus déroulants, expliquer combien ») :
-##   · onglet HÉRITAGE   : votre affinité technologique — CARTES comparables côte à
-##                   côte (retour joueur 2026-07-10, Lot 4.4 : « cartes comparables
-##                   vs déroulants ») ; le nom+un ethnonyme-exemple sur la carte, la LORE complète
-##                   au survol, l'aperçu détaillé de la carte SÉLECTIONNÉE dessous ;
-##   · onglet ÉTHOS      : votre orientation politique et culturelle — mêmes cartes
-##                   comparables (6 options, tiennent en grille à 1280×720) ;
-##   · onglet TRADITIONS : TROIS sections plates (Positif majeur · Positif mineur ·
-##                   Négatif), tous axes mélangés (retour joueur : « une liste non
-##                   divisée, sinon illisible ») — choisir un trait GRISE les autres
-##                   traits du même axe dans les AUTRES sections (l'axe est consommé) ;
-##   · onglet IDENTITÉ   : armoiries, nom de l'empire, aperçu du peuple.
-## La GRAINE ne vit plus ici (écran Nouvelle partie) — le mode autonome régénère
-## sur la graine COURANTE (Sim.current_seed).
-##
-## RÈGLE D'OR : zéro logique de simulation ici. TOUT (listes, validation, aperçu des
-## leviers, composition) passe par la façade C `Sim.world.*` (le moteur reste 100 % C,
-## déterministe). Sur « Commencer », on grave la composition (set_player_culture) puis
-## on régénère le monde — le pays du joueur naît avec SA culture.
+## Créateur d'empire en onglets (Héritage/Éthos/Traditions/Identité). Zéro logique sim :
+## tout via la façade C Sim.world.* ; « Commencer » grave la compo (set_player_culture)
+## puis régénère le monde.
 
 signal started   ## le joueur a lancé son empire (le monde vient d'être régénéré)
 signal cancelled ## le joueur a fermé sans composer (on garde le monde par défaut)
@@ -34,14 +16,8 @@ var _target_slot := 0
 
 const AXES := ["Physique", "Social", "Intellectuel"]
 
-## TRADUCTION LOCALE des noms de leviers renvoyés par la façade (scps_api.c
-## scps_culture_preview / NM[]) — retour joueur (fuite de membrane repérée en jeu :
-## « Je vois de la perméabilité, du K… ») : la façade renvoie encore des noms de
-## levier interne (« Capacité (diversité) », « Perméabilité (assimilation) », « Affinité
-## arcane ») — du modèle-speak brut. En attendant que NM[] soit lui-même renommé côté
-## façade (fichier scps_api.c non modifiable par cette mission, tenu par un autre
-## agent), on retraduit ICI, à l'affichage, vers les mots de jeu établis. Les noms déjà
-## propres (Coercition, Fracture, Dérive culturelle) passent inchangés.
+## Retraduction à l'affichage des noms de levier bruts de la façade (fuite de membrane :
+## « perméabilité/K » vus en jeu) → mots de jeu. NM[] pas encore renommé côté C.
 const NOM_LEVIER_JOUEUR := {
 	"Démographie": "Croissance de la population",
 	"Productivité": "Production",
@@ -52,13 +28,8 @@ const NOM_LEVIER_JOUEUR := {
 	"Affinité arcane": "Magie faustienne",
 }
 
-## LORE EXPLICATIVE (« verbose explicative autorisée », retour joueur 2026-07-10) —
-## chaque ligne est ANCRÉE sur un mécanisme moteur RÉEL (jamais une promesse) :
-## esclavage par coutume = gate can_enslave (Dominateur/Honneur) · annexion-digestion =
-## diplo étage 3 · creuset gardé/digéré = évènements xénophile/xénophobe · greffe
-## culturelle = épargne S1 des investisseurs · drill à poudre = doctrine P2 (chaîne à feu).
-## Indexée par id d'éthos, MÊME ORDRE que la façade (scps_api.c EPI[] : Horde·Clans·
-## Ordre·Couronne·Ligue·Havre).
+## Lore d'éthos (chaque ligne ancrée sur un mécanisme réel). Même ordre que la façade
+## EPI[] : Horde·Clans·Ordre·Couronne·Ligue·Havre.
 const ETHOS_LORE := [
 	"La conquête est la seule légitimité que cet État reconnaisse. Son armée frappe fort et tôt, ses guerres visent ce dont l'empire a besoin, et les vaincus sont réduits en servitude par coutume. Les peuples soumis ne sont pas accueillis : ils sont DIGÉRÉS, lentement, jusqu'à ne faire qu'un seul sang. Les vassaux bien intégrés finissent annexés. Mauvais hôte, grand prédateur.",
 	"La gloire au combat et la razzia fondent le rang de chacun. Même famille martiale que la Horde : servitude par coutume, vassaux digérés, cohésion par la fonte des peuples plutôt que par leur accueil. L'honneur rend les guerres fréquentes mais codifiées, et l'armée privilégie le duel et le raid.",
@@ -68,9 +39,8 @@ const ETHOS_LORE := [
 	"Le consentement seul gouverne : cet État ne fracture jamais sa société de force. Havre des réfugiés et des minorités, il assimile par l'attrait plutôt que par le fer, et son creuset gardé prospère. Sa faiblesse est militaire : il n'aime ni lever l'ost ni le payer.",
 ]
 
-## Même geste pour l'HÉRITAGE : la branche d'arbre que la lignée ouvre nativement
-## (les rungs de l'ÉTOFFE + la signature, noms réels de scps_tech.c), même ordre
-## que heritage_list (Ésotérique·Métallurgiste·Mécaniste·Adaptatif·Agraire·Clanique).
+## Lore d'héritage, même ordre que heritage_list (Ésotérique·Métallurgiste·Mécaniste·
+## Adaptatif·Agraire·Clanique).
 const HER_LORE := [
 	"Sa branche d'arbre : les glyphes éthérés et la communion éthérée, jusqu'aux signatures arcanes profondes. Le peuple le plus sensible à la magie, et le plus exposé à ses pentes faustiennes.",
 	"Sa branche d'arbre : les alliages des profondeurs et la gravure runique, jusqu'à la forge à runes. Le métal, les armes, la montagne.",

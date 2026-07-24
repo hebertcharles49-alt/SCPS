@@ -1,50 +1,46 @@
 extends Control
-## COUNTRY ACTIONS — la fenêtre DIPLOMATIQUE d'un pays cible : le résumé exhaustif de la
-## relation (statut · opinion ±100 · composantes · mémoire d'actes) + LES VERBES (guerre /
-## paix / alliance / pacte / embargo), grisés par la légalité (diplo_options) ET par le
-## DIPLOMATE (un émissaire, 1 acte / 2 mois — scps_diplo_cd). Ouverte par la liste diplo
-## de la sidebar OU par le CLIC DROIT sur la carte. Zéro logique sim : lit la façade,
-## enfile des verbes journalisés.
+## Fenêtre diplomatique d'un pays cible : résumé de la relation + verbes (guerre/paix/
+## alliance/pacte/embargo). Lit la façade, enfile des verbes journalisés (zéro logique sim).
 
 const VKit = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const InfoRef = preload("res://ui/info_ref.gd")
-const DrawerK = preload("res://ui/sidebar_drawer.gd")   # DACT_LABEL partagé (mémoire datée)
+const DrawerK = preload("res://ui/sidebar_drawer.gd")
 const Frame = preload("res://ui/frame.gd")
 const OpinionBar = preload("res://ui/opinion_bar.gd")
-const Concepts = preload("res://ui/concepts.gd")   # D4 — glossaire hover
-const TooltipFactory = preload("res://ui/tooltip_factory.gd")   # checklist de refus (2026-07-21)
+const Concepts = preload("res://ui/concepts.gd")
+const TooltipFactory = preload("res://ui/tooltip_factory.gd")
 
 signal navigate_requested(request: Dictionary)
 
 const PW := 380.0
 
 var _cid := -1
-var _btns := {}          ## verbe → Button
-var _action_details := {} ## verbe → Label toujours visible (verrou · coût · délai · conséquence)
+var _btns := {}
+var _action_details := {}
 var _panel: PanelContainer
 var _scroll: ScrollContainer
 var _head: Label
-var _arms_rect: TextureRect   ## les ARMES du pays cible (héraldique dérivée)
+var _arms_rect: TextureRect
 var _status: Label
-var _opinion_course: Label   ## opinion actuelle → point d'équilibre calculé par ses composantes
+var _opinion_course: Label
 var _opinion_widget: Control
 var _sum_lbl: Label
 var _engagement_lbl: Label
 var _capital_btn: Button
 var _capital_region := -1
 var _cd_lbl: Label
-var _cb_lbl: Label   ## W-GUERRE-3 : état de l'intrigue fabriquée (en cours / prête / coût)
-var _context_hint: Label   ## rappel des panneaux où suivre les conséquences de la relation
+var _cb_lbl: Label
+var _context_hint: Label
 var _flash: Label
-var _legal_by_verb := {} ## verbe -> décision structurée du moteur (autorisé, raison, coût, délai)
+var _legal_by_verb := {}
 var _econ_box: VBoxContainer
 var _antag_box: VBoxContainer
 var _peace_box: VBoxContainer
 var _peace_open := false
 var _peace_preview := {}
-var _peace_selected := {}       ## region -> true
-var _peace_checks := {}         ## terme -> CheckButton
+var _peace_selected := {}
+var _peace_checks := {}
 var _peace_territory_box: VBoxContainer
 var _peace_gold: HSlider
 var _peace_gold_lbl: Label
@@ -54,9 +50,7 @@ var _peace_submit: Button
 const PEACE_FLAGS := {"reparations": 1, "humiliate": 2, "pillage": 4,
 	"liberate": 8, "vassalize": 16, "fragment": 32}
 
-# UI-4 (retour joueur 2026-07-10) : hiérarchie d'actions — Guerre est DESTRUCTIF (rouge
-# sombre + confirmation 2 clics, motif _servile_manumit_armed/province_panel _purge_armed) ;
-# Paix/Allier/Pacte/Migration/Embargo restent SECONDAIRES (thème neutre inchangé).
+# Guerre = DESTRUCTIF (rouge + confirmation 2 clics) ; les autres verbes restent neutres.
 const BTN_LABELS := {"war": "Déclarer la guerre", "peace": "Faire la paix", "ally": "Proposer une alliance", "pact": "Pacte commercial",
 	"migration": "Pacte migratoire", "embargo": "Embargo"}
 const ACTION_HELP := {
@@ -86,8 +80,7 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_layout)
 	Sim.ticked.connect(func(_y): if visible: _refresh())
 
-## la fenêtre de confirmation « Guerre » (4 s) retombe même en pause (Sim.ticked ne
-## tourne pas si le jeu est arrêté ; ce Control, si — miroir province_panel._process).
+# La confirmation Guerre (4 s) retombe même en pause : Sim.ticked ne tourne pas à l'arrêt, _process si.
 func _process(_dt: float) -> void:
 	if _war_armed and Time.get_ticks_msec() - _war_armed_ms > 4000:
 		_war_armed = false
@@ -102,7 +95,7 @@ func _build() -> void:
 	sb.set_border_width_all(1)
 	sb.set_border_width(SIDE_TOP, 3)
 	sb.set_corner_radius_all(1)
-	sb.set_content_margin_all(10)   # RÉDUIT (retour joueur 2026-07-21 « trop chunky ») : 14→10
+	sb.set_content_margin_all(10)   # réduit 14→10
 	_panel.add_theme_stylebox_override("panel", sb)
 	add_child(_panel)
 
@@ -154,7 +147,7 @@ func _build() -> void:
 	opinion_head.text = "OPINION  −100 / +100"
 	opinion_head.add_theme_font_size_override("font_size", 12)
 	opinion_head.add_theme_color_override("font_color", VKit.COL_GOLD)
-	# D4 — glossaire hover : la jauge n'a autrement AUCUN survol nommant le concept.
+	# sinon la jauge n'a aucun survol nommant le concept
 	opinion_head.tooltip_text = Concepts.def_of("Opinion")
 	opinion_head.mouse_filter = Control.MOUSE_FILTER_STOP
 	col.add_child(opinion_head)
@@ -196,8 +189,7 @@ func _build() -> void:
 	_cb_lbl.add_theme_color_override("font_color", Color(0.70, 0.55, 0.75))
 	col.add_child(_cb_lbl)
 
-	# UI-4 : les styleboxes DESTRUCTIFS de « Guerre » (rouge sombre — distinct du chrome
-	# cuir/or par défaut des verbes secondaires) — précalculés une fois.
+	# styleboxes rouges de Guerre (destructif), précalculés une fois
 	_war_sb_idle = _mkbox(Color(0.22, 0.06, 0.05), Color(0.58, 0.18, 0.13), 2)
 	_war_sb_hover = _mkbox(Color(0.30, 0.09, 0.07), Color(0.80, 0.26, 0.18), 2)
 	_war_sb_press = _mkbox(Color(0.14, 0.04, 0.03), Color(0.46, 0.13, 0.10), 2, true)
@@ -227,10 +219,8 @@ func _build() -> void:
 	col.add_child(_econ_box)
 	_add_action(_econ_box, "migration", "Pacte migratoire")
 	_add_action(_econ_box, "pact", "Pacte commercial")
-	# UI-MONNAIE (2026-07-16) — U3 : L'EMPRUNT D'ÉTAT (MONNAIE M9 V2). Verbe et lecteurs
-	# à PART (player_request_loan/country_loan_status) — pas dans DIPLO_ACTION_ID/diplo_
-	# action_legal (motif « fabricate », géré hors boucle générique ci-dessous). Le detail
-	# Label posé par _add_action (motif fab_btn) porte l'état « [État] étudie/accorde/refuse ».
+	# Emprunt d'État : verbe et lecteurs à part (player_request_loan/country_loan_status),
+	# hors DIPLO_ACTION_ID/diplo_action_legal et hors boucle générique (comme « fabricate »).
 	_add_action(_econ_box, "request_loan", "Demander un emprunt", func(): _loan_press())
 	eco_toggle.pressed.connect(func():
 		_econ_box.visible = not _econ_box.visible
@@ -320,8 +310,7 @@ func _build_peace_drawer() -> void:
 		var cb := CheckButton.new()
 		cb.text = row[1]
 		cb.toggled.connect(func(_on): _peace_update_total())
-		# D4 — « Vassaliser » nomme directement le concept (le libellé porte son propre
-		# coût en score, pas le mot « Vassalité » lui-même — sinon aucun survol ne l'explique).
+		# « Vassaliser » : le libellé ne nomme jamais « Vassalité » — un survol l'explique
 		if row[0] == "vassalize":
 			cb.tooltip_text = Concepts.def_of("Vassalité")
 		_peace_box.add_child(cb)
@@ -436,9 +425,7 @@ func _submit_peace() -> void:
 	_flash.text = "Conditions de paix envoyées." if ok else "Offre de paix refusée à l'enfilement."
 	_flash.add_theme_color_override("font_color", VKit.sense(0.80) if ok else VKit.sense(0.15))
 
-## petit StyleBoxFlat cuir/bordure (miroir ui_theme._box, dupliqué ici : country_actions
-## n'a pas licence d'éditer ui_theme.gd, et une couleur DESTRUCTIVE n'a pas sa place dans
-## le thème global neutre).
+# StyleBoxFlat dupliqué de ui_theme._box : une couleur destructive n'a pas sa place dans le thème neutre.
 static func _mkbox(bg: Color, border: Color, bw: int = 2, shift_down := false) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = bg
@@ -451,8 +438,7 @@ static func _mkbox(bg: Color, border: Color, bw: int = 2, shift_down := false) -
 	sb.content_margin_bottom = 5.0 - (2.0 if shift_down else 0.0)
 	return sb
 
-## UI-4 : « Guerre » exige 2 clics — le 1er ARME la confirmation (rien n'est déclaré), le
-## 2e (dans les 4 s, cf. _process) déclare pour de vrai. Jamais de popup modal.
+# Guerre = 2 clics : le 1er arme (4 s, cf. _process), le 2e déclare.
 func _war_press() -> void:
 	if not _war_armed:
 		_war_armed = true
@@ -465,18 +451,15 @@ func _war_press() -> void:
 func _layout() -> void:
 	var vp := get_viewport_rect().size
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	# TIROIR DIPLOMATIQUE — RÉDUIT/DÉCOLLÉ/DÉFILABLE (retour joueur 2026-07-21 « trop
-	# chunky ») : plus étroit (0.28→0.24, 420-540→360-440), DÉCOLLÉ du rail/topbar par une
-	# marge, et sa hauteur HUG le contenu VISIBLE au lieu du plein écran — au-delà d'un
-	# plafond, le ScrollContainer existant prend le relais (la barre n'apparaissait jamais
-	# tant que le panneau se forçait à toute la hauteur).
+	# la hauteur hug le contenu visible : sans ça le panneau prenait tout l'écran et la
+	# barre de scroll n'apparaissait jamais (au-delà du plafond, le ScrollContainer relaie).
 	var margin := 12.0
 	var drawer_w := clampf(vp.x * 0.24, 360.0, 440.0)
 	_panel.position = Vector2(Frame.SIDEBAR_W + margin, Frame.TOPBAR_H + margin)
 	var ceiling := maxf(160.0, vp.y - Frame.TOPBAR_H - 2.0 * margin)
 	var content_h := 160.0
 	if _scroll != null and _scroll.get_child_count() > 0:
-		# +20 = les content_margin haut+bas du panneau (10×2) autour du scroll
+		# +20 = content_margin haut+bas du panneau (10×2)
 		content_h = (_scroll.get_child(0) as Control).get_combined_minimum_size().y + 20.0
 	_panel.custom_minimum_size = Vector2(drawer_w, 0)
 	_panel.size = Vector2(drawer_w, clampf(content_h, 160.0, ceiling))
@@ -484,7 +467,7 @@ func _layout() -> void:
 func open_country(cid: int) -> void:
 	if Sim.world == null or cid < 0 or cid == int(Sim.world.player()):
 		return
-	# BROUILLARD : un pays jamais découvert ne se laisse pas approcher (retour joueur)
+	# brouillard : un pays jamais découvert ne s'approche pas
 	if Sim.world.has_method("country_known") and int(Sim.world.country_known(cid)) == 0:
 		return
 	if _cid != cid:
@@ -510,7 +493,7 @@ func _refresh() -> void:
 	_sum_lbl.text = "Habitants : %s\nÉthos / régime effectif : %s\nStatut politique : %s · %d territoire(s)" % [
 		str(int(info.get("pop", 0))), String(info.get("ethos", "—")),
 		String(roles.get(int(w.country_role(_cid)), "Entité politique")), int(info.get("regions", 0))]
-	# la relation vue du joueur : statut + opinion (ce que LUI pense de NOUS)
+	# opinion = ce que la cible pense de NOUS
 	var rel := {}
 	for rl in w.country_relations(w.player()):
 		if int(rl.get("country", -1)) == _cid:
@@ -519,14 +502,12 @@ func _refresh() -> void:
 	var op := int(rel.get("opinion", 0))
 	var stat_word := String(rel.get("status", "—"))
 	_status.text = "Statut : %s" % stat_word
-	# D4 — « Vassal »/« Suzerain » sont un mot NU (pas la clé DEFS « Vassalité ») :
-	# sans ce mapping manuel, ce statut n'a jamais de survol nommant le concept.
+	# « Vassal »/« Suzerain » ≠ la clé « Vassalité » : mapping manuel pour le survol
 	if stat_word == "Vassal" or stat_word == "Suzerain":
 		_status.tooltip_text = Concepts.def_of("Vassalité")
 		_status.mouse_filter = Control.MOUSE_FILTER_STOP
 	else:
 		_status.tooltip_text = ""
-	# le RÉSUMÉ : composantes d'opinion + les 3 derniers actes (la mémoire)
 	var parts := PackedStringArray()
 	var opinion_target := 0
 	if w.has_method("opinion_summary"):
@@ -562,8 +543,7 @@ func _refresh() -> void:
 		_opinion_course.text += "\nFacteurs : " + ", ".join(parts)
 	if mem.size() > 0:
 		_opinion_course.text += "\nMémoire : " + " — ".join(mem)
-	# P8 — engagements, portée et lieux viennent d'un lecteur unique. La fiche ne
-	# reconstitue ni pacte, ni slots d'alliance, ni liaison commerciale.
+	# engagements/portée/lieux d'un seul lecteur (diplo_context) : on ne reconstruit rien
 	var ctx: Dictionary = w.diplo_context(_cid) if w.has_method("diplo_context") else {}
 	var engagements := PackedStringArray()
 	if bool(ctx.get("at_war", false)):
@@ -598,15 +578,13 @@ func _refresh() -> void:
 	_capital_btn.text = "⌖ Voir la capitale%s" % (" — " + capital_name if capital_name != "" else "")
 	_capital_btn.disabled = _capital_region < 0
 	_capital_btn.tooltip_text = "Centrer la carte sur la capitale de ce pays."
-	# le DIPLOMATE : cooldown → tous les verbes grisés + la raison affichée
 	var cd := int(w.diplo_cd()) if w.has_method("diplo_cd") else 0
 	_cd_lbl.text = ("Émissaire : retour dans %d j" % cd) if cd > 0 else "Émissaire : disponible"
 	var op2: Dictionary = w.diplo_options(_cid) if w.has_method("diplo_options") else {}
 	_legal_by_verb.clear()
 	for legal_verb in DIPLO_ACTION_ID:
 		_legal_by_verb[legal_verb] = _read_legal(w, legal_verb, op2, cd)
-	# L'état de relation ne sert plus qu'au conseil contextuel. La légalité et sa raison
-	# viennent exclusivement de diplo_action_legal : l'UI ne reconstruit aucune règle.
+	# légalité/raison viennent seulement de diplo_action_legal — l'UI ne reconstruit aucune règle
 	var psr: Dictionary = w.opinion_summary(_cid) if w.has_method("opinion_summary") else {}
 	var at_war: bool = int(psr.get("war", 0)) != 0
 	var allied: bool = int(psr.get("ally", 0)) != 0
@@ -619,31 +597,28 @@ func _refresh() -> void:
 		_context_hint.text = "Rappel : clic droit sur un pays ouvre cette fiche ; l'onglet Diplomatie compare tous les voisins."
 	for verb in _btns:
 		if verb == "fabricate" or verb == "request_loan":
-			continue   # géré à part plus bas (texte/état dynamiques)
+			continue   # géré à part plus bas
 		var b: Button = _btns[verb]
 		var legal: Dictionary = _legal_by_verb.get(verb, {})
 		b.disabled = not bool(legal.get("allowed", false))
 		if verb == "war" and b.disabled:
 			_war_armed = false          # plus légal ⇒ la confirmation en attente retombe
-		# AMBRE : permis mais l'offre serait REFUSÉE (l'opinion #26 prévisualisée)
+		# ambre : permis mais l'offre serait refusée (opinion basse prévisualisée)
 		var amber: bool = (not b.disabled) and not bool(legal.get("unilateral", true)) \
 			and not bool(legal.get("would_accept", true))
-		# UI-5 (retour joueur : « la couleur seule ne suffit pas ») : l'ambre « il
-		# refusera » ne se voyait qu'à la teinte du bouton (invisible avant le survol) —
-		# un « ⚠ » sur le LIBELLÉ double le canal, visible sans survoler.
+		# ⚠ sur le libellé double le canal couleur (invisible avant survol sinon)
 		var base_label: String = String(BTN_LABELS.get(verb, verb))
 		if verb == "embargo" and not bool(legal.get("toggle_on", true)):
 			base_label = "Lever l'embargo"
 		if verb == "war":
-			# DESTRUCTIF : le libellé PORTE la confirmation (« Confirmer la guerre ? »),
-			# le fond bascule à un rouge plus vif tant que l'armement tient (4 s).
+			# le libellé porte la confirmation, le fond vire au rouge vif tant que l'arme tient (4 s)
 			b.text = "Confirmer la guerre ?" if _war_armed else "⚔ %s" % base_label
 			b.add_theme_stylebox_override("normal", _war_sb_armed if _war_armed else _war_sb_idle)
 			b.modulate = Color(1, 1, 1)
 		else:
 			b.text = ("%s ⚠" % base_label) if amber else base_label
 			b.modulate = Color(1.0, 0.82, 0.5) if amber else Color(1, 1, 1)
-		# RETOUR JOUEUR : chaque verbe GRISÉ nomme sa raison au survol (« pourquoi je peux pas ? »)
+		# chaque verbe grisé nomme sa raison au survol
 		if b.disabled:
 			b.tooltip_text = _legal_tooltip(legal, "")
 		elif verb == "war" and _war_armed:
@@ -653,9 +628,7 @@ func _refresh() -> void:
 		else:
 			b.tooltip_text = String(ACTION_HELP.get(verb, ""))
 		_update_action_detail(verb, legal, amber)
-	# W-GUERRE-3 — LE CASUS BELLI FABRIQUÉ : « Guerre » reste grisé sans motif gratuit NI
-	# intrigue mûre (can_declare_war le dit déjà côté moteur) ; « Fabriquer » porte l'état
-	# de l'intrigue en cours/mûre/coût — un bouton de CORRUPTION, distinct de la déclaration.
+	# « Fabriquer » porte l'état de l'intrigue (en cours/mûre/coût), distinct de la déclaration
 	var fabricating: bool = bool(op2.get("fabricating", false))
 	var cb_ready: bool = bool(op2.get("cb_ready", false))
 	var cost := float(op2.get("fabricate_cost", 0.0))
@@ -670,7 +643,7 @@ func _refresh() -> void:
 		elif cb_ready:
 			var yleft := float(op2.get("cb_ready_years_left", 0.0))
 			fab_btn.text = "%s revendiquée — expire dans %.1f an" % [claim_name, yleft]
-			fab_btn.disabled = true   # rien à refaire tant qu'elle est valide — déclarez la guerre
+			fab_btn.disabled = true   # rien à refaire tant qu'elle est valide
 		else:
 			fab_btn.text = "Revendiquer %s — %d or" % [claim_name, int(round(cost))]
 			fab_btn.disabled = not bool(fab_legal.get("allowed", false))
@@ -682,10 +655,8 @@ func _refresh() -> void:
 		_cb_lbl.text = "Une revendication est prête : déclarez la guerre avant qu'elle ne s'évente."
 	else:
 		_cb_lbl.text = ""
-	# UI-MONNAIE — U3 : L'EMPRUNT D'ÉTAT. Grisé par le MÊME émissaire (cd) que les
-	# autres verbes ; l'état de la DERNIÈRE demande (country_loan_status, mot résolu
-	# côté moteur — « [État] accorde/refuse le prêt »/« Aucune demande ») s'affiche
-	# SEULEMENT si elle concerne CE pays (country_loan_request_target == _cid).
+	# Emprunt : grisé par le même émissaire (cd) ; l'état de la dernière demande ne
+	# s'affiche que si elle concerne CE pays (country_loan_request_target == _cid).
 	var loan_btn: Button = _btns.get("request_loan")
 	if loan_btn != null:
 		var loan_detail: Label = _action_details.get("request_loan")
@@ -717,9 +688,7 @@ func _refresh() -> void:
 				loan_detail.text = "%s\nDisponible : %s or · %.1f %% fixe · exposition %s/%s" % [
 					status, _grp(int(round(loan_max))), loan_rate * 100.0,
 					_grp(int(round(exposure))), _grp(int(round(exposure_limit)))]
-	# « Faire la paix » est un TIROIR : il reste accessible pendant la guerre même si
-	# l'émissaire est occupé (le bouton d'envoi, lui, porte le cooldown). En paix il
-	# est toujours visible et franchement grisé.
+	# tiroir « Paix » accessible même émissaire occupé (le cooldown est porté par le bouton d'envoi)
 	var peace_btn: Button = _btns.get("peace")
 	if peace_btn != null:
 		peace_btn.disabled = not bool(ctx.get("at_war", false))
@@ -729,8 +698,7 @@ func _refresh() -> void:
 			_peace_open = false
 			_peace_box.visible = false
 	_peace_refresh()
-	# la hauteur SUIT le contenu visible (guerre/paix/sections repliées changent le total) —
-	# recalculée au refresh pour que le panneau reste compact et la barre de scroll juste.
+	# hauteur recalculée au refresh : le contenu visible change (guerre/paix/sections repliées)
 	_layout()
 
 func _act(verb: String) -> void:
@@ -753,8 +721,7 @@ func _act(verb: String) -> void:
 		else ("Ordre refusé : %s · survolez l'action pour connaître le verrou." % action_name)
 	_flash.add_theme_color_override("font_color", VKit.sense(0.80) if ok else VKit.sense(0.15))
 	if ok:
-		# l'ÉMISSAIRE PART : on mémorise SON objectif (display-only) pour le menu de droite,
-		# tant qu'il est « en tournée » (diplo_cd). Phrase franche + le pays cible.
+		# mémorise l'objectif de l'émissaire (display-only) tant qu'il est en tournée (diplo_cd)
 		var target := String(_head.text)
 		var embargo_on := bool(_legal_by_verb.get("embargo", {}).get("toggle_on", true))
 		var obj: String = {
@@ -771,14 +738,12 @@ func _act(verb: String) -> void:
 		Sound.play("ui_click")
 	_refresh()
 
-## UI-MONNAIE — U3 : L'EMPRUNT D'ÉTAT (player_request_loan, CMD_REQUEST_LOAN — motif _act,
-## mais un verbe À PART : la résolution SYNCHRONE au drain n'a pas de « would_accept »
-## préalable comme les autres offres diplo, motif M9 « pas d'état en cours »).
+# Emprunt à part : résolution synchrone au drain, sans « would_accept » préalable.
 func _loan_press() -> void:
 	var w = Sim.world
 	if w == null or _cid < 0:
 		return
-	var ok := bool(w.player_request_loan(_cid, -1.0)) if w.has_method("player_request_loan") else false   # <=0 ⇒ le maximum
+	var ok := bool(w.player_request_loan(_cid, -1.0)) if w.has_method("player_request_loan") else false   # <=0 ⇒ maximum
 	_flash.text = ("Ordre émis : demander un emprunt · l'émissaire part." if ok \
 		else "Ordre refusé : demander un emprunt · survolez l'action pour connaître le verrou.")
 	_flash.add_theme_color_override("font_color", VKit.sense(0.80) if ok else VKit.sense(0.15))
@@ -787,8 +752,7 @@ func _loan_press() -> void:
 	Sound.play("ui_click")
 	_refresh()
 
-## Décision structurée fournie par le moteur. Le fallback ne sert qu'aux anciennes DLL
-## de développement verrouillées : il reprend les flags de façade sans déduire la cause.
+# Décision structurée du moteur ; le fallback ne sert qu'aux anciennes DLL (flags de façade nus).
 func _read_legal(w, verb: String, op2: Dictionary, cd: int) -> Dictionary:
 	if w.has_method("diplo_action_legal"):
 		return w.diplo_action_legal(_cid, int(DIPLO_ACTION_ID[verb]))
@@ -811,10 +775,7 @@ func _read_legal(w, verb: String, op2: Dictionary, cd: int) -> Dictionary:
 	}
 
 func _legal_tooltip(legal: Dictionary, help: String) -> String:
-	# CHECKLIST DE REFUS (2026-07-21) : les conditions ✓/✗ du moteur remplacent la raison
-	# figée — le joueur voit TOUT ce qu'il faut, pas juste le premier verrou. En-tête = la
-	# ligne d'aide quand l'action est permise ; sinon les ✗ parlent. Repli legacy si le
-	# moteur ne fournit pas de conds (DLL antérieure).
+	# conditions ✓/✗ du moteur, pas juste le premier verrou ; repli legacy si pas de conds
 	var allowed := bool(legal.get("allowed", false))
 	var conds: Array = legal.get("conds", [])
 	var header := help if allowed and help != "" else ""
@@ -832,8 +793,7 @@ func _legal_tooltip(legal: Dictionary, help: String) -> String:
 		txt += " · manque %.0f or" % missing
 	return txt
 
-## Une action ne se comprend jamais au survol seulement : cette ligne reste affichée
-## sous le verbe, disponible ou non, avec la conséquence et les nombres du moteur.
+# Détail toujours affiché sous le verbe (conséquence + nombres du moteur).
 func _update_action_detail(verb: String, legal: Dictionary, amber: bool) -> void:
 	var lbl: Label = _action_details.get(verb)
 	if lbl == null:

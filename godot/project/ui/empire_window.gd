@@ -1,27 +1,17 @@
 extends PanelContainer
-## EmpireWindow — LA fenêtre de gestion d'empire : UNE fenêtre, cinq ONGLETS
-## (Économie · Population · Diplomatie · Militaire · Conseil), bâtie avec des
-## CONTENEURS Godot NATIFS + le THEME parchemin PARTAGÉ (parch_theme.gd). ZÉRO `_draw` :
-## la mise en page s'auto-espace, la hauteur suit le contenu.
-##
-## Display-only, LECTURE SEULE (l'onglet Économie est READ-ONLY depuis D1-UNIFICATION,
-## 2026-07-18 : le réglage fiscal/budgétaire vit uniquement au Trésor, touche B — cf.
-## economy_page.gd) : chaque page lit la MÊME membrane que les panneaux d'aujourd'hui
-## (budget_controls, country_relations, corps_ids, country_factions, country_council,
-## province_groups…), tout `has_method`-gardé.
-## Bascule touche E (câblée dans main.gd). COEXISTE avec budget_panel_v2 / la sidebar.
+## EmpireWindow — fenêtre de gestion, onglets Économie/Population/Diplomatie/Conseil.
+## Display-only ; l'onglet Économie est read-only (le réglage vit au Trésor, touche B). Touche E.
 
 const ParchTheme  = preload("res://ui/parch_theme.gd")
 const EconomyPage = preload("res://ui/economy_page.gd")
 const PopBar      = preload("res://ui/pop_bar.gd")
-const Concepts    = preload("res://ui/concepts.gd")   # D4 — glossaire hover
+const Concepts    = preload("res://ui/concepts.gd")
 
-signal open_budget_requested   ## onglet Économie → « Régler… » → main.gd ouvre le Trésor (B)
-signal open_religion_requested ## D2 : onglet Population → « Foi d'État… » → main.gd ouvre le Créateur de Foi (R)
+signal open_budget_requested   ## onglet Économie → ouvre le Trésor (B)
+signal open_religion_requested ## onglet Population → ouvre le Créateur de Foi (R)
 
 const PW := 440.0
-## Militaire est CONTEXTUEL (barre de commandement à la sélection d'un corps), pas un
-## onglet de gestion — d'où quatre onglets seulement.
+## pas d'onglet Militaire : contextuel (barre de commandement à la sélection d'un corps)
 const TABS := ["Économie", "Population", "Diplomatie", "Conseil"]
 
 var _tab := 0
@@ -29,12 +19,12 @@ var _treasury_lbl: Label = null
 var _balance_lbl: Label = null
 var _title_lbl: Label = null
 var _tab_group: ButtonGroup = null
-var _tab_btns: Array = []         # [Button] pour piloter l'onglet actif par code (probe)
-var _pages: Array = []            # [Control] une VBox par onglet (visibilité togglée)
-var _eco_page: Control = null     # la page Économie (auto-refresh, curseurs)
-var _prov_sort := 2               # tri des provinces : 0 ressources · 1 revenu · 2 pop
-var _pop_last_total := -1.0       # CROISSANCE (display-only) : pop totale au refresh précédent
-var _pop_last_day := -1           # … et le jour absolu correspondant (year()×365+day_of_year())
+var _tab_btns: Array = []
+var _pages: Array = []
+var _eco_page: Control = null
+var _prov_sort := 2               # 0 ressources · 1 revenu · 2 pop
+var _pop_last_total := -1.0       # croissance : pop totale au refresh précédent
+var _pop_last_day := -1           # jour absolu correspondant (year()×365+day_of_year())
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -49,13 +39,11 @@ func _ready() -> void:
 		Sim.generated.connect(func(): if visible: refresh())
 	hide()
 
-# ── LE SQUELETTE (header + barre d'onglets + corps à pages) ───────────────────
 func _build_shell() -> void:
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 0)
 	add_child(root)
 
-	# HEADER : nom du royaume à gauche · trésor + solde mensuel empilés à droite
 	var head := PanelContainer.new()
 	head.theme_type_variation = "HeaderStrip"
 	root.add_child(head)
@@ -64,8 +52,7 @@ func _build_shell() -> void:
 	_title_lbl = Label.new()
 	_title_lbl.theme_type_variation = "Title"
 	_title_lbl.text = "Empire"
-	# PAS de clip_text : sur un Label SHRINK dans un HBox, clip_text force une largeur
-	# minimale de 0 → le titre se réduit à rien (les noms de royaume sont courts).
+	# pas de clip_text : sur un Label SHRINK, il force une largeur mini de 0 (titre disparaît)
 	hb.add_child(_title_lbl)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -86,7 +73,6 @@ func _build_shell() -> void:
 	_balance_lbl.size_flags_horizontal = Control.SIZE_SHRINK_END
 	rcol.add_child(_balance_lbl)
 
-	# BARRE D'ONGLETS (soulignement 2px de l'actif via la variation "Tab")
 	var tabpanel := PanelContainer.new()
 	tabpanel.theme_type_variation = "LedTabStrip"
 	root.add_child(tabpanel)
@@ -109,8 +95,6 @@ func _build_shell() -> void:
 		tabs.add_child(b)
 		_tab_btns.append(b)
 
-	# CORPS (fond transparent — laisse voir le parchemin) : les 5 pages coexistent,
-	# une seule visible.
 	var bodypanel := PanelContainer.new()
 	bodypanel.theme_type_variation = "Body"
 	bodypanel.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -118,14 +102,13 @@ func _build_shell() -> void:
 	var stack := VBoxContainer.new()
 	bodypanel.add_child(stack)
 	_pages.clear()
-	# 0 — Économie : la page réutilisable (valeurs vivantes, LECTURE SEULE ici —
-	# D1-UNIFICATION : le réglage vit uniquement au Trésor, touche B).
+	# 0 — Économie : page réutilisable, lecture seule ici (réglage au Trésor)
 	_eco_page = EconomyPage.new()
 	_eco_page.interactive = false
 	_eco_page.open_budget_requested.connect(func(): open_budget_requested.emit())
 	stack.add_child(_eco_page)
 	_pages.append(_eco_page)
-	# 1-4 — pages LUES : VBox rebâtis à chaque refresh.
+	# 1-4 — pages lues : rebâties à chaque refresh
 	for i in range(1, TABS.size()):
 		var pg := VBoxContainer.new()
 		pg.add_theme_constant_override("separation", 4)
@@ -139,14 +122,12 @@ func _select_tab(idx: int) -> void:
 		_pages[i].visible = (i == idx)
 	refresh()
 
-## sélection PUBLIQUE d'un onglet (par code) : met aussi à jour le bouton actif (le
-## soulignement suit). Utilisée par la sonde de capture.
+## sélection d'un onglet par code (met à jour le bouton actif) — utilisée par la sonde de capture.
 func select_tab(idx: int) -> void:
 	if idx >= 0 and idx < _tab_btns.size():
 		_tab_btns[idx].button_pressed = true
 	_select_tab(idx)
 
-# ── API publique ──────────────────────────────────────────────────────────────
 func open() -> void:
 	visible = true
 	for i in range(_pages.size()):
@@ -180,12 +161,8 @@ func _update_header(w, me: int) -> void:
 		_balance_lbl.text = "%s%s or/mois" % ["+" if pos else "−", _grp(int(round(absf(net))))]
 		_balance_lbl.add_theme_color_override("font_color", ParchTheme.INCOME if pos else ParchTheme.EXPENSE)
 
-# ── ONGLET POPULATION : légendes codées par couleur (Culture · Foi · Classe) ──
-## Aucun lecteur façade ne donne la composition culture/foi au grain PAYS : on AGRÈGE
-## province_groups sur les PROVINCES du joueur (owner == me), pondéré par les âmes de
-## chaque province (× le % du groupe). La province est l'unité d'habitation (doctrine
-## « la province habite ») ; le centroïde de région tombait parfois hors du territoire.
-## Les Classes viennent, elles, du lecteur direct country_demo.
+## pas de lecteur façade culture/foi au grain PAYS : on agrège province_groups sur les
+## provinces du joueur, pondéré par les âmes (le centroïde de région tombait parfois hors du territoire).
 func _build_population(w, me: int) -> void:
 	var pg: VBoxContainer = _pages[1]
 	for c in pg.get_children():
@@ -224,11 +201,8 @@ func _build_population(w, me: int) -> void:
 					fn = "Sans foi"
 				faith[fn] = float(faith.get(fn, 0.0)) + wgt
 
-	# CROISSANCE — delta signé depuis le refresh précédent (display-only : une
-	# soustraction d'affichage, aucune logique sim), normalisé /mois (30 j) sur le
-	# jour absolu réel (year()×365+day_of_year()) pour rester juste même si les
-	# refresh ne tombent pas pile tous les 30 jours (ouverture fenêtre, changement
-	# d'onglet). « — » tant qu'aucune mesure précédente n'existe.
+	# delta signé depuis le refresh précédent (display-only), normalisé /mois sur le jour
+	# absolu réel (les refresh ne tombent pas pile tous les 30 j)
 	_pop_section(pg, "CROISSANCE")
 	var abs_day := int(w.year()) * 365 + (int(w.day_of_year()) if w.has_method("day_of_year") else 0)
 	if _pop_last_total >= 0.0 and abs_day > _pop_last_day:
@@ -242,16 +216,12 @@ func _build_population(w, me: int) -> void:
 	_pop_last_total = total
 	_pop_last_day = abs_day
 
-	# CULTURE — frise de proportions (barre segmentée) + légende à pastilles
 	_pop_section(pg, "CULTURE")
 	PopBar.build_group(pg, cult, total)
-	# FOI / RELIGION
 	_pop_section(pg, "FOI / RELIGION")
 	PopBar.build_group(pg, faith, total)
-	# D2 — le Créateur de Foi (religion_panel.gd) devenait INJOIGNABLE dès la 1re
-	# fondation (ses deux seules portes — 1er édifice religieux, alerte de fondation —
-	# ne se redéclenchent jamais) : un lien explicite ici (+ la touche R, main.gd)
-	# rouvre le Schisme et le recrutement du Lettré, verbes câblés mais orphelins.
+	# le Créateur de Foi devenait injoignable après la 1re fondation (ses portes ne se
+	# redéclenchent jamais) : ce lien (+ touche R) le rouvre
 	var faith_btn := Button.new()
 	var has_faith := int(w.religion_of_country(me)) >= 0 if w.has_method("religion_of_country") else false
 	faith_btn.text = ("Foi d'État : %s (R)" % String(w.religion_name(me))) \
@@ -260,7 +230,6 @@ func _build_population(w, me: int) -> void:
 	faith_btn.tooltip_text = "Ouvre le Créateur de Foi : crédo, traditions, schisme, recrutement du Lettré."
 	faith_btn.pressed.connect(func(): open_religion_requested.emit())
 	pg.add_child(faith_btn)
-	# CLASSE (lecteur direct — pop exactes)
 	_pop_section(pg, "CLASSE")
 	var clsmap := {}
 	var cls_total := 0.0
@@ -271,7 +240,6 @@ func _build_population(w, me: int) -> void:
 			cls_total += float(cl.get("pop", 0))
 	PopBar.build_group(pg, clsmap, cls_total)
 
-	# PROVINCES (triables : ressources · revenu · pop)
 	_pop_section(pg, "PROVINCES")
 	_prov_sort_bar(pg)
 	var keys := ["res", "revenu", "pop"]
@@ -292,7 +260,6 @@ func _build_population(w, me: int) -> void:
 			_kv_row(pg, String(rp["nom"]), val, ParchTheme.INK)
 			shown += 1
 
-## la barre « Trier par : Ressources · Revenu · Pop » (boutons parcheminés, actif souligné).
 func _prov_sort_bar(pg: VBoxContainer) -> void:
 	var bar := HBoxContainer.new()
 	bar.add_theme_constant_override("separation", 4)
@@ -320,7 +287,6 @@ func _prov_sort_bar(pg: VBoxContainer) -> void:
 			_build_population(pw, int(pw.player()) if pw.has_method("player") else 0))
 		bar.add_child(b)
 
-# ── ONGLET DIPLOMATIE : relations en lignes (nom + opinion), guerres en tête ──
 func _build_diplomatie(w, me: int) -> void:
 	var pg: VBoxContainer = _pages[2]
 	for c in pg.get_children():
@@ -329,7 +295,6 @@ func _build_diplomatie(w, me: int) -> void:
 		_dim_line(pg, "(diplomatie indisponible)")
 		return
 	var rows: Array = w.country_relations(me)
-	# guerres d'abord, puis opinion décroissante
 	rows.sort_custom(func(a, b):
 		var aw := bool(a.get("at_war", false))
 		var bw := bool(b.get("at_war", false))
@@ -360,9 +325,7 @@ func _build_diplomatie(w, me: int) -> void:
 		var st := Label.new()
 		st.theme_type_variation = "RowDim"
 		st.text = String(r.get("status", ""))
-		# D4 — « Vassal »/« Suzerain » sont un mot-DIRECT du statut (pas le nom exact de la
-		# clé DEFS « Vassalité ») : la colonne n'a aucun hover sinon (statut = un seul mot,
-		# jamais orné d'une phrase qui porterait le concept comme dans les autres onglets).
+		# « Vassal »/« Suzerain » ne sont pas la clé DEFS « Vassalité » : hover mappé à la main
 		if st.text == "Vassal" or st.text == "Suzerain":
 			st.tooltip_text = Concepts.def_of("Vassalité")
 			st.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -374,18 +337,14 @@ func _build_diplomatie(w, me: int) -> void:
 		val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		val.custom_minimum_size = Vector2(44, 0)
 		val.add_theme_color_override("font_color", _diverge_col(op))
-		# D4 — la colonne « opinion » n'a aucun en-tête de colonne (juste des +N chiffrés) :
-		# le survol du nombre porte la définition, seul endroit où l'apprendre dans cet onglet.
 		val.tooltip_text = Concepts.def_of("Opinion")
 		val.mouse_filter = Control.MOUSE_FILTER_STOP
 		line.add_child(val)
 
-# ── ONGLET CONSEIL : factions (soutien + tendance) + sièges (titulaire + loyauté) ─
 func _build_conseil(w, me: int) -> void:
 	var pg: VBoxContainer = _pages[3]
 	for c in pg.get_children():
 		c.queue_free()
-	# FACTIONS
 	var fx := {}
 	if w.has_method("country_factions"):
 		fx = w.country_factions(me)
@@ -420,7 +379,6 @@ func _build_conseil(w, me: int) -> void:
 			tr.add_theme_color_override("font_color",
 				ParchTheme.INCOME if delta > 0 else (ParchTheme.EXPENSE if delta < 0 else ParchTheme.DIM_INK))
 			line.add_child(tr)
-	# CONSEIL (sièges)
 	_pop_section(pg, "CONSEIL")
 	if not w.has_method("country_council"):
 		_dim_line(pg, "(conseil indisponible)")
@@ -437,8 +395,6 @@ func _build_conseil(w, me: int) -> void:
 		post.theme_type_variation = "RowDim"
 		post.text = String(seat.get("seat", "Siège"))
 		post.custom_minimum_size = Vector2(120, 0)
-		# D4 — le domaine du siège (« Savoir »/« Société »/« Industrie ») nomme parfois
-		# directement un concept du registre (Savoir).
 		var pdef := Concepts.def_of_label(post.text)
 		if pdef != "":
 			post.tooltip_text = pdef
@@ -468,9 +424,6 @@ func _build_conseil(w, me: int) -> void:
 			ll.add_theme_color_override("font_color", _score_col(loy))
 			line2.add_child(ll)
 
-# ── PRIMITIVES DE PAGE ────────────────────────────────────────────────────────
-## D4 — porte la définition du concept si le titre en nomme un (« FOI / RELIGION »,
-## « FACTIONS · tension de coup… » — casse/pluriel tolérés, Concepts.def_of_label).
 func _pop_section(pg: VBoxContainer, txt: String) -> void:
 	var l := Label.new()
 	l.theme_type_variation = "Section"
@@ -487,8 +440,6 @@ func _dim_line(pg: VBoxContainer, txt: String) -> void:
 	l.text = txt
 	pg.add_child(l)
 
-## une ligne label … valeur (colorée) — D4 : le label porte la définition s'il nomme
-## un concept (motif _pop_section/province_panel_v2._kv).
 func _kv_row(pg: VBoxContainer, label: String, value: String, col: Color) -> void:
 	var line := HBoxContainer.new()
 	pg.add_child(line)
@@ -509,8 +460,6 @@ func _kv_row(pg: VBoxContainer, label: String, value: String, col: Color) -> voi
 	val.add_theme_color_override("font_color", col)
 	line.add_child(val)
 
-# ── util ──────────────────────────────────────────────────────────────────────
-## couleur de score 0-100 (rouge bas / vert haut)
 func _score_col(v: int) -> Color:
 	if v >= 60:
 		return ParchTheme.GREEN
@@ -518,7 +467,6 @@ func _score_col(v: int) -> Color:
 		return ParchTheme.RED
 	return ParchTheme.INK
 
-## couleur divergente autour de 0 (opinion ±100)
 func _diverge_col(v: int) -> Color:
 	if v > 5:
 		return ParchTheme.GREEN

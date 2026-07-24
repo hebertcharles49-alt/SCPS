@@ -1,21 +1,14 @@
 extends PanelContainer
-## ArmyPanel — la barre de COMMANDEMENT du pion sélectionné, PORTÉE au squelette unifié
-## (PanelContainer racine + ParchTheme.build() + HeaderStrip + LedTabStrip + corps VBox
-## rebâti au refresh, CONTENEURS NATIFS, ZÉRO `_draw` — le même patron que
-## province_panel_v2.gd / empire_window.gd). Deux onglets : COMPOSITION (barre d'unités,
-## campagne, actions) et COMBAT (vide hors engagement, temps réel en direct, résultat figé
-## à la conclusion). Zéro logique sim : lit corps_info/army_info/battle_info/region_war_state,
-## enfile des verbes déjà câblés (player_raise_corps, player_refill_corps, player_split_corps,
-## player_merge_corps, player_disband_corps) — port de PRÉSENTATION, aucun verbe changé.
-## Montré/caché par map_view.army_selection_changed (main le câble, cf. main.gd:239-245).
+## Barre de commandement du pion sélectionné. Deux onglets : Composition et Combat.
+## Lit corps_info/army_info/battle_info/region_war_state, enfile des verbes déjà câblés.
 
 const ParchTheme = preload("res://ui/parch_theme.gd")
 const PopBar = preload("res://ui/pop_bar.gd")
 const VKit = preload("res://ui/vkit.gd")
 const Frame = preload("res://ui/frame.gd")
-const Concepts = preload("res://ui/concepts.gd")   # D4 — glossaire hover
+const Concepts = preload("res://ui/concepts.gd")
 
-signal raid_requested   ## « Piller la côte » → main arme le sous-mode raid de la carte
+signal raid_requested   ## raid : main arme le sous-mode carte
 signal selection_replaced(ids: Array) ## fusion : le corps survivant devient l'unique sélection
 
 const PW := 420.0
@@ -31,22 +24,20 @@ var _flash_ms := -100000
 
 var _tab := 0   # 0 Composition · 1 Combat
 var _tab_group: ButtonGroup = null
-var _tab_btns: Array = []           # [Button] pour piloter l'onglet actif par code (probe)
-var _body: VBoxContainer = null     # corps rebâti à chaque refresh / changement d'onglet
+var _tab_btns: Array = []           # pour piloter l'onglet par code (probe)
+var _body: VBoxContainer = null
 var _title_lbl: Label = null
 var _sub_lbl: Label = null
 var _phase_lbl: Label = null
 
-# ── SECTION COMBAT — vide si aucun combat, EN TEMPS RÉEL (Sim.ticked, chaque jour)
-# sinon, et persiste le RÉSULTAT (victoire/défaite + pertes) jusqu'à re-sélection ou
-# nouveau combat. Lit scps_battle_info/region_war_state ; zéro logique de sim.
+# Combat : temps réel via Sim.ticked ; le RÉSULTAT persiste jusqu'à re-sélection.
 var _battle_region := -1
-var _battle_live: Dictionary = {}     # dernier battle_info valide vu pour _battle_region
-var _battle_result: Dictionary = {}   # { bi, ws } — figé quand le combat vient de se conclure
+var _battle_live: Dictionary = {}
+var _battle_result: Dictionary = {}   # {bi, ws} figé à la conclusion
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	custom_minimum_size = Vector2(PW, 0)   # largeur plancher ; hauteur AU CONTENU
+	custom_minimum_size = Vector2(PW, 0)   # largeur plancher ; hauteur au contenu
 	theme = ParchTheme.build()
 	_build_shell()
 	visible = false
@@ -68,9 +59,7 @@ func set_army(ids: Array) -> void:
 	var new_ids: Array[int] = []
 	for id in ids: new_ids.append(int(id))
 	if new_ids != _selected_ids:
-		# re-sélection : la section combat oublie le combat/résultat qu'elle suivait,
-		# et on revient sur l'onglet Composition (le nouveau corps n'est pas forcément
-		# celui qui combattait).
+		# re-sélection : oublie le combat suivi, revient sur Composition (nouveau corps ≠ combattant)
 		_battle_region = -1
 		_battle_live = {}
 		_battle_result = {}
@@ -83,13 +72,11 @@ func set_army(ids: Array) -> void:
 		_disband_armed = false
 		_refresh()
 
-# ── LE SQUELETTE (header + onglets + corps) ───────────────────────────────────
 func _build_shell() -> void:
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 0)
 	add_child(root)
 
-	# HEADER : nom/numéro du corps + effectif à gauche · phase courante à droite
 	var head := PanelContainer.new()
 	head.theme_type_variation = "HeaderStrip"
 	root.add_child(head)
@@ -118,7 +105,6 @@ func _build_shell() -> void:
 	_phase_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(_phase_lbl)
 
-	# BARRE D'ONGLETS façon Vic3 : Composition · Combat
 	var tabpanel := PanelContainer.new()
 	tabpanel.theme_type_variation = "LedTabStrip"
 	root.add_child(tabpanel)
@@ -142,7 +128,6 @@ func _build_shell() -> void:
 		tabs.add_child(b)
 		_tab_btns.append(b)
 
-	# CORPS (fond transparent — laisse voir le parchemin)
 	var bodypanel := PanelContainer.new()
 	bodypanel.theme_type_variation = "Body"
 	root.add_child(bodypanel)
@@ -150,17 +135,14 @@ func _build_shell() -> void:
 	_body.add_theme_constant_override("separation", 4)
 	bodypanel.add_child(_body)
 
-## sélection PUBLIQUE d'un onglet (par code) : met aussi à jour le bouton actif (le
-## soulignement suit). Utilisée par la sonde de capture.
+## sélection d'un onglet par code (met à jour le bouton actif) — utilisée par la sonde de capture.
 func select_tab(idx: int) -> void:
 	if idx >= 0 and idx < _tab_btns.size():
 		_tab_btns[idx].button_pressed = true
 	_tab = idx
 	_refresh()
 
-## un mouvement survolé sur la carte (avant clic) : juste le texte d'aperçu bouge,
-## pas de re-tirage complet des corps/renfort — cette entrée peut arriver à chaque
-## changement de région survolée pendant un glissé.
+## aperçu de mouvement survolé (peut arriver à chaque région pendant un glissé) : refresh léger.
 func set_move_preview(preview: Dictionary) -> void:
 	_move_preview = preview.duplicate(true)
 	if visible and _tab == 0:
@@ -169,7 +151,6 @@ func set_move_preview(preview: Dictionary) -> void:
 func show_feedback(message: String, good: bool) -> void:
 	_flash_msg(message, good)
 
-# ── REFRESH : rassemble l'état, rebâtit l'onglet actif ─────────────────────────
 func _refresh() -> void:
 	var w = Sim.world
 	if w == null or _body == null:
@@ -187,8 +168,7 @@ func _refresh() -> void:
 		_: _build_composition_tab(w, me, data)
 	_layout.call_deferred()
 
-## rassemble les corps SÉLECTIONNÉS valides : agrégats (effectif, composition) +
-## la liste brute (pour les lignes détaillées et les gates d'action).
+## rassemble les corps sélectionnés valides : agrégats + liste brute.
 func _gather_corps(w, me: int) -> Dictionary:
 	var total := 0; var inf := 0; var arch := 0; var cav := 0; var mages := 0; var active := 0
 	var phase := "Réserve"
@@ -199,7 +179,7 @@ func _gather_corps(w, me: int) -> Dictionary:
 		var a: Dictionary = w.corps_info(id) if w.has_method("corps_info") else w.army_info(me)
 		if not bool(a.get("active", false)): continue
 		if not bool(a.get("units_are_humans", false)):
-			# Compatibilité avec la DLL debug précédente : elle exposait encore des paquets.
+			# ancienne DLL debug : exposait encore des paquets → ×100
 			for key in ["units", "inf", "arch", "cav", "mages"]:
 				a[key] = int(a.get(key, 0)) * 100
 		corps_data.append(a)
@@ -230,7 +210,6 @@ func _update_header(data: Dictionary) -> void:
 		_sub_lbl.text = "réserve : %d régiment(s)" % int(data.reserve)
 		_phase_lbl.text = "Réserve"
 
-# ── ONGLET COMPOSITION : les corps, la pile, le renfort/l'aperçu, les actions ──
 func _build_composition_tab(w, me: int, data: Dictionary) -> void:
 	var active := int(data.active)
 	var corps_data: Array[Dictionary] = data.corps_data
@@ -262,8 +241,7 @@ func _build_composition_tab(w, me: int, data: Dictionary) -> void:
 	if _flash != "":
 		_body.add_child(_tone_line(_flash, 0.80 if _flash_good else 0.20))
 
-## une carte de corps : statut + barre de composition (PopBar, DRY — hover = détail
-## du groupe) + la ligne de campagne (étapes/batailles/régions réduites).
+## carte de corps : statut + barre de composition (PopBar) + ligne de campagne.
 func _corps_block(a: Dictionary) -> Control:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 1)
@@ -276,8 +254,7 @@ func _corps_block(a: Dictionary) -> Control:
 		int(a.get("legs", 0)), int(a.get("battles", 0)), int(a.get("taken", 0))], "RowDim"))
 	return box
 
-## membres pour PopBar.proportion_bar (nom/valeur/couleur/pct) — même langage de
-## couleur que battle_panel._compo_bar (SLICE_PAL 0/1/3/5).
+# même langage de couleur que battle_panel._compo_bar (SLICE_PAL 0/1/3/5)
 func _compo_members(inf: int, arch: int, cav: int, mages: int) -> Array:
 	var tot: int = maxi(1, inf + arch + cav + mages)
 	var raw := [["Infanterie", inf, VKit.SLICE_PAL[0]], ["Tirailleurs/archers", arch, VKit.SLICE_PAL[1]],
@@ -289,8 +266,6 @@ func _compo_members(inf: int, arch: int, cav: int, mages: int) -> Array:
 		out.append({"name": e[0], "value": float(v), "pct": roundi(100.0 * float(v) / float(tot)), "color": e[2]})
 	return out
 
-## la rangée d'ACTIONS : Lever · Renforcer · Piller la côte · Scinder · Fusionner ·
-## Dissoudre — vrais Buttons ParchTheme, désactivés + motif de refus au hover.
 func _action_row(w, me: int, data: Dictionary) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 4)
@@ -363,7 +338,6 @@ func _action_btn(txt: String, tip: String) -> Button:
 	b.add_theme_color_override("font_disabled_color", ParchTheme.DIM_INK)
 	return b
 
-# ── ONGLET COMBAT : vide hors engagement · temps réel en direct · résultat figé ─
 func _build_combat_tab() -> void:
 	if not _battle_live.is_empty():
 		_body.add_child(_phase_title(String(_battle_live.get("phase", "?"))))
@@ -375,9 +349,7 @@ func _build_combat_tab() -> void:
 		return
 	_dim_line("Aucun engagement en cours.")
 
-## rafraîchit l'état de combat suivi (_battle_region/_battle_live/_battle_result)
-## depuis les régions des corps sélectionnés — bascule AUTOMATIQUEMENT sur l'onglet
-## Combat quand un engagement s'allume (pour ne pas le manquer).
+## suit l'état de combat des régions sélectionnées ; bascule auto sur l'onglet Combat quand un engagement s'allume.
 func _refresh_combat_state(w, regions: Array) -> void:
 	if w == null or not w.has_method("battle_info") or not w.has_method("region_war_state") or regions.is_empty():
 		return
@@ -530,17 +502,16 @@ func _build_combat_live(bi: Dictionary) -> void:
 	var ws := float(bi.get("war_score", 0.0))
 	_body.add_child(_stat_line("Score de guerre", "%+.0f (point de vue attaquant)" % ws, 0.5 + ws / 200.0))
 
-## le VERDICT de bataille du FIL (kinds 8/9/11 — le moteur l'a déjà tranché, côté
-## joueur) pour la région suivie ; {} si aucun (siège pur, ou combat IA-vs-IA).
+# verdict du fil (kinds 8/9/11 tranchés par le moteur) ; {} si aucun (siège pur ou IA-vs-IA).
 func _feed_battle_verdict(region: int) -> Dictionary:
 	var w = Sim.world
 	if w == null or not w.has_method("feed_poll") or region < 0:
 		return {}
 	var found := {}
-	for ev in w.feed_poll(0):   # lecture PURE (curseur 0 = tout le ring borné)
+	for ev in w.feed_poll(0):   # lecture pure (curseur 0 = tout le ring)
 		var kind := int(ev.get("kind", -1))
 		if (kind == 8 or kind == 9 or kind == 11) and int(ev.get("region", -1)) == region:
-			found = ev   # on garde le DERNIER (le ring est chronologique)
+			found = ev   # garde le dernier (ring chronologique)
 	return found
 
 func _build_combat_result(result: Dictionary) -> void:
@@ -552,8 +523,7 @@ func _build_combat_result(result: Dictionary) -> void:
 	var df := int(bi.get("defender", -1))
 	var was_battle := bool(bi.get("in_battle", false))
 	var res_region := int(bi.get("region", _battle_region))
-	# le siège abouti se lit de DEUX façons : région OCCUPÉE par l'attaquant (state 2,
-	# la paix n'a pas encore transféré) OU propriété DÉJÀ basculée (region_owner == atk).
+	# siège abouti lu de deux façons : région occupée (state 2) OU propriété déjà basculée (region_owner == atk)
 	var attacker_took := (int(ws.get("state", 0)) == 2 and int(ws.get("belligerent", -1)) == atk)
 	if not attacker_took and res_region >= 0 and atk >= 0 and atk != df \
 			and w.has_method("region_owner"):
@@ -564,14 +534,14 @@ func _build_combat_result(result: Dictionary) -> void:
 	var head_txt := ""
 	var head_tone := 0.5
 	if not feed.is_empty():
-		# le fil porte le verdict TRANCHÉ par le moteur (8 gagnée · 9 perdue · 11 indécise)
+		# verdict tranché par le moteur (8 gagnée · 9 perdue · 11 indécise)
 		var fk := int(feed.get("kind", 11))
 		head_txt = "Bataille gagnée" if fk == 8 else ("Bataille perdue" if fk == 9 else "Bataille indécise")
 		head_tone = 0.85 if fk == 8 else (0.10 if fk == 9 else 0.5)
 	elif was_battle:
 		head_txt = "Bataille conclue"
 	else:
-		# siège pur : le verdict honnête est la DISPOSITION de la place, pas un mot de gloire
+		# siège pur : le verdict est la disposition de la place, pas un mot de gloire
 		if me == atk:
 			head_txt = "Siège conclu — région prise" if attacker_took else "Siège conclu — sans la place"
 			head_tone = 0.85 if attacker_took else 0.20
@@ -587,7 +557,7 @@ func _build_combat_result(result: Dictionary) -> void:
 	_body.add_child(_line("%s vs %s · %s" % [atk_name, def_name,
 		("%s tient la région." % atk_name) if attacker_took else ("la région reste à %s." % def_name)], "RowDim"))
 	if not feed.is_empty():
-		# pertes CONFIRMÉES par le fil (v = nôtres | ennemies<<16, en paquets de 100)
+		# pertes du fil : v = nôtres | ennemies<<16, en paquets de 100
 		var packed := int(feed.get("v", 0))
 		var ours := (packed & 0xffff) * 100
 		var theirs := ((packed >> 16) & 0xffff) * 100
@@ -602,7 +572,6 @@ func _build_combat_result(result: Dictionary) -> void:
 		else:
 			_body.add_child(_stat_line("Pertes", "aucun choc confirmé (siège seul)"))
 
-# ── VERBES (logique CONSERVÉE à l'identique — port de présentation) ────────────
 func _flash_msg(msg: String, good: bool) -> void:
 	_flash = msg
 	_flash_good = good
@@ -673,7 +642,6 @@ func _do_merge() -> void:
 	if ok:
 		selection_replaced.emit([dst])
 
-# ── APERÇUS (données pures — logique CONSERVÉE à l'identique) ──────────────────
 func _refresh_refill_data(w) -> void:
 	_refill_previews.clear()
 	if w == null or not w.has_method("corps_refill_preview"):
@@ -814,7 +782,7 @@ func _move_preview_tone() -> float:
 func _split_packets(humans: int) -> int:
 	return maxi(0, humans / 200)
 
-# ── LAYOUT — s'ancre en marge gauche, au-dessus de la barre basse ──────────────
+# ancré en marge gauche, au-dessus de la barre basse
 func _layout() -> void:
 	reset_size()
 	var vp := get_viewport_rect().size
@@ -822,7 +790,7 @@ func _layout() -> void:
 	position = Vector2(Frame.SIDEBAR_W + 14.0,
 		maxf(Frame.TOPBAR_H + 12.0, vp.y - h - Frame.BOTTOMBAR_H - 12.0))
 
-# ── PRIMITIVES (mêmes variations de theme que province_panel_v2/empire_window) ──
+# mêmes variations de theme que province_panel_v2/empire_window
 func _line(txt: String, variation: String) -> Label:
 	var l := Label.new()
 	l.theme_type_variation = variation

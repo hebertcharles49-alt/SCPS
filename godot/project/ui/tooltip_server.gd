@@ -1,14 +1,7 @@
 extends Control
-## TOOLTIP SERVER — tooltips à CONCEPTS en CASCADE (retour joueur 2026-07-10 :
-## « double hover » façon CK3). Trois étages de comportement :
-##   1. SURVOL (0.45 s) : le tooltip apparaît, mots-concepts turquoise + définitions.
-##   2. VERROU (1 s de survol total) : le tooltip se FIGE dans une hitbox élargie,
-##      son liseré vire turquoise — son contenu devient interactif.
-##   3. CASCADE : survoler un mot turquoise DANS un tooltip verrouillé ouvre le
-##      tooltip-enfant de ce concept (né verrouillé) — récursif, chaque définition
-##      en appelant d'autres. La chaîne se ferme du plus profond au plus proche
-##      quand la souris quitte les hitbox élargies.
-## Display-only : lecture du Control survolé + du registre ui/concepts.gd.
+## Tooltips à concepts en CASCADE (double-hover CK3) : survol (0.45 s) → verrou (1 s,
+## hitbox élargie, liseré turquoise) → cascade (survoler un mot turquoise ouvre son
+## enfant, récursif). Display-only : lit le Control survolé + le registre concepts.gd.
 
 const Concepts = preload("res://ui/concepts.gd")
 
@@ -38,28 +31,17 @@ var _sub_t := 0.0            ## …et temps accumulé
 var _shrink_t := 0.0         ## grâce de RÉGRESSION (souris à un étage moins profond)
 var _anchor := Vector2.ZERO  ## point-souris à l'ouverture du tooltip racine (ancre de dismiss)
 
-const SRC_LEAVE := 72.0      ## px : au-delà de cette distance de l'ancre, le SURVOL de la
-                             ## source ne maintient plus la chaîne verrouillée (sans ça un
-                             ## Control LARGE — la topbar dessine ses cellules sur UN seul
-                             ## Control pleine largeur — gardait le tooltip figé tant que la
-                             ## souris restait n'importe où sur la barre : « ne se dismiss
-                             ## qu'au clic », le clic invalidant la source. La souris SUR le
-                             ## tooltip le garde vivant par la hitbox du PANNEAU, pas ceci.)
+const SRC_LEAVE := 72.0      ## au-delà de cette distance de l'ancre, le survol de la source ne
+                             ## maintient plus la chaîne : sinon un Control LARGE (topbar pleine
+                             ## largeur) figeait le tooltip tant que la souris restait sur la barre.
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 
-## UI-POLISH #11 (spec joueur corrigée : dismiss par MOUVEMENT hors cible, PAS par clic) —
-## la règle reste « visible tant que la souris est sur la cible, disparaît dès qu'elle la
-## quitte » ; le bug n'était PAS dans cette règle mais dans sa DÉTECTION : Godot ne
-## recalcule `gui_get_hovered_control()` qu'au prochain évènement de MOUVEMENT — un clic
-## qui fait apparaître un nouveau panneau SOUS une souris IMMOBILE (ex. « Construction »
-## ouvre le menu construction sans que la souris bouge) laisse le survol PÉRIMÉ pointer
-## sur l'ancien bouton, dont le tooltip reste donc rendu PAR-DESSUS le nouveau panneau.
-## Fix : après tout clic, on POUSSE un mouvement souris SYNTHÉTIQUE (position inchangée)
-## pour forcer Godot à refaire le hit-test — la cible « quittée » (couverte) est alors
-## correctement détectée comme telle, et le tooltip suit la règle normale.
+# Godot ne recalcule gui_get_hovered_control() qu'au prochain MOUVEMENT : un clic qui
+# ouvre un panneau sous une souris immobile laisse le survol périmé (tooltip par-dessus).
+# Fix : après tout clic, pousser un mouvement souris synthétique pour reforcer le hit-test.
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		call_deferred("_refresh_hover_after_click")
@@ -139,8 +121,7 @@ func _teardown(from_level: int) -> void:
 func _in_chain(mp: Vector2) -> int:
 	# renvoie l'étage le plus PROFOND contenant la souris ; -1 = dehors partout
 	var deepest := -1
-	# La SOURCE ne maintient la chaîne que si la souris est encore DESSUS *et* proche de
-	# l'ancre : un Control large ne fige plus le tooltip une fois qu'on s'en éloigne.
+	# la source ne maintient la chaîne que si la souris est dessus ET proche de l'ancre
 	if _hover_ctrl != null and is_instance_valid(_hover_ctrl) \
 			and _hover_ctrl.get_global_rect().grow(8.0).has_point(mp) \
 			and mp.distance_to(_anchor) <= SRC_LEAVE:
@@ -157,7 +138,7 @@ func _process(delta: float) -> void:
 		return
 	var mp := get_global_mouse_position()
 
-	# ── CHAÎNE VERROUILLÉE : elle vit tant que la souris reste dans les hitbox ──
+	# chaîne verrouillée : vit tant que la souris reste dans les hitbox
 	if _locked:
 		var depth := _in_chain(mp)
 		if depth < 0:
@@ -166,10 +147,8 @@ func _process(delta: float) -> void:
 				_teardown(0)
 			return
 		_grace = 0.0
-		# la souris est remontée à un étage moins profond → les enfants au-delà ferment,
-		# mais avec la MÊME grâce que la sortie de chaîne : un enfant qui vient de
-		# naître est HORS de la souris (posé à côté du curseur) — sans grâce il
-		# mourrait à la frame suivante (le bug « le niveau 2 saute instantanément »).
+		# souris remontée à un étage moins profond → les enfants ferment, mais avec la même
+		# grâce : un enfant vient de naître HORS de la souris et mourrait à la frame suivante.
 		if _levels.size() > maxi(depth, 1):
 			_shrink_t += delta
 			if _shrink_t >= GRACE:
@@ -185,7 +164,7 @@ func _process(delta: float) -> void:
 				_sub_t = -1000.0   # une fois par survol de mot
 		return
 
-	# ── NON VERROUILLÉ : comportement de survol classique + montée vers le verrou ──
+	# non verrouillé : survol classique + montée vers le verrou
 	var ctrl := vp.gui_get_hovered_control()
 	# survoler NOS panneaux ne compte pas comme un changement de source
 	if ctrl != null and is_instance_valid(ctrl) and is_ancestor_of(ctrl):
@@ -213,9 +192,7 @@ func _process(delta: float) -> void:
 	elif not _levels.is_empty() and _t >= LOCK_AT:
 		_lock()
 
-## Politique de contenu (retour joueur) : le hover = nom, raccourci, explication
-## FACTUELLE — JAMAIS la définition des concepts dans le corps ; le joueur survole
-## le MOT TURQUOISE pour l'obtenir (cascade). Aucune ligne méta d'explication.
+# le corps = nom/raccourci/fait, jamais la définition d'un concept (elle vit derrière le mot turquoise).
 func _decorated(text: String, header_key: String = "") -> String:
 	var raw_lines := text.split("\n", false)
 	var bb := ""
@@ -247,8 +224,7 @@ func _show_root(text: String, card: Dictionary = {}) -> void:
 	_anchor = get_global_mouse_position()
 	_place(lvl, _anchor + Vector2(18, 22))
 
-## Payload structuré optionnel. Les contrôles non migrés continuent à fournir une
-## simple String ; les cartes utilisent les mêmes décorations de concepts.
+## payload structuré optionnel (les contrôles non migrés fournissent une simple String).
 func _card_bb(card: Dictionary) -> String:
 	var title := String(card.get("title", ""))
 	var state := String(card.get("state", ""))
@@ -296,8 +272,7 @@ func _lock() -> void:
 	(lvl["panel"] as PanelContainer).mouse_filter = Control.MOUSE_FILTER_STOP
 	(lvl["rtl"] as RichTextLabel).mouse_filter = Control.MOUSE_FILTER_STOP
 
-## un ENFANT de cascade : la définition du concept, elle-même décorée (récursif) —
-## né VERROUILLÉ (interactif d'emblée : ses mots turquoise cascadent à leur tour).
+## enfant de cascade : la définition du concept, décorée (récursif), née verrouillée.
 func _spawn_child(key: String, at: Vector2) -> void:
 	var body: String = Concepts.def_of(key)
 	if body == "":

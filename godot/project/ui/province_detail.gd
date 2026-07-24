@@ -1,18 +1,12 @@
 extends Control
-const HoverZones = preload("res://ui/hover_zones.gd")   # revue 2026-07-21 #3 : survol partagé
-## ProvinceDetail — le détail d'une province en SOUS-ONGLETS (touche V), read-only.
-##   • Peuples    : camembert CULTURE + camembert RELIGION + classes + la jauge
-##                  d'AGITATION et ses MODIFICATEURS (nom · apport signé · résorption
-##                  /an pour les temporaires comme « Conquête récente »). Pas de prose.
-##   • Production : les flux +X/j par bien (sprite de ressource sous la barre).
-##   • Bâtiments  : les manufactures bâties (niveau + ouvriers).
-## Pattern onglets + survol calqué sur sidebar_drawer. Charte EU4 × RimWorld.
+const HoverZones = preload("res://ui/hover_zones.gd")   # survol partagé
+## ProvinceDetail — détail province en sous-onglets (touche V), read-only.
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const VKitDropdown = preload("res://ui/vkit_dropdown.gd")
 const Frame = preload("res://ui/frame.gd")
-# taille ADAPTATIVE à la fenêtre (recalculée dans _layout ; plancher = l'ancienne taille fixe)
+# taille adaptative (recalculée dans _layout ; plancher = ancienne taille fixe)
 var PW := 648.0
 var PH := 512.0
 const HEAD := 34.0
@@ -25,8 +19,7 @@ var _tab := 0
 var _tab_rects := []        # [{rect, idx}] onglets cliquables
 var _hover := HoverZones.new()   # survol des entrées de journal (stockage/hit-test partagés)
 
-## FUSION TooltipServer (2026-07-21, revue #3 volet hover) : le panneau expose ses zones
-## au serveur (délai, parchemin, mots-concepts en cascade) — le tooltip local est mort.
+## expose les zones au TooltipServer (le tooltip local est mort).
 func _get_tooltip(at_position: Vector2) -> String:
 	return _hover.hit_text(at_position)
 var _alloc_btns := []       # [{rect, act, sink}] boutons de l'onglet Main-d'œuvre
@@ -37,10 +30,7 @@ var _manuf_btns := []       # [{rect, bld}] onglet Constructions : boutons « B�
 var _manuf_flash := ""      # retour du dernier ordre de manufacture
 var _manuf_flash_ok := true
 
-# ── LOT G — RÉINCORPORATION DE POP : deux menus déroulants (province A/B, mes
-#    provinces — RE-KEY PROVINCE), un sélecteur de classe, une quantité, un bouton
-#    « Déplacer ». ──
-const REINCORP_CLASSES := ["Journaliers", "Bourgeois", "Élites", "Esclaves"]   # D1-UNIFICATION : nomenclature canonique
+const REINCORP_CLASSES := ["Journaliers", "Bourgeois", "Élites", "Esclaves"]   # nomenclature canonique
 const REINCORP_STEP := 500
 var _reinc_owned := []        # [{prov:int, nom:String}] mes provinces (rafraîchi par frame)
 var _reinc_a := 0             # index dans _reinc_owned (source)
@@ -62,8 +52,7 @@ func _ready() -> void:
 	_layout()
 	get_viewport().size_changed.connect(_layout)
 	Sim.month_ticked.connect(func(_y): if visible: queue_redraw())   # flux/stocks : cadence mensuelle
-	# LOT G — les deux menus déroulants région A/B (dessinés PAR-DESSUS le contenu
-	# quand ouverts — ordre d'enfant = ordre de dessin, comme economy_panel).
+	# menus déroulants dessinés PAR-DESSUS (ordre d'enfant = ordre de dessin).
 	_reinc_dd_a = VKitDropdown.new()
 	_reinc_dd_a.custom_minimum_size = Vector2(190, 24)
 	_reinc_dd_a.size = Vector2(190, 24)
@@ -79,9 +68,7 @@ func _ready() -> void:
 	hide()
 
 func _layout() -> void:
-	# ZONE CONTEXTUELLE UNIQUE (UI-3, retour joueur 2026-07-10) : le détail REMPLACE le
-	# panneau province — il s'ancre à la MÊME position (au lieu du centre) pour que le
-	# regard reste au même endroit quand l'un cède la place à l'autre.
+	# s'ancre à la MÊME position que la fiche province (le détail la remplace).
 	var vp := get_viewport_rect().size
 	PW = clampf(vp.x * 0.44, 648.0, 1000.0)
 	PH = clampf(vp.y * 0.58, 512.0, 840.0)
@@ -103,7 +90,7 @@ func _draw() -> void:
 		return
 	_hover.clear()
 	var x := 16.0
-	# ── BLASON de la PROVINCE (seed déterministe) + du PAYS PROPRIÉTAIRE, côte à côte ──
+	# blason province (seed déterministe) + pays propriétaire
 	var Heraldry = load("res://ui/heraldry.gd")
 	var prov_arms: Texture2D = Heraldry.province_arms(_pid)
 	var hx := 6.0
@@ -130,7 +117,6 @@ func _draw() -> void:
 	var hd_val_w: float = VKit.value(self, Vector2(x, HEAD + 4), "%s habitants" % _grp(info["ames"]), VKit.FS_SMALL)
 	VKit.detail(self, Vector2(x + hd_val_w, HEAD + 4), " · %s · %s" % [info["climat"], info["relief"]], VKit.FS_SMALL)
 
-	# ── onglets (chips cliquables) ─────────────────────────────────────────────
 	_tab_rects.clear()
 	var tx := x
 	var ty := HEAD + 24.0
@@ -157,13 +143,7 @@ func _draw() -> void:
 		4: _draw_alloc(x, BODY, w, info)
 		5: _draw_empire(x, BODY, w)
 
-	# (FUSION 2026-07-21 : le tooltip local est mort — le TooltipServer sert les zones
-	#  via _get_tooltip ci-dessous : délai, style parchemin, mots-concepts en cascade.)
-
-# ── ONGLET PEUPLES : DEUX COLONNES (LOT UI 2.5, 2026-07-11) — aperçu (médaillon de
-#    culture + légende + classes + modificateurs) à GAUCHE, actions (foi + agitation
-#    + réincorporation) à DROITE. Les grands camemberts culture/religion (76px de
-#    diamètre chacun) deviennent des MÉDAILLONS compacts. ──
+# ONGLET PEUPLES : deux colonnes — aperçu (culture/classes/modif.) à gauche, actions (foi/agitation/réincorp.) à droite.
 func _draw_peuples(x: float, y: float, w, info: Dictionary) -> void:
 	var groups: Array = w.province_groups(_pid)
 	if groups.is_empty():
@@ -180,10 +160,7 @@ func _draw_peuples(x: float, y: float, w, info: Dictionary) -> void:
 	var ry := y if two_col else (ly + 10.0)
 	_draw_peuples_actions(rx, ry, rightW, w, info)
 
-# ── colonne GAUCHE : médaillon de CULTURE (compact) + légende + classes + modif. ──
 func _draw_peuples_apercu(x: float, y: float, colw: float, w, info: Dictionary, groups: Array) -> float:
-	# médaillon de culture : la DOMINANTE en pastille+nom+% (remplace le camembert
-	# 76px) ; la légende (déjà TEXTE, déjà compacte) détaille les autres groupes.
 	var dom_i := 0
 	var dom_pct := -1
 	for i in range(groups.size()):
@@ -217,8 +194,7 @@ func _draw_peuples_apercu(x: float, y: float, colw: float, w, info: Dictionary, 
 	var slaves: int = int(w.province_slave_count(_pid))
 	var ccnt := [int(cls["laboureurs"]), int(cls["artisans"]), int(cls["noblesse"])]
 	var cc := [VKit.SLICE_PAL[0], VKit.SLICE_PAL[1], VKit.SLICE_PAL[3]]
-	# D1-UNIFICATION : nomenclature CANONIQUE (Journaliers/Bourgeois/Élites — celle du
-	# moteur/doctrine), alignée sur province_panel_v2.gd (LA fiche province).
+	# nomenclature canonique (moteur/doctrine)
 	var cnames := ["Journaliers", "Bourgeois", "Élites"]
 	if slaves > 0:
 		ccnt.append(slaves)
@@ -235,8 +211,6 @@ func _draw_peuples_apercu(x: float, y: float, colw: float, w, info: Dictionary, 
 		acc += segw
 	VKit.box(self, Rect2(x, y, rw, 14), VKit.COL_DIM)
 	y += 19
-	# légende des classes — EMPILÉE (une colonne de ~300px n'a pas la place des
-	# 4×200px côte à côte de l'ancienne mise en page pleine largeur).
 	for i in range(nseg):
 		VKit.fill(self, Rect2(x + 2, y + 3, 9, 9), cc[i])
 		var lbl: String = String(cnames[i])
@@ -245,7 +219,7 @@ func _draw_peuples_apercu(x: float, y: float, colw: float, w, info: Dictionary, 
 		VKit.text(self, Vector2(x + 16, y), VKit.COL_PARCH, "%s %s" % [lbl, _grp(ccnt[i])], VKit.FS_SMALL)
 		y += 15
 
-	# ── FAVEURS & FLÉAUX (ScpsProvInfo.mods) ──
+	# faveurs & fléaux (info.mods)
 	var mods: Array = info.get("mods", [])
 	if not mods.is_empty():
 		y += 8
@@ -263,16 +237,11 @@ func _draw_peuples_apercu(x: float, y: float, colw: float, w, info: Dictionary, 
 			y += 15
 	return y
 
-# ── colonne DROITE : médaillon de FOI (compact, absence NOMMÉE) + agitation + la
-#    réincorporation (l'ACTION du joueur — LOT G). ──
 func _draw_peuples_actions(x: float, y: float, colw: float, w, info: Dictionary) -> float:
-	# médaillon de RELIGION : l'ÉTABLI (module scps_religion, P1-P8 — le monde naît
-	# ATHÉE, cf. CLAUDE.md « FONDATION PAR ÉDIFICE ») — symbole (pastille) + mot ;
-	# une ABSENCE (aucune foi encore fondée dans cette région) est NOMMÉE, jamais un
-	# disque vide. Distinct de la « vision du monde » par groupe (légende de gauche).
+	# médaillon RELIGION : l'établi (scps_religion) ; une absence est NOMMÉE, jamais un disque vide.
 	var region: int = w.province_region(_pid)
 	var owner := int(info.get("owner", -2))
-	var C_FAITH := Color(0.55, 0.42, 0.78)   # même violet que religion_panel.gd (cohérence de code couleur)
+	var C_FAITH := Color(0.55, 0.42, 0.78)   # même violet que religion_panel.gd
 	var rid := (int(w.religion_of_region(region)) if w.has_method("religion_of_region") else -1)
 	VKit.fill(self, Rect2(x + 2, y + 2, 18, 18), C_FAITH if rid >= 0 else VKit.COL_PANEL2)
 	VKit.box(self, Rect2(x + 2, y + 2, 18, 18), C_FAITH)
@@ -283,7 +252,6 @@ func _draw_peuples_actions(x: float, y: float, colw: float, w, info: Dictionary)
 		VKit.text(self, Vector2(x + 26, y + 14), VKit.COL_DIM, "Aucune foi établie", VKit.FS_SMALL)
 	y += 40
 
-	# ── AGITATION : la jauge + les MODIFICATEURS (nom · apport signé · résorption/an) ──
 	var ag: Dictionary = w.province_agitation(_pid)
 	var val := int(ag.get("value", 0))
 	var acol := VKit.COL_DIM if val < 35 else (VKit.sense(0.45) if val < 70 else VKit.sense(0.10))
@@ -311,7 +279,7 @@ func _draw_peuples_actions(x: float, y: float, colw: float, w, info: Dictionary)
 				VKit.text(self, Vector2(x + colw - 34.0, y), VKit.COL_DIM, "−%d/an" % dec, VKit.FS_SMALL)
 			y += 16
 
-	# ── RÉINCORPORATION DE POP (LOT G) — read-only si la province n'est pas au joueur ──
+	# réincorporation — read-only si la province n'est pas au joueur
 	var mine := (owner == int(w.player()))
 	if mine and y < PH - 60.0:
 		y += 8
@@ -323,9 +291,6 @@ func _draw_peuples_actions(x: float, y: float, colw: float, w, info: Dictionary)
 		_reinc_dd_b.visible = false
 	return y
 
-# ── RÉINCORPORATION DE POP : sélecteur de classe + deux menus déroulants (province
-#    A source / B destination, mes provinces — RE-KEY PROVINCE, une entrée par
-#    province possédée, plus de dédup par région) + quantité + « Déplacer ». ──
 func _refresh_reinc_owned(w) -> void:
 	_reinc_owned.clear()
 	var me := int(w.player())
@@ -335,11 +300,8 @@ func _refresh_reinc_owned(w) -> void:
 			continue
 		_reinc_owned.append({"prov": pid, "nom": String(pi.get("nom", "province %d" % pid))})
 
-## réincorporation, LOT UI 2.5 : menus EMPILÉS (De : / Vers :, plus de côte à côte —
-## une colonne de ~300px n'a pas la place de deux menus 190px + flèche) ; le bouton
-## « Déplacer » indisponible affiche sa raison EXACTE au survol — miroir du SEUL gate
-## que le drain (CMD_POP_TRANSFER, scps_sim.c) peut encore opposer une fois régions
-## à soi + quantité>0 + classe valide déjà garanties par l'UI : source == destination.
+## le bouton « Déplacer » indispo = miroir du SEUL gate que le drain (CMD_POP_TRANSFER)
+## peut opposer une fois régions à soi + quantité>0 + classe valide garanties : source == destination.
 func _draw_reincorp(x: float, y: float, w, colw: float) -> float:
 	_reinc_btns.clear()
 	_refresh_reinc_owned(w)
@@ -411,10 +373,7 @@ func _reinc_btn(bx: float, by: float, label: String, act: String) -> float:
 	_reinc_btns.append({"rect": r, "act": act})
 	return bx + bw + 4.0
 
-# ── ONGLET BÂTIMENTS : les manufactures bâties + BÂTIR (manufacture civile) ────
 func _draw_batiments(x: float, y: float, w) -> void:
-	# CONSTRUCTIONS : les bâtiments EXISTANTS (slots) + le sous-onglet BÂTIR (le
-	# panneau de construction s'ouvre d'ici — c'est SA maison, plus un raccourci épars).
 	_manuf_btns.clear()
 	_build_btn = Rect2()
 	var info: Dictionary = w.province_info(_pid)
@@ -437,7 +396,6 @@ func _draw_batiments(x: float, y: float, w) -> void:
 		for b in blds:
 			if y > PH - 24:
 				break
-			# vignette de manufacture (planche 8) quand elle existe, sinon le marteau
 			var mt: Texture2D = UIKit.manuf_sprite(String(b["nom"]))
 			if mt != null:
 				draw_texture_rect(mt, Rect2(x - 1, y - 2, 16, 16), false)
@@ -450,7 +408,7 @@ func _draw_batiments(x: float, y: float, w) -> void:
 			VKit.text(self, Vector2(x + 380, y), VKit.COL_DIM, _grp(b["ouvriers"]), VKit.FS_SMALL)
 			y += 19
 
-	# — BÂTIR une manufacture civile ICI (RE-KEY PROVINCE : la province SÉLECTIONNÉE, pid direct) —
+	# BÂTIR une manufacture civile ICI (province sélectionnée, pid direct).
 	if not mine or y > PH - 40:
 		return
 	y += 10
@@ -458,7 +416,7 @@ func _draw_batiments(x: float, y: float, w) -> void:
 	y += 10
 	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Bâtir une manufacture", VKit.FS_SMALL)
 	y += 18
-	# lot M — le PRIX du chantier (le montant que le drain débite : MANUF_BUILD_COST×ipm)
+	# PRIX du chantier (montant que le drain débite : MANUF_BUILD_COST×ipm)
 	var mcost: int = int(w.manuf_cost()) if w.has_method("manuf_cost") else 0
 	var any_legal := false
 	for bld in range(24):   # BLD_TYPE_COUNT (miroir display-only côté binding)
@@ -487,9 +445,7 @@ func _draw_batiments(x: float, y: float, w) -> void:
 	if _manuf_flash != "":
 		VKit.text(self, Vector2(x, PH - 18), (VKit.sense(0.85) if _manuf_flash_ok else VKit.sense(0.10)), _manuf_flash, VKit.FS_SMALL)
 
-# ── ONGLET CONTEXTE (ex-« Empire ») : le MARCHÉ LOCAL de cette province (prix/
-#    stock/bande des biens majeurs + le port s'il existe) + les JAUGES d'État de
-#    l'EMPIRE entier (sorties de la barre du haut ; savoir en topbar). ──
+# ONGLET CONTEXTE : marché local de la province + jauges d'État de l'empire entier.
 const EMPIRE_BANDS := [
 	["stabilite",  "Stabilité",  "stability_shield"],
 	["prosperite", "Prospérité", "prosperity_sprout"],
@@ -497,7 +453,6 @@ const EMPIRE_BANDS := [
 	["cohesion",   "Cohésion",   "happiness_medallion"],
 ]
 func _draw_empire(x: float, y: float, w) -> void:
-	# ── MARCHÉ LOCAL (LOT 6) : prix/stock des biens de LA PROVINCE + le port ──
 	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Marché local", VKit.FS_SMALL)
 	y += 18
 	var mk: Dictionary = w.province_market(_pid)
@@ -521,7 +476,6 @@ func _draw_empire(x: float, y: float, w) -> void:
 	VKit.fill(self, Rect2(x, y, PW - 32.0, 1), VKit.COL_EDGE)
 	y += 12
 
-	# ── L'ÉTAT DE L'EMPIRE ENTIER (inchangé — la province n'en est qu'une part) ──
 	var me: int = w.player()
 	var ci: Dictionary = w.country_info(me)
 	if not bool(ci.get("valide", false)):
@@ -544,10 +498,7 @@ func _draw_empire(x: float, y: float, w) -> void:
 	VKit.text(self, Vector2(x + 22, y), VKit.COL_DIM,
 		"Savoir : %d (affiché en barre du haut)" % int(ci.get("savoir", 0)), VKit.FS_SMALL)
 
-# ── ONGLET MAIN-D'ŒUVRE : allocation des bras par PUITS (extraction + manufactures) ──
-#    Régler les % (somme normalisée), FERMER un bâtiment (poids 0), choisir l'INTRANT.
-#    RE-KEY PROVINCE : la cible est la province SÉLECTIONNÉE (_pid, pid direct) — plus
-#    une région. Le joueur ne règle QUE SES provinces ; sinon lecture seule.
+# ONGLET MAIN-D'ŒUVRE : allocation par puits ; cible = province sélectionnée (_pid direct), ses provinces seules.
 func _draw_alloc(x: float, y: float, w, info: Dictionary) -> void:
 	_alloc_btns.clear()
 	var mine := (int(info.get("owner", -1)) == int(w.player()))
@@ -555,7 +506,6 @@ func _draw_alloc(x: float, y: float, w, info: Dictionary) -> void:
 	_alloc_cache = al
 	var on := bool(al.get("on", false))
 	var sinks: Array = al.get("sinks", [])
-	# — entête : bassin + mode + bouton Auto —
 	VKit.text(self, Vector2(x, y), VKit.COL_GOLD,
 		"Bassin : %s bras (journaliers + bourgeois)" % _grp(al.get("pool", 0)), VKit.FS_SMALL)
 	var mode_txt := ("RÉPARTI (manuel)" if on else "AUTO (réparti par le marché)")
@@ -578,7 +528,6 @@ func _draw_alloc(x: float, y: float, w, info: Dictionary) -> void:
 		var s: Dictionary = sinks[i]
 		var is_bld := (int(s.get("kind", 0)) == 1)
 		var closed := bool(s.get("closed", false))
-		# icône + nom (→ sortie pour les manufactures)
 		if is_bld:
 			var mt2: Texture2D = UIKit.manuf_sprite(String(s.get("name", "")))
 			if mt2 != null:
@@ -593,7 +542,6 @@ func _draw_alloc(x: float, y: float, w, info: Dictionary) -> void:
 		VKit.text(self, Vector2(x + 20, ry), ncol, nm, VKit.FS_SMALL)
 		if is_bld and String(s.get("output", "")) != "":
 			VKit.text(self, Vector2(x + 150, ry), VKit.COL_DIM, "→ %s" % String(s["output"]), VKit.FS_SMALL)
-		# barre de part (%)
 		var pct := int(s.get("pct", 0))
 		var bx := x + 250.0
 		VKit.fill(self, Rect2(bx, ry + 2, 80, 10), VKit.COL_PANEL2)
@@ -601,7 +549,6 @@ func _draw_alloc(x: float, y: float, w, info: Dictionary) -> void:
 			VKit.fill(self, Rect2(bx, ry + 2, 80.0 * float(pct) / 100.0, 10), VKit.COL_GOLD)
 		VKit.box(self, Rect2(bx, ry + 2, 80, 10), VKit.COL_EDGE)
 		VKit.value(self, Vector2(bx + 86, ry), "%d%%" % pct, VKit.FS_SMALL)
-		# contrôles (région à soi seulement)
 		if mine:
 			var cx := bx + 122.0
 			cx = _alloc_btn(cx, ry, "−", "minus", i)
@@ -623,9 +570,7 @@ func _alloc_btn(bx: float, by: float, label: String, act: String, sink: int) -> 
 	_alloc_btns.append({"rect": r, "act": act, "sink": sink})
 	return bx + bw + 4.0
 
-# applique une édition d'allocation : pousse l'allocation COMPLÈTE (un seul puits réglé
-# mettrait les autres à 0) — RE-KEY PROVINCE : `pid` est un PID direct, province à soi,
-# revalidée au drain.
+# pousse l'allocation COMPLÈTE (un seul puits réglé mettrait les autres à 0) — pid direct, revalidée au drain.
 func _alloc_apply(pid: int, idx: int, new_w: int) -> void:
 	var w = Sim.world
 	if w == null: return
@@ -639,7 +584,6 @@ func _alloc_apply(pid: int, idx: int, new_w: int) -> void:
 		else:
 			w.player_alloc_bld(pid, int(s.get("id", 0)), ww)
 
-# ── ONGLET JOURNAL : le fil chronologique des évènements & modificateurs ───────
 func _draw_journal(x: float, y: float, w) -> void:
 	var entries: Array = w.province_log(_pid)
 	if entries.is_empty():
@@ -660,11 +604,7 @@ func _draw_journal(x: float, y: float, w) -> void:
 			_hover.add_dict({"rect": Rect2(x, y - 1, PW - 32.0, 17.0), "text": ht})
 		y += 17
 
-# ── ONGLET PRODUCTION : flux +X/j par bien (sprite de ressource dessous) ───────
 func _draw_flux(fx: float, fy: float, fw: float, fh: float, w) -> void:
-	# D3 — RÉSIDU DOCTRINE : l'en-tête disait « (par an) », reliquat d'avant le retrait du
-	# ×365 (cf. commentaire plus bas, « calibrage Anno ») — les barres affichent /j depuis,
-	# l'en-tête ne suivait plus l'unité réellement montrée.
 	VKit.text(self, Vector2(fx, fy), VKit.COL_GOLD, "Production en direct (par jour)", VKit.FS_SMALL)
 	VKit.fill(self, Rect2(fx + 200.0, fy + 2.0, 9, 9), VKit.COL_GOLD)
 	VKit.text(self, Vector2(fx + 214.0, fy), VKit.COL_DIM, "ressource brute", VKit.FS_SMALL)
@@ -682,8 +622,7 @@ func _draw_flux(fx: float, fy: float, fw: float, fh: float, w) -> void:
 	var vals := []
 	var maxv := 1.0
 	for l in inc:
-		# Calibrage « Anno » : les FLUX se lisent en unités/JOUR à 1 décimale (le readout
-		# livre déjà per_day) — plus de ×365 qui gonflait l'échelle en dizaines de milliers.
+		# les flux se lisent en /JOUR (le readout livre per_day) — pas de ×365.
 		var v := float(l["per_day"])
 		vals.append(v)
 		maxv = maxf(maxv, absf(v))
@@ -713,9 +652,7 @@ func _draw_flux(fx: float, fy: float, fw: float, fh: float, w) -> void:
 	VKit.fill(self, Rect2(fx, base, fw, 1), VKit.COL_DIM)
 
 func _gui_input(event: InputEvent) -> void:
-	# MOLETTE : consommée ICI pour ne PAS zoomer la carte dessous (retour joueur « scroller
-	# le panneau province zoome le jeu »). Le panneau capte l'évènement au lieu de le laisser
-	# filer vers le zoom de la carte.
+	# MOLETTE consommée ICI pour ne PAS zoomer la carte dessous.
 	if event is InputEventMouseButton and event.pressed and \
 			(event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN):
 		accept_event()
@@ -726,14 +663,11 @@ func _gui_input(event: InputEvent) -> void:
 			Sound.play("ui_parchment_close")
 			accept_event()
 			return
-	# (FUSION 2026-07-21 : plus de hit-test souris local — _get_tooltip sert le serveur.)
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		# onglet Constructions : « Bâtir… » ouvre le panneau de construction
 		if _tab == 2 and _build_btn.size.x > 0 and _build_btn.has_point(event.position):
 			build_requested.emit()
 			accept_event()
 			return
-		# onglet Constructions : « Bâtir » une manufacture civile DANS cette province
 		if _tab == 2:
 			for b in _manuf_btns:
 				if b.rect.has_point(event.position):
@@ -741,9 +675,8 @@ func _gui_input(event: InputEvent) -> void:
 					if w2 == null:
 						return
 					var nom2 := String(w2.manuf_name(int(b.bld)))
-					# Les ordres sont ENFILÉS (journal déterministe) : le retour n'est que
-					# « mis en file », pas le verdict d'application (qui tombe au tick).
-					var ok2: bool = w2.player_build_manuf(_pid, int(b.bld)); Sim.notify_action()  # RE-KEY : _pid direct → refresh au drain (live)
+					# ordres ENFILÉS (journal déterministe) : le retour = « mis en file », pas le verdict.
+					var ok2: bool = w2.player_build_manuf(_pid, int(b.bld)); Sim.notify_action()  # _pid direct → refresh au drain
 					_manuf_flash_ok = ok2
 					_manuf_flash = ("⚒ %s — ordre émis" % nom2) if ok2 else ("✗ %s — refusé" % nom2)
 					if not ok2:
@@ -751,7 +684,6 @@ func _gui_input(event: InputEvent) -> void:
 					queue_redraw()
 					accept_event()
 					return
-		# onglet Main-d'œuvre : boutons d'allocation (poids ± · fermer · intrant · auto)
 		for b in _alloc_btns:
 			if b.rect.has_point(event.position):
 				var w = Sim.world
@@ -778,7 +710,6 @@ func _gui_input(event: InputEvent) -> void:
 				queue_redraw()
 				accept_event()
 				return
-		# onglet Peuples : RÉINCORPORATION DE POP (LOT G)
 		if _tab == 0:
 			for b in _reinc_btns:
 				if b.rect.has_point(event.position):

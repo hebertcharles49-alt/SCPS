@@ -1,22 +1,16 @@
 extends Control
-## CountryPanel — le bandeau du ROYAUME, habillé : panneau VKit + jauges TEXTURÉES
-## (UIKit.bar) + ICÔNES par métrique. Lit country_info (la membrane). Display-only.
+## Bandeau d'un royaume ÉTRANGER : lit country_info (la membrane). Display-only.
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
-const Concepts = preload("res://ui/concepts.gd")   # D4 — glossaire hover
+const Concepts = preload("res://ui/concepts.gd")
 const PW := 322.0
-const PH := 240.0   ## raccourci : les jauges internes d'un royaume ÉTRANGER ne s'affichent plus
+const PH := 240.0   ## royaume étranger : pas de jauges internes
 const MARGIN := 8.0
 
-# HOVERS (retour joueur 2026-07-10, « quoi + combien ») : le hover ne DÉFINIT
-# plus le concept (c'était une redite du codex) — il donne juste son NOM. Le mot
-# lui-même est déjà décoré turquoise et cliquable par le TooltipServer (lit
-# ui/concepts.gd) : SA définition vit derrière ce clic, jamais répétée ici.
-# Aucune décomposition moteur n'existe pour ces 4 jauges au grain PAYS (seule
-# l'agitation de PROVINCE a un breakdown, scps_readout.c:metric_agitation_
-# breakdown) — pas de « combien » à ajouter, donc pas de leçon non plus.
+# le hover NOMME juste le concept (défini derrière son clic turquoise, via TooltipServer) ;
+# aucun breakdown moteur au grain pays (seule l'agitation de province en a un).
 const TIPS := {
 	"stabilite":  "Stabilité",
 	"prosperite": "Prospérité",
@@ -24,10 +18,10 @@ const TIPS := {
 	"cohesion":   "Cohésion",
 	"savoir":     "Savoir",
 }
-var _tips: Array = []   ## [ [Rect2, texte], … ] reconstruit à chaque _draw, hit-testé au survol
+var _tips: Array = []   ## [[Rect2, texte], …] reconstruit à chaque _draw
 
 var _cid := -1
-signal close_requested   ## ✕ — la désélection pleine vit dans main (_clear_selection)
+signal close_requested   ## la désélection pleine vit dans main (_clear_selection)
 var _close_rect := Rect2()
 
 func _ready() -> void:
@@ -39,13 +33,12 @@ func _ready() -> void:
 	hide()
 
 func _layout() -> void:
-	# à GAUCHE du ledger (empire_sidebar, 268 px) en partie — il était CACHÉ dessous
+	# décalé à gauche du ledger (empire_sidebar) — sinon caché dessous
 	var off := 272.0 if Sim.game_on else 0.0
 	position = Vector2(get_viewport_rect().size.x - PW - MARGIN - off, Frame.TOPBAR_H + MARGIN)
 
 func show_country(cid: int) -> void:
-	# doctrine joueur « national = topbar » : SON royaume vit dans la barre haute — ce
-	# panneau ne s'ouvre que pour un pays ÉTRANGER (le clic chez soi garde la province).
+	# national = topbar : ce panneau ne s'ouvre que pour un pays ÉTRANGER
 	if cid >= 0 and Sim.world != null and cid == int(Sim.world.player()):
 		cid = -1
 	_cid = cid
@@ -69,37 +62,30 @@ func _draw() -> void:
 	var x := 16.0
 	var y := 12.0
 
-	# titre + couronne
 	UIKit.draw_icon(self, "politics_crown", Vector2(x, y - 1), 20)
 	VKit.text(self, Vector2(x + 26, y), VKit.COL_GOLD, String(info["nom"]), VKit.FS_BIG)
-	# ✕ — tout panneau se ferme (Échap aussi, via la pile de main)
 	_close_rect = Rect2(PW - 22, 4, 16, 16)
 	VKit.fill(self, _close_rect, VKit.COL_PANEL2)
 	VKit.box(self, _close_rect, VKit.COL_GOLD)
 	VKit.text(self, Vector2(_close_rect.position.x + 4, _close_rect.position.y + 1), VKit.COL_PARCH, "x")
 	y += 24
 	var eth_w: float = VKit.detail(self, Vector2(x, y), "%s · %d régions" % [info["ethos"], int(info["regions"])], VKit.FS)
-	# D4 — glossaire hover : cette ligne nomme l'ÉTHOS de ce royaume sans jamais expliquer
-	# le mot lui-même ailleurs dans ce panneau étranger (display-only, aucune jauge interne).
+	# cette ligne est le seul survol nommant l'Éthos dans ce panneau
 	_tips.append([Rect2(x, y - 2.0, eth_w, 16.0), Concepts.def_of("Éthos")])
 	y += 22
-	# pop, avec son icône (l'ESTIMATION extérieure — ce qui se voit d'un royaume) —
-	# LA valeur principale du panneau étranger : la taille du peuple.
+	# taille du peuple : la valeur principale d'un panneau étranger
 	UIKit.draw_icon(self, "population_group", Vector2(x, y - 1), 16)
 	VKit.value(self, Vector2(x + 20, y), _grp(info["pop"]))
 	y += 26
 
-	# ON NE LIT PAS DANS LE ROYAUME D'AUTRUI (retour joueur : « pourquoi je vois les
-	# métriques des autres entités ? ») — ce panneau est ÉTRANGER-seul depuis la
-	# doctrine « national = topbar » : ni trésor, ni jauges internes. Ce qui se SAIT :
-	# l'éthos, la taille, les âmes (estimées), l'influence (réputation PUBLIQUE).
+	# panneau étranger : pas de trésor ni jauges internes — seulement éthos, taille, influence publique
 	UIKit.draw_icon(self, "influence_compass", Vector2(x, y - 1), 16)
 	var infl_lbl_w: float = VKit.detail(self, Vector2(x + 20, y), "Influence ", VKit.FS)
 	VKit.value(self, Vector2(x + 20 + infl_lbl_w, y), str(int(info["influence"])), VKit.FS)
 	_tips.append([Rect2(0.0, y - 2.0, PW, 20.0), "Influence"])
 	y += 4
 
-	# mission décennale (l'objectif courant du pays — mission_of via la façade)
+	# mission courante du pays (mission_of)
 	var mis: Dictionary = w.mission_info(_cid)
 	if bool(mis.get("active", false)):
 		y += 26
@@ -131,7 +117,7 @@ func _grp(n) -> String:
 			out = " " + out
 	return ("-" if int(n) < 0 else "") + out
 
-## HOVER natif : Godot appelle ceci au survol → on rend le texte de la zone touchée.
+# hover natif : rend le texte de la zone touchée.
 func _get_tooltip(at_position: Vector2) -> String:
 	for t in _tips:
 		if (t[0] as Rect2).has_point(at_position) and String(t[1]) != "":

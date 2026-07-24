@@ -1,22 +1,17 @@
 extends Control
-## BattlePanel — W-GUERRE UI (lot B). Le clic sur un jeton d'armée (overlay.gd) qui
-## s'affronte (phase Siège OU Bataille) ouvre ce panneau sobre : les DEUX camps
-## (nom, effectif, composition inf/arch/cav/mages en barres), la PHASE (mot), les
-## cohésion live (bataille en cours). Le score du conflit vit dans le ledger droit. Motif
-## province_panel/VKit (immediate draw). Lit scps_battle_info (scps_api) via le
-## binding `battle_info(region)`. Ferme sur Échap (pile _close_topmost de main.gd)
-## ou sur le ✕. RÈGLE D'OR : zéro logique de sim — lecture pure de la membrane.
+## Panneau de combat (siège ou bataille) : les deux camps, la phase, la cohésion live.
+## Dessin immédiat (motif VKit). Lit battle_info(region) — zéro logique de sim.
 
 const VKit = preload("res://ui/vkit.gd")
 const Frame = preload("res://ui/frame.gd")
-const Concepts = preload("res://ui/concepts.gd")   # D4 — glossaire hover
+const Concepts = preload("res://ui/concepts.gd")
 const PW := 350.0
 
 signal close_requested
 
 var _region := -1
 var _close_rect := Rect2()
-var _tips: Array = []   ## D4 — [ [Rect2, définition], … ] reconstruit à chaque _draw (motif country_panel.gd)
+var _tips: Array = []   ## [[Rect2, définition], …] reconstruit à chaque _draw
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -39,8 +34,7 @@ func open_region(region: int) -> void:
 
 func _on_tick(_year: int) -> void:
 	if visible:
-		# le combat peut se conclure entre deux ticks (siège levé, bataille tranchée) —
-		# on referme tout seul si la donnée n'est plus valide (rien à montrer).
+		# le combat peut se conclure entre deux ticks : on referme si la donnée n'est plus valide
 		var w = Sim.world
 		if w == null or not w.has_method("battle_info"):
 			visible = false
@@ -51,8 +45,7 @@ func _on_tick(_year: int) -> void:
 			return
 		queue_redraw()
 
-## une barre de composition (inf/arch/cav/mages) empilée — même langage que
-## province_panel (barre empilée de classes), réutilisant SLICE_PAL.
+## barre de composition (inf/arch/cav/mages) — même langage que province_panel (SLICE_PAL).
 func _compo_bar(x: float, y: float, w: float, inf: int, arch: int, cav: int, mages: int) -> float:
 	var tot: float = maxf(1.0, float(inf + arch + cav + mages))
 	var vals := [inf, arch, cav, mages]
@@ -68,7 +61,7 @@ func _compo_bar(x: float, y: float, w: float, inf: int, arch: int, cav: int, mag
 	return y + bh + 4.0
 
 func _draw() -> void:
-	_tips.clear()   # D4 — repeuplé plus bas par ce même _draw() (motif country_panel.gd)
+	_tips.clear()   # repeuplé plus bas dans ce _draw()
 	var w = Sim.world
 	if w == null or _region < 0:
 		return
@@ -86,7 +79,6 @@ func _draw() -> void:
 	var x := 16.0
 	var y := 14.0
 
-	# ── EN-TÊTE : phase du combat ──────────────────────────────────────────
 	var phase_word: String = String(bi.get("phase", ""))
 	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, phase_word, VKit.FS_BIG)
 	_close_rect = Rect2(PW - 20, 3, 16, 16)
@@ -108,7 +100,6 @@ func _draw() -> void:
 	var atk_name := _country_name(atk)
 	var def_name := _country_name(def)
 
-	# ── ATTAQUANT ───────────────────────────────────────────────────────────
 	y = VKit.section(self, x, y, "ATTAQUANT")
 	VKit.text(self, Vector2(x, y), VKit.COL_PARCH, atk_name)
 	y += 18
@@ -130,7 +121,6 @@ func _draw() -> void:
 		y += 15
 	y += 6
 
-	# ── DÉFENSEUR ───────────────────────────────────────────────────────────
 	y = VKit.section(self, x, y, "DÉFENSEUR")
 	VKit.text(self, Vector2(x, y), VKit.COL_PARCH, def_name)
 	y += 18
@@ -155,14 +145,11 @@ func _draw() -> void:
 		y += 15
 	y += 6
 
-	# ── SIÈGE : compte à rebours exact + causes de la résistance ───────────
 	if not bool(bi.get("in_battle", false)) and bi.has("siege_days_left"):
 		var siege_head_y := y
 		y = VKit.section(self, x, y, "LECTURE DU SIÈGE")
-		# D4 — glossaire hover : ce panneau n'a AUCUN survol nulle part ailleurs (dessin
-		# immédiat, zéro Control par ligne) — « Cohésion » plus bas (moral de bataille,
-		# moteur) reste volontairement NON câblé : ce n'est pas la Cohésion nationale de
-		# concepts.gd, un hover ici donnerait la MAUVAISE définition.
+		# « Cohésion » plus bas = moral de bataille (moteur), pas la Cohésion nationale de
+		# concepts.gd : volontairement NON câblé, un hover ici donnerait la mauvaise définition.
 		var sdef := Concepts.def_of("Siège")
 		if sdef != "":
 			_tips.append([Rect2(x - 4.0, siege_head_y + 1.0, rw + 8.0, 18.0), sdef])
@@ -178,7 +165,7 @@ func _draw() -> void:
 		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "Estimation recalculée si la place ou ses vivres évoluent.", VKit.FS_SMALL)
 		y += 19
 
-	# ── POURQUOI UN CAMP PREND L'AVANTAGE : facteurs EXACTS du prochain choc ──
+	# facteurs exacts du prochain choc
 	if bool(bi.get("in_battle", false)) and bi.has("stage"):
 		y = VKit.section(self, x, y, "LECTURE TACTIQUE")
 		y = VKit.row(self, x, y, "Phase", String(bi.get("stage", "—")), VKit.COL_PARCH)
@@ -195,8 +182,7 @@ func _draw() -> void:
 		y = VKit.row(self, x, y, "Défenseur", "%s hommes" % _grp(int(float(bi.get("loss_def", 0.0)) * 100.0)), VKit.sense(0.15))
 		y += 4
 
-## D4 — HOVER natif (motif country_panel.gd) : ce panneau est en dessin immédiat pur
-## (zéro Control par ligne) — Godot appelle ceci au survol, on rend la zone touchée.
+# hover natif : panneau en dessin immédiat (zéro Control par ligne) — on rend la zone touchée.
 func _get_tooltip(at_position: Vector2) -> String:
 	for t in _tips:
 		if (t[0] as Rect2).has_point(at_position) and String(t[1]) != "":

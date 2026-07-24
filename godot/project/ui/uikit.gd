@@ -1,10 +1,7 @@
 extends RefCounted
-## UIKit — HABILLAGE : le pack d'assets (chrome + icônes) appliqué à l'UI Godot.
-## Charge les PNG via load_img() — EXPORT-SAFE : la RESSOURCE importée (lisible dans le PCK
-## du .exe) puis get_image(), avec un fallback Image.load_from_file en dev. Cache par chemin.
-## (Image.load_from_file seul lit le disque réel → INVISIBLE en export : le bug corrigé.) Display-only.
-##
-## Consommé via `const UIKit = preload("res://ui/uikit.gd")`.
+## UIKit — pack d'assets (chrome + icônes) de l'UI. load_img() est EXPORT-SAFE : charge la
+## ressource importée (dans le PCK) puis get_image() ; Image.load_from_file seul est INVISIBLE
+## en export (lit le disque réel). Cache par chemin. Display-only.
 
 const CHROME := "res://assets/scps/ui/chrome/"
 const ICONS  := "res://assets/scps/ui/icons/"
@@ -12,9 +9,8 @@ const RESOURCES := "res://assets/scps/pack/resources/"
 const MAP := "res://assets/scps/pack/map/"
 const PARCH := "res://assets/scps/ui/parch/"   ## les 12 planches PARCHEMIN (cellules 256², alpha)
 
-## LE RESKIN PARCHEMIN passe par ICI : nom d'icône historique → pièce des nouvelles
-## planches. Le remap est consulté en PREMIER par icon() — aucun panneau à retoucher ;
-## pièce absente → l'ancienne icône (le jeu tourne à moitié reskiné sans casse).
+## remap nom d'icône historique → pièce parchemin, consulté en premier par icon() ;
+## pièce absente → l'ancienne icône (aucun panneau à retoucher).
 const PARCH_ICON := {
 	"gold_coin":          "sheet11_system_icons_01",
 	"population_group":   "sheet11_system_icons_02",
@@ -181,9 +177,8 @@ static func biome_painting(terrain: String, climat: String) -> Texture2D:
 		piece = "sheet20_province_biomes_01_04_02"
 	return _tex(PARCH + piece + ".png")
 
-## TECHS : nom connu (planches 15-18) > apex/combo/faustien > FONCTION du quartier
-## (planche 5 : quartier = thème×3+fonction ; fonction 0 Prod → 04, 1 Armée → 06,
-## 2 Renfort → 05).
+## TECHS : nom connu (planches 15-18) > apex/combo/faustien > fonction du quartier
+## (planche 5 : fonction 0 Prod → 04, 1 Armée → 06, 2 Renfort → 05).
 const PARCH_TECH_FN_BY_FUNC := ["sheet05_tech_icons_04", "sheet05_tech_icons_06", "sheet05_tech_icons_05"]
 const PARCH_TECH_NAME := {
 	"Rouages de précision": "sheet15_tech_foundation_01",
@@ -280,19 +275,14 @@ static func tech_medallion(nom: String, faustian: bool, tier: int, quarter: int)
 		return _tex(PARCH + PARCH_TECH_FN_BY_FUNC[fn] + ".png")
 	return null
 
-## pièce parch : texture + BBOX opaque (les cellules 256² ont de larges marges vides —
-## on ne dessine que la matière). Cache {tex, rect}.
-## Un ASSET existe-t-il ? — en RESSOURCE importée (lisible dans le PCK du .exe) OU en fichier
-## réel sur disque (dev). FileAccess.file_exists SEUL est FAUX en export (le .png source n'est
-## PAS dans le PCK, seule sa ressource importée l'est) — la cause des planches invisibles.
+## pièce parch : texture + BBOX opaque (cellules 256² à larges marges vides). Cache {tex, rect}.
+## has() : ResourceLoader d'abord car FileAccess.file_exists seul est FAUX en export (le .png
+## source n'est pas dans le PCK, seule sa ressource importée l'est) — cause des planches invisibles.
 static func has(path: String) -> bool:
 	return ResourceLoader.exists(path) or FileAccess.file_exists(path)
 
-## EXPORT-SAFE : charge un PNG comme IMAGE exploitable. En EXPORT, res:// vit dans le PCK →
-## Image.load_from_file ÉCHOUE (elle lit le disque réel) ; on charge la RESSOURCE importée
-## (load) puis get_image() — les planches sont importées lossless RGBA8, donc get_used_rect /
-## convert / resize marchent. Fallback DEV (PNG présent, .import pas encore généré) :
-## Image.load_from_file. NULL si l'asset est absent.
+## EXPORT-SAFE : en export Image.load_from_file échoue (lit le disque réel) → on charge la
+## ressource importée puis get_image() ; fallback Image.load_from_file en dev. null si absent.
 static func load_img(path: String) -> Image:
 	if ResourceLoader.exists(path):
 		var t = load(path)
@@ -319,9 +309,8 @@ static func parch_piece(piece: String) -> Dictionary:
 	_parch_cache[piece] = out
 	return out
 
-## STYLEBOX 9-slice sur la BANDE opaque d'une pièce (le CORPS d'un bouton, hors fleuron
-## décoratif) : on mesure la largeur opaque de chaque ligne, la bande = les lignes à
-## ≥85 % du max (le crest étroit au-dessus est exclu) → le 9-slice ne s'écrase plus.
+## StyleBox 9-slice sur la BANDE opaque d'une pièce (corps du bouton, hors crest décoratif) :
+## la bande = les lignes à ≥85 % de la largeur opaque max → le 9-slice ne s'écrase plus.
 static var _parch_band := {}
 static func parch_band_box(piece: String, tm: int, cmh: float = -1.0, cmv: float = -1.0,
 		scale: float = 1.0) -> StyleBox:
@@ -430,11 +419,8 @@ static func parch_box(piece: String, tm: int, cmh: float = -1.0, cmv: float = -1
 
 const SETTLE_CELL := 96   # atlas settlements : 6 tiers (col) × 6 groupes (ligne), 96 px
 
-## ÔTE LE MAGENTA d'un atlas BMP. Pas un simple seuil (le seuil laissait des FRANGES
-## roses sur les bords anti-aliasés) : on mesure la « magenta-ité » m = min(R,B) − G
-## (à quel point R et B dominent le vert). m franc ⇒ transparent ; frange ⇒ alpha
-## dégressif + DESPILL (on rabat R et B vers G pour tuer le rose résiduel). Une seule
-## passe, partagée par tous les atlas (settlements, dressing, …).
+## ôte le magenta d'un atlas BMP. Pas un simple seuil (frange rose sur les bords AA) :
+## m = min(R,B) − G ; franc ⇒ transparent ; frange ⇒ alpha dégressif + despill (rabat R/B vers G).
 static func _key_magenta(img: Image) -> Texture2D:
 	if img.get_format() != Image.FORMAT_RGBA8:
 		img.convert(Image.FORMAT_RGBA8)
@@ -520,10 +506,8 @@ static func settlement_sprite(tier: int, group: int) -> Texture2D:
 
 static var _cache := {}
 
-# ── TUILES de CONSTRUCTION (unités · édifices) : des PNG auto-encadrés (fond sombre
-#    arrondi + liseré doré + art). On ôte seulement le NOIR des coins → alpha, la
-#    tuile survit. Mappage indice d'enum moteur → nom de fichier (certaines clés
-#    d'asset diffèrent de l'identifiant C : U_FOUDRIER←U_ARQUEBUSIER, etc.). ────────
+# Tuiles de construction (unités · édifices) : on ôte le noir des coins → alpha. Certaines
+# clés d'asset diffèrent de l'identifiant C (U_FOUDRIER←U_ARQUEBUSIER, etc.).
 const UNITS_DIR := "res://assets/scps/pack/units/"
 const BUILDINGS_DIR := "res://assets/scps/pack/buildings/"
 
@@ -589,8 +573,7 @@ static func building_sprite(edi_type: int) -> Texture2D:
 			return t
 	return _tile(BUILDINGS_DIR, BLD_FILE[edi_type])
 
-# ── ASSETS MONDE à ALPHA (cités par bande de pop · dressing nature) — RGBA DIRECT
-#    (vrai alpha, AUCUN keying) : on réutilise `_tex` (chargement simple + cache). ──
+# Assets monde à alpha (cités · dressing) — RGBA direct, aucun keying (via _tex).
 const CITIES_DIR := "res://assets/scps/pack/cities/"
 const DRESSING_DIR := "res://assets/scps/pack/dressing/"
 
@@ -604,9 +587,8 @@ static func city_sprite(band: int, variant: int) -> Texture2D:
 static func city_biome(nm: String) -> Texture2D:
 	return _tex_lift(CITIES_DIR + nm + ".png", CITY_LIFT)
 
-## CENTRE de ville par TIER (1-7) : nouveau lot power-progression (hutte→palais royal), AGNOSTIQUE au
-## biome (un seul jeu de 7). `kind` conservé pour compat d'appel mais IGNORÉ. RGBA direct, lift DOUX
-## (l'art painterly est déjà clair, lum ~85 → le lift ×2.1 le délaverait).
+## CENTRE de ville par TIER (1-7), agnostique au biome. `kind` ignoré (compat d'appel). Lift
+## DOUX : l'art est déjà clair (lum ~85), le lift ×2.1 le délaverait.
 const CENTRES_DIR := "res://assets/scps/pack/centres/"
 const NEW_ART_LIFT := 1.25   ## éclaircissement doux des nouveaux sprites (centres/bâtiments)
 static func city_centre(kind: String, tier: int) -> Texture2D:
@@ -634,8 +616,7 @@ static func river_named(nm: String) -> Texture2D:
 static func river_mouth_sprite() -> Texture2D:
 	return _tex(RIVERS_DIR + "RIVER_WIDENING.png")
 
-# ── SOL ISO : VARIANTES de texture par biome (256×128, eau comprise) chargées des sources.
-#    Le renderer peint la variante (par cellule → variété) et le shader fait le bord. Index = enum Biome.
+# Sol iso : variantes de texture par biome (256×128, eau comprise). Index = enum Biome.
 const ISO_TILES_DIR := "res://assets/scps/pack/iso_tiles/"
 const ISO_TILE_W := 256
 const ISO_TILE_H := 128
@@ -672,7 +653,7 @@ static func has_iso_tiles() -> bool:
 static func blend_noise() -> Texture2D:
 	return _tex(ISO_TILES_DIR + "blend_noise.png")
 
-# ── (SECONDAIRE) palette super_biomes — grandes planches de VARIATION, pioche par cellule. ───────
+# palette super_biomes — grandes planches de variation, pioche par cellule
 const SUPER_GRID := 10                       ## super_biomes_01 = PALETTE de 100 tuiles découpées
 ## cellules EAU de la palette (à exclure du tirage TERRE) — repérées sur la planche (r*10+c).
 const SUPER_WATER := [0, 8, 9, 10, 11, 12, 19, 20, 21, 22, 30, 40, 49, 50, 60, 70, 80, 90]
@@ -715,9 +696,7 @@ static func super_land(tc: int, tr: int) -> Texture2D:
 	var t: int = pal[idx]
 	return super_tile(t % SUPER_GRID, t / SUPER_GRID)
 
-# ── STRUCTURES de terrain (maisons · ateliers · champs · édifices civiques) : un
-#    POOL parsemé autour des villes. On énumère le dossier au 1er appel (pas de
-#    const de 96 noms) ; RGBA direct via _tex. ──────────────────────────────────
+# Structures de terrain : pool parsemé autour des villes, dossier énuméré au 1er appel.
 const STRUCTURES_DIR := "res://assets/scps/pack/structures/"
 static var _struct_names: PackedStringArray = []
 static var _struct_listed := false
@@ -736,7 +715,7 @@ static func structure_names() -> PackedStringArray:
 static func structure_sprite(nm: String) -> Texture2D:
 	return _tex_lift(STRUCTURES_DIR + nm + ".png", NEW_ART_LIFT)
 
-# ── CLUTTER (props de vie : barils, bûches, charrettes, puits…) — découpés de la planche, RGBA direct.
+# clutter (barils, bûches, charrettes…) — découpés de la planche, RGBA direct
 const CLUTTER_DIR := "res://assets/scps/pack/clutter/"
 static var _clutter_names: PackedStringArray = []
 static var _clutter_listed := false
@@ -778,10 +757,8 @@ static func resource_key(res_name: String) -> String:
 		s = s.replace(k, acc[k])
 	return s.strip_edges().replace(" ", "_")
 
-## le SPRITE d'une ressource (assets/scps/pack/resources/). On essaie, dans l'ordre :
-## par INDEX d'enum (<id>.png puis <id zero-paddé 3>.png — l'ordre du jeu de sprites
-## fourni), par CLÉ de nom (<clé>.png), puis repli sur une icône du pack, sinon null
-## (l'appelant retombe sur le texte). Le NOM va au survol.
+## sprite d'une ressource, essayé dans l'ordre : parchemin > index d'enum > clé de nom >
+## feuille 16-col > icône du pack > null (l'appelant retombe sur le texte).
 const RES_ATLAS_COLS := 16   # feuille « sheet.png » : grille de 16 colonnes (ordre enum)
 
 static func resource_sprite(res_id: int, res_name: String) -> Texture2D:
@@ -839,9 +816,8 @@ static func icon(name: String) -> Texture2D:
 static func chrome(name: String) -> Texture2D:
 	return _tex(CHROME + name + ".png")
 
-## charge un PNG en RELEVANT sa luminance (×f sur les pixels opaques) — pour les sprites SOMBRES
-## (villes/centres/structures ~lum 50) que le modulate canvas ne peut PAS éclaircir (clamp à 1.0).
-## Fait au CHARGEMENT (CPU, hors clamp) puis caché → coût une seule fois par sprite.
+## charge un PNG en relevant sa luminance (×f) : le modulate canvas ne peut pas éclaircir
+## un sprite sombre (clamp à 1.0). Fait au chargement (hors clamp) puis caché.
 static var _lift_cache := {}
 static func _tex_lift(path: String, f: float) -> Texture2D:
 	var key := path + "@" + str(f)
@@ -874,9 +850,8 @@ static func draw_icon(ci: CanvasItem, name: String, pos: Vector2, sizepx: float,
 ## dessine une pièce de chrome étirée dans `rect`. No-op si absente.
 static var _chrome_sb := {}
 static func draw_chrome(ci: CanvasItem, name: String, rect: Rect2, mod: Color = Color.WHITE) -> void:
-	# 9-SLICE au lieu d'un ÉTIREMENT pur (draw_texture_rect déformait la texture « à l'infini »
-	# sur les grands panneaux) : coins & bords NETS, seul le centre s'étire. StyleBoxTexture
-	# caché par nom (pas d'allocation par frame ; le modulate est posé juste avant chaque dessin).
+	# 9-slice, pas un étirement pur (draw_texture_rect déformait sur les grands panneaux) ;
+	# StyleBoxTexture caché par nom (pas d'allocation par frame).
 	if not _chrome_sb.has(name):
 		var t := chrome(name)
 		if t == null:
@@ -895,10 +870,8 @@ static func draw_chrome(ci: CanvasItem, name: String, rect: Rect2, mod: Color = 
 		sb2.modulate_color = mod
 		ci.draw_style_box(sb2, rect)
 
-## JAUGE TEXTURÉE : cadre vide + remplissage (région clippée à `value` 0-100).
-## La couleur du remplissage suit le sens : vert (haut) · or (moyen) · rouge (bas).
-## PARCHEMIN d'abord (planche 4 : gouttière 01 + remplissages olive 03 / or 02 /
-## terre cuite 04, dessinés par BBOX — les cellules ont de larges marges vides).
+## jauge texturée : cadre vide + remplissage clippé à `value` 0-100 (vert/or/rouge selon le sens).
+## Parchemin d'abord (planche 4), sinon chrome, sinon aplat.
 static func bar(ci: CanvasItem, rect: Rect2, value: int) -> void:
 	value = clampi(value, 0, 100)
 	var trough := parch_piece("sheet04_gauges_bars_01")
