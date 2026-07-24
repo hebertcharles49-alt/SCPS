@@ -2,6 +2,30 @@
 
 Doc court : les règles que TOUT nouveau panneau suit. L'historique vit dans git.
 
+## 0. UNE fenêtre, déclinable — jamais dessinée à la main (2026-07-21)
+
+**Tout panneau contextuel est une `WindowPanel` (ui/window_panel.gd), en conteneurs
+NATIFS Godot + ParchTheme.** Godot sait faire des panneaux : plus AUCUN `_draw` /
+`VKit.text` / `draw_rect` pour un panneau — ils partagent UN chrome (header parchemin
+titre·sous-titre·✕ + corps défilable hug-content). Chaque contexte (province, pays,
+empire, armée…) REMPLIT `body()` de Controls natifs.
+
+```gdscript
+var win := preload("res://ui/window_panel.gd").new()
+parent.add_child(win)
+win.set_header("Nom", "Région · Tier 3")
+win.body().add_child(<Label / ligne native>)
+win.place(top_left, ceiling)      # position + plafond → scroll au-delà
+win.closed.connect(_on_close)
+```
+
+État : la majorité de l'UI est DÉJÀ native (budget_panel_v2, country_actions,
+empire_window, province_panel_v2, construction_panel, army_panel…). RESTENT dessinés :
+`sidebar_drawer` (219 draws) et `province_detail` (114) — les deux gros — plus des
+petits (country_panel, opinion_bar, alerts). RATCHET : chaque panneau touché migre sur
+`WindowPanel` ; migration pilote par pilote, validée à l'écran (le rendu Godot ne se
+teste pas en CI).
+
 ## 1. Rebuild vs widgets persistants — LA RÈGLE
 
 **Rebuild du contenu à chaque refresh, SAUF pour les widgets à ÉTAT.**
