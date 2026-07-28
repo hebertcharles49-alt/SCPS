@@ -40,6 +40,10 @@ const CFG_PATH := "user://audio.cfg"
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	# SCPS_MUTE=1 (env) : silence TOTAL — pour les probes/captures lancées pendant que le
+	# joueur écoute sa propre musique. N'affecte jamais une partie lancée normalement.
+	if OS.has_environment("SCPS_MUTE"):
+		AudioServer.set_bus_mute(0, true)
 	_ensure_buses()
 	for i in 4:
 		_ui_pool.append(_make_player(BUS_UI))

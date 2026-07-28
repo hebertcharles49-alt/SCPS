@@ -7,6 +7,6 @@ RES="${1:-1920x1080}"
 GODOT="${GODOT:-/e/JEUX/SCPS/Godot_v4.6.3-stable_win64.exe}"
 rm -f godot/project/session_running.flag 2>/dev/null
 echo "== probe $RES =="
-"$GODOT" --path godot/project res://shot_ui.tscn -- seed=9 years=25 "res=$RES" 2>&1 | grep -iE "SHOT|SHOTS OK|error|SCRIPT ERROR|crash|no world" | head -40
+SCPS_MUTE=1 "$GODOT" --audio-driver Dummy --path godot/project res://shot_ui.tscn -- seed=9 years=25 "res=$RES" 2>&1 | grep -iE "SHOT|SHOTS OK|error|SCRIPT ERROR|crash|no world" | head -40
 echo "== fichiers =="
 ls -1 "godot/project/shots_ui/$RES/" 2>/dev/null | wc -l
