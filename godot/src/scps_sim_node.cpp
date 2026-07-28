@@ -183,6 +183,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_disband"),                    &ScpsWorld::player_disband);
     ClassDB::bind_method(D_METHOD("player_raise_corps", "packets", "target_region"), &ScpsWorld::player_raise_corps);
     ClassDB::bind_method(D_METHOD("player_split_corps", "id", "packets"), &ScpsWorld::player_split_corps);
+    ClassDB::bind_method(D_METHOD("player_split_comp", "id", "inf_p", "arch_p", "cav_p", "mages_p"), &ScpsWorld::player_split_comp);
     ClassDB::bind_method(D_METHOD("player_merge_corps", "dst_id", "src_id"), &ScpsWorld::player_merge_corps);
     ClassDB::bind_method(D_METHOD("player_move_corps", "id", "target_region"), &ScpsWorld::player_move_corps);
     ClassDB::bind_method(D_METHOD("player_refill_corps", "id"), &ScpsWorld::player_refill_corps);
@@ -1798,6 +1799,9 @@ bool ScpsWorld::player_navy_build(int hull)              { return sim ? scps_pla
 bool ScpsWorld::player_disband()                         { return sim ? scps_player_disband(sim) != 0 : false; }
 bool ScpsWorld::player_raise_corps(int packets,int target_region){ return sim?scps_player_raise_corps(sim,packets,target_region)!=0:false; }
 bool ScpsWorld::player_split_corps(int id,int packets){ return sim?scps_player_split_corps(sim,id,packets)!=0:false; }
+bool ScpsWorld::player_split_comp(int id,int inf_p,int arch_p,int cav_p,int mages_p){
+    return sim?scps_player_split_comp(sim,id,inf_p,arch_p,cav_p,mages_p)!=0:false;
+}
 bool ScpsWorld::player_merge_corps(int dst_id,int src_id){ return sim?scps_player_merge_corps(sim,dst_id,src_id)!=0:false; }
 bool ScpsWorld::player_move_corps(int id,int target_region){ return sim?scps_player_move_corps(sim,id,target_region)!=0:false; }
 bool ScpsWorld::player_refill_corps(int id){ return sim?scps_player_refill_corps(sim,id)!=0:false; }

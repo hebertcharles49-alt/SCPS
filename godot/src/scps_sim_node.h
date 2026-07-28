@@ -214,6 +214,7 @@ public:
     bool       player_disband();                      /* guerre : dissoudre la réserve levée */
     bool       player_raise_corps(int packets, int target_region);
     bool       player_split_corps(int id, int packets);
+    bool       player_split_comp(int id, int inf_p, int arch_p, int cav_p, int mages_p);  /* split par grand type, composition EXACTE */
     bool       player_merge_corps(int dst_id, int src_id);
     bool       player_move_corps(int id, int target_region);
     bool       player_refill_corps(int id);

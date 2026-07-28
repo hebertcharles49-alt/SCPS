@@ -230,6 +230,7 @@ func _ready() -> void:
 	map.army_move_preview_changed.connect(army_panel.set_move_preview)
 	army_panel.selection_replaced.connect(map._set_selected_corps)
 	army_panel.raid_requested.connect(func(): map.arm_raid())
+	army_panel.raid_disarmed.connect(func(): map.disarm_raid())
 
 	# la carte SÉLECTIONNE → on remplit les panneaux (lecture seule de la membrane)
 	map.province_picked.connect(func(province, region, owner):

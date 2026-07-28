@@ -234,6 +234,10 @@ func arm_raid() -> void:
 	if _army_selected:
 		_raid_mode = true
 
+## la case « Pillage » décochée désarme sans cliquer
+func disarm_raid() -> void:
+	_raid_mode = false
+
 func _pick_at_mouse() -> void:
 	if Sim.world == null or not Sim.world.has_method("province_at"):
 		return

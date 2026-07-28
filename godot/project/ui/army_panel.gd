@@ -6,17 +6,24 @@ extends PanelContainer
 ## campagne, actions) et COMBAT (vide hors engagement, temps réel en direct, résultat figé
 ## à la conclusion). Zéro logique sim : lit corps_info/army_info/battle_info/region_war_state,
 ## enfile des verbes déjà câblés (player_raise_corps, player_refill_corps, player_split_corps,
-## player_merge_corps, player_disband_corps) — port de PRÉSENTATION, aucun verbe changé.
+## player_split_comp, player_merge_corps, player_disband_corps) — port de PRÉSENTATION, aucun
+## verbe changé côté logique (le split composé OUVRE troop_select.gd, panneau satellite).
 ## Montré/caché par map_view.army_selection_changed (main le câble, cf. main.gd:239-245).
+##
+## RETOUR JOUEUR 2026-07-28 (icônes/chiffres, pas de barres ; État silencieux si RAS ;
+## pillage en case à cocher ; renfort = le déficit seul, détail au hover ; nom du corps
+## cliquable → sélection de troupes) : cf. les commentaires de section ci-dessous.
 
 const ParchTheme = preload("res://ui/parch_theme.gd")
-const PopBar = preload("res://ui/pop_bar.gd")
+const PopBar = preload("res://ui/pop_bar.gd")     # encore utilisé par _side_block (combat)
 const VKit = preload("res://ui/vkit.gd")
 const Frame = preload("res://ui/frame.gd")
 const Concepts = preload("res://ui/concepts.gd")   # D4 — glossaire hover
 const BattleAnim = preload("res://ui/battle_anim.gd")
+const TroopSelect = preload("res://ui/troop_select.gd")   # panneau satellite : split composé
 
-signal raid_requested   ## « Piller la côte » → main arme le sous-mode raid de la carte
+signal raid_requested   ## case « Pillage » cochée → main arme le sous-mode raid de la carte
+signal raid_disarmed    ## décochée → désarme
 signal selection_replaced(ids: Array) ## fusion : le corps survivant devient l'unique sélection
 
 const PW := 420.0
@@ -41,6 +48,8 @@ var _phase_lbl: Label = null
 var _anim: Control = null           # la FORMATION (persistante, hors du rebuild du corps)
 var _anim_battle_region := -1       # bataille armée dans l'anim (-1 = parade/aucune)
 var _parade_sig := []               # signature de compo de la parade (évite le re-setup au tick)
+var _raid_on := false               # état de la case Pillage (remis à zéro à la re-sélection)
+var _troops: Control = null         # troop_select (satellite), instancié à la demande
 
 # ── SECTION COMBAT — vide si aucun combat, EN TEMPS RÉEL (Sim.ticked, chaque jour)
 # sinon, et persiste le RÉSULTAT (victoire/défaite + pertes) jusqu'à re-sélection ou
@@ -80,6 +89,9 @@ func set_army(ids: Array) -> void:
 		_battle_result = {}
 		_anim_battle_region = -1
 		_parade_sig = []
+		_raid_on = false
+		if _troops != null:
+			_troops.visible = false
 	_selected_ids = new_ids
 	visible = not _selected_ids.is_empty()
 	if visible:
@@ -259,46 +271,41 @@ func _build_composition_tab(w, me: int, data: Dictionary) -> void:
 	else:
 		_dim_line("Cliquez une province : à vous → repositionner · ennemie → attaquer (siège, assaut, occupation & butin).")
 
-	# COMPOSITION — l'agrégat de la sélection (une barre, le détail au hover)
+	# COMPOSITION — glyphes+chiffres (le même langage que la formation en bas), pas de barre
 	if int(data.total) > 0:
 		_body.add_child(_line("COMPOSITION", "Section"))
-		_body.add_child(PopBar.proportion_bar(_compo_members(
-			int(data.inf), int(data.arch), int(data.cav), int(data.mages)), 12))
+		_body.add_child(_compo_glyphs(int(data.inf), int(data.arch), int(data.cav), int(data.mages)))
 
-	# RACCOURCIS — lever · renforcer · piller · scinder · fusionner · dissoudre
+	# RACCOURCIS — lever · renforcer (déficit) · pillage (case) · scinder · fusionner · dissoudre
 	_refresh_refill_data(w)
-	if not _refill_previews.is_empty():
-		var totals := _refill_totals(_refill_previews)
-		_body.add_child(_tone_line(_refill_summary_text(_refill_previews),
-			0.75 if int(totals.allowed) > 0 else 0.18))
 	if not _move_preview.is_empty():
 		_body.add_child(_tone_line(_move_preview_text(_move_preview), _move_preview_tone()))
 	_body.add_child(_action_row(w, me, data))
 	if _flash != "":
 		_body.add_child(_tone_line(_flash, 0.80 if _flash_good else 0.20))
 
-	# STATS — ce que la membrane expose (pas de commandement moteur à ce jour)
+	# ÉTAT — seulement s'il dit quelque chose (BRISÉ/ralliement · cohésion en bataille)
 	if active > 0:
-		_body.add_child(_stats_block(data))
+		var st := _stats_block(data)
+		if st != null:
+			_body.add_child(st)
 
-## STATS de la sélection : campagne cumulée · état · (cohésion + score si combat vif)
+## l'état ne parle que s'il y a quelque chose à dire — null sinon (pas de section vide)
 func _stats_block(data: Dictionary) -> Control:
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 2)
-	box.add_child(_line("STATS", "Section"))
-	var legs := 0; var battles := 0; var taken := 0; var broken := 0; var rally := 0
+	var broken := 0; var rally := 0
 	for a in (data.corps_data as Array):
-		legs += int(a.get("legs", 0)); battles += int(a.get("battles", 0)); taken += int(a.get("taken", 0))
 		broken = maxi(broken, int(a.get("broken_days", 0)))
 		rally += int(a.get("rally_units", 0))
-	box.add_child(_stat_line("Campagne", "%d étape(s) · %d bataille(s) · %d région(s) réduite(s)" % [legs, battles, taken]))
+	var in_battle := not _battle_live.is_empty() and bool(_battle_live.get("in_battle", false))
+	if broken <= 0 and rally <= 0 and not in_battle:
+		return null
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
 	if broken > 0:
 		box.add_child(_stat_line("État", "BRISÉ — %d j" % broken, 0.12))
 	elif rally > 0:
 		box.add_child(_stat_line("État", "ralliement · %s hommes en route" % _grp(rally), 0.45))
-	else:
-		box.add_child(_stat_line("État", "en ordre", 0.80))
-	if not _battle_live.is_empty() and bool(_battle_live.get("in_battle", false)):
+	if in_battle:
 		var me := int(Sim.world.player())
 		var pfx := "atk_" if int(_battle_live.get("attacker", -1)) == me else "def_"
 		var mp := clampi(int(_battle_live.get(pfx + "morale_pct", 0)), 0, 100)
@@ -306,19 +313,53 @@ func _stats_block(data: Dictionary) -> Control:
 		box.add_child(_mini_bar(mp))
 	return box
 
-## une carte de corps : statut + barre de composition (PopBar, DRY — hover = détail
-## du groupe) + la ligne de campagne (étapes/batailles/régions réduites).
+## une carte de corps : NOM CLIQUABLE (→ sélection de troupes, split composé) + glyphes
 func _corps_block(a: Dictionary) -> Control:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 1)
-	box.add_child(_line(_corps_status_text(a), "RowLabel"))
+	var name_btn := Button.new()
+	name_btn.text = _corps_status_text(a)
+	name_btn.flat = true
+	name_btn.focus_mode = Control.FOCUS_NONE
+	name_btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	name_btn.add_theme_color_override("font_color", ParchTheme.INK)
+	name_btn.add_theme_color_override("font_hover_color", ParchTheme.HEADER_INK)
+	name_btn.tooltip_text = "Choisir les troupes à détacher (scission sur mesure)"
+	var cid := int(a.get("id", -1))
+	name_btn.pressed.connect(func(): _open_troops(cid))
+	box.add_child(name_btn)
 	var inf := int(a.get("inf", 0)); var arch := int(a.get("arch", 0))
 	var cav := int(a.get("cav", 0)); var mages := int(a.get("mages", 0))
 	if inf + arch + cav + mages > 0:
-		box.add_child(PopBar.proportion_bar(_compo_members(inf, arch, cav, mages), 10))
-	box.add_child(_line("%d étape(s) · %d bataille(s) · %d région(s) réduite(s)" % [
-		int(a.get("legs", 0)), int(a.get("battles", 0)), int(a.get("taken", 0))], "RowDim"))
+		box.add_child(_compo_glyphs(inf, arch, cav, mages))
 	return box
+
+## « ■ 2 400 · ▲ 800 · ● 600 · ▬ 200 » — un label teinté par type présent, nom au hover
+func _compo_glyphs(inf: int, arch: int, cav: int, mages: int) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	var defs := [["■", inf, "Infanterie", VKit.SLICE_PAL[0]], ["▲", arch, "Tirailleurs/archers", VKit.SLICE_PAL[1]],
+		["●", cav, "Cavalerie", VKit.SLICE_PAL[3]], ["▬", mages, "Mages", VKit.SLICE_PAL[5]]]
+	for d in defs:
+		if int(d[1]) <= 0: continue
+		var l := Label.new()
+		l.theme_type_variation = "RowLabel"
+		l.text = "%s %s" % [d[0], _grp(int(d[1]))]
+		l.add_theme_color_override("font_color", d[3])
+		l.tooltip_text = String(d[2])
+		l.mouse_filter = Control.MOUSE_FILTER_STOP
+		row.add_child(l)
+	return row
+
+## ouvre/rafraîchit le panneau satellite de sélection de troupes pour le corps `cid`
+func _open_troops(cid: int) -> void:
+	if _troops == null:
+		_troops = TroopSelect.new()
+		_troops.position = Vector2(PW + 6.0, 0.0)
+		_troops.split_ordered.connect(func(msg: String, good: bool):
+			_flash_msg(msg, good))
+		add_child(_troops)
+	_troops.open_for(cid)
 
 ## membres pour PopBar.proportion_bar (nom/valeur/couleur/pct) — même langage de
 ## couleur que battle_panel._compo_bar (SLICE_PAL 0/1/3/5).
@@ -344,19 +385,33 @@ func _action_row(w, me: int, data: Dictionary) -> HBoxContainer:
 	raise_btn.pressed.connect(_do_raise)
 	row.add_child(raise_btn)
 
+	# RENFORCER = le DÉFICIT seul (requested_humans = manque vs force nominale ; 0 ⇒ grisé)
 	var totals := _refill_totals(_refill_previews)
-	var refill_ok := int(totals.allowed) > 0
+	var deficit := int(totals.requested)
+	var refill_ok := int(totals.allowed) > 0 and deficit > 0
 	var refill_btn := _action_btn(
-		"Renforcer (+%s)" % _grp(int(totals.requested)) if refill_ok else "Renforcer",
-		_refill_tooltip(_refill_previews))
+		("Renforcer (+%s)" % _grp(deficit)) if refill_ok else "Renforcer",
+		_refill_tooltip(_refill_previews) if refill_ok else "Corps à pleine force.")
 	refill_btn.disabled = not refill_ok
 	refill_btn.pressed.connect(_do_refill)
 	row.add_child(refill_btn)
 
-	var raid_btn := _action_btn("Piller la côte",
-		"Arme le pillage : cliquez ensuite une province côtière étrangère (nécessite une coque pirate).")
-	raid_btn.pressed.connect(_do_raid)
-	row.add_child(raid_btn)
+	# PILLAGE — une CASE (le verbe est un mode de l'armée, pas un bouton-phrase)
+	var raid_ck := CheckButton.new()
+	raid_ck.text = "Pillage"
+	raid_ck.focus_mode = Control.FOCUS_NONE
+	raid_ck.button_pressed = _raid_on
+	raid_ck.tooltip_text = "Cochée : le prochain clic sur une province côtière étrangère la pille (coque pirate requise)."
+	raid_ck.add_theme_font_size_override("font_size", 12)
+	raid_ck.add_theme_color_override("font_color", ParchTheme.INK)
+	raid_ck.add_theme_color_override("font_hover_color", ParchTheme.INK)
+	raid_ck.add_theme_color_override("font_pressed_color", ParchTheme.INK)
+	raid_ck.add_theme_color_override("font_hover_pressed_color", ParchTheme.INK)
+	raid_ck.toggled.connect(func(on: bool):
+		_raid_on = on
+		if on: raid_requested.emit()
+		else: raid_disarmed.emit())
+	row.add_child(raid_ck)
 
 	var corps_data: Array = data.corps_data
 	var split_ok := int(data.active) > 0
@@ -473,9 +528,9 @@ func _side_block(bi: Dictionary, is_atk: bool, cid: int, me: int) -> Control:
 	var units := int(bi.get(prefix + "_units", 0)) * unit_scale
 	if units > 0:
 		box.add_child(_line("%s hommes · %d corps" % [_grp(units), int(bi.get(prefix + "_corps", 0))], "RowDim"))
-		box.add_child(PopBar.proportion_bar(_compo_members(
+		box.add_child(_compo_glyphs(
 			int(bi.get(prefix + "_inf", 0)) * unit_scale, int(bi.get(prefix + "_arch", 0)) * unit_scale,
-			int(bi.get(prefix + "_cav", 0)) * unit_scale, int(bi.get(prefix + "_mages", 0)) * unit_scale), 10))
+			int(bi.get(prefix + "_cav", 0)) * unit_scale, int(bi.get(prefix + "_mages", 0)) * unit_scale))
 	else:
 		box.add_child(_stat_line("Force", "place forte" if not is_atk else "—"))
 	if bool(bi.get("in_battle", false)) and bi.has(prefix + "_morale_pct"):
@@ -660,10 +715,6 @@ func _do_raise() -> void:
 	var packets := maxi(1, int(reserve / 2))
 	var ok: bool = reserve > 0 and capital >= 0 and Sim.world.player_raise_corps(packets, capital)
 	_flash_msg("Nouveau corps levé à la capitale." if ok else "Réserve insuffisante.", ok)
-
-func _do_raid() -> void:
-	raid_requested.emit()   # main arme le sous-mode raid de la carte
-	_flash_msg("Pillage armé — cliquez une province côtière étrangère.", true)
 
 func _do_disband() -> void:
 	if not _disband_armed:
