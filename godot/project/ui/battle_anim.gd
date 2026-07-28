@@ -91,6 +91,22 @@ func _mk_shape(side: int, kind: int, n: int, flank := false, fi := 0) -> Diction
 	return {"side": side, "kind": kind, "slot": slot, "pos": slot,
 		"alive": true, "fade": 1.0, "arriving": 0.0}
 
+## FORMATION AU REPOS (panneau d'armée, « en bas, la formation ») : un seul camp, centré,
+## sur le fond biomesque — aucun ennemi, aucun choc. comp en HOMMES : {inf,arch,cav,mages,
+## relief,climat,region}. Le biome du lieu n'a pas de reader hors combat → défaut plaines.
+func setup_parade(comp: Dictionary) -> void:
+	var bi := {
+		"region": int(comp.get("region", 0)), "units_are_humans": true, "chocs": 0,
+		"relief": String(comp.get("relief", "")), "climat": String(comp.get("climat", "")),
+		"atk_inf": int(comp.get("inf", 0)), "atk_arch": int(comp.get("arch", 0)),
+		"atk_cav": int(comp.get("cav", 0)), "atk_mages": int(comp.get("mages", 0)),
+		"atk_units": int(comp.get("inf", 0)) + int(comp.get("arch", 0)) + int(comp.get("cav", 0)) + int(comp.get("mages", 0)),
+		"def_inf": 0, "def_arch": 0, "def_cav": 0, "def_mages": 0, "def_units": 0,
+		"atk_morale_pct": 100, "def_morale_pct": 100, "loss_atk": 0.0, "loss_def": 0.0,
+	}
+	setup(bi)
+	_drift = 34.0   # sans vis-à-vis, le bloc se recentre sur le tableau
+
 ## un tick de bataille : morts (delta de loss_*), renforts (réconciliation), choc (anim).
 func on_tick(bi: Dictionary) -> void:
 	var scale := 1 if bool(bi.get("units_are_humans", false)) else 100

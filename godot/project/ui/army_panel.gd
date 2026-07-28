@@ -14,6 +14,7 @@ const PopBar = preload("res://ui/pop_bar.gd")
 const VKit = preload("res://ui/vkit.gd")
 const Frame = preload("res://ui/frame.gd")
 const Concepts = preload("res://ui/concepts.gd")   # D4 — glossaire hover
+const BattleAnim = preload("res://ui/battle_anim.gd")
 
 signal raid_requested   ## « Piller la côte » → main arme le sous-mode raid de la carte
 signal selection_replaced(ids: Array) ## fusion : le corps survivant devient l'unique sélection
@@ -29,13 +30,17 @@ var _flash := ""
 var _flash_good := true
 var _flash_ms := -100000
 
-var _tab := 0   # 0 Composition · 1 Combat
-var _tab_group: ButtonGroup = null
-var _tab_btns: Array = []           # [Button] pour piloter l'onglet actif par code (probe)
-var _body: VBoxContainer = null     # corps rebâti à chaque refresh / changement d'onglet
+# STRUCTURE (décision joueur 2026-07-25) : plus d'onglets — UNE colonne : troupes ·
+# composition · raccourcis · stats · (combat s'il y en a un) · et EN BAS, la formation
+# (battle_anim : parade au repos, le choc animé en bataille). Le détail tactique complet
+# reste dans battle_panel (clic sur le jeton).
+var _body: VBoxContainer = null     # corps rebâti à chaque refresh
 var _title_lbl: Label = null
 var _sub_lbl: Label = null
 var _phase_lbl: Label = null
+var _anim: Control = null           # la FORMATION (persistante, hors du rebuild du corps)
+var _anim_battle_region := -1       # bataille armée dans l'anim (-1 = parade/aucune)
+var _parade_sig := []               # signature de compo de la parade (évite le re-setup au tick)
 
 # ── SECTION COMBAT — vide si aucun combat, EN TEMPS RÉEL (Sim.ticked, chaque jour)
 # sinon, et persiste le RÉSULTAT (victoire/défaite + pertes) jusqu'à re-sélection ou
@@ -56,11 +61,11 @@ func _ready() -> void:
 func _process(_dt: float) -> void:
 	if _disband_armed and Time.get_ticks_msec() - _disband_ms > 4000:
 		_disband_armed = false
-		if visible and _tab == 0:
+		if visible:
 			_refresh()
 	if _flash != "" and Time.get_ticks_msec() - _flash_ms > 3000:
 		_flash = ""
-		if visible and _tab == 0:
+		if visible:
 			_refresh()
 
 ## appelé par main sur map_view.army_selection_changed(on)
@@ -68,15 +73,13 @@ func set_army(ids: Array) -> void:
 	var new_ids: Array[int] = []
 	for id in ids: new_ids.append(int(id))
 	if new_ids != _selected_ids:
-		# re-sélection : la section combat oublie le combat/résultat qu'elle suivait,
-		# et on revient sur l'onglet Composition (le nouveau corps n'est pas forcément
-		# celui qui combattait).
+		# re-sélection : on oublie le combat/résultat suivi (le nouveau corps n'est pas
+		# forcément celui qui combattait) et la parade se ré-arme.
 		_battle_region = -1
 		_battle_live = {}
 		_battle_result = {}
-		_tab = 0
-		if not _tab_btns.is_empty():
-			_tab_btns[0].button_pressed = true
+		_anim_battle_region = -1
+		_parade_sig = []
 	_selected_ids = new_ids
 	visible = not _selected_ids.is_empty()
 	if visible:
@@ -118,30 +121,6 @@ func _build_shell() -> void:
 	_phase_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(_phase_lbl)
 
-	# BARRE D'ONGLETS façon Vic3 : Composition · Combat
-	var tabpanel := PanelContainer.new()
-	tabpanel.theme_type_variation = "LedTabStrip"
-	root.add_child(tabpanel)
-	var tabs := HBoxContainer.new()
-	tabs.add_theme_constant_override("separation", 2)
-	tabpanel.add_child(tabs)
-	_tab_group = ButtonGroup.new()
-	_tab_btns.clear()
-	var names := ["Composition", "Combat"]
-	for i in range(names.size()):
-		var b := Button.new()
-		b.theme_type_variation = "Tab"
-		b.toggle_mode = true
-		b.button_group = _tab_group
-		b.text = names[i]
-		b.focus_mode = Control.FOCUS_NONE
-		if i == _tab:
-			b.button_pressed = true
-		var idx := i
-		b.pressed.connect(func(): _tab = idx; _refresh())
-		tabs.add_child(b)
-		_tab_btns.append(b)
-
 	# CORPS (fond transparent — laisse voir le parchemin)
 	var bodypanel := PanelContainer.new()
 	bodypanel.theme_type_variation = "Body"
@@ -150,12 +129,17 @@ func _build_shell() -> void:
 	_body.add_theme_constant_override("separation", 4)
 	bodypanel.add_child(_body)
 
-## sélection PUBLIQUE d'un onglet (par code) : met aussi à jour le bouton actif (le
-## soulignement suit). Utilisée par la sonde de capture.
-func select_tab(idx: int) -> void:
-	if idx >= 0 and idx < _tab_btns.size():
-		_tab_btns[idx].button_pressed = true
-	_tab = idx
+	# EN BAS, LA FORMATION — widget PERSISTANT (état d'anim : jamais dans le rebuild)
+	var animpanel := PanelContainer.new()
+	animpanel.theme_type_variation = "Body"
+	root.add_child(animpanel)
+	var center := CenterContainer.new()
+	animpanel.add_child(center)
+	_anim = BattleAnim.new()
+	center.add_child(_anim)
+
+## compat sondes (l'ex-onglet Combat n'existe plus — colonne unique)
+func select_tab(_idx: int) -> void:
 	_refresh()
 
 ## un mouvement survolé sur la carte (avant clic) : juste le texte d'aperçu bouge,
@@ -163,13 +147,13 @@ func select_tab(idx: int) -> void:
 ## changement de région survolée pendant un glissé.
 func set_move_preview(preview: Dictionary) -> void:
 	_move_preview = preview.duplicate(true)
-	if visible and _tab == 0:
+	if visible:
 		_refresh()
 
 func show_feedback(message: String, good: bool) -> void:
 	_flash_msg(message, good)
 
-# ── REFRESH : rassemble l'état, rebâtit l'onglet actif ─────────────────────────
+# ── REFRESH : colonne unique (troupes · composition · raccourcis · stats · combat) ─
 func _refresh() -> void:
 	var w = Sim.world
 	if w == null or _body == null:
@@ -178,14 +162,41 @@ func _refresh() -> void:
 	var data := _gather_corps(w, me)
 	_update_header(data)
 	_refresh_combat_state(w, data.regions)
-	if not _tab_btns.is_empty():
-		_tab_btns[1].text = "Combat ⚔" if not _battle_live.is_empty() else "Combat"
 	for c in _body.get_children():
 		c.queue_free()
-	match _tab:
-		1: _build_combat_tab()
-		_: _build_composition_tab(w, me, data)
+	_build_composition_tab(w, me, data)
+	if not _battle_live.is_empty():
+		_body.add_child(_phase_title(String(_battle_live.get("phase", "?"))))
+		_build_combat_live(_battle_live)
+	elif not _battle_result.is_empty():
+		_body.add_child(_line("COMBAT — TERMINÉ", "Section"))
+		_build_combat_result(_battle_result)
+	_feed_anim(data)
 	_layout.call_deferred()
+
+## EN BAS, LA FORMATION : le choc animé quand une bataille est vive, la PARADE sinon
+## (le biome du lieu n'a de reader qu'en combat — la parade pose le fond par défaut).
+func _feed_anim(data: Dictionary) -> void:
+	if _anim == null:
+		return
+	if not _battle_live.is_empty() and bool(_battle_live.get("in_battle", false)):
+		if _anim_battle_region != _battle_region:
+			_anim.setup(_battle_live)
+			_anim_battle_region = _battle_region
+		_anim.on_tick(_battle_live)
+		_anim.visible = true
+		return
+	_anim_battle_region = -1
+	if int(data.active) <= 0:
+		_anim.visible = false
+		_parade_sig = []
+		return
+	var sig := [int(data.inf), int(data.arch), int(data.cav), int(data.mages)]
+	if sig != _parade_sig:
+		_parade_sig = sig
+		_anim.setup_parade({"inf": data.inf, "arch": data.arch, "cav": data.cav,
+			"mages": data.mages, "region": (data.regions as Array)[0] if not (data.regions as Array).is_empty() else 0})
+	_anim.visible = true
 
 ## rassemble les corps SÉLECTIONNÉS valides : agrégats (effectif, composition) +
 ## la liste brute (pour les lignes détaillées et les gates d'action).
@@ -230,17 +241,17 @@ func _update_header(data: Dictionary) -> void:
 		_sub_lbl.text = "réserve : %d régiment(s)" % int(data.reserve)
 		_phase_lbl.text = "Réserve"
 
-# ── ONGLET COMPOSITION : les corps, la pile, le renfort/l'aperçu, les actions ──
+# ── LA COLONNE : troupes · composition · raccourcis · stats (ordre joueur 2026-07-25) ──
 func _build_composition_tab(w, me: int, data: Dictionary) -> void:
 	var active := int(data.active)
 	var corps_data: Array[Dictionary] = data.corps_data
 	var regions: Array[int] = data.regions
+	# TROUPES — les corps (compact : 3 + résumé de pile)
 	if active > 0:
-		_dim_line("Sélection conservée après l'ordre · clic droit pour annuler.")
-		for i in range(mini(corps_data.size(), 6)):
+		for i in range(mini(corps_data.size(), 3)):
 			_body.add_child(_corps_block(corps_data[i]))
-		if corps_data.size() > 6:
-			_dim_line("… et %d autres corps" % (corps_data.size() - 6))
+		if corps_data.size() > 3:
+			_dim_line("… et %d autres corps" % (corps_data.size() - 3))
 		if corps_data.size() >= 2:
 			var gold := _line(_stack_summary_text(corps_data, regions, int(data.total)), "RowLabel")
 			gold.add_theme_color_override("font_color", ParchTheme.HEADER_INK)
@@ -248,19 +259,52 @@ func _build_composition_tab(w, me: int, data: Dictionary) -> void:
 	else:
 		_dim_line("Cliquez une province : à vous → repositionner · ennemie → attaquer (siège, assaut, occupation & butin).")
 
+	# COMPOSITION — l'agrégat de la sélection (une barre, le détail au hover)
+	if int(data.total) > 0:
+		_body.add_child(_line("COMPOSITION", "Section"))
+		_body.add_child(PopBar.proportion_bar(_compo_members(
+			int(data.inf), int(data.arch), int(data.cav), int(data.mages)), 12))
+
+	# RACCOURCIS — lever · renforcer · piller · scinder · fusionner · dissoudre
 	_refresh_refill_data(w)
 	if not _refill_previews.is_empty():
 		var totals := _refill_totals(_refill_previews)
 		_body.add_child(_tone_line(_refill_summary_text(_refill_previews),
 			0.75 if int(totals.allowed) > 0 else 0.18))
-
 	if not _move_preview.is_empty():
 		_body.add_child(_tone_line(_move_preview_text(_move_preview), _move_preview_tone()))
-
 	_body.add_child(_action_row(w, me, data))
-
 	if _flash != "":
 		_body.add_child(_tone_line(_flash, 0.80 if _flash_good else 0.20))
+
+	# STATS — ce que la membrane expose (pas de commandement moteur à ce jour)
+	if active > 0:
+		_body.add_child(_stats_block(data))
+
+## STATS de la sélection : campagne cumulée · état · (cohésion + score si combat vif)
+func _stats_block(data: Dictionary) -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	box.add_child(_line("STATS", "Section"))
+	var legs := 0; var battles := 0; var taken := 0; var broken := 0; var rally := 0
+	for a in (data.corps_data as Array):
+		legs += int(a.get("legs", 0)); battles += int(a.get("battles", 0)); taken += int(a.get("taken", 0))
+		broken = maxi(broken, int(a.get("broken_days", 0)))
+		rally += int(a.get("rally_units", 0))
+	box.add_child(_stat_line("Campagne", "%d étape(s) · %d bataille(s) · %d région(s) réduite(s)" % [legs, battles, taken]))
+	if broken > 0:
+		box.add_child(_stat_line("État", "BRISÉ — %d j" % broken, 0.12))
+	elif rally > 0:
+		box.add_child(_stat_line("État", "ralliement · %s hommes en route" % _grp(rally), 0.45))
+	else:
+		box.add_child(_stat_line("État", "en ordre", 0.80))
+	if not _battle_live.is_empty() and bool(_battle_live.get("in_battle", false)):
+		var me := int(Sim.world.player())
+		var pfx := "atk_" if int(_battle_live.get("attacker", -1)) == me else "def_"
+		var mp := clampi(int(_battle_live.get(pfx + "morale_pct", 0)), 0, 100)
+		box.add_child(_stat_line("Cohésion", "%d%%" % mp, float(mp) / 100.0))
+		box.add_child(_mini_bar(mp))
+	return box
 
 ## une carte de corps : statut + barre de composition (PopBar, DRY — hover = détail
 ## du groupe) + la ligne de campagne (étapes/batailles/régions réduites).
@@ -363,21 +407,9 @@ func _action_btn(txt: String, tip: String) -> Button:
 	b.add_theme_color_override("font_disabled_color", ParchTheme.DIM_INK)
 	return b
 
-# ── ONGLET COMBAT : vide hors engagement · temps réel en direct · résultat figé ─
-func _build_combat_tab() -> void:
-	if not _battle_live.is_empty():
-		_body.add_child(_phase_title(String(_battle_live.get("phase", "?"))))
-		_build_combat_live(_battle_live)
-		return
-	if not _battle_result.is_empty():
-		_body.add_child(_line("COMBAT — TERMINÉ", "Section"))
-		_build_combat_result(_battle_result)
-		return
-	_dim_line("Aucun engagement en cours.")
-
-## rafraîchit l'état de combat suivi (_battle_region/_battle_live/_battle_result)
-## depuis les régions des corps sélectionnés — bascule AUTOMATIQUEMENT sur l'onglet
-## Combat quand un engagement s'allume (pour ne pas le manquer).
+## rafraîchit l'état de combat suivi (_battle_region/_battle_live/_battle_result) depuis
+## les régions des corps sélectionnés — plus d'onglet : la section combat + la formation
+## animée apparaissent d'elles-mêmes dans la colonne quand un engagement s'allume.
 func _refresh_combat_state(w, regions: Array) -> void:
 	if w == null or not w.has_method("battle_info") or not w.has_method("region_war_state") or regions.is_empty():
 		return
@@ -388,13 +420,9 @@ func _refresh_combat_state(w, regions: Array) -> void:
 		if bool(cand.get("valid", false)):
 			bi = cand; region = int(r); break
 	if region >= 0:
-		var was_live := not _battle_live.is_empty()
 		_battle_region = region
 		_battle_live = bi.duplicate(true)
 		_battle_result = {}
-		if not was_live and _tab == 0 and not _tab_btns.is_empty():
-			_tab = 1
-			_tab_btns[1].button_pressed = true
 		return
 	if not _battle_live.is_empty() and _battle_region >= 0:
 		var ws: Dictionary = w.region_war_state(_battle_region)
