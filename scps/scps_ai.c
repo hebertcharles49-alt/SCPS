@@ -1419,7 +1419,13 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
          * O(n_countries) et ce point est un HOT PATH par acteur/tick). REVERTÉ intégralement
          * (signature de ai_econ_turn restaurée) ; garde le déclencheur d'ORIGINE (fracture
          * interne ET conquérant) intact. */
-        if (brake > AI_BRAKE_HARD && a->w_expand >= 0.60f){
+        /* VÉTUSTÉ : un bâti usé (< RENOV_AI_TRIG) se RÉNOVE avant d'empiler du neuf. */
+        int _rp = (a->home_region>=0) ? econ_region_rep_province(econ, a->home_region) : -1;
+        if (_rp>=0 && _rp<econ->n_prov
+            && agency_build_wear(&econ->prov[_rp]) < tune_f("RENOV_AI_TRIG", 0.70f)
+            && agency_renover_acct(ag, econ, w, a->home_region, a->cid, -1)){
+            a->stats.builds_other++;
+        } else if (brake > AI_BRAKE_HARD && a->w_expand >= 0.60f){
             Edifice e = ai_next_h_edifice(econ, a->home_region);
             if (a->home_region>=0 && agency_build(ag, econ, w, a->home_region, e)){
                 a->stats.builds_h++;

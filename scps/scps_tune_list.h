@@ -839,6 +839,10 @@
      * RATE=0 désactive (kill-switch : golden byte-identique). */ \
     X(VETUSTE_RATE,           0.02f) \
     X(VETUSTE_FLOOR,          0.50f) \
+    /* RÉNOVER — re-payer le bâti usé (fraction du coût de reconstruction) re-pose le delta
+     * plein à 180 j ; l'IA rénove sous TRIG au lieu d'empiler du neuf. */ \
+    X(RENOV_COST_FRAC,        0.50f) \
+    X(RENOV_AI_TRIG,          0.70f) \
     /* MODIFICATEURS PROVINCIAUX (diégétiques) — TERRE D'ABONDANCE : une région
      * SOUS-PEUPLÉE + NOURRIE + en paix se repeuple vite (le rebond des low seeds,
      * routé par l'entrée DÉMO de la croissance, PAS un bonus plat sur la sortie).

@@ -692,6 +692,49 @@ void agency_build_decay(WorldEconomy *econ, float dt){
     }
 }
 
+float agency_build_wear(const ProvinceEconomy *pe){
+    if (!pe || !pe->edi_built) return 1.f;
+    ProvBuild nom; memset(&nom, 0, sizeof nom);
+    for (int e=0; e<EDIFICE_COUNT && e<32; e++)
+        if (pe->edi_built & (1u<<e)) apply_delta(&nom, &EDIFICES[e].delta);
+    float worst = 1.f;
+    /* edge : un excédent hors-masque (défrichage) MASQUE l'usure du champ tant que
+     * courant ≥ nominal — assumé (l'usure redevient visible sous le nominal). */
+    #define WR(f) do{ if (nom.f > 0.001f){ float c = pe->build.f; if (c > nom.f) c = nom.f; \
+        float r = c / nom.f; if (r < worst) worst = r; } }while(0)
+    WR(K_inst); WR(H_coerc); WR(P_open);
+    WR(PE_infra); WR(food_cap); WR(savoir); WR(faith);
+    #undef WR
+    return worst;
+}
+
+float agency_renover_gold(const WorldEconomy *econ, int region, const ProvinceEconomy *pe){
+    if (!econ || !pe || !pe->edi_built) return 0.f;
+    float g = 0.f;
+    for (int e=0; e<EDIFICE_COUNT && e<32; e++)
+        if (pe->edi_built & (1u<<e)) g += agency_build_gold(econ, region, (Edifice)e);
+    return g * tune_f("RENOV_COST_FRAC", 0.5f);
+}
+
+#define RENOV_DAYS 180
+bool agency_renover_acct(AgencyState *a, WorldEconomy *econ, const World *w, int region, int owner, int prov){
+    if (!a || !econ || region<0 || region>=econ->n_regions) return false;
+    int pid = (prov>=0) ? prov : econ_region_rep_province(econ, region);
+    if (pid<0 || pid>=econ->n_prov) return false;
+    ProvinceEconomy *pe = &econ->prov[pid];
+    if (!pe->edi_built) return false;
+    if (agency_build_wear(pe) > 0.995f) return false;      /* rien à rénover */
+    for (int i=0; i<a->n; i++)                             /* pas de doublon en file */
+        if (a->order[i].active && a->order[i].kind==AGY_RENOVER &&
+            a->order[i].region==region && a->order[i].prov==prov) return false;
+    float gold = agency_renover_gold(econ, region, pe);
+    if (gold <= 0.f) return false;
+    if (!credit_can_spend(econ, w, owner, gold)) return false;
+    if (!credit_spend(econ, w, owner, gold)) return false;
+    if (owner>=0) econ_flux_add(owner, FX_BUILD, -gold);
+    return enqueue(a, AGY_RENOVER, region, 0, RENOV_DAYS, prov);
+}
+
 static void apply_action(WorldEconomy *econ, WorldLegitimacy *wl, ModifierStack *drift,
                          const BuildOrder *o){
     int reg=o->region;
@@ -717,6 +760,16 @@ static void apply_action(WorldEconomy *econ, WorldLegitimacy *wl, ModifierStack 
             apply_delta(&re->build, &EDIFICES[e].delta);
             if (e<32) re->edi_built |= (1u<<e);                    /* on suit l'édifice posé (masque) */
             if (e==EDI_ENTREPOT && re->n_entrepot<250) re->n_entrepot++;   /* E2 §11 : chaque entrepôt +500 de cap */
+        } break;
+        case AGY_RENOVER: {
+            /* remet chaque champ à max(nominal, courant) — l'excédent hors-masque survit */
+            ProvBuild nom; memset(&nom, 0, sizeof nom);
+            for (int e2=0; e2<EDIFICE_COUNT && e2<32; e2++)
+                if (re->edi_built & (1u<<e2)) apply_delta(&nom, &EDIFICES[e2].delta);
+            #define RNV(f) do{ if (re->build.f < nom.f) re->build.f = nom.f; }while(0)
+            RNV(K_inst); RNV(H_coerc); RNV(P_open);
+            RNV(PE_infra); RNV(food_cap); RNV(savoir); RNV(faith);
+            #undef RNV
         } break;
         case AGY_CLEAR:
             re->build.food_cap += CLEAR_FOOD_GAIN;

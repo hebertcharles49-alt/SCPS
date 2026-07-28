@@ -1150,6 +1150,10 @@ void scps_province_alloc(ScpsSim *s, int province, ScpsAlloc *out);
  * CAPITALE du joueur (le drain revalide l'appartenance). 1 = mis en file ; 0 = file
  * pleine / argument hors domaine. */
 int  scps_player_build  (ScpsSim *s, int edifice, int province);
+/* VÉTUSTÉ — rénover le bâti usé (usure %, coût or, légalité miroir du drain). */
+typedef struct { int allowed; int reason; int wear_pct; int gold; } ScpsRenoverState;
+int  scps_renover_state (ScpsSim *s, int pid, ScpsRenoverState *out);
+int  scps_player_renover(ScpsSim *s, int pid);
 /* Lever 1 paquet (100) d'un TYPE d'unité. 1 = mis en file ; 0 = refus d'enfilement.
  * (Le verdict réel — tech, élite, armes en stock — tombe au drain.) */
 long scps_player_recruit(ScpsSim *s, int unit);

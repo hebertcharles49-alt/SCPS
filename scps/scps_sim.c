@@ -494,6 +494,14 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (reg<0 || reg>=s->econ->n_regions) break;          /* le marché/la géo maritime (gates agency_build_acct) restent région */
             agency_build_acct(s->ag, s->econ, w, reg, (Edifice)e, p, pid);
             break; }
+          case CMD_RENOVER: {   /* a[0]=pid — revalidé au drain, comme CMD_BUILD */
+            int pid = c->a[0];
+            if (pid<0 || pid>=s->econ->n_prov) break;
+            if (s->econ->prov[pid].owner != p) break;
+            int reg = (pid<w->n_provinces) ? w->province[pid].region : -1;
+            if (reg<0 || reg>=s->econ->n_regions) break;
+            agency_renover_acct(s->ag, s->econ, w, reg, p, pid);
+            break; }
           case CMD_RECRUIT: {
             int u = c->a[0]; long n = (c->a[1] > 0) ? c->a[1] : 1;
             if (u<0 || u>=U_COUNT) break;

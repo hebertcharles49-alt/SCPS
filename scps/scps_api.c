@@ -3134,6 +3134,30 @@ int scps_player_build(ScpsSim *s, int edifice, int province){
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
 
+/* VÉTUSTÉ — état de rénovation d'une province : usure (%), coût, légalité (miroir des
+ * gates d'agency_renover_acct — l'UI ne reconstruit aucune règle). reason : 1 rien à
+ * rénover · 2 or insuffisant. */
+int scps_renover_state(ScpsSim *s, int pid, ScpsRenoverState *out){
+    if (!s || !s->ready || !out || pid<0 || pid>=s->sim.econ->n_prov) return 0;
+    const ProvinceEconomy *pe = &s->sim.econ->prov[pid];
+    memset(out, 0, sizeof *out);
+    float wear = agency_build_wear(pe);
+    out->wear_pct = (int)(wear*100.f + 0.5f);
+    int reg = (pid < s->w->n_provinces) ? s->w->province[pid].region : -1;
+    if (reg < 0){ out->reason = 1; return 1; }
+    out->gold = (int)(agency_renover_gold(s->sim.econ, reg, pe) + 0.5f);
+    if (!pe->edi_built || wear > 0.995f){ out->reason = 1; return 1; }
+    if (!credit_can_spend(s->sim.econ, s->w, pe->owner, (float)out->gold)){ out->reason = 2; return 1; }
+    out->allowed = 1;
+    return 1;
+}
+
+int scps_player_renover(ScpsSim *s, int pid){
+    if (!s || !s->ready || pid<0) return 0;
+    PlayerCmd c = { CMD_RENOVER, { pid, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+
 long scps_player_recruit(ScpsSim *s, int unit){
     if (!s || !s->ready || unit<0 || unit>=U_COUNT) return 0;
     PlayerCmd c = { CMD_RECRUIT, { unit, 1, 0, 0 } };

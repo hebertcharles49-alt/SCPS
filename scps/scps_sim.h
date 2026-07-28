@@ -156,6 +156,7 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
         * cf. drain). L'État PEUT REFUSER (ai_consider_offer/OFFER_LOAN — value SUBJECTIVE) —
         * throttlé par le MÊME émissaire que les autres verbes diplo (1 action/2 mois). */
        CMD_REQUEST_LOAN,
+       CMD_RENOVER,        /* VÉTUSTÉ : rénover le bâti usé d'une province — a[0]=pid */
        CMD_COUNT };
 #define SCPS_CMDQ_MAX 64
 #define SCPS_PEACE_MAX_TERRITORIES 32

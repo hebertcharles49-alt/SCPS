@@ -89,7 +89,8 @@ float agency_build_gold(const WorldEconomy *econ, int region, Edifice e);
 
 /* Familles d'action de province (le motif s'étend). */
 typedef enum { AGY_BUILD = 0, AGY_CLEAR, AGY_EXPLOIT, AGY_RELOCATE,
-               AGY_REPRESS, AGY_ASSIMILATE, AGY_PURGE, AGY_COLONIZE } ActionKind;
+               AGY_REPRESS, AGY_ASSIMILATE, AGY_PURGE, AGY_COLONIZE,
+               AGY_RENOVER } ActionKind;   /* fin d'enum : les saves antérieures n'en portent pas */
 
 /* Une action en cours (file par pays/province). */
 typedef struct {
@@ -142,6 +143,12 @@ void agency_seed_capital_markets(const World *w, WorldEconomy *econ);
 /* VÉTUSTÉ : érode build.* vers VETUSTE_FLOOR × nominal (masque edi_built) ; dt en ANNÉES.
  * RATE=0 = éteint (golden byte-identique). Appelé par agency_advance. */
 void agency_build_decay(WorldEconomy *econ, float dt);
+/* usure du bâti : min(courant/nominal) sur les champs bâtis — 1 = neuf. */
+float agency_build_wear(const ProvinceEconomy *pe);
+/* coût de rénovation : Σ or des édifices debout × RENOV_COST_FRAC. */
+float agency_renover_gold(const WorldEconomy *econ, int region, const ProvinceEconomy *pe);
+/* RÉNOVER : re-paye le bâti usé → à la complétion (180 j) le delta plein est re-posé. */
+bool agency_renover_acct(AgencyState *a, WorldEconomy *econ, const World *w, int region, int owner, int prov);
 /* E2 §13 — édifices GATÉS par l'arbre : Comptoir ← « Comptoirs marchands »,
  * Entrepôt ← « Halles & entrepôts ». Tout le reste est libre. ts NULL = libre
  * (bancs d'essai, voies basses). */
