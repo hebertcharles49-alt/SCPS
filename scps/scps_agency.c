@@ -656,11 +656,40 @@ static void apply_delta(ProvBuild *b, const ProvBuild *d){
     b->PE_infra+= d->PE_infra; b->food_cap += d->food_cap;
     b->savoir  += d->savoir;  b->faith   += d->faith;     /* G0.3 : savoir/faith étaient OUBLIÉS — */
 }                                                          /* d'où les chaînes bloquées (Biblio→Monastère, Sanct.→Cathédrale) */
+/* le stock ÉRODÉ (vétusté) peut être sous le delta nominal du palier retiré → clamp à 0,
+ * sinon l'upgrade d'un bâti usé creuse des valeurs négatives. */
+#define RMD(f) do{ b->f -= d->f; if (b->f < 0.f) b->f = 0.f; }while(0)
 static void remove_delta(ProvBuild *b, const ProvBuild *d){   /* E1bis.11 : l'↑ EFFACE le palier précédent */
-    b->K_inst  -= d->K_inst;  b->H_coerc -= d->H_coerc;  b->P_open -= d->P_open;
-    b->port    -= d->port;
-    b->PE_infra-= d->PE_infra; b->food_cap -= d->food_cap;
-    b->savoir  -= d->savoir;  b->faith   -= d->faith;
+    RMD(K_inst); RMD(H_coerc); RMD(P_open); RMD(port);
+    RMD(PE_infra); RMD(food_cap); RMD(savoir); RMD(faith);
+}
+#undef RMD
+
+/* VÉTUSTÉ : le bâti s'use vers un PLANCHER = FLOOR × nominal des édifices debout (masque
+ * edi_built = la vérité). Port EXEMPTÉ (rade binaire). N'érode que la part ÉDIFICE (≤ nominal) :
+ * l'excédent (défrichage AGY_CLEAR, fixtures de banc) est préservé. Un choc d'évènement qui
+ * frappe SOUS le plancher y RESTE (jamais de remontée gratuite) — seul l'investissement
+ * (monter de palier : apply_delta repose le delta plein) répare. */
+void agency_build_decay(WorldEconomy *econ, float dt){
+    float rate = tune_f("VETUSTE_RATE", 0.02f);
+    if (!econ || rate <= 0.f || dt <= 0.f) return;
+    float keep = 1.f - rate*dt; if (keep < 0.f) keep = 0.f;
+    float fshare = tune_f("VETUSTE_FLOOR", 0.50f);
+    for (int p=0; p<econ->n_prov; p++){
+        ProvinceEconomy *pe = &econ->prov[p];
+        if (!pe->edi_built) continue;
+        ProvBuild nom; memset(&nom, 0, sizeof nom);
+        for (int e=0; e<EDIFICE_COUNT && e<32; e++)
+            if (pe->edi_built & (1u<<e)) apply_delta(&nom, &EDIFICES[e].delta);
+        #define DEC(f) do{ float fl = nom.f * fshare; \
+            float extra = pe->build.f - nom.f; if (extra < 0.f) extra = 0.f; \
+            float core  = pe->build.f - extra; \
+            if (core > fl){ core *= keep; if (core < fl) core = fl; } \
+            pe->build.f = extra + core; }while(0)
+        DEC(K_inst); DEC(H_coerc); DEC(P_open);
+        DEC(PE_infra); DEC(food_cap); DEC(savoir); DEC(faith);
+        #undef DEC
+    }
 }
 
 static void apply_action(WorldEconomy *econ, WorldLegitimacy *wl, ModifierStack *drift,
@@ -770,6 +799,7 @@ void agency_advance(AgencyState *a, World *w, WorldEconomy *econ,
                     WorldLegitimacy *wl, ModifierStack *drift, int days){
     (void)w;
     a->day += days;
+    agency_build_decay(econ, (float)days/365.f);   /* vétusté : avant les complétions (ordre fixe) */
     for (int i=a->n-1; i>=0; i--){
         BuildOrder *o=&a->order[i];
         if (!o->active) continue;

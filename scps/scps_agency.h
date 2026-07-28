@@ -138,6 +138,10 @@ bool agency_pending_build(const AgencyState *a, int region, Edifice e);
 /* DÉPART — pose GRATUITE d'un Marché sur la capitale de chaque empire (joueur/antagoniste)
  * au montage du monde : un marché dès l'an 0 sous la « carte nue ». À semer comme les Centres. */
 void agency_seed_capital_markets(const World *w, WorldEconomy *econ);
+
+/* VÉTUSTÉ : érode build.* vers VETUSTE_FLOOR × nominal (masque edi_built) ; dt en ANNÉES.
+ * RATE=0 = éteint (golden byte-identique). Appelé par agency_advance. */
+void agency_build_decay(WorldEconomy *econ, float dt);
 /* E2 §13 — édifices GATÉS par l'arbre : Comptoir ← « Comptoirs marchands »,
  * Entrepôt ← « Halles & entrepôts ». Tout le reste est libre. ts NULL = libre
  * (bancs d'essai, voies basses). */

@@ -832,6 +832,13 @@
      * sur prod ET popgrowth (habitabilité 50 % → −10 %). EXEMPTE la région-siège (province de
      * départ). Lit la coordonnée habitability ∈ [0,1] — aucun bonus plat. K=0 désactive. */ \
     X(HAB_MALUS_K,            0.20f) \
+    /* VÉTUSTÉ — le bâti s'use : build.* s'érode de RATE/an vers un PLANCHER (fraction du
+     * nominal des édifices encore debout, dérivé du masque edi_built). « 3 bâtiments, problème
+     * résolu » cesse d'être vrai : il faut monter de palier pour rafraîchir. Le PORT est
+     * exempté (rade binaire : l'éroder ferait disparaître le port en silence).
+     * RATE=0 désactive (kill-switch : golden byte-identique). */ \
+    X(VETUSTE_RATE,           0.02f) \
+    X(VETUSTE_FLOOR,          0.50f) \
     /* MODIFICATEURS PROVINCIAUX (diégétiques) — TERRE D'ABONDANCE : une région
      * SOUS-PEUPLÉE + NOURRIE + en paix se repeuple vite (le rebond des low seeds,
      * routé par l'entrée DÉMO de la croissance, PAS un bonus plat sur la sortie).
