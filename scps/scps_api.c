@@ -576,6 +576,7 @@ void scps_province_info(ScpsSim *s, int pid, ScpsProvInfo *out){
     out->humeur_val     = pr.m_humeur.value;
     out->seuil_revolte  = pr.seuil_revolte ? 1 : 0;
     out->logements_libres = pr.logements_libres; out->logements_cap = pr.logements_cap;
+    out->developpement = pr.developpement; out->capadmin = pr.capadmin;
     out->services_libres  = pr.services_libres;  out->services_cap  = pr.services_cap;
     out->habitabilite_pct = (int)(s->w->province[pid].habitability*100.f + 0.5f);
 
@@ -1264,6 +1265,32 @@ int scps_province_agitation(ScpsSim *s, int pid, int *out_value, ScpsBreakdownLi
         out[i].decay = pr.agitation_why.line[i].decay;
     }
     return n;
+}
+
+/* MÉTRIQUES PROVINCE — même contrat que l'agitation (valeur + causes, Σ lignes = valeur). */
+static int api_breakdown(ScpsSim *s, int pid, size_t off_val_int, size_t off_bd,
+                         int *out_value, ScpsBreakdownLine *out, int max){
+    if(out_value) *out_value = 0;
+    if(!out || max<=0 || !s || !s->ready || pid<0 || pid>=s->w->n_provinces) return 0;
+    ProvinceReadout pr = province_readout(s->w, s->sim.econ, s->sim.wp, s->sim.wl, pid);
+    const BreakdownReadout *bd = (const BreakdownReadout*)((const char*)&pr + off_bd);
+    if(out_value) *out_value = (off_val_int==(size_t)-1) ? bd->value : *(const int*)((const char*)&pr + off_val_int);
+    int n = bd->n; if(n>max) n=max;
+    for(int i=0;i<n;i++){
+        out[i].cause = sz(bd->line[i].cause);
+        out[i].delta = bd->line[i].delta;
+        out[i].decay = bd->line[i].decay;
+    }
+    return n;
+}
+int scps_province_developpement(ScpsSim *s, int pid, int *out_value, ScpsBreakdownLine *out, int max){
+    return api_breakdown(s, pid, offsetof(ProvinceReadout, developpement), offsetof(ProvinceReadout, dev_why), out_value, out, max);
+}
+int scps_province_capadmin(ScpsSim *s, int pid, int *out_value, ScpsBreakdownLine *out, int max){
+    return api_breakdown(s, pid, offsetof(ProvinceReadout, capadmin), offsetof(ProvinceReadout, capadmin_why), out_value, out, max);
+}
+int scps_province_services_why(ScpsSim *s, int pid, int *out_value, ScpsBreakdownLine *out, int max){
+    return api_breakdown(s, pid, (size_t)-1, offsetof(ProvinceReadout, service_why), out_value, out, max);
 }
 
 /* les MANUFACTURES bâties dans la province : nom + niveau (capacité) + ouvriers

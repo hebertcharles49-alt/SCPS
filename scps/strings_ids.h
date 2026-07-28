@@ -133,6 +133,16 @@
     X(STR_AGIT_CAUSE_CULTURE,   "Culture étrangère") \
     X(STR_AGIT_CAUSE_CHOC,      "Conquête récente") \
     X(STR_AGIT_CAUSE_GARNISON,  "Garnison") \
+    X(STR_DEV_CAUSE_OUTIL,      "Outillage") \
+    X(STR_DEV_CAUSE_VILLE,      "Ville") \
+    X(STR_DEV_CAUSE_TECH,       "Techniques") \
+    X(STR_DEV_CAUSE_PILLAGE,    "Pillage") \
+    X(STR_DEV_CAUSE_FRICHE,     "Friche") \
+    X(STR_DEV_CAUSE_TERRE,      "Terre rude") \
+    X(STR_CAPADM_CAUSE_INST,    "Institutions") \
+    X(STR_CAPADM_CAUSE_COERC,   "Coercition bâtie") \
+    X(STR_SERV_CAUSE_SAVOIR,    "Savoir bâti") \
+    X(STR_SERV_CAUSE_FOI,       "Foi bâtie") \
     X(STR_JLOG_CHOC_EFF, "Agitation accrue, se résorbe avec le temps") \
     X(STR_JLOG_POP,    "Population") \
     X(STR_JLOG_PROD,   "Production") \

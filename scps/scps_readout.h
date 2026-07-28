@@ -196,6 +196,13 @@ typedef struct {
      * score abstrait. Plus deux SLOTS RÉSERVÉS lus de l'état bâti. */
     long  logements_libres, logements_cap;   /* habitat : places libres / capacité totale */
     long  services_libres,  services_cap;    /* services : places libres / capacité totale */
+    /* MÉTRIQUES PROVINCE (modèle 2026-07-25) : Développement = capacité de PRODUCTION,
+     * score 100·(1−1/prod_mult) (50 = production doublée, jamais saturé), breakdown
+     * MARGINAL dans l'ordre moteur (somme exacte, gains ET pertes). Capacité
+     * administrative = (K_inst+H_coerc bâtis)×10. Services : le POURQUOI de la capacité. */
+    int   developpement;   BreakdownReadout dev_why;
+    int   capadmin;        BreakdownReadout capadmin_why;
+    BreakdownReadout service_why;
     const char *defense;        /* slot DÉFENSE : structure bâtie (palissade/remparts/citadelle) */
     const char *defense_hover;
     const char *specialisation; /* slot PRODUCTION : ce que la province exploite/raffine */

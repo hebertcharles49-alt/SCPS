@@ -106,6 +106,9 @@ public:
     Dictionary province_culture_context(int province);/* P8 : dérive/contact/fusion/foi */
     Array      province_income(int province);         /* RESSOURCES / PRODUCTION */
     Dictionary province_agitation(int province);      /* MODIFICATEURS : { value:int, causes:[{cause,delta,decay}] } */
+    Dictionary province_developpement(int province);  /* métrique 0-100 + causes marginales (Σ = valeur) */
+    Dictionary province_capadmin(int province);       /* capacité administrative 0-100 + causes */
+    Dictionary province_services_why(int province);   /* le pourquoi de la capacité de services */
     Array      province_buildings(int province);      /* MANUFACTURES : [{nom, niveau, ouvriers}] */
     Array      province_edifices(int province);       /* ÉDIFICES de base bâtis : [{nom}] */
     int        province_friche(int province) const;   /* EN FRICHE (entretien impayé) : 0/1 */

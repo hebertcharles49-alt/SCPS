@@ -450,6 +450,14 @@ func _build_infrastructure(w, info: Dictionary, _cap: Dictionary) -> void:
 	_kv(grid, "Impôts", "~%s or/mois" % _grp(int(round(tax))), ParchTheme.INK)
 	var aisance := int(info.get("aisance_val", 0))
 	_kv(grid, "Prospérité", "%d%%" % aisance, _score_col(aisance))
+	# MÉTRIQUES (modèle 2026-07-25) : le chiffre seul, le POURQUOI chiffré au hover
+	if w.has_method("province_developpement"):
+		var dev: Dictionary = w.province_developpement(_pid)
+		_kv_why(grid, "Développement", str(int(dev.get("value", 0))), _score_col(int(dev.get("value", 0))), dev)
+	if w.has_method("province_capadmin"):
+		var ca: Dictionary = w.province_capadmin(_pid)
+		if int(ca.get("value", 0)) > 0 or not (ca.get("causes", []) as Array).is_empty():
+			_kv_why(grid, "Capacité admin.", str(int(ca.get("value", 0))), _score_col(int(ca.get("value", 0))), ca)
 	var mood := int(info.get("humeur_val", 0))
 	_kv(grid, "Loyauté", "%d%%" % mood, _score_col(mood))
 	var agit := int(info.get("agitation", 0))
@@ -464,8 +472,9 @@ func _build_infrastructure(w, info: Dictionary, _cap: Dictionary) -> void:
 			ParchTheme.RED if int(info.get("logements_libres", 0)) <= 0 else ParchTheme.DIM_INK)
 	var sc := int(info.get("services_cap", 0))
 	if sc > 0:
-		_kv(grid, "Services", "%s / %s" % [_grp(info.get("services_libres", 0)), _grp(sc)],
-			ParchTheme.RED if int(info.get("services_libres", 0)) <= 0 else ParchTheme.DIM_INK)
+		var sw: Dictionary = w.province_services_why(_pid) if w.has_method("province_services_why") else {}
+		_kv_why(grid, "Services", "%s / %s" % [_grp(info.get("services_libres", 0)), _grp(sc)],
+			ParchTheme.RED if int(info.get("services_libres", 0)) <= 0 else ParchTheme.DIM_INK, sw)
 	if bool(info.get("seuil_revolte", false)):
 		_line("⚠ Au bord de la révolte (agitation %d)" % agit, "Expense")
 	# FRICHE (E1bis.10) : entretien/encadrement impayé ⇒ production ×0.6 — retour joueur
@@ -1010,6 +1019,19 @@ func _kv(grid: GridContainer, label: String, value: String, col: Color) -> void:
 	val.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	val.add_theme_color_override("font_color", col)
 	grid.add_child(val)
+
+## _kv + le POURQUOI chiffré au hover de la VALEUR (breakdown {value,causes} du binding)
+func _kv_why(grid: GridContainer, label: String, value: String, col: Color, bd: Dictionary) -> void:
+	_kv(grid, label, value, col)
+	var causes: Array = bd.get("causes", [])
+	if causes.is_empty():
+		return
+	var parts := PackedStringArray()
+	for c in causes:
+		parts.append("%s %+d" % [String(c.get("cause", "")), int(c.get("delta", 0))])
+	var val := grid.get_child(grid.get_child_count() - 1) as Label
+	val.tooltip_text = "\n".join(parts)
+	val.mouse_filter = Control.MOUSE_FILTER_STOP
 
 ## une ligne de classe : nom + effectif — la satisfaction en petit « N% » coloré, à
 ## droite (retour joueur : « les barres pour désigner un job dans sa classe n'ont

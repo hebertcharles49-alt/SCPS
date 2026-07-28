@@ -795,6 +795,42 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
         long serv_cap = (long)(tier_h + (K_inst + savoir + faith) * 700.f);
         pr.services_cap    = serv_cap;
         pr.services_libres = serv_cap - (long)pop;
+        /* le POURQUOI des services : chaque source nommée (somme = la capacité) */
+        { BreakdownReadout *sw = &pr.service_why; int m=0;
+          sw->value = (int)serv_cap;
+          if (tier_h > 0.5f){ sw->line[m].cause=tr(STR_DEV_CAUSE_VILLE);    sw->line[m].delta=(int)tier_h; m++; }
+          if (K_inst > 0.001f){ sw->line[m].cause=tr(STR_CAPADM_CAUSE_INST); sw->line[m].delta=(int)(K_inst*700.f); m++; }
+          if (savoir > 0.001f){ sw->line[m].cause=tr(STR_SERV_CAUSE_SAVOIR); sw->line[m].delta=(int)(savoir*700.f); m++; }
+          if (faith > 0.001f){ sw->line[m].cause=tr(STR_SERV_CAUSE_FOI);     sw->line[m].delta=(int)(faith*700.f); m++; }
+          sw->n = m; }
+        /* CAPACITÉ ADMINISTRATIVE = (K+H bâtis)×10 (Académie 4 + Citadelle 6 = 100) —
+         * attribution télescopée (la somme des lignes = la valeur, arrondi compris). */
+        { float H_b = colonized ? pe->build.H_coerc : 0.f;
+          int s1 = (int)roundf(K_inst*10.f);
+          int s2 = (int)roundf((K_inst+H_b)*10.f);
+          pr.capadmin = s2>100 ? 100 : s2;
+          BreakdownReadout *cw = &pr.capadmin_why; int m=0;
+          cw->value = pr.capadmin;
+          if (s1 != 0){ cw->line[m].cause=tr(STR_CAPADM_CAUSE_INST);  cw->line[m].delta=s1; m++; }
+          if (s2-s1 != 0){ cw->line[m].cause=tr(STR_CAPADM_CAUSE_COERC); cw->line[m].delta=s2-s1; m++; }
+          cw->n = m; }
+        /* DÉVELOPPEMENT = 100·(1−1/prod_mult), facteurs capturés au tick (econ) —
+         * attribution MARGINALE dans l'ordre moteur : delta_i = score(cumul_i) −
+         * score(cumul_{i−1}) → la somme télescope EXACTEMENT sur la valeur. */
+        { float pm[6]; econ_province_prodmult(pid, pm);
+          static const int DEV_STR[6] = { STR_DEV_CAUSE_OUTIL, STR_DEV_CAUSE_VILLE,
+              STR_DEV_CAUSE_TECH, STR_DEV_CAUSE_PILLAGE, STR_DEV_CAUSE_FRICHE, STR_DEV_CAUSE_TERRE };
+          BreakdownReadout *dw = &pr.dev_why; int m=0;
+          float cum = 1.f; int prev = 0;
+          for (int i=0;i<6;i++){
+              cum *= (pm[i]>0.f ? pm[i] : 1.f);
+              int s = (int)roundf(100.f*(1.f - 1.f/cum));
+              if (s != prev){ dw->line[m].cause=tr((StrId)DEV_STR[i]); dw->line[m].delta=s-prev; m++; }
+              prev = s;
+          }
+          pr.developpement = colonized ? prev : 0;
+          dw->value = pr.developpement;
+          dw->n = colonized ? m : 0; }
         /* SLOT DÉFENSE : la fortification bâtie (la coercition BÂTIE H). */
         pr.defense = (H < 0.5f) ? "aucune" : (H < 1.5f) ? "Palissade"
                    : (H < 3.5f) ? "Remparts" : "Citadelle";

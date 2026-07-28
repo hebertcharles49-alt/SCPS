@@ -922,6 +922,9 @@ bool econ_colony_cd_load(FILE *f);
 long econ_friche_count(void);
 /* état friche d'UNE province (fiche province — alerte « entretien impayé »). Pur, aucun tick. */
 int  econ_province_friche(int pid);
+/* MÉTRIQUE DÉVELOPPEMENT : facteurs de prod_mult capturés au tick (outil·ville·tech·
+ * pillage·friche·terre), display-only. 0 si pas encore tické (out ← 1s). */
+int  econ_province_prodmult(int pid, float out[6]);
 /* LECTEURS PURS — le MENU CONSTRUCTION doit montrer l'entretien que econ_tick() PRÉLÈVE
  * (retour joueur 2026-07-14 : « le mécanisme d'entretien... passé à la trappe ? » — le
  * moteur le fait, l'UI ne le montrait pas). MIROIR EXACT des formules internes à econ_tick

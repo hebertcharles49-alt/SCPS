@@ -153,6 +153,8 @@ typedef struct {
     int         seuil_revolte;          /* 1 si l'agitation a franchi le seuil */
     long        logements_libres, logements_cap;
     long        services_libres,  services_cap;
+    int         developpement;          /* 0-100 : capacité de production (50 = prod doublée) */
+    int         capadmin;               /* 0-100 : (institutions + coercition bâties)×10 */
     int         habitabilite_pct;       /* 0-100 : vivabilité GÉOGRAPHIQUE pure (Province.habitability),
                                           * figée à la genèse — le hover du terrain (fiche province). */
     int         n_mods;
@@ -406,6 +408,11 @@ int scps_province_income(ScpsSim *s, int province, ScpsIncome *out, int max);
 typedef struct { const char *cause; int delta; int decay; } ScpsBreakdownLine;
 /* *out_value ← agitation 0-100 ; out[] ← les causes triées par poids. Retourne n. */
 int scps_province_agitation(ScpsSim *s, int province, int *out_value, ScpsBreakdownLine *out, int max);
+/* MÉTRIQUES PROVINCE (même contrat que l'agitation : valeur + causes signées, la somme
+ * des lignes = la valeur) : Développement, Capacité administrative, Services (pourquoi). */
+int scps_province_developpement(ScpsSim *s, int province, int *out_value, ScpsBreakdownLine *out, int max);
+int scps_province_capadmin(ScpsSim *s, int province, int *out_value, ScpsBreakdownLine *out, int max);
+int scps_province_services_why(ScpsSim *s, int province, int *out_value, ScpsBreakdownLine *out, int max);
 
 /* les MANUFACTURES bâties dans la province : nom + niveau + ouvriers. Retourne n. */
 typedef struct { const char *nom; int niveau; int ouvriers; } ScpsProvBld;

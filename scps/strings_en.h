@@ -128,6 +128,16 @@
     X(STR_AGIT_CAUSE_CULTURE,   "Foreign culture") \
     X(STR_AGIT_CAUSE_CHOC,      "Recent conquest") \
     X(STR_AGIT_CAUSE_GARNISON,  "Garrison") \
+    X(STR_DEV_CAUSE_OUTIL,      "Tooling") \
+    X(STR_DEV_CAUSE_VILLE,      "City") \
+    X(STR_DEV_CAUSE_TECH,       "Techniques") \
+    X(STR_DEV_CAUSE_PILLAGE,    "Pillage") \
+    X(STR_DEV_CAUSE_FRICHE,     "Disrepair") \
+    X(STR_DEV_CAUSE_TERRE,      "Harsh land") \
+    X(STR_CAPADM_CAUSE_INST,    "Institutions") \
+    X(STR_CAPADM_CAUSE_COERC,   "Built coercion") \
+    X(STR_SERV_CAUSE_SAVOIR,    "Built learning") \
+    X(STR_SERV_CAUSE_FOI,       "Built faith") \
     X(STR_JLOG_CHOC_EFF, "Heightened unrest, fades over time") \
     X(STR_JLOG_POP,    "Population") \
     X(STR_JLOG_PROD,   "Production") \

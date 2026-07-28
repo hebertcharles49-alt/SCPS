@@ -95,6 +95,9 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("province_culture_context", "province"), &ScpsWorld::province_culture_context);
     ClassDB::bind_method(D_METHOD("province_income", "province"),    &ScpsWorld::province_income);
     ClassDB::bind_method(D_METHOD("province_agitation", "province"), &ScpsWorld::province_agitation);
+    ClassDB::bind_method(D_METHOD("province_developpement", "province"), &ScpsWorld::province_developpement);
+    ClassDB::bind_method(D_METHOD("province_capadmin", "province"), &ScpsWorld::province_capadmin);
+    ClassDB::bind_method(D_METHOD("province_services_why", "province"), &ScpsWorld::province_services_why);
     ClassDB::bind_method(D_METHOD("province_buildings", "province"), &ScpsWorld::province_buildings);
     ClassDB::bind_method(D_METHOD("province_edifices", "province"),  &ScpsWorld::province_edifices);
     ClassDB::bind_method(D_METHOD("province_friche", "province"),    &ScpsWorld::province_friche);
@@ -511,6 +514,8 @@ Dictionary ScpsWorld::province_info(int province) {
     d["aisance_val"]    = p.aisance_val;
     d["humeur_val"]     = p.humeur_val;
     d["seuil_revolte"]  = (bool)p.seuil_revolte;
+    d["developpement"] = p.developpement;
+    d["capadmin"] = p.capadmin;
     d["logements_libres"] = (int64_t)p.logements_libres;
     d["logements_cap"]    = (int64_t)p.logements_cap;
     d["services_libres"]  = (int64_t)p.services_libres;
@@ -830,6 +835,28 @@ Dictionary ScpsWorld::province_agitation(int province) {
     out["causes"] = causes;
     return out;
 }
+
+/* MÉTRIQUES PROVINCE — même forme que province_agitation ({value, causes}). */
+static Dictionary _breakdown_dict(::ScpsSim *sim, int province,
+        int (*fn)(::ScpsSim*, int, int*, ScpsBreakdownLine*, int)) {
+    Dictionary out;
+    Array causes;
+    int value = 0;
+    ScpsBreakdownLine bl[6];
+    int n = sim ? fn(sim, province, &value, bl, 6) : 0;
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["cause"] = String::utf8(bl[i].cause);
+        d["delta"] = bl[i].delta;
+        causes.push_back(d);
+    }
+    out["value"] = value;
+    out["causes"] = causes;
+    return out;
+}
+Dictionary ScpsWorld::province_developpement(int province) { return _breakdown_dict(sim, province, scps_province_developpement); }
+Dictionary ScpsWorld::province_capadmin(int province)      { return _breakdown_dict(sim, province, scps_province_capadmin); }
+Dictionary ScpsWorld::province_services_why(int province)  { return _breakdown_dict(sim, province, scps_province_services_why); }
 
 Array ScpsWorld::province_buildings(int province) {
     Array a;

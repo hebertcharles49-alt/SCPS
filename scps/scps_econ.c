@@ -2806,6 +2806,16 @@ void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
 #define UPKEEP_SHARE_LAB      0.3334f
 #define UPKEEP_SHARE_BOURG    0.3333f
 static bool g_friche[SCPS_MAX_PROV];  /* E1bis.10 : province en friche (entretien/encadrement impayé) */
+/* MÉTRIQUE DÉVELOPPEMENT — miroir display-only des facteurs de prod_mult, capturés au
+ * tick (outil · ville · tech · pillage · friche · terre). Jamais sérialisé (recalculé
+ * chaque tick) ; stale d'un tick après un load, sans conséquence (affichage seul). */
+static float g_pm[SCPS_MAX_PROV][6];
+int econ_province_prodmult(int pid, float out[6]){
+    if (pid<0 || pid>=SCPS_MAX_PROV || !out) return 0;
+    if (g_pm[pid][0] <= 0.f){ for (int i=0;i<6;i++) out[i]=1.f; return 0; }  /* pas encore tické */
+    for (int i=0;i<6;i++) out[i]=g_pm[pid][i];
+    return 1;
+}
 static long g_n_friche;               /* télémétrie : provinces en friche au dernier tick */
 long econ_friche_count(void){ return g_n_friche; }
 int econ_province_friche(int pid){ return (pid>=0 && pid<SCPS_MAX_PROV && g_friche[pid]) ? 1 : 0; }
@@ -3837,6 +3847,9 @@ void econ_tick(WorldEconomy *e, float dt) {
         float rot = (re->owner>=0)? faction_capture_total(re->owner) : 0.f;
         /* CAPITALE (scps_labor) : sa PRODUCTIVITÉ (+5 %/tier servi) booste la vraie
          * production, au-delà des outils — mais le bonus est rongé par (1−rot). */
+        /* MÉTRIQUE DÉVELOPPEMENT (fiche province) : on CAPTURE chaque facteur au point de
+         * vérité, dans l'ordre moteur — miroir display-only (g_pm), jamais re-dérivé ailleurs. */
+        float _pm_outil = prod_mult;
         {
             long rpop = (long)rp_;   /* pop TOTALE (labor_avail inclut désormais les bourgeois — ne pas les recompter) */
             int  ctier = capitale_max_tier(rpop);
@@ -3844,17 +3857,26 @@ void econ_tick(WorldEconomy *e, float dt) {
             float cap_bonus = (capitale_prodmult(ctier, nob) - 1.f) * (1.f - rot);
             prod_mult *= (1.f + cap_bonus);
         }
+        float _pm_tier = (_pm_outil>0.f) ? prod_mult/_pm_outil : 1.f;
         prod_mult *= (re->tech_prod>0.f ? re->tech_prod : 1.f);   /* §B1 : techs de PRODUCTION du pays (outils/capitale + SAVOIR-FAIRE) */
+        float _pm_tech = (re->tech_prod>0.f ? re->tech_prod : 1.f);
         /* CÔTE BALAFRÉE (course §4) : la production de la province pillée est
          * entaillée ~1 an ; l'immunité au raid décroît en parallèle. */
-        if (re->balafre_days>0.f){ re->balafre_days-=dt*365.f; prod_mult*=0.5f; }
+        float _pm_pillage = 1.f, _pm_friche = 1.f, _pm_terre = 1.f;
+        if (re->balafre_days>0.f){ re->balafre_days-=dt*365.f; prod_mult*=0.5f; _pm_pillage=0.5f; }
         if (re->raid_cd_days>0.f)  re->raid_cd_days-=dt*365.f;
-        if (pid<SCPS_MAX_PROV && g_friche[pid]) prod_mult*=FRICHE_FACTOR;  /* E1bis.10 : entretien IMPAYÉ → friche */
+        if (pid<SCPS_MAX_PROV && g_friche[pid]){ prod_mult*=FRICHE_FACTOR; _pm_friche=FRICHE_FACTOR; }  /* E1bis.10 : entretien IMPAYÉ → friche */
         /* UTILITÉ DE L'HABITABILITÉ — la terre RUDE produit moins : malus = (1−hab)·HAB_MALUS_K
          * (habitabilité 50 % → −10 % de prod). Lit la COORDONNÉE (re->habitability), n'assigne
          * aucun modificateur plat. La province-SIÈGE (départ) en est EXEMPTÉE. */
-        if (!re->is_capital)
-            prod_mult *= fmaxf(0.f, 1.f - (1.f - re->habitability) * tune_f("HAB_MALUS_K", 0.20f));
+        if (!re->is_capital){
+            _pm_terre = fmaxf(0.f, 1.f - (1.f - re->habitability) * tune_f("HAB_MALUS_K", 0.20f));
+            prod_mult *= _pm_terre;
+        }
+        if (pid<SCPS_MAX_PROV){
+            g_pm[pid][0]=_pm_outil; g_pm[pid][1]=_pm_tier; g_pm[pid][2]=_pm_tech;
+            g_pm[pid][3]=_pm_pillage; g_pm[pid][4]=_pm_friche; g_pm[pid][5]=_pm_terre;
+        }
 
         /* ---- 1. EXTRACTION = LABOR-BOUND (ressource PAR OUVRIER, refonte A0) ---
          * out[r] = OUVRIERS[r] × YIELD[r] × geo_eff[r] × effort(prix) × prod_mult.
