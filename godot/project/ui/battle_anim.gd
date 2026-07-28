@@ -1,6 +1,7 @@
 extends Control
 ## BattleAnim — le tableau vivant du combat : deux FORMATIONS de formes (■ infanterie ·
-## ▲ archers · ● cavalerie · ▬ mages) sur fond biomesque, qui chargent, s'entrechoquent
+## ▲ archers · ● cavalerie · ▬ mages) sur fond de terrain (aplat de couleur — l'image
+## biome enluminée reste réservée à la fiche province), qui chargent, s'entrechoquent
 ## et encaissent à CHAQUE CHOC réel (le compteur `chocs` de battle_info ; le jet ±15 %
 ## du moteur se LIT dans l'issue : deltas de pertes/cohésion — display-only, la membrane
 ## ne voit jamais le tirage lui-même). RENFORTS (bt_reinforce) : l'effectif peut MONTER
@@ -8,17 +9,23 @@ extends Control
 ## jamais du delta d'effectif ; le surplus réconcilié = des formes qui ENTRENT par le bord.
 ## Petit, représentatif, zéro logique de sim.
 
-const UIKit = preload("res://ui/uikit.gd")
 const VKit = preload("res://ui/vkit.gd")
 
 const W := 318.0
 const H := 120.0
-const MAX_SHAPES := 22          # par camp — « petit, représentatif »
+const PER_UNIT := 100.0         # hommes par forme (1 forme = 1 régiment)
+const MAX_SHAPES := 30          # au-delà, _per grimpe par pas de 100 (jamais de troncature)
 const ROWS := 5                 # rangs de la grille de formation
 const COL_ATK := Color(0x8f/255.0, 0x52/255.0, 0x22/255.0)   # rouille (SLICE_PAL[0])
 const COL_DEF := Color(0x35/255.0, 0x5f/255.0, 0x80/255.0)   # acier  (SLICE_PAL[5])
 
-var _bg: Texture2D = null
+## FOND = couleur de TERRAIN (mot relief/climat de battle_info → aplat), PAS l'image
+## biome — décision joueur : « l'image biome c'est pour la province uniquement, je
+## pensais couleur du terrain ». Tons terre lisibles sous les encres rouille/acier ;
+## pas de mots (setup_parade) ⇒ défaut plaines.
+const COL_TERRAIN_DEFAUT := Color(0x5c/255.0, 0x6b/255.0, 0x3c/255.0)   # plaines : herbe sourde
+
+var _bg_col := COL_TERRAIN_DEFAUT
 var _shapes := []               # [{side,kind,slot:Vector2,pos:Vector2,alive,fade,arriving}]
 var _per := [1.0, 1.0]          # hommes par forme (fixé au setup, par camp)
 var _n0 := [0, 0]               # formes initiales par camp
@@ -38,10 +45,36 @@ func _ready() -> void:
 	custom_minimum_size = Vector2(W, H)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
+## mot de terrain/climat → aplat de couleur (herbe/sable/vert sombre/gris-brun/pâle…).
+static func _terrain_color(terrain: String, climat: String) -> Color:
+	var t := (terrain + " " + climat).to_lower()
+	if t.contains("glac") or t.contains("toundra") or t.contains("polaire"):
+		return Color(0xc7/255.0, 0xcb/255.0, 0xbf/255.0)   # toundra/glace : pâle
+	if t.contains("jungle"):
+		return Color(0x24/255.0, 0x3d/255.0, 0x22/255.0)   # jungle : vert sombre
+	if t.contains("marais") or t.contains("tourb") or t.contains("mangrove"):
+		return Color(0x4a/255.0, 0x46/255.0, 0x28/255.0)   # marais : vert-brun
+	if t.contains("désert") or t.contains("desert") or t.contains("dune") or t.contains("aride"):
+		return Color(0xc4/255.0, 0xa9/255.0, 0x6a/255.0)   # désert : sable
+	if t.contains("mont") or t.contains("pic") or t.contains("volcan"):
+		return Color(0x6e/255.0, 0x63/255.0, 0x4d/255.0)   # montagne : gris-brun
+	if t.contains("côt") or t.contains("cot") or t.contains("littoral") or t.contains("mer"):
+		return Color(0x8c/255.0, 0x96/255.0, 0x84/255.0)   # côte : sable-bleu
+	return COL_TERRAIN_DEFAUT                              # plaines (et défaut)
+
+## nombre de formes que produirait la grille de setup() pour `comp`, à `per` hommes/forme
+## (mêmes règles que la boucle de génération : infanterie/archers/mages + cavalerie ≤ 4).
+static func _shape_count(comp: Array[int], per: float) -> int:
+	var n := 0
+	for k in [0, 1, 3]:
+		if comp[k] > 0: n += int(ceilf(float(comp[k]) / per))
+	if comp[2] > 0: n += mini(int(ceilf(float(comp[2]) / per)), 4)
+	return n
+
 ## (ré)arme le tableau depuis un battle_info frais — appelé à l'ouverture du panneau.
 func setup(bi: Dictionary) -> void:
 	_rng.seed = int(bi.get("region", 0)) * 7919 + 13   # stable par bataille (display-only)
-	_bg = UIKit.biome_painting(String(bi.get("relief", "")), String(bi.get("climat", "")))
+	_bg_col = _terrain_color(String(bi.get("relief", "")), String(bi.get("climat", "")))
 	_shapes.clear()
 	_chocs_seen = int(bi.get("chocs", 0))
 	_drift = 0.0
@@ -56,7 +89,11 @@ func setup(bi: Dictionary) -> void:
 		_units0[side] = float(maxi(total, 1))
 		_units_seen[side] = float(total)
 		_loss_seen[side] = float(bi.get("loss_atk" if side == 0 else "loss_def", 0.0)) * 100.0
-		_per[side] = maxf(1.0, ceilf(float(total) / float(MAX_SHAPES)))
+		# 1 forme = 1 régiment (100 hommes) ; au-delà de MAX_SHAPES formes, le régiment
+		# grossit par pas de 100 jusqu'à ce que la grille tienne — jamais de troncature.
+		_per[side] = PER_UNIT
+		while _shape_count(comp, _per[side]) > MAX_SHAPES:
+			_per[side] += PER_UNIT
 		var n := 0
 		# ordre des colonnes depuis le front : infanterie · archers · mages ; la
 		# cavalerie flanque (rangs extrêmes). kind : 0 ■ · 1 ▲ · 2 ● · 3 ▬
@@ -92,8 +129,8 @@ func _mk_shape(side: int, kind: int, n: int, flank := false, fi := 0) -> Diction
 		"alive": true, "fade": 1.0, "arriving": 0.0}
 
 ## FORMATION AU REPOS (panneau d'armée, « en bas, la formation ») : un seul camp, centré,
-## sur le fond biomesque — aucun ennemi, aucun choc. comp en HOMMES : {inf,arch,cav,mages,
-## relief,climat,region}. Le biome du lieu n'a pas de reader hors combat → défaut plaines.
+## sur le fond de terrain — aucun ennemi, aucun choc. comp en HOMMES : {inf,arch,cav,mages,
+## relief,climat,region}. Sans mots de terrain (hors combat) → défaut plaines.
 func setup_parade(comp: Dictionary) -> void:
 	var bi := {
 		"region": int(comp.get("region", 0)), "units_are_humans": true, "chocs": 0,
@@ -195,11 +232,7 @@ func _advance(side: int) -> float:
 	return dir * (a + _drift * dir)
 
 func _draw() -> void:
-	# fond biomesque, assombri pour que les encres portent
-	if _bg != null:
-		draw_texture_rect(_bg, Rect2(0, 0, W, H), false, Color(0.62, 0.60, 0.55))
-	else:
-		draw_rect(Rect2(0, 0, W, H), Color(0.72, 0.65, 0.47))
+	draw_rect(Rect2(0, 0, W, H), _bg_col)   # fond = couleur de terrain (pas l'image biome)
 	draw_rect(Rect2(0, 0, W, H), VKit.COL_EDGE, false, 1.0)
 	for s in _shapes:
 		if s["fade"] <= 0.0: continue

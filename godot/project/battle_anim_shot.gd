@@ -21,25 +21,28 @@ func _ready() -> void:
 	_run.call_deferred(anim)
 
 func _run(anim: Control) -> void:
+	# atk = petit corps (300 hommes = 3 régiments purs infanterie ⇒ 3 carrés, 1 colonne) ;
+	# def = gros corps (3000 hommes = 30 régiments ⇒ pile la limite MAX_SHAPES, aucune
+	# troncature). Désert/Aride pour bien voir l'aplat de terrain (vs l'ex-image biome).
 	var bi := {
 		"region": 42, "units_are_humans": false, "in_battle": true, "chocs": 0,
-		"relief": "Plaines", "climat": "Tempéré",
-		"atk_inf": 24, "atk_arch": 8, "atk_cav": 6, "atk_mages": 2, "atk_units": 40,
-		"def_inf": 18, "def_arch": 9, "def_cav": 3, "def_mages": 2, "def_units": 32,
+		"relief": "Désert", "climat": "Aride",
+		"atk_inf": 3, "atk_arch": 0, "atk_cav": 0, "atk_mages": 0, "atk_units": 3,
+		"def_inf": 30, "def_arch": 0, "def_cav": 0, "def_mages": 0, "def_units": 30,
 		"atk_morale_pct": 100, "def_morale_pct": 100, "loss_atk": 0.0, "loss_def": 0.0,
 	}
 	anim.setup(bi)
 	await _wait(0.4)
 	await _shot("01_formations")
-	bi["chocs"] = 1; bi["loss_atk"] = 3.0; bi["loss_def"] = 8.0
-	bi["atk_units"] = 37; bi["def_units"] = 24
-	bi["atk_morale_pct"] = 88; bi["def_morale_pct"] = 66
+	bi["chocs"] = 1; bi["loss_atk"] = 1.0; bi["loss_def"] = 4.0
+	bi["atk_units"] = 2; bi["def_units"] = 26
+	bi["atk_morale_pct"] = 80; bi["def_morale_pct"] = 60
 	anim.on_tick(bi)
 	await _wait(0.72)
 	await _shot("02_choc")
 	await _wait(1.3)
 	await _shot("03_apres")
-	bi["def_units"] = 39   # renfort : +15 paquets, aucune perte nouvelle
+	bi["atk_units"] = 8   # renfort côté atk : +6 régiments, aucune perte nouvelle
 	anim.on_tick(bi)
 	await _wait(0.35)
 	await _shot("04_renfort")
