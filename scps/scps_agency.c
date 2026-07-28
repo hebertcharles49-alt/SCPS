@@ -732,6 +732,12 @@ bool agency_renover_acct(AgencyState *a, WorldEconomy *econ, const World *w, int
     if (!credit_can_spend(econ, w, owner, gold)) return false;
     if (!credit_spend(econ, w, owner, gold)) return false;
     if (owner>=0) econ_flux_add(owner, FX_BUILD, -gold);
+    /* l'or de la rénovation PAIE les artisans et les journaliers de la province
+     * (transfert, pas destruction — motif M3b-v2 de l'entretien) */
+    { float sl = tune_f("RENOV_SHARE_LAB", 0.5f);
+      if (sl < 0.f) sl = 0.f; if (sl > 1.f) sl = 1.f;
+      pe->strata[CLASS_LABORER].wealth   += gold*sl;
+      pe->strata[CLASS_BOURGEOIS].wealth += gold*(1.f-sl); }
     return enqueue(a, AGY_RENOVER, region, 0, RENOV_DAYS, prov);
 }
 

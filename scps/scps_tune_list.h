@@ -843,6 +843,7 @@
      * plein à 180 j ; l'IA rénove sous TRIG au lieu d'empiler du neuf. */ \
     X(RENOV_COST_FRAC,        0.50f) \
     X(RENOV_AI_TRIG,          0.70f) \
+    X(RENOV_SHARE_LAB,        0.50f) \
     /* MODIFICATEURS PROVINCIAUX (diégétiques) — TERRE D'ABONDANCE : une région
      * SOUS-PEUPLÉE + NOURRIE + en paix se repeuple vite (le rebond des low seeds,
      * routé par l'entrée DÉMO de la croissance, PAS un bonus plat sur la sortie).
