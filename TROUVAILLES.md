@@ -7176,3 +7176,21 @@ Commits : D1 `8c090ec` + fix `0f8d6a7` · D2 `878b163` · D3 `d557685` · carto
   doublon de VUE budgétaire ×4 (lecture seule, assumé) — catalogués §C.3/§D.2.
 - `army_panel.gd` hors pile Échap (assumé : fermeture par désélection carte).
 - Code mort signalé par D4 dans country_panel.gd (`ROWS`/`TIPS`/`_gauge_row`).
+
+## 2026-07-25 — régression UI « bordelisé » (fiche/diplo) : trouvée & réparée
+- **Découverte** : le tiroir diplo « chunky » = piège Godot — mesurer `get_combined_minimum_size()`
+  d'un VBox SYNCHRONEMENT après rebuild ment (labels autowrap pas layoutés, largeur 0 → un mot
+  par ligne : mesuré 2638 px pour ~600 réels) → clamp au plafond → pleine hauteur permanente ET
+  jamais de scrollbar. Antidote = motif `_fit_scroll` (2 frames de grâce + jeton), appliqué à
+  `country_actions._layout`.
+- **Découverte** : l'image biome (BiomeTip) était morte depuis que le TooltipServer a désactivé
+  les tooltips natifs (`tooltip_delay_sec=100000`) — `_make_custom_tooltip` ne tirait plus jamais.
+  Le serveur EMBARQUE désormais le Control custom au show (une instanciation, jamais dans le poll).
+- **Piège** : `probe_ui.sh` FILTRE stdout (grep interne) — un print de debug n'y survit pas ;
+  lancer Godot direct pour voir les prints.
+- **Piège (process)** : « supprime la verbose inutile [des commentaires] de l'UI » visait le
+  blabla IN GAME (phrases sous les boutons, ACTION_HELP inline, context_hint), PAS les
+  commentaires du code — le joueur TIENT aux commentaires (repères/contexte). Trim de code
+  intégralement restauré (checkout pré-trim + merge des changements fonctionnels).
+- **Restes** : couleurs claires héritées de l'époque panneau-sombre à traquer ailleurs
+  (country_panel? battle?) ; vérifier en jeu le hover biome + la scrollbar au débord réel.

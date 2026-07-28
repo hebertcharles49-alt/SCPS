@@ -1,10 +1,14 @@
 extends RefCounted
-## Générateur d'armoiries dérivées (jamais stockées) + teinture des pions (planches 29-32).
-## Tout se recalcule des faits du monde : écu ← hash pays, teinte ← entité, meuble ← éthos/
-## héritage. Display-only, zéro sérialisation (le SAVE ne bouge pas). Cache par pays via reset().
+## HERALDRY — le générateur d'ARMOIRIES dérivées (jamais stockées) + la teinture
+## des PIONS de plateau (planches 29-32). Tout se recalcule des faits du monde :
+## écu (forme ← hash pays) TEINTÉ à la couleur d'entité (même roue que les
+## frontières/lavis : _entity_hue) · partition (2e teinte, hash) · MEUBLE
+## (famille ← ÉTHOS, accent ← HÉRITAGE, pièce ← hash) · ornement de rang
+## (couronne murale = cité-état · totem = hameau libre). Display-only, zéro
+## sérialisation — le SAVE ne bouge pas. Cache par pays, vidé via reset().
 
 const PARCH := "res://assets/scps/ui/parch/"
-const UIKit = preload("res://ui/uikit.gd")   # load_img() export-safe
+const UIKit = preload("res://ui/uikit.gd")   # load_img() export-safe (charge via le PCK)
 const S29 := "sheet29_heraldry_shields_structure_"
 const S30 := "sheet30_heraldry_charges_martial_order_"
 const S31 := "sheet31_heraldry_charges_faith_nature_arcane_"
@@ -13,7 +17,9 @@ const S32 := "sheet32_army_tokens_iso_pewter_"
 const SHIELDS := ["01_ecu_ancien_heater", "02_ecu_amande_kite", "03_targe_ronde", "05_ecu_ancien_use"]
 const PARTITIONS := ["", "13_partition_chef", "14_partition_pal", "15_partition_bande", "16_partition_bordure"]
 
-## MEUBLES par ÉTHOS (enum moteur : 0 Dominateur · 1 Honneur · 2 Ordre · 3 Bureaucrate · 4 Mercantile · 5 Pacifiste)
+## MEUBLES par ÉTHOS (l'enum moteur : 0 Dominateur · 1 Honneur · 2 Ordre ·
+## 3 Bureaucrate · 4 Mercantile · 5 Pacifiste) — le partage entre familles est
+## héraldiquement naturel.
 const CHARGES := [
 	[S30 + "01_lion_rampant", S30 + "02_masse_armes_pal", S30 + "03_serre_aigle", S30 + "04_tour_crenelee", S31 + "16_dragon_love"],
 	[S30 + "05_aigle_deployee", S30 + "06_epee_haute_pal", S30 + "07_heaume_face", S30 + "08_etoile_huit_rais"],
@@ -36,15 +42,17 @@ const HER_CHARGE := [
 const PIONS := ["01_army_idle", "02_army_march", "05_army_siege", "03_army_combat",
 	"02_army_march", "02_army_march", "02_army_march"]
 
-## pièces à 128² + teinture par octets bruts (get_data, un seul set) : le get/set_pixel
-## à 256² bloquait la frame.
+## Les pièces travaillent à 128² (l'affichage max ≈ 58 px) et la teinture passe
+## par les OCTETS bruts (get_data → une PackedByteArray, un seul set à la fin) —
+## le per-pixel get/set_pixel à 256² bloquait la frame (fenêtre qui clignote).
 const WORK := 128
 
 static var _img_cache := {}    # chemin → Image 128² RGBA8 (source, jamais mutée)
 static var _arms_cache := {}   # cid → ImageTexture
 static var _pion_cache := {}   # "phase:cid" → ImageTexture
-## variante d'armes choisie au créateur : hash de composition qui remplace le hash dérivé
-## du cid pour le pays humain. −1 = dérivée. Non sérialisé (session).
+## VARIANTE D'ARMES CHOISIE par le joueur (créateur d'empire, 2026-07-10) : hash de
+## composition qui REMPLACE le hash dérivé du cid pour le pays HUMAIN. −1 = dérivée
+## (défaut). Display-only, session (non sérialisé) — poser via set_player_arms().
 static var player_hash := -1
 
 static func set_player_arms(h: int) -> void:
@@ -71,8 +79,9 @@ static func _img(piece: String) -> Image:
 static func entity_hue(e: int) -> float:
 	return fmod(float(e) * 0.1607 + 0.04, 1.0)
 
-## teinte par multiplication les pixels gris neutres/clairs (zones teintables) ; l'encre,
-## l'or et l'étain survivent. Renvoie le masque des pixels teintés (le champ de l'écu).
+## teinte les pixels GRIS NEUTRES et CLAIRS (les zones teintables des planches)
+## par MULTIPLICATION — l'encre, l'or et l'étain (sombres ou saturés) survivent.
+## Renvoie le MASQUE des pixels teintés (1 octet/pixel) — le CHAMP de l'écu.
 static func _tint_gray(img: Image, col: Color, vmin: int) -> PackedByteArray:
 	var d := img.get_data()
 	var mask := PackedByteArray()
@@ -95,7 +104,8 @@ static func _tint_gray(img: Image, col: Color, vmin: int) -> PackedByteArray:
 	img.set_data(img.get_width(), img.get_height(), false, Image.FORMAT_RGBA8, d)
 	return mask
 
-## extrait la bande de partition (gris moyen #9a9a9a) teintée à la 2e couleur.
+## extrait la BANDE de partition (le gris moyen #9a9a9a de la pièce) teintée à la
+## 2e couleur — le champ clair, le cerne d'or et l'encre sont écartés.
 static func _partition_band(piece: String, col: Color) -> Image:
 	var src := _img(piece)
 	if src == null:
@@ -113,8 +123,8 @@ static func _partition_band(piece: String, col: Color) -> Image:
 		var g := d[i + 1]
 		var b := d[i + 2]
 		var mx := maxi(r, maxi(g, b))
-		# plage resserrée : le gris de bande (~154) seul — sinon la frontière champ↔bande
-		# (blend Lanczos ~186-200) faisait un halo teinté
+		# plage RESSERRÉE : le gris de bande (~154) seul — les pixels de FRONTIÈRE
+		# champ↔bande (blend Lanczos ~186-200) restaient et faisaient un HALO teinté
 		if mx - mini(r, mini(g, b)) < 26 and mx >= 110 and mx <= 185:
 			out[i] = r * cr / 255
 			out[i + 1] = g * cg / 255
@@ -159,13 +169,17 @@ static func compose_arms(w, cid: int) -> Image:
 	var herit := clampi(int(w.country_heritage(cid)), 0, 5)
 	return compose_arms_generic(h, entity_hue(cid), ethos, herit, role == 2)
 
-## composition générique (sert pays ET provinces) : tout entre en paramètre explicite,
-## aucune lecture `w.country_*`. `cite_etat` = champ d'or fané au lieu de la teinte d'entité.
+## LA COMPOSITION GÉNÉRIQUE — factorisée de compose_arms (pays) pour servir aussi
+## les PROVINCES (heraldry par province, UI Province lot 5) : plus aucune lecture
+## `w.country_*` ici, tout entre en paramètre explicite. `seed_hash` remplace le
+## hash de cid ; `hue` la teinte d'entité (roue commune aux frontières/lavis) ;
+## `cite_etat` = champ d'or fané (rang cité-état) au lieu de la teinte d'entité.
 static func compose_arms_generic(seed_hash: int, hue: float, ethos: int, herit: int, cite_etat: bool = false) -> Image:
 	var h := seed_hash
 	ethos = clampi(ethos, 0, 5)
 	herit = clampi(herit, 0, 5)
-	# pigments terreux (anti-néon) : champ = teinte d'entité désaturée, 2e = la même en sombre
+	# teintures : PIGMENTS terreux (anti-néon — même discipline que les frontières) :
+	# champ = teinte d'entité désaturée, 2e = la même en sombre
 	var field := Color.from_hsv(hue, 0.38, 0.60)
 	var second := Color.from_hsv(hue, 0.46, 0.33)
 	if cite_etat:
@@ -176,8 +190,9 @@ static func compose_arms_generic(seed_hash: int, hue: float, ethos: int, herit: 
 		return null
 	var base: Image = src.duplicate() as Image
 	var mask := _tint_gray(base, field, 140)
-	# partition (hash : ~40 % sans) — la bande ne s'écrit que sur les pixels du champ teintés
-	# (masque) : l'ombre portée et l'écart de silhouette entre écus ne débordent jamais
+	# partition (hash : ~40 % sans) — la bande ne s'écrit QUE sur les pixels du
+	# CHAMP réellement teintés (masque) : l'ombre portée autour de la pièce de
+	# partition et l'écart de silhouette entre formes d'écu ne débordent jamais
 	var pick := [0, 0, 0, 0, 1, 1, 2, 3, 4, 4]
 	var pidx: int = pick[(h / 7) % 10]
 	if pidx > 0:
@@ -194,11 +209,15 @@ static func compose_arms_generic(seed_hash: int, hue: float, ethos: int, herit: 
 		var cs := WORK * 116 / 256
 		c.resize(cs, cs, Image.INTERPOLATE_LANCZOS)
 		base.blend_rect(c, Rect2i(0, 0, cs, cs), Vector2i(WORK * 70 / 256, WORK * 62 / 256))
-	# le rang cité-état se lit à son champ d'or (couronne murale en réserve)
+	# (le rang cité-état se lit à son CHAMP D'OR — la couronne murale demanderait
+	# un alignement d'art au pixel ; pièce en réserve, cf. rapport)
 	return base
 
-## armes d'une PROVINCE : seed déterministe (province_seed), teintée à l'éthos/héritage du
-## propriétaire ; sans propriétaire, neutres [0] et non un aléa qui dériverait à chaque frame.
+## LES ARMES d'une PROVINCE (UI Province lot 5) — seed déterministe (worldgen,
+## scps_province_seed), teintée à l'éthos/héritage du PAYS PROPRIÉTAIRE (une
+## province n'a pas son propre éthos moteur — elle hérite visuellement de qui la
+## tient ; sans propriétaire, éthos/héritage neutres [0] plutôt qu'un aléa qui
+## dériverait à chaque frame). Cache PAR PROVINCE (distinct du cache pays).
 static var _prov_arms_cache := {}
 static func province_arms(pid: int) -> Texture2D:
 	if pid < 0 or Sim.world == null:
@@ -234,8 +253,9 @@ static func pion(phase_id: int, cid: int) -> Texture2D:
 	var tex: ImageTexture = null
 	if src != null:
 		var img: Image = src.duplicate() as Image
-		# drapeau en couleur franche (doit lire à 35 px) ; l'étain est relevé ×1.4 (un sprite
-		# sombre ne s'éclaircit pas au modulate — on lift à la charge)
+		# le drapeau prend la couleur du pays (FRANCHE — il doit lire à 35 px) ;
+		# l'étain est RELEVÉ ×1.4 (leçon villes : un sprite sombre ne s'éclaircit
+		# pas au modulate — on lift à la charge).
 		var col := Color.from_hsv(entity_hue(cid), 0.55, 0.82)
 		if Sim.world != null and int(Sim.world.country_role(cid)) == 2:
 			col = Color(0.86, 0.72, 0.38)

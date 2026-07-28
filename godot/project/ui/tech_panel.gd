@@ -1,16 +1,28 @@
 extends Control
-## TechPanel — arbre de tech du joueur (touche T), read-only sauf le clic « recherche ».
-## 3 couloirs Civ 6, scroll LATÉRAL seul (jamais vertical). Flavor UNIQUEMENT dans le
-## popup de découverte (tech_popup.gd). Actionnable : cliquer une carte recherchable = cible.
+## TechPanel — l'arbre de technologie du JOUEUR (read-only sauf le clic « recherche »),
+## bascule touche T. Rendu en TROIS COULOIRS façon Civ 6 : Forge · Société · Savoir,
+## empilés en bandes HORIZONTALES de hauteur FIXE (jamais de scroll vertical) ; les
+## TIERS (0-5) sont des COLONNES qui défilent LATÉRALEMENT (ScrollContainer horizontal
+## seul). Chaque nœud = une CARTE compacte (titre + petites icônes d'effet) ; le détail
+## chiffré (tous les effets) vit au SURVOL (tooltip natif) — jamais de flavor dans la
+## carte ni son dossier. Une flèche légère relie chaque carte à son prérequis.
+## Quand une recherche S'ACHÈVE, un POPUP (tech_popup.gd) affiche effets + flavor —
+## la SEULE apparition du flavor dans tout ce panneau.
+## En-tête : points · présage (bande) · crise % · recherche en cours. Pied : dossier du
+## nœud sélectionné + bande de MÉTABOLISATION (inchangée). Lit tech_info/tech_nodes/
+## heritage_access/merv_metab/research_status (la façade). ACTIONNABLE : cliquer une
+## carte RECHERCHABLE la fixe comme cible (player_research).
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
 const ParchTheme = preload("res://ui/parch_theme.gd")
-const Concepts = preload("res://ui/concepts.gd")   # glossaire hover
+const Concepts = preload("res://ui/concepts.gd")   # D4 — glossaire hover
 
-## notifie UNE FOIS qu'un héritage non natif atteint tier 3 ; latch LOCAL non sérialisé
-## (re-lancement re-notifie, ok car display-only).
+## POPUP « métabolisation prête » (V1b) : quand un héritage NON natif atteint tier 3
+## (digestion pleine), on notifie UNE FOIS — le fil de la victoire Merveille (paliers
+## culture) doit se VOIR. Latch LOCAL au nœud (non sérialisé) : un re-lancement re-notifie,
+## acceptable pour un signal purement display-only.
 signal metab_ready(nom: String)
 var _metab_seen := {}   ## nom héritage (natif à part) → true une fois notifié tier==3
 # taille ADAPTATIVE à la fenêtre (recalculée dans _layout ; plancher = l'ancienne taille fixe)
@@ -20,13 +32,15 @@ const HEAD := 52.0          # hauteur d'en-tête (titre + jauges)
 const FOOT := 128.0         # dossier persistant : nom/état/méta/effets (SANS flavor)
 const METAH := 92.0         # bande de MÉTABOLISATION (le +% recherche + accès par héritage + compte Ascension)
 
-# géométrie des couloirs : 3 bandes de hauteur FIXE, largeur qui grandit avec le contenu (scroll latéral seul).
+# géométrie des COULOIRS (Civ 6) : 3 bandes de hauteur FIXE, colonnes = TIERS qui défilent
+# latéralement. Aucun de ces nombres ne dépend du nombre de nœuds en hauteur — seule la
+# LARGEUR (nombre de sous-colonnes par tier) grandit avec le contenu.
 const LANE_LABEL_W := 66.0  # colonne de gauche FIGÉE (ne défile pas avec le scroll latéral)
 const TIER_LABEL_H := 18.0  # bandeau "T0..T5" en tête de la zone scrollable
 const CARD_GUTTER  := 6.0
 const CARD_W       := 158.0
 
-# couleurs d'état
+# couleurs d'état (sans bibliothèque d'animation Medusa : on teinte la carte)
 const COL_LOCKED   := Color(0.40, 0.40, 0.46)
 const COL_AVAIL    := Color(0.85, 0.60, 0.28)
 const COL_UNLOCKED := Color(0.40, 0.80, 0.46)
@@ -35,7 +49,8 @@ const COL_FAUST    := Color(0.88, 0.24, 0.24)
 const LANE_NAMES := ["Savoir", "Forge", "Société"]           # ordre THM_* (scps_tech.h)
 const LANE_INK := [Color(0.35, 0.45, 0.62, 0.85), Color(0.66, 0.34, 0.22, 0.85), Color(0.45, 0.55, 0.30, 0.85)]
 
-## CARTE compacte (titre + icônes d'effet) ; détail chiffré au tooltip, jamais de flavor.
+## ── CARTE compacte (titre + icônes d'effet), nested class : hit-test = tout le rect
+## (Control par défaut), pas de flavor, tout le détail chiffré vit dans tooltip_text.
 class TechCard extends Control:
 	const CVKit  = preload("res://ui/vkit.gd")
 	const CUIKit = preload("res://ui/uikit.gd")
@@ -86,7 +101,10 @@ var _sel := ""             # détail du nœud sélectionné (pied)
 var _sel_node := {}        # nœud sélectionné : dossier détaillé, sans dépendre du survol
 var _sel_flash := ""       # retour immédiat après lancement/refus d'une recherche
 var _close_rect := Rect2()
-# styleboxes CACHÉES : _draw() tourne à chaque tick visible, pas de ré-allocation.
+# CHROME parchemin (motif ParchTheme, cf. construction_panel/province_panel_v2) — LA
+# STRUCTURE Civ 6 ne bouge pas, seuls cadre/bandeau/pied portent le même style que les
+# fiches à conteneurs natifs (bords 1px BORDER, bandeaux HEADER_BG). Styleboxes CACHÉES
+# (motif VKit._pb_body) : `_draw()` tourne à chaque tick visible, pas de ré-allocation.
 static var _sb_panel: StyleBoxFlat = null
 static var _sb_band: StyleBoxFlat = null
 static func _chrome() -> void:
@@ -98,7 +116,7 @@ var _popup: Control = null                 ## le popup de DÉCOUVERTE (tech_popu
 var _pending_discoveries: Array = []       ## idx de nœuds achevés pendant que le panneau était FERMÉ
 var _last_research_target := -1           ## suivi de la cible — détecte la complétion (miroir sound.gd)
 var _last_research_prog := 0.0
-var _tips: Array = []   ## [ [Rect2, définition], … ] reconstruit à chaque _draw
+var _tips: Array = []   ## D4 — [ [Rect2, définition], … ] reconstruit à chaque _draw (motif country_panel.gd)
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -117,8 +135,11 @@ func _ready() -> void:
 		if visible: queue_redraw())
 	hide()
 
-## surveille merv_metab() (ce qui compte pour la Merveille, PAS heritage_access/tier) ;
-## déclenche metab_ready UNE fois (latch _metab_seen).
+## surveille `merv_metab()` — CE QUI COMPTE POUR LA MERVEILLE (endgame_metab_count),
+## PAS l'accès tech (heritage_access/tier) : un héritage non natif dont `metabolized`
+## bascule à vrai déclenche `metab_ready` UNE fois (latch `_metab_seen`). Avant P5,
+## ce chip lisait heritage_access() (sémantique tech) — un joueur pouvait voir le ✓
+## sans que la culture compte pour l'Ascension, et l'inverse ; corrigé (cf. TROUVAILLES).
 func _check_metab_ready() -> void:
 	if Sim.world == null or not Sim.world.has_method("merv_metab"):
 		return
@@ -135,8 +156,10 @@ func _check_metab_ready() -> void:
 			_metab_seen[nom] = true
 			metab_ready.emit(nom)
 
-## cible change ⇒ précédente achevée (seuil ≥85 %, cf. sound.gd) ; panneau fermé ⇒
-## découverte en attente jusqu'au prochain visible.
+## surveille research_status() : la CIBLE change ⇒ la précédente s'est achevée (≥85 % de
+## progression, même seuil que sound.gd/tech_notif — la recherche annulée à bas % ne compte
+## pas comme une découverte). Le popup ne doit interrompre AUCUN input critique : si le
+## panneau est FERMÉ, la découverte est mise en attente et s'ouvre au prochain visible=true.
 func _check_research_complete() -> void:
 	if Sim.world == null or not Sim.world.has_method("research_status"):
 		return
@@ -174,7 +197,9 @@ func _layout() -> void:
 	var vp := get_viewport_rect().size
 	var pw0 := PW
 	var ph0 := PH
-	# centré ENTRE le rail gauche et le ledger droit (il passait sous le ledger).
+	# TRÈS grand format (retour joueur 2026-07-10 : « agrandis sérieusement ») — la
+	# géométrie des cartes est FIXE et généreuse, la LARGEUR défile (scroll latéral).
+	# Centré ENTRE le rail gauche et le ledger droit (il passait sous le ledger).
 	var free_x0 := Frame.SIDEBAR_W + 8.0
 	var free_x1 := vp.x - Frame.LEDGER_W - 8.0
 	PW = clampf((free_x1 - free_x0) * 0.98, 900.0, 1780.0)
@@ -206,7 +231,8 @@ func _on_generated() -> void:
 	if visible:
 		_build()
 
-## ouvre le dossier d'une tech (Ctrl+K) SANS lancer la recherche — le clic carte reste le seul actionneur.
+## P5 : une technologie trouvée par Ctrl+K ouvre directement son dossier sans
+## déclencher la recherche. Le clic volontaire sur la carte reste le seul actionneur.
 func focus_tech(id: int) -> void:
 	if not visible:
 		visible = true
@@ -221,6 +247,7 @@ func focus_tech(id: int) -> void:
 		_scroll.ensure_control_visible(_cards[id])
 	queue_redraw()
 
+# ── construction de la grille Civ 6 (3 couloirs × colonnes de tiers) ───────────────
 func _build() -> void:
 	if Sim.world == null:
 		return
@@ -256,14 +283,17 @@ func _build() -> void:
 	var usable_h: float = maxf(lane_area_h - TIER_LABEL_H, 60.0)
 	_lane_h = usable_h / 3.0
 	_lane_y0 = [TIER_LABEL_H, TIER_LABEL_H + _lane_h, TIER_LABEL_H + 2.0 * _lane_h]
-	# rows_per_cell : 2..5 rangées max ; le contenu déborde en LARGEUR, jamais en hauteur.
+	# rows_per_cell : viser une carte lisible (2..5 rangées empilées AU MAXIMUM par
+	# sous-colonne) — AUCUN scroll vertical : le contenu déborde en LARGEUR, jamais en hauteur.
 	var lane_avail_h: float = _lane_h - 8.0
 	var rows_per_cell: int = clampi(int(round(lane_avail_h / 58.0)), 2, 5)
 	var card_h: float = (lane_avail_h - float(rows_per_cell - 1) * CARD_GUTTER) / float(rows_per_cell)
 	card_h = maxf(card_h, 26.0)
 	var card_w := CARD_W
 
-	# scroll LATÉRAL seul ; content_h == lane_area_h PILE (jamais plus → aucun scroll vertical).
+	# le SCROLL LATÉRAL SEUL : la colonne des noms de couloir reste FIGÉE à gauche
+	# (dessinée hors du scroll, cf. _draw) ; content_w grandit avec le nombre de tiers/
+	# sous-colonnes, content_h == lane_area_h PILE (jamais plus → aucun scroll vertical).
 	_scroll = ScrollContainer.new()
 	_scroll.position = Vector2(12.0 + LANE_LABEL_W, HEAD)
 	_scroll.size = Vector2(view_w - LANE_LABEL_W, lane_area_h)
@@ -277,7 +307,10 @@ func _build() -> void:
 	content.add_child(_bg)
 	_bg.draw.connect(_draw_bg)
 
-	# placement tier par tier ; anti-croisement : tri par la position Y du prérequis déjà posé.
+	# placement TIER PAR TIER (gauche→droite) : chaque tier occupe autant de
+	# SOUS-COLONNES que le couloir le plus chargé en réclame (bornées à `rows_per_cell`
+	# cartes empilées par sous-colonne) — les séparateurs de tier restent alignés
+	# entre les 3 couloirs. Anti-croisement : tri par la position Y du prérequis déjà posé.
 	var rowpos := {}   # idx → Y déjà posé (lu par les tiers suivants)
 	_tier_x.clear()
 	_tier_w.clear()
@@ -364,7 +397,8 @@ func _make_card(nd: Dictionary, idx: int, pos: Vector2, w: float, h: float) -> T
 	card.activated.connect(_on_card_activated)
 	return card
 
-## mots-clés → icône (1-3 glyphes) ; le détail chiffré reste au survol.
+## mots-clés → icône (le mot mécanique du hover chiffré, PAS le flavor) — la carte
+## affiche 1-3 glyphes compacts, le détail chiffré complet reste au SURVOL (tooltip).
 const ICON_KEYWORDS := [
 	["prospérité", "gold_coin"],
 	["stabilité", "laurel_success"],
@@ -413,7 +447,8 @@ func _tooltip_for(nd: Dictionary) -> String:
 		tip += "\nDébouche sur : " + unl
 	return tip
 
-## HOVER natif : Godot appelle ceci au survol → définition de la zone touchée.
+## D4 — HOVER natif (motif country_panel.gd) : Godot appelle ceci au survol de tout
+## point du panneau sans Control dédié → on rend la définition de la zone touchée.
 func _get_tooltip(at_position: Vector2) -> String:
 	for t in _tips:
 		if (t[0] as Rect2).has_point(at_position) and String(t[1]) != "":
@@ -431,8 +466,9 @@ func _on_card_activated(idx: int) -> void:
 	_sel = "%s — %s · %s" % [String(nd["name"]), String(nd.get("effet", "")), states[clampi(stt, 0, 2)]]
 	if int(nd.get("cost", 0)) > 0 and stt != 2:
 		_sel += " (%d pts)" % int(nd["cost"])
-	# la décision est au moteur ; l'UI ne reconstruit rien (index _cards == TechId ; la
-	# façade enfile CMD_RESEARCH, déblocage au tick).
+	# ACTIONNABLE : la décision structurée du moteur commande le clic ; l'UI ne
+	# reconstruit ni l'accès d'héritage, ni les ruines, ni l'âge, ni les prérequis.
+	# (l'indice de _cards == TechId ; la façade enfile CMD_RESEARCH, le déblocage tombe au tick).
 	if bool(nd.get("allowed", stt == 1)) and Sim.world != null:
 		var ok: bool = Sim.world.player_research(idx) != 0
 		_sel_flash = "Recherche lancée : %s" % String(nd["name"]) if ok else "Recherche refusée : la situation a changé."
@@ -448,14 +484,20 @@ func _gui_input(e: InputEvent) -> void:
 			accept_event()
 			return
 
+# ── chrome du panneau : fond + en-tête + couloirs figés + pied ──────────────
 func _draw() -> void:
 	var w = Sim.world
 	if w == null:
 		return
 	_chrome()
-	_tips.clear()   # repeuplé plus bas par ce même _draw()
+	_tips.clear()   # D4 — repeuplé plus bas par ce même _draw() (motif country_panel.gd)
+	# CADRE : mêmes bords que les fiches à conteneurs natifs (1px BORDER, coin 3) —
+	# plus de plaque RimWorld (ombre/grain/filet or) : le FRÈRE des fiches, pas une
+	# fenêtre à part.
 	draw_style_box(_sb_panel, Rect2(0, 0, PW, PH))
 	var info: Dictionary = w.tech_info()
+	# BANDEAU d'en-tête (motif HeaderStrip) : la même bande HEADER_BG que les fiches,
+	# le titre au corps SERIF (font_map, comme la variation "Title" de ParchTheme).
 	draw_style_box(_sb_band, Rect2(0, 0, PW, HEAD))
 	UIKit.draw_icon(self, "knowledge_book", Vector2(14, 12), 20)
 	VKit.text_map(self, Vector2(42, 13), "Arbre de technologie", VKit.FS_BIG, ParchTheme.HEADER_INK, 0)
@@ -472,7 +514,8 @@ func _draw() -> void:
 	var pcol := VKit.COL_DIM if crise < 25 else (VKit.sense(0.40) if crise < 60 else VKit.sense(0.10))
 	VKit.text(self, Vector2(PW - 250, 30), pcol,
 		"Présage : %s (crise %d%%)" % [String(info.get("presage", "")), crise], VKit.FS_SMALL)
-	# recherche en cours : cible + jauge (x=380 : le titre SERIF chevauchait à 220).
+	# RECHERCHE EN COURS : la cible + sa jauge de progression (research_status)
+	# (x=380 : le titre SERIF est plus large que l'ancien Alegreya — 220 le chevauchait)
 	var rs: Dictionary = w.research_status()
 	var rt := int(rs.get("target", -1))
 	if rt >= 0 and rt < _nodes.size():
@@ -486,30 +529,35 @@ func _draw() -> void:
 		VKit.value(self, Vector2(bx + bw + 8, 30), "%d%%" % int(prog * 100.0), VKit.FS_SMALL)
 	else:
 		VKit.text(self, Vector2(380, 13), VKit.COL_DIM, "Recherche : (cliquez une carte recherchable)", VKit.FS_SMALL)
+	# légende d'état
 	VKit.text(self, Vector2(14, 33), COL_UNLOCKED, "● acquis", VKit.FS_SMALL)
 	VKit.text(self, Vector2(86, 33), COL_AVAIL, "● recherchable", VKit.FS_SMALL)
 	VKit.text(self, Vector2(196, 33), COL_LOCKED, "● verrouillé", VKit.FS_SMALL)
 	VKit.text(self, Vector2(286, 33), COL_FAUST, "● faustien", VKit.FS_SMALL)
 	VKit.fill(self, Rect2(12, HEAD - 4, PW - 24, 1), VKit.COL_EDGE)
 
-	# couloirs FIGÉS (hors scroll) : nom + ruban, alignés sur _lane_y0/_lane_h.
+	# COULOIRS FIGÉS (ne défilent pas avec le scroll latéral) : nom + ruban de couleur,
+	# alignés sur la géométrie posée par _build (_lane_y0/_lane_h).
 	if _scroll != null:
 		for l in range(3):
 			var band_y: float = _scroll.position.y + _lane_y0[l] + 2.0
 			VKit.fill(self, Rect2(10.0, band_y, 3.0, _lane_h - 4.0), LANE_INK[l])
 			var ly: float = _scroll.position.y + _lane_y0[l] + _lane_h * 0.5 - 7.0
 			VKit.text(self, Vector2(18.0, ly), VKit.COL_GOLD, LANE_NAMES[l], VKit.FS_SMALL)
-			# le couloir « Savoir » nomme un concept du registre.
+			# D4 — le couloir « Savoir » nomme directement un concept du registre.
 			if LANE_NAMES[l] == "Savoir":
 				var lw: float = VKit.text_w(LANE_NAMES[l], VKit.FS_SMALL)
 				_tips.append([Rect2(18.0, ly - 2.0, lw + 4.0, 16.0), Concepts.def_of("Savoir")])
 		VKit.fill(self, Rect2(_scroll.position.x - 6.0, HEAD, 1.0, PH - HEAD - FOOT - METAH), VKit.COL_EDGE)
 
-	# PIED : métabolisation + dossier persistant.
+	# PIED (bandeau, motif HeaderStrip) : métabolisation + dossier persistant — le même
+	# bandeau HEADER_BG que l'en-tête, pour que le panneau se referme comme une fiche
+	# (bande haute / corps clair / bande basse), pas juste un fond uniforme.
 	draw_style_box(_sb_band, Rect2(0, PH - FOOT - METAH, PW, FOOT + METAH))
-	# bande de métabolisation : +% recherche + accès tech par héritage.
+	# bande de MÉTABOLISATION : le +% recherche + l'accès tech par héritage (la barre)
 	_draw_metab(info)
-	# dossier persistant de la carte cliquée (le clic fige ; jamais de flavor).
+	# pied : DOSSIER persistant de la carte cliquée. Le survol découvre ; le clic permet
+	# de comparer sans garder la souris immobile (profondeur RimWorld/EU4). JAMAIS de flavor.
 	VKit.fill(self, Rect2(12, PH - FOOT, PW - 24, 1), VKit.COL_EDGE)
 	if not _sel_node.is_empty():
 		_draw_selected_node(PH - FOOT + 7.0)
@@ -517,7 +565,9 @@ func _draw() -> void:
 		VKit.text(self, Vector2(16, PH - FOOT + 8), VKit.COL_DIM,
 			"Sélectionnez une carte : effets, coût, prérequis et débouchés resteront affichés ici.", VKit.FS_SMALL)
 
-## fond scrollable : bandes de couloir + étiquettes de tier + arêtes de prérequis.
+## fond de la zone scrollable : bandes de couloir alternées + séparateurs/étiquettes de
+## tier + arêtes de prérequis (dessin léger — le nom du prérequis reste de toute façon
+## nommé au survol si les lignes se croisent trop).
 func _draw_bg() -> void:
 	if _bg == null or not is_instance_valid(_bg):
 		return
@@ -534,6 +584,7 @@ func _draw_bg() -> void:
 		if i > 0:
 			VKit.fill(_bg, Rect2(tx - 13.0, TIER_LABEL_H, 1.0, gs.y - TIER_LABEL_H), Color(0.58, 0.52, 0.42, 0.16))
 		VKit.text(_bg, Vector2(tx + tw * 0.5 - 8.0, 2.0), VKit.COL_DIM, "T%d" % int(t), VKit.FS_SMALL)
+	# arêtes de prérequis : léger trait clair, sous les cartes
 	for i in _nodes.size():
 		var pr := int(_nodes[i].get("prereq", -1))
 		if pr >= 0 and _pos.has(pr) and _pos.has(i):
@@ -567,7 +618,8 @@ func _draw_selected_node(y: float) -> void:
 		var path := "Chemin suggéré : commencer par %s · %d étapes" % [next_name, int(nd.get("steps_remaining", 0))]
 		VKit.text(self, Vector2(16, body_y), VKit.COL_PARCH, path, VKit.FS_SMALL)
 		body_y += 17.0
-	# EFFETS — jamais de flavor ici (uniquement le popup de découverte).
+	# EFFETS (plusieurs) — JAMAIS de flavor dans le dossier du menu (mission : le flavor
+	# n'apparaît QUE dans le popup de découverte, cf. tech_popup.gd).
 	var eff := String(nd.get("effet", ""))
 	if eff != "":
 		VKit.text(self, Vector2(16, body_y), VKit.COL_PARCH, "Effet : " + eff, VKit.FS_SMALL)
@@ -581,7 +633,10 @@ func _draw_selected_node(y: float) -> void:
 	elif hov != "":
 		VKit.text_wrapped(self, Vector2(16, body_y + 19), VKit.COL_DIM, "Détail : " + hov, PW - 32.0, 2, VKit.FS_SMALL)
 
-# bande de métabolisation : +% recherche + accès tech par héritage (pips tier 0-3 + part digérée).
+# ── bande de MÉTABOLISATION : le +% recherche du creuset + l'accès tech par héritage ──
+# Le "+X% recherche" répond à « métabolisation = +% tech visible sous la barre de savoir » ;
+# les 6 barres (tier 0-3 en pips + part digérée) sont la « barre de progression par tier » :
+# digérer un peuple OUVRE ses signatures (tier 1 commerce → tier 3 plein/métabolisé).
 func _draw_metab(info: Dictionary) -> void:
 	var y0 := PH - FOOT - METAH
 	VKit.fill(self, Rect2(12, y0, PW - 24, 1), VKit.COL_EDGE)
@@ -590,12 +645,16 @@ func _draw_metab(info: Dictionary) -> void:
 	var mlbl_w: float = VKit.detail(self, Vector2(36, y0 + 5), "Peuples intégrés : ", VKit.FS_SMALL)
 	var mval_w: float = VKit.value(self, Vector2(36 + mlbl_w, y0 + 5), "+%d%%" % mp, VKit.FS_SMALL)
 	var mtail_w: float = VKit.detail(self, Vector2(36 + mlbl_w + mval_w, y0 + 5), " de recherche", VKit.FS_SMALL)
-	# « Peuples intégrés » EST la Métabolisation (le mot moteur, jamais montré côté joueur).
+	# D4 — « Peuples intégrés » EST la Métabolisation (le mot moteur, jamais montré tel
+	# quel côté joueur — cf. doctrine cultures « jamais espèce/sphère »).
 	_tips.append([Rect2(36.0, y0 + 3.0, mlbl_w + mval_w + mtail_w, 16.0), Concepts.def_of("Métabolisation")])
 	if Sim.world == null:
 		return
 
-	# Rangée 1 : ACCÈS AUX SIGNATURES (heritage_access = tech, PAS la victoire).
+	# ── Rangée 1 : ACCÈS AUX SIGNATURES (tech, heritage_access — pas la victoire) ──
+	# Chaque héritage = une CELLULE CENTRÉE dans sa colonne : nom, puis BARRE de %
+	# de digestion (retour joueur : « centre mieux, donne une barre de % ») + 3 pips
+	# de tier à droite de la barre.
 	var acc: Array = Sim.world.heritage_access()
 	var n := acc.size()
 	if n > 0:
@@ -615,6 +674,7 @@ func _draw_metab(info: Dictionary) -> void:
 			var lw := VKit.text_w(lbl, VKit.FS_SMALL)
 			VKit.text(self, Vector2(x + (cw - lw) * 0.5, ry), (VKit.COL_GOLD if nativ else VKit.COL_PARCH),
 				lbl, VKit.FS_SMALL)
+			# la BARRE de digestion (native = pleine, or) + les pips de tier à sa droite
 			var dp := int(h.get("digested_pct", 0))
 			var bw := cw - 58.0
 			var bx := x + (cw - bw - 34.0) * 0.5
@@ -631,7 +691,7 @@ func _draw_metab(info: Dictionary) -> void:
 				VKit.fill(self, Rect2(bx + bw + 5 + 24.0 + k * 8.0, by, 6, 6),
 					(COL_UNLOCKED if tier > k else COL_LOCKED))
 
-	# Rangée 2 : COMPTE POUR L'ASCENSION (merv_metab — la seule jauge de victoire).
+	# ── Rangée 2 : COMPTE POUR L'ASCENSION (merv_metab — la seule jauge de victoire) ──
 	if not Sim.world.has_method("merv_metab"):
 		return
 	var mm: Dictionary = Sim.world.merv_metab()
@@ -651,7 +711,7 @@ func _draw_metab(info: Dictionary) -> void:
 		var asc_val_w: float = VKit.text_w("%d/%d" % [mcount, m], VKit.FS_SMALL)
 		var asc_tail_w: float = VKit.detail(self, Vector2(16 + asc_lbl_w + asc_val_w, ry2 - 12), req_txt, VKit.FS_SMALL)
 		asc_row_w += asc_tail_w
-	# glossaire hover : la jauge de victoire.
+	# D4 — glossaire hover : la seule jauge de victoire du panneau, sans autre survol.
 	_tips.append([Rect2(16.0, ry2 - 14.0, asc_row_w, 16.0), Concepts.def_of("Ascension")])
 	for i in m:
 		var h2: Dictionary = mh[i]

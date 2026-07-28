@@ -1,30 +1,34 @@
 extends Control
-## Bande droite : résumé d'empire (villes/armées/flotte/colonisation) + journal.
-## Données lues de la façade ; seuls navigation et verbes âge/renfort sont interactifs.
+## EMPIRE SIDEBAR — la bande DROITE permanente (en jeu) : le RÉSUMÉ D'EMPIRE en haut
+## (villes + habitants · armées · flotte · colonisation en cours) et le LOG de
+## notifications en bas (le fil, persistant — détails minimes mais exhaustifs).
+## Les données sont LUES de la façade ; seuls les raccourcis de navigation et les
+## verbes déjà assumés par la bande (âge, renfort) sont interactifs.
 
 const VKit = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
 
-const AlertsK = preload("res://ui/alerts.gd")
+const AlertsK = preload("res://ui/alerts.gd")   # la TABLE DU FIL (FEED_KINDS) partagée
 
 signal goto_region(region: int)
 signal open_country(country: int)
 
-const W := 288.0
-const HANDLE_W := 14.0
+const W := 288.0            ## élargie (retour joueur 2026-07-10 : « laisse respirer »)
+const HANDLE_W := 14.0      ## bande réduite quand la sidebar est REPLIÉE (rabat)
 
-var _city_names := {}       ## cache region → nom
-var _collapsed := false
+var _city_names := {}       ## region → nom (cache, résolu via province_at(siège))
+var _collapsed := false     ## rabat (pièces planche 23 : 01 replier · 02 déplier)
 var _handle_rect := Rect2()
-var _refill_rect := Rect2()
-var _age_rect := Rect2()
-var _age_engageable := false
-var _fold := {}             ## titre de section → replié
-var _sec_rects := []        ## [{rect, title}]
-var _journal_rects := []    ## [{rect, data}]
-var _war_rects := []        ## [{rect, country}]
-var _notif_rects := []      ## [{rect, data}]
+var _refill_rect := Rect2() ## chip RECOMPLÉTER (déménagé du tiroir Armée — retour joueur)
+var _age_rect := Rect2()    ## encart d'ÂGE en haut de la bande (déménagé de la topbar,
+var _age_engageable := false ## retour joueur 2026-07-11 : « sous le temps, au-dessus du menu »)
+var _fold := {}             ## titre de section → replié (retour joueur 2026-07-10 :
+                            ## « tous les menus de droite doivent pouvoir se collapser »)
+var _sec_rects := []        ## [{rect, title}] bandeaux cliquables (reconstruit au _draw)
+var _journal_rects := []    ## [{rect, data}] lignes du JOURNAL (clic = même action que l'origine)
+var _war_rects := []        ## [{rect, country}] guerres actives
+var _notif_rects := []      ## [{rect, data}] notifications actives
 var _alerts_source: Control
 var _scrolloff := 0.0
 var _maxscroll := 0.0
@@ -36,30 +40,35 @@ func set_alert_source(source: Control) -> void:
 	queue_redraw()
 
 func _ready() -> void:
-	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mouse_filter = Control.MOUSE_FILTER_IGNORE   # lecture seule : la carte reste cliquable au travers ? Non — bande opaque
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	clip_contents = true
 	_layout()
 	get_viewport().size_changed.connect(_layout)
 	Sim.generated.connect(func(): _city_names.clear(); queue_redraw())
-	Sim.month_ticked.connect(func(_y): queue_redraw())   # cadence mensuelle (le journal est tenu par alerts.gd)
+	Sim.month_ticked.connect(func(_y): queue_redraw())   # résumé d'empire : cadence mensuelle (le
+		# JOURNAL lui-même est tenu par alerts.gd, rafraîchi via ledger_changed — set_alert_source)
 
-## ⚠ visibilité pilotée ici, pas dans _draw : un Control caché ne redessine jamais
-## (sinon le ledger, masqué une fois, ne se remontre plus).
+## ⚠ la visibilité vivait DANS _draw (`visible = Sim.game_on`) : un Control caché ne
+## redessine JAMAIS → masqué une fois au menu, le ledger ne se remontrait jamais (il
+## n'apparaissait dans AUCUNE capture). Pilotée ici, à la frame — trivial et robuste.
 func _process(_d: float) -> void:
 	if visible != Sim.game_on:
 		visible = Sim.game_on
 		if visible:
 			queue_redraw()
 
-var _maxh := 600.0          ## hauteur disponible (le panneau s'y borne, se découpe au contenu)
+var _maxh := 600.0          ## hauteur DISPONIBLE (bande topbar→bas) — le panneau s'y borne
+                            ## mais se DÉCOUPE au contenu (retour joueur : « adapte la taille »)
 
 func _layout() -> void:
 	var vp := get_viewport_rect().size
 	var w := HANDLE_W if _collapsed else W
 	_maxh = maxf(140.0, vp.y - Frame.TOPBAR_H - Frame.BOTTOMBAR_H)
 	position = Vector2(vp.x - w, Frame.TOPBAR_H)
-	# déplié : la hauteur se découpe au contenu (latchée dans _draw), plafonnée à _maxh
+	# REPLIÉ : le rabat occupe la bande entière. DÉPLIÉ : la hauteur se DÉCOUPE au
+	# contenu (latchée dans _draw) — plus de « brique » pleine hauteur quand rien ne se
+	# passe ; le panneau grandit avec les guerres/notifications, plafonné à _maxh.
 	if _collapsed:
 		size = Vector2(w, _maxh)
 	else:
@@ -88,7 +97,7 @@ func _gui_input(e: InputEvent) -> void:
 			queue_redraw()
 			accept_event()
 			return
-		# clic « Engager » → CMD_AGE_ENGAGE (enfilé, déterministe)
+		# ENCART D'ÂGE : clic sur « Engager » → verbe CMD_AGE_ENGAGE (enfilé, déterministe)
 		var cp: Vector2 = e.position + Vector2(0.0, _scrolloff)
 		if not _collapsed and _age_engageable and _age_rect.size.x > 0 and _age_rect.has_point(cp):
 			if Sim.world != null and Sim.world.has_method("player_age_engage"):
@@ -106,7 +115,9 @@ func _gui_input(e: InputEvent) -> void:
 				queue_redraw()
 			accept_event()
 			return
-		# le clic route la même action que la notification via alerts.gd (jamais reconstruite ici)
+		# JOURNAL : le clic route la MÊME action que la notification d'origine (centrer
+		# la carte / ouvrir le panneau concerné) via alerts.gd (résolution UNIQUE,
+		# cf. activate_journal) — jamais reconstruite ici.
 		if not _collapsed:
 			for wr in _war_rects:
 				if (wr["rect"] as Rect2).has_point(cp):
@@ -120,6 +131,7 @@ func _gui_input(e: InputEvent) -> void:
 						_alerts_source.call("activate_journal", jr["data"], e.button_index)
 					accept_event()
 					return
+		# PLIAGE PAR SECTION : clic sur un bandeau → replie/déplie son contenu
 		if not _collapsed:
 			for sr in _sec_rects:
 				if (sr["rect"] as Rect2).has_point(cp):
@@ -130,8 +142,11 @@ func _gui_input(e: InputEvent) -> void:
 					accept_event()
 					return
 
-## nom de région (cache) — cosmétique de rendu : le moteur ne connaît que « région <N> »,
-## on substitue le nom lisible en aval, pas une seconde logique de résolution.
+## RÉSOLUTION DES NOMS DE RÉGION (cache) — utilisée UNIQUEMENT pour l'affichage :
+## les entrées du JOURNAL (alerts.gd, résolution des textes/couleurs/actions) portent
+## un `region` id + un `tip` qui contient encore « région <N> » (numérique, le seul
+## format que le moteur connaît) ; on y substitue ICI le nom lisible, en aval de la
+## résolution — cosmétique de rendu, pas une seconde logique de résolution.
 func _region_name(r: int) -> String:
 	if _city_names.has(r):
 		return _city_names[r]
@@ -145,10 +160,18 @@ func _region_name(r: int) -> String:
 	_city_names[r] = nm
 	return nm
 
-## texte complet d'une entrée, « région <N> » → nom lisible (ligne ET hover). Le « (an %d) »
-## est retiré (redondant, l'an est déjà en préfixe) ; on retire aussi l'article + le mot
-## « région » avec le numéro, car le nom propre substitué porte son propre genre (display seul,
-## le tip d'origine n'est jamais réécrit).
+## le texte COMPLET d'une entrée de journal, région substituée en nom lisible quand
+## elle est connue (« région 42 » → « Marbrive ») — utilisé pour la ligne ET le hover.
+## L'an vit déjà en préfixe de ligne (« an %d · … ») : le « (an %d) » du gabarit
+## moteur (FEED_KINDS, cf. alerts.gd) est donc retiré ici (redondance d'affichage
+## seulement — le tip d'origine, lui, n'est jamais réécrit).
+## UI-POLISH #10 : « la région %d »/« La région %d » portait un article FIGÉ (féminin,
+## accordé sur « région ») qui ne convient plus une fois substitué par un nom de
+## PROVINCE au genre propre (ex. « la Désert Brûlant » — désert est masculin en
+## français). On retire l'article ET le mot « région » ensemble : le nom propre se
+## suffit à lui-même (« Désert Brûlant ne mange qu'à 45 % » — pas d'article requis
+## devant un nom propre, comme pour toute ville). Le repli nu « région %d » (ex. dans
+## « notre région %d », genre-neutre) reste couvert en dernier.
 func _journal_full_text(entry: Dictionary, region: int) -> String:
 	var tip := String(entry.get("tip", ""))
 	if region >= 0:
@@ -167,6 +190,8 @@ func _draw() -> void:
 		return
 	var w = Sim.world
 	var me: int = w.player()
+	# RABAT (planche 23) : languette au bord gauche, à mi-hauteur — la flèche pointe
+	# le sens du geste (chevron droit 02 = replier vers le bord · gauche 01 = rouvrir).
 	_handle_rect = Rect2(0, size.y * 0.5 - 22, HANDLE_W, 44)
 	if _collapsed:
 		VKit.fill(self, Rect2(0, 0, HANDLE_W, size.y), Color(VKit.COL_PANEL.r, VKit.COL_PANEL.g, VKit.COL_PANEL.b, 0.90))
@@ -190,11 +215,23 @@ func _draw() -> void:
 	var y := 10.0
 	_sec_rects.clear()
 
+	# ── ENCART D'ÂGE (haut de la bande, sous le bloc TEMPS de la topbar, AU-DESSUS du
+	#    menu — retour joueur 2026-07-11) : « Engager : <âge> » ambre CLIQUABLE quand un
+	#    âge s'est levé sans être engagé (verbe CMD_AGE_ENGAGE) ; sinon « Âge : <âge> »
+	#    en contexte discret. Rien tant qu'aucun âge n'a percé (l'Aube). ──
 	y = _draw_age(x, y)
+
+	# ── ÉMISSAIRE (sous l'âge) : disponibilité · temps de retour · objectif du dernier
+	#    envoi diplomatique (retour joueur 2026-07-12) ──
 	y = _draw_emissary(x, y)
+
+	# ── GUERRES : un conflit = une ligne, score signé du point de vue joueur. ──
 	y = _draw_wars(x, y, w, me)
+
+	# ── NOTIFICATIONS ACTIVES : les anciennes letters flottantes vivent ici. ──
 	y = _draw_notifications(x, y)
 
+	# ── VILLES : régions habitées du joueur, triées par âmes ──
 	var cities := []
 	for r in range(w.region_count()):
 		if int(w.region_owner(r)) != me:
@@ -222,6 +259,7 @@ func _draw() -> void:
 			y += 16
 	y += 3
 
+	# ── ARMÉES : l'ost de campagne + la réserve levée ──
 	y = _lsection(x, y, "ARMÉES", Color(0.66, 0.22, 0.18), "")
 	_refill_rect = Rect2()   # zone morte quand la section est repliée
 	if not _folded("ARMÉES"):
@@ -239,6 +277,7 @@ func _draw() -> void:
 		else:
 			VKit.detail(self, Vector2(x + res_lbl_w, y), "0", VKit.FS)
 		y += 16
+		# RECOMPLÉTER (retour joueur : « doit être dans la side bar droite ») — verbe journalisé
 		_refill_rect = Rect2(x, y, 104, 20)
 		VKit.fill(self, _refill_rect, VKit.COL_PANEL2)
 		VKit.box(self, _refill_rect, VKit.COL_GOLD)
@@ -246,6 +285,7 @@ func _draw() -> void:
 		y += 26
 		var fl := int(ca.get("fleet", 0))
 		if fl > 0:
+			# nef de guerre gravée (planche 24) devant la ligne de flotte
 			var bt: Texture2D = UIKit.parch_tex("sheet24_topbar_boats_menu_11")
 			if bt != null:
 				draw_texture_rect(bt, Rect2(x - 2, y - 3, 18, 18), false)
@@ -254,6 +294,7 @@ func _draw() -> void:
 			y += 16
 	y += 3
 
+	# ── COLONISATION : le chantier qui mûrit / la cadence ──
 	if w.has_method("colony_status"):
 		y = _lsection(x, y, "COLONISATION", Color(0.45, 0.62, 0.32), "")
 		if not _folded("COLONISATION"):
@@ -277,8 +318,11 @@ func _draw() -> void:
 				y += 16
 		y += 3
 
-	# (Cour & Factions vivent en topbar — doctrine national = topbar)
+	# (COUR & FACTIONS a DÉMÉNAGÉ en TOPBAR — retour joueur 2026-07-10 : « les factions
+	#  doivent être en top bar », doctrine national = topbar. Bonheur/classes/blasons/
+	#  tension de coup y vivent en cellules + hovers ; l'influence y était déjà.)
 
+	# ── MISSION décennale : le texte + la récompense promise ──
 	if w.has_method("mission_info"):
 		var mi: Dictionary = w.mission_info(me)
 		if bool(mi.get("active", false)):
@@ -288,6 +332,7 @@ func _draw() -> void:
 				mi = {}   # court-circuite le corps (le bloc suivant lit mi vide)
 		if bool(mi.get("active", false)):
 			var mtxt := String(mi.get("text", ""))
+			# coupe en 2 lignes max à la largeur de la bande
 			while VKit.text_w(mtxt, VKit.FS_SMALL) > (W - 26.0) * 2.0 and mtxt.length() > 10:
 				mtxt = mtxt.substr(0, mtxt.length() - 6) + "…"
 			var line1 := mtxt
@@ -312,8 +357,13 @@ func _draw() -> void:
 			VKit.detail(self, Vector2(x + rw_lbl_w + rw_val_w, y), " (an %d)" % int(mi.get("issued_year", 0)), VKit.FS_SMALL)
 			y += 17
 
-	# journal persistant (ring ~200, plus récente en tête), MÊME source que les chips
-	# (alerts.gd::journal_rows) : aucune notification n'existe qu'en éphémère
+	# ── LE JOURNAL : TOUTE notification colorée un jour apparue (guerres, batailles,
+	#    révoltes, sécessions, évènements du directeur, conditions de conseil/armée/
+	#    marché/foi/tech…) — persistant (ring ~200, la plus récente en tête), MÊME
+	#    SOURCE que les chips (alerts.gd::journal_rows) : aucune notification n'existe
+	#    qu'en éphémère (règle joueur). Liseré + icône = la couleur d'ORIGINE conservée ;
+	#    clic gauche = même action que la notification (goto/panneau) ; survol = détail
+	#    complet + le nom de lieu résolu (le tip moteur ne porte que le numéro).
 	var jrows: Array = _alerts_source.call("journal_rows") if _alerts_source != null and _alerts_source.has_method("journal_rows") else []
 	y = _lsection(x, y, "JOURNAL", Color(0.45, 0.45, 0.42), str(jrows.size()) if not jrows.is_empty() else "")
 	if not _folded("JOURNAL"):
@@ -336,7 +386,8 @@ func _draw() -> void:
 			_journal_rects.append({"rect": rr, "data": entry})
 			y += 20.0
 
-	# hauteur adaptative : latchée ici, le bg/scroll de la frame suivante suivent la nouvelle taille
+	# HAUTEUR ADAPTATIVE : le panneau se découpe à SON contenu (plus de brique pleine
+	# hauteur). Latché ici — le bg/scroll de la frame suivante suivent la nouvelle taille.
 	var content_h := clampf(y + 10.0, 140.0, _maxh)
 	if not _collapsed and absf(size.y - content_h) > 2.0:
 		set_deferred("size", Vector2(W, content_h))
@@ -350,8 +401,10 @@ func _draw() -> void:
 		var thumb_y := track.position.y + (track.size.y - thumb_h) * (_scrolloff / _maxscroll)
 		VKit.fill(self, Rect2(track.position.x - 1.0, thumb_y, 4.0, thumb_h), VKit.COL_GOLD)
 
-## Encart d'âge : « Engager » ambre cliquable si un âge s'est levé sans être engagé
-## (CMD_AGE_ENGAGE) ; sinon « Âge : <nom> » discret. Retourne le y après l'encart.
+## ENCART D'ÂGE — dessiné tout en haut de la bande (sous le bloc TEMPS de la topbar,
+## au-dessus du menu). « Engager : <âge> » AMBRE cliquable quand un âge s'est levé sans
+## être engagé (verbe CMD_AGE_ENGAGE) ; sinon « Âge : <âge> » discret (l'ère courante).
+## Retourne le y APRÈS l'encart (0 avancement tant qu'aucun âge n'a percé).
 func _draw_age(x: float, y: float) -> float:
 	_age_rect = Rect2()
 	_age_engageable = false
@@ -364,6 +417,7 @@ func _draw_age(x: float, y: float) -> float:
 	if age < 0 or nm == "":
 		return y                                  # l'Aube : aucun âge levé → encart vide
 	if not bool(ag.get("engaged", true)):
+		# âge levé, non engagé → chip AMBRE cliquable, pleine largeur
 		var r := Rect2(x - 2.0, y, W - 20.0, 26.0)
 		_age_engageable = true
 		_age_rect = r
@@ -375,12 +429,14 @@ func _draw_age(x: float, y: float) -> float:
 			lab = lab.substr(0, lab.length() - 2) + "…"
 		VKit.text(self, Vector2(r.position.x + 32, y + 5), Color(0.90, 0.72, 0.34), lab)
 		return y + 32.0
+	# âge engagé → ligne de CONTEXTE discrète (l'ère où l'on vit)
 	UIKit.draw_icon(self, "fine_age", Vector2(x, y), 22)
 	VKit.text(self, Vector2(x + 28.0, y + 3), Color(0.72, 0.60, 0.36), "Âge : %s" % nm, VKit.FS_SMALL)
 	return y + 20.0
 
-## Émissaire. Le moteur ne stocke que le cooldown (diplo_cd) ; l'objectif vient de
-## Sim.emissary_objective (posé au verbe diplo joueur).
+## ÉMISSAIRE — disponibilité · retour · objectif. Le moteur ne stocke que le cooldown
+## (diplo_cd) ; l'objectif vient de Sim.emissary_objective (posé au verbe diplo joueur).
+## Disponible = ligne verte discrète ; en tournée = ambre + retour + objectif.
 func _draw_emissary(x: float, y: float) -> float:
 	var w = Sim.world
 	if w == null or not w.has_method("diplo_cd"):
@@ -478,7 +534,9 @@ func _grp(n) -> String:
 			out = " " + out
 	return ("-" if int(n) < 0 else "") + out
 
-## bandeau de section : ruban coloré + compte + chevron ; entièrement cliquable (replie/déplie).
+## SECTION DU LEDGER (motif outliner EU5, outliner.gui:184) : le bandeau VKit + un
+## RUBAN de catégorie coloré à gauche + le COMPTE à droite + un CHEVRON de pliage —
+## le bandeau entier est CLIQUABLE (replie/déplie, cf. _gui_input/_fold).
 func _lsection(x: float, y: float, title: String, rib: Color, count: String) -> float:
 	var y2 := VKit.section(self, x, y, title)
 	VKit.fill(self, Rect2(x - 8.0, y + 3.0, 4.0, 20.0), rib)
@@ -491,9 +549,12 @@ func _lsection(x: float, y: float, title: String, rib: Color, count: String) -> 
 	_sec_rects.append({"rect": Rect2(0.0, y, W, 26.0), "title": title})
 	return y2
 
+## la section est-elle repliée ? (helper de lisibilité des blocs de _draw)
 func _folded(title: String) -> bool:
 	return bool(_fold.get(title, false))
 
+## HOVER des bandeaux — politique joueur : nom, raccourci, FACTUEL (pas de leçon ;
+## les mots turquoise portent les définitions via la cascade).
 const SEC_TIPS := {
 	"GUERRES": "Conflits actifs. Score signé depuis votre point de vue ; clic : ouvrir la diplomatie.",
 	"NOTIFICATIONS": "Conditions et évènements actifs. Clic : agir ; clic droit : acquitter un évènement.",

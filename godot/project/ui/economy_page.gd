@@ -1,24 +1,38 @@
 extends VBoxContainer
-## EconomyPage — deux colonnes Rentrées/Sorties, réutilisée comme onglet « Économie »
-## de la fenêtre Empire. En mode read-only (interactive=false), le réglage vit au Trésor.
+## EconomyPage — le CORPS du grand livre (deux colonnes Rentrées/Sorties), extrait pour
+## être RÉUTILISÉ comme onglet « Économie » de la fenêtre Empire.
+##
+## D1-UNIFICATION (2026-07-18) : cette page était REBÂTIE en doublon interactif de
+## budget_panel_v2.gd (onglet Balance, touche B) — MÊME verbe joueur
+## (player_budget_policy), même family/index, mais deux HSlider DISTINCTS sans lien
+## entre eux (cartographie UI §D.1.3). Décision : LE TRÉSOR (budget_panel_v2, poli
+## récemment) reste la SEULE surface de RÉGLAGE ; cette page redevient LECTURE SEULE
+## (interactive=false) — les valeurs restent visibles ici (vue d'ensemble légitime de
+## la Fenêtre Empire), un lien explicite renvoie régler au Trésor. Le pilote budget_v2
+## garde ses propres curseurs, non touché.
 const ParchTheme = preload("res://ui/parch_theme.gd")
 
 const INCOME  := ParchTheme.INCOME
 const EXPENSE := ParchTheme.EXPENSE
 const DIVIDER := ParchTheme.DIVIDER
 
+# les postes de DÉPENSE pilotables (family 1) portent un curseur EN MODE interactif ;
+# les autres sont lus. 5 = Frappe (MONNAIE M2) : même motif que les 5 enveloppes.
 const SPEND_HAS_SLIDER := {0: true, 1: true, 2: true, 3: true, 4: true, 5: true}
 
-## false chez l'appelant Empire (lecture seule) ; true = curseurs actifs.
+## D1-UNIFICATION : false ici (Fenêtre Empire, doublon retiré) — le RÉGLAGE vit
+## uniquement au Trésor (budget_panel_v2.gd, onglet Balance). Un futur appelant qui
+## voudrait de VRAIS curseurs ailleurs peut repasser ceci à true (comportement
+## d'origine préservé, juste plus le défaut).
 var interactive := true
-signal open_budget_requested   ## « Régler… » → ouvrir le Trésor (B)
+signal open_budget_requested   ## « Régler… » (mode non-interactif) → ouvrir le Trésor (B)
 
 var _built := false
 var _left_col: VBoxContainer = null
 var _right_col: VBoxContainer = null
-var _val_lbls := {}
-var _sliders := {}
-var _flux_of := {}
+var _val_lbls := {}      # clé "tax:c" / "sp:i" / "flux:name" -> Label de valeur
+var _sliders := {}       # "family:index" -> HSlider
+var _flux_of := {}       # clé de _val_lbls -> nom du poste de flux (country_budget)
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 4)
@@ -48,6 +62,7 @@ func _section(col: VBoxContainer, txt: String) -> void:
 	l.text = txt
 	col.add_child(l)
 
+## une ligne : label … valeur (colorée), + curseur optionnel dessous.
 func _row(col: VBoxContainer, label: String, key: String, value_variation: String,
 		slider_family := -1, slider_index := -1) -> void:
 	var line := HBoxContainer.new()
@@ -79,6 +94,7 @@ func _row(col: VBoxContainer, label: String, key: String, value_variation: Strin
 		col.add_child(s)
 		_sliders["%d:%d" % [slider_family, slider_index]] = s
 
+## une ligne LUE (or/mois) d'un poste de flux nommé, sans curseur.
 func _flux_row(col: VBoxContainer, label: String, flux_name: String, value_variation: String) -> void:
 	var key := "flux:%s" % flux_name
 	_row(col, label, key, value_variation)
@@ -115,6 +131,7 @@ func _build_body(me: int) -> void:
 	if Sim.world.has_method("budget_controls"):
 		ctl = Sim.world.budget_controls(me)
 
+	# LEFT — RENTRÉES : impôt par classe (curseur family 0) + postes LUS Export / Péages.
 	_section(_left_col, "RENTRÉES")
 	for raw in ctl.get("taxes", []):
 		var row: Dictionary = raw
@@ -122,8 +139,10 @@ func _build_body(me: int) -> void:
 		_row(_left_col, String(row.get("name", "Impôt")), "tax:%d" % cls, "Income", 0, cls)
 	_flux_row(_left_col, "Export", "export", "Income")
 	_flux_row(_left_col, "Péages", "péages+", "Income")
+	# MONNAIE M1 — la réserve métallique (redevance minière), lecteur pur, sans curseur.
 	_row(_left_col, "Réserve", "reserve", "Income")
 
+	# RIGHT — SORTIES : enveloppes pilotables (curseur family 1) + postes LUS Conseil / Cour.
 	_section(_right_col, "SORTIES")
 	for raw2 in ctl.get("spending", []):
 		var row2: Dictionary = raw2
@@ -134,7 +153,8 @@ func _build_body(me: int) -> void:
 	_flux_row(_right_col, "Conseil", "conseil", "Expense")
 	_flux_row(_right_col, "Cour", "cour", "Expense")
 
-	# lecture seule → lien vers l'unique surface de réglage (Trésor) au lieu de dupliquer les curseurs
+	# D1-UNIFICATION : lecture seule ici → lien explicite vers l'UNIQUE surface de
+	# réglage (le Trésor, touche B) plutôt que de dupliquer les curseurs.
 	if not interactive:
 		var link := Button.new()
 		link.text = "Régler… → Trésor (B)"
@@ -149,10 +169,12 @@ func _update_values(me: int) -> void:
 	if w.has_method("day_of_year"):
 		doy = maxi(1, int(w.day_of_year()))
 	var mf := 30.0 / float(doy)
+	# MONNAIE M1 — la réserve métallique (redevance minière, jamais marchande).
 	var reserve_lbl: Label = _val_lbls.get("reserve", null)
 	if reserve_lbl != null and w.has_method("country_reserve"):
 		var res: Dictionary = w.country_reserve(me)
 		reserve_lbl.text = "%s or · %s cuivre" % [_grp(int(round(float(res.get("gold", 0.0))))), _grp(int(round(float(res.get("copper", 0.0)))))]
+	# rentrées : impôt par classe (or/mois)
 	var ctl: Dictionary = w.budget_controls(me) if w.has_method("budget_controls") else {}
 	for raw in ctl.get("taxes", []):
 		var row: Dictionary = raw
@@ -166,6 +188,7 @@ func _update_values(me: int) -> void:
 		var sl: HSlider = _sliders.get("0:%d" % cls, null)
 		if sl != null and not sl.has_focus():
 			sl.set_value_no_signal(clampf(float(row.get("mult", 1.0)) * 100.0, 2.0, 100.0))
+	# flux nommés (rentrées lues + sorties), ramenés au mois
 	var flux := {}
 	if w.has_method("country_budget"):
 		for p in w.country_budget(me):
@@ -175,6 +198,7 @@ func _update_values(me: int) -> void:
 		if lbl2 != null:
 			var fname: String = _flux_of[k]
 			lbl2.text = "%s or/mois" % _grp(int(round(absf(float(flux.get(fname, 0.0))))))
+	# sorties : enveloppe réalisée (or/mois) + curseur
 	var spend_flux := ["invest.", "entretien", "soldes", "marine", "routes"]
 	for raw2 in ctl.get("spending", []):
 		var row2: Dictionary = raw2
@@ -182,7 +206,7 @@ func _update_values(me: int) -> void:
 		var lbl3: Label = _val_lbls.get("sp:%d" % idx, null)
 		if lbl3 != null:
 			if idx == 5 and w.has_method("country_mint_month"):
-				# Frappe : lecteur dédié, miroir exact (revenu, pas dépense)
+				# MONNAIE M2 — LA FRAPPE : lecteur DÉDIÉ, miroir exact (revenu, pas dépense).
 				lbl3.text = "+%s or/mois" % _grp(int(round(float(w.country_mint_month(me)))))
 			else:
 				var amt := 0.0

@@ -1,22 +1,35 @@
 extends RefCounted
-## VKit — kit visuel de l'UI (palette, sense(), SLICE_PAL, primitives immédiates). Palette
-## alignée sur ParchTheme (ivoire/brun/or) : COL_PANEL=fond, COL_PARCH=texte, COL_DIM=
-## secondaire, COL_GOLD=accent, COL_EDGE=bordure. Display-only.
+## VKit — le KIT visuel de l'UI Godot : palette, sense_color, SLICE_PAL et les
+## primitives immédiates (panel_bg, box, gauge, pie, face, section, row, text).
+## (consommé via `const VKit = preload("res://ui/vkit.gd")` — robuste en headless,
+##  pas de dépendance au cache de class_name de l'éditeur).
+## DA PARCHEMIN (retour joueur 2026-07-14 : « elle est passée où la DA juste avant ? ») :
+## la palette est RÉALIGNÉE sur ParchTheme (parch_theme.gd, PANEL_BG/BORDER/INK/…) — même
+## famille ivoire/brun/or que les fiches à conteneurs natifs, pour que VKit et ParchTheme
+## soient INDISCERNABLES côte à côte. La SÉMANTIQUE des constantes ne bouge pas (COL_PANEL
+## = fond de panneau, COL_PARCH = texte principal, COL_DIM = texte secondaire, COL_GOLD =
+## accent/structure, COL_EDGE = bordure) — seuls les TONS changent, clair au lieu de sombre.
+## Display-only.
 
-# palette (parchemin ivoire / encre / or fané — alignée sur parch_theme.gd).
-# HIÉRARCHIE TYPO : le rang se lit par la COULEUR/GRAISSE, jamais la taille — les layouts
-# sont vérifiés serré à 1280×720, +1px de police déborde. TITRE/SECTION/VALEUR/DÉTAIL.
-const COL_PANEL    := Color(0xda/255.0, 0xc4/255.0, 0x8f/255.0, 1.0)          # parchemin sépia — ParchTheme.PANEL_BG
+# ── palette (parchemin ivoire / encre / or fané — alignée sur parch_theme.gd) ───────
+# HIÉRARCHIE TYPO (audit UI 4.3, 4 niveaux — la COULEUR/GRAISSE porte le rang, JAMAIS la
+# taille — les layouts sont vérifiés serré à 1280×720, +1px de police déborde) :
+#   1. TITRE   — `header()`   : COL_PARCH à FS_BIG (fenêtre majeure, le plus net)
+#   2. SECTION — `section()`  : COL_GOLD (bandeau de sous-panneau)
+#   3. VALEUR  — `value()`    : COL_VALUE, LE plus lumineux — le chiffre qui compte
+#   4. DÉTAIL  — `detail()`   : COL_DIM à FS_SMALL — flavor/annexe, contraste réduit
+const COL_PANEL    := Color(0xda/255.0, 0xc4/255.0, 0x8f/255.0, 1.0)          # parchemin SÉPIA (assombri/réchauffé 2026-07-24) — ParchTheme.PANEL_BG
 const COL_PANEL2   := Color(0xcb/255.0, 0xb3/255.0, 0x7c/255.0, 1.0)          # bandeau/chip sépia — ParchTheme.HEADER_BG
-const COL_PANEL_HI := Color(0xc9/255.0, 0xa2/255.0, 0x4b/255.0, 0.30)         # sélection ambrée
+const COL_PANEL_HI := Color(0xc9/255.0, 0xa2/255.0, 0x4b/255.0, 0.30)         # sélection ambrée, sans assombrir le fond
 const COL_GOLD     := Color(0x7a/255.0, 0x5c/255.0, 0x22/255.0, 1.0)          # or fané — ParchTheme.TAB_UNDERLINE
-const COL_VALUE    := Color(0x5b/255.0, 0x4a/255.0, 0x2a/255.0, 1.0)          # valeur lisible — ParchTheme.HEADER_INK
+const COL_VALUE    := Color(0x5b/255.0, 0x4a/255.0, 0x2a/255.0, 1.0)          # valeur immédiatement lisible — ParchTheme.HEADER_INK
 const COL_PARCH    := Color(0x3a/255.0, 0x2f/255.0, 0x1c/255.0, 1.0)          # encre — ParchTheme.INK
 const COL_DIM      := Color(0x8a/255.0, 0x76/255.0, 0x43/255.0, 1.0)          # encre fanée — ParchTheme.DIM_INK
 const COL_EDGE     := Color(0xb3/255.0, 0x9a/255.0, 0x63/255.0, 1.0)          # filet parchemin — ParchTheme.BORDER
-const COL_SHADOW   := Color(0x3a/255.0, 0x2f/255.0, 0x1c/255.0, 0x35/255.0)   # ombre chaude (encre diluée)
+const COL_SHADOW   := Color(0x3a/255.0, 0x2f/255.0, 0x1c/255.0, 0x35/255.0)   # ombre chaude (encre diluée), plus de noir dur
 
-# palette de parts (camemberts, barres empilées) — viewer.c SLICE_PAL[8], assombrie pour le fond clair
+# palette de parts (camemberts, barres empilées) — viewer.c SLICE_PAL[8], assombrie
+# pour rester lisible sur le fond CLAIR (elle vivait sur graphite auparavant).
 const SLICE_PAL := [
 	Color(0x8f/255.0,0x52/255.0,0x22/255.0), Color(0x2f/255.0,0x66/255.0,0x63/255.0),
 	Color(0x8a/255.0,0x6a/255.0,0x1f/255.0), Color(0x55/255.0,0x3d/255.0,0x74/255.0),
@@ -24,13 +37,18 @@ const SLICE_PAL := [
 	Color(0x7e/255.0,0x3c/255.0,0x3c/255.0), Color(0x47/255.0,0x70/255.0,0x39/255.0),
 ]
 
-# tailles de police (courant 16, secondaire 14, gros 20) — ne pas baisser sous ce plancher
+# tailles de police (g_font / g_font_small / g_font_big) — RELEVÉES (audit
+# 2026-07-10 : « texte courant 16-17 px minimum, secondaire 14 px minimum ») ;
+# les layouts en pas de 14-18 px encaissent (le texte se dessine depuis le HAUT).
 const FS := 16
 const FS_SMALL := 14
 const FS_BIG := 20
 
-# Polices : Alegreya Sans = UI, IM Fell English SC = carte. Chargées paresseusement ;
-# absentes → fallback système. L'encre de carte n'est jamais un noir pur (#2a2419 + halo).
+# ── POLICES (DA parchemin) : Alegreya Sans = l'UI (humaniste, lisible en bouton/panneau/
+#    tooltip) ; IM Fell English SC = la CARTE (cartouches, noms de lieux — le vieux livre
+#    imprimé). Chargées paresseusement depuis assets/fonts ; ABSENTES → fallback système
+#    (le projet tourne sans). L'encre de carte n'est JAMAIS un noir pur : #2a2419, posée
+#    sur un HALO brun clair (le noir plat « autocollant » disparaît).
 const COL_INK_MAP  := Color(0x2a / 255.0, 0x24 / 255.0, 0x19 / 255.0)
 const COL_INK_HALO := Color(0.87, 0.80, 0.65, 0.55)
 static var _font_ui: Font = null
@@ -61,7 +79,9 @@ static func font_map() -> Font:
 		_load_fonts()
 	return _font_map if _font_map != null else font()
 
-## sense_color : 0 = rouge … 0.5 = ambre … 1 = vert (viewer.c ligne 1146), tons parchemin sombres.
+## sense_color : 0 = rouge … 0.5 = ambre … 1 = vert (viewer.c, ligne 1146). Tons
+## RICHES d'encre parchemin (rouge/or/vert de ParchTheme, mêmes familles que
+## EXPENSE/GOLD/INCOME) — assez sombres pour rester lisibles sur fond CLAIR.
 static func sense(good: float) -> Color:
 	good = clampf(good, 0.0, 1.0)
 	if good >= 0.5:
@@ -70,7 +90,7 @@ static func sense(good: float) -> Color:
 	var u := good * 2.0
 	return Color(lerpf(0x9c, 0x7a, u)/255.0, lerpf(0x3b, 0x5c, u)/255.0, lerpf(0x2e, 0x22, u)/255.0)
 
-# texte : pos = coin haut-gauche ; renvoie la largeur
+# ── texte : pos = COIN HAUT-GAUCHE (comme viewer) ; renvoie la largeur ──────
 static func text(ci: CanvasItem, pos: Vector2, col: Color, s: String, size: int = FS) -> float:
 	var f := font()
 	ci.draw_string(f, Vector2(pos.x, pos.y + f.get_ascent(size)), s,
@@ -80,24 +100,36 @@ static func text(ci: CanvasItem, pos: Vector2, col: Color, s: String, size: int 
 static func text_w(s: String, size: int = FS) -> float:
 	return font().get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 
-## VALEUR (hiérarchie typo niv. 3) : le nombre-clé, ton le plus lumineux. Ne pas agrandir
-## la police (les layouts sont bornés serré). Renvoie la largeur.
+## VALEUR — niveau 3 de la hiérarchie typo (4.3) : le NOMBRE-CLÉ d'une ligne (bonus final,
+## coût, montant) dans le ton le plus LUMINEUX de la palette — au-dessus de COL_GOLD/
+## COL_PARCH, jamais un attribut/catégorie. La HIÉRARCHIE se lit par la COULEUR, pas la
+## taille (`size` reste FS par défaut — ne PAS agrandir, les layouts sont bornés serré).
+## Optionnel : les panneaux existants gardent leurs couleurs actuelles (souvent `sense()`
+## pour une valeur jugée bonne/mauvaise) ; ce helper est disponible pour les prochains sans
+## rien casser. Renvoie la largeur (comme text()).
 static func value(ci: CanvasItem, pos: Vector2, s: String, size: int = FS) -> float:
 	return text(ci, pos, COL_VALUE, s, size)
 
-## DÉTAIL (hiérarchie typo niv. 4) : flavor/annexe, contraste réduit. Renvoie la largeur.
+## DÉTAIL — niveau 4 (le plus bas) : flavor/annexe/formule, contraste NETTEMENT réduit.
+## `size` reste FS_SMALL par défaut (déjà la taille "secondaire" du kit — pas de nouveau
+## palier de police). Renvoie la largeur (comme text()).
 static func detail(ci: CanvasItem, pos: Vector2, s: String, size: int = FS_SMALL) -> float:
 	return text(ci, pos, COL_DIM, s, size)
 
-## texte enveloppé aux mots, borné à largeur_max/max_lignes : ne dessine jamais hors du rect
-## (casse un mot trop long lettre par lettre), ellipse si coupé. Renvoie la hauteur consommée.
+## texte ENVELOPPÉ aux mots, borné à `largeur_max` et `max_lignes` — AUDIT UI 1.2
+## (« ENFERMER les textes ») : ne dessine JAMAIS un caractère au-delà de `largeur_max`,
+## quitte à casser un mot trop long lettre par lettre. La DERNIÈRE ligne porte une
+## ellipse si le texte a dû être coupé (lignes en trop OU mot cassé). Le texte COMPLET
+## reste la responsabilité de l'appelant pour l'infobulle — ce helper ne tronque QUE
+## visuellement. Renvoie la hauteur consommée (px).
 static func text_wrapped(ci: CanvasItem, pos: Vector2, col: Color, texte: String,
 		largeur_max: float, max_lignes: int, fs: int = FS) -> float:
 	var lines := PackedStringArray()
 	var cur := ""
 	for word in texte.split(" ", false):
 		if text_w(word, fs) > largeur_max:
-			# un mot seul déborde : cassé caractère par caractère (jamais hors du rect)
+			# un mot seul déborde déjà : on le casse caractère par caractère (jamais
+			# hors du rect, même sans espace pour couper proprement).
 			if cur != "":
 				lines.append(cur)
 				cur = ""
@@ -131,7 +163,8 @@ static func text_wrapped(ci: CanvasItem, pos: Vector2, col: Color, texte: String
 		text(ci, Vector2(pos.x, pos.y + float(i) * lh), col, s, fs)
 	return float(lines.size()) * lh
 
-## texte de carte (IM Fell) : encre #2a2419 + halo brun clair (contour). Renvoie la largeur.
+## texte de CARTE (IM Fell) : encre #2a2419 + HALO brun clair doux (contour) — pour les
+## cartouches, noms de lieux et noms d'empire. Renvoie la largeur.
 static func text_map(ci: CanvasItem, pos: Vector2, s: String, size: int = FS,
 		col: Color = COL_INK_MAP, outline: int = 2, halo: Color = COL_INK_HALO) -> float:
 	var f := font_map()
@@ -144,15 +177,21 @@ static func text_map(ci: CanvasItem, pos: Vector2, s: String, size: int = FS,
 static func text_map_w(s: String, size: int = FS) -> float:
 	return font_map().get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 
+# ── primitives rectangulaires ──────────────────────────────────────────────
 static func box(ci: CanvasItem, r: Rect2, c: Color) -> void:
 	ci.draw_rect(r, c, false, 1.0)
 
 static func fill(ci: CanvasItem, r: Rect2, c: Color) -> void:
 	ci.draw_rect(r, c, true)
 
-## grain de papier procédural : bruit fbm cuit une fois, caché. Dessiné à alpha uniforme
-## (le RGB varie = le grain, l'alpha non = pas de motif qui saute). get_image() synchrone,
-## pas de NoiseTexture2D (génération asynchrone).
+## GRAIN de papier PROCÉDURAL (4.1 : « cuir/papier léger dans les grandes surfaces »).
+## Aucune texture de grain propre dans le pack (chrome/parch = icônes/chips, pas de fond de
+## matière) → un bruit fbm cuit UNE fois en niveaux de gris (même famille que le sol de la
+## carte parchemin, cf. map/iso_ground.gd::_make_noise), mis en cache statique. Dessiné à
+## très faible alpha UNIFORME dans panel_bg (le RGB varie par pixel = le grain, l'alpha du
+## blend ne varie PAS = jamais un motif qui saute aux yeux — « la promesse du menu, sans
+## bruit »). PAS de NoiseTexture2D (génération asynchrone) : `Noise.get_image()` est
+## synchrone, un seul appel, aucun souci de thread/attente.
 static var _grain_tex: ImageTexture = null
 static func _grain() -> ImageTexture:
 	if _grain_tex == null:
@@ -167,14 +206,18 @@ static func _grain() -> ImageTexture:
 		_grain_tex = ImageTexture.create_from_image(img)
 	return _grain_tex
 
-## fleuron : losange d'encre or, seule décoration de titre du kit (vectoriel, pas un asset).
+## FLEURON discret (4.1 : « ornements réservés aux titres ») : un losange d'encre or, la
+## SEULE décoration de titre du kit — délibérément vectoriel (pas un asset de chrome : le
+## pack `panel_corner_ornate_*`/`panel_title_plaque` appartient à l'habillage 9-slice déjà
+## RETIRÉ des panneaux, cf. panel_bg ci-dessus — le réintroduire romprait cette discipline).
 static func _fleuron(ci: CanvasItem, center: Vector2, r: float, a: float = 0.85) -> void:
 	ci.draw_colored_polygon(PackedVector2Array([
 		center + Vector2(0.0, -r), center + Vector2(r, 0.0),
 		center + Vector2(0.0, r), center + Vector2(-r, 0.0)
 	]), Color(COL_GOLD.r, COL_GOLD.g, COL_GOLD.b, a))
 
-## panel_bg : plaque + ombre courte + filet + arête or.
+## panel_bg : plaque graphite presque carrée, ombre courte, filet acier et arête or.
+## RimWorld fournit la surface de travail ; EU4 ne subsiste que dans la ligne de titre.
 static var _pb_shadow: StyleBoxFlat = null
 static var _pb_body: StyleBoxFlat = null
 
@@ -198,10 +241,14 @@ static func panel_bg(ci: CanvasItem, r: Rect2) -> void:
 	if g != null:
 		var gr := r.grow(-3.0)
 		if gr.size.x > 4.0 and gr.size.y > 4.0:
-			# tuilé à sa taille native → grain fin ~4 px (un 256² étiré blobait en taches ~16 px)
+			# TUILÉ (tile=true) à sa taille native → grain FIN ~4 px (papier), pas des
+			# taches ~16 px (un 256² ÉTIRÉ sur un grand panneau blobait — retour visuel
+			# 2026-07-11 : « sans bruit »). Alpha abaissé 0.055→0.032 : senti, pas noisy.
 			ci.draw_texture_rect(g, gr, true, Color(0.78, 0.80, 0.75, 0.016))
 
-## jauge 0-100 : piste creusée (le trou reste sombre même sur panneau clair), remplissage + graduations.
+## jauge 0-100 : piste creusée (encre diluée), remplissage franc, reflet supérieur
+## et graduations. Le TROU reste sombre (un puits d'encre, comme un livre de comptes)
+## même sur panneau clair — c'est le remplissage/les graduations qui s'adaptent.
 static func gauge(ci: CanvasItem, x: float, y: float, w: float, h: float, value: int) -> void:
 	value = clampi(value, 0, 100)
 	fill(ci, Rect2(x, y, w, h), Color(0x2b/255.0, 0x22/255.0, 0x14/255.0, 1.0))
@@ -249,7 +296,9 @@ static func face(ci: CanvasItem, center: Vector2, r: float, mood: float, lit: bo
 			ci.draw_line(prev, p, c, 1.0)
 		prev = p
 
-## header de fenêtre : renvoie le rect du bouton ✕ (à tester dans _gui_input) ; le contenu démarre à HDR_H + ~8.
+## HEADER DE FENÊTRE : plaque stratégique EU4 sur une surface utilitaire RimWorld.
+## Renvoie le rect du bouton ✕ (à tester dans _gui_input du panneau). Le contenu
+## démarre à HDR_H + ~8. Remplace les titres nus posés à des y variables.
 const HDR_H := 36.0
 static func header(ci: CanvasItem, w: float, title: String) -> Rect2:
 	fill(ci, Rect2(0, 0, w, HDR_H), COL_PANEL2)
@@ -263,8 +312,13 @@ static func header(ci: CanvasItem, w: float, title: String) -> Rect2:
 	text(ci, Vector2(cr.position.x + 7, cr.position.y + 3), COL_PARCH, "x")
 	return cr
 
-# sections & rangées : y muté → on renvoie le nouveau y (GDScript n'a pas de int*).
-## header de section : bande compacte, repère or à gauche, largeur déduite de ci.size.x.
+# ── sections & rangées (ui_section / ui_row). y est un [valeur] muté → on
+#    renvoie le nouveau y (GDScript n'a pas de int*). ─────────────────────────
+## HEADER DE SECTION : bande graphite compacte, repère or à gauche, un seul filet.
+## D1-UNIFICATION (2026-07-18) : `w_override` (UI-POLISH #1) n'avait plus qu'un seul
+## appelant — province_panel.gd (legacy, supprimé, remplacé par province_panel_v2.gd
+## qui n'utilise pas VKit.section/row) — retiré, redevenu déduit de `ci.size.x` pour
+## tous les appelants restants (battle_panel.gd, empire_sidebar.gd, sidebar_drawer.gd).
 static func section(ci: CanvasItem, x: float, y: float, title: String) -> float:
 	y += 3
 	var bw := 220.0
@@ -285,7 +339,8 @@ static func row(ci: CanvasItem, x: float, y: float, cat: String, word: String, w
 	fill(ci, Rect2(x, y + 16.0, rw, 1.0), Color(COL_EDGE.r, COL_EDGE.g, COL_EDGE.b, 0.28))
 	return y + 18
 
-## ligne de ledger : alternance à peine visible, séparateur bas, sélection à gauche.
+## Ligne de ledger : alternance à peine visible, séparateur bas et sélection à gauche.
+## Les grandes listes gardent ainsi la densité d'EU4 sans devenir une soupe de texte.
 static func list_row_bg(ci: CanvasItem, r: Rect2, index: int, selected: bool = false) -> void:
 	if selected:
 		fill(ci, r, COL_PANEL_HI)

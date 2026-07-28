@@ -1,6 +1,20 @@
 extends PanelContainer
-## LA fiche province — display-only sauf le pied d'actions (verbes joueur existants) ;
-## lit la membrane (tout has_method-gardé). Conteneurs natifs, aucun _draw.
+## ProvincePanelV2 — LA fiche PROVINCE (D1-UNIFICATION, 2026-07-18) : bâtie avec des
+## CONTENEURS Godot NATIFS (PanelContainer/VBox/HBox/Grid/Margin) + le THEME parchemin
+## PARTAGÉ (parch_theme.gd). ZÉRO `_draw` : la mise en page s'auto-espace, la hauteur
+## suit le contenu — c'est le pendant « conteneurs natifs » du concept parchemin, comme
+## budget_panel_v2 l'a fait pour le budget.
+##
+## SEULE fiche province du jeu : province_panel.gd (legacy, dessin immédiat, nomenclature
+## divergente Laboureurs/Artisans/Noblesse) est SUPPRIMÉ — cette fiche s'ouvre au clic
+## sur une province (main.gd::_on_province_picked) ET à la touche V (bascule visibilité).
+## Le PIED D'ACTIONS (Réprimer/Assimiler/Purger/Détail/Coloniser/diplomatie) et le ✕ sont
+## portés depuis le legacy ; le reste (chips bâti seul, /mois, hover) était déjà le
+## modèle doctrine avant cette unification.
+##
+## Display-only, LECTURE SEULE (sauf le pied d'actions, verbes joueur EXISTANTS) : lit
+## la MÊME membrane que toujours (province_info, province_capitale, province_classes/
+## class_sat, income, buildings/edifices…), tout `has_method`-gardé. Sous-onglets façon Vic3.
 
 const ParchTheme = preload("res://ui/parch_theme.gd")
 const UIKit = preload("res://ui/uikit.gd")
@@ -13,11 +27,15 @@ const ALLOC_STEP := 10   ## pas de répartition raw (poids 0-100)
 
 ## le MENU CONSTRUCTION s'ouvre depuis la fiche (bouton « Construire… ») — kind : 0 Édifices, 1 Manufactures.
 signal build_requested(kind: int)
+## D1-UNIFICATION (ex-province_panel.gd legacy, supprimé) : cette fiche est désormais
+## LA SEULE fiche province — elle reçoit donc le câblage réel qui manquait (fermeture,
+## navigation vers le détail, verbes gouvernementaux/diplomatiques/colonisation).
 signal close_requested    ## ✕ — la désélection pleine vit dans main (_clear_selection)
-signal detail_requested   ## ouvre province_detail
+signal detail_requested   ## « Détail… » — ouvre province_detail (peuples/production/journal/main-d'œuvre)
 
 var _pid := -1
-var _region := -1                   ## agrégat lu SEULEMENT par l'onglet Région ; verbes/alloc = _pid direct
+var _region := -1                   ## région moteur (agrégat lu SEULEMENT par l'onglet RÉGION —
+                                     ## RE-KEY PROVINCE : les verbes/alloc utilisent _pid directement)
 var _alloc := {}                    ## dernier province_alloc (pousser l'allocation COMPLÈTE)
 var _name2bld := {}                 ## nom de manufacture → BuildingType (résout le type pour les verbes)
 var _income := {}                   ## dernier province_income : nom du bien → [per_day, res_id] (raws ET manufacturés)
@@ -33,8 +51,9 @@ var _owner_lbl: Label = null
 var _ownersub_lbl: Label = null
 var _tab_group: ButtonGroup = null
 var _tab_btns: Array = []            ## [Button] pour piloter l'onglet actif par code (probe)
-var _footer: Control = null          ## PIED D'ACTIONS — toujours visible, hors du corps à onglets
-var _purge_armed := false            ## Purger EXIGE 2 clics (4 s)
+var _footer: Control = null          ## PIED D'ACTIONS (ex-legacy _draw_gov_actions) — TOUJOURS visible,
+                                      ## hors du corps à onglets (motif « pied fixe » porté de province_panel.gd)
+var _purge_armed := false            ## UI-4 : Purger EXIGE 2 clics (motif servile_manumit_armed), 4 s
 var _colonize_ms := -100000          ## horloge MUR du dernier ordre de colonisation (feedback 3 s)
 
 func _ready() -> void:
@@ -47,11 +66,13 @@ func _ready() -> void:
 		Sim.month_ticked.connect(func(_y): if visible: refresh())
 	hide()
 
+# ── LE SQUELETTE (header + onglets + corps) ───────────────────────────────────
 func _build_shell() -> void:
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 0)
 	add_child(root)
 
+	# HEADER : nom + tier/biome à gauche · propriétaire aligné à droite
 	var head := PanelContainer.new()
 	head.theme_type_variation = "HeaderStrip"
 	root.add_child(head)
@@ -84,11 +105,15 @@ func _build_shell() -> void:
 	_ownersub_lbl.text = ""
 	_ownersub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	rcol.add_child(_ownersub_lbl)
+	# ✕ FERMER (D1-UNIFICATION) : tout panneau affiché doit pouvoir être dismiss — la
+	# fiche legacy avait son ✕, celle-ci ne l'avait pas (Échap seul y menait, et
+	# seulement après avoir vidé la pile des panneaux flottants).
 	var closeb := _sq_btn("×", 22)
 	closeb.tooltip_text = "Fermer"
 	closeb.pressed.connect(func(): close_requested.emit())
 	hb.add_child(closeb)
 
+	# BARRE D'ONGLETS façon Vic3
 	var tabpanel := PanelContainer.new()
 	tabpanel.theme_type_variation = "LedTabStrip"
 	root.add_child(tabpanel)
@@ -112,6 +137,7 @@ func _build_shell() -> void:
 		tabs.add_child(b)
 		_tab_btns.append(b)
 
+	# CORPS (fond transparent — laisse voir le parchemin)
 	var bodypanel := PanelContainer.new()
 	bodypanel.theme_type_variation = "Body"
 	root.add_child(bodypanel)
@@ -119,7 +145,11 @@ func _build_shell() -> void:
 	_body.add_theme_constant_override("separation", 4)
 	bodypanel.add_child(_body)
 
-	# PIED D'ACTIONS — toujours visible, hors du corps à onglets (reconstruit chaque refresh selon le statut).
+	# PIED D'ACTIONS (D1-UNIFICATION) : verbes gouvernementaux/diplomatiques/colonisation
+	# + « Détail… » — TOUJOURS visible, HORS du corps à onglets (le gouvernement d'une
+	# province n'est pas propre à un onglet). Motif « pied fixe » porté de la fiche
+	# legacy (province_panel.gd, supprimée) ; reconstruit à chaque refresh() selon le
+	# statut réel de la province (mienne / colonisable / ennemie / étrangère en paix).
 	var footerpanel := PanelContainer.new()
 	footerpanel.theme_type_variation = "HeaderStrip"
 	root.add_child(footerpanel)
@@ -128,6 +158,7 @@ func _build_shell() -> void:
 	_footer.add_theme_constant_override("v_separation", 4)
 	footerpanel.add_child(_footer)
 
+# ── API publique ──────────────────────────────────────────────────────────────
 func show_province(pid: int) -> void:
 	if pid != _pid:
 		_grow_pid = -2   # nouvelle province : la CROISSANCE repart de zéro (pas de faux delta)
@@ -136,7 +167,8 @@ func show_province(pid: int) -> void:
 	if visible:
 		refresh()
 
-## sélection d'un onglet par code (met à jour le bouton actif) — sonde de capture.
+## sélection PUBLIQUE d'un onglet (par code) : met aussi à jour le bouton actif (le
+## soulignement suit). Utilisée par la sonde de capture.
 func select_tab(idx: int) -> void:
 	if idx >= 0 and idx < _tab_btns.size():
 		_tab_btns[idx].button_pressed = true
@@ -151,6 +183,7 @@ func refresh() -> void:
 	if not bool(info.get("valide", false)):
 		return
 	var cap: Dictionary = w.province_capitale(_pid)
+	# région moteur + allocation (grain des verbes) + carte nom→BuildingType (résout les types)
 	_region = int(w.province_region(_pid)) if w.has_method("province_region") else -1
 	_alloc = w.province_alloc(_pid) if (_pid >= 0 and w.has_method("province_alloc")) else {}
 	if _name2bld.is_empty() and w.has_method("manuf_name"):
@@ -158,7 +191,10 @@ func refresh() -> void:
 			var nm := String(w.manuf_name(bld))
 			if nm != "" and nm != "?":
 				_name2bld[nm] = bld
-	# nom du bien → [per_day, res_id] : hover des chips manufacture + lignes d'extraction (prix courant).
+	# PRODUCTION (raws ET manufacturés, UI-MONNAIE) : nom du bien → [per_day, res_id].
+	# Sert (a) le hover des chips de manufacture (matché par le bien via manuf_recipe(bld).out,
+	# chantier 3) ET (b) les LIGNES D'EXTRACTION brute (Journaliers) — « X t/mois × prix
+	# courant = Y/mois » (province_res_price, UI-MONNAIE 2026-07-16).
 	_income.clear()
 	if w.has_method("province_income"):
 		for l in w.province_income(_pid):
@@ -173,7 +209,7 @@ func refresh() -> void:
 	if _flash != "":
 		_line(_flash, "Income")
 	_build_footer(w, info)
-	# hug content (largeur plafonnée)
+	# hug content après reconstruction (largeur plafonnée par custom_minimum_size)
 	reset_size.call_deferred()
 
 func _update_header(w, info: Dictionary, cap: Dictionary) -> void:
@@ -189,8 +225,12 @@ func _update_header(w, info: Dictionary, cap: Dictionary) -> void:
 		_owner_lbl.text = ""
 	_ownersub_lbl.text = String(cap.get("statut", ""))
 
-## reconstruit chaque refresh selon le statut ; verbes journalisés (drain revalide),
-## hover = conséquences réelles (jamais un chiffre inventé).
+# ── PIED D'ACTIONS (D1-UNIFICATION, ex-province_panel.gd::_draw_gov_actions) ──────
+## Reconstruit à chaque refresh() : MIENNE → Réprimer/Assimiler/Purger/Détail ·
+## VIERGE colonisable → Coloniser · VIERGE non colonisable → raison grisée ·
+## ÉTRANGÈRE en guerre → Attaquer ici · ÉTRANGÈRE en paix → Route terre/mer (+
+## Piller la côte si légal). Chaque verbe est journalisé (drain revalide) ; les
+## hover portent les conséquences réelles (action_preview) — jamais un chiffre inventé.
 const _ACT_VERB_ID := {"repress": 0, "assimilate": 1, "purge": 2}
 const _ACT_FALLBACK := {
 	"repress": "Réprimer — mate l'agitation par la force. Baisse l'agitation ; hausse la coercition et le ressentiment.",
@@ -248,6 +288,7 @@ func _build_footer(w, info: Dictionary) -> void:
 				elif rr == 4:
 					_footer_note("Piller la côte : aucune coque pirate")
 
+## un bouton d'action du pied (label auto-large, thème parchemin, hover = conséquences).
 func _footer_btn(label: String, tip: String, cb: Callable) -> Button:
 	var b := Button.new()
 	b.text = label
@@ -265,8 +306,12 @@ func _footer_btn(label: String, tip: String, cb: Callable) -> Button:
 	_footer.add_child(b)
 	return b
 
-## PIÈGE : dans un HFlowContainer, un Label sans largeur plancher s'autowrap LETTRE PAR
-## LETTRE — custom_minimum_size.x fixe force le flow à lui donner sa propre ligne pleine.
+## une note discrète du pied (raison grisée, feedback transitoire) — pas un bouton.
+## PIÈGE (D1, trouvé en capture réelle) : dans un HFlowContainer, un Label enveloppé
+## SANS largeur plancher explicite peut se voir allouer une largeur quasi nulle par le
+## flow, et l'autowrap se replie alors LETTRE PAR LETTRE (une colonne d'un caractère de
+## large) au lieu de mot par mot — `custom_minimum_size.x` fixe (motif déjà utilisé par
+## `_line()`) force le flow à donner sa PROPRE ligne à la note, largeur pleine.
 func _footer_note(txt: String) -> void:
 	var lb := Label.new()
 	lb.theme_type_variation = "RowDim"
@@ -299,7 +344,8 @@ func _on_purge_pressed() -> void:
 		_purge_armed = false
 		_act_fire("purge")
 
-## COLONISER : feedback 3 s sur horloge MUR (indépendante du tick).
+## COLONISER : verbe distinct (feedback « ordre émis » 3 s, horloge MUR indépendante
+## du tick — motif province_panel.gd legacy).
 func _do_colonize(w) -> void:
 	if _pid < 0 or not w.has_method("player_colonize"):
 		return
@@ -311,8 +357,10 @@ func _do_colonize(w) -> void:
 	var t := get_tree().create_timer(3.05)
 	t.timeout.connect(func(): if visible: _refresh_footer())
 
-## lit action_preview (verbe 0/1/2 ; clés EXACTES du binding scps_sim_node.cpp:1276),
-## sinon texte factuel — jamais un nombre que le moteur ne donne pas.
+## conséquences AVANT décision (retour joueur UI-4) : lit action_preview si la façade
+## l'expose (verbe 0=RÉPRIMER 1=ASSIMILER 2=PURGER ; clés EXACTES du binding
+## scps_sim_node.cpp:1276), sinon un texte factuel SANS chiffre inventé — la membrane
+## ne promet jamais un nombre que le moteur ne donne pas.
 func _action_hover(w, verb: String) -> String:
 	var fallback := String(_ACT_FALLBACK.get(verb, ""))
 	if not w.has_method("action_preview") or not _ACT_VERB_ID.has(verb):
@@ -372,17 +420,22 @@ func _act_fire(verb: String) -> void:
 	Sim.notify_action()
 	refresh()
 
-## chaque classe porte sa colonne d'activité : Journaliers/Esclaves = répartition raw,
-## Bourgeois = manufactures, Élites = édifices.
+# ── ONGLET INFRASTRUCTURE (fusionné : la province PAR CLASSE) ─────────────────
+## Retour joueur 2026-07-13 : Infrastructure + Démographie FONDUES. Chaque CLASSE
+## sociale porte SA colonne d'activité — Journaliers/Esclaves la RÉPARTITION par raw
+## (extraction), Bourgeois les MANUFACTURES, Élites les ÉDIFICES — avec des [−][+]
+## collés (répartition, niveau, poser/démolir). Culture & foi en frises au HOVER.
 func _build_infrastructure(w, info: Dictionary, _cap: Dictionary) -> void:
 	var mine := (int(info.get("owner", -2)) == int(w.player())) if w.has_method("player") else false
 
+	# TERRAIN — hover = image du biome + tenue de siège + habitabilité (chantier 5)
 	var def_pct := int(w.province_defense_pct(_pid)) if w.has_method("province_defense_pct") else 100
 	_terrain_row(info, def_pct)
 	var grid := _grid()
 	_kv(grid, "Population", _grp(info.get("ames", 0)), ParchTheme.INK)
-	# CROISSANCE (display-only) : delta signé /mois normalisé sur le jour absolu ; « — »
-	# sans mesure précédente (pas de faux delta entre deux provinces).
+	# CROISSANCE (display-only, motif empire_window) : delta signé /mois depuis le
+	# dernier refresh, normalisé sur le jour absolu réel — « — » sans mesure précédente
+	# ou si la province vient de changer (pas de faux delta entre deux provinces).
 	var pop_now := float(info.get("ames", 0))
 	var abs_day := int(w.year()) * 365 + (int(w.day_of_year()) if w.has_method("day_of_year") else 0)
 	if _grow_pid == _pid and _grow_total >= 0.0 and abs_day > _grow_day:
@@ -403,6 +456,8 @@ func _build_infrastructure(w, info: Dictionary, _cap: Dictionary) -> void:
 	if w.has_method("province_agitation"):
 		agit = int(w.province_agitation(_pid).get("value", agit))
 	_kv(grid, "Agitation", "%d%%" % agit, ParchTheme.RED if agit >= 50 else ParchTheme.DIM_INK)
+	# LOGEMENTS & SERVICES (chantier 4) : âmes logées/servies sur la capacité — le
+	# BÂTI (manufactures-logements, confort) monte ces plafonds au-delà de la terre nue.
 	var lc := int(info.get("logements_cap", 0))
 	if lc > 0:
 		_kv(grid, "Logement", "%s / %s" % [_grp(info.get("logements_libres", 0)), _grp(lc)],
@@ -413,11 +468,13 @@ func _build_infrastructure(w, info: Dictionary, _cap: Dictionary) -> void:
 			ParchTheme.RED if int(info.get("services_libres", 0)) <= 0 else ParchTheme.DIM_INK)
 	if bool(info.get("seuil_revolte", false)):
 		_line("⚠ Au bord de la révolte (agitation %d)" % agit, "Expense")
-	# FRICHE : entretien impayé ⇒ production ×0.6 (le moteur le fait, on le DIT).
+	# FRICHE (E1bis.10) : entretien/encadrement impayé ⇒ production ×0.6 — retour joueur
+	# 2026-07-14 (« le mécanisme d'entretien... passé à la trappe ? ») : le moteur le fait,
+	# il fallait le DIRE.
 	if w.has_method("province_friche") and int(w.province_friche(_pid)) == 1:
 		_line("⚠ En friche — entretien impayé (production ×0.6)", "Expense")
 
-	# PEUPLES — frises culture/foi, détail au hover
+	# PEUPLES — frises culture/foi, DÉTAIL AU HOVER (pas de légende toujours affichée)
 	var pop := float(info.get("ames", 0))
 	var groups: Array = w.province_groups(_pid) if w.has_method("province_groups") else []
 	if groups.size() > 0 and pop > 0.0:
@@ -435,24 +492,30 @@ func _build_infrastructure(w, info: Dictionary, _cap: Dictionary) -> void:
 		PopBar.build_bar_only(_body, cmap, pop)
 		PopBar.build_bar_only(_body, fmap, pop)
 
+	# CLASSES FUSIONNÉES : chaque classe → sa colonne d'activité (avec [−][+])
 	var cls: Dictionary = w.province_classes(_pid) if w.has_method("province_classes") else {}
 	var csat: Dictionary = w.province_class_sat(_pid) if w.has_method("province_class_sat") else {}
 	var slaves := int(w.province_slave_count(_pid)) if w.has_method("province_slave_count") else 0
 
+	# JOURNALIERS → la terre : répartition par raw
 	_class_row("Journaliers", int(cls.get("laboureurs", 0)), int(csat.get("laboureurs", -1)))
 	_alloc_section(w, mine, 0)
 
+	# BOURGEOIS → les manufactures (poser + niveau)
 	_class_row("Bourgeois", int(cls.get("artisans", 0)), int(csat.get("artisans", -1)))
 	_manuf_section(w, mine)
 
+	# ÉLITES → les édifices (poser + palier)
 	_class_row("Élites", int(cls.get("noblesse", 0)), int(csat.get("noblesse", -1)))
 	_edifice_section(w, mine)
 
+	# ESCLAVES → la terre aussi : répartition par raw (idem journaliers), si présents
 	if slaves > 0:
 		_class_row("Esclaves", slaves, int(csat.get("esclaves", -1)))
 		_alloc_section(w, mine, 0)
 
-## répartition par raw (kind 0) : ligne/gisement + [−][+] + ↻ Auto.
+# ── SECTIONS PAR CLASSE (interactives) ────────────────────────────────────────
+## RÉPARTITION par raw (kind 0) : une ligne par gisement · part % · [−][+] · ↻ Auto.
 func _alloc_section(w, mine: bool, kind: int) -> void:
 	var sinks: Array = _alloc.get("sinks", [])
 	var any := false
@@ -480,7 +543,9 @@ func _alloc_section(w, mine: bool, kind: int) -> void:
 func _alloc_row(w, mine: bool, s: Dictionary, idx: int) -> void:
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", 6)
-	# prix en direct au SURVOL (jamais le calcul à l'écran, doctrine UI).
+	# UI-MONNAIE — LES PRIX EN DIRECT (« combien de tonnes vais-je produire, combien ça
+	# rapporte instant T ») : le détail en MOTS au SURVOL de la ligne (jamais le calcul à
+	# l'écran, doctrine UI) — la face garde son % de répartition tel quel.
 	var res_name := String(s.get("name", "?"))
 	var ptip := res_name + _price_line(w, res_name)
 	hb.tooltip_text = ptip
@@ -506,7 +571,8 @@ func _alloc_row(w, mine: bool, s: Dictionary, idx: int) -> void:
 		plus.pressed.connect(func(): _alloc_apply(idx, int(s.get("weight", 0)) + ALLOC_STEP))
 		hb.add_child(plus)
 
-## pousse l'allocation COMPLÈTE (régler un seul puits mettrait les autres à 0) — revalidée au drain.
+## applique une édition d'allocation : pousse l'allocation COMPLÈTE (régler un seul puits
+## mettrait les autres à 0) — région à soi, revalidée au drain. (motif province_detail.)
 func _alloc_apply(idx: int, new_w: int) -> void:
 	var w = Sim.world
 	if w == null or _pid < 0:
@@ -522,7 +588,9 @@ func _alloc_apply(idx: int, new_w: int) -> void:
 			w.player_alloc_bld(_pid, int(s.get("id", 0)), ww)
 	_fire("répartition ajustée")
 
-## MANUFACTURES : chips du BÂTI SEUL ([−][+] en ligne, détail au hover) ; poser = MENU CONSTRUCTION.
+## MANUFACTURES (ligne Bourgeois) : une STRIP d'icônes-chips DU BÂTI SEUL (icône +
+## [−][+] EN LIGNE, nom+détail au HOVER) — poser un NOUVEAU chantier se fait dans le
+## MENU CONSTRUCTION (bouton « Construire… », retour joueur : plus de chips fantômes ici).
 func _manuf_section(w, mine: bool) -> void:
 	var blds: Array = w.province_buildings(_pid) if w.has_method("province_buildings") else []
 	if blds.is_empty():
@@ -536,7 +604,8 @@ func _manuf_section(w, mine: bool) -> void:
 	if mine:
 		_construct_btn(1)
 
-## ÉDIFICES : idem, chips du BÂTI SEUL ([−] démolir · [+] palier) ; poser = MENU CONSTRUCTION.
+## ÉDIFICES (ligne Élites) : idem — strip d'icônes-chips DU BÂTI SEUL ([−] démolir ·
+## [+] palier suivant) ; poser un nouvel édifice = le MENU CONSTRUCTION.
 func _edifice_section(w, mine: bool) -> void:
 	var edis: Array = w.province_edifices(_pid) if w.has_method("province_edifices") else []
 	if edis.is_empty():
@@ -548,7 +617,8 @@ func _edifice_section(w, mine: bool) -> void:
 	if mine:
 		_construct_btn(0)
 
-## bouton « Construire… » — ouvre le MENU CONSTRUCTION (signal câblé main.gd).
+## le bouton « Construire… » (ouvre le MENU CONSTRUCTION sur l'onglet Édifices/
+## Manufactures, la province courante visée — signal câblé côté main.gd).
 func _construct_btn(kind: int) -> void:
 	var wrap := HBoxContainer.new()
 	_body.add_child(wrap)
@@ -556,7 +626,8 @@ func _construct_btn(kind: int) -> void:
 	b.pressed.connect(func(): build_requested.emit(kind))
 	wrap.add_child(b)
 
-## cadre d'un chip. `built` = ton plein (bâti) vs ghost (à bâtir).
+# ── LES CHIPS (icône + [−][+] en ligne ; le NOM en hover seul) ────────────────
+## cadre d'un chip : PanelContainer + HBox serrée. `built` = ton plein (bâti) vs ghost (à bâtir).
 func _chip_frame(tip: String, built: bool) -> Array:
 	var pc := PanelContainer.new()
 	var bg := ParchTheme.HEADER_BG if built else ParchTheme.PANEL_BG
@@ -569,8 +640,11 @@ func _chip_frame(tip: String, built: bool) -> Array:
 	pc.add_child(hb)
 	return [pc, hb]
 
-## valeur réelle d'un bien (prix NATIONAL projeté, province_res_price) — hover complet,
-## "" si le bien n'a ni production ni prix connu.
+## UI-MONNAIE (2026-07-16) — « combien de tonnes vais-je produire, combien ça rapporte
+## instant T » : la VALEUR RÉELLE d'un bien de LA province (prix NATIONAL projeté,
+## province_res_price) — jamais le calcul brut à l'écran, ce texte EST le hover complet
+## (« prix national N × M t/mois = P/mois »). "" si le bien n'a ni production ni prix
+## connu (rien à ajouter au hover appelant).
 func _price_line(w, res_name: String) -> String:
 	if not _income.has(res_name) or not w.has_method("province_res_price"):
 		return ""
@@ -587,7 +661,8 @@ func _price_line(w, res_name: String) -> String:
 	var value_month := tonnage_month * price
 	return " · prix national %.2f × %s t/mois = %s/mois" % [price, _grp(int(round(tonnage_month))), _grp(int(round(value_month)))]
 
-## chip de manufacture bâtie : [icône][niv][−][+], détail au hover (bien réel via manuf_recipe(bld).out).
+## un chip de manufacture bâtie : [icône][niv][−][+] — nom + détail au HOVER, chantier 3 :
+## « Nom — niveau N · X ouvriers · produit +Y/mois » (le bien réel, matché par manuf_recipe(bld).out).
 func _manuf_chip(w, mine: bool, nom: String, niv: int, ouv: int, bid: int) -> Control:
 	var tip := "%s — niveau %d · %d ouvriers" % [nom, niv, ouv]
 	if bid >= 0 and w.has_method("manuf_recipe"):
@@ -639,6 +714,7 @@ func _edi_chip(w, mine: bool, nom: String, type: int) -> Control:
 			hb.add_child(plus)
 	return fr[0]
 
+## une strip qui enveloppe (les chips passent à la ligne suivante quand la largeur manque).
 func _flow() -> HFlowContainer:
 	var f := HFlowContainer.new()
 	f.add_theme_constant_override("h_separation", 4)
@@ -646,6 +722,7 @@ func _flow() -> HFlowContainer:
 	_body.add_child(f)
 	return f
 
+## un mini bouton de chip (les [−][+] collés à l'icône).
 func _chip_btn(txt: String) -> Button:
 	var b := Button.new()
 	b.text = txt
@@ -660,8 +737,12 @@ func _chip_btn(txt: String) -> Button:
 	b.add_theme_color_override("font_pressed_color", ParchTheme.INK)
 	return b
 
-## read-only. Onglet Région = AGRÉGAT (production sommée sur les provinces de la région) + résumé.
+# ── ONGLET RÉGION : l'OUTPUT économique agrégé (la région = N tuiles) ─────────
+## Read-only. La RÉGION est l'unité éco du moteur (les journaliers y sont mis en commun,
+## répartis sur les raws des ~3 tuiles) ; cet onglet en montre le RÉSULTAT : production
+## brute + manufacturée (sommée sur les provinces de la région) + résumé stab/prospérité.
 func _build_region(w, info: Dictionary, _cap: Dictionary) -> void:
+	# agréger l'output sur toutes les provinces de la même région
 	var raws := {}      # source -> [per_day, res_id]
 	var manu := {}      # source -> [per_day, res_id]
 	var n := int(w.province_count()) if w.has_method("province_count") else 0
@@ -695,7 +776,7 @@ func _build_region(w, info: Dictionary, _cap: Dictionary) -> void:
 		agit = int(w.province_agitation(_pid).get("value", agit))
 	_gauge("Ordre", 100 - clampi(agit, 0, 100))
 
-## output trié décroissant ; +X/mois = per_day × 30.
+## la liste d'output triée décroissante : icône + nom + « +X/mois » (per_day × 30).
 func _output_list(m: Dictionary) -> void:
 	if m.is_empty():
 		_line("  aucune production", "RowDim")
@@ -726,6 +807,7 @@ func _output_list(m: Dictionary) -> void:
 		amt.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		hb.add_child(amt)
 
+## une jauge de résumé : label + barre + % (couleur de score).
 func _gauge(label: String, v: int) -> void:
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", 8)
@@ -755,8 +837,11 @@ func _gauge(label: String, v: int) -> void:
 	pc.add_theme_color_override("font_color", _score_col(v))
 	hb.add_child(pc)
 
-## n'invente rien : on lit ce qui existe (tenue de siège, ouvrage, terrain, agitation).
+# ── ONGLET MILITAIRE : défense de la province + menace intérieure ─────────────
+## N'INVENTE rien : la façade n'expose ni garnison, ni réserves, ni marins par
+## province — on lit ce qui existe (tenue de siège, ouvrage/fort, terrain, agitation).
 func _build_militaire(w, info: Dictionary, _cap: Dictionary) -> void:
+	# DÉFENSE (tenir la place)
 	_section("DÉFENSE")
 	var def_pct := int(w.province_defense_pct(_pid)) if w.has_method("province_defense_pct") else 100
 	var grid := _grid()
@@ -768,6 +853,7 @@ func _build_militaire(w, info: Dictionary, _cap: Dictionary) -> void:
 	_kv(grid, "Terrain", ("%s · %s" % [String(info.get("relief", "—")), String(info.get("climat", ""))]).strip_edges(),
 		ParchTheme.DIM_INK)
 
+	# MENACE INTÉRIEURE (tenir les gens) — agitation + loyauté + seuil de révolte
 	_section("MENACE INTÉRIEURE")
 	var agit := int(info.get("agitation", 0))
 	if w.has_method("province_agitation"):
@@ -779,6 +865,8 @@ func _build_militaire(w, info: Dictionary, _cap: Dictionary) -> void:
 	if bool(info.get("seuil_revolte", false)):
 		_line("⚠ Au bord de la révolte (agitation %d)" % agit, "Expense")
 
+# ── PETITS BOUTONS + retour d'action ──────────────────────────────────────────
+## un bouton compact au thème parchemin (les [−][+] collés, les « Bâtir »).
 func _sq_btn(txt: String, wide := 24) -> Button:
 	var b := Button.new()
 	b.text = txt
@@ -793,6 +881,7 @@ func _sq_btn(txt: String, wide := 24) -> Button:
 	b.add_theme_color_override("font_pressed_color", ParchTheme.INK)
 	return b
 
+## une petite icône du pack (cadrée au slot ; rien si absente).
 func _icon(into: HBoxContainer, tex: Texture2D, sz := 18) -> void:
 	if tex == null:
 		return
@@ -815,6 +904,7 @@ func _fire(msg: String) -> void:
 		if visible:
 			refresh())
 
+# ── PRIMITIVES DE LAYOUT (conteneurs natifs, aucune ligne dessinée) ────────────
 func _section(txt: String) -> void:
 	var l := Label.new()
 	l.theme_type_variation = "Section"
@@ -837,7 +927,9 @@ func _grid() -> GridContainer:
 	_body.add_child(g)
 	return g
 
-## carte-hover construite au survol (Godot rappelle _make_custom_tooltip).
+# ── TERRAIN (chantier 5) : ligne compacte, hover = image du biome + détail ────
+## la carte-hover : image + lignes de texte, construite au moment du survol (Godot
+## rappelle `_make_custom_tooltip` sur la ligne mère, cf. `_terrain_row` ci-dessous).
 class BiomeTip:
 	extends PanelContainer
 	const ParchTheme = preload("res://ui/parch_theme.gd")
@@ -860,6 +952,7 @@ class BiomeTip:
 			lb.add_theme_font_size_override("font_size", 13 if i == 0 else 12)
 			vb.add_child(lb)
 
+## une petite HBoxContainer qui porte le hover-image (le survol NATIF, TooltipServer).
 class TerrainRow:
 	extends HBoxContainer
 	var _tex: Texture2D
@@ -874,6 +967,8 @@ class TerrainRow:
 		tip.setup(_tex, _lines)
 		return tip
 
+## la ligne TERRAIN : climat/relief + tenue de siège, en un coup d'œil ; le détail
+## (image du biome, habitabilité) attend le survol — rien de plus qu'un chiffre en trop.
 func _terrain_row(info: Dictionary, def_pct: int) -> void:
 	var row := TerrainRow.new()
 	row.custom_minimum_size = Vector2(PW - 28.0, 16.0)
@@ -894,7 +989,10 @@ func _terrain_row(info: Dictionary, def_pct: int) -> void:
 	row.setup(UIKit.biome_painting(String(info.get("relief", "")), String(info.get("climat", ""))), lines)
 	_body.add_child(row)
 
-## paire label→valeur (grille 2 col) ; le label porte la définition du concept (ui/concepts.gd) au hover.
+## une paire label → valeur dans une grille 2-colonnes (valeur alignée à droite, colorée)
+## D4 — GLOSSAIRE HOVER : le LABEL de la ligne porte la définition du terme s'il est
+## un concept connu (registre CENTRALISÉ ui/concepts.gd, consommé aussi par le Codex
+## et la cascade du TooltipServer) — zéro littéral de définition ici.
 func _kv(grid: GridContainer, label: String, value: String, col: Color) -> void:
 	var lab := Label.new()
 	lab.theme_type_variation = "RowDim"
@@ -913,7 +1011,9 @@ func _kv(grid: GridContainer, label: String, value: String, col: Color) -> void:
 	val.add_theme_color_override("font_color", col)
 	grid.add_child(val)
 
-## ligne de classe : nom + effectif + satisfaction « N% » colorée (détail au hover).
+## une ligne de classe : nom + effectif — la satisfaction en petit « N% » coloré, à
+## droite (retour joueur : « les barres pour désigner un job dans sa classe n'ont
+## AUCUN sens » — plus de ProgressBar ici ; le détail (revenu, panier) reste au hover).
 func _class_row(name: String, pop: int, sat: int) -> void:
 	var hb := HBoxContainer.new()
 	hb.add_theme_constant_override("separation", 8)
@@ -938,6 +1038,7 @@ func _class_row(name: String, pop: int, sat: int) -> void:
 	sl.tooltip_text = "satisfaction (panier de besoins couverts)" if sat >= 0 else "aucun"
 	hb.add_child(sl)
 
+## une puce ressource : icône du pack (si dispo) + nom
 func _res_chip(into: HBoxContainer, res_id: int, name: String) -> void:
 	var chip := HBoxContainer.new()
 	chip.add_theme_constant_override("separation", 3)
@@ -959,6 +1060,7 @@ func _res_chip(into: HBoxContainer, res_id: int, name: String) -> void:
 	lb.text = name
 	chip.add_child(lb)
 
+## un emplacement de bâtiment : icône (repli libellé court) + tooltip
 func _bld_slot(grid: GridContainer, tex: Texture2D, tip: String) -> void:
 	if tex != null:
 		var tr := TextureRect.new()
@@ -976,7 +1078,7 @@ func _bld_slot(grid: GridContainer, tex: Texture2D, tip: String) -> void:
 		lb.custom_minimum_size = Vector2(28, 28)
 		grid.add_child(lb)
 
-# couleur de score 0-100 (rouge bas / vert haut)
+# ── util : couleur de score 0-100 (rouge bas / vert haut) ─────────────────────
 func _score_col(v: int) -> Color:
 	if v < 0:
 		return ParchTheme.DIM_INK
@@ -986,7 +1088,7 @@ func _score_col(v: int) -> Color:
 		return ParchTheme.RED
 	return ParchTheme.INK
 
-# séparateur de milliers
+# ── util : séparateur de milliers ─────────────────────────────────────────────
 func _grp(n) -> String:
 	var s := str(absi(int(n)))
 	var out := ""
