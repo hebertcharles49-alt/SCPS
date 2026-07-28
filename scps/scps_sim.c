@@ -818,6 +818,11 @@ static void sim_cmd_drain(Sim *s, World *w){
             int id=c->a[0]; const FieldArmy *a=campaign_corps_const(s->camp,id);
             if (a && a->active && a->owner==p) campaign_split(s->camp,id,c->a[1]);
             break; }
+          case CMD_SPLIT_COMP: {   /* a: id, inf_p, arch_p, cav_p, mages_p */
+            int id=c->a[0]; const FieldArmy *a=campaign_corps_const(s->camp,id);
+            if (a && a->active && a->owner==p)
+                campaign_split_comp(s->camp,id,c->a[1],c->a[2],c->a[3],c->a[4]);
+            break; }
           case CMD_CORPS_MERGE: {
             int dst=c->a[0], src=c->a[1];
             const FieldArmy *a=campaign_corps_const(s->camp,dst), *b=campaign_corps_const(s->camp,src);

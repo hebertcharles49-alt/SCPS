@@ -157,6 +157,12 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
         * throttlé par le MÊME émissaire que les autres verbes diplo (1 action/2 mois). */
        CMD_REQUEST_LOAN,
        CMD_RENOVER,        /* VÉTUSTÉ : rénover le bâti usé d'une province — a[0]=pid */
+       /* SPLIT COMPOSÉ (armée §2) — détache un corps avec une composition EXACTE par
+        * grand type. a[0]=id du corps source, a[1..4]=paquets (infanterie·archers·
+        * cavalerie·mages, ≥0, cf. ArmyComposition). Revalidé au drain (corps actif, au
+        * joueur) — la légalité fine (total>0 et <effectif, chaque type ≤ dispo du type)
+        * vit dans campaign_split_comp (motif CMD_CORPS_SPLIT). */
+       CMD_SPLIT_COMP,
        CMD_COUNT };
 #define SCPS_CMDQ_MAX 64
 #define SCPS_PEACE_MAX_TERRITORIES 32

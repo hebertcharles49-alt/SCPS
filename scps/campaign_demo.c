@@ -135,8 +135,14 @@ int main(int argc,char**argv){
     militia.units[0].type=U_MILICE; militia.units[0].count=1;
     bool militia_home=campaign_order(camp2,econ,A,frontier,frontier,&militia);
     long militia_before=campaign_corps_units(camp2,A);
+    /* RENFORCER = COMBLER LE DÉFICIT : un corps frais est déjà À SON NOMINAL (posé à la
+     * levée) — sans perte, le déficit est nul et le renfort est un no-op légitime. On
+     * simule ici une perte passée (nominal > courant) pour éprouver le comblement. */
+    ok("un corps FRAIS (nominal=courant) refuse le renfort : déficit nul",
+       campaign_refill_corps(camp2,A,econ)==0 && campaign_corps_units(camp2,A)==militia_before);
+    camp2->army[A].nominal += 1;
     int militia_added=campaign_refill_corps(camp2,A,econ);
-    ok("sur sol national, la milice reçoit 100 hommes sans exiger d'armes manufacturées",
+    ok("sur sol national, la milice COMBLE son déficit (1 paquet) sans exiger d'armes manufacturées",
        militia_home && militia_added==1 && campaign_corps_units(camp2,A)==militia_before+1);
 
     /* ═══ 3. BATAILLE DE RENCONTRE : un défenseur conteste la place ════ */

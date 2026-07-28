@@ -94,6 +94,69 @@ static long force_take(ArmyState *dst, ArmyState *src, long packets){
     }
     return moved;
 }
+/* La force NOMINALE (déficit de renfort) ne fait jamais QUE monter au fil d'une levée,
+ * d'une marche, d'un merge ou d'un refill — « le nominal suit le pic », jamais un
+ * plafond dur. Appelée à chaque point où le courant d'un corps peut croître. */
+static void corps_ratchet_nominal(FieldArmy *a){
+    long cur=force_units(&a->force);
+    if (cur>a->nominal) a->nominal=cur;
+}
+/* SPLIT COMPOSÉ — même classement que campaign_corps_composition (§ ArmyComposition) :
+ * 0 infanterie · 1 archers · 2 cavalerie · 3 mages. Dupliqué DÉLIBÉRÉMENT (pas de
+ * refactor de campaign_corps_composition, hors sujet de cette mission) — les deux
+ * switches doivent rester IDENTIQUES, un futur ajout de type au roster touche les deux. */
+static int unit_category(UnitType t){
+    switch (t){
+        case U_PIQUIER: case U_LANCIER: case U_EPEISTE:
+        case U_HALLEBARDIER:
+        case U_BERSERKER: case U_LANCIER_CHOC: case U_MILICE:
+        case U_LAME_FRANCHE: case U_GARDE_ESCORTE:           return 0;  /* infanterie */
+        case U_ARCHER: case U_ARBALETE: case U_ARQUEBUSIER:
+        case U_ARBALETE_LOURDE: case U_HARCELEUR: case U_TRAQUEUR: return 1;  /* archers */
+        case U_CAV_LEGERE: case U_CAV_LOURDE:
+        case U_CAV_CUIRASSEE: case U_CAV_RAID:               return 2;  /* cavalerie */
+        case U_MAGE: case U_ALCHIMISTE: case U_GARDE_RUNIQUE:return 3;  /* mages */
+        default: return -1;
+    }
+}
+/* Prélève EXACTEMENT `packets` de la CATÉGORIE `cat` dans `src` (réparti au prorata entre
+ * les lignes de cette seule catégorie — même mécanique que force_take, restreinte au
+ * classement unit_category). Armes et pop suivent le MÊME prorata que force_take
+ * (moved / effectif TOTAL du corps, pas de la seule catégorie) : même garantie de
+ * conservation, même niveau d'approximation déjà assumé ailleurs (pas d'attribution
+ * arme↔ligne exacte). Renvoie les paquets réellement pris (0 si rien à prendre). */
+static long category_take(ArmyState *dst, ArmyState *src, int cat, long packets){
+    long total=force_units(src);
+    if (!dst || !src || packets<=0 || total<=0 || cat<0) return 0;
+    long cat_total=0;
+    for (int i=0;i<src->n_units;i++)
+        if (src->units[i].count>0 && unit_category(src->units[i].type)==cat) cat_total+=src->units[i].count;
+    if (cat_total<=0) return 0;
+    if (packets>cat_total) packets=cat_total;
+    long left=packets;
+    for (int i=0;i<src->n_units && left>0;i++){
+        if (src->units[i].count<=0 || unit_category(src->units[i].type)!=cat) continue;
+        long take=(src->units[i].count*packets)/cat_total;
+        if (take>left) take=left;
+        if (take>0){ int j=-1; for (int k=0;k<dst->n_units;k++) if (dst->units[k].type==src->units[i].type){j=k;break;}
+            if (j<0 && dst->n_units<ARMY_MAX_UNITS){ j=dst->n_units++; dst->units[j]=src->units[i]; dst->units[j].count=0; }
+            if (j>=0){ dst->units[j].count+=take; src->units[i].count-=take; left-=take; } }
+    }
+    for (int i=0;i<src->n_units && left>0;i++){
+        if (src->units[i].count<=0 || unit_category(src->units[i].type)!=cat) continue;
+        long take=src->units[i].count<left?src->units[i].count:left;
+        int j=-1; for (int k=0;k<dst->n_units;k++) if (dst->units[k].type==src->units[i].type){j=k;break;}
+        if (j<0 && dst->n_units<ARMY_MAX_UNITS){ j=dst->n_units++; dst->units[j]=src->units[i]; dst->units[j].count=0; }
+        if (j>=0){ dst->units[j].count+=take; src->units[i].count-=take; left-=take; }
+    }
+    long moved=packets-left;
+    for (int w=0;w<W_COUNT;w++){ long x=(src->weapons[w]*moved)/total; dst->weapons[w]+=x; src->weapons[w]-=x; }
+    for (int cl=0;cl<LAB_CLASS_COUNT;cl++){
+        long x=(src->pop_by_class_in_army[cl]*moved)/total;
+        dst->pop_by_class_in_army[cl]+=x; src->pop_by_class_in_army[cl]-=x;
+    }
+    return moved;
+}
 static bool region_ok(const Campaign *c, const WorldEconomy *e, int r){
     if (r<0 || r>=e->n_regions) return false;
     if (e->region[r].impassable) return false;          /* zone morte */
@@ -232,6 +295,7 @@ bool campaign_order(Campaign *c, const WorldEconomy *econ, int owner,
     a->active=true; a->owner=owner; a->loc=from_region; a->dest=target_region;
     army_merge_into(&a->force, src_force);                /* TRANSFERT (pas copie) : src_force est vidé */
     a->taken=0; a->legs=0; a->battles=0; a->taken_region=-1;
+    corps_ratchet_nominal(a);   /* ce corps « historique » (slot 0) n'appelle jamais campaign_raise : la levée passe ICI */
     if (from_region==target_region){                     /* déjà sur place */
         a->phase=FA_IDLE; a->next=-1; a->days_left=0.f; a->leg_days=0.f;
         corps_count_sync(c,owner); return true;
@@ -259,6 +323,7 @@ int campaign_raise(Campaign *c, const WorldEconomy *econ, int owner,
     memset(a,0,sizeof *a); a->id=id; a->owner=owner; a->active=true;
     a->loc=from_region; a->dest=target_region; a->next=-1; a->taken_region=-1;
     a->posture=tombstone; a->force=det;
+    a->nominal=force_units(&a->force);   /* posée à la levée : le plein de référence naît ici */
     if (from_region==target_region) a->phase=FA_IDLE;
     else { a->next=hop; a->phase=FA_MARCH;
            a->leg_days=army_step_days(&a->force,c->reg_biome[hop],c->reg_height[hop],false,false);
@@ -276,10 +341,51 @@ int campaign_split(Campaign *c, int id, long packets){
     }
     if (slot<0) return -1;
     int nid=CAMPAIGN_CORPS_ID(src->owner,slot); FieldArmy *dst=&c->army[nid]; ArmyState det;
+    long old_nominal=src->nominal;
     if (force_take(&det,&src->force,packets)<=0) return -1;
     memset(dst,0,sizeof *dst); dst->id=nid; dst->owner=src->owner; dst->active=true;
     dst->loc=src->loc; dst->dest=-1; dst->next=-1; dst->phase=FA_IDLE; dst->taken_region=-1;
     dst->posture=src->posture; dst->force=det;
+    /* le nominal se partage au PRORATA du split (les deux moitiés se partagent l'ancien plein) */
+    long nom_take = (old_nominal*packets)/total;
+    if (nom_take<0) nom_take=0;
+    if (nom_take>old_nominal) nom_take=old_nominal;
+    dst->nominal=nom_take; src->nominal=old_nominal-nom_take;
+    corps_count_sync(c,src->owner);
+    return nid;
+}
+
+/* SPLIT COMPOSÉ (§2) : détache une composition EXACTE par grand type — cf. header. */
+int campaign_split_comp(Campaign *c, int id, long inf_p, long arch_p, long cav_p, long mages_p){
+    FieldArmy *src=campaign_corps(c,id);
+    if (!src || !src->active || src->phase==FA_BATTLE || src->phase>=FA_EMBARK) return -1;
+    if (inf_p<0 || arch_p<0 || cav_p<0 || mages_p<0) return -1;
+    long total_req=inf_p+arch_p+cav_p+mages_p;
+    long total=force_units(&src->force);
+    if (total_req<=0 || total_req>=total) return -1;
+    ArmyComposition avail=campaign_corps_composition(c,id);   /* chaque type ≤ dispo du type */
+    if (inf_p>avail.infanterie || arch_p>avail.archers || cav_p>avail.cavalerie || mages_p>avail.mages) return -1;
+    int slot=-1; for (int s=0;s<CAMPAIGN_MAX_CORPS;s++){
+        int nid=CAMPAIGN_CORPS_ID(src->owner,s); if (!c->army[nid].active){slot=s;break;}
+    }
+    if (slot<0) return -1;
+    ArmyState det; army_init(&det); det.doctrine=src->force.doctrine;
+    long moved=0;
+    moved += category_take(&det,&src->force,0,inf_p);
+    moved += category_take(&det,&src->force,1,arch_p);
+    moved += category_take(&det,&src->force,2,cav_p);
+    moved += category_take(&det,&src->force,3,mages_p);
+    if (moved!=total_req) return -1;   /* composition pas EXACTE (ne devrait pas arriver : avail vient d'être vérifié) */
+    int nid=CAMPAIGN_CORPS_ID(src->owner,slot); FieldArmy *dst=&c->army[nid];
+    long old_nominal=src->nominal;
+    memset(dst,0,sizeof *dst); dst->id=nid; dst->owner=src->owner; dst->active=true;
+    dst->loc=src->loc; dst->dest=-1; dst->next=-1; dst->phase=FA_IDLE; dst->taken_region=-1;
+    dst->posture=src->posture; dst->force=det;
+    /* même règle que campaign_split : le nominal se partage au prorata des paquets déplacés */
+    long nom_take = (old_nominal*moved)/total;
+    if (nom_take<0) nom_take=0;
+    if (nom_take>old_nominal) nom_take=old_nominal;
+    dst->nominal=nom_take; src->nominal=old_nominal-nom_take;
     corps_count_sync(c,src->owner);
     return nid;
 }
@@ -289,6 +395,8 @@ bool campaign_merge(Campaign *c, int dst_id, int src_id){
     if (!dst || !src || dst==src || !dst->active || !src->active || dst->owner!=src->owner) return false;
     if (dst->loc!=src->loc || dst->phase==FA_BATTLE || src->phase==FA_BATTLE || dst->phase>=FA_EMBARK || src->phase>=FA_EMBARK) return false;
     army_merge_into(&dst->force,&src->force);
+    dst->nominal += src->nominal;   /* SOMMÉ au merge */
+    corps_ratchet_nominal(dst);     /* filet : le courant fusionné ne doit jamais dépasser le nominal résultant */
     int owner=src->owner, id=src->id, tombstone=src->posture;
     memset(src,0,sizeof *src); src->id=id; src->owner=owner; src->loc=src->dest=src->next=-1;
     src->taken_region=-1; src->posture=tombstone; src->phase=FA_IDLE;
@@ -1118,6 +1226,7 @@ long campaign_disband_corps(Campaign *c, int id, ArmyState *dst_host_army){
     a->days_left=0.f; a->leg_days=0.f; a->taken=0; a->taken_region=-1;
     a->legs=0; a->battles=0; a->broken_days=0;
     a->sail_transports=0; a->sail_days=0.f; a->land_at_port=false; a->intercept_done=false;
+    a->nominal=0;   /* le slot est LIBRE : pas de plein fantôme pour la prochaine occupation */
     a->posture=tombstone;
     corps_count_sync(c,a->owner);
     return packets;
@@ -1164,6 +1273,7 @@ int campaign_refill_corps(Campaign *c, int id, WorldEconomy *econ){
     FieldArmy *fa=campaign_corps(c,id); if (!fa || !econ) return 0;
     if (!campaign_can_refill_corps(c,econ,id)) return 0;
     int owner=fa->owner; ArmyState *a=&fa->force;
+    if (force_units(a) >= fa->nominal) return 0;   /* DÉJÀ à son plein (ou au-delà) : rien à combler */
     int n=a->n_units, added=0;
     for (int i=0;i<n;i++){
         if (a->units[i].count<=0) continue;
@@ -1180,6 +1290,10 @@ int campaign_refill_corps(Campaign *c, int id, WorldEconomy *econ){
         a->weapons[d->weapon] += 1;                       /* le tampon de combat (source : macro) */
         if (army_recruit(a, econ, owner, t, 1)) added++;   /* lève un paquet de 100 (pool = strates du pays) */
     }
+    /* « cap par vague » : cet appel peut ajouter +1 paquet par LIGNE présente (pas juste
+     * le déficit d'un coup) et donc DÉPASSER légèrement l'ancien nominal si plusieurs
+     * lignes étaient proches du plein — le nominal RELÈVE alors au nouveau pic. */
+    corps_ratchet_nominal(fa);
     return added;
 }
 
@@ -1211,3 +1325,11 @@ ArmyComposition campaign_corps_composition(const Campaign *c, int id){
 
 /* (army_host_word RETIRÉ — P1.10 : l'effectif EXACT s'affiche, plus de mot de
  * brouillard ; l'asymétrie d'information ennemie tombe.) */
+
+void campaign_backfill_nominal(Campaign *c){
+    if (!c) return;
+    for (int i=0;i<CAMPAIGN_ARMY_CAP;i++){
+        FieldArmy *a=&c->army[i];
+        if (a->active) corps_ratchet_nominal(a);
+    }
+}

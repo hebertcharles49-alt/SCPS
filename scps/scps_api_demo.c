@@ -9,6 +9,7 @@
  * de déterminisme que l'hôte Godot héritera tant qu'il n'AFFICHE que.
  */
 #include "scps_api.h"
+#include "scps_army.h"       /* ARMÉE — LA FORCE NOMINALE : U_MILICE (levée toujours ouverte, banc seul) */
 #include "scps_tune.h"       /* MONNAIE M14 — B7 : tune_f/tune_set (DEBT_FIXED/DEBT_DUE_FRAC) */
 #include "scps_religion.h"   /* P3 : test de persistance religion */
 #include "scps_provlog.h"    /* DACT_* : le journal d'actes diplomatique */
@@ -1306,6 +1307,47 @@ int main(int argc, char **argv){
                    seen1?"des":"aucun", seen2?"des":"aucune");
             ok("scps_battle_info : restant/progression/defense/vivres/terrain/issue du siege sont bornes", siege_bounded==1);
             ok("scps_corps_refill_preview : hommes/armes/garantie/motif sont purs et bornés", refill_preview_bounded==1);
+        }
+
+        /* ── ARMÉE — LA FORCE NOMINALE (« renforcer = combler le déficit ») + SPLIT
+         * COMPOSÉ : un corps FRAIS (posé à la levée) est déjà à son PLEIN — le renfort
+         * n'a rien à combler (preview grisée, déficit nul) ; campaign_split_comp détache
+         * une composition EXACTE, jamais un clamp. Sim DÉDIÉE (pas sd) : on lève à la main
+         * une milice (armes de fortune, levée toujours ouverte, quel que soit l'arsenal). ── */
+        {
+            ScpsSim *sn = scps_sim_new(); scps_sim_generate(sn, seed);
+            scps_sim_advance_days(sn, 100);   /* laisse la pop/le trésor s'installer */
+            int mp = scps_player(sn);
+            int cap_reg = scps_country_capital_region(sn, mp);
+            for (int k=0;k<6;k++) scps_player_recruit(sn, U_MILICE);
+            scps_sim_advance_days(sn, 3);     /* drain des CMD_RECRUIT : garnit la réserve (warhost) */
+            ScpsArmy arm; scps_country_army(sn, mp, &arm);
+            long take = (arm.regiments<2) ? 0 : (arm.regiments>6 ? 6 : arm.regiments);
+            int raised = (take>=2 && cap_reg>=0) ? scps_player_raise_corps(sn, take, cap_reg) : 0;
+            scps_sim_advance_days(sn, 2);     /* drain du CMD_CORPS_RAISE : le corps naît, posé à son nominal */
+            int nc = scps_country_corps_count(sn, mp);
+            int cid = nc>0 ? scps_country_corps_id(sn, mp, 0) : -1;
+            ScpsRefillPreview rp0={0};
+            int got0 = cid>=0 ? scps_corps_refill_preview(sn, cid, &rp0) : 0;
+            ok("un corps FRAIS (posé à la levée) est à son NOMINAL : déficit nul, renfort grisé",
+               raised==1 && cid>=0 && got0==1 && rp0.valid
+               && rp0.requested_humans==0 && rp0.allowed==0 && rp0.reason_code==5);
+
+            ScpsArmyInfo ai0={0}; if (cid>=0) scps_corps_info(sn, cid, &ai0);
+            int split_ok = (cid>=0 && ai0.inf>=200) ? scps_player_split_comp(sn, cid, 1,0,0,0) : 0;
+            scps_sim_advance_days(sn, 1);     /* drain du CMD_SPLIT_COMP */
+            int nc2 = scps_country_corps_count(sn, mp);
+            int new_id=-1;
+            for (int n=0;n<nc2;n++){ int id=scps_country_corps_id(sn,mp,n); if(id!=cid){new_id=id;break;} }
+            ScpsArmyInfo aiN={0}, aiS={0};
+            if (new_id>=0) scps_corps_info(sn, new_id, &aiN);
+            if (cid>=0)    scps_corps_info(sn, cid, &aiS);
+            ok("SPLIT COMPOSÉ : le nouveau corps porte EXACTEMENT la composition demandée (1 paquet d'infanterie, rien d'autre)",
+               split_ok==1 && new_id>=0
+               && aiN.inf==100 && aiN.arch==0 && aiN.cav==0 && aiN.mages==0 && aiN.units==100);
+            ok("SPLIT COMPOSÉ : le corps source perd EXACTEMENT ce qui est parti (conservation, jamais un clamp)",
+               cid>=0 && aiS.inf==ai0.inf-100 && aiS.units==ai0.units-100);
+            scps_sim_free(sn);
         }
 
         /* ── UI PROVINCE — câblage complet (LOTS 1/3/4/6) : 4 readers additifs, bornés. ── */

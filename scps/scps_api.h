@@ -254,17 +254,23 @@ typedef struct {
 typedef struct {
     int valid, allowed;
     int corps_id, region;
-    int reason_code;             /* 0 prêt · 1 invalide/étranger · 2 hors sol national · 3 vide · 4 population */
+    int reason_code;             /* 0 prêt · 1 invalide/étranger · 2 hors sol national · 3 vide ·
+                                   * 4 population · 5 déjà à pleine force (nominal atteint) */
     const char *reason;
-    long requested_humans;       /* +100 par type d'unité encore présent */
-    long population_ready_humans;/* part dont la classe sociale est disponible */
-    long guaranteed_humans;      /* part couverte maintenant par population + arsenal national */
+    long requested_humans;       /* le DÉFICIT total = max(0, nominal − courant) × 100 ; 0 si plein */
+    long population_ready_humans;/* part (≤ requested_humans) dont la classe sociale est disponible */
+    long guaranteed_humans;      /* part (≤ population_ready_humans) couverte par arsenal national */
     long weapons_needed, weapons_owned;
     int n_needs;
     ScpsRefillNeed need[SCPS_REFILL_MAX_NEEDS];
 } ScpsRefillPreview;
-/* Lecture pure. `guaranteed_humans` exclut volontairement les imports : le marché
- * peut compléter au drain, au prix et au trésor alors courants. */
+/* Lecture pure. RENFORCER = COMBLER LE DÉFICIT : `requested_humans` est le déficit TOTAL
+ * (nominal − courant) — 0 quand le corps est déjà à son plein (façade : bouton grisé).
+ * `population_ready_humans`/`guaranteed_humans`/`need[]` restent le coût de la PROCHAINE
+ * vague (« cap par vague » conservé : +1 paquet/type présent par appel, cf.
+ * campaign_refill_corps) mais sont CAPÉS au déficit affiché — jamais un chiffre qui
+ * dépasse `requested_humans`. `guaranteed_humans` exclut volontairement les imports : le
+ * marché peut compléter au drain, au prix et au trésor alors courants. */
 int scps_corps_refill_preview(ScpsSim *s, int id, ScpsRefillPreview *out);
 
 /* W-GUERRE UI (lot A) — ÉTAT DE GUERRE d'une région (pour les HACHURES de siège/
@@ -1219,6 +1225,10 @@ int  scps_player_navy_build    (ScpsSim *s, int hull);
 int  scps_player_disband       (ScpsSim *s);
 int  scps_player_raise_corps   (ScpsSim *s, long packets, int target_region);
 int  scps_player_split_corps   (ScpsSim *s, int id, long packets);
+/* SPLIT COMPOSÉ : détache un corps avec EXACTEMENT cette composition par grand type
+ * (paquets de 100, ≥0, au moins un >0 — cf. ArmyComposition/campaign_split_comp pour la
+ * légalité fine, revalidée au drain). */
+int  scps_player_split_comp    (ScpsSim *s, int id, long inf_p, long arch_p, long cav_p, long mages_p);
 int  scps_player_merge_corps   (ScpsSim *s, int dst_id, int src_id);
 int  scps_player_move_corps    (ScpsSim *s, int id, int target_region);
 int  scps_player_refill_corps  (ScpsSim *s, int id);

@@ -56,6 +56,16 @@ typedef struct {
     float      days_left;   /* jours restants de l'étape (marche) ou du siège */
     float      leg_days;    /* durée totale de l'étape en cours (pour l'attrition) */
     ArmyState  force;       /* la composition (détachement) */
+    /* RENFORCER = COMBLER LE DÉFICIT — FORCE NOMINALE (paquets de 100) : le PLEIN de
+     * référence de ce corps, jamais un plafond dur. Posée à la levée (campaign_raise,
+     * campaign_order — le corps « slot 0 » historique n'appelle jamais campaign_raise) ;
+     * répartie au PRORATA sur un split (les deux moitiés se partagent l'ancien nominal,
+     * campaign_split/campaign_split_comp) ; SOMMÉE sur un merge ; RELEVÉE dès que le
+     * courant dépasse l'ancien pic (un refill, un merge généreux, une nouvelle levée sur
+     * un corps déjà actif — « le nominal suit le pic »). Le déficit visé par le renfort
+     * = max(0, nominal − courant) ; 0 (plein) grise le bouton côté façade. SAVE_VERSION
+     * 97 (champ neuf ⇒ struct Campaign plus large, <97 refusé). */
+    long       nominal;
     /* journal (UI/IA) */
     int        taken;       /* régions RÉDUITES (sièges menés à terme) — cumul */
     int        taken_region;/* dernière région réduite NON ENCORE récoltée (-1 = aucune) :
@@ -195,6 +205,15 @@ int campaign_preview_corps(const Campaign *c, const WorldEconomy *econ,
                            int *path, int max_path, float *days_out,
                            int *reason_out, int *arrival_out);
 int  campaign_split(Campaign *c, int id, long packets);
+/* SPLIT COMPOSÉ : comme campaign_split, mais détache une composition EXACTE par GRAND
+ * TYPE — `inf_p`/`arch_p`/`cav_p`/`mages_p` (paquets de 100, ≥0, cf. ArmyComposition/
+ * campaign_corps_composition pour le classement des 22 types en 4 familles). Refuse si
+ * le total demandé est nul, couvre le corps ENTIER (il doit en rester), ou si un type
+ * dépasse ce que le corps possède RÉELLEMENT de ce type — jamais un clamp silencieux, la
+ * composition livrée est EXACTEMENT celle demandée ou l'appel échoue net (-1). Le
+ * nominal se répartit au même prorata que campaign_split (packets déplacés / effectif
+ * courant du corps source). Renvoie l'id du nouveau corps, -1 sinon. */
+int  campaign_split_comp(Campaign *c, int id, long inf_p, long arch_p, long cav_p, long mages_p);
 bool campaign_merge(Campaign *c, int dst_id, int src_id);
 
 /* L'EMBARQUEMENT (mer §6) : ordonne la traversée depuis `from_region` (un port
@@ -244,6 +263,13 @@ long        campaign_corps_units(const Campaign *c, int id);
 long        campaign_disband_corps(Campaign *c, int id, ArmyState *dst_host_army);
 bool        campaign_can_refill_corps(const Campaign *c, const WorldEconomy *econ, int id);
 void        campaign_refill_corps_cost(const Campaign *c, int id, long *men, long *mat);
+/* RENFORCER = COMBLER LE DÉFICIT (nominal − courant). Refuse net (0, rien consommé) si
+ * le corps est DÉJÀ à son nominal (ou au-delà) — le déficit est nul, l'appelant façade
+ * doit avoir grisé le bouton (cf. scps_corps_refill_preview). Sinon : MÊME granularité
+ * qu'avant (« cap par vague » conservé : +1 paquet de 100 par type d'unité présent et
+ * finançable ce tick, pas tout le déficit d'un coup) ; en fin d'appel, si le total
+ * dépasse malgré tout l'ancien nominal (plusieurs lignes remplies dans la même vague),
+ * le nominal est RELEVÉ au nouveau pic. Renvoie les paquets ajoutés. */
 int         campaign_refill_corps(Campaign *c, int id, WorldEconomy *econ);
 
 /* ---- Lecteurs (membrane : tangibles) ---------------------------------- */
@@ -277,9 +303,18 @@ bool campaign_can_refill(const Campaign *c, const WorldEconomy *econ, int owner)
 /* Coût d'un renfort (+1 paquet de 100 par type d'unité présent) : `men` hommes
  * levés, `mat` matériaux pour les armes (achetés au marché, or si manque). Lecture. */
 void campaign_refill_cost(const Campaign *c, int owner, long *men, long *mat);
-/* RENFORCE l'armée : +1 paquet par type d'unité (fabrique l'arme en pompant le
- * marché si besoin, lève la pop). Le POOL par classe est lu des strates econ du
- * pays `owner` (pool pop UNIFIÉ — fin de LaborEcon). Renvoie les paquets ajoutés. */
+/* RENFORCE l'armée : comble le DÉFICIT (nominal − courant), « cap par vague » +1 paquet
+ * par type d'unité présent et finançable ce tick (fabrique l'arme en pompant le marché
+ * si besoin, lève la pop) — no-op si déjà au nominal, cf. campaign_refill_corps ci-
+ * dessous. Le POOL par classe est lu des strates econ du pays `owner` (pool pop UNIFIÉ —
+ * fin de LaborEcon). Renvoie les paquets ajoutés. */
 int  campaign_refill(Campaign *c, int owner, WorldEconomy *econ);  /* F6 : pompe les armes macro */
+
+/* Sécurité de CHARGEMENT (scps_save.c, appelée après un load réussi, motif
+ * demography_dyn_id_rebase) : tout corps ACTIF dont le nominal désérialisé est SOUS son
+ * effectif courant est relevé au courant — le nominal ne doit jamais laisser un déficit
+ * négatif (corps_refill_preview le clamperait à 0 de toute façon, mais un save cohérent
+ * ne doit pas dépendre de ce clamp). Idempotente, sans effet sur un save déjà cohérent. */
+void campaign_backfill_nominal(Campaign *c);
 
 #endif /* SCPS_CAMPAIGN_H */

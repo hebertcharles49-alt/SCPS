@@ -7194,3 +7194,154 @@ Commits : D1 `8c090ec` + fix `0f8d6a7` · D2 `878b163` · D3 `d557685` · carto
   intégralement restauré (checkout pré-trim + merge des changements fonctionnels).
 - **Restes** : couleurs claires héritées de l'époque panneau-sombre à traquer ailleurs
   (country_panel? battle?) ; vérifier en jeu le hover biome + la scrollbar au débord réel.
+
+## 2026-07-28 — battle_anim.gd : fond terrain (couleur) + 1 forme = 1 régiment
+- **Découverte** : `setup()` ne lit JAMAIS les champs `atk_units`/`def_units` de battle_info —
+  le total par camp vient de la somme `inf+arch+cav+mages` (comp[]). Ces deux champs ne servent
+  qu'à `on_tick()` (delta pertes/renfort). Piège si on tente de « fixer » un total via `*_units`
+  seul dans un scénario synthétique : ça n'a aucun effet sur la formation initiale.
+- **Décision (fond)** : l'image biome enluminée (UIKit.biome_painting, planches parchemin) est
+  RÉSERVÉE à la fiche province — le widget bataille peint désormais un simple APLAT dérivé des
+  mots relief/climat (`_terrain_color`, statique, même style de matching substring que
+  biome_painting mais → Color, pas Texture2D). Table : glace/toundra/polaire → pâle,
+  jungle → vert sombre, marais/tourbe/mangrove → vert-brun, désert/dune/aride → sable,
+  mont/pic/volcan → gris-brun (réutilise SLICE_PAL[4]), côte/littoral/mer → sable-bleu,
+  défaut (dont plaines et `setup_parade` sans mots) → herbe sourde. Le preload UIKit a sauté
+  (plus aucun autre usage dans le fichier) ; `_bg: Texture2D` → `_bg_col: Color`.
+- **Décision (échelle)** : `MAX_SHAPES=22` avec `_per = ceil(total/MAX_SHAPES)` (une forme
+  représentait un compte VARIABLE selon la taille de l'armée — 1 forme ≠ 1 unité lisible)
+  remplacé par `PER_UNIT=100` FIXE (1 forme = 1 régiment de 100 hommes) + `MAX_SHAPES` relevé
+  à 30 comme SEUIL d'escalade (pas de troncature) : `_shape_count(comp, per)` rejoue exactement
+  la grille (3 familles ceil + cavalerie plafonnée à 4) et `_per` grimpe par pas de 100 tant que
+  ce compte dépasse 30 — jamais le `if n >= MAX_SHAPES: break` de la boucle de génération n'est
+  censé se déclencher (garde-fou mort, laissé tel quel). `_kill`/`_spawn` n'ont pas été touchés
+  (ils consomment déjà `_per[side]`, comme demandé) ; `_spawn` garde SON propre plafond
+  `idx >= MAX_SHAPES` — un camp déjà à 30 formes n'affiche pas de nouvelles arrivées visuelles
+  au-delà (le compteur de troupes réel, lui, suit quand même via `_units_seen`) : gardé tel
+  quel, hors périmètre de cette mission (seul le calcul de `_per` initial était visé).
+- **Piège** : `battle_anim_shot.gd` avait un scénario à `units_are_humans:false` (échelle ×100
+  engine→hommes) — un corps de « 300 hommes » = `atk_inf: 3` (pas 300) dans le dict de test ;
+  facile de se tromper d'un facteur 100 en composant le synthétique.
+- **Gates** : parse `--check-only` propre (seule la fuite RID FontAdvanced connue, ignorée) ;
+  probe fenêtrée → 4 PNG lus (`godot/project/shots_battle/`) :
+  - `01_formations` : fond tan/sable plat (Désert/Aride, plus d'image texturée) ; camp rouille
+    (atk, 300 h) = 3 carrés en 1 colonne verticale ; camp acier (def, 3000 h) = grille compacte
+    6 colonnes × 5 rangs = 30 carrés, aucune forme manquante/tronquée.
+  - `02_choc` : étiquette « choc 1 », étincelles (croix claires) entre les deux blocs, léger
+    jitter/décalage des formations (moral tombé à 80/60 %), 1 forme atk déjà éteinte (fade).
+  - `03_apres` : étincelles disparues, atk à 2 carrés visibles (1 mort fondu), def à ~26 carrés
+    (4 killed, trou visible dans la grille en bas à gauche).
+  - `04_renfort` : le bloc atk s'est étoffé (colonne allongée, ~8 carrés visibles = 2 restants +
+    6 arrivants entrés par le bord gauche) ; def inchangé (aucun renfort programmé ce tick).
+- **Restes** : aucun — les 2 items de la mission (fond terrain, 1 forme = 1 régiment) sont
+  posés et prouvés par la probe ; le plafond d'affichage des renforts (`_spawn` idx>=MAX_SHAPES)
+  reste un comportement pré-existant, pas retouché, à examiner seulement si un jour un camp doit
+  visiblement dépasser 30 formes AVEC renfort en cours de bataille.
+
+## 2026-07-28 — MOTEUR ARMÉE : la FORCE NOMINALE (renforcer = combler le déficit) + SPLIT COMPOSÉ
+
+**Découvertes**
+- **`campaign_order` est le VRAI point de levée, pas `campaign_raise`.** Le brief supposait
+  `campaign_raise` comme LE verbe de levée (le « ? » dans la consigne) — en réalité l'IA
+  (`sim_campaign_orders`/`sim_campaign_defense`, scps_sim.c) ET le joueur (CMD_CAMPAIGN,
+  CMD_MOVE_ARMY réserve→déploiement) créent/agrandissent le corps « slot 0 » (l'ancien corps
+  principal, `CAMPAIGN_CORPS_ID(owner,0)==owner`) via `campaign_order`, qui ne passe JAMAIS par
+  `campaign_raise`. `campaign_raise` (CMD_CORPS_RAISE) n'est QUE le verbe explicite multi-corps
+  (détacher un DEUXIÈME corps). Sans poser le nominal aussi dans `campaign_order`, tout corps
+  IA et tout corps joueur « classique » (non explicite) aurait `nominal=0` en permanence
+  (memset de `campaign_init`), donc DÉFICIT NÉGATIF clampé à 0 en permanence → jamais de
+  renfort possible pour l'immense majorité des armées du jeu. Résolu par un helper commun
+  `corps_ratchet_nominal()` (« le nominal suit le pic », jamais un plafond dur) appelé aux
+  QUATRE points où le courant d'un corps peut croître : `campaign_order` (le vrai point de
+  levée du corps historique), `campaign_raise` (memset→0 puis assigné au courant, équivalent),
+  `campaign_merge` (dst += src->nominal puis filet ratchet), `campaign_refill_corps` (fin de
+  vague, au cas où plusieurs lignes remplies dans le même appel dépassent l'ancien pic).
+- **Un corps FRAIS est déjà À SON PLEIN par construction** (nominal posé = courant au moment
+  de la levée) — le renfort y est un no-op LÉGITIME (déficit nul), pas un bug. Le test
+  `campaign_demo.c` §2 (« la milice reçoit 100 hommes ») supposait l'ANCIEN comportement
+  (+100 inconditionnel) ; corrigé pour D'ABORD prouver le refus sur corps frais, PUIS bump
+  `camp2->army[A].nominal += 1` (accès direct au champ — FieldArmy n'est pas opaque en C) pour
+  simuler une perte passée avant de prouver le comblement. Le même écueil existe pour TOUT
+  futur test qui présumerait « refill toujours +100 ».
+- **Invariant caché dans `scps_api_demo.c` (déjà présent, ligne ~1245)** :
+  `population_ready_humans <= requested_humans <= …` était VRAI dans l'ancien monde (chaque
+  ligne contribue systématiquement à `requested_humans`) mais devient FAUX dès que
+  `requested_humans` = un déficit total (potentiellement < n_lignes × 100) sans changer le
+  calcul de `population_ready_humans`/`guaranteed_humans` (toujours « +100 par ligne présente,
+  sans plafond »). Corrigé en CAPANT les deux boucles de `scps_corps_refill_preview` à un
+  budget partagé = `requested_humans` (elles s'arrêtent d'accumuler une fois le déficit
+  « couvert » sur le papier) — sans ce cap, le banc existant aurait cassé sur n'importe quel
+  corps multi-lignes proche du plein. Un futur agent touchant cette fonction : ne PAS retirer
+  le budget sans revérifier cet invariant.
+- **`scps_api_demo.c` n'avait JAMAIS exercé un vrai corps de campagne du joueur** (aucun appel
+  à `scps_player_recruit`/`scps_player_raise_corps`/`scps_player_campaign` n'était vérifié en
+  aval — `scps_player_campaign(s2,0,1)` ligne ~265 ne teste que l'ENFILAGE, jamais le succès).
+  Les boucles `scps_country_corps_count(sd,me_refill)` du bloc war_state tournaient
+  probablement à VIDE depuis leur écriture (le joueur, exclu de l'auto-campagne IA via
+  `c==s->human_player`, n'a de corps que s'il en commande un). Pour les 3 nouveaux asserts,
+  construit une Sim DÉDIÉE : `scps_player_recruit(sn,U_MILICE)` ×6 (armes de fortune, RES_NONE
+  → AUCUN gate d'arsenal, seul un pool `LAB_LABORER` non-nul suffit, robuste dès la genèse) →
+  advance → `scps_country_army().regiments` lu pour savoir EXACTEMENT combien de paquets sont
+  disponibles avant de `raise_corps` (jamais un nombre en dur qui pourrait dépasser la réserve
+  réelle) → `raise_corps(take, cap_reg)` avec `from==target==capitale` (pas de marche, IDLE
+  immédiat, zéro dépendance au pathing). A fallu `#include "scps_army.h"` dans
+  `scps_api_demo.c` (jamais utilisé avant) pour la constante `U_MILICE` — le fichier ne teste
+  QUE la façade opaque d'habitude, mais `scps_player_recruit(ScpsSim*, int unit)` prend déjà
+  un entier brut de toute façon (pas une vraie fuite d'abstraction).
+- **`ScpsArmyInfo.inf/arch/cav/mages` sont déjà ×100 (des HOMMES, pas des paquets)** — piège à
+  un facteur 100 si on compare au paramètre PAQUETS de `scps_player_split_comp` (qui prend des
+  paquets, comme `campaign_split`). `split_comp(id,1,0,0,0)` (1 PAQUET) donne
+  `aiN.inf==100` (HOMMES), pas `aiN.inf==1`.
+- **`category_take` (nouveau, scps_campaign.c) doit dupliquer le classement de
+  `campaign_corps_composition`, PAS le réutiliser** — refactoriser cette dernière touchait du
+  code hors-sujet (mission « ne pas toucher au code hors sujet ») ; les deux switches
+  (`unit_category` / le switch inline de `campaign_corps_composition`) DOIVENT rester
+  identiques : tout futur ajout au roster (roster 22 → 23) doit toucher les DEUX.
+- **`campaign_disband_corps` ne remettait PAS tous les champs à zéro** (déjà le cas AVANT
+  cette mission pour `rally_used`/`rally_days`/`rally_packets` — non touché, hors sujet) ; le
+  slot0 réutilisé via `campaign_order` (jamais memset, contrairement à `campaign_raise`/
+  `campaign_split`) aurait hérité d'un `nominal` fantôme d'une INCARNATION précédente du même
+  slot sans le `a->nominal=0;` ajouté à `campaign_disband_corps`.
+
+**Pièges**
+- MSYS2 `bash.exe -lc '...'` démarre à `$HOME` (`/home/<user>`), PAS au cwd de l'outil Bash —
+  chaque invocation doit `cd "/c/Users/Charl/Desktop/SCPS-main"` EXPLICITEMENT en tête de
+  commande (`--login -c 'cd ... ; export ... ; make ...'`), sinon `make` échoue avec
+  « Aucune règle pour fabriquer la cible » (silencieux sur la vraie cause : mauvais dossier).
+- `Bash run_in_background` + un pipe `| tail -N` NE CAPTURE QUE les N dernières lignes dans le
+  fichier `.output` — pour relire le détail complet d'un run terminé il faut rediriger vers un
+  vrai fichier (`> log 2>&1`) et le relire ensuite, pas se fier au tail déjà tronqué.
+- `-Wmisleading-indentation` (gcc -Wall -Wextra, gate de build) : deux `if` sur la MÊME ligne
+  physique (`if (a) x=0; if (b) x=y;`) sont acceptés par le compilateur mais WARNent — séparer
+  sur deux lignes (motif déjà présent ailleurs dans scps_campaign.c, à réutiliser).
+
+**Restes**
+- `campaign_refill_corps_cost`/`campaign_refill_cost` (scps_campaign.c, lecteurs legacy non
+  utilisés par la façade — aucun binding scps_api/Godot ne les appelle, superseded par
+  `scps_corps_refill_preview`) : PAS mis à jour (toujours « +1 paquet par type présent », hors
+  sujet — aucun consommateur ne les lit).
+- **`make test` (40 bancs) : 1 rouge PRÉEXISTANT/SANS RAPPORT** — `agency_demo` (12/16, 4 échecs
+  sur des seuils `K_inst`/`H_coerc`/`PE_infra`/`food_cap` bâtis en capitale) — CONFIRMÉ hors de
+  cette mission : `agency_demo` ne lie NI `scps_campaign.o` NI `scps_sim.o` NI `scps_save.o`
+  (cf. `AGENCY_DEMO_OBJS`, Makefile) — aucun fichier touché par cette mission n'est même dans
+  son graphe de liens. Gates obligatoires de la mission (`scps_api_demo`, `golden`, `smoke`)
+  tous VERTS ; ce rouge préexiste et reste à investiguer par un futur agent (pas armée).
+- **Signatures nouvelles pour l'agent UI** (rien de câblé côté `godot/project/**`, hors
+  périmètre) :
+  - `ScpsRefillPreview.requested_humans` change de sens : DÉFICIT total
+    (`max(0,nominal−courant)×100`), 0 quand le corps est déjà plein → bouton à GRISER
+    (`reason_code==5`, nouveau : « Corps déjà à pleine force »). `population_ready_humans`/
+    `guaranteed_humans`/`need[]` restent le coût de la PROCHAINE vague mais sont maintenant
+    CAPÉS au déficit affiché.
+  - `int scps_player_split_comp(ScpsSim*, int id, long inf_p, long arch_p, long cav_p, long
+    mages_p)` (paquets de 100, ≥0, au moins un >0, chaque type ≤ dispo — refus net sinon,
+    JAMAIS un clamp) + binding Godot `player_split_comp(id, inf_p, arch_p, cav_p, mages_p)`
+    (godot/src/scps_sim_node.{cpp,h}) — composition EXACTE du nouveau corps, symétrique à
+    `campaign_corps_composition`/`ScpsArmyInfo.inf/arch/cav/mages` (déjà exposés) pour un futur
+    panneau « split par curseur de type ».
+- **SAVE_VERSION 97** (bump : `FieldArmy.nominal`, long neuf → `sizeof(Campaign)` grandit,
+  section CAMP = un seul blob). `save_sane` revalide `nominal∈[0,1e8]` par corps actif ;
+  `campaign_backfill_nominal()` (appelée après tout load réussi, motif
+  `demography_dyn_id_rebase`) relève tout `nominal` désérialisé sous le courant — filet, pas un
+  mécanisme de migration (une save <v97 est de toute façon FLATLY REFUSÉE par le contrat
+  `h.version!=SAVE_VERSION`, aucune trajectoire de migration n'existe dans ce moteur).

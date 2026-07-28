@@ -32,7 +32,12 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 96u           /* v96 : MONNAIE M14 — B5 LA VENTILATION PAR ORDRE : CountryDebt
+#define SAVE_VERSION 97u           /* v97 : ARMÉE — LA FORCE NOMINALE : FieldArmy (scps_campaign.h)
+                                    * gagne un champ `nominal` (long, paquets de 100 — le PLEIN de
+                                    * référence d'un corps, cf. « renforcer = combler le déficit »)
+                                    * → sizeof(Campaign) grandit (Campaign est sérialisé en UN seul
+                                    * blob, section CAMP), <v97 refusé (le blob lu serait décalé).
+                                    * v96 : MONNAIE M14 — B5 LA VENTILATION PAR ORDRE : CountryDebt
                                     * (scps_credit.c, credit_save/credit_load) remplace le champ
                                     * agrégé `to_class` par DEUX champs `to_elite`/`to_bourgeois`
                                     * (la créance RÉELLE de chaque ordre, plus le poids fixe de

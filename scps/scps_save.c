@@ -398,6 +398,10 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         if (a->owner>=w->n_countries) return false;
         if (a->loc <0 || a->loc >=s->econ->n_regions) return false;
         if (a->dest< -1 || a->dest>=s->econ->n_regions || a->next< -1 || a->next>=s->econ->n_regions) return false;
+        /* v97 — LA FORCE NOMINALE : pas un index, une QUANTITÉ (paquets de 100, motif
+         * reserve_gold/va_country_prev) — juste ≥0 et sous un plafond large (un fichier
+         * forgé ne doit pas planter le calcul de déficit avec une valeur folle). */
+        if (a->nominal<0 || a->nominal>100000000L) return false;
         }
         if (counted!=s->camp->n_corps[owner]) return false;
     }
@@ -550,6 +554,7 @@ int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_her
     }
     if (snap) fclose(snap);
     demography_dyn_id_rebase(s->econ);
+    campaign_backfill_nominal(s->camp);   /* v97 : le nominal désérialisé ne doit jamais laisser un déficit négatif */
     *params=h.params;
     warhost_set_human(s->player);
     campaign_set_human(s->player);   /* #32 : le compteur de morts DU joueur suit le même contrat que warhost/econ */

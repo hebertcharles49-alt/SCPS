@@ -750,12 +750,26 @@ int scps_corps_refill_preview(ScpsSim *s, int id, ScpsRefillPreview *out){
     if(!fa || !fa->active || fa->owner!=player){out->reason_code=1;return 0;}
     out->valid=1; out->region=fa->loc;
 
+    /* RENFORCER = COMBLER LE DÉFICIT : requested_humans est désormais le DÉFICIT total
+     * (nominal − courant), pas « +100 par type présent » — 0 si le corps est déjà à son
+     * plein (la façade grise le bouton). `budget`/`budget2` ci-dessous CAPENT les deux
+     * lectures de coût (population/garantie) à ce même déficit : elles ne doivent JAMAIS
+     * promettre plus que ce qui est réellement visé (invariant vérifié par scps_api_demo). */
+    long courant=0;
+    for(int i=0;i<fa->force.n_units;i++) if(fa->force.units[i].count>0) courant+=fa->force.units[i].count;
+    long deficit=fa->nominal-courant; if(deficit<0) deficit=0;
+    out->requested_humans=deficit*POP_PER_UNIT;
+
+    int n_lines=0;
     ArmyState popsim=fa->force;
+    long budget=out->requested_humans;
     for(int i=0;i<fa->force.n_units;i++){
         const Unit *u=&fa->force.units[i];
         if(u->count<=0) continue;
+        n_lines++;
         const UnitDef *d=unit_def(u->type); if(!d) continue;
-        out->requested_humans+=POP_PER_UNIT;
+        if(budget<=0) continue;   /* déficit déjà entièrement couvert par les lignes précédentes */
+        budget-=POP_PER_UNIT;
         Resource arm=unit_res_arm(u->type);
         if(arm>RES_NONE && arm<RES_COUNT){
             int k=-1;
@@ -776,15 +790,19 @@ int scps_corps_refill_preview(ScpsSim *s, int id, ScpsRefillPreview *out){
         out->weapons_owned += out->need[n].owned<out->need[n].needed
                             ? out->need[n].owned : out->need[n].needed;
 
-    /* Garantie conservatrice : même ordre de lignes que le drain, mais uniquement
-     * avec l'arsenal national. Le marché reste une possibilité, jamais une promesse. */
+    /* Garantie conservatrice : même ordre de lignes (et le MÊME budget de déficit) que la
+     * boucle ci-dessus, mais uniquement avec l'arsenal national. Le marché reste une
+     * possibilité, jamais une promesse. */
     ArmyState dry=fa->force;
     long stock[RES_COUNT]; memset(stock,0,sizeof stock);
     for(int g=1;g<RES_COUNT;g++) stock[g]=econ_empire_stock(s->sim.econ,player,(Resource)g);
+    long budget2=out->requested_humans;
     for(int i=0;i<fa->force.n_units;i++){
         const Unit *u=&fa->force.units[i];
         if(u->count<=0) continue;
         const UnitDef *d=unit_def(u->type); if(!d) continue;
+        if(budget2<=0) continue;
+        budget2-=POP_PER_UNIT;
         if(army_class_free(&dry,s->sim.econ,player,d->from)<POP_PER_UNIT) continue;
         Resource arm=unit_res_arm(u->type);
         if(arm!=RES_NONE){
@@ -798,8 +816,10 @@ int scps_corps_refill_preview(ScpsSim *s, int id, ScpsRefillPreview *out){
 
     if(!campaign_can_refill_corps(s->sim.camp,s->sim.econ,id)){
         out->reason_code=2; out->reason="Ravitaillement possible uniquement sur une région nationale";
-    }else if(out->requested_humans<=0){
+    }else if(n_lines<=0){
         out->reason_code=3; out->reason="Aucune ligne d'unité à renforcer";
+    }else if(out->requested_humans<=0){
+        out->reason_code=5; out->reason="Corps déjà à pleine force (nominal atteint)";
     }else if(out->population_ready_humans<=0){
         out->reason_code=4; out->reason="Aucune population de la bonne classe n'est mobilisable";
     }else{
@@ -3708,6 +3728,13 @@ int scps_player_raise_corps(ScpsSim *s, long packets, int target_region){
 int scps_player_split_corps(ScpsSim *s, int id, long packets){
     if (!s || !s->ready || packets<=0) return 0;
     PlayerCmd c={CMD_CORPS_SPLIT,{id,(int32_t)packets,0,0}}; return sim_cmd_push(&s->sim,c)?1:0;
+}
+int scps_player_split_comp(ScpsSim *s, int id, long inf_p, long arch_p, long cav_p, long mages_p){
+    if (!s || !s->ready) return 0;
+    if (inf_p<0 || arch_p<0 || cav_p<0 || mages_p<0) return 0;
+    if (inf_p+arch_p+cav_p+mages_p<=0) return 0;
+    PlayerCmd c={CMD_SPLIT_COMP,{id,(int32_t)inf_p,(int32_t)arch_p,(int32_t)cav_p,(int32_t)mages_p}};
+    return sim_cmd_push(&s->sim,c)?1:0;
 }
 int scps_player_merge_corps(ScpsSim *s, int dst_id, int src_id){
     if (!s || !s->ready) return 0;
