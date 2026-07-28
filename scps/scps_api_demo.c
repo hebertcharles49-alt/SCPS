@@ -1490,6 +1490,34 @@ int main(int argc, char **argv){
         scps_sim_free(sd);
     }
 
+    /* ── VÉTUSTÉ + RÉNOVER : décay réel → state → CMD_RENOVER → drain → complétion ── */
+    {
+        ScpsSim *sv = scps_sim_new();
+        scps_sim_generate(sv, seed);
+        int me = scps_player(sv);
+        int cap = scps_country_capital_province(sv, me);
+        scps_sim_advance_days(sv, 365*5);                    /* 5 ans : Marché seed usé à ~0.98^5 ≈ 90 % */
+        ScpsRenoverState rs0;
+        int got = scps_renover_state(sv, cap, &rs0);
+        ok("renover_state : lecteur répond sur la capitale", got==1);
+        printf("   vétusté capitale an-5 : bâti %d %% · rénover %d or (allowed=%d reason=%d)\n",
+               rs0.wear_pct, rs0.gold, rs0.allowed, rs0.reason);
+        ok("vétusté : le bâti s'use (wear < 100 %)", rs0.wear_pct < 100);
+        ok("rénover : coût > 0 dès qu'usé", rs0.wear_pct >= 100 || rs0.gold > 0);
+        if (rs0.allowed){
+            ok("player_renover : ordre accepté", scps_player_renover(sv, cap)==1);
+            scps_sim_advance_days(sv, 1);                    /* drain : l'or part, le chantier s'enfile */
+            scps_sim_advance_days(sv, 200);                  /* > RENOV_DAYS : complétion */
+            ScpsRenoverState rs1;
+            scps_renover_state(sv, cap, &rs1);
+            printf("   après rénovation : bâti %d %% (avant %d %%)\n", rs1.wear_pct, rs0.wear_pct);
+            ok("rénover : le delta plein est re-posé (wear remonte)", rs1.wear_pct > rs0.wear_pct);
+        } else {
+            ok("rénover : refus motivé (reason 1 rien-à-rénover ou 2 or)", rs0.reason==1 || rs0.reason==2);
+        }
+        scps_sim_free(sv);
+    }
+
     free(rgba); free(lay);
     printf("\n══ BILAN : %d réussis, %d échoués ══\n", g_pass, g_fail);
     return g_fail ? 1 : 0;

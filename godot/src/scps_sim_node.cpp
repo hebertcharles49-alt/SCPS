@@ -201,6 +201,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("edifice_succ", "edifice"),             &ScpsWorld::edifice_succ);
     ClassDB::bind_method(D_METHOD("edifice_upkeep_month", "edifice"),     &ScpsWorld::edifice_upkeep_month);
     ClassDB::bind_method(D_METHOD("build_legal", "province", "edifice"),    &ScpsWorld::build_legal);
+    ClassDB::bind_method(D_METHOD("renover_state", "province"),             &ScpsWorld::renover_state);
+    ClassDB::bind_method(D_METHOD("player_renover", "province"),            &ScpsWorld::player_renover);
     ClassDB::bind_method(D_METHOD("colonized_total"),               &ScpsWorld::colonized_total);
     ClassDB::bind_method(D_METHOD("colony_status"),                 &ScpsWorld::colony_status);
     ClassDB::bind_method(D_METHOD("country_food", "c"),             &ScpsWorld::country_food);
@@ -1856,6 +1858,21 @@ Dictionary ScpsWorld::build_legal(int province, int edifice) {
     d["reason_code"]  = String::utf8(code);
     d["reason_label"] = String::utf8(label);
     return d;
+}
+
+Dictionary ScpsWorld::renover_state(int province) {
+    Dictionary d;
+    ScpsRenoverState rs;
+    if (!sim || !scps_renover_state(sim, province, &rs)) return d;
+    d["wear_pct"] = rs.wear_pct;
+    d["gold"]     = rs.gold;
+    d["allowed"]  = (rs.allowed != 0);
+    d["reason"]   = rs.reason;   /* 1 rien à rénover · 2 or */
+    return d;
+}
+
+bool ScpsWorld::player_renover(int province) {
+    return sim && scps_player_renover(sim, province) != 0;
 }
 /* Nom d'affichage d'un BuildingType — miroir DISPLAY-ONLY de la table FR de
  * `building_name()` (scps_econ.c). La membrane interdit d'inclure scps_econ.h ici

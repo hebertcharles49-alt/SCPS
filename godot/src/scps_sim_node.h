@@ -240,6 +240,8 @@ public:
      * `province` est un PID DIRECT (jamais une région).
      * { legal:bool, reason:int } — reason 0 OK · 1 structurel · 2 or · 3 matière. */
     Dictionary build_legal(int province, int edifice);
+    Dictionary renover_state(int province);   /* vétusté : {wear_pct, gold, allowed, reason} */
+    bool       player_renover(int province);
     int        colonized_total() const;               /* Σ provinces colonisées — signature de souveraineté */
     Dictionary colony_status() const;                 /* v50 : le CHANTIER de colonisation du joueur */
     double     country_food(int c) const;             /* v50 : Σ stock vivrier (topbar) */

@@ -260,6 +260,10 @@ func _build_edifices() -> void:
 	var w = Sim.world
 	if w == null:
 		return
+	if target_pid >= 0 and w.has_method("renover_state"):
+		var rs: Dictionary = w.renover_state(target_pid)
+		if int(rs.get("wear_pct", 100)) <= 95:
+			_body.add_child(_renover_card(rs))
 	var any := false
 	for b in _builds:
 		if int(b.get("prev", -1)) >= 0 and not bool(b.get("prev_built", false)):
@@ -270,6 +274,59 @@ func _build_edifices() -> void:
 		_body.add_child(_edifice_card(w, b))
 	if not any:
 		_dim_line("aucun édifice constructible pour l'instant")
+
+func _renover_card(rs: Dictionary) -> Control:
+	var allowed := bool(rs.get("allowed", false))
+	var gold := int(rs.get("gold", 0))
+	var wear := int(rs.get("wear_pct", 100))
+	var card := InfoCard.new()
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	var bg := ParchTheme.HEADER_BG if allowed else ParchTheme.PANEL_BG
+	var bd := ParchTheme.BORDER if allowed else ParchTheme.DIVIDER
+	card.add_theme_stylebox_override("panel", ParchTheme.sb(bg, bd, 1, 4, 10, 10, 8, 8))
+	card.card_data = {
+		"title": "Rénover le bâti",
+		"state": "Disponible" if allowed else "Bloqué",
+		"trend": "180 jours",
+		"lines": [{"label": "Bâti", "value": "%d %%" % wear}, {"label": "Or", "value": str(gold)}],
+		"body": "Re-pose l'effet plein de chaque édifice de la province.",
+	}
+	if allowed:
+		card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		card.gui_input.connect(func(e):
+			if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+				var ok: bool = Sim.world.player_renover(target_pid)
+				_flash_ok = ok
+				_flash = "⚒ Rénovation — ordre émis" if ok else "✗ Rénovation — file pleine"
+				build_requested.emit("renover", 0)
+				_refresh()
+				Sim.notify_action())
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 4)
+	card.add_child(vb)
+	var row0 := HBoxContainer.new()
+	row0.add_theme_constant_override("separation", 8)
+	row0.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vb.add_child(row0)
+	_icon(row0, UIKit.building_sprite(0), 34)
+	var title := Label.new()
+	title.theme_type_variation = "RowLabel"
+	title.text = "Rénover le bâti — %d %%" % wear
+	title.add_theme_color_override("font_color", ParchTheme.INK if allowed else ParchTheme.DIM_INK)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row0.add_child(title)
+	var price := Label.new()
+	price.theme_type_variation = "RowDim"
+	price.text = "%d or · 180 j" % gold
+	price.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row0.add_child(price)
+	if not allowed and int(rs.get("reason", 0)) == 2:
+		var rl := Label.new()
+		rl.theme_type_variation = "Expense"
+		rl.text = "✗ Nécessite : plus d'or"
+		rl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		vb.add_child(rl)
+	return card
 
 func _edifice_card(w, b: Dictionary) -> Control:
 	var btype := int(b.get("type", -1))
