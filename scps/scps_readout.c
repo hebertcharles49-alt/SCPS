@@ -582,7 +582,7 @@ FactionsReadout faction_readout(const World *w, const WorldEconomy *econ, int ci
 
 /* Climat : un MOT dérivé de la latitude et du biome (le biome porte l'aridité/
  * l'humidité ; la latitude porte le chaud/froid). Pas un nom qui imite un climat. */
-static const char *climat_word(float lat, Biome b) {
+const char *climat_word(float lat, Biome b) {
     switch (b) {
         case BIO_DESERT: case BIO_COASTAL_DESERT: case BIO_DRYLANDS: return "Aride";
         case BIO_JUNGLE: case BIO_MANGROVE:                          return "Tropical";
@@ -597,7 +597,7 @@ static const char *climat_word(float lat, Biome b) {
     return "Tempéré";
 }
 /* Relief : un MOT dérivé de l'altitude moyenne (0..1). */
-static const char *relief_word(float height_avg, Biome b) {
+const char *relief_word(float height_avg, Biome b) {
     if (b==BIO_MOUNTAINS || b==BIO_PEAK || b==BIO_VOLCANO) return "Montagnes";
     if (b==BIO_HILLS)                                      return "Collines";
     if (b==BIO_HIGHLANDS)                                  return "Hauts plateaux";

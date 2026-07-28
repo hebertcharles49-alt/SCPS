@@ -314,6 +314,7 @@ typedef struct {
     int    siege_terrain_pct;           /* multiplicateur de tenue ×100 */
     int    siege_outcome;               /* 0 occupation / 1 libération */
     float  war_score;                   /* [-100..+100], point de vue attaquant */
+    const char *climat, *relief;        /* mots biome du champ de bataille (fond de l'animation) */
 } ScpsBattleInfo;
 void scps_battle_info(ScpsSim *s, int region, ScpsBattleInfo *out);
 

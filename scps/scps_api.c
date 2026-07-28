@@ -836,9 +836,16 @@ void scps_battle_info(ScpsSim *s, int r, ScpsBattleInfo *out){
     memset(out, 0, sizeof *out);
     out->region=-1; out->attacker=-1; out->defender=-1;
     out->atk_helper=-1; out->def_helper=-1; out->terrain_holder=-1;
-    out->phase=""; out->stage="";
+    out->phase=""; out->stage=""; out->climat=""; out->relief="";
     if(!s || !s->ready || r<0 || r>=s->sim.econ->n_regions) return;
     int owner = s->sim.econ->region[r].owner;
+    /* mots biome du lieu (fond de l'animation de bataille) — même dérivation que le readout */
+    { int bpid = econ_region_rep_province(s->sim.econ, r);
+      if (bpid>=0 && bpid<s->w->n_provinces){
+          const Province *bp = &s->w->province[bpid];
+          out->climat = sz(climat_word(bp->lat, bp->biome_dominant));
+          out->relief = sz(relief_word(bp->height_avg, bp->biome_dominant));
+      } }
 
     /* 1) une FieldBattle ACTIVE sur cette région ? (chocs/accalmies en cours) */
     const FieldBattle *bt = NULL;

@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://banimshot001"]
+
+[ext_resource type="Script" path="res://battle_anim_shot.gd" id="1_bas"]
+
+[node name="BattleAnimShot" type="Node"]
+script = ExtResource("1_bas")

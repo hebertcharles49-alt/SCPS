@@ -710,6 +710,8 @@ Dictionary ScpsWorld::battle_info(int region) {
     d["siege_terrain_pct"] = b.siege_terrain_pct;
     d["siege_outcome"] = b.siege_outcome;
     d["war_score"] = (double)b.war_score;
+    d["climat"] = String::utf8(b.climat ? b.climat : "");
+    d["relief"] = String::utf8(b.relief ? b.relief : "");
     return d;
 }
 

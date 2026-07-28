@@ -10,6 +10,7 @@ extends Control
 const VKit = preload("res://ui/vkit.gd")
 const Frame = preload("res://ui/frame.gd")
 const Concepts = preload("res://ui/concepts.gd")   # D4 — glossaire hover
+const BattleAnim = preload("res://ui/battle_anim.gd")
 const PW := 350.0
 
 signal close_requested
@@ -17,9 +18,15 @@ signal close_requested
 var _region := -1
 var _close_rect := Rect2()
 var _tips: Array = []   ## D4 — [ [Rect2, définition], … ] reconstruit à chaque _draw (motif country_panel.gd)
+var _anim: Control = null       ## le tableau vivant du choc (battle_anim.gd), visible en bataille seule
+var _anim_region := -1          ## bataille pour laquelle l'anim est armée (re-setup au changement)
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	_anim = BattleAnim.new()
+	_anim.position = Vector2(16.0, 60.0)
+	_anim.visible = false
+	add_child(_anim)
 	_layout()
 	get_viewport().size_changed.connect(_layout)
 	Sim.ticked.connect(_on_tick)
@@ -33,8 +40,14 @@ func _layout() -> void:
 
 func open_region(region: int) -> void:
 	_region = region
+	_anim_region = -1   # nouvelle bataille → re-setup de l'anim au premier battle_info
 	visible = true
 	Sound.play("moment_battle_drums")
+	var w = Sim.world
+	if w != null and w.has_method("battle_info"):
+		var bi: Dictionary = w.battle_info(_region)
+		if bool(bi.get("valid", false)):
+			_feed_anim(bi)   # l'anim se montre tout de suite, sans attendre le tick
 	queue_redraw()
 
 func _on_tick(_year: int) -> void:
@@ -49,7 +62,23 @@ func _on_tick(_year: int) -> void:
 		if not bool(bi.get("valid", false)):
 			visible = false
 			return
+		_feed_anim(bi)
 		queue_redraw()
+
+## arme/nourrit l'animation : setup au premier tick de BATAILLE (pas en siège), puis
+## un on_tick par tick — c'est lui qui déclenche charge/choc/reflux et les renforts.
+func _feed_anim(bi: Dictionary) -> void:
+	if _anim == null:
+		return
+	if not bool(bi.get("in_battle", false)):
+		_anim.visible = false
+		_anim_region = -1
+		return
+	if _anim_region != _region:
+		_anim.setup(bi)
+		_anim_region = _region
+	_anim.visible = true
+	_anim.on_tick(bi)
 
 ## une barre de composition (inf/arch/cav/mages) empilée — même langage que
 ## province_panel (barre empilée de classes), réutilisant SLICE_PAL.
@@ -98,6 +127,9 @@ func _draw() -> void:
 		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "Jour %d · %d choc(s) livré(s)" % [
 			int(bi.get("days", 0)), int(bi.get("chocs", 0))], VKit.FS_SMALL)
 		y += 18
+		if _anim != null and _anim.visible:
+			_anim.position = Vector2(x, y)
+			y += 128   # le tableau vivant du choc (battle_anim, 318×120) vit ici
 	elif bi.has("siege_days_left"):
 		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "%.0f j restants · %d%% estimés" % [
 			float(bi.get("siege_days_left", 0.0)), int(bi.get("siege_progress_pct", 0))], VKit.FS_SMALL)

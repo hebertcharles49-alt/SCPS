@@ -234,6 +234,10 @@ BandAssise   band_assise(float fragilite);
 BandLegit    band_legit(float L);
 BandConcorde band_concorde(float fracture, bool secession_mode);
 BandProsp    band_prosp(float prosperity_0_10);
+/* mots de terrain d'une province (climat/relief) — consommés aussi par scps_battle_info
+ * (fond biomesque de l'animation de bataille). */
+const char *climat_word(float lat, Biome b);
+const char *relief_word(float height_avg, Biome b);
 BandSavoir   band_savoir(float lumiere_0_10);
 BandForge    band_forge(float forge_level_0_10);          /* profondeur de production matérielle (§7) */
 /* §syncrétique (§12) — classés sur des nus : profondeur (niveau 0..4) et progression d'accès
