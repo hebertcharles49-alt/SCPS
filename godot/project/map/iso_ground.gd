@@ -207,8 +207,9 @@ func _build_river_field(w, W: int, H: int) -> Image:
 		var fl := float(rv["flow"])
 		var v := clampf(0.58 + 0.42 * fl, 0.0, 1.0)
 		var base_w := 1 if fl > 0.8 else 0                       # fleuve = trait fin · rivière/affluent = FIL
-		var grow := 1                                             # TOUT enfle vers l'aval (l'affluent à largeur
-		                                                          # constante 0 clignotait au seuil : « taches d'eau »)
+		var grow := 1 if fl > 0.8 else (1 if fl > 0.5 else 0)     # enfle un PEU vers l'aval (fleuve 1→2 · rivière 0→1)
+		# (essai « tout enfle » ANNULÉ au shot : dans les deltas à bras multiples, chaque
+		#  affluent élargi empilait sa gravure → le dédale de flaques que le joueur dénonçait)
 		var mp := _meander(pts, hgt, sea, bio, W, H)
 		var n := mp.size()
 		for k in range(n - 1):
@@ -223,7 +224,7 @@ func _build_river_field(w, W: int, H: int) -> Image:
 			if dirm != Vector2.ZERO:
 				for e in range(1, 5):
 					_carve_dot(img, mp[n - 1].x + dirm.x * float(e), mp[n - 1].y + dirm.y * float(e),
-						v, base_w + grow + (1 if e <= 2 else 0), W, H)
+						v, base_w + grow, W, H)   # entonnoir SOBRE (le +1 gonflait les deltas en flaques)
 	return img
 
 ## amplitude de MÉANDRE par BIOME (index = enum Biome) : terre plate OUVERTE serpente (≈1), FORÊT quasi
