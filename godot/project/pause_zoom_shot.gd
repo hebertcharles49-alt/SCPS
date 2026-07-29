@@ -57,13 +57,16 @@ func _run() -> void:
 		map.zoom_out()
 		await get_tree().process_frame
 	await _shot("03_pause_dezoom")
-	# TÉMOIN : même séquence à vitesse 1 — si 05==02, le zoom en pause est sain
-	Sim.speed_index = 1
-	map.fit()
-	await _shot("04_v1_fit")
-	for i in range(10):
-		map.zoom_in()
+	# ISOLATION : caméra déplacée SANS _nav_redraw (l'état entre deux inputs) — si des
+	# calques sont cuits en ÉCRAN au draw, ils restent plantés pendant que le monde bouge.
+	Sim.speed_index = 0
+	map.focus_player()
+	await _shot("06_pause_focus")
+	map._camera.position += Vector2(60, 0)   # « scroll » brut, aucun redraw demandé
+	for i in range(6):
 		await get_tree().process_frame
-	await _shot("05_v1_zoomin")
+	await _shot("07_pause_campan_noredraw")
+	map._nav_redraw()                         # l'« input » qui réactualise
+	await _shot("08_apres_redraw")
 	print("PAUSE ZOOM SHOTS OK — ", _dir)
 	get_tree().quit()
