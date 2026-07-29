@@ -198,6 +198,19 @@ func _nav_redraw() -> void:
 	if _ground != null:
 		_ground.queue_redraw()
 
+## LA CAMÉRA A BOUGÉ SANS INPUT (focus joueur, « y aller », navigation, futur glissé) :
+## l'encre des calques est cuite en px ÉCRAN (÷ zoom) au moment du draw — sans redraw, la
+## liste de dessin reste à l'ANCIENNE caméra (outlines géants figés — flagrant en PAUSE,
+## retour joueur 2026-07-28, prouvé par pause_zoom_shot). UN SEUL poll ici, chez le
+## propriétaire de la caméra : sol + overlay (routes/assets/frontières/noms) + soi.
+## Coût nul au repos (une comparaison de Transform2D par frame).
+var _last_vt := Transform2D()
+func _process(_dt: float) -> void:
+	var vt := get_viewport_transform()
+	if vt != _last_vt:
+		_last_vt = vt
+		_nav_redraw()
+
 ## MODE MARCHE : (dé)sélectionne le pion du joueur et propage l'état à l'overlay (anneau doré).
 func _set_selected_corps(ids: Array) -> void:
 	_selected_corps.clear()

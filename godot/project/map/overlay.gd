@@ -1967,21 +1967,12 @@ func _near_river(rf: Image, x: int, y: int) -> bool:
 	return false
 
 var _sig_poll := 0.0
-var _last_vt := Transform2D()
 func _process(dt: float) -> void:
 	# pendant un cataclysme, on redessine en continu pour PULSER l'épicentre
 	# (horloge MUR, hors déterminisme). Sinon : aucun coût (le tick suffit).
+	# (Le suivi caméra-sans-input vit chez le PROPRIÉTAIRE de la caméra : map_view._process
+	#  → _nav_redraw — un seul poll pour sol + overlay + carte, pas un par calque.)
 	if _cataclysm:
-		queue_redraw()
-	# LA CAMÉRA A BOUGÉ SANS REDRAW (focus joueur, « y aller », navigation — pas un input
-	# carte) : l'encre est cuite en px ÉCRAN (÷ zoom) au moment du draw → la liste de
-	# dessin reste à l'ANCIENNE caméra (outlines/noms géants figés). Flagrant en PAUSE où
-	# aucun tick ne masque (retour joueur 2026-07-28, prouvé par pause_zoom_shot 07 vs 08).
-	# Comparaison de transform chaque frame : coût nul au repos, redraw seulement au vrai
-	# mouvement.
-	var vt := get_viewport_transform()
-	if vt != _last_vt:
-		_last_vt = vt
 		queue_redraw()
 	# FRONTIÈRES/ASSETS DÉCOUPLÉS DU TICK : jadis seul `_on_tick` (qui ne fire PAS en
 	# pause) recalculait la souveraineté → frontières/routes/villes ne se rafraîchissaient
