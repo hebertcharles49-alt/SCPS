@@ -9,6 +9,7 @@ extends Node2D
 
 const UIKit = preload("res://ui/uikit.gd")
 const VKit = preload("res://ui/vkit.gd")
+const GeoNames = preload("res://map/geo_names.gd")
 const HeraldryK = preload("res://ui/heraldry.gd")
 const PHASE_MARCH := 1
 const PHASE_SIEGE := 2
@@ -121,6 +122,8 @@ var _pa_positions := {}                    ## id -> {pos:Vector2, radius:float}
 var _dress_tex := {}      ## id de marque de terrain (lot 2) → Texture2D (cache)
 var _dressing := []       ## [{pos(monde), id, scale}] — marques de biome semées (display-only)
 var _dressing_dirty := true ## la géo a changé (génération/chargement) → re-semer le dressing
+var _geonames := []       ## GeoNames.build — les ENSEMBLES nommés (forêts/lacs/rivières/massifs)
+var _geo_dirty := true    ## re-nommer à la génération (déterministe par graine, display-only)
 var _dress_clear := []    ## [[Vector2, r²]] — la CLAIRIÈRE des bourgs (aucune marque dedans)
 var _canopy_batches := [] ## [{mm: MultiMesh, tex}] — la canopée servie en MULTIMESH (un draw/essence),
                           ## rebâtie avec le dressing ; instances en espace MONDE (coût par-frame nul)
@@ -338,6 +341,7 @@ func _on_generated() -> void:
 	_fog_year = -1
 	_fog_mask = PackedByteArray()
 	_dressing_dirty = true      # … et le dressing de terrain (biome semé)
+	_geo_dirty = true           # … et les ensembles nommés (forêts/lacs/rivières/massifs)
 	_roads_dirty = true
 	_road_start.clear()         # chantiers remis à zéro (le monde neuf rebâtit ses routes)
 	_lanes_dirty = true         # PORTULAN : monde neuf → lanes maritimes à recharger
@@ -2170,6 +2174,9 @@ func _draw_iso(w, mv: Node2D) -> void:
 			if dss.x < -90 or dss.y < -90 or dss.x > vp.x + 90 or dss.y > vp.y + 90:
 				continue
 			var did: String = d["id"]
+			if did == "chevron":
+				_draw_chevron(dip, _dress_size(did) * float(d["scale"]) / zoom, d, zoom)
+				continue
 			var dtex := _dress_get(did)
 			if dtex == null:
 				continue
@@ -2180,8 +2187,11 @@ func _draw_iso(w, mv: Node2D) -> void:
 				dw = dh * 2.0                                            # serpent : sprite 2:1 (large)
 			draw_texture_rect(dtex, Rect2(dip - Vector2(dw * 0.5, dh * 0.5), Vector2(dw, dh)), false,
 				egg_col if is_egg else d.get("tint", dress_col))
-	# MODE NATURE : juste le terrain + le dressing — on saute frontières, routes, villes, armées, noms, §27.
+	# LES ENSEMBLES NOMMÉS (forêts/lacs/rivières/massifs) se dessinent PLUS BAS (juste avant
+	# les noms d'empire) — au-dessus du lavis/routes, sous le brouillard ; mais leur rendu
+	# vit AUSSI en mode NATURE : on le fait ici si nature (le return saute la suite).
 	if nature_mode:
+		_draw_geonames(w, mv, vt, vp, zoom)
 		return
 
 	# ── FRONTIÈRES à l'ENCRE (calligraphie) : TRAME FINE 1px (toutes provinces+régions) + BLOCS
@@ -2435,6 +2445,10 @@ func _draw_iso(w, mv: Node2D) -> void:
 			VKit.text_map(self, Vector2.ZERO, ut, VKit.FS_SMALL,
 				Color(0.97, 0.94, 0.85, 0.98), 2, Color(0.08, 0.05, 0.03, 0.75))
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+	# ── LES ENSEMBLES NOMMÉS (forêts/lacs/rivières/massifs) : calligraphie fadée dans le
+	#    terrain, au-dessus du lavis/routes, SOUS le brouillard et les noms d'empire. ──
+	_draw_geonames(w, mv, vt, vp, zoom)
 
 	# ── NOMS D'EMPIRE : SUIVENT LA FORME du pays (axe principal par ACP des centroïdes projetés →
 	#    Chili vertical, Russie en travers de la Sibérie), à l'encre, taille ÉCRAN constante.
@@ -2725,8 +2739,52 @@ func _dress_load(path: String) -> Texture2D:
 			return ImageTexture.create_from_image(img)
 	return null
 
+## LES ENSEMBLES NOMMÉS — rendu (données : GeoNames.build, déterministe par graine).
+## Calligraphie IM Fell diluée, taille à l'étendue de l'ensemble, rivières inclinées le
+## long du cours ; fade au plan large ET au plan profond (« fadée dans le terrain »).
+func _draw_geonames(w, mv: Node2D, vt: Transform2D, vp: Vector2, zoom: float) -> void:
+	if _geo_dirty:
+		_geonames = GeoNames.build(w, Sim.current_seed)
+		_geo_dirty = false
+	var fade := clampf((zoom - 1.2) / 0.8, 0.0, 1.0) * (1.0 - clampf((zoom - 6.0) / 2.0, 0.0, 0.85))
+	if fade <= 0.03:
+		return
+	for g in _geonames:
+		var gp: Vector2 = mv.iso_pos((g["pos"] as Vector2).x, (g["pos"] as Vector2).y)
+		var gss: Vector2 = vt * gp
+		if gss.x < -220 or gss.y < -80 or gss.x > vp.x + 220 or gss.y > vp.y + 80:
+			continue
+		var txt: String = g["text"]
+		var tw := VKit.text_map_w(txt, VKit.FS_SMALL)
+		var span := clampf(float(g["span"]), 18.0, 150.0)
+		var nsc := clampf(span / maxf(tw, 1.0), 0.28, 1.6)
+		var col := (Color(0.24, 0.32, 0.38, 0.52 * fade) if bool(g["water"])
+			else Color(0.33, 0.26, 0.16, 0.44 * fade))
+		var halo := Color(0.93, 0.87, 0.70, 0.30 * fade)
+		draw_set_transform(gp, float(g["ang"]), Vector2(nsc, nsc))
+		VKit.text_map(self, Vector2(-tw * 0.5, -VKit.FS_SMALL * 0.7), txt, VKit.FS_SMALL, col, 1, halo)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+## ∧ D'ENCRE (montagne cartographique) : deux versants jittés (j = hachage déterministe du
+## semis) + un trait d'ombre court sur le versant est (lumière du nord-ouest, classique).
+const CHEV_INK := Color(0.25, 0.19, 0.12, 0.52)
+const CHEV_SHADE := Color(0.25, 0.19, 0.12, 0.30)
+func _draw_chevron(c: Vector2, h: float, d: Dictionary, zoom: float) -> void:
+	var j: Array = d.get("j", [0.5, 0.5, 0.5])
+	var wf := h * (0.85 + 0.50 * float(j[0]))                 # largeur ±30 %
+	var apex := c + Vector2((float(j[1]) - 0.5) * 0.30 * wf,  # apex décalé (asymétrie)
+		-h * 0.52 + (float(j[2]) - 0.5) * 0.20 * h)
+	var lf := c + Vector2(-wf * 0.5, h * 0.34)
+	var rf := c + Vector2(wf * 0.5, h * 0.30 - (float(j[2]) - 0.5) * 0.10 * h)
+	var wpx := 1.5 / zoom
+	draw_line(apex, lf, CHEV_INK, wpx, true)
+	draw_line(apex, rf, CHEV_INK, wpx, true)
+	draw_line(apex.lerp(rf, 0.14) + Vector2(0, h * 0.05),     # versant ombré (demi-trait intérieur)
+		apex.lerp(rf, 0.58) + Vector2(-h * 0.04, h * 0.05), CHEV_SHADE, wpx * 0.8, true)
+
 ## taille à l'ÉCRAN (px) d'une marque selon sa famille (montagnes grandes, herbe de plaine petite).
 func _dress_size(id: String) -> float:
+	if id == "chevron": return 26.0                        # ∧ d'encre (ex-sprites mountain_*)
 	if id.begins_with("sea_serpent"): return 84.0          # lot 4 : serpent (largeur ×2 au tracé → 2:1)
 	if id.begins_with("lot6_broadleaf") or id.begins_with("lot6_conifer"): return 18.0   # lot 6 : arbre isolé (registre canopée)
 	if id.begins_with("lot6_ground"): return 22.0          # lot 6 : détail de sol (buisson/rocher/herbe)
@@ -2948,7 +3006,14 @@ func _try_place_dress(i: int, x: int, y: int, bio: Image, rf: Image, sw: int, sh
 	var ids: Array = DRESS_BY_BIOME[b]
 	var id: String = ids[int(_h1(float(i) * 7.7) * float(ids.size())) % ids.size()]
 	var scl := 0.85 + 0.30 * _h1(float(i) * 9.9)   # 0.85..1.15 : variété d'échelle
+	# MONTAGNES = ∧ D'ENCRE PROCÉDURAUX (décision joueur 2026-07-28) : tout id sprite
+	# mountain_* bascule en chevron jitté ±30 % (taille + asymétrie), déterministe par _h1.
+	if id.begins_with("mountain"):
+		id = "chevron"
+		scl = 0.70 + 0.60 * _h1(float(i) * 9.9)    # ±30 % d'échelle
 	var entry := {"pos": Vector2(px, py), "id": id, "scale": scl}
+	if id == "chevron":
+		entry["j"] = [_h1(float(i) * 11.3), _h1(float(i) * 13.7), _h1(float(i) * 17.1)]
 	var tt: Variant = _dress_tint(id)              # teinte lot 6 posée au BUILD (coût nul au draw)
 	if tt != null:
 		entry["tint"] = tt

@@ -290,17 +290,21 @@ void fragment() {
 		// CONTINU (fin des paliers) : fraction d'eau SALÉE sur 3 anneaux pondérés — le dégradé
 		// d'estuaire est une rampe lisse, plus des bandes ; le marais ne tire plus la fusion.
 		float to_sea = clamp(ring_sea(cw, 1.7) * 0.9 + ring_sea(cw, 3.2) * 0.5 + ring_sea(cw, 5.0) * 0.3, 0.0, 1.0);
-		riv_col = mix(riv_col, antique_color(1), to_sea * 0.72);       // teinte → MER près de la côte
+		// CONNEXION À LA MER (retour joueur 2026-07-28 : « jamais réellement de connexion ») :
+		// l'ex-amincissement à 0.32 près de la côte dissolvait le fleuve AVANT l'eau — il meurt
+		// désormais DANS la mer, pas avant : encre quasi pleine jusqu'au trait de côte, teinte
+		// qui glisse vers la mer (jonction sans couture) mais moins tôt.
+		riv_col = mix(riv_col, antique_color(1), to_sea * 0.45);       // teinte → MER près de la côte
 		float land_fac;
 		if (is_water(b)) {
-			// sur MER/LAC, l'encre de rivière ne fait qu'un SOUPÇON au rivage — l'eau garde SA
-			// teinte (le double-rendu lac+rivière faisait les taches d'estuaire).
+			// sur MER/LAC : l'encre du fleuve PÉNÈTRE au rivage (l'estuaire se voit entrer)
+			// puis meurt vite au large — l'eau garde SA teinte.
 			float near_land = clamp(ring_solid(cw, 2.0), 0.0, 1.0);   // 1 au rivage → 0 au large
-			land_fac = mix(0.04, 0.20, near_land);
+			land_fac = mix(0.05, 0.55, near_land);
 		} else if (is_wetland(b)) {
 			land_fac = 0.85;
 		} else {
-			land_fac = mix(1.0, 0.32, to_sea);                       // fleuve côtier : s'amincit fort près de la mer
+			land_fac = mix(1.0, 0.82, to_sea);                       // fleuve côtier : à peine fondu, jamais dissous
 		}
 		float river_amt = edge * body * land_fac;
 		col = mix(col, riv_col, clamp(river_amt, 0.0, 0.90));

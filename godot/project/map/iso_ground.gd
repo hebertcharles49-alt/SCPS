@@ -207,13 +207,23 @@ func _build_river_field(w, W: int, H: int) -> Image:
 		var fl := float(rv["flow"])
 		var v := clampf(0.58 + 0.42 * fl, 0.0, 1.0)
 		var base_w := 1 if fl > 0.8 else 0                       # fleuve = trait fin · rivière/affluent = FIL
-		var grow := 1 if fl > 0.8 else (1 if fl > 0.5 else 0)     # enfle un PEU vers l'aval (fleuve 1→2 · rivière 0→1)
+		var grow := 1                                             # TOUT enfle vers l'aval (l'affluent à largeur
+		                                                          # constante 0 clignotait au seuil : « taches d'eau »)
 		var mp := _meander(pts, hgt, sea, bio, W, H)
 		var n := mp.size()
 		for k in range(n - 1):
 			var frac := float(k) / float(maxi(1, n - 1))         # 0 = source → 1 = embouchure
 			var wd := base_w + int(round(frac * float(grow)))    # PLUS LARGE en aval (affluents accumulés)
 			_carve_seg(img, mp[k], mp[k + 1], v, wd, W, H)
+		# ESTUAIRE : prolonge la gravure DANS la mer (~4 cellules, entonnoir +1) — sans ça le
+		# champ s'arrête AU trait de côte et la moyenne 5-taps du shader (mêlée au zéro marin)
+		# plonge sous le seuil PILE à l'embouchure : le fleuve mourait avant l'eau.
+		if n >= 3:
+			var dirm := (mp[n - 1] - mp[n - 3]).normalized()
+			if dirm != Vector2.ZERO:
+				for e in range(1, 5):
+					_carve_dot(img, mp[n - 1].x + dirm.x * float(e), mp[n - 1].y + dirm.y * float(e),
+						v, base_w + grow + (1 if e <= 2 else 0), W, H)
 	return img
 
 ## amplitude de MÉANDRE par BIOME (index = enum Biome) : terre plate OUVERTE serpente (≈1), FORÊT quasi
