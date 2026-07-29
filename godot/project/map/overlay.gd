@@ -2176,7 +2176,9 @@ func _draw_iso(w, mv: Node2D) -> void:
 				continue
 			var did: String = d["id"]
 			if did == "chevron":
-				_draw_chevron(dip, _dress_size(did) * float(d["scale"]) / zoom, d, zoom)
+				# traits pré-clippés (priorité fond→avant), intérieur transparent
+				for seg in d.get("segs", []):
+					draw_polyline(seg, CHEV_INK, 1.5 / zoom, true)
 				continue
 			var dtex := _dress_get(did)
 			if dtex == null:
@@ -2757,55 +2759,96 @@ func _draw_geonames(w, mv: Node2D, vt: Transform2D, vp: Vector2, zoom: float) ->
 			continue
 		var txt: String = g["text"]
 		var tw := VKit.text_map_w(txt, VKit.FS_SMALL)
-		var span := clampf(float(g["span"]), 18.0, 150.0)
-		var nsc := clampf(span / maxf(tw, 1.0), 0.28, 1.6)
-		var col := (Color(0.24, 0.32, 0.38, 0.52 * fade) if bool(g["water"])
-			else Color(0.33, 0.26, 0.16, 0.44 * fade))
-		var halo := Color(0.93, 0.87, 0.70, 0.30 * fade)
+		# taille CONTENUE (retour joueur : des noms géants écrasaient la carte)
+		var span := clampf(float(g["span"]), 16.0, 90.0)
+		var nsc := clampf(span / maxf(tw, 1.0), 0.26, 0.85)
+		# encre PAR FOND (retour joueur : « la couleur n'est pas la même par rapport au
+		# fond ») : eau = ardoise sur eau claire · forêt/massif = crème sur couvert sombre,
+		# halo inversé (sombre sous le clair, clair sous le sombre)
+		var col: Color
+		var halo: Color
+		if bool(g["water"]):
+			col = Color(0.16, 0.24, 0.32, 0.60 * fade)
+			halo = Color(0.88, 0.90, 0.88, 0.32 * fade)
+		else:
+			col = Color(0.91, 0.86, 0.70, 0.62 * fade)
+			halo = Color(0.12, 0.11, 0.07, 0.42 * fade)
 		draw_set_transform(gp, float(g["ang"]), Vector2(nsc, nsc))
 		VKit.text_map(self, Vector2(-tw * 0.5, -VKit.FS_SMALL * 0.7), txt, VKit.FS_SMALL, col, 1, halo)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 ## ∧ D'ENCRE (montagne cartographique) : deux versants jittés (j = hachage déterministe du
 ## semis) + un trait d'ombre court sur le versant est (lumière du nord-ouest, classique).
-const CHEV_INK := Color(0.25, 0.19, 0.12, 0.52)
-const CHEV_SHADE := Color(0.25, 0.19, 0.12, 0.30)
-const CHEV_FILL := Color(0.79, 0.72, 0.57, 0.88)   # papier sous le ∧ : le devant OCCULTE l'arrière (calque)
-func _draw_chevron(c: Vector2, h: float, d: Dictionary, zoom: float) -> void:
+const CHEV_INK := Color(0.25, 0.19, 0.12, 0.58)
+const CHEV_H_WORLD := 7.0    ## hauteur MONDE (cellules) — l'empreinte ne varie plus au zoom
+
+## géométrie d'UN glyphe de relief (∧ ou dôme) en espace iso : traits + polygone d'occlusion
+func _chev_geom(d: Dictionary, mv: Node2D) -> Dictionary:
+	var wp: Vector2 = d["pos"]
+	var c: Vector2 = mv.iso_pos(wp.x, wp.y)
+	var h := CHEV_H_WORLD * float(d["scale"])
 	var j: Array = d.get("j", [0.5, 0.5, 0.5])
 	var wf := h * (0.85 + 0.50 * float(j[0]))                 # largeur ±30 %
 	var apex := c + Vector2((float(j[1]) - 0.5) * 0.30 * wf,  # apex décalé (asymétrie)
 		-h * 0.52 + (float(j[2]) - 0.5) * 0.20 * h)
 	var lf := c + Vector2(-wf * 0.5, h * 0.34)
 	var rf := c + Vector2(wf * 0.5, h * 0.30 - (float(j[2]) - 0.5) * 0.10 * h)
-	var wpx := 1.5 / zoom
-	# COLLINE : V ARRONDI — dôme quadratique lf→apex→rf (base plate au fill : le calque
-	# d'occlusion marche pareil), apex plus bas que la montagne.
 	if d.get("rond", false):
+		var apx := c + (apex - c) * 0.80                      # colline : dôme tassé
 		var dome := PackedVector2Array()
-		var apx := c + (apex - c) * 0.80          # dôme plus tassé qu'un pic
 		for k in range(8):
 			var t := float(k) / 7.0
 			dome.append(lf.lerp(apx, t).lerp(apx.lerp(rf, t), t))   # bézier quadratique
-		if not d.get("nf", false):
-			draw_colored_polygon(dome, CHEV_FILL)
-		draw_polyline(dome, CHEV_INK, wpx, true)
-		draw_line(dome[4] + Vector2(0, h * 0.06), dome[6] + Vector2(-h * 0.03, h * 0.03),
-			CHEV_SHADE, wpx * 0.8, true)          # versant ombré du dôme
+		return {"strokes": [dome], "poly": dome}
+	return {"strokes": [PackedVector2Array([lf, apex, rf])],
+		"poly": PackedVector2Array([apex, rf, lf])}
+
+## PRIORITÉ DES RELIEFS (décision joueur : intérieurs TRANSPARENTS — le remplissage ne
+## collait jamais au fond) : le trait d'un glyphe est COUPÉ par le polygone de chaque
+## glyphe DEVANT lui (y plus grand = dessiné après). Précalculé UNE fois au semis
+## (panier spatial + Geometry2D) — le draw ne fait que tracer les polylignes restantes.
+func _clip_relief() -> void:
+	var mv := get_parent() as Node2D
+	if mv == null or not mv.has_method("iso_pos"):
 		return
-	# CALQUE : les chevrons se dessinent fond→avant (tri y du dressing) — le remplissage
-	# papier de chacun masque les traits de ceux DERRIÈRE (chaîne qui s'empile, jamais
-	# un grillage de ∧ superposés). Près d'une rivière (nf) : traits seuls, l'eau respire.
-	if not d.get("nf", false):
-		draw_colored_polygon(PackedVector2Array([apex, rf, lf]), CHEV_FILL)
-	draw_line(apex, lf, CHEV_INK, wpx, true)
-	draw_line(apex, rf, CHEV_INK, wpx, true)
-	draw_line(apex.lerp(rf, 0.14) + Vector2(0, h * 0.05),     # versant ombré (demi-trait intérieur)
-		apex.lerp(rf, 0.58) + Vector2(-h * 0.04, h * 0.05), CHEV_SHADE, wpx * 0.8, true)
+	var relief := []
+	for d in _dressing:
+		if String(d["id"]) == "chevron":
+			d["geom"] = _chev_geom(d, mv)
+			relief.append(d)
+	var buckets := {}
+	for idx in range(relief.size()):
+		var wp: Vector2 = (relief[idx] as Dictionary)["pos"]
+		var key := Vector2i(int(wp.x) / 8, int(wp.y) / 8)
+		if not buckets.has(key):
+			buckets[key] = []
+		(buckets[key] as Array).append(idx)
+	for i in range(relief.size()):
+		var di: Dictionary = relief[i]
+		var strokes: Array = (di["geom"] as Dictionary)["strokes"]
+		var wpi: Vector2 = di["pos"]
+		var ki := Vector2i(int(wpi.x) / 8, int(wpi.y) / 8)
+		for oy in range(-1, 2):
+			for ox in range(-1, 2):
+				for jdx in buckets.get(Vector2i(ki.x + ox, ki.y + oy), []):
+					if int(jdx) == i:
+						continue
+					var dj: Dictionary = relief[int(jdx)]
+					if (dj["pos"] as Vector2).y <= wpi.y:
+						continue                     # seul un glyphe DEVANT coupe
+					var poly: PackedVector2Array = (dj["geom"] as Dictionary)["poly"]
+					var next: Array = []
+					for s in strokes:
+						for part in Geometry2D.clip_polyline_with_polygon(s, poly):
+							if (part as PackedVector2Array).size() >= 2:
+								next.append(part)
+					strokes = next
+					if strokes.is_empty():
+						break
+		di["segs"] = strokes
 
 ## taille à l'ÉCRAN (px) d'une marque selon sa famille (montagnes grandes, herbe de plaine petite).
 func _dress_size(id: String) -> float:
-	if id == "chevron": return 26.0                        # ∧ d'encre (ex-sprites mountain_*)
 	if id.begins_with("sea_serpent"): return 84.0          # lot 4 : serpent (largeur ×2 au tracé → 2:1)
 	if id.begins_with("lot6_broadleaf") or id.begins_with("lot6_conifer"): return 18.0   # lot 6 : arbre isolé (registre canopée)
 	if id.begins_with("lot6_ground"): return 22.0          # lot 6 : détail de sol (buisson/rocher/herbe)
@@ -2955,6 +2998,7 @@ func _build_dressing() -> void:
 		if ba != bb3:
 			return ba < bb3
 		return String(a["id"]) < String(b["id"]))
+	_clip_relief()   # PRIORITÉ des ∧/dômes : le trait de devant coupe celui de derrière
 
 ## LA CANOPÉE EN MULTIMESH : un quad partagé (pied à l'origine, y vers le bas), une instance
 ## par arbre (transform en espace ISO + teinte), UN batch par essence — le coût par frame est
@@ -3046,8 +3090,6 @@ func _try_place_dress(i: int, x: int, y: int, bio: Image, rf: Image, sw: int, sh
 		entry["j"] = [_h1(float(i) * 11.3), _h1(float(i) * 13.7), _h1(float(i) * 17.1)]
 		if b == 16 or b == 17:
 			entry["rond"] = true                   # colline : V ARRONDI (dôme, décision joueur)
-		if _near_river(rf, px, py, 4):
-			entry["nf"] = true                     # no-fill : berge visible sous les traits
 	var tt: Variant = _dress_tint(id)              # teinte lot 6 posée au BUILD (coût nul au draw)
 	if tt != null:
 		entry["tint"] = tt
