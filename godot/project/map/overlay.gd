@@ -71,8 +71,14 @@ const DRESS_DENSITY := {
 ## PASSES SUPPLÉMENTAIRES par biome (marques EN PLUS par cellule de grille) → CANOPÉE dense. Surtout les
 ## forêts (le « densifié » demandé) : 1 + N marques jittées par cellule → couvert continu, pas des arbres isolés.
 const DRESS_EXTRA := {
-	18: 2, 19: 2, 16: 1,        # montagnes : chaîne FOURNIE de chevrons (calque fond→avant)
+	# (vide — retour joueur 2026-07-29 : le relief (18/19/16) empilait 2-3 chevrons/cellule
+	# de 9 = « tas de crocs » au centre des massifs. Le mécanisme reste pour d'autres biomes.)
 }
+## PAS DE SEMIS par biome (cellules) — le relief est GRAND (empreinte ~8-9 cellules, CHEV_H_WORLD
+## 5.5 × ~1.2 de large + jitter) : la grille par défaut (DRESS_SPACING=9) sème à la taille de la
+## marque, les ∧ se mangent entre rangées. Ceux-ci veulent de l'air — pas de jitter d'amplitude,
+## juste un pas d'avancée plus lâche (retour joueur 2026-07-29).
+const DRESS_SPACING_BY_BIOME := { 16: 13, 17: 12, 18: 13, 19: 13, 23: 13 }
 ## ── LA CANOPÉE COMPOSÉE (lot 6) : la forêt est un PEUPLEMENT d'arbres individuels — pas
 ## fin (5 cellules), ancrés au MONDE (la forêt reste pleine à tous les zooms), ancrage au
 ## PIED + tri de profondeur (ils s'empilent comme une canopée), essences par biome. ──
@@ -119,10 +125,28 @@ var _region_seat := {}    ## région colonisée → SIÈGE du tampon : cellule I
 var army_selected := false                 ## compat panneau historique
 var selected_corps: Array[int] = []
 var move_preview: Dictionary = {}          ## route survolée avant clic (façade campaign, lecture pure)
-var _pa_positions := {}                    ## id -> {pos:Vector2, radius:float}
+## corps_id(int) -> {pos:Vector2, radius:float} POUR LES ARMÉES ; "g<pays>"(String) -> idem POUR
+## LES GARNISONS (revue overlay #1 : les deux espaces de clés étaient mélangés — une garnison
+## clée par index de PAYS pouvait coïncider avec un id de CORPS réel et se faire sélectionner/
+## déplacer comme lui). Les hit-tests ci-dessous ne matchent QUE les clés int (corps réels) —
+## une garnison n'est pas un corps, elle ne peut pas être « sélectionnée » pour un ordre de marche.
+var _pa_positions := {}
 var _dress_tex := {}      ## id de marque de terrain (lot 2) → Texture2D (cache)
 var _dressing := []       ## [{pos(monde), id, scale}] — marques de biome semées (display-only)
 var _dressing_dirty := true ## la géo a changé (génération/chargement) → re-semer le dressing
+# ── DRESSING RAPIDE (revue overlay #6) : le DRAW itérait des MILLIERS de Dictionary/frame (hash
+# lookup par champ × entrée, + un mv.iso_pos() par entrée) pour les marques SPRITE. Ici : tableaux
+# PARALLÈLES TYPÉS, remplis UNE fois à _build_dressing (position ISO déjà projetée — fixe, comme
+# _lane_dash_iso), le draw n'indexe plus que des Packed*Array. Les CHEVRONS restent à part
+# (Dictionary, `segs` déjà projetés/clippés par _clip_relief) — trop peu nombreux pour valoir la
+# conversion, et leur géométrie n'est pas un simple rect texturé. PAS de MultiMesh ici (chantier
+# séparé, cf. TROUVAILLES) : on garde draw_texture_rect, juste sans Dictionary ni re-projection.
+var _dress_fast_ip := PackedVector2Array()   ## position ISO pré-projetée (parallèle aux tableaux suivants)
+var _dress_fast_tex: Array = []              ## Texture2D déjà résolue (_dress_get, une fois)
+var _dress_fast_h := PackedFloat32Array()    ## hauteur MONDE de base (_dress_size(id) × scale), /zoom au draw
+var _dress_fast_wide := PackedByteArray()    ## 1 si sprite 2:1 (serpent de mer) — évite un begins_with()/frame
+var _dress_fast_col := PackedColorArray()    ## teinte finale déjà résolue (tint lot 6, sinon dress/egg alpha)
+var _dress_relief := []                      ## CHEVRONS seuls (Dictionary — segs déjà projetés/clippés)
 var _geonames := []       ## GeoNames.build — les ENSEMBLES nommés (forêts/lacs/rivières/massifs)
 var _geo_dirty := true    ## re-nommer à la génération (déterministe par graine, display-only)
 var _dress_clear := []    ## [[Vector2, r²]] — la CLAIRIÈRE des bourgs (aucune marque dedans)
@@ -141,14 +165,33 @@ var _country_names := []  ## nom de chaque pays (figé au générate) — pour l
 var _name_anchor := {}
 var _names_dirty := true
 var _borders := {}        ## 0 = TRAME FINE (provinces+régions) → PackedVector2Array jittée
+var _fine_proj := PackedVector2Array()  ## TRAME FINE déjà projetée iso (revue #5, cache _rebuild_borders)
 # DÉGRADÉ de frontière : un RUBAN par entité, BLENDÉ (N couches du ton EXTÉRIEUR au ton INTÉRIEUR,
 # décalées le long de la normale → vrai dégradé, pas deux traits posés). OUTLINE = CULTURE (héritage,
 # 6 familles + variation RGB par pays) ; INLINE = ÉTHOS (axe martial↔ordre, fluide). Cités-états or↔argent.
 var _b_segs := {}         ## entité → PackedVector2Array : segments de frontière (jittés)
 var _b_norm := {}         ## entité → PackedVector2Array : normale vers l'INTÉRIEUR, 1 par segment
+# ── PROJECTION EN CACHE (revue overlay #5) : _project_segs_iso (mv.iso_pos, une projection MONDE→
+# ISO FIXE, indépendante de la caméra) et les 3 couches de lavis intérieur (offsets FIXES en monde,
+# eux aussi indépendants du zoom) étaient recalculés CHAQUE FRAME pour CHAQUE entité. Précalculés
+# ici à _rebuild_borders (même cadence que _b_segs/_b_norm) ; le draw n'indexe plus qu'un tableau.
+# ⚠ _draw_cap_lisere N'EST PAS traité pareil : son décalage (1.4/zoom) DÉPEND du zoom courant — le
+# mettre en cache figerait le liseré à un zoom, visible dès qu'on zoome/dézoome. Laissé tel quel.
+var _b_proj := {}         ## entité → PackedVector2Array : OUTLINE déjà projeté (parallèle à _b_segs)
+var _b_wash := {}         ## entité → Array[PackedVector2Array] : les 3 couches de lavis, déjà projetées
 var _cap_segs := {}       ## pays → PackedVector2Array : contour de sa CAPITALE (liseré pourpre)
 var _cap_norm := {}       ## pays → PackedVector2Array : normale intérieure du contour capitale
 var _war_regions := {}    ## W-GUERRE UI (lot A) : région → {state:1/2, belligerent, poly} — sièges/occupations, recalculé au tick
+# ── VILLES EN CACHE (revue overlay #4, motif _war_regions) : la liste des bourgs à dessiner
+# (tier/owner/rôle/pop/fog/siège) refaisait region_count() × (region_tier+region_owner+
+# country_role+region_pop+fog+seat) + un sort_custom CHAQUE FRAME — invisible au joueur (mêmes
+# résultats image après image la plupart du temps) mais payé en boucle, en appels DLL croisés.
+# Reconstruite à _refresh_setts (appelée paresseusement depuis _draw_iso quand dirty — même idiome
+# que _borders_dirty/_dressing_dirty dans ce fichier), dirty aux MÊMES signaux que le fog/les
+# frontières (souveraineté, année). Projection ISO incluse dans le cache (elle est FIXE — même
+# preuve que _lane_dash_iso) : seul le test de visibilité ÉCRAN (zoom/pan courants) reste par-frame.
+var _setts := []          ## [{r, role, ctr, ip}] déjà filtré (tier/owner/pop/fog) et trié fond→avant
+var _setts_dirty := true
 # PALETTE de PIGMENTS LIMITÉE (anti-néon) : des encres NATURELLES choisies à la main (terre de Sienne,
 # ocre, ardoise, olive…), pas un échantillonnage de la roue HSV (qui donne des bleus/magentas fluo même
 # désaturés). On reste dans une gamme TERREUSE compatible parchemin → fin de l'effet cyberpunk.
@@ -228,6 +271,7 @@ func _fog_visible_region(r: int) -> bool:
 # ── SÉLECTION : contour DORÉ de la province choisie (le grain de panneau, charte EU4) ──
 var _sel_prov_cache := -2
 var _sel_segs := PackedVector2Array()
+var _sel_proj := PackedVector2Array()   ## _sel_segs déjà projeté iso (revue #5 : même fix que les frontières)
 const SEL_GOLD := Color(0.86, 0.68, 0.26)   ## or de sélection (net, au-dessus du creux d'encre)
 var _roads := []          ## [{points, level, nprov, key}] — réseau de routes (façade + méta locale)
 var _road_start := {}     ## clé de route → ANNÉE de début de chantier (croissance 1 an/province)
@@ -333,8 +377,9 @@ func _build_names() -> void:
 		var info: Dictionary = w.country_info(c)
 		_country_names.append(String(info.get("nom", "")))
 
-func _on_generated() -> void:
-	_set_rivers()
+## regroupe les ~15 invalidations « monde neuf/save chargée » (revue overlay #12) — un SEUL
+## endroit à mettre à jour quand un futur cache apparaît, plutôt qu'un site de plus à chaque fois.
+func _invalidate_all() -> void:
 	_himg_l = null              # monde neuf → recharger les caches de lumière (relief + albedo)
 	_alb_l = null
 	_borders_dirty = true       # monde neuf → frontières ET routes à refaire
@@ -356,6 +401,11 @@ func _on_generated() -> void:
 	_bio_img = null             # couche biome recachée (routes sous canopée)
 	_river_hash.clear()         # snap de frontières : fil de rivière re-haché (monde neuf)
 	_owner_sig = -1
+	_setts_dirty = true         # revue #4 : la liste de villes en cache aussi à refaire au monde neuf
+
+func _on_generated() -> void:
+	_set_rivers()
+	_invalidate_all()
 	_build_names()
 	_build_anchors()
 	_update_top_cap()           # la plus grande capitale du monde (vignette t7)
@@ -395,14 +445,18 @@ func _build_region_raws() -> void:
 ## MODE RESSOURCES (9) : l'icône de chaque brute extraite, à la tuile (centroïde projeté).
 ## Sprite si dispo, sinon une PASTILLE nommée (3 lettres) → couverture complète. Taille
 ## ÉCRAN-CONSTANTE (÷zoom) → lisible à tout niveau de zoom.
-func _draw_resources(w, mv: Node2D, is_iso: bool) -> void:
+## ISO est le SEUL mode de rendu (revue overlay #2) : map_view.gd l'affirme lui-même
+## (« Il n'y a plus de vue GLOBE 3D... un seul rendu, à tous les zooms ») et son
+## globe_to_screen() est un stub COMPAT qui renvoie toujours vis=false — l'ancienne branche
+## globe ici était donc déjà morte deux fois (jamais appelée, et n'aurait rien dessiné).
+func _draw_resources(w, mv: Node2D) -> void:
 	if _raws_dirty:
 		_build_region_raws()         # rebâti à la demande (mode RESSOURCES seulement)
 		_raws_dirty = false
 	var vt := get_viewport_transform()
 	var vp := get_viewport_rect().size
 	var zoom := maxf(0.01, vt.get_scale().x)
-	var sz := 18.0 / zoom if is_iso else 13.0           # MONDE (iso : constant écran) · ÉCRAN (globe)
+	var sz := 18.0 / zoom                               # MONDE → taille ÉCRAN constante
 	for r in range(w.region_count()):
 		var raws: Array = _region_raws.get(r, [])
 		if raws.is_empty():
@@ -410,14 +464,7 @@ func _draw_resources(w, mv: Node2D, is_iso: bool) -> void:
 		var ctr: Vector2 = w.region_centroid(r)
 		if ctr.x < 0:
 			continue
-		var sp: Vector2
-		if is_iso:
-			sp = vt * mv.iso_pos(ctr.x, ctr.y)
-		else:
-			var pr: Dictionary = mv.globe_to_screen(ctr.x, ctr.y)
-			if not pr["vis"]:
-				continue
-			sp = pr["pos"]
+		var sp: Vector2 = vt * mv.iso_pos(ctr.x, ctr.y)
 		if sp.x < -20 or sp.y < -20 or sp.x > vp.x + 20 or sp.y > vp.y + 20:
 			continue
 		var n := raws.size()
@@ -577,18 +624,30 @@ func _max_dry_size(sea: Image, base: Vector2) -> float:
 			break
 	return best
 
-func _on_tick(_year: int) -> void:
+## diff de signature de souveraineté PARTAGÉ (revue overlay #11 : ce test + son jeu de flags
+## était DUPLIQUÉ mot pour mot entre _on_tick et le poll ~4×/s de _process/_sig_poll — UN
+## seul endroit désormais). Renvoie VRAI si la souveraineté a bougé (conquête/colonisation).
+func _poll_world_changes() -> bool:
+	if Sim.world == null:
+		return false
+	var sig := _owner_signature(Sim.world)
+	if sig == _owner_sig:
+		return false
+	_owner_sig = sig           # refaire frontières, villes, ET réseau de routes/lanes (villes neuves/captées)
+	_borders_dirty = true
+	_fog_dirty = true; _names_dirty = true      # les sources de visibilité territoriales ont bougé
+	_roads_dirty = true
+	_lanes_dirty = true        # PORTULAN : un port conquis/fondé peut recâbler le commerce
+	_setts_dirty = true        # revue #4 : villes (owner/rôle) à refaire aussi
+	return true
+
+func _on_tick(year: int) -> void:
 	_raws_dirty = true         # l'extraction a pu s'établir (an-0 nu) → recache les brutes au prochain dessin RESSOURCES
 	_update_top_cap()          # le titre de « plus grande capitale » peut changer → la vignette t7 suit
-	var sig := _owner_signature(Sim.world)
-	if sig != _owner_sig:      # la souveraineté a changé (conquête/colonisation) →
-		_owner_sig = sig       # refaire frontières ET réseau de routes (villes neuves/captées)
-		_borders_dirty = true
-		_fog_dirty = true; _names_dirty = true      # les sources de visibilité territoriales ont bougé
-		_roads_dirty = true
-		_lanes_dirty = true    # PORTULAN : un port conquis/fondé peut recâbler le commerce
-	if _year != _fog_year:
+	_poll_world_changes()
+	if year != _fog_year:
 		_fog_dirty = true; _names_dirty = true      # rayon d'exploration/ère et connaissance évoluent annuellement
+		_setts_dirty = true     # revue #4 : pop/tier peuvent avoir franchi un seuil — même cadence que le fog
 	if Sim.day_count - _lanes_day >= SEA_LANE_POLL_DAYS:
 		_lanes_dirty = true    # PORTULAN : le commerce maritime évolue SANS conquête (routes
 		                       # ordonnées/ouvertes au fil des ans) → re-poll semestriel ; le
@@ -624,6 +683,43 @@ func _refresh_war_regions() -> void:
 		_war_regions[r] = {"state": st, "belligerent": int(ws.get("belligerent", -1)),
 			"polys": polys, "hatch": _hatch_segments(polys)}
 
+## VILLES (lot U), motif _war_regions (revue overlay #4) : la LISTE des bourgs éligibles
+## (tier/owner/rôle/pop/fog/siège) tournait CHAQUE FRAME dans _draw_iso — region_count() ×
+## (region_tier+region_owner+country_role+region_pop+fog+seat) + un sort_custom, en appels DLL
+## croisés, pour un résultat qui ne bouge presque jamais d'une image à l'autre. Reconstruite ici,
+## appelée paresseusement par _draw_iso quand `_setts_dirty` (dirtée aux mêmes signaux que le
+## fog/les frontières — cf. _poll_world_changes/_on_tick). La projection ISO (`ip`) est incluse :
+## FIXE (mv.iso_pos ne dépend pas de la caméra — même preuve que _lane_dash_iso) ; seul le test de
+## visibilité ÉCRAN (zoom/pan COURANTS) doit rester par-frame, sur cette liste déjà filtrée/triée.
+func _refresh_setts() -> void:
+	_setts.clear()
+	_setts_dirty = false
+	var w = Sim.world
+	if w == null:
+		return
+	var mv := _mv_ref()
+	if mv == null:
+		return
+	var human_idx := int(w.player())
+	for r in range(w.region_count()):
+		var tier: int = w.region_tier(r)
+		var owner: int = w.region_owner(r)
+		var role: int = int(w.country_role(owner)) if owner >= 0 else -1
+		# un BOURG demande des HABITANTS (≥150 âmes) et un propriétaire — plus de villes
+		# fantômes sur la terre vide ; cité-état (2) & hameau libre (4) toujours tracés.
+		if (tier < 0 or owner < 0 or int(w.region_pop(r)) < 150) and role != 2 and role != 4:
+			continue
+		# BROUILLARD DE GUERRE (étape 1/2) : un bourg ENNEMI tombant dans le voile ne se
+		# dessine pas — les tiens (owner==human_idx) restent TOUJOURS visibles.
+		if owner != human_idx and not _fog_visible_region(r):
+			continue
+		var ctr: Vector2 = _region_seat.get(r, w.region_centroid(r))
+		if ctr.x < 0:
+			continue
+		var ip: Vector2 = mv.iso_pos(ctr.x, ctr.y)
+		_setts.append({"r": r, "role": role, "ctr": ctr, "ip": ip})
+	_setts.sort_custom(func(a, b): return (a["ip"] as Vector2).y < (b["ip"] as Vector2).y)
+
 ## signature de la photo des propriétaires → détecte conquête/colonisation. Le compte de
 ## provinces COLONISÉES y entre : une colonisation INTRA-région ne bouge pas l'owner agrégé
 ## de région — sans lui, le lavis/frontières (grain PROVINCE, charte) ne se rebâtiraient pas.
@@ -656,7 +752,9 @@ func _refresh_fog() -> void:
 	_fog_dirty = false
 
 ## reconstruit les segments de frontière (région + pays) depuis la façade (port bseg).
-func _rebuild_borders() -> void:
+## `mv` (revue overlay #5) : les segments et les couches de lavis sont désormais projetés EN ISO
+## ICI (une fois, à la souveraineté) plutôt qu'à chaque frame de _draw_iso — cf. _b_proj/_b_wash.
+func _rebuild_borders(mv: Node2D) -> void:
 	var w = Sim.world
 	if w == null:
 		return
@@ -680,6 +778,7 @@ func _rebuild_borders() -> void:
 		for i in range(poly.size() - 1):
 			fine.push_back(poly[i]); fine.push_back(poly[i + 1])
 	_borders[0] = fine
+	_fine_proj = _project_segs_iso(mv, fine)   # revue #5 : projection FIXE (mv.iso_pos monde→iso), cachée ici
 	# BLOCS (2) en RUBAN int.→ext. : par ENTITÉ, on bâtit l'INLINE (décalé vers l'intérieur, ton clair)
 	# et l'OUTLINE (sur l'arête, ton foncé), le long de la normale extérieure. La façade exclut les côtes
 	# d'EMPIRE (le rivage suffit) mais GARDE celles des cités-états (leur ruban or-argent doit se voir).
@@ -715,9 +814,14 @@ func _rebuild_borders() -> void:
 		var en: PackedVector2Array = ent_nrm[entity]
 		en.push_back(n * idir); ent_nrm[entity] = en        # normale vers l'INTÉRIEUR de l'entité
 	# CHAÎNE + Chaikin chaque entité → ruban en COURBES (normale intérieure recalculée le long du tracé).
+	_b_proj.clear(); _b_wash.clear()
 	for entity in ent_flat:
 		var r := _smooth_border(ent_flat[entity], ent_nrm[entity])
 		_b_segs[entity] = r[0]; _b_norm[entity] = r[1]
+		# revue #5 : OUTLINE + les 3 couches de lavis intérieur, projetés UNE fois ici (offsets
+		# FIXES en monde, indépendants du zoom — _draw_band ne fera plus que les indexer).
+		_b_proj[entity] = _project_segs_iso(mv, r[0])
+		_b_wash[entity] = _build_wash_layers(mv, r[0], r[1])
 	# CAPITALES : contour de la PROVINCE-capitale de chaque EMPIRE → liseré POURPRE (au-dessus).
 	# Grain PROVINCE (charte) : jadis le contour de toute la RÉGION-siège — incohérent depuis
 	# que la carte montre la propriété par province (le liseré entourait de la terre vierge).
@@ -1218,33 +1322,40 @@ func _heritage_wash(e: int) -> Color:
 		idx = clampi(int(Sim.world.country_heritage(e)), 0, 5)
 	return HERITAGE_WASH[idx]
 
-func _draw_band(mv: Node2D, segs: PackedVector2Array, nrms: PackedVector2Array, entity: int, zoom: float) -> void:
-	if segs.size() < 2:
+## calque INLINE d'une bande (lavis d'héritage), décalé vers l'INTÉRIEUR le long de la normale
+## PUIS projeté — 3 couches, alpha dégressif. ⚠ _b_norm porte la normale EXTÉRIEURE (héritée de
+## la façade) → l'intérieur est à -n. Zoom-INDÉPENDANT (offsets FIXES en monde : 0.45/1.07/2.20)
+## → précalculable UNE fois à _rebuild_borders (revue overlay #5) au lieu de re-projeter
+## segs.size()×3 points CHAQUE frame pour chaque entité.
+func _build_wash_layers(mv: Node2D, segs: PackedVector2Array, nrms: PackedVector2Array) -> Array:
+	var out: Array = []
+	if nrms.size() * 2 < segs.size():
+		return out
+	for off in [0.45, 1.07, 2.20]:
+		var proj := PackedVector2Array()
+		proj.resize(segs.size())
+		for i in range(0, segs.size() - 1, 2):
+			var n: Vector2 = nrms[i >> 1] * (-float(off))
+			proj[i] = mv.iso_pos(segs[i].x + n.x, segs[i].y + n.y)
+			proj[i + 1] = mv.iso_pos(segs[i + 1].x + n.x, segs[i + 1].y + n.y)
+		out.append(proj)
+	return out
+
+## `proj0`/`wash` (revue overlay #5) : géométrie déjà PROJETÉE en iso par _rebuild_borders
+## (_b_proj/_b_wash) — cette fonction ne fait plus que choisir les couleurs et tracer.
+func _draw_band(proj0: PackedVector2Array, wash: Array, entity: int, zoom: float) -> void:
+	if proj0.size() < 2:
 		return
 	var is_cs: bool = entity >= 0 and Sim.world != null and int(Sim.world.country_role(entity)) == 2
 	var out_col: Color = CS_GOLD if is_cs else _ethos_ink(entity)
 	var in_col: Color = Color(0.80, 0.68, 0.40) if is_cs else _heritage_wash(entity)
 	# l'INLINE d'abord (sous l'outline) : le lavis d'héritage, décalé vers l'INTÉRIEUR
-	var have_n := nrms.size() * 2 >= segs.size()
-	if have_n:
+	if wash.size() == 3:
 		var lw := _w(zoom, 0.55, 1.8, 3.4)
-		var wash_offsets := [0.45, 1.07, 2.20]
 		var wash_alphas := [0.34, 0.20, 0.06]
 		for k in range(3):
-			# ⚠ _b_norm porte la normale EXTÉRIEURE (héritée de la façade) → l'intérieur est à -n
-			var off: float = -float(wash_offsets[k])
-			var a: float = float(wash_alphas[k])
-			var proj := PackedVector2Array()
-			proj.resize(segs.size())
-			for i in range(0, segs.size() - 1, 2):
-				var n: Vector2 = nrms[i >> 1] * off
-				proj[i] = mv.iso_pos(segs[i].x + n.x, segs[i].y + n.y)
-				proj[i + 1] = mv.iso_pos(segs[i + 1].x + n.x, segs[i + 1].y + n.y)
-			draw_multiline(proj, Color(in_col.r, in_col.g, in_col.b, a), lw, true)
+			draw_multiline(wash[k], Color(in_col.r, in_col.g, in_col.b, float(wash_alphas[k])), lw, true)
 	# le CREUX gravé (discret) + l'OUTLINE d'éthos NET, sur la ligne
-	var proj0 := _project_segs_iso(mv, segs)
-	if proj0.size() < 2:
-		return
 	draw_multiline(proj0, Color(POL_HALO.r, POL_HALO.g, POL_HALO.b, 0.36), _w(zoom, POL_HALO_BASE, POL_HALO_MIN, POL_HALO_MAX), true)
 	draw_multiline(proj0, Color(out_col.r, out_col.g, out_col.b, 0.92), _w(zoom, POL_PIG_BASE, POL_PIG_MIN, POL_PIG_MAX), true)
 
@@ -1337,10 +1448,16 @@ func _ink_brush(segs: PackedVector2Array, col: Color, core_w: float, feather: fl
 		draw_multiline(segs, Color(col.r, col.g, col.b, col.a * float(b[1])), ww / zoom, true)
 	draw_multiline(segs, col, core_w / zoom, true)            # plume nette (cœur)
 
-## hash scalaire → [0,1) (déterministe, display-only) — varie dressing/orientations.
+## hash scalaire → [0,1) (déterministe, display-only) — varie dressing/orientations. Hash
+## ENTIER (revue overlay #8) : l'ancien sin(x·12.9898)·43758.5453 dépend de la précision CPU/libm
+## (résultat pas garanti bit-identique entre plateformes) — display-only donc pas un souci de
+## déterminisme SIM, mais un souci de REPRODUCTIBILITÉ des probes/captures. ⚠ REDISTRIBUE tout le
+## semis (dressing/canopée/chevrons) par rapport à l'ancien hash — display-only, assumé.
 func _h1(x: float) -> float:
-	var v := sin(x * 12.9898) * 43758.5453
-	return v - floor(v)
+	var n := int(x * 4096.0) & 0x7fffffff
+	n = (n ^ 61) ^ (n >> 16); n += n << 3; n ^= n >> 4
+	n *= 0x27d4eb2d; n ^= n >> 15
+	return float(n & 0xffffff) / 16777216.0
 
 ## (re)charge le réseau de routes + sa méta + l'habillage, et DATE les chantiers neufs.
 ## Appelé hors zoom (générate/tick) → les routes initiales démarrent dès l'an de fondation,
@@ -1468,7 +1585,8 @@ func _ensure_lanes() -> void:
 		return
 	var w = Sim.world
 	if w == null or not w.has_method("sea_paths"):
-		return
+		_lanes_dirty = false   # revue overlay #9 : vieille DLL/monde pas prêt → rien à charger, mais
+		return                 # NE PAS rester dirty (sinon ce garde-fou se ré-exécute CHAQUE frame)
 	_lanes = w.sea_paths()
 	_augment_lanes(w)
 	_lanes_day = Sim.day_count
@@ -1574,7 +1692,13 @@ func _lane_dash_iso(pts: PackedVector2Array, mv, seen: Dictionary) -> PackedVect
 		if seg < 0.0001:
 			continue
 		var s := 0.0
+		var guard := 0   # FUSIBLE (revue overlay #7) : le plancher ε ci-dessous a déjà corrigé le
+		                 # hang documenté (11 min CPU) mais reste un raisonnement float — un garde-fou
+		                 # dur en plus, jamais légitimement atteint pour un segment normal.
 		while s < seg - 0.0001:
+			guard += 1
+			if guard > 100000:
+				break
 			var phase := fmod(t, period)
 			var in_dash := phase < SEA_LANE_DASH
 			# PIÈGE FLOTTANT (a HANGÉ un run d'audit — 11 min de CPU) : quand phase tend
@@ -1986,15 +2110,8 @@ func _process(dt: float) -> void:
 	_sig_poll += dt
 	if _sig_poll >= 0.25:
 		_sig_poll = 0.0
-		if Sim.world != null:
-			var sig := _owner_signature(Sim.world)
-			if sig != _owner_sig:
-				_owner_sig = sig
-				_borders_dirty = true
-				_fog_dirty = true
-				_roads_dirty = true
-				_names_dirty = true
-				queue_redraw()
+		if _poll_world_changes():          # revue #11 : même diff/mêmes flags que _on_tick, factorisé
+			queue_redraw()
 
 ## Anneau doré autour du pion du joueur SÉLECTIONNÉ (mode marche : cliquez une destination).
 func _draw_army_ring(ctr: Vector2, s: float, zoom: float) -> void:
@@ -2002,20 +2119,27 @@ func _draw_army_ring(ctr: Vector2, s: float, zoom: float) -> void:
 	draw_arc(ctr, r + 3.0 / zoom, 0.0, TAU, 40, Color(0.10, 0.08, 0.03, 0.7), 4.0 / zoom, true)
 	draw_arc(ctr, r, 0.0, TAU, 40, Color(1.0, 0.86, 0.36, 0.95), 2.4 / zoom, true)
 
-## Le clic (en espace LOCAL de l'overlay = iso) touche-t-il le pion du joueur ?
+## Le clic (en espace LOCAL de l'overlay = iso) touche-t-il le pion du joueur ? Hit-test TYPÉ
+## (revue overlay #1) : seules les clés INT (corps réels) comptent — les garnisons (clé "g<pays>")
+## ne sont pas des corps et ne peuvent pas être ordonnées en marche, donc jamais retournées ici.
 func point_hits_player_army(local: Vector2) -> int:
 	var best := -1
 	var best_d := INF
 	for id in _pa_positions:
+		if typeof(id) != TYPE_INT:
+			continue                      # garnison : pas un corps, hors hit-test
 		var p: Vector2 = _pa_positions[id]["pos"]
 		var d := local.distance_to(p)
 		if d <= maxf(float(_pa_positions[id]["radius"]), 6.0) and d < best_d:
 			best = int(id); best_d = d
 	return best
 
+## idem : seules les clés INT (corps réels) peuvent entrer dans une sélection au rectangle.
 func player_corps_in_rect(rect: Rect2) -> Array[int]:
 	var out: Array[int] = []
 	for id in _pa_positions:
+		if typeof(id) != TYPE_INT:
+			continue                      # garnison : exclue (pas un corps réel)
 		if rect.has_point(_pa_positions[id]["pos"]): out.append(int(id))
 	return out
 
@@ -2041,8 +2165,14 @@ func _draw_garrison(w, mv, c: int, zoom: float, human_idx: int) -> void:
 	var ctr: Vector2 = mv.iso_pos(rc.x, rc.y)
 	var s := _w(zoom, 5.0, 22.0, 48.0)         # plus discret que l'ost de campagne (34..74)
 	if c == human_idx:
-		_pa_positions[c] = {"pos":ctr,"radius":s*0.7}
-		if c in selected_corps: _draw_army_ring(ctr,s,zoom)
+		# clé PRÉFIXÉE "g<pays>" (revue #1) : distincte de l'espace des id de CORPS — sans ça une
+		# garnison keyée par index de pays pouvait coïncider avec un corps_id réel et se faire
+		# renvoyer par point_hits_player_army/player_corps_in_rect comme s'il s'agissait de lui.
+		_pa_positions["g%d" % c] = {"pos":ctr,"radius":s*0.7}
+		# PAS de `if c in selected_corps` ici (ancien bug #1) : une garnison n'a pas de corps_id,
+		# la comparer à des ids de corps était vraie PAR COÏNCIDENCE (même espace de petits entiers)
+		# — et cumulée avec la ligne suivante, dessinait l'anneau DEUX FOIS. Un seul signal reste :
+		# le mode marche global (le panneau n'a pas de sélection plus fine pour une garnison).
 		if army_selected:
 			_draw_army_ring(ctr, s, zoom)
 	var pt: Texture2D = HeraldryK.pion(0, c)   # phase repos, teinté au pays
@@ -2124,7 +2254,7 @@ func _draw() -> void:
 	_draw_iso(w, mv)
 	# MODE RESSOURCES (9) : les icônes de brutes par tuile, AU-DESSUS de tout (sauf en mode NATURE).
 	if not nature_mode and int(mv.get("mode")) == 9:
-		_draw_resources(w, mv, true)
+		_draw_resources(w, mv)
 
 ## CARTE PARCHEMIN — acteurs tracés en ENCRE vectorielle (zéro sprite) : frontières, routes,
 ## villes (glyphes), noms d'empire, armées, épicentre §27. La Camera2D met à l'échelle ; les
@@ -2142,7 +2272,7 @@ func _draw_iso(w, mv: Node2D) -> void:
 	#    quoi d'un regard au plan large ; le lavis s'efface vers le zoom profond (le terrain parle). ──
 	if not nature_mode and _pol_tex != null:
 		if _borders_dirty:
-			_rebuild_borders()                        # le lavis se rebâtit avec les frontières
+			_rebuild_borders(mv)                      # le lavis se rebâtit avec les frontières
 		var wash_a := lerpf(WASH_A_FAR, WASH_A_NEAR,
 			clampf((zoom - WASH_FADE_LO) / (WASH_FADE_HI - WASH_FADE_LO), 0.0, 1.0))
 		var p0: Vector2 = mv.iso_pos(0, 0)
@@ -2166,31 +2296,27 @@ func _draw_iso(w, mv: Node2D) -> void:
 		for b in _canopy_batches:
 			draw_multimesh(b["mm"], b["tex"])
 	if zoom >= DECOR_ZOOM_MIN:
-		var dress_col := Color(1, 1, 1, DRESS_ALPHA)
-		var egg_col := Color(1, 1, 1, EGG_ALPHA)
-		for d in _dressing:
-			var wp: Vector2 = d["pos"]
-			var dip: Vector2 = mv.iso_pos(wp.x, wp.y)
+		# CHEVRONS (relief) : liste courte, géométrie déjà projetée/clippée par _clip_relief/
+		# _finalize_dress_fast (revue #6) — traits pré-clippés STYLÉS, intérieur transparent.
+		for d in _dress_relief:
+			var dip: Vector2 = d["ip"]
 			var dss: Vector2 = vt * dip
 			if dss.x < -90 or dss.y < -90 or dss.x > vp.x + 90 or dss.y > vp.y + 90:
 				continue
-			var did: String = d["id"]
-			if did == "chevron":
-				# traits pré-clippés STYLÉS (priorité fond→avant), intérieur transparent
-				for seg in d.get("segs", []):
-					var sg: Dictionary = seg
-					draw_polyline(sg["pts"], sg["col"], float(sg["w"]) / zoom, true)
+			for seg in d.get("segs", []):
+				var sg: Dictionary = seg
+				draw_polyline(sg["pts"], sg["col"], float(sg["w"]) / zoom, true)
+		# SPRITES (dressing lot 2/3/6) : tableaux PARALLÈLES TYPÉS (revue #6) — ip/texture/teinte
+		# déjà résolus à _finalize_dress_fast, le draw n'indexe plus que des Packed*Array.
+		for k in range(_dress_fast_ip.size()):
+			var dip2: Vector2 = _dress_fast_ip[k]
+			var dss2: Vector2 = vt * dip2
+			if dss2.x < -90 or dss2.y < -90 or dss2.x > vp.x + 90 or dss2.y > vp.y + 90:
 				continue
-			var dtex := _dress_get(did)
-			if dtex == null:
-				continue
-			var is_egg: bool = d.get("egg", false)
-			var dh := _dress_size(did) * float(d["scale"]) / zoom        # hauteur MONDE (taille écran constante)
-			var dw := dh
-			if did.begins_with("sea_serpent"):
-				dw = dh * 2.0                                            # serpent : sprite 2:1 (large)
-			draw_texture_rect(dtex, Rect2(dip - Vector2(dw * 0.5, dh * 0.5), Vector2(dw, dh)), false,
-				egg_col if is_egg else d.get("tint", dress_col))
+			var dh2 := _dress_fast_h[k] / zoom            # hauteur MONDE (taille écran constante)
+			var dw2 := dh2 * 2.0 if _dress_fast_wide[k] != 0 else dh2   # serpent de mer : sprite 2:1 (large)
+			draw_texture_rect(_dress_fast_tex[k], Rect2(dip2 - Vector2(dw2 * 0.5, dh2 * 0.5), Vector2(dw2, dh2)),
+				false, _dress_fast_col[k])
 	# LES ENSEMBLES NOMMÉS (forêts/lacs/rivières/massifs) se dessinent PLUS BAS (juste avant
 	# les noms d'empire) — au-dessus du lavis/routes, sous le brouillard ; mais leur rendu
 	# vit AUSSI en mode NATURE : on le fait ici si nature (le return saute la suite).
@@ -2201,7 +2327,7 @@ func _draw_iso(w, mv: Node2D) -> void:
 	# ── FRONTIÈRES à l'ENCRE (calligraphie) : TRAME FINE 1px (toutes provinces+régions) + BLOCS
 	#    d'empire 3px, COULEUR PAR ENTITÉ, en 2 passes (bave d'encre douce + plume nette, jittées). ──
 	if _borders_dirty:
-		_rebuild_borders()
+		_rebuild_borders(mv)
 	# la TRAME FINE fond en survol (sinon mosaïque illisible) et se révèle au plan rapproché — toutes
 	# les provinces RESTENT tracées (1px), juste graduées au zoom (LOD ; les blocs d'empire, eux, toujours).
 	if _borders.has(0):
@@ -2209,16 +2335,15 @@ func _draw_iso(w, mv: Node2D) -> void:
 		# (rebuild), elle n'émerge qu'au plan rapproché (zoom 2.2+) et plafonne bas (0.24) —
 		# le lavis + la frontière d'empire portent la lecture, la trame ne fait que détailler.
 		var fine_a := clampf((zoom - 2.2) / 2.6, 0.0, 1.0) * 0.24
-		if fine_a > 0.02:
-			var fseg := _project_segs_iso(mv, _borders[0])
-			if fseg.size() >= 2:
-				draw_multiline(fseg, Color(PROV_INK.r, PROV_INK.g, PROV_INK.b, fine_a * 0.45), _w(zoom, 0.6, 0.9, 1.5), true)
-				draw_multiline(fseg, Color(PROV_INK.r, PROV_INK.g, PROV_INK.b, fine_a), _w(zoom, 0.34, 0.6, 0.9), true)
+		# revue #5 : _fine_proj déjà projeté par _rebuild_borders — plus de _project_segs_iso ici.
+		if fine_a > 0.02 and _fine_proj.size() >= 2:
+			draw_multiline(_fine_proj, Color(PROV_INK.r, PROV_INK.g, PROV_INK.b, fine_a * 0.45), _w(zoom, 0.6, 0.9, 1.5), true)
+			draw_multiline(_fine_proj, Color(PROV_INK.r, PROV_INK.g, PROV_INK.b, fine_a), _w(zoom, 0.34, 0.6, 0.9), true)
 	# PAYS : trait GRAVÉ en double passe (halo brun sombre LARGE + pigment politique FIN), pour bien
 	# SÉPARER l'administratif (province, cheveu brun) du politique (pays, trait coloré net). Puis le
 	# LISERÉ POURPRE FIN de chaque capitale, AU-DESSUS.
 	for entity in _b_segs:
-		_draw_band(mv, _b_segs[entity], _b_norm.get(entity, PackedVector2Array()), int(entity), zoom)
+		_draw_band(_b_proj.get(entity, PackedVector2Array()), _b_wash.get(entity, []), int(entity), zoom)
 	for cc in _cap_segs:
 		_draw_cap_lisere(mv, _cap_segs[cc], _cap_norm[cc], zoom)
 
@@ -2235,13 +2360,14 @@ func _draw_iso(w, mv: Node2D) -> void:
 				var poly: PackedVector2Array = _smooth_poly(ch)
 				for i in range(poly.size() - 1):
 					_sel_segs.push_back(poly[i]); _sel_segs.push_back(poly[i + 1])
+			_sel_proj = _project_segs_iso(mv, _sel_segs)   # revue #5 : projeté UNE fois, au changement de sélection
 		if _sel_segs.size() >= 2:
-			var sseg := _project_segs_iso(mv, _sel_segs)
-			draw_multiline(sseg, Color(0.12, 0.08, 0.04, 0.80), _w(zoom, 1.3, 2.6, 4.4), true)
-			draw_multiline(sseg, Color(SEL_GOLD.r, SEL_GOLD.g, SEL_GOLD.b, 0.95), _w(zoom, 0.7, 1.5, 2.6), true)
+			draw_multiline(_sel_proj, Color(0.12, 0.08, 0.04, 0.80), _w(zoom, 1.3, 2.6, 4.4), true)
+			draw_multiline(_sel_proj, Color(SEL_GOLD.r, SEL_GOLD.g, SEL_GOLD.b, 0.95), _w(zoom, 0.7, 1.5, 2.6), true)
 	elif _sel_prov_cache != -2:
 		_sel_prov_cache = -2
 		_sel_segs = PackedVector2Array()
+		_sel_proj = PackedVector2Array()
 
 	# ── ROUTES : CHEMIN DE TERRE À 3 TRAITS (sous-trait sépia + corps crème + filet clair) —
 	#    le motif cartographique classique, sur les polylignes DÉJÀ lissées (_augment_roads).
@@ -2331,28 +2457,16 @@ func _draw_iso(w, mv: Node2D) -> void:
 	# toujours tracés même sans tier de ville. Les vignettes sont GRANDES → tri fond→avant
 	# (peintre, y écran) puis les BANNIÈRES par-dessus tout (jamais sous la vignette voisine).
 	if zoom >= CITY_ZOOM_MIN:
+		# revue #4 : la LISTE (tier/owner/rôle/pop/fog/siège + tri) est en cache, cf. _refresh_setts
+		# — seul le test de visibilité ÉCRAN (dépend du zoom/pan COURANTS) reste par-frame ici.
+		if _setts_dirty:
+			_refresh_setts()
 		var setts := []
-		for r in range(w.region_count()):
-			var tier: int = w.region_tier(r)
-			var owner: int = w.region_owner(r)
-			var role: int = int(w.country_role(owner)) if owner >= 0 else -1
-			# un BOURG demande des HABITANTS (≥150 âmes) et un propriétaire — plus de villes
-			# fantômes sur la terre vide ; cité-état (2) & hameau libre (4) toujours tracés.
-			if (tier < 0 or owner < 0 or int(w.region_pop(r)) < 150) and role != 2 and role != 4:
-				continue
-			# BROUILLARD DE GUERRE (étape 1/2) : un bourg ENNEMI tombant dans le voile ne se
-			# dessine pas — les tiens (owner==human_idx) restent TOUJOURS visibles.
-			if owner != human_idx and not _fog_visible_region(r):
-				continue
-			var ctr: Vector2 = _region_seat.get(r, w.region_centroid(r))
-			if ctr.x < 0:
-				continue
-			var ip: Vector2 = mv.iso_pos(ctr.x, ctr.y)
-			var ss: Vector2 = vt * ip
+		for s in _setts:
+			var ss: Vector2 = vt * (s["ip"] as Vector2)
 			if ss.x < -160 or ss.y < -160 or ss.x > vp.x + 160 or ss.y > vp.y + 160:
 				continue
-			setts.append({"r": r, "role": role, "ctr": ctr, "ip": ip})
-		setts.sort_custom(func(a, b): return (a["ip"] as Vector2).y < (b["ip"] as Vector2).y)
+			setts.append(s)
 		for s in setts:
 			_draw_settlement(w, int(s["r"]), int(s["role"]), s["ctr"], s["ip"], zoom, mv)
 		# RÉGIME KCD : la BANNIÈRE de lieu éclot au plan rapproché — le relais des
@@ -2943,7 +3057,10 @@ func _build_dressing() -> void:
 			for p in range(passes):
 				i += 1
 				_try_place_dress(i, x, y, bio, rf, sw, sh)
-			x += DRESS_SPACING
+			# retour joueur 2026-07-29 : le PAS d'avancée suit le biome (le relief est GRAND,
+			# ~8-9 cellules d'empreinte — il veut de l'air, cf. DRESS_SPACING_BY_BIOME) — le PAS
+			# seulement, jamais l'amplitude du jitter (_try_place_dress, inchangée).
+			x += int(DRESS_SPACING_BY_BIOME.get(bb, DRESS_SPACING))
 		y += DRESS_SPACING
 	# ── LA CANOPÉE COMPOSÉE : passe dédiée à PAS FIN sur les biomes de forêt — chaque arbre
 	#    est un INDIVIDU (lot 6) en espace MONDE, servi en MULTIMESH (un draw call par essence :
@@ -3039,6 +3156,48 @@ func _build_dressing() -> void:
 			return ba < bb3
 		return String(a["id"]) < String(b["id"]))
 	_clip_relief()   # PRIORITÉ des ∧/dômes : le trait de devant coupe celui de derrière
+	_finalize_dress_fast()   # revue #6 : tableaux typés pré-projetés pour le draw (sprites)
+
+## SÉPARE `_dressing` (Dictionary, build-only) en deux formes RAPIDES pour le draw (revue overlay
+## #6) : les CHEVRONS (peu nombreux, géométrie déjà projetée/clippée par _clip_relief) restent en
+## Dictionary dans `_dress_relief` — juste enrichis d'un `ip` pré-projeté pour le test de
+## visibilité écran ; les SPRITES (le gros du volume — grass/steppe/désert/lot6…) passent en
+## tableaux PARALLÈLES TYPÉS (`_dress_fast_*`), position ISO déjà projetée, texture déjà résolue,
+## teinte finale déjà résolue — le draw n'a plus qu'à indexer, zéro hash Dictionary, zéro
+## mv.iso_pos()/frame. ⚠ Ordre de dessin : les chevrons se dessinent maintenant en PREMIER (voir
+## _draw_iso), les sprites ENSUITE — l'ancien tri combiné (fond→avant, y-bande puis id) les
+## interclassait par y ; l'écart est cosmétique (marques semi-transparentes, chevauchement rare
+## aux frontières de biome) — vérifié au probe visuel (voir TROUVAILLES), pas de MultiMesh ici
+## (chantier séparé).
+func _finalize_dress_fast() -> void:
+	_dress_fast_ip = PackedVector2Array()
+	_dress_fast_tex = []
+	_dress_fast_h = PackedFloat32Array()
+	_dress_fast_wide = PackedByteArray()
+	_dress_fast_col = PackedColorArray()
+	_dress_relief.clear()
+	var mv := _mv_ref()
+	if mv == null:
+		return
+	var dress_col := Color(1, 1, 1, DRESS_ALPHA)
+	var egg_col := Color(1, 1, 1, EGG_ALPHA)
+	for d in _dressing:
+		var did: String = d["id"]
+		var wp: Vector2 = d["pos"]
+		if did == "chevron":
+			d["ip"] = mv.iso_pos(wp.x, wp.y)   # pré-projeté : le draw ne refait plus l'appel/frame
+			_dress_relief.append(d)
+			continue
+		var dtex := _dress_get(did)
+		if dtex == null:
+			continue                          # pas de sprite pour cet id : jamais dessiné (comme avant)
+		_dress_fast_ip.append(mv.iso_pos(wp.x, wp.y))
+		_dress_fast_tex.append(dtex)
+		_dress_fast_h.append(_dress_size(did) * float(d["scale"]))
+		_dress_fast_wide.append(1 if did.begins_with("sea_serpent") else 0)
+		var is_egg: bool = d.get("egg", false)
+		var tint: Variant = d.get("tint", null)
+		_dress_fast_col.append(tint if tint != null else (egg_col if is_egg else dress_col))
 
 ## LA CANOPÉE EN MULTIMESH : un quad partagé (pied à l'origine, y vers le bas), une instance
 ## par arbre (transform en espace ISO + teinte), UN batch par essence — le coût par frame est
@@ -3134,6 +3293,10 @@ func _try_place_dress(i: int, x: int, y: int, bio: Image, rf: Image, sw: int, sh
 			return
 	var entry := {"pos": Vector2(px, py), "id": id, "scale": scl}
 	if id == "chevron":
+		# LIGNE DE BASE COMMUNE (retour joueur 2026-07-29) : convention de gravure — les SOMMETS
+		# varient (jitter/crête ci-dessus), pas les PIEDS. Alignés par rangées de 5 cellules, sur
+		# le py FINAL (après le glissement de crête, donc compatible avec lui).
+		entry["pos"] = Vector2(px, floor(py / 5.0) * 5.0 + 2.5)
 		entry["j"] = [_h1(float(i) * 11.3), _h1(float(i) * 13.7), _h1(float(i) * 17.1)]
 		if b == 16 or b == 17:
 			entry["rond"] = true                   # colline : V ARRONDI (dôme, décision joueur)
@@ -3275,15 +3438,28 @@ func _draw_settlement(w, r: int, role: int, ctr: Vector2, ip: Vector2, zoom: flo
 func _draw_banner(w, r: int, ip: Vector2, zoom: float, a: float) -> void:
 	if a <= 0.02:
 		return
-	if not _region_label.has(r):
-		var nmv := ""
-		var anc: Vector2 = _region_seat.get(r, Vector2(-1, -1))
-		if anc.x >= 0 and w.has_method("province_at"):
-			var pid: int = w.province_at(int(anc.x), int(anc.y))
-			if pid >= 0:
-				nmv = String(w.province_info(pid).get("nom", ""))
-		_region_label[r] = nmv
-	var nm: String = _region_label[r]
+	var nm: String
+	if _region_label.has(r):
+		nm = _region_label[r]
+	else:
+		# TOPONYMIE : nom de VILLE (grain région, scps_region_city_name) — assigné UNE fois
+		# par le moteur (balayage annuel toponym_world_tick), donc mis en cache DÉFINITIF dès
+		# qu'il existe. Tant qu'il n'existe pas encore (ville pas encore nommée cette
+		# année-là, ou méthode absente sur un vieux binaire), on NE cache PAS : repli sur le
+		# nom de région via la province-siège (motif d'avant cette mission), recalculé
+		# chaque frame jusqu'à ce que le vrai nom de ville apparaisse (sinon la bannière
+		# resterait figée sur un nom de région périmé).
+		var city := String(w.region_city_name(r)) if w.has_method("region_city_name") else ""
+		if city != "":
+			nm = city
+			_region_label[r] = nm
+		else:
+			nm = ""
+			var anc: Vector2 = _region_seat.get(r, Vector2(-1, -1))
+			if anc.x >= 0 and w.has_method("province_at"):
+				var pid: int = w.province_at(int(anc.x), int(anc.y))
+				if pid >= 0:
+					nm = String(w.province_info(pid).get("nom", ""))
 	if nm == "":
 		return
 	var sc := 1.0 / maxf(zoom, 0.0001)
