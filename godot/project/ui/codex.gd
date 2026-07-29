@@ -53,7 +53,7 @@ const DOMAINS := [
 		{"nom": "Démettre un conseiller", "ou": "Tiroir Conseil (sidebar)", "regle": "libère le siège, perd les multiplicateurs du titulaire"},
 		{"nom": "Régler la paie d'un siège du Conseil", "ou": "Tiroir Conseil (sidebar), curseur 0.5×/1×/1.5×/2× sous chaque siège", "regle": "un siège mal payé perd en efficacité/loyauté"},
 		{"nom": "Activer / désactiver un décret (civics)", "ou": "Tiroir Conseil ou Économie (section Décrets)", "regle": "une réforme active refuse le retrait ; condition d'entrée vérifiée à l'activation"},
-		{"nom": "Engager l'âge courant", "ou": "Chip topbar « Engager : <âge> » → écran de récap d'âge", "regle": "l'IA s'engage automatiquement ; le joueur choisit son moment — une fois par âge"},
+		{"nom": "Lire le chapitre d'âge", "ou": "Chip d'âge (bande droite, nominatif) → écran de récap ; hover = bonus/contraintes de l'âge", "regle": "les effets de l'âge s'appliquent SEULS à l'avènement — le chip est une page à tourner, une fois par âge"},
 	]],
 	["Foi & Savoir", [
 		{"nom": "Fonder / rallier une religion", "ou": "Créateur de foi (s'ouvre seul au 1er édifice religieux bâti, rouvrable ensuite à la touche R)", "regle": "sous le plafond mondial (⌈empires/3⌉ racines) : au-delà, on RALLIE une foi existante au lieu d'en fonder une"},

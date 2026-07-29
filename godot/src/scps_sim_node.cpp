@@ -1688,6 +1688,7 @@ Dictionary ScpsWorld::age_state() {
     d["age"]     = age;
     d["engaged"] = engaged != 0;
     d["name"]    = String::utf8(name);
+    d["effects"] = String::utf8(sim ? scps_age_effects(sim) : "");
     return d;
 }
 bool ScpsWorld::player_age_engage() {

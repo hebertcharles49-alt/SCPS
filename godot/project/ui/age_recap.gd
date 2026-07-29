@@ -109,7 +109,7 @@ func _ready() -> void:
 	var later := Button.new(); later.text = "Plus tard"
 	later.pressed.connect(_later)     # le chip RESTE (rien d'engagé)
 	foot.add_child(later)
-	var engage := Button.new(); engage.text = "Engager l'âge suivant"
+	var engage := Button.new(); engage.text = "Tourner la page"
 	engage.pressed.connect(_engage)
 	foot.add_child(engage)
 

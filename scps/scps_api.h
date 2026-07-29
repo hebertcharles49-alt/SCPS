@@ -413,6 +413,8 @@ int scps_province_agitation(ScpsSim *s, int province, int *out_value, ScpsBreakd
 int scps_province_developpement(ScpsSim *s, int province, int *out_value, ScpsBreakdownLine *out, int max);
 int scps_province_capadmin(ScpsSim *s, int province, int *out_value, ScpsBreakdownLine *out, int max);
 int scps_province_services_why(ScpsSim *s, int province, int *out_value, ScpsBreakdownLine *out, int max);
+/* bonus/contraintes de l'âge courant (hover du chip d'âge) — "" avant le premier âge. */
+const char *scps_age_effects(ScpsSim *s);
 
 /* les MANUFACTURES bâties dans la province : nom + niveau + ouvriers. Retourne n. */
 typedef struct { const char *nom; int niveau; int ouvriers; } ScpsProvBld;

@@ -138,6 +138,14 @@
     X(STR_CAPADM_CAUSE_COERC,   "Built coercion") \
     X(STR_SERV_CAUSE_SAVOIR,    "Built learning") \
     X(STR_SERV_CAUSE_FOI,       "Built faith") \
+    X(STR_AGE_FX_EXCHANGE,      "Trade revived (lasting) · prosperity stirred · migration pacts eased\nUnlocks: Society III · Merchants favored (living routes)") \
+    X(STR_AGE_FX_DISCOVERY,     "Trade widened (lasting) · research quickened\nUnlocks: Knowledge IV · Transgressors and Merchants favored (known worlds)") \
+    X(STR_AGE_FX_EMPIRES,       "Integration of peoples quickened (lasting)\nUnlocks: Society V · Conquerors favored (long-held provinces)") \
+    X(STR_AGE_FX_HEROES,        "Heroes arise — their deeds mark the annals") \
+    X(STR_AGE_FX_BREACH,        "Breach flux unleashed — magic intensifies\nUnlocks: Knowledge V · Transgressors favored (faustian slopes)") \
+    X(STR_AGE_FX_LUMIERES,      "Learning stirred · lettered men prosper\nLegists and Communals favored") \
+    X(STR_AGE_FX_SOULEVEMENTS,  "Legitimacy under strain — thrones waver\nCommunals favored (revolutionary lands)") \
+    X(STR_AGE_FX_TYRANS,        "Security hardened · cultures homogenize\nConquerors and Legists favored") \
     X(STR_JLOG_CHOC_EFF, "Heightened unrest, fades over time") \
     X(STR_JLOG_POP,    "Population") \
     X(STR_JLOG_PROD,   "Production") \

@@ -3980,6 +3980,18 @@ int scps_country_capital_province(const ScpsSim *s, int c){
 }
 /* l'âge COURANT (dernier levé, -1 = aucun) + le joueur l'a-t-il engagé + son NOM
  * (mot résolu — membrane). Lecture pure. */
+/* les BONUS/CONTRAINTES de l'âge courant (hover du chip nominatif) — mots résolus,
+ * miroir des effets d'age_dawn (scps_events.c) ; "" tant qu'aucun âge n'a percé. */
+const char *scps_age_effects(ScpsSim *s){
+    static const StrId FX[8] = { STR_AGE_FX_EXCHANGE, STR_AGE_FX_DISCOVERY,
+        STR_AGE_FX_EMPIRES, STR_AGE_FX_HEROES, STR_AGE_FX_BREACH,
+        STR_AGE_FX_LUMIERES, STR_AGE_FX_SOULEVEMENTS, STR_AGE_FX_TYRANS };
+    if (!s || !s->ready || !s->sim.ev) return "";
+    int age = s->sim.ev->ages.last_dawned;
+    if (age < 0 || age >= 8) return "";
+    return tr(FX[age]);
+}
+
 int scps_age_state(ScpsSim *s, int *engaged, char *name, int cap){
     if (engaged) *engaged = 0;
     if (name && cap>0) name[0]='\0';

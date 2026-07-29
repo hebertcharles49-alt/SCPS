@@ -220,7 +220,7 @@ func _collect() -> Array:
 		var ag: Dictionary = w.age_state()
 		if int(ag.get("age", -1)) >= 0 and not bool(ag.get("engaged", true)):
 			out.append({"icon": "politics_crown", "col": COL_ETAT, "act": "age",
-				"tip": "Un âge s'est levé : %s — clic pour l'ENGAGER (une fois par âge)" % String(ag.get("name", ""))})
+				"tip": "Un âge s'est levé : %s — clic : lire le chapitre" % String(ag.get("name", ""))})
 	# SAVOIR — aucune recherche en cours
 	var rs: Dictionary = w.research_status()
 	if int(rs.get("target", -1)) < 0:

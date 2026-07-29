@@ -23,6 +23,7 @@ var _handle_rect := Rect2()
 var _refill_rect := Rect2() ## chip RECOMPLÉTER (déménagé du tiroir Armée — retour joueur)
 var _age_rect := Rect2()    ## encart d'ÂGE en haut de la bande (déménagé de la topbar,
 var _age_engageable := false ## retour joueur 2026-07-11 : « sous le temps, au-dessus du menu »)
+var _age_fx := ""            ## bonus/contraintes de l'âge courant (hover du chip nominatif)
 var _fold := {}             ## titre de section → replié (retour joueur 2026-07-10 :
                             ## « tous les menus de droite doivent pouvoir se collapser »)
 var _sec_rects := []        ## [{rect, title}] bandeaux cliquables (reconstruit au _draw)
@@ -401,9 +402,10 @@ func _draw() -> void:
 		var thumb_y := track.position.y + (track.size.y - thumb_h) * (_scrolloff / _maxscroll)
 		VKit.fill(self, Rect2(track.position.x - 1.0, thumb_y, 4.0, thumb_h), VKit.COL_GOLD)
 
-## ENCART D'ÂGE — dessiné tout en haut de la bande (sous le bloc TEMPS de la topbar,
-## au-dessus du menu). « Engager : <âge> » AMBRE cliquable quand un âge s'est levé sans
-## être engagé (verbe CMD_AGE_ENGAGE) ; sinon « Âge : <âge> » discret (l'ère courante).
+## ENCART D'ÂGE — dessiné tout en haut de la bande. NOMINATIF (décision joueur 2026-07-28 :
+## « Engager » mentait, le verbe est un accusé de réception depuis le raccord 8) : le NOM
+## de l'âge seul — AMBRE cliquable tant que le chapitre n'est pas lu (ouvre le récap),
+## discret ensuite. Hover = les bonus/contraintes de l'âge (age_state.effects, membrane).
 ## Retourne le y APRÈS l'encart (0 avancement tant qu'aucun âge n'a percé).
 func _draw_age(x: float, y: float) -> float:
 	_age_rect = Rect2()
@@ -414,24 +416,26 @@ func _draw_age(x: float, y: float) -> float:
 	var ag: Dictionary = w.age_state()
 	var age := int(ag.get("age", -1))
 	var nm := String(ag.get("name", ""))
+	_age_fx = String(ag.get("effects", ""))
 	if age < 0 or nm == "":
 		return y                                  # l'Aube : aucun âge levé → encart vide
 	if not bool(ag.get("engaged", true)):
-		# âge levé, non engagé → chip AMBRE cliquable, pleine largeur
+		# âge levé, chapitre non lu → chip AMBRE cliquable, pleine largeur
 		var r := Rect2(x - 2.0, y, W - 20.0, 26.0)
 		_age_engageable = true
 		_age_rect = r
 		VKit.fill(self, r, Color(0.24, 0.17, 0.07, 0.95))
 		VKit.box(self, r, Color(0.90, 0.72, 0.34))
 		UIKit.draw_icon(self, "fine_age", Vector2(r.position.x + 5, y + 2), 22)
-		var lab := "Engager : %s" % nm
+		var lab := nm
 		while VKit.text_w(lab) > r.size.x - 34.0 and lab.length() > 10:
 			lab = lab.substr(0, lab.length() - 2) + "…"
 		VKit.text(self, Vector2(r.position.x + 32, y + 5), Color(0.90, 0.72, 0.34), lab)
 		return y + 32.0
-	# âge engagé → ligne de CONTEXTE discrète (l'ère où l'on vit)
+	# chapitre lu → ligne discrète (l'ère où l'on vit) — même hover
+	_age_rect = Rect2(x - 2.0, y, W - 20.0, 20.0)
 	UIKit.draw_icon(self, "fine_age", Vector2(x, y), 22)
-	VKit.text(self, Vector2(x + 28.0, y + 3), Color(0.72, 0.60, 0.36), "Âge : %s" % nm, VKit.FS_SMALL)
+	VKit.text(self, Vector2(x + 28.0, y + 3), Color(0.72, 0.60, 0.36), nm, VKit.FS_SMALL)
 	return y + 20.0
 
 ## ÉMISSAIRE — disponibilité · retour · objectif. Le moteur ne stocke que le cooldown
@@ -569,8 +573,11 @@ func _get_tooltip(at_position: Vector2) -> String:
 	if _collapsed:
 		return ""
 	var cp := at_position + Vector2(0.0, _scrolloff)
-	if _age_engageable and _age_rect.size.x > 0 and _age_rect.has_point(cp):
-		return "Un âge s'est levé — clic pour l'ENGAGER (une fois par âge)."
+	if _age_rect.size.x > 0 and _age_rect.has_point(cp):
+		var tip := _age_fx
+		if _age_engageable:
+			tip += "\nClic : lire le chapitre."
+		return tip.strip_edges()
 	for wr in _war_rects:
 		if (wr["rect"] as Rect2).has_point(cp):
 			return "%s\n• Score de guerre : %s\n• Clic : ouvrir la diplomatie" % [
