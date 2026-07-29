@@ -27,6 +27,7 @@
 #include "scps_religion.h"  /* religion_reset (nouvelle partie) */
 #include "scps_fog.h"       /* BROUILLARD DE GUERRE : fog_visible_regions (le voile — étape 1/2) */
 #include "scps_math.h"      /* clampf (LOT J : scps_manumit_preview) */
+#include "scps_toponym.h"   /* TOPONYMIE DES VILLES : toponym_region_name (lecture pure) */
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -301,6 +302,10 @@ int scps_region_owner(const ScpsSim *s, int r){
 bool scps_region_colonized(const ScpsSim *s, int r){
     if(!s || !s->ready || r<0 || r>=s->sim.econ->n_regions) return false;
     return s->sim.econ->region[r].colonized;
+}
+const char *scps_region_city_name(const ScpsSim *s, int r){
+    if(!s || !s->ready || r<0 || r>=s->sim.econ->n_regions) return "";
+    return toponym_region_name(r);
 }
 bool scps_region_centroid(const ScpsSim *s, int r, float *x, float *y){
     if(!s || !s->ready || r<0 || r>=s->n_cent || s->cx[r]<0.f) return false;

@@ -21,6 +21,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <ctype.h>
+
+#define TOPONYM_DEMO_BUF 40   /* TOPONYMIE : marge de snapshot local (> char[32] du moteur) */
 
 static int g_pass=0, g_fail=0;
 static void ok(const char *what, bool cond){
@@ -796,6 +799,75 @@ int main(int argc, char **argv){
         ok("la partie chargée AVANCE (an +1)", rc==0 && scps_year(sl)==yr_before+1);
         scps_clear_player_culture();
         scps_sim_free(sg); scps_sim_free(sl);
+    }
+
+    /* ── TOPONYMIE DES VILLES (docs/DESIGN_TOPONYMIE_VILLES.md) ──────────────────
+     * balayage annuel (world_tick, day%365==364) : ≥2 ans garantissent au moins un
+     * passage — la capitale de départ, colonisée dès econ_init, reçoit son nom au
+     * PREMIER passage (genèse et fondation en jeu sont le MÊME mécanisme). */
+    {
+        char nm1[TOPONYM_DEMO_BUF], nm2[TOPONYM_DEMO_BUF];
+        int cap_r1=-1, cap_r2=-1;
+        {   /* 1re génération — snapshot IMMÉDIAT (le nom vit dans un tableau de
+             * MODULE, motif WILD/EMOB/COLC : un 2e scps_sim_generate le RAZ). */
+            ScpsSim *st1=scps_sim_new(); scps_sim_generate(st1, seed);
+            scps_sim_advance_days(st1, 365*2);
+            cap_r1 = scps_country_capital_region(st1, scps_player(st1));
+            snprintf(nm1,sizeof nm1,"%s", scps_region_city_name(st1, cap_r1));
+            scps_sim_free(st1);
+        }
+        {   /* 2e génération, MÊME graine — le jitter de novlang (§5) est un hash pur */
+            ScpsSim *st2=scps_sim_new(); scps_sim_generate(st2, seed);
+            scps_sim_advance_days(st2, 365*2);
+            cap_r2 = scps_country_capital_region(st2, scps_player(st2));
+            snprintf(nm2,sizeof nm2,"%s", scps_region_city_name(st2, cap_r2));
+            scps_sim_free(st2);
+        }
+        printf("   ville capitale (graine %u) : « %s » (2e génération : « %s »)\n", seed, nm1, nm2);
+        ok("capitale colonisée => un nom de ville", cap_r1>=0 && nm1[0]!='\0');
+        ok("longueur bornée (< 32, motif char[32])", strlen(nm1)>0 && strlen(nm1)<32);
+        ok("déterminisme : même graine => même nom (2 générations, §5 hash pur)",
+           cap_r1==cap_r2 && strcmp(nm1,nm2)==0);
+    }
+    {   /* un seul ScpsSim vivant : le nom survit dans le temps (§14), aucun combo
+         * interdit (§11, 6 testés) sur tout le monde nommé, puis save/load (slot 3) */
+        ScpsSim *st=scps_sim_new(); scps_sim_generate(st, seed);
+        scps_sim_advance_days(st, 365*2);
+        int cap_r=scps_country_capital_region(st, scps_player(st));
+        char snap[TOPONYM_DEMO_BUF]; snprintf(snap,sizeof snap,"%s", scps_region_city_name(st,cap_r));
+
+        scps_sim_advance_days(st, 365*5);   /* +5 ans : conquête/éthos/rien — le nom ne bouge JAMAIS */
+        ok("le nom SURVIT (aucun re-tirage, doc §14)",
+           cap_r>=0 && strcmp(snap, scps_region_city_name(st,cap_r))==0);
+
+        /* §11 : les 6 combos interdits, cherchés dans TOUTES les villes nommées du monde */
+        static const char *BAD_A[6]={"port","mont","fort","neuve","marc","cour"};
+        static const char *BAD_B[6]={"havre","berg","castel","nouvelle","marche","siege"};
+        int nreg=scps_region_count(st), nb_named=0, nb_bad=0;
+        for(int r=0;r<nreg;r++){
+            const char *nm=scps_region_city_name(st,r);
+            if(!nm[0]) continue;
+            nb_named++;
+            char low[TOPONYM_DEMO_BUF]; int i=0;
+            for(;nm[i] && i<TOPONYM_DEMO_BUF-1;i++) low[i]=(char)tolower((unsigned char)nm[i]);
+            low[i]='\0';
+            for(int k=0;k<6;k++) if(strstr(low,BAD_A[k]) && strstr(low,BAD_B[k])) nb_bad++;
+        }
+        printf("   %d villes nommées dans le monde (graine %u) · combos interdits détectés=%d\n",
+               nb_named, seed, nb_bad);
+        ok("aucun combo interdit (§11, 6 testés) sur tout le monde nommé", nb_named>0 && nb_bad==0);
+
+        /* SAUVEGARDE : le nom de ville survit à un aller-retour (slot 3) */
+        ok("sauvegarde toponymie (slot 3)", scps_sim_save(st,3)==1);
+        scps_sim_free(st);
+
+        ScpsSim *st3=scps_sim_new();
+        int rc=scps_sim_load(st3,3);
+        ok("chargement toponymie OK (rc=0)", rc==0);
+        const char *after = (rc==0) ? scps_region_city_name(st3,cap_r) : "";
+        printf("   save/load ville : « %s » → « %s »\n", snap, after);
+        ok("nom de ville CONSERVÉ après save/load", rc==0 && strcmp(snap,after)==0);
+        scps_sim_free(st3);
     }
 
     /* ── RELIGION (P3) : le registre + le lien pays→religion SURVIVENT au save/load ── */

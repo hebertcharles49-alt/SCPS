@@ -32,7 +32,18 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 97u           /* v97 : ARMÉE — LA FORCE NOMINALE : FieldArmy (scps_campaign.h)
+#define SAVE_VERSION 98u           /* v98 : TOPONYMIE DES VILLES (docs/DESIGN_TOPONYMIE_VILLES.md) —
+                                    * nouvelle section TOPO (scps_toponym.c : g_ville_name[SCPS_MAX_
+                                    * REG][32], static de MODULE, motif WILD/EMOB/COLC/TXYR — PAS une
+                                    * struct partagée agrandie). Un save v97 est juste INCOMPLET pour
+                                    * v98 (refusé par le contrôle de version, comme toute ère
+                                    * antérieure). Aucune migration : le doc §8 envisageait un
+                                    * « nom manquant → marqueur reconstruction » pour une ancienne
+                                    * save sans noms, mais ce moteur n'a AUCUNE trajectoire
+                                    * version<N (scps_load_game refuse net) — la seule route réelle
+                                    * pour ce marqueur est intra-version (un hook de fondation manqué),
+                                    * déjà couverte par toponym_world_tick (balayage idempotent).
+                                    * v97 : ARMÉE — LA FORCE NOMINALE : FieldArmy (scps_campaign.h)
                                     * gagne un champ `nominal` (long, paquets de 100 — le PLEIN de
                                     * référence d'un corps, cf. « renforcer = combler le déficit »)
                                     * → sizeof(Campaign) grandit (Campaign est sérialisé en UN seul

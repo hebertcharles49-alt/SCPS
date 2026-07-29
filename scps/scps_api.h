@@ -113,6 +113,11 @@ int    scps_country_known(const ScpsSim *s, int country);
 int   scps_region_owner    (const ScpsSim *s, int region);
 long  scps_region_pop      (const ScpsSim *s, int region);
 bool  scps_region_colonized(const ScpsSim *s, int region);
+/* TOPONYMIE DES VILLES (docs/DESIGN_TOPONYMIE_VILLES.md) : nom de la ville de la
+ * région (grain RÉGION, doc §1) ; "" si pas (encore) de ville — jamais un ré-
+ * tirage, le nom SURVIT conquête/éthos (doc §14). Chaîne PROCÉDURALE (motif
+ * place_make_name) : lexique + jitter de novlang, pas un littéral face-joueur. */
+const char *scps_region_city_name(const ScpsSim *s, int region);
 /* centroïde MONDE (cellules) d'une région ; false si vide. Figé par worldgen. */
 bool  scps_region_centroid (const ScpsSim *s, int region, float *x, float *y);
 /* SIÈGE de ville : centroïde de la PROVINCE REPRÉSENTATIVE de la région (le bourg vit

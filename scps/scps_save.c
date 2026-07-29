@@ -11,6 +11,7 @@
 #include "scps_heritage.h"   /* culture_slots_save/load (section CULT) */
 #include "scps_religion.h"  /* religion_save/load (section RELG, v37) */
 #include "scps_demography.h"/* demography_dyn_id_rebase */
+#include "scps_toponym.h"   /* toponym_save/load (section TOPO, v98 : noms de ville par région) */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -78,7 +79,8 @@ bool scps_save_slot_info(int slot, SaveHeader *out){
     X(COLC,'C','O','L','C')  /* v61 : répit de colonisation g_colony_cd[] (accumulateur F1, savetest fix) */ \
     X(TXYR,'T','X','Y','R')  /* v62 : MEMBRANE DE DÉCISION — g_tax_lastyear[] (revenu annuel, d_treasury_mois) */ \
     X(DCRE,'D','C','R','E')  /* v64 : DÉCRETS DU JOUEUR — g_decree_mask[] (civics, état par pays) */ \
-    X(FOGV,'F','O','G','V')  /* v75 : BROUILLARD DE GUERRE — known[][] (connaissance cumulative par empire) */
+    X(FOGV,'F','O','G','V')  /* v75 : BROUILLARD DE GUERRE — known[][] (connaissance cumulative par empire) */ \
+    X(TOPO,'T','O','P','O')  /* v98 : TOPONYMIE DES VILLES — g_ville_name[SCPS_MAX_REG] (scps_toponym.c) */
 #define SV_DECL_TAG(name,a,b,c,d) enum { SVT_##name = SV_TAG(a,b,c,d) };
 SV_SECTIONS(SV_DECL_TAG)
 #undef SV_DECL_TAG
@@ -142,6 +144,7 @@ static bool sv_write_payload(FILE *f, World *w, Sim *s, int heritage, int ethos)
     ok&=sv_w(f,SVT_TXYR, NULL,0); econ_flux_year_save(f);
     ok&=sv_w(f,SVT_DCRE, NULL,0); decrees_save(f);
     ok&=sv_w(f,SVT_FOGV, NULL,0); fog_save(f);
+    ok&=sv_w(f,SVT_TOPO, NULL,0); toponym_save(f);
     return ok;
 }
 
@@ -200,6 +203,7 @@ static bool sv_read_payload(FILE *f, World *w, Sim *s, int *out_heritage, int *o
     ok&=sv_r(f,SVT_TXYR, NULL,0); ok&=econ_flux_year_load(f);
     ok&=sv_r(f,SVT_DCRE, NULL,0); ok&=decrees_load(f);
     ok&=sv_r(f,SVT_FOGV, NULL,0); ok&=fog_load(f);
+    ok&=sv_r(f,SVT_TOPO, NULL,0); ok&=toponym_load(f);
     return ok;
 }
 

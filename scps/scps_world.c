@@ -21,6 +21,7 @@
 #include "scps_culture.h"   /* culture_make(), lifeway_*, ethos_nearest() */
 #include "scps_heritage.h"   /* heritage + leviers (worldgen_seed_peoples, dérive) */
 #include "scps_tune.h"      /* HAMEAUX LIBRES : WILD_PER_PLAYABLE (réserve du slot WILD) */
+#include "scps_toponym.h"   /* TOPONYMIE DES VILLES : toponym_reset (genèse) + toponym_world_tick (balayage annuel) */
 #include "scps_math.h"      /* clampf/iclamp partagés */
 #include <stdlib.h>
 #include <string.h>
@@ -2707,6 +2708,11 @@ void gen_population(World *w, WorldEconomy *econ) {
  * ====================================================================== */
 void world_tick(World *w, WorldEconomy *econ, float dt) {
     if (!econ) return;
+    /* TOPONYMIE DES VILLES (docs/DESIGN_TOPONYMIE_VILLES.md) : balayage idempotent —
+     * ne nomme QUE les régions dont la province-ancre vient de se coloniser (genèse
+     * incluse : le premier appel qui suit econ_init nomme d'un coup toutes les
+     * capitales de départ déjà colonisées). Jamais de ré-tirage (doc §14). */
+    toponym_world_tick(w, econ);
     /* Charte PROVINCE_MODEL.md : la culture (donc sa dérive) VIT à la province —
      * econ->region[r].culture N'EST QU'UN AGRÉGAT, réécrit par econ_aggregate_regions
      * à CHAQUE econ_tick (avant ce world_tick, dans la boucle annuelle) depuis la
@@ -4003,6 +4009,7 @@ void world_generate(World *w, const WorldParams *P) {
     WorldParams def;
     if (!P){ def=worldparams_default((uint32_t)0); P=&def; }
     memset(w,0,sizeof(*w));
+    toponym_reset();   /* TOPONYMIE : nouvelle partie (ou nouveau Sim dans le même process, motif g_colony_cd) */
     w->seed=P->seed;
     rng_seed(P->seed);
     float seed_f=(float)(P->seed&0xFFFF)/(float)0x10000;
