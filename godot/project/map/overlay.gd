@@ -30,12 +30,13 @@ const DRESS_SPACING := 9     ## pas de la grille de semis (cellules) — DENSIFI
 const DRESS_ALPHA := 0.50    ## opacité FADE — translucides : le parchemin transparaît, elles se FONDENT
                              ## (chevauchement des marques denses → trame qui s'auto-construit, pas « posé là »)
 const DRESS_BY_BIOME := {
-	# RELIEF (lot 2)
-	18: ["mountain_range_01", "mountain_range_02", "mountain_single_01", "mountain_single_02", "mountain_pass_01"],  # MONTAGNES
-	19: ["mountain_single_01", "mountain_single_02", "mountain_range_01"],   # PIC
-	23: ["mountain_single_01", "rocky_outcrop_01"],                          # VOLCAN
-	16: ["hill_cluster_01", "hill_mark_01", "mountain_single_02", "lot6_conifer_01", "lot6_conifer_05"],  # HAUTES-TERRES
-	17: ["hill_mark_01", "hill_cluster_01", "rocky_outcrop_01", "lot6_ground_05"],  # COLLINES (lot 6 : amas de rochers)
+	# RELIEF : CHEVRONS PROCÉDURAUX SEULS (décision joueur 2026-07-28 — plus aucun sprite
+	# hill_*/rocky_*/mountain_* sur le relief ; _try_place_dress force l'id par biome)
+	18: ["chevron"],   # MONTAGNES
+	19: ["chevron"],   # PIC
+	23: ["chevron"],   # VOLCAN
+	16: ["chevron"],   # HAUTES-TERRES (chevrons ×0.6)
+	17: ["chevron"],   # COLLINES (chevrons ×0.6)
 	# FORÊTS : AUCUNE entrée ici — la canopée est COMPOSÉE d'arbres INDIVIDUELS lot 6 par la
 	# passe dédiée CANOPY (pas fin, ancrage monde, tri de profondeur) — cf. _build_dressing.
 	# PLAINES / PRAIRIE (lot 3 herbe + SINGLES lot 6 : l'arbre isolé vit ICI, pas en forêt)
@@ -1955,13 +1956,13 @@ func _in_river_water(rf: Image, ix: int, iy: int) -> bool:
 ## VRAI si (x,y) est SUR ou À CÔTÉ d'une rivière VISIBLE (seuil BAS + voisinage 1 cellule) → aucune marque
 ## de dressing ici (sinon, la rivière étant translucide, la marque transparaît « sous » l'eau = artefact).
 const DRESS_RIVER_MIN := 0.08   ## seuil bas (la rivière du shader s'imprime dès ~0.13 ; on l'attrape + marge)
-func _near_river(rf: Image, x: int, y: int) -> bool:
+func _near_river(rf: Image, x: int, y: int, rad := 1) -> bool:
 	if rf == null:
 		return false
 	var rw := rf.get_width()
 	var rh := rf.get_height()
-	for dy in range(-1, 2):
-		for dx in range(-1, 2):
+	for dy in range(-rad, rad + 1):
+		for dx in range(-rad, rad + 1):
 			var nx := x + dx
 			var ny := y + dy
 			if nx < 0 or ny < 0 or nx >= rw or ny >= rh:
@@ -2779,8 +2780,9 @@ func _draw_chevron(c: Vector2, h: float, d: Dictionary, zoom: float) -> void:
 	var rf := c + Vector2(wf * 0.5, h * 0.30 - (float(j[2]) - 0.5) * 0.10 * h)
 	# CALQUE : les chevrons se dessinent fond→avant (tri y du dressing) — le remplissage
 	# papier de chacun masque les traits de ceux DERRIÈRE (chaîne qui s'empile, jamais
-	# un grillage de ∧ superposés).
-	draw_colored_polygon(PackedVector2Array([apex, rf, lf]), CHEV_FILL)
+	# un grillage de ∧ superposés). Près d'une rivière (nf) : traits seuls, l'eau respire.
+	if not d.get("nf", false):
+		draw_colored_polygon(PackedVector2Array([apex, rf, lf]), CHEV_FILL)
 	var wpx := 1.5 / zoom
 	draw_line(apex, lf, CHEV_INK, wpx, true)
 	draw_line(apex, rf, CHEV_INK, wpx, true)
@@ -3011,14 +3013,25 @@ func _try_place_dress(i: int, x: int, y: int, bio: Image, rf: Image, sw: int, sh
 	var ids: Array = DRESS_BY_BIOME[b]
 	var id: String = ids[int(_h1(float(i) * 7.7) * float(ids.size())) % ids.size()]
 	var scl := 0.85 + 0.30 * _h1(float(i) * 9.9)   # 0.85..1.15 : variété d'échelle
-	# MONTAGNES = ∧ D'ENCRE PROCÉDURAUX (décision joueur 2026-07-28) : tout id sprite
-	# mountain_* bascule en chevron jitté ±30 % (taille + asymétrie), déterministe par _h1.
-	if id.begins_with("mountain"):
+	# RELIEF = ∧ D'ENCRE PROCÉDURAUX (décision joueur 2026-07-28, étendue « il reste des
+	# anciens assets ») : TOUT biome de relief (hautes-terres/collines/montagnes/pic/volcan)
+	# bascule en chevron — plus AUCUN sprite hill_*/rocky_*/mountain_* sur le relief.
+	# Collines/hautes-terres : chevrons PETITS (×0.6). Jitter ±30 % déterministe (_h1).
+	if b == 16 or b == 17 or b == 18 or b == 19 or b == 23:
 		id = "chevron"
 		scl = 0.70 + 0.60 * _h1(float(i) * 9.9)    # ±30 % d'échelle
+		if b == 16 or b == 17:
+			scl *= 0.60                            # collines : chevrons discrets
+		# BLEND MONTAGNE/RIVIÈRE : un ∧ trop proche d'un cours d'eau saute (rayon élargi —
+		# son empreinte dépasse la cellule de semis), et dans l'anneau suivant il perd son
+		# REMPLISSAGE (traits seuls : jamais de papier qui couvre l'eau).
+		if _near_river(rf, px, py, 2):
+			return
 	var entry := {"pos": Vector2(px, py), "id": id, "scale": scl}
 	if id == "chevron":
 		entry["j"] = [_h1(float(i) * 11.3), _h1(float(i) * 13.7), _h1(float(i) * 17.1)]
+		if _near_river(rf, px, py, 4):
+			entry["nf"] = true                     # no-fill : berge visible sous les traits
 	var tt: Variant = _dress_tint(id)              # teinte lot 6 posée au BUILD (coût nul au draw)
 	if tt != null:
 		entry["tint"] = tt
