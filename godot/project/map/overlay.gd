@@ -2176,9 +2176,10 @@ func _draw_iso(w, mv: Node2D) -> void:
 				continue
 			var did: String = d["id"]
 			if did == "chevron":
-				# traits pré-clippés (priorité fond→avant), intérieur transparent
+				# traits pré-clippés STYLÉS (priorité fond→avant), intérieur transparent
 				for seg in d.get("segs", []):
-					draw_polyline(seg, CHEV_INK, 1.5 / zoom, true)
+					var sg: Dictionary = seg
+					draw_polyline(sg["pts"], sg["col"], float(sg["w"]) / zoom, true)
 				continue
 			var dtex := _dress_get(did)
 			if dtex == null:
@@ -2759,20 +2760,14 @@ func _draw_geonames(w, mv: Node2D, vt: Transform2D, vp: Vector2, zoom: float) ->
 			continue
 		var txt: String = g["text"]
 		var tw := VKit.text_map_w(txt, VKit.FS_SMALL)
-		# taille CONTENUE (retour joueur : des noms géants écrasaient la carte)
+		# UNE SEULE encre (décision joueur) : ardoise/anthracite, halo parchemin discret
+		# (lisible sur canopée sombre comme sur sable). Taille ÉCRAN 12-16 px — les grands
+		# ensembles à 16, les petits à 12, jamais un nom géant ni illisible.
 		var span := clampf(float(g["span"]), 16.0, 90.0)
-		var nsc := clampf(span / maxf(tw, 1.0), 0.26, 0.85)
-		# encre PAR FOND (retour joueur : « la couleur n'est pas la même par rapport au
-		# fond ») : eau = ardoise sur eau claire · forêt/massif = crème sur couvert sombre,
-		# halo inversé (sombre sous le clair, clair sous le sombre)
-		var col: Color
-		var halo: Color
-		if bool(g["water"]):
-			col = Color(0.16, 0.24, 0.32, 0.60 * fade)
-			halo = Color(0.88, 0.90, 0.88, 0.32 * fade)
-		else:
-			col = Color(0.91, 0.86, 0.70, 0.62 * fade)
-			halo = Color(0.12, 0.11, 0.07, 0.42 * fade)
+		var px_t := clampf(10.0 + span * 0.07, 12.0, 16.0)
+		var nsc := px_t / (float(VKit.FS_SMALL) * zoom)
+		var col := Color(0.17, 0.20, 0.24, 0.62 * fade)
+		var halo := Color(0.90, 0.87, 0.78, 0.28 * fade)
 		draw_set_transform(gp, float(g["ang"]), Vector2(nsc, nsc))
 		VKit.text_map(self, Vector2(-tw * 0.5, -VKit.FS_SMALL * 0.7), txt, VKit.FS_SMALL, col, 1, halo)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
@@ -2780,9 +2775,42 @@ func _draw_geonames(w, mv: Node2D, vt: Transform2D, vp: Vector2, zoom: float) ->
 ## ∧ D'ENCRE (montagne cartographique) : deux versants jittés (j = hachage déterministe du
 ## semis) + un trait d'ombre court sur le versant est (lumière du nord-ouest, classique).
 const CHEV_INK := Color(0.25, 0.19, 0.12, 0.58)
-const CHEV_H_WORLD := 7.0    ## hauteur MONDE (cellules) — l'empreinte ne varie plus au zoom
+const CHEV_INK_LIT := Color(0.25, 0.19, 0.12, 0.32)    ## versant NW éclairé : encre diluée
+const CHEV_INK_SHADE := Color(0.19, 0.13, 0.08, 0.80)  ## versant SE ombré : encre chargée
+const CHEV_H_WORLD := 5.5    ## hauteur MONDE (cellules) — l'empreinte ne varie plus au zoom
 
-## géométrie d'UN glyphe de relief (∧ ou dôme) en espace iso : traits + polygone d'occlusion
+## axe principal des cellules de MONTAGNE autour de (x,y) — Vector2.ZERO si massif rond
+## (ACP du masque relief, même famille que l'ancre des noms d'empire) : les ∧ s'alignent
+## en LIGNE DE CRÊTE au lieu de s'éparpiller en amas.
+func _ridge_dir(bio: Image, x: int, y: int, rad := 8) -> Vector2:
+	var sw := bio.get_width()
+	var sh := bio.get_height()
+	var sxx := 0.0; var syy := 0.0; var sxy := 0.0; var n := 0
+	for dy in range(-rad, rad + 1, 2):
+		for dx in range(-rad, rad + 1, 2):
+			var b := int(bio.get_pixel(clampi(x + dx, 0, sw - 1), clampi(y + dy, 0, sh - 1)).r * 255.0 + 0.5)
+			if b == 18 or b == 19 or b == 23:
+				sxx += float(dx * dx); syy += float(dy * dy); sxy += float(dx * dy); n += 1
+	if n < 4:
+		return Vector2.ZERO
+	var tr := sxx + syy
+	var disc := sqrt(maxf(tr * tr * 0.25 - (sxx * syy - sxy * sxy), 0.0))
+	var l1 := tr * 0.5 + disc
+	var l2 := tr * 0.5 - disc
+	if l2 <= 0.001 or l1 / l2 < 1.6:          # pas d'allongement net → grappe, pas chaîne
+		return Vector2.ZERO
+	var ang := 0.5 * atan2(2.0 * sxy, sxx - syy)
+	return Vector2(cos(ang), sin(ang))
+
+## segment BOMBÉ (une pente n'est jamais une droite) : a→b en 3 points
+func _bowed(a: Vector2, b: Vector2, sag: float) -> PackedVector2Array:
+	var m := (a + b) * 0.5
+	var n := Vector2(-(b - a).y, (b - a).x).normalized()
+	return PackedVector2Array([a, m + n * sag, b])
+
+## géométrie d'UN glyphe de relief en espace iso : traits STYLÉS [{pts,col,w}] + polygone
+## d'occlusion. Convention carte ancienne : lumière du NW — versant gauche dilué, versant
+## droit chargé + hachure d'ombre interne à mi-pente.
 func _chev_geom(d: Dictionary, mv: Node2D) -> Dictionary:
 	var wp: Vector2 = d["pos"]
 	var c: Vector2 = mv.iso_pos(wp.x, wp.y)
@@ -2793,15 +2821,26 @@ func _chev_geom(d: Dictionary, mv: Node2D) -> Dictionary:
 		-h * 0.52 + (float(j[2]) - 0.5) * 0.20 * h)
 	var lf := c + Vector2(-wf * 0.5, h * 0.34)
 	var rf := c + Vector2(wf * 0.5, h * 0.30 - (float(j[2]) - 0.5) * 0.10 * h)
+	var iw := clampf(h / CHEV_H_WORLD, 0.6, 1.3)              # poids de plume ∝ taille du pic
 	if d.get("rond", false):
 		var apx := c + (apex - c) * 0.80                      # colline : dôme tassé
 		var dome := PackedVector2Array()
 		for k in range(8):
 			var t := float(k) / 7.0
 			dome.append(lf.lerp(apx, t).lerp(apx.lerp(rf, t), t))   # bézier quadratique
-		return {"strokes": [dome], "poly": dome}
-	return {"strokes": [PackedVector2Array([lf, apex, rf])],
-		"poly": PackedVector2Array([apex, rf, lf])}
+		return {"strokes": [
+			{"pts": dome.slice(0, 4), "col": CHEV_INK_LIT,   "w": iw},
+			{"pts": dome.slice(3),    "col": CHEV_INK_SHADE, "w": iw * 1.5},
+		], "poly": dome}
+	# hachure d'ombre : trait court DANS le versant SE, à mi-pente
+	var inn := (lf + rf + apex) / 3.0
+	var h0 := apex.lerp(rf, 0.30).lerp(inn, 0.22)
+	var h1 := apex.lerp(rf, 0.85).lerp(inn, 0.22)
+	return {"strokes": [
+		{"pts": _bowed(lf, apex, h * 0.05), "col": CHEV_INK_LIT,   "w": iw},
+		{"pts": _bowed(apex, rf, h * 0.06), "col": CHEV_INK_SHADE, "w": iw * 1.8},
+		{"pts": _bowed(h0, h1, h * 0.03),   "col": CHEV_INK_SHADE, "w": iw * 0.75},
+	], "poly": PackedVector2Array([apex, rf, lf])}
 
 ## PRIORITÉ DES RELIEFS (décision joueur : intérieurs TRANSPARENTS — le remplissage ne
 ## collait jamais au fond) : le trait d'un glyphe est COUPÉ par le polygone de chaque
@@ -2839,9 +2878,10 @@ func _clip_relief() -> void:
 					var poly: PackedVector2Array = (dj["geom"] as Dictionary)["poly"]
 					var next: Array = []
 					for s in strokes:
-						for part in Geometry2D.clip_polyline_with_polygon(s, poly):
+						var sd: Dictionary = s
+						for part in Geometry2D.clip_polyline_with_polygon(sd["pts"], poly):
 							if (part as PackedVector2Array).size() >= 2:
-								next.append(part)
+								next.append({"pts": part, "col": sd["col"], "w": sd["w"]})
 					strokes = next
 					if strokes.is_empty():
 						break
@@ -3080,9 +3120,16 @@ func _try_place_dress(i: int, x: int, y: int, bio: Image, rf: Image, sw: int, sh
 		scl = 0.70 + 0.60 * _h1(float(i) * 9.9)    # ±30 % d'échelle
 		if b == 16 or b == 17:
 			scl *= 0.60                            # collines : chevrons discrets
+		# LIGNE DE CRÊTE (passe 2) : la marque COULISSE le long de l'axe local du massif
+		# — le jitter de grille devient une chaîne au lieu d'un amas.
+		if b == 18 or b == 19 or b == 23:
+			var axis := _ridge_dir(bio, px, py)
+			if axis != Vector2.ZERO:
+				var fp := Vector2(px, py) + axis * (_h1(float(i) * 21.3) - 0.5) * float(DRESS_SPACING) * 1.4
+				px = clampi(int(fp.x), 0, sw - 1)
+				py = clampi(int(fp.y), 0, sh - 1)
 		# BLEND MONTAGNE/RIVIÈRE : un ∧ trop proche d'un cours d'eau saute (rayon élargi —
-		# son empreinte dépasse la cellule de semis), et dans l'anneau suivant il perd son
-		# REMPLISSAGE (traits seuls : jamais de papier qui couvre l'eau).
+		# son empreinte dépasse la cellule de semis).
 		if _near_river(rf, px, py, 2):
 			return
 	var entry := {"pos": Vector2(px, py), "id": id, "scale": scl}
