@@ -143,14 +143,14 @@
     X(STR_CAPADM_CAUSE_COERC,   "Coercition bâtie") \
     X(STR_SERV_CAUSE_SAVOIR,    "Savoir bâti") \
     X(STR_SERV_CAUSE_FOI,       "Foi bâtie") \
-    X(STR_AGE_FX_EXCHANGE,      "Commerce ravivé (durable) · prospérité stimulée · pactes migratoires facilités\nDébloque : Société III · Marchands portés (routes vivantes)") \
-    X(STR_AGE_FX_DISCOVERY,     "Commerce élargi (durable) · recherche accélérée\nDébloque : Savoir IV · Transgresseurs et Marchands portés (mondes connus)") \
-    X(STR_AGE_FX_EMPIRES,       "Intégration des peuples accélérée (durable)\nDébloque : Société V · Conquérants portés (provinces tenues de longue date)") \
+    X(STR_AGE_FX_EXCHANGE,      "Commerce +%d (durable) · Prospérité +%d · pactes migratoires +%d %%\nDébloque Société III · Marchands +%d (routes vivantes)") \
+    X(STR_AGE_FX_DISCOVERY,     "Commerce +%d (durable) · recherche +%d %%\nDébloque Savoir IV · Transgresseurs +%d · Marchands +%d (mondes connus)") \
+    X(STR_AGE_FX_EMPIRES,       "Intégration +%d %% (durable)\nDébloque Société V · Conquérants +%d (provinces tenues %d ans)") \
     X(STR_AGE_FX_HEROES,        "Des héros se lèvent — leurs hauts faits marquent les annales") \
-    X(STR_AGE_FX_BREACH,        "Flux de brèche déchaîné — la magie s'intensifie\nDébloque : Savoir V · Transgresseurs portés (pentes faustiennes)") \
-    X(STR_AGE_FX_LUMIERES,      "Savoir stimulé · lettrés prospères\nLégistes et Communautaires portés") \
-    X(STR_AGE_FX_SOULEVEMENTS,  "Légitimité sous pression — les trônes vacillent\nCommunautaires portés (pays révolutionnaires)") \
-    X(STR_AGE_FX_TYRANS,        "Sécurité renforcée · les cultures s'homogénéisent\nConquérants et Légistes portés") \
+    X(STR_AGE_FX_BREACH,        "Brèche +%d — nourrit l'Entropie\nDébloque Savoir V · Transgresseurs +%d (charge faustienne)") \
+    X(STR_AGE_FX_LUMIERES,      "Savoir +%d · Légitimité jusqu'à −%d (lettrés contre trône coercitif)\nLégistes +%d · Communautaires +%d") \
+    X(STR_AGE_FX_SOULEVEMENTS,  "Légitimité −%d\nCommunautaires +%d (pays révolutionnaires)") \
+    X(STR_AGE_FX_TYRANS,        "Sécurité +%d · Diversité −%d\nConquérants +%d · Légistes +%d") \
     X(STR_JLOG_CHOC_EFF, "Agitation accrue, se résorbe avec le temps") \
     X(STR_JLOG_POP,    "Population") \
     X(STR_JLOG_PROD,   "Production") \

@@ -143,9 +143,9 @@ func _input(event: InputEvent) -> void:
 		if _is_wheel and event.pressed and get_viewport().gui_get_hovered_control() != null:
 			return
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
-			_zoom(0.84)
+			_zoom(0.84, true)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
-			_zoom(1.0 / 0.84)
+			_zoom(1.0 / 0.84, true)
 		elif event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
 				_press_pos = event.position
@@ -176,10 +176,15 @@ func _input(event: InputEvent) -> void:
 							if ow2 >= 0:
 								country_context.emit(ow2)
 
-## zoom CONTINU : facteur < 1 = on s'approche.
-func _zoom(factor: float) -> void:
-	var nz := _camera.zoom.x / factor
-	nz = clampf(nz, ZOOM_MIN, ZOOM_MAX)
+## zoom CONTINU : facteur < 1 = on s'approche. `au_curseur` (molette) : le point-monde
+## sous la souris reste sous la souris — sinon on magnifie le centre du MONDE, souvent
+## de la mer/du brouillard (« je zoome et rien ne suit », retour joueur 2026-07-28).
+func _zoom(factor: float, au_curseur := false) -> void:
+	var oz := _camera.zoom.x
+	var nz := clampf(oz / factor, ZOOM_MIN, ZOOM_MAX)
+	if au_curseur and nz != oz:
+		var m := get_global_mouse_position()
+		_camera.position = m - (m - _camera.position) * (oz / nz)
 	_camera.zoom = Vector2(nz, nz)
 	_nav_redraw()
 

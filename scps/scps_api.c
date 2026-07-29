@@ -3980,16 +3980,45 @@ int scps_country_capital_province(const ScpsSim *s, int c){
 }
 /* l'âge COURANT (dernier levé, -1 = aucun) + le joueur l'a-t-il engagé + son NOM
  * (mot résolu — membrane). Lecture pure. */
-/* les BONUS/CONTRAINTES de l'âge courant (hover du chip nominatif) — mots résolus,
- * miroir des effets d'age_dawn (scps_events.c) ; "" tant qu'aucun âge n'a percé. */
+/* les BONUS/CONTRAINTES de l'âge courant (hover du chip nominatif) — DES CHIFFRES (règle
+ * joueur : « dans un jeu, sans chiffre ça ne veut rien dire »), composés au runtime depuis
+ * les MÊMES tunables qu'age_dawn (un mod change la valeur ⇒ le hover dit vrai). Échelles
+ * d'affichage : coordonnées 0-10 → ×10 (le 0-100 de l'écran) · leviers 0-1 → ×100 ·
+ * multiplicateurs → %%. Miroir de scps_events.c age_dawn/age_lever_* ; "" avant le 1er âge. */
 const char *scps_age_effects(ScpsSim *s){
-    static const StrId FX[8] = { STR_AGE_FX_EXCHANGE, STR_AGE_FX_DISCOVERY,
-        STR_AGE_FX_EMPIRES, STR_AGE_FX_HEROES, STR_AGE_FX_BREACH,
-        STR_AGE_FX_LUMIERES, STR_AGE_FX_SOULEVEMENTS, STR_AGE_FX_TYRANS };
+    static char buf[512];
     if (!s || !s->ready || !s->sim.ev) return "";
     int age = s->sim.ev->ages.last_dawned;
     if (age < 0 || age >= 8) return "";
-    return tr(FX[age]);
+    #define D10(t,d)  (int)roundf(tune_f((t),(d))*10.f)    /* coordonnée → points d'écran */
+    #define D100(t,d) (int)roundf(tune_f((t),(d))*100.f)   /* levier → points de pression */
+    #define DPCT(t,d) (int)roundf((tune_f((t),(d))-1.f)*100.f) /* ×mult → % */
+    switch(age){
+        case 0: snprintf(buf, sizeof buf, tr(STR_AGE_FX_EXCHANGE),
+            D10("AGE_EXCHANGE_C",0.50f), D10("AGE_EXCHANGE_P",0.50f),
+            DPCT("AGE_EXCHANGE_MIG_PACT_MULT",1.15f), D100("AGE_EXCHANGE_MERCHANT_LEVER",0.08f)); break;
+        case 1: snprintf(buf, sizeof buf, tr(STR_AGE_FX_DISCOVERY),
+            D10("AGE_DISCOVERY_C",0.50f), DPCT("AGE_DISCOVERY_RESEARCH_MULT",1.10f),
+            D100("AGE_DISCOVERY_TRANSGRESSEUR_LEVER",0.06f), D100("AGE_DISCOVERY_MERCHANT_LEVER",0.04f)); break;
+        case 2: snprintf(buf, sizeof buf, tr(STR_AGE_FX_EMPIRES),
+            DPCT("AGE_EMPIRES_INTEGRATION_MULT",1.20f),
+            D100("AGE_EMPIRES_CONQUEROR_LEVER",0.10f), (int)tune_f("AGE_EMPIRES_HELD_YEARS",35.0f)); break;
+        case 3: snprintf(buf, sizeof buf, "%s", tr(STR_AGE_FX_HEROES)); break;
+        case 4: snprintf(buf, sizeof buf, tr(STR_AGE_FX_BREACH),
+            D10("AGE_BREACH_FLUX",1.50f), D100("AGE_BREACH_TRANSGRESSEUR_LEVER",0.12f)); break;
+        case 5: snprintf(buf, sizeof buf, tr(STR_AGE_FX_LUMIERES),
+            D10("AGE_LUMIERES_I",1.50f), D10("AGE_LUMIERES_SOLVENT",1.25f),
+            D100("AGE_LUMIERES_LEGISTE_LEVER",0.06f), D100("AGE_LUMIERES_COMMUNAUTAIRE_LEVER",0.04f)); break;
+        case 6: snprintf(buf, sizeof buf, tr(STR_AGE_FX_SOULEVEMENTS),
+            D10("AGE_SOULEVEMENTS_L",1.50f), D100("AGE_SOULEVEMENTS_COMMUNAUTAIRE_LEVER",0.12f)); break;
+        default: snprintf(buf, sizeof buf, tr(STR_AGE_FX_TYRANS),
+            D10("AGE_TYRANS_H",1.75f), D10("AGE_TYRANS_DIVERSITY",1.50f),
+            D100("AGE_TYRANS_CONQUEROR_LEVER",0.08f), D100("AGE_TYRANS_LEGISTE_LEVER",0.04f)); break;
+    }
+    #undef D10
+    #undef D100
+    #undef DPCT
+    return buf;
 }
 
 int scps_age_state(ScpsSim *s, int *engaged, char *name, int cap){
