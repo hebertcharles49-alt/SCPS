@@ -751,6 +751,17 @@ func _chip_btn(txt: String) -> Button:
 ## répartis sur les raws des ~3 tuiles) ; cet onglet en montre le RÉSULTAT : production
 ## brute + manufacturée (sommée sur les provinces de la région) + résumé stab/prospérité.
 func _build_region(w, info: Dictionary, _cap: Dictionary) -> void:
+	# TOPONYMIE (docs/DESIGN_TOPONYMIE_VILLES.md §1) : le nom de la VILLE est une identité de
+	# grain RÉGION — distincte du nom affiché en en-tête de fiche (province_info.nom, hérité
+	# de la région faute de générateur de nom de province, non touché ici). Elle vit dans CET
+	# onglet nommé, jamais mélangée à la fiche province brute (charte province : « une fiche
+	# province ne montre que SES champs » — les agrégats région vivent en vue NOMMÉE).
+	if _region >= 0 and w.has_method("region_city_name"):
+		var vname := String(w.region_city_name(_region))
+		if vname != "":
+			_section("VILLE")
+			_line(vname, "RowLabel")
+
 	# agréger l'output sur toutes les provinces de la même région
 	var raws := {}      # source -> [per_day, res_id]
 	var manu := {}      # source -> [per_day, res_id]

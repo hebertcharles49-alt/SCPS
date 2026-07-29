@@ -152,13 +152,21 @@ func _region_name(r: int) -> String:
 	if _city_names.has(r):
 		return _city_names[r]
 	var w = Sim.world
+	# TOPONYMIE : nom de VILLE (grain région), assigné UNE fois par le moteur (balayage
+	# annuel) — mis en cache DÉFINITIF dès qu'il existe. Tant qu'il n'existe pas encore
+	# (ville pas encore nommée, ou méthode absente sur un vieux binaire), on NE cache PAS :
+	# repli sur le nom de région (motif d'avant cette mission), recalculé à chaque appel
+	# jusqu'à ce que le vrai nom de ville apparaisse.
+	var city := String(w.region_city_name(r)) if w.has_method("region_city_name") else ""
+	if city != "":
+		_city_names[r] = city
+		return city
 	var nm := "—"
 	var c: Vector2 = w.region_centroid(r)
 	if c.x >= 0 and w.has_method("province_at"):
 		var pid: int = w.province_at(int(c.x), int(c.y))
 		if pid >= 0:
 			nm = String(w.province_info(pid).get("nom", "—"))
-	_city_names[r] = nm
 	return nm
 
 ## le texte COMPLET d'une entrée de journal, région substituée en nom lisible quand

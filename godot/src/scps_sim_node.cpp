@@ -72,6 +72,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("region_colonized", "region"), &ScpsWorld::region_colonized);
     ClassDB::bind_method(D_METHOD("region_centroid", "region"),  &ScpsWorld::region_centroid);
     ClassDB::bind_method(D_METHOD("region_seat", "region"),      &ScpsWorld::region_seat);
+    ClassDB::bind_method(D_METHOD("region_city_name", "region"), &ScpsWorld::region_city_name);
 
     ClassDB::bind_method(D_METHOD("province_at", "x", "y"),          &ScpsWorld::province_at);
     ClassDB::bind_method(D_METHOD("province_region", "province"),    &ScpsWorld::province_region);
@@ -480,6 +481,13 @@ Vector2 ScpsWorld::region_seat(int r) const {
     float x = -1.f, y = -1.f;
     scps_region_seat(sim, r, &x, &y);
     return Vector2(x, y);
+}
+
+/* TOPONYMIE (scps_toponym.c) : nom de bourg au grain RÉGION — "" tant que la région n'est
+ * pas colonisée (aucune ville). Distinct de province_info(pid)["nom"] (nom de RÉGION,
+ * scps_readout.c, non touché ici) : c'est l'IDENTITÉ DE LA VILLE, pas l'ancrage régional. */
+String ScpsWorld::region_city_name(int r) const {
+    return String::utf8(scps_region_city_name(sim, r));
 }
 
 int ScpsWorld::province_at(int x, int y) const     { return scps_province_at(sim, x, y); }

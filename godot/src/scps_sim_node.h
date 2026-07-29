@@ -70,6 +70,7 @@ public:
     bool    region_colonized(int region) const;
     Vector2 region_centroid(int region) const;   /* (-1,-1) si vide */
     Vector2 region_seat(int region) const;       /* siège de ville : centroïde de la province rep */
+    String  region_city_name(int region) const;  /* TOPONYMIE : nom de la ville-bourg ("" si pas encore fondée) */
 
     /* PICKING & READOUTS (la membrane → panneaux) */
     int        province_at(int x, int y) const;       /* cellule monde → province (-1) */
