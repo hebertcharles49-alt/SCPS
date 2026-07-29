@@ -200,13 +200,25 @@ func _build_river_field(w, W: int, H: int) -> Image:
 	# ICI on l'ARRONDIT (Chaikin → fin de l'escalier D8) puis on FORCE un MÉANDRE SINUSOÏDAL JITTÉ — amplitude
 	# ∝ platitude × BIOME (serpente en terre plate ouverte, quasi droit en forêt, nul en montagne), bruit
 	# cohérent pour casser l'axe NSEO (zéro angle droit). Largeur qui CROÎT vers l'aval (affluents collectés).
-	for rv in raw:
+	# LES GRANDS FLEUVES (« un Nil, un Danube ») : les 2 troncs majeurs les PLUS LONGS
+	# gagnent +1 de largeur — le monde a ses artères, pas des rivières toutes égales.
+	var lens := []
+	for ridx in range(raw.size()):
+		var rv0: Dictionary = raw[ridx]
+		if float(rv0["flow"]) > 0.8:
+			lens.append([(rv0["points"] as PackedVector2Array).size(), ridx])
+	lens.sort_custom(func(a, b): return int(a[0]) > int(b[0]))
+	var great := {}
+	for g in range(mini(2, lens.size())):
+		great[int(lens[g][1])] = true
+	for ridx in range(raw.size()):
+		var rv: Dictionary = raw[ridx]
 		var pts: PackedVector2Array = rv["points"]
 		if pts.size() < 6:
 			continue
 		var fl := float(rv["flow"])
 		var v := clampf(0.58 + 0.42 * fl, 0.0, 1.0)
-		var base_w := 1 if fl > 0.8 else 0                       # fleuve = trait fin · rivière/affluent = FIL
+		var base_w := (2 if great.has(ridx) else 1) if fl > 0.8 else 0   # ARTÈRE = 2 · fleuve = 1 · reste = FIL
 		var grow := 1 if fl > 0.8 else (1 if fl > 0.5 else 0)     # enfle un PEU vers l'aval (fleuve 1→2 · rivière 0→1)
 		# (essai « tout enfle » ANNULÉ au shot : dans les deltas à bras multiples, chaque
 		#  affluent élargi empilait sa gravure → le dédale de flaques que le joueur dénonçait)

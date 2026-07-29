@@ -59,6 +59,10 @@ func _run() -> void:
 	# 1) L'ESTUAIRE : embouchure du plus LONG fleuve (dernier point du tracé)
 	var rivers: Array = w.river_paths()
 	rivers.sort_custom(func(a, b): return (a["points"] as PackedVector2Array).size() > (b["points"] as PackedVector2Array).size())
+	print("RIVSTATS total=", rivers.size())
+	for k in range(mini(8, rivers.size())):
+		print("RIVSTATS #", k, " len=", (rivers[k]["points"] as PackedVector2Array).size(),
+			" flow=", rivers[k]["flow"])
 	if not rivers.is_empty():
 		var pts: PackedVector2Array = rivers[0]["points"]
 		var mouth := pts[pts.size() - 1]

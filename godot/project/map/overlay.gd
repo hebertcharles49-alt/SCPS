@@ -64,13 +64,13 @@ const DRESS_DENSITY := {
 	4: 0.65, 5: 0.38, 6: 0.68,                          # plaines/prairie : herbe DENSE (jadis trop nue)
 	7: 0.70, 8: 0.62, 9: 0.68, 10: 0.80, 11: 0.72,
 	12: 0.95, 13: 0.90, 14: 0.95, 15: 0.88, 21: 0.72, 22: 0.82,
-	16: 0.85, 17: 0.80, 18: 0.96, 19: 0.92, 23: 0.82, 20: 0.52,
+	16: 0.85, 17: 0.80, 18: 1.0, 19: 1.0, 23: 0.90, 20: 0.52,   # montagnes : COUVERTES (chevrons)
 	0: 0.07, 1: 0.18, 2: 0.20,                          # eau : épars (mouvement seul)
 }
 ## PASSES SUPPLÉMENTAIRES par biome (marques EN PLUS par cellule de grille) → CANOPÉE dense. Surtout les
 ## forêts (le « densifié » demandé) : 1 + N marques jittées par cellule → couvert continu, pas des arbres isolés.
 const DRESS_EXTRA := {
-	18: 1, 19: 1, 16: 1,        # relief : un peu plus fourni (les forêts ont leur passe CANOPY)
+	18: 2, 19: 2, 16: 1,        # montagnes : chaîne FOURNIE de chevrons (calque fond→avant)
 }
 ## ── LA CANOPÉE COMPOSÉE (lot 6) : la forêt est un PEUPLEMENT d'arbres individuels — pas
 ## fin (5 cellules), ancrés au MONDE (la forêt reste pleine à tous les zooms), ancrage au
@@ -2769,6 +2769,7 @@ func _draw_geonames(w, mv: Node2D, vt: Transform2D, vp: Vector2, zoom: float) ->
 ## semis) + un trait d'ombre court sur le versant est (lumière du nord-ouest, classique).
 const CHEV_INK := Color(0.25, 0.19, 0.12, 0.52)
 const CHEV_SHADE := Color(0.25, 0.19, 0.12, 0.30)
+const CHEV_FILL := Color(0.79, 0.72, 0.57, 0.88)   # papier sous le ∧ : le devant OCCULTE l'arrière (calque)
 func _draw_chevron(c: Vector2, h: float, d: Dictionary, zoom: float) -> void:
 	var j: Array = d.get("j", [0.5, 0.5, 0.5])
 	var wf := h * (0.85 + 0.50 * float(j[0]))                 # largeur ±30 %
@@ -2776,6 +2777,10 @@ func _draw_chevron(c: Vector2, h: float, d: Dictionary, zoom: float) -> void:
 		-h * 0.52 + (float(j[2]) - 0.5) * 0.20 * h)
 	var lf := c + Vector2(-wf * 0.5, h * 0.34)
 	var rf := c + Vector2(wf * 0.5, h * 0.30 - (float(j[2]) - 0.5) * 0.10 * h)
+	# CALQUE : les chevrons se dessinent fond→avant (tri y du dressing) — le remplissage
+	# papier de chacun masque les traits de ceux DERRIÈRE (chaîne qui s'empile, jamais
+	# un grillage de ∧ superposés).
+	draw_colored_polygon(PackedVector2Array([apex, rf, lf]), CHEV_FILL)
 	var wpx := 1.5 / zoom
 	draw_line(apex, lf, CHEV_INK, wpx, true)
 	draw_line(apex, rf, CHEV_INK, wpx, true)
