@@ -7966,3 +7966,14 @@ byte (≥0.82→3 · ≥0.62→2 · ≥0.42→1 · sinon fil) et intensité v=0.
 charge vers l'aval, sans passer sous le seuil 5-taps du shader aux têtes). La règle
 « artère = top-2 des longueurs » SUPPRIMÉE — le débit EST la hiérarchie. L'entonnoir
 d'estuaire prend le débit du dernier point.
+
+**EXPORT scps.exe — LA PROCÉDURE (piège résolu 2026-07-30, « les mises à jour ne
+semblent pas appliquées »)** : le joueur lance l'EXPORT (packaging/windows/dist_godot/
+scps.exe) — il fige scripts ET DLL release au moment de l'export. Après toute vague :
+(1) `scons -C godot target=template_release` (la DLL release vieillit en silence — elle
+datait du 17/07 quand la debug était du jour) ; (2) exporter avec le Godot NON-MONO
+`E:\JEUX\SCPS\Godot_v4.6.3-stable_win64.exe --headless --export-release "Windows
+Desktop" --path godot/project --quit`. JAMAIS avec le Godot_v4.6.3-stable_mono_win64
+de la racine du repo : le projet n'a AUCUN C#, la version mono exige des templates
+.mono non installés + un SDK .NET 10 absent → « configuration errors » sec. Les
+templates installés (AppData/Godot/export_templates) sont 4.6.3.stable NON-mono.
