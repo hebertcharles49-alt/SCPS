@@ -314,9 +314,9 @@ const ROAD_ZOOM_MIN := 1.6    ## routes (zoom ISO) — dès le lointain, seules 
 const ROAD_BAND       := Color(0.91, 0.85, 0.70)        ## parchemin poussiéreux (bande)
 const ROAD_RUT        := Color(0.38, 0.25, 0.14, 0.50)  ## ornière brune
 const ROAD_TRAIL      := Color(0.42, 0.28, 0.16, 0.42)  ## trace de sentier
-const ROAD_BAND_A     := 0.42   ## alpha bande hors forêt (l'usure du tier s'y AJOUTE)
-const ROAD_BAND_A_F   := 0.55   ## en forêt : le sol de la trouée, PLUS visible
-const ROAD_WEAR_A     := 0.06   ## usure : +alpha par palier de tier (jamais + épais)
+const ROAD_BAND_A     := 0.30   ## alpha bande hors forêt (l'usure s'y AJOUTE) — −29 % (retour joueur : « autoroute lumineuse »)
+const ROAD_BAND_A_F   := 0.40   ## en forêt : le sol de la trouée, PLUS visible (−27 %)
+const ROAD_WEAR_A     := 0.09   ## usure : +alpha par palier (la multiplicité FONCE la terre, jamais 2 bandes)
 const ROAD_BAND_DASH  := 15.0   ## bande : longs pans avec petites RUPTURES (unités iso)
 const ROAD_BAND_GAP   := 0.9
 const ROAD_RUT_DASH   := 3.4    ## ornière : discontinue, courte
@@ -1776,6 +1776,16 @@ func _road_iso(poly: PackedVector2Array, mv) -> PackedVector2Array:
 		out[k] = mv.iso_pos(poly[k].x, poly[k].y)
 	return out
 
+## indice du sommet-FRONTIÈRE urbaine : premier sommet (en remontant depuis la FIN,
+## côté ville) dont l'arc cumulé dépasse `r`. -1 si le tracé est trop court.
+func _urban_boundary(poly: PackedVector2Array, r: float) -> int:
+	var acc := 0.0
+	for k in range(poly.size() - 1, 0, -1):
+		acc += poly[k].distance_to(poly[k - 1])
+		if acc >= r:
+			return k - 1
+	return -1
+
 ## EXTRAIT l'arc [s0, s1] (abscisses curvilignes) d'une polyligne — `acc` = abscisses
 ## cumulées par sommet (précalculées par l'appelant). Bouts interpolés exactement.
 
@@ -1986,7 +1996,7 @@ func _ensure_road_network() -> void:
 				cand[pkey] = []
 			(cand[pkey] as Array).append({"poly": sub, "len": s1 - s0, "start": rstart,
 				"rkey": int(rd["key"]), "level": level, "cover": cover,
-				"na": mini(ia, ib), "nb": maxi(ia, ib)})
+				"na": mini(ia, ib), "nb": maxi(ia, ib), "ea": ia, "eb": ib})
 	# ── géométrie CANONIQUE par paire + visibilité/usure ──
 	var steps := []
 	for pkey in cand:
@@ -2012,25 +2022,83 @@ func _ensure_road_network() -> void:
 		len_canon += float(can["len"]) * vis
 		var geom: PackedVector2Array = can["poly"] if vis >= 0.999 else _road_partial(can["poly"], vis)
 		steps.append({"poly": geom, "level": lvl, "wear": clampi(wear, 1, ROAD_MULT_TIERS),
-			"na": can["na"], "nb": can["nb"], "start": int(can["start"]), "done": vis >= 0.999})
-	# ── FUSION DE CORRIDORS SOUTENUS (complément mesuré : le chaînage seul réutilise
-	# ~14 % — le vrai tressage est GÉOMÉTRIQUE, au-delà du rayon magnet). Deux tracés
-	# PROCHES (≤2.2), QUASI-PARALLÈLES (|cos|≥0.92) et ALIGNÉS sur ≥6 cellules d'arc
-	# CONSÉCUTIVES fusionnent en bloc : les points du plus RÉCENT se projettent sur le
-	# plus ancien. Un croisement ponctuel ne tient jamais la longueur minimale — c'est
-	# ce qui rend la fusion plus sûre qu'un aimant global élargi (mesuré : plateau à
-	# 2.2/4 passes, risque de fusionner des croisements). ──
+			"na": can["na"], "nb": can["nb"], "ea": int(can["ea"]), "eb": int(can["eb"]),
+			"start": int(can["start"]), "done": vis >= 0.999})
+	# ── CONSOLIDATION (cadrage joueur v2, 2026-07-31) — ordre : âge → terminal
+	# unique par ville → fusion structurelle de corridors. Les VIEUX tracés gagnent. ──
 	steps.sort_custom(func(a, b):
 		if int(a["start"]) != int(b["start"]):
-			return int(a["start"]) < int(b["start"])     # les VIEUX corridors gagnent
+			return int(a["start"]) < int(b["start"])
 		return String("%d_%d" % [int(a["na"]), int(a["nb"])]) < String("%d_%d" % [int(b["na"]), int(b["nb"])]))
+	var junctions := []                          # carrefours créés (terminaux + bouts de troncs partagés)
+	# ── TERMINAL UNIQUE PAR VILLE : toutes les approches d'un même SECTEUR (~35°)
+	# rejoignent LA même courte géométrie terminale (celle du plus ancien) — l'étoile
+	# confuse devient un tronc de porte + un carrefour à la frontière urbaine. ──
+	var st_term := 0
+	var r_term := 4.0
+	var by_city := {}
+	for si in range(steps.size()):
+		var stp: Dictionary = steps[si]
+		for endi in range(2):
+			var nid := int(stp["ea"]) if endi == 0 else int(stp["eb"])
+			if nid >= 100000 or not _region_anchor.has(nid):
+				continue
+			by_city["%d" % nid] = true
+	for ck in by_city:
+		var rid := int(ck)
+		var A3: Vector2 = _region_anchor[rid]
+		var leaders := []                        # [{angle, si, at_start}] par ordre d'âge
+		for si in range(steps.size()):
+			var stp: Dictionary = steps[si]
+			var at_start := int(stp["ea"]) == rid
+			var at_end := int(stp["eb"]) == rid
+			if not at_start and not at_end:
+				continue
+			var poly3: PackedVector2Array = (stp["poly"] as PackedVector2Array).duplicate()
+			if at_start:
+				poly3.reverse()                  # normalise : la ville au BOUT
+			var bidx := _urban_boundary(poly3, r_term)
+			if bidx < 1:
+				continue                         # tracé trop court pour un terminal
+			var ang := (poly3[bidx] - A3).angle()
+			var merged := false
+			for ld in leaders:
+				var da := absf(fposmod(ang - float(ld["angle"]) + PI, TAU) - PI)
+				if da > 0.6:
+					continue
+				# SUIVEUR : tronqué à SA frontière, raccordé à la queue du CHEF
+				var lstp: Dictionary = steps[int(ld["si"])]
+				var lpoly: PackedVector2Array = (lstp["poly"] as PackedVector2Array).duplicate()
+				if bool(ld["at_start"]):
+					lpoly.reverse()
+				var lb := _urban_boundary(lpoly, r_term)
+				if lb < 1:
+					break
+				var np := poly3.slice(0, bidx + 1)
+				np.append_array(lpoly.slice(lb))
+				if at_start:
+					np.reverse()
+				stp["poly"] = np
+				junctions.append(lpoly[lb])      # le carrefour de porte
+				st_term += 1
+				merged = true
+				break
+			if not merged:
+				leaders.append({"angle": ang, "si": si, "at_start": at_start})
+	# ── FUSION DE CORRIDORS SOUTENUS v2 (seuils joueur : ≤3.5 cellules · ~20° ·
+	# ≥8 cellules CONSÉCUTIVES) — STRUCTURELLE : le suiveur est SCINDÉ aux deux
+	# JONCTIONS, sa portion médiane DISPARAÎT (une seule bande par corridor, jamais
+	# d'empilement « autoroute lumineuse ») et l'USURE du tronc s'incrémente. Un
+	# croisement ponctuel ne tient jamais la longueur minimale. ──
 	var st_fused := 0
-	var fgrid := {}                              # grille (cellule 2.0) des segments RETENUS
+	var steps2 := []
+	var fgrid := {}                              # grille (cellule 2.0) → [[a, b, index steps2]]
 	for stp in steps:
 		var poly: PackedVector2Array = stp["poly"]
 		var n := poly.size()
+		var pieces := []
 		if n >= 3 and not fgrid.is_empty():
-			var near := PackedInt32Array()       # par point : -1 ou index de projection valide
+			var near := PackedInt32Array()       # cible steps2 par point (-1 = libre)
 			var proj := PackedVector2Array()
 			near.resize(n)
 			proj.resize(n)
@@ -2039,7 +2107,7 @@ func _ensure_road_network() -> void:
 				var pk2: Vector2 = poly[k]
 				var dloc := (poly[mini(k + 1, n - 1)] - poly[maxi(k - 1, 0)]).normalized()
 				var gk := Vector2i(int(floor(pk2.x / 2.0)), int(floor(pk2.y / 2.0)))
-				var bd2 := 4.84                  # 2.2²
+				var bd2 := 12.25                 # 3.5²
 				for oy in range(-2, 3):
 					for ox in range(-2, 3):
 						var lst2: Variant = fgrid.get(Vector2i(gk.x + ox, gk.y + oy))
@@ -2052,16 +2120,16 @@ func _ensure_road_network() -> void:
 							var l22 := ab2.length_squared()
 							if l22 < 0.0001:
 								continue
-							if absf(dloc.dot(ab2 / sqrt(l22))) < 0.92:
-								continue         # pas parallèle : un croisement ne fusionne pas
+							if absf(dloc.dot(ab2 / sqrt(l22))) < 0.94:
+								continue         # ~20° : un croisement ne fusionne pas
 							var tt2 := clampf((pk2 - sa).dot(ab2) / l22, 0.0, 1.0)
 							var pr2: Vector2 = sa + ab2 * tt2
 							var dd2 := pk2.distance_squared_to(pr2)
 							if dd2 < bd2:
 								bd2 = dd2
-								near[k] = 1
+								near[k] = int(sg[2])
 								proj[k] = pr2
-			# runs CONSÉCUTIFS de points alignés ≥ 6 cellules d'arc → snap en bloc
+			var cuts := []                       # [ka, kb, cible] — runs soutenus ≥ 8 cellules
 			var k0 := 0
 			while k0 < n:
 				if near[k0] < 0:
@@ -2072,18 +2140,69 @@ func _ensure_road_network() -> void:
 				while k1 + 1 < n and near[k1 + 1] >= 0:
 					arc += poly[k1].distance_to(poly[k1 + 1])
 					k1 += 1
-				if arc >= 6.0:
+				if arc >= 8.0:
+					var votes := {}
 					for kk in range(k0, k1 + 1):
-						poly[kk] = proj[kk]
-						st_fused += 1
+						votes[near[kk]] = int(votes.get(near[kk], 0)) + 1
+					var best_t := -1
+					var best_v := 0
+					for tsi in votes:
+						if int(votes[tsi]) > best_v:
+							best_v = int(votes[tsi])
+							best_t = int(tsi)
+					cuts.append([k0, k1, best_t])
 				k0 = k1 + 1
-			stp["poly"] = poly
-		for k in range(poly.size() - 1):         # cette étape ENTRE dans le réseau retenu
-			var mid2: Vector2 = (poly[k] + poly[k + 1]) * 0.5
-			var gk2 := Vector2i(int(floor(mid2.x / 2.0)), int(floor(mid2.y / 2.0)))
-			if not fgrid.has(gk2):
-				fgrid[gk2] = []
-			(fgrid[gk2] as Array).append([poly[k], poly[k + 1]])
+			if cuts.is_empty():
+				pieces.append(poly)
+			else:
+				var prev_idx := 0
+				var has_pj := false
+				var prev_j := Vector2.ZERO
+				for c4 in cuts:
+					var ka: int = c4[0]
+					var kb: int = c4[1]
+					var tsi: int = c4[2]
+					var head := PackedVector2Array()
+					if has_pj:
+						head.append(prev_j)
+					head.append_array(poly.slice(prev_idx, ka + 1))
+					head.append(proj[ka])        # raccord à la jonction AMONT
+					if head.size() >= 3:
+						pieces.append(head)
+					junctions.append(proj[ka])
+					junctions.append(proj[kb])
+					if tsi >= 0 and tsi < steps2.size():
+						steps2[tsi]["wear"] = int(steps2[tsi]["wear"]) + 1   # l'usure du tronc
+					st_fused += kb - ka + 1
+					prev_idx = kb + 1
+					has_pj = true
+					prev_j = proj[kb]
+				var tail := PackedVector2Array()
+				if has_pj:
+					tail.append(prev_j)
+				tail.append_array(poly.slice(prev_idx))
+				if tail.size() >= 3:
+					pieces.append(tail)
+		else:
+			pieces.append(poly)
+		for pc0 in pieces:
+			var pc: PackedVector2Array = pc0
+			var arcp := 0.0
+			for k in range(pc.size() - 1):
+				arcp += pc[k].distance_to(pc[k + 1])
+			if pc.size() < 2 or arcp < 1.5:
+				continue                         # moignon : jamais dessiné
+			var ns: Dictionary = stp.duplicate()
+			ns["poly"] = pc
+			steps2.append(ns)
+			var nsi := steps2.size() - 1
+			for k in range(pc.size() - 1):       # cette pièce ENTRE dans le réseau retenu
+				var mid2: Vector2 = (pc[k] + pc[k + 1]) * 0.5
+				var gk2 := Vector2i(int(floor(mid2.x / 2.0)), int(floor(mid2.y / 2.0)))
+				if not fgrid.has(gk2):
+					fgrid[gk2] = []
+				(fgrid[gk2] as Array).append([pc[k], pc[k + 1], nsi])
+	steps = steps2
 	# ── BUCKETS par classe×usure×forêt (dédup seg anti-overdraw) + masque TROUÉE ──
 	var polys := {}
 	for t in range(1, ROAD_MULT_TIERS + 1):
@@ -2095,7 +2214,7 @@ func _ensure_road_network() -> void:
 	for stp in steps:
 		var poly: PackedVector2Array = stp["poly"]
 		var cls: String = ["main", "minor", "trail"][int(stp["level"])]
-		var wear: int = stp["wear"]
+		var wear: int = clampi(int(stp["wear"]), 1, ROAD_MULT_TIERS)
 		var run := PackedVector2Array()
 		var run_forest := false
 		for k in range(poly.size() - 1):
@@ -2136,16 +2255,19 @@ func _ensure_road_network() -> void:
 			var sentier: bool = key.begins_with("trail")
 			var band := PackedVector2Array()
 			var ruts := PackedVector2Array()
+			var rdash := ROAD_RUT_DASH * (1.0 + 0.18 * float(t - 1))          # l'usure DENSIFIE
+			var rgap := ROAD_RUT_GAP * maxf(0.55, 1.0 - 0.22 * float(t - 1))  # (jamais une 2e bande)
 			for pl in polys[key]:
 				if sentier:
 					ruts.append_array(_dash_pairs(pl, ROAD_TRAIL_DASH, ROAD_TRAIL_GAP, ROAD_JIT, solid))
 					continue
 				band.append_array(_dash_pairs(pl, ROAD_BAND_DASH, ROAD_BAND_GAP, ROAD_JIT * 0.6, solid))
 				if is_mn:
-					ruts.append_array(_dash_pairs(_offset_poly(pl, rut_off), ROAD_RUT_DASH, ROAD_RUT_GAP, ROAD_JIT, solid))
-					ruts.append_array(_dash_pairs(_offset_poly(pl, -rut_off), ROAD_RUT_DASH, ROAD_RUT_GAP, ROAD_JIT, solid))
+					# ornières DÉSAXÉES (+0.85/−0.74) et DÉPHASÉES (périodes ≠) : casse l'effet rails
+					ruts.append_array(_dash_pairs(_offset_poly(pl, rut_off), rdash, rgap, ROAD_JIT, solid))
+					ruts.append_array(_dash_pairs(_offset_poly(pl, -rut_off * 0.87), rdash * 1.13, rgap * 0.86, ROAD_JIT, solid))
 				else:
-					ruts.append_array(_dash_pairs(pl, ROAD_RUT_DASH, ROAD_RUT_GAP, ROAD_JIT, solid))
+					ruts.append_array(_dash_pairs(pl, rdash, rgap, ROAD_JIT, solid))
 			polys["b_" + key] = band
 			polys["r_" + key] = ruts
 	# ── PADS de porte : aux NŒUDS-VILLES touchés par ≥1 étape visible ──
@@ -2160,6 +2282,15 @@ func _ensure_road_network() -> void:
 		var A2: Vector2 = _region_anchor[rid]
 		pads.append([mv.iso_pos(A2.x, A2.y), float(pad_by_city[rid]) * cell, rid])
 	polys["pads"] = pads
+	var jdone := {}
+	var juncs := []
+	for jp in junctions:
+		var jk := Vector2i(int(round(jp.x / 1.5)), int(round(jp.y / 1.5)))
+		if jdone.has(jk):
+			continue
+		jdone[jk] = true
+		juncs.append([mv.iso_pos(jp.x, jp.y), 0.55 * cell, jk.x * 131 + jk.y])
+	polys["junc"] = juncs
 	# ── INSTRUMENTATION (cadrage joueur : mesurer avant de conclure) ──
 	if st_routes > 0:
 		var reuse := (1.0 - len_canon / len_logique) * 100.0 if len_logique > 0.001 else 0.0
@@ -2172,8 +2303,8 @@ func _ensure_road_network() -> void:
 			if _chain_geo.has(kk3) and int(_chain_geo[kk3]) != int(gsig[kk3]):
 				gchg += 1
 		_chain_geo = gsig
-		print("[CHAINAGE] routes=%d wp=%d (rej eau %d) étapes=%d uniques=%d réutil=%.0f%% fusion=%d pts | spag routes=%d → étapes=%d | géo-chg=%d" %
-			[st_routes, st_wp, st_rej_eau, st_steps, steps.size(), reuse, st_fused, _count_spaghetti_segments(), _spag_steps(steps), gchg])
+		print("[CHAINAGE] routes=%d wp=%d (rej eau %d) étapes=%d uniques=%d réutil=%.0f%% | term=%d fusion=%d pts junc=%d | spag routes=%d → étapes=%d | géo-chg=%d" %
+			[st_routes, st_wp, st_rej_eau, st_steps, steps.size(), reuse, st_term, st_fused, juncs.size(), _count_spaghetti_segments(), _spag_steps(steps), gchg])
 	# TROUÉE FORESTIÈRE : dilate le masque en carte de DENSITÉ de canopée — cœur de
 	# grande route : 0 arbre (≤1.5 cellule) puis bords clairsemés ; régionale : plus
 	# étroit. Le semis (_build_dressing) lit _road_clear ; quand le réseau a poussé
@@ -2827,6 +2958,16 @@ func _draw_iso(w, mv: Node2D) -> void:
 						var rr := pr * (0.72 + 0.55 * _h1(pseed * 13.7 + float(v)))
 						ppoly.append(pc + Vector2(cos(ang), sin(ang) * 0.5) * rr)   # aplati iso
 					draw_colored_polygon(ppoly, Color(ROAD_BAND.r, ROAD_BAND.g, ROAD_BAND.b, ROAD_BAND_A + 0.10))
+				for jc in _road_net.get("junc", []):
+					var jp2: Vector2 = jc[0]
+					var jr: float = jc[1]
+					var jseed := float(int(jc[2]))
+					var jpoly := PackedVector2Array()
+					for v in range(6):             # aire de CARREFOUR : terre usée, sans symbole
+						var ang2 := TAU * float(v) / 6.0
+						var rr2 := jr * (0.70 + 0.5 * _h1(jseed * 7.9 + float(v)))
+						jpoly.append(jp2 + Vector2(cos(ang2), sin(ang2) * 0.5) * rr2)
+					draw_colored_polygon(jpoly, Color(ROAD_BAND.r * 0.90, ROAD_BAND.g * 0.87, ROAD_BAND.b * 0.82, ROAD_BAND_A + 0.14))
 			if zoom >= ROAD_Z_RUT:
 				for t in range(1, ROAD_MULT_TIERS + 1):
 					var rw := _w(zoom, 0.16, 0.6, 1.0)

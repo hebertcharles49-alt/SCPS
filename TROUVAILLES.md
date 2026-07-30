@@ -7906,3 +7906,16 @@ diplo_demo, audit_eco — tous recalibrés, `run_tests.sh full` = 40/40 verts.
 - road_paths() n'expose ni relation commerciale ni volume : l'« usure par trafic RÉEL »
   exigerait une donnée de façade supplémentaire (l'usure actuelle = nb d'arêtes
   routières réutilisant l'étape).
+
+**Consolidation v2 (même vague, cadrage joueur affiné)** : TERMINAL UNIQUE par ville
+(secteur angulaire ~35°, la queue du plus ANCIEN devient le tronc de porte partagé,
+jonction à la frontière urbaine r=4) + FUSION STRUCTURELLE (seuils joueur 3.5 cellules /
+cos 0.94 ≈ 20° / ≥8 cellules tenues) : le suiveur est SCINDÉ aux deux jonctions, sa
+portion médiane DISPARAÎT (fini l'empilement de bandes — l'usure du tronc s'incrémente
+à la place), 99 carrefours créés (aires de terre usée, sans symbole). MESURES (g9,
+an 60) : spag 2162 → 67 (−97 %) · term=65 · 1845 pts. Bande −29 % d'alpha, ornières
+désaxées (+0.85/−0.74) et déphasées (périodes ≠) anti-« rails », usure = terre foncée +
+ornières densifiées (jamais 2 bandes). Trouée/usure lues sur le réseau FINAL (post-
+consolidation). VIGILANCE : géo-chg=10/70 entre rebuilds pendant la croissance du
+réseau (des étapes changent de géométrie quand un chantier s'achève) — re-mesurer en
+jeu long si un « saut » visuel se voit.
