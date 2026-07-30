@@ -1,4 +1,4 @@
-# SYNTHÈSE DE SESSION — handoff roulant (2026-07-31 — GRANDS FLEUVES · CHRONICLE PER-PROVINCE · VAGUE COLONISATION)
+# SYNTHÈSE DE SESSION — handoff roulant (2026-07-31 — GRANDS FLEUVES · COLONISATION · ROUTES v2 · OBSERVATEUR)
 
 ## VAGUE COLONISATION (commit suivant 44a40e1) — « le stock drive la demande »
 - Décision joueur : baisse FORTE des prix (pop min 500→300 · convoi 250→150 · vivres
@@ -42,6 +42,22 @@
 - make test : 34/40 verts ; 6 bancs en RECALIBRAGE par agent sonnet (statecraft, agency,
   missions, warhost, events, scps_api — fixtures calés sur l'ancien monde ; kill-switch
   les prouve verts). L'agent est prévenu du re-changement jitter.
+
+
+## CLÔTURE 2026-07-31 — 5 commits, arbre PROPRE, 40/40 bancs
+- 44a40e1 GRANDS FLEUVES (routage rempli, troncs 150-300, chronicle FLEUVES+PROV)
+- c735dd1 COLONISATION (stock→demande, grenier-commerce, baisse forte, fix UI menteuse)
+- a6b118f UI (menu audio Muet/bus · mode observateur neutre · probes unfocusable)
+- d0dedd3 ROUTES v2 « sol usé » (bandes claires + ornières + sentiers + TROUÉE
+  forestière + ponts tablier/culées ; par-zoom lointain→proche)
+- 10d46b0 PLANCHER NIL (RIVER_NILE_KEEP=110 + Nil-mètre SCPS_RIVDIAG) + recalibrage
+  final bancs (agent, 3 vagues, 10 fixtures — 40/40 au run full, golden/determinism/
+  savetest verts, kill-switch complet prouvé byte-identique).
+- RESTES spec routes : aire commune de carrefour (pads d'abouts seulement), variations
+  de largeur de bande. RESTES monde : « un Nil GARANTI par monde » = passe worldgen
+  dédiée (graines 7/9 : aucune rencontre fleuve×désert — l'amont d'un désert est sec).
+- Piège séance : les probes Godot volaient le focus (« 25 alt-tab/minute ») —
+  fenêtres unfocusable désormais, UNE instance à la fois.
 
 ## GATES FINAUX (moteur figé, jitter inclus)
 - golden re-baseliné ✓ (décision documentée, go joueur) · determinism ✓ · savetest ✓ ·
