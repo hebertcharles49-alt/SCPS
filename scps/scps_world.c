@@ -3228,6 +3228,40 @@ static void trace_rivers(World *w, float *height) {
     }
     for (int mi=0; mi<nm; mi++) if (!mark[order[mi]]) g_river_drop_cap++;   /* bassins jamais atteints (cap) */
     w->n_rivers=n;
+    /* DIAG GATED SCPS_RIVDIAG (motif SCPS_FINDIAG, OFF par défaut, stderr) — le
+     * NIL-MÈTRE : combien de cellules DÉSERT/ARIDES chaque rivière traverse (et le
+     * plus long run consécutif). La preuve chiffrée qu'un « Nil » existe — ou pas —
+     * sur cette graine (biomes posés AVANT le tracé, lisibles ici). */
+    if (getenv("SCPS_RIVDIAG")){
+        int best_run=0, best_riv=-1, tot_des=0;
+        for (int r=0;r<n;r++){
+            const River *rv=&w->river[r];
+            int des=0, run=0, mrun=0;
+            for (int k=0;k<rv->len;k++){
+                int b=(int)cell[scps_idx(rv->x[k],rv->y[k])].biome;
+                int arid=(b==BIO_DESERT||b==BIO_COASTAL_DESERT||b==BIO_DRYLANDS);
+                if (arid){ des++; run++; if (run>mrun) mrun=run; } else run=0;
+            }
+            tot_des+=des;
+            if (mrun>best_run){ best_run=mrun; best_riv=r; }
+            if (mrun>=8)
+                fprintf(stderr,"[RIVDIAG] riv %d len=%d : %d cellule(s) aride(s), run max %d\n",
+                        r, rv->len, des, mrun);
+        }
+        fprintf(stderr,"[RIVDIAG] NIL-METRE : %d cellules arides traversées au total · meilleur run %d (riv %d)\n",
+                tot_des, best_run, best_riv);
+        if (best_riv>=0){                                       /* coords du milieu du run (cadrage probe) */
+            const River *rv=&w->river[best_riv];
+            int run=0, mrun=0, mend=0;
+            for (int k=0;k<rv->len;k++){
+                int b=(int)cell[scps_idx(rv->x[k],rv->y[k])].biome;
+                if (b==BIO_DESERT||b==BIO_COASTAL_DESERT||b==BIO_DRYLANDS){ run++; if (run>mrun){ mrun=run; mend=k; } }
+                else run=0;
+            }
+            int mid=mend-mrun/2;
+            fprintf(stderr,"[RIVDIAG] nil au milieu : x=%d y=%d\n", rv->x[mid], rv->y[mid]);
+        }
+    }
     free(order); free(mark); free(buf); free(trC); free(trJ);
 }
 
@@ -4183,6 +4217,14 @@ void world_generate(World *w, const WorldParams *P) {
      * un grand fleuve TRAVERSE le désert ; ses rives restent « wet » pour
      * les biomes → couloir fertile émergent le long du cours. */
     { int nil = tune_f("RIVER_ARID_NIL",1.f)>0.f;
+      /* PLANCHER DE SURVIE (« pas de Nil visible », décision joueur 2026-07-31) : la
+       * pondération seule laissait mourir tout fleuve < byte ~130 en désert profond
+       * (m≈0 ⇒ damp'≈r ⇒ 120·0.47=56 < seuil de tracé 60) — la trace s'arrêtait à
+       * l'ENTRÉE du désert. Un fleuve ÉTABLI (byte pré-damp ≥ RIVER_NILE_KEEP) ne
+       * descend jamais sous le seuil : il TRAVERSE, quel que soit le désert (le Nil
+       * existe parce que son bassin amont est immense, pas parce qu'il pleut dessus).
+       * 0 = plancher éteint. */
+      int keep = (int)tune_f("RIVER_NILE_KEEP",110.f);
     for (int i=0; i<SCPS_N; i++) {
         if (height[i] < SEA_LEVEL) continue;
         float m = moisture[i];
@@ -4190,7 +4232,10 @@ void world_generate(World *w, const WorldParams *P) {
             float damp = (m / 0.30f);
             damp = damp * damp;
             if (nil){ float r=w->cell[i].river/255.f; damp = damp + (1.f-damp)*r; }
-            w->cell[i].river = (uint8_t)(w->cell[i].river * damp);
+            int r0 = (int)w->cell[i].river;
+            float d = w->cell[i].river * damp;
+            if (nil && keep>0 && r0>=keep && d < 68.f) d = 68.f;   /* 60 (tracé) + 8 de marge */
+            w->cell[i].river = (uint8_t)d;
         }
     } }
 

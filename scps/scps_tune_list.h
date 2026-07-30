@@ -498,6 +498,10 @@
      * (un grand fleuve TRAVERSE le désert, un ruisseau fantôme s'efface).
      * 0 = atténuation quadratique pure d'origine. */ \
     X(RIVER_ARID_NIL,         1.0f) \
+    /* Plancher de survie du Nil : un fleuve au byte pré-atténuation ≥ ce seuil ne
+     * descend jamais sous le seuil de tracé en zone aride — il TRAVERSE le désert
+     * (« pas de Nil visible », 2026-07-31). 0 = éteint. */ \
+    X(RIVER_NILE_KEEP,      110.0f) \
     X(SPAWN_SAFE_HOPS,        6.0f) \
     /* Rayon de spawn ADAPTATIF : on tente SPAWN_SAFE_HOPS, et si la géométrie ne case pas tous les
      * empires demandés, on resserre d'un cran jusqu'à SPAWN_SAFE_HOPS_MIN. « Tout caser » prime, à

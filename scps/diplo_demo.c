@@ -172,12 +172,18 @@ int main(int argc,char**argv){
     /* ---- 3. Diplomatie d'ÉQUILIBRE : trêve · momentum · friction · coalition ---- */
     printf("\n── 3. Diplomatie d'équilibre (rétroaction négative, pas d'interdit) ──\n");
     {
-        /* B = un voisin ; C = un pays avec une FORCE réelle (l'allié dont l'entrée
-         * pèse) — sinon le coût d'élargissement serait nul (pays vide). */
+        /* B = un voisin avec une puissance RÉELLE (éco+mil) ; C = un pays avec une FORCE
+         * réelle (l'allié dont l'entrée pèse) — sinon le coût d'élargissement serait nul
+         * (pays vide). POLITY_WILD (hameau libre) exclu : threat_of = base×(1+momentum)
+         * avec base=(eco+mil)/… — un hameau a base≈0, donc même momentum[B]=40 ne bouge
+         * JAMAIS la menace perçue (0×tout = 0), faisant échouer les checks fulgurance/
+         * hégémon pour de mauvaises raisons (même jurisprudence POLITY_WILD que les autres
+         * bancs de cette vague). */
         int A=player, B=-1, C=-1;
-        for(int c=0;c<w->n_countries;c++){ if(c==A||w->country[c].role==POLITY_UNCLAIMED) continue;
-            if(B<0){B=c;continue;}
-            if(diplo_mil_power(w,econ,c)>0.01f){ C=c; break; } }
+        for(int c=0;c<w->n_countries;c++){
+            if(c==A || w->country[c].role==POLITY_UNCLAIMED || w->country[c].role==POLITY_WILD) continue;
+            if(B<0 && (diplo_eco_power(wp,econ,c)+diplo_mil_power(w,econ,c))>0.01f){ B=c; continue; }
+            if(B>=0 && c!=B && diplo_mil_power(w,econ,c)>0.01f){ C=c; break; } }
         if(B>=0 && C>=0){
             /* TRÊVE : une longue guerre → une longue trêve ; on n'enchaîne plus. */
             diplo_init(dp); dp->war_years[A][B]=dp->war_years[B][A]=4.f;
@@ -372,7 +378,17 @@ int main(int argc,char**argv){
         RegionEconomy *rvr=&econ->region[vic], *ror=&econ->region[occ];
         ProvinceEconomy *rv=&econ->prov[vic_pid], *ro=&econ->prov[occ_pid];
         rv->pillage_cd=0.f;                                  /* province FRAÎCHE (pas déjà sac(c)agée) */
-        for(int g=1;g<RES_COUNT;g++){ rvr->stock[g]=100.f; rvr->supply[g]=40.f; rvr->price[g]=1.f; }
+        /* RE-KEY PROVINCE : diplo_siege_loot retire via econ_region_stock_add, qui débite
+         * la PROVINCE porteuse (region_carrier_prov) dès qu'une province ACTIVE existe pour
+         * la région — pas seulement si `colonized` (une région LIBRE mais dont le terrain est
+         * actif a déjà une porteuse). Doter SEULEMENT la vue region[] (l'agrégat) laissait la
+         * vraie réserve (prov[vic_pid].stock) à zéro → rien à prendre, loot=0 pour de
+         * mauvaises raisons. On dote donc LA PROVINCE (la réalité) ET la vue (relue par
+         * diplo_siege_loot pour supply/price, restés région-grain). */
+        for(int g=1;g<RES_COUNT;g++){
+            rvr->stock[g]=100.f; rvr->supply[g]=40.f; rvr->price[g]=1.f;
+            if (vic_pid>=0) rv->stock[g]=100.f;
+        }
         float vic_stock_before=0.f, occ_treas_before=ro->treasury;
         float occ_stock_before=0.f; for(int g=1;g<RES_COUNT;g++) occ_stock_before+=ror->stock[g];
         for(int g=1;g<RES_COUNT;g++) vic_stock_before += rvr->stock[g];
@@ -590,6 +606,14 @@ int main(int argc,char**argv){
             foe.heritage=HERITAGE_CLANIQUE; foe.klass=CLASS_LABORER; foe.count=4000;
             foe.integration=1.f; foe.L=5.f; foe.drift_id=222; foe.origin_sphere=heritage_sphere(HERITAGE_CLANIQUE);
             econ->prov[srcP].pop.n_groups=1; econ->prov[srcP].pop.groups[0]=foe;
+            /* diplo_enslave_capture PLAFONNE le prélèvement à strata[LABORER]+[BOURGEOIS]
+             * (la strate ÉCONOMIQUE réelle, distincte du groupe culturel ci-dessus) —
+             * srcR est « la première région ≠ capitale » : sous le nouveau monde, elle peut
+             * être libre/à peine peuplée (strate quasi nulle), le groupe de 4000 ci-dessus
+             * n'étant qu'un cohorte CULTUREL sans contrepartie économique. Sans cette strate,
+             * `moved` retombe à 0 (rien de prélevable) et les 5 checks qui suivent échouent
+             * en cascade. On pose donc la strate au même ordre de grandeur que le groupe. */
+            econ->prov[srcP].strata[CLASS_LABORER].pop=4000.f;
 
             /* GATE = esclavagiste (TECH_ESCLAVAGE, résolu par l'appelant) : booléen.
              * HISTORIQUE : LOT P 2026-07-07 « 5% » (ex-0.08). RÉVISÉ 2026-07-21 (décision

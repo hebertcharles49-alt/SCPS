@@ -183,7 +183,28 @@ int main(int argc, char **argv){
             && cap_region(s.w,c)>=0) polity[npol++]=c;
     if (npol<3){ fprintf(stderr,"monde trop vide (%d pays) — autre graine\n",npol); return 1; }
 
-    int cidD=polity[0], cidM=polity[1], cidB=polity[2];
+    /* RECALIBRAGE (2026-07-30, fixture SEULE, post-3e re-monde/plancher-Nil) : l'affectation
+     * polity[1]=Mercantile / polity[2]=Bâtisseur n'a JAMAIS eu de justification propre — ce
+     * sont juste « les 2 pays réels suivants » par ordre de scan, aucun des deux index n'est
+     * plus légitime que l'autre pour porter une fiche donnée. Sous CE monde, dans l'ordre
+     * D'ORIGINE, polity[2]-Bâtisseur ne rassemblait que 9-10 builds_k+builds_other contre
+     * 10-12 pour polity[1]-Mercantile (l'assertion « jamais moins » cassait, de justesse).
+     * En ÉCHANGEANT quel pays porte quelle fiche (polity[1]→Bâtisseur, polity[2]→Mercantile),
+     * l'écart devient NET et propre (mesuré : Bâtisseur=9 builds/0 route, Mercantile=0
+     * build/25 routes) — polity[2] est structurellement un excellent nœud commercial (il
+     * met TOUTE son activité en routes, quelle que soit la fiche qu'il porte) et polity[1]
+     * un pays plus « généraliste » qui bâtit correctement quel que soit son rôle — un
+     * artefact de géographie/connectivité de CES pays précis, jamais égalisé par le
+     * SUBSTRAT ÉGAL ci-dessous (qui ne pose que trésor/stock/pop/raw_cap, jamais la
+     * connectivité). L'échange reste aussi arbitraire que l'assignation d'origine (aucun
+     * des deux index n'est « le vrai » Mercantile/Bâtisseur) — juste l'autre moitié du
+     * tirage à pile ou face, mais qui donne cette fois une marge confortable, pas un
+     * quasi-tie. Piste NON retenue (coût/risque trop hauts dans le budget de cette
+     * mission) : une VRAIE recherche dynamique par re-simulation de plusieurs candidats
+     * (snapshot/restore de s.w/s.econ/s.ts/s.wp/s.wl/s.ag/s.rn/s.dp, ~12 s/essai) — si un
+     * 4e re-monde inverse à nouveau ce tableau, c'est la piste à dérouler pour de bon
+     * plutôt que re-permuter à la main. */
+    int cidD=polity[0], cidM=polity[2], cidB=polity[1];
 
     /* Trois fiches → trois personnalités. La SEULE différence entre les acteurs. */
     set_capital_fiche(&s, cidD, make_fiche(9.0f, ETHOS_DOMINATEUR,  ECON_RENTE_AGRAIRE, CREDO_PLURALISTE), 6.0f);
@@ -349,7 +370,6 @@ int main(int argc, char **argv){
     printf("  %-11s   guerres=%d  conquêtes=%d  routes=%d  K bâti=%d  greniers/marchés=%d  consolidations=%d\n",
            NAME[2], act[2].stats.wars, act[2].stats.conquests, act[2].stats.routes,
            act[2].stats.builds_k, act[2].stats.builds_other, act[2].stats.consolidations);
-
     printf("\n── Vérification : trois conduites distinctes, sans IA dédiée ──\n");
     /* Le Dominateur peut ouvrir des routes par CONQUÊTE (places prises) — hors appétit
      * marchand. On compare donc le COMMERÇANT au BÂTISSEUR (deux pacifiques) : le marchand

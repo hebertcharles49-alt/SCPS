@@ -51,7 +51,17 @@ int main(int argc,char**argv){
     econ_init(econ,w); gen_population(w,econ); worldgen_seed_peoples(w,econ,HERITAGE_ADAPTATIF);
     for(int t=0;t<12;t++) econ_tick(econ,1.f);    /* peuple les régions, les fait croître/se toucher */
 
-    /* On cherche une frontière : région A adjacente à une région B d'un autre pays. */
+    /* On cherche une frontière : région A adjacente à une région B d'un autre pays,
+     * ET RÉELLEMENT MARCHABLE. L'adjacence éco (econ->adj) seule ne suffit plus : la
+     * carte de CAMPAGNE (biome majoritaire par région, terrain_impassable) est PLUS
+     * STRICTE — une paire adjacente au sens éco peut être injoignable pour une armée
+     * (roche/glace/eau dominante) sous une graine donnée. On sonde donc la route RÉELLE
+     * (campaign_order) sur `camp2`, un scratch jamais lu ici (re-initialisé avant son
+     * usage réel en LOT 3 plus bas) — jamais `camp`, qui doit rester vierge pour la
+     * vraie force de §1 (un campaign_order de sonde y fusionnerait un reliquat parasite
+     * dans le compte de troupes). Même jurisprudence que LOT 3 (§3d, region_ok/next_hop
+     * plus strict que le flag `impassable`), étendue ici à la sélection INITIALE. */
+    campaign_init(camp2, w, econ);
     int frontier=-1, target=-1, A=-1, B=-1;
     for(int r=0;r<econ->n_regions && frontier<0;r++){
         int oa=econ->region[r].owner;
@@ -60,6 +70,8 @@ int main(int argc,char**argv){
             if(!econ->adj[r][s]) continue;
             int ob=econ->region[s].owner;
             if(ob<0 || ob==oa || !econ->region[s].colonized) continue;
+            ArmyState probe=make_force(1,0,0);
+            if(!campaign_order(camp2, econ, oa, r, s, &probe)) continue;   /* injoignable : paire suivante */
             frontier=r; target=s; A=oa; B=ob; break;
         }
     }

@@ -7761,3 +7761,110 @@ B7 crédit + rénover ×2, elles aussi graine-dépendantes).
   60 ans seulement — un gigasweep de validation reste souhaitable (annulé cette nuit).
 - Le grenier ne demande que du GRAIN (pas fish/livestock) — simple d'abord ; élargir si
   les provinces halieutiques montrent un biais.
+
+### SUITE — 2e et 3e passe (campaign_demo, ai_demo, diplo_demo, audit_eco — post plancher-Nil)
+
+Le moteur a bougé encore deux fois après la section ci-dessus (tunables colonisation
+COLONY_MIN_POP/COLONY_COST_POP/COLONY_FOOD_GATE/IP_COLON_WPC/FOOD_STOCK_MONTHS, puis
+RIVER_NILE_KEEP=110 — 3e re-monde). Conséquence directe et BONNE NOUVELLE : les nouveaux
+seuils de colonisation (food_sat exigé abaissé 0.5→0.25, pop 800→300) ont réglé tout SEUL
+`scps_api_demo` (« colonisation : une cible LÉGALE existe » — la seule assertion restée
+rouge à la fin de la passe précédente, jamais retouchée dans cette passe, revenue verte
+d'elle-même : 243/243). Restaient 4 rouges neufs/rechutés : campaign_demo, ai_demo,
+diplo_demo, audit_eco — tous recalibrés, `run_tests.sh full` = 40/40 verts.
+
+**Découvertes** :
+- **`campaign_demo.c` — le MÊME piège qu'en LOT 3 (§3d, déjà fixé la passe précédente)
+  existait AUSSI dans la recherche de frontière INITIALE (§1, tout en haut de `main`)**,
+  jamais couvert avant car cette paire (frontier/target) marchait par chance sur les mondes
+  précédents. `econ->adj[r][s]` (adjacence éco) ne garantit PAS une route de CAMPAGNE
+  praticable (`next_hop`/`region_ok`, scps_campaign.c:160-221, filtrent en PLUS sur le
+  biome majoritaire de la région via `terrain_impassable` — plus strict que le flag éco
+  `impassable` seul). Sous le 3e re-monde, la 1ère paire adjacente trouvée était
+  injoignable pour une armée → `campaign_order` échouait EN SILENCE (`next_hop`<0) dès la
+  ligne 85, faisant cascader 22 échecs sur 34 assertions (tout ce qui dépend de la force
+  ayant RÉELLEMENT marché). Fix : sonder `campaign_order` avec une armée-jouet sur `camp2`
+  (scratch, jamais `camp` — un sondage sur `camp` aurait fusionné un reliquat parasite dans
+  le compte de troupes de la VRAIE force testée juste après) PENDANT la recherche, avancer
+  au candidat suivant si le sondage échoue.
+- **`ai_demo.c` — piège de PREMIÈRE INTENTION à ne PAS refaire** : `ProvBuild.food_cap`
+  (Grenier/Irrigation) N'EST PAS la production vivrière — c'est un terme de CAPACITÉ DE
+  LOGEMENT (`econ_prov_effcap`/`econ_region_effcap`, scps_econ.h:704-737, `+ food_cap×250`
+  dans la formule). Perdu ~20 min à chercher un « levier de food_sat » côté agence avant de
+  relire la formule et comprendre que c'est un FAUX AMI (le nom trompe). `RegionEconomy.
+  food_sat` (couverture besoin/production RÉELLE) est un champ totalement séparé, piloté
+  par `raw_cap[RES_GRAIN/FISH/LIVESTOCK]` (figé à la genèse) + `RES_FRUIT` en filet — voir
+  aussi audit_eco ci-dessous, même confusion possible.
+- **`ai_demo.c` — l'assertion « le Bâtisseur métabolise ≥ le Mercantile » a résisté à
+  DEUX refontes de métrique successives** (celle-ci et la précédente, qui avait déjà retiré
+  `consolidations` du total) avant qu'un test EMPIRIQUE révèle la vraie cause : ce n'est
+  PAS la fiche/l'archétype qui pilote qui bâtit le plus, c'est le PAYS RÉEL derrière —
+  `polity[2]` (peu importe la fiche qu'il porte) construit systématiquement MOINS que
+  `polity[1]` sous cette graine/ce monde (mesuré dans les deux sens : polity[1]-Mercantile
+  bâtissait DÉJÀ plus que polity[2]-Bâtisseur ; en échangeant qui porte quelle fiche,
+  polity[1]-Bâtisseur écrase polity[2]-Mercantile 9 builds/0 route contre 0 build/25
+  routes). Le SUBSTRAT ÉGAL (trésor/stock/pop/raw_cap identiques pour les 3 capitales)
+  n'égalise PAS la connectivité/l'historique géographique — piste non retenue (coût trop
+  haut) : une VRAIE recherche dynamique par re-simulation multi-candidats (snapshot/restore
+  de s.w/s.econ/s.ts/s.wp/s.wl/s.ag/s.rn/s.dp) — documentée en commentaire dans le fichier
+  si un 4e re-monde re-casse ce tableau.
+- **`diplo_demo.c` — TROIS causes racines DIFFÉRENTES dans le MÊME fichier**, à ne pas
+  confondre :
+  1. §3 (fulgurance/hégémon) : jurisprudence POLITY_WILD classique — `B` choisi comme
+     « le premier pays réel » sans exclure WILD ; `threat_of` = `base×(1+momentum)` avec
+     `base=(eco+mil)/…` — un hameau a `base≈0`, donc `momentum[B]=40` ne bouge JAMAIS la
+     menace (0×tout=0). Fix : exiger `role!=POLITY_WILD` ET `eco_power+mil_power>0.01` pour B.
+  2. §6b (pillage de siège) : **PAS** POLITY_WILD cette fois — région LIBRE (owner=-1,
+     `vic_wild=0`) mais dont la PROVINCE porteuse est maintenant ACTIVE sous le nouveau
+     monde (`region_carrier_prov` exige seulement `.active`, PAS `.colonized`). Le fixture
+     dotait SEULEMENT la vue agrégée `econ->region[vic].stock[g]`, jamais la PROVINCE
+     (`econ->prov[vic_pid].stock[g]`) — sous l'ancien monde ça marchait par ACCIDENT
+     (`region_carrier_prov` retournait -1, basculant `econ_region_stock_add` sur son
+     chemin « vue seule » qui lit directement l'agrégat) ; sous le nouveau monde la
+     province est réputée active, le retrait cible `prov[pid].stock` (jamais doté) → 0
+     prélevé. Piège RE-KEY PROVINCE classique, mais ACTIVÉ par un changement de
+     géographie, pas par une case à cocher owner/colonized comme d'habitude.
+  3. §9 (esclavage) : ENCORE différent — ni POLITY_WILD ni re-key. `diplo_enslave_capture`
+     (scps_diplo.c:1344-1350) plafonne le prélèvement à `strata[CLASS_LABORER]+
+     [CLASS_BOURGEOIS]` (la STRATE économique), PAS au `count` du `PopGroup` culturel
+     (4000) posé par le fixture. Le fixture peuplait le GROUPE (identité culturelle) mais
+     jamais la STRATE (le bassin économique RÉEL d'où l'esclavagiste prélève) — sous
+     l'ancien monde, `srcR` (« la 1ère région ≠ capitale ») avait par chance une strate
+     naturelle suffisante ; sous le nouveau monde, non. Fix : doter aussi
+     `econ->prov[srcP].strata[CLASS_LABORER].pop`.
+- **`audit_eco.c` — le fix de la passe précédente (repli MONDE, food_sat≥0.5) a lui-même
+  RECHUTÉ sous le 3e re-monde** : un témoin choisi à `food_sat` tout juste ≥0.5 peut encore
+  DÉCLINER sur 10 ans (mesuré : ×0.86, un TÉMOIN COMPLET différent cette fois — capitale
+  mono-région ×0.86 la 2e passe, un hameau-repli-monde ×0.86 la 3e). Cause : la formule de
+  croissance (scps_econ.c:4986-4988) ne pénalise la natalité qu'en-dessous de
+  `food_sat<0.35` (pic de mortalité famine) — un témoin choisi à 0.5 pile n'a AUCUNE marge
+  contre une dérive de food_sat en cours de route sur 10 ans simulés. Durci à 0.75 (marge
+  réelle avant le plancher de famine à 0.35) — conforme à l'instruction « durcis la
+  recherche dynamique plutôt que la fourchette » : c'est la PRÉCONDITION du témoin qui est
+  montée en exigence, jamais `[1.04..2.5]` (les bornes d'audit elles-mêmes, intouchées).
+
+**Pièges** :
+- Le triage kill-switch complet (`RIVER_FILL=0,RIVER_ARID_NIL=0,RIVER_NILE_KEEP=0,
+  COLONY_MIN_POP=500,COLONY_COST_POP=250,COLONY_FOOD_GATE=0.35,IP_COLON_WPC=8,
+  FOOD_STOCK_MONTHS=0`) doit inclure TOUS les tunables touchés depuis le début de la
+  vague, pas seulement les derniers — un kill-switch partiel (oubliant COLONY_*/
+  FOOD_STOCK_MONTHS) aurait donné un faux « rouge aussi sous kill-switch » sur
+  `scps_api_demo` alors que c'est justement CE changement qui l'a réparé.
+- Un banc qui casse une SECONDE fois sur la MÊME assertion après un premier recalibrage
+  « dynamique » (campaign_demo, audit_eco) n'a pas forcément la MÊME cause racine que la
+  1ère fois — vérifier à nouveau depuis zéro (grep, lecture du moteur) plutôt que de
+  supposer que la même explication tient encore.
+- Ordre des vérifications utile pour `diplo_demo` : les 10 échecs initiaux couvraient
+  3 sections indépendantes (fulgurance/hégémon, pillage de siège, esclavage) — les traiter
+  comme UN seul problème (ex. « tout est POLITY_WILD ») aurait fait perdre du temps ; grep
+  par section + lecture du moteur DERRIÈRE chaque assertion (pas juste le nom de
+  l'assertion) a été nécessaire à chaque fois.
+
+**Restes** :
+- `ai_demo.c` : l'échange polity[1]↔polity[2] (Bâtisseur/Mercantile) est une correction
+  ROBUSTE mais toujours ARBITRAIRE (aucun des deux index n'a de légitimité propre) — si un
+  4e re-monde inverse de nouveau le tableau, la piste documentée en commentaire (snapshot/
+  restore + recherche multi-candidats par re-simulation, ~12 s/essai) est la bonne prochaine
+  étape plutôt qu'une nouvelle permutation à la main.
+- Confirmé, `run_tests.sh full` (BANC_TIMEOUT=300) : **40 verts / 0 rouge / 0 build échec**,
+  aucun run laissé en arrière-plan.

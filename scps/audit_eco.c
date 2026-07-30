@@ -80,15 +80,17 @@ int main(int argc, char **argv){
     { /* On NE colonise PLUS une vierge de frontière : sur un monde développé elle est pauvre
        * (cap_pop ≤ 200), une colonie de ≈250 y gèle à cap_factor=0 et la borne mesure le mauvais
        * régime. Une région établie déjà sous son plafond croît au taux réel, sans manipulation.
-       * food_sat≥0.5 (même seuil que scps_can_colonize, scps_api.c) : un témoin sous ce seuil
-       * DÉCLINE au lieu de croître (mesuré, seed 7 post-grands-fleuves : capitale mono-région
-       * ×0.86 sur 10 ans) — la marge sous plafond seule ne suffit plus à garantir une croissance
-       * saine sous le nouveau monde. */
+       * food_sat≥0.75 (DURCI depuis 0.5, même seuil que scps_can_colonize au départ — mesuré
+       * INSUFFISANT : un témoin choisi à food_sat=0.5 pile peut encore DÉCLINER sur 10 ans,
+       * seed 7 post-grands-fleuves ×0.86, car la formule de croissance (scps_econ.c ~4986)
+       * pénalise la NATALITÉ dès que food_sat passe sous 0.35 EN COURS DE ROUTE — 0.5 au
+       * choix n'est pas une marge de sécurité suffisante contre une dérive sur 10 ans. 0.75
+       * laisse une vraie marge avant ce plancher de famine). */
       float besthead=0.f;
       for (int r=0;r<econ->n_regions;r++){
           const RegionEconomy *re=&econ->region[r];
           if (re->owner!=player || !re->colonized || r==cap_reg) continue;   /* DISTINCT de la capitale */
-          if (re->food_sat<0.5f) continue;
+          if (re->food_sat<0.75f) continue;
           double pp=re->strata[0].pop+re->strata[1].pop+re->strata[2].pop;
           if (pp<50.0) continue;                              /* assez peuplée pour un signal net */
           float eff=econ_region_effcap(re); if (eff<1.f) continue;
@@ -99,13 +101,13 @@ int main(int argc, char **argv){
        * (aucun hameau propre) ET sa propre capitale peut être sous le seuil vivrier (0.86× sur
        * 10 ans mesuré, seed 7) — le témoin perd alors tout sens (le banc auditerait la famine,
        * pas la croissance). On cherche, dans TOUT le monde (tout pays réel, pas seulement le
-       * joueur du banc), la région établie la mieux margée ET food_sat≥0.5 — même précondition,
-       * juste un périmètre élargi (« un hameau sain existe quelque part sur la graine »),
+       * joueur du banc), la région établie la mieux margée ET food_sat≥0.75 — même précondition
+       * DURCIE, juste un périmètre élargi (« un hameau sain existe quelque part sur la graine »),
        * jamais la fourchette [1.04..2.5] elle-même (bornes d'audit, intouchées). */
       if (hamlet<0){
           for (int r=0;r<econ->n_regions;r++){
               const RegionEconomy *re=&econ->region[r];
-              if (re->owner<0 || !re->colonized || re->food_sat<0.5f) continue;
+              if (re->owner<0 || !re->colonized || re->food_sat<0.75f) continue;
               double pp=re->strata[0].pop+re->strata[1].pop+re->strata[2].pop;
               if (pp<50.0) continue;
               float eff=econ_region_effcap(re); if (eff<1.f) continue;
