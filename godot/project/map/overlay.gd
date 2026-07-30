@@ -2211,8 +2211,27 @@ func _ensure_road_network() -> void:
 			polys["%s%df" % [cls, t]] = []
 	var seen := {}
 	var mask := {}                              # TROUÉE : cellule → niveau (2=grande, 1=régionale)
+	var r_gate := 2.4                            # la bande s'arrête à la PORTE (« aucun trait ne
+	var gate_pts := []                           # traverse la vignette urbaine ») ; pads aux coupes
 	for stp in steps:
 		var poly: PackedVector2Array = stp["poly"]
+		if int(stp["eb"]) < 100000 and _region_anchor.has(int(stp["eb"])):
+			var cut := _urban_boundary(poly, r_gate)
+			if cut >= 1:
+				poly = poly.slice(0, cut + 1)
+				gate_pts.append([poly[poly.size() - 1], int(stp["level"])])
+		if int(stp["ea"]) < 100000 and _region_anchor.has(int(stp["ea"])):
+			var rev := poly.duplicate()
+			rev.reverse()
+			var cut2 := _urban_boundary(rev, r_gate)
+			if cut2 >= 1:
+				rev = rev.slice(0, cut2 + 1)
+				rev.reverse()
+				poly = rev
+				gate_pts.append([poly[0], int(stp["level"])])
+		if poly.size() < 2:
+			continue
+		stp["poly"] = poly
 		var cls: String = ["main", "minor", "trail"][int(stp["level"])]
 		var wear: int = clampi(int(stp["wear"]), 1, ROAD_MULT_TIERS)
 		var run := PackedVector2Array()
@@ -2271,16 +2290,16 @@ func _ensure_road_network() -> void:
 			polys["b_" + key] = band
 			polys["r_" + key] = ruts
 	# ── PADS de porte : aux NŒUDS-VILLES touchés par ≥1 étape visible ──
-	var pad_by_city := {}                        # rid → rayon max (grande route = plus large)
-	for stp in steps:
-		var r_pad := (1.0 if int(stp["level"]) == 0 else 0.7)
-		for nid in [int(stp["na"]), int(stp["nb"])]:
-			if nid < 100000 and _region_anchor.has(nid):
-				pad_by_city[nid] = maxf(float(pad_by_city.get(nid, 0.0)), r_pad)
+	var pdone := {}
 	var pads := []
-	for rid in pad_by_city:
-		var A2: Vector2 = _region_anchor[rid]
-		pads.append([mv.iso_pos(A2.x, A2.y), float(pad_by_city[rid]) * cell, rid])
+	for gp in gate_pts:                          # un pad par PORTE (dédup 1.5 cellule —
+		var gpt: Vector2 = gp[0]                 # les terminaux partagés coupent au même point)
+		var gk3 := Vector2i(int(round(gpt.x / 1.5)), int(round(gpt.y / 1.5)))
+		if pdone.has(gk3):
+			continue
+		pdone[gk3] = true
+		var r_pad := (0.85 if int(gp[1]) == 0 else 0.6)
+		pads.append([mv.iso_pos(gpt.x, gpt.y), r_pad * cell, gk3.x * 89 + gk3.y])
 	polys["pads"] = pads
 	var jdone := {}
 	var juncs := []
@@ -2934,19 +2953,19 @@ func _draw_iso(w, mv: Node2D) -> void:
 					var bmf: PackedVector2Array = _road_net.get("b_minor%df" % t, PackedVector2Array())
 					if bmf.size() >= 2:
 						draw_multiline(bmf, Color(ROAD_BAND.r, ROAD_BAND.g, ROAD_BAND.b,
-							ROAD_BAND_A_F + wear), _w(zoom, 0.42, 1.0, 2.2), true)
+							ROAD_BAND_A_F + wear), _w(zoom, 0.40, 0.9, 1.7), true)
 					var bm: PackedVector2Array = _road_net.get("b_minor%d" % t, PackedVector2Array())
 					if bm.size() >= 2:
 						draw_multiline(bm, Color(ROAD_BAND.r, ROAD_BAND.g, ROAD_BAND.b,
-							ROAD_BAND_A + wear), _w(zoom, 0.42, 1.0, 2.2), true)
+							ROAD_BAND_A + wear), _w(zoom, 0.40, 0.9, 1.7), true)
 				var baf: PackedVector2Array = _road_net.get("b_main%df" % t, PackedVector2Array())
 				if baf.size() >= 2:
 					draw_multiline(baf, Color(ROAD_BAND.r, ROAD_BAND.g, ROAD_BAND.b,
-						ROAD_BAND_A_F + wear), _w(zoom, 0.58, 1.3, 3.0), true)
+						ROAD_BAND_A_F + wear), _w(zoom, 0.55, 1.2, 2.3), true)
 				var ba: PackedVector2Array = _road_net.get("b_main%d" % t, PackedVector2Array())
 				if ba.size() >= 2:
 					draw_multiline(ba, Color(ROAD_BAND.r, ROAD_BAND.g, ROAD_BAND.b,
-						ROAD_BAND_A + wear), _w(zoom, 0.58, 1.3, 3.0), true)
+						ROAD_BAND_A + wear), _w(zoom, 0.55, 1.2, 2.3), true)
 			if zoom >= ROAD_Z_RUT:
 				for pad in _road_net.get("pads", []):
 					var pc: Vector2 = pad[0]
@@ -2957,7 +2976,7 @@ func _draw_iso(w, mv: Node2D) -> void:
 						var ang := TAU * float(v) / 7.0
 						var rr := pr * (0.72 + 0.55 * _h1(pseed * 13.7 + float(v)))
 						ppoly.append(pc + Vector2(cos(ang), sin(ang) * 0.5) * rr)   # aplati iso
-					draw_colored_polygon(ppoly, Color(ROAD_BAND.r, ROAD_BAND.g, ROAD_BAND.b, ROAD_BAND_A + 0.10))
+					draw_colored_polygon(ppoly, Color(ROAD_BAND.r, ROAD_BAND.g, ROAD_BAND.b, ROAD_BAND_A + 0.06))
 				for jc in _road_net.get("junc", []):
 					var jp2: Vector2 = jc[0]
 					var jr: float = jc[1]
