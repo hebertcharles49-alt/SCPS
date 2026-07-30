@@ -3559,10 +3559,22 @@ func _draw_geonames(w, mv: Node2D, vt: Transform2D, vp: Vector2, zoom: float) ->
 	if _geo_dirty:
 		_geonames = GeoNames.build(w, Sim.current_seed)
 		_geo_dirty = false
-	var fade := clampf((zoom - 1.2) / 0.8, 0.0, 1.0) * (1.0 - clampf((zoom - 6.0) / 2.0, 0.0, 0.85))
-	if fade <= 0.03:
+	var fade_in := clampf((zoom - 1.2) / 0.8, 0.0, 1.0)
+	var fade_close := 1.0 - clampf((zoom - 6.0) / 2.0, 0.0, 0.85)
+	if fade_in <= 0.03:
 		return
 	for g in _geonames:
+		# RIVIÈRES (décision joueur) : le nom reste VISIBLE au zoom élevé — pas de fondu
+		# de proche pour l'eau courante (on suit son cours), et POLICE DYNAMIQUE : la
+		# taille écran croît avec le zoom (×1 à z3.5 → ×2.2 capé) au lieu de rester figée
+		# à 12-16 px (un fleuve plein écran portait un nom de mouche). Les ancres
+		# RÉPÉTÉES le long du cours ne sortent qu'au zoom proche (mid seule au loin).
+		var is_riv: bool = String(g["kind"]) == "riviere"
+		var fade := fade_in * (1.0 if is_riv else fade_close)
+		if fade <= 0.03:
+			continue
+		if is_riv and zoom < 4.5 and not bool(g.get("mid", true)):
+			continue                              # au loin : une seule ancre (la médiane)
 		var gp: Vector2 = mv.iso_pos((g["pos"] as Vector2).x, (g["pos"] as Vector2).y)
 		var gss: Vector2 = vt * gp
 		if gss.x < -220 or gss.y < -80 or gss.x > vp.x + 220 or gss.y > vp.y + 80:
@@ -3574,6 +3586,8 @@ func _draw_geonames(w, mv: Node2D, vt: Transform2D, vp: Vector2, zoom: float) ->
 		# ensembles à 16, les petits à 12, jamais un nom géant ni illisible.
 		var span := clampf(float(g["span"]), 16.0, 90.0)
 		var px_t := clampf(10.0 + span * 0.07, 12.0, 16.0)
+		if is_riv:
+			px_t *= clampf(zoom / 3.5, 1.0, 2.2)  # police dynamique : grossit au zoom, capée
 		var nsc := px_t / (float(VKit.FS_SMALL) * zoom)
 		var col := Color(0.17, 0.20, 0.24, 0.62 * fade)
 		var halo := Color(0.90, 0.87, 0.78, 0.28 * fade)

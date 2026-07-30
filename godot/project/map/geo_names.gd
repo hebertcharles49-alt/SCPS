@@ -75,8 +75,10 @@ static func build(w, seed_: int) -> Array:
 	_components(out, forest, gw, gh, "foret", rng, false)
 	_components(out, lake, gw, gh, "lac", rng, true)
 	_components(out, mont, gw, gh, "massif", rng, false)
-	# RIVIÈRES : les chemins de la façade (les plus longs d'abord), nom posé au milieu,
-	# incliné le long du cours
+	# RIVIÈRES : les chemins de la façade (les plus longs d'abord), nom RÉPÉTÉ le long
+	# du cours (motif carto : au zoom proche, le tronçon à l'écran porte toujours son
+	# nom — une seule ancre médiane laissait les fleuves anonymes de près). L'ancre
+	# médiane est marquée `mid` : au zoom lointain, seule elle s'affiche.
 	if w.has_method("river_paths"):
 		var rivers: Array = w.river_paths()
 		rivers.sort_custom(func(a, b): return (a["points"] as PackedVector2Array).size() > (b["points"] as PackedVector2Array).size())
@@ -85,13 +87,18 @@ static func build(w, seed_: int) -> Array:
 			if nr >= int(CAP["riviere"]): break
 			var pts: PackedVector2Array = rv["points"]
 			if pts.size() < 30: continue
-			var mid := pts[pts.size() / 2]
-			var tang: Vector2 = (pts[mini(pts.size() / 2 + 4, pts.size() - 1)] - pts[maxi(pts.size() / 2 - 4, 0)]).normalized()
-			var ang := atan2(tang.y, tang.x)
-			if ang > PI * 0.5: ang -= PI          # jamais la tête en bas
-			elif ang < -PI * 0.5: ang += PI
-			out.append({"text": _name(rng, "riviere"), "kind": "riviere", "pos": mid,
-				"ang": ang, "span": float(pts.size()) * 0.35, "water": true})
+			var nom := _name(rng, "riviere")
+			var n := pts.size()
+			var fracs: Array = [0.5] if n < 80 else ([0.25, 0.5, 0.75] if n < 180 else [0.12, 0.32, 0.5, 0.68, 0.88])
+			for f in fracs:
+				var ki := clampi(int(float(n) * float(f)), 4, n - 5)
+				var tang: Vector2 = (pts[mini(ki + 4, n - 1)] - pts[maxi(ki - 4, 0)]).normalized()
+				var ang := atan2(tang.y, tang.x)
+				if ang > PI * 0.5: ang -= PI          # jamais la tête en bas
+				elif ang < -PI * 0.5: ang += PI
+				out.append({"text": nom, "kind": "riviere", "pos": pts[ki],
+					"ang": ang, "span": float(n) * 0.35, "water": true,
+					"mid": absf(float(f) - 0.5) < 0.01})
 			nr += 1
 	return out
 
