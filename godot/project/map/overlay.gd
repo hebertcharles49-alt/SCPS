@@ -298,11 +298,17 @@ const ROAD_ZOOM_MIN := 2.5    ## routes (zoom ISO)
 # un filet clair central. Le pointillé « carte au trésor » s'émiettait au zoom.
 ## GLACIS : le crème quasi-blanc « brillait » sur le lavis — rabattu vers le ton parchemin,
 ## alphas baissés (la route est une trace DANS la carte, pas un ruban posé dessus).
-const ROAD_EDGE  := Color(0.46, 0.31, 0.17, 0.32)  ## sous-trait : sépia sombre, large
-const ROAD_MAIN  := Color(0.84, 0.74, 0.55, 0.58)  ## corps : terre battue (encore rabattu)
-const ROAD_LIGHT := Color(0.94, 0.87, 0.70, 0.15)  ## filet central (à peine)
-const ROAD_MINOR_EDGE := Color(0.46, 0.31, 0.17, 0.20) ## desserte : plus ténue
-const ROAD_MINOR_MAIN := Color(0.84, 0.74, 0.55, 0.40)
+## REFONTE 2026-07-31 (« les routes sont vraiment très très moche ») : fin du chemin de
+## terre à 3 traits — les tubes bruns se lisaient comme des frontières. Une route de
+## carte ancienne est un ITINÉRAIRE : un seul trait d'encre sépia FIN, en TIRETS
+## (le motif portulan des lanes maritimes, déjà acté joueur, porté à la terre).
+## Hiérarchie : artère = tiret long · desserte = pointillé court, plus ténu.
+const ROAD_INK        := Color(0.40, 0.24, 0.13, 0.62)  ## encre sépia rouge-brun (artère)
+const ROAD_MINOR_INK  := Color(0.40, 0.24, 0.13, 0.42)  ## desserte : même encre, plus pâle
+const ROAD_DASH       := 9.0    ## tiret d'artère (unités iso)
+const ROAD_GAP        := 5.5    ## souffle entre tirets
+const ROAD_MINOR_DASH := 4.0    ## pointillé de desserte
+const ROAD_MINOR_GAP  := 5.0
 const ROAD_FOREST_A := 0.38   ## SOUS LA CANOPÉE : la route se devine — relevé depuis la canopée ×10
                               ## (à 0.22 le massif PLEIN l'avalait tout à fait)
 # Traitement FRONT-END du tracé (l'A* moteur reste la vérité ; on en lisse la SORTIE, hors tick) :
@@ -1850,8 +1856,54 @@ func _ensure_road_network() -> void:
 			run.append(b7)
 		if run.size() >= 2:
 			_road_bucket(polys, run, mv, is_main, run_forest, run_tier)
+	# PASSE 3 (refonte tirets) : découpe chaque polyligne projetée en PAIRES de tirets
+	# (draw_multiline), CACHÉES avec le réseau — zéro découpe par frame. Période par
+	# hiérarchie : artère = tiret long, desserte = pointillé court.
+	for t in range(1, ROAD_MULT_TIERS + 1):
+		for key in ["main%d" % t, "main%df" % t, "minor%d" % t, "minor%df" % t]:
+			var is_mn: bool = key.begins_with("main")
+			var dash: float = ROAD_DASH if is_mn else ROAD_MINOR_DASH
+			var gap: float = ROAD_GAP if is_mn else ROAD_MINOR_GAP
+			var pairs := PackedVector2Array()
+			for pl in polys[key]:
+				pairs.append_array(_dash_pairs(pl, dash, gap))
+			polys["d_" + key] = pairs
 	_road_net = polys
 	_road_net_valid = true
+
+## Découpe une polyligne (DÉJÀ projetée iso) en PAIRES de points tiretées pour
+## draw_multiline — l'algo de _lane_dash_iso (phase continue le long de l'arc,
+## plancher ε + fusible anti-hang) sans la projection (les routes cachent des
+## polylignes déjà iso, cf. _road_bucket).
+func _dash_pairs(pts: PackedVector2Array, dash: float, gap: float) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	if pts.size() < 2:
+		return out
+	var period := dash + gap
+	var t := 0.0
+	for i in range(pts.size() - 1):
+		var a: Vector2 = pts[i]
+		var b: Vector2 = pts[i + 1]
+		var seg := a.distance_to(b)
+		if seg < 0.0001:
+			continue
+		var dir := (b - a) / seg
+		var s := 0.0
+		var guard := 0
+		while s < seg - 0.0001:
+			guard += 1
+			if guard > 100000:
+				break
+			var phase := fmod(t, period)
+			var in_dash := phase < dash
+			var lim := (dash - phase) if in_dash else (period - phase)
+			var step := maxf(minf(lim, seg - s), 0.01)   # plancher ε : jamais de pas nul (piège float des lanes)
+			if in_dash:
+				out.push_back(a + dir * s)
+				out.push_back(a + dir * minf(s + step, seg))
+			s += step
+			t += step
+	return out
 
 ## distance PERPENDICULAIRE du milieu de `s` à la droite portée par le segment `o` (projection —
 ## retire la composante LE LONG de `o`, ne garde que l'écart LATÉRAL). Décisif pour la métrique
@@ -2379,42 +2431,26 @@ func _draw_iso(w, mv: Node2D) -> void:
 			# (cache — cf. `_ensure_road_network`, recalculé seulement si le réseau bouge ou
 			# qu'un chantier grandit encore).
 			_ensure_road_network()
-			# PAR POLYLIGNE (joints RONDS aux coudes) ; l'ordre des passes fait le modelé :
-			# ombre sépia → terre crème → filet de lumière. SOUS LA CANOPÉE : un seul trait
-			# ténu (α×ROAD_FOREST_A) — on DEVINE le chemin entre les masses, il ne coupe plus
-			# la forêt en deux. Chaque palier de tier ÉLARGIT le trait (ROAD_TIER_WSCALE) : un
-			# tronc partagé par plusieurs routes logiques s'affiche plus ÉPAIS qu'un capillaire
-			# solo — la hiérarchie visuelle demandée, sans changer une seule couleur.
+			# REFONTE TIRETS (2026-07-31) : un seul trait d'encre sépia FIN par tronçon,
+			# tireté (paires précalculées en passe 3 du cache réseau). SOUS LA CANOPÉE :
+			# même encre ×ROAD_FOREST_A — le chemin se devine. Le palier de tier élargit
+			# à peine (la hiérarchie vit surtout dans tiret long vs pointillé court).
 			for t in range(1, ROAD_MULT_TIERS + 1):
 				var ws: float = ROAD_TIER_WSCALE[t - 1]
-				for pl2 in _road_net.get("minor%df" % t, []):
-					draw_polyline(pl2, Color(ROAD_MINOR_MAIN.r, ROAD_MINOR_MAIN.g, ROAD_MINOR_MAIN.b,
-						ROAD_MINOR_MAIN.a * ROAD_FOREST_A), _w(zoom, 0.36, 0.8, 1.5) * ws, true)
-			for t in range(1, ROAD_MULT_TIERS + 1):
-				var ws: float = ROAD_TIER_WSCALE[t - 1]
-				for pl2 in _road_net.get("main%df" % t, []):
-					draw_polyline(pl2, Color(ROAD_MAIN.r, ROAD_MAIN.g, ROAD_MAIN.b,
-						ROAD_MAIN.a * ROAD_FOREST_A), _w(zoom, 0.62, 1.3, 2.4) * ws, true)
-			for t in range(1, ROAD_MULT_TIERS + 1):
-				var ws: float = ROAD_TIER_WSCALE[t - 1]
-				for pl2 in _road_net.get("minor%d" % t, []):
-					draw_polyline(pl2, ROAD_MINOR_EDGE, _w(zoom, 0.65, 1.4, 2.6) * ws, true)
-			for t in range(1, ROAD_MULT_TIERS + 1):
-				var ws: float = ROAD_TIER_WSCALE[t - 1]
-				for pl2 in _road_net.get("minor%d" % t, []):
-					draw_polyline(pl2, ROAD_MINOR_MAIN, _w(zoom, 0.36, 0.8, 1.5) * ws, true)
-			for t in range(1, ROAD_MULT_TIERS + 1):
-				var ws: float = ROAD_TIER_WSCALE[t - 1]
-				for pl2 in _road_net.get("main%d" % t, []):
-					draw_polyline(pl2, ROAD_EDGE, _w(zoom, 1.1, 2.2, 4.0) * ws, true)
-			for t in range(1, ROAD_MULT_TIERS + 1):
-				var ws: float = ROAD_TIER_WSCALE[t - 1]
-				for pl2 in _road_net.get("main%d" % t, []):
-					draw_polyline(pl2, ROAD_MAIN, _w(zoom, 0.62, 1.3, 2.4) * ws, true)
-			for t in range(1, ROAD_MULT_TIERS + 1):
-				var ws: float = ROAD_TIER_WSCALE[t - 1]
-				for pl2 in _road_net.get("main%d" % t, []):
-					draw_polyline(pl2, ROAD_LIGHT, _w(zoom, 0.26, 0.55, 1.0) * ws, true)
+				var dmf: PackedVector2Array = _road_net.get("d_minor%df" % t, PackedVector2Array())
+				if dmf.size() >= 2:
+					draw_multiline(dmf, Color(ROAD_MINOR_INK.r, ROAD_MINOR_INK.g, ROAD_MINOR_INK.b,
+						ROAD_MINOR_INK.a * ROAD_FOREST_A), _w(zoom, 0.22, 0.7, 1.2) * ws, true)
+				var daf: PackedVector2Array = _road_net.get("d_main%df" % t, PackedVector2Array())
+				if daf.size() >= 2:
+					draw_multiline(daf, Color(ROAD_INK.r, ROAD_INK.g, ROAD_INK.b,
+						ROAD_INK.a * ROAD_FOREST_A), _w(zoom, 0.30, 0.9, 1.6) * ws, true)
+				var dm: PackedVector2Array = _road_net.get("d_minor%d" % t, PackedVector2Array())
+				if dm.size() >= 2:
+					draw_multiline(dm, ROAD_MINOR_INK, _w(zoom, 0.22, 0.7, 1.2) * ws, true)
+				var da: PackedVector2Array = _road_net.get("d_main%d" % t, PackedVector2Array())
+				if da.size() >= 2:
+					draw_multiline(da, ROAD_INK, _w(zoom, 0.30, 0.9, 1.6) * ws, true)
 			# les PONTS D'ENCRE : deux garde-corps bombés en travers du franchissement de rivière
 			for br in _ink_bridges:
 				var bp: Vector2 = mv.iso_pos((br["w"] as Vector2).x, (br["w"] as Vector2).y)

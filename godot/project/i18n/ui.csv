@@ -24,6 +24,7 @@ T_OPT_VOL_MASTER,Volume général,Master volume
 T_OPT_VOL_MUSIC,Musique,Music
 T_OPT_VOL_SFX,Effets,Effects
 T_OPT_VOL_UI,Clics d'interface,UI clicks
+T_OPT_MUTE,Muet,Mute
 T_NG_TITLE,Nouvelle partie,New game
 T_NG_WORLD,Monde,World
 T_NG_SIZE,Taille,Size

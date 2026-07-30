@@ -1,6 +1,6 @@
 extends Control
 ## OptionsPanel — l'écran Options du shell : LANGUE (Français / English), PLEIN ÉCRAN,
-## ÉCHELLE et SON (4 curseurs de volume).
+## ÉCHELLE et SON (4 curseurs de volume + 4 cases Muet, un couple par bus).
 ##
 ## Persisté dans user://options.cfg (motif ConfigFile de audio/sound.gd). La langue
 ## s'applique DEUX étages à la fois : TranslationServer.set_locale (le chrome Godot,
@@ -15,6 +15,8 @@ extends Control
 ## cf. audio/sound.gd) — application à chaud + persistance sont déjà gérées côté Sound
 ## (user://audio.cfg, un fichier SÉPARÉ de options.cfg). Ce panneau ne stocke ni ne
 ## sauve aucun état de volume lui-même, il se contente de lire/écrire via Sound.
+## Chaque ligne porte aussi une case « Muet » (`Sound.get_mute`/`set_mute`) — INDÉPENDANTE
+## du curseur (couper le son ne remet PAS le volume à zéro/n'y touche pas du tout).
 
 signal back
 signal language_changed   ## les textes tr() sont posés à la construction → le menu se rebâtit
@@ -214,10 +216,12 @@ func _on_scale(i: int) -> void:
 	_apply()
 
 
-## une ligne curseur de volume (label + HSlider 0-100 %) — motif calqué sur langue/
-## échelle ci-dessus. `Sound.get_vol`/`set_vol` appliquent À CHAUD (AudioServer) et se
-## PERSISTENT déjà eux-mêmes (user://audio.cfg) : rien à sauver ici, `bus` est le nom
-## EXACT du bus AudioServer ("Master" | "Ambiance" | "Moments" | "UI").
+## une ligne curseur de volume (label + case Muet + HSlider 0-100 %) — motif calqué sur
+## langue/échelle ci-dessus. `Sound.get_vol`/`set_vol`/`get_mute`/`set_mute` appliquent
+## À CHAUD (AudioServer) et se PERSISTENT déjà eux-mêmes (user://audio.cfg) : rien à
+## sauver ici, `bus` est le nom EXACT du bus AudioServer ("Master" | "Ambiance" |
+## "Moments" | "UI"). Muet et volume sont deux états AudioServer distincts (mute bool /
+## volume_db) : cocher Muet ne bouge jamais le curseur, et vice versa.
 func _vol_row(bus: String, label_key: String) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
@@ -225,6 +229,12 @@ func _vol_row(bus: String, label_key: String) -> HBoxContainer:
 	lab.custom_minimum_size = Vector2(150, 0)
 	lab.add_theme_color_override("font_color", C_TEXT)
 	row.add_child(lab)
+	var mute := CheckBox.new(); mute.text = tr("T_OPT_MUTE")
+	mute.button_pressed = Sound.get_mute(bus)
+	mute.custom_minimum_size = Vector2(76, 0)
+	mute.add_theme_color_override("font_color", C_TEXT)
+	mute.toggled.connect(func(on: bool): Sound.set_mute(bus, on))
+	row.add_child(mute)
 	var sl := HSlider.new()
 	sl.min_value = 0.0
 	sl.max_value = 100.0

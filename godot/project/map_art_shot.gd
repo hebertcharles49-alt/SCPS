@@ -16,6 +16,7 @@ func _arg(p: String, d: String) -> String:
 
 func _ready() -> void:
 	get_window().size = Vector2i(1280, 720)
+	get_window().unfocusable = true   # ne VOLE PAS le focus (« 25 alt-tab par minute », décision joueur) — le rendu continue, l'utilisateur garde sa fenêtre
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(_dir))
 	_run.call_deferred()
 
@@ -42,7 +43,7 @@ func _run() -> void:
 		await get_tree().process_frame
 	if Sim.world == null:
 		push_error("no world"); get_tree().quit(1); return
-	Sim.world.advance_days(360 * 25)
+	Sim.world.advance_days(360 * 60)   # 60 ans : le réseau ROUTIER a besoin de décennies pour exister
 	Sim.generated.emit()
 	var menu: Control = _main._menu
 	if menu != null:
@@ -51,12 +52,37 @@ func _run() -> void:
 	Sim.speed_index = 0
 	var map: Node = _main.get_node_or_null("MapView")
 	var w = Sim.world
+	# 0) LES ROUTES D'ABORD, en mode NORMAL (l'aller-retour nature->normal rend la carte NOIRE
+	#    — sol jamais reconstruit, piège mesuré) : cadré capitale du joueur (hors fog), an 25.
+	#    du plus gros empire — les routes rayonnent des villes (an 25 : réseau posé).
+	# ⚠ province_seed(pid) est un HASH rng, PAS des coords (premier essai : caméra hors
+	# carte, deux shots noir uni) — le centroïde de la région-capitale est la vraie ancre.
+	var cap_reg := int(w.country_capital_region(int(w.player())))
+	if cap_reg >= 0:
+		var ctr: Vector2 = w.region_centroid(cap_reg)
+		for i in range(45):   # le sol/fog se construisent sur les premières frames
+			await get_tree().process_frame
+		_cam(map, ctr.x, ctr.y, 4.5)
+		await _shot("06_routes_z45")
+		_cam(map, ctr.x, ctr.y, 2.8)
+		await _shot("07_routes_z28")
+		_cam(map, ctr.x, ctr.y, 8.0)
+		await _shot("08_routes_z80")
 	# MODE NATURE : terrain nu sans brouillard ni politique — l'embouchure du grand fleuve
 	# vit loin du joueur, sous le fog (premier essai : deux shots NOIRS)
 	if not map.is_nature():
 		map.toggle_nature()
 
 	# 1) L'ESTUAIRE : embouchure du plus LONG fleuve (dernier point du tracé)
+	# Cadrage ARBITRAIRE optionnel : -- at=x,y (ex. le Nil-mètre SCPS_RIVDIAG) → 00_at_*.png
+	var at := _arg("at=", "")
+	if at != "":
+		var xy := at.split(",")
+		if xy.size() == 2:
+			_cam(map, float(xy[0]), float(xy[1]), 7.0)
+			await _shot("00_at_z7")
+			_cam(map, float(xy[0]), float(xy[1]), 3.5)
+			await _shot("00_at_z35")
 	var rivers: Array = w.river_paths()
 	rivers.sort_custom(func(a, b): return (a["points"] as PackedVector2Array).size() > (b["points"] as PackedVector2Array).size())
 	print("RIVSTATS total=", rivers.size())

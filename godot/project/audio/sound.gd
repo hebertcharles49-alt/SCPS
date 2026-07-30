@@ -40,10 +40,6 @@ const CFG_PATH := "user://audio.cfg"
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	# SCPS_MUTE=1 (env) : silence TOTAL — pour les probes/captures lancées pendant que le
-	# joueur écoute sa propre musique. N'affecte jamais une partie lancée normalement.
-	if OS.has_environment("SCPS_MUTE"):
-		AudioServer.set_bus_mute(0, true)
 	_ensure_buses()
 	for i in 4:
 		_ui_pool.append(_make_player(BUS_UI))
@@ -51,6 +47,13 @@ func _ready() -> void:
 		_mom_pool.append(_make_player(BUS_MOM))
 	_music = _make_player(BUS_AMB)   # la musique de menu route sur Ambiance (le bus de fond)
 	_load_volumes()
+	# SCPS_MUTE=1 (env) : silence TOTAL — pour les probes/captures lancées pendant que le
+	# joueur écoute sa propre musique. N'affecte jamais une partie lancée normalement.
+	# APRÈS _load_volumes() à dessein (piège trouvé en câblant le mute par bus, mission
+	# « Menu audio ») : un `user://audio.cfg` où Master est SAUVÉ non-muet écraserait sinon
+	# ce mute forcé et romprait le silence d'une capture en cours.
+	if OS.has_environment("SCPS_MUTE"):
+		AudioServer.set_bus_mute(0, true)
 	Sim.ticked.connect(_on_tick)
 	Sim.month_ticked.connect(_on_month)   # UN tock sonore par MOIS simulé (pas par seconde réelle)
 	Sim.generated.connect(_on_generated)
@@ -226,10 +229,26 @@ func set_vol(bus: String, linear: float) -> void:
 	_save_volumes()
 
 
+## ── MUET (options, un par bus) — INDÉPENDANT du volume : `AudioServer.set_bus_mute`
+## est un booléen à part de `volume_db`, donc couper un bus ne touche PAS sa valeur de
+## curseur (et la réactiver retrouve le volume d'avant, jamais 100 % par défaut).
+func get_mute(bus: String) -> bool:
+	var i := AudioServer.get_bus_index(bus)
+	return AudioServer.is_bus_mute(i) if i >= 0 else false
+
+
+func set_mute(bus: String, on: bool) -> void:
+	var i := AudioServer.get_bus_index(bus)
+	if i >= 0:
+		AudioServer.set_bus_mute(i, on)
+	_save_volumes()
+
+
 func _save_volumes() -> void:
 	var cfg := ConfigFile.new()
 	for bus in ["Master", BUS_UI, BUS_AMB, BUS_MOM]:
 		cfg.set_value("volume", bus, get_vol(bus))
+		cfg.set_value("mute", bus, get_mute(bus))
 	cfg.save(CFG_PATH)
 
 
@@ -243,3 +262,8 @@ func _load_volumes() -> void:
 			var i := AudioServer.get_bus_index(bus)
 			if i >= 0:
 				AudioServer.set_bus_volume_db(i, linear_to_db(clampf(float(v), 0.0001, 1.0)))
+		var m = cfg.get_value("mute", bus, null)
+		if m != null:
+			var i2 := AudioServer.get_bus_index(bus)
+			if i2 >= 0:
+				AudioServer.set_bus_mute(i2, bool(m))

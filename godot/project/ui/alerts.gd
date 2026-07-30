@@ -99,13 +99,21 @@ func _ready() -> void:
 ## recalcule la RÉSOLUTION (conditions + fil transient + journal) puis notifie la bande
 ## droite (empire_sidebar.gd). Data-only : aucun visible/position/redraw ici.
 func _refresh() -> void:
-	# GATE : tant que la PARTIE n'a pas commencé (menu/setup), aucune alerte ni popup —
-	# le monde de fond tourne pour la vitrine, ses évènements ne concernent pas le joueur.
-	if not Sim.game_on:
+	# GATE : tant que la PARTIE n'a pas commencé (menu/setup) OU en MODE OBSERVATEUR,
+	# aucune alerte ni popup — le monde de fond tourne pour la vitrine, ses évènements
+	# ne concernent pas le joueur. OBSERVATEUR (2026-07-30) : `_collect()` lit
+	# `w.player()` qui garde le SLOT DE FOCUS (empire 0, cf. scps_set_observer) même
+	# sans joueur humain — sans ce gate, les conditions d'un empire IA (conseil vacant,
+	# guerre, pénurie…) s'afficheraient comme SI c'était « nous ». Les évènements
+	# WAR/PEACE/BATTLE/etc du fil moteur sont déjà gatés côté C (human_player>=0,
+	# scps_sim.c) mais PAS le FEED_DIRECTOR (évènements du directeur, tous pays
+	# confondus, filtrés seulement par feed_set_focus=player()) — ce gate GDScript
+	# est donc la SEULE protection contre un popup « OYEZ OYEZ » usurpé en observateur.
+	if not Sim.game_on or _observing():
 		_alerts = []
 		_events = []
 		if Sim.world != null and Sim.world.has_method("feed_poll"):
-			for ev in Sim.world.feed_poll(_seen_seq):   # on JETTE le fil pré-partie (acquitté)
+			for ev in Sim.world.feed_poll(_seen_seq):   # on JETTE le fil (acquitté, jamais affiché)
 				_seen_seq = maxi(_seen_seq, int(ev["seq"]))
 		ledger_changed.emit()
 		return
@@ -113,6 +121,11 @@ func _refresh() -> void:
 	_journal_track_conditions(_alerts)
 	_poll_feed()
 	ledger_changed.emit()
+
+## même check que main.gd::_observing() — dupliqué ici (ce script enfant n'a pas de
+## référence à Main), cf. TROUVAILLES « Menu audio + mode observateur ».
+func _observing() -> bool:
+	return Sim.world != null and Sim.world.has_method("is_observer") and Sim.world.is_observer()
 
 ## VOIE ÉVÈNEMENTS : poll incrémental du fil moteur → chips TRANSIENTS
 ## (clic gauche = lieu si localisé ; clic droit = acquittement seul).

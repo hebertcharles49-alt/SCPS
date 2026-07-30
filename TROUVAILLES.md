@@ -6956,6 +6956,139 @@ chevauchement de texte sur les 6 sites du tiroir + la topbar.
   à `topbar.gd`/`sidebar_drawer.gd` qui ne l'avaient jamais eue. Explique pourquoi le
   diagnostic Codex ne les mentionnait pas comme sous-dimensionnées.
 
+## MISSION — Menu audio + mode observateur (2026-07-30)
+
+**Statut : livré (2 missions GDScript-only).** A : case Muet par bus + les 4 curseurs
+D6 existants. B : chrome empire (topbar national + bande droite empire_sidebar.gd +
+alertes/popups) masqué en observateur ; carte/date/vitesse/fiches lecture inchangées.
+
+### Découvertes
+
+- **Mission A — le mute et le volume sont déjà DEUX états AudioServer distincts**
+  (`AudioServer.set_bus_mute`/`is_bus_mute` vs `volume_db`) — aucune gymnastique à
+  faire pour la règle joueur « un mute ne réinitialise pas le slider » : c'est le
+  comportement NATIF de l'API, il suffisait de les exposer côté `Sound` (`get_mute`/
+  `set_mute`, `audio/sound.gd`) sans inventer un second état. Persisté dans la MÊME
+  section `user://audio.cfg` que les volumes (clé `mute` à côté de `volume`, motif
+  `_save_volumes`/`_load_volumes` étendu, pas un second fichier).
+- **Mission A — piège évité (pas vécu, repéré à la lecture)** : `sound.gd::_ready()`
+  appliquait le mute forcé `SCPS_MUTE=1` (probes/captures) AVANT `_load_volumes()`.
+  Une fois le mute PERSISTÉ ajouté, un `user://audio.cfg` où Master est sauvé
+  non-muet (le cas courant) aurait **réactivé le son** en rechargeant après le mute
+  forcé — cassant la garantie « toujours silencieux en probe ». Réordonné : le bloc
+  `SCPS_MUTE` est maintenant APRÈS `_load_volumes()`, donc toujours gagnant en
+  dernier. Zéro régression observée (aucune session de probe n'a jamais eu de son
+  avant ce jour ; le bug n'existait pas encore avant l'ajout du mute persisté — il
+  a été neutralisé au même commit qui l'aurait introduit).
+- **Mission A — le pipeline `--headless --import` a marché du premier coup cette
+  fois** (T_OPT_MUTE compilé et lisible dans `ui.fr.translation`/`ui.en.translation`,
+  vérifié par grep du texte clair « Muet »/« Mute » dans le binaire) — contrairement
+  au piège documenté par la mission D6 (2026-07-18, contournement SceneTree requis).
+  Non élucidé pourquoi ça marche maintenant (peut-être lié au `.NET Sdk not found`
+  intermittent évoqué par D6) ; un futur agent qui retombe sur des clés `T_XXX`
+  brutes à l'écran doit quand même connaître le contournement SceneTree de D6 en
+  filet de secours, ne pas supposer que c'est définitivement réparé.
+- **Mission B — `w.player()` GARDE le SLOT DE FOCUS (empire 0) en observateur, ce
+  n'est PAS -1** (`scps_api.c:271-278`, doctrine du moteur : « scps_player() garde
+  le SLOT de focus → les panneaux montrent ce monde »). Tout code qui lit
+  `w.player()`/`w.country_info(me)` sans vérifier `is_observer()` affiche donc
+  silencieusement les chiffres d'un empire IA COMME SI c'était le joueur — c'est
+  exactement le bug rapporté (« impression d'être associé à un empire »), et il ne
+  se voit PAS en lisant `is_observer()` isolément : il faut suivre `player()` jusqu'à
+  ses lecteurs.
+- **Mission B — le FOG est déjà neutre en observateur, confirmé par lecture**
+  (`scps_country_known`, `scps_api.c:264` : « `human_player<0` → rien n'est voilé,
+  tout est visible ») — aucune retouche nécessaire, ni possible (moteur hors
+  périmètre). Visible aussi sur la capture `02_observateur_chrome_masque.png` :
+  TOUS les contours de pays sont dessinés, y compris loin du focus.
+- **Mission B — la membrane de décision (dilemmes, `event_dialog.gd`) est DÉJÀ
+  gatée moteur-side** (`scps_events.c:2953` : `pending_event_push` n'est appelé que
+  si `human_player>=0` — en observateur `pending_count()` reste 0 pour toujours).
+  Idem pour la MAJORITÉ du fil d'évènements display (`scps_sim.c:1274` : guerre/
+  paix/pillage/sécession/révolte/bataille/siège TOUT le bloc est sous
+  `if (s->human_player>=0)`). **Mais PAS le FEED_DIRECTOR** (évènements du
+  directeur — `scps_events.c:2867`, `events_strike`) : ces `feed_push` tirent pour
+  TOUS les pays sans condition sur `human_player`, filtrés seulement par
+  `feed_set_focus(s->sim.player)` (posé à la genèse, **indépendant** de
+  l'observateur) — un évènement du directeur touchant l'empire focus (0) traverse
+  donc le filtre et, côté GDScript, `alerts.gd::_collect()`/`_poll_feed()` (qui
+  lisent `w.player()`, pas `is_observer()`) l'auraient affiché/poppé comme "nôtre".
+  **C'était le SEUL vrai trou côté alertes** (le reste du fil est déjà mort par
+  construction) — corrigé par le gate `_observing()` dans `alerts.gd::_refresh()`.
+- **Mission B — `alerts.gd::_refresh()` est un point de gate UNIQUE très rentable** :
+  y ajouter `or _observing()` (même motif que le gate `not Sim.game_on` déjà
+  présent) tue en un seul endroit trois symptômes à la fois — les CONDITIONS
+  (`_collect()` : conseil vacant/guerre/pénurie/etc de l'empire focus affichées
+  comme siennes), le JOURNAL (bande droite, déjà masquée par ailleurs mais
+  redondance utile), ET les popups « OYEZ OYEZ » (`event_popup.gd`, câblé sur
+  `alerts.popup_requested` — sans ce gate un évènement du directeur aurait ouvert
+  un popup modal PAUSE adressé à l'observateur pour un empire qui n'est pas le
+  sien).
+- **Mission B — `country_panel.gd::show_country(me)` se re-ferme TOUJOURS**
+  (`country_panel.gd:49` : « ce panneau ne s'ouvre que pour un pays ÉTRANGER — le
+  clic chez soi garde la province », `cid==player()` → `cid=-1` → `visible=false`)
+  — piège rencontré en écrivant la probe `observer_shot.gd` (le shot 03 initial,
+  `show_country(me)`, produisait une capture IDENTIQUE au shot sans fiche ouverte :
+  pas un bug de la mission, juste le motif existant qui traite le SLOT DE FOCUS
+  comme "notre" pays même en observateur). Corrigé côté probe : cible un pays
+  ÉTRANGER (`c != me`) pour prouver la fiche pays en lecture, + un clic province
+  (`_on_province_picked`, motif `d1_after_shot.gd`) pour la fiche province.
+
+### Pièges
+
+- **`godot/project/map/*` était EN COURS D'ÉDITION par l'orchestrateur PENDANT
+  cette mission** (`map/overlay.gd`, diff live passé de +57/-5 à +75/-39 lignes
+  entre deux `--check-only` consécutifs) — a cassé temporairement TOUT boot de
+  `Main.tscn` (`ROAD_MINOR_MAIN`/`ROAD_MAIN`/… « not declared », `overlay.gd:2443+`)
+  et donc bloqué la probe `observer_shot.gd` en fin de mission (les 2 premiers
+  shots, capturés AVANT cette édition concurrente, sont intacts et suffisent comme
+  preuve — voir Restes). Confirme le piège annoncé par le brief : deux agents sur
+  le même arbre Godot se marchent dessus, pas seulement via le cache `.godot/` mais
+  via l'ÉTAT SOURCE lui-même pendant une sauvegarde partielle. Aucune tentative de
+  toucher `map/*` (hors périmètre, interdit par le brief).
+- **`Sound._save_volumes()`/`_load_volumes()` bornent `Master` à `["Master", BUS_UI,
+  BUS_AMB, BUS_MOM]`** — si un futur agent ajoute un 5ᵉ bus AudioServer, il doit
+  l'ajouter à CETTE liste (dans les deux fonctions) sinon son volume/mute ne
+  persistera jamais (silencieux, pas d'erreur).
+- **La ligne `_vol_row` compte maintenant 3 contrôles (label 150px + case Muet
+  76px + slider EXPAND_FILL)** — vérifié par capture que ça tient dans le panneau
+  520px sans déborder (`shots_uidoctrine_d6/02_options_son.png`, régénéré par
+  cette mission) ; un futur agent qui ajoute un 4ᵉ contrôle sur cette ligne doit
+  revérifier par capture, pas supposer.
+
+### Restes
+
+- **Mission A** : rien d'ouvert — 4 bus (Général/Musique/Effets/Clics d'interface),
+  chacun mute+slider indépendants, tous persistés/traduits/vérifiés par capture.
+  Note de portée : le brief joueur ne nommait que 3 canaux (son/musique/effets) ;
+  la case Muet a été ajoutée aux 4 lignes existantes (dont Clics d'interface, posé
+  par D6) par cohérence de motif — pas une invention de canal, `_vol_row` est
+  DÉJÀ partagé par les 4 depuis D6.
+- **Mission B** : par construction, le masquage suit strictement l'énumération du
+  brief (topbar national, bande droite empire_sidebar.gd en entier, alertes/
+  popups/journal). **PAS touché, documenté comme hors-périmètre explicite** : le
+  RAIL GAUCHE (`sidebar.gd`) et son tiroir (`sidebar_drawer.gd`, onglets Économie/
+  Démographie/Stocks/Marché/Armée/Filtres/Diplomatie/Conseil) restent accessibles
+  en observateur et affichent encore les données de l'empire focus (0) — le brief
+  ne les citait pas dans l'énumération « chrome » (toujours visible), seulement le
+  MENU GAUCHE contextuel/à-la-demande ; un clic y montre encore « votre » armée/
+  économie du focus. Filet de sécurité déjà en place côté moteur : « les commandes
+  joueur sont JETÉES au drain » (`scps_api.c:270`) — un bouton de verbe cliqué là
+  ne fait donc RIEN mécaniquement, c'est un défaut d'IMMERSION, pas de simulation.
+  Si un futur retour joueur demande aussi ce rail neutre, gate `_observing()` sur
+  `sidebar.gd`/`sidebar_drawer.gd` (même motif dupliqué que les 3 fichiers de
+  cette mission) — gros fichier (1805 lignes), à traiter en mission dédiée.
+- **Probe `observer_shot.gd`** : shots 01 (référence chrome complet) et 02 (chrome
+  masqué) capturés et vérifiés à l'œil AVANT la casse concurrente de `map/*` — la
+  preuve du cœur de la mission est donc solide. Les shots 03/04 (fiches pays
+  étranger / province en lecture, ajoutés après le premier passage pour couvrir le
+  piège `show_country(me)` ci-dessus) N'ONT PAS PU être recapturés avant la fin de
+  la mission (map/overlay.gd cassé par l'édition concurrente au moment du retry) —
+  à relancer par un futur agent une fois `map/*` stabilisé :
+  `Godot --path godot/project res://observer_shot.tscn -- seed=9 years=5`
+  (SCPS_MUTE=1, --audio-driver Dummy, fenêtré). Le fichier probe est committable
+  tel quel, rien à corriger dedans.
+
 ### Pièges
 
 - **Le tool Edit a échoué de façon intermittente sur des `old_string` MULTI-LIGNES

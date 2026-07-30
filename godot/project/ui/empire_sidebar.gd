@@ -53,11 +53,23 @@ func _ready() -> void:
 ## ⚠ la visibilité vivait DANS _draw (`visible = Sim.game_on`) : un Control caché ne
 ## redessine JAMAIS → masqué une fois au menu, le ledger ne se remontrait jamais (il
 ## n'apparaissait dans AUCUNE capture). Pilotée ici, à la frame — trivial et robuste.
+## MODE OBSERVATEUR (2026-07-30) : ce panneau EST le résumé d'empire (villes/armées/
+## colonisation/mission/journal/guerres/notifications/émissaire/âge — tout au point de
+## vue de `w.player()`). En observateur, `player()` garde le SLOT DE FOCUS (empire 0,
+## cf. scps_set_observer côté moteur) mais ce n'est PAS « notre » empire : masquer le
+## panneau ENTIER (plutôt que trier section par section dans ce _draw monolithique)
+## est la façon la plus simple de ne pas laisser croire à une association.
 func _process(_d: float) -> void:
-	if visible != Sim.game_on:
-		visible = Sim.game_on
+	var vis := Sim.game_on and not _observing()
+	if visible != vis:
+		visible = vis
 		if visible:
 			queue_redraw()
+
+## même check que main.gd::_observing() — dupliqué ici (ce script enfant n'a pas de
+## référence à Main), cf. TROUVAILLES « Menu audio + mode observateur ».
+func _observing() -> bool:
+	return Sim.world != null and Sim.world.has_method("is_observer") and Sim.world.is_observer()
 
 var _maxh := 600.0          ## hauteur DISPONIBLE (bande topbar→bas) — le panneau s'y borne
                             ## mais se DÉCOUPE au contenu (retour joueur : « adapte la taille »)

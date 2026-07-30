@@ -9,6 +9,10 @@ extends Control
 ## verticale épaisse, cf. _block_sep) — ROYAUME · ÉCONOMIE · POLITIQUE · TEMPS. Les 5
 ## cellules de matières brutes (bois/argile/pierre/fer/armes) SORTENT d'ici vers le
 ## tiroir Économie/Stocks ; seule la PIRE PÉNURIE remonte, en alerte explicite.
+##
+## MODE OBSERVATEUR (2026-07-30) : le bloc ROYAUME (nom/trésor/prix/matériaux/armes/
+## nourriture/savoir/factions/loyauté/prospérité) est remplacé par un simple mot
+## neutre — `_observing()` — le BLOC TEMPS (date/vitesse/pause), lui, reste identique.
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
@@ -491,7 +495,18 @@ func _draw() -> void:
 	var ci: Dictionary = w.country_info(me)
 	var px := 16.0   # (la capsule de chrome qui occupait x=10..102 est retirée)
 	var content_end := px   # où finit le contenu à gauche — ancre le BLOC TEMPS (age chip)
-	if bool(ci.get("valide", false)):
+	if _observing():
+		# MODE OBSERVATEUR : me/ci restent ceux du SLOT DE FOCUS (empire 0, cf.
+		# scps_set_observer côté moteur) — ce n'est PAS « notre » pays. Aucun chiffre
+		# national (trésor/pop/factions/etc) ne s'affiche ; un mot neutre remplace le
+		# bloc entier. Le BLOC TEMPS (date/vitesse/pause) plus loin n'est pas concerné.
+		var otxt := "Mode observateur"
+		var orect := Rect2(px - 6.0, 6.0, VKit.text_w(otxt) + 14.0, H - 12.0)
+		VKit.fill(self, orect, Color(VKit.COL_PANEL2.r, VKit.COL_PANEL2.g, VKit.COL_PANEL2.b, 0.72))
+		VKit.box(self, orect, VKit.COL_EDGE)
+		VKit.text(self, Vector2(px + 2.0, cy), VKit.COL_DIM, otxt)
+		content_end = px + orect.size.x
+	elif bool(ci.get("valide", false)):
 		# les ARMES du joueur (héraldique dérivée) — repli couronne si pièces absentes
 		var parms: Texture2D = load("res://ui/heraldry.gd").arms(me)
 		if parms != null:
@@ -770,3 +785,8 @@ func _grp(n) -> String:
 		if c % 3 == 0 and i > 0:
 			out = " " + out
 	return ("-" if int(n) < 0 else "") + out
+
+## même check que main.gd::_observing() — dupliqué ici (ce script enfant n'a pas de
+## référence à Main), cf. TROUVAILLES « Menu audio + mode observateur ».
+func _observing() -> bool:
+	return Sim.world != null and Sim.world.has_method("is_observer") and Sim.world.is_observer()
