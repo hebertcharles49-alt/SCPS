@@ -1,4 +1,17 @@
-# SYNTHÈSE DE SESSION — handoff roulant (2026-07-30 — GRANDS FLEUVES + CHRONICLE PER-PROVINCE)
+# SYNTHÈSE DE SESSION — handoff roulant (2026-07-31 — GRANDS FLEUVES · CHRONICLE PER-PROVINCE · VAGUE COLONISATION)
+
+## VAGUE COLONISATION (commit suivant 44a40e1) — « le stock drive la demande »
+- Décision joueur : baisse FORTE des prix (pop min 500→300 · convoi 250→150 · vivres
+  0.35→0.25 · WPC IA 8→4, tunables) + grenier-commerce (FOOD_STOCK_MONTHS=6 : le déficit
+  de réserve vivrière devient demande de marché, motif tools ; le grenier plein débloque
+  la colonisation — econ_colony_food_ok PARTAGÉ drain/façade).
+- Fix : l'UI mentait (façade 800/0.5 vs moteur 500/0.35) ; le tally ASSIETTE grain ne
+  versait rien dans demand[] (pénurie invisible du commerce).
+- Mesuré 60 ans : prov colonisées 31→51 (g7) · 35→46 (g9), pop monde ↑, 0 colonie-suicide.
+- Gates : kill-switch prouvé (golden IDENTIQUE aux anciennes valeurs) · golden re-baseliné ·
+  determinism · savetest · 40/40 bancs (scps_api_demo 243/243 — l'assertion colonize
+  débloquée + 6 aval ; events_demo : fixture mtth → boucle jusqu'au-tir bornée).
+- DÉCISION COLONISER RÉSOLUE (l'entrée « décision en attente » ci-dessous est CLOSE).
 
 ## ÉTAT COURANT (arbre NON commité — vague en cours de gate)
 - **GRANDS FLEUVES (scps_world.c)** : le D8 brut mourait au fond de chaque cuvette →

@@ -1229,6 +1229,10 @@ void econ_colonize_from(WorldEconomy *e, int src_rid, int dst_rid, int cid);
  * FONDÉE par econ_colony_day au terme (~1 an frontalier, plus loin = plus long).
  * false = refus, rien ne bouge. */
 bool econ_colonize_province(WorldEconomy *e, const World *w, int src_pid, int dst_pid, int cid);
+/* Gate vivrier de colonisation PARTAGÉ (drain ET façade — miroir exact, jamais deux
+ * seuils divergents) : food_sat ≥ COLONY_FOOD_GATE, OU grenier local ≥ FOOD_STOCK_MONTHS
+ * mois de conso (décision joueur 2026-07-31 : le grenier rempli par le COMMERCE débloque). */
+bool econ_colony_food_ok(const ProvinceEconomy *pe);
 /* QUOTIDIEN — mûrit les chantiers de colonisation (cadences, délais, fondation à l'arrivée
  * au rendement log-distance). No-op intégral quand aucun chantier (chronique → golden). */
 void econ_colony_day(WorldEconomy *e, const World *w);

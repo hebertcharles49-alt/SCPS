@@ -1431,7 +1431,19 @@
      * gratuit) : les riches investissent AVANT la crise (c'est LEUR besoin qui
      * appelle) et la fenêtre reste ouverte plus longtemps (mesuré : à 1.8 le semis
      * gratuit rase le signal le mois même — l'initiative n'attrapait que des miettes). */ \
-    X(IP_COLON_WPC,                    8.0f) \
+    /* COLONISATION — BAISSE FORTE (décision joueur 2026-07-31, « le monde peine à se
+     * remplir » + « le stock drive la demande ») : gates abaissés (500→300 · 250→150 ·
+     * 0.35→0.25 · WPC 8→4) et GRENIER-COMMERCE : la province vise FOOD_STOCK_MONTHS mois
+     * de conso grain en réserve — le déficit devient demande de marché (motif tools) et
+     * le grenier plein débloque la colonisation même à food_sat bas (un tirage géo
+     * pauvre ACHÈTE ses vivres au lieu de s'auto-bloquer). 0 = motif éteint.
+     * Kill-switch complet : COLONY_MIN_POP=500,COLONY_COST_POP=250,COLONY_FOOD_GATE=0.35,
+     * IP_COLON_WPC=8,FOOD_STOCK_MONTHS=0. */ \
+    X(COLONY_MIN_POP,                300.0f) \
+    X(COLONY_COST_POP,               150.0f) \
+    X(COLONY_FOOD_GATE,               0.25f) \
+    X(FOOD_STOCK_MONTHS,              6.0f) \
+    X(IP_COLON_WPC,                    4.0f) \
     X(IP_INVEST_WPC,                  12.0f) \
     X(IP_SHORTAGE,                     1.4f) \
     /* MONNAIE M3i — L'IMPÔT SUR LE REVENU (décision joueur 2026-07-15, « lié aux revenus

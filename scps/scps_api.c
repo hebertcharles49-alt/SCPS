@@ -3889,7 +3889,10 @@ int scps_can_colonize(ScpsSim *s, int prov){
         const ProvinceEconomy *pe=&s->sim.econ->prov[q];
         if (pe->owner!=p || !pe->colonized) continue;
         float pp=0.f; for (int k=0;k<CLASS_COUNT;k++) pp+=pe->strata[k].pop;
-        if (pp>=800.f && pe->food_sat>=0.5f) return 1;   /* approximation UI des portes (le drain revalide) */
+        /* MIROIR EXACT du drain (econ_colonize_province) — l'« approximation UI »
+         * 800/0.5 était PLUS STRICTE que le moteur (500/0.35 à l'époque) : le bouton
+         * grisait des colonisations légales. Mêmes tunables, même helper vivrier. */
+        if (pp>=tune_f("COLONY_MIN_POP",300.f) && econ_colony_food_ok(pe)) return 1;
     }
     return 0;
 }

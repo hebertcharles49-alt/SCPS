@@ -7591,3 +7591,40 @@ moins souvent : les capitales-joueur post-fleuves plafonnent fréquemment à foo
 food du spawn curated, ou statu quo. Le banc reste graine 9 PRISTINE, rouge 1/237
 documenté — ne pas « réparer » en changeant de graine (42 casse 3 autres fixtures :
 B7 crédit + rénover ×2, elles aussi graine-dépendantes).
+
+## VAGUE COLONISATION — « le stock drive la demande » (orchestrateur, 2026-07-31)
+
+**Découvertes** :
+- L'UI MENTAIT sur la colonisation depuis toujours : scps_can_colonize (façade) exigeait
+  pop≥800 ET food_sat≥0.5 quand le drain réel (econ_colonize_province) demandait 500/0.35
+  — le bouton grisait des colonisations LÉGALES. Le « rouge 1/237 » de scps_api_demo
+  post-fleuves était CE mensonge, pas le worldgen. Morale : une « approximation UI des
+  portes » diverge silencieusement — miroir EXACT obligatoire (helper partagé
+  econ_colony_food_ok + mêmes tunables, motif scps_build_legal_ex↔agency_build_acct).
+- Le chemin ASSIETTE du grain (« GARANTIE : jamais de gate can_buy ») court-circuitait le
+  tally demand[] (continue avant le chemin générique) : une pénurie de grain ne formait
+  NI prix NI demande — invisible du commerce, provinces pauvres auto-bloquées à vie.
+- Le motif stock-cible existait déjà pour outils/armes (demand += max(0, cible − S×pshare))
+  — le vivrier ne l'avait pas. Ajouté : cible = FOOD_STOCK_MONTHS (6) mois de conso grain.
+- La boucle est fermée par construction P1 : demand[] province → agrégat région →
+  intertrade → pool national → redescente re->stock=pool×share (l.5222) → le gate grenier
+  lit prov->stock. Vérifié AVANT d'écrire (risque : gater sur un stock jamais rempli).
+- Effet mesuré (60 ans) : prov colonisées 31→51 (g7) · 35→46 (g9) ; fondations 16→24 ·
+  15→25 ; pop monde 49k→64k (g7) — la baisse forte NOURRIT (pas de famine systémique),
+  0 colonie de survie. scps_api_demo 243/243 (6 assertions aval DÉVERROUILLÉES par le
+  déblocage du verbe).
+
+**Pièges** :
+- EVID_MERV_SACRIFICE (events_demo) : mtth 1200 j × fenêtre fixe 10 ans = ~5 % d'échec
+  PUR ALÉA ; tout recalage amont du monde décale la séquence frand et peut tomber dedans.
+  Fixture → boucle jusqu'au-tir bornée 40 ans. Chercher ce motif si un banc à mtth
+  re-rougit après une vague worldgen/éco.
+- Golden re-baseliné DEUX fois dans la même session (fleuves, puis colonisation) — chaque
+  vague éco gatée doit prouver son kill-switch AVANT le re-baseline suivant, sinon les
+  preuves se contaminent.
+
+**Restes** :
+- FOOD_STOCK_MONTHS=6 et la baisse forte (300/150/0.25/WPC 4) calibrées sur 2 graines ×
+  60 ans seulement — un gigasweep de validation reste souhaitable (annulé cette nuit).
+- Le grenier ne demande que du GRAIN (pas fish/livestock) — simple d'abord ; élargir si
+  les provinces halieutiques montrent un biais.

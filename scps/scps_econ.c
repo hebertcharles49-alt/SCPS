@@ -709,11 +709,31 @@ static const float ETHOS_LUXURY_NEED[CLASS_COUNT] = {
  * prospérité → jusqu'à ×4/siècle au panier plein). Cf. §6 croissance. Les anciens
  * BIRTH_RATE/DEATH_RATE/SOCIETY_BONUS sont RETIRÉS (la base ne multiplie plus food_sat). */
 
-/* Colonisation */
-#define COLONY_MIN_POP      500.f   /* pop minimale d'une région pour essaimer  */
-#define COLONY_COST_POP     250.f   /* colons détachés (quittent la mère)       */
+/* Colonisation — BAISSE FORTE (décision joueur 2026-07-31, « le monde peine à se
+ * remplir ») : 500→300 · 250→150 · 0.35→0.25, migrées en TUNABLES (registre J,
+ * kill-switch : anciennes valeurs via SCPS_TUNE). COLONY_SEED_POP reste figé. */
+#define COLONY_MIN_POP      tune_f("COLONY_MIN_POP",300.f)   /* pop minimale d'une région pour essaimer  */
+#define COLONY_COST_POP     tune_f("COLONY_COST_POP",150.f)  /* colons détachés (quittent la mère)       */
 #define COLONY_SEED_POP     100.f   /* pop installée dans la nouvelle région    */
-#define COLONY_FOOD_GATE    0.35f   /* seuil de subsistance pour essaimer        */
+#define COLONY_FOOD_GATE    tune_f("COLONY_FOOD_GATE",0.25f) /* seuil de subsistance pour essaimer        */
+
+/* GRENIER (décision joueur 2026-07-31 : « le stock drive la demande, pas la
+ * production ») : la province vise FOOD_STOCK_MONTHS mois de conso grain en
+ * réserve. Le DÉFICIT devient demande de MARCHÉ (motif tools/arms du tick) →
+ * le commerce REMPLIT le grenier ; et le gate de colonisation accepte le
+ * grenier PLEIN comme alternative au food_sat — un tirage géo pauvre ne
+ * s'auto-bloque plus, il ACHÈTE ses vivres. 0 = motif éteint (kill-switch). */
+static float colony_food_target(const ProvinceEconomy *pe){
+    float months = tune_f("FOOD_STOCK_MONTHS",6.f);
+    if (months<=0.f) return 0.f;
+    float pop=0.f; for (int c=0;c<CLASS_COUNT;c++) pop+=pe->strata[c].pop;
+    return (pop/100.f)*NEED[CLASS_LABORER][RES_GRAIN]*(months/12.f);
+}
+bool econ_colony_food_ok(const ProvinceEconomy *pe){
+    if (pe->food_sat>=COLONY_FOOD_GATE) return true;
+    float tgt=colony_food_target(pe);
+    return tgt>0.f && pe->stock[RES_GRAIN]+pe->stock[RES_FISH]>=tgt;
+}
 
 /* Migration interne */
 #define MIGRATE_RATE        0.02f   /* fraction max de bourgeois/élites migrant/tick */
@@ -3825,6 +3845,16 @@ void econ_tick(WorldEconomy *e, float dt) {
             float tools_target = labor_avail * TOOLS_PER_LABORER;            /* stock-outil VISÉ ∝ bras */
             demand[RES_TOOLS] += fmaxf(0.f, tools_target - S[RES_TOOLS]*pshare);  /* déficit (part régionale du parc) à combler */
         }
+        /* GRENIER (décision joueur 2026-07-31 : « le stock drive la demande ») — même
+         * motif que les outils : le déficit de RÉSERVE vivrière (cible = FOOD_STOCK_MONTHS
+         * mois de conso) devient demande de MARCHÉ → prix → le commerce remplit le grenier.
+         * Sans ça, un tirage géo pauvre ne formait AUCUN signal (le chemin ASSIETTE ne
+         * versait rien dans demand[]) : pénurie invisible, province auto-bloquée. */
+        {
+            float food_target = colony_food_target(re);
+            if (food_target>0.f)
+                demand[RES_GRAIN] += fmaxf(0.f, food_target - S[RES_GRAIN]*pshare);
+        }
         /* GOULOT D'ARMES (2026-07-06) — L'ARSENAL D'ÉTAT, même motif que les outils : la levée
          * (warhost, annuel) DRAINE le stock d'armes macro (RE-KEY réel, econ_arms_take) ; le
          * RÉASSORT est une demande de MARCHÉ ∝ population (l'État vise un arsenal capable de
@@ -4723,6 +4753,10 @@ void econ_tick(WorldEconomy *e, float dt) {
                     float w=BASE_PRICE[r]*need; need_w+=w;
                     float can_stock=clampf(S[r]/(need+EPS),0.f,1.f);
                     float got=can_stock;                          /* GARANTIE : jamais de gate can_buy */
+                    /* GRENIER (2026-07-31) : la CONSO compte dans la demande — ce chemin
+                     * court-circuitait le tally générique (continue), la pénurie de grain
+                     * ne formait jamais de prix. Gated FOOD_STOCK_MONTHS (kill-switch). */
+                    if (tune_f("FOOD_STOCK_MONTHS",6.f)>0.f) demand[r]+=need;
                     grain_got=got;
                     if (got>=tau) nsat++;                          /* LEGACY tally */
                     S[r]-=need*got;
@@ -5782,7 +5816,7 @@ bool econ_colonize_province(WorldEconomy *e, const World *w, int src_pid, int ds
     struct ColonyWork *cw=&e->colony[cid];
     if (cw->dst>=0 || cw->cd_days>0) return false;     /* un chantier à la fois · 1 ordre/an */
     float spop=0.f; for (int c=0;c<CLASS_COUNT;c++) spop+=src->strata[c].pop;
-    if (spop<COLONY_MIN_POP || src->food_sat<COLONY_FOOD_GATE) return false;
+    if (spop<COLONY_MIN_POP || !econ_colony_food_ok(src)) return false;
     /* distances : FRONTIÈRE (durée) et CAPITALE (rendement), en sauts de provinces */
     static bool start[SCPS_MAX_PROV];
     int nprov=e->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
@@ -6001,7 +6035,7 @@ bool econ_colonize_overseas(WorldEconomy *e, int src_rid, int dst_rid, int cid){
     if (!dst->active || dst->colonized) return false;
     if (!src->colonized || src->owner!=cid) return false;
     float spop=0.f; for (int c=0;c<CLASS_COUNT;c++) spop+=src->strata[c].pop;
-    if (spop<COLONY_MIN_POP*2.f || src->food_sat<COLONY_FOOD_GATE) return false;  /* ×2 : il faut le double */
+    if (spop<COLONY_MIN_POP*2.f || !econ_colony_food_ok(src)) return false;  /* ×2 : il faut le double */
     /* ESCLAVAGE — FUITE #6 (miroir, 2e ponction outre-mer) : CLASS_SLAVE exclue. */
     float spop_free=spop-src->strata[CLASS_SLAVE].pop;
     float extra=fminf(COLONY_COST_POP, spop_free*0.25f);     /* la 2e ponction (coût ×2) */
@@ -6075,7 +6109,7 @@ int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid,
                 ProvinceEconomy *src=&e->prov[ps];
                 if (!src->colonized || src->owner!=cid) continue;
                 float spop=0.f; for(int c=0;c<CLASS_COUNT;c++) spop+=src->strata[c].pop;
-                bool normal_ok  = (spop>=COLONY_MIN_POP && src->food_sat>=COLONY_FOOD_GATE);
+                bool normal_ok  = (spop>=COLONY_MIN_POP && econ_colony_food_ok(src));
                 bool survive_ok = (spop>=survive_min);
                 if (!normal_ok && !survive_ok) continue;
                 for (int pd=0; pd<nprov; pd++) {
@@ -6137,7 +6171,7 @@ int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid,
                 ProvinceEconomy *src=&e->prov[ps];
                 if (!src->colonized || src->owner!=cid) continue;
                 float spop=0.f; for(int c=0;c<CLASS_COUNT;c++) spop+=src->strata[c].pop;
-                if (spop<COLONY_MIN_POP || src->food_sat<COLONY_FOOD_GATE) continue;
+                if (spop<COLONY_MIN_POP || !econ_colony_food_ok(src)) continue;
                 /* Cibles : uniquement les provinces des régions PROPRES du pays (jamais hors chez elle). */
                 for (int pd=0; pd<nprov; pd++) {
                     if (!padj_get(ps,pd)) continue;
@@ -6227,7 +6261,7 @@ int econ_ip_colonize_tick(WorldEconomy *e){
         if (!src->active || !src->colonized || src->owner<0) continue;
         float lab_pop=src->strata[CLASS_LABORER].pop;
         if (lab_pop < COLONY_MIN_POP) continue;                 /* garde-fou : jamais un hameau (motif existant) */
-        if (src->food_sat < COLONY_FOOD_GATE) continue;         /* garde-fou vivrier (motif existant) */
+        if (!econ_colony_food_ok(src)) continue;                /* garde-fou vivrier (motif existant, grenier accepté) */
         float wpc = src->strata[CLASS_LABORER].wealth / fmaxf(lab_pop,EPS);
         if (wpc < wpc_gate) continue;                           /* pas de surplus à emporter */
         /* cible : la meilleure province VACANTE adjacente (motif econ_region_best_vacant_prov,

@@ -995,7 +995,12 @@ int main(int argc, char **argv){
             endgame_start_wonder(s.eg, human, capr);
             ok("endgame_start_wonder lance le palier FORGE", s.eg->merv==MERV_FORGE);
             long s0=events_merv_sacrifice_fired();
-            for (int d=0; d<3650; d+=30) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,30,human);
+            /* mtth 1200 j sur fenêtre FIXE de 10 ans ⇒ ~5 % d'échec PUR ALÉA (la
+             * séquence frand dépend du monde amont — le recalage grands-fleuves/
+             * colonisation l'a décalée dans le mauvais 5 %). Boucle JUSQU'AU tir,
+             * bornée 40 ans (P(échec)≈5e-6) : l'assertion reste entière. */
+            for (int d=0; d<36500 && events_merv_sacrifice_fired()==s0; d+=30)
+                world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,30,human);
             ok("EVID_MERV_SACRIFICE tire pendant que la Merveille est active (FORGE)",
                events_merv_sacrifice_fired()>s0);
 
