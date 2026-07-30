@@ -7931,3 +7931,16 @@ rayon waypoint 2.5 → 3.2. Mesures finales : spag 2162 → 11 · wp 11 · réut
 géo-chg 2. La bande s'arrête à la PORTE (r_gate 2.4, pad au point de coupe) depuis le
 1er crop. Le piège générique : tout test d'alignement point-à-point sur des géométries
 LISSÉES/ondulantes doit passer par la corde (ou une direction moyennée).
+
+**Pincement des croisements (3e crop joueur, zone NE)** : le SPAGDIAG a localisé TOUT le
+résidu en UN cluster (808,169) — deux GRANDES routes convergeant à ~35-40° qui se
+longent quelques cellules avant de se croiser. La fusion les rejette À RAISON (garde
+anti-croisement) ; le traitement cartographique juste = un CROISEMENT NET : deux étapes
+qui se frôlent (≤2.0 cellules) sans partager de nœud sont PINCÉES vers le point commun
+(poids gaussien ±2 pts, jamais les abouts) + aire de carrefour. Mesures : pince=1,
+spag étapes 11 → 5. PIÈGES : (1) la métrique spag (SPAG_DIST=1.5) ne voit PAS les
+parallèles à 2-4 cellules que l'œil voit — le juge reste le SHOT ; (2) le shot at= était
+pris en mode NATURE (routes cachées) → déplacé avant le toggle ; (3) une zone non
+découverte est NOIRE au shot → fog_off (voile seulement, motif shot_parch) pour
+photographier sous le voile. RESTE (dit joueur) : les culées de pont « ressemblent à des
+marqueurs » — à reprendre après stabilisation topologique.

@@ -68,21 +68,28 @@ func _run() -> void:
 		await _shot("07_routes_z28")
 		_cam(map, ctr.x, ctr.y, 8.0)
 		await _shot("08_routes_z80")
+	# Cadrage ARBITRAIRE optionnel (mode NORMAL — les routes se voient ici, pas en nature) : -- at=x,y (ex. le Nil-mètre SCPS_RIVDIAG) → 00_at_*.png
+	var at := _arg("at=", "")
+	if at != "":
+		var xy := at.split(",")
+		if xy.size() == 2:
+			var ov0 = map.get_node_or_null("Overlay")
+			if ov0 != null:
+				ov0.fog_off = true      # photographier SOUS le voile (motif shot_parch fog=0)
+				ov0.queue_redraw()
+			_cam(map, float(xy[0]), float(xy[1]), 7.0)
+			await _shot("00_at_z7")
+			_cam(map, float(xy[0]), float(xy[1]), 3.5)
+			await _shot("00_at_z35")
+			if ov0 != null:
+				ov0.fog_off = false
+				ov0.queue_redraw()
 	# MODE NATURE : terrain nu sans brouillard ni politique — l'embouchure du grand fleuve
 	# vit loin du joueur, sous le fog (premier essai : deux shots NOIRS)
 	if not map.is_nature():
 		map.toggle_nature()
 
 	# 1) L'ESTUAIRE : embouchure du plus LONG fleuve (dernier point du tracé)
-	# Cadrage ARBITRAIRE optionnel : -- at=x,y (ex. le Nil-mètre SCPS_RIVDIAG) → 00_at_*.png
-	var at := _arg("at=", "")
-	if at != "":
-		var xy := at.split(",")
-		if xy.size() == 2:
-			_cam(map, float(xy[0]), float(xy[1]), 7.0)
-			await _shot("00_at_z7")
-			_cam(map, float(xy[0]), float(xy[1]), 3.5)
-			await _shot("00_at_z35")
 	var rivers: Array = w.river_paths()
 	rivers.sort_custom(func(a, b): return (a["points"] as PackedVector2Array).size() > (b["points"] as PackedVector2Array).size())
 	print("RIVSTATS total=", rivers.size())

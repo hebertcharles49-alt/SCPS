@@ -1832,6 +1832,8 @@ func _spag_steps(steps: Array) -> int:
 						continue
 					flagged[si] = true
 					flagged[sj] = true
+					if OS.has_environment("SCPS_SPAGDIAG"):   # diag : OÙ vivent les résidus (cadrage at=)
+						print("[SPAGDIAG] doublon à %.0f,%.0f" % [(sg["mid"] as Vector2).x, (sg["mid"] as Vector2).y])
 	return flagged.size()
 
 func _sub_poly(pts: PackedVector2Array, acc: PackedFloat32Array, s0: float, s1: float) -> PackedVector2Array:
@@ -2203,6 +2205,69 @@ func _ensure_road_network() -> void:
 					fgrid[gk2] = []
 				(fgrid[gk2] as Array).append([pc[k], pc[k + 1], nsi])
 	steps = steps2
+	# ── PINCEMENT DES CROISEMENTS (mesuré : le « doublon » résiduel du NE était DEUX
+	# routes convergeant à ~35-40° qui se longent quelques cellules — la fusion les
+	# rejette À RAISON, le garde anti-croisement est là pour ça). Le traitement
+	# cartographique : elles doivent SE CROISER EN UN POINT NET. Deux étapes qui se
+	# frôlent (≤2.0 cellules) sans partager de nœud sont PINCÉES vers le point
+	# commun, et une aire de carrefour s'y pose. ──
+	var st_pinch := 0
+	var pmin := {}                               # paire i_j → [d², ka, kb, pa, pb]
+	for si in range(steps.size()):
+		var pl4: PackedVector2Array = steps[si]["poly"]
+		for k in range(pl4.size()):
+			var gk4 := Vector2i(int(floor(pl4[k].x / 2.0)), int(floor(pl4[k].y / 2.0)))
+			for oy in range(-1, 2):
+				for ox in range(-1, 2):
+					var lst4: Variant = fgrid.get(Vector2i(gk4.x + ox, gk4.y + oy))
+					if lst4 == null:
+						continue
+					for sg in lst4:
+						var sj := int(sg[2])
+						if sj >= si:
+							continue             # chaque paire une fois (sj < si)
+						var d24 := pl4[k].distance_squared_to((sg[0] as Vector2 + sg[1] as Vector2) * 0.5)
+						if d24 > 4.0:
+							continue             # ≤ 2.0 cellules
+						var pkey4 := "%d_%d" % [sj, si]
+						if not pmin.has(pkey4) or d24 < float((pmin[pkey4] as Array)[0]):
+							pmin[pkey4] = [d24, sj, si, (sg[0] as Vector2 + sg[1] as Vector2) * 0.5, pl4[k], k]
+	for pkey4 in pmin:
+		var mrec: Array = pmin[pkey4]
+		var sa2: Dictionary = steps[int(mrec[1])]
+		var sb2: Dictionary = steps[int(mrec[2])]
+		# nœud partagé (portes/jonctions déjà posées) : rien à pincer
+		if int(sa2["na"]) == int(sb2["na"]) or int(sa2["na"]) == int(sb2["nb"]) \
+			or int(sa2["nb"]) == int(sb2["na"]) or int(sa2["nb"]) == int(sb2["nb"]):
+			continue
+		var pstar: Vector2 = ((mrec[3] as Vector2) + (mrec[4] as Vector2)) * 0.5
+		var near_j := false                      # déjà un carrefour à côté : inutile d'en créer un 2e
+		for jp0 in junctions:
+			if (jp0 as Vector2).distance_squared_to(pstar) < 6.25:
+				near_j = true
+				break
+		if near_j:
+			continue
+		for sd2 in [sa2, sb2]:                   # pince les DEUX polylignes vers le point commun
+			var pl5: PackedVector2Array = sd2["poly"]
+			var bk := -1
+			var bdd := 1e9
+			for k in range(pl5.size()):
+				var dd5 := pl5[k].distance_squared_to(pstar)
+				if dd5 < bdd:
+					bdd = dd5
+					bk = k
+			if bk < 0 or bdd > 9.0:
+				continue
+			var wts := [0.3, 0.7, 1.0, 0.7, 0.3]
+			for o5 in range(-2, 3):
+				var k5 := bk + o5
+				if k5 < 1 or k5 >= pl5.size() - 1:
+					continue                     # jamais les abouts (portes/nœuds)
+				pl5[k5] = pl5[k5].lerp(pstar, float(wts[o5 + 2]))
+			sd2["poly"] = pl5
+		junctions.append(pstar)
+		st_pinch += 1
 	# ── BUCKETS par classe×usure×forêt (dédup seg anti-overdraw) + masque TROUÉE ──
 	var polys := {}
 	for t in range(1, ROAD_MULT_TIERS + 1):
@@ -2310,6 +2375,19 @@ func _ensure_road_network() -> void:
 		jdone[jk] = true
 		juncs.append([mv.iso_pos(jp.x, jp.y), 0.55 * cell, jk.x * 131 + jk.y])
 	polys["junc"] = juncs
+	if OS.has_environment("SCPS_SPAGDIAG"):      # diag dirigé : les étapes près du point donné
+		var dc := OS.get_environment("SCPS_SPAGDIAG").split(",")
+		if dc.size() == 2:
+			var dp := Vector2(float(dc[0]), float(dc[1]))
+			for stp in steps:
+				var pl9: PackedVector2Array = stp["poly"]
+				var bd9 := 1e9
+				for q in range(0, pl9.size(), 3):
+					bd9 = minf(bd9, dp.distance_squared_to(pl9[q]))
+				if bd9 < 225.0:
+					print("[SPAGDIAG] étape %s→%s lvl=%d wear=%d start=%d pts=%d de %.0f,%.0f à %.0f,%.0f" %
+						[str(stp["na"]), str(stp["nb"]), int(stp["level"]), int(stp["wear"]), int(stp["start"]),
+						 pl9.size(), pl9[0].x, pl9[0].y, pl9[pl9.size() - 1].x, pl9[pl9.size() - 1].y])
 	# ── INSTRUMENTATION (cadrage joueur : mesurer avant de conclure) ──
 	if st_routes > 0:
 		var reuse := (1.0 - len_canon / len_logique) * 100.0 if len_logique > 0.001 else 0.0
@@ -2322,8 +2400,8 @@ func _ensure_road_network() -> void:
 			if _chain_geo.has(kk3) and int(_chain_geo[kk3]) != int(gsig[kk3]):
 				gchg += 1
 		_chain_geo = gsig
-		print("[CHAINAGE] routes=%d wp=%d (rej eau %d) étapes=%d uniques=%d réutil=%.0f%% | term=%d fusion=%d pts junc=%d | spag routes=%d → étapes=%d | géo-chg=%d" %
-			[st_routes, st_wp, st_rej_eau, st_steps, steps.size(), reuse, st_term, st_fused, juncs.size(), _count_spaghetti_segments(), _spag_steps(steps), gchg])
+		print("[CHAINAGE] routes=%d wp=%d (rej eau %d) étapes=%d uniques=%d réutil=%.0f%% | term=%d fusion=%d pts pince=%d junc=%d | spag routes=%d → étapes=%d | géo-chg=%d" %
+			[st_routes, st_wp, st_rej_eau, st_steps, steps.size(), reuse, st_term, st_fused, st_pinch, juncs.size(), _count_spaghetti_segments(), _spag_steps(steps), gchg])
 	# TROUÉE FORESTIÈRE : dilate le masque en carte de DENSITÉ de canopée — cœur de
 	# grande route : 0 arbre (≤1.5 cellule) puis bords clairsemés ; régionale : plus
 	# étroit. Le semis (_build_dressing) lit _road_clear ; quand le réseau a poussé
