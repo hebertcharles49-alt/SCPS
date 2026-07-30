@@ -7868,3 +7868,41 @@ diplo_demo, audit_eco — tous recalibrés, `run_tests.sh full` = 40/40 verts.
   étape plutôt qu'une nouvelle permutation à la main.
 - Confirmé, `run_tests.sh full` (BANC_TIMEOUT=300) : **40 verts / 0 rouge / 0 build échec**,
   aucun run laissé en arrière-plan.
+
+## CHAÎNAGE PAR VILLES + FUSION DE CORRIDORS (anti-spaghetti routes, 2026-07-31)
+
+**Découvertes** :
+- Le cadrage joueur a REDRESSÉ mon diagnostic : le moteur construit DÉJÀ un graphe
+  ville-à-ville (scps_api.c api_roads_build : 2 plus proches voisines, dédup paires,
+  un A* par arête, attraction de corridors, garantie de connexité). Le chaînage par
+  villes ne corrige que les arêtes passant près d'une ville intermédiaire — MESURÉ
+  (graine 9, an 60, 76 routes) : wp=8, réutilisation 14 %. Utile, PAS suffisant.
+- Le vrai tressage est GÉOMÉTRIQUE : spag=2162 segments parallèles résiduels (métrique
+  A1) — des couloirs voisins au-delà du rayon magnet (1.4), que l'aimant global ne doit
+  PAS avaler (déjà mesuré : plateau à 2.2/4 passes + risque de fusionner des croisements).
+- LA FUSION DE CORRIDORS SOUTENUS est le bon outil : proche (≤2.2) ET parallèle
+  (|cos|≥0.92) ET tenu sur ≥6 cellules d'arc CONSÉCUTIVES → snap en bloc sur le corridor
+  le plus ANCIEN. Un croisement ponctuel ne tient jamais la longueur → jamais fusionné.
+  Mesuré : 1758 points snappés, résidu 2162 → 455 (−79 %). Validé au shot (z4.5/z8).
+- Canonique par paire : plus ancien _road_start → plus courte → clé (« jamais “la
+  première” : l'ordre du tableau ne décide pas de la géographie »). Chantier progressif :
+  visibilité d'étape = MAX des couvertures parentes ; usure = nb de parentes l'ayant
+  ATTEINTE — sans ça, une relation neuve fait apparaître un tronc canonique d'un coup.
+- Classes de rendu = level MOTEUR (0 grande / 1 régionale / 2 sentier, tiers de pop des
+  bouts) — plus fidèle que l'ancien hack « desserte tier 1 = sentier ».
+
+**Pièges** :
+- L'instrumentation AVANT conclusion (cadrage joueur) a évité de livrer le chaînage
+  seul comme « la solution » : les chiffres (14 %) l'auraient démenti en jeu.
+- python heredoc bash : les gros scripts d'édition passent par un FICHIER (Write) —
+  le heredoc inline casse sur la taille/quotes.
+- Découpe de fonction par index (i0..i1) : vérifier ce que la fenêtre AVALE — la
+  passe 3 vivait AVANT le marqueur de fin choisi (l'assert du script a sauvé le fichier).
+
+**Restes** :
+- spag résiduel 455 : tronçons parallèles courts (<6 cellules) et divergences aux Y —
+  à regarder en jeu réel avant tout nouveau tour de vis.
+- Les carrefours « aire commune + séparation d'ornières » : toujours pads-seulement.
+- road_paths() n'expose ni relation commerciale ni volume : l'« usure par trafic RÉEL »
+  exigerait une donnée de façade supplémentaire (l'usure actuelle = nb d'arêtes
+  routières réutilisant l'étape).
