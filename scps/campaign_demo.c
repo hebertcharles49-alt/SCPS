@@ -259,13 +259,27 @@ int main(int argc,char**argv){
          * à lui seul, masquant tout delta H_coerc). On choisit une région LIBRE
          * (non colonisée) du monde, on la peuple/colonise à la main avec UN SEUL
          * bâtiment (n_bld=1, pop modeste), pour isoler H_coerc. */
+        /* SONDE LA ROUTE RÉELLE (campaign_order) plutôt que le seul flag `impassable`
+         * éco : la carte de CAMPAGNE (biome majoritaire par région, terrain_impassable)
+         * est PLUS STRICTE — une région « libre » côté éco peut être un biome de combat
+         * impraticable (roche/glace/eau) sous une graine donnée. Sans ce sondage, le
+         * premier candidat économiquement libre peut être géographiquement injoignable
+         * (campaign_order échoue en silence, next_hop<0) et le siège ne démarre jamais. */
         int rfree=-1;
-        for (int r=0;r<econ->n_regions;r++)
-            if (econ->region[r].owner<0 && !econ->region[r].impassable && econ->adj[frontier][r]){ rfree=r; break; }
+        for (int r=0;r<econ->n_regions && rfree<0;r++){
+            if (econ->region[r].owner>=0 || econ->region[r].impassable || !econ->adj[frontier][r]) continue;
+            campaign_init(camp2, w, econ);
+            ArmyState probe=make_force(1,0,0);
+            if (campaign_order(camp2, econ, A, frontier, r, &probe)) rfree=r;
+        }
         if (rfree<0)
-            for (int r=0;r<econ->n_regions;r++)
-                if (!econ->region[r].impassable && r!=frontier){ rfree=r; break; }
-        if (rfree<0 || !econ->adj[frontier][rfree]){
+            for (int r=0;r<econ->n_regions && rfree<0;r++){
+                if (econ->region[r].impassable || r==frontier) continue;
+                campaign_init(camp2, w, econ);
+                ArmyState probe=make_force(1,0,0);
+                if (campaign_order(camp2, econ, A, frontier, r, &probe)) rfree=r;
+            }
+        if (rfree<0){
             ok("(aucune région voisine de la frontière disponible pour ce test isolé sur cette graine)", true);
         } else {
             econ->region[rfree].owner=B; econ->region[rfree].colonized=true;

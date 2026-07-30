@@ -7458,3 +7458,136 @@ Commits : D1 `8c090ec` + fix `0f8d6a7` · D2 `878b163` · D3 `d557685` · carto
 - `scps_readout.c` reste non câblé (le même reste que documenté par la mission moteur) — désormais **la DLL LINK** (grâce au fix SConstruct), donc un futur agent scope `scps_readout.c` peut faire le swap `pr.nom = colonized ? scps_region_city_name(...) : region_name` sans blocage de build. Pas fait ici (hors propriété stricte de cette mission).
 - Probe `toponym_shot.gd`/`.tscn` (nouveaux, `godot/project/`) laissés en place comme actif réutilisable pour toute future vague toponymie/UI carte — écrit `build/toponym_*.png` (gitignored). Ramasse aussi des PNG de crop diagnostic (`build/toponym_crop_*.png`, gitignorés) laissés tels quels (scratch, sans conséquence).
 - Gates exécutés et VERTS : `scons target=template_debug` (DLL, godot/) — build propre, zéro erreur ; `Godot --headless --check-only --quit` — parse propre (aucune erreur de script) ; probe fenêtrée `toponym_shot.tscn` (seed 9, 130 ans, `SCPS_MUTE=1`, jamais `--headless`) — 9 PNG produits, **6 noms de ville distincts lus À L'ÉCRAN et confirmés par crop+upscale** : Hautlenavon (capitale d'un empire voisin, « Haut- » = marqueur `is_capital`), Courrive (capitale du joueur), Librerive, Librebrod (« Libre- » partagé, peuple/cité libres), Nouvlenavon, Nouvlenfurt (« Nouv-…-len- » partagé, même empire — parenté sonore intra-culture confirmée à l'œil, § invariant 14) ; tous 2-4 syllabes, prononçables, AUCUN débordement de cartouche observé (le cartouche s'auto-dimensionne au texte — structurellement impossible de déborder côté UI). Sidebar « VILLES » confirmée (« Courrive · 6 759 »). Fiche province onglet « Région » confirmée (section « VILLE » → « Hautlenavon », distincte de l'en-tête « Futaie Profond »).
+
+---
+
+## RECALIBRAGE BANCS POST-GRANDS-FLEUVES (mission bancs rouges, 2026-07-30)
+
+**Propriété stricte** : les 6 `scps/*_demo.c` listés en mission (statecraft_demo, agency_demo,
+missions_demo, warhost_demo, events_demo, scps_api_demo) — jamais scps_world.c/scps_endgame.c.
+
+**Découvertes** :
+- **`agency_demo.c` n'était PAS cassé par les grands-fleuves du tout** — kill-switch
+  (`SCPS_TUNE="RIVER_FILL=0,RIVER_ARID_NIL=0"`) donnait le MÊME échec que le monde neuf,
+  bit pour bit (K_inst=3.2, H_coerc=5.3, PE_infra=0.8, food_cap=0.8 dans les deux cas). Le
+  vrai coupable : **VÉTUSTÉ** (commit b0116bb, « Métriques province »), `agency_build_decay`
+  (scps_agency.c:673) qui ronge `ProvBuild.K_inst/H_coerc/PE_infra/food_cap` en continu vers
+  un plancher 50 %. Le fixture lisait ces champs à la TOUTE FIN du banc (~an 16,5), soit 9 à
+  14 ans APRÈS que le bâti testé ait fini de construire — largement assez pour qu'un nominal
+  tout juste au-dessus du seuil (K_inst 4.0 vs seuil 3.5 ; PE_infra/food_cap 1.0 vs seuil 1.0,
+  AUCUNE marge) retombe sous la barre. Piège méthodologique à retenir : **sous kill-switch
+  vert ⇒ presume grands-fleuves ; sous kill-switch ROUGE À L'IDENTIQUE ⇒ chercher AILLEURS**
+  (ici une vague antérieure jamais recalibrée dans ce fixture précis).
+- **`missions_demo.c` et `statecraft_demo.c`, eux, confirment exactement la jurisprudence
+  POLITY_WILD du digest** : `missions_demo` excluait POLITY_UNCLAIMED mais pas POLITY_WILD
+  dans sa boucle de sélection de `cid` — sous le nouveau monde (seed 42) elle attrapait un
+  hameau libre. `mission_grant` LÈVE la récompense or sur la richesse RÉELLE du royaume
+  (`econ_country_wealth_levy_bounded`, scps_missions.c:169) : quasi nulle pour un hameau, donc
+  la mission se marque bien ACCOMPLIE (loyauté +5 pile, matières versées — ces deux canaux ne
+  sont PAS bornés par la richesse) mais l'or n'abonde jamais le trésor. Un signal utile pour
+  distinguer « précondition POLITY_WILD » d'autre chose : les canaux non-monétaires (loyauté,
+  matières) passent, SEUL le canal or échoue.
+- **`statecraft_demo.c` avait le MÊME piège caché deux fois** (`int cid=0` répété dans le
+  bloc Q1 « LE CONSEIL » et dans le bloc V2a « LE CONSEIL VIVANT », ~30 assertions au total
+  en dépendent) — `statecraft_council_cost` a pour assiette `econ_country_tax_year(cid)`
+  (scps_statecraft.c:113-117) : un pays 0 = POLITY_WILD a une fiscalité PERMANENTE à zéro
+  (jamais rien à lever), donc coût=0 pour toujours, faisant échouer « coût >0 » ET (plus
+  loin) le test B1 « le trésor est CONSOMMÉ » (0<0 est faux). Seulement 2 des ~15 assertions
+  du bloc Conseil dépendent RÉELLEMENT d'un coût non-nul — les autres (déterminisme des
+  tiers, âge, retraite, factions, loyauté/rot…) sont indifférentes à la fiscalité du pays
+  choisi, d'où le nombre limité d'échecs malgré la portée large du hardcode.
+- **`warhost_demo.c` et `events_demo.c` étaient DÉJÀ au motif préféré** (recherche
+  dynamique, tri par taille pour warhost — exclusion POLITY_UNCLAIMED explicite avec
+  commentaire citant EXACTEMENT le même piège WILD dans son historique). Leur échec observé
+  en tout DÉBUT de mission ne s'est PAS reproduit contre le build gelé final (jitter epsilon
+  inclus) : les deux sont VERTS (8/8 et 119/119) sans un octet touché, avec ET sans
+  kill-switch. Confirme que le monde était encore MOUVANT (l'orchestrateur ajoutait le bruit
+  epsilon aux dépressions PENDANT que je diagnostiquais) — retester CONTRE LE BUILD COURANT
+  avant de toucher un fixture qui semble rouge : un faux rouge transitoire ne doit PAS être
+  recalibré en dur (aurait été du travail perdu / un hardcode inutile).
+- **`scps_api_demo.c` — la seule assertion qui a RÉSISTÉ à tout levier façade-only** :
+  « colonisation : une cible LÉGALE existe (scps_can_colonize) ». `scps_can_colonize`
+  (scps_api.c:3878-3894) exige qu'AU MOINS une province COLONISÉE du joueur ait pop≥800 ET
+  `food_sat≥0.5`. Sous la seed 9 (défaut du fichier) dans le nouveau monde, l'unique province
+  de départ du joueur plafonne à food_sat≈39-47 % — vérifié en tendance sur +39 ans
+  supplémentaires via `scps_player_alerts` (famine_pct) : ce n'est PAS un creux transitoire,
+  c'est un PLATEAU D'ÉQUILIBRE (raw_cap borné par la géographie de la tuile — worldgen fige
+  ce plafond, aucun levier façade ne le déplace). Deux leviers façade légitimes essayés :
+  (a) `scps_player_alloc_raw` à 255 sur les 4 brutes vivrières (GRAIN/FISH/LIVESTOCK/FRUIT)
+  et 0 sur tout le reste — a fait monter le plateau de ~42 % à ~47 %, insuffisant seul ;
+  (b) empilé le décret « Rations mesurées » (trouvé par NOM via `scps_decrees_list`,
+  jamais l'enum interne — motif déjà établi plus bas dans ce même fichier, ~ligne 1094 —
+  FOOD_NEED×0.95). `ProvBuild.food_cap` (Grenier/Irrigation, agency) a été un FAUX AMI ici :
+  il alimente `econ_prov_effcap`/`econ_region_effcap` (scps_econ.h:704-737, CAPACITÉ DE
+  LOGEMENT), pas `food_sat` — une confusion facile à faire vu le nom du champ, à ne pas
+  refaire. Aucun verbe façade n'expose l'EXPLOITATION (`agency_order_exploit`, qui booste
+  RÉELLEMENT `raw_cap`) au joueur — seul le moteur interne y a accès (agency_demo le prouve
+  via l'API interne, jamais via scps_api).
+
+**Pièges** :
+- Le moteur a bougé DEUX FOIS pendant cette mission (RIVER_FILL/RIVER_ARID_NIL d'abord, puis
+  le bruit epsilon des dépressions ajouté PAR-DESSUS en cours de route) — un banc rebuild-et-
+  testé avant le second changement peut redevenir rouge OU vert pour de MAUVAISES raisons
+  (cf. warhost_demo/events_demo ci-dessus, qui ont basculé rouge→vert tout seuls). Toujours
+  `touch scps/scps_world.c && make <banc>` avant de conclure quoi que ce soit si la mission
+  mentionne un moteur encore actif ailleurs.
+- `scps_api_demo` prend 3-4 MINUTES par run complet (170+ assertions, DIZAINES de
+  `ScpsSim` fraîches recréées séquentiellement — chaque worldgen coûte plusieurs secondes) :
+  un `run_in_background`/timeout mal calibré (<240 s) le fait passer pour « bloqué » alors
+  qu'il tourne normalement. Prévoir large.
+- MSYS2 : un `scps_api_demo.exe` resté ACCROCHÉ d'un run précédent (process encore vivant)
+  fait échouer le LIEN du build suivant avec « cannot open output file … Permission denied »
+  (pas une erreur de compilation) — `taskkill //F //IM scps_api_demo.exe` avant de rebuild
+  si ce message apparaît.
+- `ProvBuild.food_cap` (Grenier/Irrigation) ≠ nourriture réelle — c'est un terme de CAPACITÉ
+  DE LOGEMENT (`econ_prov_effcap`), pas de production vivrière ; `RegionEconomy/ProvinceEconomy
+  .food_sat` (couverture réelle besoin/production) est un champ SÉPARÉ, piloté par
+  `raw_cap[RES_GRAIN/FISH/LIVESTOCK]` + `RES_FRUIT` en filet — à ne pas confondre au prochain
+  passage sur la famine/colonisation.
+
+**Restes** :
+- **`scps_api_demo.c` — CONTRE-INTUITIF confirmé, puis fichier REVERTÉ à l'état pristine.**
+  Empiler le levier (b) (décret « Rations mesurées », FOOD_NEED×0.95, POP_R_BASE×0.97)
+  PAR-DESSUS le levier (a) (allocation 100 % vivrière) a fait EMPIRER le plateau (39→43 %
+  au lieu de 39→47 % pour (a) seul) — hypothèse la plus probable : la production de brutes
+  scale sur la main-d'œuvre disponible (POP_R_BASE↓ → moins de bras → moins de grain extrait,
+  même à poids d'allocation 100 %), et cette perte de production dépasse le gain de 5 % sur
+  le besoin. Un lecteur `food_sat` qui semble purement géographique (raw_cap) a donc AUSSI
+  une composante démographique cachée — tout décret qui freine la natalité peut être
+  CONTRE-PRODUCTIF pour la sécurité alimentaire à moyen terme, contre-intuitif à première
+  lecture du flavor (« moins de bouches à nourrir »). Aucun des deux leviers (seul ou
+  combiné) n'a franchi 50 % sur 40 ans simulés. Le fichier `scps/scps_api_demo.c` a été
+  ENTIÈREMENT REVERTÉ à HEAD (`git diff` vide) plutôt que laisser du code expérimental
+  mort/contre-productif dans un fichier livré — l'assertion « colonisation : une cible
+  LÉGALE existe » reste ROUGE, EXACTEMENT dans son état d'origine (236 réussis/1 échoué,
+  seed 9 par défaut), diagnostic complet mais PAS de fix trouvé dans le temps imparti.
+- Aucun autre levier FAÇADE-ONLY identifié n'est disponible pour pousser `food_sat`
+  au-delà de ce plateau (pas de verbe joueur pour l'EXPLOITATION de raws — seul
+  `agency_order_exploit`, interne, y accède ; pas de verbe de relocalisation de capitale ;
+  la recherche de graine ALTERNATIVE a été ÉCARTÉE délibérément — casserait la convention
+  du fichier où TOUS les sims dédiés réutilisent la même variable `seed` que l'argument
+  CLI, ce qui rendrait le comportement du banc silencieusement différent du `graine`
+  affichée en bannière). Prochaines pistes NON essayées, pour un futur agent avec plus de
+  budget : (i) un décret/levier qui monte la PRODUCTION plutôt que baisse le BESOIN (aucun
+  candidat trouvé dans le catalogue DECREE_* actuel — à vérifier) ; (ii) établir des routes
+  commerciales explicites avec un voisin excédentaire en vivres AVANT le test colonisation
+  (verbe diplo existe, chemin non exploré faute de temps) ; (iii) si aucun levier façade ne
+  suffit jamais : c'est un signal qu'il faut remonter à l'orchestrateur pour DÉCISION —
+  soit un rebalance worldgen (hors propriété de fichiers de cette mission, PAS tenté), soit
+  documenter/accepter que sous la seed 9 (nouveau monde), la colonisation reste
+  indisponible très longtemps pour la capitale de départ — pas nécessairement un bug
+  moteur (scps_can_colonize fait exactement ce que sa spec dit), mais une conséquence dure
+  et peut-être non désirée des grands-fleuves à vérifier en jeu réel, pas seulement au banc.
+- warhost_demo.c / events_demo.c : aucun changement — confirmés verts contre le build gelé,
+  laissés TELS QUELS (leur motif de recherche dynamique était déjà correct).
+
+**Clôture orchestrateur (vague grands fleuves, 2026-07-31)** : cartographie scps_api_demo
+« colonisation : une cible LÉGALE existe » sur 4 graines du moteur final — 9 ✗ · 7 ✗ ·
+3 ✗ · 42 ✓. La mécanique n'est pas morte (42 passe ; la colonisation IA vit partout —
+dump PROV du chronicle), mais le VERBE JOUEUR (`scps_can_colonize` : pop≥800 ET
+food_sat≥0.5, seuil EN DUR scps_api.c:3892, le drain revalide) trouve sa précondition
+moins souvent : les capitales-joueur post-fleuves plafonnent fréquemment à food_sat
+~40-47 %. DÉCISION JOUEUR REQUISE (équilibrage, pas bug) : abaisser le seuil, booster le
+food du spawn curated, ou statu quo. Le banc reste graine 9 PRISTINE, rouge 1/237
+documenté — ne pas « réparer » en changeant de graine (42 casse 3 autres fixtures :
+B7 crédit + rénover ×2, elles aussi graine-dépendantes).

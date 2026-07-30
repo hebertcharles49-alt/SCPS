@@ -225,6 +225,11 @@ func _build_river_field(w, W: int, H: int) -> Image:
 		var mp := _meander(pts, hgt, sea, bio, W, H)
 		var n := mp.size()
 		for k in range(n - 1):
+			# GRANDS FLEUVES : la polyline TRAVERSE désormais les lacs (routage rempli) —
+			# on ne grave pas DANS l'eau : le lac fait le lien (Rhône/Léman), et l'arbre
+			# du flood y est une diagonale parfaite qui trancherait sur l'eau calme.
+			if _is_sea(sea, mp[k], W, H) and _is_sea(sea, mp[k + 1], W, H):
+				continue
 			var frac := float(k) / float(maxi(1, n - 1))         # 0 = source → 1 = embouchure
 			var wd := base_w + int(round(frac * float(grow)))    # PLUS LARGE en aval (affluents accumulés)
 			_carve_seg(img, mp[k], mp[k + 1], v, wd, W, H)

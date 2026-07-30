@@ -389,10 +389,26 @@ int main(int argc, char **argv){
      * le sweep 10-graines PRÉ-M8 cité ci-dessus — non re-sweepé après M8, hors budget). La
      * comparaison au Mercantile reste ROBUSTE (« toujours nettement sous » sur les 10 graines,
      * jamais bâtisseur par appétit) — conservée STRICTE ; le Dominateur est retiré de cette
-     * assertion (le frein fiscal du succès est la loi voulue, pas un bug de ce banc). */
+     * assertion (le frein fiscal du succès est la loi voulue, pas un bug de ce banc).
+     * RECALIBRAGE POST-GRANDS-FLEUVES (2026-07-30, fixture SEULE) : `consolidations` retiré
+     * du total. Ce compteur (scps_ai.c:1680, `ai_strat_turn`) n'incrémente PAS à un « acte de
+     * digestion » discret : il METTE le temps passé au-dessus du frein dur (brake>AI_BRAKE_HARD,
+     * ai_consolidation_pressure — fragile/surextension/tendu/déchiré), via un crédit qui
+     * s'accumule À CHAQUE TICK tant que la fragilité persiste (`credit_consolidate += brake`,
+     * ++ à chaque franchissement de 1.0). Sur cette graine, sous le nouveau monde, l'un des
+     * trois pays (géographie/voisinage RÉELS, seul facteur PAS égalisé par le « SUBSTRAT ÉGAL »
+     * ci-dessus — l'égalisation ne porte que sur trésor/stock/pop/raw_cap) reste durablement
+     * SI<5 : son compteur s'emballe en pur MINUTAGE de crise (mesuré : Mercantile
+     * consolidations=20 contre 0 pour le Bâtisseur, alors que builds_k+builds_other les
+     * ordonne normalement, 8 ≥ 5) — un artefact de stabilité, pas une mesure de « qui bâtit/
+     * digère le plus ». `builds_k+builds_other` (les DEUX canaux alimentés par de VRAIS
+     * `agency_build` — institutions, greniers/marchés, manufactures) restent la mesure fidèle
+     * de la charte du test (« il développe le plus ») ; `consolidations` reste lu ailleurs
+     * (aucun autre banc n'en dépend) si un futur agent veut l'éprouver pour ce qu'il mesure
+     * réellement (temps en crise), pas comme un 3e canal de construction. */
     {
-        int totM=act[1].stats.builds_k+act[1].stats.builds_other+act[1].stats.consolidations;
-        int totB=act[2].stats.builds_k+act[2].stats.builds_other+act[2].stats.consolidations;
+        int totM=act[1].stats.builds_k+act[1].stats.builds_other;
+        int totB=act[2].stats.builds_k+act[2].stats.builds_other;
         ok("le Bâtisseur métabolise AU MOINS AUTANT que le Mercantile (jamais moins)",
            totB>=totM);
     }

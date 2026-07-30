@@ -109,6 +109,13 @@ EX = [
     ("frappe_paires",  re.compile(r"frappe ventilée : paires (\d+)")),
     ("frappe_billon",  re.compile(r"BILLON (\d+)")),
     ("frappe_libre",   re.compile(r"BILLON \d+ \(\d+%\) · libre (\d+)")),
+    # ── GRANDS FLEUVES (vague 2026-07-30 : routage rempli, cible troncs 150-300) ──
+    ("fleuves_n",      re.compile(r"FLEUVES : (\d+) tracés")),
+    ("tronc_max",      re.compile(r"FLEUVES : \d+ tracés · tronc max (\d+) c\.")),
+    ("fleuves_100",    re.compile(r"tronc max \d+ c\. · (\d+) ≥100")),
+    ("fleuves_150",    re.compile(r"(\d+) ≥150")),
+    # ── PER-PROVINCE (dump PROV — id, ville, pays, pop) ──
+    ("prov_total",     re.compile(r"PROV total (\d+) colonisée")),
 ]
 
 def parse_log(path):
@@ -183,7 +190,8 @@ def main():
               "banq_forcees","banq_volontaires","taux_moyen","dettes_struct","ratio_max",
               "marches_fermes","preteurs_ruines","invariant_pic",
               "extrait_or","extrait_cuivre","res_apparie","res_celibataire",
-              "frappe_paires","frappe_billon","frappe_libre"]:
+              "frappe_paires","frappe_billon","frappe_libre",
+              "fleuves_n","tronc_max","fleuves_100","fleuves_150","prov_total"]:
         print(f"  {c:16s} {dist([r.get(c) for r in rows])}")
     print("\n── FINS §27 (type × an) ──")
     fins = {}

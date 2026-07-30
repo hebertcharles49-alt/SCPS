@@ -12,6 +12,7 @@
 #include "scps_tune.h"
 #include "scps_math.h"   /* clampf partagé (M3d : le taux moyen observé) */
 #include "scps_world.h"
+#include "scps_toponym.h"  /* nom de ville à la colonisation (dump per-province) */
 #include "scps_econ.h"
 #include "scps_trade.h"
 #include "scps_tech.h"
@@ -1495,6 +1496,26 @@ int main(int argc, char **argv){
 
         printf("   BILAN an %d : %d pays subsistent (%d absorbés · %d émergés ; plancher %d) | %d âge(s) ; %d guerre(s) au total, pic %d ; pic de révolte %d (an %d)\n",
                years, c1, absorbed, emerged, min_living, nages, war_onsets, peak_wars, peak_rev, peak_rev_year);
+        /* PER-PROVINCE (gigasweep) : une ligne parsable par province colonisée —
+         * id, ville (nom posé à la colonisation, jamais re-tiré — grain région),
+         * propriétaire, population. + FLEUVES : la preuve chiffrée du worldgen. */
+        { int mx=0, c100=0, c150=0;
+          for (int r=0;r<w->n_rivers;r++){ int L=w->river[r].len;
+              if (L>mx) mx=L;
+              if (L>=100) c100++;
+              if (L>=150) c150++; }
+          printf("   FLEUVES : %d tracés · tronc max %d c. · %d ≥100 · %d ≥150\n",
+                 w->n_rivers, mx, c100, c150); }
+        { int npr=0;
+          for (int p=0;p<s.econ->n_prov && p<SCPS_MAX_PROV;p++){
+              const ProvinceEconomy *pr=&s.econ->prov[p];
+              if (!pr->active || !pr->colonized) continue;
+              double pop=0; for (int k=0;k<CLASS_COUNT;k++) pop+=pr->strata[k].pop;
+              const char *ville=(pr->region>=0 && pr->region<SCPS_MAX_REG)? toponym_region_name(pr->region) : "";
+              printf("   PROV %d ville=\"%s\" pays=%d pop=%.0f\n", p, ville, (int)pr->owner, pop);
+              npr++;
+          }
+          printf("   PROV total %d colonisée(s)\n", npr); }
         /* FAU/F8 — la boucle faustienne (transmuteurs + entropie) ET la demande de fer (forge
          * militaire). Conso cumulée par rare ; entropie monde ; prix moyen du fer (la preuve F8). */
         { double pir=0.0, pmax=0.0, arms=0.0; int npr=0; long fract=0;

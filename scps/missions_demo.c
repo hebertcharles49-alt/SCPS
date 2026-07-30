@@ -40,10 +40,16 @@ int main(int argc, char **argv){
     missions_init(ms);
     statecraft_init(sc,w);   /* P3 : les sièges du Conseil (tous vacants au départ) */
 
-    /* Un pays réel avec une capitale. */
+    /* Un pays réel avec une capitale. POLITY_WILD (hameau libre) exclu : il a un
+     * rôle éligible aux missions côté moteur, mais sa richesse est quasi nulle —
+     * la récompense (econ_country_wealth_levy_bounded) LÈVE sur la richesse réelle
+     * du royaume, donc reste bornée à ~0 pour un hameau, faisant échouer le banc
+     * pour de mauvaises raisons (pas un bug moteur : le hameau ENCAISSE bien la
+     * mission, juste une somme dérisoire — précédent : jurisprudence POLITY_WILD
+     * de la vague grands-fleuves, cf. endgame_pick_fauteur). */
     int cid=-1;
     for (int c=0;c<w->n_countries;c++){
-        if (w->country[c].role==POLITY_UNCLAIMED) continue;
+        if (w->country[c].role==POLITY_UNCLAIMED || w->country[c].role==POLITY_WILD) continue;
         int cp=w->country[c].capital_prov; if (cp<0) continue;
         int cr=w->province[cp].region;
         for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==c && cr>=0){ cid=c; break; }

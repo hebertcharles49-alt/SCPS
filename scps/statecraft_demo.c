@@ -47,6 +47,15 @@ static int cap_region(const World *w, int cid){
     int cp=(cid>=0&&cid<w->n_countries)?w->country[cid].capital_prov:-1;
     return (cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
 }
+/* Le CONSEIL a besoin d'un pays avec une capitale ET un revenu fiscal RÉEL (le coût
+ * mensuel = econ_country_tax_year(cid) × taux) — jamais l'index 0 en dur : sous
+ * certaines graines le pays 0 est POLITY_WILD (hameau libre, capitale possible mais
+ * fiscalité nulle pour toujours), ce qui annule silencieusement tout coût/paie. */
+static int find_taxed_country(const World *w){
+    for (int c=0;c<w->n_countries;c++)
+        if (w->country[c].capital_prov>=0 && econ_country_tax_year(c)>0.f) return c;
+    return 0;   /* repli dégénéré : aucun pays taxé (ne devrait pas arriver après échauffement) */
+}
 
 int main(int argc, char **argv){
     uint32_t seed=(argc>1)?(uint32_t)strtoul(argv[1],NULL,10):42u;
@@ -252,7 +261,7 @@ int main(int argc, char **argv){
     /* ── Q1 — LE CONSEIL : nommer monte le multiplicateur ET coûte ; renvoyer rétablit ── */
     {
         statecraft_init(s.sc, s.w);
-        int cid=0, seat=0;                              /* siège Savoir */
+        int cid=find_taxed_country(s.w), seat=0;        /* siège Savoir */
         ok("Conseil : siège vacant → multiplicateur NEUTRE (1.0)",
            statecraft_council_seat_mult(s.sc,seed,cid,seat)==1.f);
         int best=0, bt=0;                               /* nomme le candidat de plus haut tier (pool gen 0) */
@@ -302,7 +311,7 @@ int main(int argc, char **argv){
          * mélange DÉTERMINISTE des 6 factions par (siège, génération) ; les 3
          * candidats d'UN siège sont TOUJOURS 3 factions DISTINCTES (préfixe d'une
          * permutation) ; re-tirage à chaque génération. */
-        int cid=0;
+        int cid=find_taxed_country(s.w);
         bool det_ok=true, distinct_ok=true;
         for (int seat=0; seat<SC_COUNCIL_SEATS; seat++){
             EthosFaction seen[SC_COUNCIL_CANDS];

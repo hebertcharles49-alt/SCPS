@@ -187,7 +187,9 @@ void endgame_set_pop_ref(EndgameState *eg, const WorldEconomy *econ) {
 static int endgame_pick_fauteur(const World *w, const TechState ts[], int *out_reg) {
     int best = -1; float bestc = -1.f;
     for (int c = 0; c < w->n_countries && c < SCPS_MAX_COUNTRY; c++) {
-        if (w->country[c].role == POLITY_UNCLAIMED) continue;
+        /* WILD exclu aussi : un hameau libre n'a ni tech ni charge faustienne —
+         * sa « capitale » n'est jamais peuplée (foyer mort pour le cataclysme). */
+        if (w->country[c].role == POLITY_UNCLAIMED || w->country[c].role == POLITY_WILD) continue;
         if (ts[c].charge > bestc) { bestc = ts[c].charge; best = c; }
     }
     *out_reg = -1;

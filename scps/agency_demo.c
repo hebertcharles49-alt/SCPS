@@ -129,7 +129,20 @@ int main(int argc, char **argv){
     agency_order_build(s.ag, s.cap_reg, EDI_ACADEMIE);
     agency_order_build(s.ag, s.cap_reg, EDI_MARCHE);    /* → PE_infra (carrefour) */
     agency_order_build(s.ag, s.cap_reg, EDI_GRENIER);   /* → food_cap (apex) */
-    run_days(&s, 6*SCPS_DAYS_PER_YEAR);   /* l'Académie met ~3 ans (E1 : 960 j) */
+    /* VÉTUSTÉ (b0116bb, « Métriques province ») : la densité bâtie s'érode dès la fin
+     * du chantier (agency_build_decay tourne CHAQUE jour). Le total de jours simulés
+     * reste 6*SCPS_DAYS_PER_YEAR (K_an8 tombe au même an que le témoin) mais on VEILLE
+     * jour par jour pour capturer le PIC (juste après complétion, avant toute usure) au
+     * lieu de lire en fin de fenêtre — sinon on prouve l'usure, pas l'accumulation
+     * (déjà l'objet d'un banc dédié : scps_api_demo VÉTUSTÉ). */
+    const ProvBuild *b1=&s.econ->region[s.cap_reg].build;
+    float K_inst1=0.f, PE_infra1=0.f, food_cap1=0.f;
+    for (int d=0; d<6*SCPS_DAYS_PER_YEAR; d++){
+        run_days(&s, 1);
+        if (b1->K_inst  >K_inst1)  K_inst1  =b1->K_inst;
+        if (b1->PE_infra>PE_infra1)PE_infra1=b1->PE_infra;
+        if (b1->food_cap>food_cap1)food_cap1=b1->food_cap;
+    }
     snapshot(&s, "après institutions (K↑)", &SI1,&F1,&L1);
     float K_an8 = s.wp->country[s.player].K;   /* la COORDONNÉE à l'an 8 (même an que le témoin) */
 
@@ -137,7 +150,11 @@ int main(int argc, char **argv){
     agency_order_build(s.ag, s.cap_reg, EDI_GARNISON);
     agency_order_build(s.ag, s.cap_reg, EDI_FORTERESSE);
     agency_order_build(s.ag, s.cap_reg, EDI_CITADELLE);
-    run_days(&s, 8*SCPS_DAYS_PER_YEAR);   /* la Citadelle met ~6 ans */
+    float H_coerc2=0.f;   /* idem : pic avant l'usure du défrichement (phase 3) */
+    for (int d=0; d<8*SCPS_DAYS_PER_YEAR; d++){   /* la Citadelle met ~6 ans */
+        run_days(&s, 1);
+        if (b1->H_coerc>H_coerc2) H_coerc2=b1->H_coerc;
+    }
     snapshot(&s, "après citadelles (H↑, L↓)", &SI2,&F2,&L2);
 
     /* Phase 3 — DÉFRICHEMENT (§4) sur une niche forestière + EXPLOITATION (§3).
@@ -181,16 +198,18 @@ int main(int argc, char **argv){
        K_an8 > K_ctrl + 2.0f);
     ok("bâtir des citadelles ronge la légitimité (L baisse)",     L2  < L1 - 0.1f);
     ok("les citadelles aggravent la fragilité (par la force)",    F2  > F1);
-    /* La densité bâtie dans la capitale est bien accumulée. */
-    const ProvBuild *b=&s.econ->region[s.cap_reg].build;
+    /* La densité bâtie dans la capitale est bien accumulée (PIC relevé jour par jour
+     * pendant CHAQUE phase de chantier — cf. K_inst1/PE_infra1/food_cap1/H_coerc2 plus
+     * haut — pas en fin de banc, où la vétusté aurait déjà rongé la marge sous les
+     * seuils). */
     ok("K institutionnel bâti dans la capitale (Tribunal+Chancellerie+Académie)",
-       b->K_inst >= 3.5f);
+       K_inst1 >= 3.5f);
     ok("coercition bâtie dans la capitale (Garnison+Forteresse+Citadelle)",
-       b->H_coerc >= 5.5f);
-    ok("infrastructure marchande bâtie (PE_infra, Marché)", b->PE_infra >= 1.0f);
-    ok("stockage alimentaire bâti (food_cap, Grenier)",     b->food_cap >= 1.0f);
-    printf("     capitale : K_inst=%.1f  H_coerc=%.1f  PE_infra=%.1f  food_cap=%.1f\n",
-           b->K_inst, b->H_coerc, b->PE_infra, b->food_cap);
+       H_coerc2 >= 5.5f);
+    ok("infrastructure marchande bâtie (PE_infra, Marché)", PE_infra1 >= 1.0f);
+    ok("stockage alimentaire bâti (food_cap, Grenier)",     food_cap1 >= 1.0f);
+    printf("     capitale (au palier bâti) : K_inst=%.1f  H_coerc=%.1f  PE_infra=%.1f  food_cap=%.1f\n",
+           K_inst1, H_coerc2, PE_infra1, food_cap1);
     /* §4 défrichement + §3 exploitation */
     ok("défricher monte la nourriture (food_cap)",            food1 > food0);
     ok("défricher dérive la subsistance vers l'agriculture",  subs1 > subs0 + 0.3f);

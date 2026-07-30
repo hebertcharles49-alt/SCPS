@@ -948,22 +948,106 @@ static void step_hydraulic_erosion(float *height, uint32_t seed) {
     normalize_f(height,SCPS_N);
 }
 
+/* ------------------------------------------------------------------------
+ * REMPLISSAGE DES DÉPRESSIONS (priority-flood + epsilon, Barnes 2014) —
+ * GRANDS FLEUVES. Le D8 brut meurt au fond de chaque cuvette (futur lac) :
+ * l'accumulation y repart de 1 en aval → tout grand système était FRAGMENTÉ
+ * à chaque dépression (troncs émergents ~50 cellules, jamais de Nil). On
+ * route le drainage sur une surface REMPLIE : chaque dépression est montée
+ * à son déversoir, +epsilon monotone pour que les plats gardent une pente
+ * vers l'exutoire. La surface remplie ne sert QU'AU routage (fdir/accum) —
+ * le relief réel garde ses creux, les lacs priority-flood y naissent comme
+ * avant ; le fleuve, lui, les TRAVERSE désormais (Rhône/Léman).
+ * DÉTERMINISTE : tas binaire (clé hauteur remplie, départage par index),
+ * graines = mer + bord de carte. parent[] = direction d'où le flood a
+ * atteint la cellule (repli D8 pour les plats résiduels) ; popseq[] = ordre
+ * de sortie du tas (croissant en hauteur remplie) → son INVERSE est un
+ * ordre topologique EXACT du graphe de drainage (le tri par dénombrement à
+ * 1024 godets écraserait les marches epsilon d'un même plat).
+ */
+static int fill_depressions(const float *height, float *hfill, int8_t *parent, int *popseq){
+    const float EPS=1e-5f;   /* marche de base ; ×(1..8) bruité par cellule ci-dessous */
+    uint8_t *seen=(uint8_t*)calloc(SCPS_N,1);
+    int     *heap=(int*)malloc((size_t)SCPS_N*sizeof(int));
+    if (!seen||!heap){ free(seen); free(heap); return 0; }
+    int hn=0, np=0;
+    /* moins-que déterministe : hauteur remplie, puis index */
+    #define FD_LT(a,b) (hfill[a]<hfill[b] || (hfill[a]==hfill[b] && (a)<(b)))
+    #define FD_PUSH(i) do{ int _c=hn++; heap[_c]=(i); \
+        while(_c>0){ int _p=(_c-1)>>1; if(FD_LT(heap[_c],heap[_p])){int _t=heap[_c];heap[_c]=heap[_p];heap[_p]=_t;_c=_p;} else break; } }while(0)
+    for (int i=0;i<SCPS_N;i++){
+        int x=i%SCPS_W, y=i/SCPS_W;
+        int border=(x==0||x==SCPS_W-1||y==0||y==SCPS_H-1);
+        if (border || height[i]<SEA_LEVEL){ seen[i]=1; hfill[i]=height[i]; parent[i]=-1; FD_PUSH(i); }
+    }
+    while (hn>0){
+        int c=heap[0]; hn--;                                   /* pop du minimum + re-tamisage */
+        heap[0]=heap[hn];
+        { int k=0; for(;;){ int l=2*k+1,r=l+1,m=k;
+            if (l<hn && FD_LT(heap[l],heap[m])) m=l;
+            if (r<hn && FD_LT(heap[r],heap[m])) m=r;
+            if (m==k) break;
+            int t=heap[k];heap[k]=heap[m];heap[m]=t; k=m; } }
+        popseq[np++]=c;
+        int cx=c%SCPS_W, cy=c/SCPS_W;
+        for (int d=0;d<8;d++){
+            int nx=cx+DDX[d], ny=cy+DDY[d];
+            if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
+            int ni=scps_idx(nx,ny);
+            if (seen[ni]) continue;
+            seen[ni]=1;
+            /* Marche BRUITÉE (hash d'index, déterministe) : un epsilon uniforme fait
+             * des fronts de flood circulaires → chemins D8 radiaux PARFAITEMENT droits
+             * dans les plats (vu au shot : diagonale rigide de 100+ cellules à travers
+             * un marais). Le bruit ×(1..8) rend l'arbre erratique → le fleuve de
+             * plaine SERPENTE. Cumul max ~8e-5×300 ≈ 0.024 : négligeable vs relief. */
+            uint32_t jh=(uint32_t)ni; jh^=jh>>16; jh*=0x45d9f3bu; jh^=jh>>13;
+            float eps=EPS*(float)(1u+(jh&7u));
+            hfill[ni] = (height[ni]>hfill[c]+eps)? height[ni] : hfill[c]+eps;
+            /* direction de ni VERS c (celle que suivrait l'eau) : l'opposé de d */
+            parent[ni]=-1;
+            for (int dd=0;dd<8;dd++) if (nx+DDX[dd]==cx && ny+DDY[dd]==cy){ parent[ni]=(int8_t)dd; break; }
+            FD_PUSH(ni);
+        }
+    }
+    #undef FD_PUSH
+    #undef FD_LT
+    free(seen); free(heap);
+    return np==SCPS_N;                                         /* tout doit être atteint (8-conn, bord semé) */
+}
+
 static void step_erosion(float *height, Cell *cells, float erosion) {
     int8_t *fdir  = (int8_t*)malloc(SCPS_N*sizeof(int8_t));
     float  *accum = (float *)malloc(SCPS_N*sizeof(float));
     if (!fdir||!accum) { free(fdir);free(accum);return; }
 
+    /* GRANDS FLEUVES (RIVER_FILL, défaut 1 ; 0 = D8 brut d'origine, byte-identique) :
+     * le routage se fait sur la surface REMPLIE, le creusement sur le relief réel. */
+    const float *hroute=height;
+    float *hfill=NULL; int8_t *parent=NULL; int *popseq=NULL;
+    if (tune_f("RIVER_FILL",1.f)>0.f){
+        hfill =(float*) malloc(SCPS_N*sizeof(float));
+        parent=(int8_t*)malloc(SCPS_N);
+        popseq=(int*)   malloc(SCPS_N*sizeof(int));
+        if (hfill&&parent&&popseq && fill_depressions(height,hfill,parent,popseq)) hroute=hfill;
+        else { free(hfill);free(parent);free(popseq); hfill=NULL;parent=NULL;popseq=NULL; }
+    }
+
     /* D8 : direction vers le voisin le plus bas */
     for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++) {
-        float h=height[scps_idx(x,y)];
+        float h=hroute[scps_idx(x,y)];
         int best=-1; float drop=0.f;
         for (int d=0;d<8;d++) {
             int nx2=x+DDX[d],ny2=y+DDY[d];
             if (nx2<0||nx2>=SCPS_W||ny2<0||ny2>=SCPS_H) continue;
-            float dh=(h-height[scps_idx(nx2,ny2)])/DDIST[d];
+            float dh=(h-hroute[scps_idx(nx2,ny2)])/DDIST[d];
             if (dh>drop){drop=dh;best=d;}
         }
-        fdir[scps_idx(x,y)]=(int8_t)best;
+        int i=scps_idx(x,y);
+        fdir[i]=(int8_t)best;
+        /* Plat résiduel sur la surface remplie (égalité stricte de flottants) :
+         * repli sur la direction du flood — l'eau suit l'arbre de remplissage. */
+        if (best<0 && parent && hroute==hfill && height[i]>=SEA_LEVEL) fdir[i]=parent[i];
     }
 
     /* Accumulation de flux EN ORDRE TOPOLOGIQUE (haut → bas).
@@ -973,12 +1057,18 @@ static void step_erosion(float *height, Cell *cells, float erosion) {
      *  long des longues chaînes ; le seuil de normalisation annulait alors
      *  presque tous les débits.) */
     int *order=(int*)malloc(SCPS_N*sizeof(int));
-    if (!order){ free(fdir); free(accum); return; }
+    if (!order){ free(fdir); free(accum); free(hfill); free(parent); free(popseq); return; }
     for (int i=0;i<SCPS_N;i++){ order[i]=i; accum[i]=1.f; }
 
+    /* Surface remplie : l'ordre de sortie du tas est croissant en hauteur
+     * remplie → son inverse ordonne amont→aval EXACTEMENT (les marches
+     * epsilon d'un plat seraient écrasées par les 1024 godets ci-dessous). */
+    if (hroute==hfill){
+        for (int k=0;k<SCPS_N;k++) order[k]=popseq[SCPS_N-1-k];
+    }
     /* Tri des indices par hauteur décroissante (tri par dénombrement sur
      * 1024 niveaux : O(N), suffisant pour ordonner amont→aval). */
-    {
+    else {
         const int NB=1024;
         int *cnt=(int*)calloc(NB+1,sizeof(int));
         int *tmp=(int*)malloc(SCPS_N*sizeof(int));
@@ -1025,7 +1115,7 @@ static void step_erosion(float *height, Cell *cells, float erosion) {
         if (rs>0.45f && height[i]>SEA_LEVEL) height[i]-=(rs-0.45f)*carve*(0.5f+1.0f*soft);
     }
     normalize_f(height,SCPS_N);
-    free(fdir); free(accum);
+    free(fdir); free(accum); free(hfill); free(parent); free(popseq);
 }
 
 /* ========================================================================
@@ -3086,10 +3176,14 @@ static void trace_rivers(World *w, float *height) {
      * TERMINE endoréique. Tri par dénombrement sur le flux DÉCROISSANT (gros fleuves
      * d'abord ; départage par index → ordre total déterministe, aucune clé flottante). */
     int nm=0;
+    /* GRANDS FLEUVES (RIVER_FILL) : sur routage rempli le flux TRAVERSE les
+     * cuvettes → « se jette dans un lac » n'est plus une embouchure (le stem
+     * remonte à travers le lac, Rhône/Léman) ; seules mer et carte comptent. */
+    int bridge = tune_f("RIVER_FILL",1.f)>0.f;
     for (int i=0;i<SCPS_N;i++){
         if (cell[i].river<RIVER_FLUX_T || height[i]<SEA_LEVEL || cell[i].lake) continue;
         int j=river_down(cell,i);
-        int is_mouth = (j<0) || (height[j]<SEA_LEVEL) || cell[j].lake;
+        int is_mouth = (j<0) || (height[j]<SEA_LEVEL) || (!bridge && cell[j].lake);
         if (is_mouth){ mouths[nm++]=i; bcount[cell[i].river]++; }
     }
     { int acc=0; for (int b=255;b>=0;b--){ boff[b]=acc; acc+=bcount[b]; } }
@@ -4082,16 +4176,23 @@ void world_generate(World *w, const WorldParams *P) {
     /* Atténuation des rivières en zones arides : le débit D8 est purement
      * topographique ; on corrige après le climat pour effacer les « fleuves »
      * fantômes qui traverseraient un désert ou une steppe très sèche.
-     * Quadratique : en dessous de moisture=0.25 le débit s'annule presque. */
+     * Quadratique : en dessous de moisture=0.25 le débit s'annule presque.
+     * GRANDS FLEUVES (RIVER_ARID_NIL, défaut 1 ; 0 = ancien comportement) :
+     * l'exemption du Nil — l'atténuation est PONDÉRÉE par le flux
+     * (damp' = damp + (1−damp)·r) : un ruisseau fantôme s'efface toujours,
+     * un grand fleuve TRAVERSE le désert ; ses rives restent « wet » pour
+     * les biomes → couloir fertile émergent le long du cours. */
+    { int nil = tune_f("RIVER_ARID_NIL",1.f)>0.f;
     for (int i=0; i<SCPS_N; i++) {
         if (height[i] < SEA_LEVEL) continue;
         float m = moisture[i];
         if (m < 0.30f) {
             float damp = (m / 0.30f);
             damp = damp * damp;
+            if (nil){ float r=w->cell[i].river/255.f; damp = damp + (1.f-damp)*r; }
             w->cell[i].river = (uint8_t)(w->cell[i].river * damp);
         }
-    }
+    } }
 
     /* Lissage de moisture et temp sur 2 passes 3×3 (terrestre uniquement) :
      * adoucit les gradients trop nets avant l'assignation des biomes →
@@ -4256,8 +4357,13 @@ void world_generate(World *w, const WorldParams *P) {
     printf("[scps] rivières...     "); fflush(stdout);
     trace_rivers(w,height);
     carve_oxbows(w,height);               /* bras morts (2e voie de lac) le long des cours inférieurs */
-    printf("ok (%d riv. ; écartées : %d cap · %d courtes · %d longues)\n",
-           w->n_rivers, g_river_drop_cap, g_river_drop_short, g_river_drop_long);
+    { int mx=0, c100=0, c150=0;                     /* GRANDS FLEUVES : la preuve chiffrée */
+      for (int r=0;r<w->n_rivers;r++){ int L=w->river[r].len;
+          if (L>mx) mx=L;
+          if (L>=100) c100++;
+          if (L>=150) c150++; }
+      printf("ok (%d riv. ; tronc max %d c. · %d ≥100 · %d ≥150 ; écartées : %d cap · %d courtes · %d longues)\n",
+             w->n_rivers, mx, c100, c150, g_river_drop_cap, g_river_drop_short, g_river_drop_long); }
 
     /* Diag FALAISES (gated, style SCPS_*DIAG) : compte les cellules de la bande
      * côtière qui portent le drapeau dérivé + HISTOGRAMME des dénivelés au

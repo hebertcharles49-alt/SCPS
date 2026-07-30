@@ -489,6 +489,15 @@
      * genèse : aucun empire ne se colle à un voisin. Cités-états & hameaux libres y sont permis (zone
      * tampon « habitée mais pas rivale »). La mer coupe l'adjacence ⇒ une île isolée passe toujours
      * (les « Angleterre » insulaires émergent). Trop grand sur un petit monde ⇒ moins d'empires posés. */ \
+    /* GRANDS FLEUVES (2026-07-29) : routage du drainage sur surface REMPLIE
+     * (priority-flood+epsilon) — le flux traverse les cuvettes/lacs, troncs
+     * émergents 150-300 cellules (avant : ~50, fragmentés à chaque lac).
+     * 0 = D8 brut d'origine (kill-switch, byte-identique à l'ancienne ère). */ \
+    X(RIVER_FILL,             1.0f) \
+    /* L'exemption du Nil : l'atténuation aride est pondérée par le flux
+     * (un grand fleuve TRAVERSE le désert, un ruisseau fantôme s'efface).
+     * 0 = atténuation quadratique pure d'origine. */ \
+    X(RIVER_ARID_NIL,         1.0f) \
     X(SPAWN_SAFE_HOPS,        6.0f) \
     /* Rayon de spawn ADAPTATIF : on tente SPAWN_SAFE_HOPS, et si la géométrie ne case pas tous les
      * empires demandés, on resserre d'un cran jusqu'à SPAWN_SAFE_HOPS_MIN. « Tout caser » prime, à

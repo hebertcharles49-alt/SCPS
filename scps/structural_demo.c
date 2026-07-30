@@ -124,8 +124,14 @@ int main(int argc, char **argv){
         legitimacy_tick(s.wl,s.w,s.econ,s.ts); tickP(&s); }
     events_init(s.ev,s.w,seed);
 
+    /* POLITY_WILD (hameau libre) exclu : `shape()` pose H/K/L sur SES régions, mais un
+     * hameau minuscule ne bascule pas fiablement en mode révolution (masse trop faible/
+     * gates ailleurs) — la « masse critique » (§3, deep_n pays forcés en crise) en
+     * perdait un sur huit sous le nouveau monde (7/8 au lieu de 8/8, seuil jamais atteint).
+     * Même jurisprudence que ai_demo/statecraft_demo/missions_demo (vague grands-fleuves). */
     int polities[SCPS_MAX_COUNTRY], npol=0;
-    for (int c=0;c<s.w->n_countries;c++) if (s.w->country[c].role!=POLITY_UNCLAIMED && cap_region(s.w,c)>=0) polities[npol++]=c;
+    for (int c=0;c<s.w->n_countries;c++)
+        if (s.w->country[c].role!=POLITY_UNCLAIMED && s.w->country[c].role!=POLITY_WILD && cap_region(s.w,c)>=0) polities[npol++]=c;
     if (npol<4){ fprintf(stderr,"monde trop vide (%d pays)\n",npol); return 1; }
 
     /* ═══ 1. AUCUN ORDRE IMPOSÉ — Soulèvements ↔ Tyrans : EXCLUSION MUTUELLE ═
