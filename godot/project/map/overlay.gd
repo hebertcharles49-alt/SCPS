@@ -3563,18 +3563,38 @@ func _draw_geonames(w, mv: Node2D, vt: Transform2D, vp: Vector2, zoom: float) ->
 	var fade_close := 1.0 - clampf((zoom - 6.0) / 2.0, 0.0, 0.85)
 	if fade_in <= 0.03:
 		return
-	for g in _geonames:
-		# RIVIÈRES (décision joueur) : le nom reste VISIBLE au zoom élevé — pas de fondu
-		# de proche pour l'eau courante (on suit son cours), et POLICE DYNAMIQUE : la
-		# taille écran croît avec le zoom (×1 à z3.5 → ×2.2 capé) au lieu de rester figée
-		# à 12-16 px (un fleuve plein écran portait un nom de mouche). Les ancres
-		# RÉPÉTÉES le long du cours ne sortent qu'au zoom proche (mid seule au loin).
+	# RIVIÈRES — PLACEMENT DYNAMIQUE (décision joueur : « pas de répétition, ou placement
+	# dynamique selon l'écran ») : UNE étiquette par rivière, posée sur l'ancre VISIBLE
+	# la plus proche du CENTRE de l'écran — le nom glisse le long du cours avec la
+	# caméra, jamais écrit « tous les centimètres ».
+	var riv_pick := {}
+	var riv_d := {}
+	var scr_ctr := vp * 0.5
+	for gi in range(_geonames.size()):
+		var g0: Dictionary = _geonames[gi]
+		if String(g0["kind"]) != "riviere":
+			continue
+		var gs0: Vector2 = vt * mv.iso_pos((g0["pos"] as Vector2).x, (g0["pos"] as Vector2).y)
+		if gs0.x < 50 or gs0.y < 40 or gs0.x > vp.x - 50 or gs0.y > vp.y - 40:
+			continue                              # l'étiquette doit TENIR à l'écran
+		var rid0 := int(g0.get("rid", -1))
+		var dd0 := gs0.distance_squared_to(scr_ctr)
+		if not riv_d.has(rid0) or dd0 < float(riv_d[rid0]):
+			riv_d[rid0] = dd0
+			riv_pick[rid0] = gi
+	var riv_show := {}
+	for rid0 in riv_pick:
+		riv_show[int(riv_pick[rid0])] = true
+	for gi in range(_geonames.size()):
+		var g: Dictionary = _geonames[gi]
+		# RIVIÈRES : nom VISIBLE au zoom élevé (pas de fondu de proche — on suit son
+		# cours) + POLICE DYNAMIQUE (×1 à z3.5 → ×2.2 capé, sinon nom de mouche).
 		var is_riv: bool = String(g["kind"]) == "riviere"
 		var fade := fade_in * (1.0 if is_riv else fade_close)
 		if fade <= 0.03:
 			continue
-		if is_riv and zoom < 4.5 and not bool(g.get("mid", true)):
-			continue                              # au loin : une seule ancre (la médiane)
+		if is_riv and not riv_show.has(gi):
+			continue                              # placement dynamique : l'élue seule
 		var gp: Vector2 = mv.iso_pos((g["pos"] as Vector2).x, (g["pos"] as Vector2).y)
 		var gss: Vector2 = vt * gp
 		if gss.x < -220 or gss.y < -80 or gss.x > vp.x + 220 or gss.y > vp.y + 80:

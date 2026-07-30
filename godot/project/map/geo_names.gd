@@ -89,7 +89,9 @@ static func build(w, seed_: int) -> Array:
 			if pts.size() < 30: continue
 			var nom := _name(rng, "riviere")
 			var n := pts.size()
-			var fracs: Array = [0.5] if n < 80 else ([0.25, 0.5, 0.75] if n < 180 else [0.12, 0.32, 0.5, 0.68, 0.88])
+			# ancres DENSES (le label glisse d'ancre en ancre avec la caméra — placement
+			# dynamique côté draw : UNE seule s'affiche, jamais de répétition)
+			var fracs: Array = [0.3, 0.5, 0.7] if n < 80 else ([0.15, 0.3, 0.45, 0.6, 0.75, 0.9] if n < 180 else [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9])
 			for f in fracs:
 				var ki := clampi(int(float(n) * float(f)), 4, n - 5)
 				var tang: Vector2 = (pts[mini(ki + 4, n - 1)] - pts[maxi(ki - 4, 0)]).normalized()
@@ -97,8 +99,7 @@ static func build(w, seed_: int) -> Array:
 				if ang > PI * 0.5: ang -= PI          # jamais la tête en bas
 				elif ang < -PI * 0.5: ang += PI
 				out.append({"text": nom, "kind": "riviere", "pos": pts[ki],
-					"ang": ang, "span": float(n) * 0.35, "water": true,
-					"mid": absf(float(f) - 0.5) < 0.01})
+					"ang": ang, "span": float(n) * 0.35, "water": true, "rid": nr})
 			nr += 1
 	return out
 
