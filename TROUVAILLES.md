@@ -7955,3 +7955,14 @@ ENTIER — fini les virgules orphelines en bordure de massif. NOTE : les petites
 des fragments. (3) LISIÈRE de canopée : le vote 1/3 semait des solitaires pleine taille
 sur sol nu — probabilité 0.35→0.22 ET échelle ×0.78 en lisière : la forêt s'éteint en
 dégradé au lieu de s'effilocher.
+
+**Trait de rivière au DÉBIT réel (demande joueur : « scalable sur le nombre d'affluents —
+précalcule ton débit »)** : l'ancienne largeur était par-rivière (flow_max + grow linéaire
+par fraction d'arc — une croissance INVENTÉE, aveugle aux confluences). Désormais le
+carve LIT la couche SCPS_LAYER_RIVER (accumulation log précalculée moteur, +1 saut à
+chaque affluent) PAR POINT du tracé : échantillonnée sur le tracé BRUT (le méandre décale
+de ±1 cellule), lissée sur 5 points (les marches log crénellent), largeur par paliers de
+byte (≥0.82→3 · ≥0.62→2 · ≥0.42→1 · sinon fil) et intensité v=0.60+0.40·b (l'eau se
+charge vers l'aval, sans passer sous le seuil 5-taps du shader aux têtes). La règle
+« artère = top-2 des longueurs » SUPPRIMÉE — le débit EST la hiérarchie. L'entonnoir
+d'estuaire prend le débit du dernier point.

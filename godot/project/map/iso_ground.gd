@@ -202,46 +202,68 @@ func _build_river_field(w, W: int, H: int) -> Image:
 	# cohérent pour casser l'axe NSEO (zéro angle droit). Largeur qui CROÎT vers l'aval (affluents collectés).
 	# LES GRANDS FLEUVES (« un Nil, un Danube ») : les 2 troncs majeurs les PLUS LONGS
 	# gagnent +1 de largeur — le monde a ses artères, pas des rivières toutes égales.
-	var lens := []
-	for ridx in range(raw.size()):
-		var rv0: Dictionary = raw[ridx]
-		if float(rv0["flow"]) > 0.8:
-			lens.append([(rv0["points"] as PackedVector2Array).size(), ridx])
-	lens.sort_custom(func(a, b): return int(a[0]) > int(b[0]))
-	var great := {}
-	for g in range(mini(2, lens.size())):
-		great[int(lens[g][1])] = true
+	# DÉBIT PAR POINT (demande joueur : « scalable sur le nombre d'affluents — précalcule
+	# ton débit ») : le moteur a DÉJÀ précalculé l'accumulation (cell.river, échelle log,
+	# +1 saut à CHAQUE confluence) — le trait la LIT le long du tracé au lieu d'inventer
+	# une croissance linéaire (l'ancien grow par fraction d'arc ignorait les affluents).
+	# Le trait s'AFFINE vers la source (fil) et s'ÉLARGIT à chaque confluence ; la règle
+	# « artère = top-2 des longueurs » disparaît — le débit EST la hiérarchie.
+	var rivb: Image = w.layer_image(5)             # SCPS_LAYER_RIVER : débit accumulé 0-255
 	for ridx in range(raw.size()):
 		var rv: Dictionary = raw[ridx]
 		var pts: PackedVector2Array = rv["points"]
 		if pts.size() < 6:
 			continue
-		var fl := float(rv["flow"])
-		var v := clampf(0.58 + 0.42 * fl, 0.0, 1.0)
-		var base_w := (2 if great.has(ridx) else 1) if fl > 0.8 else 0   # ARTÈRE = 2 · fleuve = 1 · reste = FIL
-		var grow := 1 if fl > 0.8 else (1 if fl > 0.5 else 0)     # enfle un PEU vers l'aval (fleuve 1→2 · rivière 0→1)
-		# (essai « tout enfle » ANNULÉ au shot : dans les deltas à bras multiples, chaque
-		#  affluent élargi empilait sa gravure → le dédale de flaques que le joueur dénonçait)
 		var mp := _meander(pts, hgt, sea, bio, W, H)
 		var n := mp.size()
+		# byte de débit par point (échantillonné au TRACÉ BRUT — le méandre décale de
+		# ±1 cellule, on lit au point d'origine le plus proche), lissé sur 5 points
+		# (les marches log par cellule crénellent la largeur sinon).
+		var fb := PackedFloat32Array()
+		fb.resize(n)
+		for k in range(n):
+			var src := pts[clampi(int(float(k) / float(maxi(1, n - 1)) * float(pts.size() - 1)), 0, pts.size() - 1)]
+			fb[k] = rivb.get_pixel(clampi(int(src.x), 0, W - 1), clampi(int(src.y), 0, H - 1)).r
+		var fs := PackedFloat32Array()
+		fs.resize(n)
+		for k in range(n):
+			var sacc := 0.0
+			var cnt := 0
+			for o in range(-2, 3):
+				var kk := k + o
+				if kk >= 0 and kk < n:
+					sacc += fb[kk]
+					cnt += 1
+			fs[k] = sacc / float(cnt)
+		var wd_last := 0
+		var v_last := 0.7
 		for k in range(n - 1):
 			# GRANDS FLEUVES : la polyline TRAVERSE désormais les lacs (routage rempli) —
 			# on ne grave pas DANS l'eau : le lac fait le lien (Rhône/Léman), et l'arbre
 			# du flood y est une diagonale parfaite qui trancherait sur l'eau calme.
 			if _is_sea(sea, mp[k], W, H) and _is_sea(sea, mp[k + 1], W, H):
 				continue
-			var frac := float(k) / float(maxi(1, n - 1))         # 0 = source → 1 = embouchure
-			var wd := base_w + int(round(frac * float(grow)))    # PLUS LARGE en aval (affluents accumulés)
-			_carve_seg(img, mp[k], mp[k + 1], v, wd, W, H)
-		# ESTUAIRE : prolonge la gravure DANS la mer (~4 cellules, entonnoir +1) — sans ça le
-		# champ s'arrête AU trait de côte et la moyenne 5-taps du shader (mêlée au zéro marin)
+			var b := fs[k]
+			var v2 := clampf(0.60 + 0.40 * b, 0.0, 1.0)          # l'eau se charge vers l'aval
+			var wd := 0                                          # tête = FIL
+			if b >= 0.82:
+				wd = 3                                           # tronc aval gorgé d'affluents
+			elif b >= 0.62:
+				wd = 2
+			elif b >= 0.42:
+				wd = 1
+			wd_last = wd
+			v_last = v2
+			_carve_seg(img, mp[k], mp[k + 1], v2, wd, W, H)
+		# ESTUAIRE : prolonge la gravure DANS la mer (~4 cellules) — sans ça le champ
+		# s'arrête AU trait de côte et la moyenne 5-taps du shader (mêlée au zéro marin)
 		# plonge sous le seuil PILE à l'embouchure : le fleuve mourait avant l'eau.
 		if n >= 3:
 			var dirm := (mp[n - 1] - mp[n - 3]).normalized()
 			if dirm != Vector2.ZERO:
 				for e in range(1, 5):
 					_carve_dot(img, mp[n - 1].x + dirm.x * float(e), mp[n - 1].y + dirm.y * float(e),
-						v, base_w + grow, W, H)   # entonnoir SOBRE (le +1 gonflait les deltas en flaques)
+						v_last, wd_last, W, H)   # entonnoir SOBRE, au débit du dernier point
 	return img
 
 ## amplitude de MÉANDRE par BIOME (index = enum Biome) : terre plate OUVERTE serpente (≈1), FORÊT quasi
