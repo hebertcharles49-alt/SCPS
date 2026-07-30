@@ -274,6 +274,8 @@ var _sel_segs := PackedVector2Array()
 var _sel_proj := PackedVector2Array()   ## _sel_segs déjà projeté iso (revue #5 : même fix que les frontières)
 const SEL_GOLD := Color(0.86, 0.68, 0.26)   ## or de sélection (net, au-dessus du creux d'encre)
 var _roads := []          ## [{points, level, nprov, key}] — réseau de routes (façade + méta locale)
+var _road_clear := {}     ## TROUÉE : cellule (x<<16|y) → densité de canopée [0..1[ près d'une route
+var _road_clear_n := -1   ## taille du masque au dernier semis (déclencheur de re-semis par àcoups)
 var _road_start := {}     ## clé de route → ANNÉE de début de chantier (croissance 1 an/province)
 var _roads_dirty := true  ## le réseau commercial a pu bouger → recharger les routes
 var _road_net := {}       ## ANTISPAG cache : polylignes consolidées (dédup + tier d'épaisseur), voir _ensure_road_network
@@ -292,23 +294,42 @@ var _alb_l: Image = null  ## terrain albedo (cache) → couleur/luminosité du S
 # un champ de débit (bâti par iso_ground._build_river_field depuis `river_paths`, fusionné par baie)
 # et rend l'eau DANS le relief — cœur propre, berges fondues, continu jusqu'à la mer. L'overlay n'en
 # garde QUE le nuage de points (`_rivers`) pour interdire de BÂTIR sur le fil.
-const ROAD_ZOOM_MIN := 2.5    ## routes (zoom ISO)
+const ROAD_ZOOM_MIN := 1.6    ## routes (zoom ISO) — dès le lointain, seules les GRANDES bandes (gates fins par couche, cf. ROAD_Z_*)
 # CHEMIN DE TERRE À 3 TRAITS (le motif cartographique classique — KCD/atlas) : un
 # sous-trait sépia sombre (l'ombre du creux), le corps CRÈME pâle (la terre battue),
 # un filet clair central. Le pointillé « carte au trésor » s'émiettait au zoom.
 ## GLACIS : le crème quasi-blanc « brillait » sur le lavis — rabattu vers le ton parchemin,
 ## alphas baissés (la route est une trace DANS la carte, pas un ruban posé dessus).
-## REFONTE 2026-07-31 (« les routes sont vraiment très très moche ») : fin du chemin de
-## terre à 3 traits — les tubes bruns se lisaient comme des frontières. Une route de
-## carte ancienne est un ITINÉRAIRE : un seul trait d'encre sépia FIN, en TIRETS
-## (le motif portulan des lanes maritimes, déjà acté joueur, porté à la terre).
-## Hiérarchie : artère = tiret long · desserte = pointillé court, plus ténu.
-const ROAD_INK        := Color(0.40, 0.24, 0.13, 0.62)  ## encre sépia rouge-brun (artère)
-const ROAD_MINOR_INK  := Color(0.40, 0.24, 0.13, 0.42)  ## desserte : même encre, plus pâle
-const ROAD_DASH       := 9.0    ## tiret d'artère (unités iso)
-const ROAD_GAP        := 5.5    ## souffle entre tirets
-const ROAD_MINOR_DASH := 4.0    ## pointillé de desserte
-const ROAD_MINOR_GAP  := 5.0
+## REFONTE v2 2026-07-31 (spec joueur détaillée) : une route N'EST PAS un trait d'encre
+## (ça, c'est la frontière) — c'est du SOL ÉCLAIRCI ET USÉ. Trois lectures :
+##   GRANDE ROUTE   = bande claire parchemin + 2 ornières brunes fines discontinues ;
+##   ROUTE RÉGIONALE = bande claire plus étroite + 1 ornière discontinue ;
+##   SENTIER        = trace brune irrégulière seule, très fine, zoom proche seulement.
+## L'usure (tier de multiplicité) fonce/densifie la bande — « plus usé, pas plus épais ».
+## Ruptures et longueurs de tiret JITTÉES (hash déterministe) : bords irréguliers, jamais
+## de liseré continu. Les 2-3 dernières cellules vers la ville restent CONTINUES et
+## finissent sur un PAD de terre battue (la route sort de la porte). En forêt, la bande
+## devient le SOL de la TROUÉE (canopée écartée, cf. _build_dressing).
+const ROAD_BAND       := Color(0.91, 0.85, 0.70)        ## parchemin poussiéreux (bande)
+const ROAD_RUT        := Color(0.38, 0.25, 0.14, 0.50)  ## ornière brune
+const ROAD_TRAIL      := Color(0.42, 0.28, 0.16, 0.42)  ## trace de sentier
+const ROAD_BAND_A     := 0.42   ## alpha bande hors forêt (l'usure du tier s'y AJOUTE)
+const ROAD_BAND_A_F   := 0.55   ## en forêt : le sol de la trouée, PLUS visible
+const ROAD_WEAR_A     := 0.06   ## usure : +alpha par palier de tier (jamais + épais)
+const ROAD_BAND_DASH  := 15.0   ## bande : longs pans avec petites RUPTURES (unités iso)
+const ROAD_BAND_GAP   := 0.9
+const ROAD_RUT_DASH   := 3.4    ## ornière : discontinue, courte
+const ROAD_RUT_GAP    := 1.7
+const ROAD_TRAIL_DASH := 1.8    ## sentier : trace hachée
+const ROAD_TRAIL_GAP  := 2.1
+const ROAD_JIT        := 0.55   ## jitter des longueurs (±55 % hashé — l'irrégulier)
+const ROAD_SOLID_END  := 2.6    ## cellules CONTINUES aux abouts (la porte du bourg)
+const ROAD_Z_BAND_MAIN  := 1.6  ## grandes routes : bandes visibles dès le zoom lointain
+const ROAD_Z_BAND_MINOR := 2.6  ## régionales : zoom moyen
+const ROAD_Z_RUT        := 2.8  ## les ornières apparaissent
+const ROAD_Z_TRAIL      := 4.2  ## sentiers : zoom proche
+const ROAD_Z_BRIDGE     := 3.2  ## tablier/culées
+const ROAD_Z_RAIL       := 5.0  ## garde-corps : zoom profond seulement
 const ROAD_FOREST_A := 0.38   ## SOUS LA CANOPÉE : la route se devine — relevé depuis la canopée ×10
                               ## (à 0.22 le massif PLEIN l'avalait tout à fait)
 # Traitement FRONT-END du tracé (l'A* moteur reste la vérité ; on en lisse la SORTIE, hors tick) :
@@ -1826,6 +1847,7 @@ func _ensure_road_network() -> void:
 		polys["main%df" % t] = []
 		polys["minor%df" % t] = []
 	var seen := {}
+	var mask := {}   # TROUÉE : cellule → niveau routier (2 = grande, 1 = régionale ; le sentier garde ses arbres)
 	for ri in range(_roads.size()):
 		var rd: Dictionary = _roads[ri]
 		var poly: PackedVector2Array = built_polys[ri]
@@ -1842,6 +1864,14 @@ func _ensure_road_network() -> void:
 			var mid := (a7 + b7) * 0.5
 			var inf := _forest_at(int(mid.x), int(mid.y))
 			var tier := clampi(int(mult.get(kseg, 1)), 1, ROAD_MULT_TIERS)
+			if is_main or tier >= 2:                             # la trouée suit grandes + régionales
+				var lvl := 2 if is_main else 1
+				var seg7 := a7.distance_to(b7)
+				var n7 := maxi(1, int(seg7 / 0.7))
+				for q in range(n7 + 1):
+					var p7 := a7.lerp(b7, float(q) / float(n7))
+					var mk := (int(p7.x) << 16) | (int(p7.y) & 0xFFFF)
+					mask[mk] = maxi(int(mask.get(mk, 0)), lvl)
 			if seen.has(kseg) or (run.size() >= 2 and (inf != run_forest or tier != run_tier)):
 				if run.size() >= 2:
 					_road_bucket(polys, run, mv, is_main, run_forest, run_tier)
@@ -1856,31 +1886,92 @@ func _ensure_road_network() -> void:
 			run.append(b7)
 		if run.size() >= 2:
 			_road_bucket(polys, run, mv, is_main, run_forest, run_tier)
-	# PASSE 3 (refonte tirets) : découpe chaque polyligne projetée en PAIRES de tirets
-	# (draw_multiline), CACHÉES avec le réseau — zéro découpe par frame. Période par
-	# hiérarchie : artère = tiret long, desserte = pointillé court.
+	# PASSE 3 (refonte v2 « sol usé ») : pour chaque bucket, le cache produit
+	#   bande claire (pans longs à petites ruptures) + ornières (grande : 2 parallèles ·
+	#   régionale : 1 centrale · sentier [desserte tier 1] : trace seule) — paires
+	#   draw_multiline, jitter hashé, abouts continus. Zéro découpe par frame.
+	var cell: float = ((mv.iso_pos(1.0, 0.0) - mv.iso_pos(0.0, 0.0)).length()
+			   + (mv.iso_pos(0.0, 1.0) - mv.iso_pos(0.0, 0.0)).length()) * 0.5
+	var solid: float = ROAD_SOLID_END * cell
+	var rut_off := 0.85                          # écart des 2 ornières (unités iso)
 	for t in range(1, ROAD_MULT_TIERS + 1):
 		for key in ["main%d" % t, "main%df" % t, "minor%d" % t, "minor%df" % t]:
 			var is_mn: bool = key.begins_with("main")
-			var dash: float = ROAD_DASH if is_mn else ROAD_MINOR_DASH
-			var gap: float = ROAD_GAP if is_mn else ROAD_MINOR_GAP
-			var pairs := PackedVector2Array()
+			var sentier: bool = (not is_mn) and t == 1
+			var band := PackedVector2Array()
+			var ruts := PackedVector2Array()
 			for pl in polys[key]:
-				pairs.append_array(_dash_pairs(pl, dash, gap))
-			polys["d_" + key] = pairs
+				if sentier:
+					ruts.append_array(_dash_pairs(pl, ROAD_TRAIL_DASH, ROAD_TRAIL_GAP, ROAD_JIT, solid))
+					continue
+				band.append_array(_dash_pairs(pl, ROAD_BAND_DASH, ROAD_BAND_GAP, ROAD_JIT * 0.6, solid))
+				if is_mn:
+					ruts.append_array(_dash_pairs(_offset_poly(pl, rut_off), ROAD_RUT_DASH, ROAD_RUT_GAP, ROAD_JIT, solid))
+					ruts.append_array(_dash_pairs(_offset_poly(pl, -rut_off), ROAD_RUT_DASH, ROAD_RUT_GAP, ROAD_JIT, solid))
+				else:
+					ruts.append_array(_dash_pairs(pl, ROAD_RUT_DASH, ROAD_RUT_GAP, ROAD_JIT, solid))
+			polys["b_" + key] = band
+			polys["r_" + key] = ruts
+	# PADS de porte : l'about de chaque route logique BÂTIE (déjà trimé à l'entrée du
+	# bourg par ROAD_SNAP_TRIM) reçoit une petite aire de terre battue irrégulière —
+	# la route SORT de la porte au lieu d'atteindre des coordonnées.
+	var pads := []
+	for ri in range(_roads.size()):
+		var poly: PackedVector2Array = built_polys[ri]
+		if poly.size() < 2:
+			continue
+		var is_main: bool = int(_roads[ri].get("level", 1)) <= 0
+		var r_pad := (1.0 if is_main else 0.7)
+		pads.append([mv.iso_pos(poly[0].x, poly[0].y), r_pad * cell, ri * 2])
+		var st: int = _road_start.get(_roads[ri]["key"], Sim.day_count)
+		var nprov: int = maxi(1, int(_roads[ri].get("nprov", 1)))
+		if float(Sim.day_count - st) / (float(nprov) * 365.0) >= 1.0:   # about d'ARRIVÉE bâti seulement
+			pads.append([mv.iso_pos(poly[poly.size() - 1].x, poly[poly.size() - 1].y), r_pad * cell, ri * 2 + 1])
+	polys["pads"] = pads
+	# TROUÉE FORESTIÈRE : dilate le masque en carte de DENSITÉ de canopée — cœur de
+	# grande route : 0 arbre (≤1.5 cellule) puis bords clairsemés ; régionale : plus
+	# étroit. Le semis (_build_dressing) lit _road_clear ; quand le réseau a poussé
+	# d'assez de cellules, le dressing se RE-SÈME (àcoups annuels — la forêt s'ouvre).
+	_road_clear.clear()
+	for mk in mask:
+		var lvl: int = mask[mk]
+		var mx: int = int(mk) >> 16
+		var my: int = int(mk) & 0xFFFF
+		for dy in range(-3, 4):
+			for dx in range(-3, 4):
+				var d2 := dx * dx + dy * dy
+				var dens := 1.0
+				if lvl == 2:
+					if d2 <= 2:   dens = 0.0      # cœur : aucune canopée
+					elif d2 <= 7: dens = 0.45     # bord : arbres plus rares
+				else:
+					if d2 <= 1:   dens = 0.0
+					elif d2 <= 4: dens = 0.60
+				if dens < 1.0:
+					var nk: int = ((mx + dx) << 16) | ((my + dy) & 0xFFFF)
+					_road_clear[nk] = minf(float(_road_clear.get(nk, 1.0)), dens)
+	if absi(_road_clear.size() - _road_clear_n) > 40:
+		_road_clear_n = _road_clear.size()
+		_dressing_dirty = true                  # la trouée s'ouvre : re-semis (annuel, jamais par frame)
 	_road_net = polys
 	_road_net_valid = true
 
-## Découpe une polyligne (DÉJÀ projetée iso) en PAIRES de points tiretées pour
+## Découpe une polyligne (DÉJÀ projetée iso) en PAIRES tiretées IRRÉGULIÈRES pour
 ## draw_multiline — l'algo de _lane_dash_iso (phase continue le long de l'arc,
-## plancher ε + fusible anti-hang) sans la projection (les routes cachent des
-## polylignes déjà iso, cf. _road_bucket).
-func _dash_pairs(pts: PackedVector2Array, dash: float, gap: float) -> PackedVector2Array:
+## plancher ε + fusible anti-hang) sans la projection, avec : longueurs de tiret/trou
+## JITTÉES par hash déterministe (`jit` = ±fraction), et `solid` unités CONTINUES à
+## chaque about (le raccord à la porte du bourg ne finit jamais sur un trou).
+func _dash_pairs(pts: PackedVector2Array, dash: float, gap: float, jit := 0.0, solid := 0.0) -> PackedVector2Array:
 	var out := PackedVector2Array()
 	if pts.size() < 2:
 		return out
-	var period := dash + gap
+	var total := 0.0
+	for i in range(pts.size() - 1):
+		total += pts[i].distance_to(pts[i + 1])
 	var t := 0.0
+	var di := 0                                  # compteur de tirets → hash du jitter
+	var cur_dash := dash
+	var cur_gap := gap
 	for i in range(pts.size() - 1):
 		var a: Vector2 = pts[i]
 		var b: Vector2 = pts[i + 1]
@@ -1894,15 +1985,40 @@ func _dash_pairs(pts: PackedVector2Array, dash: float, gap: float) -> PackedVect
 			guard += 1
 			if guard > 100000:
 				break
+			var period := cur_dash + cur_gap
 			var phase := fmod(t, period)
-			var in_dash := phase < dash
-			var lim := (dash - phase) if in_dash else (period - phase)
+			var in_dash := phase < cur_dash
+			var lim := (cur_dash - phase) if in_dash else (period - phase)
 			var step := maxf(minf(lim, seg - s), 0.01)   # plancher ε : jamais de pas nul (piège float des lanes)
-			if in_dash:
+			# ABOUTS CONTINUS : à moins de `solid` du départ OU de l'arrivée, tout est tiret.
+			var solid_here := solid > 0.0 and (t < solid or (total - t) < solid + step)
+			if in_dash or solid_here:
 				out.push_back(a + dir * s)
 				out.push_back(a + dir * minf(s + step, seg))
 			s += step
 			t += step
+			if not in_dash and phase + step >= period - 0.0001 and jit > 0.0:
+				di += 1                          # nouveau cycle : re-tire les longueurs (hash stable)
+				cur_dash = dash * (1.0 + (_h1(float(di) * 17.3) - 0.5) * 2.0 * jit)
+				cur_gap = gap * (1.0 + (_h1(float(di) * 31.7) - 0.5) * 2.0 * jit)
+	return out
+
+## Décale une polyligne iso de `off` le long de sa NORMALE (les 2 ornières parallèles
+## d'une grande route). Normale par sommet = moyenne des normales des segments voisins.
+func _offset_poly(pts: PackedVector2Array, off: float) -> PackedVector2Array:
+	var n := pts.size()
+	var out := PackedVector2Array()
+	if n < 2:
+		return out
+	out.resize(n)
+	for i in range(n):
+		var d := Vector2.ZERO
+		if i > 0:
+			d += (pts[i] - pts[i - 1]).normalized()
+		if i < n - 1:
+			d += (pts[i + 1] - pts[i]).normalized()
+		d = d.normalized()
+		out[i] = pts[i] + Vector2(-d.y, d.x) * off
 	return out
 
 ## distance PERPENDICULAIRE du milieu de `s` à la droite portée par le segment `o` (projection —
@@ -2431,40 +2547,84 @@ func _draw_iso(w, mv: Node2D) -> void:
 			# (cache — cf. `_ensure_road_network`, recalculé seulement si le réseau bouge ou
 			# qu'un chantier grandit encore).
 			_ensure_road_network()
-			# REFONTE TIRETS (2026-07-31) : un seul trait d'encre sépia FIN par tronçon,
-			# tireté (paires précalculées en passe 3 du cache réseau). SOUS LA CANOPÉE :
-			# même encre ×ROAD_FOREST_A — le chemin se devine. Le palier de tier élargit
-			# à peine (la hiérarchie vit surtout dans tiret long vs pointillé court).
+			# REFONTE v2 « SOL USÉ » (2026-07-31) : bandes claires d'abord (le sol), pads
+			# de porte, puis ornières/traces par-dessus. L'usure du tier = ALPHA (+WEAR_A
+			# par palier), jamais l'épaisseur. Gates par zoom : lointain = grandes bandes
+			# seules · moyen = + régionales + ornières · proche = + sentiers.
 			for t in range(1, ROAD_MULT_TIERS + 1):
-				var ws: float = ROAD_TIER_WSCALE[t - 1]
-				var dmf: PackedVector2Array = _road_net.get("d_minor%df" % t, PackedVector2Array())
-				if dmf.size() >= 2:
-					draw_multiline(dmf, Color(ROAD_MINOR_INK.r, ROAD_MINOR_INK.g, ROAD_MINOR_INK.b,
-						ROAD_MINOR_INK.a * ROAD_FOREST_A), _w(zoom, 0.22, 0.7, 1.2) * ws, true)
-				var daf: PackedVector2Array = _road_net.get("d_main%df" % t, PackedVector2Array())
-				if daf.size() >= 2:
-					draw_multiline(daf, Color(ROAD_INK.r, ROAD_INK.g, ROAD_INK.b,
-						ROAD_INK.a * ROAD_FOREST_A), _w(zoom, 0.30, 0.9, 1.6) * ws, true)
-				var dm: PackedVector2Array = _road_net.get("d_minor%d" % t, PackedVector2Array())
-				if dm.size() >= 2:
-					draw_multiline(dm, ROAD_MINOR_INK, _w(zoom, 0.22, 0.7, 1.2) * ws, true)
-				var da: PackedVector2Array = _road_net.get("d_main%d" % t, PackedVector2Array())
-				if da.size() >= 2:
-					draw_multiline(da, ROAD_INK, _w(zoom, 0.30, 0.9, 1.6) * ws, true)
-			# les PONTS D'ENCRE : deux garde-corps bombés en travers du franchissement de rivière
-			for br in _ink_bridges:
-				var bp: Vector2 = mv.iso_pos((br["w"] as Vector2).x, (br["w"] as Vector2).y)
-				var bt: Vector2 = (mv.iso_pos((br["w"] as Vector2).x + (br["t"] as Vector2).x,
-					(br["w"] as Vector2).y + (br["t"] as Vector2).y) - bp).normalized()
-				var bperp := Vector2(-bt.y, bt.x)
-				var bl := _w(zoom, 0.62, 2.4, 5.2)
-				var bw := _w(zoom, 0.26, 1.0, 2.2)
-				var biw := _w(zoom, 0.07, 0.5, 1.0)
-				for sgn in [-1.0, 1.0]:
-					var o3 := bperp * bw * float(sgn)
-					draw_polyline(PackedVector2Array([bp - bt * bl + o3,
-						bp + o3 + bperp * (bw * 0.5 * float(sgn)),   # le bombé du tablier
-						bp + bt * bl + o3]), TOWN_INK, biw, true)
+				var wear := ROAD_WEAR_A * float(t - 1)
+				if zoom >= ROAD_Z_BAND_MINOR:
+					var bmf: PackedVector2Array = _road_net.get("b_minor%df" % t, PackedVector2Array())
+					if bmf.size() >= 2:
+						draw_multiline(bmf, Color(ROAD_BAND.r, ROAD_BAND.g, ROAD_BAND.b,
+							ROAD_BAND_A_F + wear), _w(zoom, 0.42, 1.0, 2.2), true)
+					var bm: PackedVector2Array = _road_net.get("b_minor%d" % t, PackedVector2Array())
+					if bm.size() >= 2:
+						draw_multiline(bm, Color(ROAD_BAND.r, ROAD_BAND.g, ROAD_BAND.b,
+							ROAD_BAND_A + wear), _w(zoom, 0.42, 1.0, 2.2), true)
+				var baf: PackedVector2Array = _road_net.get("b_main%df" % t, PackedVector2Array())
+				if baf.size() >= 2:
+					draw_multiline(baf, Color(ROAD_BAND.r, ROAD_BAND.g, ROAD_BAND.b,
+						ROAD_BAND_A_F + wear), _w(zoom, 0.58, 1.3, 3.0), true)
+				var ba: PackedVector2Array = _road_net.get("b_main%d" % t, PackedVector2Array())
+				if ba.size() >= 2:
+					draw_multiline(ba, Color(ROAD_BAND.r, ROAD_BAND.g, ROAD_BAND.b,
+						ROAD_BAND_A + wear), _w(zoom, 0.58, 1.3, 3.0), true)
+			if zoom >= ROAD_Z_RUT:
+				for pad in _road_net.get("pads", []):
+					var pc: Vector2 = pad[0]
+					var pr: float = pad[1]
+					var pseed := float(pad[2])
+					var ppoly := PackedVector2Array()
+					for v in range(7):             # aire IRRÉGULIÈRE (7 sommets, rayon hashé)
+						var ang := TAU * float(v) / 7.0
+						var rr := pr * (0.72 + 0.55 * _h1(pseed * 13.7 + float(v)))
+						ppoly.append(pc + Vector2(cos(ang), sin(ang) * 0.5) * rr)   # aplati iso
+					draw_colored_polygon(ppoly, Color(ROAD_BAND.r, ROAD_BAND.g, ROAD_BAND.b, ROAD_BAND_A + 0.10))
+			if zoom >= ROAD_Z_RUT:
+				for t in range(1, ROAD_MULT_TIERS + 1):
+					var rw := _w(zoom, 0.16, 0.6, 1.0)
+					var rmf: PackedVector2Array = _road_net.get("r_minor%df" % t, PackedVector2Array())
+					if t >= 2 or zoom >= ROAD_Z_TRAIL:   # sentiers (tier 1) : zoom proche seulement
+						if rmf.size() >= 2:
+							draw_multiline(rmf, Color(ROAD_RUT.r, ROAD_RUT.g, ROAD_RUT.b,
+								ROAD_RUT.a * ROAD_FOREST_A), rw, true)
+						var rm: PackedVector2Array = _road_net.get("r_minor%d" % t, PackedVector2Array())
+						if rm.size() >= 2:
+							draw_multiline(rm, ROAD_RUT if t >= 2 else ROAD_TRAIL, rw, true)
+					var raf: PackedVector2Array = _road_net.get("r_main%df" % t, PackedVector2Array())
+					if raf.size() >= 2:
+						draw_multiline(raf, Color(ROAD_RUT.r, ROAD_RUT.g, ROAD_RUT.b,
+							ROAD_RUT.a * ROAD_FOREST_A), rw, true)
+					var ra: PackedVector2Array = _road_net.get("r_main%d" % t, PackedVector2Array())
+					if ra.size() >= 2:
+						draw_multiline(ra, ROAD_RUT, rw, true)
+			# les PONTS (refonte v2) : TABLIER clair dans la continuité de la route — il
+			# INTERROMPT visuellement l'eau — encadré de deux CULÉES sombres ; les
+			# garde-corps bombés (l'ancien pont d'encre) ne sortent qu'au zoom profond.
+			if zoom >= ROAD_Z_BRIDGE:
+				for br in _ink_bridges:
+					var bp: Vector2 = mv.iso_pos((br["w"] as Vector2).x, (br["w"] as Vector2).y)
+					var bt: Vector2 = (mv.iso_pos((br["w"] as Vector2).x + (br["t"] as Vector2).x,
+						(br["w"] as Vector2).y + (br["t"] as Vector2).y) - bp).normalized()
+					var bperp := Vector2(-bt.y, bt.x)
+					var bl := _w(zoom, 0.62, 2.4, 5.2)
+					var bw := _w(zoom, 0.26, 1.0, 2.2)
+					var biw := _w(zoom, 0.07, 0.5, 1.0)
+					draw_colored_polygon(PackedVector2Array([                       # tablier
+						bp - bt * bl - bperp * bw, bp + bt * bl - bperp * bw,
+						bp + bt * bl + bperp * bw, bp - bt * bl + bperp * bw]),
+						Color(ROAD_BAND.r, ROAD_BAND.g, ROAD_BAND.b, 0.85))
+					for sgn2 in [-1.0, 1.0]:                                        # culées
+						var ce := bp + bt * bl * float(sgn2)
+						draw_line(ce - bperp * bw * 1.45, ce + bperp * bw * 1.45,
+							Color(TOWN_INK.r, TOWN_INK.g, TOWN_INK.b, 0.85), biw * 1.5, true)
+					if zoom >= ROAD_Z_RAIL:
+						for sgn in [-1.0, 1.0]:                                     # garde-corps
+							var o3 := bperp * bw * float(sgn)
+							draw_polyline(PackedVector2Array([bp - bt * bl + o3,
+								bp + o3 + bperp * (bw * 0.5 * float(sgn)),   # le bombé du tablier
+								bp + bt * bl + o3]), TOWN_INK, biw, true)
 
 		# ── PORTULAN (MARITIME N4) : les LANES maritimes en POINTILLÉS d'encre — plus
 		#    fines que les routes de terre, ancrées aux ports. Le moteur (sea_paths)
@@ -3141,6 +3301,12 @@ func _build_dressing() -> void:
 					if (cl[0] as Vector2).distance_squared_to(Vector2(px, py)) < float(cl[1]):
 						skip = true
 						break
+				# TROUÉE ROUTIÈRE (spec joueur 2026-07-31) : aucune canopée au cœur du grand
+				# chemin, arbres raréfiés sur ses bords — la forêt MONTRE le passage. Les
+				# sentiers (dessertes tier 1) ne trouent pas : leurs arbres débordent.
+				var rc := float(_road_clear.get((px << 16) | (py & 0xFFFF), 1.0))
+				if rc <= 0.0 or (rc < 1.0 and _h1(float(ci) * 6.7) > rc):
+					skip = true
 				var pk: float = [0.0, 0.35, 0.95, 1.0][hits]
 				if not skip and _h1(float(ci) * 5.3) < pk:
 					var cids: Array = CANOPY_BY_BIOME[bhit]
@@ -3170,6 +3336,10 @@ func _build_dressing() -> void:
 						# l'offset ±3.5 cellules est testé à SA POSITION FINALE (qfx,qfy), pas à
 						# l'ancrage : sur une côte proche (île/presqu'île), l'extra peut sinon
 						# déborder en pleine mer/lac — jamais vérifié jusqu'ici.
+						if not qskip:                # trouée routière : les extras aussi (même carte de densité)
+							var qrc := float(_road_clear.get((int(qfx) << 16) | (int(qfy) & 0xFFFF), 1.0))
+							if qrc <= 0.0 or (qrc < 1.0 and _h1(eb * 3.3) > qrc):
+								qskip = true
 						if not qskip and not _near_river(rf, int(qfx), int(qfy)) and not _water_at(int(qfx), int(qfy)):
 							var cid2: String = cids[int(_h1(eb * 1.9) * float(cids.size())) % cids.size()]
 							var vj2 := 0.90 + 0.20 * _h1(eb * 2.3)
