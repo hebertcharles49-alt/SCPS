@@ -246,11 +246,9 @@ func _build_river_field(w, W: int, H: int) -> Image:
 			var b := fs[k]
 			var v2 := clampf(0.60 + 0.40 * b, 0.0, 1.0)          # l'eau se charge vers l'aval
 			var wd := 0                                          # tête = FIL
-			if b >= 0.82:
-				wd = 3                                           # tronc aval gorgé d'affluents
-			elif b >= 0.62:
-				wd = 2
-			elif b >= 0.42:
+			if b >= 0.88:
+				wd = 2                                           # tronc aval gorgé d'affluents (« réduit encore » : plus de palier 3)
+			elif b >= 0.60:
 				wd = 1
 			wd_last = wd
 			v_last = v2
