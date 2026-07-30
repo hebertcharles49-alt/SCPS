@@ -7944,3 +7944,14 @@ pris en mode NATURE (routes cachées) → déplacé avant le toggle ; (3) une zo
 découverte est NOIRE au shot → fog_off (voile seulement, motif shot_parch) pour
 photographier sous le voile. RESTE (dit joueur) : les culées de pont « ressemblent à des
 marqueurs » — à reprendre après stabilisation topologique.
+
+**Montagne & canopée au zoom proche (4e crop joueur)** : (1) les ∧/dômes sont des
+symboles de VUE D'ENSEMBLE — au plan rapproché un seul devenait un coup de pinceau
+géant : FONDU relief_a = clampf((8.5−zoom)/2.5) (pleins ≤ z6, disparus ≥ z8.5, le
+terrain — teinte du massif — prend le relais). (2) PURGE DES FRAGMENTS : un glyphe dont
+le clipping de priorité a mangé > 45 % de l'encre (seuil 0.55 restant) est supprimé
+ENTIER — fini les virgules orphelines en bordure de massif. NOTE : les petites marques
+∩ qui restent en bord de massif sont des DÔMES de colline légitimes (biome hills), pas
+des fragments. (3) LISIÈRE de canopée : le vote 1/3 semait des solitaires pleine taille
+sur sol nu — probabilité 0.35→0.22 ET échelle ×0.78 en lisière : la forêt s'éteint en
+dégradé au lieu de s'effilocher.

@@ -120,6 +120,8 @@ func _run() -> void:
 	if found.x >= 0:
 		_cam(map, found.x, found.y, 4.0)
 		await _shot("04_chevrons")
+		_cam(map, found.x, found.y, 8.0)
+		await _shot("04b_chevrons_z80")   # zoom PROCHE : l'échelle/la casse des symboles se juge ici
 	# 3) LES NOMS : plan moyen sur le centre de la carte
 	_cam(map, float(w.map_w()) * 0.5, float(w.map_h()) * 0.5, 2.2)
 	await _shot("05_noms_plan_moyen")

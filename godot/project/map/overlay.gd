@@ -2940,14 +2940,22 @@ func _draw_iso(w, mv: Node2D) -> void:
 	if zoom >= DECOR_ZOOM_MIN:
 		# CHEVRONS (relief) : liste courte, géométrie déjà projetée/clippée par _clip_relief/
 		# _finalize_dress_fast (revue #6) — traits pré-clippés STYLÉS, intérieur transparent.
-		for d in _dress_relief:
-			var dip: Vector2 = d["ip"]
-			var dss: Vector2 = vt * dip
-			if dss.x < -90 or dss.y < -90 or dss.x > vp.x + 90 or dss.y > vp.y + 90:
-				continue
-			for seg in d.get("segs", []):
-				var sg: Dictionary = seg
-				draw_polyline(sg["pts"], sg["col"], float(sg["w"]) / zoom, true)
+		# FONDU AU ZOOM PROCHE (crop joueur « montagne : pas acceptable ») : les ∧/dômes
+		# sont des symboles de VUE D'ENSEMBLE — au plan rapproché un seul devient un
+		# coup de pinceau géant. Pleins jusqu'à z6, fondus, disparus à z8.5 (le terrain
+		# — teinte/texture du massif — prend le relais).
+		var relief_a := clampf((8.5 - zoom) / 2.5, 0.0, 1.0)
+		if relief_a > 0.02:
+			for d in _dress_relief:
+				var dip: Vector2 = d["ip"]
+				var dss: Vector2 = vt * dip
+				if dss.x < -90 or dss.y < -90 or dss.x > vp.x + 90 or dss.y > vp.y + 90:
+					continue
+				for seg in d.get("segs", []):
+					var sg: Dictionary = seg
+					var sc: Color = sg["col"]
+					draw_polyline(sg["pts"], Color(sc.r, sc.g, sc.b, sc.a * relief_a),
+						float(sg["w"]) / zoom, true)
 		# SPRITES (dressing lot 2/3/6) : tableaux PARALLÈLES TYPÉS (revue #6) — ip/texture/teinte
 		# déjà résolus à _finalize_dress_fast, le draw n'indexe plus que des Packed*Array.
 		for k in range(_dress_fast_ip.size()):
@@ -3666,6 +3674,11 @@ func _clip_relief() -> void:
 	for i in range(relief.size()):
 		var di: Dictionary = relief[i]
 		var strokes: Array = (di["geom"] as Dictionary)["strokes"]
+		var len0 := 0.0                          # longueur d'encre AVANT clipping (purge des fragments)
+		for s0 in strokes:
+			var p0: PackedVector2Array = (s0 as Dictionary)["pts"]
+			for q in range(p0.size() - 1):
+				len0 += p0[q].distance_to(p0[q + 1])
 		var wpi: Vector2 = di["pos"]
 		var ki := Vector2i(int(wpi.x) / 8, int(wpi.y) / 8)
 		for oy in range(-1, 2):
@@ -3686,6 +3699,17 @@ func _clip_relief() -> void:
 					strokes = next
 					if strokes.is_empty():
 						break
+		# PURGE DES FRAGMENTS (crop joueur) : un glyphe dont le clipping a mangé plus
+		# de la moitié de l'encre n'est plus un ∧/dôme — c'est une virgule orpheline
+		# qui traîne en bordure de massif. On le supprime ENTIER plutôt que de laisser
+		# des moignons.
+		var len1 := 0.0
+		for s1 in strokes:
+			var p1: PackedVector2Array = (s1 as Dictionary)["pts"]
+			for q in range(p1.size() - 1):
+				len1 += p1[q].distance_to(p1[q + 1])
+		if len0 > 0.001 and len1 < len0 * 0.55:   # < 55 % d'encre = demi-glyphe (une jambe) : purgé
+			strokes = []
 		di["segs"] = strokes
 
 ## taille à l'ÉCRAN (px) d'une marque selon sa famille (montagnes grandes, herbe de plaine petite).
@@ -3798,7 +3822,10 @@ func _build_dressing() -> void:
 				var rc := float(_road_clear.get((px << 16) | (py & 0xFFFF), 1.0))
 				if rc <= 0.0 or (rc < 1.0 and _h1(float(ci) * 6.7) > rc):
 					skip = true
-				var pk: float = [0.0, 0.35, 0.95, 1.0][hits]
+				# LISIÈRE (crop joueur « canopée : pas acceptable ») : le vote 1/3 semait des
+				# SOLITAIRES pleine taille sur sol nu — lisière pouilleuse. Moins probables
+				# (0.35→0.22) et PLUS PETITS (×0.78) : la forêt s'éteint en dégradé.
+				var pk: float = [0.0, 0.22, 0.95, 1.0][hits]
 				if not skip and _h1(float(ci) * 5.3) < pk:
 					var cids: Array = CANOPY_BY_BIOME[bhit]
 					var cid: String = cids[int(_h1(float(ci) * 7.1) * float(cids.size())) % cids.size()]
@@ -3809,7 +3836,7 @@ func _build_dressing() -> void:
 						buckets[cid] = [[], [], []]
 					var bk: Array = buckets[cid]
 					(bk[0] as Array).append(Vector2(fx, fy))
-					(bk[1] as Array).append(1.6 * (0.72 + 0.55 * _h1(float(ci) * 11.7)))
+					(bk[1] as Array).append(1.6 * (0.72 + 0.55 * _h1(float(ci) * 11.7)) * (0.78 if hits == 1 else 1.0))
 					(bk[2] as Array).append(Color(tc.r * vj, tc.g * vj, tc.b * vj, tc.a))
 					# cœur & mi-lisière : des individus EN PLUS — l'échelle symbole demande le NOMBRE
 					# (lisière ~1, mi-lisière ~20, cœur 40/point ; offsets hashés ±3.5 cellules =
