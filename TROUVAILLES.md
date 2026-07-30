@@ -7919,3 +7919,15 @@ ornières densifiées (jamais 2 bandes). Trouée/usure lues sur le réseau FINAL
 consolidation). VIGILANCE : géo-chg=10/70 entre rebuilds pendant la croissance du
 réseau (des étapes changent de géométrie quand un chantier s'achève) — re-mesurer en
 jeu long si un « saut » visuel se voit.
+
+**Serpentines & frôleurs (même vague, 2e crop joueur)** : (1) le test de parallélisme
+POINT-À-POINT cassait sur deux routes qui ONDULENT côte à côte (déviation locale ±25° →
+runs < 8 cellules → jamais fusionnées) — le parallélisme se juge désormais sur la CORDE
+du run entier (elle lisse les ondulations, cos ≥ 0.90) et near[] ne teste plus que la
+DISTANCE ; la sécurité anti-croisement reste la PROXIMITÉ SOUTENUE (un croisement ne
+tient pas 8 cellules à ≤3.5). (2) Une route qui FRÔLE une ville à 2.6-3.2 cellules
+n'était pas une étape → jamais coupée à la porte → elle traversait la zone urbaine :
+rayon waypoint 2.5 → 3.2. Mesures finales : spag 2162 → 11 · wp 11 · réutil 18 % ·
+géo-chg 2. La bande s'arrête à la PORTE (r_gate 2.4, pad au point de coupe) depuis le
+1er crop. Le piège générique : tout test d'alignement point-à-point sur des géométries
+LISSÉES/ondulantes doit passer par la corde (ou une direction moyennée).

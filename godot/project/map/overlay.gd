@@ -1941,7 +1941,8 @@ func _ensure_road_network() -> void:
 			if rid == ra or rid == rb:
 				continue
 			var A: Vector2 = _region_anchor[rid]
-			var bd := 6.25                       # 2.5² — seuil d'acceptation
+			var bd := 10.24                      # 3.2² — seuil d'acceptation (2.5 laissait
+			                                     # des frôleurs traverser la zone urbaine)
 			var bs := -1.0
 			var bp := Vector2.ZERO
 			for i in range(pts.size() - 1):
@@ -2105,10 +2106,9 @@ func _ensure_road_network() -> void:
 			for k in range(n):
 				near[k] = -1
 				var pk2: Vector2 = poly[k]
-				var dloc := (poly[mini(k + 1, n - 1)] - poly[maxi(k - 1, 0)]).normalized()
 				var gk := Vector2i(int(floor(pk2.x / 2.0)), int(floor(pk2.y / 2.0)))
-				var bd2 := 12.25                 # 3.5²
-				for oy in range(-2, 3):
+				var bd2 := 12.25                 # 3.5² — DISTANCE seule ici (le parallélisme
+				for oy in range(-2, 3):          # se juge sur la CORDE du run, plus bas)
 					for ox in range(-2, 3):
 						var lst2: Variant = fgrid.get(Vector2i(gk.x + ox, gk.y + oy))
 						if lst2 == null:
@@ -2120,8 +2120,6 @@ func _ensure_road_network() -> void:
 							var l22 := ab2.length_squared()
 							if l22 < 0.0001:
 								continue
-							if absf(dloc.dot(ab2 / sqrt(l22))) < 0.94:
-								continue         # ~20° : un croisement ne fusionne pas
 							var tt2 := clampf((pk2 - sa).dot(ab2) / l22, 0.0, 1.0)
 							var pr2: Vector2 = sa + ab2 * tt2
 							var dd2 := pk2.distance_squared_to(pr2)
@@ -2140,7 +2138,9 @@ func _ensure_road_network() -> void:
 				while k1 + 1 < n and near[k1 + 1] >= 0:
 					arc += poly[k1].distance_to(poly[k1 + 1])
 					k1 += 1
-				if arc >= 8.0:
+				var chord_f := (poly[k1] - poly[k0]).normalized()
+				var chord_t := (proj[k1] - proj[k0]).normalized()
+				if arc >= 8.0 and absf(chord_f.dot(chord_t)) >= 0.90:
 					var votes := {}
 					for kk in range(k0, k1 + 1):
 						votes[near[kk]] = int(votes.get(near[kk], 0)) + 1
