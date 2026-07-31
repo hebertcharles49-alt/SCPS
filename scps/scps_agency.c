@@ -473,7 +473,9 @@ bool edifice_unlocked(const TechState *ts, Edifice e){
 }
 
 /* Constantes des actions non-bâtiment (calibrables). */
-#define CLEAR_DAYS        200
+#define CLEAR_DAYS        3600  /* DIX ANS (decision joueur 2026-07-31 : « prends 10 ans ») —
+                                 * defricher n'est pas un chantier mais une generation de
+                                 * travail : abattre, essoucher, drainer, epierrer, amender. */
 #define EXPLOIT_DAYS      180
 #define CLEAR_FOOD_GAIN   1.5f
 #define CLEAR_SUBS_TARGET 6.0f    /* mode de vie agricole (FARMER) */
@@ -537,6 +539,44 @@ bool agency_order_build(AgencyState *a, int region, Edifice e){
 }
 bool agency_order_clear(AgencyState *a, int region){
     return enqueue(a, AGY_CLEAR, region, 0, CLEAR_DAYS, -1);
+}
+/* DEFRICHAGE COMPTABILISE (decision joueur 2026-07-31 : « defrichage = on paye les
+ * laborer. Prends 10 ans. ») — pendant d'agency_renover_acct, au grain PROVINCE :
+ *  · le COUT est de la MAIN-D'OEUVRE : l'or sort du tresor et entre INTEGRALEMENT dans
+ *    la richesse des JOURNALIERS de la province (transfert, pas destruction — motif
+ *    M3b-v2). On ne paie pas des artisans : on paie des bras.
+ *  · le prix suit la POP de journaliers a entretenir (CLEAR_GOLD_PER_LAB par tete,
+ *    plancher CLEAR_GOLD_MIN) — defricher une province peuplee coute plus cher.
+ *  · un seul defrichage par province a la fois. */
+float agency_clear_gold(const WorldEconomy *econ, int prov){
+    if (!econ || prov<0 || prov>=econ->n_prov) return 0.f;
+    const ProvinceEconomy *pe=&econ->prov[prov];
+    float lab = pe->strata[CLASS_LABORER].pop;
+    if (lab < 0.f) lab = 0.f;
+    float g = tune_f("CLEAR_GOLD_PER_LAB", 0.35f) * lab;
+    float mn = tune_f("CLEAR_GOLD_MIN", 60.f);
+    return (g < mn) ? mn : g;
+}
+bool agency_clear_pending(const AgencyState *a, int prov){
+    if (!a) return false;
+    for (int i=0;i<a->n;i++)
+        if (a->order[i].active && a->order[i].kind==AGY_CLEAR && a->order[i].prov==prov) return true;
+    return false;
+}
+bool agency_clear_acct(AgencyState *a, WorldEconomy *econ, const World *w,
+                       int region, int owner, int prov){
+    if (!a || !econ || region<0 || region>=econ->n_regions) return false;
+    if (prov<0 || prov>=econ->n_prov) return false;
+    ProvinceEconomy *pe=&econ->prov[prov];
+    if (!pe->active || !pe->colonized) return false;
+    if (agency_clear_pending(a, prov)) return false;
+    float gold = agency_clear_gold(econ, prov);
+    if (gold <= 0.f) return false;
+    if (!credit_can_spend(econ, w, owner, gold)) return false;
+    if (!credit_spend(econ, w, owner, gold)) return false;
+    if (owner>=0) econ_flux_add(owner, FX_BUILD, -gold);
+    pe->strata[CLASS_LABORER].wealth += gold;               /* 100 % aux BRAS */
+    return enqueue(a, AGY_CLEAR, region, 0, CLEAR_DAYS, prov);
 }
 bool agency_order_exploit(AgencyState *a, int region, Resource res){
     if (res<=RES_NONE||res>=RES_COUNT) return false;
@@ -743,7 +783,7 @@ bool agency_renover_acct(AgencyState *a, WorldEconomy *econ, const World *w, int
 }
 
 static void apply_action(WorldEconomy *econ, WorldLegitimacy *wl, ModifierStack *drift,
-                         const BuildOrder *o){
+                         const BuildOrder *o, World *w2){
     int reg=o->region;
     if (reg<0 || reg>=econ->n_regions) return;
     /* RE-KEY PROVINCE (PROVINCE_MODEL.md) : une action de bâtisseur est PROVINCE-OWNED
@@ -780,6 +820,26 @@ static void apply_action(WorldEconomy *econ, WorldLegitimacy *wl, ModifierStack 
         } break;
         case AGY_CLEAR:
             re->build.food_cap += CLEAR_FOOD_GAIN;
+            /* LA TRACE SUR LA CARTE (decision joueur 2026-07-31) : le defrichage POSE le
+             * biome TERRES CULTIVEES sur les cellules travaillees, puis la province
+             * RE-TIRE ses brutes sur son nouveau biome (« a la modification du biome =
+             * retirage des ressources »). Sans ca BIO_FARMLAND n'existait DANS AUCUN
+             * MONDE (0 province, 0 cellule sur 8 graines) alors que tout l'aval l'attend
+             * (grain 5.5 — le meilleur — et habitabilite 0.95) : un monde a l'an 0 n'a pas
+             * de champs, ils naissent du TRAVAIL. Seules les terres OUVERTES et vivables
+             * se cultivent (jamais un glacier, une mangrove ni un sommet) ; la friche
+             * alentour fait le paysage. Gated CLEAR_FARMLAND=0. */
+            if (w2 && tune_f("CLEAR_FARMLAND", 1.f) > 0.f){
+                int done=0, cap=(int)tune_f("CLEAR_FARMLAND_CELLS", 300.f);
+                for (int i=0; i<SCPS_N && done<cap; i++){
+                    if (w2->cell[i].province != pid) continue;
+                    Biome b=(Biome)w2->cell[i].biome;
+                    if (b!=BIO_PLAINS && b!=BIO_GRASSLAND && b!=BIO_SAVANNA
+                        && b!=BIO_WOODS && b!=BIO_FOREST && b!=BIO_STEPPE) continue;
+                    w2->cell[i].biome=BIO_FARMLAND; done++;
+                }
+                if (done>0) world_province_reroll(w2, econ, pid);   /* biome change => brutes re-tirees */
+            }
             /* dérive du substrat vers l'agriculture (impérialisme sur la terre) */
             re->culture.subsistance += (CLEAR_SUBS_TARGET - re->culture.subsistance)*CLEAR_SUBS_SHIFT;
             /* niche forestière (chasseurs/horticulteurs) : leur monde rasé → L↓ */
@@ -857,7 +917,6 @@ bool agency_demolish_edifice(WorldEconomy *econ, int prov, Edifice e){
 
 void agency_advance(AgencyState *a, World *w, WorldEconomy *econ,
                     WorldLegitimacy *wl, ModifierStack *drift, int days){
-    (void)w;
     a->day += days;
     agency_build_decay(econ, (float)days/365.f);   /* vétusté : avant les complétions (ordre fixe) */
     for (int i=a->n-1; i>=0; i--){
@@ -873,7 +932,7 @@ void agency_advance(AgencyState *a, World *w, WorldEconomy *econ,
                 purge_slice(econ, wl, o->region, o->prov);
         }
         if (o->days_done >= o->days_total){
-            apply_action(econ, wl, drift, o);
+            apply_action(econ, wl, drift, o, (World*)w);
             a->order[i]=a->order[--a->n];   /* achevé : swap-remove */
         }
     }

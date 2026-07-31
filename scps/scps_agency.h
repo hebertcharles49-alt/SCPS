@@ -158,6 +158,13 @@ TechId edifice_gate_tech(Edifice e);   /* le nœud qui l'ouvre (TECH_COUNT = lib
  * l'agriculture (impérialisme culturel sur la terre), et ronge L en niche
  * forestière (les peuples de la forêt voient leur monde rasé). */
 bool agency_order_clear  (AgencyState *a, int region);
+/* DEFRICHAGE COMPTABILISE (grain PROVINCE) : paie les JOURNALIERS (l'or entre dans leur
+ * richesse — on paie des bras), dure 10 ans, pose TERRES CULTIVEES a l'achevement et
+ * RE-TIRE les brutes de la province sur son nouveau biome. */
+float agency_clear_gold   (const WorldEconomy *econ, int prov);
+bool  agency_clear_pending(const AgencyState *a, int prov);
+bool  agency_clear_acct   (AgencyState *a, WorldEconomy *econ, const World *w,
+                           int region, int owner, int prov);
 /* §3 Exploitation : un aménagement (mine/carrière…) monte l'extraction d'une
  * ressource (matériaux pour bâtir/armer, stratégiques pour la tech/valeur). */
 bool agency_order_exploit(AgencyState *a, int region, Resource res);

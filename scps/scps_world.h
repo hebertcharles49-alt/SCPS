@@ -71,6 +71,10 @@ const char *biome_name(Biome b);
 
 /* Utilitaires ressource */
 const char *resource_name(Resource r);
+/* RE-TIRAGE d'une province dont le BIOME a change (defrichage) : recalcule son biome
+ * dominant, re-tire ses 2 brutes sur la MEME table que la genese, met a jour
+ * habitabilite et raw_cap. Deterministe (hash du pid), sans toucher au flux rng. */
+void world_province_reroll(World *w, WorldEconomy *econ, int pid);
 uint32_t    resource_color(Resource r);
 
 /* Palette de provinces — couleur ARGB stable par id */

@@ -406,8 +406,17 @@ int main(int argc, char **argv){
                        (double)deb.total, (double)(deb.taux*100.f), (double)deb.due, (double)expect_fixed);
                 ok("B7 : sous DEBT_FIXED, l'échéance == total×DEBT_DUE_FRAC (PAS total×taux)",
                    fabsf(deb.due - expect_fixed) < 0.5f);
+                /* Écart RELATIF (recalibré 2026-07-31) : l'ancien seuil ABSOLU de 0.5 or
+                 * testait en réalité la TAILLE de la dette, pas la divergence des deux
+                 * formules — sur une dette de 5 (capacité d'emprunt basse selon le monde),
+                 * |due − total×taux| = 5×|0.10−0.02| = 0.4 < 0.5 et le banc rougissait alors
+                 * que due == total×DEBT_DUE_FRAC au centième. On compare donc les TAUX :
+                 * la preuve du bug fermé est que l'échéance suit DEBT_DUE_FRAC (10 %) et
+                 * NON le taux d'origination (~2 %) — vrai quelle que soit la dette. */
                 ok("B7 : l'échéance RÉELLE diverge du calcul BUGUÉ total×taux (la preuve du bug fermé)",
-                   fabsf(deb.due - deb.total*deb.taux) > 0.5f);
+                   deb.total > 0.f
+                   && fabsf(deb.due/deb.total - deb.taux) > 0.02f
+                   && fabsf(deb.due - deb.total*deb.taux) > 0.001f);
                 /* kill-switch DEBT_FIXED=0 : legacy, due==total*taux EXACT (comportement pré-M11). */
                 tune_set("DEBT_FIXED", 0.f);
                 ScpsDebt deb_legacy; scps_country_debt(s2, pl, &deb_legacy);

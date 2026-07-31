@@ -7,6 +7,7 @@
  * fait par l'appelant (qui paie le coût, fournit le masque de héritages, lit l'arbre).
  */
 #include "scps_tech.h"
+#include "scps_tune.h"   /* TECH_COST_MULT (registre J) */
 #include <math.h>
 #include <stddef.h>
 #include <stdio.h>     /* MODTOOLS : dump/load fichier */
@@ -671,7 +672,11 @@ float tech_cost(TechId id, float n_provinces){
     float f = TECH_COST_N_K * powf(N, TECH_COST_N_EXP);    /* coût ∝ √N : wide récompensé sous-linéairement */
     if (f<TECH_COST_N_FLOOR) f=TECH_COST_N_FLOOR;
     if (!(f<1e6f)) f=1e6f;   /* un N inf/NaN ne doit pas geler la recherche (coût inf) */
-    return BASE_COST[t] * COST_SCALE * f;
+    /* PRIX DE LA RECHERCHE (décision joueur 2026-07-31 : « 42 % des techs, c'est peu —
+     * retire 30 % du prix ») : multiplicateur GLOBAL sur le coût, registre J. Mesuré au
+     * gigasweep 100 mondes : arbre_pct médiane 42 % en 250 ans (p25 35 · p75 48), et les
+     * paliers hauts restaient hors de portée des petits. 1.0 = ancien prix (kill-switch). */
+    return BASE_COST[t] * COST_SCALE * f * tune_f("TECH_COST_MULT", 0.70f);
 }
 
 /* ---- La Brèche (verrou SCPS, inchangé) -------------------------------- */

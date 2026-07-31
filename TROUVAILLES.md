@@ -8021,3 +8021,51 @@ sur les 20 logs, au caractère près. Aucune Église n'était jamais née dans S
 - Cathédrale : `nomat=198 notech=29` — la chaîne se tend au sommet (équilibrage, pas
   blocage). Les schismes/hérésies/minorités tournent pour la PREMIÈRE fois en conditions
   réelles : leur calibrage n'a jamais été observé sur un sweep.
+
+## WORLDGEN : LA VOCATION EST LE TIRAGE, RIEN D'AUTRE (2026-07-31)
+
+**Le fait** : pierre et argile n'avaient AUCUN poids dans la table de tirage par biome
+(0 occurrence d'ADD contre 8 pour le fer) — leur seule source au monde était le spawn
+curé des capitales d'empire. Conséquence mesurée : Temple (20 pierre) refusé nomat=231
+fois/sim ⇒ mondes athées. Le dump du chronicle comptait des RÉGIONS (agrégat) et masquait
+tout : c'est le dump au grain PROVINCE (ajouté ici) qui l'a montré.
+
+**Découvertes** :
+- TROIS mécanismes contournaient la règle des 2 brutes au lieu de l'appliquer :
+  (1) GREFFES GÉOLOGIQUES (econ_init) : pierre/argile/fruit reposées dans raw_cap d'après
+      le biome, PAR-DESSUS le tirage — « une DÉRIVATION IA, une HALLUCINATION » (joueur).
+      Débranchées (RES_GEO_GRAFT=0). ⚠ PAS neutre malgré la coupe de vocation : les
+      manufactures se posent sur le raw_cap AVANT elle — les greffes orientaient l'atelier.
+  (2) Le TIRAGE ignorait pierre/argile : ajoutées là où sw_biome_fits les déclarait déjà
+      (la table le disait, le tirage ne l'appliquait pas).
+  (3) COMPLÉTUDE : le tirage pondéré est une BINOMIALE — une brute à faible poids sort
+      zéro fois sur ~700 tuiles (Fruits absent 5 graines/8). Passe de rattrapage : chaque
+      absente est posée sur la tuile au POIDS MAXIMAL pour elle (la géographie décide OÙ),
+      en remplaçant la MINEURE, jamais la dernière tuile d'une autre brute.
+- ⚠ NE PAS « CORRIGER » : les manufactures de CITÉ-ÉTAT implantées au gisement sont
+  VOULUES (tranché joueur). Le raisonnement « le pool est national donc l'atelier n'a pas
+  à naître sur son intrant » est séduisant et FAUX : la cité-état est l'ATELIER DU MONDE,
+  sa dotation est sa raison d'être ; l'empire, lui, naît nu. J'ai débranché puis restauré
+  — avertissement pose dans le code.
+- DÉFRICHAGE : mécanisme ORPHELIN (3 occurrences, aucun appelant, aucun verbe façade, ne
+  posait pas le biome, grain région). Complété : 10 ans, l'or va INTÉGRALEMENT aux
+  journaliers (on paie des bras), grain province, pose BIO_FARMLAND puis RE-TIRE les 2
+  brutes sur le nouveau biome (world_province_reroll, table extraite pour être rejouable).
+  FARMLAND n'était produit NULLE PART (0 return, 0 assignation) : ce n'était pas un bug de
+  worldgen mais l'absence du travail humain — « on n'est pas apparu au 20e siècle avec des
+  champs gigantesques ».
+
+**Pièges** :
+- Un tunable non déclaré au registre J fait ÉCHOUER le binaire quand SCPS_TUNE le nomme
+  (« tunable INCONNU ») — d'où un `--hash` VIDE que j'ai d'abord pris pour un crash.
+- Le golden de l'ARBRE avait été re-baseliné entre-temps : comparer le kill-switch au
+  golden HEAD (`git show HEAD:scps/golden_hashes.txt`), pas au fichier courant.
+- diff/cmp/bc ABSENTS du MSYS2 de ce poste : comparer avec `[ "$(cat a)" = "$(cat b)" ]`.
+- Province n'a PAS de champ `.active` (c'est ProvinceEconomy) — utiliser habitability>0.
+- FIXTURE FRAGILE (scps_api_demo B7) : seuil ABSOLU de 0.5 or sur un écart de formules —
+  il testait en fait la TAILLE de la dette (5 vs 119 selon le monde), pas la divergence.
+  Recalibré en RELATIF (les taux), l'assertion est intacte et robuste au re-monde.
+
+**Restes** : façade du défrichage (éligibilité, verbe joueur, bouton grisé + hover) et
+l'IA qui n'a aucune raison de défricher. Biomes : Jungle quasi absente (3 cellules/monde),
+Sommets jamais, Savane/Désert/Collines parfois sans aucune province dominante.

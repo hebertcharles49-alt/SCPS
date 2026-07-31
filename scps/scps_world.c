@@ -3455,6 +3455,183 @@ static void step_weathering(World *w, const float *height, float seed_f) {
            (marsh+bog)*100/land, wood*100/land, mang*100/land);
 }
 
+/* LA TABLE DES POIDS (extraite pour etre REJOUABLE) — le tirage de genese ET le
+ * re-tirage apres defrichage (world_province_reroll) lisent la MEME table : une
+ * province qui change de biome doit tirer sur SON nouveau biome, jamais sur une
+ * copie divergente. AUCUN rng ici (que des poids) : l'ordre des tirages de la
+ * genese est inchange, le golden ne bouge pas de ce fait. */
+static void province_res_weights(Biome B, float moist, float tmp, float H,
+                                 bool coastal_p, bool bigriver, float *wt){
+    for (int r=0;r<RES_COUNT;r++) wt[r]=0.f;
+    #define ADD(R,V) wt[R]+=(V)
+        bool  warm  = tmp>0.55f, cold = tmp<0.34f;
+
+        bool arid       = (B==BIO_DRYLANDS||B==BIO_DESERT||B==BIO_COASTAL_DESERT||
+                           B==BIO_SAVANNA)||moist<0.30f;
+        bool hills      = (B==BIO_HILLS||B==BIO_HIGHLANDS);
+        bool mesa       = arid && (hills||H>0.55f);   /* filons à découvert (cuivre/fer) */
+
+
+        /* ══ RÉPARTITION IDÉALE PAR BIOME (doc « répartition des ressources », §2) ══
+         * Une province tire UNE brute dominante ∝ ces poids ; le GRAIN a en plus un
+         * SOCLE garanti hors tirage (econ_init) ∝ fertilité → jamais de famine (P1).
+         * Cible : couverture mondiale 110-150 % par bien consommé, zéro pénurie, zéro
+         * glut absurde. La « bonne chose au bon endroit, en bonne proportion » (P2-P3). */
+        switch (B) {
+            /* ── Plaines fertiles : le grenier ── */
+            case BIO_FARMLAND:  ADD(RES_GRAIN,5.5f); ADD(RES_WOOL,1.0f); ADD(RES_COTTON,0.4f); if (warm) ADD(RES_INDIGO,1.5f); break;  /* indigo : culture de rente du bas-pays chaud (arbitre le grain ; socle vivrier préservé) */
+            case BIO_PLAINS:    ADD(RES_GRAIN,4.4f); ADD(RES_LIVESTOCK,1.6f); ADD(RES_WOOL,1.2f); ADD(RES_IRON,0.10f); if (warm) ADD(RES_INDIGO,1.4f); break;  /* fer secondaire en plaine */
+            case BIO_GRASSLAND: ADD(RES_GRAIN,3.0f); ADD(RES_LIVESTOCK,2.2f); ADD(RES_WOOL,2.0f); ADD(RES_MED_HERBS,0.5f); if (warm) ADD(RES_INDIGO,1.3f); break;
+            /* ── Pastoral & sec ── */
+            case BIO_STEPPE:
+                ADD(RES_LIVESTOCK,2.6f); ADD(RES_WOOL,2.2f); ADD(RES_SALTPETER,0.4f);
+                if (cold) ADD(RES_FUR,0.6f);
+                break;
+            case BIO_SAVANNA:   ADD(RES_LIVESTOCK,2.4f); ADD(RES_WOOL,1.2f); ADD(RES_SUGAR,0.8f); ADD(RES_MED_HERBS,0.5f); ADD(RES_INDIGO,1.3f); break;  /* savane : chaude par nature → indigo */
+            case BIO_DRYLANDS:  ADD(RES_COTTON,1.8f); ADD(RES_SALT,0.9f); ADD(RES_SALTPETER,1.4f); break;
+            case BIO_DESERT:    ADD(RES_SALT,1.2f); ADD(RES_SALTPETER,1.8f); break;
+            /* ── Forêts : le bois + les simples ── */
+            case BIO_FOREST:
+                ADD(RES_WOOD,3.6f); ADD(RES_MED_HERBS,1.0f);
+                if (cold) ADD(RES_FUR,2.0f);
+                break;
+            case BIO_WOODS:     ADD(RES_WOOD,3.0f); ADD(RES_GRAIN,1.4f); ADD(RES_MED_HERBS,0.8f); break;
+            case BIO_JUNGLE:    ADD(RES_WOOD,3.2f); ADD(RES_SUGAR,1.6f); ADD(RES_MED_HERBS,1.2f); break;
+            /* ── Zones humides ── */
+            case BIO_MARSH:     if (coastal_p) ADD(RES_FISH,0.9f);   /* le poisson est CÔTIER : marais enclavé ⇒ pas de pêcherie */
+                                ADD(RES_MED_HERBS,1.4f); ADD(RES_SALT,0.2f); ADD(RES_IRON,0.10f); break;  /* fer des marais (secondaire) */
+            case BIO_BOG:
+                ADD(RES_MED_HERBS,2.6f); ADD(RES_COAL,0.4f); ADD(RES_IRON,0.10f);   /* fer des tourbières (secondaire) */
+                if (cold) ADD(RES_FUR,1.5f);
+                break;
+            /* ── Côtes & littoraux (poisson/sel dégonflés ; perle + bétail d'appoint) ── */
+            case BIO_COAST:     ADD(RES_FISH,1.5f); ADD(RES_SALT,0.4f); ADD(RES_LIVESTOCK,0.4f); ADD(RES_PEARL,0.15f); ADD(RES_MUREX,0.9f); break;  /* murex : arbitre pêche/sel (tirage à 2 brutes) */
+            case BIO_MANGROVE:  ADD(RES_FISH,0.9f); ADD(RES_SUGAR,1.4f); ADD(RES_MED_HERBS,0.8f); ADD(RES_FUR,0.4f); ADD(RES_LIVESTOCK,0.4f); ADD(RES_PEARL,0.15f); ADD(RES_MUREX,0.9f); break;
+            case BIO_COASTAL_DESERT:
+                ADD(RES_SALT,0.9f); ADD(RES_SALTPETER,0.6f); ADD(RES_PEARL,0.15f); ADD(RES_MUREX,0.7f);
+                if (warm) ADD(RES_SUGAR,2.0f);
+                break;
+            /* ── Reliefs : la laine + les minéraux ── */
+            case BIO_HILLS:     ADD(RES_WOOL,2.2f); ADD(RES_LIVESTOCK,1.6f); ADD(RES_COPPER,1.4f); ADD(RES_IRON,1.4f); ADD(RES_MED_HERBS,0.6f); break;
+            case BIO_HIGHLANDS: ADD(RES_WOOL,2.0f); ADD(RES_COPPER,1.2f); ADD(RES_IRON,1.2f); ADD(RES_MED_HERBS,1.0f); ADD(RES_GOLD,0.3f); break;
+            case BIO_MOUNTAINS: ADD(RES_IRON,2.0f); ADD(RES_COPPER,2.0f); ADD(RES_COAL,1.6f); ADD(RES_GOLD,1.2f);  /* or dégonflé : trop d'or */
+                                ADD(RES_PRECIOUS_METAL,1.2f); ADD(RES_SULFUR,1.4f); ADD(RES_SALTPETER,0.6f); break;
+            case BIO_VOLCANO:   ADD(RES_SULFUR,1.4f); ADD(RES_PRECIOUS_METAL,0.4f); break;   /* veines magmatiques */
+            default: break;     /* océans · pic · glacier : terres mortes → rien (P4) */
+        }
+        /* MESA (aride + relief) : filons de cuivre/fer à découvert (bonus). */
+        if (mesa) { ADD(RES_COPPER,1.5f); ADD(RES_IRON,1.5f); }
+        /* ══ PIERRE & ARGILE — LES DEUX MATÉRIAUX MANQUANTS (décision joueur 2026-07-31 :
+         * « faut revoir la distribution des ressources tout en gardant les obligations »).
+         * DIAGNOSTIC : ni RES_STONE ni RES_CLAY n'avaient LE MOINDRE poids dans cette
+         * table — 0 occurrence d'ADD, contre 8 pour le fer. Leur SEULE source au monde
+         * était la passe de spawn curé (refine_capitals), qui les garantit à proximité des
+         * capitales d'EMPIRE : hors de ces ~6 territoires, la carte n'en portait AUCUNE.
+         * Conséquence mesurée : le Temple (20 pierre + 10 argile) refusé nomat=231 fois en
+         * 250 ans ⇒ des mondes entiers restaient ATHÉES faute de carrière.
+         * On les pose donc là où la géologie les porte — la MÊME table que sw_biome_fits,
+         * qui le DÉCLARAIT déjà sans que le tirage ne l'applique jamais. Les OBLIGATIONS
+         * (spawn curé) restent INTACTES : elles garantissent le territoire de départ,
+         * ceci peuple le RESTE du monde. Kill-switch : RES_MAT_SPREAD=0 → ancienne carte. */
+        if (tune_f("RES_MAT_SPREAD",1.f) > 0.f){
+            switch (B){
+                case BIO_HILLS:      ADD(RES_STONE,2.0f); break;   /* la carrière de colline, le cas classique */
+                case BIO_HIGHLANDS:  ADD(RES_STONE,1.8f); break;
+                case BIO_MOUNTAINS:  ADD(RES_STONE,2.2f); break;
+                case BIO_VOLCANO:    ADD(RES_STONE,1.6f); break;   /* basalte */
+                case BIO_DRYLANDS:   ADD(RES_STONE,1.2f); break;   /* roche à découvert */
+                case BIO_MARSH:      ADD(RES_CLAY,2.2f);  break;   /* l'argile des marais */
+                case BIO_BOG:        ADD(RES_CLAY,1.8f);  break;
+                case BIO_MANGROVE:   ADD(RES_CLAY,1.4f);  break;
+                case BIO_COAST:      ADD(RES_CLAY,1.0f);  break;   /* terre à brique du littoral */
+                default: break;
+            }
+            /* Pincée PARTOUT (motif charbon/or/fer ci-dessous) : moellon et brique se
+             * trouvent à peu près partout — sans elle, une contrée sans relief ni marais
+             * resterait stérile en MATÉRIAUX alors qu'elle bâtit comme les autres. */
+            if (B!=BIO_PEAK && B!=BIO_GLACIER){ ADD(RES_STONE,0.30f); ADD(RES_CLAY,0.30f); }
+        }
+        /* Le poisson est une ressource CÔTIÈRE — la pêche fluviale d'appoint est retirée
+         * (un grand fleuve enclavé ne porte plus de pêcherie). */
+        (void)bigriver;
+        /* RARES STRATÉGIQUES (§3) : une pincée PARTOUT (0.05) pour que les chaînes de
+         * pointe ne meurent jamais — fer céleste (armes enchantées) & cristal arcanique
+         * (essence). Voulus rares, mais jamais absents (≥ 3-4 nœuds / ~100 régions). */
+        if (B!=BIO_PEAK && B!=BIO_GLACIER){ ADD(RES_CELESTIAL_IRON,0.05f); ADD(RES_ARCANE_CRYSTAL,0.05f); }
+        /* CHARBON / OR / FER : une pincée PARTOUT (0.05) — la base industrielle (épine
+         * métal/outils) et l'or (orfèvrerie) étaient trop localisés. Donne une province ou
+         * deux de plus de chacun là où le tirage est lâche, sans inonder la carte. */
+        if (B!=BIO_PEAK && B!=BIO_GLACIER){ ADD(RES_COAL,0.05f); ADD(RES_GOLD,0.05f); ADD(RES_IRON,0.05f); }
+        #undef ADD
+}
+
+/* RE-TIRAGE D'UNE PROVINCE APRES CHANGEMENT DE BIOME (decision joueur 2026-07-31 :
+ * « a la modification du biome = retirage des ressources ») — appele par le DEFRICHAGE
+ * (agency, AGY_CLEAR) quand les cellules travaillees deviennent TERRES CULTIVEES.
+ * Recalcule le biome DOMINANT de la tuile depuis ses cellules, ses moyennes de climat,
+ * puis re-tire ses DEUX brutes sur la MEME table que la genese (province_res_weights).
+ * DETERMINISTE sans toucher au flux rng global : la graine du tirage est un hash du PID
+ * et du biome obtenu (xs32 local) — deux parties identiques defrichent a l'identique,
+ * et la sequence de la genese n'est jamais decalee. Met a jour raw_cap en consequence :
+ * la province PRODUIT ce qu'elle porte, sinon le champ ne nourrit personne. */
+void world_province_reroll(World *w, WorldEconomy *econ, int pid){
+    if (!w || pid<0 || pid>=w->n_provinces) return;
+    Province *pr=&w->province[pid];
+    /* 1. biome DOMINANT + climat moyen, relus sur les cellules de la tuile */
+    static int bc[BIO_COUNT];
+    for (int b=0;b<BIO_COUNT;b++) bc[b]=0;
+    double ms=0.0, ts=0.0; int n=0; bool coast=false;
+    for (int i=0;i<SCPS_N;i++){
+        if (w->cell[i].province != pid) continue;
+        int b=(int)w->cell[i].biome;
+        if (b>=0 && b<BIO_COUNT) bc[b]++;
+        ms += w->cell[i].moisture; ts += w->cell[i].temperature; n++;
+        if (w->cell[i].coast) coast=true;
+    }
+    if (n<=0) return;
+    int best=0; for (int b=1;b<BIO_COUNT;b++) if (bc[b]>bc[best]) best=b;
+    pr->biome_dominant=(Biome)best;
+    pr->coastal=coast;
+    float moist=(float)(ms/n), tmp=(float)(ts/n);
+    /* 2. la MEME table que la genese */
+    float wt[RES_COUNT];
+    province_res_weights((Biome)best, moist, tmp, pr->height_avg, coast, false, wt);
+    float tot=0.f; for (int r=1;r<RES_PROD_FIRST;r++) tot+=wt[r];
+    if (tot<1e-4f) return;                       /* rien a tirer : on garde l'existant */
+    /* 3. deux tirages DETERMINISTES (hash local — le flux rng global n'est pas touche) */
+    uint32_t h=(uint32_t)(pid*2654435761u) ^ (uint32_t)(best*40503u) ^ 0x5EEDu;
+    h^=h<<13; h^=h>>17; h^=h<<5;
+    float u1=(float)(h&0xFFFFFFu)/(float)0x1000000;
+    h^=h<<13; h^=h>>17; h^=h<<5;
+    float u2=(float)(h&0xFFFFFFu)/(float)0x1000000;
+    float roll=u1*tot, acc=0.f; Resource chosen=RES_GRAIN;
+    for (int r=1;r<RES_PROD_FIRST;r++){ acc+=wt[r]; if(acc>=roll){chosen=(Resource)r;break;} }
+    pr->resource=chosen;
+    pr->resource2=RES_NONE;
+    wt[chosen]=0.f;
+    float tot2=0.f; for (int r=1;r<RES_PROD_FIRST;r++) tot2+=wt[r];
+    if (tot2>1e-4f){
+        float roll2=u2*tot2, acc2=0.f;
+        for (int r=1;r<RES_PROD_FIRST;r++){ acc2+=wt[r]; if(acc2>=roll2){ pr->resource2=(Resource)r; break; } }
+    }
+    /* 4. l'habitabilite suit le nouveau biome (un champ nourrit mieux qu'une forêt) */
+    pr->habitability = biome_habitability((Biome)best, tmp, pr->height_avg);
+    if (pr->coastal && pr->habitability < 0.32f) pr->habitability = 0.32f;
+    /* 5. LA VOCATION SUIT (charte : EXACTEMENT les 2 brutes TIREES produisent — jamais
+     * une greffe). On efface l'ancienne vocation et on pose la NOUVELLE, dominante
+     * franche + mineure, comme econ_init : la tuile defrichee produit ce qu'elle porte
+     * DESORMAIS, pas ce qu'elle portait avant. Les strategiques rares (sous-gisements
+     * geologiques) survivent, exactement comme a la coupe de vocation. */
+    if (econ && pid<econ->n_prov){
+        ProvinceEconomy *pe=&econ->prov[pid];
+        for (int g=1; g<RES_PROD_FIRST; g++)
+            if (g!=RES_CELESTIAL_IRON && g!=RES_ARCANE_CRYSTAL) pe->raw_cap[g]=0.f;
+        float base = 1.5f + pr->area*0.05f;
+        if (pr->resource >RES_NONE && pr->resource <RES_PROD_FIRST) pe->raw_cap[pr->resource ] += base*1.5f;
+        if (pr->resource2>RES_NONE && pr->resource2<RES_PROD_FIRST) pe->raw_cap[pr->resource2] += base*0.5f;
+    }
+}
+
 /* ========================================================================
  * RESSOURCES — bien commercial principal par province
  *
@@ -3491,78 +3668,8 @@ static void gen_resources(World *w) {
         float moist = moist_s[p]/n, tmp = temp_s[p]/n;
         float H     = pr->height_avg;
         Biome B     = pr->biome_dominant;
-        bool  warm  = tmp>0.55f, cold = tmp<0.34f;
-        bool  bigriver = rivmax[p]>150;
-
-        bool arid       = (B==BIO_DRYLANDS||B==BIO_DESERT||B==BIO_COASTAL_DESERT||
-                           B==BIO_SAVANNA)||moist<0.30f;
-        bool hills      = (B==BIO_HILLS||B==BIO_HIGHLANDS);
-        bool mesa       = arid && (hills||H>0.55f);   /* filons à découvert (cuivre/fer) */
-
-        float wt[RES_COUNT]; for (int r=0;r<RES_COUNT;r++) wt[r]=0.f;
-        #define ADD(R,V) wt[R]+=(V)
-
-        /* ══ RÉPARTITION IDÉALE PAR BIOME (doc « répartition des ressources », §2) ══
-         * Une province tire UNE brute dominante ∝ ces poids ; le GRAIN a en plus un
-         * SOCLE garanti hors tirage (econ_init) ∝ fertilité → jamais de famine (P1).
-         * Cible : couverture mondiale 110-150 % par bien consommé, zéro pénurie, zéro
-         * glut absurde. La « bonne chose au bon endroit, en bonne proportion » (P2-P3). */
-        switch (B) {
-            /* ── Plaines fertiles : le grenier ── */
-            case BIO_FARMLAND:  ADD(RES_GRAIN,5.5f); ADD(RES_WOOL,1.0f); ADD(RES_COTTON,0.4f); if (warm) ADD(RES_INDIGO,1.5f); break;  /* indigo : culture de rente du bas-pays chaud (arbitre le grain ; socle vivrier préservé) */
-            case BIO_PLAINS:    ADD(RES_GRAIN,4.4f); ADD(RES_LIVESTOCK,1.6f); ADD(RES_WOOL,1.2f); ADD(RES_IRON,0.10f); if (warm) ADD(RES_INDIGO,1.4f); break;  /* fer secondaire en plaine */
-            case BIO_GRASSLAND: ADD(RES_GRAIN,3.0f); ADD(RES_LIVESTOCK,2.2f); ADD(RES_WOOL,2.0f); ADD(RES_MED_HERBS,0.5f); if (warm) ADD(RES_INDIGO,1.3f); break;
-            /* ── Pastoral & sec ── */
-            case BIO_STEPPE:
-                ADD(RES_LIVESTOCK,2.6f); ADD(RES_WOOL,2.2f); ADD(RES_SALTPETER,0.4f);
-                if (cold) ADD(RES_FUR,0.6f);
-                break;
-            case BIO_SAVANNA:   ADD(RES_LIVESTOCK,2.4f); ADD(RES_WOOL,1.2f); ADD(RES_SUGAR,0.8f); ADD(RES_MED_HERBS,0.5f); ADD(RES_INDIGO,1.3f); break;  /* savane : chaude par nature → indigo */
-            case BIO_DRYLANDS:  ADD(RES_COTTON,1.8f); ADD(RES_SALT,0.9f); ADD(RES_SALTPETER,1.4f); break;
-            case BIO_DESERT:    ADD(RES_SALT,1.2f); ADD(RES_SALTPETER,1.8f); break;
-            /* ── Forêts : le bois + les simples ── */
-            case BIO_FOREST:
-                ADD(RES_WOOD,3.6f); ADD(RES_MED_HERBS,1.0f);
-                if (cold) ADD(RES_FUR,2.0f);
-                break;
-            case BIO_WOODS:     ADD(RES_WOOD,3.0f); ADD(RES_GRAIN,1.4f); ADD(RES_MED_HERBS,0.8f); break;
-            case BIO_JUNGLE:    ADD(RES_WOOD,3.2f); ADD(RES_SUGAR,1.6f); ADD(RES_MED_HERBS,1.2f); break;
-            /* ── Zones humides ── */
-            case BIO_MARSH:     if (coastal[p]) ADD(RES_FISH,0.9f);   /* le poisson est CÔTIER : marais enclavé ⇒ pas de pêcherie */
-                                ADD(RES_MED_HERBS,1.4f); ADD(RES_SALT,0.2f); ADD(RES_IRON,0.10f); break;  /* fer des marais (secondaire) */
-            case BIO_BOG:
-                ADD(RES_MED_HERBS,2.6f); ADD(RES_COAL,0.4f); ADD(RES_IRON,0.10f);   /* fer des tourbières (secondaire) */
-                if (cold) ADD(RES_FUR,1.5f);
-                break;
-            /* ── Côtes & littoraux (poisson/sel dégonflés ; perle + bétail d'appoint) ── */
-            case BIO_COAST:     ADD(RES_FISH,1.5f); ADD(RES_SALT,0.4f); ADD(RES_LIVESTOCK,0.4f); ADD(RES_PEARL,0.15f); ADD(RES_MUREX,0.9f); break;  /* murex : arbitre pêche/sel (tirage à 2 brutes) */
-            case BIO_MANGROVE:  ADD(RES_FISH,0.9f); ADD(RES_SUGAR,1.4f); ADD(RES_MED_HERBS,0.8f); ADD(RES_FUR,0.4f); ADD(RES_LIVESTOCK,0.4f); ADD(RES_PEARL,0.15f); ADD(RES_MUREX,0.9f); break;
-            case BIO_COASTAL_DESERT:
-                ADD(RES_SALT,0.9f); ADD(RES_SALTPETER,0.6f); ADD(RES_PEARL,0.15f); ADD(RES_MUREX,0.7f);
-                if (warm) ADD(RES_SUGAR,2.0f);
-                break;
-            /* ── Reliefs : la laine + les minéraux ── */
-            case BIO_HILLS:     ADD(RES_WOOL,2.2f); ADD(RES_LIVESTOCK,1.6f); ADD(RES_COPPER,1.4f); ADD(RES_IRON,1.4f); ADD(RES_MED_HERBS,0.6f); break;
-            case BIO_HIGHLANDS: ADD(RES_WOOL,2.0f); ADD(RES_COPPER,1.2f); ADD(RES_IRON,1.2f); ADD(RES_MED_HERBS,1.0f); ADD(RES_GOLD,0.3f); break;
-            case BIO_MOUNTAINS: ADD(RES_IRON,2.0f); ADD(RES_COPPER,2.0f); ADD(RES_COAL,1.6f); ADD(RES_GOLD,1.2f);  /* or dégonflé : trop d'or */
-                                ADD(RES_PRECIOUS_METAL,1.2f); ADD(RES_SULFUR,1.4f); ADD(RES_SALTPETER,0.6f); break;
-            case BIO_VOLCANO:   ADD(RES_SULFUR,1.4f); ADD(RES_PRECIOUS_METAL,0.4f); break;   /* veines magmatiques */
-            default: break;     /* océans · pic · glacier : terres mortes → rien (P4) */
-        }
-        /* MESA (aride + relief) : filons de cuivre/fer à découvert (bonus). */
-        if (mesa) { ADD(RES_COPPER,1.5f); ADD(RES_IRON,1.5f); }
-        /* Le poisson est une ressource CÔTIÈRE — la pêche fluviale d'appoint est retirée
-         * (un grand fleuve enclavé ne porte plus de pêcherie). */
-        (void)bigriver;
-        /* RARES STRATÉGIQUES (§3) : une pincée PARTOUT (0.05) pour que les chaînes de
-         * pointe ne meurent jamais — fer céleste (armes enchantées) & cristal arcanique
-         * (essence). Voulus rares, mais jamais absents (≥ 3-4 nœuds / ~100 régions). */
-        if (B!=BIO_PEAK && B!=BIO_GLACIER){ ADD(RES_CELESTIAL_IRON,0.05f); ADD(RES_ARCANE_CRYSTAL,0.05f); }
-        /* CHARBON / OR / FER : une pincée PARTOUT (0.05) — la base industrielle (épine
-         * métal/outils) et l'or (orfèvrerie) étaient trop localisés. Donne une province ou
-         * deux de plus de chacun là où le tirage est lâche, sans inonder la carte. */
-        if (B!=BIO_PEAK && B!=BIO_GLACIER){ ADD(RES_COAL,0.05f); ADD(RES_GOLD,0.05f); ADD(RES_IRON,0.05f); }
-        #undef ADD
+        float wt[RES_COUNT];
+        province_res_weights(B, moist, tmp, H, coastal[p], rivmax[p]>150, wt);
 
         /* Tirage pondéré — UNIQUEMENT parmi les ressources BRUTES.
          * Les biens de production (≥ RES_PROD_FIRST) seront posés plus tard
@@ -3594,6 +3701,59 @@ static void gen_resources(World *w) {
          * côtier sous des montagnes/déserts morts garde sa civilisation (le Chili, le Pérou,
          * la Norvège). Sans ça, pas de nation côtière coincée contre un relief mort. */
         if (pr->coastal && pr->habitability < 0.32f) pr->habitability = 0.32f;
+    }
+
+    /* ══ COMPLETUDE : UN DE CHAQUE, AU MINIMUM, PAR MONDE ══════════════════════════
+     * Decision joueur 2026-07-31 : « DEUX ressources RAW tirees a la worldgen par tile,
+     * et le biome decide, en s'assurant UN de chaque MINIMUM par monde ». Le tirage
+     * pondere est une BINOMIALE : une brute a poids faible peut sortir ZERO fois sur
+     * ~700 tuiles (mesure : Fruits absent sur 5 graines/8, Indigo/Sucre/Metaux precieux
+     * sur 2/8) — et la chaine qui en depend meurt alors en SILENCE, sans qu'aucun
+     * compteur ne le dise. On repose donc chaque ABSENTE sur la tuile la PLUS IDOINE :
+     * celle dont la table de biome lui donne le POIDS MAXIMAL (la geographie decide OU,
+     * jamais un placement arbitraire), en REMPLACANT sa MINEURE — la regle des 2 brutes
+     * tient, rien n'est greffe en 3e. On ne sacrifie jamais une mineure elle-meme unique
+     * au monde (sinon on deshabille Pierre pour habiller Paul). */
+    if (tune_f("RES_GUARANTEE_ALL", 1.f) > 0.f){
+        static int cntr[RES_COUNT];
+        for (int r=0;r<RES_COUNT;r++) cntr[r]=0;
+        for (int p=0;p<w->n_provinces;p++){
+            Resource a=w->province[p].resource, b=w->province[p].resource2;
+            if (a>RES_NONE && a<RES_PROD_FIRST) cntr[a]++;
+            if (b>RES_NONE && b<RES_PROD_FIRST) cntr[b]++;
+        }
+        int posees=0;
+        for (int g=1; g<RES_PROD_FIRST; g++){
+            if (cntr[g]>0) continue;                       /* deja presente : rien a faire */
+            int best=-1; float bestw=0.f;
+            for (int p=0;p<w->n_provinces;p++){
+                const Province *pv=&w->province[p];
+                if (pv->habitability <= 0.f) continue;   /* jamais sur une terre morte */
+                Resource mineure=pv->resource2;
+                if (pv->resource==(Resource)g) continue;   /* (ne devrait pas arriver) */
+                /* ne pas prendre la DERNIERE tuile d'une autre brute */
+                if (mineure>RES_NONE && mineure<RES_PROD_FIRST && cntr[mineure]<=1) continue;
+                float wt2[RES_COUNT];
+                province_res_weights(pv->biome_dominant, 0.5f, 0.5f, pv->height_avg,
+                                     pv->coastal, false, wt2);
+                if (wt2[g] > bestw){ bestw=wt2[g]; best=p; }
+            }
+            if (best<0){                                   /* aucun biome idoine : la 1re tuile libre */
+                for (int p=0;p<w->n_provinces && best<0;p++){
+                    const Province *pv=&w->province[p];
+                    Resource mineure=pv->resource2;
+                    if (pv->habitability > 0.f && pv->resource!=(Resource)g
+                        && !(mineure>RES_NONE && mineure<RES_PROD_FIRST && cntr[mineure]<=1)) best=p;
+                }
+            }
+            if (best>=0){
+                Resource old2=w->province[best].resource2;
+                if (old2>RES_NONE && old2<RES_PROD_FIRST) cntr[old2]--;
+                w->province[best].resource2=(Resource)g;
+                cntr[g]++; posees++;
+            }
+        }
+        if (posees) printf("       (complétude : %d brute(s) rare(s) posée(s) — un de chaque au minimum)\n", posees);
     }
 }
 

@@ -1812,18 +1812,31 @@ void econ_init(WorldEconomy *e, const World *w) {
         if (r>RES_NONE && r<RES_PROD_FIRST) pe->raw_cap[r] += base*1.5f;   /* P3.18 : dominante franche */
         Resource r2=pv->resource2;                      /* §6b : 2e brute, mineure ×0.4 */
         if (r2>RES_NONE && r2<RES_PROD_FIRST) pe->raw_cap[r2] += base*0.5f;
-        /* E1 — matériaux de construction LUS de la géo : la pierre sort du
-         * relief, l'argile des terres d'eau. Francs là où la terre les donne. */
-        Biome bd=pv->biome_dominant;
-        if (bd==BIO_HILLS||bd==BIO_HIGHLANDS||bd==BIO_MOUNTAINS||bd==BIO_PEAK
-            ||bd==BIO_VOLCANO||pv->height_avg>0.55f)
-            pe->raw_cap[RES_STONE] += base*0.5f;
-        if (bd==BIO_MARSH||bd==BIO_BOG||bd==BIO_MANGROVE)
-            pe->raw_cap[RES_CLAY]  += base*0.5f;
-        /* FRUIT — vergers/cueillette : FORÊT/BOIS/JUNGLE SEULEMENT (plus « partout ») → le fruit
-         * ne vole PAS les bras d'extraction au grain dans les provinces céréalières (la bière survit).
-         * Nourriture de substitution (food-fill, plus bas) + repli du EAU-DE-VIE. Protégé de la coupe. */
-        if (bd==BIO_FOREST||bd==BIO_WOODS||bd==BIO_JUNGLE) pe->raw_cap[RES_FRUIT] += base*0.65f;
+        /* GREFFES GÉOLOGIQUES SUPPRIMÉES (décision joueur 2026-07-31 : « toutes les
+         * ressources extraites selon le biome — je n'ai JAMAIS voulu de ça, c'est une
+         * DÉRIVATION IA, une HALLUCINATION »). Ce bloc reposait pierre/argile/fruit dans
+         * raw_cap D'APRÈS LE BIOME, par-derrière, alors que le TIRAGE (province.resource /
+         * resource2) est la seule vocation légitime : une DOUBLE SOURCE qui faisait
+         * « produire » à la tuile des brutes qu'elle n'avait jamais tirées. La coupe de
+         * VOCATION juste en dessous les effaçait déjà toutes (elle ne protège que les 2
+         * brutes TIRÉES + les stratégiques rares) : leur retrait est donc STRICTEMENT
+         * NEUTRE — du code mort qui mentait. La pierre et l'argile vivent désormais dans
+         * la table de TIRAGE (province_res_weights), là où elles doivent être ; ce qui
+         * manque vient du COMMERCE, jamais d'une greffe.
+         * ⚠ PAS neutre, contrairement à ce que laissait croire la coupe : les manufactures
+         * se posent sur le raw_cap AVANT elle (cf. commentaire de la coupe) — les greffes
+         * orientaient donc l'atelier du monde. D'où le kill-switch RES_GEO_GRAFT (0 par
+         * défaut = supprimées ; 1 = l'ancien monde, pour isoler leur effet au golden). */
+        if (tune_f("RES_GEO_GRAFT", 0.f) > 0.f){
+            Biome bd=pv->biome_dominant;
+            if (bd==BIO_HILLS||bd==BIO_HIGHLANDS||bd==BIO_MOUNTAINS||bd==BIO_PEAK
+                ||bd==BIO_VOLCANO||pv->height_avg>0.55f)
+                pe->raw_cap[RES_STONE] += base*0.5f;
+            if (bd==BIO_MARSH||bd==BIO_BOG||bd==BIO_MANGROVE)
+                pe->raw_cap[RES_CLAY]  += base*0.5f;
+            if (bd==BIO_FOREST||bd==BIO_WOODS||bd==BIO_JUNGLE)
+                pe->raw_cap[RES_FRUIT] += base*0.65f;
+        }
 
         /* Subsistance locale : vivres et bois de feu dimensionnés pour couvrir
          * ~90% de la population, laissant la satisfaction refléter les biens
@@ -1872,7 +1885,14 @@ void econ_init(WorldEconomy *e, const World *w) {
                 pe->raw_cap[RES_CELESTIAL_IRON] += 0.2f;                                   /* voile diffus */
                 if (((uint32_t)(pid*40503u+7u) % faust_celest_div)==0u) pe->raw_cap[RES_CELESTIAL_IRON] += 0.8f;     /* + nœud riche */
             }
-            /* — MANUFACTURES implantées là où l'intrant est extrait (cohérence de la chaîne) — */
+            /* — MANUFACTURES implantées là où l'intrant est extrait (cohérence de la chaîne) —
+             * ⚠ VOULU, NE PAS « CORRIGER » (tranché joueur 2026-07-31) : on objecte volontiers
+             * que le pool national P1 met les brutes en commun, donc qu'un atelier n'aurait pas
+             * à naître SUR son intrant. C'est un raisonnement séduisant et FAUX ici : la
+             * cité-état est l'ATELIER DU MONDE — sa dotation d'ateliers à la genèse est sa
+             * raison d'être et sa contrepartie (elle n'extrait pas plus que les autres depuis
+             * la coupe de vocation, cf. plus bas). L'EMPIRE, lui, naît nu. Cette asymétrie est
+             * le design, pas un vestige. */
             if (pe->raw_cap[RES_WOOL] > 0.f){ region_ensure_building(pe,BLD_TEXTILE);
                                               region_ensure_building(pe,BLD_TUNIC); }  /* la tunique naît où l'on file */
             if (pe->raw_cap[RES_WOOD] > 0.f) {

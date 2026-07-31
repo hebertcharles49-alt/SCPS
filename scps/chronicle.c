@@ -888,6 +888,77 @@ int main(int argc, char **argv){
             }
             printf("\n");
         }
+        /* DISPATCH DES BRUTES AU GRAIN PROVINCE (demande joueur 2026-07-31 : « montre le
+         * total de ressource dispatche sur la map — il y a 6 province cuivre »). Le bloc
+         * ci-dessus compte des REGIONS (l'agregat) : il masquait que pierre et argile
+         * n'etaient tirees NULLE PART (leur seule source etait le spawn cure des
+         * capitales). Ici la VERITE du tirage, tuile par tuile — charte : la province est
+         * la seule realite. dominante = resource · mineure = resource2 (2 brutes max).
+         * Les ABSENTES sont nommees : une brute a zero tue sa chaine en silence. */
+        {
+            static int nd[RES_COUNT], nm[RES_COUNT];
+            memset(nd, 0, sizeof nd); memset(nm, 0, sizeof nm);
+            for (int p=0; p<w->n_provinces; p++){
+                Resource r1=w->province[p].resource, r2=w->province[p].resource2;
+                if (r1>RES_NONE && r1<RES_PROD_FIRST) nd[r1]++;
+                if (r2>RES_NONE && r2<RES_PROD_FIRST) nm[r2]++;
+            }
+            printf("              dispatch des brutes — %d provinces (2 brutes max par tuile) :\n",
+                   w->n_provinces);
+            for (int g=1; g<RES_PROD_FIRST; g++){
+                int tot=nd[g]+nm[g];
+                if (tot>0)
+                    printf("                 il y a %3d province(s) %-16s (%3d dominante · %3d mineure)\n",
+                           tot, resource_name((Resource)g), nd[g], nm[g]);
+            }
+            { int nabs=0;
+              for (int g=1; g<RES_PROD_FIRST; g++) if (!nd[g] && !nm[g]) nabs++;
+              if (nabs){
+                  printf("                 ABSENTE(S) de la carte :");
+                  for (int g=1; g<RES_PROD_FIRST; g++)
+                      if (!nd[g] && !nm[g]) printf(" %s", resource_name((Resource)g));
+                  printf("  <-- chaine(s) morte(s)\n");
+              } else printf("                 aucune brute absente — toute chaine a sa source\n");
+            }
+            /* BIOMES PRESENTS (meme exigence de completude : « chaque graine devrait porter
+             * TOUTES les ressources, et TOUS les biomes ») — au grain PROVINCE (biome
+             * dominant de la tuile). Un biome absent = un mode de vie, une chaine et un
+             * decor qui n'existent pas de la partie. */
+            { static int nb[BIO_COUNT];
+              memset(nb, 0, sizeof nb);
+              for (int p=0; p<w->n_provinces; p++){
+                  int b=(int)w->province[p].biome_dominant;
+                  if (b>=0 && b<BIO_COUNT) nb[b]++;
+              }
+              /* aussi en CELLULES : un biome peut exister sans jamais DOMINER une
+               * province (le biome de tuile est le majoritaire de ses cellules). */
+              static int nc[BIO_COUNT];
+              memset(nc, 0, sizeof nc);
+              for (int i=0; i<SCPS_N; i++){
+                  int b=(int)w->cell[i].biome;
+                  if (b>=0 && b<BIO_COUNT) nc[b]++;
+              }
+              printf("              biomes (prov/cellules) :");
+              for (int b=0; b<BIO_COUNT; b++)
+                  if (nb[b] || nc[b]) printf(" %s %d/%d", biome_name((Biome)b), nb[b], nc[b]);
+              printf("\n");
+              { int mb=0;
+                for (int b=0; b<BIO_COUNT; b++) if (!nb[b] && !nc[b]) mb++;
+                if (mb){
+                    printf("                 BIOME(S) TOTALEMENT ABSENT(S) :");
+                    for (int b=0; b<BIO_COUNT; b++) if (!nb[b] && !nc[b]) printf(" %s", biome_name((Biome)b));
+                    printf("\n");
+                }
+                int mp=0;
+                for (int b=0; b<BIO_COUNT; b++) if (!nb[b] && nc[b]) mp++;
+                if (mp){
+                    printf("                 present en cellules mais AUCUNE province :");
+                    for (int b=0; b<BIO_COUNT; b++) if (!nb[b] && nc[b]) printf(" %s(%d)", biome_name((Biome)b), nc[b]);
+                    printf("\n");
+                }
+              }
+            }
+        }
 
         int snap[4]={years/5, years*2/5, years*3/5, years*4/5}, si=0;  /* instantanés mis à l'échelle */
         /* photo des trésors au seuil de la DERNIÈRE année → flux d'or net par MOIS

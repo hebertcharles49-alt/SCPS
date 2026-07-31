@@ -179,7 +179,9 @@ int main(int argc, char **argv){
     float iron0=s.econ->region[s.cap_reg].raw_cap[RES_IRON];
     agency_order_clear(s.ag, forest);                 /* §4 défrichement */
     agency_order_exploit(s.ag, s.cap_reg, RES_IRON);  /* §3 exploitation */
-    run_days(&s, 210);                                /* défrichement 200j, exploit 180j */
+    run_days(&s, 3650);   /* DÉFRICHEMENT = 10 ANS (CLEAR_DAYS 3600, décision joueur
+                           * 2026-07-31 « prends 10 ans ») ; l'exploitation (180 j) est
+                           * achevée depuis longtemps — on mesure les DEUX à l'arrivée. */
     float subs1=s.econ->region[forest].culture.subsistance;
     float food1=s.econ->region[forest].build.food_cap;
     float Lf1=s.wl->L[forest];

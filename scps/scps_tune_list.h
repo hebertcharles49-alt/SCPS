@@ -259,6 +259,34 @@
      * JAMAIS aucune foi (gigasweep : 100/100 mondes athées à l'an 250, Temple jamais
      * tenté). 0 = ancien comportement (kill-switch). */ \
     X(AI_FAITH_LADDER,        1.0f) \
+    /* PRIX DE LA RECHERCHE (décision joueur 2026-07-31 : « 42 % des techs, c'est peu —
+     * retire 30 % du prix ») : multiplicateur GLOBAL du coût de tech (tech_cost), tous
+     * tiers confondus. Mesure d'origine (gigasweep 100 mondes × 250 ans) : arbre_pct
+     * médiane 42 % (p25 35 · p75 48). 1.0 = ancien prix (kill-switch). */ \
+    X(TECH_COST_MULT,         0.70f) \
+    /* PIERRE & ARGILE dans le tirage par biome (décision joueur 2026-07-31 : « revoir la
+     * distribution des ressources tout en gardant les obligations »). Avant : 0 poids —
+     * leur seule source était le spawn curé des capitales d'empire, donc AUCUNE pierre
+     * hors des ~6 territoires de départ (Temple refusé nomat=231/sim ⇒ mondes athées).
+     * Les obligations (spawn curé) sont conservées. 0 = ancienne carte (kill-switch). */ \
+    X(RES_MAT_SPREAD,         1.0f) \
+    /* COMPLETUDE DU MONDE (decision joueur 2026-07-31 : « DEUX ressources RAW tirees a la
+     * worldgen par tile, et le biome decide, en s'assurant UN de chaque MINIMUM par
+     * monde ») : apres le tirage, toute brute ABSENTE est posee sur la tuile la plus
+     * IDOINE (poids max dans sa table de biome), en remplacant sa MINEURE — la regle des
+     * 2 brutes tient. Sans ca le tirage pondere laisse des brutes a zero (binomiale) et
+     * la chaine qui en depend meurt en silence. 0 = pas de garantie (kill-switch). */ \
+    X(RES_GUARANTEE_ALL,      1.0f)     /* GREFFES GEOLOGIQUES (pierre/argile/fruit reposees dans raw_cap d'apres le biome,
+     * PAR-DESSUS le tirage) — SUPPRIMEES par decision joueur 2026-07-31 (« je n'ai JAMAIS
+     * voulu de ca, c'est une DERIVATION IA »). 0 = supprimees (defaut) ; 1 = l'ancien
+     * monde. Pas neutre : les manufactures se posent sur le raw AVANT la coupe. */     X(RES_GEO_GRAFT,          0.0f) \
+    /* DEFRICHAGE (decision joueur : « on paye les laborer, prends 10 ans ») — l'or va
+     * INTEGRALEMENT aux journaliers de la province ; CLEAR_FARMLAND pose le biome TERRES
+     * CULTIVEES a l'achevement (0 = pas de trace sur la carte). */ \
+    X(CLEAR_GOLD_PER_LAB,     0.35f) \
+    X(CLEAR_GOLD_MIN,        60.0f) \
+    X(CLEAR_FARMLAND,         1.0f) \
+    X(CLEAR_FARMLAND_CELLS, 300.0f) \
     /* RELIGION — la DÉRIVE (Réforme) : 1 chance sur N par tour d'empire éligible (une marche
      * culturellement distante dérive vers un schisme adapté à sa culture) → dose le rythme
      * (la Réforme MÛRIT sur des décennies, elle n'éclate pas d'un bloc). Plus haut = plus rare. */ \
