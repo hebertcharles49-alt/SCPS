@@ -106,7 +106,12 @@ func _process(delta: float) -> void:
 		_accum = 0.0
 	else:
 		_accum -= float(nd)
+	var _t0 := Time.get_ticks_usec() if OS.has_environment("SCPS_PERF") else 0
 	world.advance_days(nd)
+	if _t0 > 0:
+		var _dt := Time.get_ticks_usec() - _t0
+		if _dt > 20000:
+			print("[PERF] advance nd=%d jour=%d : %.1f ms (MOTEUR)" % [nd, day_count, _dt / 1000.0])
 	day_count += nd
 	ticked.emit(world.year())
 	# CADENCE MENSUELLE (chiffres joueur) : le moteur avance en JOURS (déterminisme) mais les

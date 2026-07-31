@@ -277,6 +277,7 @@ var _roads := []          ## [{points, level, nprov, key}] — réseau de routes
 var _road_clear := {}     ## TROUÉE : cellule (x<<16|y) → densité de canopée [0..1[ près d'une route
 var _road_clear_n := -1   ## taille du masque au dernier semis (déclencheur de re-semis par àcoups)
 var _chain_geo := {}      ## CHAÎNAGE : paire → hash de géométrie canonique (mesure de stabilité entre rebuilds)
+var _road_net_day := -999999   ## jour sim du dernier rebuild réseau (cadence mensuelle en croissance)
 var _road_start := {}     ## clé de route → ANNÉE de début de chantier (croissance 1 an/province)
 var _roads_dirty := true  ## le réseau commercial a pu bouger → recharger les routes
 var _road_net := {}       ## ANTISPAG cache : polylignes consolidées (dédup + tier d'épaisseur), voir _ensure_road_network
@@ -1885,7 +1886,19 @@ func _road_partial(pts: PackedVector2Array, frac: float) -> PackedVector2Array:
 ## changé, cf. `_ensure_roads`) OU si un chantier grandit encore (frac<1 quelque part — la
 ## croissance organique change le tracé PARTIEL affiché à chaque frame). Un monde mûr stable ne
 ## repaie donc plus ce coût par frame (budget mesuré : cf. TROUVAILLES, <1 ms sur un monde mûr).
+
+var _perf_acc := ""       ## sous-chronos du rebuild réseau (diag SCPS_PERF)
+var _perf_last := 0
+
+func _perf_mark(nom: String, t0: int) -> void:
+	var now := Time.get_ticks_usec()
+	if _perf_last == 0:
+		_perf_last = t0
+	_perf_acc += "%s=%.0fms " % [nom, (now - _perf_last) / 1000.0]
+	_perf_last = now
+
 func _ensure_road_network() -> void:
+	var _pt0 := Time.get_ticks_usec() if OS.has_environment("SCPS_PERF") else 0
 	var growing := false
 	for rd in _roads:
 		var st: int = _road_start.get(rd["key"], Sim.day_count)
@@ -1895,6 +1908,12 @@ func _ensure_road_network() -> void:
 			break
 	if _road_net_valid and not growing:
 		return
+	# CADENCE (perf_shot 2026-07-30 : 290 ms PAR FRAME pendant tout chantier — 3 FPS
+	# de fond) : en croissance, le réseau se reconstruit au plus 1×/30 jours sim — le
+	# chantier avance par crans MENSUELS, cohérent avec la cadence des chiffres joueur.
+	if _road_net_valid and growing and Sim.day_count - _road_net_day < 30:
+		return
+	_road_net_day = Sim.day_count
 	var mv := _mv_ref()
 	# ══ CHAÎNAGE PAR VILLES (normalisation topologique, cadrage joueur 2026-07-31) ══
 	# Le moteur fournit déjà UN A* par paire de villes voisines (scps_api.c
@@ -1937,12 +1956,23 @@ func _ensure_road_network() -> void:
 		var built_len := tot * frac
 		var ra := int(rd.get("ra", -1))
 		var rb := int(rd.get("rb", -1))
-		# waypoints : villes à ≤2.5 cellules du tracé, raccord TERRESTRE, loin des abouts
+		# waypoints : villes à ≤3.2 cellules du tracé, raccord TERRESTRE, loin des abouts.
+		# BBOX d'abord (perf_shot : routes×villes×points explosait) : une ville hors de
+		# l'enveloppe du tracé (+3.4) ne mérite aucune projection.
+		var bb_min := pts[0]
+		var bb_max := pts[0]
+		for q in range(1, pts.size()):
+			bb_min = bb_min.min(pts[q])
+			bb_max = bb_max.max(pts[q])
+		bb_min -= Vector2(3.4, 3.4)
+		bb_max += Vector2(3.4, 3.4)
 		var wps := []
 		for rid in _region_anchor:
 			if rid == ra or rid == rb:
 				continue
 			var A: Vector2 = _region_anchor[rid]
+			if A.x < bb_min.x or A.y < bb_min.y or A.x > bb_max.x or A.y > bb_max.y:
+				continue
 			var bd := 10.24                      # 3.2² — seuil d'acceptation (2.5 laissait
 			                                     # des frôleurs traverser la zone urbaine)
 			var bs := -1.0
@@ -2000,6 +2030,8 @@ func _ensure_road_network() -> void:
 			(cand[pkey] as Array).append({"poly": sub, "len": s1 - s0, "start": rstart,
 				"rkey": int(rd["key"]), "level": level, "cover": cover,
 				"na": mini(ia, ib), "nb": maxi(ia, ib), "ea": ia, "eb": ib})
+	if _pt0 > 0:
+		_perf_mark("chain", _pt0)
 	# ── géométrie CANONIQUE par paire + visibilité/usure ──
 	var steps := []
 	for pkey in cand:
@@ -2027,6 +2059,8 @@ func _ensure_road_network() -> void:
 		steps.append({"poly": geom, "level": lvl, "wear": clampi(wear, 1, ROAD_MULT_TIERS),
 			"na": can["na"], "nb": can["nb"], "ea": int(can["ea"]), "eb": int(can["eb"]),
 			"start": int(can["start"]), "done": vis >= 0.999})
+	if _pt0 > 0:
+		_perf_mark("canon", _pt0)
 	# ── CONSOLIDATION (cadrage joueur v2, 2026-07-31) — ordre : âge → terminal
 	# unique par ville → fusion structurelle de corridors. Les VIEUX tracés gagnent. ──
 	steps.sort_custom(func(a, b):
@@ -2088,6 +2122,8 @@ func _ensure_road_network() -> void:
 				break
 			if not merged:
 				leaders.append({"angle": ang, "si": si, "at_start": at_start})
+	if _pt0 > 0:
+		_perf_mark("term", _pt0)
 	# ── FUSION DE CORRIDORS SOUTENUS v2 (seuils joueur : ≤3.5 cellules · ~20° ·
 	# ≥8 cellules CONSÉCUTIVES) — STRUCTURELLE : le suiveur est SCINDÉ aux deux
 	# JONCTIONS, sa portion médiane DISPARAÎT (une seule bande par corridor, jamais
@@ -2205,6 +2241,8 @@ func _ensure_road_network() -> void:
 					fgrid[gk2] = []
 				(fgrid[gk2] as Array).append([pc[k], pc[k + 1], nsi])
 	steps = steps2
+	if _pt0 > 0:
+		_perf_mark("fusion", _pt0)
 	# ── PINCEMENT DES CROISEMENTS (mesuré : le « doublon » résiduel du NE était DEUX
 	# routes convergeant à ~35-40° qui se longent quelques cellules — la fusion les
 	# rejette À RAISON, le garde anti-croisement est là pour ça). Le traitement
@@ -2268,6 +2306,8 @@ func _ensure_road_network() -> void:
 			sd2["poly"] = pl5
 		junctions.append(pstar)
 		st_pinch += 1
+	if _pt0 > 0:
+		_perf_mark("pince", _pt0)
 	# ── BUCKETS par classe×usure×forêt (dédup seg anti-overdraw) + masque TROUÉE ──
 	var polys := {}
 	for t in range(1, ROAD_MULT_TIERS + 1):
@@ -2328,6 +2368,8 @@ func _ensure_road_network() -> void:
 			run.append(b7)
 		if run.size() >= 2:
 			polys["%s%d%s" % [cls, wear, "f" if run_forest else ""]].append(_road_iso(run, mv))
+	if _pt0 > 0:
+		_perf_mark("buckets", _pt0)
 	# ── PASSE 3 « sol usé » : bandes claires + ornières par bucket (paires cachées) ──
 	var cell: float = ((mv.iso_pos(1.0, 0.0) - mv.iso_pos(0.0, 0.0)).length()
 			   + (mv.iso_pos(0.0, 1.0) - mv.iso_pos(0.0, 0.0)).length()) * 0.5
@@ -2354,6 +2396,8 @@ func _ensure_road_network() -> void:
 					ruts.append_array(_dash_pairs(pl, rdash, rgap, ROAD_JIT, solid))
 			polys["b_" + key] = band
 			polys["r_" + key] = ruts
+	if _pt0 > 0:
+		_perf_mark("tirets", _pt0)
 	# ── PADS de porte : aux NŒUDS-VILLES touchés par ≥1 étape visible ──
 	var pdone := {}
 	var pads := []
@@ -2389,7 +2433,10 @@ func _ensure_road_network() -> void:
 						[str(stp["na"]), str(stp["nb"]), int(stp["level"]), int(stp["wear"]), int(stp["start"]),
 						 pl9.size(), pl9[0].x, pl9[0].y, pl9[pl9.size() - 1].x, pl9[pl9.size() - 1].y])
 	# ── INSTRUMENTATION (cadrage joueur : mesurer avant de conclure) ──
-	if st_routes > 0:
+	# ⚠ GATED (perf_shot 2026-07-30) : _count_spaghetti_segments()/_spag_steps() sont
+	# QUADRATIQUES sur tous les segments (routes + lanes) — les laisser tourner à chaque
+	# rebuild coûtait ~230 ms des 270 mesurés, LE stutter. Diag sur demande seulement.
+	if st_routes > 0 and OS.has_environment("SCPS_CHAINDIAG"):
 		var reuse := (1.0 - len_canon / len_logique) * 100.0 if len_logique > 0.001 else 0.0
 		var gchg := 0                            # étapes dont la géométrie a changé depuis le dernier rebuild
 		var gsig := {}
@@ -2424,11 +2471,18 @@ func _ensure_road_network() -> void:
 				if dens < 1.0:
 					var nk: int = ((mx + dx) << 16) | ((my + dy) & 0xFFFF)
 					_road_clear[nk] = minf(float(_road_clear.get(nk, 1.0)), dens)
-	if absi(_road_clear.size() - _road_clear_n) > 40:
+	if not growing and absi(_road_clear.size() - _road_clear_n) > 250:
 		_road_clear_n = _road_clear.size()
-		_dressing_dirty = true                  # la trouée s'ouvre : re-semis (annuel, jamais par frame)
+		_dressing_dirty = true                  # la trouée s'ouvre à l'ACHÈVEMENT d'une route — le
+		                                        # re-semis coûte ~2.5 s (perf_shot) : JAMAIS en plein chantier
 	_road_net = polys
 	_road_net_valid = true
+	if _pt0 > 0:
+		var _pdt := Time.get_ticks_usec() - _pt0
+		if _pdt > 8000:
+			print("[PERF] road_network jour=%d : %.1f ms | %s" % [Sim.day_count, _pdt / 1000.0, _perf_acc])
+		_perf_acc = ""
+		_perf_last = 0
 
 ## Découpe une polyligne (DÉJÀ projetée iso) en PAIRES tiretées IRRÉGULIÈRES pour
 ## draw_multiline — l'algo de _lane_dash_iso (phase continue le long de l'arc,
@@ -3766,6 +3820,7 @@ func _dress_size(id: String) -> float:
 
 ## SÈME les marques de terrain par BIOME (grille jittée déterministe), une fois à la génération. Display-only.
 func _build_dressing() -> void:
+	var _pt1 := Time.get_ticks_usec() if OS.has_environment("SCPS_PERF") else 0
 	_dressing.clear()
 	var w = Sim.world
 	if w == null:
@@ -3915,6 +3970,8 @@ func _build_dressing() -> void:
 		return String(a["id"]) < String(b["id"]))
 	_clip_relief()   # PRIORITÉ des ∧/dômes : le trait de devant coupe celui de derrière
 	_finalize_dress_fast()   # revue #6 : tableaux typés pré-projetés pour le draw (sprites)
+	if _pt1 > 0:
+		print("[PERF] build_dressing jour=%d : %.1f ms" % [Sim.day_count, (Time.get_ticks_usec() - _pt1) / 1000.0])
 
 ## SÉPARE `_dressing` (Dictionary, build-only) en deux formes RAPIDES pour le draw (revue overlay
 ## #6) : les CHEVRONS (peu nombreux, géométrie déjà projetée/clippée par _clip_relief) restent en
