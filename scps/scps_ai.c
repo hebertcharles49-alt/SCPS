@@ -719,10 +719,24 @@ static Edifice ai_next_h_edifice(const WorldEconomy *econ, int region){
 /* Progression de foi : Sanctuaire → Temple → Cathédrale (sacraliser → SOUTIENT L). */
 static Edifice ai_next_faith_edifice(const WorldEconomy *econ, int region){
     if (region<0 || region>=econ->n_regions) return EDI_SANCTUAIRE;
-    float f = econ->region[region].build.faith;
-    if (f < 1.0f) return EDI_SANCTUAIRE;
-    if (f < 3.0f) return EDI_TEMPLE;
-    return EDI_CATHEDRALE;
+    /* LE PALIER SUIVANT SE LIT SUR LE BÂTI (edi_built), PAS sur la VALEUR de foi
+     * (décision joueur 2026-07-31 : « le sanctuaire motive le temple »). L'ancien test
+     * comparait build.faith à des seuils NOMINAUX (1.0 / 3.0) — or la VÉTUSTÉ ronge ce
+     * stock (2 %/an, plancher 50 %) : un Sanctuaire posé à 1.00 retombe à 0.73 (mesuré,
+     * FOI_DBG), repasse SOUS le seuil du palier 1 et l'IA redemande… un Sanctuaire, déjà
+     * bâti ⇒ REFUS. Boucle infinie mesurée : Sanctuaire made=10 blocked=760, Temple
+     * JAMAIS tenté en 250 ans (EDI_DBG) ⇒ 100 mondes sur 100 ATHÉES au gigasweep. Le
+     * masque bâti, lui, ne s'érode pas. */
+    if (tune_f("AI_FAITH_LADDER",1.f) <= 0.f){        /* kill-switch : l'ancienne lecture */
+        float f = econ->region[region].build.faith;
+        if (f < 1.0f) return EDI_SANCTUAIRE;
+        if (f < 3.0f) return EDI_TEMPLE;
+        return EDI_CATHEDRALE;
+    }
+    uint32_t b = econ->region[region].edi_built;
+    if (b & (1u<<EDI_TEMPLE))     return EDI_CATHEDRALE;
+    if (b & (1u<<EDI_SANCTUAIRE)) return EDI_TEMPLE;
+    return EDI_SANCTUAIRE;
 }
 /* LE SITE DE LA CHAÎNE DE FOI (calibrage post-LOT T) — le zèle échouait en BOUCLE
  * (Sanctuaire made=0, nocap 59-71/sim) parce qu'il posait dans la région civique « la
@@ -732,7 +746,25 @@ static Edifice ai_next_faith_edifice(const WorldEconomy *econ, int region){
  * par edifice_prev). Ici : (1) si l'échelle est COMMENCÉE quelque part (0<faith<3), on
  * y RESTE ; sinon (2) on fonde là où la matière EST (max bois dispo au marché §5) —
  * diégétique : on élève le sanctuaire où le bois se trouve, pas dans le désert. */
+/* L'ÉCHELLE DEBOUT : la région du pays dont la foi BÂTIE est ENGAGÉE mais INACHEVÉE
+ * (0 < faith < 3) — un Sanctuaire posé qui attend son Temple. -1 si aucune. Extrait de
+ * ai_faith_site_region (qui, lui, retombe sur le bois au marché quand rien n'est bâti)
+ * pour que la MOTIVATION puisse se lire seule, sans le repli. */
+static int ai_faith_ladder_region(const WorldEconomy *econ, int cid){
+    if (tune_f("AI_FAITH_LADDER",1.f) <= 0.f) return -1;   /* kill-switch */
+    for (int r=0;r<econ->n_regions;r++){
+        if (econ->region[r].owner!=cid || !econ->region[r].colonized) continue;
+        uint32_t b = econ->region[r].edi_built;      /* le BÂTI, pas la valeur vétuste */
+        if ((b & ((1u<<EDI_SANCTUAIRE)|(1u<<EDI_TEMPLE))) && !(b & (1u<<EDI_CATHEDRALE)))
+            return r;
+    }
+    return -1;
+}
 static int ai_faith_site_region(const WorldEconomy *econ, int cid){
+    /* ÉCHELLE COMMENCÉE (lue sur le BÂTI) : on y reste. Sous kill-switch elle renvoie -1
+     * et la suite est l'ANCIEN corps, intact — le monde d'avant, au byte près. */
+    int lb = ai_faith_ladder_region(econ, cid);
+    if (lb>=0) return lb;
     int ladder=-1; float ladderf=-1.f;
     int best=-1;   float bestw=-1.f;
     for (int r=0;r<econ->n_regions;r++){
@@ -1381,7 +1413,32 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
      * L'anti-spam tient : si l'ordre passe, faith_pending sera vrai au bloc civique plus
      * bas → la chaîne y choisit autre chose (pas de double-foi) ; s'il échoue, le bloc
      * civique retente en queue comme avant (deux échantillons du pool par tour). */
-    if (a->w_faith >= tune_f("AI_FAITH_ZEAL",AI_FAITH_ZEAL) && religion_of_country(a->cid) < 0){
+    /* L'ÉCHELLE MOTIVE SON PALIER (décision joueur 2026-07-31 : « le sanctuaire motive le
+     * temple, quel que soit l'éthos ») — un Sanctuaire DEBOUT appelle son Temple SANS
+     * exiger le zèle prosélyte. Sans cette voie la chaîne mourait au palier 1 POUR
+     * TOUJOURS ; mesuré au gigasweep : 100 mondes sur 100 ATHÉES à l'an 250, Temple
+     * JAMAIS tenté une seule fois en 250 ans (EDI_DBG : Sanctuaire made=10 blocked=760,
+     * aucune ligne Temple). Deux verrous se cumulaient :
+     *  (1) le monde naît PLURALISTE (scps_world.c, « AUCUNE religion organisée ») ⇒
+     *      w_faith 0.1 ; même au plafond de glide (×2 max, ai_refresh_ethos) il culmine
+     *      à 0.224 < AI_FAITH_ZEAL 0.5 — INATTEIGNABLE À VIE. Et le credo ne devient
+     *      prosélyte QU'À la fondation : dépendance CIRCULAIRE.
+     *  (2) la crise de consentement (seule voie encore vivante) S'ÉTEINT dès que le
+     *      Sanctuaire rend ses +0.7 de L (K_FAITH×faith, scps_legitimacy.c) — elle ne
+     *      motivait donc jamais le palier SUIVANT, celui qui fonde.
+     * BORNÉ PAR CONSTRUCTION : le Temple porte la foi à 4.0, hors de la fenêtre d'échelle
+     * (<3.0) ⇒ la chaîne s'arrête d'elle-même — pas de Cathédrale en boucle.
+     * Kill-switch : AI_FAITH_LADDER=0 rend l'ancien comportement (monde athée à vie). */
+    { int ladder = (tune_f("AI_FAITH_LADDER",1.f)>0.f) ? ai_faith_ladder_region(econ, a->cid) : -1;
+    if (getenv("FOI_DBG") && (day % 1800) < 30){
+        float fmax=0.f; int nreg=0;
+        for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==a->cid && econ->region[r].colonized){
+            nreg++; if (econ->region[r].build.faith>fmax) fmax=econ->region[r].build.faith; }
+        fprintf(stderr,"[FOI] j%-6d cid=%-2d reg=%-3d faith_max=%.2f ladder=%d w_faith=%.3f relig=%d\n",
+                day, a->cid, nreg, fmax, ladder, a->w_faith, religion_of_country(a->cid));
+    }
+    if ((a->w_faith >= tune_f("AI_FAITH_ZEAL",AI_FAITH_ZEAL) && religion_of_country(a->cid) < 0)
+        || ladder >= 0){
         bool fpend = false;
         if (ag) for (int oi=0; oi<ag->n; oi++)
             if (ag->order[oi].active && ag->order[oi].kind==AGY_BUILD){
@@ -1389,11 +1446,13 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
                 if (pe==EDI_SANCTUAIRE||pe==EDI_TEMPLE||pe==EDI_CATHEDRALE||pe==EDI_MONASTERE){ fpend=true; break; }
             }
         int fs = fpend ? -1 : ai_faith_site_region(econ, a->cid);
-        if (fs>=0 && econ->region[fs].build.faith < 3.0f){
+        if (fs>=0 && (tune_f("AI_FAITH_LADDER",1.f) > 0.f
+                      ? !(econ->region[fs].edi_built & (1u<<EDI_CATHEDRALE))
+                      : econ->region[fs].build.faith < 3.0f)){
             Edifice fe = ai_next_faith_edifice(econ, fs);
             if (agency_build(ag, econ, w, fs, fe)) a->stats.builds_k++;
         }
-    }
+    } }
     /* Le chantier (militaire · manufacture civile · bâtiment civil) est PONDÉRÉ PAR LE TEMPÉRAMENT
      * dans le seau « bâtir » plus bas — plus de fabrique INCONDITIONNELLE chaque tour. */
     a->credit_trade += a->w_trade * (1.f - 0.5f*brake);

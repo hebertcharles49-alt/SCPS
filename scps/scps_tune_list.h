@@ -253,6 +253,12 @@
     X(AI_SAVOIR_K,            2.5f) \
     /* RELIGION — seuil de zèle : w_faith ≥ ce seuil ⇒ crédo prosélyte FONDE sa foi proactivement */ \
     X(AI_FAITH_ZEAL,          0.5f) \
+    /* L'ÉCHELLE MOTIVE SON PALIER (décision joueur 2026-07-31, « le sanctuaire motive
+     * le temple, quel que soit l'éthos ») : un Sanctuaire DEBOUT (0<faith<3) appelle son
+     * Temple sans exiger le zèle prosélyte. Sans lui, un monde né PLURALISTE ne fonde
+     * JAMAIS aucune foi (gigasweep : 100/100 mondes athées à l'an 250, Temple jamais
+     * tenté). 0 = ancien comportement (kill-switch). */ \
+    X(AI_FAITH_LADDER,        1.0f) \
     /* RELIGION — la DÉRIVE (Réforme) : 1 chance sur N par tour d'empire éligible (une marche
      * culturellement distante dérive vers un schisme adapté à sa culture) → dose le rythme
      * (la Réforme MÛRIT sur des décennies, elle n'éclate pas d'un bloc). Plus haut = plus rare. */ \

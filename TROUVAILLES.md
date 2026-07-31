@@ -7977,3 +7977,47 @@ Desktop" --path godot/project --quit`. JAMAIS avec le Godot_v4.6.3-stable_mono_w
 de la racine du repo : le projet n'a AUCUN C#, la version mono exige des templates
 .mono non installés + un SDK .NET 10 absent → « configuration errors » sec. Les
 templates installés (AppData/Godot/export_templates) sont 4.6.3.stable NON-mono.
+
+## LES MONDES ATHÉES — la vétusté mangeait le palier de foi (2026-07-31)
+
+**Le fait** : gigasweep 100 mondes × 250 ans → `religion : 0.0 foi(s) fondée(s)/sim`
+sur les 20 logs, au caractère près. Aucune Église n'était jamais née dans SCPS.
+
+**Découvertes** :
+- Le diag EDI_DBG montrait `Sanctuaire made=10 blocked=760` et AUCUNE ligne Temple —
+  or le dump imprime toute ligne à ≥1 compteur non nul (made/blocked/nogold/nomat/nocap/
+  notech) : `agency_build_acct` n'avait donc JAMAIS été appelé avec EDI_TEMPLE en 250 ans.
+  Et la fondation exige TEMPLE|CATHEDRALE (scps_ai.c, emask) — un Sanctuaire ne fonde rien.
+- CAUSE RACINE : `ai_next_faith_edifice` choisissait le palier en comparant `build.faith`
+  à des seuils NOMINAUX (<1.0 → Sanctuaire, <3.0 → Temple). Mais la VÉTUSTÉ érode ce
+  stock (2 %/an, plancher 50 %) : un Sanctuaire posé à 1.00 retombe à 0.73 (MESURÉ,
+  diag FOI_DBG), repasse SOUS le seuil de SON PROPRE palier, et l'IA redemande un
+  Sanctuaire… déjà bâti ⇒ refus. Boucle infinie = les 760 blocked. Le Temple, lui,
+  n'était jamais choisi. FIX (décision joueur « le sanctuaire motive le temple, quel que
+  soit l'éthos ») : le palier suivant se lit sur `edi_built` (masque BÂTI, qui ne s'érode
+  PAS), jamais sur la valeur. Même correction sur l'échelle-debout et la garde de site.
+- FAUSSE PISTE COÛTEUSE (consignée pour qu'un successeur ne la refasse pas) : j'avais
+  conclu à un verrou arithmétique sur w_faith (genèse pluraliste ⇒ 0.1, plafond de glide
+  ×2 ⇒ 0.224 < AI_FAITH_ZEAL 0.5, dépendance circulaire credo↔fondation). Le diag l'a
+  DÉMENTI : des pays tournent à w_faith 0.591/0.567 — les credos évangélistes existent
+  bien à la genèse, le zèle EST atteignable. `scps_world.c:2978` (credo=PLURALISTE) ne
+  couvre pas toutes les régions. LEÇON : ne jamais conclure d'une lecture de code sur un
+  chemin IA sans instrumenter — les valeurs runtime démentent la lecture statique.
+
+**Pièges** :
+- Le kill-switch AI_FAITH_LADDER=0 ne suffisait PAS à rendre le golden identique au
+  premier essai : j'avais REFACTORISÉ `ai_faith_site_region` (extraction du ladder), si
+  bien que sous kill-switch il retournait toujours le repli-bois au lieu de l'ancienne
+  échelle-par-faith. Un kill-switch doit restaurer le corps ORIGINAL, pas une version
+  refactorisée « équivalente ». Corrigé → golden byte-identique sous OFF.
+- `make` ne recompilait pas après édition de scps_ai.c (dépendance manquante) : `rm -f
+  build/scps_scps_ai.o` avant `make` pendant l'investigation.
+- religion_demo est vert 13/13 mais ne contient AUCUN appel au chemin de fondation IA
+  (il teste les lecteurs sur fixtures) — aucun banc ne couvrait la chaîne réelle.
+
+**Restes** :
+- La voie de CRISE n'a pas le garde `faith_pending` de la voie de zèle : elle retentait
+  chaque tour pendant les 180 j de chantier (gaspillage, gonflait `blocked`).
+- Cathédrale : `nomat=198 notech=29` — la chaîne se tend au sommet (équilibrage, pas
+  blocage). Les schismes/hérésies/minorités tournent pour la PREMIÈRE fois en conditions
+  réelles : leur calibrage n'a jamais été observé sur un sweep.
