@@ -21,7 +21,13 @@
 #define NAVY_UPKEEP_OTHER    0.8f
 #define NAVY_STARVE_YEAR     365.f    /* > 1 an sans entretien : une coque pourrit/an */
 #define NAVY_COLONY_MAX_DAYS 90.f     /* le seuil de traversée colonisatrice (jours) */
-#define NAVY_COLONY_CD       (2.f*365.f)  /* une colonie outre-mer / 2 ans / pays   */
+#define NAVY_COLONY_CD       (tune_f("NAVY_COLONY_CD_DAYS",180.f))  /* répit entre deux
+                                          * colonies outre-mer (décision joueur 2026-07-31 :
+                                          * « imagine une game de civ où la moitié du monde
+                                          * est vide » — 2 ANS interdisaient de peupler les
+                                          * 170 provinces hors de portée terrestre ; 6 mois
+                                          * laisse la FLOTTE et la POP faire le mur, pas une
+                                          * horloge). 730 = l'ancien rythme. */
 #define NAVY_TRANSPORT_PKTS  10       /* 1 transport = 10 paquets = 1 000 hommes   */
 
 typedef struct { float supplies, wood, copper; int days; } HullCost;   /* la coque de guerre coûte du CUIVRE (clous/doublage), pas un « métal » manufacturé */
@@ -272,7 +278,13 @@ int navy_colonize_tick(NavyState *ns, const World *w, WorldEconomy *econ, float 
         if (port<0) continue;
         const RegionEconomy *src=&econ->region[port];
         float spop=0.f; for (int k=0;k<CLASS_COUNT;k++) spop+=src->strata[k].pop;
-        if (spop<500.f || src->food_sat<0.35f) continue;   /* mêmes seuils que la colonisation TERRESTRE (essaimer) */
+        /* MÊMES SEUILS QUE LA TERRESTRE — pour de vrai (2026-07-31) : ils étaient FIGÉS à
+         * 500/0.35 alors que la vague colonisation a descendu la terrestre à
+         * COLONY_MIN_POP (300) / COLONY_FOOD_GATE (0.25) ; le commentaire promettait un
+         * alignement que le code ne tenait plus. On lit les MÊMES tunables : une seule
+         * vérité pour essaimer, que ce soit à pied ou à la voile. */
+        if (spop < tune_f("COLONY_MIN_POP",300.f)) continue;
+        if (src->food_sat < tune_f("COLONY_FOOD_GATE",0.25f)) continue;
         int best=-1; float bscore=-1.f, bdays=0.f;
         for (int rd=0;rd<econ->n_regions;rd++){
             const RegionEconomy *dst=&econ->region[rd];

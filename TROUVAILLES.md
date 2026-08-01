@@ -8069,3 +8069,38 @@ tout : c'est le dump au grain PROVINCE (ajouté ici) qui l'a montré.
 **Restes** : façade du défrichage (éligibilité, verbe joueur, bouton grisé + hover) et
 l'IA qui n'a aucune raison de défricher. Biomes : Jungle quasi absente (3 cellules/monde),
 Sommets jamais, Savane/Désert/Collines parfois sans aucune province dominante.
+
+## COLONISATION : LA MER EST LE MUR, PAS LA CADENCE (2026-07-31)
+
+**Découvertes** :
+- DÉCOMPTE RÉEL d'un monde (graine 1518, an 250) : 711 provinces = 187 INFRANCHISSABLES
+  (glaciers/sommets/déserts morts) + 524 colonisables, dont 305 colonisées, 55 libres
+  ATTEIGNABLES (adjacentes à une colonisée) et **164 HORS DE PORTÉE**. L'objectif « 650 »
+  était arithmétiquement impossible : 26 % du monde est mort par nature.
+- La CADENCE n'était PAS le frein : la sélection ne fondait qu'UNE colonie par pays et par
+  an (best_src/best_dst uniques) — corrigé (jusqu'à 4/an ∝ taille) — mais passer de 4 à 8
+  ne change RIEN (281 provinces dans les deux cas). Le franchissement des terres mortes
+  (COLONY_CROSS_DEAD) : RIEN non plus. Ce sont des MESURES, pas des intuitions.
+- LA MER EST LE MUR — et je ne l'ai su qu'en REGARDANT la carte (le joueur : « tu mesures
+  sur quelle graine ? l'as-tu seulement regardée ? »). La graine 1518 est un ARCHIPEL de
+  4 masses : les empires tiennent les 2 îles du nord-ouest, et le GRAND CROISSANT du
+  sud-est — près de la moitié des terres — n'a AUCUNE couleur d'empire. Aucun compteur ne
+  le disait ; la carte le crie.
+- L'outre-mer EXISTAIT (scps_navy.c) mais était resté sur l'ANCIEN calibrage : son
+  commentaire promettait « les mêmes seuils que la colonisation TERRESTRE » alors qu'il
+  exigeait 500 hab / food 0.35 quand la terrestre était descendue à 300 / 0.25. Aligné sur
+  les MÊMES tunables + répit 2 ans → 6 mois : 27 colonies outre-mer, 281 → 305 provinces.
+
+**Piège de méthode (le plus coûteux)** :
+- JE MESURAIS PENDANT L'APOCALYPSE. L'an 250 est APRÈS le déclenchement des fins §27
+  (an 180-240) : le shot montre « Entropie 100 — Le Grand Engloutissement » à l'an 246.
+  Une partie des « provinces libres » sont des terres PERDUES au cataclysme, pas jamais
+  prises. Toute mesure de REMPLISSAGE doit se faire à un horizon PRÉ-CATACLYSME (an 150),
+  sinon on calibre l'expansion contre la fin du monde.
+- Le kill-switch de cette vague rend 4 hashes sur 5 : la graine 411 diverge parce que
+  l'ALIGNEMENT des seuils outre-mer n'est pas neutralisable séparément (les remettre à
+  500/0.35 changerait aussi la terrestre). Divergence ASSUMÉE et documentée.
+
+**Restes** : l'outre-mer reste une exception (27 débarquements/partie) alors qu'un monde en
+archipel en fait le moyen d'expansion ORDINAIRE ; il exige une région ENTIÈREMENT vierge
+et côtière (grain RÉGION, pas province). Mesure de remplissage à refaire à l'an 150.

@@ -6122,57 +6122,92 @@ int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid,
             float needs_w = tune_f("AI_COLONY_NEEDS_W",1.5f);
             bool  food_crit = fc.food_runway < safety;
             float survive_min = tune_f("COLONY_SURVIVE_SEED",0.5f)*COLONY_MIN_POP;
-            int best_src=-1, best_dst=-1; float best_score=-1.f;   /* colonisation au gate NORMAL */
-            int surv_src=-1, surv_dst=-1; float surv_score=-1.f;   /* expédition de SURVIE (gate levé) */
-            int nprov=e->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
-            for (int ps=0; ps<nprov; ps++) {
-                ProvinceEconomy *src=&e->prov[ps];
-                if (!src->colonized || src->owner!=cid) continue;
-                float spop=0.f; for(int c=0;c<CLASS_COUNT;c++) spop+=src->strata[c].pop;
-                bool normal_ok  = (spop>=COLONY_MIN_POP && econ_colony_food_ok(src));
-                bool survive_ok = (spop>=survive_min);
-                if (!normal_ok && !survive_ok) continue;
-                for (int pd=0; pd<nprov; pd++) {
-                    if (!padj_get(ps,pd)) continue;
-                    ProvinceEconomy *dst=&e->prov[pd];
-                    if (!dst->active || dst->colonized) continue;
-                    /* score de BASE = expansion vers la CAPACITÉ (préserve la croissance saine, le
-                     * comportement d'avant : la pop ne s'effondre pas). Un STEER needs-aware NORMALISÉ
-                     * biaise vers une tuile RICHE d'un flux à déficit URGENT (runway<SAFETY ou
-                     * structurel) — la valeur ÉMERGE du prix —, SANS que le volume brut écrase la
-                     * capacité (borne geo_eff × prime de prix). Sans urgence → steer=0 → capacité pure. */
-                    float base = dst->cap_pop*0.001f + (spop-COLONY_MIN_POP)*0.0005f + src->food_sat;
-                    float steer=0.f;
-                    for (int g=1; g<RES_PROD_FIRST; g++){
-                        if (dst->raw_cap[g]<=0.f) continue;
-                        if (fc.runway[g] < safety || fc.struct_deficit[g]){
-                            float rich = clampf(dst->raw_cap[g]/geo_ref, 0.f, geo_cap);            /* ≈ geo_eff du gisement */
-                            float val  = src->price[g]/fmaxf(BASE_PRICE[g],0.1f);                  /* prime de prix (valeur émergente) */
-                            steer += rich*val;
+            /* PLUSIEURS COLONIES PAR AN (décision joueur 2026-07-31 : « il faut augmenter
+             * ce chiffre et atteindre les 711 provinces, au moins 650 ») — la sélection
+             * ci-dessous ne retenait QUE le meilleur couple (src,dst) : UNE fondation par
+             * pays et par an, cooldown de 1-4 ans par-dessus ⇒ ~174 fondations/sim pour
+             * 262 provinces colonisées sur ~700. On REJOUE donc la sélection tant qu'il
+             * reste une cible et du souffle : chaque tour re-mesure (la province fondée
+             * devient elle-même une source, la carte a changé). Le nombre par an suit la
+             * TAILLE de l'empire (une couronne de 30 provinces essaime plus qu'un hameau)
+             * borné par AI_COLONY_PER_YEAR. Les gates (pop, vivres, richesse) restent
+             * INCHANGÉS : on lève la CADENCE, jamais les conditions. */
+            int maxcol = (int)tune_f("AI_COLONY_PER_YEAR", 4.f);
+            if (maxcol < 1) maxcol = 1;
+            { int owned=0, np0=e->n_prov; if (np0>SCPS_MAX_PROV) np0=SCPS_MAX_PROV;
+              for (int q=0;q<np0;q++) if (e->prov[q].colonized && e->prov[q].owner==cid) owned++;
+              int bysize = 1 + owned/8;                 /* +1 colonie par tranche de 8 provinces */
+              if (bysize < maxcol) maxcol = bysize; }
+            for (int kcol=0; kcol<maxcol; kcol++){
+                int best_src=-1, best_dst=-1; float best_score=-1.f;   /* colonisation au gate NORMAL */
+                int surv_src=-1, surv_dst=-1; float surv_score=-1.f;   /* expédition de SURVIE (gate levé) */
+                int nprov=e->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
+                for (int ps=0; ps<nprov; ps++) {
+                    ProvinceEconomy *src=&e->prov[ps];
+                    if (!src->colonized || src->owner!=cid) continue;
+                    float spop=0.f; for(int c=0;c<CLASS_COUNT;c++) spop+=src->strata[c].pop;
+                    bool normal_ok  = (spop>=COLONY_MIN_POP && econ_colony_food_ok(src));
+                    bool survive_ok = (spop>=survive_min);
+                    if (!normal_ok && !survive_ok) continue;
+                    for (int pd=0; pd<nprov; pd++) {
+                        /* FRANCHIR LES TERRES MORTES (décision joueur 2026-07-31 : « imagine
+                         * une game de civ où la moitié du monde est vide ») : l'adjacence
+                         * EXCLUT les provinces impassables — elles ne sont donc ni
+                         * colonisables (juste) ni TRAVERSABLES (de trop), ce qui découpe la
+                         * carte en poches. Mesuré : 164 provinces vivables HORS DE PORTÉE
+                         * derrière un glacier ou un désert mort. On accepte donc une cible
+                         * séparée de la source par UNE zone morte — on la franchit, on ne
+                         * s'y installe jamais. 0 = ancien monde clos. */
+                        { bool touche = padj_get(ps,pd);
+                          if (!touche && tune_f("COLONY_CROSS_DEAD",1.f) > 0.f)
+                              for (int pm=0; pm<nprov && !touche; pm++)
+                                  if (e->prov[pm].impassable && padj_get(ps,pm) && padj_get(pm,pd)) touche=true;
+                          if (!touche) continue; }
+                        ProvinceEconomy *dst=&e->prov[pd];
+                        if (!dst->active || dst->colonized) continue;
+                        /* score de BASE = expansion vers la CAPACITÉ (préserve la croissance saine, le
+                         * comportement d'avant : la pop ne s'effondre pas). Un STEER needs-aware NORMALISÉ
+                         * biaise vers une tuile RICHE d'un flux à déficit URGENT (runway<SAFETY ou
+                         * structurel) — la valeur ÉMERGE du prix —, SANS que le volume brut écrase la
+                         * capacité (borne geo_eff × prime de prix). Sans urgence → steer=0 → capacité pure. */
+                        float base = dst->cap_pop*0.001f + (spop-COLONY_MIN_POP)*0.0005f + src->food_sat;
+                        float steer=0.f;
+                        for (int g=1; g<RES_PROD_FIRST; g++){
+                            if (dst->raw_cap[g]<=0.f) continue;
+                            if (fc.runway[g] < safety || fc.struct_deficit[g]){
+                                float rich = clampf(dst->raw_cap[g]/geo_ref, 0.f, geo_cap);            /* ≈ geo_eff du gisement */
+                                float val  = src->price[g]/fmaxf(BASE_PRICE[g],0.1f);                  /* prime de prix (valeur émergente) */
+                                steer += rich*val;
+                            }
                         }
+                        float score = base + needs_w*steer;
+                        if (normal_ok && score>best_score){ best_score=score; best_src=ps; best_dst=pd; }
+                        /* ANTI-SPIRALE (étage 3a) : la meilleure tuile VIVRIÈRE à portée, gate levé —
+                         * réservée à la crise FOOD (sinon les colonies de survie draineraient les petites
+                         * sources hors crise et la pop s'effondrerait). Une seule, quand rien d'autre. */
+                        bool food_tile = (dst->raw_cap[RES_GRAIN]>0.f || dst->raw_cap[RES_FISH]>0.f
+                                        || dst->raw_cap[RES_LIVESTOCK]>0.f);
+                        if (survive_ok && food_tile && base>surv_score){ surv_score=base; surv_src=ps; surv_dst=pd; }
                     }
-                    float score = base + needs_w*steer;
-                    if (normal_ok && score>best_score){ best_score=score; best_src=ps; best_dst=pd; }
-                    /* ANTI-SPIRALE (étage 3a) : la meilleure tuile VIVRIÈRE à portée, gate levé —
-                     * réservée à la crise FOOD (sinon les colonies de survie draineraient les petites
-                     * sources hors crise et la pop s'effondrerait). Une seule, quand rien d'autre. */
-                    bool food_tile = (dst->raw_cap[RES_GRAIN]>0.f || dst->raw_cap[RES_FISH]>0.f
-                                    || dst->raw_cap[RES_LIVESTOCK]>0.f);
-                    if (survive_ok && food_tile && base>surv_score){ surv_score=base; surv_src=ps; surv_dst=pd; }
                 }
-            }
-            int csrc=best_src, cdst=best_dst;
-            bool via_survival=false;
-            if (csrc<0 && food_crit){ csrc=surv_src; cdst=surv_dst; via_survival=true; }   /* anti-spirale : SEULEMENT en crise vivrière */
-            if (csrc>=0 && cdst>=0) {
-                colonize_from_prov(e, csrc, cdst, cid);
-                founded++;
-                g_colony_founded++;                              /* E7 : télémétrie cumulative (chronicle) */
-                if (via_survival) g_colony_survival++;            /* E7 : dont fondée par la voie SURVIE (anti-spirale) */
-                /* F1 — la fondation RÉUSSIE relance le répit : le prochain essaimage attendra
-                 * gate_years(w_expand[cid]) de plus. w_expand==NULL ⇒ pas de tableau, rien à
-                 * armer (le frein reste désactivé, comportement d'avant). */
-                if (w_expand && cid<SCPS_MAX_COUNTRY) g_colony_cd[cid]=(int8_t)colony_gate_years(w_expand[cid]);
+                int csrc=best_src, cdst=best_dst;
+                bool via_survival=false;
+                if (csrc<0 && food_crit){ csrc=surv_src; cdst=surv_dst; via_survival=true; }   /* anti-spirale : SEULEMENT en crise vivrière */
+                if (csrc>=0 && cdst>=0) {
+                    colonize_from_prov(e, csrc, cdst, cid);
+                    founded++;
+                    g_colony_founded++;                              /* E7 : télémétrie cumulative (chronicle) */
+                    if (via_survival) g_colony_survival++;            /* E7 : dont fondée par la voie SURVIE (anti-spirale) */
+                    /* F1 — la fondation RÉUSSIE relance le répit : le prochain essaimage attendra
+                     * gate_years(w_expand[cid]) de plus. w_expand==NULL ⇒ pas de tableau, rien à
+                     * armer (le frein reste désactivé, comportement d'avant). */
+                    /* Le RÉPIT ne s'arme que si la cadence est d'UNE colonie par an
+                     * (l'ancien régime) : au-delà, le plafond annuel EST la cadence — les
+                     * cumuler donnerait « 4 colonies puis 2 ans de rien », en dents de scie. */
+                    if (w_expand && cid<SCPS_MAX_COUNTRY && maxcol<=1)
+                        g_colony_cd[cid]=(int8_t)colony_gate_years(w_expand[cid]);
+                }
+            else break;      /* plus rien à coloniser cette année : on s'arrête là */
             }
 
         } else if (role==POLITY_CITY_STATE) {

@@ -1586,7 +1586,29 @@ int main(int argc, char **argv){
               printf("   PROV %d ville=\"%s\" pays=%d pop=%.0f\n", p, ville, (int)pr->owner, pop);
               npr++;
           }
-          printf("   PROV total %d colonisée(s)\n", npr); }
+          int nact=0, nimp=0;
+          for (int q=0;q<s.econ->n_prov && q<SCPS_MAX_PROV;q++){
+              if (s.econ->prov[q].impassable) nimp++;
+              else if (s.econ->prov[q].active) nact++;
+          }
+          printf("   PROV total %d colonisée(s) / %d COLONISABLES (%d infranchissables · %d au monde)\n",
+                 npr, nact, nimp, w->n_provinces);
+          /* ATTEIGNABLES : une province libre ne se colonise que si elle TOUCHE une
+           * province deja peuplee (l'essaimage est terrestre, par adjacence). Le reste
+           * est hors de portee — poches isolees derriere les 189 infranchissables, iles
+           * sans marine. C'est le PLAFOND REEL de l'expansion, sous le colonisable. */
+          { int nfree=0, nadj=0, NP=s.econ->n_prov; if (NP>SCPS_MAX_PROV) NP=SCPS_MAX_PROV;
+            const uint8_t *AD=s.econ->prov_adj;
+            for (int q=0;q<NP;q++){
+                const ProvinceEconomy *pq=&s.econ->prov[q];
+                if (!pq->active || pq->colonized) continue;
+                nfree++;
+                if (!AD) continue;
+                for (int r2=0;r2<NP;r2++)
+                    if (s.econ->prov[r2].colonized && AD[(size_t)q*SCPS_MAX_PROV+r2]){ nadj++; break; }
+            }
+            printf("   PROV libres %d — dont %d ATTEIGNABLES (adjacentes a une colonisee) · %d hors de portee\n",
+                   nfree, nadj, nfree-nadj); } }
         /* FAU/F8 — la boucle faustienne (transmuteurs + entropie) ET la demande de fer (forge
          * militaire). Conso cumulée par rare ; entropie monde ; prix moyen du fer (la preuve F8). */
         { double pir=0.0, pmax=0.0, arms=0.0; int npr=0; long fract=0;

@@ -584,7 +584,23 @@
      * quasi chaque année (gate≈1.3→1) ; un Pacifiste (w_expand≈0.15) attend ~1+0.85×3≈3-4
      * ans entre deux essaimages. 0 = tout le monde fonde chaque année (comportement d'avant,
      * cadence uniforme) ; plus haut = l'appétit compte davantage. */ \
-    X(AI_COLONY_TEMPO,        3.0f) \
+    X(AI_COLONY_TEMPO,        1.0f) \
+    /* COLONIES PAR AN ET PAR PAYS (décision joueur 2026-07-31 : « atteindre les 711
+     * provinces, au moins 650 ») — la sélection ne fondait QU'UNE colonie par an et par
+     * pays (174 fondations/sim pour 262 provinces sur ~700). Plafond par empire, borné
+     * aussi par sa TAILLE (+1 par tranche de 8 provinces tenues). Les GATES (pop,
+     * vivres, richesse) sont inchangés : on lève la cadence, pas les conditions.
+     * 1 = l'ancien rythme (kill-switch). AI_COLONY_TEMPO passe de 3 à 1 : le répit
+     * entre deux essaimages tombe de 1-4 ans à 1-2. */ \
+    X(AI_COLONY_PER_YEAR,     4.0f)     /* RÉPIT entre deux colonies OUTRE-MER (décision joueur 2026-07-31 : « imagine une
+     * game de civ où la moitié du monde est vide »). 2 ans (730 j) verrouillait les 170
+     * provinces hors de portée terrestre — poches derrière les infranchissables, îles.
+     * À 180 j, ce sont la FLOTTE de transport et la POP qui font le mur, pas l'horloge.
+     * 730 = l'ancien rythme (kill-switch). */     X(NAVY_COLONY_CD_DAYS,  180.0f)     /* FRANCHIR LES TERRES MORTES : une province vivable séparée de l'empire par UNE seule
+     * province infranchissable (glacier, désert mort) était HORS DE PORTÉE — l'adjacence
+     * les excluait du passage autant que de la colonisation, découpant la carte en poches
+     * (mesuré : 164 provinces vivables inatteignables). On franchit, on ne s'installe
+     * jamais dessus. 0 = ancien monde clos (kill-switch). */     X(COLONY_CROSS_DEAD,      1.0f) \
     /* PIPELINE DIPLO — la VALEUR SUBJECTIVE oriente la CIBLE (pas l'éthos, qui décide la
      * MÉTHODE). COVET_W : poids du BESOIN (Σ raw_cap × stress(runway) × prix) dans la valeur
      * d'une province d'autrui → l'IA convoite qui TIENT ce qui lui manque. COMPLEMENT_W :
