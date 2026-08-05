@@ -116,6 +116,7 @@ var _trad_sel := [-1, -1, -1]         # trait CHOISI par axe (id façade, -1 = a
 var _trad_summary: Label              # « Physique : Robuste · Social : … » (récap des 3 choix)
 var _culture_lbl: Label
 var _valid_lbl: Label
+var _clim_opt: OptionButton
 var _preview_lbl: Label
 var _start_btn: Button
 var _panel: PanelContainer
@@ -301,6 +302,29 @@ func _build_ui() -> void:
 	_culture_lbl.add_theme_color_override("font_color", C_TITLE)
 	_culture_lbl.add_theme_font_size_override("font_size", 16)
 	t_id.add_child(_culture_lbl)
+
+	# ── CLIMAT DU PEUPLE (décision joueur 2026-08-01) : le berceau climatique — la
+	# capitale naît sur la classe choisie et le peuple SAIT habiter ce climat (le
+	# désert d'un peuple aride n'est pas celui d'un colon tempéré). Auto = le
+	# meilleur site absolu, comportement d'hier. ──
+	col.add_child(_sep())
+	var clim_row := HBoxContainer.new()
+	clim_row.add_theme_constant_override("separation", 10)
+	col.add_child(clim_row)
+	var clim_lbl := Label.new()
+	clim_lbl.text = "Berceau :"
+	clim_lbl.add_theme_color_override("font_color", C_TITLE)
+	clim_row.add_child(clim_lbl)
+	_clim_opt = OptionButton.new()
+	_clim_opt.add_item("Auto (meilleur site)", 0)
+	_clim_opt.add_item("Tempéré — plaines et forêts", 1)
+	_clim_opt.add_item("Aride — déserts et terres sèches", 2)
+	_clim_opt.add_item("Tropical — jungles et savanes", 3)
+	_clim_opt.add_item("Froid — steppes du nord", 4)
+	_clim_opt.tooltip_text = "Votre peuple naît de ce climat et SAIT y vivre : ses terres
+y portent autant que les plaines d'un peuple tempéré.
+Les autres climats se gagnent en intégrant leurs peuples."
+	clim_row.add_child(_clim_opt)
 
 	# ── ligne EFFETS + VALIDITÉ : communes, sous les onglets, quel que soit l'onglet actif ──
 	col.add_child(_sep())
@@ -675,6 +699,8 @@ func _on_start() -> void:
 		hide()
 		return
 	# mode autonome : applique au joueur + régénère immédiatement (graine COURANTE)
+	if _clim_opt != null and Sim.world.has_method("set_player_climat"):
+		Sim.world.set_player_climat(_clim_opt.get_selected_id() - 1)   # 0 Auto → -1
 	if not Sim.world.set_player_culture(her, eth, t0, t1, t2):
 		_refresh()
 		return

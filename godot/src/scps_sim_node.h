@@ -327,6 +327,7 @@ public:
     bool       set_empire_culture(int slot, int heritage, int ethos, int t0, int t1, int t2); /* slot 0=joueur, 1..N IA */
     bool       set_player_culture(int heritage, int ethos, int t0, int t1, int t2);  /* raccourci slot 0 */
     void       clear_player_culture();                      /* efface TOUS les slots */
+    void       set_player_climat(int climat);               /* createur : 0 tempere, 1 aride, 2 tropical, 3 froid, -1 auto */
     void       set_country_name(int cid, const String &name); /* nom personnalisé (affichage, sérialisé) */
 
     /* PARAMÈTRES DE GÉNÉRATION (sliders « Nouvelle partie ») — POD WorldParams en Dictionary. */

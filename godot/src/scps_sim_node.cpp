@@ -263,6 +263,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("culture_name", "heritage", "seed"),   &ScpsWorld::culture_name);
     ClassDB::bind_method(D_METHOD("set_empire_culture", "slot", "heritage", "ethos", "t0", "t1", "t2"), &ScpsWorld::set_empire_culture);
     ClassDB::bind_method(D_METHOD("set_player_culture", "heritage", "ethos", "t0", "t1", "t2"), &ScpsWorld::set_player_culture);
+    ClassDB::bind_method(D_METHOD("set_player_climat", "climat"), &ScpsWorld::set_player_climat);
     ClassDB::bind_method(D_METHOD("clear_player_culture"),          &ScpsWorld::clear_player_culture);
     ClassDB::bind_method(D_METHOD("set_country_name", "cid", "name"), &ScpsWorld::set_country_name);
     ClassDB::bind_method(D_METHOD("worldparams_default", "seed"),   &ScpsWorld::worldparams_default);
@@ -2312,6 +2313,11 @@ bool ScpsWorld::set_empire_culture(int slot, int heritage, int ethos, int t0, in
 }
 bool ScpsWorld::set_player_culture(int heritage, int ethos, int t0, int t1, int t2) {
     return scps_set_player_culture(heritage, ethos, t0, t1, t2) != 0;
+}
+
+/* CLIMAT DU PEUPLE (createur d'empire) - entree de genese, meme statut que la culture. */
+void ScpsWorld::set_player_climat(int climat) {
+    scps_set_player_climat(climat);
 }
 
 void ScpsWorld::clear_player_culture() {

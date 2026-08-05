@@ -2339,6 +2339,68 @@ static void build_hierarchy(World *w, int want_empires, int want_cities) {
              * prime, à l'espacement MAXIMAL possible. HUGE=12 retombe ainsi naturellement sur 5 ;
              * un preset qui tient à 6 le garde. (Dégradation : si même le min ne case pas tout, on
              * garde le tour le plus rempli — la post-passe continent rattrape les masses vides.) */
+            /* ══ QUOTA PAR CONTINENT — N empires / X continents (décision joueur
+             * 2026-07-31 : « une distribution simple N(empire)/X(Continents) »).
+             * AVANT : les rôles suivaient le POIDS global ⇒ tous les empires
+             * s'aggloméraient sur les mêmes masses, et la post-passe L4 (plus bas) ne
+             * rattrapait RIEN car elle compte un continent « ensemencé » dès qu'un pays
+             * quelconque y a un rôle — une CITÉ-ÉTAT suffisait. Vu sur carte (graine
+             * 1518) : le grand croissant sud, près de la MOITIÉ des terres, sans une
+             * seule couleur d'empire — 164 provinces vivables jamais atteintes, car
+             * l'essaimage terrestre ne traverse pas la mer. Ici : chaque continent
+             * portant assez de terres habitables (SPAWN_CONT_MIN_HAB) reçoit un quota
+             * ÉGAL d'empires (N/X, reste aux plus vastes) ; la sélection par poids et
+             * l'espacement safe-hops jouent ENSUITE, à l'intérieur du quota. Si le
+             * quota laisse des empires non casés (continent sans candidat), une passe
+             * de REPLI les pose sans quota — on ne perd jamais un empire.
+             * Kill-switch : SPAWN_CONT_QUOTA=0 → l'ancien monde aggloméré. */
+            /* BUG HISTORIQUE RÉPARÉ AU PASSAGE : Country.continent n'était JAMAIS
+             * assigné (aucune écriture dans tout le moteur) — tous les pays lisaient 0.
+             * La post-passe L4 ci-dessous, qui s'appuie dessus, était donc INERTE depuis
+             * sa naissance : voilà pourquoi les continents restaient vierges malgré elle.
+             * On le pose ici : le continent MAJORITAIRE des régions du pays. */
+            for (int c2=0;c2<ncty;c2++){
+                int cnt2[SCPS_MAX_CONTINENT]={0};
+                const Country *ct2=&w->country[c2];
+                for (int ri=0; ri<ct2->n_regions; ri++){
+                    int rr=ct2->region_ids[ri]; if (rr<0||rr>=nreg) continue;
+                    int ci2=w->region[rr].continent;
+                    if (ci2>=0&&ci2<SCPS_MAX_CONTINENT) cnt2[ci2]++;
+                }
+                int bc2=-1,bn2=0;
+                for (int ci2=0;ci2<SCPS_MAX_CONTINENT;ci2++)
+                    if (cnt2[ci2]>bn2){ bn2=cnt2[ci2]; bc2=ci2; }
+                w->country[c2].continent=(int16_t)bc2;
+            }
+            bool quota_on = tune_f("SPAWN_CONT_QUOTA", 1.f) > 0.f;
+            int quota[SCPS_MAX_CONTINENT]={0}, cused[SCPS_MAX_CONTINENT]={0};
+            if (quota_on){
+                float chab[SCPS_MAX_CONTINENT]={0}; float chab_tot=0.f;
+                for (int p2=0;p2<np;p2++){
+                    int r2=w->province[p2].region; if (r2<0||r2>=nreg) continue;
+                    int ci2=w->region[r2].continent;
+                    if (ci2<0||ci2>=w->n_continents||ci2>=SCPS_MAX_CONTINENT) continue;
+                    chab[ci2]+=w->province[p2].area; chab_tot+=w->province[p2].area;
+                }
+                bool elig[SCPS_MAX_CONTINENT]={false}; int Xc=0;
+                float minhab = tune_f("SPAWN_CONT_MIN_HAB", 0.10f);
+                for (int ci2=0; ci2<w->n_continents && ci2<SCPS_MAX_CONTINENT; ci2++)
+                    if (chab_tot>0.f && chab[ci2]/chab_tot >= minhab){ elig[ci2]=true; Xc++; }
+                if (Xc<1) quota_on=false;                 /* monde sans continent net : ancien chemin */
+                else {
+                    int base=N_EMPIRE/Xc, rem=N_EMPIRE%Xc;
+                    for (int ci2=0; ci2<w->n_continents && ci2<SCPS_MAX_CONTINENT; ci2++)
+                        if (elig[ci2]) quota[ci2]=base;
+                    /* le RESTE aux continents les plus VASTES (ordre déterministe) */
+                    while (rem>0){
+                        int bi=-1; float bh=-1.f;
+                        for (int ci2=0; ci2<w->n_continents && ci2<SCPS_MAX_CONTINENT; ci2++)
+                            if (elig[ci2] && quota[ci2]==base && chab[ci2]>bh){ bh=chab[ci2]; bi=ci2; }
+                        if (bi<0) break;
+                        quota[bi]++; rem--;
+                    }
+                }
+            }
             int safe_max = (int)tune_f("SPAWN_SAFE_HOPS",     6.f);
             int safe_min = (int)tune_f("SPAWN_SAFE_HOPS_MIN", 5.f);
             if (safe_min > safe_max) safe_min = safe_max;
@@ -2356,16 +2418,70 @@ static void build_hierarchy(World *w, int want_empires, int want_cities) {
                 /* repli : relâche les antagonistes du tour précédent (le joueur reste) avant de retenter. */
                 for (int c=0;c<ncty;c++) if (w->country[c].role==POLITY_ANTAGONIST) w->country[c].role=POLITY_UNCLAIMED;
                 n_emp=1;
+                for (int ci2=0; ci2<SCPS_MAX_CONTINENT; ci2++) cused[ci2]=0;
+                for (int c2=0;c2<ncty;c2++)
+                    if (w->country[c2].role==POLITY_PLAYER){
+                        int ci2=w->country[c2].continent;
+                        if (ci2>=0&&ci2<SCPS_MAX_CONTINENT) cused[ci2]++;
+                    }
                 DEMP_RECOMPUTE();
                 for (int i=1; i<ncty && n_emp<N_EMPIRE; i++){
                     int c=ord[i];
                     if (w->country[c].role!=POLITY_UNCLAIMED) continue;
+                    int cco=w->country[c].continent;      /* quota du continent d'abord */
+                    if (quota_on && cco>=0 && cco<SCPS_MAX_CONTINENT && cused[cco]>=quota[cco]) continue;
                     const Country *ct=&w->country[c];
                     int mind=nreg+1;
                     for (int ri=0; ri<ct->n_regions; ri++){ int rr=ct->region_ids[ri]; if (rr>=0&&rr<nreg&&demp[rr]<mind) mind=demp[rr]; }
-                    if (mind>=safe){ w->country[c].role=POLITY_ANTAGONIST; n_emp++; DEMP_RECOMPUTE(); }
+                    if (mind>=safe){ w->country[c].role=POLITY_ANTAGONIST; n_emp++;
+                        if (cco>=0&&cco<SCPS_MAX_CONTINENT) cused[cco]++;
+                        DEMP_RECOMPUTE(); }
                 }
                 if (n_emp>=N_EMPIRE) break;   /* tous casés au rayon le plus large possible */
+            }
+            /* REPLI (quota) : si des continents éligibles n'avaient pas de candidat, des
+             * empires restent non casés — on les pose SANS quota, à l'espacement minimal.
+             * On ne sacrifie jamais le COMPTE d'empires à la répartition. */
+            if (quota_on && n_emp<N_EMPIRE){
+                /* ÉTAGE 1 : les continents SOUS quota d'abord, en relâchant l'espacement
+                 * cran par cran — mieux vaut deux empires un peu proches sur un continent
+                 * vierge qu'un continent entier sans civilisation. */
+                for (int relax=safe_min; relax>=1 && n_emp<N_EMPIRE; relax--){
+                    DEMP_RECOMPUTE();
+                    for (int i=1; i<ncty && n_emp<N_EMPIRE; i++){
+                        int c=ord[i];
+                        if (w->country[c].role!=POLITY_UNCLAIMED) continue;
+                        int cco=w->country[c].continent;
+                        if (!(cco>=0 && cco<SCPS_MAX_CONTINENT && cused[cco]<quota[cco])) continue;
+                        const Country *ct=&w->country[c];
+                        int mind=nreg+1;
+                        for (int ri=0; ri<ct->n_regions; ri++){ int rr=ct->region_ids[ri]; if (rr>=0&&rr<nreg&&demp[rr]<mind) mind=demp[rr]; }
+                        if (mind>=relax){ w->country[c].role=POLITY_ANTAGONIST; n_emp++; cused[cco]++; DEMP_RECOMPUTE(); }
+                    }
+                }
+                /* ÉTAGE 2 : toujours pas tous casés (continent sans le moindre candidat)
+                 * → sans quota, à l'espacement minimal. Le COMPTE prime. */
+                if (n_emp<N_EMPIRE){
+                    DEMP_RECOMPUTE();
+                    for (int i=1; i<ncty && n_emp<N_EMPIRE; i++){
+                        int c=ord[i];
+                        if (w->country[c].role!=POLITY_UNCLAIMED) continue;
+                        const Country *ct=&w->country[c];
+                        int mind=nreg+1;
+                        for (int ri=0; ri<ct->n_regions; ri++){ int rr=ct->region_ids[ri]; if (rr>=0&&rr<nreg&&demp[rr]<mind) mind=demp[rr]; }
+                        if (mind>=safe_min){ w->country[c].role=POLITY_ANTAGONIST; n_emp++; DEMP_RECOMPUTE(); }
+                    }
+                }
+            }
+            if (getenv("SPAWN_DBG")){
+                fprintf(stderr,"[SPAWN] quota_on=%d n_emp=%d N_EMPIRE=%d n_continents=%d\n",
+                        (int)quota_on, n_emp, N_EMPIRE, w->n_continents);
+                for (int ci2=0; ci2<w->n_continents && ci2<SCPS_MAX_CONTINENT; ci2++)
+                    fprintf(stderr,"[SPAWN]   C%d quota=%d used=%d\n", ci2, quota[ci2], cused[ci2]);
+                for (int c2=0;c2<ncty;c2++)
+                    if (w->country[c2].role==POLITY_PLAYER||w->country[c2].role==POLITY_ANTAGONIST)
+                        fprintf(stderr,"[SPAWN]   empire c%d continent=%d role=%d\n",
+                                c2, w->country[c2].continent, (int)w->country[c2].role);
             }
             #undef DEMP_RECOMPUTE
             /* CITÉS-ÉTATS — les plus pesants restants, SANS contrainte d'espacement (elles peuplent
@@ -2505,6 +2621,34 @@ static void compute_render_flags(World *w, float *height) {
  * dur ; Glacier/Pic/Volcan = 0 absolu) × confort thermique (pénalité froid/chaud).
  * SOURCE UNIQUE partagée par le worldgen ET le capstone FROID (qui la rejoue sur
  * une carte refroidie). */
+/* Classe climatique d'une tuile — l'ANGLE de l'habitabilité culturelle. */
+Climat world_climate_class(Biome B, float tmp){
+    switch (B){
+        case BIO_DESERT: case BIO_COASTAL_DESERT: case BIO_DRYLANDS: return CLIM_ARIDE;
+        case BIO_JUNGLE: case BIO_MANGROVE: case BIO_SAVANNA:        return CLIM_TROPICAL;
+        default: break;
+    }
+    if (tmp < 0.30f) return CLIM_FROID;      /* steppe/toundra/taïga du nord */
+    return CLIM_TEMPERE;
+}
+/* LA MATRICE — plancher de confort d'un peuple NATIF de la classe. TEMPERE est à 0 :
+ * la table biome_habitability est déjà tempérée-centrée, le natif tempéré la lit telle
+ * quelle. Un peuple ARIDE lit son désert à 0.60 (oasis, nomadisme, qanats) là où le
+ * colon des plaines lit 0.08. Les planchers restent SOUS les grandes plaines (0.88) :
+ * s'adapter n'abolit pas la géographie, elle la rend VIVABLE. */
+static const float HAB_NATIF[CLIM_COUNT] = { 0.00f, 0.60f, 0.68f, 0.52f };
+float world_hab_for(const World *w, int cid, int pid){
+    if (!w || pid<0 || pid>=w->n_provinces) return 0.f;
+    const Province *pv=&w->province[pid];
+    float hab = pv->habitability;
+    if (tune_f("HAB_CULTURE",1.f) <= 0.f) return hab;             /* kill-switch : table fixe */
+    if (cid<0 || cid>=w->n_countries) return hab;
+    Climat cl = world_climate_class(pv->biome_dominant, 0.5f);    /* biome d'abord */
+    if (cl==CLIM_TEMPERE) return hab;                             /* rien à relever */
+    if (!(w->country[cid].climates & (1u<<cl))) return hab;       /* pas natif : la table dit vrai */
+    float f = HAB_NATIF[cl];
+    return (hab > f) ? hab : f;
+}
 float biome_habitability(Biome B, float tmp, float height) {
     float hab_base;
     switch (B) {
@@ -3813,6 +3957,15 @@ static bool sw_biome_fits(Biome b, Resource m){
     }
 }
 
+/* SPAWN DU JOUEUR f(climat) — décision joueur 2026-08-01 (créateur d'empire) : le
+ * joueur CHOISIT le climat de son peuple, et sa capitale naît dessus. -1 = auto
+ * (le meilleur site absolu, comportement d'hier). Entrée de GENÈSE au même titre
+ * que heritage/ethos (scps_set_player_culture) : posée AVANT regenerate, gravée
+ * ensuite dans Country.climates par la passe spawn (la capitale définit le peuple). */
+static int g_player_climat = -1;
+void world_set_player_climat(int climat){
+    g_player_climat = (climat>=0 && climat<CLIM_COUNT) ? climat : -1;
+}
 static void refine_capitals(World *w) {
     /* Eau par province : un seul passage de cellules (river/lake déjà calculés). */
     static bool has_river[SCPS_MAX_PROV], has_lake[SCPS_MAX_PROV];
@@ -3849,6 +4002,18 @@ static void refine_capitals(World *w) {
                 /* SPAWN SUR TERRE HABITABLE : une province inaccessible (≤25 %) n'est qu'un
                  * dernier recours — une capitale DOIT naître sur du vivable si possible. */
                 if (pv->habitability <= 0.25f) s *= 0.15f;
+                /* LE CLIMAT CHOISI (créateur d'empire) : un site de la classe demandée
+                 * DOMINE tout site hors-classe (×8, avant l'eau et le grain) — le peuple
+                 * du désert naît AU désert, pas sur la lisière tempérée de son territoire.
+                 * La pénalité d'inaccessibilité saute pour la classe natale : son plancher
+                 * de confort (world_hab_for) rendra la terre vivable à l'installation. */
+                if (w->country[c].role==POLITY_PLAYER && g_player_climat>=0){
+                    Climat pc=world_climate_class(pv->biome_dominant, 0.5f);
+                    if (pc==(Climat)g_player_climat){
+                        if (pv->habitability <= 0.25f) s /= 0.15f;   /* annule la pénalité */
+                        s *= 8.f;
+                    }
+                }
                 if (s > bs){ bs=s; best=pid; }
             }
         }
@@ -3892,6 +4057,43 @@ static void refine_capitals(World *w) {
         else if (water >  0.0f) fresh++;
         else                    dry++;
         if (food >= START_FOOD_MIN) foodok++;
+    }
+    /* LE SPAWN DÉFINIT LE PEUPLE (habitabilité culturelle) : chaque pays apprend le
+     * climat de sa capitale — un empire né des terres sèches est un peuple du désert.
+     * Posé pour TOUTES les polities (les cités-états et hameaux aussi ont un climat). */
+    for (int c=0;c<w->n_countries;c++){
+        w->country[c].climates=0;
+        int cp=w->country[c].capital_prov;
+        if (cp>=0 && cp<w->n_provinces)
+            w->country[c].climates = (uint8_t)(1u<<world_climate_class(
+                w->province[cp].biome_dominant, 0.5f));
+        /* LE TERRITOIRE FAIT LE PEUPLE, pas la seule capitale : le spawn Civ-like
+         * (eau + grain) choisit l'OASIS du territoire — l'enclave tempérée d'un pays
+         * de terres sèches. Si le bit ne venait que d'elle, tout le désert alentour
+         * resterait hostile à son propre peuple et la redistribution N/X resterait
+         * stérile (mesuré : 151 provinces avec ou sans matrice). Toute classe pesant
+         * ≥ 25 % de l'aire du territoire de départ est un climat NATAL. */
+        { float carea[CLIM_COUNT]={0}; float ctot=0.f;
+          for (int ri=0; ri<w->country[c].n_regions; ri++){
+              int rid=w->country[c].region_ids[ri];
+              if (rid<0||rid>=w->n_regions) continue;
+              for (int pi=0; pi<w->region[rid].n_provinces; pi++){
+                  int pid2=w->region[rid].province_ids[pi];
+                  if (pid2<0||pid2>=w->n_provinces) continue;
+                  const Province *pv2=&w->province[pid2];
+                  float a2=(float)pv2->area; if (a2<1.f) a2=1.f;
+                  carea[world_climate_class(pv2->biome_dominant,0.5f)]+=a2; ctot+=a2;
+              }
+          }
+          if (ctot>0.f)
+              for (int cl2=0; cl2<CLIM_COUNT; cl2++)
+                  if (carea[cl2]/ctot >= 0.25f)
+                      w->country[c].climates |= (uint8_t)(1u<<cl2);
+        }
+        /* le joueur porte SON choix même si le monde n'offrait pas la classe (le
+         * peuple reste ce qu'il est ; il colonisera ce climat quand il le trouvera) */
+        if (w->country[c].role==POLITY_PLAYER && g_player_climat>=0)
+            w->country[c].climates |= (uint8_t)(1u<<g_player_climat);
     }
     printf("ok (%d estuaires, %d eau douce, %d secs ; food≥%.2f : %d/%d)\n",
            est, fresh, dry, START_FOOD_MIN, foodok, ncap);

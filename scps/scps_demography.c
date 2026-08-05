@@ -863,6 +863,29 @@ void demography_tick(World *w, WorldEconomy *econ, WorldLegitimacy *wl,
      * migration, satisfaction/coercition lues en agrégat) : même comportement, juste le
      * bon grain d'écriture. Une région sans province représentative valide (jamais
      * colonisée) est ignorée, comme avant (pp->n_groups restait à 0). */
+    /* HÉRITAGE CLIMATIQUE PAR MÉTABOLISATION (décision joueur 2026-07-31 : « faire en
+     * sorte que les hybridations/métabolisations s'en sortent aussi bien sur les climats
+     * parents ») : un groupe DÉPLACÉ pleinement intégré (integration ≥ 0.99) lègue à la
+     * couronne hôte le CLIMAT de sa région d'origine (home_reg → classe de la province
+     * représentative). Le pays gagne le bit → world_hab_for relève ses yeux sur ce
+     * climat : le creuset qui a digéré un peuple du désert sait coloniser le désert.
+     * Les déportés du MARCHÉ (home_reg=-1, origine « blanchie par l'or ») ne lèguent
+     * rien — cohérent avec leur fongibilité. Cliquet : un bit gagné ne se perd pas. */
+    if (w && tune_f("HAB_CULTURE",1.f) > 0.f){
+        for (int p2=0; p2<econ->n_prov; p2++){
+            const ProvinceEconomy *pe2=&econ->prov[p2];
+            if (!pe2->active || !pe2->colonized) continue;
+            int own=pe2->owner; if (own<0||own>=w->n_countries) continue;
+            for (int gi2=0; gi2<pe2->pop.n_groups; gi2++){
+                const PopGroup *g2=&pe2->pop.groups[gi2];
+                if (!g2->diaspora || g2->integration < 0.99f || g2->home_reg < 0) continue;
+                int hp=econ_region_rep_province(econ, g2->home_reg);
+                if (hp<0 || hp>=w->n_provinces) continue;
+                Climat cl2=world_climate_class(w->province[hp].biome_dominant, 0.5f);
+                w->country[own].climates |= (uint8_t)(1u<<cl2);
+            }
+        }
+    }
     /* 1. Par région : L par groupe, assimilation, rafraîchir le cache, sync dominante. */
     for (int r=0; r<econ->n_regions; r++){
         RegionEconomy *re=&econ->region[r];

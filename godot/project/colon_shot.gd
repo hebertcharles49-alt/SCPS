@@ -38,7 +38,7 @@ func _run() -> void:
 		await get_tree().process_frame
 	if Sim.world == null:
 		push_error("no world"); get_tree().quit(1); return
-	Sim.world.advance_days(360 * 250)          # AN 250 — l'horizon des mesures
+	Sim.world.advance_days(360 * int(_arg("year=", "180")))   # AN 180 par defaut — AVANT la depopulation endgame (cadrage joueur)
 	Sim.generated.emit()
 	var menu: Control = _main._menu
 	if menu != null:
@@ -57,10 +57,10 @@ func _run() -> void:
 	map._camera.zoom = Vector2(0.9, 0.9)
 	map._camera.position = map.iso_pos(float(w.map_w()) * 0.5, float(w.map_h()) * 0.5)
 	map._nav_redraw()
-	await _shot("01_politique_an250")
+	await _shot("01_politique")
 	if not map.is_nature():
 		map.toggle_nature()
 	map._nav_redraw()
-	await _shot("02_nature_an250")
+	await _shot("02_nature")
 	print("COLON SHOTS OK — ", _dir)
 	get_tree().quit()

@@ -600,7 +600,20 @@
      * province infranchissable (glacier, désert mort) était HORS DE PORTÉE — l'adjacence
      * les excluait du passage autant que de la colonisation, découpant la carte en poches
      * (mesuré : 164 provinces vivables inatteignables). On franchit, on ne s'installe
-     * jamais dessus. 0 = ancien monde clos (kill-switch). */     X(COLONY_CROSS_DEAD,      1.0f) \
+     * jamais dessus. 0 = ancien monde clos (kill-switch). */ \
+    X(COLONY_CROSS_DEAD,      1.0f) \
+    /* QUOTA D'EMPIRES PAR CONTINENT (décision joueur 2026-07-31 : « une distribution
+     * simple N(empire)/X(Continents) ») : chaque continent portant ≥ SPAWN_CONT_MIN_HAB
+     * des terres habitables reçoit N/X empires (reste aux plus vastes), AVANT le poids et
+     * l'espacement. Vu sur carte : sans lui, la moitié du monde restait vierge (l'ancien
+     * rattrapage L4 comptait une cité-état comme « ensemencé »). 0 = ancien monde. */ \
+    X(SPAWN_CONT_QUOTA,       1.0f) \
+    X(SPAWN_CONT_MIN_HAB,     0.10f) \
+    /* HABITABILITÉ CULTURELLE (décision joueur 2026-07-31 : le seuil fixe est
+     * « eurocentrique » — les peuples s'en sortent très bien sur LEURS climats).
+     * Matrice par classe (aride/tropical/froid) : plancher de confort pour le peuple
+     * NATIF, posé au spawn, hérité par métabolisation. 0 = table fixe d'hier. */ \
+    X(HAB_CULTURE,            1.0f) \
     /* PIPELINE DIPLO — la VALEUR SUBJECTIVE oriente la CIBLE (pas l'éthos, qui décide la
      * MÉTHODE). COVET_W : poids du BESOIN (Σ raw_cap × stress(runway) × prix) dans la valeur
      * d'une province d'autrui → l'IA convoite qui TIENT ce qui lui manque. COMPLEMENT_W :

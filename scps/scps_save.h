@@ -32,7 +32,10 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 98u           /* v98 : TOPONYMIE DES VILLES (docs/DESIGN_TOPONYMIE_VILLES.md) —
+#define SAVE_VERSION 99u           /* v99 : HABITABILITÉ CULTURELLE — Country.climates (bitmask des
+                                    * climats natals : spawn = territoire de départ, enrichi par
+                                    * métabolisation) ⇒ sizeof(World) change (« ère antérieure »).
+                                    * v98 : TOPONYMIE DES VILLES (docs/DESIGN_TOPONYMIE_VILLES.md) —
                                     * nouvelle section TOPO (scps_toponym.c : g_ville_name[SCPS_MAX_
                                     * REG][32], static de MODULE, motif WILD/EMOB/COLC/TXYR — PAS une
                                     * struct partagée agrandie). Un save v97 est juste INCOMPLET pour

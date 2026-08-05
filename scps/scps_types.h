@@ -299,6 +299,10 @@ typedef struct {
     int16_t    continent;
     int        capital_prov;      /* province-capitale (plus fertile) */
     PolityRole role;              /* joueur / antagoniste / cité-état / vierge */
+    uint8_t    climates;          /* BITMASK des Climat que ce peuple SAIT habiter (1<<Climat) —
+                                   * posé au spawn (classe de la capitale), enrichi par la
+                                   * métabolisation des groupes déplacés (climats parents).
+                                   * Sérialisé avec World ⇒ SAVE_VERSION v99. */
     uint32_t   color;
     char       name[32];
 } Country;

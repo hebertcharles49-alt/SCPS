@@ -8104,3 +8104,52 @@ Sommets jamais, Savane/Désert/Collines parfois sans aucune province dominante.
 **Restes** : l'outre-mer reste une exception (27 débarquements/partie) alors qu'un monde en
 archipel en fait le moyen d'expansion ORDINAIRE ; il exige une région ENTIÈREMENT vierge
 et côtière (grain RÉGION, pas province). Mesure de remplissage à refaire à l'an 150.
+
+## HABITABILITÉ CULTURELLE + QUOTA N/X — le monde réparti ET rempli (2026-08-01)
+
+**Le fait** : la moitié du monde restait vierge (archipels : le grand continent sans un
+empire). Deux vagues liées, jugées ENSEMBLE sur graine appariée (1518, an 180, 3 configs) :
+ancien monde 280 provinces · quota N/X seul 151 (!) · quota + habitabilité culturelle 314.
+
+**Découvertes** :
+- QUOTA N/X (« une distribution simple N(empire)/X(Continents) ») : quota ÉGAL par
+  continent ≥ 10 % des terres habitables, AVANT poids et espacement ; repli à 2 étages
+  (continents sous-quota à espacement relâché, puis sans quota — le COMPTE prime).
+  DEUX BUGS HISTORIQUES dessous : Country.continent n'était JAMAIS assigné (tous à 0 —
+  la post-passe L4 « peupler les continents » était INERTE depuis sa naissance) ; et son
+  test « ensemencé » comptait une CITÉ-ÉTAT comme suffisante.
+- Le quota SEUL est CONTRE-PRODUCTIF (280→151) : les empires redistribués végètent sur
+  les climats non tempérés avec la table fixe. C'est le joueur qui a vu la cause :
+  « l'habitabilité comme un seuil fixe, eurocentrique — des peuples orientaux, africains,
+  mésoaméricains s'en sortent très bien ». La table (Désert 0.08, Terres sèches 0.28) dit
+  ce que vaut la terre POUR UN COLON DES PLAINES, pas pour un peuple né là.
+- HABITABILITÉ CULTURELLE : 4 classes (tempéré/aride/tropical/froid), bitmask par pays,
+  matrice world_hab_for (plancher natif : aride 0.60, tropical 0.68, froid 0.52).
+  LE TERRITOIRE FAIT LE PEUPLE, pas la seule capitale : le spawn Civ-like choisit
+  l'OASIS (eau+grain) — si le bit ne venait que d'elle, un pays de terres sèches naissait
+  « tempéré » et tout SON désert lui restait hostile (mesuré : 151 avec bit-capitale,
+  314 avec bits ≥ 25 % de l'aire du territoire). Appliquée à l'init (terres possédées),
+  au scoring de colonisation, à la fondation (colony_recap_for). Héritage par
+  MÉTABOLISATION : groupe déplacé intégré ≥ 0.99 → la couronne gagne le climat de sa
+  région d'origine (home_reg ; le marché aux esclaves « fongible » ne lègue rien).
+- CRÉATEUR D'EMPIRE : sélecteur « Berceau » (Auto/Tempéré/Aride/Tropical/Froid) →
+  scps_set_player_climat → la capitale du joueur naît sur la classe (score ×8, pénalité
+  d'inaccessibilité levée pour la classe natale). Country.climates ⇒ SAVE_VERSION 99.
+
+**Pièges** :
+- BUILD MIXTE : sizeof(Country) a changé et le Makefile n'a AUCUNE dépendance headers —
+  seuls les .o supprimés à la main se recompilent. Un binaire mi-ancien mi-nouveau = UB
+  silencieux. RÈGLE : tout changement de struct partagée ⇒ `rm build/*.o` AVANT make.
+  (Les mesures ont été re-prouvées sur rebuild intégral : identiques, coup de chance.)
+- scons crash « UnicodeEncodeError » en console cp1252 quand un message d'erreur gcc cite
+  du code UTF-8 (→) : lancer avec PYTHONIOENCODING=utf-8 pour VOIR l'erreur réelle.
+- Mon premier patch SAVE_VERSION a ORPHELINÉ le commentaire multiligne v98 (remplacement
+  d'une ligne d'un bloc /* … */) — toujours vérifier que le bloc reste fermé.
+- Le hash monde (--hash) n'est PAS sensible au placement des rôles seuls : deux mondes aux
+  empires différents peuvent hasher pareil à horizon court. Prouver par diag (SPAWN_DBG),
+  pas par hash.
+
+**Restes** : 3×3 apparié en cours (2528/4043 aux 3 configs an 180) ; sud du croissant
+encore vierge à l'an 177 (dynamique lancée, 70 ans restants) ; UI : le berceau n'apparaît
+pas encore dans la fiche empire (seulement au créateur) ; STR_* : libellés du sélecteur
+en dur dans le .gd (lang-check 0 = le cliquet ne couvre pas les .gd).

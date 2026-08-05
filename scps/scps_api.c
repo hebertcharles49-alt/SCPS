@@ -5085,6 +5085,13 @@ int scps_set_player_culture(int heritage, int ethos, int t0, int t1, int t2){
 
 void scps_clear_player_culture(void){ culture_player_clear(); }
 
+/* CLIMAT DU PEUPLE (créateur d'empire, 2026-08-01) : le joueur choisit la classe
+ * climatique de son peuple — sa capitale naît dessus (refine_capitals) et son
+ * bitmask d'habitabilité culturelle la porte. Entrée de GENÈSE (avant regenerate),
+ * même statut que scps_set_player_culture. -1 = auto. La chronique n'appelle
+ * jamais ceci : golden intact. */
+void scps_set_player_climat(int climat){ world_set_player_climat(climat); }
+
 /* NOM PERSONNALISÉ (créateur d'empire, 2026-07-10) : le joueur nomme son État.
  * Champ d'AFFICHAGE (les noms ne sont jamais hashés — même statut que les noms
  * tribaux WILD) ; Country.name est sérialisé avec le monde, donc le nom choisi

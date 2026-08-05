@@ -1681,7 +1681,13 @@ void econ_init(WorldEconomy *e, const World *w) {
          * subsistance culturel) → capacité d'accueil brute. */
         float subs = subsistance_for_biome(pv->biome_dominant);
         float cap  = a * (0.25f + 0.75f*clampf(subs/10.f,0.f,1.f));
-        float hab  = pv->habitability;
+        /* HABITABILITÉ CULTURELLE À L'INIT : les terres DÉJÀ possédées (territoire de
+         * départ) sont jugées par les yeux de leur PEUPLE (world_hab_for), pas par la
+         * table tempérée — sinon la capitale d'un empire aride naît ANÉMIQUE (cap_pop
+         * et socle vivrier bas) et ne peut jamais essaimer : le trou qui rendait la
+         * redistribution N/X stérile (151 vs 280 provinces à l'an 180, mesuré). */
+        float hab  = (pv->country>=0) ? world_hab_for(w, pv->country, pid)
+                                      : pv->habitability;
         prov_cap[pid] = cap * hab;   /* la capacité est nulle pour les zones mortes */
         /* SEUIL D'ACCÈS (≤25 % = inaccessible : glacier/pic/volcan/montagne escarpée/désert/
          * froid) — la province-siège reste exemptée (elle tient sur sa propre habitabilité). */
@@ -5996,6 +6002,25 @@ static void colonize_seed_pop_group(ProvinceEconomy *dst, int dst_pid, long tota
     g->integration=1.f; g->diaspora=false; g->drift_id=dst_pid+1; g->home_reg=-1;
     pp->n_groups=1;
 }
+/* HABITABILITÉ CULTURELLE — à la FONDATION, la capacité d'accueil de la tuile est
+ * recalculée par les yeux du peuple qui s'y installe (world_hab_for) : un peuple du
+ * désert fait vivre son désert (formule d'init rejouée avec l'hab RELEVÉE). Jamais
+ * à la baisse : on ne stérilise pas une terre déjà comptée. */
+static void colony_recap_for(WorldEconomy *e, const World *w, int dst_pid, int cid){
+    if (!w || dst_pid<0 || dst_pid>=w->n_provinces || dst_pid>=SCPS_MAX_PROV) return;
+    const Province *pv=&w->province[dst_pid];
+    float h1=world_hab_for(w, cid, dst_pid);
+    if (h1 <= pv->habitability + 0.01f) return;
+    float a=(float)pv->area; if (a<1.f) a=1.f;
+    float subs=subsistance_for_biome(pv->biome_dominant);
+    float cap=a*(0.25f+0.75f*clampf(subs/10.f,0.f,1.f));
+    float t2=40.f + cap*h1*12.f;                 /* la formule d'init, hab RELEVÉE */
+    ProvinceEconomy *pe=&e->prov[dst_pid];
+    if (t2 > pe->cap_pop) pe->cap_pop = t2;
+    /* le socle vivrier suit (grain ∝ cap_pop×hab — même esprit que l'init) */
+    float socle = t2/100.f * (1.15f + 0.70f*h1);
+    if (pe->raw_cap[RES_GRAIN] < socle) pe->raw_cap[RES_GRAIN] = socle;
+}
 static void colonize_from_prov(WorldEconomy *e, int src_pid, int dst_pid, int cid) {
     ProvinceEconomy *src=&e->prov[src_pid];
     ProvinceEconomy *dst=&e->prov[dst_pid];
@@ -6170,7 +6195,14 @@ int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid,
                          * biaise vers une tuile RICHE d'un flux à déficit URGENT (runway<SAFETY ou
                          * structurel) — la valeur ÉMERGE du prix —, SANS que le volume brut écrase la
                          * capacité (borne geo_eff × prime de prix). Sans urgence → steer=0 → capacité pure. */
-                        float base = dst->cap_pop*0.001f + (spop-COLONY_MIN_POP)*0.0005f + src->food_sat;
+                        /* HABITABILITÉ CULTURELLE : la tuile est jugée par les yeux du
+                     * COLONISATEUR — un désert vaut peu au colon tempéré, beaucoup au
+                     * peuple qui en vient (world_hab_for, matrice par classe). cap_pop
+                     * (init) porte la table fixe : on le RELÈVE au ratio natif. */
+                    float base = dst->cap_pop*0.001f + (spop-COLONY_MIN_POP)*0.0005f + src->food_sat;
+                    { float h0=w->province[pd].habitability;
+                      float h1=world_hab_for(w, cid, pd);
+                      if (h1 > h0+0.01f && h0 > 0.01f) base *= (h1/h0 < 3.f ? h1/h0 : 3.f); }
                         float steer=0.f;
                         for (int g=1; g<RES_PROD_FIRST; g++){
                             if (dst->raw_cap[g]<=0.f) continue;
@@ -6195,6 +6227,7 @@ int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid,
                 if (csrc<0 && food_crit){ csrc=surv_src; cdst=surv_dst; via_survival=true; }   /* anti-spirale : SEULEMENT en crise vivrière */
                 if (csrc>=0 && cdst>=0) {
                     colonize_from_prov(e, csrc, cdst, cid);
+                    colony_recap_for(e, w, cdst, cid);    /* la tuile aux yeux du fondateur */
                     founded++;
                     g_colony_founded++;                              /* E7 : télémétrie cumulative (chronicle) */
                     if (via_survival) g_colony_survival++;            /* E7 : dont fondée par la voie SURVIE (anti-spirale) */

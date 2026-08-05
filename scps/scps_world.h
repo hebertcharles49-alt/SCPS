@@ -42,6 +42,19 @@ int  world_capital_region(const World *w, int cid);
  * + capstone froid. `height` = altitude de la tuile/province : le RELIEF escarpé
  * (hors plateau highlands/hills) écrase l'habitabilité ; un plateau reste un berceau. */
 float biome_habitability(Biome B, float tmp, float height);
+/* ══ HABITABILITÉ CULTURELLE (décision joueur 2026-07-31 : « on considère l'habitabilité
+ * comme un seuil fixe, eurocentrique — des peuples orientaux, africains, mésoaméricains
+ * ont des climats très différents et s'en sortent très bien ») ══
+ * La table biome_habitability est TEMPÉRÉE-CENTRÉE (Désert 0.08, Terres sèches 0.28…) :
+ * elle dit ce que vaut la terre pour un colon des plaines, pas pour un peuple NÉ là.
+ * 4 classes climatiques ; chaque pays porte un BITMASK des climats qu'il sait habiter
+ * (posé au SPAWN = classe de sa capitale ; enrichi par MÉTABOLISATION : un groupe
+ * déplacé pleinement intégré lègue son climat d'origine — l'hybride s'en sort sur les
+ * climats parents). world_hab_for = la matrice : natif → plancher de confort. */
+typedef enum { CLIM_TEMPERE=0, CLIM_ARIDE, CLIM_TROPICAL, CLIM_FROID, CLIM_COUNT } Climat;
+Climat world_climate_class(Biome B, float tmp);
+float  world_hab_for(const World *w, int cid, int pid);   /* hab VUE PAR le pays cid */
+void   world_set_player_climat(int climat);   /* créateur d'empire : -1 = auto, sinon Climat */
 /* Rebiome une cellule de terre depuis sa température mutée (capstone froid). */
 void  world_rebiome_cell(Cell *c);
 
