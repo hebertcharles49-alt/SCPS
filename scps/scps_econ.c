@@ -6066,83 +6066,79 @@ static void colonize_from_prov(WorldEconomy *e, int src_pid, int dst_pid, int ci
     colonize_seed_pop_group(dst, dst_pid, (long)seeded,&settlers,settlers_id);
 }
 
-/* ══ ESSAIMAGE PASSIF DE RÉGION (décision joueur 2026-08-01 : « quand une province
- * est colonisée, la région se colonise passivement — petite migration progressive,
- * pour qu'en 3 ans il y ait 100 hab dans les autres provinces de la région ») ══
- * Chaque année, toute région portant au moins une province colonisée voit ses
- * provinces LIBRES et vivables recevoir un RUISSEAU de colons depuis la plus
- * peuplée de ses colonisées : SEEP_TARGET/SEEP_YEARS hab/an (≈33), TRANSFERT
- * conservatif (jamais une création), jusqu'au palier SEEP_TARGET (100) où la
- * croissance naturelle prend le relais. La source ne se draine jamais sous
- * COLONY_MIN_POP — un hameau n'essaime pas sa survie. Première goutte = vraie
- * fondation (colonized/owner/ferveur/groupe culturel, motif colonize_from_prov) ;
- * les suivantes grossissent les bras (LABORER) et le groupe dominant.
- * Kill-switch : REGION_SEEP=0. */
-int econ_region_seep(WorldEconomy *e, const World *w){
+/* ══ EXPANSION PASSIVE — UN SEUL MÉCANISME (décisions joueur 2026-08-01 : « quand une
+ * province est colonisée, la région se colonise passivement », puis « les gens vont
+ * aussi habiter là où y'a personne — 2,8 personnes par mois, une famille », enfin
+ * « pas le seep régional cumulé, l'un ou l'autre ») ══
+ * Les deux specs sont le MÊME rythme : 2,8/mois × 36 mois = 100,8 — la famille qui
+ * s'installe DONNE les 100 hab en 3 ans. Un seul système donc, au grain PROVINCE
+ * (charte : l'ADJACENCE remplace la maille région — la région n'est qu'un agrégat) :
+ * chaque année, toute province libre OU naissante (< SEEP_TARGET, même couronne)
+ * vivable et ADJACENTE à une province peuplée reçoit une famille par mois depuis sa
+ * voisine la plus peuplée. TRANSFERT conservatif (strates hors esclaves, la richesse
+ * voyage — motif M3a) ; la source ne se draine jamais sous COLONY_MIN_POP ; au palier
+ * SEEP_TARGET (100) la croissance naturelle prend le relais. Première goutte = vraie
+ * fondation (invariants de colonize_from_prov) ; la toponymie suit (balayage
+ * idempotent). Le peuplement COULE de proche en proche, sans décision d'État.
+ * Kill-switch : PASSIVE_SEEP=0. */
+int econ_passive_seep(WorldEconomy *e, const World *w){
     if (!e || !w) return 0;
-    if (tune_f("REGION_SEEP",1.f) <= 0.f) return 0;
+    if (tune_f("PASSIVE_SEEP",1.f) <= 0.f) return 0;
+    if (!e->prov_adj) return 0;
+    float drop   = tune_f("SEEP_POP_MONTH",2.8f)*12.f;   /* la famille, à l'année (≈33,6) */
     float target = tune_f("SEEP_TARGET",100.f);
-    float years  = tune_f("SEEP_YEARS",3.f); if (years < 1.f) years = 1.f;
-    float drop   = target/years;
     float minsrc = tune_f("COLONY_MIN_POP",300.f);
+    int nprov=e->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
     int seeded=0;
-    for (int r=0; r<e->n_regions; r++){
-        if (r>=w->n_regions) break;
-        const Region *rg=&w->region[r];
-        /* la source : la colonisée la plus peuplée de la région */
+    for (int pd=0; pd<nprov; pd++){
+        ProvinceEconomy *dst=&e->prov[pd];
+        if (!dst->active) continue;                       /* les terres mortes restent mortes */
+        float dpop=0.f; for (int c=0;c<CLASS_COUNT;c++) dpop+=dst->strata[c].pop;
+        if (dst->colonized && dpop >= target) continue;   /* installée : la croissance suit */
+        /* la voisine peuplée la plus forte — le front vient d'où déborde la vie */
         int sp=-1; float spop=0.f;
-        for (int pi=0; pi<rg->n_provinces; pi++){
-            int pid=rg->province_ids[pi];
-            if (pid<0||pid>=e->n_prov) continue;
-            const ProvinceEconomy *pe2=&e->prov[pid];
-            if (!pe2->active || !pe2->colonized) continue;
-            float pp=0.f; for (int c=0;c<CLASS_COUNT;c++) pp+=pe2->strata[c].pop;
-            if (pp>spop){ spop=pp; sp=pid; }
+        for (int ps=0; ps<nprov; ps++){
+            if (!padj_get(ps,pd)) continue;
+            const ProvinceEconomy *s2=&e->prov[ps];
+            if (!s2->active || !s2->colonized) continue;
+            if (dst->colonized && s2->owner != dst->owner) continue;   /* on ne peuple pas chez l'autre */
+            float pp=0.f; for (int c=0;c<CLASS_COUNT;c++) pp+=s2->strata[c].pop;
+            if (pp>spop){ spop=pp; sp=ps; }
         }
-        if (sp<0 || spop <= minsrc + drop) continue;   /* pas de source, ou trop frêle */
+        if (sp<0 || spop <= minsrc + drop) continue;      /* pas de source, ou trop frêle */
         ProvinceEconomy *src=&e->prov[sp];
-        for (int pi=0; pi<rg->n_provinces; pi++){
-            int pid=rg->province_ids[pi];
-            if (pid<0||pid>=e->n_prov || pid==sp) continue;
-            ProvinceEconomy *dst=&e->prov[pid];
-            if (!dst->active) continue;                 /* les terres mortes restent mortes */
-            float dpop=0.f; for (int c=0;c<CLASS_COUNT;c++) dpop+=dst->strata[c].pop;
-            if (dst->colonized && (dpop >= target || dst->owner != src->owner)) continue;
-            float spop2=0.f; for (int c=0;c<CLASS_COUNT;c++) spop2+=src->strata[c].pop;
-            float g=fminf(drop, spop2 - minsrc);
-            if (g <= 1.f) break;                        /* la source est à l'os */
-            /* PRÉLÈVEMENT proportionnel hors esclaves (transfert, jamais création) */
-            float sfree=spop2 - src->strata[CLASS_SLAVE].pop;
-            if (sfree <= 1.f) break;
-            float wshare=0.f;
-            for (int c=0;c<CLASS_COUNT;c++){
-                if (c==CLASS_SLAVE) continue;
-                float part=src->strata[c].pop/sfree;
-                src->strata[c].pop -= g*part;
-                float wmove=src->strata[c].wealth*(g*part/fmaxf(src->strata[c].pop+g*part,EPS));
-                src->strata[c].wealth -= wmove; wshare += wmove;
-            }
-            if (!dst->colonized){
-                /* PREMIÈRE GOUTTE = fondation (invariants de colonize_from_prov) */
-                const PopGroup *sg=econ_pop_dominant(&src->pop);
-                float pre[CLASS_COUNT];
-                for (int c=0;c<CLASS_COUNT;c++) pre[c]=dst->strata[c].wealth;
-                econ_seed_population(dst, g);
-                for (int c=0;c<CLASS_COUNT;c++) dst->strata[c].wealth=pre[c];
-                dst->strata[CLASS_LABORER].wealth += wshare;
-                dst->colonized=true;
-                dst->owner=src->owner;
-                dst->ferveur=1.f;
-                colonize_seed_pop_group(dst, pid, (long)g,
-                    sg?&sg->culture:&src->culture, sg?sg->culture_id:src->culture_id);
-            } else {
-                dst->strata[CLASS_LABORER].pop    += g;   /* les migrants sont des bras */
-                dst->strata[CLASS_LABORER].wealth += wshare;
-                PopGroup *dg=(PopGroup*)econ_pop_dominant(&dst->pop);
-                if (dg) dg->count += (long)g;
-            }
-            seeded++;
+        float sfree=spop - src->strata[CLASS_SLAVE].pop;
+        if (sfree <= 1.f) continue;
+        float g=fminf(drop, target - (dst->colonized ? dpop : 0.f));
+        if (g <= 1.f) continue;
+        float wshare=0.f;
+        for (int c=0;c<CLASS_COUNT;c++){
+            if (c==CLASS_SLAVE) continue;
+            float part=src->strata[c].pop/sfree;
+            src->strata[c].pop -= g*part;
+            float wmove=src->strata[c].wealth*(g*part/fmaxf(src->strata[c].pop+g*part,EPS));
+            src->strata[c].wealth -= wmove; wshare += wmove;
         }
+        if (!dst->colonized){
+            /* PREMIÈRE GOUTTE = fondation (invariants de colonize_from_prov) */
+            const PopGroup *sg=econ_pop_dominant(&src->pop);
+            float pre[CLASS_COUNT];
+            for (int c=0;c<CLASS_COUNT;c++) pre[c]=dst->strata[c].wealth;
+            econ_seed_population(dst, g);
+            for (int c=0;c<CLASS_COUNT;c++) dst->strata[c].wealth=pre[c];
+            dst->strata[CLASS_LABORER].wealth += wshare;
+            dst->colonized=true;
+            dst->owner=src->owner;
+            dst->ferveur=1.f;
+            colonize_seed_pop_group(dst, pd, (long)g,
+                sg?&sg->culture:&src->culture, sg?sg->culture_id:src->culture_id);
+        } else {
+            dst->strata[CLASS_LABORER].pop    += g;       /* les migrants sont des bras */
+            dst->strata[CLASS_LABORER].wealth += wshare;
+            PopGroup *dg=(PopGroup*)econ_pop_dominant(&dst->pop);
+            if (dg) dg->count += (long)g;
+        }
+        seeded++;
     }
     return seeded;
 }

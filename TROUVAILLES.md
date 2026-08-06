@@ -8189,3 +8189,33 @@ passivement — petite migration progressive, 100 hab en 3 ans ». Résultat, pi
 le seep ignore le climat (il essaime aussi vers les tuiles hostiles au peuple — voulu ?
 la matrice ne s'applique qu'aux fondations actives) ; scps_api_demo à 340 s (optimisation
 éventuelle si la lenteur gêne).
+
+## EXPANSION PASSIVE UNIFIÉE — « l'un ou l'autre » (2026-08-01)
+
+**Le fait** : deux mécanismes posés coup sur coup (seep RÉGIONAL d7d709f « 100 hab en
+3 ans », puis un FRONT général « 2,8 personnes/mois ») ; le joueur a tranché : PAS de
+cumul, un seul. Et ses deux specs étaient DÉJÀ le même nombre : 2,8 × 36 mois = 100,8 —
+la famille mensuelle DONNE les 100 hab en 3 ans. econ_passive_seep remplace les deux.
+
+**Découvertes** :
+- Le mécanisme unifié est au GRAIN PROVINCE PUR : l'ADJACENCE remplace la maille région
+  (conforme charte — la région n'est qu'un agrégat). Chaque année, toute province
+  vivable adjacente au peuplé reçoit sa famille depuis la voisine la plus forte ;
+  fondation à la première goutte ; complément jusqu'à SEEP_TARGET (100) pour les
+  naissantes de la MÊME couronne ; jamais chez l'autre. Le peuplement COULE de proche
+  en proche (~3 ans par anneau de frontière).
+- L'unifié fait NETTEMENT mieux que le régional : 3×3 an 180 —
+  1518 : 280 (ancien) → 317 (régional) → 428 (unifié, 76 % du colonisable)
+  2528 : 429 → 483 → 530 (80 %)   ·   4043 : 159 → 219 → 386 (78 %)
+  Les 3 mondes CONVERGENT vers ~78 % : l'adjacence traverse les frontières de régions,
+  le front atteint tout le connexe. La carte 4043 : supercontinent couvert bord à bord.
+- KILL-SWITCH d'un REMPLACEMENT : PASSIVE_SEEP=0 ne peut pas rendre le golden d7d709f
+  (le régional n'existe plus) — il doit rendre le monde d'AVANT tout seep, donc se
+  tester contre le golden HISTORIQUE `git show 52a97ca:scps/golden_hashes.txt`.
+  Vérifié IDENTIQUE. Motif générique : le kill-switch d'un remplacement se compare au
+  commit d'avant la PREMIÈRE version, pas au golden courant.
+
+**Restes** : ~78 % à l'an 180 — le résiduel est l'inaccessible (îles sans marine, poches
+closes) ; SEEP_POP_MONTH/SEEP_TARGET = spec joueur brute (2.8/100), calibrables ; le
+seep ignore le climat (il peuple aussi l'hostile — la matrice ne gate que les fondations
+actives) ; perf : un monde aux ~530 provinces vivantes se simule d'autant plus lentement.

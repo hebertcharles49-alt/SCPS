@@ -1327,7 +1327,7 @@ void sim_day(Sim *s, World *w) {
             atwar[c]=aw;
         }
         econ_colonize_tick(s->econ, w, s->human_player, wexp, atwar); econ_migrate_tick(s->econ, w);   /* le JOUEUR essaime à la main (gate IA-off ; human=-1 ⇒ no-op chronique) */
-        econ_region_seep(s->econ, w);   /* l'essaimage PASSIF de région (décision joueur : 100 hab en 3 ans) */
+        econ_passive_seep(s->econ, w);  /* l'EXPANSION PASSIVE : une famille/mois coule vers le vide adjacent (100 hab ≈ 3 ans, puis la croissance) */
         world_tick(w, s->econ, 1.0f);
         PROF(PB_LEGIT, legitimacy_tick(s->wl, w, s->econ, s->ts));
         trade_network_build(s->net, w, s->econ);

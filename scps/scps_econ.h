@@ -1172,11 +1172,11 @@ float econ_conso_per_capita_year(Resource g);
  *                   ne dépend PAS de scps_diplo (qui inclut DÉJÀ scps_econ.h —
  *                   un lien direct romprait plusieurs bancs légers qui ne lient
  *                   pas scps_diplo.o, sans toucher au Makefile). */
-/* ESSAIMAGE PASSIF DE RÉGION : une région dont une province est colonisée essaime un
- * ruisseau annuel (SEEP_TARGET/SEEP_YEARS hab/an, transfert conservatif) vers ses
- * provinces libres vivables, jusqu'à 100 hab — la croissance prend ensuite le relais.
- * Annuel, aux côtés d'econ_colonize_tick. Renvoie le nb de gouttes versées. */
-int econ_region_seep(WorldEconomy *e, const World *w);
+/* EXPANSION PASSIVE (mécanisme UNIQUE, grain province) : une famille/mois (2,8 hab)
+ * coule vers toute province vivable adjacente au peuplé — libre (fondation à la
+ * première goutte) ou naissante (< 100 hab, même couronne). Transfert conservatif ;
+ * au palier, la croissance naturelle prend le relais. Annuel. */
+int econ_passive_seep(WorldEconomy *e, const World *w);
 int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid,
                         const float *w_expand, const bool *at_war);
 /* E7 — TÉLÉMÉTRIE colonisation (statics de module, RAZ à econ_init, non sérialisés — motif

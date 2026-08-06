@@ -614,13 +614,14 @@
      * Matrice par classe (aride/tropical/froid) : plancher de confort pour le peuple
      * NATIF, posé au spawn, hérité par métabolisation. 0 = table fixe d'hier. */ \
     X(HAB_CULTURE,            1.0f) \
-    /* ESSAIMAGE PASSIF DE RÉGION (décision joueur 2026-08-01 : « quand une province est
-     * colonisée, la région se colonise passivement — 100 hab en 3 ans ») : ruisseau
-     * annuel conservatif vers les provinces libres de la région, plafonné à SEEP_TARGET.
-     * REGION_SEEP=0 = kill-switch. */ \
-    X(REGION_SEEP,            1.0f) \
+    /* EXPANSION PASSIVE — mécanisme UNIQUE (décisions joueur 2026-08-01 : « la région se
+     * colonise passivement », « 2,8 personnes par mois, une famille », « l'un ou
+     * l'autre ») : 2,8/mois × 36 mois = 100,8 — la famille DONNE les 100 hab en 3 ans.
+     * Grain province (adjacence), fondation à la première goutte, palier SEEP_TARGET.
+     * PASSIVE_SEEP=0 = kill-switch. */ \
+    X(PASSIVE_SEEP,           1.0f) \
+    X(SEEP_POP_MONTH,         2.8f) \
     X(SEEP_TARGET,          100.0f) \
-    X(SEEP_YEARS,             3.0f) \
     /* PIPELINE DIPLO — la VALEUR SUBJECTIVE oriente la CIBLE (pas l'éthos, qui décide la
      * MÉTHODE). COVET_W : poids du BESOIN (Σ raw_cap × stress(runway) × prix) dans la valeur
      * d'une province d'autrui → l'IA convoite qui TIENT ce qui lui manque. COMPLEMENT_W :
