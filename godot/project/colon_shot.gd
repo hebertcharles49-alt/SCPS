@@ -18,6 +18,10 @@ func _ready() -> void:
 	get_window().size = Vector2i(1920, 1080)
 	get_window().unfocusable = true
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(_dir))
+	# La probe force-quit → feedback.gd ne nettoie pas son drapeau de session ⇒ la run
+	# suivante afficherait « Fermeture anormale » par-dessus la carte (motif shot_ui.gd).
+	if FileAccess.file_exists("user://session_running.flag"):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path("user://session_running.flag"))
 	_main = load("res://main/Main.tscn").instantiate()
 	add_child(_main)
 	_run.call_deferred()

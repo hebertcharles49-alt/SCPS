@@ -8153,3 +8153,39 @@ ancien monde 280 provinces · quota N/X seul 151 (!) · quota + habitabilité cu
 encore vierge à l'an 177 (dynamique lancée, 70 ans restants) ; UI : le berceau n'apparaît
 pas encore dans la fiche empire (seulement au créateur) ; STR_* : libellés du sélecteur
 en dur dans le .gd (lang-check 0 = le cliquet ne couvre pas les .gd).
+
+## ESSAIMAGE PASSIF DE RÉGION — la pile complète gagne partout (2026-08-01)
+
+**Le fait** : le 3×3 apparié (an 180) montrait quota+climat GAGNANT sur l'archipel (1518 :
+280→314) mais PERDANT sur le grand monde (2528 : 429→301) et le fragmenté (4043 :
+159→119). Directive joueur : « quand une province est colonisée, la région se colonise
+passivement — petite migration progressive, 100 hab en 3 ans ». Résultat, pile complète :
+1518 317 · 2528 483 · 4043 219 — DEVANT l'ancien monde sur les 3 graines (jusqu'à +38 %).
+
+**Découvertes** :
+- econ_region_seep (annuel, aux côtés d'econ_colonize_tick) : ruisseau SEEP_TARGET/
+  SEEP_YEARS hab/an vers les provinces libres VIVABLES de toute région ayant une
+  colonisée ; transfert CONSERVATIF (strates hors esclaves, la richesse voyage — motif
+  M3a) ; source jamais drainée sous COLONY_MIN_POP ; palier 100 hab puis la croissance
+  naturelle. Première goutte = vraie fondation (invariants de colonize_from_prov :
+  colonized/owner/ferveur/groupe culturel) ; la toponymie suit (balayage idempotent).
+- Un monde 30 % plus colonisé se simule ~30 % plus lentement : scps_api_demo passe de
+  <300 s à 340 s — VERT (240/240) mais au-delà du BANC_TIMEOUT=300 usuel. Passer 480.
+
+**Pièges (méthode)** :
+- KILL-SWITCH : comparer au BON golden. Depuis 52a97ca le golden intègre quota+climat ON
+  — tester « tout OFF » contre lui = comparer l'avant-vague au monde nouveau, forcément
+  DIFFÉRENT (4 hashes/5). Le test correct d'une vague N est SON seul interrupteur à 0,
+  le reste aux défauts du golden commité. REGION_SEEP=0 seul → IDENTIQUE.
+- La graine 7 hashait pareil des DEUX côtés du faux test : un hash peut être insensible
+  à l'écart à horizon court — jamais conclure « identique » sur une seule graine.
+- Le probe colon_shot affichait « Fermeture anormale détectée » par-dessus la carte
+  (drapeau de session de feedback.gd jamais nettoyé par un force-quit) : retirer
+  user://session_running.flag au boot du probe (motif shot_ui.gd, désormais appliqué).
+- La DLL Godot ne suit PAS make : après toute modif moteur, scons AVANT tout shot —
+  sinon la carte montre l'ancien moteur (vécu : shot 2528 sans le seep).
+
+**Restes** : SEEP_TARGET/YEARS non calibrés au-delà des défauts (100/3, décision joueur) ;
+le seep ignore le climat (il essaime aussi vers les tuiles hostiles au peuple — voulu ?
+la matrice ne s'applique qu'aux fondations actives) ; scps_api_demo à 340 s (optimisation
+éventuelle si la lenteur gêne).

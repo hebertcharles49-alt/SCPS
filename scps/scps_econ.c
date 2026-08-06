@@ -6066,6 +6066,87 @@ static void colonize_from_prov(WorldEconomy *e, int src_pid, int dst_pid, int ci
     colonize_seed_pop_group(dst, dst_pid, (long)seeded,&settlers,settlers_id);
 }
 
+/* ══ ESSAIMAGE PASSIF DE RÉGION (décision joueur 2026-08-01 : « quand une province
+ * est colonisée, la région se colonise passivement — petite migration progressive,
+ * pour qu'en 3 ans il y ait 100 hab dans les autres provinces de la région ») ══
+ * Chaque année, toute région portant au moins une province colonisée voit ses
+ * provinces LIBRES et vivables recevoir un RUISSEAU de colons depuis la plus
+ * peuplée de ses colonisées : SEEP_TARGET/SEEP_YEARS hab/an (≈33), TRANSFERT
+ * conservatif (jamais une création), jusqu'au palier SEEP_TARGET (100) où la
+ * croissance naturelle prend le relais. La source ne se draine jamais sous
+ * COLONY_MIN_POP — un hameau n'essaime pas sa survie. Première goutte = vraie
+ * fondation (colonized/owner/ferveur/groupe culturel, motif colonize_from_prov) ;
+ * les suivantes grossissent les bras (LABORER) et le groupe dominant.
+ * Kill-switch : REGION_SEEP=0. */
+int econ_region_seep(WorldEconomy *e, const World *w){
+    if (!e || !w) return 0;
+    if (tune_f("REGION_SEEP",1.f) <= 0.f) return 0;
+    float target = tune_f("SEEP_TARGET",100.f);
+    float years  = tune_f("SEEP_YEARS",3.f); if (years < 1.f) years = 1.f;
+    float drop   = target/years;
+    float minsrc = tune_f("COLONY_MIN_POP",300.f);
+    int seeded=0;
+    for (int r=0; r<e->n_regions; r++){
+        if (r>=w->n_regions) break;
+        const Region *rg=&w->region[r];
+        /* la source : la colonisée la plus peuplée de la région */
+        int sp=-1; float spop=0.f;
+        for (int pi=0; pi<rg->n_provinces; pi++){
+            int pid=rg->province_ids[pi];
+            if (pid<0||pid>=e->n_prov) continue;
+            const ProvinceEconomy *pe2=&e->prov[pid];
+            if (!pe2->active || !pe2->colonized) continue;
+            float pp=0.f; for (int c=0;c<CLASS_COUNT;c++) pp+=pe2->strata[c].pop;
+            if (pp>spop){ spop=pp; sp=pid; }
+        }
+        if (sp<0 || spop <= minsrc + drop) continue;   /* pas de source, ou trop frêle */
+        ProvinceEconomy *src=&e->prov[sp];
+        for (int pi=0; pi<rg->n_provinces; pi++){
+            int pid=rg->province_ids[pi];
+            if (pid<0||pid>=e->n_prov || pid==sp) continue;
+            ProvinceEconomy *dst=&e->prov[pid];
+            if (!dst->active) continue;                 /* les terres mortes restent mortes */
+            float dpop=0.f; for (int c=0;c<CLASS_COUNT;c++) dpop+=dst->strata[c].pop;
+            if (dst->colonized && (dpop >= target || dst->owner != src->owner)) continue;
+            float spop2=0.f; for (int c=0;c<CLASS_COUNT;c++) spop2+=src->strata[c].pop;
+            float g=fminf(drop, spop2 - minsrc);
+            if (g <= 1.f) break;                        /* la source est à l'os */
+            /* PRÉLÈVEMENT proportionnel hors esclaves (transfert, jamais création) */
+            float sfree=spop2 - src->strata[CLASS_SLAVE].pop;
+            if (sfree <= 1.f) break;
+            float wshare=0.f;
+            for (int c=0;c<CLASS_COUNT;c++){
+                if (c==CLASS_SLAVE) continue;
+                float part=src->strata[c].pop/sfree;
+                src->strata[c].pop -= g*part;
+                float wmove=src->strata[c].wealth*(g*part/fmaxf(src->strata[c].pop+g*part,EPS));
+                src->strata[c].wealth -= wmove; wshare += wmove;
+            }
+            if (!dst->colonized){
+                /* PREMIÈRE GOUTTE = fondation (invariants de colonize_from_prov) */
+                const PopGroup *sg=econ_pop_dominant(&src->pop);
+                float pre[CLASS_COUNT];
+                for (int c=0;c<CLASS_COUNT;c++) pre[c]=dst->strata[c].wealth;
+                econ_seed_population(dst, g);
+                for (int c=0;c<CLASS_COUNT;c++) dst->strata[c].wealth=pre[c];
+                dst->strata[CLASS_LABORER].wealth += wshare;
+                dst->colonized=true;
+                dst->owner=src->owner;
+                dst->ferveur=1.f;
+                colonize_seed_pop_group(dst, pid, (long)g,
+                    sg?&sg->culture:&src->culture, sg?sg->culture_id:src->culture_id);
+            } else {
+                dst->strata[CLASS_LABORER].pop    += g;   /* les migrants sont des bras */
+                dst->strata[CLASS_LABORER].wealth += wshare;
+                PopGroup *dg=(PopGroup*)econ_pop_dominant(&dst->pop);
+                if (dg) dg->count += (long)g;
+            }
+            seeded++;
+        }
+    }
+    return seeded;
+}
+
 /* L5 — COLONIE OUTRE-MER : mêmes PORTES que l'essaimage terrestre (pop, vivres,
  * cible vierge), mais le COÛT EN POP est ×2 — le convoi maritime saigne la
  * mère-patrie deux fois plus. L'appelant (harnais) a vérifié Port + coque +
