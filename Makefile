@@ -487,6 +487,14 @@ asan: $(CHRONICLE_SRCS)
 	      -Wall -Wextra -std=c99 -Ithird_party $(MINIZ_FLAGS) \
 	      $(CHRONICLE_SRCS) third_party/miniz.c -o chronicle_asan -lm
 
+# api_asan — le banc façade sous ASan+UBSan (traque les use-after-free du motif bind
+# multi-sims : le segfault « 19e monde » n'est reproductible qu'hors gdb).
+API_ASAN_SRCS := $(patsubst $(OBJDIR)/scps_%.o,scps/%.c,$(filter-out $(OBJDIR)/tp_miniz.o,$(API_DEMO_OBJS)))
+api_asan: $(API_ASAN_SRCS)
+	$(SAN_CC) -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer -pthread \
+	      -Wall -Wextra -std=c99 -Ithird_party $(MINIZ_FLAGS) \
+	      $(API_ASAN_SRCS) third_party/miniz.c -o api_asan -lm
+
 # ---- Métriques de jeu (0-100), Influence, Diplomates & Révolte -----------
 # La membrane projette les coordonnées en nombres+mots ; le statecraft est SIM
 # (il lit des flottants), son API ne rend que des entiers de jeu.

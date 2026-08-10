@@ -1614,6 +1614,14 @@ bool sim_alloc(Sim *s) {
 }
 
 void sim_free_members(Sim *s) {
+    /* UNBIND DES CACHES GLOBAUX AVANT LE FREE (ASan 2026-08-06 : heap-use-after-free
+     * dans tech_has_tier — g_tech_cache pointait le ts LIBÉRÉ, lu par la sim suivante
+     * avant son premier econ_apply_country_tech ; le crash explosait 19 mondes plus
+     * tard dans le worldgen, hors gdb seulement). Le motif du bug est EXACTEMENT
+     * celui corrigé sur faction_bind : tout module à contexte global lié DOIT unbind
+     * à la destruction de ce qu'il pointe. */
+    econ_apply_country_tech(NULL, NULL, 0);
+    faction_bind(NULL, NULL);
     free(s->econ); free(s->wp); free(s->wl); free(s->net); free(s->ts); free(s->sc);
     free(s->ag); free(s->ev); free(s->drift); free(s->dp); free(s->rn);
     free(s->ai); free(s->ai_on); free(s->rs); warhost_free(s->host); free(s->host); free(s->missions);   /* P1 : scratch warhost */

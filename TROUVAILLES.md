@@ -8331,3 +8331,40 @@ marchandises ». JAMAIS de verbose narrative (« la Noblesse tient les offices �
 **Restes** : brancher la ligne « Votre politique : ±X » dans budget_panel_v2.gd (reader
 prêt) ; composition PAR PAYS au chronicle (prouver la divergence des voies) ; la passe
 des mots (« faction » face-joueur) ; calibrage POL_SAT_W/CAP sous sweep long.
+
+## LA VENTILATION CONTEXTUELLE + LE USE-AFTER-FREE HISTORIQUE DE g_tech_cache (2026-08-06)
+
+**Directive joueur** : « les factions ont un poids différent à chaque fois — LFI et RN
+sont votés par les pauvres, pas à la même proportion » → le cas « Couronne Durgan »
+vendu → GO.
+
+**La ventilation** (class_ethos_base_ctx) : le socle de classe se ventile selon la
+CONDITION VÉCUE — misère = 1−satisfaction de la strate dans SA province, friction = la
+part non-dominante locale (la mosaïque). Laboureur misérable → Gardien (×friction) +
+Conquérant (colère tournée dehors) ; bourgeois menacé → Légiste ; élite en crise → se
+crispe sur l'épée et l'autel. LE POINT NEUTRE : satisfaction ≥ 0.5 → m_eff=0 → LE SOCLE
+D'HIER EXACT (la radicalisation est un ÉVÉNEMENT de crise, pas un bruit permanent — la
+continuité des mondes calmes, des bancs et du kill-switch POP_MOOD_GAIN=0 est stricte).
+La « noblesse d'affaires » (élite prospère → Marchand) SACRIFIÉE v1 pour cette
+continuité — elle demanderait un signal de RICHESSE, pas de satisfaction (reste).
+La boucle complète : misère → radicalisation → le penchant s'écarte de la stance →
+« Votre politique : −X » → la satisfaction chute → la spirale, brisée par le grain,
+l'impôt ou un changement de cap. Tout par coordonnées, jamais un dé.
+
+**LE BUG HISTORIQUE (ASan)** : heap-use-after-free dans tech_has_tier — g_tech_cache
+(le motif de bind global DONT j'AVAIS COPIÉ le design pour faction_bind) pointait le
+TechState LIBÉRÉ par sim_free_members ; toute sim SUIVANTE du même process (chronicle
+multi-sims, bancs façade) lisait de la mémoire morte via econ_country_has_tier (les
+gates de tier des édifices !) pendant sa genèse. LATENT DEPUIS LA CRÉATION du cache —
+le déterminisme apparent tenait au layout mémoire reproductible ; la ventilation n'a
+fait que déplacer le tas assez pour l'exposer (segfault « 19e monde », hors gdb
+seulement). Fix : sim_free_members REND les deux caches (econ_apply_country_tech(NULL)
++ faction_bind(NULL)) avant les free. Il n'existe QUE ces 2 caches globaux (grep).
+
+**Outillage** : cible `api_asan` ajoutée au Makefile (le banc façade sous ASan+UBSan —
+seul chronicle_asan existait). C'est elle qui a nommé le fautif en une ligne quand gdb
+ne voyait RIEN (heisenbug de layout). Pour toute corruption « symptôme loin de la
+cause » : api_asan D'ABORD.
+
+**Restes** : signal de richesse pour la noblesse d'affaires ; sweep long pour mesurer
+la belligérance f(misère du monde) ; POP_MOOD_GAIN calibrable.

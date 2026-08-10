@@ -49,6 +49,13 @@ void group_ethos_lean(const PopCulture *c, float out[FAC_COUNT]);
  * sans voix — la culture module par-dessus (FAC_CLASS_W pèse le socle). */
 void class_ethos_base(SocialClass k, float out[FAC_COUNT]);
 void group_ethos_lean_k(const PopCulture *c, SocialClass k, float out[FAC_COUNT]);
+/* VENTILATION CONTEXTUELLE (2026-08-06) : le socle se ventile selon la CONDITION —
+ * misère (1−satisfaction de la strate) radicalise, la friction locale attise
+ * l'identitaire. POP_MOOD_GAIN=0 = le socle fixe d'hier. */
+void class_ethos_base_ctx(SocialClass k, float misere, float friction, float out[FAC_COUNT]);
+void group_ethos_lean_kc(const PopCulture *c, SocialClass k, float misere, float friction,
+                         float out[FAC_COUNT]);
+float faction_prov_friction(const ProvinceEconomy *pe);   /* la part non-dominante locale */
 
 /* Poids social d'une classe : l'ÉLITE gouverne (pèse plus que la masse). */
 float class_clout(SocialClass k);

@@ -207,6 +207,9 @@ int main(void){
         for (int p=0;p<4;p++){
             ProvinceEconomy *pe=&fe->prov[p];
             pe->active=true; pe->colonized=true; pe->owner=(int16_t)p;
+            for (int k2=0;k2<CLASS_COUNT;k2++) pe->strata[k2].satisfaction=0.5f;   /* condition NEUTRE
+                                              * (ventilation 2026-08-06 : calloc → satisfaction 0 →
+                                              * misère 1.0 → les témoins se radicalisaient) */
             pe->pop.groups[0]=grp(cult(ETHOS_MERCANTILE,HERITAGE_MECANISTE,CREDO_PLURALISTE),CLASS_BOURGEOIS,1000);
             pe->pop.groups[1]=grp(cult(ETHOS_ORDRE,HERITAGE_ADAPTATIF,CREDO_PURIFICATEUR),CLASS_ELITE,800);   /* le fanatique EST l'élite (socle gardien) — ADAPTATIF : l'ésotérique porterait une teinte transgressive qui rumine contre sa propre orthodoxie */
             pe->pop.groups[2]=grp(cult(ETHOS_PACIFISTE,HERITAGE_AGRAIRE,CREDO_PLURALISTE),CLASS_LABORER,900);

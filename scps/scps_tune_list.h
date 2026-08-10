@@ -643,6 +643,11 @@
      * ± politique − impôt. 0 = kill-switch. */ \
     X(POL_SAT_W,              0.30f) \
     X(POL_SAT_CAP,            0.15f) \
+    /* VENTILATION CONTEXTUELLE DU SOCLE (décision joueur 2026-08-06 : « les factions
+     * ont un poids différent à chaque fois ») : la misère radicalise (laboureur →
+     * Gardien/Conquérant, la friction locale attise l'identitaire), la prospérité
+     * embourgeoise l'élite. 0 = le socle fixe d'hier (kill-switch exact). */ \
+    X(POP_MOOD_GAIN,          1.0f) \
     /* PIPELINE DIPLO — la VALEUR SUBJECTIVE oriente la CIBLE (pas l'éthos, qui décide la
      * MÉTHODE). COVET_W : poids du BESOIN (Σ raw_cap × stress(runway) × prix) dans la valeur
      * d'une province d'autrui → l'IA convoite qui TIENT ce qui lui manque. COMPLEMENT_W :
