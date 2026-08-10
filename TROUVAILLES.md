@@ -8368,3 +8368,35 @@ cause » : api_asan D'ABORD.
 
 **Restes** : signal de richesse pour la noblesse d'affaires ; sweep long pour mesurer
 la belligérance f(misère du monde) ; POP_MOOD_GAIN calibrable.
+
+## LES TESTS CAUSAUX DE L'ÉCONOMIE — le levier d'échelle et ce qu'il a révélé (2026-08-10)
+
+**Protocole joueur** : « si on baisse l'output des manufactures de 20 %, la proportion de
+bourgeois devrait monter ? » puis « +100 % ? » avec la correction décisive « attention,
+input de raw ×2 aussi » (l'ÉCHELLE, pas l'efficience magique).
+
+**Outillage** : MANUF_QOUT_MULT = multiplicateur d'ÉCHELLE de la capacité manufacturière
+(cap = level × M × market_effort) — intrants, sortie ET embauche suivent ensemble,
+bornés par stocks/main-d'œuvre. 1.0 = neutre BIT-IDENTIQUE (golden vérifié). Le dump
+CLASSES du chronicle gagne la satisfaction par classe (pondérée pop).
+
+**Résultats (an 120, logs /tmp/qout*)** :
+- −20 % : les bourgeois BAISSENT (10→6, 17→15) — la demande de SCPS est SOLVABLE, pas
+  fixe : la productivité crée l'emploi manufacturier (Solow), elle ne se substitue pas
+  aux bras (Leontief). Le joueur : « logique, les biens bourgeois sont cycliques — le
+  bourgeois a besoin du bourgeois ». Les AUTRES paient : laboureurs −6/−7 pts de
+  satisfaction (outils+confort), pop monde −5/−9 %, guerres ↓ (l'appauvrissement
+  pacifie par IMPUISSANCE). Effet de composition : les bourgeois SURVIVANTS d'un monde
+  pauvre sont plus satisfaits (les marginaux déclassés d'abord).
+- ×2 (échelle) : DEUX MONDES, DEUX RÉPONSES — le levier révèle le GOULOT LOCAL :
+  · 1518 (sous-industrialisé, la CAPACITÉ était le goulot) : boom — bourgeois 10→17 %,
+    pop +9 %, satisfaction ↑, guerres stables.
+  · 2528 (industrialisé, la MATIÈRE était le goulot) : stagnation belliqueuse —
+    bourgeois 17→15, pop stable, GUERRES ×2.2 (21→46) : les usines affamées font
+    flamber la valeur des gisements, la convoitise (COVET_W) suit.
+  La hiérarchie des goulots tient : la terre borne la mine, la mine borne l'atelier,
+  l'atelier borne le confort — aucun levier isolé ne triche.
+
+**Piège de protocole** : mon premier +100 % multipliait prod_mult = un levier
+d'EFFICIENCE (sortie sans matière). La correction joueur l'a attrapé AVANT le faux
+résultat. Un multiplicateur de test doit dire ce qu'il multiplie : échelle ≠ rendement.

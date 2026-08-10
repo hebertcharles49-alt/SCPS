@@ -648,6 +648,8 @@
      * Gardien/Conquérant, la friction locale attise l'identitaire), la prospérité
      * embourgeoise l'élite. 0 = le socle fixe d'hier (kill-switch exact). */ \
     X(POP_MOOD_GAIN,          1.0f) \
+    /* OUTPUT MANUFACTURIER GLOBAL (test causal 2026-08-10 : baisser l'output doit faire
+     * MONTER la part de bourgeois — la même demande exige plus de bras). 1.0 = neutre. */     X(MANUF_QOUT_MULT,        1.0f) \
     /* PIPELINE DIPLO — la VALEUR SUBJECTIVE oriente la CIBLE (pas l'éthos, qui décide la
      * MÉTHODE). COVET_W : poids du BESOIN (Σ raw_cap × stress(runway) × prix) dans la valeur
      * d'une province d'autrui → l'IA convoite qui TIENT ce qui lui manque. COMPLEMENT_W :

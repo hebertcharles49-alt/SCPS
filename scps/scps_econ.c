@@ -4030,7 +4030,13 @@ void econ_tick(WorldEconomy *e, float dt) {
             /* Production cible = niveau ; bornée par intrants en stock et
              * par la main-d'œuvre restante. */
             /* cap = niveau × effort de marché (SURPLUS NATUREL : on lit le prix sortie). */
-            float cap = b->level * market_effort(re->price[rc->out], BASE_PRICE[rc->out]);
+            /* MANUF_QOUT_MULT = un levier d'ÉCHELLE (correction joueur 2026-08-10 :
+             * « attention, input de raw ×2 aussi ») : il multiplie la CAPACITÉ — les
+             * intrants consommés, la sortie ET l'embauche suivent ensemble, bornés par
+             * les stocks et la main-d'œuvre réels. Pas un levier d'efficience magique
+             * (sortie sans matière). 1.0 = neutre (kill-switch). */
+            float cap = b->level * tune_f("MANUF_QOUT_MULT", 1.0f)
+                      * market_effort(re->price[rc->out], BASE_PRICE[rc->out]);
             float lim = cap;
             if (e_in1!=RES_NONE){
                 float out_in1 = S[e_in1]/fmaxf(e_q1,EPS);   /* sortie possible via l'intrant primaire (pool national) */

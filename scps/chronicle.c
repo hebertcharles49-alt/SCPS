@@ -1620,10 +1620,23 @@ int main(int argc, char **argv){
                         cl[k2]+=pq->pop.groups[gi].pop_by_class[k2];
             }
             long tt=cl[0]+cl[1]+cl[2]+cl[3];
+            /* la SATISFACTION moyenne par classe (pondérée pop) — quand un secteur
+             * tousse, QUI paie ? (test causal 2026-08-10) */
+            double ssum[CLASS_COUNT]={0}, spop[CLASS_COUNT]={0};
+            for (int q=0;q<NP;q++){
+                const ProvinceEconomy *pq=&s.econ->prov[q];
+                if (!pq->active || !pq->colonized) continue;
+                for (int k2=0;k2<CLASS_COUNT;k2++){
+                    double pp2=(double)pq->strata[k2].pop;
+                    if (pp2>0.0){ ssum[k2]+=pq->strata[k2].satisfaction*pp2; spop[k2]+=pp2; }
+                }
+            }
             if (tt>0)
-                printf("   CLASSES monde : %ld%% laboureurs · %ld%% bourgeois · %ld%% élites · %ld%% esclaves\n",
-                       cl[CLASS_LABORER]*100/tt, cl[CLASS_BOURGEOIS]*100/tt,
-                       cl[CLASS_ELITE]*100/tt, cl[CLASS_SLAVE]*100/tt); }
+                printf("   CLASSES monde : %ld%% laboureurs (sat %d) · %ld%% bourgeois (sat %d) · %ld%% élites (sat %d) · %ld%% esclaves\n",
+                       cl[CLASS_LABORER]*100/tt,  (int)(spop[CLASS_LABORER]>0?100.0*ssum[CLASS_LABORER]/spop[CLASS_LABORER]:0),
+                       cl[CLASS_BOURGEOIS]*100/tt,(int)(spop[CLASS_BOURGEOIS]>0?100.0*ssum[CLASS_BOURGEOIS]/spop[CLASS_BOURGEOIS]:0),
+                       cl[CLASS_ELITE]*100/tt,    (int)(spop[CLASS_ELITE]>0?100.0*ssum[CLASS_ELITE]/spop[CLASS_ELITE]:0),
+                       cl[CLASS_SLAVE]*100/tt); }
           } }
         /* FAU/F8 — la boucle faustienne (transmuteurs + entropie) ET la demande de fer (forge
          * militaire). Conso cumulée par rare ; entropie monde ; prix moyen du fer (la preuve F8). */
