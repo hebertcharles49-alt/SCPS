@@ -32,6 +32,11 @@ static void ok(const char *what, bool cond){
 }
 
 int main(int argc, char **argv){
+    /* EXPANSION PASSIVE COUPÉE pour ce banc (2026-08-06) : le seep fonde des provinces
+     * au joueur PENDANT les chantiers testés (« +1 province » devenait +2/+3) — le banc
+     * prouve la FAÇADE, pas l'expansion passive (testée par ses propres gates). */
+    tune_set("PASSIVE_SEEP", 0.f);
+
     uint32_t seed = (argc>1) ? (uint32_t)strtoul(argv[1],NULL,10) : 9u;
     printf("══ scps_api : la façade C pilote le moteur (graine %u) ══\n", seed);
 

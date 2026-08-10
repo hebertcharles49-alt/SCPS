@@ -8219,3 +8219,68 @@ la famille mensuelle DONNE les 100 hab en 3 ans. econ_passive_seep remplace les 
 closes) ; SEEP_POP_MONTH/SEEP_TARGET = spec joueur brute (2.8/100), calibrables ; le
 seep ignore le climat (il peuple aussi l'hostile — la matrice ne gate que les fondations
 actives) ; perf : un monde aux ~530 provinces vivantes se simule d'autant plus lentement.
+
+## LA POPULATION PORTE TOUT — factions dissoutes dans les peuples (2026-08-06)
+
+**Directives joueur enchaînées** : « plus de faction, tout faire reposer sur les
+populations » · « merge communautaire avec le peuple, marchand avec bourgeois, fanatique
+avec élite » · « glisse les mécanismes de faction et leur satisfaction vers les popgroup » ·
+« le statecraft est porté par la pop, ministre élite/bourgeois/paysan ».
+
+**Le modèle final** (5 itérations MESURÉES — chaque forme intermédiaire avait un trou
+chiffré) :
+- ÉTAT : g_lever_grief/g_capture (tableaux pays) SUPPRIMÉS → PopGroup.ethos_grief/
+  state_grip (SAVE v100). g_lever_bias RESTE pays-grain (la stance est un choix de la
+  COURONNE). Les 55 call-sites gardent leurs signatures via faction_bind (motif
+  g_tech_cache) — la sim bind au tick, les bancs sur leurs fixtures.
+- CLASSES = SOCLE des courants : laboureur→Communautaire, bourgeois→Marchand,
+  élite→Gardien 0.6 + Conquérant 0.4, esclave SANS VOIX. La culture module par-dessus
+  (FAC_CLASS_W). Dans la distribution, chaque strate d'un groupe pèse avec SON penchant.
+- TEINTE : le penchant d'un groupe = le MÉLANGE pondéré de ses classes (émergées ; repli
+  pré-émergence = structure NOMINALE 80/15/5 avec la classe POSÉE renforcée +0.5).
+  Le grief se LIT sans seuil (moyenne pondérée par teinte — jamais 0 dès qu'un peuple
+  rumine) et s'ÉCRIT par opposition pondérée (Σ lean×opp, gain FAC_TINT_GAIN=2 pour
+  l'échelle du canal grief→loyauté). La capture se VERSE au prorata de la teinte ; le
+  ROT = le MAX des captures par courant (l'État est capturé par SON captor — une
+  moyenne diluait dans la masse saine et l'indice ne bougeait plus).
+- MINISTRES : un candidat au Conseil a une CLASSE (hash : élite 3/6 · bourgeois 2/6 ·
+  paysan 1/6) et sa faction EST faction_class_current(cid, classe) — le courant de sa
+  classe telle qu'incarnée dans son pays. Le shuffle de factions de cour est mort.
+
+**Pièges (chacun a coûté une itération)** :
+- Un courant sans peuple DOMINANT (Transgresseur : AUCUN profil culturel ne le met en
+  tête, même avant le socle) devenait in-aigrissable en « boîtes » — d'où la TEINTE.
+- La teinte élite d'un groupe nominal plafonne ~3 % (5 % de pop × clout 3) : TOUT seuil
+  de teinte (0.15, 0.05) la tue — d'où la lecture SANS seuil (les poids se normalisent).
+- Le repli nominal ÉCRASAIT la classe posée des fixtures (grp() ne remplit pas
+  pop_by_class) — d'où le renfort +0.5 de la classe déclarée.
+- Un pays qui a PERDU ses provinces (tests de révolte) n'est PLUS corruptible — c'est la
+  sémantique voulue (pas de peuple, pas de capture) ; le test du plancher d'efficacité
+  ping-teste désormais un pays PORTEUR.
+- L'élite gardienne ÉSOTÉRIQUE rumine contre sa propre orthodoxie (teinte transgressive
+  0.35 × opposition G↔T forte) — thématiquement délicieux, mais le témoin d'un banc doit
+  être un gardien PUR (ADAPTATIF).
+- Récidive outillage : le python-en-heredoc mange les \n des printf (3 fois cette
+  session) — TOUJOURS Write un .py ; et bash -lc SANS cd = build dans $HOME (re-vécu).
+
+**Restes** : mots face-joueur (STR_HOVER_SEDITION parle encore de « faction ») ; la
+satisfaction de groupe (lecteur pondéré pop_by_class à brancher sur l'UI ministres) ;
+missions émanant des peuples ; LA GRANDE FUSION strata↔groups (364 usages strata —
+l'équivalent du re-key province, vague dédiée multi-sessions).
+
+**Addendum (les 2 bugs que les bancs ont attrapés — la valeur du filet)** :
+- REPRODUCTIBILITÉ : faction_levers_reset() à l'init d'une sim purgeait les groupes du
+  monde ENCORE LIÉ (état global de module) — la sim B fraîche mutait la sim A. Fix :
+  l'init bind SON monde AVANT reset. Attrapé par scps_api_demo « sim A == sim B ».
+- USE-AFTER-FREE différé : scps_sim_free ne rendait pas le bind — toute lecture de
+  façade avant le premier tick de la sim suivante tapait l'économie LIBÉRÉE ; le tas
+  rongé explosait 19 mondes plus tard DANS le worldgen (segfault « rivières » — le
+  symptôme à des kilomètres de la cause). Fix : faction_bind(NULL,NULL) au free.
+  RÈGLE : tout module à contexte global lié (motif g_tech_cache) DOIT unbind à la
+  destruction de ce qu'il pointe.
+- Le pôle tech suit désormais la CONDITION autant que la culture : une aristocratie
+  devenue marchande RESTE martiale (socle élite) — pour qu'une région bascule en pôle
+  fluide, elle doit S'EMBOURGEOISER (forks_demo : le flip pose ethos ET klass).
+- Le seep passif fonde des provinces PENDANT les chantiers des bancs de façade
+  (« +1 province » devenait +3) : scps_api_demo coupe PASSIVE_SEEP (tune_set) — il
+  prouve la façade, pas l'expansion.

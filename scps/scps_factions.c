@@ -21,6 +21,32 @@ float class_clout(SocialClass k){
     }
 }
 
+/* ══ LE SOCLE DE CLASSE (décision joueur 2026-08-06 : « merge communautaire avec le
+ * peuple, marchand avec bourgeois, fanatique avec élite, et ainsi de suite ») ══
+ * Le courant d'éthos n'est plus seulement culturel : la POSITION SOCIALE penche —
+ * le laboureur vers le bien-commun (sa survie est collective), le bourgeois vers
+ * l'échange (sa fortune est le marché), l'élite vers l'orthodoxie et la gloire
+ * (son rang est l'ordre établi). La culture MODULE par-dessus (un laboureur
+ * clanique reste belliqueux). L'esclave n'a pas de voix (socle nul — sa colère
+ * passe par la révolte servile, pas la politique). FAC_CLASS_W pèse le socle. */
+void class_ethos_base(SocialClass k, float w[FAC_COUNT]){
+    for (int i=0;i<FAC_COUNT;i++) w[i]=0.f;
+    switch (k){
+        case CLASS_LABORER:   w[FAC_COMMUNAUTAIRE]=1.0f;                          break;
+        case CLASS_BOURGEOIS: w[FAC_MARCHAND]=1.0f;                               break;
+        case CLASS_ELITE:     w[FAC_GARDIEN]=0.6f; w[FAC_CONQUERANT]=0.4f;        break;
+        default: break;                              /* CLASS_SLAVE : sans voix */
+    }
+}
+/* le penchant d'UN membre de classe k d'une culture c : socle + culture, normalisé */
+void group_ethos_lean_k(const PopCulture *c, SocialClass k, float w[FAC_COUNT]){
+    group_ethos_lean(c, w);                          /* la culture (déjà Σ=1) */
+    float base[FAC_COUNT]; class_ethos_base(k, base);
+    float cw = tune_f("FAC_CLASS_W", 1.0f);
+    float s=0.f;
+    for (int i=0;i<FAC_COUNT;i++){ w[i]+=cw*base[i]; s+=w[i]; }
+    if (s>0.f) for (int i=0;i<FAC_COUNT;i++) w[i]/=s;
+}
 void group_ethos_lean(const PopCulture *c, float w[FAC_COUNT]){
     for (int f=0; f<FAC_COUNT; f++) w[f]=0.f;
     if (!c){ w[FAC_COMMUNAUTAIRE]=1.f; return; }
@@ -66,15 +92,27 @@ void group_ethos_lean(const PopCulture *c, float w[FAC_COUNT]){
  * Nobles, clout ×3) PÈSE donc plus lourd — bâtir déplace la politique interne. Repli
  * sur count·clout(klass) si l'émergence n'a pas encore couru. */
 static void accumulate(const ProvincePop *pp, double acc[FAC_COUNT]){
+    static const SocialClass POLK[3]={CLASS_LABORER,CLASS_BOURGEOIS,CLASS_ELITE};
     for (int i=0; i<pp->n_groups; i++){
         const PopGroup *g=&pp->groups[i];
         if (g->count<=0) continue;
-        float lean[FAC_COUNT]; group_ethos_lean(&g->culture, lean);
-        double wgt = (double)g->pop_by_class[CLASS_LABORER]  *(double)class_clout(CLASS_LABORER)
-                   + (double)g->pop_by_class[CLASS_BOURGEOIS] *(double)class_clout(CLASS_BOURGEOIS)
-                   + (double)g->pop_by_class[CLASS_ELITE]     *(double)class_clout(CLASS_ELITE);
-        if (wgt <= 0.0) wgt = (double)g->count * (double)class_clout(g->klass);   /* repli pré-émergence */
-        for (int f=0; f<FAC_COUNT; f++) acc[f] += wgt * lean[f];
+        /* MERGE COURANTS × CLASSES : chaque strate du groupe pèse avec SON penchant
+         * (socle de classe + culture) — les laboureurs d'un groupe tirent vers le
+         * bien-commun pendant que ses élites tirent vers l'orthodoxie. Une vague de
+         * promotions ne change plus seulement le POIDS, elle change la DIRECTION. */
+        bool emerged=false;
+        for (int kc=0;kc<3;kc++){
+            double wgt=(double)g->pop_by_class[POLK[kc]]*(double)class_clout(POLK[kc]);
+            if (wgt<=0.0) continue;
+            emerged=true;
+            float lean[FAC_COUNT]; group_ethos_lean_k(&g->culture, POLK[kc], lean);
+            for (int f=0; f<FAC_COUNT; f++) acc[f] += wgt * lean[f];
+        }
+        if (!emerged){                                            /* repli pré-émergence */
+            float lean[FAC_COUNT]; group_ethos_lean_k(&g->culture, g->klass, lean);
+            double wgt=(double)g->count*(double)class_clout(g->klass);
+            for (int f=0; f<FAC_COUNT; f++) acc[f] += wgt * lean[f];
+        }
     }
 }
 
@@ -216,38 +254,106 @@ float faction_coup_tension(const float w[FAC_COUNT], EthosFaction *out){
 /* ===================================================================== */
 #define LEVER_BIAS_CAP  0.45f   /* une stance ne renverse pas la démographie, elle l'infléchit */
 #define COUP_GRIEF_W    0.25f   /* poids du grief de politique dans la tension de coup (NUDGE, pas flot) */
-static float g_lever_bias [SCPS_MAX_COUNTRY][FAC_COUNT];   /* le poids ajouté à la faction favorisée */
-static float g_lever_grief[SCPS_MAX_COUNTRY][FAC_COUNT];   /* la rancœur des factions aliénées */
+static float g_lever_bias [SCPS_MAX_COUNTRY][FAC_COUNT];   /* la STANCE de la couronne — reste pays-grain :
+                                                            * c'est SA politique, pas une propriété du peuple */
+/* ══ GLISSEMENT SUR LES PEUPLES (décision joueur 2026-08-06) ══════════════════════
+ * g_lever_grief et g_capture SUPPRIMÉS : la rancœur politique et la capture d'État
+ * vivent désormais SUR les PopGroup (ethos_grief / state_grip) — c'est un peuple
+ * précis, quelque part, qui rumine ou se gorge, pas une colonne de tableau. Les
+ * lecteurs gardent leurs signatures via un BIND de contexte (motif g_tech_cache) :
+ * scps_sim pose le monde au tick, les bancs le posent sur leurs fixtures. Sans
+ * bind : lecture 0, écriture no-op (permissif, comme econ_country_has_tier). */
+static const World  *g_fw = NULL;
+static WorldEconomy *g_fe = NULL;
+void faction_bind(const World *w, WorldEconomy *e){ g_fw=w; g_fe=e; }
+/* le COURANT d'un groupe : son penchant d'éthos dominant */
+#define FAC_TINT_MIN 0.15f   /* la teinte minimale pour PORTER un courant (grief/capture) */
+/* le penchant d'un groupe — le MÉLANGE PONDÉRÉ de ses classes (pop_by_class ×
+ * clout) : les élites d'un groupe paysan portent leur teinte gardienne AU PRORATA —
+ * sans ça, le courant d'un ministre-élite n'avait AUCUN porteur dans un pays jeune
+ * (mesuré : loyauté figée à 92, rot 0.00 — canal mort). Repli klass pré-émergence. */
+static void group_lean_full(const PopGroup *g, float out[FAC_COUNT]){
+    static const SocialClass POLK[3]={CLASS_LABORER,CLASS_BOURGEOIS,CLASS_ELITE};
+    double acc[FAC_COUNT]={0}; double tot=0.0;
+    for (int kc=0;kc<3;kc++){
+        double wt=(double)g->pop_by_class[POLK[kc]]*(double)class_clout(POLK[kc]);
+        if (wt<=0.0) continue;
+        float lk[FAC_COUNT]; group_ethos_lean_k(&g->culture, POLK[kc], lk);
+        for (int i=0;i<FAC_COUNT;i++) acc[i]+=wt*lk[i];
+        tot+=wt;
+    }
+    if (tot<=0.0){
+        /* PRÉ-ÉMERGENCE : le groupe porte la STRUCTURE SOCIALE NOMINALE (les parts de
+         * départ 80/15/5 de CLASS_SHARE, clout-pondérées) — pas une classe unique.
+         * Sans ça, un monde jeune n'a AUCUNE teinte d'élite : le courant d'un
+         * ministre-élite n'avait aucun porteur (mesuré : ping grievance 0.000,
+         * loyauté figée, rot mort). Un peuple a toujours ses notables en germe. */
+        static const float NOMINAL[3]={0.80f,0.15f,0.05f};   /* laboureur/bourgeois/élite */
+        for (int kc=0;kc<3;kc++){
+            /* la classe POSÉE (g->klass) est RENFORCÉE dans la structure nominale : un
+             * groupe déclaré « élite » (fixtures, seed spécialisé) reste dominé par sa
+             * condition déclarée, sans perdre ses notables/bras en germe. */
+            float part = NOMINAL[kc] + ((POLK[kc]==g->klass) ? 0.50f : 0.f);
+            double wt=(double)part*(double)class_clout(POLK[kc]);
+            float lk[FAC_COUNT]; group_ethos_lean_k(&g->culture, POLK[kc], lk);
+            for (int i=0;i<FAC_COUNT;i++) acc[i]+=wt*lk[i];
+            tot+=wt;
+        }
+    }
+    for (int i=0;i<FAC_COUNT;i++) out[i]=(float)(acc[i]/tot);
+}
+static void group_lean_full(const PopGroup *g, float out[FAC_COUNT]);
+static EthosFaction group_fac(const PopGroup *g){
+    float lean[FAC_COUNT]; group_lean_full(g, lean);   /* le mélange de ses classes */
+    int bf=0; for (int k=1;k<FAC_COUNT;k++) if (lean[k]>lean[bf]) bf=k;
+    return (EthosFaction)bf;
+}
+/* itère les groupes d'un pays : cb(groupe, courant, poids-pop) ; poids total rendu */
+#define FOR_COUNTRY_GROUPS(cid, G, FAC, BODY) do {     if (g_fe){         int NP_=g_fe->n_prov; if (NP_>SCPS_MAX_PROV) NP_=SCPS_MAX_PROV;         for (int p_=0;p_<NP_;p_++){             ProvinceEconomy *pe_=&g_fe->prov[p_];             if (!pe_->active || !pe_->colonized || pe_->owner!=(cid)) continue;             for (int i_=0;i_<pe_->pop.n_groups;i_++){                 PopGroup *G=&pe_->pop.groups[i_];                 if (G->count<=0) continue;                 EthosFaction FAC=group_fac(G);                 BODY             }         }     } } while(0)
 
 /* §C3 — CAPTURE DE L'ÉTAT : chaque concession gorge la faction gagnante. S'ACCUMULE,
  * décroît très lentement, ne rebondit pas. La somme = le « rot » (0..1) : moins
  * d'efficacité noble, K creusé. Lue à l'écran comme l'indice de Corruption (0-100). */
 static float g_capture[SCPS_MAX_COUNTRY][FAC_COUNT];
-#define CAPTURE_PER_CONCESSION 0.045f /* ce qu'une concession gorge à la faction gagnante */
+#define CAPTURE_PER_CONCESSION 0.16f  /* recalé (0.045 tableau → 0.16 prorata-teinte : lean gagnant ~0.5 × moyenne clout ~0.5 = même échelle de rot) */
 #define CAPTURE_LEVER          0.06f  /* … qui gagne aussi en POUVOIR (un vote tenu) */
 #define CAPTURE_MAX            0.85f  /* plafond du rot : un État jamais 100 % capturé */
 #define CAPTURE_DECAY_FRAC     0.04f  /* la capture décroît à 4 % du rythme du grief (lent) */
 
 void faction_save(FILE *f){
+    /* v100 : seule la STANCE se sérialise ici — grief/capture voyagent AVEC les
+     * groupes (section ECON). La section FACT rétrécit ⇒ un save antérieur est
+     * d'une « ère antérieure » (refusé net par le contrôle de version). */
     fwrite(g_lever_bias, sizeof g_lever_bias, 1,f);
-    fwrite(g_lever_grief,sizeof g_lever_grief,1,f);
-    fwrite(g_capture,    sizeof g_capture,    1,f);
 }
 bool faction_load(FILE *f){
-    return fread(g_lever_bias, sizeof g_lever_bias, 1,f)==1
-        && fread(g_lever_grief,sizeof g_lever_grief,1,f)==1
-        && fread(g_capture,    sizeof g_capture,    1,f)==1;
+    return fread(g_lever_bias, sizeof g_lever_bias, 1,f)==1;
 }
 void faction_levers_reset(void){
     memset(g_lever_bias, 0, sizeof g_lever_bias);
-    memset(g_lever_grief,0, sizeof g_lever_grief);
-    memset(g_capture,    0, sizeof g_capture);
+    /* les champs de groupes appartiennent à ECON : remis à zéro par SA genèse
+     * (memset des groupes) — si un monde est lié, on nettoie aussi (bancs). */
+    if (g_fe){
+        int NP=g_fe->n_prov; if (NP>SCPS_MAX_PROV) NP=SCPS_MAX_PROV;
+        for (int p=0;p<NP;p++)
+            for (int i=0;i<g_fe->prov[p].pop.n_groups;i++){
+                g_fe->prov[p].pop.groups[i].ethos_grief=0.f;
+                g_fe->prov[p].pop.groups[i].state_grip =0.f;
+            }
+    }
 }
 /* Une concession ACCORDÉE : la faction gagnante se gorge (capture↑) et gagne du
  * pouvoir (un vote). Le calme acheté aujourd'hui est une dette de demain. */
 void faction_concede(int cid, EthosFaction winner){
     if (cid<0||cid>=SCPS_MAX_COUNTRY||winner<0||winner>=FAC_COUNT) return;
-    g_capture[cid][winner] += CAPTURE_PER_CONCESSION;          /* s'accumule, ne rebondit pas */
+    /* la concession GORGE les peuples du courant gagnant — par tête (l'échelle ne
+     * dépend pas de la taille du courant, comme l'ancien tableau) */
+    /* la concession gorge chaque peuple AU PRORATA de sa teinte du courant gagnant */
+    FOR_COUNTRY_GROUPS(cid, g, gf, { (void)gf;
+        float lean[FAC_COUNT]; group_lean_full(g, lean);
+        g->state_grip += CAPTURE_PER_CONCESSION*lean[winner];
+        if (g->state_grip>1.f) g->state_grip=1.f;
+    });
     faction_lever_apply(cid, winner, CAPTURE_LEVER);           /* le captor monte en pouvoir */
 }
 /* MONNAIE M3h — LA DÉBASE : le même accumulateur g_capture, un incrément CONTINU
@@ -255,14 +361,36 @@ void faction_concede(int cid, EthosFaction winner){
  * concession — AUCUN faction_lever_apply ici (ce n'est pas un vote gagné, juste
  * l'enrichissement passif des initiés). Plafonné par CAPTURE_MAX via faction_capture_
  * total (la somme brute peut dépasser le plafond en interne, comme faction_concede). */
-void faction_capture_add(int cid, EthosFaction f, float amount){
-    if (cid<0||cid>=SCPS_MAX_COUNTRY||f<0||f>=FAC_COUNT||amount<=0.f) return;
-    g_capture[cid][f] += amount;
+void faction_capture_add(int cid, EthosFaction fac, float amount){
+    if (cid<0||cid>=SCPS_MAX_COUNTRY||fac<0||fac>=FAC_COUNT||amount<=0.f) return;
+    FOR_COUNTRY_GROUPS(cid, g, gf, { (void)gf;
+        float lean[FAC_COUNT]; group_lean_full(g, lean);
+        g->state_grip += amount*lean[fac];
+        if (g->state_grip>1.f) g->state_grip=1.f;
+    });
 }
 /* Le « rot » 0..1 : part de l'État capturée (toutes factions), plafonnée. */
+/* la capture d'un COURANT = la moyenne pondérée (pop) du grip de ses peuples ;
+ * le « rot » du pays = Σ courants — même échelle que l'ancien tableau. */
+static void country_capture_by(int cid, float out[FAC_COUNT]){
+    double wsum[FAC_COUNT]={0}, gsum[FAC_COUNT]={0};
+    FOR_COUNTRY_GROUPS(cid, g, gf, { (void)gf;
+        float lean[FAC_COUNT]; group_lean_full(g, lean);
+        for (int k2=0;k2<FAC_COUNT;k2++){
+            double wt=(double)g->count*(double)lean[k2];
+            wsum[k2]+=wt; gsum[k2]+=wt*(double)g->state_grip;
+        }
+    });
+    for (int k=0;k<FAC_COUNT;k++) out[k]=(wsum[k]>0.0)?(float)(gsum[k]/wsum[k]):0.f;
+}
 float faction_capture_total(int cid){
+    /* le « rot » = la prise du courant LE PLUS GORGÉ : l'État est capturé par SON
+     * captor — un courant d'un tiers du pouvoir peut pourrir l'État entier (les
+     * offices qu'il tient suffisent). max plutôt que moyenne : une moyenne diluait
+     * la capture dans la masse saine et l'indice ne bougeait plus (mesuré). */
     if (cid<0||cid>=SCPS_MAX_COUNTRY) return 0.f;
-    float s=0.f; for (int f=0;f<FAC_COUNT;f++) s+=g_capture[cid][f];
+    float by[FAC_COUNT]; country_capture_by(cid, by);
+    float s=0.f; for (int k=0;k<FAC_COUNT;k++) if (by[k]>s) s=by[k];
     return s<0.f?0.f:(s>CAPTURE_MAX?CAPTURE_MAX:s);
 }
 /* La métrique CORRUPTION (0-100) — le visage chiffré de la capture (l'écran). */
@@ -273,47 +401,96 @@ int faction_corruption_0_100(int cid){ return (int)(100.f*faction_capture_total(
 int faction_audit(int cid){
     if (cid<0||cid>=SCPS_MAX_COUNTRY) return 0;
     int before = faction_corruption_0_100(cid);
-    float raw=0.f; for (int f=0;f<FAC_COUNT;f++) raw+=g_capture[cid][f];
+    float raw = faction_capture_total(cid);
     if (raw>1e-4f){
         float keep = (raw-0.20f)/raw; if (keep<0.f) keep=0.f;   /* −0.20 de capture = −20 points */
-        for (int f=0;f<FAC_COUNT;f++) g_capture[cid][f]*=keep;
+        FOR_COUNTRY_GROUPS(cid, g, gf, { (void)gf; g->state_grip*=keep; });
     }
     return before;
 }
 /* La faction qui TIENT l'État (capture la plus haute) — pour le survol. */
 EthosFaction faction_captor(int cid){
     if (cid<0||cid>=SCPS_MAX_COUNTRY) return FAC_COMMUNAUTAIRE;
-    int best=0; float bv=g_capture[cid][0];
-    for (int f=1;f<FAC_COUNT;f++) if (g_capture[cid][f]>bv){ bv=g_capture[cid][f]; best=f; }
+    float by[FAC_COUNT]; country_capture_by(cid, by);
+    int best=0; for (int k=1;k<FAC_COUNT;k++) if (by[k]>by[best]) best=k;
     return (EthosFaction)best;
 }
 void faction_lever_apply(int cid, EthosFaction advanced, float strength){
     if (cid<0||cid>=SCPS_MAX_COUNTRY||advanced<0||advanced>=FAC_COUNT||strength<=0.f) return;
     float b=g_lever_bias[cid][advanced]+strength; if (b>LEVER_BIAS_CAP) b=LEVER_BIAS_CAP;
-    g_lever_bias[cid][advanced]=b;                              /* la faction alignée gagne du poids */
-    for (int f=0; f<FAC_COUNT; f++){                            /* … les opposées s'aigrissent */
-        if (f==(int)advanced) continue;
-        float g=g_lever_grief[cid][f] + strength*faction_opposition((EthosFaction)f,advanced);
-        g_lever_grief[cid][f] = g>1.f ? 1.f : g;
-    }
+    g_lever_bias[cid][advanced]=b;                              /* le courant aligné gagne du poids */
+    /* … et les PEUPLES s'aigrissent PAR TEINTE — chaque groupe rumine à hauteur de
+     * son opposition PONDÉRÉE à la politique (Σ lean×opposition), pas seulement son
+     * courant dominant : le peuple ésotérique porte la rancœur transgressive même
+     * si sa tête penche gardienne. */
+    FOR_COUNTRY_GROUPS(cid, g, gf, { (void)gf;
+        float lean[FAC_COUNT]; group_lean_full(g, lean);
+        float opp=0.f;
+        for (int k2=0;k2<FAC_COUNT;k2++)
+            if (k2!=(int)advanced) opp += lean[k2]*faction_opposition((EthosFaction)k2,advanced);
+        /* FAC_TINT_GAIN : la teinte DILUE (l'opposition pondérée d'un peuple mêlé vaut
+         * ~la moitié de l'opposition franche du tableau d'antan) — le gain retient
+         * l'ÉCHELLE historique du canal grief→loyauté (cible (1−grief)×100). */
+        float gr=g->ethos_grief + strength*opp*tune_f("FAC_TINT_GAIN",2.0f);
+        g->ethos_grief = gr>1.f ? 1.f : gr;
+    });
 }
 void faction_levers_decay(float rate){
     float r = rate<0.f?0.f:(rate>1.f?1.f:rate);
     float k  = 1.f - r;                                         /* la stance non entretenue s'efface */
     float kc = 1.f - r*CAPTURE_DECAY_FRAC;                      /* §C3 : la capture décroît TRÈS lentement */
-    for (int c=0;c<SCPS_MAX_COUNTRY;c++) for (int f=0;f<FAC_COUNT;f++){
-        g_lever_bias[c][f]*=k; g_lever_grief[c][f]*=k;
-        g_capture[c][f]*=kc;
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++) for (int fk=0;fk<FAC_COUNT;fk++) g_lever_bias[c][fk]*=k;
+    if (g_fe){
+        int NP=g_fe->n_prov; if (NP>SCPS_MAX_PROV) NP=SCPS_MAX_PROV;
+        for (int p=0;p<NP;p++)
+            for (int i=0;i<g_fe->prov[p].pop.n_groups;i++){
+                PopGroup *g=&g_fe->prov[p].pop.groups[i];
+                g->ethos_grief*=k; g->state_grip*=kc;
+            }
     }
 }
-float faction_grievance(int cid, EthosFaction f){
-    if (cid<0||cid>=SCPS_MAX_COUNTRY||f<0||f>=FAC_COUNT) return 0.f;
-    return g_lever_grief[cid][f];
+/* LE COURANT D'UNE CLASSE DANS UN PAYS (statecraft porté par la pop, 2026-08-06) :
+ * l'agrégat des penchants des peuples de cette classe — le courant des élites de CE
+ * pays, pas une abstraction. Sans bind ou sans peuple de la classe : le SOCLE seul
+ * (élite→Gardien, bourgeois→Marchand, laboureur→Communautaire). */
+EthosFaction faction_class_current(int cid, SocialClass k){
+    double acc[FAC_COUNT]={0}; bool any=false;
+    if (cid>=0 && cid<SCPS_MAX_COUNTRY){
+        FOR_COUNTRY_GROUPS(cid, g, gf, { (void)gf;
+            if (g->pop_by_class[k]<=0) continue;
+            any=true;
+            float lean[FAC_COUNT]; group_ethos_lean_k(&g->culture, k, lean);
+            for (int i=0;i<FAC_COUNT;i++) acc[i]+=(double)g->pop_by_class[k]*lean[i];
+        });
+    }
+    if (!any){ float base[FAC_COUNT]; class_ethos_base(k, base);
+               int b=0; for (int i=1;i<FAC_COUNT;i++) if (base[i]>base[b]) b=i;
+               return (EthosFaction)b; }
+    int b=0; for (int i=1;i<FAC_COUNT;i++) if (acc[i]>acc[b]) b=i;
+    return (EthosFaction)b;
 }
-void faction_grievance_add(int cid, EthosFaction f, float amount){
-    if (cid<0||cid>=SCPS_MAX_COUNTRY||f<0||f>=FAC_COUNT) return;
-    float g = g_lever_grief[cid][f] + amount;
-    g_lever_grief[cid][f] = g<0.f?0.f:(g>1.f?1.f:g);
+float faction_grievance(int cid, EthosFaction fac){
+    /* SANS SEUIL : la moyenne des colères pondérée par la TEINTE du courant — les
+     * poids se normalisent, la lecture n'est jamais 0 dès qu'un peuple rumine
+     * (un seuil tuait les teintes minoritaires : l'élite nominale plafonne ~3 %). */
+    if (cid<0||cid>=SCPS_MAX_COUNTRY||fac<0||fac>=FAC_COUNT) return 0.f;
+    double wsum=0.0, gsum=0.0;
+    FOR_COUNTRY_GROUPS(cid, g, gf, { (void)gf;
+        float lean[FAC_COUNT]; group_lean_full(g, lean);
+        double wt=(double)g->count*(double)lean[fac];
+        wsum+=wt; gsum+=wt*(double)g->ethos_grief;
+    });
+    return (wsum>0.0) ? (float)(gsum/wsum) : 0.f;
+}
+void faction_grievance_add(int cid, EthosFaction fac, float amount){
+    /* aigrir « les Gardiens » aigrit le PAYS — la lecture par courant pondère par
+     * teinte : la colère est une, sa couleur vient de qui la porte. */
+    if (cid<0||cid>=SCPS_MAX_COUNTRY||fac<0||fac>=FAC_COUNT) return;
+    (void)fac;
+    FOR_COUNTRY_GROUPS(cid, g, gf, { (void)gf;
+        float gr=g->ethos_grief+amount;
+        g->ethos_grief = gr<0.f?0.f:(gr>1.f?1.f:gr);
+    });
 }
 /* ⚠ SUPPRIMÉ (raccord 8, Âges sans ordre imposé, docs/AGES_FINS_2026-07-11.md) :
  * age_patron()/faction_age_engage() — l'ancien « engagement d'âge » (§7) posait un
@@ -331,7 +508,7 @@ void faction_levers_on_coup(int cid){
     /* Le coup a basculé le régime : la rancœur accumulée se DÉCHARGE (sinon le pays
      * recouve aussitôt — un coup tous les deux ans). La pression politique est purgée. */
     if (cid<0||cid>=SCPS_MAX_COUNTRY) return;
-    for (int f=0; f<FAC_COUNT; f++) g_lever_grief[cid][f]=0.f;
+    FOR_COUNTRY_GROUPS(cid, g, gf, { (void)gf; g->ethos_grief=0.f; });
 }
 
 EthosFaction faction_effective_distribution(const World *w, const WorldEconomy *econ,
@@ -375,7 +552,7 @@ float faction_coup_breakdown(int cid, const float base[FAC_COUNT],
     for (int f=0; f<FAC_COUNT; f++){
         float t=0.f;
         if (f!=dom){
-            float grief = (cid>=0&&cid<SCPS_MAX_COUNTRY) ? g_lever_grief[cid][f] : 0.f;
+            float grief = faction_grievance(cid, (EthosFaction)f);   /* lu des PEUPLES du courant */
             t = base[f]*faction_opposition((EthosFaction)f,(EthosFaction)dom) + COUP_GRIEF_W*grief;
         }
         if (out) out[f]=t;

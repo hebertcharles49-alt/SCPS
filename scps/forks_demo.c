@@ -70,7 +70,14 @@ int main(void){
             /* trois régions mono-groupe : l'ETHOS du groupe pousse SA faction →
              * Dominateur→Conquérant→MARTIAL · Bureaucrate→Légiste→ORDRE ·
              * Mercantile→Marchand→FLUIDE. Pas de port/frontière (tie-breaks muets). */
-            Ethos eth3[3]={ETHOS_DOMINATEUR,ETHOS_BUREAUCRATE,ETHOS_MERCANTILE};
+            /* MERGE COURANTS×CLASSES (2026-08-06) : la CLASSE est le socle du penchant —
+             * un laboureur dominateur serait tiré vers le bien-commun par sa condition.
+             * Les pôles de la fixture portent la classe de leur courant : l'aristocratie
+             * guerrière (élite→Conquérant), le magistrat (bourgeois? non — Légiste vient
+             * de la culture, bourgeois pousse Marchand : LABOURER neutre-Communautaire
+             * diluerait moins que bourgeois-Marchand), le négociant (bourgeois→Marchand). */
+            Ethos       eth3[3]={ETHOS_DOMINATEUR,ETHOS_BUREAUCRATE,ETHOS_MERCANTILE};
+            SocialClass kls3[3]={CLASS_ELITE,     CLASS_LABORER,    CLASS_BOURGEOIS};
             for (int r=0;r<3;r++){
                 RegionEconomy *re=&e->region[r];
                 re->active=re->colonized=true; re->owner=-1;
@@ -79,7 +86,7 @@ int main(void){
                 re->pop.groups[0].count=1000;
                 re->pop.groups[0].culture.ethos=eth3[r];
                 re->pop.groups[0].culture.settled=true;
-                re->pop.groups[0].klass=CLASS_LABORER;
+                re->pop.groups[0].klass=kls3[r];
             }
             /* l'hystérésis part validée ORDRE : on laisse chaque pôle TENIR 360 j. */
             for (int r=0;r<3;r++){ edifice_region_pole(NULL,e,r,10); edifice_region_pole(NULL,e,r,400); }
@@ -96,6 +103,10 @@ int main(void){
             /* HYSTÉRÉSIS : la région martiale VIRE Mercantile au jour 1000 — un flip
              * de 200 j ne RELIT pas (§24 flip-200j) ; à 360 j tenus, elle relit. */
             e->region[0].pop.groups[0].culture.ethos=ETHOS_MERCANTILE;
+            e->region[0].pop.groups[0].klass=CLASS_BOURGEOIS;   /* la région S'EMBOURGEOISE : une
+                                              * aristocratie devenue marchande resterait MARTIALE
+                                              * (socle élite Conq+G > Marchand) — le modèle 2026-08-06 :
+                                              * le pôle suit la condition AUTANT que la culture */
             ok("flip +0 j : le fork reste ARSENAL (pôle validé tenu)",
                edifice_succ_ctx(NULL,e,0,EDI_PORT,1000)==EDI_ARSENAL);
             ok("flip +200 j : TOUJOURS Arsenal (le candidat n'a pas tenu 360 j)",

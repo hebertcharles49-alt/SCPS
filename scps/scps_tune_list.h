@@ -622,6 +622,12 @@
     X(PASSIVE_SEEP,           1.0f) \
     X(SEEP_POP_MONTH,         2.8f) \
     X(SEEP_TARGET,          100.0f) \
+    /* MERGE COURANTS × CLASSES (décision joueur 2026-08-06 : « communautaire avec le
+     * peuple, marchand avec bourgeois, fanatique avec élite ») : poids du SOCLE de
+     * classe dans le penchant d'éthos (la culture module par-dessus). 0 = penchant
+     * purement culturel d'hier (kill-switch). */ \
+    X(FAC_CLASS_W,            1.0f)     /* Gain d'aigreur sous la TEINTE (l'opposition pondérée d'un peuple mêlé dilue ~2×
+     * vs l'ancien tableau) — retient l'échelle du canal grief→loyauté du Conseil. */     X(FAC_TINT_GAIN,          2.0f) \
     /* PIPELINE DIPLO — la VALEUR SUBJECTIVE oriente la CIBLE (pas l'éthos, qui décide la
      * MÉTHODE). COVET_W : poids du BESOIN (Σ raw_cap × stress(runway) × prix) dans la valeur
      * d'une province d'autrui → l'IA convoite qui TIENT ce qui lui manque. COMPLEMENT_W :

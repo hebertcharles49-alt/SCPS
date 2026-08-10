@@ -44,6 +44,11 @@ typedef enum {
  * Communautaire, ésotérique→arcane+tradition), son CREDO (la ferveur nourrit les
  * Gardiens, la tolérance l'ouverture). */
 void group_ethos_lean(const PopCulture *c, float out[FAC_COUNT]);
+/* MERGE COURANTS × CLASSES (2026-08-06) : la CLASSE est le SOCLE du penchant —
+ * laboureur→Communautaire, bourgeois→Marchand, élite→Gardien+Conquérant, esclave
+ * sans voix — la culture module par-dessus (FAC_CLASS_W pèse le socle). */
+void class_ethos_base(SocialClass k, float out[FAC_COUNT]);
+void group_ethos_lean_k(const PopCulture *c, SocialClass k, float out[FAC_COUNT]);
 
 /* Poids social d'une classe : l'ÉLITE gouverne (pèse plus que la masse). */
 float class_clout(SocialClass k);
@@ -119,6 +124,11 @@ float faction_coup_tension(const float weights[FAC_COUNT], EthosFaction *out_ali
  * et FÂCHE les opposées (elles accumulent du grief → couvent le coup). Favoriser
  * longtemps fait DÉRIVER le pays vers cet éthos. État de stance PAR PAYS, remis à
  * zéro par sim (faction_levers_reset), qui s'efface s'il n'est pas entretenu. */
+/* GLISSEMENT SUR LES PEUPLES (2026-08-06) : grief et capture vivent SUR les PopGroup
+ * (ethos_grief/state_grip) — plus de tableaux pays. Les lecteurs gardent leurs
+ * signatures via ce BIND de contexte (motif g_tech_cache) : la sim le pose au tick,
+ * les bancs sur leurs fixtures. Sans bind : lectures 0, écritures no-op. */
+void faction_bind(const World *w, WorldEconomy *e);
 void faction_levers_reset(void);
 /* sauvegarde : biais/rancœur/capture des factions (statiques du module). */
 void faction_save(FILE *f);
@@ -126,6 +136,9 @@ bool faction_load(FILE *f);                                  /* début de partie
 void faction_lever_apply(int cid, EthosFaction advanced, float strength);  /* un vote */
 void faction_levers_decay(float rate);                            /* la stance non tenue s'efface */
 void faction_levers_on_coup(int cid);                             /* un coup DÉCHARGE la rancœur du pays */
+/* Le COURANT d'une classe dans un pays — l'agrégat des peuples de cette classe
+ * (statecraft porté par la pop : le ministre élite porte le courant DES élites). */
+EthosFaction faction_class_current(int cid, SocialClass k);
 float faction_grievance(int cid, EthosFaction f);                 /* 0-1 : la rancœur d'une faction (UI) */
 /* Lecteur-écrivain DIRECT de la rancœur (0-1, borné) — pour un acte qui aigrit UNE
  * faction précise sans passer par le motif « lever une opposée » (ex. Conseil P1-3 :

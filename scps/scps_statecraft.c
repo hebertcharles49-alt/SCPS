@@ -189,13 +189,25 @@ static void sc_faction_shuffle(uint32_t seed, int cid, int seat, int gen, EthosF
         EthosFaction t=out[i]; out[i]=out[j]; out[j]=t;
     }
 }
+/* LE MINISTRE EST UN MEMBRE DE LA POP (décision joueur 2026-08-06 : « ministre
+ * élite/bourgeois/paysan ») : sa CLASSE est tirée déterministe du hash (le roster
+ * mélange les conditions — un paysan peut siéger), et son COURANT est celui de SA
+ * classe telle qu'incarnée dans SON pays (faction_class_current lit les peuples).
+ * L'ancien shuffle de factions de cour abstraites est remplacé ; la signature et
+ * le déterminisme (seed,cid,seat,slot,gen) sont conservés. */
+SocialClass statecraft_council_class(uint32_t seed, int cid, int seat, int slot, int gen){
+    if (seat<0||seat>=SC_COUNCIL_SEATS) return CLASS_ELITE;
+    uint32_t h = sc_hash(sc_genseed(seed,gen)^0xC1A55u, (uint32_t)cid, (uint32_t)seat, (uint32_t)slot);
+    /* le roster penche vers le haut (la cour recrute où le pouvoir est) : élite 3/6,
+     * bourgeois 2/6, paysan 1/6 — mais le paysan ministre EXISTE (l'homme du peuple). */
+    uint32_t r = h % 6u;
+    return (r<3u) ? CLASS_ELITE : (r<5u) ? CLASS_BOURGEOIS : CLASS_LABORER;
+}
 EthosFaction statecraft_council_faction(uint32_t seed, int cid, int seat, int slot, int gen){
     if (seat<0||seat>=SC_COUNCIL_SEATS) return FAC_COMMUNAUTAIRE;
     if (slot<0) slot=0;
     if (slot>=FAC_COUNT) slot=FAC_COUNT-1;
-    EthosFaction perm[FAC_COUNT];
-    sc_faction_shuffle(seed,cid,seat,gen,perm);
-    return perm[slot];
+    return faction_class_current(cid, statecraft_council_class(seed,cid,seat,slot,gen));
 }
 int statecraft_council_cand_age(uint32_t seed, int cid, int seat, int slot, int gen, int year){
     int base = 30 + (int)(sc_hash(sc_genseed(seed,gen)^0xA6E11u, (uint32_t)cid, (uint32_t)seat, (uint32_t)slot) % 22u);

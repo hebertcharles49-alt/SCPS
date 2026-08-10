@@ -32,7 +32,11 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 99u           /* v99 : HABITABILITÉ CULTURELLE — Country.climates (bitmask des
+#define SAVE_VERSION 100u          /* v100 : FACTIONS SUR LES PEUPLES — PopGroup.ethos_grief/state_grip
+                                    * (le grief et la capture quittent les tableaux pays de
+                                    * scps_factions.c ; la section FACT rétrécit à la seule stance) ⇒
+                                    * sizeof(WorldEconomy) change.
+                                    * v99 : HABITABILITÉ CULTURELLE — Country.climates (bitmask des
                                     * climats natals : spawn = territoire de départ, enrichi par
                                     * métabolisation) ⇒ sizeof(World) change (« ère antérieure »).
                                     * v98 : TOPONYMIE DES VILLES (docs/DESIGN_TOPONYMIE_VILLES.md) —

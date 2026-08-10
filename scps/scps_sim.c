@@ -1461,6 +1461,7 @@ void sim_day(Sim *s, World *w) {
                                s->missions, c, seat, slot, gen, s->human_player);
         }
         statecraft_council_age_tick(s->sc, w->seed, s->year);    /* LES ANNÉES PASSENT : les conseillers vieillissent, la retraite vide le siège */
+        faction_bind(w, s->econ);   /* GLISSEMENT 2026-08-06 : grief/capture vivent sur les groupes — lier le monde avant tout lecteur/écrivain de faction */
         faction_levers_decay(0.07f);   /* §4 : une stance non entretenue s'efface (~15 ans) */
         if (s->ev->ages.last_dawned != s->prev_dawned){
             /* ⚠ SUPPRIMÉ (raccord 8) : l'ancien engagement d'âge par pays (faction_age_engage,
@@ -1577,6 +1578,11 @@ void sim_init(Sim *s, World *w) {
         endgame_set_pop_ref(s->eg, s->econ); }
     campaign_init(s->camp, w, s->econ);                  /* armées de campagne : table de terrain + RAZ */
     s->camp_rng = w->seed ^ 0xCA117A11u;                 /* graine de campagne, propre à la sim */
+    /* GLISSEMENT 2026-08-06 — BIND AVANT RESET (bug attrapé par scps_api_demo
+     * « REPRODUCTIBLE ») : levers_reset purge AUSSI les champs de groupes du monde
+     * LIÉ — sans re-bind, l'init d'une sim B purgeait les griefs de la sim A encore
+     * liée (état global de module, motif g_tech_cache) ⇒ A ≠ B. */
+    faction_bind(w, s->econ);
     faction_levers_reset();   /* §4 : stances de factions remises à zéro pour cette sim */
     s->prev_dawned=-1;        /* §7 : aucun âge encore traité */
     for (int r=0;r<SCPS_MAX_REG;r++)

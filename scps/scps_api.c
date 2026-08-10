@@ -61,6 +61,12 @@ ScpsSim *scps_sim_new(void){
 
 void scps_sim_free(ScpsSim *s){
     if(!s) return;
+    /* GLISSEMENT 2026-08-06 — UNBIND OBLIGATOIRE : le module factions garde un pointeur
+     * de contexte global (faction_bind) vers CETTE économie ; sans le rendre, toute
+     * lecture de façade AVANT le premier tick de la sim suivante (readout → corruption
+     * → FOR_COUNTRY_GROUPS) tape la mémoire LIBÉRÉE — use-after-free différé (segfault
+     * au 19e monde de scps_api_demo, dans le worldgen : le tas était déjà rongé). */
+    faction_bind(NULL, NULL);
     sim_free_members(&s->sim);
     free(s->w); free(s->px); free(s->cx); free(s->cy); free(s->ppx); free(s->ppy); free(s);
 }

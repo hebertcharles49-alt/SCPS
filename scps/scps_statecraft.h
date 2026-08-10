@@ -167,6 +167,9 @@ long  statecraft_council_ai_replace_count(void);
  * des 6 factions (seed×pays×siège×génération) — les SC_COUNCIL_CANDS premières du
  * mélange sont les 3 candidates du siège, TOUJOURS distinctes (préfixe d'une
  * permutation). Re-tirage à chaque génération (le mélange dépend de `gen`). */
+/* La CLASSE du candidat (élite 3/6 · bourgeois 2/6 · paysan 1/6, hash déterministe) —
+ * le ministre est un MEMBRE de la pop ; son courant = celui de sa classe dans son pays. */
+SocialClass statecraft_council_class(uint32_t seed, int cid, int seat, int slot, int gen);
 EthosFaction statecraft_council_faction(uint32_t seed, int cid, int seat, int slot, int gen);
 
 /* P0-4 — PERSONNE + MAISON : deux tirages INDÉPENDANTS (salts distincts l'un de

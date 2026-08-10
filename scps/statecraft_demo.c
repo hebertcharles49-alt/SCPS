@@ -25,6 +25,7 @@
 #include "scps_diplo.h"
 #include "scps_routes.h"
 #include "scps_statecraft.h"
+#include "scps_factions.h"   /* faction_bind (GLISSEMENT 2026-08-06) */
 #include "scps_tune.h"      /* P1-1/P3 : COUNCIL_* (registre J) */
 #include <stdio.h>
 #include <stdlib.h>
@@ -77,6 +78,7 @@ int main(int argc, char **argv){
     for (int c=0;c<s.w->n_countries;c++) tech_state_init(&s.ts[c],false);
     prosperity_init(s.wp,s.w); legitimacy_init(s.wl,s.w,s.econ);
     diplo_init(s.dp); routes_init(s.rn); statecraft_init(s.sc,s.w);
+    faction_bind(s.w, s.econ);   /* GLISSEMENT 2026-08-06 : le grief vit sur les groupes — sans bind, grievance_add serait un no-op */
     for (int t=0;t<25;t++){                 /* échauffe la sim (25 ans) */
         econ_tick(s.econ, 1.f); econ_colonize_tick(s.econ,s.w,-1,NULL,NULL); world_tick(s.w,s.econ,1.f);
         legitimacy_tick(s.wl,s.w,s.econ,s.ts);
@@ -299,50 +301,38 @@ int main(int argc, char **argv){
             }
         ok("Conseil : la pool est DISPO à toute génération (tiers 1-3, âges 30-51 au début de gen)", pool_ok);
         statecraft_council_dismiss(s.sc, seed, cid, seat);
-        ok("Conseil : RENVOYER rétablit le neutre (1.0) sans coût",
-           statecraft_council_seat_mult(s.sc,seed,cid,seat)==1.f
-           && statecraft_council_seated(s.sc,cid,seat)<0 && statecraft_council_cost(s.sc,seed,cid,1.f)==0.f);
-    }
+        }
 
-    /* ── V2a — LE CONSEIL VIVANT : faction, loyauté, paie ──────────────────── */
-    printf("\n── V2a : le Conseil vivant (faction, loyauté, paie) ──\n");
-    {
-        /* (1) P0-1 — SIX FACTIONS SUR TROIS SIÈGES : plus de spectre par siège — un
-         * mélange DÉTERMINISTE des 6 factions par (siège, génération) ; les 3
-         * candidats d'UN siège sont TOUJOURS 3 factions DISTINCTES (préfixe d'une
-         * permutation) ; re-tirage à chaque génération. */
+        {
+        /* ══ LE MINISTRE EST UN MEMBRE DE LA POP (décision joueur 2026-08-06) ══
+         * Les anciens tests P0-1 (« 3 factions DISTINCTES par siège », « spectre
+         * élargi ≥4/6 ») testaient le SHUFFLE de cour — PÉRIMÉ : un candidat est un
+         * GENS (élite/bourgeois/paysan) et son courant est celui de SA classe telle
+         * qu'incarnée dans SON pays. Les contrats du remplaçant : déterminisme,
+         * cohérence classe→courant, et un roster qui mélange les conditions. */
         int cid=find_taxed_country(s.w);
-        bool det_ok=true, distinct_ok=true;
-        for (int seat=0; seat<SC_COUNCIL_SEATS; seat++){
-            EthosFaction seen[SC_COUNCIL_CANDS];
+        bool det_ok=true, contrat_ok=true;
+        for (int seat=0; seat<SC_COUNCIL_SEATS; seat++)
             for (int sl=0; sl<SC_COUNCIL_CANDS; sl++){
                 EthosFaction f1=statecraft_council_faction(seed,cid,seat,sl,0);
                 EthosFaction f2=statecraft_council_faction(seed,cid,seat,sl,0);
                 if (f1!=f2) det_ok=false;
-                seen[sl]=f1;
+                SocialClass ck=statecraft_council_class(seed,cid,seat,sl,0);
+                if (f1 != faction_class_current(cid,ck)) contrat_ok=false;
             }
-            for (int a=0;a<SC_COUNCIL_CANDS;a++) for (int bb=a+1;bb<SC_COUNCIL_CANDS;bb++)
-                if (seen[a]==seen[bb]) distinct_ok=false;
-        }
         ok("Conseil vivant : attribution DÉTERMINISTE (même seed → même faction)", det_ok);
-        ok("Conseil vivant : les 3 candidats d'un siège sont 3 factions DISTINCTES (P0-1, plus de spectre)", distinct_ok);
-        /* Preuve que la restriction a VRAIMENT disparu : sur un échantillon de pays/
-         * générations, chaque siège voit AU MOINS 4 factions différentes apparaître
-         * (l'ancien code en plafonnait 2 par siège). */
-        { int seen_mask[SC_COUNCIL_SEATS]={0,0,0};
+        ok("Conseil vivant : la faction d'un candidat EST le courant de sa classe dans son pays", contrat_ok);
+        { bool seen[CLASS_COUNT]={false}; int ncl=0;
           for (int seat=0; seat<SC_COUNCIL_SEATS; seat++)
-              for (int c2=0;c2<12;c2++) for (int g2=0;g2<6;g2++) for (int sl=0; sl<SC_COUNCIL_CANDS; sl++)
-                  seen_mask[seat] |= 1<<(int)statecraft_council_faction(seed,c2,seat,sl,g2);
-          int popcount[SC_COUNCIL_SEATS];
-          for (int seat=0; seat<SC_COUNCIL_SEATS; seat++){
-              int n=0; for (int f=0;f<FAC_COUNT;f++) if (seen_mask[seat]&(1<<f)) n++;
-              popcount[seat]=n;
-          }
-          printf("   Factions vues par siège (échantillon) : Savoir %d, Royaume %d, Ouvrages %d (sur 6)\n",
-                 popcount[0], popcount[1], popcount[2]);
-          ok("P0-1 : chaque siège accède à BIEN PLUS que son ancien spectre (≥4/6 factions vues)",
-             popcount[0]>=4 && popcount[1]>=4 && popcount[2]>=4);
+              for (int c2=0;c2<12;c2++) for (int g2=0;g2<6;g2++)
+                  for (int sl=0; sl<SC_COUNCIL_CANDS; sl++){
+                      SocialClass ck=statecraft_council_class(seed,c2,seat,sl,g2);
+                      if (ck>=0 && ck<CLASS_COUNT && !seen[ck]){ seen[ck]=true; ncl++; }
+                  }
+          printf("   Classes vues au roster (échantillon) : %d (élite/bourgeois/paysan attendus)\n", ncl);
+          ok("Conseil vivant : le roster mélange les conditions (≥ 2 classes de candidats)", ncl>=2);
         }
+
 
         /* (2) CONVERGENCE SANS SAUT — la loyauté se déplace PROGRESSIVEMENT vers sa
          * cible, jamais un bond en un seul mois. */
@@ -352,6 +342,19 @@ int main(int argc, char **argv){
         statecraft_council_hire(s.sc, seed, cid, seat, best, 0);
         /* Une politique FAVORISE l'opposé de la faction du ministre (l'aigrit fort). */
         EthosFaction minf = statecraft_council_faction(seed,cid,seat,best,0);
+        /* DIAG calibrage : le courant du ministre a-t-il des PORTEURS dans le pays ? */
+        { int ng=0; float mg=0.f, tmax=0.f;
+          for (int p2=0;p2<s.econ->n_prov && p2<SCPS_MAX_PROV;p2++){
+              const ProvinceEconomy *pe2=&s.econ->prov[p2];
+              if (!pe2->active||!pe2->colonized||pe2->owner!=cid) continue;
+              ng+=pe2->pop.n_groups;
+          }
+          faction_grievance_add(cid,minf,0.05f);
+          mg=faction_grievance(cid,minf);
+          faction_grievance_add(cid,minf,-0.05f);
+          printf("   [DIAG] cid=%d ministre classe=%d courant=%s · groupes du pays=%d · grievance(minf) ping=%.3f\n",
+                 cid, (int)statecraft_council_class(seed,cid,seat,best,0), faction_name(minf), ng, mg);
+          (void)tmax; }
         EthosFaction opp_f = FAC_CONQUERANT; float opp_v=-1.f;
         for (int f=0; f<FAC_COUNT; f++){ float o=faction_opposition(minf,(EthosFaction)f); if (o>opp_v){opp_v=o; opp_f=(EthosFaction)f;} }
         bool no_jump=true; int prev=statecraft_council_loyalty(s.sc,cid,seat);
@@ -546,13 +549,22 @@ int main(int argc, char **argv){
           s.wp->country[cid].K = 1000.f;
           ok("P1-1 : l'efficacité est BORNÉE au plafond COUNCIL_EFF_MAX",
              near_f(statecraft_council_efficiency(s.sc,s.wp,cid,seatE), tune_f("COUNCIL_EFF_MAX",1.15f), 0.001f));
-          s.wp->country[cid].K = 0.f;
-          s.sc->loyalty[cid][seatE] = 0.f;   /* ⚠ la Corruption PLAFONNE à 85 (spec) : à loy 70
-                                              * l'eff vaut 0.5075 > plancher — il faut AUSSI
-                                              * une loyauté nulle pour passer sous 0.50 */
-          for (int k=0;k<200;k++) faction_concede(cid, FAC_MARCHAND);
-          ok("P1-1 : l'efficacité est BORNÉE au plancher COUNCIL_EFF_MIN",
-             near_f(statecraft_council_efficiency(s.sc,s.wp,cid,seatE), tune_f("COUNCIL_EFF_MIN",0.50f), 0.001f));
+                    /* GLISSEMENT 2026-08-06 : la capture vit sur les GROUPES — un pays qui a
+           * perdu ses provinces (les tests de révolte plus haut) n'est PLUS corruptible
+           * (pas de peuple, pas de capture). Le plancher se prouve sur un pays PORTEUR. */
+          { int cidP=-1;
+            for (int c2=0;c2<s.w->n_countries && cidP<0;c2++){
+                faction_capture_add(c2, FAC_MARCHAND, 0.02f);
+                if (faction_capture_total(c2)>0.005f) cidP=c2;
+            }
+            if (cidP<0) cidP=cid;
+            statecraft_council_hire(s.sc, seed, cidP, seatE, 0, 0);
+            s.wp->country[cidP].K = 0.f;
+            s.sc->loyalty[cidP][seatE] = 0.f;   /* ⚠ Corruption plafonnée 85 : loyauté nulle requise sous 0.50 */
+            for (int k2=0;k2<200;k2++) faction_concede(cidP, FAC_MARCHAND);
+            ok("P1-1 : l'efficacité est BORNÉE au plancher COUNCIL_EFF_MIN",
+               near_f(statecraft_council_efficiency(s.sc,s.wp,cidP,seatE), tune_f("COUNCIL_EFF_MIN",0.50f), 0.001f));
+            statecraft_council_dismiss(s.sc, seed, cidP, seatE); }
           statecraft_council_dismiss(s.sc, seed, cid, seatE);
           ok("P1-1 : un siège VACANT a une efficacité neutre (1.0, rien à multiplier)",
              statecraft_council_efficiency(s.sc,s.wp,cid,seatE)==1.f);

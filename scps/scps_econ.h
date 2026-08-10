@@ -210,6 +210,14 @@ typedef struct {
     long         pop_by_class[CLASS_COUNT];
     float        L;              /* légitimité du groupe envers la couronne */
     float        agit_base;      /* agitation VRAIE (la suppression la masque) */
+    /* GLISSEMENT DES FACTIONS SUR LES PEUPLES (décision joueur 2026-08-06 : « glisse
+     * les mécanismes de faction et leur satisfaction vers les popgroup ») — la colère
+     * de VALEURS et la capture d'État ne vivent plus dans des tableaux pays anonymes
+     * (l'ex-g_lever_grief/g_capture de scps_factions.c) : c'est CE peuple, LÀ où il
+     * vit, qui rumine la politique de la couronne contre son penchant — la révolte
+     * éclate où il habite. Sérialisés avec ECON ⇒ SAVE_VERSION v100. */
+    float        ethos_grief;    /* 0..1 — rancœur politique (leviers opposés à son penchant) */
+    float        state_grip;     /* 0..1 — sa prise sur l'État (concessions gorgées → corruption) */
     float        integration;    /* 0..1 → pilote l'assimilation */
     bool         diaspora;       /* PAS de souche (migration/conquête/déportation) */
     uint8_t      arrival;        /* Arrival — mode d'arrivée (diffusion + comportement) */

@@ -169,8 +169,8 @@ int revolt_new_civilwar_at(int i, int *owner, int *region){
 }
 static float ethos_coup_boost(const PopGroup *g, EthosFaction alien_fac, float coup_tension){
     if (coup_tension<=0.f || g->diaspora || g->integration < SECEDE_INTEG) return 0.f;  /* établi, pas sécessionniste */
-    float lean[FAC_COUNT]; group_ethos_lean(&g->culture, lean);
-    int gf=0; for (int f=1; f<FAC_COUNT; f++) if (lean[f]>lean[gf]) gf=f;  /* la faction de ce groupe */
+    float lean[FAC_COUNT]; group_ethos_lean_k(&g->culture, g->klass, lean);   /* classe = socle du courant */
+    int gf=0; for (int f=1; f<FAC_COUNT; f++) if (lean[f]>lean[gf]) gf=f;  /* le courant de ce groupe */
     return (gf==(int)alien_fac) ? COUP_ETHOS_W*coup_tension : 0.f;
 }
 #define CRUSH_KILL    0.55f    /* part des mobilisés tués si écrasés */
@@ -961,7 +961,7 @@ static void apply_rebel_victory(RevoltState *rs, World *w, WorldEconomy *econ,
             /* §C3 — la concession a un PRIX : la faction de l'extorqueur CAPTURE
              * l'État (rot↑ → malus noble), et l'OSSATURE ploie sans rebond
              * (K creusé + légitimité d'un cran) → l'empire concédant devient flasque. */
-            { float lean[FAC_COUNT]; group_ethos_lean(&rb->culture, lean);
+            { float lean[FAC_COUNT]; group_ethos_lean_k(&rb->culture, rb->klass, lean);   /* l'extorqueur penche avec sa classe */
               int wf=0; for (int f=1;f<FAC_COUNT;f++) if (lean[f]>lean[wf]) wf=f;
               faction_concede(rb->owner, (EthosFaction)wf); }
             pe->build.K_inst = fmaxf(0.f, pe->build.K_inst - tune_f("C3_K_HOLLOW",C3_K_HOLLOW));

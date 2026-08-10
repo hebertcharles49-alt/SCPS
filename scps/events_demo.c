@@ -25,6 +25,7 @@
 #include "scps_statecraft.h"
 #include "scps_routes.h"
 #include "scps_events.h"
+#include "scps_factions.h"   /* faction_bind (GLISSEMENT 2026-08-06) */
 #include "scps_religion.h"   /* V2b LOT 3 : religion_fracture_level/credo_drift/scholar_drift */
 #include "scps_fog.h"        /* raccord 6 (Découvertes) : fog_debug_meet_all pour forcer country_knows */
 #include <stdio.h>
@@ -126,6 +127,7 @@ int main(int argc, char **argv){
     WorldParams p=worldparams_default(seed);
     world_generate(s.w,&p);
     econ_init(s.econ,s.w); gen_population(s.w,s.econ); worldgen_seed_peoples(s.w,s.econ,HERITAGE_ADAPTATIF);
+    faction_bind(s.w, s.econ);   /* GLISSEMENT 2026-08-06 : le grief vit sur les groupes */
     trade_network_build(s.net,s.w,s.econ);
     for (int c=0;c<s.w->n_countries;c++) tech_state_init(&s.ts[c],false);
     prosperity_init(s.wp,s.w); legitimacy_init(s.wl,s.w,s.econ);

@@ -11,6 +11,7 @@
 #include "scps_factions.h"
 #include "scps_readout.h"   /* K2 : faction_name vit au readout */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static int g_pass=0, g_fail=0;
@@ -84,12 +85,16 @@ int main(void){
     {
         /* Un pays marchand (agraires). */
         ProvincePop prov; memset(&prov,0,sizeof prov);
-        prov.groups[0]=grp(cult(ETHOS_MERCANTILE,HERITAGE_AGRAIRE,CREDO_PLURALISTE),CLASS_LABORER,1000);
+        /* MERGE COURANTS×CLASSES (2026-08-06) : un pays « marchand » l'est par sa
+         * BOURGEOISIE — le socle de classe (bourgeois→Marchand) porte le courant
+         * avec la culture ; des laboureurs mercantiles seraient tirés vers le
+         * bien-commun par leur CONDITION (le design voulu). */
+        prov.groups[0]=grp(cult(ETHOS_MERCANTILE,HERITAGE_AGRAIRE,CREDO_PLURALISTE),CLASS_BOURGEOIS,1000);
         prov.n_groups=1;
         float before[FAC_COUNT]; EthosFaction dom0=faction_weights_of(&prov,1,before);
         /* CONQUÊTE : une province clanique entre dans le pays. */
         ProvincePop conq; memset(&conq,0,sizeof conq);
-        conq.groups[0]=grp(cult(ETHOS_DOMINATEUR,HERITAGE_CLANIQUE,CREDO_PLURALISTE),CLASS_LABORER,600);
+        conq.groups[0]=grp(cult(ETHOS_DOMINATEUR,HERITAGE_CLANIQUE,CREDO_PLURALISTE),CLASS_ELITE,600);   /* l'aristocratie guerrière conquise — son socle d'élite porte le fer */
         conq.n_groups=1;
         ProvincePop country[2]={prov,conq};
         float after[FAC_COUNT]; EthosFaction dom1=faction_weights_of(country,2,after);
@@ -143,12 +148,18 @@ int main(void){
     {
         /* Mono-éthos : un seul peuple → cohésion (fracture basse). */
         ProvincePop mono; memset(&mono,0,sizeof mono);
-        mono.groups[0]=grp(cult(ETHOS_BUREAUCRATE,HERITAGE_ADAPTATIF,CREDO_PLURALISTE),CLASS_LABORER,1000); mono.n_groups=1;
+        /* mono-éthos ET mono-condition : des bourgeois bureaucrates — Légiste et
+         * Marchand (socle) sont VOISINS de valeurs, pas opposés → cohésion. Des
+         * laboureurs bureaucrates seraient déjà une fracture (Légiste/Communautaire),
+         * ce qui est le POINT du merge : la condition sociale est un pôle réel. */
+        mono.groups[0]=grp(cult(ETHOS_MERCANTILE,HERITAGE_MECANISTE,CREDO_PLURALISTE),CLASS_BOURGEOIS,1000); mono.n_groups=1;   /* culture ET condition alignées : le marchand-né */
         float wmono[FAC_COUNT]; faction_weights_of(&mono,1,wmono);
         /* Deux blocs forts et opposés (Conquérants ~ Marchands) → fracture. */
         ProvincePop split; memset(&split,0,sizeof split);
-        split.groups[0]=grp(cult(ETHOS_DOMINATEUR,HERITAGE_CLANIQUE,CREDO_PLURALISTE),CLASS_LABORER,1000);
-        split.groups[1]=grp(cult(ETHOS_MERCANTILE,HERITAGE_AGRAIRE,CREDO_PLURALISTE),CLASS_LABORER,1000);
+        /* le déchirement du MONDE DE CLASSES : une aristocratie guerrière face à une
+         * bourgeoisie marchande — deux blocs que TOUT oppose (culture ET condition). */
+        split.groups[0]=grp(cult(ETHOS_DOMINATEUR,HERITAGE_CLANIQUE,CREDO_PLURALISTE),CLASS_ELITE,1000);
+        split.groups[1]=grp(cult(ETHOS_MERCANTILE,HERITAGE_AGRAIRE,CREDO_PLURALISTE),CLASS_BOURGEOIS,1000);
         split.n_groups=2;
         float wsplit[FAC_COUNT]; faction_weights_of(&split,1,wsplit);
         printf("   mono-éthos : fracture %.2f (cohésion %.2f) | bloc 50/50 opposé : fracture %.2f\n",
@@ -185,6 +196,24 @@ int main(void){
            faction_coup_tension(wm,&alien) < tension - 0.10f);
     }
 
+    /* GLISSEMENT 2026-08-06 : grief et capture vivent sur les PopGroup — le banc LIE
+     * une fixture econ (4 pays x 1 province) portant les peuples des courants
+     * exercés : Marchand (MERCANTILE/MECANISTE), Gardien (ORDRE/ESOTERIQUE/
+     * PURIFICATEUR), Communautaire (PACIFISTE/AGRAIRE). Sans bind, leviers et
+     * concessions seraient des no-ops (permissif). */
+    WorldEconomy *fe = (WorldEconomy*)calloc(1, sizeof(WorldEconomy));
+    {
+        fe->n_prov=4;
+        for (int p=0;p<4;p++){
+            ProvinceEconomy *pe=&fe->prov[p];
+            pe->active=true; pe->colonized=true; pe->owner=(int16_t)p;
+            pe->pop.groups[0]=grp(cult(ETHOS_MERCANTILE,HERITAGE_MECANISTE,CREDO_PLURALISTE),CLASS_BOURGEOIS,1000);
+            pe->pop.groups[1]=grp(cult(ETHOS_ORDRE,HERITAGE_ADAPTATIF,CREDO_PURIFICATEUR),CLASS_ELITE,800);   /* le fanatique EST l'élite (socle gardien) — ADAPTATIF : l'ésotérique porterait une teinte transgressive qui rumine contre sa propre orthodoxie */
+            pe->pop.groups[2]=grp(cult(ETHOS_PACIFISTE,HERITAGE_AGRAIRE,CREDO_PLURALISTE),CLASS_LABORER,900);
+            pe->pop.n_groups=3;
+        }
+        faction_bind(NULL, fe);
+    }
     /* ═══ 8. LES LEVIERS COMME DES VOTES (§4) ═══════════════════════════ */
     printf("\n── 8. Un levier AVANCE un éthos et AIGRIT les opposés (un vote) ──\n");
     {
@@ -193,7 +222,11 @@ int main(void){
         faction_lever_apply(0, FAC_GARDIEN, 0.4f);   /* foi imposée → Gardiens */
         ok("imposer la foi (Gardiens) AIGRIT les Marchands (opposés)",
            faction_grievance(0,FAC_MARCHAND) > 0.2f);
-        ok("… et n'aigrit PAS la faction avancée elle-même", faction_grievance(0,FAC_GARDIEN)==0.f);
+        /* TEINTE (2026-08-06) : les porteurs gardiens ont AUSSI d'autres penchants
+         * (le socle de leur condition) — un résidu d'aigreur existe. Le contrat :
+         * la faction avancée est BEAUCOUP moins aigrie que les opposées. */
+        ok("… et aigrit BEAUCOUP moins la faction avancée que les opposées",
+           faction_grievance(0,FAC_GARDIEN) < faction_grievance(0,FAC_MARCHAND)*0.67f);
         faction_lever_apply(1, FAC_TRANSGRESSEUR, 0.4f);  /* forge à runes → Transgresseurs */
         ok("la forge à runes (Transgresseurs) aigrit les Communautaires",
            faction_grievance(1,FAC_COMMUNAUTAIRE) > 0.2f);
@@ -229,6 +262,7 @@ int main(void){
            ret==corr0 && corr1<=corr0-18 && corr1<corr0);
         ok("l'audit n'efface pas tout d'un coup (la capture résiduelle demeure)", corr1>0);
     }
+    faction_bind(NULL, NULL); free(fe);   /* la fixture liée du GLISSEMENT (sections 8 + I5) */
 
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n", g_pass, g_fail);
