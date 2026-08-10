@@ -469,6 +469,17 @@ EthosFaction faction_class_current(int cid, SocialClass k){
     int b=0; for (int i=1;i<FAC_COUNT;i++) if (acc[i]>acc[b]) b=i;
     return (EthosFaction)b;
 }
+/* L'ALIGNEMENT POLITIQUE d'une classe (terme « votre politique » de la satisfaction) :
+ * la stance de la couronne (g_lever_bias — les leviers TENUS) projetée sur le penchant
+ * de cette classe dans cette culture. Gouverner dans le sens d'une pop la satisfait ;
+ * ne rien tenir = 0 (la stance non entretenue s'efface déjà). [0..~LEVER_BIAS_CAP]. */
+float faction_class_policy(int cid, const PopCulture *cult, SocialClass k){
+    if (cid<0||cid>=SCPS_MAX_COUNTRY) return 0.f;
+    float lean[FAC_COUNT]; group_ethos_lean_k(cult, k, lean);
+    float s=0.f;
+    for (int i=0;i<FAC_COUNT;i++) s += g_lever_bias[cid][i]*lean[i];
+    return s;
+}
 float faction_grievance(int cid, EthosFaction fac){
     /* SANS SEUIL : la moyenne des colères pondérée par la TEINTE du courant — les
      * poids se normalisent, la lecture n'est jamais 0 dès qu'un peuple rumine

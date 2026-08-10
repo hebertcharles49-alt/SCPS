@@ -1695,6 +1695,8 @@ int  scps_set_player_culture(int heritage, int ethos, int t0, int t1, int t2);
 /* CLIMAT DU PEUPLE (créateur d'empire) : 0 tempéré · 1 aride · 2 tropical · 3 froid ·
  * -1 auto. Posé AVANT la (re)génération ; la capitale du joueur naît sur la classe. */
 void scps_set_player_climat(int climat);
+/* Le ±X « Votre politique » du hover de satisfaction (points −15..+15, classe 0-2). */
+int  scps_country_class_policy_sat(ScpsSim *s, int cid, int classe);
 /* EFFACE TOUTES les compositions (retour au tirage IA + héritage ADAPTATIF + éthos émergent). */
 void scps_clear_player_culture(void);
 /* NOM PERSONNALISÉ : le joueur (re)nomme un État — champ d'affichage (jamais hashé),

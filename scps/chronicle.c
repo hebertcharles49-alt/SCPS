@@ -1608,7 +1608,23 @@ int main(int argc, char **argv){
                     if (s.econ->prov[r2].colonized && AD[(size_t)q*SCPS_MAX_PROV+r2]){ nadj++; break; }
             }
             printf("   PROV libres %d — dont %d ATTEIGNABLES (adjacentes a une colonisee) · %d hors de portee\n",
-                   nfree, nadj, nfree-nadj); } }
+                   nfree, nadj, nfree-nadj); 
+          /* COMPOSITION SOCIALE MONDIALE (2026-08-06 : les édifices élèvent leur
+           * classe) — la preuve que les voies DIVERGENT au lieu de finir marchandes. */
+          { long cl[CLASS_COUNT]={0};
+            for (int q=0;q<NP;q++){
+                const ProvinceEconomy *pq=&s.econ->prov[q];
+                if (!pq->active || !pq->colonized) continue;
+                for (int gi=0; gi<pq->pop.n_groups; gi++)
+                    for (int k2=0;k2<CLASS_COUNT;k2++)
+                        cl[k2]+=pq->pop.groups[gi].pop_by_class[k2];
+            }
+            long tt=cl[0]+cl[1]+cl[2]+cl[3];
+            if (tt>0)
+                printf("   CLASSES monde : %ld%% laboureurs · %ld%% bourgeois · %ld%% élites · %ld%% esclaves\n",
+                       cl[CLASS_LABORER]*100/tt, cl[CLASS_BOURGEOIS]*100/tt,
+                       cl[CLASS_ELITE]*100/tt, cl[CLASS_SLAVE]*100/tt); }
+          } }
         /* FAU/F8 — la boucle faustienne (transmuteurs + entropie) ET la demande de fer (forge
          * militaire). Conso cumulée par rare ; entropie monde ; prix moyen du fer (la preuve F8). */
         { double pir=0.0, pmax=0.0, arms=0.0; int npr=0; long fract=0;

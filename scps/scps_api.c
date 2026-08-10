@@ -5098,6 +5098,36 @@ void scps_clear_player_culture(void){ culture_player_clear(); }
  * jamais ceci : golden intact. */
 void scps_set_player_climat(int climat){ world_set_player_climat(climat); }
 
+/* LE ±X DU HOVER DE SATISFACTION (décision joueur 2026-08-06 : « votre politique :
+ * ±X » — le nombre, jamais le récit) : le terme politique de la satisfaction d'une
+ * classe, agrégé pays (pondéré pop), en POINTS de satisfaction (−15..+15). L'UI
+ * l'affiche tel quel dans le détail : Panier · Impôt · Votre politique. */
+int scps_country_class_policy_sat(ScpsSim *s, int cid, int classe){
+    if (!s || !s->sim.econ || cid<0 || classe<0 || classe>=CLASS_COUNT) return 0;
+    WorldEconomy *e=s->sim.econ;
+    float psw=tune_f("POL_SAT_W",0.30f), cap=tune_f("POL_SAT_CAP",0.15f);
+    if (psw<=0.f) return 0;
+    double acc=0.0, wsum=0.0;
+    int NP=e->n_prov; if (NP>SCPS_MAX_PROV) NP=SCPS_MAX_PROV;
+    for (int p=0;p<NP;p++){
+        ProvinceEconomy *pe=&e->prov[p];
+        if (!pe->active || !pe->colonized || pe->owner!=cid) continue;
+        float align=faction_class_policy(cid, &pe->culture, (SocialClass)classe);
+        float gsum=0.f; long gpop=0;
+        for (int gi=0; gi<pe->pop.n_groups; gi++){
+            const PopGroup *g2=&pe->pop.groups[gi];
+            long p2=g2->pop_by_class[classe];
+            if (p2>0){ gsum+=g2->ethos_grief*(float)p2; gpop+=p2; }
+        }
+        if (gpop<=0) continue;
+        float grief=gsum/(float)gpop;
+        float pol=psw*(align-grief); if (pol>cap) pol=cap; if (pol<-cap) pol=-cap;
+        acc += (double)pol*(double)gpop; wsum += (double)gpop;
+    }
+    if (wsum<=0.0) return 0;
+    return (int)((acc/wsum)*100.0 + (acc>=0.0?0.5:-0.5));
+}
+
 /* NOM PERSONNALISÉ (créateur d'empire, 2026-07-10) : le joueur nomme son État.
  * Champ d'AFFICHAGE (les noms ne sont jamais hashés — même statut que les noms
  * tribaux WILD) ; Country.name est sérialisé avec le monde, donc le nom choisi

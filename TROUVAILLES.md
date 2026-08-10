@@ -8284,3 +8284,50 @@ l'équivalent du re-key province, vague dédiée multi-sessions).
 - Le seep passif fonde des provinces PENDANT les chantiers des bancs de façade
   (« +1 province » devenait +3) : scps_api_demo coupe PASSIVE_SEEP (tune_set) — il
   prouve la façade, pas l'expansion.
+
+## LES ÉDIFICES ÉLÈVENT LEUR CLASSE + LE TERME POLITIQUE DE LA SATISFACTION (2026-08-06)
+
+**Directives joueur** : « on va tous finir marchands » → « 100 élites par bâtiment (+100 à
+chaque upgrade) et % efficacité sur la POP (Pop × investissement × rot) » ; et sur la
+lisibilité : « dans le hover de détail de satisfaction il faut un "votre politique : ±X" —
+la satisfaction s'obtient en allant dans le sens de la pop OU par l'impôt OU par les
+marchandises ». JAMAIS de verbose narrative (« la Noblesse tient les offices » = interdit).
+
+**Découvertes** :
+- CONFIRMÉ à la struct : ProvBuild (le delta d'un édifice) n'a AUCUN champ d'emplois —
+  le lien édifices→élites « qui devait exister » n'avait JAMAIS été codé. Seules sources
+  de classes : tier de capitale (∝ pop, automatique) + ouvriers d'ateliers (bourgeois).
+  D'où la convergence : la SEULE variable sociale pilotable était l'atelier.
+- Fix : sièges d'élite DÉRIVÉS d'edi_built (rien de sérialisé) — épée (garnison/
+  forteresse/citadelle/arsenal/amirauté), robe (tribunal/chancellerie/académie), clergé
+  (temple/cathédrale/monastère — PAS le sanctuaire T1). v2 : tier×100 par édifice
+  (+100/upgrade — la citadelle T3 vaut 300, elle EST sa famille) + part proportionnelle
+  pop × EDI_ELITE_POP_PCT × Σtiers × (1+rot) — le ROT GONFLE la cour (vénalité des
+  offices). Sans la part-pop, la masse bourgeoise des grands empires noyait la noblesse.
+- SWEEP 3 graines apparié (an 180) : « tous marchands » n'était PAS une fatalité DÉMO
+  (bourgeois 8-13 % même OFF, le monde reste ~3/4 laboureur) — le risque était le POIDS
+  POLITIQUE. ON : élites +1..4 pts partout (4043 : 9→13 %), poids politique noble
+  ~12 %→~27 % du clout mondial. Limite : mesure MONDIALE — la divergence PAR VOIE
+  (citadelles vs comptoirs) reste à prouver par pays.
+- LE TERME POLITIQUE dans LA formule de satisfaction (scps_econ l.4936) : sat = panier
+  + confort ± POL_SAT_W×(alignement − grief) − impôt − cicatrice, borné ±POL_SAT_CAP.
+  L'ALIGNEMENT = la stance de la couronne projetée sur le penchant de la classe
+  (faction_class_policy) ; le GRIEF = la rancœur des porteurs locaux. Le grief d'éthos
+  cesse d'être un canal invisible : il pèse dans LE nombre que le joueur regarde.
+  Reader façade scps_country_class_policy_sat (±15 pts) pour la ligne UI « Votre
+  politique : ±X » — LE NOMBRE, JAMAIS LE RÉCIT (doctrine).
+- CHRONICLE : ligne « CLASSES monde : L/B/E/S % » — la société se juge sur pièces.
+
+**Pièges** :
+- Le Makefile n'était JAMAIS commité (racine, hors de mes `git add scps/`) : un
+  `git checkout -- Makefile` a perdu le fix TECH_DEMO_OBJS+tune.o vieux de 3 jours.
+  COMMITTER le Makefile avec ses vagues.
+- scps_demography.o dépend désormais d'agency (edifice_tier) + factions (capture) :
+  8 recettes de bancs complétées. APPEND en FIN de définition multiligne (jamais après
+  un `\` de continuation — un regex naïf a cassé les 40 builds d'un coup).
+- Un sweep doit CONSERVER ses logs entiers (fichiers), pas des variables greppées —
+  la première mesure de composition a jeté toutes les autres télémétries.
+
+**Restes** : brancher la ligne « Votre politique : ±X » dans budget_panel_v2.gd (reader
+prêt) ; composition PAR PAYS au chronicle (prouver la divergence des voies) ; la passe
+des mots (« faction » face-joueur) ; calibrage POL_SAT_W/CAP sous sweep long.

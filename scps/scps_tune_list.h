@@ -628,6 +628,21 @@
      * purement culturel d'hier (kill-switch). */ \
     X(FAC_CLASS_W,            1.0f)     /* Gain d'aigreur sous la TEINTE (l'opposition pondérée d'un peuple mêlé dilue ~2×
      * vs l'ancien tableau) — retient l'échelle du canal grief→loyauté du Conseil. */     X(FAC_TINT_GAIN,          2.0f) \
+    /* LES ÉDIFICES ÉLÈVENT LEUR CLASSE (décision joueur 2026-08-06) : sièges d'ÉLITE
+     * par édifice d'élite bâti (épée : garnison/forteresse/citadelle/arsenal/amirauté ·
+     * robe : tribunal/chancellerie/académie · clergé : temple/cathédrale/monastère).
+     * Sans eux, seul l'atelier faisait la composition sociale → convergence marchande
+     * universelle. 0 = l'ancien monde (kill-switch). */ \
+    X(EDI_ELITE_JOBS,       100.0f) \
+    /* v2 : la part d'élites PROPORTIONNELLE à la pop — pop × PCT × Σtiers × (1+rot).
+     * Sans elle la masse bourgeoise noyait l'aristocratie des grands empires. */ \
+    X(EDI_ELITE_POP_PCT,      0.004f) \
+    /* LE TERME POLITIQUE DE LA SATISFACTION (décision joueur 2026-08-06 : « votre
+     * politique : ±X ») — W × (alignement stance·penchant − grief des porteurs),
+     * borné ±CAP. La satisfaction devient LA métrique unique : panier + marchandises
+     * ± politique − impôt. 0 = kill-switch. */ \
+    X(POL_SAT_W,              0.30f) \
+    X(POL_SAT_CAP,            0.15f) \
     /* PIPELINE DIPLO — la VALEUR SUBJECTIVE oriente la CIBLE (pas l'éthos, qui décide la
      * MÉTHODE). COVET_W : poids du BESOIN (Σ raw_cap × stress(runway) × prix) dans la valeur
      * d'une province d'autrui → l'IA convoite qui TIENT ce qui lui manque. COMPLEMENT_W :

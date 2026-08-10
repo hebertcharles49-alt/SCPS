@@ -7,6 +7,8 @@
  * province mono-groupe reproduit les nombres d'aujourd'hui (non-régression).
  */
 #include "scps_demography.h"
+#include "scps_agency.h"
+#include "scps_factions.h"   /* faction_capture_total — le rot gonfle la cour */   /* EDI_* (les édifices élèvent leur classe) */
 #include "scps_culture.h"   /* ethos_name */
 #include "scps_labor.h"     /* capitale_max_tier : les emplois nobles dont la classe émerge (§pop précise) */
 #include "scps_routes.h"    /* S2 : le contact COMMERCIAL porte la cristallisation culturelle */
@@ -511,6 +513,46 @@ static void demography_emerge_classes(ProvinceEconomy *re){
      * faction (×3 élite) volatil → tension de coup → coups en boucle (~1/5 sims). Cf. AUDIT : la
      * distribution par emplois est l'échelle pour laquelle les factions/l'armée sont calibrées. */
     long elite_jobs   = (long)capitale_max_tier(total)*100;                  /* capitale : tier·100 */
+    /* ══ LES ÉDIFICES ÉLÈVENT LEUR CLASSE (décision joueur 2026-08-06) ══════════════
+     * Jusqu'ici la SEULE source de bourgeois était l'atelier et la seule source
+     * d'élites le tier de capitale (∝ pop) : tout empire industrieux convergeait
+     * MARCHAND, quelle que soit sa voie (« on va tous finir marchands »). Désormais
+     * chaque édifice d'ÉLITE bâti crée ses sièges (100 = un paquet) — la noblesse
+     * d'ÉPÉE (garnison/forteresse/citadelle, arsenal/amirauté), la noblesse de ROBE
+     * (tribunal/chancellerie/académie), le CLERGÉ (temple/cathédrale/monastère —
+     * pas le sanctuaire T1, un autel de village n'anoblit personne). DÉRIVÉ du
+     * masque edi_built : rien de sérialisé en plus, le bâti EST la source. La borne
+     * existante (élites+bourgeois ≤ pop) protège les petites provinces. Ainsi la
+     * voie martiale nourrit une aristocratie (socle Gardien+Conquérant), la voie
+     * légiste une robe, la voie marchande ses bourgeois — les trajectoires sociales
+     * DIVERGENT au lieu de converger. Kill-switch : EDI_ELITE_JOBS=0. */
+    { static const uint32_t ELITE_EDIS =
+          (1u<<EDI_GARNISON)|(1u<<EDI_FORTERESSE)|(1u<<EDI_CITADELLE)
+        | (1u<<EDI_ARSENAL)|(1u<<EDI_AMIRAUTE)
+        | (1u<<EDI_TRIBUNAL)|(1u<<EDI_CHANCELLERIE)|(1u<<EDI_ACADEMIE)
+        | (1u<<EDI_TEMPLE)|(1u<<EDI_CATHEDRALE)|(1u<<EDI_MONASTERE);
+      float per = tune_f("EDI_ELITE_JOBS", 100.f);
+      if (per > 0.f){
+          /* v2 (décision joueur) : « 100 élites par bâtiment, +100 à chaque upgrade »
+           * — le PLANCHER = Σ tier×100 par édifice d'élite bâti (une citadelle T3
+           * vaut 300 sièges : elle EST sa famille entière, les paliers remplacent).
+           * Et « % sur la POP, pas sur le bâtiment » : une part PROPORTIONNELLE
+           * pop × investissement × (1+rot) — sans elle, la masse bourgeoise des
+           * grands empires noie l'aristocratie et Marchand gagne PAR LE NOMBRE.
+           * Le ROT (capture de l'État) GONFLE la classe dirigeante : la vénalité
+           * des offices — une cour corrompue s'élargit, elle ne se resserre pas. */
+          int invest = 0;                              /* Σ des tiers d'élite bâtis */
+          for (int e2=0; e2<EDIFICE_COUNT; e2++)
+              if ((ELITE_EDIS>>e2) & 1u)
+                  if (re->edi_built & (1u<<e2)) invest += edifice_tier((Edifice)e2);
+          if (invest > 0){
+              float rot = (re->owner>=0) ? faction_capture_total(re->owner) : 0.f;
+              float prop = (float)total * tune_f("EDI_ELITE_POP_PCT", 0.004f)
+                         * (float)invest * (1.f + rot);
+              elite_jobs += ((long)(per*(float)invest + prop)/100)*100;
+          }
+      }
+    }
     long artisan_jobs = 0;
     for (int b=0;b<re->n_bld;b++) artisan_jobs += (long)re->bld[b].workers;  /* ateliers : ouvriers */
     artisan_jobs = (artisan_jobs/100)*100;

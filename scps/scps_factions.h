@@ -139,6 +139,9 @@ void faction_levers_on_coup(int cid);                             /* un coup DÉ
 /* Le COURANT d'une classe dans un pays — l'agrégat des peuples de cette classe
  * (statecraft porté par la pop : le ministre élite porte le courant DES élites). */
 EthosFaction faction_class_current(int cid, SocialClass k);
+/* L'ALIGNEMENT de la stance de la couronne avec le penchant d'une classe (le terme
+ * « votre politique : ±X » de la satisfaction — jamais un mot de plus). */
+float faction_class_policy(int cid, const PopCulture *cult, SocialClass k);
 float faction_grievance(int cid, EthosFaction f);                 /* 0-1 : la rancœur d'une faction (UI) */
 /* Lecteur-écrivain DIRECT de la rancœur (0-1, borné) — pour un acte qui aigrit UNE
  * faction précise sans passer par le motif « lever une opposée » (ex. Conseil P1-3 :

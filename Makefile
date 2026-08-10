@@ -100,7 +100,7 @@ RELIGION_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion
                     $(OBJDIR)/scps_scps_legitimacy.o $(OBJDIR)/scps_scps_prosperity.o \
                     $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o $(OBJDIR)/scps_scps_modifier.o \
                     $(OBJDIR)/scps_scps_demography.o $(OBJDIR)/scps_scps_labor.o \
-                    $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_missions.o $(OBJDIR)/scps_scps_intertrade.o $(OBJDIR)/scps_scps_statecraft.o $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_religion_demo.o
+                    $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_missions.o $(OBJDIR)/scps_scps_intertrade.o $(OBJDIR)/scps_scps_statecraft.o $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_religion_demo.o $(OBJDIR)/scps_scps_agency.o
 religion_demo: $(RELIGION_DEMO_OBJS)
 	$(CC) $(RELIGION_DEMO_OBJS) -o $@ -lm
 
@@ -203,7 +203,7 @@ econ_production_demo: $(ECON_PRODUCTION_DEMO_OBJS)
 	$(CC) $(ECON_PRODUCTION_DEMO_OBJS) -o $@ -lm
 
 # ---- Banc d'essai de l'arbre de technologies -----------------------------
-TECH_DEMO_OBJS := $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_tech_demo.o
+TECH_DEMO_OBJS := $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_tech_demo.o $(OBJDIR)/scps_scps_tune.o
 tech_demo: $(TECH_DEMO_OBJS)
 	$(CC) $(TECH_DEMO_OBJS) -o $@ -lm
 
@@ -514,7 +514,7 @@ EVENTS_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $
                     $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_scps_campaign.o \
                     $(OBJDIR)/scps_scps_navy.o $(OBJDIR)/scps_scps_endgame.o \
                     $(OBJDIR)/scps_scps_fog.o \
-                    $(OBJDIR)/scps_events_demo.o
+                    $(OBJDIR)/scps_events_demo.o $(OBJDIR)/scps_scps_agency.o
 events_demo: $(EVENTS_DEMO_OBJS)
 	$(CC) $(EVENTS_DEMO_OBJS) -o $@ -lm
 
@@ -552,7 +552,7 @@ ARMY_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $
                   $(OBJDIR)/scps_scps_legitimacy.o $(OBJDIR)/scps_scps_prosperity.o $(OBJDIR)/scps_scps_factions.o \
                   $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o $(OBJDIR)/scps_scps_modifier.o \
                   $(OBJDIR)/scps_scps_demography.o $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_missions.o $(OBJDIR)/scps_scps_intertrade.o $(OBJDIR)/scps_scps_statecraft.o \
-                  $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_army_demo.o
+                  $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_army_demo.o $(OBJDIR)/scps_scps_agency.o
 army_demo: $(ARMY_DEMO_OBJS)
 	$(CC) $(ARMY_DEMO_OBJS) -o $@ -lm
 
@@ -564,7 +564,7 @@ DEMOGRAPHY_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religi
                     $(OBJDIR)/scps_scps_legitimacy.o $(OBJDIR)/scps_scps_prosperity.o \
                     $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o $(OBJDIR)/scps_scps_modifier.o \
                     $(OBJDIR)/scps_scps_demography.o $(OBJDIR)/scps_scps_labor.o \
-                    $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_missions.o $(OBJDIR)/scps_scps_intertrade.o $(OBJDIR)/scps_scps_statecraft.o $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_demography_demo.o
+                    $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_missions.o $(OBJDIR)/scps_scps_intertrade.o $(OBJDIR)/scps_scps_statecraft.o $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_demography_demo.o $(OBJDIR)/scps_scps_agency.o
 demography_demo: $(DEMOGRAPHY_DEMO_OBJS)
 	$(CC) $(DEMOGRAPHY_DEMO_OBJS) -o $@ -lm
 
@@ -576,7 +576,7 @@ DEMOGRAPHY_INTEG_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_relig
                     $(OBJDIR)/scps_scps_prosperity.o $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o \
                     $(OBJDIR)/scps_scps_modifier.o $(OBJDIR)/scps_scps_demography.o $(OBJDIR)/scps_scps_labor.o \
                     $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_missions.o $(OBJDIR)/scps_scps_intertrade.o $(OBJDIR)/scps_scps_statecraft.o $(OBJDIR)/scps_scps_routes.o \
-                    $(OBJDIR)/scps_demography_integ_demo.o
+                    $(OBJDIR)/scps_demography_integ_demo.o $(OBJDIR)/scps_scps_agency.o
 demography_integ_demo: $(DEMOGRAPHY_INTEG_OBJS)
 	$(CC) $(DEMOGRAPHY_INTEG_OBJS) -o $@ -lm
 
@@ -592,7 +592,7 @@ REVOLT_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o
                     $(OBJDIR)/scps_scps_statecraft.o $(OBJDIR)/scps_scps_modifier.o \
                     $(OBJDIR)/scps_scps_demography.o $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_scps_factions.o \
                     $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_campaign.o \
-                    $(OBJDIR)/scps_scps_revolt.o $(OBJDIR)/scps_revolt_demo.o
+                    $(OBJDIR)/scps_scps_revolt.o $(OBJDIR)/scps_revolt_demo.o $(OBJDIR)/scps_scps_agency.o
 revolt_demo: $(REVOLT_DEMO_OBJS)
 	$(CC) $(REVOLT_DEMO_OBJS) -o $@ -lm
 
@@ -622,7 +622,7 @@ ENDGAME_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.
                      $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_missions.o $(OBJDIR)/scps_scps_intertrade.o $(OBJDIR)/scps_scps_statecraft.o $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_scps_navy.o \
                      $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_campaign.o \
                      $(OBJDIR)/scps_scps_demography.o $(OBJDIR)/scps_scps_modifier.o \
-                     $(OBJDIR)/scps_scps_endgame.o $(OBJDIR)/scps_endgame_demo.o
+                     $(OBJDIR)/scps_scps_endgame.o $(OBJDIR)/scps_endgame_demo.o $(OBJDIR)/scps_scps_agency.o
 endgame_demo: $(ENDGAME_DEMO_OBJS)
 	$(CC) $(ENDGAME_DEMO_OBJS) -o $@ -lm
 

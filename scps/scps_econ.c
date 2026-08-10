@@ -4933,7 +4933,29 @@ void econ_tick(WorldEconomy *e, float dt) {
             /* la surtaxe (§6) gronde : elle ABAISSE la satisfaction → agitation */
             /* CICATRICE D'ANNEXION (étage 3d) : la plaie douce frappe la STABILITÉ — elle ABAISSE
              * la satisfaction (donc l'agitation monte) sans toucher la croissance (≠ revolt_scar). */
-            re->strata[c].satisfaction=clampf(basket + comfort_joy - over_tax[c]*K_TAX_AGIT
+            /* LE TERME POLITIQUE (décision joueur 2026-08-06) — la satisfaction s'obtient
+             * en allant dans le sens de la pop OU par l'impôt OU par les marchandises :
+             * pol = W × (alignement − grief), où l'ALIGNEMENT est la stance de la
+             * couronne projetée sur le penchant de CETTE classe (gouverner dans son
+             * sens), et le GRIEF la rancœur des porteurs locaux de la classe. Borné
+             * ±POL_SAT_CAP. Le hover UI le montre en une ligne : « Votre politique :
+             * ±X » — le nombre, jamais le récit. POL_SAT_W=0 = kill-switch. */
+            float pol_sat=0.f;
+            { float psw=tune_f("POL_SAT_W",0.30f);
+              if (psw>0.f && re->owner>=0){
+                  float align=faction_class_policy(re->owner, &re->culture, (SocialClass)c);
+                  float gsum=0.f; long gpop=0;
+                  for (int gi=0; gi<re->pop.n_groups; gi++){
+                      const PopGroup *g2=&re->pop.groups[gi];
+                      long p2=g2->pop_by_class[c];
+                      if (p2>0){ gsum+=g2->ethos_grief*(float)p2; gpop+=p2; }
+                  }
+                  float grief=(gpop>0)?gsum/(float)gpop:0.f;
+                  float cap=tune_f("POL_SAT_CAP",0.15f);
+                  pol_sat=clampf(psw*(align-grief), -cap, cap);
+              } }
+            re->strata[c].satisfaction=clampf(basket + comfort_joy + pol_sat
+                                              - over_tax[c]*K_TAX_AGIT
                                               - re->annex_scar*tune_f("ANNEX_SAT_W",0.5f), 0.f, 1.f);
             if (pid<SCPS_MAX_PROV) g_basket_pc[pid][c]=(units>0.f)?need_w/units:0.f;  /* E0.7 : panier/tête */
             float nm_c=(nbasket>0)?(float)nsat/(float)nbasket:0.f;   /* part du panier ACTIF couverte (M10 : dénominateur scopé, p1_on vrai) */
