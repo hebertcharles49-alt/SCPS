@@ -1198,9 +1198,18 @@ int scps_province_culture_context(ScpsSim *s, int pid, ScpsCultureContext *out){
     out->ethos_drift_pct=(int)(region_ethos_drift(local.ethos,crown->ethos)*100.f+0.5f);
     out->friction_avg_pct=pct10(province_Dbar(&pe->pop,s->sim.drift));
     out->friction_max_pct=pct10(province_Dinf(&pe->pop,s->sim.drift));
-    out->relation_to_crown=sz(relation_name(culture_relation_of(
-        local.langue,local.valeurs,local.subsistance,local.parente,local.religion,local.credo,local.rel_branch,
-        crown->langue,crown->valeurs,crown->subsistance,crown->parente,crown->religion,crown->credo,crown->rel_branch)));
+    {   /* PHYLO (2026-08-11) : l'horloge locale↔couronne = la distance d'ARBRE quand les
+         * deux identités existent (le scalaire `langue` saturait → « jumeaux convergents »
+         * par défaut des vieux mondes) ; repli scalaire sinon (cultures de genèse). */
+        float la=local.langue, lb=crown->langue;
+        uint16_t crid=econ_ruling_culture_id(s->w,s->sim.econ,pe->owner);
+        if (econ_culture_identity_valid(dom->culture_id) && econ_culture_identity_valid(crid)){
+            la=0.f; lb=econ_culture_phylo_clock(dom->culture_id,crid);
+        }
+        out->relation_to_crown=sz(relation_name(culture_relation_of(
+            la,local.valeurs,local.subsistance,local.parente,local.religion,local.credo,local.rel_branch,
+            lb,crown->valeurs,crown->subsistance,crown->parente,crown->religion,crown->credo,crown->rel_branch)));
+    }
     out->local_faith_id=dom->faith;
     out->state_faith_id=(pe->owner>=0&&pe->owner<s->w->n_countries)?religion_of_country(pe->owner):-1;
     out->local_faith=sz(api_religion_name_id(out->local_faith_id));

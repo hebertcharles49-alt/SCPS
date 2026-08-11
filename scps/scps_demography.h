@@ -23,6 +23,7 @@
 #include "scps_modifier.h"   /* la pile de dérive (assimilation/suppression) */
 #include "scps_routes.h"     /* S2 : RouteNetwork (contact commercial) */
 #include "scps_diplo.h"      /* S2 : DiploState (la guerre coupe le contact) */
+#include "scps_prosperity.h" /* attracteurs endogènes : K du pays */
 #include "scps_readout.h"    /* BandHumeur — la loyauté en MOT (membrane) */
 
 /* PopGroup / ProvincePop sont définis dans scps_econ.h (bas niveau) : ainsi
@@ -60,7 +61,10 @@ void           province_lift_coercion (ProvincePop *pp, ModifierStack *drift);  
 float assimilation_years(float Dinf, float P, float K);   /* Agraire ~20 ans, Clanique 80-150 */
 /* Fait dériver chaque minorité vers le dominant d'un pas (years_per_tick). Fusion
  * quand la distance < EPS. Renvoie le nb de groupes fusionnés ce tick. */
-int   assimilation_tick(ProvincePop *pp, ModifierStack *drift, float P, float K, float years_per_tick);
+/* + CANAL ÉTATIQUE (2026-08-11) : crown/state_w — un État capable assimile vers la
+ * COURONNE au-delà de son poids démographique. crown=NULL ou state_w=0 = l'hier exact. */
+int   assimilation_tick(ProvincePop *pp, ModifierStack *drift, float P, float K, float years_per_tick,
+                        const PopCulture *crown, float state_w);
 
 /* ---- Conversion religieuse (§2) — la FOI converge vers le TRÔNE ------- *
  * Distincte de l'assimilation (qui tire vers la dominante LOCALE) : l'axe
@@ -132,6 +136,15 @@ int demography_contact_tick(WorldEconomy *e, ModifierStack *drift, const RouteNe
                             const DiploState *dp, float P, float K, float ypt);
 void demography_contact_reset(void);   /* RAZ du compteur de cristallisations (par sim) */
 long demography_contact_count(void);   /* cristallisations par contact cumulées (télémétrie) */
+/* TURCHIN (2026-08-11) : l'excédent d'élite au-delà des positions réelles [0..1]. */
+float demography_elite_rival(const ProvinceEconomy *pe);
+/* ATTRACTEURS ENDOGÈNES (2026-08-11) : les valeurs du peuple dominant dérivent vers un
+ * attracteur composite (ancre du mode de vie · confort→mercantile · guerre→dominateur ·
+ * K→bureaucrate) ; l'éthos cristallise avec hystérésis. Une culture bifurque ENFIN seule. */
+int  demography_values_tick(WorldEconomy *e, ModifierStack *drift,
+                            const WorldProsperity *wp, const DiploState *dp, float ypt);
+void demography_values_reset(void);
+long demography_values_count(void);
 void demography_migration_pact_reset(void);
 long demography_migration_pact_count(void);   /* flux de pacte migratoire cumulés (télémétrie) */
 long demography_migration_pact_souls(void);   /* ÂMES déplacées par pacte cumulées (le volume, pas l'événement) */

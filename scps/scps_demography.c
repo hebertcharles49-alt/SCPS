@@ -179,11 +179,45 @@ float assimilation_years(float Dinf, float P, float K){
     float metab = 0.5f + (P+K)/20.f;          /* P+K accélèrent (la capacité métabolise) */
     return clampf(Dinf*YEARS_PER_DINF/metab, ASSIM_MIN_YEARS, ASSIM_MAX_YEARS);
 }
-int assimilation_tick(ProvincePop *pp, ModifierStack *drift, float P, float K, float ypt){
-    if (pp->n_groups<2) return 0;
+/* ══ LE CANAL ÉTATIQUE (analyse joueur 2026-08-11 : « dans SCPS, la culture est un
+ * fait démographique, jamais un fait institutionnel — ce qui est cohérent, et faux ») ══
+ * L'assimilation visait le dominant DÉMOGRAPHIQUE : une élite conquérante minoritaire
+ * s'assimilait à ses sujets quel que soit son appareil d'État — ni francisation, ni
+ * russification possibles. Désormais un État à forte capacité (K) pèse au-delà de son
+ * poids numérique : la CIBLE des minorités penche vers la COURONNE (state_w), et le
+ * dominant local lui-même dérive lentement vers elle — l'école, la conscription, la
+ * langue administrative. Un État faible (K≤5) n'a AUCUNE politique culturelle : la
+ * cible reste purement démographique (l'hier exact). ASSIM_STATE_W=0 = kill-switch. */
+int assimilation_tick(ProvincePop *pp, ModifierStack *drift, float P, float K, float ypt,
+                      const PopCulture *crown, float state_w){
+    if (pp->n_groups<1) return 0;
     const PopGroup *dom=province_dominant(pp);
+    if (!dom) return 0;
     int dom_idx=(int)(dom-pp->groups);
     PopCulture target=group_culture_effective(dom, drift);
+    if (crown && state_w>0.f){
+        /* la cible penche vers la couronne, ∝ la capacité institutionnelle */
+        target.valeurs     += (crown->valeurs    -target.valeurs)    *state_w;
+        target.subsistance += (crown->subsistance-target.subsistance)*state_w;
+        target.parente     += (crown->parente    -target.parente)    *state_w;
+        target.religion    += (crown->religion   -target.religion)   *state_w;
+        /* et le DOMINANT lui-même dérive vers l'État (jamais fusionné — il reste le peuple) */
+        PopGroup *dg=&pp->groups[dom_idx];
+        if (dg->klass!=CLASS_SLAVE){
+            PopCulture de=group_culture_effective(dg, drift);
+            float dd=econ_content_dist_faith(&de, crown);
+            if (dd>0.05f){
+                float yrs=assimilation_years(dd,P,K);
+                float rt=state_w*ypt/fmaxf(yrs,1.f);
+                GroupDrift st={ (crown->valeurs    -de.valeurs)    *rt,
+                                (crown->subsistance-de.subsistance)*rt,
+                                (crown->parente    -de.parente)    *rt,
+                                (crown->religion   -de.religion)   *rt, 0.f };
+                modstack_accumulate_drift(drift, dg->drift_id, st, false);
+            }
+        }
+    }
+    if (pp->n_groups<2) return 0;
     int fused=0;
     for (int i=pp->n_groups-1;i>=0;i--){
         if (i==dom_idx) continue;
@@ -479,39 +513,9 @@ void demography_dyn_id_rebase(const WorldEconomy *econ){
  * manufactures), répartis sur les groupes AU PRORATA, par paquets de 100. Σ pop_by_class
  * = count. Rien n'est posé : la structure d'emplois sculpte le tissu social, groupe par
  * groupe. */
-static void demography_emerge_classes(ProvinceEconomy *re){
-    ProvincePop *pp=&re->pop;
-    /* ESCLAVAGE — un groupe TENU (klass==CLASS_SLAVE) ne participe PAS à l'émergence par
-     * emplois (nobles/artisans) : toutes ses âmes restent dans CLASS_SLAVE jusqu'à
-     * l'affranchissement (qui bascule klass→CLASS_LABORER, cf. demography_manumit_country).
-     * `total`/les jobs élite-bourgeois se calculent sur le reste (les LIBRES) seulement. */
-    long total=0;
-    for (int i=0;i<pp->n_groups;i++){
-        PopGroup *g=&pp->groups[i];
-        if (g->klass==CLASS_SLAVE){
-            g->pop_by_class[CLASS_LABORER]=0; g->pop_by_class[CLASS_BOURGEOIS]=0;
-            g->pop_by_class[CLASS_ELITE]=0;   g->pop_by_class[CLASS_SLAVE]=g->count;
-            continue;
-        }
-        g->pop_by_class[CLASS_SLAVE]=0;
-        total+=g->count;
-    }
-    if (total<1){
-        for (int i=0;i<pp->n_groups;i++){
-            if (pp->groups[i].klass==CLASS_SLAVE) continue;
-            pp->groups[i].pop_by_class[CLASS_LABORER]=pp->groups[i].count;
-            pp->groups[i].pop_by_class[CLASS_BOURGEOIS]=0;
-            pp->groups[i].pop_by_class[CLASS_ELITE]=0;
-        }
-        return;
-    }
-    /* La classe ÉMERGE des EMPLOIS (job-derived, BORNÉ) : sièges nobles = tier de capitale·100,
-     * sièges bourgeois = Σ ouvriers d'atelier ; répartis AU PRORATA sur les groupes, par paquets
-     * de 100. Bornés par CONSTRUCTION (le tier de capitale change rarement, les ateliers lentement)
-     * ⇒ pas de rétroaction avec strata/révolte. ⚠ NE PAS dériver de `strata` : strata est mobile par
-     * richesse (E0.7) ET muté par la révolte dans le même tick → `pop_by_class` volatil → clout de
-     * faction (×3 élite) volatil → tension de coup → coups en boucle (~1/5 sims). Cf. AUDIT : la
-     * distribution par emplois est l'échelle pour laquelle les factions/l'armée sont calibrées. */
+/* Les POSITIONS d'élite d'une province (capitale + édifices, vénalité comprise) —
+ * extraites pour être lues AUSSI par le déficit de rivalité (Turchin, ci-dessous). */
+static long prov_elite_seats(const ProvinceEconomy *re, long total){
     long elite_jobs   = (long)capitale_max_tier(total)*100;                  /* capitale : tier·100 */
     /* ══ LES ÉDIFICES ÉLÈVENT LEUR CLASSE (décision joueur 2026-08-06) ══════════════
      * Jusqu'ici la SEULE source de bourgeois était l'atelier et la seule source
@@ -553,6 +557,59 @@ static void demography_emerge_classes(ProvinceEconomy *re){
           }
       }
     }
+    return elite_jobs;
+}
+/* ══ TURCHIN — LE RATIO ASPIRANTS/POSITIONS (analyse joueur 2026-08-11) ══
+ * « L'élite qui renverse le trône n'a presque jamais faim ; elle a des rivaux. »
+ * La strate élite (mobile par richesse, désormais SANS verrou de satisfaction à
+ * l'entrée) peut dépasser les positions réelles (sièges de capitale + édifices) :
+ * l'excédent — cadets sans terre, diplômés sans charge — nourrit le déficit de
+ * révolte de l'élite (scps_revolt, ELITE_RIVAL_W). 0 = pas de surnombre. */
+float demography_elite_rival(const ProvinceEconomy *pe){
+    long total=0;
+    for (int i=0;i<pe->pop.n_groups;i++)
+        if (pe->pop.groups[i].klass!=CLASS_SLAVE) total+=pe->pop.groups[i].count;
+    if (total<100) return 0.f;
+    long seats=prov_elite_seats(pe, total);
+    if (seats<100) seats=100;                  /* plancher : un hameau a toujours ses anciens */
+    float asp=pe->strata[CLASS_ELITE].pop;
+    float r=asp/(float)seats - 1.f;            /* l'EXCÉDENT relatif au-delà des positions */
+    return clampf(r, 0.f, 1.f);
+}
+static void demography_emerge_classes(ProvinceEconomy *re){
+    ProvincePop *pp=&re->pop;
+    /* ESCLAVAGE — un groupe TENU (klass==CLASS_SLAVE) ne participe PAS à l'émergence par
+     * emplois (nobles/artisans) : toutes ses âmes restent dans CLASS_SLAVE jusqu'à
+     * l'affranchissement (qui bascule klass→CLASS_LABORER, cf. demography_manumit_country).
+     * `total`/les jobs élite-bourgeois se calculent sur le reste (les LIBRES) seulement. */
+    long total=0;
+    for (int i=0;i<pp->n_groups;i++){
+        PopGroup *g=&pp->groups[i];
+        if (g->klass==CLASS_SLAVE){
+            g->pop_by_class[CLASS_LABORER]=0; g->pop_by_class[CLASS_BOURGEOIS]=0;
+            g->pop_by_class[CLASS_ELITE]=0;   g->pop_by_class[CLASS_SLAVE]=g->count;
+            continue;
+        }
+        g->pop_by_class[CLASS_SLAVE]=0;
+        total+=g->count;
+    }
+    if (total<1){
+        for (int i=0;i<pp->n_groups;i++){
+            if (pp->groups[i].klass==CLASS_SLAVE) continue;
+            pp->groups[i].pop_by_class[CLASS_LABORER]=pp->groups[i].count;
+            pp->groups[i].pop_by_class[CLASS_BOURGEOIS]=0;
+            pp->groups[i].pop_by_class[CLASS_ELITE]=0;
+        }
+        return;
+    }
+    /* La classe ÉMERGE des EMPLOIS (job-derived, BORNÉ) : sièges nobles = tier de capitale·100,
+     * sièges bourgeois = Σ ouvriers d'atelier ; répartis AU PRORATA sur les groupes, par paquets
+     * de 100. Bornés par CONSTRUCTION (le tier de capitale change rarement, les ateliers lentement)
+     * ⇒ pas de rétroaction avec strata/révolte. ⚠ NE PAS dériver de `strata` : strata est mobile par
+     * richesse (E0.7) ET muté par la révolte dans le même tick → `pop_by_class` volatil → clout de
+     * faction (×3 élite) volatil → tension de coup → coups en boucle (~1/5 sims). Cf. AUDIT : la
+     * distribution par emplois est l'échelle pour laquelle les factions/l'armée sont calibrées. */
+    long elite_jobs = prov_elite_seats(re, total);
     long artisan_jobs = 0;
     for (int b=0;b<re->n_bld;b++) artisan_jobs += (long)re->bld[b].workers;  /* ateliers : ouvriers */
     artisan_jobs = (artisan_jobs/100)*100;
@@ -608,6 +665,83 @@ static long g_migration_pact_souls = 0;   /* ÂMES déplacées par pacte, cumul 
 void demography_migration_pact_reset(void){ g_migration_pact_flows = 0; g_migration_pact_souls = 0; }
 long demography_migration_pact_count(void){ return g_migration_pact_flows; }
 long demography_migration_pact_souls(void){ return g_migration_pact_souls; }
+/* ══ LES ATTRACTEURS ENDOGÈNES DE VALEURS (analyse joueur 2026-08-11 : « il suffirait
+ * que valeurs soit un état lent avec des attracteurs concurrents ») ══
+ * Jusqu'ici une culture ne bifurquait JAMAIS seule : ses valeurs ne bougeaient que par
+ * conquête (diplo_peace_force_ethos) ou par contact (S2 — un PARTENAIRE requis). Rome ne
+ * pouvait pas devenir bureaucratique ni Venise mercantile — un peuple ne changeait d'âme
+ * qu'au contact d'un autre. Désormais, CHAQUE année, les valeurs du peuple dominant de
+ * chaque province dérivent LENTEMENT vers un attracteur composite, lu de coordonnées
+ * VIVANTES (jamais un dé) :
+ *   · l'ANCRE de son mode de vie (lifeway_val_attr — Talhelm : le riz irrigué et le blé
+ *     ne fabriquent pas les mêmes âmes) ;
+ *   · le CONFORT SOUTENU tire vers le mercantile (Inglehart : la sécurité déplace les
+ *     valeurs) — society_sat de la province ;
+ *   · la GUERRE tire vers le dominateur — l'état courant suffit : la LENTEUR de la
+ *     dérive fait l'accumulation (des décennies marquent, une escarmouche non) ;
+ *   · la CAPACITÉ K tire vers le bureaucrate (l'institution, pas le climat).
+ * La dérive passe par le MODSTACK (durable, sérialisée — le motif exact du contact S2).
+ * L'éthos CRISTALLISE avec HYSTÉRÉSIS : il ne bascule que si la nouvelle ancre est
+ * nettement plus proche (VAL_HYST) — collant, comme les vraies cultures.
+ * VAL_DRIFT_RATE=0 = le monde culturellement figé d'hier (kill-switch). */
+static long g_values_shift = 0;                 /* bascules d'éthos endogènes (télémétrie) */
+void demography_values_reset(void){ g_values_shift=0; }
+long demography_values_count(void){ return g_values_shift; }
+int demography_values_tick(WorldEconomy *e, ModifierStack *drift,
+                           const WorldProsperity *wp, const DiploState *dp, float ypt){
+    float rate = tune_f("VAL_DRIFT_RATE", 0.02f) * ypt;
+    if (rate <= 0.f || !e || !drift) return 0;
+    float hyst   = tune_f("VAL_HYST",   0.8f);
+    float w_conf = tune_f("VAL_W_CONF", 0.5f);
+    float w_war  = tune_f("VAL_W_WAR",  0.8f);
+    float w_k    = tune_f("VAL_W_K",    0.4f);
+    int shifts=0;
+    for (int p=0; p<e->n_prov; p++){
+        ProvinceEconomy *pe=&e->prov[p];
+        if (!pe->active || !pe->colonized || pe->pop.n_groups<1 || !pe->culture.settled) continue;
+        PopGroup *dom=(PopGroup*)province_dominant(&pe->pop);
+        if (!dom || dom->count<100) continue;
+        int own=pe->owner;
+        /* l'attracteur composite — l'ancre du mode de vie pèse 1, le vécu la module */
+        float acc = lifeway_val_attr(dom->culture.lifeway), wsum = 1.f;
+        float conf = pe->society_sat;                     /* le confort servi [0..1] */
+        if (conf > 0.5f){ float wc=w_conf*(conf-0.5f)*2.f;
+                          acc += ethos_anchor(ETHOS_MERCANTILE)*wc; wsum += wc; }
+        bool war=false;
+        if (own>=0 && dp)
+            for (int r2=0;r2<e->n_regions && !war;r2++){
+                int o2=e->region[r2].owner;
+                if (o2>=0 && o2!=own && diplo_status(dp,own,o2)==DIPLO_WAR) war=true;
+            }
+        if (war){ acc += ethos_anchor(ETHOS_DOMINATEUR)*w_war; wsum += w_war; }
+        if (own>=0 && wp && own<wp->n_countries){
+            float kk = wp->country[own].K;                /* la capacité effective [0..10] */
+            if (kk > 5.f){ float wk=w_k*(kk-5.f)/5.f;
+                           acc += ethos_anchor(ETHOS_BUREAUCRATE)*wk; wsum += wk; }
+        }
+        float target = acc/wsum;
+        /* la dérive DURABLE (motif contact S2 : le modstack, sérialisé DRFT) */
+        PopCulture eff = group_culture_effective(dom, drift);
+        GroupDrift step={ (target-eff.valeurs)*rate, 0.f, 0.f, 0.f, 0.f };
+        modstack_accumulate_drift(drift, dom->drift_id, step, false);
+        /* la CRISTALLISATION à hystérésis */
+        eff = group_culture_effective(dom, drift);
+        Ethos cur=dom->origin.ethos, near=ethos_nearest(eff.valeurs);
+        if (near!=cur){
+            float d_new=absf(eff.valeurs-ethos_anchor(near));
+            float d_cur=absf(eff.valeurs-ethos_anchor(cur));
+            if (d_new + hyst < d_cur){
+                dom->origin.ethos=near;                   /* le peuple a changé d'âme (durable) */
+                dom->culture=group_culture_effective(dom, drift);   /* rafraîchit le cache */
+                pe->culture.ethos=near;                   /* la fiche locale suit (sync dominante) */
+                shifts++;
+            }
+        }
+    }
+    g_values_shift += shifts;
+    return shifts;
+}
+
 int demography_contact_tick(WorldEconomy *e, ModifierStack *drift,
                             const RouteNetwork *rn, const DiploState *dp,
                             float P, float K, float ypt){
@@ -961,7 +1095,11 @@ void demography_tick(World *w, WorldEconomy *econ, WorldLegitimacy *wl,
         /* raccord 2 (Âge des Empires) — intégration ×1.20 PERMANENT : le pas d'assimilation
          * est ACCÉLÉRÉ (dt*integ_mult), pas un second système — même « P+K accélèrent »
          * que TRAD_PERM_W ci-dessus, juste un multiplicateur mondial de plus. */
-        assimilation_tick(pp, drift, P_eff, K_eff, dt*integ_mult);   /* dérive durable (∝ D∞ / institutions), au pas dt */
+        /* CANAL ÉTATIQUE : seul un État au-dessus de la capacité moyenne (K_eff>5) a une
+         * politique culturelle ; le poids monte avec K, borné (jamais l'écrasement total). */
+        float state_w = (re->owner>=0)
+            ? clampf(tune_f("ASSIM_STATE_W",0.5f)*(K_eff-5.f)/5.f, 0.f, 0.8f) : 0.f;
+        assimilation_tick(pp, drift, P_eff, K_eff, dt*integ_mult, crown, state_w);   /* dérive durable (∝ D∞ / institutions), au pas dt */
         float yh = (wl && r < SCPS_MAX_REG) ? wl->years_held[r] : 100.f;
         faith_convert_tick(pp, crown, yh, dt);                  /* la FOI converge vers le trône (§2) */
         for (int i=0;i<pp->n_groups;i++)

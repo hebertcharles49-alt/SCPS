@@ -11,6 +11,7 @@
 #include "scps_tune.h"   /* Arc J : calibrage */
 #include "scps_heritage.h"   /* heritage_name */
 #include "scps_culture.h"   /* ethos_name (via culture nom) */
+#include "scps_demography.h" /* TURCHIN : demography_elite_rival */
 #include "scps_factions.h"  /* §5 : la tension de coup d'une faction forte aliénée */
 #include "scps_labor.h"     /* capitale_* : la capacité de service (logement/services) de la région */
 #include "scps_religion.h"  /* dimension FOI : religion_of_region/_of_country/set_region (hérésie) */
@@ -238,7 +239,7 @@ static inline float revanchism_factor(const RevoltState *rs, int region){
 /* ===================================================================== */
 float revolt_group_deficit(const PopGroup *g, const ModifierStack *drift,
                            const PopCulture *crown, float food_sat, float society_sat,
-                           float tax_pressure, float coercion){
+                           float tax_pressure, float coercion, float rival){
     /* panier : la faim pèse double sur le manque social (un peuple affamé se lève) */
     float basket = clampf(0.70f*(1.f-food_sat) + 0.30f*(1.f-society_sat), 0.f, 1.f);
     PopCulture eff = group_culture_effective(g, drift);
@@ -248,6 +249,11 @@ float revolt_group_deficit(const PopGroup *g, const ModifierStack *drift,
     float unint = clampf(1.f - g->integration, 0.f, 1.f);
     float d = W_BASKET*basket + W_TAX*tax + W_ALIEN*alien
             + W_REPRESS*repr + W_UNINTEG*unint;
+    /* TURCHIN (2026-08-11) : la RIVALITÉ intra-élite — l'excédent d'aspirants au-delà
+     * des positions (demography_elite_rival, ≠0 pour l'élite seule). L'élite qui
+     * renverse le trône n'a presque jamais faim ; elle a des rivaux. ELITE_RIVAL_W=0
+     * = le déficit-misère d'hier. */
+    d += tune_f("ELITE_RIVAL_W",0.35f) * clampf(rival, 0.f, 1.f);
     return clampf(d, 0.f, 1.f);
 }
 
@@ -323,7 +329,8 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
     for (int i=0;i<pp->n_groups;i++){
         PopGroup *gg=&pp->groups[i];
         float d=revolt_group_deficit(gg, drift, crown,
-                                     re->food_sat, re->society_sat, tax_pressure, re->coercion)
+                                     re->food_sat, re->society_sat, tax_pressure, re->coercion,
+                                     (gg->klass==CLASS_ELITE)?demography_elite_rival(pe):0.f)
               + ethos_coup_boost(gg, cf, ct);
         /* grief de FOI du GROUPE : un porteur de foi dissidente prend la tête À MESURE qu'il est
          * mal intégré (le réfugié aigri mène ; la minorité établie reste sous le seuil — les Juifs). */
@@ -473,7 +480,8 @@ void revolt_scan(RevoltState *rs, World *w, WorldEconomy *econ,
         float worst=0.f, min_integ=1.f;
         for (int i=0;i<pe->pop.n_groups;i++){
             float d=revolt_group_deficit(&pe->pop.groups[i], drift, crown,
-                                         re->food_sat, re->society_sat, re->over_tax, re->coercion)
+                                         re->food_sat, re->society_sat, re->over_tax, re->coercion,
+                                         (pe->pop.groups[i].klass==CLASS_ELITE)?demography_elite_rival(pe):0.f)
                   + ethos_coup_boost(&pe->pop.groups[i], cf, ct);   /* §5 : grief politique */
             if (d>1.f) d=1.f;
             if (d>worst) worst=d;

@@ -2303,6 +2303,10 @@ int main(int argc, char **argv){
           if (nemp>0){
               printf("              syncrétisme : %d nœud(s) profond(s) (gouvernance) · %d diffusion(s) (commerce/frontière/foi) · %d/%d archétype(s) · dispersion %d–%d/empire · %d ont la COMBINAISON forge runique × arcane · %ld cristallisation(s) culturelle(s) par contact (S2)\n",
                      sync_total, diff_total, distinct, (int)HERITAGE_COUNT, nmin, nmax, combo, demography_contact_count());
+              /* ATTRACTEURS ENDOGÈNES (2026-08-11) : la preuve que les peuples changent
+               * d'âme AUTREMENT qu'en perdant une guerre ou en croisant un marchand. */
+              printf("              attracteurs : %ld bascule(s) d'éthos ENDOGÈNE(s) (confort→mercantile · guerre→dominateur · K→bureaucrate)\n",
+                     demography_values_count());
               printf("              brassage : %ld flux de pacte migratoire (%ld âmes déplacées — échange passif entre partenaires → diaspora à métaboliser)\n",
                      demography_migration_pact_count(), demography_migration_pact_souls());
               printf("              réfugiés : %ld fuite(s) de guerre (%ld âmes) → voisine sûre · %ld retour(s) (%ld âmes) au foyer apaisé (la pop RESPIRE ; aucune migration définitive)\n",

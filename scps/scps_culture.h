@@ -163,6 +163,7 @@ Lifeway lifeway_for_biome(Biome biome);
 float lifeway_val_attr(Lifeway l);   /* éthos « naturel » attiré par ce mode de vie */
 float lifeway_subs(Lifeway l);       /* ancre de subsistance du mode de vie [0..10] */
 Ethos ethos_nearest(float value);    /* éthos dont l'ancre VALEURS est la plus proche */
+float ethos_anchor(Ethos e);         /* l'ancre VALEURS d'un éthos (les attracteurs endogènes la lisent) */
 
 /* ---- Dérive d'éthos régional (helper manquant, mission « lecteurs », B6) --------
  * Distance [0..1] entre l'éthos DOMINANT local (région) et l'éthos RÉGNANT (capitale

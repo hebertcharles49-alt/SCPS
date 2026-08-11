@@ -131,7 +131,7 @@ void revolt_init(RevoltState *rs);
  * (distance culturelle) + répression (coercition/H) + (1-intégration). */
 float revolt_group_deficit(const PopGroup *g, const ModifierStack *drift,
                            const PopCulture *crown, float food_sat, float society_sat,
-                           float tax_pressure, float coercion);
+                           float tax_pressure, float coercion, float rival);
 
 /* ---- La fraction MOBILISÉE : combien quittent le travail pour se battre - */
 long  revolt_mobilized(const PopGroup *g, float deficit);

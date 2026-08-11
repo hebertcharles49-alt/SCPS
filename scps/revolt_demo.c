@@ -125,8 +125,8 @@ int main(int argc, char **argv){
     PopCulture foreign=cult(9,9,2,9,HERITAGE_CLANIQUE);   /* loin de la couronne (D≈4) */
     PopGroup misery = grp(HERITAGE_CLANIQUE, CLASS_LABORER, 8000, 2.f, 0.15f, foreign, 101);
     PopGroup content= grp(HERITAGE_ADAPTATIF, CLASS_LABORER, 8000, 7.f, 1.00f, crown, 102);
-    float d_mis = revolt_group_deficit(&misery,  drift, &crown, 0.05f, 0.20f, 0.4f, 0.4f);
-    float d_con = revolt_group_deficit(&content, drift, &crown, 0.95f, 0.90f, 0.0f, 0.0f);
+    float d_mis = revolt_group_deficit(&misery,  drift, &crown, 0.05f, 0.20f, 0.4f, 0.4f, 0.f);
+    float d_con = revolt_group_deficit(&content, drift, &crown, 0.95f, 0.90f, 0.0f, 0.0f, 0.f);
     printf("   déficit : affamé/étranger=%.2f  vs  rassasié/natif=%.2f\n", d_mis, d_con);
     ok("le groupe affamé/étranger/non-intégré a un FORT déficit", d_mis>0.55f);
     ok("le groupe rassasié, natif et loyal a un FAIBLE déficit",  d_con<0.15f);

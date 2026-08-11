@@ -601,6 +601,10 @@ void     econ_culture_identity_telemetry(CultureIdentityStats *out);
  * econ_ruling_culture : culture régnante d'un pays = sa région-capitale. */
 float econ_content_dist(const PopCulture *a, const PopCulture *b);
 float econ_content_dist_faith(const PopCulture *a, const PopCulture *b);
+/* DISTANCE PHYLOGÉNÉTIQUE entre deux identités (l'horloge = l'ARBRE, pas une position) :
+ * gen(a)+gen(b)−2·gen(MRCA) borné [0..10], 10 = sans ancêtre commun. */
+float econ_culture_phylo_clock(uint16_t a, uint16_t b);
+uint16_t econ_ruling_culture_id(const World *w, const WorldEconomy *econ, int cid);
 const PopCulture *econ_ruling_culture(const World *w, const WorldEconomy *econ, int cid);
 /* ESCLAVAGE — gate ACHETEUR au marché des Centres (miroir du gate de capture IA) :
  * TECH_ESCLAVAGE débloquée OU éthos conquérant (Dominateur/Honneur) de la couronne. */

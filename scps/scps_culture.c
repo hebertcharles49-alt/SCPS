@@ -125,6 +125,7 @@ float lifeway_val_attr(Lifeway l){ return LIFE[l].val_attr; }
  * avec subsistance_for_biome() côté monde (plus d'échelle inversée). */
 float lifeway_subs(Lifeway l){ return LIFE[l].subs; }
 /* Éthos dont l'ancre VALEURS est la plus proche d'une valeur donnée. */
+float ethos_anchor(Ethos e){ return (e>=0&&e<ETHOS_COUNT)?ETHOS_VAL[e]:5.f; }
 Ethos ethos_nearest(float value){
     Ethos best = ETHOS_ORDRE; float bd = 1e9f;
     for (int e=0;e<ETHOS_COUNT;e++){

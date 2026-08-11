@@ -453,6 +453,30 @@ golden: chronicle
 	 fi
 .PHONY: golden
 
+# ---- EMPREINTES TARDIVES (analyse joueur 2026-08-11) --------------------------------
+# Le golden 12 ans valide la non-régression AVANT le premier âge — la zone où rien ne
+# peut dériver (cultures non fusionnées, catalyseurs muets, seuils d'âge intacts). Les
+# dynamiques coûteuses (assimilation générationnelle, spirales de dette, endgame §27)
+# vivent APRÈS. Deux empreintes de CAMPAGNE — le tiers (an 83) et la fin (an 250),
+# graine 7 — attrapent les régressions de trajectoire séculaire. Elles casseront
+# souvent, et c'est le BUT : chaque cassure dit qu'un changement anodin a déplacé une
+# trajectoire. Gate de VAGUE / nightly (coût : une sim longue), pas pre-commit.
+golden-deep: chronicle
+	@CUR=$$( { ./chronicle --hash 7 1 83 ; ./chronicle --hash 7 1 250 ; } 2>/dev/null | grep '^HASH'); \
+	 GOLD=$$(cat scps/golden_deep.txt 2>/dev/null); \
+	 if [ -n "$$CUR" ] && [ "$$CUR" = "$$GOLD" ]; then \
+	   echo "golden-deep OK : trajectoire séculaire IDENTIQUE (graine 7, ans 83 + 250)"; \
+	 else \
+	   echo "golden-deep ÉCHEC : la trajectoire SÉCULAIRE a changé vs scps/golden_deep.txt —"; \
+	   echo "  re-baseline DÉLIBÉRÉE ? → revoir, puis : make golden-deep-update"; \
+	   printf '  golden :\n%s\n  actuel :\n%s\n' "$$GOLD" "$$CUR"; exit 1; \
+	 fi
+.PHONY: golden-deep
+golden-deep-update: chronicle
+	@{ ./chronicle --hash 7 1 83 ; ./chronicle --hash 7 1 250 ; } 2>/dev/null | grep '^HASH' > scps/golden_deep.txt
+	@echo "golden-deep RE-BASELINÉ : scps/golden_deep.txt (à committer, diff revu)."
+.PHONY: golden-deep-update
+
 # Re-baseline ASSUMÉE : régénère le golden (à committer, le diff étant revu — le pendant outillé
 # des notes « ⚠ RE-BASELINE » faites à la main).
 golden-update: chronicle

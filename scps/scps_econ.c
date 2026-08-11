@@ -771,6 +771,52 @@ float econ_content_dist_faith(const PopCulture *a, const PopCulture *b){
 }
 /* Culture régnante d'un pays = celle de sa région-capitale (NULL si invalide).
  * 5 modules en portaient une copie (ruling_culture/crown_of/pc_ruling/dom_…). */
+/* ══ LA DISTANCE PHYLOGÉNÉTIQUE (analyse joueur 2026-08-11 : « une horloge n'est pas
+ * une position, c'est un arbre ») ══
+ * L'ancien scalaire `langue` dérivait en MONOTONE BORNÉ [0..10] : toutes les vieilles
+ * cultures convergeaient vers 10, leurs distances s'écrasaient, et REL_JUMEAUX_CONVERGENTS
+ * — censé être le cas rare — devenait l'état par défaut des mondes âgés. La vraie distance
+ * = le temps depuis l'ancêtre commun le plus récent : gen(a)+gen(b)−2·gen(MRCA), remontée
+ * du registre généalogique qui EXISTAIT (parent_a/parent_b/generation) sans être lu.
+ * Sans ancêtre commun : 10 (étrangers d'horloge). Le scalaire `langue` reste une COULEUR
+ * d'affichage, plus une mesure de parenté. */
+float econ_culture_phylo_clock(uint16_t a, uint16_t b){
+    if (a==b) return 0.f;
+    if (!econ_culture_identity_valid(a) || !econ_culture_identity_valid(b)) return 10.f;
+    static uint8_t seen[CULTURE_ID_MAX];    /* les ancêtres de a (l'arbre est court) */
+    memset(seen, 0, sizeof seen);
+    uint16_t stack[64]; int sp=0; stack[sp++]=a;
+    while (sp>0){
+        uint16_t id=stack[--sp];
+        if (id==0 || id>=g_culture_id_count || seen[id]) continue;
+        seen[id]=1;
+        if (sp<62){ stack[sp++]=g_culture_id[id].parent_a; stack[sp++]=g_culture_id[id].parent_b; }
+    }
+    static uint8_t seen2[CULTURE_ID_MAX];   /* remonter b jusqu'au MRCA le plus RÉCENT */
+    memset(seen2, 0, sizeof seen2);
+    int best_gen=-1;
+    uint16_t st2[64]; int s2=0; st2[s2++]=b;
+    while (s2>0){
+        uint16_t id=st2[--s2];
+        if (id==0 || id>=g_culture_id_count || seen2[id]) continue;
+        seen2[id]=1;
+        if (seen[id] && (int)g_culture_id[id].generation > best_gen)
+            best_gen=(int)g_culture_id[id].generation;
+        if (s2<62){ st2[s2++]=g_culture_id[id].parent_a; st2[s2++]=g_culture_id[id].parent_b; }
+    }
+    if (best_gen<0) return 10.f;            /* aucun ancêtre commun */
+    float d=(float)((int)g_culture_id[a].generation + (int)g_culture_id[b].generation - 2*best_gen);
+    return d<0.f?0.f:(d>10.f?10.f:d);
+}
+/* l'IDENTITÉ régnante d'un pays (le miroir de sa région-capitale) — la façade s'en sert
+ * pour mesurer la parenté PHYLOGÉNÉTIQUE locale↔couronne. */
+uint16_t econ_ruling_culture_id(const World *w, const WorldEconomy *econ, int cid){
+    if (cid < 0 || cid >= w->n_countries) return 0;
+    int cp = w->country[cid].capital_prov;
+    if (cp < 0 || cp >= w->n_provinces) return 0;
+    int cr = w->province[cp].region;
+    return (cr >= 0 && cr < econ->n_regions) ? econ->region[cr].culture_id : 0;
+}
 const PopCulture *econ_ruling_culture(const World *w, const WorldEconomy *econ, int cid){
     if (cid < 0 || cid >= w->n_countries) return NULL;
     int cp = w->country[cid].capital_prov;
@@ -3605,9 +3651,18 @@ static void mobility_tick_region(ProvinceEconomy *re, int rid){
     for (int k=0;k<2;k++){
         int from=(k==0)?CLASS_LABORER:CLASS_BOURGEOIS, to=from+1;
         if (from==CLASS_LABORER && !manuf) continue;       /* sans atelier, pas d'accession bourgeoise */
-        /* B4 — la porte de SATISFACTION : on ne promeut JAMAIS vers une strate
-         * déjà sous 50 % (sinon on gonfle une élite misérable — le rouge du brief). */
-        if (re->strata[to].satisfaction < PROMOTE_SAT_GATE) continue;
+        /* B4 → TURCHIN (2026-08-11) : la porte de SATISFACTION ne vaut que pour J→B.
+         * Vers l'ÉLITE elle interdisait PAR CONSTRUCTION la surproduction d'élites — le
+         * mécanisme du temps long : l'élite s'élargit dans l'ABONDANCE (richesse), et la
+         * crise vient une génération plus tard, quand les aspirants dépassent les
+         * positions. La promotion B→É ne lit donc que la RICHESSE (seuil 2.5×) ; le
+         * surnombre nourrit le déficit de RIVALITÉ de l'élite (ELITE_RIVAL_W, revolt),
+         * pas un verrou d'entrée. « Une élite pléthorique et misérable, c'est 1789. »
+         * (Le plafond doux SHARE_CAP_ELITE reste : il coupe l'emballement 30-40 %, pas
+         * le cycle — le cycle vit dans aspirants/positions.) ELITE_WEALTH_PROMOTE=0
+         * restaure le verrou d'hier. */
+        bool wealth_only = (to==CLASS_ELITE) && tune_f("ELITE_WEALTH_PROMOTE",1.f)>0.f;
+        if (!wealth_only && re->strata[to].satisfaction < PROMOTE_SAT_GATE) continue;
         float pop=re->strata[from].pop; if (pop<1.f) continue;
         float wpc=re->strata[from].wealth/pop;
         /* B4 — seuils SÉPARÉS : 1.4× pour J→B, 2.5× pour B→É (l'élite se mérite). */

@@ -8440,3 +8440,47 @@ l'API publique econ_set_buy_rate (extern locale) plutôt qu'un forward-declare d
 clé NOMINALE (income_gross = gdp×WAGE_SHARE) — l'écart avec le versement réel est du
 2e ordre, à raccorder ; gradient de prix (attracteur national + écart ∝ transport) ;
 IPM privé post-réforme monétaire.
+
+## 2026-08-11 — Vague culture (phylo + attracteurs) + Turchin + canal étatique (opus, nuit)
+
+**Découvertes** :
+- Le grep `-v demo` EXCLUAIT `scps_demography.c` (« demography » contient « demo ») —
+  j'ai failli conclure que `culture_syncretize` était morte alors qu'elle est VIVANTE
+  (demography_contact_tick, annuelle, sim.c). Filtrer avec `grep -v _demo\.c` ou
+  `--include`.
+- L'arbre généalogique des cultures EXISTAIT dans g_culture_id (parent_a/parent_b/
+  generation, depuis la vague identités) mais AUCUN lecteur ne l'utilisait pour la
+  distance — relation_core lisait le scalaire `langue`, monotone borné → saturation →
+  REL_JUMEAUX_CONVERGENTS par défaut des vieux mondes. Fix : econ_culture_phylo_clock
+  = gen(a)+gen(b)−2·gen(MRCA) (double remontée, bitmap CULTURE_ID_MAX), branchée dans
+  la façade (relation_to_crown) via le couple (0, phylo) passé à culture_relation_of.
+- Les positions d'élite (capitale + édifices + vénalité) étaient déjà calculées dans
+  demography_emerge_classes — extraites en prov_elite_seats + demography_elite_rival
+  (l'excédent aspirants/positions, plancher 100 sièges).
+- SCPS_TUNE : séparateur = VIRGULE, jamais « ; » — un « ; » dans la valeur passe par
+  atof() qui s'arrête au premier non-numérique : seul le PREMIER levier est réellement
+  surchargé, les suivants gardent leur défaut. Ma première « preuve » kill-switch ne
+  testait qu'un levier sur quatre.
+- chronicle.exe verrouillé (Permission denied au link) = des processus du gigasweep
+  stoppé traînaient ; Stop-Process ne suffisait pas (enfants) → taskkill /F /T.
+
+**Pièges** :
+- WorldProsperity est un typedef de struct ANONYME : pas de forward-decl
+  `struct WorldProsperity` possible — inclure scps_prosperity.h dans demography.h.
+- assimilation_tick a 5 bancs dans demography_demo.c : la nouvelle signature
+  (crown, state_w) se neutralise avec (NULL, 0.f) — l'hier exact.
+- La dérive endogène passe par le MODSTACK (motif contact S2) : durable, sérialisée
+  DRFT, savetest la prend sans SAVE_VERSION bump (aucune struct sérialisée ne change).
+- La cristallisation d'éthos écrit dom->origin.ethos (durable) + rafraîchit le cache
+  dom->culture + pe->culture.ethos ; l'hystérésis (VAL_HYST 0.8) évite le flip-flop
+  entre deux ancres voisines.
+
+**Restes** :
+- Le test R² (200 graines, régresser l'état final sur les variables worldgen) —
+  possible sur les logs du sweep 20 ou un sweep dédié.
+- La distance phylo n'est branchée QUE dans la façade (relation_to_crown) ; les autres
+  lecteurs de culture_relation (s'il en apparaît) devront passer les culture_id.
+- Le canal étatique ne touche pas la LANGUE d'affichage ni la structure (gelée à
+  culture_make) — la critique « structure figée » reste ouverte.
+- golden-deep (an 83 + 250, graine 7) : gate de VAGUE/nightly, PAS pre-commit (coût
+  une sim longue) ; baseline scps/golden_deep.txt commitée cette nuit.

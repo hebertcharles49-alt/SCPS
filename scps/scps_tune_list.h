@@ -659,6 +659,22 @@
      * le tirage naturel de la peste (event + directeur) est décâblé ; 1 = réactive. */ \
     X(DISEASE_ON,             0.0f) \
     /* Le défaut MONDIAL des sliders d'achat pour les SWEEPS (0 = le 0.60 normal). */     X(BUY_RATE_ALL,           0.0f) \
+    /* ATTRACTEURS ENDOGÈNES DE VALEURS (2026-08-11 : la culture cesse d'être un nœud
+     * source) : dérive lente vers l'ancre du mode de vie + le vécu (confort→mercantile ·
+     * guerre→dominateur · K→bureaucrate), cristallisation d'éthos à hystérésis.
+     * VAL_DRIFT_RATE=0 = le monde culturellement figé d'hier. */ \
+    X(VAL_DRIFT_RATE,         0.02f) \
+    X(VAL_HYST,               0.8f) \
+    X(VAL_W_CONF,             0.5f) \
+    X(VAL_W_WAR,              0.8f) \
+    X(VAL_W_K,                0.4f) \
+    /* TURCHIN + POLITIQUE CULTURELLE D'ÉTAT (2026-08-11) : la promotion vers l'élite
+     * lit la RICHESSE seule (le verrou de satisfaction interdisait la surproduction
+     * d'élites — le cycle séculaire) ; le déficit de révolte de l'élite lit le ratio
+     * aspirants/positions ; un État capable (K) assimile vers la COURONNE. */ \
+    X(ELITE_WEALTH_PROMOTE,   1.0f) \
+    X(ELITE_RIVAL_W,          0.35f) \
+    X(ASSIM_STATE_W,          0.5f) \
     /* PIPELINE DIPLO — la VALEUR SUBJECTIVE oriente la CIBLE (pas l'éthos, qui décide la
      * MÉTHODE). COVET_W : poids du BESOIN (Σ raw_cap × stress(runway) × prix) dans la valeur
      * d'une province d'autrui → l'IA convoite qui TIENT ce qui lui manque. COMPLEMENT_W :

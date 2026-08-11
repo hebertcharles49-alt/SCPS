@@ -117,7 +117,7 @@ int main(int argc, char **argv){
     town.n_groups=3;
     int half_id=town.groups[1].drift_id, orc_id=town.groups[2].drift_id;
     float half_d0=cdist(&town.groups[1].origin,&crown), orc_d0=cdist(&town.groups[2].origin,&crown);
-    for (int yr=0; yr<40; yr++) assimilation_tick(&town, drift, 5.f, 5.f, 1.f);
+    for (int yr=0; yr<40; yr++) assimilation_tick(&town, drift, 5.f, 5.f, 1.f, NULL, 0.f);
     /* le Agraire a-t-il fusionné (ou quasi) ? l'Clanique traîne-t-il encore ? */
     bool half_gone=true; float half_d=0, orc_d=0;
     for (int i=0;i<town.n_groups;i++){
@@ -169,7 +169,7 @@ int main(int argc, char **argv){
     bool fused_after_conv=false;
     for (int yr=0; yr<120; yr++){
         faith_convert_tick(&pur, &crown_pur, 300.f, 1.f);
-        assimilation_tick(&pur, drift, 5.f, 5.f, 1.f);
+        assimilation_tick(&pur, drift, 5.f, 5.f, 1.f, NULL, 0.f);
     }
     fused_after_conv = (pur.n_groups==1);  /* l'hérétique converti a fondu dans la dominante */
     ok("la conversion fait tomber le mur de branche → l'assimilation peut ACHEVER (fusion)",
@@ -369,7 +369,7 @@ int main(int argc, char **argv){
         PopGroup slv=grp(HERITAGE_ADAPTATIF, SPHERE_HOMMES, humc, CLASS_SLAVE, 2000,2.f,0.05f,true);
         slv.arrival=ARR_DEPORTE; sp.groups[1]=slv; sp.n_groups=2;
         int n_before=sp.n_groups;
-        for (int yr=0; yr<40; yr++) assimilation_tick(&sp, drift, 5.f, 5.f, 1.f);
+        for (int yr=0; yr<40; yr++) assimilation_tick(&sp, drift, 5.f, 5.f, 1.f, NULL, 0.f);
         long slave_groups_count=0; int n_slave_groups=0;
         for (int i=0;i<sp.n_groups;i++) if (sp.groups[i].klass==CLASS_SLAVE){
             slave_groups_count+=sp.groups[i].count; n_slave_groups++;
@@ -484,7 +484,7 @@ int main(int argc, char **argv){
                      && strcmp(before[0].culture,na)==0 && strcmp(before[0].klass,"Laboureurs")==0
                      && strcmp(before[1].culture,nb)==0 && strcmp(before[1].klass,"Noblesse")==0;
         ok("l'UI distingue les laboureurs A de la noblesse B dans une même province",class_pair);
-        int fused=assimilation_tick(&mix,drift,5.f,5.f,1.f);
+        int fused=assimilation_tick(&mix,drift,5.f,5.f,1.f, NULL, 0.f);
         char lineage[256]; econ_culture_identity_lineage(mix.groups[0].culture_id,lineage,sizeof lineage);
         ok("la fusion achevée produit un nom culturel composé",fused==1 && mix.n_groups==1
            && strcmp(econ_culture_identity_name(mix.groups[0].culture_id),na)!=0);
