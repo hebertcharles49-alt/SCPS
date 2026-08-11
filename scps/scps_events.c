@@ -3997,6 +3997,7 @@ static void director_tick(EventCtx *cx, int days){
     for (int k=0;k<span;k++){
         int id=lo + (off+k)%span;
         if (D->fam_active_until[id] > day) continue;     /* même événement : repos ≥15 ans */
+        if (id==DIR_PESTE && tune_f("DISEASE_ON",0.f)<=0.f) continue;   /* MALADIES OFF (2026-08-11) */
         int subject=-1;
         if (!dir_eligible(cx,id,day,&subject)) continue;
         float wgt = 1.f;
@@ -4072,7 +4073,10 @@ void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
     {
         int hub=-1; float best=1.0f;
         for (int r=0;r<econ->n_regions;r++) if (econ->region[r].route_pe>best){ best=econ->region[r].route_pe; hub=r; }
-        if (hub>=0 && frand(&ev->rng) < mtth_p(EVENTS[EVID_PLAGUE].mtth_days / calm_mult, days)){
+        /* MALADIES OFF (décision joueur 2026-08-11 : roadmap post-release) : le TIRAGE
+         * naturel est décâblé — les bancs qui FORCENT l'événement restent valides. */
+        if (tune_f("DISEASE_ON",0.f)>0.f
+            && hub>=0 && frand(&ev->rng) < mtth_p(EVENTS[EVID_PLAGUE].mtth_days / calm_mult, days)){
             events_plague_spread(ev,w,econ,wl,sc,rn,hub);
             if (calm_mult>1.f) g_calm_shocks_fired++;
         }

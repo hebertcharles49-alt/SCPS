@@ -650,6 +650,15 @@
     X(POP_MOOD_GAIN,          1.0f) \
     /* OUTPUT MANUFACTURIER GLOBAL (test causal 2026-08-10 : baisser l'output doit faire
      * MONTER la part de bourgeois — la même demande exige plus de bras). 1.0 = neutre. */     X(MANUF_QOUT_MULT,        1.0f) \
+    /* SLIDERS D'ACHAT (décision joueur 2026-08-11) : la couronne rachète la production
+     * à X % — la part reversée aux pops (le reste = la rente). Par pays×catégorie
+     * (vivrier/brutes/manuf), défaut 0.60 ; à 0.62 = la clé 42/20/38 d'hier au bit
+     * près. 100 % = le « LARP communiste ». BUY_RATE_ON=0 = la clé fixe d'hier. */ \
+    X(BUY_RATE_ON,            1.0f) \
+    /* MALADIES : OFF jusqu'à la roadmap post-release (décision joueur 2026-08-11) —
+     * le tirage naturel de la peste (event + directeur) est décâblé ; 1 = réactive. */ \
+    X(DISEASE_ON,             0.0f) \
+    /* Le défaut MONDIAL des sliders d'achat pour les SWEEPS (0 = le 0.60 normal). */     X(BUY_RATE_ALL,           0.0f) \
     /* PIPELINE DIPLO — la VALEUR SUBJECTIVE oriente la CIBLE (pas l'éthos, qui décide la
      * MÉTHODE). COVET_W : poids du BESOIN (Σ raw_cap × stress(runway) × prix) dans la valeur
      * d'une province d'autrui → l'IA convoite qui TIENT ce qui lui manque. COMPLEMENT_W :

@@ -5102,6 +5102,20 @@ void scps_set_player_climat(int climat){ world_set_player_climat(climat); }
  * ±X » — le nombre, jamais le récit) : le terme politique de la satisfaction d'une
  * classe, agrégé pays (pondéré pop), en POINTS de satisfaction (−15..+15). L'UI
  * l'affiche tel quel dans le détail : Panier · Impôt · Votre politique. */
+/* SLIDERS D'ACHAT (2026-08-11) — le curseur joueur et son affichage : le taux (0-100)
+ * auquel la couronne rachète la production, par catégorie (0 vivrier · 1 brutes ·
+ * 2 manufacturés). Info display : « Rachat : X % » — le nombre, jamais le récit. */
+int scps_country_buy_rate(ScpsSim *s, int cid, int cat){
+    (void)s;
+    return (int)(econ_country_buy_rate(cid, cat)*100.f + 0.5f);
+}
+void scps_player_set_buy_rate(ScpsSim *s, int cat, int pct){
+    if (!s) return;
+    int pl=-1;
+    for (int c=0;c<s->w->n_countries;c++)
+        if (s->w->country[c].role==POLITY_PLAYER){ pl=c; break; }
+    if (pl>=0) econ_set_buy_rate(pl, cat, (float)pct/100.f);
+}
 int scps_country_class_policy_sat(ScpsSim *s, int cid, int classe){
     if (!s || !s->sim.econ || cid<0 || classe<0 || classe>=CLASS_COUNT) return 0;
     WorldEconomy *e=s->sim.econ;

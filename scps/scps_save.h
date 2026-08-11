@@ -32,7 +32,10 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 100u          /* v100 : FACTIONS SUR LES PEUPLES — PopGroup.ethos_grief/state_grip
+#define SAVE_VERSION 101u          /* v101 : SLIDERS D'ACHAT — g_buy_rate[pays][3] rejoint le blob
+                                    * EMOB (le taux de rachat de la production, réglage joueur
+                                    * sérialisé) ⇒ la section EMOB grandit.
+                                    * v100 : FACTIONS SUR LES PEUPLES — PopGroup.ethos_grief/state_grip
                                     * (le grief et la capture quittent les tableaux pays de
                                     * scps_factions.c ; la section FACT rétrécit à la seule stance) ⇒
                                     * sizeof(WorldEconomy) change.

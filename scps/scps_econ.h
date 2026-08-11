@@ -920,6 +920,13 @@ void econ_mobility_reset(void);
  * scratch : ils pilotent prod_mult/mobility_move) que econ_mobility_reset() remet à zéro sur un
  * démarrage FRAIS mais que scps_load_game ne restaurait ni ne remettait à zéro. État statique →
  * save/load dédiés (même patron que econ_prodcap_save/_load ci-dessus). */
+/* SLIDERS D'ACHAT (2026-08-11) : le taux de rachat de la production par la couronne —
+ * la part reversée aux pops. Par pays × catégorie (0 vivrier · 1 brutes · 2 manuf),
+ * défaut 0.60. Info UI : le reader ; le setter est le curseur joueur. */
+float econ_country_buy_rate(int cid, int cat);
+void  econ_set_buy_rate(int cid, int cat, float rate);
+void  econ_buy_rate_save(FILE *f);
+bool  econ_buy_rate_load(FILE *f);
 void econ_mobility_save(FILE *f);
 bool econ_mobility_load(FILE *f);
 /* F1 (v61) — le répit de colonisation g_colony_cd[] est un accumulateur inter-ticks :

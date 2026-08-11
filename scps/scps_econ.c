@@ -1636,6 +1636,12 @@ void econ_aggregate_regions(WorldEconomy *e){
 void econ_init(WorldEconomy *e, const World *w) {
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) for (int g=0;g<RES_COUNT;g++) g_prod_cap[c][g]=-1.f;
     memset(g_colony_cd,0,sizeof g_colony_cd);   /* F1 : RAZ du répit de colonisation (par partie/sim, non sérialisé) */
+    { extern void econ_set_buy_rate(int,int,float);   /* SLIDERS D'ACHAT : 60 % partout au départ
+                                                       * (le module vit plus bas — via l'API publique).
+                                                       * BUY_RATE_ALL>0 : le défaut MONDIAL des sweeps
+                                                       * (« LARP communiste » à 100, presse à 30…). */
+      float def = tune_f("BUY_RATE_ALL", 0.f); if (def<=0.f) def=0.60f;
+      for (int c=0;c<SCPS_MAX_COUNTRY;c++) for (int k=0;k<3;k++) econ_set_buy_rate(c,k,def); }
     g_colony_founded=0; g_colony_survival=0;    /* E7 : RAZ télémétrie colonisation (par partie/sim, non sérialisé) */
     g_ip_colony_founded=0; g_ip_manuf_built=0;  /* MONNAIE M4-IP : RAZ télémétrie initiative privée (par partie/sim, non sérialisé) */
     g_va_produced_cum=0.0; g_consumption_destroyed_cum=0.0; g_colonization_net_cum=0.0;   /* MONNAIE M3a : RAZ instrument (par partie/sim, non sérialisé) */
@@ -2422,6 +2428,55 @@ void econ_wage_split(float amount, float *lab, float *bourg, float *elite){
     if (lab)   *lab   = amount*WAGE_SHARE;
     if (bourg) *bourg = amount*(1.f-WAGE_SHARE-TAX_RATE);
     if (elite) *elite = amount*TAX_RATE;
+}
+
+/* ══ LES SLIDERS D'ACHAT (décision joueur 2026-08-11 : « des sliders individuels pour
+ * le joueur au niveau des achats de ressources ; nourriture/brute/manufacture — si on
+ * veut faire un LARP communiste où on rachète à 100 % du prix du marché, on peut.
+ * Par défaut slider à 60 % ») ══
+ * Le taux auquel la couronne RACHÈTE la production à ses producteurs = la part de la
+ * valeur reversée aux pops (salaires+profit, au ratio interne 42/20 de la clé
+ * historique) ; le complément (1−taux) est la rente (tax_pool). À 62 % on retrouve la
+ * clé 42/20/38 d'hier au bit près ; le défaut joueur est 60 (léger déplacement vers la
+ * rente, golden re-baseliné). Par PAYS et par CATÉGORIE (0 vivrier · 1 brutes · 2
+ * manufacturés). Sérialisé au blob EMOB (⇒ SAVE_VERSION v101). BUY_RATE_ON=0 → la clé
+ * fixe d'hier, byte-identique. */
+#define BUY_CAT_COUNT 3
+static float g_buy_rate[SCPS_MAX_COUNTRY][BUY_CAT_COUNT];
+static void buy_rate_reset(void){
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++)
+        for (int k=0;k<BUY_CAT_COUNT;k++) g_buy_rate[c][k]=0.60f;
+}
+void econ_buy_rate_save(FILE *f){ fwrite(g_buy_rate,sizeof g_buy_rate,1,f); }
+bool econ_buy_rate_load(FILE *f){
+    if (fread(g_buy_rate,sizeof g_buy_rate,1,f)!=1) return false;
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++)                     /* save_sane : bornes nettes */
+        for (int k=0;k<BUY_CAT_COUNT;k++)
+            if (!(g_buy_rate[c][k]>=0.f && g_buy_rate[c][k]<=1.f)) g_buy_rate[c][k]=0.60f;
+    return true;
+}
+float econ_country_buy_rate(int cid, int cat){
+    if (cid<0||cid>=SCPS_MAX_COUNTRY||cat<0||cat>=BUY_CAT_COUNT) return 0.60f;
+    return g_buy_rate[cid][cat];
+}
+void econ_set_buy_rate(int cid, int cat, float rate){
+    if (cid<0||cid>=SCPS_MAX_COUNTRY||cat<0||cat>=BUY_CAT_COUNT) return;
+    g_buy_rate[cid][cat]=clampf(rate,0.f,1.f);
+}
+/* la paie d'un point de production : value → les 3 pools, au taux d'achat du pays */
+static void buy_pay(int owner, int cat, float value,
+                    float *wage_pool, float *profit_pool, float *tax_pool){
+    if (tune_f("BUY_RATE_ON",1.f)<=0.f || owner<0 || owner>=SCPS_MAX_COUNTRY){
+        *wage_pool   += value*WAGE_SHARE;                    /* la clé fixe d'hier, exacte */
+        *profit_pool += value*(1.f-WAGE_SHARE-TAX_RATE);
+        *tax_pool    += value*TAX_RATE;
+        return;
+    }
+    float br = g_buy_rate[owner][cat];
+    float pops = value*br;
+    *wage_pool   += pops*(WAGE_SHARE/(1.f-TAX_RATE));        /* 42/62 du versé aux salaires */
+    *profit_pool += pops*(1.f-WAGE_SHARE/(1.f-TAX_RATE));    /* 20/62 au profit */
+    *tax_pool    += value-pops;                              /* le complément : la rente */
 }
 /* MONNAIE M1/M2 (docs/MONNAIE_CONCEPT.md) — province CAPITALE d'un pays au grain WorldEconomy
  * seul (econ_tick n'a pas de World* ; re->is_capital est la vérité posée à econ_build_adjacency/
@@ -3475,6 +3530,7 @@ void econ_mobility_save(FILE *f){
     fwrite(g_basket_pc,sizeof g_basket_pc,1,f);
     fwrite(g_mint_demand_prev,sizeof g_mint_demand_prev,1,f);   /* MONNAIE M3f — SAVE_VERSION 91 */
     fwrite(g_needs_tier_held,sizeof g_needs_tier_held,1,f);     /* MONNAIE M10 — P1 — SAVE_VERSION 95 */
+    econ_buy_rate_save(f);                                      /* SLIDERS D'ACHAT — SAVE_VERSION 101 */
 }
 bool econ_mobility_load(FILE *f){
     bool ok = fread(g_friche,sizeof g_friche,1,f)==1
@@ -3483,6 +3539,7 @@ bool econ_mobility_load(FILE *f){
         && fread(g_mint_demand_prev,sizeof g_mint_demand_prev,1,f)==1;   /* MONNAIE M3f — SAVE_VERSION 91 */
     if (!ok) return false;
     if (fread(g_needs_tier_held,sizeof g_needs_tier_held,1,f)!=1) return false;   /* MONNAIE M10 — P1 */
+    if (!econ_buy_rate_load(f)) return false;                                     /* SLIDERS D'ACHAT — v101 */
     /* save_sane : un palier hystérétique désérialisé est REVALIDÉ — il ne borne ni boucle ni
      * index de tableau ailleurs (lu via econ_needs_active_for_country, déjà bornée par son
      * propre cid<SCPS_MAX_COUNTRY), mais un NaN/inf corromprait la comparaison du ratchet
@@ -4003,9 +4060,8 @@ void econ_tick(WorldEconomy *e, float dt) {
             supply[r]    += out_merch;
             float value = out_merch*re->price[r];
             gdp += value;
-            wage_pool   += value*WAGE_SHARE;
-            profit_pool += value*(1.f-WAGE_SHARE-TAX_RATE);
-            tax_pool    += value*TAX_RATE;
+            /* SLIDERS D'ACHAT : la couronne rachète au taux du pays — vivrier (0) ou brutes (1) */
+            buy_pay(owner_, res_is_food((Resource)r)?0:1, value, &wage_pool, &profit_pool, &tax_pool);
         }
 
         /* ---- 2. MANUFACTURE -------------------------------------------- */
@@ -4264,9 +4320,7 @@ void econ_tick(WorldEconomy *e, float dt) {
             float val_out=out*re->price[rc->out];
             float va=fmaxf(0.f, val_out-val_in);
             gdp += va;
-            wage_pool   += va*WAGE_SHARE;
-            profit_pool += va*(1.f-WAGE_SHARE-TAX_RATE);
-            tax_pool    += va*TAX_RATE;
+            buy_pay(owner_, 2, va, &wage_pool, &profit_pool, &tax_pool);   /* manufacturés (2) */
         }
         re->gdp=gdp;
 

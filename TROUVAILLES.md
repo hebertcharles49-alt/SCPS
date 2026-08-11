@@ -8400,3 +8400,43 @@ CLASSES du chronicle gagne la satisfaction par classe (pondérée pop).
 **Piège de protocole** : mon premier +100 % multipliait prod_mult = un levier
 d'EFFICIENCE (sortie sans matière). La correction joueur l'a attrapé AVANT le faux
 résultat. Un multiplicateur de test doit dire ce qu'il multiplie : échelle ≠ rendement.
+
+## LES SLIDERS D'ACHAT + MALADIES OFF (vague de nuit 2026-08-11)
+
+**Directives joueur** : « des sliders individuels au niveau des achats de ressources ;
+nourriture/brute/manufacture — si on veut faire un LARP communiste où on rachète à
+100 % du prix du marché, on peut. Par défaut slider à 60 % => info à display » ;
+« mets les maladies en off/pause — techniquement c'est un événement déclenché, suffit
+de décâbler » ; IPM privé reporté (avec la réforme monétaire) ; gradient de prix
+« à équilibrer » (design consigné, non implémenté).
+
+**Sliders** : g_buy_rate[pays][3] (vivrier/brutes/manufacturés), défaut 0.60, sérialisé
+au blob EMOB (SAVE v101, save_sane borne [0..1]). La paie des 2 points de production
+(extraction + manufacture) passe par buy_pay : pops = value×taux (réparti 42/62 salaires,
+20/62 profit), le complément = la rente. À 0.62 = la clé 42/20/38 d'hier au bit près ;
+le défaut 60 déplace ~2 pts vers la rente (golden re-baseliné). Kill-switch BUY_RATE_ON=0
+= l'ancien monde EXACT (prouvé). Façade : scps_country_buy_rate (« Rachat : X % ») +
+scps_player_set_buy_rate. BUY_RATE_ALL = le défaut mondial des sweeps.
+
+**Maladies OFF au TIRAGE seulement** (DISEASE_ON=0 défaut) : la peste naturelle
+(EVID_PLAGUE, mtth au hub) et la Peste Fluviale du directeur (DIR_PESTE skippé aux
+candidats) — les bancs qui FORCENT l'événement restent valides, d'où 40/40 sans retouche.
+
+**Mini-sweep 3×3 (an 120, logs /tmp/buyrate)** — le levier a du MORDANT et les
+dynamiques sont thématiques :
+- LARP 100 % (rente zéro) : les ÉLITES s'effondrent (sat 70→57, 75→56, 65→48) — LA
+  RENTE NOURRISSAIT L'ARISTOCRATIE ; et par la ventilation, l'élite affamée SE CRISPE
+  (épée-et-autel) : 2528 passe de 18 à 35 guerres. Le communisme de marché a un prix
+  politique : une aristocratie enragée. Bourgeois ±, laboureurs ± (la valeur passe par
+  les salaires mais la rente finançait aussi... l'équilibre est subtil, pas un simple
+  transfert).
+- Presse 30 % : les laboureurs paient (sat 44/53/43), l'élite prospère.
+- Le défaut 60 : proche de l'ancien monde, comme voulu.
+
+**Piège** : buy_rate_reset défini APRÈS econ_init (ordre du fichier) — l'init passe par
+l'API publique econ_set_buy_rate (extern locale) plutôt qu'un forward-declare de static.
+
+**Restes** : l'UI des 3 curseurs (readers prêts) ; l'assiette fiscale M3i lit encore la
+clé NOMINALE (income_gross = gdp×WAGE_SHARE) — l'écart avec le versement réel est du
+2e ordre, à raccorder ; gradient de prix (attracteur national + écart ∝ transport) ;
+IPM privé post-réforme monétaire.

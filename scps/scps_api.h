@@ -1696,6 +1696,9 @@ int  scps_set_player_culture(int heritage, int ethos, int t0, int t1, int t2);
  * -1 auto. Posé AVANT la (re)génération ; la capitale du joueur naît sur la classe. */
 void scps_set_player_climat(int climat);
 /* Le ±X « Votre politique » du hover de satisfaction (points −15..+15, classe 0-2). */
+/* SLIDERS D'ACHAT : taux de rachat 0-100 par catégorie (0 vivrier · 1 brutes · 2 manuf). */
+int  scps_country_buy_rate(ScpsSim *s, int cid, int cat);
+void scps_player_set_buy_rate(ScpsSim *s, int cat, int pct);
 int  scps_country_class_policy_sat(ScpsSim *s, int cid, int classe);
 /* EFFACE TOUTES les compositions (retour au tirage IA + héritage ADAPTATIF + éthos émergent). */
 void scps_clear_player_culture(void);
