@@ -675,6 +675,17 @@
     X(ELITE_WEALTH_PROMOTE,   1.0f) \
     X(ELITE_RIVAL_W,          0.35f) \
     X(ASSIM_STATE_W,          0.5f) \
+    /* DÉPOUILLEMENT SWEEP 2026-08-11 (8 chantiers) : ruines/substrat, affranchi intégré,
+     * plancher fiscal en nature, plafond de traversée colonisatrice. */ \
+    X(RUIN_POP_FLOOR,         50.0f)     X(RUIN_FAMINE_GATE,       0.25f) /* la ruine exige pop<floor ET famine — sans elle
+                                            * le seuil tuait chaque colonie du seep dans
+                                            * son berceau (mondes a PIB 0, causal seed 3). */ \
+    X(MANUMIT_INTEG,          0.95f) /* 0.85 vidait l'esclavage (3 ames a l'an 80 au
+                                            * smoke) : seul le TRES integre (une vie de
+                                            * service) s'affranchit. */ \
+    X(TAX_FLOOR_FRAC,         0.5f) \
+    X(NAVY_COLONY_MAX_DAYS,   240.0f) \
+    X(NAVY_TRANSPORT_MIN,     1.0f) \
     /* PIPELINE DIPLO — la VALEUR SUBJECTIVE oriente la CIBLE (pas l'éthos, qui décide la
      * MÉTHODE). COVET_W : poids du BESOIN (Σ raw_cap × stress(runway) × prix) dans la valeur
      * d'une province d'autrui → l'IA convoite qui TIENT ce qui lui manque. COMPLEMENT_W :
@@ -1486,25 +1497,25 @@
      * fois à l'avènement de CHAQUE âge, jamais un pays au hasard). */ \
     X(AGE_TRIGGER_JITTER_YEARS,        4.0f) \
     X(AGE_STRUCTURAL_DECAY_DAY,        0.00015f) \
-    X(AGE_EXCHANGE_NODE_VALUE,         1.0f) \
-    X(AGE_EXCHANGE_NODE_MIN,           4.0f) \
-    X(AGE_EXCHANGE_NODE_SHARE,         0.08f) \
+    X(AGE_EXCHANGE_NODE_VALUE,         2.5f) /* 1.0 etait vrai a la GENESE (an 2 partout) — dépouillement 2026-08-11 */ \
+    X(AGE_EXCHANGE_NODE_MIN,           10.0f) \
+    X(AGE_EXCHANGE_NODE_SHARE,         0.20f) \
     X(AGE_EXCHANGE_C,                  0.50f) \
     X(AGE_EXCHANGE_P,                  0.50f) \
     X(AGE_EXCHANGE_MIG_PACT_MULT,      1.15f) \
     X(AGE_EXCHANGE_MERCHANT_LEVER,     0.08f) \
-    X(AGE_DISCOVERY_KNOWN_PAIR_SHARE,  0.12f) /* 0.35 (spec) etait INATTEIGNABLE sous la
-                                            * diplo-fog (1/200 au gigasweep 2026-07-11 :
-                                            * le ratio compte cites-etats+hameaux) ;
-                                            * 0.12 mesure = 7/8 sims sur 4 graines. */ \
-    X(AGE_DISCOVERY_COUNTRY_MIN,       6.0f) \
+    X(AGE_DISCOVERY_KNOWN_PAIR_SHARE,  0.22f) /* 0.35 (spec) INATTEIGNABLE sous le fog
+                                            * (1/200) ; 0.12 etait vrai des l'an 4 (le
+                                            * rayon de genese suffit) — 0.22 = le milieu,
+                                            * a valider au sweep (dépouillement 2026-08-11). */ \
+    X(AGE_DISCOVERY_COUNTRY_MIN,       8.0f) \
     X(AGE_DISCOVERY_C,                 0.50f) \
     X(AGE_DISCOVERY_RESEARCH_MULT,     1.10f) \
     X(AGE_DISCOVERY_FOG_RADIUS_ADD,    1.0f) \
     X(AGE_DISCOVERY_TRANSGRESSEUR_LEVER, 0.06f) \
     X(AGE_DISCOVERY_MERCHANT_LEVER,    0.04f) \
-    X(AGE_EMPIRES_REGIONS_WORLD,       8.0f) \
-    X(AGE_EMPIRES_REGIONS_ONE_COUNTRY, 4.0f) \
+    X(AGE_EMPIRES_REGIONS_WORLD,       20.0f) /* 8 : atteint par le seep an ~4 — dépouillement 2026-08-11 */ \
+    X(AGE_EMPIRES_REGIONS_ONE_COUNTRY, 8.0f) \
     X(AGE_EMPIRES_HELD_YEARS,          35.0f) \
     X(AGE_EMPIRES_INTEGRATION_MULT,    1.20f) \
     X(AGE_EMPIRES_CONQUEROR_LEVER,     0.10f) \
@@ -1641,7 +1652,11 @@
     X(ASSIETTE_ON,                     1.0f) \
     X(CONSUME_ELASTIC_K,               0.3f) \
     X(CONSUME_ELASTIC_MIN,             0.8f) \
-    X(CONSUME_ELASTIC_MAX,             1.2f) \
+    X(CONSUME_ELASTIC_MAX,             3.0f) /* 1.2 : une elite 30x plus riche consommait
+                                            * 1.2x le panier -> richesse EXPONENTIELLE
+                                            * (+64%/50 ans, critere « doit se stabiliser »
+                                            * en echec). 3.0 = le train de vie suit la
+                                            * fortune (dépouillement 2026-08-11). */ \
     /* MONNAIE M8 — C1 : « LE CERCLE VERTUEUX DE L'IMPÔT » (décision joueur 2026-07-16,
      * « plus satisfait = paye plus… un ordre à 70 % tu peux largement booster leur
      * fiscalité, mais du coup plus sensibles aux chocs exogènes »). Seconde modulation

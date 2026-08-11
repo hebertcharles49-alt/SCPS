@@ -1835,6 +1835,7 @@ void econ_init(WorldEconomy *e, const World *w) {
         pe->active=true;
         pe->impassable=false;
         pe->colonized=false;
+        pe->is_colonized=false;
         pe->owner=-1;
 
         /* Capacité d'accueil : pop cible à terme (sert au peuplement initial
@@ -2099,7 +2100,7 @@ void econ_init(WorldEconomy *e, const World *w) {
           pe->strata[CLASS_BOURGEOIS].pop = 0.f;
           pe->strata[CLASS_LABORER].pop   = seed - (float)elite_jobs;
         }
-        pe->colonized=true;
+        pe->colonized=true; pe->is_colonized=true;
         pe->owner=(int16_t)cid;
     }
 
@@ -2193,7 +2194,7 @@ void econ_init(WorldEconomy *e, const World *w) {
             /* Pose un hameau sur WS, possédé par le slot WILD DISTINCT `wown` (graine WILD_POP, < ½·WILD_CAP). */
             #define WILD_PLANT(WS, wown) do { \
                 int ws_=(WS); ProvinceEconomy *wpe=&e->prov[ws_]; \
-                wpe->owner=(int16_t)(wown); wpe->colonized=true; wpe->culture.settled=true; \
+                wpe->owner=(int16_t)(wown); wpe->colonized=true; wpe->is_colonized=true; pe->is_colonized=true; wpe->culture.settled=true; \
                 wpe->cap_pop=wcap; \
                 uint32_t hh=(uint32_t)ws_*2654435761u + (uint32_t)cid*40503u; \
                 hh ^= hh>>13; hh *= 0x85ebca6bu; hh ^= hh>>16; \
@@ -4482,6 +4483,16 @@ void econ_tick(WorldEconomy *e, float dt) {
                  * presque rien devoir — l'exonération vitale ci-dessous reste un garde-fou
                  * SUPPLÉMENTAIRE, cf. gate 5). */
                 collected = income_gross[c] * econ_income_tax_rate((SocialClass)c) * mult * (1.f-evasion);
+                /* PLANCHER PER-CAPITA (dépouillement 2026-08-11 : « revenu fiscal 0 or/an à
+                 * l'an 50 ») : l'impôt-revenu lit un revenu MONÉTISÉ (~0 le premier siècle,
+                 * marché sec) → l'État ne levait RIEN pendant 100 ans. L'impôt en NATURE
+                 * (corvée, dîme) précède la monnaie : sous le rendement-revenu, on lève le
+                 * forfait legacy × TAX_FLOOR_FRAC. L'exonération vitale (dessous) et le
+                 * plafond wealth restent — le misérable ne paie toujours rien.
+                 * TAX_FLOOR_FRAC=0 = l'hier exact (kill-switch). */
+                float floor_pc = tax_base[c] * st->pop * mult * (1.f-evasion) * (dt*12.f)
+                               * tune_f("TAX_FLOOR_FRAC", 0.5f);
+                if (collected < floor_pc) collected = floor_pc;
             } else {
                 /* REFONTE 2026-07-13 — assiette PER-CAPITA LEGACY (kill-switch INCOME_TAX=0) :
                  * forfait mensuel × effectif × curseur × (1−évasion). ×(dt·12) = ×1 au tick
@@ -6074,7 +6085,7 @@ void econ_colony_day(WorldEconomy *e, const World *w){
                   dst->strata[c].wealth=cw->seed_wealth[c]+preexist_wealth[c];
                   delivered+=(double)cw->seed_wealth[c]; }
               g_colonization_net_cum += delivered; }   /* MONNAIE M3a — L'INSTRUMENT : livré (miroir du -= au départ) */
-            dst->colonized=true;
+            dst->colonized=true; dst->is_colonized=true;
             dst->owner=(int16_t)cid;
             dst->ferveur=1.f;                          /* FERVEUR FONDATRICE (lot 2) */
             colonize_seed_pop_group(dst, cw->dst, (long)seeded,
@@ -6197,7 +6208,7 @@ static void colonize_from_prov(WorldEconomy *e, int src_pid, int dst_pid, int ci
      * net exactement 0 ; seule la voie CONVOI d'econ_colonize_province/econ_colony_day
      * porte un résidu mesurable — colons perdus en route = richesse détruite, comptée). */
     for (int c=0;c<CLASS_COUNT;c++) dst->strata[c].wealth=wealth_seed[c]+preexist_wealth[c];
-    dst->colonized=true;
+    dst->colonized=true; dst->is_colonized=true;
     dst->owner=(int16_t)cid;
     dst->ferveur=1.f;            /* FERVEUR FONDATRICE (lot 2) : la jeune colonie a faim d'avenir */
     colonize_seed_pop_group(dst, dst_pid, (long)seeded,&settlers,settlers_id);
@@ -6230,6 +6241,10 @@ int econ_passive_seep(WorldEconomy *e, const World *w){
     for (int pd=0; pd<nprov; pd++){
         ProvinceEconomy *dst=&e->prov[pd];
         if (!dst->active) continue;                       /* les terres mortes restent mortes */
+        if (dst->is_colonized && !dst->colonized) continue;   /* RUINES : le seep passif ne re-fonde pas
+                                                               * sur une terre qui a tué sa colonie — la
+                                                               * colonisation DIRIGÉE seule y retourne
+                                                               * (fin du churn, le substrat garde sa voie) */
         float dpop=0.f; for (int c=0;c<CLASS_COUNT;c++) dpop+=dst->strata[c].pop;
         if (dst->colonized && dpop >= target) continue;   /* installée : la croissance suit */
         /* la voisine peuplée la plus forte — le front vient d'où déborde la vie */
@@ -6264,7 +6279,7 @@ int econ_passive_seep(WorldEconomy *e, const World *w){
             econ_seed_population(dst, g);
             for (int c=0;c<CLASS_COUNT;c++) dst->strata[c].wealth=pre[c];
             dst->strata[CLASS_LABORER].wealth += wshare;
-            dst->colonized=true;
+            dst->colonized=true; dst->is_colonized=true;
             dst->owner=src->owner;
             dst->ferveur=1.f;
             colonize_seed_pop_group(dst, pd, (long)g,
@@ -6285,6 +6300,40 @@ int econ_passive_seep(WorldEconomy *e, const World *w){
  * mère-patrie deux fois plus. L'appelant (harnais) a vérifié Port + coque +
  * portée de courants ; ici vivent les portes et le prix. GRAIN PUBLIC historique =
  * région (scps_navy passe un port/une cible RÉGION) résolue vers ses provinces. */
+/* ══ LES RUINES (dépouillement 2026-08-11 : « 0 substrat — le chemin mémoire-de-ruines
+ * est mort ») ══
+ * CULTURE_BLEND_SUBSTRATE ne tire qu'à la recolonisation d'une province MORTE — et
+ * aucune province ne mourait jamais (sans peste, sans extermination, la pop plancher
+ * survit à tout). Désormais une province colonisée dont la population s'effondre sous
+ * RUIN_POP_FLOOR est ABANDONNÉE : les derniers partent, la terre redevient vacante,
+ * mais son culture_id DEMEURE — la mémoire des ruines. Le prochain colon fondera SUR
+ * elle et l'identité hybride portera le substrat (l'Anatolie). Les capitales ne
+ * tombent jamais en ruines (le pays meurt par d'autres chemins). Annuel.
+ * RUIN_POP_FLOOR=0 = jamais de ruines (kill-switch). */
+int econ_ruin_tick(WorldEconomy *e){
+    float floor_ = tune_f("RUIN_POP_FLOOR", 50.f);
+    if (!e || floor_<=0.f) return 0;
+    int ruined=0;
+    for (int p=0;p<e->n_prov && p<SCPS_MAX_PROV;p++){
+        ProvinceEconomy *pe=&e->prov[p];
+        if (!pe->active || !pe->colonized || pe->is_capital) continue;
+        float tot=0.f; for (int c=0;c<CLASS_COUNT;c++) tot+=pe->strata[c].pop;
+        if (tot >= floor_) continue;
+        /* ⚠ LE SEEP FONDE « À LA PREMIÈRE GOUTTE » (une poignée d'âmes, palier 100) : un
+         * seuil de pop seul tuait CHAQUE colonie naissante dans son berceau — churn infini
+         * (246 cycles/monde mesurés), destruction cumulée d'âmes, expansion étranglée →
+         * mondes à PIB 0 (causal seed 3 : 80k avec vs 379k sans). La ruine exige la FAMINE :
+         * un hameau qui a à manger GRANDIT ; seul le reste affamé (guerre, sac, terre morte)
+         * s'abandonne. */
+        if (pe->food_sat >= tune_f("RUIN_FAMINE_GATE", 0.25f)) continue;
+        for (int c=0;c<CLASS_COUNT;c++){ pe->strata[c].pop=0.f; pe->strata[c].wealth=0.f; }
+        pe->pop.n_groups=0;                 /* les derniers sont partis (le culture_id RESTE) */
+        pe->colonized=false;                 /* is_colonized RESTE : ce sont des RUINES, pas une terre vierge */
+        pe->owner=-1;                        /* terre abandonnée — la région se ré-agrège à la clôture */
+        ruined++;
+    }
+    return ruined;
+}
 bool econ_colonize_overseas(WorldEconomy *e, int src_rid, int dst_rid, int cid){
     if (!e || src_rid<0||src_rid>=e->n_regions||dst_rid<0||dst_rid>=e->n_regions) return false;
     int sp=econ_region_best_colonized_prov(e, src_rid, cid);
@@ -6540,7 +6589,7 @@ static void ip_colonize_laborer(WorldEconomy *e, int src_pid, int dst_pid, int c
     econ_seed_population(dst, seeded);   /* pose une richesse ex nihilo (genèse) — ÉCRASÉE juste après par le transfert réel */
     for (int c=0;c<CLASS_COUNT;c++)
         dst->strata[c].wealth = ((c==CLASS_LABORER) ? wealth_taken : 0.f) + preexist_wealth[c];
-    dst->colonized=true;
+    dst->colonized=true; dst->is_colonized=true;
     dst->owner=(int16_t)cid;
     dst->ferveur=1.f;                    /* FERVEUR FONDATRICE, comme toute fondation (lot 2) */
     colonize_seed_pop_group(dst, dst_pid, (long)seeded, &settlers, settlers_id);

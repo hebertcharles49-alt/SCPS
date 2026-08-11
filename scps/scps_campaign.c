@@ -839,6 +839,15 @@ static void bt_end(Campaign *c, const WorldEconomy *e, const DiploState *dp, Fie
     int helpers[2]={bt->helpA,bt->helpB};
     for (int h=0;h<2;h++) if (helpers[h]>=0 && helpers[h]<CAMPAIGN_ARMY_CAP
         && c->army[helpers[h]].phase==FA_BATTLE) c->army[helpers[h]].phase=FA_IDLE;
+    /* L'ANÉANTI MEURT (2026-08-11) : une armée impliquée restée à 0 paquet SANS
+     * ralliement en attente se dissout — pas de fantôme qui ré-engage à l'infini. */
+    for (int k=0;k<CAMPAIGN_ARMY_CAP;k++){
+        FieldArmy *A=&c->army[k];
+        if (!A->active || (A->owner!=ownerA && A->owner!=ownerB) || A->loc!=bt->loc) continue;
+        if (force_units(&A->force)<=0 && A->rally_packets<=0){
+            A->active=false; A->phase=FA_IDLE; A->dest=A->next=-1; A->taken_region=-1;
+        }
+    }
     bt->active=false;
 }
 /* la part MONTÉE d'une force [0..1] : la cavalerie court-sus aux fuyards — c'est ELLE
@@ -1023,6 +1032,14 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
     bt->cycle++;
 }
 static void bt_engage(Campaign *c, int i, int j, int loc){
+    /* DÉPOUILLEMENT 2026-08-11 (seed 1922 : 940 batailles × 2 j) : une bataille finie
+     * par ANÉANTISSEMENT (force 0, bt_day l.~950) rendait les deux camps à FA_IDLE sans
+     * jours de brisure — co-localisés, ils se ré-engageaient au tick suivant, sans fin.
+     * Un camp sans un seul paquet ne LIVRE pas bataille. */
+    /* (stack_force ne compte que les FA_BATTLE — AVANT l'engagement elle rend 0 pour
+     * tout le monde et refusait TOUTE bataille, 11 bancs rouges : on lit la force
+     * PROPRE des deux corps meneurs.) */
+    if (force_units(&c->army[i].force)<=0 || force_units(&c->army[j].force)<=0) return;
     for (int k=0;k<CAMPAIGN_MAX_BATTLES;k++){
         FieldBattle *bt=&c->battle[k];
         if (bt->active) continue;

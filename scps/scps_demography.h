@@ -136,6 +136,9 @@ int demography_contact_tick(WorldEconomy *e, ModifierStack *drift, const RouteNe
                             const DiploState *dp, float P, float K, float ypt);
 void demography_contact_reset(void);   /* RAZ du compteur de cristallisations (par sim) */
 long demography_contact_count(void);   /* cristallisations par contact cumulées (télémétrie) */
+/* L'AFFRANCHI PAR MÉTABOLISATION (2026-08-11) : un groupe servile intégré ≥ MANUMIT_INTEG
+ * est affranchi (sauf couronne dominatrice) — la sortie du puits servile hors abolition. */
+long demography_manumit_integrated(WorldEconomy *econ, const World *w);
 /* TURCHIN (2026-08-11) : l'excédent d'élite au-delà des positions réelles [0..1]. */
 float demography_elite_rival(const ProvinceEconomy *pe);
 /* ATTRACTEURS ENDOGÈNES (2026-08-11) : les valeurs du peuple dominant dérivent vers un

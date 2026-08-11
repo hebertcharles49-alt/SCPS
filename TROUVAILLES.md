@@ -8484,3 +8484,85 @@ IPM privé post-réforme monétaire.
   culture_make) — la critique « structure figée » reste ouverte.
 - golden-deep (an 83 + 250, graine 7) : gate de VAGUE/nightly, PAS pre-commit (coût
   une sim longue) ; baseline scps/golden_deep.txt commitée cette nuit.
+
+## 2026-08-11 — « Corrige tout » (dépouillement sweep) : 8 chantiers (opus)
+
+**Découvertes** :
+- Le terme Turchin de la veille était INERTE : demography_elite_rival comparait les
+  aspirants STRATES (~1 % pop) aux sièges PLEINS (capitale+édifices+cour prop ~12 %
+  pop) — le ratio ne dépassait jamais 1. Fix : positions STRICTES = les offices seuls
+  (tier×100, sans le terme pop-proportionnel) via prov_elite_seats_ex(with_prop).
+  L'émergence de classes (factions/armée) garde le PLEIN calcul — calibrage intact.
+- Batailles fantômes (seed 1922, 940×2j) : une bataille finie par ANÉANTISSEMENT
+  (force 0, bt_day) rendait les 2 camps FA_IDLE sans broken_days → ré-engagement au
+  tick suivant, sans fin. Double fix : bt_engage refuse un camp à 0 paquet ; bt_end
+  dissout l'anéanti sans ralliement en attente. NON tunable (bug fix, comme les UAF).
+- L'Âge des Empires était « worldgen+35 ans » : les régions-berceau comptent
+  years_held depuis le tick 0. Fix : région d'empire = tenue >35 ans ET acquise
+  après la genèse (years_held < année−5) + seuils remontés (8 régions/pays, 20 monde).
+- Échanges/Découvertes vrais à la genèse (nœuds semés + rayon de fog initial) :
+  seuils remontés (2.5/10/0.20 · 0.22/8). ⚠ 0.35 de pair-share était INATTEIGNABLE
+  historiquement (1/200) — 0.22 = le milieu, à valider par l'avènement au sweep.
+- Outre-mer 0/20 : NAVY_COLONY_MAX_DAYS=90 EN DUR < la traversée réelle moyenne
+  (96 j mesurés sur les armées du même monde). Tunable, défaut 240.
+- Richesse élite exponentielle : l'élasticité M5 R3 EXISTAIT mais plafonnée
+  CONSUME_ELASTIC_MAX=1.2 — une élite 30× plus riche consommait 1.2× le panier.
+  Défaut → 3.0 (le train de vie suit la fortune).
+- Trou fiscal du 1er siècle : l'impôt-revenu (M3i) lit un revenu MONÉTISÉ, ~0 avant
+  l'an ~120 (or mondial 23721→332 en 40 ans — assèchement monétaire précoce, l'entretien
+  brûle sans frappe). Fix borné : PLANCHER per-capita (l'impôt en nature) = forfait
+  legacy × TAX_FLOOR_FRAC sous le rendement-revenu ; exonération vitale conservée.
+  Le fond (frappe précoce / entretien-redépense) = chantier M à part, non improvisé.
+- 0 affranchissement : demography_manumit_country n'était appelée QUE par l'abolition
+  (éthos Pacifiste) — et les attracteurs ne tirent jamais vers pacifiste. Filet :
+  l'esclave INTÉGRÉ s'affranchit (MANUMIT_INTEG, groupe-grain, couronne non-dominatrice).
+  ⚠ 0.85 VIDAIT l'esclavage (3 âmes à l'an 80) → 0.95 (une vie de service).
+- 0 substrat : le chemin exigeait la recolonisation d'une province MORTE — aucune ne
+  mourait (pas de peste, plancher de survie). econ_ruin_tick : < RUIN_POP_FLOOR (50) →
+  abandon (colonized=false, owner=-1) MAIS culture_id conservé = la mémoire des ruines.
+- Chronicle : la ligne CLASSES monde mélangeait pop_by_class (parts) et strates (sat)
+  — « 12 % d'élites contre 1 % dans la même sortie ». Scindée en 2 lignes nommées.
+  + télémétrie LANGUE (relations couronne↔couronne, horloge phylo, % sans ancêtre).
+
+**Pièges** :
+- python-en-heredoc a ENCORE mangé les \n (chronicle patch silencieusement raté,
+  build vert au-dessus → fausse confiance). TOUJOURS Write un .py. (≥6e occurrence.)
+- Les jumeaux convergents sous phylo sont désormais SÉMANTIQUES (arbres distincts,
+  contenu proche = vraie convergence) — un compte élevé n'est plus un bug.
+
+**Restes** :
+- L'assèchement monétaire du 1er siècle (frappe précoce ou entretien→redépense) = M-vague.
+- La fusion strata↔pop_by_class (364 usages) : les 2 réalités restent parallèles,
+  désormais NOMMÉES ; la vraie fusion est un chantier à part.
+- Les seuils d'âges recalibrés à VALIDER sur l'avènement du sweep (jamais-advenu = trop haut).
+
+### Addendum « corrige tout » — la saga des 3 relances (même journée)
+
+- **Garde bataille v1 FAUSSE** : stack_force ne compte que les FA_BATTLE — la garde
+  refusait TOUTE bataille (11 bancs campaign rouges, golden re-baseliné sur un monde
+  démilitarisé, sweep invalide). v2 : lire force_units(&army.force) des deux meneurs.
+- **RUIN_POP_FLOOR=50 tuait les mondes** : le seep fonde « à la première goutte » —
+  chaque colonie naissante mourait dans son berceau (150-250 cycles/monde, seed 3 :
+  80k/PIB 0 vs 379k sans ruines). Deux verrous : la ruine exige la FAMINE
+  (RUIN_FAMINE_GATE 0.25) ET pop<20 (RUIN_POP_FLOOR 50→20).
+- **is_colonized (SAVE v102, décision joueur)** : latch « a déjà été colonisée »,
+  posé aux 6 sites, la ruine le CONSERVE. Ruines = is_colonized && !colonized ; le
+  seep passif ne re-fonde JAMAIS sur des ruines (fin du churn résiduel) — la
+  colonisation DIRIGÉE seule y retourne (le substrat redevient un acte, pas un
+  accident). Causal seed 3 : 344k · 4 substrats.
+- **Outre-mer, le VRAI verrou** : aucune doctrine ne commandait de HULL_TRANSPORT —
+  jamais. Le plafond 90 j n'était que le 2e mur. Doctrine : toute IA portuaire
+  entretient 1 transport (2 Mercantile/Dominateur), sur chantier OISIF seulement
+  (la bordée de guerre passe d'abord — banc ORDRE l'a imposé). Sweep final :
+  6/20 mondes colonisent outre-mer (max 13) vs 1/20 avant.
+- **social_demo brasserie** : le déplafonnement du train de vie (×3) fait boire le
+  stock du banc — level 8→16 (le même recalibrage que 3→8 à la naissance de
+  l'élasticité).
+- **Sweep final (20×250, v102)** : pop 280-495k (saine), batailles 45-354 à 16-20 j
+  (1922 guéri : 940→45), affranchis 318-2738 avec esclavage survivant (0-729),
+  substrats 0-5 (rares, signifiants), attracteurs 29-274, jumeaux convergents
+  4/15→56/66 (VARIANCE enfin, plus un défaut), Empires an 66-105 (advenu 19/20,
+  endogène), Échanges an 8-22. RESTE : Découvertes toujours quasi-genèse (an 3-5 —
+  le rayon de fog initial suffit au pair-share 0.22) ; ASCENSION/SANG 0/20 (dispatch
+  §27, pré-existant) ; r/t élite encore dispersée (15-487) — le train de vie ne
+  suffit pas seul, le puits attend la M-vague.

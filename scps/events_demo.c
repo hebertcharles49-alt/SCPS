@@ -286,8 +286,11 @@ int main(int argc, char **argv){
 
     /* L'Ère des Échanges : ≥4 régions ET ≥8 % des régions habitées, route_pe>Y. */
     { int settled[64], ns=0;
-      for (int r=0;r<s.econ->n_regions && ns<6;r++) if (s.econ->region[r].culture.settled) settled[ns++]=r;
-      for (int k=0;k<ns;k++) s.econ->region[settled[k]].route_pe=2.0f; }   /* 6 carrefours riches */
+      /* RECALIBRAGE (dépouillement 2026-08-11) : les seuils d'Échanges ont remonté
+       * (valeur 2.5 · 10 nœuds · 20 % de part — l'ancien 1.0/4/8 % était vrai dès la
+       * genèse) : la fixture plante 14 carrefours à 3.0 pour franchir les trois. */
+      for (int r=0;r<s.econ->n_regions && ns<14;r++) if (s.econ->region[r].culture.settled) settled[ns++]=r;
+      for (int k=0;k<ns;k++) s.econ->region[settled[k]].route_pe=3.0f; }   /* 14 carrefours riches */
     advance_until_age(s.ev,s.w,s.econ,s.wp,s.wl,s.ts, AGE_EXCHANGE, 10);
     printf("   Échanges : éveillé=%d (an %d)  C mondial=+%.2f  palier Société/3 ouvert=%d\n",
            ages_dawned(s.ev,AGE_EXCHANGE), s.ev->ages.days_elapsed/365, s.wp->age_C_bonus,

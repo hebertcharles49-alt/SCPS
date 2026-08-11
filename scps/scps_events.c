@@ -3205,7 +3205,7 @@ static bool age_trig_discovery(World *w, WorldEconomy *econ, WorldProsperity *wp
     return ages_known_pair_share(w) >= tune_f("AGE_DISCOVERY_KNOWN_PAIR_SHARE",0.12f);
 }
 static bool age_trig_empires(World *w, WorldEconomy *econ, WorldProsperity *wp, const TechState ts[],
-                             WorldLegitimacy *wl){
+                             WorldLegitimacy *wl, int year){
     (void)wp;(void)ts; if(!wl) return false;
     int world_n=0; int per_country[SCPS_MAX_COUNTRY]={0};
     float held_min = tune_f("AGE_EMPIRES_HELD_YEARS",35.0f);
@@ -3213,6 +3213,12 @@ static bool age_trig_empires(World *w, WorldEconomy *econ, WorldProsperity *wp, 
         int o=econ->region[r].owner;
         if (o<0 || o>=SCPS_MAX_COUNTRY || !econ->region[r].culture.settled) continue;
         if (r>=SCPS_MAX_REG || wl->years_held[r] <= held_min) continue;
+        /* DÉPOUILLEMENT 2026-08-11 (« l'Âge des Empires tombe an 38-39 sur trois mondes
+         * incomparables ») : les régions-BERCEAU comptent depuis le tick zéro — l'âge
+         * était « worldgen + 35 ans », un calendrier. Une région d'empire = tenue 35 ans
+         * ET ACQUISE après la genèse (years_held < année−5) : l'expansion digérée, pas
+         * le berceau. */
+        if (wl->years_held[r] >= (float)(year-5)) continue;
         world_n++; per_country[o]++;
     }
     if (world_n < (int)tune_f("AGE_EMPIRES_REGIONS_WORLD",8.0f)) return false;
@@ -3429,7 +3435,7 @@ bool events_check_ages(EventsState *ev, World *w, WorldEconomy *econ,
     bool trig[AGE_COUNT] = {0};
     trig[AGE_EXCHANGE]     = age_trig_exchange(w,econ,wp,ts);
     trig[AGE_DISCOVERY]    = age_trig_discovery(w,econ,wp,ts);
-    trig[AGE_EMPIRES]      = age_trig_empires(w,econ,wp,ts,wl);
+    trig[AGE_EMPIRES]      = age_trig_empires(w,econ,wp,ts,wl,year);
     /* BREACH_AGE_ON_FIN (défaut) : l'Âge de la Brèche N'EST PLUS scanné — il est éveillé
      * par sim.c le tick d'une fin faustienne (synchro fin↔âge). =0 : chemin LEGACY (charge
      * > seuil ET year >= AGE_BREACH_MIN_YEAR, comme avant). */

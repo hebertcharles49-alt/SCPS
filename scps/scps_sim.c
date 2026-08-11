@@ -1346,6 +1346,8 @@ void sim_day(Sim *s, World *w) {
         PROF(PB_INTERTRADE, intertrade_tick(s->econ, s->rn, s->dp));   /* grandes routes marchandes (goods inter-pays + embargo) */
         PROF(PB_CONTACT, demography_contact_tick(s->econ, s->drift, s->rn, s->dp, 5.f, 5.f, 1.f));   /* S2 : la cristallisation suit le contact (annuel) */
         demography_values_tick(s->econ, s->drift, s->wp, s->dp, 1.f);   /* ATTRACTEURS ENDOGÈNES : une culture bifurque seule (annuel) */
+        econ_ruin_tick(s->econ);                              /* RUINES : l'effondré s'abandonne, la mémoire reste (annuel) */
+        demography_manumit_integrated(s->econ, w);            /* L'AFFRANCHI PAR MÉTABOLISATION (annuel) */
         demography_migration_pact_tick(s->econ, s->dp, s->day, s->wp->age_mig_mult);   /* BRASSAGE : échange passif de population entre alliés (annuel) */
         ai_slave_trade_year(w, s->econ, s->ai, s->ai_on); /* P4 : le pool des Centres se remplit (vente du surplus servile) */
         demography_refugee_tick(w, s->econ, s->dp);        /* BRASSAGE : la guerre fait FUIR, l'apaisement fait RESPIRER (annuel) */

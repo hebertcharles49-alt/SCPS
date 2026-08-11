@@ -372,6 +372,12 @@ typedef struct {
     bool       active;               /* terre habitable (colonisable) */
     bool       impassable;           /* zone morte : infranchissable pour colonisation et commerce */
     bool       colonized;            /* effectivement peuplée/settlée */
+    bool       is_colonized;         /* LATCH « a DÉJÀ été colonisée » (décision joueur
+                                      * 2026-08-11) : jamais redescendu. Les RUINES =
+                                      * is_colonized && !colonized — le seep ne re-fonde
+                                      * pas dessus (fin du churn fonder-affamer-ruiner) ;
+                                      * seule la colonisation DIRIGÉE réinstalle, et le
+                                      * substrat porte la mémoire. SAVE v102. */
     int16_t    owner;                /* pays qui contrôle la province (-1 = vierge) */
     int16_t    region;               /* RÉGION géographique qui la groupe (miroir de World.province[].region,
                                        * caché ici pour qu'econ_tick puisse agréger SANS World* — la signature
@@ -604,6 +610,9 @@ float econ_content_dist_faith(const PopCulture *a, const PopCulture *b);
 /* DISTANCE PHYLOGÉNÉTIQUE entre deux identités (l'horloge = l'ARBRE, pas une position) :
  * gen(a)+gen(b)−2·gen(MRCA) borné [0..10], 10 = sans ancêtre commun. */
 float econ_culture_phylo_clock(uint16_t a, uint16_t b);
+/* RUINES (2026-08-11) : une province effondrée (< RUIN_POP_FLOOR) est abandonnée,
+ * son culture_id demeure — le substrat redevient atteignable. Annuel, renvoie le compte. */
+int econ_ruin_tick(WorldEconomy *e);
 uint16_t econ_ruling_culture_id(const World *w, const WorldEconomy *econ, int cid);
 const PopCulture *econ_ruling_culture(const World *w, const WorldEconomy *econ, int cid);
 /* ESCLAVAGE — gate ACHETEUR au marché des Centres (miroir du gate de capture IA) :

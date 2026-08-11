@@ -14,6 +14,7 @@
 #include "scps_world.h"
 #include "scps_toponym.h"  /* nom de ville à la colonisation (dump per-province) */
 #include "scps_econ.h"
+#include "scps_culture.h"   /* télémétrie langue : culture_relation_of/relation_name */
 #include "scps_trade.h"
 #include "scps_tech.h"
 #include "scps_legitimacy.h"
@@ -1631,12 +1632,22 @@ int main(int argc, char **argv){
                     if (pp2>0.0){ ssum[k2]+=pq->strata[k2].satisfaction*pp2; spop[k2]+=pp2; }
                 }
             }
+            /* DÉPOUILLEMENT 2026-08-11 : la ligne mélangeait DEUX réalités de classe
+             * (parts = pop_by_class SIÈGES d'édifices, sat = strates par richesse) —
+             * « 12 % d'élites contre 1 %, dans la même sortie ». La ligne principale
+             * devient TOUTE en strates (parts + sat cohérentes) ; les sièges d'édifices
+             * ont LEUR ligne, nommés pour ce qu'ils sont. */
+            double stt=spop[0]+spop[1]+spop[2]+spop[3];
+            if (stt>0.5)
+                printf("   CLASSES monde (strates par richesse) : %d%% laboureurs (sat %d) · %d%% bourgeois (sat %d) · %d%% élites (sat %d) · %d%% esclaves\n",
+                       (int)(100.0*spop[CLASS_LABORER]/stt),  (int)(spop[CLASS_LABORER]>0?100.0*ssum[CLASS_LABORER]/spop[CLASS_LABORER]:0),
+                       (int)(100.0*spop[CLASS_BOURGEOIS]/stt),(int)(spop[CLASS_BOURGEOIS]>0?100.0*ssum[CLASS_BOURGEOIS]/spop[CLASS_BOURGEOIS]:0),
+                       (int)(100.0*spop[CLASS_ELITE]/stt),    (int)(spop[CLASS_ELITE]>0?100.0*ssum[CLASS_ELITE]/spop[CLASS_ELITE]:0),
+                       (int)(100.0*spop[CLASS_SLAVE]/stt));
             if (tt>0)
-                printf("   CLASSES monde : %ld%% laboureurs (sat %d) · %ld%% bourgeois (sat %d) · %ld%% élites (sat %d) · %ld%% esclaves\n",
-                       cl[CLASS_LABORER]*100/tt,  (int)(spop[CLASS_LABORER]>0?100.0*ssum[CLASS_LABORER]/spop[CLASS_LABORER]:0),
-                       cl[CLASS_BOURGEOIS]*100/tt,(int)(spop[CLASS_BOURGEOIS]>0?100.0*ssum[CLASS_BOURGEOIS]/spop[CLASS_BOURGEOIS]:0),
-                       cl[CLASS_ELITE]*100/tt,    (int)(spop[CLASS_ELITE]>0?100.0*ssum[CLASS_ELITE]/spop[CLASS_ELITE]:0),
-                       cl[CLASS_SLAVE]*100/tt); }
+                printf("   SIÈGES (édifices, pop_by_class) : %ld%% élites · %ld%% bourgeois · %ld%% laboureurs · %ld%% esclaves — l'AUTRE réalité de classe (factions/armée)\n",
+                       cl[CLASS_ELITE]*100/tt, cl[CLASS_BOURGEOIS]*100/tt,
+                       cl[CLASS_LABORER]*100/tt, cl[CLASS_SLAVE]*100/tt); }
           } }
         /* FAU/F8 — la boucle faustienne (transmuteurs + entropie) ET la demande de fer (forge
          * militaire). Conso cumulée par rare ; entropie monde ; prix moyen du fer (la preuve F8). */
@@ -2301,12 +2312,44 @@ int main(int argc, char **argv){
           }
           int distinct=0; for (int ar=0;ar<HERITAGE_COUNT;ar++) distinct+=arch_reached[ar];   /* ar : ne pas masquer le r extérieur (-Wshadow) */
           if (nemp>0){
-              printf("              syncrétisme : %d nœud(s) profond(s) (gouvernance) · %d diffusion(s) (commerce/frontière/foi) · %d/%d archétype(s) · dispersion %d–%d/empire · %d ont la COMBINAISON forge runique × arcane · %ld cristallisation(s) culturelle(s) par contact (S2)\n",
+              printf("              syncrétisme TECH (gouvernance) : %d nœud(s) profond(s) · %d diffusion(s) (commerce/frontière/foi) · %d/%d archétype(s) · dispersion %d–%d/empire · %d ont la COMBINAISON forge runique × arcane · %ld cristallisation(s) culturelle(s) par contact (S2)\n",
                      sync_total, diff_total, distinct, (int)HERITAGE_COUNT, nmin, nmax, combo, demography_contact_count());
               /* ATTRACTEURS ENDOGÈNES (2026-08-11) : la preuve que les peuples changent
                * d'âme AUTREMENT qu'en perdant une guerre ou en croisant un marchand. */
               printf("              attracteurs : %ld bascule(s) d'éthos ENDOGÈNE(s) (confort→mercantile · guerre→dominateur · K→bureaucrate)\n",
                      demography_values_count());
+              /* LANGUE (dépouillement 2026-08-11 : « le sweep ne rapporte aucune métrique
+               * linguistique ») : distribution des relations couronne↔couronne (paires de
+               * pays vivants), horloge PHYLO quand les deux identités existent (repli
+               * scalaire sinon — mêmes règles que la façade). */
+              { int relc[CULT_REL_COUNT]={0}; int npair=0, nphylo=0, noanc=0; double phsum=0.0;
+                for (int c1=0;c1<w->n_countries;c1++){
+                    if (w->country[c1].role==POLITY_UNCLAIMED) continue;
+                    const PopCulture *k1=econ_ruling_culture(w,s.econ,c1);
+                    uint16_t i1=econ_ruling_culture_id(w,s.econ,c1);
+                    if (!k1) continue;
+                    for (int c2=c1+1;c2<w->n_countries;c2++){
+                        if (w->country[c2].role==POLITY_UNCLAIMED) continue;
+                        const PopCulture *k2=econ_ruling_culture(w,s.econ,c2);
+                        uint16_t i2=econ_ruling_culture_id(w,s.econ,c2);
+                        if (!k2) continue;
+                        float la=k1->langue, lb=k2->langue;
+                        if (econ_culture_identity_valid(i1) && econ_culture_identity_valid(i2)){
+                            float ph=econ_culture_phylo_clock(i1,i2);
+                            la=0.f; lb=ph; nphylo++; phsum+=ph; if (ph>=9.99f) noanc++;
+                        }
+                        CultureRelation rel=culture_relation_of(
+                            la,k1->valeurs,k1->subsistance,k1->parente,k1->religion,k1->credo,k1->rel_branch,
+                            lb,k2->valeurs,k2->subsistance,k2->parente,k2->religion,k2->credo,k2->rel_branch);
+                        if (rel>=0 && rel<CULT_REL_COUNT) relc[rel]++;
+                        npair++;
+                    }
+                }
+                if (npair>0)
+                    printf("              langue (couronnes, %d paires) : %d parents · %d cousins dérivés · %d étrangers · %d jumeaux convergents · %d ennemis de schisme | phylo : %d à l'arbre · horloge moy %.1f · %d sans ancêtre commun\n",
+                           npair, relc[REL_PARENTS], relc[REL_COUSINS_DERIVES], relc[REL_ETRANGERS],
+                           relc[REL_JUMEAUX_CONVERGENTS], relc[REL_ENNEMIS_SCHISME],
+                           nphylo, nphylo>0?phsum/nphylo:0.0, noanc); }
               printf("              brassage : %ld flux de pacte migratoire (%ld âmes déplacées — échange passif entre partenaires → diaspora à métaboliser)\n",
                      demography_migration_pact_count(), demography_migration_pact_souls());
               printf("              réfugiés : %ld fuite(s) de guerre (%ld âmes) → voisine sûre · %ld retour(s) (%ld âmes) au foyer apaisé (la pop RESPIRE ; aucune migration définitive)\n",
@@ -2635,7 +2678,7 @@ int main(int argc, char **argv){
     printf("   batailles dans le temps ..... %ld livrées · %.0f j/bataille · %ld déroutes · %ld ralliement(s) · %ld décrochages · %ld renforts · %ld nuls | morts choc %ld vs POURSUITE %ld (ratio %.1fx — la poursuite doit DOMINER le choc si la cavalerie domine la compo)\n",
            tot_bt, tot_bt? (double)tot_btj/tot_bt:0.0, tot_routs, tot_rallies, tot_deseng, tot_renf, tot_nul,
            tot_mchoc, tot_mpour, tot_mchoc? (double)tot_mpour/tot_mchoc:0.0);
-    printf("   syncrétisme culturel ........ %.1f nœud(s)/sim · %.1f archétype(s) distincts/sim (porte = CULTURE, plus heritage ; la diffusion par contact DIVERGE)\n",
+    printf("   syncrétisme TECH (gouvernance) %.1f nœud(s)/sim · %.1f archétype(s) distincts/sim (porte = CULTURE, plus heritage ; la diffusion par contact DIVERGE)\n",
            (double)tot_sync/(nsims>0?nsims:1), (double)tot_sync_distinct/(nsims>0?nsims:1));
     printf("   religion .................... %.1f foi(s) fondée(s)/sim · %.1f schisme(s)/sim · %.1f pays fidèle(s)/sim · %.1f région(s) minoritaire(s)/sim (dont same-root/hérésie %.1f · foreign/zélote %.1f) (monde ATHÉE au départ ; fonde au TEMPLE T2 bâti — LOT T ; racines ≤ ⌈empires/2⌉ genèse · ≤ %d schisme(s)/racine)\n",
            (double)tot_relig_roots/(nsims>0?nsims:1), (double)tot_relig_schisms/(nsims>0?nsims:1),

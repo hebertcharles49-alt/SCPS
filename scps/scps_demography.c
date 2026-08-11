@@ -515,7 +515,11 @@ void demography_dyn_id_rebase(const WorldEconomy *econ){
  * groupe. */
 /* Les POSITIONS d'élite d'une province (capitale + édifices, vénalité comprise) —
  * extraites pour être lues AUSSI par le déficit de rivalité (Turchin, ci-dessous). */
+static long prov_elite_seats_ex(const ProvinceEconomy *re, long total, bool with_prop);
 static long prov_elite_seats(const ProvinceEconomy *re, long total){
+    return prov_elite_seats_ex(re, total, true);
+}
+static long prov_elite_seats_ex(const ProvinceEconomy *re, long total, bool with_prop){
     long elite_jobs   = (long)capitale_max_tier(total)*100;                  /* capitale : tier·100 */
     /* ══ LES ÉDIFICES ÉLÈVENT LEUR CLASSE (décision joueur 2026-08-06) ══════════════
      * Jusqu'ici la SEULE source de bourgeois était l'atelier et la seule source
@@ -550,9 +554,16 @@ static long prov_elite_seats(const ProvinceEconomy *re, long total){
               if ((ELITE_EDIS>>e2) & 1u)
                   if (re->edi_built & (1u<<e2)) invest += edifice_tier((Edifice)e2);
           if (invest > 0){
+              /* TURCHIN (dépouillement 2026-08-11) : le terme PROPORTIONNEL (pop×%×invest —
+               * la cour élargie, la vénalité) gonfle les sièges à ~12 % de la pop : mesuré
+               * contre lui, l'excédent d'aspirants (strates ~1 %) ne dépasse JAMAIS 1 et le
+               * déficit de rivalité ne tirait pas. Les POSITIONS STRICTES (with_prop=false)
+               * = les seuls OFFICES (tier×100) — c'est contre elles que la rivalité se
+               * mesure ; l'émergence de classes (factions/armée) garde le plein calcul. */
               float rot = (re->owner>=0) ? faction_capture_total(re->owner) : 0.f;
-              float prop = (float)total * tune_f("EDI_ELITE_POP_PCT", 0.004f)
-                         * (float)invest * (1.f + rot);
+              float prop = with_prop ? (float)total * tune_f("EDI_ELITE_POP_PCT", 0.004f)
+                                       * (float)invest * (1.f + rot)
+                                     : 0.f;
               elite_jobs += ((long)(per*(float)invest + prop)/100)*100;
           }
       }
@@ -570,7 +581,7 @@ float demography_elite_rival(const ProvinceEconomy *pe){
     for (int i=0;i<pe->pop.n_groups;i++)
         if (pe->pop.groups[i].klass!=CLASS_SLAVE) total+=pe->pop.groups[i].count;
     if (total<100) return 0.f;
-    long seats=prov_elite_seats(pe, total);
+    long seats=prov_elite_seats_ex(pe, total, false);   /* OFFICES stricts, pas la cour */
     if (seats<100) seats=100;                  /* plancher : un hameau a toujours ses anciens */
     float asp=pe->strata[CLASS_ELITE].pop;
     float r=asp/(float)seats - 1.f;            /* l'EXCÉDENT relatif au-delà des positions */
@@ -1215,6 +1226,42 @@ static long g_manumit_total = 0;   /* télémétrie : âmes affranchies cumulée
 void demography_manumit_reset(void){ g_manumit_total = 0; }
 long demography_manumit_count(void){ return g_manumit_total; }
 
+/* ══ L'AFFRANCHI PAR MÉTABOLISATION (dépouillement 2026-08-11 : « ta strate servile
+ * est un puits sans sortie ») ══
+ * L'abolition (can_enslave=0, éthos Pacifiste) était la SEULE sortie — et les
+ * attracteurs endogènes ne tirent jamais vers pacifiste : 0 affranchissement sur
+ * 20 mondes × 250 ans. Le filet HISTORIQUE : l'esclave INTÉGRÉ s'affranchit (Rome —
+ * une génération de service, la langue apprise, le culte partagé). Un groupe servile
+ * dont l'intégration atteint MANUMIT_INTEG est affranchi ENTIER (le grain groupe),
+ * sauf sous une couronne DOMINATRICE (elle ne libère pas — l'abolition seule l'y
+ * forcera). L'intégration vient d'assimilation_tick : déterministe, aucune roue.
+ * MANUMIT_INTEG>=1 = le puits d'hier (kill-switch). */
+long demography_manumit_integrated(WorldEconomy *econ, const World *w){
+    float thr = tune_f("MANUMIT_INTEG", 0.85f);
+    if (!econ || !w || thr>=1.f) return 0;
+    long freed=0;
+    int nprov=econ->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
+    for (int p=0;p<nprov;p++){
+        ProvinceEconomy *pe=&econ->prov[p];
+        if (pe->owner<0 || !pe->colonized) continue;
+        const PopCulture *crown=econ_ruling_culture(w, econ, pe->owner);
+        if (crown && crown->ethos==ETHOS_DOMINATEUR) continue;   /* le dominateur ne libère pas */
+        ProvincePop *pp=&pe->pop;
+        for (int i=0;i<pp->n_groups;i++){
+            PopGroup *g=&pp->groups[i];
+            if (g->klass!=CLASS_SLAVE || g->integration < thr) continue;
+            g->klass=CLASS_LABORER;
+            if (g->arrival==ARR_DEPORTE) g->arrival=ARR_MIGRANT;
+            g->pop_by_class[CLASS_SLAVE]=0; g->pop_by_class[CLASS_LABORER]=g->count;
+            float take=fminf((float)g->count, pe->strata[CLASS_SLAVE].pop);
+            pe->strata[CLASS_SLAVE].pop  -= take;
+            pe->strata[CLASS_LABORER].pop += take;
+            freed += g->count;
+        }
+    }
+    g_manumit_total += freed;
+    return freed;
+}
 long demography_manumit_country(WorldEconomy *econ, int cid){
     if (!econ || cid<0 || cid>=SCPS_MAX_COUNTRY) return 0;
     long freed=0;

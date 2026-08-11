@@ -20,7 +20,11 @@
 #define NAVY_UPKEEP_WAR      1.5f     /* fournitures / an / coque                  */
 #define NAVY_UPKEEP_OTHER    0.8f
 #define NAVY_STARVE_YEAR     365.f    /* > 1 an sans entretien : une coque pourrit/an */
-#define NAVY_COLONY_MAX_DAYS 90.f     /* le seuil de traversée colonisatrice (jours) */
+/* DÉPOUILLEMENT 2026-08-11 (« ton monde a neuf continents et se joue sur un seul ») :
+ * 90 j en dur < la traversée RÉELLE moyenne (96 j mesurés, armées) — l'outre-mer ne
+ * tirait qu'un monde sur vingt. 240 j ouvre les continents ; le score ÷(1+jours/15)
+ * préfère toujours le proche. */
+#define NAVY_COLONY_MAX_DAYS (tune_f("NAVY_COLONY_MAX_DAYS",240.f))
 #define NAVY_COLONY_CD       (tune_f("NAVY_COLONY_CD_DAYS",180.f))  /* répit entre deux
                                           * colonies outre-mer (décision joueur 2026-07-31 :
                                           * « imagine une game de civ où la moitié du monde
@@ -459,6 +463,17 @@ void navy_course_tick(NavyState *ns, const World *w, WorldEconomy *econ,
                     else if (foe_any>=0 && n->hull[HULL_WAR]>=1){ n->mission=NAVY_INTERCEPTION; n->mission_target=foe_any; }
                     else if (n->mission==NAVY_BLOCUS||n->mission==NAVY_INTERCEPTION){ n->mission=NAVY_RADE; n->mission_target=-1; }
                 }
+                /* LE TRANSPORT EN DERNIER (dépouillement 2026-08-11 : « 82 coques, 21
+                 * routes, et personne ne traverse pour s'installer ») : AUCUNE doctrine
+                 * ne commandait jamais de coque TRANSPORT — l'outre-mer ET les traversées
+                 * d'armées vivaient sur les seules prises de guerre. Toute IA portuaire
+                 * entretient sa projection (1 coque ; 2 pour Mercantile/Dominateur) —
+                 * mais SEULEMENT sur un chantier OISIF : les bordées de guerre passent
+                 * d'abord (banc doctrine ORDRE). NAVY_TRANSPORT_MIN=0 = l'hier exact. */
+                { int veut_tr=(int)tune_f("NAVY_TRANSPORT_MIN",1.f);
+                  if (veut_tr>0 && (e==ETHOS_MERCANTILE||e==ETHOS_DOMINATEUR)) veut_tr++;
+                  if (n->build_hull<0 && n->hull[HULL_TRANSPORT]<veut_tr)
+                      navy_order_build(ns,w,econ,c,HULL_TRANSPORT); }
             }
         }
         if (n->mission==NAVY_BLOCUS){
