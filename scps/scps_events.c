@@ -3202,6 +3202,14 @@ static bool age_trig_exchange(World *w, WorldEconomy *econ, WorldProsperity *wp,
 static bool age_trig_discovery(World *w, WorldEconomy *econ, WorldProsperity *wp, const TechState ts[]){
     (void)econ;(void)wp;(void)ts;
     if (w_living_count(w,wp) < (int)tune_f("AGE_DISCOVERY_COUNTRY_MIN",6.0f)) return false;
+    /* DÉPOUILLEMENT 2026-08-11 : le RATIO de paires connues était vrai dès l'an 3-5
+     * (le rayon de fog de genèse rencontre assez de voisins). Une DÉCOUVERTE se
+     * mesure en paires LOINTAINES : connaître ≥ FAR_PAIRS pays dont la capitale est
+     * à ≥ FAR_CELLS cellules — l'exploration, pas le voisinage. FAR_CELLS=0 :
+     * l'ancien ratio (kill-switch). */
+    float farc = tune_f("AGE_DISCOVERY_FAR_CELLS",200.f);
+    if (farc > 0.f)
+        return country_known_far_pair_count(w, farc) >= (int)tune_f("AGE_DISCOVERY_FAR_PAIRS",2.f);
     return ages_known_pair_share(w) >= tune_f("AGE_DISCOVERY_KNOWN_PAIR_SHARE",0.12f);
 }
 static bool age_trig_empires(World *w, WorldEconomy *econ, WorldProsperity *wp, const TechState ts[],

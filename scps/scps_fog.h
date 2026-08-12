@@ -52,6 +52,9 @@ bool country_knows(int a, int b);
  * a≠b) : Σcountry_knows(a,b) / Σpaires. Alimente le déclencheur des Découvertes
  * (35 %) ET un readout (scps_api.c). */
 float country_known_pair_share(const World *w);
+/* paires vivantes CONNUES dont les capitales sont à ≥ min_cells (wrap X) — le signal
+ * DÉCOUVERTES : connaître au-delà du voisinage de genèse (2026-08-11). */
+int country_known_far_pair_count(const World *w, float min_cells);
 
 /* Régions VISIBLES pour `viewer_cid` MAINTENANT (dérivé à la volée, rien n'est
  * mémorisé) : {ses régions} ∪ {BFS radius-2 à la volée} ∪ {toute région dont

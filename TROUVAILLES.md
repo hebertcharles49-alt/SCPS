@@ -8563,6 +8563,25 @@ IPM privé post-réforme monétaire.
   substrats 0-5 (rares, signifiants), attracteurs 29-274, jumeaux convergents
   4/15→56/66 (VARIANCE enfin, plus un défaut), Empires an 66-105 (advenu 19/20,
   endogène), Échanges an 8-22. RESTE : Découvertes toujours quasi-genèse (an 3-5 —
-  le rayon de fog initial suffit au pair-share 0.22) ; ASCENSION/SANG 0/20 (dispatch
-  §27, pré-existant) ; r/t élite encore dispersée (15-487) — le train de vie ne
+  le rayon de fog initial suffit au pair-share 0.22) ; ASCENSION/SANG 0/20 = VOULU (fins JOUEUR, précision joueur) ; r/t élite encore dispersée (15-487) — le train de vie ne
   suffit pas seul, le puits attend la M-vague.
+
+## 2026-08-12 — Vague « le reste » : Découvertes lointaines + audit du circuit monétaire (opus)
+
+**Découvertes** :
+- L'audit des puits d'or : les 9 sites de dépense d'État recyclaient DÉJÀ (item 5
+  M3b-v2 systématique — entretien/soldes/marine/cour/conseil/encadrement/poses/
+  paliers/manufactures) SAUF l'achat d'arsenal (ai.c ~1574) : corrigé (armuriers
+  payés). L'assèchement précoce (or ÷40 en 40 ans) n'est PAS une destruction — c'est
+  un phénomène de niveau de prix/vitesse : la M-vague qui reste est une INSTRUMENTATION
+  (masse par compartiment strates/trésors/instrument), pas un patch.
+- Découvertes = paires LOINTAINES (country_known_far_pair_count, capitales ≥
+  FAR_CELLS=200, wrap X) : dispersion PARTIELLE seulement (an 3-8 pour 17/20, an
+  14/20/30 pour 3) — le fog de genèse couvre déjà ≥200 cellules de voisinage sur ces
+  mondes. RECALIBRAGE à faire : FAR_CELLS 300-400, ou un signal « rencontre par MER ».
+- MSYS2 convertit « /change » en CHEMIN → powercfg échoue EN SILENCE (la garde-veille
+  n'avait pas pris, mesuré 0x384). MSYS2_ARG_CONV_EXCL='*' obligatoire + TOUJOURS
+  vérifier par powercfg /query après la pose.
+
+**Restes** : FAR_CELLS à recalibrer (mesurer la distribution des distances de
+capitales) ; la M-vague instrumentée ; fusion strata↔groups ; le R² 200 en cours.

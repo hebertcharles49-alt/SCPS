@@ -63,6 +63,35 @@ float country_known_pair_share(const World *w){
     return total>0 ? (float)known/(float)total : 0.f;
 }
 
+/* ══ LES PAIRES LOINTAINES (dépouillement 2026-08-11 : « Découvertes tombe an 3-5
+ * partout — le rayon de genèse suffit au ratio ») ══
+ * Le ratio de paires connues comptait les VOISINS de naissance : vrai dès l'an 2.
+ * Une DÉCOUVERTE, c'est connaître un pays qu'on n'a pas pu rencontrer en naissant —
+ * la distance des capitales (seed_x/y, wrap horizontal) au-delà du voisinage de
+ * genèse. Compte les paires vivantes connues à ≥ min_cells. */
+int country_known_far_pair_count(const World *w, float min_cells){
+    if (!w || min_cells<=0.f) return 0;
+    int nc = w->n_countries; if (nc > SCPS_MAX_COUNTRY) nc = SCPS_MAX_COUNTRY;
+    int far=0;
+    for (int a=0; a<nc; a++){
+        if (w->country[a].role==POLITY_UNCLAIMED) continue;
+        int pa=w->country[a].capital_prov;
+        if (pa<0||pa>=w->n_provinces) continue;
+        for (int b=a+1; b<nc; b++){
+            if (w->country[b].role==POLITY_UNCLAIMED) continue;
+            if (!country_knows(a,b) && !country_knows(b,a)) continue;
+            int pb=w->country[b].capital_prov;
+            if (pb<0||pb>=w->n_provinces) continue;
+            float dx=(float)(w->province[pa].seed_x - w->province[pb].seed_x);
+            if (dx<0.f) dx=-dx;
+            if (dx > (float)SCPS_W*0.5f) dx=(float)SCPS_W - dx;   /* le monde boucle en X */
+            float dy=(float)(w->province[pa].seed_y - w->province[pb].seed_y);
+            if (dy<0.f) dy=-dy;
+            if (dx*dx+dy*dy >= min_cells*min_cells) far++;
+        }
+    }
+    return far;
+}
 bool country_knows(int a, int b){
     if (a<0 || a>=SCPS_MAX_COUNTRY || b<0 || b>=SCPS_MAX_COUNTRY) return false;
     return g_known[a][b] != 0;

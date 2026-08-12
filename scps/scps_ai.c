@@ -1572,6 +1572,9 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
                     if (!credit_spend(econ, w, a->cid, cost)) return;
                     econ_region_stock_add(econ, hr, RES_ARMS_LIGHT, 20.f);
                     econ_flux_add(a->cid, FX_SOLDE, -cost);          /* I0 : la ligne militaire */
+                    /* item 5 (2026-08-11 : le DERNIER puits du circuit — les 8 autres sites
+                     * recyclaient déjà) : l'achat d'armes paie les ARMURIERS de la région. */
+                    econ_region_wealth_add(econ, hr, CLASS_LABORER, cost);
                     a->stats.builds_h++;                             /* l'arsenal = sa largeur martiale */
                     faction_lever_apply(a->cid, FAC_CONQUERANT, AI_LEVER_BUILD);
                 }

@@ -1509,6 +1509,9 @@
                                             * rayon de genese suffit) — 0.22 = le milieu,
                                             * a valider au sweep (dépouillement 2026-08-11). */ \
     X(AGE_DISCOVERY_COUNTRY_MIN,       8.0f) \
+    X(AGE_DISCOVERY_FAR_CELLS,         200.0f) /* Decouvertes = paires LOINTAINES (au-dela
+                                            * du voisinage de genese) ; 0 = ancien ratio. */ \
+    X(AGE_DISCOVERY_FAR_PAIRS,         2.0f) \
     X(AGE_DISCOVERY_C,                 0.50f) \
     X(AGE_DISCOVERY_RESEARCH_MULT,     1.10f) \
     X(AGE_DISCOVERY_FOG_RADIUS_ADD,    1.0f) \
