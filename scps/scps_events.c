@@ -2127,6 +2127,10 @@ const EventDef *event_def(int evid){ return (evid>=0&&evid<EVID_COUNT)?&EVENTS[e
  * sérialisé ni lu par un chemin moteur ; NULL (avant le 1er tick / bancs) ou
  * siège vacant (ministre déjà renvoyé) ⇒ repli sur le mot de classe. */
 static const Statecraft *g_title_sc = NULL;
+/* AUDIT 2026-08-12 : le motif g_tech_cache — un cache lié à une sim DOIT être rendu
+ * à sa destruction (sim_free_members passe NULL), sinon use-after-free différé à la
+ * première lecture de titre après la mort de la sim. */
+void events_title_bind(const Statecraft *sc){ g_title_sc = sc; }
 static int treason_seat_of(int evid){
     switch (evid){
         case EVID_TRAHISON_SAVOIR:    return 0;

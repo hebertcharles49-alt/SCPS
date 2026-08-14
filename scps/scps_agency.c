@@ -514,11 +514,20 @@ void agency_save(FILE *f){
     fwrite(&g_n_purge,sizeof g_n_purge,1,f);     fwrite(&g_purge_dead,sizeof g_purge_dead,1,f);
 }
 bool agency_load(FILE *f){
-    return fread(g_pend_charge,sizeof g_pend_charge,1,f)==1
+    if (!( fread(g_pend_charge,sizeof g_pend_charge,1,f)==1
         && fread(g_pend_fract, sizeof g_pend_fract, 1,f)==1
         && fread(g_pend_H,     sizeof g_pend_H,     1,f)==1
         && fread(&g_n_repress,sizeof g_n_repress,1,f)==1 && fread(&g_n_assim,sizeof g_n_assim,1,f)==1
-        && fread(&g_n_purge,sizeof g_n_purge,1,f)==1     && fread(&g_purge_dead,sizeof g_purge_dead,1,f)==1;
+        && fread(&g_n_purge,sizeof g_n_purge,1,f)==1     && fread(&g_purge_dead,sizeof g_purge_dead,1,f)==1 )) return false;
+    /* AUDIT 2026-08-12 : ces pendings sont DRAINÉS chaque jour dans ts[].charge/
+     * fracture/H (coordonnées moteur) — un ±inf/NaN forgé y entrait sans douane.
+     * Bornes larges (une accumulation légitime reste petite). */
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++){
+        if (!isfinite(g_pend_charge[c]) || g_pend_charge[c]<-100.f || g_pend_charge[c]>100.f) return false;
+        if (!isfinite(g_pend_fract[c])  || g_pend_fract[c] <-100.f || g_pend_fract[c] >100.f) return false;
+        if (!isfinite(g_pend_H[c])      || g_pend_H[c]     <-100.f || g_pend_H[c]     >100.f) return false;
+    }
+    return true;
 }
 
 /* `prov` : -1 = héritage (apply_action résout la province représentative de `region` via

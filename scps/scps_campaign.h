@@ -127,6 +127,14 @@ typedef struct Campaign {
     long  battle_days;                    /* Σ durées (jours) */
     int   n_sails;                        /* mer §10 : traversées ordonnées */
     float sail_days_sum;                  /* Σ jours de mer des traversées */
+    /* AUDIT 2026-08-12 : « les morts de bataille terrestre ne meurent JAMAIS côté
+     * pop » — dead_choc/pursuit n'étaient que des MOTS. Chaque paquet tué s'inscrit
+     * ICI (par pays × classe d'origine, unit_def->from) ; sim draine après
+     * campaign_tick : la strate paie ses morts (econ_region_pop_add, capitale) et
+     * l'AFFECTATION se rend (pop_by_class_in_army — sinon le recrutement
+     * s'asphyxiait, army_class_free fondait en monotone). Sérialisé avec le blob
+     * CAMP (v103). */
+    long  dead_class_pending[SCPS_MAX_COUNTRY][3];
 } Campaign;
 
 /* Lecture tactique PURE d'un champ actif. Les puissances sont celles du prochain

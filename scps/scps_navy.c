@@ -241,7 +241,12 @@ void navy_tick(NavyState *ns, const World *w, WorldEconomy *econ, struct DiploSt
         }
         if (n->starve_days>NAVY_STARVE_YEAR){             /* la flotte pourrit à quai */
             int big=-1, bc=0;
-            for (int t=0;t<HULL_COUNT;t++) if (n->hull[t]>bc){ bc=n->hull[t]; big=t; }
+            for (int t=0;t<HULL_COUNT;t++){
+                int avail=n->hull[t];
+                if (t==HULL_TRANSPORT) avail-=n->at_sea;   /* audit 2026-08-12 : une coque EN MER
+                                                            * (armée à bord) ne pourrit pas à quai */
+                if (avail>bc){ bc=avail; big=t; }
+            }
             if (big>=0){
                 n->hull[big]--;
                 int crew=navy_hull_crew((HullType)big);   /* les marins DÉBARQUENT et rentrent */

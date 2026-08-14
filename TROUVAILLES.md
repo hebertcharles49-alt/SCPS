@@ -8585,3 +8585,57 @@ IPM privé post-réforme monétaire.
 
 **Restes** : FAR_CELLS à recalibrer (mesurer la distribution des distances de
 capitales) ; la M-vague instrumentée ; fusion strata↔groups ; le R² 200 en cours.
+
+## 2026-08-12 — Post-audit croisé (claude 6 agents + codex) : 6 vagues de correction (opus)
+
+**Vague A (sécurité save + cycle de vie)** : borne n_prov AVANT usage (codex P1 — OOB
+pendant la validation même) ; titre de slot NUL-terminé + header borné (codex P1) ;
+EventsState.last_name (POINTEUR sérialisé, ASLR) nullifié au load ; g_title_sc rendu
+par sim_free (motif g_tech_cache) ; demography_values_reset enfin appelée ;
+ai_slave_caches_reset (fuite inter-sims) ; douanes de load : g_intim_cd borné,
+g_pend_charge/fract/H et g_prod_cap finis, count≥0 et strates finies (⚠ tolérance
+-1.0 : les epsilons négatifs de débit sont LÉGITIMES — la douane stricte ≥0 rejetait
+toute save réelle, attrapé par savetest).
+
+**Vague B (modstack, SAVE v103)** : modstack_drop_group + purge à CHAQUE mort de
+groupe (fusion directe ; file de retrait demography_drift_retire/drain pour les sites
+SANS pile — vente, déportation, réfugiés) ; SCRUB au load (les orphelines de la pile
+sérialisée balayées — résurrection impossible) ; ids UNIFIÉS pid+1 (worldgen ordinal
+≠ attach ordinal-région ≠ colonisation pid+1 se percutaient) ; serviles → dyn_id_next
+(le schéma base+région×MAX+n recréait les collisions éradiquées) ; plafond 1024→2048
+(< SCPS_MAX_PROV : saturation muette). Pièges : ModifierStack typedef ANONYME (pas de
+fwd-decl struct) ; « bool events_check_ages » a DEUX espaces (ancre ratée).
+
+**Vague C (les morts meurent)** : Campaign.dead_class_pending[pays][classe] (v103) —
+kill_packets comptabilise par unit_def->from, sim draine : l'affectation se REND
+(pop_by_class_in_army — l'asphyxie du recrutement) et la strate de la capitale paie
+(WAR_DEATHS_REAL=0 = les morts-mots d'hier) ; zombie du ralliement dissous ; disband
+en mer ne fuit plus at_sea (sail_transports laissé à release_transports) ; marche au
+canon n'arrache ni la mer ni le siège ; starve naval épargne la coque EN MER.
+⚠ MAKEFILE : 3 bancs (campaign/warhost/navy) sans demography/modifier/fog dans leurs
+listes — cascade de link à rallonge (fog→campaign→warhost), et le python-en-heredoc a
+ENCORE écrit un \n littéral dans le Makefile (7e occurrence : TOUJOURS Write un .py).
+
+**Vague D (conservation)** : trade.c — le débit de l'importateur SPILL sur les
+provinces sœurs et l'exportateur n'encaisse que le PRÉLEVÉ réel (fin de la création
+ex nihilo) ; nudge de prix sur la vue retiré (biaisait l'arbitrage intra-jour) ;
+intertrade — it_credit (dual-write M11-A2) remplace TOUTES les écritures nues de
+trésor ; ruines — la richesse est PARQUÉE (preexist_wealth la récupère), plus
+détruite ; UPKEEP_SHARE renormalisé (création par tunable).
+
+**Vague E (paix/diplo)** : la paix blanche LÈVE les occupations de la paire (le
+« 33/0 ») ; l'épuisement n'impose un contrat que si wscore>0 ET occ≥1 (le défenseur
+victorieux ne devient plus le serf de l'attaquant perdant) ; le tribut s'arrête
+PENDANT la guerre d'indépendance ; l'embargo IA se réévalue à chaque cadence (levé si
+la raison s'efface) ; polity_death solde les réparations (les 2 sens) ; ai_pick_rival
+ne cible ni vassal ni suzerain.
+
+**Vague F (codex P2/P3)** : garde de capacité aheap_push (l'A* dégrade, n'écrit plus
+hors bornes) ; signature du cache lanes += chokes/péages + seed du monde (staleness +
+partage inter-sims) ; api_centroids transactionnel ; en-tête scps_province_tax corrigé
+(or/mois) ; BANKRUPTCY_GARNISH/RELIG_MINORITY_SAT/SEED_PROV_CAP_MULT au registre J.
+
+**Vérifications d'agents** : 3 sur-déclarations attrapées (g_audit_cd était DÉJÀ
+resetté ; 4 des 7 « tunables hors registre » y étaient ; le gate occ>=1 existait sur
+le chemin décisif — seul le else d'épuisement était nu). TOUJOURS contre-vérifier un
+finding d'agent avant de le corriger.

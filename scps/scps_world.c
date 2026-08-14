@@ -3209,7 +3209,7 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, Heritage player_heritag
      * rejouée ici À LA PROVINCE puisque la culture n'est connue qu'après cette fonction. Une
      * province encore vierge (colonisation ultérieure) reste n_groups=0 ; econ_colonize_from en
      * sème un à la fondation (cf. colonize_from_prov, scps_econ.c). */
-    { int id=1;   /* drift_id STATIQUE 1..n_prov (jamais ≥ DYN_DRIFT_BASE=1e6, cf. scps_demography.c) */
+    {   /* drift_id STATIQUE = pid+1 (unifié 2026-08-12 ; jamais ≥ DYN_DRIFT_BASE=1e6) */
       for (int pid=0; pid<w->n_provinces && pid<SCPS_MAX_PROV; pid++){
         ProvinceEconomy *pe=&econ->prov[pid];
         ProvincePop *pp=&pe->pop;
@@ -3227,7 +3227,7 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, Heritage player_heritag
         g->pop_by_class[CLASS_LABORER]=total;                /* repli : tout Journalier avant la 1re émergence */
         g->pop_by_class[CLASS_BOURGEOIS]=0; g->pop_by_class[CLASS_ELITE]=0;
         g->L=7.f; g->agit_base=0.f;   /* agit_from_L(7)=clampf((6-7)*15,0,100)=0 (natifs intégrés, cf. scps_demography.c) */
-        g->integration=1.f; g->diaspora=false; g->drift_id=id++;
+        g->integration=1.f; g->diaspora=false; g->drift_id=pid+1;   /* AUDIT 2026-08-12 : clef UNIFIÉE pid+1 (l'ordinal percutait attach/colonisation) */
         pp->n_groups=1;
       }
     }

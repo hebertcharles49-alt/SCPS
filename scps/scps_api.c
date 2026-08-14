@@ -76,12 +76,22 @@ void scps_sim_free(ScpsSim *s){
  * le bourg vit dans la province REPRÉSENTATIVE de sa région, pas au barycentre de la
  * région entière (qui peut tomber à son bord, voire hors d'elle sur une forme concave). */
 static void api_centroids(ScpsSim *s){
-    int nr = s->sim.econ->n_regions; s->n_cent = nr;
-    int np = s->w->n_provinces;      s->n_pcent = np;
-    s->cx  = (float*)realloc(s->cx,  (size_t)nr*sizeof(float));
-    s->cy  = (float*)realloc(s->cy,  (size_t)nr*sizeof(float));
-    s->ppx = (float*)realloc(s->ppx, (size_t)np*sizeof(float));
-    s->ppy = (float*)realloc(s->ppy, (size_t)np*sizeof(float));
+    int nr = s->sim.econ->n_regions;
+    int np = s->w->n_provinces;
+    /* AUDIT 2026-08-12 (codex P3) : les reallocs remplaçaient les pointeurs et les
+     * tailles AVANT de connaître le résultat — sous pression mémoire, une instance
+     * « prête » aux tableaux nuls. Transactionnel : tout ou rien. */
+    float *ncx=(float*)realloc(s->cx,(size_t)nr*sizeof(float));
+    float *ncy=(float*)realloc(s->cy,(size_t)nr*sizeof(float));
+    float *npx=(float*)realloc(s->ppx,(size_t)np*sizeof(float));
+    float *npy=(float*)realloc(s->ppy,(size_t)np*sizeof(float));
+    if(!ncx||!ncy||!npx||!npy){
+        if(ncx)s->cx=ncx; if(ncy)s->cy=ncy; if(npx)s->ppx=npx; if(npy)s->ppy=npy;
+        s->n_cent=0; s->n_pcent=0;   /* l'échec est DIT : aucun centroïde servi */
+        return;
+    }
+    s->cx=ncx; s->cy=ncy; s->ppx=npx; s->ppy=npy;
+    s->n_cent=nr; s->n_pcent=np;
     double *ax = (double*)calloc((size_t)nr, sizeof(double));
     double *ay = (double*)calloc((size_t)nr, sizeof(double));
     long   *cn = (long*)  calloc((size_t)nr, sizeof(long));
@@ -4487,6 +4497,11 @@ static int   *g_afrom = NULL, *g_agen = NULL, *g_aclosed = NULL, *g_aheapi = NUL
 static int    g_acurgen = 0, g_aheap_n = 0;
 
 static void aheap_push(float f, int idx){
+    /* AUDIT 2026-08-12 (codex P2) : l'A* re-pousse une cellule à chaque relaxation
+     * (générations, pas de decrease-key) — le tas dimensionné SCPS_N pouvait déborder
+     * sur certains champs de coûts. Plein = on refuse l'entrée (l'A* dégrade en
+     * chemin sous-optimal, jamais en écriture hors bornes). */
+    if (g_aheap_n >= SCPS_N) return;
     int i=g_aheap_n++; g_aheapf[i]=f; g_aheapi[i]=idx;
     while(i>0){ int p=(i-1)/2; if(g_aheapf[p]<=g_aheapf[i]) break;
         float tf=g_aheapf[p]; g_aheapf[p]=g_aheapf[i]; g_aheapf[i]=tf;
@@ -4861,10 +4876,17 @@ static void api_sea_lanes_build(ScpsSim *s){
     const RouteNetwork *rn=s->sim.rn;
     /* signature : photo des routes maritimes (paire + ouverte) — change quand le commerce bouge */
     uint64_t sig=1469598103934665603ull;
+    /* AUDIT 2026-08-12 (codex P2) : la signature ignorait chokes/péages (recalculés
+     * périodiquement — un changement restait invisible à jamais) et l'IDENTITÉ du
+     * monde (deux sims du même process aux extrémités identiques partageaient les
+     * tracés du premier monde). Le seed + n_regions entrent au hash. */
+    sig=(sig^(uint64_t)w->seed)*1099511628211ull;
+    sig=(sig^(uint64_t)s->sim.econ->n_regions)*1099511628211ull;
     for(int i=0;i<rn->n;i++){
         const TradeRoute *t=&rn->route[i];
         if(!t->maritime) continue;
         sig=(sig^(uint64_t)((uint64_t)(t->ra*100003)+(uint64_t)(t->rb*613)+(t->open?1u:0u)))*1099511628211ull;
+        sig=(sig^(uint64_t)((uint64_t)(t->choke_region+7)*31u + (uint64_t)(int)(t->choke_block*100.f)))*1099511628211ull;
     }
     if(sig==g_lane_sig && g_lanes) return;          /* commerce inchangé → cache valide */
     g_lane_sig=sig;

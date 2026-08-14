@@ -38,6 +38,15 @@ bool scps_save_slot_info(int slot, SaveHeader *out){
     FILE *f=fopen(save_slot_path(slot),"rb");
     if (!f) return false;
     bool ok = fread(out,sizeof *out,1,f)==1 && out->magic==SAVE_MAGIC;
+    /* AUDIT 2026-08-12 (codex P1) : l'en-tête est de la donnée FORGEABLE lue dès
+     * l'écran Charger — le titre est TERMINÉ de force (un line[] plein sans NUL
+     * partait dans %s), la version et l'année se bornent (l'affichage ne doit rien
+     * déréférencer d'un fichier au bon magic mais au contenu libre). */
+    if (ok){
+        out->line[sizeof out->line - 1] = '\0';
+        if (out->version > SAVE_VERSION*4u) ok=false;          /* version délirante = pas un slot */
+        if (out->year > 100000u) ok=false;
+    }
     fclose(f); return ok;
 }
 #define SV_TAG(a,b,c,d) ((uint32_t)(a)|((uint32_t)(b)<<8)|((uint32_t)(c)<<16)|((uint32_t)(d)<<24))
@@ -251,6 +260,11 @@ bool scps_save_game(int slot, World *w, Sim *s, const WorldParams *params, int s
 bool scps_save_sane(const World *w, const Sim *s, int player){
     if (w->n_provinces <0 || w->n_provinces >SCPS_MAX_PROV)      return false;
     if (w->n_regions   <0 || w->n_regions   >SCPS_MAX_REG)       return false;
+    /* AUDIT 2026-08-12 (codex P1) : econ->n_prov borné ICI, AVANT sa première
+     * utilisation (les boucles rep-prov l.~258 et prov l.~333 le lisaient AVANT la
+     * borne historique — une save forgée à checksum recalculé lisait hors du tableau
+     * PENDANT sa propre validation). Tout compteur se borne avant tout usage. */
+    if (s->econ->n_prov <0 || s->econ->n_prov >SCPS_MAX_PROV)    return false;
     /* le cache région→province représentative est TRUSTÉ au load (état sérialisé,
      * continuation déterministe) ⇒ chaque index désérialisé se REVALIDE ici. */
     for (int r=0;r<w->n_regions && r<SCPS_MAX_REG;r++){
@@ -334,8 +348,15 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         const ProvinceEconomy *pe=&s->econ->prov[p];
         if(pe->culture_id && !econ_culture_identity_valid(pe->culture_id)) return false;
         if(pe->pop.n_groups<0 || pe->pop.n_groups>SCPS_MAX_GROUPS) return false;
-        for(int i=0;i<pe->pop.n_groups;i++)
+        for(int i=0;i<pe->pop.n_groups;i++){
             if(!econ_culture_identity_valid(pe->pop.groups[i].culture_id)) return false;
+            if(pe->pop.groups[i].count < 0) return false;     /* audit 2026-08-12 : un poids négatif fausse toutes les moyennes */
+        }
+        for(int c2=0;c2<CLASS_COUNT;c2++){                    /* audit 2026-08-12 : douane NaN/corruption sur la monnaie/pop —
+                                                               * tolérance -1.0 (les epsilons négatifs de débit sont légitimes) */
+            if(!(pe->strata[c2].pop    >= -1.f) || pe->strata[c2].pop    > 1e9f) return false;
+            if(!(pe->strata[c2].wealth >= -1.f) || pe->strata[c2].wealth > 1e12f) return false;
+        }
     }
     for (int r=0;r<w->n_regions;r++){ const Region *rg=&w->region[r];
         if (rg->n_provinces<0 || rg->n_provinces>12 || rg->country< -1 || rg->country>=w->n_countries) return false;
@@ -550,6 +571,10 @@ int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_her
     long p0=ftell(f);
     bool ok = sv_read_payload(f, w, s, out_heritage, out_ethos);
     long p1=ftell(f); fclose(f);
+    /* AUDIT 2026-08-12 : EventsState.last_name est un POINTEUR sérialisé dans le
+     * blob EVNT — l'adresse d'un AUTRE processus (ASLR). Nullifié dès la lecture,
+     * AVANT save_sane et tout lecteur ; le prochain évènement le repose. */
+    if (ok) s->ev->last_name = NULL;
     bool good = ok && (uint32_t)(p1-p0)==h.payload && scps_save_sane(w, s, s->player);
     if (!good) {
         if (have_snap){ sv_read_payload(snap, w, s, NULL, NULL); fclose(snap); }
@@ -558,6 +583,7 @@ int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_her
     }
     if (snap) fclose(snap);
     demography_dyn_id_rebase(s->econ);
+    demography_drift_scrub(s->econ, s->drift);   /* audit 2026-08-12 : balaie les dérives orphelines (résurrection impossible) */
     campaign_backfill_nominal(s->camp);   /* v97 : le nominal désérialisé ne doit jamais laisser un déficit négatif */
     *params=h.params;
     warhost_set_human(s->player);

@@ -453,11 +453,9 @@ long scps_province_slave_count(ScpsSim *s, int province);
  * MÊME formule que la collecte fiscale d'econ_tick (§6-7 : taux visé borné par la
  * tolérance éthos×classe, évasion au-delà), rejouée en LECTURE PURE sur les
  * strates DE LA PROVINCE (ProvinceEconomy.strata — pas la région agrégée),
- * projetée en or/AN (×12, la collecte réelle est mensuelle/dt mais econ_tick(dt)
- * n'expose pas dt à la façade — dt=1/12 est l'invariant du tick économique dans
- * tout le moteur, cf. sim_day). PUR read, aucune mutation, jamais désynchronisé
- * du réel (même econ_tax_tolerance, même STATE_TAX_AMBITION mirroré ici en
- * commentaire — scps_econ.c ne l'expose pas dans le .h, valeur 0.42f). */
+ * servie en or/MOIS (correctif 2026-07-14 : délègue à econ_province_tax_month —
+ * l'ancien texte « or/AN ×12 » de cet en-tête était PÉRIMÉ, audit 2026-08-12).
+ * PUR read, aucune mutation, jamais désynchronisé du réel. */
 double scps_province_tax(ScpsSim *s, int province);
 
 /* UI-MONNAIE (2026-07-16) — LE PRIX COURANT d'UNE ressource dans une province

@@ -32,7 +32,11 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 102u          /* v102 : is_colonized (latch RUINES, décision joueur
+#define SAVE_VERSION 103u          /* v103 (audit 2026-08-12) : SCPS_MAX_MODIFIERS 1024→2048 (la
+                                    * pile saturait sous SCPS_MAX_PROV) ⇒ sizeof(ModifierStack) ;
+                                    * + Campaign.dead_class_pending (le registre des morts par
+                                    * classe, drainé vers les strates) ⇒ sizeof(Campaign).
+                                    * v102 : is_colonized (latch RUINES, décision joueur
                                     * 2026-08-11) rejoint ProvinceEconomy ⇒ sizeof change.
                                     * v101 : SLIDERS D'ACHAT — g_buy_rate[pays][3] rejoint le blob
                                     * EMOB (le taux de rachat de la production, réglage joueur

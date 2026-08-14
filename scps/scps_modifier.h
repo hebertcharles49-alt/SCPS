@@ -46,7 +46,11 @@ typedef struct {
     bool  reversible;           /* SUPPRIMÉ (saute si H tombe) vs MÉTABOLISÉ (durable) */
 } Modifier;
 
-#define SCPS_MAX_MODIFIERS 1024
+#define SCPS_MAX_MODIFIERS 2048  /* AUDIT 2026-08-12 : 1024 < SCPS_MAX_PROV (1664) —
+                                   * un monde tres colonise + les diasporas saturait la
+                                   * pile EN SILENCE (push muet) : plus d'assimilation ni
+                                   * d'attracteurs. Double + purge a la mort de groupe.
+                                   * sizeof(ModifierStack) change => SAVE v103. */
 typedef struct { Modifier items[SCPS_MAX_MODIFIERS]; int n; } ModifierStack;
 
 /* Empile un modificateur. Renvoie false si la pile est pleine. */
@@ -74,5 +78,9 @@ void modstack_accumulate_drift(ModifierStack *ms, int group_key, GroupDrift step
 /* Retire les modificateurs RÉVERSIBLES d'un groupe (la coercition se lève → la
  * préférence falsifiée resurgit : Kuran). */
 void modstack_drop_reversible(ModifierStack *ms, int group_key);
+/* AUDIT 2026-08-12 : retire TOUTES les entrees (reversibles ET durables) d'une clef —
+ * la mort d'un groupe rend sa derive, sinon elle fuit (saturation) et RESSUSCITE
+ * quand la clef est reattribuee (ruine->recolonisation, rebase post-load). */
+void modstack_drop_group(ModifierStack *ms, int group_key);
 
 #endif /* SCPS_MODIFIER_H */

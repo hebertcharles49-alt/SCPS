@@ -476,6 +476,10 @@ static int ai_pick_rival(const AiActor *a, const World *w, const WorldEconomy *e
         bool sea_adj  = !land_adj && w && countries_sea_adjacent(w, econ, a->cid, b); /* H3 */
         if (!land_adj && !sea_adj) continue;
         if (diplo_status(diplo, a->cid, b)==DIPLO_ALLIED) continue;  /* on ne frappe pas un allié */
+        if (diplo_suzerain(diplo,b)==a->cid || diplo_suzerain(diplo,a->cid)==b) continue;
+        /* audit 2026-08-12 : passé la trêve, un suzerain pouvait déclarer une guerre
+         * « territoriale » à son PROPRE vassal sans rompre le lien (tribut compris) —
+         * la fronde/défection est LE chemin prévu pour casser une vassalité. */
         if (!diplo_can_declare(diplo, a->cid, b)) continue;          /* TRÊVE : on n'enchaîne pas */
         { CasusBelli cbb = diplo_casus_belli(w,econ,wp,diplo,a->cid,b,want);
           if (cbb==CB_NONE) continue;                                /* PAS DE CB → pas de guerre */
@@ -1702,6 +1706,13 @@ static bool ai_enslaves(int cid){ return (cid>=0&&cid<SCPS_MAX_COUNTRY) ? g_ai_e
  * d'un TIERS (capitulation) la lit aussi. */
 static float g_ai_slave_frac[SCPS_MAX_COUNTRY];
 static float ai_slave_frac_of(int cid){ return (cid>=0&&cid<SCPS_MAX_COUNTRY) ? g_ai_slave_frac[cid] : 0.f; }
+/* AUDIT 2026-08-12 : les deux caches sont dérivés de la tech mais VIVENT entre sims
+ * du même process (aucune RAZ) — la fraction servile de la sim N−1 fuyait dans les
+ * règlements de la sim N jusqu'au premier research_step. RAZ par sim (sim_init). */
+void ai_slave_caches_reset(void){
+    memset(g_ai_enslave,   0, sizeof g_ai_enslave);
+    memset(g_ai_slave_frac,0, sizeof g_ai_slave_frac);
+}
 /* §terrain : valeur cumulée des régions du `loser` que `winner` OCCUPE (ce que le
  * règlement pourra transférer) — l'arbitrage « budget couvert par les occupations ». */
 static float ai_occupied_value(const DiploState *d, const WorldEconomy *econ, int winner, int loser){
@@ -1901,8 +1912,13 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
             diplo_reparations(diplo, w, econ, a->cid, b);
             if (goal==CB_SUBJUGATION && diplo_suzerain(diplo,b)<0 && occ>=1)
                 diplo_set_vassal(diplo, a->cid, b, CONTRAT_SERVAGE);  /* la vassalité EST le but */
-            else
-                ai_impose_contract(a, w, econ, diplo, b);    /* §leviers : imposer plutôt qu'annexer */
+            else if (wscore > 0.f && occ >= 1)
+                ai_impose_contract(a, w, econ, diplo, b);    /* §leviers : imposer plutôt qu'annexer —
+                                                              * AUDIT 2026-08-12 : l'ÉPUISEMENT seul (10 ans,
+                                                              * score négatif, rien d'occupé) faisait du
+                                                              * DÉFENSEUR VICTORIEUX le serf de l'attaquant
+                                                              * perdant. On n'impose qu'en TENANT du terrain,
+                                                              * sans perdre aux points. */
             if (getenv("SCPS_SLAVEDIAG")) fprintf(stderr,"[SLAVEDIAG] settle(main) a->cid=%d can_enslave=%d ethos=%d occ=%d\n",a->cid,(int)a->can_enslave,(int)ai_capital_ethos(w,econ,a->cid),occ);
             int got = diplo_settle(diplo, w, econ, wl, a->cid, b, ai_slave_frac_of(a->cid));  /* la propriété change ICI */
             a->credit_war -= 1.f; a->stats.conquests += got;
@@ -2927,13 +2943,26 @@ void ai_step(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
          * perçu, s'il n'est ni allié ni client (un pacte de cité est sacré). */
         if (day >= a->next_embargo_day){
             a->next_embargo_day = day + 3600;            /* ~10 ans entre deux décrets */
+            int heg=-1;
             if (ai_capital_ethos(w,econ,a->cid)==ETHOS_MERCANTILE){
-                int heg=diplo_perceived_hegemon(w, econ, wp, diplo, a->cid);
+                heg=diplo_perceived_hegemon(w, econ, wp, diplo, a->cid);
                 if (heg>=0 && heg!=a->cid
                     && diplo_status(diplo,a->cid,heg)!=DIPLO_ALLIED
                     && !diplo_trade_pact(diplo,a->cid,heg)
                     && diplo_suzerain(diplo,a->cid)!=heg)
                     intertrade_order_embargo(a->cid, heg, true);
+            }
+            /* AUDIT 2026-08-12 : l'embargo n'était JAMAIS levé — accumulation à vie
+             * contre chaque hégémon successif (opinion −25 permanente). À chaque
+             * cadence : tout embargo dont la RAISON s'est effacée (plus l'hégémon
+             * perçu, ou devenu allié/client/suzerain) se lève. */
+            for (int b2=0;b2<w->n_countries && b2<SCPS_MAX_COUNTRY;b2++){
+                if (b2==a->cid || !intertrade_embargoed(a->cid,b2)) continue;
+                bool raison = (b2==heg)
+                    && diplo_status(diplo,a->cid,b2)!=DIPLO_ALLIED
+                    && !diplo_trade_pact(diplo,a->cid,b2)
+                    && diplo_suzerain(diplo,a->cid)!=b2;
+                if (!raison) intertrade_order_embargo(a->cid, b2, false);
             }
         }
         a->next_econ_day = day + AI_ECON_CADENCE/2 + (int)(frand(&a->rng)*AI_ECON_CADENCE);

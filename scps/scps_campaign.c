@@ -641,18 +641,28 @@ static float side_counter(const ArmyState *self, const ArmyState *foe){
     }
     return acc / ((float)ts * (float)tf);
 }
-static long kill_packets(ArmyState *f, long packets){
+static long kill_packets(Campaign *cmp, int owner, ArmyState *f, long packets){
     long tot=force_units(f); if (tot<=0||packets<=0) return 0;
     if (packets>tot) packets=tot;
     long left=packets;
+    /* audit 2026-08-12 : chaque paquet tué s'inscrit au registre des morts de sa
+     * CLASSE d'origine (unit_def->from) — sim le draine vers les strates. */
     for (int u=0;u<f->n_units && left>0;u++){
         long share=(f->units[u].count*packets)/tot;
         if (share>f->units[u].count) share=f->units[u].count;
         f->units[u].count-=share; left-=share;
+        if (cmp && owner>=0 && owner<SCPS_MAX_COUNTRY && share>0){
+            int cl=(int)unit_def(f->units[u].type)->from;
+            if (cl>=0 && cl<3) cmp->dead_class_pending[owner][cl]+=share;
+        }
     }
     for (int u=0;u<f->n_units && left>0;u++){
         long take=(f->units[u].count<left)?f->units[u].count:left;
         f->units[u].count-=take; left-=take;
+        if (cmp && owner>=0 && owner<SCPS_MAX_COUNTRY && take>0){
+            int cl=(int)unit_def(f->units[u].type)->from;
+            if (cl>=0 && cl<3) cmp->dead_class_pending[owner][cl]+=take;
+        }
     }
     return packets-left;
 }
@@ -688,11 +698,11 @@ static long stack_kill(Campaign *c, int owner, int loc, long packets){
     for (int i=0;i<CAMPAIGN_ARMY_CAP && left>0;i++){
         FieldArmy *a=&c->army[i]; if (!stack_member(a,owner,loc)) continue;
         long share=(force_units(&a->force)*packets)/total; if (share>left) share=left;
-        long k=kill_packets(&a->force,share); killed+=k; left-=k;
+        long k=kill_packets(c,owner,&a->force,share); killed+=k; left-=k;
     }
     for (int i=0;i<CAMPAIGN_ARMY_CAP && left>0;i++){
         FieldArmy *a=&c->army[i]; if (!stack_member(a,owner,loc)) continue;
-        long k=kill_packets(&a->force,left); killed+=k; left-=k;
+        long k=kill_packets(c,owner,&a->force,left); killed+=k; left-=k;
     }
     return killed;
 }
@@ -937,6 +947,9 @@ static void bt_reinforce(Campaign *c, const WorldEconomy *e, const DiploState *d
         for (int k=0;k<CAMPAIGN_ARMY_CAP;k++){
             FieldArmy *H=&c->army[k];
             if (!H->active || H->broken_days>0 || H->phase==FA_BATTLE) continue;
+            if (H->phase>=FA_EMBARK || H->phase==FA_SIEGE) continue;   /* audit 2026-08-12 : la mer est
+                                                                        * INTOUCHABLE et un siège ne
+                                                                        * s'abandonne pas au canon */
             if (H->owner==own) continue;
             bool lie = (diplo_status(dp,H->owner,own)==DIPLO_ALLIED)
                     || (diplo_suzerain(dp,H->owner)==own) || (diplo_suzerain(dp,own)==H->owner);
@@ -1104,7 +1117,12 @@ void campaign_tick(Campaign *c, const World *w, const WorldEconomy *e,
           if (a2->rally_days>0.f) continue;
           a2->rally_days=0.f;
           long cur=force_units(&a2->force);
-          if (!a2->active || cur<=0){ a2->rally_packets=0; continue; }  /* morte en route : rien à rallier */
+          if (!a2->active || cur<=0){
+              a2->rally_packets=0;
+              /* audit 2026-08-12 : morte en route = DISSOUTE — sinon armée ACTIVE à
+               * 0 paquet, jamais nettoyée, qui ré-engage des batailles fantômes. */
+              if (a2->active && cur<=0){ a2->active=false; a2->phase=FA_IDLE; a2->dest=a2->next=-1; a2->taken_region=-1; }
+              continue; }
           if (cur < a2->rally_packets){
               /* remonte chaque unité au prorata vers la cible (composition conservée) */
               float k2=(float)a2->rally_packets/(float)cur;
@@ -1242,7 +1260,10 @@ long campaign_disband_corps(Campaign *c, int id, ArmyState *dst_host_army){
     a->active=false; a->loc=-1; a->dest=-1; a->next=-1; a->phase=FA_IDLE;
     a->days_left=0.f; a->leg_days=0.f; a->taken=0; a->taken_region=-1;
     a->legs=0; a->battles=0; a->broken_days=0;
-    a->sail_transports=0; a->sail_days=0.f; a->land_at_port=false; a->intercept_done=false;
+    /* audit 2026-08-12 : sail_transports N'EST PLUS écrasé ici — un corps dissous EN
+     * MER fuyait at_sea à jamais (release_transports ne voyait plus rien à rendre).
+     * Inactif ⇒ release_transports (sim, chaque tick) rend la coque et zère le champ. */
+    a->sail_days=0.f; a->land_at_port=false; a->intercept_done=false;
     a->nominal=0;   /* le slot est LIBRE : pas de plein fantôme pour la prochaine occupation */
     a->posture=tombstone;
     corps_count_sync(c,a->owner);

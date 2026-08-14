@@ -53,6 +53,12 @@ void modstack_accumulate_drift(ModifierStack *ms, int group_key, GroupDrift step
     m.dCv = step.dCv; m.dCs = step.dCs; m.dCp = step.dCp; m.dCr = step.dCr; m.dAgit = step.dAgit;
     modstack_push(ms, m);
 }
+void modstack_drop_group(ModifierStack *ms, int group_key) {
+    for (int i = ms->n - 1; i >= 0; i--) {
+        if (ms->items[i].group_key == group_key)
+            ms->items[i] = ms->items[--ms->n];   /* swap-remove, tous drapeaux */
+    }
+}
 void modstack_drop_reversible(ModifierStack *ms, int group_key) {
     for (int i = ms->n - 1; i >= 0; i--) {
         if (ms->items[i].group_key == group_key && ms->items[i].reversible)

@@ -510,6 +510,9 @@ const EventDef *event_def(int evid);
  * coud le NOM RÉEL du sujet (région/pays) à la présentation. Rend buf. */
 const char *event_title(const World *w, int evid, int subject, char *buf, int n);
 
+/* rendre/poser le cache de titres (motif g_tech_cache) — sim_free passe NULL. */
+void events_title_bind(const Statecraft *sc);
+
 /* ---- Âges : scan d'interprétation du monde ---------------------------- */
 /* Évalue les triggers d'âge ; fait advenir tout âge nouvellement éligible
  * (palier + coordonnée globale). Renvoie true si un âge est advenu. */

@@ -304,6 +304,26 @@ static void sim_campaign_year(Sim *s, World *w) {
             }
         }
         campaign_release_transports(s->camp, s->navy);       /* les transports rentrent à la rade */
+        /* AUDIT 2026-08-12 — LES MORTS MEURENT : le registre des paquets tués
+         * (campagne, par pays × classe) se draine vers les VRAIS gens — la strate
+         * de la capitale paie (écho des équipages navals/rebelles, qui mouraient
+         * déjà), et l'affectation se rend (le recrutement respire à nouveau).
+         * WAR_DEATHS_REAL=0 : l'hier exact (les morts redeviennent des mots). */
+        { bool real = tune_f("WAR_DEATHS_REAL",1.f)>0.f;
+          for (int cd=0;cd<w->n_countries && cd<SCPS_MAX_COUNTRY;cd++)
+            for (int cl=0;cl<3;cl++){
+              long pend=s->camp->dead_class_pending[cd][cl];
+              if (pend<=0) continue;
+              s->camp->dead_class_pending[cd][cl]=0;
+              long souls=pend*100;   /* POP_PER_UNIT */
+              /* l'affectation se REND toujours (bug de comptabilité, pas un choix) */
+              { long *asg=&s->host->army[cd].pop_by_class_in_army[cl];
+                *asg -= souls; if (*asg<0) *asg=0; }
+              if (!real) continue;
+              int cp=w->country[cd].capital_prov;
+              int cr=(cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
+              if (cr>=0) econ_region_pop_add(s->econ, cr, cl, -(float)souls);
+            } }
         /* LOT 4 — LE PILLAGE DE SIÈGE : chaque force EN SIÈGE (occupe/assiège une
          * région qui n'est pas la sienne) détourne CE MOIS une fraction de la
          * production locale vers SA capitale (diplo_siege_loot, distinct du butin
@@ -1346,7 +1366,7 @@ void sim_day(Sim *s, World *w) {
         PROF(PB_INTERTRADE, intertrade_tick(s->econ, s->rn, s->dp));   /* grandes routes marchandes (goods inter-pays + embargo) */
         PROF(PB_CONTACT, demography_contact_tick(s->econ, s->drift, s->rn, s->dp, 5.f, 5.f, 1.f));   /* S2 : la cristallisation suit le contact (annuel) */
         demography_values_tick(s->econ, s->drift, s->wp, s->dp, 1.f);   /* ATTRACTEURS ENDOGÈNES : une culture bifurque seule (annuel) */
-        econ_ruin_tick(s->econ);                              /* RUINES : l'effondré s'abandonne, la mémoire reste (annuel) */
+        econ_ruin_tick(s->econ, s->drift);                    /* RUINES : l'effondré s'abandonne, la mémoire reste — et REND ses dérives (annuel) */
         demography_manumit_integrated(s->econ, w);            /* L'AFFRANCHI PAR MÉTABOLISATION (annuel) */
         demography_migration_pact_tick(s->econ, s->dp, s->day, s->wp->age_mig_mult);   /* BRASSAGE : échange passif de population entre alliés (annuel) */
         ai_slave_trade_year(w, s->econ, s->ai, s->ai_on); /* P4 : le pool des Centres se remplit (vente du surplus servile) */
@@ -1512,6 +1532,8 @@ void sim_init(Sim *s, World *w) {
     demography_migration_pact_reset();   /* BRASSAGE : compteur de flux de pacte migratoire */
     demography_refugee_reset();   /* BRASSAGE : compteurs de fuite/retour de réfugiés */
     demography_manumit_reset();   /* ESCLAVAGE : compteur d'âmes affranchies (par sim) */
+    demography_values_reset();    /* ATTRACTEURS : bascules d'éthos par sim (audit 2026-08-12 : jamais RAZ → cumul multi-sims) */
+    ai_slave_caches_reset();      /* audit 2026-08-12 : g_ai_enslave/slave_frac fuyaient entre sims du même process */
     ai_slave_buy_reset();  /* LOT G : compteur d'âmes rachetées au pool par l'IA (par sim) */
     religion_reset();     /* RELIGION : monde ATHÉE à chaque sim (sinon les foi FUITENT entre sims) */
     decrees_reset();      /* DÉCRETS : RAZ par sim (sinon un décret FUIT entre sims, comme la religion) */
@@ -1624,6 +1646,7 @@ void sim_free_members(Sim *s) {
      * celui corrigé sur faction_bind : tout module à contexte global lié DOIT unbind
      * à la destruction de ce qu'il pointe. */
     econ_apply_country_tech(NULL, NULL, 0);
+    events_title_bind(NULL);   /* AUDIT 2026-08-12 : rendre le cache de titres (motif g_tech_cache) */
     faction_bind(NULL, NULL);
     free(s->econ); free(s->wp); free(s->wl); free(s->net); free(s->ts); free(s->sc);
     free(s->ag); free(s->ev); free(s->drift); free(s->dp); free(s->rn);

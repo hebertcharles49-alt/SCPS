@@ -13,11 +13,36 @@
 
 /* RE-KEY : richesse de strate PERSISTANTE — province représentative + vue region[]
  * du mois courant (écrire la seule vue serait effacé par l'agrégation de clôture). */
-static void trade_wealth_add(WorldEconomy *e, int region, int cls, float delta){
-    int pp=econ_region_rep_province(e,region);
-    if (pp>=0 && pp<e->n_prov){
-        float *w=&e->prov[pp].strata[cls].wealth; *w+=delta; if(*w<0.f)*w=0.f; }
-    float *v=&e->region[region].strata[cls].wealth; *v+=delta; if(*v<0.f)*v=0.f;
+/* AUDIT 2026-08-12 (création ex nihilo) : le débit était calculé sur la richesse de
+ * la VUE region[] (Σ des provinces) mais prélevé sur la SEULE représentante, clampée
+ * à 0 en silence — l'exportateur encaissait le plein. On délègue à
+ * econ_region_wealth_add (spill sur les provinces sœurs, rend l'APPLIQUÉ réel) et
+ * l'appelant crédite CE réel. */
+static float trade_wealth_add(WorldEconomy *e, int region, int cls, float delta){
+    RegionEconomy *rv=&e->region[region];
+    int rep=econ_region_rep_province(e,region);
+    if (rep<0 || rep>=e->n_prov){                      /* fixture (banc) : vue seule */
+        if (delta>0.f){ rv->strata[cls].wealth+=delta; return delta; }
+        float tk=rv->strata[cls].wealth; if(tk>-delta)tk=-delta; if(tk<0.f)tk=0.f;
+        rv->strata[cls].wealth-=tk; return -tk;
+    }
+    if (delta>0.f){
+        e->prov[rep].strata[cls].wealth+=delta;
+        rv->strata[cls].wealth+=delta;
+        return delta;
+    }
+    float need=-delta, took=0.f;
+    { float tk=e->prov[rep].strata[cls].wealth; if(tk>need)tk=need;
+      if (tk>0.f){ e->prov[rep].strata[cls].wealth-=tk; need-=tk; took+=tk; } }
+    for (int p=0; p<e->n_prov && need>1e-6f; p++){     /* le SPILL sur les sœurs */
+        if (p==rep) continue;
+        ProvinceEconomy *pe=&e->prov[p];
+        if (pe->region!=region || !pe->active) continue;
+        float tk=pe->strata[cls].wealth; if(tk>need)tk=need;
+        if (tk>0.f){ pe->strata[cls].wealth-=tk; need-=tk; took+=tk; }
+    }
+    rv->strata[cls].wealth-=took; if (rv->strata[cls].wealth<0.f) rv->strata[cls].wealth=0.f;
+    return -took;
 }
 
 /* ====================================================================== */
@@ -272,17 +297,17 @@ void trade_tick(WorldEconomy *e, TradeNetwork *net, const uint8_t *link_blocked)
                 float pay=(c==last)?(cost_imp-paid):(cost_imp*(wealth/payer_wealth));
                 if(pay>wealth) pay=wealth;
                 if(pay<0.f) pay=0.f;
-                trade_wealth_add(e, importer, c, -pay);
-                paid+=pay;
+                float applied=-trade_wealth_add(e, importer, c, -pay);   /* le PRÉLEVÉ réel (spill) */
+                paid+=applied;
             }
             /* Le vendeur ne reçoit JAMAIS plus que ce qui a physiquement quitté
              * l'acheteur. `paid` et `revenue` ne diffèrent que d'un éventuel arrondi. */
             trade_wealth_add(e, exporter, CLASS_BOURGEOIS, paid);
 
-            /* Convergence de prix : 20% vers la moyenne après le flux. */
-            float mid=(pa+pb)*0.5f;
-            ea->price[r]=ea->price[r]*0.80f+mid*0.20f;
-            eb->price[r]=eb->price[r]*0.80f+mid*0.20f;
+            /* AUDIT 2026-08-12 : la convergence de prix écrite sur la VUE region[] était
+             * morte par construction (écrasée à la clôture — le même « nudge mort » que
+             * le LOT 2 d'intertrade a retiré chez lui) mais BIAISAIT l'arbitrage
+             * d'intertrade du même jour. Retirée : le prix vit au NATIONAL (clôture). */
 
             /* Enregistrement du flux. */
             if (net->n_flows<TRADE_MAX_FLOWS) {

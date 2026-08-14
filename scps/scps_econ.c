@@ -6,6 +6,7 @@
  * la simulation — l'aléa est dans la génération du monde, pas dans l'éco.
  */
 #include "scps_econ.h"
+#include "scps_modifier.h"   /* audit 2026-08-12 : les ruines rendent les dérives */
 #include "scps_math.h"    /* clampf partagé */
 #include "scps_tune.h"    /* Arc J : constantes de calibrage surchargeables (SCPS_TUNE) */
 #include "scps_world.h"   /* resource_name(), subsistance_for_biome() */
@@ -262,6 +263,7 @@ bool econ_culture_identity_load(FILE *f){
          * télémétrie chronicle) → save v79 d'une partie âgée INCHARGEABLE. Retiré : la
          * borne de type suffit ; parents/nom/mélange restent validés. (2026-07-11) */
         if(!ci->name[0] || ci->parent_a>=count || ci->parent_b>=count) return false;
+        if(ci->heritage < 0 || ci->heritage >= HERITAGE_COUNT) return false;   /* audit 2026-08-12 : indexe des tables */
         float sum=0.f;
         for(int h=0;h<HERITAGE_COUNT;h++){
             if(!isfinite(ci->heritage_mix[h]) || ci->heritage_mix[h]<0.f || ci->heritage_mix[h]>1.f) return false;
@@ -4560,6 +4562,10 @@ void econ_tick(WorldEconomy *e, float dt) {
              * plus une destruction pure. */
             if (paid_up>0.f && re->owner>=0){
                 float sl=tune_f("UPKEEP_SHARE_LAB",UPKEEP_SHARE_LAB), sb=tune_f("UPKEEP_SHARE_BOURG",UPKEEP_SHARE_BOURG);
+                /* audit 2026-08-12 : sl+sb>1 par surcharge registre créditait PLUS que paid_up
+                 * (création par tunable) — renormalisé. */
+                if (sl<0.f) sl=0.f; if (sb<0.f) sb=0.f;
+                if (sl+sb>1.f){ float k=1.f/(sl+sb); sl*=k; sb*=k; }
                 float se=1.f-sl-sb; if (se<0.f) se=0.f;
                 re->strata[CLASS_LABORER].wealth   += paid_up*sl;
                 re->strata[CLASS_BOURGEOIS].wealth += paid_up*sb;
@@ -6310,7 +6316,7 @@ int econ_passive_seep(WorldEconomy *e, const World *w){
  * elle et l'identité hybride portera le substrat (l'Anatolie). Les capitales ne
  * tombent jamais en ruines (le pays meurt par d'autres chemins). Annuel.
  * RUIN_POP_FLOOR=0 = jamais de ruines (kill-switch). */
-int econ_ruin_tick(WorldEconomy *e){
+int econ_ruin_tick(WorldEconomy *e, ModifierStack *drift){
     float floor_ = tune_f("RUIN_POP_FLOOR", 50.f);
     if (!e || floor_<=0.f) return 0;
     int ruined=0;
@@ -6326,7 +6332,15 @@ int econ_ruin_tick(WorldEconomy *e){
          * un hameau qui a à manger GRANDIT ; seul le reste affamé (guerre, sac, terre morte)
          * s'abandonne. */
         if (pe->food_sat >= tune_f("RUIN_FAMINE_GATE", 0.25f)) continue;
-        for (int c=0;c<CLASS_COUNT;c++){ pe->strata[c].pop=0.f; pe->strata[c].wealth=0.f; }
+        /* AUDIT 2026-08-12 (conservation M3a) : la richesse n'est PLUS détruite — elle
+         * reste PARQUÉE sur la ruine (le trésor enfoui) et la recolonisation la
+         * récupère par le chemin preexist_wealth de colonize_from_prov. Seules les
+         * âmes partent. */
+        for (int c=0;c<CLASS_COUNT;c++){ pe->strata[c].pop=0.f; }
+        /* audit 2026-08-12 : les groupes qui meurent ici rendent leur dérive — sinon la
+         * clef statique pid+1 réattribuée à la recolonisation HÉRITE la culture du mort. */
+        if (drift) for (int gi=0;gi<pe->pop.n_groups;gi++)
+            modstack_drop_group(drift, pe->pop.groups[gi].drift_id);
         pe->pop.n_groups=0;                 /* les derniers sont partis (le culture_id RESTE) */
         pe->colonized=false;                 /* is_colonized RESTE : ce sont des RUINES, pas une terre vierge */
         pe->owner=-1;                        /* terre abandonnée — la région se ré-agrège à la clôture */
@@ -6923,7 +6937,13 @@ void econ_print_summary(const WorldEconomy *e, const World *w) {
 }
 
 void econ_prodcap_save(FILE *f){ fwrite(g_prod_cap,sizeof g_prod_cap,1,f); }
-bool econ_prodcap_load(FILE *f){ return fread(g_prod_cap,sizeof g_prod_cap,1,f)==1; }
+bool econ_prodcap_load(FILE *f){
+    if (fread(g_prod_cap,sizeof g_prod_cap,1,f)!=1) return false;
+    /* AUDIT 2026-08-12 : douane NaN/inf/négatif sur un float moteur désérialisé. */
+    { const float *p=(const float*)g_prod_cap; size_t n=sizeof g_prod_cap/sizeof(float);
+      for (size_t i=0;i<n;i++) if (!isfinite(p[i]) || p[i]<-1.f || p[i]>1e9f) return false; }   /* tolérance epsilon */
+    return true;
+}
 
 /* ── MODTOOLS — surcharge des VALEURS éco par FICHIER (palier 1-2) ────────────
  * Motif tune_f/scps_lang.txt étendu aux TABLES : défaut compilé + override fichier,

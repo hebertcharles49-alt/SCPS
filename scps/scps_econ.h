@@ -33,6 +33,7 @@
 #ifndef SCPS_ECON_H
 #define SCPS_ECON_H
 
+#include "scps_modifier.h"   /* ModifierStack (les ruines rendent les dérives, audit 2026-08-12) */
 #include <stdio.h>          /* FILE* : helpers de save (prod_cap) */
 #include <math.h>           /* fmaxf : MONNAIE M7 — econ_country_price_level (inline ci-dessous) */
 #include "scps_types.h"
@@ -612,7 +613,7 @@ float econ_content_dist_faith(const PopCulture *a, const PopCulture *b);
 float econ_culture_phylo_clock(uint16_t a, uint16_t b);
 /* RUINES (2026-08-11) : une province effondrée (< RUIN_POP_FLOOR) est abandonnée,
  * son culture_id demeure — le substrat redevient atteignable. Annuel, renvoie le compte. */
-int econ_ruin_tick(WorldEconomy *e);
+int econ_ruin_tick(WorldEconomy *e, ModifierStack *drift);
 uint16_t econ_ruling_culture_id(const World *w, const WorldEconomy *econ, int cid);
 const PopCulture *econ_ruling_culture(const World *w, const WorldEconomy *econ, int cid);
 /* ESCLAVAGE — gate ACHETEUR au marché des Centres (miroir du gate de capture IA) :

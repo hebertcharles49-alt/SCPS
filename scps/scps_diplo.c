@@ -8,6 +8,7 @@
 #include "scps_diplo.h"
 #include "scps_heritage.h"
 #include "scps_culture.h"
+#include "scps_demography.h" /* dyn_id_next + drift_retire (audit 2026-08-12) */
 #include "scps_provlog.h"  /* le JOURNAL diplomatique (display, focus-gaté — la chronique n'écrit rien) */
 #include <stdio.h>
 #include <stdlib.h>
@@ -97,7 +98,14 @@ void diplo_pillage_stats(long *events, double *value, double *target, long *soul
     if (souls)  *souls =g_enslaved_souls;
 }
 void diplo_save_statics(FILE *f){ fwrite(g_intim_cd,sizeof g_intim_cd,1,f); }
-bool diplo_load_statics(FILE *f){ return fread(g_intim_cd,sizeof g_intim_cd,1,f)==1; }
+bool diplo_load_statics(FILE *f){
+    if (fread(g_intim_cd,sizeof g_intim_cd,1,f)!=1) return false;
+    /* AUDIT 2026-08-12 : un cooldown désérialisé qui GATE une décision moteur se
+     * revalide (charte RVLT) — un fichier forgé gelait l'intimidation à vie. */
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++)
+        if (g_intim_cd[c] < 0 || g_intim_cd[c] > 40*12) return false;
+    return true;
+}
 void diplo_init(DiploState *d){
     memset(d,0,sizeof(*d));
     memset(g_intim_cd,0,sizeof g_intim_cd);
@@ -327,6 +335,10 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
         if (s<0) continue;
         if (s>=w->n_countries){ d->suzerain[v]=-1; continue; }
         SuzContrat c=(SuzContrat)d->contrat[v];
+        /* AUDIT 2026-08-12 : le tribut coulait PENDANT la guerre d'indépendance — les
+         * frondeurs finançaient le maître qu'ils combattaient (les blocs intégration/
+         * contribution, eux, étaient gatés). En guerre contre son suzerain : rien. */
+        if (d->status[v][s]==DIPLO_WAR) continue;
         float frac=(c==CONTRAT_SERVAGE)?0.08f:(c==CONTRAT_PROTECTORAT)?0.02f:0.f;
         if (diplo_tribute_decree(s)) frac *= 1.5f;   /* décret « Politique de tribut » : ×1.5 tout le tribut */
         if (frac>0.f && capreg[s]>=0 && capreg[s]<econ->n_regions){
@@ -802,6 +814,12 @@ int diplo_ally_count(const DiploState *d, int a){
 }
 void diplo_make_peace   (DiploState *d,int a,int b){
     set_sym(d,a,b,DIPLO_NEUTRAL);
+    /* AUDIT 2026-08-12 (« 33 posées / 0 levées ») : la paix BLANCHE laissait les
+     * occupations de la paire À JAMAIS (seul diplo_settle les effaçait, et la
+     * libération militaire exige la guerre). Statu quo ante : les troupes rentrent. */
+    if (a>=0&&a<SCPS_MAX_COUNTRY&&b>=0&&b<SCPS_MAX_COUNTRY)
+        for (int r=0;r<SCPS_MAX_REG;r++)
+            if (d->occupier[r]==a || d->occupier[r]==b) d->occupier[r]=-1;
     diplog_push(DACT_PEACE, a, b, 0.f);
     if (a>=0&&a<SCPS_MAX_COUNTRY&&b>=0&&b<SCPS_MAX_COUNTRY){
         /* TRÊVE : une longue guerre → une longue trêve. On ne peut redéclarer
@@ -1120,6 +1138,10 @@ static void polity_death(DiploState *d, World *w, WorldEconomy *econ, int dead){
     }
     d->momentum[dead]=0.f; d->faustian[dead]=0.f; d->pirate_disarm[dead]=0;
     d->suzerain[dead]=-1; d->contrat[dead]=CONTRAT_NONE;            /* plus le vassal de personne */
+    d->reparations_to[dead]=-1; d->reparations_days[dead]=0.f;      /* audit 2026-08-12 : un slot réutilisé (sécession)
+                                                                     * naissait ENDETTÉ envers l'ancien vainqueur */
+    for (int o=0;o<SCPS_MAX_COUNTRY;o++)
+        if (d->reparations_to[o]==dead){ d->reparations_to[o]=-1; d->reparations_days[o]=0.f; }   /* et nul ne paie un mort */
     d->v_integration[dead]=0.f; d->v_annex[dead]=0.f;              /* étage 3 : plus d'état de vassalité */
     for (int v=0;v<SCPS_MAX_COUNTRY;v++)                            /* ses vassaux : LIBÉRÉS */
         if (d->suzerain[v]==dead){ d->suzerain[v]=-1; d->contrat[v]=CONTRAT_NONE;
@@ -1358,10 +1380,13 @@ long diplo_enslave_capture(const World *w, WorldEconomy *econ, int conqueror, in
     ng.klass=CLASS_SLAVE;
     memset(ng.pop_by_class,0,sizeof ng.pop_by_class); ng.pop_by_class[CLASS_SLAVE]=moved;
     ng.home_reg=-1;                                   /* l'esclave est TENU (pas de retour ; home_reg memset 0 serait région 0) */
-    ng.drift_id=SLAVE_DRIFT_BASE + region*SCPS_MAX_GROUPS + dst->n_groups;
+    ng.drift_id=demography_dyn_id_next();   /* AUDIT 2026-08-12 : le schéma base+région×MAX+n
+                                             * recréait les collisions que le compteur unique
+                                             * avait éradiquées (slot re-créé = même clef) */
     dst->groups[dst->n_groups++]=ng;
     src->groups[gi].count-=moved;
-    if (src->groups[gi].count<=0){ src->groups[gi]=src->groups[src->n_groups-1]; src->n_groups--; }
+    if (src->groups[gi].count<=0){ demography_drift_retire(src->groups[gi].drift_id);   /* audit 2026-08-12 */
+        src->groups[gi]=src->groups[src->n_groups-1]; src->n_groups--; }
     dpe->strata[CLASS_SLAVE].pop += (float)moved;
     g_enslaved_souls += moved;   /* télémétrie « pillage réel » (LOT P) : âmes déportées */
     /* LOT P (2026-07-07) : le pillage_cd n'est plus posé ICI — c'est désormais TOUJOURS

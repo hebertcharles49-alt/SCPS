@@ -173,6 +173,12 @@ void demography_on_conquest(World *w, WorldEconomy *econ, ModifierStack *drift, 
  * après un chargement (le compteur n'est pas sérialisé) — repart au-dessus du
  * plus grand drift_id vivant. */
 int  demography_dyn_id_next(void);
+/* AUDIT 2026-08-12 — la mort d'un groupe rend sa dérive : les sites SANS pile
+ * déposent la clef (retire), demography_tick draine ; le scrub post-load balaie
+ * les orphelines de la pile sérialisée (résurrection impossible). */
+void demography_drift_retire(int drift_id);
+void demography_drift_drain(ModifierStack *drift);
+void demography_drift_scrub(const WorldEconomy *econ, ModifierStack *drift);
 void demography_dyn_id_rebase(const WorldEconomy *econ);
 
 /* ---- ESCLAVAGE — L'AFFRANCHISSEMENT (CMD_MANUMIT, granularité PAYS) --------- *

@@ -239,6 +239,7 @@ int assimilation_tick(ProvincePop *pp, ModifierStack *drift, float P, float K, f
             winner->culture_id=econ_culture_identity_fuse(winner->culture_id,g->culture_id,
                                                            winner->heritage,minority,CULTURE_BLEND_PEOPLE);
             winner->count += g->count;
+            modstack_drop_group(drift, g->drift_id);   /* audit 2026-08-12 : le fondu rend sa dérive */
             int last=pp->n_groups-1;
             pp->groups[i]=pp->groups[last]; pp->n_groups--;
             if (dom_idx==last) dom_idx=i;
@@ -319,7 +320,8 @@ bool migration_move(ProvincePop *from, ProvincePop *to, int gi, long amount, int
         to->groups[dst].count += amount;
     }
     src->count -= amount;
-    if (src->count<=0){ from->groups[gi]=from->groups[from->n_groups-1]; from->n_groups--; }
+    if (src->count<=0){ demography_drift_retire(src->drift_id);   /* audit 2026-08-12 */
+        from->groups[gi]=from->groups[from->n_groups-1]; from->n_groups--; }
     return true;
 }
 
@@ -441,7 +443,6 @@ void demography_attach(World *w, WorldEconomy *econ, ModifierStack *drift){
     if (drift) memset(drift, 0, sizeof(*drift));     /* la pile de dérive du monde, à neuf */
     econ_culture_identity_reset(w?w->seed:0u);
     uint16_t base_id[SCPS_MAX_REG]; memset(base_id,0,sizeof base_id);
-    int id=1;
     /* RE-KEY PROVINCE (T1) : le groupe-substrat VIT sur la province représentative
      * (econ_region_rep_province, ancrage figé) — écrire econ->region[r].pop serait
      * effacé au 1er econ_tick (miroir). À la genèse, region[r].strata/culture sont
@@ -468,7 +469,8 @@ void demography_attach(World *w, WorldEconomy *econ, ModifierStack *drift){
         g->pop_by_class[CLASS_LABORER]=total;        /* repli : tout Journalier avant la 1re émergence */
         g->pop_by_class[CLASS_BOURGEOIS]=0; g->pop_by_class[CLASS_ELITE]=0;
         g->L=7.f; g->agit_base=agit_from_L(7.f); g->integration=1.f;   /* natifs intégrés */
-        g->diaspora=false; g->drift_id=id++; g->home_reg=-1;   /* de souche : aucun foyer « ailleurs » (memset 0 = région valide) */
+        g->diaspora=false; g->drift_id=rp+1; g->home_reg=-1;   /* de souche — AUDIT 2026-08-12 : clef UNIFIÉE pid+1
+                                                                * (l'ordinal de région percutait l'ordinal worldgen) */
         g->faith=-1;        /* GENÈSE : monde ATHÉE (≠ 0 = religion 0 ; la foi vient plus tard) */
         pp->n_groups=1;     /* MONO-GROUPE → non-régression (les nombres d'hier) */
     }
@@ -493,6 +495,25 @@ void demography_attach(World *w, WorldEconomy *econ, ModifierStack *drift){
  * le REBASE au-dessus du maximum chargé après game_load (sinon collision avec
  * les groupes d'une partie sauvegardée). */
 int demography_dyn_id_next(void){ return g_dyn_drift_id++; }
+
+/* ══ LA FILE DE RETRAIT DES DÉRIVES (audit 2026-08-12) ══
+ * Les sites de mort de groupe SANS ModifierStack sous la main (vente d'esclaves,
+ * déportation diplo, réfugiés) déposent la clef ici ; demography_tick la draine
+ * (il a la pile). Non sérialisée : un save dans la fenêtre laisse des orphelines —
+ * le SCRUB du rebase post-load les balaie de toute façon. Débordement = fuite
+ * jusqu'au prochain load, assumée (ring large). */
+static int g_drift_retire[1024];
+static int g_drift_retire_n = 0;
+void demography_drift_retire(int drift_id){
+    if (drift_id<=0) return;
+    if (g_drift_retire_n < (int)(sizeof g_drift_retire/sizeof g_drift_retire[0]))
+        g_drift_retire[g_drift_retire_n++] = drift_id;
+}
+void demography_drift_drain(ModifierStack *drift){
+    if (!drift) { g_drift_retire_n=0; return; }
+    for (int i=0;i<g_drift_retire_n;i++) modstack_drop_group(drift, g_drift_retire[i]);
+    g_drift_retire_n=0;
+}
 void demography_dyn_id_rebase(const WorldEconomy *econ){
     int hi=DYN_DRIFT_BASE-1;
     /* RE-KEY PROVINCE (T1) : les groupes vivent sur prov[] — scanner region[].pop (miroir,
@@ -504,6 +525,37 @@ void demography_dyn_id_rebase(const WorldEconomy *econ){
             if (pp->groups[i].drift_id>hi) hi=pp->groups[i].drift_id;
     }
     g_dyn_drift_id=hi+1;
+    g_drift_retire_n=0;   /* la file appartient à l'ANCIEN monde */
+}
+
+/* ══ LE SCRUB DU CHARGEMENT (audit 2026-08-12 : « résurrection de dérive ») ══
+ * La pile DRFT sérialise TOUT, y compris les entrées des groupes morts jamais
+ * rendues avant ce patch ; le rebase recomptait sur les vivants → un id
+ * réattribué HÉRITAIT la dérive d'un mort (l'archétype g_tech_cache). On balaie :
+ * toute entrée de groupe (group_key>0) dont la clef n'appartient à AUCUN groupe
+ * vivant est retirée. Les modificateurs PAYS (group_key==0, country>=0) restent. */
+void demography_drift_scrub(const WorldEconomy *econ, ModifierStack *drift){
+    if (!econ || !drift) return;
+    static uint8_t live_static[SCPS_MAX_PROV+2];
+    memset(live_static, 0, sizeof live_static);
+    int dyn_ids[SCPS_MAX_PROV*SCPS_MAX_GROUPS]; int ndyn=0;
+    int nprov=econ->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
+    for (int p=0;p<nprov;p++){
+        const ProvincePop *pp=&econ->prov[p].pop;
+        for (int i=0;i<pp->n_groups;i++){
+            int id=pp->groups[i].drift_id;
+            if (id>0 && id<=SCPS_MAX_PROV+1) live_static[id]=1;
+            else if (id>=DYN_DRIFT_BASE && ndyn<(int)(sizeof dyn_ids/sizeof dyn_ids[0])) dyn_ids[ndyn++]=id;
+        }
+    }
+    for (int i=drift->n-1;i>=0;i--){
+        int key=drift->items[i].group_key;
+        if (key<=0) continue;                      /* modificateur pays/neutre : intouché */
+        bool live=false;
+        if (key<=SCPS_MAX_PROV+1) live=(live_static[key]!=0);
+        else { for (int k2=0;k2<ndyn;k2++) if (dyn_ids[k2]==key){ live=true; break; } }
+        if (!live) drift->items[i]=drift->items[--drift->n];
+    }
 }
 
 /* ÉMERGENCE DE CLASSE (§pop précise) : la classe de CHAQUE groupe (heritage×culture×foi)
@@ -1029,7 +1081,8 @@ int demography_refugee_tick(World *w, WorldEconomy *e, const DiploState *dp){
             long got=refugee_settle_home(&hpe->pop, g, amt, demography_dyn_id_next());
             if (got>0){
                 g->count -= got;
-                if (g->count<=0){ pp->groups[i]=pp->groups[pp->n_groups-1]; pp->n_groups--; }
+                if (g->count<=0){ demography_drift_retire(g->drift_id);   /* audit 2026-08-12 */
+                    pp->groups[i]=pp->groups[pp->n_groups-1]; pp->n_groups--; }
                 returned++; g_refugee_returned_souls+=got;
             }
         }
@@ -1040,6 +1093,7 @@ int demography_refugee_tick(World *w, WorldEconomy *e, const DiploState *dp){
 
 void demography_tick(World *w, WorldEconomy *econ, WorldLegitimacy *wl,
                      ModifierStack *drift, float P, float K, float dt, float integ_mult){
+    demography_drift_drain(drift);   /* audit 2026-08-12 : les clefs des morts déposées par les sites sans pile */
     if (dt<=0.f) dt=1.f;
     if (integ_mult<=0.f) integ_mult=1.f;
     /* RE-KEY PROVINCE (T1) : econ->region[r].pop n'est qu'un MIROIR de la province

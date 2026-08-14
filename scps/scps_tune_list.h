@@ -686,6 +686,13 @@
     X(TAX_FLOOR_FRAC,         0.5f) \
     X(NAVY_COLONY_MAX_DAYS,   240.0f) \
     X(NAVY_TRANSPORT_MIN,     1.0f) \
+    X(WAR_DEATHS_REAL,        1.0f) /* audit 2026-08-12 : les paquets tues debitent la
+                                            * strate (capitale) ; 0 = les morts-mots d'hier. */ \
+    /* AUDIT 2026-08-12 : 3 leviers vivaient hors registre (SCPS_TUNE les refusait
+     * exit(2), F10 aveugle) — enregistrés aux défauts des call-sites. */ \
+    X(BANKRUPTCY_GARNISH,     0.75f) \
+    X(RELIG_MINORITY_SAT,     0.15f) \
+    X(SEED_PROV_CAP_MULT,     3.0f) \
     /* PIPELINE DIPLO — la VALEUR SUBJECTIVE oriente la CIBLE (pas l'éthos, qui décide la
      * MÉTHODE). COVET_W : poids du BESOIN (Σ raw_cap × stress(runway) × prix) dans la valeur
      * d'une province d'autrui → l'IA convoite qui TIENT ce qui lui manque. COMPLEMENT_W :

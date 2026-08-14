@@ -188,6 +188,14 @@ static inline float *it_treasury(WorldEconomy *e, int region){
     if (pid<0 || pid>=e->n_prov) return NULL;
     return &e->prov[pid].treasury;
 }
+/* AUDIT 2026-08-12 (M11-A2) : toute ÉCRITURE de trésor post-agrégation dual-write
+ * (prov + vue region[]) — les écritures nues laissaient credit_can_spend/l'audit lire
+ * un trésor périmé jusqu'à un mois. Les LECTURES gardent le pointeur (prov = vérité). */
+static inline void it_credit(WorldEconomy *e, int region, float delta){
+    int pid=econ_region_rep_province(e, region);
+    if (pid<0 || pid>=e->n_prov || delta==0.f) return;
+    econ_prov_treasury_credit(e, pid, delta);
+}
 
 /* ── P3.20 — CENTRES COMMERCIAUX (les hubs du réseau inter-régional) ──────────
  * Des POINTS STRATÉGIQUES, un par batch de ~4-5 régions, plantés là où le FLUX
@@ -498,13 +506,13 @@ void intertrade_market_consume(WorldEconomy *e, int region, int good, float qty,
     float cc_imp0=qty;                                                 /* volume d'import autorisé */
     if (hub>=0 && hub!=region){                                        /* 3. Centre local étranger : IMPORT */
         float t = centre_take(e, hub, good, qty);
-        float *tr=it_treasury(e,hub); if (tr) *tr += t * unit_price;   /* la SOURCE encaisse le NU (conservation) */
+        it_credit(e,hub, t * unit_price);   /* la SOURCE encaisse le NU (conservation, dual-write) */
         qty -= t;
     }
     if (hub>=0) for (int r=0;r<e->n_regions && r<SCPS_MAX_REG && qty>1e-3f; r++){   /* 4. réseau mondial étranger : IMPORT */
         if (!g_centre[r]||r==hub||r==region) continue;
         float t = centre_take(e, r, good, qty);
-        float *tr=it_treasury(e,r); if (tr) *tr += t * unit_price;      /* idem : la source encaisse le NU */
+        it_credit(e,r, t * unit_price);      /* idem : la source encaisse le NU (dual-write) */
         qty -= t;
         if (qty<=1e-3f) break;
     }
@@ -534,9 +542,9 @@ float intertrade_market_pull(WorldEconomy *e, int region, int good, float want, 
         float up=price*((has_host)?(MULT):1.f); long aff=(up>0.f&&buyer_tr)?(long)(*buyer_tr/up):0; \
         float w=fminf(want,(float)aff); if(w>1e-3f){ \
             float tk=centre_take(e,(R),good,w); float nu=tk*price, tot=tk*up; \
-            float *src_tr=it_treasury(e,(R)); if(src_tr) *src_tr+=nu; \
-            if(has_host&&tot>nu){ float *toll_tr=it_treasury(e,toll_r); if(toll_tr) *toll_tr+=(tot-nu); } \
-            if(buyer_tr) *buyer_tr-=tot; \
+            it_credit(e,(R),nu); \
+            if(has_host&&tot>nu) it_credit(e,toll_r,(tot-nu)); \
+            it_credit(e,region,-tot); \
             if(owner>=0) econ_flux_add(owner,FX_IMPORT,-tot); \
             got+=tk; want-=tk; } } }while(0)
     if (hub>=0 && hub!=region && e->region[hub].owner!=owner) PULL_BUY(hub, base);          /* 2. local */
@@ -596,9 +604,9 @@ long intertrade_market_buy(WorldEconomy *e, int region, int good, long want, int
         got=(long)(-econ_region_stock_add(e, hub, good, -(float)qty));
         if (got<=0) return 0;
         cost=(float)got*up;
-        *buyer_tr -= cost;                                        /* PUMP du trésor */
+        it_credit(e,region,-cost);                                /* PUMP du trésor (dual-write) */
         econ_region_stock_add(e, region, good, (float)got);       /* le bien entre au stock (province) */
-        float *hub_tr=it_treasury(e,hub); if (hub_tr) *hub_tr += cost;   /* CONSERVATION : le hub (source+hôte) encaisse le plein */
+        it_credit(e,hub, cost);   /* CONSERVATION : le hub (source+hôte) encaisse le plein */
     } else {
         long rem=qty; float nu_credited=0.f;
         for (int r=0;r<e->n_regions && r<SCPS_MAX_REG && rem>0;r++){
@@ -607,18 +615,17 @@ long intertrade_market_buy(WorldEconomy *e, int region, int good, long want, int
             if (t<=0) continue;
             rem-=t;
             float nu=(float)t*price;
-            float *src_tr=it_treasury(e,r); if (src_tr) *src_tr += nu; /* la source encaisse le NU */
+            it_credit(e,r, nu); /* la source encaisse le NU (dual-write) */
             nu_credited += nu;
         }
         got=qty-rem;
         if (got<=0) return 0;
         cost=(float)got*up;
-        *buyer_tr -= cost;                                        /* PUMP du trésor (facturé sur le RÉEL) */
+        it_credit(e,region,-cost);                                /* PUMP du trésor (facturé sur le RÉEL, dual-write) */
         econ_region_stock_add(e, region, good, (float)got);
         float toll = cost - nu_credited;                          /* la marge → cité-état hôte */
-        if (toll>0.f && re->import_toll_region>=0 && re->import_toll_region<e->n_regions){
-            float *toll_tr=it_treasury(e,re->import_toll_region); if (toll_tr) *toll_tr += toll;
-        }
+        if (toll>0.f && re->import_toll_region>=0 && re->import_toll_region<e->n_regions)
+            it_credit(e,re->import_toll_region, toll);
     }
     g_global_cache[good]-=(float)got; if(g_global_cache[good]<0.f)g_global_cache[good]=0.f;  /* V2.2 : cache à jour (anti sur-tirage intra-tick) */
     if (g_commerce_active && cid_ok(cc_owner)) commerce_draw(cc_owner, (float)got);   /* §5 : l'achat draine le pool commercial */
@@ -655,8 +662,8 @@ long intertrade_market_sell(WorldEconomy *e, int region, int good, long want, in
     long sold=(long)(-econ_region_stock_add(e, region, good, -(float)qty));
     if (sold<=0) return 0;
     float gain=(float)sold*price;
-    *seller_tr+=gain;
-    *dep_tr-=gain;                                                /* l'absorbeur PAIE (vendeur +gain == dep −gain) */
+    it_credit(e,region, gain);
+    it_credit(e,dep,  -gain);                                     /* l'absorbeur PAIE (vendeur +gain == dep −gain, dual-write) */
     econ_region_stock_add(e, dep, good, (float)sold);            /* le bien rejoint le marché (un AUTRE Centre, province) */
     g_global_cache[good]+=(float)sold;                           /* V2.2 : cache à jour */
     if (gained) *gained=(long)(gain+0.5f);
@@ -737,7 +744,8 @@ long intertrade_slave_sell(WorldEconomy *e, int region, long count){
         g_slave_pool[h] += (float)take;
         g->count -= take;
         pe->strata[CLASS_SLAVE].pop = fmaxf(0.f, pe->strata[CLASS_SLAVE].pop - (float)take);
-        if (g->count<=0){ pe->pop.groups[bg]=pe->pop.groups[pe->pop.n_groups-1]; pe->pop.n_groups--; }
+        if (g->count<=0){ demography_drift_retire(g->drift_id);   /* audit 2026-08-12 */
+            pe->pop.groups[bg]=pe->pop.groups[pe->pop.n_groups-1]; pe->pop.n_groups--; }
         remaining -= take; sold += take;
     }
     if (sold<=0) return 0;
@@ -814,7 +822,7 @@ long intertrade_slave_buy(WorldEconomy *e, int region, long count, bool can_ensl
         ng.culture=ng.origin;
         ng.klass=CLASS_SLAVE; ng.count=want; ng.diaspora=true; ng.arrival=ARR_DEPORTE; ng.integration=0.f;
         ng.home_reg=-1; ng.faith=-1;
-        ng.drift_id=SLAVE_MARKET_DRIFT_BASE + region*SCPS_MAX_GROUPS + pp->n_groups;
+        ng.drift_id=demography_dyn_id_next();   /* AUDIT 2026-08-12 : idem déportation — plus jamais de clef composée */
         memset(ng.pop_by_class,0,sizeof ng.pop_by_class); ng.pop_by_class[CLASS_SLAVE]=want;
         pp->groups[pp->n_groups++]=ng;
     } else {
@@ -1044,8 +1052,8 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
                   if (it_is_bulk(g))     { if (down) g_bulk_down+=vol; else g_bulk_up+=vol; }
                   if (it_is_precious(g)) { if (down) g_prec_down+=vol; else { g_prec_up+=vol; g_nprec_up++; } }
               } }
-            *dst_tr -= total;                                   /* l'acheteur PAIE Y */
-            *src_tr += gross;                                   /* le vendeur ENCAISSE le NU (trésor réel) */
+            it_credit(e,dst_r,-total);                          /* l'acheteur PAIE (dual-write) */
+            it_credit(e,src_r, gross);                          /* le vendeur ENCAISSE le NU (dual-write) */
             if (src->owner>=0){ econ_flux_add(src->owner, FX_EXPORT, gross);
                                 econ_flux_add(src->owner, FX_TOLL_RECV, total-gross); }  /* I0 */
             /* MONNAIE M3b-v2 — item 5 (décision joueur 2026-07-14) : le PÉAGE (la marge

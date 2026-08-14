@@ -164,6 +164,7 @@ void   ai_step(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
 void   ai_slave_trade_year(World *w, WorldEconomy *econ, const AiActor ai[], const bool ai_on[]);
 /* LOT G — télémétrie des rachats IA au pool (RAZ/sim, jamais lue par une décision). */
 void   ai_slave_buy_reset(void);
+void   ai_slave_caches_reset(void);   /* audit 2026-08-12 : RAZ par sim des caches esclavagistes */
 long   ai_slave_buy_count(void);
 
 /* #26 — `to` ÉVALUE une OFFRE de `from` (alliance/paix/pacte) et l'ACCEPTE ou la REFUSE.
