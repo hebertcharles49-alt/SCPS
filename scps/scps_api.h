@@ -1228,8 +1228,8 @@ int  scps_player_council_dismiss(ScpsSim *s, int seat);
  * l'activation exige la condition d'entrée, une réforme active refuse le off). */
 int  scps_player_decree        (ScpsSim *s, int id, int on);
 int  scps_player_route         (ScpsSim *s, int ra, int rb, int maritime);
-int  scps_player_market_buy    (ScpsSim *s, int region, int good, long qty, int tier);
-int  scps_player_market_sell   (ScpsSim *s, int region, int good, long qty, int tier);
+int  scps_player_market_buy    (ScpsSim *s, int province, int good, long qty, int tier);   /* GRAIN PROVINCE (2026-08-12) : livré/payé AU pid */
+int  scps_player_market_sell   (ScpsSim *s, int province, int good, long qty, int tier);
 int  scps_player_campaign      (ScpsSim *s, int from_region, int target_region);
 int  scps_player_move_army     (ScpsSim *s, int target_region);   /* clic-armée → destination (mouvement libre) */
 int  scps_player_refill        (ScpsSim *s);

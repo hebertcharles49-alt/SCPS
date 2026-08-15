@@ -416,4 +416,132 @@
     X(STR_CULTURE_PARENTE, "Ancestry") \
     X(STR_LOAN_AUCUNE,  "No request") \
     X(STR_LOAN_ACCORDE, "The state grants the loan") \
-    X(STR_LOAN_REFUSE,  "The state refuses the loan")
+    X(STR_LOAN_REFUSE,  "The state refuses the loan") \
+    /* VAGUE STR_* (2026-08-15) — twin of the FR block, same order. */ \
+    X(STR_MARCH_REASON_DEFAULT, "Preview unavailable") \
+    X(STR_MARCH_REASON_0, "Route passable") \
+    X(STR_MARCH_REASON_1, "Invalid corps") \
+    X(STR_MARCH_REASON_2, "Corps engaged in battle") \
+    X(STR_MARCH_REASON_3, "Corps at sea or landing") \
+    X(STR_MARCH_REASON_4, "Corps broken and routed") \
+    X(STR_MARCH_REASON_5, "Invalid destination") \
+    X(STR_MARCH_REASON_6, "Corps with no strength") \
+    X(STR_MARCH_REASON_7, "No land route") \
+    X(STR_MARCH_ARRIVAL_0, "Stay in place") \
+    X(STR_MARCH_ARRIVAL_1, "Repositioning") \
+    X(STR_MARCH_ARRIVAL_2, "March toward a siege") \
+    X(STR_REFILL_REASON_INVALID,      "Invalid corps") \
+    X(STR_REFILL_REASON_NOT_NATIONAL, "Resupply is only possible on a national region") \
+    X(STR_REFILL_REASON_NO_LINES,     "No unit line to reinforce") \
+    X(STR_REFILL_REASON_FULL,         "Corps already at full strength (nominal reached)") \
+    X(STR_REFILL_REASON_NO_POP,       "No population of the right class is mobilisable") \
+    X(STR_REFILL_REASON_COVERED,      "Reinforcement covered by population and the national arsenal") \
+    X(STR_REFILL_REASON_PARTIAL,      "Partial reinforcement guaranteed; the market can supply the missing weapons") \
+    X(STR_BATTLE_STAGE_CHOC,     "Clash") \
+    X(STR_BATTLE_STAGE_ACCALMIE, "Lull") \
+    X(STR_FOI_SANS, "Faithless") \
+    X(STR_FUSION_AUCUN_CONTACT,   "No sustained trade contact") \
+    X(STR_FUSION_PIVOT_TRANSFORME,"Trade contact runs through the region's hub province instead") \
+    X(STR_FUSION_NON_SEDENTARISE, "Local culture not yet settled") \
+    X(STR_FUSION_PORTE_OUVERTE,   "Merger gateway open") \
+    X(STR_FUSION_PORTE_FERMEE,    "Gateway closed: insufficient contact or institutions") \
+    X(STR_TRADE_STATUT_GUERRE,     "war") \
+    X(STR_TRADE_STATUT_EMBARGO,    "embargo") \
+    X(STR_TRADE_STATUT_FLORISSANT, "flourishing") \
+    X(STR_TRADE_STATUT_MODESTE,    "modest") \
+    X(STR_CONS_NOM_0, "Rigorist") \
+    X(STR_CONS_NOM_1, "Courtier") \
+    X(STR_CONS_NOM_2, "Austere") \
+    X(STR_CONS_NOM_3, "Reformer") \
+    X(STR_CONS_NOM_4, "Veteran") \
+    X(STR_CONS_NOM_5, "Ambitious") \
+    X(STR_CONS_NOM_6, "Loyalist") \
+    X(STR_CONS_NOM_7, "Venal") \
+    X(STR_CONS_FLAVOR_0, "To him, every exception looks like the first stone of a ruin.") \
+    X(STR_CONS_FLAVOR_1, "He knows who must be greeted, who must be paid, and who must believe the two gestures are worth the same.") \
+    X(STR_CONS_FLAVOR_2, "His whole household fits in two chests. So does his gratitude.") \
+    X(STR_CONS_FLAVOR_3, "No institution seems finished to him while it can still be taken apart.") \
+    X(STR_CONS_FLAVOR_4, "He has served three reigns and learned never to mistake any of them for the State.") \
+    X(STR_CONS_FLAVOR_5, "He calls it service — the distance still keeping him from power.") \
+    X(STR_CONS_FLAVOR_6, "He serves the crown with enough fervour to worry the one who wears it.") \
+    X(STR_CONS_FLAVOR_7, "He knows the price of every secret except the last one.") \
+    X(STR_RELATION_GUERRE, "War") \
+    X(STR_DIPLO_TERRITOIRE_INCONNU, "unknown territory") \
+    X(STR_GATE_EMISSAIRE_DISPO,      "Envoy available") \
+    X(STR_GATE_PAS_DEJA_GUERRE,      "Not already at war") \
+    X(STR_GATE_AUCUNE_TREVE,         "No truce") \
+    X(STR_GATE_CASUS_BELLI,          "Usable casus belli") \
+    X(STR_GATE_EN_GUERRE_CIBLE,      "At war with the target") \
+    X(STR_GATE_PAS_GUERRE,           "Not at war") \
+    X(STR_GATE_PAS_ALLIES,           "Not already allied") \
+    X(STR_GATE_CRENEAU_ALLIANCE,     "Free alliance slot") \
+    X(STR_GATE_PAS_PACTE_COMMERCIAL, "No trade pact in force") \
+    X(STR_GATE_PAS_PACTE_MIGRATOIRE, "No migration pact in force") \
+    X(STR_GATE_RELATION_COMMERCABLE, "Tradeable relation") \
+    X(STR_GATE_OR_SUFFISANT,         "Sufficient gold") \
+    X(STR_GATE_AUCUNE_INTRIGUE,      "No plot already underway") \
+    X(STR_DIPLO_REASON_INVALID_TARGET,        "Invalid or unknown diplomatic target") \
+    X(STR_DIPLO_REASON_EMISSARY_BUSY,         "Envoy on tour") \
+    X(STR_DIPLO_REASON_OK,                    "Action available") \
+    X(STR_DIPLO_REASON_ALREADY_WAR,           "Already at war with this country") \
+    X(STR_DIPLO_REASON_TRUCE_ACTIVE,          "Truce in force") \
+    X(STR_DIPLO_REASON_NO_CB,                 "No usable casus belli") \
+    X(STR_DIPLO_REASON_NOT_AT_WAR,            "You are not at war with this country") \
+    X(STR_DIPLO_REASON_AT_WAR,                "Impossible during war") \
+    X(STR_DIPLO_REASON_ALREADY_ALLIED,        "Alliance already sealed") \
+    X(STR_DIPLO_REASON_NO_ALLIANCE_SLOT,      "No free alliance slot") \
+    X(STR_DIPLO_REASON_PACT_EXISTS,           "Trade pact already sealed") \
+    X(STR_DIPLO_REASON_MIGRATION_PACT_EXISTS, "Migration pact already sealed") \
+    X(STR_DIPLO_REASON_EMBARGO_UNAVAILABLE,   "Embargo unavailable") \
+    X(STR_DIPLO_REASON_INTRIGUE_IN_PROGRESS,  "Claim being fabricated") \
+    X(STR_DIPLO_REASON_CLAIM_READY,           "A claim is already ready") \
+    X(STR_DIPLO_REASON_INSUFFICIENT_GOLD,     "Not enough gold to fund the plot") \
+    X(STR_DIPLO_REASON_FABRICATION_UNAVAILABLE,"Plot unavailable for now") \
+    X(STR_HERITAGE_FLAVOR_0, "Their genealogies begin before the first calendars, in centuries only ruins still remember.") \
+    X(STR_HERITAGE_FLAVOR_1, "They say every oath is like a metal: it reveals its worth only once heated enough to break it.") \
+    X(STR_HERITAGE_FLAVOR_2, "Their first clock measured the seasons. The second measured labour. The third taught the two to yield gold.") \
+    X(STR_HERITAGE_FLAVOR_3, "They have worn so many laws, tongues and crowns that they now call tradition the art of changing without disappearing.") \
+    X(STR_HERITAGE_FLAVOR_4, "Their borders follow the canals, their festivals the harvests, and their memories the fields their ancestors refused to abandon.") \
+    X(STR_HERITAGE_FLAVOR_5, "A stranger once asked them where family ended. They were shown the graves, the herds, the warriors, and finally the horizon.") \
+    X(STR_ETHOS_EPITHETE_0, "Horde") \
+    X(STR_ETHOS_EPITHETE_1, "Clans") \
+    X(STR_ETHOS_EPITHETE_2, "Order") \
+    X(STR_ETHOS_EPITHETE_3, "Crown") \
+    X(STR_ETHOS_EPITHETE_4, "League") \
+    X(STR_ETHOS_EPITHETE_5, "Haven") \
+    X(STR_ETHOS_HINT_0, "Conquest: pushes coercion, a poor integrator.") \
+    X(STR_ETHOS_HINT_1, "Glory & raiding: martial honour, digests poorly.") \
+    X(STR_ETHOS_HINT_2, "Hierarchy & discipline: the State that holds order.") \
+    X(STR_ETHOS_HINT_3, "Institution-builder: holds diversity together.") \
+    X(STR_ETHOS_HINT_4, "Profit & crossroads: thrives on trade.") \
+    X(STR_ETHOS_HINT_5, "Consent alone: never fractures, peaceful.") \
+    X(STR_ETHOS_FLAVOR_0, "They do not ask whether a border can be crossed, only how many men it will take for it to stop existing.") \
+    X(STR_ETHOS_FLAVOR_1, "A debt can be forgotten, a defeat repaired. A shame, though, waits patiently for the grandsons.") \
+    X(STR_ETHOS_FLAVOR_2, "Every person knows their place, every place its duty, and every duty the seal that makes it beyond dispute.") \
+    X(STR_ETHOS_FLAVOR_3, "The realm does not rest on one man's will, but on a thousand ledgers that stubbornly refuse to contradict each other.") \
+    X(STR_ETHOS_FLAVOR_4, "They do not conquer harbours. They lend them gold until the keys become a form of repayment.") \
+    X(STR_ETHOS_FLAVOR_5, "They swore to take no life. Their neighbours still debate whether that promise is a virtue or an invitation.") \
+    X(STR_LEVIER_NOM_0, "Population growth") \
+    X(STR_LEVIER_NOM_1, "Production") \
+    X(STR_LEVIER_NOM_2, "Diplomatic influence") \
+    X(STR_LEVIER_NOM_3, "Coercion") \
+    X(STR_LEVIER_NOM_4, "State capacity") \
+    X(STR_LEVIER_NOM_5, "Minority assimilation") \
+    X(STR_LEVIER_NOM_6, "Faustian magic") \
+    X(STR_LEVIER_NOM_7, "Cultural drift") \
+    X(STR_LEVIER_NOM_8, "Fracture") \
+    X(STR_SYNC_CHEMIN_ACQUIS,  "attained — spread by contact, and kept even if the source has merged away") \
+    X(STR_SYNC_CHEMIN_JAMAIS,  "tradition never encountered — you must make contact with its bearers") \
+    X(STR_SYNC_CHEMIN_SURFACE, "surface knowledge: a trading post does not pass on deep mastery — rule or neighbour this culture, and legitimise the land") \
+    X(STR_SYNC_CHEMIN_PORTEE,  "within reach — the foundation is missing (research the ring's parent node)") \
+    X(STR_AUGURE_SECESSION,           "The borderlands speak of governing themselves.") \
+    X(STR_AUGURE_REVOLTE,             "The street rumbles against the throne.") \
+    X(STR_AUGURE_COERCITION_FRAGILE,  "Order holds — but by fear alone.") \
+    X(STR_VOC_GRENIER,    "Granary") \
+    X(STR_VOC_PATURES,    "Pastures") \
+    X(STR_VOC_PECHERIES,  "Fisheries") \
+    X(STR_VOC_MINE,       "Mine") \
+    X(STR_VOC_ATELIER,    "Workshop") \
+    X(STR_VOC_COMPTOIR,   "Trading Post") \
+    X(STR_VOC_SANCTUAIRE, "Shrine") \
+    X(STR_VOC_MARCHE,     "Market")

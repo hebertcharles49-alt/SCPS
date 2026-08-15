@@ -405,6 +405,12 @@ void navy_course_tick(NavyState *ns, const World *w, WorldEconomy *econ,
     /* 0. la pression des routes se REPOSE chaque passe (re-mesurée ci-dessous) */
     for (int i=0;i<rn->n;i++) rn->route[i].pirate_press=0.f;
 
+    /* COMBAT NAVAL + PIRATERIE : OFF PAR DÉFAUT (décision joueur 2026-08-12 — « on
+     * garde les routes et la colonisation »). NAVY_COMBAT_ON=1 réveille la course,
+     * les bordées, blocus, interception, nids, raids. Les TRANSPORTS, la
+     * construction, les fournitures et la colonisation vivent AILLEURS (navy_tick /
+     * navy_colonize_tick) et restent intacts. */
+    bool combat = tune_f("NAVY_COMBAT_ON",0.f)>0.f;
     for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
         Navy *n=&ns->n[c];
 
@@ -480,6 +486,11 @@ void navy_course_tick(NavyState *ns, const World *w, WorldEconomy *econ,
                   if (n->build_hull<0 && n->hull[HULL_TRANSPORT]<veut_tr)
                       navy_order_build(ns,w,econ,c,HULL_TRANSPORT); }
             }
+        }
+        if (!combat){                          /* OFF : ni mission de combat, ni nid, ni raid */
+            if (n->mission!=NAVY_RADE){ n->mission=NAVY_RADE; n->mission_target=-1; }
+            if (n->hull[HULL_PIRATE]>0) navy_convert(ns,w,econ,c,false);   /* le pirate se range */
+            continue;
         }
         if (n->mission==NAVY_BLOCUS){
             int t=n->mission_target;

@@ -9,6 +9,7 @@
  * conversion marchand→pirate, et les INVARIANTS que save_sane revérifie au chargement
  * (coques bornées, at_sea≥0, build_hull & home_port en domaine). Sortie ≠ 0 si échec.
  */
+#include "scps_tune.h"
 #include "scps_world.h"
 #include "scps_econ.h"
 #include "scps_culture.h"
@@ -24,6 +25,8 @@ static int g_pass=0,g_fail=0;
 static void ok(const char*what,bool c){ if(c)g_pass++; else { g_fail++; printf("   ✗ %s\n",what); } }
 
 int main(int argc,char**argv){
+    tune_set("NAVY_COMBAT_ON", 1.f);   /* le banc TESTE la course — OFF par défaut en jeu (2026-08-12) */
+    tune_set("EMBARK_NAVAL_COST", 0.f); /* le banc teste le BLOCUS, pas la logistique — les fixtures n'ont pas de matériel naval */
     uint32_t seed=(argc>1)?(uint32_t)strtoul(argv[1],NULL,10):42u;
     World*w=malloc(sizeof(World)); WorldEconomy*econ=malloc(sizeof(WorldEconomy));
     if(!w||!econ){fprintf(stderr,"OOM\n");return 1;}

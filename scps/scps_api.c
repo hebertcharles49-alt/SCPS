@@ -710,7 +710,7 @@ int scps_corps_move_preview(ScpsSim *s, int id, int target, ScpsMovePreview *out
     if(!out)return 0;
     memset(out,0,sizeof *out); out->corps_id=id; out->from_region=-1;
     out->target_region=target; out->from_name=""; out->target_name="";
-    out->reason="Aperçu indisponible"; out->arrival="";
+    out->reason=sz(tr(STR_MARCH_REASON_DEFAULT)); out->arrival="";
     if(!s || !s->ready)return 0;
     const FieldArmy *a=campaign_corps_const(s->sim.camp,id);
     if(a)out->from_region=a->loc;
@@ -725,12 +725,8 @@ int scps_corps_move_preview(ScpsSim *s, int id, int target, ScpsMovePreview *out
     int path_cap=max_path>0?max_path:0;
     int copied=n<path_cap?n:path_cap;
     if(path) for(int i=0;i<copied;i++) path[i]=full_path[i];
-    static const char *why[]={"Route praticable","Corps invalide","Corps engagé en bataille",
-        "Corps en mer ou en débarquement","Corps brisé en déroute","Destination invalide",
-        "Corps sans effectif","Aucune route terrestre"};
-    static const char *arr[]={"Rester sur place","Repositionnement","Marche vers un siège"};
-    out->reason_code=reason; out->reason=sz(why[(reason>=0&&reason<8)?reason:1]);
-    out->arrival_code=arrival; out->arrival=sz(arr[(arrival>=0&&arrival<3)?arrival:0]);
+    out->reason_code=reason; out->reason=sz(tr_band(STR_MARCH_REASON_0,(reason>=0&&reason<8)?reason:1,8));
+    out->arrival_code=arrival; out->arrival=sz(tr_band(STR_MARCH_ARRIVAL_0,(arrival>=0&&arrival<3)?arrival:0,3));
     out->travel_days=days; out->hops=n>0?n-1:0; out->valid=(reason==0 && n>0);
     if(out->valid && a){
         ArmyState projected=a->force;
@@ -765,7 +761,7 @@ int scps_corps_move_preview(ScpsSim *s, int id, int target, ScpsMovePreview *out
 
 int scps_corps_refill_preview(ScpsSim *s, int id, ScpsRefillPreview *out){
     if(!out) return 0;
-    memset(out,0,sizeof *out); out->corps_id=id; out->region=-1; out->reason="Corps invalide";
+    memset(out,0,sizeof *out); out->corps_id=id; out->region=-1; out->reason=sz(tr(STR_REFILL_REASON_INVALID));
     if(!s || !s->ready) return 0;
     int player=(s->sim.human_player>=0)?s->sim.human_player:s->sim.player;
     const FieldArmy *fa=campaign_corps_const(s->sim.camp,id);
@@ -837,18 +833,18 @@ int scps_corps_refill_preview(ScpsSim *s, int id, ScpsRefillPreview *out){
     }
 
     if(!campaign_can_refill_corps(s->sim.camp,s->sim.econ,id)){
-        out->reason_code=2; out->reason="Ravitaillement possible uniquement sur une région nationale";
+        out->reason_code=2; out->reason=sz(tr(STR_REFILL_REASON_NOT_NATIONAL));
     }else if(n_lines<=0){
-        out->reason_code=3; out->reason="Aucune ligne d'unité à renforcer";
+        out->reason_code=3; out->reason=sz(tr(STR_REFILL_REASON_NO_LINES));
     }else if(out->requested_humans<=0){
-        out->reason_code=5; out->reason="Corps déjà à pleine force (nominal atteint)";
+        out->reason_code=5; out->reason=sz(tr(STR_REFILL_REASON_FULL));
     }else if(out->population_ready_humans<=0){
-        out->reason_code=4; out->reason="Aucune population de la bonne classe n'est mobilisable";
+        out->reason_code=4; out->reason=sz(tr(STR_REFILL_REASON_NO_POP));
     }else{
         out->allowed=1; out->reason_code=0;
         out->reason=(out->guaranteed_humans>=out->population_ready_humans)
-            ? "Renfort couvert par la population et l'arsenal national"
-            : "Renfort partiel garanti ; le marché peut fournir les armes manquantes";
+            ? sz(tr(STR_REFILL_REASON_COVERED))
+            : sz(tr(STR_REFILL_REASON_PARTIAL));
     }
     return out->valid;
 }
@@ -924,7 +920,7 @@ void scps_battle_info(ScpsSim *s, int r, ScpsBattleInfo *out){
             bool atk_is_a=(out->attacker==f.owner_a);
             float ta=atk_is_a?f.terrain_a:(1.f/f.terrain_a);
             float td=1.f/ta;
-            out->stage_id=f.stage; out->stage=sz(f.stage==0?"Choc":"Accalmie");
+            out->stage_id=f.stage; out->stage=sz(tr(f.stage==0?STR_BATTLE_STAGE_CHOC:STR_BATTLE_STAGE_ACCALMIE));
             out->terrain_holder=f.terrain_owner; out->river=f.river; out->bridged=f.bridged;
             out->atk_terrain_pct=(int)(ta*100.f+0.5f); out->def_terrain_pct=(int)(td*100.f+0.5f);
             out->atk_counter_pct=(int)((atk_is_a?f.counter_a:f.counter_b)*100.f+0.5f);
@@ -1104,7 +1100,7 @@ void scps_map_endgame_variant(ScpsSim *s, uint8_t *dst){
 
 static const char *api_religion_name_id(int rid){
     static char names[RELIG_MAX][96];
-    if(rid<0 || rid>=g_religion_count)return "Sans foi";
+    if(rid<0 || rid>=g_religion_count)return sz(tr(STR_FOI_SANS));
     const Religion *r=&g_religions[rid];
     snprintf(names[rid],sizeof names[rid],"%s · %s/%s/%s",credo_name((Credo)r->credo),
              relig_pole_name((ReligPole)r->traditions[0]),
@@ -1185,9 +1181,9 @@ int scps_province_culture_context(ScpsSim *s, int pid, ScpsCultureContext *out){
     out->contact_region=-1; out->contact_country=-1;
     out->dominant_culture=""; out->dominant_lineage="";
     out->local_ethos=""; out->ruling_ethos=""; out->relation_to_crown="";
-    out->local_faith="Sans foi"; out->state_faith="Sans foi";
+    out->local_faith=sz(tr(STR_FOI_SANS)); out->state_faith=sz(tr(STR_FOI_SANS));
     out->contact_country_name=""; out->contact_region_name=""; out->contact_culture="";
-    out->fusion_reason="Aucun contact commercial soutenu";
+    out->fusion_reason=sz(tr(STR_FUSION_AUCUN_CONTACT));
     if(!s||!s->ready||pid<0||pid>=s->w->n_provinces)return 0;
     int reg=s->w->province[pid].region;
     if(reg<0||reg>=s->sim.econ->n_regions||pid>=s->sim.econ->n_prov)return 0;
@@ -1229,8 +1225,8 @@ int scps_province_culture_context(ScpsSim *s, int pid, ScpsCultureContext *out){
     int partner=-1; int sea=0;
     int rep=econ_region_rep_province(s->sim.econ,reg);
     RegionEconomy *re=&s->sim.econ->region[reg];
-    if(rep!=pid)out->fusion_reason="Le contact commercial transforme la province-pivot de la région";
-    else if(!pe->culture.settled)out->fusion_reason="Culture locale non sédentarisée";
+    if(rep!=pid)out->fusion_reason=sz(tr(STR_FUSION_PIVOT_TRANSFORME));
+    else if(!pe->culture.settled)out->fusion_reason=sz(tr(STR_FUSION_NON_SEDENTARISE));
     if(s->sim.rn&&rep==pid&&pe->culture.settled&&re->owner>=0)for(int i=0;i<s->sim.rn->n;i++){
         const TradeRoute *t=&s->sim.rn->route[i];
         if(!t->open||t->ra<0||t->rb<0||t->ra>=s->sim.econ->n_regions||t->rb>=s->sim.econ->n_regions)continue;
@@ -1261,7 +1257,7 @@ int scps_province_culture_context(ScpsSim *s, int pid, ScpsCultureContext *out){
             out->fusion_open_pct=(int)(f.openness*100.f+0.5f);
             out->fusion_feasible=f.feasible?1:0;
             out->fusion_years=f.feasible?api_contact_fusion_years(re->owner,distance,f.openness,sea):0;
-            out->fusion_reason=f.feasible?"Porte de fusion ouverte":"Porte fermée : contact ou institutions insuffisants";
+            out->fusion_reason=f.feasible?sz(tr(STR_FUSION_PORTE_OUVERTE)):sz(tr(STR_FUSION_PORTE_FERMEE));
         }
     }
     return 1;
@@ -1736,7 +1732,7 @@ int scps_country_trade(ScpsSim *s, int me, int *routes, double *export_gold,
         out[n].value   = v;
         out[n].at_war  = war;
         out[n].embargo = emb;
-        out[n].status  = war ? "guerre" : emb ? "embargo" : (v>200.f) ? "florissant" : "modeste";
+        out[n].status  = war ? sz(tr(STR_TRADE_STATUT_GUERRE)) : emb ? sz(tr(STR_TRADE_STATUT_EMBARGO)) : (v>200.f) ? sz(tr(STR_TRADE_STATUT_FLORISSANT)) : sz(tr(STR_TRADE_STATUT_MODESTE));
         n++;
     }
     return n;
@@ -1782,17 +1778,10 @@ void scps_commerce_power(ScpsSim *s, int me, ScpsCommerce *out){
  * affiche tel quel. Golden intact par construction (scps_api.c n'est pas dans chronicle ;
  * rien ne mord le tick). `portrait_id` 0..7 = index stable dans UIKit.advisor_portrait. */
 #define CONS_ID_N 8
-typedef struct { const char *nom; int portrait_id; const char *flavor; } ConsIdentity;
-static const ConsIdentity CONS_IDENTITES[CONS_ID_N] = {   /* les 8 de la spec, flavors VERBATIM */
-    { "Rigoriste",   0, "Chaque exception lui paraît être la première pierre d'une ruine." },
-    { "Courtisan",   1, "Il sait qui doit être salué, qui doit être payé et qui doit croire que les deux gestes se valent." },
-    { "Austère",     2, "Son train de maison tient dans deux coffres. Sa reconnaissance aussi." },
-    { "Réformateur", 3, "Aucune institution ne lui semble achevée tant qu'il reste possible de la démonter." },
-    { "Vétéran",     4, "Il a servi trois règnes et appris à ne confondre aucun d'eux avec l'État." },
-    { "Ambitieux",   5, "Il appelle service la distance qui le sépare encore du pouvoir." },
-    { "Loyaliste",   6, "Il sert la couronne avec assez de ferveur pour inquiéter celui qui la porte." },
-    { "Vénal",       7, "Il connaît le prix de chaque secret, sauf celui du dernier." },
-};
+/* VAGUE STR_* — les 8 identités (nom+flavor, spec VERBATIM) vivent désormais en
+ * STR_CONS_NOM_0..7 / STR_CONS_FLAVOR_0..7 (bande, tr_band). `portrait_id` ==
+ * l'index `ci` lui-même (0..7 = index stable dans UIKit.advisor_portrait,
+ * inchangé) : plus besoin d'une table à part pour ce seul champ. */
 static uint32_t cons_hash(uint32_t a, uint32_t b, uint32_t c, uint32_t d){
     uint32_t h = a*2654435761u ^ b*40503u ^ c*2246822519u ^ d*3266489917u;
     h ^= h>>16; h *= 2246822519u; h ^= h>>13; h *= 3266489917u; h ^= h>>16;
@@ -1928,15 +1917,15 @@ int scps_country_council(ScpsSim *s, int me, ScpsCouncilSeat *out, int max){
                                   &out[n].eff_loyalty_points, &out[n].eff_corruption_points,
                                   &out[n].eff_preclamp_pct, &out[n].eff_clamped);
             out[n].loyalty_target = (int)(statecraft_council_loyalty_target(
-                s->sim.sc, me, seat, seed) + 0.5f);
+                s->sim.sc, s->sim.econ, me, seat, seed) + 0.5f);
             out[n].cost_rate_pct   = cons_tier_revenue_rate(tier) * 100.f;
             out[n].cost_year       = (double)statecraft_council_cand_cost(seed, me, seat, slot, sgen, ipm) * 12.0;
             int rlo = 66 - out[n].age, rhi = 73 - out[n].age;
             out[n].retire_lo = (rlo>0)?rlo:0; out[n].retire_hi = (rhi>0)?rhi:0;
             { int ci = cons_identity_index(seed, me, seat, slot, sgen);
-              out[n].identite    = CONS_IDENTITES[ci].nom;
-              out[n].portrait_id = CONS_IDENTITES[ci].portrait_id;
-              out[n].id_flavor   = CONS_IDENTITES[ci].flavor; }
+              out[n].identite    = sz(tr_band(STR_CONS_NOM_0, ci, CONS_ID_N));
+              out[n].portrait_id = ci;
+              out[n].id_flavor   = sz(tr_band(STR_CONS_FLAVOR_0, ci, CONS_ID_N)); }
         } else {
             out[n].filled = 0; out[n].councilor = ""; out[n].tier = 0; out[n].age = 0;
             out[n].faction = ""; out[n].loyalty = 0; out[n].pay = 1.f; out[n].mood = "";
@@ -1998,9 +1987,9 @@ int scps_council_candidates(ScpsSim *s, int seat, ScpsCouncilCand *out, int max)
         int rlo = 66 - out[n].age, rhi = 73 - out[n].age;
         out[n].retire_lo = (rlo>0)?rlo:0; out[n].retire_hi = (rhi>0)?rhi:0;
         { int ci = cons_identity_index(seed, me, seat, slot, gen);
-          out[n].identite    = CONS_IDENTITES[ci].nom;
-          out[n].portrait_id = CONS_IDENTITES[ci].portrait_id;
-          out[n].id_flavor   = CONS_IDENTITES[ci].flavor; }
+          out[n].identite    = sz(tr_band(STR_CONS_NOM_0, ci, CONS_ID_N));
+          out[n].portrait_id = ci;
+          out[n].id_flavor   = sz(tr_band(STR_CONS_FLAVOR_0, ci, CONS_ID_N)); }
         n++;
     }
     return n;
@@ -2243,11 +2232,11 @@ int scps_country_relations(ScpsSim *s, int me, ScpsRelation *out, int max){
         if(!country_knows(me, c)) continue;
         DiploStatus st = diplo_status(s->sim.dp, me, c);
         const char *sw;
-        if      (st==DIPLO_WAR)                       sw = "Guerre";
-        else if (st==DIPLO_ALLIED)                    sw = "Allié";
-        else if (diplo_suzerain(s->sim.dp, c)==me)    sw = "Vassal";
-        else if (diplo_suzerain(s->sim.dp, me)==c)    sw = "Suzerain";
-        else                                          sw = "Neutre";
+        if      (st==DIPLO_WAR)                       sw = sz(tr(STR_RELATION_GUERRE));
+        else if (st==DIPLO_ALLIED)                    sw = sz(tr(STR_DIPLO_ALLIE));
+        else if (diplo_suzerain(s->sim.dp, c)==me)    sw = sz(tr(STR_DIPLO_VASSAL));
+        else if (diplo_suzerain(s->sim.dp, me)==c)    sw = sz(tr(STR_DIPLO_SUZERAIN));
+        else                                          sw = sz(tr(STR_DIPLO_NEUTRE));
         out[n].name   = sz(s->w->country[c].name);
         out[n].status = sw;
         out[n].at_war = (st==DIPLO_WAR) ? 1 : 0;
@@ -2308,7 +2297,7 @@ int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out){
     out->claim_region=(fst==FAB_NONE)?diplo_claim_region(s->w,s->sim.econ,d,p,t):diplo_fab_target_region(d,p,t);
     out->claim_province=(out->claim_region>=0)?econ_region_rep_province(s->sim.econ,out->claim_region):-1;
     out->claim_name=(out->claim_province>=0&&out->claim_province<s->w->n_provinces)
-                    ?sz(s->w->province[out->claim_province].name):sz("territoire inconnu");
+                    ?sz(s->w->province[out->claim_province].name):sz(tr(STR_DIPLO_TERRITOIRE_INCONNU));
     return 1;
 }
 
@@ -2328,37 +2317,37 @@ static void da_fill_conds(ScpsActionLegal *out, const ScpsDiploOptions *o, int s
         snprintf(out->conds[out->n_conds].label,sizeof out->conds[0].label,"%s",(lbl)); \
         out->conds[out->n_conds].ok=(c)?1:0; out->n_conds++; } }while(0)
     int at_war=(st==DIPLO_WAR), allied=(st==DIPLO_ALLIED);
-    GATE("Émissaire disponible", cd<=0);
+    GATE(tr(STR_GATE_EMISSAIRE_DISPO), cd<=0);
     switch((ScpsDiploAction)out->action){
       case SCPS_DIPLO_WAR:
-        GATE("Pas déjà en guerre", !at_war);
-        GATE("Aucune trêve", o->truce_days<=0.f);
-        GATE("Casus belli utilisable", o->has_casus_belli);
+        GATE(tr(STR_GATE_PAS_DEJA_GUERRE), !at_war);
+        GATE(tr(STR_GATE_AUCUNE_TREVE), o->truce_days<=0.f);
+        GATE(tr(STR_GATE_CASUS_BELLI), o->has_casus_belli);
         break;
       case SCPS_DIPLO_PEACE:
-        GATE("En guerre avec la cible", o->can_make_peace);
+        GATE(tr(STR_GATE_EN_GUERRE_CIBLE), o->can_make_peace);
         break;
       case SCPS_DIPLO_ALLIANCE:
-        GATE("Pas en guerre", !at_war);
-        GATE("Pas déjà alliés", !allied);
-        GATE("Créneau d'alliance libre", (at_war||allied) ? 1 : o->can_offer_alliance);
+        GATE(tr(STR_GATE_PAS_GUERRE), !at_war);
+        GATE(tr(STR_GATE_PAS_ALLIES), !allied);
+        GATE(tr(STR_GATE_CRENEAU_ALLIANCE), (at_war||allied) ? 1 : o->can_offer_alliance);
         break;
       case SCPS_DIPLO_PACT:
-        GATE("Pas en guerre", !at_war);
-        GATE("Pas de pacte commercial en cours", at_war ? 1 : o->can_offer_pact);
+        GATE(tr(STR_GATE_PAS_GUERRE), !at_war);
+        GATE(tr(STR_GATE_PAS_PACTE_COMMERCIAL), at_war ? 1 : o->can_offer_pact);
         break;
       case SCPS_DIPLO_MIGRATION:
-        GATE("Pas en guerre", !at_war);
-        GATE("Pas de pacte migratoire en cours", at_war ? 1 : o->can_offer_migration);
+        GATE(tr(STR_GATE_PAS_GUERRE), !at_war);
+        GATE(tr(STR_GATE_PAS_PACTE_MIGRATOIRE), at_war ? 1 : o->can_offer_migration);
         break;
       case SCPS_DIPLO_EMBARGO:
-        GATE("Relation commerçable", o->can_embargo || o->can_lift_embargo);
+        GATE(tr(STR_GATE_RELATION_COMMERCABLE), o->can_embargo || o->can_lift_embargo);
         break;
       case SCPS_DIPLO_FABRICATE:
         /* fabrique : conds VISIBLES (or, intrigue en cours) — les préalables géométriques
          * (cible revendicable) restent dans `allowed` ; banc = allowed→conds, pas l'inverse. */
-        GATE("Or suffisant", out->gold_missing<=0.0);
-        GATE("Aucune intrigue déjà lancée", !o->fabricating && !o->cb_ready);
+        GATE(tr(STR_GATE_OR_SUFFISANT), out->gold_missing<=0.0);
+        GATE(tr(STR_GATE_AUCUNE_INTRIGUE), !o->fabricating && !o->cb_ready);
         break;
       default: break;
     }
@@ -2368,7 +2357,7 @@ int scps_diplo_action_legal(ScpsSim *s, int target, int action, ScpsActionLegal 
     if(!out)return 0;
     memset(out,0,sizeof *out); out->target=target; out->action=action;
     out->would_accept=1; out->toggle_on=1;
-    out->reason_code="invalid_target"; out->reason_label="Cible diplomatique invalide ou inconnue";
+    out->reason_code="invalid_target"; out->reason_label=sz(tr(STR_DIPLO_REASON_INVALID_TARGET));
     if(!s || !s->ready || action<0 || action>=SCPS_DIPLO_ACTION_COUNT)return 0;
     ScpsDiploOptions o;
     if(!scps_diplo_options(s,target,&o))return 0;
@@ -2391,58 +2380,58 @@ int scps_diplo_action_legal(ScpsSim *s, int target, int action, ScpsActionLegal 
     DiploStatus st=diplo_status(s->sim.dp,p,target);
     if(cd>0){
         out->reason_code="emissary_busy";
-        out->reason_label="Émissaire en tournée";
+        out->reason_label=sz(tr(STR_DIPLO_REASON_EMISSARY_BUSY));
         out->duration_days=cd;
         da_fill_conds(out, &o, st, cd);   /* checklist même quand l'émissaire est le verrou */
         return 1;
     }
-    #define DIP_OK() do{out->allowed=1;out->reason_code="ok";out->reason_label="Action disponible";}while(0)
+    #define DIP_OK() do{out->allowed=1;out->reason_code="ok";out->reason_label=sz(tr(STR_DIPLO_REASON_OK));}while(0)
     #define DIP_NO(code,label) do{out->reason_code=(code);out->reason_label=(label);}while(0)
     switch((ScpsDiploAction)action){
       case SCPS_DIPLO_WAR:
         out->unilateral=1;
         if(o.can_declare_war)DIP_OK();
-        else if(st==DIPLO_WAR)DIP_NO("already_at_war","Déjà en guerre avec ce pays");
-        else if(o.truce_days>0.f){DIP_NO("truce_active","Trêve en cours");out->duration_days=(int)ceilf(o.truce_days);}
-        else DIP_NO("missing_casus_belli","Aucun casus belli utilisable");
+        else if(st==DIPLO_WAR)DIP_NO("already_at_war",sz(tr(STR_DIPLO_REASON_ALREADY_WAR)));
+        else if(o.truce_days>0.f){DIP_NO("truce_active",sz(tr(STR_DIPLO_REASON_TRUCE_ACTIVE)));out->duration_days=(int)ceilf(o.truce_days);}
+        else DIP_NO("missing_casus_belli",sz(tr(STR_DIPLO_REASON_NO_CB)));
         break;
       case SCPS_DIPLO_PEACE:
         out->would_accept=o.would_accept_peace;
-        if(o.can_make_peace)DIP_OK(); else DIP_NO("not_at_war","Vous n'êtes pas en guerre avec ce pays");
+        if(o.can_make_peace)DIP_OK(); else DIP_NO("not_at_war",sz(tr(STR_DIPLO_REASON_NOT_AT_WAR)));
         break;
       case SCPS_DIPLO_ALLIANCE:
         out->would_accept=o.would_accept_alliance;
         if(o.can_offer_alliance)DIP_OK();
-        else if(st==DIPLO_WAR)DIP_NO("at_war","Impossible pendant la guerre");
-        else if(st==DIPLO_ALLIED)DIP_NO("already_allied","Alliance déjà conclue");
-        else DIP_NO("alliance_slots_full","Aucun créneau d'alliance libre");
+        else if(st==DIPLO_WAR)DIP_NO("at_war",sz(tr(STR_DIPLO_REASON_AT_WAR)));
+        else if(st==DIPLO_ALLIED)DIP_NO("already_allied",sz(tr(STR_DIPLO_REASON_ALREADY_ALLIED)));
+        else DIP_NO("alliance_slots_full",sz(tr(STR_DIPLO_REASON_NO_ALLIANCE_SLOT)));
         break;
       case SCPS_DIPLO_PACT:
         out->would_accept=o.would_accept_pact;
         if(o.can_offer_pact)DIP_OK();
-        else if(st==DIPLO_WAR)DIP_NO("at_war","Impossible pendant la guerre");
-        else DIP_NO("trade_pact_exists","Pacte commercial déjà conclu");
+        else if(st==DIPLO_WAR)DIP_NO("at_war",sz(tr(STR_DIPLO_REASON_AT_WAR)));
+        else DIP_NO("trade_pact_exists",sz(tr(STR_DIPLO_REASON_PACT_EXISTS)));
         break;
       case SCPS_DIPLO_MIGRATION:
         out->would_accept=o.would_accept_migration;
         if(o.can_offer_migration)DIP_OK();
-        else if(st==DIPLO_WAR)DIP_NO("at_war","Impossible pendant la guerre");
-        else DIP_NO("migration_pact_exists","Pacte migratoire déjà conclu");
+        else if(st==DIPLO_WAR)DIP_NO("at_war",sz(tr(STR_DIPLO_REASON_AT_WAR)));
+        else DIP_NO("migration_pact_exists",sz(tr(STR_DIPLO_REASON_MIGRATION_PACT_EXISTS)));
         break;
       case SCPS_DIPLO_EMBARGO:
         out->unilateral=1;
         out->toggle_on=o.can_embargo?1:0;
         if(o.can_embargo || o.can_lift_embargo)DIP_OK();
-        else DIP_NO("embargo_unavailable","Embargo indisponible");
+        else DIP_NO("embargo_unavailable",sz(tr(STR_DIPLO_REASON_EMBARGO_UNAVAILABLE)));
         break;
       case SCPS_DIPLO_FABRICATE:
         out->unilateral=1; out->cost_gold=o.fabricate_cost;
         out->gold_missing=fmax(0.0,out->cost_gold-out->gold_have);
         if(o.can_fabricate){DIP_OK();out->duration_days=(int)tune_f("FAB_MATURE_DAYS",365.f);}
-        else if(o.fabricating){DIP_NO("intrigue_in_progress","Revendication en fabrication");out->duration_days=(int)ceilf(o.fabricating_days_left);}
-        else if(o.cb_ready){DIP_NO("claim_ready","Une revendication est déjà prête");out->duration_days=(int)ceilf(o.cb_ready_years_left*365.f);}
-        else if(out->gold_missing>0.0)DIP_NO("insufficient_gold","Or insuffisant pour financer l'intrigue");
-        else DIP_NO("fabrication_unavailable","Intrigue indisponible pour l'instant");
+        else if(o.fabricating){DIP_NO("intrigue_in_progress",sz(tr(STR_DIPLO_REASON_INTRIGUE_IN_PROGRESS)));out->duration_days=(int)ceilf(o.fabricating_days_left);}
+        else if(o.cb_ready){DIP_NO("claim_ready",sz(tr(STR_DIPLO_REASON_CLAIM_READY)));out->duration_days=(int)ceilf(o.cb_ready_years_left*365.f);}
+        else if(out->gold_missing>0.0)DIP_NO("insufficient_gold",sz(tr(STR_DIPLO_REASON_INSUFFICIENT_GOLD)));
+        else DIP_NO("fabrication_unavailable",sz(tr(STR_DIPLO_REASON_FABRICATION_UNAVAILABLE)));
         break;
       default: break;
     }
@@ -3739,14 +3728,14 @@ int scps_player_route(ScpsSim *s, int ra, int rb, int maritime){
     PlayerCmd c = { CMD_ROUTE, { ra, rb, maritime?1:0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
-int scps_player_market_buy(ScpsSim *s, int region, int good, long qty, int tier){
+int scps_player_market_buy(ScpsSim *s, int province, int good, long qty, int tier){   /* GRAIN PROVINCE (2026-08-12) : l'or au pid, la matière au POOL */
     if (!s || !s->ready) return 0;
-    PlayerCmd c = { CMD_MARKET_BUY, { region, good, (int32_t)qty, tier } };
+    PlayerCmd c = { CMD_MARKET_BUY, { province, good, (int32_t)qty, tier } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
-int scps_player_market_sell(ScpsSim *s, int region, int good, long qty, int tier){
+int scps_player_market_sell(ScpsSim *s, int province, int good, long qty, int tier){   /* GRAIN PROVINCE (2026-08-12) */
     if (!s || !s->ready) return 0;
-    PlayerCmd c = { CMD_MARKET_SELL, { region, good, (int32_t)qty, tier } };
+    PlayerCmd c = { CMD_MARKET_SELL, { province, good, (int32_t)qty, tier } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
 int scps_player_campaign(ScpsSim *s, int from_region, int target_region){
@@ -4971,21 +4960,8 @@ int scps_sea_travel(ScpsSim *s, int target_region, ScpsSeaTravel *out){
 /* ====================================================================== */
 
 /* FLAVOR — phrases d'ambiance des 6 héritages (ordre ESOTERIQUE..CLANIQUE, docs/
- * EQUILIBRAGE_CULTURE_FOI_2026-07-10.md §HÉRITAGES, verbatim joueur). */
-static const char *HERITAGE_FLAVOR[HERITAGE_COUNT] = {
-    "Leurs généalogies commencent avant les premiers calendriers, dans des siècles "
-      "dont les ruines seules se souviennent.",
-    "Ils disent que tout serment ressemble à un métal : il révèle sa valeur seulement "
-      "lorsqu'on le chauffe assez pour le briser.",
-    "Leur première horloge mesurait les saisons. La seconde mesura le travail. La "
-      "troisième apprit aux deux à rapporter de l'or.",
-    "Ils ont porté tant de lois, de langues et de couronnes qu'ils appellent désormais "
-      "tradition l'art de changer sans disparaître.",
-    "Leurs frontières suivent les canaux, leurs fêtes les moissons et leurs souvenirs "
-      "les champs que leurs ancêtres ont refusé d'abandonner.",
-    "Un étranger leur demanda où finissait la famille. On lui montra les tombes, les "
-      "troupeaux, les guerriers et enfin l'horizon.",
-};
+ * EQUILIBRAGE_CULTURE_FOI_2026-07-10.md §HÉRITAGES, verbatim joueur).
+ * VAGUE STR_* : la table vit désormais en STR_HERITAGE_FLAVOR_0..5 (tr_band). */
 
 int scps_heritage_list(ScpsHeritage *out, int max){
     static char ex[HERITAGE_COUNT][32];   /* ethnonymes-exemples (persistent le temps que l'hôte copie) */
@@ -4996,45 +4972,23 @@ int scps_heritage_list(ScpsHeritage *out, int max){
         out[n].nom     = heritage_name((Heritage)h);
         out[n].sphere  = sphere_name(heritage_sphere((Heritage)h));
         out[n].exemple = ex[h];
-        out[n].flavor  = HERITAGE_FLAVOR[h];
+        out[n].flavor  = sz(tr_band(STR_HERITAGE_FLAVOR_0, h, HERITAGE_COUNT));
         n++;
     }
     return n;
 }
 
 int scps_ethos_list(ScpsEthosDef *out, int max){
-    /* épithètes = celles de country_make_name (DOMINATEUR..PACIFISTE) ; lignes courtes. */
-    static const char *EPI[ETHOS_COUNT]  = { "Horde","Clans","Ordre","Couronne","Ligue","Havre" };
-    static const char *HINT[ETHOS_COUNT] = {
-        "Conquête : pousse la coercition, mauvais intégrateur.",
-        "Gloire & razzia : honneur martial, digère mal.",
-        "Hiérarchie & discipline : l'État qui tient l'ordre.",
-        "Bâtisseur d'institutions : tient la diversité.",
-        "Profit & carrefours : prospère par le commerce.",
-        "Consentement seul : ne fracture jamais, pacifique.",
-    };
-    /* FLAVOR — phrases d'ambiance (ordre DOMINATEUR..PACIFISTE, même doc que HERITAGE_FLAVOR). */
-    static const char *FLAVOR[ETHOS_COUNT] = {
-        "Ils ne demandent pas si la frontière peut être franchie, seulement combien "
-          "d'hommes il faudra pour qu'elle cesse d'exister.",
-        "Une dette peut être oubliée, une défaite réparée. Une honte, elle, attend "
-          "patiemment les petits-fils.",
-        "Chaque personne connaît sa place, chaque place son devoir et chaque devoir "
-          "le sceau qui le rend incontestable.",
-        "Le royaume ne repose pas sur la volonté d'un seul homme, mais sur mille "
-          "registres qui refusent obstinément de se contredire.",
-        "Ils ne conquièrent pas les ports. Ils y prêtent de l'or jusqu'à ce que les "
-          "clés deviennent une modalité de remboursement.",
-        "Ils ont juré de ne prendre aucune vie. Leurs voisins débattent encore pour "
-          "savoir si cette promesse est une vertu ou une invitation.",
-    };
+    /* épithètes = celles de country_make_name (DOMINATEUR..PACIFISTE) ; lignes courtes.
+     * VAGUE STR_* : épithètes/hints/flavors vivent en STR_ETHOS_EPITHETE_0..5 /
+     * STR_ETHOS_HINT_0..5 / STR_ETHOS_FLAVOR_0..5 (tr_band, même ordre DOMINATEUR..PACIFISTE). */
     int n=0;
     for(int e=0; e<ETHOS_COUNT && n<max; e++){
         out[n].id       = e;
         out[n].nom      = ethos_name((Ethos)e);
-        out[n].epithete = EPI[e];
-        out[n].hint     = HINT[e];
-        out[n].flavor   = FLAVOR[e];
+        out[n].epithete = sz(tr_band(STR_ETHOS_EPITHETE_0, e, ETHOS_COUNT));
+        out[n].hint     = sz(tr_band(STR_ETHOS_HINT_0, e, ETHOS_COUNT));
+        out[n].flavor   = sz(tr_band(STR_ETHOS_FLAVOR_0, e, ETHOS_COUNT));
         n++;
     }
     return n;
@@ -5079,17 +5033,14 @@ int scps_culture_preview(int t0, int t1, int t2, ScpsLevierLine *out, int max){
                    L.capacite, L.permeabilite, L.arcane, L.derive, L.fracture };
     /* MEMBRANE (retour joueur 2026-07-10 « je vois de la perméabilité, du K ») : les
      * noms rendus sont des MOTS DE JEU, jamais les leviers du modèle — le créateur
-     * garde une table de retraduction locale pour les ANCIENS noms (compat). */
-    static const char *NM[9] = {
-        "Croissance de la population", "Production", "Rayonnement diplomatique",
-        "Coercition", "Capacité de l'État", "Assimilation des minorités",
-        "Magie faustienne", "Dérive culturelle", "Fracture" };
+     * garde une table de retraduction locale pour les ANCIENS noms (compat).
+     * VAGUE STR_* : les 9 noms vivent en STR_LEVIER_NOM_0..8 (tr_band). */
     /* RELATIFS (1+x → affichés en %) : demographie(0), rendement(1), derive(7).
      * Les autres sont ABSOLUS (additifs échelle 0..10). Cf. HeritageLeviers (scps_heritage.h). */
     int n=0;
     for(int i=0;i<9 && n<max;i++){
         if(v[i] > 0.0001f || v[i] < -0.0001f){
-            out[n].nom    = NM[i];
+            out[n].nom    = sz(tr_band(STR_LEVIER_NOM_0, i, 9));
             out[n].signe  = (v[i] > 0.f) ? +1 : -1;
             out[n].value  = v[i];
             out[n].is_pct = (i==0 || i==1 || i==7) ? 1 : 0;

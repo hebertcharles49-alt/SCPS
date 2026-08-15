@@ -431,6 +431,140 @@
      * intermédiaire persistant côté moteur, seulement AUCUNE/ACCORDÉ/REFUSÉ. */ \
     X(STR_LOAN_AUCUNE,  "Aucune demande") \
     X(STR_LOAN_ACCORDE, "L'État accorde le prêt") \
-    X(STR_LOAN_REFUSE,  "L'État refuse le prêt")
+    X(STR_LOAN_REFUSE,  "L'État refuse le prêt") \
+    /* VAGUE STR_* (2026-08-15, audit 2026-08-12) — littéraux face-joueur de
+     * scps_api.c/scps_readout.c aux sites audités : marche/ravitaillement,
+     * bataille (Choc/Accalmie), religion (Sans foi), fusion culturelle,
+     * commerce inter-pays, identités de conseillers, relations/gates diplo,
+     * flavors héritage+éthos, lecture du savoir (chemin), augures, vocation
+     * de province. Reste hors vague : le solde du fichier (baseline ratchet,
+     * cf. Makefile lang-check). */ \
+    X(STR_MARCH_REASON_DEFAULT, "Aperçu indisponible") \
+    X(STR_MARCH_REASON_0, "Route praticable") \
+    X(STR_MARCH_REASON_1, "Corps invalide") \
+    X(STR_MARCH_REASON_2, "Corps engagé en bataille") \
+    X(STR_MARCH_REASON_3, "Corps en mer ou en débarquement") \
+    X(STR_MARCH_REASON_4, "Corps brisé en déroute") \
+    X(STR_MARCH_REASON_5, "Destination invalide") \
+    X(STR_MARCH_REASON_6, "Corps sans effectif") \
+    X(STR_MARCH_REASON_7, "Aucune route terrestre") \
+    X(STR_MARCH_ARRIVAL_0, "Rester sur place") \
+    X(STR_MARCH_ARRIVAL_1, "Repositionnement") \
+    X(STR_MARCH_ARRIVAL_2, "Marche vers un siège") \
+    X(STR_REFILL_REASON_INVALID,      "Corps invalide") \
+    X(STR_REFILL_REASON_NOT_NATIONAL, "Ravitaillement possible uniquement sur une région nationale") \
+    X(STR_REFILL_REASON_NO_LINES,     "Aucune ligne d'unité à renforcer") \
+    X(STR_REFILL_REASON_FULL,         "Corps déjà à pleine force (nominal atteint)") \
+    X(STR_REFILL_REASON_NO_POP,       "Aucune population de la bonne classe n'est mobilisable") \
+    X(STR_REFILL_REASON_COVERED,      "Renfort couvert par la population et l'arsenal national") \
+    X(STR_REFILL_REASON_PARTIAL,      "Renfort partiel garanti ; le marché peut fournir les armes manquantes") \
+    X(STR_BATTLE_STAGE_CHOC,     "Choc") \
+    X(STR_BATTLE_STAGE_ACCALMIE, "Accalmie") \
+    X(STR_FOI_SANS, "Sans foi") \
+    X(STR_FUSION_AUCUN_CONTACT,   "Aucun contact commercial soutenu") \
+    X(STR_FUSION_PIVOT_TRANSFORME,"Le contact commercial transforme la province-pivot de la région") \
+    X(STR_FUSION_NON_SEDENTARISE, "Culture locale non sédentarisée") \
+    X(STR_FUSION_PORTE_OUVERTE,   "Porte de fusion ouverte") \
+    X(STR_FUSION_PORTE_FERMEE,    "Porte fermée : contact ou institutions insuffisants") \
+    X(STR_TRADE_STATUT_GUERRE,     "guerre") \
+    X(STR_TRADE_STATUT_EMBARGO,    "embargo") \
+    X(STR_TRADE_STATUT_FLORISSANT, "florissant") \
+    X(STR_TRADE_STATUT_MODESTE,    "modeste") \
+    X(STR_CONS_NOM_0, "Rigoriste") \
+    X(STR_CONS_NOM_1, "Courtisan") \
+    X(STR_CONS_NOM_2, "Austère") \
+    X(STR_CONS_NOM_3, "Réformateur") \
+    X(STR_CONS_NOM_4, "Vétéran") \
+    X(STR_CONS_NOM_5, "Ambitieux") \
+    X(STR_CONS_NOM_6, "Loyaliste") \
+    X(STR_CONS_NOM_7, "Vénal") \
+    X(STR_CONS_FLAVOR_0, "Chaque exception lui paraît être la première pierre d'une ruine.") \
+    X(STR_CONS_FLAVOR_1, "Il sait qui doit être salué, qui doit être payé et qui doit croire que les deux gestes se valent.") \
+    X(STR_CONS_FLAVOR_2, "Son train de maison tient dans deux coffres. Sa reconnaissance aussi.") \
+    X(STR_CONS_FLAVOR_3, "Aucune institution ne lui semble achevée tant qu'il reste possible de la démonter.") \
+    X(STR_CONS_FLAVOR_4, "Il a servi trois règnes et appris à ne confondre aucun d'eux avec l'État.") \
+    X(STR_CONS_FLAVOR_5, "Il appelle service la distance qui le sépare encore du pouvoir.") \
+    X(STR_CONS_FLAVOR_6, "Il sert la couronne avec assez de ferveur pour inquiéter celui qui la porte.") \
+    X(STR_CONS_FLAVOR_7, "Il connaît le prix de chaque secret, sauf celui du dernier.") \
+    X(STR_RELATION_GUERRE, "Guerre") \
+    X(STR_DIPLO_TERRITOIRE_INCONNU, "territoire inconnu") \
+    X(STR_GATE_EMISSAIRE_DISPO,      "Émissaire disponible") \
+    X(STR_GATE_PAS_DEJA_GUERRE,      "Pas déjà en guerre") \
+    X(STR_GATE_AUCUNE_TREVE,         "Aucune trêve") \
+    X(STR_GATE_CASUS_BELLI,          "Casus belli utilisable") \
+    X(STR_GATE_EN_GUERRE_CIBLE,      "En guerre avec la cible") \
+    X(STR_GATE_PAS_GUERRE,           "Pas en guerre") \
+    X(STR_GATE_PAS_ALLIES,           "Pas déjà alliés") \
+    X(STR_GATE_CRENEAU_ALLIANCE,     "Créneau d'alliance libre") \
+    X(STR_GATE_PAS_PACTE_COMMERCIAL, "Pas de pacte commercial en cours") \
+    X(STR_GATE_PAS_PACTE_MIGRATOIRE, "Pas de pacte migratoire en cours") \
+    X(STR_GATE_RELATION_COMMERCABLE, "Relation commerçable") \
+    X(STR_GATE_OR_SUFFISANT,         "Or suffisant") \
+    X(STR_GATE_AUCUNE_INTRIGUE,      "Aucune intrigue déjà lancée") \
+    X(STR_DIPLO_REASON_INVALID_TARGET,        "Cible diplomatique invalide ou inconnue") \
+    X(STR_DIPLO_REASON_EMISSARY_BUSY,         "Émissaire en tournée") \
+    X(STR_DIPLO_REASON_OK,                    "Action disponible") \
+    X(STR_DIPLO_REASON_ALREADY_WAR,           "Déjà en guerre avec ce pays") \
+    X(STR_DIPLO_REASON_TRUCE_ACTIVE,          "Trêve en cours") \
+    X(STR_DIPLO_REASON_NO_CB,                 "Aucun casus belli utilisable") \
+    X(STR_DIPLO_REASON_NOT_AT_WAR,            "Vous n'êtes pas en guerre avec ce pays") \
+    X(STR_DIPLO_REASON_AT_WAR,                "Impossible pendant la guerre") \
+    X(STR_DIPLO_REASON_ALREADY_ALLIED,        "Alliance déjà conclue") \
+    X(STR_DIPLO_REASON_NO_ALLIANCE_SLOT,      "Aucun créneau d'alliance libre") \
+    X(STR_DIPLO_REASON_PACT_EXISTS,           "Pacte commercial déjà conclu") \
+    X(STR_DIPLO_REASON_MIGRATION_PACT_EXISTS, "Pacte migratoire déjà conclu") \
+    X(STR_DIPLO_REASON_EMBARGO_UNAVAILABLE,   "Embargo indisponible") \
+    X(STR_DIPLO_REASON_INTRIGUE_IN_PROGRESS,  "Revendication en fabrication") \
+    X(STR_DIPLO_REASON_CLAIM_READY,           "Une revendication est déjà prête") \
+    X(STR_DIPLO_REASON_INSUFFICIENT_GOLD,     "Or insuffisant pour financer l'intrigue") \
+    X(STR_DIPLO_REASON_FABRICATION_UNAVAILABLE,"Intrigue indisponible pour l'instant") \
+    X(STR_HERITAGE_FLAVOR_0, "Leurs généalogies commencent avant les premiers calendriers, dans des siècles dont les ruines seules se souviennent.") \
+    X(STR_HERITAGE_FLAVOR_1, "Ils disent que tout serment ressemble à un métal : il révèle sa valeur seulement lorsqu'on le chauffe assez pour le briser.") \
+    X(STR_HERITAGE_FLAVOR_2, "Leur première horloge mesurait les saisons. La seconde mesura le travail. La troisième apprit aux deux à rapporter de l'or.") \
+    X(STR_HERITAGE_FLAVOR_3, "Ils ont porté tant de lois, de langues et de couronnes qu'ils appellent désormais tradition l'art de changer sans disparaître.") \
+    X(STR_HERITAGE_FLAVOR_4, "Leurs frontières suivent les canaux, leurs fêtes les moissons et leurs souvenirs les champs que leurs ancêtres ont refusé d'abandonner.") \
+    X(STR_HERITAGE_FLAVOR_5, "Un étranger leur demanda où finissait la famille. On lui montra les tombes, les troupeaux, les guerriers et enfin l'horizon.") \
+    X(STR_ETHOS_EPITHETE_0, "Horde") \
+    X(STR_ETHOS_EPITHETE_1, "Clans") \
+    X(STR_ETHOS_EPITHETE_2, "Ordre") \
+    X(STR_ETHOS_EPITHETE_3, "Couronne") \
+    X(STR_ETHOS_EPITHETE_4, "Ligue") \
+    X(STR_ETHOS_EPITHETE_5, "Havre") \
+    X(STR_ETHOS_HINT_0, "Conquête : pousse la coercition, mauvais intégrateur.") \
+    X(STR_ETHOS_HINT_1, "Gloire & razzia : honneur martial, digère mal.") \
+    X(STR_ETHOS_HINT_2, "Hiérarchie & discipline : l'État qui tient l'ordre.") \
+    X(STR_ETHOS_HINT_3, "Bâtisseur d'institutions : tient la diversité.") \
+    X(STR_ETHOS_HINT_4, "Profit & carrefours : prospère par le commerce.") \
+    X(STR_ETHOS_HINT_5, "Consentement seul : ne fracture jamais, pacifique.") \
+    X(STR_ETHOS_FLAVOR_0, "Ils ne demandent pas si la frontière peut être franchie, seulement combien d'hommes il faudra pour qu'elle cesse d'exister.") \
+    X(STR_ETHOS_FLAVOR_1, "Une dette peut être oubliée, une défaite réparée. Une honte, elle, attend patiemment les petits-fils.") \
+    X(STR_ETHOS_FLAVOR_2, "Chaque personne connaît sa place, chaque place son devoir et chaque devoir le sceau qui le rend incontestable.") \
+    X(STR_ETHOS_FLAVOR_3, "Le royaume ne repose pas sur la volonté d'un seul homme, mais sur mille registres qui refusent obstinément de se contredire.") \
+    X(STR_ETHOS_FLAVOR_4, "Ils ne conquièrent pas les ports. Ils y prêtent de l'or jusqu'à ce que les clés deviennent une modalité de remboursement.") \
+    X(STR_ETHOS_FLAVOR_5, "Ils ont juré de ne prendre aucune vie. Leurs voisins débattent encore pour savoir si cette promesse est une vertu ou une invitation.") \
+    X(STR_LEVIER_NOM_0, "Croissance de la population") \
+    X(STR_LEVIER_NOM_1, "Production") \
+    X(STR_LEVIER_NOM_2, "Rayonnement diplomatique") \
+    X(STR_LEVIER_NOM_3, "Coercition") \
+    X(STR_LEVIER_NOM_4, "Capacité de l'État") \
+    X(STR_LEVIER_NOM_5, "Assimilation des minorités") \
+    X(STR_LEVIER_NOM_6, "Magie faustienne") \
+    X(STR_LEVIER_NOM_7, "Dérive culturelle") \
+    X(STR_LEVIER_NOM_8, "Fracture") \
+    X(STR_SYNC_CHEMIN_ACQUIS,  "acquis — diffusé par le contact, et gardé même si la source s'est fondue") \
+    X(STR_SYNC_CHEMIN_JAMAIS,  "tradition jamais côtoyée — il faut entrer en contact avec ses porteurs") \
+    X(STR_SYNC_CHEMIN_SURFACE, "savoir de surface : le comptoir ne transmet pas l'art profond — gouverne ou voisine cette culture, et légitime le sol") \
+    X(STR_SYNC_CHEMIN_PORTEE,  "à portée — il manque le socle (recherche le nœud parent du cercle)") \
+    X(STR_AUGURE_SECESSION,           "Les marges parlent de se gouverner seules.") \
+    X(STR_AUGURE_REVOLTE,             "La rue gronde contre le trône.") \
+    X(STR_AUGURE_COERCITION_FRAGILE,  "L'ordre tient — mais par la peur seule.") \
+    X(STR_VOC_GRENIER,    "Grenier") \
+    X(STR_VOC_PATURES,    "Pâtures") \
+    X(STR_VOC_PECHERIES,  "Pêcheries") \
+    X(STR_VOC_MINE,       "Mine") \
+    X(STR_VOC_ATELIER,    "Atelier") \
+    X(STR_VOC_COMPTOIR,   "Comptoir") \
+    X(STR_VOC_SANCTUAIRE, "Sanctuaire") \
+    X(STR_VOC_MARCHE,     "Marche")
 
 #endif /* SCPS_STRINGS_IDS_H */

@@ -8639,3 +8639,117 @@ partage inter-sims) ; api_centroids transactionnel ; en-tête scps_province_tax 
 resetté ; 4 des 7 « tunables hors registre » y étaient ; le gate occ>=1 existait sur
 le chemin décisif — seul le else d'épuisement était nu). TOUJOURS contre-vérifier un
 finding d'agent avant de le corriger.
+
+## 2026-08-15 — Vague STR_* : les littéraux face-joueur audités entrent en table (sonnet)
+
+**Périmètre** : les sites listés à l'audit 2026-08-12 dans scps_api.c (marche/
+ravitaillement, Choc/Accalmie, Sans foi, fusion_reason, guerre/embargo/florissant/
+modeste, identités de conseillers, relations Guerre/Allié/Vassal/Suzerain/Neutre,
+gates+refus diplo, flavors héritage+éthos+leviers) et scps_readout.c (chemin du
+savoir sync_node_readout, augures sécession/révolte/coercition, vocation_word). 126
+nouveaux STR_* (FR+EN jumeaux, strings_ids.h/strings_en.h) ; ~20 sites de code changés
+dans les 2 fichiers autorisés. Le reste du fichier (2700-2800 flavors de bâtiments,
+4160-4250 annales/labels d'effet, dump-readout, hovers de tech) est HORS vague — le
+cliquet ratchet-baseline les laisse tels quels (reflux progressif, cf. CLAUDE.md).
+
+**Découvertes** :
+- `static const char *tbl[] = {...}` initialisé avec des littéraux, dans un tableau
+  INDEXÉ à runtime (why[]/arr[] des raisons de marche, NM[9] des leviers, EPI/HINT/
+  FLAVOR de l'éthos) : `static` à portée bloc EXIGE un initialiseur CONSTANT — `tr()`
+  est un appel de fonction, impossible à mettre dedans. Solution uniforme : SUPPRIMER
+  le tableau, appeler `tr_band(STR_BASE_0, idx, N)` directement au site de lecture (déjà
+  le pattern des bandes existantes, ex. label_stab). CONS_IDENTITES (8 identités de
+  conseiller, nom+portrait_id+flavor) avait EN PLUS un champ `portrait_id` non-string :
+  vérifié que `portrait_id == index` partout (0..7 dans l'ordre), donc le champ a pu
+  disparaître complètement (`out->portrait_id = ci;` direct) au lieu de survivre dans
+  une table croupion à un seul champ.
+- Les 5 mots de statut diplo (`sw = "Guerre"/"Allié"/"Vassal"/"Suzerain"/"Neutre"` dans
+  scps_country_relations) avaient DÉJÀ leurs jumeaux STR_DIPLO_ALLIE/VASSAL/SUZERAIN/
+  NEUTRE dans la table (posés pour un panneau Godot qui ne les consommait pas encore) —
+  texte identique à l'octet, réutilisés au lieu de dupliquer. Seul "Guerre" (forme
+  courte) diffère de STR_DIPLO_GUERRE="En guerre" (forme longue, utilisée ailleurs) :
+  nouvel id STR_RELATION_GUERRE dédié plutôt que de réécrire le texte existant.
+- La checklist de refus diplo (`GATE(lbl,c)` + `DIP_NO(code,label)`) prend `lbl`/`label`
+  comme `const char*` QUELCONQUE — aucun changement de macro requis, `tr(STR_GATE_...)`
+  se glisse directement en argument. Seul `DIP_OK()` avait le texte "Action disponible"
+  EN DUR dans la macro elle-même (pas un paramètre) : édité une fois dans la définition.
+
+**Pièges** :
+- Un commentaire multi-ligne `/* ... */` inséré ENTRE deux entrées `X(...)  \` d'une
+  X-macro doit avoir SA PROPRE continuation `\` sur la ligne qui ferme `*/` — sinon la
+  ligne suivante (la prochaine entrée `X(...)`) sort silencieusement de la portée du
+  `#define` et devient du C top-level invalide (« expected ')' before string constant »,
+  message trompeur car il pointe la ligne APRÈS le vrai coupable). Les commentaires DANS
+  le corps d'un #define n'ont besoin de `\` qu'à leur DERNIÈRE ligne physique (celle qui
+  ferme `*/`) — les lignes intermédiaires du commentaire n'en ont pas besoin (la
+  newline est « cachée » tant qu'on est dans un commentaire ouvert), piège inverse de ce
+  qu'on croit au premier regard. Repère-toi sur un exemple qui marche déjà dans le
+  fichier (le bloc M7 l.301-302) avant d'improviser.
+- `make CC=gcc scps scps_api_demo` peut ÉCHOUER en profondeur (erreur de compilation)
+  et le script laisse tourner un `./scps_api_demo.exe` PÉRIMÉ (le binaire de la
+  compile précédente) qui affiche un faux "243 réussis" rassurant — TOUJOURS vérifier
+  qu'aucune ligne "error" n'est sortie avant de lire le BILAN, sinon le vert est un
+  mensonge du cache.
+- Trouvé EN COURS DE ROUTE un bug préexistant, HORS PÉRIMÈTRE (fichiers non-autorisés
+  pour cette vague) : `scps_player_market_buy`/`_sell` avaient `int province` en
+  paramètre (+ un commentaire « GRAIN PROVINCE (2026-08-12) ») mais le CORPS référençait
+  encore `region` (undeclared, échec de compilation). `git show HEAD:...` a confirmé que
+  le commit propre porte `int region` partout, sans ce commentaire — la divergence était
+  dans l'arbre de travail seul (cause non identifiée avec certitude ; aucun de mes
+  ~21 hunks du diff ne la couvrait). Restauré à l'identique du commit (la version qui
+  passe les 243 bancs) plutôt que de deviner un renommage `province` complet non demandé.
+  Si ce motif revient (un paramètre renommé mais le corps pas mis à jour, commentaire
+  « GRAIN PROVINCE » daté), vérifier D'ABORD `git diff <fichier>` avant de corriger —
+  ça peut être une vague province-grain en cours ailleurs, pas une erreur à l'aveugle.
+- Le cliquet lang-check §688 (grep de primitives `draw_text/sh_button/sh_slider/
+  zone_add`) était INERTE depuis un refactor du renderer (ces primitives n'existent
+  plus) : comptait toujours 0 contre une base de 0, passait toujours, ne protégeait
+  rien. Re-forgé sur `$(CC) -fpreprocessed -dD -E` (même recette que membrane-check,
+  qui strippe proprement les commentaires C multi-lignes AVANT de grepper) + un filtre
+  `grep -v fprintf(stderr` + un motif d'accents français `[àâäéèêëïîôöùûüçœ...]` —
+  fiable, aucun faux positif observé sur les ~127 littéraux restants (flavors de
+  bâtiments 2700s, annales 4160s, dump-readout, hovers de tech — tous HORS vague,
+  intentionnellement grand-pérennisés).
+
+**Restes** : ~127 littéraux face-joueur accentués subsistent dans scps_api.c (56) et
+scps_readout.c (71), hors vague — la prochaine vague STR_* peut cibler en priorité les
+flavors de bâtiments (EDI_TRIBUNAL..EDI_TRADE_CENTER, ~2700-2773), les formats
+d'annales (An %d — …, ~4160-4250) et les labels d'effet EB_ADD (légitimité/défense
+bâtie/fertilité/connectivité/Brèche). `make lang-check` grondera si ce compte MONTE ;
+l'abaisser (scps/lang_baseline.txt) à chaque reflux futur.
+
+## 2026-08-12 (soir) — Vague G : décisions joueur (marché-province, naval OFF, ministres-peuple) + fog (opus)
+
+**Découvertes** :
+- MARCHÉ AU GRAIN PROVINCE : le pid ne porte que L'OR (trésor paie/encaisse) ; la
+  matière vit au POOL — « la province produit, l'État rachète, pool national puis
+  export ou utilisation » (énoncé canonique joueur). prov[].stock = substrat physique,
+  jamais un garde-manger : la vente draine l'empire sans ordre signifiant. Le gate
+  region-write-check (que j'ignorais) a attrapé mes rafraîchissements de vue — la vue
+  stock se refait à la clôture, SEULS les trésors ont le contrat dual-write M11-A2.
+- COMBAT NAVAL OFF (NAVY_COMBAT_ON=0) : un seul continue dans course_tick (missions
+  → rade, pirates rangés) ; transports/routes/fournitures/colonisation intacts.
+  Embarquer coûte EMBARK_NAVAL_COST (10) de matériel naval au port — le banc blocus
+  teste le BLOCUS, pas la logistique : tune_set(0) en fixture.
+- PAS D'OMNISCIENCE : perceived_hegemon + partenaires commerce/mer + menace partagée
+  gatés country_knows. Les fixtures qui en dépendent forcent la rencontre
+  (fog_debug_meet_all, motif appliqué à diplo_demo/ai_demo). fog.o cascade dans 14
+  listes de bancs (l'ordre des .o est indifférent : insertion en TÊTE, plus robuste
+  que viser la dernière ligne).
+- MINISTRES-PEUPLE : la cible de loyauté porte la satisfaction de SA classe —
+  NÉGATIF seulement (« son ressentiment montera ») : un +40 symétrique noyait le
+  seuil de trahison 15 et tuait le motif V2a (banc events l'a attrapé).
+- AGITATION SERVILE : mesure = seule la RÉVOLTE lisait la part servile (LOT H, 20 %) ;
+  l'agitation VISIBLE l'ignorait. Désormais esclaves > libres (SLAVE_AGIT_SHARE 0.5)
+  → agitation ∝ excédent (SLAVE_AGIT_W 60) — premier bénéfice réel d'affranchir.
+
+**Pièges** :
+- L'agent STR_* a « restauré à HEAD » mes fonctions marché mi-vague (il a pris ma
+  modification pour une divergence cassée) — re-perdu 10 min. Deux chantiers dans le
+  MÊME fichier = séquencer, ou prévenir l'agent de la présence de l'autre.
+- region-write-check : gate existant non documenté dans CLAUDE.md — le lire AVANT
+  d'écrire une vue region[].
+
+**Restes** : CD de raid côtier toujours rep-province (l'autre moitié du verbe
+région-grain, non demandée) ; sweep de validation (naval OFF + embark-coût + fog +
+ministres) au feu vert du soir.

@@ -392,7 +392,8 @@ bool statecraft_council_betrayal_ready(const Statecraft *sc, int cid, int seat){
 /* La CIBLE de loyauté d'un siège pourvu : satisfaction de SA faction (1−grief,
  * dans [0,1]) × 100, modulée par la PAIE (payer plus achète de la loyauté,
  * payer moins en coûte) — jamais un +X plat, toujours ancré sur le grief réel. */
-float statecraft_council_loyalty_target(const Statecraft *sc, int cid, int seat, uint32_t seed){
+float statecraft_council_loyalty_target(const Statecraft *sc, const WorldEconomy *econ,
+                                        int cid, int seat, uint32_t seed){
     int slot=statecraft_council_seated(sc,cid,seat);
     if (slot<0) return 50.f;
     int gen=statecraft_council_seated_gen(sc,cid,seat);
@@ -401,19 +402,33 @@ float statecraft_council_loyalty_target(const Statecraft *sc, int cid, int seat,
     float base  = (1.f - grief) * 100.f;                                  /* satisfaite → loyale */
     float pay   = statecraft_council_pay(sc,cid,seat);
     float pay_adj = (pay-1.f) * tune_f("COUNCIL_PAY_ADJ",30.f);           /* 0×→ -30 · 1×→ 0 · 2×→ +30 */
-    return clampf(base + pay_adj, 0.f, 100.f);
+    /* LES POSITIONS RÉPONDENT AU PEUPLE (décision joueur 2026-08-12) : le ministre
+     * VIENT d'une strate (élite 3/6 · bourgeois 2/6 · paysan 1/6) — si SA classe vit
+     * mal dans ce pays, son ressentiment monte au conseil (et une classe prospère
+     * l'y attache). Ancré sur la satisfaction RÉELLE, jamais un plat. */
+    float class_adj = 0.f;
+    if (econ){
+        SocialClass k = statecraft_council_class(seed,cid,seat,slot,gen);
+        float ksat = econ_country_class_satisfaction(econ, cid, k);       /* 0..1 */
+        /* NÉGATIF SEULEMENT (la lettre de la décision : « son ressentiment montera ») —
+         * une classe heureuse n'ANCRE pas son ministre au-delà du grief de faction
+         * (sinon +40 noierait le seuil de trahison 15 et V2a mourrait) ; une classe
+         * qui vit mal tire jusqu'à −40. */
+        if (ksat < 0.5f)
+            class_adj = -tune_f("COUNCIL_CLASS_SAT_W",40.f) * (0.5f-ksat)*2.f;
+    }
+    return clampf(base + pay_adj + class_adj, 0.f, 100.f);
 }
 void statecraft_council_loyalty_tick(Statecraft *sc, const World *w, const WorldEconomy *econ,
                                      uint32_t seed, float dt_year){
     if (!sc||!w) return;
-    (void)econ;
     float base_rate = tune_f("COUNCIL_LOYAL_RATE",0.05f);                 /* vitesse de convergence de base /mois */
     float rot_boost = tune_f("COUNCIL_ROT_BOOST",1.5f);                   /* le rot ACCÉLÈRE la chute (× additionnel) */
     for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
         float rot = faction_capture_total(c);                             /* 0..CAPTURE_MAX(0.85) */
         for (int s=0;s<SC_COUNCIL_SEATS;s++){
             if (statecraft_council_seated(sc,c,s)<0) continue;            /* vacant : rien à faire converger */
-            float tgt = statecraft_council_loyalty_target(sc,c,s,seed);
+            float tgt = statecraft_council_loyalty_target(sc,econ,c,s,seed);
             float cur = sc->loyalty[c][s];
             /* Asymétrie du rot (motif COERCION_DECAY) : le rot ACCÉLÈRE la chute,
              * jamais la remontée — la corruption aide à tomber, pas à se refaire. */
@@ -428,7 +443,6 @@ void statecraft_council_loyalty_tick(Statecraft *sc, const World *w, const World
  * grief>0.6 chacune) · NEUTRE sinon. */
 CouncilPairState statecraft_council_pair_state(const Statecraft *sc, const World *w, const WorldEconomy *econ,
                                                uint32_t seed, int cid, int a, int b, int year){
-    (void)econ;
     if (!sc||!w||cid<0||cid>=SCPS_MAX_COUNTRY||a<0||a>=SC_COUNCIL_SEATS||b<0||b>=SC_COUNCIL_SEATS||a==b)
         return COUNCIL_PAIR_NEUTRE;
     int slotA=statecraft_council_seated(sc,cid,a), slotB=statecraft_council_seated(sc,cid,b);
@@ -777,6 +791,22 @@ void statecraft_tick(Statecraft *sc, World *w, WorldEconomy *econ,
         int cstab = (owner<wp->n_countries) ? metric_stability(wp->country[owner].SI,0.f) : 50;
         int agit  = metric_agitation(L_local, re->coercion, div_tension, shock,
                                      cstab, re->build.H_coerc);
+        /* L'AGITATION SERVILE (décision joueur 2026-08-12 : « est-ce que l'esclavage
+         * augmente l'agitation provinciale si la part d'esclave est plus haute que la
+         * population ? ») — MESURE : non, jusqu'ici seule la RÉVOLTE (LOT H, seuil
+         * 20 %) lisait la part servile ; l'agitation VISIBLE l'ignorait. Désormais :
+         * quand les esclaves dépassent SLAVE_AGIT_SHARE (défaut 0.5 — plus d'esclaves
+         * que de libres), l'agitation monte ∝ l'excédent. C'est AUSSI le premier
+         * bénéfice réel de l'AFFRANCHISSEMENT : libérer calme la marmite.
+         * SLAVE_AGIT_W=0 = l'hier. */
+        { float allp = re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop
+                     + re->strata[CLASS_ELITE].pop + re->strata[CLASS_SLAVE].pop;
+          if (allp > 0.f){
+              float share = re->strata[CLASS_SLAVE].pop / allp;
+              float ref   = tune_f("SLAVE_AGIT_SHARE", 0.5f);
+              if (share > ref)
+                  agit += (int)(tune_f("SLAVE_AGIT_W", 60.f) * (share-ref)/(1.f-ref));
+          } }
 
         sc->agitation[r] = clampf(toward(sc->agitation[r], (float)agit, SC_AGIT_RATE*fd), 0.f, 100.f);
     }

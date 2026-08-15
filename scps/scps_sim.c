@@ -774,19 +774,19 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (s->econ->region[ra].owner!=p) break;                 /* on TRACE depuis une région à soi */
             routes_order(s->rn, w, s->econ, ra, rb, c->a[2]!=0);     /* a[2] = maritime */
             break; }
-          case CMD_MARKET_BUY: {
-            int r=c->a[0], g=c->a[1]; long q=c->a[2]; int tier=c->a[3];
-            if (r<0 || r>=s->econ->n_regions || s->econ->region[r].owner!=p) break;
+          case CMD_MARKET_BUY: {   /* GRAIN PROVINCE (décision joueur 2026-08-12) : a[0] = PID */
+            int pid=c->a[0], g=c->a[1]; long q=c->a[2]; int tier=c->a[3];
+            if (pid<0 || pid>=s->econ->n_prov || s->econ->prov[pid].owner!=p) break;
             if (g<=RES_NONE || g>=RES_COUNT || q<=0) break;
             if (tier<0) tier=0; else if (tier>2) tier=2;
-            long spent=0; intertrade_market_buy(s->econ, r, (Resource)g, q, tier, &spent);
+            long spent=0; intertrade_market_buy_pid(s->econ, pid, (Resource)g, q, tier, &spent);
             break; }
           case CMD_MARKET_SELL: {
-            int r=c->a[0], g=c->a[1]; long q=c->a[2]; int tier=c->a[3];
-            if (r<0 || r>=s->econ->n_regions || s->econ->region[r].owner!=p) break;
+            int pid=c->a[0], g=c->a[1]; long q=c->a[2]; int tier=c->a[3];
+            if (pid<0 || pid>=s->econ->n_prov || s->econ->prov[pid].owner!=p) break;
             if (g<=RES_NONE || g>=RES_COUNT || q<=0) break;
             if (tier<0) tier=0; else if (tier>2) tier=2;
-            long gained=0; intertrade_market_sell(s->econ, r, (Resource)g, q, tier, &gained);
+            long gained=0; intertrade_market_sell_pid(s->econ, pid, (Resource)g, q, tier, &gained);
             break; }
           /* ── §3 — GUERRE (campagne & flotte) : la force = l'ost MOBILISÉ du joueur (host) ── */
           case CMD_CAMPAIGN: {

@@ -1601,9 +1601,9 @@ func _marche_act(act: String, res_id: int, me: int) -> void:
 		return
 	var ok := false
 	if act == "buy":
-		ok = w.player_market_buy(cap_region, res_id, MARCHE_QTY, 0)
+		ok = w.player_market_buy(cap_prov, res_id, MARCHE_QTY, 0)   # GRAIN PROVINCE (2026-08-12) : livré/payé À la capitale
 	else:
-		ok = w.player_market_sell(cap_region, res_id, MARCHE_QTY, 0)
+		ok = w.player_market_sell(cap_prov, res_id, MARCHE_QTY, 0)
 	_marche_flash_ok = ok
 	_marche_flash = ("⚑ %s — ordre émis" % ("achat" if act == "buy" else "vente")) if ok \
 		else ("✗ %s — refusé" % ("achat" if act == "buy" else "vente"))

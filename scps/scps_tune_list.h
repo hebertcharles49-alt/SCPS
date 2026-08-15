@@ -693,6 +693,14 @@
     X(BANKRUPTCY_GARNISH,     0.75f) \
     X(RELIG_MINORITY_SAT,     0.15f) \
     X(SEED_PROV_CAP_MULT,     3.0f) \
+    /* AGITATION SERVILE (decision joueur 2026-08-12) : plus d'esclaves que de libres
+     * -> la marmite chauffe (l'affranchissement gagne son premier benefice reel). */     X(SLAVE_AGIT_SHARE,       0.5f)     X(SLAVE_AGIT_W,           60.0f) \
+    /* DECISIONS JOUEUR 2026-08-12 (soir) : combat naval OFF (routes/colonisation
+     * gardees) ; embarquer coute du materiel naval ; le ministre porte la
+     * satisfaction de SA classe. */ \
+    X(NAVY_COMBAT_ON,         0.0f) \
+    X(EMBARK_NAVAL_COST,      10.0f) \
+    X(COUNCIL_CLASS_SAT_W,    40.0f) \
     /* PIPELINE DIPLO — la VALEUR SUBJECTIVE oriente la CIBLE (pas l'éthos, qui décide la
      * MÉTHODE). COVET_W : poids du BESOIN (Σ raw_cap × stress(runway) × prix) dans la valeur
      * d'une province d'autrui → l'IA convoite qui TIENT ce qui lui manque. COMPLEMENT_W :

@@ -189,7 +189,7 @@ float statecraft_council_pay      (const Statecraft *sc, int cid, int seat);    
 void  statecraft_council_set_pay  (Statecraft *sc, int cid, int seat, float pay);  /* verbe : le curseur de paie */
 /* Cible réelle vers laquelle la loyauté converge : satisfaction de la faction
  * du titulaire + ajustement de paie, bornée 0..100. Lecture pure pour l'UI. */
-float statecraft_council_loyalty_target(const Statecraft *sc, int cid, int seat, uint32_t seed);
+float statecraft_council_loyalty_target(const Statecraft *sc, const WorldEconomy *econ, int cid, int seat, uint32_t seed);   /* +econ 2026-08-12 : le ministre porte la satisfaction de SA classe */
 /* P3 — écrivain DIRECT de loyauté (borné 0-100), pour la mission décennale
  * (réussite/échec) — n'affecte QUE le siège pourvu (no-op si vacant). */
 void  statecraft_council_loyalty_add(Statecraft *sc, int cid, int seat, float delta);

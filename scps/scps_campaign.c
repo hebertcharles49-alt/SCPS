@@ -498,6 +498,17 @@ bool campaign_order_sea(Campaign *c, const World *w, const WorldEconomy *econ,
     if (packets<=0) return false;
     const RegionEconomy *pr=&econ->region[from_region];
     if (pr->owner!=owner || pr->build.port<=0.f || !pr->coastal) return false;  /* on n'embarque qu'à SON port */
+    /* L'EMBARQUEMENT COÛTE (décision joueur 2026-08-12) : gréer un convoi consomme du
+     * MATÉRIEL NAVAL — EMBARK_NAVAL_COST (10) par stack, pris au port. Pas de
+     * matériel = pas de traversée (le mur est ÉCONOMIQUE, comme la flotte). */
+    { float needsup=tune_f("EMBARK_NAVAL_COST",10.f);
+      if (needsup>0.f){
+          float got=-econ_region_stock_add((WorldEconomy*)econ, from_region, RES_NAVAL_SUPPLIES, -needsup);
+          if (got < needsup-1e-3f){
+              econ_region_stock_add((WorldEconomy*)econ, from_region, RES_NAVAL_SUPPLIES, got);   /* on rend le partiel */
+              return false;
+          }
+      } }
     if (!econ->region[target_region].coastal) return false;                     /* on atterrit par la côte */
     int ax,ay,bx,by;
     if (!world_region_sea_anchor(w,from_region,&ax,&ay))  return false;

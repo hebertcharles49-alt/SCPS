@@ -656,6 +656,9 @@ static int ai_pick_trade_partner(const WorldEconomy *econ, const RouteNetwork *r
         const RegionEconomy *re = &econ->region[r];
         if (r==home_region || re->owner==cid) continue;
         if (!re->culture.settled || re->impassable) continue;
+        if (re->owner>=0 && !country_knows(cid, re->owner)) continue;   /* PAS D'OMNISCIENCE :
+                                                 * on ne négocie pas avec un peuple jamais
+                                                 * rencontré (décision joueur 2026-08-12) */
         if (rn){ bool deja=false;            /* une route par paire : viser un partenaire NEUF */
             for (int i=0;i<rn->n;i++){ const TradeRoute *t=&rn->route[i];
                 if ((t->ra==home_region&&t->rb==r)||(t->ra==r&&t->rb==home_region)){ deja=true; break; } }
@@ -692,6 +695,7 @@ static int ai_pick_sea_partner(const WorldEconomy *econ, const RouteNetwork *rn,
     for (int r=0;r<econ->n_regions;r++){
         if (r==myport || econ->region[r].owner==cid) continue;
         if (!ai_true_port(econ,r) || !econ->region[r].culture.settled) continue;
+        if (econ->region[r].owner>=0 && !country_knows(cid, econ->region[r].owner)) continue;   /* PAS D'OMNISCIENCE */
         if (rn){ bool deja=false;
             for (int i=0;i<rn->n;i++){ const TradeRoute *t=&rn->route[i];
                 if ((t->ra==myport&&t->rb==r)||(t->ra==r&&t->rb==myport)){ deja=true; break; } }

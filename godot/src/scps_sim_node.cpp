@@ -178,8 +178,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("council_candidates", "seat"),        &ScpsWorld::council_candidates);
     ClassDB::bind_method(D_METHOD("player_decree", "id", "on"),         &ScpsWorld::player_decree);
     ClassDB::bind_method(D_METHOD("player_route", "ra", "rb", "maritime"), &ScpsWorld::player_route);
-    ClassDB::bind_method(D_METHOD("player_market_buy", "region", "good", "qty", "tier"),  &ScpsWorld::player_market_buy);
-    ClassDB::bind_method(D_METHOD("player_market_sell", "region", "good", "qty", "tier"), &ScpsWorld::player_market_sell);
+    ClassDB::bind_method(D_METHOD("player_market_buy", "province", "good", "qty", "tier"),  &ScpsWorld::player_market_buy);
+    ClassDB::bind_method(D_METHOD("player_market_sell", "province", "good", "qty", "tier"), &ScpsWorld::player_market_sell);
     ClassDB::bind_method(D_METHOD("player_campaign", "from_region", "target_region"), &ScpsWorld::player_campaign);
     ClassDB::bind_method(D_METHOD("player_move_army", "target_region"), &ScpsWorld::player_move_army);
     ClassDB::bind_method(D_METHOD("player_refill"),                     &ScpsWorld::player_refill);

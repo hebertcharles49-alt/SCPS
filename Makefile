@@ -94,7 +94,7 @@ heritage_demo: $(HERITAGE_DEMO_OBJS)
 	$(CC) $(HERITAGE_DEMO_OBJS) -o $@
 
 # ---- religion_demo : module religion (foi PAR GROUPE ⇒ couplé econ pour le cache dérivé) ------
-RELIGION_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_toponym.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_scps_decrees.o $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_tune.o \
+RELIGION_DEMO_OBJS := $(OBJDIR)/scps_scps_fog.o $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_toponym.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_scps_decrees.o $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_tune.o \
                     $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_heritage.o \
                     $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_core.o \
                     $(OBJDIR)/scps_scps_legitimacy.o $(OBJDIR)/scps_scps_prosperity.o \
@@ -230,7 +230,7 @@ AGENCY_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o
                     $(OBJDIR)/scps_scps_prosperity.o $(OBJDIR)/scps_scps_heritage.o \
                     $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o $(OBJDIR)/scps_scps_agency.o \
                     $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_missions.o $(OBJDIR)/scps_scps_statecraft.o $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_scps_intertrade.o $(OBJDIR)/scps_scps_credit.o \
-                    $(OBJDIR)/scps_agency_demo.o
+                    $(OBJDIR)/scps_scps_fog.o $(OBJDIR)/scps_agency_demo.o
 agency_demo: $(AGENCY_DEMO_OBJS)
 	$(CC) $(AGENCY_DEMO_OBJS) -o $@ -lm
 
@@ -582,7 +582,7 @@ pop_demo: $(POP_DEMO_OBJS)
 	$(CC) $(POP_DEMO_OBJS) -o $@ -lm
 
 # army_demo : la levée LIT les strates econ (dissolution LaborEcon) ⇒ il tire econ.o + ses deps.
-ARMY_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_toponym.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_scps_decrees.o $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_scps_tune.o \
+ARMY_DEMO_OBJS := $(OBJDIR)/scps_scps_fog.o $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_toponym.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_scps_decrees.o $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_scps_tune.o \
                   $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_heritage.o $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_core.o \
                   $(OBJDIR)/scps_scps_legitimacy.o $(OBJDIR)/scps_scps_prosperity.o $(OBJDIR)/scps_scps_factions.o \
                   $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o $(OBJDIR)/scps_scps_modifier.o \
@@ -593,7 +593,7 @@ army_demo: $(ARMY_DEMO_OBJS)
 
 # ---- Le refactor démographique : la province contient des GROUPES (clé de voûte)
 # Branche scps_modifier (pile de dérive). Alimente scps_order (inchangé).
-DEMOGRAPHY_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_toponym.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_scps_decrees.o $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_tune.o \
+DEMOGRAPHY_DEMO_OBJS := $(OBJDIR)/scps_scps_fog.o $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_toponym.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_scps_decrees.o $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_tune.o \
                     $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_heritage.o \
                     $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_core.o \
                     $(OBJDIR)/scps_scps_legitimacy.o $(OBJDIR)/scps_scps_prosperity.o \
@@ -604,7 +604,7 @@ demography_demo: $(DEMOGRAPHY_DEMO_OBJS)
 	$(CC) $(DEMOGRAPHY_DEMO_OBJS) -o $@ -lm
 
 # ---- L'intégration au moteur vivant (la province réelle porte des groupes) -
-DEMOGRAPHY_INTEG_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_toponym.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_scps_decrees.o $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_tune.o \
+DEMOGRAPHY_INTEG_OBJS := $(OBJDIR)/scps_scps_fog.o $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_toponym.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_scps_decrees.o $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_tune.o \
                     $(OBJDIR)/scps_scps_trade.o $(OBJDIR)/scps_scps_culture.o \
                     $(OBJDIR)/scps_scps_heritage.o $(OBJDIR)/scps_scps_tech.o \
                     $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_legitimacy.o \
@@ -618,7 +618,7 @@ demography_integ_demo: $(DEMOGRAPHY_INTEG_OBJS)
 # ---- La révolte INCARNÉE : un soulèvement est un acteur ancré sur un groupe -
 # QUI se lève (pire déficit), COMBIEN (fraction mobilisée qui quitte le travail),
 # ce qu'il VEUT (jacquerie/sécession/coup), ce qu'il ADVIENT (écrasé/né/concession).
-REVOLT_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_toponym.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_scps_decrees.o $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_scps_tune.o \
+REVOLT_DEMO_OBJS := $(OBJDIR)/scps_scps_fog.o $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_toponym.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_scps_decrees.o $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_scps_tune.o \
                     $(OBJDIR)/scps_scps_trade.o $(OBJDIR)/scps_scps_culture.o \
                     $(OBJDIR)/scps_scps_heritage.o $(OBJDIR)/scps_scps_tech.o \
                     $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_legitimacy.o \
@@ -641,14 +641,14 @@ SOCIAL_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o
                     $(OBJDIR)/scps_scps_prosperity.o $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o \
                     $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_missions.o $(OBJDIR)/scps_scps_statecraft.o $(OBJDIR)/scps_scps_modifier.o \
                     $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_scps_intertrade.o \
-                    $(OBJDIR)/scps_scps_agency.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_social_demo.o
+                    $(OBJDIR)/scps_scps_agency.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_scps_fog.o $(OBJDIR)/scps_social_demo.o
 social_demo: $(SOCIAL_DEMO_OBJS)
 	$(CC) $(SOCIAL_DEMO_OBJS) -o $@ -lm
 
 # ---- Capstone §27 : Entropie mondiale + 4 fins + Merveille ----------------
 # Banc auto-vérifiant du cataclysme (contrôles C0-C6). N'a besoin que des
 # briques moteur traversées par scps_endgame (econ/prosperity/tech/routes/navy/diplo).
-ENDGAME_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_toponym.o $(OBJDIR)/scps_scps_render.o \
+ENDGAME_DEMO_OBJS := $(OBJDIR)/scps_scps_fog.o $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_toponym.o $(OBJDIR)/scps_scps_render.o \
                      $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_scps_decrees.o $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_scps_trade.o \
                      $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_tech.o \
                      $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_legitimacy.o \
@@ -685,12 +685,30 @@ clean:
 -include $(wildcard $(OBJDIR)/*.d)
 
 # ---- lang-check : le CLIQUET de localisation (CLAUDE.md §langue) ----------
-# Compte les littéraux face-joueur passés aux primitives d'affichage ; échoue
-# si le compte MONTE au-dessus de la base (toute chaîne nouvelle naît en
-# STR_*). Le reflux est le bienvenu : abaisser scps/lang_baseline.txt.
-LANG_FACE := scps/viewer.c scps/scps_readout.c
+# RE-FORGÉ (vague STR_* 2026-08-15) : l'ancienne mouture greppait des primitives
+# SDL (draw_text/sh_button/sh_slider/zone_add) disparues du renderer — le
+# compte était TOUJOURS 0, le cliquet était INERTE. Nouveau mécanisme :
+#   1) on STRIPPE les commentaires C de chaque fichier ($(CC) -fpreprocessed
+#      -dD -E, même recette que membrane-check ci-dessous) — une prose de
+#      commentaire qui cite un mot accentué n'est PAS un faux positif ;
+#   2) on écarte les lignes fprintf(stderr (outillage ingénieur, français
+#      définitif par contrat CLAUDE.md, jamais un STR_*) ;
+#   3) on compte les LITTÉRAUX C CONTENANT UN ACCENT FRANÇAIS ("...é/è/à/ç/œ...")
+#      — un texte face-joueur non encore basculé en STR_* en porte presque
+#      toujours un ; un identifiant/format technique n'en porte jamais.
+# Échoue si le compte MONTE au-dessus de la base (toute chaîne nouvelle naît
+# en STR_*, cf. CLAUDE.md §langue). Le reflux est le bienvenu : abaisser
+# scps/lang_baseline.txt quand une vague STR_* fait baisser le compte.
+LANG_STR_FILES := scps/scps_api.c scps/scps_readout.c
+LANG_ACCENT_RE := "[^\"]*[àâäéèêëïîôöùûüçœÀÂÄÉÈÊËÏÎÔÖÙÛÜÇŒ][^\"]*"
 lang-check:
-	@n=$$(grep -hoE '(draw_text|sh_button|sh_slider|zone_add)\([^;]*"[A-Za-z]' $(LANG_FACE) | wc -l); \
+	@n=0; \
+	for f in $(LANG_STR_FILES); do \
+	  [ -f "$$f" ] || continue; \
+	  stripped=$$($(CC) -fpreprocessed -dD -E "$$f" 2>/dev/null); \
+	  cnt=$$(printf '%s\n' "$$stripped" | grep -v 'fprintf(stderr' | grep -oE $(LANG_ACCENT_RE) | wc -l); \
+	  n=$$((n+cnt)); \
+	done; \
 	b=$$(cat scps/lang_baseline.txt); \
 	if [ $$n -gt $$b ]; then \
 	  echo "lang-check ÉCHEC : $$n littéraux face-joueur (base $$b) — toute chaîne NOUVELLE doit naître en STR_* (cf. CLAUDE.md)"; exit 1; \

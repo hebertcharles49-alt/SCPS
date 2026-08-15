@@ -183,6 +183,10 @@ void intertrade_commerce_diag(long *capped, double *drawn){ if(capped)*capped=g_
  * d'intertrade sont routées vers la province REPRÉSENTATIVE de la région (capitale,
  * sinon la plus peuplée — cf. econ_region_rep_province). Renvoie NULL si la région
  * n'a pas (encore) de province représentative — appelant doit alors no-op. */
+/* GRAIN PROVINCE (2026-08-12) : le pid acheteur/vendeur du prochain market_buy/sell
+ * (-1 = comportement historique, la représentante). Posé par les wrappers _pid —
+ * évite de casser la signature publique (bancs, IA). */
+static int g_market_buyer_pid = -1;
 static inline float *it_treasury(WorldEconomy *e, int region){
     int pid=econ_region_rep_province(e, region);
     if (pid<0 || pid>=e->n_prov) return NULL;
@@ -563,6 +567,21 @@ float intertrade_market_pull(WorldEconomy *e, int region, int good, float want, 
  * débite SON trésor. N'achète QUE le disponible ET le finançable. Renvoie les unités
  * obtenues (*spent = l'or débité). La carte des hubs est rafraîchie si besoin. */
 #define MARKET_MIN_PRICE 0.2f
+/* GRAIN PROVINCE (décision joueur 2026-08-12) : le verbe joueur paie et reçoit AU pid. */
+long intertrade_market_buy_pid(WorldEconomy *e, int pid, Resource good, long want, int tier, long *spent){
+    if (!e || pid<0 || pid>=e->n_prov) return 0;
+    g_market_buyer_pid = pid;
+    long got = intertrade_market_buy(e, e->prov[pid].region, good, want, tier, spent);
+    g_market_buyer_pid = -1;
+    return got;
+}
+long intertrade_market_sell_pid(WorldEconomy *e, int pid, Resource good, long want, int tier, long *gained){
+    if (!e || pid<0 || pid>=e->n_prov) return 0;
+    g_market_buyer_pid = pid;
+    long got = intertrade_market_sell(e, e->prov[pid].region, good, want, tier, gained);
+    g_market_buyer_pid = -1;
+    return got;
+}
 long intertrade_market_buy(WorldEconomy *e, int region, int good, long want, int tier, long *spent){
     if (spent) *spent=0;
     if (!e||region<0||region>=e->n_regions||region>=SCPS_MAX_REG||good<=RES_NONE||good>=RES_COUNT||want<=0) return 0;
@@ -592,8 +611,13 @@ long intertrade_market_buy(WorldEconomy *e, int region, int good, long want, int
     float up=price*mult; if (up<1e-4f) up=1e-4f;
     long qty=want;
     if (qty>(long)avail) qty=(long)avail;                        /* borné par le disponible */
-    float *buyer_tr=it_treasury(e,region);                        /* trésor PROVINCE-owned (représentante) */
-    if (!buyer_tr) return 0;
+    /* GRAIN PROVINCE (décision joueur 2026-08-12) : l'acheteur est un PID explicite
+     * (buyer_pid<0 = l'ancien chemin : la représentante de la région). Le verbe joueur
+     * paie et REÇOIT là où il pointe — la doctrine « tout verbe au grain province ». */
+    int bp = (g_market_buyer_pid>=0 && g_market_buyer_pid<e->n_prov) ? g_market_buyer_pid
+                                                                     : econ_region_rep_province(e,region);
+    if (bp<0 || bp>=e->n_prov) return 0;
+    float *buyer_tr=&e->prov[bp].treasury;
     long can=(long)(*buyer_tr/up); if (qty>can) qty=can;         /* borné par le trésor */
     if (qty<=0) return 0;
     /* RE-KEY + CONSERVATION : on PRÉLÈVE d'abord le RÉEL (provinces, persistant —
@@ -604,8 +628,10 @@ long intertrade_market_buy(WorldEconomy *e, int region, int good, long want, int
         got=(long)(-econ_region_stock_add(e, hub, good, -(float)qty));
         if (got<=0) return 0;
         cost=(float)got*up;
-        it_credit(e,region,-cost);                                /* PUMP du trésor (dual-write) */
-        econ_region_stock_add(e, region, good, (float)got);       /* le bien entre au stock (province) */
+        econ_prov_treasury_credit(e, bp, -cost);                  /* PUMP du trésor du PID (dual-write) */
+        e->prov[bp].stock[good]+=(float)got;                      /* entre au POOL (le pid n'est qu'un point de
+                                                                   * dépôt ; la VUE region[] se refait à la clôture
+                                                                   * — region-write-check interdit d'y écrire) */
         it_credit(e,hub, cost);   /* CONSERVATION : le hub (source+hôte) encaisse le plein */
     } else {
         long rem=qty; float nu_credited=0.f;
@@ -621,8 +647,8 @@ long intertrade_market_buy(WorldEconomy *e, int region, int good, long want, int
         got=qty-rem;
         if (got<=0) return 0;
         cost=(float)got*up;
-        it_credit(e,region,-cost);                                /* PUMP du trésor (facturé sur le RÉEL, dual-write) */
-        econ_region_stock_add(e, region, good, (float)got);
+        econ_prov_treasury_credit(e, bp, -cost);                  /* PUMP du trésor du PID (facturé sur le RÉEL) */
+        e->prov[bp].stock[good]+=(float)got;              /* POOL (vue refaite à la clôture) */
         float toll = cost - nu_credited;                          /* la marge → cité-état hôte */
         if (toll>0.f && re->import_toll_region>=0 && re->import_toll_region<e->n_regions)
             it_credit(e,re->import_toll_region, toll);
@@ -658,11 +684,30 @@ long intertrade_market_sell(WorldEconomy *e, int region, int good, long want, in
       if (g0 > *dep_tr){                                          /* CONSERVATION : borné au trésor de l'absorbeur */
           float k = (g0>0.f)? *dep_tr/g0 : 0.f;
           qty=(long)((float)qty*k); if (qty<=0) return 0; } }
-    /* RE-KEY : débit RÉEL du vendeur (provinces, persistant) — l'encaissé suit CE réel. */
-    long sold=(long)(-econ_region_stock_add(e, region, good, -(float)qty));
+    /* GRAIN PROVINCE + POOL NATIONAL (rappels joueur 2026-08-12 : « les stocks sont
+     * nationaux », « les provinces n'ont pas de stock à proprement parler ») : le pid
+     * posé n'existe que pour L'OR (le trésor est province-grain). La matière vendue
+     * sort du POOL de l'empire — prov[].stock n'est que le substrat physique du pool,
+     * on draine sans ordre signifiant. Sans pid : l'historique (région, rep+spill). */
+    long sold;
+    int sp = (g_market_buyer_pid>=0 && g_market_buyer_pid<e->n_prov) ? g_market_buyer_pid : -1;
+    if (sp>=0){
+        int own=e->prov[sp].owner;
+        float need=(float)qty, took=0.f;
+        for (int p=0;p<e->n_prov && need>1e-3f;p++){
+            ProvinceEconomy *pe=&e->prov[p];
+            if (pe->owner!=own || !pe->active || !pe->colonized) continue;
+            float tk=pe->stock[good]; if(tk>need)tk=need;
+            if (tk>0.f){ pe->stock[good]-=tk; need-=tk; took+=tk; }   /* la VUE se refait à la clôture */
+        }
+        sold=(long)took;
+    } else {
+        sold=(long)(-econ_region_stock_add(e, region, good, -(float)qty));
+    }
     if (sold<=0) return 0;
     float gain=(float)sold*price;
-    it_credit(e,region, gain);
+    if (sp>=0) econ_prov_treasury_credit(e, sp, gain);
+    else       it_credit(e,region, gain);
     it_credit(e,dep,  -gain);                                     /* l'absorbeur PAIE (vendeur +gain == dep −gain, dual-write) */
     econ_region_stock_add(e, dep, good, (float)sold);            /* le bien rejoint le marché (un AUTRE Centre, province) */
     g_global_cache[good]+=(float)sold;                           /* V2.2 : cache à jour */

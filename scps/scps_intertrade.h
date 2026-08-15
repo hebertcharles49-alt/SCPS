@@ -79,6 +79,9 @@ void  intertrade_commerce_diag(long *capped, double *drawn);  /* §5 télémétr
  * contre un autre — aucune route ne porte de goods entre eux tant qu'il tient.
  * intertrade_reset() remet embargos & flux à zéro (init de chaque partie/sim). */
 void  intertrade_order_embargo(int cid, int target, bool on);
+/* GRAIN PROVINCE (2026-08-12) : achat/vente du joueur payés et livrés AU pid. */
+long intertrade_market_buy_pid (WorldEconomy *e, int pid, Resource good, long want, int tier, long *spent);
+long intertrade_market_sell_pid(WorldEconomy *e, int pid, Resource good, long want, int tier, long *gained);
 bool  intertrade_embargoed    (int cid, int target);   /* l'un OU l'autre a décrété */
 void  intertrade_reset(void);
 

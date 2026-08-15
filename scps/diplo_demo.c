@@ -10,6 +10,7 @@
  *      monte le D̄ interne du conquérant → la fracture monte (gated par K).
  *      Concorde « Unie » → « Murmurante/Fracturée ».
  */
+#include "scps_fog.h"   /* fixture : fog_debug_meet_all (pas d'omniscience) */
 #include "scps_world.h"
 #include "scps_econ.h"
 #include "scps_trade.h"
@@ -210,8 +211,11 @@ int main(int argc,char**argv){
             ok("frapper un protégé d'allié ÉLARGIT la guerre (coût ↑)",
                diplo_war_widening_cost(w,econ,dp,A,B) > wno);
 
-            /* COALITION : un hégémon (fulgurance extrême) est perçu comme menace dominante. */
+            /* COALITION : un hégémon (fulgurance extrême) est perçu comme menace dominante.
+             * PAS D'OMNISCIENCE (2026-08-12) : on ne perçoit que le RENCONTRÉ — la fixture
+             * force la rencontre (motif events_demo/fog_debug_meet_all). */
             diplo_init(dp); dp->momentum[B]=40.f;
+            for (int c9=0;c9<w->n_countries;c9++) fog_debug_meet_all(c9);
             ok("un hégémon fulgurant est PERÇU (posture de coalition, sans script)",
                diplo_perceived_hegemon(w,econ,wp,dp,A)==B);
         } else {

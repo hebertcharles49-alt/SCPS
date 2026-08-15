@@ -209,16 +209,16 @@ SyncReadout sync_node_readout(const TechState *ts, int i) {
     r.requise = band_profondeur(req);
     if (ts->sync_unlocked[i]) {                       /* loqué : acquis pour toujours */
         r.acces = AC_ACQUIS; r.atteinte = r.requise;
-        r.chemin = "acquis — diffusé par le contact, et gardé même si la source s'est fondue";
+        r.chemin = tr(STR_SYNC_CHEMIN_ACQUIS);
         return r;
     }
     int reached = (sn->arch>=0 && sn->arch<ARCH_COUNT) ? (int)ts->arch_depth[sn->arch] : 0;
     r.atteinte = band_profondeur(reached);
     float prog = (req>0) ? (float)reached/(float)req : 0.f; if (prog>1.f) prog=1.f;
     r.acces = band_acces(prog);
-    if      (reached <= 0)   r.chemin = "tradition jamais côtoyée — il faut entrer en contact avec ses porteurs";
-    else if (reached < req)  r.chemin = "savoir de surface : le comptoir ne transmet pas l'art profond — gouverne ou voisine cette culture, et légitime le sol";
-    else                     r.chemin = "à portée — il manque le socle (recherche le nœud parent du cercle)";
+    if      (reached <= 0)   r.chemin = tr(STR_SYNC_CHEMIN_JAMAIS);
+    else if (reached < req)  r.chemin = tr(STR_SYNC_CHEMIN_SURFACE);
+    else                     r.chemin = tr(STR_SYNC_CHEMIN_PORTEE);
     return r;
 }
 BandPresage band_presage(float charge) {
@@ -383,9 +383,9 @@ CountryReadout country_readout_from_floats(
     r.influence    = 0;   /* posée par le statecraft (réserve de réputation) */
 
     /* Augure : ligne d'ambiance, jamais une jauge — seulement en péril. */
-    if      (secession_mode) r.augure = "Les marges parlent de se gouverner seules.";
-    else if (revolt_mode)    r.augure = "La rue gronde contre le trône.";
-    else if (coerc_fragile)  r.augure = "L'ordre tient — mais par la peur seule.";
+    if      (secession_mode) r.augure = tr(STR_AUGURE_SECESSION);
+    else if (revolt_mode)    r.augure = tr(STR_AUGURE_REVOLTE);
+    else if (coerc_fragile)  r.augure = tr(STR_AUGURE_COERCITION_FRAGILE);
     else                     r.augure = (const char *)0;
     return r;
 }
@@ -507,18 +507,18 @@ enum { RD_CONSENTI = 0, RD_COERC_FRAGILE, RD_SUBMERGE_REVOL, RD_SUBMERGE_SECESS 
 
 static const char *vocation_word(Resource res, bool coastal, Biome b) {
     switch (res) {
-        case RES_GRAIN: case RES_COTTON:           return "Grenier";
-        case RES_LIVESTOCK: case RES_WOOL:         return "Pâtures";
-        case RES_FISH:                             return "Pêcheries";
+        case RES_GRAIN: case RES_COTTON:           return tr(STR_VOC_GRENIER);
+        case RES_LIVESTOCK: case RES_WOOL:         return tr(STR_VOC_PATURES);
+        case RES_FISH:                             return tr(STR_VOC_PECHERIES);
         case RES_COPPER: case RES_IRON: case RES_COAL:
         case RES_GOLD: case RES_PRECIOUS_METAL:
-        case RES_SULFUR: case RES_SALTPETER:       return "Mine";
-        case RES_WOOD:                             return "Atelier";
+        case RES_SULFUR: case RES_SALTPETER:       return tr(STR_VOC_MINE);
+        case RES_WOOD:                             return tr(STR_VOC_ATELIER);
         default: break;
     }
-    if (coastal) return "Comptoir";
-    if (b == BIO_FOREST || b == BIO_WOODS || b == BIO_JUNGLE) return "Sanctuaire";
-    return "Marche";
+    if (coastal) return tr(STR_VOC_COMPTOIR);
+    if (b == BIO_FOREST || b == BIO_WOODS || b == BIO_JUNGLE) return tr(STR_VOC_SANCTUAIRE);
+    return tr(STR_VOC_MARCHE);
 }
 
 CountryReadout country_readout(const WorldProsperity *wp, const TechState *ts,
@@ -546,9 +546,9 @@ CountryReadout country_readout(const WorldProsperity *wp, const TechState *ts,
     r.corruption   = faction_corruption_0_100(cid);   /* §C3 : le rot, en clair (0-100) */
 
     switch (cp->mode) {
-        case RD_SUBMERGE_SECESS: r.augure = "Les marges parlent de se gouverner seules."; break;
-        case RD_SUBMERGE_REVOL:  r.augure = "La rue gronde contre le trône.";            break;
-        case RD_COERC_FRAGILE:   r.augure = "L'ordre tient — mais par la peur seule.";   break;
+        case RD_SUBMERGE_SECESS: r.augure = tr(STR_AUGURE_SECESSION);          break;
+        case RD_SUBMERGE_REVOL:  r.augure = tr(STR_AUGURE_REVOLTE);            break;
+        case RD_COERC_FRAGILE:   r.augure = tr(STR_AUGURE_COERCITION_FRAGILE); break;
         default:                 r.augure = NULL;
     }
     return r;

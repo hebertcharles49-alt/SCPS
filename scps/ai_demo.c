@@ -145,6 +145,8 @@ static const char *posture_word(const AiActor *a){
 static bool strict_max(float x,float y,float z){ return x>y && x>z; }
 
 int main(int argc, char **argv){
+    /* PAS D'OMNISCIENCE (2026-08-12) : les fixtures forcent la rencontre (motif diplo_demo). */
+    { extern void fog_debug_meet_all(int); for (int c9=0;c9<64;c9++) fog_debug_meet_all(c9); }
     uint32_t seed=(argc>1)?(uint32_t)strtoul(argv[1],NULL,10):9u;
 
     Sim s={0};

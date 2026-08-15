@@ -8,7 +8,8 @@
 #include "scps_diplo.h"
 #include "scps_heritage.h"
 #include "scps_culture.h"
-#include "scps_demography.h" /* dyn_id_next + drift_retire (audit 2026-08-12) */
+#include "scps_demography.h"
+#include "scps_fog.h"      /* PAS D'OMNISCIENCE : country_knows (décision joueur 2026-08-12) */ /* dyn_id_next + drift_retire (audit 2026-08-12) */
 #include "scps_provlog.h"  /* le JOURNAL diplomatique (display, focus-gaté — la chronique n'écrit rien) */
 #include <stdio.h>
 #include <stdlib.h>
@@ -956,6 +957,9 @@ Relation diplo_relation(const World *w, const WorldEconomy *econ,
      *          − ν·distance de valeurs − ξ·schisme. */
     float shared=0.f;
     for (int c=0;c<w->n_countries;c++) if (c!=a&&c!=b){
+        if (!country_knows(a,c) || !country_knows(b,c)) continue;   /* PAS D'OMNISCIENCE :
+                                                 * une menace COMMUNE se partage entre gens
+                                                 * qui l'ont tous deux RENCONTRÉE */
         float t=threat_of(w,econ,wp,d,a,c), u=threat_of(w,econ,wp,d,b,c);
         float m=(t<u)?t:u; if (m>shared) shared=m;
     }
@@ -1540,6 +1544,9 @@ int diplo_perceived_hegemon(const World *w, const WorldEconomy *econ,
     int best=-1; float t1=0.f, t2=0.f;            /* les deux plus fortes menaces perçues */
     for (int b=0;b<w->n_countries;b++){
         if (b==self || w->country[b].role==POLITY_UNCLAIMED) continue;
+        if (!country_knows(self,b)) continue;   /* PAS D'OMNISCIENCE (décision joueur 2026-08-12) :
+                                                 * on n'embargote/coalise pas contre un inconnu —
+                                                 * même règle que ai_diplo_forecast */
         float t=threat_of(w,econ,wp,d,self,b);
         if (t>t1){ t2=t1; t1=t; best=b; } else if (t>t2) t2=t;
     }
