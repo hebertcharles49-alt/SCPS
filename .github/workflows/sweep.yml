@@ -1,0 +1,90 @@
+# SWEEP CLOUD (2026-08-12) — le CPU des runners GitHub fait tourner le sweep de
+# validation ; le rapport est COMMITTÉ dans la branche (sweep_ci/RESULTS.md) et les
+# logs entiers montent en artifact. Déclenchement : push de ci/sweep_request.txt
+# (le fichier-gâchette) ou bouton « Run workflow » dans l'onglet Actions.
+name: sweep
+on:
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: "nombre de graines (3+101n)"
+        default: "20"
+      years:
+        description: "années par sim"
+        default: "250"
+  push:
+    branches: [ "claude/vibrant-euler-1tgfp3" ]
+    paths: [ "ci/sweep_request.txt" ]
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: build
+        run: |
+          make CC=gcc chronicle scps -j$(nproc)
+      - name: gates
+        run: |
+          make CC=gcc test 2>&1 | tail -3
+          ./scps_viewer --savetest 2>&1 | tail -1
+      - name: sweep
+        run: |
+          NS="${{ github.event.inputs.seeds || '20' }}"
+          YRS="${{ github.event.inputs.years || '250' }}"
+          mkdir -p sweep_ci/logs
+          J=$(nproc); i=0
+          for n in $(seq 0 $((NS-1))); do
+            seed=$((3+101*n))
+            ( ./chronicle $seed 1 $YRS > sweep_ci/logs/seed_$seed.log 2>&1 ) &
+            i=$((i+1)); [ $((i % J)) -eq 0 ] && wait
+          done
+          wait
+          echo "sweep fini : $NS graines × $YRS ans"
+      - name: depouillement
+        run: |
+          R=sweep_ci/RESULTS.md
+          echo "# Sweep cloud — $(date -u +%F' '%T) UTC — $(git rev-parse --short HEAD)" > $R
+          echo "" >> $R
+          echo '## Par graine' >> $R
+          for f in sweep_ci/logs/seed_*.log; do
+            s=$(basename "$f" .log | sed 's/seed_//')
+            pop=$(grep -oE "population : [0-9]+k" "$f" | tail -1 | grep -oE "[0-9]+k")
+            g=$(grep -oE "guerres déclenchées \(total\) . [0-9]+" "$f" | grep -oE "[0-9]+$")
+            bat=$(grep -oE "[0-9]+ livrées · [0-9]+ j/bataille" "$f" | tail -1)
+            om=$(grep -oE "[0-9]+ colonie\(s\) outre-mer" "$f" | tail -1 | grep -oE "^[0-9]+")
+            trav=$(grep -oE "[0-9]+ traversée\(s\)" "$f" | tail -1 | grep -oE "^[0-9]+")
+            raids=$(grep -oE "[0-9]+ raid\(s\)" "$f" | tail -1 | grep -oE "^[0-9]+")
+            aff=$(grep -oE "[0-9]+ affranchissement" "$f" | tail -1 | grep -oE "^[0-9]+")
+            esc=$(grep -oE "[0-9]+ âme\(s\) servile" "$f" | tail -1 | grep -oE "^[0-9]+")
+            sub=$(grep -oE "[0-9]+ substrat" "$f" | tail -1 | grep -oE "^[0-9]+")
+            att=$(grep -oE "[0-9]+ bascule\(s\) d'éthos ENDOGÈNE" "$f" | tail -1 | grep -oE "^[0-9]+")
+            ipm=$(grep -oE "IPM final moyen [0-9.]+" "$f" | grep -oE "[0-9.]+$")
+            loy=$(grep -oE "loyauté moyenne [0-9]+/100" "$f" | tail -1)
+            ages=$(grep -oE "an +[0-9]+ L'[ÂÈ]?[A-Za-zéèê]+ de[s]? [A-Za-zéèêÉ]+" "$f" | sed -E "s/an +([0-9]+) L'[ÂÈ]?[A-Za-z]* de[s]? ([A-Za-zéèêÉ]+)/\2:\1/" | tr '\n' ' ')
+            echo "- **$s** | pop $pop | guerres $g | bat $bat | OM ${om:-0} · trav ${trav:-0} · raids ${raids:-0} | aff ${aff:-0} · esc ${esc:-0} | sub ${sub:-0} · éthos ${att:-0} | IPM $ipm | $loy | $ages" >> $R
+          done
+          echo "" >> $R
+          echo '## Lignes finales complètes (pour dépouillement fin)' >> $R
+          for f in sweep_ci/logs/seed_3.log sweep_ci/logs/seed_912.log; do
+            echo "### $(basename $f)" >> $R
+            echo '```' >> $R
+            grep -E "CLASSES monde|SIÈGES|langue \(couronnes|attracteurs|esclavage|la mer|la course|conseil|fins \(§27\)|CULTURE|soulèvements incarnés|hégémon" "$f" | tail -20 >> $R
+            echo '```' >> $R
+          done
+      - name: publier le rapport
+        run: |
+          git config user.name "sweep-bot"
+          git config user.email "actions@github.com"
+          git add sweep_ci/RESULTS.md
+          git commit -m "sweep cloud : rapport ($(date -u +%F)) [skip ci]" || echo "rien à committer"
+          git push
+      - name: artifact logs entiers
+        uses: actions/upload-artifact@v4
+        with:
+          name: sweep-logs
+          path: sweep_ci/logs/
+          retention-days: 14
