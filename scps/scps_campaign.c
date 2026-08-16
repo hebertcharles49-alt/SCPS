@@ -503,11 +503,10 @@ bool campaign_order_sea(Campaign *c, const World *w, const WorldEconomy *econ,
      * matériel = pas de traversée (le mur est ÉCONOMIQUE, comme la flotte). */
     { float needsup=tune_f("EMBARK_NAVAL_COST",10.f);
       if (needsup>0.f){
-          float got=-econ_region_stock_add((WorldEconomy*)econ, from_region, RES_NAVAL_SUPPLIES, -needsup);
-          if (got < needsup-1e-3f){
-              econ_region_stock_add((WorldEconomy*)econ, from_region, RES_NAVAL_SUPPLIES, got);   /* on rend le partiel */
-              return false;
-          }
+          /* POOL NATIONAL (2026-08-16) : le convoi se grée sur le matériel de l'EMPIRE,
+           * pas sur le seul stock du port (« les stocks sont nationaux »). */
+          if (econ_country_stock_sum(econ, owner, RES_NAVAL_SUPPLIES) < needsup-1e-3f) return false;
+          econ_country_stock_take((WorldEconomy*)econ, owner, RES_NAVAL_SUPPLIES, needsup);
       } }
     if (!econ->region[target_region].coastal) return false;                     /* on atterrit par la côte */
     int ax,ay,bx,by;
@@ -516,7 +515,9 @@ bool campaign_order_sea(Campaign *c, const World *w, const WorldEconomy *econ,
     float days=world_sea_days(w,ax,ay,bx,by);
     if (days<0.f) return false;                                                 /* bassins séparés */
     int need_tr=(int)((packets+9)/10); if (need_tr<1) need_tr=1;                /* 1 transport = 10 paquets */
-    if (navy->n[owner].hull[HULL_TRANSPORT]-navy->n[owner].at_sea < need_tr) return false;
+    bool navy_on = tune_f("NAVY_COMBAT_ON",0.f)>0.f;
+    if (navy_on && navy->n[owner].hull[HULL_TRANSPORT]-navy->n[owner].at_sea < need_tr) return false;
+    if (!navy_on) need_tr=0;   /* OFF = OFF : aucune coque à réserver, le matériel payé EST le convoi */
     FieldArmy *a=&c->army[owner];
     if (a->active && force_units(&a->force)>0)
         army_merge_into(src_force, &a->force);            /* le reliquat rentre (et VIDE a->force) AVANT l'embarquement */
@@ -566,7 +567,16 @@ bool campaign_redirect_corps_sea(Campaign *c, const World *w, const WorldEconomy
     if (days<0.f) return false;                                                    /* bassins séparés */
     long packets=force_units(&a->force);
     int need_tr=(int)((packets+9)/10); if (need_tr<1) need_tr=1;                   /* 1 transport = 10 paquets */
-    if (navy->n[a->owner].hull[HULL_TRANSPORT]-navy->n[a->owner].at_sea < need_tr) return false;
+    bool navy_on2 = tune_f("NAVY_COMBAT_ON",0.f)>0.f;
+    if (navy_on2 && navy->n[a->owner].hull[HULL_TRANSPORT]-navy->n[a->owner].at_sea < need_tr) return false;
+    /* OFF = OFF (2026-08-16) : pas de flotte — le convoi se paie en MATÉRIEL au pool
+     * (même règle que campaign_order_sea) et aucune coque n'est réservée. */
+    { float needsup=tune_f("EMBARK_NAVAL_COST",10.f);
+      if (needsup>0.f){
+          if (econ_country_stock_sum(econ, a->owner, RES_NAVAL_SUPPLIES) < needsup-1e-3f) return false;
+          econ_country_stock_take((WorldEconomy*)econ, a->owner, RES_NAVAL_SUPPLIES, needsup);
+      } }
+    if (!navy_on2) need_tr=0;
     a->dest=target_region; a->next=-1; a->phase=FA_EMBARK;
     a->leg_days = 4.f + (float)packets/15.f;             /* charger 1 000 hommes prend des jours */
     a->days_left= a->leg_days;

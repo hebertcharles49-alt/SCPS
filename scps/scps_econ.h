@@ -613,6 +613,8 @@ float econ_content_dist_faith(const PopCulture *a, const PopCulture *b);
 float econ_culture_phylo_clock(uint16_t a, uint16_t b);
 /* RUINES (2026-08-11) : une province effondrée (< RUIN_POP_FLOOR) est abandonnée,
  * son culture_id demeure — le substrat redevient atteignable. Annuel, renvoie le compte. */
+float econ_country_stock_take(WorldEconomy *e, int cid, Resource r, float need);  /* pool national (2026-08-16) */
+float econ_country_stock_sum (const WorldEconomy *e, int cid, Resource r);
 int econ_ruin_tick(WorldEconomy *e, ModifierStack *drift);
 uint16_t econ_ruling_culture_id(const World *w, const WorldEconomy *econ, int cid);
 const PopCulture *econ_ruling_culture(const World *w, const WorldEconomy *econ, int cid);

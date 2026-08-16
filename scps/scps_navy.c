@@ -234,7 +234,9 @@ void navy_tick(NavyState *ns, const World *w, WorldEconomy *econ, struct DiploSt
               if (paid > 0.f) econ_region_wealth_add(econ, n->home_port, CLASS_LABORER, paid); }
             float need=need_y*(dt_days/365.f);
             re->demand[RES_NAVAL_SUPPLIES]+=need;         /* la demande se VOIT au marché (flux/tick, transitoire assumé) */
-            { float got = -econ_region_stock_add(econ, n->home_port, RES_NAVAL_SUPPLIES, -need);   /* RE-KEY */
+            { float got = econ_country_stock_take(econ, c, RES_NAVAL_SUPPLIES, need);   /* POOL NATIONAL (2026-08-16) :
+                                                       * la flotte mangeait LOCAL et pourrissait pendant que
+                                                       * l'empire avait du matériel ailleurs */
               n->supplies_eaten+=got;
               if (got >= need-1e-4f) n->starve_days=0.f;
               else                   n->starve_days+=dt_days; }
@@ -282,7 +284,9 @@ int navy_colonize_tick(NavyState *ns, const World *w, WorldEconomy *econ, float 
         if (ct->role!=POLITY_PLAYER && ct->role!=POLITY_ANTAGONIST) continue;
         Navy *n=&ns->n[cid];
         if (n->colony_cd>0.f) continue;
-        if (n->hull[HULL_TRANSPORT]-n->at_sea<1) continue;   /* pas de flotte = un mur ÉCONOMIQUE */
+        if (tune_f("NAVY_COMBAT_ON",0.f)>0.f
+            && n->hull[HULL_TRANSPORT]-n->at_sea<1) continue;   /* flotte requise en mode COMBAT seul —
+                                                                 * à OFF le matériel du pool est le convoi */
         int port=navy_best_port(w,econ,cid);
         if (port<0) continue;
         const RegionEconomy *src=&econ->region[port];
@@ -425,24 +429,9 @@ void navy_course_tick(NavyState *ns, const World *w, WorldEconomy *econ,
         if (c!=player){
             Ethos e=navy_ethos(w,econ,c);
             int port=navy_best_port(w,econ,c);
-            /* COMBAT OFF (retour joueur 2026-08-16 : « pourquoi elles sont toujours
-             * là ? ») : couper les missions ne suffisait pas — la doctrine CONSTRUISAIT
-             * encore bordées et escortes pour une guerre navale éteinte (58-458 coques
-             * de tonnage mort au sweep). À OFF, le SEUL besoin vivant est la
-             * projection : on n'entretient que les TRANSPORTS, rien d'autre ne sort
-             * des chantiers. */
-            if (!combat && port>=0){
-                int veut_tr=(int)tune_f("NAVY_TRANSPORT_MIN",1.f);
-                if (veut_tr>0 && (e==ETHOS_MERCANTILE||e==ETHOS_DOMINATEUR)) veut_tr++;
-                /* ON NE CONSTRUIT PAS CE QU'ON NE PEUT PAS NOURRIR (retour joueur
-                 * 2026-08-16) : sans ce gate, le cycle construire→affamer→pourrir→
-                 * reconstruire recommandait ~1 coque/pays/2 ans (257-293 bâties/monde).
-                 * Le port doit tenir ~1 an de fournitures pour UNE coque de plus. */
-                float feed = econ->region[port].stock[RES_NAVAL_SUPPLIES];
-                if (n->build_hull<0 && n->hull[HULL_TRANSPORT]<veut_tr
-                    && feed >= tune_f("NAVY_BUILD_SUPPLY_FLOOR",1.f)*NAVY_UPKEEP_OTHER)
-                    navy_order_build(ns,w,econ,c,HULL_TRANSPORT);
-            }
+            /* OFF = OFF (retour joueur 2026-08-16) : AUCUNE coque ne sort des chantiers —
+             * le MATÉRIEL NAVAL (EMBARK_NAVAL_COST au pool) EST le convoi ; les
+             * traversées et la colonisation ne dépendent plus d'une flotte. */
             if (combat && port>=0){
                 if (e==ETHOS_HONNEUR && n->build_hull<0 && n->hull[HULL_WAR]<1
                     && n->hull[HULL_PIRATE]>0)

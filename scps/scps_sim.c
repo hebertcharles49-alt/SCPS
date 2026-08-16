@@ -1214,7 +1214,11 @@ void sim_day(Sim *s, World *w) {
                            c, pr, w->region[pr].harbor, capr, cap_h, cap_coast?1:0, why);
                 }
                 agency_build(s->ag, s->econ, w, pr, EDI_PORT);
-            } else if (navy_best_port(w,s->econ,c)>=0 && s->navy->n[c].build_hull<0){
+            } else if (tune_f("NAVY_COMBAT_ON",0.f)>0.f
+                       && navy_best_port(w,s->econ,c)>=0 && s->navy->n[c].build_hull<0){
+                /* OFF = OFF (2026-08-16) : ce constructeur de sim était le TROISIÈME
+                 * chantier caché (74-87 coques/monde après l'extinction de la doctrine) —
+                 * sans combat naval, le matériel du pool EST le convoi, aucune coque. */
                 if (s->navy->n[c].hull[HULL_TRANSPORT]<2 && re->treasury>500.f)
                     navy_order_build(s->navy, w, s->econ, c, HULL_TRANSPORT);
                 else if (s->navy->n[c].hull[HULL_MERCHANT]<1 && re->treasury>700.f)

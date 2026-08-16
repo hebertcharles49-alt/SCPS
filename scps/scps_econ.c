@@ -6316,6 +6316,31 @@ int econ_passive_seep(WorldEconomy *e, const World *w){
  * elle et l'identité hybride portera le substrat (l'Anatolie). Les capitales ne
  * tombent jamais en ruines (le pays meurt par d'autres chemins). Annuel.
  * RUIN_POP_FLOOR=0 = jamais de ruines (kill-switch). */
+/* PRÉLÈVEMENT AU POOL NATIONAL (retour joueur 2026-08-16 : la flotte mangeait LOCAL
+ * alors que « les stocks sont nationaux ») — draine les provinces du pays sans ordre
+ * signifiant (prov[].stock = substrat du pool), rend le PRIS réel. La vue region[]
+ * se refait à la clôture. */
+float econ_country_stock_take(WorldEconomy *e, int cid, Resource r, float need){
+    if (!e || cid<0 || need<=0.f || r<=RES_NONE || r>=RES_COUNT) return 0.f;
+    float took=0.f;
+    for (int p=0;p<e->n_prov && need>1e-4f;p++){
+        ProvinceEconomy *pe=&e->prov[p];
+        if (pe->owner!=cid || !pe->active || !pe->colonized) continue;
+        float tk=pe->stock[r]; if (tk>need) tk=need;
+        if (tk>0.f){ pe->stock[r]-=tk; need-=tk; took+=tk; }
+    }
+    return took;
+}
+/* la SOMME du pool (lecture pure — les gates de construction/embarquement). */
+float econ_country_stock_sum(const WorldEconomy *e, int cid, Resource r){
+    if (!e || cid<0 || r<=RES_NONE || r>=RES_COUNT) return 0.f;
+    float s=0.f;
+    for (int p=0;p<e->n_prov;p++){
+        const ProvinceEconomy *pe=&e->prov[p];
+        if (pe->owner==cid && pe->active && pe->colonized) s+=pe->stock[r];
+    }
+    return s;
+}
 int econ_ruin_tick(WorldEconomy *e, ModifierStack *drift){
     float floor_ = tune_f("RUIN_POP_FLOOR", 50.f);
     if (!e || floor_<=0.f) return 0;

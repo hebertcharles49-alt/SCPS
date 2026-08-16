@@ -8764,3 +8764,16 @@ NAVY_BUILD_SUPPLY_FLOOR (1 an de fournitures au port) avant toute commande — 2
 coques/monde → 57-80 (= renouvellement légitime du bois qui pourrit), traversées 17 et
 outre-mer 5 préservés (causal seed 205). Leçon : éteindre un système = vérifier aussi
 ses PRODUCTEURS, pas seulement ses consommateurs.
+
+### Addendum coques 2 (« non c'est pas high ou 2, c'est OFF ») — 2026-08-16
+OFF = OFF : plus AUCUNE coque. Le matériel naval payé au POOL (EMBARK_NAVAL_COST,
+10/stack) EST le convoi — traversées et colonisation ne vérifient plus l'existence
+d'une flotte (need_tr=0 à OFF, gates hull[] bypassés dans order_sea/redirect/
+colonize_tick). Il a fallu éteindre TROIS chantiers successifs : la doctrine navy
+(bordées/escortes), le rebuild de subsistance (transports), et un CONSTRUCTEUR CACHÉ
+DANS SIM.C (~l.1219, transports+marchands au trésor riche — le 3e, jamais audité,
+74-87 coques/monde à lui seul). Causal final : 0 coque bâtie (seeds 3+1013), la mer
+VIT (19 traversées, 3 colonies outre-mer, seed 205). L'entretien naval et
+l'embarquement puisent au POOL NATIONAL (econ_country_stock_take/sum — la flotte
+mangeait local en violation de la doctrine). Leçon x2 : éteindre un système = griller
+TOUS ses producteurs (grep l'API de construction, pas le seul module).
