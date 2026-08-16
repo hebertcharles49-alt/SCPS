@@ -686,6 +686,9 @@
     X(TAX_FLOOR_FRAC,         0.5f) \
     X(NAVY_COLONY_MAX_DAYS,   240.0f) \
     X(NAVY_TRANSPORT_MIN,     1.0f) \
+    X(NAVY_BUILD_SUPPLY_FLOOR, 1.0f) /* annees de fournitures exigees au port AVANT de
+                                            * commander une coque (anti construire-affamer-
+                                            * pourrir-reconstruire, retour joueur 2026-08-16) */ \
     X(WAR_DEATHS_REAL,        1.0f) /* audit 2026-08-12 : les paquets tues debitent la
                                             * strate (capitale) ; 0 = les morts-mots d'hier. */ \
     /* AUDIT 2026-08-12 : 3 leviers vivaient hors registre (SCPS_TUNE les refusait

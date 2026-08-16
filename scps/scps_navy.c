@@ -425,7 +425,25 @@ void navy_course_tick(NavyState *ns, const World *w, WorldEconomy *econ,
         if (c!=player){
             Ethos e=navy_ethos(w,econ,c);
             int port=navy_best_port(w,econ,c);
-            if (port>=0){
+            /* COMBAT OFF (retour joueur 2026-08-16 : « pourquoi elles sont toujours
+             * là ? ») : couper les missions ne suffisait pas — la doctrine CONSTRUISAIT
+             * encore bordées et escortes pour une guerre navale éteinte (58-458 coques
+             * de tonnage mort au sweep). À OFF, le SEUL besoin vivant est la
+             * projection : on n'entretient que les TRANSPORTS, rien d'autre ne sort
+             * des chantiers. */
+            if (!combat && port>=0){
+                int veut_tr=(int)tune_f("NAVY_TRANSPORT_MIN",1.f);
+                if (veut_tr>0 && (e==ETHOS_MERCANTILE||e==ETHOS_DOMINATEUR)) veut_tr++;
+                /* ON NE CONSTRUIT PAS CE QU'ON NE PEUT PAS NOURRIR (retour joueur
+                 * 2026-08-16) : sans ce gate, le cycle construire→affamer→pourrir→
+                 * reconstruire recommandait ~1 coque/pays/2 ans (257-293 bâties/monde).
+                 * Le port doit tenir ~1 an de fournitures pour UNE coque de plus. */
+                float feed = econ->region[port].stock[RES_NAVAL_SUPPLIES];
+                if (n->build_hull<0 && n->hull[HULL_TRANSPORT]<veut_tr
+                    && feed >= tune_f("NAVY_BUILD_SUPPLY_FLOOR",1.f)*NAVY_UPKEEP_OTHER)
+                    navy_order_build(ns,w,econ,c,HULL_TRANSPORT);
+            }
+            if (combat && port>=0){
                 if (e==ETHOS_HONNEUR && n->build_hull<0 && n->hull[HULL_WAR]<1
                     && n->hull[HULL_PIRATE]>0)
                     navy_order_build(ns,w,econ,c,HULL_WAR);     /* la course s'escorte */

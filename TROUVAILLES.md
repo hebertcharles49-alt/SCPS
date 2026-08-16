@@ -8753,3 +8753,14 @@ l'abaisser (scps/lang_baseline.txt) à chaque reflux futur.
 **Restes** : CD de raid côtier toujours rep-province (l'autre moitié du verbe
 région-grain, non demandée) ; sweep de validation (naval OFF + embark-coût + fog +
 ministres) au feu vert du soir.
+
+### Addendum coques (retour joueur 2026-08-16 « pourquoi elles sont toujours là ? »)
+Deux étages découverts en creusant : (1) le gate OFF coupait missions/raids mais la
+DOCTRINE construisait encore bordées+escortes (tonnage mort) — à OFF, seuls les
+TRANSPORTS sortent des chantiers ; (2) le vrai moteur de l'accumulation était le cycle
+construire→affamer→pourrir→reconstruire (~1 coque/pays/2 ans) : la coque unique meurt
+de faim au port pauvre et la doctrine la recommande. Gate de SUBSISTANCE :
+NAVY_BUILD_SUPPLY_FLOOR (1 an de fournitures au port) avant toute commande — 257-293
+coques/monde → 57-80 (= renouvellement légitime du bois qui pourrit), traversées 17 et
+outre-mer 5 préservés (causal seed 205). Leçon : éteindre un système = vérifier aussi
+ses PRODUCTEURS, pas seulement ses consommateurs.
