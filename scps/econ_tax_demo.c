@@ -70,8 +70,18 @@ static void rig(WorldEconomy *e, int r, Ethos ethos, float elite_wealth, float s
     re->culture.ethos=ethos;
     re->n_bld=0;
     re->alloc_on=false;
-    for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; re->stock[k]=1.0e6f; }
+    for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; re->stock[k]=1.0e6f; re->price[k]=1.0f; }
     re->raw_cap[RES_GRAIN]=1000.f;   /* M3i : de quoi produire un revenu comparable entre rigs */
+    /* VAGUE ÎLES : deux rigs sur des provinces DIFFÉRENTES du monde régénéré peuvent
+     * hériter d'un price[]/habitability DE GENÈSE très inégal (mesuré : une province
+     * tombée sur un îlot price[GRAIN]=0, habitability=0 contre 1.0/0.45 pour l'autre) —
+     * la valeur produite (value=out×price, scps_econ.c ~4119) s'effondre à ZÉRO pour l'une
+     * des deux, écrasant totalement l'effet d'éthos/évasion que ce banc mesure (le
+     * Dominateur « gagnait » alors qu'il n'a produit AUCUNE valeur à taxer, un artefact de
+     * fixture, pas le mécanisme testé). price[] ci-dessus et habitability ici sont donc
+     * remis à un repère COMMUN — le seul degré de liberté qui doit rester entre deux rigs
+     * comparés est l'éthos/la richesse/la satisfaction passés en paramètre. */
+    re->habitability=1.0f;
     re->strata[CLASS_LABORER].pop=100.f;   re->strata[CLASS_LABORER].wealth=0.f;
     re->strata[CLASS_BOURGEOIS].pop=100.f; re->strata[CLASS_BOURGEOIS].wealth=0.f;
     re->strata[CLASS_ELITE].pop=100.f;     re->strata[CLASS_ELITE].wealth=elite_wealth;

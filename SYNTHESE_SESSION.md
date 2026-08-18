@@ -1,4 +1,21 @@
-# SYNTHÈSE SESSION — 2026-08-18 : vague CLIMAT committée
+# SYNTHÈSE SESSION — 2026-08-18 : vagues CLIMAT puis ÎLES committées
+
+## Vague ÎLES (dernier commit)
+- 3 étages : PLATEAU (fragment détaché, détroit dérivé de la taille, tangent à la côte,
+  ~55 %/noyau, 6 essais anti-avalement ellipse-exacts) · MOYEN (chaînes 1-2 garanties,
+  tête ×1.9, rejet vers l'océan) · HAUTURIER (pics fantômes francs : mer fantôme locale
+  abaissée une fois le seuil passé).
+- Protections structurelles : mers internes creusent AVANT l'union îlots (une Caspienne
+  noyait une Sicile) ; force d'émergence PAR îlot (0.55 était codé en dur).
+- Mesure 24 graines : 24/24 mondes ≥1 île, spectre écueil→22.8k cellules ; carte regardée
+  (graine 219 : « l'Angleterre » provincée + satellite). Restes : poussières 1-2 cellules
+  (cull à juger), fusion des noyaux multi-masses (« archipel » = 1 bloc) = chantier
+  COMPACITÉ (aussi la clé des déserts continentaux).
+- Appellation : trace genèse « N noyau(x) » (demandé) vs ligne « masses » (continents
+  RÉELS mesurés + centroïdes pour pointer les probes).
+- 2e recalibrage bancs du jour (5 bancs, agents, fixtures seules) — pièges frais dans
+  TROUVAILLES.md : régions d'îlots SANS province active (rep=-1), micro-nation à grief nul.
+
 
 ## Ce qui vient de sortir (ce commit)
 - **Vague CLIMAT** (critique worldgen du joueur) : itération climat→biomes provisoires→climat

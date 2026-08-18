@@ -233,10 +233,18 @@ typedef struct {
 static ContShape g_cshape[MAX_CONTSHAPE];
 static int       g_ncont = 3;
 
-#define MAX_ISLET 14
-typedef struct { float cx,cy,ax,ay,cosA,sinA; } Islet;
+#define MAX_ISLET 28
+typedef struct { float cx,cy,ax,ay,cosA,sinA,strength; } Islet;
 static Islet g_islet[MAX_ISLET];
 static int   g_nislet;
+
+/* distance d'ellipse normalisée d'un point à un lobe (1.0 = bord nominal) */
+static float lobe_edist(const ContLobe *L, float px, float py){
+    float ddx=wrap_dx(px-L->cx), ddy=py-L->cy;
+    float lrx=ddx*L->cosA+ddy*L->sinA;
+    float lry=-ddx*L->sinA+ddy*L->cosA;
+    return sqrtf((lrx/L->ax)*(lrx/L->ax)+(lry/L->ay)*(lry/L->ay));
+}
 
 static void continents_init(int n, float seed_f) {
     (void)seed_f;
@@ -330,22 +338,40 @@ static void continents_init(int n, float seed_f) {
     }
 
     /* Archipels : 0-3 chaînes d'îles indépendantes */
-    int nchains=(int)(rng_f()*2.f);   /* peu d'archipels : ils gonflent le compte de continents */
+    /* 2026-08-18 (« ni Angleterre, ni Corse ») : chaînes REVIGORÉES — 1-2 par
+     * monde (l'ancien tirage donnait ZÉRO une fois sur deux), îlots ×~2, et la
+     * TÊTE de chaîne est une GRANDE ÎLE (Corse/Crète : ×1.9, émergence franche).
+     * Le compte de continents est gardé par le bucket « Archipel » de
+     * compute_continents — plus besoin d'affamer les îles pour le protéger. */
+    int nchains=1+(int)(rng_f()*2.f);
     for (int c=0;c<nchains;c++) {
-        int nisles=1+(int)(rng_f()*3.f);
-        float bx=rng_f()*SCPS_W;
-        float by=(0.08f+0.84f*rng_f())*SCPS_H;
+        int nisles=2+(int)(rng_f()*3.f);
+        /* Tirage AVEC REJET (2026-08-18) : la chaîne cherche l'OCÉAN — posée sur
+         * une masse elle s'y fondait (mondes à ZÉRO île, graine 7). 8 essais,
+         * garde le premier point hors du cœur des lobes principaux. */
+        float bx=0.f, by=0.f;
+        for (int t2=0;t2<8;t2++) {
+            bx=rng_f()*SCPS_W;
+            by=(0.08f+0.84f*rng_f())*SCPS_H;
+            int clear=1;
+            for (int ci=0;ci<n && clear;ci++)
+                for (int li=0;li<g_cshape[ci].n && clear;li++)
+                    if (lobe_edist(&g_cshape[ci].lobe[li],bx,by)<1.10f) clear=0;
+            if (clear) break;
+        }
         float dir=rng_f()*6.2832f;
         float spacing=0.05f*SCPS_W;
-        float iR=0.012f*SCPS_H*(0.5f+rng_f()*1.5f);
+        float iR=0.028f*SCPS_H*(0.6f+rng_f()*1.4f);
         for (int k=0;k<nisles&&g_nislet<MAX_ISLET;k++) {
             Islet *il=&g_islet[g_nislet++];
+            float rr=(k==0)?iR*1.9f:iR;          /* tête de chaîne = grande île */
             il->cx=bx+cosf(dir)*spacing*(float)k+(rng_f()-0.5f)*spacing*0.3f;
             il->cy=by+sinf(dir)*spacing*(float)k+(rng_f()-0.5f)*spacing*0.3f;
             float asp=1.f+rng_f()*1.0f;  /* max 2.0 → îlots moins filiformes */
-            il->ax=iR*asp; il->ay=iR;
+            il->ax=rr*asp; il->ay=rr;
             float a=rng_f()*6.2832f;
             il->cosA=cosf(a); il->sinA=sinf(a);
+            il->strength=(k==0)?0.72f:0.62f;
         }
     }
 
@@ -363,7 +389,52 @@ static void continents_init(int n, float seed_f) {
             il->cy=my+sinf(brAngle)*bridgeLen*(k-0.5f);
             il->ax=0.018f*SCPS_W; il->ay=0.008f*SCPS_H;
             il->cosA=cosf(brAngle); il->sinA=sinf(brAngle);
+            il->strength=0.55f;                  /* comportement historique */
         }
+    }
+
+    /* ÎLE DE PLATEAU (Angleterre/Sicile, 2026-08-18) : un FRAGMENT détaché du
+     * corps principal par un DÉTROIT — le manque structurel (aucun mécanisme ne
+     * séparait un morceau de continent). Géométrie : rayon Ra de l'ellipse du
+     * lobe 0 dans une direction tirée ; la côte réelle vit vers ~0.72·Ra (seuil
+     * du masque), l'île (émergence 0.85 ⇒ côte ~0.70·iR) se pose pour laisser
+     * un détroit court et franchissable. Grand axe TANGENT à la côte : l'île
+     * LONGE le continent (silhouette Angleterre), le détroit reste régulier.
+     * ~45 %% des continents ⇒ 1-3 par monde typique ; l'effilement (tamt) et
+     * les mers internes croquent l'île de temps en temps — c'est la variété. */
+    for (int i=0;i<n && g_nislet<MAX_ISLET;i++) {
+        if (rng_f()>=0.55f) continue;
+        const ContLobe *cl=&g_cshape[i].lobe[0];
+        /* 6 essais d'angle : sur un monde multi-noyaux, l'île tirée vers une
+         * AUTRE masse se faisait avaler (mondes « archipel » sans une seule
+         * île de plateau). On garde la première direction dont le centre est
+         * hors du cœur de TOUTES les autres masses. */
+        float a=0.f, ca=1.f, sa=0.f, Ra=0.f, iR=0.f, C=0.f;
+        int ok=0;
+        for (int t2=0;t2<6 && !ok;t2++) {
+            a=rng_f()*6.2832f; ca=cosf(a); sa=sinf(a);
+            float lx=ca*cl->cosA+sa*cl->sinA;    /* direction a en repère lobe */
+            float ly=-ca*cl->sinA+sa*cl->cosA;
+            Ra=1.f/sqrtf((lx/cl->ax)*(lx/cl->ax)+(ly/cl->ay)*(ly/cl->ay));
+            iR=Ra*(0.26f+rng_f()*0.18f);         /* GRANDE : jusqu'à ~0.44·Ra */
+            /* centre = côte réelle (~0.72·Ra) + rayon côtier de l'île (~0.70·iR)
+             * + détroit tiré — DÉRIVÉ de la taille. */
+            C=Ra*0.72f + iR*0.70f + Ra*(0.04f+rng_f()*0.10f);
+            float px=cl->cx+ca*C, py=cl->cy+sa*C;
+            ok=1;
+            for (int ci=0;ci<n && ok;ci++) {
+                if (ci==i) continue;
+                for (int li=0;li<g_cshape[ci].n && ok;li++)
+                    if (lobe_edist(&g_cshape[ci].lobe[li],px,py)<1.10f) ok=0;
+            }
+        }
+        if (!ok) continue;
+        Islet *il=&g_islet[g_nislet++];
+        il->cx=cl->cx+ca*C; il->cy=cl->cy+sa*C;
+        float asp=1.25f+rng_f()*0.55f;
+        il->ax=iR*asp; il->ay=iR;
+        il->cosA=-sa; il->sinA=ca;               /* grand axe tangent à la côte */
+        il->strength=0.88f;
     }
 }
 
@@ -429,6 +500,19 @@ static float continental_mask(int x, int y, float seed_f) {
         }
         if (cval>best) best=cval;   /* continents distincts : union dure */
     }
+    /* MERS INTERNES : on creuse des bassins INTÉRIEURS aux grandes masses (type
+     * Méditerranée / Caspienne / Tethys) — bruit basse fréquence, seuillé pour
+     * rester localisé. La masse reste vaste (plus de terres), mais ENCLOT des
+     * mers au lieu d'un intérieur plein. CAUSAL (provinces côtières, détroits).
+     * 2026-08-18 : le creusement vient AVANT l'union avec les ÎLOTS — il ne
+     * mord que le champ continental (un bassin tiré sur une Sicile la noyait
+     * en île-pixel ; une Caspienne n'a rien à faire sur une île). */
+    float basin=stb_perlin_fbm_noise3(fx*0.0105f+11.f, fy*0.0105f+7.f, seed_f+1900.f,2.f,0.5f,4);
+    if (best>0.24f && basin>0.30f) {
+        float ex=basin-0.30f;
+        best -= ex*ex*7.0f;          /* quadratique : centre franchement NOYÉ (mer interne) */
+    }
+    if (best<0.f) best=0.f;
     for (int i=0;i<g_nislet;i++) {
         Islet *il=&g_islet[i];
         float ddx=wrap_dx(fx-il->cx), ddy=fy-il->cy;
@@ -436,19 +520,9 @@ static float continental_mask(int x, int y, float seed_f) {
         float lry=-ddx*il->sinA+ddy*il->cosA;
         float d=sqrtf((lrx/il->ax)*(lrx/il->ax)+(lry/il->ay)*(lry/il->ay));
         float lobe=1.f-clampf(d,0.f,1.f);
-        lobe=lobe*lobe*(3.f-2.f*lobe)*0.55f;
+        lobe=lobe*lobe*(3.f-2.f*lobe)*il->strength;
         if (lobe>best) best=lobe;
     }
-    /* MERS INTERNES : on creuse des bassins INTÉRIEURS aux grandes masses (type
-     * Méditerranée / Caspienne / Tethys) — bruit basse fréquence, seuillé pour
-     * rester localisé. La masse reste vaste (plus de terres), mais ENCLOT des
-     * mers au lieu d'un intérieur plein. CAUSAL (provinces côtières, détroits). */
-    float basin=stb_perlin_fbm_noise3(fx*0.0105f+11.f, fy*0.0105f+7.f, seed_f+1900.f,2.f,0.5f,4);
-    if (best>0.24f && basin>0.30f) {
-        float ex=basin-0.30f;
-        best -= ex*ex*7.0f;          /* quadratique : centre franchement NOYÉ (mer interne) */
-    }
-    if (best<0.f) best=0.f;
     /* Monde ROND : plus d'atténuation aux bords E/O (les continents se
      * prolongent d'un bord à l'autre) ; on garde seulement le fondu polaire N/S. */
     float edge=clampf(ny*6.f,0,1)*clampf((1.f-ny)*6.f,0,1);
@@ -1203,7 +1277,19 @@ static void step_ghost_layer(float *height, float seed_f) {
          * les plateaux (proche surface) ; au-dessus des fosses, seuls les plus
          * hauts reliefs percent → cohérent avec une dorsale océanique. */
         float shelf=clampf((height[i]-(SEA_LEVEL-0.16f))/0.16f,0.25f,1.f);
-        height[i]+=emerged*AMP*shelf;
+        /* CHAPELET HAUTURIER (2026-08-18) : un pic fantôme FRANC (point chaud)
+         * ignore l'atténuation de fosse — Hawaï naît au milieu de l'océan,
+         * points de relâche sur les routes hauturières. Seuil haut ⇒ rare. */
+        float hot=clampf((g-(GSEA+0.06f))/0.05f,0.f,1.f);
+        float em2=emerged*shelf;
+        if (hot>0.f) {                       /* point chaud CONFIRMÉ : la mer
+                                              * fantôme locale baisse → une vraie
+                                              * île de quelques cellules, plus un
+                                              * pixel au ras du seuil */
+            float eh=(g-(GSEA-0.06f))*hot;
+            if (eh>em2) em2=eh;
+        }
+        height[i]+=em2*AMP;
     }
 }
 
@@ -1964,6 +2050,22 @@ static void compute_continents(World *w, const float *height) {
     for (int i=0;i<ntmp;i++) order[i]=i;
     for (int i=0;i<ntmp;i++) for (int j=i+1;j<ntmp;j++)
         if (tarea[order[j]]>tarea[order[i]]){ int t=order[i];order[i]=order[j];order[j]=t; }
+
+    /* Instrumentation ÎLES (2026-08-18) : composantes et aires — la preuve à
+     * l'œil que les 3 étages (plateau/moyenne/chapelet) existent vraiment. */
+    { int nisl=0;
+      for (int i2=1;i2<ntmp;i2++) if (tarea[order[i2]]<tarea[order[0]]/10) nisl++;
+      printf("[scps] masses : %d composante(s) · aires ", ntmp);
+      for (int i2=0;i2<ntmp && i2<10;i2++) printf("%d ", tarea[order[i2]]);
+      printf("· îles (<10%% de la 1re) : %d\n", nisl);
+      /* centroïdes (x,y) des composantes — pour pointer la caméra des probes */
+      { long *sx=(long*)calloc((size_t)ntmp*2,sizeof(long));
+        if (sx){ long *sy=sx+ntmp;
+          for (int i2=0;i2<SCPS_N;i2++) if (comp[i2]>=0){ sx[comp[i2]]+=i2%SCPS_W; sy[comp[i2]]+=i2/SCPS_W; }
+          printf("[scps] centroïdes :");
+          for (int i2=0;i2<ntmp && i2<8;i2++){ int t=order[i2];
+              printf(" #%d(%ld,%ld)", i2, sx[t]/(tarea[t]>0?tarea[t]:1), sy[t]/(tarea[t]>0?tarea[t]:1)); }
+          printf("\n"); free(sx); } } }
 
     int remap[MAXTMP];
     int keep = ntmp<SCPS_MAX_CONTINENT ? ntmp : SCPS_MAX_CONTINENT;
@@ -4514,7 +4616,10 @@ void world_generate(World *w, const WorldParams *P) {
 
     /* VARIÉTÉ : trace l'archétype DE GRAINE + les paramètres RÉELS (qui peuvent
      * différer si l'appelant a surchargé — sliders/argv priment toujours). */
-    printf("[scps] graine %u — archétype « %s » : %d continents · terres %.2f · âge %.2f · "
+    /* « noyau » et pas « continent » : c'est le NOMBRE DEMANDÉ au générateur de
+     * masses — les continents RÉELS sont mesurés après coup (ligne « masses »,
+     * compute_continents) et peuvent fusionner/se fendre. Deux mots, deux choses. */
+    printf("[scps] graine %u — archétype « %s » : %d noyau(x) · terres %.2f · âge %.2f · "
            "érosion %.2f · relief %.2f · temp %.2f · humidité %.2f\n",
            P->seed, worldgen_archetype_name(P->seed), P->n_continents, P->land_amount,
            P->world_age, P->erosion, P->mountains, P->temperature, P->humidity);

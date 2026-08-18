@@ -238,8 +238,25 @@ int main(int argc,char**argv){
      *   s'accorder, sinon le joueur est sur/sous-facturé (le bug que ce banc verrouille). */
     printf("\n── 7. Empire-aware : la matière d'une région sœur est GRATUITE (gate=devis=consume) ──\n");
     {
-        int X=-1, Y=-1;                                    /* X = chantier (vide), Y = sœur (riche), même empire 0 */
-        for (int r=0;r<econ->n_regions;r++){ if (X<0) X=r; else { Y=r; break; } }
+        /* X = chantier (vide), Y = sœur (riche), même empire 0. VAGUE ÎLES : les deux
+         * premières régions du monde peuvent être des îlots SANS AUCUNE province active
+         * (region_rep_prov=-1, aucun repli actif trouvé non plus) — econ_region_stock_add
+         * y bascule alors dans son chemin « FIXTURE (banc) : vue seule » (scps_econ.c), qui
+         * mute SEULEMENT region[].stock, jamais prov[] : le mirror_prov ci-dessous pousse
+         * bien la fixture sur UNE province (repli « premier membre trouvé »), mais cette
+         * province reste INACTIVE ⇒ la conso RÉELLE ignore prov[] et écrit region[] à la
+         * place ⇒ l'econ_aggregate_regions() de clôture RE-SOMME prov[] (jamais touché) et
+         * EFFACE la mutation. On choisit donc Y (et X, par cohérence) parmi les régions
+         * dont la REPRÉSENTATIVE est une vraie province ACTIVE — le même repère que le
+         * moteur (region_carrier_prov) utilisera réellement pour la conso. */
+        int X=-1, Y=-1;
+        for (int r=0;r<econ->n_regions;r++){
+            int rp=econ_region_rep_province(econ,r);
+            if (rp<0 || rp>=econ->n_prov || econ->prov[rp].region!=r || !econ->prov[rp].active) continue;
+            if (X<0) X=r; else { Y=r; break; }
+        }
+        if (Y<0){ printf("   (pas assez de régions actives pour le test empire-aware — sauté)\n"); }
+        else {
         econ->region[X].owner=0; econ->region[Y].owner=0;
         /* B9 : ZÉRO toutes les provinces de l'empire 0 (pas seulement region[]) — sinon un
          * reliquat de genèse dans une AUTRE province owner==0 fausserait la conso empire-aware
@@ -257,6 +274,7 @@ int main(int argc,char**argv){
         econ_aggregate_regions(econ);   /* B9 : la conso a mordu prov[] — tirer l'état RÉEL vers region[] */
         ok("la CONSO puise la SŒUR Y (−100), X reste vide",
            fabsf(econ->region[Y].stock[RES_STONE]-(y0-100.f))<1e-2f && econ->region[X].stock[RES_STONE]<1e-3f);
+        }
     }
 
     /* ---- 8. NON-RÉGRESSION : le DÉFICIT importé est FACTURÉ (×marge), et le NU de l'import

@@ -149,12 +149,19 @@ int main(int argc, char **argv){
 
     /* ═══ 4. CHOC ÉCONOMIQUE — les bras quittent l'atelier ══════════════ */
     printf("\n── 4. Le choc économique : les mobilisés quittent la main-d'œuvre ──\n");
+    /* RECALIBRAGE FIXTURE (vague îles, 2026-08-18) : sur cette graine (42), la région 1
+     * n'a plus de province REPRÉSENTATIVE cachée (econ_region_rep_province==-1 — la
+     * refonte îles a redécoupé les masses de terre assez pour vider cette région de
+     * porteuse active reconnue par econ_build_adjacency) ⇒ revolt_ignite refuse tout net
+     * (pid<0), main-d'œuvre inchangée en façade seulement parce que le helper LOCAL
+     * rep_prov() retombe sur un scan brut que le moteur, lui, n'utilise pas. Région 3
+     * EST valide sur cette graine et inutilisée ailleurs dans ce banc → déplacé ici. */
     RevoltState rs; revolt_init(&rs);
-    rig(e, 1, OWNER, 0.05f, 0.20f, 0.4f, 0.f);
-    push(e, 1, grp(HERITAGE_CLANIQUE, CLASS_LABORER, 8000, 2.f, 0.15f, foreign, 201));
-    int p1=rep_prov(e,1);
+    rig(e, 3, OWNER, 0.05f, 0.20f, 0.4f, 0.f);
+    push(e, 3, grp(HERITAGE_CLANIQUE, CLASS_LABORER, 8000, 2.f, 0.15f, foreign, 201));
+    int p1=rep_prov(e,3);
     float labor_before=e->prov[p1].strata[CLASS_LABORER].pop;
-    int idx=revolt_ignite(&rs, w, e, drift, NULL, NULL, 1, 0.4f);
+    int idx=revolt_ignite(&rs, w, e, drift, NULL, NULL, 3, 0.4f);
     float labor_after=e->prov[p1].strata[CLASS_LABORER].pop;
     printf("   main-d'œuvre : %.0f → %.0f (partis au combat : %ld)\n",
            labor_before, labor_after, idx>=0?rs.list[idx].mobilized:0);
@@ -223,10 +230,13 @@ int main(int argc, char **argv){
 
     /* ═══ 8. SCAN — la misère SOUTENUE finit par lever la région ════════ */
     printf("\n── 8. Le scan : la misère soutenue (mois après mois) finit par soulever ──\n");
+    /* RECALIBRAGE FIXTURE (vague îles, 2026-08-18) : même trou que le bloc 4 —
+     * région 1 sans rep_prov cachée sous la carte post-îles → déplacé sur la région 3
+     * (valide, inutilisée ailleurs dans ce banc hormis le bloc 4 déjà déplacé ici). */
     revolt_init(&rs);
-    solo_owner(e, 1, OWNER);
-    rig(e, 1, OWNER, 0.02f, 0.05f, 0.5f, 0.f);
-    push(e, 1, grp(HERITAGE_CLANIQUE, CLASS_LABORER, 9000, 2.f, 0.12f, foreign, 211));
+    solo_owner(e, 3, OWNER);
+    rig(e, 3, OWNER, 0.02f, 0.05f, 0.5f, 0.f);
+    push(e, 3, grp(HERITAGE_CLANIQUE, CLASS_LABORER, 9000, 2.f, 0.12f, foreign, 211));
     int months=0;
     for (; months<6 && revolt_active_count(&rs)==0; months++) revolt_scan(&rs, w, e, drift, NULL, NULL, NULL, 30);
     printf("   région désespérée : soulèvement au bout de %d mois de misère soutenue\n", months);
@@ -241,12 +251,14 @@ int main(int argc, char **argv){
 
     /* ═══ 9. REVANCHISME — subir la conquête arme le séparatisme ════════ */
     printf("\n── 9. Le revanchisme : la province fraîchement conquise se libère « quoi qu'il arrive » ──\n");
+    /* RECALIBRAGE FIXTURE (vague îles, 2026-08-18) : même trou que le bloc 4 — région 1
+     * sans rep_prov cachée sous la carte post-îles → déplacé sur la région 3. */
     /* Garnison FORTE (citadelle H=10) : sans revanchisme, la sécession est écrasée… */
     revolt_init(&rs);
-    solo_owner(e, 1, OWNER);
-    rig(e, 1, OWNER, 0.4f, 0.4f, 0.3f, 10.f);
-    push(e, 1, grp(HERITAGE_CLANIQUE, CLASS_LABORER, 6000, 2.f, 0.12f, foreign, 221));
-    int j1=revolt_ignite(&rs, w, e, drift, NULL, NULL, 1, 0.3f);
+    solo_owner(e, 3, OWNER);
+    rig(e, 3, OWNER, 0.4f, 0.4f, 0.3f, 10.f);
+    push(e, 3, grp(HERITAGE_CLANIQUE, CLASS_LABORER, 6000, 2.f, 0.12f, foreign, 221));
+    int j1=revolt_ignite(&rs, w, e, drift, NULL, NULL, 3, 0.3f);
     revolt_tick(&rs, w, e, drift, wl, wp, NULL, NULL, NULL, 120);
     int out_plain = (j1>=0)?rs.list[j1].outcome:-1;
     /* …MÊME garnison, mais la province vient d'être conquise (revanchisme actif) → libre. */

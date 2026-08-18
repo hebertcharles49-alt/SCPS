@@ -101,6 +101,32 @@ static int find_mono_owned_region_with_rp(const WorldEconomy *e, int *out_rp){
     }
     return -1;
 }
+/* CONSEIL (§15, motif V2a) : le candidat "human" (capitale peuplée + settled) peut être
+ * un pays quasi-mono-groupe (VAGUE ÎLES : micro-nations insulaires) dont l'UNIQUE
+ * population penche déjà PLEINEMENT vers la faction qu'on avance pour l'aigrir (« opp »,
+ * l'opposée du siège testé) — faction_lever_apply n'aigrit alors JAMAIS personne (aucune
+ * opposition-à-soi-même dans le mélange de leans du pays) : grief no-op silencieux,
+ * betrayal_ready ne peut jamais devenir vrai (même famille que le fix statecraft_demo du
+ * matin — un siège/levier peut tomber sur un pays sans porteur RÉEL du mécanisme testé).
+ * On SONDE chaque candidat avec un vrai appel (aucun accesseur ne lit le mélange de leans
+ * autrement) puis on REMBOBINE avec faction_levers_on_coup (RAZ tout le grief du pays,
+ * seul effet de bord de la sonde) si ça ne « prend » pas. */
+static int find_council_human(const World *w, const WorldEconomy *e, uint32_t seed,
+                              EthosFaction *out_fac0, EthosFaction *out_opp, int *out_capr){
+    for (int c=0;c<w->n_countries;c++){
+        int cr=cap_region(w,c);
+        if (cr<0 || cr>=e->n_regions || !e->region[cr].culture.settled || e->region[cr].owner!=c) continue;
+        EthosFaction fac0 = statecraft_council_faction(seed, c, 0, 0, statecraft_council_gen(0));
+        EthosFaction opp = FAC_CONQUERANT;
+        for (int f=0; f<FAC_COUNT; f++) if (faction_opposition(fac0,(EthosFaction)f) > 0.9f){ opp=(EthosFaction)f; break; }
+        float g0 = faction_grievance(c, fac0);
+        faction_lever_apply(c, opp, 1.5f);
+        float g1 = faction_grievance(c, fac0);
+        faction_levers_on_coup(c);                    /* rembobine : RAZ tout le grief sondé */
+        if (g1 > g0 + 1e-4f){ *out_fac0=fac0; *out_opp=opp; *out_capr=cr; return c; }
+    }
+    return -1;
+}
 static PopCulture make_fiche(float valeurs, Ethos e, Heritage heritage){
     PopCulture pc; memset(&pc,0,sizeof pc);
     pc.langue=5.f; pc.valeurs=valeurs; pc.subsistance=6.f; pc.parente=5.f; pc.religion=5.f;
@@ -1046,13 +1072,13 @@ int main(int argc, char **argv){
     printf("\n-- section 15 : V2b LOT 2 — le Conseil -----------------------\n");
     {
         events_init(s.ev,s.w,seed);
-        int capr=-1, human=-1;
-        for (int c=0;c<s.w->n_countries && human<0;c++){
-            int cr=cap_region(s.w,c);
-            if (cr>=0 && cr<s.econ->n_regions && s.econ->region[cr].culture.settled && s.econ->region[cr].owner==c)
-                { human=c; capr=cr; }
-        }
-        (void)capr;
+        /* human choisi par find_council_human (motif V2a) : la capitale peuplée seule
+         * ne suffit pas — le pays doit aussi avoir un porteur RÉEL du canal grief/opp
+         * du siège testé (cf. commentaire de find_council_human), sinon betrayal_ready
+         * ne peut jamais devenir vrai (grief no-op silencieux, VAGUE ÎLES). */
+        EthosFaction fac0=FAC_CONQUERANT, opp=FAC_CONQUERANT;
+        int capr=-1;
+        int human = find_council_human(s.w, s.econ, s.w->seed, &fac0, &opp, &capr);
         if (human>=0){
             /* Sans siège pourvu : les triggers TRAHISON/succession/pair renvoient
              * tous faux (statecraft_council_seated<0 partout, aucun siège assis). */
@@ -1069,11 +1095,9 @@ int main(int argc, char **argv){
             ok("les 3 sièges sont pourvus (recrutement V2a)", all_seated);
 
             /* betrayal_ready exige la loyauté au bord (~15) — on sature le grief
-             * de la faction OPPOSÉE au siège Savoir pour la faire chuter, puis on
-             * tourne assez de mois pour que loyalty_tick converge. */
-            EthosFaction fac0 = statecraft_council_faction(s.w->seed, human, 0, 0, statecraft_council_gen(0));
-            EthosFaction opp = FAC_CONQUERANT;
-            for (int f=0; f<FAC_COUNT; f++) if (faction_opposition(fac0,(EthosFaction)f) > 0.9f){ opp=(EthosFaction)f; break; }
+             * de la faction OPPOSÉE au siège Savoir (fac0/opp posés par
+             * find_council_human, même paire qu'elle a sondée) puis on tourne assez
+             * de mois pour que loyalty_tick converge. */
             for (int t=0;t<600;t++){   /* 50 ans de mois : la loyauté a le temps de converger */
                 faction_lever_apply(human, opp, 1.5f);   /* saturé (>1.0 interne) : creuse le grief de fac0 */
                 statecraft_council_loyalty_tick(s.sc, s.w, s.econ, s.w->seed, 1.f/12.f);

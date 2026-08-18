@@ -8957,3 +8957,174 @@ pour `scps_api_demo`, monde par défaut inchangé pour `endgame_demo` — seed 9
 pour `agency_demo`/`ai_demo` plus haut : scanner prov/or/bourgeois à l'an 20 avant de
 chercher un bug de façade. Le fix province-vs-région d'`endgame_demo` (#3), lui, est
 structurel (pas lié à une graine) et devrait rester vert indéfiniment.
+
+## 2026-08-18 — Re-calibrage post-vague ÎLES : intertrade/econ_tax/events_demo, fixture only (sonnet)
+
+Contexte : la vague ÎLES (`scps_world.c` — plateaux détachés, chaînes revigorées,
+chapelets hauturiers) a re-tiré les mondes de toutes les graines, en plus de la vague
+climat déjà journalisée plus haut. `intertrade_demo`, `econ_tax_demo`, `events_demo`
+étaient rouges. Diagnostiqué et corrigé un par un — **aucun moteur touché**
+(`scps_intertrade.c`, `scps_econ.c`, `scps_factions.c`, `scps_statecraft.c`,
+`scps_world.c` : diff nul). Les trois mécanismes sont SAINS ; seule la fixture ne posait
+plus les préconditions.
+
+**Découvertes**
+
+1. **`intertrade_demo` §7 (empire-aware) : `econ_region_stock_add` a un chemin « FIXTURE
+   (banc) : vue seule » (scps_econ.c:3103) qui n'écrit QUE `region[].stock`, jamais
+   `prov[]`, dès que `region_carrier_prov` ne trouve AUCUNE province ACTIVE dans la
+   région.** Le helper de fixture `mirror_prov` (posé B9) pousse pourtant sa valeur sur
+   UNE province (repli « premier membre trouvé », sans vérifier `active`) — les deux
+   chemins tombent d'accord sur `rep=-1` (vérifié par instrumentation : `region_rep_prov`
+   ET le scan de repli renvoient -1, aucune province active dans la région choisie), donc
+   la conso RÉELLE écrit bien `region[].stock` directement… MAIS l'appel de clôture
+   `econ_aggregate_regions()` (nécessaire pour les AUTRES assertions du banc) RE-SOMME
+   ensuite `prov[]` (jamais touché par la mutation « vue seule ») et ÉCRASE le résultat.
+   Piège : ce chemin FIXTURE existe pour les mondes SYNTHÉTIQUES sans provinces (banc
+   `intertrade_demo` §9, `WorldEconomy` calloc'd à la main) — mais `X`/`Y` ici étaient les
+   deux PREMIÈRES régions du vrai monde généré (indices 0/1), qui après la vague ÎLES
+   peuvent être des îlots dont AUCUNE province membre n'est active. Fix : X et Y sont
+   maintenant choisis par SCAN (le pattern gagnant du matin) parmi les régions dont
+   `econ_region_rep_province` pointe vers une province RÉELLEMENT active — le même repère
+   que le moteur utilisera pour la conso, donc la mutation survit à l'agrégat.
+2. **`econ_tax_demo` §2 (Bureaucrate vs Dominateur) : `rig()` ne remettait PAS `price[]`
+   ni `habitability` à un repère commun.** Deux provinces différentes du monde régénéré
+   (indices 0/1) ont hérité d'un `price[RES_GRAIN]`/`habitability` de GENÈSE très inégaux
+   (mesuré par instrumentation : province 0 = price 1.00/hab 0.45, province 1 = price
+   0.00/hab 0.00 — un îlot inhabité). Or `value = out_merch × re->price[r]`
+   (scps_econ.c:4119) alimente directement wage/profit/**tax**_pool : un prix à ZÉRO tue
+   toute la valeur produite, donc tout le revenu à taxer, écrasant complètement l'effet
+   d'éthos/évasion que le banc mesure (le Dominateur « gagnait » en ne produisant tout
+   simplement RIEN à taxer sur l'autre province — un artefact de fixture, pas le
+   mécanisme). Le commentaire de `rig()` affirme depuis longtemps « même raw_cap, mêmes
+   effectifs ⇒ revenu IDENTIQUE » mais oubliait `price[]`/`habitability` dans la liste des
+   champs à égaliser. Fix : `rig()` pose maintenant `price[k]=1.0f` (toutes ressources) et
+   `habitability=1.0f` en plus de `stock[k]=1e6f` — seul l'éthos/wealth/satisfaction passés
+   en paramètre reste le degré de liberté entre deux rigs comparés.
+3. **`events_demo` §15 (betrayal_ready, Conseil V2b) : MÊME FAMILLE que le fix
+   `statecraft_demo` du matin, mais côté FACTION plutôt que classe.** Le scan `human`
+   (capitale peuplée + `owner==c`, sans autre garde) peut tomber sur un pays quasi
+   mono-groupe (une micro-nation insulaire, VAGUE ÎLES) dont l'UNIQUE `PopGroup` penche
+   déjà à 100 % vers la faction qu'on avance pour aigrir l'AUTRE (`faction_lever_apply`
+   calcule `opp = Σ lean[k2]≠advanced × opposition(k2,advanced)` — si le seul groupe du
+   pays EST déjà `advanced`, cette somme reste struturellement à ZÉRO, donc
+   `ethos_grief` n'augmente JAMAIS quel que soit le nombre d'itérations). Mesuré par
+   instrumentation : `ngrp=1`, `grief` reste à `0.0000` après 600 applications du levier
+   (50 ans simulées). Fix, même geste que `find_taxed_country_with_elite` de ce matin :
+   nouveau helper `find_council_human` (scps/events_demo.c) qui, pour chaque pays candidat
+   (capitale settled + `owner==c`), calcule `fac0`/`opp` puis **sonde avec un vrai appel**
+   (`faction_grievance` avant/après un `faction_lever_apply` d'essai — aucun accesseur
+   public ne lit le mélange de leans autrement) et **rembobine** avec
+   `faction_levers_on_coup(c)` (RAZ tout le grief du pays, seul effet de bord de la sonde)
+   avant de passer au candidat suivant si le grief n'a pas bougé. Le pays retenu porte
+   VRAIMENT le canal testé.
+
+**Pièges (généraux, renforcent les notes climat plus haut)**
+
+- Le chemin « FIXTURE (banc) : vue seule » de `econ_region_stock_add`/`_treasury_add`/
+  `_pop_add` (scps_econ.c, RE-KEY §region_carrier_prov) n'est PAS réservé aux mondes
+  synthétiques sans `prov[]` — un VRAI monde généré peut aussi y tomber si LA région
+  choisie n'a aucune province active. La distinction qui piège : ce chemin coexiste avec
+  `econ_aggregate_regions()`, qui EFFACE silencieusement toute mutation « vue seule »
+  faite entre deux agrégats (elle re-somme `prov[]`, jamais touché par ce chemin). Un banc
+  qui pose sa fixture au grain région ET appelle `econ_aggregate_regions()` après doit
+  garantir que sa région cible RÉSOUT à une province active (`econ_region_rep_province`
+  valide ET `.active`), pas juste « une région qui existe ».
+- Un champ non réinitialisé par une fixture « figée » (`rig()`, `mute_siblings`, etc.)
+  n'est un piège que le jour où DEUX provinces choisies par INDEX (pas par contenu) se
+  mettent à diverger sur CE champ précis après un re-monde — avant, elles se ressemblaient
+  par chance. Le réflexe qui aurait évité une instrumentation ad-hoc : lister TOUS les
+  champs qu'un `re->` touche dans le chemin moteur testé (ici `scps_econ.c` §3b + §1
+  extraction) et vérifier que le `rig()`/fixture les couvre TOUS, pas seulement ceux
+  documentés dans le commentaire historique.
+- Le motif « grief/levier no-op sur un porteur absent » n'est pas propre aux CLASSES
+  (statecraft_demo, ce matin) — il existe à l'identique côté FACTIONS/leans quand un pays
+  est démographiquement DÉGÉNÉRÉ (un seul groupe). Le test diagnostique est le même dans
+  les deux cas : sonder l'effet RÉEL (pas recalculer à la main) et scanner dynamiquement
+  jusqu'à trouver un porteur, plutôt que de durcir un seuil ou de re-permuter un index à
+  l'aveugle.
+
+**Restes** : aucun sweep multi-graines fait pour ces trois bancs après fix (graine 42
+par défaut, inchangée). Un futur re-monde peut refaire tomber n'importe lequel des trois
+sur le même type de défaut (région sans porteuse active, provinces price/habitability
+disjoints, pays mono-groupe) — le réflexe est le même que documenté ci-dessus et dans la
+section climat : instrumenter TEMPORAIREMENT (fprintf stderr dans le fichier de banc,
+jamais le moteur), diagnostiquer, puis choisir la cible par SCAN de précondition plutôt
+que par index en dur ou par seuil assoupli.
+
+## 2026-08-18 (après-midi) — Re-calibrage post-vague ÎLES : revolt_demo + scps_api_demo, fixture only (sonnet)
+
+Contexte : la vague ÎLES (`scps_world.c`, RNG de `continents_init` changé) a re-tiré tous
+les mondes — 2e vague de recalibrage du jour, ces deux mêmes bancs avaient DÉJÀ été
+recalibrés ce matin post-climat (voir sections juste au-dessus). **Aucun moteur touché**
+(diff nul sur `scps_revolt.c`, `scps_econ.c`, `scps_api.c`) — seules les fixtures ne
+posaient plus leurs préconditions sous la nouvelle carte/le nouveau monde.
+
+**Découvertes**
+
+1. **`revolt_demo` (graine 42, inchangée) : même trou que ce matin, région DIFFÉRENTE.**
+   Ce matin la région 3 avait perdu sa province représentative cachée
+   (`econ_region_rep_province==-1`) sous la carte post-climat, corrigée en la déplaçant
+   vers la région 6. Ce midi, sous la carte post-îles, c'est la RÉGION 1 (utilisée par
+   les blocs 4/8/9, jamais touchée ce matin) qui a perdu la sienne — le helper local
+   `rep_prov()` du banc masque le trou (il retombe sur un scan brut `prov[p].region==r`
+   que `revolt_ignite()`, lui, n'utilise JAMAIS), donc la fixture se pose sans erreur
+   apparente pendant que le moteur refuse net (`pid<0`) avant même de lire le déficit —
+   symptôme identique à ce matin (main-d'œuvre inchangée, `idx<0`). Scanné
+   `e->region_rep_prov[0..19]` (fprintf stderr temporaire, retiré) : région 1 → -1,
+   région 3 → 163 (valide, inutilisée ailleurs dans ce banc — la région 6 du fix de ce
+   matin restait valide aussi). **Fix** : déplacé les 3 blocs qui utilisaient la région 1
+   (bloc 4 choc économique, bloc 8 1er sous-test, bloc 9 1er sous-test) vers la région 3.
+   27/27. **Reste notable** : le bloc 11 (servilité, 1er sous-test, « sous le seuil ne se
+   soulève PAS ») utilise ENCORE la région 1 — il passe quand même (l'assertion attend
+   PRÉCISÉMENT l'absence de soulèvement, donc le refus silencieux du moteur la satisfait
+   par coïncidence) mais ne teste plus rien de réel sous cette carte. Pas touché
+   (hors-scope : seuls les ✗ listés étaient à corriger, même discipline que ce matin) —
+   à surveiller si un futur agent retouche ce bloc précis.
+2. **`scps_api_demo` (graine 1, choisie ce matin) : la cible de colonisation légale a
+   disparu, mais PAS pour la raison qu'on croirait.** Debug (instrumentation TEMPORAIRE
+   de `scps_can_colonize`, `scps_api.c`, retirée par `git checkout --` après coup) :
+   560 provinces ACTIVES et NON colonisées existent sur la carte à l'an 22 (aucune
+   pénurie de cible) — c'est le JOUEUR qui est affamé : son unique province possédée
+   (capitale, 2884 âmes) a `food_sat=0.00`, `food_ok=0` → `scps_can_colonize()` refuse
+   TOUTE cible car sa boucle de recherche de SOURCE ne trouve jamais de province
+   éligible à essaimer, indépendamment de la destination. **Piège** : ne pas supposer
+   que « cible introuvable » = « pas de terre libre » — la fonction a deux gardes
+   indépendantes (destination active+non-colonisée ET source nourrie+peuplée), et sous
+   ce monde c'est la SECONDE qui bloquait tout, malgré une carte gorgée de terres
+   vierges. Scan de graines (relance du binaire complet par graine — la séquence
+   guerre/diplo/emprunt/etc. du banc pèse sur l'état économique du joueur à l'an 22, pas
+   de raccourci léger fiable) : graine 2 répare la colonisation (food_sat=0.17, sous
+   `COLONY_FOOD_GATE=0.25` mais stock grain+poisson ≥ cible → `food_ok=1`) mais fait
+   choir un AUTRE bloc, entièrement indépendant : « VÉTUSTÉ+RÉNOVER » (sim `sv` FRAÎCHE,
+   même graine, an-5) — coût de rénovation arrondi à 0 or malgré 90 % d'usure (capitale
+   trop pauvre sous cette graine, pour CETTE sim précise). **Piège x2** : un
+   recalibrage de graine qui répare le ✗ ciblé peut en ouvrir un AUTRE ailleurs dans le
+   même fichier (deux sims indépendantes, seed partagée) — toujours relancer la suite
+   ENTIÈRE après un changement de graine par défaut, jamais juste l'assertion visée.
+   Graine 3 satisfait les DEUX blocs à la fois : 244/244. **Fix** :
+   `uint32_t seed = ... : 3u;` (était `1u`) — recalibrage pur, aucune autre ligne
+   touchée.
+
+**Pièges (généraux)**
+
+- `Bash` (git-bash) et `/d/MSYS2/usr/bin/bash.exe -lc '...'` ont des cwd NON PARTAGÉS
+  (confirmé à nouveau) : un fichier écrit par Write/Bash à un chemin Windows absolu
+  (`C:\...`) EST visible depuis MSYS2 via son équivalent `/c/...`, mais `cd` doit être
+  répété DANS CHAQUE `-lc '...'` (ou mieux : `cd` en 1re ligne d'un script `.sh` lancé
+  via son chemin absolu `/c/...`) — sinon "Aucune règle pour fabriquer la cible" même
+  quand le fichier existe bel et bien sur le disque.
+- `scps_api_demo` (~7 min/run) est trop coûteux pour un scan de graines PAR RELANCE
+  COMPLÈTE au-delà de 2-3 candidats — un run par graine dépasse largement le budget
+  d'un aller-retour interactif. Lancé en tâche de fond (auto-bascule au timeout),
+  **stoppé dès le 2e résultat exploitable** (`TaskStop`) plutôt que d'épuiser la liste :
+  le premier candidat qui répare le ✗ ciblé suffit à *tenter*, mais doit ENSUITE être
+  revérifié par un run complet (cf. piège x2 ci-dessus) avant d'être adopté comme
+  défaut.
+
+**Restes** : `revolt_demo` bloc 11 (région 1, silencieusement non-testant, cf. ci-dessus)
+et `scps_api_demo` restent sur graines fixes sans sweep multi-graines — un futur re-monde
+(3e vague le même jour n'est pas à exclure) refera probablement tomber l'un des deux sur
+le même type de défaut (région/joueur sans porteuse vivante sous la nouvelle carte) : même
+réflexe qu'à chaque fois — scanner dynamiquement (région valide ou graine), jamais
+re-durcir un seuil, jamais supposer une régression moteur sans avoir tracé le refus.

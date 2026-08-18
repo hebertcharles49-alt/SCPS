@@ -37,13 +37,25 @@ int main(int argc, char **argv){
      * prouve la FAÇADE, pas l'expansion passive (testée par ses propres gates). */
     tune_set("PASSIVE_SEEP", 0.f);
 
-    /* VAGUE CLIMAT (2026-08-18) : la graine 9 (défaut historique de ce banc) tire
-     * désormais l'archétype « archipel » — le pays-joueur y est laminé par l'IA en
-     * ~20 ans (0 province, 0 or, 0 bourgeois à l'an 20 : monde mort, pas un bug de
-     * façade). Scan de graines (graine → prov/or/bourgeois/pool à l'an 20) : la 1
-     * tient une province saine (or=500, bourgeois=415, pool=91.6) — recalibrage de
-     * fixture, même esprit de banc (façade sur UN monde vivant), monde différent. */
-    uint32_t seed = (argc>1) ? (uint32_t)strtoul(argv[1],NULL,10) : 1u;
+    /* VAGUE CLIMAT (2026-08-18 matin) : la graine 9 (défaut historique) tirait déjà
+     * l'archétype « archipel » — recalibrée sur la 1 (monde vivant à l'an 20). VAGUE
+     * ÎLES (2026-08-18 après-midi, même jour) : la 1 retire toujours un monde vivant
+     * (prov/or/bourgeois sains à l'an 20), mais son UNIQUE province joueur (capitale)
+     * tombe à food_sat=0.00 vers l'an 22 (après les blocs guerre/diplo du banc) — la
+     * colonisation refuse tout (aucune source vivrière), alors même que 560 provinces
+     * ACTIVES et NON colonisées existent sur la carte (pas un manque de cible, un
+     * joueur affamé). Diagnostiqué en instrumentant TEMPORAIREMENT scps_can_colonize
+     * (scps_api.c, retiré après coup, `git checkout --`) : food_sat/food_ok par
+     * province possédée. Scan de graines (relance du binaire par graine, la même
+     * séquence complète guerre/diplo/etc. pesant sur le résultat, pas de raccourci) : la 2
+     * répare la colonisation (food_sat=0.17, sous COLONY_FOOD_GATE=0.25 mais stock
+     * grain+poisson ≥ cible → food_ok=1) mais fait choir un AUTRE banc, indépendant
+     * (bloc VÉTUSTÉ+RÉNOVER, sim FRAÎCHE `sv`, même graine, an-5) : coût de rénovation
+     * arrondi à 0 or malgré 90 % d'usure (capitale trop pauvre sous cette graine pour
+     * cette autre sim). La 3 satisfait les DEUX blocs indépendants à la fois
+     * (rénovation 5 or, cible de colonisation légale) : 244/244. **Fix** :
+     * `uint32_t seed = ... : 3u;` — recalibrage pur, aucune autre ligne touchée. */
+    uint32_t seed = (argc>1) ? (uint32_t)strtoul(argv[1],NULL,10) : 3u;
     printf("══ scps_api : la façade C pilote le moteur (graine %u) ══\n", seed);
 
     ScpsSim *s = scps_sim_new();
