@@ -271,7 +271,7 @@ static void continents_init(int n, float seed_f) {
         float tdx  = ncp>0 ? g_plates[cp].dx    : 0.f;
         float tdy  = ncp>0 ? g_plates[cp].dy    : 1.f;
 
-        cs->n=1+(int)(rng_f()*4.f);
+        cs->n=1+(int)(rng_f()*((n>=5)?2.f:4.f));   /* éclaté : moins de bras (ils pontent) */
         if(cs->n>MAX_LOBES)cs->n=MAX_LOBES;
 
         /* Lobe principal — ÉTIRÉ le long de l'axe de la plaque (≈ vertical) et
@@ -279,8 +279,13 @@ static void continents_init(int n, float seed_f) {
         {
             ContLobe *cl=&cs->lobe[0];
             cl->cx=cx; cl->cy=cy;
-            float R0m=R0*1.28f;           /* grandes masses (les civ s'étendent + mers internes) */
-            float sq=sqrtf(aniso);
+            /* COMPACITÉ (2026-08-18) : peu de noyaux ⇒ masses RONDES (un
+             * intérieur PROFOND, loin de la mer — la clé des déserts
+             * continentaux) ; beaucoup de noyaux ⇒ noyaux PETITS (ils doivent
+             * tenir côte à côte sans fusionner). */
+            float R0m=R0*((n>=5)?1.02f:1.28f);
+            float aniso_eff=(n<=3)?1.f+(aniso-1.f)*0.45f:aniso;
+            float sq=sqrtf(aniso_eff);
             cl->ax=R0m/sq;                /* court  : largeur E/O */
             cl->ay=R0m*sq;                /* long   : hauteur N/S */
             cl->cosA= sinf(axis);         /* aligne le grand axe (ay) sur l'axe plaque */
@@ -311,6 +316,41 @@ static void continents_init(int n, float seed_f) {
             if (dvx<-SCPS_W*0.5f) dvx+=SCPS_W;
             cs->dvx=dvx; cs->dvy=g_plates[cp].cy-g_plates[cp].cy0;
         } else { cs->rcx=cx; cs->rcy=cy; cs->dvx=0.f; cs->dvy=0.f; }
+    }
+
+    /* ── RÉPULSION (2026-08-18, chantier COMPACITÉ) : avec 7-8 noyaux et moins
+     * de plaques continentales, cpl[i mod ncp] REPOSE deux noyaux sur la MÊME
+     * plaque — centres identiques, fusion garantie (« archipel » = 1 bloc
+     * mesuré). Poussée itérée SANS rng (déterminisme) : les noyaux s'écartent
+     * jusqu'à respirer, tous les lobes suivent leur corps. Douce dès 3 noyaux
+     * (contact possible : Béringie/rift vivent), franche dès 5 (l'éclaté doit
+     * VRAIMENT éclater). n=2 exclu : la « mer intérieure » garde son étreinte. */
+    if (n>=3) {
+        float sep=(n>=5)?0.80f:0.62f;
+        for (int it=0; it<12; it++) {
+            for (int i=0;i<n;i++) for (int j=0;j<i;j++) {
+                ContShape *SA=&g_cshape[i], *SB=&g_cshape[j];
+                ContLobe  *A=&SA->lobe[0], *B=&SB->lobe[0];
+                float need=((A->ax+A->ay)*0.5f+(B->ax+B->ay)*0.5f)*sep;
+                float dx=wrap_dx(A->cx-B->cx), dy=A->cy-B->cy;
+                float d=sqrtf(dx*dx+dy*dy);
+                float ux,uy;
+                if (d<1.f) { float ga=2.399963f*(float)(i*3+j+1);   /* même plaque :
+                                 * direction dorée déterministe */
+                             ux=cosf(ga); uy=sinf(ga); }
+                else { ux=dx/d; uy=dy/d; }
+                if (d>=need) continue;
+                float push=(need-d)*0.5f;
+                for (int l=0;l<SA->n;l++){ SA->lobe[l].cx+=ux*push; SA->lobe[l].cy+=uy*push; }
+                for (int l=0;l<SB->n;l++){ SB->lobe[l].cx-=ux*push; SB->lobe[l].cy-=uy*push; }
+            }
+            /* fondu polaire : on ne pousse personne dans la calotte */
+            for (int i=0;i<n;i++) {
+                float cy0=g_cshape[i].lobe[0].cy;
+                float cc=clampf(cy0, 0.12f*SCPS_H, 0.88f*SCPS_H);
+                if (cc!=cy0) for (int l=0;l<g_cshape[i].n;l++) g_cshape[i].lobe[l].cy+=cc-cy0;
+            }
+        }
     }
 
     /* ── Wegener : apparier les continents dont les PLAQUES se sont riftées.

@@ -282,6 +282,22 @@ int main(void) {
     printf("\nC4 apocalypse de froid (température → biomes → famine)\n");
     world_generate(w, &p); econ_init(econ, w); gen_population(w, econ); prosperity_init(wp, w);
     for (int c = 0; c < SCPS_MAX_COUNTRY; c++) ts[c].charge = 0.f;
+    /* RE-KEY PROVINCE (post-vague COMPACITÉ) : econ_cold_refresh ne fait que BORNER
+     * raw_cap[GRAIN] par un plafond cap_pop×habitabilité (jamais l'augmenter, cf.
+     * scps_econ.c commentaire « le froid RÉDUIT... il n'en AJOUTE jamais »). Sous le
+     * régime deux-raws actuel, le tirage de grain (0-35) est quasi TOUJOURS déjà sous
+     * ce plafond (≈11-170 selon cap_pop/habitabilité) — mesuré (instrumentation
+     * temporaire, retirée) : sur les 18 provinces possédées de ce monde, PAS UNE seule
+     * ne franchit le plafond même à cold_offset=1.0 plein gel (raw_cap identique bit à
+     * bit avant/après). Le mécanisme est SAIN (le plafond baisse bien avec
+     * l'habitabilité) mais dépend d'un tirage qui, sous cette carte, ne s'y accroche
+     * plus par chance. Fix (même esprit que rig()/K_inst=3.0f ailleurs dans les bancs) :
+     * on pose le grain d'UNE province possédée bien AU-DESSUS du plafond max
+     * théorique (cap_pop max 12000/100×fac max ~1.4 ⇒ ~170), pour garantir que le
+     * clamp s'exerce quel que soit le tirage du monde régénéré. */
+    { int rig_pv=-1; for (int pv=0; pv<econ->n_prov; pv++) if (econ->prov[pv].owner>=0){ rig_pv=pv; break; }
+      if (rig_pv>=0) econ->prov[rig_pv].raw_cap[RES_GRAIN]=500.f;
+      econ_aggregate_regions(econ); }
     /* mesures AVANT */
     int n_sea0 = 0, n_cold0 = 0; double grain0 = 0.0; int probe = -1; float t0 = 0.f;
     for (int i = 0; i < SCPS_N; i++) {

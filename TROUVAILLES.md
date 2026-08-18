@@ -9128,3 +9128,108 @@ et `scps_api_demo` restent sur graines fixes sans sweep multi-graines — un fut
 le même type de défaut (région/joueur sans porteuse vivante sous la nouvelle carte) : même
 réflexe qu'à chaque fois — scanner dynamiquement (région valide ou graine), jamais
 re-durcir un seuil, jamais supposer une régression moteur sans avoir tracé le refus.
+
+## 2026-08-19 — Re-calibrage post-vague COMPACITÉ : events_demo/endgame_demo/audit_eco/
+scps_api_demo, fixture only (sonnet)
+
+Contexte : la vague COMPACITÉ (`scps_world.c` — répulsion des noyaux continentaux,
+masses rondes à peu de noyaux, noyaux réduits à beaucoup) a re-tiré les mondes de
+toutes les graines — 3e vague de recalibrage du jour. **Aucun moteur touché** (diff nul
+sur `scps_econ.c`, `scps_events.c`, `scps_endgame.c`, `scps_api.c`) — seules les 4
+fixtures ne posaient plus leurs préconditions sous la nouvelle carte.
+
+**Découvertes**
+
+1. **`events_demo` (séisme, graine 42 inchangée) : le K_inst bougeait, la POP jamais —
+   la représentative n'est PAS toujours la porteuse de population.** Le scan choisissait
+   `rstrike` sur `region_pop(region)>10` (le TOTAL de la région, sœurs comprises), mais
+   `events_strike`→`apply_region_eff` ne mute QUE la province REPRÉSENTATIVE
+   (`econ_region_rep_province`, choisie par ACTIVE, pas par population). Sous la
+   nouvelle carte, la représentative d'une région peut être quasi vide pendant que le
+   peuplement réel vit sur une province SŒUR jamais touchée par le choc — K_inst chute
+   bien (porté par la représentative) mais `region_pop` ne bouge pas d'un bit
+   (instrumentation temporaire, retirée : pop0==pop1 identique au bit près malgré
+   `pop_mult=0.90` bien appliqué). **Fix** : le scan exige maintenant que la province
+   REPRÉSENTATIVE ELLE-MÊME porte >10 pop (`prov[rp].strata[...].pop`), même grain que
+   la mutation réelle — pas seulement la région agrégée. 119/119.
+2. **`endgame_demo` C4 (froid) : `econ_cold_refresh` est un PLAFOND (cap_pop×habitabilité),
+   jamais un plancher — sous le régime deux-raws actuel, le tirage de grain (0-35) est
+   quasi TOUJOURS déjà sous ce plafond (≈11-170 selon cap_pop/hab), donc le gel ne
+   déclenche plus RIEN sur les provinces possédées « par chance » du monde généré.**
+   Instrumenté (temporairement, retiré) : sur les 18 provinces possédées du monde-test,
+   PAS UNE seule ne franchissait le plafond même à `cold_offset=1.0` (gel total,
+   température cellule à 0 partout) — `raw_cap[RES_GRAIN]` identique bit à bit
+   avant/après 220 ans de froid. Le mécanisme est SAIN (le plafond baisse bien avec
+   l'habitabilité, la chaîne cold→biome→hab→plafond fonctionne) mais dépend d'un
+   tirage qui, sous cette carte, ne s'y accroche plus par chance. **Fix** (même esprit
+   que `rig()`/`K_inst=3.0f` ailleurs dans les bancs) : on pose le grain d'UNE province
+   possédée à 500 (bien au-dessus du plafond max théorique ≈170) juste après la genèse,
+   AVANT la mesure `grain0` — garantit que le clamp s'exerce quel que soit le tirage du
+   monde régénéré, sans toucher au moteur ni aux bornes. 119/119.
+3. **`audit_eco` POP (E0.1) : le « hameau témoin » est structurellement TOUJOURS
+   introuvable à ce point du programme — pas une régression de la vague.** Le scan
+   (joueur puis monde entier) exige `food_sat≥0.75`, mais `food_sat` vaut EXACTEMENT
+   0.5 pour TOUTE province à la genèse (`econ_init` — scps_econ.c l.1861) et AUCUN
+   `econ_tick` ne tourne avant ce scan (il a lieu juste après
+   `econ_init/gen_population/worldgen_seed_peoples`, avant la boucle de simulation) —
+   le seuil ne peut donc JAMAIS matcher, confirmé par balayage seeds 1-10/42 (hamlet=-1
+   sur LES ONZE). Le fallback CAPITALE (déjà codé) est donc TOUJOURS le témoin réel en
+   pratique. Sous la graine 7 (défaut historique), la capitale post-COMPACITÉ décline
+   (×0.93 en 10 ans, mesuré) — mais 9 des 11 graines scannées (1/2/4/5/6/8/9/10/42)
+   croissent normalement (×1.22-1.28) ; seule 3 partage le même échec que 7 (×0.96).
+   **Fix** : `uint32_t seed = ... : 1u;` (était `7u`) — recalibrage pur (+ mise à jour
+   des 2 commentaires « graine 7 » du docstring), aucune ligne de logique touchée.
+   3/3. **Reste** : le hamlet restera -1 pour TOUJOURS tant que ce scan a lieu avant le
+   premier `econ_tick` — si un futur agent veut un vrai témoin hameau (pas juste le
+   repli capitale), il faudra déplacer le scan APRÈS quelques ticks de warmup, pas
+   retoucher le seuil 0.75 (déjà correctement calibré pour l'usage POST-tick auquel il
+   semble avoir été pensé à l'origine).
+4. **`scps_api_demo` (graine 1 inchangée) : le bloc JOURNAL D'ACTES scannait N'IMPORTE
+   QUELLE cible à opinion-guerre négative, pas forcément CELLE que le joueur venait de
+   déclarer.** `tgt` (résumé d'opinion, ~l.558) balaie tout pays avec `t.war<0` — dans
+   un monde vivant à 150+ pays, ce scan peut tomber sur une guerre PRÉEXISTANTE ou tierce
+   (jamais loggée par NOTRE `scps_player_declare_war`), d'où `scps_diplo_journal`
+   renvoyant 0 acte pour cette cible-là (message observé : « 0 acte(s) avec la cible
+   50 ») pendant que la VRAIE cible déclarée (§3, `wt`) avait bien son entrée. `wt` est
+   scopé dans un bloc `{ }` séparé, invisible du bloc journal plus loin. **Fix** :
+   nouvelle variable de fichier `g_declared_war_target`, posée par le bloc §3 juste
+   après `scps_player_declare_war` réussi, RELUE en priorité par le bloc résumé
+   d'opinion (repli sur le scan générique si aucune guerre n'a été enfilée). 243/243
+   (~7 min, run complet vérifié propre).
+
+**Pièges (généraux, renforcent les 2 sections COMPACITÉ/CLIMAT/ÎLES du jour)**
+
+- Le pattern « la représentative n'est pas forcément la porteuse » (découverte #1)
+  généralise le motif région-grain déjà noté pour intertrade/econ_tax hier : TOUT scan
+  qui teste une propriété RÉGION-AGRÉGÉE (`region_pop`, `region[r].food_sat`…) avant de
+  déclencher un effet qui, LUI, ne mute QUE la PROVINCE représentative doit vérifier la
+  précondition sur CETTE MÊME province, pas sur l'agrégat — sinon le test peut se poser
+  sans erreur pendant que le moteur agit ailleurs (invisible).
+- Un mécanisme « plafond, jamais plancher » (`econ_cold_refresh`, découverte #2) peut
+  devenir STRUCTURELLEMENT inerte quand le champ qu'il borne est TIRÉ bien plus bas que
+  le plafond par un autre système (ici le tirage deux-raws vs le plafond cap_pop-based)
+  — ni bug fixture ni régression moteur au sens classique : le RIG explicite (poser une
+  valeur artificiellement haute AVANT la mesure de référence) est le geste le plus sûr
+  pour prouver le mécanisme sans dépendre d'un tirage de monde favorable.
+- Une précondition de scan peut être IMPOSSIBLE À SATISFAIRE PAR CONSTRUCTION (découverte
+  #3 : `food_sat` figé à 0.5 avant le premier tick) sans que ce soit lié à AUCUNE vague
+  — le réflexe qui aurait évité un aller-retour inutile : avant de chercher « quelle
+  graine répare ce hameau », vérifier SI un hameau peut seulement exister à ce point du
+  programme (ici : jamais, par construction). Le vrai bug se déplaçait alors sur le
+  FALLBACK (capitale), qui LUI dépend bien de la graine.
+- Une variable de scan locale à un bloc `{ }` (`wt`, découverte #4) qui représente
+  « LA cible que le joueur vient de manipuler » mérite d'être hissée en variable de
+  fichier/scope large dès qu'un AUTRE bloc, plus loin, a besoin de vérifier un effet de
+  bord sur CETTE MÊME cible précise — le motif « scanner n'importe quelle cible qui
+  matche une propriété générique » est fragile dans un monde à 150+ pays vivants pour
+  la MÊME raison que le fix `wt_at_war` d'hier (agrégats/scans génériques masquent
+  l'entité précise que le verbe vient de manipuler).
+
+**Restes** : aucun sweep multi-graines automatisé pour `events_demo`/`endgame_demo`
+après ces fix (graine 42 inchangée pour les deux) — les fix #1 et #2 sont structurels
+(scan par précondition réelle, RIG déterministe) et devraient donc rester verts même
+sous un futur re-monde, contrairement aux fix de graine pure (#3 `audit_eco`→1, et le
+défaut `scps_api_demo` déjà à 1 depuis hier). `audit_eco` porte maintenant un reste
+documenté (#3 ci-dessus) sur le hamlet structurellement mort — un futur agent qui veut
+vraiment tester un hameau (pas le repli capitale) devra déplacer le point de scan, pas
+rejouer le seuil.

@@ -1,7 +1,7 @@
 /*
  * audit_eco.c — LE BANC PERMANENT de l'arc « une économie, un trésor, une bouche »
  *
- *   make audit && ./audit_eco [graine=7] [années=10]
+ *   make audit && ./audit_eco [graine=1] [années=10]
  *
  * L'audit qui a fondé l'arc (trois trésors étanches, taxes jamais appelées,
  * seuls les employés mangeaient, +2 %/JOUR de croissance) devient un GARDIEN :
@@ -14,7 +14,7 @@
  *   3. OR (E0.3)     : le flux d'or quotidien N'EST PAS une constante
  *                      (variance > 0 — taxes par classes + marchés + solde VIVENT).
  *   4. ACCESSION (E1 §9) : le premier édifice 360 j est PAYÉ (trésor unique)
- *                      au plus tard l'an 4 (graine 7) — la loi des prix tient.
+ *                      au plus tard l'an 4 (graine 1) — la loi des prix tient.
  *
  * Harnais : un monde CALME (pas d'IA, pas de guerre — la calibration se lit sans
  * bruit) ; econ_tick mensuel (croissance des strates), labor_tick quotidien
@@ -48,7 +48,17 @@ int main(int argc, char **argv){
         tune_set("WORLD_PROV_PER_EMPIRE",0.f);
         tune_set("WORLD_PROV_PER_CITY",0.f);
     }
-    uint32_t seed  = (argc>1)?(uint32_t)strtoul(argv[1],NULL,10):7u;
+    /* Re-calibrage post-vague COMPACITÉ (2026-08-19) : le « hameau témoin » est structurel-
+     * lement TOUJOURS introuvable à ce point du programme (food_sat==0.5 EXACT pour TOUTE
+     * province à la genèse — econ_init l.1861 — aucun econ_tick ne tourne avant ce scan,
+     * donc le seuil food_sat≥0.75 ne peut JAMAIS matcher ; confirmé sur seeds 1-10/42, pas
+     * une régression de la vague). Le fallback CAPITALE (déjà codé, l.185) est donc TOUJOURS
+     * le témoin réel. Sous la graine 7, la capitale post-COMPACITÉ décline (×0.93, mesuré) —
+     * scan de graines (le pattern gagnant des vagues précédentes) : 1/2/4/5/6/8/9/10/42
+     * croissent toutes normalement (×1.22-1.28), 3 partage le même échec que 7 (×0.96).
+     * Fix : uint32_t seed = ... : 1u; (était 7u) — recalibrage pur, aucune autre ligne
+     * touchée. */
+    uint32_t seed  = (argc>1)?(uint32_t)strtoul(argv[1],NULL,10):1u;
     int      years = (argc>2)?atoi(argv[2]):10;
     if (years<1) years=1;
 

@@ -30,6 +30,14 @@ static void ok(const char *what, bool cond){
     printf("   %s %s\n", cond?"✓":"✗", what);
     if(cond) g_pass++; else g_fail++;
 }
+/* Re-calibrage post-vague COMPACITÉ (2026-08-19) : la cible de guerre RÉELLEMENT
+ * déclarée par le joueur (§3, ci-dessous) — le bloc « JOURNAL D'ACTES » plus loin
+ * scannait TOUTE cible à composante d'opinion « guerre » négative (t.war<0), qui
+ * peut tomber sur une guerre PRÉEXISTANTE ailleurs dans un monde vivant (jamais
+ * loggée par NOTRE déclaration ⇒ scps_diplo_journal renvoie 0 acte) au lieu de LA
+ * cible que le verbe vient de déclarer. On mémorise donc le pays visé par
+ * scps_player_declare_war pour que le bloc journal le préfère. */
+static int g_declared_war_target=-1;
 
 int main(int argc, char **argv){
     /* EXPANSION PASSIVE COUPÉE pour ce banc (2026-08-06) : le seep fonde des provinces
@@ -257,6 +265,7 @@ int main(int argc, char **argv){
             if (wt>=0) scps_sim_advance_days(s2, 400);       /* > FAB_MATURE_DAYS : l'intrigue MÛRIT */
         }
         int enq = (wt>=0) ? scps_player_declare_war(s2, wt) : 0;
+        if (enq>0) g_declared_war_target=wt;   /* le bloc JOURNAL D'ACTES plus loin le relit */
         ok("verbe DÉCLARER LA GUERRE : ordre ENFILÉ (CB gratuit ou intrigue mûrie)", enq>0);
         scps_sim_advance_days(s2, 1);                       /* le drain applique (le CB est consommé) */
         nr = scps_country_relations(s2, pl, rel, 64);
@@ -555,6 +564,12 @@ int main(int argc, char **argv){
     {
         ScpsOpinionParts op;
         int tgt=-1;
+        /* Préfère LA cible que le joueur vient de déclarer (§3) — garantie d'avoir un
+         * acte au journal ; repli sur le scan générique si ce verbe n'a rien enfilé. */
+        if (g_declared_war_target>=0){
+            ScpsOpinionParts t;
+            if (scps_opinion_summary(s2,g_declared_war_target,&t)==0 && t.war<0) tgt=g_declared_war_target;
+        }
         for (int c=0;c<scps_country_count(s2) && tgt<0;c++){
             ScpsOpinionParts t;
             if (scps_opinion_summary(s2,c,&t)==0 && t.war<0) tgt=c;

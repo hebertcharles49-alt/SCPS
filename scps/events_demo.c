@@ -197,10 +197,26 @@ int main(int argc, char **argv){
     ok("le feu de forêt n'existe que là où il y a de la forêt", fire_anchored);
 
     /* Effets d'un choc (déterministe) : le tremblement détruit et soulève. On
-     * frappe une région PEUPLÉE (l'effet sur la pop/le bâti doit être visible). */
+     * frappe une région PEUPLÉE (l'effet sur la pop/le bâti doit être visible).
+     * RE-KEY PROVINCE (post-vague COMPACITÉ) : events_strike ne mute QUE la
+     * province REPRÉSENTATIVE (econ_region_rep_province — choisie par ACTIVE,
+     * pas par population) ; region_pop(r) lit le total de TOUTE la région,
+     * sœurs comprises. Une région peut passer le seuil >10 alors que sa
+     * représentative est quasi vide et que le peuplement réel vit sur une
+     * PROVINCE VOISINE jamais touchée par le choc — le K_inst bouge (porté par
+     * la représentative) mais la pop ne bouge pas (portée ailleurs), signature
+     * mesurée par instrumentation temporaire (retirée) : pop0==pop1 au bit
+     * près malgré pop_mult=0.90 bien appliqué sur la représentative. Fix : on
+     * exige que la province REPRÉSENTATIVE elle-même porte la population (pas
+     * seulement la région), même grain que la mutation réelle. */
     int rstrike=-1;
-    for (int r=0;r<s.econ->n_regions;r++)
-        if (s.econ->region[r].culture.settled && region_pop(s.econ,r)>10.f){ rstrike=r; break; }
+    for (int r=0;r<s.econ->n_regions;r++){
+        if (!s.econ->region[r].culture.settled) continue;
+        int rp=econ_region_rep_province(s.econ,r); if (rp<0) continue;
+        float rppop = s.econ->prov[rp].strata[CLASS_LABORER].pop + s.econ->prov[rp].strata[CLASS_BOURGEOIS].pop
+                    + s.econ->prov[rp].strata[CLASS_ELITE].pop;
+        if (rppop>10.f){ rstrike=r; break; }
+    }
     if (rstrike<0) rstrike=(rFlat>=0)?rFlat:0;
     /* RE-KEY PROVINCE : events_strike (→apply_region_eff) route ses mutations sur la
      * province représentative — region[r] est un DÉRIVÉ, jamais rafraîchi par
