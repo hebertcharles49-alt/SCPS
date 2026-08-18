@@ -284,6 +284,7 @@ var _road_net := {}       ## ANTISPAG cache : polylignes consolidées (dédup + 
 var _road_net_valid := false  ## false ⇒ à reconstruire (réseau changé OU un chantier grandit encore)
 var _lanes := []          ## PORTULAN : [{points, open, choke, ra, rb}] — lanes maritimes (sea_paths + méta)
 var _lane_dashes := []    ## par lane : PackedVector2Array de PAIRES iso (tirets prêts pour draw_multiline)
+var _lane_dash_cols := [] ## par lane : PackedColorArray par tiret (fondu au large — draw_multiline_colors)
 var _lanes_dirty := true  ## le commerce maritime a pu bouger → recharger les lanes
 var _lanes_day := -999999 ## jour sim du dernier rafraîchissement (re-poll SEA_LANE_POLL_DAYS)
 var _rivers := []         ## [Vector3(x, y, ang)] — nuage de points (façade) gardé pour l'anti-bâti SUR le fil
@@ -312,7 +313,8 @@ const ROAD_ZOOM_MIN := 1.6    ## routes (zoom ISO) — dès le lointain, seules 
 ## de liseré continu. Les 2-3 dernières cellules vers la ville restent CONTINUES et
 ## finissent sur un PAD de terre battue (la route sort de la porte). En forêt, la bande
 ## devient le SOL de la TROUÉE (canopée écartée, cf. _build_dressing).
-const ROAD_BAND       := Color(0.91, 0.85, 0.70)        ## parchemin poussiéreux (bande)
+const ROAD_BAND       := Color(0.86, 0.79, 0.63)        ## parchemin poussiéreux (bande) — luminance −15 % (verdict DA : le cœur « brûlait » sur la forêt)
+const ROAD_CASING     := Color(0.29, 0.21, 0.14)        ## TRAIT GRAVÉ (DA 2026-08-19) : sous-trait sombre du graveur — la route mord le papier au lieu de flotter dessus
 const ROAD_RUT        := Color(0.38, 0.25, 0.14, 0.50)  ## ornière brune
 const ROAD_TRAIL      := Color(0.42, 0.28, 0.16, 0.42)  ## trace de sentier
 const ROAD_BAND_A     := 0.30   ## alpha bande hors forêt (l'usure s'y AJOUTE) — −29 % (retour joueur : « autoroute lumineuse »)
@@ -347,7 +349,16 @@ const ROAD_SNAP_TRIM := 4.5      ## rayon de nettoyage des points près de l'anc
 # MER seulement), sous le fog RIEN (les deux bouts doivent être connus). Le tracé vient
 # du MOTEUR (sea_paths(), cache par signature du commerce maritime — la membrane : des
 # coordonnées) ; ici on ne fait que lisser GARDÉ-MER, ancrer, magnétiser et pointiller.
-const SEA_LANE_INK := Color(0.24, 0.20, 0.28, 0.62)  ## l'encre froide du trait de mer
+const SEA_LANE_INK := Color(0.38, 0.28, 0.19, 0.60)  ## encre SÉPIA (RGBA 96,72,48 — verdict DA ; l'encre froide violette jurait)
+# ── FONDU AU LARGE (2026-08-19, « les routes maritimes sont très moches ») : la
+# convention des cartes anciennes — le trait est FRANC près des ports (le geste de
+# départ) et s'évanouit au milieu de la traversée ; l'océan redevient calme. ──
+const SEA_FADE_FULL := 6.0    ## cellules d'arc pleines près de chaque bout
+const SEA_FADE_LEN  := 14.0   ## longueur du fondu vers l'évanescence
+# v2 DA (2026-08-19) : « le trait s'ESPACE, il ne s'efface pas » — au grand large
+# l'alpha garde un plancher FRANC (0.22) mais on saute 2 tirets sur 3 : le rythme
+# du portulan (tirets serrés au port, espacés en mer), pas une évaporation.
+const SEA_FADE_MIN  := 0.45   ## plancher d'alpha au large (v5 DA : les tirets gardés sont FRANCS)
 const SEA_LANE_DASH := 1.1        ## longueur d'un tiret (cellules monde)
 const SEA_LANE_GAP := 0.9         ## le blanc entre tirets
 const SEA_LANE_MAGNET_PASSES := 2 ## magnétisme MARIN (mêmes réglages ANTISPAG, bundle lanes seul)
@@ -374,6 +385,15 @@ const ROAD_MAGNET_PASSES := 2            ## convergence : 2 passes suffisent (me
 const ROAD_MULT_TIERS := 3               ## paliers d'épaisseur ∝ MULTIPLICITÉ (combien de routes logiques
                                           ## empruntent le même tronçon) — 1 capillaire, 2-3 dessertes, 4+ tronc
 const ROAD_TIER_WSCALE := [1.0, 1.28, 1.55]  ## facteur d'épaisseur par palier (indices 0..2 ↔ tier 1..3)
+# ── HIÉRARCHIE FRANCHE (2026-08-19, « pas de spaghettis ») : le palier ne joue plus
+# seulement l'usure — il joue LARGEUR (WSCALE ci-dessus, enfin branché), ALPHA (les
+# capillaires s'effacent devant les troncs) et VISIBILITÉ (LOD : dézoomé, seuls les
+# troncs existent — c'est le LOD qui tue l'effet spaghetti des vues lointaines). ──
+const ROAD_TIER_AMUL := [0.55, 0.80, 1.0]    ## alpha par palier : capillaire discret, tronc franc
+# Historique DA 2026-08-19 : un hard-skip par palier (troncs orphelins) puis une
+# graduation par ARÊTE (discontinuité 1.0-0.30-1.0 le long d'une artère) ont été
+# essayés et retirés — au lointain, l'itinéraire « main » entier porte UN alpha
+# (continu) et c'est la gravure (casing) qui fait la lecture.
 const SPAG_DIST := 1.5                   ## cellules — métrique « spaghetti » : 2 segments à moins de ça…
 const SPAG_COS := 0.90                   ## …et quasi-parallèles (cos > .90 ⇒ ~25°) sans être fusionnés…
 const SPAG_MIN_OFFSET := 0.25            ## …ET séparés d'un ÉCART PERPENDICULAIRE réel (cf. découverte
@@ -1682,8 +1702,11 @@ func _augment_lanes(w) -> void:
 	# Une clé de demi-cellule sur le milieu de tiret : le corridor ne s'encre qu'UNE fois,
 	# avec UNE phase — le pointillé du portulan survit à la multiplicité.
 	var seen := {}
+	_lane_dash_cols.clear()
 	for ln in _lanes:
-		_lane_dashes.append(_lane_dash_iso(ln["points"], mv, seen))
+		var cols := PackedColorArray()
+		_lane_dashes.append(_lane_dash_iso(ln["points"], mv, seen, cols, sea))
+		_lane_dash_cols.append(cols)
 
 ## Chaikin GARDÉ-MER (portulan) : le miroir exact de _chaikin_safe — un point coupé qui
 ## SORTIRAIT de l'eau reprend le coin d'origine ; la lane épouse la côte sans jamais
@@ -1708,11 +1731,14 @@ func _chaikin_sea(pts: PackedVector2Array, sea: Image) -> PackedVector2Array:
 ## de l'arc — le pointillé ne « saute » pas aux sommets), projetés iso : des PAIRES de
 ## points prêtes pour draw_multiline. Pré-calculé dans _augment_lanes (iso_pos est une
 ## projection fixe monde→iso ; la caméra vit dans le canvas transform).
-func _lane_dash_iso(pts: PackedVector2Array, mv, seen: Dictionary) -> PackedVector2Array:
+func _lane_dash_iso(pts: PackedVector2Array, mv, seen: Dictionary, cols: PackedColorArray, sea: Image) -> PackedVector2Array:
 	var out := PackedVector2Array()
 	if pts.size() < 2:
 		return out
 	var period := SEA_LANE_DASH + SEA_LANE_GAP
+	var arc_len := 0.0                       # longueur totale — le fondu au large en a besoin
+	for i in range(pts.size() - 1):
+		arc_len += pts[i].distance_to(pts[i + 1])
 	var t := 0.0
 	for i in range(pts.size() - 1):
 		var a: Vector2 = pts[i]
@@ -1747,10 +1773,31 @@ func _lane_dash_iso(pts: PackedVector2Array, mv, seen: Dictionary) -> PackedVect
 				# laissait les tirets déphasés des lanes voisines COMBLER les blancs (trait
 				# solide par morceaux, mesuré graine 42).
 				var dk := str(int(floor(mid.x))) + "_" + str(int(floor(mid.y)))
-				if not seen.has(dk):        # dédup : un corridor partagé ne s'encre qu'UNE fois
+				# FONDU + ESPACEMENT AU LARGE (portulan v3, verdict DA) : RAMPE continue —
+				# serré près du port (chaque tiret), puis 1 sur 2, puis 1 sur 3 au grand
+				# large. Le trait s'espace PROGRESSIVEMENT, il ne saute pas d'un régime
+				# à l'autre ; l'alpha suit la même rampe (fa).
+				var dend := minf(t + run * 0.5, arc_len - (t + run * 0.5))
+				var fa := clampf(1.0 - (dend - SEA_FADE_FULL) / SEA_FADE_LEN, SEA_FADE_MIN, 1.0)
+				# v4 DA (D7) : DEUX rythmes seulement (serré à l'approche, 1/2 au large) —
+				# la rampe continue de rythme faisait cohabiter deux textures de pointillé
+				# dans le même cadre ; la DISTANCE ne joue plus que sur l'alpha (fa).
+				var kmod := 1 if dend <= SEA_FADE_FULL * 2.0 else 2
+				var keep := (int(floor(t / period)) % kmod) == 0
+				# CLEARANCE CÔTIÈRE (DA : « la lane mord la côte ») : un tiret dont la
+				# cellule touche la terre ne s'encre pas — sauf l'approche du port
+				# (l'ancrage au quai est le seul contact terre légitime du portulan).
+				if keep and dend > SEA_FADE_FULL:
+					var mx := int(floor(mid.x))
+					var my := int(floor(mid.y))
+					if not (_is_sea_cell(sea, mx + 1, my) and _is_sea_cell(sea, mx - 1, my)
+						and _is_sea_cell(sea, mx, my + 1) and _is_sea_cell(sea, mx, my - 1)):
+						keep = false
+				if keep and not seen.has(dk):   # dédup : un corridor partagé ne s'encre qu'UNE fois
 					seen[dk] = true
 					out.append(mv.iso_pos(p0.x, p0.y))
 					out.append(mv.iso_pos(p1.x, p1.y))
+					cols.append(Color(SEA_LANE_INK.r, SEA_LANE_INK.g, SEA_LANE_INK.b, SEA_LANE_INK.a * fa))
 			s += run
 			t += run
 	return out
@@ -2463,8 +2510,13 @@ func _ensure_road_network() -> void:
 				var d2 := dx * dx + dy * dy
 				var dens := 1.0
 				if lvl == 2:
-					if d2 <= 2:   dens = 0.0      # cœur : aucune canopée
-					elif d2 <= 7: dens = 0.45     # bord : arbres plus rares
+					# v5 DA : la trouée large (±2.6 cellules à 0.45) était une SAIGNÉE pâle
+					# en espace monde, jamais graduée par le zoom — resserrée : la route se
+					# DEVINE sous le massif (ROAD_FOREST_A), la trouée ne l'écrase plus.
+					if d2 <= 1:   dens = 0.0      # cœur : aucune canopée
+					elif d2 <= 5: dens = 0.82     # v6 DA : un DÉGAGEMENT léger — l'encre
+					                              # (casing 0.62) reste le trait, la trouée
+					                              # n'est plus le ruban crème qui le remplace
 				else:
 					if d2 <= 1:   dens = 0.0
 					elif d2 <= 4: dens = 0.60
@@ -3087,36 +3139,70 @@ func _draw_iso(w, mv: Node2D) -> void:
 			# de porte, puis ornières/traces par-dessus. L'usure du tier = ALPHA (+WEAR_A
 			# par palier), jamais l'épaisseur. Gates par zoom : lointain = grandes bandes
 			# seules · moyen = + régionales + ornières · proche = + sentiers.
+			# v3 DA : au LOINTAIN l'alpha est porté par l'ITINÉRAIRE (le niveau « main »
+			# entier, continu), plus par l'arête — la graduation par multiplicité rendait
+			# l'artère 1.0-0.30-1.0 le long de son parcours (discontinuité de lecture) ;
+			# et la route lointaine s'INVERSE : trait sombre fin (casing 0.50, cœur 0.25),
+			# jamais un fantôme clair. Le casing est DÉCOUPLÉ de la graduation (alpha
+			# constant, plancher de largeur 1.5 px) — sous la graduation il tombait à
+			# 0.34×0.30 ≈ 0.10 : la gravure mourait pile aux zooms où elle devait porter.
+			# v4 DA : POLARITÉ inversée à TOUS les zooms — sur parchemin la chaussée
+			# gravée est un TRAIT SOMBRE ; le cœur clair (sol usé) devient un souffle
+			# (0.15-0.18) et c'est l'ENCRE (casing 0.62, filet net) qui porte la route.
+			# Le halo z80 venait du casing ×1.45 d'une bande déjà large : le filet est
+			# désormais borné [1.5..2.4] px, et la bande plafonnée à 3 px au lointain.
+			var far_zoom := zoom < ROAD_Z_BAND_MINOR
 			for t in range(1, ROAD_MULT_TIERS + 1):
 				var wear := ROAD_WEAR_A * float(t - 1)
+				var amul: float = 1.0 if far_zoom else ROAD_TIER_AMUL[t - 1]
+				var wmul: float = ROAD_TIER_WSCALE[t - 1]
+				var cas_a := 0.62
+				var core_mul := (0.15 if far_zoom else 0.18) / (ROAD_BAND_A + wear)
 				if zoom >= ROAD_Z_BAND_MINOR:
 					var bmf: PackedVector2Array = _road_net.get("b_minor%df" % t, PackedVector2Array())
 					if bmf.size() >= 2:
 						draw_multiline(bmf, Color(ROAD_BAND.r, ROAD_BAND.g, ROAD_BAND.b,
-							ROAD_BAND_A_F + wear), _w(zoom, 0.40, 0.9, 1.7), true)
+							(ROAD_BAND_A_F + wear) * amul), _w(zoom, 0.40, 0.9, 1.7) * wmul, true)
 					var bm: PackedVector2Array = _road_net.get("b_minor%d" % t, PackedVector2Array())
 					if bm.size() >= 2:
 						draw_multiline(bm, Color(ROAD_BAND.r, ROAD_BAND.g, ROAD_BAND.b,
-							ROAD_BAND_A + wear), _w(zoom, 0.40, 0.9, 1.7), true)
+							(ROAD_BAND_A + wear) * amul), _w(zoom, 0.40, 0.9, 1.7) * wmul, true)
 				var baf: PackedVector2Array = _road_net.get("b_main%df" % t, PackedVector2Array())
+				# v5 DA : les bornes en PIXELS vivent DANS _w (qui clampe en px PUIS divise
+				# par le zoom) — les post-clamps d'it.4 re-clampaient des unités LOCALES
+				# avec des constantes px : plancher effectif 1.5·zoom → le « boudin »
+				# sombre de 10 px à z80. Erreur d'UNITÉ, pas de design.
+				var bw2 := _w(zoom, 0.55, 1.2, 3.0 if far_zoom else 2.3) * wmul
+				var cw2 := _w(zoom, 0.63, 1.5, 2.4) * wmul
+				var do_cas := far_zoom or t >= 2     # au lointain, la gravure porte TOUT l'itinéraire
 				if baf.size() >= 2:
+					if do_cas:   # TRAIT GRAVÉ (DA) : sous-trait sombre, DÉCOUPLÉ de la graduation
+						draw_multiline(baf, Color(ROAD_CASING.r, ROAD_CASING.g, ROAD_CASING.b,
+							cas_a), cw2, true)
 					draw_multiline(baf, Color(ROAD_BAND.r, ROAD_BAND.g, ROAD_BAND.b,
-						ROAD_BAND_A_F + wear), _w(zoom, 0.55, 1.2, 2.3), true)
+						(ROAD_BAND_A_F + wear) * core_mul), bw2, true)
 				var ba: PackedVector2Array = _road_net.get("b_main%d" % t, PackedVector2Array())
 				if ba.size() >= 2:
+					if do_cas:   # …le contraste vient du casing, jamais d'un cœur plus clair
+						draw_multiline(ba, Color(ROAD_CASING.r, ROAD_CASING.g, ROAD_CASING.b,
+							cas_a), cw2, true)
 					draw_multiline(ba, Color(ROAD_BAND.r, ROAD_BAND.g, ROAD_BAND.b,
-						ROAD_BAND_A + wear), _w(zoom, 0.55, 1.2, 2.3), true)
+						(ROAD_BAND_A + wear) * core_mul), bw2, true)
 			if zoom >= ROAD_Z_RUT:
 				for pad in _road_net.get("pads", []):
 					var pc: Vector2 = pad[0]
-					var pr: float = pad[1]
+					# v6 DA : rayon de pad PLAFONNÉ en px écran (≤3) — sinon la trompette
+					# refleurit au zoom proche (même famille que l'erreur d'unité d'it.4)
+					var pr: float = minf(pad[1], 3.0 / maxf(zoom, 0.0001))
 					var pseed := float(pad[2])
 					var ppoly := PackedVector2Array()
 					for v in range(7):             # aire IRRÉGULIÈRE (7 sommets, rayon hashé)
 						var ang := TAU * float(v) / 7.0
 						var rr := pr * (0.72 + 0.55 * _h1(pseed * 13.7 + float(v)))
 						ppoly.append(pc + Vector2(cos(ang), sin(ang) * 0.5) * rr)   # aplati iso
-					draw_colored_polygon(ppoly, Color(ROAD_BAND.r, ROAD_BAND.g, ROAD_BAND.b, ROAD_BAND_A + 0.06))
+					# v5 DA : les pads suivent la POLARITÉ (le cœur est à ~0.18 — un about
+					# à 0.36 était 2× plus clair que la route qu'il termine : le pâté clair)
+					draw_colored_polygon(ppoly, Color(ROAD_BAND.r, ROAD_BAND.g, ROAD_BAND.b, 0.18))
 				for jc in _road_net.get("junc", []):
 					var jp2: Vector2 = jc[0]
 					var jr: float = jc[1]
@@ -3126,7 +3212,7 @@ func _draw_iso(w, mv: Node2D) -> void:
 						var ang2 := TAU * float(v) / 6.0
 						var rr2 := jr * (0.70 + 0.5 * _h1(jseed * 7.9 + float(v)))
 						jpoly.append(jp2 + Vector2(cos(ang2), sin(ang2) * 0.5) * rr2)
-					draw_colored_polygon(jpoly, Color(ROAD_BAND.r * 0.90, ROAD_BAND.g * 0.87, ROAD_BAND.b * 0.82, ROAD_BAND_A + 0.14))
+					draw_colored_polygon(jpoly, Color(ROAD_BAND.r * 0.90, ROAD_BAND.g * 0.87, ROAD_BAND.b * 0.82, 0.22))
 			if zoom >= ROAD_Z_RUT:
 				for t in range(1, ROAD_MULT_TIERS + 1):
 					var rw := _w(zoom, 0.16, 0.6, 1.0)
@@ -3198,7 +3284,12 @@ func _draw_iso(w, mv: Node2D) -> void:
 				if int(ln.get("open", 0)) == 0:
 					continue
 				if li < _lane_dashes.size() and (_lane_dashes[li] as PackedVector2Array).size() >= 2:
-					draw_multiline(_lane_dashes[li], SEA_LANE_INK, lane_w, true)
+					var dpts: PackedVector2Array = _lane_dashes[li]
+					var dcols: PackedColorArray = _lane_dash_cols[li] if li < _lane_dash_cols.size() else PackedColorArray()
+					if dcols.size() * 2 == dpts.size():
+						draw_multiline_colors(dpts, dcols, lane_w, true)   # fondu au large
+					else:
+						draw_multiline(dpts, SEA_LANE_INK, lane_w, true)
 
 	# ── VILLES : VIGNETTES gravées (pack bourgs/, lot U) — cité t1-t7, cité-état & hameau libre
 	# (familles DÉDIÉES). CENTRÉES sur le SIÈGE intérieur de province (≠ jonction ; le centroïde
