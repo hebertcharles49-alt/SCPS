@@ -335,10 +335,24 @@ int main(void) {
      * de l'épicentre à son plancher (aucune dégradation supplémentaire à observer sur 80
      * ans, puisque l'éruption a déjà tout corrompu). */
     econ_aggregate_regions(econ);
-    static float hab_pre[SCPS_MAX_REG]; static double grain_pre[SCPS_MAX_REG];
-    for (int r = 0; r < n_reg_b && r < SCPS_MAX_REG; r++) {
+    static float hab_pre[SCPS_MAX_REG];   /* épicentre seul (C5 l.362) — grain sur cette échelle : voir province ci-dessous */
+    for (int r = 0; r < n_reg_b && r < SCPS_MAX_REG; r++)
         hab_pre[r] = econ->region[r].habitability;
-        grain_pre[r] = (double)econ->region[r].raw_cap[RES_GRAIN];
+    /* DOCTRINE PROVINCE (CLAUDE.md « LA PROVINCE EST LA SEULE RÉALITÉ ÉCONOMIQUE ») :
+     * econ_cold_refresh agit PROVINCE PAR PROVINCE (pe->habitability/raw_cap) ; econ-
+     * >region[] n'est qu'une VUE agrégée (SOMME sur TOUS les membres de la région, y
+     * compris les provinces vierges/inhabitées que le front peut corrompre sans jamais
+     * toucher la province qui PORTE le grain). Un snapshot région peut donc voir
+     * l'habitabilité MOYENNE baisser (une province quelconque du groupe touchée) sans
+     * que raw_cap[GRAIN] (somme, dominée par LA province vivrière) ne bouge d'un iota —
+     * faux négatif du grain frappant la mauvaise géométrie. Snapshot en PLUS au grain
+     * province (n_prov, SCPS_MAX_PROV), la vérité que thorns_step/econ_cold_refresh
+     * modifient réellement. */
+    int n_prov_b = econ->n_prov;
+    static float hab_pre_p[SCPS_MAX_PROV]; static double grain_pre_p[SCPS_MAX_PROV];
+    for (int pv = 0; pv < n_prov_b && pv < SCPS_MAX_PROV; pv++) {
+        hab_pre_p[pv] = econ->prov[pv].habitability;
+        grain_pre_p[pv] = (double)econ->prov[pv].raw_cap[RES_GRAIN];
     }
     endgame_init(&eg);
     wp->entropy = FINV+10.f; wp->entropy_epicenter = -1;
@@ -363,18 +377,26 @@ int main(void) {
     }
     /* Le GRAIN ne peut baisser QUE là où il existait déjà (une province côtière/archipel
      * peut vivre de poisson, raw_cap[GRAIN]=0 dès la genèse — econ_cold_refresh ne fait
-     * que PLAFONNER vers le bas, jamais remonter) : on cherche, parmi TOUTES les régions
-     * dégradées par le front (habitabilité en baisse), UNE qui avait du grain pour prouver
-     * que la famine ÉMERGE bien (même mécanisme que C4/le FROID), plutôt que de fixer le
-     * seul foyer (dont le sort géo-dépendant n'est pas garanti). */
+     * que PLAFONNER vers le bas, jamais remonter) : on cherche, parmi TOUTES les PROVINCES
+     * dégradées par le front (habitabilité en baisse — la vérité province, pas l'agrégat
+     * région qui dilue/masque la province vivrière au milieu de voisines vierges), UNE
+     * qui avait du grain pour prouver que la famine ÉMERGE bien (même mécanisme que
+     * C4/le FROID), plutôt que de fixer le seul foyer (dont le sort géo-dépendant n'est
+     * pas garanti). */
     {
         bool found_grain_drop = false;
-        for (int r = 0; r < n_reg_b && r < SCPS_MAX_REG; r++) {
-            if (econ->region[r].owner < 0) continue;
-            if (grain_pre[r] <= 0.0) continue;
-            if (econ->region[r].habitability >= hab_pre[r]) continue;   /* pas touché par les ronces */
-            if ((double)econ->region[r].raw_cap[RES_GRAIN] < grain_pre[r]) { found_grain_drop = true; break; }
+        int n_touched=0, n_touched_grain=0;
+        for (int pv = 0; pv < n_prov_b && pv < SCPS_MAX_PROV; pv++) {
+            if (econ->prov[pv].owner < 0) continue;
+            bool touched = econ->prov[pv].habitability < hab_pre_p[pv];
+            if (touched) n_touched++;
+            if (grain_pre_p[pv] <= 0.0) continue;
+            if (!touched) continue;   /* pas touchée par les ronces */
+            n_touched_grain++;
+            if ((double)econ->prov[pv].raw_cap[RES_GRAIN] < grain_pre_p[pv]) { found_grain_drop = true; break; }
         }
+        printf("   épicentre=région %d · n_prov=%d provinces touchées=%d (avec grain_pre>0: %d)\n",
+               epi_b, n_prov_b, n_touched, n_touched_grain);
         CHECK("la fertilité vivrière d'une région dégradée s'effondre (famine progressive, pas de purge)",
               found_grain_drop);
     }

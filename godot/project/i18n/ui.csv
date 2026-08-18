@@ -28,6 +28,7 @@ T_OPT_MUTE,Muet,Mute
 T_NG_TITLE,Nouvelle partie,New game
 T_NG_WORLD,Monde,World
 T_NG_SIZE,Taille,Size
+T_NG_HUMIDITY,Humidité,Humidity
 T_NG_AGE,Âge du monde,World age
 T_NG_LAND,Terres / mer,Land / sea
 T_NG_MOUNTAINS,Montagnes,Mountains

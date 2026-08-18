@@ -1348,7 +1348,11 @@ static int wind_dir_x(float lat) {
     return -1;
 }
 
-static void gen_climate(World *w, float *height, float *moisture,
+/* bio_prev (2026-08-16) : les biomes de la PASSE PRÉCÉDENTE — NULL à la première
+ * passe (pas de recyclage), le champ provisoire à la seconde. L'ancien code lisait
+ * cells[].biome AVANT toute assignation (memset → BIO_DEEP_OCEAN=0) : le recyclage
+ * forestier était MORT à la génération (« implémenté puis mort au démarrage »). */
+static void gen_climate(World *w, const Biome *bio_prev, float *height, float *moisture,
                         float *temperature, const float *odist, float seed_f,
                         const WorldParams *P) {
     Cell *cells = w->cell;
@@ -1386,7 +1390,9 @@ static void gen_climate(World *w, float *height, float *moisture,
         float lat=fabsf((float)y/SCPS_H-0.5f)*2.f;
         int dir=wind_dir_x(lat);
         float humidity=0.f;
-        for (int pass=0;pass<2;pass++)
+        for (int pass=0;pass<2;pass++){
+        humidity=0.f;   /* 2026-08-16 : l'air ne PORTE pas l'humidité d'une passe à l'autre —
+                         * sans cette RAZ, le fetch trans-rangée saturait et il pleuvait partout */
         for (int k=0;k<SCPS_W;k++) {
             int x = (dir>0) ? k : (SCPS_W-1-k);
             int i=scps_idx(x,y);
@@ -1407,12 +1413,13 @@ static void gen_climate(World *w, float *height, float *moisture,
                 /* Ré-évaporation forestière : la forêt rejette de la vapeur
                  * dans l'air sous-vent → humidifie la zone aval.
                  * (On lit le biome du pass précédent ; il sera affiné plus tard.) */
-                Biome b=cells[i].biome;
+                Biome b = bio_prev ? bio_prev[i] : BIO_DEEP_OCEAN;
                 if (b==BIO_FOREST||b==BIO_WOODS||b==BIO_JUNGLE||b==BIO_MANGROVE) {
                     humidity+=FOREST_EVAP*(rain[i]/0.3f+0.4f)*(HUM_CAP-humidity);
                     if(humidity>HUM_CAP)humidity=HUM_CAP;
                 }
             }
+        }
         }
     }
     /* Normaliser la pluie sur les terres */
@@ -1439,7 +1446,15 @@ static void gen_climate(World *w, float *height, float *moisture,
         /* Ceinture subtropicale sèche (descente de l'air de Hadley ~25-35°)
          * C'est ce qui crée le Sahara, le Gobi et l'Outback.
          * Double cloche : l'une pour chaque hémisphère (lat est toujours |y|). */
-        float subtrop = expf(-((lat-0.30f)*(lat-0.30f))/(0.07f*0.07f))*0.52f;
+        float subtrop = expf(-((lat-0.30f)*(lat-0.30f))/(0.07f*0.07f))*0.56f;   /* +0.04 : compense l'humidité que la ZCIT réinjecte par recyclage */
+
+        /* ZCIT (2026-08-18) — le SYMÉTRIQUE manquant de la ceinture sèche : la
+         * convergence intertropicale concentre les pluies du pot au noir sur
+         * l'équateur (Amazonie, Congo, Insulinde). Sans elle, m>0.60 en bande
+         * chaude n'arrivait JAMAIS — jungle 0.00 % sur 100 graines (mesuré).
+         * Cloche étroite (σ=0.09) : éteinte dès lat 0.20, aucune interférence
+         * avec la ceinture aride centrée 0.30. */
+        float itcz = expf(-((lat-0.06f)*(lat-0.06f))/(0.09f*0.09f))*0.22f;   /* 0.28 re-noyait les déserts via le recyclage */
 
         /* Assèchement continental profond (Gobi / intérieur de l'Asie centrale) */
         float inland_dry = odist[i]*odist[i]*0.40f;
@@ -1447,6 +1462,7 @@ static void gen_climate(World *w, float *height, float *moisture,
         float m = 0.07f
                 + 0.44f*rain[i]      /* advection : pluie orographique + ombre */
                 + 0.19f*tropical     /* convection tropicale */
+                + itcz               /* ZCIT : la ceinture des pluies équatoriale */
                 + 0.18f*coastal      /* proximité de l'océan */
                 + fbm + m_bias
                 - subtrop            /* ceinture subtropicale → Sahara/Gobi */
@@ -1457,19 +1473,11 @@ static void gen_climate(World *w, float *height, float *moisture,
          * accumulé fort, > 0.30·255 — pas le ruissellement diffus), corridor de vallée SERRÉ (rayon 3,
          * débit décroissant). La terre LOIN d'une rivière garde son climat naturel (aride si aride). */
         float riv=0.f;
-        for (int ry=-3; ry<=3; ry++) for (int rx=-3; rx<=3; rx++){
-            int qx=x+rx, qy=y+ry;
-            if (qx<0||qx>=SCPS_W||qy<0||qy>=SCPS_H) continue;
-            float dd=sqrtf((float)(rx*rx+ry*ry)); if (dd>3.f) continue;
-            float fl=cells[scps_idx(qx,qy)].river/255.f;
-            if (fl<0.30f) continue;                          /* le COURS, pas le ruissellement */
-            float c=fl*(1.f-dd/4.f);
-            if (c>riv) riv=c;
-        }
-        /* PLAFONNÉ sous le seuil de MARAIS (0.58 < 0.60) : la berge verdit en PRAIRIE/FORÊT, JAMAIS en
-         * marécage → fini les petits « lacs/trucs » épars que l'ancien lâcher de pluie semait aux bas-fonds. */
-        float boost=riv*0.60f*(1.f-clampf(m,0.f,1.f));
-        m=fminf(m+boost, fmaxf(m,0.58f));
+        /* 2026-08-16 : le bonus FLUVIAL est parti vivre APRÈS trace_rivers (il lisait
+         * des débits à ZÉRO ici — mort à la génération ; et son plancher 0.58 aurait
+         * repeint le monde en forêt une fois réveillé naïvement). Cf. la retouche
+         * RIVERAINE de world_generate, réduite (plancher 0.45). */
+        (void)riv;
 
         moisture[i]=clampf(m,0.f,1.f);
     }
@@ -4554,7 +4562,19 @@ void world_generate(World *w, const WorldParams *P) {
     compute_ocean_distance(height,odist);  printf("ok\n");
 
     printf("[scps] climat (vent)... "); fflush(stdout);
-    gen_climate(w,height,moisture,temp,odist,seed_f,P); printf("ok\n"); probe_coast(height,"climat");
+    gen_climate(w,NULL,height,moisture,temp,odist,seed_f,P);
+    /* ITÉRATION CLIMAT→BIOME→CLIMAT (2026-08-16) : une passe provisoire de biomes
+     * donne au RECYCLAGE FORESTIER de quoi vivre — la forêt repompe l'humidité vers
+     * l'intérieur, l'extrême humide continental (jungle 0.00 % mesuré sur 100
+     * graines) redevient atteignable, et la seconde passe redessine pluie/humidité
+     * en conséquence. */
+    { Biome *bio1=(Biome*)malloc(sizeof(Biome)*SCPS_N);
+      if (bio1){
+          for (int ii=0;ii<SCPS_N;ii++) bio1[ii]=assign_biome(height[ii],moisture[ii],temp[ii]);
+          gen_climate(w,bio1,height,moisture,temp,odist,seed_f,P);
+          free(bio1);
+      } }
+    printf("ok\n"); probe_coast(height,"climat");
 
     printf("[scps] vallées...      "); fflush(stdout);
     /* COURBE DE RELIEF (γ>1) : APRÈS le climat (les montagnes ont déjà fait la pluie
@@ -4771,6 +4791,47 @@ void world_generate(World *w, const WorldParams *P) {
           if (L>=150) c150++; }
       printf("ok (%d riv. ; tronc max %d c. · %d ≥100 · %d ≥150 ; écartées : %d cap · %d courtes · %d longues)\n",
              w->n_rivers, mx, c100, c150, g_river_drop_cap, g_river_drop_short, g_river_drop_long); }
+
+    /* LA RETOUCHE RIVERAINE (2026-08-16, ex-« bonus fluvial » de gen_climate — mort
+     * là-bas : les débits n'existaient pas encore) : la berge d'un COURS notable
+     * verdit LOCALEMENT (rayon 3), plancher RÉDUIT 0.58→0.45 (l'ancien aurait
+     * repeint le monde en forêt) — le Nil verdit ses rives, pas son désert. Les
+     * agrégats de province (biome_dominant, tirage) sont posés AVANT : la retouche
+     * est visuelle et locale, jamais un re-routage climatique. */
+    for (int yy=0; yy<SCPS_H; yy++) for (int xx=0; xx<SCPS_W; xx++){
+        int ii=scps_idx(xx,yy);
+        if (height[ii]<SEA_LEVEL) continue;
+        float riv=0.f;
+        for (int ry=-3; ry<=3; ry++) for (int rx=-3; rx<=3; rx++){
+            int qx=xx+rx, qy=yy+ry;
+            if (qx<0||qx>=SCPS_W||qy<0||qy>=SCPS_H) continue;
+            float dd=sqrtf((float)(rx*rx+ry*ry)); if (dd>3.f) continue;
+            float fl=w->cell[scps_idx(qx,qy)].river/255.f;
+            if (fl<0.30f) continue;
+            float cc=fl*(1.f-dd/4.f);
+            if (cc>riv) riv=cc;
+        }
+        if (riv<=0.f) continue;
+        float m0=w->cell[ii].moisture;
+        float boost=riv*0.45f*(1.f-clampf(m0,0.f,1.f));
+        float m1=fminf(m0+boost, fmaxf(m0,0.45f));
+        if (m1>m0+1e-4f){
+            w->cell[ii].moisture=m1;
+            w->cell[ii].biome=assign_biome(w->cell[ii].height, m1, w->cell[ii].temperature);
+        }
+    }
+
+    /* INSTRUMENTATION BIOMES (critique worldgen 2026-08-16 : « les déserts sont
+     * modélisés, ils ne sortent pas ») : l'histogramme des biomes TERRESTRES à
+     * chaque génération — la mesure avant/après de toute retouche climatique. */
+    { long bc[BIO_COUNT]={0}; long landc=0;
+      for (int ii=0;ii<SCPS_N;ii++){ Biome bb2=w->cell[ii].biome;
+          if (bb2==BIO_DEEP_OCEAN||bb2==BIO_OCEAN||bb2==BIO_COAST) continue;
+          bc[bb2]++; landc++; }
+      printf("[scps] biomes terre : ");
+      for (int b2=0;b2<BIO_COUNT;b2++) if (bc[b2]>0 && landc>0)
+          printf("%s %.1f%% · ", biome_name((Biome)b2), 100.0*(double)bc[b2]/(double)landc);
+      printf("(terres %ld cellules)\n", landc); }
 
     /* Diag FALAISES (gated, style SCPS_*DIAG) : compte les cellules de la bande
      * côtière qui portent le drapeau dérivé + HISTOGRAMME des dénivelés au

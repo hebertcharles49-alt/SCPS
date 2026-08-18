@@ -26,6 +26,10 @@
 #include "scps_routes.h"
 #include "scps_statecraft.h"
 #include "scps_factions.h"   /* faction_bind (GLISSEMENT 2026-08-06) */
+#include "scps_demography.h" /* demography_tick — fait ÉMERGER les classes (pop_by_class) : sans lui,
+                               * un ministre ÉLITE/BOURGEOIS n'a jamais de porteur (LABORER=100% de la
+                               * fondation, jamais recalculé), le canal grief/rot reste mort */
+#include "scps_modifier.h"   /* ModifierStack — requis par demography_tick (dérive d'assimilation) */
 #include "scps_tune.h"      /* P1-1/P3 : COUNCIL_* (registre J) */
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,7 +45,7 @@ static bool near_f(float a, float b, float eps){ float d=a-b; if(d<0)d=-d; retur
 typedef struct {
     World *w; WorldEconomy *econ; TradeNetwork *net; TechState *ts;
     WorldProsperity *wp; WorldLegitimacy *wl; DiploState *dp; RouteNetwork *rn;
-    Statecraft *sc;
+    Statecraft *sc; ModifierStack *drift;
 } Sim;
 
 static int cap_region(const World *w, int cid){
@@ -57,6 +61,29 @@ static int find_taxed_country(const World *w){
         if (w->country[c].capital_prov>=0 && econ_country_tax_year(c)>0.f) return c;
     return 0;   /* repli dégénéré : aucun pays taxé (ne devrait pas arriver après échauffement) */
 }
+/* Le CONSEIL VIVANT (le ministre EST un membre de la pop, décision joueur 2026-08-06)
+ * a besoin d'un pays dont le siège testé (candidat de plus haut tier → classe ÉLITE
+ * la plupart du temps) a un PORTEUR réel dans la pop — sans ça faction_grievance_add/
+ * faction_lever_apply sur son courant sont des no-op silencieux (aucun groupe de
+ * comptage>0 ne penche vers ce courant) : ping grievance 0.000, loyauté figée, rot
+ * mort. Le warmup (ci-dessous) fait maintenant tourner demography_tick, qui fait
+ * ÉMERGER les classes (pop_by_class) pays par pays — mais 25 ans ne suffisent pas
+ * partout (24/162 pays avaient une élite mesurée, graine 42) : on cherche le premier
+ * pays taxé qui EN a une, plutôt que le tout premier taxé (find_taxed_country). */
+static int find_taxed_country_with_elite(const World *w, const WorldEconomy *e){
+    for (int c=0;c<w->n_countries;c++){
+        if (w->country[c].capital_prov<0 || econ_country_tax_year(c)<=0.f) continue;
+        long elite=0;
+        int NP=e->n_prov; if (NP>SCPS_MAX_PROV) NP=SCPS_MAX_PROV;
+        for (int p=0;p<NP;p++){
+            const ProvinceEconomy *pe=&e->prov[p];
+            if (!pe->active||!pe->colonized||pe->owner!=c) continue;
+            for (int i=0;i<pe->pop.n_groups;i++) elite+=pe->pop.groups[i].pop_by_class[CLASS_ELITE];
+        }
+        if (elite>0) return c;
+    }
+    return find_taxed_country(w);   /* repli : aucun pays porteur trouvé (ne devrait pas arriver) */
+}
 
 int main(int argc, char **argv){
     uint32_t seed=(argc>1)?(uint32_t)strtoul(argv[1],NULL,10):42u;
@@ -65,7 +92,8 @@ int main(int argc, char **argv){
     s.net=malloc(sizeof(TradeNetwork)); s.ts=calloc(SCPS_MAX_COUNTRY,sizeof(TechState));
     s.wp=malloc(sizeof(WorldProsperity)); s.wl=malloc(sizeof(WorldLegitimacy));
     s.dp=malloc(sizeof(DiploState)); s.rn=malloc(sizeof(RouteNetwork)); s.sc=malloc(sizeof(Statecraft));
-    if(!s.w||!s.econ||!s.net||!s.ts||!s.wp||!s.wl||!s.dp||!s.rn||!s.sc){ fprintf(stderr,"OOM\n"); return 1; }
+    s.drift=calloc(1,sizeof(ModifierStack));   /* la pile de dérive (demography_tick) — calloc : n=0 net */
+    if(!s.w||!s.econ||!s.net||!s.ts||!s.wp||!s.wl||!s.dp||!s.rn||!s.sc||!s.drift){ fprintf(stderr,"OOM\n"); return 1; }
 
     printf("══════════════════════════════════════════════════════════════\n");
     printf(" STATECRAFT — métriques 0-100, Influence, Diplomates, Révolte (graine %u)\n", seed);
@@ -83,6 +111,13 @@ int main(int argc, char **argv){
         econ_tick(s.econ, 1.f); econ_colonize_tick(s.econ,s.w,-1,NULL,NULL); world_tick(s.w,s.econ,1.f);
         legitimacy_tick(s.wl,s.w,s.econ,s.ts);
         prosperity_tick(s.wp,s.w,s.econ,s.net,s.ts,s.wl);
+        /* demography_tick FAIT ÉMERGER les classes (pop_by_class, §pop précise) — sans
+         * lui la pop reste 100% Journalier (fixé à la fondation, cf. scps_world.c
+         * worldgen_seed_peoples) pour TOUJOURS : aucun porteur bourgeois/élite nulle
+         * part, canal grief/rot mort pour tout ministre non-Journalier (mesuré : ping
+         * grievance 0.000 sur tous les 162 pays du monde). Un monde réel tique la
+         * démographie ; ce banc doit en faire autant pour rester représentatif. */
+        demography_tick(s.w, s.econ, s.wl, s.drift, 5.f, 5.f, 1.f, 1.f);
     }
     int player=0; for (int c=0;c<s.w->n_countries;c++) if (s.w->country[c].role==POLITY_PLAYER){player=c;break;}
 
@@ -310,7 +345,7 @@ int main(int argc, char **argv){
          * GENS (élite/bourgeois/paysan) et son courant est celui de SA classe telle
          * qu'incarnée dans SON pays. Les contrats du remplaçant : déterminisme,
          * cohérence classe→courant, et un roster qui mélange les conditions. */
-        int cid=find_taxed_country(s.w);
+        int cid=find_taxed_country_with_elite(s.w, s.econ);
         bool det_ok=true, contrat_ok=true;
         for (int seat=0; seat<SC_COUNCIL_SEATS; seat++)
             for (int sl=0; sl<SC_COUNCIL_CANDS; sl++){
@@ -657,6 +692,6 @@ int main(int argc, char **argv){
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n", g_pass, g_fail);
     printf("══════════════════════════════════════════════════════════════\n");
-    free(s.w);free(s.econ);free(s.net);free(s.ts);free(s.wp);free(s.wl);free(s.dp);free(s.rn);free(s.sc);
+    free(s.w);free(s.econ);free(s.net);free(s.ts);free(s.wp);free(s.wl);free(s.dp);free(s.rn);free(s.sc);free(s.drift);
     return g_fail?1:0;
 }

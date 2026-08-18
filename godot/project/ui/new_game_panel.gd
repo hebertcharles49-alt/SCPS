@@ -36,7 +36,9 @@ const SIZES := [
 const HERITAGE_KEYS := ["T_HERITAGE_0", "T_HERITAGE_1", "T_HERITAGE_2", "T_HERITAGE_3", "T_HERITAGE_4", "T_HERITAGE_5"]
 const ETHOS_KEYS := ["T_ETHOS_0", "T_ETHOS_1", "T_ETHOS_2", "T_ETHOS_3", "T_ETHOS_4", "T_ETHOS_5"]
 
-var _size_sld: HSlider      # TAILLE Tiny→Huge — le seul réglage monde exposé pour l'instant
+var _size_sld: HSlider      # TAILLE Tiny→Huge
+var _humid_sld: HSlider     # HUMIDITÉ (2026-08-18) — initialisé au TIRAGE de la graine ; non touché = archétype intact
+var _humid_val: Label
 var _size_val: Label
 var _size_explain: Label   ## « → N empires · M cités-états » — la taille en termes concrets
 var _preview_lbl: Label    ## aperçu compact du monde (continents/terres/climat/âge, façade worldparams_default)
@@ -117,6 +119,26 @@ func _build_ui() -> void:
 		_refresh_size_explain()
 		_rebuild_empire_list())
 	world.add_child(size_row)
+
+	# HUMIDITÉ (décision joueur 2026-08-18) : le curseur part du TIRAGE de la graine
+	# (worldparams_default) — non touché, la carte est identique à l'archétype ; le
+	# mot vivant (aride/modéré/humide) dit l'effet, jamais le calcul.
+	var hum_row := HBoxContainer.new()
+	var hum_lab := Label.new(); hum_lab.text = tr("T_NG_HUMIDITY"); hum_lab.custom_minimum_size = Vector2(150, 0)
+	hum_lab.add_theme_color_override("font_color", C_TEXT)
+	hum_row.add_child(hum_lab)
+	_humid_sld = HSlider.new()
+	_humid_sld.min_value = 0; _humid_sld.max_value = 100; _humid_sld.step = 1
+	_humid_sld.value = 50
+	_humid_sld.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_humid_sld.custom_minimum_size = Vector2(180, 0)
+	hum_row.add_child(_humid_sld)
+	_humid_val = Label.new(); _humid_val.custom_minimum_size = Vector2(96, 0)
+	_humid_val.add_theme_color_override("font_color", C_DIM)
+	hum_row.add_child(_humid_val)
+	_humid_sld.value_changed.connect(func(_v):
+		_humid_val.text = _bucket_word(float(_humid_sld.value)/100.0, "aride", "modéré", "humide"))
+	world.add_child(hum_row)
 
 	# EXPLIQUER LA TAILLE en termes concrets (retour joueur 2026-07-10, Lot 4.4 :
 	# « aperçu compact du monde + expliquer la taille ») — les décomptes empires/
@@ -245,6 +267,10 @@ func _refresh_world_preview() -> void:
 	var mount := _bucket_word(float(p.get("mountains", 0.5)), "plaines", "relief vallonné", "hautes montagnes")
 	var temp := _bucket_word(float(p.get("temperature", 0.5)), "froid", "tempéré", "chaud")
 	var humid := _bucket_word(float(p.get("humidity", 0.5)), "aride", "modéré", "humide")
+	if _humid_sld != null:
+		_humid_sld.set_value_no_signal(float(p.get("humidity", 0.5)) * 100.0)
+		if _humid_val != null:
+			_humid_val.text = humid
 	var age := _bucket_word(float(p.get("world_age", 0.5)), "jeune", "mûr", "vieux et fendu")
 	var n_cont := int(p.get("n_continents", 0))
 	_preview_lbl.text = "%s : %d\n%s : %s · %s : %s\nClimat : %s, %s\n%s : %s" % [
@@ -327,6 +353,8 @@ func _gather_params(seed_v: int) -> Dictionary:
 		d = Sim.world.worldparams_default(seed_v)
 	d["n_empires"] = int(sz[1])
 	d["n_city_states"] = int(sz[2])
+	if _humid_sld != null:
+		d["humidity"] = float(_humid_sld.value) / 100.0   # == le tirage si non touché
 	return d
 
 func _on_lancer() -> void:

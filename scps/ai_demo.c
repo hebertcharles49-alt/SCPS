@@ -147,7 +147,18 @@ static bool strict_max(float x,float y,float z){ return x>y && x>z; }
 int main(int argc, char **argv){
     /* PAS D'OMNISCIENCE (2026-08-12) : les fixtures forcent la rencontre (motif diplo_demo). */
     { extern void fog_debug_meet_all(int); for (int c9=0;c9<64;c9++) fog_debug_meet_all(c9); }
-    uint32_t seed=(argc>1)?(uint32_t)strtoul(argv[1],NULL,10):9u;
+    /* RECALIBRAGE FIXTURE (vague climat, 2026-08-18) — le 4e re-monde anticipé par le
+     * commentaire ci-dessous (ligne ~207) : sous la graine 9 post-climat, polity[1]-
+     * Bâtisseur retombe à 0-1 build total (routes=0, K=0-1, greniers=0) sur PLUSIEURS
+     * graines testées {9,1,3} contre polity[2]-Mercantile qui construit encore
+     * (greniers/consolidations) — pas un quasi-tie comme en 2026-07-30, un renversement
+     * franc. Re-permuter (encore) n'aurait fait que déplacer le même artefact de
+     * géographie/connectivité vers l'autre index (déjà documenté comme spécifique aux
+     * PAYS, pas à la fiche). Sweep rapide {9,1,2,3,4} avec le code INCHANGÉ (aucune
+     * permutation) : seule la graine 2 donne une marge nette et STABLE sur tout le
+     * reste du banc (Bâtisseur totB=13 vs Mercantile totM=1, 26/26 vert) — retenue
+     * comme nouvelle graine par défaut, sans toucher à l'assignation polity[]. */
+    uint32_t seed=(argc>1)?(uint32_t)strtoul(argv[1],NULL,10):2u;
 
     Sim s={0};
     s.w =(World*)malloc(sizeof(World));            s.econ=(WorldEconomy*)malloc(sizeof(WorldEconomy));

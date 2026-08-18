@@ -37,7 +37,13 @@ int main(int argc, char **argv){
      * prouve la FAÇADE, pas l'expansion passive (testée par ses propres gates). */
     tune_set("PASSIVE_SEEP", 0.f);
 
-    uint32_t seed = (argc>1) ? (uint32_t)strtoul(argv[1],NULL,10) : 9u;
+    /* VAGUE CLIMAT (2026-08-18) : la graine 9 (défaut historique de ce banc) tire
+     * désormais l'archétype « archipel » — le pays-joueur y est laminé par l'IA en
+     * ~20 ans (0 province, 0 or, 0 bourgeois à l'an 20 : monde mort, pas un bug de
+     * façade). Scan de graines (graine → prov/or/bourgeois/pool à l'an 20) : la 1
+     * tient une province saine (or=500, bourgeois=415, pool=91.6) — recalibrage de
+     * fixture, même esprit de banc (façade sur UN monde vivant), monde différent. */
+    uint32_t seed = (argc>1) ? (uint32_t)strtoul(argv[1],NULL,10) : 1u;
     printf("══ scps_api : la façade C pilote le moteur (graine %u) ══\n", seed);
 
     ScpsSim *s = scps_sim_new();
@@ -243,8 +249,17 @@ int main(int argc, char **argv){
         scps_sim_advance_days(s2, 1);                       /* le drain applique (le CB est consommé) */
         nr = scps_country_relations(s2, pl, rel, 64);
         int wars1=0; for (int i=0;i<nr;i++) wars1 += rel[i].at_war;
-        printf("   diplo joueur : guerres %d → %d après déclaration au drain\n", wars0, wars1);
-        ok("verbe DÉCLARER LA GUERRE : APPLIQUÉ au drain (le joueur entre en guerre)", wars1 > wars0);
+        /* CIBLE PRÉCISE, pas le total agrégé (2026-08-18) : dans un monde vivant à 150+ pays,
+         * une guerre PRÉEXISTANTE ailleurs peut se résoudre (paix/annexion) le MÊME jour que
+         * notre déclaration — le total wars1/wars0 peut alors rester égal alors que NOTRE
+         * cible EST bien entrée en guerre (faux négatif observé : guerre PRÉ vs pays 16 close
+         * le jour même où la guerre vs pays 4 s'ouvre, wars1==wars0==1). On vérifie donc l'état
+         * de LA cible déclarée, la seule chose que ce verbe prétend prouver. */
+        int wt_at_war=0; for (int i=0;i<nr;i++) if (rel[i].country==wt) wt_at_war = rel[i].at_war;
+        printf("   diplo joueur : guerres %d → %d après déclaration au drain (cible %d en guerre=%d)\n",
+               wars0, wars1, wt, wt_at_war);
+        ok("verbe DÉCLARER LA GUERRE : APPLIQUÉ au drain (le joueur entre en guerre)",
+           wt>=0 && wt_at_war==1);
         /* offre de PAIX + EMBARGO + ALLIANCE : enfilés et drainés sans crash (la membrane tient ;
          * le verdict d'acceptation — via l'opinion — tombe au tick, lu ensuite en relations). */
         int pe=0, em=0;

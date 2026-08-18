@@ -8777,3 +8777,183 @@ VIT (19 traversées, 3 colonies outre-mer, seed 205). L'entretien naval et
 l'embarquement puisent au POOL NATIONAL (econ_country_stock_take/sum — la flotte
 mangeait local en violation de la doctrine). Leçon x2 : éteindre un système = griller
 TOUS ses producteurs (grep l'API de construction, pas le seul module).
+
+### statecraft_demo rougi par la vague CLIMAT — le canal grief/rot était mort AVANT
+la vague (2026-08-18)
+5 asserts « Conseil vivant » rouges après le rééquilibrage climat (`scps_world.c`).
+**Découverte** : PAS une régression climat — le fixture n'appelait jamais
+`demography_tick` dans son warmup. `worldgen_seed_peoples` pose `pop_by_class[LABORER]
+= total` (tout Journalier) à la fondation et NE RECALCULE JAMAIS sans un tick de
+démographie ; Bourgeois/Élite restent à 0 pour TOUJOURS dans ce banc. Le « best » tier
+candidat du siège 0 tombait sur un ministre ÉLITE (classe=2) dont le courant (Gardiens)
+n'avait donc AUCUN porteur réel (`group_lean_full` : `pop_by_class[ELITE]=0` partout ⇒
+poids nul, pas le repli « pré-émergence » — celui-ci ne couvre que `tot<=0`, or LABORER
+seul suffit à rendre `tot>0`) : `faction_grievance_add/faction_lever_apply` devenaient
+des no-op silencieux → ping grievance 0.000, loyauté figée, rot toujours 0.00. La
+sélection déterministe (seed×cid×siège) tombait avant sur une classe porteuse
+(LABORER, toujours vivant) — le rebattage climat a juste changé quel `cid`
+`find_taxed_country` retourne, donc quelle classe le siège 0 tire. **Piège** : le
+commentaire déjà présent dans `scps_factions.c` (« repli klass pré-émergence… loyauté
+figée à 92, rot 0.00 — canal mort ») décrit EXACTEMENT ce symptôme et fait croire qu'un
+agent précédent l'avait déjà réglé côté moteur — non, ce repli couvre un cas différent
+(zéro classe DU TOUT), pas « classe réelle mais élite=0 ». Bien lire QUEL `if` gate le
+repli avant de conclure « déjà fixé ». **Fix (fixture only, `statecraft_demo.c`)** :
+warmup appelle maintenant `demography_tick` chaque année (P=K=5.f, dt=1, requiert un
+`ModifierStack *drift` calloc — pattern copié de `demography_integ_demo.c`) pour que
+les classes ÉMERGENT réellement (comme en jeu) ; + `find_taxed_country_with_elite`
+(nouveau helper local) cherche le premier pays taxé qui a RÉELLEMENT une pop élite
+(25 ans ne suffit pas partout : 24/162 pays seed 42) au lieu du premier taxé tout
+court. 74/74 vert, stable sur graines 7/42/123/999. **Restes** : aucun — mais tout
+futur banc statecraft/factions qui fixture un monde SANS `demography_tick` dans son
+warmup aura le même canal mort dès qu'un test touche une classe autre que Journalier.
+
+## 2026-08-18 — Re-calibrage post-vague CLIMAT : 3 bancs (revolt/agency/ai_demo), fixture only (sonnet)
+
+Contexte : la vague climat (`scps_world.c` — itération climat→biomes→climat, RAZ fetch,
+retouche riveraine, ZCIT) a bougé les mondes de toutes les graines. `revolt_demo`,
+`agency_demo`, `ai_demo` étaient rouges (fixtures calées sur des graines/index précis).
+Diagnostiqué et corrigé un par un — **aucun moteur touché** (`scps_revolt.c`,
+`scps_agency.c`, `scps_econ.c`, `scps_ai.c`, `scps_world.c` : diff nul). Les trois
+mécanismes en cause sont SAINS ; seule la fixture ne posait plus les préconditions.
+
+**Découvertes**
+
+1. **`econ_region_rep_province` (le cache, pas le scan) peut être -1 pour une région
+   qui EXISTE géographiquement.** `revolt_demo.c` posait ses fixtures via un helper
+   local `rep_prov()` qui CHECK `e->region_rep_prov[r]` PUIS retombe sur un scan brut
+   `prov[p].region==r` — donc `rig()`/`push()` trouvaient toujours une province et ne
+   remarquaient rien d'anormal. Mais `revolt_ignite()` (moteur) appelle DIRECTEMENT
+   `econ_region_rep_province()` (pas de repli scan) → région 3 (graine 42, post-climat)
+   n'a plus de porteuse cachée par `econ_build_adjacency` → `pid<0` → refus NET avant
+   même de lire le déficit. Symptôme trompeur : le déficit calculé À LA MAIN avec les
+   mêmes valeurs donnait 0.79 (bien au-dessus d'IGNITE_DEFICIT=0.20) — on jurerait que
+   ça devrait marcher. **Piège** : ne jamais diagnostiquer un refus de `revolt_ignite`
+   en recalculant le déficit soi-même avec un helper local différent de celui que le
+   moteur utilise réellement — les deux peuvent diverger silencieusement sur LEQUEL
+   `pid` ils trouvent. **Fix** : scanné toutes les régions (`econ_region_rep_province`
+   direct, boucle 0..40) pour trouver un index valide inutilisé (région 6), déplacé les
+   deux blocs concernés (§6 sécession, §12 servile) de région 3 → région 6.
+2. **Le mécanisme de débase M3h (`DEBASE_K_EROSION_RATE`, scps_econ.c:5766) peut roger
+   `K_inst` à -0.5/jour (pas -2%/an) quand un pays sur-frappe en continu** — ce qui
+   arrive quand sa capitale a une population quasi nulle (trésorerie exsangue → le
+   contrôleur fiscal IA, `econ_ai_fiscal_tick`, sur-frappe pour compenser). `agency_demo`
+   (graine 42) tombait justement sur un joueur dont la capitale n'avait qu'1 (UN) habitant
+   journalier — un institut bâti à 4.0 de pic s'effondrait à 0.0 en ~8 jours, exactement
+   au même rythme (0.5/jour) que le témoin SANS aucun chantier (K_ctrl==K_an8==3.000
+   pile). Ce N'EST PAS le mécanisme de vétusté ordinaire (`agency_build_decay`,
+   scps_agency.c:722, plancher 50% du nominal, ~2%/an) — deux érosions DIFFÉRENTES
+   coexistent sur le même champ `build.K_inst`, avec des ordres de grandeur très
+   différents. **Piège** : le plancher 50% de la vétusté fait croire qu'`K_inst` ne peut
+   JAMAIS retomber à 0 — faux, la débase (M3h) n'a pas ce plancher et peut tout ronger.
+   **Fix** : `agency_demo.c` ne pose aucun SUBSTRAT ÉGAL (contrairement à `ai_demo.c`,
+   qui dote treasury/stock/pop explicitement) — le joueur hérite de la géographie brute
+   du monde généré. Changé la graine par défaut 42→1 (capitale réelle, ~15 000
+   journaliers, décroissance normale 4.0→3.74 sur 6 ans, marge large K_an8=6.74 vs
+   K_ctrl+2=5.0).
+3. **`ai_demo` (graine 9) : le Bâtisseur (polity[1], depuis le swap du 2026-07-30) est
+   tombé à 0-1 build total sur 3 graines testées {9,1,3}** contre un Mercantile qui
+   construit encore (greniers/consolidations) — pas un quasi-tie, un renversement franc.
+   Le commentaire du 2026-07-30 anticipait littéralement ce cas (« si un 4e re-monde
+   inverse à nouveau ce tableau, c'est la piste à dérouler pour de bon plutôt que
+   re-permuter à la main ») : re-permuter (encore) n'aurait fait que déplacer le même
+   artefact géographie/connectivité vers l'autre index. Sweep {9,1,2,3,4} SANS toucher
+   l'assignation polity[] : seule la graine 2 donne une marge stable et nette
+   (Bâtisseur totB=13 vs Mercantile totM=1) ET fait passer les 26 assertions du banc
+   (pas seulement celle-ci). **Fix** : graine par défaut 9→2, `int cidD=polity[0],
+   cidM=polity[2], cidB=polity[1];` INCHANGÉ.
+
+**Pièges (généraux)**
+
+- Sur ce repo, `Bash` (git-bash) et `/d/MSYS2/usr/bin/bash.exe -lc '...'` ont des `/tmp`
+  et des cwd DIFFÉRENTS et NON PARTAGÉS — un script écrit par l'un n'est pas visible par
+  l'autre, et le cwd ne persiste pas d'un appel MSYS2 à l'autre (`cd` doit être répété
+  DANS CHAQUE `-lc '...'`, sinon "Aucune règle pour fabriquer la cible"). Rediriger les
+  logs de debug vers un chemin Windows absolu partagé (pas `/tmp`) pour pouvoir les Read.
+- Pour diagnostiquer un refus retourné par une fonction moteur sans pouvoir la modifier :
+  instrumenter TEMPORAIREMENT le module moteur avec des `fprintf(stderr,...)` à chaque
+  `return -1`, rebuild, lire `stderr`, puis `git checkout -- <fichier>` pour un revert
+  garanti bit-exact avant de committer quoi que ce soit — bien plus fiable que de
+  ré-implémenter la logique interne à la main dans le banc pour la comparer.
+
+**Restes** : les trois bancs sont verts sur leur graine par défaut ; le sweep de
+robustesse (plusieurs graines) n'a été fait que pour `ai_demo` (5 graines) et
+`agency_demo` (4 graines) — pas pour `revolt_demo` (la cause, un `region_rep_prov`
+absent pour un index fixe, est structurelle par graine et ne se resweepe pas de la même
+façon). Un futur re-monde peut refaire tomber n'importe lequel des trois — même
+diagnostic à refaire (chercher SI c'est un index de région/pays qui ne pointe plus vers
+une géographie vivante, PAS supposer une régression moteur sans avoir tracé le refus).
+
+## 2026-08-18 — Re-calibrage post-vague CLIMAT : scps_api_demo + endgame_demo, fixture only (sonnet)
+
+**Découvertes**
+
+1. **`scps_api_demo` (graine 9, défaut historique) : le pays-joueur est laminé par l'IA
+   en ~20 ans dans le nouvel archétype « archipel »** (7 continents, terres 0.38, monde
+   très contesté) — à l'an 20 : 0 province, or=0, revenus=0, 0 poste budget, bourgeois=0.
+   Ce N'est PAS une régression de façade : `scps_commerce_power`, le marché, l'alloc
+   province, la colonisation, la fabrication de CB (17 échecs en cascade) échouaient tous
+   légitimement parce que le joueur n'avait plus RIEN à lire. Scan de graines (mode
+   `-scan LO HI` ajouté temporairement à `main()`, retiré après diagnostic — pattern : sim
+   fraîche, avance 20 ans, imprime prov/or/bourgeois/pool, next) : graine 1 tient une
+   province saine (or=500, bourgeois=415, pool=91.6). **Fix** : `uint32_t seed = ... : 1u;`
+   (était `9u`) — recalibrage pur, aucune autre ligne touchée. Passe 17→0 échecs d'un
+   coup (202/219 → 242/243 avant le fix #2 ci-dessous).
+2. **Le dernier échec restant (« DÉCLARER LA GUERRE : APPLIQUÉ au drain ») était un FAUX
+   NÉGATIF structurel, pas lié à la graine** : le test comparait un COMPTE AGRÉGÉ
+   (`wars1 > wars0`, somme de `at_war` sur toutes les relations connues) au lieu de l'état
+   de LA cible déclarée. Dans un monde vivant à 150+ pays, une guerre PRÉEXISTANTE
+   ailleurs (observé : joueur déjà en guerre contre le pays 16 « Horde Caelielor » avant
+   même le bloc de test) peut se RÉSOUDRE (paix/annexion) le MÊME jour de drain où NOTRE
+   déclaration (contre le pays 4 « Ligue Brenyan ») s'ouvre — le total net à zéro
+   (wars1==wars0==1) alors que la cible EST bien entrée en guerre. Diagnostiqué en
+   instrumentant temporairement (`printf` listant pays+nom de chaque relation `at_war`
+   avant/après), confirmé, puis RETIRÉ. **Fix** : l'assertion vérifie maintenant
+   `wt>=0 && wt_at_war==1` (l'état de la cible précise, lu via `rel[i].country==wt`) au
+   lieu du delta agrégé — même esprit du test (le verbe a-t-il vraiment mis le joueur en
+   guerre), robuste à la vie du reste du monde. 243/243.
+3. **`endgame_demo` C5 (ronces) : « la fertilité vivrière d'une région dégradée
+   s'effondre » — le test lisait au grain RÉGION alors que `econ_cold_refresh` (le
+   mécanisme réel) n'écrit qu'au grain PROVINCE** (doctrine CLAUDE.md : « LA PROVINCE EST
+   LA SEULE RÉALITÉ ÉCONOMIQUE » — `econ->region[]` n'est qu'une VUE sommée sur TOUS les
+   membres, y compris les provinces vierges/inhabitées). Debug instrumenté (imprimant
+   hab_pre/hab_now/grain_pre/grain_now par région touchée) : 9 régions avec `grain_pre>0`
+   avaient une habitabilité mesurablement en baisse (une même passant sous le seuil 0.30)
+   mais un grain **EXACTEMENT identique** au bit près — signature d'un test qui regarde
+   la mauvaise géométrie, pas d'un moteur inerte : le front de ronces avait corrompu des
+   cellules d'une province VOISINE (vierge) de la même région, jamais la province qui
+   PORTE réellement le grain (`raw_cap[RES_GRAIN]` sommé à la région, dominé par CETTE
+   province, ne bougeait donc pas alors que la MOYENNE d'habitabilité régionale, elle,
+   bougeait). **Fix** : ajouté un snapshot PARALLÈLE au grain province
+   (`hab_pre_p`/`grain_pre_p`, `SCPS_MAX_PROV`, indexé sur `econ->prov[]`) et récrit la
+   boucle de recherche `found_grain_drop` pour scanner les PROVINCES (owner≥0) au lieu
+   des régions — le snapshot région (`hab_pre[]`) est conservé, il ne sert plus qu'au
+   check épicentre existant (L362, inchangé). 118/119 → 119/119, zéro warning.
+
+**Pièges**
+
+- Un `printf` de diagnostic AJOUTÉ TEMPORAIREMENT dans le fichier de banc (donc dans le
+  périmètre autorisé, contrairement à instrumenter le moteur) est le chemin le plus sûr
+  pour distinguer « fixture calée sur un monde mort » d'une vraie régression — mais il
+  FAUT le retirer (ou le garder seulement s'il enrichit légitimement le rapport final) et
+  RECOMPILER pour vérifier zéro warning `-Wunused-*` avant de considérer la mission finie
+  (un array snapshot devenu inutile après un refactor de check laisse un warning silencieux
+  sinon).
+- Le shell MSYS2 invoqué via `/d/MSYS2/usr/bin/bash.exe -lc '...'` démarre à `/home/<user>`,
+  PAS au cwd du tool Bash hôte — chaque appel `-lc` sans `cd /c/Users/.../SCPS-main &&`
+  explicite échoue silencieusement en « Aucune règle pour fabriquer la cible » (déjà noté
+  plus haut dans ce fichier ; re-confirmé, écrire un script `.sh` avec `cd` en dur en tête
+  est plus fiable qu'un one-liner inline quand plusieurs commandes s'enchaînent).
+- Un test qui compare un COMPTE AGRÉGÉ avant/après (guerres totales, popultation totale,
+  stock total…) dans un monde de 150+ pays TOUJOURS vivant (l'IA continue de jouer
+  pendant le tick de drain) est structurellement fragile : un évènement SANS RAPPORT
+  ailleurs dans le monde peut compenser exactement le delta attendu. Préférer vérifier
+  l'état de LA cible/l'entité précise que le verbe manipule, quand la donnée est
+  disponible (ici `rel[i].country==wt`).
+
+**Restes** : aucun sweep multi-graines fait pour ces deux bancs après le fix (seed=1
+pour `scps_api_demo`, monde par défaut inchangé pour `endgame_demo` — seed 9 fixe dans
+`worldparams_default(9)`, jamais touchée). Un futur re-monde peut refaire tomber
+`scps_api_demo` sur une graine où le joueur meurt à nouveau ; le réflexe est le même que
+pour `agency_demo`/`ai_demo` plus haut : scanner prov/or/bourgeois à l'an 20 avant de
+chercher un bug de façade. Le fix province-vs-région d'`endgame_demo` (#3), lui, est
+structurel (pas lié à une graine) et devrait rester vert indéfiniment.

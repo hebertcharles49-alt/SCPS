@@ -180,16 +180,25 @@ int main(int argc, char **argv){
 
     /* ═══ 6. SÉCESSION — un pays naît ═══════════════════════════════════ */
     printf("\n── 6. La sécession : garnison faible + nation étrangère → un PAYS NAÎT ──\n");
+    /* RECALIBRAGE FIXTURE (vague climat, 2026-08-18) : la région 3 (graine 42) n'a
+     * plus de province REPRÉSENTATIVE cachée (econ_region_rep_province==-1 — la
+     * refonte climat a changé la carte assez pour que cette région n'ait plus de
+     * porteuse active reconnue par econ_build_adjacency), donc revolt_ignite refuse
+     * tout net (pid<0) AVANT même de lire le déficit — pas une régression moteur,
+     * juste un index de région qui ne pointe plus vers une géographie vivante sous
+     * la nouvelle carte. La région 6 EST valide sur cette graine (rep_prov=7,
+     * vérifié) et n'est utilisée par aucun autre bloc de ce banc → on y déplace
+     * la fixture, sans toucher au reste (même owner/H/food/society/coercion). */
     revolt_init(&rs);
-    solo_owner(e, 3, OWNER);
-    rig(e, 3, OWNER, 0.02f, 0.10f, 0.5f, 0.f);    /* H=0 → garnison faible */
-    push(e, 3, grp(HERITAGE_CLANIQUE, CLASS_LABORER, 9000, 2.f, 0.12f, foreign, 203));
+    solo_owner(e, 6, OWNER);
+    rig(e, 6, OWNER, 0.02f, 0.10f, 0.5f, 0.f);    /* H=0 → garnison faible */
+    push(e, 6, grp(HERITAGE_CLANIQUE, CLASS_LABORER, 9000, 2.f, 0.12f, foreign, 203));
     int sec_before=w->n_countries;
-    int iy=revolt_ignite(&rs, w, e, drift, NULL, NULL, 3, 0.5f);
+    int iy=revolt_ignite(&rs, w, e, drift, NULL, NULL, 6, 0.5f);
     revolt_tick(&rs, w, e, drift, wl, wp, NULL, NULL, NULL, 120);
     int born = (iy>=0)?rs.list[iy].spawned:-1;
-    int p3=rep_prov(e,3);
-    printf("   verdict : %s | pays né n°%d (table %d→%d) | propriétaire région 3 : %d→%d\n",
+    int p3=rep_prov(e,6);
+    printf("   verdict : %s | pays né n°%d (table %d→%d) | propriétaire région 6 : %d→%d\n",
            iy>=0?revolt_outcome_word(rs.list[iy].outcome):"(rien)",
            born, sec_before, w->n_countries, OWNER, e->prov[p3].owner);
     ok("la nation étrangère fait SÉCESSION",        iy>=0 && rs.list[iy].outcome==OUT_SECEDED);
@@ -307,18 +316,21 @@ int main(int argc, char **argv){
 
     /* ═══ 12. LOT H — RÉVOLTE SERVILE VICTORIEUSE : affranchit DE FORCE ═══════════ */
     printf("\n── 12. Révolte servile victorieuse : les esclaves de la région s'affranchissent DE FORCE ──\n");
+    /* RECALIBRAGE FIXTURE (vague climat, 2026-08-18) : même trou que le bloc 6 —
+     * région 3 sans rep_prov cachée sous la carte post-climat → déplacé sur la
+     * région 6 (valide, inutilisée ailleurs dans ce banc). */
     {
         revolt_init(&rs);
-        solo_owner(e, 3, OWNER);
-        rig(e, 3, OWNER, 0.02f, 0.05f, 0.5f, 0.f);   /* H=0 → garnison faible : victoire rebelle */
-        push(e, 3, grp(HERITAGE_ADAPTATIF, CLASS_LABORER, 1000, 6.f, 1.0f, crown, 260));
+        solo_owner(e, 6, OWNER);
+        rig(e, 6, OWNER, 0.02f, 0.05f, 0.5f, 0.f);   /* H=0 → garnison faible : victoire rebelle */
+        push(e, 6, grp(HERITAGE_ADAPTATIF, CLASS_LABORER, 1000, 6.f, 1.0f, crown, 260));
         PopGroup slave_grp = grp(HERITAGE_CLANIQUE, CLASS_SLAVE, 9000, 2.f, 0.05f, foreign, 261);
         slave_grp.diaspora=true; slave_grp.arrival=ARR_DEPORTE;
-        push(e, 3, slave_grp);   /* push() rafraîchit l'agrégat region[] (revolt_ignite le lit) */
-        int iw=revolt_ignite(&rs, w, e, drift, NULL, NULL, 3, 0.5f);
+        push(e, 6, slave_grp);   /* push() rafraîchit l'agrégat region[] (revolt_ignite le lit) */
+        int iw=revolt_ignite(&rs, w, e, drift, NULL, NULL, 6, 0.5f);
         ok("le soulèvement s'ALLUME sur le groupe SERVILE", iw>=0 && rs.list[iw].klass==CLASS_SLAVE);
         revolt_tick(&rs, w, e, drift, wl, wp, NULL, NULL, NULL, 120);
-        int p3b=rep_prov(e,3);
+        int p3b=rep_prov(e,6);
         bool any_slave_left=false, any_free=false;
         for (int i=0;i<e->prov[p3b].pop.n_groups;i++){
             if (e->prov[p3b].pop.groups[i].klass==CLASS_SLAVE) any_slave_left=true;

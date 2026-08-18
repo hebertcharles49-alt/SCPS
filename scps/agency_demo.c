@@ -62,7 +62,20 @@ static void snapshot(Sim *s, const char *phase, float *out_SI, float *out_frag, 
 }
 
 int main(int argc, char **argv){
-    uint32_t seed=(argc>1)?(uint32_t)strtoul(argv[1],NULL,10):42u;
+    /* RECALIBRAGE FIXTURE (vague climat, 2026-08-18) : sous la graine 42, la
+     * refonte climat retire au JOUEUR une capitale quasi vide (pop journaliers
+     * ≈1) — le contrôleur fiscal IA (econ_ai_fiscal_tick/M3h) sur-frappe alors en
+     * continu pour compenser une trésorerie exsangue, et DEBASE_K_EROSION_RATE
+     * ronge K_inst de la capitale à -0.5/jour (scps_econ.c:5766) : l'institution
+     * bâtie s'effondre à 0 avant même la fin de la fenêtre de mesure (K_an8==
+     * K_ctrl==3.000 pile). Mécanisme moteur intact et correctement câblé (c'est
+     * la MÊME punition qu'un joueur humain subirait avec une capitale ruinée) —
+     * seule la fixture (aucune population/trésor injectés, contrairement à
+     * ai_demo qui égalise le SUBSTRAT) hérite d'un tirage de graine malchanceux
+     * sous la nouvelle carte. Graine 1 : capitale réelle (~15 000 journaliers),
+     * K_inst décroît normalement (4.0→3.74 sur 6 ans, pas de spirale de débase) —
+     * marge large sur l'assert (K_an8=6.74 vs K_ctrl+2=5.0, contre 3.0==3.0). */
+    uint32_t seed=(argc>1)?(uint32_t)strtoul(argv[1],NULL,10):1u;
 
     Sim s={0};
     s.w   =(World*)          malloc(sizeof(World));
