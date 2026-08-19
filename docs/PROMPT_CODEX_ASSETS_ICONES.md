@@ -127,12 +127,6 @@ même gabarit :
   couleur de peau réaliste — le sépia du trait fait tout ; le teint reste
   parchemin.
 
-## Livraison
-
-Une archive (ou un dossier) avec les 6 lots, PNG alpha aux noms EXACTS
-ci-dessus. Toute icône que tu ne peux pas produire : NE PAS improviser un
-autre style — livre la liste des manquantes à part.
-
 ## Lot 7 — NATURE : tampons d'habillage de carte (512×512, préfixe `nat_`)
 
 But : habiller la carte-parchemin — des TAMPONS de gravure posés sur le terrain
@@ -156,3 +150,9 @@ Style identique au reste (trait sépia, hachures), mais posés SUR la carte :
 NB : les LAPINS d'apocalypse (marginalia façon KCD) ont été retirés du jeu —
 n'en générer AUCUN, ni aucune marginalia animalière signée d'un autre jeu.
 Serpents de mer et épaves existent déjà, ne pas en refaire.
+
+## Livraison
+
+Une archive (ou un dossier) avec les 7 lots, PNG alpha aux noms EXACTS
+ci-dessus. Toute icône que tu ne peux pas produire : NE PAS improviser un
+autre style — livre la liste des manquantes à part.
