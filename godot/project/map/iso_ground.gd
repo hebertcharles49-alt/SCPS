@@ -150,6 +150,11 @@ func _draw() -> void:
 				_cliff_map = ImageTexture.create_from_image(cimg)
 		if _cliff_map != null:
 			mat.set_shader_parameter("cliff_map", _cliff_map)
+		# CUISSON DES ROUTES (A+B 2026-08-19) : champ rasterisé par overlay au rebuild
+		# du réseau — le shader le peint comme les rivières (chemin crème + liseré).
+		if _road_map != null:
+			mat.set_shader_parameter("road_map", _road_map)
+		mat.set_shader_parameter("road_on", 1.0 if _road_map != null else 0.0)
 		mat.set_shader_parameter("map_size", Vector2(W, H))
 		# flat_map = 1.0 : mapping cellule TOP-DOWN (biome lu en monde direct). L'INCLINAISON visuelle
 		# est portée par l'échelle Y du nœud IsoGround (map_view.TILT_Y) → sol & overlay restent alignés.
@@ -410,3 +415,11 @@ func _setmax(img: Image, x: int, y: int, v: float, W: int, H: int) -> void:
 ## TRONC du système = le brin le plus LONG (le cours complet, qui remonte le plus loin vers la
 ## MONTAGNE) ; à longueur ~égale (copies braidées), on préfère la SOURCE la plus HAUTE. Tout le reste
 ## CONFLUE vers ce tronc → la rivière vient bien de la montagne, jamais de bras isolé.
+
+# ── CUISSON DES ROUTES (A+B 2026-08-19) : champ R8 monde rasterisé par overlay au
+# rebuild du réseau (« la géographie est déterministe — fondre les routes dans la
+# carte », réfs joueur KCD/WoW). Display-only : le shader iso_antique le peint.
+var _road_map: ImageTexture = null
+func set_road_field(img: Image) -> void:
+	_road_map = ImageTexture.create_from_image(img)
+	queue_redraw()

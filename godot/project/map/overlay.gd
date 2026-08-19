@@ -282,6 +282,8 @@ var _road_start := {}     ## clé de route → ANNÉE de début de chantier (cro
 var _roads_dirty := true  ## le réseau commercial a pu bouger → recharger les routes
 var _road_net := {}       ## ANTISPAG cache : polylignes consolidées (dédup + tier d'épaisseur), voir _ensure_road_network
 var _road_net_valid := false  ## false ⇒ à reconstruire (réseau changé OU un chantier grandit encore)
+var _route_layer_on := false  ## futur calque COMMERCE : le réseau VECTORIEL par-dessus la cuisson
+                              ## (défaut : routes CUITES dans le parchemin seulement — A+B 2026-08-19)
 var _lanes := []          ## PORTULAN : [{points, open, choke, ra, rb}] — lanes maritimes (sea_paths + méta)
 var _lane_dashes := []    ## par lane : PackedVector2Array de PAIRES iso (tirets prêts pour draw_multiline)
 var _lane_dash_cols := [] ## par lane : PackedColorArray par tiret (fondu au large — draw_multiline_colors)
@@ -2514,9 +2516,9 @@ func _ensure_road_network() -> void:
 					# en espace monde, jamais graduée par le zoom — resserrée : la route se
 					# DEVINE sous le massif (ROAD_FOREST_A), la trouée ne l'écrase plus.
 					if d2 <= 1:   dens = 0.0      # cœur : aucune canopée
-					elif d2 <= 5: dens = 0.82     # v6 DA : un DÉGAGEMENT léger — l'encre
-					                              # (casing 0.62) reste le trait, la trouée
-					                              # n'est plus le ruban crème qui le remplace
+					elif d2 <= 2: dens = 0.82     # v2 cuisson (DA) : la trouée ÉPOUSE le ruban
+					                              # peint (±1.4 cellule) — une clairière 3×
+					                              # plus large que la route = l'effet « brume »
 				else:
 					if d2 <= 1:   dens = 0.0
 					elif d2 <= 4: dens = 0.60
@@ -2529,12 +2531,75 @@ func _ensure_road_network() -> void:
 		                                        # re-semis coûte ~2.5 s (perf_shot) : JAMAIS en plein chantier
 	_road_net = polys
 	_road_net_valid = true
+	# ── CUISSON (stratégie A+B, joueur 2026-08-19 : « il faut les fondre dans la
+	# carte ») : le réseau — issu de la géographie, déterministe — se rasterise en
+	# CHAMP monde (R8) remis au shader parchemin, qui le PEINT comme il peint les
+	# rivières : chemin crème, liseré d'encre, grain au travers (réfs KCD/WoW).
+	# L'overlay vectoriel ne sert plus qu'au futur calque Commerce (_route_layer_on).
+	var wld = Sim.world
+	if wld != null:
+		var rw := int(wld.map_w())
+		var rh := int(wld.map_h())
+		var rimg := Image.create(rw, rh, false, Image.FORMAT_R8)
+		for stp in steps:
+			var pl8: PackedVector2Array = stp["poly"]
+			# v2 DA : la hiérarchie par la LARGEUR au stamp, pas par l'alpha (un sentier
+			# à 0.38 tombait à cheval sur corps ET liseré — fil gris boueux). Intensités
+			# hautes et franches ; grande = croix pleine, régionale = perpendiculaires,
+			# sentier = cellule seule (et le shader l'efface au plan large).
+			var lvl8 := int(stp["level"])
+			var w8 := 1.0                        # grande route
+			if lvl8 == 1: w8 = 0.88              # régionale
+			elif lvl8 == 2: w8 = 0.72            # sentier
+			for i8 in range(pl8.size() - 1):
+				var a8: Vector2 = pl8[i8]
+				var b8: Vector2 = pl8[i8 + 1]
+				var d8 := b8 - a8
+				var pn8 := Vector2(-d8.y, d8.x).normalized() if d8.length() > 0.001 else Vector2.ZERO
+				var n8 := maxi(1, int(a8.distance_to(b8) / 0.35))
+				for q8 in range(n8 + 1):
+					var p8 := a8.lerp(b8, float(q8) / float(n8))
+					_road_stamp(rimg, rw, rh, int(p8.x), int(p8.y), w8)
+					if lvl8 == 0:                # croix pleine (±x, ±y)
+						_road_stamp(rimg, rw, rh, int(p8.x) + 1, int(p8.y), w8 * 0.75)
+						_road_stamp(rimg, rw, rh, int(p8.x) - 1, int(p8.y), w8 * 0.75)
+						_road_stamp(rimg, rw, rh, int(p8.x), int(p8.y) + 1, w8 * 0.75)
+						_road_stamp(rimg, rw, rh, int(p8.x), int(p8.y) - 1, w8 * 0.75)
+					elif lvl8 == 1 and pn8 != Vector2.ZERO:   # 2 perpendiculaires
+						_road_stamp(rimg, rw, rh, int(p8.x + pn8.x), int(p8.y + pn8.y), w8 * 0.6)
+						_road_stamp(rimg, rw, rh, int(p8.x - pn8.x), int(p8.y - pn8.y), w8 * 0.6)
+		if OS.has_environment("SCPS_ROADPROBE"):   # SONDE (temporaire DA) : le champ CPU brut
+			var hist := {}
+			for yy in range(rh):
+				for xx in range(rw):
+					var v9 := int(round(rimg.get_pixel(xx, yy).r * 100.0))
+					if v9 > 0:
+						hist[v9] = int(hist.get(v9, 0)) + 1
+			print("[ROADPROBE] champ CPU (val%%×100 → n) : ", hist,
+				" | steps=", steps.size(), " rw=", rw, " rh=", rh,
+				" | poly0=", (steps[0]["poly"] as PackedVector2Array).size() if steps.size() > 0 else -1,
+				" p0=", (steps[0]["poly"] as PackedVector2Array)[0] if steps.size() > 0 and (steps[0]["poly"] as PackedVector2Array).size() > 0 else Vector2(-1, -1))
+		# Ne JAMAIS pousser un champ VIDE : les premiers rebuilds tournent avant le
+		# chaînage (steps=0) — pousser leur néant écrasait la cuisson pour les probes
+		# qui photographient tôt (mesuré : sonde DA, 2 rebuilds vides puis 171 étapes).
+		var par8 := get_parent()
+		if par8 != null and steps.size() > 0:
+			var gnd8 = par8.get_node_or_null("IsoGround")
+			if gnd8 != null and gnd8.has_method("set_road_field"):
+				gnd8.set_road_field(rimg)
 	if _pt0 > 0:
 		var _pdt := Time.get_ticks_usec() - _pt0
 		if _pdt > 8000:
 			print("[PERF] road_network jour=%d : %.1f ms | %s" % [Sim.day_count, _pdt / 1000.0, _perf_acc])
 		_perf_acc = ""
 		_perf_last = 0
+
+## stamp max dans le champ route (cuisson) — garde-bornes
+func _road_stamp(img: Image, w: int, h: int, x: int, y: int, v: float) -> void:
+	if x < 0 or x >= w or y < 0 or y >= h:
+		return
+	if v > img.get_pixel(x, y).r:
+		img.set_pixel(x, y, Color(v, 0, 0))
 
 ## Découpe une polyligne (DÉJÀ projetée iso) en PAIRES tiretées IRRÉGULIÈRES pour
 ## draw_multiline — l'algo de _lane_dash_iso (phase continue le long de l'arc,
@@ -3011,6 +3076,11 @@ func _draw_iso(w, mv: Node2D) -> void:
 	var zoom := get_viewport_transform().get_scale().x
 	var vt := get_viewport_transform()
 	var vp := get_viewport_rect().size
+	# CUISSON : plancher ÉCRAN des routes cuites — les taps du shader s'élargissent au
+	# dézoom (« toujours visible pour décider ») ; posé par frame, coût nul (un uniform).
+	var gnd9 = get_parent().get_node_or_null("IsoGround") if get_parent() != null else null
+	if gnd9 != null and gnd9.material is ShaderMaterial:
+		gnd9.material.set_shader_parameter("road_k", clampf(3.0 / maxf(zoom, 0.001), 1.0, 2.6))
 	var INK := Color(0.20, 0.14, 0.09, 0.95)         # encre brun-sépia (le trait de plume)
 	var human_idx := int(w.player())   # BROUILLARD : les tiens (owner==human_idx) restent TOUJOURS visibles
 	if _fog_dirty:
@@ -3153,6 +3223,8 @@ func _draw_iso(w, mv: Node2D) -> void:
 			# désormais borné [1.5..2.4] px, et la bande plafonnée à 3 px au lointain.
 			var far_zoom := zoom < ROAD_Z_BAND_MINOR
 			for t in range(1, ROAD_MULT_TIERS + 1):
+				if not _route_layer_on:
+					break   # CUISSON : la route vit dans le shader ; le vectoriel = calque Commerce
 				var wear := ROAD_WEAR_A * float(t - 1)
 				var amul: float = 1.0 if far_zoom else ROAD_TIER_AMUL[t - 1]
 				var wmul: float = ROAD_TIER_WSCALE[t - 1]
@@ -3188,7 +3260,7 @@ func _draw_iso(w, mv: Node2D) -> void:
 							cas_a), cw2, true)
 					draw_multiline(ba, Color(ROAD_BAND.r, ROAD_BAND.g, ROAD_BAND.b,
 						(ROAD_BAND_A + wear) * core_mul), bw2, true)
-			if zoom >= ROAD_Z_RUT:
+			if _route_layer_on and zoom >= ROAD_Z_RUT:
 				for pad in _road_net.get("pads", []):
 					var pc: Vector2 = pad[0]
 					# v6 DA : rayon de pad PLAFONNÉ en px écran (≤3) — sinon la trompette
@@ -3213,7 +3285,7 @@ func _draw_iso(w, mv: Node2D) -> void:
 						var rr2 := jr * (0.70 + 0.5 * _h1(jseed * 7.9 + float(v)))
 						jpoly.append(jp2 + Vector2(cos(ang2), sin(ang2) * 0.5) * rr2)
 					draw_colored_polygon(jpoly, Color(ROAD_BAND.r * 0.90, ROAD_BAND.g * 0.87, ROAD_BAND.b * 0.82, 0.22))
-			if zoom >= ROAD_Z_RUT:
+			if _route_layer_on and zoom >= ROAD_Z_RUT:
 				for t in range(1, ROAD_MULT_TIERS + 1):
 					var rw := _w(zoom, 0.16, 0.6, 1.0)
 					var rmf: PackedVector2Array = _road_net.get("r_minor%df" % t, PackedVector2Array())

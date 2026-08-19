@@ -10,6 +10,9 @@ shader_type canvas_item;
 uniform sampler2D biome_map : filter_nearest;
 uniform sampler2D river_map : filter_linear;
 uniform sampler2D cliff_map : filter_linear;   // FALAISES : intensité 0..1 (façade, dérivée du dénivelé côtier)
+uniform sampler2D road_map : filter_linear;    // CUISSON ROUTES (A+B 2026-08-19) : champ 0..1 rasterisé par overlay
+uniform float road_on = 0.0;                   // 0 tant que le réseau n'est pas remis (tap sauté)
+uniform float road_k = 1.0;                    // plancher ÉCRAN : élargit les taps au dézoom (overlay le pose par frame)
 uniform sampler2D noise_tex : repeat_enable, filter_linear;
 uniform vec2 map_size = vec2(1024.0, 512.0);
 uniform float flat_map = 1.0;                           // 1 = TOP-DOWN (carte) ; 0 = projection iso 2:1
@@ -252,6 +255,43 @@ void fragment() {
 			}
 		}
 
+		// ROUTE CUITE (A+B 2026-08-19, réfs joueur KCD/WoW) : le chemin appartient au
+		// PAPIER — même peintre que les rivières. Sol dégagé CRÈME (le geste des cartes
+		// peintes), liseré d'encre fin là où le champ tombe, grain du papier AU TRAVERS
+		// (jamais un aplat). Peinte AVANT la rivière : l'eau recouvre aux croisements,
+		// les ponts d'encre de l'overlay repassent par-dessus.
+		// v2 DA (mesuré aux pixels) : « le crème ne porte pas la lisibilité — c'est le
+		// LISERÉ qui la porte » (KCD/WoW). Max-kernel (crête STABLE aux coudes, ~2.8
+		// cellules d'épaule franche), fenêtres corps/encre SÉPARÉES (l'encre n'est plus
+		// repeinte par le crème), encre 0.62, plancher ÉCRAN par road_k (les offsets de
+		// taps s'élargissent au dézoom — « toujours visible pour décider »).
+		float rd_road = 0.0;
+		float rrim_road = 0.0;
+		float rbody_road = 0.0;
+		if (road_on > 0.5 && !is_water(b)) {
+			vec2 rc0 = (cell + vec2(0.5)) / map_size;
+			vec2 rdx = vec2(0.9 * road_k, 0.0) / map_size;
+			vec2 rdy = vec2(0.0, 0.9 * road_k) / map_size;
+			float c0 = texture(road_map, rc0).r;
+			float e0 = texture(road_map, rc0 + rdx).r;
+			float w0 = texture(road_map, rc0 - rdx).r;
+			float n0 = texture(road_map, rc0 + rdy).r;
+			float s0 = texture(road_map, rc0 - rdy).r;
+			float rd = max(c0, 0.82 * max(max(e0, w0), max(n0, s0)));
+			// LOD au plan large : on montre les ITINÉRAIRES, pas le maillage (les
+			// sentiers — champ ≤0.72 — s'effacent quand les taps sont très élargis).
+			if (road_k >= 2.2 && rd < 0.78) { rd = 0.0; }
+			if (rd > 0.03) {
+				float rdn = texture(noise_tex, cell * 0.9 + vec2(3.1, 6.4)).r;
+				rbody_road = smoothstep(0.30, 0.52, rd) * (0.88 + 0.12 * rdn);
+				rrim_road  = smoothstep(0.06, 0.16, rd) * (1.0 - smoothstep(0.30, 0.44, rd));
+				vec3 path_c = mix(col, vec3(0.91, 0.86, 0.70), 0.86);   // sol dégagé crème
+				col = mix(col, path_c, rbody_road * 0.95);
+				col = mix(col, vec3(0.26, 0.19, 0.13), rrim_road * 0.38 * (0.80 + 0.20 * rdn));   // mesuré : 0.62 → −90 luma, 0.38 → −55 pile la cible
+				rd_road = rd;
+			}
+		}
+
 		// RIVIÈRE = ENCRE FANÉE mais OPAQUE (pas un bleu uniforme « Google Maps », mais le sol ne TRANSPARAÎT
 		// PAS — c'est moche). Couleur DÉSATURÉE avec PROFONDEUR : HAUT-FOND bleu-vert pâle à la berge → CHENAL
 		// bleu-gris au cœur ; teinte variée par le grain du papier. Seul le BORD (la berge) se fond doucement.
@@ -308,6 +348,15 @@ void fragment() {
 		}
 		float river_amt = edge * body * land_fac;
 		col = mix(col, riv_col, clamp(river_amt, 0.0, 0.90));
+
+		// GUÉ/PONT (v2 DA) : l'overlay des ponts est éteint (cuisson A+B) — chaque
+		// franchissement était une coupure muette. Le LISERÉ de la route repasse sur
+		// l'eau de rivière : deux épaules d'encre + un tablier discret = le gué se lit.
+		if (road_on > 0.5 && rd_road > 0.45) {
+			float xr = smoothstep(0.30, 0.55, rv);
+			col = mix(col, vec3(0.26, 0.19, 0.13), rrim_road * 0.55 * xr);
+			col = mix(col, vec3(0.80, 0.74, 0.58), rbody_road * 0.55 * xr);   // le tablier doit passer AU-DESSUS d'une eau posée à 0.90
+		}
 
 		// ── la BERGE (shoreline de RIVIÈRE) : un liseré sur la TERRE qui borde le lit —
 		//    PLAGE légère (sable) en plaine/pays sec, ROCAILLE grise en relief. Le rim vit
