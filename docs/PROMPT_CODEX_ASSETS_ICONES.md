@@ -105,27 +105,30 @@ unit_lame_franche (rapière + bourse à la ceinture) · unit_garde_escorte
 plates, lance de choc) · unit_cav_raid (cavalier léger, torche + sac de
 butin).
 
-## Lot 6 — PORTRAITS politiques : couches composables (256×256, préfixe `pt_`)
+## Lot 6 — PORTRAITS politiques : REPROMPT 2026-08-19 (portraits COMPLETS)
 
-But : des portraits DÉTERMINISTES composés par couches superposées (même
-cadrage exact pour toutes les couches — un buste de trois quarts dans un
-médaillon ovale). CHAQUE fichier = une couche isolée sur alpha, alignée sur le
-même gabarit :
+⚠ La v1 « par couches composables » est ABANDONNÉE (décision joueur : les
+couches ne s'alignent pas — cols, épaules, coiffes). On repart en portraits
+COMPLETS : UNE image finie par personnage, aucune superposition à faire.
 
-- **Bases visage** (tête + buste nu de vêtement, expressions neutres variées) :
-  pt_base_01 … pt_base_08 (varier âge, pilosité, traits — mais MÊME angle,
-  MÊME échelle).
-- **Vêtements par classe** (couche posée sur la base) :
-  pt_hab_journalier_01/02 (tunique simple, col lacé) ·
-  pt_hab_bourgeois_01/02 (pourpoint boutonné, col de drap) ·
-  pt_hab_elite_01/02 (manteau à fourrure, chaîne d'office).
-- **Coiffes** : pt_coiffe_01 … pt_coiffe_06 (capuche, chaperon, toque de
-  drap, couronne fine, casque léger, tête nue = pas de fichier).
-- **Cadre** : pt_cadre_medaillon.png (l'ovale gravé qui borde le tout, 256×256,
-  centre transparent).
-- Style portrait : gravure au trait (burin), hachures de modelé, PAS de
-  couleur de peau réaliste — le sépia du trait fait tout ; le teint reste
-  parchemin.
+- **Format** : 256×256, alpha, préfixe `pt_`. Le portrait est ENTIÈREMENT
+  CONTENU dans un médaillon ovale gravé (le cadre fait partie de l'image ;
+  RIEN ne dépasse de l'ovale — pas d'épaules hors cadre, l'extérieur de
+  l'ovale est 100 % transparent).
+- **Gabarit identique** pour tous : même ovale, même échelle de buste, même
+  angle trois quarts — seuls le visage, l'habit et la coiffe changent.
+- **Style** : gravure au burin, hachures de modelé, teint parchemin (pas de
+  couleur de peau réaliste) — identique à la v1.
+- **Inventaire (18 portraits, 6 par classe, varier âge/genre/pilosité/coiffe
+  À L'INTÉRIEUR de chaque classe) :**
+  - `pt_journalier_01..06` — habit simple : tunique lacée, capuche ou tête
+    nue, visages burinés de travailleurs.
+  - `pt_bourgeois_01..06` — pourpoint boutonné, chaperon/toque de drap,
+    visages de marchands et maîtres de guilde.
+  - `pt_elite_01..06` — manteau à fourrure, chaîne d'office, couronne fine ou
+    toque noble, visages d'aristocrates.
+- La sélection en jeu est déterministe (hash % 6 dans la classe) : les 6 d'une
+  classe doivent être NETTEMENT différenciables entre eux au premier regard.
 
 ## Lot 7 — NATURE : tampons d'habillage de carte (512×512, préfixe `nat_`)
 
