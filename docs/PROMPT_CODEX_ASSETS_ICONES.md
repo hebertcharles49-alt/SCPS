@@ -45,7 +45,7 @@ ci-dessous, rien d'autre.
 | rail_diplomatie.png | parchemin scellé (sceau de cire) |
 | rail_conseil.png | trois sièges autour d'une table ronde |
 
-## Lot 3 — Modes carte : 4 médaillons (128×128, dans un CERCLE gravé)
+## Lot 3 — Modes carte : 6 médaillons (128×128, dans un CERCLE gravé)
 
 | fichier | sujet |
 |---|---|
@@ -53,6 +53,8 @@ ci-dessous, rien d'autre.
 | mode_politique.png | couronne sur territoire hachuré |
 | mode_nature.png | arbre seul sans aucun symbole humain |
 | mode_marche.png | pièce + caducée de Mercure (ou bourse nouée) |
+| mode_religion.png | flamme votive sur autel (symbole de foi NEUTRE — aucun credo réel) |
+| mode_culture.png | deux visages de profil face à face (l'échange des cultures) |
 
 ## Lot 4 — RESSOURCES : 49 icônes (128×128, préfixe `res_`)
 
