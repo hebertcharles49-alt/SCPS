@@ -132,3 +132,27 @@ même gabarit :
 Une archive (ou un dossier) avec les 6 lots, PNG alpha aux noms EXACTS
 ci-dessus. Toute icône que tu ne peux pas produire : NE PAS improviser un
 autre style — livre la liste des manquantes à part.
+
+## Lot 7 — NATURE : tampons d'habillage de carte (512×512, préfixe `nat_`)
+
+But : habiller la carte-parchemin — des TAMPONS de gravure posés sur le terrain
+(même famille que les gravures existantes : arbres de canopée, herbes, écume).
+Style identique au reste (trait sépia, hachures), mais posés SUR la carte :
+- **Ancrage au PIED** : le sujet touche le bas de son cadre (marge basse 4 %),
+  l'alpha fait le reste — c'est la base qui se pose sur le sol.
+- Chaque variante DIFFÉRENTE en silhouette (on en sème des dizaines : deux
+  jumelles côte à côte se voient tout de suite).
+
+| fichiers | sujet |
+|---|---|
+| nat_jungle_01..04 | arbres de JUNGLE : large feuillu tropical à contreforts, palmier haut, fougère arborescente, canopée dense à lianes |
+| nat_rocher_01..03 | CAILLOUX : bloc erratique moussu, chaos de deux-trois blocs, aiguille rocheuse |
+| nat_buisson_01..03 | BUISSONS : buisson rond touffu, fourré épineux, buisson bas fleuri |
+| nat_arbre_mort_01..02 | arbre mort tordu (steppe/froid), tronc foudroyé |
+| nat_roseaux_01..02 | roseaux/joncs en touffe (marais, berges) |
+| nat_cactus_01..02 | cactus cierge, agave (désert) |
+| nat_souche_01 | souche à anneaux (lisières, clairières) |
+
+NB : les LAPINS d'apocalypse (marginalia façon KCD) ont été retirés du jeu —
+n'en générer AUCUN, ni aucune marginalia animalière signée d'un autre jeu.
+Serpents de mer et épaves existent déjà, ne pas en refaire.

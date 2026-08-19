@@ -93,7 +93,6 @@ const EGG_SPACING := 46      ## grille grossière (rare)
 const EGG_ALPHA := 0.85      ## moins fadé que le dressing (ce sont des « figures », pas de la trame)
 const EGG_WRECKS := ["shipwreck_hull_01", "broken_mast_01", "half_sunk_wreck_01", "floating_debris_01",
 	"jagged_reef_01", "low_rocks_01", "sea_stacks_01", "shoal_stones_01"]
-const EGG_RABBITS := ["apoc_rabbit_banner_01", "apoc_rabbit_horn_01", "apoc_rabbit_spear_01", "apoc_rabbit_crown_01"]
 # ── LOT U — LES BOURGS EN VIGNETTES (pack bourgs/, 144 pièces 256²) : le bourg est UNE gravure —
 # T1 ferme → T7 cité impériale, + cité-état à dôme (`bourg_cs`) et hameau sauvage à tour de guet
 # (`bourg_wild`), 16 variantes par famille. REMPLACE l'urbaniste composé (maisons/rues/enceinte
@@ -4300,7 +4299,6 @@ func _try_place_dress(i: int, x: int, y: int, bio: Image, rf: Image, sw: int, sh
 ## marginalia sur terre (cap 2). Grille grossière + faibles probas → rares mais présents.
 func _build_easter_eggs(bio: Image, rf: Image, sw: int, sh: int) -> void:
 	var serp := 0
-	var rab := 0
 	var i := 100000
 	var y := roundi(EGG_SPACING * 0.5)
 	while y < sh:
@@ -4316,10 +4314,9 @@ func _build_easter_eggs(bio: Image, rf: Image, sw: int, sh: int) -> void:
 			elif b == 2 and r < 0.05:                                  # HAUT-FOND → épave/récif
 				var wid: String = EGG_WRECKS[int(_h1(float(i) * 6.6) * float(EGG_WRECKS.size())) % EGG_WRECKS.size()]
 				_dressing.append({"pos": Vector2(x, y), "id": wid, "scale": 1.0, "egg": true})
-			elif b >= 4 and b <= 9 and rab < 2 and r > 0.99 and not _near_river(rf, x, y):  # TERRE → lapin (ultra-rare)
-				var rid: String = EGG_RABBITS[int(_h1(float(i) * 8.8) * float(EGG_RABBITS.size())) % EGG_RABBITS.size()]
-				_dressing.append({"pos": Vector2(x, y), "id": rid, "scale": 1.0, "egg": true})
-				rab += 1
+			# (les LAPINS d'apocalypse ont été RETIRÉS — joueur 2026-08-19 : « c'est un
+			# copier-coller de KCD ». Serpents/épaves/récifs restent : bestiaire de
+			# portulan générique, pas une signature d'un autre jeu.)
 			x += EGG_SPACING
 		y += EGG_SPACING
 
