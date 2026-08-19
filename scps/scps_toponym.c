@@ -138,13 +138,20 @@ static uint32_t toponym_hash2(uint32_t a, uint32_t b){
 /* §5 : 80 % forme DOMINANTE de la culture (hash(culture_id,clé)), 20 % variante
  * LOCALE de la même famille (hash(province_id,clé)) — jamais un tirage indépendant
  * par ville (la culture garde ses choix dominants, doc §5/§14). */
-static int toponym_jitter(uint16_t culture_id, int province_id, uint32_t salt, int n){
+static int toponym_jitter_w(uint16_t culture_id, int province_id, uint32_t salt, int n, uint32_t dom){
     if (n<=1) return 0;
     uint32_t hc = toponym_hash2((uint32_t)culture_id, salt);
     uint32_t roll = toponym_hash2(hc, 0x5A5A5A5Au ^ salt);
-    if ((roll % 100u) < 80u) return (int)(hc % (uint32_t)n);
+    if ((roll % 100u) < dom) return (int)(hc % (uint32_t)n);
     uint32_t hp = toponym_hash2((uint32_t)province_id, salt ^ 0xC0FFEEu);
     return (int)(hp % (uint32_t)n);
+}
+/* 80→62 (joueur 2026-08-19) : la dominante culturelle reste MAJORITAIRE (§5)
+ * mais respire — 38 %% de variantes locales au lieu de 20. Les SUFFIXES de
+ * localisation, eux, parlent pour la GÉOGRAPHIE : dominance INVERSÉE (38 %%),
+ * sinon un empire entier finit en -avre/-furt (mesuré graine 205). */
+static int toponym_jitter(uint16_t culture_id, int province_id, uint32_t salt, int n){
+    return toponym_jitter_w(culture_id, province_id, salt, n, 62u);
 }
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -246,7 +253,11 @@ static bool toponym_is_frontier(const WorldEconomy *econ, int region){
 
 /* §8 — un seul marqueur, priorité = ordre du tableau (première condition VRAIE). */
 static MarkKey toponym_select_marker(const ProvinceEconomy *pe, int role, bool frontier){
-    if (pe->ferveur > 0.5f) return MARK_FERVEUR;
+    /* RÉORDONNÉ (joueur 2026-08-19 « trop grosses récurrences ») : la ferveur en
+     * tête de priorité capturait PRESQUE TOUTES les villes — des cartes entières
+     * en « Neuv-/Nov- ». La FONCTION prime désormais (une ville à port s'appelle
+     * Port-, fervente ou pas) ; la ferveur — relevée à 0.8, l'ARDENTE seule —
+     * devient un repli avant reconstruction. */
     if (pe->is_capital) return MARK_CAPITALE;
     if (role==POLITY_CITY_STATE) return MARK_CITYSTATE;
     if (role==POLITY_WILD) return MARK_WILD;
@@ -256,6 +267,7 @@ static MarkKey toponym_select_marker(const ProvinceEconomy *pe, int role, bool f
     if (pe->edi_built & ((1u<<EDI_PORT)|(1u<<EDI_PORT_MARCHAND))) return MARK_PORT;
     if (pe->edi_built & ((1u<<EDI_SANCTUAIRE)|(1u<<EDI_TEMPLE)|(1u<<EDI_CATHEDRALE))) return MARK_SANCT;
     if (pe->edi_built & ((1u<<EDI_ACADEMIE)|(1u<<EDI_BIBLIOTHEQUE)|(1u<<EDI_MONASTERE)|(1u<<EDI_OBSERVATOIRE))) return MARK_SAVOIR;
+    if (pe->ferveur > 0.8f) return MARK_FERVEUR;
     /* attribution INITIALE seulement (§8 dernière ligne) — toujours vrai ici : ce
      * balayage n'assigne JAMAIS un nom deux fois (cf. toponym_world_tick). */
     if (pe->reconstruction > 0.5f) return MARK_RECONSTRUCTION;
@@ -323,7 +335,7 @@ static void toponym_compose(uint16_t culture_id, int pid, LocKey lk, MarkKey mk,
     const LocLex *L=&LOC_TABLE[lk];
     int attempt=0;
     for (; attempt<L->nsfx; attempt++){
-        int idx=toponym_jitter(culture_id,pid,(uint32_t)(lk*4u+1u) ^ ((uint32_t)attempt*0x1000193u),L->nsfx);
+        int idx=toponym_jitter_w(culture_id,pid,(uint32_t)(lk*4u+1u) ^ ((uint32_t)attempt*0x1000193u),L->nsfx,38u);
         snprintf(loc_sfx,sizeof loc_sfx,"%s",L->sfx[idx]);
         bool bad = no_modifier ? toponym_words_collide(loc_pfx,loc_sfx)
                                 : (toponym_words_collide(head1,loc_sfx) || (head2 && toponym_words_collide(head2,loc_sfx)));

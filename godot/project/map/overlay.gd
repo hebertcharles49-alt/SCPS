@@ -3377,7 +3377,22 @@ func _draw_iso(w, mv: Node2D) -> void:
 		# RÉGIME KCD : la BANNIÈRE de lieu éclot au plan rapproché — le relais des
 		# noms de pays (régime EU4) qui se sont effacés au même seuil de zoom.
 		if zoom >= 4.0:
+			# UNE ville par RÉGION jusqu'au zoom moyen (joueur 2026-08-19) : seule la
+			# plus importante (rôle le plus fort) porte sa bannière ; les autres
+			# n'éclosent qu'au zoom profond (≥6). Moins de cartouches, plus de carte.
+			var deep9 := zoom >= 6.0
+			var best9 := {}
+			if not deep9:
+				for s in setts:
+					var r9 := int(s["r"])
+					var sc9 := -int(s["role"])          # rôle bas = plus important
+					if not best9.has(r9) or sc9 > int(best9[r9][0]):
+						best9[r9] = [sc9, s]
 			for s in setts:
+				if not deep9:
+					var rr9 := int(s["r"])
+					if best9.has(rr9) and not (best9[rr9][1] as Dictionary) == (s as Dictionary):
+						continue
 				_draw_banner(w, int(s["r"]), s["ip"], zoom, clampf((zoom - 4.0) / 1.2, 0.0, 1.0))
 
 	_draw_move_preview(w, mv, zoom)
@@ -4435,10 +4450,12 @@ func _draw_banner(w, r: int, ip: Vector2, zoom: float, a: float) -> void:
 		return
 	var sc := 1.0 / maxf(zoom, 0.0001)
 	var tw := VKit.text_map_w(nm, VKit.FS_SMALL) * sc   # cartouche : police de CARTE (IM Fell)
-	var bh := 14.0 * sc
-	var hpad := 5.0 * sc
+	# v2 (joueur 2026-08-19) : bandeau ÉLARGI et nom CENTRÉ — la place de la pastille
+	# est réservée SYMÉTRIQUEMENT (gauche ET droite) : le texte tombe pile au centre.
+	var bh := 15.0 * sc
+	var hpad := 8.0 * sc
 	var dotw := 7.0 * sc                                   # place de la pastille de propriétaire
-	var bw := tw + hpad * 2.0 + dotw
+	var bw := tw + (hpad + dotw) * 2.0
 	var top := ip.y - 34.0 * sc - bh                       # au-dessus du tampon (écran constant)
 	var rect := Rect2(Vector2(ip.x - bw * 0.5, top), Vector2(bw, bh))
 	# ombre portée + CARTOUCHE parchemin (planche 1, pièce 11) — repli : rects plats
@@ -4452,7 +4469,7 @@ func _draw_banner(w, r: int, ip: Vector2, zoom: float, a: float) -> void:
 	var own := int(w.region_owner(r))
 	var dot: Color = _entity_pigment(own) if own >= 0 else Color(0.52, 0.46, 0.36)
 	draw_circle(Vector2(rect.position.x + hpad + 1.5 * sc, rect.position.y + bh * 0.5), 2.6 * sc, Color(dot, a))
-	draw_set_transform(Vector2(rect.position.x + hpad + dotw, rect.position.y + 1.0 * sc), 0.0, Vector2(sc, sc))
+	draw_set_transform(Vector2(rect.position.x + hpad + dotw, rect.position.y + 1.6 * sc), 0.0, Vector2(sc, sc))
 	VKit.text_map(self, Vector2.ZERO, nm, VKit.FS_SMALL,
 		Color(VKit.COL_INK_MAP.r, VKit.COL_INK_MAP.g, VKit.COL_INK_MAP.b, 0.95 * a), 0)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

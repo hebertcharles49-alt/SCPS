@@ -269,7 +269,12 @@ void fragment() {
 		float rrim_road = 0.0;
 		float rbody_road = 0.0;
 		if (road_on > 0.5 && !is_water(b)) {
-			vec2 rc0 = (cell + vec2(0.5)) / map_size;
+			// GRAIN NATUREL (joueur 2026-08-19) : main TREMBLÉE — le point de lecture du
+			// champ ondule (basse fréquence, ~±0.35 cellule) : le trait cesse d'être une
+			// polyligne parfaite ; l'usure INÉGALE vient plus bas (patch du corps).
+			vec2 rjit = (vec2(texture(noise_tex, cell * 0.11 + vec2(9.2, 1.7)).r,
+			                  texture(noise_tex, cell * 0.11 + vec2(2.4, 7.9)).r) - 0.5) * 0.7;
+			vec2 rc0 = (cell + vec2(0.5) + rjit) / map_size;
 			vec2 rdx = vec2(0.6 * road_k, 0.0) / map_size;   // ±0.6 : le kernel ne sert plus qu'à
 			vec2 rdy = vec2(0.0, 0.6 * road_k) / map_size;   // la CONTINUITÉ du trait (l'échelle !)
 			float c0 = texture(road_map, rc0).r;
@@ -283,8 +288,11 @@ void fragment() {
 			if (road_k >= 2.2 && rd < 0.78) { rd = 0.0; }
 			if (rd > 0.03) {
 				float rdn = texture(noise_tex, cell * 0.9 + vec2(3.1, 6.4)).r;
-				rbody_road = smoothstep(0.60, 0.85, rd) * (0.88 + 0.12 * rdn);   // le corps = le cœur du trait
-				rrim_road  = smoothstep(0.15, 0.35, rd) * (1.0 - smoothstep(0.60, 0.78, rd));   // liseré = un fil
+				// USURE INÉGALE : un bruit moyen module le corps (la piste s'affirme et
+				// s'estompe par plaques — un chemin de terre, pas un trait tiré à la règle)
+				float rwear = 0.72 + 0.28 * texture(noise_tex, cell * 0.31 + vec2(6.8, 3.3)).r;
+				rbody_road = smoothstep(0.60, 0.85, rd) * (0.88 + 0.12 * rdn) * rwear;   // cœur du trait
+				rrim_road  = smoothstep(0.15, 0.35, rd) * (1.0 - smoothstep(0.60, 0.78, rd)) * (0.65 + 0.35 * rwear);
 				vec3 path_c = mix(col, vec3(0.91, 0.86, 0.70), 0.86);   // sol dégagé crème
 				col = mix(col, path_c, rbody_road * 0.95);
 				col = mix(col, vec3(0.26, 0.19, 0.13), rrim_road * 0.38 * (0.80 + 0.20 * rdn));   // mesuré : 0.62 → −90 luma, 0.38 → −55 pile la cible
