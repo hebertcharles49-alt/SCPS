@@ -344,6 +344,14 @@ bool scps_region_seat(const ScpsSim *s, int r, float *x, float *y){
     }
     return scps_region_centroid(s, r, x, y);
 }
+/* CENTROÏDE d'une PROVINCE (le cache s->ppx/ppy — bâti pour scps_region_seat, ici
+ * exposé DIRECTEMENT par pid) : ancre d'affichage (icônes de tuile, mode Marché). */
+bool scps_province_centroid(const ScpsSim *s, int pid, float *x, float *y){
+    if(!s || !s->ready || pid<0 || pid>=s->n_pcent || s->ppx[pid]<0.f) return false;
+    if(x) *x = s->ppx[pid];
+    if(y) *y = s->ppy[pid];
+    return true;
+}
 
 long scps_world_pop(const ScpsSim *s){
     if(!s || !s->ready) return 0;
@@ -491,6 +499,149 @@ void scps_map_owner(ScpsSim *s, int16_t *out){
         const Cell *c = scps_cellc(s->w, x, y);
         out[y*SCPS_W+x] = (int16_t)((c->sea||c->lake) ? -1 : border_owner_of(s, c));
     }
+}
+
+/* MODE CARTE MARCHÉ (Chantier C) — BFS RÉGIONAL multi-source (motif intertrade
+ * hub_map_build, scps_intertrade.c : même primitive e->adj[][], périmètre de sources
+ * PLUS LARGE ici — Marché/Comptoir/Centre commercial, pas seulement EDI_TRADE_CENTER,
+ * cf. brief §3.4). hub_region[r] = la région-CENTRE la plus proche (sauts), -1 = aucune
+ * atteignable (autarcie). Recalculée à CHAQUE appel : ≤832 régions rend un cache (et son
+ * invalidation) plus cher qu'utile — aucun état persistant, aucune écriture region[]. */
+static void market_hub_regions(const WorldEconomy *e, int16_t hub_region[SCPS_MAX_REG]){
+    int n = e ? e->n_regions : 0; if (n>SCPS_MAX_REG) n=SCPS_MAX_REG; if (n<0) n=0;
+    const uint32_t MASK = (1u<<EDI_MARCHE)|(1u<<EDI_COMPTOIR)|(1u<<EDI_TRADE_CENTER);
+    int16_t q[SCPS_MAX_REG]; int qh=0, qt=0;
+    for (int r=0;r<SCPS_MAX_REG;r++) hub_region[r] = -1;
+    if (!e) return;
+    for (int r=0;r<n;r++) if (e->region[r].edi_built & MASK){ hub_region[r]=(int16_t)r; q[qt++]=(int16_t)r; }
+    while (qh<qt){
+        int r=q[qh++];
+        for (int s2=0;s2<n;s2++){
+            if (!e->adj[r][s2] || hub_region[s2]>=0) continue;   /* déjà rattaché (ou source) : le plus proche gagne */
+            hub_region[s2]=hub_region[r]; q[qt++]=(int16_t)s2;
+        }
+    }
+}
+/* pid de la province REPRÉSENTATIVE du CENTRE dont dépend `pid` (-1 : aucun atteignable). */
+int scps_market_catchment(ScpsSim *s, int pid){
+    if (!s || !s->ready || pid<0 || pid>=s->w->n_provinces) return -1;
+    int r = s->w->province[pid].region;
+    if (r<0 || r>=s->sim.econ->n_regions || r>=SCPS_MAX_REG) return -1;
+    int16_t hub[SCPS_MAX_REG];
+    market_hub_regions(s->sim.econ, hub);
+    if (hub[r]<0) return -1;
+    return econ_region_rep_province(s->sim.econ, hub[r]);
+}
+/* même info PAR CELLULE (motif EXACT scps_map_owner) — pour market_catchment_image. */
+void scps_map_catchment(ScpsSim *s, int16_t *out){
+    if (!out) return;
+    if (!s || !s->ready){ for (int i=0;i<SCPS_W*SCPS_H;i++) out[i]=-1; return; }
+    int16_t hub[SCPS_MAX_REG];
+    market_hub_regions(s->sim.econ, hub);
+    int16_t centre_of_region[SCPS_MAX_REG];             /* mémo : évite n_prov résolutions redondantes */
+    for (int r=0;r<SCPS_MAX_REG;r++)
+        centre_of_region[r] = (hub[r]>=0) ? (int16_t)econ_region_rep_province(s->sim.econ, hub[r]) : -1;
+    for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++){
+        const Cell *c = scps_cellc(s->w, x, y);
+        int p = (c->sea||c->lake) ? -1 : c->province;
+        int r = (p>=0 && p<s->w->n_provinces) ? s->w->province[p].region : -1;
+        out[y*SCPS_W+x] = (r>=0 && r<SCPS_MAX_REG) ? centre_of_region[r] : (int16_t)-1;
+    }
+}
+/* HOVER du mode Marché — MEMBRANE : le mot déjà composé (« Marché de {ville} », ou le
+ * mot d'échec), jamais un pid brut ni un template assemblé côté .gd. */
+const char *scps_market_hover(ScpsSim *s, int pid){
+    static char buf[96];
+    int centre = scps_market_catchment(s, pid);
+    if (centre < 0){ return tr(STR_MARCHE_AUCUN); }
+    int r = scps_province_region(s, centre);
+    const char *city = (r>=0) ? scps_region_city_name(s, r) : "";
+    if (!city || !*city){ return tr(STR_MARCHE_AUCUN); }
+    snprintf(buf, sizeof buf, "%s %s", tr(STR_MARCHE_DE), city);
+    return buf;
+}
+/* LE MOT du bouton de mode carte (switcheur controls.gd, Chantier C + extension
+ * Religion/Culture) : 0 Défaut · 1 Politique · 2 Nature · 3 Marché · 4 Religion ·
+ * 5 Culture — index de BOUTON (PAS le `mode` de map_view.gd, qui garde ses propres
+ * valeurs 0/1/20-23 pour ne pas percuter le tiroir Filtres). */
+const char *scps_map_mode_label(int i){
+    switch(i){
+        case 0: return tr(STR_MODE_DEFAUT);
+        case 1: return tr(STR_MODE_POLITIQUE);
+        case 2: return tr(STR_MODE_NATURE);
+        case 3: return tr(STR_MODE_MARCHE);
+        case 4: return tr(STR_MODE_RELIGION);
+        case 5: return tr(STR_MODE_CULTURE);
+        default: return "";
+    }
+}
+
+/* MODE CARTE RELIGION (extension 2026-08-19, même motif que Marché) — la FOI dominante
+ * de la RÉGION d'une province (religion_of_region, module religion : GRAIN RÉGION,
+ * façade read-only — cf. scps_religion.h) projetée sur la province via sa région
+ * (motif scps_market_catchment ; AUCUNE nouvelle indirection région-grain côté joueur,
+ * pur affichage). rid ∈ [0, RELIG_MAX=64) ; -1 = aucune foi posée sur cette région. */
+int scps_province_religion(const ScpsSim *s, int pid){
+    if (!s || !s->ready || pid<0 || pid>=s->w->n_provinces) return -1;
+    int r = s->w->province[pid].region;
+    return (r>=0) ? religion_of_region(r) : -1;
+}
+void scps_map_religion(ScpsSim *s, int16_t *out){
+    if (!out) return;
+    if (!s || !s->ready){ for (int i=0;i<SCPS_W*SCPS_H;i++) out[i]=-1; return; }
+    for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++){
+        const Cell *c = scps_cellc(s->w, x, y);
+        int p = (c->sea||c->lake) ? -1 : c->province;
+        out[y*SCPS_W+x] = (int16_t)scps_province_religion(s, p);
+    }
+}
+/* HOVER religion : le nom du culte (motif scps_religion_name, keyé par RID direct —
+ * une région peut porter une foi minoritaire jamais fondée par SON pays). */
+const char *scps_province_religion_hover(ScpsSim *s, int pid){
+    static char buf[96];
+    int rid = scps_province_religion(s, pid);
+    if (rid<0 || rid>=g_religion_count) return tr(STR_FOI_SANS);
+    const Religion *r = &g_religions[rid];
+    snprintf(buf, sizeof buf, "%s \xc2\xb7 %s/%s/%s", credo_name((Credo)r->credo),
+             relig_pole_name((ReligPole)r->traditions[0]),
+             relig_pole_name((ReligPole)r->traditions[1]),
+             relig_pole_name((ReligPole)r->traditions[2]));
+    return buf;
+}
+
+/* MODE CARTE CULTURE (extension, même motif) — la culture DOMINANTE de la PROVINCE
+ * ELLE-MÊME (grain NATIF, doctrine province-grain : ProvinceEconomy.pop →
+ * province_dominant → PopGroup.culture_id, l'identité "vivante" du module culture,
+ * scps_econ.h) — PAS une projection région. culture_id est un uint16_t (espace
+ * généalogique vivant : phylo, fusions — pas un petit enum) : sorti en int32 pour ne
+ * jamais collisionner avec le sentinel -1 (RES_NONE-like). */
+int scps_province_culture_id(const ScpsSim *s, int pid){
+    if (!s || !s->ready || pid<0 || pid>=s->w->n_provinces || pid>=s->sim.econ->n_prov) return -1;
+    const ProvinceEconomy *pe = &s->sim.econ->prov[pid];
+    const PopGroup *dom = province_dominant(&pe->pop);
+    return dom ? (int)dom->culture_id : -1;
+}
+/* PAR CELLULE : la province est DÉJÀ le grain natif ici (pas de projection région) —
+ * un mémo par PROVINCE (≤1664 résolutions, pas 512k) évite de rappeler
+ * province_dominant (boucle sur les groupes) à chaque cellule. */
+void scps_map_culture(ScpsSim *s, int32_t *out){
+    if (!out) return;
+    if (!s || !s->ready){ for (int i=0;i<SCPS_W*SCPS_H;i++) out[i]=-1; return; }
+    static int32_t cult_of_prov[SCPS_MAX_PROV];
+    int np = s->w->n_provinces; if (np>SCPS_MAX_PROV) np=SCPS_MAX_PROV;
+    for (int p=0;p<np;p++) cult_of_prov[p] = (int32_t)scps_province_culture_id(s, p);
+    for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++){
+        const Cell *c = scps_cellc(s->w, x, y);
+        int p = (c->sea||c->lake) ? -1 : c->province;
+        out[y*SCPS_W+x] = (p>=0 && p<np) ? cult_of_prov[p] : -1;
+    }
+}
+/* HOVER culture : le mot déjà résolu par scps_province_culture_context — pas de
+ * recomposition, "" si province vide/sans pop (l'appelant saute l'affichage). */
+const char *scps_province_culture_hover(ScpsSim *s, int pid){
+    ScpsCultureContext ctx;
+    if (!scps_province_culture_context(s, pid, &ctx)) return "";
+    return ctx.dominant_culture ? ctx.dominant_culture : "";
 }
 
 /* BROUILLARD DE GUERRE (étape 1/2, VISUEL SEULEMENT — cf. scps_fog.h) : le masque par
@@ -1505,6 +1656,19 @@ int scps_province_seed(const ScpsSim *s, int pid){
     const Province *p = &s->w->province[pid];
     uint32_t h = (uint32_t)((int)p->seed_x * 92821 + (int)p->seed_y * 68917 + pid * 2654435761u);
     return (int)(h & 0x7fffffffu);
+}
+
+/* MODE CARTE MARCHÉ (Chantier E) — les BRUTES du tirage worldgen (Province.resource/
+ * resource2, RES_NONE exclu), ≤2 par construction (règle des 2 raws, CLAUDE.md). Le
+ * PORTAIL PROVINCE-grain de l'ancien _build_region_raws région-grain (overlay.gd, mode
+ * 9 retiré) — icônes de tuile en mode Marché. */
+int scps_province_raws(const ScpsSim *s, int pid, int *out_res_ids, int max){
+    if(!out_res_ids || max<=0 || !s || !s->ready || pid<0 || pid>=s->w->n_provinces) return 0;
+    const Province *p = &s->w->province[pid];
+    int n=0;
+    if(n<max && p->resource  != RES_NONE) out_res_ids[n++] = (int)p->resource;
+    if(n<max && p->resource2 != RES_NONE) out_res_ids[n++] = (int)p->resource2;
+    return n;
 }
 
 /* UI PROVINCE LOT 6 — le marché LOCAL : prix/stock/bande des biens les plus

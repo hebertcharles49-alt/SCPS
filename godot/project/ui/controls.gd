@@ -1,22 +1,34 @@
 extends Control
-## MapControls — les COMMANDES DE CARTE du bas d'écran : sélecteur de MODE (terrain ·
-## politique · régions · pays) à gauche, ZOOM (in/out/fit) à droite. Les icônes
-## FLOTTENT sur la carte (façon Stellaris — plus de bande pleine largeur) : le parent
-## laisse passer les clics, chaque bouton capte les siens. Câblé à MapView.
+## MapControls — les COMMANDES DE CARTE du bas d'écran : sélecteur de MODE (Défaut ·
+## Politique · Nature · Marché · Religion · Culture — 6 modes EXCLUSIFS, Chantier C
+## 2026-08-19 + extension Religion/Culture le même jour) à gauche, ZOOM (in/out/fit) à
+## droite. Les icônes FLOTTENT sur la carte (façon Stellaris — plus de bande pleine
+## largeur) : le parent laisse passer les clics, chaque bouton capte les siens. Câblé à
+## MapView.
 
 const VKit = preload("res://ui/vkit.gd")
 const IconButton = preload("res://ui/icon_button.gd")
 const Frame = preload("res://ui/frame.gd")
+const MapView = preload("res://map/map_view.gd")
 const H := Frame.BOTTOMBAR_H
 const BTN := 52.0   ## boutons de mode/zoom agrandis (retour joueur : « très très petits »)
 
-# mode render_map → icône du pack
+# les 4 premiers modes EXCLUSIFS (remplacent l'ancienne rangée Terrain/Politique/
+# Régions/Pays + le toggle Nature séparé) : [valeur map_view.mode, icône lot3_modes,
+# index tooltip scps_map_mode_label]. NATURE reste piloté par overlay.nature_mode
+# (map.set_nature) — sa valeur de mode n'est qu'un repère pour la sélection ci-dessous.
 const MODES := [
-	[0, "layer_terrain"],      # Terrain
-	[1, "politics_law"],       # Politique
-	[2, "settlement_cluster"], # Régions
-	[3, "politics_crown"],     # Pays
+	[MapView.MODE_DEFAUT,    "mode_defaut",    0],   # Défaut (terrain + lavis politique léger)
+	[MapView.MODE_POLITIQUE, "mode_politique", 1],   # Politique (political_image, plein)
+	[MapView.MODE_NATURE,    "mode_nature",    2],   # Nature (terrain + dressing seuls)
+	[MapView.MODE_MARCHE,    "mode_marche",    3],   # Marché (bassins de proximité + brutes de tuile)
 ]
+# RELIGION / CULTURE — EXTENSION 2026-08-19 (décision joueur EN COURS de mission, la
+# rangée passe de 4 à 6 modes) : AUCUNE icône lot3_modes livrée pour ces deux-là (le lot
+# ne couvre que mode_defaut/politique/nature/marche). Traités À PART du tableau MODES
+# ci-dessus car ils empruntent chacun un chemin d'icône DIFFÉRENT — voir _ready().
+# RESTE (TROUVAILLES) : remplacer les deux placeholders par mode_religion.png/
+# mode_culture.png (lot3_modes) dès qu'ils seront livrés, et les refondre dans MODES.
 
 # LÉGENDES de couleur des modes d'ÉTAT (sinon les teintes n'ont aucun sens) — calées
 # sur les teintes calculées par map_state_tint (façade). « grad » = échelle continue
@@ -29,9 +41,9 @@ const LEGENDS := {
 }
 
 var _map
-var _mode := 0
+var _mode := MapView.MODE_DEFAUT
 var _mode_btns := []
-var _nature_btn: Control
+var _mode_vals := []      ## PARALLÈLE à _mode_btns (MODES + religion/culture, hors tableau) — la valeur map_view.mode de CHAQUE bouton, dans l'ordre où ils ont été créés.
 var _mb: HBoxContainer
 var _zb: HBoxContainer
 
@@ -51,16 +63,42 @@ func _ready() -> void:
 	for m in MODES:
 		var b = IconButton.new()
 		_mb.add_child(b)
-		b.setup_icon(String(m[1]), BTN, "")   # SANS fond de chrome (retour joueur)
+		b.setup_icon(String(m[1]), BTN, "", true)   # icon2 (lot3_modes), SANS fond de chrome (retour joueur)
+		if Sim.world != null:
+			b.tooltip_text = String(Sim.world.map_mode_label(int(m[2])))
 		b.selected = (int(m[0]) == _mode)
 		b.pressed.connect(_on_mode.bind(int(m[0])))
 		_mode_btns.append(b)
+		_mode_vals.append(int(m[0]))
 
-	# NATURE : toggle indépendant des modes de carte (bascule la carte vierge — terrain seul)
-	_nature_btn = IconButton.new()
-	_mb.add_child(_nature_btn)
-	_nature_btn.setup_icon("layer_forest", BTN, "")
-	_nature_btn.pressed.connect(_on_nature)
+	# RELIGION — placeholder cohérent : la pièce EXISTANTE de l'onglet Religion du rail
+	# (UIKit.icon(), PAS icon2 — aucun mode_religion.png livré). Même symbole que le
+	# joueur connaît déjà (menu_religion, sidebar.gd).
+	var b_rel = IconButton.new()
+	_mb.add_child(b_rel)
+	b_rel.setup_icon("menu_religion", BTN, "", false)
+	if Sim.world != null:
+		b_rel.tooltip_text = String(Sim.world.map_mode_label(4))
+	b_rel.selected = (MapView.MODE_RELIGION == _mode)
+	b_rel.pressed.connect(_on_mode.bind(MapView.MODE_RELIGION))
+	_mode_btns.append(b_rel)
+	_mode_vals.append(MapView.MODE_RELIGION)
+
+	# CULTURE — AUCUNE pièce existante cohérente (grep uikit.gd négatif) : médaillon
+	# TEXTE VKit, ajouté par le signal `draw` NATIF de Control (le bouton garde fg="" —
+	# aucune icône interne dessinée par IconButton lui-même — sans toucher icon_button.gd,
+	# hors périmètre). L'état sélectionné/survolé reste le comportement NORMAL d'IconButton
+	# (fond plein + soulignement or), seul le glyphe est ajouté par-dessus.
+	var b_cul = IconButton.new()
+	_mb.add_child(b_cul)
+	b_cul.setup_icon("", BTN, "", false)
+	b_cul.draw.connect(_draw_culture_glyph.bind(b_cul))
+	if Sim.world != null:
+		b_cul.tooltip_text = String(Sim.world.map_mode_label(5))
+	b_cul.selected = (MapView.MODE_CULTURE == _mode)
+	b_cul.pressed.connect(_on_mode.bind(MapView.MODE_CULTURE))
+	_mode_btns.append(b_cul)
+	_mode_vals.append(MapView.MODE_CULTURE)
 
 	_zb = HBoxContainer.new()
 	_zb.add_theme_constant_override("separation", 4)
@@ -139,19 +177,31 @@ func _grad_at(stops: Array, t: float) -> Color:
 		i = stops.size() - 2
 	return (stops[i] as Color).lerp(stops[i + 1] as Color, seg - float(i))
 
+## MÉDAILLON TEXTE — CULTURE (placeholder, cf. commentaire _ready ci-dessus) : un
+## DISQUE + anneau (même gabarit que les 5 médaillons lot3/menu_religion — sans le
+## cercle il se lisait comme une étiquette égarée, pas un bouton, au 1er probe visuel)
+## + un glyphe COURT dedans, ton or/parchemin selon l'état (palette VKit, rien d'inventé).
+func _draw_culture_glyph(b: Control) -> void:
+	var c := Vector2(BTN, BTN) * 0.5
+	var r := BTN * 0.42
+	b.draw_circle(c, r, Color(0.16, 0.13, 0.09, 0.85))
+	b.draw_arc(c, r, 0.0, TAU, 28, VKit.COL_GOLD if b.selected else VKit.COL_EDGE, 1.6, true)
+	var col: Color = VKit.COL_GOLD if b.selected else VKit.COL_PARCH
+	var s := "Cu"
+	var tw := VKit.text_w(s, VKit.FS)
+	VKit.text(b, Vector2(c.x - tw * 0.5, c.y + 6.0), col, s, VKit.FS)
+
+## 6 modes EXCLUSIFS : NATURE pilote overlay.nature_mode (map.set_nature), les 5 autres
+## l'éteignent + posent map.mode — jamais deux modes à la fois (retour joueur : « un
+## mode à la fois », brief Chantier C §3 + extension Religion/Culture).
 func _on_mode(m: int) -> void:
 	_mode = m
 	if _map != null:
+		_map.set_nature(m == MapView.MODE_NATURE)
 		_map.set_mode(m)
 	for i in range(_mode_btns.size()):
-		_mode_btns[i].selected = (int(MODES[i][0]) == m)
+		_mode_btns[i].selected = (_mode_vals[i] == m)
 		_mode_btns[i].queue_redraw()
-
-func _on_nature() -> void:
-	if _map != null:
-		_map.toggle_nature()
-		_nature_btn.selected = _map.is_nature()
-		_nature_btn.queue_redraw()
 
 func _zin() -> void:  if _map != null: _map.zoom_in()
 func _zout() -> void: if _map != null: _map.zoom_out()

@@ -12,6 +12,36 @@ const RESOURCES := "res://assets/scps/pack/resources/"
 const MAP := "res://assets/scps/pack/map/"
 const PARCH := "res://assets/scps/ui/parch/"   ## les 12 planches PARCHEMIN (cellules 256², alpha)
 
+## ICONS2 (2026-08-19, refonte topbar/rail/modes/ressources/troupes/portraits) : le
+## SEUL registre pour le nouveau lot de PNG livrés — un consommateur (topbar, rail,
+## tiroir, panneau armée…) appelle `UIKit.icon2(name)`, JAMAIS un `load()` en dur.
+## Chemin = res://assets/scps/ui/icons2/<lot>/<name>.png, résolu par PRÉFIXE du nom
+## (« top_or » → lot1_topbar, « rail_economie » → lot2_rail…) — préchargement
+## paresseux + cache statique (motif `_tex`), filtre LINEAR (défaut CanvasItem, pas
+## de pixel-art ici). null si le fichier est absent (l'appelant garde son repli).
+const ICONS2 := "res://assets/scps/ui/icons2/"
+const ICON2_LOT := {
+	"top":  "lot1_topbar",     # top_or / top_population / top_construction / top_nourriture /
+	                            # top_armes / top_manufactures / top_satisfaction
+	"rail": "lot2_rail",       # rail_economie / _demographie / _stocks / _marche / _armee /
+	                            # _filtres / _diplomatie / _conseil
+	"mode": "lot3_modes",      # mode_defaut / _politique / _nature / _marche
+	"res":  "lot4_ressources", # res_<nom_anglais> (~53 biens)
+	"unit": "lot5_troupes",    # unit_<arme>
+	"pt":   "lot6_portraits",  # pt_base_/_coiffe_/_hab_*/_cadre_medaillon
+}
+static var _icon2_cache := {}
+static func icon2(name: String) -> Texture2D:
+	if _icon2_cache.has(name):
+		return _icon2_cache[name]
+	var prefix := name.get_slice("_", 0)
+	var lot: String = ICON2_LOT.get(prefix, "")
+	var tex: Texture2D = null
+	if lot != "":
+		tex = _tex(ICONS2 + lot + "/" + name + ".png")
+	_icon2_cache[name] = tex
+	return tex
+
 ## LE RESKIN PARCHEMIN passe par ICI : nom d'icône historique → pièce des nouvelles
 ## planches. Le remap est consulté en PREMIER par icon() — aucun panneau à retoucher ;
 ## pièce absente → l'ancienne icône (le jeu tourne à moitié reskiné sans casse).
@@ -78,22 +108,10 @@ static func faction_blason(nom: String, angry: bool) -> Texture2D:
 	return _tex(PARCH + PARCH_FACTION[nom][1 if angry else 0] + ".png")
 
 ## CONSEILLERS (planche 13) : siège 0-7 → buste (variante féminine = +8, par graine)
-static func advisor_portrait(seat: int, fem: bool = false) -> Texture2D:
-	if seat < 0 or seat > 7:
-		return null
-	return _tex(PARCH + "sheet13_advisors_%02d.png" % (seat + 1 + (8 if fem else 0)))
+# (advisor_portrait — planche 13 — RETIRÉ 2026-08-19 : le conseil est passé aux
+# portraits v2 complets, cf. minister_portrait ; la planche est supprimée.)
 
-## UNITÉS (planches 9-10) : aligné sur UNIT_FILE (l'ordre U_* du moteur)
-const PARCH_UNIT := [
-	"sheet09_unit_icons_01", "sheet09_unit_icons_02", "sheet09_unit_icons_03",
-	"sheet09_unit_icons_05", "sheet09_unit_icons_06", "sheet09_unit_icons_09",
-	"sheet09_unit_icons_10", "sheet10_special_units_letters_01", "sheet09_unit_icons_04",
-	"sheet09_unit_icons_08", "sheet10_special_units_letters_02", "sheet10_special_units_letters_03",
-	"sheet09_unit_icons_07", "sheet09_unit_icons_13", "sheet09_unit_icons_14",
-	"sheet09_unit_icons_15", "sheet10_special_units_letters_04", "sheet10_special_units_letters_05",
-	"sheet10_special_units_letters_06", "sheet09_unit_icons_16",
-	"sheet09_unit_icons_11", "sheet09_unit_icons_12",
-]
+# (PARCH_UNIT — planches 09/10 — RETIRÉ 2026-08-19, cf. unit_sprite ci-dessous)
 ## ÉDIFICES (planches 6-7) : aligné sur BLD_FILE (l'ordre EDI_* du moteur)
 const PARCH_BLD := [
 	"sheet06_buildings_state_01", "sheet06_buildings_state_02", "sheet06_buildings_state_03",
@@ -567,16 +585,10 @@ static func _tile(dir: String, key: String) -> Texture2D:
 	_tile_cache[path] = tex
 	return tex
 
-## tuile d'UNITÉ par UnitType (0-21) ; parchemin (planches 9-10) d'abord, sinon
-## l'ancienne tuile ; null si tout manque (l'appelant retombe sur le texte).
+## tuile d'UNITÉ (PURGE 2026-08-19) : les planches 09/10 sont supprimées — tout
+## passe par les glyphes lot5 (unit_icon). Gardé comme alias de compatibilité.
 static func unit_sprite(unit_type: int) -> Texture2D:
-	if unit_type < 0 or unit_type >= UNIT_FILE.size():
-		return null
-	if unit_type < PARCH_UNIT.size():
-		var t := _tex(PARCH + PARCH_UNIT[unit_type] + ".png")
-		if t != null:
-			return t
-	return _tile(UNITS_DIR, UNIT_FILE[unit_type])
+	return unit_icon(unit_type)
 
 ## tuile d'ÉDIFICE par Edifice (0-25) ; parchemin (planches 6-7) d'abord, sinon
 ## l'ancienne tuile ; null si tout manque.
@@ -804,7 +816,41 @@ static func resource_sprite(res_id: int, res_name: String) -> Texture2D:
 	return resource_icon(res_name)
 
 ## variante par NOM seul (income/province, où l'on n'a pas l'id).
+## FR (nom moteur, normalisé resource_key) → fichier lot4 (purge 2026-08-19 : les
+## 53 gravures dédiées remplacent les replis génériques ; « Ouvrages d'agrément »
+## n'a PAS d'icône livrée — repli ancien conservé, cf. TROUVAILLES Restes).
+const RES2_FILE := {
+	"cereales":"res_grain", "betail":"res_livestock", "laine":"res_wool",
+	"poisson":"res_fish", "fourrure":"res_fur", "sel":"res_salt",
+	"coton":"res_cotton", "sucre":"res_sugar", "bois":"res_wood",
+	"fruits":"res_fruit", "herbes_medicinales":"res_med_herbs",
+	"cuivre":"res_copper", "fer":"res_iron", "charbon":"res_coal",
+	"soufre":"res_sulfur", "salpetre":"res_saltpeter",
+	"essence_purifiee":"res_essence_purifiee", "or":"res_gold_ore",
+	"metaux_precieux":"res_precious_metal", "perle":"res_pearl",
+	"cristal_arcanique":"res_arcane_crystal", "fer_celeste":"res_celestial_iron",
+	"murex":"res_murex", "indigo":"res_indigo", "argile":"res_clay",
+	"pierre":"res_stone", "etoffe":"res_cloth",
+	"fournitures_navales":"res_naval_supplies", "eau_de_vie":"res_eau_de_vie",
+	"biere":"res_beer", "bien_precieux":"res_precious_ware",
+	"etoffe_precieuse":"res_precious_cloth", "papier":"res_paper",
+	"outils":"res_tools", "essence":"res_essence",
+	"armes_enchantees":"res_enchanted_arms", "armes_legeres":"res_arms",
+	"poudre":"res_gunpowder", "remedes":"res_remede", "tunique":"res_tunique",
+	"flux":"res_flux", "necessaire_dalchimiste":"res_alchemist_kit",
+	"armes_lourdes":"res_arms_heavy", "armes_de_trait":"res_arms_ranged",
+	"armes_a_feu":"res_firearm", "baton_de_mage":"res_mage_staff",
+	"poterie":"res_pottery", "statuaire":"res_statue",
+	"heaumes_de_guerre":"res_heaumes", "parures_de_gloire":"res_parures",
+	"horloges_reglees":"res_horloges", "registres_scelles":"res_registres",
+	"colifichets_exotiques":"res_colifichets",
+}
 static func resource_icon(res_name: String) -> Texture2D:
+	var f2: String = RES2_FILE.get(resource_key(res_name), "")
+	if f2 != "":
+		var t2 := icon2(f2)
+		if t2 != null:
+			return t2
 	var key := resource_key(res_name)
 	if PARCH_RES.has(key):
 		var pt := _tex(PARCH + PARCH_RES[key] + ".png")          # chip PARCHEMIN (planche 19)
@@ -829,7 +875,25 @@ static func _tex(path: String) -> Texture2D:
 	_cache[path] = tex            # met aussi en cache les ratés (null) → un seul essai
 	return tex
 
+## PURGE 2026-08-19 : les ids historiques couverts par le lot icons2 y sont
+## ALIASÉS — l'ancienne planche/le vieux PNG ne sert plus que ce qui n'a pas
+## encore d'équivalent gravé (action_*, chips système… cf. TROUVAILLES Restes).
+const ICON2_ALIAS := {
+	"gold_coin":"top_or", "population_group":"top_population",
+	"grain_bundle":"top_nourriture", "health_food_bowl":"top_nourriture",
+	"materials_stone":"res_stone", "layer_forest":"res_wood",
+	"development_tools":"res_tools",
+	"menu_economy":"rail_economie", "menu_demography":"rail_demographie",
+	"menu_stocks":"rail_stocks", "menu_market":"rail_marche",
+	"menu_army":"rail_armee", "menu_filters":"rail_filtres",
+	"menu_diplomacy":"rail_diplomatie", "menu_council":"rail_conseil",
+}
 static func icon(name: String) -> Texture2D:
+	var al: String = ICON2_ALIAS.get(name, "")
+	if al != "":
+		var t2 := icon2(al)
+		if t2 != null:
+			return t2
 	if PARCH_ICON.has(name):
 		var t := _tex(PARCH + PARCH_ICON[name] + ".png")
 		if t != null:
@@ -936,3 +1000,59 @@ static func bar(ci: CanvasItem, rect: Rect2, value: int) -> void:
 	elif fw > 0:
 		var col := Color(0.42,0.66,0.36) if value >= 60 else (Color(0.79,0.62,0.29) if value >= 35 else Color(0.78,0.30,0.27))
 		ci.draw_rect(Rect2(area.position, Vector2(fw, area.size.y)), col, true)
+
+# ── CHANTIER F (2026-08-19) — GLYPHES D'UNITÉS (lot5_troupes, 22 types) ────────────
+# Registre UNIQUE : tout consommateur (panneau armée, recrutement, tooltip bataille)
+# passe par `unit_icon()`. Distinct de `unit_sprite()` (ci-dessus, planches parchemin
+# sheet09/10 OU ancienne tuile `pack/units` à fond noir keyé) : ce lot est un dessin
+# GRAVÉ dédié un-par-UnitType, RGBA direct (pas de keying), gabarit 128² source.
+const UNIT_ICON_DIR := "res://assets/scps/ui/icons2/lot5_troupes/"
+
+## indexé par UnitType (0-21), ORDRE EXACT de scps_army.h (source de vérité — relu à
+## la lettre, ne pas reclasser) : PIQUIER·LANCIER·EPEISTE·ARCHER·ARBALETE·CAV_LEGERE·
+## CAV_LOURDE·MAGE·HALLEBARDIER·ARQUEBUSIER·ALCHIMISTE·GARDE_RUNIQUE·ARBALETE_LOURDE·
+## BERSERKER·LANCIER_CHOC·MILICE·HARCELEUR·TRAQUEUR·LAME_FRANCHE·GARDE_ESCORTE·
+## CAV_CUIRASSEE·CAV_RAID.
+const UNIT_ICON_FILE := [
+	"unit_piquier", "unit_lancier", "unit_epeiste", "unit_archer", "unit_arbalete",
+	"unit_cav_legere", "unit_cav_lourde", "unit_mage", "unit_hallebardier", "unit_arquebusier",
+	"unit_alchimiste", "unit_garde_runique", "unit_arbalete_lourde", "unit_berserker", "unit_lancier_choc",
+	"unit_milice", "unit_harceleur", "unit_traqueur", "unit_lame_franche", "unit_garde_escorte",
+	"unit_cav_cuirassee", "unit_cav_raid",
+]
+
+## résout un UnitType (int 0-21) OU un nom (« piquier », « U_PIQUIER », « Piquier »…,
+## insensible à la casse/préfixe/espaces) vers l'index du roster ; -1 si hors liste.
+static func _unit_icon_index(unit_id_or_name) -> int:
+	if unit_id_or_name is int or unit_id_or_name is float:
+		var i := int(unit_id_or_name)
+		return i if i >= 0 and i < UNIT_ICON_FILE.size() else -1
+	var s := String(unit_id_or_name).to_lower().strip_edges()
+	if s.begins_with("u_"):
+		s = s.substr(2)
+	if not s.begins_with("unit_"):
+		s = "unit_" + s
+	return UNIT_ICON_FILE.find(s)
+
+## GLYPHE d'unité (lot5_troupes) par UnitType (int) ou par nom — le registre UNIQUE
+## du Chantier F. null si le type/nom ne matche aucune tuile du roster (l'appelant
+## retombe sur `unit_sprite()` ou sur le texte, jamais un carré magenta).
+static func unit_icon(unit_id_or_name) -> Texture2D:
+	var idx := _unit_icon_index(unit_id_or_name)
+	if idx < 0:
+		return null
+	return _tex(UNIT_ICON_DIR + UNIT_ICON_FILE[idx] + ".png")
+
+# ── PORTRAITS v2 (lot6, 2026-08-19) : 18 bois gravés COMPLETS (6/classe, ovale
+# intégré). Sélection DÉTERMINISTE : classe ← TIER du siège (≥4 élite · ≥2
+# bourgeois · sinon journalier — mapping display-only), variante ← portrait_id
+# stable du moteur (jamais l'année, jamais rand). Même ministre = même visage.
+const _PT2_DIR := "res://assets/scps/ui/icons2/lot6_portraits/"
+static var _pt2_cache := {}
+static func minister_portrait(tier: int, portrait_id: int) -> Texture2D:
+	var cls := "elite" if tier >= 4 else ("bourgeois" if tier >= 2 else "journalier")
+	var v := (absi(portrait_id) % 6) + 1
+	var key := "%s_%02d" % [cls, v]
+	if not _pt2_cache.has(key):
+		_pt2_cache[key] = load(_PT2_DIR + "pt_" + key + ".png")
+	return _pt2_cache[key]

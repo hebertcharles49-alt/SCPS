@@ -50,6 +50,9 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("map_image", "mode", "selected_prov"), &ScpsWorld::map_image, DEFVAL(-1));
     ClassDB::bind_method(D_METHOD("layer_image", "layer"),    &ScpsWorld::layer_image);
     ClassDB::bind_method(D_METHOD("political_image", "pal"),  &ScpsWorld::political_image);
+    ClassDB::bind_method(D_METHOD("market_catchment_image", "pal"), &ScpsWorld::market_catchment_image);
+    ClassDB::bind_method(D_METHOD("religion_image", "pal"), &ScpsWorld::religion_image);
+    ClassDB::bind_method(D_METHOD("culture_image", "pal"), &ScpsWorld::culture_image);
     ClassDB::bind_method(D_METHOD("fog_image"),                &ScpsWorld::fog_image);
     ClassDB::bind_method(D_METHOD("fog_region_mask"),          &ScpsWorld::fog_region_mask);
     ClassDB::bind_method(D_METHOD("year"),                    &ScpsWorld::year);
@@ -113,7 +116,17 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("province_defense_pct", "province"),   &ScpsWorld::province_defense_pct);
     ClassDB::bind_method(D_METHOD("province_seed", "province"),          &ScpsWorld::province_seed);
     ClassDB::bind_method(D_METHOD("province_market", "province"),        &ScpsWorld::province_market);
+    ClassDB::bind_method(D_METHOD("market_catchment", "province"),       &ScpsWorld::market_catchment);
+    ClassDB::bind_method(D_METHOD("province_centroid", "province"),      &ScpsWorld::province_centroid);
+    ClassDB::bind_method(D_METHOD("province_raws", "province"),          &ScpsWorld::province_raws);
+    ClassDB::bind_method(D_METHOD("market_hover", "province"),           &ScpsWorld::market_hover);
+    ClassDB::bind_method(D_METHOD("map_mode_label", "i"),                 &ScpsWorld::map_mode_label);
+    ClassDB::bind_method(D_METHOD("province_religion", "province"),      &ScpsWorld::province_religion);
+    ClassDB::bind_method(D_METHOD("province_religion_hover", "province"), &ScpsWorld::province_religion_hover);
+    ClassDB::bind_method(D_METHOD("province_culture_id", "province"),    &ScpsWorld::province_culture_id);
+    ClassDB::bind_method(D_METHOD("province_culture_hover", "province"), &ScpsWorld::province_culture_hover);
     ClassDB::bind_method(D_METHOD("country_demo", "country"),        &ScpsWorld::country_demo);
+    ClassDB::bind_method(D_METHOD("country_class_policy_sat", "country", "classe"), &ScpsWorld::country_class_policy_sat);
     ClassDB::bind_method(D_METHOD("country_stocks", "country"),      &ScpsWorld::country_stocks);
     ClassDB::bind_method(D_METHOD("stock_regions", "country", "good"), &ScpsWorld::stock_regions);
     ClassDB::bind_method(D_METHOD("market_quote", "country", "good", "qty"), &ScpsWorld::market_quote);
@@ -353,6 +366,89 @@ Ref<Image> ScpsWorld::political_image(PackedColorArray pal) {
         const int np = (int)pal.size();
         for (int64_t i = 0; i < (int64_t)w * h; i++) {
             int o = own[(size_t)i];
+            if (o < 0 || o >= np) continue;
+            Color c = pal[o];
+            int x = (int)(i % w), y = (int)(i / w);
+            float grain = political_wash_grain(x, y, o);
+            dst[i*4+0] = (uint8_t)CLAMP((int)(c.r * grain * 255.0f + 0.5f), 0, 255);
+            dst[i*4+1] = (uint8_t)CLAMP((int)(c.g * grain * 255.0f + 0.5f), 0, 255);
+            dst[i*4+2] = (uint8_t)CLAMP((int)(c.b * grain * 255.0f + 0.5f), 0, 255);
+            dst[i*4+3] = (uint8_t)CLAMP((int)(c.a * 255.0f + 0.5f), 0, 255);
+        }
+    }
+    return Image::create_from_data(w, h, false, Image::FORMAT_RGBA8, buf);
+}
+
+/* MODE CARTE MARCHÉ (Chantier C) : bassin/cellule teinté par pal[pid du CENTRE] — motif
+ * EXACT de political_image() ci-dessus (grain de wash identique), sauf que l'entier lu
+ * par cellule est un pid de PROVINCE (scps_map_catchment), pas un pid de pays. `pal`
+ * DOIT couvrir 0..province_count()-1 (les seuls pid pouvant apparaître comme centre) —
+ * bâtie côté .gd (motif _entity_wash : hash du pid → famille de couleur stable). */
+Ref<Image> ScpsWorld::market_catchment_image(PackedColorArray pal) {
+    int w = scps_map_w(), h = scps_map_h();
+    PackedByteArray buf; buf.resize((int64_t)w * h * 4);
+    uint8_t *dst = buf.ptrw();
+    memset(dst, 0, (size_t)w * h * 4);
+    if (sim) {
+        std::vector<int16_t> ctc((size_t)w * h);
+        scps_map_catchment(sim, ctc.data());
+        const int np = (int)pal.size();
+        for (int64_t i = 0; i < (int64_t)w * h; i++) {
+            int o = ctc[(size_t)i];
+            if (o < 0 || o >= np) continue;
+            Color c = pal[o];
+            int x = (int)(i % w), y = (int)(i / w);
+            float grain = political_wash_grain(x, y, o);
+            dst[i*4+0] = (uint8_t)CLAMP((int)(c.r * grain * 255.0f + 0.5f), 0, 255);
+            dst[i*4+1] = (uint8_t)CLAMP((int)(c.g * grain * 255.0f + 0.5f), 0, 255);
+            dst[i*4+2] = (uint8_t)CLAMP((int)(c.b * grain * 255.0f + 0.5f), 0, 255);
+            dst[i*4+3] = (uint8_t)CLAMP((int)(c.a * 255.0f + 0.5f), 0, 255);
+        }
+    }
+    return Image::create_from_data(w, h, false, Image::FORMAT_RGBA8, buf);
+}
+
+/* MODE CARTE RELIGION (extension 2026-08-19) — MOTIF EXACT de market_catchment_image
+ * ci-dessus, l'entier par cellule est un rid de religion (scps_map_religion), `pal`
+ * couvre 0..RELIG_MAX-1 (bâtie côté .gd). */
+Ref<Image> ScpsWorld::religion_image(PackedColorArray pal) {
+    int w = scps_map_w(), h = scps_map_h();
+    PackedByteArray buf; buf.resize((int64_t)w * h * 4);
+    uint8_t *dst = buf.ptrw();
+    memset(dst, 0, (size_t)w * h * 4);
+    if (sim) {
+        std::vector<int16_t> rel((size_t)w * h);
+        scps_map_religion(sim, rel.data());
+        const int np = (int)pal.size();
+        for (int64_t i = 0; i < (int64_t)w * h; i++) {
+            int o = rel[(size_t)i];
+            if (o < 0 || o >= np) continue;
+            Color c = pal[o];
+            int x = (int)(i % w), y = (int)(i / w);
+            float grain = political_wash_grain(x, y, o);
+            dst[i*4+0] = (uint8_t)CLAMP((int)(c.r * grain * 255.0f + 0.5f), 0, 255);
+            dst[i*4+1] = (uint8_t)CLAMP((int)(c.g * grain * 255.0f + 0.5f), 0, 255);
+            dst[i*4+2] = (uint8_t)CLAMP((int)(c.b * grain * 255.0f + 0.5f), 0, 255);
+            dst[i*4+3] = (uint8_t)CLAMP((int)(c.a * 255.0f + 0.5f), 0, 255);
+        }
+    }
+    return Image::create_from_data(w, h, false, Image::FORMAT_RGBA8, buf);
+}
+
+/* MODE CARTE CULTURE (extension) — MÊME motif, l'entier par cellule est un culture_id
+ * (int32, espace vivant plus large — scps_map_culture) ; `pal` couvre 0..N-1 (bâtie
+ * côté .gd, taillée large — l'id est un uint16_t moteur). */
+Ref<Image> ScpsWorld::culture_image(PackedColorArray pal) {
+    int w = scps_map_w(), h = scps_map_h();
+    PackedByteArray buf; buf.resize((int64_t)w * h * 4);
+    uint8_t *dst = buf.ptrw();
+    memset(dst, 0, (size_t)w * h * 4);
+    if (sim) {
+        std::vector<int32_t> cul((size_t)w * h);
+        scps_map_culture(sim, cul.data());
+        const int np = (int)pal.size();
+        for (int64_t i = 0; i < (int64_t)w * h; i++) {
+            int o = cul[(size_t)i];
             if (o < 0 || o >= np) continue;
             Color c = pal[o];
             int x = (int)(i % w), y = (int)(i / w);
@@ -983,6 +1079,42 @@ Dictionary ScpsWorld::province_market(int province) {
     return d;
 }
 
+/* MODE CARTE MARCHÉ (Chantier C/E) : pid du CENTRE dont dépend `province` (-1 : aucun),
+ * centroïde d'ancrage (icône de tuile), ≤2 brutes du tirage — passe-plats purs. */
+int ScpsWorld::market_catchment(int province) const {
+    return sim ? scps_market_catchment(sim, province) : -1;
+}
+Vector2 ScpsWorld::province_centroid(int province) const {
+    float x = -1.f, y = -1.f;
+    scps_province_centroid(sim, province, &x, &y);
+    return Vector2(x, y);
+}
+PackedInt32Array ScpsWorld::province_raws(int province) const {
+    PackedInt32Array out;
+    int ids[2];
+    int n = sim ? scps_province_raws(sim, province, ids, 2) : 0;
+    for (int i = 0; i < n; i++) out.push_back(ids[i]);
+    return out;
+}
+String ScpsWorld::market_hover(int province) const {
+    return sim ? String::utf8(scps_market_hover(sim, province)) : String();
+}
+String ScpsWorld::map_mode_label(int i) const {
+    return String::utf8(scps_map_mode_label(i));
+}
+int ScpsWorld::province_religion(int province) const {
+    return sim ? scps_province_religion(sim, province) : -1;
+}
+String ScpsWorld::province_religion_hover(int province) const {
+    return sim ? String::utf8(scps_province_religion_hover(sim, province)) : String();
+}
+int ScpsWorld::province_culture_id(int province) const {
+    return sim ? scps_province_culture_id(sim, province) : -1;
+}
+String ScpsWorld::province_culture_hover(int province) const {
+    return sim ? String::utf8(scps_province_culture_hover(sim, province)) : String();
+}
+
 Dictionary ScpsWorld::country_demo(int country) {
     ScpsCountryDemo c;
     scps_country_demo(sim, country, &c);
@@ -1000,6 +1132,10 @@ Dictionary ScpsWorld::country_demo(int country) {
     }
     d["classes"] = classes;
     return d;
+}
+
+int ScpsWorld::country_class_policy_sat(int country, int classe) const {
+    return sim ? scps_country_class_policy_sat(sim, country, classe) : 0;
 }
 
 Array ScpsWorld::country_stocks(int country) {

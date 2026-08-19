@@ -760,13 +760,11 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 	var idx := 0
 	for seat in Sim.world.country_council(me):
 		var filled := bool(seat["filled"])
-		# BUSTE du conseiller assis (planche 13) — sièges moteur Savoir/Société/Industrie
-		# → Maître des savoirs (06) / Chancelier (01) / Intendant (04) ; fem. par hash du nom.
+		# PORTRAIT v2 (lot6, bois gravé complet) : classe ← tier du siège, variante ←
+		# portrait_id stable moteur — même ministre, même visage toute la partie.
 		var pt: Texture2D = null
 		if filled:
-			var pmap := [5, 0, 3]
-			pt = UIKit.advisor_portrait(pmap[idx] if idx < pmap.size() else idx % 8,
-				String(seat["councilor"]).hash() % 2 == 1)
+			pt = UIKit.minister_portrait(int(seat.get("tier", 0)), int(seat.get("portrait_id", 0)))
 		if pt != null:
 			draw_texture_rect(pt, Rect2(x - 2, y - 3, 20, 20), false)
 		else:
@@ -1364,7 +1362,9 @@ func _draw_armee(x: float, y: float, me: int) -> float:
 	for i in range(rec.size()):
 		var u: Dictionary = rec[i]
 		var ur := Rect2(x + (i % ucols) * ucell, y + (i / ucols) * ucell, ucell - 4.0, ucell - 4.0)
-		var ut: Texture2D = UIKit.unit_sprite(int(u.get("type", -1)))
+		# PURGE 2026-08-19 : lot5 SEUL (les 22 UnitType sont couverts 1:1 — le repli
+		# planche parchemin est retiré avec les planches 09/10).
+		var ut: Texture2D = UIKit.unit_icon(int(u.get("type", -1)))
 		if ut != null:
 			draw_texture_rect(ut, ur, false)
 		else:

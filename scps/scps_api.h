@@ -1418,6 +1418,46 @@ int scps_province_border_segments(ScpsSim *s, int prov, ScpsSegC *out, int max);
  * mer, terre vierge). `out` = SCPS_W×SCPS_H int16. Le front en teinte un wash de territoire. */
 void scps_map_owner(ScpsSim *s, int16_t *out);
 
+/* MODE CARTE MARCHÉ (Chantier C/E) — chaque province RATTACHÉE au marché dont elle
+ * dépend, par PROXIMITÉ (BFS sur le graphe régional d'adjacence existant, motif
+ * intertrade hub_map_build). Un CENTRE = une province portant EDI_MARCHE, EDI_COMPTOIR
+ * ou EDI_TRADE_CENTER (masque edi_built, agrégat region[].edi_built pour la détection —
+ * lecture seule, jamais une écriture région-grain). Reader PUR, dérivé, recalculé à
+ * CHAQUE appel (≤832 régions : moins cher qu'un cache à invalider) — AUCUN état
+ * sérialisé, golden-neutre.
+ * `scps_market_catchment` : pid du CENTRE dont dépend `pid` (-1 si aucun atteignable).
+ * `scps_map_catchment`   : même info, PAR CELLULE (motif scps_map_owner) — pour le
+ * binding `market_catchment_image` (façade, teinte par bassin). */
+int  scps_market_catchment(ScpsSim *s, int pid);
+void scps_map_catchment(ScpsSim *s, int16_t *out);
+/* HOVER mode Marché — mot COMPOSÉ (« Marché de {ville} » / échec) : la membrane. */
+const char *scps_market_hover(ScpsSim *s, int pid);
+/* le mot du bouton de mode carte (switcheur) : i = 0 Défaut·1 Politique·2 Nature·3 Marché. */
+const char *scps_map_mode_label(int i);
+
+/* BRUTES (tirage worldgen) d'une province — ≤2 res_id (Province.resource/resource2,
+ * RES_NONE exclu) — motif scps_province_seed. Pour le mode carte MARCHÉ (icônes de
+ * tuile, Chantier E) : le PORTAIL PROVINCE-grain de l'ancien _build_region_raws
+ * (région-grain, overlay.gd mode 9, retiré). */
+int  scps_province_raws(const ScpsSim *s, int pid, int *out_res_ids, int max);
+/* CENTROÏDE monde (cellules) d'une PROVINCE (figé par worldgen, cache s->ppx/ppy déjà
+ * bâti pour scps_region_seat) — ancre d'affichage (icônes de tuile). false si vide. */
+bool scps_province_centroid(const ScpsSim *s, int pid, float *x, float *y);
+
+/* MODE CARTE RELIGION (extension 2026-08-19, même motif Marché) : rid de la foi
+ * dominante de la RÉGION d'une province (religion_of_region — GRAIN RÉGION, façade
+ * read-only, projeté par région comme le catchment) ; -1 = aucune foi. */
+int  scps_province_religion(const ScpsSim *s, int pid);
+void scps_map_religion(ScpsSim *s, int16_t *out);
+const char *scps_province_religion_hover(ScpsSim *s, int pid);
+
+/* MODE CARTE CULTURE (extension, même motif) : culture_id (uint16_t vivant, sorti en
+ * int32) de la PROVINCE ELLE-MÊME (grain natif, PAS une projection région) ; -1 = pas
+ * de pop dominante (province vide/non colonisée). */
+int  scps_province_culture_id(const ScpsSim *s, int pid);
+void scps_map_culture(ScpsSim *s, int32_t *out);
+const char *scps_province_culture_hover(ScpsSim *s, int pid);
+
 /* BROUILLARD DE GUERRE (étape 1/2 — le VOILE visuel du joueur ; aucune décision de
  * simulation n'en dépend ici, cf. scps_fog.h). Régions visibles pour human_player
  * MAINTENANT : {ses régions} ∪ {BFS radius 2} ∪ {tout empire CONNU, cumulatif}.

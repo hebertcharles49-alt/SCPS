@@ -368,10 +368,10 @@ func _update_header(w, me: int) -> void:
 		_reserve_lbl.text = "Réserve : %s or · %s cuivre" % [_grp(int(round(float(res.get("gold", 0.0))))), _grp(int(round(float(res.get("copper", 0.0)))))]
 	if w.has_method("budget_summary"):
 		var b: Dictionary = w.budget_summary(me)
-		_treasury_lbl.text = "%s couronnes" % _grp(int(b.get("gold", 0)))
+		_treasury_lbl.text = "%s" % _grp(int(b.get("gold", 0)))
 		var net := float(b.get("monthly_net", 0.0))
 		var pos := net >= 0.0
-		_balance_lbl.text = "%s%s couronnes/mois" % ["+" if pos else "−", _grp(int(round(absf(net))))]
+		_balance_lbl.text = "%s%s/mois" % ["+" if pos else "−", _grp(int(round(absf(net))))]
 		_balance_lbl.add_theme_color_override("font_color", INCOME if pos else EXPENSE)
 		# LA COURBE (KoH2) : un point par mois, dédupliqué par étiquette (les refresh
 		# d'ouverture/action ne doublonnent jamais).
@@ -449,7 +449,7 @@ func _update_values(me: int) -> void:
 		if lbl != null:
 			if w.has_method("tax_class_month"):
 				var sat_i := int(fo_sat.get(cls, -1))
-				var base_txt := "%s couronnes/mois" % _grp(int(round(float(w.tax_class_month(cls)))))
+				var base_txt := "%s/mois" % _grp(int(round(float(w.tax_class_month(cls)))))
 				# le MARQUEUR d'humeur (KoH2) : ▲ marge (≥60), ▼ fragile (<40) — se lit sans lire.
 				var mood := ""
 				if sat_i >= 60: mood = " ▲"
@@ -472,7 +472,7 @@ func _update_values(me: int) -> void:
 		var lbl2: Label = _val_lbls.get(k, null)
 		if lbl2 != null:
 			var fname: String = _flux_of[k]
-			lbl2.text = "%s couronnes/mois" % _grp(int(round(absf(float(flux.get(fname, 0.0))))))
+			lbl2.text = "%s/mois" % _grp(int(round(absf(float(flux.get(fname, 0.0))))))
 	# sorties : enveloppe réalisée (couronnes/mois) + curseur
 	var spend_flux := ["invest.", "entretien", "soldes", "marine", "routes"]
 	for raw2 in ctl.get("spending", []):
@@ -483,12 +483,12 @@ func _update_values(me: int) -> void:
 			if idx == 5 and w.has_method("country_mint_month"):
 				# MONNAIE M2 — LA FRAPPE : lecteur DÉDIÉ, miroir exact du point fixe moteur
 				# (pas un poste de FLUX générique — c'est un revenu, pas une dépense).
-				lbl3.text = "+%s couronnes/mois" % _grp(int(round(float(w.country_mint_month(me)))))
+				lbl3.text = "+%s/mois" % _grp(int(round(float(w.country_mint_month(me)))))
 			else:
 				var amt := 0.0
 				if idx >= 0 and idx < spend_flux.size():
 					amt = absf(float(flux.get(spend_flux[idx], 0.0)))
-				lbl3.text = "%s couronnes/mois" % _grp(int(round(amt)))
+				lbl3.text = "%s/mois" % _grp(int(round(amt)))
 		var sl2: HSlider = _sliders.get("1:%d" % idx, null)
 		if sl2 != null and not sl2.has_focus():
 			sl2.set_value_no_signal(clampf(float(row2.get("mult", 1.0)) * 100.0, 2.0, 100.0))
@@ -687,7 +687,7 @@ func _update_monnaie(me: int) -> void:
 		elif idx == 6:
 			debase_mult = float(row.get("mult", 0.0))
 	if w.has_method("country_mint_month"):
-		_set_m("mint_flow", "+%s couronnes/mois" % _grp(int(round(float(w.country_mint_month(me))))))
+		_set_m("mint_flow", "+%s/mois" % _grp(int(round(float(w.country_mint_month(me))))))
 	_set_m("mint_slider", "%d %%" % int(round(mint_mult * 100.0)))
 	_sync_slider("1:5", mint_mult * 100.0)
 	# DÉBASE PHYSIQUE (retour joueur 2026-07-21) : la monnaie produite (couronnes/mois), la
@@ -701,7 +701,7 @@ func _update_monnaie(me: int) -> void:
 	_set_m("mint_metal", ("%.1f or · %.1f cuivre t/mois" % [pair_t + bill_g, pair_t + bill_c])
 		if pair_t + bill_g + bill_c > 0.05 else "—")
 	var debase_active := dbg_or > 0.05
-	_set_m("debase_state", ("+%s couronnes/mois" % _grp(int(round(dbg_or)))) if debase_active else "—",
+	_set_m("debase_state", ("+%s/mois" % _grp(int(round(dbg_or)))) if debase_active else "—",
 		ParchTheme.EXPENSE if debase_active else ParchTheme.DIM_INK)
 	_set_m("debase_metal", ("%.1f or · %.1f cuivre t/mois" % [bill_g, bill_c])
 		if bill_g + bill_c > 0.05 else "—",
@@ -732,13 +732,13 @@ func _update_monnaie(me: int) -> void:
 		var due := float(deb.get("due", 0.0))
 		var creditor := int(deb.get("creditor", -1))
 		var creditor_name := String(deb.get("creditor_name", ""))
-		_set_m("debt_total", "%s couronnes" % _grp(int(round(total))), ParchTheme.EXPENSE if total > 0.5 else ParchTheme.DIM_INK)
-		_set_m("debt_class", "%s couronnes" % _grp(int(round(to_class))))
-		_set_m("debt_cs", ("%s : %s couronnes" % [creditor_name, _grp(int(round(to_cs)))]) if creditor >= 0 and to_cs > 0.5 else "—")
-		_set_m("debt_revenue", "%s couronnes/an" % _grp(int(round(annual_revenue))))
+		_set_m("debt_total", "%s" % _grp(int(round(total))), ParchTheme.EXPENSE if total > 0.5 else ParchTheme.DIM_INK)
+		_set_m("debt_class", "%s" % _grp(int(round(to_class))))
+		_set_m("debt_cs", ("%s : %s" % [creditor_name, _grp(int(round(to_cs)))]) if creditor >= 0 and to_cs > 0.5 else "—")
+		_set_m("debt_revenue", "%s/an" % _grp(int(round(annual_revenue))))
 		_set_m("debt_leverage", "%.2f année(s) de revenu" % leverage if total > 0.5 else "0.00")
-		_set_m("debt_available", "%s couronnes" % _grp(int(round(available))), ParchTheme.INCOME if available > 0.5 else ParchTheme.EXPENSE)
-		_set_m("debt_exposure", ("%s / +%s couronnes" % [_grp(int(round(foreign_exposure))), _grp(int(round(foreign_room)))]) if creditor >= 0 else "Aucun créancier étranger")
+		_set_m("debt_available", "%s" % _grp(int(round(available))), ParchTheme.INCOME if available > 0.5 else ParchTheme.EXPENSE)
+		_set_m("debt_exposure", ("%s / +%s" % [_grp(int(round(foreign_exposure))), _grp(int(round(foreign_room)))]) if creditor >= 0 else "Aucun créancier étranger")
 		_set_m("debt_rate", "%.1f %% forfaitaires" % (taux * 100.0))
 		# D3 — RÉSIDU DOCTRINE : `due` est un prélèvement RÉELLEMENT annuel (credit_year_tick,
 		# scps_credit.c, 1×/an) — pas un flux continu comme l'impôt. « couronnes/an » resterait

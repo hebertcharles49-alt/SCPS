@@ -1,17 +1,19 @@
 extends Control
 ## Topbar — bandeau PLEINE LARGEUR (cadre d'écran) : capsule de date (An N) + le
-## roll-up du PAYS JOUÉ (nom · couronnes · pop empire · régions · savoir) à gauche, contrôle
-## de VITESSE cliquable à DROITE. Suit la largeur de la fenêtre (size_changed).
-## Display-only sauf le verbe vitesse. Lit Sim.
+## roll-up du PAYS JOUÉ à gauche, contrôle de VITESSE cliquable à DROITE. Suit la
+## largeur de la fenêtre (size_changed). Display-only sauf le verbe vitesse. Lit Sim.
 ##
-## RETOUR JOUEUR UI-2 (2026-07-10, docs/RETOURS_2026-07-10.md point 2 « TOPBAR
-## SURCHARGÉ ») : le contenu se lit désormais en 4 BLOCS visuellement séparés (barre
-## verticale épaisse, cf. _block_sep) — ROYAUME · ÉCONOMIE · POLITIQUE · TEMPS. Les 5
-## cellules de matières brutes (bois/argile/pierre/fer/armes) SORTENT d'ici vers le
-## tiroir Économie/Stocks ; seule la PIRE PÉNURIE remonte, en alerte explicite.
+## REFONTE 2026-08-19 (docs/BRIEF_CODEX_UI_TOPBAR_MODES.md §1) : 9 cellules FIXES,
+## dans l'ordre — (1) nom+blason · (2) Or · (3) Population · (4) Matériaux (Pierre+
+## Argile+Bois) · (5) Nourriture (Céréales+Bétail+Poisson+Fruits) · (6) Armes (légères+
+## lourdes+Poudre+enchantées) · (7) Produits manufacturés · (8) Satisfaction globale
+## (par classe au survol) · (9) vitesse+date. Prix national, Savoir, pénurie-alerte,
+## factions/loyauté et prospérité SORTENT de la barre (toujours lisibles au panneau
+## pays `country_panel.gd` — clic sur le nom — et au tiroir gauche `sidebar_drawer.gd` ;
+## la recherche/tech reste accessible via Ctrl+K `search_palette.gd`). 3 séparateurs
+## de bloc (`_block_sep`) : IDENTITÉ (1) · RESSOURCES (2-7) · ÉTAT (8) · TEMPS (9).
 ##
-## MODE OBSERVATEUR (2026-07-30) : le bloc ROYAUME (nom/trésor/prix/matériaux/armes/
-## nourriture/savoir/factions/loyauté/prospérité) est remplacé par un simple mot
+## MODE OBSERVATEUR (2026-07-30) : les cellules 1-8 sont remplacées par un simple mot
 ## neutre — `_observing()` — le BLOC TEMPS (date/vitesse/pause), lui, reste identique.
 
 const VKit  = preload("res://ui/vkit.gd")
@@ -20,11 +22,10 @@ const Frame = preload("res://ui/frame.gd")
 const InfoRef = preload("res://ui/info_ref.gd")
 const H := Frame.TOPBAR_H
 
-## (les 5 cellules de MATIÈRES BRUTES bois·argile·pierre·fer·armes, posées le 07-09,
-## SORTENT de la topbar — retour joueur UI-2 « TOPBAR SURCHARGÉ » : elles vivent
-## désormais dans le tiroir Économie/Stocks, cf. sidebar_drawer.gd. Seule reste ici la
-## PIRE pénurie, dérivée dans worst_shortage() ci-dessous — consommée aussi par
-## alerts.gd (préchargement statique du script, même donnée, un seul calcul).
+## `worst_shortage()` ci-dessous (la PIRE pénurie du pays) N'EST PLUS affichée en
+## face/hover de topbar depuis la refonte 2026-08-19 (§1 « pénurie-alerte » SORT) —
+## la fonction reste statique et VIVANTE : `alerts.gd` la consomme toujours (même
+## préchargement de ce script, même calcul, DRY) pour son propre chip d'alerte.
 
 signal tech_requested
 signal navigate_requested(request: Dictionary)
@@ -43,18 +44,10 @@ var _last_pop := 0
 var _d_gold := 0.0
 var _d_pop := 0
 
-## UI-MONNAIE — L'INDICE DES PRIX NATIONAL (country_price_level) : même patron que
-## _last_gold/_d_gold ci-dessus, photo mensuelle (display-only, aucun état moteur —
-## le reader lui-même est PUR et recalculé, on ne fait qu'observer sa VARIATION).
-var _last_price_lvl := 1.0
-var _d_price_lvl := 0.0
-
-## INFLUENCE DE FACTION — la « tendance » demandée : chaque faction voit sa PART du
-## spectre bouger d'un mois à l'autre (le decay du moteur, mesuré à la source). On
-## photographie la part de chaque faction (par NOM) au roulement du mois et on affiche
-## le delta « +x/mois » — display-only, aucune coordonnée moteur, juste le mouvement OBSERVÉ.
-var _fac_last := {}      ## nom de faction → part du mois précédent
-var _fac_d := {}         ## nom de faction → delta mensuel (+/-)
+## (l'indice des prix national et la tendance par faction VIVAIENT ici — retirés de
+## la topbar avec le prix/savoir/factions·loyauté, brief refonte 2026-08-19 §1 « ce
+## qui SORT » ; toujours lisibles au panneau pays (country_panel.gd, clic sur le nom)
+## et à l'onglet Conseil/Économie du tiroir.)
 
 func _delta_txt(d: float) -> String:
 	if absf(d) < 0.5:
@@ -72,35 +65,33 @@ func _res_pair(w, me: int, rname: String) -> Dictionary:
 			return {"stock": int(st.get("stock", 0)), "permo": float(st.get("net_day", 0.0)) * 30.0}
 	return {}
 
-## une CELLULE de matière (bois/argile/pierre/armes) : sprite par nom · valeur = stock ·
-## delta = « +N/mois » vert/rouge · hover nommé. Repli discret si la ressource manque.
-func _matter_cell(px: float, w, me: int, rname: String) -> float:
-	var rp := _res_pair(w, me, rname)
-	if rp.is_empty():
-		# absente du bilan : la cellule reste à « 0 » (la matière ne clignote pas).
-		return _cell(px, "", "", "0", "", true, rname, VKit.COL_DIM, rname)
-	# FACE = le stock seul (« l'UI fournit l'information, PAS PLUS ») ; le hover = le NOM
-	# + le flux mensuel (le stock est déjà sur la face, on ne le répète pas).
-	var permo := float(rp["permo"])
-	var tip := rname
-	if absf(permo) >= 0.5:
-		tip += " %+d/mois" % int(round(permo))
-	var delta := "%+d/mois" % int(round(permo))
-	return _cell(px, "", "", _grp(int(rp["stock"])), delta, permo >= 0.0,
-		tip, Color(0, 0, 0, 0), rname)
-
-## LOYAUTÉ du royaume = moyenne de la loyauté des sièges du CONSEIL (0-100) — la fidélité
-## des grands du royaume envers la couronne (country_council → loyalty). -1 si pas de conseil.
-func _council_loyalty(w, me: int) -> int:
-	if not w.has_method("country_council"):
-		return -1
-	var sum := 0.0
-	var n := 0
-	for s in w.country_council(me):
-		if bool(s.get("filled", false)):
-			sum += float(s.get("loyalty", 0))
-			n += 1
-	return int(round(sum / float(n))) if n > 0 else -1
+## UNE CELLULE DE GROUPE DE RESSOURCES (brief §1 points 4-7 : Matériaux/Nourriture/
+## Armes/Manufacturés) — icône icon2 · valeur = SOMME des stocks des `names` · delta =
+## SOMME des flux mensuels (net_day×30) · hover = détail par ressource (seulement
+## celles à stock ou flux non nul — pas de ligne à zéro, retour joueur pénurie/piège
+## §6). Motif UNIQUE, remplace les cellules dédiées d'hier (une par point du brief).
+func _res_group_cell(px: float, w, me: int, icon2name: String, names: PackedStringArray, label: String) -> float:
+	var total := 0
+	var permo_total := 0.0
+	var parts := PackedStringArray()
+	for rname in names:
+		var rp := _res_pair(w, me, rname)
+		if rp.is_empty():
+			continue
+		var stock := int(rp.get("stock", 0))
+		var permo := float(rp.get("permo", 0.0))
+		total += stock
+		permo_total += permo
+		if stock != 0 or absf(permo) >= 0.5:
+			var line := "%s %s" % [rname, _grp(stock)]
+			if absf(permo) >= 0.5:
+				line += " (%+d/mois)" % int(round(permo))
+			parts.append(line)
+	var tip := label
+	if not parts.is_empty():
+		tip += " — " + " · ".join(parts)
+	return _cell(px, "", "", _grp(total), "%+d/mois" % int(round(permo_total)), permo_total >= 0.0,
+		tip, Color(0, 0, 0, 0), "", icon2name)
 
 ## LA PIRE PÉNURIE du pays (retour joueur UI-2 point 2/3 : « Fer : rupture dans 12
 ## jours » remonte en alerte explicite au lieu de noyer 5 chips de stock brut dans la
@@ -226,84 +217,6 @@ func _treasury_card(w, me: int, gold: float) -> Dictionary:
 		"lines": lines,
 	}
 
-func _faction_card(fe: Dictionary, fx: Dictionary, monthly_delta: int) -> Dictionary:
-	var policy := int(fe.get("policy_delta", 0))
-	var lines: Array = [
-		{"label": "Assise sociale", "value": "%d %%" % int(fe.get("base_part", 0))},
-		{"label": "Effet des politiques", "value": "%+d points" % policy,
-			"tone": "positive" if policy > 0 else ("negative" if policy < 0 else "dim")},
-		{"label": "Rancœur", "value": "%d / 100" % int(fe.get("grief", 0)),
-			"tone": "negative" if int(fe.get("grief", 0)) >= 40 else "dim"},
-		{"label": "Pression de coup", "value": "%d / 100" % int(fe.get("coup_pressure", 0)),
-			"tone": "negative" if bool(fe.get("coup_driver", false)) else "dim"},
-		{"label": "Corruption nationale", "value": "%d / 100" % int(fx.get("corruption", 0))},
-	]
-	if bool(fe.get("captor", false)):
-		lines.append({"label": "Capture de l'État", "value": "faction la plus favorisée", "tone": "negative"})
-	return {
-		"title": String(fe.get("name", "Faction")),
-		"state": "%d %% de soutien%s" % [int(fe.get("part", 0)), " · dominante" if bool(fe.get("dominant", false)) else ""],
-		"trend": "%+d / mois" % monthly_delta if monthly_delta != 0 else "stable ce mois",
-		"trend_tone": "positive" if monthly_delta > 0 else ("negative" if monthly_delta < 0 else "dim"),
-		"lines": lines,
-	}
-
-## LA NOURRITURE EN QUOI+COMBIEN : production vs consommation, bien par bien
-## (country_stocks → net_day, le flux RÉEL du jour) — pas une leçon sur le Grenier.
-const _FOOD_NAMES := ["Céréales", "Poisson", "Bétail", "Fruits"]
-func _food_tip(w, me: int) -> String:
-	if not w.has_method("country_stocks"):
-		return "Grenier"
-	var parts := []
-	for st in w.country_stocks(me):
-		var nm := String(st.get("name", ""))
-		if _FOOD_NAMES.has(nm):
-			parts.append("%s %+d/mois" % [nm, int(round(float(st.get("net_day", 0.0)) * 30.0))])
-	if parts.is_empty():
-		return "Grenier"
-	return "Grenier — " + " · ".join(parts)
-
-## MATÉRIAUX — UN SEUL onglet : le TOTAL des matières de construction (bois + argile +
-## pierre) ; le hover DÉTAILLE chaque matière (stock + flux mensuel). Chiffres MENSUELS.
-func _materials_cell(px: float, w, me: int) -> float:
-	var total := 0
-	var permo_total := 0.0
-	var parts := PackedStringArray()
-	for rname in ["Bois", "Argile", "Pierre"]:
-		var rp := _res_pair(w, me, rname)
-		var stock := int(rp.get("stock", 0))
-		var permo := float(rp.get("permo", 0.0))
-		total += stock
-		permo_total += permo
-		var line := "%s %s" % [rname, _grp(stock)]
-		if absf(permo) >= 0.5:
-			line += " (%+d/mois)" % int(round(permo))
-		parts.append(line)
-	# FACE = le total seul (« genre 82 ») ; le détail par matière est dans le HOVER.
-	return _cell(px, "action_build", "", _grp(total), "%+d/mois" % int(round(permo_total)), permo_total >= 0.0,
-		"Matériaux — " + " · ".join(parts))
-
-## HOVER SAVOIR — direct/franc, chiffres MENSUELS : le revenu de recherche décomposé —
-## Pops (base) · Institutions (×) · Lumière de l'âge (×, si portée) · Métabolisation (+%).
-func _research_tip(w, me: int) -> String:
-	if not w.has_method("country_research_income"):
-		return "Recherche"
-	var ri: Dictionary = w.country_research_income(me)
-	var perm := int(round(float(ri.get("per_day", 0.0)) * 30.0))
-	var popm := int(round(float(ri.get("pop_daily", 0.0)) * 30.0))
-	var parts := PackedStringArray()
-	parts.append("Pops +%d" % popm)
-	var ym := float(ri.get("yield_mult", 1.0))
-	if absf(ym - 1.0) >= 0.05:
-		parts.append("Institutions ×%.1f" % ym)
-	var am := float(ri.get("age_mult", 1.0))
-	if am > 1.005:
-		parts.append("Lumière ×%.1f" % am)
-	var mp := int(ri.get("metab_pct", 0))
-	if mp > 0:
-		parts.append("Métabolisation +%d%%" % mp)
-	return "Recherche +%d/mois\n%s\n(clic : arbre de tech)" % [perm, " · ".join(parts)]
-
 ## SÉPARATEUR DE BLOC — l'UNIQUE trait de la barre (retour joueur « c'est le bordel » :
 ## fini le double empilement filet-par-cellule + barre-de-bloc). Un SEUL filet or fin,
 ## inséré verticalement (marge haut/bas) : discret, « l'or = la structure », cohérent
@@ -315,16 +228,11 @@ func _block_sep(px: float) -> float:
 		Color(VKit.COL_GOLD.r, VKit.COL_GOLD.g, VKit.COL_GOLD.b, 0.34))
 	return px + 1.0 + 12.0
 
-## RETOUR JOUEUR UI-3.1 (2026-07-11, docs/UI_RECO_2026-07-10.md §3.1 « topbar
-## simplifiée ») : la barre ne garde que ~8 PERMANENTS (trésor · revenu net mensuel ·
-## pop · nourriture+rupture · recherche · Influence · Corruption · date+vitesse).
-## Les jauges 0-100 (stabilité/prospérité/légitimité/cohésion), le décompte de
-## provinces, la colonisation en chantier, le bonheur détaillé et les blasons de
-## faction ne DISPARAISSENT PAS — ils se lisent au SURVOL du bloc le plus proche
-## (Pop pour l'état du royaume, Revenu net pour l'économie, Influence/Corruption
-## pour la politique) : `_gauge_line` formate un « Mot NN[ ▲|▼] » textuel pour ces
-## tooltips composites (UI-5 : la couleur ne porte jamais seule l'état, même en
-## texte — le chiffre + le signe restent visibles hors couleur).
+## `_gauge_line` formate un « Mot NN[ ▲|▼] » textuel pour les jauges 0-100 (stabilité…)
+## reléguées en tooltip depuis la refonte 2026-08-19 — la barre ne garde que les 9
+## cellules FIXES (cf. l'en-tête du fichier) ; le SURVOL de la cellule 1 (identité)
+## porte encore la stabilité (UI-5 : la couleur ne porte jamais seule l'état, même
+## en texte — le chiffre + le signe restent visibles hors couleur).
 func _gauge_line(ci: Dictionary, cptips: Dictionary, key: String) -> String:
 	var gv := int(ci.get(key, 0))
 	var glyph := ""
@@ -340,11 +248,18 @@ func _gauge_line(ci: Dictionary, cptips: Dictionary, key: String) -> String:
 ## pièce du pack d'icônes OU `rid` ≥ 0 = sprite de ressource. `tip` = le HOVER (retour
 ## joueur : « un explicatif sur chaque display ») ; `vcol.a > 0` teinte la valeur.
 func _cell(px: float, icon: String, rid_or_val, val: String, dtxt: String, dpos: bool,
-		tip: String = "", vcol: Color = Color(0, 0, 0, 0), rname: String = "") -> float:
+		tip: String = "", vcol: Color = Color(0, 0, 0, 0), rname: String = "",
+		icon2name: String = "") -> float:
 	var rid := -1
 	if icon == "" and typeof(rid_or_val) == TYPE_INT:
 		rid = int(rid_or_val)
-	if rname != "":
+	if icon2name != "":
+		# CELLULE série-2 (2026-08-19) : icône du nouveau lot (icons2/), résolue par
+		# UIKit.icon2() — le SEUL registre, jamais un load() direct ici.
+		var t2: Texture2D = UIKit.icon2(icon2name)
+		if t2 != null:
+			draw_texture_rect(t2, Rect2(px, (H - 32.0) * 0.5, 32, 32), false)
+	elif rname != "":
 		# cellule de RESSOURCE par NOM (bois/argile/pierre/armes) : le chip parchemin de
 		# la ressource, résolu par resource_sprite(-1, nom) — même sprite que le tiroir Stocks.
 		var rspr: Texture2D = UIKit.resource_sprite(-1, rname)
@@ -415,7 +330,7 @@ func _ready() -> void:
 	_resize()
 	get_viewport().size_changed.connect(_resize)
 	Sim.generated.connect(_on_change)
-	Sim.month_ticked.connect(_on_tick)   # les chiffres (or·pop·savoir·food) s'updatent au MOIS
+	Sim.month_ticked.connect(_on_tick)   # les chiffres (or·pop·stocks) s'updatent au MOIS
 
 func _resize() -> void:
 	position = Vector2.ZERO
@@ -439,28 +354,6 @@ func _on_tick(_year: int) -> void:
 			_d_pop = p - _last_pop
 			_last_gold = g
 			_last_pop = p
-			if w.has_method("country_price_level"):
-				var pl := float(w.country_price_level(me))
-				_d_price_lvl = pl - _last_price_lvl
-				_last_price_lvl = pl
-			# tendance des factions : delta mensuel de la PART de chaque faction (le decay observé)
-			if w.has_method("country_factions"):
-				var fx: Dictionary = w.country_factions(me)
-				var seen := {}
-				for fe in fx.get("list", []):
-					var fnm := String(fe.get("name", ""))
-					if fnm == "":
-						continue
-					var part := int(fe.get("part", 0))
-					if _fac_last.has(fnm):
-						_fac_d[fnm] = part - int(_fac_last[fnm])
-					_fac_last[fnm] = part
-					seen[fnm] = true
-				# oublie les factions disparues (évite un delta figé sur un nom mort)
-				for k in _fac_last.keys():
-					if not seen.has(k):
-						_fac_last.erase(k)
-						_fac_d.erase(k)
 	queue_redraw()
 
 func _on_change() -> void:
@@ -519,38 +412,9 @@ func _draw() -> void:
 		px += 30
 		var CPTips: Dictionary = load("res://ui/country_panel.gd").TIPS
 
-		# RETOUR JOUEUR UI-3.1 (2026-07-11) : la barre ne garde que ~8 PERMANENTS —
-		# trésor · revenu net mensuel · pop · nourriture(+rupture) · recherche ·
-		# Influence · Corruption · date+vitesse. Tout le SECONDAIRE d'hier (provinces,
-		# stabilité, prospérité, colonisation en chantier, légitimité, cohésion,
-		# bonheur détaillé, blasons de faction, tension de coup) ne disparaît pas :
-		# il se lit désormais au SURVOL du bloc le plus proche (jamais un calcul
-		# inventé — les mêmes lectures façade qu'avant, juste reléguées en tooltip).
-		var dmt: Dictionary = w.country_demo(me) if w.has_method("country_demo") else {}
-		var clst: Array = dmt.get("classes", [])
-		var _happy_tip := ""
-		if clst.size() >= 3:
-			var sat_avg := 0.0
-			var wsum := 0.0
-			for cl in clst:
-				var p := float(cl.get("pop", 0))
-				sat_avg += float(cl.get("satisfaction", 0)) * p
-				wsum += p
-			sat_avg = sat_avg / maxf(wsum, 1.0)
-			var bglyph := ""
-			if sat_avg >= 66.0:
-				bglyph = " ▲"
-			elif sat_avg <= 33.0:
-				bglyph = " ▼"
-			_happy_tip = "Bonheur %d %%%s (Journaliers %d · Bourgeois %d · Élites %d)" % [
-				int(round(sat_avg)), bglyph,
-				int(clst[0].get("satisfaction", 0)), int(clst[1].get("satisfaction", 0)),
-				int(clst[2].get("satisfaction", 0))]
-		var fx: Dictionary = w.country_factions(me) if w.has_method("country_factions") else {}
-
-		# ═══ IDENTITÉ (ancre) : nom du royaume. Population · recherche · provinces ·
-		#     stabilité · métabolisation · colonie s'y lisent au SURVOL — la barre
-		#     DÉFINITIVE (retour joueur 2026-07-11) ne les garde plus en permanents. ═══
+		# ═══ 1. IDENTITÉ (ancre) : nom du royaume — blason ci-dessus. Province count ·
+		#     stabilité · colonie en chantier s'y lisent au SURVOL (jamais un calcul
+		#     inventé — les mêmes lectures façade qu'avant, juste reléguées en tooltip). ═══
 		var nom := String(ci["nom"])
 		var nomw := VKit.text_w(nom)
 		var nr := Rect2(px - 6.0, 6.0, nomw + 14.0, H - 12.0)
@@ -558,9 +422,7 @@ func _draw() -> void:
 		VKit.fill(self, Rect2(nr.position, Vector2(3.0, nr.size.y)), VKit.COL_GOLD)
 		VKit.box(self, nr, VKit.COL_EDGE)
 		VKit.text(self, Vector2(px + 2.0, cy), VKit.COL_GOLD, nom)
-		var _dp_txt := _delta_txt(float(_d_pop))
-		var _id_tip := "%s — Population %s%s · %d province(s) · %s" % [nom,
-			_grp(ci["pop"]), (" %s/mois" % _dp_txt) if _dp_txt != "" else "",
+		var _id_tip := "%s — %d province(s) · %s" % [nom,
 			w.country_province_count(me), _gauge_line(ci, CPTips, "stabilite")]
 		if w.has_method("colony_status"):
 			var cs: Dictionary = w.colony_status()
@@ -570,131 +432,88 @@ func _draw() -> void:
 				_id_tip += " · colonie en chantier %d %%" % pct
 		_tips.append([nr, _id_tip])
 		_add_nav(nr, InfoRef.request(InfoRef.make(InfoRef.COUNTRY, me)), "ouvrir le royaume")
-		px += nomw + 18
+		px += nomw + 10
+		px = _block_sep(px)   # IDENTITÉ | RESSOURCES
 
-		# ═══ OR — face : le trésor seul. Hover : le REVENU DÉTAILLÉ MENSUEL (impôts ·
-		#     corruption · entretiens · salaires · armée…) via country_budget (I0). ═══
+		# ═══ 2. OR — face : le trésor + delta MENSUEL (photo _d_gold, cf. _on_tick).
+		#     Hover : le revenu DÉTAILLÉ (impôts · corruption · entretiens · salaires…). ═══
 		var treasury_x := px
-		var budget_now: Dictionary = w.budget_summary(me) if w.has_method("budget_summary") else {}
-		var budget_doy := maxi(1, int(w.day_of_year())) if w.has_method("day_of_year") else 1
-		var budget_month := float(budget_now.get("net", 0.0)) / float(budget_doy) * 30.0
-		px = _cell(px, "fine_coin", "", _grp(ci["or"]), "%+d/mois" % int(round(budget_month)),
-			budget_month >= 0.0, _treasury_tip(w, me))
+		var d_gold_txt := ("%+d/mois" % int(round(_d_gold))) if absf(_d_gold) >= 0.5 else ""
+		px = _cell(px, "", "", _grp(ci["or"]), d_gold_txt, _d_gold >= 0.0, _treasury_tip(w, me),
+			Color(0, 0, 0, 0), "", "top_or")
 		_add_nav(Rect2(treasury_x - 4, 0, px - treasury_x, H),
 			InfoRef.request(InfoRef.make(InfoRef.SIDEBAR_TAB, 0), "sidebar", {"section": "budget"}),
 			"ouvrir le budget", _treasury_card(w, me, float(ci["or"])))
 
-		# ═══ PRIX — UI-MONNAIE : l'indice des prix NATIONAL (1.0 = neutre), un mot + un
-		#     chiffre (doctrine topbar) ; le détail (tendance /mois, MOTS) au survol seulement
-		#     — jamais le calcul à l'écran. Onglet Monnaie (panneau B) = le détail complet. ══
-		if w.has_method("country_price_level"):
-			var price_lvl := float(w.country_price_level(me))
-			var price_pct := (_d_price_lvl / price_lvl * 100.0) if price_lvl > 0.0 else 0.0
-			var price_dtxt := ("%+.1f%%/mois" % price_pct) if absf(price_pct) >= 0.05 else ""
-			var price_word := "stables" if absf(price_pct) < 0.05 else ("en hausse" if price_pct > 0.0 else "en baisse")
-			px = _cell(px, "action_trade", "", "%.2f" % price_lvl, price_dtxt, price_pct <= 0.0,
-				"Prix : %.2f — %s\n(1.00 = neutre ; onglet Monnaie pour le détail)" % [price_lvl, price_word])
-		px = _block_sep(px)
+		# ═══ 3. POPULATION TOTALE — face : pop empire + delta mensuel (_d_pop). ═══
+		var pop_x := px
+		var _dp := _delta_txt(float(_d_pop))
+		var d_pop_txt := ("%s/mois" % _dp) if _dp != "" else ""
+		px = _cell(px, "", "", _grp(ci["pop"]), d_pop_txt, _d_pop >= 0, "Population",
+			Color(0, 0, 0, 0), "", "top_population")
+		_add_nav(Rect2(pop_x - 4, 0, px - pop_x, H),
+			InfoRef.request(InfoRef.make(InfoRef.SIDEBAR_TAB, 1), "sidebar"), "ouvrir la démographie")
 
-		# ═══ MATÉRIAUX : UN onglet (total bois+argile+pierre) · hover = détail par matière ══
+		# ═══ 4. MATÉRIAUX DE CONSTRUCTION — somme Pierre+Argile+Bois · hover détaillé. ═══
 		var materials_x := px
-		px = _materials_cell(px, w, me)
+		px = _res_group_cell(px, w, me, "top_construction",
+			PackedStringArray(["Pierre", "Argile", "Bois"]), "Matériaux")
 		_add_nav(Rect2(materials_x - 4, 0, px - materials_x, H),
 			InfoRef.request(InfoRef.make(InfoRef.SIDEBAR_TAB, 2), "sidebar"), "ouvrir les stocks")
-		# ═══ ARMES : stock + flux mensuel (même modèle) ══
+
+		# ═══ 5. NOURRITURE — somme Céréales+Bétail+Poisson+Fruits · hover détaillé. ═══
+		var food_x := px
+		px = _res_group_cell(px, w, me, "top_nourriture",
+			PackedStringArray(["Céréales", "Bétail", "Poisson", "Fruits"]), "Nourriture")
+		_add_nav(Rect2(food_x - 4, 0, px - food_x, H),
+			InfoRef.request(InfoRef.make(InfoRef.SIDEBAR_TAB, 2), "sidebar", {"section": "food"}),
+			"ouvrir les stocks alimentaires")
+
+		# ═══ 6. ARMES — somme Armes légères+lourdes+Poudre+Armes enchantées · hover. ═══
 		var arms_x := px
-		px = _matter_cell(px, w, me, "Armes légères")
+		px = _res_group_cell(px, w, me, "top_armes",
+			PackedStringArray(["Armes légères", "Armes lourdes", "Poudre", "Armes enchantées"]), "Armes")
 		_add_nav(Rect2(arms_x - 4, 0, px - arms_x, H),
 			InfoRef.request(InfoRef.make(InfoRef.RESOURCE, 36), "sidebar", {"tab": 2}),
 			"ouvrir le stock d'armes")
-		# ═══ NOURRITURE : stock du grenier. La rupture SORT de la cellule → seul le hover
-		#     porte l'income par bien ET « pénurie dans X » (retour joueur : l'UI = le
-		#     nombre, le hover = le détail). ══
-		var short := worst_shortage(w, me)
-		var _food_full_tip := _food_tip(w, me)
-		if not short.is_empty():
-			var djs := int(short["days"])
-			var sname := String(short["name"])
-			_food_full_tip += "\n%s : rupture dans %d j" % [sname, djs]
-		if w.has_method("country_food"):
-			var food_x := px
-			var food_month := 0.0
-			if w.has_method("country_stocks"):
-				for stock in w.country_stocks(me):
-					if _FOOD_NAMES.has(String(stock.get("name", ""))):
-						food_month += float(stock.get("net_day", 0.0)) * 30.0
-			px = _cell(px, "fine_grain", "", _grp(int(w.country_food(me))),
-				"%+d/mois" % int(round(food_month)), food_month >= 0.0, _food_full_tip)
-			_add_nav(Rect2(food_x - 4, 0, px - food_x, H),
-				InfoRef.request(InfoRef.make(InfoRef.SIDEBAR_TAB, 2), "sidebar", {"section": "food"}),
-				"ouvrir les stocks alimentaires")
-		px = _block_sep(px)
 
-		# ═══ SAVOIR : le niveau · hover = income de recherche MENSUEL décomposé (Pops ·
-		#     Institutions · Lumière · Métabolisation) · CLIC = l'arbre de technologie. ══
-		var sx0 := px
-		var research_month := float((w.country_research_income(me) as Dictionary).get("per_day", 0.0)) * 30.0 \
-			if w.has_method("country_research_income") else 0.0
-		px = _cell(px, "fine_knowledge", "", "%d" % int(ci["savoir"]),
-			"%+d/mois" % int(round(research_month)), research_month >= 0.0, _research_tip(w, me))
-		_savoir_rect = Rect2(sx0 - 4, 0, px - sx0, H)
-		_add_nav(_savoir_rect, InfoRef.request(InfoRef.make(InfoRef.TECH, -1)), "ouvrir l'arbre de technologie")
-		px = _block_sep(px)
+		# ═══ 7. PRODUITS MANUFACTURÉS — somme de la famille de production · hover
+		#     détaillé (seulement les biens à stock/flux non nul — pas 9 lignes à zéro). ═══
+		var manuf_x := px
+		px = _res_group_cell(px, w, me, "top_manufactures", PackedStringArray([
+			"Outils", "Étoffe", "Papier", "Remèdes", "Tunique",
+			"Bière", "Eau de vie", "Bien précieux", "Étoffe précieuse"]), "Produits manufacturés")
+		_add_nav(Rect2(manuf_x - 4, 0, px - manuf_x, H),
+			InfoRef.request(InfoRef.make(InfoRef.SIDEBAR_TAB, 2), "sidebar"), "ouvrir les stocks")
+		px = _block_sep(px)   # RESSOURCES | ÉTAT
 
-		# ═══ INFLUENCE DE FACTION : chaque faction · sa PART · sa TENDANCE « +x/mois »
-		#     (le decay observé au fil des mois, cf. _on_tick). La dominante porte ★. ═══
-		var coup := int(fx.get("coup", 0))
-		var flist: Array = fx.get("list", [])
-		var nfac := mini(flist.size(), 4)   # garde-fou de largeur (rarement > 3 factions)
-		for fi in range(nfac):
-			var faction_x := px
-			var fe: Dictionary = flist[fi]
-			var fnm := String(fe.get("name", ""))
-			var part := int(fe.get("part", 0))
-			var dom := bool(fe.get("dominant", false))
-			var grief := int(fe.get("grief", 0))
-			var fd := int(_fac_d.get(fnm, 0))
-			var fdtxt := "%+d/mois" % fd if fd != 0 else ""
-			var ftip := "%s — %d %% de soutien%s" % [fnm, part, " ★ dominante" if dom else ""]
-			if fd != 0:
-				ftip += " · %+d/mois" % fd
-			if grief > 0:
-				ftip += " · rancœur %d" % grief
-			ftip += " · assise %d %% · politiques %+d" % [int(fe.get("base_part", part)), int(fe.get("policy_delta", 0))]
-			if bool(fe.get("coup_driver", false)):
-				ftip += " · porte le risque de coup (%d)" % int(fe.get("coup_pressure", 0))
-			if fi == 0:
-				ftip += "\nTension de coup %d" % coup
-			var fval := ("★ %d%%" % part) if dom else ("%d%%" % part)
-			px = _cell(px, "influence_compass", "", fval, fdtxt, fd >= 0, ftip,
-				VKit.sense(0.20) if (grief >= 60 or coup >= 45) else Color(0, 0, 0, 0))
-			_add_nav(Rect2(faction_x - 4, 0, px - faction_x, H),
-				InfoRef.request(InfoRef.make(InfoRef.SIDEBAR_TAB, 7), "sidebar", {"section": "factions"}),
-				"ouvrir le rapport de forces", _faction_card(fe, fx, fd))
-		px = _block_sep(px)
-
-		# ═══ LOYAUTÉ · PROSPÉRITÉ (jauges 0-100, valeur teintée bon/mauvais — UI-5 :
-		#     le chiffre reste lisible hors couleur). ═══
-		# LOYAUTÉ : la fidélité du conseil si un ministre siège ; sinon la LÉGITIMITÉ
-		# (l'adhésion du royaume au droit de régner) — la barre garde toujours la paire.
-		var loy := _council_loyalty(w, me)
-		var loy_tip := "Loyauté du conseil %d / 100" % loy
-		if loy < 0:
-			loy = int(ci.get("legitimite", 0))
-			loy_tip = "Loyauté %d / 100 (légitimité)" % loy
-		var loyalty_x := px
-		px = _cell(px, "politics_crown", "", "%d" % loy, "", true, loy_tip,
-			VKit.sense(float(loy) / 100.0))
-		_add_nav(Rect2(loyalty_x - 4, 0, px - loyalty_x, H),
-			InfoRef.request(InfoRef.make(InfoRef.SIDEBAR_TAB, 7), "sidebar"), "ouvrir le conseil")
-		var prosp := int(ci.get("prosperite", 0))
-		var _prosp_tip := "Prospérité — %s (%d / 100)" % [String(ci.get("prosperite_mot", "")), prosp]
-		if not _happy_tip.is_empty():
-			_prosp_tip += "\n" + _happy_tip
-		var prosperity_x := px
-		px = _cell(px, "prosperity_sprout", "", "%d" % prosp, "", true, _prosp_tip,
-			VKit.sense(float(prosp) / 100.0))
-		_add_nav(Rect2(prosperity_x - 4, 0, px - prosperity_x, H),
+		# ═══ 8. SATISFACTION GLOBALE — moyenne pays pondérée pop (country_demo). Hover :
+		#     détail PAR CLASSE + le ±X « Votre politique » (country_class_policy_sat). ═══
+		var sat_x := px
+		var dmt: Dictionary = w.country_demo(me) if w.has_method("country_demo") else {}
+		var clst: Array = dmt.get("classes", [])
+		var sat_avg := 0.0
+		var sat_tip := "Satisfaction"
+		if clst.size() >= 3:
+			var wsum := 0.0
+			for cl in clst:
+				var p := float(cl.get("pop", 0))
+				sat_avg += float(cl.get("satisfaction", 0)) * p
+				wsum += p
+			sat_avg = sat_avg / maxf(wsum, 1.0)
+			var cls_names := ["Journaliers", "Bourgeois", "Élite"]
+			var cparts := PackedStringArray()
+			for i in range(3):
+				var line := "%s %d" % [cls_names[i], int(clst[i].get("satisfaction", 0))]
+				if w.has_method("country_class_policy_sat"):
+					var pd := int(w.country_class_policy_sat(me, i))
+					if pd != 0:
+						line += " (votre politique %+d)" % pd
+				cparts.append(line)
+			sat_tip = "Satisfaction — " + " · ".join(cparts)
+		px = _cell(px, "", "", "%d" % int(round(sat_avg)), "", true, sat_tip,
+			VKit.sense(sat_avg / 100.0), "", "top_satisfaction")
+		_add_nav(Rect2(sat_x - 4, 0, px - sat_x, H),
 			InfoRef.request(InfoRef.make(InfoRef.SIDEBAR_TAB, 1), "sidebar"), "ouvrir la démographie")
 		content_end = px
 

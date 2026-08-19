@@ -565,6 +565,14 @@
     X(STR_VOC_ATELIER,    "Atelier") \
     X(STR_VOC_COMPTOIR,   "Comptoir") \
     X(STR_VOC_SANCTUAIRE, "Sanctuaire") \
-    X(STR_VOC_MARCHE,     "Marche")
+    X(STR_VOC_MARCHE,     "Marche") \
+    X(STR_MODE_DEFAUT,    "Carte : terrain et frontières") \
+    X(STR_MODE_POLITIQUE, "Carte : territoires par pays") \
+    X(STR_MODE_NATURE,    "Carte : terrain seul, sans frontières") \
+    X(STR_MODE_MARCHE,    "Carte : bassins de marché") \
+    X(STR_MARCHE_DE,      "Marché de") \
+    X(STR_MARCHE_AUCUN,   "Aucun marché atteignable") \
+    X(STR_MODE_RELIGION,  "Carte : foi dominante") \
+    X(STR_MODE_CULTURE,   "Carte : culture dominante")
 
 #endif /* SCPS_STRINGS_IDS_H */

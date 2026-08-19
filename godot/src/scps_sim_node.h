@@ -43,6 +43,9 @@ public:
     Ref<Image> map_image(int mode, int selected_prov);  /* render_map → Image RGBA8 (sel. surlignée) */
     Ref<Image> layer_image(int layer);  /* couche brute → Image L8 (shaders) */
     Ref<Image> political_image(PackedColorArray pal);   /* LAVIS : owner/cellule teinté par pal[pays] (RGBA, transparent hors territoire) */
+    Ref<Image> market_catchment_image(PackedColorArray pal);   /* MODE MARCHÉ : bassin/cellule teinté par pal[pid du centre] (motif EXACT political_image) */
+    Ref<Image> religion_image(PackedColorArray pal);   /* MODE RELIGION : foi/cellule teinté par pal[rid] (motif EXACT political_image) */
+    Ref<Image> culture_image(PackedColorArray pal);    /* MODE CULTURE : culture/cellule teinté par pal[culture_id] (idem, id int32) */
     Ref<Image> fog_image();               /* BROUILLARD (étape 1/2) : voile RGBA (encre estompée = voilé, transparent = visible) */
     PackedByteArray fog_region_mask();    /* même connaissance, par RÉGION (0/1) — pour griser/cacher les acteurs overlay */
 
@@ -126,8 +129,20 @@ public:
     int        province_seed(int province) const;           /* LOT 5 : seed héraldique déterministe */
     Dictionary province_market(int province);               /* LOT 6 : { port:String, lines:[{name,price,stock,marche}] } */
 
+    /* MODE CARTE MARCHÉ (Chantier C/E) */
+    int        market_catchment(int province) const;        /* pid du CENTRE dont dépend `province` (-1 : aucun) */
+    Vector2    province_centroid(int province) const;        /* (-1,-1) si vide — ancre d'icône de tuile */
+    PackedInt32Array province_raws(int province) const;      /* ≤2 res_id (RES_NONE exclu) — tirage worldgen */
+    String     market_hover(int province) const;             /* « Marché de {ville} » / échec — mot composé */
+    String     map_mode_label(int i) const;                  /* bouton switcheur : 0 Défaut·1 Politique·2 Nature·3 Marché·4 Religion·5 Culture */
+    int        province_religion(int province) const;        /* rid de la foi de la RÉGION (-1) */
+    String     province_religion_hover(int province) const;  /* le nom du culte / "Sans foi" */
+    int        province_culture_id(int province) const;      /* culture_id (uint16 vivant) de la province (-1) */
+    String     province_culture_hover(int province) const;   /* le nom de la culture dominante ("" si vide) */
+
     /* SIDEBAR : agrégats PAYS (read-only) */
     Dictionary country_demo(int country);             /* classes + satisfaction */
+    int        country_class_policy_sat(int country, int classe) const; /* ±X « Votre politique » (−15..+15), classe 0-2 */
     Array      country_stocks(int country);           /* biens : stock · net · couverture · marché */
     Array      stock_regions(int country, int good);  /* P6 : producteurs/consommateurs territoriaux */
     Dictionary market_quote(int country, int good, int qty); /* Centre proche + réseau mondial, devis pur */

@@ -22,6 +22,21 @@ const ZOOM_MAX := 16.0          ## le plus ZOOMÉ (on plonge dans un bourg)
 # view_mode : conservé pour compat overlay (toujours ISO désormais ; le globe a été retiré).
 enum { VIEW_GLOBE = 0, VIEW_ISO = 1 }
 
+## CHANTIER C (2026-08-19) + EXTENSION RELIGION/CULTURE (même jour) — les 6 MODES CARTE
+## exclusifs du switcheur (controls.gd) : Défaut/Politique gardent les valeurs
+## historiques (0/1, motif political_image déjà câblé dessus, cf. overlay.gd).
+## NATURE/MARCHÉ/RELIGION/CULTURE prennent des valeurs HORS du champ déjà utilisé par le
+## tiroir Filtres (sidebar_drawer.gd FILT_GROUPS : 0-10, 13-16 — même variable `mode`
+## partagée) pour ne PAS collisionner avec ses chips (Régions=2, Pays=3, Continents=4,
+## Ressources=9…). NATURE reste piloté par le bool `overlay.nature_mode` (compat : le
+## toggle existant), MODE_NATURE n'est qu'un repère pour le switcheur.
+const MODE_DEFAUT    := 0
+const MODE_POLITIQUE := 1
+const MODE_NATURE    := 20
+const MODE_MARCHE    := 21
+const MODE_RELIGION  := 22
+const MODE_CULTURE   := 23
+
 signal province_picked(province: int, region: int, owner: int)
 signal country_context(owner: int)   ## CLIC DROIT sur un territoire → l'UI diplomatique du pays
 signal army_selection_changed(ids: Array) ## corps sélectionnés → panneau d'armée
@@ -29,7 +44,7 @@ signal army_order_feedback(message: String, good: bool) ## ordre de marche → a
 signal army_move_preview_changed(preview: Dictionary) ## survol destination → route/durée/issue avant clic
 signal mode_changed(m: int)     ## le mode render a changé (légende, sélecteurs)
 
-var mode := 0                   ## ViewMode de carte (0 terrain · 1 politique · 2 régions · 3 pays)
+var mode := 0                   ## ViewMode de carte (0 terrain · 1 politique · 2 régions · 3 pays · 20 nature · 21 marché · 22 religion · 23 culture)
 var view_mode := VIEW_ISO       ## TOUJOURS ISO (compat overlay : le globe n'existe plus)
 
 var _selected_prov := -1
@@ -392,6 +407,13 @@ func toggle_nature() -> void:
 
 func is_nature() -> bool:
 	return _overlay != null and _overlay.nature_mode
+
+## RÉGLAGE EXPLICITE (vs toggle_nature) : le switcheur à 4 modes exclusifs (controls.gd,
+## Chantier C) a besoin d'IMPOSER un état, pas de le renverser.
+func set_nature(on: bool) -> void:
+	if _overlay != null and _overlay.nature_mode != on:
+		_overlay.nature_mode = on
+		_overlay.queue_redraw()
 
 func zoom_in() -> void:  _zoom(0.8)
 func zoom_out() -> void: _zoom(1.0 / 0.8)

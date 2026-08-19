@@ -21,6 +21,7 @@ const Frame = preload("res://ui/frame.gd")
 const Concepts = preload("res://ui/concepts.gd")   # D4 — glossaire hover
 const BattleAnim = preload("res://ui/battle_anim.gd")
 const TroopSelect = preload("res://ui/troop_select.gd")   # panneau satellite : split composé
+const UIKit = preload("res://ui/uikit.gd")   # Chantier F : glyphes d'unités (lot5_troupes)
 
 signal raid_requested   ## case « Pillage » cochée → main arme le sous-mode raid de la carte
 signal raid_disarmed    ## décochée → désarme
@@ -334,21 +335,49 @@ func _corps_block(a: Dictionary) -> Control:
 		box.add_child(_compo_glyphs(inf, arch, cav, mages))
 	return box
 
-## « ■ 2 400 · ▲ 800 · ● 600 · ▬ 200 » — un label teinté par type présent, nom au hover
+## GLYPHE d'unité (registre UIKit.unit_icon, Chantier F) + chiffre, teinté par catégorie —
+## un représentant par catégorie AGRÉGÉE (inf/arch/cav/mages : le grain le plus fin que
+## corps_info() expose côté moteur à ce niveau — pas de rupture par UnitType individuel
+## sans nouveau reader façade, hors périmètre de cette passe). Repli texte (■▲●▬) si
+## l'asset manque — jamais un carré magenta. Nom de catégorie au hover.
+const _COMPO_GLYPH_FALLBACK := ["■", "▲", "●", "▬"]
 func _compo_glyphs(inf: int, arch: int, cav: int, mages: int) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
-	var defs := [["■", inf, "Infanterie", VKit.SLICE_PAL[0]], ["▲", arch, "Tirailleurs/archers", VKit.SLICE_PAL[1]],
-		["●", cav, "Cavalerie", VKit.SLICE_PAL[3]], ["▬", mages, "Mages", VKit.SLICE_PAL[5]]]
-	for d in defs:
+	# [UnitType représentant, effectif, nom catégorie, couleur]
+	var defs := [[0, inf, "Infanterie", VKit.SLICE_PAL[0]], [3, arch, "Tirailleurs/archers", VKit.SLICE_PAL[1]],
+		[5, cav, "Cavalerie", VKit.SLICE_PAL[3]], [7, mages, "Mages", VKit.SLICE_PAL[5]]]
+	for i in range(defs.size()):
+		var d: Array = defs[i]
 		if int(d[1]) <= 0: continue
+		var cell := HBoxContainer.new()
+		cell.add_theme_constant_override("separation", 3)
+		cell.mouse_filter = Control.MOUSE_FILTER_STOP
+		cell.tooltip_text = String(d[2])
+		var tex: Texture2D = UIKit.unit_icon(int(d[0]))
+		if tex != null:
+			var tr := TextureRect.new()
+			tr.texture = tex
+			# EXPAND_IGNORE_SIZE : sinon le Control adopte la taille NATIVE de la texture
+			# (128²) et ignore custom_minimum_size (piège Godot 4, pas Godot 3 `expand`).
+			tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			tr.stretch_mode = TextureRect.STRETCH_SCALE
+			tr.custom_minimum_size = Vector2(16, 16)
+			tr.modulate = d[3]
+			tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			cell.add_child(tr)
+		else:
+			var glyph := Label.new()
+			glyph.theme_type_variation = "RowLabel"
+			glyph.text = _COMPO_GLYPH_FALLBACK[i]
+			glyph.add_theme_color_override("font_color", d[3])
+			cell.add_child(glyph)
 		var l := Label.new()
 		l.theme_type_variation = "RowLabel"
-		l.text = "%s %s" % [d[0], _grp(int(d[1]))]
+		l.text = _grp(int(d[1]))
 		l.add_theme_color_override("font_color", d[3])
-		l.tooltip_text = String(d[2])
-		l.mouse_filter = Control.MOUSE_FILTER_STOP
-		row.add_child(l)
+		cell.add_child(l)
+		row.add_child(cell)
 	return row
 
 ## ouvre/rafraîchit le panneau satellite de sélection de troupes pour le corps `cid`

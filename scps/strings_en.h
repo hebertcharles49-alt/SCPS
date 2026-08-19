@@ -544,4 +544,12 @@
     X(STR_VOC_ATELIER,    "Workshop") \
     X(STR_VOC_COMPTOIR,   "Trading Post") \
     X(STR_VOC_SANCTUAIRE, "Shrine") \
-    X(STR_VOC_MARCHE,     "Market")
+    X(STR_VOC_MARCHE,     "Market") \
+    X(STR_MODE_DEFAUT,    "Map: terrain and borders") \
+    X(STR_MODE_POLITIQUE, "Map: territories by country") \
+    X(STR_MODE_NATURE,    "Map: terrain only, no borders") \
+    X(STR_MODE_MARCHE,    "Map: trade catchments") \
+    X(STR_MARCHE_DE,      "Market of") \
+    X(STR_MARCHE_AUCUN,   "No market reachable") \
+    X(STR_MODE_RELIGION,  "Map: dominant faith") \
+    X(STR_MODE_CULTURE,   "Map: dominant culture")

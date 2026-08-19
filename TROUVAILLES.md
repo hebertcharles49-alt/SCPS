@@ -9233,3 +9233,337 @@ défaut `scps_api_demo` déjà à 1 depuis hier). `audit_eco` porte maintenant u
 documenté (#3 ci-dessus) sur le hamlet structurellement mort — un futur agent qui veut
 vraiment tester un hameau (pas le repli capitale) devra déplacer le point de scan, pas
 rejouer le seuil.
+
+## 2026-08-19 — Chantier F (BRIEF_CODEX_UI_TOPBAR_MODES §9) : glyphes de troupes
+(lot5_troupes) branchés — panneau armée + recrutement (sonnet)
+
+Contexte : vague icônes série-2, périmètre RÉDUIT en cours de mission par le joueur —
+le Chantier G (portraits par couches, lot6_portraits) est ANNULÉ (composition par
+couches jugée mauvaise visuellement, planches à re-générer plus tard) ; AUCUN fichier G
+n'avait été touché au moment de l'annonce, donc rien à revert. Cette entrée ne couvre
+QUE le Chantier F.
+
+**Découvertes**
+
+1. **Registre `UIKit.unit_icon(unit_id_or_name)`** (fin de `uikit.gd`, append pur,
+   coexiste avec `icon2()` d'un autre agent ajouté EN PARALLÈLE au même endroit du
+   fichier — aucune collision, les deux fonctions sont indépendantes). Indexé par
+   `UNIT_ICON_FILE[22]` dans l'ORDRE EXACT de `scps_army.h` (vérifié contre
+   `scps_unit_roster()` (`scps_api.c:2699` : `o->type = t` itère directement l'enum
+   `UnitType`, 0..21 — pas de renumérotation façade). Accepte un `int` (UnitType) OU un
+   `String` (nom libre, `U_PIQUIER`/`piquier`/`Piquier` tous acceptés, préfixe
+   `u_`/`unit_` normalisé). Chemin : `res://assets/scps/ui/icons2/lot5_troupes/unit_*.png`
+   — RGBA direct 128², AUCUN keying noir nécessaire (contrairement à `unit_sprite()`
+   préexistant qui, lui, key le noir des tuiles `pack/units`).
+2. **Deux registres d'unités coexistent maintenant sciemment** : `unit_sprite()`
+   (préexistant, planches parchemin sheet09/10 → tuile `pack/units` à fond keyé, pensé
+   pour de GRANDES cartes de recrutement) et `unit_icon()` (nouveau, lot5_troupes,
+   pensé GLYPHE petit format 16-40 px). Les deux consommateurs touchés utilisent
+   `unit_icon()` en PREMIER avec repli sur `unit_sprite()` si l'asset manque —
+   `unit_sprite()` n'est PAS retiré (toujours consommé ailleurs, hors périmètre F).
+3. **Piège Godot 4 payé une fois, documenté pour ne pas le repayer** : un `TextureRect`
+   avec `custom_minimum_size = Vector2(16,16)` + `stretch_mode = STRETCH_SCALE` seul ne
+   RÉTRÉCIT PAS une texture 128² — le Control adopte la taille NATIVE de la texture
+   (comportement par défaut `expand_mode = EXPAND_KEEP_SIZE`), `custom_minimum_size` est
+   ignoré tant que la texture est plus grande. Vu en probe (`army_panel_no_combat.png` :
+   glyphe piquier ~130 px de haut envahissant tout le panneau). **Fix** :
+   `tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE` AVANT `custom_minimum_size` — c'est
+   l'équivalent Godot 4 du vieux `expand = true` de Godot 3, PAS le même piège que
+   `EXPAND_IGNORE_SIZE` sur les TextureRect déjà notés ailleurs dans le projet (à
+   généraliser : TOUT `TextureRect` chargé avec une texture SOURCE plus grande que la
+   cellule cible doit poser `expand_mode` explicitement, jamais compter sur
+   `custom_minimum_size` seul). Reprobé après fix : glyphe 16×16 correct, stable en
+   parade ET en combat (même code `_compo_glyphs` réutilisé par `_side_block`).
+4. **`army_panel.gd` (`_compo_glyphs`) n'a QUE 4 catégories agrégées** (inf/arch/cav/
+   mages) — `corps_info()`/`ScpsArmyInfo` (côté C++, `scps_sim_node.cpp:610`) n'expose
+   PAS de rupture par UnitType individuel à ce grain, seulement 4 sommes. Un vrai
+   glyphe PAR UnitType dans le panneau armée demanderait un nouveau reader façade — hors
+   fichiers autorisés de cette passe (pas d'engine touché). **Décision prise** : un
+   UnitType REPRÉSENTANT par catégorie (piquier=inf, archer=arch, cav_légère=cav,
+   mage=mages) remplace les glyphes texte (■▲●▬) — vrai gain visuel (silhouette
+   reconnaissable au lieu d'un symbole abstrait), repli texte conservé si l'asset
+   manque (jamais un carré magenta). Documenté en commentaire de code pour le prochain
+   agent qui voudrait la vraie rupture par type (nécessitera d'étendre `ScpsArmyInfo`).
+5. **Écran de recrutement = `sidebar_drawer.gd` `_draw_armee()` (onglet `sb_panel_armee`,
+   ~l.1345 « Composer l'armée »)**, pas un fichier dédié « recruitment » — trouvé par
+   grep `recrut` (pas `recruit`, tout le vocabulaire est FR). C'est un `_draw()` canvas
+   custom (pas un Control tree), donc AUCUN piège `TextureRect`/`expand_mode` ici :
+   `draw_texture_rect(ut, ur, false)` étire toujours vers le `Rect2` cible quelle que
+   soit la taille native de la texture — remplacement direct `unit_sprite()`→`unit_icon()`
+   (avec repli) sans autre changement.
+
+**Pièges**
+
+- Le fichier `uikit.gd` a été modifié PAR DEUX AGENTS EN PARALLÈLE dans la même
+  fenêtre (mon `unit_icon()` + l'`icon2()` d'un autre agent, tous deux en append fin de
+  fichier) — le protocole du brief (« ta fonction à toi, ne touche pas aux siennes »)
+  a suffi à éviter toute collision d'édition ; relire le fichier juste avant d'éditer
+  si un `git diff` externe est détecté entre-temps (arrivé une fois ici, sans casse).
+- `army_panel_shot.tscn` est le SEUL probe qui couvre `_compo_glyphs` (parade + combat
+  vivant + résultat, 3 PNG) — aucun probe dédié pour `sidebar_drawer._draw_armee()`
+  (le tiroir armée/recrutement) : vérifié par lecture de code + parse-check seulement,
+  PAS par capture visuelle (`draw_texture_rect` vers un Rect2 fixe est un chemin
+  nettement moins risqué que le Control tree, d'où l'arbitrage temps/risque). Un futur
+  agent qui veut une preuve visuelle du recrutement devra bâtir un probe sur le motif
+  `sidebar_audit.gd` (instancier `sidebar_drawer.gd`, `setup(map)` + `show_tab(4)`).
+
+**Restes**
+
+- Tooltips de bataille (`battle_panel.gd` `_compo_bar`, une VRAIE barre empilée,
+  contraire à la doctrine « glyphes jamais barres ») : fichier HORS périmètre F
+  (absent des « Fichiers autorisés » du brief) — non touché. Un futur agent qui
+  généralise les glyphes de troupes à la bataille devra d'abord faire ajouter
+  `battle_panel.gd` au périmètre autorisé.
+- Rupture par UnitType individuel dans le panneau armée (cf. découverte #4) : demande
+  un nouveau champ dans `ScpsArmyInfo`/`corps_info()` côté moteur — non fait (hors
+  fichiers autorisés, aucun moteur touché dans cette passe).
+- Probe visuel dédié au recrutement (cf. Pièges ci-dessus) : à construire si un futur
+  agent doit prouver visuellement ce chemin plutôt que par lecture de code.
+- Chantier G (portraits, lot6_portraits) : ANNULÉ en cours de mission par décision
+  joueur — RIEN livré ni tenté (aucun fichier créé/modifié avant l'annonce). Les
+  planches `lot6_portraits/` restent sur disque, non consommées ; à reprendre quand
+  de nouvelles planches « portraits complets » seront livrées (plus de composition par
+  couches).
+
+## 2026-08-19 — Chantiers A+B (BRIEF_CODEX_UI_TOPBAR_MODES §1-2) : refonte TOPBAR
+9 cellules + rail sur icônes série-2 (sonnet)
+
+Contexte : vague icônes série-2, en parallèle du Chantier F (troupes) et d'un
+Chantier C (modes carte) menés par d'autres agents dans la même fenêtre — mêmes
+fichiers partagés (`uikit.gd`, `scps_sim_node.h/cpp`) touchés en parallèle sans
+collision (append/insertions disjointes, relu avant chaque édition).
+
+**Découvertes**
+
+1. **Registre `UIKit.icon2(name)`** (tête de `uikit.gd`, juste après les consts de
+   chemin) : résout par PRÉFIXE du nom (`top_`→lot1_topbar, `rail_`→lot2_rail,
+   `mode_`→lot3_modes, `res_`→lot4_ressources, `unit_`→lot5_troupes, `pt_`→
+   lot6_portraits) via `ICON2_LOT` + cache statique `_icon2_cache`, réutilise `_tex()`
+   (donc le même chargement export-safe que tout le reste du fichier). `icon_button.gd`
+   gagne un flag `fg_is_icon2` (+ 4e paramètre optionnel `icon2` sur `setup_icon()`) qui
+   bascule le dessin d'avant-plan sur `UIKit.icon2()` au lieu de `UIKit.icon()` — modulate
+   (survol/sélection/indisponible) INCHANGÉ, c'est la même branche `bg==""` qu'avant.
+2. **Topbar réduite à 9 cellules FIXES** (l'ordre du brief) : nom+blason ·
+   Or(delta=`_d_gold`, enfin CONSOMMÉ en face — il n'était calculé qu'en interne
+   avant) · Population(delta=`_d_pop`, même sort) · Matériaux(Pierre+Argile+Bois) ·
+   Nourriture(Céréales+Bétail+Poisson+Fruits) · Armes(légères+lourdes+Poudre+
+   enchantées) · Manufacturés(9 biens) · Satisfaction(moyenne pondérée pop) ·
+   vitesse+date. Les 4 cellules « groupe de ressources » (Matériaux/Nourriture/Armes/
+   Manufacturés) partagent DÉSORMAIS un seul helper `_res_group_cell()` (icon2 + somme
+   stock + somme flux + hover détaillé filtrant les lignes à zéro) — remplace
+   `_matter_cell`/`_materials_cell`/`_food_tip` dupliqués d'hier.
+3. **Prix national, Savoir, pénurie-alerte, factions/loyauté, prospérité SORTENT** de
+   la topbar (brief §1) — vérifié qu'AUCUNE de ces infos n'est perdue : Prix/Savoir/
+   Factions/Loyauté/Prospérité restent dans `country_panel.gd` (panneau pays, clic sur
+   le nom — MAIS attention, ce panneau est ÉTRANGER-SEUL par doctrine, cf. piège #2
+   ci-dessous) et dans `memory_panel.gd` (Annales) pour SON PROPRE pays ; le tech tree
+   reste accessible via Ctrl+K (`search_palette.gd`) et le chip d'alerte métabolisation
+   (`alerts.gd`) même si la cellule Savoir/`_savoir_rect` disparaît de la topbar (le
+   signal `tech_requested` et son branchement `main.gd` sont restés INTACTS — hors
+   fichiers autorisés — la zone de clic reste juste vide, donc inerte, aucune casse) ;
+   `worst_shortage()` reste VIVANT (statique) pour `alerts.gd`, seulement retiré du
+   dessin/hover de la topbar.
+4. **Nouveau reader façade `scps_country_class_policy_sat(sim, country, classe)`**
+   (déjà déclaré côté C `scps_api.h:1697`, JAMAIS bindé côté Godot) — binding pur ajouté
+   (`scps_sim_node.h:137` + `.cpp`, `int country_class_policy_sat(country, classe) const`)
+   pour le hover Satisfaction (« votre politique ±X » par classe, demandé texto par le
+   brief). Rebuild scons vérifié propre (aucun autre symbole cassé).
+5. **La moyenne pondérée de satisfaction PAYS n'est PAS un nouveau reader** — elle
+   existait déjà EN LIGNE dans l'ancien calcul `_happy_tip` (jamais affiché en face,
+   seulement glissé dans le tooltip Prospérité) : simple somme pondérée sur
+   `country_demo().classes[].{pop,satisfaction}`, déjà 100 % display-only/dérivé —
+   aucune raison d'ajouter un reader moteur pour ça (le calcul EST la cellule 8
+   maintenant, pas une nouveauté).
+6. **Rail (`sidebar.gd`) : les 8 tabs `menu_*` (PARCH_ICON→sheet23) remplacés par les 8
+   `rail_*` de `lot2_rail/`** — correspondance 1:1 exacte avec les 8 onglets existants
+   (Économie/Démographie/Stocks/Marché/Armée/Filtres/Diplomatie/Conseil), aucun
+   fallback nécessaire. Les anciennes entrées `menu_*` du `PARCH_ICON` dict restent
+   INTACTES dans `uikit.gd` — encore consommées ailleurs (`sidebar_drawer.gd`,
+   `province_detail.gd`, `empire_sidebar.gd`, `concepts.gd`, `alerts.gd`,
+   `d7_icons_shot.gd` — tous hors périmètre de cette passe, non touchés).
+
+**Pièges**
+
+- `Edit` a échoué deux fois de suite avec « String to replace not found » sur des
+  blocs de `icon_button.gd`/`uikit.gd` alors que le texte relu semblait identique
+  caractère pour caractère — pas une vraie divergence de contenu (le fichier
+  correspondait au dernier `Read`), juste une édition trop large ; DÉCOUPER l'edit en
+  chunks plus petits et centrés sur une ligne-ancre courte (`var fg_is_chrome := false`
+  plutôt que tout le bloc de 15 lignes) a suffi à faire passer l'edit. Comme au Chantier
+  F : plusieurs agents modifient les mêmes fichiers partagés en parallèle cette
+  fenêtre — RELIRE avant d'éditer si le harness signale un changement disque externe.
+- `country_panel.gd` est ÉTRANGER-SEUL par doctrine existante (commentaire en tête de
+  son `_draw()` : « ni trésor, ni jauges internes » pour le royaume DU JOUEUR — clic
+  sur son propre nom n'ouvre PAS ce panneau) : les libellés `TIPS` de ce fichier
+  (stabilite/prosperite/legitimite/cohesion/savoir) que la topbar réutilise pour
+  `_gauge_line` ne sont que des LABELS empruntés, pas une preuve que ces jauges
+  s'affichent quelque part pour le pays du joueur au-delà des Annales
+  (`memory_panel.gd`) — si un futur audit veut re-exposer prospérité/stabilité/
+  légitimité/cohésion pour SON PROPRE pays ailleurs qu'aux Annales, il n'y a
+  aujourd'hui QUE `memory_panel.gd`.
+- `_res_group_cell()` filtre les lignes de hover à `stock != 0 or |permo| >= 0.5` —
+  appliqué UNIFORMÉMENT aux 4 cellules (le brief ne le demandait texto que pour
+  Manufacturés §1 pt.7) : décision délibérée (cohérence + « pas 9 lignes de zéros »
+  vaut aussi pour Armes/Nourriture/Matériaux), pas une divergence du brief.
+- Build : `scons -C godot -j6` doit être lancé depuis un shell dont le `cd` a
+  RÉELLEMENT pris (le premier essai échoue silencieusement avec « No SConstruct file
+  found » si le `bash -lc '...'` ne contient PAS de `cd /c/Users/Charl/Desktop/SCPS-main`
+  explicite — le home MSYS2 par défaut, `D:/MSYS2/home/Charl`, n'a pas de sous-dossier
+  `godot`). Repayé plusieurs fois cette session par erreur de copier-coller de commande.
+
+**Restes**
+
+- `_savoir_rect`/`tech_requested`/`_speed_rect` : le signal `tech_requested` et son
+  branchement `main.gd:104` sont restés intacts pour compat (fichier hors périmètre) —
+  `_savoir_rect` reste à `Rect2()` (jamais posé par `_draw` maintenant), donc la branche
+  `_gui_input` correspondante est définitivement inerte. Pas un bug, juste du code mort
+  qu'un futur agent AVEC accès à `main.gd` pourrait nettoyer (retirer le signal +
+  son branchement) si la mission le permet un jour.
+- Probe dédiée topbar : aucune (contrairement à `army_panel_shot.tscn` pour le
+  Chantier F) — vérifié via `map_art_shot.tscn` (`shots_mapart/01_estuaire_z7.png`,
+  seed 205 : les 9 cellules s'alignent, icônes nettes 32 px, séparateurs IDENTITÉ|
+  RESSOURCES et RESSOURCES|ÉTAT visibles, deltas colorés). Un futur agent qui veut un
+  probe dédié (mode observateur inclus — `observer_shot.gd` existe déjà et couvre le
+  cas « bloc neutre ») devrait construire un `topbar_shot.tscn` sur ce motif plutôt que
+  dépendre d'un shot de carte.
+- Gates lourds (`make full-test` = test+determinism+golden+asan) lancés en fond en fin
+  de mission par prudence — AUCUN fichier `scps/*.c` touché dans cette passe (seul
+  binding pur ajouté côté `godot/src/`, GDScript pour le reste), donc aucune régression
+  attendue côté moteur ; `make lang-check` déjà vérifié VERT (127/127, aucun littéral
+  net ajouté malgré ~6 nouveaux labels courts — bien plus de littéraux retirés que
+  créés par la coupe prix/savoir/factions/loyauté/prospérité).
+
+## 2026-08-19 — Chantiers C+E : 4 (puis 6) MODES CARTE — Marché+brutes de tuile, extension
+Religion/Culture EN COURS de mission (sonnet)
+
+Contexte : brief `docs/BRIEF_CODEX_UI_TOPBAR_MODES.md` §3/§8, mission = les modes carte
+(Défaut/Politique/Nature/Marché) + brutes ≤2 sur tuile en mode Marché. Extension reçue
+EN COURS de mission (décision joueur) : la rangée passe de 4 à 6, Religion + Culture
+sur le MÊME motif. Livré : les 6 modes + le mode Marché avec icônes de tuile.
+
+**Découvertes**
+
+1. **`political_image`/`market_catchment_image` et consorts sont drawn dans un espace
+   LOCAL non-écran, JAMAIS `vt * point` (viewport-transformé) — mélanger les deux fait
+   des icônes MICROSCOPIQUES, invisibles au premier coup d'œil.** Le motif correct (déjà
+   présent, mal recopié par moi au 1er jet) vit dans `_draw()` au dressing
+   (`_dress_fast_ip`, overlay.gd ~l.3140) : `vt * point` sert UNIQUEMENT au test de
+   culling contre `vp` (bornes écran) ; le DESSIN (`draw_texture_rect`) reste au point
+   LOCAL non transformé — Godot/la Camera2D réapplique le zoom EXACTEMENT une fois, à
+   l'affichage. J'avais copié l'ancien `_draw_resources` (mode 9, région-grain, MORT) qui
+   avait CE MÊME bug latent (jamais repéré car mode 9 peu utilisé) : position ET taille
+   toutes deux dérivées de `sp := vt*iso_pos(...)`, avec `sz := 18/zoom` — au lieu
+   d'annuler, ça DOUBLE-divise, icônes ~4 px à zoom 4 (invisibles). Repéré SEULEMENT au
+   probe visuel (mission « REGARDE » a payé — sans lui, ce bug serait resté invisible
+   indéfiniment, la wash de fond masquant l'absence). Fix : `ip := mv.iso_pos(...)` pour
+   le dessin, `vt*ip` UNIQUEMENT pour le culling (overlay.gd `_draw_province_raws`).
+2. **`scps_map_catchment`/`scps_market_catchment` : le grain de PATHING commercial reste
+   RÉGION (adjacence `e->adj[][]`), mais le brief demande une source de « centres »
+   PLUS LARGE (EDI_MARCHE|COMPTOIR|TRADE_CENTER) que l'infra existante
+   `scps_intertrade.c` (g_hub_of, EDI_TRADE_CENTER SEUL).** Réinventer une BFS locale
+   dans `scps_api.c` (au lieu de toucher `scps_intertrade.c`, hors périmètre) —
+   `market_hub_regions()` : même primitive `e->adj[][]`, source élargie. AUCUN cache
+   inter-appel (contrairement à `g_hub_of`, sérialisé pour perf) : recalculé À CHAQUE
+   appel (≤832 régions ≈ quelques µs, moins cher qu'écrire+valider une invalidation) —
+   déviation ASSUMÉE du brief (« cache invalidé à la clôture ») ; signalée ici plutôt
+   que silencieuse.
+3. **`scps_market_catchment`/`_map_catchment` renvoient un pid de province REPRÉSENTATIVE
+   de région (`econ_region_rep_province`) — le même motif que `scps_region_seat`, DÉJÀ
+   un usage accepté (précédent direct dans le fichier) de cette indirection pour un
+   READER pur (display-only, jamais un verbe joueur) : ne PAS confondre avec l'interdit
+   CLAUDE.md (« jamais econ_region_rep_province dans un chemin JOUEUR/écriture »).
+4. **`province_dominant(&pe->pop)->culture_id` (extension Culture) est DÉJÀ province-grain
+   NATIF** (pas une projection région, contrairement à religion) — `culture_id` est un
+   `uint16_t` d'un système « vivant » (phylo/fusions, cf. mémoire agent culture-vivante),
+   PAS un petit enum : sorti en `int32_t` (jamais `int16_t`, collision avec le sentinel
+   -1 dès qu'un id dépasse 32767, improbable mais réel dans un très long jeu). Palette
+   .gd volontairement TAILLE FIXE (8192, pas les 65536 théoriques du type) — mesuré au
+   probe : max observé = 49 à l'an 80 sur un monde-témoin (seed 205) ; 8192 = marge
+   ×160, moins cher à construire (8192 `Color.from_hsv` par rebuild vs 65536).
+5. **Religion (extension) EST région-grain** (`religion_of_region`, `scps_religion.h`) —
+   PROJETÉE sur la province via sa région, EXACTEMENT le motif `scps_market_catchment`
+   (le DIT du brief d'extension, ici formellement consigné). 53/706 provinces avaient une
+   foi posée à l'an 78 (graine 205) — RARE (gate Temple T2+, cap ⌈N/2⌉ des empires) : le
+   mode Religion doit s'attendre à un lavis quasi-VIDE la plupart du temps, pas un
+   patchwork dense comme Marché/Culture (vérifié au probe, fog levé : quelques taches
+   isolées, correct).
+6. **Le mode carte historique 0 (Défaut) et 1 (Politique) sont VISUELLEMENT IDENTIQUES
+   dans TOUT le pipeline actuel** — `_pol_tex`/le wash de fond ne dépend JAMAIS de `mode`
+   (seulement du zoom, `WASH_FADE_LO/HI`), confirmé par grep (aucun `mode==1` nulle part
+   dans `_draw_iso`) ET par capture (`01_defaut.png`==`02_politique.png` OCTET PRÈS,
+   326647 bytes pile). PRÉ-EXISTANT (pas une régression de cette mission — je n'ai
+   changé AUCUNE ligne de ce chemin, juste réutilisé « le mode 1 existant » comme
+   demandé) mais probablement PAS l'intention originale (le brief §3.2 décrit Politique
+   comme « pays par couleur pleine… terrain estompé », un rendu qui n'existe PAS
+   aujourd'hui). Hors périmètre de CETTE mission (pas mandaté à différencier le rendu
+   0/1, seulement à câbler le switcheur 4→6 modes) — en Restes.
+
+**Pièges**
+
+- `IconButton.setup_icon(name, sz, bg, icon2)` : le 4e paramètre positionnel bascule
+  entre `UIKit.icon()` (planches historiques) et `UIKit.icon2()` (nouveau lot
+  `icons2/lot*`) — silencieux si oublié (aucune icône, bouton vide, PAS d'erreur). Le
+  lot3_modes (mode_defaut/politique/nature/marche) est SEULEMENT dans `icons2` —
+  `icon2=true` obligatoire pour ces 4-là ; `menu_religion` (placeholder Religion) est
+  l'ANCIEN registre — `icon2=false`.
+- `map.mode` (map_view.gd) est une variable UNIQUE PARTAGÉE avec le tiroir Filtres
+  (`sidebar_drawer.gd` FILT_GROUPS, hors périmètre, NON touché) qui utilise DÉJÀ 0-10 et
+  13-16 pour ses propres chips (Régions=2, Pays=3, Continents=4, Ressources=9,
+  Stabilité=13…). Les nouveaux modes (Nature/Marché/Religion/Culture) DOIVENT rester
+  hors de cette plage — choisi 20/21/22/23 (arbitraire mais documenté, `map_view.gd`) ;
+  un futur agent qui ajoute un 7e mode carte doit vérifier CETTE liste avant de choisir
+  un numéro, pas juste incrémenter.
+- `nature_mode` (overlay.gd, bool) reste un flag SÉPARÉ de `map.mode` — je n'ai PAS
+  unifié (aurait touché le cœur du rendu overlay, hors du périmètre « ajouter tuiles +
+  brancher Marché »). Le switcheur (`controls.gd._on_mode`) synchronise les DEUX à
+  chaque clic (`set_nature(m==MODE_NATURE)` PUIS `set_mode(m)`) — un futur appelant
+  DIRECT de `map.set_mode()` (comme ma probe) doit faire le MÊME double-appel, sinon
+  nature et mode divergent silencieusement (aucune validation croisée côté moteur).
+- `controls.gd` : `_mode_btns[i].selected = (int(MODES[i][0]) == m)` supposait un
+  mapping 1:1 bouton↔MODES — cassé dès que Religion/Culture (hors tableau MODES,
+  chemins d'icône différents) sont apparus. Fix : tableau PARALLÈLE `_mode_vals` posé
+  pour CHAQUE bouton créé (les 4 de MODES + les 2 hors-tableau), `_on_mode` lit
+  `_mode_vals[i]` — un futur 7e/8e mode doit alimenter CE tableau, pas supposer l'index.
+- Glyphe-médaillon Culture (`Control.draw` signal, PAS de subclass) : SANS le disque de
+  fond dessiné explicitement, le texte flotte nu sur le fond transparent du bouton —
+  se lit comme une étiquette égarée, pas un bouton (repéré au probe, corrigé en ajoutant
+  `draw_circle`+`draw_arc` AVANT le texte, dans le MÊME callback).
+
+**Restes**
+
+- **Icônes Religion/Culture manquantes** (décision joueur explicite : « seront générées
+  plus tard ») — `controls.gd` porte 2 placeholders : Religion = `menu_religion`
+  (planche existante, l'onglet Religion du rail — cohérent) ; Culture = médaillon TEXTE
+  VKit (« Cu », disque+anneau dessinés à la main, AUCUNE planche disponible). Dès que
+  `mode_religion.png`/`mode_culture.png` (lot3_modes) existent : remplacer les deux
+  blocs spéciaux de `controls.gd._ready()` par des entrées standard dans le tableau
+  `MODES` (même motif `icon2=true` que les 4 premiers) — retirer `_draw_culture_glyph`
+  et le binding `.draw.connect` au passage.
+- **Mode Défaut (0) et Politique (1) ne se distinguent PAS visuellement** (découverte
+  #6) — si un futur agent (ou le joueur) attend « Politique = couleur pleine, Défaut =
+  léger » comme le décrit le brief §3.2, il faudra AJOUTER cette différenciation
+  (probablement : `mode==1` force `wash_a` proche de `WASH_A_FAR` peu importe le zoom,
+  ou un second passage `_pol_tex` plus opaque + terrain assombri) — non fait ici (hors
+  mandat de cette mission, signalé pour arbitrage).
+- **Palette Culture à 8192** est un compromis MESURÉ (an 80, une seule graine) — si un
+  futur sweep long-jeu (300+ ans) montre des `culture_id` dépassant 8192, agrandir
+  `CULTURE_PAL_SIZE` (overlay.gd) plutôt que de découvrir des provinces non teintées en
+  silence (le clamp `o>=np: continue` du binding C++ est SILENCIEUX — aucun warning si
+  la palette est trop petite).
+- **Hover Marché/Religion/Culture non vérifié VISUELLEMENT** (la probe scriptée n'a pas
+  de souris simulée — `get_local_mouse_position()` renvoie une position par défaut, pas
+  testable en headless/batch). Le calcul a été revu deux fois (le même piège
+  écran-vs-local que les icônes de tuile, corrigé PAR ANTICIPATION dans
+  `_draw_hover_cartouche`) mais un futur agent AVEC un contrôle souris (ou un test manuel
+  en fenêtré) devrait confirmer le cartouche à l'écran au moins une fois.
+- **`scps_map_mode_label`/le switcheur codent 6 index de BOUTON (0-5) DISTINCTS des
+  valeurs `map_view.mode`** (0/1/20/21/22/23) — volontaire (découplage nécessaire pour
+  ne pas percuter le tiroir Filtres) mais DEUX numérotations à tenir en tête pour tout
+  futur agent qui touche aux modes carte ; documenté en commentaire aux deux bouts
+  (`scps_api.c` et `controls.gd`) mais vaut la peine d'un rappel ici.
+- Gates : `make full-test` (243/243 + déterminisme + ASan/UBSan) et `make lang-check`
+  (127/127, aucun littéral net ajouté malgré 8 nouveaux STR_MODE_*/STR_MARCHE_*) tous
+  deux VERTS, relancés après CHAQUE lot de readers (Marché puis Religion/Culture) — pas
+  qu'à la fin. Parse-check Godot (`--check-only --quit`) vert. `make determinism`/
+  `savetest` NON relancés séparément (aucun état sérialisé ajouté — SAVE_VERSION
+  inchangé — le risque est nul par construction, pas juste supposé).

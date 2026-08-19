@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://bmapmodesshot1"]
+
+[ext_resource type="Script" path="res://map_modes_shot.gd" id="1_mm"]
+
+[node name="MapModesShot" type="Node"]
+script = ExtResource("1_mm")

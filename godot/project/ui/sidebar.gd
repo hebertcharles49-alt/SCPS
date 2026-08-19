@@ -15,15 +15,17 @@ const Frame = preload("res://ui/frame.gd")
 const IconButton = preload("res://ui/icon_button.gd")
 const BTN := 52.0   ## onglets du rail agrandis (retour joueur : « très très petits »)
 
+## 2026-08-19 : icônes du rail passées sur le nouveau lot série-2 (icons2/lot2_rail/,
+## UIKit.icon2()) — remplace l'ancien remap PARCH_ICON menu_* (sheet23).
 const TABS := [
-	["menu_economy",   "Économie"],
-	["menu_demography","Démographie"],
-	["menu_stocks",    "Stocks"],
-	["menu_market",    "Marché"],
-	["menu_army",      "Armée"],
-	["menu_filters",   "Filtres"],
-	["menu_diplomacy", "Diplomatie"],
-	["menu_council",   "Conseil"],
+	["rail_economie",   "Économie"],
+	["rail_demographie","Démographie"],
+	["rail_stocks",     "Stocks"],
+	["rail_marche",     "Marché"],
+	["rail_armee",      "Armée"],
+	["rail_filtres",    "Filtres"],
+	["rail_diplomatie", "Diplomatie"],
+	["rail_conseil",    "Conseil"],
 ]
 
 signal tab_selected(index: int)   ## -1 = aucun (replié)
@@ -60,7 +62,7 @@ func _ready() -> void:
 	for i in range(TABS.size()):
 		var b = IconButton.new()
 		_vb.add_child(b)
-		b.setup_icon(String(TABS[i][0]), BTN, "")   # SANS fond de chrome (retour joueur : icône nue sur le rail)
+		b.setup_icon(String(TABS[i][0]), BTN, "", true)   # SANS fond de chrome, icône du lot icons2/lot2_rail/
 		b.pad_frac = 0.16
 		b.pressed.connect(_on_tab.bind(i))
 		# politique hover : nom + raccourci (l'explication vit dans le tiroir lui-même) —

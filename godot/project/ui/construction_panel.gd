@@ -368,7 +368,7 @@ func _renover_card(rs: Dictionary) -> Control:
 	row0.add_child(title)
 	var price := Label.new()
 	price.theme_type_variation = "RowDim"
-	price.text = "%d couronnes · 180 j" % gold
+	price.text = "%d · 180 j" % gold
 	price.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	row0.add_child(price)
 	if not allowed and int(rs.get("reason", 0)) == 2:
@@ -416,7 +416,7 @@ func _edifice_card(w, b: Dictionary) -> Control:
 	row0.add_child(title)
 	var price := Label.new()
 	price.theme_type_variation = "RowDim"
-	price.text = "%d couronnes · %d j" % [int(b.get("gold", 0)), int(b.get("days", 0))]
+	price.text = "%d · %d j" % [int(b.get("gold", 0)), int(b.get("days", 0))]
 	price.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	row0.add_child(price)
 
@@ -439,7 +439,7 @@ func _edifice_card(w, b: Dictionary) -> Control:
 	if upk > 0:
 		var upkl := Label.new()
 		upkl.theme_type_variation = "RowDim"
-		upkl.text = "Entretien : %d couronnes/mois" % upk
+		upkl.text = "Entretien : %d/mois" % upk
 		upkl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		vb.add_child(upkl)
 
@@ -557,7 +557,7 @@ func _manuf_card(bld: int, nom: String, recipe_txt: String, mcost: int, upkeep: 
 	if mcost > 0:
 		var price := Label.new()
 		price.theme_type_variation = "RowDim"
-		price.text = "%d couronnes" % mcost
+		price.text = "%d" % mcost
 		price.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		row0.add_child(price)
 
@@ -573,7 +573,7 @@ func _manuf_card(bld: int, nom: String, recipe_txt: String, mcost: int, upkeep: 
 	if upkeep > 0:
 		var upkl := Label.new()
 		upkl.theme_type_variation = "RowDim"
-		upkl.text = "Entretien : %d couronnes/mois" % upkeep
+		upkl.text = "Entretien : %d/mois" % upkeep
 		upkl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		vb.add_child(upkl)
 	return card

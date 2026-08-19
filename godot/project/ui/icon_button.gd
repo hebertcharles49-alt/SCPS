@@ -19,6 +19,7 @@ signal pressed
 var bg := "button_square_normal"   ## chrome de fond ("" = aucun, l'avant-plan EST le bouton)
 var fg := ""                       ## icône (icons/) OU pièce de chrome si fg_is_chrome
 var fg_is_chrome := false
+var fg_is_icon2 := false           ## icone du NOUVEAU lot (icons2/), resolue par UIKit.icon2()
 var selected := false
 var pad_frac := 0.18
 var enabled := true                ## faux = « indisponible » (UI-3.2) : éteint, clic ignoré
@@ -31,8 +32,8 @@ func _ready() -> void:
 	mouse_exited.connect(func(): _hover = false; queue_redraw())
 
 ## raccourci de config (icône sur fond carré)
-func setup_icon(icon_name: String, sz: float, background := "button_square_normal") -> void:
-	fg = icon_name; fg_is_chrome = false; bg = background
+func setup_icon(icon_name: String, sz: float, background := "button_square_normal", icon2 := false) -> void:
+	fg = icon_name; fg_is_chrome = false; fg_is_icon2 = icon2; bg = background
 	custom_minimum_size = Vector2(sz, sz); size = Vector2(sz, sz)
 
 ## raccourci de config (pièce de chrome auto-suffisante : map_zoom_in, control_gear…)
@@ -85,6 +86,11 @@ func _draw() -> void:
 	if fg != "":
 		if fg_is_chrome:
 			UIKit.draw_chrome(self, fg, r, mod)
+		elif fg_is_icon2:
+			var p2 := size.x * pad_frac
+			var t2: Texture2D = UIKit.icon2(fg)
+			if t2 != null:
+				draw_texture_rect(t2, Rect2(p2, p2, size.x - 2 * p2, size.x - 2 * p2), false, mod)
 		else:
 			var p := size.x * pad_frac
 			UIKit.draw_icon(self, fg, Vector2(p, p), size.x - 2 * p, mod)

@@ -114,8 +114,8 @@ var _cataclysm := false   ## un foyer de fin est actif → on anime l'épicentre
 var _decor := []          ## FOSSILE (jamais peuplé) — GARDÉ : viewer_audit.gd itère/mesure ces deux
 var _structures := []     ## tableaux ; les retirer casserait la probe (à purger AVEC elle, ensemble)
 var _bio_img: Image = null ## couche biome (cache) → interdit le PIED d'un asset sur une tuile falaise
-var _region_raws := {}    ## région → [{id, name}] : les BRUTES extraites (≤2) — mode carte RESSOURCES (9)
-var _raws_dirty := true    ## la production a bougé (an-0 nu → extraction établie) → recache les brutes
+var _prov_raws := {}      ## PROVINCE (Chantier E, remplace l'ancien région-grain) → [res_id,...] (≤2, tirage)
+var _raws_dirty := true    ## la géographie/souveraineté a bougé → recache les brutes de tuile (mode Marché)
 var _region_label := {}   ## région → NOM du siège (bannière de lieu KCD, cache paresseux)
 var _region_anchor := {}  ## région colonisée → assise de ville CALÉE SUR TERRE (centroïde snappé + rabat côtier)
 var _region_seat := {}    ## région colonisée → SIÈGE du tampon : cellule INTÉRIEURE de province (jamais sur une jonction)
@@ -252,6 +252,24 @@ const WASH_A_FAR  := 0.72  ## aplat politique au plan large (EU4 : on lit un atl
 const WASH_A_NEAR := 0.06  ## ... au plan rapproché (KCD : le parchemin terrain reprend tout)
 const WASH_FADE_LO := 1.8  ## zoom où l'aplat commence à céder
 const WASH_FADE_HI := 4.5  ## zoom où le terrain a (presque) tout repris
+
+# ── MODE CARTE MARCHÉ (Chantier C, 2026-08-19) : même MOTIF que le lavis politique
+# (Image RGBA bâtie en C++, market_catchment_image), mais teintée par le pid du CENTRE
+# de bassin (pas le pays) — familles de couleur DÉSATURÉES (parchemin, motif
+# _entity_pigment sans le cas cité-état, les pid n'ont pas de rôle). Rebâti sur son
+# propre dirty flag (édifices Marché/Comptoir/Centre bâtis ≠ souveraineté) — PAS gaté
+# par _borders_dirty (les bassins bougent sans que les frontières bougent). ──
+var _mkt_tex: ImageTexture = null
+var _mkt_dirty := true
+# ── EXTENSION RELIGION/CULTURE (2026-08-19, même jour, même motif que Marché) : deux
+# lavis de plus, deux textures de plus — dirty flags SÉPARÉS (pas un seul partagé : un
+# joueur qui ne visite QUE le mode Religion viderait le flag commun sans jamais
+# reconstruire Marché/Culture au 1er passage sur leur mode) mais posés aux MÊMES
+# déclencheurs que _mkt_dirty (mêmes sites, cf. _invalidate_all/_on_tick). ──
+var _rel_tex: ImageTexture = null
+var _rel_dirty := true
+var _cul_tex: ImageTexture = null
+var _cul_dirty := true
 # ── BROUILLARD DE GUERRE (étape 1/2, VISUEL SEULEMENT — aucune décision de sim n'en
 # dépend côté moteur) : un voile d'encre sombre ESTOMPÉ (jamais noir pur, esprit
 # parchemin) sur ce que le joueur ne connaît pas encore ; grain RÉGION (_fog_mask,
@@ -415,7 +433,7 @@ func _ready() -> void:
 		_build_anchors()
 		_update_top_cap()               # la plus grande capitale du monde (vignette t7)
 		_ensure_roads(Sim.world.year() > 0)   # monde mûr (save chargée) ⇒ routes déjà bâties
-		_build_region_raws()            # brutes extraites par région (mode carte RESSOURCES)
+		_build_province_raws()          # brutes de tuile (mode Marché, Chantier E)
 	queue_redraw()
 
 func _build_names() -> void:
@@ -452,6 +470,10 @@ func _invalidate_all() -> void:
 	_river_hash.clear()         # snap de frontières : fil de rivière re-haché (monde neuf)
 	_owner_sig = -1
 	_setts_dirty = true         # revue #4 : la liste de villes en cache aussi à refaire au monde neuf
+	_raws_dirty = true          # monde neuf → brutes de tuile (mode Marché) à recacher
+	_mkt_dirty = true           # … et le lavis de bassins (mode Marché)
+	_rel_dirty = true           # … et le lavis de foi (mode Religion)
+	_cul_dirty = true           # … et le lavis de culture (mode Culture)
 
 func _on_generated() -> void:
 	_set_rivers()
@@ -460,7 +482,7 @@ func _on_generated() -> void:
 	_build_anchors()
 	_update_top_cap()           # la plus grande capitale du monde (vignette t7)
 	_ensure_roads(Sim.world.year() > 0)   # an 0 (monde neuf) ⇒ croît ; an N (save/monde mûr) ⇒ déjà bâtie
-	_build_region_raws()        # brutes extraites par région (mode carte RESSOURCES)
+	_build_province_raws()      # brutes de tuile (mode Marché, Chantier E)
 	queue_redraw()
 
 ## lit le nuage de points (anti-bâti) PUIS sélectionne les fleuves MAJEURS (tracé en ruban).
@@ -468,68 +490,204 @@ func _on_generated() -> void:
 func _set_rivers() -> void:
 	_rivers = Sim.world.river_points()    # gardé : l'anti-bâti (routes/quais) évite le fil de rivière
 
-## pré-calcule la variante de ville TERRAIN de chaque région colonisée (échantillon
-## du biome au centroïde ; l'hydro via le groupe de settlement) — pour les petits bourgs.
-func _build_region_raws() -> void:
-	_region_raws.clear()
+## BRUTES DE TUILE (Chantier E, province-grain — remplace l'ancien _build_region_raws
+## région-grain du mode RESSOURCES (9) mort). Lit scps_province_raws (≤2 res_id, le
+## tirage EXACT — pas la production courante) + scps_province_centroid (ancre) par
+## PROVINCE directement, jamais via un centroïde de région projeté sur sa 1re province.
+func _build_province_raws() -> void:
+	_prov_raws.clear()
 	var w = Sim.world
 	if w == null:
 		return
-	for r in range(w.region_count()):
-		var ctr: Vector2 = w.region_centroid(r)
-		if ctr.x < 0:
-			continue
-		var pid: int = w.province_at(int(ctr.x), int(ctr.y))
-		if pid < 0:
-			continue
-		var raws := []
-		for line in w.province_income(pid):
-			if bool(line.get("manufactured", false)):
-				continue                                  # on ne veut QUE la brute extraite
-			raws.append({"id": int(line.get("res_id", -1)), "name": String(line.get("source", ""))})
-			if raws.size() >= 2:                          # règle moteur : 2 brutes/province
-				break
-		if not raws.is_empty():
-			_region_raws[r] = raws
+	for pid in range(w.province_count()):
+		var ids: Array = w.province_raws(pid)
+		if not ids.is_empty():
+			_prov_raws[pid] = ids
 
-## MODE RESSOURCES (9) : l'icône de chaque brute extraite, à la tuile (centroïde projeté).
-## Sprite si dispo, sinon une PASTILLE nommée (3 lettres) → couverture complète. Taille
-## ÉCRAN-CONSTANTE (÷zoom) → lisible à tout niveau de zoom.
-## ISO est le SEUL mode de rendu (revue overlay #2) : map_view.gd l'affirme lui-même
-## (« Il n'y a plus de vue GLOBE 3D... un seul rendu, à tous les zooms ») et son
-## globe_to_screen() est un stub COMPAT qui renvoie toujours vis=false — l'ancienne branche
-## globe ici était donc déjà morte deux fois (jamais appelée, et n'aurait rien dessiné).
-func _draw_resources(w, mv: Node2D) -> void:
-	if _raws_dirty:
-		_build_region_raws()         # rebâti à la demande (mode RESSOURCES seulement)
-		_raws_dirty = false
+## RES_ID (ORDRE EXACT de l'enum Resource, scps_types.h — ne pas reclasser) → slug du
+## fichier lot4_ressources (UIKit.icon2, motif "res_<nom d'enum sans RES_>", RES_GOLD
+## irrégulier → res_gold_ore). Seules les BRUTES (index < RES_PROD_FIRST) peuvent sortir
+## de province_raws (tirage worldgen) — le sous-ensemble couvert ici s'arrête donc à
+## RES_STONE (25) ; un futur ajout de brute au moteur devra compléter cette table.
+const RAW_ICON2 := {
+	1: "res_grain", 2: "res_livestock", 3: "res_wool", 4: "res_fish", 5: "res_fur",
+	6: "res_salt", 7: "res_cotton", 8: "res_sugar", 9: "res_wood", 10: "res_fruit",
+	11: "res_med_herbs", 12: "res_copper", 13: "res_iron", 14: "res_coal", 15: "res_sulfur",
+	16: "res_saltpeter", 17: "res_gold_ore", 18: "res_precious_metal", 19: "res_pearl",
+	20: "res_arcane_crystal", 21: "res_celestial_iron", 22: "res_murex", 23: "res_indigo",
+	24: "res_clay", 25: "res_stone",
+}
+
+## zoom-gate DÉDIÉ (province-grain, PLUS SERRÉ que DECOR_ZOOM_MIN=3.0 générique des
+## forêts/chevrons) : des CENTAINES de provinces PETITES (pas des régions, moins
+## nombreuses/plus grandes) tiennent dans le cadre au zoom générique — les socles s'y
+## chevauchaient massivement (mesuré au probe visuel, zoom 4.0 : mur de cartouches).
+const RAW_ICON_ZOOM_MIN := 6.0
+
+## MODE MARCHÉ (Chantier E) : ≤2 icônes de brute au CENTROÏDE de chaque province, côte à
+## côte, sur un léger socle parchemin (lisibilité sur toute teinte de bassin). Taille
+## ÉCRAN-CONSTANTE (÷zoom), 14 px (brief §8) ; zoom-gate RAW_ICON_ZOOM_MIN (plan large :
+## seule la teinte des bassins parle). MOTIF EXACT du dressing (_dress_fast_*, ligne
+## ~3140) — PAS celui de l'ancien _draw_resources (région-grain, mort) : `vt * point`
+## sert UNIQUEMENT au test de culling (comparaison en px ÉCRAN contre `vp`) ; le DESSIN,
+## lui, reste au point LOCAL non transformé (`ip`) — draw_texture_rect vit dans l'espace
+## du nœud, que la caméra retransforme ENSUITE. Piège payé cher : mélanger les deux
+## espaces (position déjà transformée + taille ÷zoom) rendait les icônes microscopiques
+## (4 px à zoom 4, invisibles au probe visuel) — jamais repayer.
+func _draw_province_raws(w, mv: Node2D) -> void:
 	var vt := get_viewport_transform()
-	var vp := get_viewport_rect().size
 	var zoom := maxf(0.01, vt.get_scale().x)
-	var sz := 18.0 / zoom                               # MONDE → taille ÉCRAN constante
-	for r in range(w.region_count()):
-		var raws: Array = _region_raws.get(r, [])
-		if raws.is_empty():
+	if zoom < RAW_ICON_ZOOM_MIN:
+		return
+	if _raws_dirty:
+		_build_province_raws()
+		_raws_dirty = false
+	var vp := get_viewport_rect().size
+	var sz := 14.0 / zoom                               # MONDE → taille ÉCRAN constante (brief §8 : 14 px)
+	for pid in _prov_raws:
+		var ids: Array = _prov_raws[pid]
+		if ids.is_empty():
 			continue
-		var ctr: Vector2 = w.region_centroid(r)
+		var ctr: Vector2 = w.province_centroid(pid)
 		if ctr.x < 0:
 			continue
-		var sp: Vector2 = vt * mv.iso_pos(ctr.x, ctr.y)
+		var ip: Vector2 = mv.iso_pos(ctr.x, ctr.y)          # point LOCAL (l'espace où l'on dessine)
+		var sp: Vector2 = vt * ip                            # point ÉCRAN (culling SEULEMENT)
 		if sp.x < -20 or sp.y < -20 or sp.x > vp.x + 20 or sp.y > vp.y + 20:
 			continue
-		var n := raws.size()
+		var n := ids.size()
+		var socle := Rect2(ip - Vector2((float(n) * (sz + 2.0)) * 0.5, sz * 0.5) - Vector2(2, 2),
+			Vector2(float(n) * (sz + 2.0) + 4.0, sz + 4.0))
+		draw_rect(socle, Color(0.90, 0.83, 0.64, 0.55))     # socle parchemin (lisible sur tout pigment de bassin)
+		draw_rect(socle, Color(0.35, 0.28, 0.16, 0.55), false, 1.0)
 		for i in range(n):
-			var rr: Dictionary = raws[i]
 			var off := Vector2((float(i) - float(n - 1) * 0.5) * (sz + 2.0), 0.0)
-			var tl := sp + off - Vector2(sz * 0.5, sz * 0.5)
-			var spr := UIKit.resource_sprite(int(rr.get("id", -1)), String(rr.get("name", "")))
+			var tl := ip + off - Vector2(sz * 0.5, sz * 0.5)
+			var slug: String = RAW_ICON2.get(int(ids[i]), "")
+			var spr := UIKit.icon2(slug) if slug != "" else null
 			if spr != null:
 				draw_texture_rect(spr, Rect2(tl, Vector2(sz, sz)), false)
-			else:                                          # pas de sprite : pastille nommée (couverture complète)
+			else:                                          # pas de planche (id hors table) : pastille discrète
 				draw_rect(Rect2(tl, Vector2(sz, sz)), Color(0.13, 0.11, 0.08, 0.92))
 				draw_rect(Rect2(tl, Vector2(sz, sz)), VKit.COL_GOLD, false, 1.0)
-				if sz >= 11.0:
-					VKit.text(self, tl + Vector2(2.0, sz * 0.5 - 5.0), Color(0.92, 0.86, 0.70), String(rr.get("name", "?")).substr(0, 3), VKit.FS_SMALL)
+
+## HOVER — SOCLE PARTAGÉ (Chantier C §2 + extension Religion/Culture) : un cartouche au
+## curseur portant `txt` (déjà résolu ENGINE-side, membrane : jamais de mot composé côté
+## .gd). get_local_mouse_position() est DÉJÀ dans l'espace iso projeté (motif prouvé par
+## _select_box/point_hits_player_army, qui l'utilise pour le hit-test des pions) — pas
+## besoin de re-projeter depuis l'écran. Taille ÉCRAN constante (÷zoom) : `lm` est DÉJÀ
+## le point LOCAL (correct pour dessiner ici) — seules les DIMENSIONS du cartouche
+## doivent compenser le zoom (sinon la bulle enfle avec la caméra, comme les brutes de
+## tuile avant leur fix — même piège, mêmes deux espaces à ne pas mélanger).
+func _draw_hover_cartouche(txt: String, lm: Vector2) -> void:
+	if txt == "":
+		return
+	var zoom := maxf(0.01, get_viewport_transform().get_scale().x)
+	var fs := maxi(8, int(VKit.FS_SMALL / zoom))
+	var tw := VKit.text_w(txt, fs) + 12.0 / zoom
+	var bh := 20.0 / zoom
+	var tp := lm + Vector2(14.0, -14.0) / zoom
+	VKit.fill(self, Rect2(tp - Vector2(6, 14) / zoom, Vector2(tw, bh)), Color(0.13, 0.11, 0.08, 0.85))
+	VKit.box(self, Rect2(tp - Vector2(6, 14) / zoom, Vector2(tw, bh)), VKit.COL_GOLD)
+	VKit.text(self, tp - Vector2(0, 9) / zoom, VKit.COL_PARCH, txt, fs)
+
+## province SOUS le curseur (espace iso, motif ci-dessus) ; -1 hors-carte.
+func _hover_province(w, mv: Node2D) -> int:
+	var lm := get_local_mouse_position()
+	var wp: Vector2 = mv.unproj(lm.x, lm.y)
+	var hx := int(floor(wp.x))
+	var hy := int(floor(wp.y))
+	if hx < 0 or hy < 0 or hx >= w.map_w() or hy >= w.map_h():
+		return -1
+	return int(w.province_at(hx, hy))
+
+## HOVER MODE MARCHÉ (Chantier C §2) : « Marché de {ville centre} » (mot COMPOSÉ, engine-
+## side — scps_market_hover, membrane).
+func _draw_market_hover(w, mv: Node2D) -> void:
+	var pid := _hover_province(w, mv)
+	if pid < 0:
+		return
+	_draw_hover_cartouche(String(w.market_hover(pid)), get_local_mouse_position())
+
+## HOVER MODE RELIGION (extension 2026-08-19) : le nom du culte (scps_province_religion_hover).
+func _draw_religion_hover(w, mv: Node2D) -> void:
+	var pid := _hover_province(w, mv)
+	if pid < 0:
+		return
+	_draw_hover_cartouche(String(w.province_religion_hover(pid)), get_local_mouse_position())
+
+## HOVER MODE CULTURE (extension) : le nom de la culture dominante (scps_province_culture_hover).
+func _draw_culture_hover(w, mv: Node2D) -> void:
+	var pid := _hover_province(w, mv)
+	if pid < 0:
+		return
+	_draw_hover_cartouche(String(w.province_culture_hover(pid)), get_local_mouse_position())
+
+## PIGMENT hashé (golden-ratio, motif _entity_hue/_entity_pigment) — famille de couleur
+## DÉSATURÉE stable depuis un ID quelconque (pid de centre marché, rid religion,
+## culture_id) : aucun rôle/statut à consulter côté moteur pour CES ids (contrairement à
+## _entity_pigment, qui teste country_role — pid/rid/culture_id n'ont pas de rôle).
+func _id_pigment(id: int) -> Color:
+	var hue := fmod(float(id) * 0.1607 + 0.04, 1.0)
+	return Color.from_hsv(hue, 0.38, 0.60)
+
+func _rebuild_market_wash(w) -> void:
+	if not w.has_method("market_catchment_image"):
+		return
+	var pal := PackedColorArray()
+	pal.resize(w.province_count())
+	for pid in range(pal.size()):
+		pal[pid] = _id_pigment(pid)
+	var img: Image = w.market_catchment_image(pal)
+	if img == null:
+		return
+	if _mkt_tex == null or _mkt_tex.get_size() != Vector2(img.get_size()):
+		_mkt_tex = ImageTexture.create_from_image(img)
+	else:
+		_mkt_tex.update(img)
+
+## MODE RELIGION (extension) : la teinte par FOI dominante de RÉGION (scps_map_religion,
+## projection région→province, DIT dans le rapport de mission — le module religion est
+## région-grain, façade read-only). RELIG_MAX=64 (scps_religion.h) : palette FIXE, large
+## THE assez pour couvrir tout rid possible sans avoir à interroger le moteur pour un
+## compte exact (motif "large et fixe", cf. culture ci-dessous).
+const RELIGION_PAL_SIZE := 64
+func _rebuild_religion_wash(w) -> void:
+	if not w.has_method("religion_image"):
+		return
+	var pal := PackedColorArray()
+	pal.resize(RELIGION_PAL_SIZE)
+	for rid in range(pal.size()):
+		pal[rid] = _id_pigment(rid)
+	var img: Image = w.religion_image(pal)
+	if img == null:
+		return
+	if _rel_tex == null or _rel_tex.get_size() != Vector2(img.get_size()):
+		_rel_tex = ImageTexture.create_from_image(img)
+	else:
+		_rel_tex.update(img)
+
+## MODE CULTURE (extension) : la teinte par culture_id DOMINANT (scps_map_culture,
+## grain NATIF province — PAS de projection région, la doctrine province-grain garantit
+## une culture locale par tuile). culture_id est un uint16_t moteur (espace généalogique
+## VIVANT, pas un petit enum) — palette FIXE à 8192 (mesuré : max observé ≈50 à l'an 80
+## sur un monde-témoin ; 8192 laisse une marge ×160 pour une partie longue, moins cher
+## que les 65536 théoriques du type sans perdre en sécurité pratique).
+const CULTURE_PAL_SIZE := 8192
+func _rebuild_culture_wash(w) -> void:
+	if not w.has_method("culture_image"):
+		return
+	var pal := PackedColorArray()
+	pal.resize(CULTURE_PAL_SIZE)
+	for cid in range(pal.size()):
+		pal[cid] = _id_pigment(cid)
+	var img: Image = w.culture_image(pal)
+	if img == null:
+		return
+	if _cul_tex == null or _cul_tex.get_size() != Vector2(img.get_size()):
+		_cul_tex = ImageTexture.create_from_image(img)
+	else:
+		_cul_tex.update(img)
 
 ## ANCRE (routes) + SIÈGE (vignette de bourg) de chaque région habitée. L'ancre est poussée
 ## vers l'intérieur sur les côtes (les ROUTES y aboutissent — le réseau ne change pas) ; le
@@ -692,7 +850,10 @@ func _poll_world_changes() -> bool:
 	return true
 
 func _on_tick(year: int) -> void:
-	_raws_dirty = true         # l'extraction a pu s'établir (an-0 nu) → recache les brutes au prochain dessin RESSOURCES
+	_raws_dirty = true         # le tirage/l'édification a pu bouger → recache les brutes de tuile (mode Marché)
+	_mkt_dirty = true          # … et les bassins (Marché/Comptoir/Centre bâtis/perdus)
+	_rel_dirty = true          # … et la foi (fondation/schisme/conquête)
+	_cul_dirty = true          # … et la culture (dérive/fusion/migration)
 	_update_top_cap()          # le titre de « plus grande capitale » peut changer → la vignette t7 suit
 	_poll_world_changes()
 	if year != _fog_year:
@@ -3062,13 +3223,33 @@ func _draw() -> void:
 	if mv == null:
 		return
 	_draw_iso(w, mv)
-	# MODE RESSOURCES (9) : les icônes de brutes par tuile, AU-DESSUS de tout (sauf en mode NATURE).
-	if not nature_mode and int(mv.get("mode")) == 9:
-		_draw_resources(w, mv)
+	# MODE MARCHÉ (21 = MapView.MODE_MARCHE, Chantier C/E) : ≤2 icônes de BRUTES par
+	# tuile (province-grain, remplace l'ancien mode RESSOURCES (9) région-grain, retiré)
+	# + le hover « Marché de {ville centre} ». MODE RELIGION (22) / CULTURE (23,
+	# extension 2026-08-19) : hover SEUL (pas d'icônes de tuile — hors périmètre de
+	# l'extension). AU-DESSUS de tout (jamais en mode NATURE).
+	if not nature_mode:
+		var mode_now := int(mv.get("mode"))
+		if mode_now == 21:
+			_draw_province_raws(w, mv)
+			_draw_market_hover(w, mv)
+		elif mode_now == 22:
+			_draw_religion_hover(w, mv)
+		elif mode_now == 23:
+			_draw_culture_hover(w, mv)
 
 ## CARTE PARCHEMIN — acteurs tracés en ENCRE vectorielle (zéro sprite) : frontières, routes,
 ## villes (glyphes), noms d'empire, armées, épicentre §27. La Camera2D met à l'échelle ; les
 ## tailles d'encre sont en px ÉCRAN (÷ zoom) → lisibles à tous les zooms.
+## carré plein-carte d'une texture de lavis teinté (Marché/Religion/Culture) — factorisé
+## (les 3 modes dessinent identiquement, seule la texture change).
+func _draw_tinted_wash(w, mv: Node2D, tex: ImageTexture) -> void:
+	if tex == null:
+		return
+	var p0: Vector2 = mv.iso_pos(0, 0)
+	var p1: Vector2 = mv.iso_pos(w.map_w(), w.map_h())
+	draw_texture_rect(tex, Rect2(p0, p1 - p0), false, Color(1, 1, 1, WASH_A_FAR))
+
 func _draw_iso(w, mv: Node2D) -> void:
 	var zoom := get_viewport_transform().get_scale().x
 	var vt := get_viewport_transform()
@@ -3084,8 +3265,27 @@ func _draw_iso(w, mv: Node2D) -> void:
 		_refresh_fog()                   # cycle indépendant : année/ère OU souveraineté
 
 	# ── LAVIS POLITIQUE (aquarelle) : le territoire teinté SOUS tout — la carte DIT qui tient
-	#    quoi d'un regard au plan large ; le lavis s'efface vers le zoom profond (le terrain parle). ──
-	if not nature_mode and _pol_tex != null:
+	#    quoi d'un regard au plan large ; le lavis s'efface vers le zoom profond (le terrain parle).
+	#    MODE MARCHÉ (21) / RELIGION (22) / CULTURE (23, extension 2026-08-19) : le MÊME
+	#    lavis, mais teinté par bassin/foi/culture au lieu de par PAYS — toujours lisible
+	#    (pas de fondu au zoom : c'est l'info du mode, pas un fond discret). ──
+	var mode_now2 := int(mv.get("mode"))
+	if not nature_mode and mode_now2 == 21:
+		if _mkt_dirty:
+			_rebuild_market_wash(w)
+			_mkt_dirty = false
+		_draw_tinted_wash(w, mv, _mkt_tex)
+	elif not nature_mode and mode_now2 == 22:
+		if _rel_dirty:
+			_rebuild_religion_wash(w)
+			_rel_dirty = false
+		_draw_tinted_wash(w, mv, _rel_tex)
+	elif not nature_mode and mode_now2 == 23:
+		if _cul_dirty:
+			_rebuild_culture_wash(w)
+			_cul_dirty = false
+		_draw_tinted_wash(w, mv, _cul_tex)
+	elif not nature_mode and _pol_tex != null:
 		if _borders_dirty:
 			_rebuild_borders(mv)                      # le lavis se rebâtit avec les frontières
 		var wash_a := lerpf(WASH_A_FAR, WASH_A_NEAR,
