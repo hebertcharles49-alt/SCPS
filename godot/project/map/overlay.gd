@@ -2554,20 +2554,13 @@ func _ensure_road_network() -> void:
 			for i8 in range(pl8.size() - 1):
 				var a8: Vector2 = pl8[i8]
 				var b8: Vector2 = pl8[i8 + 1]
-				var d8 := b8 - a8
-				var pn8 := Vector2(-d8.y, d8.x).normalized() if d8.length() > 0.001 else Vector2.ZERO
 				var n8 := maxi(1, int(a8.distance_to(b8) / 0.35))
 				for q8 in range(n8 + 1):
 					var p8 := a8.lerp(b8, float(q8) / float(n8))
+					# L'ÉCHELLE (joueur 2026-08-19) : une cellule = des kilomètres — une route
+					# est un TRAIT d'une cellule, jamais un ruban. La hiérarchie vit dans la
+					# VALEUR du champ (contraste), pas dans une largeur multi-cellules.
 					_road_stamp(rimg, rw, rh, int(p8.x), int(p8.y), w8)
-					if lvl8 == 0:                # croix pleine (±x, ±y)
-						_road_stamp(rimg, rw, rh, int(p8.x) + 1, int(p8.y), w8 * 0.75)
-						_road_stamp(rimg, rw, rh, int(p8.x) - 1, int(p8.y), w8 * 0.75)
-						_road_stamp(rimg, rw, rh, int(p8.x), int(p8.y) + 1, w8 * 0.75)
-						_road_stamp(rimg, rw, rh, int(p8.x), int(p8.y) - 1, w8 * 0.75)
-					elif lvl8 == 1 and pn8 != Vector2.ZERO:   # 2 perpendiculaires
-						_road_stamp(rimg, rw, rh, int(p8.x + pn8.x), int(p8.y + pn8.y), w8 * 0.6)
-						_road_stamp(rimg, rw, rh, int(p8.x - pn8.x), int(p8.y - pn8.y), w8 * 0.6)
 		if OS.has_environment("SCPS_ROADPROBE"):   # SONDE (temporaire DA) : le champ CPU brut
 			var hist := {}
 			for yy in range(rh):
@@ -3080,7 +3073,7 @@ func _draw_iso(w, mv: Node2D) -> void:
 	# dézoom (« toujours visible pour décider ») ; posé par frame, coût nul (un uniform).
 	var gnd9 = get_parent().get_node_or_null("IsoGround") if get_parent() != null else null
 	if gnd9 != null and gnd9.material is ShaderMaterial:
-		gnd9.material.set_shader_parameter("road_k", clampf(3.0 / maxf(zoom, 0.001), 1.0, 2.6))
+		gnd9.material.set_shader_parameter("road_k", clampf(3.0 / maxf(zoom, 0.001), 1.0, 2.0))
 	var INK := Color(0.20, 0.14, 0.09, 0.95)         # encre brun-sépia (le trait de plume)
 	var human_idx := int(w.player())   # BROUILLARD : les tiens (owner==human_idx) restent TOUJOURS visibles
 	if _fog_dirty:

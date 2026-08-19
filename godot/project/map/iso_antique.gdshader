@@ -270,21 +270,21 @@ void fragment() {
 		float rbody_road = 0.0;
 		if (road_on > 0.5 && !is_water(b)) {
 			vec2 rc0 = (cell + vec2(0.5)) / map_size;
-			vec2 rdx = vec2(0.9 * road_k, 0.0) / map_size;
-			vec2 rdy = vec2(0.0, 0.9 * road_k) / map_size;
+			vec2 rdx = vec2(0.6 * road_k, 0.0) / map_size;   // ±0.6 : le kernel ne sert plus qu'à
+			vec2 rdy = vec2(0.0, 0.6 * road_k) / map_size;   // la CONTINUITÉ du trait (l'échelle !)
 			float c0 = texture(road_map, rc0).r;
 			float e0 = texture(road_map, rc0 + rdx).r;
 			float w0 = texture(road_map, rc0 - rdx).r;
 			float n0 = texture(road_map, rc0 + rdy).r;
 			float s0 = texture(road_map, rc0 - rdy).r;
-			float rd = max(c0, 0.82 * max(max(e0, w0), max(n0, s0)));
+			float rd = max(c0, 0.55 * max(max(e0, w0), max(n0, s0)));   // plateau ~1 cellule : l'ÉCHELLE d'un chemin
 			// LOD au plan large : on montre les ITINÉRAIRES, pas le maillage (les
 			// sentiers — champ ≤0.72 — s'effacent quand les taps sont très élargis).
 			if (road_k >= 2.2 && rd < 0.78) { rd = 0.0; }
 			if (rd > 0.03) {
 				float rdn = texture(noise_tex, cell * 0.9 + vec2(3.1, 6.4)).r;
-				rbody_road = smoothstep(0.30, 0.52, rd) * (0.88 + 0.12 * rdn);
-				rrim_road  = smoothstep(0.06, 0.16, rd) * (1.0 - smoothstep(0.30, 0.44, rd));
+				rbody_road = smoothstep(0.60, 0.85, rd) * (0.88 + 0.12 * rdn);   // le corps = le cœur du trait
+				rrim_road  = smoothstep(0.15, 0.35, rd) * (1.0 - smoothstep(0.60, 0.78, rd));   // liseré = un fil
 				vec3 path_c = mix(col, vec3(0.91, 0.86, 0.70), 0.86);   // sol dégagé crème
 				col = mix(col, path_c, rbody_road * 0.95);
 				col = mix(col, vec3(0.26, 0.19, 0.13), rrim_road * 0.38 * (0.80 + 0.20 * rdn));   // mesuré : 0.62 → −90 luma, 0.38 → −55 pile la cible
