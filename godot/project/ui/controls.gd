@@ -22,6 +22,8 @@ const MODES := [
 	[MapView.MODE_POLITIQUE, "mode_politique", 1],   # Politique (political_image, plein)
 	[MapView.MODE_NATURE,    "mode_nature",    2],   # Nature (terrain + dressing seuls)
 	[MapView.MODE_MARCHE,    "mode_marche",    3],   # Marché (bassins de proximité + brutes de tuile)
+	[MapView.MODE_RELIGION,  "mode_religion",  4],   # Religion (foi dominante — médaillon livré 2026-08-19)
+	[MapView.MODE_CULTURE,   "mode_culture",   5],   # Culture (héritage dominant — médaillon livré 2026-08-19)
 ]
 # RELIGION / CULTURE — EXTENSION 2026-08-19 (décision joueur EN COURS de mission, la
 # rangée passe de 4 à 6 modes) : AUCUNE icône lot3_modes livrée pour ces deux-là (le lot
@@ -71,34 +73,7 @@ func _ready() -> void:
 		_mode_btns.append(b)
 		_mode_vals.append(int(m[0]))
 
-	# RELIGION — placeholder cohérent : la pièce EXISTANTE de l'onglet Religion du rail
-	# (UIKit.icon(), PAS icon2 — aucun mode_religion.png livré). Même symbole que le
-	# joueur connaît déjà (menu_religion, sidebar.gd).
-	var b_rel = IconButton.new()
-	_mb.add_child(b_rel)
-	b_rel.setup_icon("menu_religion", BTN, "", false)
-	if Sim.world != null:
-		b_rel.tooltip_text = String(Sim.world.map_mode_label(4))
-	b_rel.selected = (MapView.MODE_RELIGION == _mode)
-	b_rel.pressed.connect(_on_mode.bind(MapView.MODE_RELIGION))
-	_mode_btns.append(b_rel)
-	_mode_vals.append(MapView.MODE_RELIGION)
-
-	# CULTURE — AUCUNE pièce existante cohérente (grep uikit.gd négatif) : médaillon
-	# TEXTE VKit, ajouté par le signal `draw` NATIF de Control (le bouton garde fg="" —
-	# aucune icône interne dessinée par IconButton lui-même — sans toucher icon_button.gd,
-	# hors périmètre). L'état sélectionné/survolé reste le comportement NORMAL d'IconButton
-	# (fond plein + soulignement or), seul le glyphe est ajouté par-dessus.
-	var b_cul = IconButton.new()
-	_mb.add_child(b_cul)
-	b_cul.setup_icon("", BTN, "", false)
-	b_cul.draw.connect(_draw_culture_glyph.bind(b_cul))
-	if Sim.world != null:
-		b_cul.tooltip_text = String(Sim.world.map_mode_label(5))
-	b_cul.selected = (MapView.MODE_CULTURE == _mode)
-	b_cul.pressed.connect(_on_mode.bind(MapView.MODE_CULTURE))
-	_mode_btns.append(b_cul)
-	_mode_vals.append(MapView.MODE_CULTURE)
+	# (Religion/Culture : refondus dans MODES — médaillons lot3 livrés 2026-08-19.)
 
 	_zb = HBoxContainer.new()
 	_zb.add_theme_constant_override("separation", 4)
@@ -181,16 +156,6 @@ func _grad_at(stops: Array, t: float) -> Color:
 ## DISQUE + anneau (même gabarit que les 5 médaillons lot3/menu_religion — sans le
 ## cercle il se lisait comme une étiquette égarée, pas un bouton, au 1er probe visuel)
 ## + un glyphe COURT dedans, ton or/parchemin selon l'état (palette VKit, rien d'inventé).
-func _draw_culture_glyph(b: Control) -> void:
-	var c := Vector2(BTN, BTN) * 0.5
-	var r := BTN * 0.42
-	b.draw_circle(c, r, Color(0.16, 0.13, 0.09, 0.85))
-	b.draw_arc(c, r, 0.0, TAU, 28, VKit.COL_GOLD if b.selected else VKit.COL_EDGE, 1.6, true)
-	var col: Color = VKit.COL_GOLD if b.selected else VKit.COL_PARCH
-	var s := "Cu"
-	var tw := VKit.text_w(s, VKit.FS)
-	VKit.text(b, Vector2(c.x - tw * 0.5, c.y + 6.0), col, s, VKit.FS)
-
 ## 6 modes EXCLUSIFS : NATURE pilote overlay.nature_mode (map.set_nature), les 5 autres
 ## l'éteignent + posent map.mode — jamais deux modes à la fois (retour joueur : « un
 ## mode à la fois », brief Chantier C §3 + extension Religion/Culture).
