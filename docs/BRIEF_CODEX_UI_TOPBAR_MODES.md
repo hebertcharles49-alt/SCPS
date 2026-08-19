@@ -164,3 +164,87 @@ panneau filtres). REMPLACER par 4 modes exclusifs :
   couleur par entité) — suivre ce motif pour le catchment, pas de couleurs C++.
 - Godot 4 : pas de `Dictionary.has` sur null ; `draw_string` ancre à la BASELINE
   (`VKit.text_map` gère l'ascent — passer par VKit, jamais draw_string nu).
+
+---
+
+# EXTENSION 2026-08-19 (2e passe) — le RESTE des icônes
+
+Décision joueur : « Prompte le reste des icônes : ressources, mapmode (market
+affiche aussi les ressources sur chaque tile), troupes, portraits politiques. »
+NB : les vignettes de hameaux WILD sont déjà SUPPRIMÉES (fait hors Codex,
+overlay.gd `_refresh_setts` — ne pas les réintroduire).
+
+## 7. Chantier D — Icônes de RESSOURCES (le jeu complet)
+
+- Un glyphe GRAVÉ série-2 par `RES_*` de `scps/scps_types.h` (~45 : brutes
+  agricoles, minérales, stratégiques, biens de production). Source de vérité de
+  la liste : l'enum — la parcourir, pas la deviner.
+- Un SEUL registre : compléter le remap `UIKit.icon()` (motif
+  `sheet11_system_icons_*`) — chaque consommateur (topbar, tiroir Stocks,
+  fiche province, marché, hover) passe par `UIKit.icon(res_name)`, AUCUN PNG
+  direct. Si une planche manque pour une ressource : fallback = icône générique
+  de sa famille (brute agricole / minerai / bien ouvré) + entrée en TROUVAILLES
+  (Restes), jamais un carré magenta.
+- Dimensions : 24 px en cellule topbar/tiroir, 18 px en ligne de hover, 14 px
+  posé sur TUILE (cf. Chantier E). Toujours des puissances entières du chip
+  source (pas d'interpolation baveuse — filter nearest si planche pixel).
+
+## 8. Chantier E — Mode MARCHÉ : les ressources SUR chaque tuile
+
+Complément au Chantier C (mode Marché) : en plus de la teinte par bassin de
+marché, chaque PROVINCE affiche ses brutes SUR la tuile :
+
+- Règle des 2 raws (non négociable, cf. CLAUDE.md) : une tuile a AU PLUS 2
+  brutes (son tirage). Reader existant : les brutes par région servent déjà le
+  mode 9 (`_build_region_raws`, overlay.gd) — le PORTER AU GRAIN PROVINCE
+  (reader façade par pid si absent : `scps_province_raws(sim, pid)` → ≤2
+  res_id ; il existe probablement déjà côté fiche province — grep
+  `province_info`/`tirage` avant d'en créer un).
+- Rendu : 1-2 icônes 14 px posées au CENTRE de la province (ancre
+  `_region_seat`-like ou centroïde de province), côte à côte si 2, avec un
+  léger socle parchemin (lisibilité sur toute teinte de bassin). Zoom-gate :
+  n'apparaissent qu'à zoom moyen+ (motif CITY_ZOOM_MIN) — au plan large, seule
+  la teinte des bassins parle.
+- Le mode 9 « ressources » actuel devient REDONDANT une fois ceci fait : le
+  retirer de la rangée des modes (la rangée = les 4 modes du Chantier C, point
+  final) et noter la suppression dans le commit.
+
+## 9. Chantier F — Icônes de TROUPES (glyphes d'unités)
+
+- Doctrine acquise (vague armée v97) : GLYPHES, jamais des barres ; 1 forme =
+  1 régiment ; le panneau colonne+formation vit en bas. La passe ici est
+  VISUELLE : unifier tous les glyphes d'unités (infanterie, archer, cavalerie
+  légère/lourde, hallebardier, soldat alchimiste, machines, navires si
+  réactivés) sur les planches série-2 — même trait de gravure, même gabarit
+  (grille 24 px), silhouettes distinctes AU PREMIER COUP D'ŒIL à 100 % zoom.
+- Consommateurs à raccorder via UN registre (motif UIKit.icon) : panneau armée
+  (`army_panel.gd`), pions de carte (bannière du pion = drapeau teinté, NE PAS
+  toucher au pion d'étain lui-même), tooltip de bataille, écran de recrutement.
+- La liste canonique des unités : `unit_def` moteur (grep `unit_def`,
+  `from`) — la parcourir, chaque type doit avoir SON glyphe.
+
+## 10. Chantier G — PORTRAITS politiques (ministres & personnages)
+
+- Périmètre : le CONSEIL (ministres de la pop — v100 : les ministres viennent
+  des PopGroup) + tout personnage face joueur (émissaire, chefs de révolte
+  incarnés si exposés). Panneaux : conseil (grep `council`, `ministre` dans
+  ui/), événements V2a (trahison), fenêtre pays.
+- Design : MÉDAILLON gravé (cadre série-2) + portrait DÉTERMINISTE par
+  personnage : composition par couches depuis des planches de traits (base
+  visage · coiffe/casque · attribut de classe — Journalier/Bourgeois/Élite —
+  · teinte du pays), choisies par HASH stable de l'id du personnage (motif
+  toponym_hash2 : pur, jamais rng). Le MÊME ministre garde le MÊME visage
+  toute la partie (le hash inclut l'id du groupe/slot, PAS l'année).
+- Si les planches de traits n'existent pas : livrer le SYSTÈME (composition +
+  hash + cadre) branché sur 3-4 variantes de base par classe, et lister en
+  TROUVAILLES le besoin de planches supplémentaires — le pipeline d'abord,
+  l'inventaire d'assets ensuite.
+- Membrane : le portrait est 100 % display-only (hash d'ids déjà exposés) —
+  aucun nouveau reader moteur.
+
+## 11. Gates & interdits (rappel, inchangés)
+
+Mêmes gates (§5), mêmes interdits (§4) + NE PAS réintroduire les vignettes
+wild. Probes : ajouter un shot du mode Marché AVEC icônes de tuiles, un shot
+du panneau armée (glyphes), un shot du conseil (portraits) — REGARDER avant
+de rendre.

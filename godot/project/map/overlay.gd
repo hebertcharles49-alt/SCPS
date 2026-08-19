@@ -757,8 +757,13 @@ func _refresh_setts() -> void:
 		var owner: int = w.region_owner(r)
 		var role: int = int(w.country_role(owner)) if owner >= 0 else -1
 		# un BOURG demande des HABITANTS (≥150 âmes) et un propriétaire — plus de villes
-		# fantômes sur la terre vide ; cité-état (2) & hameau libre (4) toujours tracés.
-		if (tier < 0 or owner < 0 or int(w.region_pop(r)) < 150) and role != 2 and role != 4:
+		# fantômes sur la terre vide ; cité-état (2) toujours tracée. Les hameaux WILD
+		# (rôle 4) NE SE DESSINENT PLUS (joueur 2026-08-19 : « supprime les icônes
+		# village wild ») — ni vignette, ni bannière ; la région wild reste visible
+		# par son terrain, c'est tout.
+		if role == 4:
+			continue
+		if (tier < 0 or owner < 0 or int(w.region_pop(r)) < 150) and role != 2:
 			continue
 		# BROUILLARD DE GUERRE (étape 1/2) : un bourg ENNEMI tombant dans le voile ne se
 		# dessine pas — les tiens (owner==human_idx) restent TOUJOURS visibles.
