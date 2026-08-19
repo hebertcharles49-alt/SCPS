@@ -1,4 +1,20 @@
-# SYNTHÈSE SESSION — 2026-08-18 : vagues CLIMAT puis ÎLES committées
+# SYNTHÈSE SESSION — 2026-08-19 : CARTE (climat, îles, compacité, routes cuites, lisibilité)
+
+## Arc CARTE du 2026-08-19 (tout committé)
+- ROUTES : 6 itérations d'overlay vectoriel (reviews DA opus) → verdict joueur « moche,
+  question de stratégie » → STRATÉGIE A+B : réseau CUIT dans le parchemin (road_map
+  R8 rasterisée au rebuild, peinte par iso_antique comme les rivières), overlay éteint
+  derrière _route_layer_on (futur calque Commerce). Pièges : _w() rend du LOCAL déjà
+  clampé px (re-clamper après = boudin ×zoom) ; les premiers rebuilds poussent un champ
+  VIDE (garde steps>0) ; ferveur toponymique en tête de priorité = cartes en « Neuv- ».
+- Échelle : trait 1 cellule (tampon mono-cellule, kernel 0.55, fenêtres au cœur).
+- Grain naturel : main tremblée (±0.35 cellule, basse fréq) + usure par plaques.
+- Lisibilité : cartouches centrés/élargis, 1 ville/région jusqu'au zoom moyen,
+  toponymes déferveur-isés (fonction avant ferveur 0.8, préfixes 62 %, suffixes 38 %).
+- Restes routes consignés : calque Commerce à câbler (_route_layer_on), mipmaps de
+  road_map au dézoom extrême, phase des tirets marins aux jointures, rivières cobalt/
+  lavis frontière/banding marin (les dominants hors périmètre selon le DA).
+
 
 ## Vague ÎLES (dernier commit)
 - 3 étages : PLATEAU (fragment détaché, détroit dérivé de la taille, tangent à la côte,
