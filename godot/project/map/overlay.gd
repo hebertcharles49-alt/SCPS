@@ -4450,9 +4450,13 @@ func _draw_banner(w, r: int, ip: Vector2, zoom: float, a: float) -> void:
 		return
 	var sc := 1.0 / maxf(zoom, 0.0001)
 	var tw := VKit.text_map_w(nm, VKit.FS_SMALL) * sc   # cartouche : police de CARTE (IM Fell)
-	# v2 (joueur 2026-08-19) : bandeau ÉLARGI et nom CENTRÉ — la place de la pastille
-	# est réservée SYMÉTRIQUEMENT (gauche ET droite) : le texte tombe pile au centre.
-	var bh := 15.0 * sc
+	# v3 (joueur 2026-08-19) : le bandeau ÉPOUSE la POLICE — IM Fell 14 fait ~18 px
+	# (ascent+descent), un bandeau de 15 la coupait par le bas (centrage vertical
+	# « problématique »). Hauteur = métrique réelle + 3 px d'air en haut ET en bas ;
+	# le nom reste centré horizontalement (place de pastille symétrique).
+	var fmap := VKit.font_map()
+	var fh := fmap.get_ascent(VKit.FS_SMALL) + fmap.get_descent(VKit.FS_SMALL)
+	var bh := (fh + 6.0) * sc
 	var hpad := 8.0 * sc
 	var dotw := 7.0 * sc                                   # place de la pastille de propriétaire
 	var bw := tw + (hpad + dotw) * 2.0
@@ -4469,7 +4473,7 @@ func _draw_banner(w, r: int, ip: Vector2, zoom: float, a: float) -> void:
 	var own := int(w.region_owner(r))
 	var dot: Color = _entity_pigment(own) if own >= 0 else Color(0.52, 0.46, 0.36)
 	draw_circle(Vector2(rect.position.x + hpad + 1.5 * sc, rect.position.y + bh * 0.5), 2.6 * sc, Color(dot, a))
-	draw_set_transform(Vector2(rect.position.x + hpad + dotw, rect.position.y + 1.6 * sc), 0.0, Vector2(sc, sc))
+	draw_set_transform(Vector2(rect.position.x + hpad + dotw, rect.position.y + 3.0 * sc), 0.0, Vector2(sc, sc))
 	VKit.text_map(self, Vector2.ZERO, nm, VKit.FS_SMALL,
 		Color(VKit.COL_INK_MAP.r, VKit.COL_INK_MAP.g, VKit.COL_INK_MAP.b, 0.95 * a), 0)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

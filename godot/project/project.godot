@@ -28,7 +28,10 @@ file_logging/max_log_files=5
 
 window/size/viewport_width=1600
 window/size/viewport_height=900
-window/size/mode=3
+; mode=2 (FENÊTRÉ MAXIMISÉ) pendant le dev — retour joueur 2026-08-19 : un freeze en
+; plein écran (mode=3) séquestre l'écran (« l'application ne répond pas », impossible
+; de sortir). Remettre 3 pour la release.
+window/size/mode=2
 ; étirement canvas_items : requis pour l'ÉCHELLE UI des options (content_scale_factor).
 ; factor par défaut 1.0 = rendu identique à avant ; l'option 125/150 % scale tout.
 window/stretch/mode="canvas_items"
