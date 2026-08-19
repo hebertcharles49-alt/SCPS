@@ -61,7 +61,7 @@ const BTN_LABELS := {"war": "Déclarer la guerre", "peace": "Faire la paix", "al
 	"migration": "Pacte migratoire", "embargo": "Embargo"}
 const ACTION_HELP := {
 	"war": "Déclare une guerre. La relation bascule immédiatement ; les opérations se suivent dans l'onglet Armée.",
-	"peace": "Ouvre les conditions de paix : territoires, or, réparations, humiliation, pillage, libération, vasselage ou fragmentation.",
+	"peace": "Ouvre les conditions de paix : territoires, couronnes, réparations, humiliation, pillage, libération, vasselage ou fragmentation.",
 	"ally": "Propose une alliance bilatérale. L'opinion décide de l'acceptation.",
 	"pact": "Propose un pacte commercial. Il ouvre les échanges et nourrit le contact entre les peuples.",
 	"migration": "Propose un pacte migratoire. Des populations pourront circuler entre les deux pays.",
@@ -672,7 +672,7 @@ func _refresh() -> void:
 			fab_btn.text = "%s revendiquée — expire dans %.1f an" % [claim_name, yleft]
 			fab_btn.disabled = true   # rien à refaire tant qu'elle est valide — déclarez la guerre
 		else:
-			fab_btn.text = "Revendiquer %s — %d or" % [claim_name, int(round(cost))]
+			fab_btn.text = "Revendiquer %s — %d couronnes" % [claim_name, int(round(cost))]
 			fab_btn.disabled = not bool(fab_legal.get("allowed", false))
 			fab_btn.tooltip_text = _legal_tooltip(fab_legal, "Lance une intrigue qui produira un casus belli temporaire.")
 		_update_action_detail("fabricate", fab_legal, false)
@@ -707,14 +707,15 @@ func _refresh() -> void:
 			elif loan_max <= 0.5:
 				reason = "Indisponible : réserve ou limite d'exposition du prêteur atteinte."
 			else:
-				reason = "Demander jusqu'à %s or ; l'État conserve sa décision diplomatique." % _grp(int(round(loan_max)))
-			loan_btn.tooltip_text = "%s\n• Taux fixe : %.1f %%\n• Exposition : %s / %s or\n• Surplus liquide : %s or" % [
+				reason = "Demander jusqu'à %s couronnes ; l'État conserve sa décision diplomatique." % _grp(int(round(loan_max)))
+			loan_btn.tooltip_text = "%s\n• Taux fixe : %.1f %%\n• Exposition : %s / %s couronnes
+• Surplus liquide : %s couronnes" % [
 				reason, loan_rate * 100.0, _grp(int(round(exposure))), _grp(int(round(exposure_limit))),
 				_grp(int(round(lender_surplus)))]
 			if loan_detail != null:
 				var target := int(w.country_loan_request_target(me3)) if w.has_method("country_loan_request_target") else -1
 				var status := String(w.country_loan_status(me3)) if target == _cid and w.has_method("country_loan_status") else "Aucune demande antérieure auprès de ce pays."
-				loan_detail.text = "%s\nDisponible : %s or · %.1f %% fixe · exposition %s/%s" % [
+				loan_detail.text = "%s\nDisponible : %s couronnes · %.1f %% fixe · exposition %s/%s" % [
 					status, _grp(int(round(loan_max))), loan_rate * 100.0,
 					_grp(int(round(exposure))), _grp(int(round(exposure_limit)))]
 	# « Faire la paix » est un TIROIR : il reste accessible pendant la guerre même si
@@ -827,9 +828,9 @@ func _legal_tooltip(legal: Dictionary, help: String) -> String:
 	if days > 0:
 		txt += " · %d j" % days
 	if cost > 0.0:
-		txt += " · coût %.0f or" % cost
+		txt += " · coût %.0f couronnes" % cost
 	if missing > 0.0:
-		txt += " · manque %.0f or" % missing
+		txt += " · manque %.0f couronnes" % missing
 	return txt
 
 ## Une action ne se comprend jamais au survol seulement : cette ligne reste affichée
@@ -860,9 +861,9 @@ func _update_action_detail(verb: String, legal: Dictionary, amber: bool) -> void
 	var missing := float(legal.get("gold_missing", 0.0))
 	var days := int(legal.get("duration_days", 0))
 	if cost > 0.0:
-		facts.append("%.0f or" % cost)
+		facts.append("%.0f couronnes" % cost)
 	if missing > 0.0:
-		facts.append("manque %.0f or" % missing)
+		facts.append("manque %.0f couronnes" % missing)
 	if days > 0:
 		facts.append("%d j" % days)
 	lbl.text = state + ((" · " + " · ".join(facts)) if not facts.is_empty() else "")

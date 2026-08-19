@@ -1,6 +1,6 @@
 extends Control
 ## Topbar — bandeau PLEINE LARGEUR (cadre d'écran) : capsule de date (An N) + le
-## roll-up du PAYS JOUÉ (nom · or · pop empire · régions · savoir) à gauche, contrôle
+## roll-up du PAYS JOUÉ (nom · couronnes · pop empire · régions · savoir) à gauche, contrôle
 ## de VITESSE cliquable à DROITE. Suit la largeur de la fenêtre (size_changed).
 ## Display-only sauf le verbe vitesse. Lit Sim.
 ##
@@ -209,9 +209,9 @@ func _treasury_card(w, me: int, gold: float) -> Dictionary:
 		float(budget.get("monthly_expense", float(budget.get("expense", 0.0)) / float(doy) * 30.0)))),
 		"tone": "heading"})
 	lines.append_array(expense_lines)
-	lines.append({"label": "Ligne de crédit", "value": "%d or" % int(round(
+	lines.append({"label": "Ligne de crédit", "value": "%d couronnes" % int(round(
 		float(budget.get("credit_line", 0.0)))), "tone": "dim"})
-	lines.append({"label": "Fin d'année (projection)", "value": "%s or" % _grp(int(round(
+	lines.append({"label": "Fin d'année (projection)", "value": "%s couronnes" % _grp(int(round(
 		float(budget.get("projected_year_end", gold))))),
 		"tone": "positive" if float(budget.get("projected_year_end", gold)) >= 0.0 else "negative"})
 	var runway := float(budget.get("runway_months", -1.0))
@@ -220,7 +220,7 @@ func _treasury_card(w, me: int, gold: float) -> Dictionary:
 		"tone": "dim" if runway < 0.0 else ("negative" if runway < 6.0 else "")})
 	return {
 		"title": "Trésor",
-		"state": "%s or disponibles" % _grp(int(round(gold))),
+		"state": "%s couronnes disponibles" % _grp(int(round(gold))),
 		"trend": "%+d / mois" % int(round(net_month)),
 		"trend_tone": "positive" if net_month >= 0.0 else "negative",
 		"lines": lines,
@@ -468,7 +468,7 @@ func _on_change() -> void:
 
 func _draw() -> void:
 	var ww := size.x
-	# ledger EU4 sur plaque RimWorld : graphite, arête froide, un seul liseré or.
+	# ledger EU4 sur plaque RimWorld : graphite, arête froide, un seul liseré couronnes.
 	VKit.fill(self, Rect2(0, 0, ww, H), VKit.COL_PANEL)
 	VKit.fill(self, Rect2(0, 0, ww, 1), Color(1.0, 1.0, 1.0, 0.07))
 	VKit.fill(self, Rect2(0, H - 3, ww, 2), Color(0.02, 0.025, 0.025, 0.9))

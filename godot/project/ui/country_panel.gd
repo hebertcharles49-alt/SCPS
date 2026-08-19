@@ -114,7 +114,7 @@ func _draw() -> void:
 			y += 15
 			var rew := ""
 			if rg > 0:
-				rew += "%d or" % rg
+				rew += "%d couronnes" % rg
 			if rq > 0:
 				rew += (" + " if rg > 0 else "") + "%d %s" % [rq, String(mis.get("reward_mat", ""))]
 			var rew_x: float = VKit.detail(self, Vector2(x + 4, y), "prime : ", VKit.FS_SMALL)

@@ -14,9 +14,9 @@ const SearchRank = preload("res://ui/search_rank.gd")
 const VKit = preload("res://ui/vkit.gd")
 const DOMAINS := [
 	["Empire & Économie", [
-		{"nom": "Bâtir un édifice", "ou": "Panneau Construction (bouton depuis la province ou l'onglet Constructions) · touche via le panneau province", "regle": "coûts en matières + or, réels (roster scps_building_roster) ; grisé si illégal (tech/région/or)"},
+		{"nom": "Bâtir un édifice", "ou": "Panneau Construction (bouton depuis la province ou l'onglet Constructions) · touche via le panneau province", "regle": "coûts en matières + couronnes, réels (roster scps_building_roster) ; grisé si illégal (tech/région/or)"},
 		{"nom": "Bâtir une manufacture (Panneau B)", "ou": "Détail province · onglet Main-d'œuvre, section « Bâtir une manufacture »", "regle": "gate miroir de l'IA civile : staffage/tier/intrant/slot libre/or ; un seul chantier du même type à la fois"},
-		{"nom": "Recruter une unité", "ou": "Panneau Construction (bouton depuis la province)", "regle": "roster 22 unités, gate technologique (7/22 gatées, 15 libres day-1) + or + armes en stock"},
+		{"nom": "Recruter une unité", "ou": "Panneau Construction (bouton depuis la province)", "regle": "roster 22 unités, gate technologique (7/22 gatées, 15 libres day-1) + couronnes + armes en stock"},
 		{"nom": "Régler la levée (postes vacants)", "ou": "Tiroir Armée (sidebar)", "regle": "curseur de niveau de levée — influence le rythme de recrutement IA-like du joueur"},
 		{"nom": "Rechercher une technologie", "ou": "Arbre de tech Medusa (bouton Tech, topbar)", "regle": "coût ∝ √N-provinces × biais d'éthos ÷ remise de diffusion (le prix affiché = le prix payé)"},
 		{"nom": "Allouer la main-d'œuvre (puits par région)", "ou": "Détail province · onglet Main-d'œuvre", "regle": "override du split AUTO : poids par ressource/bâtiment, fermeture, choix d'intrant, retour Auto"},

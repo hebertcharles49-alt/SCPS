@@ -62,7 +62,7 @@ static func build() -> Theme:
 	var native_panel := _box(VKit.COL_PANEL, VKit.COL_EDGE, 1)
 	for cls in ["Panel", "PanelContainer", "PopupPanel"]:
 		th.set_stylebox("panel", cls, native_panel)
-	# TOOLTIP : encart parchemin quasi opaque, liseré or — le tooltip système gris
+	# TOOLTIP : encart parchemin quasi opaque, liseré couronnes — le tooltip système gris
 	# cassait la charte partout (chaque bouton en a un). ENCRE sur IVOIRE, pas l'inverse.
 	var tip := StyleBoxFlat.new()
 	tip.bg_color = Color(VKit.COL_PANEL2.r, VKit.COL_PANEL2.g, VKit.COL_PANEL2.b, 0.985)

@@ -64,7 +64,7 @@ const DEFS := {
 	"Revendication": {"d": "Un casus belli fabriqué : il coûte deux ans du revenu de la cible, mûrit un an, reste valable cinq ans.", "i": "action_decree"},
 	"Trêve": {"d": "La paix imposée après une guerre : redéclarer avant son terme est une trahison qui marque l'opinion.", "i": "tool_lock"},
 	"Embargo": {"d": "La fermeture unilatérale du commerce avec un pays : son opinion en souffre, vos routes aussi.", "i": "alert_shortage"},
-	"Vassalité": {"d": "Un État soumis qui verse selon sa fonction (vivres, soldats ou or). Bien intégré, un maître annexeur peut le digérer.", "i": "dipl_vassal"},
+	"Vassalité": {"d": "Un État soumis qui verse selon sa fonction (vivres, soldats ou couronnes). Bien intégré, un maître annexeur peut le digérer.", "i": "dipl_vassal"},
 	"Annexion": {"d": "La digestion d'un vassal intégré : ses régions passent à la couronne, une cicatrice douce en mémoire.", "i": "action_treaty"},
 	"Rancœur": {"d": "Le grief d'une faction envers la couronne. Haute, sa barre vire au rouge : elle conspire.", "i": "alert_revolt"},
 	"Faction": {"d": "Un parti de la cour (l'éthos les compose). Son adhésion la rend puissante, sa rancœur la rend dangereuse.", "i": "menu_council"},

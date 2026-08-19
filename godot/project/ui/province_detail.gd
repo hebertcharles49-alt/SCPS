@@ -474,7 +474,7 @@ func _draw_batiments(x: float, y: float, w) -> void:
 		else:
 			UIKit.draw_icon(self, "build_hammer", Vector2(x, y - 1), 14)
 		VKit.text(self, Vector2(x + 20, y), VKit.COL_PARCH, nom, VKit.FS_SMALL)
-		var blab := ("Bâtir · %d or" % mcost) if mcost > 0 else "Bâtir"
+		var blab := ("Bâtir · %d couronnes" % mcost) if mcost > 0 else "Bâtir"
 		var bw := VKit.text_w(blab, VKit.FS_SMALL) + 20.0
 		var br := Rect2(x + 334.0 - bw, y - 2, bw, 18)
 		VKit.fill(self, br, VKit.COL_PANEL2)
@@ -513,7 +513,7 @@ func _draw_empire(x: float, y: float, w) -> void:
 	else:
 		for l in lines:
 			VKit.text(self, Vector2(x, y), VKit.COL_PARCH, String(l.get("name", "")), VKit.FS_SMALL)
-			VKit.value(self, Vector2(x + 140, y), "%.1f or" % float(l.get("price", 0.0)), VKit.FS_SMALL)
+			VKit.value(self, Vector2(x + 140, y), "%.1f couronnes" % float(l.get("price", 0.0)), VKit.FS_SMALL)
 			VKit.text(self, Vector2(x + 220, y), VKit.COL_DIM, "stock %s" % _grp(int(l.get("stock", 0))), VKit.FS_SMALL)
 			VKit.text(self, Vector2(x + 340, y), VKit.sense(0.62), String(l.get("marche", "")), VKit.FS_SMALL)
 			y += 17
@@ -672,7 +672,7 @@ func _draw_flux(fx: float, fy: float, fw: float, fh: float, w) -> void:
 	VKit.text(self, Vector2(fx + 344.0, fy), VKit.COL_DIM, "sortie d'atelier", VKit.FS_SMALL)
 	var tax := float(w.province_tax(_pid))
 	if tax > 0.5:
-		var tax_txt := "Impôts : ~%s or/mois" % _grp(int(round(tax)))
+		var tax_txt := "Impôts : ~%s couronnes/mois" % _grp(int(round(tax)))
 		VKit.value(self, Vector2(fx + fw - VKit.text_w(tax_txt, VKit.FS_SMALL), fy), tax_txt, VKit.FS_SMALL)
 	var inc: Array = w.province_income(_pid)
 	if inc.is_empty():

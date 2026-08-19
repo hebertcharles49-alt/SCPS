@@ -209,7 +209,7 @@ func _update_flash() -> void:
 	_flash_lbl.text = _flash
 	_flash_lbl.theme_type_variation = "Income" if _flash_ok else "Expense"
 
-## la raison du refus, en mot (reason de build_legal : 2 or · 3 matière · 4 tech de palier · 1 structurel)
+## la raison du refus, en mot (reason de build_legal : 2 couronnes · 3 matière · 4 tech de palier · 1 structurel)
 func _reason_word(reason: int) -> String:
 	match reason:
 		2: return "Nécessite : plus d'or"
@@ -368,7 +368,7 @@ func _renover_card(rs: Dictionary) -> Control:
 	row0.add_child(title)
 	var price := Label.new()
 	price.theme_type_variation = "RowDim"
-	price.text = "%d or · 180 j" % gold
+	price.text = "%d couronnes · 180 j" % gold
 	price.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	row0.add_child(price)
 	if not allowed and int(rs.get("reason", 0)) == 2:
@@ -416,7 +416,7 @@ func _edifice_card(w, b: Dictionary) -> Control:
 	row0.add_child(title)
 	var price := Label.new()
 	price.theme_type_variation = "RowDim"
-	price.text = "%d or · %d j" % [int(b.get("gold", 0)), int(b.get("days", 0))]
+	price.text = "%d couronnes · %d j" % [int(b.get("gold", 0)), int(b.get("days", 0))]
 	price.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	row0.add_child(price)
 
@@ -439,7 +439,7 @@ func _edifice_card(w, b: Dictionary) -> Control:
 	if upk > 0:
 		var upkl := Label.new()
 		upkl.theme_type_variation = "RowDim"
-		upkl.text = "Entretien : %d or/mois" % upk
+		upkl.text = "Entretien : %d couronnes/mois" % upk
 		upkl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		vb.add_child(upkl)
 
@@ -527,11 +527,11 @@ func _manuf_card(bld: int, nom: String, recipe_txt: String, mcost: int, upkeep: 
 	card.add_theme_stylebox_override("panel", ParchTheme.sb(ParchTheme.HEADER_BG, ParchTheme.BORDER, 1, 4, 10, 10, 8, 8))
 	var info_lines := [{"label": "Recette", "value": recipe_txt}]
 	if upkeep > 0:
-		info_lines.append({"label": "Entretien", "value": "%d or/mois" % upkeep})
+		info_lines.append({"label": "Entretien", "value": "%d couronnes/mois" % upkeep})
 	card.card_data = {
 		"title": nom,
 		"state": "Constructible",
-		"trend": ("%d or (chantier)" % mcost) if mcost > 0 else "coût au drain",
+		"trend": ("%d couronnes (chantier)" % mcost) if mcost > 0 else "coût au drain",
 		"lines": info_lines,
 		"body": "Cliquez la carte pour ordonner le chantier.",
 	}
@@ -557,7 +557,7 @@ func _manuf_card(bld: int, nom: String, recipe_txt: String, mcost: int, upkeep: 
 	if mcost > 0:
 		var price := Label.new()
 		price.theme_type_variation = "RowDim"
-		price.text = "%d or" % mcost
+		price.text = "%d couronnes" % mcost
 		price.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		row0.add_child(price)
 
@@ -573,7 +573,7 @@ func _manuf_card(bld: int, nom: String, recipe_txt: String, mcost: int, upkeep: 
 	if upkeep > 0:
 		var upkl := Label.new()
 		upkl.theme_type_variation = "RowDim"
-		upkl.text = "Entretien : %d or/mois" % upkeep
+		upkl.text = "Entretien : %d couronnes/mois" % upkeep
 		upkl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		vb.add_child(upkl)
 	return card

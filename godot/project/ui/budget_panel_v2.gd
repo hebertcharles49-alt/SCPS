@@ -304,7 +304,7 @@ func _row(col: VBoxContainer, label: String, key: String, value_variation: Strin
 		line.add_child(s)
 		_sliders["%d:%d" % [slider_family, slider_index]] = s
 
-## une ligne LUE (or/mois) d'un poste de flux nommé, sans curseur.
+## une ligne LUE (couronnes/mois) d'un poste de flux nommé, sans curseur.
 func _flux_row(col: VBoxContainer, label: String, flux_name: String, value_variation: String) -> void:
 	var key := "flux:%s" % flux_name
 	_row(col, label, key, value_variation)
@@ -368,10 +368,10 @@ func _update_header(w, me: int) -> void:
 		_reserve_lbl.text = "Réserve : %s or · %s cuivre" % [_grp(int(round(float(res.get("gold", 0.0))))), _grp(int(round(float(res.get("copper", 0.0)))))]
 	if w.has_method("budget_summary"):
 		var b: Dictionary = w.budget_summary(me)
-		_treasury_lbl.text = "%s or" % _grp(int(b.get("gold", 0)))
+		_treasury_lbl.text = "%s couronnes" % _grp(int(b.get("gold", 0)))
 		var net := float(b.get("monthly_net", 0.0))
 		var pos := net >= 0.0
-		_balance_lbl.text = "%s%s or/mois" % ["+" if pos else "−", _grp(int(round(absf(net))))]
+		_balance_lbl.text = "%s%s couronnes/mois" % ["+" if pos else "−", _grp(int(round(absf(net))))]
 		_balance_lbl.add_theme_color_override("font_color", INCOME if pos else EXPENSE)
 		# LA COURBE (KoH2) : un point par mois, dédupliqué par étiquette (les refresh
 		# d'ouverture/action ne doublonnent jamais).
@@ -380,13 +380,13 @@ func _update_header(w, me: int) -> void:
 			_graph.push("an %d · m%d" % [int(w.year()), mini(mo, 12)], net)
 		# LES VERBES DE CRÉDIT (KoH2) : montants vivants sur les boutons.
 		if _borrow_btn != null:
-			_borrow_btn.text = "Emprunter — jusqu'à %s or" % _grp(int(round(float(b.get("credit_line", 0.0)))))
+			_borrow_btn.text = "Emprunter — jusqu'à %s couronnes" % _grp(int(round(float(b.get("credit_line", 0.0)))))
 		if _repay_btn != null and w.has_method("country_debt"):
 			var deb_r: Dictionary = w.country_debt(me)
 			var owed := float(deb_r.get("total", 0.0))
 			if _repay_armed and Time.get_ticks_msec() - _repay_armed_ms > 4000:
 				_repay_armed = false
-			_repay_btn.text = "Confirmer le remboursement ?" if _repay_armed else ("Rembourser %s or" % _grp(int(round(owed))))
+			_repay_btn.text = "Confirmer le remboursement ?" if _repay_armed else ("Rembourser %s couronnes" % _grp(int(round(owed))))
 			_repay_btn.disabled = owed < 0.5 and not _repay_armed
 
 ## construit les LIGNES à partir de budget_controls (une fois — puis on ne fait
@@ -404,7 +404,7 @@ func _build_body(me: int) -> void:
 	if Sim.world.has_method("budget_controls"):
 		ctl = Sim.world.budget_controls(me)
 
-	# LEFT — RENTRÉES : impôt par classe (curseur family 0, or/mois via tax_class_month)
+	# LEFT — RENTRÉES : impôt par classe (curseur family 0, couronnes/mois via tax_class_month)
 	#   + postes LUS Export / Péages (lignes de flux positives).
 	_section(_left_col, "RENTRÉES")
 	for raw in ctl.get("taxes", []):
@@ -433,10 +433,10 @@ func _update_values(me: int) -> void:
 	if w.has_method("day_of_year"):
 		doy = maxi(1, int(w.day_of_year()))
 	var mf := 30.0 / float(doy)
-	# rentrées : impôt par classe (or/mois)
+	# rentrées : impôt par classe (couronnes/mois)
 	var ctl: Dictionary = w.budget_controls(me) if w.has_method("budget_controls") else {}
 	# la SATISFACTION en face de l'impôt (retour joueur 2026-07-21) : le levier n'est
-	# lisible qu'avec sa contrepartie — « 12 or/mois · 58 % » (le prix social du taux).
+	# lisible qu'avec sa contrepartie — « 12 couronnes/mois · 58 % » (le prix social du taux).
 	var fo_sat := {}
 	if w.has_method("country_fiscal_orders"):
 		var fo_b: Array = w.country_fiscal_orders(me)
@@ -449,7 +449,7 @@ func _update_values(me: int) -> void:
 		if lbl != null:
 			if w.has_method("tax_class_month"):
 				var sat_i := int(fo_sat.get(cls, -1))
-				var base_txt := "%s or/mois" % _grp(int(round(float(w.tax_class_month(cls)))))
+				var base_txt := "%s couronnes/mois" % _grp(int(round(float(w.tax_class_month(cls)))))
 				# le MARQUEUR d'humeur (KoH2) : ▲ marge (≥60), ▼ fragile (<40) — se lit sans lire.
 				var mood := ""
 				if sat_i >= 60: mood = " ▲"
@@ -467,13 +467,13 @@ func _update_values(me: int) -> void:
 	if w.has_method("country_budget"):
 		for p in w.country_budget(me):
 			flux[String(p.get("name", ""))] = float(p.get("amount", 0.0)) * mf
-	# postes LUS (Export / Péages / Conseil / Cour) : |montant| en or/mois
+	# postes LUS (Export / Péages / Conseil / Cour) : |montant| en couronnes/mois
 	for k in _flux_of:
 		var lbl2: Label = _val_lbls.get(k, null)
 		if lbl2 != null:
 			var fname: String = _flux_of[k]
-			lbl2.text = "%s or/mois" % _grp(int(round(absf(float(flux.get(fname, 0.0))))))
-	# sorties : enveloppe réalisée (or/mois) + curseur
+			lbl2.text = "%s couronnes/mois" % _grp(int(round(absf(float(flux.get(fname, 0.0))))))
+	# sorties : enveloppe réalisée (couronnes/mois) + curseur
 	var spend_flux := ["invest.", "entretien", "soldes", "marine", "routes"]
 	for raw2 in ctl.get("spending", []):
 		var row2: Dictionary = raw2
@@ -483,12 +483,12 @@ func _update_values(me: int) -> void:
 			if idx == 5 and w.has_method("country_mint_month"):
 				# MONNAIE M2 — LA FRAPPE : lecteur DÉDIÉ, miroir exact du point fixe moteur
 				# (pas un poste de FLUX générique — c'est un revenu, pas une dépense).
-				lbl3.text = "+%s or/mois" % _grp(int(round(float(w.country_mint_month(me)))))
+				lbl3.text = "+%s couronnes/mois" % _grp(int(round(float(w.country_mint_month(me)))))
 			else:
 				var amt := 0.0
 				if idx >= 0 and idx < spend_flux.size():
 					amt = absf(float(flux.get(spend_flux[idx], 0.0)))
-				lbl3.text = "%s or/mois" % _grp(int(round(amt)))
+				lbl3.text = "%s couronnes/mois" % _grp(int(round(amt)))
 		var sl2: HSlider = _sliders.get("1:%d" % idx, null)
 		if sl2 != null and not sl2.has_focus():
 			sl2.set_value_no_signal(clampf(float(row2.get("mult", 1.0)) * 100.0, 2.0, 100.0))
@@ -605,7 +605,7 @@ func _build_monnaie(me: int) -> void:
 	# UI-POLISH #5 : bouton NU (aucun override) retombait au thème Godot par défaut
 	# (graphite) faute de style "Button" de base dans ParchTheme (qui ne définit que la
 	# variation "Tab") — doctrine UI-4 : danger = rouge sombre, même famille que le ruban
-	# Pause (topbar.gd, Color(0.38,0.08,0.07) fond / Color(0.78,0.62,0.30) liseré or).
+	# Pause (topbar.gd, Color(0.38,0.08,0.07) fond / Color(0.78,0.62,0.30) liseré couronnes).
 	var bsb := ParchTheme.sb(Color(0.38, 0.08, 0.07, 0.94), Color(0.78, 0.62, 0.30), 1, 3, 10, 10, 6, 6)
 	var bsb_hover := ParchTheme.sb(Color(0.48, 0.11, 0.09, 0.96), Color(0.78, 0.62, 0.30), 1, 3, 10, 10, 6, 6)
 	var bsb_pressed := ParchTheme.sb(Color(0.30, 0.06, 0.05, 0.96), Color(0.78, 0.62, 0.30), 2, 3, 10, 10, 6, 6)
@@ -687,10 +687,10 @@ func _update_monnaie(me: int) -> void:
 		elif idx == 6:
 			debase_mult = float(row.get("mult", 0.0))
 	if w.has_method("country_mint_month"):
-		_set_m("mint_flow", "+%s or/mois" % _grp(int(round(float(w.country_mint_month(me))))))
+		_set_m("mint_flow", "+%s couronnes/mois" % _grp(int(round(float(w.country_mint_month(me))))))
 	_set_m("mint_slider", "%d %%" % int(round(mint_mult * 100.0)))
 	_sync_slider("1:5", mint_mult * 100.0)
-	# DÉBASE PHYSIQUE (retour joueur 2026-07-21) : la monnaie produite (or/mois), la
+	# DÉBASE PHYSIQUE (retour joueur 2026-07-21) : la monnaie produite (couronnes/mois), la
 	# matière absorbée (billon, t/mois), l'effet prix (indice national) — le % seul ne
 	# disait rien. country_mint_detail = la fonction PURE partagée (paires/billon/débase).
 	var md: Dictionary = w.country_mint_detail(me) if w.has_method("country_mint_detail") else {}
@@ -701,7 +701,7 @@ func _update_monnaie(me: int) -> void:
 	_set_m("mint_metal", ("%.1f or · %.1f cuivre t/mois" % [pair_t + bill_g, pair_t + bill_c])
 		if pair_t + bill_g + bill_c > 0.05 else "—")
 	var debase_active := dbg_or > 0.05
-	_set_m("debase_state", ("+%s or/mois" % _grp(int(round(dbg_or)))) if debase_active else "—",
+	_set_m("debase_state", ("+%s couronnes/mois" % _grp(int(round(dbg_or)))) if debase_active else "—",
 		ParchTheme.EXPENSE if debase_active else ParchTheme.DIM_INK)
 	_set_m("debase_metal", ("%.1f or · %.1f cuivre t/mois" % [bill_g, bill_c])
 		if bill_g + bill_c > 0.05 else "—",
@@ -732,21 +732,21 @@ func _update_monnaie(me: int) -> void:
 		var due := float(deb.get("due", 0.0))
 		var creditor := int(deb.get("creditor", -1))
 		var creditor_name := String(deb.get("creditor_name", ""))
-		_set_m("debt_total", "%s or" % _grp(int(round(total))), ParchTheme.EXPENSE if total > 0.5 else ParchTheme.DIM_INK)
-		_set_m("debt_class", "%s or" % _grp(int(round(to_class))))
-		_set_m("debt_cs", ("%s : %s or" % [creditor_name, _grp(int(round(to_cs)))]) if creditor >= 0 and to_cs > 0.5 else "—")
-		_set_m("debt_revenue", "%s or/an" % _grp(int(round(annual_revenue))))
+		_set_m("debt_total", "%s couronnes" % _grp(int(round(total))), ParchTheme.EXPENSE if total > 0.5 else ParchTheme.DIM_INK)
+		_set_m("debt_class", "%s couronnes" % _grp(int(round(to_class))))
+		_set_m("debt_cs", ("%s : %s couronnes" % [creditor_name, _grp(int(round(to_cs)))]) if creditor >= 0 and to_cs > 0.5 else "—")
+		_set_m("debt_revenue", "%s couronnes/an" % _grp(int(round(annual_revenue))))
 		_set_m("debt_leverage", "%.2f année(s) de revenu" % leverage if total > 0.5 else "0.00")
-		_set_m("debt_available", "%s or" % _grp(int(round(available))), ParchTheme.INCOME if available > 0.5 else ParchTheme.EXPENSE)
-		_set_m("debt_exposure", ("%s / +%s or" % [_grp(int(round(foreign_exposure))), _grp(int(round(foreign_room)))]) if creditor >= 0 else "Aucun créancier étranger")
+		_set_m("debt_available", "%s couronnes" % _grp(int(round(available))), ParchTheme.INCOME if available > 0.5 else ParchTheme.EXPENSE)
+		_set_m("debt_exposure", ("%s / +%s couronnes" % [_grp(int(round(foreign_exposure))), _grp(int(round(foreign_room)))]) if creditor >= 0 else "Aucun créancier étranger")
 		_set_m("debt_rate", "%.1f %% forfaitaires" % (taux * 100.0))
 		# D3 — RÉSIDU DOCTRINE : `due` est un prélèvement RÉELLEMENT annuel (credit_year_tick,
-		# scps_credit.c, 1×/an) — pas un flux continu comme l'impôt. « or/an » resterait
+		# scps_credit.c, 1×/an) — pas un flux continu comme l'impôt. « couronnes/an » resterait
 		# ambigu (lu comme un débit récurrent /mois mal étiqueté, cf. le bug province_panel.
 		# gd:317 corrigé en D1) ; la cadence est dite en toutes lettres au lieu du calcul
 		# fictif due/12 (qui ne correspond à AUCUN prélèvement réel — VALEUR RÉELLE, jamais
 		# le calcul).
-		_set_m("debt_due", "~%s or (prélevés 1×/an)" % _grp(int(round(due))) if total > 0.5 else "—")
+		_set_m("debt_due", "~%s couronnes (prélevés 1×/an)" % _grp(int(round(due))) if total > 0.5 else "—")
 	# EMPRUNTER À UN ORDRE
 	if w.has_method("country_loan_capacity"):
 		var caps: Array = w.country_loan_capacity(me)
@@ -761,7 +761,7 @@ func _update_monnaie(me: int) -> void:
 			if armed:
 				btn.text = "Confirmer l'emprunt aux %s ?" % CLASS_NAMES[cls]
 			else:
-				btn.text = "Emprunter aux %s — max %s or (%.1f %% fixes)" % [CLASS_NAMES[cls], _grp(int(round(montant))), taux2 * 100.0]
+				btn.text = "Emprunter aux %s — max %s couronnes (%.1f %% fixes)" % [CLASS_NAMES[cls], _grp(int(round(montant))), taux2 * 100.0]
 			btn.disabled = montant <= 0.5 and not armed
 			btn.tooltip_text = "" if montant > 0.5 else "cet ordre n'a rien à prêter maintenant"
 	# BANQUEROUTE
@@ -784,12 +784,12 @@ func _update_monnaie(me: int) -> void:
 			# légitime d'econ_country_class_satisfaction (scps_econ.c) quand cet ORDRE n'a
 			# ENCORE aucune âme dans le pays (ex. Bourgeois en tout début de partie — les
 			# Journaliers/Élite peuvent très bien être peuplés pendant que Bourgeois=0).
-			# « — · 0 or/mois » mélangeait un « rien à mesurer » (tiret) et un chiffre
+			# « — · 0 couronnes/mois » mélangeait un « rien à mesurer » (tiret) et un chiffre
 			# (zéro) pour la MÊME absence : les deux disent « — » désormais (cohérence
 			# avec la règle #9 : jamais un nombre à côté d'un tiret pour un état inexistant).
 			var sat_txt := ("%d %% sat." % sat) if sat >= 0 else "—"
 			var revenu_txt := _grp(int(round(revenu))) if sat >= 0 else "—"
-			_set_m("fiscal:%d" % cls, "%s · %s or/mois" % [sat_txt, revenu_txt],
+			_set_m("fiscal:%d" % cls, "%s · %s couronnes/mois" % [sat_txt, revenu_txt],
 				_score_col(sat) if sat >= 0 else ParchTheme.DIM_INK)
 			_sync_slider("0:%d" % cls, taux3 * 100.0)
 			var lbl: Label = _m_val_lbls.get("fiscal:%d" % cls, null)

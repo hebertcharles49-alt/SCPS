@@ -381,7 +381,7 @@ func _action_hover(w, verb: String) -> String:
 		parts.append("coercition %+d" % coerc_d)
 	var gold_d := int(round(float(pv.get("cost_gold", 0.0))))
 	if gold_d != 0:
-		parts.append("%d or" % gold_d)
+		parts.append("%d couronnes" % gold_d)
 	var days_d := int(pv.get("duration_days", 0))
 	if days_d != 0:
 		parts.append("%d j" % days_d)
@@ -447,7 +447,7 @@ func _build_infrastructure(w, info: Dictionary, _cap: Dictionary) -> void:
 		_kv(grid, "Croissance", "—", ParchTheme.DIM_INK)
 	_grow_pid = _pid; _grow_total = pop_now; _grow_day = abs_day
 	var tax := float(w.province_tax(_pid)) if w.has_method("province_tax") else 0.0
-	_kv(grid, "Impôts", "~%s or/mois" % _grp(int(round(tax))), ParchTheme.INK)
+	_kv(grid, "Impôts", "~%s couronnes/mois" % _grp(int(round(tax))), ParchTheme.INK)
 	var aisance := int(info.get("aisance_val", 0))
 	_kv(grid, "Prospérité", "%d%%" % aisance, _score_col(aisance))
 	# MÉTRIQUES (modèle 2026-07-25) : le chiffre seul, le POURQUOI chiffré au hover
@@ -683,7 +683,7 @@ func _manuf_chip(w, mine: bool, nom: String, niv: int, ouv: int, bid: int) -> Co
 	if bid >= 0 and w.has_method("manuf_upkeep_month"):
 		var upk := int(w.manuf_upkeep_month(_pid, bid))
 		if upk > 0:
-			tip += " · entretien ~%d or/mois" % upk
+			tip += " · entretien ~%d couronnes/mois" % upk
 	var fr := _chip_frame(tip, true)
 	var hb: HBoxContainer = fr[1]
 	_icon(hb, UIKit.manuf_sprite(nom), 26)

@@ -143,7 +143,7 @@ func _draw() -> void:
 		VKit.text(self, Vector2(r.position.x + 12, r.position.y + 7), VKit.COL_PARCH, lbl)
 		# Prix physique résolu par le moteur au cours courant, toujours visible — 0 compris.
 		var gd := float(gold_delta[i]) if i < gold_delta.size() else 0.0
-		var price := "Gain %+d or" % int(round(gd)) if gd > 0.49 else ("Coût %d or" % int(round(-gd)) if gd < -0.49 else "Coût 0 or")
+		var price := "Gain %+d couronnes" % int(round(gd)) if gd > 0.49 else ("Coût %d couronnes" % int(round(-gd)) if gd < -0.49 else "Coût 0 couronnes")
 		var pcol := VKit.sense(0.82 if gd >= 0.0 else 0.15)
 		VKit.text(self, Vector2(r.end.x - VKit.text_w(price, VKit.FS_SMALL) - 10, r.position.y + 9), pcol, price, VKit.FS_SMALL)
 		# — le VISAGE du choix : la faction qui le porte au conseil (aligné à droite, discret) —

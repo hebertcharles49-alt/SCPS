@@ -245,7 +245,7 @@ func _collect() -> Array:
 	for b in w.building_roster(me):
 		if bool(b.get("debloque", false)) and float(b.get("gold", 1e18)) <= gold:
 			out.append({"icon": "action_build", "col": COL_SOCIAL, "act": "construct",
-				"tip": "Un ÉDIFICE est constructible (ex. %s, %d or) — clic : panneau Construction" % [String(b.get("nom", "")), int(b.get("gold", 0))]})
+				"tip": "Un ÉDIFICE est constructible (ex. %s, %d couronnes) — clic : panneau Construction" % [String(b.get("nom", "")), int(b.get("gold", 0))]})
 			break
 	# ARMÉE — EN GUERRE : levée à zéro, ou pas d'armée de campagne déployée
 	var at_war := false

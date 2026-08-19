@@ -2092,7 +2092,7 @@ double scps_world_ipm_now(ScpsSim *s){
     if (!s || !s->ready) return 1.0;
     return (double)econ_world_ipm(s->sim.econ);
 }
-/* Rendement fiscal MENSUEL (or/mois) d'une classe pour le pays du JOUEUR — lecteur PUR. */
+/* Rendement fiscal MENSUEL (couronnes/mois) d'une classe pour le pays du JOUEUR — lecteur PUR. */
 double scps_tax_class_month(ScpsSim *s, int cls){
     if (!s || !s->ready || cls<0 || cls>=CLASS_COUNT) return 0.0;
     int p = (s->sim.human_player>=0) ? s->sim.human_player : s->sim.player;
@@ -2756,7 +2756,7 @@ static const char *const EDI_FLAVOR[EDIFICE_COUNT] = {
     [EDI_BANQUE]        = "Elle prête un parapluie quand il fait beau et le réclame quand il pleut.",
     [EDI_ARSENAL]       = "La paix se négocie toujours mieux avec un arsenal plein derrière soi.",
     [EDI_AMIRAUTE]      = "Des amiraux à terre qui décident où les marins mourront en mer.",
-    [EDI_PORT_MARCHAND] = "Chaque quai supplémentaire raccourcit la distance entre votre or et celui des autres.",
+    [EDI_PORT_MARCHAND] = "Chaque quai supplémentaire raccourcit la distance entre vos couronnes et celles des autres.",
     [EDI_BIBLIO_MIL]    = "On y étudie les défaites des autres, avec l'espoir d'être étudié plus tard.",
     [EDI_OBSERVATOIRE]  = "Les étoiles ne mentent jamais ; les astronomes compensent.",
     [EDI_TRADE_CENTER]  = "Le centre du monde, d'après les registres du centre du monde.",
@@ -2823,7 +2823,7 @@ int scps_building_roster(ScpsSim *s, int country, ScpsEdificeDef *out, int max){
         }
         o->n_cost   = nc;
         o->gold     = (cap_reg>=0) ? (int)(agency_build_gold(s->sim.econ, cap_reg, (Edifice)e)+0.5f) : 0;
-        o->entretien= scps_edifice_upkeep_month(e);   /* or/mois, miroir E1bis.10 */
+        o->entretien= scps_edifice_upkeep_month(e);   /* couronnes/mois, miroir E1bis.10 */
         o->debloque = edifice_unlocked(ts,(Edifice)e) ? 1 : 0;
         /* PALIER FAMILIAL (2026-07-10, « une ligne, un bâtiment ») : l'UI masque un
          * tier tant que le PRÉCÉDENT de la famille n'est bâti nulle part chez nous. */

@@ -94,7 +94,7 @@ func _row(col: VBoxContainer, label: String, key: String, value_variation: Strin
 		col.add_child(s)
 		_sliders["%d:%d" % [slider_family, slider_index]] = s
 
-## une ligne LUE (or/mois) d'un poste de flux nommé, sans curseur.
+## une ligne LUE (couronnes/mois) d'un poste de flux nommé, sans curseur.
 func _flux_row(col: VBoxContainer, label: String, flux_name: String, value_variation: String) -> void:
 	var key := "flux:%s" % flux_name
 	_row(col, label, key, value_variation)
@@ -174,7 +174,7 @@ func _update_values(me: int) -> void:
 	if reserve_lbl != null and w.has_method("country_reserve"):
 		var res: Dictionary = w.country_reserve(me)
 		reserve_lbl.text = "%s or · %s cuivre" % [_grp(int(round(float(res.get("gold", 0.0))))), _grp(int(round(float(res.get("copper", 0.0)))))]
-	# rentrées : impôt par classe (or/mois)
+	# rentrées : impôt par classe (couronnes/mois)
 	var ctl: Dictionary = w.budget_controls(me) if w.has_method("budget_controls") else {}
 	for raw in ctl.get("taxes", []):
 		var row: Dictionary = raw
@@ -182,7 +182,7 @@ func _update_values(me: int) -> void:
 		var lbl: Label = _val_lbls.get("tax:%d" % cls, null)
 		if lbl != null:
 			if w.has_method("tax_class_month"):
-				lbl.text = "%s or/mois" % _grp(int(round(float(w.tax_class_month(cls)))))
+				lbl.text = "%s couronnes/mois" % _grp(int(round(float(w.tax_class_month(cls)))))
 			else:
 				lbl.text = "taux %d %%" % int(round(float(row.get("mult", 1.0)) * 100.0))
 		var sl: HSlider = _sliders.get("0:%d" % cls, null)
@@ -197,8 +197,8 @@ func _update_values(me: int) -> void:
 		var lbl2: Label = _val_lbls.get(k, null)
 		if lbl2 != null:
 			var fname: String = _flux_of[k]
-			lbl2.text = "%s or/mois" % _grp(int(round(absf(float(flux.get(fname, 0.0))))))
-	# sorties : enveloppe réalisée (or/mois) + curseur
+			lbl2.text = "%s couronnes/mois" % _grp(int(round(absf(float(flux.get(fname, 0.0))))))
+	# sorties : enveloppe réalisée (couronnes/mois) + curseur
 	var spend_flux := ["invest.", "entretien", "soldes", "marine", "routes"]
 	for raw2 in ctl.get("spending", []):
 		var row2: Dictionary = raw2
@@ -207,12 +207,12 @@ func _update_values(me: int) -> void:
 		if lbl3 != null:
 			if idx == 5 and w.has_method("country_mint_month"):
 				# MONNAIE M2 — LA FRAPPE : lecteur DÉDIÉ, miroir exact (revenu, pas dépense).
-				lbl3.text = "+%s or/mois" % _grp(int(round(float(w.country_mint_month(me)))))
+				lbl3.text = "+%s couronnes/mois" % _grp(int(round(float(w.country_mint_month(me)))))
 			else:
 				var amt := 0.0
 				if idx >= 0 and idx < spend_flux.size():
 					amt = absf(float(flux.get(spend_flux[idx], 0.0)))
-				lbl3.text = "%s or/mois" % _grp(int(round(amt)))
+				lbl3.text = "%s couronnes/mois" % _grp(int(round(amt)))
 		var sl2: HSlider = _sliders.get("1:%d" % idx, null)
 		if sl2 != null and not sl2.has_focus():
 			sl2.set_value_no_signal(clampf(float(row2.get("mult", 1.0)) * 100.0, 2.0, 100.0))

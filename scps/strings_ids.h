@@ -164,7 +164,7 @@
     X(STR_TUTO_TITLE_6, "7 · La Brèche.") \
     X(STR_TUTO_PAGE_0, "Ici, pas de pourcentages cachés : l'état des choses se dit en MOTS.\nUne province est Unie ou Fracturée, un peuple Loyal ou Frondeur,\nun marché Sain ou En pénurie. Survole : tout se définit en bas d'écran.") \
     X(STR_TUTO_PAGE_1, "En haut à droite : la date, l'âge du monde, la vitesse.\nESPACE met en pause — et en pause, tu peux tout consulter,\ntout ordonner. Rien ne presse jamais que toi.") \
-    X(STR_TUTO_PAGE_2, "En haut : ton or, tes vivres, tes matériaux, et la santé de ta couronne —\nStabilité, Légitimité, Cohésion, Prospérité. Clique une province pour la voir\nde près ; ouvre la BARRE DE GAUCHE pour l'empire entier :\nÉconomie, Démographie, Stocks, Armée, Filtres.") \
+    X(STR_TUTO_PAGE_2, "En haut : tes couronnes, tes vivres, tes matériaux, et la santé de ta couronne —\nStabilité, Légitimité, Cohésion, Prospérité. Clique une province pour la voir\nde près ; ouvre la BARRE DE GAUCHE pour l'empire entier :\nÉconomie, Démographie, Stocks, Armée, Filtres.") \
     X(STR_TUTO_PAGE_3, "Tout ordre — bâtir, exploiter, déplacer, lever — entre dans une FILE\net prend des JOURS. Le prix s'affiche AVANT. Certains leviers rapportent\nvite et coûtent longtemps : mater une révolte tait la rue, pas la colère.") \
     X(STR_TUTO_PAGE_4, "Tes voisins vivent : ils commercent, s'allient, jalousent.\nOn peut les lier — l'allié, le protégé, le serf, la cité marchande —\net chaque lien a son prix. Un embargo est une arme ; une guerre se gagne\nsur le champ, au MORAL, pas au nombre.") \
     X(STR_TUTO_PAGE_5, "Ton arbre a un cœur et un cercle : le cœur se recherche,\nle CERCLE se gagne par le contact — commerce, frontières, peuples gouvernés.\nUne culture qu'on assimile est un savoir qu'on tarit.\nChoisis ce que tu fonds et ce que tu gardes distinct.") \
@@ -246,17 +246,17 @@
     X(STR_CENTRE_RESEAU_FERME, "Réseau inter-pays FERMÉ — aucun Centre commercial (en conquérir un)") \
     X(STR_CENTRE_COMMERCIAL, "Centre commercial — hub du réseau inter-régional (le tenir = commercer)") \
     X(STR_PAN_MARCHE, "MARCHÉ") \
-    X(STR_MARCHE_PRIX_FMT, "prix courant {0} or l'unité") \
+    X(STR_MARCHE_PRIX_FMT, "prix courant {0} couronnes l'unité") \
     X(STR_MARCHE_PRIX_HOV, "Le prix du marché intérieur : la demande le tire, l'offre et la vente le détendent. Acheter et vendre se font à CE prix.") \
-    X(STR_MARCHE_ROW_HOV, "{0} — en réserve {1}. Acheter ou vendre par lots de 10 au prix courant (l'or sort et entre par le trésor).") \
+    X(STR_MARCHE_ROW_HOV, "{0} — en réserve {1}. Acheter ou vendre par lots de 10 au prix courant (les couronnes sortent et entrent par le trésor).") \
     X(STR_MARCHE_HDR_LOCAL,  "bien            stock      prix r\xc3\xa9""f.") \
     X(STR_MARCHE_HDR_MARCHE, "bien          prix    dispo") \
     X(STR_MARCHE_BUY_HOV,    "Acheter (pompe le tr\xc3\xa9sor) \xe2\x80\x94 palier 10, Maj = 100.") \
     X(STR_MARCHE_SELL_HOV,   "Vendre au march\xc3\xa9 \xe2\x80\x94 palier 10, Maj = 100.") \
     X(STR_SLOT_VERROU_FMT, "{0} — verrouillé ({1})") \
-    X(STR_BTN_COMPTOIR_FMT, "Bâtir un Comptoir ici  ({0} or)") \
+    X(STR_BTN_COMPTOIR_FMT, "Bâtir un Comptoir ici  ({0} couronnes)") \
     X(STR_COMPTOIR_HOV, "Le Comptoir branche la province au Centre commercial le plus proche : la marge de transport tombe d'un tiers à ce bout des routes marchandes.") \
-    X(STR_BTN_CENTER_FMT, "B\xc3\xa2tir un Centre commercial  ({0} or)") \
+    X(STR_BTN_CENTER_FMT, "B\xc3\xa2tir un Centre commercial  ({0} couronnes)") \
     X(STR_CENTER_HOV, "Le Centre commercial fait de cette province un HUB du r\xc3\xa9seau GLOBAL : on y ach\xc3\xa8te/vend au march\xc3\xa9 mondial. C\xc3\xb4tier/estuaire + vocation marchande requis.") \
     X(STR_ENTREPOT_CAP_FMT, "stock {0}/{1} — Entrepôts ×{2}") \
     X(STR_ROW_ENTREPOTS, "Entrepôts") \
@@ -342,8 +342,8 @@
     X(STR_COUNCIL_NOMMER, "Nommer") \
     X(STR_COUNCIL_RENVOYER, "Renvoyer") \
     X(STR_COUNCIL_SEAT_FMT, "{0} — +{1}% {2}") \
-    X(STR_COUNCIL_SEATED_FMT, "{0} · tier {1} · {2} or/mois") \
-    X(STR_COUNCIL_CAND_FMT, "{0} · tier {1} · {2} or") \
+    X(STR_COUNCIL_SEATED_FMT, "{0} · tier {1} · {2} couronnes/mois") \
+    X(STR_COUNCIL_CAND_FMT, "{0} · tier {1} · {2} couronnes") \
     X(STR_COUNCIL_NAME_0, "Maison Vœrn") \
     X(STR_COUNCIL_NAME_1, "Comptoir Aldric") \
     X(STR_COUNCIL_NAME_2, "Guilde Harmel") \
@@ -499,7 +499,7 @@
     X(STR_GATE_PAS_PACTE_COMMERCIAL, "Pas de pacte commercial en cours") \
     X(STR_GATE_PAS_PACTE_MIGRATOIRE, "Pas de pacte migratoire en cours") \
     X(STR_GATE_RELATION_COMMERCABLE, "Relation commerçable") \
-    X(STR_GATE_OR_SUFFISANT,         "Or suffisant") \
+    X(STR_GATE_OR_SUFFISANT,         "Couronnes suffisantes") \
     X(STR_GATE_AUCUNE_INTRIGUE,      "Aucune intrigue déjà lancée") \
     X(STR_DIPLO_REASON_INVALID_TARGET,        "Cible diplomatique invalide ou inconnue") \
     X(STR_DIPLO_REASON_EMISSARY_BUSY,         "Émissaire en tournée") \
@@ -516,7 +516,7 @@
     X(STR_DIPLO_REASON_EMBARGO_UNAVAILABLE,   "Embargo indisponible") \
     X(STR_DIPLO_REASON_INTRIGUE_IN_PROGRESS,  "Revendication en fabrication") \
     X(STR_DIPLO_REASON_CLAIM_READY,           "Une revendication est déjà prête") \
-    X(STR_DIPLO_REASON_INSUFFICIENT_GOLD,     "Or insuffisant pour financer l'intrigue") \
+    X(STR_DIPLO_REASON_INSUFFICIENT_GOLD,     "Couronnes insuffisantes pour financer l'intrigue") \
     X(STR_DIPLO_REASON_FABRICATION_UNAVAILABLE,"Intrigue indisponible pour l'instant") \
     X(STR_HERITAGE_FLAVOR_0, "Leurs généalogies commencent avant les premiers calendriers, dans des siècles dont les ruines seules se souviennent.") \
     X(STR_HERITAGE_FLAVOR_1, "Ils disent que tout serment ressemble à un métal : il révèle sa valeur seulement lorsqu'on le chauffe assez pour le briser.") \

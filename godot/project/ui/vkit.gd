@@ -206,7 +206,7 @@ static func _grain() -> ImageTexture:
 		_grain_tex = ImageTexture.create_from_image(img)
 	return _grain_tex
 
-## FLEURON discret (4.1 : « ornements réservés aux titres ») : un losange d'encre or, la
+## FLEURON discret (4.1 : « ornements réservés aux titres ») : un losange d'encre couronnes, la
 ## SEULE décoration de titre du kit — délibérément vectoriel (pas un asset de chrome : le
 ## pack `panel_corner_ornate_*`/`panel_title_plaque` appartient à l'habillage 9-slice déjà
 ## RETIRÉ des panneaux, cf. panel_bg ci-dessus — le réintroduire romprait cette discipline).

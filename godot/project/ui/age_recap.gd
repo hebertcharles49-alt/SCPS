@@ -157,7 +157,7 @@ func _build(w, next_age_name: String) -> void:
 	var nom := String(ci.get("nom", "—"))
 	_epithet_line.text = "Ainsi passa %s pour %s, dit %s. L'âge de %s se lève." \
 		% [closing, nom, ep, next_age_name]
-	_bilan.text = "Bilan : %s âmes · %s or · %d province(s) · savoir %d" % [
+	_bilan.text = "Bilan : %s âmes · %s couronnes · %d province(s) · savoir %d" % [
 		_fmt(int(ci.get("pop", 0))), _fmt(int(ci.get("or", 0))),
 		int(ci.get("regions", 0)), int(ci.get("savoir", 0))]
 	for c in _list.get_children():

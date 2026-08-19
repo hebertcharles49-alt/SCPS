@@ -174,10 +174,10 @@ func _update_header(w, me: int) -> void:
 		_title_lbl.text = String(ci.get("nom", "Empire"))
 	if w.has_method("budget_summary"):
 		var b: Dictionary = w.budget_summary(me)
-		_treasury_lbl.text = "%s or" % _grp(int(b.get("gold", 0)))
+		_treasury_lbl.text = "%s couronnes" % _grp(int(b.get("gold", 0)))
 		var net := float(b.get("monthly_net", 0.0))
 		var pos := net >= 0.0
-		_balance_lbl.text = "%s%s or/mois" % ["+" if pos else "−", _grp(int(round(absf(net))))]
+		_balance_lbl.text = "%s%s couronnes/mois" % ["+" if pos else "−", _grp(int(round(absf(net))))]
 		_balance_lbl.add_theme_color_override("font_color", ParchTheme.INCOME if pos else ParchTheme.EXPENSE)
 
 # ── ONGLET POPULATION : légendes codées par couleur (Culture · Foi · Classe) ──
@@ -287,7 +287,7 @@ func _build_population(w, me: int) -> void:
 			var val := ""
 			match _prov_sort:
 				0: val = "+%.1f/j" % float(rp["res"])
-				1: val = "~%s or/mois" % _grp(int(round(float(rp["revenu"]))))
+				1: val = "~%s couronnes/mois" % _grp(int(round(float(rp["revenu"]))))
 				_: val = _grp(int(rp["pop"]))
 			_kv_row(pg, String(rp["nom"]), val, ParchTheme.INK)
 			shown += 1

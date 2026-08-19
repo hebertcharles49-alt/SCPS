@@ -159,7 +159,7 @@
     X(STR_TUTO_TITLE_6, "7 · The Breach.") \
     X(STR_TUTO_PAGE_0, "Here, no hidden percentages: the state of things is told in WORDS.\nA province is United or Fractured, a people Loyal or Defiant,\na market Healthy or In Shortage. Hover: everything is defined at the bottom of the screen.") \
     X(STR_TUTO_PAGE_1, "Top right: the date, the age of the world, the speed.\nSPACE pauses — and while paused, you can review everything,\norder everything. Nothing is ever urgent — except you.") \
-    X(STR_TUTO_PAGE_2, "Top bar: your gold, your food, your materials, and the health of your crown —\nStability, Legitimacy, Cohesion, Prosperity. Click a province to see it\nup close; open the LEFT SIDEBAR for the whole empire:\nEconomy, Demography, Stocks, Army, Filters.") \
+    X(STR_TUTO_PAGE_2, "Top bar: your crowns, your food, your materials, and the health of your crown —\nStability, Legitimacy, Cohesion, Prosperity. Click a province to see it\nup close; open the LEFT SIDEBAR for the whole empire:\nEconomy, Demography, Stocks, Army, Filters.") \
     X(STR_TUTO_PAGE_3, "Every order — build, harvest, move, levy — enters a QUEUE\nand takes DAYS. The cost shows BEFORE you commit. Some levers pay off\nfast but cost long: crushing a revolt silences the street, not the anger.") \
     X(STR_TUTO_PAGE_4, "Your neighbours are alive: they trade, ally, and grow jealous.\nYou can bind them — the ally, the protectorate, the vassal, the merchant city —\nand every bond has its price. An embargo is a weapon; a war is won\non the field, on MORALE, not numbers.") \
     X(STR_TUTO_PAGE_5, "Your tree has a core and a ring: the core is researched,\nthe RING is earned through contact — trade, borders, ruled peoples.\nA culture you assimilate is knowledge you dry up.\nChoose what you merge and what you keep distinct.") \
@@ -241,17 +241,17 @@
     X(STR_CENTRE_RESEAU_FERME, "Inter-country network CLOSED — no Trade Hub (conquer one)") \
     X(STR_CENTRE_COMMERCIAL, "Trade Hub — node of the inter-regional network (hold it = trade)") \
     X(STR_PAN_MARCHE, "MARKET") \
-    X(STR_MARCHE_PRIX_FMT, "current price {0} gold per unit") \
+    X(STR_MARCHE_PRIX_FMT, "current price {0} crowns per unit") \
     X(STR_MARCHE_PRIX_HOV, "The domestic market price: demand pulls it up, supply and selling ease it. Buying and selling happen at THIS price.") \
-    X(STR_MARCHE_ROW_HOV, "{0} — in reserve {1}. Buy or sell in lots of 10 at the current price (gold flows through the treasury).") \
+    X(STR_MARCHE_ROW_HOV, "{0} — in reserve {1}. Buy or sell in lots of 10 at the current price (crowns flow through the treasury).") \
     X(STR_MARCHE_HDR_LOCAL,  "good            stock     ref.price") \
     X(STR_MARCHE_HDR_MARCHE, "good          price   avail") \
     X(STR_MARCHE_BUY_HOV,    "Buy (pumps the treasury) \xe2\x80\x94 step 10, Shift = 100.") \
     X(STR_MARCHE_SELL_HOV,   "Sell to the market \xe2\x80\x94 step 10, Shift = 100.") \
     X(STR_SLOT_VERROU_FMT, "{0} — locked ({1})") \
-    X(STR_BTN_COMPTOIR_FMT, "Build a Trading Post here  ({0} gold)") \
+    X(STR_BTN_COMPTOIR_FMT, "Build a Trading Post here  ({0} crowns)") \
     X(STR_COMPTOIR_HOV, "The Trading Post links the province to the nearest Trade Hub: the transport margin drops by a third at this end of merchant routes.") \
-    X(STR_BTN_CENTER_FMT, "Build a Trade Centre  ({0} gold)") \
+    X(STR_BTN_CENTER_FMT, "Build a Trade Centre  ({0} crowns)") \
     X(STR_CENTER_HOV, "A Trade Centre makes this province a HUB of the GLOBAL network: buy/sell on the world market here. Requires coastal/estuary + mercantile vocation.") \
     X(STR_ENTREPOT_CAP_FMT, "stock {0}/{1} — Warehouses ×{2}") \
     X(STR_ROW_ENTREPOTS, "Warehouses") \
@@ -333,8 +333,8 @@
     X(STR_COUNCIL_NOMMER, "Appoint") \
     X(STR_COUNCIL_RENVOYER, "Dismiss") \
     X(STR_COUNCIL_SEAT_FMT, "{0} — +{1}% {2}") \
-    X(STR_COUNCIL_SEATED_FMT, "{0} · tier {1} · {2} gold/mo") \
-    X(STR_COUNCIL_CAND_FMT, "{0} · tier {1} · {2} gold") \
+    X(STR_COUNCIL_SEATED_FMT, "{0} · tier {1} · {2} crowns/mo") \
+    X(STR_COUNCIL_CAND_FMT, "{0} · tier {1} · {2} crowns") \
     X(STR_COUNCIL_NAME_0, "House Vœrn") \
     X(STR_COUNCIL_NAME_1, "Aldric Counting-house") \
     X(STR_COUNCIL_NAME_2, "Harmel Guild") \
@@ -478,7 +478,7 @@
     X(STR_GATE_PAS_PACTE_COMMERCIAL, "No trade pact in force") \
     X(STR_GATE_PAS_PACTE_MIGRATOIRE, "No migration pact in force") \
     X(STR_GATE_RELATION_COMMERCABLE, "Tradeable relation") \
-    X(STR_GATE_OR_SUFFISANT,         "Sufficient gold") \
+    X(STR_GATE_OR_SUFFISANT,         "Sufficient crowns") \
     X(STR_GATE_AUCUNE_INTRIGUE,      "No plot already underway") \
     X(STR_DIPLO_REASON_INVALID_TARGET,        "Invalid or unknown diplomatic target") \
     X(STR_DIPLO_REASON_EMISSARY_BUSY,         "Envoy on tour") \
@@ -495,7 +495,7 @@
     X(STR_DIPLO_REASON_EMBARGO_UNAVAILABLE,   "Embargo unavailable") \
     X(STR_DIPLO_REASON_INTRIGUE_IN_PROGRESS,  "Claim being fabricated") \
     X(STR_DIPLO_REASON_CLAIM_READY,           "A claim is already ready") \
-    X(STR_DIPLO_REASON_INSUFFICIENT_GOLD,     "Not enough gold to fund the plot") \
+    X(STR_DIPLO_REASON_INSUFFICIENT_GOLD,     "Not enough crowns to fund the plot") \
     X(STR_DIPLO_REASON_FABRICATION_UNAVAILABLE,"Plot unavailable for now") \
     X(STR_HERITAGE_FLAVOR_0, "Their genealogies begin before the first calendars, in centuries only ruins still remember.") \
     X(STR_HERITAGE_FLAVOR_1, "They say every oath is like a metal: it reveals its worth only once heated enough to break it.") \

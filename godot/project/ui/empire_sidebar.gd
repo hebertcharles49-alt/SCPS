@@ -369,7 +369,7 @@ func _draw() -> void:
 			if line2 != "":
 				VKit.text(self, Vector2(x, y), VKit.COL_PARCH, line2, VKit.FS_SMALL)
 				y += 14
-			var rw := "%d or" % int(mi.get("reward_gold", 0))
+			var rw := "%d couronnes" % int(mi.get("reward_gold", 0))
 			var mat := String(mi.get("reward_mat", ""))
 			if mat != "" and float(mi.get("reward_qty", 0)) > 0.0:
 				rw += " + %d %s" % [int(mi.get("reward_qty", 0)), mat]
@@ -583,7 +583,7 @@ const SEC_TIPS := {
 	"GUERRES": "Conflits actifs. Score signé depuis votre point de vue ; clic : ouvrir la diplomatie.",
 	"NOTIFICATIONS": "Conditions et évènements actifs. Clic : agir ; clic droit : acquitter un évènement.",
 	"VILLES": "Vos régions habitées, triées par âmes.",
-	"ARMÉES": "Réserve levée et ost de campagne. Recompléter paie or et matière.",
+	"ARMÉES": "Réserve levée et ost de campagne. Recompléter paie couronnes et matière.",
 	"COLONISATION": "Le chantier de Colonisation en cours et son avancement.",
 	"MISSION": "La mission décennale et sa récompense.",
 	"JOURNAL": "Toute notification déjà apparue, couleur d'origine conservée. Clic sur une ligne : même action que la notification ; clic sur le bandeau : replier.",

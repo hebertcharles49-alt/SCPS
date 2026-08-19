@@ -57,7 +57,7 @@ static func stock_info_card(world: Object, st: Dictionary) -> Dictionary:
 		{"label": "Production", "value": "%.1f / mois" % float(st.get("supply_month", 0.0)), "tone": "positive"},
 		{"label": "Consommation", "value": "%.1f / mois" % float(st.get("demand_month", 0.0)), "tone": "negative"},
 		{"label": "Couverture", "value": coverage_text(int(st.get("coverage_days", -1)))},
-		{"label": "Prix moyen", "value": "%.2f or" % float(st.get("price", 0.0))},
+		{"label": "Prix moyen", "value": "%.2f couronnes" % float(st.get("price", 0.0))},
 	]
 	var actions: Array = [{"label": "Ouvrir ce bien au Marché", "request": InfoRef.request(
 		InfoRef.make(InfoRef.RESOURCE, int(st.get("res_id", -1))), "sidebar", {"tab": 3})}]
@@ -94,7 +94,7 @@ static func market_info_card(world: Object, st: Dictionary, quote: Dictionary, c
 				grp(int(float(quote.get("local_available", 0.0)))), margin],
 			"tone": "negative" if hub_region < 0 else ""})
 		lines.append({"label": "Achat local", "value": "indisponible" if local_qty <= 0 else \
-			"%d unités · ~%d or" % [local_qty, int(round(float(quote.get("local_cost", 0.0))))],
+			"%d unités · ~%d couronnes" % [local_qty, int(round(float(quote.get("local_cost", 0.0))))],
 			"tone": "negative" if local_qty <= 0 else ""})
 		var global_access := bool(quote.get("global_access", false))
 		lines.append({"label": "Réseau mondial", "value": "accès fermé" if not global_access else \
@@ -102,7 +102,7 @@ static func market_info_card(world: Object, st: Dictionary, quote: Dictionary, c
 			"tone": "negative" if not global_access else ""})
 		if global_access:
 			lines.append({"label": "Devis mondial", "value": "indisponible" if global_qty <= 0 else \
-				"%d unités · ~%d or" % [global_qty, int(round(float(quote.get("global_cost", 0.0))))],
+				"%d unités · ~%d couronnes" % [global_qty, int(round(float(quote.get("global_cost", 0.0))))],
 				"tone": "negative" if global_qty <= 0 else ""})
 		lines.append({"label": "Puissance commerciale", "value": "%.0f unités restantes ce mois" % float(quote.get("commerce_remaining", 0.0)), "tone": "dim"})
 	var actions: Array = [{"label": "Voir le stock national", "request": InfoRef.request(
@@ -112,7 +112,7 @@ static func market_info_card(world: Object, st: Dictionary, quote: Dictionary, c
 	actions.append_array(territory.get("actions", []))
 	return {
 		"title": String(st.get("name", "Bien")),
-		"state": "%s · marché %s · %.2f or" % [category_word,
+		"state": "%s · marché %s · %.2f couronnes" % [category_word,
 			String(st.get("marche", "")), float(st.get("price", 0.0))],
 		"trend": "%+d / mois" % int(round(net_month)),
 		"trend_tone": "positive" if net_month >= 0.0 else "negative",

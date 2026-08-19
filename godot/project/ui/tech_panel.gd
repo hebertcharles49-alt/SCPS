@@ -492,7 +492,7 @@ func _draw() -> void:
 	_chrome()
 	_tips.clear()   # D4 — repeuplé plus bas par ce même _draw() (motif country_panel.gd)
 	# CADRE : mêmes bords que les fiches à conteneurs natifs (1px BORDER, coin 3) —
-	# plus de plaque RimWorld (ombre/grain/filet or) : le FRÈRE des fiches, pas une
+	# plus de plaque RimWorld (ombre/grain/filet couronnes) : le FRÈRE des fiches, pas une
 	# fenêtre à part.
 	draw_style_box(_sb_panel, Rect2(0, 0, PW, PH))
 	var info: Dictionary = w.tech_info()
@@ -674,7 +674,7 @@ func _draw_metab(info: Dictionary) -> void:
 			var lw := VKit.text_w(lbl, VKit.FS_SMALL)
 			VKit.text(self, Vector2(x + (cw - lw) * 0.5, ry), (VKit.COL_GOLD if nativ else VKit.COL_PARCH),
 				lbl, VKit.FS_SMALL)
-			# la BARRE de digestion (native = pleine, or) + les pips de tier à sa droite
+			# la BARRE de digestion (native = pleine, couronnes) + les pips de tier à sa droite
 			var dp := int(h.get("digested_pct", 0))
 			var bw := cw - 58.0
 			var bx := x + (cw - bw - 34.0) * 0.5
