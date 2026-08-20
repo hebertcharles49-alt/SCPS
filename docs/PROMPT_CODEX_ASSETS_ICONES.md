@@ -239,8 +239,123 @@ edi_amiraute (proue + compas) · edi_port_marchand (grue de quai en bois) ·
 edi_biblio_mil (livre + épée croisés) · edi_observatoire (lunette vers les
 étoiles) · edi_trade_center (grande halle aux bannières).
 
+## Lot 11 — SYSTÈME & VERBES (128×128)
+
+**Classes sociales (préfixe `cls_`, 4)** — partout (démographie, budget, satisfaction) :
+| cls_journalier.png | bêche sur l'épaule |
+| cls_bourgeois.png | bourse + clef |
+| cls_elite.png | couronne fine sur coussin |
+| cls_servile.png | chaîne brisée à demi (le fer au poignet) |
+
+**Journal / notifications (préfixe `jrn_`, 12)** — un genre, un glyphe :
+jrn_guerre (deux bannières croisées) · jrn_bataille (épées entrechoquées,
+étincelle) · jrn_siege (tour sous échelle) · jrn_revolte (torche levée) ·
+jrn_secession (bannière déchirée en deux) · jrn_colonisation (charrette +
+fanion planté) · jrn_decouverte (lampe rayonnante) · jrn_conseil (sceau
+brisé — la trahison) · jrn_foi (flamme votive) · jrn_commerce (balance +
+flèches d'échange) · jrn_catastrophe (nuée + éclair) · jrn_tresor (coffre
+ouvert, pièces).
+
+**Verbes diplomatiques (préfixe `dip_`, 10)** :
+dip_alliance (deux mains scellées sur parchemin) · dip_guerre (gant jeté) ·
+dip_paix (rameau sur épée baissée) · dip_tribut (coffret tendu) ·
+dip_vassal (genou à terre devant bannière) · dip_embargo (ancre enchaînée) ·
+dip_migration (famille en marche, balluchon) · dip_emissaire (cavalier au
+rouleau scellé) · dip_intrigue (dague derrière un masque) · dip_revendication
+(sceau posé sur une carte).
+
+**Phases d'armée (préfixe `pha_`, 7)** :
+pha_lever (cor sonné) · pha_marche (bottes + poussière) · pha_siege (bélier) ·
+pha_bataille (choc de boucliers) · pha_pillage (torche sur gerbe) ·
+pha_repli (bouclier porté en arrière) · pha_renfort (colonne qui rejoint).
+
+**Âges (préfixe `age_`, 8, médaillons dans un cercle gravé — famille des modes)** :
+age_decouvertes (caravelle/astrolabe) · age_empires (couronne sur globe) ·
+age_echanges (caducée + balance) · age_soulevements (poing + torche) ·
+age_tyrans (trône à pointes) · age_lumieres (lampe sur livre) ·
+age_heros (épée plantée au tertre) · age_breche (fissure irradiante).
+
+**Retardataires ressources** : res_ouvrages (livre d'agrément ouvert à
+enluminure) · res_talismans (amulette à cordon).
+
+**Verbes système (préfixe `act_`, 4)** — remplacent les derniers anciens :
+act_construire (truelle + mur naissant) · act_recruter (cor + bannière) ·
+act_rechercher (loupe sur rouleau) · act_decret (sceau qui frappe la cire).
+
+## Lot 12 — ÉCRAN TITRE & FINITIONS
+
+| fichier | dimensions | sujet |
+|---|---|---|
+| title_screen.png | 1920×1080 (opaque, pas d'alpha) | LA pièce maîtresse : une carte-parchemin en scène — table de cartographe vue de biais, la carte du monde à demi déroulée (continents, routes, mer au lavis), compas, encrier, une bougie ; lumière chaude latérale ; DE LA PLACE À GAUCHE pour le menu (le tiers gauche reste calme/sombre) ; aucun texte, aucun logo |
+| chrome_rightbar_bg.png | 512×1024 (affiché ~380 px de large) | fond du panneau de DROITE (ère/empire) : parchemin foncé, liseré d'encre au bord GAUCHE seulement, tuilable verticalement (32 px haut/bas = bordure 9-slice) — SANS AUCUN bouton/texte |
+| cursor_fleche.png | 64×64 | curseur : plume d'encre effilée (pointe en haut-gauche) |
+| cursor_cible.png | 64×64 | curseur : épée pointée (ciblage) |
+| cursor_loupe.png | 64×64 | curseur : loupe de cartographe |
+| her_charge_01..12.png | 128×128 | CHARGES héraldiques pour blasons génératifs : tour crénelée · bête dressée (griffon inventé) · croissant inventé à trois pointes · gerbe · ancre · clef · étoile à huit rais · arbre · pont · main gantée · soleil à visage · serpent noué — trait ÉPAIS lisible à 16 px, monochrome sombre (le code les teinte) |
+
+## Lot 13 — ENCARTS TECH façon Civ 6 (512×256, préfixe `tech_`)
+
+Note joueur : « les techs devraient être des encarts, façon Civ 6 » — chaque
+technologie = une CARTE illustrée horizontale : une SCÈNE gravée (des mains,
+des ateliers, des lieux — pas un pictogramme), dans un cadre gravé intégré
+(filet double + coins ornés discrets), fond parchemin. Aucun texte. Même
+lumière et même densité de hachures sur toute la série.
+
+**Savoir** : tech_bibliotheque (scribe entre rayonnages) · tech_scriptorium
+(copistes à l'ouvrage) · tech_academie (maître et disciples au fronton) ·
+tech_universite (amphithéâtre en gradins) · tech_savoir_guerre (officiers sur
+carte d'état-major) · tech_magie_bataille (mage traçant un glyphe ardent) ·
+tech_invocation (cercle rituel, silhouette évoquée) · tech_eveil (méditant
+irradiant) · tech_wards (glyphes de garde sur porte) · tech_scrying (bassin
+de vision) · tech_communion (cercle de mains jointes) · tech_savoir_interdit
+(livre enchaîné entrouvert).
+**Forge & industrie** : tech_collecte_bois (bûcherons à l'abattage) ·
+tech_collecte_argile (fosse des potiers) · tech_fonderie (coulée au creuset) ·
+tech_outillage (établi aux outils alignés) · tech_manufacture (rangée de
+métiers) · tech_industrie (halle aux cheminées) · tech_foreuse (foreuse
+arcanique mordant la roche) · tech_armurerie (plastrons au râtelier) ·
+tech_poudriere (tonneaux + mèche) · tech_forge_runes (lame gravée sur enclume
+luisante) · tech_oeuvre_noire (creuset scellé, fumée noire) · tech_atelier
+(artisan au tour) · tech_qualite_materiaux (maître jaugeant une poutre) ·
+tech_fortifications (maçons sur rempart) · tech_automates (pantin mécanique
+debout à l'établi).
+**Société & subsistance** : tech_collecte_nourriture (cueillette en panier) ·
+tech_irrigation (vannes ouvertes sur sillons) · tech_commerce (poignée de main
+sur étal) · tech_cadastre (arpenteur à la chaîne) · tech_abondance (corne
+débordante) · tech_comptoirs (comptoir au port) · tech_halles (halle aux sacs
+empilés) · tech_caserne (recrues à l'exercice) · tech_conscription (rôle
+d'appel lu au village) · tech_organisation (colonne en ordre de marche) ·
+tech_esclavage (marché sombre aux fers — scène DURE assumée, sans
+complaisance) · tech_caste_martiale (lignée d'armes, père et fils) ·
+tech_chancellerie (chancelier au sceau) · tech_foi (procession à la flamme) ·
+tech_integration (deux cortèges qui se mêlent) · tech_culte_imperial (statue
+du souverain encensée) · tech_alchimie (alambic au feu doux) ·
+tech_transmutation (main changeant le plomb en éclat).
+**Héritages (paires)** : tech_glyphes_etheres (glyphes flottants) ·
+tech_communion_etheree (esprits en cercle) · tech_alliages_nains (lingot
+bicolore au marteau) · tech_gravure_runes (burin sur métal) ·
+tech_mecaniste_rouages (train d'engrenages) · tech_mecaniste_horlogerie
+(horloge ouverte) · tech_droit_coutumier (anciens sous l'arbre à palabres) ·
+tech_langue_franque (marchands aux gestes croisés) · tech_vergers_etages
+(terrasses plantées) · tech_paturages_integres (troupeaux entre cultures) ·
+tech_rites_guerriers (danse d'armes au feu) · tech_hordes_conquerantes
+(cavaliers à l'horizon).
+**Combos (14)** : tech_combo_poudre (arquebuse de précision à l'essai) ·
+tech_combo_automates_arc (automate aux yeux luisants) · tech_combo_academie
+(savants de plusieurs peuples) · tech_combo_druide (druide aux moissons) ·
+tech_combo_chaman (chaman devant les guerriers) · tech_combo_guildes (maîtres
+au blason de guilde) · tech_combo_charrues (charrue lourde à deux bœufs) ·
+tech_combo_poliorcetique (trébuchet en construction) · tech_combo_horloge_march
+(horloge sur comptoir) · tech_combo_machines_agri (moissonneuse à rouages) ·
+tech_combo_siege (tour de siège roulée) · tech_combo_grenier_colon (grenier
+au bout du monde) · tech_combo_foederati (serment de deux armées) ·
+tech_combo_horde_eco (campement-caravane).
+**Apex (3, cadre légèrement DORÉ — les seuls)** : tech_apex_arquebuse
+(arquebuse aux runes ardentes) · tech_apex_concile (concile en amphithéâtre) ·
+tech_apex_legion (légion bigarrée sous un aigle).
+
 ## Livraison
 
-Une archive (ou un dossier) avec les 10 lots, PNG alpha aux noms EXACTS
+Une archive (ou un dossier) avec les 13 lots, PNG alpha aux noms EXACTS
 ci-dessus. Toute icône que tu ne peux pas produire : NE PAS improviser un
 autre style — livre la liste des manquantes à part.
