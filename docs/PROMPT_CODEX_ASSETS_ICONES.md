@@ -156,8 +156,91 @@ NB : les LAPINS d'apocalypse (marginalia façon KCD) ont été retirés du jeu �
 n'en générer AUCUN, ni aucune marginalia animalière signée d'un autre jeu.
 Serpents de mer et épaves existent déjà, ne pas en refaire.
 
+## Lot 8 — FOI, ÉTHOS & CRÉATEUR DE CULTURE (128×128)
+
+Tous les symboles religieux sont NEUTRES et inventés — aucun symbole d'une
+religion réelle, aucune croix/croissant/étoile existante.
+
+**Credos (préfixe `foi_`)** — la POSTURE de la foi, déclinée autour d'une même
+flamme votive (la famille se lit) :
+| foi_pluraliste.png | flamme entourée de plusieurs mains ouvertes (tolère, syncrétise) |
+| foi_proselyte.png | flamme portée en avant sur un bâton de procession (convertit) |
+| foi_loyaliste.png | flamme gardée derrière un bouclier (protège, purifie) |
+
+**Branches de foi (préfixe `foi_`)** — l'arbre généalogique, symboles inventés :
+| foi_animiste.png | arbre-esprit aux yeux dans le feuillage |
+| foi_scripturaire.png | livre scellé rayonnant |
+| foi_roue.png | roue à huit rayons sur lotus stylisé |
+| foi_celeste.png | balance sous une voûte d'étoiles |
+
+**Éthos (préfixe `ethos_`, 6)** :
+| ethos_dominateur.png | poing ganté fermé |
+| ethos_honneur.png | épée levée sur un serment (main sur la garde) |
+| ethos_ordre.png | clef de voûte + équerre |
+| ethos_bureaucrate.png | sceau sur registre |
+| ethos_mercantile.png | balance + pièce |
+| ethos_pacifiste.png | rameau d'olivier noué |
+
+**Héritages (préfixe `her_`, 6)** :
+| her_esoterique.png | œil dans un cercle runique |
+| her_metallurgiste.png | enclume au marteau levé |
+| her_mecaniste.png | engrenage à double roue |
+| her_adaptatif.png | roseau plié par le vent (qui ne rompt pas) |
+| her_agraire.png | charrue sur sillon |
+| her_clanique.png | nœud de bannières entrelacées |
+
+**Modes de vie (préfixe `life_`, 7)** :
+| life_hunter.png | arc + trace de gibier |
+| life_pastoral.png | houlette + mouton |
+| life_horticulture.png | houe + jeune pousse |
+| life_miner.png | pic + galerie |
+| life_farmer.png | faucille + épis |
+| life_seafarer.png | barque à voile carrée |
+| life_intensive.png | canaux d'irrigation en damier |
+
+**Structures de parenté (préfixe `struct_`, 4)** :
+| struct_bilateral.png | deux mains qui se serrent |
+| struct_lignager.png | arbre généalogique à trois étages |
+| struct_clanique.png | cercle de tentes autour d'un feu |
+| struct_tribal.png | anneau fermé de silhouettes |
+
+**Axes de traditions (préfixe `axe_`, 3)** — les 3 axes du créateur :
+| axe_physique.png | bras bandé |
+| axe_social.png | deux visages en dialogue |
+| axe_intellect.png | lampe à huile allumée |
+
+## Lot 9 — CHROME UI : fonds de barres et de panneau (⚠ SANS AUCUN BOUTON)
+
+RÈGLE ABSOLUE : ces images sont des FONDS NUS. AUCUN bouton, AUCUNE icône,
+AUCUN texte, AUCUNE cellule dessinée dedans — les contrôles sont posés par le
+code par-dessus. Un fond avec des boutons peints est INUTILISABLE.
+
+| fichier | dimensions | sujet |
+|---|---|---|
+| chrome_topbar_bg.png | 2048×96 (affiché 48 px de haut, pleine largeur) | bandeau de parchemin foncé, grain léger, LISERÉ d'encre au bord inférieur seulement ; TUILABLE horizontalement (les 32 px des deux bouts = bordure 9-slice, le centre se répète sans couture) |
+| chrome_sidebar_bg.png | 128×1024 (affiché 64 px de large, pleine hauteur) | même famille, liseré d'encre au bord DROIT seulement ; tuilable verticalement (32 px haut/bas = bordure) |
+| chrome_panel_armee_bg.png | 1024×1280 (affiché ~512×640) | plaque de panneau parchemin : cadre gravé aux coins ornés (volutes discrètes), fond uni granuleux au centre — le panneau Armée posera colonnes et formations dessus |
+
+## Lot 10 — ÉDIFICES : 26 icônes (128×128, préfixe `edi_`)
+
+La liste des bâtiments (l'enum moteur, ordre indifférent — le NOM de fichier
+fait foi). Chaque édifice = une SILHOUETTE architecturale distincte :
+edi_tribunal (balance sur fronton) · edi_chancellerie (plume + sceau sur
+pupitre) · edi_academie (fronton à colonnes) · edi_garnison (tour crénelée) ·
+edi_forteresse (donjon à double enceinte) · edi_citadelle (muraille en étoile) ·
+edi_port (ancre sur quai) · edi_caravanserail (arche + dromadaire) · edi_marche
+(étal à auvent) · edi_entrepot (caisses empilées) · edi_grenier (silo sur
+pilotis) · edi_irrigation (vanne + canal) · edi_aqueduc (double rangée
+d'arches) · edi_sanctuaire (pierre levée fleurie) · edi_temple (fronton à
+flamme votive) · edi_cathedrale (flèche à rosace) · edi_bibliotheque (rayonnage
+de rouleaux) · edi_monastere (cloître à puits) · edi_comptoir (comptoir +
+balance) · edi_banque (coffre cerclé) · edi_arsenal (râtelier d'armes) ·
+edi_amiraute (proue + compas) · edi_port_marchand (grue de quai en bois) ·
+edi_biblio_mil (livre + épée croisés) · edi_observatoire (lunette vers les
+étoiles) · edi_trade_center (grande halle aux bannières).
+
 ## Livraison
 
-Une archive (ou un dossier) avec les 7 lots, PNG alpha aux noms EXACTS
+Une archive (ou un dossier) avec les 10 lots, PNG alpha aux noms EXACTS
 ci-dessus. Toute icône que tu ne peux pas produire : NE PAS improviser un
 autre style — livre la liste des manquantes à part.
