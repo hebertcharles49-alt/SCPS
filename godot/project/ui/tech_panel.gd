@@ -37,8 +37,13 @@ const METAH := 92.0         # bande de MÉTABOLISATION (le +% recherche + accès
 # LARGEUR (nombre de sous-colonnes par tier) grandit avec le contenu.
 const LANE_LABEL_W := 66.0  # colonne de gauche FIGÉE (ne défile pas avec le scroll latéral)
 const TIER_LABEL_H := 18.0  # bandeau "T0..T5" en tête de la zone scrollable
-const CARD_GUTTER  := 6.0
-const CARD_W       := 158.0
+const CARD_GUTTER  := 8.0
+# ENCARTS (2026-08-26, lot13_techs) : la carte source est 512×256 (2:1 EXACT) — on la
+# montre à taille FIXE (ni étirée ni écrasée, "nette" comme demandé) et on choisit le
+# nombre de rangées empilées par sous-colonne à PARTIR de cette taille (inverse de
+# l'ancien calcul qui étirait card_h pour remplir le couloir).
+const CARD_W       := 192.0
+const CARD_H       := 96.0
 
 # couleurs d'état (sans bibliothèque d'animation Medusa : on teinte la carte)
 const COL_LOCKED   := Color(0.40, 0.40, 0.46)
@@ -49,18 +54,30 @@ const COL_FAUST    := Color(0.88, 0.24, 0.24)
 const LANE_NAMES := ["Savoir", "Forge", "Société"]           # ordre THM_* (scps_tech.h)
 const LANE_INK := [Color(0.35, 0.45, 0.62, 0.85), Color(0.66, 0.34, 0.22, 0.85), Color(0.45, 0.55, 0.30, 0.85)]
 
-## ── CARTE compacte (titre + icônes d'effet), nested class : hit-test = tout le rect
-## (Control par défaut), pas de flavor, tout le détail chiffré vit dans tooltip_text.
+## ── ENCART Civ 6 (2026-08-26) : la carte illustrée lot13_techs EST le corps du
+## nœud (plus de médaillon + titre nu) ; bandeau bas discret (nom + état) plaqué
+## par-dessus. Hit-test = tout le rect (Control par défaut), pas de flavor, tout
+## le détail chiffré reste au SURVOL (tooltip_text, posé par _make_card, inchangé).
+## Chargement PARESSEUX par visibilité (cf. _ensure_tex) : 74 cartes 512×256 ≈
+## 37 Mo — seuls les encarts dans/près de la fenêtre du scroll tirent leur PNG.
 class TechCard extends Control:
 	const CVKit  = preload("res://ui/vkit.gd")
 	const CUIKit = preload("res://ui/uikit.gd")
+	const CParch = preload("res://ui/parch_theme.gd")
 	signal activated(idx: int)
 	var idx := -1
 	var title := ""
-	var state_col := Color(0.40, 0.40, 0.46)
-	var locked := false
+	var state_num := 0        # 0 verrouillé · 1 recherchable · 2 acquis (miroir readout)
+	var faustian := false
 	var icons: Array = []
-	var badge: Texture2D = null
+	var host_scroll: ScrollContainer = null   # fenêtre visible pour le chargement paresseux
+	var card_tex: Texture2D = null
+	var tex_checked := false  # a-t-on déjà tenté le chargement (réussi ou raté) ?
+
+	const COL_LOCKED   := Color(0.40, 0.40, 0.46)
+	const COL_AVAIL    := Color(0.85, 0.60, 0.28)
+	const COL_UNLOCKED := Color(0.40, 0.80, 0.46)
+	const COL_FAUST    := Color(0.88, 0.24, 0.24)
 
 	func _ready() -> void:
 		mouse_filter = Control.MOUSE_FILTER_STOP
@@ -70,26 +87,88 @@ class TechCard extends Control:
 			accept_event()
 			activated.emit(idx)
 
+	## n'ESSAIE qu'une fois : dès que le rect global de la carte touche (± une
+	## largeur de carte, anticipe le scroll) le rect visible du ScrollContainer,
+	## on tire le PNG (cache UIKit) et on ne retente plus jamais pour cette carte.
+	func _ensure_tex() -> void:
+		if tex_checked:
+			return
+		if host_scroll != null and is_instance_valid(host_scroll):
+			var vis: Rect2 = host_scroll.get_global_rect().grow(size.x)
+			if not vis.intersects(get_global_rect()):
+				return   # pas encore visible : un futur _draw() (scroll → queue_redraw) réessaiera
+		tex_checked = true
+		card_tex = CUIKit.tech_card(idx)
+
 	func _draw() -> void:
+		_ensure_tex()
 		var r := Rect2(Vector2.ZERO, size)
-		CVKit.fill(self, r, Color(state_col.r, state_col.g, state_col.b, 0.10 if locked else 0.18))
-		CVKit.box(self, r, state_col)
-		var mod := 0.60 if locked else 0.95
-		var text_x := 6.0
-		var show_badge: bool = badge != null and size.y >= 34.0
-		if show_badge:
-			var bs: float = size.y - 6.0
-			draw_texture_rect(badge, Rect2(3.0, 3.0, bs, bs), false, Color(1, 1, 1, mod))
-			text_x = 3.0 + bs + 5.0
-		var tcol := CVKit.COL_DIM if locked else CVKit.COL_PARCH
-		var wrap_w: float = maxf(size.x - text_x - 4.0, 10.0)
-		var max_lines: int = 2 if size.y >= 46.0 else 1
-		CVKit.text_wrapped(self, Vector2(text_x, 3.0), tcol, title, wrap_w, max_lines, CVKit.FS_SMALL)
-		if icons.size() > 0 and size.y >= 40.0:
-			var ix := text_x
-			var iy: float = size.y - 13.0
+		# ÉTAT sur l'illustration : VERROUILLÉE = modulate sombre (~55%, PAS une autre
+		# texture) ; DISPONIBLE/ACQUISE = pleine (modulate blanc).
+		var mod := Color(0.45, 0.45, 0.45, 1.0) if state_num == 0 else Color(1, 1, 1, 1)
+		if card_tex != null:
+			draw_texture_rect(card_tex, r, false, mod)
+		else:
+			CVKit.fill(self, r, Color(0.30, 0.28, 0.24, 0.35))   # repli : pas encore chargée/absente
+
+		# LISERÉ d'état : gris fin (verrouillé) · or épais (recherchable) · or PULSÉ
+		# (en cours — la cible de research_status()) · vert fin (acquise). Faustien
+		# teinte le liseré vers le rouge, sauf verrouillé (rien à signaler encore).
+		var rs: Dictionary = Sim.world.research_status() if Sim.world != null else {}
+		var researching: bool = state_num == 1 and int(rs.get("target", -1)) == idx
+		var edge := COL_LOCKED
+		var edge_w := 1.0
+		if researching:
+			var t := float(Time.get_ticks_msec() % 1200) / 1200.0
+			edge = COL_AVAIL.lerp(Color(1, 0.95, 0.75), 0.35 + 0.35 * sin(t * TAU))
+			edge_w = 3.0
+		elif state_num == 1:
+			edge = COL_AVAIL
+			edge_w = 2.5
+		elif state_num == 2:
+			edge = COL_UNLOCKED
+			edge_w = 1.5
+		if faustian and state_num != 0:
+			edge = edge.lerp(COL_FAUST, 0.55)
+		draw_rect(r, edge, false, edge_w)
+
+		# BANDEAU BAS discret : nom (STR_* déjà résolu côté moteur, `title`) + pastille
+		# d'état — jamais de flavor ici (motif du dossier pied, inchangé). MÊME langage
+		# chrome que le reste du panneau (HEADER_BG tan + encre sombre) — pas un verre
+		# noir : sur certaines illustrations sombres (encre gravée), un bandeau NOIR sur
+		# encre sombre + texte COL_PARCH (sombre lui aussi) devenait illisible.
+		var band_h: float = clampf(size.y * 0.24, 16.0, 24.0)
+		var band := Rect2(0.0, size.y - band_h, size.x, band_h)
+		var bg := CParch.HEADER_BG
+		CVKit.fill(self, band, Color(bg.r, bg.g, bg.b, 0.55 if state_num == 0 else 0.88))
+		var tcol := CVKit.COL_DIM if state_num == 0 else CVKit.COL_PARCH
+		CVKit.text_wrapped(self, Vector2(6.0, size.y - band_h + 2.0), tcol, title, size.x - 34.0, 1, CVKit.FS_SMALL)
+		var dotc := COL_LOCKED
+		if researching:
+			dotc = edge
+		elif state_num == 2:
+			dotc = COL_UNLOCKED
+		elif state_num == 1:
+			dotc = COL_AVAIL
+		CVKit.fill(self, Rect2(size.x - 20.0, size.y - band_h * 0.5 - 4.0, 8.0, 8.0), dotc)
+
+		# BARRE FINE de progression (EN COURS) — sous le nom, dans le bandeau ; la
+		# donnée existe déjà au panneau (research_status), rien de neuf à sérialiser.
+		if researching:
+			var prog := clampf(float(rs.get("progress", 0.0)), 0.0, 1.0)
+			var bx := 6.0
+			var bw2 := size.x - 34.0
+			var by2 := size.y - 5.0
+			CVKit.fill(self, Rect2(bx, by2, bw2, 3.0), Color(0, 0, 0, 0.5))
+			CVKit.fill(self, Rect2(bx, by2, bw2 * prog, 3.0), COL_AVAIL)
+
+		# icônes d'effet (glyphes compacts, hérités de l'ancienne carte) — coin
+		# haut-gauche, sur puce sombre pour rester lisibles sur l'illustration.
+		if icons.size() > 0:
+			CVKit.fill(self, Rect2(2.0, 2.0, 14.0 * icons.size() + 4.0, 16.0), Color(0, 0, 0, 0.5))
+			var ix := 4.0
 			for nm in icons:
-				CUIKit.draw_icon(self, String(nm), Vector2(ix, iy), 11.0, Color(1, 1, 1, mod))
+				CUIKit.draw_icon(self, String(nm), Vector2(ix, 3.0), 12.0, Color(1, 1, 1, 0.55 if state_num == 0 else 1.0))
 				ix += 14.0
 
 var _cards: Array = []     # idx nœud → TechCard (ou null)
@@ -132,7 +211,16 @@ func _ready() -> void:
 	Sim.ticked.connect(func(_y):
 		_check_metab_ready()          # surveille le franchissement de tier — même panneau FERMÉ
 		_check_research_complete()    # surveille la complétion d'une recherche — même panneau FERMÉ
-		if visible: queue_redraw())
+		if visible:
+			queue_redraw()
+			# la SEULE carte dont l'état interne bouge sans reconstruction complète du
+			# panneau : celle EN COURS (liseré pulsé + barre de progression) — on ne
+			# réarme que celle-là, les autres restent statiques jusqu'au prochain _build.
+			if Sim.world != null and Sim.world.has_method("research_status"):
+				var rt := int(Sim.world.research_status().get("target", -1))
+				if rt >= 0 and rt < _cards.size() and _cards[rt] != null:
+					_cards[rt].queue_redraw()
+	)
 	hide()
 
 ## surveille `merv_metab()` — CE QUI COMPTE POUR LA MERVEILLE (endgame_metab_count),
@@ -215,7 +303,29 @@ func _on_visibility() -> void:
 	if visible and not _built and Sim.world != null:
 		_build()
 	if visible:
+		_requeue_card_draws()   # réarme le chargement paresseux à chaque réouverture
 		_flush_pending_discoveries()
+	else:
+		_release_card_textures()   # perf (mission) : purge les 74 encarts à la FERMETURE
+
+## réarme le _draw() de toutes les cartes — motif partagé par le hook de scroll
+## (drag/molette révèle des cartes hors-écran) et par la réouverture du panneau
+## (textures purgées à la fermeture, cf. _release_card_textures).
+func _requeue_card_draws() -> void:
+	for c in _cards:
+		if c != null:
+			c.queue_redraw()
+
+## PERF (mission) : 74 encarts 512×256 ≈ 37 Mo — on ne les garde en VRAM que
+## panneau OUVERT. `tex_checked=false` fait retenter _ensure_tex() au prochain
+## _draw() (donc au prochain open, via _requeue_card_draws) plutôt que de rester
+## bloqué sur un ancien échec/succès qui n'a plus de texture derrière.
+func _release_card_textures() -> void:
+	for c in _cards:
+		if c != null:
+			c.card_tex = null
+			c.tex_checked = false
+	UIKit.tech_card_release_all()
 
 func _on_generated() -> void:
 	_built = false
@@ -283,12 +393,13 @@ func _build() -> void:
 	var usable_h: float = maxf(lane_area_h - TIER_LABEL_H, 60.0)
 	_lane_h = usable_h / 3.0
 	_lane_y0 = [TIER_LABEL_H, TIER_LABEL_H + _lane_h, TIER_LABEL_H + 2.0 * _lane_h]
-	# rows_per_cell : viser une carte lisible (2..5 rangées empilées AU MAXIMUM par
-	# sous-colonne) — AUCUN scroll vertical : le contenu déborde en LARGEUR, jamais en hauteur.
+	# ENCARTS Civ 6 : taille FIXE 192×96 (2:1, l'aspect exact de la source 512×256 —
+	# on ne l'étire NI ne l'écrase). rows_per_cell = combien en tiennent, PAS l'inverse
+	# (l'ancien calcul stretchait card_h pour remplir le couloir ; les cartes illustrées
+	# doivent rester nettes) — AUCUN scroll vertical : le surplus déborde en LARGEUR.
 	var lane_avail_h: float = _lane_h - 8.0
-	var rows_per_cell: int = clampi(int(round(lane_avail_h / 58.0)), 2, 5)
-	var card_h: float = (lane_avail_h - float(rows_per_cell - 1) * CARD_GUTTER) / float(rows_per_cell)
-	card_h = maxf(card_h, 26.0)
+	var rows_per_cell: int = clampi(int(floor((lane_avail_h + CARD_GUTTER) / (CARD_H + CARD_GUTTER))), 1, 3)
+	var card_h := CARD_H
 	var card_w := CARD_W
 
 	# le SCROLL LATÉRAL SEUL : la colonne des noms de couloir reste FIGÉE à gauche
@@ -300,6 +411,13 @@ func _build() -> void:
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	add_child(_scroll)
+	# CHARGEMENT PARESSEUX par visibilité : le drag/molette latéral ne redessine pas
+	# les cartes de lui-même (Control ne redraw que sur queue_redraw explicite) — on
+	# réarme toutes les cartes à chaque défilement pour qu'elles retestent leur propre
+	# visibilité (_ensure_tex) ; déjà chargées → le test est un simple intersects().
+	var hbar := _scroll.get_h_scroll_bar()
+	if hbar != null:
+		hbar.value_changed.connect(func(_v): _requeue_card_draws())
 	var content := Control.new()
 	_scroll.add_child(content)
 	_bg = Control.new()
@@ -379,20 +497,11 @@ func _make_card(nd: Dictionary, idx: int, pos: Vector2, w: float, h: float) -> T
 	card.idx = idx
 	card.position = pos
 	card.size = Vector2(w, h)
-	var st := int(nd["state"])
-	var col := COL_LOCKED
-	if st == 1:
-		col = COL_AVAIL
-	elif st == 2:
-		col = COL_UNLOCKED
-	if bool(nd.get("faustian", false)):
-		col = col.lerp(COL_FAUST, 0.6)
-	card.state_col = col
-	card.locked = (st == 0)
+	card.state_num = int(nd["state"])
+	card.faustian = bool(nd.get("faustian", false))
 	card.title = String(nd["name"])
 	card.icons = _effect_icons(nd)
-	card.badge = UIKit.tech_medallion(String(nd["name"]), bool(nd.get("faustian", false)),
-		int(nd["tier"]), int(nd["quarter"]))
+	card.host_scroll = _scroll   # fenêtre visible pour le chargement paresseux de l'encart
 	card.tooltip_text = _tooltip_for(nd)
 	card.activated.connect(_on_card_activated)
 	return card

@@ -361,11 +361,18 @@ func _on_change() -> void:
 
 func _draw() -> void:
 	var ww := size.x
-	# ledger EU4 sur plaque RimWorld : graphite, arête froide, un seul liseré couronnes.
-	VKit.fill(self, Rect2(0, 0, ww, H), VKit.COL_PANEL)
+	# CHROME 2026-08-26 : fond livré (chrome_topbar_bg, 9-slice horizontal cap 32 px) —
+	# remplace l'aplat VKit.COL_PANEL + le double liseré du bas (le fond porte déjà SON
+	# liseré d'encre au bord inférieur — l'ANCIEN liseré dessiné est retiré, collision).
+	# Repli sur l'ancien aplat si l'asset manque encore (.import pas généré, etc).
+	var chrome_bg := UIKit.chrome_topbar_bg()
+	if chrome_bg != null:
+		UIKit.draw_9slice_h(self, chrome_bg, Rect2(0, 0, ww, H), 32.0)
+	else:
+		VKit.fill(self, Rect2(0, 0, ww, H), VKit.COL_PANEL)
+		VKit.fill(self, Rect2(0, H - 3, ww, 2), Color(0.02, 0.025, 0.025, 0.9))
+		VKit.fill(self, Rect2(0, H - 1, ww, 1), VKit.COL_GOLD)
 	VKit.fill(self, Rect2(0, 0, ww, 1), Color(1.0, 1.0, 1.0, 0.07))
-	VKit.fill(self, Rect2(0, H - 3, ww, 2), Color(0.02, 0.025, 0.025, 0.9))
-	VKit.fill(self, Rect2(0, H - 1, ww, 1), VKit.COL_GOLD)
 	var cy := (H - 18.0) * 0.5     # centrage vertical du contenu
 
 	if Sim.world == null:

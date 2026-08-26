@@ -33,6 +33,10 @@ var _slot_mode := false
 var _target_slot := 0
 
 const AXES := ["Physique", "Social", "Intellectuel"]
+const UIKit = preload("res://ui/uikit.gd")
+## icônes lot8_foi (campagne 2, 2026-08-26) : axe (index AXES) → nom de fichier
+## (« axe_intellect », PAS « axe_intellectuel » — la troncature vient du lot livré).
+const AXE_ICON := ["axe_physique", "axe_social", "axe_intellect"]
 
 ## TRADUCTION LOCALE des noms de leviers renvoyés par la façade (scps_api.c
 ## scps_culture_preview / NM[]) — retour joueur (fuite de membrane repérée en jeu :
@@ -385,7 +389,7 @@ func _hint_label() -> Label:
 ## une carte de choix (Héritage/Éthos) : bouton bascule, deux lignes (nom + un
 ## descripteur court), même motif de sélection EXCLUSIVE que les cartes de
 ## Traditions plus bas (toggle_mode + set_pressed_no_signal en groupe).
-func _make_choice_card(title: String, subtitle: String) -> Button:
+func _make_choice_card(title: String, subtitle: String, icon: Texture2D = null) -> Button:
 	var card := Button.new()
 	card.toggle_mode = true
 	card.focus_mode = Control.FOCUS_NONE
@@ -393,6 +397,11 @@ func _make_choice_card(title: String, subtitle: String) -> Button:
 	card.clip_text = false
 	card.text = "%s\n%s" % [title, subtitle]
 	card.add_theme_font_size_override("font_size", 13)
+	if icon != null:
+		card.icon = icon
+		card.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		card.expand_icon = false
+		card.add_theme_constant_override("icon_max_width", 28)   # cohérent avec le panneau (24-32 px)
 	return card
 
 ## reflète l'id sélectionné sur l'état pressé des cartes d'un groupe (sans re-signal).
@@ -422,7 +431,8 @@ func _load_data() -> void:
 	_her_cards = []
 	for h in _her:
 		var hid := int(h["id"])
-		var hcard := _make_choice_card(String(h["nom"]), String(h["exemple"]))
+		var hicon := UIKit.icon2("her_" + UIKit.resource_key(String(h["nom"])))
+		var hcard := _make_choice_card(String(h["nom"]), String(h["exemple"]), hicon)
 		# survol = comparaison rapide sans cliquer (la LORE complète reste dans
 		# _her_info pour la carte SÉLECTIONNÉE)
 		hcard.tooltip_text = String(HER_LORE[hid]) if hid >= 0 and hid < HER_LORE.size() else ""
@@ -440,7 +450,8 @@ func _load_data() -> void:
 	_eth_cards = []
 	for e in _eth:
 		var eid := int(e["id"])
-		var ecard := _make_choice_card(String(e["nom"]), String(e["epithete"]))
+		var eicon := UIKit.icon2("ethos_" + UIKit.resource_key(String(e["nom"])))
+		var ecard := _make_choice_card(String(e["nom"]), String(e["epithete"]), eicon)
 		ecard.tooltip_text = String(ETHOS_LORE[eid]) if eid >= 0 and eid < ETHOS_LORE.size() else ""
 		var eidc := eid
 		ecard.pressed.connect(func():
@@ -478,6 +489,12 @@ func _load_data() -> void:
 			b.toggle_mode = true
 			b.text = String(t["nom"])
 			b.tooltip_text = String(t["hover"])
+			# icône d'AXE (campagne 2) : les 3 sections mélangent Physique/Social/
+			# Intellectuel — l'icône donne l'axe d'un coup d'œil, à CÔTÉ du libellé.
+			b.icon = UIKit.icon2(AXE_ICON[ax])
+			b.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+			b.expand_icon = false
+			b.add_theme_constant_override("icon_max_width", 18)
 			var axc := ax
 			var idc := id
 			b.pressed.connect(func(): _on_trait_pick(axc, idc))

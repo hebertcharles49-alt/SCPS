@@ -20,6 +20,10 @@ const TAB_ICON := ["menu_economy", "menu_demography", "menu_stocks", "menu_marke
 const TAB_NAME := ["Économie", "Démographie", "Stocks", "Marché",
 	"Armée", "Filtres", "Diplomatie", "Conseil"]
 
+## icônes de CLASSE (lot11_systeme, campagne 2) — même ordre que country_demo()["classes"]
+## (scps_sim_node.cpp NAMES[] : Journaliers/Bourgeois/Nobles).
+const CLASS_ROW_ICON := ["cls_journalier", "cls_bourgeois", "cls_elite"]
+
 # Filtres : modes render_map offerts (culture/foi exigent des teintes → omis).
 # [label, ViewMode]. Groupés comme viewer.c.
 const FILT_GROUPS := [
@@ -163,7 +167,13 @@ func _draw_demo(x: float, y: float, me: int) -> float:
 	for cl in d["classes"]:
 		VKit.list_row_bg(self, Rect2(x - 4, y - 2, DW - 2.0 * x + 8, 19), row_i)
 		var pct: int = 0 if total == 0 else int(round(100.0 * int(cl["pop"]) / total))
-		UIKit.draw_icon(self, "population_group", Vector2(x, y), 16)   # UI-DOCTRINE D7 : 14→16
+		# icône de CLASSE (lot11_systeme, campagne 2) — country_demo() renvoie TOUJOURS
+		# les 3 classes dans l'ordre Journaliers/Bourgeois/Nobles (scps_sim_node.cpp NAMES[]),
+		# row_i suit donc CLASS_ROW_ICON sans avoir à lire cl["nom"].
+		if row_i < CLASS_ROW_ICON.size() and UIKit.icon2(CLASS_ROW_ICON[row_i]) != null:
+			UIKit.draw_icon2(self, CLASS_ROW_ICON[row_i], Vector2(x, y), 18)
+		else:
+			UIKit.draw_icon(self, "population_group", Vector2(x, y), 16)   # UI-DOCTRINE D7 : 14→16
 		VKit.text(self, Vector2(x + 20, y), VKit.COL_PARCH, String(cl["nom"]), VKit.FS_SMALL)
 		VKit.text(self, Vector2(x + 110, y), VKit.COL_PARCH, "%s (%d%%)" % [_grp(cl["pop"]), pct], VKit.FS_SMALL)
 		UIKit.bar(self, Rect2(x + 200, y, 84, 12), int(cl["satisfaction"]))
@@ -1151,7 +1161,8 @@ var _servile_manumit_armed := false   # 1er clic arme la confirmation, 2e clic l
 
 func _draw_servile(x: float, y: float, me: int) -> float:
 	_servile_btns.clear()
-	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Peuple servile", VKit.FS_BIG)
+	UIKit.draw_icon2(self, "cls_servile", Vector2(x, y - 2), 18)
+	VKit.text(self, Vector2(x + 22, y), VKit.COL_GOLD, "Peuple servile", VKit.FS_BIG)
 	y += 20
 	if not Sim.world.has_method("manumit_preview"):
 		return y

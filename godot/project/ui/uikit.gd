@@ -26,17 +26,52 @@ const ICON2_LOT := {
 	"rail": "lot2_rail",       # rail_economie / _demographie / _stocks / _marche / _armee /
 	                            # _filtres / _diplomatie / _conseil
 	"mode": "lot3_modes",      # mode_defaut / _politique / _nature / _marche
-	"res":  "lot4_ressources", # res_<nom_anglais> (~53 biens)
+	"res":  "lot4_ressources", # res_<nom_anglais> (~53 biens) — EXCEPTION res_ouvrages/
+	                            # res_talismans, cf. ICON2_EXCEPT (livrés dans lot11_systeme)
 	"unit": "lot5_troupes",    # unit_<arme>
 	"pt":   "lot6_portraits",  # pt_base_/_coiffe_/_hab_*/_cadre_medaillon
+	# campagne 2 (2026-08-26) : foi/éthos/héritage-créateur-de-culture, un seul lot
+	"foi":    "lot8_foi",      # foi_pluraliste/_proselyte/_loyaliste/_animiste/_scripturaire/_roue/_celeste
+	"ethos":  "lot8_foi",      # ethos_bureaucrate/_dominateur/_honneur/_mercantile/_ordre/_pacifiste
+	"her":    "lot8_foi",      # her_adaptatif/_agraire/_clanique/_esoterique/_mecaniste/_metallurgiste —
+	                            # EXCEPTION : her_charge_* N'EST PAS ici (assets/scps/ui/heraldry/, cf. plus bas)
+	"life":   "lot8_foi",      # life_farmer/_horticulture/_hunter/_intensive/_miner/_pastoral/_seafarer
+	"struct": "lot8_foi",      # struct_bilateral/_clanique/_lignager/_tribal
+	"axe":    "lot8_foi",      # axe_intellect/_physique/_social
+	"edi":    "lot10_edifices",# edi_<nom> (26 édifices, cf. BLD_FILE)
+	"cls":    "lot11_systeme", # cls_bourgeois/_elite/_journalier/_servile
+	"jrn":    "lot11_systeme", # jrn_<genre d'événement> (journal)
+	"dip":    "lot11_systeme", # dip_<action diplomatique>
+	"pha":    "lot11_systeme", # pha_<phase d'armée>
+	"age":    "lot11_systeme", # age_<nom d'âge>
+	"act":    "lot11_systeme", # act_construire/_recruter/_rechercher/_decret
+	"tech":   "lot13_techs",   # tech_<nom> (~74 encarts)
+}
+## EXCEPTIONS au routage par préfixe : le préfixe seul (get_slice) ne suffit pas quand
+## deux noms partagent un préfixe mais vivent dans des lots DIFFÉRENTS. Consultée AVANT
+## ICON2_LOT. res_ouvrages/res_talismans partagent le préfixe "res" avec lot4_ressources
+## (~53 biens) mais sont livrés dans lot11_systeme (campagne 2) — sans cette table ils
+## chercheraient (et rateraient) lot4_ressources/res_ouvrages.png.
+const ICON2_EXCEPT := {
+	"res_ouvrages":  "lot11_systeme",
+	"res_talismans": "lot11_systeme",
 }
 static var _icon2_cache := {}
 static func icon2(name: String) -> Texture2D:
 	if _icon2_cache.has(name):
 		return _icon2_cache[name]
-	var prefix := name.get_slice("_", 0)
-	var lot: String = ICON2_LOT.get(prefix, "")
 	var tex: Texture2D = null
+	# her_charge_* : CHARGES héraldiques, préfixe "her" mais PAS un icon2 — elles vivent
+	# dans assets/scps/ui/heraldry/ et sont chargées par heraldry.gd directement (jamais
+	# via ce registre). Court-circuit explicite (sinon même préfixe que her_esoterique
+	# etc. les enverrait chercher, en vain, dans lot8_foi/).
+	if name.begins_with("her_charge_"):
+		_icon2_cache[name] = null
+		return null
+	var lot: String = ICON2_EXCEPT.get(name, "")
+	if lot == "":
+		var prefix := name.get_slice("_", 0)
+		lot = ICON2_LOT.get(prefix, "")
 	if lot != "":
 		tex = _tex(ICONS2 + lot + "/" + name + ".png")
 	_icon2_cache[name] = tex
@@ -45,18 +80,18 @@ static func icon2(name: String) -> Texture2D:
 ## LE RESKIN PARCHEMIN passe par ICI : nom d'icône historique → pièce des nouvelles
 ## planches. Le remap est consulté en PREMIER par icon() — aucun panneau à retoucher ;
 ## pièce absente → l'ancienne icône (le jeu tourne à moitié reskiné sans casse).
+## PURGE 2026-08-26 (inventaire sheet11 complet, act_* + suite de la purge 2026-08-19) :
+## gold_coin/population_group/grain_bundle (01/02/03 — déjà aliasées ICON2 depuis le
+## 08-19) et action_build/build_hammer/action_recruit/action_research/action_decree
+## (05/06/07/10 — aliasées CETTE session, cf. ICON2_ALIAS) sont désormais INATTEIGNABLES
+## ici (icon() consulte ICON2_ALIAS avant PARCH_ICON) : entrées mortes RETIRÉES, fichiers
+## sheet11_system_icons_01/02/03/05/06/07/10.png SUPPRIMÉS du disque (aucun autre
+## consommateur — grep vérifié). Restent VIVANTES (encore lues nulle part ailleurs
+## qu'ici, cf. TROUVAILLES 2026-08-26 Restes) : 04/08/09/11-16.
 const PARCH_ICON := {
-	"gold_coin":          "sheet11_system_icons_01",
-	"population_group":   "sheet11_system_icons_02",
-	"grain_bundle":       "sheet11_system_icons_03",
 	"knowledge_book":     "sheet11_system_icons_04",
-	"action_build":       "sheet11_system_icons_05",
-	"build_hammer":       "sheet11_system_icons_05",
-	"action_recruit":     "sheet11_system_icons_06",
-	"action_research":    "sheet11_system_icons_07",
 	"action_trade":       "sheet11_system_icons_08",
 	"action_treaty":      "sheet11_system_icons_09",
-	"action_decree":      "sheet11_system_icons_10",
 	"dipl_rivalry":       "sheet11_system_icons_11",
 	"alert_revolt":       "sheet11_system_icons_12",
 	"alert_famine":       "sheet11_system_icons_13",
@@ -66,8 +101,11 @@ const PARCH_ICON := {
 	"alert_warning":      "sheet11_system_icons_15",
 	"politics_crown":     "sheet11_system_icons_16",
 	# série 2 — TOPBAR fine (planche 24 : médaillons sobres pensés pour 16 px)
-	"tool_speed":         "sheet24_topbar_boats_menu_05",
-	"tool_pause":         "sheet24_topbar_boats_menu_06",
+	# (tool_speed/tool_pause — RETIRÉES 2026-08-26 : AUCUN appelant, dans aucune version
+	# du registre — ni icon()/draw_icon(), ni le chargement direct de concepts.gd. Le
+	# vieux icons/tool_speed.png + tool_pause.png sont supprimés avec ces entrées ;
+	# sheet24_topbar_boats_menu_05/06.png restent sur le disque, orphelines aussi
+	# (planche 24 hors périmètre de cette passe) — cf. TROUVAILLES 2026-08-26 Restes.)
 	"settlement_cluster": "sheet24_topbar_boats_menu_08",
 	"fine_date":          "sheet24_topbar_boats_menu_01",
 	"fine_coin":          "sheet24_topbar_boats_menu_02",
@@ -112,18 +150,9 @@ static func faction_blason(nom: String, angry: bool) -> Texture2D:
 # portraits v2 complets, cf. minister_portrait ; la planche est supprimée.)
 
 # (PARCH_UNIT — planches 09/10 — RETIRÉ 2026-08-19, cf. unit_sprite ci-dessous)
-## ÉDIFICES (planches 6-7) : aligné sur BLD_FILE (l'ordre EDI_* du moteur)
-const PARCH_BLD := [
-	"sheet06_buildings_state_01", "sheet06_buildings_state_02", "sheet06_buildings_state_03",
-	"sheet06_buildings_state_04", "sheet06_buildings_state_05", "sheet06_buildings_state_06",
-	"sheet06_buildings_state_07", "sheet06_buildings_state_08", "sheet06_buildings_state_09",
-	"sheet06_buildings_state_10", "sheet06_buildings_state_11", "sheet06_buildings_state_12",
-	"sheet06_buildings_state_13", "sheet06_buildings_state_14", "sheet06_buildings_state_15",
-	"sheet06_buildings_state_16", "sheet07_buildings_works_01", "sheet07_buildings_works_02",
-	"sheet07_buildings_works_03", "sheet07_buildings_works_04", "sheet07_buildings_works_05",
-	"sheet07_buildings_works_06", "sheet07_buildings_works_07", "sheet07_buildings_works_08",
-	"sheet07_buildings_works_09", "sheet07_buildings_works_10",
-]
+# (PARCH_BLD — planches 6-7 — RETIRÉ 2026-08-26 : remplacées par les 26 gravures
+# dédiées lot10_edifices, cf. edifice_icon() ci-dessous ; les planches sheet06/07
+# devenues orphelines sont SUPPRIMÉES du disque, cf. TROUVAILLES 2026-08-26.)
 
 ## MANUFACTURES (planche 8) : nom d'affichage moteur → vignette gravée (partiel —
 ## les types sans pièce retombent sur le marteau générique de l'appelant).
@@ -590,16 +619,20 @@ static func _tile(dir: String, key: String) -> Texture2D:
 static func unit_sprite(unit_type: int) -> Texture2D:
 	return unit_icon(unit_type)
 
-## tuile d'ÉDIFICE par Edifice (0-25) ; parchemin (planches 6-7) d'abord, sinon
-## l'ancienne tuile ; null si tout manque.
-static func building_sprite(edi_type: int) -> Texture2D:
+## GRAVURE d'ÉDIFICE (lot10_edifices, campagne 2, 2026-08-26) par Edifice (0-25) :
+## BLD_FILE[edi_type] est déjà « EDI_<NOM> » (ordre scps_agency.h) — le fichier livré
+## est le MÊME nom en minuscules (« EDI_TRADE_CENTER » → « edi_trade_center »), aucune
+## table de correspondance à tenir à jour. null si l'indice est hors bornes.
+static func edifice_icon(edi_type: int) -> Texture2D:
 	if edi_type < 0 or edi_type >= BLD_FILE.size():
 		return null
-	if edi_type < PARCH_BLD.size():
-		var t := _tex(PARCH + PARCH_BLD[edi_type] + ".png")
-		if t != null:
-			return t
-	return _tile(BUILDINGS_DIR, BLD_FILE[edi_type])
+	return icon2("edi_" + String(BLD_FILE[edi_type]).substr(4).to_lower())
+
+## tuile d'ÉDIFICE (PURGE 2026-08-26) : les planches parchemin sheet06/07 sont
+## supprimées — tout passe par les gravures lot10 (edifice_icon). Gardé comme alias
+## de compatibilité (motif unit_sprite→unit_icon).
+static func building_sprite(edi_type: int) -> Texture2D:
+	return edifice_icon(edi_type)
 
 # ── ASSETS MONDE à ALPHA (cités par bande de pop · dressing nature) — RGBA DIRECT
 #    (vrai alpha, AUCUN keying) : on réutilise `_tex` (chargement simple + cache). ──
@@ -844,6 +877,9 @@ const RES2_FILE := {
 	"heaumes_de_guerre":"res_heaumes", "parures_de_gloire":"res_parures",
 	"horloges_reglees":"res_horloges", "registres_scelles":"res_registres",
 	"colifichets_exotiques":"res_colifichets",
+	"ouvrages_dagrement":"res_ouvrages",
+	# res_talismans (lot11_systeme) reste INUTILISÉ : aucune ressource moteur nommée
+	# « talismans » (cf. TROUVAILLES 2026-08-26, Restes).
 }
 static func resource_icon(res_name: String) -> Texture2D:
 	var f2: String = RES2_FILE.get(resource_key(res_name), "")
@@ -887,6 +923,11 @@ const ICON2_ALIAS := {
 	"menu_stocks":"rail_stocks", "menu_market":"rail_marche",
 	"menu_army":"rail_armee", "menu_filters":"rail_filtres",
 	"menu_diplomacy":"rail_diplomatie", "menu_council":"rail_conseil",
+	# PURGE act_* (campagne 2, 2026-08-26) : les 4 verbes système + leur alias marteau —
+	# priment désormais sur sheet11_system_icons_05/06/07/10 (PARCH_ICON, consultée APRÈS).
+	"action_build":"act_construire", "build_hammer":"act_construire",
+	"action_recruit":"act_recruter", "action_research":"act_rechercher",
+	"action_decree":"act_decret",
 }
 static func icon(name: String) -> Texture2D:
 	var al: String = ICON2_ALIAS.get(name, "")
@@ -898,6 +939,15 @@ static func icon(name: String) -> Texture2D:
 		var t := _tex(PARCH + PARCH_ICON[name] + ".png")
 		if t != null:
 			return t
+	# REPLI ICON2 (campagne 2, 2026-08-26) : un consommateur qui passe déjà un nom
+	# ICON2 natif (jrn_/dip_/pha_/age_/act_/cls_/edi_/foi_…) — p. ex. les dictionnaires
+	# de données d'alerts.gd (icon() est appelé côté DESSIN par empire_sidebar.gd, qui
+	# ignore d'où vient le nom) — le trouve ICI plutôt qu'un carré vide dans l'ancien
+	# dossier icons/. Coûte un essai `has()` de plus SEULEMENT quand tout le reste a
+	# raté (déjà mis en cache par _tex des deux côtés).
+	var t2b := icon2(name)
+	if t2b != null:
+		return t2b
 	return _tex(ICONS + name + ".png")
 
 static func chrome(name: String) -> Texture2D:
@@ -932,6 +982,14 @@ static func _tex_lift(path: String, f: float) -> Texture2D:
 ## dessine une icône (carrée) à `pos`, côté `sizepx`. No-op si absente.
 static func draw_icon(ci: CanvasItem, name: String, pos: Vector2, sizepx: float, mod: Color = Color.WHITE) -> void:
 	var t := icon(name)
+	if t != null:
+		ci.draw_texture_rect(t, Rect2(pos, Vector2(sizepx, sizepx)), false, mod)
+
+## même geste, pour un nom du registre ICON2 (campagne 2 : foi_/ethos_/her_/edi_/cls_/
+## jrn_/dip_/pha_/age_/act_/tech_…) — les panneaux dessinés en CANVAS (_draw(), pas des
+## Control-enfants) passent par ici plutôt que par un load() en dur. No-op si absente.
+static func draw_icon2(ci: CanvasItem, name: String, pos: Vector2, sizepx: float, mod: Color = Color.WHITE) -> void:
+	var t := icon2(name)
 	if t != null:
 		ci.draw_texture_rect(t, Rect2(pos, Vector2(sizepx, sizepx)), false, mod)
 
@@ -1056,3 +1114,130 @@ static func minister_portrait(tier: int, portrait_id: int) -> Texture2D:
 	if not _pt2_cache.has(key):
 		_pt2_cache[key] = load(_PT2_DIR + "pt_" + key + ".png")
 	return _pt2_cache[key]
+
+# ── CHROME (2026-08-26) — habillage des barres/panneaux + écran-titre + curseurs.
+# Registre UNIQUE : un consommateur (topbar/rail/barre droite/panneau armée/menu_root/
+# main) appelle ces accesseurs, JAMAIS un load()/preload() en dur sur ces chemins.
+const TITLE_DIR  := "res://assets/scps/title/"
+const CURSOR_DIR := "res://assets/scps/ui/cursors/"
+
+static func chrome_topbar_bg() -> Texture2D:
+	return _tex(CHROME + "chrome_topbar_bg.png")
+static func chrome_sidebar_bg() -> Texture2D:
+	return _tex(CHROME + "chrome_sidebar_bg.png")
+static func chrome_rightbar_bg() -> Texture2D:
+	return _tex(CHROME + "chrome_rightbar_bg.png")
+static func chrome_panel_armee_bg() -> Texture2D:
+	return _tex(CHROME + "chrome_panel_armee_bg.png")
+static func title_screen() -> Texture2D:
+	return _tex(TITLE_DIR + "title_screen.png")
+
+## curseur par NOM nu (« fleche »/« cible »/« loupe ») — fichier cursor_<name>.png.
+static func cursor_tex(name: String) -> Texture2D:
+	return _tex(CURSOR_DIR + "cursor_" + name + ".png")
+
+## 9-SLICE HORIZONTAL (bords gauche/droit fixes, centre ÉTIRÉ) pour un fond dessiné en
+## `_draw()` (topbar : PAS un StyleBoxTexture — la barre reste un Control à _draw()
+## unique, cellules/texte par-dessus). `cap` est en PIXELS DE DESTINATION (écran) ; la
+## région source correspondante est mise à l'échelle par le ratio hauteur texture/rect
+## (les chromes livrés sont des planches 2× — un cap dest de 32 px prend donc 64 px de
+## texture source sur un rendu 2×). No-op si `tex` est null (l'appelant garde son repli).
+static func draw_9slice_h(ci: CanvasItem, tex: Texture2D, rect: Rect2, cap: float) -> void:
+	if tex == null:
+		return
+	var tw := tex.get_size().x
+	var th := tex.get_size().y
+	if rect.size.x <= cap * 2.0 or rect.size.y <= 0.0:
+		ci.draw_texture_rect_region(tex, rect, Rect2(0, 0, tw, th))
+		return
+	var scale := th / rect.size.y
+	var cap_src := cap * scale
+	ci.draw_texture_rect_region(tex, Rect2(rect.position, Vector2(cap, rect.size.y)),
+		Rect2(0, 0, cap_src, th))
+	ci.draw_texture_rect_region(tex, Rect2(rect.position + Vector2(cap, 0),
+		Vector2(rect.size.x - cap * 2.0, rect.size.y)),
+		Rect2(cap_src, 0, tw - cap_src * 2.0, th))
+	ci.draw_texture_rect_region(tex, Rect2(rect.position + Vector2(rect.size.x - cap, 0),
+		Vector2(cap, rect.size.y)), Rect2(tw - cap_src, 0, cap_src, th))
+
+## 9-SLICE VERTICAL (bords haut/bas fixes, centre ÉTIRÉ) pour un fond dessiné en
+## `_draw()` (bande droite `empire_sidebar.gd`) — même motif que `draw_9slice_h`,
+## axe échangé. `cap` en pixels de destination, source mise à l'échelle par le ratio
+## largeur texture/rect.
+static func draw_9slice_v(ci: CanvasItem, tex: Texture2D, rect: Rect2, cap: float) -> void:
+	if tex == null:
+		return
+	var tw := tex.get_size().x
+	var th := tex.get_size().y
+	if rect.size.y <= cap * 2.0 or rect.size.x <= 0.0:
+		ci.draw_texture_rect_region(tex, rect, Rect2(0, 0, tw, th))
+		return
+	var scale := tw / rect.size.x
+	var cap_src := cap * scale
+	ci.draw_texture_rect_region(tex, Rect2(rect.position, Vector2(rect.size.x, cap)),
+		Rect2(0, 0, tw, cap_src))
+	ci.draw_texture_rect_region(tex, Rect2(rect.position + Vector2(0, cap),
+		Vector2(rect.size.x, rect.size.y - cap * 2.0)),
+		Rect2(0, cap_src, tw, th - cap_src * 2.0))
+	ci.draw_texture_rect_region(tex, Rect2(rect.position + Vector2(0, rect.size.y - cap),
+		Vector2(rect.size.x, cap)), Rect2(0, th - cap_src, tw, cap_src))
+
+# ── ENCARTS DE TECHNOLOGIE (lot13, 2026-08-26) — 74 cartes illustrées 512×256
+# (cadre gravé intégré, apex à cadre doré), UNE par TechId. Consommé par
+# tech_panel.gd (panneau « Méduse » façon Civ 6) : `tech_card(id)` → la
+# texture PLEINE de la carte (le nœud n'affiche plus un médaillon, l'illustration
+# EST le corps de l'encart ; état visuel = modulate/liseré côté panneau, PAS une
+# texture différente). Cache DÉDIÉ (pas `_tex`/`_cache` partagé — celui-là ne se
+# vide jamais et ces 74 PNG pèsent ~37 Mo en VRAM ; `tech_card_release_all()`
+# permet au panneau de purger à la fermeture, cf. TROUVAILLES).
+const TECH_CARD_DIR := "res://assets/scps/ui/icons2/lot13_techs/"
+
+## indexé par TechId (0..73), ORDRE EXACT de l'enum scps_tech.h (source de
+## vérité — l'indice d'un nœud dans tech_nodes() EST son TechId, cf.
+## tech_tree_readout/scps_tech_nodes : ne pas reclasser).
+const TECH_CARD_FILE := [
+	"tech_bibliotheque", "tech_scriptorium", "tech_academie", "tech_universite",
+	"tech_savoir_guerre", "tech_magie_bataille", "tech_invocation", "tech_eveil",
+	"tech_wards", "tech_scrying", "tech_communion", "tech_savoir_interdit",
+	"tech_collecte_bois", "tech_collecte_argile", "tech_fonderie", "tech_outillage",
+	"tech_manufacture", "tech_industrie", "tech_foreuse",
+	"tech_armurerie", "tech_poudriere", "tech_forge_runes", "tech_oeuvre_noire",
+	"tech_atelier", "tech_qualite_materiaux", "tech_fortifications", "tech_automates",
+	"tech_collecte_nourriture", "tech_irrigation", "tech_commerce", "tech_cadastre",
+	"tech_abondance", "tech_comptoirs", "tech_halles",
+	"tech_caserne", "tech_conscription", "tech_organisation", "tech_esclavage", "tech_caste_martiale",
+	"tech_chancellerie", "tech_foi", "tech_integration", "tech_culte_imperial",
+	"tech_alchimie", "tech_transmutation",
+	"tech_glyphes_etheres", "tech_communion_etheree",
+	"tech_alliages_nains", "tech_gravure_runes",
+	"tech_mecaniste_rouages", "tech_mecaniste_horlogerie",
+	"tech_droit_coutumier", "tech_langue_franque",
+	"tech_vergers_etages", "tech_paturages_integres",
+	"tech_rites_guerriers", "tech_hordes_conquerantes",
+	"tech_combo_poudre", "tech_combo_automates_arc", "tech_combo_academie", "tech_combo_druide",
+	"tech_combo_chaman", "tech_combo_guildes", "tech_combo_charrues", "tech_combo_poliorcetique",
+	"tech_combo_horloge_march", "tech_combo_machines_agri", "tech_combo_siege",
+	"tech_combo_grenier_colon", "tech_combo_foederati", "tech_combo_horde_eco",
+	"tech_apex_arquebuse", "tech_apex_concile", "tech_apex_legion",
+]
+static var _tech_card_cache := {}
+## chargement PARESSEUX (appelé par le panneau UNIQUEMENT quand l'encart entre
+## dans/près de la fenêtre visible du scroll — cf. TechCard._ensure_tex) + cache
+## par id. null si id hors-borne ou fichier absent (repli côté panneau : aplat).
+static func tech_card(id: int) -> Texture2D:
+	if id < 0 or id >= TECH_CARD_FILE.size():
+		return null
+	if _tech_card_cache.has(id):
+		return _tech_card_cache[id]
+	var t := _tex(TECH_CARD_DIR + String(TECH_CARD_FILE[id]) + ".png")
+	_tech_card_cache[id] = t
+	return t
+
+## purge la VRAM des 74 cartes — appelé par tech_panel.gd à la FERMETURE du
+## panneau (cycle open/close) ; rien n'empêche un rechargement paresseux au
+## prochain open (mêmes fichiers, même cache, juste vidé entre-temps).
+static func tech_card_release_all() -> void:
+	for id in _tech_card_cache.keys():
+		var path: String = TECH_CARD_DIR + String(TECH_CARD_FILE[id]) + ".png"
+		_cache.erase(path)
+	_tech_card_cache.clear()

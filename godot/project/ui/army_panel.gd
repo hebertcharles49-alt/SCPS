@@ -29,6 +29,15 @@ signal selection_replaced(ids: Array) ## fusion : le corps survivant devient l'u
 
 const PW := 420.0
 
+## icônes de PHASE (lot11_systeme pha_*, campagne 2, 2026-08-26) — le mot de
+## campaign_phase_name() (scps_campaign.c) → l'icône, quand un des 7 livrés
+## (lever/marche/pillage/renfort/repli/siège/bataille) correspond. Au repos/Embarque/
+## En mer/Débarque/« N phases » n'ont pas d'équivalent — pas d'icône (cf. TROUVAILLES
+## 2026-08-26 Restes) plutôt qu'un mauvais choix forcé.
+const PHASE_ICON := {
+	"En marche": "pha_marche", "En siège": "pha_siege", "En mêlée": "pha_bataille",
+}
+
 var _selected_ids: Array[int] = []
 var _move_preview: Dictionary = {}
 var _refill_previews: Array[Dictionary] = []
@@ -46,6 +55,7 @@ var _body: VBoxContainer = null     # corps rebâti à chaque refresh
 var _title_lbl: Label = null
 var _sub_lbl: Label = null
 var _phase_lbl: Label = null
+var _phase_icon: TextureRect = null
 var _anim: Control = null           # la FORMATION (persistante, hors du rebuild du corps)
 var _anim_battle_region := -1       # bataille armée dans l'anim (-1 = parade/aucune)
 var _parade_sig := []               # signature de compo de la parade (évite le re-setup au tick)
@@ -63,6 +73,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	custom_minimum_size = Vector2(PW, 0)   # largeur plancher ; hauteur AU CONTENU
 	theme = ParchTheme.build()
+	_apply_chrome_bg()
 	_build_shell()
 	visible = false
 	get_viewport().size_changed.connect(_layout)
@@ -99,6 +110,25 @@ func set_army(ids: Array) -> void:
 		_disband_armed = false
 		_refresh()
 
+## CHROME 2026-08-26 : la plaque livrée `chrome_panel_armee_bg` remplace le fond
+## parchemin PAR DÉFAUT de ce panneau (grain_sb PANEL_BG, `ParchTheme.build()` —
+## PARTAGÉ par province_panel_v2/empire_window/budget_panel_v2 : on ne touche PAS le
+## thème commun, on pose un override D'INSTANCE sur CE panneau seul). 9-slice (cap
+## 64 px, source 2×) : la largeur est fixe (PW) mais la hauteur varie au contenu —
+## les coins/médaillons de la plaque restent nets, seul le centre s'étire. No-op (le
+## fond parchemin d'origine reste) si l'asset manque encore (.import pas généré, etc).
+func _apply_chrome_bg() -> void:
+	var tex := UIKit.chrome_panel_armee_bg()
+	if tex == null:
+		return
+	var sb := StyleBoxTexture.new()
+	sb.texture = tex
+	sb.texture_margin_left = 64.0
+	sb.texture_margin_right = 64.0
+	sb.texture_margin_top = 64.0
+	sb.texture_margin_bottom = 64.0
+	add_theme_stylebox_override("panel", sb)
+
 # ── LE SQUELETTE (header + onglets + corps) ───────────────────────────────────
 func _build_shell() -> void:
 	var root := VBoxContainer.new()
@@ -128,11 +158,20 @@ func _build_shell() -> void:
 	rcol.add_theme_constant_override("separation", 0)
 	rcol.size_flags_horizontal = Control.SIZE_SHRINK_END
 	hb.add_child(rcol)
+	var phase_row := HBoxContainer.new()
+	phase_row.add_theme_constant_override("separation", 4)
+	rcol.add_child(phase_row)
+	_phase_icon = TextureRect.new()
+	_phase_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_phase_icon.stretch_mode = TextureRect.STRETCH_SCALE
+	_phase_icon.custom_minimum_size = Vector2(18, 18)
+	_phase_icon.visible = false
+	phase_row.add_child(_phase_icon)
 	_phase_lbl = Label.new()
 	_phase_lbl.theme_type_variation = "RowLabel"
 	_phase_lbl.text = "Réserve"
 	_phase_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	rcol.add_child(_phase_lbl)
+	phase_row.add_child(_phase_lbl)
 
 	# CORPS (fond transparent — laisse voir le parchemin)
 	var bodypanel := PanelContainer.new()
@@ -240,6 +279,15 @@ func _gather_corps(w, me: int) -> Dictionary:
 	return {"active": active, "total": total, "inf": inf, "arch": arch, "cav": cav, "mages": mages,
 		"phase": phase, "phases": phases, "regions": regions, "corps_data": corps_data, "reserve": reserve}
 
+## pose (ou cache) l'icône de phase 18 px devant `_phase_lbl` — cf. PHASE_ICON.
+func _set_phase_icon(word: String) -> void:
+	if _phase_icon == null:
+		return
+	var name: String = PHASE_ICON.get(word, "")
+	var t: Texture2D = UIKit.icon2(name) if name != "" else null
+	_phase_icon.texture = t
+	_phase_icon.visible = t != null
+
 func _update_header(data: Dictionary) -> void:
 	var active := int(data.active)
 	var phases: Array = data.phases
@@ -249,10 +297,12 @@ func _update_header(data: Dictionary) -> void:
 		_sub_lbl.text = "%s hommes · %s inf · %s dist · %s cav · %s mages" % [
 			_grp(int(data.total)), _grp(int(data.inf)), _grp(int(data.arch)), _grp(int(data.cav)), _grp(int(data.mages))]
 		_phase_lbl.text = String(data.phase) if phases.size() == 1 else "%d phases" % phases.size()
+		_set_phase_icon(_phase_lbl.text)
 	else:
 		_title_lbl.text = "⚔ Votre armée"
 		_sub_lbl.text = "réserve : %d régiment(s)" % int(data.reserve)
 		_phase_lbl.text = "Réserve"
+		_set_phase_icon("")
 
 # ── LA COLONNE : troupes · composition · raccourcis · stats (ordre joueur 2026-07-25) ──
 func _build_composition_tab(w, me: int, data: Dictionary) -> void:
@@ -303,9 +353,9 @@ func _stats_block(data: Dictionary) -> Control:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 2)
 	if broken > 0:
-		box.add_child(_stat_line("État", "BRISÉ — %d j" % broken, 0.12))
+		box.add_child(_stat_line("État", "BRISÉ — %d j" % broken, 0.12, "pha_repli"))
 	elif rally > 0:
-		box.add_child(_stat_line("État", "ralliement · %s hommes en route" % _grp(rally), 0.45))
+		box.add_child(_stat_line("État", "ralliement · %s hommes en route" % _grp(rally), 0.45, "pha_repli"))
 	if in_battle:
 		var me := int(Sim.world.player())
 		var pfx := "atk_" if int(_battle_live.get("attacker", -1)) == me else "def_"
@@ -410,7 +460,7 @@ func _action_row(w, me: int, data: Dictionary) -> HBoxContainer:
 	row.add_theme_constant_override("separation", 4)
 
 	var raise_btn := _action_btn("Lever un corps",
-		"Détache la moitié de la réserve nationale à la capitale.")
+		"Détache la moitié de la réserve nationale à la capitale.", "pha_lever")
 	raise_btn.pressed.connect(_do_raise)
 	row.add_child(raise_btn)
 
@@ -420,12 +470,30 @@ func _action_row(w, me: int, data: Dictionary) -> HBoxContainer:
 	var refill_ok := int(totals.allowed) > 0 and deficit > 0
 	var refill_btn := _action_btn(
 		("Renforcer (+%s)" % _grp(deficit)) if refill_ok else "Renforcer",
-		_refill_tooltip(_refill_previews) if refill_ok else "Corps à pleine force.")
+		_refill_tooltip(_refill_previews) if refill_ok else "Corps à pleine force.", "pha_renfort")
 	refill_btn.disabled = not refill_ok
 	refill_btn.pressed.connect(_do_refill)
 	row.add_child(refill_btn)
 
-	# PILLAGE — une CASE (le verbe est un mode de l'armée, pas un bouton-phrase)
+	# PILLAGE — une CASE (le verbe est un mode de l'armée, pas un bouton-phrase). Icône
+	# posée à CÔTÉ (TextureRect séparé, motif _compo_glyphs, plutôt que CheckButton.icon)
+	# — PAS pour contourner un bug d'icône (aucun : Button.icon direct fonctionne très
+	# bien ailleurs dans ce même fichier, cf. raise_btn/refill_btn juste au-dessus) mais
+	# parce que le texte « Pillage » de CE CheckButton est INVISIBLE au probe, un bug
+	# PRÉEXISTANT (confirmé sur le HEAD d'avant cette mission, `font_color` = ParchTheme.INK
+	# sur le fond sombre du panneau, sans stylebox clair derrière comme les boutons
+	# voisins) — AUCUN rapport avec l'icône. Non corrigé ici (hors mandat de cette
+	# mission) ; signalé en TROUVAILLES Restes + tâche de fond.
+	var raid_wrap := HBoxContainer.new()
+	raid_wrap.add_theme_constant_override("separation", 3)
+	var raid_icon := UIKit.icon2("pha_pillage")
+	if raid_icon != null:
+		var raid_ic := TextureRect.new()
+		raid_ic.texture = raid_icon
+		raid_ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		raid_ic.stretch_mode = TextureRect.STRETCH_SCALE
+		raid_ic.custom_minimum_size = Vector2(18, 18)
+		raid_wrap.add_child(raid_ic)
 	var raid_ck := CheckButton.new()
 	raid_ck.text = "Pillage"
 	raid_ck.focus_mode = Control.FOCUS_NONE
@@ -440,7 +508,8 @@ func _action_row(w, me: int, data: Dictionary) -> HBoxContainer:
 		_raid_on = on
 		if on: raid_requested.emit()
 		else: raid_disarmed.emit())
-	row.add_child(raid_ck)
+	raid_wrap.add_child(raid_ck)
+	row.add_child(raid_wrap)
 
 	var corps_data: Array = data.corps_data
 	var split_ok := int(data.active) > 0
@@ -473,7 +542,7 @@ func _action_row(w, me: int, data: Dictionary) -> HBoxContainer:
 
 	return row
 
-func _action_btn(txt: String, tip: String) -> Button:
+func _action_btn(txt: String, tip: String, phase_icon: String = "") -> Button:
 	var b := Button.new()
 	b.text = txt
 	b.tooltip_text = tip
@@ -481,6 +550,13 @@ func _action_btn(txt: String, tip: String) -> Button:
 	b.custom_minimum_size = Vector2(0, 32)
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.add_theme_font_size_override("font_size", 12)
+	if phase_icon != "":
+		var t := UIKit.icon2(phase_icon)
+		if t != null:
+			b.icon = t
+			b.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+			b.expand_icon = false
+			b.add_theme_constant_override("icon_max_width", 18)
 	b.add_theme_stylebox_override("normal", ParchTheme.sb(ParchTheme.HEADER_BG, ParchTheme.BORDER, 1, 3, 5, 5, 3, 3))
 	b.add_theme_stylebox_override("hover", ParchTheme.sb(ParchTheme.PANEL_BG, ParchTheme.TAB_UNDERLINE, 1, 3, 5, 5, 3, 3))
 	b.add_theme_stylebox_override("pressed", ParchTheme.sb(ParchTheme.DIVIDER, ParchTheme.TAB_UNDERLINE, 1, 3, 5, 5, 3, 3))
@@ -519,17 +595,41 @@ func _country_name(cid: int) -> String:
 	var info: Dictionary = Sim.world.country_info(cid)
 	return String(info.get("nom", "—"))
 
-func _phase_title(txt: String) -> Label:
+func _phase_title(txt: String) -> Control:
+	var icon_name: String = PHASE_ICON.get(txt, "")
 	var l := Label.new()
 	l.theme_type_variation = "RowLabel"
 	l.text = txt
 	l.add_theme_font_size_override("font_size", 16)
 	l.add_theme_color_override("font_color", ParchTheme.HEADER_INK)
-	return l
+	if icon_name == "":
+		return l
+	var t := UIKit.icon2(icon_name)
+	if t == null:
+		return l
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	var ic := TextureRect.new()
+	ic.texture = t
+	ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	ic.stretch_mode = TextureRect.STRETCH_SCALE
+	ic.custom_minimum_size = Vector2(18, 18)
+	row.add_child(ic)
+	row.add_child(l)
+	return row
 
-func _stat_line(label: String, value: String, tone: float = -1.0) -> Control:
+func _stat_line(label: String, value: String, tone: float = -1.0, phase_icon: String = "") -> Control:
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 6)
+	if phase_icon != "":
+		var t := UIKit.icon2(phase_icon)
+		if t != null:
+			var ic := TextureRect.new()
+			ic.texture = t
+			ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			ic.stretch_mode = TextureRect.STRETCH_SCALE
+			ic.custom_minimum_size = Vector2(18, 18)
+			h.add_child(ic)
 	var l := Label.new()
 	l.theme_type_variation = "RowDim"
 	l.text = label

@@ -11,6 +11,7 @@ extends Control
 ## qui est cliquable). Chaque onglet garde son tooltip natif « Nom (Fx) ».
 
 const VKit = preload("res://ui/vkit.gd")
+const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
 const IconButton = preload("res://ui/icon_button.gd")
 const BTN := 52.0   ## onglets du rail agrandis (retour joueur : « très très petits »)
@@ -44,15 +45,26 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 
-	# rail de fond PLEINE HAUTEUR : graphite uni + arête stratégique à droite (capte ses
-	# clics). ⚠ alpha 1.0 (COL_PANEL est translucide — le rail laissait transparaître
-	# la carte, « pas uni », retour joueur 2026-07-10).
+	# rail de fond PLEINE HAUTEUR : CHROME 2026-08-26 (chrome_sidebar_bg, 9-slice
+	# vertical cap 32 px — le liseré d'encre au bord DROIT est déjà dans le fond, plus
+	# besoin du bord dessiné à la main). Repli sur l'ancien aplat graphite si l'asset
+	# manque encore (.import pas généré, etc) — ⚠ alpha 1.0 dans ce repli (COL_PANEL est
+	# translucide — le rail laissait transparaître la carte, « pas uni », retour joueur
+	# 2026-07-10).
 	_rail = Panel.new()
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(VKit.COL_PANEL.r, VKit.COL_PANEL.g, VKit.COL_PANEL.b, 1.0)
-	sb.border_color = VKit.COL_EDGE
-	sb.set_border_width(SIDE_RIGHT, 1)
-	_rail.add_theme_stylebox_override("panel", sb)
+	var chrome_bg := UIKit.chrome_sidebar_bg()
+	if chrome_bg != null:
+		var sbt := StyleBoxTexture.new()
+		sbt.texture = chrome_bg
+		sbt.texture_margin_top = 32.0
+		sbt.texture_margin_bottom = 32.0
+		_rail.add_theme_stylebox_override("panel", sbt)
+	else:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(VKit.COL_PANEL.r, VKit.COL_PANEL.g, VKit.COL_PANEL.b, 1.0)
+		sb.border_color = VKit.COL_EDGE
+		sb.set_border_width(SIDE_RIGHT, 1)
+		_rail.add_theme_stylebox_override("panel", sb)
 	add_child(_rail)
 
 	# colonne d'onglets, centrée sur le rail

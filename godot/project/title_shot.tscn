@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://btitleshot1"]
+
+[ext_resource type="Script" path="res://title_shot.gd" id="1_ts"]
+
+[node name="TitleShot" type="Node"]
+script = ExtResource("1_ts")

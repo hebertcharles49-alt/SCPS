@@ -223,9 +223,17 @@ func _draw() -> void:
 		else:
 			VKit.text(self, Vector2(5, 22), VKit.COL_GOLD, "«")
 		return
-	VKit.fill(self, Rect2(0, 0, W, size.y), Color(VKit.COL_PANEL.r, VKit.COL_PANEL.g, VKit.COL_PANEL.b, 0.94))
-	VKit.fill(self, Rect2(0, 0, 2, size.y), VKit.COL_GOLD)
-	VKit.fill(self, Rect2(0, size.y - 2.0, W, 2), VKit.COL_GOLD)   # le panneau se FERME au contenu
+	# CHROME 2026-08-26 : fond livré (chrome_rightbar_bg, 9-slice vertical cap 32 px) —
+	# le liseré au bord GAUCHE et les caps haut/bas du fond remplacent l'aplat + les
+	# deux liserés or dessinés à la main (collision : le fond fait foi). Repli sur
+	# l'ancien aplat si l'asset manque encore (.import pas généré, etc).
+	var chrome_bg := UIKit.chrome_rightbar_bg()
+	if chrome_bg != null:
+		UIKit.draw_9slice_v(self, chrome_bg, Rect2(0, 0, W, size.y), 32.0)
+	else:
+		VKit.fill(self, Rect2(0, 0, W, size.y), Color(VKit.COL_PANEL.r, VKit.COL_PANEL.g, VKit.COL_PANEL.b, 0.94))
+		VKit.fill(self, Rect2(0, 0, 2, size.y), VKit.COL_GOLD)
+		VKit.fill(self, Rect2(0, size.y - 2.0, W, 2), VKit.COL_GOLD)   # le panneau se FERME au contenu
 	var hd2: Texture2D = UIKit.parch_tex("sheet23_remaining_chrome_sidebar_02")
 	if hd2 != null:
 		draw_texture_rect(hd2, Rect2(_handle_rect.position - Vector2(2, 0),
@@ -422,6 +430,21 @@ func _draw() -> void:
 		var thumb_y := track.position.y + (track.size.y - thumb_h) * (_scrolloff / _maxscroll)
 		VKit.fill(self, Rect2(track.position.x - 1.0, thumb_y, 4.0, thumb_h), VKit.COL_GOLD)
 
+## MÉDAILLON d'ÂGE (lot11_systeme age_*, campagne 2, 2026-08-26) : age_name() (scps_events.c
+## AGE_NAMES[]) → l'icône, par le MOT distinctif du nom complet (« L'Âge des Découvertes »
+## contient « Découvertes »). Repli "fine_age" (générique, série-2) si le nom ne matche rien
+## (garde-fou seulement — les 8 noms moteur couvrent exactement les 8 fichiers livrés).
+const AGE_ICON := {
+	"Échanges": "age_echanges", "Découvertes": "age_decouvertes", "Empires": "age_empires",
+	"Héros": "age_heros", "Brèche": "age_breche", "Lumières": "age_lumieres",
+	"Soulèvements": "age_soulevements", "Tyrans": "age_tyrans",
+}
+static func _age_icon_name(nm: String) -> String:
+	for k in AGE_ICON:
+		if nm.contains(k):
+			return String(AGE_ICON[k])
+	return "fine_age"
+
 ## ENCART D'ÂGE — dessiné tout en haut de la bande. NOMINATIF (décision joueur 2026-07-28 :
 ## « Engager » mentait, le verbe est un accusé de réception depuis le raccord 8) : le NOM
 ## de l'âge seul — AMBRE cliquable tant que le chapitre n'est pas lu (ouvre le récap),
@@ -446,16 +469,16 @@ func _draw_age(x: float, y: float) -> float:
 		_age_rect = r
 		VKit.fill(self, r, Color(0.24, 0.17, 0.07, 0.95))
 		VKit.box(self, r, Color(0.90, 0.72, 0.34))
-		UIKit.draw_icon(self, "fine_age", Vector2(r.position.x + 5, y + 2), 22)
+		UIKit.draw_icon(self, _age_icon_name(nm), Vector2(r.position.x + 4, y + 1), 24)
 		var lab := nm
-		while VKit.text_w(lab) > r.size.x - 34.0 and lab.length() > 10:
+		while VKit.text_w(lab) > r.size.x - 36.0 and lab.length() > 10:
 			lab = lab.substr(0, lab.length() - 2) + "…"
-		VKit.text(self, Vector2(r.position.x + 32, y + 5), Color(0.90, 0.72, 0.34), lab)
+		VKit.text(self, Vector2(r.position.x + 34, y + 5), Color(0.90, 0.72, 0.34), lab)
 		return y + 32.0
 	# chapitre lu → ligne discrète (l'ère où l'on vit) — même hover
 	_age_rect = Rect2(x - 2.0, y, W - 20.0, 20.0)
-	UIKit.draw_icon(self, "fine_age", Vector2(x, y), 22)
-	VKit.text(self, Vector2(x + 28.0, y + 3), Color(0.72, 0.60, 0.36), nm, VKit.FS_SMALL)
+	UIKit.draw_icon(self, _age_icon_name(nm), Vector2(x - 1, y - 1), 24)
+	VKit.text(self, Vector2(x + 30.0, y + 3), Color(0.72, 0.60, 0.36), nm, VKit.FS_SMALL)
 	return y + 20.0
 
 ## ÉMISSAIRE — disponibilité · retour · objectif. Le moteur ne stocke que le cooldown

@@ -815,9 +815,19 @@ func _close_topmost() -> bool:
 		return true
 	return false
 
-## CURSEUR PLUME (planche 28) : la pièce a la pointe en bas-droite → rotation 180°
-## pour poser le bec en HAUT-GAUCHE (hotspot 2,2). Absente → curseur système.
+## CURSEUR PAR DÉFAUT : CHROME 2026-08-26 (cursor_fleche.png, 64×64 — sous la limite
+## Godot de 256 px, posé tel quel) — hotspot ~pointe (6,4). Repli : l'ancien curseur
+## PLUME (planche 28, pointe en bas-droite → rotation 180° pour poser le bec en
+## HAUT-GAUCHE, hotspot 2,2) si l'asset chrome manque encore (.import pas généré,
+## etc) ; curseur système si les deux manquent.
 func _setup_cursor() -> void:
+	var chrome_path := "res://assets/scps/ui/cursors/cursor_fleche.png"
+	if UIKit.has(chrome_path):
+		var cimg := UIKit.load_img(chrome_path)
+		if cimg != null:
+			Input.set_custom_mouse_cursor(ImageTexture.create_from_image(cimg),
+				Input.CURSOR_ARROW, Vector2(6, 4))
+			return
 	var path := "res://assets/scps/ui/parch/sheet28_end_rituals_loading_cursors_09.png"
 	if not UIKit.has(path):
 		return

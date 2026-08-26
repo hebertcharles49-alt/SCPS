@@ -10,6 +10,7 @@ extends Node2D
 ## cadre/zoome. Il n'y a plus de vue GLOBE 3D ni de splat iso 3D : un seul rendu, à tous les zooms.
 
 const Iso = preload("res://map/iso.gd")
+const UIKit = preload("res://ui/uikit.gd")   # curseur CIBLAGE (chrome 2026-08-26)
 const LAYER_HEIGHT := 0
 const CLICK_SLOP := 5.0
 
@@ -233,7 +234,7 @@ func _set_selected_corps(ids: Array) -> void:
 		if int(id) >= 0 and int(id) not in _selected_corps: _selected_corps.append(int(id))
 	_army_selected = not _selected_corps.is_empty()
 	if not _army_selected:
-		_raid_mode = false
+		_set_raid_mode(false)
 	if _overlay != null:
 		_overlay.army_selected = _army_selected
 		_overlay.selected_corps = _selected_corps.duplicate()
@@ -265,11 +266,29 @@ func _draw() -> void:
 ## PILLAGE : le panneau d'armée arme le sous-mode — le prochain clic pille la province cible.
 func arm_raid() -> void:
 	if _army_selected:
-		_raid_mode = true
+		_set_raid_mode(true)
 
 ## la case « Pillage » décochée désarme sans cliquer
 func disarm_raid() -> void:
-	_raid_mode = false
+	_set_raid_mode(false)
+
+## CURSEUR CIBLAGE (chrome 2026-08-26, cursor_cible.png) : le sous-mode PILLAGE armé
+## se VOIT au curseur, pas seulement à la case cochée du panneau — hotspot au CENTRE
+## (curseur de visée, le point cliqué EST le point de visée). Repli : rien (curseur
+## par défaut inchangé) si l'asset manque encore (.import pas généré, etc) ; on ne
+## touche PAS au curseur par défaut lui-même (posé par main.gd::_setup_cursor).
+func _set_raid_mode(on: bool) -> void:
+	_raid_mode = on
+	if on:
+		var tex := UIKit.cursor_tex("cible")
+		if tex != null:
+			Input.set_custom_mouse_cursor(tex, Input.CURSOR_ARROW, tex.get_size() * 0.5)
+		return
+	var fleche := UIKit.cursor_tex("fleche")
+	if fleche != null:
+		Input.set_custom_mouse_cursor(fleche, Input.CURSOR_ARROW, Vector2(6, 4))
+	else:
+		Input.set_custom_mouse_cursor(null, Input.CURSOR_ARROW)
 
 func _pick_at_mouse() -> void:
 	if Sim.world == null or not Sim.world.has_method("province_at"):

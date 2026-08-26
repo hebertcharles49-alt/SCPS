@@ -11,6 +11,7 @@ extends PanelContainer
 
 const ParchTheme = preload("res://ui/parch_theme.gd")   # THEME parchemin PARTAGÉ (palette + styleboxes)
 const Concepts = preload("res://ui/concepts.gd")   # D4 — glossaire hover (registre centralisé)
+const UIKit = preload("res://ui/uikit.gd")
 
 # palette réutilisée hors du Theme (couleur du solde mensuel + diviseur) — source unique : ParchTheme
 const INCOME  := ParchTheme.INCOME
@@ -27,6 +28,7 @@ const SPEND_HAS_SLIDER := {0: true, 1: true, 2: true, 3: true, 4: true, 5: true}
 
 const TABS := ["Balance", "Monnaie", "Marché", "Commerce"]
 const CLASS_NAMES := ["Journaliers", "Bourgeois", "Élite"]   # SocialClass 0-2 (curseurs fiscaux/emprunt)
+const CLASS_ICON := ["cls_journalier", "cls_bourgeois", "cls_elite"]   # lot11_systeme, même index
 
 var _built := false
 var _treasury_lbl: Label = null
@@ -504,9 +506,16 @@ func _update_values(me: int) -> void:
 ## curseur family=1 index=5/6, family=0 index=0..2 existe déjà sur d'autres pages —
 ## partager le dict casserait le rafraîchissement de l'onglet non visible).
 func _m_row(parent: VBoxContainer, label: String, key: String, value_variation: String,
-		slider_family := -1, slider_index := -1) -> void:
+		slider_family := -1, slider_index := -1, icon: Texture2D = null) -> void:
 	var line := HBoxContainer.new()
 	parent.add_child(line)
+	if icon != null:
+		var ic := TextureRect.new()
+		ic.texture = icon
+		ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE   # sinon le Control adopte la taille native (128²)
+		ic.stretch_mode = TextureRect.STRETCH_SCALE
+		ic.custom_minimum_size = Vector2(18, 18)
+		line.add_child(ic)
 	var lab := Label.new()
 	lab.theme_type_variation = "RowLabel"
 	lab.text = label
@@ -622,7 +631,7 @@ func _build_monnaie(me: int) -> void:
 
 	_section(_monnaie_page, "FISCALITÉ PAR ORDRE")
 	for cls in range(3):
-		_m_row(_monnaie_page, CLASS_NAMES[cls], "fiscal:%d" % cls, "RowLabel", 0, cls)
+		_m_row(_monnaie_page, CLASS_NAMES[cls], "fiscal:%d" % cls, "RowLabel", 0, cls, UIKit.icon2(CLASS_ICON[cls]))
 
 func _m_loan_press(cls: int) -> void:
 	var w = Sim.world

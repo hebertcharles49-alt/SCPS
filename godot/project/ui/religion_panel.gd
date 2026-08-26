@@ -11,6 +11,7 @@ signal closed   ## le panneau se ferme → le jeu reprend (main.gd)
 
 const VKit = preload("res://ui/vkit.gd")
 const Concepts = preload("res://ui/concepts.gd")   # D4 — glossaire hover
+const UIKit = preload("res://ui/uikit.gd")
 const C_BG    := Color(0.02, 0.025, 0.025, 0.76)
 const C_PANEL := VKit.COL_PANEL
 const C_EDGE  := Color(0.55, 0.42, 0.78)        # liseré violet (religion)
@@ -83,6 +84,8 @@ func _build_ui() -> void:
 	col.add_child(cl)
 	_credo_opt = OptionButton.new()
 	_credo_opt.item_selected.connect(func(_i): _refresh())
+	_credo_opt.add_theme_constant_override("icon_max_width", 22)          # le bouton fermé
+	_credo_opt.get_popup().add_theme_constant_override("icon_max_width", 22)  # les lignes du menu
 	col.add_child(_credo_opt)
 
 	var tl := Label.new(); tl.text = "Trois traditions (axes distincts)"
@@ -146,7 +149,14 @@ func _load_data() -> void:
 		return
 	_credos = Sim.world.credo_list()
 	for c in _credos:
-		_credo_opt.add_item(String(c["nom"]))
+		# icône lot8_foi : credo_name() renvoie déjà "pluraliste"/"prosélyte"/"loyaliste"
+		# (CREDO_EVANGELISTE→prosélyte, CREDO_PURIFICATEUR→loyaliste) — même mot que le
+		# fichier foi_<mot> (resource_key ôte juste l'accent, « prosélyte »→"proselyte").
+		var cicon := UIKit.icon2("foi_" + UIKit.resource_key(String(c["nom"])))
+		if cicon != null:
+			_credo_opt.add_icon_item(cicon, String(c["nom"]))
+		else:
+			_credo_opt.add_item(String(c["nom"]))
 		_credo_opt.set_item_metadata(_credo_opt.item_count - 1, int(c["id"]))
 	_credo_opt.select(0)
 	_poles = Sim.world.religion_pole_list()

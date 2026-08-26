@@ -17,6 +17,19 @@ var PW := 648.0
 var PH := 512.0
 const HEAD := 34.0
 const BODY := 92.0          # y de départ du corps d'onglet (sous titre + onglets)
+
+## BRANCHE religieuse ANCESTRALE d'un groupe (province_groups()["religion"] — DISTINCTE
+## de la Foi d'État du module scps_religion, dessinée plus bas dans ce même fichier) :
+## religion_branch_name() (scps_culture.c) reskin naturaliste/universaliste/cyclique/
+## ritualiste de REL_ANIMISTE/ABRAHAMIQUE/DHARMIQUE/SINIQUE — lot8_foi (campagne 2)
+## livré sous les noms D'ORIGINE de l'enum (foi_animiste/_scripturaire/_roue/_celeste :
+## scripturaire = religion du Livre/Abrahamique, roue = cycle du Dharma, céleste =
+## Mandat du Ciel/Sinique). Champ jusqu'ici AFFICHÉ NULLE PART (grep confirmé) — câblé
+## ici, dans la légende de groupe qui montrait déjà culture/classe/état mais pas la foi.
+const BRANCH_ICON := {
+	"naturaliste": "foi_animiste", "universaliste": "foi_scripturaire",
+	"cyclique": "foi_roue", "ritualiste": "foi_celeste",
+}
 const TABS := ["Peuples", "Production", "Constructions", "Journal", "Main-d'œuvre", "Contexte"]
 const ALLOC_STEP := 10      # pas d'ajustement de poids (clic [−]/[+])
 
@@ -203,12 +216,23 @@ func _draw_peuples_apercu(x: float, y: float, colw: float, w, info: Dictionary, 
 	y += 36
 	for i in range(mini(groups.size(), 6)):
 		VKit.fill(self, Rect2(x + 4, y + 3, 9, 9), VKit.SLICE_PAL[i % 8])
-		VKit.text(self, Vector2(x + 18, y), VKit.COL_PARCH,
+		# branche religieuse ANCESTRALE du groupe (à CÔTÉ du libellé, jamais à sa place —
+		# le texte "culture % · classe · état" reste inchangé, décalé de la largeur de l'icône)
+		var branch := String(groups[i].get("religion", ""))
+		var bicon_name: String = BRANCH_ICON.get(branch, "")
+		var text_x := x + 18
+		if bicon_name != "":
+			UIKit.draw_icon2(self, bicon_name, Vector2(x + 16, y + 1), 12)
+			text_x += 15
+		VKit.text(self, Vector2(text_x, y), VKit.COL_PARCH,
 			"%s %d%% · %s · %s" % [String(groups[i]["culture"]), int(groups[i]["percent"]),
 			String(groups[i]["klass"]), String(groups[i]["etat"])], VKit.FS_SMALL)
 		var lineage := String(groups[i].get("lineage", ""))
-		if lineage != "":
-			_hover.add_dict({"rect": Rect2(x, y - 1, colw, 15.0), "text": lineage})
+		var hover_txt := lineage
+		if branch != "":
+			hover_txt = ("%s — foi %s" % [lineage, branch]) if lineage != "" else ("Foi %s" % branch)
+		if hover_txt != "":
+			_hover.add_dict({"rect": Rect2(x, y - 1, colw, 15.0), "text": hover_txt})
 		y += 15
 	y += 8
 

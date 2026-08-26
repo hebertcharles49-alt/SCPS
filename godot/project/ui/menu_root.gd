@@ -73,14 +73,14 @@ func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), C_BG, true)
 
 
-## FOND : la table du cartographe (1920×1080) en COVER plein cadre + un voile léger
-## pour la lisibilité — le _draw() sombre reste en repli si l'image manque.
+## FOND : l'écran-titre livré (title_screen.png, 1920×1080, opaque) en COVER plein
+## cadre + un voile léger pour la lisibilité — le _draw() sombre reste en repli si
+## l'image manque. CHROME 2026-08-26 : composition à l'encre VIDE sur le TIERS
+## GAUCHE (table sombre) et la carte peinte sur les deux tiers droits — remplace
+## l'ancien fond `menu_main_background.png` (composé, lui, avec un vide au CENTRE ;
+## cf. `_build_main()` qui décale le menu en conséquence).
 func _build_bg() -> void:
-	var tex: Texture2D = null
-	if UIKit.has("res://assets/scps/ui/menu_main_background.png"):
-		var img := UIKit.load_img("res://assets/scps/ui/menu_main_background.png")
-		if img != null:
-			tex = ImageTexture.create_from_image(img)
+	var tex: Texture2D = UIKit.title_screen()
 	if tex == null:
 		return
 	var tr := TextureRect.new()
@@ -103,8 +103,13 @@ func _build_main() -> void:
 	_main.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_main)
 
+	# CHROME 2026-08-26 : title_screen.png compose son vide à l'encre sur le TIERS
+	# GAUCHE (la carte peinte occupe les deux tiers droits) — le menu se décale ICI
+	# au lieu du plein-cadre centré d'avant (qui visait le vide CENTRAL de l'ancien
+	# fond `menu_main_background.png`, cf. `_build_bg()`).
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.anchor_right = 0.34
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_main.add_child(center)
 

@@ -9567,3 +9567,459 @@ sur le MÊME motif. Livré : les 6 modes + le mode Marché avec icônes de tuile
   qu'à la fin. Parse-check Godot (`--check-only --quit`) vert. `make determinism`/
   `savetest` NON relancés séparément (aucun état sérialisé ajouté — SAVE_VERSION
   inchangé — le risque est nul par construction, pas juste supposé).
+
+## 2026-08-26 — Le CHROME : topbar/rail/barre droite/panneau armée/écran-titre/curseurs
+## habillés des fonds livrés (sonnet)
+
+**Découvertes**
+
+- Les 6 assets chrome (`chrome_topbar_bg`/`chrome_sidebar_bg`/`chrome_rightbar_bg`/
+  `chrome_panel_armee_bg`, `title/title_screen.png`, `ui/cursors/cursor_{fleche,cible,
+  loupe}.png`) N'AVAIENT PAS de `.import` généré (livrés bruts) — invisibles à `load()`
+  tant qu'aucune passe d'import n'a tourné. `Godot --headless --path godot/project
+  --import --quit` (une fois, avant tout `--check-only`/probe) les génère tous d'un
+  coup ; `UIKit.load_img()` a de toute façon un repli `Image.load_from_file` pour ce
+  cas (dev sans `.import`) — mais autant importer proprement, le PCK d'export en aura
+  besoin de toute façon.
+- **`title_screen.png` (1920×1080) est composé à l'ENCRE VIDE sur le TIERS GAUCHE**
+  (table sombre, rien à voir) — la carte/bougie/compas peints occupent les deux tiers
+  droits. L'ancien fond `menu_main_background.png` (toujours sur disque, non supprimé —
+  hors mandat), lui, a son vide au CENTRE. Les deux compositions sont INCOMPATIBLES
+  avec le même layout de menu : `menu_root.gd::_build_main()` a dû DÉPLACER le
+  `CenterContainer` du plein-cadre (`anchor_right=1.0`) au tiers gauche
+  (`anchor_right=0.34`) en même temps que le fond changeait — sinon les boutons
+  tombent sur la carte peinte (illisible, contraste rond).
+- **Les chromes topbar/sidebar/rightbar sont des planches 2× (hidpi)** : hauteur/largeur
+  texture = 2× la taille AFFICHÉE (topbar 96 px tex → 48 px affiché ; sidebar 128 px
+  tex → 64 px affiché). Les nouveaux helpers `UIKit.draw_9slice_h/v` calculent le cap
+  SOURCE par le ratio texture/rect RÉEL (`scale = th/rect.size.y` etc.) plutôt qu'un
+  facteur 2 codé en dur — un futur asset livré à une autre résolution (1×, 3×) marche
+  sans y toucher.
+- `army_panel.gd` n'a PAS de `_draw()` — c'est un `PanelContainer` dont le fond vient
+  de `theme.get_stylebox("panel","PanelContainer")`, ici `ParchTheme.build()` (PARTAGÉ
+  par `province_panel_v2`/`empire_window`/`budget_panel_v2`). Un override
+  D'INSTANCE (`add_theme_stylebox_override("panel", …)` posé sur `self` après
+  `theme = ParchTheme.build()`) change CE panneau seul sans toucher au thème commun —
+  le motif à retenir pour tout futur « donne un fond différent à CE panneau-là » sans
+  forker le thème.
+- **Un agent CONCURRENT (vague campagne 2 : foi/éthos/héritage-créateur, icônes
+  lot8/lot11/lot13) a édité `uikit.gd`, `army_panel.gd` et `empire_sidebar.gd` EN
+  PARALLÈLE de cette mission** (icônes de phase/âge/classe ajoutées aux DEUX derniers,
+  registre `ICON2_LOT`/tech_card ajouté au premier) — un `Edit` avec `old_string` ancré
+  sur du texte encore présent (jamais toute la fin de fichier) a atterri PROPREMENT à
+  chaque fois malgré le fichier bougeant sous les pieds (l'outil signale "modifié sur
+  disque depuis la dernière lecture" mais applique quand même si l'ancre matche). Une
+  première capture (`map_art_shot`, run backgroundé) est tombée en PLEIN milieu d'un
+  état transitoire de `sidebar_drawer.gd` (`CLASS_ROW_ICON` référencé avant sa
+  déclaration — pas mon fichier, pas mon bug) → `Parse Error` → jeu cassé pour CE run
+  seulement ; le run suivant (quelques minutes plus tard, fichier stabilisé côté
+  agent concurrent) est passé sans rien changer de mon côté. Diff final vérifié :
+  AUCUNE perte, mes hunks intacts dans les 3 fichiers partagés.
+
+**Pièges**
+
+- Le run `map_art_shot`/`army_panel_shot`/toute probe qui screenshot via
+  `get_viewport().get_texture()` **NE DOIT JAMAIS tourner en `--headless`** (rendu
+  factice, image noire) NI en arrière-plan détaché (le process peut ne jamais flusher
+  son dernier `[exited with code N]` avant d'être tué) — fenêtré, PREMIER PLAN,
+  BLOQUANT (`timeout` généreux, ≥300 s) est le seul motif fiable ici (déjà consigné
+  ailleurs dans ce fichier — reconsigné : je l'ai appris à mes dépens en backgroundant
+  le premier run, qui s'est fait tuer avant sa fin).
+- Le curseur custom (`Input.set_custom_mouse_cursor`) **N'APPARAÎT JAMAIS dans un
+  screenshot `get_viewport().get_texture()`** (le curseur est composé par l'OS/la
+  fenêtre, hors framebuffer capturé) — aucune probe ne le vérifiera jamais visuellement ;
+  seule la lecture de code (hotspot borné à l'image, texture ≤256 px, chemin correct)
+  vaut preuve.
+- `chrome_panel_armee_bg` (1024×1280) : le cadre gravé + médaillons d'angle occupent
+  ~90-110 px de large en texture source (mesuré au pixel via `System.Drawing` — pas
+  d'outil Python dans cet environnement). Une marge `texture_margin_*` à 64 px les
+  capture proprement SANS les tronquer ni les écraser sur un panneau `PW=420` fixe ;
+  à 32 px (comme les autres chromes) le médaillon aurait été coupé.
+
+**Restes**
+
+- `cursor_loupe.png` livré mais NON câblé (aucun sous-mode « inspection/zoom » identifié
+  qui en aurait un usage naturel dans le code actuel — brief explicite : Restes si non
+  trivial).
+- `menu_main_background.png` (ancien fond centré) reste sur disque, inutilisé — pas
+  supprimé (hors mandat : « ne pas toucher au code/fichiers hors sujet »). Un futur
+  agent de ménage peut le retirer si confirmé mort partout (grep clean avant).
+- Écrans secondaires du menu (`new_game_panel.gd`, `options_panel.gd`, l'écran
+  Charger de `menu_root.gd`) restent plein-cadre CENTRÉS, non décalés au tiers gauche
+  — hors mandat explicite (le brief ne visait que « le menu existant », le tableau
+  Jouer/Charger/Options/Codex/Quitter) ; ils ont chacun leur propre plaque semi-opaque
+  donc restent lisibles par-dessus la carte peinte, mais un futur agent pourrait juger
+  cohérent de les décaler aussi.
+- Probes créées et GARDÉES (motif du dépôt — cf. `army_panel_shot.gd`/`map_art_shot.gd`) :
+  `title_shot.gd`/`title_shot.tscn` (capture l'écran-titre seul, 1920×1080,
+  `shots_title/00_title_screen.png`) — réutilisable pour toute future mission écran-titre.
+- Gates : parse-check Godot (`--check-only --quit`) vert (relancé 3× : avant, pendant
+  la course avec l'agent concurrent, et après stabilisation — toujours net, aucune
+  erreur de script). `map_art_shot.tscn` (seed 9) : topbar+rail+barre droite visibles
+  et propres à z45/z28 (chrome plein cadre, pas de bouillie, coins nets). `army_panel_
+  shot.tscn` (seed 42, années 90) : 3 captures (hors combat/siège vif/résultat) — la
+  plaque armée s'étire proprement du plus petit au plus grand contenu, médaillons
+  d'angle intacts aux 4 coins dans les 3 cas. `title_shot.tscn` : le menu tombe
+  pile dans le tiers gauche sombre, aucun chevauchement avec la carte peinte. AUCUN
+  `make full-test`/`determinism`/`savetest` relancé — display-only pur, zéro ligne
+  touchant `scps/` ni un état sérialisé.
+
+## 2026-08-26 — Panneau tech en ENCARTS façon Civ 6 (lot13_techs, 74 cartes) (sonnet)
+
+Contexte : retour joueur « les techs devraient être des encarts, façon Civ 6 » — le
+panneau Méduse (`tech_panel.gd`) dessinait des cartes compactes (titre + 1-3 glyphes
+d'effet + médaillon 32 px `UIKit.tech_medallion`) ; mission = remplacer le CORPS du
+nœud par l'illustration 512×256 pleine (`icons2/lot13_techs/tech_*.png`, 74 fichiers,
+1:1 avec `TechId`), sans toucher structure/navigation/hover/verbes existants.
+
+**Découvertes**
+
+1. **`idx` de `_cards` == `TechId` de l'enum C, littéralement** (déjà documenté en
+   commentaire dans le fichier, revérifié à la source : `scps_api.c:3092` remplit
+   `out[i]` en itérant `tt.node[i]` où `tt` vient de `tech_tree_readout` qui indexe
+   TOUJOURS par `TechId` — `readout_demo.c` le prouve : `tr.node[TECH_BIBLIOTHEQUE]`).
+   Comme les 74 fichiers `lot13_techs/tech_*.png` sont l'énumération EXACTE de
+   `scps_tech.h` (minuscule sans `TECH_`, même ordre, compte identique 74=74), le
+   mapping le plus sûr n'est PAS un dict nom-français→fichier (fragile, accents/
+   troncatures) mais un tableau `TECH_CARD_FILE[TechId]` recopié À LA LETTRE de
+   l'ordre d'énumération — ajouté dans `uikit.gd` (`UIKit.tech_card(id)`, cache dédié
+   `_tech_card_cache` + `tech_card_release_all()`, APPEND en fin de fichier, motif
+   `UNIT_ICON_FILE`/`_tex()` déjà en place pour lot5_troupes).
+2. **Piège de contraste bandeau** : le premier jet dessinait le bandeau bas (nom+état)
+   en verre NOIR (`Color(0.05,0.04,0.03,0.62)`) avec texte `COL_PARCH` (encre SOMBRE,
+   pensée pour poser sur du PARCHEMIN clair) — sur les illustrations dont le bas est
+   déjà sombre (encre gravée, meuble/enclume…), texte quasi illisible (vérifié par
+   crop 4× via `System.Drawing` — pas de Python dans cet environnement, cf. piège
+   déjà noté ailleurs dans ce fichier). Fix : bandeau au MÊME langage chrome que le
+   reste du panneau — `ParchTheme.HEADER_BG` (tan) à 0.88/0.55 d'alpha (verrouillé
+   plus léger) + texte `COL_PARCH`/`COL_DIM` inchangé — cohérent avec l'en-tête/pied
+   du panneau qui utilisent déjà `HEADER_BG`+encre sombre. Un agent qui pose un
+   bandeau texte SUR une illustration arbitraire (pas un fond de panneau connu) doit
+   TOUJOURS vérifier le contraste réel par capture, jamais supposer qu'une teinte
+   sombre-sur-sombre "fait discret" — ça fait surtout illisible.
+3. **Chargement paresseux SANS notifier-on-screen natif pour `Control`** (pas de
+   `VisibleOnScreenNotifier` côté 2D UI) : implémenté à la main —
+   `TechCard._ensure_tex()` compare `get_global_rect()` au rect du `ScrollContainer`
+   hôte (`+grow(size.x)` en marge anti-scroll) et ne charge qu'une fois
+   (`tex_checked`). Comme `_draw()` ne se rejoue QUE sur `queue_redraw()` explicite
+   (jamais automatiquement à chaque frame), le scroll latéral (drag/molette) ne
+   révèle PAS de nouvelles cartes tout seul : un hook sur
+   `_scroll.get_h_scroll_bar().value_changed` réarme `queue_redraw()` sur les 74
+   cartes à chaque défilement (`_requeue_card_draws`) — coût nul pour celles déjà
+   chargées (un seul `intersects()`).
+4. **Release-on-close réel** : purger `UIKit._tech_card_cache` seule ne suffit PAS —
+   chaque `TechCard` garde sa PROPRE référence (`card_tex`) vivante tant qu'elle
+   n'est pas explicitement remise à `null` (les nœuds ne sont PAS détruits à la
+   fermeture, seulement cachés — `_built` reste `true`, `_on_visibility()` ne
+   reconstruit rien). `_release_card_textures()` fait les DEUX (vide le cache
+   ET renule chaque `card.card_tex`/`tex_checked`), sinon le GC ne libère rien et la
+   « purge » n'est qu'un no-op silencieux.
+5. **Taille FIXE plutôt qu'étirée** : l'ancien calcul choisissait `rows_per_cell`
+   (2..5) PUIS étirait `card_h` pour remplir le couloir — juste pour un cadre/titre,
+   ça passait ; avec une texture 512×256 (2:1 EXACT), étirer aurait déformé l'art.
+   Inversé : `CARD_W`/`CARD_H` FIXES (192×96), `rows_per_cell` DÉRIVÉ
+   (`floor((lane_avail_h+GUTTER)/(CARD_H+GUTTER))`, borné 1..3) — le surplus vertical
+   devient une marge de centrage (déjà géré par `(lane_avail_h - block_h)*0.5`), le
+   surplus horizontal défile (déjà le motif du panneau, scroll latéral seul).
+
+**États visuels retenus**
+
+VERROUILLÉE = `modulate` à `Color(0.45,0.45,0.45)` sur la texture (PAS de 2e
+texture) + liseré gris 1px + bandeau plus translucide (0.55) + texte `COL_DIM`.
+DISPONIBLE = pleine + liseré or 2.5px. ACQUISE = pleine + liseré vert fin 1.5px.
+EN COURS = sous-cas de DISPONIBLE dont `research_status().target==idx` : liseré or
+PULSÉ (`lerp` sinusoïdal sur `Time.get_ticks_msec()`, réarmé chaque tick SEULEMENT
+pour cette carte via le handler `Sim.ticked` du panneau — pas les 73 autres, elles
+restent statiques comme avant tant que `_build()` n'est pas rejoué) + barre fine de
+progression sous le nom dans le bandeau (`research_status().progress`, la donnée
+existait déjà, rien de nouveau à lire). Faustien teinte le liseré vers le rouge
+(sauf verrouillé). Les glyphes d'effet (`_effect_icons`, hérités) restent en
+coin haut-gauche sur puce sombre. AUCUN nouveau mot STR_* : tout le texte du
+panneau (légende, états, dossier pied) était DÉJÀ en littéraux GDScript directs
+(pas via `scps/strings_ids.h`), le bandeau réutilise le même vocabulaire
+(`title` = `nd["name"]`, déjà résolu côté moteur).
+
+**Verdict du shot** (`tech_shot.tscn`, seed 205, fenêtré) : `tech_tree.png` —
+encarts nets à 192×96 (mipmaps+LINEAR par défaut), les 3 états cohabitent dans le
+même écran et se distinguent EN UN REGARD (« Alliages des profondeurs » verrouillée
+= gris/désaturée + liseré bleu-gris terne vs. « Bibliothèque »/« Atelier de
+construction » acquises = liseré vert vs. « Gardes runiques »/« Armurerie »
+disponibles = liseré or) ; liens de prérequis (traits gris fins) partent/arrivent
+aux bords des cartes sans les traverser ; aucun chevauchement de cartes. `EN COURS`
+non vérifié VISUELLEMENT (le probe ne scrolle pas jusqu'à la cible lancée par
+`tech_footer.png`, « Scriptorium », hors du premier écran) — logique relue,
+réutilise le pattern déjà éprouvé de la barre de progression d'en-tête (mêmes champs
+`research_status()`), risque jugé faible.
+
+**Perf** : 1er écran (fenêtre 1600×900, panneau ~1780×860 max) affiche ~24 encarts
+(3 couloirs × ~8 colonnes visibles avant le bord du panneau) → **24/74 textures
+chargées** au premier `_build()`, PAS 74 (vérifié par construction : `_ensure_tex()`
+n'appelle `UIKit.tech_card()` que si le rect global intersecte celui du
+`ScrollContainer`, et au moment du premier `_draw()` de chaque carte le scroll est
+encore à `scroll_horizontal=0`). Le reste (jusqu'à 74, ~37 Mo) charge au fil du
+scroll latéral. `_release_card_textures()` remet tout à zéro à la fermeture du
+panneau (`_on_visibility`, branche `else`).
+
+**Pièges**
+
+- Le PREMIER crop de vérification (avant le fix bandeau) semblait montrer un bandeau
+  toujours noir même APRÈS l'edit — en fait un problème d'ORDRE : la 2e capture avait
+  été lancée avant que le fichier soit relu par le process Godot fraîchement
+  redémarré (comparaison de mtimes `tech_panel.gd` vs `build/tech_tree.png` pour
+  confirmer) — une 3e capture après re-vérif des mtimes a confirmé le fix. Toujours
+  comparer les mtimes fichier-source vs PNG de sortie avant de conclure qu'un fix
+  "ne marche pas".
+- `--check-only --quit` ET le probe normal émettent tous les deux des warnings
+  moteur (`ERROR: N resources still in use at exit`, `RID leaked`, `ObjectDB
+  leaked`) — vérifié PRÉ-EXISTANT et SANS RAPPORT avec cette vague : `--check-only`
+  les émet même sur la scène par défaut du projet (aucun tech_panel chargé) ;
+  `budget_shot.tscn` (aucune carte tech) ne les émet PAS alors que `tech_shot.tscn`
+  (dizaines d'`ImageTexture`/`ScrollContainer` créés-détruits) les émet — cohérent
+  avec un artefact de fermeture forcée du process après worldgen lourd, pas une
+  fuite introduite ici. Ne pas chasser ce warning dans le cadre d'un mandat
+  display-only borné à `tech_panel.gd`/`uikit.gd`.
+- Pas d'outil Python dans cet environnement (`python3` renvoie le stub Microsoft
+  Store) — crops de vérification faits via PowerShell `System.Drawing`
+  (`Graphics.DrawImage` avec `InterpolationMode=NearestNeighbor` pour un zoom net),
+  motif déjà noté ailleurs dans ce fichier, reconfirmé ici.
+
+**Restes**
+
+- `EN COURS` (liseré pulsé + barre de progression) non vérifié par capture réelle
+  (cf. Verdict) — un futur agent qui veut le confirmer visuellement peut soit
+  scroller le probe jusqu'à l'idx retourné par `research_status()` avant de
+  screenshot, soit ajouter un `_scroll.ensure_control_visible()` temporaire dans une
+  COPIE du probe (le probe original `tech_shot.gd` est hors fichiers autorisés de
+  cette mission, non touché).
+- `PW`/`PH` min-clamp (`_layout()`, 900×620) laissés INCHANGÉS — au plancher, un seul
+  encart par sous-colonne (`rows_per_cell=1`) tient encore proprement (vérifié par le
+  calcul, pas par capture à cette taille précise) ; un futur agent qui veut
+  fiabiliser le pire cas peut ajouter une probe à taille de fenêtre réduite.
+- Les glyphes d'effet (coin haut-gauche) et le petit motif gravé du CADRE de la
+  carte source (coins ornés, déjà intégrés à l'illustration par le lot d'assets)
+  cohabitent sans collision dans les crops vérifiés, mais aucune règle de non-
+  chevauchement systématique n'a été ajoutée — si un futur lot d'icônes d'effet
+  s'allonge (>3), revérifier au cas par cas.
+
+## 2026-08-26 — Câblage icônes SYSTÈME (lot8/10/11) + charges héraldiques + purge
+finale des vieilles icônes (sonnet)
+
+Contexte : campagne 2 (commit fb985f1, 200 PNG installés) — mission = câbler foi/éthos/
+héritage (lot8_foi) dans le créateur de culture et le panneau religion, edi_* (lot10)
+dans la construction, cls_/jrn_/dip_/pha_/age_/act_ (lot11) partout où ces mots
+apparaissent en face joueur, les 12 charges héraldiques (heraldry/) dans les blasons
+génératifs, et la purge finale de l'ancien registre (dossier `icons/` + planche
+sheet11). EN PARALLÈLE, dans la même fenêtre : un agent CHROME (fonds topbar/sidebar/
+armée/écran-titre) et un agent tech_panel (encarts lot13_techs) — tous trois ont
+touché `uikit.gd` ; `army_panel.gd`/`empire_sidebar.gd` partagés avec CHROME (fonds
+INTERDITS pour moi, contenu autorisé) — relu avant chaque édition, diff final propre.
+
+**Découvertes**
+
+1. **Le registre `ICON2_LOT` (préfixe→lot) a une EXCEPTION que le simple `get_slice
+   ("_",0)` ne peut pas porter** : `res_ouvrages`/`res_talismans` (lot11_systeme)
+   partagent le préfixe `res` avec les ~53 biens de `lot4_ressources` — sans un
+   `ICON2_EXCEPT` consulté AVANT `ICON2_LOT`, ils auraient cherché (et raté) dans le
+   MAUVAIS dossier. Même geste pour `her_charge_*` : même préfixe `her` que les 6
+   héritages de `lot8_foi`, mais un COURT-CIRCUIT explicite (`begins_with("her_charge_")
+   → null`) les exclut d'`icon2()` — elles vivent dans `assets/scps/ui/heraldry/`,
+   chargées par `heraldry.gd` seul (`_img()` y bifurque sur le dossier selon le préfixe
+   du nom, cf. #8).
+2. **`heritage_name()`/`ethos_name()` (scps_heritage.c/scps_culture.c) sont un match
+   LITTÉRAL avec les fichiers, aucune table à tenir** : Ésotérique/Métallurgiste/
+   Mécaniste/Adaptatif/Agraire/Clanique → `her_esoterique`…`her_clanique` (accent ôté
+   par `UIKit.resource_key`, déjà la fonction utilisée pour les ressources) ; Dominateur/
+   Honneur/Ordre/Bureaucrate/Mercantile/Pacifiste → `ethos_dominateur`…`ethos_pacifiste`,
+   PAREIL. `credo_name()` (scps_culture.c) renvoie DÉJÀ « pluraliste »/« prosélyte »/
+   « loyaliste » (reskin fait à la source, PAS l'ancien nom d'enum) — `foi_` + le même
+   mot marche tel quel, aucune table non plus. Seuls les 3 AXES de traditions ont une
+   troncature à connaître : `axe_intellect` (PAS `axe_intellectuel`).
+3. **« Les branches » du brief (`foi_animiste/scripturaire/roue/celeste`) ne sont PAS
+   dans religion_panel.gd** (credo+8 axes/16 pôles Sang/Feu/Seuil/Serment/Veille/Canon/
+   Don/Glaive, AUCUN rapport avec ces 4 mots) — après recherche, ce sont les 4
+   `ReligionBranch` de `scps_culture.h` (REL_ANIMISTE/ABRAHAMIQUE/DHARMIQUE/SINIQUE,
+   affichées « naturaliste/universaliste/cyclique/ritualiste » via
+   `religion_branch_name()` — un AUTRE reskin, l'ascendance religieuse HÉRITÉE d'un
+   groupe de pop, distincte de la Foi d'État du module `scps_religion.c`). Exposée par
+   `province_groups()[i]["religion"]` mais **affichée NULLE PART dans l'UI avant cette
+   passe** (grep confirmé) — câblée dans la légende de groupe de `province_detail.gd`
+   (`_draw_peuples_apercu`, qui listait déjà culture/classe/état par groupe) plutôt que
+   dans religion_panel.gd, seul endroit où la donnée existe réellement. Mapping par
+   SENS (« scripturaire »=religion du Livre=Abrahamique, « roue »=cycle du
+   Dharma=Dharmique, « céleste »=Mandat du Ciel=Sinique, « animiste »=Animiste
+   littéral), pas par ordre d'enum — DÉVIATION du brief assumée, signalée ici plutôt
+   que silencieuse : un futur agent qui voudrait ces icônes DANS religion_panel.gd (au
+   sens littéral du brief) devrait plutôt les poser sur `province_detail.gd`/
+   `empire_window.gd` partout où `province_groups()["religion"]` remonte, la source
+   est la même.
+4. **`BLD_FILE[edi_type]` (déjà dans `uikit.gd`, ordre `scps_agency.h`) EST le nom de
+   fichier `edi_*`, en minuscules, sans table** : `"edi_" + BLD_FILE[i].substr(4).
+   to_lower()` (retire le préfixe `EDI_`, 4 caractères) donne exactement les 26 noms
+   livrés (`EDI_TRADE_CENTER`→`edi_trade_center` etc., vérifié un par un contre le
+   dossier). `UIKit.edifice_icon(edi_type)` ajoutée ; `building_sprite()` DEVIENT un
+   alias pur (motif `unit_sprite()→unit_icon()`, même geste que la vague Chantier F
+   du 08-19) — `construction_panel.gd` n'a PAS eu besoin d'être touché : il consomme
+   déjà `UIKit.building_sprite()`, qui livre maintenant les gravures sans changement
+   d'appel.
+5. **12 des 12 genres/verbes listés par le brief matchent un FeedKind/une condition
+   RÉELS d'`alerts.gd`, SAUF « paix », « pillage », « colonisation » et « émissaire »**
+   (aucun FeedKind « paix »/« pillage » n'a d'équivalent jrn_* dans les 12 livrés — les
+   mots exacts du moteur sont GUERRE/BATAILLE/SIÈGE/RÉVOLTE/SÉCESSION/COLONISATION/
+   DÉCOUVERTE/CONSEIL/FOI/COMMERCE/CATASTROPHE/TRÉSOR ; « paix » et « pillage »
+   n'y figurent PAS malgré leur FeedKind moteur dédié — gardés sur leur ancienne icône,
+   repli ICON2 de `icon()`, cf. #6). `FEED_DIRECTOR` (kind 10, « inondation/peste/
+   creuset ») → `jrn_catastrophe` (le mieux ajusté, générique). Aucun FeedKind/
+   condition « colonisation » n'existe DU TOUT dans `alerts.gd` (ni fil ni condition) —
+   `jrn_colonisation` reste un genre SANS consommateur dans ce fichier (Restes).
+   Bureaucratie interne : `jrn_decouverte` sert 2 conditions (recherche vide, chip
+   métabolisation) — les deux parlaient déjà de « savoir »/technologie, cohérent.
+6. **`UIKit.icon()` avait DEUX étages de repli (`ICON2_ALIAS` puis `PARCH_ICON`
+   puis l'ancien dossier `icons/`) mais AUCUN repli final vers `icon2()` — un
+   consommateur qui passe déjà un nom natif ICON2 (`jrn_guerre`…) tombait dans le
+   dossier `icons/` (raté, silencieux, null)** puisque `alerts.gd`/`empire_sidebar.gd`
+   dessinent via `UIKit.draw_icon()` (l'ANCIEN registre), jamais `draw_icon2()`. Fix
+   GÉNÉRAL et RÉTROCOMPATIBLE : `icon()` essaie `icon2(name)` en tout DERNIER repli,
+   avant le dossier `icons/` — ça a évité de retoucher `empire_sidebar.gd` (dessin des
+   chips/journal) juste pour le régime jrn_*/age_*, ET ça a servi de FILET pour la
+   suite (`age_*` sur les médaillons d'âge, cf. #9). Ajouté aussi `draw_icon2()`
+   (jumeau canvas de `draw_icon()`) pour les fichiers qui préfèrent l'appel explicite.
+7. **Les 10 verbes diplo listés par le brief (alliance/guerre/paix/tribut/vassal/
+   embargo/migration/émissaire/intrigue/revendication) ne collent PAS 1:1 aux boutons
+   RÉELS de `country_actions.gd`** : « fabricate » (bouton « Revendiquer un
+   territoire ») porte DEUX états dynamiques du même bouton (mûrissement = intrigue,
+   prêt/base = revendication) → `dip_intrigue`/`dip_revendication` alternent au
+   `_refresh()`, pas deux boutons. « request_loan » (Demander un emprunt) est la
+   correspondance la plus proche de « tribut » (seule demande financière inter-pays du
+   panneau) — emprunté, DÉVIATION assumée. « vassalize » n'est PAS un bouton top-level
+   mais une `CheckButton` du tiroir Faire-la-paix — `dip_vassal` posée là. « émissaire »
+   n'a AUCUN bouton dédié (c'est l'infrastructure implicite derrière CHAQUE verbe, pas
+   un verbe lui-même) — `dip_emissaire` reste sans consommateur ici (Restes).
+   « pact » (commercial) n'a pas d'icône livrée — laissé tel quel.
+8. **PIÈGE CheckButton (2 heures perdues) : assigner `.icon` DIRECTEMENT à un
+   `CheckButton` (Pillage, `army_panel.gd`) semblait faire disparaître son texte au
+   probe — FAUX DIAGNOSTIC.** Refait en `TextureRect` séparé + `HBoxContainer`
+   (motif `_compo_glyphs`, déjà dans le fichier) : le texte restait INVISIBLE quand
+   même. `git show HEAD:.../army_panel.gd` (avant TOUT changement de cette mission)
+   confirme le bug PRÉEXISTANT — `raid_ck.add_theme_color_override("font_color",
+   ParchTheme.INK)` (encre sombre, pensée pour poser sur du PARCHEMIN clair) sur le
+   fond SOMBRE du panneau (`ParchTheme` Body, sans stylebox clair comme les boutons
+   voisins `_action_btn`) — sample de pixels à l'endroit du texte : ~RGB(60,50,35)
+   uniforme, aucune variance de forme de lettre, donc rendu invisible, pas juste
+   faible contraste. AUCUN rapport avec mon icône. NON corrigé (hors mandat) —
+   `spawn_task` posé pour un futur agent dédié ; la même prudence (TextureRect séparé
+   plutôt que `CheckButton.icon`) a été appliquée par précaution à `dip_vassal`
+   (country_actions.gd) SANS confirmation que ce fichier ait le même bug (pas de
+   probe de `_peace_box`, guerre requise). Buttons ORDINAIRES (`Button.icon`, PAS
+   `CheckButton`) fonctionnent PARFAITEMENT — confirmé par capture sur
+   `army_panel.gd` (Lever un corps/Renforcer), `country_actions.gd` (Proposer une
+   alliance/Déclarer la guerre/Faire la paix), `culture_creator.gd` (les 6 cartes
+   Héritage) : texte ET icône visibles ensemble à chaque fois.
+9. **L'inventaire complet planche sheet11 + dossier `icons/`** (pas seulement les 4
+   `action_*` du brief) a trouvé DEUX autres poches déjà mortes : `gold_coin`/
+   `population_group`/`grain_bundle` (sheet11_01/02/03) shadowées par `ICON2_ALIAS`
+   depuis la purge du 08-19 mais JAMAIS supprimées du disque — et `tool_speed`/
+   `tool_pause` (sheet11 + `icons/`), qui n'avaient AUCUN consommateur nulle part
+   (ni ancien registre, ni `concepts.gd` qui a sa PROPRE voie de chargement directe
+   — cf. #10), du sheet11 05/06/07/10 tout neufs. Un premier passage naïf (grep
+   `"nom"` dans `ui/*.gd`) classait `tool_speed` comme « utilisé » à cause de SA
+   PROPRE entrée `PARCH_ICON` dans `uikit.gd` — un dict-key n'est pas un appelant ;
+   il a fallu exclure `uikit.gd` du grep pour trouver les VRAIS orphelins. Résultat :
+   7 fichiers `icons/` supprimés (5 `tool_*` du brief + `tool_speed`/`tool_pause`),
+   32+7=39 pièces de planches parch supprimées (sheet06/07 entières, sheet11 01/02/
+   03/05/06/07/10) ; `sheet24_topbar_boats_menu_05/06.png` restent sur le disque,
+   ORPHELINES en conséquence (planche 24, hors périmètre de cette passe — Restes).
+10. **`concepts.gd` a sa PROPRE voie de chargement, `ICON_DIR + DEFS[k]["i"] + ".png"`,
+    qui NE PASSE JAMAIS par `UIKit.icon()`/`ICON2_ALIAS`/`PARCH_ICON`** — un piège pour
+    tout futur audit d'orphelins : un nom comme `gold_coin` ou `action_build` a l'air
+    « shadowé et mort » via `UIKit.icon()`, mais `concepts.gd` le charge encore
+    DIRECTEMENT depuis `assets/scps/ui/icons/` pour le glossaire/Codex — d'où les 33
+    fichiers de `icons/` qui restent « shadowés MAIS vivants » (gardés sur disque,
+    listés en Restes) contre les 7 GENUINEMENT orphelins (supprimés, cf. #9). Vérifier
+    LES DEUX voies avant de conclure qu'un fichier est mort.
+11. **Le choix HER_CHARGE vs CHARGES pour les 12 `her_charge_*`** : le préfixe du nom
+    de fichier (`her_`) suit la convention de nommage HÉRITAGE de toute la campagne 2
+    (`her_esoterique` etc.), pas ÉTHOS — ajoutées à `HER_CHARGE` (2 par héritage,
+    0..5) plutôt qu'à `CHARGES` (pool ÉTHOS). Elles sont BLENDUES BRUTES, comme le
+    reste du pool `CHARGES`/`HER_CHARGE` (aucune pièce « meuble » n'est teintée au
+    runtime dans ce fichier — SEULS le champ (`_tint_gray`) et la partition
+    (`_partition_band`) le sont) : le brief mentionnait « suis le motif de teinte
+    existant » mais le motif RÉEL du meuble est justement l'ABSENCE de teinture
+    (tincture fixe, pratique héraldique authentique) — suivi tel quel plutôt
+    qu'inventé une teinture qui n'existe nulle part ailleurs dans ce fichier.
+
+**Pièges**
+
+- `res_ouvrages`/`res_talismans` livrés dans `lot11_systeme`, PAS `lot4_ressources`
+  malgré le préfixe `res_` identique aux ~53 fichiers de ce dernier lot — sans
+  vérifier le VRAI dossier sur disque (`find`), l'ICON2_EXCEPT aurait pointé au
+  mauvais endroit silencieusement (aucune erreur, juste `null`).
+- Le sheet11 a des ENTRÉES DICT sans qu'aucun consommateur les appelle jamais
+  (`tool_speed`/`tool_pause`) — grep naïf de `"nom"` dans `ui/*.gd` compte la
+  définition du dict elle-même comme un « hit », maquillant un orphelin en fichier
+  vivant. Toujours EXCLURE le fichier de définition du grep de consommation.
+- CheckButton + `.icon` : le symptôme (texte disparu) POINTE vers l'icône mais n'a
+  RIEN à voir avec elle — un futur agent qui voit ce symptôme sur un AUTRE
+  CheckButton doit vérifier `font_color`/le fond AVANT de soupçonner l'icône (cf. #8).
+- Godot Button/CheckButton `icon_max_width` (theme constant) fonctionne bien pour le
+  redimensionnement VISUEL d'icônes 128² sur des boutons 18-32 px — mais ne dit rien
+  sur si le TEXTE s'affiche, un problème totalement séparé (couleur/fond).
+
+**Restes**
+
+- **`army_panel.gd` — texte « Pillage » invisible (CheckButton, PRÉEXISTANT, cf. #8)**
+  — `spawn_task` posé (id `task_01dfddbd`), non corrigé ici (hors mandat de cette
+  mission display-only ICON2).
+- **`jrn_colonisation`** : aucun FeedKind/condition « colonisation » dans `alerts.gd` —
+  le genre existe (fichier livré) mais rien à y accrocher dans ce fichier. Un futur
+  agent qui ajoute un événement de colonisation au fil (`scps_provlog.h`) devrait
+  penser à cette icône déjà prête.
+- **`dip_emissaire`** : aucun bouton « envoyer l'émissaire » dédié dans
+  `country_actions.gd` (l'émissaire est l'infrastructure implicite derrière chaque
+  verbe, jamais un verbe lui-même) — icône prête, sans site naturel identifié.
+- **kind 2 (PAIX) et kind 5 (PILLAGE)** restent sur leurs anciennes icônes
+  (`dipl_alliance`, `alert_warning`) — « paix »/« pillage » absents des 12 genres
+  jrn_* livrés malgré des FeedKind moteur dédiés.
+- **Phases FA_IDLE/FA_EMBARK/FA_SAIL/FA_LAND** (« Au repos »/« Embarque »/« En mer »/
+  « Débarque ») n'ont pas d'équivalent parmi les 7 `pha_*` livrés (lever/marche/
+  pillage/renfort/repli/siège/bataille) — `army_panel._phase_lbl`/`_phase_title`
+  n'affichent alors AUCUNE icône (dict `PHASE_ICON` volontairement incomplet, pas un
+  oubli).
+- **33 fichiers `assets/scps/ui/icons/`** shadowés par `ICON2_ALIAS`/`PARCH_ICON`
+  côté `UIKit.icon()` mais encore VIVANTS via `concepts.gd` (voie de chargement à
+  part, cf. #10) — gardés sur disque à dessein (liste complète : action_build/
+  action_decree/action_recruit/action_research/action_trade/action_treaty/
+  alert_event_bell/alert_famine/alert_revolt/alert_shortage/alert_siege/alert_warning/
+  development_tools/dipl_rivalry/gold_coin/grain_bundle/health_food_bowl/
+  knowledge_book/layer_forest/materials_stone/menu_army/menu_council/menu_demography/
+  menu_diplomacy/menu_economy/menu_filters/menu_market/menu_stocks/politics_crown/
+  population_group/settlement_cluster). Si un futur agent migre `concepts.gd` vers
+  `UIKit.icon2()`, CES fichiers deviendraient réellement supprimables.
+- **`sheet24_topbar_boats_menu_05/06.png`** (chrome, planche 24) orphelines en
+  CONSÉQUENCE de la suppression de `tool_speed`/`tool_pause` (seuls consommateurs) —
+  pas supprimées (planche 24 hors périmètre explicite « sheet11 » de cette mission).
+- **`assets/scps/pack/buildings/EDI_*.png`** (l'ANCIENNE tuile par indice, pré-parch)
+  devient orpheline maintenant que `building_sprite()` est un alias pur vers
+  `edifice_icon()` (plus de repli `_tile(BUILDINGS_DIR,…)`) — pas supprimée (le brief
+  ne visait que les planches parchemin sheet06/07, pas ce pack-là ; à vérifier/
+  purger par un futur agent dédié).
+- **RES_FALLBACK (`uikit.gd`)** : les entrées `materials_stone`/`layer_forest`
+  (pierre/argile/charbon/sel/bois/laine) sont désormais INATTEIGNABLES en pratique —
+  `RES2_FILE` couvre déjà TOUTES ces clés directement, le fallback ne se déclenche
+  jamais pour elles. Code mort fonctionnel, pas supprimé (dict partagé avec d'autres
+  clés encore utiles comme `or`/`outils`, hors mandat de le récrire ici).
+- **Traditions (culture_creator.gd)** : icône d'AXE posée sur CHAQUE bouton de trait
+  (tous rangs/sections confondus), pas de vue dédiée par bouton d'axe — cohérent avec
+  la doctrine « à côté du libellé » du brief, mais non vérifié par capture (probe
+  headless ouvre l'onglet Héritage par défaut ; Éthos/Traditions revus par LECTURE de
+  code seulement, motif identique aux cartes Héritage confirmées bonnes).
+- Gates : parse-check Godot (`--check-only --quit`) relancé 2× (pendant + après
+  stabilisation face aux agents concurrents) — VERT à chaque fois, aucune erreur de
+  script. Probes VISUELLES : `d5_resources_shot` (edi_* nets sur les cartes
+  Construction, médaillon d'âge visible en bande droite), `council_audit` (OK, confirme
+  aussi que `sidebar_drawer.gd` compile), `budget_shot` (Balance capturée — l'onglet
+  Monnaie où vivent les icônes de classe n'est PAS le défaut du probe existant, non
+  retouché — revu par lecture de code + motif TextureRect déjà confirmé ailleurs),
+  `army_panel_shot` (phases lever/renfort/pillage/marche/siège/bataille/repli TOUTES
+  visibles), `event_dialog_audit` (OK, sans rapport direct mais vert). AUCUN
+  `make full-test`/`determinism`/`savetest` relancé — display-only pur, zéro ligne
+  `scps/` touchée, aucun état sérialisé changé (SAVE_VERSION inchangé).

@@ -260,12 +260,32 @@ func _build() -> void:
 	col.add_child(_flash)
 	_layout()
 
+## icônes lot11_systeme (campagne 2, 2026-08-26) — un dip_* par VERBE de bouton (le
+## texte reste, l'icône vient EN PLUS, 20 px). « pact » (commercial) et « request_loan »
+## (emprunt) n'ont pas d'équivalent dans les 10 livrés (alliance/guerre/paix/tribut/
+## vassal/embargo/migration/émissaire/intrigue/revendication) SAUF request_loan, assez
+## proche de « tribut » (une demande financière à l'autre pays) pour l'emprunter — cf.
+## TROUVAILLES 2026-08-26. « fabricate » est DYNAMIQUE (dip_intrigue tant que la
+## revendication mûrit, dip_revendication une fois prête/de base) — géré dans _refresh().
+const DIP_ICON := {
+	"ally": "dip_alliance", "war": "dip_guerre", "peace": "dip_paix",
+	"migration": "dip_migration", "embargo": "dip_embargo", "request_loan": "dip_tribut",
+}
+
 func _add_action(parent: VBoxContainer, verb: String, label: String, custom_press: Callable = Callable()) -> void:
 	var b := Button.new()
 	b.text = label
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.custom_minimum_size = Vector2(0, 32)
+	var dicon: String = DIP_ICON.get(verb, "dip_revendication" if verb == "fabricate" else "")
+	if dicon != "":
+		var t := UIKit.icon2(dicon)
+		if t != null:
+			b.icon = t
+			b.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+			b.expand_icon = false
+			b.add_theme_constant_override("icon_max_width", 20)
 	if verb == "war":
 		b.add_theme_stylebox_override("normal", _war_sb_idle)
 		b.add_theme_stylebox_override("hover", _war_sb_hover)
@@ -321,9 +341,28 @@ func _build_peace_drawer() -> void:
 		cb.toggled.connect(func(_on): _peace_update_total())
 		# D4 — « Vassaliser » nomme directement le concept (le libellé porte son propre
 		# coût en score, pas le mot « Vassalité » lui-même — sinon aucun survol ne l'explique).
+		# icône dip_vassal EN DEHORS du CheckButton (TextureRect séparé, motif _compo_glyphs)
+		# plutôt que CheckButton.icon — par PRUDENCE seulement (ce fichier n'a pas de
+		# survol probé de _peace_box, guerre requise) : un CheckButton VOISIN dans
+		# army_panel.gd (Pillage) perd son texte au rendu, bug confirmé PRÉEXISTANT et
+		# SANS RAPPORT avec l'icône (ParchTheme.INK sur fond sombre, cf. ce fichier-là) —
+		# le motif TextureRect ici évite juste d'empiler un doute sur un doute.
+		var host: Control = cb   # ce que _peace_box reçoit : cb seul, ou cb enrobé d'une icône
 		if row[0] == "vassalize":
 			cb.tooltip_text = Concepts.def_of("Vassalité")
-		_peace_box.add_child(cb)
+			var vt := UIKit.icon2("dip_vassal")
+			if vt != null:
+				var vwrap := HBoxContainer.new()
+				vwrap.add_theme_constant_override("separation", 4)
+				var vic := TextureRect.new()
+				vic.texture = vt
+				vic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+				vic.stretch_mode = TextureRect.STRETCH_SCALE
+				vic.custom_minimum_size = Vector2(20, 20)
+				vwrap.add_child(vic)
+				vwrap.add_child(cb)
+				host = vwrap
+		_peace_box.add_child(host)
 		_peace_checks[row[0]] = cb
 		var why := Label.new()
 		why.text = row[2]
@@ -663,6 +702,11 @@ func _refresh() -> void:
 	var fab_btn: Button = _btns.get("fabricate")
 	if fab_btn != null:
 		var fab_legal: Dictionary = _legal_by_verb.get("fabricate", {})
+		# icône DYNAMIQUE (dip_intrigue tant que ça mûrit, dip_revendication sinon —
+		# le même bouton porte les deux états, cf. DIP_ICON).
+		var fab_icon := UIKit.icon2("dip_intrigue" if fabricating else "dip_revendication")
+		if fab_icon != null:
+			fab_btn.icon = fab_icon
 		if fabricating:
 			var dleft := int(ceili(float(op2.get("fabricating_days_left", 0.0))))
 			fab_btn.text = "Revendication sur %s — %d j" % [claim_name, dleft]

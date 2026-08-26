@@ -8,6 +8,7 @@ extends RefCounted
 ## sérialisation — le SAVE ne bouge pas. Cache par pays, vidé via reset().
 
 const PARCH := "res://assets/scps/ui/parch/"
+const HERALDRY_DIR := "res://assets/scps/ui/heraldry/"   # les 12 her_charge_* (campagne 2, 2026-08-26)
 const UIKit = preload("res://ui/uikit.gd")   # load_img() export-safe (charge via le PCK)
 const S29 := "sheet29_heraldry_shields_structure_"
 const S30 := "sheet30_heraldry_charges_martial_order_"
@@ -29,13 +30,19 @@ const CHARGES := [
 	[S31 + "01_colombe_essorante", S31 + "02_rameau_olivier", S31 + "14_cerf_passant", S31 + "03_gerbe_ble_liee"],
 ]
 ## accent d'HÉRITAGE (0 Éso · 1 Métal · 2 Méca · 3 Adaptatif · 4 Agraire · 5 Clanique)
+## + les 12 her_charge_* (campagne 2, 2026-08-26 — assets/scps/ui/heraldry/, monochromes
+## sombres, BLENDUES BRUTES comme le reste du pool — aucune pièce « meuble » n'est teintée
+## au runtime ici, cf. _img/blend_rect ci-dessous : le champ/la partition SEULS le sont,
+## via _tint_gray/_partition_band) : 2 par héritage (même ordre 0..5), le choix reste par
+## hash stable (h/11 % pool.size(), inchangé).
 const HER_CHARGE := [
-	[S31 + "05_oeil_ouvert", S31 + "06_croissant_lune", S31 + "08_serpent_noue", S31 + "07_flamme_trois_langues"],
-	[S31 + "11_marteau_forge"],
-	[S31 + "13_rouage_dente"],
-	[S31 + "15_corbeau"],
-	[S31 + "12_arbre_deracine"],
-	[S31 + "09_corne_guerre", S31 + "10_tete_sanglier"],
+	[S31 + "05_oeil_ouvert", S31 + "06_croissant_lune", S31 + "08_serpent_noue", S31 + "07_flamme_trois_langues",
+		"her_charge_01", "her_charge_02"],
+	[S31 + "11_marteau_forge", "her_charge_03", "her_charge_04"],
+	[S31 + "13_rouage_dente", "her_charge_05", "her_charge_06"],
+	[S31 + "15_corbeau", "her_charge_07", "her_charge_08"],
+	[S31 + "12_arbre_deracine", "her_charge_09", "her_charge_10"],
+	[S31 + "09_corne_guerre", S31 + "10_tete_sanglier", "her_charge_11", "her_charge_12"],
 ]
 ## pion d'armée par PHASE moteur (FA_* : 0 idle · 1 march · 2 siege · 3 battle ·
 ## 4 embark · 5 sail · 6 land)
@@ -67,7 +74,11 @@ static func reset() -> void:
 static func _img(piece: String) -> Image:
 	if _img_cache.has(piece):
 		return _img_cache[piece]
-	var img: Image = UIKit.load_img(PARCH + piece + ".png")
+	# her_charge_* (campagne 2) : livrées à part, dans assets/scps/ui/heraldry/ — pas
+	# une pièce des planches sheet29-32 (PARCH). Même chargement export-safe, même
+	# cache/redimensionnement WORK ; seul le dossier source change.
+	var dir := HERALDRY_DIR if piece.begins_with("her_charge_") else PARCH
+	var img: Image = UIKit.load_img(dir + piece + ".png")
 	if img != null:
 		if img.get_format() != Image.FORMAT_RGBA8:
 			img.convert(Image.FORMAT_RGBA8)

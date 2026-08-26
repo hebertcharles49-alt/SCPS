@@ -39,18 +39,24 @@ const JOURNAL_MAX := 200   ## le JOURNAL (empire_sidebar.gd, section JOURNAL) : 
 ## LA TABLE DU FIL (FeedKind → présentation) — AJOUTER UN ÉVÈNEMENT = une ligne ici
 ## (+ la valeur enum + le feed_push au site d'observation, cf. scps_provlog.h).
 ## fmt : {a}/{b} = pays · {r} = région · {y} = an.
+## icônes de GENRE (lot11_systeme jrn_*, campagne 2, 2026-08-26) : 12 genres livrés
+## (guerre/bataille/siège/révolte/sécession/colonisation/découverte/conseil/foi/
+## commerce/catastrophe/trésor) mappés sur les 11 FeedKind moteur (scps_provlog.h) —
+## PAIX (kind 2) et PILLAGE (kind 5) n'ont PAS d'équivalent parmi les 12 (« paix »/
+## « pillage » absents de la liste livrée) : gardés sur leur ancienne icône (repli
+## ICON2 de icon(), cf. TROUVAILLES 2026-08-26 Restes) plutôt qu'un mauvais choix forcé.
 const FEED_KINDS := {
-	1: {"icon": "dipl_rivalry",   "col": COL_ARMEE, "fmt": "GUERRE — {a} entre en guerre contre nous (an {y})"},
+	1: {"icon": "jrn_guerre",     "col": COL_ARMEE, "fmt": "GUERRE — {a} entre en guerre contre nous (an {y})"},
 	2: {"icon": "dipl_alliance",  "col": COL_ETAT,  "fmt": "PAIX signée avec {a} (an {y})"},   # tip enrichi du VERDICT (score {v}) dans _poll_feed
-	3: {"icon": "alert_siege",    "col": COL_ARMEE, "fmt": "Une place est TOMBÉE — {a} occupe la région {r} (an {y})"},
-	4: {"icon": "stability_shield", "col": COL_ARMEE, "fmt": "Région {r} REPRISE par nos armes (an {y})"},
+	3: {"icon": "jrn_siege",      "col": COL_ARMEE, "fmt": "Une place est TOMBÉE — {a} occupe la région {r} (an {y})"},
+	4: {"icon": "jrn_bataille",   "col": COL_ARMEE, "fmt": "Région {r} REPRISE par nos armes (an {y})"},
 	5: {"icon": "alert_warning",  "col": COL_ARMEE, "fmt": "PILLAGE — la région {r} a été mise à sac (an {y})"},
-	6: {"icon": "alert_revolt",   "col": COL_ETAT,  "fmt": "RÉVOLTE — un soulèvement éclate en région {r} (an {y})"},   # {a} = "Rebelles de X" si la guerre civile est INCARNÉE (sinon générique) — cf. _poll_feed
-	7: {"icon": "settlement_cluster", "col": COL_ETAT, "fmt": "SÉCESSION — {a} proclame son indépendance (an {y})"},
-	8: {"icon": "stability_shield", "col": COL_ARMEE, "fmt": "BATAILLE GAGNÉE contre {b} en région {r} (an {y})"},
-	9: {"icon": "alert_warning",  "col": COL_ARMEE, "fmt": "BATAILLE PERDUE contre {b} — l'ost est brisé (région {r}, an {y})"},
-	10: {"icon": "alert_event_bell", "col": COL_ETAT, "fmt": "{label} — région {r} (an {y})"},   # ÉVÈNEMENT du directeur
-	11: {"icon": "alert_warning", "col": COL_ARMEE, "fmt": "BATAILLE INDÉCISE contre {b} en région {r} (an {y})"},
+	6: {"icon": "jrn_revolte",    "col": COL_ETAT,  "fmt": "RÉVOLTE — un soulèvement éclate en région {r} (an {y})"},   # {a} = "Rebelles de X" si la guerre civile est INCARNÉE (sinon générique) — cf. _poll_feed
+	7: {"icon": "jrn_secession",  "col": COL_ETAT, "fmt": "SÉCESSION — {a} proclame son indépendance (an {y})"},
+	8: {"icon": "jrn_bataille",   "col": COL_ARMEE, "fmt": "BATAILLE GAGNÉE contre {b} en région {r} (an {y})"},
+	9: {"icon": "jrn_bataille",   "col": COL_ARMEE, "fmt": "BATAILLE PERDUE contre {b} — l'ost est brisé (région {r}, an {y})"},
+	10: {"icon": "jrn_catastrophe", "col": COL_ETAT, "fmt": "{label} — région {r} (an {y})"},   # ÉVÈNEMENT du directeur (inondation/peste/creuset…)
+	11: {"icon": "jrn_bataille",  "col": COL_ARMEE, "fmt": "BATAILLE INDÉCISE contre {b} en région {r} (an {y})"},
 }
 ## kinds MAJEURS → popup OYEZ OYEZ (pause + boutons adaptatifs) au lieu d'un chip.
 const POPUP_KINDS := [1, 2, 6, 7, 10]   # guerre · paix (verdict) · révolte · sécession · directeur
@@ -226,7 +232,7 @@ func _collect() -> Array:
 		if not bool(seat["filled"]):
 			vac += 1
 	if vac > 0:
-		out.append({"icon": "menu_council", "col": COL_ETAT, "act": "council",
+		out.append({"icon": "jrn_conseil", "col": COL_ETAT, "act": "council",
 			"tip": "%d siège(s) du conseil VACANT(S) — recruter un candidat (clic : onglet Conseil)" % vac})
 	# ÉTATIQUE — un âge s'est levé et n'est pas engagé
 	if w.has_method("age_state"):
@@ -237,7 +243,7 @@ func _collect() -> Array:
 	# SAVOIR — aucune recherche en cours
 	var rs: Dictionary = w.research_status()
 	if int(rs.get("target", -1)) < 0:
-		out.append({"icon": "knowledge_book", "col": COL_SAVOIR, "act": "tech",
+		out.append({"icon": "jrn_decouverte", "col": COL_SAVOIR, "act": "tech",
 			"tip": "Aucune RECHERCHE en cours — clic : choisir une cible dans l'arbre"})
 	# SOCIAL — au moins un édifice CONSTRUCTIBLE (débloqué + or suffisant)
 	var ci: Dictionary = w.country_info(me)
@@ -263,35 +269,35 @@ func _collect() -> Array:
 				"tip": "EN GUERRE sans armée de campagne — clic : onglet Armée (puis « Attaquer ici » sur la cible)"})
 	# FOI — la fondation est PRÊTE (1er édifice religieux bâti, pas encore de foi)
 	if w.has_method("religion_founding_ready") and int(w.religion_founding_ready(me)) == 1:
-		out.append({"icon": "faith_candle", "col": COL_FOI, "act": "religion",
+		out.append({"icon": "jrn_foi", "col": COL_FOI, "act": "religion",
 			"tip": "Votre peuple a bâti son premier sanctuaire — clic : FONDER la foi"})
 	# ── CONDITIONS MOTEUR (un seul appel C : révolte · famine · siège · prix · conso) ──
 	if w.has_method("player_alerts"):
 		var pa: Dictionary = w.player_alerts()
 		if int(pa.get("revolt_region", -1)) >= 0:
-			out.append({"icon": "alert_revolt", "col": COL_ETAT, "act": "goto",
+			out.append({"icon": "jrn_revolte", "col": COL_ETAT, "act": "goto",
 				"region": int(pa["revolt_region"]),
 				"tip": "La région %d GRONDE (agitation %d) — réprimer, assimiler ou apaiser (clic : y aller)" % [int(pa["revolt_region"]), int(pa["revolt_agit"])]})
 		if int(pa.get("famine_region", -1)) >= 0:
-			out.append({"icon": "alert_famine", "col": COL_SOCIAL, "act": "goto",
+			out.append({"icon": "jrn_catastrophe", "col": COL_SOCIAL, "act": "goto",
 				"region": int(pa["famine_region"]),
 				"tip": "FAMINE — la région %d ne mange qu'à %d %% (greniers, import, colonie vivrière) (clic : y aller)" % [int(pa["famine_region"]), int(pa["famine_pct"])]})
 		if int(pa.get("siege_region", -1)) >= 0:
-			out.append({"icon": "alert_siege", "col": COL_ARMEE, "act": "goto",
+			out.append({"icon": "jrn_siege", "col": COL_ARMEE, "act": "goto",
 				"region": int(pa["siege_region"]),
 				"tip": "SIÈGE — %s assiège notre région %d ! Lever l'ost (clic : y aller)" % [String(pa["siege_by"]), int(pa["siege_region"])]})
 		if int(pa.get("price_good", -1)) >= 0:
-			out.append({"icon": "alert_shortage", "col": COL_ECO, "act": "market",
+			out.append({"icon": "jrn_commerce", "col": COL_ECO, "act": "market",
 				"tip": "PRIX EXORBITANT — %s à ×%.1f de l'ancre au marché (clic : onglet Marché)" % [String(pa["price_name"]), float(pa["price_x10"]) / 10.0]})
 		if int(pa.get("conso_good", -1)) >= 0:
-			out.append({"icon": "alert_shortage", "col": COL_ECO, "act": "market",
+			out.append({"icon": "jrn_commerce", "col": COL_ECO, "act": "market",
 				"tip": "BIEN INTROUVABLE — %s est demandé mais ni produit ni en stock (clic : onglet Marché)" % String(pa["conso_name"])})
 	# ÉCONOMIE — PÉNURIE CRITIQUE (retour joueur UI-2 : « Fer : rupture dans 12 jours »
 	# remonte en alerte explicite) : moins de 30 jours de couverture au rythme actuel,
 	# même dérivation que la cellule « déficit » de la topbar (Topbar.worst_shortage).
 	var short := Topbar.worst_shortage(w, me)
 	if not short.is_empty() and int(short["days"]) < 30:
-		out.append({"icon": "alert_shortage", "col": COL_ECO, "act": "market",
+		out.append({"icon": "jrn_commerce", "col": COL_ECO, "act": "market",
 			"tip": "%s : rupture dans %d jours au rythme actuel (clic : onglet Marché)" % [
 				String(short["name"]), int(short["days"])]})
 	# UI-MONNAIE (2026-07-16) — U4 : LES ÉVÉNEMENTS MONÉTAIRES. CONDITIONS polées (motif
@@ -301,10 +307,10 @@ func _collect() -> Array:
 	# DISCOVERY) : DÉJÀ un dilemme à part entière (pending_event/player_event_choice —
 	# « Proclamer la découverte »), plus visible qu'une ligne de journal — non dupliqué ici.
 	if w.has_method("country_bankruptcy_scar") and float(w.country_bankruptcy_scar(me)) > 0.01:
-		out.append({"icon": "alert_warning", "col": COL_ECO, "act": "market",
+		out.append({"icon": "jrn_tresor", "col": COL_ECO, "act": "market",
 			"tip": "BANQUEROUTE — tes créanciers saisissent une part de ta production (cicatrice active, onglet Monnaie)"})
 	if w.has_method("country_debase_frac") and float(w.country_debase_frac(me)) > 0.001:
-		out.append({"icon": "alert_warning", "col": COL_ECO, "act": "market",
+		out.append({"icon": "jrn_tresor", "col": COL_ECO, "act": "market",
 			"tip": "DÉBASE EN COURS — sur-frappe payée en confiance (onglet Monnaie)"})
 	# ADVERSAIRES — parcourt les pays CONNUS SEULEMENT (motif at_war ci-dessus, jamais
 	# le voile de brouillard) : banqueroute/débase d'un voisin, en MOTS, sans navigation
@@ -316,10 +322,10 @@ func _collect() -> Array:
 				continue
 			var rnm := String(rel.get("name", "?"))
 			if w.has_method("country_bankruptcy_scar") and float(w.country_bankruptcy_scar(rcid)) > 0.01:
-				out.append({"icon": "alert_warning", "col": COL_ECO, "act": "",
+				out.append({"icon": "jrn_tresor", "col": COL_ECO, "act": "",
 					"tip": "%s traverse une BANQUEROUTE — ses créanciers saisissent sa production" % rnm})
 			if w.has_method("country_debase_frac") and float(w.country_debase_frac(rcid)) > 0.001:
-				out.append({"icon": "alert_warning", "col": COL_ECO, "act": "",
+				out.append({"icon": "jrn_tresor", "col": COL_ECO, "act": "",
 					"tip": "%s DÉBASE sa monnaie — sur-frappe au-delà de la parité" % rnm})
 	return out
 
@@ -330,11 +336,11 @@ func _collect() -> Array:
 func push_metab_ready(nom: String) -> void:
 	_seen_seq += 1   # partage la numérotation de seq (clic = acquitté, comme le fil moteur)
 	var tip := "Métabolisation : %s prête (clic : voir l'arbre)" % nom
-	_events.append({"icon": "knowledge_book", "col": COL_SAVOIR, "tip": tip,
+	_events.append({"icon": "jrn_decouverte", "col": COL_SAVOIR, "tip": tip,
 		"seq": _seen_seq, "act": "tech_metab"})
 	while _events.size() > FEED_MAX:
 		_events.pop_front()
-	_push_journal({"icon": "knowledge_book", "col": COL_SAVOIR, "tip": tip,
+	_push_journal({"icon": "jrn_decouverte", "col": COL_SAVOIR, "tip": tip,
 		"year": int(Sim.world.year()) if Sim.world != null and Sim.world.has_method("year") else 0,
 		"region": -1, "act": "tech_metab"})
 	_refresh()
