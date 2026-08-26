@@ -1,3 +1,20 @@
+# SYNTHÈSE SESSION — 2026-08-26 : CAMPAGNE D'ASSETS 2 INTÉGRÉE (lots 8-13)
+
+- 200 PNG livrés/audités/intégrés (commits fb985f1 → eef433b) : chrome 9-slice
+  (topbar/rail/barre droite/plaque armée — helpers draw_9slice_h/v UIKit),
+  ÉCRAN TITRE (menu au tiers gauche, probe title_shot), curseurs (plume/épée-
+  pillage), 74 ENCARTS TECH façon Civ 6 (lazy-load 24/74, états
+  acquis/or/assombri/pulsé, bandeau tan — le noir translucide était illisible),
+  icônes système (créateur de culture, religion aux noms joueur, 26 édifices,
+  classes, journal 11/12, diplo, phases, âges, 12 charges héraldiques).
+- PURGE FINALE : 46 PNG (icons/ morts, planches édifices 06/07, sheet11
+  résiduel) — l'ancienne génération d'icônes n'existe PLUS.
+- Registre unique UIKit.icon2 par préfixe (foi_/ethos_/her_/life_/struct_/
+  axe_/edi_/cls_/jrn_/dip_/pha_/age_/act_/tech_ + exceptions her_charge_).
+- Restes : cursor_loupe non branché, jrn_ 12e genre sans kind, res_talismans
+  sans ressource moteur, libellé « Pillage » invisible (bug PRÉEXISTANT,
+  tâche séparée), reflow topbar/panneaux à l'épreuve du jeu réel.
+
 # SYNTHÈSE SESSION — 2026-08-19 : CARTE (climat, îles, compacité, routes cuites, lisibilité)
 
 ## Arc CARTE du 2026-08-19 (tout committé)
