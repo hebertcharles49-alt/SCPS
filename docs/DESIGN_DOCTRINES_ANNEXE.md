@@ -286,7 +286,7 @@ déf. 0.015, motif décret)*
 | 3 | **Les Portes ouvertes** (*The Open Gates*) | 46 | `REFUGEE_SETTLE_INTEG` ×0.9 (le réfugié se FIXE plus tôt) · `REFUGEE_RETURN_PULL` ×0.8 (il repart moins) | **Héberger ≥ 400 âmes réfugiées** (somme directe, aucun accumulateur neuf) | Les proscrits d'un royaume en cendres découvrent qu'on leur a gardé une place ; beaucoup ne rentreront jamais. |
 | 4 | **Le Pacte d'accueil** (*The Pact of Welcome*) — **VERBE** | 52 | `CMD_OFFER_MIGRATION` élargi (2e mode) : tant qu'UN pacte de ce type tient, à chaque clôture mensuelle, tout groupe DÉPORTÉ de mes provinces bascule déporté→migrant ET servile→journalier, intégration gardée (la bascule exacte de `demography_manumit_country`) ; effet réel : diffusion `METAB_DIFFUSE_SLAVE` 0.30→1.0 et la friction off-culture devient PLEINE (le prix du choix) | **≥ 1 pacte migratoire en vigueur** | Le captif d'hier signe le même registre que le marchand d'à-côté : il n'est plus un bien, il est un nouveau venu — et il faudra désormais le contenter. |
 | 5 | **Le Creuset** (*The Crucible*) | 57 | *NOUVEAUX TUNABLES (promotions aux valeurs actuelles) : `OFF_CULTURE_SAT_PEN` déf. 0.45 · `OFF_CULTURE_SOC_PEN` déf. 0.60* → ×0.75 aux deux (0.34/0.45) | — | Chez nous, l'étranger mal servi par nos biens et nos rites l'est un peu moins mal : le pays porte sa diversité au lieu de la subir. |
-| 6 | **Le Peuple des peuples** (*A People of Peoples*) | 60 | `METAB_TIER1/2/3` ×0.75 (la barre d'accès aux héritages digérés tombe) · `AI_METAB_RES_W` ×1.20 (le +% recherche du creuset) | **`econ_country_metabolized` ≥ 0.10** | Assez d'âmes venues d'ailleurs ont fait souche pour que leurs pères nous lèguent leurs outils : nos savants lisent enfin dans leur langue. |
+| 6 | **Le Peuple des peuples** (*A People of Peoples*) | 60 | `METAB_TIER1/2` ×0.75 (la barre d'accès aux héritages digérés tombe — **TIER3 épargné, décision H3.1 : il gate la victoire Merveille**) · `AI_METAB_RES_W` ×1.20 (le +% recherche du creuset) | **`econ_country_metabolized` ≥ 0.10** | Assez d'âmes venues d'ailleurs ont fait souche pour que leurs pères nous lèguent leurs outils : nos savants lisent enfin dans leur langue. |
 
 **Notes (agent) :** la séquence 4→5 est le cœur : l'idée 5 est la
 CONTREPARTIE de l'idée 4 (le servile libéré pèse plein en friction
@@ -425,8 +425,9 @@ exempte nommément mes marchands · `CREDIT_LINE_BASE` ×1.15).
 
 ---
 
-## Technologie — Le Concile des lettrés
-*(Technology — The Council of Lettered Men)*
+## Technologie — Le Cénacle des lettrés
+*(Technology — The Lettered Cenacle — renommé H3.4 : l'apex T5 s'appelle déjà
+« Concile des savants »)*
 
 **Identité :** la recherche cesse d'être un sous-produit de la richesse pour
 devenir une politique — on choisit ce qu'on étudie, on copie ce que le monde
@@ -599,7 +600,7 @@ idées 262)*
 | 2 | **Le registre des métiers** (*The Register of Trades*) | 35 | `COMMERCE_W_BOURGEOIS` ×1.20 · REVERS `PROMOTE_BASKET_MULT` ×1.10 (la guilde ferme sa porte derrière elle) | — | La jurande codifie la qualité, tient les prix — et ferme sa porte derrière elle. |
 | 3 | **L'emprunt intérieur** (*The Domestic Loan*) — **VERBE** | 40 | `CMD_LOAN_DOMESTIC` : 2e tranche de crédit au-dessus de la ligne ordinaire, dimensionnée *`CREDIT_LINE_DOMESTIC` (déf. 1.0)* × effectif bourgeois ; taux ×0.85 si satisfaction bourgeoise ≥ *`CREDIT_DOMESTIC_TRUST` (déf. 0.5)*, sinon ×1.20 (ils tarifent le risque de leur propre État) ; canal crédit existant (dette, intérêts, saisie), compte dans `CREDIT_RATIO_CAP`. RÈGLE-REVERS : banqueroute tranche ouverte ⇒ grief plein du groupe bourgeois + tranche fermée 10 ans | **≥ 500 bourgeois** | On ne mendie plus chez l'étranger : on souscrit chez soi, et l'on doit désormais des comptes à ses propres marchands. |
 | 4 | **Le denier des villes** (*The Towns' Penny*) | 45 | `CREDIT_RATE_BASE` ×0.80, toutes lignes | **Un emprunt intérieur remboursé intégralement** (latch) | Un prince qui rembourse emprunte deux fois moins cher que celui qui promet. |
-| 5 | **La bourgeoisie de robe** (*The Robe and the Bench*) | 52 | RÈGLE : le vivier des ministres du Conseil s'étend à la strate bourgeoise · REVERS `COUNCIL_ROT_BOOST` ×1.25 (la vénalité rend la capture d'État plus corrosive). ⚠ INCERTITUDE signalée : si le vivier est DÉJÀ ouvert (ministres de la pop v100), repli à iso-coût = un siège de Conseil supplémentaire ouvrable — à trancher avant code | — | Le fils du drapier porte la robe du chancelier ; la vieille noblesse compte les sièges qu'elle a perdus. |
+| 5 | **La bourgeoisie de robe** (*The Robe and the Bench*) | 52 | RÈGLE (**tranchée H8** : le vivier est déjà multi-classes v100) : **un siège de Conseil SUPPLÉMENTAIRE ouvrable** (l'office s'achète — un rang de plus dans la moyenne d'influence) · REVERS `COUNCIL_ROT_BOOST` ×1.25 (la vénalité rend la capture d'État plus corrosive) | — | Le fils du drapier porte la robe du chancelier ; la vieille noblesse compte les sièges qu'elle a perdus. |
 | 6 | **Les clés de la ville** (*The Keys to the City*) | 60 | `PROMOTE_BASKET_MULT` ×0.75 (seuil net 1.4×1.10×0.75 = 1.155) — l'assiette GROSSIT d'elle-même : plus de bourgeois = plus de voix, mais un panier bourgeois plus large à servir et plus d'aspirants face aux élites (conséquence endogène, aucun levier ajouté) | — | La charte s'ouvre à qui peut payer son entrée : la ville se remplit de nouveaux riches, et il faut désormais tous les servir. |
 
 **Notes (agent) :** l'assiette est un pari sur le temps — plus mince que
@@ -825,11 +826,28 @@ AI_OFFER_SUZ_OPINION, DOCFAUST_* ×9). Chaque famille porte son kill-switch ;
 la preuve « tous à neutre = golden byte-identique » est LE gate d'entrée de
 la vague P3.
 
-## H7. À valider par le joueur
+## H7. Décisions de clôture (« termine le design », joueur 2026-09-01 → tranché)
 
-1. La règle de clamp composé [0.60, 1.60] (H2bis).
-2. Peuple idée 6 restreinte à `METAB_TIER1/2` (H3.1).
-3. Paire Faustien×Technologie vide (H3.2).
-4. Le renommage (doctrine « Concile des lettrés » vs apex, H3.4).
-5. Le volume de synergies (31 écrites — garder tout, ou élaguer ?).
-6. Les 3 tickets hors-vague (H4) à lancer quand tu veux.
+1. **Clamp composé [0.60, 1.60]** par clé (H2bis) : ACTÉ — famille `DOCFAUST_*`
+   exemptée par identité.
+2. **Peuple idée 6 restreinte à `METAB_TIER1/2`** (H3.1) : ACTÉ, appliqué à la
+   table.
+3. **Paire Faustien×Technologie VIDE** (H3.2) : ACTÉ.
+4. **Renommage** : la doctrine devient « **Le Cénacle des lettrés** » (l'apex
+   T5 garde « Concile des savants »). Appliqué aux deux docs.
+5. **31 synergies conservées** : le coût fibonaccien EST l'élagage en jeu —
+   plus de choix ne coûte rien à l'équilibre.
+6. Tickets hors-vague (H4) : **tous clos** (fix vassal 27dc5ed + purge
+   registre + doc réalignée).
+
+## H8. Vérifications de début de vague (§H4.4) — LEVÉES 2026-09-01
+
+- **`arch_depth[]`** : cache recalculé par `ai_sync_refresh` (`scps_ai.c:2364`)
+  depuis l'état réel — prérequis lisible sans champ de save nouveau ; veiller
+  à un refresh avant toute lecture post-load (sinon lire la source).
+- **Vivier des ministres** : DÉJÀ multi-classes (`scps_statecraft.h:171` — le
+  ministre est un membre de la pop, son courant = celui de sa classe, v100).
+  ⇒ Bourgeoise idée 5 bascule sur son REPLI acté : **un siège de Conseil
+  supplémentaire ouvrable**, même revers `COUNCIL_ROT_BOOST` ×1.25.
+- **`SPEC_*` joueur** : `ai_speculate_tick` gaté `ai_on[c]` (`scps_sim.c:1172`),
+  vrai pour le pays humain (IA AUTO) — le Mercantilisme mord bien le joueur.

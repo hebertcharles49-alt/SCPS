@@ -101,7 +101,9 @@ Conditions type (tout est déjà lisible dans le moteur) :
 - grenier ≥ X mois sur P (`econ_colony_food_ok`) ; catchment marché ≥ N ;
 - héritage de C métabolisé (`econ_country_metabolized`) ; temple T2 bâti ;
 - vassaliser V ; gagner la guerre contre le rival désigné (rancune max) ;
-- rallier le hameau WILD H (défection pacifique OU conquête — double voie).
+- rallier le hameau WILD H (conquête OU vassalité imposée à la paix —
+  `WILD_DEFECT_YEARS=0` par décision joueur : un hameau ne se rallie ni ne se
+  soumet jamais seul ; corrigé par l'annexe Desseins D2).
 
 ### 2.3 La branche coloniale (le modèle détaillé)
 
@@ -149,12 +151,14 @@ du registre (docs/LEVIERS.md) via le patron `decree_mult`, portée pays, souvent
 
 ### 2.5 Pivots exclusifs
 
-Un pivot par branche, à mi-parcours (leçon 1.35/Anbennar) : p.ex. la branche du
-Sol se scinde en **« L'Empire des marches »** (conquête, remises d'annexion,
-gate Dominateur/Honneur) vs **« La Toile des serments »** (vassalités,
-intégration, gate Bureaucrate/Pacifiste). Choix scellé par le joueur,
+Un pivot par branche, à mi-parcours (leçon 1.35/Anbennar) : p.ex. la branche
+du Sol se scinde en **« L'Empire des marches »** (conquête, remises
+d'annexion) vs **« La Couronne des serments »** (vassalités, intégration —
+renommée : « La Toile des serments » est la doctrine Vassaux, annexe Desseins
+D2/D4). Règle actée (D1.6) : **l'éthos fixe le PRIX du pivot (15/25), jamais
+le mur** — le vrai gate est une preuve d'usage. Choix scellé par le joueur,
 irréversible, l'autre voie s'éteint — rejouabilité entre graines ET entre
-éthos.
+éthos. Le contenu complet des 7 branches : docs/DESIGN_DESSEINS_ANNEXE.md.
 
 ### 2.6 Déterminisme, golden, save
 
@@ -302,7 +306,7 @@ politique. La frontière est nette et lisible.
 | 8 | **Vassaux** « La Toile des serments » | ≥ 1 vassal | `AI_VASSAL_CONTRIB_*`, vitesse d'intégration, annexion adoucie | imposer un contrat supérieur à la paix (servage→concordat…) |
 | 9 | **Production** « L'Atelier du monde » | Fonderie + Outillage | `EXTRACT_*`, `RAW_BOOST_*`, recettes de manufactures | palier d'exploitation au-delà du plafond (`RAW_BOOST_MAX_TIER`+) |
 | 10 | **Infrastructure** « La Pierre et l'eau » | Atelier de construction | durées/coûts d'édifices, `VETUSTE_RATE`, `RENOV_COST_FRAC`, `HOUSE_MANUF` | rénovation de masse (une file nationale de chantiers) |
-| 11 | **Technologie** « Le Concile des lettrés » | Bibliothèque + Scriptorium | `SAVOIR_W_*`, `SAVOIR_LIB_*`, diffusion/catch-up | orienter la recherche (biais de quartier de l'arbre) |
+| 11 | **Technologie** « Le Cénacle des lettrés » (renommé — l'apex T5 s'appelle déjà « Concile des savants ») | Bibliothèque + Scriptorium | `SAVOIR_W_*`, `SAVOIR_LIB_*`, diffusion/catch-up | orienter la recherche (biais de quartier de l'arbre) |
 | 12 | **Connaissances du monde** « Les Cartes et les langues » | Observatoire ou Amirauté | brouillard (rayon), vitesse de métabolisation, `SYNC_TRADE_*` | **expédition lointaine** (révèle une zone + ouvre un contact culturel) |
 | 13 | **Faustien** « Le Pacte » | 1 tech ⚠ acquise | accès/coûts des nœuds faustiens, rendement des transmuteurs | l'échappatoire faustienne au choix (plus de refus IA) — la charge monte, **le prix est l'entropie** |
 

@@ -16,9 +16,19 @@
   INTACT par construction (contribution après l'an 13). + hygiène registre :
   IMPORT_TOLL_FRAC purgé (fantôme double), WILD_DEFECT_YEARS=0 confirmé
   décision joueur (LEVIERS.md réaligné).
+- **DESIGN TERMINÉ (« termine le design »)** : §H7/H8 tranchés (clamp composé
+  acté, Peuple→TIER1/2, Cénacle des lettrés renommé, repli Bourgeoise idée 5,
+  vérifs code levées) + **docs/DESIGN_DESSEINS_ANNEXE.md** écrit (7 agents,
+  un par branche : Sol · Mer & Comptoirs · Routes & Caravanes · Foi · Savoir ·
+  Creuset · Horde — ~50 échelons, 7 pivots, harmonisation D1-D5 : canal daté
+  par latch d'année, gabarits {0}, re-résolution unifiée, l'éthos fixe le
+  prix des pivots jamais le mur). Trouvailles moteur à trancher (D3) : la
+  porte de l'arcane MURÉE (`has_ruins_access` jamais posé — le bras faustien
+  du Savoir inatteignable aujourd'hui), religion comptée à la rep-province
+  seule, `CMD_ROUTE` région-grain, double définition du bassin de marché.
 - **Prochain pas** : P1 du chantier (dépose commission décennale + ré-ancrage
-  Âge des Héros + Influence politique + Desseins moteur joueur-seul) — après
-  validation par le joueur des points §H7 de l'annexe.
+  Âge des Héros + Influence politique + Desseins moteur joueur-seul) — le
+  design est complet, plus rien à valider sauf les décisions D3.
 
 # SYNTHÈSE SESSION — 2026-08-26 : CAMPAGNE D'ASSETS 2 INTÉGRÉE (lots 8-13)
 
