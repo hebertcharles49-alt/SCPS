@@ -1662,7 +1662,40 @@ typedef struct {
     double reward_gold_adj; /* récompense PRÉVUE = reward_gold × mult */
     double reward_qty_adj;  /* récompense PRÉVUE = reward_qty × mult */
 } ScpsMission;
+/* ⚠ DÉPOSÉ (2026-09-01) : la commission décennale n'existe plus — ce reader rend
+ * TOUJOURS active=0. Il survit le temps que la façade bascule sur les Desseins
+ * (le binding Godot et country_panel.gd l'appellent encore). */
 void scps_mission_info(ScpsSim *s, int cid, ScpsMission *out);
+
+/* ---- LES DESSEINS (dessein_of) ---------------------------------------- *
+ * L'arbre d'ambitions du pays : une BRANCHE = 8 échelons en cascade, chacun
+ * visant un objet NOMMÉ du monde. Membrane stricte : que des MOTS (le nom court
+ * de l'échelon, son objectif gabarité, sa récompense en UNE ligne, sa saveur) et
+ * un LIEU tangible — jamais un flottant moteur, jamais un seuil, jamais un
+ * tunable. `branche` = DesseinBranch (P1 : DESS_SOL seul).
+ * Renvoie 1 si le pays porte cette branche, 0 sinon (out remis à zéro). */
+typedef struct {
+    int    active;          /* 0/1 : le pays porte-t-il cette branche ? */
+    const char *branche;    /* son nom (« Le Sol ») */
+    const char *voie;       /* la voie CHOISIE au pivot ("" tant qu'il n'est pas scellé) */
+    int    rung;            /* l'échelon COURANT (0-based) */
+    int    rungs_total;     /* combien d'échelons compte la branche */
+    int    done;            /* 1 = branche ACHEVÉE (parachèvement scellé) */
+    const char *nom;        /* le nom COURT de l'échelon courant */
+    const char *objectif;   /* sa condition, en mots, le lieu réel injecté */
+    const char *recompense; /* ce qu'il donne, en UNE ligne */
+    const char *saveur;     /* une phrase */
+    const char *cible;      /* le lieu / la couronne visée ("" si l'échelon patiente) */
+    int    pret;            /* 1 = la condition est REMPLIE : le sceau est offert */
+    int    pivot;           /* 1 = l'échelon courant est le PIVOT (choix de voie) */
+    const char *voie_a, *voie_b;  /* les deux voies du pivot */
+    int    voie_a_ok, voie_b_ok;  /* la PREUVE D'USAGE de chaque voie est-elle acquise ? */
+    int    pivot_cout;      /* l'influence que coûte le pivot (20, plat) */
+} ScpsDessein;
+int  scps_dessein_info(ScpsSim *s, int cid, int branche, ScpsDessein *out);
+/* SCELLER l'échelon courant (le verbe — ENFILÉ, revalidé au drain). `voie` n'est
+ * lu QUE pour le pivot (1 = Conquête, 2 = Vassalisation). */
+int  scps_player_seal_dessein(ScpsSim *s, int branche, int echelon, int voie);
 
 /* ---- FACTIONS (le spectre d'éthos interne — §9 UI) --------------------- *
  * La distribution EFFECTIVE (groupes + stance des leviers), la rancœur par

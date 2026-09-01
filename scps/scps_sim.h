@@ -163,6 +163,13 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
         * joueur) — la légalité fine (total>0 et <effectif, chaque type ≤ dispo du type)
         * vit dans campaign_split_comp (motif CMD_CORPS_SPLIT). */
        CMD_SPLIT_COMP,
+       /* LES DESSEINS — SCELLER un échelon rempli (copié du patron CMD_AGE_ENGAGE :
+        * un accusé de réception pur, le moteur a déjà tout constaté).
+        * a = {branche (DesseinBranch), échelon, voie}. La `voie` n'est lue QUE
+        * pour le PIVOT (DESS_VOIE_CONQUETE/VASSALISATION) — irréversible, et elle
+        * exige la preuve d'usage correspondante. Revalidé au drain (missions_seal) :
+        * branche générée, échelon bien le COURANT, condition remplie. */
+       CMD_SEAL_DESSEIN,
        CMD_COUNT };
 #define SCPS_CMDQ_MAX 64
 #define SCPS_PEACE_MAX_TERRITORIES 32

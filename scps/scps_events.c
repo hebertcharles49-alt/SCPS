@@ -150,11 +150,10 @@ struct EventCtx {
     DiploState      *dp;   /* §F : guerres (T) + rancune (Amnistie) ; peut être NULL */
     EndgameState    *eg;   /* V2b LOT 1 : la Merveille (merv/merv_country/metab_count) ; peut être NULL */
     int              human_player;   /* MEMBRANE DE DÉCISION : -1 = chronique (jamais enfilé) */
-    /* raccord 7 (Âge des Héros) — MissionsState, pour poser le bonus « la prochaine
-     * mission du siège » depuis resolve_choice (EVID_HERO_*). NULL pour TOUT autre
-     * évènement (les ~15 initialisateurs positionnels existants omettent ce champ
-     * en fin de liste ⇒ zéro-initialisé par construction — aucune retouche). */
-    MissionsState   *ms;
+    /* ⚠ Le champ `MissionsState *ms` a DISPARU avec la commission décennale
+     * (dépose 2026-09-01) : il ne servait qu'à poser le HeroMissionBonus sur la
+     * PROCHAINE commission du siège consacré. Aucun évènement ne lit plus l'état
+     * des missions — on ne laisse pas un pointeur mort dans le contexte. */
 };
 
 /* §G2 — fwd : un fait NOTABLE inscrit une MÉMOIRE (l'âge en est un, défini plus haut
@@ -2772,25 +2771,17 @@ static void resolve_choice(EventCtx *cx, int evid, int subject, int oi, int toda
         else if (hero_seat_of(evid)>=0 && cid>=0){
             /* raccord 7 — « Le nom du siècle ». Le siège est FIXE par EVID (mirroir des
              * TRAHISON_* ci-dessus) ; l'identité (slot,gen) est RE-DÉRIVÉE ici (le fait est
-             * frais — même tick que ages_hero_fire). oi==0/1 posent un BONUS sur la
-             * PROCHAINE mission du siège (cx->ms->hero_bonus, consommé par
-             * mission_grant/scps_missions.c — successeur exclu si le titulaire a changé
-             * d'ici là) ; oi==1 CAPTURE la faction (faction_concede — la Corruption qui
-             * en découle EST l'effet, jamais un delta codé à côté) ; oi==2 aigrit SA
-             * PROPRE faction (refusé, pas « la plus opposée » — motif RENVOYER de P1-3). */
+             * frais — même tick que ages_hero_fire).
+             * DÉPOSE 2026-09-01 : oi==0/1 posaient un BONUS sur la PROCHAINE commission
+             * décennale du siège (HeroMissionBonus) — la commission est déposée, ce canal
+             * DISPARAÎT. Restent les effets POLITIQUES, qui étaient déjà les vrais :
+             * oi==0 pousse le levier de la faction du consacré ; oi==1 la CAPTURE
+             * (faction_concede — la Corruption qui en découle EST l'effet, jamais un delta
+             * codé à côté) ; oi==2 aigrit SA PROPRE faction (refusé, pas « la plus
+             * opposée » — motif RENVOYER de P1-3). */
             int seat = hero_seat_of(evid);
             int fac  = statecraft_council_seat_faction(cx->sc, seed, cid, seat);
             if (oi==0 || oi==1){
-                if (cx->ms && cx->sc){
-                    int slot = statecraft_council_seated(cx->sc, cid, seat);
-                    if (slot>=0){
-                        int gen = statecraft_council_seated_gen(cx->sc, cid, seat);
-                        HeroMissionBonus *hb = &cx->ms->hero_bonus[cid][seat];
-                        hb->mult = (oi==0) ? tune_f("AGE_HERO_MISSION_REWARD",1.20f)
-                                           : tune_f("AGE_HERO_MISSION_REWARD_CAPTURED",1.30f);
-                        hb->slot = (int8_t)slot; hb->gen = (int8_t)gen;
-                    }
-                }
                 if (oi==0 && fac>=0) faction_lever_apply(cid, (EthosFaction)fac, tune_f("AGE_HERO_FACTION_LEVER",0.08f));
                 else if (oi==1 && fac>=0) faction_concede(cid, (EthosFaction)fac);   /* Corruption : la capture EST l'effet */
             } else if (fac>=0){
@@ -3523,15 +3514,17 @@ bool  ages_tech_researchable(const WorldProsperity *wp, TechTheme br, int tier){
 }
 float ages_breach_pressure(const EventsState *ev){ return ev->ages.breach_pressure; }
 
-/* raccord 7 — L'ÂGE DES HÉROS. Le TEST (rang III + efficacité + loyauté + encore
- * assis) vit dans scps_sim.c (accès direct à Statecraft/MissionsState, ce module
- * n'en a pas besoin) ; ici on se contente de faire advenir l'âge (une fois) et de
- * pousser « Le nom du siècle » — DÉTERMINISTE, pas de mtth (fire_event(subject)
- * sans roll, comme age_dawn : le fait est déjà avéré au moment de l'appel). */
+/* raccord 7 RÉ-ANCRÉ (2026-09-01) — L'ÂGE DES HÉROS. Le TEST (rang III +
+ * efficacité + loyauté + encore assis) vit dans scps_sim.c, au drain de
+ * CMD_SEAL_DESSEIN : l'âge naît désormais du PARACHÈVEMENT d'une branche de
+ * Dessein, et non plus d'une commission décennale réussie (déposée). Ici on se
+ * contente de faire advenir l'âge (une fois) et de pousser « Le nom du siècle »
+ * — DÉTERMINISTE, pas de mtth (fire_event(subject) sans roll, comme age_dawn :
+ * le fait est déjà avéré au moment de l'appel). */
 void ages_hero_fire(EventsState *ev, World *w, WorldEconomy *econ, WorldLegitimacy *wl,
                     WorldProsperity *wp, Statecraft *sc, RouteNetwork *rn,
                     const TechState ts[], DiploState *dp, EndgameState *eg,
-                    MissionsState *ms, int cid, int seat, int slot, int gen,
+                    int cid, int seat, int slot, int gen,
                     int human_player){
     if (!ev || !w || cid<0 || cid>=w->n_countries) return;
     (void)slot; (void)gen;   /* l'identité est RE-DÉRIVÉE à la résolution (statecraft_council_seated) */
@@ -3544,7 +3537,7 @@ void ages_hero_fire(EventsState *ev, World *w, WorldEconomy *econ, WorldLegitima
         case 2: evid=EVID_HERO_INDUSTRIE; break;
         default: return;
     }
-    EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp,eg,human_player,ms};
+    EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp,eg,human_player};
     fire_event(&cx, evid, cid);
 }
 

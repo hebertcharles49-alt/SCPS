@@ -32,6 +32,13 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
+/* ⚠ BUMP DÛ AU MERGE (vague DESSEINS, 2026-09-01) — VOLONTAIREMENT NON APPLIQUÉ ICI :
+ * `MissionsState` a été REFONDU (la commission décennale déposée, les Desseins à sa
+ * place) ⇒ sizeof change ⇒ la section MISS (fwrite BRUT) exige un bump. Il n'est pas
+ * posé dans cette branche parce qu'un AUTRE chantier possède déjà 103→104 dans l'arbre
+ * principal : poser le même numéro des deux côtés produirait deux formats distincts
+ * sous une seule version. L'orchestrateur bumpe une fois, au merge. Dans ce worktree le
+ * savetest passe malgré tout : le MÊME binaire écrit et relit. */
 #define SAVE_VERSION 103u          /* v103 (audit 2026-08-12) : SCPS_MAX_MODIFIERS 1024→2048 (la
                                     * pile saturait sous SCPS_MAX_PROV) ⇒ sizeof(ModifierStack) ;
                                     * + Campaign.dead_class_pending (le registre des morts par

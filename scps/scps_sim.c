@@ -952,6 +952,52 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (regions_of(s->econ,p)<=0) break;               /* royaume mort : refus net */
             s->player_age_engaged = age;
             break; }
+          /* ── LES DESSEINS — SCELLER un échelon (le patron CMD_AGE_ENGAGE : le
+           *    moteur a DÉJÀ constaté la condition à la clôture, le verbe n'est
+           *    qu'un accusé de réception… qui verse la récompense). Toute la
+           *    revalidation vit dans missions_seal (miroir save_sane). ── */
+          case CMD_SEAL_DESSEIN: {
+            int branch=c->a[0], rung=c->a[1], voie=c->a[2];
+            int was_finale = dessein_is_finale(rung);
+            /* le LIEU de l'échelon qu'on scelle, lu AVANT le sceau (missions_seal
+             * avance l'échelon et résout DÉJÀ la cible du suivant). */
+            int treg = -1;
+            { const Dessein *d0 = dessein_of(s->missions, p, branch);
+              int t0 = d0 ? dessein_target_pid(d0) : -1;
+              if (t0>=0 && t0<w->n_provinces) treg = w->province[t0].region; }
+            if (!missions_seal(s->missions, w, s->econ, s->dp, s->sc, w->seed, s->year,
+                               p, branch, rung, voie)) break;
+            /* MÉMOIRE : l'Annale du règne (la façade en dérive l'ÉPITHÈTE — un
+             * parachèvement pèse le poids plein d'un âge). annal_push peut rendre
+             * -1 (le fait trop léger face au panthéon) : on n'en dépend jamais. */
+            { const Dessein *dd = dessein_of(s->missions, p, branch);
+              annal_push(s->ev, s->year, ANNAL_MISSION, branch,
+                         dessein_display_slot(rung, dd?dd->voie:0), treg,
+                         was_finale ? 100 : 45, -1); }
+            /* raccord 7 RÉ-ANCRÉ (2026-09-01) — L'ÂGE DES HÉROS. Il naissait d'une
+             * commission décennale réussie ; la commission est DÉPOSÉE. Il naît
+             * désormais du PARACHÈVEMENT d'une branche de Dessein scellé par le
+             * JOUEUR, avec la MÊME condition de Conseil qu'avant (rang III +
+             * efficacité + loyauté + encore assis au siège qui porte la branche).
+             * ⚠ CONSÉQUENCE ASSUMÉE : les Desseins sont joueur-seul en P1 (§2.7),
+             * donc l'Âge des Héros est DORMANT côté IA — une partie sans joueur
+             * (chronique) ne le lève plus jamais. La symétrie revient avec les
+             * Desseins de l'IA (vague P4). */
+            if (was_finale){
+                int seat = dessein_seat_of(branch);
+                int slot = (seat>=0) ? statecraft_council_seated(s->sc,p,seat) : -1;
+                if (slot>=0){
+                    int gen  = statecraft_council_seated_gen(s->sc,p,seat);
+                    int tier = statecraft_council_cand_tier(w->seed,p,seat,slot,gen);
+                    float eff = statecraft_council_efficiency(s->sc,s->wp,p,seat);
+                    float loy = (float)statecraft_council_loyalty(s->sc,p,seat);
+                    if (tier==3 && eff>=tune_f("AGE_HERO_EFFICIENCY_MIN",1.00f)
+                                && loy>=tune_f("AGE_HERO_LOYALTY_MIN",75.f))
+                        ages_hero_fire(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts,
+                                       s->dp, s->eg, p, seat, slot, gen, s->human_player);
+                }
+            }
+            break; }
           /* ── COLONISATION (charte) : a[0] = la province CIBLE (vierge). La SOURCE = la
            *    province colonisée du joueur la plus peuplée (miroir du modèle viewer) ;
            *    les PORTES (pop/vivres/cible) vivent dans econ_colonize_province. ── */
@@ -1334,6 +1380,14 @@ void sim_day(Sim *s, World *w) {
                 feed_push(FEED_SECESSION, s->rs->last_spawned, hp, -1, 0);  /* b=joueur : nouvelle du monde (passe le focus) */
             g_feed_primed=true;
         }
+        /* ── LES DESSEINS : la CLÔTURE MENSUELLE (§2.1 « complétion détectée à la
+         *    clôture mensuelle »). Génération, re-résolution des cibles détruites,
+         *    détection de la condition — JOUEUR SEUL (human_player < 0 ⇒ no-op
+         *    total : la chronique ne génère rien, le golden est intact PAR
+         *    CONSTRUCTION). Le SCEAU, lui, reste au joueur (CMD_SEAL_DESSEIN).
+         *    Placé en FIN de mois : l'état lu (owner, cicatrices, vassalité) est
+         *    celui que le mois vient d'arrêter. ── */
+        missions_tick(s->missions, w, s->econ, s->dp, s->year, s->human_player);
     }
     if (s->day % 365 == 364) {
         /* F1/F2 — la colonisation lit la PERSONNALITÉ (cadence ∝ w_expand) et la GUERRE (gate) :
@@ -1465,28 +1519,11 @@ void sim_day(Sim *s, World *w) {
         }
         diplo_suzerainty_tick(s->dp, w, s->econ, s->wp);   /* suzeraineté + FRONDE : tributs, ligues, défections */
         diplo_war_tick(s->dp, w, s->econ, s->wp, 1.0f);
-        missions_tick(s->missions, w, s->econ, s->ts, s->sc, s->wp, w->seed, s->year);  /* missions décennales : rythme + récompense (P3 : siège responsable) */
-        /* raccord 7 — L'ÂGE DES HÉROS : le TEST vit ici (accès direct à Statecraft/Mission,
-         * scps_missions.c reste ignorant des évènements) — pour chaque pays qui vient de
-         * compléter sa mission décennale (just_completed), rang III + efficacité ≥1.00 +
-         * loyauté ≥75 + encore assis fait advenir l'Âge des Héros et pousse « Le nom du
-         * siècle » (membrane de décision pour le joueur, auto-résolu pour l'IA). */
-        for (int c=0;c<w->n_countries && c<SCPS_MISSIONS_MAX;c++){
-            const Mission *mm = &s->missions->m[c];
-            if (!mm->just_completed) continue;
-            int seat = mission_responsible_seat(mm);
-            if (seat<0) continue;
-            int slot = statecraft_council_seated(s->sc,c,seat);
-            if (slot<0) continue;   /* siège vacant : pas de titulaire à consacrer */
-            int gen  = statecraft_council_seated_gen(s->sc,c,seat);
-            int tier = statecraft_council_cand_tier(w->seed,c,seat,slot,gen);
-            float eff = statecraft_council_efficiency(s->sc,s->wp,c,seat);
-            float loy = (float)statecraft_council_loyalty(s->sc,c,seat);
-            if (tier==3 && eff>=tune_f("AGE_HERO_EFFICIENCY_MIN",1.00f)
-                        && loy>=tune_f("AGE_HERO_LOYALTY_MIN",75.f))
-                ages_hero_fire(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp, s->eg,
-                               s->missions, c, seat, slot, gen, s->human_player);
-        }
+        /* ⚠ LA COMMISSION DÉCENNALE EST DÉPOSÉE (2026-09-01) : l'appel ANNUEL
+         * missions_tick + le test d'Âge des Héros qui le suivait ont quitté ce
+         * bloc. Les DESSEINS se détectent à la CLÔTURE MENSUELLE (plus haut,
+         * joueur seul) et l'Âge des Héros naît du PARACHÈVEMENT scellé, dans le
+         * drain de CMD_SEAL_DESSEIN. */
         statecraft_council_age_tick(s->sc, w->seed, s->year);    /* LES ANNÉES PASSENT : les conseillers vieillissent, la retraite vide le siège */
         faction_bind(w, s->econ);   /* GLISSEMENT 2026-08-06 : grief/capture vivent sur les groupes — lier le monde avant tout lecteur/écrivain de faction */
         faction_levers_decay(0.07f);   /* §4 : une stance non entretenue s'efface (~15 ans) */

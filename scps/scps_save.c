@@ -495,6 +495,30 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
      * save forgée y écrivant un index ≥ n_regions cause une lecture hors-bornes au premier
      * devis de marché post-load. Refus net ici, comme tout autre index désérialisé. */
     if (!intertrade_save_sane(s->econ->n_regions)) return false;
+    /* LES DESSEINS (2026-09-01) — la section MISS est un blob BRUT : tout ce qu'elle
+     * porte indexe un tableau (province, pays) ou borne une boucle (échelon, voie).
+     * On revalide TOUT, refus net (charte save_sane) — jamais un clamp silencieux. */
+    if (s->missions) for (int c=0;c<SCPS_MISSIONS_MAX;c++) for (int b=0;b<DESS_BRANCH_COUNT;b++){
+        const Dessein *d=&s->missions->d[c][b];
+        if (d->gen<0 || d->gen>1) return false;
+        if (d->rung<0 || d->rung>DESSEIN_RUNGS) return false;          /* == DESSEIN_RUNGS : branche ACHEVÉE */
+        if (d->voie<0 || d->voie>DESS_VOIE_VASSALISATION) return false;
+        if (d->ready<0   || d->ready>1)   return false;
+        if (d->proof_a<0 || d->proof_a>1) return false;
+        if (d->proof_b<0 || d->proof_b>1) return false;
+        if (d->claim_pend<0 || d->claim_pend>1) return false;
+        if (d->claim_pid < -1 || d->claim_pid >= s->econ->n_prov) return false;
+        if (d->rival     < -1 || d->rival     >= w->n_countries)  return false;
+        for (int k=0;k<DESSEIN_RUNGS;k++){
+            if (d->tpid[k] < -1 || d->tpid[k] >= s->econ->n_prov) return false;
+            if (d->sealed_year[k] < -1 || d->sealed_year[k] > 4096) return false;
+        }
+        /* trio[] porte des PROVINCES (voie Conquête) ou des PAYS (voie
+         * Vassalisation) : la SÉMANTIQUE est fixée par la voie, jamais devinée —
+         * on borne donc contre le bon tableau. */
+        { int mx = (d->voie==DESS_VOIE_VASSALISATION) ? w->n_countries : s->econ->n_prov;
+          for (int k=0;k<3;k++) if (d->trio[k] < -1 || d->trio[k] >= mx) return false; }
+    }
     if (s->eg) {
         const EndgameState *eg = s->eg;
         if ((int)eg->fin < 0 || (int)eg->fin > (int)FIN_CHAUD) return false;   /* v74 : FIN_CHAUD appendue après FIN_SANG */
@@ -583,6 +607,12 @@ int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_her
     }
     if (snap) fclose(snap);
     demography_dyn_id_rebase(s->econ);
+    /* LES DESSEINS — le miroir des remises DATÉES (dessein_mult) est un cache de
+     * PROCESS, jamais sérialisé : il se reconstruit intégralement depuis
+     * MissionsState. Sans ce rappel ICI, une partie rechargée verrait ses remises
+     * MUETTES jusqu'à la première clôture mensuelle — et le savetest (A==B) le
+     * prendrait aussitôt. */
+    missions_boons_sync(s->missions, s->year);
     demography_drift_scrub(s->econ, s->drift);   /* audit 2026-08-12 : balaie les dérives orphelines (résurrection impossible) */
     campaign_backfill_nominal(s->camp);   /* v97 : le nominal désérialisé ne doit jamais laisser un déficit négatif */
     *params=h.params;

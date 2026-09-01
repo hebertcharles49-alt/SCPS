@@ -74,6 +74,12 @@ typedef enum {
                           * (nom résolu à la façade) · region si provincial, sinon a = pays visé.
                           * Poussé par scps_events (non gaté — le FRONT filtre la pertinence). */
     FEED_BATTLE_DRAW,    /* bataille indécise : deux camps brisés ; pertes packées dans v */
+    /* LES DESSEINS (2026-09-01) : un échelon SCELLÉ, ou une CIBLE qui BASCULE
+     * (la cible d'origine a été détruite, le Dessein s'est re-résolu sur le
+     * monde courant — le joueur doit VOIR la cible bouger). b = le pays du
+     * Dessein (le joueur : passe le focus), region = la province visée (-1 si
+     * l'échelon patiente), v = le slot d'affichage de l'échelon (0..11). */
+    FEED_DESSEIN,
     FEED_COUNT
 } FeedKind;
 typedef struct { int seq, year, kind, a, b, region, v; } FeedEntry;   /* v = valeur libre (score…) */

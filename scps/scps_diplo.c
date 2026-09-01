@@ -11,6 +11,7 @@
 #include "scps_demography.h"
 #include "scps_fog.h"      /* PAS D'OMNISCIENCE : country_knows (décision joueur 2026-08-12) */ /* dyn_id_next + drift_retire (audit 2026-08-12) */
 #include "scps_provlog.h"  /* le JOURNAL diplomatique (display, focus-gaté — la chronique n'écrit rien) */
+#include "scps_missions.h" /* LES DESSEINS : dessein_mult (les remises DATÉES de la branche du Sol) */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -481,7 +482,13 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
              *     transfert + cicatrice DOUCE (la voie patiente = bien intégré ⇒ peu de plaie). */
             Ethos es=suz_ethos(w,econ,s);
             bool annexeur=(es==ETHOS_DOMINATEUR||es==ETHOS_HONNEUR);
+            /* DESSEINS (voie Vassalisation) : « Trois vassaux » abaisse la BARRE
+             * d'intégration exigée (×0.85, 20 ans) et « Les marches » (voie
+             * Conquête) raccourcit la DURÉE de digestion (×0.80) — deux clés
+             * distinctes, aucun double-dip (annexe N9). Le suzerain `s` est le
+             * porteur du Dessein. */
             if (annexeur && d->v_integration[v]>=tune_f("AI_ANNEX_MIN_INTEGRATION",0.65f)
+                                                 *dessein_mult(s, DBOON_ANNEX_MIN_INTEGRATION)
                 && capreg[s]>=0 && capreg[s]<econ->n_regions){
                 float price=country_price(econ,v);
                 float gcost=tune_f("AI_ANNEX_GOLD_PER_PRICE",2.f)*price;
@@ -490,12 +497,16 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
                 float streasury = (spid>=0&&spid<econ->n_prov) ? econ->prov[spid].treasury : 0.f;
                 if (spid>=0 && streasury>=gcost){
                     econ_prov_treasury_credit(econ, spid, -gcost);   /* B6 : dual-write (post-agrégation) */
-                    float years=fmaxf(1.f, tune_f("AI_ANNEX_YEARS_PER_PRICE",0.5f)*price
+                    float years=fmaxf(1.f, tune_f("AI_ANNEX_YEARS_PER_PRICE",0.5f)
+                                       *dessein_mult(s, DBOON_ANNEX_YEARS_PER_PRICE)*price
                                        *(1.f-tune_f("ANNEX_INTEGRATION_DISCOUNT",0.6f)*d->v_integration[v]));
                     d->v_annex[v]=clampf(d->v_annex[v]+1.f/years,0.f,1.f);
                 } else d->v_annex[v]=fmaxf(0.f,d->v_annex[v]-0.10f);   /* sans or, le projet s'essouffle */
                 if (d->v_annex[v]>=1.f){                               /* DIGESTION ABOUTIE */
-                    float soft=tune_f("ANNEX_SOFT_SCAR",0.4f)*(1.f-d->v_integration[v]);
+                    /* DESSEIN « Pacification » (×0.75, 20 ans) : faire OUBLIER qu'on
+                     * a pris est l'affaire d'un règne — la plaie douce est moindre. */
+                    float soft=tune_f("ANNEX_SOFT_SCAR",0.4f)*dessein_mult(s, DBOON_ANNEX_SOFT_SCAR)
+                              *(1.f-d->v_integration[v]);
                     /* transfert de TOUTES les régions du vassal (événement DE RÉGION, comme la
                      * conquête) : owner sur chaque province membre + colonized/annex_scar. */
                     for (int r=0;r<econ->n_regions && r<w->n_regions;r++) if (econ->region[r].owner==v){
@@ -800,7 +811,11 @@ void diplo_fab_tick(DiploState *d, float dt_days){
             d->fab_days[a][b] -= dt_days;
             if (d->fab_days[a][b] <= 0.f){
                 d->fab_state[a][b] = FAB_READY;
-                d->fab_days[a][b]  = tune_f("FAB_VALID_DAYS", 1825.f);
+                /* DESSEIN « Le rival » (×1.60, 20 ans) : les torts consignés — la
+                 * fenêtre d'un grief mûr passe de 5 à 8 ans. Motif decree_mult :
+                 * tune_f × mult de PAYS, jamais tune_set. */
+                d->fab_days[a][b]  = tune_f("FAB_VALID_DAYS", 1825.f)
+                                   * dessein_mult(a, DBOON_FAB_VALID_DAYS);
             }
         } else if (d->fab_state[a][b]==FAB_READY){
             d->fab_days[a][b] -= dt_days;
