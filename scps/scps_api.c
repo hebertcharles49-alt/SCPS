@@ -2462,6 +2462,9 @@ int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out){
     out->claim_province=(out->claim_region>=0)?econ_region_rep_province(s->sim.econ,out->claim_region):-1;
     out->claim_name=(out->claim_province>=0&&out->claim_province<s->w->n_provinces)
                     ?sz(s->w->province[out->claim_province].name):sz(tr(STR_DIPLO_TERRITOIRE_INCONNU));
+    /* INFLUENCE POLITIQUE §3 : le stock courant du joueur — pour la checklist de refus
+     * (da_fill_conds) et le calcul d'`allowed` (scps_diplo_action_legal). */
+    out->influence_have = s->sim.infl ? influence_get(s->sim.infl, p) : 0.f;
     return 1;
 }
 
@@ -2495,23 +2498,32 @@ static void da_fill_conds(ScpsActionLegal *out, const ScpsDiploOptions *o, int s
         GATE(tr(STR_GATE_PAS_GUERRE), !at_war);
         GATE(tr(STR_GATE_PAS_ALLIES), !allied);
         GATE(tr(STR_GATE_CRENEAU_ALLIANCE), (at_war||allied) ? 1 : o->can_offer_alliance);
+        /* INFLUENCE POLITIQUE §3 : cond INDÉPENDANTE de l'état diplo (jamais masquée —
+         * elle ne dépend d'aucun préalable ci-dessus) ⇒ AND(conds)==allowed reste exact
+         * (cf. scps_diplo_action_legal, qui ET-combine can_offer_alliance ET infl_ok). */
+        GATE(tr(STR_GATE_INFLUENCE_SUFFISANTE), o->influence_have >= tune_f("INFLUENCE_COST_ENVOY",12.f)-0.001);
         break;
       case SCPS_DIPLO_PACT:
         GATE(tr(STR_GATE_PAS_GUERRE), !at_war);
         GATE(tr(STR_GATE_PAS_PACTE_COMMERCIAL), at_war ? 1 : o->can_offer_pact);
+        GATE(tr(STR_GATE_INFLUENCE_SUFFISANTE), o->influence_have >= tune_f("INFLUENCE_COST_ENVOY",12.f)-0.001);
         break;
       case SCPS_DIPLO_MIGRATION:
         GATE(tr(STR_GATE_PAS_GUERRE), !at_war);
         GATE(tr(STR_GATE_PAS_PACTE_MIGRATOIRE), at_war ? 1 : o->can_offer_migration);
+        GATE(tr(STR_GATE_INFLUENCE_SUFFISANTE), o->influence_have >= tune_f("INFLUENCE_COST_ENVOY",12.f)-0.001);
         break;
       case SCPS_DIPLO_EMBARGO:
         GATE(tr(STR_GATE_RELATION_COMMERCABLE), o->can_embargo || o->can_lift_embargo);
+        GATE(tr(STR_GATE_INFLUENCE_SUFFISANTE), o->influence_have >= tune_f("INFLUENCE_COST_ENVOY",12.f)-0.001);
         break;
       case SCPS_DIPLO_FABRICATE:
-        /* fabrique : conds VISIBLES (or, intrigue en cours) — les préalables géométriques
-         * (cible revendicable) restent dans `allowed` ; banc = allowed→conds, pas l'inverse. */
+        /* fabrique : conds VISIBLES (or, intrigue en cours, influence) — les préalables
+         * géométriques (cible revendicable) restent dans `allowed` ; banc = allowed→conds,
+         * pas l'inverse (contrat propre à la fabrique, cf. scps_api_demo). */
         GATE(tr(STR_GATE_OR_SUFFISANT), out->gold_missing<=0.0);
         GATE(tr(STR_GATE_AUCUNE_INTRIGUE), !o->fabricating && !o->cb_ready);
+        GATE(tr(STR_GATE_INFLUENCE_SUFFISANTE), o->influence_have >= tune_f("INFLUENCE_COST_FAB",25.f)-0.001);
         break;
       default: break;
     }
@@ -2540,7 +2552,10 @@ int scps_diplo_action_legal(ScpsSim *s, int target, int action, ScpsActionLegal 
         out->gold_missing=fmax(0.0,out->cost_gold-out->gold_have); break;
       default: break;
     }
-    int cd=scps_diplo_cd(s);
+    /* INFLUENCE POLITIQUE §3 (2026-09) — CMD_DECLARE_WAR n'est PLUS gaté par l'émissaire
+     * au drain (« la guerre n'attend pas la cour ») : miroir exact ici (cd forcé à 0),
+     * sinon la façade grisait un verbe que le drain aurait pourtant accepté. */
+    int cd=(action==SCPS_DIPLO_WAR)?0:scps_diplo_cd(s);
     DiploStatus st=diplo_status(s->sim.dp,p,target);
     if(cd>0){
         out->reason_code="emissary_busy";
@@ -2563,40 +2578,53 @@ int scps_diplo_action_legal(ScpsSim *s, int target, int action, ScpsActionLegal 
         out->would_accept=o.would_accept_peace;
         if(o.can_make_peace)DIP_OK(); else DIP_NO("not_at_war",sz(tr(STR_DIPLO_REASON_NOT_AT_WAR)));
         break;
-      case SCPS_DIPLO_ALLIANCE:
+      case SCPS_DIPLO_ALLIANCE: {
+        /* INFLUENCE POLITIQUE §3 — le coût REMPLACE le cooldown de l'émissaire : `allowed`
+         * exige AUSSI l'influence (miroir exact du drain, scps_sim.c). infl_ok est une cond
+         * INDÉPENDANTE des autres (jamais masquée) ⇒ AND(conds)==allowed (da_fill_conds). */
+        bool infl_ok = o.influence_have >= tune_f("INFLUENCE_COST_ENVOY",12.f)-0.001;
         out->would_accept=o.would_accept_alliance;
-        if(o.can_offer_alliance)DIP_OK();
+        if(o.can_offer_alliance && infl_ok)DIP_OK();
         else if(st==DIPLO_WAR)DIP_NO("at_war",sz(tr(STR_DIPLO_REASON_AT_WAR)));
         else if(st==DIPLO_ALLIED)DIP_NO("already_allied",sz(tr(STR_DIPLO_REASON_ALREADY_ALLIED)));
-        else DIP_NO("alliance_slots_full",sz(tr(STR_DIPLO_REASON_NO_ALLIANCE_SLOT)));
-        break;
-      case SCPS_DIPLO_PACT:
+        else if(!o.can_offer_alliance)DIP_NO("alliance_slots_full",sz(tr(STR_DIPLO_REASON_NO_ALLIANCE_SLOT)));
+        else DIP_NO("insufficient_influence",sz(tr(STR_DIPLO_REASON_INSUFFICIENT_INFLUENCE)));
+        break; }
+      case SCPS_DIPLO_PACT: {
+        bool infl_ok = o.influence_have >= tune_f("INFLUENCE_COST_ENVOY",12.f)-0.001;
         out->would_accept=o.would_accept_pact;
-        if(o.can_offer_pact)DIP_OK();
+        if(o.can_offer_pact && infl_ok)DIP_OK();
         else if(st==DIPLO_WAR)DIP_NO("at_war",sz(tr(STR_DIPLO_REASON_AT_WAR)));
-        else DIP_NO("trade_pact_exists",sz(tr(STR_DIPLO_REASON_PACT_EXISTS)));
-        break;
-      case SCPS_DIPLO_MIGRATION:
+        else if(!o.can_offer_pact)DIP_NO("trade_pact_exists",sz(tr(STR_DIPLO_REASON_PACT_EXISTS)));
+        else DIP_NO("insufficient_influence",sz(tr(STR_DIPLO_REASON_INSUFFICIENT_INFLUENCE)));
+        break; }
+      case SCPS_DIPLO_MIGRATION: {
+        bool infl_ok = o.influence_have >= tune_f("INFLUENCE_COST_ENVOY",12.f)-0.001;
         out->would_accept=o.would_accept_migration;
-        if(o.can_offer_migration)DIP_OK();
+        if(o.can_offer_migration && infl_ok)DIP_OK();
         else if(st==DIPLO_WAR)DIP_NO("at_war",sz(tr(STR_DIPLO_REASON_AT_WAR)));
-        else DIP_NO("migration_pact_exists",sz(tr(STR_DIPLO_REASON_MIGRATION_PACT_EXISTS)));
-        break;
-      case SCPS_DIPLO_EMBARGO:
+        else if(!o.can_offer_migration)DIP_NO("migration_pact_exists",sz(tr(STR_DIPLO_REASON_MIGRATION_PACT_EXISTS)));
+        else DIP_NO("insufficient_influence",sz(tr(STR_DIPLO_REASON_INSUFFICIENT_INFLUENCE)));
+        break; }
+      case SCPS_DIPLO_EMBARGO: {
+        bool infl_ok = o.influence_have >= tune_f("INFLUENCE_COST_ENVOY",12.f)-0.001;
         out->unilateral=1;
         out->toggle_on=o.can_embargo?1:0;
-        if(o.can_embargo || o.can_lift_embargo)DIP_OK();
-        else DIP_NO("embargo_unavailable",sz(tr(STR_DIPLO_REASON_EMBARGO_UNAVAILABLE)));
-        break;
-      case SCPS_DIPLO_FABRICATE:
+        if((o.can_embargo || o.can_lift_embargo) && infl_ok)DIP_OK();
+        else if(!(o.can_embargo || o.can_lift_embargo))DIP_NO("embargo_unavailable",sz(tr(STR_DIPLO_REASON_EMBARGO_UNAVAILABLE)));
+        else DIP_NO("insufficient_influence",sz(tr(STR_DIPLO_REASON_INSUFFICIENT_INFLUENCE)));
+        break; }
+      case SCPS_DIPLO_FABRICATE: {
+        bool infl_ok_fab = o.influence_have >= tune_f("INFLUENCE_COST_FAB",25.f)-0.001;
         out->unilateral=1; out->cost_gold=o.fabricate_cost;
         out->gold_missing=fmax(0.0,out->cost_gold-out->gold_have);
-        if(o.can_fabricate){DIP_OK();out->duration_days=(int)tune_f("FAB_MATURE_DAYS",365.f);}
+        if(o.can_fabricate && infl_ok_fab){DIP_OK();out->duration_days=(int)tune_f("FAB_MATURE_DAYS",365.f);}
         else if(o.fabricating){DIP_NO("intrigue_in_progress",sz(tr(STR_DIPLO_REASON_INTRIGUE_IN_PROGRESS)));out->duration_days=(int)ceilf(o.fabricating_days_left);}
         else if(o.cb_ready){DIP_NO("claim_ready",sz(tr(STR_DIPLO_REASON_CLAIM_READY)));out->duration_days=(int)ceilf(o.cb_ready_years_left*365.f);}
         else if(out->gold_missing>0.0)DIP_NO("insufficient_gold",sz(tr(STR_DIPLO_REASON_INSUFFICIENT_GOLD)));
+        else if(!infl_ok_fab)DIP_NO("insufficient_influence",sz(tr(STR_DIPLO_REASON_INSUFFICIENT_INFLUENCE)));
         else DIP_NO("fabrication_unavailable",sz(tr(STR_DIPLO_REASON_FABRICATION_UNAVAILABLE)));
-        break;
+        break; }
       default: break;
     }
     #undef DIP_OK
@@ -2682,6 +2710,10 @@ int scps_peace_preview(ScpsSim *s,int target,ScpsPeacePreview *out){
     out->fragment_possible=(out->target_regions>=2&&free_slots>=out->target_regions-1)?1:0;
     out->reparations_cost=10;out->humiliate_cost=20;out->pillage_cost=10;
     out->liberate_cost=50;out->fragment_cost=100;
+    /* INFLUENCE POLITIQUE §3 : le prix affiché (motif checklist) — CMD_PEACE_OFFER
+     * coûte INFLUENCE_COST_ENVOY au drain, comme les autres verbes d'envoi. */
+    out->influence_cost = tune_f("INFLUENCE_COST_ENVOY", 12.f);
+    out->influence_have = s->sim.infl ? influence_get(s->sim.infl, p) : 0.f;
     return 1;
 }
 
@@ -3356,6 +3388,33 @@ void scps_mission_info(ScpsSim *s, int cid, ScpsMission *out){
     out->resp_bonus_pct  = cons_pct100(mult - 1.f);
     out->reward_gold_adj = (double)m->reward_gold * (double)mult;
     out->reward_qty_adj  = (double)m->reward_qty  * (double)mult;
+}
+
+/* INFLUENCE POLITIQUE §3 — membrane stricte : un ENTIER + « /mois » + un hover en MOTS
+ * (jamais le calcul, jamais un nom de tunable). Le rang affiché est la moyenne de rang
+ * ARRONDIE (I/II/III) — le multiplicateur réel (fractionnaire) ne sert qu'au calcul
+ * interne (influence_tick), jamais montré nu (doctrine membrane). */
+void scps_influence_info(ScpsSim *s, int cid, ScpsInfluence *out){
+    if (!out) return;
+    memset(out, 0, sizeof *out);
+    out->hover = "";
+    if (!s || !s->ready || !s->sim.infl || cid<0 || cid>=s->w->n_countries) return;
+    out->stock = (int)(influence_get(s->sim.infl, cid) + 0.5f);
+    int nseat = 0;
+    float mult = influence_council_mult(s->sim.sc, s->w->seed, cid, &nseat);
+    double elites = influence_elites(s->sim.econ, cid);
+    double gain = (double)tune_f("INFLUENCE_PER_NOBLE", 0.002f) * elites * (double)mult;
+    out->gain_month = (int)(gain + 0.5);
+    static char buf[128];
+    int nobles = (int)(elites + 0.5);
+    if (nseat <= 0){
+        snprintf(buf, sizeof buf, tr(STR_INFLUENCE_HOVER_VIDE), nobles);
+    } else {
+        int rank = (int)(mult + 0.5f); if (rank<1) rank=1; if (rank>3) rank=3;
+        const char *rw = tr((StrId)(STR_INFLUENCE_RANK_I + (rank-1)));
+        snprintf(buf, sizeof buf, tr(STR_INFLUENCE_HOVER), nobles, rw);
+    }
+    out->hover = buf;
 }
 
 /* ====================================================================== */

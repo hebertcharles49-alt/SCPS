@@ -10080,3 +10080,118 @@ INTERDITS pour moi, contenu autorisé) — relu avant chaque édition, diff fina
   agraires de maîtres Dominateurs.
 - Annexe doctrines §H4 : items 1-3 marqués corrigés/tranchés ; restent les
   vérifs de début de vague (arch_depth sérialisé ? vivier ministres ? SPEC_*).
+
+---
+
+## Mission 2026-09-02 — INFLUENCE POLITIQUE P1 (docs/DESIGN_MISSIONS_DOCTRINES.md §3)
+
+### Découvertes
+- **Choix signalé — plancher du Conseil** : `mult_conseil` = moyenne des rangs
+  BRUTS (I=1..III=3, `statecraft_council_cand_tier`) des sièges POURVUS ;
+  `INFLUENCE_COUNCIL_FLOOR` (1.0) s'applique dès que 0 siège est pourvu — sinon
+  un Conseil vide rendrait le joueur MUET en diplomatie dès l'an 0 (aucun
+  ministre à la genèse). Le mapping ×1/×1.5/×2 utilisé ailleurs pour le COÛT
+  d'un siège (`sc_tier_revenue_rate`, scps_statecraft.c) est une fonction
+  DIFFÉRENTE — l'influence utilise le rang BRUT comme multiplicateur direct
+  (motif explicite du brief : « rangs I-III », pas le mapping de coût).
+- **`CMD_FABRICATE_CB` ne paie QUE `INFLUENCE_COST_FAB`** (25), jamais
+  `INFLUENCE_COST_ENVOY` en plus — lecture littérale du brief (« coûte EN PLUS
+  INFLUENCE_COST_FAB (25) (le coût d'or existant reste) » = en plus du coût
+  d'OR, pas en plus du coût d'ENVOI) et du tableau §3.3 du design doc où
+  « Fabriquer une revendication » est une ligne SÉPARÉE de « Envoi de
+  diplomate ». Les 5 verbes d'envoi (alliance/pacte/embargo/migration/paix
+  offerte) paient `INFLUENCE_COST_ENVOY` (12) seuls.
+- **`CMD_MAKE_PEACE` et `CMD_REQUEST_LOAN` restent GRATUITS en influence**
+  (hors périmètre §3 — ni dans la liste des verbes d'envoi, ni mentionnés) mais
+  gardent le plancher anti-spam PARTAGÉ (désormais `DIPLO_ENVOY_FLOOR_DAYS` 30j
+  au lieu de l'ancien cooldown fixe 60j) — décision minimale-invasive plutôt que
+  de les dégater entièrement, à revoir si un futur agent juge que ça mérite un
+  tarif propre.
+- **Le drain (`scps_sim.c`) ET la façade (`scps_diplo_action_legal`) doivent
+  IMPÉRATIVEMENT rester miroirs exacts** pour `CMD_DECLARE_WAR` : la guerre ne
+  passe plus par `diplo_ready_day` au drain, donc `scps_diplo_cd(s)` doit être
+  FORCÉ à 0 pour `SCPS_DIPLO_WAR` dans `scps_diplo_action_legal` (sinon la
+  checklist grise un bouton que le drain accepterait pourtant — piège classique
+  de double-source-de-vérité, déjà commenté au site).
+- **Contrat `ET(conds)==allowed` (scps_api_demo.c, checklist de refus)** : une
+  nouvelle cond d'influence s'ajoute PROPREMENT comme terme AND INDÉPENDANT (pas
+  masqué par `at_war`/`allied`) — puisqu'elle ne dépend d'AUCUN état diplo
+  antérieur, l'ajouter en dernière position à `da_fill_conds` ET dans le calcul
+  d'`allowed` du switch (`o.can_offer_X && infl_ok`) préserve l'égalité AND
+  dans TOUS les cas (vérifié table de vérité par cas — guerre/allié/slot plein/
+  influence seule manquante) sans avoir besoin d'un motif de masquage.
+- **`CMD_PEACE_OFFER` (l'offre composée, flags+territoires) n'a AUCUN
+  `ScpsGateCond`/`ScpsActionLegal`** dans le code existant — seul
+  `scps_peace_preview` (une preview plate, prix fixes) existe. J'y ai ajouté
+  `influence_cost`/`influence_have` (motif « le bouton affiche son prix ») sans
+  inventer une checklist complète (aucun précédent à étendre proprement, la
+  vague reste sans UI de toute façon).
+- **`SCPS_MAX_COUNTRY` (320) rend `InfluenceState` trivialement embarquable**
+  (1.25 Ko) — suit quand même le patron `MissionsState` (pointeur alloué par
+  `sim_alloc`, section save dédiée) plutôt qu'un champ direct dans `Sim`, pour
+  rester cohérent avec tous les autres modules « State » du moteur.
+
+### Pièges
+- **`*/` DANS un commentaire-liste de verbes ferme le bloc trop tôt** :
+  `scps_sim.c CMD_OFFER_*/EMBARGO/PEACE_OFFER/...` dans un `/* ... */` a fermé
+  le commentaire au premier `*/`, transformant le reste du header en code —
+  erreurs de compilation à l'air totalement sans rapport (« stray '\342' »,
+  octets UTF-8 « perdus », `va_list` cassé dans `<stdio.h>` MinGW). Réflexe :
+  si un message d'erreur de compil pointe vers un header SYSTÈME improbable
+  juste après ton propre header neuf, suspecte un commentaire mal fermé AVANT
+  de suspecter l'encodage.
+- **`tools/run_tests.sh` ne reconnaît QUE le motif accentué EXACT**
+  `grep -oE "[0-9]+ réussis, [0-9]+ échoués"` — un banc dont le BILAN final
+  utilise de l'ASCII pur (« reussis »/« echoues », par excès de prudence
+  encodage) tombe silencieusement sur le fallback « jugé par code retour »
+  (affiché `OK` au lieu de `26/26 ✓` dans le tableau). Aucun bug fonctionnel,
+  juste un habillage manqué — mais autant coller au motif dès l'écriture du
+  banc (les accents passent très bien dans ce toolchain MinGW/gcc, confirmé).
+- **`chronicle.c` et `viewer.c` allouent les membres de `Sim` À LA MAIN**, PAS
+  via `sim_alloc`/`sim_free_members` (réservés à `scps_api.c`) — tout nouveau
+  pointeur ajouté à `Sim` (motif `MissionsState *missions`) doit être posé à
+  TROIS endroits : `scps_sim.c` (alloc/free partagés), le bloc malloc manuel de
+  `chronicle.c` (+ son bloc free, sinon LeakSanitizer râle) ET celui de
+  `viewer.c` (jamais libéré, process court-vécu — mais DOIT être non-NULL,
+  `sim_init` appelle `influence_init(s->infl)` sans garde). Oublier `chronicle.c`
+  crashe la chronique (human_player=-1 mais `sim_init` déréférence quand même) ;
+  oublier `viewer.c` crashe le jeu réel.
+- **`godot/SConstruct` ne globbe PAS `scps/*.c`** : une liste `ENGINE_MODULES`
+  explicite (nom sans préfixe `scps_`) pilote le binding Godot — un module
+  neuf appelé depuis `scps_sim.c`/`scps_api.c` doit y être ajouté À LA MAIN
+  (`"missions", "influence", "navy", ...`) sinon la DLL Godot ne linke jamais
+  le nouveau module (erreur de link silencieuse côté scons, invisible côté
+  `make`).
+- **MSYS2 bash.exe invoqué SANS `-lc`** (ou sans re-préciser `cd` à CHAQUE appel)
+  ne porte ni le PATH MinGW64 (`make`/`gcc` introuvables) ni le répertoire de
+  travail précédent — chaque invocation de `MSYSTEM=MINGW64 .../bash.exe` est
+  un processus FRAIS. Motif fiable : `bash.exe -lc 'bash /chemin/absolu/script.sh'`
+  avec `cd` en 1re ligne DANS le script.
+- **`make CC=gcc full-test` dépasse souvent les 600 s du outil Bash** (tool
+  timeout) et bascule en tâche de fond automatiquement — rediriger direct vers
+  un fichier log (`> out.log 2>&1`) plutôt que de compter sur un `| tail -N`
+  du PREMIER lancement : un run complet (compil + 41 bancs + determinism +
+  golden + asan) dépasse largement N lignes, et le `tail` tronque exactement
+  les sections golden/determinism qu'on veut citer dans le rapport.
+
+### Restes
+- **P2 (façade visuelle)** : `scps_influence_info` + binding Godot existent,
+  AUCUN `.gd` ne les appelle encore (topbar/Conseil, hover en mots — prévu §5
+  du design doc). Le stock ne s'affiche nulle part en jeu pour l'instant.
+- **`CMD_PEACE_OFFER` reste sans checklist de refus structurée** (seulement
+  `influence_cost`/`influence_have` ajoutés à `scps_peace_preview` — voir
+  Découvertes) ; un futur agent UI devra soit vivre avec cette preview plate,
+  soit construire un vrai `ScpsActionLegal` pour l'offre composée (chantier
+  distinct, hors périmètre P1).
+- **`INFLUENCE_CAP=0` (sans plafond)** est une décision joueur EXPLICITE
+  (« les sinks futurs feront le travail ») — dès que les doctrines/synergies
+  (P3) ou les pivots de Dessein consomment de l'influence, réévaluer si le
+  stock peut légitimement thésauriser sans borne entre-temps (aucun sink hors
+  diplo pour l'instant : un joueur passif accumule indéfiniment).
+- **Symétrie IA (P4, décision séparée du design doc)** : l'IA ne génère ni ne
+  dépense d'influence — ses propres cadences diplo (`AI_*`) sont INTACTES et
+  non affectées par ce chantier (P1 = joueur seul, gate `human_player`).
+- Gates relancés en avant-plan bloquant à la demande du coordinateur (voir
+  rapport de mission) : `lang-check` 127/127, `full-test` (41 bancs verts,
+  determinism 5 graines stables, **golden IDENTIQUE** — aucun re-baseline),
+  `scps_viewer --savetest` (A==B + corruption refusée). Tous verts.

@@ -177,6 +177,7 @@ int main(int argc, char **argv) {
     sim.host = (WarHost*)         malloc(sizeof(WarHost));
     sim.camp = (Campaign*)        malloc(sizeof(Campaign));
     sim.missions = (MissionsState*) malloc(sizeof(MissionsState));
+    sim.infl = (InfluenceState*)  malloc(sizeof(InfluenceState));   /* INFLUENCE POLITIQUE §3 */
     sim.navy = (NavyState*)       malloc(sizeof(NavyState));
     sim.ai   = (AiActor*)         calloc(SCPS_MAX_COUNTRY, sizeof(AiActor));
     sim.ai_on= (bool*)            calloc(SCPS_MAX_COUNTRY, sizeof(bool));

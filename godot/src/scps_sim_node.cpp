@@ -159,6 +159,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("budget_summary", "country"),      &ScpsWorld::budget_summary);
     ClassDB::bind_method(D_METHOD("budget_controls", "country"),     &ScpsWorld::budget_controls);
     ClassDB::bind_method(D_METHOD("mission_info", "country"),        &ScpsWorld::mission_info);
+    ClassDB::bind_method(D_METHOD("influence_info", "country"),      &ScpsWorld::influence_info);
     ClassDB::bind_method(D_METHOD("country_factions", "country"),    &ScpsWorld::country_factions);
     ClassDB::bind_method(D_METHOD("player_build", "edifice", "province"), &ScpsWorld::player_build, DEFVAL(-1));
     ClassDB::bind_method(D_METHOD("player_recruit", "unit"),         &ScpsWorld::player_recruit);
@@ -1770,6 +1771,16 @@ Dictionary ScpsWorld::mission_info(int country) {
     d["resp_bonus_pct"]  = m.resp_bonus_pct;
     d["reward_gold_adj"] = m.reward_gold_adj;
     d["reward_qty_adj"]  = m.reward_qty_adj;
+    return d;
+}
+
+Dictionary ScpsWorld::influence_info(int country) {
+    Dictionary d;
+    ScpsInfluence inf;
+    scps_influence_info(sim, country, &inf);
+    d["stock"]      = inf.stock;
+    d["gain_month"] = inf.gain_month;
+    d["hover"]      = String::utf8(inf.hover);
     return d;
 }
 

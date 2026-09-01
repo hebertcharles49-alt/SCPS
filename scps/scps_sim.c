@@ -492,16 +492,39 @@ static void sim_cmd_drain(Sim *s, World *w){
     if (p < 0 || p >= w->n_countries){ s->cmd_n = 0; return; }   /* pas d'humain : on jette (sécurité) */
     for (int i=0; i<s->cmd_n; i++){
         const PlayerCmd *c = &s->cmdq[i];
-        /* le DIPLOMATE : les actes diplo passent par UN émissaire — 1 action / 2 mois.
-         * Un ordre INVALIDE (cible hors-borne, soi-même, pays mort) ne le fait pas partir ;
-         * un ordre arrivé pendant sa tournée est IGNORÉ (l'UI lit scps_diplo_cd et grise). */
+        /* le DIPLOMATE : les actes diplo passent par UN émissaire. Un ordre INVALIDE (cible
+         * hors-borne, soi-même, pays mort) ne le fait pas partir ; un ordre arrivé pendant sa
+         * tournée est IGNORÉ (l'UI lit scps_diplo_cd et grise). INFLUENCE POLITIQUE §3
+         * (2026-09) : le rythme n'est plus « 1 action / 2 mois » à cooldown fixe — voir le
+         * détail par verbe ci-dessous (coût en influence + plancher DIPLO_ENVOY_FLOOR_DAYS,
+         * CMD_DECLARE_WAR exempté). */
         if (c->verb==CMD_DECLARE_WAR || c->verb==CMD_MAKE_PEACE || c->verb==CMD_OFFER_ALLIANCE
          || c->verb==CMD_OFFER_PACT  || c->verb==CMD_OFFER_MIGRATION || c->verb==CMD_EMBARGO
          || c->verb==CMD_FABRICATE_CB || c->verb==CMD_PEACE_OFFER || c->verb==CMD_REQUEST_LOAN){
             int t = c->a[0];
             if (t<0 || t>=w->n_countries || t==p || regions_of(s->econ, t)<=0) continue;
-            if (s->day < s->diplo_ready_day) continue;
-            s->diplo_ready_day = s->day + 60;
+            /* INFLUENCE POLITIQUE §3 (2026-09, décision joueur) — CMD_DECLARE_WAR reste
+             * GRATUIT ET HORS ÉMISSAIRE (« la guerre n'attend pas la cour ») : ni plancher
+             * ni coût ne le concernent plus (miroir exact requis côté légalité façade,
+             * scps_diplo_action_legal). Les AUTRES verbes gardent un plancher anti-spam
+             * COURT (DIPLO_ENVOY_FLOOR_DAYS, ex-60 j) ; les 5 verbes d'ENVOI (alliance,
+             * pacte, embargo, pacte migratoire, paix offerte) coûtent INFLUENCE_COST_ENVOY,
+             * CMD_FABRICATE_CB coûte INFLUENCE_COST_FAB (en SUS de son coût d'or existant,
+             * inchangé) — influence insuffisante ⇒ REFUSÉ net, le plancher n'est PAS posé
+             * (aucun tour d'émissaire gâché pour rien). MAKE_PEACE/REQUEST_LOAN restent hors
+             * périmètre §3 (aucune spec ne les tarife) : ils gardent le seul plancher. */
+            if (c->verb != CMD_DECLARE_WAR){
+                if (s->day < s->diplo_ready_day) continue;
+                float cost = 0.f;
+                if (c->verb==CMD_OFFER_ALLIANCE || c->verb==CMD_OFFER_PACT || c->verb==CMD_OFFER_MIGRATION
+                 || c->verb==CMD_EMBARGO || c->verb==CMD_PEACE_OFFER)
+                    cost = tune_f("INFLUENCE_COST_ENVOY", 12.f);
+                else if (c->verb==CMD_FABRICATE_CB)
+                    cost = tune_f("INFLUENCE_COST_FAB", 25.f);
+                if (cost>0.f && !influence_can_spend(s->infl, p, cost)) continue;
+                if (cost>0.f) influence_spend(s->infl, p, cost);
+                s->diplo_ready_day = s->day + (int)tune_f("DIPLO_ENVOY_FLOOR_DAYS", 30.f);
+            }
         }
         switch (c->verb){
           case CMD_BUILD: {   /* RE-KEY PROVINCE : a[1] est un PID direct (jamais une région) */
@@ -1139,8 +1162,13 @@ void sim_day(Sim *s, World *w) {
         statecraft_council_apply(s->sc, w, s->econ, s->wp, w->seed, 1.f/12.f);  /* Q1 : le Conseil pousse ses ×, paie son or (P1-1 : × efficacité) */
         /* DÉCRETS DU JOUEUR — SEUL rôle humain (chronique human_player=-1 ⇒ jamais appelé,
          * golden intact par construction). Mensuel, miroir du Conseil. */
-        if (s->human_player>=0)
+        if (s->human_player>=0){
             decrees_tick(w, s->econ, s->sc, s->wl, s->host, s->dp, s->human_player, 30);
+            /* INFLUENCE POLITIQUE §3 — même motif (mensuel, joueur SEUL) : la chronique
+             * (human_player=-1) n'appelle jamais influence_tick ⇒ golden intact par
+             * construction. gain = INFLUENCE_PER_NOBLE × élites(prov[]) × mult_conseil. */
+            influence_tick(s->infl, w, s->econ, s->sc, w->seed, s->human_player);
+        }
         for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
             if (s->ai_on[c]) statecraft_council_ai(s->sc, w, s->econ, w->seed, c, s->year);   /* Q1 : l'IA pourvoit son siège d'éthos (pool de la génération courante) */
         statecraft_council_loyalty_tick(s->sc, w, s->econ, w->seed, 1.f/12.f);   /* V2a : la loyauté CONVERGE (jamais un saut) */
@@ -1599,6 +1627,7 @@ void sim_init(Sim *s, World *w) {
      * sans ce free, chaque ré-génère (façade) ou sim enchaîné (chronique) fuyait ~15 Ko. host est calloc'd
      * (scratch NULL au 1er passage → free(NULL) sûr). */
     revolt_init(s->rs); warhost_free(s->host); warhost_init(s->host); missions_init(s->missions);
+    influence_init(s->infl);   /* INFLUENCE POLITIQUE §3 : RAZ par sim (nouvelle partie/chronique) */
     credit_init();
     navy_init(s->navy);
     if (s->eg) { endgame_init(s->eg);                     /* capstone §27 : RAZ du cataclysme */
@@ -1637,9 +1666,10 @@ bool sim_alloc(Sim *s) {
     s->ai=calloc(SCPS_MAX_COUNTRY,sizeof(AiActor)); s->ai_on=calloc(SCPS_MAX_COUNTRY,sizeof(bool));
     s->rs=malloc(sizeof(RevoltState)); s->host=calloc(1,sizeof(WarHost));   /* P1 : calloc → scratch NULL d'emblée (free sûr) */
     s->missions=malloc(sizeof(MissionsState)); s->camp=malloc(sizeof(Campaign));
+    s->infl=malloc(sizeof(InfluenceState));   /* INFLUENCE POLITIQUE §3 : accumulateur par pays */
     s->navy=malloc(sizeof(NavyState)); s->eg=calloc(1,sizeof(EndgameState));
     return s->econ&&s->wp&&s->wl&&s->net&&s->ts&&s->sc&&s->ag&&s->ev&&s->drift
-        &&s->dp&&s->rn&&s->ai&&s->ai_on&&s->rs&&s->host&&s->missions&&s->camp&&s->navy&&s->eg;
+        &&s->dp&&s->rn&&s->ai&&s->ai_on&&s->rs&&s->host&&s->missions&&s->infl&&s->camp&&s->navy&&s->eg;
 }
 
 void sim_free_members(Sim *s) {
@@ -1655,5 +1685,6 @@ void sim_free_members(Sim *s) {
     free(s->econ); free(s->wp); free(s->wl); free(s->net); free(s->ts); free(s->sc);
     free(s->ag); free(s->ev); free(s->drift); free(s->dp); free(s->rn);
     free(s->ai); free(s->ai_on); free(s->rs); warhost_free(s->host); free(s->host); free(s->missions);   /* P1 : scratch warhost */
+    free(s->infl);   /* INFLUENCE POLITIQUE §3 */
     free(s->camp); free(s->navy); free(s->eg);
 }

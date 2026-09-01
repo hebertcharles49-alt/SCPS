@@ -89,7 +89,8 @@ bool scps_save_slot_info(int slot, SaveHeader *out){
     X(TXYR,'T','X','Y','R')  /* v62 : MEMBRANE DE DÉCISION — g_tax_lastyear[] (revenu annuel, d_treasury_mois) */ \
     X(DCRE,'D','C','R','E')  /* v64 : DÉCRETS DU JOUEUR — g_decree_mask[] (civics, état par pays) */ \
     X(FOGV,'F','O','G','V')  /* v75 : BROUILLARD DE GUERRE — known[][] (connaissance cumulative par empire) */ \
-    X(TOPO,'T','O','P','O')  /* v98 : TOPONYMIE DES VILLES — g_ville_name[SCPS_MAX_REG] (scps_toponym.c) */
+    X(TOPO,'T','O','P','O')  /* v98 : TOPONYMIE DES VILLES — g_ville_name[SCPS_MAX_REG] (scps_toponym.c) */ \
+    X(INFL,'I','N','F','L')  /* v104 : INFLUENCE POLITIQUE — InfluenceState.influence[SCPS_MAX_COUNTRY] */
 #define SV_DECL_TAG(name,a,b,c,d) enum { SVT_##name = SV_TAG(a,b,c,d) };
 SV_SECTIONS(SV_DECL_TAG)
 #undef SV_DECL_TAG
@@ -154,6 +155,7 @@ static bool sv_write_payload(FILE *f, World *w, Sim *s, int heritage, int ethos)
     ok&=sv_w(f,SVT_DCRE, NULL,0); decrees_save(f);
     ok&=sv_w(f,SVT_FOGV, NULL,0); fog_save(f);
     ok&=sv_w(f,SVT_TOPO, NULL,0); toponym_save(f);
+    ok&=sv_w(f,SVT_INFL, s->infl, sizeof *s->infl);   /* v104 : INFLUENCE POLITIQUE */
     return ok;
 }
 
@@ -213,6 +215,7 @@ static bool sv_read_payload(FILE *f, World *w, Sim *s, int *out_heritage, int *o
     ok&=sv_r(f,SVT_DCRE, NULL,0); ok&=decrees_load(f);
     ok&=sv_r(f,SVT_FOGV, NULL,0); ok&=fog_load(f);
     ok&=sv_r(f,SVT_TOPO, NULL,0); ok&=toponym_load(f);
+    ok&=sv_r(f,SVT_INFL, s->infl, sizeof *s->infl);   /* v104 : INFLUENCE POLITIQUE */
     return ok;
 }
 
@@ -527,6 +530,13 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         if (!(eg->fuel_charge >= 0.0) || eg->fuel_charge > 1e18) return false;
         if (!(eg->heat_offset >= 0.0f) || eg->heat_offset > 1.0f) return false;
         if (!(s->econ->fuel_wood_cum >= 0.0) || !(s->econ->fuel_coal_cum >= 0.0)) return false;
+    }
+    /* v104 — INFLUENCE POLITIQUE : l'accumulateur désérialisé se revalide (≥0, borné —
+     * PAS un index, motif reserve_gold/va_country_prev — un fichier forgé ne doit pas
+     * passer une valeur délirante à un calcul de coût/gain). */
+    if (s->infl){
+        for (int c=0;c<SCPS_MAX_COUNTRY;c++)
+            if (!(s->infl->influence[c]>=0.f && s->infl->influence[c]<=1.0e6f)) return false;
     }
     if (!director_save_sane(s->ev, SCPS_MAX_COUNTRY*SCPS_MAX_COUNTRY)) return false;
     /* MEMBRANE DE DÉCISION (v62) : les cicatrices/cooldowns visent une région OU un pays

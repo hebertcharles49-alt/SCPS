@@ -861,6 +861,7 @@ typedef struct {
     int   claim_region, claim_province;
     const char *claim_name;        /* le territoire concret visé par l'intrigue */
     int   has_casus_belli;         /* CB utilisable MAINTENANT (gratuit OU intrigue mûre) — pour la checklist de refus */
+    float influence_have;          /* INFLUENCE POLITIQUE §3 : le stock courant du joueur (pour la checklist de refus) */
 } ScpsDiploOptions;
 int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out);
 
@@ -923,6 +924,9 @@ typedef struct {
     float vassal_score;
     int target_regions, fragment_possible;
     int reparations_cost, humiliate_cost, pillage_cost, liberate_cost, fragment_cost;
+    float influence_cost, influence_have;   /* INFLUENCE POLITIQUE §3 : CMD_PEACE_OFFER
+                                             * coûte INFLUENCE_COST_ENVOY (motif checklist :
+                                             * le bouton affiche son prix, cf. §5 façade) */
 } ScpsPeacePreview;
 #define SCPS_PEACE_TERRITORY_MAX 32
 int scps_peace_preview(ScpsSim *s, int target, ScpsPeacePreview *out);
@@ -1663,6 +1667,16 @@ typedef struct {
     double reward_qty_adj;  /* récompense PRÉVUE = reward_qty × mult */
 } ScpsMission;
 void scps_mission_info(ScpsSim *s, int cid, ScpsMission *out);
+
+/* ---- INFLUENCE POLITIQUE (docs/DESIGN_MISSIONS_DOCTRINES.md §3) -------- *
+ * Membrane stricte : un ENTIER + « /mois » (jamais le calcul brut) + un hover
+ * en MOTS (nobles × rang du Conseil). P1 : joueur seul (cid = human_player). */
+typedef struct {
+    int stock;          /* le stock courant, arrondi à l'entier */
+    int gain_month;      /* gain PRÉVU du mois courant, arrondi à l'entier (mots : « /mois ») */
+    const char *hover;   /* « N nobles × le Conseil (rang moyen II) » — ou « aucun ministre » */
+} ScpsInfluence;
+void scps_influence_info(ScpsSim *s, int cid, ScpsInfluence *out);
 
 /* ---- FACTIONS (le spectre d'éthos interne — §9 UI) --------------------- *
  * La distribution EFFECTIVE (groupes + stance des leviers), la rancœur par

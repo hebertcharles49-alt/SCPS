@@ -501,6 +501,7 @@
     X(STR_GATE_RELATION_COMMERCABLE, "Relation commerçable") \
     X(STR_GATE_OR_SUFFISANT,         "Couronnes suffisantes") \
     X(STR_GATE_AUCUNE_INTRIGUE,      "Aucune intrigue déjà lancée") \
+    X(STR_GATE_INFLUENCE_SUFFISANTE, "Influence politique suffisante") \
     X(STR_DIPLO_REASON_INVALID_TARGET,        "Cible diplomatique invalide ou inconnue") \
     X(STR_DIPLO_REASON_EMISSARY_BUSY,         "Émissaire en tournée") \
     X(STR_DIPLO_REASON_OK,                    "Action disponible") \
@@ -517,7 +518,13 @@
     X(STR_DIPLO_REASON_INTRIGUE_IN_PROGRESS,  "Revendication en fabrication") \
     X(STR_DIPLO_REASON_CLAIM_READY,           "Une revendication est déjà prête") \
     X(STR_DIPLO_REASON_INSUFFICIENT_GOLD,     "Couronnes insuffisantes pour financer l'intrigue") \
+    X(STR_DIPLO_REASON_INSUFFICIENT_INFLUENCE,"Influence politique insuffisante pour cet acte") \
     X(STR_DIPLO_REASON_FABRICATION_UNAVAILABLE,"Intrigue indisponible pour l'instant") \
+    X(STR_INFLUENCE_HOVER,      "%d nobles × le Conseil (rang moyen %s)") \
+    X(STR_INFLUENCE_HOVER_VIDE, "%d nobles × le Conseil (aucun ministre en siège — plancher)") \
+    X(STR_INFLUENCE_RANK_I,     "I") \
+    X(STR_INFLUENCE_RANK_II,    "II") \
+    X(STR_INFLUENCE_RANK_III,   "III") \
     X(STR_HERITAGE_FLAVOR_0, "Leurs généalogies commencent avant les premiers calendriers, dans des siècles dont les ruines seules se souviennent.") \
     X(STR_HERITAGE_FLAVOR_1, "Ils disent que tout serment ressemble à un métal : il révèle sa valeur seulement lorsqu'on le chauffe assez pour le briser.") \
     X(STR_HERITAGE_FLAVOR_2, "Leur première horloge mesurait les saisons. La seconde mesura le travail. La troisième apprit aux deux à rapporter de l'or.") \

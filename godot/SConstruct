@@ -25,7 +25,7 @@ ENGINE_MODULES = [
     "world", "toponym", "econ", "tune", "trade", "culture", "tech", "core", "legitimacy",
     "prosperity", "readout", "lang", "heritage", "diplo", "routes", "intertrade",
     "statecraft", "agency", "events", "provlog", "demography", "labor", "modifier", "revolt",
-    "army", "warhost", "campaign", "missions", "navy", "endgame", "factions",
+    "army", "warhost", "campaign", "missions", "influence", "navy", "endgame", "factions",
     "ai", "credit", "crypt", "save_io", "save", "religion", "decrees", "fog", "render", "sim", "api",
 ]
 engine_sources = ["../scps/scps_%s.c" % m for m in ENGINE_MODULES]

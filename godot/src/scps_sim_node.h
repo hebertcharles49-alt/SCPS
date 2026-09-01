@@ -185,6 +185,8 @@ public:
     Dictionary mission_info(int country);              /* mission décennale : texte · récompense · année ·
                                                         * +CARTE 2026-07-10 : resp_seat/resp_name/resp_tier/resp_bonus_pct/
                                                         * reward_gold_adj/reward_qty_adj (récompense PRÉVUE) */
+    Dictionary influence_info(int country);            /* INFLUENCE POLITIQUE §3 : stock (entier) · gain_month
+                                                        * (entier, « /mois ») · hover (mots — nobles × rang du Conseil) */
     Dictionary country_factions(int country);          /* spectre de factions : parts/griefs/dominante + coup/corruption */
 
     /* ACTIONS du joueur (la main humaine — mêmes actionneurs que l'IA) */

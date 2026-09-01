@@ -1863,6 +1863,23 @@
      * 1 (défaut) : le solde rejoint CLASS_LABORER de la province (même famille que FX_SOLDE/
      * FX_NAVY déjà convertis, item 5). 0 = kill-switch EXACT (le solde disparaît, golden
      * pré-M16 byte-identique). */ \
-    X(REDEP_REMAINDER_CONSERVED,        1.0f)
+    X(REDEP_REMAINDER_CONSERVED,        1.0f) \
+    /* INFLUENCE POLITIQUE (docs/DESIGN_MISSIONS_DOCTRINES.md §3, 2026-09) — la monnaie
+     * ENDOGÈNE du jeu politique (dérivée des pops simulées, pas un mana tombé du ciel) :
+     * gain/mois = INFLUENCE_PER_NOBLE × élites du pays (strates CLASS_ELITE, prov[]) ×
+     * mult_conseil (moyenne des rangs I-III des sièges POURVUS du Conseil ; aucun siège
+     * pourvu ⇒ INFLUENCE_COUNCIL_FLOOR — sinon un Conseil vide rend le joueur muet en
+     * diplomatie). INFLUENCE_CAP=0 : sans plafond (décision joueur — les sinks futurs
+     * feront le travail). Dépense : les verbes d'envoi (alliance/pacte/embargo/migration/
+     * paix offerte) coûtent INFLUENCE_COST_ENVOY — ce coût REMPLACE le cooldown de
+     * l'émissaire (DIPLO_ENVOY_FLOOR_DAYS reste un plancher COURT anti-spam, ex-60 j) ;
+     * fabriquer une revendication coûte EN SUS INFLUENCE_COST_FAB (le coût d'or existant
+     * est inchangé). P1 : joueur SEUL (human_player), golden intact par construction. */ \
+    X(INFLUENCE_PER_NOBLE,              0.002f) \
+    X(INFLUENCE_COUNCIL_FLOOR,          1.0f) \
+    X(INFLUENCE_CAP,                    0.0f) \
+    X(INFLUENCE_COST_ENVOY,             12.0f) \
+    X(INFLUENCE_COST_FAB,               25.0f) \
+    X(DIPLO_ENVOY_FLOOR_DAYS,           30.0f)
 
 #endif /* SCPS_TUNE_LIST_H */

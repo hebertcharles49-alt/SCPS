@@ -480,6 +480,7 @@
     X(STR_GATE_RELATION_COMMERCABLE, "Tradeable relation") \
     X(STR_GATE_OR_SUFFISANT,         "Sufficient crowns") \
     X(STR_GATE_AUCUNE_INTRIGUE,      "No plot already underway") \
+    X(STR_GATE_INFLUENCE_SUFFISANTE, "Sufficient political influence") \
     X(STR_DIPLO_REASON_INVALID_TARGET,        "Invalid or unknown diplomatic target") \
     X(STR_DIPLO_REASON_EMISSARY_BUSY,         "Envoy on tour") \
     X(STR_DIPLO_REASON_OK,                    "Action available") \
@@ -496,7 +497,13 @@
     X(STR_DIPLO_REASON_INTRIGUE_IN_PROGRESS,  "Claim being fabricated") \
     X(STR_DIPLO_REASON_CLAIM_READY,           "A claim is already ready") \
     X(STR_DIPLO_REASON_INSUFFICIENT_GOLD,     "Not enough crowns to fund the plot") \
+    X(STR_DIPLO_REASON_INSUFFICIENT_INFLUENCE,"Not enough political influence for this act") \
     X(STR_DIPLO_REASON_FABRICATION_UNAVAILABLE,"Plot unavailable for now") \
+    X(STR_INFLUENCE_HOVER,      "%d nobles × the Council (average rank %s)") \
+    X(STR_INFLUENCE_HOVER_VIDE, "%d nobles × the Council (no minister seated — floor)") \
+    X(STR_INFLUENCE_RANK_I,     "I") \
+    X(STR_INFLUENCE_RANK_II,    "II") \
+    X(STR_INFLUENCE_RANK_III,   "III") \
     X(STR_HERITAGE_FLAVOR_0, "Their genealogies begin before the first calendars, in centuries only ruins still remember.") \
     X(STR_HERITAGE_FLAVOR_1, "They say every oath is like a metal: it reveals its worth only once heated enough to break it.") \
     X(STR_HERITAGE_FLAVOR_2, "Their first clock measured the seasons. The second measured labour. The third taught the two to yield gold.") \

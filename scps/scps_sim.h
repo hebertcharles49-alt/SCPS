@@ -47,6 +47,7 @@
 #include "scps_heritage.h"
 #include "scps_decrees.h"
 #include "scps_fog.h"      /* BROUILLARD DE GUERRE : connaissance des empires (étape 1/2, VISUEL seulement) */
+#include "scps_influence.h" /* INFLUENCE POLITIQUE §3 : accumulateur par pays, joueur seul (P1) */
 #include <stdbool.h>
 #include <stdio.h>   /* FILE : sim_wild_save/load (section WILD du save partagé) */
 
@@ -187,6 +188,7 @@ typedef struct {
     Campaign    *camp;   /* armées de campagne : marche/siège/bataille sur la carte (non-invasif) */
     uint32_t     camp_rng;
     MissionsState *missions; /* missions décennales (rythme + injection de ressources) */
+    InfluenceState *infl; /* INFLUENCE POLITIQUE §3 : accumulateur par pays (joueur seul, P1) */
     NavyState   *navy;   /* la flotte (mer §5) : coques, chantier, entretien */
     EndgameState *eg;   /* capstone §27 : état cataclysme (entropie + fin + merveille) */
     int16_t prev_owner_mo[SCPS_MAX_REG];   /* propriétaires au mois précédent (détection de conquête) */
@@ -196,8 +198,12 @@ typedef struct {
     PlayerCmd cmdq[SCPS_CMDQ_MAX]; int cmd_n;   /* journal de commandes JOUEUR (vidé au tick, déterministe) */
     int research_target;   /* cible de recherche du JOUEUR (-1 = aucune ; file de 1, modèle viewer) */
     int player_age_engaged;   /* §7 : dernier âge ENGAGÉ par le joueur (-1 = aucun) — persiste (SaveMisc v48) */
-    int diplo_ready_day;   /* le DIPLOMATE : jour où le prochain acte diplo JOUEUR est permis
-                            * (UN émissaire, 1 action / 2 mois) — persiste (SaveMisc v49) */
+    int diplo_ready_day;   /* le DIPLOMATE : jour où le prochain acte diplo JOUEUR est permis —
+                            * persiste (SaveMisc v49). INFLUENCE POLITIQUE §3 (2026-09) : le
+                            * COOLDOWN est remplacé par le COÛT en influence pour les verbes
+                            * d'envoi (le plancher anti-spam DIPLO_ENVOY_FLOOR_DAYS, plus court,
+                            * reste posé ici) ; CMD_DECLARE_WAR ne le touche plus DU TOUT (« la
+                            * guerre n'attend pas la cour »). */
 } Sim;
 
 /* allocation/libération des MEMBRES (heap) — la chronique alloue inline (intacte) ;
