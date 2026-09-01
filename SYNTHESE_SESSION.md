@@ -1,3 +1,25 @@
+# SYNTHÈSE SESSION — 2026-09-01 : DESIGN DESSEINS/INFLUENCE/DOCTRINES + fix tribut vassal
+
+- **Design complet du prochain grand chantier** (commits jusqu'à 27dc5ed) :
+  docs/DESIGN_MISSIONS_DOCTRINES.md (le système — toutes les décisions joueur
+  actées : Desseins générés 3 branches, Influence 0.002/noble × Conseil qui
+  REMPLACE le cooldown diplo, 17 doctrines dont 4 courants politiques
+  re-siégeant l'assiette, 6 idées séquentielles, complet = rien, synergies
+  fibonacciennes 2/3/5/8, abandon libre, commission décennale DÉPOSÉE en P1,
+  IA sur l'arbre en P3) + docs/DESIGN_DOCTRINES_ANNEXE.md (6 idées × 17
+  doctrines chiffrées sur leviers réels par 17 agents opus, 31 synergies
+  fusionnées, harmonisation §H — décisions restantes §H7, vérifs de début de
+  vague §H4.4). PAS ENCORE CODÉ.
+- **FIX tribut vassal conservatif** (27dc5ed) : les canaux agraire/martial de
+  la contribution mûrie créaient grain/armes ex nihilo → miroir M3f porté
+  (débit réel borné), banc de conservation dans diplo_demo (96/96). Golden
+  INTACT par construction (contribution après l'an 13). + hygiène registre :
+  IMPORT_TOLL_FRAC purgé (fantôme double), WILD_DEFECT_YEARS=0 confirmé
+  décision joueur (LEVIERS.md réaligné).
+- **Prochain pas** : P1 du chantier (dépose commission décennale + ré-ancrage
+  Âge des Héros + Influence politique + Desseins moteur joueur-seul) — après
+  validation par le joueur des points §H7 de l'annexe.
+
 # SYNTHÈSE SESSION — 2026-08-26 : CAMPAGNE D'ASSETS 2 INTÉGRÉE (lots 8-13)
 
 - 200 PNG livrés/audités/intégrés (commits fb985f1 → eef433b) : chrome 9-slice
