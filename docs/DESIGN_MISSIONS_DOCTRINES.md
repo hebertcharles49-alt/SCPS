@@ -226,7 +226,8 @@ satisfaction de la classe Élite. Le taux est plat : effectif × rang, point.
 | **Envoi de diplomate** (alliance, pacte, embargo, migration, paix offerte…) | 10-15 | **DÉCIDÉ : le coût REMPLACE le cooldown `diplo_ready_day`** — on enchaîne si on a économisé, on est muet à sec (plancher court anti-spam conservé) |
 | **Fabriquer une revendication** | 20-30 | en sus du coût d'or existant (2 ans de revenu de la cible) — l'intrigue mobilise la cour |
 | **Sceller un pivot exclusif de Dessein** | 15-25 | le choix d'orientation est un acte politique ; les échelons ordinaires restent gratuits |
-| **Adopter une doctrine** | 50 + 25 × doctrines actives | coût fixe et scalable (révision 2026-09-01) ; entretien mensuel en couronnes (§4.2) |
+| **Adopter une doctrine** | 50 + 25 × doctrines actives | coût fixe et scalable (révision 2026-09-01) |
+| **Entretenir une doctrine** | **1/mois chacune** | l'entretien est EN INFLUENCE (pas en couronnes) — insolvable ce mois = les dernières adoptées se suspendent |
 | **Acheter une idée de doctrine** | 30 + 3 × idées possédées (total) | façon unités Stellaris — plus t'en as, plus c'est cher ; 6 par doctrine, en séquence |
 | **Maintenir une synergie de paire** | **2/mois, puis 3·5·8… par synergie active supplémentaire** | le sink fibonaccien (§4.4) — suspendue si impayée ce mois |
 | **Décision ponctuelle de décret** (`DCR_DECISION`) | 10-20 | l'audit des offices mobilise l'appareil |
@@ -286,8 +287,14 @@ qu'on possède déjà :
   achetées EN SÉQUENCE dans leur doctrine. Abandonner libère le compte.
 - **Pas de bonus de complétion** (6/6 = rien) ; la paire complète ouvre le
   sous-menu de synergie (coût fibonaccien inchangé).
-- **Entretien mensuel en couronnes** par doctrine active : patron décret
-  (`tax_year × RATE × IPM / 12`, non financé ce mois = sans effet ce mois).
+- **Entretien en INFLUENCE, pas en couronnes** (révision joueur 2026-09-01) :
+  `DOCT_UPKEEP (1.0) /mois par doctrine active` — l'influence a désormais des
+  revenus (les nobles × le Conseil) ET des charges (doctrines + synergies +
+  émissaires) : faire grandir sa noblesse devient le moteur, à double
+  tranchant (luxe à servir, rivalité turchinienne, assiette du courant).
+  Insolvable ce mois ⇒ les dernières doctrines adoptées se suspendent CE mois
+  (ordre déterministe), mults à 1.0. Les DÉCRETS gardent leur entretien en
+  couronnes (système existant inchangé).
 - **L'IA choisit PAR SCORE** sur ses propres modificateurs (côtier →
   Colonisation, beaucoup de vassaux → Vassaux…) — aucune restriction.
 
@@ -373,7 +380,8 @@ L'« arbre de tech parallèle » est pour tout le monde — pas un jouet solo :
   Alerte du Fil au scellement possible (`jrn_mission`, le 12e genre livré).
 - **Doctrines** : **4e sous-onglet du Conseil** (« Gouvernement · Politiques ·
   Factions · Doctrines ») — zéro composant neuf, le patron `_conseil_tab`
-  existe. Entretien affiché **en couronnes/mois** (jamais l'annuel).
+  existe. Entretien affiché **en influence/mois** (doctrines + synergies), à
+  côté du revenu — le solde politique se lit d'un coup d'œil.
 - **Influence politique** : en-tête du Conseil (stock + « /mois »), hover =
   nobles × taux × rang du Conseil en mots ; chaque bouton payant affiche son
   prix d'influence à côté du reste de sa checklist.
@@ -390,7 +398,7 @@ L'« arbre de tech parallèle » est pour tout le monde — pas un jouet solo :
 |---|---|---|
 | **P1** | **Dépose de la commission décennale** (ré-ancrage Âge des Héros + loyauté Conseil sur les Desseins) + **Influence politique** (génération élites × Conseil, stock sérialisé, coûts sur les verbes diplo — le cooldown `diplo_ready_day` saute) + Desseins moteur : gabarits + génération + triggers + scellage + récompenses. Desseins/influence joueur seul. | bump SAVE_VERSION · `desseins_demo` banc neuf (remplace `missions_demo`) · full-test 40 · savetest (influence + échelons sérialisés) · determinism · **re-baseline golden documenté (la dépose touche l'IA)** · lang-check |
 | **P2** | Façade : readers + page empire_window Desseins + influence au Conseil + checklist + Fil/Annales UI. | probes visuelles · lang-check |
-| **P3** | Doctrines moteur (`doctrine_mult` cloné de `decree_mult`, slots par âge, adoption en influence, entretien couronnes, maturation) **+ adoption IA par score (§4.6)** + 4e sous-onglet Conseil. | mêmes gates + **re-baseline golden + sweep apparié 3×3 — le joueur lance** |
+| **P3** | Doctrines moteur (`doctrine_mult` cloné de `decree_mult`, slots par âge, adoption ET entretien en influence) **+ adoption IA par score (§4.6)** + 4e sous-onglet Conseil. | mêmes gates + **re-baseline golden + sweep apparié 3×3 — le joueur lance** |
 | **P4** | Desseins IA (biais `ai_province_value`/colonisation vers la cible du dessein courant) + calibrage d'ensemble. | re-baseline + sweep apparié — le joueur lance |
 
 Pièges déjà consignés à respecter : `region[].owner` dérivé (lire

@@ -16,8 +16,14 @@ Colonisation score haut, etc.), aucune restriction d'éthos.
 - **Synergie de paire** : entretien fibonaccien 2/3/5/8… /mois (inchangé).
 - **Complet = rien de spécial** ; la paire complète ouvre le sous-menu de
   synergie. **Abandon libre**, sans remboursement ni cicatrice.
-- Entretien mensuel en couronnes par doctrine active : patron décret
-  (`tax_year × RATE × IPM / 12`, non financé ce mois = sans effet ce mois).
+- **Entretien en INFLUENCE, pas en couronnes** (révision joueur 2026-09-01) :
+  `DOCT_UPKEEP (1.0) /mois par doctrine active`. Avec les synergies (2/3/5/8)
+  et les émissaires, l'influence devient une vraie économie : les nobles la
+  génèrent, les doctrines la consomment — d'où l'intérêt de faire GRANDIR sa
+  noblesse, à double tranchant (plus de voix, mais plus de panier de luxe à
+  servir et plus de rivalité aspirants/positions ; et le courant choisit
+  l'assiette). Insolvable ce mois ⇒ les doctrines les plus récemment adoptées
+  se suspendent CE mois (ordre déterministe), mults à 1.0.
 
 Structure inchangée : 6 slots · 17 doctrines · idées achetées EN SÉQUENCE ·
 Commerce↔Mercantilisme exclusifs · un seul courant politique sur quatre (le
