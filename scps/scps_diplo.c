@@ -410,8 +410,45 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
                  * PROVINCES — un crédit sur la seule vue region[] s'évaporait à la clôture
                  * (le tribut agraire ne nourrissait jamais personne). */
                 int spid=econ_region_rep_province(econ, capreg[s]);
-                if      (fn==VFN_AGRAIRE) econ_region_stock_add(econ, capreg[s], RES_GRAIN, base*food);   /* vivres → pool (province) */
-                else if (fn==VFN_MARTIAL){ if (spid>=0&&spid<econ->n_prov) econ->prov[spid].mil_stock+=base*mil; }  /* la levée du vassal */
+                if      (fn==VFN_AGRAIRE){
+                    /* AUDIT DOCTRINES 2026-09-01 (§H4.1) — même création que M3f, côté vivres :
+                     * le grain versé au maître n'était prélevé NULLE PART. Le vassal est débité
+                     * réellement (econ_region_stock_add négatif : self-clampe au stock réel des
+                     * provinces, région par région, ordre d'index = déterministe) ; le maître ne
+                     * reçoit que le PRÉLEVÉ — le tribut se réduit si le grenier vassal est vide,
+                     * jamais de création. */
+                    float want=base*food, taken=0.f;
+                    for (int r2=0;r2<econ->n_regions && want-taken>1e-6f;r2++){
+                        if (econ->region[r2].owner!=v) continue;
+                        taken += -econ_region_stock_add(econ, r2, RES_GRAIN, -(want-taken));
+                    }
+                    if (taken>0.f) econ_region_stock_add(econ, capreg[s], RES_GRAIN, taken);   /* vivres → pool (province) */
+                }
+                else if (fn==VFN_MARTIAL){
+                    /* AUDIT DOCTRINES 2026-09-01 (§H4.1) — idem côté armes : la « levée du
+                     * vassal » naissait de rien. Prélèvement réel sur le mil_stock (≥0) des
+                     * provinces représentatives du vassal, prorata — le motif exact du canal
+                     * commerce M3f ci-dessous (region[].mil_stock est un Σ dérivé, recalculé
+                     * à la clôture : on n'écrit que les provinces). */
+                    float want=base*mil, avail=0.f;
+                    for (int r2=0;r2<econ->n_regions;r2++){
+                        if (econ->region[r2].owner!=v) continue;
+                        int rp=econ_region_rep_province(econ,r2); if (rp<0||rp>=econ->n_prov) continue;
+                        avail += fmaxf(0.f, econ->prov[rp].mil_stock);
+                    }
+                    if (want>0.f && avail>0.f && spid>=0 && spid<econ->n_prov){
+                        float take_tot=fminf(want,avail), taken=0.f;
+                        for (int r2=0;r2<econ->n_regions;r2++){
+                            if (econ->region[r2].owner!=v) continue;
+                            int rp=econ_region_rep_province(econ,r2); if (rp<0||rp>=econ->n_prov) continue;
+                            float a=fmaxf(0.f, econ->prov[rp].mil_stock); if (a<=0.f) continue;
+                            float t=take_tot*(a/avail);
+                            econ->prov[rp].mil_stock-=t;
+                            taken+=t;
+                        }
+                        econ->prov[spid].mil_stock+=taken;   /* la levée du vassal — réellement levée chez lui */
+                    }
+                }
                 else {
                     /* MONNAIE M3f — item 3 : le tribut « mûri » (VFN_COMMERCE, l'or marchand)
                      * était une pure création (M0 §1.4) — ÉTAT > ÉTAT réel désormais : le

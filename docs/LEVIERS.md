@@ -92,8 +92,7 @@ saturation), clampée au tick. Seules exceptions : les *taux* (0-1) et les *flux
 | `ADMIN_BASE` / `ADMIN_EXP` | 0.4 / 1.3 | base & exposant du coût administratif (croît avec la taille) |
 | `SINK_FLOOR` | 500 | plancher du puits monétaire |
 | `TRADE_LEVY` | 0.10 | prélèvement de l'importateur sur une route (conservation : 0 faucet/0 sink) |
-| `IMPORT_MARGIN_OWN` / `_THIRD` / `_NONE` | 1.3 / 1.8 / 2.0 | marge d'import selon le propriétaire du Centre (soi / tiers / personne) |
-| `IMPORT_TOLL_FRAC` | 0.30 | péage versé à la cité-état hôte du Centre |
+| `IMPORT_MARGIN_OWN` / `_THIRD` / `_NONE` | 1.3 / 1.8 / 2.0 | marge d'import selon le propriétaire du Centre (soi / tiers / personne) ; le PÉAGE versé à l'hôte = toute la marge, répartie par `TOLL_STATE_SHARE` (l'ex-`IMPORT_TOLL_FRAC` était une entrée morte, purgée 2026-09-01) |
 | `CREDIT_LINE_BASE` | 0.5 | taille de la ligne de crédit ∝ pop |
 | `CREDIT_RATE_BASE` | 0.05 | taux d'intérêt de base (price le risque) |
 | `CREDIT_RATIO_CAP` | 8.0 | anti-spirale : au-delà de ce ratio dette/ligne, l'intérêt plafonne (évite le NaN ~an 105) |
@@ -394,7 +393,7 @@ satisfaction). Le seuil d'accession journalier→bourgeois = `PROMOTE_BASKET_MUL
 | `WILD_POP` / `_VAR` / `_CAP` / `_FOOD` | 750 / 0 / 1600 / 8 | graine, jitter, plafond d'accueil, food forcée |
 | `WILD_SPAWN_HOPS` | 3 | rayon BFS (restent près du spawn) |
 | `WILD_CULTURE_DISTINCT` | 1 | culture distincte du voisin |
-| `WILD_DEFECT_YEARS` | 8 | ans de contact pacifique avant ralliement culturel |
+| `WILD_DEFECT_YEARS` | **0 = désactivé** (décision joueur : les Peuples libres ne rallient jamais seuls — owner ne change que par conquête/vassalité) | >0 ré-arme le ralliement culturel après N ans de contact pacifique |
 | `WILD_HOARD` / `WILD_REGIMENTS` | 60 / 2 | réserve de brutes · régiments défensifs |
 
 ## Conseil (les visages du pouvoir)

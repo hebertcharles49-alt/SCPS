@@ -10023,3 +10023,60 @@ INTERDITS pour moi, contenu autorisé) — relu avant chaque édition, diff fina
   visibles), `event_dialog_audit` (OK, sans rapport direct mais vert). AUCUN
   `make full-test`/`determinism`/`savetest` relancé — display-only pur, zéro ligne
   `scps/` touchée, aucun état sérialisé changé (SAVE_VERSION inchangé).
+
+---
+
+## Mission 2026-09-01 — FIX tribut vassal conservatif + hygiène registre (§H4 annexe doctrines)
+
+### Découvertes
+- **Le tribut vassal MÛRI créait grain et armes ex nihilo** (`scps_diplo.c`,
+  contribution typée) : les canaux AGRAIRE (`econ_region_stock_add(... RES_GRAIN,
+  base*food)`) et MARTIAL (`prov[spid].mil_stock += base*mil`) créditaient le
+  suzerain SANS débiter le vassal — seul COMMERCE avait reçu le miroir M3f. Corrigé
+  au même motif : débit réel borné au stock du vassal (grain :
+  `econ_region_stock_add` négatif région par région, ordre d'index — la primitive
+  self-clampe déjà au disponible provinces ; armes : prorata sur le `mil_stock` ≥0
+  des provinces représentatives), le maître ne reçoit que le prélevé.
+- **Golden intact PAR CONSTRUCTION** : le commentaire du bloc (« seuils 0.65
+  inatteignables en 12 ans ») tient — la contribution mûrie démarre après l'an 13,
+  hors fenêtre des goldens 12 ans. Vérifié : hash IDENTIQUE. Aucun re-baseline.
+- **Banc de conservation ajouté** (`diplo_demo.c`, après le bloc B1) : on FORCE le
+  canal du vassal via `region[].raw_cap` (vassal_function lit la vue région
+  directement — écrire raw_cap[RES_GRAIN]=10000 ⇒ fn=AGRAIRE, [RES_IRON]=20000 ⇒
+  fn=MARTIAL), puis on asserte Σ-monde conservée + maître crédité de ce que le
+  vassal perd. 96/96 verts, mesures exactes (Σgrain 1490→1490, mil 50→0 / 0→50).
+- **`IMPORT_TOLL_FRAC` PURGÉ** : l'entrée registre (0.30) n'avait AUCUN
+  `tune_f`, et le `#define` homonyme de `scps_agency.c:284` était lui-même
+  inutilisé — double fantôme. Le péage réel du chantier = TOUTE la marge
+  (`gold − base_gold`), répartie par `TOLL_STATE_SHARE`. Purge golden-neutre
+  (prouvée) ; 2 commentaires de `scps_tune_list.h` (M5/M13) reformulés,
+  LEVIERS.md corrigé.
+- **`WILD_DEFECT_YEARS` = 0 n'est PAS un levier mort** : c'est une décision
+  joueur documentée AU SITE (`scps_sim.c:86-89` + commentaire registre : les
+  Peuples libres ne rallient jamais seuls, owner ne change que par
+  conquête/vassalité ; >0 ré-arme). C'était docs/LEVIERS.md qui annonçait encore
+  les 8 ans d'origine — doc corrigée, moteur intact.
+
+### Pièges
+- **Un audit d'agents peut se contredire poliment** : deux agents ont signalé
+  IMPORT_TOLL_FRAC mort (vrai), un troisième a failli bâtir une idée de doctrine
+  dessus. Toute proposition « mult sur tunable X » doit vérifier que X a un site
+  `tune_f` VIVANT — le registre contient au moins un fantôme historique, il peut
+  en contenir d'autres.
+- **docs/LEVIERS.md n'est pas la source de vérité** — `scps_tune_list.h` l'est
+  (son propre en-tête le dit). Les défauts évoluent par décision joueur sans que
+  la doc suive (cas WILD_DEFECT_YEARS 8→0). Croiser systématiquement avant de
+  citer un défaut.
+- Le banc de conservation doit tourner AVANT le bloc (c) DIGESTION de
+  diplo_demo (l'éthos du suzerain y passe DOMINATEUR et le vassal disparaît).
+
+### Restes
+- La purge IMPORT_TOLL_FRAC laisse `BUILD_MIN_PRICE` seul dans son petit bloc
+  de defines agency — rien à faire, noté pour le contexte.
+- Le miroir M3f vassal ne borne PAS la famine du vassal : un vassal agraire
+  peut être vidé de son grain par un maître pressant (décret tribut ×1.5).
+  C'est cohérent (le servage affame — le grief/fronde est la contrepartie),
+  mais le sweep doctrines (P3/P4) devra regarder la mortalité des vassaux
+  agraires de maîtres Dominateurs.
+- Annexe doctrines §H4 : items 1-3 marqués corrigés/tranchés ; restent les
+  vérifs de début de vague (arch_depth sérialisé ? vivier ministres ? SPEC_*).

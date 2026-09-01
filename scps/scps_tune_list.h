@@ -181,7 +181,6 @@
     X(IMPORT_MARGIN_OWN,      1.3f) \
     X(IMPORT_MARGIN_THIRD,    1.8f) \
     X(IMPORT_MARGIN_NONE,     2.0f) \
-    X(IMPORT_TOLL_FRAC,       0.30f) \
     /* CONSERVATION du commerce : le prélèvement de l'importateur (Y = X + levy) sur les routes —
      * l'exportateur encaisse tout (gross + levy), l'importateur paie tout : zéro faucet, zéro sink. */ \
     X(TRADE_LEVY,             0.10f) \
@@ -1622,7 +1621,7 @@
     X(INCOME_TAX_RATE_ELITE,           0.75f) \
     /* MONNAIE M5 — R1 : LE TOLL 50/50 (décision joueur 2026-07-15, « le toll,
      * 50/50 état-bourgeois »). Les 3 sites de péage (échange inter-empire
-     * TRADE_LEVY, détroit IT_CHOKE_TOLL, marge d'import chantier IMPORT_TOLL_FRAC)
+     * TRADE_LEVY, détroit IT_CHOKE_TOLL, marge d'import chantier — agency)
      * versaient JUSQU'ICI 100 % aux BOURGEOIS de l'hôte (item 5, M3b-v2.1) — l'État
      * y perdait le revenu. TOLL_STATE_SHARE partage désormais le péage entre le
      * trésor de la province-hôte (econ_region_treasury_add) et les bourgeois
@@ -1630,8 +1629,8 @@
      * 0 = kill-switch : 100 % bourgeois, chemin legacy byte-identique. */ \
     X(TOLL_STATE_SHARE,                0.5f) \
     /* MONNAIE M13 — P1 : « SI Y'A PERSONNE, Y'A PAS DE PÉAGE » (décision joueur,
-     * 2026-07-17). Les 3 péages région-grain (TRADE_LEVY, IT_CHOKE_TOLL,
-     * IMPORT_TOLL_FRAC) ne se prélèvent plus vers une région dont la PORTEUSE RÉELLE
+     * 2026-07-17). Les 3 péages région-grain (TRADE_LEVY, IT_CHOKE_TOLL, marge
+     * d'import chantier — agency) ne se prélèvent plus vers une région dont la PORTEUSE RÉELLE
      * (region_carrier_prov — la province qui encaisserait physiquement) n'est PAS
      * colonisée — cf. TROUVAILLES M3h/M3i item 7, le site WILD des péages parqués sur
      * une porteuse non colonisée, ~250k/région. Le commerce passe FRANC, rien ne se

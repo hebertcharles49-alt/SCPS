@@ -748,6 +748,48 @@ int main(int argc,char**argv){
               } else ok("(capitales introuvables pour le test B1 tribut)", true);
             }
 
+            /* AUDIT DOCTRINES 2026-09-01 (§H4.1) — CONSERVATION du tribut mûri : les canaux
+             * AGRAIRE et MARTIAL créaient grain/armes EX NIHILO (seul COMMERCE avait le miroir
+             * M3f). Désormais le vassal est DÉBITÉ réellement (borné à son stock réel) : la
+             * somme-monde se conserve, le maître ne reçoit que le prélevé. On force le canal
+             * par le raw_cap (vassal_function lit la vue region[], écrite directement ici). */
+            { int capVp=(capV>=0)?econ_region_rep_province(econ,capV):-1;
+              int capSp4=(capS>=0)?econ_region_rep_province(econ,capS):-1;
+              if (capVp>=0 && capSp4>=0 && capVp!=capSp4){
+                  dp->v_integration[V]=0.9f; dp->v_grief[V]=0.05f;
+                  /* (i) AGRAIRE : vivrier gonflé → fn=AGRAIRE, want ≫ stock réel (le débit se borne) */
+                  econ->region[capV].raw_cap[RES_GRAIN]=10000.f;
+                  econ->prov[capVp].stock[RES_GRAIN]=200.f;
+                  float g0=0.f; for(int p=0;p<econ->n_prov;p++) g0+=econ->prov[p].stock[RES_GRAIN];
+                  float gs0=econ->prov[capSp4].stock[RES_GRAIN];
+                  diplo_suzerainty_tick(dp,w,econ,wp);
+                  float g1=0.f; for(int p=0;p<econ->n_prov;p++) g1+=econ->prov[p].stock[RES_GRAIN];
+                  float gs1=econ->prov[capSp4].stock[RES_GRAIN];
+                  printf("   tribut AGRAIRE : Σgrain monde %.1f→%.1f · grenier suzerain %.1f→%.1f\n",
+                         (double)g0,(double)g1,(double)gs0,(double)gs1);
+                  ok("§H4.1 : le tribut AGRAIRE CONSERVE le grain-monde (débit vassal = crédit maître, zéro création)",
+                     fabsf(g1-g0) <= fmaxf(1.f, g0*1e-4f));
+                  ok("§H4.1 : le maître REÇOIT du grain (le canal vit toujours)", gs1>gs0+0.01f);
+                  econ->region[capV].raw_cap[RES_GRAIN]=0.f;
+                  /* (ii) MARTIAL : fer gonflé → fn=MARTIAL, armes prélevées sur le mil_stock réel */
+                  econ->region[capV].raw_cap[RES_IRON]=20000.f;
+                  econ->prov[capVp].mil_stock=50.f;
+                  float m0=0.f; for(int p=0;p<econ->n_prov;p++) m0+=econ->prov[p].mil_stock;
+                  float ms0=econ->prov[capSp4].mil_stock, mv0=econ->prov[capVp].mil_stock;
+                  dp->v_grief[V]=0.05f;
+                  diplo_suzerainty_tick(dp,w,econ,wp);
+                  float m1=0.f; for(int p=0;p<econ->n_prov;p++) m1+=econ->prov[p].mil_stock;
+                  float ms1=econ->prov[capSp4].mil_stock, mv1=econ->prov[capVp].mil_stock;
+                  printf("   tribut MARTIAL : Σmil monde %.1f→%.1f · arsenal suzerain %.1f→%.1f · vassal %.1f→%.1f\n",
+                         (double)m0,(double)m1,(double)ms0,(double)ms1,(double)mv0,(double)mv1);
+                  ok("§H4.1 : le tribut MARTIAL CONSERVE la force-monde (la levée du vassal est levée CHEZ LUI)",
+                     fabsf(m1-m0) <= fmaxf(1.f, m0*1e-4f));
+                  ok("§H4.1 : l'arsenal du maître monte de ce que le vassal a perdu",
+                     ms1>ms0+0.001f && mv1<mv0-0.001f);
+                  econ->region[capV].raw_cap[RES_IRON]=0.f;
+              } else ok("(capitales introuvables pour le test conservation tribut)", true);
+            }
+
             /* (c) DIGESTION : maître ANNEXEUR + vassal bien intégré (amorcé près du terme) → absorption. */
             if(capS>=0) econ->region[capS].culture.ethos=ETHOS_DOMINATEUR;
             dp->v_integration[V]=0.9f; dp->v_annex[V]=0.95f;

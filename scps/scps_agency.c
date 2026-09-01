@@ -281,7 +281,6 @@ bool agency_pending_build(const AgencyState *a, int region, Edifice e){
 
 /* ---- Coût des bâtiments (§1) : matériaux ACHETÉS au marché en or ------- */
 #define BUILD_MIN_PRICE 0.20f   /* plancher de prix : même un bien abondant n'est jamais gratuit */
-#define IMPORT_TOLL_FRAC 0.30f  /* I6 : part de la marge versée en PÉAGE au hub tiers emprunté */
 /* DIAGNOSTIC G0.3 — pourquoi les paliers ne montent pas : compteurs par édifice.
  * F4 : g_edi_nocap distingue « le POOL COMMERCIAL §5 est à sec ce mois-ci » (import borné,
  * cf. intertrade_market_avail_ex) de g_edi_nomat « la matière est VRAIMENT absente partout ». */
