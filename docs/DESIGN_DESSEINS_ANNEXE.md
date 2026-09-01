@@ -575,3 +575,39 @@ des PARIS à mesurer au chronicle apparié 3×3 an 180 — pas des décisions de
 design. Métriques déjà nommées par branche : trésor des cités-états (Mer),
 revenu médian des voisins d'une Horde, alliances tenues (Diplomatie),
 guerres CB_RELIGIOUS (Foi), année d'avènement des Découvertes (Connaissances).
+
+---
+
+# D6. PASSE DE STYLE (révision joueur 2026-09-01 — s'applique à TOUT le doc)
+
+Règles fermes, prioritaires sur les tables ci-dessus :
+
+1. **Noms courts** : un mot / une action / une situation — pas de titre qui
+   raconte sa vie. Table de renommage NORMATIVE (l'ancienne colonne « Nom »
+   des tables est remplacée par ceci à l'implémentation) :
+
+| Branche | Renommages (ancien → nouveau) |
+|---|---|
+| Sol | Le Ban du sol → **Unification** · La Première marche → **Expansion** · Le Voisin nommé → **Le rival** · pivot A → **Conquête** · pivot B → **Vassalisation** · La Cicatrice qu'on referme → **Pacification** · Les Trois marches → **Les marches** · Le Siège abattu → **Capitale rivale** · parachèvements → **Hégémonie** · Le Premier serment → **Premier vassal** · La Toile → **Trois vassaux** · Le Vassal qui n'est plus un autre → **Intégration** |
+| Mer & Comptoirs | Les éclaireurs → **Exploration** · La première fondation → **Première colonie** · Le grenier de la mer → **Ravitaillement** · Les clefs de la mer → **Le détroit** · pivot A → **Thalassocratie** · pivot B → **Colonisation** · Le comptoir d'outre-mer → **Comptoir** · Le péage des détroits → **Péages** · La ligue des quais → **La ligue** · L'Empire des quais → **Maîtrise des mers** · S'endurcir au climat → **Acclimatation** · La seconde vague → **Seconde vague** · Par-delà les mers → **Outre-mer** · Un monde nouveau → **Nouveau continent** |
+| Routes & Caravanes | La halte → **Caravansérail** · Au bout du bassin → **Désenclavement** · Les gens de la piste → **Le hameau** · Le col (garde) · pivot A → **L'étape** · pivot B → **Libre passage** · L'entrepôt du carrefour → **Le carrefour** · Le droit de passage → **Centre déplacé** · L'Étape du monde → **Plaque tournante** · Le sauf-conduit (garde) · Les marchés sans maître → **Marchés libres** · Le Grand Chemin (garde) |
+| Foi | L'autel de pierre → **Temple** · Le Nom du dieu → **Fondation** · Le premier troupeau → **Conversion** · Le sermon aux marches → **Mission** · pivot A → **Unité** · pivot B → **Rayonnement** · Le pays d'une seule prière → **Unité de foi** · L'épreuve : la Contre-Réforme → **Contre-Réforme** · La foi du voisin → **Prêche à l'étranger** · Le schisme essaimé → **Schisme** · parachèvements : **Cathédrale** / **Concile** |
+| Savoir | Le premier rayonnage → **Bibliothèque** · La règle et le cloître → **Monastère** · Lire la langue du voisin → **Emprunt** · L'alliage → **Alliage** · pivots : **Voie propre** / **Porte entrouverte** (gardés) · La chaire cosmopolite → **Apex** · Le cercle d'invocation → **Invocation** · parachèvements : **Concile des savants** / **Savoir interdit** |
+| Creuset | Le Droit de passage → **Pacte migratoire** · Le Quartier des arrivants → **Le quartier** · La Première génération → **Intégration** · Ce que leurs pères savaient → **Héritage** · Le Concile des langues → **Ministre étranger** · L'Alliage → **Alliage** · La Nation des nations (garde — nom canon) · Le Climat appris → **Acclimatation** · Les Cadets au large → **Diaspora** · Les Marches d'accueil → **Terre d'accueil** |
+| Horde | La première proie → **La proie** · Le butin nourrit le camp → **Butin** · Le tribut imposé → **Tribut** · La terreur établie → **Terreur** · pivots : **Horde éternelle** / **Sédentarisation** (gardés) · L'économie de horde → **Économie de horde** · Les tributs perpétuels → **Tributs perpétuels** · parachèvement A → **Le Fléau** · La ville des chariots → **La ville** · La caste des guerriers → **Garnisons** · Le Royaume né du camp → **Le royaume** |
+
+2. **Flavor** : 1 phrase, 2 grand max, sobre. Les saveurs des tables
+   ci-dessus qui dépassent se coupent à l'implémentation.
+3. **Bonus lisibles** : la colonne Récompense s'affiche face joueur en UNE
+   ligne simple (« revendication sur X », « +25 % de ferveur 15 ans »,
+   « 2 chantiers coloniaux ») — le levier moteur reste en colonne technique.
+4. **Prix de pivot UNIFORME : 20 d'influence, partout** — aucune modulation
+   d'éthos (la règle « l'éthos fixe le prix » de D1.6 est ANNULÉE), aucune
+   réduction par doctrine sœur. Les conditions d'ouverture de voie (preuves
+   d'usage des pivots) restent : un pivot est un choix de campagne, pas un
+   achat au guichet — c'est la SEULE exception « mission » au principe
+   « tu cliques, t'as le bonus » des doctrines.
+5. **Pas de gate d'éthos nulle part** : l'attribution des branches reste
+   géographique/culturelle (une branche d'ouverture par géographie, une
+   branche d'esprit par cascade), mais AUCUN échelon ni pivot ne se ferme ou
+   ne se renchérit par éthos.

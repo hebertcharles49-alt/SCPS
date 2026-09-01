@@ -155,8 +155,8 @@ Un pivot par branche, à mi-parcours (leçon 1.35/Anbennar) : p.ex. la branche
 du Sol se scinde en **« L'Empire des marches »** (conquête, remises
 d'annexion) vs **« La Couronne des serments »** (vassalités, intégration —
 renommée : « La Toile des serments » est la doctrine Vassaux, annexe Desseins
-D2/D4). Règle actée (D1.6) : **l'éthos fixe le PRIX du pivot (15/25), jamais
-le mur** — le vrai gate est une preuve d'usage. Choix scellé par le joueur,
+D2/D4). Révision joueur 2026-09-01 : **prix de pivot UNIFORME (20
+d'influence), aucune modulation d'éthos** — pas de gate. Choix scellé par le joueur,
 irréversible, l'autre voie s'éteint — rejouabilité entre graines ET entre
 éthos. Le contenu complet des 7 branches : docs/DESIGN_DESSEINS_ANNEXE.md.
 
@@ -226,8 +226,8 @@ satisfaction de la classe Élite. Le taux est plat : effectif × rang, point.
 | **Envoi de diplomate** (alliance, pacte, embargo, migration, paix offerte…) | 10-15 | **DÉCIDÉ : le coût REMPLACE le cooldown `diplo_ready_day`** — on enchaîne si on a économisé, on est muet à sec (plancher court anti-spam conservé) |
 | **Fabriquer une revendication** | 20-30 | en sus du coût d'or existant (2 ans de revenu de la cible) — l'intrigue mobilise la cour |
 | **Sceller un pivot exclusif de Dessein** | 15-25 | le choix d'orientation est un acte politique ; les échelons ordinaires restent gratuits |
-| **Adopter une doctrine** | ~100 | ouvre la piste ; l'entretien mensuel en couronnes demeure (§4.2) |
-| **Acheter une idée de doctrine** | 30-60 (croissant) | 6 par doctrine, en séquence — doctrine complète ≈ 300-400 |
+| **Adopter une doctrine** | 50 + 25 × doctrines actives | coût fixe et scalable (révision 2026-09-01) ; entretien mensuel en couronnes (§4.2) |
+| **Acheter une idée de doctrine** | 30 + 3 × idées possédées (total) | façon unités Stellaris — plus t'en as, plus c'est cher ; 6 par doctrine, en séquence |
 | **Maintenir une synergie de paire** | **2/mois, puis 3·5·8… par synergie active supplémentaire** | le sink fibonaccien (§4.4) — suspendue si impayée ce mois |
 | **Décision ponctuelle de décret** (`DCR_DECISION`) | 10-20 | l'audit des offices mobilise l'appareil |
 | **Soutenir une fronde chez autrui** (futur verbe) | 30+ | le trou identifié §2 diplo — l'influence est sa monnaie naturelle |
@@ -264,77 +264,49 @@ politique. La frontière est nette et lisible.
   **engagé** (motif `CMD_AGE_ENGAGE` + `year_eligible[]`, déjà persisté) :
   la doctrine est la récolte de l'âge vécu (8 âges possibles → 6 récoltes max).
 - **Une paire opposée auto-exclusive** (motif décrets) : **Commerce ↔
-  Mercantilisme** (libre-échange vs dirigisme). Gates d'éthos/héritage/
-  religion (le créateur de culture décide de ce qui vous est pensable).
+  Mercantilisme** (libre-échange vs dirigisme). **Aucun autre gate** (révision
+  joueur 2026-09-01) : ni éthos, ni héritage, ni religion — toutes les
+  factions peuvent tout prendre.
 - **Abandon libre** (décision 2026-09-01) : on abandonne quand on veut, **sans
   remboursement et sans cicatrice**. Les idées achetées sont perdues, le slot
   se libère, les synergies qui reposaient dessus s'éteignent. Le frein naturel
   = tout re-payer si on revient.
 
-### 4.2 Coût réel — l'influence achète, les couronnes entretiennent
+### 4.2 Coût — fixe et scalable, façon unités Stellaris (révision joueur 2026-09-01)
 
-- **Adoption** : **~100 d'influence** + un prérequis *réel* (famille
-  d'édifices bâtie, palier tech, héritage métabolisé, N provinces d'un état
-  donné). Ouvre la piste et son slot.
-- **Les 6 idées** : achetées **en séquence**, ~30-60 d'influence chacune
-  (croissant) — une doctrine complète ≈ 300-400, ~6-8 ans de génération.
-  Chaque idée = un cran de mult nommé OU un morceau du verbe ; certaines
-  portent en plus un prérequis d'usage (la 4e idée coloniale exige N colonies
-  vivantes — la doctrine se prouve en jouant, leçon EU5).
-- **Pas de bonus de complétion** : à 6/6, rien de spécial — la doctrine
-  complète vaut par ses idées et rend ses paires éligibles aux synergies. Le
-  verbe de la doctrine arrive donc comme une IDÉE du milieu de piste, pas en
-  couronnement.
-- **Entretien mensuel en couronnes** : le patron décret mot pour mot —
-  `tax_year × RATE × IPM / 12`, contrat « non financé CE mois ⇒ mult = 1.0,
-  sans effet CE mois ».
-- **Coût d'opportunité** : slots limités + exclusivités + l'influence disputée
-  avec la diplomatie et les synergies (§4.4) + l'assiette mensuelle partagée
-  avec les décrets. Zéro création monétaire.
+**Pas de gate, pas de prérequis : tu cliques, t'as le bonus** (le modèle EU4).
+Ni prérequis d'adoption (édifice/tech), ni prérequis d'usage sur les idées,
+ni gate d'éthos — supprimés partout. Le frein est le COÛT, qui monte avec ce
+qu'on possède déjà :
 
-### 4.3 Catalogue (les 13 orientations dictées — chaque doctrine : leviers nommés + UN verbe)
+- **Adopter une doctrine** : `DOCT_BASE (50) + DOCT_STEP (25) × doctrines
+  actives` — 1re = 50, 6e = 175.
+- **Acheter une idée** : `IDEA_BASE (30) + IDEA_STEP (3) × idées possédées,
+  toutes doctrines confondues` — 1re = 30, 36e = 135. Les 6 idées restent
+  achetées EN SÉQUENCE dans leur doctrine. Abandonner libère le compte.
+- **Pas de bonus de complétion** (6/6 = rien) ; la paire complète ouvre le
+  sous-menu de synergie (coût fibonaccien inchangé).
+- **Entretien mensuel en couronnes** par doctrine active : patron décret
+  (`tax_year × RATE × IPM / 12`, non financé ce mois = sans effet ce mois).
+- **L'IA choisit PAR SCORE** sur ses propres modificateurs (côtier →
+  Colonisation, beaucoup de vassaux → Vassaux…) — aucune restriction.
 
-| # | Doctrine | Gate | Leviers (mults nationaux sur le registre) | Le VERBE/la règle débloqué·e |
-|---|---|---|---|---|
-| 1 | **Offense** « Le Fer en avant » | Dominateur/Honneur + Caserne | entrée doctrine d'armée (dégâts/moral), `SIEGE_LOOT_FRAC`, coût de fabrication de CB réduit | posture « ost permanent » (renfort auto = déficit) |
-| 2 | **Défense** « Le Bouclier des marches » | Garnison bâtie | `DEF_PER_H`, durées de siège subi, coût du bâti défensif | levée défensive instantanée (milice) quand on est envahi |
-| 3 | **Commerce** « Les Routes franches » | Marché + tech Commerce | `TRADE_LEVY`, `COMMERCE_W_*`, portée du catchment | comptoir sur cité-état hôte (péage partagé) ; **exclut Mercantilisme** |
-| 4 | **Mercantilisme** « L'Étape souveraine » | Entrepôt + tech Halles | `IMPORT_MARGIN_*`, `IMPORT_TOLL_FRAC`, bandes du stockeur, `BUILD_RESERVE_BULK` | embargo élargi + priorité du dispatch d'État ; **exclut Commerce** |
-| 5 | **Peuple** « Le Creuset » | Adaptatif/Pacifiste | `ASSIM_*`, `POP_SAT_W`, accueil des réfugiés, pactes | pacte migratoire élargi (déporté → migrant) |
-| 6 | **Colonisation** « L'Appel du large » | port bâti + tech Comptoirs | cadence coloniale, `COLONY_FOOD_GATE`, vitesse d'endurcissement climatique | **2e chantier colonial simultané** |
-| 7 | **Diplomatie** « La Voix des cours » | Chancellerie | coûts d'influence réduits, `OPINION_*`, seuils d'acceptation d'offres | **second émissaire** (2 actions diplomatiques en vol) |
-| 8 | **Vassaux** « La Toile des serments » | ≥ 1 vassal | `AI_VASSAL_CONTRIB_*`, vitesse d'intégration, annexion adoucie | imposer un contrat supérieur à la paix (servage→concordat…) |
-| 9 | **Production** « L'Atelier du monde » | Fonderie + Outillage | `EXTRACT_*`, `RAW_BOOST_*`, recettes de manufactures | palier d'exploitation au-delà du plafond (`RAW_BOOST_MAX_TIER`+) |
-| 10 | **Infrastructure** « La Pierre et l'eau » | Atelier de construction | durées/coûts d'édifices, `VETUSTE_RATE`, `RENOV_COST_FRAC`, `HOUSE_MANUF` | rénovation de masse (une file nationale de chantiers) |
-| 11 | **Technologie** « Le Cénacle des lettrés » (renommé — l'apex T5 s'appelle déjà « Concile des savants ») | Bibliothèque + Scriptorium | `SAVOIR_W_*`, `SAVOIR_LIB_*`, diffusion/catch-up | orienter la recherche (biais de quartier de l'arbre) |
-| 12 | **Connaissances du monde** « Les Cartes et les langues » | Observatoire ou Amirauté | brouillard (rayon), vitesse de métabolisation, `SYNC_TRADE_*` | **expédition lointaine** (révèle une zone + ouvre un contact culturel) |
-| 13 | **Faustien** « Le Pacte » | 1 tech ⚠ acquise | accès/coûts des nœuds faustiens, rendement des transmuteurs | l'échappatoire faustienne au choix (plus de refus IA) — la charge monte, **le prix est l'entropie** |
+### 4.3 Catalogue — noms nus, zéro gate (révision joueur 2026-09-01)
 
-### 4.3bis Les COURANTS POLITIQUES (ajout joueur 2026-09-01) — un seul des quatre
+**Les 13 orientations** : Offense · Défense · Commerce · Mercantilisme ·
+Peuple · Colonisation · Diplomatie · Vassaux · Production · Infrastructure ·
+Technologie · Connaissances du monde · Faustien. **Les 4 courants
+politiques** (un seul à la fois — le courant re-siège l'ASSIETTE de
+l'influence sur sa classe) : Aristocratie (élites ×0.0025) · Bourgeoisie
+(bourgeois ×0.0006) · Populaire (journaliers ×0.00012) · Divin (foi bâtie ×
+ferveur). Le courant occupe un slot comme les autres.
 
-Le motif EU4 des groupes « de gouvernement » (Aristocratic/Plutocratic/Divine),
-assis sur nos strates réelles. **Quadruple auto-exclusif** : on n'épouse qu'un
-courant. Sa propriété centrale : **il choisit l'ASSIETTE de l'influence** —
-quelle classe porte ta voix — avec un taux propre (peu de nobles puissants, ou
-beaucoup de petites voix) :
-
-| # | Courant | Assiette d'influence | Leviers (mults nationaux) | Le VERBE |
-|---|---|---|---|---|
-| 14 | **Aristocratique** « Le Sang et la Terre » | élites ×0.0025 (la voix pleine) | contribution vassale, commandement (doctrine d'armée), loyauté du Conseil | **adoubement** : promouvoir des bourgeois en élites (transfert de strate contrôlé) |
-| 15 | **Bourgeoise** « La Charte des villes » | bourgeois ×0.0006 | `CREDIT_LINE_BASE`/taux, `COMMERCE_W_BOURGEOIS`, `PROMOTE_BASKET_MULT` (accession facilitée) | **emprunt intérieur élargi** (la classe prête à l'État au-delà de la ligne) |
-| 16 | **Populaire** « La Voix du grand nombre » | journaliers ×0.00012 | `POP_SAT_W`, `W_AGITATION_UNREST` (relief), concession moins chère | **levée en masse** (conscription au-delà du plafond, contre agitation) |
-| 17 | **Divin** « Le Trône et l'Autel » | ∝ foi bâtie × ferveur (pas une classe : l'Église) | conversion, ferveur, entretien du bâti de foi, cap religion | **appel à la foi** (mobilise la ferveur : stabilité ou zélotes, au choix) |
-
-Le courant occupe un slot de doctrine comme les autres (proposé — à
-confirmer) ; gates d'éthos évidents (Dominateur→Aristocratique,
-Mercantile→Bourgeoise, Pacifiste→Populaire, w_faith→Divin), mais non exclusifs
-— on peut jouer contre son éthos, plus cher.
-
-Tous les effets = `tune_f(...) × doctrine_mult(cid, ...)` aux sites de lecture
-existants ; **aucune variable fantôme**. Le verbe = un `CMD_*` ou un gate
-élargi, revalidé au drain. Compte final : **17 au catalogue** (13 orientations
-+ 4 courants), deux exclusivités (Commerce↔Mercantilisme · un seul courant),
-**6 slots**.
+Plus aucun sous-titre d'apparat, plus aucun gate d'éthos ni prérequis : tout
+le monde peut tout prendre, l'IA choisit par score. Chaque doctrine = 6 idées
+(dont ≥ 1 verbe **V**), bonus affiché en UNE ligne lisible (« +30 % de portée
+du marché »), effet moteur = `tune_f × doctrine_mult(cid)` au site de lecture
+(aucune variable fantôme), verbes revalidés au drain. **Le catalogue complet
+idée par idée : docs/DESIGN_DOCTRINES_ANNEXE.md.**
 
 ### 4.4 Les SYNERGIES de paires (décision joueur 2026-09-01)
 
@@ -376,14 +348,14 @@ commerce** » proposée.
 
 L'« arbre de tech parallèle » est pour tout le monde — pas un jouet solo :
 
-- **Mêmes règles** : l'IA génère l'influence (ses élites × son Conseil — à
-  vérifier : si le Conseil est joueur-seul aujourd'hui, fallback déterministe
-  `mult = f(éthos)`), paie l'adoption, paie l'entretien, subit les gates et
-  l'exclusion Commerce↔Mercantilisme.
-- **Choix par personnalité** : poids d'adoption dérivés de l'éthos/héritage
-  (Dominateur → Offense/Vassaux, Mercantile → Mercantilisme/Commerce,
-  Pacifiste → Peuple/Diplomatie, Ésotérique → Technologie/Faustien…), départagés
-  par le besoin réel (motif demande-driven existant). Déterministe (xs32).
+- **Mêmes règles** : l'IA génère l'influence (ses élites × son Conseil —
+  vivier déjà multi-classes v100), paie l'adoption, paie l'entretien, subit
+  les seules exclusivités (Commerce↔Mercantilisme, un courant).
+- **Choix PAR SCORE** (révision joueur 2026-09-01) : l'IA note chaque
+  doctrine sur SES PROPRES modificateurs — état réel, pas personnalité :
+  côtier/colonies en cours → Colonisation, vassaux tenus → Vassaux, gros
+  commerce → Commerce ou Mercantilisme, guerres fréquentes → Offense… —
+  départagé par le besoin (motif demande-driven existant). Déterministe.
 - **Garde-fou faustien** : l'IA n'adopte « Le Pacte » que sous le seuil
   `FAUST_BRECHE_CAUTION` déjà en place.
 - Conséquence assumée : **impact golden dès la vague doctrines (P3)** —
@@ -418,7 +390,7 @@ L'« arbre de tech parallèle » est pour tout le monde — pas un jouet solo :
 |---|---|---|
 | **P1** | **Dépose de la commission décennale** (ré-ancrage Âge des Héros + loyauté Conseil sur les Desseins) + **Influence politique** (génération élites × Conseil, stock sérialisé, coûts sur les verbes diplo — le cooldown `diplo_ready_day` saute) + Desseins moteur : gabarits + génération + triggers + scellage + récompenses. Desseins/influence joueur seul. | bump SAVE_VERSION · `desseins_demo` banc neuf (remplace `missions_demo`) · full-test 40 · savetest (influence + échelons sérialisés) · determinism · **re-baseline golden documenté (la dépose touche l'IA)** · lang-check |
 | **P2** | Façade : readers + page empire_window Desseins + influence au Conseil + checklist + Fil/Annales UI. | probes visuelles · lang-check |
-| **P3** | Doctrines moteur (`doctrine_mult` cloné de `decree_mult`, slots par âge, adoption en influence, entretien couronnes, maturation) **+ adoption IA par personnalité (§4.5)** + 4e sous-onglet Conseil. | mêmes gates + **re-baseline golden + sweep apparié 3×3 — le joueur lance** |
+| **P3** | Doctrines moteur (`doctrine_mult` cloné de `decree_mult`, slots par âge, adoption en influence, entretien couronnes, maturation) **+ adoption IA par score (§4.6)** + 4e sous-onglet Conseil. | mêmes gates + **re-baseline golden + sweep apparié 3×3 — le joueur lance** |
 | **P4** | Desseins IA (biais `ai_province_value`/colonisation vers la cible du dessein courant) + calibrage d'ensemble. | re-baseline + sweep apparié — le joueur lance |
 
 Pièges déjà consignés à respecter : `region[].owner` dérivé (lire
