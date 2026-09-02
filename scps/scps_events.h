@@ -366,6 +366,11 @@ typedef enum {
     /* V2b : les grands moments du Conseil et de la Merveille en 3 étapes. */
     ANNAL_TRAHISON,         /* un ministre a trahi (ou a été trahi) : a=evid, region=siège */
     ANNAL_MERVEILLE_ETAPE,  /* un palier de la Merveille est franchi/tranché : a=evid, option=choix */
+    /* LES DESSEINS (2026-09-01) — un ÉCHELON SCELLÉ : a=branche (DesseinBranch),
+     * b=slot d'affichage (0..11, dessein_display_slot), region=la région de la
+     * cible (-1 si aucune). APPENDU EN FIN : l'index des valeurs existantes ne
+     * bouge pas (les Annales sont sérialisées, et epithet.gd compte par kind). */
+    ANNAL_MISSION,
     ANNAL_KIND_COUNT
 } AnnalKind;
 
@@ -545,16 +550,19 @@ float ages_known_pair_share(const World *w);
  * pas advenu, sinon AGE_DISCOVERY_FOG_RADIUS_ADD au registre J) : un seul point
  * de vérité pour les 4 sites d'appel de fog_update/fog_visible_regions. */
 int ages_fog_radius_add(const EventsState *ev);
-/* raccord 7 — L'ÂGE DES HÉROS : appelé par scps_sim.c juste après missions_tick,
- * pour CHAQUE (pays,siège) qui vient de compléter une mission décennale en
- * satisfaisant rang III + efficacité + loyauté + encore assis (le test lui-même
- * vit dans scps_sim.c, qui a accès à Statecraft/MissionsState). Fait advenir
- * AGE_HEROES la première fois, puis pousse « Le nom du siècle » (membrane de
- * décision pour le joueur, auto-résolu pour l'IA). */
+/* raccord 7 RÉ-ANCRÉ (2026-09-01) — L'ÂGE DES HÉROS : appelé par scps_sim.c au
+ * drain de CMD_SEAL_DESSEIN, quand le joueur vient de sceller le PARACHÈVEMENT
+ * d'une branche de Dessein ET que le siège qui la porte satisfait rang III +
+ * efficacité + loyauté + encore assis (le test vit dans scps_sim.c, qui a accès
+ * à Statecraft). Fait advenir AGE_HEROES la première fois, puis pousse « Le nom
+ * du siècle » (membrane de décision).
+ * ⚠ CONSÉQUENCE ASSUMÉE : les Desseins sont JOUEUR SEUL en P1 (design §2.7) ⇒
+ * l'Âge des Héros est DORMANT côté IA — une partie sans humain ne le lève plus
+ * jamais. La symétrie revient avec les Desseins de l'IA (vague P4). */
 void  ages_hero_fire(EventsState *ev, World *w, WorldEconomy *econ, WorldLegitimacy *wl,
                      WorldProsperity *wp, Statecraft *sc, RouteNetwork *rn,
                      const TechState ts[], DiploState *dp, EndgameState *eg,
-                     MissionsState *ms, int cid, int seat, int slot, int gen,
+                     int cid, int seat, int slot, int gen,
                      int human_player);
 /* L'ÂGE DE LA BRÈCHE, éveillé DE L'EXTÉRIEUR (par sim.c, le tick où une fin
  * faustienne/entropique tombe) — même patron que ages_hero_fire : hors scan,

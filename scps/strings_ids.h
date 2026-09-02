@@ -580,6 +580,65 @@
     X(STR_MARCHE_DE,      "Marché de") \
     X(STR_MARCHE_AUCUN,   "Aucun marché atteignable") \
     X(STR_MODE_RELIGION,  "Carte : foi dominante") \
-    X(STR_MODE_CULTURE,   "Carte : culture dominante")
+    X(STR_MODE_CULTURE,   "Carte : culture dominante") \
+    /* ── LES DESSEINS — branche du SOL. Quatre bandes PARALLÈLES de 12 slots
+     * (dessein_display_slot) : 0-3 le tronc + le pivot · 4-7 la voie Conquête ·
+     * 8-11 la voie Vassalisation. N = nom court (D6 : un mot, une action, une
+     * situation) · O = l'objectif, gabarit {0} = le lieu ou la couronne visée ·
+     * R = la récompense en UNE ligne (jamais un levier moteur face joueur) ·
+     * F = la saveur, une phrase. L'ORDRE DES QUATRE BANDES EST LE CONTRAT :
+     * scps_api.c les lit par tr_band(base + slot). */ \
+    X(STR_DESS_SOL,        "Le Sol") \
+    X(STR_DESS_SOL_VOIE_A, "Conquête") \
+    X(STR_DESS_SOL_VOIE_B, "Vassalisation") \
+    X(STR_DESS_ATTENTE,    "aucune terre à portée") \
+    X(STR_DESS_SOL_N0,  "Unification") \
+    X(STR_DESS_SOL_N1,  "Expansion") \
+    X(STR_DESS_SOL_N2,  "Le rival") \
+    X(STR_DESS_SOL_N3,  "Le choix du sol") \
+    X(STR_DESS_SOL_N4,  "Pacification") \
+    X(STR_DESS_SOL_N5,  "Les marches") \
+    X(STR_DESS_SOL_N6,  "Capitale rivale") \
+    X(STR_DESS_SOL_N7,  "Hégémonie") \
+    X(STR_DESS_SOL_N8,  "Premier vassal") \
+    X(STR_DESS_SOL_N9,  "Trois vassaux") \
+    X(STR_DESS_SOL_N10, "Intégration") \
+    X(STR_DESS_SOL_N11, "Hégémonie") \
+    X(STR_DESS_SOL_O0,  "Tenir et peupler toute la vallée de {0}") \
+    X(STR_DESS_SOL_O1,  "Prendre {0}, par les armes ou par la charrue") \
+    X(STR_DESS_SOL_O2,  "Arracher {0} au rival, ou lui faire plier le genou") \
+    X(STR_DESS_SOL_O3,  "Choisir comment tenir le sol : l'épée ou le serment") \
+    X(STR_DESS_SOL_O4,  "Refermer la plaie de {0}") \
+    X(STR_DESS_SOL_O5,  "Tenir les trois marches, à commencer par {0}") \
+    X(STR_DESS_SOL_O6,  "Posséder {0}, la capitale du rival") \
+    X(STR_DESS_SOL_O7,  "Tenir les deux cinquièmes du continent") \
+    X(STR_DESS_SOL_O8,  "Faire de {0} un vassal") \
+    X(STR_DESS_SOL_O9,  "Lier trois couronnes, à commencer par {0}") \
+    X(STR_DESS_SOL_O10, "Voir {0} ne plus se distinguer de nous") \
+    X(STR_DESS_SOL_O11, "Tenir ou faire jurer les deux cinquièmes du continent") \
+    X(STR_DESS_SOL_R0,  "Institutions renforcées dans la capitale") \
+    X(STR_DESS_SOL_R1,  "Revendication sur la marche suivante · reconstruction") \
+    X(STR_DESS_SOL_R2,  "Les torts consignés : griefs valides 8 ans au lieu de 5, pendant 20 ans") \
+    X(STR_DESS_SOL_R3,  "Le choix EST la récompense — et il ne se reprend pas") \
+    X(STR_DESS_SOL_R4,  "Annexions moins douloureuses pendant 20 ans · reconstruction") \
+    X(STR_DESS_SOL_R5,  "Revendication sur la capitale rivale · digestion plus rapide 20 ans") \
+    X(STR_DESS_SOL_R6,  "Le meilleur ministre du Royaume entre au Conseil, sans bourse") \
+    X(STR_DESS_SOL_R7,  "La Porte du sol : institutions et garde bâties dans la capitale") \
+    X(STR_DESS_SOL_R8,  "Le crédit du serment : vassalité mieux vue pendant 20 ans") \
+    X(STR_DESS_SOL_R9,  "Vassaux intégrables plus tôt pendant 20 ans") \
+    X(STR_DESS_SOL_R10, "L'héritier du vassal entre au Conseil, sans bourse") \
+    X(STR_DESS_SOL_R11, "La Chambre des serments : institutions bâties dans la capitale") \
+    X(STR_DESS_SOL_F0,  "On a fini de compter les hameaux : chaque feu répond au même ban.") \
+    X(STR_DESS_SOL_F1,  "La borne est déplacée d'un cran. C'est la première fois.") \
+    X(STR_DESS_SOL_F2,  "Il a un nom, et ce nom est dans un registre qui ne se ferme plus.") \
+    X(STR_DESS_SOL_F3,  "On tiendra le sol par l'épée, ou par le serment. Pas les deux.") \
+    X(STR_DESS_SOL_F4,  "Prendre est l'affaire d'un été ; faire oublier, celle d'un règne.") \
+    X(STR_DESS_SOL_F5,  "Une marche est un accident ; trois marches sont une frontière.") \
+    X(STR_DESS_SOL_F6,  "Sa couronne est dans ta chapelle et son chancelier à ta table.") \
+    X(STR_DESS_SOL_F7,  "On ne dit plus le royaume et le continent : on dit le même mot.") \
+    X(STR_DESS_SOL_F8,  "Un homme a plié le genou, et trois autres ont regardé.") \
+    X(STR_DESS_SOL_F9,  "Trois fils tendus ne font pas trois liens : ils font une surface.") \
+    X(STR_DESS_SOL_F10, "Son fils parle notre langue sans accent.") \
+    X(STR_DESS_SOL_F11, "Tu ne possèdes pas le continent. Il te répond, et c'est moins cher.")
 
 #endif /* SCPS_STRINGS_IDS_H */

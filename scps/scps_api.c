@@ -2027,21 +2027,6 @@ static void cons_efficiency_parts(float K, float loy, float corr,
     if (preclamp) *preclamp=p;
     if (clamped) *clamped=(p<lo || p>hi) ? 1 : 0;
 }
-/* Mission décennale — le bonus du siège responsable (miroir de mission_reward_mult,
- * scps_missions.c:120-131, `static` — même formule, aucune valeur inventée). */
-static float cons_mission_reward_mult(const Statecraft *sc, const WorldProsperity *wp,
-                                      uint32_t seed, int cid, const Mission *m){
-    if (!sc) return 1.f;
-    int seat = mission_responsible_seat(m);
-    if (seat<0) return 1.f;
-    int slot = statecraft_council_seated(sc,cid,seat);
-    if (slot<0) return 1.f;
-    int gen  = statecraft_council_seated_gen(sc,cid,seat);
-    int tier = statecraft_council_cand_tier(seed,cid,seat,slot,gen);
-    float eff = statecraft_council_efficiency(sc,wp,cid,seat);
-    return 1.f + tune_f("COUNCIL_MISSION_REWARD_PER_RANK",0.05f) * (float)(tier-1) * eff;
-}
-
 int scps_country_council(ScpsSim *s, int me, ScpsCouncilSeat *out, int max){
     if(!out || max<=0 || !s || !s->ready || me<0 || me>=s->w->n_countries) return 0;
     uint32_t seed = s->w->seed;
@@ -3357,37 +3342,76 @@ void scps_budget_summary(ScpsSim *s, int cid, ScpsBudget *out){
     if(cr>=0 && cr<s->w->n_countries) out->creditor_name = sz(s->w->country[cr].name);
 }
 
+/* ⚠ LA COMMISSION DÉCENNALE EST DÉPOSÉE (2026-09-01) — ce reader rend désormais
+ * TOUJOURS « aucune mission active ». Il survit VIDE pour une seule raison : le
+ * binding Godot (ScpsWorld::mission_info) et country_panel.gd l'appellent, et la
+ * façade n'est pas dans le périmètre de cette vague. Le bloc « ✦ Mission » du
+ * panneau se contente donc de ne plus s'afficher. Sa suppression (C + .cpp + .gd)
+ * appartient à la vague FAÇADE des Desseins, qui posera scps_dessein_info à sa
+ * place (voir plus bas). */
 void scps_mission_info(ScpsSim *s, int cid, ScpsMission *out){
+    (void)s; (void)cid;
     if(!out) return;
     memset(out, 0, sizeof *out);
     out->text=""; out->reward_mat=""; out->resp_seat=""; out->resp_name="";
-    if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return;
-    const Mission *m = mission_of(s->sim.missions, cid);
-    if(!m) return;
+}
+
+/* ====================================================================== */
+/* LES DESSEINS — l'arbre d'ambitions (membrane : des MOTS et des lieux)   */
+/* ====================================================================== */
+/* Tampons statiques : le gabarit « {0} » de l'objectif est résolu ICI (le nom
+ * réel du lieu/du pays injecté), motif des autres composeurs de la façade. */
+static char g_dess_obj[192];
+static char g_dess_cible[64];
+
+int scps_dessein_info(ScpsSim *s, int cid, int branche, ScpsDessein *out){
+    if(!out) return 0;
+    memset(out, 0, sizeof *out);
+    out->branche=""; out->voie=""; out->nom=""; out->objectif="";
+    out->recompense=""; out->saveur=""; out->cible=""; out->voie_a=""; out->voie_b="";
+    if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return 0;
+    const Dessein *d = dessein_of(s->sim.missions, cid, branche);
+    if(!d) return 0;
+
     out->active      = 1;
-    out->text        = sz(m->text);
-    out->reward_gold = m->reward_gold;
-    out->reward_qty  = m->reward_qty;
-    if(m->reward_qty > 0.f) out->reward_mat = sz(resource_name(m->reward_mat));
-    out->issued_year = m->issued_year;
-    out->done        = m->done?1:0;
-    /* CARTE MISSION — le siège RESPONSABLE (mission_responsible_seat, déduit du type,
-     * aucun état neuf) + son bonus (mult ∝ rang×efficacité, miroir de mission_reward_mult)
-     * + la récompense PRÉVUE (base × mult). */
-    int seat = mission_responsible_seat(m);
-    if (seat>=0){
-        out->resp_seat = sz(tr((StrId)(STR_COUNCIL_SEAT_0+seat)));
-        int slot = statecraft_council_seated(s->sim.sc, cid, seat);
-        if (slot>=0){
-            int gen = statecraft_council_seated_gen(s->sim.sc, cid, seat);
-            out->resp_tier = statecraft_council_cand_tier(s->w->seed, cid, seat, slot, gen);
-            out->resp_name = sz(tr((StrId)statecraft_council_cand_name(s->w->seed, cid, seat, slot, gen)));
-        }
+    out->branche     = sz(tr(STR_DESS_SOL));
+    out->rung        = d->rung;
+    out->rungs_total = DESSEIN_RUNGS;
+    out->pivot_cout  = (int)tune_f("DESSEIN_PIVOT_INFLUENCE", DESSEIN_PIVOT_INFLUENCE);
+    out->voie_a      = sz(tr(STR_DESS_SOL_VOIE_A));
+    out->voie_b      = sz(tr(STR_DESS_SOL_VOIE_B));
+    out->voie_a_ok   = d->proof_a ? 1 : 0;
+    out->voie_b_ok   = d->proof_b ? 1 : 0;
+    if (d->voie==DESS_VOIE_CONQUETE)           out->voie = out->voie_a;
+    else if (d->voie==DESS_VOIE_VASSALISATION) out->voie = out->voie_b;
+    if (d->rung >= DESSEIN_RUNGS){ out->done = 1; return 1; }
+
+    int slot = dessein_display_slot(d->rung, d->voie);
+    if (slot<0 || slot>=DESSEIN_DISPLAY_SLOTS) return 1;
+    out->nom        = sz(tr_band(STR_DESS_SOL_N0, slot, DESSEIN_DISPLAY_SLOTS));
+    out->recompense = sz(tr_band(STR_DESS_SOL_R0, slot, DESSEIN_DISPLAY_SLOTS));
+    out->saveur     = sz(tr_band(STR_DESS_SOL_F0, slot, DESSEIN_DISPLAY_SLOTS));
+    out->pret       = d->ready ? 1 : 0;
+    out->pivot      = dessein_is_pivot(d->rung) ? 1 : 0;
+
+    /* LA CIBLE, en MOTS : un lieu se nomme par sa ville (les toponymes sont
+     * région-grain), un adversaire par sa couronne. */
+    int tp = dessein_target_pid(d);
+    int tc = dessein_target_cid(d, s->sim.dp, cid);
+    g_dess_cible[0]=0;
+    if (tp>=0 && tp<s->w->n_provinces){
+        int r = s->w->province[tp].region;
+        if (r>=0 && r<s->w->n_regions)
+            snprintf(g_dess_cible, sizeof g_dess_cible, "%s", s->w->region[r].name);
+    } else if (tc>=0 && tc<s->w->n_countries){
+        snprintf(g_dess_cible, sizeof g_dess_cible, "%s", s->w->country[tc].name);
     }
-    float mult = cons_mission_reward_mult(s->sim.sc, s->sim.wp, s->w->seed, cid, m);
-    out->resp_bonus_pct  = cons_pct100(mult - 1.f);
-    out->reward_gold_adj = (double)m->reward_gold * (double)mult;
-    out->reward_qty_adj  = (double)m->reward_qty  * (double)mult;
+    out->cible = g_dess_cible;
+    tr_fmt(g_dess_obj, sizeof g_dess_obj,
+           (StrId)(STR_DESS_SOL_O0 + slot),
+           g_dess_cible[0] ? g_dess_cible : tr(STR_DESS_ATTENTE));
+    out->objectif = g_dess_obj;
+    return 1;
 }
 
 /* INFLUENCE POLITIQUE §3 — membrane stricte : un ENTIER + « /mois » + un hover en MOTS
@@ -4101,6 +4125,13 @@ int scps_player_alloc_auto(ScpsSim *s, int province){
 int scps_player_age_engage(ScpsSim *s){
     if (!s || !s->ready) return 0;
     PlayerCmd c = { CMD_AGE_ENGAGE, { 0, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+/* LES DESSEINS — SCELLER un échelon (le patron exact de scps_player_age_engage :
+ * on ENFILE, le drain revalide TOUT contre l'état courant). */
+int scps_player_seal_dessein(ScpsSim *s, int branche, int echelon, int voie){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_SEAL_DESSEIN, { branche, echelon, voie, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
 /* COLONISATION (charte : « le joueur colonise n'importe quelle province ») — ENFILE ;

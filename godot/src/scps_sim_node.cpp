@@ -160,6 +160,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("budget_controls", "country"),     &ScpsWorld::budget_controls);
     ClassDB::bind_method(D_METHOD("mission_info", "country"),        &ScpsWorld::mission_info);
     ClassDB::bind_method(D_METHOD("influence_info", "country"),      &ScpsWorld::influence_info);
+    ClassDB::bind_method(D_METHOD("dessein_info", "country", "branche"), &ScpsWorld::dessein_info);
+    ClassDB::bind_method(D_METHOD("seal_dessein", "branche", "echelon", "voie"), &ScpsWorld::seal_dessein);
     ClassDB::bind_method(D_METHOD("country_factions", "country"),    &ScpsWorld::country_factions);
     ClassDB::bind_method(D_METHOD("player_build", "edifice", "province"), &ScpsWorld::player_build, DEFVAL(-1));
     ClassDB::bind_method(D_METHOD("player_recruit", "unit"),         &ScpsWorld::player_recruit);
@@ -1782,6 +1784,38 @@ Dictionary ScpsWorld::influence_info(int country) {
     d["gain_month"] = inf.gain_month;
     d["hover"]      = String::utf8(inf.hover);
     return d;
+}
+/* LES DESSEINS — l'échelon COURANT d'une branche, en MOTS (membrane stricte :
+ * aucun flottant moteur, aucun seuil, aucun tunable ne traverse). `branche` =
+ * DesseinBranch (P1 : 0 = le Sol). Dictionnaire VIDE si le pays n'a pas la
+ * branche (le front teste `active`). */
+Dictionary ScpsWorld::dessein_info(int country, int branche) {
+    Dictionary d;
+    ScpsDessein x;
+    if (!sim || !scps_dessein_info(sim, country, branche, &x)) { d["active"] = false; return d; }
+    d["active"]      = (bool)x.active;
+    d["branche"]     = String::utf8(x.branche);
+    d["voie"]        = String::utf8(x.voie);
+    d["rung"]        = x.rung;
+    d["rungs_total"] = x.rungs_total;
+    d["done"]        = (bool)x.done;
+    d["nom"]         = String::utf8(x.nom);
+    d["objectif"]    = String::utf8(x.objectif);
+    d["recompense"]  = String::utf8(x.recompense);
+    d["saveur"]      = String::utf8(x.saveur);
+    d["cible"]       = String::utf8(x.cible);
+    d["pret"]        = (bool)x.pret;
+    d["pivot"]       = (bool)x.pivot;
+    d["voie_a"]      = String::utf8(x.voie_a);
+    d["voie_b"]      = String::utf8(x.voie_b);
+    d["voie_a_ok"]   = (bool)x.voie_a_ok;
+    d["voie_b_ok"]   = (bool)x.voie_b_ok;
+    d["pivot_cout"]  = x.pivot_cout;
+    return d;
+}
+/* SCELLER un échelon — ENFILE l'ordre (le drain revalide TOUT). */
+bool ScpsWorld::seal_dessein(int branche, int echelon, int voie) {
+    return sim ? scps_player_seal_dessein(sim, branche, echelon, voie) != 0 : false;
 }
 
 /* LES FACTIONS du pays (spectre d'éthos interne) : {list:[{name,part,grief,dominant}],

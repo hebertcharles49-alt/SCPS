@@ -19,7 +19,7 @@
 #include "scps_econ.h"       /* WorldEconomy, CLASS_ELITE, prov[] — LA VÉRITÉ éco (doctrine province) */
 #include "scps_statecraft.h" /* Statecraft, statecraft_council_seated/_gen, cand_tier (I=1..III=3) */
 
-typedef struct {
+typedef struct InfluenceState {          /* tag nommé : scps_missions.h le forward-déclare (hook pivot) */
     float influence[SCPS_MAX_COUNTRY];   /* l'accumulateur, PAR PAYS — jamais de plafond dur par défaut */
 } InfluenceState;
 

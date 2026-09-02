@@ -10195,3 +10195,125 @@ INTERDITS pour moi, contenu autorisé) — relu avant chaque édition, diff fina
   rapport de mission) : `lang-check` 127/127, `full-test` (41 bancs verts,
   determinism 5 graines stables, **golden IDENTIQUE** — aucun re-baseline),
   `scps_viewer --savetest` (A==B + corruption refusée). Tous verts.
+## Mission 2026-09-01 — DESSEINS P1 : dépose de la commission décennale + framework + branche du SOL
+
+### Découvertes
+
+- **`conq_value` est INOBSERVABLE d'une clôture** (le piège le plus cher de la
+  vague). Le design nommait « ≥ 1 province arrachée par traité (`conq_value>0`) »
+  comme condition d'ouverture de la voie Conquête du pivot. Or
+  `settle_transfer` l'incrémente (`scps_diplo.c:1123`) et `diplo_settle` appelle
+  `diplo_make_peace` À LA FIN DE SA PROPRE EXÉCUTION (`:1243`), lequel remet
+  `conq_value[a][b]=0` (`:879`) — idem pour le chemin joueur
+  (`CMD_PEACE_OFFER` → `diplo_peace_transfer_region` puis
+  `diplo_peace_finalize`). Le champ est donc TOUJOURS nul vu du dehors : c'est
+  un accumulateur INTERNE au règlement de paix, pas un état. **Substitut retenu
+  (implémenté)** : `rancor[victime][moi] > 0`, la trace DURABLE du MÊME fait —
+  `RANCOR_PER_LOSS` n'est ajouté qu'au seul site `settle_transfer`, et il décroît
+  assez lentement (`RANCOR_DECAY`) pour qu'une clôture mensuelle le voie à coup
+  sûr. Latché une fois pour toutes (`Dessein.proof_a`).
+- **`scps_events.h` inclut `scps_missions.h`** (pour `MissionsState *` dans
+  `ages_hero_fire`) ⇒ **`scps_missions.h` ne PEUT PAS inclure `scps_events.h`**.
+  Conséquence de conception : le module Desseins ne pousse AUCUNE Annale
+  lui-même — `missions_seal` renvoie 1 et c'est `scps_sim.c` (qui a les deux)
+  qui pousse `ANNAL_MISSION`. C'est exactement la discipline de l'ancien
+  raccord 7 (« scps_missions.c reste ignorant des évènements »), qu'il fallait
+  redécouvrir. Le Fil, lui, passe : `scps_provlog.h` n'inclut RIEN.
+- **`statecraft_council_hire` refuse net un siège POURVU** (P1-4 : « une
+  nomination n'écrase jamais un titulaire sans renvoi explicite »). La
+  récompense « embauche gratuite du meilleur candidat » (échelon 6) est donc
+  SANS EFFET si le siège Royaume est déjà occupé — et c'est la règle du Conseil,
+  pas un oubli. Le forcer voudrait dire `dismiss` d'abord, donc un grief : le
+  contraire de « sans coût ni grief ».
+- **`scps_mission_info` EST consommé** par `godot/project/ui/country_panel.gd:102`
+  (le brief le croyait mort). Il a été laissé en STUB INERTE (rend toujours
+  `active=0`) plutôt que supprimé : le supprimer imposait de toucher un .gd, hors
+  périmètre. Le bloc « ✦ Mission » du panneau cesse simplement de s'afficher.
+- **Vérif de link faite avant d'écrire une ligne** : les 32 cibles du Makefile
+  qui lient `scps_missions.o` lient TOUTES `scps_provlog.o`, et les cibles qui
+  lient `scps_diplo.o`/`scps_statecraft.o` lient toutes `scps_missions.o` —
+  d'où la liberté d'appeler `dessein_mult` depuis diplo/statecraft (motif
+  `decree_mult`). Recette : `perl -0777 -pe 's/\\\r?\n\s*/ /g' Makefile`
+  (⚠ le `\r` : le Makefile est en CRLF, un `s/\\\n/ /g` nu ne joint RIEN et fait
+  croire à zéro dépendance).
+- **`prov_adj` n'a aucun accesseur public** : on l'indexe à la main
+  (`e->prov_adj[(size_t)a*SCPS_MAX_PROV + b]`), les helpers `padj_get/set` sont
+  `static` dans `scps_econ.c`. C'est ce que fait déjà `chronicle.c:1602`.
+- **Le golden a bougé, comme prévu et acté** (design §6 P1). Avant :
+  `7 a020efdf · 108 4df1bfc0 · 209 7dcd9f6c · 310 8f6af35a · 411 411d8bd0`.
+  Après : `7 9fa6ff52 · 108 f96da1f0 · 209 545c5872 · 310 6f979e33 · 411 fd265618`.
+  La cause est ENTIÈREMENT la DÉPOSE (l'IA perd ses récompenses décennales — or
+  levé + matières — et les ±loyauté de siège). **Le framework Desseins n'y
+  ajoute rien, prouvé** : `SCPS_TUNE=DESSEIN_BOON_YEARS=0` et
+  `SCPS_TUNE=DESSEIN_SOL_HEGEMON_FRAC=0` rendent le hash re-baseliné À
+  L'IDENTIQUE (la génération est gatée `human_player`, que la chronique met à -1,
+  et `dessein_mult` rend exactement `1.0f` — une multiplication IEEE neutre).
+
+### Pièges
+
+- **La commission décennale créait de l'or** (`mission_grant` : levée bornée
+  puis crédit au trésor) — en violation de la règle d'or §2.4 « JAMAIS d'or
+  créé ». Sa dépose est donc aussi une mise en conformité, pas seulement un
+  retrait de confort. Le banc neuf l'assert explicitement (le trésor ne bouge
+  PAS au scellage).
+- **Deux tunables fantômes évités de justesse** : `AGE_HERO_MISSION_REWARD` et
+  `AGE_HERO_MISSION_REWARD_CAPTURED` ne portaient QUE le `HeroMissionBonus`
+  (la prime de la prochaine commission). Ils ont été PURGÉS du registre en même
+  temps que leur unique site `tune_f` — jurisprudence `IMPORT_TOLL_FRAC`
+  (TROUVAILLES 2026-09-01, entrée précédente). Idem pour les trois
+  `COUNCIL_MISSION_*`.
+- **Le miroir de `dessein_mult` est un cache de PROCESS** (motif
+  `g_decree_mask`) : les sites de lecture (diplo, statecraft) n'ont pas le
+  `MissionsState`. Il DOIT être re-synchronisé après un chargement
+  (`missions_boons_sync` appelé dans `scps_save.c`, juste après
+  `demography_dyn_id_rebase`) — sans quoi une partie rechargée voit ses remises
+  muettes jusqu'à la première clôture, et le `--savetest` (A==B) le prend.
+- **Un banc qui joue la voie B ne peut pas réutiliser la branche de la voie A** :
+  le pivot est irréversible. Le banc repart d'un `MissionsState` NEUF et amène la
+  branche au pivot par FIXTURE (`db->rung = DESS_RUNG_PIVOT`), plutôt que de
+  rejouer le tronc.
+- **`diplo_init` prend UN argument** (`DiploState*`), pas `(d, w)` — piège
+  d'écriture de banc.
+- **Ne pas lancer une compilation pendant qu'on édite** : un `make full-test -j4`
+  en tâche de fond a rapporté « BUILD ÉCHEC : 1 » (navy_demo) qui n'était qu'une
+  course avec une édition d'en-tête en cours. Re-build isolé : vert.
+
+### Restes
+
+- **`SAVE_VERSION` N'EST PAS BUMPÉ** dans ce worktree, volontairement : un autre
+  chantier possède 103→104 dans l'arbre principal. `sizeof(MissionsState)` a
+  CHANGÉ (la commission déposée, les Desseins à sa place) ⇒ **le bump est DÛ au
+  merge**. Un marqueur est posé au-dessus du `#define` (scps_save.h). Dans ce
+  worktree le savetest passe : le même binaire écrit et relit.
+- **`dessein_pivot_pay(cid)` est un STUB qui rend toujours `true`** — le module
+  d'INFLUENCE POLITIQUE (§3, 0.002/noble × Conseil) n'existe pas dans cet arbre.
+  C'est le SEUL point de contact à câbler au merge : y débiter
+  `DESSEIN_PIVOT_INFLUENCE` (20, plat) et rendre `false` si l'influence manque.
+- **L'ÂGE DES HÉROS EST DORMANT CÔTÉ IA** (assumé, documenté au site et dans
+  `scps_events.h`) : il naît maintenant du parachèvement d'une branche de
+  Dessein, et les Desseins sont joueur-seul en P1. Une partie sans humain
+  (chronique) ne le lève PLUS JAMAIS. La symétrie revient avec les Desseins de
+  l'IA (§2.7, vague P4).
+- **« Le nom du siècle » a perdu la moitié de son enjeu** : les options 0/1
+  (« Lui confier » / « Lui donner les clefs ») posaient le `HeroMissionBonus` en
+  plus de leur effet de faction. Il ne reste que le levier/la capture de faction.
+  Si le joueur veut leur rendre du poids, le porteur naturel serait une remise
+  DATÉE de Dessein (le canal existe désormais) — décision de design, pas faite.
+- **Les seuils sont des PARIS, pas des décisions** (annexe D5) :
+  `DESSEIN_SOL_HEGEMON_FRAC` (0.40) et `DESSEIN_BOON_YEARS` (20) attendent un
+  chronicle apparié 3×3 an 180 — impossible ici, les Desseins ne vivent que sous
+  un joueur humain et la chronique est headless. **La branche du Sol n'est donc
+  mesurable qu'en partie réelle** : c'est une limite structurelle de P1, pas un
+  oubli de sweep.
+- **La valeur d'une province est un miroir MAISON** : l'annexe citait
+  `diplo_province_price`, qui est RÉGION-grain — interdit dans un chemin joueur
+  (doctrine province). Le comparateur retenu (`prov_value`) lit les MÊMES
+  ingrédients (bâti + prospérité + population) sur `prov[]`. À harmoniser si une
+  autre branche veut le même tri.
+- **Pas d'UI** (hors périmètre) : `scps_dessein_info` + `dessein_info` /
+  `seal_dessein` sont bindés côté Godot, aucun `.gd` ne les appelle encore. La
+  vague FAÇADE devra aussi RETIRER `scps_mission_info`, son binding et le bloc
+  « ✦ Mission » de `country_panel.gd`.
+- **Six branches restent à écrire** (Mer & Comptoirs, Routes & Caravanes, Foi,
+  Savoir, Creuset, Horde). Leur ajout fera grandir `MissionsState`
+  (`DESS_BRANCH_COUNT`) ⇒ un bump de plus, à chaque fois.

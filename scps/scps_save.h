@@ -32,9 +32,13 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 104u          /* v104 : INFLUENCE POLITIQUE (docs/DESIGN_MISSIONS_DOCTRINES.md
+#define SAVE_VERSION 105u          /* v105 : DESSEINS (vague P1, merge 2026-09-02) — MissionsState
+                                    * REFONDU (commission décennale déposée, branche du Sol,
+                                    * sealed_year/cibles/claims en attente) ⇒ sizeof(MissionsState)
+                                    * change (section MISS, fwrite brut). <v105 refusé.
+                                    * v104 : INFLUENCE POLITIQUE (docs/DESIGN_MISSIONS_DOCTRINES.md
                                     * §3) — nouvelle section INFL, InfluenceState.influence[
-                                    * SCPS_MAX_COUNTRY] (l'accumulateur, joueur seul P1). <v104 refusé.
+                                    * SCPS_MAX_COUNTRY] (l'accumulateur, joueur seul P1).
                                     * v103 (audit 2026-08-12) : SCPS_MAX_MODIFIERS 1024→2048 (la
                                     * pile saturait sous SCPS_MAX_PROV) ⇒ sizeof(ModifierStack) ;
                                     * + Campaign.dead_class_pending (le registre des morts par

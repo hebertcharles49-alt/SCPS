@@ -182,11 +182,16 @@ public:
     Array      country_budget(int country);            /* budget : postes de flux de l'année (signés) */
     Dictionary budget_summary(int country);            /* budget : or · revenus · dépenses · net · crédit · prêteur */
     Dictionary budget_controls(int country);           /* fiscalité par classe + investissement/entretiens [0.1,2] */
-    Dictionary mission_info(int country);              /* mission décennale : texte · récompense · année ·
-                                                        * +CARTE 2026-07-10 : resp_seat/resp_name/resp_tier/resp_bonus_pct/
-                                                        * reward_gold_adj/reward_qty_adj (récompense PRÉVUE) */
+    Dictionary mission_info(int country);              /* ⚠ DÉPOSÉ (2026-09-01) : la commission décennale n'existe
+                                                        * plus — rend toujours active=false. Remplacé par les
+                                                        * DESSEINS ci-dessous ; à retirer avec country_panel.gd
+                                                        * lors de la vague FAÇADE. */
     Dictionary influence_info(int country);            /* INFLUENCE POLITIQUE §3 : stock (entier) · gain_month
                                                         * (entier, « /mois ») · hover (mots — nobles × rang du Conseil) */
+    Dictionary dessein_info(int country, int branche);  /* LES DESSEINS : l'échelon courant d'une branche —
+                                                         * nom · objectif · récompense · saveur · cible · prêt ·
+                                                         * pivot (deux voies + preuves d'usage + prix) */
+    bool       seal_dessein(int branche, int echelon, int voie);  /* SCELLER l'échelon (verbe ENFILÉ) */
     Dictionary country_factions(int country);          /* spectre de factions : parts/griefs/dominante + coup/corruption */
 
     /* ACTIONS du joueur (la main humaine — mêmes actionneurs que l'IA) */

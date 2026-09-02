@@ -190,6 +190,26 @@ int main(int argc, char **argv){
     ScpsMission ms; scps_mission_info(s, pl0, &ms);
     printf("   mission : %s\n", ms.active ? ms.text : "(aucune active)");
     ok("mission lue sans crash (active ∈ {0,1})", ms.active==0 || ms.active==1);
+    ok("la commission décennale est DÉPOSÉE : le lecteur ne rend plus jamais de mission",
+       ms.active==0);
+
+    /* ── LES DESSEINS : la membrane de l'arbre d'ambitions (des MOTS, un lieu). ── */
+    { ScpsDessein dz;
+      int got = scps_dessein_info(s, pl0, 0 /* DESS_SOL */, &dz);
+      printf("   dessein : %s — %s (cible : %s)\n",
+             got ? dz.nom : "(aucun)", got ? dz.objectif : "", got ? dz.cible : "");
+      ok("le joueur porte la branche du Sol (générée à la 1re clôture mensuelle)",
+         got==1 && dz.active==1);
+      ok("l'échelon courant est borné et NOMMÉ",
+         dz.rung>=0 && dz.rung<dz.rungs_total && dz.nom[0] && dz.recompense[0] && dz.saveur[0]);
+      ok("l'objectif est une PHRASE avec le lieu réel injecté (gabarit {0} résolu)",
+         dz.objectif[0] && !strstr(dz.objectif,"{0}"));
+      ok("la membrane ne laisse passer AUCUN pays hors domaine",
+         scps_dessein_info(s, -1, 0, &dz)==0 && scps_dessein_info(s, pl0, 99, &dz)==0);
+      /* le VERBE : on enfile, le drain revalide (un échelon faux est jeté en silence). */
+      ok("sceller s'ENFILE (accusé de réception, jamais un verdict)",
+         scps_player_seal_dessein(s, 0, 0, 0)==1);
+    }
 
     /* REPRODUCTIBILITÉ : un 2e sim, mêmes appels → même résultat au bit près */
     ScpsSim *s2 = scps_sim_new();

@@ -559,4 +559,58 @@
     X(STR_MARCHE_DE,      "Market of") \
     X(STR_MARCHE_AUCUN,   "No market reachable") \
     X(STR_MODE_RELIGION,  "Map: dominant faith") \
-    X(STR_MODE_CULTURE,   "Map: dominant culture")
+    X(STR_MODE_CULTURE,   "Map: dominant culture") \
+    /* ── THE DESIGNS — the Soil branch (mirror of strings_ids.h : four parallel
+     * bands of 12 slots, name / objective / reward / flavour). */ \
+    X(STR_DESS_SOL,        "The Soil") \
+    X(STR_DESS_SOL_VOIE_A, "Conquest") \
+    X(STR_DESS_SOL_VOIE_B, "Vassalage") \
+    X(STR_DESS_ATTENTE,    "no land within reach") \
+    X(STR_DESS_SOL_N0,  "Unification") \
+    X(STR_DESS_SOL_N1,  "Expansion") \
+    X(STR_DESS_SOL_N2,  "The Rival") \
+    X(STR_DESS_SOL_N3,  "The Choice of Soil") \
+    X(STR_DESS_SOL_N4,  "Pacification") \
+    X(STR_DESS_SOL_N5,  "The Marches") \
+    X(STR_DESS_SOL_N6,  "Rival Capital") \
+    X(STR_DESS_SOL_N7,  "Hegemony") \
+    X(STR_DESS_SOL_N8,  "First Vassal") \
+    X(STR_DESS_SOL_N9,  "Three Vassals") \
+    X(STR_DESS_SOL_N10, "Integration") \
+    X(STR_DESS_SOL_N11, "Hegemony") \
+    X(STR_DESS_SOL_O0,  "Hold and settle the whole valley of {0}") \
+    X(STR_DESS_SOL_O1,  "Take {0}, by the sword or by the plough") \
+    X(STR_DESS_SOL_O2,  "Wrest {0} from the rival, or bring him to his knee") \
+    X(STR_DESS_SOL_O3,  "Choose how the soil is held: the sword or the oath") \
+    X(STR_DESS_SOL_O4,  "Close the wound of {0}") \
+    X(STR_DESS_SOL_O5,  "Hold the three marches, starting with {0}") \
+    X(STR_DESS_SOL_O6,  "Own {0}, the rival's capital") \
+    X(STR_DESS_SOL_O7,  "Hold two fifths of the continent") \
+    X(STR_DESS_SOL_O8,  "Make {0} a vassal") \
+    X(STR_DESS_SOL_O9,  "Bind three crowns, starting with {0}") \
+    X(STR_DESS_SOL_O10, "See {0} become indistinguishable from us") \
+    X(STR_DESS_SOL_O11, "Hold or be sworn two fifths of the continent") \
+    X(STR_DESS_SOL_R0,  "Stronger institutions in the capital") \
+    X(STR_DESS_SOL_R1,  "A claim on the next march, and rebuilding") \
+    X(STR_DESS_SOL_R2,  "Grievances kept: claims stay valid 8 years, not 5, for 20 years") \
+    X(STR_DESS_SOL_R3,  "The choice IS the reward — and it cannot be taken back") \
+    X(STR_DESS_SOL_R4,  "Gentler annexations for 20 years, and rebuilding") \
+    X(STR_DESS_SOL_R5,  "A claim on the rival capital, faster digestion for 20 years") \
+    X(STR_DESS_SOL_R6,  "The best minister of the Realm joins the Council, free") \
+    X(STR_DESS_SOL_R7,  "The Gate of Soil: institutions and garrison built in the capital") \
+    X(STR_DESS_SOL_R8,  "The credit of the oath: vassalage better regarded for 20 years") \
+    X(STR_DESS_SOL_R9,  "Vassals ready to absorb sooner, for 20 years") \
+    X(STR_DESS_SOL_R10, "The vassal's heir joins the Council, free") \
+    X(STR_DESS_SOL_R11, "The Chamber of Oaths: institutions built in the capital") \
+    X(STR_DESS_SOL_F0,  "The hamlets are counted no more: every hearth answers one ban.") \
+    X(STR_DESS_SOL_F1,  "The boundary stone moved one notch. It is the first time.") \
+    X(STR_DESS_SOL_F2,  "He has a name now, in a ledger that no longer closes.") \
+    X(STR_DESS_SOL_F3,  "The soil is held by the sword, or by the oath. Never both.") \
+    X(STR_DESS_SOL_F4,  "Taking takes a summer; being forgiven takes a reign.") \
+    X(STR_DESS_SOL_F5,  "One march is an accident; three marches are a border.") \
+    X(STR_DESS_SOL_F6,  "His crown is in your chapel and his chancellor at your table.") \
+    X(STR_DESS_SOL_F7,  "Realm and continent are no longer two words.") \
+    X(STR_DESS_SOL_F8,  "One man knelt, and three others watched.") \
+    X(STR_DESS_SOL_F9,  "Three taut threads are not three bonds: they are a surface.") \
+    X(STR_DESS_SOL_F10, "His son speaks our tongue without an accent.") \
+    X(STR_DESS_SOL_F11, "You do not own the continent. It answers you, and that is cheaper.")

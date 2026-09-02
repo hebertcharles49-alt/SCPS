@@ -19,6 +19,7 @@
 #include "scps_provlog.h"   /* le JOURNAL diplomatique (trahison/sécession/relations, display) */
 #include "scps_math.h"      /* clampf/iclamp/absf partagés */
 #include "scps_heritage.h"  /* TRADITIONS : le levier INFLUENCE entre dans le standing */
+#include "scps_missions.h"  /* LES DESSEINS : dessein_mult (« Premier vassal » → OPINION_VASSAL) */
 #include <string.h>
 
 /* ---- Calibrage --------------------------------------------------------- */
@@ -572,7 +573,13 @@ void statecraft_opinion_parts(const Statecraft *sc, const DiploState *diplo,
         DiploStatus st = diplo_status(diplo,a,b);
         if      (st==DIPLO_ALLIED) out->ally =  tune_f("OPINION_ALLY",50.f);
         else if (st==DIPLO_WAR)    out->war  = -tune_f("OPINION_WAR",60.f);
-        if (diplo_suzerain(diplo,a)==b || diplo_suzerain(diplo,b)==a) out->vassal = tune_f("OPINION_VASSAL",30.f);
+        /* DESSEIN « Premier vassal » (×1.30, 20 ans) — « le crédit du serment » :
+         * le mult est celui du SUZERAIN de la paire (c'est SON dessein), et il
+         * vaut dans les deux sens (le lien est plus fort, pas plus servile). */
+        if (diplo_suzerain(diplo,a)==b || diplo_suzerain(diplo,b)==a){
+            int suz = (diplo_suzerain(diplo,a)==b) ? b : a;
+            out->vassal = tune_f("OPINION_VASSAL",30.f) * dessein_mult(suz, DBOON_OPINION_VASSAL);
+        }
         if (diplo_trade_pact(diplo,a,b)) out->pact = tune_f("OPINION_PACT",15.f);
         out->rancor = -tune_f("OPINION_RANCOR_W",8.f) * diplo_rancor(diplo,a,b);
     }
@@ -740,7 +747,10 @@ void statecraft_tick(Statecraft *sc, World *w, WorldEconomy *econ,
             DiploStatus st = diplo_status(diplo,a,b);
             if      (st==DIPLO_ALLIED) tgt += oally;     /* +50 TANT QUE l'alliance tient */
             else if (st==DIPLO_WAR)    tgt -= owar;      /* la guerre crève l'opinion (transient) */
-            if (diplo_suzerain(diplo,a)==b || diplo_suzerain(diplo,b)==a) tgt += ovas;   /* lien de vassalité */
+            if (diplo_suzerain(diplo,a)==b || diplo_suzerain(diplo,b)==a){   /* lien de vassalité */
+                int suz = (diplo_suzerain(diplo,a)==b) ? b : a;              /* DESSEIN « Premier vassal » : le crédit du serment */
+                tgt += ovas * dessein_mult(suz, DBOON_OPINION_VASSAL);
+            }
             if (diplo_trade_pact(diplo,a,b)) tgt += opact;
             tgt -= orw * diplo_rancor(diplo,a,b);        /* la RIVALITÉ territoriale (décroît déjà) */
         }

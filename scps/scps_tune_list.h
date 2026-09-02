@@ -1430,12 +1430,22 @@
     X(COUNCIL_EFF_CORRUPTION_PER_POINT, 0.0035f) \
     X(COUNCIL_EFF_MIN,           0.50f) \
     X(COUNCIL_EFF_MAX,           1.15f) \
-    /* CONSEIL — MISSION DÉCENNALE au siège responsable (P3) : bonus de récompense
-     * (or ET matières) = PER_RANK × (rang−1) × efficacité ; réussite/échec bougent
-     * la loyauté du titulaire du siège responsable (déduit du type, aucun état neuf). */ \
-    X(COUNCIL_MISSION_REWARD_PER_RANK,  0.05f) \
-    X(COUNCIL_MISSION_SUCCESS_LOYALTY,  5.0f) \
-    X(COUNCIL_MISSION_FAILURE_LOYALTY, 10.0f) \
+    /* LES DESSEINS (docs/DESIGN_MISSIONS_DOCTRINES.md §2 · annexe N10) — les deux
+     * SEULS tunables de la branche du Sol. Ils REMPLACENT les trois clés
+     * COUNCIL_MISSION_* de la commission décennale, DÉPOSÉE le 2026-09-01.
+     * _HEGEMON_FRAC : la part des provinces ACTIVES du continent de ma capitale
+     *   qu'il faut tenir (voie Conquête : possédées · voie Vassalisation :
+     *   possédées OU vassales) pour le PARACHÈVEMENT « Hégémonie ». Un pari à
+     *   mesurer au chronicle apparié (annexe D5), pas une décision de design.
+     * _BOON_YEARS : la DURÉE d'une remise datée, comptée depuis l'ANNÉE de
+     *   scellage (le canal daté = un latch d'année, zéro accumulateur).
+     *   0 = KILL-SWITCH : toutes les remises de Dessein redeviennent 1.0. */ \
+    X(DESSEIN_SOL_HEGEMON_FRAC,         0.40f) \
+    X(DESSEIN_BOON_YEARS,              20.0f) \
+    /* prix du PIVOT de Dessein, en INFLUENCE POLITIQUE (D6.4 : 20, PLAT — aucune
+     * modulation d'éthos). Débité par dessein_pivot_pay via le module influence ;
+     * 0 = pivot gratuit (kill-switch). */ \
+    X(DESSEIN_PIVOT_INFLUENCE,         20.0f) \
     /* ORIENTATIONS POLITIQUES DU JOUEUR (2026-07-10, docs/CONSEIL_ORIENTATIONS_2026-07-10.md)
      * — REMPLACENT les 4 anciens grands décrets (scps_decrees.{h,c}). RÈGLE : jamais
      * tune_set — chaque site de lecture applique tune_f("CLÉ") × decree_mult(cid,
@@ -1541,8 +1551,11 @@
     X(AGE_EMPIRES_CONQUEROR_LEVER,     0.10f) \
     X(AGE_HERO_EFFICIENCY_MIN,         1.00f) \
     X(AGE_HERO_LOYALTY_MIN,            75.0f) \
-    X(AGE_HERO_MISSION_REWARD,         1.20f) \
-    X(AGE_HERO_MISSION_REWARD_CAPTURED, 1.30f) \
+    /* AGE_HERO_MISSION_REWARD{,_CAPTURED} PURGÉS (2026-09-01) : ils portaient le
+     * HeroMissionBonus, c'est-à-dire la prime de la PROCHAINE commission décennale
+     * du siège consacré — la commission est DÉPOSÉE, le canal n'a plus de site
+     * tune_f. On ne laisse pas de fantôme au registre (jurisprudence
+     * IMPORT_TOLL_FRAC, TROUVAILLES 2026-09-01). */ \
     X(AGE_HERO_FACTION_LEVER,          0.08f) \
     X(AGE_HERO_REFUSED_GRIEF,          0.08f) \
     X(AGE_BREACH_CHARGE,               6.0f) \
