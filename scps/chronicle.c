@@ -668,9 +668,11 @@ int main(int argc, char **argv){
     s.infl=malloc(sizeof(InfluenceState));   /* INFLUENCE POLITIQUE §3 : jamais alimenté ici
                                               * (human_player=-1, headless) — sim_init l'attend
                                               * non-NULL (influence_init inconditionnel). */
+    s.doct=malloc(sizeof(DoctrineState));   /* LES DOCTRINES §4 : idem — jamais alimenté ici,
+                                             * mais sim_init appelle doctrines_init sans garde. */
     s.navy=malloc(sizeof(NavyState)); s.eg=calloc(1,sizeof(EndgameState));
     if (!w||!s.econ||!s.wp||!s.wl||!s.net||!s.ts||!s.sc||!s.ag||!s.ev||!s.drift
-        ||!s.dp||!s.rn||!s.ai||!s.ai_on||!s.rs||!s.host||!s.missions||!s.infl||!s.camp||!s.navy||!s.eg){
+        ||!s.dp||!s.rn||!s.ai||!s.ai_on||!s.rs||!s.host||!s.missions||!s.infl||!s.doct||!s.camp||!s.navy||!s.eg){
         fprintf(stderr,"OOM\n"); return 1; }
 
 #ifdef _WIN32
@@ -2786,6 +2788,7 @@ int main(int argc, char **argv){
     warhost_free(s.host); free(s.camp); free(s.ai); free(s.ai_on); free(s.rs); free(s.host);
     free(s.missions);   /* fuyait (6 496 o, vu par LeakSanitizer) */
     free(s.infl);   /* INFLUENCE POLITIQUE §3 */
+    doctrines_sync(NULL); free(s.doct);   /* LES DOCTRINES §4 (unbind du miroir AVANT le free) */
     free(s.navy); free(s.eg);
 #ifdef _WIN32
     /* EXPORT .TXT — démontage du tee + la question o/n (interactif seulement). */

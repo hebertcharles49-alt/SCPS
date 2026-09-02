@@ -639,6 +639,255 @@
     X(STR_DESS_SOL_F8,  "Un homme a plié le genou, et trois autres ont regardé.") \
     X(STR_DESS_SOL_F9,  "Trois fils tendus ne font pas trois liens : ils font une surface.") \
     X(STR_DESS_SOL_F10, "Son fils parle notre langue sans accent.") \
-    X(STR_DESS_SOL_F11, "Tu ne possèdes pas le continent. Il te répond, et c'est moins cher.")
+    X(STR_DESS_SOL_F11, "Tu ne possèdes pas le continent. Il te répond, et c'est moins cher.") \
+    /* ═══ LES DOCTRINES (docs/DESIGN_DOCTRINES_ANNEXE.md) — 17 doctrines ×
+     * (nom + hover rapide) + 102 idées × (nom + LA ligne de bonus). Aucun
+     * littéral face-joueur hors de cette table (CLAUDE.md §langue). ═══ */ \
+    X(STR_DOCT_OFFENSE_NAME,  "Offense") \
+    X(STR_DOCT_OFFENSE_HOVER, "Le fer d'abord : armes, discipline, butin et prétextes. La doctrine de qui frappe le premier.") \
+    X(STR_IDEA_OFFENSE_ARSENAUX_NAME,  "Arsenaux") \
+    X(STR_IDEA_OFFENSE_ARSENAUX_BONUS, "+25 % d'armes produites, rouille ÷2") \
+    X(STR_IDEA_OFFENSE_DISCIPLINE_NAME,  "Discipline") \
+    X(STR_IDEA_OFFENSE_DISCIPLINE_BONUS, "+10 % de dégâts au combat") \
+    X(STR_IDEA_OFFENSE_OST_NAME,  "Ost permanent") \
+    X(STR_IDEA_OFFENSE_OST_BONUS, "Renfort automatique des armées, solde de guerre payée en paix") \
+    X(STR_IDEA_OFFENSE_BUTIN_NAME,  "Butin") \
+    X(STR_IDEA_OFFENSE_BUTIN_BONUS, "+30 % de butin de siège, +15 % au sac") \
+    X(STR_IDEA_OFFENSE_PRETEXTES_NAME,  "Prétextes") \
+    X(STR_IDEA_OFFENSE_PRETEXTES_BONUS, "−40 % de coût de revendication, maturation −30 %") \
+    X(STR_IDEA_OFFENSE_LEVEE_NAME,  "Grande levée") \
+    X(STR_IDEA_OFFENSE_LEVEE_BONUS, "+30 % de limite de force") \
+    X(STR_DOCT_DEFENSE_NAME,  "Défense") \
+    X(STR_DOCT_DEFENSE_HOVER, "On ne gagne pas la guerre : on la fait perdre. Remparts, magasins, terre brûlée.") \
+    X(STR_IDEA_DEFENSE_REMPARTS_NAME,  "Remparts") \
+    X(STR_IDEA_DEFENSE_REMPARTS_BONUS, "+30 % de défense des places") \
+    X(STR_IDEA_DEFENSE_MAGASINS_NAME,  "Magasins") \
+    X(STR_IDEA_DEFENSE_MAGASINS_BONUS, "+25 % de vivres de siège") \
+    X(STR_IDEA_DEFENSE_BAN_NAME,  "Ban") \
+    X(STR_IDEA_DEFENSE_BAN_BONUS, "Milice levée sur-le-champ dans une province envahie") \
+    X(STR_IDEA_DEFENSE_CORVEES_NAME,  "Corvées") \
+    X(STR_IDEA_DEFENSE_CORVEES_BONUS, "−20 % de coût des fortifications") \
+    X(STR_IDEA_DEFENSE_TERRE_BRULEE_NAME,  "Terre brûlée") \
+    X(STR_IDEA_DEFENSE_TERRE_BRULEE_BONUS, "−40 % de butin pris par l'envahisseur") \
+    X(STR_IDEA_DEFENSE_GENIE_NAME,  "Génie") \
+    X(STR_IDEA_DEFENSE_GENIE_BONUS, "Fortifications un palier de tech en avance") \
+    X(STR_DOCT_COMMERCE_NAME,  "Commerce") \
+    X(STR_DOCT_COMMERCE_HOVER, "Ce qui circule librement enrichit plus que ce qu'on enferme. Exclusive du Mercantilisme.") \
+    X(STR_IDEA_COMMERCE_FRANCHISES_NAME,  "Franchises") \
+    X(STR_IDEA_COMMERCE_FRANCHISES_BONUS, "−25 % de droits de douane") \
+    X(STR_IDEA_COMMERCE_ROUTES_LONGUES_NAME,  "Routes longues") \
+    X(STR_IDEA_COMMERCE_ROUTES_LONGUES_BONUS, "+30 % de portée du marché") \
+    X(STR_IDEA_COMMERCE_COMPTOIR_NAME,  "Comptoir") \
+    X(STR_IDEA_COMMERCE_COMPTOIR_BONUS, "Fonder un comptoir chez une cité-état, péage partagé") \
+    X(STR_IDEA_COMMERCE_NEGOCE_NAME,  "Négoce") \
+    X(STR_IDEA_COMMERCE_NEGOCE_BONUS, "−15 % de marge d'import chez les tiers") \
+    X(STR_IDEA_COMMERCE_GUILDES_NAME,  "Guildes marchandes") \
+    X(STR_IDEA_COMMERCE_GUILDES_BONUS, "+30 % de volume marchand bourgeois") \
+    X(STR_IDEA_COMMERCE_LIBRE_ECHANGE_NAME,  "Libre-échange") \
+    X(STR_IDEA_COMMERCE_LIBRE_ECHANGE_BONUS, "Immunisé aux embargos — et ne peut plus en décréter") \
+    X(STR_DOCT_MERCANTILISME_NAME,  "Mercantilisme") \
+    X(STR_DOCT_MERCANTILISME_HOVER, "Ce qui entre passe par mon étape, paie mon droit, ou ne passe pas. Exclusive du Commerce.") \
+    X(STR_IDEA_MERCANTILISME_RESERVES_NAME,  "Réserves") \
+    X(STR_IDEA_MERCANTILISME_RESERVES_BONUS, "+30 % de réserves de chantier et de coussin d'État") \
+    X(STR_IDEA_MERCANTILISME_REGIE_NAME,  "Régie") \
+    X(STR_IDEA_MERCANTILISME_REGIE_BONUS, "Le stockeur d'État achète et revend plus tôt") \
+    X(STR_IDEA_MERCANTILISME_BLOCUS_NAME,  "Blocus") \
+    X(STR_IDEA_MERCANTILISME_BLOCUS_BONUS, "Mon embargo traverse les pactes et ferme mes Centres") \
+    X(STR_IDEA_MERCANTILISME_ETAPE_NAME,  "Étape") \
+    X(STR_IDEA_MERCANTILISME_ETAPE_BONUS, "Désigner une province-étape servie la première, hors export") \
+    X(STR_IDEA_MERCANTILISME_PEAGES_NAME,  "Péages") \
+    X(STR_IDEA_MERCANTILISME_PEAGES_BONUS, "Import au pair chez soi, 75 % du péage à la couronne") \
+    X(STR_IDEA_MERCANTILISME_HALLES_NAME,  "Halles") \
+    X(STR_IDEA_MERCANTILISME_HALLES_BONUS, "+30 % de capacité d'entrepôt, moins de pertes de stock") \
+    X(STR_DOCT_PEUPLE_NAME,  "Peuple") \
+    X(STR_DOCT_PEUPLE_HOVER, "L'étranger devient un bras, un métier, une tech. Accueil, intégration, métissage.") \
+    X(STR_IDEA_PEUPLE_ACCUEIL_NAME,  "Accueil") \
+    X(STR_IDEA_PEUPLE_ACCUEIL_BONUS, "Pactes migratoires acceptés plus facilement") \
+    X(STR_IDEA_PEUPLE_ECOLES_NAME,  "Écoles") \
+    X(STR_IDEA_PEUPLE_ECOLES_BONUS, "+6 %/mois d'intégration") \
+    X(STR_IDEA_PEUPLE_ASILE_NAME,  "Asile") \
+    X(STR_IDEA_PEUPLE_ASILE_BONUS, "Les réfugiés se fixent plus tôt et repartent moins") \
+    X(STR_IDEA_PEUPLE_AFFRANCHISSEMENT_NAME,  "Affranchissement") \
+    X(STR_IDEA_PEUPLE_AFFRANCHISSEMENT_BONUS, "Sous pacte, les déportés deviennent migrants") \
+    X(STR_IDEA_PEUPLE_TOLERANCE_NAME,  "Tolérance") \
+    X(STR_IDEA_PEUPLE_TOLERANCE_BONUS, "−25 % de friction des cultures étrangères") \
+    X(STR_IDEA_PEUPLE_METISSAGE_NAME,  "Métissage") \
+    X(STR_IDEA_PEUPLE_METISSAGE_BONUS, "Héritages étrangers accessibles plus tôt, +20 % de recherche du creuset") \
+    X(STR_DOCT_COLONISATION_NAME,  "Colonisation") \
+    X(STR_DOCT_COLONISATION_HOVER, "On part de plus petit, on tient sur la terre rude. Colons, vivres, climats.") \
+    X(STR_IDEA_COLONISATION_COLONS_NAME,  "Colons") \
+    X(STR_IDEA_COLONISATION_COLONS_BONUS, "−15 % de population requise par colonie") \
+    X(STR_IDEA_COLONISATION_RAVITAILLEMENT_NAME,  "Ravitaillement") \
+    X(STR_IDEA_COLONISATION_RAVITAILLEMENT_BONUS, "−25 % de réserve vivrière exigée") \
+    X(STR_IDEA_COLONISATION_ACCLIMATATION_NAME,  "Acclimatation") \
+    X(STR_IDEA_COLONISATION_ACCLIMATATION_BONUS, "−20 % de malus de terre rude") \
+    X(STR_IDEA_COLONISATION_DOUBLE_CHANTIER_NAME,  "Double chantier") \
+    X(STR_IDEA_COLONISATION_DOUBLE_CHANTIER_BONUS, "2 chantiers coloniaux simultanés") \
+    X(STR_IDEA_COLONISATION_CLIMATS_NAME,  "Climats") \
+    X(STR_IDEA_COLONISATION_CLIMATS_BONUS, "Apprentissage des climats 10 % plus tôt") \
+    X(STR_IDEA_COLONISATION_GRAND_LARGE_NAME,  "Grand large") \
+    X(STR_IDEA_COLONISATION_GRAND_LARGE_BONUS, "+50 % de rendement des colonies lointaines") \
+    X(STR_DOCT_DIPLOMATIE_NAME,  "Diplomatie") \
+    X(STR_DOCT_DIPLOMATIE_HOVER, "Parler plus souvent, plus vite, à deux voix. Opinion, émissaires, congrès.") \
+    X(STR_IDEA_DIPLOMATIE_PRESTIGE_NAME,  "Prestige") \
+    X(STR_IDEA_DIPLOMATIE_PRESTIGE_BONUS, "+25 % d'opinion des alliés et partenaires") \
+    X(STR_IDEA_DIPLOMATIE_CHANCELLERIE_NAME,  "Chancellerie") \
+    X(STR_IDEA_DIPLOMATIE_CHANCELLERIE_BONUS, "−20 % de coût d'influence des émissaires") \
+    X(STR_IDEA_DIPLOMATIE_OUBLI_NAME,  "Oubli") \
+    X(STR_IDEA_DIPLOMATIE_OUBLI_BONUS, "Vos griefs s'effacent 30 % plus vite") \
+    X(STR_IDEA_DIPLOMATIE_SECOND_EMISSAIRE_NAME,  "Second émissaire") \
+    X(STR_IDEA_DIPLOMATIE_SECOND_EMISSAIRE_BONUS, "2 actions diplomatiques simultanées") \
+    X(STR_IDEA_DIPLOMATIE_PERSUASION_NAME,  "Persuasion") \
+    X(STR_IDEA_DIPLOMATIE_PERSUASION_BONUS, "Vos offres acceptées plus facilement") \
+    X(STR_IDEA_DIPLOMATIE_CONGRES_NAME,  "Congrès") \
+    X(STR_IDEA_DIPLOMATIE_CONGRES_BONUS, "Les guerres se concluent plus tôt, les vôtres aussi") \
+    X(STR_DOCT_VASSAUX_NAME,  "Vassaux") \
+    X(STR_DOCT_VASSAUX_HOVER, "Faire jurer, faire payer, faire mûrir. Serments, tribut, annexion.") \
+    X(STR_IDEA_VASSAUX_SERMENTS_NAME,  "Serments") \
+    X(STR_IDEA_VASSAUX_SERMENTS_BONUS, "Vassaux intégrés 15 % plus vite") \
+    X(STR_IDEA_VASSAUX_TRIBUT_VASSAL_NAME,  "Tribut vassal") \
+    X(STR_IDEA_VASSAUX_TRIBUT_VASSAL_BONUS, "Contribution plus tôt et +20 %") \
+    X(STR_IDEA_VASSAUX_CONTRATS_NAME,  "Contrats") \
+    X(STR_IDEA_VASSAUX_CONTRATS_BONUS, "Choisir le contrat de vassalité à la paix") \
+    X(STR_IDEA_VASSAUX_LEVIERS_NAME,  "Leviers") \
+    X(STR_IDEA_VASSAUX_LEVIERS_BONUS, "Don, allègement, division, intimidation des vassaux") \
+    X(STR_IDEA_VASSAUX_ANNEXION_NAME,  "Annexion") \
+    X(STR_IDEA_VASSAUX_ANNEXION_BONUS, "Peut annexer ses vassaux, durée −25 %") \
+    X(STR_IDEA_VASSAUX_SUZERAINETE_NAME,  "Suzeraineté") \
+    X(STR_IDEA_VASSAUX_SUZERAINETE_BONUS, "Proposer la vassalité en pleine paix") \
+    X(STR_DOCT_PRODUCTION_NAME,  "Production") \
+    X(STR_DOCT_PRODUCTION_HOVER, "Creuser plus profond, équiper plus de bras. Outillage, manufactures, paliers.") \
+    X(STR_IDEA_PRODUCTION_EXTRACTION_NAME,  "Extraction") \
+    X(STR_IDEA_PRODUCTION_EXTRACTION_BONUS, "+12 % de bras à l'extraction") \
+    X(STR_IDEA_PRODUCTION_OUTILLAGE_NAME,  "Outillage") \
+    X(STR_IDEA_PRODUCTION_OUTILLAGE_BONUS, "+30 % d'outils par ouvrier") \
+    X(STR_IDEA_PRODUCTION_EXPLOITATION_NAME,  "Exploitation profonde") \
+    X(STR_IDEA_PRODUCTION_EXPLOITATION_BONUS, "Paliers d'exploitation jusqu'à 12 au lieu de 8") \
+    X(STR_IDEA_PRODUCTION_MANUFACTURES_NAME,  "Manufactures") \
+    X(STR_IDEA_PRODUCTION_MANUFACTURES_BONUS, "+15 % de capacité des manufactures") \
+    X(STR_IDEA_PRODUCTION_GAGES_NAME,  "Gages") \
+    X(STR_IDEA_PRODUCTION_GAGES_BONUS, "−15 % de coût des manufactures, −20 % de gages d'État") \
+    X(STR_IDEA_PRODUCTION_RENDEMENT_NAME,  "Rendement") \
+    X(STR_IDEA_PRODUCTION_RENDEMENT_BONUS, "+6 % d'extraction par palier, paliers −25 %") \
+    X(STR_DOCT_INFRASTRUCTURE_NAME,  "Infrastructure") \
+    X(STR_DOCT_INFRASTRUCTURE_HOVER, "La pierre posée ne redevient jamais une ruine. Chantiers moins chers, bâti qui dure.") \
+    X(STR_IDEA_INFRASTRUCTURE_MACONS_NAME,  "Maçons") \
+    X(STR_IDEA_INFRASTRUCTURE_MACONS_BONUS, "−10 % de matière par chantier") \
+    X(STR_IDEA_INFRASTRUCTURE_CARRIERES_NAME,  "Carrières") \
+    X(STR_IDEA_INFRASTRUCTURE_CARRIERES_BONUS, "+30 % de réserves de construction") \
+    X(STR_IDEA_INFRASTRUCTURE_ENTRETIEN_NAME,  "Entretien") \
+    X(STR_IDEA_INFRASTRUCTURE_ENTRETIEN_BONUS, "Usure du bâti −25 %") \
+    X(STR_IDEA_INFRASTRUCTURE_RENOVATION_NAME,  "Rénovation de masse") \
+    X(STR_IDEA_INFRASTRUCTURE_RENOVATION_BONUS, "File nationale de rénovation, coût −20 %") \
+    X(STR_IDEA_INFRASTRUCTURE_LOGEMENTS_NAME,  "Logements") \
+    X(STR_IDEA_INFRASTRUCTURE_LOGEMENTS_BONUS, "+25 % de logements par manufacture") \
+    X(STR_IDEA_INFRASTRUCTURE_INTENDANCE_NAME,  "Intendance") \
+    X(STR_IDEA_INFRASTRUCTURE_INTENDANCE_BONUS, "−30 % de surcoût d'étendue") \
+    X(STR_DOCT_TECHNOLOGIE_NAME,  "Technologie") \
+    X(STR_DOCT_TECHNOLOGIE_HOVER, "La recherche devient une politique. Bibliothèques, écoles, copistes.") \
+    X(STR_IDEA_TECHNOLOGIE_BIBLIOTHEQUES_NAME,  "Bibliothèques") \
+    X(STR_IDEA_TECHNOLOGIE_BIBLIOTHEQUES_BONUS, "+25 % de bonus de la chaîne Bibliothèque") \
+    X(STR_IDEA_TECHNOLOGIE_ECOLES_VILLE_NAME,  "Écoles de ville") \
+    X(STR_IDEA_TECHNOLOGIE_ECOLES_VILLE_BONUS, "+30 % de recherche bourgeoise, +25 % ouvrière") \
+    X(STR_IDEA_TECHNOLOGIE_PROGRAMME_NAME,  "Programme") \
+    X(STR_IDEA_TECHNOLOGIE_PROGRAMME_BONUS, "Orienter la recherche : −20 % sur un quartier choisi") \
+    X(STR_IDEA_TECHNOLOGIE_COPISTES_NAME,  "Copistes") \
+    X(STR_IDEA_TECHNOLOGIE_COPISTES_BONUS, "Techs répandues jusqu'à −52 %") \
+    X(STR_IDEA_TECHNOLOGIE_DISPENSE_NAME,  "Dispense") \
+    X(STR_IDEA_TECHNOLOGIE_DISPENSE_BONUS, "2 paliers d'âge en avance, hors nœuds faustiens") \
+    X(STR_IDEA_TECHNOLOGIE_SOBRIETE_NAME,  "Sobriété") \
+    X(STR_IDEA_TECHNOLOGIE_SOBRIETE_BONUS, "−10 % techs propres, +50 % techs faustiennes") \
+    X(STR_DOCT_CONNAISSANCES_NAME,  "Connaissances du monde") \
+    X(STR_DOCT_CONNAISSANCES_HOVER, "Connaître le monde avant de le prendre. Côtes révélées, contacts, expéditions.") \
+    X(STR_IDEA_CONNAISSANCES_PORTULANS_NAME,  "Portulans") \
+    X(STR_IDEA_CONNAISSANCES_PORTULANS_BONUS, "×2 de côtes révélées autour du connu") \
+    X(STR_IDEA_CONNAISSANCES_TRUCHEMENTS_NAME,  "Truchements") \
+    X(STR_IDEA_CONNAISSANCES_TRUCHEMENTS_BONUS, "Contacts culturels 20 % plus vite") \
+    X(STR_IDEA_CONNAISSANCES_EXPEDITION_NAME,  "Expédition") \
+    X(STR_IDEA_CONNAISSANCES_EXPEDITION_BONUS, "Révéler une contrée lointaine et ouvrir un contact") \
+    X(STR_IDEA_CONNAISSANCES_DICTIONNAIRES_NAME,  "Dictionnaires") \
+    X(STR_IDEA_CONNAISSANCES_DICTIONNAIRES_BONUS, "Héritages étrangers accessibles plus tôt") \
+    X(STR_IDEA_CONNAISSANCES_COLLEGES_NAME,  "Collèges des langues") \
+    X(STR_IDEA_CONNAISSANCES_COLLEGES_BONUS, "+40 % de recherche des peuples digérés") \
+    X(STR_IDEA_CONNAISSANCES_LANGUE_FRANQUE_NAME,  "Langue franque") \
+    X(STR_IDEA_CONNAISSANCES_LANGUE_FRANQUE_BONUS, "Vos alliés et routes partagent leurs cartes") \
+    X(STR_DOCT_FAUSTIEN_NAME,  "Faustien") \
+    X(STR_DOCT_FAUSTIEN_HOVER, "La puissance immédiate contre la damnation lente. Transmuteurs, mutations, charge.") \
+    X(STR_IDEA_FAUSTIEN_PAGES_INTERDITES_NAME,  "Pages interdites") \
+    X(STR_IDEA_FAUSTIEN_PAGES_INTERDITES_BONUS, "−15 % de coût des techs faustiennes") \
+    X(STR_IDEA_FAUSTIEN_CREUSETS_NAME,  "Creusets") \
+    X(STR_IDEA_FAUSTIEN_CREUSETS_BONUS, "Alambic et Atelier de mage débloqués") \
+    X(STR_IDEA_FAUSTIEN_PACTE_NAME,  "Le Pacte") \
+    X(STR_IDEA_FAUSTIEN_PACTE_BONUS, "Les trois transmuteurs débloqués, plus aucun refus") \
+    X(STR_IDEA_FAUSTIEN_OR_DU_PUITS_NAME,  "Or du puits") \
+    X(STR_IDEA_FAUSTIEN_OR_DU_PUITS_BONUS, "+30 % d'or de la Foreuse — la monnaie se débase") \
+    X(STR_IDEA_FAUSTIEN_TERRE_CHANGEE_NAME,  "Terre changée") \
+    X(STR_IDEA_FAUSTIEN_TERRE_CHANGEE_BONUS, "+25 % de mutations, la charge se lave −35 %") \
+    X(STR_IDEA_FAUSTIEN_PRIX_CONSENTI_NAME,  "Prix consenti") \
+    X(STR_IDEA_FAUSTIEN_PRIX_CONSENTI_BONUS, "+25 % de sortie des machines, +50 % de charge") \
+    X(STR_DOCT_ARISTOCRATIE_NAME,  "Aristocratie") \
+    X(STR_DOCT_ARISTOCRATIE_HOVER, "L'influence naît des élites. Fiefs, offices, adoubement. Un seul courant à la fois.") \
+    X(STR_IDEA_ARISTOCRATIE_BANNERETS_NAME,  "Bannerets") \
+    X(STR_IDEA_ARISTOCRATIE_BANNERETS_BONUS, "+25 % de contribution vassale") \
+    X(STR_IDEA_ARISTOCRATIE_OFFICES_NAME,  "Offices") \
+    X(STR_IDEA_ARISTOCRATIE_OFFICES_BONUS, "+30 % de loyauté achetée, renvoi +50 % de grief") \
+    X(STR_IDEA_ARISTOCRATIE_ADOUBEMENT_NAME,  "Adoubement") \
+    X(STR_IDEA_ARISTOCRATIE_ADOUBEMENT_BONUS, "Promouvoir des bourgeois en élites") \
+    X(STR_IDEA_ARISTOCRATIE_FIEFS_NAME,  "Fiefs") \
+    X(STR_IDEA_ARISTOCRATIE_FIEFS_BONUS, "+35 % de charges d'élite par édifice") \
+    X(STR_IDEA_ARISTOCRATIE_BAN_FEODAL_NAME,  "Ban féodal") \
+    X(STR_IDEA_ARISTOCRATIE_BAN_FEODAL_BONUS, "+15 % de moral, −25 % d'impôt des élites") \
+    X(STR_IDEA_ARISTOCRATIE_CLOTURE_NAME,  "Clôture") \
+    X(STR_IDEA_ARISTOCRATIE_CLOTURE_BONUS, "Noblesse plus accessible, bourgeoisie plus fermée") \
+    X(STR_DOCT_BOURGEOISIE_NAME,  "Bourgeoisie") \
+    X(STR_DOCT_BOURGEOISIE_HOVER, "L'influence naît des bourgeois. Chartes, crédit, jurandes. Un seul courant à la fois.") \
+    X(STR_IDEA_BOURGEOISIE_CHARTES_NAME,  "Chartes") \
+    X(STR_IDEA_BOURGEOISIE_CHARTES_BONUS, "−15 % de coût administratif") \
+    X(STR_IDEA_BOURGEOISIE_JURANDES_NAME,  "Jurandes") \
+    X(STR_IDEA_BOURGEOISIE_JURANDES_BONUS, "+20 % de volume marchand, accession +10 %") \
+    X(STR_IDEA_BOURGEOISIE_EMPRUNT_NAME,  "Emprunt intérieur") \
+    X(STR_IDEA_BOURGEOISIE_EMPRUNT_BONUS, "La bourgeoisie prête à l'État") \
+    X(STR_IDEA_BOURGEOISIE_CREDIT_NAME,  "Crédit") \
+    X(STR_IDEA_BOURGEOISIE_CREDIT_BONUS, "−20 % de taux d'intérêt") \
+    X(STR_IDEA_BOURGEOISIE_ROBE_NAME,  "Robe") \
+    X(STR_IDEA_BOURGEOISIE_ROBE_BONUS, "Un siège de Conseil supplémentaire") \
+    X(STR_IDEA_BOURGEOISIE_CLES_DE_LA_VILLE_NAME,  "Clés de la ville") \
+    X(STR_IDEA_BOURGEOISIE_CLES_DE_LA_VILLE_BONUS, "Accession bourgeoise −25 %") \
+    X(STR_DOCT_POPULAIRE_NAME,  "Populaire") \
+    X(STR_DOCT_POPULAIRE_HOVER, "L'influence naît des journaliers. Pain, doléances, levée en masse. Un seul courant à la fois.") \
+    X(STR_IDEA_POPULAIRE_DOLEANCES_NAME,  "Doléances") \
+    X(STR_IDEA_POPULAIRE_DOLEANCES_BONUS, "Politique +20 % ressentie, −15 % d'agitation") \
+    X(STR_IDEA_POPULAIRE_PAIN_NAME,  "Pain") \
+    X(STR_IDEA_POPULAIRE_PAIN_BONUS, "Panier vital exonéré d'impôt, provinces contentes plus fécondes") \
+    X(STR_IDEA_POPULAIRE_LEVEE_EN_MASSE_NAME,  "Levée en masse") \
+    X(STR_IDEA_POPULAIRE_LEVEE_EN_MASSE_BONUS, "Conscription au-delà de la limite pendant 5 ans") \
+    X(STR_IDEA_POPULAIRE_CONCESSION_NAME,  "Concession") \
+    X(STR_IDEA_POPULAIRE_CONCESSION_BONUS, "Apaiser une province avant la révolte, coût −30 %") \
+    X(STR_IDEA_POPULAIRE_IMPOT_DU_RANG_NAME,  "Impôt du rang") \
+    X(STR_IDEA_POPULAIRE_IMPOT_DU_RANG_BONUS, "+20 % d'impôt des élites, rangs fermés") \
+    X(STR_IDEA_POPULAIRE_SOUVERAINETE_NAME,  "Souveraineté") \
+    X(STR_IDEA_POPULAIRE_SOUVERAINETE_BONUS, "Céder ne coûte plus ni légitimité ni capacité") \
+    X(STR_DOCT_DIVIN_NAME,  "Divin") \
+    X(STR_DOCT_DIVIN_HOVER, "L'influence naît de la foi bâtie. Onction, ferveur, sacerdoce. Un seul courant à la fois.") \
+    X(STR_IDEA_DIVIN_ONCTION_NAME,  "Onction") \
+    X(STR_IDEA_DIVIN_ONCTION_BONUS, "+25 % de légitimité par la foi") \
+    X(STR_IDEA_DIVIN_FERVEUR_NAME,  "Ferveur") \
+    X(STR_IDEA_DIVIN_FERVEUR_BONUS, "+20 % de ferveur, dure 5 ans de plus") \
+    X(STR_IDEA_DIVIN_SACERDOCE_NAME,  "Sacerdoce") \
+    X(STR_IDEA_DIVIN_SACERDOCE_BONUS, "Missionnaire pour tous les crédos, fondation hors plafond") \
+    X(STR_IDEA_DIVIN_APPEL_NAME,  "Appel à la foi") \
+    X(STR_IDEA_DIVIN_APPEL_BONUS, "Mobiliser la ferveur : concorde ou zélotes") \
+    X(STR_IDEA_DIVIN_CLERGE_NAME,  "Clergé") \
+    X(STR_IDEA_DIVIN_CLERGE_BONUS, "2 lettrés, missions +40 % plus longues") \
+    X(STR_IDEA_DIVIN_ORTHODOXIE_NAME,  "Orthodoxie") \
+    X(STR_IDEA_DIVIN_ORTHODOXIE_BONUS, "Schismes ÷2, minorités +60 % de grogne") \
+    /* LES DOCTRINES — les MOTS de la membrane (refus d'adoption, ligne de dépenses). */ \
+    X(STR_DOCT_REASON_SLOT,      "Aucun emplacement libre") \
+    X(STR_DOCT_REASON_ALREADY,   "Déjà adoptée") \
+    X(STR_DOCT_REASON_PAIR,      "Commerce ou Mercantilisme, jamais les deux") \
+    X(STR_DOCT_REASON_CURRENT,   "Un seul courant politique à la fois") \
+    X(STR_DOCT_REASON_INFLUENCE, "Influence insuffisante") \
+    X(STR_INFLUENCE_DEPENSES,    "Entretien de %d doctrine(s) : %d par mois") \
+    X(STR_INFLUENCE_DEPENSES_0,  "Aucune doctrine à entretenir")
 
 #endif /* SCPS_STRINGS_IDS_H */

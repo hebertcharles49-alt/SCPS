@@ -319,7 +319,7 @@ AiView ai_observe(const WorldProsperity *wp, const World *w,
     v.food_alert = (v.fc.food_runway < tune_f("AI_SAFETY_HORIZON",12.f));
     {
         float safety = tune_f("AI_SAFETY_HORIZON",12.f);
-        float safe_months = tune_f("AI_SAFE_STOCK_MONTHS",6.f);
+        float safe_months = tune_f("AI_SAFE_STOCK_MONTHS",6.f)*doctrine_key_mult(cid,"AI_SAFE_STOCK_MONTHS");   /* doctrine Mercantilisme : « Réserves » */
         float pr_sum[RES_COUNT]; float dem_m[RES_COUNT]; float stk2[RES_COUNT]; int pn[RES_COUNT];
         for (int g=0; g<RES_COUNT; g++){ pr_sum[g]=0.f; dem_m[g]=0.f; stk2[g]=0.f; pn[g]=0; }
         for (int r=0; r<econ->n_regions; r++) if (econ->region[r].owner==cid && econ->region[r].colonized){
@@ -572,7 +572,7 @@ bool ai_consider_offer(const World *w, const WorldEconomy *econ, const WorldPros
         case OFFER_ALLIANCE:
             if (diplo_status(d,to,from)==DIPLO_WAR) return false;                 /* pas d'alliance avec un ennemi actif */
             if (diplo_ally_count(d,to) >= DIPLO_ALLY_SLOTS) return false;         /* plus de slot libre */
-            if (sc && op < (int)tune_f("AI_OFFER_ALLY_OPINION",10.f)) return false;   /* opinion trop basse → REFUS */
+            if (sc && op < (int)(tune_f("AI_OFFER_ALLY_OPINION",10.f)*doctrine_key_mult(from,"AI_OFFER_ALLY_OPINION"))) return false;   /* opinion trop basse → REFUS (doctrine Diplomatie : « Persuasion », côté OFFRANT) */
             return diplo_relation(w,econ,wp,d,to,from).alliance > 0.f;            /* + compatibilité réciproque */
         case OFFER_PEACE: {
             if (diplo_status(d,to,from)!=DIPLO_WAR) return true;                  /* déjà en paix : trivialement oui */
@@ -590,7 +590,7 @@ bool ai_consider_offer(const World *w, const WorldEconomy *econ, const WorldPros
              * opinion est HAUTE (AI_OFFER_MIG_OPINION 40). Jamais en guerre. */
             if (diplo_status(d,to,from)==DIPLO_WAR) return false;
             if (diplo_status(d,to,from)==DIPLO_ALLIED) return true;               /* l'alliance suffit */
-            return sc && op >= (int)tune_f("AI_OFFER_MIG_OPINION",40.f);          /* sinon, forte confiance */
+            return sc && op >= (int)(tune_f("AI_OFFER_MIG_OPINION",40.f)*doctrine_key_mult(from,"AI_OFFER_MIG_OPINION"));   /* sinon, forte confiance (doctrines Peuple/Diplomatie, côté OFFRANT) */
         case OFFER_LOAN:
             /* MONNAIE M9 — V2 : « demander un emprunt à un État » (diplomatie). Value
              * SUBJECTIVE (relation+confiance+liquidité+éthos), réutilise le calcul diplo
@@ -1793,7 +1793,7 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
      *    = hérésie). La DÉRIVE est DOSÉE (1/AI_DERIVE_ODDS par tour éligible : elle mûrit sur des
      *    décennies, elle n'éclate pas d'un bloc). GATED par le PLAFOND PAR RACINE (RELIG_SCHISM_MAX). */
     ReligSchismMode smode = religion_schism_eligible(w, econ, wl, a->cid);
-    uint32_t d_odds = (uint32_t)tune_f("AI_DERIVE_ODDS", 8.f); if (d_odds<1u) d_odds=1u;
+    uint32_t d_odds = (uint32_t)(tune_f("AI_DERIVE_ODDS", 8.f)*doctrine_key_mult(a->cid,"AI_DERIVE_ODDS")); if (d_odds<1u) d_odds=1u;   /* doctrine Divin : « Orthodoxie » */
     bool derive_now = (smode==RSE_DERIVE)
         && ((((uint32_t)(a->cid*2246822519u) ^ (uint32_t)((day+7)*3266489917u)) % d_odds) == 0u);
     if ((smode==RSE_RUPTURE || derive_now)
@@ -2312,7 +2312,8 @@ static void ai_archetype_depth(const World *w, const WorldEconomy *econ, const R
                 if (bears && wgt>gbest[ar][po]) gbest[ar][po]=wgt;              /* le MEILLEUR lien par ENTITÉ */
             }
         }
-        float prof=tune_f("SYNC_TRADE_PROFOND",2.0f), met=tune_f("SYNC_TRADE_METIER",1.0f);
+        float prof=tune_f("SYNC_TRADE_PROFOND",2.0f)*doctrine_key_mult(cid,"SYNC_TRADE_PROFOND"),
+              met =tune_f("SYNC_TRADE_METIER", 1.0f)*doctrine_key_mult(cid,"SYNC_TRADE_METIER");   /* doctrine Connaissances : « Truchements » */
         for (int ar=0; ar<ARCH_COUNT; ar++){
             float score=0.f; for (int o=0;o<SCPS_MAX_COUNTRY;o++) score+=gbest[ar][o];   /* SOMME des entités distinctes */
             Profondeur ch = (score>=prof)?PROF_PROFOND : (score>=met)?PROF_METIER : (score>0.f)?PROF_SURFACE : PROF_NONE;
@@ -2595,7 +2596,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
     /* MÉTABOLISATION (Temps 1) — un empire CREUSET (qui a digéré des âmes d'un autre
      * héritage) cherche plus vite : « incorporer d'autres gens dans sa culture fonctionne ».
      * Signal ~0 tôt (l'assimilation prend des décennies) ⇒ la fenêtre golden ne bouge pas. */
-    income *= (1.f + tune_f("AI_METAB_RES_W",AI_METAB_RES_W)
+    income *= (1.f + tune_f("AI_METAB_RES_W",AI_METAB_RES_W)*doctrine_key_mult(a->cid,"AI_METAB_RES_W")   /* doctrines Peuple/Connaissances */
                      * econ_country_metabolized(w, econ, a->cid));
     ts->research_points += income;
     TDIAG("[TD] d=%d c=%d sav=%.1f yld=%.2f inc=%.1f pts=%.1f nu=%d tk=%d\n",
@@ -2855,7 +2856,7 @@ void ai_speculate_tick(AiActor *a, WorldEconomy *econ){
         if (a->spec_cd[g]>0) continue;                        /* B1 — ce bien se repose */
         float p=re->price[g], xb=a->spec_avg[g];
         if (xb<=0.f || p<=0.f) continue;
-        if (p < tune_f("SPEC_BUY_BAND",SPEC_BUY_BAND)*xb && re->treasury > tune_f("SPEC_GOLD_FLOOR",SPEC_GOLD_FLOOR) && held < space){
+        if (p < tune_f("SPEC_BUY_BAND",SPEC_BUY_BAND)*doctrine_key_mult(a->cid,"SPEC_BUY_BAND")*xb   /* doctrine Mercantilisme : « Régie » */ && re->treasury > tune_f("SPEC_GOLD_FLOOR",SPEC_GOLD_FLOOR) && held < space){
             float vol = fminf(re->stock[g]*SPEC_VOL_FRAC, space-held);                /* ≤ 5 % du stock — le bien QUITTE le marché */
             vol = fminf(vol, SPEC_VOL_ABS);                                           /* ≤ 50 unités (plafond dur) */
             vol = fminf(vol, (re->treasury-tune_f("SPEC_GOLD_FLOOR",SPEC_GOLD_FLOOR))*0.25f/fmaxf(p,0.05f));    /* jamais la famine d'or */
@@ -2876,7 +2877,7 @@ void ai_speculate_tick(AiActor *a, WorldEconomy *econ){
                     a->spec_cd[g]=SPEC_COOLDOWN;
                 }
             }
-        } else if (p > tune_f("SPEC_SELL_BAND",SPEC_SELL_BAND)*xb && a->hoard[g]>=1.f){
+        } else if (p > tune_f("SPEC_SELL_BAND",SPEC_SELL_BAND)*doctrine_key_mult(a->cid,"SPEC_SELL_BAND")*xb && a->hoard[g]>=1.f){   /* doctrine Mercantilisme : « Régie » */
             float vol = fminf(a->hoard[g]*SPEC_SELL_FRAC, SPEC_VOL_ABS);              /* filet : 15 % du magot, ≤ 50 u */
             float room = cap_stock - re->stock[g]; if (vol>room) vol=room;            /* l'entrepôt ne déborde pas */
             if (vol>=1.f){

@@ -32,7 +32,11 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 105u          /* v105 : DESSEINS (vague P1, merge 2026-09-02) — MissionsState
+#define SAVE_VERSION 106u          /* v106 : LES DOCTRINES (docs/DESIGN_MISSIONS_DOCTRINES.md §4)
+                                    * — nouvelle section DOCT, DoctrineState (slots ouverts,
+                                    * doctrine par slot, idées possédées, ordre d'adoption,
+                                    * suspension du mois, récolte d'âges). <v106 refusé.
+                                    * v105 : DESSEINS (vague P1, merge 2026-09-02) — MissionsState
                                     * REFONDU (commission décennale déposée, branche du Sol,
                                     * sealed_year/cibles/claims en attente) ⇒ sizeof(MissionsState)
                                     * change (section MISS, fwrite brut). <v105 refusé.

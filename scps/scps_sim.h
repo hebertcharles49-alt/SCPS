@@ -48,6 +48,7 @@
 #include "scps_decrees.h"
 #include "scps_fog.h"      /* BROUILLARD DE GUERRE : connaissance des empires (étape 1/2, VISUEL seulement) */
 #include "scps_influence.h" /* INFLUENCE POLITIQUE §3 : accumulateur par pays, joueur seul (P1) */
+#include "scps_doctrines.h" /* LES DOCTRINES §4 : slots/idées par pays, payées en influence (joueur seul, P1) */
 #include <stdbool.h>
 #include <stdio.h>   /* FILE : sim_wild_save/load (section WILD du save partagé) */
 
@@ -171,6 +172,12 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
         * exige la preuve d'usage correspondante. Revalidé au drain (missions_seal) :
         * branche générée, échelon bien le COURANT, condition remplie. */
        CMD_SEAL_DESSEIN,
+       /* LES DOCTRINES — les trois verbes de gestion (motif CMD_SEAL_DESSEIN :
+        * enfilés au journal, TOUT est revalidé au drain, jamais ici).
+        *   CMD_DOCT_ADOPT   a = {slot (0..5), doctrine (DoctrineId)}
+        *   CMD_DOCT_IDEA    a = {doctrine} — achète LA PROCHAINE idée séquentielle
+        *   CMD_DOCT_ABANDON a = {slot} — libère le slot, les idées sont PERDUES */
+       CMD_DOCT_ADOPT, CMD_DOCT_IDEA, CMD_DOCT_ABANDON,
        CMD_COUNT };
 #define SCPS_CMDQ_MAX 64
 #define SCPS_PEACE_MAX_TERRITORIES 32
@@ -196,6 +203,7 @@ typedef struct {
     uint32_t     camp_rng;
     MissionsState *missions; /* missions décennales (rythme + injection de ressources) */
     InfluenceState *infl; /* INFLUENCE POLITIQUE §3 : accumulateur par pays (joueur seul, P1) */
+    DoctrineState *doct; /* LES DOCTRINES §4 : slots/doctrines/idées par pays (joueur seul, P1) */
     NavyState   *navy;   /* la flotte (mer §5) : coques, chantier, entretien */
     EndgameState *eg;   /* capstone §27 : état cataclysme (entropie + fin + merveille) */
     int16_t prev_owner_mo[SCPS_MAX_REG];   /* propriétaires au mois précédent (détection de conquête) */

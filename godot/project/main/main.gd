@@ -16,6 +16,7 @@ var _econ: Control
 var _budget_v2: Control        # PILOTE « grand livre parchemin » (conteneurs natifs + Theme), touche B
 var _prov_panel_v2: Control    # PILOTE fiche province « conteneurs natifs + Theme parchemin », touche V
 var _empire_win: Control       # FENÊTRE EMPIRE à onglets (Économie/Population/Diplomatie/Conseil), touche E
+var _doctrine_panel: Control   # UI-DOCTRINE P2 : les 6 slots de Doctrines, ouvert par la cellule Influence (topbar)
 var _prov_detail: Control
 var _menu: Control
 var _religion: Control
@@ -106,6 +107,16 @@ func _ready() -> void:
 		if _tech.visible:
 			Sound.play("ui_parchment_open")
 		_tech.queue_redraw())
+	# UI-DOCTRINE P2 : clic sur la cellule Influence → panneau des Doctrines (motif
+	# tech_requested — toggle, pas de route InfoRef pour ce panneau).
+	topbar.doctrine_requested.connect(func():
+		if _doctrine_panel != null:
+			if _doctrine_panel.visible:
+				_doctrine_panel.hide()
+				Sound.play("ui_parchment_close")
+			else:
+				_doctrine_panel.open()
+				Sound.play("ui_parchment_open"))
 
 	_country_panel = load("res://ui/country_panel.gd").new()
 	_country_panel.name = "CountryPanel"
@@ -286,6 +297,12 @@ func _ready() -> void:
 	_budget_v2.visible = false
 	_budget_v2.add_to_group("draggable")
 	ui.add_child(_budget_v2)
+	# UI-DOCTRINE P2 : le menu des 6 slots de Doctrines (conteneurs natifs + Theme),
+	# ouvert par la cellule Influence de la topbar — coexiste avec tout le reste.
+	_doctrine_panel = load("res://ui/doctrine_panel.gd").new()
+	_doctrine_panel.name = "DoctrinePanel"
+	_doctrine_panel.visible = false   # add_to_group("draggable") : fait dans son propre _ready()
+	ui.add_child(_doctrine_panel)
 	# LA fiche province (D1-UNIFICATION, 2026-07-18) : conteneurs natifs + Theme
 	# parchemin, doctrine « bâti seul + hover + /mois ». province_panel.gd (legacy,
 	# dessin immédiat, nomenclature divergente Laboureurs/Artisans/Noblesse) est
@@ -342,7 +359,7 @@ func _ready() -> void:
 	# _country_actions = MAJEURS (Trésor/Diplomatie) — leur ouverture referme _construct.
 	# La fiche province (_prov_panel_v2/_country_panel), contextuelle-ancrée,
 	# N'EST PAS dans cette liste : elle coexiste toujours (règle joueur explicite).
-	for maj in [_budget_v2, _empire_win, _country_actions]:
+	for maj in [_budget_v2, _empire_win, _country_actions, _doctrine_panel]:
 		if maj != null:
 			var m: Control = maj
 			m.visibility_changed.connect(func():

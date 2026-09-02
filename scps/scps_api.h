@@ -1678,8 +1678,82 @@ typedef struct {
     int stock;          /* le stock courant, arrondi à l'entier */
     int gain_month;      /* gain PRÉVU du mois courant, arrondi à l'entier (mots : « /mois ») */
     const char *hover;   /* « N nobles × le Conseil (rang moyen II) » — ou « aucun ministre » */
+    /* LES DOCTRINES §4 — la CHARGE politique du mois, à côté du revenu (le solde se
+     * lit d'un coup d'œil, charte UI §5). */
+    int upkeep_month;    /* Σ des entretiens de doctrine (déjà ÉCHELONNÉ sur l'assiette) */
+    int net_month;       /* gain_month − upkeep_month : le SOLDE du mois */
+    const char *hover_depenses;   /* « Entretien de N doctrine(s) : X par mois » (MOTS) */
 } ScpsInfluence;
 void scps_influence_info(ScpsSim *s, int cid, ScpsInfluence *out);
+
+/* ---- LES DOCTRINES (docs/DESIGN_MISSIONS_DOCTRINES.md §4) -------------- *
+ * Membrane stricte : des MOTS (nom, hover, ligne de bonus, raison de refus), des
+ * ENTIERS de prix, et des NOMS DE FICHIER d'icône — jamais un flottant moteur,
+ * jamais un nom de tunable. Les slugs `bg`/`icon` sont EXACTEMENT les fichiers
+ * installés (assets/scps/ui/icons2/lot14_doctrines/<bg>.png et lot15_idees/
+ * <icon>.png) : la façade y ajoute juste le dossier et l'extension. */
+enum { SCPS_DOCT_LOCKED = 0, SCPS_DOCT_EMPTY = 1, SCPS_DOCT_TAKEN = 2 };
+typedef struct {
+    int slot;             /* 0..5 */
+    int state;            /* SCPS_DOCT_LOCKED / _EMPTY / _TAKEN */
+    int doctrine;         /* l'id de la doctrine tenue (-1 si le slot est vide) */
+    const char *name;     /* son nom ("" si vide) */
+    const char *bg;       /* "doct_<x>_bg" ("" si vide) */
+    int ideas_owned;      /* 0..6 */
+    int suspended;        /* 1 = entretien impayé CE mois (mults à 1.0) */
+} ScpsDoctSlot;
+typedef struct {
+    int slots_total;      /* 6, toujours */
+    int slots_open;       /* ouverts (décision 2026-09-02 : 6 d'office) */
+    ScpsDoctSlot rows[6];
+} ScpsDoctSlots;
+void scps_doctrine_slots(ScpsSim *s, int cid, ScpsDoctSlots *out);
+
+/* LE CATALOGUE — les 17 cartes, prix d'adoption COURANT et disponibilité en MOTS.
+ * Écrit min(max, 17) entrées ; renvoie le nombre écrit. */
+typedef struct {
+    int id;
+    const char *name;
+    const char *hover;    /* l'explication RAPIDE (1-2 phrases) */
+    const char *bg;
+    int cost;             /* adoption au prix COURANT (déjà échelonné sur l'assiette) */
+    int available;        /* 0/1 */
+    const char *reason;   /* MOTS si indisponible ("" si available) */
+} ScpsDoctCard;
+int scps_doctrine_catalog(ScpsSim *s, int cid, ScpsDoctCard *out, int max);
+
+/* LE DÉTAIL d'une doctrine — ses 6 idées, la prochaine achetable et son prix.
+ * `wired` = 0 : l'idée est achetée mais son effet moteur n'existe pas encore
+ * (la façade dit « à venir ») ; `is_verb` = 1 : l'idée débloque une ACTION,
+ * livrée dans une vague suivante. Renvoie 1 si `id` est une doctrine connue. */
+typedef struct {
+    int idx;              /* 0..5, l'ordre SÉQUENTIEL d'achat */
+    const char *name;
+    const char *bonus;    /* LA ligne de bonus */
+    const char *icon;     /* "idea_<doctrine>_<idée>" */
+    int owned;            /* 0/1 */
+    int is_verb;          /* 0/1 */
+    int wired;            /* 0/1 : l'effet moteur est-il branché ? */
+    int cost;             /* prix si c'est la PROCHAINE achetable, 0 sinon */
+    int next;             /* 1 = c'est la prochaine de la séquence */
+} ScpsDoctIdea;
+typedef struct {
+    int id;
+    const char *name, *bg, *hover;
+    int adopted;          /* 0/1 */
+    int slot;             /* le slot occupé (-1 si non adoptée) */
+    int suspended;        /* 0/1 */
+    int upkeep_month;     /* l'entretien d'UNE doctrine ce mois-ci */
+    ScpsDoctIdea ideas[6];
+} ScpsDoctDetail;
+int scps_doctrine_detail(ScpsSim *s, int cid, int id, ScpsDoctDetail *out);
+
+/* LES VERBES — ENFILÉS au journal (le drain revalide TOUT contre l'état courant :
+ * emplacement libre, exclusivités, séquence des idées, influence disponible).
+ * Renvoie 1 si l'ordre a pris place dans la file, 0 sinon (jamais le verdict). */
+int scps_doctrine_adopt   (ScpsSim *s, int slot, int doctrine);
+int scps_doctrine_buy_idea(ScpsSim *s, int doctrine);
+int scps_doctrine_abandon (ScpsSim *s, int slot);
 /* ---- LES DESSEINS (dessein_of) ---------------------------------------- *
  * L'arbre d'ambitions du pays : une BRANCHE = 8 échelons en cascade, chacun
  * visant un objet NOMMÉ du monde. Membrane stricte : que des MOTS (le nom court

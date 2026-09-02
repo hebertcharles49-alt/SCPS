@@ -726,7 +726,7 @@ static const float ETHOS_LUXURY_NEED[CLASS_COUNT] = {
  * grenier PLEIN comme alternative au food_sat — un tirage géo pauvre ne
  * s'auto-bloque plus, il ACHÈTE ses vivres. 0 = motif éteint (kill-switch). */
 static float colony_food_target(const ProvinceEconomy *pe){
-    float months = tune_f("FOOD_STOCK_MONTHS",6.f);
+    float months = tune_f("FOOD_STOCK_MONTHS",6.f) * doctrine_key_mult(pe->owner, "FOOD_STOCK_MONTHS");   /* doctrine Colonisation : « Ravitaillement » */
     if (months<=0.f) return 0.f;
     float pop=0.f; for (int c=0;c<CLASS_COUNT;c++) pop+=pe->strata[c].pop;
     return (pop/100.f)*NEED[CLASS_LABORER][RES_GRAIN]*(months/12.f);
@@ -990,8 +990,8 @@ float econ_country_savoir(const WorldEconomy *econ, int cid){
     if (!econ || cid<0) return 0.f;
     float decree_w = decree_savoir_w_mult(cid);   /* orientation ÉCOLES SOUTENUES */
     float we=tune_f("SAVOIR_W_ELITE",SAVOIR_W_ELITE)*decree_w,
-          wb=tune_f("SAVOIR_W_BOURGEOIS",SAVOIR_W_BOURGEOIS)*decree_w,
-          wl=tune_f("SAVOIR_W_LABORER",SAVOIR_W_LABORER)*decree_w;
+          wb=tune_f("SAVOIR_W_BOURGEOIS",SAVOIR_W_BOURGEOIS)*decree_w*doctrine_key_mult(cid,"SAVOIR_W_BOURGEOIS"),
+          wl=tune_f("SAVOIR_W_LABORER",SAVOIR_W_LABORER)*decree_w*doctrine_key_mult(cid,"SAVOIR_W_LABORER");   /* doctrine Technologie : « Écoles de ville » */
     double base=0.0, lib=0.0, satw=0.0, popw=0.0;
     for (int r=0;r<econ->n_regions;r++){
         const RegionEconomy *re=&econ->region[r];   /* strata & build : l'AGRÉGAT RÉGION est la vue fiable (cf. puissance commerciale / trade) */
@@ -1007,7 +1007,9 @@ float econ_country_savoir(const WorldEconomy *econ, int cid){
             satw += (double)re->satisfaction*rp; popw += rp;
         }
     }
-    float pct=(float)(lib*tune_f("SAVOIR_LIB_PER",SAVOIR_LIB_PER)), mx=tune_f("SAVOIR_LIB_MAX",SAVOIR_LIB_MAX);
+    /* doctrine Technologie : « Bibliothèques » — la chaîne rend plus, et plus haut. */
+    float pct=(float)(lib*tune_f("SAVOIR_LIB_PER",SAVOIR_LIB_PER)*doctrine_key_mult(cid,"SAVOIR_LIB_PER")),
+          mx =tune_f("SAVOIR_LIB_MAX",SAVOIR_LIB_MAX)*doctrine_key_mult(cid,"SAVOIR_LIB_MAX");
     if (pct<0.f) pct=0.f;
     if (pct>mx)  pct=mx;
     /* TECH (2026-07-16) — f_satisfaction : MOTEUR BORNÉ, jamais ×0 (décision joueur « du
@@ -1034,8 +1036,8 @@ float econ_country_savoir(const WorldEconomy *econ, int cid){
 float econ_country_commerce(const WorldEconomy *econ, int cid){
     if (!econ || cid<0) return 0.f;
     float decree_w = decree_commerce_w_mult(cid);   /* orientations COMPTOIRS SOUTENUS / FRONTIÈRES FERMÉES */
-    float wb=tune_f("COMMERCE_W_BOURGEOIS",COMMERCE_W_BOURGEOIS)*decree_w,
-          we=tune_f("COMMERCE_W_ELITE",COMMERCE_W_ELITE)*decree_w;
+    float wb=tune_f("COMMERCE_W_BOURGEOIS",COMMERCE_W_BOURGEOIS)*decree_w*doctrine_key_mult(cid,"COMMERCE_W_BOURGEOIS"),
+          we=tune_f("COMMERCE_W_ELITE",COMMERCE_W_ELITE)*decree_w*doctrine_key_mult(cid,"COMMERCE_W_ELITE");   /* doctrines Commerce/Bourgeoisie */
     double base=0.0, infra=0.0;
     for (int r=0;r<econ->n_regions;r++){
         const RegionEconomy *re=&econ->region[r];
@@ -3605,7 +3607,7 @@ bool econ_mobility_load(FILE *f){
 float econ_country_wealth_levy_bounded(WorldEconomy *e, int cid, float requested){
     if (!e || cid<0 || cid>=SCPS_MAX_COUNTRY || requested<=0.f) return 0.f;
     int n=e->n_prov; if (n>SCPS_MAX_PROV) n=SCPS_MAX_PROV;
-    float mult = tune_f("TAX_EXEMPT_BASKET_MULT",1.0f);
+    float mult = tune_f("TAX_EXEMPT_BASKET_MULT",1.0f)*doctrine_key_mult(cid,"TAX_EXEMPT_BASKET_MULT");   /* doctrine Populaire : « Pain » */
     float want[CLASS_COUNT]; memset(want,0,sizeof want);
     { float wl,wb,we; econ_wage_split(requested,&wl,&wb,&we);
       want[CLASS_LABORER]=wl; want[CLASS_BOURGEOIS]=wb; want[CLASS_ELITE]=we; }
@@ -4005,7 +4007,8 @@ void econ_tick(WorldEconomy *e, float dt) {
          * demandé que la poudre découverte (sinon on gonflerait un prix que nul ne peut servir).
          * Registre J : ARMS_PER_LABORER (0 = éteint, comportement d'hier). */
         if (owner_>=0){
-            float arms_target = labor_avail * tune_f("ARMS_PER_LABORER", 0.05f);
+            float arms_target = labor_avail * tune_f("ARMS_PER_LABORER", 0.05f)
+                              * doctrine_key_mult(owner_, "ARMS_PER_LABORER");   /* doctrine Offense : « Arsenaux » */
             demand[RES_ARMS_LIGHT]  += fmaxf(0.f, arms_target*0.60f - S[RES_ARMS_LIGHT] *pshare);
             demand[RES_ARMS_RANGED] += fmaxf(0.f, arms_target*0.25f - S[RES_ARMS_RANGED]*pshare);
             demand[RES_ARMS_HEAVY]  += fmaxf(0.f, arms_target*0.10f - S[RES_ARMS_HEAVY] *pshare);
@@ -4041,7 +4044,8 @@ void econ_tick(WorldEconomy *e, float dt) {
          * (habitabilité 50 % → −10 % de prod). Lit la COORDONNÉE (re->habitability), n'assigne
          * aucun modificateur plat. La province-SIÈGE (départ) en est EXEMPTÉE. */
         if (!re->is_capital){
-            _pm_terre = fmaxf(0.f, 1.f - (1.f - re->habitability) * tune_f("HAB_MALUS_K", 0.20f));
+            _pm_terre = fmaxf(0.f, 1.f - (1.f - re->habitability)
+                             * tune_f("HAB_MALUS_K", 0.20f) * doctrine_key_mult(owner_, "HAB_MALUS_K"));   /* doctrine Colonisation : « Acclimatation » */
             prod_mult *= _pm_terre;
         }
         if (pid<SCPS_MAX_PROV){
@@ -4096,7 +4100,7 @@ void econ_tick(WorldEconomy *e, float dt) {
              * bras (plus d'ouvriers = boost absolu plus grand), même logique qu'une manufacture. */
             int bt = re->raw_boost[r];                                   /* palier d'exploitation (clampé : save forgée) */
             { int maxt=(int)tune_f("RAW_BOOST_MAX_TIER",8.f); if (bt>maxt) bt=maxt; }
-            float rboost = 1.f + tune_f("RAW_BOOST_PER_TIER",0.05f)*(float)bt;
+            float rboost = 1.f + tune_f("RAW_BOOST_PER_TIER",0.05f)*doctrine_key_mult(owner_,"RAW_BOOST_PER_TIER")*(float)bt;   /* doctrine Production : « Rendement » */
             float out = workers*EXTRACT_YIELD[r]*dt*egeo[r]*prod_mult*rboost;  /* ouvriers × rendement/an × dt × qualité géo × outils × exploitation — SANS demande (le prix ne throttle plus l'extraction ; la demande = affaire de l'IA/du marché) */
             labor_used += workers;
             /* MONNAIE M1 — LA REDEVANCE : sur l'or/cuivre SEULEMENT, une part MINT_ROYALTY
@@ -4127,7 +4131,8 @@ void econ_tick(WorldEconomy *e, float dt) {
          * stabilisateur actif ; elle refonte lentement chaque tick (CHARGE_DECAY ≪ accumulation
          * sous spawn soutenu) → dabbler puis cesser = récupérable, spawn continu = fracture.
          * L'IMMÉDIAT (arcane_charge : mage + spawn du tick) est remis à zéro (per-tick, comme avant). */
-        re->faust_charge = fminf(1.0e6f, fmaxf(0.f, re->faust_charge - tune_f("CHARGE_DECAY", 0.04f)));   /* P1 : plafond anti-dérive-inf (jamais atteint en jeu : ~unités avant la fin §27 ; borne juste l'accumulateur non clampé) */
+        re->faust_charge = fminf(1.0e6f, fmaxf(0.f, re->faust_charge
+                             - tune_f("CHARGE_DECAY", 0.04f)*doctrine_key_mult(owner_, "CHARGE_DECAY")));   /* doctrine Faustien : « Terre changée » */   /* P1 : plafond anti-dérive-inf (jamais atteint en jeu : ~unités avant la fin §27 ; borne juste l'accumulateur non clampé) */
         re->arcane_charge=0.f;
         for (int i=0;i<re->n_bld;i++) {
             Building *b=&re->bld[i];
@@ -4149,7 +4154,7 @@ void econ_tick(WorldEconomy *e, float dt) {
              * intrants consommés, la sortie ET l'embauche suivent ensemble, bornés par
              * les stocks et la main-d'œuvre réels. Pas un levier d'efficience magique
              * (sortie sans matière). 1.0 = neutre (kill-switch). */
-            float cap = b->level * tune_f("MANUF_QOUT_MULT", 1.0f)
+            float cap = b->level * tune_f("MANUF_QOUT_MULT", 1.0f) * doctrine_key_mult(owner_, "MANUF_QOUT_MULT")   /* doctrine Production : « Manufactures » */
                       * market_effort(re->price[rc->out], BASE_PRICE[rc->out]);
             float lim = cap;
             if (e_in1!=RES_NONE){
@@ -4255,7 +4260,7 @@ void econ_tick(WorldEconomy *e, float dt) {
              * plus bas ; pas la Forge céleste/l'Atelier de mage, hors scope — ce ne sont
              * pas les « 3 machines » nommées par la mission). Kill-switch FAUSTIEN_BOOST=0
              * ⇒ ×1 (legacy exact, golden pre-faustien byte-identique). */
-            if (faust_boost && bld_is_faustian(b->type)) out_full *= tune_f("FAUST_YIELD_MULT", 2.0f);
+            if (faust_boost && bld_is_faustian(b->type)) out_full *= tune_f("FAUST_YIELD_MULT", 2.0f)*doctrine_key_mult(owner_,"FAUST_YIELD_MULT");   /* doctrine Faustien : « Prix consenti » */
             /* M3g — LA SAISIE (remplace le malus PLAT −75 % de M3d) : la production
              * CONTINUE PLEINE (`out_full`, désormais SANS malus) — une part
              * BANKRUPTCY_GARNISH×bankruptcy_scar de sa VALEUR (décroissante avec la
@@ -4316,7 +4321,7 @@ void econ_tick(WorldEconomy *e, float dt) {
                  * reserve_copper) : l'inflation suit ÉMERGEMMENT le canal royalty→réserve→
                  * frappe existant (M7), AUCUN hack direct. Kill-switch FAUSTIEN_BOOST=0 ⇒ lot
                  * legacy exact (0.5/0.3, aucune redevance sur le panier — golden byte-identique). */
-                float yield_mult = faust_boost ? tune_f("FAUST_YIELD_MULT", 2.0f) : 1.f;
+                float yield_mult = faust_boost ? tune_f("FAUST_YIELD_MULT", 2.0f)*doctrine_key_mult(owner_,"FAUST_YIELD_MULT") : 1.f;   /* doctrine Faustien : « Prix consenti » */
                 float precious_mult = faust_boost ? tune_f("FAUST_FOREUSE_PRECIOUS_MULT", 5.0f) : 1.f;
                 for (int fi=0; fi<6; fi++){
                     Resource fr=FOREUSE_BASKET[fi].r; float qty=FOREUSE_BASKET[fi].qty;
@@ -4353,7 +4358,7 @@ void econ_tick(WorldEconomy *e, float dt) {
              * transmuteurs comptent aussi le rare consommé (capteur caché du capstone §27). */
             if (b->type==BLD_MAGE_WORKSHOP) re->arcane_charge += out;   /* arcane ordinaire : IMMÉDIAT seul (per-tick, comme avant) — équivalent inline de faust_charge_add(RegionEconomy*) pour une ProvinceEconomy */
             else if (bld_is_faustian(b->type)){
-                float spawn = out * tune_f("FAUST_SPAWN_CHARGE", 0.15f);
+                float spawn = out * tune_f("FAUST_SPAWN_CHARGE", 0.15f)*doctrine_key_mult(owner_,"FAUST_SPAWN_CHARGE");   /* doctrine Faustien : « Prix consenti » (le revers) */
                 /* FAUSTIEN X3 — CHAQUE USAGE POUSSE VERS LA FIN (mission 2026-07-16, cœur
                  * thématique) : étend le canal existant. Au-delà du spawn ∝ SORTIE (ci-dessus,
                  * inchangé), l'INTRANT BRÛLÉ ce tick (lim*rc->q1 — essence/flux/fer céleste,
@@ -4509,7 +4514,7 @@ void econ_tick(WorldEconomy *e, float dt) {
              * M3b v1. Sous M3i, gate 5 mesure si ce garde-fou reste NÉCESSAIRE (l'impôt sur le
              * revenu est déjà doux pour les pauvres par construction) ou redondant. */
             if (st->pop>EPS && pid<SCPS_MAX_PROV
-                && (st->wealth/st->pop) < g_basket_pc[pid][c]*tune_f("TAX_EXEMPT_BASKET_MULT",1.0f))
+                && (st->wealth/st->pop) < g_basket_pc[pid][c]*tune_f("TAX_EXEMPT_BASKET_MULT",1.0f)*doctrine_key_mult(owner_,"TAX_EXEMPT_BASKET_MULT"))   /* doctrine Populaire : « Pain » */
                 collected = 0.f;   /* ×multiple du panier — levier de calibrage M3b-v2.1 (registre J) */
             if (collected>st->wealth) collected=st->wealth;
             st->wealth   -= collected;
@@ -4618,7 +4623,7 @@ void econ_tick(WorldEconomy *e, float dt) {
          * sur le bas de laine qui finance les chantiers (sinon l'État ne bootstrappe jamais). */
         if (pid<SCPS_MAX_PROV && re->owner>=0 && re->owner<SCPS_MAX_COUNTRY && re->treasury>hof){
             int nreg=rcount[re->owner]; if (nreg<1) nreg=1;
-            float admin = tune_f("ADMIN_BASE",ADMIN_BASE)
+            float admin = tune_f("ADMIN_BASE",ADMIN_BASE)*doctrine_key_mult(re->owner,"ADMIN_BASE")   /* doctrine Bourgeoisie : « Chartes » */
                         * powf((float)nreg, tune_f("ADMIN_EXP",ADMIN_EXP)-1.f) * ipmf * (dt*12.f);
             float before=re->treasury; re->treasury = fmaxf(hof, re->treasury - admin);
             float spent=before - re->treasury;
@@ -5073,7 +5078,7 @@ void econ_tick(WorldEconomy *e, float dt) {
              * ±POL_SAT_CAP. Le hover UI le montre en une ligne : « Votre politique :
              * ±X » — le nombre, jamais le récit. POL_SAT_W=0 = kill-switch. */
             float pol_sat=0.f;
-            { float psw=tune_f("POL_SAT_W",0.30f);
+            { float psw=tune_f("POL_SAT_W",0.30f)*doctrine_key_mult(re->owner,"POL_SAT_W");   /* doctrine Populaire : « Doléances » */
               if (psw>0.f && re->owner>=0){
                   float align=faction_class_policy(re->owner, &re->culture, (SocialClass)c);
                   float gsum=0.f; long gpop=0;
@@ -5161,7 +5166,7 @@ void econ_tick(WorldEconomy *e, float dt) {
         /* COUPLAGE SATISFACTION ASYMÉTRIQUE : une province CONTENTE croît plus vite (part au-dessus
          * de 0.5 SEULEMENT) ; la satisfaction basse ne soustrait RIEN (un peuple nourri mais grognon
          * croît quand même → pas de creusement du creux des low seeds, et la reprise est PRIMÉE). */
-        bonus += tune_f("POP_SAT_W",0.20f) * fmaxf(0.f, re->satisfaction - 0.5f);
+        bonus += tune_f("POP_SAT_W",0.20f)*doctrine_key_mult(re->owner,"POP_SAT_W") * fmaxf(0.f, re->satisfaction - 0.5f);   /* doctrine Populaire : « Pain » */
         float net_growth = r_base*(1.f+demo)*(1.f+bonus);                   /* ×2 plancher → ×4 au plein */
         if (food_s < 0.35f)
             net_growth -= (0.35f - food_s) * 0.12f;   /* pic de mortalité famine */
@@ -5172,7 +5177,7 @@ void econ_tick(WorldEconomy *e, float dt) {
          * pendant la crise, libérée à mesure que la plaie se referme (recon·(1−scar)). */
         if (re->revolt_scar > 0.5f) re->reconstruction = 1.f;
         re->revolt_scar    = fmaxf(0.f, re->revolt_scar    - 0.25f*dt);
-        re->ferveur        = fmaxf(0.f, re->ferveur        - tune_f("PROVMOD_FERVEUR_DECAY",0.067f)*dt);
+        re->ferveur        = fmaxf(0.f, re->ferveur        - tune_f("PROVMOD_FERVEUR_DECAY",0.067f)*doctrine_key_mult(re->owner,"PROVMOD_FERVEUR_DECAY")*dt);   /* doctrine Divin : « Ferveur » (dure plus longtemps) */
         re->reconstruction = fmaxf(0.f, re->reconstruction - tune_f("PROVMOD_RECON_DECAY",  0.10f )*dt);
         re->annex_scar     = fmaxf(0.f, re->annex_scar     - tune_f("ANNEX_SCAR_DECAY",    0.20f )*dt);  /* étage 3d : ~5 ans */
         /* M3d — CICATRICE DE BANQUEROUTE : décroît sur BANKRUPTCY_SCAR_YEARS (~10 ans),
@@ -5190,7 +5195,8 @@ void econ_tick(WorldEconomy *e, float dt) {
         /* UTILITÉ DE L'HABITABILITÉ — la terre RUDE peuple moins vite : même malus que la prod,
          * (1−hab)·HAB_MALUS_K, EXEMPTANT la province-siège (départ). */
         if (!re->is_capital)
-            net_growth *= fmaxf(0.f, 1.f - (1.f - re->habitability) * tune_f("HAB_MALUS_K", 0.20f));
+            net_growth *= fmaxf(0.f, 1.f - (1.f - re->habitability)
+                              * tune_f("HAB_MALUS_K", 0.20f) * doctrine_key_mult(re->owner, "HAB_MALUS_K"));   /* doctrine Colonisation : « Acclimatation » */
         net_growth *= dt;   /* cumulatif → suit le pas (mensuel : 1/12 d'an) */
 
         float total_pop_now=0.f;
@@ -5268,7 +5274,7 @@ void econ_tick(WorldEconomy *e, float dt) {
         if (re->owner>=0){
             int rrg=religion_of_region(re->region);
             if (rrg>=0 && rrg!=religion_of_country(re->owner) && !religion_region_stabilized(re->region))
-                re->satisfaction = fmaxf(0.f, re->satisfaction - tune_f("RELIG_MINORITY_SAT",0.15f));
+                re->satisfaction = fmaxf(0.f, re->satisfaction - tune_f("RELIG_MINORITY_SAT",0.15f)*doctrine_key_mult(re->owner,"RELIG_MINORITY_SAT"));   /* doctrine Divin : « Orthodoxie » (le revers) */
         }
         re->prosperity = re->gdp/(popsum+1.f);
 
@@ -5412,7 +5418,8 @@ void econ_tick(WorldEconomy *e, float dt) {
              * impossible. Les armes enchantées gardent la décrue pleine (diplo_mil_power les
              * lit : les laisser s'empiler emballerait la course aux armements). */
             pool[c][g] *= (res_is_arm(g) && g!=RES_ENCHANTED_ARMS)
-                        ? tune_f("ARSENAL_DECAY", 0.99f) : 0.85f;
+                        ? fminf(0.999f, tune_f("ARSENAL_DECAY", 0.99f)*doctrine_key_mult(c,"ARSENAL_DECAY"))   /* doctrine Offense : « Arsenaux » (plafond : la rouille ne cesse jamais) */
+                        : 0.85f;
         }
     }
     /* REDISTRIBUTION du pool aux provinces au PRORATA de leur population (post-croissance,
@@ -5822,7 +5829,7 @@ void econ_country_forecast(const WorldEconomy *e, int cid, float horizon, EconFo
         for (int g=1; g<RES_PROD_FIRST; g++){
             if (re->raw_cap[g]<=0.f) continue;
             double geo=re->raw_cap[g]/geo_ref; if (geo>geo_cap) geo=geo_cap;
-            double boost = 1.0 + (double)tune_f("RAW_BOOST_PER_TIER",0.05f)*(double)re->raw_boost[g];
+            double boost = 1.0 + (double)(tune_f("RAW_BOOST_PER_TIER",0.05f)*doctrine_key_mult(cid,"RAW_BOOST_PER_TIER"))*(double)re->raw_boost[g];   /* doctrine Production : « Rendement » (miroir du potentiel) */
             pot[g]+= ec*0.8*lab_share * EXTRACT_YIELD[g] * geo * boost;
         }
     }
@@ -5869,7 +5876,7 @@ void econ_country_forecast(const WorldEconomy *e, int cid, float horizon, EconFo
      * à brique/carrière/scierie) dans le pipeline IA. Réutilise le MÊME seuil que le §NF (cohérent). */
     {
         const int trio[3]={RES_CLAY,RES_STONE,RES_WOOD};
-        float need=tune_f("RAW_WORKS_NEED",60.f);
+        float need=tune_f("RAW_WORKS_NEED",60.f)*doctrine_key_mult(cid,"RAW_WORKS_NEED");   /* doctrine Infrastructure : « Carrières » */
         for (int i=0;i<3;i++){ int g=trio[i];
             /* SIGNAL = matière BÂTISSABLE réelle (stock + surplus net), PAS la capacité géologique :
              * un empire riche en raw_cap BOIS mais dont le feu BRÛLE tout (offre < demande) a un stock
@@ -6749,7 +6756,7 @@ int econ_ip_invest_tick(WorldEconomy *e){
             if (wpc < wpc_gate) continue;                          /* pas assez de surplus */
             BuildingType b; bool have;
             if (!ip_find_shortage_building(e, pe, pe->owner, klass, active_needs, &b, &have)) continue;
-            float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(e);   /* même prix que le civil IA — pas de bonus/malus */
+            float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(e)*doctrine_key_mult(pe->owner,"MANUF_BUILD_COST");   /* même prix que le civil IA + doctrine Production : « Gages » */
             if (pe->strata[klass].wealth < cost) continue;         /* peut être RICHE en tête mais la CLASSE pas assez nombreuse : pas d'endettement */
             bool ok = have ? econ_manuf_level_delta(e, p, b, +1)   /* RENFORCER (motif CMD_MANUF_LEVEL) */
                            : econ_build_manufacture(e, p, b);      /* FONDER (motif CMD_BUILD_MANUF) */

@@ -487,6 +487,22 @@ static int peace_fragment_country(Sim *s,World *w,int parent){
  * — région perdue, edifice/unité hors domaine — est ignoré, jamais déréférencé) puis
  * appliqué par le MÊME actionneur que l'IA (agency/warhost). Drain → file remise à 0.
  * cmd_n=0 (chronique) ⇒ no-op total : aucun état touché, aucun RNG, hash INCHANGÉ. */
+/* LES DOCTRINES §4.3bis — L'ASSIETTE DE L'INFLUENCE. Le COURANT politique adopté
+ * (Aristocratie/Bourgeoisie/Populaire/Divin, un seul à la fois, non suspendu) RE-SIED
+ * la génération sur SA classe ; sans courant, l'assiette par défaut (élites × 0.002).
+ * C'est ICI que la traduction DoctrineId → InfluenceBase se fait : les deux modules
+ * restent ignorants l'un de l'autre. */
+static InfluenceBase sim_influence_base(const Sim *s){
+    int cur = s ? doctrines_current(s->doct, s->human_player) : -1;
+    switch (cur){
+      case DOCT_ARISTOCRATIE: return INFL_BASE_ARISTO;
+      case DOCT_BOURGEOISIE:  return INFL_BASE_BOURGEOIS;
+      case DOCT_POPULAIRE:    return INFL_BASE_LABORER;
+      case DOCT_DIVIN:        return INFL_BASE_FAITH;
+      default:                return INFL_BASE_DEFAUT;
+    }
+}
+
 static void sim_cmd_drain(Sim *s, World *w){
     int p = s->human_player;
     if (p < 0 || p >= w->n_countries){ s->cmd_n = 0; return; }   /* pas d'humain : on jette (sécurité) */
@@ -518,7 +534,7 @@ static void sim_cmd_drain(Sim *s, World *w){
                 float cost = 0.f;
                 if (c->verb==CMD_OFFER_ALLIANCE || c->verb==CMD_OFFER_PACT || c->verb==CMD_OFFER_MIGRATION
                  || c->verb==CMD_EMBARGO || c->verb==CMD_PEACE_OFFER)
-                    cost = tune_f("INFLUENCE_COST_ENVOY", 12.f);
+                    cost = tune_f("INFLUENCE_COST_ENVOY", 12.f)*doctrine_key_mult(p,"INFLUENCE_COST_ENVOY");   /* doctrine Diplomatie : « Chancellerie » */
                 else if (c->verb==CMD_FABRICATE_CB)
                     cost = tune_f("INFLUENCE_COST_FAB", 25.f);
                 if (cost>0.f && !influence_can_spend(s->infl, p, cost)) continue;
@@ -689,7 +705,8 @@ static void sim_cmd_drain(Sim *s, World *w){
               for (int pi=0; pi<s->econ->n_prov && !feed; pi++)
                   if (s->econ->prov[pi].owner==p && s->econ->prov[pi].raw_cap[in1]>0.f) feed=true;
               if (!feed) break; }
-            float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(s->econ)*decree_manuf_cost_mult(p);   /* orientation ATELIERS */
+            float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(s->econ)*decree_manuf_cost_mult(p)
+                      *doctrine_key_mult(p,"MANUF_BUILD_COST");   /* orientation ATELIERS + doctrine Production : « Gages » */
             if (!credit_can_spend(s->econ, w, p, cost)) break;
             if (econ_build_manufacture(s->econ, pid, (BuildingType)b)){
                 if (!credit_spend(s->econ, w, p, cost)) break;
@@ -709,7 +726,8 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (pe->owner != p || !pe->colonized) break;              /* REVALIDE : à soi, peuplée */
             if (dir>0){
                 /* MONTER = injection de capacité DÉLIBÉRÉE, payante (miroir de la pose). */
-                float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(s->econ)*decree_manuf_cost_mult(p);
+                float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(s->econ)*decree_manuf_cost_mult(p)
+                          *doctrine_key_mult(p,"MANUF_BUILD_COST");   /* orientation ATELIERS + doctrine Production : « Gages » */
                 if (!credit_can_spend(s->econ, w, p, cost)) break;
                 if (econ_manuf_level_delta(s->econ, pid, (BuildingType)b, +1)){
                     if (!credit_spend(s->econ, w, p, cost)) break;
@@ -1021,6 +1039,22 @@ static void sim_cmd_drain(Sim *s, World *w){
                 }
             }
             break; }
+          /* ── LES DOCTRINES §4 — les trois verbes de gestion. Le patron
+           *    CMD_SEAL_DESSEIN : ici on ne fait que passer les arguments, TOUTE la
+           *    revalidation (slot ouvert et libre, exclusivités, séquence des idées,
+           *    influence disponible) vit dans le module — miroir exact de save_sane
+           *    et de doctrines_why_not, la source unique lue par la façade. ── */
+          case CMD_DOCT_ADOPT:
+            doctrines_adopt(s->doct, s->infl, p, c->a[0], c->a[1],
+                            influence_scale(s->econ, p, sim_influence_base(s)));
+            break;
+          case CMD_DOCT_IDEA:
+            doctrines_buy_idea(s->doct, s->infl, p, c->a[0],
+                               influence_scale(s->econ, p, sim_influence_base(s)));
+            break;
+          case CMD_DOCT_ABANDON:
+            doctrines_abandon(s->doct, s->infl, p, c->a[0]);
+            break;
           /* ── COLONISATION (charte) : a[0] = la province CIBLE (vierge). La SOURCE = la
            *    province colonisée du joueur la plus peuplée (miroir du modèle viewer) ;
            *    les PORTES (pop/vivres/cible) vivent dans econ_colonize_province. ── */
@@ -1213,7 +1247,15 @@ void sim_day(Sim *s, World *w) {
             /* INFLUENCE POLITIQUE §3 — même motif (mensuel, joueur SEUL) : la chronique
              * (human_player=-1) n'appelle jamais influence_tick ⇒ golden intact par
              * construction. gain = INFLUENCE_PER_NOBLE × élites(prov[]) × mult_conseil. */
-            influence_tick(s->infl, w, s->econ, s->sc, w->seed, s->human_player);
+            influence_tick(s->infl, w, s->econ, s->sc, w->seed, s->human_player,
+                           sim_influence_base(s));
+            /* LES DOCTRINES §4 — MÊME motif, et JUSTE APRÈS la génération : l'entretien
+             * (DOCT_UPKEEP/mois par doctrine active) se prélève sur le stock du mois
+             * courant ; insolvable ⇒ les dernières adoptées se suspendent CE mois. Le
+             * prix (comme l'adoption et les idées) est LINÉARISÉ sur l'assiette :
+             * un empire deux fois plus noble paie deux fois plus. */
+            doctrines_tick(s->doct, s->infl, s->human_player,
+                           influence_scale(s->econ, s->human_player, sim_influence_base(s)));
         }
         for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
             if (s->ai_on[c]) statecraft_council_ai(s->sc, w, s->econ, w->seed, c, s->year);   /* Q1 : l'IA pourvoit son siège d'éthos (pool de la génération courante) */
@@ -1665,6 +1707,7 @@ void sim_init(Sim *s, World *w) {
      * (scratch NULL au 1er passage → free(NULL) sûr). */
     revolt_init(s->rs); warhost_free(s->host); warhost_init(s->host); missions_init(s->missions);
     influence_init(s->infl);   /* INFLUENCE POLITIQUE §3 : RAZ par sim (nouvelle partie/chronique) */
+    doctrines_init(s->doct);   /* LES DOCTRINES §4 : RAZ par sim (1 slot ouvert, rien d'adopté) */
     dessein_pivot_bind(s->infl);   /* le PIVOT de Dessein débite ce module (merge 2026-09-02) */
     credit_init();
     navy_init(s->navy);
@@ -1705,9 +1748,10 @@ bool sim_alloc(Sim *s) {
     s->rs=malloc(sizeof(RevoltState)); s->host=calloc(1,sizeof(WarHost));   /* P1 : calloc → scratch NULL d'emblée (free sûr) */
     s->missions=malloc(sizeof(MissionsState)); s->camp=malloc(sizeof(Campaign));
     s->infl=malloc(sizeof(InfluenceState));   /* INFLUENCE POLITIQUE §3 : accumulateur par pays */
+    s->doct=malloc(sizeof(DoctrineState));    /* LES DOCTRINES §4 : slots/idées par pays */
     s->navy=malloc(sizeof(NavyState)); s->eg=calloc(1,sizeof(EndgameState));
     return s->econ&&s->wp&&s->wl&&s->net&&s->ts&&s->sc&&s->ag&&s->ev&&s->drift
-        &&s->dp&&s->rn&&s->ai&&s->ai_on&&s->rs&&s->host&&s->missions&&s->infl&&s->camp&&s->navy&&s->eg;
+        &&s->dp&&s->rn&&s->ai&&s->ai_on&&s->rs&&s->host&&s->missions&&s->infl&&s->doct&&s->camp&&s->navy&&s->eg;
 }
 
 void sim_free_members(Sim *s) {
@@ -1724,5 +1768,7 @@ void sim_free_members(Sim *s) {
     free(s->ag); free(s->ev); free(s->drift); free(s->dp); free(s->rn);
     free(s->ai); free(s->ai_on); free(s->rs); warhost_free(s->host); free(s->host); free(s->missions);   /* P1 : scratch warhost */
     free(s->infl);   /* INFLUENCE POLITIQUE §3 */
+    doctrines_sync(NULL);   /* le miroir de process ne doit jamais survivre à l'état qu'il reflète */
+    free(s->doct);   /* LES DOCTRINES §4 */
     free(s->camp); free(s->navy); free(s->eg);
 }

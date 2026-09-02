@@ -1893,6 +1893,41 @@
     X(INFLUENCE_CAP,                    0.0f) \
     X(INFLUENCE_COST_ENVOY,             12.0f) \
     X(INFLUENCE_COST_FAB,               25.0f) \
-    X(DIPLO_ENVOY_FLOOR_DAYS,           30.0f)
+    X(DIPLO_ENVOY_FLOOR_DAYS,           30.0f) \
+    /* LES DOCTRINES (docs/DESIGN_MISSIONS_DOCTRINES.md §4, catalogue :
+     * docs/DESIGN_DOCTRINES_ANNEXE.md) — TOUT est payé en INFLUENCE. « Pas de
+     * gate, pas de prérequis : tu cliques, t'as le bonus » ; le frein est le
+     * COÛT, qui monte avec ce qu'on possède déjà.
+     *   adopter = DOCT_COST_BASE + DOCT_COST_STEP × doctrines actives (50 → 175)
+     *   idée    = IDEA_COST_BASE + IDEA_COST_STEP × idées possédées   (30 → 135)
+     * DOCT_UPKEEP : l'ENTRETIEN MENSUEL, EN INFLUENCE, par doctrine active —
+     * débité APRÈS la génération du mois ; insolvable ⇒ les doctrines les plus
+     * RÉCEMMENT adoptées se suspendent CE mois (mults à 1.0). 0 = kill-switch
+     * (plus aucune suspension possible). Effets : tune_f("CLÉ") ×
+     * doctrine_key_mult(cid,"CLÉ") au site de lecture, clamp [0.60, 1.60] par
+     * clé — JAMAIS tune_set. P1 : joueur SEUL, golden intact par construction. */ \
+    X(DOCT_COST_BASE,                  50.0f) \
+    X(DOCT_COST_STEP,                  25.0f) \
+    X(IDEA_COST_BASE,                  30.0f) \
+    X(IDEA_COST_STEP,                   3.0f) \
+    X(DOCT_UPKEEP,                      1.0f) \
+    /* LES ASSIETTES DES COURANTS (§4.3bis) — le courant politique adopté
+     * RE-SIED la génération d'influence sur SA classe (toujours × le rang moyen
+     * du Conseil). Sans courant : l'assiette par défaut (INFLUENCE_PER_NOBLE).
+     * Parité visée ~4/mois ; l'assiette POPULAIRE reste À MESURER (annexe §16). */ \
+    X(INFLUENCE_PER_NOBLE_ARISTO,       0.0025f) \
+    X(INFLUENCE_PER_BOURGEOIS,          0.0006f) \
+    X(INFLUENCE_PER_LABORER,            0.00012f) \
+    X(INFLUENCE_PER_FAITH,              0.08f) \
+    /* L'ÉCHELLE D'ASSIETTE (décision joueur 2026-09-02) — LINÉARISE tous les
+     * coûts de doctrine (adoption, idée, entretien) sur la population de
+     * l'assiette : é = assiette/mois ÷ INFLUENCE_BASE_REF, plancher 0.25.
+     * 2.0 ≈ 1000 élites × 0.002 (le pays de référence du design). Un empire
+     * deux fois plus noble gagne deux fois plus ET paie deux fois plus : le
+     * temps d'acquisition est constant, le joueur reste libre de grandir.
+     * L'échelle se lit sur l'ASSIETTE SEULE, jamais × le rang du Conseil
+     * (sinon renvoyer ses ministres braderait les prix — exploit évité).
+     * 0 = KILL-SWITCH : é ≡ 1.0, prix plats. */ \
+    X(INFLUENCE_BASE_REF,               2.0f)
 
 #endif /* SCPS_TUNE_LIST_H */

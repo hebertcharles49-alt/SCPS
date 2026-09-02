@@ -25,15 +25,50 @@ typedef struct InfluenceState {          /* tag nommé : scps_missions.h le forw
 
 void influence_init(InfluenceState *is);   /* RAZ (0 par pays — genèse/nouvelle partie) */
 
+/* ── L'ASSIETTE (le COURANT politique la RE-SIED, §4.3bis) ────────────────
+ * Le courant adopté (doctrines Aristocratie/Bourgeoisie/Populaire/Divin) déplace
+ * la BASE de génération sur SA classe. Aucun courant ⇒ l'assiette par défaut
+ * (élites × INFLUENCE_PER_NOBLE). Enum PROPRE au module : scps_influence ne
+ * connaît pas les doctrines (l'appelant fait la traduction DoctrineId → base),
+ * ce qui garde les deux modules indépendants. */
+typedef enum {
+    INFL_BASE_DEFAUT = 0,   /* élites × INFLUENCE_PER_NOBLE (0.002) */
+    INFL_BASE_ARISTO,       /* élites × INFLUENCE_PER_NOBLE_ARISTO (0.0025) */
+    INFL_BASE_BOURGEOIS,    /* bourgeois × INFLUENCE_PER_BOURGEOIS (0.0006) */
+    INFL_BASE_LABORER,      /* journaliers × INFLUENCE_PER_LABORER (0.00012) */
+    INFL_BASE_FAITH         /* Σ foi bâtie × (1+ferveur moyenne) × INFLUENCE_PER_FAITH (0.08) */
+} InfluenceBase;
+
+/* Le GAIN MENSUEL AVANT le multiplicateur du Conseil — l'assiette du courant.
+ * Source UNIQUE : influence_tick l'appelle, et la façade (scps_influence_info)
+ * aussi, pour que le nombre affiché soit CELUI qui sera crédité. */
+double influence_base_gain(const WorldEconomy *econ, int cid, InfluenceBase base);
+/* L'EFFECTIF de l'assiette (nobles, bourgeois, journaliers — ou la foi bâtie
+ * arrondie), pour le hover en MOTS. */
+double influence_base_pop(const WorldEconomy *econ, int cid, InfluenceBase base);
+
+/* ── L'ÉCHELLE D'ASSIETTE (décision joueur 2026-09-02) ────────────────────
+ * Combien de fois l'assiette de RÉFÉRENCE ce pays pèse-t-il ?
+ *     é = influence_base_gain(econ, cid, base) / INFLUENCE_BASE_REF   (plancher 0.25)
+ * Elle LINÉARISE les dépenses politiques sur la population : un empire deux
+ * fois plus noble gagne deux fois plus ET paie deux fois plus — le temps
+ * d'acquisition d'une doctrine est le MÊME à toute échelle, le joueur reste
+ * libre de faire grandir sa noblesse sans que ça brade l'arbre.
+ * ⚠ L'ÉCHELLE SE CALCULE SUR L'ASSIETTE SEULE, JAMAIS × le rang du Conseil :
+ * sinon accumuler à Conseil plein puis RENVOYER ses ministres brade tous les
+ * prix — l'exploit exact que ce choix évite.
+ * INFLUENCE_BASE_REF = 0 ⇒ é ≡ 1.0 (kill-switch : prix plats d'avant). */
+float influence_scale(const WorldEconomy *econ, int cid, InfluenceBase base);
+
 /* Génération MENSUELLE — appelée UNE fois pour `cid` (l'appelant gate human_player>=0,
  * motif décrets) :
- *   gain/mois = INFLUENCE_PER_NOBLE × élites(cid) × mult_conseil
- * élites = influence_elites (somme PROVINCE, jamais region[].pop). mult_conseil =
+ *   gain/mois = influence_base_gain(econ, cid, base) × mult_conseil
+ * L'assiette par défaut = élites (somme PROVINCE, jamais region[].pop). mult_conseil =
  * influence_council_mult (rang moyen des sièges POURVUS, plancher INFLUENCE_COUNCIL_FLOOR
  * si aucun siège pourvu — sinon un Conseil vide rend le joueur muet en diplomatie, choix
  * signalé). Clampe à INFLUENCE_CAP si >0 (0 = sans plafond, décision joueur 2026-09-01). */
 void influence_tick(InfluenceState *is, const World *w, const WorldEconomy *econ,
-                     const Statecraft *sc, uint32_t seed, int cid);
+                     const Statecraft *sc, uint32_t seed, int cid, InfluenceBase base);
 
 float influence_get(const InfluenceState *is, int cid);
 /* épsilon 0.001 : tolère l'arrondi flottant d'un coût pile au centime du stock. */

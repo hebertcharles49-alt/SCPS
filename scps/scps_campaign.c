@@ -232,7 +232,8 @@ static float region_defense(const WorldEconomy *e, int r){
      * bâtiments — une province de casernes tient mieux qu'une province de marchés à
      * n_bld égal. Poids modeste (DEF_PER_H, registre J) : ~20-30 % de tenue en plus
      * pour une garnison consistante, jamais l'immortalité (siege_days plafonne). */
-    return DEF_BASE + DEF_PER_BLD * (float)R->n_bld + cap_def + tune_f("DEF_PER_H", DEF_PER_H) * R->build.H_coerc;
+    return DEF_BASE + DEF_PER_BLD * (float)R->n_bld + cap_def
+         + tune_f("DEF_PER_H", DEF_PER_H)*doctrine_key_mult(R->owner,"DEF_PER_H") * R->build.H_coerc;   /* doctrine Défense : « Remparts » */
 }
 static float region_food_months(const WorldEconomy *e, int r){
     float f=e->region[r].food_sat;
@@ -996,15 +997,16 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
     if (ph<BT_CHOC_J){
         bt->chocs++;
         float tA=bt_terrainA(c,e,bt->loc,A->owner,B->owner);
-        float ctrA=powf(side_counter(&forceA,&forceB), tune_f("CTR_BITE",0.6f)); /* le contre PRIME sur la qualité brute */
-        float ctrB=powf(side_counter(&forceB,&forceA), tune_f("CTR_BITE",0.6f));
+        float ctrA=powf(side_counter(&forceA,&forceB), tune_f("CTR_BITE",0.6f)*doctrine_key_mult(A->owner,"CTR_BITE")); /* le contre PRIME sur la qualité brute (doctrine Offense : « Discipline ») */
+        float ctrB=powf(side_counter(&forceB,&forceA), tune_f("CTR_BITE",0.6f)*doctrine_key_mult(B->owner,"CTR_BITE"));
         float pA=side_power(&forceA)*tA*ctrA;
         float pB=side_power(&forceB)/tA*ctrB;
         pA*=0.85f+0.30f*xs01(rng); pB*=0.85f+0.30f*xs01(rng);
         float tot=pA+pB+1e-3f;
         float dmgk=tune_f("BT_DMG_K",BT_DMG_K);
-        bt->resB -= bt->resB0*dmgk*(2.f*pA/tot);
-        bt->resA -= bt->resA0*dmgk*(2.f*pB/tot);
+        /* doctrine Offense : « Discipline » — chaque camp frappe avec SON multiplicateur. */
+        bt->resB -= bt->resB0*dmgk*doctrine_key_mult(A->owner,"BT_DMG_K")*(2.f*pA/tot);
+        bt->resA -= bt->resA0*dmgk*doctrine_key_mult(B->owner,"BT_DMG_K")*(2.f*pB/tot);
         float prev_lossB=bt->lossB, prev_lossA=bt->lossA;
         bt->lossB += (float)force_units(&forceB)*tune_f("BT_CHOC_MORTS",BT_CHOC_MORTS)*(2.f*pA/tot);
         bt->lossA += (float)force_units(&forceA)*tune_f("BT_CHOC_MORTS",BT_CHOC_MORTS)*(2.f*pB/tot);

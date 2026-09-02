@@ -394,14 +394,14 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
         if (d->status[s][v]!=DIPLO_WAR && !d->v_ligue[v]){
             float prox=suz_culture_prox(w,econ,s,v), appr=1.f-d->v_grief[v];
             /* (a) INTÉGRATION — d'autant plus vite que les cultures sont PROCHES et le grief BAS. */
-            float irate=(1.f/tune_f("AI_VASSAL_INTEGRATE_YEARS",20.f))*(0.3f+0.7f*prox)*appr;
+            float irate=(1.f/(tune_f("AI_VASSAL_INTEGRATE_YEARS",20.f)*doctrine_key_mult(s,"AI_VASSAL_INTEGRATE_YEARS")))*(0.3f+0.7f*prox)*appr;   /* doctrine Vassaux : « Serments » */
             d->v_integration[v]=clampf(d->v_integration[v]+irate,0.f,1.f);
-            float gate=tune_f("AI_VASSAL_CONTRIB_GATE",0.65f);
+            float gate=tune_f("AI_VASSAL_CONTRIB_GATE",0.65f)*doctrine_key_mult(s,"AI_VASSAL_CONTRIB_GATE");   /* doctrines Vassaux/Aristocratie */
             /* (b) CONTRIBUTION TYPÉE — bond MÛRI : le vassal verse selon sa FONCTION × appréciation,
              *     dans le canal correspondant du maître (capitale = pool national P1). */
             if (d->v_integration[v]>=gate && capreg[s]>=0 && capreg[s]<econ->n_regions){
                 float food=0.f,gold=0.f,mil=0.f; VassalFunction fn=vassal_function(econ,v,&food,&gold,&mil);
-                float base=tune_f("AI_VASSAL_CONTRIB_BASE",0.05f)*appr;
+                float base=tune_f("AI_VASSAL_CONTRIB_BASE",0.05f)*doctrine_key_mult(s,"AI_VASSAL_CONTRIB_BASE")*appr;   /* doctrines Vassaux/Aristocratie */
                 /* DÉCRET « Politique de tribut » (réforme joueur, IRRÉVERSIBLE) : le maître qui
                  * l'a promulguée presse ×1.5 TOUS ses vassaux — la contrepartie est le grief
                  * (v_grief), qui couve la fronde plus vite (déjà lu ci-dessus §GRIEF). */
@@ -499,7 +499,7 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
                     econ_prov_treasury_credit(econ, spid, -gcost);   /* B6 : dual-write (post-agrégation) */
                     float years=fmaxf(1.f, tune_f("AI_ANNEX_YEARS_PER_PRICE",0.5f)
                                        *dessein_mult(s, DBOON_ANNEX_YEARS_PER_PRICE)*price
-                                       *(1.f-tune_f("ANNEX_INTEGRATION_DISCOUNT",0.6f)*d->v_integration[v]));
+                                       *(1.f-tune_f("ANNEX_INTEGRATION_DISCOUNT",0.6f)*doctrine_key_mult(s,"ANNEX_INTEGRATION_DISCOUNT")*d->v_integration[v]));   /* doctrine Vassaux : « Annexion » */
                     d->v_annex[v]=clampf(d->v_annex[v]+1.f/years,0.f,1.f);
                 } else d->v_annex[v]=fmaxf(0.f,d->v_annex[v]-0.10f);   /* sans or, le projet s'essouffle */
                 if (d->v_annex[v]>=1.f){                               /* DIGESTION ABOUTIE */
@@ -1483,7 +1483,7 @@ float diplo_pillage_value(WorldEconomy *econ, int region, int dst_region, int vi
      * pillables par le sac de siège PHYSIQUE (diplo_siege_loot), pas par cette voie
      * dénominée-revenu. */
     if (econ_country_is_wild(victim_cid)) return 0.f;
-    float target = tune_f("PILLAGE_INCOME_FRAC", PILLAGE_INCOME_FRAC)
+    float target = tune_f("PILLAGE_INCOME_FRAC", PILLAGE_INCOME_FRAC)*doctrine_key_mult(victim_cid,"PILLAGE_INCOME_FRAC")   /* doctrine Défense : « Terre brûlée » (côté VICTIME) */
                  * fmaxf(0.f, econ_country_tax_year(victim_cid));
     if (target<=0.f) return 0.f;                    /* victime sans revenu capturé (An-1 court) → rien */
     float loot=0.f;
@@ -1559,7 +1559,7 @@ float diplo_siege_loot(WorldEconomy *econ, int region, int dst_region){
      * "loot" monétaire — le stock pris part directement au stock de l'occupant (biens
      * captifs), aucune conversion en gold ni crédit de trésor. */
     bool victim_wild = econ_country_is_wild(re->owner);
-    float frac = tune_f("SIEGE_LOOT_FRAC", SIEGE_LOOT_FRAC);
+    float frac = tune_f("SIEGE_LOOT_FRAC", SIEGE_LOOT_FRAC)*doctrine_key_mult(re->owner,"SIEGE_LOOT_FRAC");   /* doctrine Défense : « Terre brûlée » (côté VICTIME) */
     float loot=0.f;
     for (int g=1; g<RES_COUNT; g++){
         float want = frac * re->supply[g];            /* la PART de production de ce mois */

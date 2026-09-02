@@ -192,6 +192,16 @@ public:
                                                          * nom · objectif · récompense · saveur · cible · prêt ·
                                                          * pivot (deux voies + preuves d'usage + prix) */
     bool       seal_dessein(int branche, int echelon, int voie);  /* SCELLER l'échelon (verbe ENFILÉ) */
+    /* LES DOCTRINES §4 — le contrat de readers (docs/DESIGN_MISSIONS_DOCTRINES.md §4) :
+     * 6 emplacements · 17 cartes de catalogue · le détail d'une doctrine (6 idées) ·
+     * 3 verbes ENFILÉS. Tout en MOTS + entiers ; les slugs bg/icon sont les fichiers
+     * installés (lot14_doctrines / lot15_idees). */
+    Dictionary doctrine_slots(int country);
+    Array      doctrine_catalog(int country);
+    Dictionary doctrine_detail(int country, int id);
+    bool       doctrine_adopt(int slot, int doctrine);
+    bool       doctrine_buy_idea(int doctrine);
+    bool       doctrine_abandon(int slot);
     Dictionary country_factions(int country);          /* spectre de factions : parts/griefs/dominante + coup/corruption */
 
     /* ACTIONS du joueur (la main humaine — mêmes actionneurs que l'IA) */

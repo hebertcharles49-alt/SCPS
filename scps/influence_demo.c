@@ -83,7 +83,7 @@ int main(int argc, char **argv){
     ok("aucun siege pourvu => mult_conseil == INFLUENCE_COUNCIL_FLOOR (1.0, jamais un Conseil muet)",
        near_f(mult0, 1.0, 0.001));
 
-    influence_tick(is, w, econ, sc, w->seed, cid);
+    influence_tick(is, w, econ, sc, w->seed, cid, INFL_BASE_DEFAUT);
     double gain1 = influence_get(is, cid);
     double expect1 = 0.002 * 1000.0 * 1.0;
     printf("   gain mois 1 (plancher) : %.4f (attendu %.4f)\n", gain1, expect1);
@@ -101,7 +101,7 @@ int main(int argc, char **argv){
     float mult1 = influence_council_mult(sc, w->seed, cid, &nseat2);
     ok("un siege pourvu => n_seated==1", nseat2==1);
     ok("mult_conseil == le rang (I..III) du seul ministre en siege", near_f(mult1, (double)best_tier, 0.001));
-    influence_tick(is, w, econ, sc, w->seed, cid);
+    influence_tick(is, w, econ, sc, w->seed, cid, INFL_BASE_DEFAUT);
     double gain2 = influence_get(is, cid) - gain1;
     double expect2 = 0.002 * 1000.0 * (double)best_tier;
     printf("   gain mois 2 (rang %d) : %.4f (attendu %.4f)\n", best_tier, gain2, expect2);
@@ -117,7 +117,7 @@ int main(int argc, char **argv){
     ok("influence_can_spend accepte un cout <= stock", influence_can_spend(is, cid, stock_before));
     influence_spend(is, cid, stock_before + 1000.f);   /* dépense EXCESSIVE : clampe à 0, ne va jamais négatif */
     ok("une depense excessive clampe le stock a 0 (jamais negatif)", influence_get(is,cid)==0.f);
-    influence_tick(is, w, econ, sc, w->seed, cid);      /* re-génère un mois pour la suite */
+    influence_tick(is, w, econ, sc, w->seed, cid, INFL_BASE_DEFAUT);      /* re-génère un mois pour la suite */
     float restocked = influence_get(is, cid);
     influence_spend(is, cid, restocked * 0.5f);
     ok("une depense LEGALE debite exactement le cout", near_f(influence_get(is,cid), restocked*0.5, 0.01));

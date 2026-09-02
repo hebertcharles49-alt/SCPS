@@ -15,6 +15,10 @@ extends Control
 ##
 ## MODE OBSERVATEUR (2026-07-30) : les cellules 1-8 sont remplacées par un simple mot
 ## neutre — `_observing()` — le BLOC TEMPS (date/vitesse/pause), lui, reste identique.
+##
+## AJOUT UI-DOCTRINE P2 (2026-09-02) : une cellule INFLUENCE (icon2 "influence"), insérée
+## à côté de la Population (directive joueur) — stock nu + delta net/mois, hover
+## gain/dépenses détaillé. Clic → panneau des Doctrines (doctrine_panel.gd, 6 slots).
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
@@ -29,10 +33,14 @@ const H := Frame.TOPBAR_H
 
 signal tech_requested
 signal navigate_requested(request: Dictionary)
+## UI-DOCTRINE P2 (2026-09-02) : clic sur la cellule Influence → panneau des Doctrines
+## (6 slots), motif `tech_requested` (signal direct, pas d'InfoRef — cible hors énum).
+signal doctrine_requested
 
 var _speed_rect := Rect2()
 var _speed_btns := []   ## boutons de vitesse DISCRETS façon RimWorld : [[Rect2, index], …]
 var _savoir_rect := Rect2()
+var _influence_rect := Rect2()   ## la cellule Influence — clic → doctrine_requested
 var _nav_zones: Array = []     ## [{rect, request, hint}] — mêmes coordonnées que le dessin
 # §7 — l'encart d'âge (« Engager : … » / « Âge : … ») a DÉMÉNAGÉ en haut du menu de
 # droite (empire_sidebar.gd), sous le bloc TEMPS — retour joueur 2026-07-11.
@@ -258,7 +266,11 @@ func _cell(px: float, icon: String, rid_or_val, val: String, dtxt: String, dpos:
 		# UIKit.icon2() — le SEUL registre, jamais un load() direct ici.
 		var t2: Texture2D = UIKit.icon2(icon2name)
 		if t2 != null:
-			draw_texture_rect(t2, Rect2(px, (H - 32.0) * 0.5, 32, 32), false)
+			# le sceau d'influence (lot16) porte un aplat crème qui ressort BLANC sur la
+			# barre sombre (probe 06_topbar_plein) — on le réchauffe par modulation pour
+			# qu'il rejoigne la famille lot1 ; les autres icônes passent telles quelles.
+			var mod := Color(0.96, 0.87, 0.70) if icon2name == "influence" else Color(1, 1, 1)
+			draw_texture_rect(t2, Rect2(px, (H - 32.0) * 0.5, 32, 32), false, mod)
 	elif rname != "":
 		# cellule de RESSOURCE par NOM (bois/argile/pierre/armes) : le chip parchemin de
 		# la ressource, résolu par resource_sprite(-1, nom) — même sprite que le tiroir Stocks.
@@ -386,6 +398,7 @@ func _draw() -> void:
 	var w = Sim.world
 	_tips.clear()
 	_nav_zones.clear()
+	_influence_rect = Rect2()
 	# (la capsule de chrome à gauche est RETIRÉE — panneaux plats, retour joueur 2026-07-10)
 
 	# LE PAYS JOUÉ — CELLULES façon CK3 (hud.gui : icône + VALEUR empilée sur son DELTA
@@ -460,6 +473,32 @@ func _draw() -> void:
 			Color(0, 0, 0, 0), "", "top_population")
 		_add_nav(Rect2(pop_x - 4, 0, px - pop_x, H),
 			InfoRef.request(InfoRef.make(InfoRef.SIDEBAR_TAB, 1), "sidebar"), "ouvrir la démographie")
+
+		# ═══ 3bis. INFLUENCE POLITIQUE (UI-DOCTRINE P2, docs/DESIGN_MISSIONS_DOCTRINES.md
+		#     §3/§5) — à CÔTÉ de la population (directive joueur) : stock nu (icon2
+		#     "influence") + delta net mensuel. Hover : gain « +N/mois » et dépenses
+		#     « −N/mois », chacun suivi du détail en mots du reader (hover/hover_depenses).
+		#     Clic → panneau des Doctrines (6 slots, doctrine_panel.gd). Le reader
+		#     `influence_info` peut encore manquer les clés upkeep_month/net_month/
+		#     hover_depenses tant que le binding P2 n'a pas atterri (.get partout, défauts
+		#     à 0/"" — cellule TOUJOURS affichée, jamais un crash). ═══
+		var infl_x := px
+		var infl: Dictionary = w.influence_info(me) if w.has_method("influence_info") else {}
+		var infl_stock := int(infl.get("stock", 0))
+		var infl_gain := int(infl.get("gain_month", 0))
+		var infl_upkeep := int(infl.get("upkeep_month", 0))
+		var infl_net := int(infl.get("net_month", infl_gain - infl_upkeep))
+		var infl_hover := String(infl.get("hover", ""))
+		var infl_hover_dep := String(infl.get("hover_depenses", ""))
+		var infl_tip := "Influence %+d/mois" % infl_net
+		if infl_gain != 0 or infl_hover != "":
+			infl_tip += "\n+%d/mois%s" % [infl_gain, (" — " + infl_hover) if infl_hover != "" else ""]
+		if infl_upkeep != 0 or infl_hover_dep != "":
+			infl_tip += "\n−%d/mois%s" % [infl_upkeep, (" — " + infl_hover_dep) if infl_hover_dep != "" else ""]
+		var infl_dtxt := ("%+d/mois" % infl_net) if absi(infl_net) >= 1 else ""
+		px = _cell(px, "", "", _grp(infl_stock), infl_dtxt, infl_net >= 0, infl_tip,
+			Color(0, 0, 0, 0), "", "influence")
+		_influence_rect = Rect2(infl_x - 4, 0, px - infl_x, H)
 
 		# ═══ 4. MATÉRIAUX DE CONSTRUCTION — somme Pierre+Argile+Bois · hover détaillé. ═══
 		var materials_x := px
@@ -578,13 +617,17 @@ func _draw() -> void:
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
-		var clickable := _speed_rect.has_point(event.position)
+		var clickable := _speed_rect.has_point(event.position) or _influence_rect.has_point(event.position)
 		for z in _nav_zones:
 			if (z["rect"] as Rect2).has_point(event.position):
 				clickable = true
 				break
 		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if clickable else Control.CURSOR_ARROW
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		if _influence_rect.has_point(event.position):
+			doctrine_requested.emit()
+			Sound.play("ui_click")
+			return
 		for z in _nav_zones:
 			if (z["rect"] as Rect2).has_point(event.position):
 				navigate_requested.emit((z["request"] as Dictionary).duplicate(true))

@@ -547,7 +547,8 @@ void revolt_scan(RevoltState *rs, World *w, WorldEconomy *econ,
          * son signal atteint encore une révolte réelle. sc peut être NULL (bancs). */
         if (sc){
             float ag = (float)statecraft_agitation(sc, r) / 100.f;
-            worst = clampf(worst + tune_f("W_AGITATION_UNREST", W_AGITATION_UNREST) * decree_unrest_mult(o) * ag, 0.f, 1.f);   /* orientation FÊTES PUBLIQUES */
+            worst = clampf(worst + tune_f("W_AGITATION_UNREST", W_AGITATION_UNREST) * decree_unrest_mult(o)
+                                 * doctrine_key_mult(o,"W_AGITATION_UNREST") * ag, 0.f, 1.f);   /* orientation FÊTES PUBLIQUES + doctrine Populaire : « Doléances » */
         }
         /* TRADITIONS — le levier FRACTURE (Soudé/Factieux) : la cohésion sociale du
          * peuple AMORTIT ou AGGRAVE le grief — même FOLD que W_AGITATION_UNREST (le
@@ -972,9 +973,9 @@ static void apply_rebel_victory(RevoltState *rs, World *w, WorldEconomy *econ,
             { float lean[FAC_COUNT]; group_ethos_lean_k(&rb->culture, rb->klass, lean);   /* l'extorqueur penche avec sa classe */
               int wf=0; for (int f=1;f<FAC_COUNT;f++) if (lean[f]>lean[wf]) wf=f;
               faction_concede(rb->owner, (EthosFaction)wf); }
-            pe->build.K_inst = fmaxf(0.f, pe->build.K_inst - tune_f("C3_K_HOLLOW",C3_K_HOLLOW));
+            pe->build.K_inst = fmaxf(0.f, pe->build.K_inst - tune_f("C3_K_HOLLOW",C3_K_HOLLOW)*doctrine_key_mult(rb->owner,"C3_K_HOLLOW"));   /* doctrine Populaire : « Souveraineté » */
             if (rb->region<SCPS_MAX_REG)
-                wl->L[rb->region] = clampf(wl->L[rb->region]-tune_f("C3_L_HOLLOW",C3_L_HOLLOW), 0.f, 10.f);
+                wl->L[rb->region] = clampf(wl->L[rb->region]-tune_f("C3_L_HOLLOW",C3_L_HOLLOW)*doctrine_key_mult(rb->owner,"C3_L_HOLLOW"), 0.f, 10.f);   /* doctrine Populaire : « Souveraineté » */
             rs->n_concession++; rb->outcome=OUT_CONCESSION;
             break; }
     }

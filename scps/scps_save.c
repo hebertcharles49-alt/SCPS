@@ -90,7 +90,8 @@ bool scps_save_slot_info(int slot, SaveHeader *out){
     X(DCRE,'D','C','R','E')  /* v64 : DÉCRETS DU JOUEUR — g_decree_mask[] (civics, état par pays) */ \
     X(FOGV,'F','O','G','V')  /* v75 : BROUILLARD DE GUERRE — known[][] (connaissance cumulative par empire) */ \
     X(TOPO,'T','O','P','O')  /* v98 : TOPONYMIE DES VILLES — g_ville_name[SCPS_MAX_REG] (scps_toponym.c) */ \
-    X(INFL,'I','N','F','L')  /* v104 : INFLUENCE POLITIQUE — InfluenceState.influence[SCPS_MAX_COUNTRY] */
+    X(INFL,'I','N','F','L')  /* v104 : INFLUENCE POLITIQUE — InfluenceState.influence[SCPS_MAX_COUNTRY] */ \
+    X(DOCT,'D','O','C','T')  /* v106 : LES DOCTRINES — DoctrineState (slots/idées/ordre/suspension) */
 #define SV_DECL_TAG(name,a,b,c,d) enum { SVT_##name = SV_TAG(a,b,c,d) };
 SV_SECTIONS(SV_DECL_TAG)
 #undef SV_DECL_TAG
@@ -156,6 +157,7 @@ static bool sv_write_payload(FILE *f, World *w, Sim *s, int heritage, int ethos)
     ok&=sv_w(f,SVT_FOGV, NULL,0); fog_save(f);
     ok&=sv_w(f,SVT_TOPO, NULL,0); toponym_save(f);
     ok&=sv_w(f,SVT_INFL, s->infl, sizeof *s->infl);   /* v104 : INFLUENCE POLITIQUE */
+    ok&=sv_w(f,SVT_DOCT, s->doct, sizeof *s->doct);   /* v106 : LES DOCTRINES */
     return ok;
 }
 
@@ -216,6 +218,7 @@ static bool sv_read_payload(FILE *f, World *w, Sim *s, int *out_heritage, int *o
     ok&=sv_r(f,SVT_FOGV, NULL,0); ok&=fog_load(f);
     ok&=sv_r(f,SVT_TOPO, NULL,0); ok&=toponym_load(f);
     ok&=sv_r(f,SVT_INFL, s->infl, sizeof *s->infl);   /* v104 : INFLUENCE POLITIQUE */
+    ok&=sv_r(f,SVT_DOCT, s->doct, sizeof *s->doct);   /* v106 : LES DOCTRINES */
     return ok;
 }
 
@@ -562,6 +565,31 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         for (int c=0;c<SCPS_MAX_COUNTRY;c++)
             if (!(s->infl->influence[c]>=0.f && s->infl->influence[c]<=1.0e6f)) return false;
     }
+    /* v106 — LES DOCTRINES : la section DOCT est un blob BRUT ; tout ce qu'elle porte
+     * indexe la table du catalogue (doctrine), borne une boucle (slot, idées) ou pilote
+     * l'ordre de suspension (seq). On revalide TOUT, refus net (charte save_sane) —
+     * jamais un clamp silencieux. Une doctrine ne peut occuper QU'UN slot, et les deux
+     * exclusivités (Commerce ⊥ Mercantilisme · un seul courant) sont des INVARIANTS
+     * d'état : une save qui les viole est refusée comme un index hors bornes. */
+    if (s->doct) for (int c=0;c<SCPS_MAX_COUNTRY;c++){
+        const DoctrineState *ds = s->doct;
+        int seen[DOCT_COUNT]; int n_cur=0;
+        for (int d=0;d<DOCT_COUNT;d++) seen[d]=0;
+        if (ds->seq_next[c]   < 0  || ds->seq_next[c]  > 30000)          return false;
+        for (int d=0;d<DOCT_COUNT;d++)
+            if (ds->ideas[c][d] < 0 || ds->ideas[c][d] > DOCT_IDEAS) return false;
+        for (int k=0;k<DOCT_SLOTS_MAX;k++){
+            int d = ds->doct[c][k];
+            if (d < -1 || d >= DOCT_COUNT) return false;
+            if (ds->susp[c][k] < 0 || ds->susp[c][k] > 1) return false;
+            if (d < 0){ if (ds->seq[c][k] != -1) return false; continue; }
+            if (ds->seq[c][k] < 0 || ds->seq[c][k] >= ds->seq_next[c]) return false;
+            if (seen[d]++) return false;                       /* deux fois la même doctrine */
+            if (d >= DOCT_ARISTOCRATIE) n_cur++;
+        }
+        if (n_cur > 1) return false;                           /* deux courants politiques */
+        if (seen[DOCT_COMMERCE] && seen[DOCT_MERCANTILISME]) return false;
+    }
     if (!director_save_sane(s->ev, SCPS_MAX_COUNTRY*SCPS_MAX_COUNTRY)) return false;
     /* MEMBRANE DE DÉCISION (v62) : les cicatrices/cooldowns visent une région OU un pays
      * selon le scope de l'évènement — la borne large (max des deux) couvre les deux cas,
@@ -623,6 +651,10 @@ int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_her
      * MUETTES jusqu'à la première clôture mensuelle — et le savetest (A==B) le
      * prendrait aussitôt. */
     missions_boons_sync(s->missions, s->year);
+    /* LES DOCTRINES — MÊME contrat : le miroir lu par doctrine_key_mult est un cache
+     * de PROCESS, jamais sérialisé. Sans ce rappel, une partie rechargée verrait ses
+     * doctrines MUETTES jusqu'à la première clôture (et le --savetest le prendrait). */
+    doctrines_sync(s->doct);
     demography_drift_scrub(s->econ, s->drift);   /* audit 2026-08-12 : balaie les dérives orphelines (résurrection impossible) */
     campaign_backfill_nominal(s->camp);   /* v97 : le nominal désérialisé ne doit jamais laisser un déficit négatif */
     *params=h.params;

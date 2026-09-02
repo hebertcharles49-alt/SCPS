@@ -3418,19 +3418,33 @@ int scps_dessein_info(ScpsSim *s, int cid, int branche, ScpsDessein *out){
  * (jamais le calcul, jamais un nom de tunable). Le rang affiché est la moyenne de rang
  * ARRONDIE (I/II/III) — le multiplicateur réel (fractionnaire) ne sert qu'au calcul
  * interne (influence_tick), jamais montré nu (doctrine membrane). */
+/* L'ASSIETTE COURANTE du pays : le COURANT politique adopté (non suspendu) la
+ * re-sied sur sa classe. Source unique de la façade — miroir exact de
+ * sim_influence_base (scps_sim.c), le seul autre traducteur DoctrineId→base. */
+static InfluenceBase api_influence_base(ScpsSim *s, int cid){
+    int cur = (s && s->sim.doct) ? doctrines_current(s->sim.doct, cid) : -1;
+    switch (cur){
+      case DOCT_ARISTOCRATIE: return INFL_BASE_ARISTO;
+      case DOCT_BOURGEOISIE:  return INFL_BASE_BOURGEOIS;
+      case DOCT_POPULAIRE:    return INFL_BASE_LABORER;
+      case DOCT_DIVIN:        return INFL_BASE_FAITH;
+      default:                return INFL_BASE_DEFAUT;
+    }
+}
+
 void scps_influence_info(ScpsSim *s, int cid, ScpsInfluence *out){
     if (!out) return;
     memset(out, 0, sizeof *out);
-    out->hover = "";
+    out->hover = ""; out->hover_depenses = "";
     if (!s || !s->ready || !s->sim.infl || cid<0 || cid>=s->w->n_countries) return;
     out->stock = (int)(influence_get(s->sim.infl, cid) + 0.5f);
     int nseat = 0;
     float mult = influence_council_mult(s->sim.sc, s->w->seed, cid, &nseat);
-    double elites = influence_elites(s->sim.econ, cid);
-    double gain = (double)tune_f("INFLUENCE_PER_NOBLE", 0.002f) * elites * (double)mult;
+    InfluenceBase base = api_influence_base(s, cid);
+    double gain = influence_base_gain(s->sim.econ, cid, base) * (double)mult;
     out->gain_month = (int)(gain + 0.5);
     static char buf[128];
-    int nobles = (int)(elites + 0.5);
+    int nobles = (int)(influence_base_pop(s->sim.econ, cid, base) + 0.5);
     if (nseat <= 0){
         snprintf(buf, sizeof buf, tr(STR_INFLUENCE_HOVER_VIDE), nobles);
     } else {
@@ -3439,6 +3453,126 @@ void scps_influence_info(ScpsSim *s, int cid, ScpsInfluence *out){
         snprintf(buf, sizeof buf, tr(STR_INFLUENCE_HOVER), nobles, rw);
     }
     out->hover = buf;
+    /* LA CHARGE : l'entretien des doctrines, en MOTS, à côté du revenu. */
+    { float ech = influence_scale(s->sim.econ, cid, base);
+      int n = doctrines_n_active(s->sim.doct, cid);
+      out->upkeep_month = doctrines_upkeep(s->sim.doct, cid, ech);
+      out->net_month    = out->gain_month - out->upkeep_month;
+      static char dbuf[128];
+      if (n <= 0) snprintf(dbuf, sizeof dbuf, "%s", tr(STR_INFLUENCE_DEPENSES_0));
+      else        snprintf(dbuf, sizeof dbuf, tr(STR_INFLUENCE_DEPENSES), n, out->upkeep_month);
+      out->hover_depenses = dbuf; }
+}
+
+/* ====================================================================== */
+/* LES DOCTRINES §4 — LE CONTRAT DE READERS (l'UI code contre, à la lettre) */
+/* ====================================================================== */
+static const char *doct_reason_word(int why){
+    switch (why){
+      case DOCT_NO_SLOT:            return tr(STR_DOCT_REASON_SLOT);
+      case DOCT_ALREADY:            return tr(STR_DOCT_REASON_ALREADY);
+      case DOCT_EXCLUSIVE_PAIR:     return tr(STR_DOCT_REASON_PAIR);
+      case DOCT_EXCLUSIVE_CURRENT:  return tr(STR_DOCT_REASON_CURRENT);
+      case DOCT_NO_INFLUENCE:       return tr(STR_DOCT_REASON_INFLUENCE);
+      default:                      return "";
+    }
+}
+
+void scps_doctrine_slots(ScpsSim *s, int cid, ScpsDoctSlots *out){
+    if (!out) return;
+    memset(out, 0, sizeof *out);
+    out->slots_total = DOCT_SLOTS_MAX;
+    for (int i=0;i<DOCT_SLOTS_MAX;i++){ out->rows[i].slot=i; out->rows[i].doctrine=-1;
+                                        out->rows[i].name=""; out->rows[i].bg=""; }
+    if (!s || !s->ready || !s->sim.doct || cid<0 || cid>=s->w->n_countries) return;
+    out->slots_open = doctrines_slots_open(s->sim.doct, cid);
+    for (int i=0;i<DOCT_SLOTS_MAX;i++){
+        ScpsDoctSlot *r = &out->rows[i];
+        if (i >= out->slots_open){ r->state = SCPS_DOCT_LOCKED; continue; }
+        int d = doctrines_at(s->sim.doct, cid, i);
+        if (d < 0){ r->state = SCPS_DOCT_EMPTY; continue; }
+        r->state       = SCPS_DOCT_TAKEN;
+        r->doctrine    = d;
+        r->name        = tr((StrId)DOCT_DEF[d].name);
+        r->bg          = DOCT_DEF[d].bg;
+        r->ideas_owned = doctrines_ideas_of(s->sim.doct, cid, d);
+        r->suspended   = doctrines_suspended(s->sim.doct, cid, i) ? 1 : 0;
+    }
+}
+
+int scps_doctrine_catalog(ScpsSim *s, int cid, ScpsDoctCard *out, int max){
+    if (!out || max<=0) return 0;
+    int n = (max < DOCT_COUNT) ? max : DOCT_COUNT;
+    memset(out, 0, sizeof(ScpsDoctCard)*(size_t)n);
+    for (int d=0; d<n; d++){ out[d].id=d; out[d].name=""; out[d].hover=""; out[d].bg=""; out[d].reason=""; }
+    if (!s || !s->ready || !s->sim.doct || cid<0 || cid>=s->w->n_countries) return n;
+    float ech = influence_scale(s->sim.econ, cid, api_influence_base(s, cid));
+    int cost = doctrines_adopt_cost(s->sim.doct, cid, ech);
+    for (int d=0; d<n; d++){
+        out[d].name  = tr((StrId)DOCT_DEF[d].name);
+        out[d].hover = tr((StrId)DOCT_DEF[d].hover);
+        out[d].bg    = DOCT_DEF[d].bg;
+        out[d].cost  = cost;
+        /* slot = -1 : « y a-t-il UN emplacement libre ? » (le catalogue ne vise pas
+         * un emplacement précis — c'est l'UI qui choisira lequel). */
+        int why = doctrines_why_not(s->sim.doct, s->sim.infl, cid, -1, d, ech);
+        out[d].available = (why == DOCT_OK) ? 1 : 0;
+        out[d].reason    = (why == DOCT_OK) ? "" : doct_reason_word(why);
+    }
+    return n;
+}
+
+int scps_doctrine_detail(ScpsSim *s, int cid, int id, ScpsDoctDetail *out){
+    if (!out) return 0;
+    memset(out, 0, sizeof *out);
+    out->id = id; out->slot = -1; out->name=""; out->bg=""; out->hover="";
+    for (int i=0;i<DOCT_IDEAS;i++){ out->ideas[i].idx=i; out->ideas[i].name="";
+                                    out->ideas[i].bonus=""; out->ideas[i].icon=""; }
+    if (id<0 || id>=DOCT_COUNT) return 0;
+    const DoctDef *dd = &DOCT_DEF[id];
+    out->name  = tr((StrId)dd->name);
+    out->hover = tr((StrId)dd->hover);
+    out->bg    = dd->bg;
+    for (int i=0;i<DOCT_IDEAS;i++){
+        out->ideas[i].name    = tr((StrId)dd->idea[i].name);
+        out->ideas[i].bonus   = tr((StrId)dd->idea[i].bonus);
+        out->ideas[i].icon    = dd->idea[i].icon;
+        out->ideas[i].is_verb = dd->idea[i].verbe ? 1 : 0;
+        out->ideas[i].wired   = dd->idea[i].cable ? 1 : 0;
+    }
+    if (!s || !s->ready || !s->sim.doct || cid<0 || cid>=s->w->n_countries) return 1;
+    int slot = doctrines_slot_of(s->sim.doct, cid, id);
+    int owned = doctrines_ideas_of(s->sim.doct, cid, id);
+    out->adopted   = (slot>=0) ? 1 : 0;
+    out->slot      = slot;
+    out->suspended = (slot>=0 && doctrines_suspended(s->sim.doct, cid, slot)) ? 1 : 0;
+    float ech = influence_scale(s->sim.econ, cid, api_influence_base(s, cid));
+    if (slot>=0) out->upkeep_month = (int)(tune_f("DOCT_UPKEEP",1.f)*ech + 0.5f);
+    int icost = doctrines_idea_cost(s->sim.doct, cid, ech);
+    for (int i=0;i<DOCT_IDEAS;i++){
+        out->ideas[i].owned = (i < owned) ? 1 : 0;
+        if (slot>=0 && i == owned && owned < DOCT_IDEAS){   /* LA PROCHAINE de la séquence */
+            out->ideas[i].next = 1;
+            out->ideas[i].cost = icost;
+        }
+    }
+    return 1;
+}
+
+int scps_doctrine_adopt(ScpsSim *s, int slot, int doctrine){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_DOCT_ADOPT, { slot, doctrine, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_doctrine_buy_idea(ScpsSim *s, int doctrine){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_DOCT_IDEA, { doctrine, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_doctrine_abandon(ScpsSim *s, int slot){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_DOCT_ABANDON, { slot, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
 
 /* ====================================================================== */
@@ -3588,7 +3722,7 @@ int scps_manuf_legal(ScpsSim *s, int province, int bld){
     for (int pi=0; pi<e->n_prov && !feed; pi++)
         if (e->prov[pi].owner==p && e->prov[pi].raw_cap[in1]>0.f) feed=true;
     if (!feed) return 0;
-    float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(e);
+    float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(e)*doctrine_key_mult(p,"MANUF_BUILD_COST");   /* doctrine Production : « Gages » (miroir du prix payé) */
     return credit_can_spend(e, s->w, p, cost) ? 1 : 0;
 }
 /* le PRIX affiché = le prix payé — MÊME formule EXACTE que le drain CMD_BUILD_MANUF
@@ -3598,7 +3732,8 @@ int scps_manuf_legal(ScpsSim *s, int province, int bld){
 int scps_manuf_cost(ScpsSim *s){
     if (!s || !s->ready) return 0;
     int p = (s->sim.human_player>=0) ? s->sim.human_player : s->sim.player;
-    float mult = (p>=0 && p<s->w->n_countries) ? decree_manuf_cost_mult(p) : 1.f;
+    float mult = (p>=0 && p<s->w->n_countries)
+               ? decree_manuf_cost_mult(p)*doctrine_key_mult(p,"MANUF_BUILD_COST") : 1.f;   /* + doctrine Production : « Gages » */
     float cost = tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(s->sim.econ)*mult;
     return (int)(cost + 0.5f);
 }

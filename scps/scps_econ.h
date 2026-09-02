@@ -41,6 +41,7 @@
 #include "scps_heritage.h"   /* couche biologique : heritage + traits (leviers) */
 #include "scps_tech.h"      /* TechState : §B1 abonde prod_mult par les techs de production */
 #include "scps_tune.h"      /* tune_f : lu par les modificateurs provinciaux (inline ci-dessous) */
+#include "scps_doctrines.h"   /* LES DOCTRINES §4 : tune_f("CLÉ") × doctrine_key_mult(cid,"CLÉ") au site de lecture (motif decree_mult) */
 
 /* §C — L'INTERRUPTEUR de l'inflation monétaire. 1 = active ; 0 = RETIRE tout effet
  * (l'IPM reste à 1.0, le multiplieur de prix est l'identité — la variable est gardée
@@ -743,7 +744,7 @@ typedef struct {
         if (_admin > (long)_tpop) _admin = ((long)_tpop/100)*100; \
         long _packs = _admin / 100; \
         float tier_h = (float)((_packs < _tier ? _packs : _tier) * 1000); \
-        float house_manuf = tune_f("HOUSE_MANUF", 100.f); \
+        float house_manuf = tune_f("HOUSE_MANUF", 100.f) * doctrine_key_mult((re)->owner, "HOUSE_MANUF"); /* doctrine Infrastructure : « Logements » */ \
         float manuf_h = 0.f; \
         for (int bi = 0; bi < (re)->n_bld; bi++) manuf_h += (re)->bld[bi].level; \
         float cap_half = (re)->cap_pop * 0.5f; \
@@ -788,7 +789,7 @@ static inline float econ_region_effcap(const RegionEconomy *re){ ECON_EFFCAP_BOD
         if ((re)->ferveur > 0.02f && n < (max)){ \
             float f = (re)->ferveur > 1.f ? 1.f : (re)->ferveur; \
             (out)[n].kind = PMOD_FERVEUR; (out)[n].intensity = f; \
-            (out)[n].demo_bonus = tune_f("PROVMOD_FERVEUR_K", 0.5f) * f; \
+            (out)[n].demo_bonus = tune_f("PROVMOD_FERVEUR_K", 0.5f) * doctrine_key_mult((re)->owner, "PROVMOD_FERVEUR_K") * f; /* doctrine Divin : « Ferveur » */ \
             n++; \
         } \
         { \
@@ -836,7 +837,7 @@ static inline float econ_region_effcap(const RegionEconomy *re){ ECON_EFFCAP_BOD
             if (repl_lvl > 0.f && n < (max)){ \
                 float inten = repl_lvl/4.f; if (inten > 1.f) inten = 1.f; \
                 (out)[n].kind = PMOD_MUTATION; (out)[n].intensity = inten; \
-                (out)[n].demo_bonus = tune_f("FAUST_MUTATION_K", 0.20f) * inten; \
+                (out)[n].demo_bonus = tune_f("FAUST_MUTATION_K", 0.20f) * doctrine_key_mult((re)->owner, "FAUST_MUTATION_K") * inten; /* doctrine Faustien : « Terre changée » */ \
                 n++; \
             } \
         } \

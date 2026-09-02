@@ -28,7 +28,7 @@ BENCHES_FULL=(
   intertrade_demo routes_demo save_io_demo statecraft_demo pop_demo army_demo
   demography_demo demography_integ_demo revolt_demo social_demo agency_demo
   campaign_demo factions_demo econ_tax_demo econ_culture_demo econ_arcane_demo
-  econ_production_demo missions_demo influence_demo ai_demo diplo_demo warhost_demo
+  econ_production_demo missions_demo influence_demo doctrines_demo ai_demo diplo_demo warhost_demo
   events_demo structural_demo forks_demo prosperity_demo credit_demo cap_demo
   endgame_demo audit_eco lang_demo scps_api_demo culture_demo navy_demo
   religion_demo trade_demo

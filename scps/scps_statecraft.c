@@ -273,7 +273,7 @@ void statecraft_council_dismiss(Statecraft *sc, uint32_t seed, int cid, int seat
     if (slot>=0){
         int gen = statecraft_council_seated_gen(sc, cid, seat);
         EthosFaction fac = statecraft_council_faction(seed, cid, seat, slot, gen);
-        faction_grievance_add(cid, fac, tune_f("COUNCIL_DISMISS_GRIEF",0.10f));
+        faction_grievance_add(cid, fac, tune_f("COUNCIL_DISMISS_GRIEF",0.10f)*doctrine_key_mult(cid,"COUNCIL_DISMISS_GRIEF"));   /* doctrine Aristocratie : « Offices » (le revers du renvoi) */
     }
     sc->council[cid][seat]=-1;
     sc->council_gen[cid][seat]=-1;
@@ -402,7 +402,7 @@ float statecraft_council_loyalty_target(const Statecraft *sc, const WorldEconomy
     float grief = faction_grievance(cid, fac);                            /* 0..1 : la rancœur de SA faction */
     float base  = (1.f - grief) * 100.f;                                  /* satisfaite → loyale */
     float pay   = statecraft_council_pay(sc,cid,seat);
-    float pay_adj = (pay-1.f) * tune_f("COUNCIL_PAY_ADJ",30.f);           /* 0×→ -30 · 1×→ 0 · 2×→ +30 */
+    float pay_adj = (pay-1.f) * tune_f("COUNCIL_PAY_ADJ",30.f)*doctrine_key_mult(cid,"COUNCIL_PAY_ADJ");   /* 0×→ -30 · 1×→ 0 · 2×→ +30 (doctrine Aristocratie : « Offices ») */
     /* LES POSITIONS RÉPONDENT AU PEUPLE (décision joueur 2026-08-12) : le ministre
      * VIENT d'une strate (élite 3/6 · bourgeois 2/6 · paysan 1/6) — si SA classe vit
      * mal dans ce pays, son ressentiment monte au conseil (et une classe prospère
@@ -571,7 +571,7 @@ void statecraft_opinion_parts(const Statecraft *sc, const DiploState *diplo,
     out->mem = sc->opinion_mem[a][b];
     if (diplo){
         DiploStatus st = diplo_status(diplo,a,b);
-        if      (st==DIPLO_ALLIED) out->ally =  tune_f("OPINION_ALLY",50.f);
+        if      (st==DIPLO_ALLIED) out->ally =  tune_f("OPINION_ALLY",50.f)*doctrine_key_mult(b,"OPINION_ALLY");   /* doctrine Diplomatie : « Prestige » (le porteur est l'OBJET de l'opinion) */
         else if (st==DIPLO_WAR)    out->war  = -tune_f("OPINION_WAR",60.f);
         /* DESSEIN « Premier vassal » (×1.30, 20 ans) — « le crédit du serment » :
          * le mult est celui du SUZERAIN de la paire (c'est SON dessein), et il
@@ -580,7 +580,7 @@ void statecraft_opinion_parts(const Statecraft *sc, const DiploState *diplo,
             int suz = (diplo_suzerain(diplo,a)==b) ? b : a;
             out->vassal = tune_f("OPINION_VASSAL",30.f) * dessein_mult(suz, DBOON_OPINION_VASSAL);
         }
-        if (diplo_trade_pact(diplo,a,b)) out->pact = tune_f("OPINION_PACT",15.f);
+        if (diplo_trade_pact(diplo,a,b)) out->pact = tune_f("OPINION_PACT",15.f)*doctrine_key_mult(b,"OPINION_PACT");   /* doctrine Diplomatie : « Prestige » */
         out->rancor = -tune_f("OPINION_RANCOR_W",8.f) * diplo_rancor(diplo,a,b);
     }
     if (intertrade_embargoed(a,b)) out->embargo = -tune_f("OPINION_EMBARGO",25.f);

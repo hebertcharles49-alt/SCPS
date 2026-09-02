@@ -10317,3 +10317,247 @@ INTERDITS pour moi, contenu autorisé) — relu avant chaque édition, diff fina
 - **Six branches restent à écrire** (Mer & Comptoirs, Routes & Caravanes, Foi,
   Savoir, Creuset, Horde). Leur ajout fera grandir `MissionsState`
   (`DESS_BRANCH_COUNT`) ⇒ un bump de plus, à chaque fois.
+
+## Mission 2026-09-02 — UI-DOCTRINE P2 : Influence en topbar + menu des Doctrines
+
+### Découvertes
+- **`influence_info` existe déjà côté binding (P1) mais N'EXPOSE QUE 3 clés**
+  (`stock`, `gain_month`, `hover` — `godot/src/scps_sim_node.cpp:1779`) : le
+  contrat de mission en promettait 6 (`upkeep_month`/`net_month`/
+  `hover_depenses` en plus). `scps/scps_influence.h` a bougé PENDANT cette
+  session (un agent moteur en parallèle) mais `scps_sim_node.cpp` ne suit pas
+  encore — `.get(clé, défaut)` PARTOUT dans `topbar.gd` fait que la cellule
+  affiche déjà quelque chose de correct (stock réel, dépenses à 0) avant même
+  le rebuild DLL, et affichera le détail complet dès qu'il atterrira, sans
+  retouche.
+- **AUCUN `doctrine_*` n'existe nulle part** (ni reader ni verbe, ni côté
+  `scps/` ni côté `godot/src/`) à l'écriture de ce fichier — la vague Doctrines
+  (P3, design doc §6) n'a pas commencé. `doctrine_panel.gd` est donc écrit
+  ENTIÈREMENT en `has_method`-gardé : chaque vue retombe sur une ligne
+  « — chantier (binding moteur non atterri) » plutôt que de deviner une forme
+  de données. Rien à re-router au merge, tout passe déjà par le contrat exact
+  de la mission.
+- **Le design doc (`DESIGN_MISSIONS_DOCTRINES.md` §5) situe Doctrines/Influence
+  ailleurs** (4e sous-onglet du Conseil + en-tête du Conseil, « pas de 10e
+  cellule topbar pour l'instant ») — la directive joueur REÇUE pour cette
+  mission (topbar + panneau dédié 6 slots) le remplace explicitement pour ce
+  chantier P2 ; le doc annexe n'a servi que pour le catalogue/la terminologie
+  (17 doctrines, 6 idées, `doct_*_bg`/`idea_*`), pas pour l'emplacement.
+- **`doctrine_slots(me).rows[].state`** : le contrat de mission dit juste
+  « 0/1/2 », sans nommer l'ordre. Assumé **0=verrouillé · 1=vide · 2=occupé**
+  (l'ordre dans lequel la spec les décrit) — commenté explicitement au site
+  (`doctrine_panel.gd:_slot_card`) comme hypothèse À REVÉRIFIER contre l'enum
+  moteur réel dès que le binding atterrit (probe orchestrateur).
+- **`doctrine_buy_idea(id)` prend l'ID DE LA DOCTRINE, pas un index d'idée** :
+  relu deux fois le point 3 de la spec (« vue DÉTAIL… prochaine = liseré +
+  coût, clic → `doctrine_buy_idea(id)` ») — cohérent avec le modèle « 6 idées
+  achetées EN SÉQUENCE » du design doc (le moteur sait déjà laquelle est la
+  suivante, pas besoin de la nommer depuis l'UI).
+- Motif de navigation retenu : **signal direct `doctrine_requested`** sur
+  `topbar.gd` (copie conforme de `tech_requested`, déjà au fichier), PAS une
+  route `InfoRef`/`navigate_requested` — la cible (un panneau tout neuf, hors
+  énum `InfoRef`) ne justifiait pas de toucher `info_ref.gd`/`navigation_hub.gd`
+  pour une seule cellule. Wiring dans `main.gd` = copie conforme du bloc
+  `tech_requested` existant (toggle visible/hidden, son ouverture/fermeture).
+
+### Pièges
+- **`git diff --stat` montrait déjà `scps/scps_influence.h` et
+  `scps/strings_*.h` modifiés AVANT que je touche quoi que ce soit** — l'agent
+  moteur (scps/*, godot/src/*) tourne réellement en parallèle sur CE dépôt,
+  pas dans un worktree isolé. Vérifié avant de conclure quoi que ce soit :
+  `git status --porcelain` restreint à mes 3 fichiers confirme que je n'ai
+  touché QUE `godot/project/ui/topbar.gd`, `godot/project/main/main.gd` et le
+  nouveau `godot/project/ui/doctrine_panel.gd` — mais un futur agent qui lirait
+  juste `git diff --stat` sans filtrer par chemin croirait à tort avoir touché
+  le moteur.
+- **`Label` a `mouse_filter = IGNORE` par défaut** (déjà noté ailleurs,
+  re-confirmé ici) : le marqueur « suspendue » d'un slot occupé et le nom d'une
+  carte du catalogue portent un `tooltip_text` — sans
+  `mouse_filter = Control.MOUSE_FILTER_STOP` explicite sur le Label lui-même
+  (pas seulement sur la carte parente), le survol ne se déclenche jamais. Posé
+  correctement dès l'écriture (le piège est déjà consigné TROUVAILLES/D4, pas
+  redécouvert à la dure ici).
+
+### Restes
+- **Probe visuelle bloquée sur le rebuild DLL** : `scons -C godot` n'a PAS été
+  lancé (hors périmètre de cette mission, réservé à l'orchestrateur) — seul le
+  `--check-only` (parse GDScript) a tourné, propre. Aucune capture d'écran des
+  3 vues (slots/catalogue/détail) n'existe encore ; à faire dès que la DLL
+  expose au moins `doctrine_slots`/`doctrine_catalog`/`doctrine_detail`.
+- **`doctrine_catalog[].reason` reste un repli LEGACY** (une phrase, pas un
+  `ScpsGateCond[]`) — le contrat de mission n'exposait qu'un champ `reason`
+  simple ; si un futur agent enrichit le reader avec une vraie checklist
+  (motif §3bis `_ARCHITECTURE.md`), remplacer le bloc `rl.text = "✗ %s" % …`
+  de `_catalog_card` par `TooltipFactory.gate_checklist(conds, header)`.
+- **2 libellés structurels neufs, inévitables** (aucun reader ne les fournit) :
+  « Verrouillé » (carte de slot verrouillé) et le repli
+  « s'ouvrira à l'avènement d'un âge engagé » (hover d'un slot verrouillé,
+  utilisé seulement si le reader ne fournit pas encore de champ `hover` pour
+  cette ligne — `row.get("hover", …)` le laisse remplaçable sans retouche).
+  Le reste des textes vient intégralement des readers (`name`/`hover`/
+  `bonus`/`reason`/…) ou réutilise l'existant (« /mois », « Abandonner »,
+  « + », « Doctrines »). À surveiller au `make lang-check` du merge (base 127).
+- **`_detail_page` place le nom/l'entretien en texte brut posé sur le fond
+  peint** (`Label.position` absolu, pas de halo/plaque anti-contraste) —
+  lisibilité non garantie selon la palette de chaque `doct_*_bg` ; un futur
+  passage esthétique (probe orchestrateur) devra sans doute poser une plaque
+  semi-transparente sous ce texte, comme le fait `topbar.gd` pour le nom du
+  royaume.
+
+---
+
+## Mission 2026-09-02 — LES DOCTRINES (moteur : framework + effets + membrane, joueur seul)
+
+### Découvertes
+
+- **Le catalogue de l'annexe est un DESIGN, pas une carte du moteur.** Sur les
+  ~90 clés de registre nommées par docs/DESIGN_DOCTRINES_ANNEXE.md, un audit
+  ciblé (un `tune_f` grep par clé + portée du cid au site) a trouvé
+  **17 clés FANTÔMES** — elles n'existent nulle part dans le moteur :
+  `SIEGE_FOOD_MONTHS_FULL` · `BUILD_COST_MULT_FORT` · `STOCK_DECAY_PERISH`
+  (la décrue périssable est le littéral `0.85f` en dur, scps_econ.c) ·
+  `OFF_CULTURE_SAT_PEN` / `_SOC_PEN` · `CLIM_LEARN_INTEG` · `BUILD_MAT_MULT` ·
+  `BUILD_EXTENT_K` · `MORAL_MUL` · `CREDIT_RATE_BASE` (le vrai voisin est
+  `DEBT_RATE_BASE`) · `LEGIT_K_FAITH` (le vrai voisin est `#define K_FAITH`) ·
+  `SCHOLAR_DURATION_DAYS` (le vrai voisin est `#define SCHOLAR_DURATION`).
+  Et **10 clés sont des `#define` NON PROMUS au registre** (aucun `tune_f`) :
+  `SOLDE_FL_PER_REG` / `SOLDE_OVER_K` (warhost) · `STOCK_CAP_ENTREPOT` ·
+  `TOOLS_PER_LABORER` · `COLONY_YIELD_HREF` · `FOG_SEA_HALO` ·
+  `PROMOTE_BASKET_MULT` / `_ELITE` · `CONCEDE_CD_DAYS`. **Jurisprudence
+  IMPORT_TOLL_FRAC confirmée : croiser TOUTE clé d'un doc de design contre un
+  `tune_f` VIVANT avant de bâtir dessus.** Aucune n'a été promue ici (hors
+  périmètre — une promotion touche le golden).
+- **`cable` est un MASQUE DE BITS, pas un booléen.** Une idée porte jusqu'à
+  deux clés et il arrive qu'une seule soit atteignable (Mercantilisme
+  « Réserves » : `AI_SAFE_STOCK_MONTHS` oui, `BUILD_RESERVE_BULK` non ;
+  Infrastructure « Carrières » : `RAW_WORKS_NEED` oui, `BUILD_RESERVE_BULK`
+  non ; Production « Gages » : `MANUF_BUILD_COST` oui, `JOB_UPKEEP_TAX_FRAC`
+  non). bit0 = k1 câblée · bit1 = k2. Le reader façade expose
+  `wired = (cable != 0)` — l'UI dira « à venir » pour le reste.
+- **Les sites « hoistés » sont le second gisement de refus.** Une valeur lue
+  UNE fois avant la boucle (`TRADE_LEVY`, `MARKET_DIST_FALLOFF`,
+  `IMPORT_MARGIN_OWN/THIRD`, `VETUSTE_RATE/FLOOR`, `MIG_PACT_MIN`,
+  `REFUGEE_*`, `EXTRACT_LABOR_SHARE`@econ:3844, `COUNCIL_ROT_BOOST`,
+  `OPINION_MEM_DECAY`@statecraft:737, `COLONY_MIN_POP`@econ:6244) ne peut pas
+  porter un `mult(cid)` sans DESCENDRE l'appel dans la boucle — chaque fois le
+  cid y est pourtant disponible (`re->owner`, `src->owner`, `pe->owner`, `c`).
+  Refonte de forme, refusée cette vague (« ne pas toucher au code hors sujet »),
+  laissée en RESTE.
+- **Six sites n'ont AUCUN pays atteignable** sans changer une signature :
+  `econ_build_reserve(Resource)` (econ.c:3434) · `econ_job_upkeep_month(...)`
+  (econ.c:3011) · `econ_income_tax_rate(SocialClass)` (econ.c:2671) ·
+  `tech_diffusion_mult(TechId)` (ai.c:2393) · `heritage_access_pack(...)`
+  (ai.c:2338, `static`) · `da_fill_conds` (api.c:2489+, dont le `cd` local
+  ressemble à un cid mais est un COOLDOWN en jours).
+- **`SIEGE_LOOT_FRAC` / `PILLAGE_INCOME_FRAC` : un seul côté est en portée.**
+  Aux deux sites (diplo.c:1486 `victim_cid`, diplo.c:1562 `re->owner`), le pays
+  disponible est la VICTIME. Le duel « Butin (attaquant) vs Terre brûlée
+  (victime) » annoncé par l'annexe n'est donc PAS symétrique sans refonte :
+  **Terre brûlée est câblée, Butin ne l'est pas** (`cable=0`). Choix documenté
+  au site — le contraire (appliquer le mult de la victime à la clé « Butin »)
+  aurait inversé la sémantique en silence.
+- **`scps_doctrines.h` est inclus par `scps_econ.h`**, pour porter
+  `doctrine_key_mult` aux TROIS macros partagées (`HOUSE_MANUF`,
+  `PROVMOD_FERVEUR_K`, `FAUST_MUTATION_K`) — sinon il aurait fallu l'inclure
+  dans chaque TU qui déroule la macro. Conséquence : il est inclus TRÈS TÔT et
+  ne doit tirer QUE `scps_types.h` (pour `SCPS_MAX_COUNTRY`) — tirer
+  `scps_world.h` casse le build avec des erreurs *dans scps_world.h*
+  (« unknown type name 'WorldEconomy' »), l'ordre habituel types→world→econ
+  étant inversé.
+- **La `sed` globale du Makefile suffit** : chaque cible qui lie un module
+  touché par le câblage (econ, diplo, ai, demography, statecraft, revolt,
+  campaign, agency, intertrade, credit, religion, warhost, events, factions)
+  lie DÉJÀ `scps_scps_influence.o`. Ajouter `scps_scps_doctrines.o` juste après
+  ses 32 occurrences couvre TOUT — vérifié par un script qui aplatit les
+  continuations et cherche un module sans doctrines.o (zéro résultat).
+- **Golden INTACT sans une seule ligne de gate ajoutée aux ~50 sites.** La
+  propriété tient dans `doctrine_key_mult` : `if (!g_any[cid]) return 1.f;` —
+  la chronique (human=-1) n'adopte jamais rien, `g_any` reste 0 partout, et
+  tous les sites multiplient par `1.0f` exactement (neutre IEEE).
+
+### Pièges
+
+- **Un heredoc bash `<<'PY'` MANGE UN NIVEAU DE BACKSLASH** dans ce toolchain
+  (Git Bash → python). Un `'... */ \\\n    X(DOCT,...)'` destiné à produire une
+  continuation de X-macro est arrivé comme `\n` (backslash perdu) : les deux
+  lignes se sont retrouvées COLLÉES sur une seule et la section de save était
+  silencieusement absente. Même symptôme sur le Makefile (`\\\n` → `\n`
+  littéral au milieu d'une liste d'objets, continuation cassée). **Réflexe :
+  tout script Python qui écrit des backslashes ou des accents passe par un
+  FICHIER (outil Write), jamais par un heredoc.**
+- **`unicode_escape` sur du texte déjà UTF-8 le MOJIBAKE** (« Déjà » →
+  « DÃ©jÃ  »). Ne jamais l'appliquer à une chaîne qui contient de l'UTF-8 réel :
+  écrire les accents en `\uXXXX` dans une u-string et laisser
+  `io.open(..., encoding='utf-8')` faire le travail.
+- **Le Makefile est en LF, pas en CRLF** (contrairement à ce qu'une entrée
+  antérieure laissait croire) : y insérer un bloc en CRLF passe les yeux mais
+  produit `\<CR>` en fin de ligne de continuation.
+- **MSYS2 `bash.exe -lc 'make ...'` sans `cd` démarre dans le HOME** : `make
+  full-test` y répond « Aucune règle pour fabriquer la cible » et on croit à une
+  cible cassée. Toujours passer par un script qui fait son `cd` en 1re ligne.
+- **`influence_tick` a changé de signature** (paramètre `InfluenceBase base`).
+  `influence_demo.c` en était le seul appelant hors moteur, mais la refonte
+  d'assiette impose de tenir DEUX traducteurs `DoctrineId → InfluenceBase`
+  miroirs : `sim_influence_base` (scps_sim.c, le moteur) et
+  `api_influence_base` (scps_api.c, la façade). S'ils divergent, le nombre
+  affiché cesse d'être celui qui sera crédité.
+- **L'échelle d'assiette NE DOIT PAS inclure le rang du Conseil** (décision
+  joueur, anti-exploit) : sinon accumuler à Conseil plein puis RENVOYER ses
+  ministres divise tous les prix. `influence_scale` appelle donc
+  `influence_base_gain` SEUL, jamais `influence_council_mult` — le banc
+  l'asserte explicitement (§7).
+- **Un banc qui manipule DEUX `DoctrineState` doit re-`doctrines_sync` le
+  premier** : le miroir de process est GLOBAL (un seul `g_own`), donc
+  synchroniser l'état B efface le mult de l'état A. Le même piège attend
+  quiconque instancierait deux `Sim` dans un process.
+
+### Restes
+
+- **Les 20 idées-VERBES ne sont PAS implémentées.** (L'annexe en annonçait 17 :
+  le compte réel du catalogue est 20 — Vassaux en porte TROIS, Populaire DEUX.)
+  Elles sont achetables, `is_verb=1`, `cable=0` ; la façade doit les afficher
+  « verbe : vague suivante ». Liste : Offense « Ost permanent » · Défense
+  « Ban » · Commerce « Comptoir » · Mercantilisme « Étape » · Peuple
+  « Affranchissement » · Colonisation « Double chantier » · Diplomatie « Second
+  émissaire » · Vassaux « Contrats », « Leviers », « Suzeraineté » · Production
+  « Exploitation profonde » · Infrastructure « Rénovation de masse » ·
+  Technologie « Programme » · Connaissances « Expédition » · Faustien « Le
+  Pacte » · Aristocratie « Adoubement » · Bourgeoisie « Emprunt intérieur » ·
+  Populaire « Levée en masse », « Concession » · Divin « Appel à la foi ».
+- **42 idées NON CÂBLÉES hors verbes (`cable=0`)** — la liste exacte, à
+  reprendre quand on acceptera de promouvoir un `#define` ou de descendre un
+  `tune_f` hoisté dans sa boucle : Offense « Butin » (un seul côté en portée),
+  « Prétextes », « Grande levée » · Défense « Magasins », « Corvées »
+  (fantômes), « Génie » (règle) · Commerce « Franchises », « Routes longues »,
+  « Négoce » (hoistés), « Libre-échange » (règle) · Mercantilisme « Blocus »
+  (règle), « Péages », « Halles » · Peuple « Asile » (hoisté), « Tolérance »
+  (fantômes) · Colonisation « Colons » (9 sites), « Climats », « Grand large » ·
+  Diplomatie « Oubli », « Congrès » · Production « Extraction » (hoisté —
+  l'annexe le disait déjà), « Outillage » · Infrastructure « Maçons »,
+  « Entretien » (hoisté), « Intendance » · Technologie « Copistes »
+  (`tech_diffusion_mult` sans cid), « Dispense », « Sobriété » (`tech_cost`
+  sans cid) · Connaissances « Portulans », « Dictionnaires » (`METAB_TIER*`
+  sans cid), « Langue franque » (règle) · Faustien « Pages interdites »,
+  « Creusets », « Or du puits » · Aristocratie « Ban féodal », « Clôture » ·
+  Bourgeoisie « Crédit », « Robe », « Clés de la ville » · Divin « Onction »,
+  « Sacerdoce », « Clergé ». **40 idées SONT câblées** (~50 sites de lecture).
+- **`POL_SAT_W` a un MIROIR de lecture dans la façade** (`scps_api.c`, hover
+  « Votre politique : ±X ») qui n'a PAS reçu le mult : la doctrine Populaire
+  « Doléances » agit au moteur (revolt + econ) mais le hover affiche encore la
+  valeur nue. À harmoniser en vague façade.
+- **Les synergies de paires (§4.4, entretien fibonaccien 2/3/5/8…) ne sont PAS
+  implémentées** — hors périmètre, aucun état n'est réservé pour elles.
+- **L'IA n'adopte RIEN** (P1 joueur seul, gate `human_player` côté
+  scps_sim.c) : `DoctrineState` est par-pays, prêt pour le « choix par score »
+  du §4.6 — qui, lui, imposera un re-baseline golden + un sweep apparié 3×3.
+- **`INFLUENCE_CAP=0` reste sans plafond** : les doctrines sont désormais un
+  vrai sink (adoption + idées + entretien mensuel, tous ÉCHELONNÉS sur
+  l'assiette). C'est le moment de re-regarder si un joueur passif thésaurise
+  encore sans borne.
+- **Le plancher d'échelle 0.25 est un LITTÉRAL** dans `influence_scale` (le
+  brief ne nommait qu'un tunable neuf, `INFLUENCE_BASE_REF`). Si l'équilibrage
+  veut le bouger, c'est une ligne + une entrée de registre.
+- **L'assiette POPULAIRE reste À MESURER** (annexe §16) : au banc,
+  4000 journaliers × 0.00012 = 0.48/mois contre 2.0/mois pour 1000 élites —
+  la parité ~4/mois visée par le design n'est PAS atteinte par le taux par
+  défaut. À calibrer en partie réelle (les courants ne vivent que sous joueur).

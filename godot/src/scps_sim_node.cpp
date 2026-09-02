@@ -162,6 +162,12 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("influence_info", "country"),      &ScpsWorld::influence_info);
     ClassDB::bind_method(D_METHOD("dessein_info", "country", "branche"), &ScpsWorld::dessein_info);
     ClassDB::bind_method(D_METHOD("seal_dessein", "branche", "echelon", "voie"), &ScpsWorld::seal_dessein);
+    ClassDB::bind_method(D_METHOD("doctrine_slots", "country"),      &ScpsWorld::doctrine_slots);
+    ClassDB::bind_method(D_METHOD("doctrine_catalog", "country"),    &ScpsWorld::doctrine_catalog);
+    ClassDB::bind_method(D_METHOD("doctrine_detail", "country", "id"), &ScpsWorld::doctrine_detail);
+    ClassDB::bind_method(D_METHOD("doctrine_adopt", "slot", "doctrine"), &ScpsWorld::doctrine_adopt);
+    ClassDB::bind_method(D_METHOD("doctrine_buy_idea", "doctrine"),  &ScpsWorld::doctrine_buy_idea);
+    ClassDB::bind_method(D_METHOD("doctrine_abandon", "slot"),       &ScpsWorld::doctrine_abandon);
     ClassDB::bind_method(D_METHOD("country_factions", "country"),    &ScpsWorld::country_factions);
     ClassDB::bind_method(D_METHOD("player_build", "edifice", "province"), &ScpsWorld::player_build, DEFVAL(-1));
     ClassDB::bind_method(D_METHOD("player_recruit", "unit"),         &ScpsWorld::player_recruit);
@@ -1780,11 +1786,90 @@ Dictionary ScpsWorld::influence_info(int country) {
     Dictionary d;
     ScpsInfluence inf;
     scps_influence_info(sim, country, &inf);
-    d["stock"]      = inf.stock;
-    d["gain_month"] = inf.gain_month;
-    d["hover"]      = String::utf8(inf.hover);
+    d["stock"]         = inf.stock;
+    d["gain_month"]    = inf.gain_month;
+    d["hover"]         = String::utf8(inf.hover);
+    d["upkeep_month"]  = inf.upkeep_month;   /* LES DOCTRINES §4 : la CHARGE du mois */
+    d["net_month"]     = inf.net_month;
+    d["hover_depenses"]= String::utf8(inf.hover_depenses);
     return d;
 }
+
+/* LES DOCTRINES §4 — le contrat de readers, à la lettre (scps_api.h). Membrane
+ * stricte : des MOTS, des entiers, et les NOMS DE FICHIER des icônes installées. */
+Dictionary ScpsWorld::doctrine_slots(int country) {
+    Dictionary d;
+    ScpsDoctSlots x;
+    scps_doctrine_slots(sim, country, &x);
+    d["slots_total"] = x.slots_total;
+    d["slots_open"]  = x.slots_open;
+    Array rows;
+    for (int i = 0; i < 6; i++) {
+        Dictionary r;
+        r["slot"]        = x.rows[i].slot;
+        r["state"]       = x.rows[i].state;
+        r["doctrine"]    = x.rows[i].doctrine;
+        r["name"]        = String::utf8(x.rows[i].name);
+        r["bg"]          = String::utf8(x.rows[i].bg);
+        r["ideas_owned"] = x.rows[i].ideas_owned;
+        r["suspended"]   = (bool)x.rows[i].suspended;
+        rows.push_back(r);
+    }
+    d["rows"] = rows;
+    return d;
+}
+
+Array ScpsWorld::doctrine_catalog(int country) {
+    Array a;
+    ScpsDoctCard cards[17];
+    int n = scps_doctrine_catalog(sim, country, cards, 17);
+    for (int i = 0; i < n; i++) {
+        Dictionary c;
+        c["id"]        = cards[i].id;
+        c["name"]      = String::utf8(cards[i].name);
+        c["hover"]     = String::utf8(cards[i].hover);
+        c["bg"]        = String::utf8(cards[i].bg);
+        c["cost"]      = cards[i].cost;
+        c["available"] = (bool)cards[i].available;
+        c["reason"]    = String::utf8(cards[i].reason);
+        a.push_back(c);
+    }
+    return a;
+}
+
+Dictionary ScpsWorld::doctrine_detail(int country, int id) {
+    Dictionary d;
+    ScpsDoctDetail x;
+    if (!scps_doctrine_detail(sim, country, id, &x)) { d["id"] = -1; return d; }
+    d["id"]           = x.id;
+    d["name"]         = String::utf8(x.name);
+    d["bg"]           = String::utf8(x.bg);
+    d["hover"]        = String::utf8(x.hover);
+    d["adopted"]      = (bool)x.adopted;
+    d["slot"]         = x.slot;
+    d["suspended"]    = (bool)x.suspended;
+    d["upkeep_month"] = x.upkeep_month;
+    Array ideas;
+    for (int i = 0; i < 6; i++) {
+        Dictionary e;
+        e["idx"]     = x.ideas[i].idx;
+        e["name"]    = String::utf8(x.ideas[i].name);
+        e["bonus"]   = String::utf8(x.ideas[i].bonus);
+        e["icon"]    = String::utf8(x.ideas[i].icon);
+        e["owned"]   = (bool)x.ideas[i].owned;
+        e["is_verb"] = (bool)x.ideas[i].is_verb;
+        e["wired"]   = (bool)x.ideas[i].wired;
+        e["cost"]    = x.ideas[i].cost;
+        e["next"]    = (bool)x.ideas[i].next;
+        ideas.push_back(e);
+    }
+    d["ideas"] = ideas;
+    return d;
+}
+
+bool ScpsWorld::doctrine_adopt(int slot, int doctrine) { return scps_doctrine_adopt(sim, slot, doctrine) != 0; }
+bool ScpsWorld::doctrine_buy_idea(int doctrine)        { return scps_doctrine_buy_idea(sim, doctrine) != 0; }
+bool ScpsWorld::doctrine_abandon(int slot)             { return scps_doctrine_abandon(sim, slot) != 0; }
 /* LES DESSEINS — l'échelon COURANT d'une branche, en MOTS (membrane stricte :
  * aucun flottant moteur, aucun seuil, aucun tunable ne traverse). `branche` =
  * DesseinBranch (P1 : 0 = le Sol). Dictionnaire VIDE si le pays n'a pas la

@@ -591,7 +591,7 @@ static long prov_elite_seats_ex(const ProvinceEconomy *re, long total, bool with
         | (1u<<EDI_ARSENAL)|(1u<<EDI_AMIRAUTE)
         | (1u<<EDI_TRIBUNAL)|(1u<<EDI_CHANCELLERIE)|(1u<<EDI_ACADEMIE)
         | (1u<<EDI_TEMPLE)|(1u<<EDI_CATHEDRALE)|(1u<<EDI_MONASTERE);
-      float per = tune_f("EDI_ELITE_JOBS", 100.f);
+      float per = tune_f("EDI_ELITE_JOBS", 100.f)*doctrine_key_mult(re->owner,"EDI_ELITE_JOBS");   /* doctrine Aristocratie : « Fiefs » */
       if (per > 0.f){
           /* v2 (décision joueur) : « 100 élites par bâtiment, +100 à chaque upgrade »
            * — le PLANCHER = Σ tier×100 par édifice d'élite bâti (une citadelle T3
@@ -613,7 +613,7 @@ static long prov_elite_seats_ex(const ProvinceEconomy *re, long total, bool with
                * = les seuls OFFICES (tier×100) — c'est contre elles que la rivalité se
                * mesure ; l'émergence de classes (factions/armée) garde le plein calcul. */
               float rot = (re->owner>=0) ? faction_capture_total(re->owner) : 0.f;
-              float prop = with_prop ? (float)total * tune_f("EDI_ELITE_POP_PCT", 0.004f)
+              float prop = with_prop ? (float)total * tune_f("EDI_ELITE_POP_PCT", 0.004f)*doctrine_key_mult(re->owner,"EDI_ELITE_POP_PCT")   /* doctrine Populaire : « Impôt du rang » (rangs fermés) */
                                        * (float)invest * (1.f + rot)
                                      : 0.f;
               elite_jobs += ((long)(per*(float)invest + prop)/100)*100;
@@ -1146,7 +1146,7 @@ void demography_tick(World *w, WorldEconomy *econ, WorldLegitimacy *wl,
          * minorité restive (Italiens/Polonais dans la France des Trente Glorieuses) ; un hôte
          * AFFAIBLI assimile LENTEMENT → sous-prolétariat non-intégré qui s'entasse en bas → émeutes
          * (les institutions se cassent). Centré sur K=5 à K_inst=REF (non-régression), amplifié. */
-        float K_eff = K + (re->build.K_inst - tune_f("ASSIM_K_INST_REF",1.5f)) * tune_f("ASSIM_K_INST_AMP",4.f);
+        float K_eff = K + (re->build.K_inst - tune_f("ASSIM_K_INST_REF",1.5f)*doctrine_key_mult(re->owner,"ASSIM_K_INST_REF")) * tune_f("ASSIM_K_INST_AMP",4.f);   /* doctrine Peuple : « Écoles » */
         K_eff = clampf(K_eff, 0.f, 20.f);
         /* TRADITIONS — le levier PERMÉABILITÉ (Ouvert/Insulaire) de l'empire PROPRIÉTAIRE
          * module l'entrée P du timer d'assimilation (assimilation_years : metab =
