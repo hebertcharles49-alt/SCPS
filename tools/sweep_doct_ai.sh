@@ -31,7 +31,10 @@ JOBS="${JOBS:-4}"
 SEEDS="${SEEDS:-7 1009 4243}"
 EMPIRES="${EMPIRES:-6}"
 CITIES="${CITIES:-12}"
-REPS=3            # sims par invocation (les « 3 » du 3×3)
+REPS="${REPS:-3}"                 # sims par invocation (les « 3 » du 3×3 ; 1 = une sim par graine)
+HORIZONS="${HORIZONS:-120 180}"   # années de fin (le bilan de fin de sim EST la mesure)
+# (2026-09-02, commande joueur « sweep 10 graines 200 ans » : SEEDS/REPS/HORIZONS
+#  passés en env — le protocole 3×3 reste le défaut.)
 
 cd "$ROOT" || exit 1
 if [ ! -x ./chronicle ]; then
@@ -49,10 +52,10 @@ fi
     echo "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "seeds=$SEEDS"
     echo "reps_per_seed=$REPS"
-    echo "horizons=120 180"
+    echo "horizons=$HORIZONS"
     echo "arms=temoin(AI_DOCT=0) essai(AI_DOCT=1)"
     echo "empires=$EMPIRES city_states=$CITIES"
-    echo "total_sims=$(( $(echo $SEEDS | wc -w) * REPS * 2 * 2 ))"
+    echo "total_sims=$(( $(echo $SEEDS | wc -w) * REPS * $(echo $HORIZONS | wc -w) * 2 ))"
     sha256sum ./chronicle 2>/dev/null || true
 } > "$OUT/manifest.txt"
 
@@ -68,7 +71,7 @@ run_one(){   # $1=bras  $2=graine  $3=années
 }
 
 running=0
-for yr in 120 180; do
+for yr in $HORIZONS; do
   for seed in $SEEDS; do
     for arm in temoin essai; do
         run_one "$arm" "$seed" "$yr" &
@@ -102,8 +105,8 @@ sum_arm(){   # $1=bras $2=années → une ligne de moyennes sur les 9 sims du br
 }
 
 {
-    echo "── SWEEP APPARIÉ AI_DOCT (3 graines × $REPS répétitions × 2 horizons) ──"
-    for yr in 120 180; do sum_arm temoin "$yr"; sum_arm essai "$yr"; done
+    echo "── SWEEP APPARIÉ AI_DOCT ($(echo $SEEDS | wc -w) graines × $REPS répétition(s) × horizons $HORIZONS) ──"
+    for yr in $HORIZONS; do sum_arm temoin "$yr"; sum_arm essai "$yr"; done
     echo
     echo "── distribution des doctrines (bras ESSAI, toutes sims confondues) ──"
     grep -h "distribution :" "$OUT"/essai_*.log 2>/dev/null \
