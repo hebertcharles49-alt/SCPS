@@ -236,6 +236,12 @@ static const char *DOCT_FR[DOCT_COUNT] = {
     "Diplomatie", "Vassaux", "Production", "Infrastructure", "Technologie",
     "Connaissances", "Faustien", "Aristocratie", "Bourgeoisie", "Populaire", "Divin"
 };
+/* A6 (sweep 2026-09-02) : cumul MONDE des adoptions réussies (jamais décrémenté,
+ * RAZ par sim) — défini côté scps_doctrines.c (seul module moteur touché par cette
+ * mission, en APPEND write-only). Prototypes locaux pour ne pas toucher
+ * scps_doctrines.h (chronicle.c est censé rester le seul fichier de cette mission). */
+long doctrines_adopt_total_get(void);
+void doctrines_adopt_total_reset(void);
 /* Un pays est-il VIVANT et politiquement doté ? (les cités-états sont exclues de
  * l'adoption IA — cf. ai_doctrines_year — mais restent comptées comme pays.) */
 static bool doct_alive(const World *w, const WorldEconomy *e, int c){
@@ -836,6 +842,7 @@ int main(int argc, char **argv){
         double money_m0 = chronicle_money_mass(s.econ);
         chronicle_invariant_reset(money_m0);   /* MONNAIE M3c : RAZ l'état "année précédente" du banc invariant */
         chronicle_borrowdiag_reset();   /* MONNAIE M12 — E3 : RAZ le snapshot dette par-pays au début de CHAQUE sim */
+        doctrines_adopt_total_reset();   /* A6 : RAZ le cumul d'adoptions au début de CHAQUE sim (jamais sérialisé) */
         double money_creation_accum = 0.0, money_destruction_accum = 0.0;
         /* MONNAIE — M1/M2 (print-only) : cumul de la frappe (FX_MINT), PAR PAYS (pour
          * compter les « empires frappeurs » en fin de sim) — même motif snapshot/accum
@@ -1415,8 +1422,12 @@ int main(int argc, char **argv){
                  * (v107) : une doctrine adoptée reste ALLUMÉE. */
                 { double med=0.0, mx=0.0; int nd2=0, ni2=0, npy=0;
                   doct_world_snapshot(w, s.econ, &s, chr_infl_buf, &med, &mx, &nd2, &ni2, &npy);
-                  printf("              politique an %3d : influence méd %.1f · max %.1f (%d pays) | doctrines actives %d · idées %d\n",
-                         snap[si], med, mx, npy, nd2, ni2); }
+                  /* A6 : « doctrines actives/idées » est un INSTANTANÉ des pays VIVANTS —
+                   * il RECULE quand des pays meurent (ce n'est PAS une désadoption, v107 :
+                   * aucun entretien). Étiqueté ci-dessous + cumul historique monde en regard
+                   * (doctrines_adopt_total_get, jamais décrémenté) pour trancher lequel bouge. */
+                  printf("              politique an %3d : influence méd %.1f · max %.1f (%d pays vivants) | doctrines actives %d · idées %d (instantané) · adoptions cumulées %ld\n",
+                         snap[si], med, mx, npy, nd2, ni2, doctrines_adopt_total_get()); }
                 si++;
             }
         }
@@ -1679,8 +1690,8 @@ int main(int argc, char **argv){
           }
           double gen=0.0;
           influence_stats_get(&gen);
-          printf("   DOCTRINES (P3-IA) : %d pays sur %d en tiennent au moins une — %d doctrines actives · %d idées possédées\n",
-                 n_adopters, npy, nd2, ni2);
+          printf("   DOCTRINES (P3-IA) : %d pays vivants sur %d en tiennent au moins une — %d doctrines actives · %d idées possédées (instantané pays vivants) · adoptions cumulées %ld\n",
+                 n_adopters, npy, nd2, ni2, doctrines_adopt_total_get());
           printf("              distribution :");
           for (int d=0;d<DOCT_COUNT;d++) if (nby[d]>0) printf(" %s %d ·", DOCT_FR[d], nby[d]);
           printf("\n");
@@ -1725,7 +1736,7 @@ int main(int argc, char **argv){
               if (L>=150) c150++; }
           printf("   FLEUVES : %d tracés · tronc max %d c. · %d ≥100 · %d ≥150\n",
                  w->n_rivers, mx, c100, c150); }
-        { int npr=0;
+        { int npr=0, nownerless=0;
           for (int p=0;p<s.econ->n_prov && p<SCPS_MAX_PROV;p++){
               const ProvinceEconomy *pr=&s.econ->prov[p];
               if (!pr->active || !pr->colonized) continue;
@@ -1733,18 +1744,32 @@ int main(int argc, char **argv){
               const char *ville=(pr->region>=0 && pr->region<SCPS_MAX_REG)? toponym_region_name(pr->region) : "";
               printf("   PROV %d ville=\"%s\" pays=%d pop=%.0f\n", p, ville, (int)pr->owner, pop);
               npr++;
+              /* A18 (sweep 2026-09-02) : `pays=-1` ICI est une PROVINCE COLONISÉE (peuplée)
+               * qu'AUCUN pays ne possède — econ_region_set_owner touche owner SANS toucher
+               * `colonized` (cf. scps_econ.c) ; une guerre/sécession/cataclysme peut donc
+               * laisser une terre PEUPLÉE sans État l'espace d'un tick. C'est une quantité
+               * DIFFÉRENTE de « PROV libres » plus bas (terres JAMAIS colonisées, pop 0) —
+               * ne pas les confondre malgré le nom voisin. */
+              if (pr->owner<0) nownerless++;
           }
           int nact=0, nimp=0;
           for (int q=0;q<s.econ->n_prov && q<SCPS_MAX_PROV;q++){
               if (s.econ->prov[q].impassable) nimp++;
               else if (s.econ->prov[q].active) nact++;
           }
-          printf("   PROV total %d colonisée(s) / %d COLONISABLES (%d infranchissables · %d au monde)\n",
-                 npr, nact, nimp, w->n_provinces);
-          /* ATTEIGNABLES : une province libre ne se colonise que si elle TOUCHE une
-           * province deja peuplee (l'essaimage est terrestre, par adjacence). Le reste
-           * est hors de portee — poches isolees derriere les 189 infranchissables, iles
-           * sans marine. C'est le PLAFOND REEL de l'expansion, sous le colonisable. */
+          /* Le libellé évite VOLONTAIREMENT la sous-chaîne littérale « pays=-1 » (celle des
+           * lignes PROV ci-dessus) pour ne pas polluer un `grep -c "pays=-1"` de sweep — cette
+           * ligne-BILAN doit rester DISTINGUABLE des lignes-DONNÉES individuelles. */
+          printf("   PROV total %d colonisée(s) dont %d sans propriétaire (owner=-1) / %d COLONISABLES (%d infranchissables · %d au monde)\n",
+                 npr, nownerless, nact, nimp, w->n_provinces);
+          /* ATTEIGNABLES : une province VIERGE (jamais colonisée) ne se colonise que si elle
+           * TOUCHE une province deja peuplee (l'essaimage est terrestre, par adjacence). Le
+           * reste est hors de portee — poches isolees derriere les infranchissables, iles
+           * sans marine. C'est le PLAFOND REEL de l'expansion, sous le colonisable.
+           * A18 : ceci compte les provinces JAMAIS colonisées (!colonized, pop 0) — À NE PAS
+           * CONFONDRE avec les %d « colonisées sans propriétaire » ci-dessus (pays=-1 dans le
+           * dump PROV, colonized=true) : deux quantités distinctes, ni l'une ni l'autre
+           * n'était fausse — seul le nom se ressemblait. */
           { int nfree=0, nadj=0, NP=s.econ->n_prov; if (NP>SCPS_MAX_PROV) NP=SCPS_MAX_PROV;
             const uint8_t *AD=s.econ->prov_adj;
             for (int q=0;q<NP;q++){
@@ -1755,8 +1780,8 @@ int main(int argc, char **argv){
                 for (int r2=0;r2<NP;r2++)
                     if (s.econ->prov[r2].colonized && AD[(size_t)q*SCPS_MAX_PROV+r2]){ nadj++; break; }
             }
-            printf("   PROV libres %d — dont %d ATTEIGNABLES (adjacentes a une colonisee) · %d hors de portee\n",
-                   nfree, nadj, nfree-nadj); 
+            printf("   PROV vierges (jamais colonisées) %d — dont %d ATTEIGNABLES (adjacentes a une colonisee) · %d hors de portee (≠ %d colonisées sans propriétaire)\n",
+                   nfree, nadj, nfree-nadj, nownerless);
           /* COMPOSITION SOCIALE MONDIALE (2026-08-06 : les édifices élèvent leur
            * classe) — la preuve que les voies DIVERGENT au lieu de finir marchandes. */
           { long cl[CLASS_COUNT]={0};
@@ -1987,10 +2012,19 @@ int main(int argc, char **argv){
                  * fragments nés an 240 SANS IA). stats.techs reste lisible via TDMAP. */
                 int base0=0; for (int id=0;id<TECH_COUNT;id++) if (tech_is_base((TechId)id)) base0++;
                 int ctech = s.ts[c].n_unlocked - base0; if (ctech<0) ctech=0;
-                printf("                · %-16s %3d rég · pop %5.0fk · Stab %3d Prosp %3d Légit %3d Cohés %3d Corr %3d · %2d tech%s\n",
-                       w->country[c].name, regions_of(s.econ,c), ai_country_population(w,s.econ,c)/1000.0,
+                /* A8 (sweep 2026-09-02) : les noms « X libre » ici sont des SÉCESSIONS
+                 * fraîches (role=POLITY_ANTAGONIST, scps_revolt.c:secede_to_country) — de
+                 * VRAIS pays jouables, PAS des hameaux WILD promus (ceux-ci restent exclus
+                 * de cette liste par le filtre PLAYER/ANTAGONIST ci-dessus, cf. doct_alive).
+                 * Le nom « libre » se ressemble mais désigne deux entités différentes — la
+                 * confusion venait du nom, pas d'une fuite de dénominateur. Un pop=0k/Stab
+                 * 0/Prosp 0 ici est un État NEUF (ou agonisant) tout jouable, étiqueté pour
+                 * ne pas le relire comme un artefact WILD. */
+                double popk = ai_country_population(w,s.econ,c)/1000.0;
+                printf("                · %-16s %3d rég · pop %5.0fk · Stab %3d Prosp %3d Légit %3d Cohés %3d Corr %3d · %2d tech%s%s\n",
+                       w->country[c].name, regions_of(s.econ,c), popk,
                        cr.m_stabilite.value, cr.m_prosperite.value, cr.m_legitimite.value, cr.m_cohesion.value,
-                       cr.corruption, ctech, (c==tp)?" ★":"");
+                       cr.corruption, ctech, (c==tp)?" ★":"", (popk<1.0)?" [naissant/agonisant]":"");
                 /* pyramide de classes (E0.7) + or : trésor & flux net de la dernière année */
                 double cp[CLASS_COUNT]; country_class_pop(s.econ, c, cp);
                 double cpt=cp[0]+cp[1]+cp[2]; if (cpt<1) cpt=1;
@@ -2037,8 +2071,14 @@ int main(int argc, char **argv){
               int o=s.econ->region[r].owner;
               if (o>=0 && o<w->n_countries && w->country[o].role==POLITY_CITY_STATE) cs_val+=v;
           }
-          printf("              hubs : %.0f%% du commerce mondial passe par les Centres des cités-états (%.0f / %.0f)\n",
-                 all_val>0? 100.0*cs_val/all_val : 0.0, cs_val, all_val);
+          /* A16 (sweep 2026-09-02) : un ratio 100 % sur un volume qui s'est effondré
+           * (ex. 33/33) n'est pas la preuve d'un hub, c'est la preuve qu'il n'y a plus de
+           * commerce HORS-Centres — plancher de volume avant d'oser le pourcentage. */
+          if (all_val < 500.0)
+              printf("              hubs : marché atone (V=%.0f < 500, %% non significatif)\n", all_val);
+          else
+              printf("              hubs : %.0f%% du commerce mondial passe par les Centres des cités-états (%.0f / %.0f)\n",
+                     100.0*cs_val/all_val, cs_val, all_val);
           tot_hub_cs+=cs_val; tot_hub_all+=all_val; }
 
         /* POPULATION : totale + par continent (les 4 plus peuplés). */

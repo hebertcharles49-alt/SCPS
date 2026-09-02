@@ -10801,3 +10801,115 @@ INTERDITS pour moi, contenu autorisé) — relu avant chaque édition, diff fina
   mission (texte de la décision joueur 2026-09-02 déjà couché) — seul le CODE
   suivait encore l'ancienne mécanique ; aucune modification du design doc
   n'a été nécessaire ici.
+
+## Mission 2026-09-02 — TÉLÉMÉTRIE CHRONICLE HONNÊTE (A18/A6/A16/A8, chronicle.c seul)
+
+### Découvertes
+
+- **A18 vérifié sur les vrais logs du sweep — DEUX quantités distinctes,
+  NI L'UNE NI L'AUTRE ne mentait** : `essai_s7_y200.log` compte 25 lignes
+  `pays=-1` dans le dump PROV alors que « PROV libres » annonçait 16 ; `s512`
+  28 vs 19 (`grep -c "pays=-1"` vs `PROV libres`, confirmé avant tout patch).
+  Cause : `econ_region_set_owner` (scps_econ.c:6117-6122) « Ne touche PAS
+  `colonized`… laissé à l'appelant » — guerre/sécession/cataclysme peuvent
+  poser `owner=-1` sur une province qui reste `colonized=true` (peuplée, juste
+  sans État). Le dump `pays=-1` compte CES provinces (colonisées sans
+  propriétaire) ; « PROV libres » comptait les provinces JAMAIS colonisées
+  (`!colonized`, pop 0, `econ_ruin_tick` en remet là avec `colonized=false`).
+  Fix : compteur `nownerless` ajouté dans la boucle du dump, imprimé dans la
+  ligne `PROV total` (« dont N SANS PROPRIÉTAIRE ») ; la ligne `PROV libres`
+  renommée `PROV vierges (jamais colonisées)` et référence le chiffre
+  ci-dessus en négatif (« ≠ des N colonisées SANS PROPRIÉTAIRE »).
+- **A8 : « X libre » n'est PAS un hameau WILD promu — fausse piste du sweep,
+  vérifiée dans le code** : `Ésotérique libre` (essai_s4243:628) a le nom
+  posé par `secede_to_country` (scps_revolt.c:791-798) : `role=POLITY_ANTAGONIST`
+  (un VRAI pays jouable, pas `POLITY_WILD`), `snprintf(nc->name,…,"%s libre",
+  heritage_name(...))`. La liste « empires vivants » de chronicle.c (ligne
+  ~1986) filtre déjà EXACTEMENT `PLAYER||ANTAGONIST` — WILD en est donc DÉJÀ
+  exclu, tout comme `doct_alive` (déjà restreint, commentaire 2026-09-02 en
+  place). Ce qui « pollue » la lecture, c'est la COLLISION DE NOM : les
+  hameaux WILD sont appelés « hameaux libres (WILD) » ailleurs (ligne ~2809)
+  et les sécessions fraîches portent aussi « … libre » — deux entités que
+  RIEN ne distingue à l'œil sinon le contexte. Pas de bug de dénominateur à
+  corriger ; le fix est un LABEL, pas une exclusion (exclure aurait retiré un
+  vrai pays de la liste).
+- **A16 : 100 % sur 33/33 confirmé dans `essai_s4243_y200.log:632`** —
+  `temoin_s4243:605` montre le même monde SANS doctrines à 76/76 (volume
+  ~2,3× plus haut, même 100 %). Le pourcentage n'était jamais faux
+  arithmétiquement, juste non-significatif sous un certain volume ; plancher
+  ajouté (500, choisi rond — pas dans le brief, à recalibrer si un vrai
+  sweep montre un volume de croisière différent).
+- **A6 : le compteur `doctrines actives`/`idées` est un pur instantané de
+  `doct_world_snapshot`** (boucle sur pays vivants, RAZ implicite à chaque
+  appel car recalculé du zéro) — rien ne le cumule nulle part dans le moteur.
+  `doctrines_adopt` (scps_doctrines.c) était le SEUL site où une adoption
+  réussie se décide (`return 1` après `doctrines_sync`) — un compteur
+  `g_doct_adopt_total` incrémenté juste avant ce `return 1` capture TOUTE
+  adoption réussie, joueur ou IA (chronicle est headless : en pratique 100%
+  IA). Exposé par `doctrines_adopt_total_get()`/`_reset()`, déclarés en
+  prototypes LOCAUX dans chronicle.c (pas dans scps_doctrines.h — la mission
+  bornait le fichier moteur touchable à scps_doctrines.c seul, en append).
+- **Preuve chiffrée (seed 512, 1 sim, 120 ans, build isolé)** : `politique an
+  96` affiche `doctrines actives 12 · idées 72 (INSTANTANÉ...) | cumul
+  adoptions historique (monde) 12` — les deux nombres coïncident ici parce
+  qu'aucun pays n'est mort dans cette fenêtre courte ; le sweep 10×200 ans
+  (§A6 du rapport) est le terrain où ils divergeront (28→24 doctrines avec
+  cumul qui, lui, ne redescendra jamais).
+
+### Pièges
+
+- **Un `git stash` sans pathspec au tout début de la mission a ramassé le
+  travail EN COURS d'un autre agent** (`scps_influence.c/h`, `scps_api.c`,
+  `scps_tune_list.h`, `strings_ids.h`/`strings_en.h`, `doctrines_demo.c`,
+  `influence_demo.c`, + assets Godot déjà modifiés en session) en plus de mes
+  deux fichiers — parce que `make golden` a échoué en apparence à cause de MES
+  changements. `git stash` (sans `--`/pathspec) empile TOUT le répertoire de
+  travail, pas seulement les fichiers qu'on croit toucher : sur un repo
+  multi-agent partagé, ne JAMAIS lancer un `git stash` nu — soit
+  `git stash push -- <mes_fichiers>`, soit (mieux) un `git worktree add`
+  isolé dès le départ. Le stash a été extrait au bon endroit (`git checkout
+  stash@{0} -- scps/chronicle.c scps/scps_doctrines.c`) sans toucher aux
+  fichiers de l'autre agent ; le stash lui-même est resté en place (non
+  drop) au cas où — à vérifier/nettoyer par l'orchestrateur.
+- **`make golden` ÉCHOUAIT dans l'arbre partagé** avec mes deux fichiers
+  seuls en apparence en cause (hash `HASH 7 fa02fe96→f1693fb5` etc. sur les
+  5 graines) — c'était en réalité `scps_influence.c/h` (l'autre agent, en
+  cours d'édition CONCURRENTE dans le même répertoire) qui changeait le
+  monde, pas chronicle.c/scps_doctrines.c. Diagnostic : `git worktree add
+  --detach <chemin> <commit HEAD>`, copie MANUELLE des deux fichiers modifiés
+  dedans, build+golden LÀ — `golden OK : hash monde IDENTIQUE` confirmé en
+  isolation. Sur un repo à agents concurrents, ne jamais conclure d'un
+  échec de golden dans l'arbre PARTAGÉ sans l'avoir d'abord rejoué en
+  worktree isolé.
+- **`long doctrines_adopt_total_get(void);` déclaré en prototype local dans
+  chronicle.c (pas via un header)** compile sans warning parce que la
+  définition réelle (scps_doctrines.c, non-static) a une signature IDENTIQUE
+  — le lieur ne voit qu'un symbole global, peu importe où le prototype a été
+  écrit. Fonctionne, mais c'est fragile aux changements de signature (aucun
+  garde du compilateur si les deux dérivent) ; accepté ici seulement parce
+  que la mission interdisait explicitement de toucher scps_doctrines.h.
+
+### Restes
+
+- **Le plancher `V < 500` (A16) est un ordre de grandeur, pas une valeur
+  calibrée** — choisi pour distinguer 33-76 (sweep, atone) de ce que serait
+  un vrai régime de croisière ; un futur sweep dédié au commerce inter-pays
+  pourrait vouloir le recalibrer sur une distribution mesurée plutôt qu'un
+  rond de pouce.
+- **Le cumul `g_doct_adopt_total` (A6) n'est PAS testé sur un horizon 200
+  ans avec pays qui meurent** dans cette mission (seul un run court 512/120
+  a servi de preuve de fumée + relecture des logs du sweep existant) — le
+  prochain sweep doctrines devrait vérifier que le cumul reste bien monotone
+  pendant qu'« actives »/« idées » reculent, sur les mêmes graines que le
+  rapport A6 (s90, s512).
+- **Le stash `stash@{0}` (« WIP on … ») traîne encore dans le repo** après
+  cette mission — il contient une snapshot PÉRIMÉE du travail de l'agent
+  influence (dépassée par ses propres commits/edits depuis) ; à `git stash
+  drop` une fois confirmé qu'il ne contient plus rien d'utile que l'agent
+  influence n'a pas déjà repris.
+- **A8 n'a rien changé au comportement/dénominateurs** (juste un label
+  d'affichage sur pop<1k) — si le joueur veut vraiment SÉPARER les
+  sécessions fraîches des empires établis dans les futurs juges statistiques
+  (ex. exclure les états <1 an des corrélations-juges), il faudra une vraie
+  donnée d'âge de pays côté moteur (absente aujourd'hui) — hors périmètre
+  chronicle.c seul.

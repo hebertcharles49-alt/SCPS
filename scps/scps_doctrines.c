@@ -358,6 +358,19 @@ int doctrines_why_not(const DoctrineState *ds, const InfluenceState *is,
 /* ====================================================================== */
 /* LES VERBES                                                              */
 /* ====================================================================== */
+/* A6 (télémétrie chronicle, 2026-09-02) : le compteur « doctrines actives »
+ * de chronicle.c est un INSTANTANÉ des pays vivants — il RECULE quand des pays
+ * meurent, ce qui se lit à l'envers (« les doctrines disparaissent ») alors que
+ * rien ne se désadopte (v107 : aucun entretien, une doctrine adoptée reste
+ * ALLUMÉE). Ce compteur MONDE cumule les adoptions RÉUSSIES (joueur ET IA —
+ * chronicle est headless, seule l'IA agit, donc en pratique il ne compte QUE
+ * l'IA), jamais décrémenté, jamais sérialisé, RAZ explicite par sim (côté
+ * chronicle.c, doctrines_adopt_total_reset). WRITE-ONLY ici : ce fichier ne
+ * fait qu'incrémenter, aucun comportement de jeu n'en dépend. */
+static long g_doct_adopt_total = 0;
+long doctrines_adopt_total_get(void){ return g_doct_adopt_total; }
+void doctrines_adopt_total_reset(void){ g_doct_adopt_total = 0; }
+
 int doctrines_adopt(DoctrineState *ds, InfluenceState *is, int cid, int slot, int doctrine, float ech){
     if (!ds || !cid_ok(cid)) return 0;
     if (slot<0 || slot>=DOCT_SLOTS_MAX) return 0;
@@ -367,6 +380,7 @@ int doctrines_adopt(DoctrineState *ds, InfluenceState *is, int cid, int slot, in
     ds->doct[cid][slot] = (int8_t)doctrine;
     ds->ideas[cid][doctrine] = 0;   /* on repart de zéro (abandon = idées perdues) */
     doctrines_sync(ds);
+    g_doct_adopt_total++;   /* A6 — télémétrie chronicle uniquement, cf. commentaire ci-dessus */
     return 1;
 }
 
