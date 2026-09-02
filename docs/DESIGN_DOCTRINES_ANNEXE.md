@@ -6,13 +6,18 @@ flavor ≤ 1 phrase · **coût fixe et scalable** (façon unités Stellaris) ·
 l'IA choisit **par score** sur ses propres modificateurs (pays côtier →
 Colonisation score haut, etc.), aucune restriction d'éthos.
 
-## Coûts (influence)
+## Coûts (influence) — révision 2026-09-02 : slots LIBRES, dépense linéarisée
 
-- **Adopter une doctrine** : `DOCT_BASE (50) + DOCT_STEP (25) × doctrines
-  actives` — 1re = 50, 6e = 175.
-- **Acheter une idée** : `IDEA_BASE (30) + IDEA_STEP (3) × idées possédées
-  (toutes doctrines confondues)` — 1re = 30, 36e = 135. Abandonner libère le
-  compte.
+Les 6 slots sont ouverts d'office (plus d'ouverture par âges). Tous les coûts
+sont **linéarisés sur la pop de nobles** : × `é = assiette de génération
+(SANS le mult du Conseil — anti-exploit) / INFLUENCE_BASE_REF (2.0)`,
+plancher 0.25. Un empire 2× plus noble paie 2× plus cher ET gagne 2× plus
+vite — le temps d'acquisition est constant, la liberté est ressentie.
+
+- **Adopter une doctrine** : `(DOCT_BASE 50 + DOCT_STEP 25 × actives) × é`.
+- **Acheter une idée** : `(IDEA_BASE 30 + IDEA_STEP 3 × idées possédées,
+  toutes doctrines confondues) × é`. Abandonner libère le compte.
+- **Entretien** : `DOCT_UPKEEP 1.0 × é /mois par doctrine active`.
 - **Synergie de paire** : entretien fibonaccien 2/3/5/8… /mois (inchangé).
 - **Complet = rien de spécial** ; la paire complète ouvre le sous-menu de
   synergie. **Abandon libre**, sans remboursement ni cicatrice.

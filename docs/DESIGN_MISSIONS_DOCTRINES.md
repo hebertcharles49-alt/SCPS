@@ -260,10 +260,13 @@ politique. La frontière est nette et lisible.
   **adoption → 6 IDÉES achetées en séquence**. **Compléter ne donne rien de
   spécial** (décision 2026-09-01) : la valeur, ce sont les 6 idées elles-mêmes
   — et l'éligibilité aux synergies de paires (§4.4).
-- **6 slots maximum** sur toute la partie — on renonce à la moitié du
-  catalogue. Un slot s'ouvre à l'avènement d'un âge où le joueur s'est
-  **engagé** (motif `CMD_AGE_ENGAGE` + `year_eligible[]`, déjà persisté) :
-  la doctrine est la récolte de l'âge vécu (8 âges possibles → 6 récoltes max).
+- **6 slots, LIBRES d'entrée** (révision joueur 2026-09-02 — l'ouverture par
+  âges engagés est SUPPRIMÉE) : le frein est purement économique — **la
+  dépense est linéarisée sur la pop de nobles** : tous les coûts (adoption,
+  idées, entretien) × `é = assiette de génération / INFLUENCE_BASE_REF (2.0)`,
+  calculée SANS le multiplicateur du Conseil (anti-exploit), plancher 0.25.
+  In fine le temps d'acquisition est constant quelle que soit la taille de
+  l'empire — mais le joueur a l'impression de liberté.
 - **Une paire opposée auto-exclusive** (motif décrets) : **Commerce ↔
   Mercantilisme** (libre-échange vs dirigisme). **Aucun autre gate** (révision
   joueur 2026-09-01) : ni éthos, ni héritage, ni religion — toutes les
