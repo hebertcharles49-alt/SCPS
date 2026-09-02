@@ -176,4 +176,10 @@ enum { DOCT_OK = 0, DOCT_NO_SLOT, DOCT_ALREADY, DOCT_EXCLUSIVE_PAIR,
 int   doctrines_why_not(const DoctrineState *ds, const struct InfluenceState *is,
                         int cid, int slot, int doctrine, float ech);
 
+/* TÉLÉMÉTRIE (print-only, chronicle) — Σ entretien PAYÉ (en influence) et Σ
+ * suspensions posées depuis la genèse de cette sim (statiques de module, RAZ à
+ * doctrines_init, JAMAIS sérialisées — motif econ_colony_stats). N'entrent dans
+ * AUCUN calcul moteur. */
+void  doctrines_stats_get(double *upkeep_paid, long *suspensions);
+
 #endif /* SCPS_DOCTRINES_H */

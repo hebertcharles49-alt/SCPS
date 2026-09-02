@@ -225,4 +225,29 @@ float    ai_country_population(const World *w, const WorldEconomy *econ, int cid
  * strates × bibliothèque) × le rendement du Savoir·Production. Bandeau (Savoir + flux). */
 float    ai_research_income(const WorldEconomy *econ, const TechState *ts, int cid);   /* SAVOIR unifié */
 
+/* ── L'IA ET LES DOCTRINES (P3-IA — design §4.6, docs/BRIEF_P3_IA_CHRONICLE.md) ──
+ * L'IA joue le MÊME arbre que le joueur, par les MÊMES verbes (doctrines_adopt /
+ * doctrines_buy_idea) : aucun chemin parallèle, mêmes coûts échelonnés sur
+ * l'assiette (`ech`, calculé par l'appelant — motif doctrines_tick), mêmes
+ * exclusivités, même entretien. Le choix est un SCORE sur l'état RÉEL du pays
+ * (aucun xs32 : déterministe), départagé score desc puis id asc.
+ * À appeler à la CLÔTURE ANNUELLE pour chaque pays IA vivant. Un seul acte par
+ * passage : adopter la meilleure doctrine libre, sinon acheter la prochaine
+ * idée de la doctrine active la moins fournie. Renvoie 1 si un acte a pris.
+ * Kill-switch registre J `AI_DOCT`=0 ⇒ no-op total (golden byte-identique).
+ * Exclus : cité-état (aucun appareil politique), pays mort, et le JOUEUR (que
+ * l'appelant écarte — c'est LUI qui clique). */
+/* `DoctrineState` arrive par scps_econ.h → scps_doctrines.h (typedef SANS tag :
+ * impossible de le forward-déclarer) ; `InfluenceState` est tagué, donc une
+ * forward-déclaration suffit — scps_ai.h ne tire pas scps_influence.h. */
+struct InfluenceState;
+int  ai_doctrines_year(DoctrineState *ds, struct InfluenceState *is,
+                       const World *w, const WorldEconomy *econ, const DiploState *dp,
+                       const Statecraft *sc, const RouteNetwork *rn, const TechState *ts,
+                       int cid, float ech);
+/* Le SCORE nu (lecture pure, aucun effet de bord) — bancs & diagnostic. */
+void ai_doctrines_scores(const World *w, const WorldEconomy *econ, const DiploState *dp,
+                         const Statecraft *sc, const RouteNetwork *rn,
+                         const TechState *ts, int cid, float out[DOCT_COUNT]);
+
 #endif /* SCPS_AI_H */

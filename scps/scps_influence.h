@@ -83,6 +83,11 @@ void  influence_spend(InfluenceState *is, int cid, float cost);
  * la membrane façade distingue « aucun ministre » de « rang moyen I ». */
 float influence_council_mult(const Statecraft *sc, uint32_t seed, int cid, int *out_n_seated);
 
+/* TÉLÉMÉTRIE (print-only, chronicle) — Σ influence GÉNÉRÉE depuis la genèse de cette
+ * sim (statique de module, RAZ à influence_init, JAMAIS sérialisée — motif
+ * econ_colony_stats). N'entre dans AUCUN calcul moteur. */
+void influence_stats_get(double *generated);
+
 /* Effectif national de la classe ÉLITE — somme des PROVINCES au pays (prov[], JAMAIS
  * region[].pop, miroir stale — doctrine « la province est la seule réalité économique »,
  * CLAUDE.md). */

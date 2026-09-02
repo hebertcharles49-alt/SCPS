@@ -492,8 +492,11 @@ static int peace_fragment_country(Sim *s,World *w,int parent){
  * la génération sur SA classe ; sans courant, l'assiette par défaut (élites × 0.002).
  * C'est ICI que la traduction DoctrineId → InfluenceBase se fait : les deux modules
  * restent ignorants l'un de l'autre. */
-static InfluenceBase sim_influence_base(const Sim *s){
-    int cur = s ? doctrines_current(s->doct, s->human_player) : -1;
+/* P3-IA (2026-09-02) : le paramètre `cid` — la génération d'influence n'est plus
+ * le privilège du joueur (l'IA joue les mêmes doctrines, brief §1.1), donc
+ * l'assiette se lit PAR PAYS et non plus sur s->human_player. */
+static InfluenceBase sim_influence_base(const Sim *s, int cid){
+    int cur = s ? doctrines_current(s->doct, cid) : -1;
     switch (cur){
       case DOCT_ARISTOCRATIE: return INFL_BASE_ARISTO;
       case DOCT_BOURGEOISIE:  return INFL_BASE_BOURGEOIS;
@@ -1046,11 +1049,11 @@ static void sim_cmd_drain(Sim *s, World *w){
            *    et de doctrines_why_not, la source unique lue par la façade. ── */
           case CMD_DOCT_ADOPT:
             doctrines_adopt(s->doct, s->infl, p, c->a[0], c->a[1],
-                            influence_scale(s->econ, p, sim_influence_base(s)));
+                            influence_scale(s->econ, p, sim_influence_base(s, p)));
             break;
           case CMD_DOCT_IDEA:
             doctrines_buy_idea(s->doct, s->infl, p, c->a[0],
-                               influence_scale(s->econ, p, sim_influence_base(s)));
+                               influence_scale(s->econ, p, sim_influence_base(s, p)));
             break;
           case CMD_DOCT_ABANDON:
             doctrines_abandon(s->doct, s->infl, p, c->a[0]);
@@ -1242,20 +1245,34 @@ void sim_day(Sim *s, World *w) {
         statecraft_council_apply(s->sc, w, s->econ, s->wp, w->seed, 1.f/12.f);  /* Q1 : le Conseil pousse ses ×, paie son or (P1-1 : × efficacité) */
         /* DÉCRETS DU JOUEUR — SEUL rôle humain (chronique human_player=-1 ⇒ jamais appelé,
          * golden intact par construction). Mensuel, miroir du Conseil. */
-        if (s->human_player>=0){
+        if (s->human_player>=0)
             decrees_tick(w, s->econ, s->sc, s->wl, s->host, s->dp, s->human_player, 30);
-            /* INFLUENCE POLITIQUE §3 — même motif (mensuel, joueur SEUL) : la chronique
-             * (human_player=-1) n'appelle jamais influence_tick ⇒ golden intact par
-             * construction. gain = INFLUENCE_PER_NOBLE × élites(prov[]) × mult_conseil. */
-            influence_tick(s->infl, w, s->econ, s->sc, w->seed, s->human_player,
-                           sim_influence_base(s));
-            /* LES DOCTRINES §4 — MÊME motif, et JUSTE APRÈS la génération : l'entretien
-             * (DOCT_UPKEEP/mois par doctrine active) se prélève sur le stock du mois
-             * courant ; insolvable ⇒ les dernières adoptées se suspendent CE mois. Le
-             * prix (comme l'adoption et les idées) est LINÉARISÉ sur l'assiette :
-             * un empire deux fois plus noble paie deux fois plus. */
-            doctrines_tick(s->doct, s->infl, s->human_player,
-                           influence_scale(s->econ, s->human_player, sim_influence_base(s)));
+        /* INFLUENCE POLITIQUE §3 + DOCTRINES §4 — P3-IA (2026-09-02, brief §1.1) :
+         * la GÉNÉRATION n'est plus gatée `human_player`, elle tourne pour TOUS les
+         * pays VIVANTS (joueur compris) — l'IA joue le même arbre, elle doit donc
+         * disposer de la même monnaie politique. Ce qui RESTE gaté joueur :
+         *   · la DÉPENSE DIPLOMATIQUE (sim_cmd_drain plus haut : les émissaires
+         *     coûtent INFLUENCE_COST_ENVOY/_FAB au JOUEUR seul — les cadences IA
+         *     propres, AI_*, restent LA loi de l'IA en diplomatie ; une symétrie
+         *     diplo éventuelle est une décision joueur ultérieure) ;
+         *   · les décrets (ci-dessus).
+         * L'ENTRETIEN suit la génération dans le MÊME passage (le stock du mois
+         * courant paie DOCT_UPKEEP × doctrines actives × échelle d'assiette ;
+         * insolvable ⇒ les dernières adoptées se suspendent CE mois). doctrines_tick
+         * n'est appelé que pour un pays QUI TIENT au moins une doctrine : sans
+         * doctrine il est un no-op coûteux (doctrines_sync remet à zéro tout le
+         * miroir + le cache de clés à chaque appel).
+         * GOLDEN : avec AI_DOCT=0 l'IA n'adopte jamais, aucun pays IA n'a de
+         * doctrine, doctrines_tick n'est donc jamais appelé pour elle et
+         * influence_tick n'écrit QUE dans InfluenceState (que rien d'autre ne lit
+         * hors dépense joueur) ⇒ hash byte-identique. */
+        for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+            if (c!=s->human_player && !s->ai_on[c]) continue;
+            if (regions_of(s->econ, c) <= 0) continue;              /* pays mort */
+            InfluenceBase ib = sim_influence_base(s, c);
+            influence_tick(s->infl, w, s->econ, s->sc, w->seed, c, ib);
+            if (doctrines_n_active(s->doct, c) > 0)
+                doctrines_tick(s->doct, s->infl, c, influence_scale(s->econ, c, ib));
         }
         for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
             if (s->ai_on[c]) statecraft_council_ai(s->sc, w, s->econ, w->seed, c, s->year);   /* Q1 : l'IA pourvoit son siège d'éthos (pool de la génération courante) */
@@ -1595,6 +1612,25 @@ void sim_day(Sim *s, World *w) {
          * joueur seul) et l'Âge des Héros naît du PARACHÈVEMENT scellé, dans le
          * drain de CMD_SEAL_DESSEIN. */
         statecraft_council_age_tick(s->sc, w->seed, s->year);    /* LES ANNÉES PASSENT : les conseillers vieillissent, la retraite vide le siège */
+        /* LES DOCTRINES DE L'IA (P3-IA, design §4.6) — la DÉLIBÉRATION ANNUELLE.
+         * Un pays IA vivant note chaque doctrine sur SON état réel puis, si son
+         * stock couvre le prix × AI_DOCT_RESERVE, adopte la meilleure encore libre
+         * — sinon achète la prochaine idée de sa doctrine la moins fournie. Les
+         * MÊMES verbes que le joueur (aucun chemin parallèle) ; le JOUEUR est
+         * exclu (c'est lui qui clique, CMD_DOCT_*) ; les cités-états aussi
+         * (exclusion interne à ai_doctrines_year — aucun appareil politique).
+         * Cadence AI_DOCT_CHECK_MONTHS, arrondie en ANNÉES : le site est annuel. */
+        if (tune_f("AI_DOCT", 1.f) > 0.f){
+            int per = (int)(tune_f("AI_DOCT_CHECK_MONTHS", 12.f) / 12.f);
+            if (per < 1) per = 1;
+            if (s->year % per == 0)
+                for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+                    if (c==s->human_player || !s->ai_on[c]) continue;
+                    if (regions_of(s->econ, c) <= 0) continue;
+                    ai_doctrines_year(s->doct, s->infl, w, s->econ, s->dp, s->sc, s->rn, s->ts, c,
+                                      influence_scale(s->econ, c, sim_influence_base(s, c)));
+                }
+        }
         faction_bind(w, s->econ);   /* GLISSEMENT 2026-08-06 : grief/capture vivent sur les groupes — lier le monde avant tout lecteur/écrivain de faction */
         faction_levers_decay(0.07f);   /* §4 : une stance non entretenue s'efface (~15 ans) */
         if (s->ev->ages.last_dawned != s->prev_dawned){

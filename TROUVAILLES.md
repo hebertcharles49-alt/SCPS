@@ -10561,3 +10561,143 @@ INTERDITS pour moi, contenu autorisé) — relu avant chaque édition, diff fina
   4000 journaliers × 0.00012 = 0.48/mois contre 2.0/mois pour 1000 élites —
   la parité ~4/mois visée par le design n'est PAS atteinte par le taux par
   défaut. À calibrer en partie réelle (les courants ne vivent que sous joueur).
+
+## Mission 2026-09-02 — P3-IA : l'IA joue l'influence et les doctrines · le chronicle mesure
+
+### Découvertes
+
+- **Le golden a bougé, comme prévu et acté (design §6 P3).** Avant :
+  `7 9fa6ff52 · 108 f96da1f0 · 209 545c5872 · 310 6f979e33 · 411 fd265618`.
+  Après : `7 fa02fe96 · 108 f96da1f0 · 209 545c5872 · 310 8902b118 ·
+  411 ff64ee5a`. TROIS graines sur cinq bougent seulement — deux mondes
+  n'ont aucun adoptant dans la fenêtre de 12 ans. **`SCPS_TUNE=AI_DOCT=0`
+  rend EXACTEMENT la colonne « avant »**, byte pour byte : la dérive est
+  ENTIÈREMENT l'adoption IA.
+- **Le golden 12 ans est un filet FAIBLE pour tout ce qui touche aux
+  doctrines.** L'IA adopte dès l'an ~3 (mesuré : 14 doctrines actives · 23
+  idées à l'an 12, graine 7) et pourtant, avec une PREMIÈRE version des poids
+  de score, les 5 hashes étaient restés IDENTIQUES : les premières idées de
+  chaque doctrine sont largement `cable=0` (Production 1-2 =
+  `EXTRACT_LABOR_SHARE` hoisté + `TOOLS_PER_LABORER` non promu ; Colonisation
+  1 = `COLONY_MIN_POP` hoisté ; Infrastructure 1 = `BUILD_MAT_MULT` fantôme) —
+  l'IA achète donc des idées INERTES pendant les premières années. Le hash n'a
+  fini par bouger qu'après le RÉÉQUILIBRAGE des poids (qui change QUELLES
+  doctrines sont prises). **Corollaire pour un futur agent : ne pas conclure
+  « pas d'impact » d'un `make golden` vert sur un changement de doctrines ;
+  la vraie non-régression séculaire est `make golden-deep`.**
+- **`scps/golden_deep.txt` est STALE, et l'était AVANT cette mission**
+  (`git log -- scps/golden_deep.txt` → dernier commit `3e2d568` « Compacité
+  des noyaux », alors que `golden_hashes.txt` avait été re-baseliné en
+  `aafdb2e` Desseins). Mesuré ici avec `AI_DOCT=0` (donc trajectoire
+  strictement identique au HEAD d'avant la mission) : `83 → a20aabd1` et
+  `250 → 83e83b21` contre `dd210348 / 8c9e1191` au fichier. `golden-deep`
+  n'est PAS dans `full-test` (= `test + determinism + golden + asan`), d'où la
+  dérive silencieuse. **NON re-baseliné ici** (ce n'est pas la dérive de cette
+  vague : le re-baseliner l'enterrerait) — décision joueur.
+- **Le porteur du CB dit QUI a déclaré.** `DiploState` n'a aucun champ
+  « agresseur » : le seul état durable qui distingue la guerre MENÉE de la
+  guerre SUBIE est `cb[a][b] != CB_NONE` — le commentaire de `battle_score`
+  (scps_diplo.h:55) l'énonce (« a = ATTAQUANT, celui qui a le CB »). C'est ce
+  que lisent les scores Offense/Défense.
+- **La TRÊVE est la seule trace DURABLE d'une guerre finie.** `war_years` se
+  remet à zéro à la paix ; une délibération ANNUELLE ne verrait donc presque
+  jamais le signal martial (une guerre courte tombe entre deux clôtures).
+  `truce[a][b] > 0` (jours d'interdiction de guerre posés à la paix,
+  scps_diplo.h:50) est le substitut retenu — motif exact du substitut `rancor`
+  trouvé pour `conq_value` à la vague Desseins. Sans lui, la corrélation
+  « belligérant → Offense/Défense » restait à 0 %.
+- **Les signaux TRANSITOIRES doivent peser PLUS FORT que les signaux de fond.**
+  Première version : Production/Infrastructure/Colonisation plafonnaient à
+  2.7-3.0, Offense à 1.6 → une doctrine PERMANENTE raflait tous les slots pour
+  toujours et le juge « belligérants » restait à 0/18. Après remise à une
+  échelle commune (~2.0-2.8 partout) avec la guerre à 2.0/guerre : la
+  corrélation ADOPTANTS passe à 1/5. C'est structurel, pas cosmétique : avec
+  6 slots et ~3 adoptions par pays sur 120 ans, une doctrine qui score toujours
+  haut ferme la porte à celles qui ne scorent que par intermittence.
+- **Le « courant DOMINANT en part relative » n'est PAS l'effectif brut.** Les
+  journaliers sont toujours les plus nombreux : un argmax sur les têtes rendrait
+  Populaire partout, choix dégénéré. On compare les quatre
+  `influence_base_gain` — les taux par classe (`INFLUENCE_PER_NOBLE_ARISTO /
+  _BOURGEOIS / _LABORER / _FAITH`) SONT la pondération politique, donc « la
+  part relative ».
+- **Aucun ripple Makefile** : toute cible qui lie `scps_scps_ai.o` lie DÉJÀ
+  `scps_scps_influence.o` ET `scps_scps_doctrines.o` (vérifié en aplatissant les
+  continuations). D'où le choix d'écrire la routine DANS `scps_ai.c` plutôt que
+  dans un `scps_ai_doctrines.c` neuf (qui aurait coûté ~33 sites).
+- **`DoctrineState` est un typedef SANS TAG** : impossible à forward-déclarer
+  dans `scps_ai.h`. Il arrive tout seul par `scps_econ.h → scps_doctrines.h`.
+  `InfluenceState`, lui, est tagué (`typedef struct InfluenceState {…}`) : une
+  forward-déclaration suffit et `scps_ai.h` ne tire pas `scps_influence.h`.
+- **Aucun bump de `SAVE_VERSION`** : ni `DoctrineState` ni `InfluenceState` ne
+  changent de taille — l'état IA est le MÊME état sérialisé que celui du joueur
+  (sections INFL v104 / DOCT v106, déjà revalidées par `save_sane`, et
+  `doctrines_sync` déjà rappelé au chargement, scps_save.c:657). `--savetest`
+  A==B vert du premier coup.
+
+### Pièges
+
+- **`role != POLITY_UNCLAIMED && n_regions > 0` ne suffit PAS à trouver un pays
+  jouable** dans un banc : les hameaux `POLITY_WILD` passent ce filtre mais ne
+  possèdent AUCUNE province au sens `prov[].owner` — la seule vérité économique.
+  Tous les scores sortaient à 0 et six assertions du banc tombaient sans que
+  rien ne soit faux dans la routine. `ai_demo` a déjà le bon filtre
+  (`polity[]` = PLAYER/ANTAGONIST) : le réutiliser.
+- **`cat >> fichier << 'EOF'` avec du texte français casse dans ce toolchain**
+  (« unexpected EOF while looking for matching `'` » sur les apostrophes
+  internes). Jurisprudence heredoc confirmée et ÉLARGIE : pour ajouter du code
+  accentué à un .c, écrire un fichier `.part` avec l'outil Write puis l'ajouter
+  en BINAIRE (PowerShell `[IO.File]::Open(dst,'Append')` + `ReadAllBytes`) —
+  ça préserve l'UTF-8 sans BOM et les LF.
+- **Pour INSÉRER un bloc au MILIEU d'un .c**, `sed -i .../r` insère APRÈS. Le
+  motif propre : `n=$(grep -n 'ANCRE_ASCII' f | cut -d: -f1)` puis
+  `head -n $((n-2)) f > new; cat part >> new; tail -n +$((n-1)) f >> new`.
+  L'ancre doit être ASCII (les lignes décoratives `══` ne se cherchent pas
+  commodément).
+- **`scps/ai_demo.c` est en CRLF** (contrairement à `scps_ai.c` / `chronicle.c`
+  qui sont en LF) : un bloc inséré en LF passe la compilation mais laisse le
+  fichier MIXTE, et git le signale (« CRLF will be replaced by LF »). Vérifier
+  `file scps/<cible>.c` AVANT d'insérer, et re-normaliser après
+  (`sed -i 's/\r\?$/\r/'`).
+- **`doctrines_tick` n'est PAS gratuit quand le pays n'a aucune doctrine** : il
+  appelle `doctrines_sync`, qui memset le miroir ENTIER (`g_own` 320×17) et le
+  cache de clés (320×16 entrées ≈ 81 Ko) à chaque appel. Appelé mensuellement
+  pour les ~28 pays d'un monde, ça devient un puits gratuit. Le site d'appel le
+  gate donc sur `doctrines_n_active(ds,c) > 0` — sémantiquement neutre (sans
+  doctrine il n'y a ni entretien ni suspension à poser).
+- **Le `-Wmisleading-indentation` de gcc mord sur `if (a) *a=x; if (b) *b=y;`
+  sur une seule ligne** — style courant ailleurs, mais gcc le refuse dès que
+  deux `if` sans accolades se suivent. Une ligne par `if`.
+- **Deux MSYS2 `bash.exe -lc` enchaînés dans une même commande ne partagent pas
+  le cwd** : le second démarre dans le HOME et rend silencieusement RIEN.
+  Toujours un script avec son `cd` en 1re ligne (jurisprudence confirmée).
+
+### Restes
+
+- **La corrélation « belligérants → Offense/Défense » reste modeste** : sur la
+  graine 7 à l'an 120, 6 pays sur 28 seulement accumulent assez d'influence
+  pour s'offrir QUOI QUE CE SOIT — les 22 autres diluent le dénominateur sans
+  rien dire du départage (14 % côtiers→Colonisation en assiette TOTALE contre
+  **75 %** en assiette ADOPTANTS). Le bilan imprime donc les DEUX lignes ; la
+  seconde (« ADOPTANTS seuls ») est la vraie mesure du score. Le levier n'est
+  pas le score mais la GÉNÉRATION (`INFLUENCE_PER_*`) et l'ENTRETIEN —
+  décision joueur, à trancher sur le sweep.
+- **Le taux de SUSPENSION est haut** (4-10 doctrines suspendues en permanence
+  sur ~17 actives ; ~8400 suspensions cumulées sur 120 ans) : l'IA dépense
+  jusqu'au coussin `AI_DOCT_RESERVE` puis n'arrive plus à payer
+  `DOCT_UPKEEP × actives × é` le mois suivant. C'est le comportement SPÉCIFIÉ
+  (le coussin ne couvre que le prix PONCTUEL, pas l'entretien COURANT) — le
+  candidat de calibrage est soit `AI_DOCT_RESERVE` ↑, soit un coussin exprimé
+  en MOIS d'entretien. À trancher sur le sweep.
+- **Les poids du score ne sont PAS des tunables** (facteurs littéraux dans
+  `ai_doct_scores`, scps_ai.c). Échelle commune ~2.0-2.8 par doctrine. Si le
+  sweep demande un réglage fin, c'est là qu'il faudra promouvoir au registre J.
+- **Aucune SYMÉTRIE DIPLO** : l'IA génère l'influence mais ne la DÉPENSE pas en
+  émissaires (ses cadences `AI_*` restent sa loi). Son stock ne sert qu'aux
+  doctrines — décision documentée du brief §1.1, à ré-ouvrir si l'on veut que
+  la diplomatie IA coûte aussi.
+- **Desseins IA = P4** (hors périmètre) ; **verbes de doctrine = vague dédiée**
+  (les 20 idées-VERBES restent inertes pour l'IA comme pour le joueur).
+- **`tools/sweep_doct_ai.sh` est ÉCRIT, DÉMARRÉ une fois puis TUÉ, jamais joué
+  en entier** (règle ferme : le joueur lance). 36 sims (3 graines × 3
+  répétitions × 2 horizons × 2 bras), résumé apparié automatique + contrôle de
+  FUITE du kill-switch (un bras témoin qui adopterait = bug).

@@ -404,6 +404,22 @@ L'« arbre de tech parallèle » est pour tout le monde — pas un jouet solo :
 | **P3** | Doctrines moteur (`doctrine_mult` cloné de `decree_mult`, slots par âge, adoption ET entretien en influence) **+ adoption IA par score (§4.6)** + 4e sous-onglet Conseil. | mêmes gates + **re-baseline golden + sweep apparié 3×3 — le joueur lance** |
 | **P4** | Desseins IA (biais `ai_province_value`/colonisation vers la cible du dessein courant) + calibrage d'ensemble. | re-baseline + sweep apparié — le joueur lance |
 
+**P3-IA — atterrissage (2026-09-02, `docs/BRIEF_P3_IA_CHRONICLE.md`)** :
+l'adoption IA par score est LANDÉE (`ai_doctrines_year`, scps_ai.c), la
+génération d'influence est passée à TOUS les pays vivants (seule la dépense
+diplomatique reste gatée joueur), et le chronicle porte la télémétrie + les
+corrélations-juges. **Re-baseline golden ACTÉ** (5 graines × 12 ans) —
+| | 7 | 108 | 209 | 310 | 411 |
+|---|---|---|---|---|---|
+| **avant** | `9fa6ff52` | `f96da1f0` | `545c5872` | `6f979e33` | `fd265618` |
+| **après** | `fa02fe96` | `f96da1f0` | `545c5872` | `8902b118` | `ff64ee5a` |
+
+Trois graines sur cinq bougent (deux mondes n'ont aucun adoptant dans la
+fenêtre de 12 ans) ; **`SCPS_TUNE=AI_DOCT=0` rend EXACTEMENT la colonne
+« avant »** — la preuve que la dérive est ENTIÈREMENT l'adoption IA et rien
+d'autre. Le **sweep apparié 3×3** (`tools/sweep_doct_ai.sh`) est écrit et prêt
+— **le joueur le lance**.
+
 Pièges déjà consignés à respecter : `region[].owner` dérivé (lire
 `prov[pid].owner`) · enum appendus en fin + grep des boucles `*_COUNT` ·
 `SCAR_NONE=0`-style pour tout nouvel enum à défaut implicite · Makefile ripple

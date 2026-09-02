@@ -1928,6 +1928,26 @@
      * L'échelle se lit sur l'ASSIETTE SEULE, jamais × le rang du Conseil
      * (sinon renvoyer ses ministres braderait les prix — exploit évité).
      * 0 = KILL-SWITCH : é ≡ 1.0, prix plats. */ \
-    X(INFLUENCE_BASE_REF,               2.0f)
+    X(INFLUENCE_BASE_REF,               2.0f) \
+    /* L'IA ADOPTE (P3-IA, design §4.6 + docs/BRIEF_P3_IA_CHRONICLE.md) — l'IA
+     * joue le MÊME arbre que le joueur : mêmes verbes (doctrines_adopt/
+     * doctrines_buy_idea), mêmes coûts, mêmes exclusivités, même entretien.
+     * Le CHOIX est un SCORE sur son état réel (côtier→Colonisation, vassaux
+     * tenus→Vassaux, guerres subies→Défense…), départagé score desc puis id
+     * asc — zéro rand, déterministe.
+     *   AI_DOCT              1 = l'IA adopte · 0 = KILL-SWITCH (elle n'adopte
+     *                        JAMAIS ⇒ hash byte-identique au golden : la preuve
+     *                        avant toute mesure).
+     *   AI_DOCT_CHECK_MONTHS cadence de la délibération, en MOIS. Le site
+     *                        d'appel est la clôture ANNUELLE ⇒ la valeur est
+     *                        arrondie en ANNÉES (12→tous les ans, 24→un an sur
+     *                        deux ; < 12 se comporte comme 12).
+     *   AI_DOCT_RESERVE      coussin : l'IA ne dépense que si son stock couvre
+     *                        coût × RESERVE (elle garde de quoi payer son
+     *                        entretien plutôt que de se suspendre au mois
+     *                        suivant). */ \
+    X(AI_DOCT,                          1.0f) \
+    X(AI_DOCT_CHECK_MONTHS,            12.0f) \
+    X(AI_DOCT_RESERVE,                  1.5f)
 
 #endif /* SCPS_TUNE_LIST_H */

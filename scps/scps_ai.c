@@ -20,6 +20,7 @@
 #include "scps_labor.h"      /* F-arc : capitale_max_tier (le tier de capitale qui gate les manufactures) */
 #include "scps_credit.h"     /* dette : les gardes « can't afford » deviennent « tu t'endettes » */
 #include "scps_fog.h"        /* BROUILLARD : country_knows — l'IA ne CRAINT que ce qu'elle a rencontré */
+#include "scps_influence.h"  /* P3-IA : l'influence de l'IA (stock + assiettes) — scps_doctrines.h vient déjà par scps_econ.h */
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
@@ -3079,4 +3080,294 @@ void ai_slave_trade_year(World *w, WorldEconomy *econ, const AiActor ai[], const
         long ask = (long)(excess * (double)tune_f("SLAVE_AI_SELL_FRAC",0.25f));
         if (ask>0) intertrade_slave_sell(econ, rhome, ask);
     }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ *  L'IA ADOPTE LES DOCTRINES — P3-IA
+ *  (design §4.6, docs/BRIEF_P3_IA_CHRONICLE.md §1)
+ *
+ *  L'arbre de spécialisation n'est pas un jouet solo : l'IA y joue les MÊMES
+ *  règles que le joueur. AUCUN chemin parallèle — on appelle doctrines_adopt /
+ *  doctrines_buy_idea avec le cid de l'IA, donc mêmes coûts (linéarisés sur
+ *  l'assiette `ech`), mêmes exclusivités (Commerce ⊥ Mercantilisme, un seul
+ *  courant), même entretien mensuel et mêmes suspensions (doctrines_tick).
+ *
+ *  LE CHOIX EST UN SCORE SUR L'ÉTAT RÉEL — jamais une personnalité, jamais un
+ *  tirage : chaque signal LIT un champ qui existe déjà (côte, chantier de
+ *  colonisation, routes ouvertes, Centres bâtis, CB porté, rancune, vassaux,
+ *  opinion, diaspora, métabolisation, manufactures, vétusté, bibliothèques,
+ *  techs faustiennes). ZÉRO xs32 : déterminisme par construction. Le départage
+ *  est score DESCENDANT puis id ASCENDANT (comparaison stricte).
+ *
+ *  L'IA N'A PAS À S'ENGAGER dans un âge (CMD_AGE_ENGAGE est un verbe JOUEUR) :
+ *  les six slots sont ouverts d'office pour tout le monde depuis la décision
+ *  2026-09-02 (doctrines_slots_open rend toujours DOCT_SLOTS_MAX).
+ *
+ *  KILL-SWITCH `AI_DOCT`=0 ⇒ retour immédiat : l'IA n'adopte JAMAIS, aucun
+ *  DoctrineState ne bouge, doctrine_key_mult reste à 1.0f partout et le hash
+ *  est byte-identique au golden.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+static float aid_clamp(float v, float lo, float hi){ return (v<lo)?lo:((v>hi)?hi:v); }
+
+/* LE COURANT LE MIEUX ASSIS (§4.6, « la classe — ou la foi bâtie — DOMINANTE en
+ * part relative »). On compare les QUATRE assiettes par ce qu'elles GÉNÈRENT
+ * (influence_base_gain, scps_influence.c:77) et non par l'effectif brut : le
+ * taux par classe (INFLUENCE_PER_NOBLE_ARISTO / _BOURGEOIS / _LABORER / _FAITH)
+ * EST la pondération politique — c'est là qu'est la « part relative ». Sans ça
+ * les journaliers, toujours les plus nombreux, gagneraient partout et le choix
+ * serait dégénéré. UN SEUL courant (l'exclusivité §4.1 s'en charge de toute
+ * façon). Renvoie la DoctrineId du courant (-1 si le pays ne génère rien) et,
+ * dans *out_share, sa part de la somme des quatre assiettes. */
+static int aid_best_current(const WorldEconomy *econ, int cid, float *out_share){
+    static const InfluenceBase B[4] = { INFL_BASE_ARISTO, INFL_BASE_BOURGEOIS,
+                                        INFL_BASE_LABORER, INFL_BASE_FAITH };
+    static const int D[4] = { DOCT_ARISTOCRATIE, DOCT_BOURGEOISIE,
+                              DOCT_POPULAIRE, DOCT_DIVIN };
+    double g[4], sum=0.0; int best=0;
+    for (int i=0;i<4;i++){ g[i]=influence_base_gain(econ,cid,B[i]); if (!(g[i]>0.0)) g[i]=0.0; sum+=g[i]; }
+    for (int i=1;i<4;i++) if (g[i] > g[best]) best=i;   /* strict : égalité ⇒ le PREMIER (id asc) */
+    if (out_share) *out_share = (sum>1e-9)? (float)(g[best]/sum) : 0.f;
+    return (sum>1e-9)? D[best] : -1;
+}
+
+/* LA TABLE DES SIGNAUX (brief §1.3). Chaque terme lit un état EXISTANT ; les
+ * facteurs sont des poids de LISIBILITÉ (chaque composante sature vers ~1-2),
+ * pas des tunables — c'est le sweep apparié qui dira s'ils méritent le registre. */
+static void ai_doct_scores(const World *w, const WorldEconomy *econ, const DiploState *dp,
+                           const Statecraft *sc, const RouteNetwork *rn,
+                           const TechState *ts, int cid, float out[DOCT_COUNT])
+{
+    for (int d=0; d<DOCT_COUNT; d++) out[d]=0.f;
+    if (!w || !econ || cid<0 || cid>=SCPS_MAX_COUNTRY) return;
+    const int np = (econ->n_prov < SCPS_MAX_PROV) ? econ->n_prov : SCPS_MAX_PROV;
+    const int nc = (w->n_countries < SCPS_MAX_COUNTRY) ? w->n_countries : SCPS_MAX_COUNTRY;
+
+    /* ── UN SEUL BALAYAGE DES PROVINCES TENUES (la province est la seule
+     *    réalité économique : jamais region[].pop, miroir stale) ── */
+    int    nprov=0, ncoast=0, nbld=0, nedi=0, ncentre=0, nlib=0, nwear=0;
+    double pop=0.0, grain=0.0, rawcap=0.0, diaspo=0.0, wear_sum=0.0;
+    for (int p=0;p<np;p++){
+        const ProvinceEconomy *pe=&econ->prov[p];
+        if (pe->owner!=cid) continue;
+        nprov++;
+        if (pe->coastal) ncoast++;                                  /* scps_econ.h:387 */
+        for (int k=0;k<CLASS_COUNT;k++) pop += (double)pe->strata[k].pop;
+        grain += (double)pe->stock[RES_GRAIN];                      /* scps_econ.h:304 */
+        for (int rr=0; rr<RES_PROD_FIRST; rr++) rawcap += (double)pe->raw_cap[rr];
+        nbld += pe->n_bld;                                          /* manufactures posées */
+        for (int e=0;e<EDIFICE_COUNT && e<32;e++) if (pe->edi_built & (1u<<e)) nedi++;
+        if (pe->edi_built & (1u<<EDI_TRADE_CENTER)) ncentre++;      /* scps_agency.h:42 */
+        if (pe->edi_built & ((1u<<EDI_BIBLIOTHEQUE)|(1u<<EDI_MONASTERE))) nlib++;
+        if (pe->edi_built){ wear_sum += (double)agency_build_wear(pe); nwear++; }  /* scps_agency.h:147 — 1 = neuf */
+        for (int g=0; g<pe->pop.n_groups && g<SCPS_MAX_GROUPS; g++)
+            if (pe->pop.groups[g].diaspora) diaspo += (double)pe->pop.groups[g].count;  /* scps_econ.h:224 */
+    }
+    if (nprov<=0) return;                                            /* pays mort : aucun score */
+    const double ppp = (pop>1.0)? pop : 1.0;
+
+    /* ── LE VOISINAGE (un seul balayage d'adjacence, prov_adj — scps_econ.h:497,
+     *    indexé à la main, motif chronicle.c:1602) : les zones vivables encore
+     *    vierges au contact ET les pays qui nous touchent vraiment. `nvirgin`
+     *    compte les CONTACTS (une même province vierge bordée deux fois compte
+     *    deux fois) — c'est une mesure de FRONT, pas un inventaire. ── */
+    int nvirgin=0;
+    uint8_t nb[SCPS_MAX_COUNTRY]; memset(nb,0,sizeof nb);
+    if (econ->prov_adj){
+        for (int p=0;p<np;p++){
+            if (econ->prov[p].owner!=cid) continue;
+            const uint8_t *row = econ->prov_adj + (size_t)p*SCPS_MAX_PROV;
+            for (int q=0;q<np;q++){
+                if (!row[q]) continue;
+                const ProvinceEconomy *pq=&econ->prov[q];
+                if (pq->owner==cid) continue;
+                if (pq->owner<0){ if (pq->active && !pq->impassable && !pq->colonized) nvirgin++; }
+                else if (pq->owner<SCPS_MAX_COUNTRY) nb[pq->owner]=1;
+            }
+        }
+    }
+
+    /* ── LES ROUTES OUVERTES (routes_count_for_region, scps_routes.h:62) ── */
+    int nroutes=0;
+    if (rn) for (int r=0;r<econ->n_regions && r<SCPS_MAX_REG;r++)
+        if (econ->region[r].owner==cid) nroutes += routes_count_for_region(rn,r);
+
+    /* ── LA DIPLOMATIE RÉELLE ── */
+    int npact_tr=0, npact_mig=0, nally=0, nwar_off=0, nwar_def=0, nvassal=0, opinion_n=0, ntruce=0;
+    double rancor_out=0.0, opinion_sum=0.0;
+    float mypow = diplo_mil_power(w,econ,cid), maxnb=0.f;           /* scps_diplo.h:202 */
+    if (dp){
+        nvassal = diplo_vassal_count(dp,cid);                        /* scps_diplo.h:151 */
+        for (int b=0;b<nc;b++){
+            if (b==cid || w->country[b].role==POLITY_UNCLAIMED || w->country[b].n_regions<=0) continue;
+            if (diplo_trade_pact(dp,cid,b))     npact_tr++;          /* scps_diplo.h:163 */
+            if (diplo_migration_pact(dp,cid,b)) npact_mig++;         /* scps_diplo.h:167 */
+            DiploStatus st = diplo_status(dp,cid,b);                 /* scps_diplo.h:259 */
+            if (st==DIPLO_ALLIED) nally++;
+            /* QUI A DÉCLARÉ ? Le porteur du CB est l'ATTAQUANT (scps_diplo.h:55,
+             * « a = ATTAQUANT, celui qui a le CB ») — c'est le seul état durable
+             * qui distingue la guerre MENÉE de la guerre SUBIE. */
+            if (st==DIPLO_WAR){ if (dp->cb[cid][b]!=CB_NONE) nwar_off++; else nwar_def++; }
+            /* « GUERRES RÉCENTES » : la TRÊVE est la trace DURABLE d'une guerre qui
+             * vient de finir (scps_diplo.h:50, jours d'interdiction de guerre) — sans
+             * elle le signal martial n'existerait que pendant les hostilités, et une
+             * délibération ANNUELLE ne le verrait presque jamais. */
+            if (dp->truce[cid][b] > 0.f) ntruce++;
+            rancor_out += (double)diplo_rancor(dp,cid,b);            /* scps_diplo.h:410 — MON grief (terres perdues) */
+            if (sc){ opinion_sum += (double)statecraft_opinion(sc,cid,b); opinion_n++; }  /* scps_statecraft.h:227 */
+            if (nb[b]){ float pw=diplo_mil_power(w,econ,b); if (pw>maxnb) maxnb=pw; }
+        }
+    }
+
+    /* ── LA PENTE FAUSTIENNE + le garde-fou EXISTANT (scps_ai.c:2637) ── */
+    int nfaust=0; float crisis=0.f;
+    if (ts){
+        const TechState *t=&ts[cid];
+        for (int k=0;k<TECH_COUNT;k++) if (t->unlocked[k] && tech_node((TechId)k)->faustian) nfaust++;
+        crisis = tech_crisis_proximity(t);                           /* scps_tech.h:309 */
+    }
+
+    /* ══ LA TABLE ══
+     * ÉCHELLE COMMUNE : chaque doctrine plafonne autour de 2.0-2.8, de sorte
+     * qu'AUCUNE ne rafle mécaniquement tous les slots. Les signaux TRANSITOIRES
+     * (la guerre) pèsent PLUS FORT que les signaux de fond (le bâti, les brutes) :
+     * sans ça, une doctrine permanente (Production, Infrastructure) écrase à
+     * jamais la doctrine du moment, et la corrélation « belligérant → Offense/
+     * Défense » — le juge du design — ne peut PAS apparaître. */
+    /* Colonisation — capitale côtière · chantier actif · zones vivables au contact */
+    { int cap = econ_country_capital_prov(econ, cid);                /* scps_econ.h:1069 */
+      float s = 0.f;
+      if (cap>=0 && cap<np && econ->prov[cap].coastal) s += 1.0f;
+      else if (ncoast>0)                                s += 0.4f;   /* côtier, mais pas au siège */
+      if (econ->colony[cid].dst>=0)                     s += 1.0f;   /* scps_econ.h:511 — chantier en cours */
+      s += aid_clamp((float)nvirgin*0.10f, 0.f, 0.6f);
+      out[DOCT_COLONISATION] = s; }
+
+    /* Commerce — routes ouvertes nombreuses · pactes commerciaux */
+    out[DOCT_COMMERCE] = aid_clamp((float)nroutes*0.25f, 0.f, 1.5f)
+                       + aid_clamp((float)npact_tr*0.5f, 0.f, 1.0f);
+
+    /* Mercantilisme — coussin de stock haut · PEU de routes · Centres tenus */
+    { float cushion = (float)(grain/ppp);
+      float s = aid_clamp(cushion*3.f, 0.f, 0.8f) + aid_clamp((float)ncentre*0.75f, 0.f, 1.0f);
+      if (nroutes<=1) s += 0.6f;
+      out[DOCT_MERCANTILISME] = s; }
+
+    /* Offense — guerres MENÉES (je porte le CB) · rancune sortante · sortie de guerre */
+    out[DOCT_OFFENSE] = aid_clamp((float)nwar_off*2.0f, 0.f, 3.0f)
+                      + aid_clamp((float)rancor_out*0.15f, 0.f, 0.7f)
+                      + (ntruce>0 ? 0.4f : 0.f);
+
+    /* Défense — guerres SUBIES · un voisin nettement plus fort · sortie de guerre */
+    { float s = aid_clamp((float)nwar_def*2.0f, 0.f, 3.0f);
+      if (mypow>0.01f){ if (maxnb > mypow*1.2f) s += aid_clamp(maxnb/mypow - 1.f, 0.f, 0.7f); }
+      else if (maxnb>0.f) s += 0.7f;                                 /* désarmé face à un voisin armé */
+      if (ntruce>0) s += 0.4f;
+      out[DOCT_DEFENSE] = s; }
+
+    /* Vassaux — au moins un vassal TENU */
+    if (nvassal>0) out[DOCT_VASSAUX] = aid_clamp(1.4f + (float)nvassal*0.5f, 0.f, 2.6f);
+
+    /* Diplomatie — alliés/pactes nombreux · opinion moyenne haute */
+    { float s = aid_clamp((float)nally*0.6f, 0.f, 1.0f)
+              + aid_clamp((float)(npact_tr+npact_mig)*0.3f, 0.f, 0.7f);
+      float avg = (opinion_n>0)? (float)(opinion_sum/(double)opinion_n) : 0.f;
+      if (avg>0.f) s += aid_clamp(avg/50.f, 0.f, 0.7f);
+      out[DOCT_DIPLOMATIE] = s; }
+
+    /* Peuple — âmes étrangères hébergées · pactes migratoires */
+    out[DOCT_PEUPLE] = aid_clamp((float)(diaspo/ppp)*3.f, 0.f, 1.2f)
+                     + aid_clamp((float)npact_mig*0.6f, 0.f, 0.8f);
+
+    /* Connaissances — métabolisation en cours · héritages digérés */
+    { float met = econ_country_metabolized(w,econ,cid);              /* scps_econ.h:1111 */
+      float dig[HERITAGE_COUNT];
+      econ_country_heritage_digested(w,econ,cid,dig);                /* scps_econ.h:1116 */
+      int ndig=0; for (int r2=0;r2<HERITAGE_COUNT;r2++) if (dig[r2]>0.10f) ndig++;
+      out[DOCT_CONNAISSANCES] = aid_clamp(met*3.f, 0.f, 1.2f)
+                              + aid_clamp((float)ndig*0.4f, 0.f, 0.8f); }
+
+    /* Production — manufactures nombreuses · brutes riches */
+    out[DOCT_PRODUCTION] = aid_clamp((float)nbld*0.10f, 0.f, 1.2f)
+                         + aid_clamp((float)(rawcap/(double)nprov)*0.03f, 0.f, 0.8f);
+
+    /* Infrastructure — bâti dense · vétusté haute (1 − état, agency_build_wear) */
+    { float dens = (float)nedi/(float)nprov;
+      float vet  = (nwear>0)? (1.f - (float)(wear_sum/(double)nwear)) : 0.f;
+      out[DOCT_INFRASTRUCTURE] = aid_clamp(dens*0.8f, 0.f, 1.2f)
+                               + aid_clamp(vet*4.f, 0.f, 1.2f); }
+
+    /* Technologie — bibliothèques bâties · savoir par tête */
+    { float sv = econ_country_savoir(econ,cid);                      /* scps_econ.h:1112 */
+      out[DOCT_TECHNOLOGIE] = aid_clamp((float)nlib*0.6f, 0.f, 1.2f)
+                            + aid_clamp((float)((double)sv/ppp), 0.f, 0.6f); }
+
+    /* Faustien — des bouts interdits DÉJÀ pris ET le garde-fou FAUST_BRECHE_CAUTION non franchi */
+    if (nfaust>0 && crisis < tune_f("FAUST_BRECHE_CAUTION",0.55f))
+        out[DOCT_FAUSTIEN] = aid_clamp((float)nfaust*0.5f, 0.f, 2.0f);
+
+    /* Les QUATRE COURANTS — un seul, le mieux assis */
+    { float share=0.f; int cur = aid_best_current(econ,cid,&share);
+      if (cur>=0) out[cur] = 1.0f + aid_clamp(share, 0.f, 1.f); }
+}
+
+int ai_doctrines_year(DoctrineState *ds, InfluenceState *is,
+                      const World *w, const WorldEconomy *econ, const DiploState *dp,
+                      const Statecraft *sc, const RouteNetwork *rn, const TechState *ts,
+                      int cid, float ech)
+{
+    if (tune_f("AI_DOCT", 1.f) <= 0.f) return 0;      /* KILL-SWITCH : golden par construction */
+    if (!ds || !w || !econ || cid<0 || cid>=SCPS_MAX_COUNTRY) return 0;
+    /* EXCLUSIONS documentées : la CITÉ-ÉTAT n'a pas d'appareil politique (ni
+     * noblesse d'État ni Conseil d'empire — elle TIENT le marché mondial, §5) ;
+     * un pays UNCLAIMED n'existe pas. Le JOUEUR est exclu par l'appelant. */
+    if (w->country[cid].role==POLITY_CITY_STATE || w->country[cid].role==POLITY_UNCLAIMED) return 0;
+    if (w->country[cid].n_regions<=0) return 0;
+
+    float sco[DOCT_COUNT];
+    ai_doct_scores(w, econ, dp, sc, rn, ts, cid, sco);
+
+    float reserve = tune_f("AI_DOCT_RESERVE", 1.5f);
+    if (reserve < 1.f) reserve = 1.f;                 /* le coussin ne descend jamais SOUS le prix */
+
+    /* 1. ADOPTER — le meilleur score ADOPTABLE (doctrines_why_not avec is=NULL :
+     *    exclusivités/slots seulement, la réserve se teste juste après). */
+    int best=-1;
+    for (int d=0; d<DOCT_COUNT; d++){
+        if (!(sco[d] > 0.f)) continue;                /* un signal nul = aucune raison */
+        if (doctrines_why_not(ds, NULL, cid, -1, d, ech) != DOCT_OK) continue;
+        if (best<0 || sco[d] > sco[best]) best=d;     /* strict ⇒ égalité tranchée par l'id le plus PETIT */
+    }
+    if (best>=0){
+        float cost = doctrines_adopt_cost_f(ds, cid, ech);
+        if (influence_can_spend(is, cid, cost*reserve)){
+            int slot=-1, open=doctrines_slots_open(ds,cid);
+            for (int s2=0; s2<open && slot<0; s2++) if (doctrines_at(ds,cid,s2)<0) slot=s2;
+            if (slot>=0 && doctrines_adopt(ds, is, cid, slot, best, ech)) return 1;
+        }
+    }
+
+    /* 2. ACHETER — round-robin SIMPLE sur ses doctrines actives : la moins
+     *    fournie d'abord (rattrapage), départagée par le meilleur score
+     *    marginal puis par l'id (boucle en id ascendant). UN acte par passage. */
+    { int pick=-1, pick_n=DOCT_IDEAS+1;
+      for (int d=0; d<DOCT_COUNT; d++){
+          if (doctrines_slot_of(ds,cid,d)<0) continue;
+          int n = doctrines_ideas_of(ds,cid,d);
+          if (n>=DOCT_IDEAS) continue;                /* doctrine complète */
+          if (pick<0 || n<pick_n || (n==pick_n && sco[d]>sco[pick])){ pick=d; pick_n=n; }
+      }
+      if (pick>=0){
+          float cost = doctrines_idea_cost_f(ds, cid, ech);
+          if (influence_can_spend(is, cid, cost*reserve)
+              && doctrines_buy_idea(ds, is, cid, pick, ech)) return 1;
+      } }
+    return 0;
+}
+
+/* Le SCORE nu, pour les bancs et la chronique (aucun effet de bord). */
+void ai_doctrines_scores(const World *w, const WorldEconomy *econ, const DiploState *dp,
+                         const Statecraft *sc, const RouteNetwork *rn,
+                         const TechState *ts, int cid, float out[DOCT_COUNT]){
+    ai_doct_scores(w, econ, dp, sc, rn, ts, cid, out);
 }

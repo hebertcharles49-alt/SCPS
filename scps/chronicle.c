@@ -227,6 +227,44 @@ static int colonized_provinces(const World *w, const WorldEconomy *e){
     return n;
 }
 
+/* ── LES DOCTRINES (P3-IA) — télémétrie de la chronique ─────────────────────
+ * Console FRANÇAIS, printf direct, aucun STR_* (outillage ingénieur, CLAUDE.md).
+ * L'ordre SUIT l'enum DoctrineId (scps_doctrines.h) — un ajout en fin d'enum se
+ * répercute ICI, sinon les colonnes mentent en silence. */
+static const char *DOCT_FR[DOCT_COUNT] = {
+    "Offense", "Défense", "Commerce", "Mercantilisme", "Peuple", "Colonisation",
+    "Diplomatie", "Vassaux", "Production", "Infrastructure", "Technologie",
+    "Connaissances", "Faustien", "Aristocratie", "Bourgeoisie", "Populaire", "Divin"
+};
+/* Un pays est-il VIVANT et politiquement doté ? (les cités-états sont exclues de
+ * l'adoption IA — cf. ai_doctrines_year — mais restent comptées comme pays.) */
+static bool doct_alive(const World *w, const WorldEconomy *e, int c){
+    return w->country[c].role!=POLITY_UNCLAIMED && regions_of(e,c)>0;
+}
+static double dmedian(double *v, int n);   /* défini plus bas (tri en place) */
+/* L'INSTANTANÉ MONDIAL : influence (médiane/max), doctrines actives, idées
+ * possédées, suspensions EN COURS ce mois. `infl_buf` doit tenir SCPS_MAX_COUNTRY. */
+static void doct_world_snapshot(const World *w, const WorldEconomy *e, const Sim *s,
+                                double *infl_buf, double *med, double *mx,
+                                int *n_doct, int *n_idea, int *n_susp, int *n_pays){
+    int n=0, nd=0, ni=0, ns=0; double m=0.0;
+    for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+        if (!doct_alive(w,e,c)) continue;
+        double v = (double)influence_get(s->infl, c);
+        infl_buf[n++] = v; if (v>m) m=v;
+        nd += doctrines_n_active(s->doct, c);
+        ni += doctrines_n_ideas (s->doct, c);
+        for (int sl=0; sl<DOCT_SLOTS_MAX; sl++)
+            if (doctrines_at(s->doct,c,sl)>=0 && doctrines_suspended(s->doct,c,sl)) ns++;
+    }
+    if (med) *med = dmedian(infl_buf, n);
+    if (mx)     *mx     = m;
+    if (n_doct) *n_doct = nd;
+    if (n_idea) *n_idea = ni;
+    if (n_susp) *n_susp = ns;
+    if (n_pays) *n_pays = n;
+}
+
 /* ── TÉLÉMÉTRIE PAR ÂGE : marché · or par empire · tech, figés à l'avènement ──
  * (country_gold → econ_country_gold, public dans scps_econ.c, partagé avec scps_credit) */
 #define country_gold econ_country_gold
@@ -967,6 +1005,13 @@ int main(int argc, char **argv){
         }
 
         int snap[4]={years/5, years*2/5, years*3/5, years*4/5}, si=0;  /* instantanés mis à l'échelle */
+        /* P3-IA — LES JUGES DE « PAR SCORE » (brief §2.3) : on LATCHE, année après
+         * année, qui a VÉCU la guerre et qui a TENU un vassal (un état de fin de
+         * partie ne le dirait pas : la guerre finit, le vassal se digère). La
+         * côte, elle, se lit à la fin (la géographie ne bouge pas). */
+        static bool chr_belli[SCPS_MAX_COUNTRY], chr_suz[SCPS_MAX_COUNTRY];
+        memset(chr_belli,0,sizeof chr_belli); memset(chr_suz,0,sizeof chr_suz);
+        double chr_infl_buf[SCPS_MAX_COUNTRY];
         /* photo des trésors au seuil de la DERNIÈRE année → flux d'or net par MOIS
          * (un pays né en cours d'année part de 0 : son flux englobe sa dotation). */
         double gold_y0[SCPS_MAX_COUNTRY]={0};
@@ -1302,6 +1347,13 @@ int main(int argc, char **argv){
                             ai_country_population(w,s.econ,c), s.ts[c].n_unlocked);
                 }
             }
+            /* P3-IA — les latches des corrélations-juges (une passe O(n²) par AN,
+             * même coût d'ordre que wars_active juste en dessous). */
+            for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+                if (diplo_vassal_count(s.dp,c)>0) chr_suz[c]=true;
+                for (int b=0;b<w->n_countries && b<SCPS_MAX_COUNTRY;b++)
+                    if (b!=c && diplo_status(s.dp,c,b)==DIPLO_WAR){ chr_belli[c]=true; break; }
+            }
             int wa = wars_active(w, s.dp);
             /* §G2 — SCPS_AMPLDIAG : la COURBE D'AMPLITUDE année par année (la preuve
              * que l'amplitude MONTE après un choc — guerre/révolte/T haute — et
@@ -1353,6 +1405,13 @@ int main(int argc, char **argv){
                   printf("              dette/revenu an %3d : %.0f%% moyen (%d pays au revenu capté, aucun plafond)"
                          " · revenu fiscal Σ %.0f or/an (M3i neutralité)\n",
                          snap[si], rev_sum>1.0?100.0*debt_sum/rev_sum:0.0, nd, rev_sum); }
+                /* P3-IA — LA COLONNE POLITIQUE (brief §2.1) : le stock d'influence
+                 * du monde, ce qu'il a acheté (doctrines/idées) et ce qu'il ne
+                 * paie PLUS ce mois (suspensions en cours). */
+                { double med=0.0, mx=0.0; int nd2=0, ni2=0, ns2=0, npy=0;
+                  doct_world_snapshot(w, s.econ, &s, chr_infl_buf, &med, &mx, &nd2, &ni2, &ns2, &npy);
+                  printf("              politique an %3d : influence méd %.1f · max %.1f (%d pays) | doctrines actives %d · idées %d · suspendues %d\n",
+                         snap[si], med, mx, npy, nd2, ni2, ns2); }
                 si++;
             }
         }
@@ -1573,6 +1632,85 @@ int main(int argc, char **argv){
 
         printf("   BILAN an %d : %d pays subsistent (%d absorbés · %d émergés ; plancher %d) | %d âge(s) ; %d guerre(s) au total, pic %d ; pic de révolte %d (an %d)\n",
                years, c1, absorbed, emerged, min_living, nages, war_onsets, peak_wars, peak_rev, peak_rev_year);
+
+        /* ══ P3-IA — LE BILAN POLITIQUE (docs/BRIEF_P3_IA_CHRONICLE.md §2) ══
+         * Ce que l'arbre de doctrines a produit dans CE monde : qui a adopté quoi,
+         * combien d'influence a été générée vs consommée en entretien, et — le
+         * JUGE du design — si les adoptions CORRÈLENT avec l'état du pays (des
+         * corrélations franches = l'IA choisit sur son état, pas au hasard). */
+        { int nby[DOCT_COUNT]; for (int d=0;d<DOCT_COUNT;d++) nby[d]=0;
+          double med=0.0, mx=0.0; int nd2=0, ni2=0, ns2=0, npy=0;
+          doct_world_snapshot(w, s.econ, &s, chr_infl_buf, &med, &mx, &nd2, &ni2, &ns2, &npy);
+          int n_adopters=0;
+          /* les juges : dénominateurs et numérateurs. DEUX assiettes —
+           *  · TOUS les pays vivants (la mesure du brief §2.3) ;
+           *  · les seuls ADOPTANTS (indice « A ») — la probabilité CONDITIONNELLE
+           *    qui juge vraiment le SCORE : un pays trop pauvre pour s'offrir la
+           *    moindre doctrine ne dit rien du départage, il ne fait que diluer. */
+          int n_coast=0, n_coast_col=0, n_suz=0, n_suz_vas=0, n_bel=0, n_bel_off=0;
+          int a_coast=0, a_coast_col=0, a_suz=0, a_suz_vas=0, a_bel=0, a_bel_off=0;
+          for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+              if (!doct_alive(w,s.econ,c)) continue;
+              int nact=0;
+              for (int sl=0; sl<DOCT_SLOTS_MAX; sl++){
+                  int d=doctrines_at(s.doct,c,sl);
+                  if (d>=0){ nby[d]++; nact++; }
+              }
+              if (nact>0) n_adopters++;
+              bool coastal=false;
+              for (int p=0;p<s.econ->n_prov && p<SCPS_MAX_PROV && !coastal;p++)
+                  if (s.econ->prov[p].owner==c && s.econ->prov[p].coastal) coastal=true;
+              bool has_col = doctrines_slot_of(s.doct,c,DOCT_COLONISATION)>=0;
+              bool has_vas = doctrines_slot_of(s.doct,c,DOCT_VASSAUX)>=0;
+              bool has_war = doctrines_slot_of(s.doct,c,DOCT_OFFENSE)>=0
+                          || doctrines_slot_of(s.doct,c,DOCT_DEFENSE)>=0;
+              if (coastal)    { n_coast++; if (has_col) n_coast_col++;
+                                if (nact>0){ a_coast++; if (has_col) a_coast_col++; } }
+              if (chr_suz[c]) { n_suz++;   if (has_vas) n_suz_vas++;
+                                if (nact>0){ a_suz++;   if (has_vas) a_suz_vas++; } }
+              if (chr_belli[c]){ n_bel++;  if (has_war) n_bel_off++;
+                                if (nact>0){ a_bel++;   if (has_war) a_bel_off++; } }
+          }
+          double gen=0.0, up=0.0; long susp_cum=0;
+          influence_stats_get(&gen);
+          doctrines_stats_get(&up, &susp_cum);
+          printf("   DOCTRINES (P3-IA) : %d pays sur %d en tiennent au moins une — %d doctrines actives · %d idées possédées\n",
+                 n_adopters, npy, nd2, ni2);
+          printf("              distribution :");
+          for (int d=0;d<DOCT_COUNT;d++) if (nby[d]>0) printf(" %s %d ·", DOCT_FR[d], nby[d]);
+          printf("\n");
+          printf("              influence : médiane %.1f · max %.1f | générée Σ %.0f · entretien payé Σ %.0f (%.0f%%) · %ld suspension(s) cumulée(s) (%d en cours)\n",
+                 med, mx, gen, up, gen>1.0?100.0*up/gen:0.0, susp_cum, ns2);
+          printf("              corrélations-juges : côtiers→Colonisation %d/%d (%.0f%%) · suzerains→Vassaux %d/%d (%.0f%%) · belligérants→Offense/Défense %d/%d (%.0f%%)\n",
+                 n_coast_col, n_coast, n_coast>0?100.0*n_coast_col/n_coast:0.0,
+                 n_suz_vas,   n_suz,   n_suz  >0?100.0*n_suz_vas  /n_suz  :0.0,
+                 n_bel_off,   n_bel,   n_bel  >0?100.0*n_bel_off  /n_bel  :0.0);
+          printf("              corrélations-juges (ADOPTANTS seuls — la vraie mesure du départage) : côtiers→Colonisation %d/%d (%.0f%%) · suzerains→Vassaux %d/%d (%.0f%%) · belligérants→Offense/Défense %d/%d (%.0f%%)\n",
+                 a_coast_col, a_coast, a_coast>0?100.0*a_coast_col/a_coast:0.0,
+                 a_suz_vas,   a_suz,   a_suz  >0?100.0*a_suz_vas  /a_suz  :0.0,
+                 a_bel_off,   a_bel,   a_bel  >0?100.0*a_bel_off  /a_bel  :0.0);
+          /* LE TOP-3 PAR PAYS SURVIVANT : les trois doctrines les mieux fournies
+           * (idées desc, puis id asc) — le portrait politique de chaque empire. */
+          for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+              if (!doct_alive(w,s.econ,c) || doctrines_n_active(s.doct,c)<=0) continue;
+              printf("              pays %2d %-16s influence %6.1f :", c, w->country[c].name,
+                     (double)influence_get(s.infl,c));
+              int taken[DOCT_COUNT]; for (int d=0;d<DOCT_COUNT;d++) taken[d]=0;
+              for (int k=0;k<3;k++){
+                  int bd=-1;
+                  for (int sl=0; sl<DOCT_SLOTS_MAX; sl++){
+                      int d=doctrines_at(s.doct,c,sl);
+                      if (d<0 || taken[d]) continue;
+                      if (bd<0 || doctrines_ideas_of(s.doct,c,d) > doctrines_ideas_of(s.doct,c,bd)) bd=d;
+                  }
+                  if (bd<0) break;
+                  taken[bd]=1;
+                  printf(" %s(%d idée%s)%s", DOCT_FR[bd], doctrines_ideas_of(s.doct,c,bd),
+                         doctrines_ideas_of(s.doct,c,bd)>1?"s":"",
+                         doctrines_suspended(s.doct,c,doctrines_slot_of(s.doct,c,bd))?" [suspendue]":"");
+              }
+              printf("\n");
+          } }
         /* PER-PROVINCE (gigasweep) : une ligne parsable par province colonisée —
          * id, ville (nom posé à la colonisation, jamais re-tiré — grain région),
          * propriétaire, population. + FLEUVES : la preuve chiffrée du worldgen. */

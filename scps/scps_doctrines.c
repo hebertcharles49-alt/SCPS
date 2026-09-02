@@ -238,7 +238,21 @@ float doctrine_key_mult(int cid, const char *key){
 /* ====================================================================== */
 /* L'ÉTAT                                                                  */
 /* ====================================================================== */
+/* TÉLÉMÉTRIE (print-only, chronicle) — Σ entretien PAYÉ et Σ suspensions posées
+ * depuis la genèse de CETTE sim. Statiques de module, JAMAIS sérialisées (motif
+ * econ_colony_stats) : RAZ à doctrines_init, donc à chaque sim_init. N'entrent
+ * dans aucun calcul. */
+static double g_doct_upkeep_paid = 0.0;
+static long   g_doct_suspensions = 0;
+
+void doctrines_stats_get(double *upkeep_paid, long *suspensions){
+    if (upkeep_paid)  *upkeep_paid  = g_doct_upkeep_paid;
+    if (suspensions)  *suspensions  = g_doct_suspensions;
+}
+
 void doctrines_init(DoctrineState *ds){
+    g_doct_upkeep_paid = 0.0;
+    g_doct_suspensions = 0;
     if (!ds) return;
     memset(ds, 0, sizeof *ds);
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){
@@ -432,9 +446,10 @@ void doctrines_tick(DoctrineState *ds, InfluenceState *is, int cid, float ech){
               }
               if (worst<0) break;
               ds->susp[cid][worst] = 1;   /* SUSPENDUE ce mois : mults à 1.0 */
+              g_doct_suspensions++;       /* télémétrie print-only */
               n--;
           }
-          if (n > 0) influence_spend(is, cid, up * (float)n);
+          if (n > 0){ influence_spend(is, cid, up * (float)n); g_doct_upkeep_paid += (double)(up * (float)n); }
       } }
 
     /* 2. le miroir de lecture (le cache de clés est invalidé du même coup). */

@@ -5,9 +5,19 @@
 #include "scps_tune.h"   /* tune_f : INFLUENCE_PER_NOBLE/COUNCIL_FLOOR/CAP (registre J) */
 #include <string.h>
 
+/* TÉLÉMÉTRIE (print-only, chronicle) — Σ influence GÉNÉRÉE depuis la genèse de
+ * CETTE sim. Statique de module, JAMAIS sérialisée (motif econ_colony_stats) :
+ * RAZ à influence_init, donc à chaque sim_init. N'entre dans aucun calcul. */
+static double g_infl_generated = 0.0;
+
 void influence_init(InfluenceState *is){
+    g_infl_generated = 0.0;
     if (!is) return;
     memset(is->influence, 0, sizeof is->influence);
+}
+
+void influence_stats_get(double *generated){
+    if (generated) *generated = g_infl_generated;
 }
 
 double influence_elites(const WorldEconomy *econ, int cid){
@@ -106,6 +116,7 @@ void influence_tick(InfluenceState *is, const World *w, const WorldEconomy *econ
     float cap = tune_f("INFLUENCE_CAP", 0.0f);   /* 0 = sans plafond (décision joueur 2026-09-01) */
     if (cap > 0.f && v > cap) v = cap;
     if (v < 0.f) v = 0.f;
+    g_infl_generated += (double)(v - is->influence[cid]);   /* télémétrie : le gain RÉELLEMENT crédité (post-plafond) */
     is->influence[cid] = v;
 }
 
