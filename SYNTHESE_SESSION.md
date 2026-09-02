@@ -1,3 +1,31 @@
+# SYNTHÈSE SESSION — 2026-09-02 (suite) : P2 JOUABLE + P3-IA LANDÉES
+
+- **Assets lots 14-16 intégrés** (bf545f6, 121/121 conformes) : 17 fonds de
+  doctrine, 102 icônes d'idées, sceau d'influence ; préfixes idea/doct/
+  influence au registre icon2.
+- **P2 JOUABLE** (0a600fc, save v106) : moteur doctrines (17×6, slots LIBRES
+  — révision joueur —, coûts/entretien linéarisés sur l'assiette de nobles
+  SANS le Conseil, suspension, exclusivités, assiettes des courants,
+  doctrine_key_mult sur ~50 sites, 40/82 idées câblées — verbes et clés
+  fantômes consignés) + façade (cellule influence topbar après Population,
+  hover revenus/dépenses, clic → panneau slots/catalogue/détail, hovers
+  partout). Probes REGARDÉES + 4 correctifs post-probe (plaque d'entretien,
+  icônes non-fantômes, colonne contenue, sceau réchauffé). Golden IDENTIQUE.
+- **P3-IA LANDÉE** (d4f96c0) : influence générée pour tous, adoption IA par
+  SCORE (14 signaux ancrés), mêmes règles que le joueur, chronicle enrichi
+  (distribution + corrélations-juges), kill-switch AI_DOCT prouvé
+  byte-identique, golden re-baseliné (documenté §6).
+  **tools/sweep_doct_ai.sh PRÊT (36 sims appariées) — le joueur le lance.**
+- **DÉCISIONS EN ATTENTE (calibrage/hygiène)** : (1) 6/28 pays IA seulement
+  accumulent assez d'influence pour adopter (corrélations 75 % chez les
+  adoptants — le score marche, l'économie est serrée : levier
+  INFLUENCE_PER_*/DOCT_UPKEEP) ; (2) ~8400 suspensions cumulées (coussin
+  AI_DOCT_RESERVE en mois d'entretien candidat) ; (3) golden_deep.txt STALE
+  pré-existant (depuis 3e2d568, golden-deep hors full-test) — re-baseline =
+  décision joueur.
+- RESTE : 6 branches de Desseins · 20 idées-verbes · synergies de paires ·
+  clés fantômes/promotions · P4 Desseins IA · sous-onglet Conseil ?
+
 # SYNTHÈSE SESSION — 2026-09-02 : P1 EN MOTEUR (Influence + Desseins/Sol + dépose commission)
 
 - **VAGUE P1 LANDÉE** (a1434e5 + merge abd994c, save v105) :
