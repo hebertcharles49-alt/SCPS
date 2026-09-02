@@ -46,6 +46,13 @@ const ICON2_LOT := {
 	"age":    "lot11_systeme", # age_<nom d'âge>
 	"act":    "lot11_systeme", # act_construire/_recruter/_rechercher/_decret
 	"tech":   "lot13_techs",   # tech_<nom> (~74 encarts)
+	# campagne 3 (2026-09-02) : le chantier Desseins/Influence/Doctrines (vague P1 moteur ;
+	# l'UI qui les consomme = vagues P2/P3 — les registres sont posés d'avance).
+	"idea":   "lot15_idees",   # idea_<doctrine>_<idée> (17×6 = 102 — le catalogue de
+	                            # docs/DESIGN_DOCTRINES_ANNEXE.md, noms courts D6)
+	"doct":   "lot14_doctrines", # doct_<doctrine>_bg (17 fonds d'encart 512×256, opaques,
+	                              # tiers droit calme — la colonne des 6 idées se pose dessus)
+	"influence": "lot16_influence", # influence / influence_grand (le sceau de cire au ruban)
 }
 ## EXCEPTIONS au routage par préfixe : le préfixe seul (get_slice) ne suffit pas quand
 ## deux noms partagent un préfixe mais vivent dans des lots DIFFÉRENTS. Consultée AVANT
