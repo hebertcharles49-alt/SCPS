@@ -239,29 +239,34 @@ static const char *DOCT_FR[DOCT_COUNT] = {
 /* Un pays est-il VIVANT et politiquement doté ? (les cités-états sont exclues de
  * l'adoption IA — cf. ai_doctrines_year — mais restent comptées comme pays.) */
 static bool doct_alive(const World *w, const WorldEconomy *e, int c){
-    return w->country[c].role!=POLITY_UNCLAIMED && regions_of(e,c)>0;
+    /* dénominateur = les seuls JOUABLES (retour joueur 2026-09-02 : « les autres
+     * ne sont pas des pays mais des entités injouables ») — cités-états et
+     * hameaux libres n'ont pas d'appareil politique, les compter diluait les
+     * corrélations-juges (6/28 lu comme un problème d'économie alors que
+     * l'assiette réelle était bien plus petite). */
+    return (w->country[c].role==POLITY_PLAYER || w->country[c].role==POLITY_ANTAGONIST)
+        && regions_of(e,c)>0;
 }
 static double dmedian(double *v, int n);   /* défini plus bas (tri en place) */
 /* L'INSTANTANÉ MONDIAL : influence (médiane/max), doctrines actives, idées
- * possédées, suspensions EN COURS ce mois. `infl_buf` doit tenir SCPS_MAX_COUNTRY. */
+ * possédées. `infl_buf` doit tenir SCPS_MAX_COUNTRY. AUCUNE suspension à
+ * compter (v107, décision joueur 2026-09-02 : les doctrines n'ont plus
+ * d'entretien — une fois adoptée, une doctrine reste ALLUMÉE). */
 static void doct_world_snapshot(const World *w, const WorldEconomy *e, const Sim *s,
                                 double *infl_buf, double *med, double *mx,
-                                int *n_doct, int *n_idea, int *n_susp, int *n_pays){
-    int n=0, nd=0, ni=0, ns=0; double m=0.0;
+                                int *n_doct, int *n_idea, int *n_pays){
+    int n=0, nd=0, ni=0; double m=0.0;
     for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
         if (!doct_alive(w,e,c)) continue;
         double v = (double)influence_get(s->infl, c);
         infl_buf[n++] = v; if (v>m) m=v;
         nd += doctrines_n_active(s->doct, c);
         ni += doctrines_n_ideas (s->doct, c);
-        for (int sl=0; sl<DOCT_SLOTS_MAX; sl++)
-            if (doctrines_at(s->doct,c,sl)>=0 && doctrines_suspended(s->doct,c,sl)) ns++;
     }
     if (med) *med = dmedian(infl_buf, n);
     if (mx)     *mx     = m;
     if (n_doct) *n_doct = nd;
     if (n_idea) *n_idea = ni;
-    if (n_susp) *n_susp = ns;
     if (n_pays) *n_pays = n;
 }
 
@@ -1406,12 +1411,12 @@ int main(int argc, char **argv){
                          " · revenu fiscal Σ %.0f or/an (M3i neutralité)\n",
                          snap[si], rev_sum>1.0?100.0*debt_sum/rev_sum:0.0, nd, rev_sum); }
                 /* P3-IA — LA COLONNE POLITIQUE (brief §2.1) : le stock d'influence
-                 * du monde, ce qu'il a acheté (doctrines/idées) et ce qu'il ne
-                 * paie PLUS ce mois (suspensions en cours). */
-                { double med=0.0, mx=0.0; int nd2=0, ni2=0, ns2=0, npy=0;
-                  doct_world_snapshot(w, s.econ, &s, chr_infl_buf, &med, &mx, &nd2, &ni2, &ns2, &npy);
-                  printf("              politique an %3d : influence méd %.1f · max %.1f (%d pays) | doctrines actives %d · idées %d · suspendues %d\n",
-                         snap[si], med, mx, npy, nd2, ni2, ns2); }
+                 * du monde et ce qu'il a acheté (doctrines/idées). AUCUNE suspension
+                 * (v107) : une doctrine adoptée reste ALLUMÉE. */
+                { double med=0.0, mx=0.0; int nd2=0, ni2=0, npy=0;
+                  doct_world_snapshot(w, s.econ, &s, chr_infl_buf, &med, &mx, &nd2, &ni2, &npy);
+                  printf("              politique an %3d : influence méd %.1f · max %.1f (%d pays) | doctrines actives %d · idées %d\n",
+                         snap[si], med, mx, npy, nd2, ni2); }
                 si++;
             }
         }
@@ -1635,12 +1640,13 @@ int main(int argc, char **argv){
 
         /* ══ P3-IA — LE BILAN POLITIQUE (docs/BRIEF_P3_IA_CHRONICLE.md §2) ══
          * Ce que l'arbre de doctrines a produit dans CE monde : qui a adopté quoi,
-         * combien d'influence a été générée vs consommée en entretien, et — le
-         * JUGE du design — si les adoptions CORRÈLENT avec l'état du pays (des
-         * corrélations franches = l'IA choisit sur son état, pas au hasard). */
+         * combien d'influence a été générée (AUCUN entretien, v107 : une doctrine
+         * adoptée reste ALLUMÉE), et — le JUGE du design — si les adoptions
+         * CORRÈLENT avec l'état du pays (des corrélations franches = l'IA choisit
+         * sur son état, pas au hasard). */
         { int nby[DOCT_COUNT]; for (int d=0;d<DOCT_COUNT;d++) nby[d]=0;
-          double med=0.0, mx=0.0; int nd2=0, ni2=0, ns2=0, npy=0;
-          doct_world_snapshot(w, s.econ, &s, chr_infl_buf, &med, &mx, &nd2, &ni2, &ns2, &npy);
+          double med=0.0, mx=0.0; int nd2=0, ni2=0, npy=0;
+          doct_world_snapshot(w, s.econ, &s, chr_infl_buf, &med, &mx, &nd2, &ni2, &npy);
           int n_adopters=0;
           /* les juges : dénominateurs et numérateurs. DEUX assiettes —
            *  · TOUS les pays vivants (la mesure du brief §2.3) ;
@@ -1671,16 +1677,15 @@ int main(int argc, char **argv){
               if (chr_belli[c]){ n_bel++;  if (has_war) n_bel_off++;
                                 if (nact>0){ a_bel++;   if (has_war) a_bel_off++; } }
           }
-          double gen=0.0, up=0.0; long susp_cum=0;
+          double gen=0.0;
           influence_stats_get(&gen);
-          doctrines_stats_get(&up, &susp_cum);
           printf("   DOCTRINES (P3-IA) : %d pays sur %d en tiennent au moins une — %d doctrines actives · %d idées possédées\n",
                  n_adopters, npy, nd2, ni2);
           printf("              distribution :");
           for (int d=0;d<DOCT_COUNT;d++) if (nby[d]>0) printf(" %s %d ·", DOCT_FR[d], nby[d]);
           printf("\n");
-          printf("              influence : médiane %.1f · max %.1f | générée Σ %.0f · entretien payé Σ %.0f (%.0f%%) · %ld suspension(s) cumulée(s) (%d en cours)\n",
-                 med, mx, gen, up, gen>1.0?100.0*up/gen:0.0, susp_cum, ns2);
+          printf("              influence : médiane %.1f · max %.1f | générée Σ %.0f (AUCUN entretien, v107 : les doctrines adoptées restent ALLUMÉES)\n",
+                 med, mx, gen);
           printf("              corrélations-juges : côtiers→Colonisation %d/%d (%.0f%%) · suzerains→Vassaux %d/%d (%.0f%%) · belligérants→Offense/Défense %d/%d (%.0f%%)\n",
                  n_coast_col, n_coast, n_coast>0?100.0*n_coast_col/n_coast:0.0,
                  n_suz_vas,   n_suz,   n_suz  >0?100.0*n_suz_vas  /n_suz  :0.0,
@@ -1705,9 +1710,8 @@ int main(int argc, char **argv){
                   }
                   if (bd<0) break;
                   taken[bd]=1;
-                  printf(" %s(%d idée%s)%s", DOCT_FR[bd], doctrines_ideas_of(s.doct,c,bd),
-                         doctrines_ideas_of(s.doct,c,bd)>1?"s":"",
-                         doctrines_suspended(s.doct,c,doctrines_slot_of(s.doct,c,bd))?" [suspendue]":"");
+                  printf(" %s(%d idée%s)", DOCT_FR[bd], doctrines_ideas_of(s.doct,c,bd),
+                         doctrines_ideas_of(s.doct,c,bd)>1?"s":"");
               }
               printf("\n");
           } }

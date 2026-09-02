@@ -8,15 +8,17 @@
  * EN SÉQUENCE, payées en INFLUENCE POLITIQUE (scps_influence.h). Le joueur n'en
  * tiendra jamais plus de SIX — il renonce à la moitié du catalogue.
  *
- * ── LES RÉVISIONS FERMES (décisions joueur 2026-09-01) ────────────────────
+ * ── LES RÉVISIONS FERMES (décisions joueur 2026-09-01, entretien retiré 09-02) ─
  *   « Pas de gate, pas de prérequis : tu cliques, t'as le bonus. »
  *   AUCUN prérequis d'éthos, d'héritage, de religion, d'édifice ou de tech.
  *   Le frein est le COÛT, qui monte avec ce qu'on possède déjà :
  *     adopter  = DOCT_COST_BASE + DOCT_COST_STEP × doctrines actives   (50 → 175)
  *     acheter  = IDEA_COST_BASE + IDEA_COST_STEP × idées possédées     (30 → 135)
- *   ENTRETIEN EN INFLUENCE, pas en couronnes : DOCT_UPKEEP /mois par doctrine
- *   active, débité au tick mensuel APRÈS la génération. Insolvable ce mois ⇒ les
- *   doctrines les plus RÉCEMMENT adoptées se SUSPENDENT ce mois (mults à 1.0).
+ *   AUCUN ENTRETIEN (décision joueur 2026-09-02, remplace celle du 09-01) : les
+ *   doctrines coûtent en FLAT — l'achat, rien d'autre. La mécanique de
+ *   suspension mensuelle est SUPPRIMÉE (elle affamait l'IA — cf. TROUVAILLES.md
+ *   « P3-IA », 8400 pays-mois suspendus). Seules les SYNERGIES (vague future)
+ *   paieront un entretien fibonaccien 0·2·3·5·8… par rang, la 1re gratuite.
  *   Les SEULES règles d'exclusivité : Commerce ⊥ Mercantilisme, et un seul
  *   COURANT parmi Aristocratie/Bourgeoisie/Populaire/Divin.
  *   ABANDON LIBRE : le slot se libère, les idées sont perdues, aucun remboursement.
@@ -45,10 +47,11 @@
  * ── LE SITE DE LECTURE ───────────────────────────────────────────────────
  * Motif decree_mult : `tune_f("CLÉ", défaut) × doctrine_key_mult(cid, "CLÉ")`
  * au site de lecture MOTEUR — JAMAIS tune_set (global, IA comprise). Le
- * multiplicateur est le PRODUIT des idées possédées et NON SUSPENDUES qui
- * portent la clé, CLAMPÉ [0.60, 1.60] (H2bis, l'anti-« modifier soup »).
+ * multiplicateur est le PRODUIT des idées POSSÉDÉES qui portent la clé,
+ * CLAMPÉ [0.60, 1.60] (H2bis, l'anti-« modifier soup »).
  * Le miroir lu par doctrine_key_mult est un cache de PROCESS (jamais sérialisé),
- * rafraîchi par doctrines_tick ET juste après un chargement (doctrines_sync).
+ * rafraîchi à chaque verbe (adopter/acheter/abandonner) et juste après un
+ * chargement (doctrines_sync).
  */
 #include "scps_types.h"      /* SCPS_MAX_COUNTRY — le SOCLE seul : scps_doctrines.h est inclus TRÈS TÔT (scps_econ.h), il ne doit rien tirer de plus */
 #include <stdint.h>
@@ -105,33 +108,26 @@ typedef struct {
 
 extern const DoctDef DOCT_DEF[DOCT_COUNT];
 
-/* ── L'ÉTAT (sérialisé — section DOCT, save v106) ───────────────────────── *
+/* ── L'ÉTAT (sérialisé — section DOCT, save v107) ───────────────────────── *
  * Tout est BORNÉ et revalidé au chargement (scps_save_sane) : chaque champ
- * indexe un tableau ou borne une boucle. -1 = « vide » partout. */
+ * indexe un tableau ou borne une boucle. -1 = « vide » partout.
+ * v107 : plus d'entretien ⇒ plus de suspension ⇒ plus d'ORDRE d'adoption à
+ * départager (rien d'autre ne le lisait) — `seq`/`seq_next`/`susp` retirés. */
 typedef struct {
     int8_t  doct [SCPS_MAX_COUNTRY][DOCT_SLOTS_MAX];  /* doctrine adoptée par slot (-1 = vide) */
-    int16_t seq  [SCPS_MAX_COUNTRY][DOCT_SLOTS_MAX];  /* RANG d'adoption, croissant (-1 = vide) */
-    int8_t  susp [SCPS_MAX_COUNTRY][DOCT_SLOTS_MAX];  /* 1 = suspendue CE mois (entretien impayé) */
     int8_t  ideas[SCPS_MAX_COUNTRY][DOCT_COUNT];      /* idées possédées, 0..DOCT_IDEAS (séquentielles) */
-    int16_t seq_next  [SCPS_MAX_COUNTRY];             /* le prochain rang d'adoption à distribuer */
 } DoctrineState;
 
 void doctrines_init(DoctrineState *ds);
 
-/* CLÔTURE MENSUELLE (appelée pour le JOUEUR SEUL — l'appelant gate human_player,
- * motif décrets/influence) :
- *   1. PRÉLÈVE l'entretien EN INFLUENCE (DOCT_UPKEEP × doctrines actives × `ech`)
- *      — APRÈS la génération du mois (influence_tick) ; insolvable ⇒ suspend les
- *      doctrines les plus RÉCEMMENT adoptées, une à une, jusqu'à ce que le reste
- *      soit payable (ordre déterministe : rang d'adoption décroissant) ;
- *   2. RAFRAÎCHIT le miroir de process lu par doctrine_key_mult. */
-struct InfluenceState;
-void doctrines_tick(DoctrineState *ds, struct InfluenceState *is, int cid, float ech);
-
 /* RAFRAÎCHIT le miroir de process depuis l'état sérialisé (cache jamais
- * sérialisé — motif missions_boons_sync). À rappeler juste après un chargement :
- * sans lui, une partie rechargée verrait ses doctrines MUETTES jusqu'à la
- * première clôture, et le --savetest (A==B) le prendrait. */
+ * sérialisé — motif missions_boons_sync). À rappeler après tout achat/abandon
+ * ET juste après un chargement : sans lui, une partie rechargée verrait ses
+ * doctrines MUETTES jusqu'au premier achat, et le --savetest (A==B) le
+ * prendrait. AUCUNE clôture mensuelle : sans entretien, rien ne change d'un
+ * mois sur l'autre entre deux verbes joueur/IA (doctrines_tick a disparu
+ * avec lui — v107). */
+struct InfluenceState;
 void doctrines_sync(const DoctrineState *ds);
 
 /* LE SITE DE LECTURE MOTEUR. Produit des multiplicateurs des idées POSSÉDÉES et
@@ -151,22 +147,19 @@ int doctrines_abandon (DoctrineState *ds, struct InfluenceState *is, int cid, in
 int   doctrines_slots_open(const DoctrineState *ds, int cid);               /* toujours DOCT_SLOTS_MAX */
 int   doctrines_at        (const DoctrineState *ds, int cid, int slot);      /* la doctrine du slot (-1) */
 int   doctrines_slot_of   (const DoctrineState *ds, int cid, int doctrine);  /* le slot d'une doctrine (-1) */
-bool  doctrines_suspended (const DoctrineState *ds, int cid, int slot);
 int   doctrines_ideas_of  (const DoctrineState *ds, int cid, int doctrine);  /* 0..DOCT_IDEAS */
 int   doctrines_n_active  (const DoctrineState *ds, int cid);                /* slots OCCUPÉS */
 int   doctrines_n_ideas   (const DoctrineState *ds, int cid);                /* Σ toutes doctrines */
 /* Les PRIX sont rendus DÉJÀ ÉCHELONNÉS (× `ech`) : la façade n'a rien à savoir
- * de la linéarisation, elle affiche l'entier tel quel. */
+ * de la linéarisation, elle affiche l'entier tel quel. AUCUN entretien
+ * (v107) : seul le coût D'ACHAT (adoption/idée) existe encore. */
 int   doctrines_adopt_cost(const DoctrineState *ds, int cid, float ech);     /* prix COURANT d'une adoption */
 int   doctrines_idea_cost (const DoctrineState *ds, int cid, float ech);     /* prix COURANT d'une idée */
-int   doctrines_upkeep    (const DoctrineState *ds, int cid, float ech);     /* Σ entretiens /mois (entier, membrane) */
 /* Les MÊMES prix, non arrondis — ce que le moteur DÉBITE vraiment (l'entier
  * ci-dessus est la membrane d'affichage, jamais la vérité comptable). */
 float doctrines_adopt_cost_f(const DoctrineState *ds, int cid, float ech);
 float doctrines_idea_cost_f (const DoctrineState *ds, int cid, float ech);
-float doctrines_upkeep_f    (const DoctrineState *ds, int cid, float ech);
-/* Le COURANT politique actif (DOCT_ARISTOCRATIE..DOCT_DIVIN), -1 si aucun.
- * NON suspendu : un courant suspendu ne re-sied plus l'assiette ce mois-ci. */
+/* Le COURANT politique actif (DOCT_ARISTOCRATIE..DOCT_DIVIN), -1 si aucun. */
 int   doctrines_current   (const DoctrineState *ds, int cid);
 /* Pourquoi `doctrine` n'est-elle PAS adoptable ? 0 = elle l'est.
  * DOCT_NO_SLOT / DOCT_NO_INFLUENCE / DOCT_ALREADY / DOCT_EXCLUSIVE_PAIR /
@@ -175,11 +168,5 @@ enum { DOCT_OK = 0, DOCT_NO_SLOT, DOCT_ALREADY, DOCT_EXCLUSIVE_PAIR,
        DOCT_EXCLUSIVE_CURRENT, DOCT_NO_INFLUENCE };
 int   doctrines_why_not(const DoctrineState *ds, const struct InfluenceState *is,
                         int cid, int slot, int doctrine, float ech);
-
-/* TÉLÉMÉTRIE (print-only, chronicle) — Σ entretien PAYÉ (en influence) et Σ
- * suspensions posées depuis la genèse de cette sim (statiques de module, RAZ à
- * doctrines_init, JAMAIS sérialisées — motif econ_colony_stats). N'entrent dans
- * AUCUN calcul moteur. */
-void  doctrines_stats_get(double *upkeep_paid, long *suspensions);
 
 #endif /* SCPS_DOCTRINES_H */

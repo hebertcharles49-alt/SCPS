@@ -7,8 +7,8 @@
  * Prouve : les SIX emplacements libres d'office · le coût d'adoption qui monte
  * (50 + 25 × actives) · les DEUX seules exclusivités (Commerce ⊥ Mercantilisme,
  * un seul courant) · l'achat SÉQUENTIEL des idées au coût croissant (30 + 3 ×
- * possédées) · l'ENTRETIEN en influence et la SUSPENSION déterministe des
- * dernières adoptées (mults à 1.0) · l'abandon (slot libéré, idées perdues,
+ * possédées) · AUCUN ENTRETIEN (v107, décision joueur 2026-09-02 : une
+ * doctrine adoptée reste ALLUMÉE) · l'abandon (slot libéré, idées perdues,
  * aucun remboursement) · la bascule d'ASSIETTE par le courant politique ·
  * doctrine_key_mult (produit, clamp [0.60,1.60], cache invalidé) · la
  * LINÉARISATION des prix sur l'assiette (2× de nobles ⇒ 2× de gain ET 2× de
@@ -50,7 +50,7 @@ int main(int argc, char **argv){
     uint32_t seed=(argc>1)?(uint32_t)strtoul(argv[1],NULL,10):42u;
 
     printf("==================================================================\n");
-    printf(" LES DOCTRINES (§4) -- slots, coûts, exclusivités, entretien, clés\n");
+    printf(" LES DOCTRINES (§4) -- slots, coûts, exclusivités, clés\n");
     printf("==================================================================\n");
 
     World *w=malloc(sizeof(World)); WorldEconomy *econ=malloc(sizeof(WorldEconomy));
@@ -97,7 +97,6 @@ int main(int argc, char **argv){
     tune_set("INFLUENCE_BASE_REF", 2.0f);
     tune_set("DOCT_COST_BASE", 50.f); tune_set("DOCT_COST_STEP", 25.f);
     tune_set("IDEA_COST_BASE", 30.f); tune_set("IDEA_COST_STEP", 3.f);
-    tune_set("DOCT_UPKEEP", 1.f);
 
     float ech = influence_scale(econ, cid, INFL_BASE_DEFAUT);
 
@@ -230,46 +229,8 @@ int main(int argc, char **argv){
     free(d2);
     doctrines_sync(ds);   /* d2 a repris le miroir : on le rend au pays testé */
 
-    /* ═══ 8. ENTRETIEN + SUSPENSION déterministe ═══ */
-    printf("\n-- 8. Entretien en influence : insolvable => les DERNIERES adoptees se suspendent --\n");
-    int n_act = doctrines_n_active(ds, cid);
-    printf("   %d doctrines actives, entretien attendu %d/mois\n", n_act, n_act);
-    ok("l'entretien vaut DOCT_UPKEEP x doctrines actives x echelle",
-       doctrines_upkeep(ds,cid,ech) == n_act);
-    is->influence[cid] = 100.f;
-    doctrines_tick(ds, is, cid, ech);
-    ok("solvable : AUCUNE doctrine suspendue", doctrines_suspended(ds,cid,0)==false
-                                            && doctrines_suspended(ds,cid,1)==false);
-    ok("solvable : l'entretien a ete debite", near_f(influence_get(is,cid), 100.0-(double)n_act, 0.01));
-    /* À SEC : il ne reste de quoi payer qu'UNE doctrine (la plus ANCIENNEMENT adoptée). */
-    is->influence[cid] = 1.0f;
-    doctrines_tick(ds, is, cid, ech);
-    int n_susp=0, last_slot=-1; int16_t best_seq=-1;
-    for (int sl=0; sl<DOCT_SLOTS_MAX; sl++){
-        if (doctrines_at(ds,cid,sl)<0) continue;
-        if (doctrines_suspended(ds,cid,sl)) n_susp++;
-        if (ds->seq[cid][sl] > best_seq){ best_seq = ds->seq[cid][sl]; last_slot = sl; }
-    }
-    printf("   a sec (stock 1.0, %d actives) : %d suspendue(s) ; la DERNIERE adoptee est le slot %d\n",
-           n_act, n_susp, last_slot);
-    ok("insolvable : au moins une doctrine se suspend", n_susp >= 1);
-    ok("c'est la doctrine la plus RECEMMENT adoptee qui tombe la premiere",
-       last_slot>=0 && doctrines_suspended(ds,cid,last_slot));
-    ok("le slot 0 (la plus ANCIENNE) tient encore", doctrines_suspended(ds,cid,0)==false);
-    ok("une doctrine SUSPENDUE rend ses multiplicateurs a 1.0",
-       doctrine_key_mult(cid,"C3_K_HOLLOW")==1.f);
-    ok("la doctrine NON suspendue garde le sien (Commerce, slot 0)",
-       near_f(doctrine_key_mult(cid,"COMMERCE_W_BOURGEOIS"), 1.30, 0.001));
-    /* de nouveau solvable : la suspension se LÈVE (elle vaut pour CE mois seulement). */
-    is->influence[cid] = 1000.f;
-    doctrines_tick(ds, is, cid, ech);
-    ok("re-solvable : plus AUCUNE suspension le mois suivant",
-       doctrines_suspended(ds,cid,last_slot)==false);
-    ok("et le multiplicateur suspendu est REVENU",
-       near_f(doctrine_key_mult(cid,"C3_K_HOLLOW"), 0.60, 0.001));
-
-    /* ═══ 9. ABANDON — slot libéré, idées perdues, aucun remboursement ═══ */
-    printf("\n-- 9. Abandon libre : slot libere, idees PERDUES, zero remboursement --\n");
+    /* ═══ 8. ABANDON — slot libéré, idées perdues, aucun remboursement ═══ */
+    printf("\n-- 8. Abandon libre : slot libere, idees PERDUES, zero remboursement --\n");
     float before = influence_get(is, cid);
     int n_before = doctrines_n_ideas(ds, cid);
     ok("abandonner le slot 0 (Commerce 6/6) prend", doctrines_abandon(ds,is,cid,0)==1);
@@ -282,8 +243,8 @@ int main(int argc, char **argv){
     ok("Mercantilisme redevient adoptable (Commerce n'est plus tenue)",
        doctrines_why_not(ds,is,cid,0,DOCT_MERCANTILISME,ech)==DOCT_OK);
 
-    /* ═══ 10. SAVE → RELOAD (round-trip binaire + resync du miroir) ═══ */
-    printf("\n-- 10. Persistance : round-trip binaire + resynchronisation du miroir --\n");
+    /* ═══ 9. SAVE → RELOAD (round-trip binaire + resync du miroir) ═══ */
+    printf("\n-- 9. Persistance : round-trip binaire + resynchronisation du miroir --\n");
     doctrines_adopt(ds,is,cid,0,DOCT_TECHNOLOGIE,ech);
     doctrines_buy_idea(ds,is,cid,DOCT_TECHNOLOGIE,ech);
     doctrines_buy_idea(ds,is,cid,DOCT_TECHNOLOGIE,ech);   /* << Ecoles de ville >> : SAVOIR_W_BOURGEOIS x1.30 */
@@ -308,8 +269,8 @@ int main(int argc, char **argv){
        near_f(doctrine_key_mult(cid,"SAVOIR_W_BOURGEOIS"), (double)m_before, 0.001));
     free(ds2);
 
-    /* ═══ 11. LA TABLE — 17 x 6, slugs d'assets 1:1 ═══ */
-    printf("\n-- 11. Le catalogue : 17 doctrines x 6 idees, slugs d'assets --\n");
+    /* ═══ 10. LA TABLE — 17 x 6, slugs d'assets 1:1 ═══ */
+    printf("\n-- 10. Le catalogue : 17 doctrines x 6 idees, slugs d'assets --\n");
     { int n_verbes=0, n_cablees=0, n_icons=0;
       for (int d=0; d<DOCT_COUNT; d++){
           if (!DOCT_DEF[d].bg || !DOCT_DEF[d].bg[0]) { ok("chaque doctrine porte un fond", 0); break; }

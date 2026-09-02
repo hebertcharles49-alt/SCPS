@@ -3453,15 +3453,14 @@ void scps_influence_info(ScpsSim *s, int cid, ScpsInfluence *out){
         snprintf(buf, sizeof buf, tr(STR_INFLUENCE_HOVER), nobles, rw);
     }
     out->hover = buf;
-    /* LA CHARGE : l'entretien des doctrines, en MOTS, à côté du revenu. */
-    { float ech = influence_scale(s->sim.econ, cid, base);
-      int n = doctrines_n_active(s->sim.doct, cid);
-      out->upkeep_month = doctrines_upkeep(s->sim.doct, cid, ech);
-      out->net_month    = out->gain_month - out->upkeep_month;
-      static char dbuf[128];
-      if (n <= 0) snprintf(dbuf, sizeof dbuf, "%s", tr(STR_INFLUENCE_DEPENSES_0));
-      else        snprintf(dbuf, sizeof dbuf, tr(STR_INFLUENCE_DEPENSES), n, out->upkeep_month);
-      out->hover_depenses = dbuf; }
+    /* AUCUN ENTRETIEN de doctrine (v107, décision joueur 2026-09-02) : la
+     * CHARGE politique du mois est nulle par construction — ces trois champs
+     * restent dans le contrat de readers pour les SYNERGIES (vague future,
+     * seules à porter un entretien fibonaccien) ; hover_depenses vide, le
+     * hover ne s'affiche déjà que s'il est non-vide (topbar.gd). */
+    out->upkeep_month = 0;
+    out->net_month    = out->gain_month;
+    out->hover_depenses = "";
 }
 
 /* ====================================================================== */
@@ -3496,7 +3495,7 @@ void scps_doctrine_slots(ScpsSim *s, int cid, ScpsDoctSlots *out){
         r->name        = tr((StrId)DOCT_DEF[d].name);
         r->bg          = DOCT_DEF[d].bg;
         r->ideas_owned = doctrines_ideas_of(s->sim.doct, cid, d);
-        r->suspended   = doctrines_suspended(s->sim.doct, cid, i) ? 1 : 0;
+        r->suspended   = 0;   /* AUCUN entretien ⇒ aucune suspension possible (v107) */
     }
 }
 
@@ -3545,9 +3544,9 @@ int scps_doctrine_detail(ScpsSim *s, int cid, int id, ScpsDoctDetail *out){
     int owned = doctrines_ideas_of(s->sim.doct, cid, id);
     out->adopted   = (slot>=0) ? 1 : 0;
     out->slot      = slot;
-    out->suspended = (slot>=0 && doctrines_suspended(s->sim.doct, cid, slot)) ? 1 : 0;
+    out->suspended = 0;       /* AUCUN entretien ⇒ aucune suspension possible (v107) */
     float ech = influence_scale(s->sim.econ, cid, api_influence_base(s, cid));
-    if (slot>=0) out->upkeep_month = (int)(tune_f("DOCT_UPKEEP",1.f)*ech + 0.5f);
+    out->upkeep_month = 0;    /* idem — champ gardé pour les SYNERGIES (vague future) */
     int icost = doctrines_idea_cost(s->sim.doct, cid, ech);
     for (int i=0;i<DOCT_IDEAS;i++){
         out->ideas[i].owned = (i < owned) ? 1 : 0;

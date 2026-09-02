@@ -1900,17 +1900,15 @@
      * COÛT, qui monte avec ce qu'on possède déjà.
      *   adopter = DOCT_COST_BASE + DOCT_COST_STEP × doctrines actives (50 → 175)
      *   idée    = IDEA_COST_BASE + IDEA_COST_STEP × idées possédées   (30 → 135)
-     * DOCT_UPKEEP : l'ENTRETIEN MENSUEL, EN INFLUENCE, par doctrine active —
-     * débité APRÈS la génération du mois ; insolvable ⇒ les doctrines les plus
-     * RÉCEMMENT adoptées se suspendent CE mois (mults à 1.0). 0 = kill-switch
-     * (plus aucune suspension possible). Effets : tune_f("CLÉ") ×
+     * AUCUN ENTRETIEN (décision joueur 2026-09-02, remplace celle du 09-01) :
+     * les doctrines coûtent en FLAT — l'achat, rien d'autre (DOCT_UPKEEP a
+     * disparu du registre, v107). Effets : tune_f("CLÉ") ×
      * doctrine_key_mult(cid,"CLÉ") au site de lecture, clamp [0.60, 1.60] par
      * clé — JAMAIS tune_set. P1 : joueur SEUL, golden intact par construction. */ \
     X(DOCT_COST_BASE,                  50.0f) \
     X(DOCT_COST_STEP,                  25.0f) \
     X(IDEA_COST_BASE,                  30.0f) \
     X(IDEA_COST_STEP,                   3.0f) \
-    X(DOCT_UPKEEP,                      1.0f) \
     /* LES ASSIETTES DES COURANTS (§4.3bis) — le courant politique adopté
      * RE-SIED la génération d'influence sur SA classe (toujours × le rang moyen
      * du Conseil). Sans courant : l'assiette par défaut (INFLUENCE_PER_NOBLE).

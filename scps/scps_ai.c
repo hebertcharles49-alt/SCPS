@@ -3090,7 +3090,8 @@ void ai_slave_trade_year(World *w, WorldEconomy *econ, const AiActor ai[], const
  *  règles que le joueur. AUCUN chemin parallèle — on appelle doctrines_adopt /
  *  doctrines_buy_idea avec le cid de l'IA, donc mêmes coûts (linéarisés sur
  *  l'assiette `ech`), mêmes exclusivités (Commerce ⊥ Mercantilisme, un seul
- *  courant), même entretien mensuel et mêmes suspensions (doctrines_tick).
+ *  courant). AUCUN entretien (v107, décision joueur 2026-09-02) : une fois
+ *  adoptée, une doctrine reste ALLUMÉE — plus de suspension à subir.
  *
  *  LE CHOIX EST UN SCORE SUR L'ÉTAT RÉEL — jamais une personnalité, jamais un
  *  tirage : chaque signal LIT un champ qui existe déjà (côte, chantier de

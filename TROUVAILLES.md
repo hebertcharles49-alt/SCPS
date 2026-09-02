@@ -10701,3 +10701,103 @@ INTERDITS pour moi, contenu autorisé) — relu avant chaque édition, diff fina
   en entier** (règle ferme : le joueur lance). 36 sims (3 graines × 3
   répétitions × 2 horizons × 2 bras), résumé apparié automatique + contrôle de
   FUITE du kill-switch (un bras témoin qui adopterait = bug).
+
+## Mission 2026-09-02 — REFACTOR : LES DOCTRINES N'ONT PLUS D'ENTRETIEN (retrait, save v106→v107)
+
+### Découvertes
+
+- **La prédiction du brief se vérifie AU BIT PRÈS** : `SCPS_TUNE=AI_DOCT=0`
+  (5 graines × 12 ans) rend EXACTEMENT les hashes `AI_DOCT=0` mesurés à la
+  mission P3-IA précédente (`7 9fa6ff52 · 108 f96da1f0 · 209 545c5872 ·
+  310 6f979e33 · 411 fd265618`) — byte pour byte, alors que le golden
+  « avec IA » a bougé sur 4 graines sur 5. La preuve est mécanique : sans
+  adoption, personne ne payait jamais d'entretien, donc retirer l'entretien
+  ne change RIEN à la trajectoire d'un monde où l'IA n'adopte jamais.
+- **Seule 1 graine sur 5 du golden 12 ans est restée inchangée** (`HASH 7
+  fa02fe96`, identique avant/après) — les 4 autres bougent (108/209/310/411).
+  Lecture : à 12 ans, la graine 7 n'avait simplement jamais atteint
+  l'insolvabilité qui aurait déclenché une suspension (le stock d'influence
+  IA suffisait encore) ; les 4 autres avaient au moins un pays-mois suspendu
+  dans la fenêtre, et cette suspension disparaît avec le refactor → le
+  multiplicateur de doctrine (`doctrine_key_mult`) qu'elle ramenait à 1.0
+  reste maintenant à sa valeur pleine, ce qui décale l'économie donc le hash.
+- **`golden_deep.txt` profitait d'être STALE** (signalé par la mission P3-IA
+  comme non re-baseliné AVANT cette vague, dernier commit réel `3e2d568`
+  antérieur à Desseins/Influence/Doctrines). Cette vague le régénère enfin :
+  `83 dd210348→2dddea00` · `250 8c9e1191→9fc24dd6` (~10 min de sim réelle,
+  `time` mesuré `9m57s` pour les DEUX horizons — bien sous le plafond d'un
+  script mais AU-DESSUS du plafond de 600s d'un seul appel d'outil Bash : il
+  a fallu le laisser franchir en tâche de fond puis relire son fichier de
+  sortie, jurisprudence à noter pour tout futur `golden-deep-update`).
+- **`doct_world_snapshot` (chronicle.c) avait un paramètre `n_susp` alimenté
+  par une boucle O(6) par pays** — retiré proprement (signature + les DEUX
+  call sites, le « politique an N » ET le bilan de fin) plutôt que laissé à
+  toujours 0 : la fonction est `static`, aucun binaire externe n'en dépend.
+- **`doctrines_stats_get` n'avait plus AUCUN écrivain** une fois `doctrines_tick`
+  supprimé (les deux statics `g_doct_upkeep_paid`/`g_doct_suspensions` n'étaient
+  incrémentés que là) : purgée entièrement (déclaration + définition + les DEUX
+  call sites chronicle) plutôt que laissée à toujours 0/0 — motif jurisprudence
+  `DOCT_UPKEEP` du brief (« jamais une entrée fantôme »), étendu aux fonctions.
+- **`seq`/`seq_next` (l'ordre d'adoption) n'avaient AUCUN lecteur en dehors de
+  la suspension qu'ils départageaient** (vérifié par grep exhaustif avant de
+  couper : ni readers façade, ni chronicle, ni IA ne les lisaient). Retirés du
+  struct avec `susp` plutôt que gardés « au cas où » — le §4.4 du design (les
+  SYNERGIES, vague future) parle d'un ordre D'ACTIVATION DE SYNERGIE, une
+  notion distincte qui vivra dans SA propre structure quand elle arrivera.
+- **`sizeof(DoctrineState)` rétrécit de 3 tableaux** (`seq`/`seq_next`/`susp`,
+  ~2,2 Ko/pays en moins) ⇒ bump SAVE_VERSION 106→107 net (scps_save.h) ;
+  `save_sane` a perdu la revalidation de `seq_next`/`seq`/`susp` (invariants
+  d'exclusivité Commerce⊥Mercantilisme et « un seul courant » CONSERVÉS,
+  seuls invariants restants sur la section DOCT).
+- **`ScpsInfluence.upkeep_month/net_month/hover_depenses` et
+  `ScpsDoctSlot.suspended`/`ScpsDoctDetail.suspended/upkeep_month` sont
+  GARDÉS dans les structs C** (contrat de readers inchangé côté binding
+  Godot/.cpp — zéro ripple sur scps_sim_node.cpp) mais renvoient désormais des
+  constantes (0 / gain_month / "" / false) : la lecture `.get(clé, défaut)`
+  déjà défensive côté .gd absorbe le changement sans qu'aucun fichier .gd
+  n'ait eu besoin d'un nouveau garde — seul le CONTENU affiché (la plaque
+  « Entretien » et le badge « suspendue ») a été retiré du rendu.
+- **Chronicle seed 7 / 120 ans, la preuve demandée** : à l'an 120, 2 pays sur
+  2 jouables tiennent chacun 3 doctrines à 6/6 idées (`Ordre Brenyanel` —
+  Offense/Production/Colonisation ; `Havre Braknakor` — Aristocratie/
+  Production/Colonisation), 11 doctrines actives au total, ZÉRO marqueur
+  `[suspendue]` dans le TOP-3 — les doctrines adoptées restent bien ALLUMÉES
+  jusqu'à la fin, comme voulu par la décision joueur.
+
+### Pièges
+
+- **`ai_doctrines_year` (scps_ai.c) n'avait AUCUNE logique d'entretien/
+  suspension propre** — seul son commentaire d'en-tête en parlait (« même
+  entretien mensuel et mêmes suspensions (doctrines_tick) »). Le coussin
+  `AI_DOCT_RESERVE` est resté INTACT : c'est une marge d'ACHAT (le prix ×
+  réserve avant de dépenser), sans lien avec l'entretien qui vient de
+  disparaître — à ne pas confondre en le lisant vite.
+- **Un appel Bash dépasse son plafond de 600 s même avec `timeout: 600000`
+  demandé** : l'outil le bascule silencieusement en tâche de fond plutôt que
+  d'échouer — ce n'est pas un refus mais un déplacement. `golden-deep-update`
+  (2 sims de 83+250 ans, graine 7) a pris 9m57s, juste sous la marge perçue
+  mais l'outil l'a quand même fait basculer. Le relire ensuite via son fichier
+  de sortie (`Read` sur le chemin donné par la notification) plutôt que
+  re-exécuter est le seul recours.
+- **Ne pas confondre les DEUX golden** : `golden` (12 ans, 5 graines) suit
+  DET_YEARS et se re-baseline en secondes ; `golden-deep` (83+250 ans, 1
+  graine) suit un tout autre budget de temps. Les traiter dans le MÊME script
+  séquentiel avec un seul timeout générique a échoué une fois pour cette
+  raison — les séparer en étapes distinctes est plus robuste.
+
+### Restes
+
+- **Les SYNERGIES de paires (§4.4) restent hors périmètre** de cette vague —
+  c'est ELLES qui porteront l'entretien fibonaccien (0·2·3·5·8…/mois, 1re
+  gratuite) que les doctrines viennent de perdre. Le champ `upkeep_month` (et
+  ses jumeaux) redeviendra vivant à ce moment-là, pas avant.
+- **Les poids de score IA (`ai_doct_scores`) sont INCHANGÉS** par cette
+  mission — seule la mécanique de paiement a bougé, pas le choix. Un futur
+  sweep pourrait vouloir re-mesurer les corrélations-juges maintenant que les
+  doctrines ne se suspendent plus jamais (l'IA a plus de raisons d'accumuler
+  des doctrines qu'avant, la distribution pourrait légèrement s'épaissir avec
+  le temps — à observer sur un sweep dédié, pas mesuré ici).
+- **`docs/DESIGN_MISSIONS_DOCTRINES.md` §4.2 était DÉJÀ à jour** avant cette
+  mission (texte de la décision joueur 2026-09-02 déjà couché) — seul le CODE
+  suivait encore l'ancienne mécanique ; aucune modification du design doc
+  n'a été nécessaire ici.

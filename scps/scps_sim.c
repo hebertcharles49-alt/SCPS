@@ -1256,23 +1256,20 @@ void sim_day(Sim *s, World *w) {
          *     propres, AI_*, restent LA loi de l'IA en diplomatie ; une symétrie
          *     diplo éventuelle est une décision joueur ultérieure) ;
          *   · les décrets (ci-dessus).
-         * L'ENTRETIEN suit la génération dans le MÊME passage (le stock du mois
-         * courant paie DOCT_UPKEEP × doctrines actives × échelle d'assiette ;
-         * insolvable ⇒ les dernières adoptées se suspendent CE mois). doctrines_tick
-         * n'est appelé que pour un pays QUI TIENT au moins une doctrine : sans
-         * doctrine il est un no-op coûteux (doctrines_sync remet à zéro tout le
-         * miroir + le cache de clés à chaque appel).
+         * AUCUN ENTRETIEN DE DOCTRINE (v107, décision joueur 2026-09-02) : les
+         * doctrines coûtent en FLAT à l'achat, rien d'autre — il n'y a donc plus
+         * de clôture mensuelle à appeler ici (doctrines_tick a disparu avec la
+         * suspension qu'il posait). Le miroir de lecture (doctrine_key_mult) ne
+         * bouge qu'aux verbes eux-mêmes (doctrines_sync interne à adopt/buy_idea/
+         * abandon) et au chargement.
          * GOLDEN : avec AI_DOCT=0 l'IA n'adopte jamais, aucun pays IA n'a de
-         * doctrine, doctrines_tick n'est donc jamais appelé pour elle et
-         * influence_tick n'écrit QUE dans InfluenceState (que rien d'autre ne lit
-         * hors dépense joueur) ⇒ hash byte-identique. */
+         * doctrine, et influence_tick n'écrit QUE dans InfluenceState (que rien
+         * d'autre ne lit hors dépense joueur) ⇒ hash byte-identique. */
         for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
             if (c!=s->human_player && !s->ai_on[c]) continue;
             if (regions_of(s->econ, c) <= 0) continue;              /* pays mort */
             InfluenceBase ib = sim_influence_base(s, c);
             influence_tick(s->infl, w, s->econ, s->sc, w->seed, c, ib);
-            if (doctrines_n_active(s->doct, c) > 0)
-                doctrines_tick(s->doct, s->infl, c, influence_scale(s->econ, c, ib));
         }
         for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
             if (s->ai_on[c]) statecraft_council_ai(s->sc, w, s->econ, w->seed, c, s->year);   /* Q1 : l'IA pourvoit son siège d'éthos (pool de la génération courante) */

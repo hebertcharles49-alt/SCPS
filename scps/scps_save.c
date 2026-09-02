@@ -91,7 +91,9 @@ bool scps_save_slot_info(int slot, SaveHeader *out){
     X(FOGV,'F','O','G','V')  /* v75 : BROUILLARD DE GUERRE — known[][] (connaissance cumulative par empire) */ \
     X(TOPO,'T','O','P','O')  /* v98 : TOPONYMIE DES VILLES — g_ville_name[SCPS_MAX_REG] (scps_toponym.c) */ \
     X(INFL,'I','N','F','L')  /* v104 : INFLUENCE POLITIQUE — InfluenceState.influence[SCPS_MAX_COUNTRY] */ \
-    X(DOCT,'D','O','C','T')  /* v106 : LES DOCTRINES — DoctrineState (slots/idées/ordre/suspension) */
+    X(DOCT,'D','O','C','T')  /* v106 : LES DOCTRINES — DoctrineState (slots/idées) ; v107 : entretien +
+                               * suspension + ordre d'adoption retirés (aucun entretien, décision
+                               * joueur 2026-09-02) ⇒ sizeof(DoctrineState) rétrécit */
 #define SV_DECL_TAG(name,a,b,c,d) enum { SVT_##name = SV_TAG(a,b,c,d) };
 SV_SECTIONS(SV_DECL_TAG)
 #undef SV_DECL_TAG
@@ -565,25 +567,23 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         for (int c=0;c<SCPS_MAX_COUNTRY;c++)
             if (!(s->infl->influence[c]>=0.f && s->infl->influence[c]<=1.0e6f)) return false;
     }
-    /* v106 — LES DOCTRINES : la section DOCT est un blob BRUT ; tout ce qu'elle porte
-     * indexe la table du catalogue (doctrine), borne une boucle (slot, idées) ou pilote
-     * l'ordre de suspension (seq). On revalide TOUT, refus net (charte save_sane) —
-     * jamais un clamp silencieux. Une doctrine ne peut occuper QU'UN slot, et les deux
-     * exclusivités (Commerce ⊥ Mercantilisme · un seul courant) sont des INVARIANTS
-     * d'état : une save qui les viole est refusée comme un index hors bornes. */
+    /* v107 — LES DOCTRINES : la section DOCT est un blob BRUT ; tout ce qu'elle porte
+     * indexe la table du catalogue (doctrine) ou borne une boucle (slot, idées). On
+     * revalide TOUT, refus net (charte save_sane) — jamais un clamp silencieux. Une
+     * doctrine ne peut occuper QU'UN slot, et les deux exclusivités (Commerce ⊥
+     * Mercantilisme · un seul courant) sont des INVARIANTS d'état : une save qui les
+     * viole est refusée comme un index hors bornes. Plus d'entretien ⇒ plus d'ordre
+     * d'adoption à revalider (seq/seq_next retirés avec la suspension, v107). */
     if (s->doct) for (int c=0;c<SCPS_MAX_COUNTRY;c++){
         const DoctrineState *ds = s->doct;
         int seen[DOCT_COUNT]; int n_cur=0;
         for (int d=0;d<DOCT_COUNT;d++) seen[d]=0;
-        if (ds->seq_next[c]   < 0  || ds->seq_next[c]  > 30000)          return false;
         for (int d=0;d<DOCT_COUNT;d++)
             if (ds->ideas[c][d] < 0 || ds->ideas[c][d] > DOCT_IDEAS) return false;
         for (int k=0;k<DOCT_SLOTS_MAX;k++){
             int d = ds->doct[c][k];
             if (d < -1 || d >= DOCT_COUNT) return false;
-            if (ds->susp[c][k] < 0 || ds->susp[c][k] > 1) return false;
-            if (d < 0){ if (ds->seq[c][k] != -1) return false; continue; }
-            if (ds->seq[c][k] < 0 || ds->seq[c][k] >= ds->seq_next[c]) return false;
+            if (d < 0) continue;
             if (seen[d]++) return false;                       /* deux fois la même doctrine */
             if (d >= DOCT_ARISTOCRATIE) n_cur++;
         }

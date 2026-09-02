@@ -17,18 +17,14 @@ vite — le temps d'acquisition est constant, la liberté est ressentie.
 - **Adopter une doctrine** : `(DOCT_BASE 50 + DOCT_STEP 25 × actives) × é`.
 - **Acheter une idée** : `(IDEA_BASE 30 + IDEA_STEP 3 × idées possédées,
   toutes doctrines confondues) × é`. Abandonner libère le compte.
-- **Entretien** : `DOCT_UPKEEP 1.0 × é /mois par doctrine active`.
-- **Synergie de paire** : entretien fibonaccien 2/3/5/8… /mois (inchangé).
+- **AUCUN entretien de doctrine** (révision joueur 2026-09-02) : les
+  doctrines coûtent en FLAT — l'achat, rien d'autre. La suspension mensuelle
+  est SUPPRIMÉE.
+- **Synergie de paire** : le SEUL entretien du système — fibonaccien par rang
+  d'activation, **la première gratuite** : 0 · 2 · 3 · 5 · 8… /mois (× é).
+  Impayée ce mois ⇒ suspendue ce mois (le contrat ne vaut que pour elles).
 - **Complet = rien de spécial** ; la paire complète ouvre le sous-menu de
   synergie. **Abandon libre**, sans remboursement ni cicatrice.
-- **Entretien en INFLUENCE, pas en couronnes** (révision joueur 2026-09-01) :
-  `DOCT_UPKEEP (1.0) /mois par doctrine active`. Avec les synergies (2/3/5/8)
-  et les émissaires, l'influence devient une vraie économie : les nobles la
-  génèrent, les doctrines la consomment — d'où l'intérêt de faire GRANDIR sa
-  noblesse, à double tranchant (plus de voix, mais plus de panier de luxe à
-  servir et plus de rivalité aspirants/positions ; et le courant choisit
-  l'assiette). Insolvable ce mois ⇒ les doctrines les plus récemment adoptées
-  se suspendent CE mois (ordre déterministe), mults à 1.0.
 
 Structure inchangée : 6 slots · 17 doctrines · idées achetées EN SÉQUENCE ·
 Commerce↔Mercantilisme exclusifs · un seul courant politique sur quatre (le

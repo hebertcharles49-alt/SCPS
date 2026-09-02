@@ -185,9 +185,11 @@ func _update_title() -> void:
 
 # ── VUE SLOTS — grille 6 cases (verrouillé/vide/occupé) ─────────────────────────
 ## `doctrine_slots(me)` : {slots_total, slots_open, rows:[{slot, state, doctrine, name,
-## bg, ideas_owned, suspended}]}. `state` ASSUMÉ 0=verrouillé · 1=vide · 2=occupé
+## bg, ideas_owned}]}. `state` ASSUMÉ 0=verrouillé · 1=vide · 2=occupé
 ## (ordre de la spec P2, aucun enum moteur encore livré à l'écriture — À REVÉRIFIER par
 ## l'orchestrateur dès l'atterrissage du binding, probe visuelle des 6 cases).
+## AUCUN entretien de doctrine (v107) : `suspended` reste dans le contrat moteur
+## (toujours faux) mais l'UI ne l'affiche plus — état mort retiré.
 func _build_slots() -> void:
 	for c in _slots_page.get_children():
 		c.queue_free()
@@ -240,15 +242,6 @@ func _slot_card(slot: int, row: Dictionary) -> Control:
 			pips.text = "%d/6" % int(row.get("ideas_owned", 0))
 			pips.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			vb.add_child(pips)
-			if bool(row.get("suspended", false)):
-				var susp := Label.new()
-				susp.theme_type_variation = "Expense"
-				susp.text = "suspendue"
-				susp.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-				susp.mouse_filter = Control.MOUSE_FILTER_STOP
-				susp.tooltip_text = String(row.get("hover_suspended",
-					"entretien impayé ce mois — les bonus n'agissent plus"))
-				vb.add_child(susp)
 			var did := int(row.get("doctrine", -1))
 			card.gui_input.connect(func(e):
 				if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
@@ -378,8 +371,10 @@ func _adopt(id: int) -> void:
 	_show_view(View.SLOTS)
 
 # ── VUE DÉTAIL — bandeau 512×256 + colonne des 6 idées sur le TIERS DROIT ──────
-## `doctrine_detail(me, id)` : {name, bg, hover, adopted, slot, suspended,
-## upkeep_month, ideas:[{idx, name, bonus, icon, owned, is_verb, wired, cost, next}]}.
+## `doctrine_detail(me, id)` : {name, bg, hover, adopted, slot,
+## ideas:[{idx, name, bonus, icon, owned, is_verb, wired, cost, next}]}.
+## AUCUN entretien de doctrine (v107) : `suspended`/`upkeep_month` restent dans
+## le contrat moteur (toujours faux/0) mais l'UI ne les lit plus.
 func _build_detail() -> void:
 	for c in _detail_page.get_children():
 		c.queue_free()
@@ -413,32 +408,9 @@ func _build_detail() -> void:
 		banner.add_child(bgr)
 
 	# le NOM vit déjà dans le header du panneau (_title_lbl) — pas de doublon peint
-	# sur l'illustration. L'entretien (+ suspension) tient sur une PLAQUE parchemin
-	# semi-opaque en bas-gauche du bandeau (motif « bandeau tan » des encarts tech :
-	# le texte nu sur la gravure était illisible — probe 04_detail, 2026-09-02).
-	var plate := PanelContainer.new()
-	plate.add_theme_stylebox_override("panel", ParchTheme.sb(Color(0.94, 0.90, 0.80, 0.82), Color(0.16, 0.14, 0.10, 0.55), 1, 4, 6, 3, 6, 3))
-	plate.anchor_left = 0.0
-	plate.anchor_top = 1.0
-	plate.anchor_bottom = 1.0
-	plate.offset_left = 10.0
-	plate.offset_top = -34.0
-	plate.offset_bottom = -8.0
-	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	banner.add_child(plate)
-	var plate_row := HBoxContainer.new()
-	plate_row.add_theme_constant_override("separation", 10)
-	plate.add_child(plate_row)
-	var upkeep_m := int(d.get("upkeep_month", 1))
-	var upk_lbl := Label.new()
-	upk_lbl.theme_type_variation = "RowDim"
-	upk_lbl.text = "Entretien : %d/mois" % upkeep_m
-	plate_row.add_child(upk_lbl)
-	if bool(d.get("suspended", false)):
-		var susp := Label.new()
-		susp.theme_type_variation = "Expense"
-		susp.text = "suspendue — entretien impayé ce mois"
-		plate_row.add_child(susp)
+	# sur l'illustration. AUCUN entretien de doctrine (v107, décision joueur
+	# 2026-09-02) : la plaque « Entretien : N/mois » + le marqueur « suspendue »
+	# ont disparu avec lui (états morts).
 
 	# LA COLONNE DES 6 IDÉES — TIERS DROIT du bandeau (anchors, pas un calcul de pixel).
 	var idea_col := VBoxContainer.new()

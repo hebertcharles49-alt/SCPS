@@ -229,7 +229,7 @@ satisfaction de la classe Élite. Le taux est plat : effectif × rang, point.
 | **Adopter une doctrine** | 50 + 25 × doctrines actives | coût fixe et scalable (révision 2026-09-01) |
 | **Entretenir une doctrine** | **1/mois chacune** | l'entretien est EN INFLUENCE (pas en couronnes) — insolvable ce mois = les dernières adoptées se suspendent |
 | **Acheter une idée de doctrine** | 30 + 3 × idées possédées (total) | façon unités Stellaris — plus t'en as, plus c'est cher ; 6 par doctrine, en séquence |
-| **Maintenir une synergie de paire** | **2/mois, puis 3·5·8… par synergie active supplémentaire** | le sink fibonaccien (§4.4) — suspendue si impayée ce mois |
+| **Maintenir une synergie de paire** | **1re GRATUITE, puis 2·3·5·8… par synergie active supplémentaire** | le sink fibonaccien (§4.4, révision 2026-09-02) — suspendue si impayée ce mois ; LE SEUL entretien du système (les doctrines coûtent flat) |
 | **Décision ponctuelle de décret** (`DCR_DECISION`) | 10-20 | l'audit des offices mobilise l'appareil |
 | **Soutenir une fronde chez autrui** (futur verbe) | 30+ | le trou identifié §2 diplo — l'influence est sa monnaie naturelle |
 
@@ -290,14 +290,13 @@ qu'on possède déjà :
   achetées EN SÉQUENCE dans leur doctrine. Abandonner libère le compte.
 - **Pas de bonus de complétion** (6/6 = rien) ; la paire complète ouvre le
   sous-menu de synergie (coût fibonaccien inchangé).
-- **Entretien en INFLUENCE, pas en couronnes** (révision joueur 2026-09-01) :
-  `DOCT_UPKEEP (1.0) /mois par doctrine active` — l'influence a désormais des
-  revenus (les nobles × le Conseil) ET des charges (doctrines + synergies +
-  émissaires) : faire grandir sa noblesse devient le moteur, à double
-  tranchant (luxe à servir, rivalité turchinienne, assiette du courant).
-  Insolvable ce mois ⇒ les dernières doctrines adoptées se suspendent CE mois
-  (ordre déterministe), mults à 1.0. Les DÉCRETS gardent leur entretien en
-  couronnes (système existant inchangé).
+- **AUCUN ENTRETIEN de doctrine** (révision joueur 2026-09-02, remplace celle
+  du 09-01) : les doctrines coûtent en FLAT — l'achat, rien d'autre. La
+  mécanique de suspension mensuelle est SUPPRIMÉE (elle affamait l'IA : les
+  8 400 pays-mois suspendus de la mesure P3-IA étaient un défaut de design,
+  pas d'IA). **Seules les SYNERGIES paient un entretien**, fibonaccien —
+  **et la PREMIÈRE synergie active est gratuite** : 0 · 2 · 3 · 5 · 8… /mois
+  par rang d'activation. Les DÉCRETS gardent leur entretien en couronnes.
 - **L'IA choisit PAR SCORE** sur ses propres modificateurs (côtier →
   Colonisation, beaucoup de vassaux → Vassaux…) — aucune restriction.
 

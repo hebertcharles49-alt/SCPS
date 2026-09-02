@@ -1678,11 +1678,12 @@ typedef struct {
     int stock;          /* le stock courant, arrondi à l'entier */
     int gain_month;      /* gain PRÉVU du mois courant, arrondi à l'entier (mots : « /mois ») */
     const char *hover;   /* « N nobles × le Conseil (rang moyen II) » — ou « aucun ministre » */
-    /* LES DOCTRINES §4 — la CHARGE politique du mois, à côté du revenu (le solde se
-     * lit d'un coup d'œil, charte UI §5). */
-    int upkeep_month;    /* Σ des entretiens de doctrine (déjà ÉCHELONNÉ sur l'assiette) */
-    int net_month;       /* gain_month − upkeep_month : le SOLDE du mois */
-    const char *hover_depenses;   /* « Entretien de N doctrine(s) : X par mois » (MOTS) */
+    /* LES DOCTRINES §4 n'ont AUCUN entretien (v107, décision joueur 2026-09-02) :
+     * ces trois champs restent dans le contrat pour les SYNERGIES (vague future,
+     * seules à porter un entretien fibonaccien) — toujours 0/gain_month/"" ici. */
+    int upkeep_month;    /* toujours 0 */
+    int net_month;       /* toujours == gain_month */
+    const char *hover_depenses;   /* toujours "" */
 } ScpsInfluence;
 void scps_influence_info(ScpsSim *s, int cid, ScpsInfluence *out);
 
@@ -1700,7 +1701,7 @@ typedef struct {
     const char *name;     /* son nom ("" si vide) */
     const char *bg;       /* "doct_<x>_bg" ("" si vide) */
     int ideas_owned;      /* 0..6 */
-    int suspended;        /* 1 = entretien impayé CE mois (mults à 1.0) */
+    int suspended;        /* toujours 0 (AUCUN entretien de doctrine, v107) */
 } ScpsDoctSlot;
 typedef struct {
     int slots_total;      /* 6, toujours */
@@ -1742,8 +1743,8 @@ typedef struct {
     const char *name, *bg, *hover;
     int adopted;          /* 0/1 */
     int slot;             /* le slot occupé (-1 si non adoptée) */
-    int suspended;        /* 0/1 */
-    int upkeep_month;     /* l'entretien d'UNE doctrine ce mois-ci */
+    int suspended;        /* toujours 0 (AUCUN entretien de doctrine, v107) */
+    int upkeep_month;     /* toujours 0 (idem) */
     ScpsDoctIdea ideas[6];
 } ScpsDoctDetail;
 int scps_doctrine_detail(ScpsSim *s, int cid, int id, ScpsDoctDetail *out);

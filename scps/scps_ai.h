@@ -228,9 +228,10 @@ float    ai_research_income(const WorldEconomy *econ, const TechState *ts, int c
 /* ── L'IA ET LES DOCTRINES (P3-IA — design §4.6, docs/BRIEF_P3_IA_CHRONICLE.md) ──
  * L'IA joue le MÊME arbre que le joueur, par les MÊMES verbes (doctrines_adopt /
  * doctrines_buy_idea) : aucun chemin parallèle, mêmes coûts échelonnés sur
- * l'assiette (`ech`, calculé par l'appelant — motif doctrines_tick), mêmes
- * exclusivités, même entretien. Le choix est un SCORE sur l'état RÉEL du pays
- * (aucun xs32 : déterministe), départagé score desc puis id asc.
+ * l'assiette (`ech`, calculé par l'appelant), mêmes exclusivités. AUCUN
+ * entretien (v107) : une fois adoptée, une doctrine reste ALLUMÉE. Le choix
+ * est un SCORE sur l'état RÉEL du pays (aucun xs32 : déterministe), départagé
+ * score desc puis id asc.
  * À appeler à la CLÔTURE ANNUELLE pour chaque pays IA vivant. Un seul acte par
  * passage : adopter la meilleure doctrine libre, sinon acheter la prochaine
  * idée de la doctrine active la moins fournie. Renvoie 1 si un acte a pris.

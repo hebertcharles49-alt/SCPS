@@ -1,17 +1,20 @@
 /*
  * scps_doctrines.c — LES DOCTRINES (cf. scps_doctrines.h pour la doctrine).
  *
- * Propriété golden forte : le module NE TIRE AUCUN xs32 et n'est appelé que pour
- * `human_player` (gate côté scps_sim.c). Un pays sans doctrine sort de
- * doctrine_key_mult au PREMIER test — la chronique headless (human=-1) n'a
- * jamais un seul pays doctriné, donc TOUS les sites de lecture rendent
- * exactement 1.0f (multiplication IEEE neutre) et le golden est intact PAR
- * CONSTRUCTION.
+ * Propriété golden forte : le module NE TIRE AUCUN xs32. Un pays sans doctrine
+ * sort de doctrine_key_mult au PREMIER test, et avec AI_DOCT=0 aucun pays IA
+ * n'en adopte jamais, donc TOUS les sites de lecture rendent exactement 1.0f
+ * (multiplication IEEE neutre) et le golden est intact PAR CONSTRUCTION.
+ *
+ * v107 : AUCUN ENTRETIEN — les doctrines coûtent en FLAT (l'achat, rien
+ * d'autre), la mécanique de suspension mensuelle a disparu avec lui. Il n'y a
+ * donc plus de CLÔTURE MENSUELLE : le miroir de process ne bouge qu'aux
+ * verbes (adopter/acheter/abandonner) et au chargement (doctrines_sync).
  */
 #include "scps_doctrines.h"
 #include "scps_influence.h"
 #include "scps_lang.h"    /* StrId : les noms/bonus du catalogue naissent en STR_* */
-#include "scps_tune.h"    /* registre J : DOCT_COST_* / IDEA_COST_* / DOCT_UPKEEP / INFLUENCE_PER_* */
+#include "scps_tune.h"    /* registre J : DOCT_COST_* / IDEA_COST_* / INFLUENCE_PER_* */
 #include <string.h>
 
 /* LE CATALOGUE — 17 doctrines x 6 idees (docs/DESIGN_DOCTRINES_ANNEXE.md).
@@ -166,15 +169,15 @@ const DoctDef DOCT_DEF[DOCT_COUNT] = {
 /* ====================================================================== */
 /* Motif dessein_mult/decree_mult : les sites de lecture (econ, diplo, credit…)
  * n'ont pas le DoctrineState. On tient donc un MIROIR statique du nombre
- * d'idées EFFECTIVES par (pays, doctrine) — 0 si la doctrine n'est pas adoptée
- * OU si elle est SUSPENDUE ce mois. Le miroir n'est jamais sérialisé : il se
- * reconstruit intégralement (doctrines_tick + doctrines_sync au chargement). */
+ * d'idées EFFECTIVES par (pays, doctrine) — 0 si la doctrine n'est pas adoptée.
+ * Le miroir n'est jamais sérialisé : il se reconstruit intégralement à chaque
+ * verbe (adopter/acheter/abandonner) et au chargement (doctrines_sync). */
 static int8_t g_own[SCPS_MAX_COUNTRY][DOCT_COUNT];
 static int8_t g_any[SCPS_MAX_COUNTRY];   /* 1 = ce pays porte au moins une idée EFFECTIVE */
 
 /* Cache par pays : la clé est un LITTÉRAL au site d'appel, donc la comparaison
  * de POINTEUR suffit presque toujours (strcmp en filet). Invalidé en bloc à
- * chaque resynchronisation du miroir — donc à chaque achat/abandon/suspension.
+ * chaque resynchronisation du miroir — donc à chaque achat/abandon.
  * Déterministe : le cache ne fait que mémoriser un produit déjà calculé. */
 #define DOCT_CACHE 16
 static struct { const char *k; float m; } g_cache[SCPS_MAX_COUNTRY][DOCT_CACHE];
@@ -194,7 +197,6 @@ void doctrines_sync(const DoctrineState *ds){
         for (int s=0;s<DOCT_SLOTS_MAX;s++){
             int d = ds->doct[c][s];
             if (d<0 || d>=DOCT_COUNT) continue;
-            if (ds->susp[c][s]) continue;                 /* suspendue CE mois : mults à 1.0 */
             int n = ds->ideas[c][d];
             if (n<0) n=0;
             if (n>DOCT_IDEAS) n=DOCT_IDEAS;
@@ -238,27 +240,11 @@ float doctrine_key_mult(int cid, const char *key){
 /* ====================================================================== */
 /* L'ÉTAT                                                                  */
 /* ====================================================================== */
-/* TÉLÉMÉTRIE (print-only, chronicle) — Σ entretien PAYÉ et Σ suspensions posées
- * depuis la genèse de CETTE sim. Statiques de module, JAMAIS sérialisées (motif
- * econ_colony_stats) : RAZ à doctrines_init, donc à chaque sim_init. N'entrent
- * dans aucun calcul. */
-static double g_doct_upkeep_paid = 0.0;
-static long   g_doct_suspensions = 0;
-
-void doctrines_stats_get(double *upkeep_paid, long *suspensions){
-    if (upkeep_paid)  *upkeep_paid  = g_doct_upkeep_paid;
-    if (suspensions)  *suspensions  = g_doct_suspensions;
-}
-
 void doctrines_init(DoctrineState *ds){
-    g_doct_upkeep_paid = 0.0;
-    g_doct_suspensions = 0;
     if (!ds) return;
     memset(ds, 0, sizeof *ds);
-    for (int c=0;c<SCPS_MAX_COUNTRY;c++){
-        for (int s=0;s<DOCT_SLOTS_MAX;s++){ ds->doct[c][s]=-1; ds->seq[c][s]=-1; ds->susp[c][s]=0; }
-        ds->seq_next[c] = 0;
-    }
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++)
+        for (int s=0;s<DOCT_SLOTS_MAX;s++) ds->doct[c][s]=-1;
     doctrines_sync(ds);
 }
 
@@ -279,10 +265,6 @@ int doctrines_slot_of(const DoctrineState *ds, int cid, int doctrine){
     if (!ds || !cid_ok(cid)) return -1;
     for (int s=0;s<DOCT_SLOTS_MAX;s++) if (ds->doct[cid][s]==doctrine) return s;
     return -1;
-}
-bool doctrines_suspended(const DoctrineState *ds, int cid, int slot){
-    if (!ds || !cid_ok(cid) || slot<0 || slot>=DOCT_SLOTS_MAX) return false;
-    return ds->susp[cid][slot] != 0;
 }
 int doctrines_ideas_of(const DoctrineState *ds, int cid, int doctrine){
     if (!ds || !cid_ok(cid) || doctrine<0 || doctrine>=DOCT_COUNT) return 0;
@@ -324,23 +306,17 @@ float doctrines_idea_cost_f(const DoctrineState *ds, int cid, float ech){
     float base = tune_f("IDEA_COST_BASE", 30.f), step = tune_f("IDEA_COST_STEP", 3.f);
     return (base + step * (float)doctrines_n_ideas(ds,cid)) * ech_ok(ech);
 }
-float doctrines_upkeep_f(const DoctrineState *ds, int cid, float ech){
-    return tune_f("DOCT_UPKEEP", 1.f) * (float)doctrines_n_active(ds,cid) * ech_ok(ech);
-}
 int doctrines_adopt_cost(const DoctrineState *ds, int cid, float ech){
     return (int)(doctrines_adopt_cost_f(ds,cid,ech) + 0.5f);
 }
 int doctrines_idea_cost(const DoctrineState *ds, int cid, float ech){
     return (int)(doctrines_idea_cost_f(ds,cid,ech) + 0.5f);
 }
-int doctrines_upkeep(const DoctrineState *ds, int cid, float ech){
-    return (int)(doctrines_upkeep_f(ds,cid,ech) + 0.5f);
-}
 int doctrines_current(const DoctrineState *ds, int cid){
     if (!ds || !cid_ok(cid)) return -1;
     for (int s=0;s<DOCT_SLOTS_MAX;s++){
         int d = doctrines_at(ds,cid,s);
-        if (d>=DOCT_CURRENT_FIRST && d<DOCT_COUNT && !ds->susp[cid][s]) return d;
+        if (d>=DOCT_CURRENT_FIRST && d<DOCT_COUNT) return d;
     }
     return -1;
 }
@@ -389,9 +365,6 @@ int doctrines_adopt(DoctrineState *ds, InfluenceState *is, int cid, int slot, in
     float cost = doctrines_adopt_cost_f(ds,cid,ech);
     if (is) influence_spend(is, cid, cost);
     ds->doct[cid][slot] = (int8_t)doctrine;
-    ds->seq [cid][slot] = ds->seq_next[cid];
-    ds->susp[cid][slot] = 0;
-    if (ds->seq_next[cid] < 30000) ds->seq_next[cid]++;
     ds->ideas[cid][doctrine] = 0;   /* on repart de zéro (abandon = idées perdues) */
     doctrines_sync(ds);
     return 1;
@@ -418,40 +391,6 @@ int doctrines_abandon(DoctrineState *ds, InfluenceState *is, int cid, int slot){
     if (d<0) return 0;
     ds->ideas[cid][d]  = 0;      /* les idées achetées sont PERDUES */
     ds->doct [cid][slot] = -1;
-    ds->seq  [cid][slot] = -1;
-    ds->susp [cid][slot] = 0;
     doctrines_sync(ds);
     return 1;
-}
-
-/* ====================================================================== */
-/* LA CLÔTURE MENSUELLE                                                    */
-/* ====================================================================== */
-void doctrines_tick(DoctrineState *ds, InfluenceState *is, int cid, float ech){
-    if (!ds || !cid_ok(cid)) return;
-
-    /* 1. L'ENTRETIEN, EN INFLUENCE — APRÈS la génération du mois (l'appelant
-     *    a déjà passé influence_tick). Insolvable ⇒ on suspend les doctrines les
-     *    plus RÉCEMMENT adoptées (rang d'adoption décroissant : déterministe et
-     *    lisible) jusqu'à ce que le reste soit payable. */
-    for (int s=0;s<DOCT_SLOTS_MAX;s++) ds->susp[cid][s] = 0;
-    { float up = tune_f("DOCT_UPKEEP", 1.f) * ech_ok(ech);
-      int n = doctrines_n_active(ds, cid);
-      if (up > 0.f && n > 0 && is){
-          while (n > 0 && !influence_can_spend(is, cid, up * (float)n)){
-              int worst=-1; int16_t best=-1;
-              for (int s=0;s<DOCT_SLOTS_MAX;s++){
-                  if (doctrines_at(ds,cid,s)<0 || ds->susp[cid][s]) continue;
-                  if (ds->seq[cid][s] >= best){ best = ds->seq[cid][s]; worst = s; }
-              }
-              if (worst<0) break;
-              ds->susp[cid][worst] = 1;   /* SUSPENDUE ce mois : mults à 1.0 */
-              g_doct_suspensions++;       /* télémétrie print-only */
-              n--;
-          }
-          if (n > 0){ influence_spend(is, cid, up * (float)n); g_doct_upkeep_paid += (double)(up * (float)n); }
-      } }
-
-    /* 2. le miroir de lecture (le cache de clés est invalidé du même coup). */
-    doctrines_sync(ds);
 }

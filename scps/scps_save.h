@@ -32,7 +32,13 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 106u          /* v106 : LES DOCTRINES (docs/DESIGN_MISSIONS_DOCTRINES.md §4)
+#define SAVE_VERSION 107u          /* v107 : DOCTRINES SANS ENTRETIEN (décision joueur 2026-09-02,
+                                    * docs/DESIGN_MISSIONS_DOCTRINES.md §4.2) — les doctrines coûtent
+                                    * en FLAT (l'achat, rien d'autre) ; la suspension mensuelle et
+                                    * l'ordre d'adoption qui la départageait disparaissent :
+                                    * DoctrineState perd seq[]/seq_next[]/susp[] ⇒ sizeof rétrécit.
+                                    * <v107 refusé.
+                                    * v106 : LES DOCTRINES (docs/DESIGN_MISSIONS_DOCTRINES.md §4)
                                     * — nouvelle section DOCT, DoctrineState (slots ouverts,
                                     * doctrine par slot, idées possédées, ordre d'adoption,
                                     * suspension du mois, récolte d'âges). <v106 refusé.
