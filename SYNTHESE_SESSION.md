@@ -1,3 +1,31 @@
+# SYNTHÈSE SESSION — 2026-09-02 : P1 EN MOTEUR (Influence + Desseins/Sol + dépose commission)
+
+- **VAGUE P1 LANDÉE** (a1434e5 + merge abd994c, save v105) :
+  - **Influence politique** (scps_influence, v104) : génération mensuelle
+    joueur (0.002 × élites × rang moyen du Conseil, plancher ×1 si Conseil
+    vide), le coût REMPLACE le cooldown diplo (5 verbes d'émissaire à 12 +
+    plancher 30 j, fabrication CB +25, guerre gratuite), refus au drain +
+    checklist, section INFL, banc 26/26, golden INTACT.
+  - **Desseins** (scps_missions refondu, v105) : commission décennale
+    DÉPOSÉE (tunables purgés), Âge des Héros ré-ancré sur le scellage d'un
+    parachèvement (dormant IA jusqu'à P4), framework complet (détection
+    mensuelle joueur, re-résolution N1, remises datées par latch d'année +
+    clamp, claims sur slot fab_state libre, CMD_SEAL_DESSEIN), branche du
+    SOL 8 échelons/2 voies, pivot 20 d'influence câblé
+    (dessein_pivot_bind), missions_demo réécrit 50/50. Golden RE-BASELINÉ
+    (la dépose seule ; framework prouvé neutre au kill-switch).
+  - Gates du merge : full-test tout vert · determinism · savetest 2/2 ·
+    lang-check 127/127. Trouvaille agent : conq_value inobservable d'une
+    clôture (settle→make_peace le solde) — preuve Conquête lue sur rancor.
+- **Prompt Codex campagne 3 committé** (docs/PROMPT_CODEX_ASSETS_LOTS_14-16.md,
+  121 PNG : 17 fonds de doctrine 512×256 tiers-droit calme · 102 icônes
+  d'idées 128 · influence = sceau de cire au ruban ×2) — en attente de
+  livraison.
+- **RESTE (vagues suivantes)** : P2 façade (page Desseins empire_window,
+  influence au Conseil, retrait mission_info/country_panel) · 6 branches de
+  Desseins restantes · P3 doctrines (+IA par score, entretien en influence)
+  · P4 Desseins IA · intégration des lots 14-16 à livraison.
+
 # SYNTHÈSE SESSION — 2026-09-01 : DESIGN DESSEINS/INFLUENCE/DOCTRINES + fix tribut vassal
 
 - **Design complet du prochain grand chantier** (commits jusqu'à 27dc5ed) :
