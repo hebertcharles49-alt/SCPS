@@ -12499,3 +12499,83 @@ force sans qu'aucune borne n'ait été posée**.
 - Décrochage `BT_DECROCHE` 0,35 → 57-60 % (cible 15-25 %) : sonde 0,26/0,28/0,30 en vague 2.
 - Trou F2 (âmes des groupes = 23-26 % des strates) : vague 2, après le trésor national.
 - Télémétrie « flux décomposé »/« revenu fiscal » à revérifier contre le trésor national (valeurs incohérentes sur E+B+C+A : taxes +9,5 pour un flux +311).
+
+
+---
+
+## Mission 2026-09-03 — W2-5 FRONT GODOT : suites de la vague W1 (stock provincial retiré · prix diplo réels · vérifications)
+
+Périmètre : `godot/project/**/*.gd` + `godot/src/scps_sim_node.cpp`. Aucun `scps/*.c/.h` touché.
+
+### Découvertes
+
+- **Le stock provincial n'avait plus que DEUX lecteurs côté front**, pas la dizaine que
+  laisse croire un `grep "stock"` : `ui/province_detail.gd` (la colonne « stock N » du
+  Marché local, onglet Contexte) et `province_ui_audit.gd` (la borne `stock >= 0`).
+  **Tous les autres `st.get("stock")` sont `country_stocks` — l'entrepôt NATIONAL**, donc
+  légitimes et inchangés (topbar, sidebar_drawer, tooltip_factory, construction_panel,
+  memory_panel, search_palette, tests/stock_info_card_test). `tooltip_factory.territory_detail`
+  ne lisait déjà que `supply_month`/`demand_month` de `stock_regions` : rien à retirer.
+  **Le motif qui trie vite : remonter à l'APPELANT (`province_market` vs `country_stocks`),
+  jamais juger sur le nom de la clé.**
+- **La façade n'exposait AUCUN coût diplo** (constat W1-E confirmé) : `diplo_options`
+  ne bindait ni `influence_have`, ni `influence_cost_envoy/_fab`, ni même `has_casus_belli` ;
+  `peace_terms` ne bindait ni `influence_cost` ni `influence_have`. Les 4+2 clés sont
+  ajoutées. Le prix affiché vient du moteur (tarif × é) — le `.gd` ne recalcule rien.
+- **Il n'existe AUCUN consommateur `.gd` de `dessein_info`.** Le binding l'expose
+  (`scps_sim_node.cpp:1878`, `pivot_cout` inclus, ligne 1899) mais aucun panneau ne
+  l'appelle : **les Desseins n'ont pas d'écran côté Godot**. Le « prix du pivot » du brief
+  n'a donc littéralement pas d'endroit où s'afficher — c'est un panneau à créer (design
+  joueur), pas un câblage à faire.
+- **`influence_info.hover` et `doctrine_catalog.reason` traversent DÉJÀ verbatim.**
+  Mesuré (probe) : hover = `« 500 nobles · 0 bourgeois · 3827 journaliers × le Conseil
+  (aucun ministre en siège — plancher) »` (STR_INFLUENCE_HOVER_VIDE) ; grisées =
+  `« Technologie → Déjà adoptée »` et **`« Divin → Aucune religion fondée »`**.
+  `topbar.gd` et `doctrine_panel.gd` (l.321/359) les affichent tels quels : rien à corriger.
+
+### Pièges
+
+- **Un worktree neuf n'a NI `godot/godot-cpp` NI `godot/project/.godot`.** `godot-cpp`
+  est un **lien** vers `/e/JEUX/SCPS/godot/godot-cpp` (jamais un dossier versionné) : le
+  recréer avec `mklink /J` (le `ln -s` de Git Bash échoue « Operation not permitted »).
+- **Sans `.godot`, le cache de classes globales est VIDE et TOUT le projet paraît cassé** :
+  `--check-only` crache « Identifier "SampledAxis"/"Pair"/"ChartProperties" not declared »
+  (addon easy_charts) puis `main.gd:172` meurt et **la probe rend « no world »**. Ce n'est
+  PAS une régression : `Godot --headless --path godot/project --import` d'abord, et le
+  parse-check redevient muet. **Toute lecture d'un échec de parse-check dans un worktree
+  frais doit commencer par là.**
+- **Les probes écrivent dans des chemins ABSOLUS figés sur l'arbre principal** :
+  `province_shot.gd` (`C:/…/SCPS-main/build/`) et `doctrine_shot.gd`
+  (`C:/…/SCPS-main/godot/project/shots_doctrines`). **Une probe lancée depuis un worktree
+  clobberait l'arbre du voisin.** `doctrine_shot` a été basculé sur
+  `ProjectSettings.globalize_path("res://shots_doctrines")` (écrit dans SON arbre) ;
+  **`province_shot.gd`, `budget_shot.gd` & co gardent le défaut — à corriger de la même
+  façon avant de les lancer depuis un worktree.**
+- **Une passe `--import` réécrit des fichiers VERSIONNÉS** : `godot/project/i18n/ui.*.translation`
+  (+24 o chacun) et, pour doctrine_shot, `shots_doctrines/*.png` (tracés en git). Restaurés
+  (`git restore`) pour que le diff ne porte que le code. **Vérifier `git status` après toute
+  probe : la churn binaire se glisse dans la revue sans bruit.**
+
+### Restes
+
+- **⚠ TOUS LES PRIX SONT À 0,00 COURONNES** (graine 9, an 30, écran Marché ET Marché local
+  de la fiche province — PNG `godot/project/shots_ui/1600x900/10_drawer_marche.png` et
+  `04b_prov_contexte.png`). La chaîne : `price_level[c] = clampf(caisse/va, 0, cap)`
+  (`scps_econ.c:3929`) où `caisse = nat_treasury[c] − SINK_FLOOR × n_prov` ; le prix national
+  soldé vaut `BASE_PRICE × price_level × …` puis est clampé dans `[BASE×0.15×pl, BASE×8×pl]`
+  (`scps_econ.c:5433-5436`). **Un `price_level` ~0 écrase donc tout le barème à 0**, et la
+  fiche/le marché affichent un nombre FAUX au joueur. À trancher côté moteur (hors périmètre
+  front) : plancher de `price_level`, ou plancher de prix ancré sur BASE_PRICE nu.
+- **`make lang-check` ÉCHOUE : 147 littéraux (base 127)** — **PRÉEXISTANT à cette mission** :
+  la gate ne compte que `scps/scps_api.c` + `scps/scps_readout.c` (Makefile:718), aucun des
+  deux n'est touché ici. Les +20 viennent de la vague W1 (agents `scps/`). À refluer en STR_*
+  ou à re-baseliner par décision joueur.
+- **La fenêtre de PAIX n'a pas été vue en probe** : son prix en influence
+  (`peace_terms.influence_cost`, désormais bindé et affiché sous « Coût total … ») n'apparaît
+  qu'en guerre, et `shot_ui` capture un pays neutre. À regarder au prochain shot avec guerre
+  déclarée (`shot_diplo.tscn` déclare la guerre mais capture le TIROIR, pas `country_actions`).
+- **La doctrine « Chancellerie » (`doctrine_key_mult`) reste non miroitée** (reste W1-E) :
+  le drain applique ×0,8, le prix affiché non. L'écart est maintenant VISIBLE puisque le
+  nombre affiché est exact par ailleurs.
+- `shot_ui.gd` gagne une capture `04b_prov_contexte` (onglet Contexte de la fiche province,
+  `_prov_detail._tab = 5`) : c'est la seule vue qui montre le Marché local.

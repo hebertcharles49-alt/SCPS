@@ -125,6 +125,12 @@ func _run() -> void:
 	_main._prov_detail.visible = true
 	_main._prov_detail.queue_redraw()
 	await _shot("04_prov_detail")
+	# 4bis — l'onglet CONTEXTE : le MARCHÉ LOCAL de la province (prix/bande ; plus de
+	# stock depuis que l'entrepôt est national) + les jauges d'empire.
+	_main._prov_detail._tab = 5
+	_main._prov_detail.queue_redraw()
+	await _shot("04b_prov_contexte")
+	_main._prov_detail._tab = 0
 	_reset()
 
 	# ── 5. PROVINCE ÉTRANGÈRE (celle d'une IA) ──

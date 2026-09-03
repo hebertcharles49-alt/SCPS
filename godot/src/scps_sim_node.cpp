@@ -1255,6 +1255,13 @@ Dictionary ScpsWorld::diplo_options(int target) {
     d["claim_region"]            = ok ? o.claim_region : -1;
     d["claim_province"]          = ok ? o.claim_province : -1;
     d["claim_name"]              = String::utf8(ok&&o.claim_name?o.claim_name:"");
+    d["has_casus_belli"]         = (bool)(ok && o.has_casus_belli);
+    /* W1-E (2026-09-03) — LE PRIX RÉEL des deux verbes tarifés (tarif × é) : le
+     * MÊME nombre que les gates du moteur et que le débit du drain. L'UI l'affiche
+     * ENTIER ; elle ne recalcule jamais le tarif. */
+    d["influence_have"]          = ok ? (double)o.influence_have : 0.0;
+    d["influence_cost_envoy"]    = ok ? (double)o.influence_cost_envoy : 0.0;
+    d["influence_cost_fab"]      = ok ? (double)o.influence_cost_fab : 0.0;
     return d;
 }
 
@@ -1312,6 +1319,10 @@ Dictionary ScpsWorld::peace_terms(int target) {
     d["reparations_cost"]=p.reparations_cost;d["humiliate_cost"]=p.humiliate_cost;
     d["pillage_cost"]=p.pillage_cost;d["liberate_cost"]=p.liberate_cost;
     d["fragment_cost"]=p.fragment_cost;
+    /* W1-E — la paix OFFERTE coûte aussi de l'influence (tarif × é) : le bouton
+     * porte son prix, comme les autres verbes tarifés. */
+    d["influence_cost"]=p.influence_cost;
+    d["influence_have"]=p.influence_have;
     Array rows;
     if(sim){
         ScpsPeaceTerritory tr[SCPS_PEACE_TERRITORY_MAX];

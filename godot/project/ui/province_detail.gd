@@ -512,7 +512,7 @@ func _draw_batiments(x: float, y: float, w) -> void:
 		VKit.text(self, Vector2(x, PH - 18), (VKit.sense(0.85) if _manuf_flash_ok else VKit.sense(0.10)), _manuf_flash, VKit.FS_SMALL)
 
 # ── ONGLET CONTEXTE (ex-« Empire ») : le MARCHÉ LOCAL de cette province (prix/
-#    stock/bande des biens majeurs + le port s'il existe) + les JAUGES d'État de
+#    bande des biens majeurs + le port s'il existe) + les JAUGES d'État de
 #    l'EMPIRE entier (sorties de la barre du haut ; savoir en topbar). ──
 const EMPIRE_BANDS := [
 	["stabilite",  "Stabilité",  "stability_shield"],
@@ -521,7 +521,8 @@ const EMPIRE_BANDS := [
 	["cohesion",   "Cohésion",   "happiness_medallion"],
 ]
 func _draw_empire(x: float, y: float, w) -> void:
-	# ── MARCHÉ LOCAL (LOT 6) : prix/stock des biens de LA PROVINCE + le port ──
+	# ── MARCHÉ LOCAL (LOT 6) : prix/bande des biens de LA PROVINCE + le port. Plus de
+	#    STOCK ici : l'entrepôt est NATIONAL (v108) et se lit à l'onglet Stocks. ──
 	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Marché local", VKit.FS_SMALL)
 	y += 18
 	var mk: Dictionary = w.province_market(_pid)
@@ -538,8 +539,7 @@ func _draw_empire(x: float, y: float, w) -> void:
 		for l in lines:
 			VKit.text(self, Vector2(x, y), VKit.COL_PARCH, String(l.get("name", "")), VKit.FS_SMALL)
 			VKit.value(self, Vector2(x + 140, y), "%.1f couronnes" % float(l.get("price", 0.0)), VKit.FS_SMALL)
-			VKit.text(self, Vector2(x + 220, y), VKit.COL_DIM, "stock %s" % _grp(int(l.get("stock", 0))), VKit.FS_SMALL)
-			VKit.text(self, Vector2(x + 340, y), VKit.sense(0.62), String(l.get("marche", "")), VKit.FS_SMALL)
+			VKit.text(self, Vector2(x + 260, y), VKit.sense(0.62), String(l.get("marche", "")), VKit.FS_SMALL)
 			y += 17
 	y += 10
 	VKit.fill(self, Rect2(x, y, PW - 32.0, 1), VKit.COL_EDGE)

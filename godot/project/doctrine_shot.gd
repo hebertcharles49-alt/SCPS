@@ -5,7 +5,9 @@ extends Node
 ## (_show_view/_cat_slot/_detail_id — probe assumée fragile aux renommages) et sauve
 ## 4 PNG dans shots_doctrines/.
 ##   Godot --audio-driver Dummy --path godot/project res://doctrine_shot.tscn -- seed=9
-const OUT_DIR := "C:/Users/Charl/Desktop/SCPS-main/godot/project/shots_doctrines"
+## Sortie DÉRIVÉE du projet courant (et non un chemin absolu figé) : une probe lancée
+## depuis un worktree écrit dans SON arbre, jamais dans celui du voisin.
+var OUT_DIR := ProjectSettings.globalize_path("res://shots_doctrines")
 
 func _arg(p: String, d: String) -> String:
 	for a in OS.get_cmdline_user_args():
@@ -85,4 +87,9 @@ func _run() -> void:
 	await _snap(OUT_DIR + "/04_detail.png")
 
 	print("[doctrine_shot] influence_info = ", Sim.world.influence_info(me))
+	# les cartes INDISPONIBLES et LEUR RAISON, telle que le moteur la nomme (le .gd
+	# n'invente aucun mot) — Divin doit dire « Aucune religion fondée » sans foi d'État.
+	for row in Sim.world.doctrine_catalog(me):
+		if not bool(row.get("available", true)):
+			print("[doctrine_shot] grisée : %s → %s" % [row.get("name", "?"), row.get("reason", "")])
 	get_tree().quit(0)

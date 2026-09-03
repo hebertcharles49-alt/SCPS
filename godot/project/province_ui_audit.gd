@@ -90,8 +90,12 @@ func _audit_seed(sd: int, years: int) -> int:
 			viol += 1; flags += " ✗market_n(" + str(lines.size()) + ")"
 		for l in lines:
 			any_market += 1
-			if float(l.get("price", -1.0)) < 0.0 or float(l.get("stock", -1.0)) < 0.0:
+			if float(l.get("price", -1.0)) < 0.0:
 				viol += 1; flags += " ✗market_line"
+			# v108 : la clé "stock" a DISPARU des lignes de marché (l'entrepôt est
+			# national). Sa présence signalerait un binding périmé.
+			if l.has("stock"):
+				viol += 1; flags += " ✗market_stock_key"
 			if String(l.get("name", "")) == "" or String(l.get("marche", "")) == "":
 				viol += 1; flags += " ✗market_words"
 		if not mk.has("port"):

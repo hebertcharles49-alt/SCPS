@@ -74,6 +74,10 @@ const DIPLO_ACTION_ID := {
 }
 var _war_armed := false
 var _war_armed_ms := -100000
+# W1-E : le prix RÉEL en influence des verbes tarifés (diplo_options, tarif × é).
+var _infl_envoy := 0.0
+var _infl_fab := 0.0
+var _infl_have := 0.0
 var _layout_gen := 0   # jeton anti-course de la mesure différée (_layout, motif _fit_scroll)
 var _war_sb_idle: StyleBoxFlat
 var _war_sb_hover: StyleBoxFlat
@@ -457,7 +461,12 @@ func _peace_update_total() -> void:
 	var total := _peace_cost()
 	var available := maxf(0.0, float(_peace_preview.get("war_score", 0.0)))
 	var cd := int(Sim.world.diplo_cd()) if Sim.world != null and Sim.world.has_method("diplo_cd") else 0
-	_peace_total_lbl.text = "Coût total %.1f / %.1f score disponible" % [total, available]
+	# W1-E : l'offre de paix se paie AUSSI en influence (tarif × é, peace_preview) — le
+	# prix réel, à côté du score. La légalité reste au moteur ; on ne fait que l'afficher.
+	var infl := int(round(float(_peace_preview.get("influence_cost", 0.0))))
+	var infl_txt := (" · %d influence (vous en avez %d)" %
+		[infl, int(floor(float(_peace_preview.get("influence_have", 0.0))))]) if infl > 0 else ""
+	_peace_total_lbl.text = "Coût total %.1f / %.1f score disponible%s" % [total, available, infl_txt]
 	_peace_total_lbl.add_theme_color_override("font_color", VKit.sense(0.80) if total <= available else VKit.sense(0.15))
 	_peace_submit.disabled = total > available + 0.01 or cd > 0
 	_peace_submit.tooltip_text = ("Émissaire disponible dans %d j" % cd) if cd > 0 else ("Score de guerre insuffisant" if total > available else "Conditions exécutées au prochain tick si elles restent valides.")
@@ -654,6 +663,12 @@ func _refresh() -> void:
 	_legal_by_verb.clear()
 	for legal_verb in DIPLO_ACTION_ID:
 		_legal_by_verb[legal_verb] = _read_legal(w, legal_verb, op2, cd)
+	# W1-E (2026-09-03) — LE PRIX EN INFLUENCE tel que le moteur le débitera : les verbes
+	# d'émissaire coûtent influence_cost_envoy, la fabrique influence_cost_fab. Le tarif
+	# n'est PAS recalculé ici — le moteur l'a déjà passé par l'échelle é.
+	_infl_envoy = float(op2.get("influence_cost_envoy", 0.0))
+	_infl_fab = float(op2.get("influence_cost_fab", 0.0))
+	_infl_have = float(op2.get("influence_have", 0.0))
 	# L'état de relation ne sert plus qu'au conseil contextuel. La légalité et sa raison
 	# viennent exclusivement de diplo_action_legal : l'UI ne reconstruit aucune règle.
 	for verb in _btns:
@@ -691,6 +706,7 @@ func _refresh() -> void:
 			b.tooltip_text = "il refusera (opinion trop basse)"
 		else:
 			b.tooltip_text = String(ACTION_HELP.get(verb, ""))
+		b.tooltip_text = _with_infl_price(b.tooltip_text, verb)
 		_update_action_detail(verb, legal, amber)
 	# W-GUERRE-3 — LE CASUS BELLI FABRIQUÉ : « Guerre » reste grisé sans motif gratuit NI
 	# intrigue mûre (can_declare_war le dit déjà côté moteur) ; « Fabriquer » porte l'état
@@ -716,9 +732,14 @@ func _refresh() -> void:
 			fab_btn.text = "%s revendiquée — expire dans %.1f an" % [claim_name, yleft]
 			fab_btn.disabled = true   # rien à refaire tant qu'elle est valide — déclarez la guerre
 		else:
-			fab_btn.text = "Revendiquer %s — %d couronnes" % [claim_name, int(round(cost))]
+			# W1-E : la fabrique se paie EN SUS en influence — le libellé porte les DEUX prix.
+			var fab_infl := _infl_cost("fabricate")
+			fab_btn.text = "Revendiquer %s — %d couronnes%s" % [claim_name, int(round(cost)),
+				(" · %d influence" % fab_infl) if fab_infl > 0 else ""]
 			fab_btn.disabled = not bool(fab_legal.get("allowed", false))
-			fab_btn.tooltip_text = _legal_tooltip(fab_legal, "Lance une intrigue qui produira un casus belli temporaire.")
+			fab_btn.tooltip_text = _with_infl_price(
+				_legal_tooltip(fab_legal, "Lance une intrigue qui produira un casus belli temporaire."),
+				"fabricate")
 		_update_action_detail("fabricate", fab_legal, false)
 	if fabricating:
 		_cb_lbl.text = "Une intrigue mûrit contre ce pays."
@@ -877,6 +898,22 @@ func _legal_tooltip(legal: Dictionary, help: String) -> String:
 		txt += " · manque %.0f couronnes" % missing
 	return txt
 
+## Le survol NOMME le prix : « … · 7 influence (vous en avez 12) ». Le nombre vient du
+## moteur (diplo_options), jamais d'un tarif recalculé côté façade.
+func _with_infl_price(tip: String, verb: String) -> String:
+	var infl := _infl_cost(verb)
+	if infl <= 0:
+		return tip
+	var line := "%d influence (vous en avez %d)" % [infl, int(floor(_infl_have))]
+	return line if tip == "" else tip + "\n" + line
+
+## Le PRIX en influence d'un verbe, entier, tel que le drain le débitera (0 = gratuit).
+func _infl_cost(verb: String) -> int:
+	match verb:
+		"ally", "pact", "migration", "embargo": return int(round(_infl_envoy))
+		"fabricate": return int(round(_infl_fab))
+		_: return 0
+
 ## Une action ne se comprend jamais au survol seulement : cette ligne reste affichée
 ## sous le verbe, disponible ou non, avec la conséquence et les nombres du moteur.
 func _update_action_detail(verb: String, legal: Dictionary, amber: bool) -> void:
@@ -908,6 +945,10 @@ func _update_action_detail(verb: String, legal: Dictionary, amber: bool) -> void
 		facts.append("%.0f couronnes" % cost)
 	if missing > 0.0:
 		facts.append("manque %.0f couronnes" % missing)
+	# W1-E : le prix en influence, à côté du prix en or — le nombre RÉEL qui sera débité.
+	var infl := _infl_cost(verb)
+	if infl > 0:
+		facts.append("%d influence" % infl)
 	if days > 0:
 		facts.append("%d j" % days)
 	lbl.text = state + ((" · " + " · ".join(facts)) if not facts.is_empty() else "")
