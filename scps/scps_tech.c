@@ -30,7 +30,12 @@
  * COST_SCALE relève l'ensemble : un empire ne s'offre que ~40-60 % de l'arbre → il SPÉCIALISE. */
 #define COST_SCALE        14.4f  /* P5.29 : coût des techs ×3 — l'income suit (IA ×3, joueur par tier) */
 #define TECH_COST_N_K     0.90f  /* coefficient du coût ∝ N^exp (calé sur les grands empires : N~20 ≈ ancien popf) */
-#define TECH_COST_N_EXP   0.5f   /* exposant SOUS-linéaire (0.5 = √N) — le cœur du « wide récompensé » */
+#define TECH_COST_N_EXP   0.65f  /* exposant SOUS-linéaire — le cœur du « wide récompensé ». Registre J
+                                  * (calibrage 2026-09-03) : 0.50 (√N) était trop PLAT — le leader bouclait
+                                  * 71/74 nœuds à l'an 200 (18 sweeps sur 20) contre les « ~40-60 % » écrits
+                                  * ci-dessus. 0.65 fait payer ×N^0.15 : nain ×1,11, moyen ×1,45, leader ×1,77.
+                                  * Le frein est le PRIX, jamais un plafond (décision joueur : PAS DE CAP).
+                                  * SCPS_TUNE=TECH_COST_N_EXP=0.50 = kill-switch (golden d'avant). */
 #define TECH_COST_N_FLOOR 0.5f   /* plancher : un empire mono-province paie au moins BASE×SCALE×0.5 */
 static float BASE_COST[6] = { 0.f, 40.f, 90.f, 160.f, 260.f, 400.f }; /* par tier — NON-const (MODTOOLS) */
 
@@ -669,7 +674,7 @@ float tech_cost(TechId id, float n_provinces){
     if (!n) return 0.f;
     int t=n->tier; if (t<0) t=0; if (t>5) t=5;
     float N = (n_provinces>1.f ? n_provinces : 1.f);
-    float f = TECH_COST_N_K * powf(N, TECH_COST_N_EXP);    /* coût ∝ √N : wide récompensé sous-linéairement */
+    float f = TECH_COST_N_K * powf(N, tune_f("TECH_COST_N_EXP", TECH_COST_N_EXP));   /* coût ∝ N^exp : wide récompensé sous-linéairement */
     if (f<TECH_COST_N_FLOOR) f=TECH_COST_N_FLOOR;
     if (!(f<1e6f)) f=1e6f;   /* un N inf/NaN ne doit pas geler la recherche (coût inf) */
     /* PRIX DE LA RECHERCHE (décision joueur 2026-07-31 : « 42 % des techs, c'est peu —

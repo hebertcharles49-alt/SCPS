@@ -2478,10 +2478,24 @@ int main(int argc, char **argv){
 
         /* ARBRE (§A) : fraction de l'arbre déverrouillée PAR EMPIRE (cible < 100 % → l'empire
          * doit CHOISIR) + thème DOMINANT (deux empires aux choix différents → divergence). */
-        { int nemp=0, fmin=999, fmax=0; long fsum=0; int dom[THM_COUNT]={0};
+        /* P8 (calibrage tech 2026-09-03) — HONNÊTETÉ DE LA MESURE : un fragment né du
+         * resplit de cataclysme (§27) reçoit l'arbre ENTIER de son parent (scps_sim.c,
+         * « L'HÉRITAGE DU SAVOIR »). Ces héritiers gonflaient la moyenne d'un arbre que
+         * personne n'a PAYÉ (5 rég / 8k hab à 64 tech, sweep 10×200 s512). On les SORT de
+         * la ligne RECHERCHÉ et on les publie à part : la calibration du prix (coût, accès)
+         * doit se lire sur de la recherche, pas sur des copies.
+         * Test d'héritier : l'ACTEUR n'a jamais rien payé (stats.techs==0) alors que le PAYS
+         * porte des nœuds hors socle tier-0. Un héritier qui se remet à chercher repasse
+         * (honnêtement) du côté RECHERCHÉ dès son 1er nœud payé. */
+        { int base0=0; for (int id=0;id<TECH_COUNT;id++) if (tech_is_base((TechId)id)) base0++;
+          int nemp=0, fmin=999, fmax=0; long fsum=0; int dom[THM_COUNT]={0};
+          int nher=0, hmax=0; long hsum=0;
           for (int c=0;c<w->n_countries;c++){
               if (!s.ai_on[c] || regions_of(s.econ,c)==0) continue;
               int pct=(TECH_COUNT>0)?100*s.ts[c].n_unlocked/TECH_COUNT:0;
+              if (s.ai[c].stats.techs==0 && s.ts[c].n_unlocked>base0){   /* héritier de succession */
+                  hsum+=pct; if(pct>hmax)hmax=pct; nher++; continue;
+              }
               fsum+=pct; if(pct<fmin)fmin=pct; if(pct>fmax)fmax=pct; nemp++;
               int th_cnt[THM_COUNT]={0};
               for (int id=0;id<TECH_COUNT;id++) if (s.ts[c].unlocked[id] && !tech_is_base((TechId)id)){
@@ -2490,10 +2504,12 @@ int main(int argc, char **argv){
               dom[best]++;
           }
           if (nemp>0){
-              printf("              arbre : %ld%% déverrouillé/empire (min %d%% · max %d%%) · spécialisation — %d Savoir · %d Forge · %d Société\n",
+              printf("              arbre RECHERCHÉ : %ld%% déverrouillé/empire (min %d%% · max %d%%) · spécialisation — %d Savoir · %d Forge · %d Société\n",
                      fsum/nemp, fmin, fmax, dom[THM_SAVOIR], dom[THM_FORGE], dom[THM_SOCIETE]);
               tot_tree_pct += fsum/nemp; tot_tree_sims++;
           }
+          printf("              arbre HÉRITÉ (§27, jamais payé) : %d empire(s) · %ld%% déverrouillé/empire (max %d%%)\n",
+                 nher, nher>0?hsum/nher:0L, hmax);
         }
 
         /* LOT I — SCPS_SAVOIRDIAG : où le savoir se perd. Par empire : bibliothèques bâties
@@ -2902,7 +2918,7 @@ int main(int argc, char **argv){
            (double)g_wild_spawned/nsims, g_wild_defected, (double)g_wild_defected/nsims,
            g_wild_defected>0?g_wild_absorb_pop/(double)g_wild_defected:0.0);
     printf("   nœuds de tech débloqués ..... %ld   (moy. %.1f/sim ; %ld faustiens)\n", tot_techs, (double)tot_techs/nsims, tot_faustian);
-    printf("   arbre déverrouillé / empire . %ld%%   (le coût force les choix : cible < 100 %% → spécialisation)\n",
+    printf("   arbre RECHERCHÉ / empire .... %ld%%   (le coût force les choix : cible < 100 %% → spécialisation ; héritiers §27 exclus)\n",
            tot_tree_sims>0? tot_tree_pct/tot_tree_sims : 0);
     printf("   relocalisations (pénurie) ... %ld   (moy. %.1f/sim ; l'IA peuple ses provinces-ressource sous-exploitées)\n",
            tot_reloc, (double)tot_reloc/nsims);

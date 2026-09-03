@@ -2226,25 +2226,52 @@ static float region_cohesion(const WorldEconomy *econ, int r){
     }
     return (sw>0.0)?(float)(si/sw):1.0f;
 }
+/* Fallbacks compilés des seuils de la BARRE D'ACCÈS (registre scps_tune_list.h). */
+#ifndef METAB_TIER1
+#define METAB_TIER1 0.10f
+#define METAB_TIER2 0.20f
+#define METAB_TIER3 0.35f
+#endif
 /* Une région (ses groupes de population) PORTE-t-elle l'archétype ar ? Le culture_bears_arch
  * sur la culture-AGRÉGÉE (re->culture, un agrégat légitime — capitale/dominante, PAS .pop) est
  * tenté d'abord (bon marché) ; sinon on cherche une MINORITÉ porteuse.
  * RE-KEY PROVINCE : .pop est PROVINCE-OWNED — econ->region[r].pop n'est qu'un miroir de LA
  * SEULE province représentative. Une minorité qui porte l'archétype peut vivre dans N'IMPORTE
  * QUELLE province de la région (pas forcément la capitale/rep) — on scanne donc TOUTES les
- * provinces membres (champ miroir prov[].region), pas seulement le représentant. */
-static bool region_bears_arch(const WorldEconomy *econ, int r, int ar,
-                              const PopCulture cen[HERITAGE_COUNT], const bool present[HERITAGE_COUNT]){
-    if (r<0 || r>=econ->n_regions) return false;
-    if (culture_bears_arch(&econ->region[r].culture, ar, cen, present)) return true;
+ * provinces membres (champ miroir prov[].region), pas seulement le représentant.
+ * LA BARRE (calibrage tech 2026-09-03, §3.4) : la version d'avant renvoyait VRAI dès qu'UN
+ * SEUL groupe d'UNE province portait l'archétype — aucun seuil d'effectif. Combinée à la
+ * gouvernance (PROF_PROFOND ⇒ tier 3), une POIGNÉE d'âmes (migrants, soumis, DÉPORTÉS) posée
+ * dans une région par ailleurs cohérente ouvrait l'accès tier-3 PLEIN à tout un héritage —
+ * sa signature, ses branches d'étoffe, ses combos, ses apex — court-circuitant la barre
+ * METAB_TIER1/2/3 (0,10 / 0,20 / 0,35). Contradiction crue : l'esclave ne transmet que ~4,5 %
+ * au creuset (METAB_DIFFUSE_SLAVE) mais ouvrait 100 % de la porte technologique.
+ * On rend donc une PROFONDEUR PLAFOND, pas un booléen : la culture AGRÉGÉE (dominante) qui
+ * porte l'archétype transmet PLEIN ; une MINORITÉ ne transmet QUE ce que SON POIDS justifie,
+ * à la MÊME barre que la métabolisation (aucun nombre neuf) — ≥TIER3 plein · ≥TIER2 métier ·
+ * ≥TIER1 surface · en dessous, elle ne porte pas. */
+static Profondeur region_arch_bearing(const WorldEconomy *econ, int r, int ar,
+                                      const PopCulture cen[HERITAGE_COUNT], const bool present[HERITAGE_COUNT]){
+    if (r<0 || r>=econ->n_regions) return PROF_NONE;
+    if (culture_bears_arch(&econ->region[r].culture, ar, cen, present)) return PROF_SECRET;
+    double borne=0.0, tot=0.0;
     int nprov=econ->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
     for (int p=0;p<nprov;p++){
         const ProvinceEconomy *pe=&econ->prov[p];
         if (pe->region!=r) continue;
-        for (int g=0;g<pe->pop.n_groups;g++)
-            if (culture_bears_arch(&pe->pop.groups[g].culture, ar, cen, present)) return true;
+        for (int g=0;g<pe->pop.n_groups;g++){
+            double q=(double)pe->pop.groups[g].count; if (q<=0.0) continue;
+            tot+=q;
+            if (culture_bears_arch(&pe->pop.groups[g].culture, ar, cen, present)) borne+=q;
+        }
     }
-    return false;
+    if (tot<=0.0 || borne<=0.0) return PROF_NONE;
+    if (tune_f("METAB_BEARER_BAR",1.f)<=0.f) return PROF_SECRET;   /* kill-switch : portage SANS barre (avant 2026-09-03) */
+    float frac=(float)(borne/tot);
+    if (frac >= tune_f("METAB_TIER3",METAB_TIER3)) return PROF_SECRET;
+    if (frac >= tune_f("METAB_TIER2",METAB_TIER2)) return PROF_METIER;
+    if (frac >= tune_f("METAB_TIER1",METAB_TIER1)) return PROF_SURFACE;
+    return PROF_NONE;
 }
 static void ai_archetype_depth(const World *w, const WorldEconomy *econ, const RouteNetwork *rn, int cid, unsigned char depth[ARCH_COUNT]){
     PopCulture cen[HERITAGE_COUNT]; bool present[HERITAGE_COUNT];
@@ -2272,15 +2299,26 @@ static void ai_archetype_depth(const World *w, const WorldEconomy *econ, const R
              * mal digéré (conquête fraîche, faible intégration) ne transmet son art qu'à
              * mi-voix (métier), pas jamais — il faut LÉGITIMER pour ouvrir le profond/secret.
              * Course avec l'assimilation : digérer avant que la source ne se fonde (§2). */
+            /* Calibrage 2026-09-03 : le palier PROFOND (= accès tier 3, PLEIN) tombait dès
+             * coh ≥ 0,33 — le BAS TIERS de l'intégration. « Il faut LÉGITIMER » ne peut pas
+             * vouloir dire « un tiers digéré » : une conquête fraîche ouvrait l'héritage
+             * entier. Porté au registre (METAB_COH_PROFOND, défaut 0,50 = la moitié du sol
+             * réellement digérée) ; =0.33 rend l'ancienne échelle (kill-switch). */
             float coh=region_cohesion(econ, r);
-            ch = (coh>=0.66f)?PROF_SECRET : (coh>=0.33f)?PROF_PROFOND : PROF_METIER;
+            ch = (coh>=0.66f)?PROF_SECRET
+               : (coh>=tune_f("METAB_COH_PROFOND",0.50f))?PROF_PROFOND : PROF_METIER;
         }
         else if (has_credo && re->culture.credo==mycredo)            ch=PROF_METIER;    /* co-religion */
         else if (r<SCPS_MAX_REG && border[r])                        ch=PROF_METIER;    /* frontière */
         else                                                         ch=PROF_SURFACE;   /* commerce / diffusion */
+        /* La profondeur RETENUE est le MIN de ce que le canal (gouvernance/foi/frontière/
+         * commerce) transmet et de ce que le PORTAGE justifie (poids de la minorité). */
         for (int ar=0; ar<ARCH_COUNT; ar++){
             if (depth[ar]>=(unsigned char)ch) continue;
-            if (region_bears_arch(econ, r, ar, cen, present)) depth[ar]=(unsigned char)ch;
+            Profondeur cap = region_arch_bearing(econ, r, ar, cen, present);
+            if (cap==PROF_NONE) continue;
+            Profondeur eff = (ch<cap)?ch:cap;
+            if (depth[ar]<(unsigned char)eff) depth[ar]=(unsigned char)eff;
         }
     }
     /* S1 — LE CHEMIN COMMERCIAL vers l'archétype (Venise ← Grèce, sans conquérir). Un
@@ -2309,7 +2347,7 @@ static void ai_archetype_depth(const World *w, const WorldEconomy *econ, const R
             float vol=t->yield/yref; if(vol>1.f)vol=1.f; if(vol<0.f)vol=0.f;     /* le VOLUME module */
             float wgt=(t->maritime?sea_w:land_w)*(0.5f+0.5f*vol);                /* la MER pèse FORT */
             for (int ar=0; ar<ARCH_COUNT; ar++){
-                bool bears = region_bears_arch(econ, far, ar, cen, present);
+                bool bears = region_arch_bearing(econ, far, ar, cen, present)!=PROF_NONE;   /* la MÊME barre de portage */
                 if (bears && wgt>gbest[ar][po]) gbest[ar][po]=wgt;              /* le MEILLEUR lien par ENTITÉ */
             }
         }
@@ -2322,13 +2360,6 @@ static void ai_archetype_depth(const World *w, const WorldEconomy *econ, const R
         }
     }
 }
-/* Fallbacks compilés des seuils de la BARRE D'ACCÈS (registre scps_tune_list.h). */
-#ifndef METAB_TIER1
-#define METAB_TIER1 0.10f
-#define METAB_TIER2 0.20f
-#define METAB_TIER3 0.35f
-#endif
-
 /* BARRE D'ACCÈS GRADUÉE (Temps 2) — par héritage, le TIER d'accès (0..3) recherchable, en MAX
  * de DEUX voies : (1) la PROFONDEUR de contact (ai_archetype_depth : commerce→SURFACE→tier 1,
  * frontière/foi→MÉTIER→tier 2, gouvernance digérée→PROFOND→tier 3) — « les techs s'échangent
@@ -2336,8 +2367,12 @@ static void ai_archetype_depth(const World *w, const WorldEconomy *econ, const R
  * héritage : ≥T1/T2/T3 ⇒ tier 1/2/3) — « incorporer ce peuple ouvre ses techs ». L'héritage
  * NATIF = plein (tier 3). Encodé 2 bits/héritage (cf. tech_heritage_access_tier). */
 static unsigned heritage_access_pack(const unsigned char depth[ARCH_COUNT],
-                                     const float metab[HERITAGE_COUNT], Heritage native){
-    float t1=tune_f("METAB_TIER1",METAB_TIER1), t2=tune_f("METAB_TIER2",METAB_TIER2),
+                                     const float metab[HERITAGE_COUNT], Heritage native, int cid){
+    /* METAB_TIER12 (2026-09-03) : diviseur commun des DEUX premières barres — le site que les
+     * idées « Métissage » (Peuple) et « Dictionnaires » (Connaissances) promettaient sous une
+     * clé fantôme. Défaut 1.0 ⇒ neutre ; AI_DOCT=0 ⇒ doctrine_key_mult=1 ⇒ golden intact. */
+    float t12=tune_f("METAB_TIER12",1.f)*doctrine_key_mult(cid,"METAB_TIER12");
+    float t1=tune_f("METAB_TIER1",METAB_TIER1)*t12, t2=tune_f("METAB_TIER2",METAB_TIER2)*t12,
           t3=tune_f("METAB_TIER3",METAB_TIER3);
     unsigned m=0;
     for (int r=0;r<HERITAGE_COUNT;r++){
@@ -2355,7 +2390,7 @@ static unsigned heritage_access_pack(const unsigned char depth[ARCH_COUNT],
 unsigned ai_heritage_access(const World *w, const WorldEconomy *econ, const RouteNetwork *rn, int cid){
     unsigned char depth[ARCH_COUNT]; ai_archetype_depth(w, econ, rn, cid, depth);
     float metab[HERITAGE_COUNT]; econ_country_heritage_digested(w, econ, cid, metab);
-    return heritage_access_pack(depth, metab, ai_capital_heritage(w, econ, cid));
+    return heritage_access_pack(depth, metab, ai_capital_heritage(w, econ, cid), cid);
 }
 /* §syncrétique — rafraîchit le cercle d'un empire : cache la profondeur de contact par
  * archétype (lue par la membrane) et loquette les nœuds de diffusion atteints. */
@@ -2606,7 +2641,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
     ai_sync_refresh(w, econ, rn, ts, a->cid);                   /* §4-13 : cache la profondeur + loquette la diffusion (+ S1 : le commerce) */
     /* BARRE D'ACCÈS (Temps 2) : tier par héritage = MAX(profondeur cachée, métabolisation). */
     float metab[HERITAGE_COUNT]; econ_country_heritage_digested(w, econ, a->cid, metab);
-    unsigned access = heritage_access_pack(ts->arch_depth, metab, ai_capital_heritage(w, econ, a->cid));
+    unsigned access = heritage_access_pack(ts->arch_depth, metab, ai_capital_heritage(w, econ, a->cid), a->cid);
     TechId pick = ai_pick_tech(a, ts, w, econ, wp, access, nprov);
 #ifdef SCPS_E3DIAG
     if (getenv("SCPS_E3DIAG") && a->cid>=0 && a->cid<SCPS_MAX_COUNTRY){
@@ -3284,9 +3319,18 @@ static void ai_doct_scores(const World *w, const WorldEconomy *econ, const Diplo
     { float met = econ_country_metabolized(w,econ,cid);              /* scps_econ.h:1111 */
       float dig[HERITAGE_COUNT];
       econ_country_heritage_digested(w,econ,cid,dig);                /* scps_econ.h:1116 */
-      int ndig=0; for (int r2=0;r2<HERITAGE_COUNT;r2++) if (dig[r2]>0.10f) ndig++;
-      out[DOCT_CONNAISSANCES] = aid_clamp(met*3.f, 0.f, 1.2f)
-                              + aid_clamp((float)ndig*0.4f, 0.f, 0.8f); }
+      int ndig=0, npend=0;
+      for (int r2=0;r2<HERITAGE_COUNT;r2++){
+          if (dig[r2]>0.10f) ndig++;
+          else if (dig[r2]>0.f) npend++;      /* présent MAIS pas encore digéré : le travail du creuset */
+      }
+      /* Calibrage 2026-09-03 : met*3 rendait 0,04-0,35 (moyenne monde 1,3-11,8 %) et ndig
+       * valait 0 ou 1 — score 0,04-0,75, toujours SOUS Production. Remis à l'échelle des
+       * autres signaux, et le 3e terme dit le BESOIN : des héritages ENTAMÉS que le creuset
+       * n'a pas encore digérés appellent la doctrine ; un pays homogène n'en a que faire. */
+      out[DOCT_CONNAISSANCES] = aid_clamp(met*10.f, 0.f, 1.2f)
+                              + aid_clamp((float)ndig*0.4f, 0.f, 0.8f)
+                              + aid_clamp((float)npend*0.35f, 0.f, 0.8f); }
 
     /* Production — manufactures nombreuses · brutes riches */
     out[DOCT_PRODUCTION] = aid_clamp((float)nbld*0.10f, 0.f, 1.2f)
@@ -3298,10 +3342,27 @@ static void ai_doct_scores(const World *w, const WorldEconomy *econ, const Diplo
       out[DOCT_INFRASTRUCTURE] = aid_clamp(dens*0.8f, 0.f, 1.2f)
                                + aid_clamp(vet*4.f, 0.f, 1.2f); }
 
-    /* Technologie — bibliothèques bâties · savoir par tête */
+    /* Technologie — bibliothèques bâties · le MANQUE de savoir par tête · le RETARD d'arbre.
+     * Calibrage 2026-09-03 : le terme savoir/tête valait ≈ 0,0014 chez le LEADER alors que son
+     * clamp [0..0.6] attend une grandeur d'ordre 1 — erreur d'ÉCHELLE d'un facteur ~400 mesurée
+     * au sweep 10×200. Score total ≈ 0,002 contre 2,0-2,4 pour Production/Infrastructure : la
+     * doctrine ne pouvait MATHÉMATIQUEMENT jamais gagner l'argmax (2 adoptions sur 331).
+     * On remet la coordonnée sur sa vraie échelle ET on la lit comme un BESOIN, pas comme une
+     * récompense : c'est le pays qui MANQUE de savoir par tête, et celui qui STAGNE derrière
+     * l'arbre du monde, qui a besoin de la doctrine — pas celui qui mène déjà. */
     { float sv = econ_country_savoir(econ,cid);                      /* scps_econ.h:1112 */
+      float svp = (float)((double)sv/ppp) * 400.f;                   /* ≈ 0,55 chez le leader, ≈ 0 chez le nain */
+      float lag = 0.f;
+      if (ts){                                                       /* RETARD vs le mieux doté du monde */
+          int mine=ts[cid].n_unlocked, top=0;
+          for (int c2=0;c2<nc;c2++){ PolityRole rl2=w->country[c2].role;
+              if (rl2!=POLITY_PLAYER && rl2!=POLITY_ANTAGONIST) continue;
+              if (ts[c2].n_unlocked>top) top=ts[c2].n_unlocked; }
+          if (top>0 && mine<top) lag = 1.f - (float)mine/(float)top;
+      }
       out[DOCT_TECHNOLOGIE] = aid_clamp((float)nlib*0.6f, 0.f, 1.2f)
-                            + aid_clamp((float)((double)sv/ppp), 0.f, 0.6f); }
+                            + aid_clamp(1.f - svp, 0.f, 0.8f)        /* savoir/tête BAS ⇒ le besoin */
+                            + aid_clamp(lag*1.5f, 0.f, 1.0f); }      /* arbre EN RETARD ⇒ le besoin */
 
     /* Faustien — des bouts interdits DÉJÀ pris ET le garde-fou FAUST_BRECHE_CAUTION non franchi */
     if (nfaust>0 && crisis < tune_f("FAUST_BRECHE_CAUTION",0.55f))

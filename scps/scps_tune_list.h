@@ -263,6 +263,21 @@
      * tiers confondus. Mesure d'origine (gigasweep 100 mondes × 250 ans) : arbre_pct
      * médiane 42 % (p25 35 · p75 48). 1.0 = ancien prix (kill-switch). */ \
     X(TECH_COST_MULT,         0.70f) \
+    /* EXPOSANT DE TAILLE DU COÛT (calibrage tech 2026-09-03) : coût ∝ N^exp, N = provinces.
+     * 0.50 (√N) était une CONSTANTE COMPILÉE — hors de portée de tout calibrage — et trop
+     * plate : le leader (N≈45) bouclait 71/74 nœuds à l'an 200 dans 18 sweeps sur 20, alors
+     * que l'intention écrite au site (scps_tech.c) est « ~40-60 % de l'arbre → il
+     * SPÉCIALISE ». 0.65 renchérit ×N^0.15 : le nain (N=2) paie ×1,11, l'empire moyen
+     * (N=12) ×1,45, le leader (N=45) ×1,77 — le frein est un COÛT, jamais un plafond dur
+     * (décision joueur : PAS DE CAP). L'exposant reste < 1 : « wide » demeure récompensé.
+     * 0.50 = ancien exposant (kill-switch, golden d'avant). */ \
+    X(TECH_COST_N_EXP,        0.65f) \
+    /* PORTE DES RUINES (correctif 2026-09-03) : 1 = tenir une province portant du cristal
+     * arcane ou du fer céleste ouvre `has_ruins_access` (scps_sim.c, clôture mensuelle) —
+     * les 3 nœuds `needs_ruins` redeviennent atteignables, dont TECH_EVEIL, le SEUL nœud
+     * `triggers_crisis` du jeu. 0 = porte close pour tous (le bug d'avant : le drapeau
+     * n'était jamais remis à vrai ⇒ 3/74 de l'arbre mort à vie). */ \
+    X(TECH_RUINS_ACCESS,      1.0f) \
     /* PIERRE & ARGILE dans le tirage par biome (décision joueur 2026-07-31 : « revoir la
      * distribution des ressources tout en gardant les obligations »). Avant : 0 poids —
      * leur seule source était le spawn curé des capitales d'empire, donc AUCUNE pierre
@@ -354,6 +369,22 @@
     X(METAB_TIER1,            0.10f) \
     X(METAB_TIER2,            0.20f) \
     X(METAB_TIER3,            0.35f) \
+    /* DIVISEUR COMMUN des DEUX premières barres (calibrage 2026-09-03) : le SITE que les idées
+     * de doctrine « Métissage » (Peuple) et « Dictionnaires » (Connaissances) promettaient sous
+     * le nom METAB_TIER12 — une clé qui n'existait dans AUCUN registre et n'était lue NULLE PART.
+     * Elle vit désormais : elle multiplie METAB_TIER1 et METAB_TIER2 dans heritage_access_pack
+     * (une doctrine à 0,75/0,80 ABAISSE les deux premières barres). 1.0 = neutre (golden). */ \
+    X(METAB_TIER12,           1.0f) \
+    /* COHÉSION qui ouvre le PROFOND (= accès tier 3, PLEIN) sur un sol gouverné. 0,33 — le bas
+     * tiers de l'intégration — court-circuitait la barre METAB_TIER3 : une conquête fraîche
+     * ouvrait l'héritage entier (calibrage 2026-09-03, §3.4). 0,50 = la moitié du sol
+     * réellement digérée. 0.33 = ancienne échelle (kill-switch). */ \
+    X(METAB_COH_PROFOND,      0.50f) \
+    /* BARRE DE PORTAGE (calibrage 2026-09-03) : 1 = une MINORITÉ ne transmet son archétype
+     * qu'à hauteur de SON POIDS dans la région, à la même échelle METAB_TIER1/2/3. 0 = une
+     * SEULE âme suffisait à transmettre PLEIN (le court-circuit d'avant : « une poignée de
+     * déportés = accès tier-3 plein »). Kill-switch. */ \
+    X(METAB_BEARER_BAR,       1.0f) \
     /* BRASSAGE — coeff de DIFFUSION du savoir par MODE d'arrivée (Arrival) : migrant &
      * soumis diffusent PLEIN (1.0, câblé) ; le DÉPORTÉ (esclave) diffuse FAIBLE — savoir
      * arraché, fragmenté, réprimé (janissaire/forge/créole : réel mais mineur). */ \

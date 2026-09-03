@@ -12159,3 +12159,95 @@ Décision joueur : « corrige tout » + « **aucun plafond** » (INFLUENCE_CAP r
   (golden : `19088340 / 152f65d2 / d53ab650 / 81555cec / 535c270a`).
   **Aucun bump `SAVE_VERSION`** : aucune struct sérialisée ne change de taille
   (savetest A==B le confirme).
+
+
+## Mission 2026-09-03 — W1-C TECH & HÉRITAGE (« corrige tout », PAS DE CAP)
+
+Feuille de route : `docs/CALIB_TECH_2026-09-03.md`. Décision joueur : le frein est le
+COÛT, jamais une borne — P1 (`TECH_PROD_CAP`) REJETÉE, non implémentée.
+
+### Découvertes
+
+- **La porte des ruines n'a JAMAIS eu de source d'accès.** `git log -S has_ruins_access`
+  ne rend qu'`a5cf9d2` (import du baseline) : le champ est arrivé avec le moteur, et le
+  SEUL site qui ait jamais passé `true` est `army_demo.c` (hors sim). Ce n'est pas une
+  régression — c'est un branchement **jamais fait**. Conséquence : 3/74 nœuds morts à vie
+  et `TECH_EVEIL`, le SEUL `triggers_crisis` du jeu, jamais tiré dans aucune partie.
+- **Les « ruines » du moteur sont un AUTRE objet.** `is_colonized && !colonized`
+  (province abandonnée) est déclaré explicitement « mémoire de ruines, **jamais une
+  source de savoir** » (`scps_econ.h:576`) — et son `owner` vaut −1, donc on ne peut pas
+  la « tenir ». La porte arcane parle de RELIQUE, pas de ruine-abandon : le seul signal
+  déjà en donnée est la MATIÈRE arcane, que `ai_pick_tech` lit depuis toujours sous le
+  nom `has_arcane_raw` (`scps_ai.c`, cristal arcane / fer céleste). C'est là qu'on branche.
+- **Le fallback `#ifndef METAB_TIER1` vivait APRÈS son premier usage utile.** Il était posé
+  juste au-dessus de `heritage_access_pack` (~:2325) alors que la barre de portage se juge
+  ~90 lignes plus haut. Remonté au-dessus de `region_arch_bearing` ; sans ça, compilation
+  muette avec les mauvaises constantes serait impossible (erreur franche), mais le piège
+  guette quiconque déplace du code entre les deux.
+- **Le masque `cable` des idées de doctrine était HONNÊTE, c'est la CLÉ qui mentait.**
+  Métissage/Dictionnaires/Portulans/Copistes déclaraient bien `cable=0` sur le bit
+  concerné (« à venir » en façade) — mais affichaient un nom de clé (`METAB_TIER12`,
+  `FOG_SEA_HALO`) qui n'existe dans AUCUN registre. Le mensonge est le NOM, pas le masque.
+- **`AI_TECH_DIFFUSE_MAX` (idée Copistes) n'est PAS une clé fantôme** : elle est bien au
+  registre (`scps_tune_list.h`). Son site de lecture `tech_diffusion_mult(TechId)` n'a
+  simplement **pas de `cid`** — le commentaire du catalogue le prévoit littéralement
+  (« site hoisté hors de portée d'un cid »). La câbler exige de faire descendre un `cid`
+  dans la chaîne : NON fait, hors périmètre, laissé en Reste.
+- **Le golden ne hache PAS la sortie texte de la chronique** (`make golden` =
+  `./chronicle --hash`), donc toute la télémétrie P8 est gratuite côté non-régression.
+- **Mesure P2 (exposant) ≠ mesure `TECH_COST_MULT` (prix uniforme), et le système
+  l'explique** : l'exposant à 0,65 fait payer ×1,77 au leader (plus que le ×1,43
+  uniforme du rapport) mais mord MOINS sur son arbre (49→40 tech contre 49→31). Parce
+  qu'il ÉPARGNE les petits : le monde garde 194 nœuds (contre 178), donc la remise de
+  diffusion continue de solder l'arbre du leader. Le prix uniforme, lui, se compose avec
+  lui-même via l'effondrement de la diffusion. **Un levier ciblé est structurellement
+  plus doux qu'un levier global de même amplitude nominale.**
+
+### Pièges
+
+- **PowerShell 5.1 mange les guillemets d'un `bash -l -c "…"`** dès qu'il y a un `|` dans
+  un motif `grep` : la commande arrive coupée à bash (`ERROR:: command not found`).
+  Écrire un `.sh` dans le scratchpad et l'exécuter (`bash -l script.sh`) est la seule
+  forme fiable. (Le Bash tool, lui, refuse `bash -l` en worktree isolé.)
+- **`chronicle_asan.exe` ne démarre pas sans PATH** : bâti par `SAN_CC` (clang), il exige
+  `libwinpthread-1.dll` ⇒ `export PATH="/mingw64/bin:/clang64/bin:$PATH"` AVANT de le
+  lancer. Sinon `exit=127` et un `grep 'sanitizer'` rend 0 — **faux « ASan muet »**.
+  Toujours vérifier le code de sortie du binaire, pas seulement le compte de lignes.
+- **Le scratchpad de session est PARTAGÉ entre agents** : un fichier `b0.sh` posé à la
+  racine du scratchpad a été écrasé par un autre agent en cours de vague. Préfixer tout
+  fichier de travail du nom de l'agent (`w1c_*.sh`).
+- **P8 n'est pas mesurable sous 180 ans.** Le resplit de cataclysme §27 tombe vers l'an
+  180 : à 120 ans la ligne `arbre HÉRITÉ` affiche 0 empire et les chiffres sont mot pour
+  mot ceux d'avant. C'est la PREUVE de neutralité, pas une preuve de fonctionnement.
+- **La barre de portage n'a PAS fait tomber `6/6 archétype(s)` à 120 ans** (6/6 dans les
+  trois bras). Elle mord sur la DISPERSION (0–24 → 0–16) et sur les combos (12 → 3). À
+  120 ans la métabolisation est encore jeune ; le verdict de la barre est un fait d'an 200.
+
+### Restes
+
+- **P2 seul ne ramène PAS le leader dans les 40-60 % visés.** Mesuré à l'an 120 : max
+  d'arbre 74 % → 62 % (leader 49 → 40 tech). En extrapolant la trajectoire connue
+  (74 % à l'an 120 → 95 % à l'an 200, ×1,28), l'exposant 0,65 pose le leader vers
+  **78-80 % à l'an 200** — mieux, pas dans la cible. Par régression log-linéaire sur
+  l'unique paire mesurée (0,50→74 %, 0,65→62 %, pente ≈ −80 pts/unité), il faudrait
+  **`TECH_COST_N_EXP` ≈ 0,78-0,80** pour viser 52 % à l'an 120 — au prix d'un ×2,0 sur
+  l'empire moyen (N=12), ce qui casse « wide récompensé ». **Recommandation : garder 0,65
+  et traiter le reste par P3 (BASE_COST t4/t5 260→340, 400→560), en vague séparée et
+  mesurée — le rapport interdit de cumuler P2 et P3 sans mesure.** AUCUN plafond.
+- **Les édifices refusés faute de palier passent de 187 à 330/sim** (an 120) — c'était le
+  risque annoncé de P2. À arbitrer par le joueur : soit on l'accepte (la tech devient une
+  vraie contrainte de construction), soit on abaisse le palier tech exigé par les
+  édifices T4/T5. Chiffre à re-mesurer si l'exposant bouge encore.
+- **Idée Copistes (`AI_TECH_DIFFUSE_MAX`)** : clé réelle, site sans `cid`
+  (`tech_diffusion_mult`). Pour la câbler il faut passer le `cid` de l'appelant jusqu'au
+  site — 4 sites d'appel. Masque `cable=0` laissé tel quel : honnête, mais l'idée reste
+  inerte.
+- **Idée Portulans** : la clé `FOG_SEA_HALO` était un `#define` local de `scps_api.c`.
+  Clé RETIRÉE (plus de nom fantôme) ; pour rendre l'idée vivante il faudrait porter ce
+  `#define` au registre — `scps_api.c` n'était pas dans mon périmètre.
+- **P9 (`AI_RESEARCH_CADENCE = 365`)** non traité : la limite dure « 1 nœud/an » reste un
+  `#define` hors registre, et elle mord sur les tiers 1-2 du leader pendant ses 60
+  premières années.
+- **`docs/LEVIERS.md:461` annonce toujours « 85 nœuds »** alors que `TECH_COUNT = 74` —
+  dérive documentaire relevée par le rapport, non corrigée (hors périmètre).
+- **Golden re-baseline non faite** (consigne) : seule la graine 209 diverge à 12 ans.

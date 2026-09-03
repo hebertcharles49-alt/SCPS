@@ -1252,6 +1252,34 @@ void sim_day(Sim *s, World *w) {
      * en quotidien, et il est pleinement dt-scalé (rien ne le veut au jour). */
     /* — mensuel : économie + réputation diplomatique (O(n²)) + démographie — */
     if (s->day % 30 == 29) {
+        /* PORTE DES RUINES (correctif 2026-09-03) — `has_ruins_access` était posé à FAUX
+         * pour tout le monde à la genèse (tech_state_init ci-dessous, « RAZ PLEINE PLAGE »)
+         * et AUCUN site ne le repassait jamais à vrai : les 3 nœuds `needs_ruins`
+         * (Invocation, L'Éveil, Savoir interdit) étaient morts À VIE — d'où le plafond
+         * arithmétique 71/74 = 95 % lu dans 18 sweeps sur 20 — et TECH_EVEIL, le SEUL nœud
+         * `triggers_crisis` du jeu, n'a jamais pu tirer dans aucune partie.
+         * L'INTENTION est écrite au site de la porte (scps_tech.c : « Porte arcane : les
+         * bouts faustiens du Savoir profond exigent une ruine ») ; aucune source d'accès
+         * n'existait dans le moteur. La MATIÈRE arcane est le seul signal de relique que le
+         * moteur porte DÉJÀ en donnée (le worldgen la sème, et ai_pick_tech la lit tel quel
+         * sous le nom `has_arcane_raw`). On rebranche donc au plus simple et au grain
+         * PROVINCE (doctrine) : TENIR une province qui porte du cristal arcane ou du fer
+         * céleste ouvre la porte ; la perdre la referme (les nœuds déjà acquis restent).
+         * Les ruines-abandons (is_colonized && !colonized) sont un AUTRE objet — scps_econ.h
+         * les déclare explicitement « mémoire de ruines, jamais une source de savoir ».
+         * Kill-switch TECH_RUINS_ACCESS=0 ⇒ porte close (comportement d'avant, golden). */
+        { static bool arc[SCPS_MAX_COUNTRY];
+          memset(arc, 0, sizeof arc);
+          if (tune_f("TECH_RUINS_ACCESS", 1.f) > 0.f){
+              int np=s->econ->n_prov; if (np>SCPS_MAX_PROV) np=SCPS_MAX_PROV;
+              for (int p=0;p<np;p++){
+                  const ProvinceEconomy *pe=&s->econ->prov[p];
+                  if (!pe->active || !pe->colonized) continue;
+                  int o=pe->owner; if (o<0 || o>=SCPS_MAX_COUNTRY) continue;
+                  if (pe->raw_cap[RES_ARCANE_CRYSTAL]>0.1f || pe->raw_cap[RES_CELESTIAL_IRON]>0.1f) arc[o]=true;
+              }
+          }
+          for (int c=0;c<SCPS_MAX_COUNTRY;c++) s->ts[c].has_ruins_access = arc[c]; }
         econ_apply_country_tech(s->econ, s->ts, SCPS_MAX_COUNTRY);  /* §B1 : techs de prod du pays → prod_mult région */
         statecraft_council_apply(s->sc, w, s->econ, s->wp, w->seed, 1.f/12.f);  /* Q1 : le Conseil pousse ses ×, paie son or (P1-1 : × efficacité) */
         /* DÉCRETS DU JOUEUR — SEUL rôle humain (chronique human_player=-1 ⇒ jamais appelé,
