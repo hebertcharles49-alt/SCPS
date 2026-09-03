@@ -282,6 +282,14 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
          * pays (∝ régions), l'intendance renchérit CHAQUE régiment (frein doomstack).
          * Payée chaque tick pour TOUS les régiments → démobiliser reste une décision
          * économique. */
+        /* AUDIT 2026-09-02 — la GARDE DE BUDGET ne valait qu'en PAIX : à la guerre, la levée
+         * ne connaissait AUCUN plafond (ni limite de force, ni trésor — `paid` est clampé au
+         * trésor, donc une armée que l'État ne paie plus est GRATUITE). Un pays en guerre
+         * permanente empilait 165 à 342 régiments pour une limite de force de ~11 (sweep
+         * doctrines A3, les DEUX bras). On ne DÉMOBILISE pas sous le feu — on cesse de
+         * GROSSIR quand la capitale ne couvre plus les ~3 mois de solde que la garde de
+         * budget exige déjà en paix (même seuil, aucun nombre neuf). */
+        bool pay_starved = false;
         { long u = warhost_units(h,c);
           int cpp = w->country[c].capital_prov;
           int crp = (cpp>=0&&cpp<w->n_provinces)?w->province[cpp].region:-1;
@@ -329,7 +337,8 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                * couvre plus ~3 mois de la solde (pay annuel ×0.25), on DÉGRAISSE (jauge −1)
                * — l'armée cesse de croître et fond, plutôt qu'étrangler le trésor en spirale
                * de friche. En paix seulement : on ne désarme pas sous le feu. */
-              if (!at_war && base_pay>0.f && econ->prov[crpp].treasury < base_pay*0.25f && h->levy[c]>0)
+              pay_starved = (base_pay>0.f && econ->prov[crpp].treasury < base_pay*0.25f);
+              if (!at_war && pay_starved && h->levy[c]>0)
                   h->levy[c] -= 1;
               /* SYMÉTRIE (2026-07-06) : la jauge REMONTE quand le trésor est confortable —
                * l'ancien code ne la faisait que DESCENDRE (garde de budget), si bien que TOUT
@@ -367,7 +376,7 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
         long cur = warhost_units(h,c);
         if (at_war){
             long batch = (long)(WH_BATCH_WAR*LEVY_MULT[lv]*dt + 0.5f);
-            if (batch>0){
+            if (batch>0 && !pay_starved){   /* AUDIT 2026-09-02 : on ne lève plus ce qu'on ne solde plus */
                 long elite = wh_country_elite(econ, c);
                 wh_levy_batch(&h->army[c], econ, w, ts?&ts[c]:NULL, c, batch, elite);
             }

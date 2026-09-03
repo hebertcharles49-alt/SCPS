@@ -11049,3 +11049,147 @@ INTERDITS pour moi, contenu autorisé) — relu avant chaque édition, diff fina
 - **Le worktree `SCPS-chk` de l'orchestrateur reste à recréer** par son
   propriétaire (voir Pièges) — je n'ai PAS tenté de le reconstruire moi-même,
   n'ayant pas connaissance de son état/commit exact voulu.
+
+
+---
+
+## Mission 2026-09-03 — ANOMALIES du sweep doctrines : A2 (armées 0 rgt) · A3 (régiments hypertrophiés) · A4/A9 (faux positifs)
+
+### Découvertes
+
+- **A2 « armée N (0 rgt) » — LA CAPITALE ORPHELINE, et c'est TOUT.** Mesuré
+  (diag temporaire posé à l'ENTRÉE de `warhost_tick`, graine 512 essai) : les
+  **8 pays de ≥4 régions qui finissent à 0 régiment ont TOUS `capital_prov = -1`**
+  (`role=1 ANTAGONIST`, 4 à 12 régions, 50 k habitants pour le plus gros), et ils
+  n'apparaissent QUE dans les ~20 dernières années — le cataclysme §27 (an 180).
+  `warhost_tick` sort au PREMIER test (`scps_warhost.c:273`,
+  `capital_prov<0 → continue`) : ce pays ne lève jamais un régiment, ne paie
+  jamais de solde, n'a jamais d'armée, à vie. Le recalage existait déjà
+  (`peace_rebuild_country`, `scps_sim.c:425`) mais vivait **DERRIÈRE le gate
+  `capital_prov>=0`** de la boucle d'adoption IA (`scps_sim.c:1398`) — il ne
+  pouvait donc JAMAIS réparer le cas qu'il visait. Sorti du gate : 3 lignes.
+- **Le mot « armée » de la ligne chronicle n'est PAS un compte d'armées.** C'est
+  `diplo_mil_power` (√pop×0.04 + H_coerc + héritage + martial + armes) —
+  « armée 11 (0 rgt) » pour 56 k habitants est arithmétiquement normal
+  (√56000×0.04 = 9.5). La contradiction annoncée au §5 A2 n'existe pas ; le
+  défaut est bien les **0 régiments**, pas l'écart entre les deux nombres.
+- **A3 « régiments hypertrophiés » — la GARDE DE BUDGET ne valait qu'en PAIX.**
+  La branche `at_war` de `warhost_tick` n'a AUCUN plafond : ni limite de force,
+  ni trésor (`paid = fmaxf(0, fminf(pay, treasury))` — une armée que l'État ne
+  paie plus est GRATUITE), et le garde-fou `if (!at_war && treasury <
+  base_pay*0.25f) levy--` est explicitement désarmé sous le feu. Un pays en
+  guerre quasi permanente empile donc 7×LEVY_MULT paquets/an sans fin : 165 et
+  167 rgt au TÉMOIN (s11, s3333), 317 et 342 à l'ESSAI, pour une limite de force
+  de ~11. Correctif : on ne DÉMOBILISE pas sous le feu, mais on **cesse de
+  GROSSIR** au même seuil que la paix exige déjà (aucun nombre neuf).
+- **`pop_by_class_in_army` fuyait sur DEUX canaux** (l'audit « Vague C »
+  2026-08-12 avait posé `dead_class_pending` pour ça, mais l'a drainé sur le
+  MAUVAIS registre) :
+  1. `scps_sim.c:320` rendait l'affectation sur `host->army[cd]` — or les morts
+     étaient dans le CORPS (`campaign_order` fait `army_merge_into(&a->force,
+     src_force)` : un TRANSFERT, le host tombe à 0). Host à 0 ⇒ le rendu est
+     clampé et perdu, le corps garde les morts, puis les REVERSE au host en
+     rentrant (asphyxie) ; host avec réserve ⇒ il est débité de morts qu'il ne
+     porte pas (sur-recrutement). **Un seul bug, deux symptômes opposés.**
+  2. `army_march_attrition` (`scps_army.c:562`) fondait les paquets **sans
+     jamais** relâcher l'affectation — fuite continue, à chaque marche.
+  Corrigé aux DEUX sites qui portent les hommes (`kill_packets` décrémente
+  `f->pop_by_class_in_army`, l'attrition la sienne) ; le drain de sim ne fait
+  plus QUE tuer les gens pour de vrai.
+- **A9 « province ×274 » est un FAUX POSITIF de lecture index-à-index.** Les
+  deux bras divergent dès l'an 2 : comparer `PROV 409` d'un monde à `PROV 409`
+  de l'autre compare deux places différentes. Mesuré sur les 20 journaux du
+  sweep : max de pop provinciale **témoin 15 478 → 37 346** vs **essai 14 764 →
+  37 723** ; nombre de provinces > 10 k : **témoin 4-11 · essai 5-12**. Et pour
+  le pays 70 de la graine 90 (celui de l'anomalie) : top-8 de ses provinces
+  `témoin 2558 … 19 742` vs `essai 1896 … 30 174` — **même profil « une seule
+  mégapole », à un index différent**. Aucune hypertrophie : une capitale a
+  changé de tuile. Idem pour A20 (Ligue Karggoris 29 rég → 2 rég) et A10.
+- **A4 « trésors négatifs » n'est pas une régression des doctrines.** 1 seul cas
+  dans mon appariement (graine 512), **le même pays avant ET après** correctif
+  (`Ordre Caelwic`, 1 région, Prosp 15, 8 tech, `or -43`), absent des témoins.
+  Tous les débiteurs de trésor ont déjà été clampés par la passe MONNAIE M14-B1
+  (`statecraft.c:491`, `diplo.c:358/1287`, `decrees.c`, `warhost.c:316`) ; un
+  trésor négatif est un ÉTAT MODÉLISÉ (déficit/crédit), et le moteur se protège
+  explicitement de son inversion de signe. 2/91 lignes-pays à l'essai contre
+  0/74 au témoin n'est pas un signal.
+- **AUCUN câblage de doctrine n'est en cause.** Les 42 clés `cable != 0` ont été
+  relues une à une contre leur site : aucun sens inversé, aucun `cid` absent,
+  aucun mult composé hors bande (le clamp `[0.60,1.60]` est PAR CLÉ et tient).
+  Les suspects du brief sont tous inertes : `SOLDE_FL_PER_REG` / `SOLDE_OVER_K`
+  (Offense « Grande levée ») ont **`cable=0`** — et ce sont de toute façon des
+  `#define` locaux de `scps_warhost.c`, sans `tune_f` ; « Levée en masse »,
+  « Ban », « Double chantier » sont des VERBES (`cable=0`) ; `COLONY_*`,
+  `MIG_PACT_MIN`, `CLIM_LEARN_INTEG` ne sont pas câblés ; `PROVMOD_FERVEUR_*`
+  n'existe que via Divin, **jamais adopté** (0/331). `RAW_WORKS_NEED ×1.30`
+  (Infrastructure « Carrières ») ressemble à un sens inversé mais ne l'est pas :
+  c'est un SEUIL de déficit structurel — le monter arme la carrière plus tôt.
+- **Ce que les doctrines font vraiment à A2/A3 : elles FRAGMENTENT.** Le total
+  mondial d'armée est identique dans les deux bras (Σ `diplo_mil_power` 199-318
+  au témoin, 214-318 à l'essai) ; ce qui change, c'est la DISTRIBUTION — plus de
+  guerres (87 vs 64 sur s512), plus de sécessions, donc plus d'orphelins de
+  cataclysme (A2) et plus de guerres perpétuelles (A3). Les doctrines
+  **révèlent** deux trous préexistants, elles ne les créent pas.
+
+### Preuves appariées (chronicle `<graine> 1 200 6 12`, binaire d'avant vs après)
+
+Le bras `out/` reproduit le sweep **exactement** (essai_s512 : 23 pays listés,
+17 à 0 rgt, or −42 ; essai_s777 : 342 rgt) — le diagnostic porte donc bien sur
+les mêmes mondes.
+
+| journal | 0 rgt avant → après | max rgt avant → après |
+|---|---|---|
+| essai s512 | **17 / 23** → **1 / 7** | 30 → 57 |
+| essai s777 | 0 / 6 → 0 / 6 | **342** → **43** |
+| essai s90 | 0 / 5 → 0 / 5 | 43 → 46 |
+| témoin s512 | 1 / 8 → 0 / 7 | 42 → 45 |
+| témoin s777 | 0 / 6 → 0 / 12 | 50 → 51 |
+| témoin s90 | 0 / 4 → 1 / 7 | 49 → 51 |
+
+Le seul `0 rgt` qui reste (essai s512, *Ligue Thrumdinel*, 5 rég) est LÉGITIME :
+son stock ne contient **aucune arme** (Bétail/Laine/Poisson/Argile) — la levée
+est gatée par l'arsenal, comme prévu.
+
+### Pièges
+
+- **Le bras TÉMOIN change aussi, et c'est le contrat.** Le brief demandait
+  « `AI_DOCT=0` byte-identique à l'actuel » — impossible ici : les trois causes
+  sont dans le moteur de guerre, pas dans le câblage des doctrines, et le témoin
+  les porte aussi (165/167 rgt en `temoin_s11`/`temoin_s3333`, 1 pays à 0 rgt
+  en `temoin_s512`). Un correctif qui laisserait le témoin intact serait un
+  correctif qui rate la cause. **Golden 5/5 hashes bougent — NON re-baseliné
+  ici** (consigne : l'orchestrateur le fait au merge).
+- **Le sweep tournait avec des arguments que le défaut de `chronicle` ne donne
+  pas** : `tools/sweep_doct_ai.sh` appelle `./chronicle $seed 1 200 6 12`
+  (EMPIRES=6, CITIES=12). Sans les deux derniers, on obtient un monde à 2
+  empires/5 cités qui ne reproduit RIEN. Toujours lire le script de sweep avant
+  de tenter une reproduction.
+- **Une anomalie « ×274 » entre deux bras appariés n'est presque jamais une
+  hypertrophie** : à partir de l'an 2 les deux mondes sont des mondes
+  DIFFÉRENTS. Comparer des DISTRIBUTIONS (max, quantiles, comptages au-dessus
+  d'un seuil), jamais un index à son homologue.
+- **`getenv` dans une boucle chaude est un diag acceptable** (il ne touche pas
+  xs32) mais il faut le RETIRER : les trois diags temporaires
+  (`SCPS_LEVYDIAG` / `2` / `3`) ont été posés puis effacés — `git diff` sur
+  `chronicle.c` et sur le corps de `warhost_tick` doit rester vide de tout
+  `getenv` de mission.
+- **Un banc de plus vaut mieux qu'un commentaire** : `army_demo` porte désormais
+  l'invariant « l'usure de marche REND l'affectation (pop affectée == effectif
+  restant × 100) ». 50/50 verts.
+
+### Restes
+
+- **Le corps au front n'est PAS compté dans le pool de recrutement.**
+  `army_class_free` ne lit que `pop_by_class_in_army` de l'ArmyState qu'on lui
+  passe ; pendant qu'un corps campagne, le host repart de 0 et peut relever
+  toute la population une seconde fois. C'est le dernier canal de sur-levée
+  (les 43-57 rgt résiduels des gros empires). Le corriger demande de sommer les
+  corps du pays au site du gate — vague dédiée, mesurée.
+- **`or` négatif résiduel** (`Ordre Caelwic`, −43) : un micro-État ruiné porte un
+  découvert que rien ne solde. À trancher au niveau du module CRÉDIT (faut-il
+  qu'un trésor sous zéro déclenche la banqueroute forcée plus tôt ?), pas au
+  niveau des débiteurs, tous déjà clampés.
+- **A5/A6/A19 et les propositions F1-F7 du §6 du dépouillement ne sont PAS
+  traitées ici** (calibrage/design, décision joueur).
+- `scps/golden_deep.txt` reste STALE (constaté par la mission P3-IA du 2026-09-02,
+  antérieur à cette vague) — non touché.

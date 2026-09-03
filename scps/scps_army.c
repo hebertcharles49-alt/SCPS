@@ -573,6 +573,14 @@ long army_march_attrition(ArmyState *a, Biome b, float days){
         long lost = (long)((float)u->count * loss_frac + 0.5f);
         if (lost > u->count) lost = u->count;
         u->count -= lost;
+        /* AUDIT 2026-09-02 — L'AFFECTATION SE REND (même contrat que wh_shed/kill_packets) :
+         * l'usure de marche fondait les paquets SANS relâcher pop_by_class_in_army, si bien
+         * que `army_class_free` (pool − affectés) baissait en MONOTONE — un corps assez
+         * marché n'était plus jamais renforçable, un pays assez marché ne levait plus rien
+         * (les « armée N (0 rgt) » du sweep doctrines). */
+        { LaborClass cl = unit_def(u->type)->from;
+          a->pop_by_class_in_army[cl] -= lost*POP_PER_UNIT;
+          if (a->pop_by_class_in_army[cl] < 0) a->pop_by_class_in_army[cl] = 0; }
         lost_total += lost;
     }
     return lost_total;

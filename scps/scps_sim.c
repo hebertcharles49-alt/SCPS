@@ -316,9 +316,10 @@ static void sim_campaign_year(Sim *s, World *w) {
               if (pend<=0) continue;
               s->camp->dead_class_pending[cd][cl]=0;
               long souls=pend*100;   /* POP_PER_UNIT */
-              /* l'affectation se REND toujours (bug de comptabilité, pas un choix) */
-              { long *asg=&s->host->army[cd].pop_by_class_in_army[cl];
-                *asg -= souls; if (*asg<0) *asg=0; }
+              /* AUDIT 2026-09-02 : l'affectation se rend DÉSORMAIS au registre du CORPS
+               * qui perd les hommes (kill_packets, scps_campaign.c) — pas ici, sur
+               * host->army[cd], qui ne les portait pas. Ce site ne fait plus QUE tuer les
+               * gens pour de vrai. */
               if (!real) continue;
               int cp=w->country[cd].capital_prov;
               int cr=(cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
@@ -1394,6 +1395,20 @@ void sim_day(Sim *s, World *w) {
             /* un pays vient de naître : on donne vie (IA) à tout sécessionniste
              * vivant pas encore piloté (plusieurs peuvent éclore le même mois). */
             for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+                /* AUDIT 2026-09-02 — LA CAPITALE ORPHELINE. Un pays qui TIENT des régions
+                 * mais dont `capital_prov` vaut −1 (fragments du cataclysme §27, sécession
+                 * dont la région de naissance n'avait pas de province) est INVISIBLE au
+                 * moteur militaire : `warhost_tick` sort au premier test
+                 * (`capital_prov<0 → continue`), donc ce pays ne lève JAMAIS un régiment,
+                 * ne paie jamais de solde — les « armée N (0 rgt) » du sweep doctrines
+                 * (16 empires sur 23, graine 512 : TOUS `cap=-1`, mesuré). Le recalage
+                 * existait déjà (peace_rebuild_country) mais vivait DERRIÈRE le gate
+                 * `capital_prov>=0` ci-dessous — il ne pouvait donc jamais réparer le cas
+                 * qu'il visait. On le sort du gate : dès qu'un pays a de la terre, il a une
+                 * capitale. Idempotent (ne fait rien si la capitale est déjà valide). */
+                if (w->country[c].role!=POLITY_UNCLAIMED && w->country[c].capital_prov<0
+                    && regions_of(s->econ,c)>0)
+                    peace_rebuild_country(w, s->econ, c);
                 if (s->ai_on[c]) continue;
                 if (w->country[c].role==POLITY_ANTAGONIST && w->country[c].capital_prov>=0
                     && regions_of(s->econ,c)>0){

@@ -194,6 +194,15 @@ int main(int argc, char **argv){
        perdu_des > perdu_pla && perdu_des > 0);
     ok("le terrain infranchissable n'inflige pas d'attrition de marche (on n'y va pas)",
        march_attrition_rate(BIO_GLACIER) == 0.f);
+    /* AUDIT 2026-09-02 — L'AFFECTATION SUIT LES EFFECTIFS. Ce qui fond à la marche REND
+     * sa pop : sans ça, `army_class_free` (pool − affectés) baissait en MONOTONE et un
+     * pays assez marché/saigné ne levait plus jamais un régiment (les « armée N (0 rgt) »
+     * du sweep doctrines). Même contrat que wh_shed (démob) et kill_packets (morts). */
+    ArmyState usure = one(U_EPEISTE, 100);
+    usure.pop_by_class_in_army[unit_def(U_EPEISTE)->from] = 100*POP_PER_UNIT;
+    long perdu_usure = army_march_attrition(&usure, BIO_DESERT, 12.f);
+    ok("l'usure de marche REND l'affectation (pop affectée == effectif restant × 100)",
+       perdu_usure > 0 && army_pop_enrolled(&usure) == usure.units[0].count*POP_PER_UNIT);
 
     /* ═══ 8. LA BATAILLE DANS LE TEMPS : choc → retrait → poursuite (§2) ═ */
     printf("\n── 8. La bataille a un ARC : le choc use, la poursuite tue (les armées sont CLOUÉES) ──\n");

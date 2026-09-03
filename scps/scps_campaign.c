@@ -668,22 +668,37 @@ static long kill_packets(Campaign *cmp, int owner, ArmyState *f, long packets){
     if (packets>tot) packets=tot;
     long left=packets;
     /* audit 2026-08-12 : chaque paquet tué s'inscrit au registre des morts de sa
-     * CLASSE d'origine (unit_def->from) — sim le draine vers les strates. */
+     * CLASSE d'origine (unit_def->from) — sim le draine vers les strates.
+     * AUDIT 2026-09-02 : et l'AFFECTATION SE REND ICI, dans le registre du CORPS qui
+     * perd les hommes (`f`) — c'est LUI qui les portait depuis force_take/merge, pas
+     * l'armée-mère. Le drain de sim rendait l'affectation sur host->army[owner] : un
+     * corps parti au front laissait le host à 0 (rien à rendre, clampé), gardait les
+     * morts dans SON compte, puis les reversait au host en rentrant → asphyxie du
+     * recrutement ; à l'inverse, un host qui gardait une réserve était débité de morts
+     * qu'il ne portait pas → sur-recrutement (les 342 rgt du sweep). */
     for (int u=0;u<f->n_units && left>0;u++){
         long share=(f->units[u].count*packets)/tot;
         if (share>f->units[u].count) share=f->units[u].count;
         f->units[u].count-=share; left-=share;
-        if (cmp && owner>=0 && owner<SCPS_MAX_COUNTRY && share>0){
+        if (share>0){
             int cl=(int)unit_def(f->units[u].type)->from;
-            if (cl>=0 && cl<3) cmp->dead_class_pending[owner][cl]+=share;
+            if (cl>=0 && cl<3){
+                if (cmp && owner>=0 && owner<SCPS_MAX_COUNTRY) cmp->dead_class_pending[owner][cl]+=share;
+                f->pop_by_class_in_army[cl] -= share*POP_PER_UNIT;
+                if (f->pop_by_class_in_army[cl] < 0) f->pop_by_class_in_army[cl] = 0;
+            }
         }
     }
     for (int u=0;u<f->n_units && left>0;u++){
         long take=(f->units[u].count<left)?f->units[u].count:left;
         f->units[u].count-=take; left-=take;
-        if (cmp && owner>=0 && owner<SCPS_MAX_COUNTRY && take>0){
+        if (take>0){
             int cl=(int)unit_def(f->units[u].type)->from;
-            if (cl>=0 && cl<3) cmp->dead_class_pending[owner][cl]+=take;
+            if (cl>=0 && cl<3){
+                if (cmp && owner>=0 && owner<SCPS_MAX_COUNTRY) cmp->dead_class_pending[owner][cl]+=take;
+                f->pop_by_class_in_army[cl] -= take*POP_PER_UNIT;
+                if (f->pop_by_class_in_army[cl] < 0) f->pop_by_class_in_army[cl] = 0;
+            }
         }
     }
     return packets-left;
