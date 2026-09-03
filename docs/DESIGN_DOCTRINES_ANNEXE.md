@@ -28,7 +28,8 @@ vite — le temps d'acquisition est constant, la liberté est ressentie.
 
 Structure inchangée : 6 slots · 17 doctrines · idées achetées EN SÉQUENCE ·
 Commerce↔Mercantilisme exclusifs · un seul courant politique sur quatre (le
-courant re-siège l'assiette d'influence). **V** = l'idée débloque un verbe.
+courant RELÈVE le taux de sa classe dans l'assiette d'influence, jamais un
+malus — re-key 2026-09-02, §3.1 du design). **V** = l'idée débloque un verbe.
 
 ---
 
@@ -190,9 +191,13 @@ courant re-siège l'assiette d'influence). **V** = l'idée débloque un verbe.
 
 ---
 
-# Les courants politiques (un seul des quatre — re-siègent l'assiette d'influence)
+# Les courants politiques (un seul des quatre — RELÈVENT le taux de leur classe
+# dans l'assiette d'influence, ils ne la remplacent plus — re-key 2026-09-02.
+# L'assiette lit les SIÈGES (`pop_by_class`, les offices tenus), PAS les
+# strates par richesse — voir §3.1 du design. Assiette par défaut (aucun
+# courant) : élites×0.002 + bourgeois×0.0011 + journaliers×0.00011.)
 
-## 14. Aristocratie  *(assiette : élites ×0.0025/mois)*
+## 14. Aristocratie  *(élève le taux des élites : 0.002 → 0.0025/mois, les deux autres classes inchangées)*
 
 | # | Idée | Bonus | Levier |
 |---|---|---|---|
@@ -203,7 +208,7 @@ courant re-siège l'assiette d'influence). **V** = l'idée débloque un verbe.
 | 5 | Ban féodal | +15 % de moral · −25 % d'impôt des élites | `moral_mul` ×1.15 · `INCOME_TAX_RATE_ELITE` ×0.75 |
 | 6 | Clôture | Noblesse plus accessible · bourgeoisie plus fermée | `PROMOTE_BASKET_MULT_ELITE` ×0.75 · `PROMOTE_BASKET_MULT` ×1.30 (promotions) |
 
-## 15. Bourgeoisie  *(assiette : bourgeois ×0.0006/mois — `INFLUENCE_PER_BOURGEOIS`)*
+## 15. Bourgeoisie  *(élève le taux des bourgeois : 0.0011 → 0.0022/mois — `INFLUENCE_PER_BOURGEOIS`, les deux autres classes inchangées)*
 
 | # | Idée | Bonus | Levier |
 |---|---|---|---|
@@ -214,7 +219,7 @@ courant re-siège l'assiette d'influence). **V** = l'idée débloque un verbe.
 | 5 | Robe | Un siège de Conseil supplémentaire | slot ajouté (le vivier est déjà multi-classes) · `COUNCIL_ROT_BOOST` ×1.25 |
 | 6 | Clés de la ville | Accession bourgeoise −25 % | `PROMOTE_BASKET_MULT` ×0.75 (l'assiette grossit d'elle-même) |
 
-## 16. Populaire  *(assiette : journaliers ×0.00012/mois — À MESURER au chronicle)*
+## 16. Populaire  *(élève le taux des journaliers : 0.00011 → 0.00022/mois, les deux autres classes inchangées)*
 
 | # | Idée | Bonus | Levier |
 |---|---|---|---|
@@ -225,7 +230,7 @@ courant re-siège l'assiette d'influence). **V** = l'idée débloque un verbe.
 | 5 | Impôt du rang | +20 % d'impôt des élites · rangs fermés | `INCOME_TAX_RATE_ELITE` ×1.20 · `EDI_ELITE_POP_PCT` ×0.85 (revers turchinien émergent) |
 | 6 | Souveraineté | Céder ne coûte plus ni légitimité ni capacité · verrou ÷2.5 | `C3_K_HOLLOW` ×0.25 · `C3_L_HOLLOW` ×0 · `CONCEDE_CD_DAYS` ×0.40 |
 
-## 17. Divin  *(assiette : foi bâtie × (1+ferveur) × `INFLUENCE_PER_FAITH` 0.08 — volatile par nature)*
+## 17. Divin  *(relève AUCUN taux de classe — AJOUTE les FIDÈLES × `INFLUENCE_PER_BELIEVER` 1/6000 à l'assiette par défaut ; fidèles = Σ âmes des groupes qui professent la religion d'État, PopGroup.faith ; 0 sans religion fondée, jamais un malus)*
 
 | # | Idée | Bonus | Levier |
 |---|---|---|---|
@@ -310,8 +315,10 @@ Faustien × Technologie : paire VIDE (Sobriété l'interdit — décision H3.2).
   et grain-monde écartés · Populaire — le verbe mord au site de la solde
   (warhost saute la mobilisation auto du joueur) ; `g_lowsat_streak` static à
   migrer si lu · Divin — grain région de la religion : contacts par pid
-  seulement · Courants — assiettes à parité ~4/mois visée, Populaire à
-  mesurer avant de figer.
+  seulement · Courants (re-key 2026-09-02) — RELÈVENT le taux de leur seule
+  classe dans l'assiette commune (jamais un malus, ne remplacent plus
+  l'assiette) ; Divin AJOUTE le terme des fidèles (grain GROUPE, `PopGroup.
+  faith`) à l'assiette par défaut, sans relever aucun taux.
 - **Collisions inter-doctrines cataloguées** (composés à clamper) :
   `BUILD_RESERVE_BULK` (Infra × Mercantilisme ×1.69), `AI_METAB_RES_W`
   (Peuple × Connaissances × synergies), `AI_VASSAL_CONTRIB_BASE` (Vassaux ×

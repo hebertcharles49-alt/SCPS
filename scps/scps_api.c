@@ -3443,14 +3443,35 @@ void scps_influence_info(ScpsSim *s, int cid, ScpsInfluence *out){
     InfluenceBase base = api_influence_base(s, cid);
     double gain = influence_base_gain(s->sim.econ, cid, base) * (double)mult;
     out->gain_month = (int)(gain + 0.5);
-    static char buf[128];
-    int nobles = (int)(influence_base_pop(s->sim.econ, cid, base) + 0.5);
+    static char buf[256];
+    /* les TROIS effectifs (sièges) — indépendants du courant actif, cf. scps_influence.h. */
+    double e_pop=0.0, b_pop=0.0, l_pop=0.0;
+    influence_seats(s->sim.econ, cid, &e_pop, &b_pop, &l_pop);
+    int nobles = (int)(e_pop + 0.5), bourgeois = (int)(b_pop + 0.5), journaliers = (int)(l_pop + 0.5);
+    int n;
     if (nseat <= 0){
-        snprintf(buf, sizeof buf, tr(STR_INFLUENCE_HOVER_VIDE), nobles);
+        n = snprintf(buf, sizeof buf, tr(STR_INFLUENCE_HOVER_VIDE), nobles, bourgeois, journaliers);
     } else {
         int rank = (int)(mult + 0.5f); if (rank<1) rank=1; if (rank>3) rank=3;
         const char *rw = tr((StrId)(STR_INFLUENCE_RANK_I + (rank-1)));
-        snprintf(buf, sizeof buf, tr(STR_INFLUENCE_HOVER), nobles, rw);
+        n = snprintf(buf, sizeof buf, tr(STR_INFLUENCE_HOVER), nobles, bourgeois, journaliers, rw);
+    }
+    if (n < 0) n = 0; else if (n > (int)sizeof buf - 1) n = (int)sizeof buf - 1;
+    /* le courant actif RELÈVE une seule classe (§4.3bis) : on le NOMME en hover
+     * (Divin AJOUTE un terme à part — les fidèles — plutôt que relever un taux). */
+    switch (base){
+      case INFL_BASE_ARISTO:
+        snprintf(buf+n, sizeof buf - (size_t)n, "%s", tr(STR_INFLUENCE_COURANT_ARISTO)); break;
+      case INFL_BASE_BOURGEOIS:
+        snprintf(buf+n, sizeof buf - (size_t)n, "%s", tr(STR_INFLUENCE_COURANT_BOURGEOIS)); break;
+      case INFL_BASE_LABORER:
+        snprintf(buf+n, sizeof buf - (size_t)n, "%s", tr(STR_INFLUENCE_COURANT_LABORER)); break;
+      case INFL_BASE_FAITH: {
+        int fideles = (int)(influence_base_pop(s->sim.econ, cid, INFL_BASE_FAITH) + 0.5);
+        snprintf(buf+n, sizeof buf - (size_t)n, tr(STR_INFLUENCE_COURANT_DIVIN), fideles);
+        break; }
+      case INFL_BASE_DEFAUT:
+      default: break;
     }
     out->hover = buf;
     /* AUCUN ENTRETIEN de doctrine (v107, décision joueur 2026-09-02) : la

@@ -4,7 +4,8 @@
  * scps_influence.h — L'INFLUENCE POLITIQUE (docs/DESIGN_MISSIONS_DOCTRINES.md §3).
  *
  * La monnaie du jeu politique, ENDOGÈNE (dérivée des pops SIMULÉES — la correction
- * EU5 du point de monarque EU4 tombé du ciel) : générée par les élites du pays × le
+ * EU5 du point de monarque EU4 tombé du ciel) : générée par les TROIS classes de
+ * sièges du pays (élites/bourgeois/journaliers, ~60/20/20 % des parts) × le
  * niveau du Conseil, dépensée sur les verbes diplomatiques du joueur (le coût
  * REMPLACE le cooldown de l'émissaire, scps_sim.c : CMD_OFFER_ALLIANCE/PACT/
  * MIGRATION, CMD_EMBARGO, CMD_PEACE_OFFER, CMD_FABRICATE_CB). Plus tard : pivots de Dessein,
@@ -25,27 +26,45 @@ typedef struct InfluenceState {          /* tag nommé : scps_missions.h le forw
 
 void influence_init(InfluenceState *is);   /* RAZ (0 par pays — genèse/nouvelle partie) */
 
-/* ── L'ASSIETTE (le COURANT politique la RE-SIED, §4.3bis) ────────────────
- * Le courant adopté (doctrines Aristocratie/Bourgeoisie/Populaire/Divin) déplace
- * la BASE de génération sur SA classe. Aucun courant ⇒ l'assiette par défaut
- * (élites × INFLUENCE_PER_NOBLE). Enum PROPRE au module : scps_influence ne
- * connaît pas les doctrines (l'appelant fait la traduction DoctrineId → base),
- * ce qui garde les deux modules indépendants. */
+/* ── L'ASSIETTE — les TROIS classes, TOUJOURS (§3.1bis, §4.3bis) ──────────
+ * L'assiette lit les SIÈGES d'emploi (prov[].pop.groups[].pop_by_class — les
+ * offices tenus, ~13/8/78 % élites/bourgeois/journaliers), JAMAIS les strates
+ * par richesse (prov[].strata[], mobilité, ~1-3 % d'élites) : ce sont DEUX
+ * réalités de classe distinctes du moteur (piège 2026-09-02, voir influence_
+ * elites ci-dessous). Par défaut : gain = élites×NOBLE + bourgeois×BOURGEOIS_
+ * BASE + journaliers×LABORER_BASE (~60/20/20 % des parts sur une pop assise).
+ * Le courant adopté (doctrines Aristocratie/Bourgeoisie/Populaire/Divin) ne
+ * REMPLACE plus l'assiette : il RELÈVE le taux de SA seule classe (les deux
+ * autres restent au taux _BASE) — jamais un malus. Divin ne relève aucun taux
+ * de classe : il AJOUTE le terme des FIDÈLES (Σ âmes des groupes qui
+ * professent la religion d'État, PopGroup.faith — grain GROUPE, jamais
+ * region[]) à l'assiette par défaut ; sans religion fondée, terme nul. Enum
+ * PROPRE au module : scps_influence ne connaît pas les doctrines (l'appelant
+ * fait la traduction DoctrineId → base), ce qui garde les deux modules
+ * indépendants. */
 typedef enum {
-    INFL_BASE_DEFAUT = 0,   /* élites × INFLUENCE_PER_NOBLE (0.002) */
-    INFL_BASE_ARISTO,       /* élites × INFLUENCE_PER_NOBLE_ARISTO (0.0025) */
-    INFL_BASE_BOURGEOIS,    /* bourgeois × INFLUENCE_PER_BOURGEOIS (0.0006) */
-    INFL_BASE_LABORER,      /* journaliers × INFLUENCE_PER_LABORER (0.00012) */
-    INFL_BASE_FAITH         /* Σ foi bâtie × (1+ferveur moyenne) × INFLUENCE_PER_FAITH (0.08) */
+    INFL_BASE_DEFAUT = 0,   /* les trois classes aux taux _BASE (aucun courant) */
+    INFL_BASE_ARISTO,       /* + élites au taux INFLUENCE_PER_NOBLE_ARISTO (0.0025) */
+    INFL_BASE_BOURGEOIS,    /* + bourgeois au taux INFLUENCE_PER_BOURGEOIS (0.0022) */
+    INFL_BASE_LABORER,      /* + journaliers au taux INFLUENCE_PER_LABORER (0.00022) */
+    INFL_BASE_FAITH         /* + fidèles × INFLUENCE_PER_BELIEVER (défaut, taux de classe inchangés) */
 } InfluenceBase;
 
 /* Le GAIN MENSUEL AVANT le multiplicateur du Conseil — l'assiette du courant.
  * Source UNIQUE : influence_tick l'appelle, et la façade (scps_influence_info)
  * aussi, pour que le nombre affiché soit CELUI qui sera crédité. */
 double influence_base_gain(const WorldEconomy *econ, int cid, InfluenceBase base);
-/* L'EFFECTIF de l'assiette (nobles, bourgeois, journaliers — ou la foi bâtie
- * arrondie), pour le hover en MOTS. */
+/* L'EFFECTIF SIMPLE associé à `base` (nobles pour DEFAUT/ARISTO, bourgeois/
+ * journaliers pour leur courant, fidèles pour Divin) — pour les lecteurs qui ne
+ * veulent qu'UN nombre. Le hover façade préfère influence_seats (les TROIS
+ * effectifs à la fois, indépendants du courant actif). */
 double influence_base_pop(const WorldEconomy *econ, int cid, InfluenceBase base);
+/* Les TROIS effectifs de l'assiette (sièges — pop_by_class), pour le hover en
+ * MOTS : « N nobles · M bourgeois · P journaliers ». Indépendants du courant
+ * actif (qui ne fait qu'ÉLEVER le taux de SA classe, jamais remplacer les deux
+ * autres) — chaque pointeur peut être NULL. */
+void influence_seats(const WorldEconomy *econ, int cid,
+                      double *elites, double *bourgeois, double *laborers);
 
 /* ── L'ÉCHELLE D'ASSIETTE (décision joueur 2026-09-02) ────────────────────
  * Combien de fois l'assiette de RÉFÉRENCE ce pays pèse-t-il ?
@@ -63,7 +82,8 @@ float influence_scale(const WorldEconomy *econ, int cid, InfluenceBase base);
 /* Génération MENSUELLE — appelée UNE fois pour `cid` (l'appelant gate human_player>=0,
  * motif décrets) :
  *   gain/mois = influence_base_gain(econ, cid, base) × mult_conseil
- * L'assiette par défaut = élites (somme PROVINCE, jamais region[].pop). mult_conseil =
+ * L'assiette par défaut = les TROIS classes (sièges, somme PROVINCE, jamais
+ * region[].pop). mult_conseil =
  * influence_council_mult (rang moyen des sièges POURVUS, plancher INFLUENCE_COUNCIL_FLOOR
  * si aucun siège pourvu — sinon un Conseil vide rend le joueur muet en diplomatie, choix
  * signalé). Clampe à INFLUENCE_CAP si >0 (0 = sans plafond, décision joueur 2026-09-01). */
@@ -88,7 +108,10 @@ float influence_council_mult(const Statecraft *sc, uint32_t seed, int cid, int *
  * econ_colony_stats). N'entre dans AUCUN calcul moteur. */
 void influence_stats_get(double *generated);
 
-/* Effectif national de la classe ÉLITE — somme des PROVINCES au pays (prov[], JAMAIS
+/* Effectif national de la classe ÉLITE — les SIÈGES d'emploi (prov[].pop.groups[].
+ * pop_by_class[CLASS_ELITE], ~13 % de la pop), JAMAIS les strates par richesse
+ * (prov[].strata[CLASS_ELITE].pop, mobilité, ~1-3 % — une AUTRE réalité de classe du
+ * moteur, cf. scps_influence.c). Somme des PROVINCES au pays (prov[], JAMAIS
  * region[].pop, miroir stale — doctrine « la province est la seule réalité économique »,
  * CLAUDE.md). */
 double influence_elites(const WorldEconomy *econ, int cid);

@@ -2,7 +2,8 @@
  * scps_influence.c — implémentation de l'Influence politique (voir scps_influence.h).
  */
 #include "scps_influence.h"
-#include "scps_tune.h"   /* tune_f : INFLUENCE_PER_NOBLE/COUNCIL_FLOOR/CAP (registre J) */
+#include "scps_tune.h"      /* tune_f : INFLUENCE_PER_NOBLE/COUNCIL_FLOOR/CAP (registre J) */
+#include "scps_religion.h"  /* religion_of_country : les FIDÈLES de Divin (grain GROUPE, jamais region[]) */
 #include <string.h>
 
 /* TÉLÉMÉTRIE (print-only, chronicle) — Σ influence GÉNÉRÉE depuis la genèse de
@@ -20,11 +21,24 @@ void influence_stats_get(double *generated){
     if (generated) *generated = g_infl_generated;
 }
 
+/* LA DOUBLE RÉALITÉ DE CLASSE (piège 2026-09-02) : `prov[].strata[k].pop` est la
+ * strate MOBILE par richesse (~1-3 % d'élites) — la classe qui SE PROMEUT/RÉTROGRADE.
+ * `prov[].pop.groups[i].pop_by_class[k]` est le SIÈGE d'emploi (édifices, capitale),
+ * recalculé au tick par demography_emerge_classes — ~13 % d'élites, 8 % bourgeois,
+ * 78 % journaliers (chronicle « SIÈGES »). La NOBLESSE du design politique, c'est
+ * LA SECONDE (des offices tenus, pas une aptitude à s'enrichir) : l'assiette lit les
+ * SIÈGES, jamais les strates. Σ sur les PROVINCES du pays (prov[], jamais region[].pop
+ * stale — doctrine « la province est la seule réalité économique »), Σ sur les
+ * GROUPES de chaque province (exactement la somme du chronicle, chronicle.c:1762-1768). */
 double influence_elites(const WorldEconomy *econ, int cid){
     if (!econ || cid<0) return 0.0;
     double e = 0.0;
-    for (int p=0; p<econ->n_prov && p<SCPS_MAX_PROV; p++)
-        if (econ->prov[p].owner == cid) e += econ->prov[p].strata[CLASS_ELITE].pop;
+    for (int p=0; p<econ->n_prov && p<SCPS_MAX_PROV; p++){
+        if (econ->prov[p].owner != cid) continue;
+        const ProvincePop *pp = &econ->prov[p].pop;
+        for (int gi=0; gi<pp->n_groups && gi<SCPS_MAX_GROUPS; gi++)
+            e += (double)pp->groups[gi].pop_by_class[CLASS_ELITE];
+    }
     return e;
 }
 
@@ -46,56 +60,92 @@ float influence_council_mult(const Statecraft *sc, uint32_t seed, int cid, int *
     return sum / (float)n;
 }
 
-/* ── L'ASSIETTE DU COURANT (§4.3bis) ─────────────────────────────────────
- * Le courant politique adopté DÉPLACE la base de génération sur SA classe.
- * Tout se somme sur les PROVINCES (prov[], jamais region[].pop — doctrine
- * « la province est la seule réalité économique »). L'assiette Divine est la
- * FOI BÂTIE (build.faith) relevée par la ferveur moyenne : volatile par nature. */
+/* ── L'ASSIETTE — les TROIS classes, TOUJOURS (§3.1bis, §4.3bis) ─────────
+ * L'assiette par défaut SOMME les trois classes (sièges — pop_by_class, jamais
+ * les strates par richesse, cf. influence_elites ci-dessus) : élites × NOBLE +
+ * bourgeois × BOURGEOIS_BASE + journaliers × LABORER_BASE. Sur une pop assise
+ * ~13/8/78 %, ça pose ~60/20/20 % de parts de gain (les taux SONT la pondération
+ * politique : un noble « pèse » ~18× un journalier).
+ * Le COURANT adopté ne REMPLACE plus l'assiette (design pré-2026-09-02) : il
+ * RELÈVE le taux de SA seule classe (les deux autres restent au taux _BASE) —
+ * jamais un malus, toujours ≥ l'assiette par défaut, puisqu'un seul terme monte.
+ * Divin ne relève aucun taux de classe : il AJOUTE le terme des FIDÈLES (la
+ * religion vit au grain GROUPE — PopGroup.faith, jamais region[]/province
+ * représentative) à l'assiette par défaut. Sans religion fondée (religion_of_
+ * country<0) : terme nul, jamais un malus. */
 static double infl_class_pop(const WorldEconomy *econ, int cid, int klass){
     if (!econ || cid<0) return 0.0;
     double s = 0.0;
-    for (int p=0; p<econ->n_prov && p<SCPS_MAX_PROV; p++)
-        if (econ->prov[p].owner == cid) s += econ->prov[p].strata[klass].pop;
-    return s;
-}
-/* Σ foi bâtie × (1 + ferveur MOYENNE des provinces du pays). */
-static double infl_faith_base(const WorldEconomy *econ, int cid){
-    if (!econ || cid<0) return 0.0;
-    double faith = 0.0, ferv = 0.0; int n = 0;
     for (int p=0; p<econ->n_prov && p<SCPS_MAX_PROV; p++){
         if (econ->prov[p].owner != cid) continue;
-        faith += econ->prov[p].build.faith;
-        ferv  += econ->prov[p].ferveur;
-        n++;
+        const ProvincePop *pp = &econ->prov[p].pop;
+        for (int gi=0; gi<pp->n_groups && gi<SCPS_MAX_GROUPS; gi++)
+            s += (double)pp->groups[gi].pop_by_class[klass];
     }
-    double favg = (n>0) ? (ferv/(double)n) : 0.0;
-    if (favg < 0.0) favg = 0.0; else if (favg > 1.0) favg = 1.0;
-    return faith * (1.0 + favg);
+    return s;
+}
+/* Σ des ÂMES (PopGroup.count) des groupes qui professent la religion D'ÉTAT du
+ * pays (religion_of_country) — grain GROUPE, jamais la province représentative
+ * ni region[].culture. Pays athée (rid<0) ⇒ 0. */
+static double infl_believers(const WorldEconomy *econ, int cid){
+    if (!econ || cid<0) return 0.0;
+    int rid = religion_of_country(cid);
+    if (rid < 0) return 0.0;
+    double s = 0.0;
+    for (int p=0; p<econ->n_prov && p<SCPS_MAX_PROV; p++){
+        if (econ->prov[p].owner != cid) continue;
+        const ProvincePop *pp = &econ->prov[p].pop;
+        for (int gi=0; gi<pp->n_groups && gi<SCPS_MAX_GROUPS; gi++)
+            if (pp->groups[gi].faith == rid) s += (double)pp->groups[gi].count;
+    }
+    return s;
 }
 
+/* Les TROIS effectifs de l'assiette (sièges), pour le hover en MOTS —
+ * INDÉPENDANTS du courant actif (qui ne fait qu'ÉLEVER le taux de SA classe,
+ * jamais remplacer les deux autres). */
+void influence_seats(const WorldEconomy *econ, int cid,
+                      double *elites, double *bourgeois, double *laborers){
+    if (elites)    *elites    = infl_class_pop(econ, cid, CLASS_ELITE);
+    if (bourgeois) *bourgeois = infl_class_pop(econ, cid, CLASS_BOURGEOIS);
+    if (laborers)  *laborers  = infl_class_pop(econ, cid, CLASS_LABORER);
+}
+
+/* L'effectif SIMPLE associé à un courant (pour les bancs / lecteurs qui ne
+ * veulent qu'UN nombre) : nobles pour DEFAUT/ARISTO, bourgeois/journaliers pour
+ * leur courant, fidèles pour Divin. */
 double influence_base_pop(const WorldEconomy *econ, int cid, InfluenceBase base){
     switch (base){
       case INFL_BASE_BOURGEOIS: return infl_class_pop(econ, cid, CLASS_BOURGEOIS);
       case INFL_BASE_LABORER:   return infl_class_pop(econ, cid, CLASS_LABORER);
-      case INFL_BASE_FAITH:     return infl_faith_base(econ, cid);
+      case INFL_BASE_FAITH:     return infl_believers(econ, cid);
       case INFL_BASE_ARISTO:
       case INFL_BASE_DEFAUT:
-      default:                  return influence_elites(econ, cid);
+      default:                  return infl_class_pop(econ, cid, CLASS_ELITE);
     }
 }
 
 double influence_base_gain(const WorldEconomy *econ, int cid, InfluenceBase base){
-    double pop = influence_base_pop(econ, cid, base);
-    float rate;
-    switch (base){
-      case INFL_BASE_ARISTO:    rate = tune_f("INFLUENCE_PER_NOBLE_ARISTO", 0.0025f); break;
-      case INFL_BASE_BOURGEOIS: rate = tune_f("INFLUENCE_PER_BOURGEOIS",    0.0006f); break;
-      case INFL_BASE_LABORER:   rate = tune_f("INFLUENCE_PER_LABORER",      0.00012f); break;
-      case INFL_BASE_FAITH:     rate = tune_f("INFLUENCE_PER_FAITH",        0.08f); break;
-      case INFL_BASE_DEFAUT:
-      default:                  rate = tune_f("INFLUENCE_PER_NOBLE",        0.002f); break;
-    }
-    return (double)rate * pop;
+    double elites    = infl_class_pop(econ, cid, CLASS_ELITE);
+    double bourgeois = infl_class_pop(econ, cid, CLASS_BOURGEOIS);
+    double laborers  = infl_class_pop(econ, cid, CLASS_LABORER);
+
+    /* seul le taux de LA classe du courant actif est relevé ; les deux autres
+     * restent au taux _BASE — la somme ne peut donc que MONTER (jamais un malus). */
+    float rate_e = (base==INFL_BASE_ARISTO)
+                 ? tune_f("INFLUENCE_PER_NOBLE_ARISTO", 0.0025f)
+                 : tune_f("INFLUENCE_PER_NOBLE",         0.002f);
+    float rate_b = (base==INFL_BASE_BOURGEOIS)
+                 ? tune_f("INFLUENCE_PER_BOURGEOIS",      0.0022f)
+                 : tune_f("INFLUENCE_PER_BOURGEOIS_BASE",  0.0011f);
+    float rate_l = (base==INFL_BASE_LABORER)
+                 ? tune_f("INFLUENCE_PER_LABORER",         0.00022f)
+                 : tune_f("INFLUENCE_PER_LABORER_BASE",     0.00011f);
+
+    double gain = elites*(double)rate_e + bourgeois*(double)rate_b + laborers*(double)rate_l;
+    if (base == INFL_BASE_FAITH)
+        gain += infl_believers(econ, cid) * (double)tune_f("INFLUENCE_PER_BELIEVER", 0.00016667f);
+    return gain;
 }
 
 float influence_scale(const WorldEconomy *econ, int cid, InfluenceBase base){

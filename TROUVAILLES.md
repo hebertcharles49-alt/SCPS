@@ -10913,3 +10913,139 @@ INTERDITS pour moi, contenu autorisé) — relu avant chaque édition, diff fina
   (ex. exclure les états <1 an des corrélations-juges), il faudra une vraie
   donnée d'âge de pays côté moteur (absente aujourd'hui) — hors périmètre
   chronicle.c seul.
+
+## Mission 2026-09-03 — L'ASSIETTE DE L'INFLUENCE LIT LES SIÈGES (pop_by_class), PAS LES STRATES
+
+### Découvertes
+
+- **La double réalité de classe, confirmée dans le code lui-même** :
+  `prov[].strata[k].pop` (strate MOBILE par richesse, ~1-3 % d'élites,
+  `mobility_move`) et `prov[].pop.groups[i].pop_by_class[k]` (SIÈGES d'emploi
+  — capitale + édifices, recalculés au tick par `demography_emerge_classes`,
+  ~13 % élites / 8 % bourgeois / 78 % journaliers) sont DEUX comptages
+  distincts, documentés côte à côte dans `chronicle.c` (ligne « SIÈGES
+  (édifices, pop_by_class) : … — l'AUTRE réalité de classe (factions/
+  armée) »). `influence_elites` lisait la
+  PREMIÈRE (~1-3 %) alors que le design (§3, §4.3bis) et le vocabulaire
+  « noblesse/office » pointent vers la SECONDE — sous-comptage ~10× à la
+  source du constat joueur.
+- **Le nouveau modèle GARDE l'ancienne InfluenceBase (5 valeurs) mais change
+  sa sémantique** : au lieu de « le courant REMPLACE l'assiette par sa
+  classe », `influence_base_gain` SOMME TOUJOURS les trois classes (élites ×
+  `INFLUENCE_PER_NOBLE` 0.002 + bourgeois × `INFLUENCE_PER_BOURGEOIS_BASE`
+  0.0011 + journaliers × `INFLUENCE_PER_LABORER_BASE` 0.00011) et le courant
+  actif ne fait qu'ÉLEVER le taux de SA classe (`INFLUENCE_PER_NOBLE_ARISTO`
+  0.0025, `INFLUENCE_PER_BOURGEOIS` 0.0022 = ×2 de son `_BASE`,
+  `INFLUENCE_PER_LABORER` 0.00022 = ×2 de son `_BASE`). Sur 13/8/78 %, ces
+  taux posent MATHÉMATIQUEMENT ~60/20/20 % de parts — vérifié au banc à
+  0,1 point de pourcentage près (`influence_demo.c`, section 1bis).
+- **Divin a changé DE NATURE, pas seulement d'échelle** : l'ancienne assiette
+  (`foi bâtie × (1+ferveur)`, lisait `prov[].build.faith`/`prov[].ferveur`
+  sans jamais toucher aux groupes) devient « assiette par défaut (3 classes,
+  taux inchangés) + Σ âmes (`PopGroup.count`) des groupes dont
+  `.faith == religion_of_country(cid)` × `INFLUENCE_PER_BELIEVER`
+  (0.00016667 ≈ 1/6000) ». `INFLUENCE_PER_FAITH` (0.08) est PURGÉ du
+  registre J (plus aucun site ne le lit) — grep exhaustif fait avant de
+  couper, comme la jurisprudence DOCT_UPKEEP l'exige.
+- **`influence_seats()` est une fonction NEUVE** (pas dans le header avant) :
+  les trois effectifs à la fois (`elites, bourgeois, laborers`, pointeurs
+  NULL-able), seule façon propre de nourrir le hover à 3 nombres sans
+  tripler les boucles prov[]/groups[] à chaque appel façade.
+- **Preuve d'intégrité EMPIRIQUE, pas seulement lue dans le code** : un
+  worktree jetable checké out à l'ancien HEAD a permis de compiler
+  `chronicle` AVANT ma mission et de vérifier `SCPS_TUNE=AI_DOCT=0`
+  (5 graines × 12 ans) : les hashes obtenus (`7 9fa6ff52 · 108 f96da1f0 ·
+  209 545c5872 · 310 6f979e33 · 411 fd265618`) sont EXACTEMENT ceux de mon
+  code NEUF avec le même kill-switch, ET exactement ceux déjà documentés
+  dans l'entrée TROUVAILLES de la mission P3-IA précédente (« REFACTOR : LES
+  DOCTRINES N'ONT PLUS D'ENTRETIEN », ci-dessus) — triple confirmation
+  indépendante que le re-key de l'assiette ne change RIEN au monde tant que
+  personne n'adopte de doctrine (le seul fil qui relie `InfluenceState` —
+  jamais hashé — à l'état simulé passe par `doctrine_key_mult`, gaté
+  `AI_DOCT`).
+- **Le golden 12 ans bouge sur les 5 graines** (`fa02fe96→f1693fb5` etc.) —
+  cohérent avec le fait que la génération d'influence est désormais PLUS
+  généreuse pour presque tout empire (élites+bourgeois+journaliers au lieu
+  d'élites seules), donc l'IA adopte plus tôt/plus souvent, donc les
+  trajectoires économiques divergent dès l'an 12. Le golden-deep (83+250 ans,
+  graine 7) diverge aussi, re-baseliné à `dce7cd38`/`79e26e62`.
+- **`lang-check` reste à 127/127** : tous les libellés neufs (hover
+  3-classes, 4 suffixes de courant) sont nés en `STR_*` (FR `strings_ids.h` +
+  EN `strings_en.h`), zéro littéral brut ajouté dans `scps_api.c`.
+
+### Pièges
+
+- **Un `git stash` lancé pendant la session (par un autre agent/processus
+  partageant la MÊME working tree — pas un worktree isolé) a englouti la
+  totalité de mes changements en cours de route**, silencieusement : `git
+  diff` est revenu VIDE sur tous les fichiers de mon périmètre après
+  plusieurs `Edit` réussis, et `git log -1` montrait un commit avancé que je
+  n'avais pas fait. Rien dans mes outils ne signale l'événement — seul un
+  `Edit` ultérieur qui échoue avec « file has been modified since read » (sur
+  un fichier que je n'avais pourtant pas retouché) a donné l'alerte. Tout
+  redo à l'identique a été nécessaire (le texte des edits était déjà rédigé,
+  donc rejouable presque mot pour mot). Un `stash@{0}` orphelin traîne
+  peut-être encore dans le repo à ce sujet — vérifier avant de le dropper
+  qu'il ne contient plus rien que cette mission n'a pas déjà repris (tout
+  l'a été, le travail final ne dépend d'AUCUN stash).
+- **`git worktree add <chemin>` peut coexister avec un worktree PRÉ-EXISTANT
+  et ÉTRANGER sans avertissement** : le mien (`SCPS-old-baseline`, créé et
+  utilisé avec succès pour le build/hash de l'ancien code) a coexisté avec un
+  worktree que je n'avais pas remarqué avant de lister `git worktree list`
+  (`SCPS-chk`, appartenant à l'orchestrateur — « contrôle golden de l'autre
+  agent »). En nettoyant MON propre worktree j'ai ensuite, par erreur de
+  diagnostic (supposé que `SCPS-chk` était un reliquat de ma propre commande
+  plutôt qu'une ressource tierce), supprimé CELUI DE L'ORCHESTRATEUR (`git
+  worktree remove SCPS-chk --force`) — signalé immédiatement, non recréé
+  depuis (consigne explicite reçue : ne pas y toucher). Leçon : `git
+  worktree list` AVANT toute création/suppression, ne jamais supprimer un
+  worktree dont on n'est pas l'auteur même si son nom semble familier.
+- **`make golden-deep`/`golden-deep-update` dépassent 600 s** (confirmé une
+  deuxième fois, même jurisprudence que la mission REFACTOR ci-dessus) :
+  l'appel bascule en tâche de fond sans échouer ; attendre la notification et
+  relire le fichier de sortie plutôt que relancer.
+- **Les fixtures des bancs devaient migrer de `strata[]` à `pop_by_class[]`
+  directement** (pas de tick de démographie dans `influence_demo.c`/
+  `doctrines_demo.c` pour recalculer les sièges) — le motif existait DÉJÀ
+  dans `ai_demo.c` (`push_region_fiche`, écrit `g->pop_by_class[...]` à la
+  main) mais n'était pas suivi par les deux bancs de cette mission avant
+  aujourd'hui ; `set_seats()` (nouvelle fonction statique, dupliquée dans les
+  deux fichiers — portée minimale, pas de header partagé pour deux bancs) en
+  est le nouveau miroir.
+- **`doctrines_demo.c` section 6 aurait cassé TOUTES les assertions de coût
+  en aval** (ech==1.0 pile, adoptions à 50/75/100…) si le fixture initial
+  avait posé bourgeois/journaliers non-nuls dès le départ : l'assiette DÉFAUT
+  somme désormais les trois classes, donc n'importe quel bourgeois/journalier
+  présent gonfle `ech` au-delà de 1.0. Solution retenue : le fixture de base
+  reste (1000 élites, 0, 0) partout, seule la section 6 monte TEMPORAIREMENT
+  à (1000, 500, 4000) pour mesurer la bascule de courant, puis redescend —
+  et `g_def` (utilisé section 7) est RE-MESURÉ après la redescente (sinon il
+  reste figé à l'ancienne valeur 2.99 au lieu de 2.0, cassant la comparaison
+  2×).
+
+### Restes
+
+- **`scps_viewer --savetest` n'a PAS été exécuté** dans cette mission (coupé
+  par une reprise de session) — la section INFL du save n'a pas de nouveau
+  champ (aucun changement de `sizeof(InfluenceState)`, aucun bump
+  `SAVE_VERSION`), donc le risque est faible, mais le gate reste À FAIRE
+  avant un merge définitif.
+- **`scps_ai.c:aid_best_current`** (choix du courant IA le « mieux assis »,
+  compare les 4 assiettes par `influence_base_gain`) est HORS PÉRIMÈTRE mais
+  son comportement CHANGE de nature avec ce re-key : les 4 bases partagent
+  maintenant un GROS terme commun (les 3 classes au taux `_BASE`) et ne
+  diffèrent plus que par un petit surplus sur une seule classe — l'écart
+  relatif entre courants s'est donc BEAUCOUP resserré (avant : 4 assiettes
+  disjointes ; après : 4 variations d'un même socle). Aucune assertion
+  `ai_demo.c` n'a cassé (elle ne teste que des propriétés qualitatives : le
+  score suit l'état, le kill-switch, la réserve, l'exclusivité) mais le
+  SIGNAL du choix de courant IA est mécaniquement plus faible qu'avant — un
+  futur sweep pourrait vouloir le re-mesurer.
+- **Pas de nouveau sweep 3×3/10×200 lancé pour CETTE mission** (le périmètre
+  l'exclut explicitement — « pas de chronicle, pas d'IA ») : le golden-deep
+  re-baseliné (graine 7, 83+250 ans) est la seule preuve de trajectoire
+  longue ; un sweep dédié dirait si le rythme d'adoption IA s'est
+  significativement accéléré avec des assiettes ~2-3× plus généreuses.
+- **Le worktree `SCPS-chk` de l'orchestrateur reste à recréer** par son
+  propriétaire (voir Pièges) — je n'ai PAS tenté de le reconstruire moi-même,
+  n'ayant pas connaissance de son état/commit exact voulu.

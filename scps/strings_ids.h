@@ -520,11 +520,15 @@
     X(STR_DIPLO_REASON_INSUFFICIENT_GOLD,     "Couronnes insuffisantes pour financer l'intrigue") \
     X(STR_DIPLO_REASON_INSUFFICIENT_INFLUENCE,"Influence politique insuffisante pour cet acte") \
     X(STR_DIPLO_REASON_FABRICATION_UNAVAILABLE,"Intrigue indisponible pour l'instant") \
-    X(STR_INFLUENCE_HOVER,      "%d nobles × le Conseil (rang moyen %s)") \
-    X(STR_INFLUENCE_HOVER_VIDE, "%d nobles × le Conseil (aucun ministre en siège — plancher)") \
+    X(STR_INFLUENCE_HOVER,      "%d nobles · %d bourgeois · %d journaliers × le Conseil (rang moyen %s)") \
+    X(STR_INFLUENCE_HOVER_VIDE, "%d nobles · %d bourgeois · %d journaliers × le Conseil (aucun ministre en siège — plancher)") \
     X(STR_INFLUENCE_RANK_I,     "I") \
     X(STR_INFLUENCE_RANK_II,    "II") \
     X(STR_INFLUENCE_RANK_III,   "III") \
+    X(STR_INFLUENCE_COURANT_ARISTO,    " — Aristocratie relève les nobles") \
+    X(STR_INFLUENCE_COURANT_BOURGEOIS, " — Bourgeoisie relève les bourgeois") \
+    X(STR_INFLUENCE_COURANT_LABORER,   " — Populaire relève les journaliers") \
+    X(STR_INFLUENCE_COURANT_DIVIN,     " · %d fidèles") \
     X(STR_HERITAGE_FLAVOR_0, "Leurs généalogies commencent avant les premiers calendriers, dans des siècles dont les ruines seules se souviennent.") \
     X(STR_HERITAGE_FLAVOR_1, "Ils disent que tout serment ressemble à un métal : il révèle sa valeur seulement lorsqu'on le chauffe assez pour le briser.") \
     X(STR_HERITAGE_FLAVOR_2, "Leur première horloge mesurait les saisons. La seconde mesura le travail. La troisième apprit aux deux à rapporter de l'or.") \

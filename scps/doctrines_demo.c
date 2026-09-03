@@ -35,6 +35,21 @@ static void ok(const char *what, int cond){
 }
 static bool near_f(double a, double b, double eps){ double d=a-b; if(d<0)d=-d; return d<=eps; }
 
+/* Pose les SIÈGES (pop_by_class) d'UN groupe unique dans la province — la
+ * réalité de classe que lit l'influence (JAMAIS les strata[], une AUTRE
+ * réalité de classe du moteur, cf. scps_influence.c). n_groups=1 ⇒ les autres
+ * groupes semés par worldgen_seed_peoples n'entrent plus dans aucune somme. */
+static void set_seats(ProvinceEconomy *pe, long elite, long bourgeois, long laborer){
+    ProvincePop *pp = &pe->pop;
+    pp->n_groups = 1;
+    PopGroup *g = &pp->groups[0];
+    g->pop_by_class[CLASS_ELITE]     = elite;
+    g->pop_by_class[CLASS_BOURGEOIS] = bourgeois;
+    g->pop_by_class[CLASS_LABORER]   = laborer;
+    g->pop_by_class[CLASS_SLAVE]     = 0;
+    g->count = elite + bourgeois + laborer;
+}
+
 /* Le miroir du traducteur DoctrineId → assiette (scps_sim.c : sim_influence_base). */
 static InfluenceBase base_of(const DoctrineState *ds, int cid){
     switch (doctrines_current(ds, cid)){
@@ -73,25 +88,29 @@ int main(int argc, char **argv){
     }
     if (cid<0){ fprintf(stderr,"monde trop vide -- autre graine\n"); return 1; }
 
-    /* Assiette EXACTE : 1000 élites, 500 bourgeois, 4000 journaliers dans UNE
-     * province du pays, zéro ailleurs — les chiffres du banc sont alors lisibles
-     * à la main (pas de bruit de worldgen). */
+    /* Sièges EXACTS (pop_by_class) : 1000 élites dans UNE province du pays,
+     * zéro ailleurs — les sections 1-5/7-9 (slots, coûts, exclusivités, clés,
+     * linéarisation, abandon, persistance, catalogue) veulent une assiette
+     * DÉFAUT lisible à la main (ech==1.0 pile). La section 6 (bascule du
+     * courant) monte TEMPORAIREMENT bourgeois/journaliers pour prouver que le
+     * courant relève SEULEMENT sa classe, puis les redescend à 0 (bruit de
+     * worldgen exclu partout ailleurs). */
     int pid=-1;
     for (int i=0;i<econ->n_prov;i++) if (econ->prov[i].owner==cid){
-        econ->prov[i].strata[CLASS_ELITE].pop=0.f;
-        econ->prov[i].strata[CLASS_BOURGEOIS].pop=0.f;
-        econ->prov[i].strata[CLASS_LABORER].pop=0.f;
-        econ->prov[i].build.faith=0.f; econ->prov[i].ferveur=0.f;
+        set_seats(&econ->prov[i], 0, 0, 0);
         if (pid<0) pid=i;
     }
     ok("le pays choisi possede au moins une province", pid>=0);
     if (pid<0) return 1;
-    econ->prov[pid].strata[CLASS_ELITE].pop     = 1000.f;
-    econ->prov[pid].strata[CLASS_BOURGEOIS].pop =  500.f;
-    econ->prov[pid].strata[CLASS_LABORER].pop   = 4000.f;
+    set_seats(&econ->prov[pid], 1000, 0, 0);
 
     tune_set("INFLUENCE_PER_NOBLE", 0.002f);
-    tune_set("INFLUENCE_PER_BOURGEOIS", 0.0006f);
+    tune_set("INFLUENCE_PER_NOBLE_ARISTO", 0.0025f);
+    tune_set("INFLUENCE_PER_BOURGEOIS_BASE", 0.0011f);
+    tune_set("INFLUENCE_PER_BOURGEOIS", 0.0022f);
+    tune_set("INFLUENCE_PER_LABORER_BASE", 0.00011f);
+    tune_set("INFLUENCE_PER_LABORER", 0.00022f);
+    tune_set("INFLUENCE_PER_BELIEVER", 0.00016667f);
     tune_set("INFLUENCE_COUNCIL_FLOOR", 1.0f);
     tune_set("INFLUENCE_CAP", 0.0f);
     tune_set("INFLUENCE_BASE_REF", 2.0f);
@@ -169,19 +188,28 @@ int main(int argc, char **argv){
     printf("   C3_K_HOLLOW (Populaire << Souverainete >>, x0.25 brut) = %.4f\n", m_c3);
     ok("le produit brut x0.25 est CLAMPE au plancher 0.60", near_f(m_c3, 0.60, 0.001));
 
-    /* ═══ 6. L'ASSIETTE DU COURANT — bascule mesurable ═══ */
-    printf("\n-- 6. Le courant RE-SIED l'assiette de l'influence --\n");
+    /* ═══ 6. L'ASSIETTE DU COURANT — RELÈVE, ne remplace plus (bascule mesurable) ═══
+     * Monte TEMPORAIREMENT bourgeois/journaliers (1000e/500b/4000j) : les sections
+     * 1-5/7-9 veulent l'assiette DÉFAUT à ech==1.0 pile (elites seules), donc on
+     * redescend à (1000,0,0) juste après avoir mesuré. */
+    printf("\n-- 6. Le courant RELEVE (jamais ne remplace) l'assiette de l'influence --\n");
+    set_seats(&econ->prov[pid], 1000, 500, 4000);
     double g_def = influence_base_gain(econ, cid, INFL_BASE_DEFAUT);
     double g_pop = influence_base_gain(econ, cid, base_of(ds, cid));
-    printf("   assiette par defaut (1000 elites x 0.002) = %.4f/mois\n", g_def);
-    printf("   assiette POPULAIRE  (4000 journaliers x 0.00012) = %.4f/mois\n", g_pop);
-    ok("sans courant, l'assiette est celle des elites", near_f(g_def, 2.0, 0.001));
-    ok("le courant Populaire re-sied l'assiette sur les journaliers",
-       near_f(g_pop, 4000.0*0.00012, 0.001) && !near_f(g_pop, g_def, 0.001));
-    ok("influence_base_pop suit l'assiette (4000 journaliers)",
+    double expect_def = 1000.0*0.002 + 500.0*0.0011 + 4000.0*0.00011;
+    double expect_pop = 1000.0*0.002 + 500.0*0.0011 + 4000.0*0.00022;
+    printf("   assiette par defaut (1000e+500b+4000j, taux _BASE) = %.4f/mois (attendu %.4f)\n", g_def, expect_def);
+    printf("   assiette POPULAIRE  (journaliers releves a 0.00022) = %.4f/mois (attendu %.4f)\n", g_pop, expect_pop);
+    ok("l'assiette par defaut SOMME les trois classes (jamais un seul terme)",
+       near_f(g_def, expect_def, 0.001));
+    ok("le courant Populaire RELEVE SEULEMENT le taux des journaliers (elites/bourgeois inchanges, jamais un malus)",
+       near_f(g_pop, expect_pop, 0.001) && g_pop > g_def);
+    ok("influence_base_pop suit la classe du courant (4000 journaliers)",
        near_f(influence_base_pop(econ,cid,INFL_BASE_LABORER), 4000.0, 0.5));
     ok("l'assiette BOURGEOISE lit bien les bourgeois (500)",
        near_f(influence_base_pop(econ,cid,INFL_BASE_BOURGEOIS), 500.0, 0.5));
+    set_seats(&econ->prov[pid], 1000, 0, 0);   /* redescend : les sections suivantes veulent ech==1.0 */
+    g_def = influence_base_gain(econ, cid, INFL_BASE_DEFAUT);   /* re-mesure : la section 7 compare a l'assiette ACTUELLE (1000 elites seules) */
 
     /* ═══ 7. LINÉARISATION — 2× de nobles ⇒ 2× de gain ET 2× de prix ═══ */
     printf("\n-- 7. Linearisation des prix sur l'assiette (et l'anti-exploit Conseil) --\n");
@@ -194,8 +222,8 @@ int main(int argc, char **argv){
     if (cid2>=0){
         int pid2=-1;
         for (int i=0;i<econ->n_prov;i++) if (econ->prov[i].owner==cid2){
-            econ->prov[i].strata[CLASS_ELITE].pop=0.f; if (pid2<0) pid2=i; }
-        if (pid2>=0) econ->prov[pid2].strata[CLASS_ELITE].pop = 2000.f;   /* DEUX FOIS le pays de reference */
+            set_seats(&econ->prov[i], 0,0,0); if (pid2<0) pid2=i; }
+        if (pid2>=0) set_seats(&econ->prov[pid2], 2000, 0, 0);   /* DEUX FOIS le pays de reference */
         float ech2 = influence_scale(econ, cid2, INFL_BASE_DEFAUT);
         double gain2 = influence_base_gain(econ, cid2, INFL_BASE_DEFAUT);
         printf("   pays A : 1000 nobles -> assiette %.2f/mois, echelle %.2f (adoption courante %d, 3 actives)\n",

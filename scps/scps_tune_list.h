@@ -1877,17 +1877,25 @@
      * FX_NAVY déjà convertis, item 5). 0 = kill-switch EXACT (le solde disparaît, golden
      * pré-M16 byte-identique). */ \
     X(REDEP_REMAINDER_CONSERVED,        1.0f) \
-    /* INFLUENCE POLITIQUE (docs/DESIGN_MISSIONS_DOCTRINES.md §3, 2026-09) — la monnaie
-     * ENDOGÈNE du jeu politique (dérivée des pops simulées, pas un mana tombé du ciel) :
-     * gain/mois = INFLUENCE_PER_NOBLE × élites du pays (strates CLASS_ELITE, prov[]) ×
-     * mult_conseil (moyenne des rangs I-III des sièges POURVUS du Conseil ; aucun siège
-     * pourvu ⇒ INFLUENCE_COUNCIL_FLOOR — sinon un Conseil vide rend le joueur muet en
-     * diplomatie). INFLUENCE_CAP=0 : sans plafond (décision joueur — les sinks futurs
-     * feront le travail). Dépense : les verbes d'envoi (alliance/pacte/embargo/migration/
-     * paix offerte) coûtent INFLUENCE_COST_ENVOY — ce coût REMPLACE le cooldown de
-     * l'émissaire (DIPLO_ENVOY_FLOOR_DAYS reste un plancher COURT anti-spam, ex-60 j) ;
-     * fabriquer une revendication coûte EN SUS INFLUENCE_COST_FAB (le coût d'or existant
-     * est inchangé). P1 : joueur SEUL (human_player), golden intact par construction. */ \
+    /* INFLUENCE POLITIQUE (docs/DESIGN_MISSIONS_DOCTRINES.md §3, 2026-09 ; assiette
+     * re-key 2026-09-02) — la monnaie ENDOGÈNE du jeu politique (dérivée des pops
+     * simulées, pas un mana tombé du ciel). L'ASSIETTE LIT LES SIÈGES D'EMPLOI
+     * (prov[].pop.groups[].pop_by_class — offices tenus, recalculés au tick par
+     * demography_emerge_classes, ~13/8/78 % élites/bourgeois/journaliers), JAMAIS
+     * les strates par richesse (prov[].strata[], mobilité, ~1-3 % d'élites — une
+     * AUTRE réalité de classe du moteur, le piège qui a fait chuter les assiettes
+     * de ~10×) : gain/mois = élites×INFLUENCE_PER_NOBLE + bourgeois×INFLUENCE_PER_
+     * BOURGEOIS_BASE + journaliers×INFLUENCE_PER_LABORER_BASE (~60/20/20 % des
+     * parts sur une pop assise), × mult_conseil (moyenne des rangs I-III des
+     * sièges POURVUS du Conseil ; aucun siège pourvu ⇒ INFLUENCE_COUNCIL_FLOOR —
+     * sinon un Conseil vide rend le joueur muet en diplomatie). INFLUENCE_CAP=0 :
+     * sans plafond (décision joueur — les sinks futurs feront le travail). Dépense :
+     * les verbes d'envoi (alliance/pacte/embargo/migration/paix offerte) coûtent
+     * INFLUENCE_COST_ENVOY — ce coût REMPLACE le cooldown de l'émissaire
+     * (DIPLO_ENVOY_FLOOR_DAYS reste un plancher COURT anti-spam, ex-60 j) ;
+     * fabriquer une revendication coûte EN SUS INFLUENCE_COST_FAB (le coût d'or
+     * existant est inchangé). L'IA adopte aussi (P3-IA) : la génération n'est plus
+     * le privilège du joueur seul. */ \
     X(INFLUENCE_PER_NOBLE,              0.002f) \
     X(INFLUENCE_COUNCIL_FLOOR,          1.0f) \
     X(INFLUENCE_CAP,                    0.0f) \
@@ -1909,14 +1917,28 @@
     X(DOCT_COST_STEP,                  25.0f) \
     X(IDEA_COST_BASE,                  30.0f) \
     X(IDEA_COST_STEP,                   3.0f) \
-    /* LES ASSIETTES DES COURANTS (§4.3bis) — le courant politique adopté
-     * RE-SIED la génération d'influence sur SA classe (toujours × le rang moyen
-     * du Conseil). Sans courant : l'assiette par défaut (INFLUENCE_PER_NOBLE).
-     * Parité visée ~4/mois ; l'assiette POPULAIRE reste À MESURER (annexe §16). */ \
+    /* LES ASSIETTES DES COURANTS (§4.3bis, re-key 2026-09-02) — le courant
+     * politique adopté RELÈVE le taux de SA classe SEULE (les deux autres
+     * restent à leur taux _BASE) — il ne remplace plus l'assiette : toujours
+     * ≥ l'assiette par défaut, jamais un malus (toujours × le rang moyen du
+     * Conseil). _BASE = le taux DÉFAUT (aucun courant) de chaque classe non-
+     * élite ; INFLUENCE_PER_NOBLE (bloc ci-dessus) est déjà le taux défaut des
+     * élites. INFLUENCE_PER_BOURGEOIS/_LABORER (le courant actif) valent ×2 de
+     * leur _BASE. Divin ne relève AUCUN taux de classe : voir INFLUENCE_PER_
+     * BELIEVER plus bas. */ \
     X(INFLUENCE_PER_NOBLE_ARISTO,       0.0025f) \
-    X(INFLUENCE_PER_BOURGEOIS,          0.0006f) \
-    X(INFLUENCE_PER_LABORER,            0.00012f) \
-    X(INFLUENCE_PER_FAITH,              0.08f) \
+    X(INFLUENCE_PER_BOURGEOIS_BASE,     0.0011f) \
+    X(INFLUENCE_PER_BOURGEOIS,          0.0022f) \
+    X(INFLUENCE_PER_LABORER_BASE,       0.00011f) \
+    X(INFLUENCE_PER_LABORER,            0.00022f) \
+    /* DIVIN (§4.3bis, re-key 2026-09-02) — ne relève AUCUN taux de classe (assiette
+     * par défaut inchangée) : AJOUTE le terme des FIDÈLES — Σ âmes des groupes du
+     * pays qui professent SA religion d'État (PopGroup.faith, grain GROUPE, jamais
+     * region[]/province représentative), × INFLUENCE_PER_BELIEVER. 1/6000 ≈ « 1
+     * influence par 6 000 fidèles ». Pays athée (religion_of_country<0) ⇒ terme nul
+     * (jamais un malus). Remplace l'ex-INFLUENCE_PER_FAITH (foi bâtie × ferveur —
+     * purgé, plus aucun site ne le lit). */ \
+    X(INFLUENCE_PER_BELIEVER,           0.00016667f) \
     /* L'ÉCHELLE D'ASSIETTE (décision joueur 2026-09-02) — LINÉARISE tous les
      * coûts de doctrine (adoption, idée, entretien) sur la population de
      * l'assiette : é = assiette/mois ÷ INFLUENCE_BASE_REF, plancher 0.25.

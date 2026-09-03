@@ -499,11 +499,15 @@
     X(STR_DIPLO_REASON_INSUFFICIENT_GOLD,     "Not enough crowns to fund the plot") \
     X(STR_DIPLO_REASON_INSUFFICIENT_INFLUENCE,"Not enough political influence for this act") \
     X(STR_DIPLO_REASON_FABRICATION_UNAVAILABLE,"Plot unavailable for now") \
-    X(STR_INFLUENCE_HOVER,      "%d nobles × the Council (average rank %s)") \
-    X(STR_INFLUENCE_HOVER_VIDE, "%d nobles × the Council (no minister seated — floor)") \
+    X(STR_INFLUENCE_HOVER,      "%d nobles · %d bourgeois · %d laborers × the Council (average rank %s)") \
+    X(STR_INFLUENCE_HOVER_VIDE, "%d nobles · %d bourgeois · %d laborers × the Council (no minister seated — floor)") \
     X(STR_INFLUENCE_RANK_I,     "I") \
     X(STR_INFLUENCE_RANK_II,    "II") \
     X(STR_INFLUENCE_RANK_III,   "III") \
+    X(STR_INFLUENCE_COURANT_ARISTO,    " — Aristocracy raises the nobles") \
+    X(STR_INFLUENCE_COURANT_BOURGEOIS, " — Bourgeoisie raises the bourgeois") \
+    X(STR_INFLUENCE_COURANT_LABORER,   " — Popular raises the laborers") \
+    X(STR_INFLUENCE_COURANT_DIVIN,     " · %d believers") \
     X(STR_HERITAGE_FLAVOR_0, "Their genealogies begin before the first calendars, in centuries only ruins still remember.") \
     X(STR_HERITAGE_FLAVOR_1, "They say every oath is like a metal: it reveals its worth only once heated enough to break it.") \
     X(STR_HERITAGE_FLAVOR_2, "Their first clock measured the seasons. The second measured labour. The third taught the two to yield gold.") \

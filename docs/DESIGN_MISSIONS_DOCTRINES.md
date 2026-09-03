@@ -189,20 +189,42 @@ simulées (la correction EU5 du point de monarque EU4).
 
 ### 3.1 Génération
 
+**Re-key 2026-09-02 — l'assiette lit les SIÈGES (pop_by_class), pas les
+strates par richesse.** Le moteur porte DEUX réalités de classe : les
+**strates** (`prov[].strata[k].pop`, mobilité par richesse, ~1-3 %
+d'élites) et les **sièges d'emploi** (`prov[].pop.groups[i].pop_by_class[k]`,
+les offices tenus — capitale + édifices, recalculés au tick par
+`demography_emerge_classes`, ~13 % élites / 8 % bourgeois / 78 % journaliers,
+la ligne « SIÈGES » du chronicle). La NOBLESSE du design politique, c'est la
+SECONDE — des offices tenus, pas une aptitude à s'enrichir. Lire les strates
+sous-comptait l'assiette d'un facteur ~10× (constat joueur 2026-09-02).
+
 ```
-influence/mois = 0.002 × nobles(pays) × mult_conseil
+influence/mois = (élites × INFLUENCE_PER_NOBLE
+                 + bourgeois × INFLUENCE_PER_BOURGEOIS_BASE
+                 + journaliers × INFLUENCE_PER_LABORER_BASE) × mult_conseil
 ```
 
-- **`nobles`** = l'effectif réel de la classe **Élite** (les strates existent
-  par province ; somme nationale déjà agrégée pour la topbar). C'est
-  l'assiette **par défaut (aristocratique)** — un courant politique adopté
-  (§4.3bis) peut RE-SEOIR l'assiette sur une autre classe.
+- **`élites`/`bourgeois`/`journaliers`** = Σ sur les provinces du pays de
+  Σ `pop_by_class[k]` de chaque groupe (prov[], jamais region[].pop, jamais
+  les strates). **L'assiette par défaut SOMME TOUJOURS LES TROIS CLASSES** —
+  sur une population assise ~13/8/78 %, les taux (0.002 / 0.0011 / 0.00011)
+  posent ~60/20/20 % des parts de gain : un noble « pèse » politiquement
+  ~18× un journalier, sans qu'aucune classe ne soit hors-jeu.
+- **Les courants RELÈVENT, ils ne remplacent plus** (revirement 2026-09-02,
+  §4.3bis) : Aristocratie/Bourgeoisie/Populaire élève le taux de SA SEULE
+  classe (les deux autres restent à leur taux `_BASE`) — toujours
+  **≥ l'assiette par défaut, jamais un malus**. Divin ne relève aucun taux de
+  classe : il AJOUTE le terme des FIDÈLES (§4.3bis) à l'assiette par défaut.
 - **`mult_conseil`** = le niveau des conseillers : rang moyen des ministres en
   siège (I → ×1 … IV → ×4 ; siège vide compte 0 dans la moyenne). Le Conseil
   n'est plus seulement un décor de loyauté : il est le multiplicateur du jeu
   politique.
-- Ordre de grandeur : ~1000 élites × 0.002 × rang II ≈ **4/mois**, ~50/an.
-  Tunables registre J : `INFLUENCE_PER_NOBLE` (0.002), `INFLUENCE_CAP`.
+- Ordre de grandeur (13/8/78 %) : empire de départ (~2 750 hab) ≈ **1,2/mois**
+  (échelle é≈0,6) ; empire mûr (~13 000 hab) ≈ **5,7/mois** (é≈2,8), avant le
+  rang du Conseil. Tunables registre J : `INFLUENCE_PER_NOBLE` (0.002),
+  `INFLUENCE_PER_BOURGEOIS_BASE` (0.0011), `INFLUENCE_PER_LABORER_BASE`
+  (0.00011), `INFLUENCE_CAP`.
 - **Pas de plafond de stock pour l'instant** (décision 2026-09-01) — le
   tunable `INFLUENCE_CAP` existe (0 = sans plafond) si l'équilibrage le
   réclame un jour ; les sinks (synergies fibonacciennes) font le travail.
@@ -305,10 +327,12 @@ qu'on possède déjà :
 **Les 13 orientations** : Offense · Défense · Commerce · Mercantilisme ·
 Peuple · Colonisation · Diplomatie · Vassaux · Production · Infrastructure ·
 Technologie · Connaissances du monde · Faustien. **Les 4 courants
-politiques** (un seul à la fois — le courant re-siège l'ASSIETTE de
-l'influence sur sa classe) : Aristocratie (élites ×0.0025) · Bourgeoisie
-(bourgeois ×0.0006) · Populaire (journaliers ×0.00012) · Divin (foi bâtie ×
-ferveur). Le courant occupe un slot comme les autres.
+politiques** (un seul à la fois — le courant RELÈVE le taux de SA classe dans
+l'assiette de l'influence, il ne la remplace plus, §3.1/§4.3bis) :
+Aristocratie (élites ×0.0025, contre 0.002 par défaut) · Bourgeoisie
+(bourgeois ×0.0022, contre 0.0011) · Populaire (journaliers ×0.00022, contre
+0.00011) · Divin (ajoute les FIDÈLES × 1/6000 à l'assiette par défaut, sans
+relever aucun taux de classe). Le courant occupe un slot comme les autres.
 
 Plus aucun sous-titre d'apparat, plus aucun gate d'éthos ni prérequis : tout
 le monde peut tout prendre, l'IA choisit par score. Chaque doctrine = 6 idées
