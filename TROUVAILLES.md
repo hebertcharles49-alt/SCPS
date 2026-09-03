@@ -12718,3 +12718,129 @@ Test du script (`SEEDS="7 512" REPS=1 HORIZONS="60"`, 4 sims, config de sweep
   les journaux (`BIOME(S) TOTALEMENT   ÉCHEC — banc invariant…`, ligne 69) :
   bufferisation différente, `> log 2>&1`. Illisible mais sans perte — le
   `grep ÉCHEC` du résumé le rattrape.
+
+
+
+## Mission 2026-09-03 — W2-2 POPULATION : LE TROU F2 (âmes des groupes ≠ strates)
+
+Feuille de route : `docs/CALIB_POPULATION_2026-09-03.md` §4.5 F2 + rapport W1-B ci-dessus.
+Décision joueur : « corrige tout », « pas de cap ».
+
+### Découvertes
+
+- **F2 est REFERMÉE, et c'était bien une seule ligne manquante.** `âmes/strates` an 120 :
+  graine 7 **23,6 % → 99,8 %**, graine 3333 **41,6 % → 100,0 %**. Cause exacte : les deux
+  ledgers PARTENT ÉGAUX (`scps_world.c:3376` à la genèse, `colonize_seed_pop_group`
+  `scps_econ.c:6110` à la fondation, `demography_attach` `scps_demography.c:567` — les
+  trois posent `g->count = Σ strates libres`) puis la boucle de croissance
+  `scps_econ.c:5306` (`st->pop *= 1+net_growth`) n'écrit QUE les strates. Le relevé
+  exhaustif des 16 écrivains de `PopGroup.count` du moteur confirme le constat de
+  W1-B : **aucun n'est une croissance**, tous sont des TRANSFERTS (migration, essaimage,
+  assimilation, capture, vente, purge, révolte, retour de réfugiés) — sauf
+  `scps_econ.c:5283`, la branche `CLASS_SLAVE`, qui portait déjà le patron exact.
+- **Correctif = `demography_group_growth_sync()`** (`scps_demography.c:322`, contrat
+  `scps_demography.h:87`) appelé une fois par province depuis la boucle strates/groupes
+  d'`econ_tick` (`scps_econ.c:5309`). Cible = Σ strates LIBRES (la servile a sa propre
+  synchro juste au-dessus, exclue des DEUX côtés sous peine de double compte) ; delta
+  réparti AU PRORATA des groupes libres, reliquat d'arrondi au plus gros — le patron
+  `CLASS_SLAVE` généralisé, arithmétique entière 64 bits, `demography_group_seats_rescale`
+  derrière chaque écriture. **Zéro nombre neuf, zéro plafond, zéro tunable.**
+- **P9 (tier unifié sur les strates) N'EST PLUS TOXIQUE — le GARDER.** C'était le
+  diagnostic exact de W1-B : « les sièges d'élite valent `capitale_max_tier(strates)×100`
+  mais sont RÉPARTIS sur Σcount ; si les strates valent 4× les âmes, le tier est celui
+  d'une ville et l'assiette celle d'un hameau ». Sièges d'élite MONDE an 120 :
+  graine 7 **30 % → 11 %**, graine 3333 **16 % → 9 %** (règle joueur ≈ 13 %). L'assiette
+  d'influence (sièges × taux 0,002/0,0011/0,00011, design 60/20/20) : graine 7
+  **79,5/11,7/8,9 → 55,7/22,3/22,0** ; graine 3333 **74,4/5,1/20,5 → 62,3/3,8/33,9**.
+  Refermer F2 a suffi : aucune ligne de P9 n'a été touchée.
+- **Provinces FIGÉES 100 % journaliers : 44 % → 11 % (graine 7), 48 % → 26 % (3333).**
+  W1-B avait ramené 75 % → 45 % par P1 et attribuait le reliquat aux provinces dont
+  Σ`count` < 100 (l'arrondi aux paquets de 100 annule les sièges). C'était exact : les
+  `count` valant enfin les strates, la moitié de ce reliquat s'est débloquée toute seule.
+- **F2 a réveillé QUATRE sites d'invariant que W1-B avait listés comme « restes »** — ils
+  étaient MUETS tant que les âmes valaient 23 % des strates (volumes minuscules), et
+  rouvraient `Σ pop_by_class == count` dès la synchro posée (mesuré : 2 groupes,
+  316 âmes, graine 7). Fermés, un appel du helper public chacun, tous signés « F2 (W2-2) » :
+  `scps_econ.c:5283` (branche servile, DANS ma boucle) · `scps_diplo.c:1393` (razzia :
+  le groupe pillé ne rendait pas ses sièges) · `scps_intertrade.c:807` (vente servile :
+  `count` ET strate baissent du MÊME montant, donc le delta d'`econ_tick` reste nul et
+  ne répare JAMAIS derrière) · `scps_demography.c:1394` (`demography_on_conquest` :
+  `memset` → un groupe de colons de la couronne créé avec 165 âmes et **0 siège**,
+  invisible à l'influence/aux factions/à `pol_sat` jusqu'à l'an 120).
+  `scps_agency.c:678` (purge) est fermé aussi par prudence — jamais tiré sur mes deux
+  graines, donc **inerte et supprimable** si un autre agent possède le fichier.
+- **Écart FINAL : 0 groupe hors invariant, 0 âme, sur les deux graines.**
+- **Les 42 bancs passent sans une seule recalibration de fixture** (comme pour W1-B) —
+  aucun banc ne supposait la divergence des deux ledgers.
+
+### Pièges
+
+- **Ne JAMAIS synchroniser sur Σ strates TOUTES CLASSES.** La strate servile est déjà
+  synchronisée âme par âme par la branche `CLASS_SLAVE` d'`econ_tick` : la compter dans la
+  cible ferait croître les groupes LIBRES de la croissance servile (double compte), et
+  l'exclure d'un seul côté ferait osciller le delta. Elle est hors du compte des deux côtés.
+- **`if (part==0) continue;` sans rescale est correct — mais seulement parce que `count`
+  n'a pas bougé.** Toute sortie anticipée d'une boucle de prorata doit se demander si elle
+  saute aussi une écriture. Ici le reliquat est repris par `rest` sur le plus gros groupe.
+- **`long` est 32 bits sur MinGW** (piège hérité de W1-B, toujours actif) : `delta × count`
+  déborde dès quelques dizaines de milliers d'âmes. Cast `(long long)` sur CHAQUE facteur —
+  le bug serait SILENCIEUX (effectifs négatifs, jamais un crash).
+- **Un site qui décrémente `count` ET la strate du même montant ne se répare JAMAIS tout
+  seul** (`intertrade_slave_sell`) : le delta de synchro vaut zéro, donc la boucle de
+  réparation ne passe pas. Contre-intuitif — c'est exactement pour ça qu'il avait survécu
+  à P2. Le corollaire : la synchro d'`econ_tick` n'est PAS un filet universel.
+- **Trouver le groupe fautif : `SCPS_F2DIAG`.** Recette (le diag a été RETIRÉ pour garder
+  le hunk chronicle minimal) — dans le bloc `LEDGERS (P11)` de `chronicle.c`, sur la
+  branche `if (gs!=gg->count)`, ajouter un `fprintf(stderr,…)` de `q/gi/klass/arrival/
+  count/pop_by_class[]` gardé par `getenv`. Les 4 sites ci-dessus ont été identifiés en
+  deux runs : `klass 3 arr 3` = vente servile, `klass 2 arr 1 count=total/5+50` = les
+  colons de `demography_on_conquest`.
+- **Le monde RÉTRÉCIT de ~8 % à l'an 120** (graine 7 : strates 169 076 → 155 923) sans que
+  rien ne touche aux strates. C'est un effet de RETOUR : `pol_sat` s'allume dans les
+  provinces jusque-là figées, les poids de faction changent, l'influence et les doctrines
+  divergent, les volumes de migration suivent des `count` 4× plus gros. Ne pas le lire
+  comme un malus démographique.
+- **`demography_on_conquest` CRÉE des âmes que les strates n'ont pas** (colons de la
+  couronne, `total/5+50`, sans contrepartie dans `strata[]`) : c'est le pic « écart max
+  27,7 % » de la ligne neuve. Sous F2 la synchro le résorbe au mois suivant en
+  re-proportionnant TOUS les groupes — le colon change donc la COMPOSITION de la province
+  (le peuple du conquérant prend sa part) sans en changer la population. Sémantique
+  défendable, mais non décidée : cf. Restes.
+- **La ligne neuve de `chronicle.c` réutilise `dmedian()`** (déjà au fichier, l. 413) :
+  ne pas ajouter un comparateur de plus.
+
+### Restes
+
+- **`demography_on_conquest` fabrique des âmes hors strates** (`scps_demography.c:1385`,
+  `g.count = total/5 + 50`). Sous F2 elles sont résorbées au tick suivant : le colon
+  DILUE au lieu d'AJOUTER. Correctif propre si le joueur veut de vrais colons : déplacer
+  les âmes depuis la province d'origine (`migration_move`) ou créditer `strata[]` du même
+  montant. **Décision joueur** : le conquérant IMPORTE-t-il des gens, ou re-teinte-t-il la
+  province ?
+- **Sièges bourgeois graine 3333 : 1 %** (contre 8 % graine 7) alors que les strates
+  disent 9 %. Rien à voir avec F2 : `artisan_jobs` = Σ `bld[].workers` de la province
+  (`demography_emerge_classes`), arrondi aux paquets de 100 — un monde peu manufacturier
+  n'a littéralement pas de sièges bourgeois. C'est P6 du rapport (débrider la promotion
+  J→B) vu depuis l'autre ledger, **non fait** (`scps_econ.c:3657`, fichier de W2-1).
+- **P7 (esclavage sur la RÉGION) et P10 (`religion_refresh_region` somme les provinces) :
+  DÉCISIONS JOUEUR toujours en attente**, questions inchangées depuis W1-B. **P7** — veut-on
+  que la classe servile EXISTE (stock ~0,5 % de la pop, `SLAVE_REVOLT_SHARE`=0,20 enfin
+  capable de mordre) ou reste-t-elle volontairement une classe morte ? **P10** —
+  accepte-t-on que la foi dominante de certaines régions se déplace, une fois qu'elle est
+  sommée sur toutes les provinces au lieu d'une seule ?
+- **P8 (nommer les deux réalités dans l'UI) : toujours pertinent, non fait**
+  (`scps_api.c:1554` sièges vs `:1751` strates, libellés `strings_ids.h`) — mais l'urgence
+  a BAISSÉ : les deux comptages ne sont plus à ×4 l'un de l'autre, ils comptent maintenant
+  la même population sous deux angles (emplois vs richesse). C'est devenu un travail de
+  MOT, plus un mensonge de nombre.
+- **P3 (`ARMY_POOL_FRAC`) : non fait, `scps_army.c` appartient à W2-3.** Argumentaire et
+  chiffres inchangés (rapport W1-B ci-dessus). **NB pour W2-3** : F2 ne change RIEN au pool
+  de levée (`army_class_free` lit `region[].strata`, pas les groupes) — les mesures de
+  part-de-pop-sous-les-armes restent valables telles quelles.
+- **Golden re-baseline NON FAIT** (consigne). Hashes 12 ans APRÈS :
+  `7 4a50aa67 · 108 84c9f6cd · 209 68ed6e15 · 310 ec6bc01a · 411 40085b2b`
+  (golden en place : `3f53021c / 0763a08a / 4df442e9 / 0627589a / 98fc8cb3`).
+  **Aucun bump `SAVE_VERSION`** : aucune struct sérialisée ne change de taille — `--savetest`
+  A==B le confirme. Une save d'AVANT F2 porte des `count` à 23-40 % des strates : au
+  premier tick après chargement la synchro les rattrape d'un coup (pas de plafond, décision
+  joueur). C'est une ré-écriture de ledger, pas une perte.

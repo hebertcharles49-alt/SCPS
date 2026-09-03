@@ -675,6 +675,11 @@ static void purge_slice(WorldEconomy *econ, WorldLegitimacy *wl, int reg, int pr
     long dead=(long)((float)pg->count*PURGE_FRAC_AN);
     if (dead<1) dead=pg->count;
     pg->count-=dead; if (pg->count<0) pg->count=0;
+    /* F2 (W2-2) : le groupe PURGÉ rend ses sièges. Dernier site actif de la liste P2 « hors
+     * périmètre » (TROUVAILLES W1-B) : il laissait des sièges d'emploi orphelins sur des morts.
+     * Muet tant que les âmes-groupes valaient 23 % des strates (les tranches étaient minuscules),
+     * il rouvrait l'invariant Σ pop_by_class == count dès F2 refermée. Contrat : scps_demography.h. */
+    { void demography_group_seats_rescale(PopGroup *g_); demography_group_seats_rescale(pg); }
     g_purge_dead+=dead;
     /* la population régionale saigne d'autant (strates au prorata). ESCLAVAGE — FUITE #8 :
      * `biggest_minority` exclut désormais CLASS_SLAVE de sa cible, mais ce bleed proportionnel

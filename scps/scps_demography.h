@@ -96,6 +96,25 @@ bool migration_move(ProvincePop *from, ProvincePop *to, int gi, long amount, int
  * toutes ses âmes dans sa propre classe. À appeler APRÈS toute écriture de `count`. */
 void demography_group_seats_rescale(PopGroup *g);
 
+/* ══ F2 — LES ÂMES DES GROUPES SUIVENT LES STRATES (rapport CALIB POPULATION §4.5) ══
+ * Le trou de conception mesuré par la ligne LEDGERS : les STRATES croissent tous les mois
+ * (`st->pop *= 1+net_growth`, econ_tick) tandis qu'AUCUNE boucle ne faisait croître le
+ * `count` d'un groupe — les âmes ne bougeaient QUE par migration/assimilation/capture/
+ * manumission. Les deux ledgers partent ÉGAUX (genèse `scps_world.c`, fondation
+ * `colonize_seed_pop_group`) puis divergent sans retour : mesuré âmes/strates = 23,6 %
+ * (graine 7) et 41,6 % (graine 3333) à l'an 120, soit ×4,3 et ×2,4. Tout lecteur de
+ * `pop_by_class` (assiette d'influence, factions, `pol_sat`, fiche province) raisonnait
+ * donc sur un quart du monde, et le tier de capitale (lu sur les strates depuis P9) posait
+ * les offices d'une ville sur l'assiette d'un hameau.
+ * Ce helper RE-SYNCHRONISE : la province a UNE population (les strates), les groupes en
+ * sont la composition — le delta mensuel se répartit AU PRORATA des groupes libres, le
+ * reliquat au plus gros (patron EXACT de la branche CLASS_SLAVE d'econ_tick, déjà
+ * déterministe à ±1 âme). La strate SERVILE est déjà synchronisée par cette branche et
+ * reste hors du compte des deux côtés. Arithmétique ENTIÈRE 64 bits (`long` = 32 bits sur
+ * MinGW). Aucun nombre neuf, aucun plafond : c'est une règle de CONSERVATION.
+ * Invariant tenu : Σ count(groupes libres) == (long) Σ strates libres. */
+void demography_group_growth_sync(ProvinceEconomy *re);
+
 /* ATTRACTIVITÉ MIGRATOIRE = prospérité + BÂTI (institutions). Un empire ultra-bâti ultra-prospère
  * est un AIMANT : la migration échelonne avec l'attractivité. (exposé pour l'auto-vérif) */
 float migration_attractivity(float prosperity, float K_inst);

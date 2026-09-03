@@ -321,6 +321,54 @@ void demography_group_seats_rescale(PopGroup *g){
     g->pop_by_class[CLASS_LABORER]=g->count-e-a;
 }
 
+/* ══ F2 — LA CROISSANCE DES ÂMES (contrat dans scps_demography.h) ══
+ * Appelé par econ_tick juste après la croissance des strates. On ne DÉCIDE d'aucune
+ * natalité ici : la province a déjà fait la sienne (net_growth sur les strates, avec
+ * fertilité/capacité/famine/habitabilité) — on la RÉPARTIT sur les groupes qui la
+ * composent. Prorata des effectifs, reliquat au plus gros groupe : le même patron que
+ * la branche servile, déterministe et sans nombre neuf. */
+void demography_group_growth_sync(ProvinceEconomy *re){
+    if (!re) return;
+    ProvincePop *pp=&re->pop;
+    if (pp->n_groups<=0) return;
+    /* CIBLE = les strates LIBRES. La strate servile a sa propre synchronisation âme par
+     * âme (econ_tick, branche CLASS_SLAVE) : elle est exclue des DEUX côtés, sinon la
+     * croissance servile serait comptée deux fois. Troncature : la fraction de tête reste
+     * dans la strate (float) et sera versée au mois où elle franchit l'unité. */
+    float sfree=0.f;
+    for (int c=0;c<CLASS_COUNT;c++) if (c!=CLASS_SLAVE) sfree += re->strata[c].pop;
+    long target=(long)sfree; if (target<0) target=0;
+    long gsum=0; int big=-1; long bigc=-1;
+    for (int i=0;i<pp->n_groups;i++){
+        PopGroup *g=&pp->groups[i];
+        if (g->klass==CLASS_SLAVE) continue;
+        gsum += g->count;
+        if (g->count>bigc){ bigc=g->count; big=i; }
+    }
+    if (big<0) return;                       /* aucun groupe LIBRE : rien à peupler */
+    long delta=target-gsum;
+    if (delta==0) return;
+    long placed=0;
+    if (gsum>0){
+        for (int i=0;i<pp->n_groups;i++){
+            PopGroup *g=&pp->groups[i];
+            if (g->klass==CLASS_SLAVE || g->count<=0) continue;
+            long part=(long)((long long)delta*(long long)g->count/(long long)gsum);   /* 64 bits : sièges×count déborde en 32 */
+            if (part==0) continue;
+            if (g->count+part<0) part=-g->count;                   /* jamais un effectif négatif */
+            g->count += part; placed += part;
+            demography_group_seats_rescale(g);                     /* les sièges suivent les âmes */
+        }
+    }
+    long rest=delta-placed;                  /* le reliquat d'arrondi (et tout le delta si gsum==0) */
+    if (rest!=0){
+        PopGroup *gb=&pp->groups[big];
+        if (gb->count+rest<0) rest=-gb->count;
+        gb->count += rest;
+        demography_group_seats_rescale(gb);
+    }
+}
+
 /* ===================================================================== */
 /* MIGRATION PASSIVE — emporte heritage + culture (§4)                        */
 /* ===================================================================== */
@@ -1343,6 +1391,11 @@ void demography_on_conquest(World *w, WorldEconomy *econ, ModifierStack *drift, 
         g.diaspora=true; g.arrival=ARR_MIGRANT; g.drift_id=demography_dyn_id_next();
         g.home_reg=-1;   /* colon délibéré (pas un déplacé) : ne « rentre » pas — home_reg memset 0 serait région 0 */
         g.faith=-1;      /* athée par défaut (memset 0 = religion 0) ; la conversion l'assimile à la foi d'État */
+        demography_group_seats_rescale(&g);   /* F2 (W2-2) : le memset laissait un groupe de colons SANS
+                                               * AUCUN siège — 165 âmes invisibles à l'influence, aux
+                                               * factions et à pol_sat, et l'écart survivait jusqu'à l'an
+                                               * 120 (mesuré, graine 7 prov 79). Les colons arrivent en
+                                               * journaliers ; l'émergence leur donnera leurs offices. */
         pp->groups[pp->n_groups++]=g;
     }
 }

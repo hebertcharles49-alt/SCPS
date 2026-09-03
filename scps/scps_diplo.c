@@ -1390,6 +1390,12 @@ long diplo_enslave_capture(const World *w, WorldEconomy *econ, int conqueror, in
                                              * avait éradiquées (slot re-créé = même clef) */
     dst->groups[dst->n_groups++]=ng;
     src->groups[gi].count-=moved;
+    demography_group_seats_rescale(&src->groups[gi]);   /* F2 (W2-2) : le groupe RAZZIÉ rend ses sièges.
+                                                         * Dernier site actif hors périmètre P2 — muet
+                                                         * tant que les âmes-groupes valaient 23 % des
+                                                         * strates (captures minuscules), il rouvrait
+                                                         * l'invariant dès F2 refermée (mesuré 1 groupe,
+                                                         * 152 sièges orphelins, graine 7 an 120). */
     if (src->groups[gi].count<=0){ demography_drift_retire(src->groups[gi].drift_id);   /* audit 2026-08-12 */
         src->groups[gi]=src->groups[src->n_groups-1]; src->n_groups--; }
     dpe->strata[CLASS_SLAVE].pop += (float)moved;

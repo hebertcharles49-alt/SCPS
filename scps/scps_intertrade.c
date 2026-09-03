@@ -804,6 +804,12 @@ long intertrade_slave_sell(WorldEconomy *e, int region, long count){
         int h=(int)g->heritage; if (h<0||h>=HERITAGE_COUNT) h=0;
         g_slave_pool[h] += (float)take;
         g->count -= take;
+        /* F2 (W2-2) : le groupe VENDU rend ses sièges. Site nommé par P2 (TROUVAILLES W1-B),
+         * jamais refermé : la vente décrémente `count` ET la strate servile du MÊME montant, si
+         * bien que le delta de la branche CLASS_SLAVE d'econ_tick reste nul et ne répare JAMAIS
+         * les sièges laissés derrière (mesuré : 1634 sièges pour 1483 âmes, graine 7 an 120).
+         * Contrat : scps_demography.h. */
+        { void demography_group_seats_rescale(PopGroup *g_); demography_group_seats_rescale(g); }
         pe->strata[CLASS_SLAVE].pop = fmaxf(0.f, pe->strata[CLASS_SLAVE].pop - (float)take);
         if (g->count<=0){ demography_drift_retire(g->drift_id);   /* audit 2026-08-12 */
             pe->pop.groups[bg]=pe->pop.groups[pe->pop.n_groups-1]; pe->pop.n_groups--; }

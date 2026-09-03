@@ -3729,6 +3729,14 @@ static inline bool econ_is_wild_country(int c){
  * partagé) — même masque, RAZ/reconstruit par sim_day (econ_set_wild_mask) chaque jour. */
 bool econ_country_is_wild(int c){ return econ_is_wild_country(c); }
 
+/* F2 (W2-2, docs/CALIB_POPULATION_2026-09-03.md §4.5) — la boucle strates/groupes
+ * d'econ_tick synchronise les ÂMES des groupes sur les strates. Déclarés ici plutôt
+ * qu'en incluant scps_demography.h : ce module est SOUS la démographie dans la pile
+ * d'inclusion (scps_demography.h inclut scps_econ.h) — même convention que la
+ * déclaration jumelle près d'econ_passive_seep. Contrats dans scps_demography.h. */
+void demography_group_seats_rescale(PopGroup *g);
+void demography_group_growth_sync(ProvinceEconomy *re);
+
 void econ_tick(WorldEconomy *e, float dt) {
     if (dt<=0.f) dt=1.f;
     e->tick++;
@@ -5272,6 +5280,11 @@ void econ_tick(WorldEconomy *e, float dt) {
                             delta = -gb->count;
                         }
                         gb->count += delta;
+                        demography_group_seats_rescale(gb);   /* F2 (W2-2) : ce site bougeait un `count`
+                                                               * sans rendre ses sièges — le dernier des
+                                                               * « ~5 sites hors périmètre » de P2, et il
+                                                               * est DANS cette boucle (mesuré : 1 groupe
+                                                               * hors invariant, 152 âmes, graine 7). */
                     }
                 } else if (st->pop<0.f) st->pop=0.f;
             }
@@ -5293,6 +5306,18 @@ void econ_tick(WorldEconomy *e, float dt) {
                    else if (st->pop<0.f) st->pop=0.f; }
             satsum+=st->satisfaction*st->pop; popsum+=st->pop;
         }
+        /* ══ F2 (W2-2) — LES ÂMES DES GROUPES SUIVENT LES STRATES ══════════════════════
+         * HUNK ISOLÉ (agent POPULATION) — 3 hunks en tout dans ce fichier, tous signés
+         * « F2 (W2-2) » : les deux déclarations au-dessus d'econ_tick, le rescale de la
+         * branche CLASS_SLAVE, et cet appel. Rien d'autre d'econ.c n'est touché.
+         * Le commentaire de la branche CLASS_SLAVE ci-dessus le constatait depuis
+         * toujours : « aucune boucle ne fait ->count *= 1+growth pour un groupe ». Les
+         * deux ledgers partent égaux (genèse, fondation) et divergent ensuite sans
+         * retour — mesuré âmes/strates 23,6 % (graine 7) et 41,6 % (graine 3333) à
+         * l'an 120. La strate servile est déjà synchronisée juste au-dessus, âme par
+         * âme ; on applique le MÊME patron aux strates libres, au prorata des groupes
+         * de la province. (Déclaration : juste au-dessus d'econ_tick.) */
+        demography_group_growth_sync(re);
         re->satisfaction=(popsum>0.f)?satsum/popsum:0.f;
         /* l'insatisfaction off-culture pèse sur la satisfaction GÉNÉRALE (donc
          * prospérité/légitimité/impôt) — mais food_sat reste intact (la survie). */

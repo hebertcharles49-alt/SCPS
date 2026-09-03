@@ -1910,22 +1910,32 @@ int main(int argc, char **argv){
            * bourgeois — la signature de « l'émergence ne tourne pas ici »). Print-only :
            * aucune écriture, golden intact. */
           { long seats=0, souls=0, brk=0, gap=0, frozen=0, withg=0; double strat=0.0;
+            /* W2-2/F2 — L'ÉCART PAR PROVINCE. Le ratio MONDE ci-dessous est une moyenne
+             * pondérée par la taille : il masque une province à +300 % derrière cinquante
+             * à 0 %. On imprime donc aussi la distribution (max et médiane de
+             * |âmes−strates|/strates), la mesure qui dit si la synchro tient PARTOUT. */
+            static double dev[SCPS_MAX_PROV]; int ndev=0; double devmax=0.0;
             double cs[SCPS_MAX_COUNTRY], cf[SCPS_MAX_COUNTRY], cn[SCPS_MAX_COUNTRY];
             for (int c2=0;c2<SCPS_MAX_COUNTRY;c2++){ cs[c2]=0.0; cf[c2]=0.0; cn[c2]=0.0; }
             for (int q=0;q<NP;q++){
                 const ProvinceEconomy *pq=&s.econ->prov[q];
                 if (!pq->active || !pq->colonized) continue;
-                for (int k2=0;k2<CLASS_COUNT;k2++) strat += pq->strata[k2].pop;
+                double sp=0.0;
+                for (int k2=0;k2<CLASS_COUNT;k2++){ strat += pq->strata[k2].pop; sp += pq->strata[k2].pop; }
                 if (pq->pop.n_groups<=0) continue;
                 withg++;
-                long pe2=0;
+                long pe2=0, sop=0;
                 for (int gi=0; gi<pq->pop.n_groups; gi++){
                     const PopGroup *gg=&pq->pop.groups[gi];
                     long gs=0;
                     for (int k2=0;k2<CLASS_COUNT;k2++) gs+=gg->pop_by_class[k2];
-                    seats+=gs; souls+=gg->count;
+                    seats+=gs; souls+=gg->count; sop+=gg->count;
                     pe2 += gg->pop_by_class[CLASS_ELITE]+gg->pop_by_class[CLASS_BOURGEOIS];
                     if (gs!=gg->count){ brk++; gap += (gs>gg->count)?(gs-gg->count):(gg->count-gs); }
+                }
+                if (sp>0.5 && ndev<SCPS_MAX_PROV){
+                    double d=100.0*fabs((double)sop-sp)/sp;
+                    dev[ndev++]=d; if (d>devmax) devmax=d;
                 }
                 if (pe2==0) frozen++;
                 if (pq->owner>=0 && pq->owner<SCPS_MAX_COUNTRY){
@@ -1937,6 +1947,8 @@ int main(int argc, char **argv){
                    seats, souls, seats-souls, souls?100.0*(double)(seats-souls)/(double)souls:0.0,
                    strat, strat>0.5?100.0*(double)souls/strat:0.0,
                    withg, frozen, withg?100.0*(double)frozen/(double)withg:0.0, brk, gap);
+            printf("   LEDGERS âmes/strates PAR PROVINCE (F2) : écart max %.1f %% · médiane %.1f %% (sur %d prov.)\n",
+                   devmax, dmedian(dev, ndev), ndev);
             /* les 5 plus gros porteurs de provinces : où l'émergence NE tourne PAS */
             { int o5[5]={-1,-1,-1,-1,-1};
               for (int c2=0;c2<w->n_countries && c2<SCPS_MAX_COUNTRY;c2++){
