@@ -268,6 +268,21 @@ bool campaign_redirect_corps_sea(Campaign *c, const World *w, const WorldEconomy
                                  struct NavyState *navy, int id, int target_region);
 
 long        campaign_corps_units(const Campaign *c, int id);
+/* Σ de la pop AFFECTÉE (par classe) que les corps actifs de `owner` portent au front.
+ * Lu par la levée (warhost_tick) pour que le pool de recrutement voie TOUT ce que le
+ * pays a sous les armes, host ET corps de campagne (CALIB_ARMEE 2026-09-03 §4.2).
+ * INLINE D'EN-TÊTE À DESSEIN : `scps_warhost.c` en a besoin, mais DIX bancs lient
+ * `scps_warhost.o` SANS `scps_campaign.o` (army/demography/social/agency/ai/forks/
+ * credit/cap/religion_demo) — un symbole de plus dans campaign.c casserait leur édition
+ * de liens. Pure lecture de champs déjà publics : aucun état, aucun coût. */
+static inline long campaign_deployed_class(const Campaign *c, int owner, LaborClass cl){
+    if (!c || owner<0 || owner>=SCPS_MAX_COUNTRY || cl<0 || cl>=LAB_CLASS_COUNT) return 0;
+    long n=0;
+    for (int i=0;i<CAMPAIGN_ARMY_CAP;i++)
+        if (c->army[i].active && c->army[i].owner==owner)
+            n += c->army[i].force.pop_by_class_in_army[cl];
+    return n;
+}
 long        campaign_disband_corps(Campaign *c, int id, ArmyState *dst_host_army);
 bool        campaign_can_refill_corps(const Campaign *c, const WorldEconomy *econ, int id);
 void        campaign_refill_corps_cost(const Campaign *c, int id, long *men, long *mat);

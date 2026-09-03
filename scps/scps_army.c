@@ -7,6 +7,7 @@
  */
 #include "scps_army.h"
 #include "scps_math.h"   /* xs32 partagé */
+#include "scps_tune.h"   /* Arc J : ARMY_POOL_FRAC (la part mobilisable d'une classe) */
 #include <string.h>
 #include <math.h>
 #include <stdio.h>     /* MODTOOLS : dump/load fichier */
@@ -90,7 +91,25 @@ TechId unit_tech_gate(UnitType t){
         case U_GARDE_RUNIQUE: return TECH_FORGE_RUNES;
         case U_MAGE:          return TECH_MAGIE_BATAILLE;
         case U_ALCHIMISTE:    return TECH_ALCHIMIE;
-        case U_HALLEBARDIER:  return TECH_CASERNE;
+        /* CALIB_ARMEE 2026-09-03 §1.3-c — le HALLEBARDIER passe de CASERNE (tier 0) à
+         * CONSCRIPTION (tier 1). Mesuré : force 171 et CINQ contres (les quatre
+         * cavaleries + l'épéiste), au tier 0 donc `pay_mult` 1.00 — le MÊME prix en or
+         * qu'un piquier (150) ou un lancier (125) qu'il domine strictement. Il n'y avait
+         * aucune raison de lever autre chose au jour 1. Le barème du LOT 5 (ci-dessus)
+         * range 176/5 contres au tier 2 (Lancier de choc) : 171/5 contres appelle le
+         * palier INTERMÉDIAIRE — l'échelle devient piquier/lancier/épéiste (0) →
+         * hallebardier (1) → lancier de choc & garde d'escorte (2). CONSCRIPTION a
+         * CASERNE pour parent : la caserne reste sur le chemin. */
+        case U_HALLEBARDIER:  return TECH_CONSCRIPTION;
+        /* CALIB_ARMEE §1.3-d/§5-P9 — la CAV. LOURDE n'avait AUCUN gate de tech (défaut
+         * TECH_COUNT), seulement le gate d'élite (>200) : force 169, NEUF contres — le
+         * plus large réseau du roster —, curée 55-62 % contre 8-12 % pour l'infanterie
+         * et 4× moins d'attrition de marche, disponible dès le jour 1. Les autres
+         * cavaleries sont gatées en échelle (légère 0 · raid COMPTOIRS 1 · cuirassée
+         * CASTE_MARTIALE 4) : ORGANISATION (tier 2) est la marche manquante, et c'est
+         * le palier du Lancier de choc qui la contre. La Cav. légère (6 contres, force
+         * 109) reste la monture du jour 1 — piquier et lancier la contrent au tier 0. */
+        case U_CAV_LOURDE:    return TECH_ORGANISATION;
         case U_CAV_CUIRASSEE: return TECH_CASTE_MARTIALE;   /* apex monté : palier tardif (spec) */
         case U_ARBALETE_LOURDE:return TECH_QUALITE_MATERIAUX;/* arbalète à pavois : manufacture fine */
         case U_BERSERKER:     return TECH_CONSCRIPTION;     /* LOT 5 : martial tier-1 */
@@ -312,26 +331,66 @@ ArmyDoctrine army_doctrine(const TechState *t){
     return d;
 }
 
-/* Le POOL par classe du pays `cid` = Σ des strates econ de SES régions (la pop UNIQUE,
- * fin de l'adaptateur LaborEcon) ; moins les paquets déjà affectés à l'armée. */
-long army_class_free(const ArmyState *a, const WorldEconomy *econ, int cid, LaborClass cl){
+/* LE POOL PAR CLASSE du pays `cid` — re-key PROVINCE + part MOBILISABLE + corps au
+ * front (CALIB_ARMEE 2026-09-03 §4.2 et §5-P3 du rapport population).
+ *
+ * 1) GRAIN PROVINCE (charte règle 1). L'assiette lisait `region[].strata[].pop` en ne
+ *    retenant que les régions dont `owner==cid` — or `region[]` est une VUE : ses
+ *    strates SOMMENT toutes les provinces membres quel que soit LEUR propriétaire
+ *    (econ_aggregate_regions), et `region.owner` n'est que le propriétaire
+ *    MAJORITAIRE. Un pays comptait donc la pop adverse de ses régions mixtes, et
+ *    perdait ses propres provinces logées dans une région majoritairement adverse.
+ *    L'assiette est désormais Σ des provinces QUI LUI APPARTIENNENT.
+ *
+ * 2) PART MOBILISABLE (ARMY_POOL_FRAC, registre J). L'assiette prenait 100 % de la
+ *    strate : un pays pouvait, en droit, mettre sous les armes chaque laboureur et
+ *    chaque élite. Ce n'est PAS un plafond de régiments — rien n'interdit de dépasser
+ *    la limite de force, le frein reste la SOLDE : c'est la part de la classe en âge,
+ *    en état et disponible pour porter les armes plutôt que tenir la ferme, l'atelier
+ *    ou la charge. 0.20 = un homme sur cinq, calibré sur le gate qui MORD réellement
+ *    (l'élite : 3 100 élites d'un hégémon = 31 paquets de cavalerie pour 30 régiments
+ *    levés — l'assiette pleine ne freinait rien). 1.0 = ancien comportement.
+ *
+ * 3) `extra_assigned` — CE QUE LE PAYS A DÉJÀ SOUS LES ARMES AILLEURS. Le compteur
+ *    `pop_by_class_in_army` est PAR ArmyState ; or `campaign_order`/`campaign_raise`
+ *    TRANSFÈRENT les paquets du host vers un corps de campagne (army_merge_into vide
+ *    la source). Host à 0 affecté ⇒ le pays relevait toute sa population une seconde
+ *    fois pendant que son armée campait. C'est de la COMPTABILITÉ, pas un plafond :
+ *    l'appelant somme ce qu'il voit d'autre (cf. campaign_deployed_class). */
+long army_class_free_ex(const ArmyState *a, const WorldEconomy *econ, int cid,
+                        LaborClass cl, long extra_assigned){
     long pool=0;
-    if (econ) for (int r=0;r<econ->n_regions;r++)
-        if (econ->region[r].owner==cid) pool += (long)econ->region[r].strata[cl].pop;
-    long assigned = a->pop_by_class_in_army[cl];
+    if (econ) for (int p=0;p<econ->n_prov;p++)
+        if (econ->prov[p].owner==cid) pool += (long)econ->prov[p].strata[cl].pop;
+    float frac = tune_f("ARMY_POOL_FRAC",0.20f);
+    if (frac<0.f) frac=0.f;
+    if (frac>1.f) frac=1.f;
+    pool = (long)((float)pool * frac);
+    long assigned = a->pop_by_class_in_army[cl] + (extra_assigned>0?extra_assigned:0);
     return pool - assigned;     /* pop de cette classe NON encore affectée à l'armée */
 }
+long army_class_free(const ArmyState *a, const WorldEconomy *econ, int cid, LaborClass cl){
+    return army_class_free_ex(a,econ,cid,cl,0);
+}
 
-bool army_can_recruit(const ArmyState *a, const WorldEconomy *econ, int cid, UnitType t, long count){
+bool army_can_recruit_ex(const ArmyState *a, const WorldEconomy *econ, int cid, UnitType t,
+                         long count, long extra_assigned){
     if (t<0||t>=U_COUNT||count<=0) return false;
     const UnitDef *d=&UNITS[t];
     if (a->weapons[d->weapon] < count) return false;                       /* pas d'armes → pas d'unité */
-    if (army_class_free(a,econ,cid,d->from) < count*POP_PER_UNIT) return false; /* pas la bonne classe */
+    if (army_class_free_ex(a,econ,cid,d->from,extra_assigned) < count*POP_PER_UNIT) return false; /* pas la bonne classe */
     return true;
+}
+bool army_can_recruit(const ArmyState *a, const WorldEconomy *econ, int cid, UnitType t, long count){
+    return army_can_recruit_ex(a,econ,cid,t,count,0);
 }
 
 long army_recruit(ArmyState *a, const WorldEconomy *econ, int cid, UnitType t, long count){
-    if (!army_can_recruit(a,econ,cid,t,count)) return 0;
+    return army_recruit_ex(a,econ,cid,t,count,0);
+}
+long army_recruit_ex(ArmyState *a, const WorldEconomy *econ, int cid, UnitType t,
+                     long count, long extra_assigned){
+    if (!army_can_recruit_ex(a,econ,cid,t,count,extra_assigned)) return 0;
     const UnitDef *d=&UNITS[t];
     a->weapons[d->weapon]  -= count;                 /* consomme les armes */
     /* prélève la pop : AFFECTÉE à l'armée (a->pop_by_class_in_army), mais toujours dans

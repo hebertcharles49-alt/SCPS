@@ -30,16 +30,19 @@
  * doomstack devient « dépasser sa limite de force ».
  * dial = REGIMENT_PAY/90 : le tunable (registre J, calibré 90) reste le levier
  * GLOBAL de la solde — neutre à 90, balayable en env sans recompiler.
- * ⚠ #define LOCAUX (scps_tune_list.h verrouillé par une mission parallèle) —
- * À MIGRER au registre J (SOLDE_EU4_DIV · SOLDE_FL_* · SOLDE_OVER_K), cf. carnet. */
-#define SOLDE_EU4_DIV    13.0f  /* la SOLDE (l'or du drill) : entretien = prix/13 (EU4 : 12-14) */
-#define SOLDE_ARMS_DIV   26.0f  /* les ARMES : rendues à la démob (pas consommées par l'entretien)
-                                 * → leur part est un AMORTISSEMENT/maintenance, moitié moins lourde */
-#define SOLDE_FL_FLOOR    6.0f  /* limite de force plancher (le plus petit pays entretient 6 rgt à prix plein) */
-#define SOLDE_FL_PER_REG  0.7f  /* +0.7 régiment de limite par région (0.5→0.7 : un empire MOYEN de
-                                 * 10-25 rég vise ~13-24 rgt de limite → la « vingtaine » demandée) */
-#define SOLDE_OVER_K      3.0f  /* au double de la limite : chaque régiment coûte ×4 (1+1×3) */
+ * P2 (CALIB_ARMEE 2026-09-03) — les 5 constantes de solde ont QUITTÉ le #define local
+ * pour le REGISTRE J (scps_tune_list.h) : SOLDE_EU4_DIV · SOLDE_ARMS_DIV ·
+ * SOLDE_FL_FLOOR · SOLDE_FL_PER_REG · SOLDE_OVER_K. Mêmes valeurs, surchargeables. */
 #define SOLDE_PAY_ANCHOR 90.0f  /* valeur calibrée de REGIMENT_PAY à laquelle le dial est neutre */
+/* SOLDE_FORTUNE_ARMS (registre J) — L'UNITÉ SANS ARME PAIE QUAND MÊME SON ÉQUIPEMENT.
+ * `unit_res_arm(MILICE) == RES_NONE` faisait tomber le terme « armes » de la solde à
+ * ZÉRO — or ce terme porte 97-99 % du prix d'un régiment (CALIB_ARMEE §1.3-a) : la
+ * milice coûtait 0.6 or/mois contre 35 pour un piquier, 59× moins cher pour une force
+ * seulement 2.2× plus faible (efficacité 112 contre 4.2 — 27× la meilleure suivante).
+ * Le rabais VOULU est celui de SOLDE_FORTUNE_DISC (−35 %), pas −99 %. La levée d'une
+ * unité de fortune reste GRATUITE en armes (elle n'en consomme aucune) ; son ENTRETIEN
+ * paie une part forfaitaire d'armement léger — piques taillées, cuir, ravitaillement.
+ * 0 = ancien comportement (kill-switch). */
 
 /* ─── AUDIT DU GOULOT D'ARMES (SCPS_ARMSDIAG, 2026-07-06) ──────────────────────────
  * Compteurs de module (jamais lus par le moteur, RAZ par warhost_init → déterminisme
@@ -114,11 +117,14 @@ static long wh_arms_take(WorldEconomy *econ, int cid, UnitType t, long want){
 /* F6 Option B — ARMER un paquet : puise les armes MACRO (RES_ARMS_*, source) → remplit le TAMPON de
  * combat a->weapons[W_*] (que le combat lit, INCHANGÉ) → enrôle. La source du tampon bascule de la
  * fabrication LRes (absorbée) vers le marché macro où la fabrique consomme le fer. */
-static void wh_arm_unit(ArmyState *a, WorldEconomy *econ, int cid, UnitType t, long want){
+static void wh_arm_unit(ArmyState *a, WorldEconomy *econ, int cid, UnitType t, long want,
+                        const long deployed[LAB_CLASS_COUNT]){
     const UnitDef *d=unit_def(t); if(!d || want<=0) return;
     long got=wh_arms_take(econ, cid, t, want);
     a->weapons[d->weapon] += got;                   /* le tampon de combat, rempli depuis le macro */
-    long levied=army_recruit(a, econ, cid, t, got); /* pool par classe = strates econ du pays (pool UNIFIÉ) */
+    /* pool par classe = strates PROVINCE du pays × part mobilisable, MOINS ce que le host
+     * porte ET ce que les corps portent au front (`deployed`) — cf. army_class_free_ex. */
+    long levied=army_recruit_ex(a, econ, cid, t, got, deployed?deployed[d->from]:0);
     { Resource arm=unit_res_arm(t);
       if (arm!=RES_NONE) g_ad_levied[arm] += levied*POP_PER_UNIT; }   /* ARMSDIAG : le gate POP après le gate armes */
 }
@@ -161,15 +167,18 @@ float warhost_unit_pay_month(const WorldEconomy *econ, int price_region, UnitTyp
     float gold = tune_f("REGIMENT_PRICE",12.f) * unit_pay_mult(t) * econ_world_ipm(econ);
     float arms = 0.f;
     Resource arm = unit_res_arm(t);
-    if (arm!=RES_NONE && price_region>=0 && price_region<econ->n_regions)
-        arms = (float)POP_PER_UNIT * econ->region[price_region].price[arm];
+    if (price_region>=0 && price_region<econ->n_regions){
+        if (arm!=RES_NONE) arms = (float)POP_PER_UNIT * econ->region[price_region].price[arm];
+        else               arms = (float)POP_PER_UNIT * econ->region[price_region].price[RES_ARMS_LIGHT]
+                                  * tune_f("SOLDE_FORTUNE_ARMS",0.25f);   /* l'unité de fortune paie SA part */
+    }
     /* or/13 (la solde du drill, EU4) + armes/26 (amortissement : elles sont RENDUES à la démob). */
-    return gold/SOLDE_EU4_DIV + arms/SOLDE_ARMS_DIV;
+    return gold/tune_f("SOLDE_EU4_DIV",13.f) + arms/tune_f("SOLDE_ARMS_DIV",26.f);
 }
 /* LA LIMITE DE FORCE d'un pays (lecture EU4) : combien de régiments il entretient à
  * prix plein — plancher + 2.5/région. Public (UI/diag : « n/limite »). */
 float warhost_force_limit(int n_regions){
-    return SOLDE_FL_FLOOR + SOLDE_FL_PER_REG*(float)(n_regions>0?n_regions:0);
+    return tune_f("SOLDE_FL_FLOOR",6.f) + tune_f("SOLDE_FL_PER_REG",0.7f)*(float)(n_regions>0?n_regions:0);
 }
 long warhost_disband(WarHost *h, WorldEconomy *econ, int cid){
     if (!h || cid<0 || cid>=SCPS_MAX_COUNTRY) return 0;
@@ -189,9 +198,24 @@ long warhost_disband(WarHost *h, WorldEconomy *econ, int cid){
  * plus de labor transitoire à semer (l'adaptateur LaborEcon a disparu). */
 static long wh_country_elite(const WorldEconomy *econ, int cid){
     long elite=0;
-    if (econ) for (int r=0;r<econ->n_regions;r++)
-        if (econ->region[r].owner==cid) elite += (long)econ->region[r].strata[CLASS_ELITE].pop;
+    /* RE-KEY PROVINCE (CALIB_ARMEE 2026-09-03) — même correction de grain que
+     * `army_class_free_ex` qu'il garde : `region[].strata[]` SOMME toutes les provinces
+     * membres quel que soit LEUR propriétaire, et `region.owner` n'est que le
+     * propriétaire MAJORITAIRE — le gate comptait donc l'aristocratie adverse des
+     * régions mixtes. Aucune fraction ici : ce n'est pas le pool mais un SEUIL
+     * (« ce pays a-t-il une aristocratie ? »), lu tel quel contre les 200. */
+    if (econ) for (int p=0;p<econ->n_prov;p++)
+        if (econ->prov[p].owner==cid) elite += (long)econ->prov[p].strata[CLASS_ELITE].pop;
     return elite;
+}
+
+/* CE QUE LES CORPS DE CAMPAGNE DU PAYS PORTENT DÉJÀ, par classe (§4.2 CALIB_ARMEE) :
+ * le pool de levée doit voir TOUT ce que le pays a sous les armes, pas seulement le
+ * host — un corps parti emporte son affectation et le host repart de zéro. `cmp` NULL
+ * (bancs sans campagne) ⇒ zéros : comptabilité du host seul, l'ancien comportement. */
+static void wh_deployed(const Campaign *cmp, int cid, long out[LAB_CLASS_COUNT]){
+    for (int i=0;i<LAB_CLASS_COUNT;i++)
+        out[i] = cmp ? campaign_deployed_class(cmp, cid, (LaborClass)i) : 0;
 }
 
 /* LEVER `batch` paquets dans le scratch déjà semé, en COMPOSANT selon l'ÉTHOS du pays
@@ -201,7 +225,8 @@ static long wh_country_elite(const WorldEconomy *econ, int cid){
  * recrutable (Transgresseur sans arcane, p.ex.) : jamais d'armée vide. Chaque type tire SA
  * catégorie d'armes → fabrique spécialisée → FER (la demande diverse, la preuve F8). */
 static void wh_levy_batch(ArmyState *a, WorldEconomy *econ, const World *w,
-                          const TechState *t, int cid, long batch, long elite){
+                          const TechState *t, int cid, long batch, long elite,
+                          const long deployed[LAB_CLASS_COUNT]){
     if (batch<=0) return;
     float fw[FAC_COUNT];
     country_faction_weights(w, econ, cid, fw);
@@ -219,10 +244,10 @@ static void wh_levy_batch(ArmyState *a, WorldEconomy *econ, const World *w,
         if (target[u]<=0.f) continue;
         long n=(long)((target[u]/sum)*(float)batch + 0.5f);
         if (n<=0) continue;
-        wh_arm_unit(a, econ, cid, (UnitType)u, n);
+        wh_arm_unit(a, econ, cid, (UnitType)u, n, deployed);
         placed+=n;
     }
-    if (placed<=0) wh_arm_unit(a, econ, cid, U_PIQUIER, batch);   /* garde-fou ultime */
+    if (placed<=0) wh_arm_unit(a, econ, cid, U_PIQUIER, batch, deployed);   /* garde-fou ultime */
 }
 
 /* DÉMOBILISER `n` paquets : les unités fondent (de la dernière vers la première), la pop affectée
@@ -255,19 +280,21 @@ static void wh_shed(ArmyState *a, WorldEconomy *econ, int cid, long n){
  * (élite ⇒ pop d'élite requise), et ARMES en stock macro (consommées). La pop est
  * affectée (pas retirée du pool). Renvoie les paquets RÉELLEMENT levés (0 si gate). */
 long warhost_player_recruit(WarHost *h, const World *w, WorldEconomy *econ,
-                            const TechState *ts, int cid, UnitType t, long packs){
+                            const TechState *ts, const Campaign *cmp,
+                            int cid, UnitType t, long packs){
     if (!h || !econ || cid<0 || cid>=SCPS_MAX_COUNTRY || packs<=0) return 0;
     if (!unit_recruitable(ts, t)) return 0;
     long elite = wh_country_elite(econ, cid); (void)w;   /* w : réservé (plus de semis labor transitoire) */
     const UnitDef *d = unit_def(t);
     if (d && d->from==LAB_ELITE && elite<=200) return 0;
+    long deployed[LAB_CLASS_COUNT]; wh_deployed(cmp, cid, deployed);
     long before = warhost_units(h, cid);
-    wh_arm_unit(&h->army[cid], econ, cid, t, packs);
+    wh_arm_unit(&h->army[cid], econ, cid, t, packs, deployed);
     return warhost_units(h, cid) - before;
 }
 
 void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
-                  const DiploState *dp, const TechState *ts, float dt){
+                  const DiploState *dp, const TechState *ts, const Campaign *cmp, float dt){
     if (!h || !econ || dt<=0.f) return;
     for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
         if (w->country[c].role==POLITY_UNCLAIMED || w->country[c].capital_prov<0) continue;
@@ -309,7 +336,7 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
               /* LIMITE DE FORCE : en-deçà ×1 ; au-delà, l'intendance mord. */
               float fl   = warhost_force_limit(nreg);
               float over = (fl>0.f)? ((float)u/fl - 1.f) : 0.f;
-              float sizemult = 1.f + (over>0.f ? over*SOLDE_OVER_K : 0.f);
+              float sizemult = 1.f + (over>0.f ? over*tune_f("SOLDE_OVER_K",3.f) : 0.f);
               /* dial global : REGIMENT_PAY/90 (registre J — neutre à 90, balayable en env). */
               float dial = tune_f("REGIMENT_PAY",1.5f)/SOLDE_PAY_ANCHOR;
               float base_pay = typed_pay * sizemult * dial
@@ -374,11 +401,12 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
          * paix tient MOINS d'hommes sous les armes que la guerre (et la solde I1 en
          * abaisse la jauge quand le trésor ne suit plus : démobiliser PAR LE COÛT). */
         long cur = warhost_units(h,c);
+        long deployed[LAB_CLASS_COUNT]; wh_deployed(cmp, c, deployed);   /* §4.2 : les corps au front comptent */
         if (at_war){
             long batch = (long)(WH_BATCH_WAR*LEVY_MULT[lv]*dt + 0.5f);
             if (batch>0 && !pay_starved){   /* AUDIT 2026-09-02 : on ne lève plus ce qu'on ne solde plus */
                 long elite = wh_country_elite(econ, c);
-                wh_levy_batch(&h->army[c], econ, w, ts?&ts[c]:NULL, c, batch, elite);
+                wh_levy_batch(&h->army[c], econ, w, ts?&ts[c]:NULL, c, batch, elite, deployed);
             }
         } else {
             /* GARNISON DE PAIX ∝ TAILLE (2026-07-06 : « une vingtaine de rgt pour un empire
@@ -397,7 +425,7 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                 long deficit = garrison - cur; if (batch>deficit) batch=deficit;
                 if (batch>0){
                     long elite = wh_country_elite(econ, c);
-                    wh_levy_batch(&h->army[c], econ, w, ts?&ts[c]:NULL, c, batch, elite);
+                    wh_levy_batch(&h->army[c], econ, w, ts?&ts[c]:NULL, c, batch, elite, deployed);
                 }
             }
         }

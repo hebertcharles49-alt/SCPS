@@ -577,7 +577,7 @@ static void sim_cmd_drain(Sim *s, World *w){
           case CMD_RECRUIT: {
             int u = c->a[0]; long n = (c->a[1] > 0) ? c->a[1] : 1;
             if (u<0 || u>=U_COUNT) break;
-            warhost_player_recruit(s->host, w, s->econ, &s->ts[p], p, (UnitType)u, n);
+            warhost_player_recruit(s->host, w, s->econ, &s->ts[p], s->camp, p, (UnitType)u, n);
             break; }
           case CMD_SET_LEVY:
             warhost_set_levy(s->host, p, c->a[0]);
@@ -1608,7 +1608,7 @@ void sim_day(Sim *s, World *w) {
         /* DIPLOMATIE annuelle : usure de guerre, FONTE des trêves & du momentum
          * (la guerre peut reprendre après le répit), et le SCORE DE GUERRE (bras-de-fer
          * + attrition qui saigne les armes). */
-        PROF(PB_WARHOST, warhost_tick(s->host, w, s->econ, s->dp, s->ts, 1.0f));   /* la mobilisation : les armées vivent */
+        PROF(PB_WARHOST, warhost_tick(s->host, w, s->econ, s->dp, s->ts, s->camp, 1.0f));   /* la mobilisation : les armées vivent (le pool compte les corps au front) */
         PROF(PB_CAMPAGNE, sim_campaign_year(s, w));                           /* … et MARCHENT : campagne sur la carte */
         if (getenv("SCPS_FORGEDIAG")){   /* pic d'effectif par type sur tout le siècle (démasque la démob) */
             long yu[U_COUNT]; memset(yu,0,sizeof yu);

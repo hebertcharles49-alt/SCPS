@@ -22,6 +22,7 @@
 #include "scps_army.h"
 #include "scps_labor.h"
 #include "scps_diplo.h"
+#include "scps_campaign.h"   /* Campaign : le pool de levée compte les corps au front (§4.2) */
 
 typedef struct {
     ArmyState  army[SCPS_MAX_COUNTRY];   /* l'armée levée de chaque pays (persiste) */
@@ -44,9 +45,14 @@ void warhost_init(WarHost *h);
 void warhost_free(WarHost *h);
 
 /* Mobilisation (dt en ANNÉES) : chaque pays vivant lève des troupes ∝ son pied de
- * guerre ; la force se dépose en armes sur sa capitale (→ mil_power). */
+ * guerre ; la force se dépose en armes sur sa capitale (→ mil_power).
+ * `cmp` (NULLABLE) : la CAMPAGNE, lue en SEULE LECTURE pour que le pool de recrutement
+ * voie les corps partis au front — sans elle, un corps en campagne vide l'affectation
+ * du host et le pays relève sa population une seconde fois (CALIB_ARMEE §4.2). NULL =
+ * pays sans corps déployé (bancs) : comptabilité du host seul. */
 void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
-                  const DiploState *dp, const TechState *ts, float dt_years);  /* ts[SCPS_MAX_COUNTRY] : F8 gate de variété */
+                  const DiploState *dp, const TechState *ts, const Campaign *cmp,
+                  float dt_years);  /* ts[SCPS_MAX_COUNTRY] : F8 gate de variété */
 
 long warhost_units (const WarHost *h, int cid);   /* paquets de 100 levés (UI/IA) */
 
@@ -75,7 +81,8 @@ void warhost_set_human(int cid);
 /* ACTION JOUEUR : lève `packs` paquets d'un TYPE d'unité choisi (verbe absent de l'IA,
  * qui compose par AFF). Gates : tech, classe (élite), armes en stock. Renvoie le levé. */
 long warhost_player_recruit(WarHost *h, const World *w, WorldEconomy *econ,
-                            const TechState *ts, int cid, UnitType t, long packs);
+                            const TechState *ts, const Campaign *cmp,
+                            int cid, UnitType t, long packs);
 
 /* DÉMOBILISER la réserve levée (§4) : l'armée du pays se dissout, la jauge retombe
  * à GARDE (sinon le pied de guerre re-lève aussitôt). LOT 2 — aligné sur wh_shed (le

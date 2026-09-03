@@ -33,11 +33,23 @@ static void ok(const char *what, bool cond){
 /* Une éco de jouet : un pays (cid 0) d'UNE région, avec sa pop par classe (les
  * strates econ — la pop UNIQUE que la levée LIT désormais, fin de LaborEcon). Les
  * armes viennent du marché macro ; le banc remplit a->weapons[W_*] DIRECTEMENT. */
+/* RE-CALIBRAGE DE FIXTURE (CALIB_ARMEE 2026-09-03) — la fixture supposait le grain
+ * RÉGION et l'assiette PLEINE, tous deux corrigés :
+ *  · le pool de levée lit maintenant `prov[]` (la vérité, charte règle 1) et non plus
+ *    la VUE `region[]` — une fixture qui ne peuple QUE la vue offrait un pool VIDE ;
+ *  · il n'en retient que la part MOBILISABLE (ARMY_POOL_FRAC 0.20).
+ * Les arguments gardent donc leur SENS d'origine — « laborer/elite RECRUTABLES » — et
+ * la pop posée est ×5. `region[]` reste peuplée en miroir : c'est exactement ce
+ * qu'agrégerait econ_aggregate_regions depuis cette province. */
 static void setup_econ(WorldEconomy *e, long laborer, long elite){
-    memset(e,0,sizeof(*e)); e->n_regions=1;
-    RegionEconomy *r=&e->region[0]; r->owner=0;
-    r->strata[CLASS_LABORER].pop=(float)laborer;
-    r->strata[CLASS_ELITE].pop  =(float)elite;
+    memset(e,0,sizeof(*e)); e->n_regions=1; e->n_prov=1;
+    const float inv = 1.f/0.20f;                 /* part mobilisable → pop TOTALE à poser */
+    ProvinceEconomy *p=&e->prov[0]; p->owner=0; p->region=0;
+    p->strata[CLASS_LABORER].pop=(float)laborer*inv;
+    p->strata[CLASS_ELITE].pop  =(float)elite  *inv;
+    RegionEconomy *r=&e->region[0]; r->owner=0;  /* la VUE, en miroir de la province */
+    r->strata[CLASS_LABORER].pop=p->strata[CLASS_LABORER].pop;
+    r->strata[CLASS_ELITE].pop  =p->strata[CLASS_ELITE].pop;
 }
 /* Pop enrôlée, toutes classes (remplace l'ancien labor_pop_in_army). */
 static long army_pop_enrolled(const ArmyState *a){

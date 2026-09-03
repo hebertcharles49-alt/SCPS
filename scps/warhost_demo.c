@@ -91,7 +91,7 @@ int main(int argc,char**argv){
     /* 3 ans : assez pour que le PIED DE GUERRE (WH_BATCH_WAR=7/an) lève son plafond,
      * mais trop court pour que l'ENTRETIEN de paix (WH_BATCH_PEACE=1.5/an) le rattrape.
      * (À 6 ans, les deux SATURENT leur capacité → l'écart guerre/paix s'efface.) */
-    for(int y=0;y<3;y++) warhost_tick(&h,w,econ,&dp,NULL,1.f);
+    for(int y=0;y<3;y++) warhost_tick(&h,w,econ,&dp,NULL,NULL,1.f);
     long ua=warhost_units(&h,ca), ub=warhost_units(&h,cb);
     printf("   après 3 ans : pays en guerre %d → %ld paquets · pays en guerre %d → %ld · capitale arms %.0f→%.0f\n",
            ca, ua, cb, ub, arms0, capital_arms(w,econ,ca));
@@ -121,7 +121,7 @@ int main(int argc,char**argv){
           econ->prov[crp3].treasury = -500.f;
           econ->prov[crp3].strata[CLASS_LABORER].wealth = 0.f;
           float tre0 = econ->prov[crp3].treasury;
-          warhost_tick(&h,w,econ,&dp,NULL,1.f);
+          warhost_tick(&h,w,econ,&dp,NULL,NULL,1.f);
           float tre1 = econ->prov[crp3].treasury;
           printf("   trésor capital (ca=%d) avant=%.1f → après=%.1f · Laborer wealth=%.2f\n",
                  ca, tre0, tre1, econ->prov[crp3].strata[CLASS_LABORER].wealth);

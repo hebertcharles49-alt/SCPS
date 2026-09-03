@@ -12251,3 +12251,133 @@ COÛT, jamais une borne — P1 (`TECH_PROD_CAP`) REJETÉE, non implémentée.
 - **`docs/LEVIERS.md:461` annonce toujours « 85 nœuds »** alors que `TECH_COUNT = 74` —
   dérive documentaire relevée par le rapport, non corrigée (hors périmètre).
 - **Golden re-baseline non faite** (consigne) : seule la graine 209 diverge à 12 ans.
+
+
+## Mission 2026-09-03 — W1-F ARMÉE : registre · pool de levée · milice · gates d'unités · décrochage
+
+Feuille de route : `docs/CALIB_ARMEE_2026-09-03.md`. Décision joueur « corrige tout,
+**PAS DE CAP** » ⇒ **P1 (levée plafonnée à 2× la limite de force) REJETÉE** : le frein
+de la levée reste ÉCONOMIQUE (solde, garde de budget, main-d'œuvre) et surtout
+COMPTABLE. Résultat mesuré : le dépassement retombe de **2,02× à ~1,0× la limite de
+force sans qu'aucune borne n'ait été posée**.
+
+### Découvertes
+
+- **Le corps au front n'était pas seulement invisible du pool : il le DOUBLAIT.**
+  `army_class_free` ne lit que l'ArmyState qu'on lui passe ; `campaign_order`/
+  `campaign_raise` TRANSFÈRENT (army_merge_into vide la source), donc host à 0 affecté
+  ⇒ le pays relève toute sa population une seconde fois. Corrigé en COMPTABILITÉ pure
+  (`army_class_free_ex(..., extra_assigned)` + `campaign_deployed_class`), pas en
+  plafond. Effet apparié (graine 512, 120 ans, `6 12`) : **Horde Brewick 22 rgt pour
+  FL 10.9 (2,02×, −428,4 or/mois) → 12 rgt pour FL 11.6 (1,03×, −16,7 or/mois)**.
+  Max mondial rgt/FL : **2,02 → 1,03** (s512) · **1,05 → 0,99** (s7). Σ régiments
+  90 → 61 (s512) · 85 → 75 (s7).
+- **`region[].strata[]` SOMME toutes ses provinces membres, quel que soit LEUR
+  propriétaire** — et `region.owner` n'est que le propriétaire MAJORITAIRE
+  (`econ_aggregate_regions`, `scps_econ.c:1556+`). Toute assiette « Σ des régions dont
+  owner==cid » compte donc la pop ADVERSE des régions mixtes et perd ses propres
+  provinces logées en région adverse. Deux sites de la levée en souffraient :
+  `army_class_free` ET `wh_country_elite` (le gate `elite>200`). Les deux re-keyés sur
+  `prov[]`.
+- **`CLASS_COUNT` vaut 4, `LAB_CLASS_COUNT` vaut 3.** La strate ESCLAVE a été appendue
+  à `PopClass` (`scps_econ.h:53+`) mais `ArmyState.pop_by_class_in_army[]` est
+  dimensionné en `LAB_CLASS_COUNT`. Dimensionner un tableau d'armée en `CLASS_COUNT`
+  déborde d'une case — seul `-Wenum-compare` l'a signalé (comparaison `LaborClass` vs
+  `enum <anonymous>`). **Tout tableau indexé par une classe côté ARMÉE se dimensionne
+  en `LAB_CLASS_COUNT`.**
+- **DIX bancs lient `scps_warhost.o` SANS `scps_campaign.o`** (army/demography/
+  demography_integ/social/agency/ai/forks/credit/cap/religion_demo). Ajouter un
+  symbole appelé depuis `scps_warhost.c` et défini dans `scps_campaign.c` casse leur
+  édition de liens d'un coup (« undefined reference », 10 BUILD ÉCHEC d'un seul geste).
+  `campaign_deployed_class` est donc un **`static inline` d'en-tête** — golden
+  strictement identique avant/après le déplacement (`de10f677 …` des deux côtés).
+- **La part « armes » de la solde porte 97-99 % du prix d'un régiment**, et
+  `RES_NONE` la mettait à ZÉRO : la Milice coûtait 0,6 or/mois contre 35 pour un
+  piquier. `SOLDE_FORTUNE_DISC` (−35 %) ne mordait que sur l'or, soit −0,3 or/mois.
+  Forfait `SOLDE_FORTUNE_ARMS 0.25` du prix d'armes légères (base 9) :
+  100×9×0,25/26 = **8,65 + 0,6 = 9,25 or/mois** ⇒ **efficacité 112 → 7,2**, contre 4,2
+  pour le piquier et 3,1 pour le hallebardier : même ordre de grandeur, la masse
+  paysanne reste bon marché sans être l'évidence mathématique du roster.
+- **Le décrochage était mort pour DEUX raisons multiplicatives**, et les corriger
+  toutes les deux SUR-corrige. Fenêtre `[BT_RUPTURE 0.20, BT_DECROCHE 0.22]` = 2 points
+  ET test un jour sur cinq (`ph==BT_CHOC_J`). Fenêtre à 15 points + test sur les DEUX
+  jours d'accalmie (`ph>=BT_CHOC_J`) : **déroutes 99 % → 43 % (s7) / 97 % → 40 % (s512)**,
+  **décrochages 0,9 % → 57 % / 2,9 % → 60 %**, 0 nul des deux côtés, durée 17→16 j et
+  20→17 j. Le rapport visait 15-25 % de décrochages : on est **2,5× au-dessus**, et le
+  coût annoncé se matérialise — **régions réduites 80 → 48 (s7) et 34 → 17 (s512)**,
+  le décrochage n'appelant pas `bt_press_siege`. `BT_DECROCHE` étant désormais AU
+  REGISTRE (c'était tout l'objet de P2), la bande 0,22-0,35 se balaie sans recompiler.
+- **La migration au registre est arithmétiquement neutre et se PROUVE** : avec les 6
+  changements structurels remis à l'ancien et
+  `SCPS_TUNE=BT_DECROCHE=0.22,ARMY_POOL_FRAC=1.0,SOLDE_FORTUNE_ARMS=0`,
+  **`make golden` PASSE sur le golden commité** (5/5 hashes). Rien n'a fui.
+
+### Pièges
+
+- **Le répertoire scratchpad est PARTAGÉ par tous les agents de la vague.** Un script
+  `g1.sh` a été écrasé par un agent parallèle **pendant que `bash` le lisait** : MSYS2
+  lit le script de façon incrémentale, si bien que l'exécution a basculé en plein vol
+  dans le worktree de l'autre agent (`cd` compris). Symptôme : une sortie de tâche qui
+  ne correspond plus au script qu'on a écrit. **Nommer tout script de mission avec un
+  préfixe unique (`w1f_*.sh`) dans un sous-dossier propre.**
+- **`chronicle_asan.exe` est lié par CLANG64, pas MINGW64** (`SAN_CC` du Makefile
+  préfère `/clang64/bin/clang`). Lancé depuis un shell `MSYSTEM=MINGW64` il meurt en
+  `libwinpthread-1.dll: cannot open shared object file` (rc=127) — ce n'est PAS un
+  échec ASan. `export PATH=/clang64/bin:$PATH` avant de le lancer.
+- **`shutil.copy2` PRÉSERVE la mtime — et défait `make`.** Le kill-switch a été posé
+  puis retiré par sauvegarde/restauration de fichiers ; `copy2` rend aux sources
+  restaurées leur mtime d'ORIGINE, donc ANTÉRIEURE aux `.o` compilés pendant l'essai.
+  `make chronicle` a considéré les objets à jour et n'a rien recompilé : le binaire
+  « restauré » portait encore le code kill-switché, avec les défauts NEUFS du registre
+  — un TROISIÈME comportement, et un `make determinism` parfaitement « STABLE » sur
+  un binaire faux. **Après toute restauration de fichier, `touch` les sources et
+  supprimer les `.o` concernés** ; se méfier d'un hash golden qui bouge sans qu'aucune
+  ligne n'ait changé.
+- **Une fixture de banc qui ne peuple que `region[]` offre un pool VIDE** dès qu'un
+  lecteur passe au grain province. `army_demo::setup_econ` posait `region[0]` seul :
+  3 assertions rouges d'un coup (« la levée RÉUSSIT », « la cavalerie lourde se lève »,
+  « la masse fournit la piétaille »). Re-calibré en posant la PROVINCE (la vérité) et
+  `region[]` en miroir, pop ×5 pour que la part mobilisable (`ARMY_POOL_FRAC` 0.20)
+  rende le pool EFFECTIF que le banc visait — les arguments gardent leur sens
+  (« laboureurs/élites RECRUTABLES »). 50/50 verts.
+- **Le sweep et la mesure exigent `<graine> 1 <ans> 6 12`.** Sans `EMPIRES=6 CITIES=12`
+  on obtient un monde qui ne reproduit rien du rapport (déjà noté par la mission
+  anomalies ; re-vérifié : la graine 512 par défaut ne redonne pas Horde Brewick).
+- **Comparer deux bras appariés index-à-index reste faux** : les mondes divergent dès
+  l'an 1 (les gates de tech mordent immédiatement). Les tableaux ci-dessus comparent
+  des DISTRIBUTIONS (max rgt/FL, Σ régiments, parts de déroute), jamais un pays à son
+  homonyme.
+
+### Restes
+
+- **Le décrochage à 57-60 % est au-dessus de la cible du rapport (15-25 %) et coûte
+  40-50 % des prises de terrain.** Décision joueur : soit on garde (la bataille a enfin
+  DEUX issues), soit on ramène `BT_DECROCHE` vers 0,26-0,28, soit on applique la
+  mitigation du rapport (§5-P3) — **faire presser le siège au vainqueur d'un
+  décrochage comme à celui d'une déroute** (`scps_campaign.c:~1068-1071`, `bt_press_siege`
+  n'y est pas appelé). Non fait : hors des 6 points du brief.
+- **`campaign_refill_corps` (`scps_campaign.c:~1349`) garde le trou de comptabilité** :
+  il consulte `army_class_free` sur le SEUL corps qu'il recomplète, sans voir le host
+  ni les corps frères. Borné par `fa->nominal` (il ne peut pas s'emballer), et c'est un
+  VERBE joueur, pas la levée IA — laissé tel quel. Le corriger demande de faire
+  descendre l'affectation du host jusqu'à la campagne (paramètre de plus sur un verbe
+  public).
+- **`scps_api.c:953/975` (aperçu de construction, façade)** appelle `army_class_free`
+  sans terme `extra_assigned` : l'aperçu joueur bénéficie du grain province et de la
+  part mobilisable, mais surestime encore le pool de ce que ses corps portent au front.
+  Fichier hors périmètre de cette mission.
+- **P4 — la MILICE comme plancher de levée** (le « ban » du pays sans arsenal) n'est
+  PAS faite : `wh_levy_batch` retombe toujours sur Piquier/Épéiste/Archer, tous gatés
+  sur l'arsenal. P5 (le prix de la milice) en était le PRÉREQUIS et est fait ; P4 est
+  désormais débloquée. Le cas se voit encore : `Havre Tuckbyel`, 21 régions, 0 rgt au
+  témoin s7 — stock Poisson/Bétail/Argile/Céréales, aucune arme.
+- **Non traités du rapport** : P6 (le choc ne tue pas au petit format), P7
+  (`BT_DEF_EDGE` 0.10→0.20, le terrain écrasé 4 biomes sur 6 — la clé est MAINTENANT
+  surchargeable), P8 (levier cavalerie), P10 (la solde payée par le PAYS — chantier
+  W1-A), P11 (télémétrie : ventilation par type d'unité, ligne mer périmée, `rgt/FL`
+  jamais imprimé). P11-3 aurait aidé ici : le rapport rgt/limite se recalcule à la main
+  à chaque mesure.
+- **Golden 5/5 hashes bougent — NON re-baseliné** (consigne : l'orchestrateur le fait
+  au merge) : `7 19088340→de10f677 · 108 152f65d2→ec5f0d52 · 209 d53ab650→3907aaac ·
+  310 81555cec→6a46fd7d · 411 535c270a→f8b84d3a`. `scps/golden_deep.txt` reste STALE
+  (antérieur, non touché).

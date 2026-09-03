@@ -229,6 +229,38 @@
      * longtemps), hégémon mortel INCHANGÉ, aucune spirale de dette (credit_demo 16/16). */ \
     X(REGIMENT_PAY,          90.0f) \
     X(REGIMENT_PRICE,        12.0f) \
+    /* P2 (CALIB_ARMEE 2026-09-03 §5-P2) — LA SOLDE ET LES CLÉS DE BATAILLE ENTRENT AU
+     * REGISTRE. Ces 9 valeurs pilotaient l'armée depuis des #define LOCAUX
+     * (scps_warhost.c) ou des tune_f SANS entrée dans cette liste — donc
+     * `SCPS_TUNE=BT_DECROCHE=0.5` sortait en exit 2 : les 9 grandeurs les plus
+     * structurantes du module de guerre étaient INSURCHARGEABLES, aucun sweep
+     * d'équilibrage militaire n'était possible. Défauts IDENTIQUES à ce qu'elles
+     * remplacent (BT_DECROCHE excepté, cf. plus bas) → golden inchangé par la seule
+     * migration. */ \
+    X(SOLDE_EU4_DIV,         13.0f) \
+    X(SOLDE_ARMS_DIV,        26.0f) \
+    X(SOLDE_FL_FLOOR,         6.0f) \
+    X(SOLDE_FL_PER_REG,       0.7f) \
+    X(SOLDE_OVER_K,           3.0f) \
+    X(BT_DEF_EDGE,            0.10f) \
+    X(BT_DECROCHE,            0.35f) \
+    X(BT_RELIEF_FALL,        30.0f) \
+    X(BT_ATK_RATIO,           1.2f) \
+    /* CALIB_ARMEE §1.3-b/§5-P5 — L'UNITÉ DE FORTUNE (RES_NONE, la Milice) PAIE SA PART.
+     * Le terme « armes » porte 97-99 % de la solde d'un régiment ; `RES_NONE` le mettait
+     * à ZÉRO, donc la Milice coûtait 0.6 or/mois contre 35 pour un piquier (59× moins
+     * cher pour une force 2.2× plus faible : efficacité 112 contre 4.2, 27× la meilleure
+     * suivante — l'unité la plus rentable du jeu, et de très loin). Le rabais VOULU est
+     * SOLDE_FORTUNE_DISC (−35 % sur l'or), pas −99 %. Fraction du prix d'armes LÉGÈRES
+     * facturée à l'entretien d'un paquet sans catégorie d'arme (piques taillées, cuir,
+     * ravitaillement) ; la LEVÉE, elle, reste gratuite en armes. 0 = ancien comportement. */ \
+    X(SOLDE_FORTUNE_ARMS,     0.25f) \
+    /* CALIB_ARMEE / rapport population §P3 — LA PART MOBILISABLE d'une classe. L'assiette
+     * de levée prenait 100 % de la strate : tout laboureur et toute élite pouvaient, en
+     * droit, passer sous les armes. Ce n'est PAS un plafond de régiments (le frein reste
+     * la solde) mais la part en âge et en état de porter les armes plutôt que de tenir la
+     * ferme, l'atelier ou la charge. 1.0 = ancien comportement (kill-switch). */ \
+    X(ARMY_POOL_FRAC,         0.20f) \
     /* LOT 3 (audit de guerre) — le SIÈGE LIT LA GARNISON : chaque point de H_coerc
      * (Garnison/Forteresse/Citadelle bâties, re->build.H_coerc) durcit la place en
      * plus du simple compte de bâtiments — poids modeste (~5-10 % sur la durée

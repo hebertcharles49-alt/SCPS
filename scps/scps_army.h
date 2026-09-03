@@ -147,6 +147,18 @@ long army_class_free(const ArmyState *a, const WorldEconomy *econ, int cid, Labo
  * armes du tampon (rempli au préalable depuis le marché macro). Renvoie le nb levé.
  * Le POOL par classe est LU des strates econ du pays `cid` (plus de LaborEcon). */
 long army_recruit(ArmyState *a, const WorldEconomy *econ, int cid, UnitType t, long count);
+/* ── VARIANTES `_ex` : « ce que le pays a DÉJÀ sous les armes ailleurs » ───────────
+ * `pop_by_class_in_army` est PAR ArmyState ; un corps parti en campagne emporte son
+ * affectation (transfert, pas copie) et le host repart de zéro — le pays pouvait donc
+ * relever sa population une seconde fois (CALIB_ARMEE 2026-09-03 §4.2). L'appelant qui
+ * VOIT les autres formations (warhost_tick, avec la Campagne) passe leur pop affectée
+ * de cette classe en `extra_assigned` ; les variantes sans `_ex` valent `_ex(...,0)`. */
+long army_class_free_ex(const ArmyState *a, const WorldEconomy *econ, int cid,
+                        LaborClass cl, long extra_assigned);
+bool army_can_recruit_ex(const ArmyState *a, const WorldEconomy *econ, int cid, UnitType t,
+                         long count, long extra_assigned);
+long army_recruit_ex(ArmyState *a, const WorldEconomy *econ, int cid, UnitType t,
+                     long count, long extra_assigned);
 
 /* ---- Le pierre-feuille-ciseaux (§3) ----------------------------------- */
 /* >1 si `a` contre `b`, <1 si `a` est contré, 1 neutre. */

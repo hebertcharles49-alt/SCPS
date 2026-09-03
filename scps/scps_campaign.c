@@ -1045,13 +1045,23 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
         float rB=BT_RECUP + ((e->region[bt->loc].owner==B->owner)?0.007f:0.f);
         bt->resA=fminf(bt->resA0, bt->resA+bt->resA0*rA);
         bt->resB=fminf(bt->resB0, bt->resB+bt->resB0*rB);
-        if (ph==BT_CHOC_J){                            /* DÉCROCHER : en ordre, poursuite réduite */
+        /* CALIB_ARMEE 2026-09-03 §3.1/§5-P3 — LE RETRAIT EN ORDRE ÉTAIT MORT. Mesuré sur
+         * ~1 700 batailles : 97-100 % finissent en DÉROUTE, 0-3 % en décrochage, ZÉRO nul.
+         * Deux causes arithmétiques cumulées : (i) la fenêtre [BT_RUPTURE 0.20,
+         * BT_DECROCHE 0.22] faisait DEUX points de large — une réserve qui descend sous
+         * 0.22 passe sous 0.20 dans le même cycle de choc et rompt avant d'avoir pu
+         * décrocher ; (ii) le test ne tombait qu'UN jour sur cinq (`ph==BT_CHOC_J`, le
+         * premier des deux jours d'accalmie). La fenêtre passe à 15 points (BT_DECROCHE
+         * 0.35, registre J — 0.22 = ancien comportement) et le test à `ph>=BT_CHOC_J` :
+         * les DEUX jours d'accalmie. Une armée battue peut se retirer en payant 8 % au
+         * lieu des 8-62 % de la poursuite. */
+        if (ph>=BT_CHOC_J){                            /* DÉCROCHER : en ordre, poursuite réduite */
             float fA=bt->resA/(bt->resA0+1.f), fB=bt->resB/(bt->resB0+1.f);
             /* P3 — le décrochage est l'EXCEPTION : on ne rompt qu'à moral BAS (seuil
              * abaissé, tunable). Sinon la bataille se DÉCIDE (déroute) — c'est ce qui
              * fait tomber les sièges et prendre le terrain (avant : 98 % de décrochages,
              * 0 occupation). Posture prudente = plus prompte à rompre (+0.10). */
-            float base=tune_f("BT_DECROCHE",0.22f);
+            float base=tune_f("BT_DECROCHE",0.35f);
             float sA=base, sB=base;
             int who=(fA<sA && fA<fB-0.08f)?0:(fB<sB && fB<fA-0.08f)?1:-1;
             if (who>=0){
