@@ -84,6 +84,18 @@ void  faith_convert_tick(ProvincePop *pp, const PopCulture *crown,
  * aucun) ; un groupe DÉJÀ déplacé garde son home d'origine (jamais écrasé). */
 bool migration_move(ProvincePop *from, ProvincePop *to, int gi, long amount, int new_drift_id, int mode, int home_reg);
 
+/* ══ L'INVARIANT DES SIÈGES : Σ pop_by_class == count (P2, rapport CALIB POPULATION §4.2) ══
+ * `count` (les ÂMES du groupe) et `pop_by_class[]` (les SIÈGES d'emploi qu'elles occupent)
+ * sont écrits par des chemins DIFFÉRENTS : l'émergence de classe pose les seconds une fois
+ * par mois, mais migration/fusion/essaimage/mobilisation bougent le PREMIER entre-temps —
+ * un groupe de 200 âmes héritait ainsi des sièges d'un groupe de 5 000. Là où l'émergence
+ * tourne, l'écart se répare au tick suivant ; ailleurs il est PERMANENT et CUMULATIF.
+ * Ce helper RE-PROPORTIONNE les sièges existants sur le nouveau `count`, sans inventer un
+ * seul nombre : mêmes PARTS de classe, même convention de paquets de 100 que
+ * `demography_emerge_classes`, le reste au journalier. Un groupe TENU (CLASS_SLAVE) porte
+ * toutes ses âmes dans sa propre classe. À appeler APRÈS toute écriture de `count`. */
+void demography_group_seats_rescale(PopGroup *g);
+
 /* ATTRACTIVITÉ MIGRATOIRE = prospérité + BÂTI (institutions). Un empire ultra-bâti ultra-prospère
  * est un AIMANT : la migration échelonne avec l'attractivité. (exposé pour l'auto-vérif) */
 float migration_attractivity(float prosperity, float K_inst);

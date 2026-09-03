@@ -239,6 +239,12 @@ int assimilation_tick(ProvincePop *pp, ModifierStack *drift, float P, float K, f
             winner->culture_id=econ_culture_identity_fuse(winner->culture_id,g->culture_id,
                                                            winner->heritage,minority,CULTURE_BLEND_PEOPLE);
             winner->count += g->count;
+            /* P2 (site #7 du rapport §4.2) — le commentaire ci-dessus reconnaissait que les
+             * SIÈGES du groupe fondu étaient PERDUS : le vainqueur gagnait des âmes sans
+             * emplois. Ils passent désormais au vainqueur avec les âmes, puis on
+             * re-proportionne (rien de créé : ce sont les sièges du fondu). */
+            for (int c=0;c<CLASS_COUNT;c++) winner->pop_by_class[c] += g->pop_by_class[c];
+            demography_group_seats_rescale(winner);
             modstack_drop_group(drift, g->drift_id);   /* audit 2026-08-12 : le fondu rend sa dérive */
             int last=pp->n_groups-1;
             pp->groups[i]=pp->groups[last]; pp->n_groups--;
@@ -286,6 +292,35 @@ void faith_convert_tick(ProvincePop *pp, const PopCulture *crown,
     }
 }
 
+/* ══ P2 — L'INVARIANT DES SIÈGES (rapport CALIB POPULATION §4.2) ══
+ * Voir le commentaire de doctrine dans scps_demography.h. Conservatif par construction :
+ * on ne fabrique aucun siège, on re-proportionne ceux qui existent sur le nouveau `count`.
+ * Arithmétique ENTIÈRE (déterminisme) en 64 bits — `long` est 32 bits sur MinGW et
+ * sièges×count déborderait dès quelques dizaines de milliers d'âmes. */
+void demography_group_seats_rescale(PopGroup *g){
+    if (!g) return;
+    if (g->count<=0){ for (int c=0;c<CLASS_COUNT;c++) g->pop_by_class[c]=0; return; }
+    if (g->klass==CLASS_SLAVE){          /* un groupe TENU : toutes ses âmes en CLASS_SLAVE */
+        g->pop_by_class[CLASS_LABORER]=0; g->pop_by_class[CLASS_BOURGEOIS]=0;
+        g->pop_by_class[CLASS_ELITE]=0;   g->pop_by_class[CLASS_SLAVE]=g->count;
+        return;
+    }
+    g->pop_by_class[CLASS_SLAVE]=0;      /* un LIBRE n'occupe aucun siège servile */
+    long old = g->pop_by_class[CLASS_LABORER]+g->pop_by_class[CLASS_BOURGEOIS]
+             + g->pop_by_class[CLASS_ELITE];
+    if (old==g->count) return;                                  /* déjà exact : rien à faire */
+    if (old<=0){                                                /* jamais émergé : tout journalier */
+        g->pop_by_class[CLASS_ELITE]=0; g->pop_by_class[CLASS_BOURGEOIS]=0;
+        g->pop_by_class[CLASS_LABORER]=g->count; return;
+    }
+    long e=(long)(((long long)g->pop_by_class[CLASS_ELITE]    *g->count/old)/100)*100;
+    long a=(long)(((long long)g->pop_by_class[CLASS_BOURGEOIS]*g->count/old)/100)*100;
+    if (e>g->count)   e=(g->count/100)*100;
+    if (e+a>g->count) a=((g->count-e)/100)*100;
+    g->pop_by_class[CLASS_ELITE]=e; g->pop_by_class[CLASS_BOURGEOIS]=a;
+    g->pop_by_class[CLASS_LABORER]=g->count-e-a;
+}
+
 /* ===================================================================== */
 /* MIGRATION PASSIVE — emporte heritage + culture (§4)                        */
 /* ===================================================================== */
@@ -294,6 +329,16 @@ bool migration_move(ProvincePop *from, ProvincePop *to, int gi, long amount, int
     PopGroup *src=&from->groups[gi];
     if (amount>src->count) amount=src->count;
     if (amount<=0) return false;
+    /* P2 (sites #1/#2/#3 du rapport §4.2) — LES SIÈGES VOYAGENT AVEC LES ÂMES. Avant, le
+     * groupe créé faisait `ng=*src` : il héritait des sièges du groupe SOURCE ENTIER (200
+     * âmes portant les sièges de 5 000), le groupe fusionné gagnait des âmes sans sièges et
+     * la source perdait des âmes sans rendre les siens. On PRÉLÈVE donc la part de sièges
+     * qui correspond aux âmes qui partent (prorata amount/Σsièges), on la dépose, et on
+     * re-proportionne les deux extrémités : rien n'est créé, rien n'est perdu. */
+    long mv[CLASS_COUNT]; long ssum=0;
+    for (int c=0;c<CLASS_COUNT;c++) ssum+=src->pop_by_class[c];
+    for (int c=0;c<CLASS_COUNT;c++)
+        mv[c] = (ssum>0) ? (long)((long long)src->pop_by_class[c]*amount/ssum) : 0;
     /* groupe d'accueil = même heritage ET même culture d'origine ? sinon DIASPORA. */
     int dst=-1;
     for (int i=0;i<to->n_groups;i++)
@@ -311,6 +356,8 @@ bool migration_move(ProvincePop *from, ProvincePop *to, int gi, long amount, int
         ng.home_reg = (src->diaspora && src->home_reg>=0
                        && (src->arrival==ARR_MIGRANT || src->arrival==ARR_REFUGIE))
                       ? src->home_reg : home_reg;
+        for (int c=0;c<CLASS_COUNT;c++) ng.pop_by_class[c]=mv[c];   /* P2 : sa PART, pas celle du père */
+        demography_group_seats_rescale(&ng);
         to->groups[to->n_groups++]=ng;       /* crée du D interne dans la cible */
     } else {
         float share=(float)amount/fmaxf((float)(to->groups[dst].count+amount),1.f);
@@ -318,8 +365,12 @@ bool migration_move(ProvincePop *from, ProvincePop *to, int gi, long amount, int
                                                                src->culture_id,to->groups[dst].heritage,
                                                                share,CULTURE_BLEND_PEOPLE);
         to->groups[dst].count += amount;
+        for (int c=0;c<CLASS_COUNT;c++) to->groups[dst].pop_by_class[c] += mv[c];   /* P2 */
+        demography_group_seats_rescale(&to->groups[dst]);
     }
     src->count -= amount;
+    for (int c=0;c<CLASS_COUNT;c++) src->pop_by_class[c] -= mv[c];                  /* P2 */
+    demography_group_seats_rescale(src);
     if (src->count<=0){ demography_drift_retire(src->drift_id);   /* audit 2026-08-12 */
         from->groups[gi]=from->groups[from->n_groups-1]; from->n_groups--; }
     return true;
@@ -572,7 +623,20 @@ static long prov_elite_seats(const ProvinceEconomy *re, long total){
     return prov_elite_seats_ex(re, total, true);
 }
 static long prov_elite_seats_ex(const ProvinceEconomy *re, long total, bool with_prop){
-    long elite_jobs   = (long)capitale_max_tier(total)*100;                  /* capitale : tier·100 */
+    /* ══ P9 (rapport CALIB POPULATION, G6) — UN SEUL TIER DE CAPITALE, PAS DEUX ══
+     * Ce site lisait `capitale_max_tier(Σ count des groupes)` pendant que TOUS les autres
+     * appelants (scps_ai.c, scps_api.c, scps_econ.c, scps_revolt.c, chronicle.c, la façade)
+     * lisent `capitale_max_tier(Σ strata)` — la POPULATION RÉELLE de la province, celle qui
+     * gate les manufactures et les édifices. Le tier « politique » (combien d'offices) et le
+     * tier « de construction » (ce qu'on a le droit de bâtir) divergeaient donc silencieusement,
+     * et l'écart entre les deux ledgers est mesuré à ×2,5-×4,5 (ligne LEDGERS : âmes/strates
+     * 22-40 %). Une capitale qui a le droit d'une Chancellerie doit avoir les offices qui vont
+     * avec : on lit la même population que tout le monde. Les esclaves sont exclus des deux
+     * côtés (ils n'occupent pas d'office). La borne existante (élites+bourgeois ≤ total)
+     * reste le seul frein — c'est une règle de conservation, pas un plafond. */
+    float sfree=0.f;
+    for (int c=0;c<CLASS_COUNT;c++) if (c!=CLASS_SLAVE) sfree += re->strata[c].pop;
+    long elite_jobs   = (long)capitale_max_tier((long)sfree)*100;            /* capitale : tier·100 */
     /* ══ LES ÉDIFICES ÉLÈVENT LEUR CLASSE (décision joueur 2026-08-06) ══════════════
      * Jusqu'ici la SEULE source de bourgeois était l'atelier et la seule source
      * d'élites le tier de capitale (∝ pop) : tout empire industrieux convergeait
@@ -1004,12 +1068,15 @@ static long refugee_settle_home(ProvincePop *home, const PopGroup *ref, long amt
             home->groups[i].culture_id=econ_culture_identity_fuse(home->groups[i].culture_id,
                                                                    ref->culture_id,home->groups[i].heritage,
                                                                    share,CULTURE_BLEND_PEOPLE);
-            home->groups[i].count += amt; return amt;      /* rejoint ses gens (fusion) */
+            home->groups[i].count += amt;
+            demography_group_seats_rescale(&home->groups[i]);   /* P2 : même famille que migration_move */
+            return amt;                                    /* rejoint ses gens (fusion) */
         }
     if (home->n_groups>=DEMO_MAX_GROUPS) return 0;          /* foyer plein → renonce (ils restent) */
     PopGroup ng=*ref;
     ng.count=amt; ng.diaspora=false; ng.arrival=ARR_NATIF; ng.home_reg=-1;
     ng.integration=1.f; ng.L=6.f; ng.agit_base=agit_from_L(6.f); ng.drift_id=new_id;
+    demography_group_seats_rescale(&ng);   /* P2 : `ng=*ref` copiait les sièges du groupe ENTIER */
     home->groups[home->n_groups++]=ng;
     return amt;
 }
@@ -1081,6 +1148,7 @@ int demography_refugee_tick(World *w, WorldEconomy *e, const DiploState *dp){
             long got=refugee_settle_home(&hpe->pop, g, amt, demography_dyn_id_next());
             if (got>0){
                 g->count -= got;
+                demography_group_seats_rescale(g);   /* P2 : le partant rend ses sièges */
                 if (g->count<=0){ demography_drift_retire(g->drift_id);   /* audit 2026-08-12 */
                     pp->groups[i]=pp->groups[pp->n_groups-1]; pp->n_groups--; }
                 returned++; g_refugee_returned_souls+=got;
@@ -1211,11 +1279,23 @@ void demography_tick(World *w, WorldEconomy *econ, WorldLegitimacy *wl,
         migration_move(&pe->pop, &econ->prov[rpb].pop, gi, amount, demography_dyn_id_next(), ARR_MIGRANT, r);  /* home = région de départ (respire) */
     }
     /* 3. ÉMERGENCE DE CLASSE : la classe de chaque groupe sort des emplois (capitale
-     *    + ateliers). Après migration/assimilation, le tissu social se recompose. */
-    for (int r=0; r<econ->n_regions; r++){
-        int rp=econ_region_rep_province(econ, r);
-        if (rp<0 || rp>=econ->n_prov) continue;
-        ProvinceEconomy *pe=&econ->prov[rp];
+     *    + ateliers). Après migration/assimilation, le tissu social se recompose.
+     * ══ P1 (docs/CALIB_POPULATION_2026-09-03.md §4.1) — SUR TOUTES LES PROVINCES ══
+     * Cette boucle ne tournait que sur la province REPRÉSENTATIVE de chaque région : ses
+     * sœurs gardaient à jamais le `pop_by_class` posé à leur fondation, c'est-à-dire
+     * 100 % CLASS_LABORER — quels que soient leur population, leur capitale et leurs
+     * édifices. MESURÉ (chronicle 7/3333, an 120, ligne LEDGERS) : 75 à 80 % des
+     * provinces peuplées du monde n'avaient AUCUN siège d'élite ni de bourgeois. Une
+     * province de 5 000 âmes avec un Tribunal et une Garnison s'affichait « 100 %
+     * journaliers », son canal de satisfaction politique était mort pour deux classes
+     * sur trois (scps_econ.c pol_sat : gpop==0), son poids de faction était faussé et
+     * l'assiette d'influence de son pays ne la comptait qu'en bras.
+     * La charte est explicite : la PROVINCE est la seule réalité économique — l'emploi
+     * qu'elle porte doit sculpter SON tissu social, pas celui d'une voisine. O(n_prov)
+     * une fois par mois au lieu d'O(n_regions) : ~800 au lieu de ~300. */
+    for (int p=0; p<econ->n_prov; p++){
+        ProvinceEconomy *pe=&econ->prov[p];
+        if (!pe->active || !pe->colonized) continue;
         if (pe->pop.n_groups>0 && pe->culture.settled) demography_emerge_classes(pe);
     }
 }

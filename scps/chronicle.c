@@ -1820,6 +1820,58 @@ int main(int argc, char **argv){
                 printf("   SIÈGES (édifices, pop_by_class) : %ld%% élites · %ld%% bourgeois · %ld%% laboureurs · %ld%% esclaves — l'AUTRE réalité de classe (factions/armée)\n",
                        cl[CLASS_ELITE]*100/tt, cl[CLASS_BOURGEOIS]*100/tt,
                        cl[CLASS_LABORER]*100/tt, cl[CLASS_SLAVE]*100/tt); }
+          /* ══ P11 — LES DEUX (TROIS) LEDGERS, MESURÉS (docs/CALIB_POPULATION_2026-09-03.md) ══
+           * Le rapport de calibrage n'a PAS pu établir le rapport Σ pop_by_class / Σ count /
+           * Σ strates : aucune sortie ne l'imprimait — toutes ses conclusions §4.1-4.2 étaient
+           * de la LECTURE de code. Trois comptes d'ÊTRES HUMAINS coexistent dans la même
+           * province : les SIÈGES d'emploi (pop_by_class), les ÂMES des groupes (count) et les
+           * STRATES par richesse (strata[].pop). L'invariant déclaré (scps_econ.h : « Σ
+           * pop_by_class = count ») n'est vrai que là où l'émergence de classe a tourné.
+           * On imprime donc : l'écart sièges↔âmes, le nombre de GROUPES hors invariant, et le
+           * nombre de provinces FIGÉES à 100 % journaliers (aucun siège d'élite ni de
+           * bourgeois — la signature de « l'émergence ne tourne pas ici »). Print-only :
+           * aucune écriture, golden intact. */
+          { long seats=0, souls=0, brk=0, gap=0, frozen=0, withg=0; double strat=0.0;
+            double cs[SCPS_MAX_COUNTRY], cf[SCPS_MAX_COUNTRY], cn[SCPS_MAX_COUNTRY];
+            for (int c2=0;c2<SCPS_MAX_COUNTRY;c2++){ cs[c2]=0.0; cf[c2]=0.0; cn[c2]=0.0; }
+            for (int q=0;q<NP;q++){
+                const ProvinceEconomy *pq=&s.econ->prov[q];
+                if (!pq->active || !pq->colonized) continue;
+                for (int k2=0;k2<CLASS_COUNT;k2++) strat += pq->strata[k2].pop;
+                if (pq->pop.n_groups<=0) continue;
+                withg++;
+                long pe2=0;
+                for (int gi=0; gi<pq->pop.n_groups; gi++){
+                    const PopGroup *gg=&pq->pop.groups[gi];
+                    long gs=0;
+                    for (int k2=0;k2<CLASS_COUNT;k2++) gs+=gg->pop_by_class[k2];
+                    seats+=gs; souls+=gg->count;
+                    pe2 += gg->pop_by_class[CLASS_ELITE]+gg->pop_by_class[CLASS_BOURGEOIS];
+                    if (gs!=gg->count){ brk++; gap += (gs>gg->count)?(gs-gg->count):(gg->count-gs); }
+                }
+                if (pe2==0) frozen++;
+                if (pq->owner>=0 && pq->owner<SCPS_MAX_COUNTRY){
+                    cn[pq->owner]+=1.0; cs[pq->owner]+=(double)pe2;
+                    if (pe2==0) cf[pq->owner]+=1.0;
+                }
+            }
+            printf("   LEDGERS (P11) : sièges %ld · âmes-groupes %ld (écart %+ld = %.1f %%) · strates %.0f — âmes/strates %.1f %% | %ld prov. peuplées, dont %ld FIGÉES 100%% journaliers (%.0f %%) · %ld groupe(s) hors invariant (Σ|écart| %ld âmes)\n",
+                   seats, souls, seats-souls, souls?100.0*(double)(seats-souls)/(double)souls:0.0,
+                   strat, strat>0.5?100.0*(double)souls/strat:0.0,
+                   withg, frozen, withg?100.0*(double)frozen/(double)withg:0.0, brk, gap);
+            /* les 5 plus gros porteurs de provinces : où l'émergence NE tourne PAS */
+            { int o5[5]={-1,-1,-1,-1,-1};
+              for (int c2=0;c2<w->n_countries && c2<SCPS_MAX_COUNTRY;c2++){
+                  if (cn[c2]<0.5) continue;
+                  for (int t=0;t<5;t++)
+                      if (o5[t]<0 || cn[c2]>cn[o5[t]]){ for(int u=4;u>t;u--) o5[u]=o5[u-1]; o5[t]=c2; break; }
+              }
+              printf("   LEDGERS par pays (5 plus étendus) :");
+              for (int t=0;t<5;t++){ int c2=o5[t]; if (c2<0) continue;
+                  printf(" %s %.0f prov (%.0f%% figées, %.0f sièges É+B) ·",
+                         w->country[c2].name, cn[c2], 100.0*cf[c2]/cn[c2], cs[c2]); }
+              printf("\n"); }
+          }
           } }
         /* FAU/F8 — la boucle faustienne (transmuteurs + entropie) ET la demande de fer (forge
          * militaire). Conso cumulée par rare ; entropie monde ; prix moyen du fer (la preuve F8). */

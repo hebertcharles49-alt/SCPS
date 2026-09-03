@@ -12007,3 +12007,155 @@ Décision joueur : « corrige tout » + « **aucun plafond** » (INFLUENCE_CAP r
   faits** (design/calibrage, décision joueur ; P5 attend les synergies de paires).
 - **`make golden` casse — NON re-baseliné** (consigne : l'orchestrateur le fait au
   merge). `golden_deep.txt` reste STALE (antérieur à cette vague), non touché.
+
+
+
+---
+
+## Mission 2026-09-03 — W1-B POPULATION : P11/P2/P1/P9/P4/P5 (docs/CALIB_POPULATION_2026-09-03.md)
+
+### Découvertes
+
+- **P11 a mesuré ce que le rapport n'avait pas pu établir — et c'est PIRE que sa
+  borne lue-dans-le-code.** La ligne neuve `LEDGERS (P11)` de `chronicle.c`
+  (Σ `pop_by_class` vs Σ `count` vs Σ `strata`, + provinces FIGÉES 100 %
+  journaliers + groupes hors invariant) donne, AVANT toute correction, graine 7
+  an 120 : `sièges 35710 · âmes-groupes 39826 (−10,3 %) · strates 173526 —
+  âmes/strates 23,0 % | 159 prov. peuplées, dont 119 FIGÉES (75 %) · 61 groupes
+  hors invariant (Σ|écart| 4236 âmes)`. Le rapport estimait « ≥ 53 % de
+  provinces figées » par comptage provinces/régions : **c'est 75-80 %** en
+  mesure directe (graine 3333 : 80 %).
+- **LE VRAI TROU N'EST PAS L'INVARIANT, C'EST F2 : `âmes/strates = 23 %`.** Les
+  deux ledgers ne divergent pas de quelques pour-cent, ils sont à **×4,3**
+  (graine 7) et **×2,5** (graine 3333). Cause : aucune boucle ne fait
+  `group->count *= 1+growth` (constat déjà écrit dans `scps_econ.c:5216-5222`) —
+  les strates croissent tous les mois, les âmes-groupes ne bougent QUE par
+  migration/assimilation/capture/manumission. **Aucune des propositions P1-P11 ne
+  referme F2**, et c'est elle qui empoisonne tout le reste (cf. le piège P9
+  ci-dessous). C'est LE prochain chantier population.
+- **P2 (invariant) est un succès total et sans nuance** : 61 groupes hors
+  invariant / 4236 âmes → **0 / 0** (graine 7) ; 27 / 2519 → **0 / 0** (graine
+  3333). Le helper `demography_group_seats_rescale()` (scps_demography.h/.c) est
+  conservatif par construction — il re-proportionne les sièges EXISTANTS sur le
+  nouveau `count`, même convention de paquets de 100 que
+  `demography_emerge_classes`, aucun nombre neuf.
+- **Le patron qui marche pour `migration_move` n'est PAS « rescale après coup »
+  mais « les sièges VOYAGENT avec les âmes »** : on calcule `mv[]` (prorata
+  `amount/Σsièges` de la source) AVANT tout, on le retire de la source, on le
+  dépose dans la cible, puis on re-proportionne les DEUX extrémités. Un simple
+  rescale de chaque côté aurait dilué la cible et concentré la source — le
+  transfert doit être net 0, comme la richesse.
+- **P4 a atterri exactement sur la cible chiffrée du rapport.** Strates monde an
+  120 : graine 7 **89/8/2 → 85/11/3** ; graine 3333 **92/6/1 → 88/8/2**. Le
+  rapport visait « ramener la fin de sim de 89/8/2 vers 85/12/3 » — obtenu avec
+  UN seul changement (l'essaimage dépose au prorata des classes prélevées au
+  lieu de 100 % en journaliers), zéro tunable neuf, zéro plafond.
+- **P1 (émergence sur TOUTES les provinces) : provinces figées 75 % → 45 %
+  (graine 7), 76 % → 38 % (graine 3333).** Le reliquat n'est PAS un bug de
+  boucle : ce sont les provinces dont Σ`count` < 100, où l'arrondi aux paquets
+  de 100 (`(x/100)*100`) annule les sièges d'élite. Avec F2 ouverte (âmes = 23 %
+  des strates), beaucoup de tuiles bien peuplées ont un Σ`count` sous 100.
+- **`econ_relocate_pop` et `ip_colonize_laborer` ne sont PAS des pompes de
+  prolétarisation** (le rapport les visait en §P4 « + relocalisations
+  `:6621-6637` ») : le premier préserve la classe (journaliers→journaliers,
+  bourgeois→bourgeois), le second est journalier-only À LA SOURCE mais dépose
+  via `econ_seed_population` (80/15/5) — il CRÉE des bourgeois. Seul
+  `econ_passive_seep` était la pompe. Références de lignes du rapport à corriger.
+- **Le rapport listait 7 sites cassant l'invariant ; il y en a 9 dans mon
+  périmètre et ~5 de plus ailleurs.** Ajoutés (même famille, même fichier) :
+  `refugee_settle_home` (fusion au foyer ET création par `ng=*ref` — le clone du
+  site #1) et le décrément du retour de réfugiés (`scps_demography.c`, boucle
+  RESPIRATION). Restent hors périmètre : `scps_agency.c:677` (purge),
+  `scps_diplo.c:1443`, `scps_intertrade.c:790/874`, `scps_econ.c:5257` (les
+  quatre derniers sur des groupes `klass==CLASS_SLAVE`).
+- **Les 42 bancs passent SANS UNE SEULE recalibration de fixture** — y compris
+  `demography_demo` (53), `pop_demo` (14), `revolt_demo` (27), `factions_demo`
+  (31), `influence_demo` (43), `scps_api_demo` (249). Aucun banc ne supposait
+  « une province par région » ni une pyramide fabriquée : la fixture-migration
+  redoutée n'a pas eu lieu.
+
+### Pièges
+
+- **`long` est 32 bits sur MinGW : tout prorata `sièges × count / total` déborde.**
+  Un groupe à 60 000 âmes et 60 000 sièges donne 3,6e9 > 2^31. Chaque produit du
+  rescale et de `migration_move` passe par un cast `(long long)` explicite —
+  arithmétique ENTIÈRE (jamais un `double` : le déterminisme byte-identique).
+  Le bug aurait été SILENCIEUX (sièges négatifs, jamais un crash).
+- **P9 (tier unifié sur les strates) est correct en droit et TOXIQUE tant que F2
+  est ouverte.** Les sièges d'élite d'une province valent `capitale_max_tier(pop)
+  ×100` mais sont RÉPARTIS sur Σ`count` — si `pop` (strates) vaut 4× Σ`count`,
+  le tier est celui d'une ville et l'assiette celle d'un hameau. Mesuré : sièges
+  monde **élites 14 % → 23 % (P1) → 30 % (P9)** graine 7. Reporté au joueur
+  plutôt que corrigé par un plafond (consigne « pas de cap ») — mais **P9 devrait
+  être RÉVERTÉ ou F2 refermée avant le prochain sweep**, cf. Restes.
+- **`scps_econ.c` n'inclut PAS `scps_demography.h` et ne doit pas commencer** :
+  la pile d'inclusion va dans l'autre sens (`scps_demography.h` inclut
+  `scps_econ.h`). Le seul site d'`econ.c` qui bouge un `count` de groupe
+  (`econ_passive_seep`) porte donc une déclaration avant sa définition, pas un
+  `#include` — 3 hunks isolés au total dans le fichier d'un autre agent.
+- **Le plancher-1 par strate COMPOSAIT** : remonté de 0 à 1 chaque mois puis
+  multiplié par `1+net_growth` le mois suivant, il fabriquait un noble à partir
+  de rien puis le faisait croître (d'où « un État de 9 âmes à 89 % de nobles »).
+  Le supprimer sur bourgeois/élite ne casse aucun diviseur : `mobility_tick_region`
+  teste déjà `pop<1.f`, l'impôt `st->pop>EPS`, l'agrégation `pop>EPS` — vérifié
+  site par site AVANT de toucher l'expression.
+- **Un `bash.exe -l script.sh` lancé depuis l'outil Bash est REFUSÉ dans un
+  worktree isolé** (garde-fou d'isolation git). Le build MSYS2 passe par l'outil
+  PowerShell (`$env:MSYSTEM='MINGW64'; & D:\MSYS2\usr\bin\bash.exe -l <chemin
+  ABSOLU du script>`) — et le chemin doit être absolu, `-l` remet le cwd au HOME.
+- **La mesure P5 du rapport n'est PAS reproductible sur 120 ans** : les « 19
+  lignes-pays sur 152 » viennent du bloc « empires vivants » d'un sweep 200 ans ;
+  à l'an 120 le monde n'affiche que 2 lignes-pays. P5 se mesure alors sur la
+  ligne `CLASSES monde` (les élites fabriquées disparaissent : graine 7
+  86/10/2 → 89/8/1), pas sur le compte de pyramides.
+
+### Restes
+
+- **F2 — LA CROISSANCE DES `count` (le vrai chantier).** `âmes/strates = 23-40 %`
+  et l'écart ne peut que croître. Tant qu'il est ouvert, tout ce qui lit
+  `pop_by_class` (influence, factions, `pol_sat`, fiche province) raisonne sur
+  un quart du monde. Site : `scps_econ.c:5216-5262` (la croissance des strates,
+  fichier de W1-A) — il faudrait y propager le delta aux groupes comme le fait
+  DÉJÀ la branche `CLASS_SLAVE` (`delta = (long)st->pop - gsum` au plus gros
+  groupe : le patron existe, déterministe, ±1 âme). **Décision joueur** : c'est
+  un changement de nature du ledger des groupes.
+- **P9 à re-trancher.** Appliqué comme briefé, il pousse les sièges d'élite du
+  monde à 30 % (graine 7) et l'assiette d'influence à ~76/15/8 alors que le
+  design vise 60/20/20 (`scps_influence.h:64-72`). Deux sorties : refermer F2
+  (l'écart de tier disparaît de lui-même), ou révérer P9 et vivre avec G6.
+  **À trancher avant le prochain sweep** — c'est un hunk isolé de 12 lignes.
+- **P3 (`ARMY_POOL_FRAC`) NON APPLIQUÉ** — `scps_army.c` appartient à l'agent
+  Armée. Proposition : `army_class_free` (`scps_army.c:317-322`) lit `prov[]` au
+  lieu de `region[]` ET multiplie l'assiette par `tune_f("ARMY_POOL_FRAC",
+  0.25f)` ; miroir dans `wh_country_elite` (`scps_warhost.c:190-195`).
+  Kill-switch exact = 1.0. Mesure justificative (mes runs, an 120) : Havre
+  Braknakor 10 rgt / 8 k hab = **12,5 % de la pop sous les armes**, Ordre
+  Brenyanel (hégémon) 26 rgt / 50 k = **5,2 %**, Clans Estroris 16 rgt / 40 k =
+  **4,0 %** — 0,25 laisse TOUS les cas observés intacts et rend impossibles par
+  construction les 26/43/56/93 % du sweep 200 ans.
+- **P7 (esclavage sur la RÉGION) et P10 (`religion_refresh_region` somme les
+  provinces) : DÉCISIONS JOUEUR, non faites.** Questions posées telles quelles :
+  **P7** — le brief 2026-07-21 dit « taux très faible » ; P7 ne touche pas au
+  TAUX (`SLAVE_FRACTION` 0,05) mais multiplie le VOLUME par ~5 (un sac de région
+  à 5 provinces rapporte ~375 âmes au lieu de ~75), faisant passer le stock
+  mondial de ~6 âmes à ~0,5 % de la pop — assez pour que `SLAVE_REVOLT_SHARE`
+  =0,20 puisse enfin mordre. **Veut-on que la classe servile EXISTE (et révolte),
+  ou reste-t-elle volontairement une classe morte ?** **P10** — la foi dominante
+  d'une région de 5 provinces est aujourd'hui celle d'UNE tuile
+  (`scps_religion.c:131-141`) ; la sommer change la foi de certaines régions et
+  donc les fractures religieuses existantes. **Accepte-t-on ce déplacement de
+  frontières confessionnelles ?**
+- **P6 (débrider la promotion J→B sans atelier) et P8 (nommer les deux réalités
+  dans l'UI) : hors de la liste ordonnée du brief, non faits.** P6 vit dans
+  `scps_econ.c:3657` (W1-A) ; P8 dans `scps_api.c` + `strings_ids.h` — et P8
+  reste PERTINENT, la fiche province et la fiche pays disent toutes deux
+  « classes » pour deux comptages à ×4 l'un de l'autre.
+- **~5 sites hors périmètre cassent encore l'invariant** (tous sur des groupes
+  serviles sauf la purge) : `scps_agency.c:677`, `scps_diplo.c:1443`,
+  `scps_intertrade.c:790` et `:874`, `scps_econ.c:5257`. Le helper
+  `demography_group_seats_rescale()` est public et prêt : un appel par site.
+- **Golden re-baseline NON FAIT** (consigne) — hashes actuels 12 ans :
+  `7 8d4325b5 · 108 34d6fdbc · 209 3442a97e · 310 5915deed · 411 bfca0ba9`
+  (golden : `19088340 / 152f65d2 / d53ab650 / 81555cec / 535c270a`).
+  **Aucun bump `SAVE_VERSION`** : aucune struct sérialisée ne change de taille
+  (savetest A==B le confirme).

@@ -410,6 +410,9 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
      * qu'on ampute à tort le journalier/bourgeois libre d'une région où ce ne sont pas eux
      * qui se sont soulevés. Miroir exact de demobilize ci-dessous (retour symétrique). */
     g->count -= mob;
+    demography_group_seats_rescale(g);   /* P2 (site #5, CALIB POPULATION §4.2) : les mobilisés
+                                          * quittent AUSSI leurs sièges d'emploi, pas seulement
+                                          * la strate — sinon Σ pop_by_class > count en permanence */
     float take=(float)mob;
     if (g->klass==CLASS_SLAVE){
         pe->strata[CLASS_SLAVE].pop = fmaxf(0.f, pe->strata[CLASS_SLAVE].pop - take);
@@ -596,7 +599,8 @@ static void demobilize(WorldEconomy *econ, Rebellion *rb, long survivors){
     if (pid<0 || pid>=econ->n_prov) return;
     ProvinceEconomy *pe=&econ->prov[pid];
     int gi=find_group(&pe->pop, rb->drift_id);
-    if (gi>=0) pe->pop.groups[gi].count += survivors;
+    if (gi>=0){ pe->pop.groups[gi].count += survivors;
+                demography_group_seats_rescale(&pe->pop.groups[gi]); }   /* P2 (site #6) : miroir exact de revolt_ignite */
     SocialClass back_to = (gi>=0) ? pe->pop.groups[gi].klass : CLASS_LABORER;
     pe->strata[back_to].pop += (float)survivors;
 }

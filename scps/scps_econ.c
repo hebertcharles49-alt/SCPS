@@ -5258,7 +5258,22 @@ void econ_tick(WorldEconomy *e, float dt) {
                     }
                 } else if (st->pop<0.f) st->pop=0.f;
             }
-            else { st->pop *= 1.f + net_growth; if (st->pop<1.f) st->pop=1.f; }
+            /* ══ P5 (docs/CALIB_POPULATION_2026-09-03.md §4.4) — LE PLANCHER EST PROVINCIAL ══
+             * Le plancher-1 s'appliquait PAR STRATE : une province vidée gardait « 1 bourgeois
+             * et 1 noble » pour toujours — et, remonté de 0 à 1 chaque mois, ce 1 COMPOSAIT
+             * ensuite avec net_growth. D'où 19 lignes-pays sur 152 (12,5 %) à pyramide
+             * FABRIQUÉE, dont 8 où B % == É % à l'unité près (signature arithmétique du
+             * plancher) et le cas limite d'un État de 9 âmes affiché « 89 % de nobles ».
+             * Une province vide n'a pas de pyramide : c'est une règle de VALIDITÉ, pas un
+             * plafond. Le plancher survit sur le seul CLASS_LABORER — le dernier habitant
+             * d'une terre est un bras, jamais un noble — et Σ strates ≥ 1 tient donc toujours
+             * (les lecteurs qui divisent par la pop gardent leur garde : mobility_tick_region
+             * teste pop<1, l'impôt teste pop>EPS). Bourgeois et élites ne renaissent plus
+             * ex nihilo : ils remontent par la MOBILITÉ (promotion depuis les journaliers),
+             * la seule voie causale. */
+            else { st->pop *= 1.f + net_growth;
+                   if (c==CLASS_LABORER){ if (st->pop<1.f) st->pop=1.f; }
+                   else if (st->pop<0.f) st->pop=0.f; }
             satsum+=st->satisfaction*st->pop; popsum+=st->pop;
         }
         re->satisfaction=(popsum>0.f)?satsum/popsum:0.f;
@@ -6242,6 +6257,11 @@ static void colonize_from_prov(WorldEconomy *e, int src_pid, int dst_pid, int ci
  * fondation (invariants de colonize_from_prov) ; la toponymie suit (balayage
  * idempotent). Le peuplement COULE de proche en proche, sans décision d'État.
  * Kill-switch : PASSIVE_SEEP=0. */
+/* P2/P4 (docs/CALIB_POPULATION_2026-09-03.md) — déclaré ici plutôt qu'en incluant
+ * scps_demography.h : ce module est SOUS la démographie dans la pile d'inclusion
+ * (scps_demography.h inclut scps_econ.h), et l'essaimage est le seul site d'econ.c
+ * qui bouge un `count` de groupe. Contrat dans scps_demography.h. */
+void demography_group_seats_rescale(PopGroup *g);
 int econ_passive_seep(WorldEconomy *e, const World *w){
     if (!e || !w) return 0;
     if (tune_f("PASSIVE_SEEP",1.f) <= 0.f) return 0;
@@ -6277,9 +6297,12 @@ int econ_passive_seep(WorldEconomy *e, const World *w){
         float g=fminf(drop, target - (dst->colonized ? dpop : 0.f));
         if (g <= 1.f) continue;
         float wshare=0.f;
+        float moved[CLASS_COUNT];   /* P4 : ce qui PART, classe par classe (mémorisé pour l'arrivée) */
+        for (int c=0;c<CLASS_COUNT;c++) moved[c]=0.f;
         for (int c=0;c<CLASS_COUNT;c++){
             if (c==CLASS_SLAVE) continue;
             float part=src->strata[c].pop/sfree;
+            moved[c] = g*part;
             src->strata[c].pop -= g*part;
             float wmove=src->strata[c].wealth*(g*part/fmaxf(src->strata[c].pop+g*part,EPS));
             src->strata[c].wealth -= wmove; wshare += wmove;
@@ -6298,10 +6321,20 @@ int econ_passive_seep(WorldEconomy *e, const World *w){
             colonize_seed_pop_group(dst, pd, (long)g,
                 sg?&sg->culture:&src->culture, sg?sg->culture_id:src->culture_id);
         } else {
-            dst->strata[CLASS_LABORER].pop    += g;       /* les migrants sont des bras */
+            /* P4 — LA POMPE DE PROLÉTARISATION (rapport §3.4). Le prélèvement se fait AU
+             * PRORATA des trois classes libres (boucle ci-dessus) mais le dépôt versait
+             * 100 % en journaliers : chaque goutte d'essaimage — le canal DOMINANT de
+             * l'expansion — détruisait un bourgeois et un noble pour fabriquer deux bras.
+             * C'est ce qui faisait glisser le monde de 80/15/5 au semis à 89/8/2 en
+             * 200 ans, très loin sous les plafonds doux (0,32 / 0,11) qui ne mordent
+             * jamais. Les colons ARRIVENT DANS LEUR CLASSE : transfert net 0, aucun
+             * nombre neuf, aucun plafond. La richesse suit le même chemin qu'avant
+             * (wshare au journalier — elle a déjà été agrégée par la boucle source). */
+            for (int c=0;c<CLASS_COUNT;c++) dst->strata[c].pop += moved[c];
             dst->strata[CLASS_LABORER].wealth += wshare;
             PopGroup *dg=(PopGroup*)econ_pop_dominant(&dst->pop);
-            if (dg) dg->count += (long)g;
+            if (dg){ dg->count += (long)g;
+                     demography_group_seats_rescale(dg); }   /* P2 (site #4) : les âmes arrivent AVEC des sièges */
         }
         seeded++;
     }
