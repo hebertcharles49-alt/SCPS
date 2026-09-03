@@ -407,6 +407,11 @@ static double g_adstock_min[7],g_adstock_fin[7],g_adsup_sum[7]; static long g_ad
  * réels (warhost_units) vs limite de force (warhost_force_limit). Gated : lecture seule. */
 static double g_mid_rgt_sum=0.0; static long g_mid_n=0;
 static double g_mid_rgt_all[8192]; static int g_mid_rgt_all_n=0;   /* pour la médiane */
+/* VAGUE W1 (2026-09-03) — LE FREIN DE LEVÉE, MESURÉ SUR TOUT LE BALAYAGE (jamais gated :
+ * c'est CE que le sweep de validation doit lire). Un échantillon par empire jouable et par
+ * sim, en fin de sim : rgt/limite de force en % · solde/revenu fiscal en %. */
+static double g_fl_all[8192]; static int g_fl_n=0;   /* rgt / limite de force (%) */
+static double g_pr_all[8192]; static int g_pr_n=0;   /* solde / revenu fiscal (%) */
 static bool g_invariant_breach=false;   /* MONNAIE M3c : set par chronicle_invariant_check ci-dessous */
 static int dcmp(const void *a, const void *b){ double x=*(const double*)a-*(const double*)b; return (x<0)?-1:(x>0); }
 static double dmedian(double *v, int n){
@@ -802,11 +807,23 @@ int main(int argc, char **argv){
     long tot_wcb[CB_ANTIPIRATERIE+1]={0};    /* guerres motivées : déclarations par casus belli (cumul) */
     long tot_ligues=0, tot_frondes=0, tot_indep=0, tot_renvers=0, tot_ecrase=0;   /* fronde */
     long tot_bt=0, tot_btj=0, tot_routs=0, tot_rallies=0, tot_mchoc=0, tot_mpour=0, tot_deseng=0, tot_renf=0, tot_nul=0;   /* batailles */
+    long tot_desert=0, tot_overbudget=0, tot_paycheck=0;   /* W1 : le frein économique de la levée */
+    long tot_relig_state=0, tot_relig_emp=0; double tot_relig_faithful=0;   /* W1-E : la foi d'État, assiette du courant Divin */
     double tot_sat[CLASS_COUNT]={0}; double tot_trade=0;   /* §distrib : satisfaction par classe + commerce */
     double tot_wpc[CLASS_COUNT]={0};   /* MONNAIE M4-IP : richesse/tête par classe, fin de sim */
     long tot_ip_colony=0, tot_ip_manuf=0;   /* MONNAIE M4-IP : initiative privée cumulée */
     long tot_emp_n=0, tot_emp_hub=0;   /* par-empire : moyennes de fin de sim */
     double tot_emp_gold=0, tot_emp_flux=0, tot_emp_imp=0, tot_emp_exp=0, tot_emp_expgold=0;
+    /* I0 — L'ASSIETTE DE LA DÉCOMPOSITION DU FLUX (2026-09-03, trésor NATIONAL) : le
+     * flux décomposé se lit sur `econ_flux_get`, qui est un état GLOBAL survivant à la
+     * boucle de sims — il ne peut donc porter que sur la DERNIÈRE sim. Avant ce jour il
+     * divisait par « tout pays au flux non nul » (cités-états et hameaux compris) tandis
+     * que « par empire » divisait par les empires JOUABLES de TOUTES les sims : les deux
+     * lignes ne se recoupaient pas (taxes +9,5 en regard d'un flux +311). On garde donc
+     * la liste des empires jouables de la DERNIÈRE sim et leur flux mesuré, pour que
+     * Σ postes et flux mesuré se lisent sur le MÊME dénominateur. */
+    int  last_emp[SCPS_MAX_COUNTRY]; int last_emp_n=0;
+    double last_emp_flux=0, last_emp_gold=0;
     long tot_tier_y[3]={0,0,0}; int tot_tier_n[3]={0,0,0};   /* E1 §9 : fenêtres d'accession */
     double tot_spec_vol=0, tot_spec_gold=0; long tot_spec_ent=0;   /* E3 §16 : l'IA stockeuse */
     double tot_sd0=0, tot_sd1=0; int tot_sd0_n=0, tot_sd1_n=0;     /* σ avant/après (moy. des sims) */
@@ -1433,9 +1450,13 @@ int main(int argc, char **argv){
                       float rev=econ_country_tax_year(c);
                       if (rev>1.f){ debt_sum+=(double)credit_debt_total(c); rev_sum+=(double)rev; nd++; }
                   }
+                  /* Le Σ porte sur TOUS les pays au revenu capté (cités-états comprises) et
+                   * l'an écoulé : sans le rappeler, on le relit comme un chiffre par empire
+                   * et il paraît absurde en regard du poste « taxes » de la ligne I0 (piège
+                   * 2026-09-03). Le or/mois/pays est là POUR ce recoupement. */
                   printf("              dette/revenu an %3d : %.0f%% moyen (%d pays au revenu capté, aucun plafond)"
-                         " · revenu fiscal Σ %.0f or/an (M3i neutralité)\n",
-                         snap[si], rev_sum>1.0?100.0*debt_sum/rev_sum:0.0, nd, rev_sum); }
+                         " · revenu fiscal Σ %.0f or/an sur ces %d pays, soit %.1f or/mois/pays (M3i neutralité)\n",
+                         snap[si], rev_sum>1.0?100.0*debt_sum/rev_sum:0.0, nd, rev_sum, nd, nd>0? rev_sum/nd/12.0 : 0.0); }
                 /* P3-IA — LA COLONNE POLITIQUE (brief §2.1) : le stock d'influence
                  * du monde et ce qu'il a acheté (doctrines/idées). AUCUNE suspension
                  * (v107) : une doctrine adoptée reste ALLUMÉE. */
@@ -1527,6 +1548,27 @@ int main(int argc, char **argv){
           printf("   inflation (M7-I1) : indice moy %.3f (σ %.3f, pic %.3f) · premier %.1f%% dernier %.1f%%"
                  " · dérive annualisée (OLS log) %+.2f %%/an\n",
                  infl_mean, infl_sd, infl_idx_peak, infl_idx_first*100.0, infl_idx_last*100.0, drift_an_ols*100.0); }
+
+        /* LE PRIX DU PAIN (2026-09-03, W2-4) — LA MESURE QUE LE BALAYAGE N'AVAIT PAS :
+         * « indice moy » ci-dessus est un RAPPORT caisse/valeur ajoutée (M7-I1), pas un prix ;
+         * un sweep qui titre sa colonne « prix » avec ce nombre ment. Ici : le prix du GRAIN
+         * en fin de sim, médiane sur les régions colonisées (la moitié du monde paie moins,
+         * l'autre plus) + moyenne monde + base — les trois nombres qui disent si le pain est
+         * cher. Médiane et non moyenne : une région en famine tire une moyenne, pas une
+         * médiane. */
+        { static double gp[SCPS_MAX_PROV]; int gn=0; double gsum=0;
+          /* AU GRAIN PROVINCE (doctrine : la province est la seule réalité éco ; region[]
+           * n'est qu'une VUE reconstruite à la clôture — econ_avg_price la lit encore et
+           * rend un prix quasi nul, cf. TROUVAILLES). */
+          for (int p=0;p<s.econ->n_prov && p<SCPS_MAX_PROV;p++){
+              const ProvinceEconomy *pr=&s.econ->prov[p];
+              if (!pr->active || !pr->colonized || pr->owner<0) continue;
+              gp[gn]=(double)pr->price[RES_GRAIN]; gsum+=gp[gn]; gn++;
+          }
+          double base=(double)econ_base_price(RES_GRAIN);
+          double med = (gn>0)? dmedian(gp,gn) : 0.0;
+          printf("   prix du grain : médiane %.3f · moyenne %.3f · base %.2f (médiane ×%.3f de la base, %d province(s) tenue(s))\n",
+                 med, gn>0? gsum/gn : 0.0, base, base>1e-6? med/base : 0.0, gn); }
 
         /* MONNAIE M7 — I2 (print-only) : LA DÉCOUVERTE D'OR — nombre de découvertes de
          * CE run (vs l'espérance ~0.5×N empires) et, si au moins une a eu lieu, la
@@ -1743,6 +1785,25 @@ int main(int argc, char **argv){
               }
               printf("\n");
           } }
+        /* W1-E (2026-09-03) — LA FOI D'ÉTAT, ASSIETTE DU COURANT DIVIN : le courant Divin
+         * n'ajoute son terme QUE si le pays a une religion d'État (religion_of_country ≥ 0,
+         * elle-même conditionnée à un Temple T2 bâti). Sans cette ligne, un sweep qui voit
+         * « 0 Divin adopté » ne peut pas dire si l'IA a jugé le courant mauvais ou si la
+         * PORTE était fermée. Fidèles = influence_base_pop(INFL_BASE_FAITH), la MÊME lecture
+         * que le moteur (grain GROUPE — PopGroup.faith, jamais region[]). */
+        { int nliv=0, nfoi=0; double fsum=0, fmax_=0;
+          for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+              PolityRole rl=w->country[c].role;
+              if ((rl!=POLITY_PLAYER && rl!=POLITY_ANTAGONIST) || regions_of(s.econ,c)<=0) continue;
+              nliv++;
+              if (religion_of_country(c) < 0) continue;
+              nfoi++;
+              double f = influence_base_pop(s.econ, c, INFL_BASE_FAITH);
+              fsum += f; if (f>fmax_) fmax_=f;
+          }
+          printf("              foi d'État (assiette Divin) : %d/%d empire(s) ont une religion d'État — Divin ADOPTABLE ; fidèles Σ %.0f · moy %.0f · max %.0f\n",
+                 nfoi, nliv, fsum, nfoi>0? fsum/nfoi : 0.0, fmax_);
+          tot_relig_state+=nfoi; tot_relig_emp+=nliv; tot_relig_faithful+=fsum; }
         /* PER-PROVINCE (gigasweep) : une ligne parsable par province colonisée —
          * id, ville (nom posé à la colonisation, jamais re-tiré — grain région),
          * propriétaire, population. + FLEUVES : la preuve chiffrée du worldgen. */
@@ -2068,6 +2129,7 @@ int main(int argc, char **argv){
             int idx[SCPS_MAX_COUNTRY], ne=0;
             for (int c=0;c<w->n_countries;c++){ PolityRole rl=w->country[c].role;
                 if ((rl==POLITY_PLAYER||rl==POLITY_ANTAGONIST) && regions_of(s.econ,c)>0) idx[ne++]=c; }
+            last_emp_n=0; last_emp_flux=0; last_emp_gold=0;   /* I0 : l'assiette de la DERNIÈRE sim (écrasée à chaque sim) */
             for (int a=0;a<ne;a++) for (int b=a+1;b<ne;b++)
                 if (regions_of(s.econ,idx[b])>regions_of(s.econ,idx[a])){ int t=idx[a];idx[a]=idx[b];idx[b]=t; }
             printf("              empires vivants (%d) — métriques 0-100 :\n", ne);
@@ -2099,11 +2161,22 @@ int main(int argc, char **argv){
                 double cpt=cp[0]+cp[1]+cp[2]; if (cpt<1) cpt=1;
                 double g1=country_gold(s.econ,c), flux=(g1-gold_y0[c])/12.0;
                 if (g_flux_n<8192){ g_flux_all[g_flux_n]=flux; g_treas_all[g_flux_n]=g1; g_flux_n++; }  /* J2 : pour la médiane */
-                printf("                    classes : J %.1fk (%.0f%%) · B %.1fk (%.0f%%) · É %.1fk (%.0f%%) | or %.0f (%+.1f/mois, dern. année) · armée %.0f (%ld rgt)\n",
+                /* W1-F/W1-A (2026-09-03) — LE FREIN ÉCONOMIQUE DE LA LEVÉE, LISIBLE : les
+                 * régiments RÉELS en regard de la limite de force (∝ régions) et la part du
+                 * revenu fiscal que la solde mange (le moteur freine la croissance au-delà de
+                 * WH_PAY_REVENUE_FRAC). Miroir de scps_warhost.c, aucun calcul neuf. */
+                double fl_c   = (double)warhost_force_limit(regions_of(s.econ,c));
+                double pay_c  = -econ_flux_get(c, FX_SOLDE);          /* solde payée, dern. année (or/an) */
+                double rev_c  = (double)econ_country_tax_year(c);     /* revenu de l'an écoulé (l'assiette du frein) */
+                double payrev = (rev_c>1.0)? 100.0*pay_c/rev_c : -1.0;
+                printf("                    classes : J %.1fk (%.0f%%) · B %.1fk (%.0f%%) · É %.1fk (%.0f%%) | or %.0f (%+.1f/mois, dern. année) · armée %.0f (%ld rgt / limite %.0f) · solde/revenu ",
                        cp[CLASS_LABORER]/1000.0,   100*cp[CLASS_LABORER]/cpt,
                        cp[CLASS_BOURGEOIS]/1000.0, 100*cp[CLASS_BOURGEOIS]/cpt,
                        cp[CLASS_ELITE]/1000.0,     100*cp[CLASS_ELITE]/cpt,
-                       g1, flux, diplo_mil_power(w,s.econ,c), warhost_units(s.host,c));
+                       g1, flux, diplo_mil_power(w,s.econ,c), warhost_units(s.host,c), fl_c);
+                if (payrev>=0.0) printf("%.0f%%\n", payrev); else printf("n/d\n");
+                if (fl_c>0.0 && g_fl_n<8192){ g_fl_all[g_fl_n]=100.0*(double)warhost_units(s.host,c)/fl_c; g_fl_n++; }
+                if (payrev>=0.0 && g_pr_n<8192){ g_pr_all[g_pr_n]=payrev; g_pr_n++; }
                 /* usage du marché inter-pays (dernier tick annuel) + entrepôts (top 4) */
                 double vimp=0, vexp=0;
                 for (int g=1;g<RES_COUNT;g++){ vimp+=intertrade_import_vol(c,g); vexp+=intertrade_export_vol(c,g); }
@@ -2123,6 +2196,8 @@ int main(int argc, char **argv){
                 tot_emp_n++; tot_emp_gold+=g1; tot_emp_flux+=flux;
                 tot_emp_imp+=vimp; tot_emp_exp+=vexp; tot_emp_expgold+=intertrade_export_gold(c);
                 if (hub) tot_emp_hub++;
+                /* I0 : la MÊME assiette pour la décomposition du flux (voir last_emp plus haut) */
+                if (last_emp_n<SCPS_MAX_COUNTRY){ last_emp[last_emp_n++]=c; last_emp_flux+=flux; last_emp_gold+=g1; }
             }
         }
         /* VIVIER DE CITÉS-ÉTATS : combien du pool initial reste DISPONIBLE (vivant). */
@@ -2489,6 +2564,13 @@ int main(int argc, char **argv){
         tot_bt+=s.camp->n_battles; tot_btj+=s.camp->battle_days; tot_routs+=s.camp->n_routs; tot_rallies+=s.camp->n_rallies;
         tot_mchoc+=s.camp->dead_choc; tot_mpour+=s.camp->dead_pursuit;
         tot_deseng+=s.camp->n_disengage; tot_renf+=s.camp->n_reinforce; tot_nul+=s.camp->n_stalemate;
+        /* LE FREIN DE LEVÉE (W1-A × W1-F, 2026-09-03) : l'armée impayée FOND (WH_DESERT_RATE)
+         * et la levée cesse de grossir au-dessus de WH_PAY_REVENUE_FRAC du revenu fiscal. Sans
+         * ces deux nombres, les deux tunables du frein ne se vérifient pas au balayage. */
+        { long des=0, ovb=0, chk=0; warhost_braking_stats(&des,&ovb,&chk);
+          printf("              frein de levée : %ld rgt déserté(s) faute de solde · %ld/%ld mois-pays sur-budget (%.0f %%)\n",
+                 des, ovb, chk, chk>0? 100.0*(double)ovb/(double)chk : 0.0);
+          tot_desert+=des; tot_overbudget+=ovb; tot_paycheck+=chk; }
           tot_repress+=rep; tot_assim+=ass; tot_purge+=pur; tot_purge_dead+=dead;
           tot_serv+=s.dp->n_servage; tot_prot+=s.dp->n_protectorat; tot_conc+=s.dp->n_concordat;
           tot_cite+=s.dp->n_cite; tot_defect+=s.dp->n_defections; tot_annex+=s.dp->n_annex; }
@@ -2868,21 +2950,42 @@ int main(int argc, char **argv){
            tot_wpc[CLASS_LABORER]/nsims, tot_wpc[CLASS_BOURGEOIS]/nsims, tot_wpc[CLASS_ELITE]/nsims);
     printf("   initiative privée (M4-IP) .... %ld colonie(s) du peuple (moy. %.1f/sim) · %ld manufacture(s) privée(s) (moy. %.1f/sim)\n",
            tot_ip_colony, (double)tot_ip_colony/nsims, tot_ip_manuf, (double)tot_ip_manuf/nsims);
-    printf("   par empire (fin de sim) ..... trésor moy %.0f or · flux moy %+.1f or/mois (dern. année) · import moy %.1f · export moy %.1f (+%.0f or/an) · hub tenu %ld/%ld\n",
+    /* « par empire » : moyenne sur TOUTES les sims (les empires jouables de chaque fin de
+     * sim) — la ligne I0 juste en dessous, elle, ne peut porter que sur la DERNIÈRE (le
+     * registre FX_* est un état global). Le recoupement I0 se lit donc sur la dernière sim. */
+    printf("   par empire (fin de sim, toutes sims) trésor moy %.0f or · flux moy %+.1f or/mois (dern. année) · import moy %.1f · export moy %.1f (+%.0f or/an) · hub tenu %ld/%ld\n",
            tot_emp_n? tot_emp_gold/tot_emp_n:0.0,  tot_emp_n? tot_emp_flux/tot_emp_n:0.0,
            tot_emp_n? tot_emp_imp /tot_emp_n:0.0,  tot_emp_n? tot_emp_exp /tot_emp_n:0.0,
            tot_emp_n? tot_emp_expgold/tot_emp_n:0.0, tot_emp_hub, tot_emp_n);
     /* I0 — LA DÉCOMPOSITION DU FLUX (dernière sim · dernière année · moyenne par empire ·
      * or/mois) : l'instrument du robinet, ligne à ligne. Quand une bande échoue, c'est ICI
      * qu'on lit la ligne dominante — pas un taux au hasard. */
-    { int ne=0; double comp[FX_COUNT]={0};
-      for (int c=0;c<SCPS_MAX_COUNTRY;c++){ bool act=false;
-          for (int k=0;k<FX_COUNT;k++){ double v=econ_flux_get(c,(FluxComp)k); comp[k]+=v; if(v!=0.0) act=true; }
-          if (act) ne++; }
+    { int ne=last_emp_n; double comp[FX_COUNT]={0};
+      /* L'ASSIETTE (2026-09-03) : les EMPIRES JOUABLES de la DERNIÈRE sim — le même
+       * dénominateur que « flux mesuré » juste en dessous. Avant, la boucle prenait tout
+       * pays au flux non nul (cités-états et hameaux compris) et la ligne ne se recoupait
+       * avec RIEN. Repli monde si la dernière sim n'a plus d'empire jouable. */
+      if (ne>0){ for (int a=0;a<ne;a++){ int c=last_emp[a];
+                     for (int k=0;k<FX_COUNT;k++) comp[k]+=econ_flux_get(c,(FluxComp)k); } }
+      else { for (int c=0;c<SCPS_MAX_COUNTRY;c++){ bool act=false;
+                 for (int k=0;k<FX_COUNT;k++){ double v=econ_flux_get(c,(FluxComp)k); comp[k]+=v; if(v!=0.0) act=true; }
+                 if (act) ne++; } }
       if (ne>0){
-          printf("   flux décomposé (I0, dern. année · or/mois/empire) :");
+          double somme=0; for (int k=0;k<FX_COUNT;k++) somme+=comp[k];
+          somme = somme/ne/12.0;
+          printf("   flux décomposé (I0, dern. sim · dern. année · or/mois/empire, n=%d) :", ne);
           for (int k=0;k<FX_COUNT;k++) printf(" %s %+.1f", econ_flux_name((FluxComp)k), comp[k]/ne/12.0);
           printf("\n");
+          /* LE RECOUPEMENT (le seul juge de cette ligne) : Σ des postes du registre FX_*
+           * contre le flux RÉELLEMENT mesuré au trésor national (Δtrésor de la dernière
+           * année / 12), sur les MÊMES empires. L'écart est ce que le registre ne couvre
+           * pas encore (tribut mûri, dons, saisie… — le « INCOMPLET » du recoupement plus
+           * haut) : il se lit, il ne se cache pas. */
+          if (last_emp_n>0){
+              double mesure = last_emp_flux/last_emp_n;
+              printf("   recoupement I0 : Σ postes %+.1f · flux mesuré au trésor %+.1f · hors registre %+.1f or/mois/empire (trésor moy dern. sim %.0f or)\n",
+                     somme, mesure, mesure-somme, last_emp_gold/last_emp_n);
+          }
           /* MONNAIE M5 — R3 : « assiette » (revenu que la consommation crédite au trésor,
            * §4-6) n'a pas de bucket FX_* (mesuré à part, SIM ENTIÈRE — pas dern. année
            * seule comme la ligne I0 ci-dessus, cf. econ_assiette_revenue_get). */
@@ -2954,12 +3057,36 @@ int main(int argc, char **argv){
     printf("   batailles dans le temps ..... %ld livrées · %.0f j/bataille · %ld déroutes · %ld ralliement(s) · %ld décrochages · %ld renforts · %ld nuls | morts choc %ld vs POURSUITE %ld (ratio %.1fx — la poursuite doit DOMINER le choc si la cavalerie domine la compo)\n",
            tot_bt, tot_bt? (double)tot_btj/tot_bt:0.0, tot_routs, tot_rallies, tot_deseng, tot_renf, tot_nul,
            tot_mchoc, tot_mpour, tot_mchoc? (double)tot_mpour/tot_mchoc:0.0);
+    /* VAGUE W1 — L'ARMÉE TIENT-ELLE DANS SON BUDGET ? Trois nombres, un par question :
+     * (1) rgt/limite de force : l'armée est-elle à son plafond naturel ou bien en-dessous ?
+     * (2) solde/revenu : ce que la solde mange du revenu fiscal (cible rapport armée 10-15 %
+     *     en paix) — c'est l'assiette même du frein WH_PAY_REVENUE_FRAC ;
+     * (3) désertions et mois-pays sur-budget : le frein a-t-il MORDU, et combien. */
+    /* ⚠ dmedian TRIE en place : le max doit se lire APRÈS l'appel, jamais dans la même
+     * liste d'arguments (l'ordre d'évaluation n'est pas spécifié — il rendait « médiane
+     * 54 % · max 17 % »). */
+    if (g_fl_n>0){ double m=dmedian(g_fl_all, g_fl_n);
+        printf("   armée / limite de force ..... médiane %.0f%% · max %.0f%% de la limite (n=%d empire-sim(s)) — la limite est ∝ régions, jamais un plafond dur\n",
+               m, g_fl_all[g_fl_n-1], g_fl_n); }
+    if (g_pr_n>0){ double m=dmedian(g_pr_all, g_pr_n);
+        printf("   solde / revenu fiscal ....... médiane %.0f%% · max %.0f%% du revenu (n=%d empire-sim(s)) — plafond de croissance WH_PAY_REVENUE_FRAC\n",
+               m, g_pr_all[g_pr_n-1], g_pr_n); }
+    printf("   frein de levée .............. %ld rgt déserté(s) faute de solde (%.1f/sim) · %ld/%ld mois-pays sur-budget (%.0f %%)\n",
+           tot_desert, (double)tot_desert/(nsims>0?nsims:1), tot_overbudget, tot_paycheck,
+           tot_paycheck>0? 100.0*(double)tot_overbudget/(double)tot_paycheck : 0.0);
     printf("   syncrétisme TECH (gouvernance) %.1f nœud(s)/sim · %.1f archétype(s) distincts/sim (porte = CULTURE, plus heritage ; la diffusion par contact DIVERGE)\n",
            (double)tot_sync/(nsims>0?nsims:1), (double)tot_sync_distinct/(nsims>0?nsims:1));
     printf("   religion .................... %.1f foi(s) fondée(s)/sim · %.1f schisme(s)/sim · %.1f pays fidèle(s)/sim · %.1f région(s) minoritaire(s)/sim (dont same-root/hérésie %.1f · foreign/zélote %.1f) (monde ATHÉE au départ ; fonde au TEMPLE T2 bâti — LOT T ; racines ≤ ⌈empires/2⌉ genèse · ≤ %d schisme(s)/racine)\n",
            (double)tot_relig_roots/(nsims>0?nsims:1), (double)tot_relig_schisms/(nsims>0?nsims:1),
            (double)tot_relig_faith/(nsims>0?nsims:1), (double)tot_relig_minority/(nsims>0?nsims:1),
            (double)tot_min_her/(nsims>0?nsims:1), (double)tot_min_for/(nsims>0?nsims:1), RELIG_SCHISM_MAX);
+    /* W1-E — LA PORTE DU COURANT DIVIN : combien d'empires PEUVENT l'adopter (religion
+     * d'État fondée) et quelle assiette de fidèles ils portent. Un 0 % ici explique un
+     * « aucun Divin » au balayage sans qu'on aille chercher un bug de score. */
+    printf("   foi d'État (porte Divin) .... %ld/%ld empire-sim(s) ont une religion d'État (%.0f %%) · fidèles moy %.0f/empire fidèle\n",
+           tot_relig_state, tot_relig_emp,
+           tot_relig_emp>0? 100.0*(double)tot_relig_state/(double)tot_relig_emp : 0.0,
+           tot_relig_state>0? tot_relig_faithful/(double)tot_relig_state : 0.0);
     /* LOT F (2026-07-08) — DISPATCH DES FINS + CATASTROPHES + L'EXODE : la preuve
      * que le dispatch du défaut ne penche plus FROID (cible ≤2:1 entre les trois
      * fins élémentaires), que les mondes calmes reçoivent une pression, et que

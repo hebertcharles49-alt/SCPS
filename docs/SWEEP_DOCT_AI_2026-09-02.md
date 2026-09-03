@@ -641,3 +641,40 @@ de bord à corriger ici.
    0 régiment et trésors négatifs dans les mondes qui fragmentent (A2, A4),
    régiments hypertrophiés jusqu'à 342 (A3), et le désaccord entre le dump PROV
    et le compteur « PROV libres » (A18).
+
+---
+
+## Annexe 2026-09-03 (W2-4) — LE PROTOCOLE A CHANGÉ POUR LE SWEEP DE VALIDATION
+
+Ce rapport lit le format de résumé **v1**. `tools/sweep_doct_ai.sh` en produit
+désormais un **v2** — même protocole apparié (deux bras, mêmes graines, un seul
+tunable de différence : `SCPS_TUNE=AI_DOCT=0` contre le défaut), même règle de
+lecture (**le résumé est un index, l'analyste lit les `.log`**), mais deux lignes
+par bras au lieu d'une :
+
+1. `pays · guerres · M(fin) · indice · grain · doctrines · juges (ADOPTANTS)`
+2. `rgt/limite · solde/revenu · désert · sur-budget · décroch · LEDGERS figées ·
+   fidèles (porte)`
+
+Trois changements de lecture, à ne pas confondre avec une dérive du monde :
+
+- **La colonne « prix » de la v1 était l'`indice` (caisse/VA, M7-I1), pas un
+  prix.** Elle garde son nom honnête (`indice`) et une VRAIE colonne de prix
+  apparaît à côté : `grain`, la médiane du prix du grain sur les provinces
+  tenues (base 1,00). Les valeurs « indice prix moy » du §2.1 ci-dessus sont donc
+  des indices — les relire comme tels.
+- **Les juges viennent maintenant de la ligne ADOPTANTS SEULS** (la vraie mesure
+  du départage, 2026-09-02). La v1 mélangeait les deux lignes de corrélation.
+- **Les colonnes W1 sont neuves** : elles mesurent le frein économique de la
+  levée (désertions `WH_DESERT_RATE`, mois-pays sur-budget
+  `WH_PAY_REVENUE_FRAC`), l'invariant des sièges (LEDGERS P11) et la porte du
+  courant Divin (religion d'État fondée). Sans elles, le sweep de validation ne
+  peut pas dire si la vague W1 a tenu.
+
+Le chronicle gagne aussi une ligne `recoupement I0` : la Σ des postes du flux
+décomposé contre le flux RÉELLEMENT mesuré au trésor national, sur le même
+dénominateur — c'est elle qui dit si la télémétrie monétaire se recoupe.
+
+Les anomalies A2/A3/A4 et A18 de ce rapport ont été traitées depuis (voir
+TROUVAILLES.md, missions 2026-09-03) : le sweep de validation est ce qui doit le
+confirmer sur 10 graines.

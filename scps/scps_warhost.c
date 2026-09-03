@@ -59,6 +59,21 @@ void warhost_armsdiag(const long **want, const long **got, const long **levied, 
     if (returned) *returned=g_ad_returned;
 }
 
+/* ─── LE FREIN ÉCONOMIQUE DE LA LEVÉE, COMPTÉ (2026-09-03, W2-4 · PRINT-ONLY) ────────
+ * Deux compteurs de module, écrits par warhost_tick, JAMAIS relus par le moteur (aucune
+ * décision n'en dépend, aucun flottant n'en sort côté joueur) : le sweep de validation
+ * doit pouvoir dire combien l'armée a FONDU faute de solde (WH_DESERT_RATE) et combien de
+ * mois-pays ont tourné au-dessus du plafond de solde (WH_PAY_REVENUE_FRAC) — sans quoi les
+ * deux tunables du frein sont invérifiables. RAZ par warhost_init (par sim), comme ARMSDIAG. */
+static long g_wh_deserted=0;      /* paquets ×100 partis faute de solde (Σ monde, Σ sim) */
+static long g_wh_overbudget=0;    /* mois-pays où la solde dépassait WH_PAY_REVENUE_FRAC × revenu */
+static long g_wh_paycheck=0;      /* mois-pays observés (le dénominateur honnête de ci-dessus) */
+void warhost_braking_stats(long *deserted, long *overbudget_months, long *checked_months){
+    if (deserted)          *deserted          = g_wh_deserted;
+    if (overbudget_months) *overbudget_months = g_wh_overbudget;
+    if (checked_months)    *checked_months    = g_wh_paycheck;
+}
+
 /* ───────────────────────────────────────────────────────────────────────────
  * L'ÉTHOS COMPOSE L'ARMÉE (les « intentions ») — affinité faction → unité (0-3).
  * La distribution de factions du pays (enracinée dans sa pop) pondère la RECETTE
@@ -135,6 +150,7 @@ void warhost_init(WarHost *h){
     g_human_player = -1;            /* RAZ : par défaut l'IA gère toutes les armées */
     memset(g_ad_want,0,sizeof g_ad_want); memset(g_ad_got,0,sizeof g_ad_got);   /* ARMSDIAG : RAZ par sim */
     memset(g_ad_levied,0,sizeof g_ad_levied); memset(g_ad_returned,0,sizeof g_ad_returned);
+    g_wh_deserted=0; g_wh_overbudget=0; g_wh_paycheck=0;   /* FREIN (print-only) : RAZ par sim */
 }
 /* Jauge de levée (sidebar §5) : un palier, pas un float. */
 void warhost_set_levy(WarHost *h, int cid, int levy){
@@ -376,7 +392,7 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                 if (unpaid>0.01f && drate>0.f){
                     long nd = (long)((double)u * (double)unpaid * (double)drate * (double)dt + 0.5);
                     if (nd>u) nd=u;
-                    if (nd>0) wh_shed(&h->army[c], econ, c, nd);
+                    if (nd>0){ wh_shed(&h->army[c], econ, c, nd); g_wh_deserted += nd; }   /* compteur PRINT-ONLY */
                 } }
               /* BUDGET MILITAIRE SUR LE FLUX (2026-09-03) : la solde annuelle ne doit pas
                * dépasser WH_PAY_REVENUE_FRAC du revenu fiscal de l'an écoulé (cible du
@@ -387,7 +403,8 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
               bool over_budget = false;
               { float rev  = econ_country_tax_year(c);
                 float frac = tune_f("WH_PAY_REVENUE_FRAC", 0.35f);
-                over_budget = (rev>0.f && frac>0.f && base_pay > rev*frac); }
+                over_budget = (rev>0.f && frac>0.f && base_pay > rev*frac);
+                if (rev>0.f && frac>0.f){ g_wh_paycheck++; if (over_budget) g_wh_overbudget++; } }   /* compteurs PRINT-ONLY */
               pay_starved = (base_pay>0.f && ((float)econ_country_gold(econ,c) < base_pay*0.25f || over_budget));
               if (!at_war && pay_starved && h->levy[c]>0)
                   h->levy[c] -= 1;

@@ -69,6 +69,10 @@ float warhost_force_limit(int n_regions);
  * Resource (armes voulues / prises à l'arsenal / paquets ×100 levés après le gate
  * pop / rendues à la démob). Diagnostic pur — jamais lu par le moteur. */
 void warhost_armsdiag(const long **want, const long **got, const long **levied, const long **returned);
+/* LE FREIN ÉCONOMIQUE DE LA LEVÉE, COMPTÉ (2026-09-03) : paquets ×100 partis faute de solde
+ * (WH_DESERT_RATE) · mois-pays au-dessus du plafond de solde (WH_PAY_REVENUE_FRAC) · mois-pays
+ * observés (le dénominateur). Diagnostic pur — jamais lu par le moteur, RAZ par warhost_init. */
+void warhost_braking_stats(long *deserted, long *overbudget_months, long *checked_months);
 
 /* Affinité ÉTHOS→unité (0-3) de la table AFF — read-only, pour l'UI de construction
  * (« quel éthos favorise cette unité »). N'influe sur rien : pure lecture. */

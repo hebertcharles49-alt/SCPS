@@ -12579,3 +12579,142 @@ Périmètre : `godot/project/**/*.gd` + `godot/src/scps_sim_node.cpp`. Aucun `sc
   nombre affiché est exact par ailleurs.
 - `shot_ui.gd` gagne une capture `04b_prov_contexte` (onglet Contexte de la fiche province,
   `_prov_detail._tab = 5`) : c'est la seule vue qui montre le Marché local.
+
+
+## Mission 2026-09-03 — W2-4 CHRONICLE & SWEEP DE VALIDATION (print-only, golden identique)
+
+### Découvertes
+
+- **L'« incohérence monétaire » du trésor national était un DÉNOMINATEUR, pas un
+  lecteur périmé.** Tous les lecteurs d'or du chronicle étaient déjà passés au
+  national (`world_gold` = Σ `nat_treasury`, `chronicle_money_mass`, « dette :
+  N débiteur(s) », l'invariant M3c) — rien à re-brancher. Le mensonge venait de
+  DEUX lignes voisines qui ne portaient pas sur la même population :
+  · `par empire (fin de sim)` moyenne les **empires JOUABLES** (PLAYER/
+    ANTAGONIST, régions > 0) de **TOUTES** les sims ;
+  · `flux décomposé (I0)` divisait par « **tout pays au flux non nul** » —
+    cités-états et hameaux compris — et, comme `econ_flux_get` est un état
+    GLOBAL qui survit à la boucle de sims, ne pouvait porter que sur la
+    **DERNIÈRE**. Deux assiettes, deux horizons, aucun recoupement possible :
+    d'où « taxes +9,5 » en regard d'un « flux +311 ». Corrigé
+    (chronicle.c:2884-2913) : I0 lit la liste `last_emp[]` — les empires
+    jouables de la dernière sim — et une ligne `recoupement I0` publie **Σ des
+    postes · flux mesuré au trésor · hors registre**, sur le MÊME dénominateur.
+    Graine 7 / 1 sim / 120 ans : Σ postes −186,3 · mesuré −36,4 · hors registre
+    +149,9 or/mois/empire (n=2). Le registre FX_* reste INCOMPLET (tribut mûri,
+    saisie, dons, butin) — désormais l'écart se LIT au lieu de se cacher.
+- **`revenu fiscal Σ … or/an` n'était pas faux non plus, il était illisible** :
+  il somme **tous** les pays au revenu capté (cités-états incluses) sur **l'an
+  écoulé**, quand la ligne I0 d'à côté est un or/**mois**/**empire**. Un
+  `or/mois/pays` a été ajouté à côté du Σ (chronicle.c:1440-1446) : les deux
+  lignes se comparent enfin sans conversion mentale.
+- **Le monde de la graine 7 traverse une CRISE vers l'an 96, et c'est ça qui
+  faisait paraître les chiffres absurdes.** À l'horizon 97 : `taxes +2,5`,
+  `entretien +0,0`, `redépense +0,0`, empire A à **2 rgt** pour une limite de 21,
+  `solde/revenu 423 %` chez B. À l'horizon 120 : `taxes +461,5`, A à 20 rgt,
+  `solde/revenu 9 %`. Le cumul `recoupement FX d'État` confirme (2 429 or/an de
+  moyenne sur les 97 premières années, 12 931 sur les 23 suivantes) : le monde
+  s'effondre puis repart. **Vérifier un ordre de grandeur sur DEUX horizons
+  avant de crier au lecteur périmé** — un an-96 pris seul mentait sur le régime.
+- **La colonne « prix » du sweep lisait l'`indice` (M7-I1 = caisse/VA), pas un
+  prix** : renommée `indice`, et une VRAIE colonne `grain` ajoutée depuis une
+  ligne neuve du chronicle, `prix du grain : médiane X · moyenne Y · base Z`
+  (chronicle.c:1552-1567). Verdict graine 7 an 120 : **médiane 0,002 pour une
+  base 1,00** — le pain ne vaut RIEN. Ce n'est pas un bug de lecteur : le
+  plancher de prix suit `price_level[c]` (`pn[c][r] = clampf(p,
+  BASE_PRICE*0,15*pl, …)`, scps_econ.c:5426-5431) et l'indice mondial est
+  tombé à 0,10 — le plancher s'écroule avec lui. **C'est LE chiffre que le sweep
+  de validation doit trancher.**
+- **`region[].price` n'est PAS périmé** (scps_econ.c:1649 recopie
+  `pe->price` dans la vue à la clôture) — la ligne du grain lit quand même les
+  provinces, par doctrine.
+
+### Pièges
+
+- **`dmedian()` TRIE le tableau en place** : lire le max comme `v[n-1]` dans la
+  MÊME liste d'arguments `printf` que l'appel à `dmedian` donne « médiane 54 % ·
+  max 17 % » — l'ordre d'évaluation des arguments n'est pas spécifié en C.
+  Appeler `dmedian` dans une variable D'ABORD, lire le max ENSUITE.
+- **`econ_flux_year_capture()` est appelé au DÉBUT de chaque année du chronicle,
+  pas à la fin** (chronicle.c:1256, juste avant les 365 `sim_day`). Donc à la
+  fin de la boucle `econ_flux_get` porte sur la DERNIÈRE année pleine, tandis
+  qu'`econ_country_tax_year` (= `g_tax_lastyear`) porte sur l'AVANT-DERNIÈRE.
+  Un an d'écart entre les deux, structurel : ne pas le lire comme une
+  divergence.
+- **`grab()` en awk POSIX doit apparier un motif qui SE TERMINE par le nombre.**
+  « 22 décrochage(s) » met le mot APRÈS : il a fallu un second helper `grab1`
+  (nombre de TÊTE). Sans lui la valeur revient vide ou tronquée, en silence.
+  (`match()` à 3 arguments est gawk-only — RSTART/RLENGTH + substr partout.)
+- **Une `function` awk ne peut pas être définie DANS un bloc `END`** — au
+  premier niveau seulement. Et **aucun espace entre le nom et la parenthèse** :
+  `acc (…)` est une ERREUR de syntaxe gawk, pas un avertissement.
+- **Une constante `/motif/` passée en ARGUMENT de fonction awk vaut `$0 ~
+  /motif/` — un booléen, pas un motif** (gawk le dit en avertissement, puis
+  cherche « 0 » ou « 1 » dans la ligne et rend 0 partout, en silence). Les
+  motifs passés à un helper doivent être des CHAÎNES ; et dans une chaîne awk,
+  `\(` n'est pas un échappement valide → écrire `[(]`.
+- **UNE APOSTROPHE DANS UN COMMENTAIRE AWK CASSE TOUT LE SCRIPT** : le programme
+  vit dans un `awk '…'` à quotes simples ; un « n'est » de commentaire ferme la
+  chaîne shell et bash meurt 40 lignes plus loin sur un `(` « inattendu ». (Je
+  l'ai fait DEUX fois — la seconde dans le commentaire qui met en garde contre
+  la première.)
+- **L'outil Bash refuse tout `bash.exe -l script` et tout `cat <<EOF`** depuis un
+  worktree isolé (« trop complexe pour vérifier »). Le build MSYS2 passe par
+  l'outil **PowerShell** (`$env:MSYSTEM='MINGW64'; & D:\MSYS2\usr\bin\bash.exe
+  -l <script>`), et les fichiers s'écrivent avec l'outil Write/Edit.
+- **Il y a DEUX lignes `corrélations-juges`** (toutes / ADOPTANTS seuls) : l'awk
+  v1 du sweep appariait les deux et mélangeait deux mesures. Le v2 ne lit que la
+  ligne ADOPTANTS.
+
+### Restes
+
+- **`hors registre +149,9 or/mois/empire`** (graine 7, an 120) : le registre
+  FX_* ne couvre pas la moitié du flux réel du trésor. Soit on ajoute les
+  buckets manquants (tribut mûri, saisie, dons diplo, butin), soit on accepte le
+  chiffre comme mesure du « hors périmètre » — mais quelqu'un doit décider.
+- **Prix du grain à 0,002 × la base** : plancher de prix indexé sur
+  `price_level` effondré (indice mondial 0,10). C'est de l'économie, pas de la
+  télémétrie — hors périmètre W2-4, à trancher au dépouillement du sweep.
+- **73 % de mois-pays sur-budget** (graine 7, 120 ans) et **112 rgt désertés/sim**
+  : le frein de W1 mord BEAUCOUP. `solde/revenu` médiane 18 % · max 28 % pour un
+  plafond `WH_PAY_REVENUE_FRAC` à 0,35 — cohérent en fin de sim, mais le 73 %
+  dit que la trajectoire y a passé le plus clair de son temps. Le sweep 10×200
+  dira si c'est le régime voulu.
+- **Les compteurs du frein sont dans `scps_warhost.c`** (`g_wh_deserted`,
+  `g_wh_overbudget`, `g_wh_paycheck`, RAZ par `warhost_init`, accesseur
+  `warhost_braking_stats` déclaré dans `scps_warhost.h`) : trois hunks
+  print-only, à surveiller au merge avec l'agent campagne/warhost.
+- **Le décrochage n'a pas de mesure en % dans le chronicle** (seulement le compte
+  brut « 22 décrochage(s) ») — la cible 15-25 % du reste W1 devra se calculer à
+  la main (décrochages / batailles) tant que personne n'ajoute le ratio.
+
+### Ce que le test 2×2×60 a déjà montré (à ouvrir au dépouillement, PAS mon périmètre)
+
+Test du script (`SEEDS="7 512" REPS=1 HORIZONS="60"`, 4 sims, config de sweep
+6 empires / 12 cités) — chaque colonne vérifiée à la main contre les journaux :
+
+- **`temoin_s7_y60` sort en CODE 1** : `ÉCHEC — banc invariant M3c : graine 7 sim 1
+  an 29 — autres=-3091/an (436 % de l'échelle connue 709, seuil 370 %)`. Le sweep
+  de validation sortira donc en 4 sur ce bras. **Antérieur à cette mission**
+  (mes changements sont print-only, `make golden` IDENTIQUE) : c'est le monde,
+  pas la télémétrie. Le résumé le NOMME désormais (section « runs en ÉCHEC »)
+  au lieu de laisser chercher pourquoi le code de retour vaut 4.
+- **`solde / revenu fiscal` : médiane 89-281 %, max 2084 % puis 4551 %.** À 60
+  ans la solde dépasse couramment le revenu fiscal d'un ordre de grandeur, et
+  **65-70 % des mois-pays sont sur-budget**. `WH_PAY_REVENUE_FRAC` (0,35) n'est
+  pas un plafond, seulement un frein à la CROISSANCE : l'armée existante reste
+  et déserte (98-123 rgt/sim). À trancher : régime voulu, ou frein trop mou ?
+- **`armée / limite de force` : max 211 %** (un empire à deux fois sa limite) pour
+  une médiane de 7-55 %. La dispersion est énorme.
+- **`prix du grain` : médiane 0,000 dans les QUATRE sims** (moyennes 0,007 à
+  0,212 pour une base 1,00). Le pain est gratuit partout ; voir la découverte
+  sur le plancher indexé `price_level`.
+- **`LEDGERS` graine 512 : « 1 groupe(s) hors invariant (Σ|écart| 8 âmes) »** —
+  W1-B annonçait 0/0. Huit âmes, donc probablement un arrondi de paquet de 100
+  sur un chemin non couvert par les mesures de W1-B, pas une régression de fond.
+- Le kill-switch TIENT (bras témoin muet, 0 doctrine) ; les juges ADOPTANTS du
+  bras essai : côte 64 % · vassal 100 % · guerre 81 %.
+- **La sortie d'ÉCHEC part sur stderr et se mélange à une ligne de stdout** dans
+  les journaux (`BIOME(S) TOTALEMENT   ÉCHEC — banc invariant…`, ligne 69) :
+  bufferisation différente, `> log 2>&1`. Illisible mais sans perte — le
+  `grep ÉCHEC` du résumé le rattrape.
