@@ -302,13 +302,15 @@ typedef struct {
     uint8_t    alloc_bld[BLD_TYPE_COUNT];      /* poids d'allocation par type de bâtiment (0 = fermé) */
     uint8_t    bld_input[BLD_TYPE_COUNT];      /* choix d'intrant : 0 = primaire (in1) ; 1 = repli (alt1) */
 
-    float      stock [RES_COUNT];    /* entrepôt local — PLAFONNÉ : 200/ressource + 500 par Entrepôt bâti (E2 §11) */
-    float      price [RES_COUNT];    /* prix de marché courant (province ISOLÉE) / miroir du prix RÉGIONAL projeté */
+    /* TRÉSOR/STOCK NATIONAUX (décision joueur 2026-09-03, docs/DESIGN_TRESOR_NATIONAL.md) :
+     * la province N'A PLUS ni caisse ni entrepôt — l'or et la matière vivent au grain
+     * NATION (WorldEconomy.nat_treasury / nat_stock). Elle garde sa PRODUCTION et sa
+     * CONSOMMATION (supply/demand), son prix projeté et la richesse de ses POPS. */
+    float      price [RES_COUNT];    /* prix de marché courant (province ISOLÉE) / miroir du prix NATIONAL projeté */
     float      demand[RES_COUNT];    /* demande agrégée (dernier tick) */
     float      supply[RES_COUNT];    /* offre agrégée (dernier tick) */
-    uint8_t    n_entrepot;           /* E2 §11 : Entrepôts BÂTIS ici (chacun +500 de cap de stock) */
+    uint8_t    n_entrepot;           /* E2 §11 : Entrepôts BÂTIS ici (le stock n'a PLUS de plafond ; l'édifice garde ses autres effets) */
 
-    float      treasury;             /* taxe captée par les élites (cumul) */
     float      tech;                 /* recherche cumulée */
     float      tech_prod;            /* §B1 : multiplicateur de prod issu des techs de PRODUCTION du pays (1 = aucun) */
     bool       tech_foreuse;         /* §B2 : le pays a-t-il débloqué la foreuse arcanique ? (gate de BLD_FOREUSE) */
@@ -424,13 +426,13 @@ typedef struct {
     uint8_t    alloc_bld[BLD_TYPE_COUNT];
     uint8_t    bld_input[BLD_TYPE_COUNT];
 
-    float      stock [RES_COUNT];    /* pool régional = Σ stocks provinces */
-    float      price [RES_COUNT];    /* prix de MARCHÉ régional (soldé ici, lu par les provinces membres) */
+    /* ni stock ni trésor : ils sont NATIONAUX (2026-09-03) — la région n'agrège plus
+     * que ce qui vit réellement sur ses provinces. */
+    float      price [RES_COUNT];    /* prix de MARCHÉ (projeté du national, lu par les provinces membres) */
     float      demand[RES_COUNT];    /* Σ demande des provinces */
     float      supply[RES_COUNT];    /* Σ offre des provinces */
     uint8_t    n_entrepot;
 
-    float      treasury;             /* Σ trésor des provinces */
     float      tech;                 /* Σ tech des provinces */
     float      tech_prod;
     bool       tech_foreuse;
@@ -536,6 +538,15 @@ typedef struct {
     float         reserve_gold[SCPS_MAX_COUNTRY];
     float         reserve_copper[SCPS_MAX_COUNTRY];
 
+    /* ── v108 — LE TRÉSOR ET LE STOCK NATIONAUX (décision joueur 2026-09-03,
+     * docs/DESIGN_TRESOR_NATIONAL.md). UN trésor par empire, UN stock par empire et par
+     * ressource : la province n'a plus ni caisse ni entrepôt, la région n'en agrège plus.
+     * AUCUN PLAFOND ni sur l'un ni sur l'autre — le frein est économique (prix, solde,
+     * entretien), jamais une borne dure. nat_treasury peut être NÉGATIF : c'est la dette
+     * RÉELLE (CountryDebt, scps_credit.c), pas une caisse fantôme. ── */
+    float         nat_treasury[SCPS_MAX_COUNTRY];
+    float         nat_stock   [SCPS_MAX_COUNTRY][RES_COUNT];
+
     /* v88 — MONNAIE M3b-v2 Cœur A : L'ÉTAT ACHÈTE LA PRODUCTION (docs/MONNAIE_CONCEPT.md §M3,
      * docs/MONNAIE_M0_AUDIT.md). Remplace la v1 (compte de marché séparé, stash
      * `monnaie-m3b-flip-non-calibre`, abandonnée — TROUVAILLES « CHANTIER MONNAIE — M3b »).
@@ -614,8 +625,12 @@ float econ_content_dist_faith(const PopCulture *a, const PopCulture *b);
 float econ_culture_phylo_clock(uint16_t a, uint16_t b);
 /* RUINES (2026-08-11) : une province effondrée (< RUIN_POP_FLOOR) est abandonnée,
  * son culture_id demeure — le substrat redevient atteignable. Annuel, renvoie le compte. */
-float econ_country_stock_take(WorldEconomy *e, int cid, Resource r, float need);  /* pool national (2026-08-16) */
+/* ── LE STOCK NATIONAL (2026-09-03) : accès DIRECTS à nat_stock[cid][r], plus aucun
+ * prélèvement simulé sur les provinces. _take borne au disponible et rend le PRIS ;
+ * _add dépose (delta>0, sans plafond) ou débite borné, et rend l'appliqué. ── */
+float econ_country_stock_take(WorldEconomy *e, int cid, Resource r, float need);
 float econ_country_stock_sum (const WorldEconomy *e, int cid, Resource r);
+float econ_nation_stock_add  (WorldEconomy *e, int cid, int good, float delta);
 int econ_ruin_tick(WorldEconomy *e, ModifierStack *drift);
 uint16_t econ_ruling_culture_id(const World *w, const WorldEconomy *econ, int cid);
 const PopCulture *econ_ruling_culture(const World *w, const WorldEconomy *econ, int cid);
@@ -656,27 +671,27 @@ int econ_region_rep_province(const WorldEconomy *e, int region);
  * À consulter AVANT tout péage région-grain (détroit/échange/marge d'import hôte) — cf.
  * commentaire complet scps_econ.c (le test région-grain seul ne suffisait pas, mesuré). */
 bool econ_region_has_keeper(const WorldEconomy *e, int region);
-/* RE-KEY — écritures PERSISTANTES au grain RÉGION (stock/trésor/pop) : routent sur
+/* RE-KEY — écritures PERSISTANTES au grain RÉGION (pop/richesse) : routent sur
  * les PROVINCES (représentative d'abord, débit qui déborde sur les sœurs) ET
  * tiennent la VUE region[] du mois courant. Écrire region[] directement serait
  * EFFACÉ à la clôture (econ_aggregate_regions reconstruit la vue depuis prov[]).
- * Rendent le delta réellement appliqué (débit borné au dispo ; trésor : le résidu
- * passe en dette sur la représentative, philosophie credit_spend). */
-float econ_region_stock_add(WorldEconomy *e, int region, int good, float delta);
-float econ_region_treasury_add(WorldEconomy *e, int region, float delta);
+ * Rendent le delta réellement appliqué (débit borné au dispo).
+ * (stock/trésor ne sont PLUS ici : ils sont NATIONAUX — econ_nation_gold_add /
+ *  econ_nation_stock_add, 2026-09-03.) */
 float econ_region_pop_add(WorldEconomy *e, int region, int cls, float delta);
 float econ_region_wealth_add(WorldEconomy *e, int region, int cls, float delta);   /* item 5 M3b-v2 : idem, richesse d'une classe */
-/* MONNAIE M11 — A2 : crédit/débit du trésor d'UNE province DÉJÀ RÉSOLUE par l'appelant
- * (capitale via econ_country_capital_prov, créancier via econ_region_rep_province…) —
- * tient region[].treasury EN PHASE dans le MÊME geste (Σ incrémentale, pas une résolution
- * "province représentative" séparée). Différent d'econ_region_treasury_add (grain RÉGION,
- * prorata sur les provinces-sœurs si la représentative ne suffit pas) : ICI la province est
- * déjà connue avec certitude (pas de risque de region_rep_prov périmé si la capitale a
- * bougé depuis le dernier econ_build_adjacency) — usage : tout écrivain monétaire APRÈS
- * econ_aggregate_regions() qui connaît sa province cible EXACTE (frappe, intérêts/
- * amortissement/saisie de credit_year_tick). Rend le delta appliqué (identique à delta,
- * pid hors borne ⇒ 0). */
-float econ_prov_treasury_credit(WorldEconomy *e, int pid, float delta);
+/* ── LE TRÉSOR NATIONAL (2026-09-03) — les DEUX seules portes de l'or d'État.
+ * _add : crédit (delta>0, sans plafond) ou débit BORNÉ au disponible — rend le delta
+ *        RÉELLEMENT appliqué (signé). Jamais de dette fantôme : ce qui n'est pas
+ *        couvert n'est pas débité, l'appelant lit le retour pour le savoir.
+ * _force : débit NON borné — autorise le trésor NÉGATIF, c'est-à-dire la dette RÉELLE
+ *        adossée à CountryDebt (intérêts/amortissement/saisie de credit_year_tick).
+ *        Réservé au crédit : partout ailleurs, _add. Rend delta (cid hors borne ⇒ 0). ── */
+float econ_nation_gold_add  (WorldEconomy *e, int cid, float delta);
+float econ_nation_gold_force(WorldEconomy *e, int cid, float delta);
+/* Remet à ZÉRO le trésor ET le stock d'un pays — appelé à la NAISSANCE d'un pays pour
+ * qu'un slot recyclé n'hérite jamais du magot d'un mort (cf. design, cas limites). */
+void  econ_nation_reset(WorldEconomy *e, int cid);
 /* MONNAIE M3f — item 2 (missions) : lève `requested` sur les 3 classes (LABORER/
  * BOURGEOIS/ELITE, clé 42/20/38) de TOUT le royaume `cid` — prorata de la richesse
  * DISPONIBLE de chaque province/classe, bornée au panier vital (g_basket_pc, même
@@ -749,9 +764,14 @@ typedef struct {
         for (int bi = 0; bi < (re)->n_bld; bi++) manuf_h += (re)->bld[bi].level; \
         float cap_half = (re)->cap_pop * 0.5f; \
         float housed = manuf_h * house_manuf; if (housed > cap_half) housed = cap_half; \
-        float pot_d=(re)->demand[RES_POTTERY], pot_av=(re)->supply[RES_POTTERY]+(re)->stock[RES_POTTERY]; \
-        float sta_d=(re)->demand[RES_STATUE],  sta_av=(re)->supply[RES_STATUE] +(re)->stock[RES_STATUE]; \
-        if (pot_d>0.1f && pot_av>=pot_d*0.95f && sta_d>0.1f && sta_av>=sta_d*0.95f){ \
+        /* CONFORT — poterie ET statuaire RÉELLEMENT servies. Le stock est NATIONAL depuis
+         * 2026-09-03 : cet inline PUR (sans WorldEconomy, sans dépendance de LIEN) ne peut
+         * plus lire « supply+stock ». On lit donc society_sat — la satisfaction SOCIALE, déjà
+         * calculée depuis les fractions SERVIES du panier non-vivrier : même intention (les
+         * biens de confort sont LÀ), au grain province, sans nouvel état. */ \
+        float pot_d=(re)->demand[RES_POTTERY]; \
+        float sta_d=(re)->demand[RES_STATUE]; \
+        if (pot_d>0.1f && sta_d>0.1f && (re)->society_sat>=0.95f){ \
             float relief = tune_f("COMFORT_HOUSE_RELIEF", 0.15f); \
             if (relief>0.f && relief<0.9f) housed *= 1.f/(1.f-relief); \
         } \
@@ -869,12 +889,16 @@ static inline float econ_avg_price(const WorldEconomy *e, Resource res){
 static inline float econ_country_price_level(const WorldEconomy *e, int cid){
     if (!e || cid<0 || cid>=SCPS_MAX_COUNTRY) return 1.f;
     if (e->va_country_prev[cid]<=1e-6f) return 1.f;
-    float caisse=0.f; const float floor_=tune_f("SINK_FLOOR", 500.f);
+    /* LA CAISSE NATIONALE (2026-09-03) : le trésor de l'empire au-dessus de sa réserve
+     * d'exploitation. Le plancher SINK_FLOOR est PAR PROVINCE (un État large a besoin d'une
+     * réserve large) — Σ des planchers, calibrage pré-national préservé à l'identique. */
+    const float floor_=tune_f("SINK_FLOOR", 500.f);
+    int nprov=0;
     for (int p=0;p<e->n_prov && p<SCPS_MAX_PROV;p++){
         const ProvinceEconomy *pr=&e->prov[p];
-        if (!pr->active || !pr->colonized || pr->owner!=cid) continue;
-        caisse += fmaxf(0.f, pr->treasury - floor_);
+        if (pr->active && pr->colonized && pr->owner==cid) nprov++;
     }
+    float caisse = fmaxf(0.f, e->nat_treasury[cid] - floor_*(float)nprov);
     /* clamp manuel (pas de scps_math.h ici : redéfinirait absf/clampf pour tout
      * inclueur transitif de scps_econ.h — plusieurs bancs portent encore une copie
      * locale, cf. demography_demo.c). */
@@ -1269,7 +1293,7 @@ bool econ_colonize_province(WorldEconomy *e, const World *w, int src_pid, int ds
 /* Gate vivrier de colonisation PARTAGÉ (drain ET façade — miroir exact, jamais deux
  * seuils divergents) : food_sat ≥ COLONY_FOOD_GATE, OU grenier local ≥ FOOD_STOCK_MONTHS
  * mois de conso (décision joueur 2026-07-31 : le grenier rempli par le COMMERCE débloque). */
-bool econ_colony_food_ok(const ProvinceEconomy *pe);
+bool econ_colony_food_ok(const WorldEconomy *e, const ProvinceEconomy *pe);
 /* QUOTIDIEN — mûrit les chantiers de colonisation (cadences, délais, fondation à l'arrivée
  * au rendement log-distance). No-op intégral quand aucun chantier (chronique → golden). */
 void econ_colony_day(WorldEconomy *e, const World *w);
@@ -1340,6 +1364,10 @@ void  econ_set_arms_pump(float (*pump)(WorldEconomy*, int, int, float, float)); 
  * la manufacture cesse de produire ce bien (intrants libérés). État statique → save/load dédiés. */
 void  econ_set_prod_cap(int country, int good, float maxv);
 float econ_prod_cap   (int country, int good);
+/* RAZ du limiteur (-1 = désactivé partout). econ_init l'appelle ; un banc qui grée un
+ * WorldEconomy À LA MAIN doit l'appeler AUSSI — le zéro-init statique du C vaut 0.f,
+ * c'est-à-dire « plafonné À ZÉRO », et mute la manufacture en silence. */
+void  econ_prod_cap_reset(void);
 void  econ_prodcap_save(FILE *f);
 bool  econ_prodcap_load(FILE *f);
 int   bld_min_tier(BuildingType b);                       /* F-arc : tier de capitale requis pour poser la manufacture */

@@ -28,6 +28,26 @@
 static int g_pass=0,g_fail=0;
 static void ok(const char*w,bool c){ printf("   %s %s\n",c?"✓":"✗",w); if(c)g_pass++; else g_fail++; }
 
+/* ARSENAL NATIONAL (2026-09-03, docs/DESIGN_TRESOR_NATIONAL.md) : les armes vivent dans
+ * l'entrepôt du PAYS, plus dans chaque région. Les fixtures « on désarme tout le monde,
+ * on surarme un camp » se disent donc au grain pays — à quantité TOTALE identique
+ * (le montant posé par région × le nombre de régions que le pays tient). */
+static int nreg_of(const WorldEconomy*e,int c){
+    int n=0; for(int r=0;r<e->n_regions;r++) if(e->region[r].owner==c) n++; return n;
+}
+static void arms_clear_all(WorldEconomy*e){
+    for(int c=0;c<SCPS_MAX_COUNTRY;c++){
+        e->nat_stock[c][RES_ARMS]=0.f;
+        e->nat_stock[c][RES_GUNPOWDER]=0.f;
+        e->nat_stock[c][RES_ENCHANTED_ARMS]=0.f;
+    }
+}
+/* dote le pays `c` de `per_region` unités PAR région tenue (le total d'avant). */
+static void arms_give(WorldEconomy*e,int c,Resource g,float per_region){
+    if(c<0||c>=SCPS_MAX_COUNTRY) return;
+    e->nat_stock[c][g]=per_region*(float)nreg_of(e,c);
+}
+
 static float content_dist(const PopCulture*a,const PopCulture*b){
     float dv=a->valeurs-b->valeurs;       if(dv<0)dv=-dv;
     float ds=a->subsistance-b->subsistance; if(ds<0)ds=-ds;
@@ -136,12 +156,9 @@ int main(int argc,char**argv){
          * la cible (stocks → 0) et on surarme le joueur (armes enchantées + de base, près
          * de leur plafond) → ratio≈0.7 ⇒ budget ≫ prix. On ne touche QUE les stocks (pas
          * le H_coerc), pour ne rien laisser fuir dans les scénarios de §5/§8 plus bas. */
-        for(int r=0;r<econ->n_regions;r++){
-            if(econ->region[r].owner==tgt_owner){ econ->region[r].stock[RES_ARMS]=0.f;
-                econ->region[r].stock[RES_GUNPOWDER]=0.f; econ->region[r].stock[RES_ENCHANTED_ARMS]=0.f; }
-            else if(econ->region[r].owner==player){
-                econ->region[r].stock[RES_ENCHANTED_ARMS]=8000.f; econ->region[r].stock[RES_ARMS]=8000.f; }
-        }
+        arms_clear_all(econ);   /* la cible est DÉSARMÉE (arsenal national à zéro) */
+        arms_give(econ, player, RES_ENCHANTED_ARMS, 8000.f);
+        arms_give(econ, player, RES_ARMS,           8000.f);
         diplo_occupy(dp,econ,player,target);
         int got=diplo_settle(dp,w,econ,wl,player,tgt_owner,0.f);
         /* RE-KEY PROVINCE : settle_transfer route owner sur les PROVINCES membres —
@@ -288,14 +305,11 @@ int main(int argc,char**argv){
         if(B>=0 && Ar>=0){
             diplo_init(dp);
             diplo_declare_war_cb(dp,A,B,CB_TERRITORIAL);   /* A = attaquant */
-            float armsA0=0.f;
-            /* RE-KEY : le surarmement se sème PROVINCE-persistant (helper : porteuse+vue) —
-             * écrit sur la seule vue, il serait invisible à l'attrition réelle (deplete_arms
-             * mord désormais les provinces). armsA0 = la vue APRÈS semis (miroir exact). */
-            for(int r=0;r<econ->n_regions;r++) if(econ->region[r].owner==A)
-                econ_region_stock_add(econ, r, RES_ENCHANTED_ARMS, 1000.f);   /* A surarme */
-            for(int r=0;r<econ->n_regions;r++) if(econ->region[r].owner==A)
-                armsA0+=econ->region[r].stock[RES_ENCHANTED_ARMS];
+            /* ARSENAL NATIONAL : le surarmement se dépose dans l'entrepôt du pays A —
+             * même quantité TOTALE (1000 par région tenue) et c'est CE stock que
+             * l'attrition (deplete_arms) mord. */
+            econ_nation_stock_add(econ, A, RES_ENCHANTED_ARMS, 1000.f*(float)nreg_of(econ,A));
+            float armsA0=econ_country_stock_sum(econ, A, RES_ENCHANTED_ARMS);
             for(int y=0;y<15;y++) diplo_war_tick(dp,w,econ,wp,1.f);
             ok("l'avantage militaire POUSSE le battle_score (l'attaquant gagne les batailles)",
                dp->battle_score[A][B] > 5.f);
@@ -304,8 +318,7 @@ int main(int argc,char**argv){
             dp->conquered[A][B]=5;
             ok("l'occupation porte le score AU-DELÀ de +50 (l'autre moitié)",
                diplo_war_score(dp,A,B) > 50.5f);
-            float armsA1=0.f;
-            for(int r=0;r<econ->n_regions;r++) if(econ->region[r].owner==A) armsA1+=econ->region[r].stock[RES_ENCHANTED_ARMS];
+            float armsA1=econ_country_stock_sum(econ, A, RES_ENCHANTED_ARMS);
             ok("l'attrition SAIGNE les armes pendant la guerre (épuisement)", armsA1 < armsA0);
         }
     }
@@ -313,33 +326,38 @@ int main(int argc,char**argv){
     /* ---- 6. Saccage (§4 → LOT P 2026-07-07) : valeur = 20% du revenu ANNUEL de la victime ---- */
     printf("\n── 6. Saccage (or + production → trésor de l'occupant · valeur = 20%% du revenu annuel · 1×/5 ans) ──\n");
     {
+        /* TRÉSOR NATIONAL (2026-09-03) : le butin passe du trésor du PAYS pillé à celui du
+         * pays qui tient la région de destination. Les deux régions doivent donc appartenir à
+         * DEUX pays distincts — sinon le sac est un transfert de la caisse vers elle-même et
+         * ne mesure plus rien (avant, deux caisses provinciales suffisaient). */
         int vic=-1, occ=-1;
         for(int r=0;r<econ->n_regions && vic<0;r++) if(econ->region[r].owner>=0) vic=r;
-        for(int r=0;r<econ->n_regions && occ<0;r++) if(r!=vic) occ=r;
+        if(vic>=0) for(int r=0;r<econ->n_regions && occ<0;r++)
+            if(r!=vic && econ->region[r].owner>=0 && econ->region[r].owner!=econ->region[vic].owner) occ=r;
         if(vic>=0 && occ>=0){
-            int vic_cid = econ->region[vic].owner;
-            /* RE-KEY PROVINCE : treasury/revolt_scar/pillage_cd sont PROVINCE-OWNED (routés par
-             * diplo_pillage_region sur econ_region_rep_province) — stock[]/price[] restent au
-             * grain RÉGION (le marché, charte). On pose/lit donc sur la province représentative
-             * pour treasury/scar/cd, et sur la région pour stock/price. */
-            int vic_pid=econ_region_rep_province(econ,vic), occ_pid=econ_region_rep_province(econ,occ);
+            int vic_cid = econ->region[vic].owner, occ_cid = econ->region[occ].owner;
+            /* revolt_scar/pillage_cd restent PROVINCE-OWNED (routés par diplo_pillage_region
+             * sur econ_region_rep_province) ; l'OR et le STOCK, eux, sont NATIONAUX ; price[]
+             * reste au grain RÉGION (le marché, charte). */
+            int vic_pid=econ_region_rep_province(econ,vic);
             RegionEconomy *rvr=&econ->region[vic];
-            ProvinceEconomy *rv=&econ->prov[vic_pid], *ro=&econ->prov[occ_pid];
-            rv->pillage_cd=0.f; rv->revolt_scar=0.f; rv->treasury=1000.f;
-            for(int g=1;g<RES_COUNT;g++){ rvr->stock[g]=10.f; rvr->price[g]=1.f; }
+            ProvinceEconomy *rv=&econ->prov[vic_pid];
+            rv->pillage_cd=0.f; rv->revolt_scar=0.f;
+            econ->nat_treasury[vic_cid]=1000.f;
+            for(int g=1;g<RES_COUNT;g++){ econ->nat_stock[vic_cid][g]=10.f; rvr->price[g]=1.f; }
             /* revenu ANNUEL de la victime SEMÉ à une valeur CONNUE (3650/an) — le pillage
              * doit valoir EXACTEMENT 20% de ce revenu (730), borné par ce qui existe (ici
              * largement couvert : 1000 or + ~9000 de stock valorisé). */
             econ_flux_reset();
             econ_flux_add(vic_cid, FX_TAX, 3650.f);
             econ_flux_year_capture();
-            float occ0=ro->treasury, vic0=rv->treasury;
+            double occ0=econ_country_gold(econ,occ_cid), vic0=econ_country_gold(econ,vic_cid);
             float loot=diplo_pillage_region(econ,vic,occ,vic_cid);
             printf("   sac de la région %d → %d : butin = %.0f or-équiv. (cible 20%% de 3650 = 730)\n",vic,occ,loot);
             ok("le saccage vaut PRÉCISÉMENT 20% du revenu annuel de la victime", loot>729.f && loot<731.f);
             ok("le trésor de l'OCCUPANT enfle du butin entier",
-               ro->treasury > occ0+loot-1.f && ro->treasury < occ0+loot+1.f);
-            ok("la province pillée est VIDÉE d'autant (or RÉELLEMENT PRIS)", rv->treasury < vic0);
+               econ_country_gold(econ,occ_cid) > occ0+loot-1.0 && econ_country_gold(econ,occ_cid) < occ0+loot+1.0);
+            ok("le pays pillé est VIDÉ d'autant (or RÉELLEMENT PRIS)", econ_country_gold(econ,vic_cid) < vic0);
             ok("le sac CONVULSE la province (cicatrice au plancher → gel)", rv->revolt_scar > 0.99f);
             float loot2=diplo_pillage_region(econ,vic,occ,vic_cid);
             ok("on ne RE-saccage pas avant 5 ans (plus rien à prendre)", loot2==0.f);
@@ -352,8 +370,8 @@ int main(int argc,char**argv){
              * MONNAIE M3f — item 5 : le repli n'est plus le STOCK monétisé (retiré, M0 §2.12)
              * mais la RICHESSE (3 classes) de la province — « ce qu'elle a » couvre désormais
              * treasury+wealth : la wealth doit AUSSI être vidée pour tester le vrai plancher. */
-            rv->pillage_cd=0.f; rv->treasury=5.f;
-            for(int g=1;g<RES_COUNT;g++) rvr->stock[g]=0.f;
+            rv->pillage_cd=0.f; econ->nat_treasury[vic_cid]=5.f;
+            for(int g=1;g<RES_COUNT;g++) econ->nat_stock[vic_cid][g]=0.f;
             for(int c=0;c<CLASS_COUNT;c++) rv->strata[c].wealth=0.f;
             float loot3=diplo_pillage_region(econ,vic,occ,vic_cid);
             ok("une victime PAUVRE ne rend QUE ce qu'elle a (borné, pas de fantôme)", loot3<=5.01f);
@@ -361,41 +379,47 @@ int main(int argc,char**argv){
             /* MONNAIE M14 — B1 (trouvaille du grep généralisé) : SANS clamp, `fminf(pp->
              * treasury, target)` avec un trésor NÉGATIF renvoyait un `gold` négatif — le
              * pillage ENRICHISSAIT la victime RUINÉE et APPAUVRISSAIT l'occupant. */
-            rv->pillage_cd=0.f; rv->treasury=-800.f;
-            for(int g=1;g<RES_COUNT;g++) rvr->stock[g]=0.f;
+            rv->pillage_cd=0.f; econ->nat_treasury[vic_cid]=-800.f;
+            for(int g=1;g<RES_COUNT;g++) econ->nat_stock[vic_cid][g]=0.f;
             for(int c=0;c<CLASS_COUNT;c++) rv->strata[c].wealth=0.f;
-            float occ_before=ro->treasury, vic_before=rv->treasury;
+            double occ_before=econ_country_gold(econ,occ_cid), vic_before=econ_country_gold(econ,vic_cid);
             float loot4=diplo_pillage_region(econ,vic,occ,vic_cid);
             printf("   victime RUINÉE (trésor %.0f) → butin = %.1f (occupant %.1f→%.1f)\n",
-                   vic_before, loot4, occ_before, ro->treasury);
+                   vic_before, loot4, occ_before, econ_country_gold(econ,occ_cid));
             ok("B1 : une victime RUINÉE (trésor négatif) ne rapporte AUCUN butin négatif (loot4==0)", loot4==0.f);
             ok("B1 : le trésor de l'OCCUPANT n'est jamais RÉDUIT par un sac (pillage jamais un coût)",
-               ro->treasury >= occ_before-0.01f);
+               econ_country_gold(econ,occ_cid) >= occ_before-0.01);
         } else ok("(monde trop petit pour le test de saccage)", true);
     }
 
     /* ---- 6b. LOT 4 — LE PILLAGE DE SIÈGE (mensuel, ∝ production, PENDANT le siège) ---- */
     printf("\n── 6b. LOT 4 : le siège détourne CHAQUE MOIS une fraction de la PRODUCTION (matière RÉELLEMENT prise) ──\n");
-    if(econ->n_regions>=2){
-        int vic=0, occ=1;
-        int vic_pid=econ_region_rep_province(econ,vic), occ_pid=econ_region_rep_province(econ,occ);
-        RegionEconomy *rvr=&econ->region[vic], *ror=&econ->region[occ];
-        ProvinceEconomy *rv=&econ->prov[vic_pid], *ro=&econ->prov[occ_pid];
+    /* STOCK NATIONAL (2026-09-03) : le siège ampute l'entrepôt du PAYS assiégé et livre à
+     * celui de l'occupant — les deux régions doivent donc relever de DEUX pays distincts
+     * (sinon le transfert boucle sur lui-même). On les CHOISIT au lieu de les fixer à 0/1. */
+    { int vic=-1, occ=-1;
+      for(int r=0;r<econ->n_regions && vic<0;r++) if(econ->region[r].owner>=0) vic=r;
+      if(vic>=0) for(int r=0;r<econ->n_regions && occ<0;r++)
+          if(r!=vic && econ->region[r].owner>=0 && econ->region[r].owner!=econ->region[vic].owner) occ=r;
+      if(vic<0 || occ<0){ ok("(pas deux pays distincts pour le test de pillage de siège)", true); }
+      else {
+        int vic_cid=econ->region[vic].owner, occ_cid=econ->region[occ].owner;
+        int vic_pid=econ_region_rep_province(econ,vic);
+        RegionEconomy *rvr=&econ->region[vic];
+        ProvinceEconomy *rv=&econ->prov[vic_pid];
         rv->pillage_cd=0.f;                                  /* province FRAÎCHE (pas déjà sac(c)agée) */
-        /* RE-KEY PROVINCE : diplo_siege_loot retire via econ_region_stock_add, qui débite
-         * la PROVINCE porteuse (region_carrier_prov) dès qu'une province ACTIVE existe pour
-         * la région — pas seulement si `colonized` (une région LIBRE mais dont le terrain est
-         * actif a déjà une porteuse). Doter SEULEMENT la vue region[] (l'agrégat) laissait la
-         * vraie réserve (prov[vic_pid].stock) à zéro → rien à prendre, loot=0 pour de
-         * mauvaises raisons. On dote donc LA PROVINCE (la réalité) ET la vue (relue par
-         * diplo_siege_loot pour supply/price, restés région-grain). */
+        /* supply/price restent au grain RÉGION (c'est la PART de production de CETTE région
+         * qui est due) ; la réserve amputée est l'entrepôt NATIONAL de l'assiégé. */
         for(int g=1;g<RES_COUNT;g++){
-            rvr->stock[g]=100.f; rvr->supply[g]=40.f; rvr->price[g]=1.f;
-            if (vic_pid>=0) rv->stock[g]=100.f;
+            rvr->supply[g]=40.f; rvr->price[g]=1.f;
+            econ->nat_stock[vic_cid][g]=100.f;
         }
-        float vic_stock_before=0.f, occ_treas_before=ro->treasury;
-        float occ_stock_before=0.f; for(int g=1;g<RES_COUNT;g++) occ_stock_before+=ror->stock[g];
-        for(int g=1;g<RES_COUNT;g++) vic_stock_before += rvr->stock[g];
+        float vic_stock_before=0.f, occ_stock_before=0.f;
+        double occ_treas_before=econ_country_gold(econ,occ_cid);
+        for(int g=1;g<RES_COUNT;g++){
+            occ_stock_before+=econ_country_stock_sum(econ,occ_cid,(Resource)g);
+            vic_stock_before+=econ_country_stock_sum(econ,vic_cid,(Resource)g);
+        }
         float loot=diplo_siege_loot(econ,vic,occ);
         printf("   siège de la région %d → capitale de %d : détourné ce mois = %.0f or-équiv.\n",vic,occ,loot);
         ok("le siège détourne ∝ la PRODUCTION du mois (supply·SIEGE_LOOT_FRAC), pas un or plat",
@@ -403,12 +427,15 @@ int main(int argc,char**argv){
         /* MONNAIE M3f — item 5 : le stock pillé est livré PHYSIQUEMENT au besiégeur (M0 §2.12 —
          * fini l'or fantôme recréé sur du stock détruit) — le trésor n'est PLUS crédité, le
          * STOCK régional du besiégeur enfle à la place ; `loot` reste la valeur NOTIONNELLE. */
-        float occ_stock_after=0.f; for(int g=1;g<RES_COUNT;g++) occ_stock_after+=ror->stock[g];
+        float occ_stock_after=0.f, vic_stock_after=0.f;
+        for(int g=1;g<RES_COUNT;g++){
+            occ_stock_after+=econ_country_stock_sum(econ,occ_cid,(Resource)g);
+            vic_stock_after+=econ_country_stock_sum(econ,vic_cid,(Resource)g);
+        }
         ok("le stock du BESIÉGEUR enfle du détourné (livraison PHYSIQUE, M3f)", occ_stock_after > occ_stock_before);
         ok("le trésor du besiégeur N'EST PLUS crédité (M3f : livraison physique, pas d'or fantôme)",
-           ro->treasury==occ_treas_before);
-        float vic_stock_after=0.f; for(int g=1;g<RES_COUNT;g++) vic_stock_after+=rvr->stock[g];
-        ok("la MATIÈRE est RÉELLEMENT PRISE (le stock régional DIMINUE d'autant, pas dupliquée)",
+           econ_country_gold(econ,occ_cid)==occ_treas_before);
+        ok("la MATIÈRE est RÉELLEMENT PRISE (l'entrepôt national DIMINUE d'autant, pas dupliquée)",
            vic_stock_after < vic_stock_before && (vic_stock_before-vic_stock_after) > 0.f);
         ok("Σ CONSERVÉE : ce que le besiégé perd égale (or-équivalent) ce que le besiégeur gagne",
            fabsf((vic_stock_before-vic_stock_after) - loot) < 0.01f);   /* prix=1 partout : stock perdu == or gagné */
@@ -418,7 +445,8 @@ int main(int argc,char**argv){
         ok("sous le cooldown anti-re-saccage (partagé avec le butin final), le siège NE détourne PLUS",
            diplo_siege_loot(econ,vic,occ)==0.f);
         rv->pillage_cd = 0.f;   /* on remet comme trouvé pour la suite du banc */
-    } else ok("(monde trop petit pour le test de pillage de siège)", true);
+      }
+    }
 
     /* ---- 7. Paix proportionnelle (§5) : revendication ∝ domination · surexpansion → coalition ---- */
     printf("\n── 7. Paix proportionnelle (revendication ∝ domination · indemnité · surexpansion) ──\n");
@@ -434,16 +462,12 @@ int main(int argc,char**argv){
         }
         if(B>=0 && Bn>=2){
             /* REVENDICATION ∝ domination militaire : un dominant annexe LÉGITIMEMENT plus. */
-            for(int r=0;r<econ->n_regions;r++){
-                econ->region[r].stock[RES_ARMS]=econ->region[r].stock[RES_GUNPOWDER]=econ->region[r].stock[RES_ENCHANTED_ARMS]=0.f;
-                if(econ->region[r].owner==B) econ->region[r].stock[RES_ENCHANTED_ARMS]=4000.f; /* B surarme → A marginal */
-            }
+            arms_clear_all(econ);
+            arms_give(econ, B, RES_ENCHANTED_ARMS, 4000.f);   /* B surarme → A marginal */
             diplo_init(dp); diplo_declare_war_cb(dp,A,B,CB_TERRITORIAL);
             int claim_marg=diplo_war_claim(dp,w,econ,A,B);
-            for(int r=0;r<econ->n_regions;r++){
-                econ->region[r].stock[RES_ENCHANTED_ARMS]=0.f;
-                if(econ->region[r].owner==A) econ->region[r].stock[RES_ENCHANTED_ARMS]=4000.f; /* A surarme → A dominant */
-            }
+            arms_clear_all(econ);
+            arms_give(econ, A, RES_ENCHANTED_ARMS, 4000.f);   /* A surarme → A dominant */
             int claim_dom=diplo_war_claim(dp,w,econ,A,B);
             printf("   revendication territoriale : marginal=%d prov · dominant=%d prov\n",claim_marg,claim_dom);
             ok("un attaquant DOMINANT a une revendication légitime plus large", claim_dom > claim_marg);
@@ -457,10 +481,8 @@ int main(int argc,char**argv){
             /* BORNAGE PAR LE BUDGET (§5, prix log-compressé P-bis) : on OCCUPE DEUX régions
              * de B, mais B reste FORT (surarmé) → budget marginal → la PAIX ne transfère que
              * ce que le budget couvre, PAS tout l'occupé (pas d'annexion gratuite). */
-            for(int r=0;r<econ->n_regions;r++){
-                econ->region[r].stock[RES_ARMS]=econ->region[r].stock[RES_GUNPOWDER]=0.f;
-                econ->region[r].stock[RES_ENCHANTED_ARMS]=(econ->region[r].owner==B)?6000.f:0.f;
-            }
+            arms_clear_all(econ);
+            arms_give(econ, B, RES_ENCHANTED_ARMS, 6000.f);   /* B reste FORT → budget marginal */
             diplo_init(dp); diplo_declare_war_cb(dp,A,B,CB_TERRITORIAL);
             int Br1=-1,Br2=-1;
             for(int r=0;r<econ->n_regions;r++) if(econ->region[r].owner==B && econ->region[r].culture.settled){ if(Br1<0)Br1=r; else if(Br2<0){Br2=r;break;} }
@@ -474,13 +496,14 @@ int main(int argc,char**argv){
             /* RÉPARATIONS : le vaincu net indemnise le vainqueur ∝ score. */
             diplo_init(dp); diplo_declare_war_cb(dp,A,B,CB_TERRITORIAL);
             dp->battle_score[A][B]=50.f; dp->conquered[A][B]=5;          /* score de A ≈ +100 */
-            for(int r=0;r<econ->n_regions;r++) if(econ->region[r].owner==B) econ->region[r].treasury=1000.f;
+            /* TRÉSOR NATIONAL : LE trésor de B, doté du même TOTAL qu'avant (1000 par région). */
+            econ->nat_treasury[B]=1000.f*(float)nreg_of(econ,B);
             int capA=w->province[w->country[A].capital_prov].region;
-            float capA0=(capA>=0)?econ->region[capA].treasury:0.f;
+            double capA0=econ_country_gold(econ,A);
             float rep=diplo_reparations(dp,w,econ,A,B);
             printf("   indemnité de guerre extorquée : %.0f or\n",rep);
             ok("le VAINCU net paie une indemnité au vainqueur (∝ score)", rep>0.f);
-            ok("le trésor du VAINQUEUR enfle de l'indemnité", capA>=0 && econ->region[capA].treasury > capA0);
+            ok("le trésor du VAINQUEUR enfle de l'indemnité", capA>=0 && econ_country_gold(econ,A) > capA0);
 
             /* match nul : aucune indemnité (pas de vainqueur net). */
             diplo_init(dp);
@@ -492,15 +515,15 @@ int main(int argc,char**argv){
              * PERDANT endetté se faisait PAYER par le VAINQUEUR. */
             diplo_init(dp); diplo_declare_war_cb(dp,A,B,CB_TERRITORIAL);
             dp->battle_score[A][B]=50.f; dp->conquered[A][B]=5;
-            for(int p=0;p<econ->n_prov;p++) if(econ->prov[p].owner==B) econ->prov[p].treasury=-2000.f;
-            int capAp2=econ_region_rep_province(econ,capA);
-            if (capAp2>=0){ econ->prov[capAp2].treasury=1000.f; }
-            float capA1=(capAp2>=0)?econ->prov[capAp2].treasury:0.f;
+            { int nprovB=0; for(int p=0;p<econ->n_prov;p++) if(econ->prov[p].owner==B) nprovB++;
+              econ->nat_treasury[B]=-2000.f*(float)(nprovB>0?nprovB:1); }   /* B est RUINÉ (même dette totale) */
+            econ->nat_treasury[A]=1000.f;
+            double capA1=econ_country_gold(econ,A);
             float rep2=diplo_reparations(dp,w,econ,A,B);
-            printf("   perdant RUINÉ (trésor -2000/province) → indemnité extorquée = %.1f or\n", rep2);
+            printf("   perdant RUINÉ (trésor national négatif) → indemnité extorquée = %.1f or\n", rep2);
             ok("B1 : un perdant RUINÉ ne rapporte AUCUNE indemnité négative (rep2==0)", rep2==0.f);
             ok("B1 : le trésor du vainqueur n'est jamais RÉDUIT par une réparation d'un perdant ruiné",
-               capAp2<0 || econ->prov[capAp2].treasury >= capA1-0.01f);
+               econ_country_gold(econ,A) >= capA1-0.01);
         } else ok("(monde trop petit pour le test de paix proportionnelle)", true);
     }
 
@@ -519,10 +542,8 @@ int main(int argc,char**argv){
             /* RALLIEMENT (avant toute conquête : B intact) — à rancune ÉGALE de
              * domination, le lésé qui reprend ses terres accumule le score plus vite. */
             if(B>=0){
-                for(int r=0;r<econ->n_regions;r++){
-                    econ->region[r].stock[RES_ARMS]=econ->region[r].stock[RES_GUNPOWDER]=0.f;
-                    econ->region[r].stock[RES_ENCHANTED_ARMS]=(econ->region[r].owner==A)?2000.f:0.f;
-                }
+                arms_clear_all(econ);
+                arms_give(econ, A, RES_ENCHANTED_ARMS, 2000.f);
                 diplo_init(dp); diplo_declare_war_cb(dp,A,B,CB_TERRITORIAL);
                 for(int y=0;y<3;y++) diplo_war_tick(dp,w,econ,wp,1.f);
                 float noRally=dp->battle_score[A][B];
@@ -566,11 +587,8 @@ int main(int argc,char**argv){
             if(B>=0 && Bn>=2){
                 int Br1=-1,Br2=-1;
                 for(int r=0;r<econ->n_regions;r++) if(econ->region[r].owner==B && econ->region[r].culture.settled){ if(Br1<0)Br1=r; else {Br2=r;break;} }
-                for(int r=0;r<econ->n_regions;r++){          /* A dominant (B désarmé) → la paix transfère */
-                    if(econ->region[r].owner==B){ econ->region[r].stock[RES_ARMS]=0.f;
-                        econ->region[r].stock[RES_ENCHANTED_ARMS]=0.f; econ->region[r].stock[RES_GUNPOWDER]=0.f; }
-                    else if(econ->region[r].owner==A) econ->region[r].stock[RES_ARMS]=3000.f;
-                }
+                arms_clear_all(econ);                        /* A dominant (B désarmé) → la paix transfère */
+                arms_give(econ, A, RES_ARMS, 3000.f);
                 /* UNE perte (occuper puis régler) : la rancune se POSE (B garde ≥1 région). */
                 diplo_init(dp); diplo_declare_war_cb(dp,A,B,CB_TERRITORIAL);
                 diplo_occupy(dp,econ,A,Br1); diplo_settle(dp,w,econ,wl,A,B,0.f);
@@ -731,20 +749,22 @@ int main(int argc,char**argv){
             /* MONNAIE M14 — B1 : LE TRIBUT NE DOIT JAMAIS INVERSER LE PAIEMENT — `frac` d'un
              * trésor vassal NÉGATIF était négatif : le vassal ENDETTÉ se faisait PAYER par
              * son suzerain (le suzerain perdait `take`, le vassal le recevait). */
+            /* TRÉSOR NATIONAL : le tribut passe de la caisse du VASSAL à celle du SUZERAIN —
+             * plus de caisse de capitale à poker, on pose les deux trésors nationaux. */
             { int capVp=(capV>=0)?econ_region_rep_province(econ,capV):-1;
               int capSp3=(capS>=0)?econ_region_rep_province(econ,capS):-1;
               if (capVp>=0 && capSp3>=0){
-                  econ->prov[capVp].treasury  = -1000.f;   /* le vassal est RUINÉ */
-                  econ->prov[capSp3].treasury = 500.f;
-                  float suz0=econ->prov[capSp3].treasury, vas0=econ->prov[capVp].treasury;
+                  econ->nat_treasury[V] = -1000.f;   /* le vassal est RUINÉ */
+                  econ->nat_treasury[S] = 500.f;
+                  double suz0=econ_country_gold(econ,S), vas0=econ_country_gold(econ,V);
                   diplo_suzerainty_tick(dp,w,econ,wp);
-                  float suz1=econ->prov[capSp3].treasury, vas1=econ->prov[capVp].treasury;
+                  double suz1=econ_country_gold(econ,S), vas1=econ_country_gold(econ,V);
                   printf("   vassal endetté (%.0f) → tribut : suzerain %.1f→%.1f · vassal %.1f→%.1f\n",
                          (double)vas0, (double)suz0, (double)suz1, (double)vas0, (double)vas1);
                   ok("B1 : un vassal ENDETTÉ ne fait PAS payer son suzerain (trésor suzerain jamais réduit par le tribut)",
-                     suz1 >= suz0 - 0.01f);
+                     suz1 >= suz0 - 0.01);
                   ok("B1 : le tribut d'un vassal ruiné ne lui CRÉDITE rien (trésor vassal jamais remonté par le tribut)",
-                     vas1 <= vas0 + 0.01f);
+                     vas1 <= vas0 + 0.01);
               } else ok("(capitales introuvables pour le test B1 tribut)", true);
             }
 
@@ -759,12 +779,12 @@ int main(int argc,char**argv){
                   dp->v_integration[V]=0.9f; dp->v_grief[V]=0.05f;
                   /* (i) AGRAIRE : vivrier gonflé → fn=AGRAIRE, want ≫ stock réel (le débit se borne) */
                   econ->region[capV].raw_cap[RES_GRAIN]=10000.f;
-                  econ->prov[capVp].stock[RES_GRAIN]=200.f;
-                  float g0=0.f; for(int p=0;p<econ->n_prov;p++) g0+=econ->prov[p].stock[RES_GRAIN];
-                  float gs0=econ->prov[capSp4].stock[RES_GRAIN];
+                  econ->nat_stock[V][RES_GRAIN]=200.f;   /* le grenier du VASSAL (entrepôt national) */
+                  float g0=0.f; for(int c=0;c<SCPS_MAX_COUNTRY;c++) g0+=econ->nat_stock[c][RES_GRAIN];
+                  float gs0=econ_country_stock_sum(econ,S,RES_GRAIN);
                   diplo_suzerainty_tick(dp,w,econ,wp);
-                  float g1=0.f; for(int p=0;p<econ->n_prov;p++) g1+=econ->prov[p].stock[RES_GRAIN];
-                  float gs1=econ->prov[capSp4].stock[RES_GRAIN];
+                  float g1=0.f; for(int c=0;c<SCPS_MAX_COUNTRY;c++) g1+=econ->nat_stock[c][RES_GRAIN];
+                  float gs1=econ_country_stock_sum(econ,S,RES_GRAIN);
                   printf("   tribut AGRAIRE : Σgrain monde %.1f→%.1f · grenier suzerain %.1f→%.1f\n",
                          (double)g0,(double)g1,(double)gs0,(double)gs1);
                   ok("§H4.1 : le tribut AGRAIRE CONSERVE le grain-monde (débit vassal = crédit maître, zéro création)",
@@ -794,12 +814,10 @@ int main(int argc,char**argv){
             if(capS>=0) econ->region[capS].culture.ethos=ETHOS_DOMINATEUR;
             dp->v_integration[V]=0.9f; dp->v_annex[V]=0.95f;
             int annex0=dp->n_annex;
-            /* RE-KEY PROVINCE : la digestion paie le trésor de la province représentative de
-             * la capitale (econ_region_rep_province, comme diplo_suzerainty_tick le lit). */
-            int capSp=(capS>=0)?econ_region_rep_province(econ,capS):-1;
+            /* TRÉSOR NATIONAL : la digestion se paie sur LE trésor du maître. */
             for(int t=0;t<12 && w->country[V].role!=POLITY_UNCLAIMED;t++){
                 dp->v_grief[V]=0.05f;
-                if(capSp>=0) econ->prov[capSp].treasury=1.0e9f;   /* de quoi payer la digestion */
+                econ->nat_treasury[S]=1.0e9f;   /* de quoi payer la digestion */
                 diplo_suzerainty_tick(dp,w,econ,wp);
             }
             /* owner/annex_scar sont désormais posés au grain PROVINCE (econ_region_set_owner) —
@@ -849,15 +867,13 @@ int main(int argc,char**argv){
             int capA = world_capital_region(w, A);
             ok("(pré-requis : le fabricant A a une capitale)", capA>=0);
             int rp = (capA>=0) ? econ_region_rep_province(econ, capA) : -1;
-            /* trésor du fabricant mis à ZÉRO (pas seulement les autres provinces : credit_line
-             * émerge de la POP, un trésor négatif pourrait encore autoriser via la ligne de crédit
-             * — on force donc net-zéro pour un test SANS AMBIGUÏTÉ, cf. econ_country_gold = Σprov). */
-            if (rp>=0) for (int p=0;p<econ->n_prov;p++) if (econ->prov[p].owner==A) econ->prov[p].treasury=0.f;
-            econ_aggregate_regions(econ);   /* econ_country_gold lit region[] (la VUE) — la re-bâtir depuis prov[] */
+            /* trésor du fabricant mis à ZÉRO — TRÉSOR NATIONAL (2026-09-03) : une seule caisse
+             * à vider, et rien à ré-agréger. On force net-zéro pour un test SANS AMBIGUÏTÉ
+             * (credit_line émerge de la POP : un trésor négatif pourrait encore autoriser). */
+            econ->nat_treasury[A]=0.f;
 
             ok("SANS l'or : la fabrication est REFUSÉE", !diplo_can_fabricate(w,econ,dp,A,B));
-            if (rp>=0) econ->prov[rp].treasury = cost*3.f;   /* largement de quoi payer, APRÈS le test négatif */
-            econ_aggregate_regions(econ);
+            econ->nat_treasury[A] = cost*3.f;   /* largement de quoi payer, APRÈS le test négatif */
             if (rp>=0){
                 bool fab_ok = diplo_fabricate_cb(w, econ, dp, A, B, CB_TERRITORIAL);
                 ok("AVEC l'or : la fabrication RÉUSSIT (débite le trésor du fabricant)", fab_ok);
@@ -867,9 +883,9 @@ int main(int argc,char**argv){
                    diplo_fab_ready_cb(dp,A,B)==CB_NONE);
                 ok("UNE SEULE intrigue à la fois PAR CIBLE (re-fabriquer contre B échoue)",
                    !diplo_can_fabricate(w,econ,dp,A,B));
-                float treas_after = econ->prov[rp].treasury;
+                double treas_after = econ_country_gold(econ,A);
                 ok("l'or est RÉELLEMENT sorti du trésor (disparu, pas déplacé ailleurs chez A)",
-                   treas_after < cost*3.f - cost + 1.f);
+                   treas_after < (double)cost*3.0 - (double)cost + 1.0);
 
                 /* MATURATION : 1 an (FAB_MATURE_DAYS) fait mûrir l'intrigue. */
                 diplo_tick(dp, 365.f);
@@ -886,7 +902,7 @@ int main(int argc,char**argv){
 
                 /* EXPIRATION : une intrigue mûre NON utilisée s'évente après FAB_VALID_DAYS. */
                 diplo_init(dp);
-                econ->prov[rp].treasury = cost*3.f;
+                econ->nat_treasury[A] = cost*3.f;
                 diplo_fabricate_cb(w, econ, dp, A, B, CB_ECONOMIC);
                 diplo_tick(dp, 365.f);           /* mûrit */
                 ok("(re-test) mûre après 1 an", diplo_fab_state(dp,A,B)==FAB_READY);
@@ -910,7 +926,7 @@ int main(int argc,char**argv){
                 econ_flux_reset();
                 econ_flux_add(C, FX_TAX, 3650.f); econ_flux_year_capture();
                 float costC = diplo_fabricate_cost(econ, C);
-                econ->prov[rp].treasury = (cost>costC?cost:costC)*3.f;
+                econ->nat_treasury[A] = (cost>costC?cost:costC)*3.f;
                 diplo_fabricate_cb(w, econ, dp, A, B, CB_TERRITORIAL);
                 bool okC = diplo_can_fabricate(w, econ, dp, A, C);
                 ok("aucun cooldown INTER-CIBLES : A peut fabriquer contre C alors qu'une intrigue mûrit déjà contre B",
@@ -919,9 +935,12 @@ int main(int argc,char**argv){
                 ok("(monde trop petit pour une 3e cible : test cooldown inter-cibles sauté)", true);
             }
 
-            /* Régression atomique : le gate lit l'or NATIONAL. Si la capitale n'a qu'une
-             * fraction du prix mais qu'une province sœur porte le reste, le débit doit
-             * parcourir les deux — et les élites cibles ne reçoivent jamais plus que payé. */
+            /* Régression atomique : le gate lit l'or NATIONAL. La fixture d'origine plaçait
+             * 50 or à la capitale et 250 chez une sœur pour prouver que le débit parcourait
+             * les DEUX caisses provinciales. Depuis le TRÉSOR NATIONAL (2026-09-03) il n'y a
+             * qu'une caisse (300, le même total) : ce que le contrôle atteste désormais, c'est
+             * que l'empire à plusieurs provinces paie EXACTEMENT le prix complet depuis son
+             * unique livre d'or — et que les élites cibles ne reçoivent jamais plus que payé. */
             {
                 World *tw=calloc(1,sizeof(*tw)); WorldEconomy *te=calloc(1,sizeof(*te));
                 DiploState *td=calloc(1,sizeof(*td));
@@ -936,7 +955,7 @@ int main(int argc,char**argv){
                         te->prov[p2].active=true; te->prov[p2].colonized=true;
                     }
                     te->prov[0].is_capital=true; te->prov[2].is_capital=true;
-                    te->prov[0].treasury=50.f; te->prov[1].treasury=250.f;
+                    te->nat_treasury[0]=300.f;   /* LE trésor de l'empire (l'ancien 50 + 250) */
                     te->prov[2].strata[CLASS_ELITE].pop=10.f;
                     econ_aggregate_regions(te); diplo_init(td);
                     econ_flux_reset(); econ_flux_add(1,FX_TAX,100.f); econ_flux_year_capture();
@@ -944,7 +963,7 @@ int main(int argc,char**argv){
                     double gold0=econ_country_gold(te,0);
                     float elite0=te->prov[2].strata[CLASS_ELITE].wealth;
                     bool split_ok=diplo_fabricate_cb(tw,te,td,0,1,CB_TERRITORIAL);
-                    ok("fabrication multi-province : la transaction réussit avec l'or NATIONAL réparti", split_ok);
+                    ok("fabrication multi-province : la transaction réussit sur l'or NATIONAL", split_ok);
                     ok("fabrication multi-province : le pays paie EXACTEMENT le prix complet",
                        fabs((gold0-econ_country_gold(te,0))-(double)split_cost)<0.01);
                     ok("fabrication multi-province : les élites cibles reçoivent EXACTEMENT ce qui a été payé",

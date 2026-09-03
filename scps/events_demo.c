@@ -589,21 +589,19 @@ int main(int argc, char **argv){
         econ_flux_year_capture();
         float tzero = econ_country_tax_year(cid);
         ok("econ_country_tax_year capture le revenu annuel posé", tzero>1199.f && tzero<1201.f);
-        /* PROVINCE REPRÉSENTATIVE COHÉRENTE : owner/active alignés sur la région. On lit le
-         * trésor sur region[] (l'AGRÉGAT), pas prov[rp] : econ_aggregate_regions peut réélire
-         * une AUTRE province « représentative » de pop plus forte (ce banc synthétique ne
-         * peuple pas vraiment prov[].strata) — region[].treasury reste la vue STABLE que
-         * econ_region_treasury_add garantit TOUJOURS de bouger (même en mode fixture). */
+        /* PROVINCE REPRÉSENTATIVE COHÉRENTE : owner/active alignés sur la région. TRÉSOR
+         * NATIONAL (2026-09-03) : l'or ne vit plus ni à la province ni à la région — on le
+         * lit au grain PAYS (econ_country_gold), la seule vue qui existe encore. */
         s.econ->prov[rp].owner=(int16_t)cid; s.econ->prov[rp].active=true;
-        /* MONNAIE M14 — B2(a) : econ_region_treasury_add ne force PLUS un résidu non couvert
+        /* MONNAIE M14 — B2(a) : econ_nation_gold_add ne force PLUS un résidu non couvert
          * en dette fantôme — elle CLAMPE au trésor réellement disponible (et ne crédite les
          * classes qu'à hauteur du RÉELLEMENT pris, motif déjà tenu par apply_region_eff/
-         * d_treasury). Une province NUE (trésor ~0, jamais semé par ce banc) ne peut donc
+         * d_treasury). Un empire NU (trésor ~0, jamais semé par ce banc) ne peut donc
          * plus « payer » un coût d_treasury_mois : on sème un trésor pour que le test
          * mesure le VRAI comportement (un coût RÉELLEMENT servi), pas un artefact de fixture. */
-        s.econ->prov[rp].treasury = 5000.f;
+        s.econ->nat_treasury[cid] = 5000.f;
         econ_aggregate_regions(s.econ);
-        float before = s.econ->region[capr].treasury;
+        double before = econ_country_gold(s.econ, cid);
         /* on force le trigger de Marbrive et on le laisse tirer (chronique : human=-1, résolution IA immédiate).
          * RE-KEY PROVINCE : on écrit sur la province représentative (region[] est un agrégat recalculé).
          * L'agitation ailleurs est remise à 0 à CHAQUE pas (boucle plus bas) : isole capr comme SEUL
@@ -626,8 +624,8 @@ int main(int argc, char **argv){
             if (s.ev->last_id==EVID_MARBRIVE) marbrive_fired=true;
         }
         ok("Marbrive finit par TIRER (agitation soutenue + bâti + coercitif)", marbrive_fired);
-        float after = s.econ->region[capr].treasury;
-        ok("d_treasury_mois a bougé le trésor de la province (résolu, non nul)", after!=before);
+        double after = econ_country_gold(s.econ, cid);
+        ok("d_treasury_mois a bougé le trésor NATIONAL (résolu, non nul)", after!=before);
       } else ok("(pas de capitale peuplée pour le test treasury_mois — ignoré)", true);
     }
 

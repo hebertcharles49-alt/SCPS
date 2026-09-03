@@ -22,13 +22,10 @@ static int g_pass=0,g_fail=0;
 static void ok(const char*w,bool c){ printf("   %s %s\n",c?"✓":"✗",w); if(c)g_pass++; else g_fail++; }
 
 /* LOT 2 — somme du stock macro (RES_ARMS_LIGHT/HEAVY, les deux catégories semées
- * dans ce banc) sur toutes les régions d'un pays : la preuve de conservation au
- * disband (armes RENDUES, pas perdues). */
+ * dans ce banc) d'un pays : la preuve de conservation au disband (armes RENDUES,
+ * pas perdues). STOCK NATIONAL (2026-09-03) : l'entrepôt EST au grain pays. */
 static float country_arms_stock(const WorldEconomy*e,int c){
-    float s=0.f;
-    for(int r=0;r<e->n_regions;r++) if(e->region[r].owner==c)
-        s += e->region[r].stock[RES_ARMS_LIGHT] + e->region[r].stock[RES_ARMS_HEAVY];
-    return s;
+    return econ_country_stock_sum(e,c,RES_ARMS_LIGHT) + econ_country_stock_sum(e,c,RES_ARMS_HEAVY);
 }
 
 static float capital_arms(const World*w,const WorldEconomy*e,int c){
@@ -84,9 +81,14 @@ int main(int argc,char**argv){
 
     WarHost h; warhost_init(&h);
     /* F6 Option B : lever puise les armes MACRO (RES_ARMS_*) — on en sème (les fabriques les
-     * auraient produites depuis le fer) sinon pas de levée. */
-    for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==ca||econ->region[r].owner==cb){
-        econ->region[r].stock[RES_ARMS_LIGHT]=5000.f; econ->region[r].stock[RES_ARMS_HEAVY]=2000.f; }
+     * auraient produites depuis le fer) sinon pas de levée. STOCK NATIONAL (2026-09-03) :
+     * l'arsenal est celui de l'EMPIRE — on sème la MÊME quantité TOTALE qu'avant
+     * (5000/2000 par région possédée), en un seul dépôt. */
+    { int nra=0, nrb=0;
+      for (int r=0;r<econ->n_regions;r++){ if (econ->region[r].owner==ca) nra++;
+                                            else if (econ->region[r].owner==cb) nrb++; }
+      econ->nat_stock[ca][RES_ARMS_LIGHT]=5000.f*(float)nra; econ->nat_stock[ca][RES_ARMS_HEAVY]=2000.f*(float)nra;
+      econ->nat_stock[cb][RES_ARMS_LIGHT]=5000.f*(float)nrb; econ->nat_stock[cb][RES_ARMS_HEAVY]=2000.f*(float)nrb; }
     float arms0=capital_arms(w,econ,ca);
     /* 3 ans : assez pour que le PIED DE GUERRE (WH_BATCH_WAR=7/an) lève son plafond,
      * mais trop court pour que l'ENTRETIEN de paix (WH_BATCH_PEACE=1.5/an) le rattrape.
@@ -111,22 +113,23 @@ int main(int argc,char**argv){
      * RECEVAIT (treasury -= paid l'augmentait), la solde devenait un revenu (FX_SOLDE
      * positif) et la richesse des Laborers, qui reçoit `paid`, passait sous zéro.
      * ca a toujours des unités (ua>0, LOT 1 ci-dessus) et est toujours EN GUERRE (dp) —
-     * un tick de plus doit tenter la solde. On pose son trésor CAPITAL à −500 et on
-     * vide la richesse Laborer pour isoler l'effet. */
+     * un tick de plus doit tenter la solde. TRÉSOR NATIONAL (2026-09-03) : on pose LE
+     * trésor de l'empire à −500 (la richesse des POPS, elle, reste provinciale : on vide
+     * celle des Laborers de la capitale, là où la solde atterrit) pour isoler l'effet. */
     printf("\n── LOT 1.5 (B1) : trésor négatif → paid==0, jamais un revenu ──\n");
     { int cp3=w->country[ca].capital_prov;
       int cr3=(cp3>=0)?w->province[cp3].region:-1;
       int crp3=(cr3>=0&&cr3<econ->n_regions)?econ_region_rep_province(econ,cr3):-1;
       if (crp3>=0 && crp3<econ->n_prov){
-          econ->prov[crp3].treasury = -500.f;
+          econ->nat_treasury[ca] = -500.f;
           econ->prov[crp3].strata[CLASS_LABORER].wealth = 0.f;
-          float tre0 = econ->prov[crp3].treasury;
+          double tre0 = econ_country_gold(econ, ca);
           warhost_tick(&h,w,econ,&dp,NULL,NULL,1.f);
-          float tre1 = econ->prov[crp3].treasury;
-          printf("   trésor capital (ca=%d) avant=%.1f → après=%.1f · Laborer wealth=%.2f\n",
+          double tre1 = econ_country_gold(econ, ca);
+          printf("   trésor NATIONAL (ca=%d) avant=%.1f → après=%.1f · Laborer wealth=%.2f\n",
                  ca, tre0, tre1, econ->prov[crp3].strata[CLASS_LABORER].wealth);
           ok("trésor négatif : la solde ne PAIE plus rien (paid==0, treasury inchangé, pas de revenu)",
-             tre1<=tre0+0.01f);
+             tre1<=tre0+0.01);
           ok("trésor négatif : la richesse Laborer ne passe PAS sous zéro par ce chemin",
              econ->prov[crp3].strata[CLASS_LABORER].wealth >= 0.f);
       } else ok("(capitale ca introuvable pour le test B1)", true);

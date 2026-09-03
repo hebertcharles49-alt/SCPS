@@ -307,6 +307,21 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         /* v88 — MONNAIE M3b-v2 : le dénominateur VA (la valeur produite du tick précédent,
          * base du facteur monétaire price_level) se revalide (≥0, fini — motif reserve_gold). */
         if (!(s->econ->va_country_prev[c] >=0.f && s->econ->va_country_prev[c] <1.0e12f)) return false;
+        /* v108 — LE TRÉSOR NATIONAL : peut être NÉGATIF (c'est la dette RÉELLE, adossée à
+         * CountryDebt) — on ne borne donc QUE la magnitude, et on refuse le NaN/inf (un
+         * NaN empoisonnerait tout le circuit monétaire au premier tick). Pas d'index ici,
+         * mais une valeur déraisonnable trahirait un fichier forgé (motif reserve_gold). */
+        { float t=s->econ->nat_treasury[c];
+          if (!(t > -1.0e12f && t < 1.0e12f)) return false; }   /* faux pour NaN : la garde tient */
+        /* v108 — LE STOCK NATIONAL : AUCUN plafond de jeu, et un déficit TRANSITOIRE est
+         * légitime (le marché sert avant de constater le manque — le stock passe sous zéro
+         * dans le tick, cf. TROUVAILLES 2026-07-08 ; les accesseurs, eux, clampent). On ne
+         * borne donc que la MAGNITUDE, et on refuse le NaN/inf : garde-fou anti-fichier
+         * forgé, pas une règle économique. */
+        for (int g=0; g<RES_COUNT; g++){
+            float v=s->econ->nat_stock[c][g];
+            if (!(v > -1.0e12f && v < 1.0e12f)) return false;   /* faux pour NaN : la garde tient */
+        }
     }
     if (w->n_countries <0 || w->n_countries >SCPS_MAX_COUNTRY)   return false;
     if (w->n_continents<0 || w->n_continents>SCPS_MAX_CONTINENT) return false;

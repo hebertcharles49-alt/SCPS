@@ -484,12 +484,14 @@ int scps_province_defense_pct(ScpsSim *s, int province);
  * partie à l'autre. -1 si province hors-borne. */
 int scps_province_seed(const ScpsSim *s, int province);
 
-/* UI PROVINCE — LOT 6 : le marché LOCAL — prix/stock/bande des biens de la
- * province (dérivé pur, ProvinceEconomy.price/stock + le mot de bande de marché
+/* UI PROVINCE — LOT 6 : le marché LOCAL — prix/bande des biens de la province
+ * (dérivé pur, ProvinceEconomy.price/supply/demand + le mot de bande de marché
  * existant, scps_readout.h). Remplit jusqu'à 3 lignes (les biens produits/consommés
  * les plus significatifs — même tri que province_income, brute+manufacturé),
- * retourne n. Le PORT (mot) est un extra sorti en *port_out ("" si aucun). */
-typedef struct { const char *name; float price; float stock; const char *marche; } ScpsMarketLine;
+ * retourne n. Le PORT (mot) est un extra sorti en *port_out ("" si aucun).
+ * ⚠ 2026-09-03 — le champ `stock` A DISPARU : le STOCK EST NATIONAL, une province n'a
+ * plus d'entrepôt. L'entrepôt de l'empire se lit dans scps_country_stocks. */
+typedef struct { const char *name; float price; const char *marche; } ScpsMarketLine;
 int scps_province_market(ScpsSim *s, int province, ScpsMarketLine *out, int max, const char **port_out);
 
 typedef struct {
@@ -527,14 +529,16 @@ typedef struct {
 } ScpsStock;
 int scps_country_stocks(ScpsSim *s, int country, ScpsStock *out, int max);
 
-/* Ventilation TERRITORIALE d'un bien : les régions du pays où il est produit,
- * consommé et stocké, triées par activité décroissante. Le panneau économique
- * peut ainsi répondre à « où ? » et naviguer vers la carte sans répliquer le moteur. */
+/* Ventilation TERRITORIALE d'un bien : les régions du pays où il est PRODUIT et
+ * CONSOMMÉ, triées par activité décroissante. Le panneau économique peut ainsi
+ * répondre à « où ? » et naviguer vers la carte sans répliquer le moteur.
+ * ⚠ 2026-09-03 — le champ `stock` A DISPARU : le STOCK EST NATIONAL (un seul entrepôt
+ * par empire), il n'y a plus rien à ventiler par région. La PRODUCTION et la
+ * CONSOMMATION, elles, restent bien locales — c'est tout l'objet de ce reader. */
 typedef struct {
     int         region;
     int         province;       /* province représentative, utile au nom et au futur drill-down */
     const char *name;
-    long        stock;
     float       supply_month;
     float       demand_month;
 } ScpsStockRegion;
@@ -1299,7 +1303,7 @@ int  scps_can_colonize      (ScpsSim *s, int prov);
  * chantier est en cours (dst/days/total remplis) ; cd_days/yield_pct toujours remplis. */
 int  scps_colony_status     (ScpsSim *s, int *dst_prov, int *days_left, int *total_days,
                              int *cd_days, int *yield_pct);
-/* NOURRITURE disponible d'un pays (Σ stock vivrier de ses provinces — topbar). */
+/* NOURRITURE disponible d'un pays (son stock vivrier NATIONAL — topbar). */
 double scps_country_food    (const ScpsSim *s, int c);
 /* LE DIPLOMATE (v50) : jours avant le prochain acte diplo joueur permis (0 = prêt). */
 int  scps_diplo_cd          (const ScpsSim *s);

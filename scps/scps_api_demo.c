@@ -178,7 +178,7 @@ int main(int argc, char **argv){
         int nsr=scps_stock_regions(s,pl0,market_st[0].res_id,sr,64), sr_ok=nsr>0, sorted=nsr>0;
         for(int i=0;i<nsr;i++){
             sr_ok &= sr[i].region>=0 && sr[i].region<scps_region_count(s) && sr[i].province>=0;
-            sr_ok &= sr[i].name && sr[i].name[0] && sr[i].stock>=0 &&
+            sr_ok &= sr[i].name && sr[i].name[0] &&
                      sr[i].supply_month>=0.f && sr[i].demand_month>=0.f;
             if(i>0)sorted &= sr[i-1].supply_month+sr[i-1].demand_month+1e-5f >=
                             sr[i].supply_month+sr[i].demand_month;
@@ -1519,7 +1519,7 @@ int main(int argc, char **argv){
                 int nm = scps_province_market(sd, p, ml, 3, &port);
                 if (nm<0 || nm>3) market_bounded=0;
                 for (int i=0;i<nm;i++){
-                    if (ml[i].price<0.f || ml[i].stock<0.f) market_bounded=0;
+                    if (ml[i].price<0.f) market_bounded=0;
                     if (!ml[i].name || !ml[i].marche) market_bounded=0;
                 }
                 if (!port) market_bounded=0;

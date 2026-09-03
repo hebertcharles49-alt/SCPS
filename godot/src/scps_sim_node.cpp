@@ -1080,7 +1080,7 @@ Dictionary ScpsWorld::province_market(int province) {
         Dictionary l;
         l["name"]   = String::utf8(ml[i].name);
         l["price"]  = ml[i].price;
-        l["stock"]  = ml[i].stock;
+        /* v108 : plus de clé "stock" — le stock est NATIONAL (country_stocks). */
         l["marche"] = String::utf8(ml[i].marche);
         lines.push_back(l);
     }
@@ -1176,7 +1176,8 @@ Array ScpsWorld::stock_regions(int country, int good) {
         Dictionary d;
         d["region"]=rows[i].region; d["province"]=rows[i].province;
         d["name"]=String::utf8(rows[i].name);
-        d["stock"]=(int64_t)rows[i].stock;
+        /* v108 : plus de clé "stock" — cette ventilation dit OÙ ça produit et OÙ ça
+         * consomme ; l'entrepôt, lui, est NATIONAL et n'a plus d'adresse. */
         d["supply_month"]=rows[i].supply_month;
         d["demand_month"]=rows[i].demand_month;
         a.push_back(d);

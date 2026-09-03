@@ -92,12 +92,11 @@ int main(int argc, char **argv){
 
     /* ═══ 2-3. L'atelier brûle le cristal → essence + charge ═════════════ */
     printf("\n── 2-3. L'atelier de mage brûle le cristal → essence (charge arcane) ──\n");
-    /* P1 — l'essence produite va au POOL NATIONAL puis est redistribuée aux régions au prorata de la
-     * pop : lire la SEULE région-atelier en sous-estime la part (≈ sa pop-share). On mesure donc
-     * l'essence à l'échelle du PAYS (Σ régions de cid) = la vraie production raffinée. */
-    float ess0=0.f; for(int r=0;r<e->n_regions;r++) if(e->region[r].owner==cid) ess0+=e->region[r].stock[RES_ESSENCE];
+    /* P1 — l'essence produite va au POOL NATIONAL : on la mesure à l'échelle du PAYS
+     * (STOCK NATIONAL 2026-09-03 : plus de Σ régions à recomposer, l'entrepôt EST national). */
+    float ess0=econ_country_stock_sum(e, cid, RES_ESSENCE);
     for (int t=0;t<3;t++) econ_tick(e,1.f);
-    float ess1=0.f; for(int r=0;r<e->n_regions;r++) if(e->region[r].owner==cid) ess1+=e->region[r].stock[RES_ESSENCE];
+    float ess1=econ_country_stock_sum(e, cid, RES_ESSENCE);
     float charge=e->region[rid].arcane_charge;
     printf("   pays %d : essence (pool) %.1f→%.1f | charge arcane (rég %d) = %.2f\n", cid, ess0, ess1, rid, charge);
     ok("l'atelier de mage PRODUIT de l'essence (le cristal raffiné)", ess1 > ess0 + 0.5f);
@@ -117,10 +116,8 @@ int main(int argc, char **argv){
         if (bi>=0) pre->bld[bi].level=3.f;
     }
     for (int t=0;t<5;t++) econ_tick(e,1.f);   /* la chaîne tourne : cristal→essence→armes */
-    /* P1 — comme l'essence : les armes vont au POOL NATIONAL puis sont redistribuées au prorata de la
-     * pop ; lire la SEULE région-forge en sous-estime la part (et le relief #1 a changé sa pop-share).
-     * On mesure donc la production d'armes à l'échelle du PAYS (Σ régions de cid). */
-    float arms=0.f; for(int r=0;r<e->n_regions;r++) if(e->region[r].owner==cid) arms+=e->region[r].stock[RES_ENCHANTED_ARMS];
+    /* P1 — comme l'essence : les armes vont au POOL NATIONAL. On les mesure au grain PAYS. */
+    float arms=econ_country_stock_sum(e, cid, RES_ENCHANTED_ARMS);
     float mil1 = diplo_mil_power(w, e, cid);
     printf("   armes enchantées en stock = %.1f | puissance militaire %.2f → %.2f\n", arms, mil0, mil1);
     ok("la forge céleste PRODUIT des armes enchantées (fer céleste + essence)", arms > 0.5f);
@@ -144,11 +141,8 @@ int main(int argc, char **argv){
      * combustion cesse vraiment → charge→0 → le flux faustien reflue. */
     pre->raw_cap[RES_ARCANE_CRYSTAL]=0.f;
     /* le cristal DÉJÀ extrait vit au POOL NATIONAL (P1 : toute brute produite va au stock
-     * de SON empire) — vider la seule province-atelier ne suffit pas si le pool a déjà
-     * redistribué au prorata de la pop sur les AUTRES provinces de cid. On vide partout. */
-    for (int r=0;r<e->n_regions;r++) if (e->region[r].owner==cid){
-        for (int p=0;p<e->n_prov;p++) if (e->prov[p].region==r) e->prov[p].stock[RES_ARCANE_CRYSTAL]=0.f;
-    }
+     * de SON empire) — un seul entrepôt à vider depuis 2026-09-03. */
+    e->nat_stock[cid][RES_ARCANE_CRYSTAL]=0.f;
     for (int t=0;t<4;t++) econ_tick(e,1.f);   /* la charge retombe à 0 */
     prosperity_tick(wp,w,e,NULL,ts,wl);
     float dereal_quiet = wp->country[cid].dereal;

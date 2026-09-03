@@ -32,7 +32,13 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 107u          /* v107 : DOCTRINES SANS ENTRETIEN (décision joueur 2026-09-02,
+#define SAVE_VERSION 108u          /* v108 : TRÉSOR ET STOCK NATIONAUX (décision joueur 2026-09-03,
+                                    * docs/DESIGN_TRESOR_NATIONAL.md) — UN trésor par empire, UN
+                                    * stock par empire et par ressource. ProvinceEconomy perd
+                                    * treasury/stock[], RegionEconomy aussi ; WorldEconomy gagne
+                                    * nat_treasury[]/nat_stock[][] ⇒ sizeof change deux fois.
+                                    * AUCUN plafond sur l'un ni l'autre. <v108 refusé.
+                                    * v107 : DOCTRINES SANS ENTRETIEN (décision joueur 2026-09-02,
                                     * docs/DESIGN_MISSIONS_DOCTRINES.md §4.2) — les doctrines coûtent
                                     * en FLAT (l'achat, rien d'autre) ; la suspension mensuelle et
                                     * l'ordre d'adoption qui la départageait disparaissent :

@@ -254,10 +254,9 @@ AiView ai_observe(const WorldProsperity *wp, const World *w,
     const CountryProsperity *cp = &wp->country[cid];
     v.SI=cp->SI; v.fragilite=cp->fragilite; v.fracture=cp->fracture;
     v.L=cp->L; v.K=cp->K; v.Dinf_interne=cp->profile.D_inf_int; v.PE=cp->P_realise;
-    for (int r=0; r<econ->n_regions; r++) if (econ->region[r].owner==cid){
-        v.tresor += econ->region[r].treasury;
+    for (int r=0; r<econ->n_regions; r++) if (econ->region[r].owner==cid)
         v.food   += econ->region[r].build.food_cap;
-    }
+    v.tresor = (float)econ_country_gold(econ, cid);   /* TRÉSOR NATIONAL (2026-09-03) */
     v.armee = diplo_mil_power(w, econ, cid);
 
     /* Fracture de VALEURS (§6) : si deux factions-éthos opposées se disputent la
@@ -275,9 +274,11 @@ AiView ai_observe(const WorldProsperity *wp, const World *w,
         for (int g=0; g<RES_COUNT; g++){ rawcap[g]=stock[g]=demand[g]=supply[g]=0.f; }
         for (int r=0; r<econ->n_regions; r++) if (econ->region[r].owner==cid){
             const RegionEconomy *re=&econ->region[r];
-            for (int g=1; g<RES_COUNT; g++){ rawcap[g]+=re->raw_cap[g]; stock[g]+=re->stock[g];
+            for (int g=1; g<RES_COUNT; g++){ rawcap[g]+=re->raw_cap[g];
                 demand[g]+=re->demand[g]; supply[g]+=re->supply[g]; }
         }
+        /* STOCK NATIONAL (2026-09-03) : l'entrepôt du pays, lu UNE fois (c'était déjà la Σ). */
+        for (int g=1; g<RES_COUNT; g++) stock[g]=econ_country_stock_sum(econ,cid,(Resource)g);
         /* TROU DE CHAÎNE : un raffineur présent dont un intrant manque (ni extrait, ni en stock). */
         Resource chain=RES_NONE; float chain_short=0.f;
         for (int r=0; r<econ->n_regions && chain==RES_NONE; r++) if (econ->region[r].owner==cid){
@@ -325,8 +326,10 @@ AiView ai_observe(const WorldProsperity *wp, const World *w,
         for (int g=0; g<RES_COUNT; g++){ pr_sum[g]=0.f; dem_m[g]=0.f; stk2[g]=0.f; pn[g]=0; }
         for (int r=0; r<econ->n_regions; r++) if (econ->region[r].owner==cid && econ->region[r].colonized){
             const RegionEconomy *re=&econ->region[r];
-            for (int g=1; g<RES_COUNT; g++){ pr_sum[g]+=re->price[g]; pn[g]++; dem_m[g]+=re->demand[g]; stk2[g]+=re->stock[g]; }
+            for (int g=1; g<RES_COUNT; g++){ pr_sum[g]+=re->price[g]; pn[g]++; dem_m[g]+=re->demand[g]; }
         }
+        /* STOCK NATIONAL (2026-09-03) : l'entrepôt du pays, lu UNE fois. */
+        for (int g=1; g<RES_COUNT; g++) stk2[g]=econ_country_stock_sum(econ,cid,(Resource)g);
         Resource top=RES_NONE; float topp=0.f;
         for (int g=1; g<RES_COUNT; g++){
             if (dem_m[g] < 0.01f) continue;                       /* flux non demandé → pas une motivation */
@@ -886,10 +889,12 @@ static void ai_relocate_turn(AiActor *a, WorldEconomy *econ, const AiView *v, in
     for (int r=0;r<econ->n_regions;r++){
         RegionEconomy *re=&econ->region[r];
         if (re->owner!=a->cid || !re->colonized) continue;
-        for (int g=1;g<RES_COUNT;g++){ agg_s[g]+=re->supply[g]; agg_d[g]+=re->demand[g]; agg_k[g]+=re->stock[g]; }
+        for (int g=1;g<RES_COUNT;g++){ agg_s[g]+=re->supply[g]; agg_d[g]+=re->demand[g]; }
         float lab=re->strata[CLASS_LABORER].pop;
         if (lab>src_pop){ src_pop=lab; src=r; }            /* réservoir = la plus peuplée */
     }
+    /* STOCK NATIONAL (2026-09-03) : l'entrepôt du pays, lu UNE fois (c'était déjà la Σ). */
+    for (int g=1;g<RES_COUNT;g++) agg_k[g]=econ_country_stock_sum(econ,a->cid,(Resource)g);
     if (src<0 || src_pop < 2.0f*AI_RELOC_FLOOR) return;   /* pas de réservoir → on ne vide pas un hameau */
     int tgt=-1; float best=0.f;
     /* §dév — D'ABORD LE PALIER : on PEUPLE la colonie la plus SOUS le seuil (min(1000, cap_pop)) pour
@@ -1569,17 +1574,13 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
                 float price=cre->price[RES_ARMS]; if (price<0.2f) price=0.2f;
                 float cost =20.f*price*(cre->import_margin>0.f?cre->import_margin:1.f);
                 if (credit_can_spend(econ, w, a->cid, cost)){
-                    /* RE-KEY (Lot B, 2026-07-07) : region[hr].stock[] est un REFLET reconstruit
-                     * EN ENTIER depuis prov[] à chaque econ_aggregate_regions — une écriture
-                     * directe s'y évapore (≤ 30 j) alors que l'or, lui, était réellement débité
-                     * (credit_spend). Route par econ_region_stock_add (province représentative
-                     * d'abord, sœurs en débordement). RES_ARMS *est* RES_ARMS_LIGHT (alias F1,
-                     * scps_types.h:209) — la catégorie que la levée consomme réellement pour le
-                     * roster léger (Piquier/Lancier/Épéiste/Cav légère/Lame franche/Cav de raid,
-                     * cf. unit_res_arm, scps_army.c:109) : c'est déjà LE bon bien, pas besoin
-                     * d'en changer, seulement de le déposer pour de vrai. */
+                    /* STOCK NATIONAL (2026-09-03) : les armes achetées entrent à L'entrepôt du
+                     * pays. RES_ARMS *est* RES_ARMS_LIGHT (alias F1, scps_types.h:209) — la
+                     * catégorie que la levée consomme réellement pour le roster léger
+                     * (Piquier/Lancier/Épéiste/Cav légère/Lame franche/Cav de raid, cf.
+                     * unit_res_arm, scps_army.c:109) : c'est déjà LE bon bien. */
                     if (!credit_spend(econ, w, a->cid, cost)) return;
-                    econ_region_stock_add(econ, hr, RES_ARMS_LIGHT, 20.f);
+                    econ_nation_stock_add(econ, a->cid, RES_ARMS_LIGHT, 20.f);
                     econ_flux_add(a->cid, FX_SOLDE, -cost);          /* I0 : la ligne militaire */
                     /* item 5 (2026-08-11 : le DERNIER puits du circuit — les 8 autres sites
                      * recyclaient déjà) : l'achat d'armes paie les ARMURIERS de la région. */
@@ -1655,16 +1656,16 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
         if (getenv("SCPS_E3DIAG") && a->cid>=0 && a->cid<SCPS_MAX_COUNTRY){
             bool hub_ok  = (hub>=0 && hub<econ->n_regions);
             bool slot_ok = hub_ok && econ->region[hub].n_entrepot<1;
-            bool gold_ok = hub_ok && econ->region[hub].treasury>400.f;
+            bool gold_ok = econ_country_gold(econ, a->cid)>400.0;   /* TRÉSOR NATIONAL */
             fprintf(stderr,"[E3DIAG] day=%d cid=%d halles=%d hub_ok=%d slot_ok=%d gold_ok=%d treasury=%.0f n_entrepot=%d\n",
                     day, a->cid, a->has_halles, hub_ok, slot_ok, gold_ok,
-                    hub_ok?econ->region[hub].treasury:-1.f,
+                    econ_country_gold(econ, a->cid),
                     hub_ok?econ->region[hub].n_entrepot:-1);
         }
 #endif
         if (a->has_halles && hub>=0 && hub<econ->n_regions
             && econ->region[hub].n_entrepot<1
-            && econ->region[hub].treasury>400.f
+            && econ_country_gold(econ, a->cid)>400.0   /* TRÉSOR NATIONAL (2026-09-03) */
             && agency_build(ag, econ, w, hub, EDI_ENTREPOT)){
             a->stats.builds_other++;
             faction_lever_apply(a->cid, FAC_MARCHAND, AI_LEVER_BUILD);
@@ -2583,10 +2584,11 @@ static TechId ai_step_toward(const TechState *ts, TechId target, unsigned access
  * pays). Lu des MÊMES données que la membrane — fer/bois (intrants) ET nourriture (subsistance). */
 static bool ai_resource_famine(const WorldEconomy *econ, int cid, Resource g){
     if (g<=RES_NONE||g>=RES_COUNT) return false;
-    float stock=0.f, demand=0.f, supply=0.f;
+    float demand=0.f, supply=0.f;
     for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==cid){
-        stock+=econ->region[r].stock[g]; demand+=econ->region[r].demand[g]; supply+=econ->region[r].supply[g];
+        demand+=econ->region[r].demand[g]; supply+=econ->region[r].supply[g];
     }
+    float stock = econ_country_stock_sum(econ, cid, g);   /* STOCK NATIONAL (2026-09-03) */
     return demand > supply*1.15f + 1.f && stock < demand;
 }
 
@@ -2884,24 +2886,25 @@ void ai_speculate_tick(AiActor *a, WorldEconomy *econ){
         a->spec_avg[g] = (a->spec_avg[g]<=0.f)? p : a->spec_avg[g]*(11.f/12.f) + p*(1.f/12.f);
         if (a->spec_cd[g]>0) a->spec_cd[g]--;   /* le repos s'écoule, même sans entrepôt */
     }
-    if (re->n_entrepot<1) return;            /* sans Entrepôt : cap 200, pas de jeu */
-    float space = ECON_STOCK_CAP_ENTREPOT*(float)re->n_entrepot;   /* l'aile spéculative */
+    if (re->n_entrepot<1) return;            /* sans Entrepôt au hub : pas de jeu de stock */
+    float space = ECON_STOCK_CAP_ENTREPOT*(float)re->n_entrepot;   /* l'aile spéculative (le magot de l'IA, pas un plafond de stock) */
     float held=0.f; for (int g=1;g<RES_COUNT;g++) held+=a->hoard[g];
-    float cap_stock = ECON_STOCK_CAP_BASE + ECON_STOCK_CAP_ENTREPOT*(float)re->n_entrepot;
     for (int g=1; g<RES_COUNT; g++){
         if (a->spec_cd[g]>0) continue;                        /* B1 — ce bien se repose */
         float p=re->price[g], xb=a->spec_avg[g];
         if (xb<=0.f || p<=0.f) continue;
-        if (p < tune_f("SPEC_BUY_BAND",SPEC_BUY_BAND)*doctrine_key_mult(a->cid,"SPEC_BUY_BAND")*xb   /* doctrine Mercantilisme : « Régie » */ && re->treasury > tune_f("SPEC_GOLD_FLOOR",SPEC_GOLD_FLOOR) && held < space){
-            float vol = fminf(re->stock[g]*SPEC_VOL_FRAC, space-held);                /* ≤ 5 % du stock — le bien QUITTE le marché */
+        /* TRÉSOR/STOCK NATIONAUX (2026-09-03) : le spéculateur d'État joue sur LA caisse et
+         * L'entrepôt du pays ; le HUB ne fournit plus que le PRIX et les classes payées. */
+        float gold = (float)econ_country_gold(econ, a->cid);
+        if (p < tune_f("SPEC_BUY_BAND",SPEC_BUY_BAND)*doctrine_key_mult(a->cid,"SPEC_BUY_BAND")*xb   /* doctrine Mercantilisme : « Régie » */ && gold > tune_f("SPEC_GOLD_FLOOR",SPEC_GOLD_FLOOR) && held < space){
+            float vol = fminf(econ_country_stock_sum(econ,a->cid,(Resource)g)*SPEC_VOL_FRAC, space-held);   /* ≤ 5 % du stock — le bien QUITTE le marché */
             vol = fminf(vol, SPEC_VOL_ABS);                                           /* ≤ 50 unités (plafond dur) */
-            vol = fminf(vol, (re->treasury-tune_f("SPEC_GOLD_FLOOR",SPEC_GOLD_FLOOR))*0.25f/fmaxf(p,0.05f));    /* jamais la famine d'or */
+            vol = fminf(vol, (gold-tune_f("SPEC_GOLD_FLOOR",SPEC_GOLD_FLOOR))*0.25f/fmaxf(p,0.05f));    /* jamais la famine d'or */
             if (vol>=1.f){
-                /* RE-KEY : achat RÉEL (provinces) — la vue seule s'évaporait à la clôture. */
-                vol = -econ_region_stock_add(econ, hub, g, -vol);
+                vol = econ_country_stock_take(econ, a->cid, (Resource)g, vol);
                 if (vol>=1.f){
                     a->hoard[g]+=vol; held+=vol;
-                    float paid = -econ_region_treasury_add(econ, hub, -vol*p);   /* réellement débité (clampé) */
+                    float paid = -econ_nation_gold_add(econ, a->cid, -vol*p);   /* réellement débité (borné) */
                     if (tune_f("SPECULATE_CONSERVED",1.f)>0.f && paid>0.f){
                         /* F2 : la contrepartie réelle — les classes qui possédaient le
                          * stock retiré du marché encaissent (compte de marché M3b). */
@@ -2915,10 +2918,10 @@ void ai_speculate_tick(AiActor *a, WorldEconomy *econ){
             }
         } else if (p > tune_f("SPEC_SELL_BAND",SPEC_SELL_BAND)*doctrine_key_mult(a->cid,"SPEC_SELL_BAND")*xb && a->hoard[g]>=1.f){   /* doctrine Mercantilisme : « Régie » */
             float vol = fminf(a->hoard[g]*SPEC_SELL_FRAC, SPEC_VOL_ABS);              /* filet : 15 % du magot, ≤ 50 u */
-            float room = cap_stock - re->stock[g]; if (vol>room) vol=room;            /* l'entrepôt ne déborde pas */
+            /* le stock national n'a AUCUN plafond (2026-09-03) : plus de « l'entrepôt déborde ». */
             if (vol>=1.f){
                 a->hoard[g]-=vol;
-                econ_region_stock_add(econ, hub, g, vol);        /* le bien REVIENT au marché (RE-KEY : province) */
+                econ_nation_stock_add(econ, a->cid, g, vol);     /* le bien REVIENT au marché */
                 float gain = vol*p;
                 if (tune_f("SPECULATE_CONSERVED",1.f)>0.f){
                     /* F2 : pas d'acheteur nommé — le pot le plus proche de la sémantique
@@ -2930,7 +2933,7 @@ void ai_speculate_tick(AiActor *a, WorldEconomy *econ){
                     float paidE=-econ_region_wealth_add(econ, hub, CLASS_ELITE,     -gain*SPEC_TAX_SHARE);
                     gain = paidL+paidB+paidE;   /* conservation stricte : le trésor n'encaisse que le RÉELLEMENT prélevé */
                 }
-                econ_region_treasury_add(econ, hub, gain);
+                econ_nation_gold_add(econ, a->cid, gain);
                 a->stats.spec_vol+=vol; a->stats.spec_gold+=vol*p; a->stats.spec_sells++;
                 a->spec_cd[g]=SPEC_COOLDOWN;
             }
@@ -2966,10 +2969,9 @@ void ai_step(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
             if (corr > 40 && cr>=0){
                 bool held = faction_capture_total(a->cid) > 0.4f;            /* une faction TIENT → elle résiste */
                 float cost = (50.f + 8.f*(float)corr) * econ_world_ipm(econ) * (held?2.f:1.f);
-                /* RE-KEY PROVINCE : treasury province-owned — route sur la représentative. */
-                int crp=econ_region_rep_province(econ,cr);
-                if (crp>=0 && crp<econ->n_prov && econ->prov[crp].treasury >= cost){
-                    econ_prov_treasury_credit(econ, crp, -cost);   /* B6 : dual-write (motif M11-A2, hygiène) */
+                /* TRÉSOR NATIONAL (2026-09-03) : l'audit se paie sur LA caisse du pays. */
+                if ((float)econ_country_gold(econ,a->cid) >= cost){
+                    econ_nation_gold_add(econ, a->cid, -cost);
                     econ_flux_add(a->cid, FX_AUDIT, -cost);    /* I0 : la ligne audits */
                     faction_audit(a->cid);
                     if (wl) wl->L[cr] = clampf(wl->L[cr] + (corr>50?0.3f:-0.3f), 0.f, 10.f);
@@ -3189,7 +3191,6 @@ static void ai_doct_scores(const World *w, const WorldEconomy *econ, const Diplo
         nprov++;
         if (pe->coastal) ncoast++;                                  /* scps_econ.h:387 */
         for (int k=0;k<CLASS_COUNT;k++) pop += (double)pe->strata[k].pop;
-        grain += (double)pe->stock[RES_GRAIN];                      /* scps_econ.h:304 */
         for (int rr=0; rr<RES_PROD_FIRST; rr++) rawcap += (double)pe->raw_cap[rr];
         nbld += pe->n_bld;                                          /* manufactures posées */
         for (int e=0;e<EDIFICE_COUNT && e<32;e++) if (pe->edi_built & (1u<<e)) nedi++;
@@ -3199,6 +3200,7 @@ static void ai_doct_scores(const World *w, const WorldEconomy *econ, const Diplo
         for (int g=0; g<pe->pop.n_groups && g<SCPS_MAX_GROUPS; g++)
             if (pe->pop.groups[g].diaspora) diaspo += (double)pe->pop.groups[g].count;  /* scps_econ.h:224 */
     }
+    grain = (double)econ_country_stock_sum(econ, cid, RES_GRAIN);    /* STOCK NATIONAL (2026-09-03) */
     if (nprov<=0) return;                                            /* pays mort : aucun score */
     const double ppp = (pop>1.0)? pop : 1.0;
 

@@ -522,20 +522,19 @@ int main(int argc, char **argv){
          * déjà. On pose un trésor capital SOUS le coût mensuel et on vérifie qu'il ne
          * descend jamais sous zéro. */
         statecraft_council_set_pay(s.sc, cid, seat, 1.f);
-        { int crB1=cap_region(s.w,cid);
-          int crpB1=(crB1>=0&&crB1<s.econ->n_regions)?econ_region_rep_province(s.econ,crB1):-1;
-          if (crpB1>=0){
-              float costB1 = statecraft_council_cost(s.sc, seed, cid, 1.f) * (1.f/12.f) * 12.f;
-              s.econ->prov[crpB1].treasury = costB1*0.5f;   /* la moitié SEULEMENT du coût mensuel */
-              float tre0=s.econ->prov[crpB1].treasury;
-              statecraft_council_apply(s.sc, s.w, s.econ, s.wp, seed, 1.f/12.f);
-              float tre1=s.econ->prov[crpB1].treasury;
-              printf("   B1 : coût Conseil=%.1f, trésor %.1f→%.1f (jamais négatif)\n", costB1, tre0, tre1);
-              ok("B1 : le Conseil ne pousse JAMAIS le trésor de la capitale sous zéro (clampé)",
-                 tre1 >= -0.01f);
-              ok("B1 : le Conseil paie ce qu'il PEUT (trésor consommé, pas laissé intact)",
-                 tre1 < tre0);
-          } else ok("(capitale introuvable pour le test B1 Conseil)", true);
+        /* TRÉSOR NATIONAL (2026-09-03) : plus de caisse de capitale — le Conseil débite LE
+         * trésor du pays (statecraft_council_apply → econ_nation_gold_add, borné). Même
+         * invariant, une seule caisse : on la pose sous le coût mensuel. */
+        { float costB1 = statecraft_council_cost(s.sc, seed, cid, 1.f) * (1.f/12.f) * 12.f;
+          s.econ->nat_treasury[cid] = costB1*0.5f;   /* la moitié SEULEMENT du coût mensuel */
+          double tre0=econ_country_gold(s.econ,cid);
+          statecraft_council_apply(s.sc, s.w, s.econ, s.wp, seed, 1.f/12.f);
+          double tre1=econ_country_gold(s.econ,cid);
+          printf("   B1 : coût Conseil=%.1f, trésor %.1f→%.1f (jamais négatif)\n", costB1, tre0, tre1);
+          ok("B1 : le Conseil ne pousse JAMAIS le trésor NATIONAL sous zéro (clampé)",
+             tre1 >= -0.01);
+          ok("B1 : le Conseil paie ce qu'il PEUT (trésor consommé, pas laissé intact)",
+             tre1 < tre0);
         }
 
         /* (7) P0-4 — PERSONNE + MAISON : tirages déterministes et VIVANTS (varient

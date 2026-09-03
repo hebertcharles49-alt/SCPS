@@ -454,18 +454,17 @@ int main(void) {
     CHECK("un empire joueur existe", pl >= 0);
     for (int c = 0; c < SCPS_MAX_COUNTRY; c++) for (int t = 0; t < TECH_COUNT; t++) ts[c].unlocked[t] = false;
     for (int c = 0; c < SCPS_MAX_COUNTRY; c++) ts[c].charge = 0.f;
-    /* injecte les 3 rares dans le pool du joueur — RE-KEY PROVINCE : la VÉRITÉ vit dans
-     * prov[] (charte règle 1) ; injecter uniquement sur l'agrégat region[] tient jusqu'au
-     * premier econ_aggregate_regions() (l.391 plus bas), qui l'ÉCRASE depuis les provinces
-     * jamais dotées → flux/essence retombent à 0 en pleine course (paliers SOCIÉTÉ/SAVOIR
-     * meurent de faim). On dote donc CHAQUE province membre (même idiome que econ_init
-     * l.1121-1126, le pool tradable des cités-états). */
-    for (int p = 0; p < econ->n_prov; p++) if (econ->prov[p].owner == pl) {
-        econ->prov[p].stock[RES_CELESTIAL_IRON] += 100.f;
-        econ->prov[p].stock[RES_FLUX]           += 100.f;
-        econ->prov[p].stock[RES_ESSENCE]        += 100.f;
-    }
-    econ_aggregate_regions(econ);   /* miroir immédiat : ci0/le 1er endgame_tick lisent l'agrégat */
+    /* injecte les 3 rares dans le pool du joueur — STOCK NATIONAL (2026-09-03) : le pool
+     * EST national, un seul dépôt suffit et il ne peut plus être écrasé par l'agrégation.
+     * On garde la MÊME dotation totale qu'avant (100 par province possédée) pour que la
+     * course FORGE→SOCIÉTÉ→SAVOIR dispose exactement du même matériau. */
+    { int npl = 0;
+      for (int p = 0; p < econ->n_prov; p++) if (econ->prov[p].owner == pl) npl++;
+      float dote = 100.f * (float)npl;
+      econ->nat_stock[pl][RES_CELESTIAL_IRON] += dote;
+      econ->nat_stock[pl][RES_FLUX]           += dote;
+      econ->nat_stock[pl][RES_ESSENCE]        += dote; }
+    econ_aggregate_regions(econ);   /* la VUE region[] (pop/culture) à jour pour le 1er endgame_tick */
     int capr = -1; { int cap = w->country[pl].capital_prov; if (cap >= 0 && cap < w->n_provinces) capr = w->province[cap].region; }
     /* MÉTABOLISATION (décision #2) : FORGE≥3 SOCIÉTÉ≥4 SAVOIR≥6, comptés en MAX de
      * DEUX voies (comme ai_heritage_access) : la métabolisation active (population
@@ -489,11 +488,11 @@ int main(void) {
     CHECK("merveille démarrée en FORGE", eg.merv == MERV_FORGE);
     wp->entropy = 0.f; wp->entropy_epicenter = -1;          /* entropie BASSE : pas d'apocalypse concurrente */
     for (int k = 0; k < 3; k++) wp->faust_consumed[k] = 0.0;
-    double ci0 = 0.0; for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner == pl) ci0 += econ->region[r].stock[RES_CELESTIAL_IRON];
+    double ci0 = econ_country_stock_sum(econ, pl, RES_CELESTIAL_IRON);
     float site_ch0 = (capr >= 0 && capr < econ->n_regions) ? econ->region[capr].faust_charge : 0.f;
     for (int y = 0; y < 4; y++) endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, pl, y);
     CHECK("FORGE avance (3 héritages en accès plein)", eg.merv >= MERV_FORGE && eg.merv < MERV_SOCIETE);
-    double ci1 = 0.0; for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner == pl) ci1 += econ->region[r].stock[RES_CELESTIAL_IRON];
+    double ci1 = econ_country_stock_sum(econ, pl, RES_CELESTIAL_IRON);
     CHECK("FORGE dévore le fer céleste", ci1 < ci0);
     /* RE-KEY PROVINCE : wonder_tick route faust_charge sur la province représentative
      * (econ->region[capr] est un DÉRIVÉ, jamais rafraîchi par endgame_tick seul — un
@@ -838,16 +837,17 @@ int main(void) {
           ts[pl3].arch_depth[h] = (unsigned char)PROF_PROFOND; put++; } }
       EndgameState eg8; endgame_init(&eg8);
       int capr3 = -1; { int cap3 = w->country[pl3].capital_prov; if (cap3>=0&&cap3<w->n_provinces) capr3 = w->province[cap3].region; }
-      for (int p = 0; p < econ->n_prov; p++) if (econ->prov[p].owner == pl3) {
-          econ->prov[p].stock[RES_CELESTIAL_IRON] += 100.f;
-      }
+      /* STOCK NATIONAL : même dotation totale (100 × provinces possédées), un seul dépôt. */
+      { int npl3 = 0;
+        for (int p = 0; p < econ->n_prov; p++) if (econ->prov[p].owner == pl3) npl3++;
+        econ->nat_stock[pl3][RES_CELESTIAL_IRON] += 100.f * (float)npl3; }
       econ_aggregate_regions(econ);
       endgame_start_wonder(&eg8, pl3, capr3);
       eg8.merv = MERV_FORGE;   /* re-force au cas où endgame_start_wonder ait été bloqué par un état résiduel */
-      double ci8_0 = 0.0; for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner == pl3) ci8_0 += econ->region[r].stock[RES_CELESTIAL_IRON];
+      double ci8_0 = econ_country_stock_sum(econ, pl3, RES_CELESTIAL_IRON);
       WorldProsperity wp8; memset(&wp8, 0, sizeof wp8); wp8.entropy = 0.f; wp8.entropy_epicenter = -1;
       endgame_tick(&eg8, w, econ, &wp8, ts, NULL, NULL, NULL, NULL, pl3, 0);
-      double ci8_1 = 0.0; for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner == pl3) ci8_1 += econ->region[r].stock[RES_CELESTIAL_IRON];
+      double ci8_1 = econ_country_stock_sum(econ, pl3, RES_CELESTIAL_IRON);
       CHECK("voie GOUVERNANCE seule (0 diaspora, 2 contacts profonds+natif=3) ⇒ FORGE avance",
             ci8_1 < ci8_0);
     }

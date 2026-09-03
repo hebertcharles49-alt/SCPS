@@ -487,10 +487,10 @@ void statecraft_council_apply(const Statecraft *sc, const World *w, WorldEconomy
                  * clamp — un trésor insuffisant passait négatif (dette fantôme, motif B2(a)).
                  * Même discipline que decree_spend_capital (scps_decrees.c) : on ne paie que
                  * ce que le trésor porte (jamais de dette forcée pour le Conseil). */
-                float take = fminf(cost, fmaxf(0.f, e->prov[crp].treasury));
-                /* MONNAIE M14 — B6 : statecraft_council_apply s'exécute APRÈS econ_aggregate_
-                 * regions (scps_sim.c) — dual-write (motif M11-A2). */
-                econ_prov_treasury_credit(e, crp, -take); econ_flux_add(c, FX_CONSEIL, -take);
+                /* Le Conseil est payé par L'EMPIRE (trésor NATIONAL, 2026-09-03) ; la capitale
+                 * ne loge plus que les ÉLITES qui touchent la dépense (richesse de POP). */
+                float take = fminf(cost, fmaxf(0.f, (float)econ_country_gold(e, c)));
+                econ_nation_gold_add(e, c, -take); econ_flux_add(c, FX_CONSEIL, -take);
                 e->prov[crp].strata[CLASS_ELITE].wealth += take;   /* item 5 : Conseil → élites, capitale */
             }
         }
@@ -512,7 +512,7 @@ void statecraft_council_ai(Statecraft *sc, const World *w, const WorldEconomy *e
     int cr =(cap>=0&&cap<w->n_provinces)?w->province[cap].region:-1;
     if (cr<0||cr>=e->n_regions || !e->region[cr].culture.settled) return;
     int seat=sc_ethos_seat((int)e->region[cr].culture.ethos);
-    float tres=e->region[cr].treasury, ipm=econ_world_ipm(e);
+    float tres=(float)econ_country_gold(e, cid), ipm=econ_world_ipm(e);   /* trésor NATIONAL */
     int gen=statecraft_council_gen(year);                                  /* la pool COURANTE (toujours 3 candidats) */
     /* V2a — l'IA PAIE la paie par défaut (1.0, posé à l'embauche) et ne subit
      * pas la trahison narrative (réservée au joueur, V2b) : un ministre AU BORD

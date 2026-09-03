@@ -1370,7 +1370,9 @@ void sim_day(Sim *s, World *w) {
              * portuaire (Region.harbor, la FORME du littoral) + un appoint de pop + l'avantage
              * de siège — une baie franche peut l'emporter sur un cap capital exposé. */
             int pr=navy_best_coast(w,s->econ,c);
-            if (pr>=0 && s->econ->region[pr].build.port<=0.f && s->econ->region[pr].treasury>400.f){
+            /* TRÉSOR NATIONAL (2026-09-03) : c'est la caisse DU PAYS qui décide du chantier,
+             * plus celle de la rade choisie. */
+            if (pr>=0 && s->econ->region[pr].build.port<=0.f && econ_country_gold(s->econ,c)>400.0){
                 if (getenv("SCPS_HARBORDIAG")){   /* WG : la rade choisie par aptitude portuaire (vs la région de la capitale) */
                     int cp=w->country[c].capital_prov;
                     int capr=(cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
@@ -1388,9 +1390,9 @@ void sim_day(Sim *s, World *w) {
                 /* OFF = OFF (2026-08-16) : ce constructeur de sim était le TROISIÈME
                  * chantier caché (74-87 coques/monde après l'extinction de la doctrine) —
                  * sans combat naval, le matériel du pool EST le convoi, aucune coque. */
-                if (s->navy->n[c].hull[HULL_TRANSPORT]<2 && re->treasury>500.f)
+                if (s->navy->n[c].hull[HULL_TRANSPORT]<2 && econ_country_gold(s->econ,c)>500.0)
                     navy_order_build(s->navy, w, s->econ, c, HULL_TRANSPORT);
-                else if (s->navy->n[c].hull[HULL_MERCHANT]<1 && re->treasury>700.f)
+                else if (s->navy->n[c].hull[HULL_MERCHANT]<1 && econ_country_gold(s->econ,c)>700.0)
                     navy_order_build(s->navy, w, s->econ, c, HULL_MERCHANT);
             }
             /* la route maritime : depuis la RADE (le meilleur port, pas forcément la

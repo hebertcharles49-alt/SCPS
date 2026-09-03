@@ -263,11 +263,12 @@ static void wh_shed(ArmyState *a, WorldEconomy *econ, int cid, long n){
         a->pop_by_class_in_army[cl] -= take*POP_PER_UNIT;
         if (a->pop_by_class_in_army[cl] < 0) a->pop_by_class_in_army[cl] = 0;
         Resource arm=unit_res_arm(t);
-        if (arm!=RES_NONE && econ) for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==cid){
-            /* RE-KEY : rendues aux PROVINCES (la vue seule s'évaporait à la clôture). */
-            econ_region_stock_add(econ, r, arm, (float)(take*POP_PER_UNIT));
+        if (arm!=RES_NONE && econ){
+            /* STOCK NATIONAL (2026-09-03) : les armes retournent à L'entrepôt du pays —
+             * plus besoin de dénicher une région propriétaire où les déposer. */
+            econ_nation_stock_add(econ, cid, arm, (float)(take*POP_PER_UNIT));
             g_ad_returned[arm] += take*POP_PER_UNIT;   /* ARMSDIAG */
-            break; }   /* armes rendues au stock */
+        }
         if (a->units[i].count<=0){                 /* compacter : retirer l'unité vide */
             for (int j=i;j<a->n_units-1;j++) a->units[j]=a->units[j+1];
             a->n_units--;
@@ -314,17 +315,18 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
          * trésor, donc une armée que l'État ne paie plus est GRATUITE). Un pays en guerre
          * permanente empilait 165 à 342 régiments pour une limite de force de ~11 (sweep
          * doctrines A3, les DEUX bras). On ne DÉMOBILISE pas sous le feu — on cesse de
-         * GROSSIR quand la capitale ne couvre plus les ~3 mois de solde que la garde de
+         * GROSSIR quand le trésor ne couvre plus les ~3 mois de solde que la garde de
          * budget exige déjà en paix (même seuil, aucun nombre neuf). */
         bool pay_starved = false;
         { long u = warhost_units(h,c);
           int cpp = w->country[c].capital_prov;
           int crp = (cpp>=0&&cpp<w->n_provinces)?w->province[cpp].region:-1;
-          /* RE-KEY PROVINCE : treasury/coercion/mil_stock sont PROVINCE-OWNED (charte
-           * règle 1) — route sur la province représentative de la capitale (sinon
-           * écrasé au prochain econ_tick, econ_aggregate_regions). */
+          /* TRÉSOR NATIONAL (2026-09-03) : la solde sort du trésor DU PAYS — plus de la
+           * caisse de la seule capitale (un hégémon riche pouvait s'y trouver « ruiné »).
+           * La région capitale ne sert plus qu'au PRIX (warhost_unit_pay_month) ; sa
+           * province représentative ne reçoit que la RICHESSE des pops soldées. */
           int crpp = (crp>=0&&crp<econ->n_regions)?econ_region_rep_province(econ,crp):-1;
-          if (u>0 && crpp>=0 && crpp<econ->n_prov){
+          if (u>0 && crp>=0 && crp<econ->n_regions){
               /* warhost_tick est ANNUEL (dt=1 an) → ×12 : la solde est MENSUELLE. */
               /* I1 — la JAUGE renchérit la solde : pied de guerre ×1.25, levée en masse ×1.5
                * (tenir plus d'hommes sous les armes coûte plus que proportionnellement). */
@@ -343,28 +345,50 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                              * (at_war?1.5f:1.f) * lvmult * dt * 12.f;
               float army_mult = econ_country_budget_mult(econ,c,BUDGET_ARMY);
               float pay = base_pay * army_mult;
-              /* MONNAIE M14 — B1 : un trésor NÉGATIF inversait le paiement — fminf(pay,
-               * treasury<0) rendait `paid` négatif : le trésor RECEVAIT, la solde devenait
-               * un revenu (FX_SOLDE positif) et la richesse des Laborers passait sous zéro
-               * (paid ajouté = négatif). Clampé à 0 : un trésor à sec ne paie plus rien, ne
-               * reçoit jamais. */
-              float paid = fmaxf(0.f, fminf(pay, econ->prov[crpp].treasury));
-              /* MONNAIE M14 — B6 : warhost_tick s'exécute APRÈS econ_aggregate_regions
-               * (scps_sim.c) — dual-write (motif M11-A2). */
-              econ_prov_treasury_credit(econ, crpp, -paid);
+              /* MONNAIE M14 — B1 : un trésor NÉGATIF inversait le paiement (la solde devenait
+               * un revenu, la richesse des Laborers passait sous zéro). econ_nation_gold_add
+               * borne le débit au disponible et rend l'appliqué : à sec, on ne paie rien et
+               * on ne reçoit jamais. */
+              float paid = -econ_nation_gold_add(econ, c, -pay);
               econ_flux_add(c, FX_SOLDE, -paid);                /* I0 : la ligne soldes */
-              /* MONNAIE M3b-v2 — item 5 : la solde → LABORERS (déjà payée depuis le trésor
-               * de LA CAPITALE ci-dessus — même province, aucune indirection nouvelle). */
-              econ->prov[crpp].strata[CLASS_LABORER].wealth += paid;
+              /* MONNAIE M3b-v2 — item 5 : la solde atterrit chez les LABORERS de la capitale
+               * (la richesse des POPS reste PROVINCIALE, elle). */
+              if (crpp>=0 && crpp<econ->n_prov)
+                  econ->prov[crpp].strata[CLASS_LABORER].wealth += paid;
               /* Sous-financer la solde ne fait plus DÉSERTER (l'armée reste entière) :
                * elle perd le MORAL — la pénalité est lue au combat (scps_campaign.c,
                * army_pay_morale ← BUDGET_ARMY). Surpayer reste un choix de trésorerie,
                * sans bonus militaire artificiel. */
-              /* IG — LA GARDE DE BUDGET (le garde-fou anti-famine) : si la capitale ne
+              /* IG — LA GARDE DE BUDGET (le garde-fou anti-famine) : si le trésor NATIONAL ne
                * couvre plus ~3 mois de la solde (pay annuel ×0.25), on DÉGRAISSE (jauge −1)
                * — l'armée cesse de croître et fond, plutôt qu'étrangler le trésor en spirale
                * de friche. En paix seulement : on ne désarme pas sous le feu. */
-              pay_starved = (base_pay>0.f && econ->prov[crpp].treasury < base_pay*0.25f);
+              /* DÉSERTION (2026-09-03 — interaction trésor NATIONAL × pool province) : la
+               * solde sort désormais de l'or de TOUT l'empire, et le pool de levée compte
+               * juste (corps au front, grain province) — la garde de budget « 3 mois de
+               * solde » ne freinait plus rien à l'échelle d'un empire : 62 rgt pour une
+               * limite de 25, trésor à sec, taxes effondrées (graine 7, an 120). Le frein
+               * n'est PAS un plafond (décision joueur) : une armée que l'État ne PAIE PAS
+               * FOND — la part impayée déserte au rythme WH_DESERT_RATE par an (0 = ancien
+               * comportement : moral seul, l'armée impayée restait entière et gratuite). */
+              { float unpaid = (pay>1e-3f)? 1.f - paid/pay : 0.f;
+                float drate  = tune_f("WH_DESERT_RATE", 0.5f);
+                if (unpaid>0.01f && drate>0.f){
+                    long nd = (long)((double)u * (double)unpaid * (double)drate * (double)dt + 0.5);
+                    if (nd>u) nd=u;
+                    if (nd>0) wh_shed(&h->army[c], econ, c, nd);
+                } }
+              /* BUDGET MILITAIRE SUR LE FLUX (2026-09-03) : la solde annuelle ne doit pas
+               * dépasser WH_PAY_REVENUE_FRAC du revenu fiscal de l'an écoulé (cible du
+               * rapport armée : 10-15 % en paix, plus sous le feu). Au-delà, on cesse de
+               * GROSSIR (même mécanique que la famine de trésor) — le stock d'or, national,
+               * n'est plus un juge : c'est le REVENU qui porte une armée. 0 = désactivé.
+               * econ_country_tax_year rend 0 durant le bootstrap (<90 j) ⇒ pas de frein. */
+              bool over_budget = false;
+              { float rev  = econ_country_tax_year(c);
+                float frac = tune_f("WH_PAY_REVENUE_FRAC", 0.35f);
+                over_budget = (rev>0.f && frac>0.f && base_pay > rev*frac); }
+              pay_starved = (base_pay>0.f && ((float)econ_country_gold(econ,c) < base_pay*0.25f || over_budget));
               if (!at_war && pay_starved && h->levy[c]>0)
                   h->levy[c] -= 1;
               /* SYMÉTRIE (2026-07-06) : la jauge REMONTE quand le trésor est confortable —
@@ -373,8 +397,8 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                * (→ garnison plancher, jamais la « vingtaine »). Bande d'hystérésis (0.25×
                * descend · 1.5× remonte) ; plafonnée à GARDE = le plein plafond de PAIX (les
                * pieds de guerre GUERRE/MASSE restent des choix, pas une escalade auto). */
-              else if (!at_war && h->levy[c] < WH_LEVY_GARDE
-                       && econ->prov[crpp].treasury > base_pay*1.5f)
+              else if (!at_war && h->levy[c] < WH_LEVY_GARDE && !over_budget
+                       && (float)econ_country_gold(econ,c) > base_pay*1.5f)
                   h->levy[c] += 1;
           } }
         /* la JAUGE DE LEVÉE module la cadence : basse 0.4× · garde 1× · guerre 1.6× ·
@@ -436,17 +460,15 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
               int cpp2=w->country[c].capital_prov;
               int crp2=(cpp2>=0&&cpp2<w->n_provinces)?w->province[cpp2].region:-1;
               int crp2p=(crp2>=0&&crp2<econ->n_regions)?econ_region_rep_province(econ,crp2):-1;
-              if (crp2p>=0 && crp2p<econ->n_prov){
-                  float price = (float)grown * tune_f("REGIMENT_PRICE",12.f) * econ_world_ipm(econ);
-                  /* MONNAIE M14 — B1 : même clamp que la solde ci-dessus — un trésor
-                   * négatif ne doit jamais INVERSER le prix de recrutement en revenu. */
-                  float paid = fmaxf(0.f, fminf(price, econ->prov[crp2p].treasury));
-                  econ_prov_treasury_credit(econ, crp2p, -paid);   /* B6 : dual-write (motif M11-A2) */
-                  econ_flux_add(c, FX_SOLDE, -paid);
-                  /* item 5 : le prix de recrutement → LABORERS (recruteurs/intendance),
-                   * même province (capitale, déjà le site du débit). */
+              float price = (float)grown * tune_f("REGIMENT_PRICE",12.f) * econ_world_ipm(econ);
+              /* TRÉSOR NATIONAL (2026-09-03) : le prix de recrutement sort du trésor DU PAYS
+               * (débit borné : un trésor à sec ne paie rien et ne reçoit jamais). */
+              float paid = -econ_nation_gold_add(econ, c, -price);
+              econ_flux_add(c, FX_SOLDE, -paid);
+              /* item 5 : le prix de recrutement → LABORERS (recruteurs/intendance) de la
+               * capitale — la richesse des POPS reste PROVINCIALE. */
+              if (crp2p>=0 && crp2p<econ->n_prov)
                   econ->prov[crp2p].strata[CLASS_LABORER].wealth += paid;
-              }
           } }
         /* F6 — la FORCE D'ARMÉE sur la capitale → nourrit diplo_mil_power, par un CANAL DÉDIÉ
          * (re->mil_stock) découplé du RES_ARMS économique : la levée consomme les armes du marché

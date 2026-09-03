@@ -631,6 +631,10 @@ static int spawn_rebel_polity(World *w, WorldEconomy *econ, Rebellion *rb){
         nid=w->n_countries++;
     }
     Country *nc=&w->country[nid]; memset(nc,0,sizeof *nc);
+    /* v108 — NAISSANCE : le slot repart À SEC (trésor et stock NATIONAUX à zéro). Un slot
+     * RECYCLÉ hériterait sinon du magot d'un mort. Le rebelle ne reçoit RIEN de la couronne
+     * qu'il quitte : l'or reste chez le parent (cf. docs/DESIGN_TRESOR_NATIONAL.md). */
+    econ_nation_reset(econ, nid);
     nc->role=POLITY_ANTAGONIST;                           /* un belligérant, pas encore un État terrien */
     nc->continent=w->region[rb->region].continent;
     nc->capital_prov=(w->region[rb->region].n_provinces>0)
@@ -939,8 +943,7 @@ static void apply_rebel_victory(RevoltState *rs, World *w, WorldEconomy *econ,
             int cid=rb->owner;
             int capr=(cid>=0&&cid<w->n_countries)?w->country[cid].capital_prov:-1;
             capr=(capr>=0&&capr<w->n_provinces)?w->province[capr].region:-1;
-            int caprp=(capr>=0&&capr<econ->n_regions)?econ_region_rep_province(econ,capr):-1;
-            float treas=(caprp>=0&&caprp<econ->n_prov)?econ->prov[caprp].treasury:0.f;
+            float treas=(float)econ_country_gold(econ, cid);   /* trésor NATIONAL (2026-09-03) */
             float capL =(capr>=0&&capr<SCPS_MAX_REG)?wl->L[capr]:0.f;
             bool can_concede = (cid<0||cid>=SCPS_MAX_COUNTRY||rs->concede_cd[cid]<=0.f)  /* pas déjà concédé ce décennie */
                             && (treas>CONCEDE_TREAS_FLOOR || capL>CONCEDE_L_FLOOR);     /* … et de quoi céder */
@@ -957,12 +960,9 @@ static void apply_rebel_victory(RevoltState *rs, World *w, WorldEconomy *econ,
                 rb->outcome=OUT_CRUSHED;
                 break;
             }
-            if (caprp>=0&&caprp<econ->n_prov && treas>CONCEDE_TREAS_FLOOR){
-                /* MONNAIE M14 — B6 : revolt_tick s'exécute APRÈS econ_aggregate_regions
-                 * (scps_sim.c) — dual-write (motif M11-A2). */
-                float before_cg=econ->prov[caprp].treasury;
-                float after_cg=fmaxf(0.f, before_cg-tune_f("CONCEDE_GOLD",CONCEDE_GOLD));
-                econ_prov_treasury_credit(econ, caprp, after_cg-before_cg);   /* acheter la paix */
+            if (treas>CONCEDE_TREAS_FLOOR){
+                /* ACHETER LA PAIX sur le trésor NATIONAL — borné au disponible. */
+                econ_nation_gold_add(econ, cid, -tune_f("CONCEDE_GOLD",CONCEDE_GOLD));
             }
             if (cid>=0&&cid<SCPS_MAX_COUNTRY) rs->concede_cd[cid]=CONCEDE_CD_DAYS;                    /* 10 ans avant de re-céder */
             pe->satisfaction=clampf(pe->satisfaction+0.20f,0.f,1.f);

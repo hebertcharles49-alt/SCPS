@@ -35,18 +35,25 @@ static int rep_prov(WorldEconomy *e, int r){
 
 /* ÉTEINT toute province SŒUR de `pid` (même région, indices ≠ pid) : la région
  * AGRÈGE (charte règle 2) — sans ça, les autres provinces de la région (semées
- * par world_generate/gen_population, hors du contrôle du banc) contaminent le
- * trésor/pop/satisfaction agrégés que le banc lit sur e->region[r]. Isole la
- * région au SEUL contenu que le banc pose, comme l'ancien poke direct. */
+ * par world_generate/gen_population, hors du contrôle du banc) contaminent la
+ * pop/satisfaction agrégées que le banc lit sur e->region[r]. Isole la région au
+ * SEUL contenu que le banc pose, comme l'ancien poke direct. */
 static void mute_siblings(WorldEconomy *e, int r, int pid){
     for (int p=0;p<e->n_prov;p++){
         if (p==pid || e->prov[p].region!=r) continue;
         ProvinceEconomy *pe=&e->prov[p];
         pe->active=false; pe->colonized=false;
         memset(pe->strata,0,sizeof pe->strata);
-        pe->treasury=0.f;
     }
 }
+
+/* TRÉSOR NATIONAL (2026-09-03) : l'impôt ne tombe plus dans une caisse de province mais
+ * dans LE trésor de l'empire propriétaire. Comparer deux rigs exige donc deux EMPIRES
+ * distincts — sinon les deux fixtures versent dans la même caisse et la mesure fond.
+ * On donne à chaque rig un pays SYNTHÉTIQUE, pris en HAUT de la plage (jamais attribué
+ * par le worldgen : w->n_countries reste très en deçà de SCPS_MAX_COUNTRY) — un empire
+ * d'UNE province, propre, dont le trésor est exactement ce que ce rig a levé. */
+static int rig_cid(int r){ return SCPS_MAX_COUNTRY-1-r; }
 
 /* Fige une PROVINCE (LA vérité économique) en banc d'essai fiscal : UNE brute (raw_cap,
  * doctrine ≤2 raws) produit un revenu IDENTIQUE d'un rig() à l'autre (même raw_cap, mêmes
@@ -58,9 +65,9 @@ static void mute_siblings(WorldEconomy *e, int r, int pid){
  * fixture seule, moteur intact). `elite_wealth` reste un solde de départ (hors revenu du
  * tick) — SEULE la différence d'éthos/satisfaction varie entre deux rigs comparés, le
  * revenu produit est le même repère : les comparaisons relatives restent valides.
- * Stock plein → le panier se remplit (la satisfaction ne dépend que de l'impôt). La
- * RÉGION agrège après econ_tick — les lectures e->region[r].* restent valides (1
- * province ⇒ agrégat = elle). */
+ * Stock NATIONAL plein → le panier se remplit (la satisfaction ne dépend que de l'impôt).
+ * La RÉGION agrège après econ_tick — les lectures e->region[r].* (pop/satisfaction)
+ * restent valides (1 province ⇒ agrégat = elle) ; l'OR, lui, se lit au grain PAYS. */
 static void rig(WorldEconomy *e, int r, Ethos ethos, float elite_wealth, float sat){
     int pid=rep_prov(e,r);
     if (pid<0) return;
@@ -70,7 +77,8 @@ static void rig(WorldEconomy *e, int r, Ethos ethos, float elite_wealth, float s
     re->culture.ethos=ethos;
     re->n_bld=0;
     re->alloc_on=false;
-    for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; re->stock[k]=1.0e6f; re->price[k]=1.0f; }
+    int cid=rig_cid(r); re->owner=(int16_t)cid;   /* un empire d'UNE province par rig */
+    for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; e->nat_stock[cid][k]=1.0e6f; re->price[k]=1.0f; }
     re->raw_cap[RES_GRAIN]=1000.f;   /* M3i : de quoi produire un revenu comparable entre rigs */
     /* VAGUE ÎLES : deux rigs sur des provinces DIFFÉRENTES du monde régénéré peuvent
      * hériter d'un price[]/habitability DE GENÈSE très inégal (mesuré : une province
@@ -86,7 +94,7 @@ static void rig(WorldEconomy *e, int r, Ethos ethos, float elite_wealth, float s
     re->strata[CLASS_BOURGEOIS].pop=100.f; re->strata[CLASS_BOURGEOIS].wealth=0.f;
     re->strata[CLASS_ELITE].pop=100.f;     re->strata[CLASS_ELITE].wealth=elite_wealth;
     for (int c=0;c<CLASS_COUNT;c++) re->strata[c].satisfaction=sat;
-    re->treasury=0.f;
+    e->nat_treasury[cid]=0.f;   /* la caisse de CE rig, remise à zéro avant la mesure */
 }
 
 int main(int argc, char **argv){
@@ -124,7 +132,7 @@ int main(int argc, char **argv){
     rig(e, rD, ETHOS_DOMINATEUR,  1000.f, 0.70f);   /* l'élite résiste */
     rig(e, rB, ETHOS_BUREAUCRATE, 1000.f, 0.70f);   /* extraction propre */
     econ_tick(e, 1.f);
-    float taxD=e->region[rD].treasury, taxB=e->region[rB].treasury;
+    float taxD=(float)econ_country_gold(e,rig_cid(rD)), taxB=(float)econ_country_gold(e,rig_cid(rB));
     printf("   trésor sur élite (wealth 1000, satisf 0.70) : Dominateur %.0f · Bureaucrate %.0f\n", taxD, taxB);
     ok("le Bureaucrate lève PLUS que le Dominateur sur la même élite (moins d'évasion)", taxB > taxD + 1.f);
     ok("le Dominateur ne lève pas zéro non plus (il essore par ailleurs)", taxD > 0.f);
@@ -135,7 +143,7 @@ int main(int argc, char **argv){
     rig(e, rHi, ETHOS_BUREAUCRATE, 1000.f, 0.90f);  /* content */
     rig(e, rLo, ETHOS_BUREAUCRATE, 1000.f, 0.20f);  /* mécontent */
     econ_tick(e, 1.f);
-    float taxHi=e->region[rHi].treasury, taxLo=e->region[rLo].treasury;
+    float taxHi=(float)econ_country_gold(e,rig_cid(rHi)), taxLo=(float)econ_country_gold(e,rig_cid(rLo));
     printf("   même éthos, même richesse : satisfait %.0f · mécontent %.0f\n", taxHi, taxLo);
     ok("surtaxer un peuple mécontent rapporte MOINS (évasion) — contenter d'abord", taxHi > taxLo + 1.f);
 
@@ -168,7 +176,7 @@ int main(int argc, char **argv){
         if (rS<0){ ok("(aucune région possédée pour le test B8 — sauté)", true); }
         else {
             rig(e, rS, ETHOS_BUREAUCRATE, 1000.f, 0.60f);
-            cidS=e->prov[pidS].owner;   /* rig() ne touche pas owner : ré-affirmé après (mute_siblings/rig n'y touchent pas) */
+            cidS=e->prov[pidS].owner;   /* rig() re-clé la province sur SON empire synthétique (trésor national) */
             /* le curseur JOUEUR : round-trip jusqu'à 2.0, borné à 0.1 en bas (B8, pas 0.02). */
             econ_country_tax_set(e, cidS, CLASS_ELITE, 1.8f);
             ok("B8 : le curseur JOUEUR accepte une surtaxe jusqu'à ×2 (1.8 round-trip)",

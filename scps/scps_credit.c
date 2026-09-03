@@ -176,13 +176,18 @@ static Ethos country_ethos(const WorldEconomy *e, const World *w, int c){
     int hr=home_reg(w,c);
     return (hr>=0&&hr<e->n_regions)? e->region[hr].culture.ethos : ETHOS_COUNT;
 }
-/* or NET d'un pays lu DIRECTEMENT sur prov[] (Σ) — contrepartie province-fraîche
- * d'econ_country_gold (qui lit region[], un DÉRIVÉ pas encore ré-agrégé juste après
- * une écriture prov[]). */
+/* 2026-09-03 — le trésor est NATIONAL : plus de « contrepartie province-fraîche » à
+ * tenir, econ_country_gold EST la vérité à l'instant même. Alias conservé pour ne pas
+ * réécrire les sites d'appel. */
 static double country_gold_prov(const WorldEconomy *e, int c){
-    double g=0.0; int n=e->n_prov; if(n>SCPS_MAX_PROV)n=SCPS_MAX_PROV;
-    for(int p=0;p<n;p++) if(e->prov[p].owner==c) g+=e->prov[p].treasury;
-    return g;
+    return econ_country_gold(e, c);
+}
+/* Provinces VIVANTES d'un pays — le multiplicateur des planchers par-province
+ * (SINK_FLOOR) devenus nationaux (Σ des planchers, cf. docs/DESIGN_TRESOR_NATIONAL.md). */
+static int country_nprov(const WorldEconomy *e, int c){
+    int k=0, n=e->n_prov; if(n>SCPS_MAX_PROV)n=SCPS_MAX_PROV;
+    for(int p=0;p<n;p++) if(e->prov[p].owner==c && e->prov[p].active && e->prov[p].colonized) k++;
+    return k;
 }
 
 static float country_surplus(const WorldEconomy *e, int c, float floor_);
@@ -273,10 +278,9 @@ bool credit_can_spend(const WorldEconomy *e, const World *w, int c, float cost){
 /* Σ surplus (>floor_) des provinces ACTIVES d'un pays — la "caisse nationale" que
  * price_level (scps_econ.c) mesure déjà ; ici on l'ATTEINT réellement (péréquation). */
 static float country_surplus(const WorldEconomy *e, int c, float floor_){
-    float s=0.f; int n=e->n_prov; if(n>SCPS_MAX_PROV)n=SCPS_MAX_PROV;
-    for(int p=0;p<n;p++) if(e->prov[p].owner==c && e->prov[p].active && e->prov[p].colonized)
-        s += fmaxf(0.f, e->prov[p].treasury - floor_);
-    return s;
+    /* Le trésor est NATIONAL : la caisse = ce qui dépasse la réserve d'exploitation de
+     * l'empire (Σ des planchers par-province — un État large en garde une plus large). */
+    return fmaxf(0.f, (float)econ_country_gold(e,c) - floor_*(float)country_nprov(e,c));
 }
 
 /* Capacité d'un prêteur d'État. Le capital prêtable est son surplus liquide PLUS ses
@@ -328,30 +332,17 @@ float credit_state_liquid_surplus(const WorldEconomy *e, int lender){
 float credit_state_exposure_limit(const WorldEconomy *e, int debtor, int lender){
     return credit_state_exposure(debtor,lender)+state_face_room(e,debtor,lender);
 }
-/* Débite `amount` (<=country_surplus(e,c,floor_)) au PRORATA du surplus de chaque
- * province — aucune ne descend sous floor_ par construction (amount borné par l'appelant).
- * MONNAIE M11 — A2 : tient region[].treasury EN PHASE à CHAQUE débit (motif
- * econ_prov_treasury_credit) — cette fonction est le SEUL débiteur partagé de TOUTE la
- * chaîne de crédit (emprunt local/cité-état/état, intérêt, amortissement, rachat) ;
- * corriger ICI ferme d'un coup tous les sites qui l'appellent, y compris ceux qui
- * s'exécutent APRÈS econ_aggregate_regions (credit_year_tick, credit_settle_monthly,
- * les verbes joueur) — motif signalé « Reste » par TROUVAILLES M9 (« côté PRÊTEUR, hors
- * scope M9, signalé pour un futur audit crédit »). Appelée AUSSI depuis l'intérieur
- * d'econ_tick (credit_borrow_local, AVANT agrégation) : la double écriture y est un
- * no-op inoffensif (region[] est de toute façon réécrit EN ENTIER par l'agrégation qui
- * suit). */
+/* Débite `amount` du trésor NATIONAL, borné à country_surplus(e,c,floor_) — l'État ne
+ * descend jamais sous sa réserve d'exploitation. Depuis 2026-09-03 il n'y a plus de
+ * prorata à faire (UN trésor) ni de vue region[] à tenir en phase : cette fonction reste
+ * le SEUL débiteur partagé de TOUTE la chaîne de crédit (emprunt local/cité-état/état,
+ * intérêt, amortissement, rachat) — corriger ICI ferme d'un coup tous ses appelants. */
 static void debit_surplus_prorata(WorldEconomy *e, int c, float floor_, float amount){
+    /* Plus rien à répartir : UN trésor, UN débit (borné au surplus, jamais de dette ici). */
     if (amount<=CR_EPS) return;
     float tot=country_surplus(e,c,floor_); if (tot<=CR_EPS) return;
-    int n=e->n_prov; if(n>SCPS_MAX_PROV)n=SCPS_MAX_PROV;
-    for(int p=0;p<n;p++){
-        if (e->prov[p].owner!=c || !e->prov[p].active || !e->prov[p].colonized) continue;
-        float s=fmaxf(0.f, e->prov[p].treasury - floor_); if (s<=0.f) continue;
-        float share=amount*(s/tot);
-        e->prov[p].treasury -= share;
-        int r=e->prov[p].region;
-        if (r>=0 && r<e->n_regions) e->region[r].treasury -= share;
-    }
+    if (amount>tot) amount=tot;
+    econ_nation_gold_force(e, c, -amount);
 }
 /* Σ richesse LENDABLE (élites+bourgeois, pondérées) d'un pays — les laborers n'ont pas
  * d'épargne (brief), poids registre J. */
@@ -498,17 +489,8 @@ float credit_borrow_class(WorldEconomy *e, int c, SocialClass cls, float need){
      * son ordre réel, jamais l'agrégat. */
     if (cls==CLASS_ELITE) g_debt[c].to_elite     += debt_origination(c, borrow);
     else                  g_debt[c].to_bourgeois += debt_origination(c, borrow);   /* MONNAIE M11 — A3 v2 : forfait figé */
-    /* LE DÉPÔT : econ_region_treasury_add (PAS une écriture prov[].treasury directe) — c'est
-     * le SEUL chemin qui tient region[].treasury EN PHASE avec prov[] (econ_country_gold,
-     * credit_can_spend, credit_line, audit_eco lisent TOUS region[] ; region[].treasury n'est
-     * JAMAIS ré-agrégé depuis prov[] ailleurs dans le moteur — un écrit prov[]-seul serait
-     * invisible du trésor national jusqu'à la fin des temps). ProvinceEconomy.region est le
-     * MIROIR province-grain de World.province[].region (aucun World* requis, motif ci-dessus). */
-    int cap_pid = econ_country_capital_prov(e, c);
-    if (cap_pid>=0 && cap_pid<e->n_prov){
-        int reg = e->prov[cap_pid].region;
-        if (reg>=0 && reg<e->n_regions) econ_region_treasury_add(e, reg, borrow);
-    }
+    /* LE DÉPÔT : au trésor NATIONAL, sans détour par une capitale (2026-09-03). */
+    econ_nation_gold_force(e, c, borrow);
     return borrow;
 }
 
@@ -558,22 +540,21 @@ bool credit_spend(WorldEconomy *e, const World *w, int c, float cost){
     /* Journal minimal de transaction. Le préflight et l'exécution utilisent les mêmes
      * formules, donc le rollback ne doit jamais servir en régime normal ; il garantit
      * néanmoins le contrat tout-ou-rien si une future source de financement diverge. */
-    float p_treas[SCPS_MAX_PROV], p_elite[SCPS_MAX_PROV], p_bourg[SCPS_MAX_PROV];
-    float r_treas[SCPS_MAX_REG], r_elite[SCPS_MAX_REG], r_bourg[SCPS_MAX_REG];
+    float p_elite[SCPS_MAX_PROV], p_bourg[SCPS_MAX_PROV];
+    float r_elite[SCPS_MAX_REG], r_bourg[SCPS_MAX_REG];
+    float nat_treas_before = e->nat_treasury[c];   /* UN trésor : le journal tient en un float */
     int np=e->n_prov; if (np>SCPS_MAX_PROV) np=SCPS_MAX_PROV;
     int nr=e->n_regions; if (nr>SCPS_MAX_REG) nr=SCPS_MAX_REG;
     for (int p=0;p<np;p++){
-        p_treas[p]=e->prov[p].treasury;
         p_elite[p]=e->prov[p].strata[CLASS_ELITE].wealth;
         p_bourg[p]=e->prov[p].strata[CLASS_BOURGEOIS].wealth;
     }
     for (int r=0;r<nr;r++){
-        r_treas[r]=e->region[r].treasury;
         r_elite[r]=e->region[r].strata[CLASS_ELITE].wealth;
         r_bourg[r]=e->region[r].strata[CLASS_BOURGEOIS].wealth;
     }
     CountryDebt debt_before=g_debt[c];
-    econ_prov_treasury_credit(e, pid, -cost);
+    econ_nation_gold_force(e, c, -cost);
     float short_=(float)(-country_gold_prov(e,c));   /* découvert NET du pays, s'il y en a un */
     if (short_>CR_EPS){
         /* Déficit NATIONAL : uniquement des financements EXTERNES au trésor national.
@@ -584,18 +565,17 @@ bool credit_spend(WorldEconomy *e, const World *w, int c, float cost){
         /* le trésor RÉEL couvert doit revenir dans la province représentative (c'est
          * elle qui a essuyé le débit ci-dessus) — les autres provinces/classes/prêteurs
          * ont, eux, été DÉBITÉS par la chaîne (péréquation/classes/cité-état). */
-        econ_prov_treasury_credit(e, pid, covered);
+        econ_nation_gold_force(e, c, covered);
         /* credit_can_spend a simulé exactement ces deux étages ; aucun état financier
          * n'a changé entre les deux appels. Cette garde détecte une régression plutôt que
          * de transformer à nouveau l'action en paiement partiel. */
         if (covered+CR_EPS < short_){
+            e->nat_treasury[c]=nat_treas_before;
             for (int p=0;p<np;p++){
-                e->prov[p].treasury=p_treas[p];
                 e->prov[p].strata[CLASS_ELITE].wealth=p_elite[p];
                 e->prov[p].strata[CLASS_BOURGEOIS].wealth=p_bourg[p];
             }
             for (int r=0;r<nr;r++){
-                e->region[r].treasury=r_treas[r];
                 e->region[r].strata[CLASS_ELITE].wealth=r_elite[r];
                 e->region[r].strata[CLASS_BOURGEOIS].wealth=r_bourg[r];
             }
@@ -632,18 +612,10 @@ float credit_borrow_state(WorldEconomy *e, const World *w, int debtor_c, int len
     float borrow=(amount>CR_EPS)?fminf(amount,avail):avail;
     if (borrow<=CR_EPS) return 0.f;
     debit_surplus_prorata(e,lender_c,tune_f("SINK_FLOOR",500.f),borrow);
-    /* LE DÉPÔT chez le DÉBITEUR (motif credit_borrow_class, V1) : la CAPITALE-province
-     * (econ_country_capital_prov, province-grain pur) + econ_region_treasury_add — JAMAIS
-     * econ_region_rep_province dans un chemin joueur (doctrine province, CLAUDE.md) et
-     * JAMAIS une écriture prov[].treasury nue (region[].treasury n'est ré-agrégé nulle part
-     * ailleurs — invisible d'econ_country_gold/credit_can_spend sinon). `w` ne sert plus
-     * qu'au garde-fou NULL ci-dessus (home_reg/econ_region_rep_province abandonnés, plus
-     * besoin de World* pour résoudre la capitale — motif credit_borrow_class). */
-    int cap_pid = econ_country_capital_prov(e, debtor_c);
-    if (cap_pid>=0 && cap_pid<e->n_prov){
-        int reg = e->prov[cap_pid].region;
-        if (reg>=0 && reg<e->n_regions) econ_region_treasury_add(e, reg, borrow);
-    }
+    /* LE DÉPÔT chez le DÉBITEUR : son trésor NATIONAL (2026-09-03) — plus de capitale à
+     * résoudre, plus de vue régionale à tenir en phase. `w` ne sert plus qu'au garde-fou
+     * NULL ci-dessus. */
+    econ_nation_gold_force(e, debtor_c, borrow);
     g_debt[debtor_c].to_cs += debt_origination(debtor_c, borrow);   /* MONNAIE M11 — A3 v2 : forfait figé */
     g_debt[debtor_c].cs_id = (int16_t)lender_c;
     return borrow;
@@ -752,18 +724,15 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
                 float rate_b=econ_income_tax_rate_capital(e,c,CLASS_BOURGEOIS);
                 float tax_e=taxable_e*rate_e, tax_b=taxable_b*rate_b;
                 if (tax_e+tax_b>CR_EPS){
-                    int cap=econ_country_capital_prov(e,c);
-                    if (cap>=0 && cap<e->n_prov) econ_prov_treasury_credit(e, cap, tax_e+tax_b);   /* MONNAIE M11 — A2 */
+                    econ_nation_gold_force(e, c, tax_e+tax_b);   /* la retenue entre au trésor NATIONAL */
                     econ_flux_add(c, FX_TAX, tax_e+tax_b);
                     amt_e-=tax_e; amt_b-=tax_b;
                 }
                 credit_wealth_prorata(e,c,CLASS_ELITE,     amt_e);
                 credit_wealth_prorata(e,c,CLASS_BOURGEOIS, amt_b);
             }
-            if (i_cs>CR_EPS && old_cs_id>=0){
-                int hc=home_reg(w,old_cs_id);
-                if (hc>=0&&hc<e->n_regions){ int cp=econ_region_rep_province(e,hc); if (cp>=0&&cp<e->n_prov) econ_prov_treasury_credit(e, cp, i_cs); }   /* MONNAIE M11 — A2 */
-            }
+            if (i_cs>CR_EPS && old_cs_id>=0)
+                econ_nation_gold_force(e, old_cs_id, i_cs);   /* l'intérêt va au trésor du CRÉANCIER */
             /* `fixed` : le remboursement ÉTEINT une part du stock (principal+markup blended,
              * motif amortissement ci-dessous) — « rembourses 1050 » se solde en RÉDUISANT la
              * créance de ce qui a été payé. `!fixed` (legacy) : le stock NE bouge PAS ici
@@ -812,10 +781,8 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
                     credit_wealth_prorata(e,c,CLASS_ELITE,     r_e);
                     credit_wealth_prorata(e,c,CLASS_BOURGEOIS, r_b);
                 }
-                if (r_cs>CR_EPS && g_debt[c].cs_id>=0){
-                    int hc=home_reg(w,g_debt[c].cs_id);
-                    if (hc>=0&&hc<e->n_regions){ int cp=econ_region_rep_province(e,hc); if (cp>=0&&cp<e->n_prov) econ_prov_treasury_credit(e, cp, r_cs); }   /* MONNAIE M11 — A2 */
-                }
+                if (r_cs>CR_EPS && g_debt[c].cs_id>=0)
+                    econ_nation_gold_force(e, g_debt[c].cs_id, r_cs);   /* amortissement au CRÉANCIER */
                 g_debt[c].to_elite     -= r_e; if (g_debt[c].to_elite<0.f)     g_debt[c].to_elite=0.f;
                 g_debt[c].to_bourgeois -= r_b; if (g_debt[c].to_bourgeois<0.f) g_debt[c].to_bourgeois=0.f;
                 g_debt[c].to_cs        -= r_cs; if (g_debt[c].to_cs<0.f)       g_debt[c].to_cs=0.f;
@@ -864,10 +831,8 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
     for(int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
         float pend=g_garnish_cs_pending[c]; if (pend<=CR_EPS) continue;
         int L=g_garnish_cs_id[c];
-        if (L>=0 && L<w->n_countries && L!=c){
-            int hc=home_reg(w,L);
-            if (hc>=0&&hc<e->n_regions){ int cp=econ_region_rep_province(e,hc); if (cp>=0&&cp<e->n_prov) econ_prov_treasury_credit(e, cp, pend); }   /* MONNAIE M11 — A2 */
-        }
+        if (L>=0 && L<w->n_countries && L!=c)
+            econ_nation_gold_force(e, L, pend);   /* la saisie va au trésor du CRÉANCIER */
         g_garnish_cs_pending[c]=0.f;
     }
 
@@ -1031,10 +996,8 @@ float credit_repay_principal(WorldEconomy *e, const World *w, int c, float amoun
         credit_wealth_prorata(e,c,CLASS_ELITE,     r_e);
         credit_wealth_prorata(e,c,CLASS_BOURGEOIS, r_b);
     }
-    if (r_cs>CR_EPS && g_debt[c].cs_id>=0){
-        int hc=home_reg(w,g_debt[c].cs_id);
-        if (hc>=0&&hc<e->n_regions){ int cp=econ_region_rep_province(e,hc); if (cp>=0&&cp<e->n_prov) econ_prov_treasury_credit(e, cp, r_cs); }
-    }
+    if (r_cs>CR_EPS && g_debt[c].cs_id>=0)
+        econ_nation_gold_force(e, g_debt[c].cs_id, r_cs);   /* au trésor du CRÉANCIER */
     g_debt[c].to_elite     -= r_e;  if (g_debt[c].to_elite<0.f)     g_debt[c].to_elite=0.f;
     g_debt[c].to_bourgeois -= r_b;  if (g_debt[c].to_bourgeois<0.f) g_debt[c].to_bourgeois=0.f;
     g_debt[c].to_cs        -= r_cs; if (g_debt[c].to_cs<0.f)        g_debt[c].to_cs=0.f;

@@ -147,8 +147,17 @@ int main(void){
              * ⇒ l'agrégat région après tick == cette province (les lectures e->region[0].*
              * post-tick restent valides, comme econ_tax_demo.c). */
             e->n_prov=1;
+            /* Ce banc grée le WorldEconomy À LA MAIN (pas d'econ_init) : le limiteur de
+             * production est encore à son zéro-init statique, c'est-à-dire « plafonné À
+             * ZÉRO ». Sans cette RAZ, donner un owner valide à la province (nécessaire
+             * depuis que le stock est NATIONAL) mute toute sa manufacture EN SILENCE. */
+            econ_prod_cap_reset();
             ProvinceEconomy *pr=&e->prov[0];
-            pr->active=pr->colonized=true; pr->owner=-1; pr->region=0; pr->culture.settled=true;
+            /* STOCK NATIONAL (2026-09-03) : une province SANS maître ne stocke plus rien
+             * (son entrepôt tombe dans le puits « no man's land »). Cette fixture doit
+             * donc avoir un propriétaire — pays 0 — pour que le salpêtre entre et que le
+             * flux distillé soit lisible. */
+            pr->active=pr->colonized=true; pr->owner=0; pr->region=0; pr->culture.settled=true;
             pr->culture.ethos=ETHOS_MERCANTILE; pr->culture.heritage=HERITAGE_ADAPTATIF;
             pr->last_pole=1; pr->import_margin=1.f; pr->import_toll_region=-1;
             pr->strata[CLASS_LABORER].pop=2000.f; pr->strata[CLASS_BOURGEOIS].pop=300.f;
@@ -173,17 +182,18 @@ int main(void){
             /* L'ALAMBIC EN MARCHE : il distille le salpêtre → FLUX (la supply du Réplicateur).
              * Et il ne PURGE plus la charge : le mage+alambic ne fait pas chuter la charge. */
             pr->bld[0]=(Building){BLD_MAGE_WORKSHOP,1.f,0.f}; pr->n_bld=1;
-            pr->stock[RES_ARCANE_CRYSTAL]=50.f;
+            e->nat_stock[0][RES_ARCANE_CRYSTAL]=50.f;
             econ_tick(e,1.f/12.f);
             float charge_seul=e->region[0].arcane_charge;
             pr->bld[1]=(Building){BLD_ALAMBIC,1.f,0.f}; pr->n_bld=2;
-            pr->stock[RES_ARCANE_CRYSTAL]=50.f; pr->stock[RES_SALTPETER]=50.f;
-            pr->stock[RES_FLUX]=0.f;
+            e->nat_stock[0][RES_ARCANE_CRYSTAL]=50.f; e->nat_stock[0][RES_SALTPETER]=50.f;
+            e->nat_stock[0][RES_FLUX]=0.f;
             econ_tick(e,1.f/12.f);
             float charge_apres=e->region[0].arcane_charge;
+            float flux_distille=econ_country_stock_sum(e,0,RES_FLUX);
             printf("   flux distillé : %.2f · charge mage seul %.2f → mage+alambic %.2f (plus de purge)\n",
-                   e->region[0].stock[RES_FLUX], charge_seul, charge_apres);
-            ok("F3 : l'Alambic DISTILLE le flux (salpêtre → flux)", e->region[0].stock[RES_FLUX] > 0.f);
+                   flux_distille, charge_seul, charge_apres);
+            ok("F3 : l'Alambic DISTILLE le flux (salpêtre → flux)", flux_distille > 0.f);
             ok("F-arc RETRAIT : l'Alambic ne PURGE plus la charge (≥ mage seul)",
                charge_seul > 0.f && charge_apres >= charge_seul - 0.001f);
             free(e);

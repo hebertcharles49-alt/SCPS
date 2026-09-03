@@ -396,11 +396,11 @@ bool agency_build_acct(AgencyState *a, WorldEconomy *econ, const World *w, int r
          * (`region`, le chantier lui-même — même pays) pour une conservation triviale
          * équivalente (coût net = base_gold, comme un hub franc n'aurait jamais surfacturé). */
         if (!econ_region_has_keeper(econ, re->import_toll_region)){
-            econ_region_treasury_add(econ, region, toll);
+            econ_nation_gold_add(econ, re->owner, toll);
         } else {
             float st=clampf(tune_f("TOLL_STATE_SHARE",0.5f),0.f,1.f);
             float state_part=toll*st, bourg_part=toll-state_part;
-            if (state_part>0.f) econ_region_treasury_add(econ, re->import_toll_region, state_part);
+            if (state_part>0.f) econ_nation_gold_add(econ, econ->region[re->import_toll_region].owner, state_part);
             if (bourg_part>0.f) econ_region_wealth_add(econ, re->import_toll_region, CLASS_BOURGEOIS, bourg_part);   /* RE-KEY : sur la PROVINCE */
             if (re->owner>=0) econ_flux_add(re->owner, FX_TOLL_PAID, -toll);                       /* I0 */
             int tro=econ->region[re->import_toll_region].owner; if (tro>=0) econ_flux_add(tro, FX_TOLL_RECV, toll);

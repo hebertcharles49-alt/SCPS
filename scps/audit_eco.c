@@ -139,19 +139,21 @@ int main(int argc, char **argv){
      * cités-états, qui bootstrappe un empire NU dans le vrai jeu (chronicle/viewer), n'opère pas
      * ici, et l'extraction demand-driven ne sort jamais de pierre sans consommateur. On amorce
      * la capitale avec un socle de bois/pierre/argile pour PROUVER l'accession au premier édifice
-     * (le bootstrap import lui-même est couvert par intertrade_demo). Charte PROVINCE_MODEL.md :
-     * le stock VIT à la province — poker region[cap_reg].stock ici serait écrasé au tout premier
-     * econ_tick (l'agrégation le recalcule Σ provinces) avant même le 1er réapprovisionnement
-     * mensuel (jour 29). On sème donc la province-CAPITALE elle-même. */
-    if (cap_reg>=0 && cap_prov>=0 && cap_prov<SCPS_MAX_PROV){ ProvinceEconomy *cp=&econ->prov[cap_prov];
-        cp->stock[RES_WOOD]+=120.f; cp->stock[RES_STONE]+=120.f; cp->stock[RES_CLAY]+=120.f; }
+     * (le bootstrap import lui-même est couvert par intertrade_demo). STOCK NATIONAL
+     * (2026-09-03) : l'entrepôt est celui de l'EMPIRE — un seul socle à semer, et il
+     * survit à la clôture (nat_stock n'est plus une vue reconstruite). */
+    { int seed_own=(cap_reg>=0)? econ->region[cap_reg].owner : player;
+      if (seed_own>=0 && seed_own<SCPS_MAX_COUNTRY){
+        econ->nat_stock[seed_own][RES_WOOD] +=120.f;
+        econ->nat_stock[seed_own][RES_STONE]+=120.f;
+        econ->nat_stock[seed_own][RES_CLAY] +=120.f; } }
 
     /* ---- accumulateurs des bornes ---- */
     /* owner = le pays qui PAIE (le livre d'or national, debt-aware) : la capitale du joueur. */
     int    owner=(cap_reg>=0)? econ->region[cap_reg].owner : player;
     double fl_n=0, fl_mean=0, fl_m2=0;   /* borne 3 : Welford sur le DELTA d'or national/jour */
     int    paid_360_year=-1;             /* borne 4 : l'an du premier 360 j PAYÉ */
-    double gold0=econ_country_gold(econ, owner);   /* le livre d'or (Σ trésor régional du pays) */
+    double gold0=econ_country_gold(econ, owner);   /* le livre d'or (LE trésor national du pays) */
     double gold_prev=gold0;
 
     int day=0;
@@ -167,10 +169,11 @@ int main(int argc, char **argv){
                  * pays (ext) — qui varie avec le monde (l'érosion #1 a élargi des empires). La borne 4
                  * teste la LOI DES PRIX / l'accession (payer l'or à temps), PAS la disette de matériaux ;
                  * on isole donc le test du drainage en réapprovisionnant (= l'import que ferait le vrai jeu). */
-                if (paid_360_year<0 && cap_reg>=0){ RegionEconomy *cr=&econ->region[cap_reg];
-                    if (cr->stock[RES_WOOD] <300.f) cr->stock[RES_WOOD] =300.f;
-                    if (cr->stock[RES_STONE]<300.f) cr->stock[RES_STONE]=300.f;
-                    if (cr->stock[RES_CLAY] <300.f) cr->stock[RES_CLAY] =300.f; }
+                if (paid_360_year<0 && owner>=0 && owner<SCPS_MAX_COUNTRY){
+                    float *ns=econ->nat_stock[owner];   /* l'entrepôt NATIONAL de l'empire qui bâtit */
+                    if (ns[RES_WOOD] <300.f) ns[RES_WOOD] =300.f;
+                    if (ns[RES_STONE]<300.f) ns[RES_STONE]=300.f;
+                    if (ns[RES_CLAY] <300.f) ns[RES_CLAY] =300.f; }
                 if (paid_360_year<0 && cap_reg>=0
                     && agency_build_acct(ag, econ, w, cap_reg, EDI_GARNISON, owner, -1))   /* -1 : héritage région (banc) */
                     paid_360_year = yr;

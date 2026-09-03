@@ -200,7 +200,8 @@ int main(int argc, char **argv) {
         #define DIGEST(tag) do{ double dpop=0,dgld=0; long dtech=0; unsigned long downer=5381; \
             for (int r=0;r<sim.econ->n_regions;r++){ const RegionEconomy *re=&sim.econ->region[r]; \
                 for (int c2=0;c2<CLASS_COUNT;c2++) dpop+=re->strata[c2].pop; \
-                dgld+=re->treasury; downer=downer*33+(unsigned long)(re->owner+2); } \
+                downer=downer*33+(unsigned long)(re->owner+2); } \
+            for (int c2=0;c2<SCPS_MAX_COUNTRY;c2++) dgld+=econ_country_gold(sim.econ, c2); \
             for (int c2=0;c2<SCPS_MAX_COUNTRY;c2++) dtech+=sim.ts[c2].n_unlocked; \
             snprintf(tag,sizeof tag,"day=%d pop=%.1f or=%.1f tech=%ld own=%lu pays=%d frondes=%d", \
                      sim.day,dpop,dgld,dtech,downer,world->n_countries,sim.dp->n_frondes); }while(0)

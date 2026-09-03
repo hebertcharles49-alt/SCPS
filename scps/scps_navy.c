@@ -142,15 +142,16 @@ bool navy_order_build(NavyState *ns, const World *w, WorldEconomy *econ, int cid
     if (port<0) return false;                            /* un pays sans port ne bâtit rien */
     RegionEconomy *re=&econ->region[port];
     float gold=navy_build_gold(econ,port,t);
-    if (gold>re->treasury) return false;
+    if ((float)econ_country_gold(econ,cid) < gold) return false;
     if (re->strata[CLASS_LABORER].pop < (float)navy_hull_crew(t)+200.f) return false;  /* pas les bras */
     const HullCost *h=&HULLS[t];
-    /* RE-KEY : coût RÉEL (provinces) — la vue seule s'évaporait à la clôture :
-     * coques, matière et ÉQUIPAGE étaient de fait gratuits. */
-    econ_region_treasury_add(econ, port, -gold);
-    econ_region_stock_add(econ, port, RES_NAVAL_SUPPLIES, -h->supplies);
-    econ_region_stock_add(econ, port, RES_WOOD,           -h->wood);
-    if (h->copper>0.f) econ_region_stock_add(econ, port, RES_COPPER, -h->copper);
+    /* TRÉSOR/STOCK NATIONAUX (2026-09-03) : le chantier se paie sur LE trésor du pays et
+     * puise dans SON entrepôt — plus sur la seule caisse de la rade. Le port ne fournit
+     * que le marché (prix), les bras et la demande visible. */
+    econ_nation_gold_add(econ, cid, -gold);
+    econ_nation_stock_add(econ, cid, RES_NAVAL_SUPPLIES, -h->supplies);
+    econ_nation_stock_add(econ, cid, RES_WOOD,           -h->wood);
+    if (h->copper>0.f) econ_nation_stock_add(econ, cid, RES_COPPER, -h->copper);
     re->demand[RES_NAVAL_SUPPLIES]+=h->supplies;         /* le marché VOIT le chantier (flux recalculé/tick, transitoire assumé) */
     re->demand[RES_WOOD]          +=h->wood;
     n->supplies_eaten+=h->supplies;
@@ -171,13 +172,12 @@ bool navy_convert(NavyState *ns, const World *w, WorldEconomy *econ, int cid, bo
     int from = to_pirate?HULL_MERCHANT:HULL_PIRATE;
     int to   = to_pirate?HULL_PIRATE  :HULL_MERCHANT;
     if (n->hull[from]<=0) return false;
-    RegionEconomy *re=&econ->region[port];
     const HullCost *h=&HULLS[HULL_PIRATE];               /* le coût léger de la conversion */
     float gold=navy_build_gold(econ,port,HULL_PIRATE);
-    if (gold>re->treasury) return false;
-    /* RE-KEY : coût RÉEL (provinces) — la vue seule s'évaporait à la clôture. */
-    econ_region_treasury_add(econ, port, -gold);
-    econ_region_stock_add(econ, port, RES_NAVAL_SUPPLIES, -h->supplies);
+    if ((float)econ_country_gold(econ,cid) < gold) return false;
+    /* TRÉSOR/STOCK NATIONAUX (2026-09-03) : la conversion se paie au pays, pas à la rade. */
+    econ_nation_gold_add(econ, cid, -gold);
+    econ_nation_stock_add(econ, cid, RES_NAVAL_SUPPLIES, -h->supplies);
     n->supplies_eaten+=h->supplies;
     n->hull[from]--; n->hull[to]++;
     if (!to_pirate) n->nest_region=-1;                   /* désarmé : le nid se vide */
@@ -223,12 +223,12 @@ void navy_tick(NavyState *ns, const World *w, WorldEconomy *econ, struct DiploSt
                               * econ_world_ipm(econ) * (at_war?1.5f:1.f) * (dt_days/30.f);
               float navy_mult = econ_country_budget_mult(econ,c,BUDGET_NAVY);
               float gold = base_gold * navy_mult;
-              /* RE-KEY : payé pour de VRAI (provinces) — la vue seule s'évaporait. */
-              float paid = fminf(gold, fmaxf(0.f, re->treasury));
+              /* TRÉSOR NATIONAL (2026-09-03) : l'entretien se prélève sur LE trésor du pays
+               * (débit borné : le retour dit ce qui a réellement été payé). */
+              float paid = -econ_nation_gold_add(econ, c, -gold);
               if (paid < gold) n->starve_days += dt_days;
               /* Sous-payer la marine (curseur NAVY) ne la fait plus se DÉLABRER :
                * elle perd le MORAL au combat (navy_pay_morale, plus bas). */
-              if (paid > 0.f) econ_region_treasury_add(econ, n->home_port, -paid);
               econ_flux_add(c, FX_NAVY, -paid);              /* I0 : la ligne marine */
               /* MONNAIE M3b-v2 — item 5 : les ÉQUIPAGES → LABORERS, même région (rade). */
               if (paid > 0.f) econ_region_wealth_add(econ, n->home_port, CLASS_LABORER, paid); }
@@ -535,7 +535,11 @@ void navy_course_tick(NavyState *ns, const World *w, WorldEconomy *econ,
                 if (diplo_status(dp,c,re->owner)==DIPLO_ALLIED) continue;
                 if (port>=0){ float dj=navy_sea_days_regions(w,port,r);
                               if (dj<0.f || dj>COURSE_PORTEE_J) continue; }
-                float v=0.f; for (int g=1;g<RES_COUNT;g++) v+=re->stock[g]*re->price[g];
+                /* STOCK NATIONAL (2026-09-03) : l'entrepôt est celui du PAYS — le pirate
+                 * jauge la richesse de l'empire visé, la côte n'apporte que son prix
+                 * de marché (et le bonus de port ci-dessous départage les rades). */
+                float v=0.f; for (int g=1;g<RES_COUNT;g++)
+                    v+=econ_country_stock_sum(econ,re->owner,(Resource)g)*re->price[g];
                 if (re->build.port>0.f) v*=1.3f;                       /* le port : la cible juteuse */
                 if (v>bv){ bv=v; best=r; }
             }

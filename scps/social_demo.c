@@ -37,6 +37,21 @@ static int rep_prov(WorldEconomy *e, int r){
     return -1;
 }
 
+/* STOCK NATIONAL (2026-09-03) : l'entrepôt vit au grain PAYS — une province SANS maître
+ * (l'ancienne isolation `owner=-1`) ne stocke PLUS rien, et les provinces sans maître
+ * partagent toutes le même puits « no man's land ». L'isolation VRAIE se dit désormais
+ * autrement : chaque fixture est un EMPIRE d'UNE province, sur un slot pays synthétique
+ * (jamais attribué par le worldgen) — son entrepôt n'appartient qu'à elle. econ_set_human
+ * l'exempte en plus du §NF (la construction demande-menée), comme le faisait owner=-1. */
+static int rig_cid(int r){ return SCPS_MAX_COUNTRY-1-r; }
+static void isolate(WorldEconomy *e, ProvinceEconomy *re, int r){
+    int cid=rig_cid(r);
+    re->owner=(int16_t)cid;
+    econ_set_human(cid);   /* §NF ne bâtit jamais chez la main humaine : rien ne pousse dans le dos du banc */
+    for (int k=0;k<RES_COUNT;k++) e->nat_stock[cid][k]=0.f;
+    e->nat_treasury[cid]=0.f;
+}
+
 /* Société servie avec UNE boisson donnée, pour une culture de subsistance donnée.
  * Tous les AUTRES biens sociaux sont abondants → la BOISSON est la variable.
  * Rige la PROVINCE (la vérité) ; la région-r n'a qu'UNE province membre après
@@ -45,27 +60,37 @@ static float society_with_drink(WorldEconomy *e, int r, float subsistance, Resou
     int pid=rep_prov(e,r); if (pid<0) return 0.f;
     ProvinceEconomy *re=&e->prov[pid];
     re->active=true; re->colonized=true; re->culture.settled=true;
-    re->culture.subsistance=subsistance; re->owner=-1;   /* polité ISOLÉE : son propre stock, hors pool national (le banc compare UNE région) */
+    re->culture.subsistance=subsistance;
+    isolate(e, re, r);   /* polité ISOLÉE : son propre entrepôt national (le banc compare UNE région) */
     re->n_bld=0; re->coercion=0.f; re->over_tax=0.f;
-    for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; re->stock[k]=0.f; re->price[k]=1.0f; }
+    for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; re->price[k]=1.0f; }
     /* MONNAIE M10 — P1 : ce banc rend TOUS les autres biens sociaux du Laborer (FISH/WOOD/
      * TUNIQUE) triviallement abondants (1e5) POUR isoler le signal boisson — mais depuis P1,
      * les Kc=active_needs-1 biens les PLUS DISPONIBLES remplissent les paliers (n'importe quel
      * bien compte) : à pop=1250 (tier 1, Kc=1), les 3 autres biens abondants (score≈1.0)
      * évincent systématiquement la boisson hors-culture (score≈0.5, DRINK_OFFCULT) de l'UNIQUE
-     * slot — le signal testé disparaît, pas un bug moteur. Pop relevée à 4000 (T4, motif déjà
-     * appliqué par elite_sat_with_luxe ci-dessous) : Kc=4 = n_cand Laborer (EAU_DE_VIE/FISH/
-     * WOOD/TUNIQUE) ⇒ AUCUNE compétition de slot, la boisson compte TOUJOURS, le signal
-     * hors-culture redevient visible. */
-    re->strata[CLASS_LABORER].pop=4000.f; re->strata[CLASS_LABORER].wealth=1e6f;
+     * slot — le signal testé disparaît, pas un bug moteur. Il faut donc Kc ≥ 4 = n_cand
+     * Laborer (EAU_DE_VIE/FISH/WOOD/TUNIQUE) ⇒ AUCUNE compétition de slot, la boisson
+     * compte TOUJOURS, le signal hors-culture redevient visible.
+     * ⚠ 2026-09-03 — CE QUI OUVRE LES PALIERS A CHANGÉ DE GRAIN. Ce rig s'isolait par
+     * `owner = -1`, ce qui faisait retomber econ_needs_active_for_country sur le chemin
+     * LEGACY (capitale_max_tier, pop LOCALE : 4000 ⇒ T4 ⇒ Kc=4). Le stock étant désormais
+     * NATIONAL, le rig DOIT avoir un pays — et le palier se lit alors sur l'échelle M10-P1,
+     * pilotée par la pop de L'EMPIRE : Kc = 1 + paliers franchis, seuils
+     * NEEDS_TIER_POP × NEEDS_TIER_GROWTH^k = 3000 / 6000 / 12000… À 4000 hab, Kc valait 2 :
+     * les biens abondants évinçaient la boisson et les quatre mesures saturaient à 1.00.
+     * On donne donc au rig la pop qu'exige L'ÉCHELLE RÉELLE pour Kc=4 (≥ 12000), au lieu de
+     * celle qu'exigeait l'ancien barreau local. Même intention, même invariant testé. */
+    re->strata[CLASS_LABORER].pop=13000.f; re->strata[CLASS_LABORER].wealth=1e6f;
     re->strata[CLASS_BOURGEOIS].pop=200.f;re->strata[CLASS_BOURGEOIS].wealth=1e6f;
     re->strata[CLASS_ELITE].pop=50.f;     re->strata[CLASS_ELITE].wealth=1e6f;
     /* vivres + tous les biens sociaux NON-boisson, abondants */
-    re->stock[RES_GRAIN]=1e5f; re->stock[RES_FISH]=1e5f; re->stock[RES_WOOD]=1e5f;
-    re->stock[RES_CLOTH]=1e5f; re->stock[RES_PAPER]=1e5f; re->stock[RES_SALT]=1e5f;
-    re->stock[RES_FUR]=1e5f;   re->stock[RES_PRECIOUS_WARE]=1e5f; re->stock[RES_PRECIOUS_CLOTH]=1e5f;
-    /* la SEULE boisson disponible = celle testée */
-    re->stock[drink]=1e5f;
+    { float *ns=e->nat_stock[rig_cid(r)];
+      ns[RES_GRAIN]=1e5f; ns[RES_FISH]=1e5f; ns[RES_WOOD]=1e5f;
+      ns[RES_CLOTH]=1e5f; ns[RES_PAPER]=1e5f; ns[RES_SALT]=1e5f;
+      ns[RES_FUR]=1e5f;   ns[RES_PRECIOUS_WARE]=1e5f; ns[RES_PRECIOUS_CLOTH]=1e5f;
+      /* la SEULE boisson disponible = celle testée */
+      ns[drink]=1e5f; }
     econ_tick(e, 1.f);
     return e->region[r].society_sat;
 }
@@ -77,18 +102,24 @@ static float elite_sat_with_luxe(WorldEconomy *e, int r, float subsistance, Reso
     int pid=rep_prov(e,r); if (pid<0) return 0.f;
     ProvinceEconomy *re=&e->prov[pid];
     re->active=true; re->colonized=true; re->culture.settled=true;
-    re->culture.subsistance=subsistance; re->owner=-1;   /* polité ISOLÉE : son propre stock, hors pool national (le banc compare UNE région) */
+    re->culture.subsistance=subsistance;
+    isolate(e, re, r);   /* polité ISOLÉE : son propre entrepôt national (le banc compare UNE région) */
     re->n_bld=0; re->coercion=0.f; re->over_tax=0.f;
-    for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; re->stock[k]=0.f; re->price[k]=1.0f; }
-    /* §besoins progressifs : le palier STATUT (rang 4) ne se débloque qu'au tier 4
-     * de capitale (pop ≥ 4000) — la région du banc doit être une VRAIE ville. */
-    re->strata[CLASS_LABORER].pop=3500.f; re->strata[CLASS_LABORER].wealth=1e6f;
+    for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; re->price[k]=1.0f; }
+    /* §besoins progressifs : le palier STATUT (rang 4) demande plusieurs paliers ouverts.
+     * ⚠ 2026-09-03 : même bascule de grain que society_with_drink ci-dessus — le rig ne
+     * peut plus s'isoler par `owner = -1` (le stock est NATIONAL), donc le palier se lit sur
+     * l'échelle M10-P1 pilotée par la pop d'EMPIRE (3000 × 2^k), et non plus sur le tier de
+     * capitale LOCAL. Il faut ~25000 hab pour ouvrir le rang STATUT ; c'est le prix d'une
+     * VRAIE métropole, ce que ce rig prétendait déjà être. */
+    re->strata[CLASS_LABORER].pop=25000.f; re->strata[CLASS_LABORER].wealth=1e6f;
     re->strata[CLASS_BOURGEOIS].pop=400.f;re->strata[CLASS_BOURGEOIS].wealth=1e6f;
     re->strata[CLASS_ELITE].pop=200.f;    re->strata[CLASS_ELITE].wealth=1e6f;
-    re->stock[RES_GRAIN]=1e5f; re->stock[RES_FISH]=1e5f; re->stock[RES_WOOD]=1e5f;
-    re->stock[RES_CLOTH]=1e5f; re->stock[RES_PAPER]=1e5f; re->stock[RES_SALT]=1e5f; re->stock[RES_FUR]=1e5f;
-    re->stock[RES_EAU_DE_VIE]=1e5f; re->stock[RES_BEER]=1e5f;     /* boisson satisfaite quoi qu'il arrive */
-    re->stock[luxe]=1e5f;                                   /* SEUL ce luxe est disponible */
+    { float *ns=e->nat_stock[rig_cid(r)];
+      ns[RES_GRAIN]=1e5f; ns[RES_FISH]=1e5f; ns[RES_WOOD]=1e5f;
+      ns[RES_CLOTH]=1e5f; ns[RES_PAPER]=1e5f; ns[RES_SALT]=1e5f; ns[RES_FUR]=1e5f;
+      ns[RES_EAU_DE_VIE]=1e5f; ns[RES_BEER]=1e5f;   /* boisson satisfaite quoi qu'il arrive */
+      ns[luxe]=1e5f; }                              /* SEUL ce luxe est disponible */
     econ_tick(e, 1.f);
     return e->region[r].strata[CLASS_ELITE].satisfaction;
 }
@@ -98,17 +129,19 @@ static float elite_sat_with_luxe(WorldEconomy *e, int r, float subsistance, Reso
 static float tech_with_savoir(WorldEconomy *e, int r, float savoir){
     int pid=rep_prov(e,r); if (pid<0) return 0.f;
     ProvinceEconomy *re=&e->prov[pid];
-    re->active=true; re->colonized=true; re->culture.settled=true; re->owner=0;
+    re->active=true; re->colonized=true; re->culture.settled=true;
+    isolate(e, re, r);   /* même isolation que les deux fixtures ci-dessus (entrepôt en propre) */
     re->culture.subsistance=8.f; re->coercion=0.f; re->over_tax=0.f;
     re->n_bld=0;
-    for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; re->stock[k]=0.f; re->price[k]=1.0f; }
+    for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; re->price[k]=1.0f; }
     re->strata[CLASS_LABORER].pop=500.f; re->strata[CLASS_LABORER].wealth=1e6f;
     re->strata[CLASS_BOURGEOIS].pop=100.f;re->strata[CLASS_BOURGEOIS].wealth=1e6f;
     re->strata[CLASS_ELITE].pop=100.f;    re->strata[CLASS_ELITE].wealth=1e5f;  /* les élites font le savoir */
-    re->stock[RES_GRAIN]=1e5f; re->stock[RES_FISH]=1e5f; re->stock[RES_WOOD]=1e5f;
-    re->stock[RES_CLOTH]=1e5f; re->stock[RES_PAPER]=1e5f; re->stock[RES_SALT]=1e5f;
-    re->stock[RES_FUR]=1e5f; re->stock[RES_PRECIOUS_WARE]=1e5f; re->stock[RES_PRECIOUS_CLOTH]=1e5f;
-    re->stock[RES_EAU_DE_VIE]=1e5f;
+    { float *ns=e->nat_stock[rig_cid(r)];
+      ns[RES_GRAIN]=1e5f; ns[RES_FISH]=1e5f; ns[RES_WOOD]=1e5f;
+      ns[RES_CLOTH]=1e5f; ns[RES_PAPER]=1e5f; ns[RES_SALT]=1e5f;
+      ns[RES_FUR]=1e5f; ns[RES_PRECIOUS_WARE]=1e5f; ns[RES_PRECIOUS_CLOTH]=1e5f;
+      ns[RES_EAU_DE_VIE]=1e5f; }
     memset(&re->build,0,sizeof re->build); re->build.savoir=savoir;
     re->tech=0.f;
     econ_tick(e, 1.f);
@@ -143,18 +176,19 @@ int main(int argc, char **argv){
         int pid=rep_prov(e,0);
         if (pid<0){ fprintf(stderr,"région 0 sans province active\n"); return 1; }
         ProvinceEconomy *re=&e->prov[pid];
-        /* polité ISOLÉE (owner=-1) : son propre stock, HORS pool national — sinon la bière
-         * brassée ici se dilue au prorata pop sur les régions-sœurs NUES (worldgen ne pose
-         * plus de brasserie : « carte nue », cités-états exceptées). Le banc compare UNE région. */
-        re->active=true; re->colonized=true; re->culture.settled=true; re->owner=-1;
-        for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; re->stock[k]=0.f; re->price[k]=1.0f; }
+        /* polité ISOLÉE : un EMPIRE d'UNE province — son propre entrepôt national, sinon la
+         * bière brassée ici se dilue sur les régions-sœurs NUES d'un vrai pays (worldgen ne
+         * pose plus de brasserie : « carte nue », cités-états exceptées). Le banc compare UNE région. */
+        re->active=true; re->colonized=true; re->culture.settled=true;
+        isolate(e, re, 0);
+        for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; re->price[k]=1.0f; }
         re->raw_cap[RES_GRAIN]=30.f;   /* grain ABONDANT : on ne brasse que le SURPLUS */
         re->n_bld=0;
         re->bld[re->n_bld].type=BLD_BREWERY; re->bld[re->n_bld].level=16.f; re->n_bld++;   /* M5 R3 : 3→8 quand la conso élastique est née ; 8→16 au déplafonnement du train de vie (CONSUME_ELASTIC_MAX 1.2→3.0, dépouillement 2026-08-11) — les riches boivent ×3, il faut brasser plus pour que du stock survive à l'assertion */
         re->strata[CLASS_LABORER].pop=400.f; re->strata[CLASS_LABORER].wealth=400.f;
         re->strata[CLASS_BOURGEOIS].pop=80.f; re->strata[CLASS_ELITE].pop=40.f;
         for (int t=0;t<6;t++) econ_tick(e,1.f);
-        float beer=e->region[0].stock[RES_BEER];
+        float beer=econ_country_stock_sum(e, rig_cid(0), RES_BEER);
         printf("   après 6 mois de brassage : bière en stock = %.1f\n", beer);
         ok("la Brasserie produit de la BIÈRE (grain → bière)", beer > 0.5f);
     }
@@ -165,11 +199,12 @@ int main(int argc, char **argv){
         int pid=rep_prov(e,3);
         if (pid<0){ fprintf(stderr,"région 3 sans province active\n"); return 1; }
         ProvinceEconomy *re=&e->prov[pid];
-        /* ISOLÉE (owner=-1), comme la brasserie : son stock PROPRE, hors pool national — sinon la
-         * poudre/les remèdes se diluent au prorata pop sur les régions-sœurs du pays (P1), d'autant
-         * plus que le monde est vaste. Le banc compare UNE région isolée → robuste à la taille du monde. */
-        re->active=true; re->colonized=true; re->culture.settled=true; re->owner=-1;
-        for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; re->stock[k]=0.f; re->price[k]=1.0f; }
+        /* ISOLÉE comme la brasserie : un EMPIRE d'UNE province, son entrepôt PROPRE — sinon la
+         * poudre/les remèdes se diluent avec les régions-sœurs d'un vrai pays, d'autant plus que
+         * le monde est vaste. Le banc compare UNE région isolée → robuste à la taille du monde. */
+        re->active=true; re->colonized=true; re->culture.settled=true;
+        isolate(e, re, 3);
+        for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; re->price[k]=1.0f; }
         re->raw_cap[RES_IRON]=4.f; re->raw_cap[RES_SALTPETER]=4.f; re->raw_cap[RES_COAL]=4.f;
         re->raw_cap[RES_MED_HERBS]=4.f;
         re->n_bld=0;
@@ -179,12 +214,13 @@ int main(int argc, char **argv){
         re->strata[CLASS_LABORER].pop=600.f; re->strata[CLASS_LABORER].wealth=400.f;
         re->strata[CLASS_BOURGEOIS].pop=100.f; re->strata[CLASS_ELITE].pop=50.f;
         for (int t=0;t<6;t++) econ_tick(e,1.f);
-        RegionEconomy *rg=&e->region[3];
-        printf("   après 6 mois : armes=%.1f · poudre=%.1f · remèdes=%.1f\n",
-               rg->stock[RES_ARMS], rg->stock[RES_GUNPOWDER], rg->stock[RES_REMEDE]);
-        ok("l'Armurerie produit des ARMES (fer → armes)",            rg->stock[RES_ARMS]>0.5f);
-        ok("la Poudrière produit de la POUDRE (salpêtre+charbon)",   rg->stock[RES_GUNPOWDER]>0.5f);
-        ok("l'Apothicaire produit des REMÈDES (simples → remèdes)",  rg->stock[RES_REMEDE]>0.5f);
+        float n_arms=econ_country_stock_sum(e, rig_cid(3), RES_ARMS);
+        float n_powd=econ_country_stock_sum(e, rig_cid(3), RES_GUNPOWDER);
+        float n_reme=econ_country_stock_sum(e, rig_cid(3), RES_REMEDE);
+        printf("   après 6 mois : armes=%.1f · poudre=%.1f · remèdes=%.1f\n", n_arms, n_powd, n_reme);
+        ok("l'Armurerie produit des ARMES (fer → armes)",            n_arms>0.5f);
+        ok("la Poudrière produit de la POUDRE (salpêtre+charbon)",   n_powd>0.5f);
+        ok("l'Apothicaire produit des REMÈDES (simples → remèdes)",  n_reme>0.5f);
     }
 
     /* ═══ 2. VARIANTE CULTURELLE — la bonne boisson contente ════════════ */

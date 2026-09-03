@@ -103,9 +103,11 @@ static void push_region_fiche(Sim *s, int r, PopCulture fiche, int owner,
         ProvinceEconomy *pe=&s->econ->prov[pid];
         pe->culture=fiche; pe->owner=(int16_t)owner; pe->colonized=true;
         if (reset_extras){
+            /* TRÉSOR/STOCK NATIONAUX (2026-09-03) : ils ne vivent plus à la province — la
+             * remise à zéro de la CAISSE se dit au grain pays (econ_nation_reset), et seuls
+             * les appelants qui plantent un pays NEUF (barbares, croupion R) la demandent :
+             * la vider ici viderait aussi l'empire établi qu'on ne fait que re-teinter. */
             memset(&pe->build,0,sizeof pe->build);
-            pe->treasury=0.f;
-            memset(pe->stock,0,sizeof pe->stock);
             pe->strata[CLASS_LABORER].pop=laborer_pop;
             pe->strata[CLASS_ELITE].pop=elite_pop;
             pe->strata[CLASS_BOURGEOIS].pop=0.f;
@@ -251,8 +253,9 @@ int main(int argc, char **argv){
              * du frein, plus bas, où on lui fait avaler de l'inassimilable).
              * RE-KEY PROVINCE : posé PAR PROVINCE (push_region_fiche), sinon ce
              * pseudo-pays s'évapore (owner=-1) au tout premier world_step. */
+            econ_nation_reset(s.econ, barb);   /* pays NEUF : il naît À SEC (trésor 0, entrepôt 0) */
             push_region_fiche(&s, r, make_fiche(4.f, ETHOS_PACIFISTE, ECON_RENTE_AGRAIRE, CREDO_PLURALISTE),
-                               barb, 30.f, 2.f, true);   /* reset_extras : sans défense/trésor résiduel */
+                               barb, 30.f, 2.f, true);   /* reset_extras : sans défense résiduelle */
             nbarb++;
         }
     }
@@ -267,24 +270,33 @@ int main(int argc, char **argv){
      * bâtir du K), et une garnison de base (de quoi PROJETER — sinon le Dominateur,
      * sans armée, bâtit faute de pouvoir conquérir). Les proies plantées plus haut
      * restent, elles, sans défense — seul le Dominateur a une cible facile. */
-    /* RE-KEY PROVINCE : posé PAR PROVINCE (comme set_capital_fiche/push_region_fiche) —
-     * un simple re->treasury=… sur l'agrégat tiendrait jusqu'au 1er world_step puis
-     * s'évaporerait, et l'IA (gate de matière agency_build_acct) lit de toute façon
-     * intertrade_market_avail() → prov[].stock, jamais l'agrégat région directement. */
+    /* TRÉSOR ET STOCK NATIONAUX (2026-09-03) : la caisse et l'entrepôt sont ceux de
+     * l'EMPIRE — un seul dépôt par pays, et il ne peut plus s'évaporer à l'agrégation.
+     * On garde la MÊME dotation TOTALE qu'avant (elle était posée par province de la
+     * région-capitale) pour que les trois archétypes partent exactement du même substrat.
+     * Le BÂTI (garnison, vivres) et la pop restent, eux, province par province. */
     for (int i=0;i<3;i++){
         int cc=(i==0)?cidD:(i==1)?cidM:cidB;
         int cr=cap_region(s.w,cc);
         if (cr<0) continue;
         const Region *rg=&s.w->region[cr];
+        int ncap=0;
+        for (int k=0;k<rg->n_provinces;k++){
+            int pid=rg->province_ids[k];
+            if (pid>=0 && pid<s.econ->n_prov && pid<SCPS_MAX_PROV) ncap++;
+        }
+        if (cc>=0 && cc<SCPS_MAX_COUNTRY && ncap>0){
+            float n=(float)ncap; float *ns=s.econ->nat_stock[cc];
+            s.econ->nat_treasury[cc] = 30000.f*n;
+            ns[RES_WOOD]=900.f*n; ns[RES_IRON]=900.f*n;
+            ns[RES_TOOLS]=600.f*n; ns[RES_GRAIN]=900.f*n;
+            ns[RES_CLAY]=900.f*n; ns[RES_STONE]=900.f*n;          /* gate de matière : toute la */
+            ns[RES_SALT]=900.f*n; ns[RES_PRECIOUS_METAL]=900.f*n; /* recette d'édifice sourçable */
+        }
         for (int k=0;k<rg->n_provinces;k++){
             int pid=rg->province_ids[k];
             if (pid<0 || pid>=s.econ->n_prov || pid>=SCPS_MAX_PROV) continue;
             ProvinceEconomy *pe=&s.econ->prov[pid];
-            pe->treasury = 30000.f;
-            pe->stock[RES_WOOD]=900.f; pe->stock[RES_IRON]=900.f;
-            pe->stock[RES_TOOLS]=600.f; pe->stock[RES_GRAIN]=900.f;
-            pe->stock[RES_CLAY]=900.f; pe->stock[RES_STONE]=900.f;          /* gate de matière : toute la */
-            pe->stock[RES_SALT]=900.f; pe->stock[RES_PRECIOUS_METAL]=900.f; /* recette d'édifice sourçable */
             pe->build.H_coerc = fmaxf(pe->build.H_coerc, 2.0f);   /* garnison → projeter la force */
             pe->build.food_cap = fmaxf(pe->build.food_cap, 3.f);   /* vivre sans grenier d'urgence — substrat indépendant du monde */
             if (pe->strata[CLASS_LABORER].pop<300.f) pe->strata[CLASS_LABORER].pop=500.f;
@@ -499,11 +511,14 @@ int main(int argc, char **argv){
     {
         /* On soigne le Dominateur (K haut, bien armé) : le frein ne le fige pas. */
         s.ts[cidD].K=12.f;
-        for (int r=0;r<s.econ->n_regions;r++)
-            if (s.econ->region[r].owner==cidD){
-                s.econ->region[r].build.K_inst=6.f; s.econ->region[r].build.H_coerc=4.f;
-                s.econ->region[r].stock[RES_ARMS]=80.f;
-            }
+        { int nrD=0;
+          for (int r=0;r<s.econ->n_regions;r++)
+              if (s.econ->region[r].owner==cidD){
+                  s.econ->region[r].build.K_inst=6.f; s.econ->region[r].build.H_coerc=4.f;
+                  nrD++;
+              }
+          /* ARSENAL NATIONAL : même quantité TOTALE qu'avant (80 par région possédée). */
+          s.econ->nat_stock[cidD][RES_ARMS]=80.f*(float)nrD; }
         /* Un pays vierge reçoit 2 régions adjacentes au Dominateur, désarmées. */
         int R=-1;
         for (int c=0;c<s.w->n_countries;c++)
@@ -526,9 +541,10 @@ int main(int argc, char **argv){
              * l'agrégat — le reste du bloc §5 appelle econ_aggregate_regions (après
              * diplo_loot/diplo_settle, qui écrivent à grain province) : un simple
              * re->owner=R ici s'évaporerait à la première de ces relectures. */
+            econ_nation_reset(s.econ, R);   /* croupion NEUF : ni trésor ni arsenal (le design le fait naître à sec) */
             for (int i=0;i<2;i++)
                 push_region_fiche(&s, rr[i], make_fiche(4.f,ETHOS_PACIFISTE,ECON_RENTE_AGRAIRE,CREDO_PLURALISTE),
-                                   R, 40.f, 2.f, true);   /* reset_extras : sans défense/trésor/stock résiduel */
+                                   R, 40.f, 2.f, true);   /* reset_extras : sans défense résiduelle */
             for (int r=0;r<s.econ->n_regions;r++) if (s.econ->region[r].owner==R) rcount++;
         }
         legitimacy_tick(s.wl,s.w,s.econ,s.ts);
@@ -556,19 +572,15 @@ int main(int argc, char **argv){
         rich->build.K_inst=0.f; rich->build.PE_infra=0.f; rich->prosperity=1.f;
         rich->strata[CLASS_LABORER].pop=40.f;
 
-        /* (butin) le budget de score restant VIDE les coffres du vaincu. RE-KEY PROVINCE :
-         * diplo_loot lit/écrit econ->prov[econ_region_rep_province(econ,r)].treasury (la
-         * VÉRITÉ), pas l'agrégat région — semer/lire region[].treasury directement est un
-         * no-op côté diplo_loot. On sème donc la représentative, et on rafraîchit l'agrégat
-         * après pour lire des chiffres à jour (même idiome que C6/C3 d'endgame_demo.c). */
-        { int rp0=econ_region_rep_province(s.econ, rr[0]);
-          if (rp0>=0 && rp0<s.econ->n_prov) s.econ->prov[rp0].treasury=500.f; }
-        int capD=s.w->province[s.w->country[cidD].capital_prov].region;
-        float tD0=s.econ->region[capD].treasury;
+        /* (butin) le budget de score restant VIDE les coffres du vaincu. TRÉSOR NATIONAL
+         * (2026-09-03) : diplo_loot prend l'or DU PAYS vaincu et le verse à celui du
+         * vainqueur — plus de coffre régional ni de province représentative dans l'affaire. */
+        s.econ->nat_treasury[R]=500.f;
+        double tD0=econ_country_gold(s.econ, cidD);
         float looted=diplo_loot(s.w, s.econ, cidD, R, 20.f);   /* 20 de budget restant → pillage */
         econ_aggregate_regions(s.econ);
-        ok("le BUTIN vide les coffres du vaincu vers la capitale du vainqueur (§5)",
-           looted > 1.f && s.econ->region[rr[0]].treasury < 500.f && s.econ->region[capD].treasury > tD0);
+        ok("le BUTIN vide les coffres du vaincu vers le trésor du vainqueur (§5)",
+           looted > 1.f && econ_country_gold(s.econ,R) < 500.0 && econ_country_gold(s.econ,cidD) > tD0);
 
         /* On soigne l'ordre du Dominateur (le frein ne le fige pas). */
         for (int r=0;r<s.econ->n_regions;r++) if (s.econ->region[r].owner==cidD){
@@ -583,7 +595,8 @@ int main(int argc, char **argv){
          * annexé) : le prix log-compressé (P-bis) d'une province défendue dépasse encore le
          * budget marginal → 0 transfert au règlement. Réglé en direct (déterministe). */
         for (int i=0;i<2;i++){ RegionEconomy *re=&s.econ->region[rr[i]];
-            re->stock[RES_ARMS]=800.f; re->build.H_coerc=24.f; re->strata[CLASS_LABORER].pop=4000.f; }
+            re->build.H_coerc=24.f; re->strata[CLASS_LABORER].pop=4000.f; }
+        s.econ->nat_stock[R][RES_ARMS]=1600.f;   /* arsenal NATIONAL : le même total (800 × 2 régions) */
         prosperity_tick(s.wp,s.w,s.econ,s.net,s.ts,s.wl);
         diplo_init(s.dp); diplo_declare_war_cb(s.dp, cidD, R, CB_TERRITORIAL);
         diplo_occupy(s.dp, s.econ, cidD, rr[0]); diplo_occupy(s.dp, s.econ, cidD, rr[1]);
@@ -600,7 +613,8 @@ int main(int argc, char **argv){
          * province nue) → au règlement le vainqueur ANNEXE TOUT l'occupé → R à 0 région →
          * MORT (polity_death). Réglé en direct (déterministe). */
         for (int i=0;i<2;i++){ RegionEconomy *re=&s.econ->region[rr[i]];
-            re->stock[RES_ARMS]=0.f; re->build.H_coerc=0.f; re->strata[CLASS_LABORER].pop=40.f; }
+            re->build.H_coerc=0.f; re->strata[CLASS_LABORER].pop=40.f; }
+        s.econ->nat_stock[R][RES_ARMS]=0.f;   /* R RENDU NU : plus une arme dans l'entrepôt national */
         prosperity_tick(s.wp,s.w,s.econ,s.net,s.ts,s.wl);
         diplo_init(s.dp); diplo_declare_war_cb(s.dp, cidD, R, CB_TERRITORIAL);
         diplo_occupy(s.dp, s.econ, cidD, rr[0]); diplo_occupy(s.dp, s.econ, cidD, rr[1]);

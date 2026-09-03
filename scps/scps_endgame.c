@@ -279,7 +279,7 @@ static void cataclysm_strip_region_econ(World *w, WorldEconomy *econ, Campaign *
             pe->pop.n_groups = 0;
             pe->owner = -1; pe->active = false; pe->colonized = false; pe->impassable = true;
             pe->coastal = false; pe->n_bld = 0; pe->cap_pop = 0.f; pe->diaspora_pop = 0.f;
-            for (int g = 0; g < RES_COUNT; g++) { pe->stock[g]=0.f; pe->supply[g]=0.f; pe->demand[g]=0.f; pe->raw_cap[g]=0.f; }
+            for (int g = 0; g < RES_COUNT; g++) { pe->supply[g]=0.f; pe->demand[g]=0.f; pe->raw_cap[g]=0.f; }
         }
     }
     if (r < w->n_regions) w->region[r].country = -1;   /* province.country reste ≥0 (save_sane) */
@@ -925,15 +925,8 @@ static const Resource MERV_RARE[3] = { RES_CELESTIAL_IRON, RES_FLUX, RES_ESSENCE
  * désormais le PRIS RÉEL — le chantier peut caler si l'empire manque de rares,
  * ce qui est le coût VOULU. */
 static float endgame_empire_consume(WorldEconomy *econ, int owner, Resource good, float amount) {
-    float got = 0.f;
-    for (int r = 0; r < econ->n_regions && got < amount; r++) {
-        if (econ->region[r].owner != owner) continue;
-        float want = amount - got;
-        if (want <= 0.f) continue;
-        float taken = -econ_region_stock_add(econ, r, good, -want);   /* self-clampe au dispo réel (provinces) */
-        got += taken;
-    }
-    return got;
+    /* LE STOCK EST NATIONAL (2026-09-03) : un seul prélèvement, borné au disponible. */
+    return econ_country_stock_take(econ, owner, (Resource)good, amount);
 }
 
 /* ── CORRECTIF (relu par le joueur) — DÉNOMINATEUR PAR-HÉRITAGE, pas la pop totale ──

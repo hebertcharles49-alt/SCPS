@@ -29,21 +29,20 @@ static void ok(const char *what, bool cond){
 }
 
 /* (ré)installe le scénario : empire 0 pauvre, cité-état 1 riche.
- * RE-KEY PROVINCE (PROVINCE_MODEL.md) : treasury/pop sont PROVINCE-OWNED — credit_spend/
- * credit_year_tick/credit_borrow* routent sur prov[] (region[] est un DÉRIVÉ Σ, écrasé par
- * econ_aggregate_regions). Ce banc À LA MAIN pose donc la vérité sur prov[] ;
- * econ_aggregate_regions() est appelée après pour que les lecteurs region[]-grain
- * (econ_country_gold, ce banc) restent à jour — même idiome que forks_demo.c/social_demo.c. */
+ * TRÉSOR NATIONAL (2026-09-03, docs/DESIGN_TRESOR_NATIONAL.md) : l'or d'État est au grain
+ * PAYS — UNE caisse par empire, ni province ni région n'en tient plus une part. La pop, elle,
+ * reste PROVINCE-OWNED (region[] en est le Σ agrégé) : econ_aggregate_regions() reste appelée
+ * pour les lecteurs pop/richesse région-grain, plus jamais pour l'or. */
 static void setup(WorldEconomy *e, float emp_tres, float cs_tres){
     e->n_prov=2;
     e->prov[0].owner=0; e->prov[0].region=0; e->prov[0].active=true; e->prov[0].colonized=true;
-    e->prov[0].treasury=emp_tres;
     e->prov[1].owner=1; e->prov[1].region=1; e->prov[1].active=true; e->prov[1].colonized=true;
-    e->prov[1].treasury=cs_tres;
+    e->nat_treasury[0]=emp_tres;   /* LE trésor de l'empire 0 */
+    e->nat_treasury[1]=cs_tres;    /* LE trésor de la cité-état 1 */
     e->prov[0].strata[CLASS_LABORER].pop=1000.f;
     e->prov[1].strata[CLASS_LABORER].pop=300.f;
     e->region_rep_prov[0]=0; e->region_rep_prov[1]=1;   /* 1 province/région : la représentative est directe */
-    econ_aggregate_regions(e);   /* region[] à jour pour econ_country_gold et les lectures du banc */
+    econ_aggregate_regions(e);   /* region[] à jour pour les lectures pop/richesse du banc */
     /* Le revenu annuel ne ferme plus le marché : il cote seulement le taux. On le sème par
      * le canal officiel pour que les assertions de ratio/taux aient une assiette connue. */
     econ_flux_add(0, FX_TAX, 3000.f);
@@ -85,34 +84,33 @@ int main(void){
      * richesse ici — puis la cité-état, seule solvable) — le trésor NET ne passe PLUS
      * négatif, un passif RÉEL est enregistré, et le PRÊTEUR voit son trésor baisser. */
     printf("\n── 2. Dépenser au-delà du trésor local ──\n");
-    double cs_gold_before = e->prov[1].treasury;
+    double cs_gold_before = econ_country_gold(e,1);
     bool spent2=credit_spend(e,w,0,400.f);
     econ_aggregate_regions(e);
     ok("la dépense est validée EN ENTIER", spent2);
     ok("le trésor net NE passe PLUS négatif (dette RÉELLE, pas imprimée)", econ_country_gold(e,0) >= -1e-3);
     ok("un créancier solvable est assigné (la cité-état)", credit_of(0)==1);
     ok("un passif RÉEL est enregistré (dette-cité-état > 0)", credit_debt_citystate(0) > 0.f);
-    ok("le PRÊTEUR a RÉELLEMENT avancé les fonds (son trésor baisse)", e->prov[1].treasury < cs_gold_before);
+    ok("le PRÊTEUR a RÉELLEMENT avancé les fonds (son trésor baisse)", econ_country_gold(e,1) < cs_gold_before);
 
     /* — 3. l'intérêt annuel creuse le débiteur (via son surplus, pas une dette
      * fabriquée), crédite le créancier — */
     printf("\n── 3. L'intérêt annuel ──\n");
     /* on redote le débiteur d'un surplus pour que l'intérêt ait de quoi se payer
      * (sinon il est auto-limité à 0 — comportement voulu, testé au §5). */
-    e->prov[0].treasury = 600.f; econ_aggregate_regions(e);
+    e->nat_treasury[0] = 600.f;
     double emp_before = econ_country_gold(e,0);
-    double cs_before  = e->prov[1].treasury;
+    double cs_before  = econ_country_gold(e,1);
     double debt_before= credit_debt_total(0);
     credit_year_tick(e, wl, w);
     econ_aggregate_regions(e);
     ok("l'intérêt CREUSE le débiteur (son surplus baisse)", econ_country_gold(e,0) < emp_before);
-    ok("l'intérêt CRÉDITE le créancier (cité-état)", e->prov[1].treasury > cs_before);
+    ok("l'intérêt CRÉDITE le créancier (cité-état)", econ_country_gold(e,1) > cs_before);
     ok("le PRINCIPAL de la dette n'a PAS grossi rien qu'à payer l'intérêt", credit_debt_total(0) <= debt_before + 1e-3);
 
     /* — 4. un surplus SUBSTANTIEL amortit le principal — */
     printf("\n── 4. Amortissement du principal ──\n");
-    e->prov[0].treasury = 20000.f;   /* trésor GRAS : au-dessus de COURT_FLOOR */
-    econ_aggregate_regions(e);
+    e->nat_treasury[0] = 20000.f;   /* trésor GRAS : au-dessus de COURT_FLOOR */
     double debt_before2 = credit_debt_total(0);
     credit_year_tick(e, wl, w);
     econ_aggregate_regions(e);
@@ -125,10 +123,10 @@ int main(void){
     ok("sans réserve chez un prêteur : aucune ligne de crédit", credit_line(w,e,0)<=1e-4f);
     ok("une dépense sans fonds physiques est REFUSÉE au préflight",
        !credit_can_spend(e,w,0,400.f));
-    float cash5=e->prov[0].treasury;
+    double cash5=econ_country_gold(e,0);
     bool spent5=credit_spend(e,w,0,400.f);
     ok("la transaction non finançable retourne false", !spent5);
-    ok("le refus est ATOMIQUE : le trésor reste inchangé", fabsf(e->prov[0].treasury-cash5)<0.001f);
+    ok("le refus est ATOMIQUE : le trésor reste inchangé", fabs(econ_country_gold(e,0)-cash5)<0.001);
     ok("aucun prêteur solvable => aucun créancier assigné", credit_of(0) < 0);
 
     /* — 6. save/load préserve la dette — */
@@ -155,32 +153,35 @@ int main(void){
     ok("le chantier NE pousse PLUS l'or du JOUEUR sous zéro", econ_country_gold(e,P) >= -1e-3);
     ok("un créancier (cité-état/mercantile) est assigné au joueur", credit_of(P) >= 0);
     ok("un passif RÉEL couvre le chantier", credit_debt_total(P) > 0.f);
-    e->prov[P].treasury += 600.f; econ_aggregate_regions(e);   /* redote le joueur (l'intérêt a de quoi se payer) */
+    e->nat_treasury[P] += 600.f;   /* redote le joueur (l'intérêt a de quoi se payer) */
     double p_before  = econ_country_gold(e,P);
-    double len_before= e->prov[credit_of(P)].treasury;
+    double len_before= econ_country_gold(e,credit_of(P));
     credit_year_tick(e, wl, w);
     econ_aggregate_regions(e);
     ok("l'intérêt CREUSE encore le joueur", econ_country_gold(e,P) < p_before);
-    ok("l'intérêt CRÉDITE le prêteur du joueur", e->prov[credit_of(P)].treasury > len_before);
+    ok("l'intérêt CRÉDITE le prêteur du joueur", econ_country_gold(e,credit_of(P)) > len_before);
 
     /* ═══════════════════════════════════════════════════════════════════════════════
      * MONNAIE M11 — LA VAGUE AUDIT-SOL : A4, les 5 contrôles qui manquaient. Chaque
      * nouveau contrôle est écrit pour ÉCHOUER sur pre-m11 et PASSER sur HEAD (prouvé
      * séparément par le rapport de mission, pas ici). */
 
-    /* — 8. A2 : cohérence immédiate prov[cap].treasury == region[].treasury SANS
-     * ré-agrégation manuelle. Les tests 1-7 ci-dessus ré-agrègent à la main après CHAQUE
-     * mutation (setup(), motif « même idiome que forks_demo.c/social_demo.c ») — ce
-     * contrôle ne le fait PAS après credit_year_tick : la vérité doit tenir SEULE. — */
-    printf("\n── 8. A2 : cohérence immédiate SANS ré-agrégation manuelle ──\n");
+    /* — 8. A2 (ré-écrit 2026-09-03) : l'ancien contrôle vérifiait que le MIROIR
+     * prov[cap].treasury == region[].treasury tenait sans ré-agrégation manuelle. Le miroir
+     * n'existe plus — il n'y a QU'UN livre d'or, celui du pays. L'intention survit telle
+     * quelle : après credit_year_tick, la vérité doit tenir SEULE, sans qu'aucun appelant
+     * n'ait à ré-agréger quoi que ce soit pour la voir. On le prouve en lisant l'or des DEUX
+     * pays par l'unique porte publique (econ_country_gold), sans une seule ré-agrégation. — */
+    printf("\n── 8. A2 : la caisse NATIONALE bouge SEULE (aucune ré-agrégation) ──\n");
     credit_init(); setup(e, 100.f, 5000.f);
     credit_spend(e,w,0,400.f); econ_aggregate_regions(e);    /* SETUP (motif test 2) : établit un créancier */
-    e->prov[0].treasury = 600.f; econ_aggregate_regions(e);  /* SETUP (motif test 3) : redote le débiteur */
-    credit_year_tick(e, wl, w);   /* AUCUNE ré-agrégation manuelle après CET appel */
-    ok("le trésor du DÉBITEUR (empire, intérêt payé) reste cohérent prov==region SANS ré-agrégation manuelle",
-       fabsf(e->prov[0].treasury - e->region[0].treasury) < 1e-2f);
-    ok("le trésor du CRÉANCIER (cité-état, intérêt reçu) reste cohérent prov==region SANS ré-agrégation manuelle",
-       fabsf(e->prov[1].treasury - e->region[1].treasury) < 1e-2f);
+    e->nat_treasury[0] = 600.f;                              /* SETUP (motif test 3) : redote le débiteur */
+    { double deb8=econ_country_gold(e,0), cre8=econ_country_gold(e,1);
+      credit_year_tick(e, wl, w);   /* AUCUNE ré-agrégation manuelle après CET appel */
+      ok("le trésor du DÉBITEUR baisse (intérêt payé) SANS ré-agrégation manuelle",
+         econ_country_gold(e,0) < deb8);
+      ok("le trésor du CRÉANCIER monte (intérêt reçu) SANS ré-agrégation manuelle",
+         econ_country_gold(e,1) > cre8); }
 
     /* — 9. A3 v2 : L'INTÉRÊT FIXE À L'ORIGINATION (décision joueur, en cours de mission —
      * remplace l'arriéré-qui-capitalise v1 : « 1000 à 5 % ⇒ tu rembourses 1050, pas +5 %/an »).
@@ -207,8 +208,8 @@ int main(void){
     ok("DEBT_FIXED=1 : la dette inscrite INCLUT le markup à l'origination (> montant RÉELLEMENT emprunté)",
        debt_fixed9 > borrowed_fixed9 + 1.f);
 
-    e->prov[0].treasury = 0.f;
-    e->prov[1].treasury = 500.f; econ_aggregate_regions(e); /* prêteur AU PLANCHER : aucun refinancement */
+    e->nat_treasury[0] = 0.f;
+    e->nat_treasury[1] = 500.f;   /* prêteur AU PLANCHER : aucun refinancement */
     float debt_before9c = credit_debt_total(0);
     for (int yr9=0; yr9<10; yr9++) credit_year_tick(e, wl, w);
     ok("DEBT_FIXED=1 : 10 ans d'échéances TOTALEMENT impayées NE FONT PAS grossir la dette (fixe veut dire fixe)",
@@ -219,7 +220,7 @@ int main(void){
     printf("\n── 10. Refinancement ouvert, puis rationnement et défaut ──\n");
     credit_init(); setup(e, 100.f, 40000.f); tune_set("DEBT_FIXED",1.f);
     credit_borrow_citystate(e,w,0,1000.f); econ_aggregate_regions(e);
-    e->prov[0].treasury=0.f; econ_aggregate_regions(e);
+    e->nat_treasury[0]=0.f;
     float debt_before_roll=credit_debt_total(0);
     credit_year_tick(e,wl,w);
     ok("une échéance sans trésor est REFINANCÉE tant que le créancier a de la marge",
@@ -231,7 +232,7 @@ int main(void){
     for (int b10=0;b10<30 && credit_state_borrow_capacity(e,0,1)>1.f;b10++)
         credit_borrow_citystate(e,w,0,1.0e9f);
     econ_aggregate_regions(e);
-    e->prov[0].treasury=0.f; econ_aggregate_regions(e);
+    e->nat_treasury[0]=0.f;
     printf("   dette=%.0f · revenu=%.0f · ratio=%.2fx · marge prêteur=%.2f\n",
            credit_debt_total(0),credit_annual_revenue(0),credit_debt_ratio(0),
            credit_state_borrow_capacity(e,0,1));
@@ -261,7 +262,7 @@ int main(void){
     credit_init(); setup(e, 100.f, 5000.f);
     tune_set("DEBT_FIXED", 1.f);
     credit_borrow_citystate(e,w,0,50.f); econ_aggregate_regions(e);   /* trivial : bien SOUS le plancher */
-    e->prov[0].treasury = 0.f; e->prov[1].treasury=500.f; econ_aggregate_regions(e);
+    e->nat_treasury[0] = 0.f; e->nat_treasury[1]=500.f;
     bool forced_trivial=false;
     for (int yr10=0; yr10<20 && !forced_trivial; yr10++){
         credit_year_tick(e, wl, w);
@@ -288,10 +289,10 @@ int main(void){
     credit_garnish_note(0, 50.f, 30.f);   /* motif econ_tick §confiscation : 30 or de part cité-état */
     ok("la part cité-état de la saisie s'accumule (en attente du règlement annuel)",
        credit_garnish_cs_pending(0) > 29.f);
-    double cs_treas_before11 = (double)e->prov[1].treasury;
+    double cs_treas_before11 = econ_country_gold(e,1);
     credit_year_tick(e, wl, w);
     ok("LA SAISIE post-faillite règle la part cité-état au créancier figé (motif M3g)",
-       (double)e->prov[1].treasury > cs_treas_before11 + 29.0);
+       econ_country_gold(e,1) > cs_treas_before11 + 29.0);
     ok("le règlement de la saisie ne laisse AUCUN reliquat (pending RAZ)", credit_garnish_cs_pending(0)==0.f);
 
     /* — 12. Banqueroute VOLONTAIRE (CMD_BANKRUPTCY, joueur) — repartie à zéro. — */
@@ -327,30 +328,32 @@ int main(void){
     e->prov[0].owner=0; e->prov[0].region=0;
     e->prov[0].active=true; e->prov[0].colonized=true; e->prov[0].is_capital=true;
     e->region_rep_prov[0]=0;
-    e->prov[0].treasury=500.f;            /* == SINK_FLOOR : la redépense I3bis (hors scope) reste nulle */
+    e->nat_treasury[0]=500.f;             /* == SINK_FLOOR : la redépense I3bis (hors scope) reste nulle */
     e->reserve_gold[0]=120.f;             /* réserve d'État (royalty en nature) : frappe ROYALE, DÉJÀ à parité pleine */
-    e->prov[0].stock[RES_GOLD]=1000.f;    /* marché privé : frappe LIBRE (A1) */
+    e->nat_stock[0][RES_GOLD]=1000.f;     /* marché privé : frappe LIBRE (A1) — l'entrepôt est NATIONAL */
     e->prov[0].price[RES_GOLD]=8.f;       /* < MINT_PARITY_GOLD (16) : arbitrage positif */
     econ_aggregate_regions(e);
     econ_flux_add(0, FX_TAX, 12000.f); econ_flux_year_capture();   /* revenu annuel plausible (motif setup()) */
 
-    double m_before13 = (double)e->prov[0].treasury;
+    double m_before13 = econ_country_gold(e,0);
     for (int k13=0;k13<CLASS_COUNT;k13++) m_before13 += (double)e->prov[0].strata[k13].wealth;
     float reserve_before13 = e->reserve_gold[0];
-    float stock_before13   = e->prov[0].stock[RES_GOLD];
+    float stock_before13   = econ_country_stock_sum(e,0,RES_GOLD);
 
     tune_set("MINT_FULL_PARITY", 1.f);
     econ_tick(e, 1.f/12.f);
 
-    ok("prov[cap].treasury == region[].treasury SANS ré-agrégation manuelle APRÈS la frappe (A2)",
-       fabsf(e->prov[0].treasury - e->region[0].treasury) < 1e-2f);
+    /* A2 ré-écrit (2026-09-03) : plus de miroir prov/région à comparer — la frappe doit
+     * atterrir DIRECTEMENT dans LE livre d'or du pays, visible sans aucune ré-agrégation. */
+    ok("la frappe crédite LE trésor national, visible SANS ré-agrégation manuelle (A2)",
+       fabs(econ_country_gold(e,0) - 500.0) > 1e-2);
     ok("la réserve d'État a été prélevée (frappe royale, § M2)", e->reserve_gold[0] < reserve_before13);
     ok("le stock de marché a RÉELLEMENT diminué (le métal quitte le marché, frappe libre A1)",
-       e->prov[0].stock[RES_GOLD] < stock_before13);
+       econ_country_stock_sum(e,0,RES_GOLD) < stock_before13);
     double wealth_after13=0.0; for (int k13=0;k13<CLASS_COUNT;k13++) wealth_after13 += (double)e->prov[0].strata[k13].wealth;
     ok("A1 : un vendeur RÉEL a été payé pour son métal (richesse des classes > 0)", wealth_after13 > 1.0);
 
-    double m_after13 = (double)e->prov[0].treasury + wealth_after13;
+    double m_after13 = econ_country_gold(e,0) + wealth_after13;
     double frappe13  = (double)econ_flux_get(0, FX_MINT);
     printf("   M avant=%.1f · M après=%.1f (Δ=%.1f) · FX_MINT (vraie création, royale+libre)=%.1f\n",
            m_before13, m_after13, m_after13-m_before13, frappe13);
@@ -364,56 +367,59 @@ int main(void){
     e->prov[0].owner=0; e->prov[0].region=0;
     e->prov[0].active=true; e->prov[0].colonized=true; e->prov[0].is_capital=true;
     e->region_rep_prov[0]=0;
-    e->prov[0].treasury=500.f;
-    e->prov[0].stock[RES_GOLD]=1000.f;
+    e->nat_treasury[0]=500.f;
+    e->nat_stock[0][RES_GOLD]=1000.f;
     e->prov[0].price[RES_GOLD]=8.f;
     econ_aggregate_regions(e);
     econ_flux_add(0, FX_TAX, 12000.f); econ_flux_year_capture();
-    float stock_legacy_before13 = e->prov[0].stock[RES_GOLD];
+    float stock_legacy_before13 = econ_country_stock_sum(e,0,RES_GOLD);
     tune_set("MINT_FULL_PARITY", 0.f);
     econ_tick(e, 1.f/12.f);
     double wealth_legacy13=0.0; for (int k13=0;k13<CLASS_COUNT;k13++) wealth_legacy13 += (double)e->prov[0].strata[k13].wealth;
     printf("   MINT_FULL_PARITY=0 (legacy) : stock %.1f→%.1f (métal disparu) · richesse classes=%.2f (jamais payé) · FX_MINT=%.1f\n",
-           stock_legacy_before13, e->prov[0].stock[RES_GOLD], wealth_legacy13, (double)econ_flux_get(0, FX_MINT));
+           stock_legacy_before13, econ_country_stock_sum(e,0,RES_GOLD), wealth_legacy13, (double)econ_flux_get(0, FX_MINT));
     ok("MINT_FULL_PARITY=0 (legacy pré-M11) : reproduit le bug de l'audit — AUCUN vendeur payé",
        wealth_legacy13 < 1e-3);
     ok("MINT_FULL_PARITY=0 (legacy pré-M11) : le métal disparaît quand même du marché (le trou de l'audit)",
-       e->prov[0].stock[RES_GOLD] < stock_legacy_before13);
+       econ_country_stock_sum(e,0,RES_GOLD) < stock_legacy_before13);
     tune_set("MINT_FULL_PARITY", 1.f);   /* redéfinit le défaut */
     tune_set("MINT_ALLOY", 1.f);         /* redéfinit le défaut (l'alliage, banc dédié §19) */
 
-    /* ── 14. B2 : LE TRÉSOR FANTÔME (econ_region_treasury_add) + LE TOCTOU can_spend/spend ── */
+    /* ── 14. B2 : LE TRÉSOR FANTÔME (econ_nation_gold_add) + LE TOCTOU can_spend/spend ── */
     printf("\n── 14. B2 : le trésor fantôme + le TOCTOU can_spend/spend ──\n");
     {
-        /* B2(a) — econ_region_treasury_add ne force plus un résidu non couvert en dette
-         * FANTÔME (prov[].treasury négatif hors CountryDebt — sans intérêt, créancier,
-         * plafond ni banqueroute) : CLAMPÉ au trésor réellement disponible, et retourne
-         * le montant RÉELLEMENT pris (pas la demande nominale). */
+        /* B2(a) — la porte d'or de l'État (econ_region_treasury_add jusqu'au 2026-09-03,
+         * econ_nation_gold_add depuis — même contrat, une seule caisse) ne force plus un
+         * résidu non couvert en dette FANTÔME (trésor négatif hors CountryDebt : sans
+         * intérêt, créancier, plafond ni banqueroute) : le débit est CLAMPÉ au trésor
+         * réellement disponible, et la fonction retourne le montant RÉELLEMENT pris (pas
+         * la demande nominale). La dette RÉELLE, elle, a sa porte à part
+         * (econ_nation_gold_force, réservée au crédit). */
         memset(e, 0, sizeof(WorldEconomy));
         e->n_prov=1; e->n_regions=1;
         e->prov[0].owner=0; e->prov[0].region=0; e->prov[0].active=true; e->prov[0].colonized=true;
-        e->prov[0].treasury=0.f;
+        e->nat_treasury[0]=0.f;
         e->region_rep_prov[0]=0;
         econ_aggregate_regions(e);
-        float paidB2a = econ_region_treasury_add(e, 0, -300.f);
-        ok("B2(a) : une région SANS trésor ne peut RIEN payer (paid==0, pas de résidu fantôme)",
+        float paidB2a = econ_nation_gold_add(e, 0, -300.f);
+        ok("B2(a) : un empire SANS trésor ne peut RIEN payer (paid==0, pas de résidu fantôme)",
            paidB2a==0.f);
-        ok("B2(a) : la province ne descend JAMAIS sous zéro par ce chemin",
-           e->prov[0].treasury >= 0.f);
-        e->prov[0].treasury=100.f;
-        econ_aggregate_regions(e);
-        float paidB2a2 = econ_region_treasury_add(e, 0, -300.f);
-        printf("   région à 100 or, débit demandé 300 → payé RÉELLEMENT %.1f (clampé, pas 300)\n",
+        ok("B2(a) : le trésor national ne descend JAMAIS sous zéro par ce chemin",
+           econ_country_gold(e,0) >= 0.0);
+        e->nat_treasury[0]=100.f;
+        float paidB2a2 = econ_nation_gold_add(e, 0, -300.f);
+        printf("   empire à 100 or, débit demandé 300 → payé RÉELLEMENT %.1f (clampé, pas 300)\n",
                (double)-paidB2a2);
         ok("B2(a) : un débit PARTIEL rend EXACTEMENT ce qui existait (100), jamais plus",
            fabs(-paidB2a2 - 100.f) < 0.01f);
-        ok("B2(a) : la province est à ZÉRO, jamais négative (aucune dette fantôme introduite)",
-           e->prov[0].treasury >= -0.001f && e->prov[0].treasury < 0.01f);
+        ok("B2(a) : le trésor est à ZÉRO, jamais négatif (aucune dette fantôme introduite)",
+           econ_country_gold(e,0) >= -0.001 && econ_country_gold(e,0) < 0.01);
 
-        /* B2(b) — LE TOCTOU can_spend/spend : can_spend lit region[]-grain (econ_country_
-         * gold) ; credit_spend n'écrivait QUE prov[] (nu, non dual-write) — deux dépenses
-         * successives dans le même mois voyaient TOUTES DEUX la vue AVANT la première
-         * (stale) et pouvaient donc être TOUTES DEUX autorisées. */
+        /* B2(b) — LE TOCTOU can_spend/spend : can_spend lisait une VUE (l'or agrégé) que
+         * credit_spend ne mettait pas à jour — deux dépenses successives dans le même mois
+         * voyaient TOUTES DEUX l'état AVANT la première (stale) et pouvaient donc être
+         * TOUTES DEUX autorisées. Le trésor national (2026-09-03) supprime la vue : il n'y
+         * a plus qu'un livre. Le contrôle reste — c'est lui qui l'atteste. */
         setup(e, 100.f, 5000.f); credit_init();
         float room0 = credit_line(w,e,0);
         printf("   ligne de crédit = %.0f\n", (double)room0);
@@ -443,25 +449,33 @@ int main(void){
         ok("B2(b) : le refus ne prélève PAS même les 50 pièces disponibles",
            fabs(gold_final-50.0)<0.01);
 
-        /* Une sœur riche ne finance pas un déficit NET : la péréquation déplace l'or
-         * dans le pays, elle n'en ajoute pas. Ancien credit_spend la comptait pourtant
-         * comme couverture et laissait le total national négatif. */
+        /* B2(c) — L'OR NATIONAL EST LE SEUL PLAFOND. Le contrôle d'origine plantait deux
+         * provinces SŒURS (100 et 1000) et prouvait que la péréquation interne ne fabriquait
+         * pas de couverture : l'ancien credit_spend comptait la caisse de la sœur riche comme
+         * une ressource NEUVE et laissait le total national négatif. Depuis le TRÉSOR NATIONAL
+         * (2026-09-03) la péréquation n'existe plus — il n'y a qu'une caisse (1100, le même
+         * total qu'avant) — mais l'invariant testé est LE MÊME et reste indispensable : une
+         * dépense au-delà de l'or national + de la chaîne d'emprunt est REFUSÉE, atomiquement,
+         * sans jamais laisser l'or du pays passer sous zéro. La fixture garde ses deux
+         * provinces (l'empire est bien étendu) ; seule la caisse est unique. */
         memset(e,0,sizeof(*e)); credit_init();
         w->n_provinces=3; e->n_prov=3; e->n_regions=3;
         w->province[0].region=0; w->province[1].region=1; w->province[2].region=2;
-        e->prov[0].owner=0; e->prov[0].region=0; e->prov[0].active=e->prov[0].colonized=true; e->prov[0].treasury=100.f;
-        e->prov[1].owner=0; e->prov[1].region=1; e->prov[1].active=e->prov[1].colonized=true; e->prov[1].treasury=1000.f;
-        e->prov[2].owner=1; e->prov[2].region=2; e->prov[2].active=e->prov[2].colonized=true; e->prov[2].treasury=0.f;
+        e->prov[0].owner=0; e->prov[0].region=0; e->prov[0].active=e->prov[0].colonized=true;
+        e->prov[1].owner=0; e->prov[1].region=1; e->prov[1].active=e->prov[1].colonized=true;
+        e->prov[2].owner=1; e->prov[2].region=2; e->prov[2].active=e->prov[2].colonized=true;
+        e->nat_treasury[0]=1100.f;   /* LE trésor de l'empire (l'ancien 100 + 1000 des deux sœurs) */
+        e->nat_treasury[1]=0.f;      /* la cité-état est à sec : aucune chaîne d'emprunt */
         e->prov[0].strata[CLASS_LABORER].pop=4000.f;
         e->region_rep_prov[0]=0; e->region_rep_prov[1]=1; e->region_rep_prov[2]=2;
         econ_aggregate_regions(e);
         econ_flux_add(0,FX_TAX,3000.f); econ_flux_year_capture();
-        ok("B2(c) : une sœur riche ne rend PAS finançable une dépense supérieure à l'or NATIONAL",
+        ok("B2(c) : une dépense au-delà de l'or NATIONAL (et sans prêteur) n'est PAS finançable",
            !credit_can_spend(e,w,0,1400.f));
         bool perq_spent=credit_spend(e,w,0,1400.f);
-        ok("B2(c) : la fausse couverture par péréquation est refusée", !perq_spent);
-        ok("B2(c) : refus atomique, les deux trésors provinciaux sont inchangés",
-           fabsf(e->prov[0].treasury-100.f)<0.01f && fabsf(e->prov[1].treasury-1000.f)<0.01f);
+        ok("B2(c) : la dépense non couverte est refusée", !perq_spent);
+        ok("B2(c) : refus atomique, le trésor national est inchangé (1100)",
+           fabs(econ_country_gold(e,0)-1100.0)<0.01);
         w->n_provinces=2;
     }
 
@@ -487,7 +501,7 @@ int main(void){
         e->prov[0].strata[CLASS_LABORER].pop=1000.f;
         e->prov[0].strata[CLASS_ELITE].wealth=100000.f;     /* capacité de prêt large */
         e->prov[0].strata[CLASS_BOURGEOIS].wealth=100000.f;
-        e->prov[0].treasury=60000.f;                         /* GRAS : surplus au-dessus de COURT_FLOOR aussi */
+        e->nat_treasury[0]=60000.f;                          /* GRAS : surplus au-dessus de COURT_FLOOR aussi */
         e->region_rep_prov[0]=0;
         econ_aggregate_regions(e);
         econ_flux_add(0, FX_TAX, 30000.f); econ_flux_year_capture();   /* plafond de dette large */
@@ -502,11 +516,11 @@ int main(void){
         ok("setup B3 : la dette est 100% CLASSES (aucune cité-état créancière)",
            credit_debt_citystate(0)==0.f && credit_debt_class(0)>0.f);
 
-        double treas_before  = e->prov[0].treasury;
+        double treas_before  = econ_country_gold(e,0);
         double wealth_before = (double)e->prov[0].strata[CLASS_ELITE].wealth
                               + (double)e->prov[0].strata[CLASS_BOURGEOIS].wealth;
         credit_year_tick(e, wl, w);
-        double treas_after  = e->prov[0].treasury;
+        double treas_after  = econ_country_gold(e,0);
         double wealth_after = (double)e->prov[0].strata[CLASS_ELITE].wealth
                              + (double)e->prov[0].strata[CLASS_BOURGEOIS].wealth;
         double treas_lost    = treas_before - treas_after;
@@ -533,7 +547,7 @@ int main(void){
         e->prov[0].is_capital=true;
         e->prov[0].strata[CLASS_LABORER].pop=1000.f;
         e->prov[0].strata[CLASS_ELITE].wealth=1.0e8f;
-        e->prov[0].treasury=100.f;
+        e->nat_treasury[0]=100.f;
         e->region_rep_prov[0]=0;
         econ_aggregate_regions(e);
         econ_flux_add(0, FX_TAX, 3000.f); econ_flux_year_capture();
@@ -570,7 +584,7 @@ int main(void){
         e->prov[0].strata[CLASS_LABORER].pop=1000.f;
         e->prov[0].strata[CLASS_ELITE].wealth=100000.f;      /* présente, mais ne PRÊTE JAMAIS */
         e->prov[0].strata[CLASS_BOURGEOIS].wealth=100000.f;  /* LA SEULE prêteuse */
-        e->prov[0].treasury=60000.f;
+        e->nat_treasury[0]=60000.f;
         e->region_rep_prov[0]=0;
         econ_aggregate_regions(e);
         econ_flux_add(0, FX_TAX, 30000.f); econ_flux_year_capture();
@@ -646,7 +660,7 @@ int main(void){
         e->prov[0].owner=0; e->prov[0].region=0;
         e->prov[0].active=true; e->prov[0].colonized=true; e->prov[0].is_capital=true;
         e->region_rep_prov[0]=0;
-        e->prov[0].treasury=500.f;            /* == SINK_FLOOR (motif §13 : redépense I3bis nulle) */
+        e->nat_treasury[0]=500.f;             /* == SINK_FLOOR (motif §13 : redépense I3bis nulle) */
         e->reserve_gold[0]=120.f; e->reserve_copper[0]=48.f;
         econ_aggregate_regions(e);
         econ_flux_add(0, FX_TAX, 12000.f); econ_flux_year_capture();
@@ -669,13 +683,14 @@ int main(void){
         e->prov[0].owner=0; e->prov[0].region=0;
         e->prov[0].active=true; e->prov[0].colonized=true; e->prov[0].is_capital=true;
         e->region_rep_prov[0]=0;
-        e->prov[0].treasury=500.f;
-        e->prov[0].stock[RES_GOLD]=1000.f;  e->prov[0].price[RES_GOLD]=8.f;
-        e->prov[0].stock[RES_COPPER]=1000.f; e->prov[0].price[RES_COPPER]=2.f;   /* paire 10 < 32 : arbitrage */
+        e->nat_treasury[0]=500.f;
+        e->nat_stock[0][RES_GOLD]=1000.f;   e->prov[0].price[RES_GOLD]=8.f;
+        e->nat_stock[0][RES_COPPER]=1000.f; e->prov[0].price[RES_COPPER]=2.f;    /* paire 10 < 32 : arbitrage */
         econ_aggregate_regions(e);
         econ_flux_add(0, FX_TAX, 12000.f); econ_flux_year_capture();
         econ_tick(e, 1.f/12.f);
-        float sg19 = 1000.f - e->prov[0].stock[RES_GOLD], sc19 = 1000.f - e->prov[0].stock[RES_COPPER];
+        float sg19 = 1000.f - econ_country_stock_sum(e,0,RES_GOLD),
+              sc19 = 1000.f - econ_country_stock_sum(e,0,RES_COPPER);
         printf("   libre : or acheté=%.2f · cuivre acheté=%.2f (paires)\n", (double)sg19, (double)sc19);
         ok("ALLIAGE libre : l'achat d'État tire les DEUX métaux du marché en paires égales",
            sg19 > 0.1f && fabsf(sg19-sc19) < 0.5f);
@@ -686,13 +701,13 @@ int main(void){
         e->prov[0].owner=0; e->prov[0].region=0;
         e->prov[0].active=true; e->prov[0].colonized=true; e->prov[0].is_capital=true;
         e->region_rep_prov[0]=0;
-        e->prov[0].treasury=500.f;
-        e->prov[0].stock[RES_GOLD]=1000.f; e->prov[0].price[RES_GOLD]=8.f;   /* cuivre ABSENT */
+        e->nat_treasury[0]=500.f;
+        e->nat_stock[0][RES_GOLD]=1000.f; e->prov[0].price[RES_GOLD]=8.f;   /* cuivre ABSENT */
         econ_aggregate_regions(e);
         econ_flux_add(0, FX_TAX, 12000.f); econ_flux_year_capture();
         econ_tick(e, 1.f/12.f);
         ok("ALLIAGE libre : l'or SEUL (sans cuivre à apparier) ne se frappe PAS (aucun achat)",
-           e->prov[0].stock[RES_GOLD] > 999.f);
+           econ_country_stock_sum(e,0,RES_GOLD) > 999.f);
 
         /* (d) kill-switch : MINT_ALLOY=0 reproduit le per-métal EXACT (l'or seul frappe). */
         memset(e, 0, sizeof(WorldEconomy));
@@ -700,7 +715,7 @@ int main(void){
         e->prov[0].owner=0; e->prov[0].region=0;
         e->prov[0].active=true; e->prov[0].colonized=true; e->prov[0].is_capital=true;
         e->region_rep_prov[0]=0;
-        e->prov[0].treasury=500.f;
+        e->nat_treasury[0]=500.f;
         e->reserve_gold[0]=120.f;             /* aucun cuivre : l'alliage rendrait 0 */
         econ_aggregate_regions(e);
         econ_flux_add(0, FX_TAX, 12000.f); econ_flux_year_capture();
@@ -718,7 +733,7 @@ int main(void){
         e->prov[0].owner=0; e->prov[0].region=0;
         e->prov[0].active=true; e->prov[0].colonized=true; e->prov[0].is_capital=true;
         e->region_rep_prov[0]=0;
-        e->prov[0].treasury=500.f;
+        e->nat_treasury[0]=500.f;
         e->prov[0].build.K_inst=10.f;         /* pour MESURER l'érosion (le prix du billon) */
         e->reserve_gold[0]=120.f;             /* aucun cuivre : sécheresse totale */
         econ_aggregate_regions(e);
@@ -738,7 +753,7 @@ int main(void){
         e->prov[0].owner=0; e->prov[0].region=0;
         e->prov[0].active=true; e->prov[0].colonized=true; e->prov[0].is_capital=true;
         e->region_rep_prov[0]=0;
-        e->prov[0].treasury=500.f; e->reserve_gold[0]=120.f;
+        e->nat_treasury[0]=500.f; e->reserve_gold[0]=120.f;
         econ_aggregate_regions(e);
         econ_flux_add(0, FX_TAX, 12000.f); econ_flux_year_capture();
         tune_set("DEBASE_DROUGHT", 0.f);
@@ -816,8 +831,7 @@ int main(void){
         e->prov[0].bankruptcy_scar=0.f; e->prov[1].bankruptcy_scar=0.f;   /* guérir (mémoire du prêteur) */
         credit_init(); setup(e, 100.f, 5000.f);
         credit_spend(e,w,0,550.f); econ_aggregate_regions(e);
-        e->prov[1].treasury = 400.f;   /* le prêteur a FONDU depuis (< SINK_FLOOR : surplus 0, capital ≈ la créance) */
-        econ_aggregate_regions(e);
+        e->nat_treasury[1] = 400.f;   /* le prêteur a FONDU depuis (< SINK_FLOOR : surplus 0, capital ≈ la créance) */
         long ruins_b = credit_lender_ruins();
         credit_bankruptcy(e, 0, true);
         ok("ruine : la créance anéantie > moitié du capital ⇒ le prêteur S'EFFONDRE (cicatrice — les Bardi)",
@@ -830,7 +844,7 @@ int main(void){
         e->prov[0].bankruptcy_scar=0.f; e->prov[1].bankruptcy_scar=0.f;
         credit_init(); setup(e, 100.f, 5000.f);
         credit_spend(e,w,0,550.f); econ_aggregate_regions(e);
-        e->prov[1].treasury = 400.f; econ_aggregate_regions(e);
+        e->nat_treasury[1] = 400.f;
         tune_set("LENDER_RUIN_SHARE", 0.f);
         credit_bankruptcy(e, 0, true);
         ok("LENDER_RUIN_SHARE=0 (kill-switch) : aucun effondrement de prêteur (comportement pré-ruine)",
@@ -858,17 +872,17 @@ int main(void){
         ok("sans surplus au-dessus du plancher de cour : le verbe rend 0 (jamais un découvert)",
            credit_repay_principal(e,w,0,-1.f)==0.f);
         /* on redote un trésor GRAS puis on rembourse TOUT (amount<=0). */
-        e->prov[0].treasury = 20000.f; econ_aggregate_regions(e);
-        double cs_before22 = (double)e->prov[1].treasury;
+        e->nat_treasury[0] = 20000.f;
+        double cs_before22 = econ_country_gold(e,1);
         float repaid = credit_repay_principal(e,w,0,-1.f);
         econ_aggregate_regions(e);
         printf("   dette %.1f → %.1f (remboursé %.1f) · trésor cité-état %.1f → %.1f\n",
                (double)debt0,(double)credit_debt_total(0),(double)repaid,
-               cs_before22,(double)e->prov[1].treasury);
+               cs_before22, econ_country_gold(e,1));
         ok("REMBOURSER éteint la dette entière quand le surplus le permet",
            repaid > debt0 - 0.5f && credit_debt_total(0) < 0.5f);
         ok("CONSERVATION : le créancier cité-état ENCAISSE réellement sa part",
-           (double)e->prov[1].treasury > cs_before22 + 1.0);
+           econ_country_gold(e,1) > cs_before22 + 1.0);
         ok("le créancier soldé est DÉLIÉ (credit_of == -1)", credit_of(0) < 0);
     }
 

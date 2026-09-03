@@ -773,7 +773,9 @@ membrane-check:
 #   - les seuls couples fichier+champ de bootstrap/miroir immédiat ci-dessous.
 # Toute nouvelle écriture de production ailleurs doit passer par prov[]/un helper.
 REGION_WRITE_ALLOW_RE := ^scps/scps_econ\.c:|^scps/scps_credit\.c:|^scps/scps_demography\.c:.*\.culture_id|^scps/scps_world\.c:.*\.culture|^scps/scps_diplo\.c:.*\.(culture|pop)
-REGION_PERSIST_FIELDS := culture|culture_id|pop|build|edi_built|raw_cap|raw_boost|stock|treasury|strata|gdp|cap_pop|coercion|arcane_charge|faust_charge|faust_consumed|mil_stock|revolt_scar|annex_scar|bankruptcy_scar|owner|colonized
+# (stock/treasury ont QUITTE cette liste le 2026-09-03 : ils n'existent plus sur
+#  RegionEconomy ni sur ProvinceEconomy — ils sont NATIONAUX, cf. docs/DESIGN_TRESOR_NATIONAL.md.)
+REGION_PERSIST_FIELDS := culture|culture_id|pop|build|edi_built|raw_cap|raw_boost|strata|gdp|cap_pop|coercion|arcane_charge|faust_charge|faust_consumed|mil_stock|revolt_scar|annex_scar|bankruptcy_scar|owner|colonized
 region-write-check:
 	@pattern='(?:->|\.)region\s*\[[^]]+\]\s*\.\s*($(REGION_PERSIST_FIELDS))(?:\s*\[[^]]+\])?(?:\s*\.[A-Za-z_][A-Za-z0-9_]*)?\s*(?:\+\+|--|[+*/-]=|(?<![=!<>])=(?!=))'; \
 	if command -v rg >/dev/null 2>&1; then \

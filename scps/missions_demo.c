@@ -107,7 +107,7 @@ int main(int argc, char **argv){
     /* ═══ 3. LE SCEAU : récompense en COORDONNÉE BÂTIE, jamais en or ═══ */
     printf("\n── 3. Sceller verse une coordonnée BÂTIE (aucun lingot créé) ──\n");
     float k0 = econ->prov[cap].build.K_inst;
-    float tre0 = econ->prov[cap].treasury;
+    double tre0 = econ_country_gold(econ, cid);   /* TRÉSOR NATIONAL (2026-09-03) : l'or est au grain PAYS */
     ok("sceller un échelon qui n'est PAS le courant est refusé",
        missions_seal(ms,w,econ,dp,sc,seed,1,cid,DESS_SOL,DESS_RUNG_RIVAL,0,0.f)==0);
     ok("sceller l'échelon courant rempli est ACCEPTÉ",
@@ -115,7 +115,7 @@ int main(int argc, char **argv){
     ok("K_inst de la capitale a monté de 0,6 (densité institutionnelle RÉALISÉE)",
        econ->prov[cap].build.K_inst > k0 + 0.55f && econ->prov[cap].build.K_inst < k0 + 0.65f);
     ok("le trésor n'a PAS bougé — la règle d'or §2.4 (jamais d'or créé)",
-       econ->prov[cap].treasury == tre0);
+       econ_country_gold(econ, cid) == tre0);
     ok("l'échelon suivant est armé (Expansion), l'an du sceau est latché",
        d->rung==DESS_RUNG_EXPANSION && d->sealed_year[DESS_RUNG_UNIFICATION]==1);
     ok("re-sceller le même échelon est refusé (il n'est plus le courant)",

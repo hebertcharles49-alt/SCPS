@@ -5,7 +5,7 @@
  *
  * Une région-brasserie (grain → bière). On prouve : le défaut du cap est ∞ (-1,
  * posé par econ_init — PAS « produire zéro ») ; sans cap la bière s'accumule ;
- * avec un cap, le STOCK plafonne (bien sous le cas non-bridé) et l'INTRANT (grain)
+ * avec un cap, le STOCK NATIONAL plafonne (bien sous le cas non-bridé) et l'INTRANT (grain)
  * est LIBÉRÉ (plus brassé au plafond) ; save/load préserve le cap.
  */
 #include "scps_world.h"
@@ -38,11 +38,13 @@ static void brew_region(WorldEconomy *e){
     ProvinceEconomy *re=&e->prov[g_pid];
     re->active=true; re->colonized=true; re->culture.settled=true; re->owner=0;
     re->culture.subsistance=10.f;                 /* agraire ⇒ boit le EAU-DE-VIE, pas la bière */
-    for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; re->stock[k]=0.f; re->price[k]=1.0f; }
+    /* STOCK NATIONAL (2026-09-03) : l'entrepôt vit au grain PAYS. La province tient sa
+     * PRODUCTION (raw_cap/prix/bâti) ; le stock brassé et bu est celui de l'empire 0. */
+    for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; e->nat_stock[0][k]=0.f; re->price[k]=1.0f; }
     re->raw_cap[RES_GRAIN]=60.f;                  /* grain ample pour une cadence haute */
-    re->n_entrepot=20;                            /* gros plafond de stock (≈10k) : le grain n'est pas bridé à ~200 */
-    re->stock[RES_GRAIN]=5000.f;                  /* SURPLUS vivrier large : la réserve (∝ pop) ne borne pas le brassage — le banc teste le CAP, pas la nourriture */
-    re->stock[RES_EAU_DE_VIE]=1e5f;                     /* soif comblée au EAU-DE-VIE ⇒ bière intacte */
+    re->n_entrepot=20;                            /* l'Entrepôt garde ses AUTRES effets (le stock n'a plus de plafond) */
+    e->nat_stock[0][RES_GRAIN]=5000.f;            /* SURPLUS vivrier large : la réserve (∝ pop) ne borne pas le brassage — le banc teste le CAP, pas la nourriture */
+    e->nat_stock[0][RES_EAU_DE_VIE]=1e5f;         /* soif comblée au EAU-DE-VIE ⇒ bière intacte */
     re->n_bld=0; re->bld[0].type=BLD_BREWERY; re->bld[0].level=8.f; re->n_bld=1;
     /* Bassin AMPLE : ce banc teste le PLAFOND DE PRODUCTION, pas la main-d'œuvre. La refonte
      * labor-bound (brasserie labor=27, gourmande en bras) rendait une petite fixture labor-limitée
@@ -79,8 +81,8 @@ int main(int argc, char **argv){
     printf("\n── 2. Sans cap : la brasserie produit ──\n");
     brew_region(e);
     for (int t=0;t<24;t++) tick_pin(e);
-    float beer_unc=e->prov[g_pid].stock[RES_BEER];
-    float grain_unc=e->prov[g_pid].stock[RES_GRAIN];
+    float beer_unc=econ_country_stock_sum(e,0,RES_BEER);
+    float grain_unc=econ_country_stock_sum(e,0,RES_GRAIN);
     ok("sans cap : la brasserie PRODUIT (bière > 50)", beer_unc>50.f);
 
     /* — 3. AVEC cap : le stock plafonne bien sous le cas non-bridé — */
@@ -88,8 +90,8 @@ int main(int argc, char **argv){
     brew_region(e);
     econ_set_prod_cap(0,RES_BEER,40.f);
     for (int t=0;t<24;t++) tick_pin(e);
-    float beer_cap=e->prov[g_pid].stock[RES_BEER];
-    float grain_cap=e->prov[g_pid].stock[RES_GRAIN];
+    float beer_cap=econ_country_stock_sum(e,0,RES_BEER);
+    float grain_cap=econ_country_stock_sum(e,0,RES_GRAIN);
     printf("   bière : sans cap %.0f · cap=40 → %.0f | grain : %.0f vs %.0f\n",
            beer_unc, beer_cap, grain_unc, grain_cap);
     ok("avec cap : la bière PLAFONNE (≤ cap + marge d'un tick, « bien sous le non-bridé »)",

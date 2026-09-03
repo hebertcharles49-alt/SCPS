@@ -12381,3 +12381,121 @@ force sans qu'aucune borne n'ait été posée**.
   au merge) : `7 19088340→de10f677 · 108 152f65d2→ec5f0d52 · 209 d53ab650→3907aaac ·
   310 81555cec→6a46fd7d · 411 535c270a→f8b84d3a`. `scps/golden_deep.txt` reste STALE
   (antérieur, non touché).
+
+
+
+## Mission 2026-09-03 — W1-A TRÉSOR/STOCK NATIONAUX
+
+### Découvertes
+
+- **Le pool national existait DÉJÀ — il était juste jeté et reconstruit chaque
+  tick.** `econ_tick` rassemblait `pool[owner][good]` depuis `prov[].stock` en
+  début de tick, faisait TOUT le marché dessus (`S = pool[owner_]`), puis le
+  REDISTRIBUAIT aux provinces au prorata de la population en clôture. La province
+  n'était donc jamais qu'une *matérialisation* du pool. Le re-key du stock a
+  consisté à SUPPRIMER le rassemblement et la redistribution, et à aliaser
+  `pool` sur `e->nat_stock` — le code a RÉTRÉCI.
+- **`econ_country_stock_take` était un prélèvement simulé** : il drainait les
+  provinces « sans ordre signifiant » pour mimer un pool. C'est aujourd'hui un
+  accès direct.
+- **Le vrai coût était le TRÉSOR, pas le stock.** ~180 sites, dont une famille
+  entière de « résoudre la capitale / la province représentative du pays, puis
+  débiter sa caisse » (solde, décrets, Conseil, concession de révolte, frappe,
+  intérêts, saisie, dons diplo). Toute cette indirection DISPARAÎT : l'appelant
+  connaissait déjà le `cid`. Le motif de conversion qui a payé : **chercher le
+  `cid`, jeter la résolution de capitale.**
+- **Le motif « répartir un coût au prorata des trésors régionaux »** (INVEST,
+  ROUTES, frappe libre, paiement du vendeur) revenait 6 fois en ~25 lignes
+  chacune. Toutes collapsent en UN appel national + un helper de gages partagé
+  (`nat_pay_wages`, scps_econ.c) qui **rembourse le débit si personne n'est
+  payable** — sinon on rouvrait un puits.
+
+### Pièges
+
+- **L'invariant M3c a attrapé une fuite RÉELLE que le re-key a créée, et c'est le
+  seul gate qui pouvait la voir.** `depense` (redépense §B) se dimensionnait sur
+  la caisse LOCALE ; quand `coll_tot <= 1e-6` (province exonérée sous le panier
+  vital), la masse salariale n'était créditée à PERSONNE — fuite infime tant que
+  la caisse était locale (pas d'impôt ⇒ pas de trésor). Une fois `depense`
+  dimensionnée sur le trésor de TOUT l'empire, la même ligne détruisait
+  **−2596 or/an** (invariant à 413 % pour un seuil de 370 %). Corrigé : la paie va
+  aux LABORER, même destination que le solde (motif M16-C2) → 259 % à 120 ans.
+  **Leçon : après un re-key d'échelle, tout `if (clé) distribuer;` SANS `else`
+  devient un puits proportionnel à la nouvelle échelle.** Grepper ce motif.
+- **`save_sane` : le stock national passe LÉGITIMEMENT sous zéro** (déficit
+  transitoire du tick — le marché sert avant de constater le manque, cf.
+  TROUVAILLES 2026-07-08). Une borne `>= 0` a fait échouer `--savetest` en
+  « ÉCHEC de lecture » et non en message clair. Borner la MAGNITUDE, pas le signe.
+- **Les seuils par-province ne se transposent pas tels quels.** `SINK_FLOOR` (500)
+  et `COURT_FLOOR` (10 000) étaient PAR PROVINCE ; appliqués nus au trésor
+  national, un empire de 30 provinces n'aurait plus eu que 500 de fonds de
+  roulement. Ils sont désormais `× n_prov` (Σ des planchers) — calibrage
+  pré-national préservé. Ce ne sont PAS des plafonds.
+- **Deux ponctions étaient nationales par nature et auraient mordu N fois** dans
+  la boucle par-province (faste de cour, redépense §B) : appliquées au trésor
+  national, réparties au prorata de population (`Σ pshare = 1`).
+- **`ECON_EFFCAP_BODY` est un inline PUR** (pas de `WorldEconomy`, pas de
+  dépendance de lien) : il ne peut PAS lire un état national. Son gate de confort
+  lisait `supply + stock` ; il lit désormais `society_sat` (déjà calculée depuis
+  les fractions SERVIES). Tout futur besoin d'état national dans un inline pur se
+  heurtera au même mur.
+- **Deux bancs sont tombés pour la MÊME raison de fond : `owner = -1` n'était pas
+  qu'une isolation de stock, c'était un LAISSEZ-PASSER vers des chemins LEGACY.**
+  Les fixtures qui s'isolaient ainsi ont dû recevoir un vrai pays (le stock est
+  national) — et ont alors traversé des gates qu'elles ne voyaient jamais :
+  · `forks_demo` — **le limiteur de production `g_prod_cap` est à zéro-init statique,
+    et 0 signifie « plafonné À ZÉRO »** (c'est `-1` qui désactive). Seul `econ_init`
+    posait les `-1` ; un banc qui grée un `WorldEconomy` à la main ne l'appelle pas.
+    Résultat : dès qu'une province recevait un owner valide, TOUTE sa manufacture
+    était mutée **en silence** (flux distillé 0.00, charge 0.00 — aucun message).
+    `econ_prod_cap_reset()` est désormais PUBLIQUE (scps_econ.h) et le banc l'appelle.
+    **Tout futur banc qui grée l'économie à la main doit l'appeler.**
+  · `social_demo` — `econ_needs_active_for_country(cid)` rend `-1` (chemin LEGACY :
+    `capitale_max_tier` sur la pop LOCALE) quand `cid < 0`. Le rig comptait dessus :
+    pop 4000 ⇒ T4 ⇒ Kc=4 ⇒ la boisson tenait dans le panier. Avec un vrai pays, le
+    palier se lit sur l'échelle M10-P1 pilotée par la pop d'EMPIRE (3000 × 2^k) :
+    Kc valait 2, les biens abondants évinçaient la boisson, et **les quatre mesures
+    saturaient à 1.00** — un échec MUET (aucune valeur absurde, juste l'égalité).
+    Corrigé en donnant au rig la pop qu'exige l'échelle RÉELLE (13000 / 25000).
+  **Leçon générale : `owner = -1` était un mode DE COMPATIBILITÉ déguisé en isolation.
+  Chercher tous les `<0`/`>= 0` sur un owner avant de supposer qu'un re-key est neutre.**
+- **`intertrade` parle en RÉGIONS partout** : plutôt que réécrire 100 sites, six
+  accesseurs `it_*` (scps_intertrade.c) traduisent « le trésor/stock de cette
+  région » en « celui du pays qui la tient ». **Piège** : le cache mondial
+  (`g_global_cache`) sommait les stocks des régions-Centre — un pays à 2 Centres
+  aurait compté son entrepôt DEUX fois. Dédoublonné par `owner`.
+
+### Restes
+
+- **La friche suit l'ordre des `pid`, plus la pauvreté locale.** L'entretien des
+  édifices se sert sur une bourse commune dans l'ordre des provinces : un empire
+  insolvable met en friche ses provinces de plus haut `pid`. Déterministe, mais
+  c'est une sélection ARBITRAIRE — à revoir si un sweep montre un motif spatial de
+  friche. (Payer un pourcentage uniforme de l'ordre d'entretien national serait
+  plus juste, et plus cher à écrire.)
+- **`golden` à re-baseliner par l'orchestrateur** — trajectoires changées (attendu).
+  Avant : 7 19088340 · 108 152f65d2 · 209 d53ab650 · 310 81555cec · 411 535c270a.
+  Après : 7 3e7b4b34 · 108 191d87df · 209 ce8e71c8 · 310 87dbecb6 · 411 852296a5.
+- **`econ_region_wealth_add` sur une région SANS province porteuse** (fixture de
+  banc, `rep < 0`) n'écrit que la vue `region[]`, effacée à la clôture : chemin
+  banc-only, mais c'est un puits latent si un jour un vrai chemin y passe.
+- **La sécession naît à sec** (décision documentée, docs/DESIGN_TRESOR_NATIONAL.md) :
+  un rebelle qui devient État n'a NI trésor NI stock. Si le sweep montre des
+  sécessions mort-nées, c'est là qu'il faut regarder — pas dans le crédit.
+- **Champs API retirés** (le front Godot reste à faire côté `.gd`) :
+  `ScpsMarketLine.stock` et `ScpsStockRegion.stock`. Les clés `"stock"`
+  correspondantes ont été retirées du binding (`godot/src/scps_sim_node.cpp`) —
+  une clé ABSENTE plutôt qu'un zéro qui mentirait.
+
+## Mission 2026-09-03 — ORCHESTRATEUR : fusion W1 (A+B+C+E+F) et le frein de levée
+### Découvertes
+- **Interaction trésor national (W1-A) × pool de levée juste (W1-F)** : chaque agent seul était sain, l'arbre fusionné finissait (graine 7, an 120) avec 62 rgt pour une limite de 25, trésor à 0 et taxes à 1,7 or/mois. Cause : la garde de budget comparait un STOCK (« 3 mois de solde ») devenu national donc immense, et la jauge remontait dès que l'or national dépassait 1,5× la solde ; une armée impayée restait entière (« gratuite »). Isolé par 3 arbres intermédiaires (E+B+C+F, E+B+C, E+B+C+A) — la méthode qui marche : builder les combinaisons, pas raisonner.
+- **Frein économique, jamais un plafond (décision joueur « pas de cap »)** : `WH_DESERT_RATE` (0,5/an : la part IMPAYÉE de la solde déserte, wh_shed) + `WH_PAY_REVENUE_FRAC` (0,35 : la levée cesse de grossir quand la solde annuelle dépasse 35 % du revenu fiscal `econ_country_tax_year`). Les deux à 0 = golden pré-frein byte-identique (prouvé). Résultat 7/512 à 120 ans : 20/24 rgt, trésor 17 k, taxes 149/90 or/mois.
+### Pièges
+- Le heredoc `<<'EOF'` de l'outil Bash mange les backslashes dans les scripts Python embarqués (`\n` devient un saut de ligne, `\` de continuation de macro disparaît) : écrire le script avec l'outil Write et le lancer, ou `chr(92)`.
+- Un conflit 3-way peut mêler deux changements de signature (warhost_tick : W1-F ajoute `cmp`, W1-A change le trésor) : résoudre à la main en gardant les DEUX.
+- `git apply --3way` d'un patch pris sur un worktree à HEAD ancien passe « cleanly » même quand la SÉMANTIQUE diverge : la gate qui compte est la mesure sur l'arbre fusionné (chronicle 120 ans), pas les bancs.
+### Restes
+- Décrochage `BT_DECROCHE` 0,35 → 57-60 % (cible 15-25 %) : sonde 0,26/0,28/0,30 en vague 2.
+- Trou F2 (âmes des groupes = 23-26 % des strates) : vague 2, après le trésor national.
+- Télémétrie « flux décomposé »/« revenu fiscal » à revérifier contre le trésor national (valeurs incohérentes sur E+B+C+A : taxes +9,5 pour un flux +311).

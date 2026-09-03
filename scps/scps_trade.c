@@ -241,7 +241,12 @@ void trade_tick(WorldEconomy *e, TradeNetwork *net, const uint8_t *link_blocked)
             RegionEconomy *exp=&e->region[exporter];
             RegionEconomy *imp=&e->region[importer];
 
-            float surplus=fmaxf(0.f, exp->stock[r]-econ_build_reserve((Resource)r));  /* garde le FOND de bâti avant d'exporter */
+            /* LE STOCK EST NATIONAL (2026-09-03) : ce lien ne déplace de la matière QUE
+             * s'il franchit une frontière — entre deux régions du MÊME pays, il n'y a plus
+             * rien à transporter (l'entrepôt est déjà commun). */
+            int exp_own=exp->owner, imp_own=imp->owner;
+            if (exp_own<0 || imp_own<0 || exp_own==imp_own) continue;
+            float surplus=fmaxf(0.f, econ_country_stock_sum(e, exp_own, (Resource)r)-econ_build_reserve((Resource)r));  /* garde le FOND de bâti avant d'exporter */
             if (surplus<=EPS) continue;
 
             /* Volume limité par la capacité du lien et le surplus exportateur. */
@@ -268,10 +273,10 @@ void trade_tick(WorldEconomy *e, TradeNetwork *net, const uint8_t *link_blocked)
             /* Transport : petite perte de fret. */
             /* RE-KEY : le bien bouge PROVINCE-persistant (écrire la seule vue region[]
              * serait effacé à la clôture) — on livre le RÉEL pris à l'exportateur. */
-            vol = -econ_region_stock_add(e, exporter, r, -vol);
+            vol = econ_country_stock_take(e, exp_own, (Resource)r, vol);
             if (vol<=EPS) continue;
             float received=vol*(1.f-loss);
-            econ_region_stock_add(e, importer, r, received);
+            econ_nation_stock_add(e, imp_own, r, received);
 
             /* MONNAIE M3a : le débité == le crédité, exactement. La perte de
              * transport est PHYSIQUE (10 % de `transport_cost` du volume expédié

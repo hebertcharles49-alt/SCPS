@@ -285,11 +285,24 @@ static void country_class_pop(const WorldEconomy *e, int c, double out[CLASS_COU
     for (int r=0;r<e->n_regions;r++) if (e->region[r].owner==c)
         for (int k=0;k<CLASS_COUNT;k++) out[k]+=e->region[r].strata[k].pop;
 }
-/* ENTREPÔTS d'un pays : stock agrégé par bien (toutes ses régions). */
+/* ENTREPÔT d'un pays : son stock NATIONAL (2026-09-03 — un seul par empire). */
 static void country_stocks(const WorldEconomy *e, int c, double out[RES_COUNT]){
     for (int g=0;g<RES_COUNT;g++) out[g]=0.0;
-    for (int r=0;r<e->n_regions;r++) if (e->region[r].owner==c)
-        for (int g=0;g<RES_COUNT;g++) out[g]+=e->region[r].stock[g];
+    if (c<0 || c>=SCPS_MAX_COUNTRY) return;
+    for (int g=0;g<RES_COUNT;g++) out[g]=(double)e->nat_stock[c][g];
+}
+/* La somme MONDE d'un bien. Sommer les RÉGIONS la compterait une fois par région :
+ * l'entrepôt est NATIONAL, on somme les PAYS. */
+static double world_stock(const WorldEconomy *e, int g){
+    double t=0.0;
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++) t+=(double)e->nat_stock[c][g];
+    return t;
+}
+/* Le trésor MONDE : Σ des trésors NATIONAUX. */
+static double world_gold(const WorldEconomy *e){
+    double t=0.0;
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++) t+=(double)e->nat_treasury[c];
+    return t;
 }
 /* dédoublonné vers scps_econ.h:econ_avg_price (chronicle.c ET econ_scan.c portaient
  * chacun une copie IDENTIQUE de ce corps — même ops, byte-identique). */
@@ -306,7 +319,8 @@ static void capture_age_snap(AgeSnap *snap, int year, const World *w, const Sim 
     const WorldEconomy *e=s->econ;
     snap->year=year;
     double gold=0.0, gdp=0.0;
-    for (int r=0;r<e->n_regions;r++){ gold+=e->region[r].treasury; gdp+=e->region[r].gdp; }
+    gold = world_gold(e);
+    for (int r=0;r<e->n_regions;r++) gdp+=e->region[r].gdp;
     snap->gold_total=gold; snap->gdp_total=gdp; snap->pop_total=total_pop(e);
     int tech=0; for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++) if (s->ai_on[c]) tech+=s->ai[c].stats.techs;
     snap->tech_total=tech; snap->living=living_countries(w,e);
@@ -350,8 +364,8 @@ static uint32_t chronicle_sim_hash(uint32_t seed, const Sim *s, const World *w){
            c,regions_of(s->econ,c),country_gold(s->econ,c),s->ts[c].n_unlocked,(int)w->country[c].role);
     for (int r=0;r<s->econ->n_regions && r<SCPS_MAX_REG;r++){ const RegionEconomy *re=&s->econ->region[r];
         double pop=0; for(int k=0;k<CLASS_COUNT;k++) pop+=re->strata[k].pop;
-        hx(&h,"R%d o=%d t=%.9g p=%.9g c=%d e=%d b=%.9g\n",
-           r,re->owner,(double)re->treasury,pop,re->colonized,re->estuary,(double)re->balafre_days);
+        hx(&h,"R%d o=%d p=%.9g c=%d e=%d b=%.9g\n",
+           r,re->owner,pop,re->colonized,re->estuary,(double)re->balafre_days);
     }
     hx(&h,"rev ig=%d se=%d co=%d cc=%d cr=%d pl=%ld\n",
        s->rs->n_ignited,s->rs->n_seceded,s->rs->n_coup,s->rs->n_concession,s->rs->n_crushed,(long)s->rs->pop_lost);
@@ -401,17 +415,18 @@ static double dmedian(double *v, int n){
     return (n&1)? v[n/2] : 0.5*(v[n/2-1]+v[n/2]);
 }
 
-/* MONNAIE — M0 (AUDIT, print-only) — M(t) = Σ_provinces treasury + Σ_provinces
- * Σ_classes wealth (grain PROVINCE, charte : region[].treasury/.strata[].wealth
- * sont des VUES agrégées — sommer prov[] directement évite tout double-compte
- * ou décalage de fraîcheur). Lecture PURE, aucun effet sur la sim/le golden. */
+/* MONNAIE — M0 (AUDIT, print-only) — M(t) = Σ_pays TRÉSOR NATIONAL + Σ_provinces
+ * Σ_classes wealth. Depuis 2026-09-03 l'or d'ÉTAT vit au grain NATION (un trésor par
+ * empire) tandis que la bourse des POPS reste PROVINCIALE : les deux termes ne se
+ * recouvrent pas, aucun double-compte. Le trésor résiduel d'un pays MORT reste compté
+ * (rien n'est effacé en silence — c'est ce qui tient l'invariant M3c).
+ * Lecture PURE, aucun effet sur la sim/le golden. */
 static double chronicle_money_mass(const WorldEconomy *e){
     if (!e) return 0.0;
-    double m=0.0;
+    double m=world_gold(e);
     int n=e->n_prov; if (n>SCPS_MAX_PROV) n=SCPS_MAX_PROV;
     for (int p=0;p<n;p++){
         const ProvinceEconomy *pe=&e->prov[p];
-        m += (double)pe->treasury;
         for (int c=0;c<CLASS_COUNT;c++) m += (double)pe->strata[c].wealth;
     }
     return m;
@@ -472,8 +487,10 @@ static void chronicle_invariant_diag(const WorldEconomy *e, const World *w, int 
     double wild=0.0; int wild_n=0;
     double nowp[SCPS_MAX_PROV]; memset(nowp,0,sizeof nowp);
     int n=e->n_prov; if (n>SCPS_MAX_PROV) n=SCPS_MAX_PROV;
+    /* La province ne porte plus que la RICHESSE DES POPS ; le TRÉSOR est national et
+     * s'ajoute une seule fois par pays (plus bas) — sinon on le compterait N fois. */
     for (int p=0;p<n;p++){
-        double m=(double)e->prov[p].treasury;
+        double m=0.0;
         for (int k=0;k<CLASS_COUNT;k++) m += (double)e->prov[p].strata[k].wealth;
         nowp[p]=m;
         int c=e->prov[p].owner;
@@ -509,9 +526,9 @@ static void chronicle_invariant_diag(const WorldEconomy *e, const World *w, int 
             year, wpos_n, wsum_pos, wneg_n, wsum_neg);
     for (int t=0;t<5;t++) if (top_p[t]>=0){
         int p=top_p[t];
-        fprintf(stderr, "      [INVDIAG-WILD-TOP] an %d — prov %d Δ=%+.0f (treasury=%.0f pop L/B/E=%.0f/%.0f/%.0f "
+        fprintf(stderr, "      [INVDIAG-WILD-TOP] an %d — prov %d Δ=%+.0f (trésor NAT=%.0f pop L/B/E=%.0f/%.0f/%.0f "
                 "active=%d colonized=%d cap_pop=%.0f wealth L/B/E/S=%.0f/%.0f/%.0f/%.0f region=%d rowner=%d)\n",
-                year, p, top_d[t], (double)e->prov[p].treasury,
+                year, p, top_d[t], econ_country_gold(e, e->prov[p].owner),
                 (double)e->prov[p].strata[CLASS_LABORER].pop, (double)e->prov[p].strata[CLASS_BOURGEOIS].pop,
                 (double)e->prov[p].strata[CLASS_ELITE].pop,
                 (int)e->prov[p].active, (int)e->prov[p].colonized, (double)e->prov[p].cap_pop,
@@ -522,9 +539,9 @@ static void chronicle_invariant_diag(const WorldEconomy *e, const World *w, int 
     }
     for (int t=0;t<5;t++) if (bot_p[t]>=0){
         int p=bot_p[t];
-        fprintf(stderr, "      [INVDIAG-WILD-BOT] an %d — prov %d Δ=%+.0f (treasury=%.0f pop L/B/E=%.0f/%.0f/%.0f "
+        fprintf(stderr, "      [INVDIAG-WILD-BOT] an %d — prov %d Δ=%+.0f (trésor NAT=%.0f pop L/B/E=%.0f/%.0f/%.0f "
                 "active=%d colonized=%d cap_pop=%.0f)\n",
-                year, p, bot_d[t], (double)e->prov[p].treasury,
+                year, p, bot_d[t], econ_country_gold(e, e->prov[p].owner),
                 (double)e->prov[p].strata[CLASS_LABORER].pop, (double)e->prov[p].strata[CLASS_BOURGEOIS].pop,
                 (double)e->prov[p].strata[CLASS_ELITE].pop,
                 (int)e->prov[p].active, (int)e->prov[p].colonized, (double)e->prov[p].cap_pop);
@@ -563,9 +580,9 @@ static void chronicle_invariant_diag(const WorldEconomy *e, const World *w, int 
         }
         for (int t=0;t<3;t++) if (wt_p[t]>=0){
             int p=wt_p[t];
-            fprintf(stderr, "      [INVDIAG-WORST] an %d — c=%d prov %d Δ=%+.0f (treasury=%.0f wealth L/B/E/S="
+            fprintf(stderr, "      [INVDIAG-WORST] an %d — c=%d prov %d Δ=%+.0f (trésor NAT=%.0f wealth L/B/E/S="
                     "%.0f/%.0f/%.0f/%.0f pop=%.0f colonized=%d role=%d centre=%d)\n",
-                    year, worst, p, wt_d[t], (double)e->prov[p].treasury,
+                    year, worst, p, wt_d[t], econ_country_gold(e, worst),
                     (double)e->prov[p].strata[CLASS_LABORER].wealth, (double)e->prov[p].strata[CLASS_BOURGEOIS].wealth,
                     (double)e->prov[p].strata[CLASS_ELITE].wealth, (double)e->prov[p].strata[CLASS_SLAVE].wealth,
                     (double)(e->prov[p].strata[CLASS_LABORER].pop+e->prov[p].strata[CLASS_BOURGEOIS].pop
@@ -574,6 +591,7 @@ static void chronicle_invariant_diag(const WorldEconomy *e, const World *w, int 
                     intertrade_country_centre(e, worst));
         }
     }
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++) now[c] += (double)e->nat_treasury[c];   /* le trésor NATIONAL, UNE fois */
     memcpy(g_inv_prev_prov, nowp, sizeof nowp);   /* APRÈS le bloc WORST (il lit les deltas) */
     memcpy(g_inv_prev_percountry, now, sizeof now);
     g_inv_prev_wild=wild; g_inv_prev_wild_n=wild_n;
@@ -1125,8 +1143,9 @@ int main(int argc, char **argv){
                         const ProvinceEconomy *pe=&s.econ->prov[p];
                         if (pe->owner!=c || !pe->active || !pe->colonized) continue;
                         double pp=0; for (int kk=0;kk<CLASS_COUNT;kk++) pp+=pe->strata[kk].pop;
-                        gpop+=pp; satw+=pe->satisfaction*pp; tre+=pe->treasury;
+                        gpop+=pp; satw+=pe->satisfaction*pp;
                     }
+                    tre = econ_country_gold(s.econ, c);   /* trésor NATIONAL */
                     fprintf(stderr,"   [GARNDIAG] an %d c=%d scar=%.2f pop=%.0f sat=%.0f%% trésor=%.0f cs_share=%.2f\n",
                             yr, c, scar, gpop, gpop>0?100.0*satw/gpop:0.0, tre, credit_garnish_cs_share(c));
                 }
@@ -1270,8 +1289,8 @@ int main(int argc, char **argv){
             if (getenv("SCPS_ARMSDIAG")){
                 for (int k2=0;k2<7;k2++){
                     double st=0.0, su=0.0;
+                    st = world_stock(s.econ, AD_RES[k2]);   /* stock NATIONAL, jamais par région */
                     for (int r=0;r<s.econ->n_regions;r++){ if (s.econ->region[r].owner<0) continue;
-                        st += s.econ->region[r].stock [AD_RES[k2]];
                         su += s.econ->region[r].supply[AD_RES[k2]]; }
                     if (g_adsamp==0 || st<g_adstock_min[k2]) g_adstock_min[k2]=st;
                     g_adstock_fin[k2]=st; g_adsup_sum[k2]+=su;
@@ -1433,7 +1452,7 @@ int main(int argc, char **argv){
         }
 
         /* MONNAIE — M0 (AUDIT, print-only) : M(fin) après la dernière année simulée —
-         * lecture pure (Σ prov[].treasury + Σ prov[].strata[].wealth), AUCUN effet sur
+         * lecture pure (Σ trésors NATIONAUX + Σ prov[].strata[].wealth), AUCUN effet sur
          * la sim/le golden. Voir docs/MONNAIE_M0_AUDIT.md pour le registre complet des
          * sites classés CRÉATION/DESTRUCTION/TRANSFERT/DETTE/INITIALISATION. */
         double money_mfin = chronicle_money_mass(s.econ);
@@ -1476,10 +1495,8 @@ int main(int argc, char **argv){
               res_paired += 2.0*((a<b)?a:b);
               res_single += (a>b)?(a-b):(b-a);
           }
-          for (int r=0;r<s.econ->n_regions;r++){
-              stock_g += (double)s.econ->region[r].stock[RES_GOLD];
-              stock_c += (double)s.econ->region[r].stock[RES_COPPER];
-          }
+          stock_g = world_stock(s.econ, RES_GOLD);
+          stock_c = world_stock(s.econ, RES_COPPER);
           double mint_sum = mp+mo+mb+mf;
           printf("   métal (monde) : extrait or %.0f t · cuivre %.0f t — redevance or %.0f · cuivre %.0f (royalty %.2f)\n",
                  xg, xc, rg, rc, (double)tune_f("MINT_ROYALTY",0.6f));
@@ -1951,7 +1968,8 @@ int main(int argc, char **argv){
             double bd[RES_COUNT]={0}, bs[RES_COUNT]={0}, bk[RES_COUNT]={0};
             for (int r=0;r<s.econ->n_regions;r++){ if(s.econ->region[r].owner<0)continue;
                 for (int g=1;g<RES_COUNT;g++){ bd[g]+=s.econ->region[r].demand[g];
-                    bs[g]+=s.econ->region[r].supply[g]; bk[g]+=s.econ->region[r].stock[g]; } }
+                    bs[g]+=s.econ->region[r].supply[g]; } }
+            for (int g=1;g<RES_COUNT;g++) bk[g]=world_stock(s.econ,g);   /* stock NATIONAL */
             fprintf(stderr,"[BASKET an %d] conso vs output (monde) :\n", s.year);
             for (int g=1;g<RES_COUNT;g++){
                 if (bd[g]<0.5 && bs[g]<0.5) continue;
@@ -1986,9 +2004,7 @@ int main(int argc, char **argv){
                     g_peak_u[U_HALLEBARDIER],g_peak_u[U_ARQUEBUSIER],g_peak_u[U_ALCHIMISTE],g_peak_u[U_GARDE_RUNIQUE],g_peak_u[U_ARCHER],g_peak_u[U_CAV_LOURDE],g_peak_u[U_PIQUIER],g_peak_u[U_EPEISTE]);
             fprintf(stderr,"[FORGEDIAG] PIC roster-22 (les 10 neuves) : arb.lourd %ld · berserker %ld · lancier-choc %ld · milice %ld · harceleur %ld · traqueur %ld · lame-franche %ld · garde-escorte %ld · cuirassée %ld · cav-raid %ld\n",
                     g_peak_u[U_ARBALETE_LOURDE],g_peak_u[U_BERSERKER],g_peak_u[U_LANCIER_CHOC],g_peak_u[U_MILICE],g_peak_u[U_HARCELEUR],g_peak_u[U_TRAQUEUR],g_peak_u[U_LAME_FRANCHE],g_peak_u[U_GARDE_ESCORTE],g_peak_u[U_CAV_CUIRASSEE],g_peak_u[U_CAV_RAID]);
-            { double stk[RES_COUNT]; for(int g=0;g<RES_COUNT;g++)stk[g]=0.0;
-              for (int r=0;r<s.econ->n_regions;r++){ if(s.econ->region[r].owner<0)continue;
-                  for(int g=0;g<RES_COUNT;g++) stk[g]+=s.econ->region[r].stock[g]; }
+            { double stk[RES_COUNT]; for(int g=0;g<RES_COUNT;g++)stk[g]=world_stock(s.econ,g);
               fprintf(stderr,"[FORGEDIAG] ARSENAL (stock, an %d) : lég %.0f · lourde %.0f · trait %.0f · feu %.0f · enchantées %.0f (seuil 1 paquet = %d)\n",
                     s.year,stk[RES_ARMS_LIGHT],stk[RES_ARMS_HEAVY],stk[RES_ARMS_RANGED],stk[RES_FIREARM],stk[RES_ENCHANTED_ARMS],POP_PER_UNIT);
               fprintf(stderr,"[FORGEDIAG] CHAÎNE OUTILS (fer+bois→outils DIRECT) : taillanderie %ld bâtie | fer extr %.0f → outils out %.0f stk %.0f (dem %.0f)\n",
@@ -2017,8 +2033,9 @@ int main(int argc, char **argv){
                   ncol++;
                   double pop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
                   tpop+=pop; if(pop<1000.0)under++;
-                  rawk += re->stock[RES_IRON]+re->stock[RES_WOOD]+re->stock[RES_COAL]+re->stock[RES_WOOL]+re->stock[RES_GRAIN];
                   goods+= re->supply[RES_CLOTH]+re->supply[RES_TOOLS]+re->supply[RES_PAPER]; }
+              rawk = world_stock(s.econ,RES_IRON)+world_stock(s.econ,RES_WOOD)+world_stock(s.econ,RES_COAL)
+                   + world_stock(s.econ,RES_WOOL)+world_stock(s.econ,RES_GRAIN);   /* stock NATIONAL */
               fprintf(stderr,"[FORGEDIAG] DÉV : %d colonies · pop moy %.0f · %d sous 1000 hab | stock RAW %.0f · biens manuf/tick %.0f (le raw doit DESCENDRE, les biens MONTER)\n",
                     ncol, ncol?tpop/ncol:0.0, under, rawk, goods); }
             { double dem[RES_COUNT]; for(int g=0;g<RES_COUNT;g++)dem[g]=0.0;
@@ -2697,12 +2714,16 @@ int main(int argc, char **argv){
             for (int r=0;r<s.econ->n_regions && r<w->n_regions;r++){
                 int ct2=w->region[r].continent;
                 if (ct2<0||ct2>=SCPS_MAX_CONTINENT) continue;
-                cw[ct2]+=s.econ->region[r].treasury;
-                for (int k=0;k<CLASS_COUNT;k++) cpop[ct2]+=s.econ->region[r].strata[k].pop;
+                /* Le TRÉSOR n'est plus situé (il est national) : la richesse d'un continent,
+                 * c'est celle de SES POPS — la seule qui ait encore une adresse. */
+                for (int k=0;k<CLASS_COUNT;k++){
+                    cw[ct2]  +=s.econ->region[r].strata[k].wealth;
+                    cpop[ct2]+=s.econ->region[r].strata[k].pop;
+                }
             }
             printf("              continents :");
             for (int ct2=0;ct2<w->n_continents && ct2<SCPS_MAX_CONTINENT;ct2++)
-                if (cpop[ct2]>0) printf(" C%d %.0f or (%.0fk hab)", ct2, cw[ct2], cpop[ct2]/1000.0);
+                if (cpop[ct2]>0) printf(" C%d %.0f de richesse (%.0fk hab)", ct2, cw[ct2], cpop[ct2]/1000.0);
             printf("\n"); }
           /* WG — LES DÉTROITS : combien le monde en porte, combien sont TENUS (région-flanc
            * possédée), et le PÉAGE encaissé au dernier tick par le meilleur tenant. */

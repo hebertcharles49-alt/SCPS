@@ -2225,7 +2225,7 @@ static const char *event_title_ring(const World *w, int evid, int subject){
 /* ===================================================================== */
 static void apply_region_eff(EventCtx *cx, int r, const EvEffect *e){
     if (r<0||r>=cx->econ->n_regions) return;
-    /* RE-KEY PROVINCE : build.K_inst/H_coerc/food_cap, coercion, treasury, strata sont
+    /* RE-KEY PROVINCE : build.K_inst/H_coerc/food_cap, coercion, strata sont
      * PROVINCE-OWNED (charte règle 1) — econ->region[r] est un DÉRIVÉ (econ_aggregate_regions
      * le reconstruit
      * ENTIER à chaque econ_tick), un écrivain direct s'y perdrait au tick suivant. Route
@@ -2250,21 +2250,19 @@ static void apply_region_eff(EventCtx *cx, int r, const EvEffect *e){
        * explicitement MÉTALLIQUES (trésor enfoui/épave) : AUCUN évènement du registre
        * EVENTS[] courant n'est de cette nature (0 cas — vérifié, rapport M3f) — l'exception
        * ne s'applique donc à rien ici, à recreuser si un tel évènement est ajouté. */
-      /* MONNAIE M14 — B6 : dual-write (econ_prov_treasury_credit, motif M11-A2) — apply_
-       * region_eff s'exécute au fil des évènements (world_events_tick, avant OU après
-       * l'agrégation selon l'appelant : chronicle vs sim.c) ; jamais une écriture nue. */
-      if (e->d_treasury<0.f){
-          float before_tr=re->treasury;
-          float after_tr = fmaxf(0.f, re->treasury + e->d_treasury);
-          float paid=before_tr-after_tr; if (paid<0.f) paid=0.f;
+      /* TRÉSOR NATIONAL (2026-09-03) : le transfert relie LE trésor du pays propriétaire
+       * et la richesse des POPS de la province sujette (elle, restée provinciale). Une
+       * province vierge (owner<0) n'a pas de trésor : le flux est un no-op. */
+      int cid_tr = re->owner;
+      if (cid_tr>=0 && e->d_treasury<0.f){
+          float paid = -econ_nation_gold_add(cx->econ, cid_tr, e->d_treasury);   /* débit BORNÉ */
           if (paid>0.f){
-              econ_prov_treasury_credit(cx->econ, pid, -paid);
               float wl,wb,we; econ_wage_split(paid,&wl,&wb,&we);
               re->strata[CLASS_LABORER].wealth   += wl;
               re->strata[CLASS_BOURGEOIS].wealth += wb;
               re->strata[CLASS_ELITE].wealth     += we;
           }
-      } else if (e->d_treasury>0.f){
+      } else if (cid_tr>=0 && e->d_treasury>0.f){
           float wl,wb,we; econ_wage_split(e->d_treasury,&wl,&wb,&we);
           float tl=fminf(fmaxf(wl,0.f), re->strata[CLASS_LABORER].wealth);
           float tb=fminf(fmaxf(wb,0.f), re->strata[CLASS_BOURGEOIS].wealth);
@@ -2272,7 +2270,7 @@ static void apply_region_eff(EventCtx *cx, int r, const EvEffect *e){
           re->strata[CLASS_LABORER].wealth   -= tl;
           re->strata[CLASS_BOURGEOIS].wealth -= tb;
           re->strata[CLASS_ELITE].wealth     -= te;
-          econ_prov_treasury_credit(cx->econ, pid, tl+tb+te);
+          econ_nation_gold_add(cx->econ, cid_tr, tl+tb+te);
       } }
     /* ESCLAVAGE — FUITE #9 : un évènement (peste/famine/vague migratoire…) multiplie la pop
      * de TOUTES les strates — mais aucun évènement ne touche les PopGroup (ce module ne les
@@ -2288,11 +2286,11 @@ static void apply_region_eff(EventCtx *cx, int r, const EvEffect *e){
 }
 /* MEMBRANE DE DÉCISION — d_treasury_mois : fraction SIGNÉE du revenu MENSUEL du pays
  * (Σtaxes de l'an écoulé / 12), déflatée par l'IPM courant (un même choix pèse pareil
- * en monnaie constante quel que soit l'âge de la partie), routée sur la région-SUJET
- * (EV_PROVINCE) ou la CAPITALE (EV_COUNTRY) via econ_region_treasury_add (la province
- * représentative — jamais un écrivain direct sur l'agrégat région). */
+ * en monnaie constante quel que soit l'âge de la partie). TRÉSOR NATIONAL (2026-09-03) :
+ * l'or entre/sort du trésor DU PAYS ; la région-SUJET (EV_PROVINCE) ou la CAPITALE
+ * (EV_COUNTRY) ne porte plus que la contrepartie en richesse des POPS. */
 static void resolve_treasury_mois(EventCtx *cx, int cid, int region, const EvEffect *e){
-    if (e->d_treasury_mois==0.f || region<0) return;
+    if (e->d_treasury_mois==0.f || region<0 || cid<0) return;
     float revenu_mois = econ_country_tax_year(cid) / 12.f;
     float montant = e->d_treasury_mois * revenu_mois * econ_world_ipm(cx->econ);
     /* item 5 : un COÛT (montant<0) → classes 42/20/38 de LA RÉGION sujette (même motif que
@@ -2301,7 +2299,7 @@ static void resolve_treasury_mois(EventCtx *cx, int cid, int region, const EvEff
      * les mêmes classes (econ_region_wealth_add borne déjà à ce qui existe, jamais de
      * négatif) ; le trésor ne reçoit que ce qui a RÉELLEMENT été levé. */
     if (montant<0.f){
-        float paid = econ_region_treasury_add(cx->econ, region, montant);
+        float paid = econ_nation_gold_add(cx->econ, cid, montant);
         if (paid<0.f){
             float amt=-paid, wl,wb,we; econ_wage_split(amt,&wl,&wb,&we);
             econ_region_wealth_add(cx->econ, region, CLASS_LABORER,   wl);
@@ -2313,7 +2311,7 @@ static void resolve_treasury_mois(EventCtx *cx, int cid, int region, const EvEff
         float tl = -econ_region_wealth_add(cx->econ, region, CLASS_LABORER,   -wl);
         float tb = -econ_region_wealth_add(cx->econ, region, CLASS_BOURGEOIS, -wb);
         float te = -econ_region_wealth_add(cx->econ, region, CLASS_ELITE,     -we);
-        econ_region_treasury_add(cx->econ, region, tl+tb+te);
+        econ_nation_gold_add(cx->econ, cid, tl+tb+te);
     }
 }
 static void apply_effect(EventCtx *cx, EvScope scope, int subject, const EvEffect *e){
@@ -3841,7 +3839,7 @@ static bool dir_eligible(EventCtx *cx, int id, int day, int *out){
                                        if (!(wp->country[c].L>6.f || (wp->country[c].K<4.f && rc>=5))) continue; }  /* L haut OU (K bas ET ≥5 rég) */
                 if (id==DIR_PALAIS   && !(wp->country[c].L<5.f)) continue;
                 if (id==DIR_SCHISME  && !EVENTS[EVID_SCHISM].trigger(cx,c)) continue;
-                if (id==DIR_DEBASE){ int cr=world_capital_region(w,c); if (cr<0||econ->region[cr].treasury>=2000.f) continue; }  /* trésor bas (élargi 200→2000) */
+                if (id==DIR_DEBASE && econ_country_gold(econ,c)>=2000.0) continue;   /* trésor NATIONAL bas (élargi 200→2000) */
                 if (id==DIR_CADASTRE && !(wp->country[c].K>=6.f)) continue;
                 if (id==DIR_REFORME  && !(wp->country[c].L<5.f)) continue;
                 if (id==DIR_MARCHAND && w->country[c].role!=POLITY_CITY_STATE) continue;

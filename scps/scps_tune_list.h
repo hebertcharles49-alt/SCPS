@@ -261,6 +261,12 @@
      * la solde) mais la part en âge et en état de porter les armes plutôt que de tenir la
      * ferme, l'atelier ou la charge. 1.0 = ancien comportement (kill-switch). */ \
     X(ARMY_POOL_FRAC,         0.20f) \
+    /* FREIN ÉCONOMIQUE DE LA LEVÉE (2026-09-03, trésor national) — jamais un plafond :
+     * WH_DESERT_RATE = part de la solde IMPAYÉE qui déserte par an (0 = moral seul) ;
+     * WH_PAY_REVENUE_FRAC = solde annuelle max en part du revenu fiscal avant que la
+     * levée cesse de grossir (0 = désactivé). Cible rapport armée : 10-15 % en paix. */ \
+    X(WH_DESERT_RATE,         0.50f) \
+    X(WH_PAY_REVENUE_FRAC,    0.35f) \
     /* LOT 3 (audit de guerre) — le SIÈGE LIT LA GARNISON : chaque point de H_coerc
      * (Garnison/Forteresse/Citadelle bâties, re->build.H_coerc) durcit la place en
      * plus du simple compte de bâtiments — poids modeste (~5-10 % sur la durée

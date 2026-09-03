@@ -26,7 +26,7 @@
 
 ## LA PROVINCE EST LA SEULE RÉALITÉ ÉCONOMIQUE (non négociable)
 
-- La **PROVINCE** (tuile) possède tout : pop/strates, ≤ 2 raws (son tirage), bâtiments, allocation, prix, stock, culture locale. TOUT verbe joueur et TOUT reader façade est au grain PROVINCE (pid).
+- La **PROVINCE** (tuile) possède : pop/strates/groupes, ≤ 2 raws (son tirage), bâtiments, allocation, production/consommation, prix projeté, culture locale — mais **le TRÉSOR et les STOCKS sont NATIONAUX** (un par empire, aucun plafond ; décision joueur 2026-09-03, docs/DESIGN_TRESOR_NATIONAL.md). TOUT verbe joueur et TOUT reader façade est au grain PROVINCE (pid), sauf l'or et la matière d'État qui sont au grain PAYS.
 - La **RÉGION** n'est qu'un AGRÉGAT politique/UI (`region[]` est une VUE reconstruite chaque clôture). AUCUN nouveau verbe/reader au grain région ; JAMAIS l'indirection `econ_region_rep_province` dans un chemin joueur. Si un chemin existant est région-grain : le TRANSFÉRER sur province (même au prix d'un bump de save), pas le contourner.
 - **UI** : une fiche province ne montre que SES champs (≤ 2 raws) ; les agrégats multi-tuiles vivent dans des vues NOMMÉES (onglet Région, pays), jamais mélangés.
 

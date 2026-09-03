@@ -14,8 +14,20 @@ static int ok=0, bad=0;
 int econ_region_rep_province(const WorldEconomy *e, int region){ (void)e; (void)region; return -1; }
 float econ_build_reserve(Resource r){ (void)r; return 0.f; }
 const char *resource_name(Resource r){ (void)r; return "bien"; }
-float econ_region_stock_add(WorldEconomy *e, int region, int good, float delta){
-    float *s=&e->region[region].stock[good];
+/* STOCK NATIONAL (2026-09-03) : l'entrepôt vit au grain PAYS (nat_stock), plus à la
+ * région. Mêmes stubs, même sémantique bornée — seule la clé a changé. */
+float econ_country_stock_sum(const WorldEconomy *e, int cid, Resource r){
+    if(cid<0||cid>=SCPS_MAX_COUNTRY) return 0.f;
+    return e->nat_stock[cid][r];
+}
+float econ_country_stock_take(WorldEconomy *e, int cid, Resource r, float need){
+    if(cid<0||cid>=SCPS_MAX_COUNTRY||need<=0.f) return 0.f;
+    float *s=&e->nat_stock[cid][r];
+    float take=fminf(*s,need); *s-=take; return take;
+}
+float econ_nation_stock_add(WorldEconomy *e, int cid, int good, float delta){
+    if(cid<0||cid>=SCPS_MAX_COUNTRY) return 0.f;
+    float *s=&e->nat_stock[cid][good];
     if(delta>=0.f){ *s+=delta; return delta; }
     float take=fminf(*s,-delta); *s-=take; return -take;
 }
@@ -29,9 +41,15 @@ static float money(const WorldEconomy *e){
 
 static void fixture(WorldEconomy *e, TradeNetwork *n, float buyer_wealth){
     memset(e,0,sizeof(*e)); memset(n,0,sizeof(*n)); e->n_regions=2;
+    /* STOCK NATIONAL : un lien ne déplace de la matière QUE s'il franchit une
+     * frontière (entre deux régions du même pays l'entrepôt est déjà commun) — les
+     * deux régions appartiennent donc à DEUX pays distincts, et l'entrepôt de
+     * l'exportateur est celui du pays 0. */
+    e->region[0].owner=0;
+    e->region[1].owner=1;
     e->region[0].price[RES_GRAIN]=1.f;
     e->region[1].price[RES_GRAIN]=10.f;
-    e->region[0].stock[RES_GRAIN]=20.f;
+    e->nat_stock[0][RES_GRAIN]=20.f;
     /* Composition volontairement différente : l'ancien code regardait le
      * bourgeois exportateur pour décider si le laborer importateur payait. */
     e->region[0].strata[CLASS_BOURGEOIS].pop=100.f;

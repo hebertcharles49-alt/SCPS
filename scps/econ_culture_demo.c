@@ -107,16 +107,19 @@ int main(int argc, char **argv){
     if (pid<0) pid=0;
     long pop=1000;   /* signal net, comme le fixe wealth/stock ci-dessous (banc isolé) */
 
-    /* Dote la province : budget + stock PLEINS sur toutes les ressources, pour que le
+    /* Dote la province : budget PLEIN sur toutes les ressources, pour que le
      * panier social ait une vraie chance d'être comblé (sans ça, society_sat plafonne
      * près de 0 pour tout le monde — la province représentative peut être pauvre en
-     * sortie de gen_population — et masque la pénalité off-culture qu'on veut isoler). */
+     * sortie de gen_population — et masque la pénalité off-culture qu'on veut isoler).
+     * STOCK NATIONAL (2026-09-03) : l'entrepôt n'est plus provincial — on remplit celui
+     * du PAYS propriétaire de la province témoin (le panier des pops y puise). */
 
     /* cas homogène */
     mute_siblings(e,rr,pid);
     ProvinceEconomy *pe=&e->prov[pid];
     pe->active=true; pe->colonized=true; pe->culture.settled=true;
-    for (int k=0;k<RES_COUNT;k++) pe->stock[k]=1.0e5f;
+    if (pe->owner<0) pe->owner=0;   /* sans propriétaire, plus ni trésor ni stock : on rattache au pays 0 */
+    for (int k=0;k<RES_COUNT;k++) e->nat_stock[pe->owner][k]=1.0e5f;
     pe->strata[CLASS_LABORER].pop=pop*0.7f;   pe->strata[CLASS_LABORER].wealth=1.0e6f;
     pe->strata[CLASS_BOURGEOIS].pop=pop*0.2f; pe->strata[CLASS_BOURGEOIS].wealth=1.0e6f;
     pe->strata[CLASS_ELITE].pop=pop*0.1f;     pe->strata[CLASS_ELITE].wealth=1.0e6f;
@@ -131,7 +134,8 @@ int main(int argc, char **argv){
     mute_siblings(e,rr,pid);
     pe=&e->prov[pid];
     pe->active=true; pe->colonized=true; pe->culture.settled=true;
-    for (int k=0;k<RES_COUNT;k++) pe->stock[k]=1.0e5f;
+    if (pe->owner<0) pe->owner=0;   /* sans propriétaire, plus ni trésor ni stock : on rattache au pays 0 */
+    for (int k=0;k<RES_COUNT;k++) e->nat_stock[pe->owner][k]=1.0e5f;
     pe->strata[CLASS_LABORER].pop=pop*0.7f;   pe->strata[CLASS_LABORER].wealth=1.0e6f;
     pe->strata[CLASS_BOURGEOIS].pop=pop*0.2f; pe->strata[CLASS_BOURGEOIS].wealth=1.0e6f;
     pe->strata[CLASS_ELITE].pop=pop*0.1f;     pe->strata[CLASS_ELITE].wealth=1.0e6f;

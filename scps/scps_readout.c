@@ -188,7 +188,9 @@ void map_lens_tints(const WorldEconomy *econ, const WorldLegitimacy *wl,
             case LENS_MARCHE: {
                 int worst=MARCHE_ENGORGE;             /* on ignore les marchés MORTS (pas une détresse) */
                 for (int k=0;k<5;k++){
-                    BandMarche m=band_marche(re->demand[BASKET[k]], re->supply[BASKET[k]]+re->stock[BASKET[k]]);
+                    /* le STOCK est NATIONAL : la bande de marché se lit sur l'offre/demande
+                     * de la province (sa réalité productive), plus sur un entrepôt local. */
+                    BandMarche m=band_marche(re->demand[BASKET[k]], re->supply[BASKET[k]]);
                     if (m!=MARCHE_MORT && (int)m<worst) worst=(int)m;
                 }
                 out[r]=T_MARCHE[worst];

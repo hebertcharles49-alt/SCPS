@@ -66,10 +66,16 @@ int main(int argc,char**argv){
         ok("sans port : navy_order_build ÉCHOUE", !navy_order_build(&ns,w,econ,cid,HULL_TRANSPORT));
 
         /* (4) asseoir une rade sur la meilleure côte : port + trésor + bras + matière au marché */
+        /* TRÉSOR ET STOCK NATIONAUX (2026-09-03) : le port et les bras restent la réalité
+         * de la RÉGION, mais la caisse et l'entrepôt qui paient la coque sont ceux du PAYS
+         * (navy_order_build lit econ_country_gold/econ_country_stock_sum sur re->owner==cid). */
         { RegionEconomy*re=&econ->region[coast];
-          re->build.port=1.f; re->treasury=1.0e9f;
+          re->build.port=1.f;
           re->strata[CLASS_LABORER].pop=8000.f;
-          re->stock[RES_NAVAL_SUPPLIES]=5000.f; re->stock[RES_WOOD]=5000.f; re->stock[RES_COPPER]=5000.f; }
+          econ->nat_treasury[cid]=1.0e9f;
+          econ->nat_stock[cid][RES_NAVAL_SUPPLIES]=5000.f;
+          econ->nat_stock[cid][RES_WOOD]=5000.f;
+          econ->nat_stock[cid][RES_COPPER]=5000.f; }
         ok("la côte devient un PORT (navy_region_is_port)", navy_region_is_port(w,econ,coast));
         ok("navy_best_port retrouve la rade", navy_best_port(w,econ,cid)==coast);
         ok("navy_build_gold(transport) > 0 (recette chiffrée au marché)", navy_build_gold(econ,coast,HULL_TRANSPORT)>0.f);

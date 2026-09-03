@@ -1609,7 +1609,7 @@ long scps_province_slave_count(ScpsSim *s, int pid){
 /* UI PROVINCE LOT 3 — IMPÔTS DE LA PROVINCE, en or/AN. Rejoue EXACTEMENT la
  * formule de collecte fiscale d'econ_tick (scps_econ.c ~L2390-2406, §6-7) sur les
  * strates DE LA PROVINCE — PUR read, aucune écriture (contrairement au tick réel
- * qui débite st->wealth et crédite re->treasury). STATE_TAX_AMBITION est un
+ * qui débite st->wealth et crédite le trésor NATIONAL). STATE_TAX_AMBITION est un
  * #define LOCAL à scps_econ.c (pas dans le .h) : mirorré ici à sa valeur actuelle
  * (0.42f) — si econ_tick change ce taux, ce reader DOIT suivre (les deux portent
  * le même commentaire de couplage). */
@@ -1690,17 +1690,16 @@ int scps_province_market(ScpsSim *s, int pid, ScpsMarketLine *out, int max, cons
         for(int gg=(pass==0?g:1); gg<RES_COUNT && n<max; gg++){
             if(pass==0 && gg!=g) break;                 /* pass 0 : uniquement la ressource dominante */
             if(pass==1 && gg==g) continue;               /* pass 1 : le reste, pas de doublon */
-            float stk = pe->stock[gg], dem = pe->demand[gg], sup = pe->supply[gg];
-            if(!(stk>0.5f || dem>0.05f || sup>0.05f)) continue;
+            /* LE STOCK EST NATIONAL (2026-09-03) : la fiche province ne montre QUE ce
+             * qui vit ici — ce qu'elle produit et ce qu'elle consomme. */
+            float dem = pe->demand[gg], sup = pe->supply[gg];
+            if(!(dem>0.05f || sup>0.05f)) continue;
             out[n].name   = sz(resource_name((Resource)gg));
-            /* MEMBRANE : un déficit transitoire (ProvinceEconomy.stock<0, non clampé
-             * côté moteur — cf. TROUVAILLES 2026-07-08) reste un signal VALIDE pour la
-             * bande (band_marche lit le stk BRUT : très négatif ⇒ PENURIE, cohérent) mais
-             * ne doit JAMAIS être publié tel quel — un stock/prix négatif est un nombre
-             * tangible FAUX pour le joueur. On clampe seulement à la SORTIE. */
+            /* MEMBRANE : un prix négatif est un nombre tangible FAUX pour le joueur —
+             * on clampe à la SORTIE. La BANDE se lit désormais sur offre/demande de la
+             * province (le stock est NATIONAL, il n'appartient plus à cette fiche). */
             out[n].price  = pe->price[gg] > 0.f ? pe->price[gg] : 0.f;
-            out[n].stock  = stk > 0.f ? stk : 0.f;
-            out[n].marche = sz(label_marche(band_marche(dem, sup+stk)));
+            out[n].marche = sz(label_marche(band_marche(dem, sup)));
             n++;
         }
         if(pass==0 && g==RES_NONE) continue;   /* pas de brute dominante : direct pass 1 */
@@ -1779,9 +1778,13 @@ int scps_country_stocks(ScpsSim *s, int cid, ScpsStock *out, int max){
         nreg++;
         for(int g=1; g<RES_COUNT; g++){
             dem[g] += re->demand[g]; sup[g] += re->supply[g];
-            stk[g] += re->stock[g];  pri[g] += re->price[g];
+            pri[g] += re->price[g];
         }
     }
+    /* LE STOCK EST NATIONAL (2026-09-03) : offre/demande se SOMMENT sur les régions
+     * (elles produisent et consomment vraiment), mais l'entrepôt se lit UNE fois sur
+     * le pays — le sommer par région le compterait autant de fois qu'il y a de régions. */
+    for(int g=1; g<RES_COUNT; g++) stk[g] = econ_country_stock_sum(s->sim.econ, cid, (Resource)g);
     int n=0;
     for(int g=1; g<RES_COUNT && n<max; g++){
         if(!(stk[g]>0.5 || dem[g]>0.05 || sup[g]>0.05)) continue;   /* bien VIVANT seulement */
@@ -1810,13 +1813,12 @@ int scps_stock_regions(ScpsSim *s, int cid, int good, ScpsStockRegion *out, int 
     for(int r=0;r<s->sim.econ->n_regions;r++){
         RegionEconomy *re=&s->sim.econ->region[r];
         if(re->owner!=cid || !re->colonized)continue;
-        if(re->supply[good]<=0.05f && re->demand[good]<=0.05f && re->stock[good]<=0.5f)continue;
+        if(re->supply[good]<=0.05f && re->demand[good]<=0.05f)continue;
         ScpsStockRegion row;
         memset(&row,0,sizeof row);
         row.region=r; row.province=econ_region_rep_province(s->sim.econ,r);
         row.name=(row.province>=0 && row.province<s->w->n_provinces)
             ? sz(s->w->province[row.province].name) : sz("Région sans siège");
-        row.stock=(long)re->stock[good];
         row.supply_month=re->supply[good]; row.demand_month=re->demand[good];
         float activity=row.supply_month+row.demand_month;
         if(n>=max){
@@ -1851,9 +1853,9 @@ int scps_market_quote(ScpsSim *s, int cid, int good, long qty, ScpsMarketQuote *
     int howner=(hub>=0 && hub<e->n_regions)?e->region[hub].owner:-1;
     float margin=re->import_margin; if(margin<1.f) margin=1.f;
     float price=re->price[good]; if(price<0.2f) price=0.2f;
-    float local=(hub>=0 && hub!=reg)?e->region[hub].stock[good]:0.f;
+    float local=(hub>=0 && hub!=reg && howner>=0)?econ_country_stock_sum(e,howner,(Resource)good):0.f;
     float global=intertrade_global_stock(e,good);
-    if(hub==reg){ global-=re->stock[good]; if(global<0.f) global=0.f; }
+    if(hub==reg && re->owner>=0){ global-=econ_country_stock_sum(e,re->owner,(Resource)good); if(global<0.f) global=0.f; }
     int gaccess=intertrade_country_has_centre(e,cid) || intertrade_has_global_access(cid);
     float rem=intertrade_commerce_remaining(cid);
     long lqty=qty, gqty=qty;
@@ -4332,7 +4334,7 @@ int scps_can_colonize(ScpsSim *s, int prov){
         /* MIROIR EXACT du drain (econ_colonize_province) — l'« approximation UI »
          * 800/0.5 était PLUS STRICTE que le moteur (500/0.35 à l'époque) : le bouton
          * grisait des colonisations légales. Mêmes tunables, même helper vivrier. */
-        if (pp>=tune_f("COLONY_MIN_POP",300.f) && econ_colony_food_ok(pe)) return 1;
+        if (pp>=tune_f("COLONY_MIN_POP",300.f) && econ_colony_food_ok(s->sim.econ, pe)) return 1;
     }
     return 0;
 }
@@ -4362,13 +4364,13 @@ int scps_colony_status(ScpsSim *s, int *dst_prov, int *days_left, int *total_day
  * sur ses provinces — le nombre TANGIBLE (rations en réserve). Lecture pure. */
 double scps_country_food(const ScpsSim *s, int c){
     if (!s || !s->ready || c<0) return 0.0;
-    double tot=0.0;
-    for (int q=0;q<s->sim.econ->n_prov;q++){
-        const ProvinceEconomy *pe=&s->sim.econ->prov[q];
-        if (pe->owner!=c || !pe->colonized) continue;
-        tot += pe->stock[RES_GRAIN]+pe->stock[RES_FISH]+pe->stock[RES_LIVESTOCK]+pe->stock[RES_FRUIT];
-    }
-    return tot;
+    /* LE GRENIER EST NATIONAL (2026-09-03) : une seule lecture, plus de tournée des
+     * provinces. */
+    const WorldEconomy *e=s->sim.econ;
+    return (double)(econ_country_stock_sum(e,c,RES_GRAIN)
+                  + econ_country_stock_sum(e,c,RES_FISH)
+                  + econ_country_stock_sum(e,c,RES_LIVESTOCK)
+                  + econ_country_stock_sum(e,c,RES_FRUIT));
 }
 /* LE DIPLOMATE (v50) : jours avant que l'émissaire du joueur soit à nouveau disponible
  * (0 = prêt). L'UI grise les verbes diplo et affiche « émissaire en tournée (N j) ». */
@@ -4554,9 +4556,9 @@ int scps_pending_event(ScpsSim *s, int slot, ScpsPendingEvent *out){
           double fixed = (double)d->options[i].eff.d_treasury;
           /* apply_region_eff clampe uniquement ce débit historique au liquide de la
            * province porteuse ; le prix proportionnel, lui, peut réellement créer la dette. */
-          if (fixed<0.0 && region>=0){
-              int pid=econ_region_rep_province(s->sim.econ,region);
-              double have=(pid>=0 && pid<s->sim.econ->n_prov) ? s->sim.econ->prov[pid].treasury : 0.0;
+          if (fixed<0.0 && region>=0 && region<s->sim.econ->n_regions){
+              int ro=s->sim.econ->region[region].owner;
+              double have=(ro>=0) ? econ_country_gold(s->sim.econ, ro) : 0.0;   /* trésor NATIONAL */
               if (have<0.0) have=0.0;
               if (-fixed>have) fixed=-have;
           }
@@ -4740,7 +4742,8 @@ void scps_player_alerts(ScpsSim *s, ScpsPlayerAlerts *out){
                 out->price_name=sz(resource_name((Resource)g));
             }
             /* un bien DEMANDÉ dont le stock ET l'offre sont ~nuls : le manque vécu */
-            if (re->demand[g] > worst_lack && re->stock[g] < re->demand[g]*0.05f
+            /* le stock est NATIONAL : le manque VÉCU se lit sur l'offre servie ici */
+            if (re->demand[g] > worst_lack
                 && re->supply[g] < re->demand[g]*0.10f){
                 worst_lack = re->demand[g];
                 out->conso_good=g; out->conso_name=sz(resource_name((Resource)g));

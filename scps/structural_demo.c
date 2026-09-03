@@ -282,21 +282,23 @@ int main(int argc, char **argv){
          * monde. L'IA lit ces valeurs telles quelles (ai_observe, sans re-tick). */
         if (cidB<s.wp->n_countries){ s.wp->country[cidB].SI=2.0f; s.wp->country[cidB].fragilite=7.0f; }
         if (cidD<s.wp->n_countries){ s.wp->country[cidD].SI=2.0f; s.wp->country[cidD].fragilite=7.0f; }
-        /* trésor garanti : le test mesure la DÉCISION, pas la solvabilité du monde */
-        if (rB>=0 && rB<s.econ->n_regions) s.econ->region[rB].treasury=5000.f;
-        if (rD>=0 && rD<s.econ->n_regions) s.econ->region[rD].treasury=5000.f;
+        /* trésor garanti : le test mesure la DÉCISION, pas la solvabilité du monde.
+         * TRÉSOR NATIONAL (2026-09-03) : une seule caisse par empire — on dote les deux. */
+        if (cidB>=0 && cidB<SCPS_MAX_COUNTRY) s.econ->nat_treasury[cidB]=5000.f;
+        if (cidD>=0 && cidD<SCPS_MAX_COUNTRY) s.econ->nat_treasury[cidD]=5000.f;
         AgencyState ag; agency_init(&ag);
         AiActor aB, aD;
         ai_actor_init(&aB, s.w, s.econ, cidB, seed^0xBu);
         ai_actor_init(&aD, s.w, s.econ, cidD, seed^0xDu);
-        /* gate de matière : sourcer la recette des édifices dans la capitale de chaque acteur
-         * (sinon refus sec — le test mesure la DÉCISION de bâtir, pas l'approvisionnement). */
-        for (int hr=0; hr<2; hr++){ int r=(hr==0)?aB.home_region:aD.home_region;
-            if (r<0||r>=s.econ->n_regions) continue;
-            RegionEconomy *re=&s.econ->region[r];
-            re->stock[RES_WOOD]=2000.f; re->stock[RES_STONE]=2000.f; re->stock[RES_CLAY]=2000.f;
-            re->stock[RES_IRON]=2000.f; re->stock[RES_TOOLS]=2000.f; re->stock[RES_SALT]=2000.f;
-            re->stock[RES_PRECIOUS_METAL]=2000.f; }
+        /* gate de matière : sourcer la recette des édifices dans l'entrepôt de chaque acteur
+         * (sinon refus sec — le test mesure la DÉCISION de bâtir, pas l'approvisionnement).
+         * STOCK NATIONAL (2026-09-03) : l'entrepôt est celui de l'EMPIRE, pas de la capitale. */
+        for (int hc=0; hc<2; hc++){ int c=(hc==0)?cidB:cidD;
+            if (c<0||c>=SCPS_MAX_COUNTRY) continue;
+            float *ns=s.econ->nat_stock[c];
+            ns[RES_WOOD]=2000.f; ns[RES_STONE]=2000.f; ns[RES_CLAY]=2000.f;
+            ns[RES_IRON]=2000.f; ns[RES_TOOLS]=2000.f; ns[RES_SALT]=2000.f;
+            ns[RES_PRECIOUS_METAL]=2000.f; }
         AiView vB=ai_observe(s.wp,s.w,s.econ,cidB), vD=ai_observe(s.wp,s.w,s.econ,cidD);
         printf("   Bureaucrate : w_expand=%.2f SI=%.1f (crise) | Dominateur : w_expand=%.2f SI=%.1f (crise)\n",
                aB.w_expand, vB.SI, aD.w_expand, vD.SI);

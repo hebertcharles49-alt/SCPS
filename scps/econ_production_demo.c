@@ -35,16 +35,22 @@ static int rep_prov(WorldEconomy *e, int r){
 
 /* ÉTEINT toute province SŒUR (même région, ≠ pid) : la région AGRÈGE (règle 2) —
  * sans ça les autres provinces (semées par world_generate/gen_population)
- * contaminent stock/supply agrégés que le banc lit sur e->region[r]. */
+ * contaminent la supply agrégée que le banc lit sur e->region[r]. */
 static void mute_siblings(WorldEconomy *e, int r, int pid){
     for (int p=0;p<e->n_prov;p++){
         if (p==pid || e->prov[p].region!=r) continue;
         ProvinceEconomy *pe=&e->prov[p];
         pe->active=false; pe->colonized=false;
         memset(pe->strata,0,sizeof pe->strata);
-        for (int k=0;k<RES_COUNT;k++){ pe->raw_cap[k]=0.f; pe->stock[k]=0.f; pe->supply[k]=0.f; }
+        for (int k=0;k<RES_COUNT;k++){ pe->raw_cap[k]=0.f; pe->supply[k]=0.f; }
     }
 }
+
+/* STOCK NATIONAL (2026-09-03) : l'entrepôt vit au grain PAYS — une province SANS maître
+ * (l'ancienne isolation `owner=-1`) ne stocke PLUS rien du tout, le banc ne pourrait plus
+ * ni doter ni mesurer les outils. Chaque rig reçoit donc un pays SYNTHÉTIQUE d'UNE
+ * province, pris en haut de la plage (jamais attribué par le worldgen). */
+static int rig_cid(int r){ return SCPS_MAX_COUNTRY-1-r; }
 
 /* Fige la PROVINCE représentative de la région r en banc d'essai de production :
  * fer+charbon+bois+grain, plus un atelier d'outillage (fer + bois → outils,
@@ -53,10 +59,13 @@ static void rig(WorldEconomy *e, int r, float tools){
     int pid=rep_prov(e,r);
     mute_siblings(e,r,pid);
     ProvinceEconomy *re=&e->prov[pid];
+    int cid=rig_cid(r);
     re->active=true; re->colonized=true; re->culture.settled=true;
-    re->owner=-1;   /* ISOLATION : hors domaine §NF (sinon la construction demande-menée
-                     * bâtirait un atelier qui CONSOMME le métal que le test veut accumuler) */
-    for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; re->stock[k]=0.f; }
+    re->owner=(int16_t)cid;   /* un empire d'UNE province : le seul qui puise dans SON entrepôt */
+    econ_set_human(cid);      /* ISOLATION : §NF ne bâtit JAMAIS chez la main humaine — même effet
+                               * que l'ancien owner=-1 (pas d'atelier qui mange le métal accumulé),
+                               * mais la province garde un entrepôt national LISIBLE. */
+    for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; e->nat_stock[cid][k]=0.f; }
     re->raw_cap[RES_IRON]=4.f; re->raw_cap[RES_COAL]=4.f;
     re->raw_cap[RES_WOOD]=4.f; re->raw_cap[RES_GRAIN]=8.f;
     re->n_bld=0;
@@ -64,7 +73,7 @@ static void rig(WorldEconomy *e, int r, float tools){
     re->strata[CLASS_LABORER].pop=600.f;  re->strata[CLASS_LABORER].wealth=400.f;
     re->strata[CLASS_BOURGEOIS].pop=100.f;re->strata[CLASS_BOURGEOIS].wealth=200.f;
     re->strata[CLASS_ELITE].pop=50.f;     re->strata[CLASS_ELITE].wealth=300.f;
-    re->stock[RES_TOOLS]=tools;
+    e->nat_stock[cid][RES_TOOLS]=tools;
 }
 
 int main(int argc, char **argv){
@@ -116,7 +125,7 @@ int main(int argc, char **argv){
     /* Région 1 : l'atelier sort des OUTILS directement du fer + bois. */
     rig(e, 1, 0.f);
     for (int t=0;t<6;t++) econ_tick(e,1.f);
-    float tools=e->region[1].stock[RES_TOOLS];
+    float tools=econ_country_stock_sum(e, rig_cid(1), RES_TOOLS);
     printf("   chaîne directe : outils=%.1f\n", tools);
     ok("l'Atelier produit des OUTILS (fer + bois, DIRECT)", tools > 0.5f);
 
@@ -146,14 +155,15 @@ int main(int argc, char **argv){
      * n'use JAMAIS ses outils. On en fait un empire mono-province (pool = cette seule
      * province, pshare=1 ⇒ usure NETTE) ; sans ressources ⇒ pas de §NF qui rebâtirait
      * l'atelier. (La re-baseline worldgen #3 a fait passer region[2] en non-possédée.) */
-    re2->owner = (w->n_countries < SCPS_MAX_COUNTRY) ? w->n_countries : SCPS_MAX_COUNTRY-1;
-    for (int k=0;k<RES_COUNT;k++){ re2->raw_cap[k]=0.f; re2->stock[k]=0.f; }
+    int own2 = (w->n_countries < SCPS_MAX_COUNTRY) ? w->n_countries : SCPS_MAX_COUNTRY-1;
+    re2->owner = (int16_t)own2;
+    for (int k=0;k<RES_COUNT;k++){ re2->raw_cap[k]=0.f; e->nat_stock[own2][k]=0.f; }
     re2->n_bld=0;   /* AUCUN atelier → pas d'entretien */
     re2->strata[CLASS_LABORER].pop=600.f;
-    re2->stock[RES_TOOLS]=1000.f;
-    float tw0=re2->stock[RES_TOOLS];
+    e->nat_stock[own2][RES_TOOLS]=1000.f;   /* le PARC est national : c'est lui qui s'use */
+    float tw0=econ_country_stock_sum(e, own2, RES_TOOLS);
     for (int t=0;t<10;t++) econ_tick(e,1.f);
-    float tw1=re2->stock[RES_TOOLS];
+    float tw1=econ_country_stock_sum(e, own2, RES_TOOLS);
     printf("   stock d'outils sans entretien : %.0f → %.0f (usure)\n", tw0, tw1);
     ok("sans atelier pour les entretenir, le stock d'outils DÉCROÎT", tw1 < tw0 - 1.f);
 
