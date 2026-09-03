@@ -1,3 +1,40 @@
+# SYNTHÈSE SESSION — 2026-09-03 : SWEEP 10×200 LU, ASSIETTE SIÈGES, ANOMALIES DE GUERRE
+
+- **Sweep 10 graines × 200 ans dépouillé** (3edb071, docs/SWEEP_DOCT_AI_2026-09-02.md,
+  lecture intégrale sans filtre) : arbre neutre sur les agrégats, positif sur la
+  répartition ; juges 76/75/59 % valident le score IA. Cadence « saturation an 10 »
+  = artefact de l'assiette au plancher 0.25 (re-sweep après correction).
+- **Doctrines FLAT** (6c48694, save v107) : zéro entretien, suspension supprimée ;
+  seules les synergies paieront (fibonacci, la première gratuite). Dénominateur
+  chronicle = jouables seuls (PLAYER/ANTAGONIST).
+- **Télémétrie chronicle honnête** (37680a3, golden identique) : PROV vierges ≠
+  colonisées sans propriétaire · doctrines actives = instantané + adoptions
+  cumulées · plancher V<500 sur les hubs · « X libre » = sécession jouable.
+- **ASSIETTE D'INFLUENCE = LES SIÈGES** (ddd1b1c) : le module lisait
+  strata[CLASS_ELITE] (richesse, ~1-3 %) au lieu de pop_by_class (sièges, ~13 %).
+  3 classes 0.002/0.0011/0.00011 (≈60/20/20 %), courants = boost de leur classe
+  (Aristo 0.0025, Bourgeoisie 0.0022, Populaire 0.00022), Divin = + fidèles de la
+  religion d'État / 6000 (INFLUENCE_PER_BELIEVER ; INFLUENCE_PER_FAITH purgé).
+  Hover « N nobles · M bourgeois · P journaliers × le Conseil ». Kill-switch
+  AI_DOCT=0 byte-identique ; golden + golden-deep re-baselinés.
+- **ANOMALIES A2/A3 = MOTEUR DE GUERRE, pas les doctrines** (38523b6) : capitale
+  orpheline (capital_prov=-1 avec des régions → jamais un régiment ; recalage
+  sorti de son propre gate), garde de budget qui ne valait qu'en paix (342 rgt
+  pour une limite ~11 → on cesse de grossir au seuil de la paix, sans
+  démobiliser), affectation pop_by_class_in_army rendue au bon registre (morts
+  et usure). A4/A9 faux positifs. Preuve appariée s512 0-rgt 17/23 → 1/7,
+  s777 342 → 43 rgt. Golden + golden-deep re-baselinés (témoin compris).
+- **Pièges de vague** : `git stash` sans pathspec dans l'arbre partagé (a avalé le
+  travail des autres) ; un agent a supprimé le worktree de contrôle de
+  l'orchestrateur — interdire les deux dans les briefs.
+- **PROCHAIN PAS : RE-SWEEP (le joueur lance)** — `tools/sweep_doct_ai.sh`
+  (SEEDS/REPS/HORIZONS en env) pour relire la cadence de l'arbre avec des
+  assiettes justes, puis trancher F1/F4/F5 (marches de coût, plancher 0.5, actes
+  multiples/an) et J1/J2 du rapport analyste.
+- RESTE : 6 branches de Desseins · 20 idées-verbes · synergies de paires ·
+  clés fantômes/promotions · P4 Desseins IA · corps au front absent du pool de
+  recrutement (dernier canal de sur-levée) · découvert résiduel côté crédit.
+
 # SYNTHÈSE SESSION — 2026-09-02 (suite) : P2 JOUABLE + P3-IA LANDÉES
 
 - **Assets lots 14-16 intégrés** (bf545f6, 121/121 conformes) : 17 fonds de
