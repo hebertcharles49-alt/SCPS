@@ -498,20 +498,30 @@ static Recipe RECIPE[BLD_TYPE_COUNT] = {   /* NON-const (MODTOOLS) — labor/qou
     [BLD_ARQUEBUS]  = { RES_IRON,      1.0f, RES_GUNPOWDER, 2.0f, RES_FIREARM, 1.0f, 1.1f, RES_COPPER, 1.0f },  /* fer + poudre (cuivre repli) → feu */
     /* CONFORT du brut de bâti — CONSOMMENT argile/pierre (⇒ la demande qui tire leur extraction). */
     [BLD_POTTERY]   = { RES_CLAY,      1.5f, RES_NONE,      0.f,  RES_POTTERY, 1.4f,  46.f, RES_NONE, 0.f },  /* argile → poterie (confort). LEVIER LABOR : 1200·1.4/36.6 = 45.9 → labor 46 */
-    [BLD_SCULPTURE] = { RES_STONE,     2.0f, RES_NONE,      0.f,  RES_STATUE,  1.0f,  1.1f, RES_NONE, 0.f },  /* pierre → statuaire (luxe NICHE : demande basse → reste efficace) */
+    [BLD_SCULPTURE] = { RES_STONE,     2.0f, RES_NONE,      0.f,  RES_STATUE,  1.0f,  6.0f, RES_NONE, 0.f },  /* pierre → statuaire (luxe NICHE). W2-1 : labor 1.1 → 6.0 (voir P2 ci-dessous) */
     [BLD_POWDERMILL]= { RES_SALTPETER, 1.0f, RES_COAL, 0.8f, RES_GUNPOWDER, 1.0f, 1.0f, RES_NONE, 0.f },
     /* E3 (2026-07-05) — LEVIER LABOR jamais recalé : demande remède ≈ 2.97/1000hab/an (santé
      * urbaine, bourgeois seuls, très faible) → labor = 1200·1.0/2.97 ≈ 404. Ratio INCHANGÉ. */
     [BLD_APOTHECARY]= { RES_MED_HERBS, 1.0f, RES_NONE, 0.f, RES_REMEDE,    1.0f, 404.f, RES_NONE, 0.f },
     /* MANUFACTURES SIGNATURE D'ÉTHOS (désir croisé) — même gabarit que la statuaire (2
-     * intrants de base, labor bas 1.1 : luxe de NICHE, la demande étant conditionnelle à
-     * l'éthos du CONSOMMATEUR — cf. ethos_desired_luxury/econ_tick §confort ci-dessous). */
-    [BLD_HEAUMERIE]        = { RES_IRON,   1.0f, RES_COAL,  1.0f, RES_HEAUMES,     1.0f, 1.1f, RES_NONE, 0.f },  /* Dominateur : fer + charbon → heaumes de guerre */
-    [BLD_PARURIER]         = { RES_GOLD,   0.25f, RES_FUR,  1.0f, RES_PARURES,     1.0f, 1.1f, RES_NONE, 0.f },  /* Honneur : or + fourrure → parures de gloire. À LA TONNE : intrant or ÷4 (1.0→0.25) — le filigrane, pas le lingot ; la fourrure (matière de volume) reste à 1.0. */
-    [BLD_HORLOGER]         = { RES_IRON,   1.0f, RES_COPPER,1.0f, RES_HORLOGES,    1.0f, 1.1f, RES_NONE, 0.f },  /* Ordre : fer + cuivre → horloges réglées */
-    [BLD_CHANCELLERIE_LUX] = { RES_WOOD,   1.0f, RES_CLAY,  1.0f, RES_REGISTRES,   1.0f, 1.1f, RES_NONE, 0.f },  /* Bureaucrate : bois + argile → registres scellés */
-    [BLD_COMPTOIR_ARTISAN] = { RES_COPPER, 1.0f, RES_SALT,  1.0f, RES_COLIFICHETS, 1.0f, 1.1f, RES_NONE, 0.f },  /* Mercantile : cuivre + sel → colifichets exotiques */
-    [BLD_ATELIER_SEREIN]   = { RES_WOOD,   1.0f, RES_WOOL,  1.0f, RES_OUVRAGES,    1.0f, 1.1f, RES_NONE, 0.f },  /* Pacifiste : bois + laine → ouvrages d'agrément */
+     * intrants de base, la demande étant conditionnelle à l'éthos du CONSOMMATEUR — cf.
+     * ethos_desired_luxury/econ_tick §confort ci-dessous).
+     * W2-1 (2026-09-03) — P2, LEVIER LABOR RECALÉ (docs/CALIB_ECONOMIE_2026-09-03.md §2.1) :
+     * ces 7 luxes (statuaire incluse) étaient restés au gabarit d'origine `labor` 1.1 quand
+     * les 6 biens du PANIER avaient été recalés par la formule E3 (2026-07-05,
+     * `labor = 1200 × qout / demande_1000hab` → 27 à 404). L'écart de VALEUR AJOUTÉE PAR
+     * OUVRIER atteignait ×2 800 (0,0087 pour l'apothicaire contre 24,56 pour l'outillage) :
+     * 6 ouvriers de heaumerie produisaient autant de VA que 149 de brasserie. `labor` 6.0
+     * ramène leur VA/ouvrier à 0,67-1,23 — au-dessus du panier (ce sont des luxes, ils
+     * doivent rester attractifs), plus dans un autre ordre de grandeur.
+     * Les 6 biens du PANIER ne sont PAS touchés : ils ancrent la satisfaction et donc la
+     * démographie (piège consigné, TROUVAILLES 2026-09-03 CALIB ÉCONOMIE). */
+    [BLD_HEAUMERIE]        = { RES_IRON,   1.0f, RES_COAL,  1.0f, RES_HEAUMES,     1.0f, 6.0f, RES_NONE, 0.f },  /* Dominateur : fer + charbon → heaumes de guerre */
+    [BLD_PARURIER]         = { RES_GOLD,   0.25f, RES_FUR,  1.0f, RES_PARURES,     1.0f, 6.0f, RES_NONE, 0.f },  /* Honneur : or + fourrure → parures de gloire. À LA TONNE : intrant or ÷4 (1.0→0.25) — le filigrane, pas le lingot ; la fourrure (matière de volume) reste à 1.0. */
+    [BLD_HORLOGER]         = { RES_IRON,   1.0f, RES_COPPER,1.0f, RES_HORLOGES,    1.0f, 6.0f, RES_NONE, 0.f },  /* Ordre : fer + cuivre → horloges réglées */
+    [BLD_CHANCELLERIE_LUX] = { RES_WOOD,   1.0f, RES_CLAY,  1.0f, RES_REGISTRES,   1.0f, 6.0f, RES_NONE, 0.f },  /* Bureaucrate : bois + argile → registres scellés */
+    [BLD_COMPTOIR_ARTISAN] = { RES_COPPER, 1.0f, RES_SALT,  1.0f, RES_COLIFICHETS, 1.0f, 6.0f, RES_NONE, 0.f },  /* Mercantile : cuivre + sel → colifichets exotiques */
+    [BLD_ATELIER_SEREIN]   = { RES_WOOD,   1.0f, RES_WOOL,  1.0f, RES_OUVRAGES,    1.0f, 6.0f, RES_NONE, 0.f },  /* Pacifiste : bois + laine → ouvrages d'agrément */
 };
 
 /* §B2bis — LE PANIER DE LA FOREUSE (2026-07-08) : les 6 minéraux AUTRES que le fer (déjà ancré
@@ -2834,8 +2844,27 @@ static void econ_build_tick(WorldEconomy *e){
             bool feed2 = (rc->in2==RES_NONE)
                       || avail[rc->in2] > NF_REALM_MIN || (nstk && nstk[rc->in2] >= NF_STOCK_MIN);
             if (!feed1 || !feed2) continue;        /* le royaume ne sait pas le nourrir → on ne bâtit pas à vide */
+            /* W2-1 (2026-09-03) — LE §NF SE PAIE (docs/CALIB_ECONOMIE_2026-09-03.md OP3).
+             * Le semis était GRATUIT pour l'IA quand le joueur et l'initiative privée payaient
+             * MANUF_BUILD_COST : sonde `MANUF_BUILD_COST=250` (×5) laissait le nombre total de
+             * manufactures INCHANGÉ (~2 000) — le prix ne mordait que sur le joueur. NF_SEED_PAID
+             * = fraction de MANUF_BUILD_COST (× ipm × doctrine « Gages ») prélevée sur le trésor
+             * NATIONAL au SEMIS ; l'or va aux LABORER de la province (gages des artisans, même
+             * destination qu'econ_ip_invest_tick — transfert, pas destruction). Trésor
+             * insuffisant ⇒ on NE sème PAS : un frein économique, jamais un plafond de compte.
+             * 0 = kill-switch EXACT (semis gratuit legacy, golden byte-identique). */
+            float seed_cost = tune_f("NF_SEED_PAID", 0.f);
+            if (seed_cost > 0.f)
+                seed_cost *= tune_f("MANUF_BUILD_COST",50.f) * econ_world_ipm(e)
+                           * doctrine_key_mult(pe->owner,"MANUF_BUILD_COST");
+            if (seed_cost > 0.f && e->nat_treasury[pe->owner] < seed_cost) continue;   /* pas les moyens */
             int bi=region_ensure_building(pe,(BuildingType)b);
-            if (bi>=0 && pe->bld[bi].level < NF_SEED_LEVEL) pe->bld[bi].level = NF_SEED_LEVEL;
+            bool seeded = (bi>=0 && pe->bld[bi].level < NF_SEED_LEVEL);
+            if (seeded) pe->bld[bi].level = NF_SEED_LEVEL;
+            if (seeded && seed_cost > 0.f){
+                float paid = -econ_nation_gold_add(e, pe->owner, -seed_cost);
+                pe->strata[CLASS_LABORER].wealth += paid;   /* gages des artisans locaux (item 5) */
+            }
         }
     }
 }
@@ -2928,6 +2957,21 @@ void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
  * hoarding). 1 %/mois du surplus. */
 #define COURT_FLOOR         4000.f
 #define COURT_RATE          0.010f
+/* W2-1 (2026-09-03) — LE SEUIL DE HOARDING EST UN FONDS DE ROULEMENT, PAS UNE TAILLE.
+ * W1-A a transposé le seuil par-province en Σ des planchers (COURT_FLOOR × n_prov) pour
+ * préserver le calibrage. Mesuré : le seuil CROÎT alors linéairement avec l'empire pendant
+ * que le trésor ne suit pas — un hégémon de 70 provinces devrait tenir 280 000 or avant que
+ * la cour/l'admin/l'encadrement ne mordent, quand le monde ENTIER en porte 45 000. Les trois
+ * ponctions anti-thésaurisation valaient donc `+0.0` dans 20/20 sims 200 ans ET dans les
+ * sondes 120 ans (docs/CALIB_ECONOMIE_2026-09-03.md §3.2, P1) : plus on est grand, plus on
+ * est exempté — l'inverse de l'intention.
+ * Le fonds de roulement d'un État, c'est son TRAIN DE VIE : COURT_MONTHS mois de son revenu
+ * fiscal (econ_country_tax_year, déjà l'assiette du frein de levée W1-F), planché à
+ * COURT_FLOOR pour l'amorçage (an 1, revenu non encore capturé). Ce n'est PAS un plafond :
+ * rien ne borne le trésor par le haut, seul le SEUIL au-dessus duquel les ponctions mordent
+ * suit désormais la dépense de l'État au lieu du nombre de ses tuiles.
+ * COURT_MONTHS = 0 ⇒ kill-switch EXACT (le seuil W1-A, COURT_FLOOR × n_prov). */
+#define COURT_MONTHS         60.f
 /* I3 — ADMIN : coût mensuel d'un pays = ADMIN_BASE × n_régions^ADMIN_EXP × IPM
  * (2 rég ≈ 1 · 16 rég ≈ 15 · 25 rég ≈ 27). Réparti sur ses régions. */
 #define ADMIN_BASE             0.4f
@@ -2939,11 +2983,56 @@ void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
  * (prod 0.6× → moins d'impôt → friche). Distinct du seuil de HOARDING (COURT_FLOOR), bien
  * plus haut, au-dessus duquel mordent les ponctions anti-thésaurisation (faste/admin/IPM). */
 #define SINK_FLOOR           500.f
+/* W2-1 (2026-09-03) — LA RÉSERVE D'EXPLOITATION EST UN FONDS DE ROULEMENT, PAS UNE TAILLE.
+ * Même diagnostic que COURT_MONTHS ci-dessus, mais la conséquence est BIEN pire : `SINK_FLOOR
+ * × n_prov` est aussi soustrait du trésor national pour former la CAISSE qui fixe
+ * `price_level[c] = caisse / VA_pays` (voir econ_tick §M3b-v2 CŒUR A). Un empire de 46
+ * provinces à 14 619 or se voyait retirer 23 000 de « réserve » : caisse = 0, price_level = 0,
+ * et comme TOUT le barème est clampé dans [BASE×0,15×pl, BASE×8×pl], **tous les prix du pays
+ * s'écrasent à 0,00** — constaté au front (graine 9 an 30 : drawer marché et fiche province à
+ * 0,00 couronne) et dans le chronicle (`marché : grain 0.00 · étoffe 0.00 · orfèvr. 0.00 ·
+ * outils 0.00`, graine 7 an 120). Ce n'était PAS l'artefact d'agrégation d'un an d'avènement
+ * supposé par docs/CALIB_ECONOMIE_2026-09-03.md §4.2 : c'est structurel et permanent dès que
+ * le trésor national passe sous 500 × n_prov.
+ * SINK_MONTHS = 0 ⇒ kill-switch EXACT (le seuil W1-A, SINK_FLOOR × n_prov). */
+#define SINK_MONTHS            0.f
+/* La MÊME réserve, mais dans son SECOND rôle : ce qui est retranché du trésor pour former la
+ * CAISSE qui fixe `price_level = caisse / VA_pays`. Deux rôles, deux clés, parce que les deux
+ * questions ne sont pas la même : `SINK_MONTHS` répond « que doit garder l'État pour
+ * FONCTIONNER » (il borne ce que l'entretien et la redépense peuvent tirer) ; `PL_SINK_MONTHS`
+ * répond « quelle part du trésor ADOSSE réellement les achats de l'État » — et c'est là que le
+ * seuil W1-A produisait un artefact et non un énoncé économique : une réserve SUPÉRIEURE au
+ * trésor rend une caisse nulle, donc un price_level nul, donc TOUS les prix à 0,00.
+ * 0 = kill-switch EXACT (SINK_FLOOR × n_prov). */
+#define PL_SINK_MONTHS         3.f
 #define DEF_UPKEEP_MULT      1.5f    /* I3 — la famille défensive (H) s'entretient ×1.5 */
 /* MONNAIE M3b-v2 — item 5 : partage 33/33/33 (amendable) de l'entretien reversé aux 3
  * classes de la province (les 2 premiers tunables, le 3e = 1−lab−bourg, cf. WAGE_SHARE). */
 #define UPKEEP_SHARE_LAB      0.3334f
 #define UPKEEP_SHARE_BOURG    0.3333f
+/* W2-1 — UN SEUIL NATIONAL DE FONDS DE ROULEMENT : `months` mois du revenu fiscal du pays,
+ * planché à `floor_` (l'amorçage, an 1 : le revenu n'est pas encore capturé). `months` <= 0
+ * ⇒ kill-switch EXACT du seuil W1-A (`floor_ × n_prov`). C'est un SEUIL, jamais un plafond :
+ * rien ne borne le trésor par le haut, seul le niveau au-dessus duquel une ponction commence
+ * à mordre (ou en-dessous duquel la caisse est réputée immobilisée) cesse de croître avec le
+ * NOMBRE DE TUILES pour suivre la DÉPENSE de l'État. */
+static float nat_floor(int cid, float floor_, float months, int nprov_){
+    if (months <= 0.f) return floor_ * (float)nprov_;
+    float wf = months * ((cid>=0) ? econ_country_tax_year(cid) : 0.f) / 12.f;
+    return (wf > floor_) ? wf : floor_;
+}
+/* le seuil de HOARDING du pays `owner` (voir COURT_MONTHS ci-dessus) : au-dessus,
+ * cour/admin/encadrement commencent à mordre le surplus. */
+static float hoard_floor(int owner, int nprov_){
+    return nat_floor(owner, tune_f("COURT_FLOOR", COURT_FLOOR),
+                            tune_f("COURT_MONTHS", COURT_MONTHS), nprov_);
+}
+/* la RÉSERVE D'EXPLOITATION du pays `owner` (SINK_FLOOR) : ce qu'un État garde toujours pour
+ * fonctionner, et donc ce qui NE compte PAS dans la caisse qui fixe `price_level`. */
+static float sink_floor_nat(int owner, int nprov_){
+    return nat_floor(owner, tune_f("SINK_FLOOR", SINK_FLOOR),
+                            tune_f("SINK_MONTHS", SINK_MONTHS), nprov_);
+}
 static bool g_friche[SCPS_MAX_PROV];  /* E1bis.10 : province en friche (entretien/encadrement impayé) */
 /* MÉTRIQUE DÉVELOPPEMENT — miroir display-only des facteurs de prod_mult, capturés au
  * tick (outil · ville · tech · pillage · friche · terre). Jamais sérialisé (recalculé
@@ -3920,10 +4009,10 @@ void econ_tick(WorldEconomy *e, float dt) {
      * STATE_BUY_FRAC=1.0 : `pf_buy`==`price_level`, comportement LEGACY EXACT. */
     const float state_buy_frac = tune_f("STATE_BUY_FRAC", 0.60f);
     float caisse_snapshot[SCPS_MAX_COUNTRY]={0}, price_level[SCPS_MAX_COUNTRY];
-    { const float opf_pre = tune_f("SINK_FLOOR", SINK_FLOOR);
-      /* LA CAISSE = le trésor NATIONAL au-dessus de la réserve d'exploitation. Le plancher
-       * SINK_FLOOR reste PAR PROVINCE (Σ des planchers : un État large a besoin d'une
-       * réserve large) — le calibrage pré-national est ainsi préservé à l'identique. */
+    { /* LA CAISSE = le trésor NATIONAL au-dessus de la réserve d'exploitation. W2-1 : cette
+       * réserve est un FONDS DE ROULEMENT (sink_floor_nat / SINK_MONTHS) et non plus
+       * `SINK_FLOOR × n_prov` — la Σ des planchers dépassait le trésor des grands empires et
+       * écrasait TOUS leurs prix à 0,00 (voir SINK_MONTHS). SINK_MONTHS=0 ⇒ legacy exact. */
       int nprov_c[SCPS_MAX_COUNTRY]={0};
       for (int p=0;p<e->n_prov && p<SCPS_MAX_PROV;p++){
           const ProvinceEconomy *pr=&e->prov[p];
@@ -3932,7 +4021,9 @@ void econ_tick(WorldEconomy *e, float dt) {
           nprov_c[o]++;
       }
       for (int c=0;c<SCPS_MAX_COUNTRY;c++)
-          caisse_snapshot[c] = fmaxf(0.f, e->nat_treasury[c] - opf_pre*(float)nprov_c[c]);
+          caisse_snapshot[c] = fmaxf(0.f, e->nat_treasury[c]
+                             - nat_floor(c, tune_f("SINK_FLOOR", SINK_FLOOR),
+                                            tune_f("PL_SINK_MONTHS", PL_SINK_MONTHS), nprov_c[c]));
       for (int c=0;c<SCPS_MAX_COUNTRY;c++)
           price_level[c] = (e->va_country_prev[c]>EPS)
                           ? clampf(caisse_snapshot[c]/e->va_country_prev[c], 0.f, inflation_cap)
@@ -4542,8 +4633,8 @@ void econ_tick(WorldEconomy *e, float dt) {
         /* E1bis.10 — ENTRETIEN : l'infra bâtie se paie chaque tick ; impayé → FRICHE.
          * G0.4 : l'entretien suit l'IPM (un monde cher coûte plus cher à tenir). */
         float ipmf = (e->ipm>0.f)? e->ipm : 1.f;
-        float opf  = tune_f("SINK_FLOOR", SINK_FLOOR)   * (float)nprov_;  /* I3bis — plancher de SUBSISTANCE (friche), Σ empire */
-        float hof  = tune_f("COURT_FLOOR", COURT_FLOOR) * (float)nprov_;  /* seuil de HOARDING, Σ empire : les ponctions ne mordent qu'au-dessus */
+        float opf  = sink_floor_nat(owner_, nprov_);                      /* I3bis — réserve d'EXPLOITATION (friche) : le MÊME fonds de roulement que la caisse de price_level */
+        float hof  = hoard_floor(owner_, nprov_);                         /* seuil de HOARDING (fonds de roulement) : les ponctions ne mordent qu'au-dessus */
         if (pid<SCPS_MAX_PROV){
             /* I3 — DÉFENSIF : la famille Garnison/Forteresse/Citadelle (re->build.H_coerc)
              * s'entretient ×1.5 (remparts à réparer, garnisons à nourrir) ; le reste suit
@@ -4617,7 +4708,7 @@ void econ_tick(WorldEconomy *e, float dt) {
         }
         /* G0.4 — le FASTE de cour : au-delà de 10k, 0.5 %/mois du surplus se dépense
          * (frein au hoarding — un trésor qui gonfle finance le prestige). */
-        { float cf=tune_f("COURT_FLOOR",COURT_FLOOR) * (float)nprov_;
+        { float cf=hoard_floor(owner_, nprov_);   /* même fonds de roulement que `hof` ci-dessus */
           /* La cour est NATIONALE : on l'applique une SEULE fois par empire, en la
            * répartissant sur les provinces au prorata de leur population (Σ pshare = 1)
            * — sinon le faste mordrait N fois le même trésor. */

@@ -307,24 +307,34 @@ static float agency_extent_mult(const WorldEconomy *econ, int region){
  * La couche commerce calcule (intertrade_buy_cost), agency LIT. `base_out` (option) = le NU
  * (marge 1) de la part IMPORTÉE seule (l'empire est gratuit, il n'entre pas dans le nu) →
  * (gold − base_out) = la marge de transport, routée en péage à la cité-état hôte. */
-static float agency_build_gold_ex(const WorldEconomy *econ, int region, Edifice e, float *base_out){
+static float agency_build_gold_ex2(const WorldEconomy *econ, int region, Edifice e, float *base_out, float *own_out){
     if (base_out) *base_out=0.f;
+    if (own_out)  *own_out =0.f;
     if (e<0||e>=EDIFICE_COUNT || !econ || region<0 || region>=econ->n_regions) return 0.f;
     const RegionEconomy *re=&econ->region[region];
     const BuildCost *c=&EDIFICES[e].cost;
     float ext = agency_extent_mult(econ, region);   /* §7 : un grand empire paie plus */
-    float gold=0.f, base=0.f;
+    /* W2-1 — la part MAISON du devis (BUILD_OWN_MATERIAL_PRICE, 0 = legacy gratuit) : le
+     * chantier paie ses PROPRES carriers/bûcherons. On la totalise ici pour que
+     * agency_build_acct puisse la leur REVERSER (transfert, pas destruction). */
+    float own_px = tune_f("BUILD_OWN_MATERIAL_PRICE", 0.f); if (own_px < 0.f) own_px = 0.f;
+    float gold=0.f, base=0.f, own=0.f;
     for (int k=0;k<BUILD_RES_MAX;k++){
         Resource r=c->res[k];
         if (r<=RES_NONE || r>=RES_COUNT || c->qty[k]<=0.f) continue;
         float price = re->price[r]; if (price < BUILD_MIN_PRICE) price = BUILD_MIN_PRICE;
         float qy = c->qty[k]*ext;
         float ib=0.f;
-        gold += intertrade_buy_cost(econ, region, r, qy, price, &ib);   /* import seul facturé (empire gratuit) */
-        base += ib;                                                     /* le NU de l'IMPORT (marge 1) → base du péage */
+        gold += intertrade_buy_cost(econ, region, r, qy, price, &ib);   /* matière maison + import */
+        base += ib;                                                     /* le NU FACTURÉ (marge 1) → base du péage */
+        if (own_px > 0.f) own += price * intertrade_own_supply(econ, region, r, qy) * own_px;
     }
     if (base_out) *base_out=base;
+    if (own_out)  *own_out =own;
     return gold;
+}
+static float agency_build_gold_ex(const WorldEconomy *econ, int region, Edifice e, float *base_out){
+    return agency_build_gold_ex2(econ, region, e, base_out, NULL);
 }
 float agency_build_gold(const WorldEconomy *econ, int region, Edifice e){
     return agency_build_gold_ex(econ, region, e, NULL);
@@ -368,14 +378,20 @@ bool agency_build_acct(AgencyState *a, WorldEconomy *econ, const World *w, int r
               return false; }
       } }
     RegionEconomy *re=&econ->region[region];
-    float base_gold=0.f;
-    float gold = agency_build_gold_ex(econ, region, e, &base_gold);
+    float base_gold=0.f, own_gold=0.f;
+    float gold = agency_build_gold_ex2(econ, region, e, &base_gold, &own_gold);
     /* UN SEUL LIVRE D'OR : on débite l'or NATIONAL de `owner` via le module de crédit
      * (au-delà du trésor → dette, créancier assigné). Bloque seulement au-delà de la
      * ligne de crédit ; sinon le chantier passe et l'or peut filer négatif. */
     if (!credit_can_spend(econ, w, owner, gold)){ g_edi_nogold[e]++; return false; }
     if (!credit_spend(econ, w, owner, gold)){ g_edi_nogold[e]++; return false; }
     if (owner>=0) econ_flux_add(owner, FX_BUILD, -gold);   /* I0 : la ligne chantiers (le trou de l'instrument) */
+    /* W2-1 — LES GAGES DE LA MATIÈRE MAISON (BUILD_OWN_MATERIAL_PRICE > 0) : l'or que le
+     * chantier vient de payer pour SA PROPRE pierre/bois/argile va aux LABORER de la province
+     * de chantier — carriers et bûcherons (même destination que les gages d'artisans de
+     * econ_ip_invest_tick, item 5). TRANSFERT, jamais une destruction : sans lui la matière
+     * maison serait un puits de monnaie et l'invariant M3c le verrait. */
+    if (own_gold > 0.f) econ_region_wealth_add(econ, region, CLASS_LABORER, own_gold);
     /* I6/#5 — LE PÉAGE : la marge au-dessus du nu (transport + double taxe mondiale)
      * versée à la cité-état hôte (le hub le plus proche) — transfert, pas destruction :
      * les cités-états deviennent banquières du réseau. */

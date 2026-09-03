@@ -102,6 +102,9 @@ bool  intertrade_relocate_centre(WorldEconomy *e, int from, int to);/* déplace 
  * DÉPLÉTÉ dans le même ordre. `intertrade_region_hub` : le Centre de rattachement
  * (-1 = autarcie). `intertrade_global_stock` : profondeur du marché mondial. */
 float intertrade_buy_cost      (const WorldEconomy *e, int region, int good, float qty, float unit_price, float *import_base_out);
+/* W2-1 — la part de `qty` qui sort du STOCK NATIONAL. Facturée à BUILD_OWN_MATERIAL_PRICE
+ * (registre J, 0 = legacy gratuit) par _buy_cost ; l'appelant la reverse à ses fournisseurs. */
+float intertrade_own_supply    (const WorldEconomy *e, int region, int good, float qty);
 void  intertrade_market_consume(WorldEconomy *e, int region, int good, float qty, float unit_price);
 /* F-arc — POMPE D'ARMES : propre GRATUIT → Centres ÉTRANGERS = ACHAT borné par le trésor (nu→source,
  * marge→hôte) ; RENVOIE le total prélevé. La levée (econ_arms_take) s'arme au marché quand le stock manque. */

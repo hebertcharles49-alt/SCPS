@@ -490,9 +490,32 @@ float intertrade_buy_cost(const WorldEconomy *e, int region, int good, float qty
     float fnear = (hub>=0 && hub!=region && e->region[hub].owner!=owner)? it_stock(e,hub,good) : 0.f;
     float fdist = g_global_cache[good] - owned_centre - fnear; if(fdist<0.f) fdist=0.f;
     float p_emp,p_near,p_dist; market_split(emp, fnear, fdist, qty, &p_emp,&p_near,&p_dist);
-    (void)p_emp;                                                    /* l'empire est GRATUIT (marge 0) */
-    if (import_base_out) *import_base_out = unit_price * (p_near + p_dist);   /* NU de l'import (marge 1) → base du péage */
-    return unit_price * (p_near*base + p_dist*base*2.f);
+    /* W2-1 (2026-09-03) — LA MATIÈRE MAISON SE PAIE (docs/CALIB_ECONOMIE_2026-09-03.md, OP1/P3).
+     * L'empire était GRATUIT (marge 0) : tout empire possédant le trio bois/pierre/argile
+     * bâtissait et rénovait pour RIEN — ligne `chantiers` du flux = −0,0 à −5,5 or/mois quand
+     * les taxes valaient +356 à +2 658, 20/20 sims. Le menu construction annonçait donc un prix
+     * que presque personne ne payait, ce que la doctrine d'interface interdit (« le MENU
+     * CONSTRUCTION = la vérité de TOUT »). BUILD_OWN_MATERIAL_PRICE = la fraction du prix de
+     * marché facturée sur la part sortie du STOCK NATIONAL (0 = legacy exact, byte-identique ;
+     * 1 = prix de revient plein). Ce n'est pas un puits : agency_build_acct reverse cette part
+     * aux classes de la province de chantier (les carriers/bûcherons qu'on paie enfin) — d'où
+     * son inscription dans `import_base_out`, qui reste la base du PÉAGE (la marge de transport
+     * seule part à la cité-état hôte, comportement inchangé). */
+    float own_px = tune_f("BUILD_OWN_MATERIAL_PRICE", 0.f); if (own_px < 0.f) own_px = 0.f;
+    float own_gold = unit_price * p_emp * own_px;
+    if (import_base_out) *import_base_out = own_gold + unit_price * (p_near + p_dist);   /* NU de ce qui est FACTURÉ → base du péage */
+    return own_gold + unit_price * (p_near*base + p_dist*base*2.f);
+}
+/* W2-1 — la part de `qty` qui sortira du STOCK NATIONAL (le 1er étage de market_split). Le
+ * chantier (agency_build_acct) doit savoir ce qu'il a payé À SES PROPRES fournisseurs pour le
+ * leur reverser : sans ce reversement, BUILD_OWN_MATERIAL_PRICE serait une DESTRUCTION de
+ * monnaie (invariant M3c). Même source d'approvisionnement que _buy_cost/_avail/_consume. */
+float intertrade_own_supply(const WorldEconomy *e, int region, int good, float qty){
+    if (!e||region<0||region>=e->n_regions||region>=SCPS_MAX_REG||good<=RES_NONE||good>=RES_COUNT||qty<=0.f) return 0.f;
+    int owner=e->region[region].owner;
+    float emp = (owner>=0) ? econ_country_stock_sum(e, owner, (Resource)good) : it_stock(e, region, good);
+    if (emp<0.f) emp=0.f;
+    return (emp<qty)? emp : qty;
 }
 /* Ponctionne le stock d'une région ; si c'est un Centre, décrémente AUSSI le cache mondial
  * (g_global_cache = Σ stocks des Centres) → un gate qui le lit n'est plus berné en cours d'an.

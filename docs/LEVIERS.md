@@ -87,10 +87,13 @@ saturation), clampée au tick. Seules exceptions : les *taux* (0-1) et les *flux
 |---|---|---|
 | `ENTRETIEN_DIV` | 400 | diviseur de l'entretien d'État |
 | `MANUF_UPKEEP_DAY` | 0.05 | entretien journalier d'une manufacture |
-| `COURT_FLOOR` | 4000 | plancher du coût de cour |
+| `COURT_FLOOR` | 4000 | seuil de THÉSAURISATION : plancher d'amorçage du fonds de roulement (voir `COURT_MONTHS`) |
+| `COURT_MONTHS` | 60 | **le seuil de thésaurisation en MOIS de revenu fiscal** (planché à `COURT_FLOOR`). Au-dessus, cour/admin/encadrement mordent le surplus. `0` = seuil W1-A (`COURT_FLOOR × n_prov`), qui croissait avec la TAILLE quand le trésor ne suivait pas ⇒ les 3 ponctions valaient `+0.0` dans 20/20 sims. Jamais un plafond |
 | `COURT_RATE` | 0.010 | taux du coût de cour ∝ trésor |
 | `ADMIN_BASE` / `ADMIN_EXP` | 0.4 / 1.3 | base & exposant du coût administratif (croît avec la taille) |
-| `SINK_FLOOR` | 500 | plancher du puits monétaire |
+| `SINK_FLOOR` | 500 | RÉSERVE D'EXPLOITATION : plancher d'amorçage du fonds de roulement (voir `SINK_MONTHS`) |
+| `SINK_MONTHS` | 0 | **la réserve d'exploitation en MOIS de revenu fiscal** (planchée à `SINK_FLOOR`) — ce que l'État garde pour FONCTIONNER : elle borne l'entretien et la redépense. Laissée au seuil W1-A (`SINK_FLOOR × n_prov`) : la baisser répare la friche mais VIDE les trésors (graine 512 : 23 262 → 5 581 or, `intérêts` −0,4 → −15,3). À reprendre avec le crédit dans le champ |
+| `PL_SINK_MONTHS` | 3 | la MÊME réserve dans son SECOND rôle : ce qui est retranché du trésor pour former la caisse de `price_level = caisse / VA`. À `SINK_FLOOR × n_prov` (seuil W1-A), un empire de 46 provinces à 14 619 or avait une caisse NULLE ⇒ `price_level` 0 ⇒ **tous ses prix écrasés à 0,00** (front graine 9 an 30 · chronicle graine 7 an 120). `0` = seuil W1-A |
 | `TRADE_LEVY` | 0.10 | prélèvement de l'importateur sur une route (conservation : 0 faucet/0 sink) |
 | `IMPORT_MARGIN_OWN` / `_THIRD` / `_NONE` | 1.3 / 1.8 / 2.0 | marge d'import selon le propriétaire du Centre (soi / tiers / personne) ; le PÉAGE versé à l'hôte = toute la marge, répartie par `TOLL_STATE_SHARE` (l'ex-`IMPORT_TOLL_FRAC` était une entrée morte, purgée 2026-09-01) |
 | `CREDIT_LINE_BASE` | 0.5 | taille de la ligne de crédit ∝ pop |
@@ -128,6 +131,8 @@ saturation), clampée au tick. Seules exceptions : les *taux* (0-1) et les *flux
 | Tunable | Défaut | Effet |
 |---|---|---|
 | `MANUF_BUILD_COST` | 50 | coût d'or de base (× tier × ipm) pour qu'une IA pose une manufacture |
+| `NF_SEED_PAID` | 1.0 | fraction de `MANUF_BUILD_COST` que le SEMIS §NF v2 fait payer à l'IA (le semis était gratuit ; seuls le joueur et l'initiative privée payaient). Trésor insuffisant ⇒ pas de semis. `0` = semis gratuit legacy |
+| `BUILD_OWN_MATERIAL_PRICE` | 1.0 | fraction du prix de marché que le CHANTIER paie sur la matière sortie de son propre stock national (`intertrade_buy_cost` ne facturait que l'import : bâtir et rénover étaient GRATUITS pour tout empire autosuffisant). L'or va aux LABORER de la province de chantier. `0` = legacy gratuit |
 | `MANUF_ARMS_MULT` | 10 | ×N au stock d'armes d'une manufacture d'armes (l'arsenal que la levée pompe) |
 | `ARMS_PER_LABORER` | 0.05 | cible d'arsenal d'État ∝ bras (demande de marché → l'armurerie se bâtit) |
 | `ARSENAL_DECAY` | 0.99 | rouille lente des armes (1 %/mois vs 15 % des périssables) |

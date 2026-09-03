@@ -157,10 +157,28 @@
     X(JOB_UPKEEP_TAX_FRAC,    0.60f) \
     X(JOB_UPKEEP_PRICE_FLOOR, 0.5f) \
     X(COURT_FLOOR,         4000.0f) \
+    /* W2-1 (2026-09-03) — le seuil de HOARDING est un FONDS DE ROULEMENT : autant de MOIS
+     * du revenu fiscal du pays, planché à COURT_FLOOR. Le seuil W1-A (COURT_FLOOR × n_prov)
+     * croissait avec la TAILLE quand le trésor ne suivait pas : cour/admin/encadrement
+     * valaient +0.0 dans 20/20 sims (docs/CALIB_ECONOMIE_2026-09-03.md §3.2). Ce n'est PAS
+     * un plafond — rien ne borne le trésor par le haut. 0 = kill-switch (seuil W1-A). */ \
+    X(COURT_MONTHS,          60.0f) \
     X(COURT_RATE,             0.010f) \
     X(ADMIN_BASE,             0.4f) \
     X(ADMIN_EXP,              1.3f) \
     X(SINK_FLOOR,           500.0f) \
+    /* W2-1 (2026-09-03) — la RÉSERVE D'EXPLOITATION en MOIS de revenu fiscal, planchée à
+     * SINK_FLOOR. Le seuil W1-A (SINK_FLOOR × n_prov) est aussi soustrait du trésor pour
+     * former la caisse de `price_level = caisse / VA` : un empire de 46 provinces à 14 619 or
+     * voyait 23 000 de « réserve » manger toute sa caisse ⇒ price_level 0 ⇒ TOUS ses prix
+     * écrasés à 0,00 (front graine 9 an 30 · chronicle graine 7 an 120). 0 = kill-switch. */ \
+    X(SINK_MONTHS,            0.0f) \
+    /* W2-1 — la MÊME réserve dans son SECOND rôle : ce qui est retranché du trésor pour former
+     * la caisse de `price_level = caisse / VA`. Clé séparée parce que la question est autre :
+     * `SINK_MONTHS` borne ce que l'État peut DÉPENSER, `PL_SINK_MONTHS` dit ce qui ADOSSE ses
+     * achats — et c'est ici qu'une réserve supérieure au trésor écrasait tous les prix à 0,00.
+     * 0 = kill-switch (SINK_FLOOR × n_prov). */ \
+    X(PL_SINK_MONTHS,         3.0f) \
     X(INVEST_SPEND_FRAC,      0.30f) \
     X(ROAD_SPEND_FRAC,        0.15f) \
     /* MONNAIE M3b-v2 — item 5 : DISPATCH DES DÉPENSES D'ÉTAT (les puits M0 §2 deviennent des
@@ -887,6 +905,13 @@
     /* F-arc : coût d'or de base (× tier × IPM) pour qu'une IA POSE une manufacture militaire — la
      * « puissance économique » qui gate « combien de fabriques je peux poser ». */ \
     X(MANUF_BUILD_COST,       50.0f) \
+    /* W2-1 (2026-09-03) — le SEMIS §NF v2 (econ_build_tick) posait une manufacture GRATUITE
+     * à l'IA chaque tick quand le joueur et l'initiative privée payaient MANUF_BUILD_COST
+     * (docs/CALIB_ECONOMIE_2026-09-03.md OP3 : `MANUF_BUILD_COST=250` laissait le nombre de
+     * manufactures INCHANGÉ). Fraction de MANUF_BUILD_COST payée au semis par le trésor
+     * NATIONAL de l'IA ; trésor insuffisant ⇒ pas de semis (frein économique, pas un cap).
+     * 0 = kill-switch EXACT (semis gratuit legacy). */ \
+    X(NF_SEED_PAID,            1.0f) \
     /* F-arc ARSENAL : une manufacture d'ARMES verse ×N au STOCK (l'arsenal que la levée POMPE via
      * econ_arms_take ; le recrutement = stock/POP_PER_UNIT). Le marché (supply/prix), la valeur
      * ajoutée (PIB) et la charge faustienne restent sur la sortie de BASE → l'éco & la Brèche
@@ -895,6 +920,14 @@
     /* Le FOND du TRIO de bâti (bois/pierre/argile, econ_build_reserve) : ce qu'une région GARDE avant
      * d'exporter son surplus — sans quoi l'export auto la vide et le gate de chantier la refuse. */ \
     X(BUILD_RESERVE_BULK,     15.0f) /* recalé avec la 2e passe de coûts (÷3 sur 540/960j) : le fond de réserve suit l'échelle des chantiers */ \
+    /* W2-1 (2026-09-03) — LE CHANTIER PAIE SA MATIÈRE MAISON (docs/CALIB_ECONOMIE_2026-09-03.md
+     * OP1/P3). intertrade_buy_cost ne facturait QUE l'import : un empire possédant le trio
+     * bois/pierre/argile bâtissait et rénovait GRATUITEMENT (ligne `chantiers` −0,0 à −5,5
+     * or/mois contre +356 à +2 658 de taxes, 20/20 sims) — le menu construction annonçait un
+     * prix que presque personne ne payait. Fraction du prix de marché facturée sur la part
+     * sortie du stock NATIONAL : 0 = legacy exact (golden byte-identique), 1 = prix de revient
+     * plein. L'or va aux LABORER de la province de chantier (transfert, pas puits). */ \
+    X(BUILD_OWN_MATERIAL_PRICE, 1.0f) \
     /* CRÉDIT RATIONNÉ PAR LES PRÊTEURS — aucun plafond dette/revenu côté débiteur. Les
      * ordres prêtent par tirages successifs, mais leur exposition à l'État ne peut dépasser
      * CLASS_EXPOSURE_SHARE de leur capital (liquidités pondérées + créance existante). */ \

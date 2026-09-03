@@ -233,14 +233,18 @@ int main(int argc, char **argv){
     ok("exploiter monte l'extraction (raw_cap fer)",          iron1 > iron0 + 0.5f);
 
     /* ═══ §1 — LA MATIÈRE DU BÂTI : recette SOURCÉE au réseau (P1 empire-aware) ════
-     * Re-baseline (2026-06-15) : la matière de SON empire est GRATUITE pour SON chantier
-     * (pool marchés/ports, marge 0, cf. intertrade_buy_cost) — l'or ne paie QUE le déficit
-     * importé des Centres ÉTRANGERS. Ici la capitale tient SON stock ⇒ devis = 0 or ; on
-     * prouve à la place que (a) c'est bien gratuit en propre, (b) le TIER pilote toujours la
-     * recette (la Citadelle MANGE bien plus de pierre que le Grenier), (c) la matière est
-     * réellement CONSOMMÉE, (d) une pénurie franche (rien en propre, aucun Centre atteignable)
-     * REFUSE le chantier au gate de matière (l'autre verrou, l'or ayant disparu en propre). */
-    printf("\n── §1. La matière du bâti : gratuite en propre, ∝ tier, gate de pénurie ──\n");
+     * Re-baseline (2026-06-15) : la matière de SON empire était GRATUITE pour SON chantier
+     * (pool marchés/ports, marge 0) — l'or ne payait QUE le déficit importé.
+     * RE-BASELINE (W2-1, 2026-09-03) : la matière maison SE PAIE désormais
+     * (BUILD_OWN_MATERIAL_PRICE, défaut 1 = prix de revient plein ; 0 = l'ancien gratuit).
+     * La fixture supposait EXACTEMENT le comportement corrigé — « devis 0 or » était l'énoncé
+     * du trou (docs/CALIB_ECONOMIE_2026-09-03.md OP1 : bâtir et rénover ne coûtaient rien à
+     * tout empire autosuffisant, et le menu construction annonçait un prix que personne ne
+     * payait). L'assertion devient donc : le devis n'est PAS nul, et il est ∝ à la recette.
+     * On prouve toujours que (b) le TIER pilote la recette (la Citadelle MANGE bien plus de
+     * pierre que le Grenier), (c) la matière est réellement CONSOMMÉE, (d) une pénurie franche
+     * REFUSE le chantier au gate de matière. */
+    printf("\n── §1. La matière du bâti : payée en propre, ∝ tier, gate de pénurie ──\n");
     {
         RegionEconomy *re=&s.econ->region[s.cap_reg];
         /* Marché de RÉFÉRENCE uniforme (prix=1 partout) : on teste le TIER (la recette :
@@ -259,10 +263,12 @@ int main(int argc, char **argv){
         s.econ->nat_treasury[own]=100000.f;
         float gold_grenier   = agency_build_gold(s.econ, s.cap_reg, EDI_GRENIER);
         float gold_citadelle = agency_build_gold(s.econ, s.cap_reg, EDI_CITADELLE);
-        printf("   Grenier devise %.0f or | Citadelle %.0f or (matière propre ⇒ pool empire GRATUIT)\n",
+        printf("   Grenier devise %.1f or | Citadelle %.1f or (matière propre FACTURÉE, W2-1)\n",
                gold_grenier, gold_citadelle);
-        ok("la matière de SON empire est GRATUITE pour SON chantier (devis 0 or)",
-           gold_grenier < 1e-3f && gold_citadelle < 1e-3f);
+        /* Prix de référence uniforme (1 or/unité) : le devis est donc, à l'étendue près, la
+         * quantité de la recette — la Citadelle en mange nettement plus que le Grenier. */
+        ok("la matière de SON empire est PAYÉE par SON chantier (devis > 0)",
+           gold_grenier > 1e-3f && gold_citadelle > gold_grenier);
         /* (b) le TIER pilote la recette : on MESURE la pierre mangée par chaque édifice —
          * Grenier (pierre 10, vivrier de base) vs Irrigation (pierre 30, palier vivrier
          * avancé). La matière, pas l'or, porte désormais le tier. (Les deux sont des

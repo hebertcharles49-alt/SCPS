@@ -271,16 +271,24 @@ int main(int argc,char**argv){
         econ->region[X].owner=0; econ->region[Y].owner=0;
         mirror_prov(econ,X); mirror_prov(econ,Y);
         /* STOCK NATIONAL (2026-09-03) : X et Y sont deux régions du MÊME empire — leur
-         * matière n'est plus « celle de la sœur » mais celle de l'ENTREPÔT COMMUN. Le gate
-         * et le devis ne changent pas d'un iota (la matière d'empire reste GRATUITE pour son
-         * chantier) ; ce que la conso doit prouver, c'est qu'elle prélève EXACTEMENT 100 sur
-         * cet entrepôt — le même invariant de conservation, dit au seul grain qui subsiste. */
+         * matière n'est plus « celle de la sœur » mais celle de l'ENTREPÔT COMMUN. Ce que la
+         * conso doit prouver, c'est qu'elle prélève EXACTEMENT 100 sur cet entrepôt — le même
+         * invariant de conservation, dit au seul grain qui subsiste.
+         * RE-BASELINE (W2-1, 2026-09-03) : la matière d'empire n'est plus GRATUITE — elle est
+         * facturée à BUILD_OWN_MATERIAL_PRICE × prix (défaut 1, l'ancien gratuit = 0). La
+         * fixture supposait le comportement corrigé (docs/CALIB_ECONOMIE_2026-09-03.md OP1).
+         * Ce qui reste vrai et qui est le VRAI invariant du site : la matière maison n'a pas de
+         * MARGE (elle est facturée au NU, unit_price × qty), donc devis == nu == `ib` — et donc
+         * le PÉAGE (`gold − ib`, la marge de transport routée à la cité-état hôte) reste NUL,
+         * exactement comme avant. */
         econ->nat_stock[0][RES_STONE]=300.f;               /* l'empire a la pierre, ailleurs qu'au chantier */
         econ->region[X].price[RES_STONE]=2.f;
         float av = intertrade_market_avail(econ, X, RES_STONE);
         float ib=0.f; float gold = intertrade_buy_cost(econ, X, RES_STONE, 100.f, 2.f, &ib);
         ok("le GATE voit la matière de l'empire (avail ≥ besoin)", av >= 100.f-1e-3f);
-        ok("le DEVIS est GRATUIT (matière d'empire = 0 or, NU d'import = 0)", gold < 1e-3f && ib < 1e-3f);
+        { float own_px = tune_f("BUILD_OWN_MATERIAL_PRICE", 0.f);
+          ok("le DEVIS facture la matière d'empire AU NU (aucune marge ⇒ péage nul)",
+             fabsf(gold - 100.f*2.f*own_px) < 1e-2f && fabsf(gold - ib) < 1e-2f); }
         float y0=econ_country_stock_sum(econ,0,RES_STONE);
         intertrade_market_consume(econ, X, RES_STONE, 100.f, econ->region[X].price[RES_STONE]);
         econ_aggregate_regions(econ);

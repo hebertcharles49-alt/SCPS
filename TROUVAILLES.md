@@ -12844,3 +12844,154 @@ Décision joueur : « corrige tout », « pas de cap ».
   A==B le confirme. Une save d'AVANT F2 porte des `count` à 23-40 % des strates : au
   premier tick après chargement la synchro les rattrape d'un coup (pas de plafond, décision
   joueur). C'est une ré-écriture de ledger, pas une perte.
+
+
+---
+
+## Mission 2026-09-03 — W2-1 CALIB ÉCONOMIE : les seuils par-province × n_prov, la matière maison, le semis §NF, le levier `labor`
+
+Feuille de route : `docs/CALIB_ECONOMIE_2026-09-03.md` (P1, P2, P3, OP3). Décision joueur
+« corrige tout, PAS DE PLAFOND » (frein économique ou conservation, jamais une borne dure).
+Fichiers touchés : `scps/scps_econ.c` · `scps/scps_intertrade.{c,h}` · `scps/scps_agency.c` ·
+`scps/scps_tune_list.h` · bancs `agency_demo.c` / `intertrade_demo.c` · `docs/LEVIERS.md`.
+
+### Découvertes
+
+- **LE BUG QUI TUAIT TOUS LES PRIX (signalé par l'agent front, confirmé au chronicle).**
+  `price_level[c] = clampf((trésor_national − SINK_FLOOR × n_prov) / VA_pays, 0, cap)`
+  (`scps_econ.c`, §M3b-v2 CŒUR A). Le plancher par province SOMMÉ dépasse le trésor de tout
+  empire un peu large : un empire de 46 provinces à 14 619 or se voyait retirer 23 000 de
+  « réserve » ⇒ **caisse 0 ⇒ price_level 0** ; et comme TOUT le barème est clampé dans
+  `[BASE × 0,15 × pl , BASE × 8 × pl]`, **tous les prix du pays s'écrasent à 0,00**.
+  Mesuré graine 7, 30 ans, aux TROIS avènements d'âge :
+  `marché : grain 0.00 · étoffe 0.00 · orfèvr. 0.00 · outils 0.00`. Graine 9 à 30 ans :
+  0,67 → 0,56 → **0,01**. **Ce n'était PAS l'artefact d'agrégation d'un an d'avènement**
+  supposé par `docs/CALIB_ECONOMIE_2026-09-03.md` §4.2 : c'est structurel et permanent.
+  Après (`PL_SINK_MONTHS=3`) : graine 7 → **1,06 / 0,93 / 0,77** de grain,
+  `outils 9,16 / 4,73 / 3,70` ; graine 9 → 0,84 / 0,65 / 0,12.
+- **La même maladie tuait les trois freins anti-thésaurisation.** `COURT_FLOOR × n_prov`
+  fait CROÎTRE le seuil avec la taille pendant que le trésor ne suit pas : un hégémon de
+  70 provinces devrait tenir 280 000 or avant que cour/admin/encadrement ne mordent, quand
+  le monde ENTIER en porte 45 000. **Plus on est grand, plus on est exempté** — l'inverse de
+  l'intention. `× n_prov` (W1-A) préserve le calibrage pré-national EXACTEMENT (le ratio
+  trésor/seuil est identique), donc il préserve aussi le trou.
+- **P1 littéral (`COURT_FLOOR` 4 000 → 1 200) est RÉFUTÉ par la mesure.** Il réveille bien les
+  ponctions (graine 512 : `cour -4.0 admin -0.1 encadr. -0.1` contre `+0.0` partout au
+  témoin) mais **`COURT_FLOOR` est PARTAGÉ avec le module CRÉDIT** (`scps_credit.c`
+  amortissement `:984`, rachat `:768`, liquidité IA `scps_ai.c:603`) **où il est lu SANS
+  `× n_prov`** : l'abaisser divise par 3,3 la barre d'amortissement et de rachat. Effet
+  mesuré, graine 512 : hégémons 61 615/54 648/43 856 or → **11 176/16 459/4 403**,
+  `grain 0,19 → 0,01`, `étoffe 2,21 → 0,09`, manufactures 2 137 → 1 506. La proposition
+  « minimale, zéro nouvelle structure » du rapport déplace en fait tout le crédit.
+- **Le geste qui marche : le seuil est un FONDS DE ROULEMENT, en MOIS de revenu fiscal**
+  (`econ_country_tax_year`, déjà l'assiette du frein de levée W1-F), planché à l'ancienne
+  constante pour l'amorçage. Un helper, `nat_floor(cid, floor_, months, nprov)` ;
+  `months <= 0` ⇒ kill-switch EXACT du seuil W1-A. `COURT_FLOOR` reste à 4 000 : **le crédit
+  n'est pas touché**.
+- **Il a fallu DEUX clés pour la réserve, pas une** — et c'est la mesure qui l'a dit.
+  `SINK_FLOOR` a deux rôles : (a) ce que l'État garde pour FONCTIONNER (borne l'entretien et
+  la redépense) et (b) ce qu'on retranche du trésor pour former la caisse de `price_level`.
+  Baisser (a) ET (b) ensemble (`SINK_MONTHS=3`) répare les prix mais **vide les trésors** :
+  graine 512, trésor moyen 23 262 → 5 581, `intérêts -0,4 → -15,3`, indice de prix en chute
+  libre (-62,3 %/an). Ne baisser que (b) (`PL_SINK_MONTHS=3`) répare les prix **et** garde le
+  trésor (11 173). `SINK_MONTHS` reste donc à **0** (kill-switch), exposé pour une vague
+  dédiée ; `PL_SINK_MONTHS` passe à **3**.
+- **`COURT_MONTHS=24` est une SPIRALE DE MORT, `60` non.** Le seuil est ENDOGÈNE à ce qu'il
+  draine : trésor ponctionné ⇒ caisse plus basse ⇒ `price_level` plus bas ⇒ prix effondrés ⇒
+  moins d'impôt ⇒ seuil plus bas ⇒ on ponctionne plus. À 24 mois, graine 512 :
+  taxes 534,8 → **130,6**, trésor moyen 23 262 → **3 193**, manufactures 2 137 → **527**,
+  satisfaction Laborer 57 → 43 %. À 60 mois les trois lignes vivent
+  (`cour -0.4 admin -3.2 encadr. -2.9`, graine 7) sans que le trésor tombe.
+  **Toute ponction sur le trésor national est DÉFLATIONNISTE par construction** — le trésor
+  EST ce qui adosse les prix. Le rapport l'avait déjà vu sur `ENTRETIEN_DIV` ; c'est une
+  propriété du modèle, pas de ce levier-là.
+- **Bâtir et rénover étaient gratuits, et le corriger est le levier le plus RENTABLE de la
+  vague.** `intertrade_buy_cost` ne facturait que l'import (`(void)p_emp;`). Sonde isolée
+  `BUILD_OWN_MATERIAL_PRICE=1` : graine 7 taxes **13,3 → 100,5**, manufactures 403 → 1 128,
+  friche 50 → 36, satisfaction Laborer 37 → 45 % / Bourgeois 52 → 63 % ; graine 512 friche
+  31 → **17**, édifices refusés 215 → **180** (l'IA n'est PAS étranglée), accession 960 j
+  an 44 → 46 (gate : ≤ an 120). Raison du gain : l'or ne disparaît pas, il va aux LABORER de
+  la province de chantier (motif « item 5 ») — c'est un CANAL DE REDISTRIBUTION neuf.
+- **`MANUF_BUILD_COST` fait maintenant payer l'IA (`NF_SEED_PAID`), et ça ne change presque
+  rien — ce qui est la réponse.** Sonde isolée : graine 512 manufactures 2 137 → **2 140**
+  (l'IA a les moyens), graine 7 403 → 363 (−10 %, l'IA pauvre renonce). Le prix n'a JAMAIS
+  été la contrainte du semis §NF : c'est la tech de palier. Le geste rétablit l'équité
+  joueur/IA (doctrine) sans être un frein réel chez le riche.
+- **Résultat global (témoin → final, `./chronicle <g> 1 120 6 12`)** — graine 7, le monde
+  MORT du lot : taxes **+13,3 → +546,4**, manufactures **403 → 3 306**, friche **50 → 27**,
+  édifices refusés **276 → 159**, satisfaction 37/52/35 → **50/84/64**,
+  `grain 0,00 → 0,24 · orfèvr. 0,00 → 21,97 · outils 0,00 → 14,46`,
+  `cour/admin/encadr. +0,0/+0,0/+0,0 → -0,4/-3,2/-2,9`, `chantiers -1,0 → -6,7`.
+  Graine 512, le monde RICHE : friche 31 → **20**, `grain 0,19 → 0,34`, `outils 2,72 → 6,10`,
+  `cour/admin/encadr. → -2,6/-0,3/-1,7`, mais **taxes 534,8 → 326,5** et **satisfaction
+  Laborer 57 → 48 %** (Bourgeois 61 → 69, Élite 48 → 57). Le riche paie ce que le pauvre
+  gagne : c'est la forme attendue quand on retire un exploit dont seuls les gros profitaient.
+
+### Pièges
+
+- **`COURT_FLOOR` et `SINK_FLOOR` sont lus à DEUX ÉCHELLES INCOMPATIBLES** : `× n_prov` dans
+  `scps_econ.c` (depuis W1-A), **nus au grain PAYS** dans `scps_credit.c` (`:294`, `:319`,
+  `:444`, `:768`, `:984`) et `scps_ai.c:603`. Toucher la constante déplace le crédit
+  ET l'économie ; toucher `*_MONTHS` ne déplace que l'économie. **Vérifier les deux familles
+  d'appel avant de bouger l'une de ces deux constantes.**
+- **`price_level` est la voie par laquelle TOUT changement de trésor devient un changement de
+  PRIX.** Un sink qu'on réveille déflate le monde entier. On ne peut pas calibrer un frein
+  anti-thésaurisation sans regarder la ligne `marché : grain …` du bloc « par âge » dans le
+  MÊME run.
+- **`inflation (M7-I1) : indice moy` n'est PAS un prix** (déjà consigné) — et il peut aller
+  DANS LE SENS INVERSE des prix réels : `sm3` graine 512 affiche `indice 0.010` (contre 0,256
+  au témoin) alors que ses prix de marché sont plus HAUTS (`orfèvr. 23,85` vs 13,93). Lire la
+  ligne `marché :`, jamais l'indice.
+- **Facturer la matière maison sans la REVERSER est un puits de monnaie** que l'invariant M3c
+  verrait. Le chemin d'import était déjà conservatif (le nu va aux sources via
+  `intertrade_market_consume`, la marge à la cité-état hôte via le péage). Il a donc fallu
+  (1) inscrire la part maison dans `import_base_out` pour que le péage
+  (`gold − base_gold`) reste **la seule marge d'import** — sinon toute la matière maison
+  partait en péage à une cité-état étrangère — et (2) créditer les LABORER de la province de
+  chantier (`econ_region_wealth_add`) dans `agency_build_acct`. La RÉNOVATION, elle, reversait
+  déjà 100 % de son or aux classes (`RENOV_SHARE_LAB`) : rien à y faire.
+- **Le `sed -i` sur un numéro de ligne dérive dès qu'on a inséré un commentaire au-dessus.**
+  Deux passes ont visé les mauvaises lignes du tableau `RECIPE[]` (silencieusement : le motif
+  ne correspondait pas, `sed` ne dit rien). Toujours `sed -n 'Np'` pour RELIRE après.
+- **Un `make` échoue en link tant qu'un `chronicle.exe` tourne** (Windows verrouille le
+  binaire). Séquencer sondes et builds ; `make build/xxx.o` compile sans lier, utile pour
+  vérifier un edit pendant qu'une sonde tourne.
+- **Deux bancs ROUGES et c'est LÉGITIME** : `agency_demo` (« la matière de SON empire est
+  GRATUITE pour SON chantier (devis 0 or) ») et `intertrade_demo` (« le DEVIS est GRATUIT »)
+  **asseyaient exactement le comportement corrigé**. Recalibrés (le devis n'est plus nul, et
+  l'invariant qui reste est « la matière maison est facturée AU NU, donc le péage est nul »).
+  Preuve : au kill-switch `BUILD_OWN_MATERIAL_PRICE=0`, `agency_demo` était 16/16 et
+  `intertrade_demo` 27/1 (le 1 = le KO Windows `setenv` pré-existant).
+
+### Restes
+
+- **`SINK_MONTHS` (rôle « ce que l'État garde pour fonctionner ») reste à 0**, donc
+  `SINK_FLOOR × n_prov` : un hégémon de 70 provinces immobilise toujours ~35 000 or que
+  l'entretien et la redépense ne peuvent pas tirer. Le baisser répare la friche (31 → 25) et
+  la satisfaction mais vide les trésors et fait apparaître de la dette (`intérêts` −0,4 →
+  −15,3) : ça mérite sa propre vague, avec le crédit dans le champ.
+- **La FRICHE suit toujours l'ordre des `pid`** (reste W1-A, non traité) : `paid_up` se sert
+  sur `*natT` NATIONAL dans l'ordre de la boucle, donc une province de haut `pid` voit un
+  trésor déjà entamé ; et `fr = (upkeep_order > *natT)` se durcit à mesure qu'on avance. Le
+  biais existe PAR CONSTRUCTION. Je n'ai pas pu montrer de motif SPATIAL sans instrumenter
+  `chronicle.c` (fichier de W2-4). Le correctif juste (2 passes : Σ des ordres d'entretien du
+  pays, puis chacun paie la même FRACTION) change la sémantique de `fr` — à faire à part.
+- **L'écart de VA/ouvrier ×2 800 PERSISTE** : P2 n'a recalé que les 7 luxes hors panier
+  (1,1 → 6,0 ⇒ VA/ouvrier 6,73/4,36/3,64/3,64/6,73/3,82/5,64 → **1,23/0,80/0,67/0,67/1,23/
+  0,70/1,03**). Les deux pôles (atelier d'outillage **24,56**, apothicaire **0,0087**) sont
+  intouchés — ce sont des biens de panier, hors périmètre de cette vague.
+- **`COURT_MONTHS=60` réveille les ponctions FAIBLEMENT** (−0,4 à −3,2 or/mois/empire pour un
+  nominal admin ≈ 86 chez un hégémon de 55 régions). Le pas entre 24 (spirale) et 60 (tiède)
+  n'est pas exploré : 36 et 48 restent à sonder, en lisant la ligne `marché :` en même temps.
+- **P4 (purger les 5 fantômes de `docs/LEVIERS.md`) et P5 (exposer 6 `#define` au registre)
+  ne sont PAS faits** — hors périmètre de brief, golden-neutres tous les deux.
+- **La CHAÎNE NAVALE et la COLONISATION restent gratuites** : `COLONY_COST_POP` ne débite pas
+  d'or (rien à facturer, aucune recette de matière), et le §NF sème toujours 22-35 scieries
+  navales par sim pour un bien à zéro acheteur (`NAVY_COMBAT_ON=0`, décision joueur).
+- **`tools/sweep_doct_ai.sh:106` étiquette toujours `prix` un indice caisse/VA** (fichier de
+  W2-4, non touché). La ligne à lire pour un VRAI prix médian du grain est celle du bloc
+  « par âge » : `chronicle.c:2303`, `marché : grain %.2f · étoffe %.2f · orfèvr. %.2f ·
+  outils %.2f` — champ `AgeSnap.p_grain`, alimenté par `econ_avg_price`.
+- **`golden` à re-baseliner par l'orchestrateur** (trajectoires changées, attendu).
+  Avant : `7 3f53021c · 108 0763a08a · 209 4df442e9 · 310 0627589a · 411 98fc8cb3`.
+  Après : `7 8bcad2f7 · 108 ab5c9c12 · 209 384ab021 · 310 0463b80d · 411 bb6e8b44`.
