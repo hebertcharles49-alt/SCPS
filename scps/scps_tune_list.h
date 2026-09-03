@@ -1442,10 +1442,15 @@
      *   0 = KILL-SWITCH : toutes les remises de Dessein redeviennent 1.0. */ \
     X(DESSEIN_SOL_HEGEMON_FRAC,         0.40f) \
     X(DESSEIN_BOON_YEARS,              20.0f) \
-    /* prix du PIVOT de Dessein, en INFLUENCE POLITIQUE (D6.4 : 20, PLAT — aucune
-     * modulation d'éthos). Débité par dessein_pivot_pay via le module influence ;
-     * 0 = pivot gratuit (kill-switch). */ \
-    X(DESSEIN_PIVOT_INFLUENCE,         20.0f) \
+    /* prix du PIVOT de Dessein, en INFLUENCE POLITIQUE — TARIF DE BASE × é
+     * (influence_scale), correctif 2026-09-03 P2 : le prix vaut le même nombre de
+     * MOIS de revenu politique à toute taille d'empire, au lieu d'être inerte pour
+     * un hégémon (0,17 mois) et prohibitif pour une cité-état (40 mois). Toujours
+     * AUCUNE modulation d'éthos (é n'en est pas une : c'est l'échelle d'assiette,
+     * la MÊME que les doctrines). Valeur halvée 20→10 : elle se lit désormais
+     * « 10/(2×mult_conseil) mois de revenu ». Débité par dessein_pivot_pay via le
+     * module influence ; 0 = pivot gratuit (kill-switch). */ \
+    X(DESSEIN_PIVOT_INFLUENCE,         10.0f) \
     /* ORIENTATIONS POLITIQUES DU JOUEUR (2026-07-10, docs/CONSEIL_ORIENTATIONS_2026-07-10.md)
      * — REMPLACENT les 4 anciens grands décrets (scps_decrees.{h,c}). RÈGLE : jamais
      * tune_set — chaque site de lecture applique tune_f("CLÉ") × decree_mult(cid,
@@ -1886,21 +1891,32 @@
      * AUTRE réalité de classe du moteur, le piège qui a fait chuter les assiettes
      * de ~10×) : gain/mois = élites×INFLUENCE_PER_NOBLE + bourgeois×INFLUENCE_PER_
      * BOURGEOIS_BASE + journaliers×INFLUENCE_PER_LABORER_BASE (~60/20/20 % des
-     * parts sur une pop assise), × mult_conseil (moyenne des rangs I-III des
-     * sièges POURVUS du Conseil ; aucun siège pourvu ⇒ INFLUENCE_COUNCIL_FLOOR —
-     * sinon un Conseil vide rend le joueur muet en diplomatie). INFLUENCE_CAP=0 :
-     * sans plafond (décision joueur — les sinks futurs feront le travail). Dépense :
-     * les verbes d'envoi (alliance/pacte/embargo/migration/paix offerte) coûtent
-     * INFLUENCE_COST_ENVOY — ce coût REMPLACE le cooldown de l'émissaire
-     * (DIPLO_ENVOY_FLOOR_DAYS reste un plancher COURT anti-spam, ex-60 j) ;
-     * fabriquer une revendication coûte EN SUS INFLUENCE_COST_FAB (le coût d'or
-     * existant est inchangé). L'IA adopte aussi (P3-IA) : la génération n'est plus
-     * le privilège du joueur seul. */ \
+     * parts sur une pop assise), × mult_conseil (moyenne des rangs I-III SUR LES
+     * TROIS SIÈGES du Conseil, un siège VACANT valant INFLUENCE_COUNCIL_FLOOR —
+     * correctif 2026-09-03 « variante B » : avant, la moyenne ne portait que sur
+     * les sièges POURVUS, si bien qu'un ministre de rang I DILUAIT et que décapiter
+     * son Conseil valait +80 % d'influence pour −37 % de salaire. INFLUENCE_COUNCIL_
+     * FLOOR est donc DEUX choses à la fois : la valeur d'un siège vide, et par
+     * construction le multiplicateur d'un Conseil entièrement vide — jamais muet).
+     * INFLUENCE_CAP=0 : sans plafond (décision joueur — AUCUN plafond, réaffirmée
+     * 2026-09-03 ; les sinks futurs feront le travail). Dépense : les verbes d'envoi
+     * (alliance/pacte/embargo/migration/paix offerte) coûtent INFLUENCE_COST_ENVOY
+     * × é — ce coût REMPLACE le cooldown de l'émissaire (DIPLO_ENVOY_FLOOR_DAYS
+     * reste un plancher COURT anti-spam, ex-60 j) ; fabriquer une revendication
+     * coûte EN SUS INFLUENCE_COST_FAB × é (le coût d'or existant est inchangé).
+     * ⚠ LES TROIS COÛTS DE VERBE PASSENT PAR é (influence_scale, la MÊME échelle
+     * que les doctrines — correctif 2026-09-03 P2) : un tarif PLAT était inerte au
+     * sommet (un hégémon payait un émissaire 0,10 mois de revenu, une cité-état 24
+     * mois — ×241 d'écart) ; ×é, le prix vaut le même NOMBRE DE MOIS de revenu à
+     * toute taille. Les valeurs sont donc HALVÉES (12→6, 25→12, 20→10) parce
+     * qu'elles se lisent maintenant « C/(2×mult_conseil) mois de revenu ».
+     * L'IA adopte aussi (P3-IA) : la génération n'est plus le privilège du joueur
+     * seul (les COÛTS de verbe, eux, restent joueur-seul : sim_cmd_drain). */ \
     X(INFLUENCE_PER_NOBLE,              0.002f) \
     X(INFLUENCE_COUNCIL_FLOOR,          1.0f) \
     X(INFLUENCE_CAP,                    0.0f) \
-    X(INFLUENCE_COST_ENVOY,             12.0f) \
-    X(INFLUENCE_COST_FAB,               25.0f) \
+    X(INFLUENCE_COST_ENVOY,              6.0f) \
+    X(INFLUENCE_COST_FAB,               12.0f) \
     X(DIPLO_ENVOY_FLOOR_DAYS,           30.0f) \
     /* LES DOCTRINES (docs/DESIGN_MISSIONS_DOCTRINES.md §4, catalogue :
      * docs/DESIGN_DOCTRINES_ANNEXE.md) — TOUT est payé en INFLUENCE. « Pas de
@@ -1968,6 +1984,16 @@
      *                        suivant). */ \
     X(AI_DOCT,                          1.0f) \
     X(AI_DOCT_CHECK_MONTHS,            12.0f) \
-    X(AI_DOCT_RESERVE,                  1.5f)
+    X(AI_DOCT_RESERVE,                  1.5f) \
+    /*   AI_DOCT_CURRENT_YEAR  l'AN à partir duquel l'IA peut choisir son COURANT
+     *                        politique (Aristocratie/Bourgeoisie/Populaire/Divin).
+     *                        Correctif 2026-09-03 P4b : le courant se prenait entre
+     *                        l'an 5 et l'an 40, or une foi d'État n'existe qu'au
+     *                        Temple T2 bâti (bien plus tard) et l'IA n'abandonne
+     *                        JAMAIS — Divin était donc structurellement impossible
+     *                        (0 adoption sur 331, sweep 10×200). On n'ouvre aucune
+     *                        porte de faveur : on attend que le pays SACHE s'il a
+     *                        une foi. 0 = kill-switch (le courant dès l'an 0). */ \
+    X(AI_DOCT_CURRENT_YEAR,            40.0f)
 
 #endif /* SCPS_TUNE_LIST_H */

@@ -69,9 +69,12 @@ enum { DESS_VOIE_AUCUNE = 0, DESS_VOIE_CONQUETE, DESS_VOIE_VASSALISATION };
  * 8-11 (vassalisation). C'est l'index des bandes STR_DESS_SOL_*. */
 #define DESSEIN_DISPLAY_SLOTS 12
 
-/* Prix UNIFORME d'un pivot (D6.4 : 20 d'influence, plat, aucune modulation
- * d'éthos, aucune réduction par doctrine sœur). */
-#define DESSEIN_PIVOT_INFLUENCE 20
+/* TARIF DE BASE d'un pivot (D6.4 : aucune modulation d'éthos, aucune réduction
+ * par doctrine sœur). Le prix RÉELLEMENT débité est ce tarif × é (l'échelle
+ * d'assiette, influence_scale) depuis le correctif 2026-09-03 P2 — la valeur est
+ * donc halvée 20→10 : elle se lit « 10/(2×mult_conseil) mois de revenu politique »,
+ * le même nombre de mois à toute taille d'empire. */
+#define DESSEIN_PIVOT_INFLUENCE 10
 
 /* ── L'ÉTAT D'UNE BRANCHE ────────────────────────────────────────────────
  * Tout est BORNÉ et revalidé au chargement (scps_save_sane). `tpid`/`trio`
@@ -129,10 +132,10 @@ void missions_boons_sync(const MissionsState *ms, int year);
 /* ── LE PRIX DU PIVOT ────────────────────────────────────────────────────
  * BRANCHÉ sur l'INFLUENCE POLITIQUE (merge 2026-09-02) : scps_sim.c lie le
  * module à l'init via dessein_pivot_bind ; non lié (bancs, chronique) = pivot
- * gratuit. Le prix = tunable DESSEIN_PIVOT_INFLUENCE (20, plat — D6.4). */
+ * gratuit. Le prix = tunable DESSEIN_PIVOT_INFLUENCE (10) × é — D6.4. */
 struct InfluenceState;
 void dessein_pivot_bind(struct InfluenceState *is);
-bool dessein_pivot_pay(int cid);
+bool dessein_pivot_pay(int cid, float ech);
 
 void missions_init(MissionsState *ms);
 
@@ -154,10 +157,13 @@ void missions_tick(MissionsState *ms, World *w, WorldEconomy *econ,
  * la preuve d'usage correspondante + dessein_pivot_pay. Revalide TOUT contre
  * l'état courant (miroir save_sane) : branche générée, échelon bien le courant,
  * condition remplie. Verse la récompense, avance l'échelon et résout la cible
- * du suivant. Renvoie 1 si le sceau a pris, 0 sinon (silencieux). */
+ * du suivant. Renvoie 1 si le sceau a pris, 0 sinon (silencieux).
+ * `ech` = l'échelle d'assiette du pays (influence_scale) — le MÊME argument que
+ * les verbes de doctrine, et pour la même raison : le prix du pivot passe par é
+ * (2026-09-03 P2). 0 (ou <0) = tarif nu, pour un banc sans assiette. */
 int  missions_seal(MissionsState *ms, World *w, WorldEconomy *econ,
                    DiploState *dp, Statecraft *sc, uint32_t seed, int year,
-                   int cid, int branch, int rung, int voie);
+                   int cid, int branch, int rung, int voie, float ech);
 
 /* ── LECTEURS PURS (façade + bancs) ──────────────────────────────────────── */
 const Dessein *dessein_of(const MissionsState *ms, int cid, int branch);

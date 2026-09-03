@@ -192,8 +192,16 @@ int main(int argc, char **argv){
     printf("   gain mois 1 (plancher) : %.4f (attendu %.4f)\n", gain1, expect1);
     ok("gain/mois == INFLUENCE_PER_NOBLE x elites x plancher (aucun ministre)", near_f(gain1, expect1, 0.01));
 
-    /* ── 1c. Un ministre pourvu → le RANG du Conseil relève le gain ── */
+    /* ── 1c. Un ministre pourvu → le RANG du Conseil relève le gain.
+     * ⚠ RECALIBRÉ 2026-09-03 (P1, « variante B ») : la fixture d'avant attendait
+     * `mult == le rang du SEUL ministre assis` — c'était la moyenne des sièges
+     * POURVUS, qui rendait le Conseil monotone À L'ENVERS (un ministre de rang I
+     * DILUAIT, décapiter son Conseil PAYAIT). La moyenne porte désormais sur les
+     * TROIS sièges, un siège vide valant INFLUENCE_COUNCIL_FLOOR — donc
+     * (rang + 2×plancher)/3, et ce banc teste ce qui compte vraiment : la
+     * MONOTONIE (pourvoir un siège ne peut JAMAIS nuire). ── */
     printf("\n-- 3. Un ministre pourvu -> le rang du Conseil (I-III) relève le gain --\n");
+    const float FLOOR = tune_f("INFLUENCE_COUNCIL_FLOOR", 1.0f);
     int best_slot=0, best_tier=0;
     for (int sl=0; sl<SC_COUNCIL_CANDS; sl++){
         int t = statecraft_council_cand_tier(w->seed, cid, 0, sl, 0);
@@ -202,16 +210,40 @@ int main(int argc, char **argv){
     statecraft_council_hire(sc, w->seed, cid, 0, best_slot, 0);
     int nseat2=-1;
     float mult1 = influence_council_mult(sc, w->seed, cid, &nseat2);
+    double expect_mult1 = ((double)best_tier + 2.0*(double)FLOOR) / (double)SC_COUNCIL_SEATS;
     ok("un siege pourvu => n_seated==1", nseat2==1);
-    ok("mult_conseil == le rang (I..III) du seul ministre en siege", near_f(mult1, (double)best_tier, 0.001));
+    printf("   mult_conseil (1 ministre rang %d + 2 sieges vides) : %.4f (attendu %.4f)\n",
+           best_tier, mult1, expect_mult1);
+    ok("mult_conseil == (rang du ministre + 2 sieges vides au plancher) / 3 sieges",
+       near_f(mult1, expect_mult1, 0.001));
     influence_tick(is, w, econ, sc, w->seed, cid, INFL_BASE_DEFAUT);
     double gain2 = influence_get(is, cid) - gain1;
-    double expect2 = 0.002 * 1000.0 * (double)best_tier;
-    printf("   gain mois 2 (rang %d) : %.4f (attendu %.4f)\n", best_tier, gain2, expect2);
-    ok("gain/mois croit avec le rang du Conseil (mult_conseil = rang, pas le plancher)",
+    double expect2 = 0.002 * 1000.0 * expect_mult1;
+    printf("   gain mois 2 : %.4f (attendu %.4f)\n", gain2, expect2);
+    ok("gain/mois == assiette x mult_conseil (le rang du Conseil releve le gain)",
        near_f(gain2, expect2, 0.01));
+    ok("un ministre ne DILUE JAMAIS : mult_conseil reste >= le plancher (monotonie, P1)",
+       mult1 >= FLOOR - 0.001f);
     if (best_tier>1)
         ok("un ministre de rang > I genere STRICTEMENT plus que le plancher", gain2 > expect1 + 0.001);
+
+    /* ── 1c-bis. LA MONOTONIE, prouvée sur les TROIS sièges (le cœur du correctif
+     * P1) : ajouter un ministre — MÊME le pire du pool — ne peut jamais faire
+     * BAISSER le multiplicateur, et le décapitage cesse de payer. ── */
+    { float mult_before = influence_council_mult(sc, w->seed, cid, NULL);
+      int worst_slot=0, worst_tier=99;
+      for (int sl=0; sl<SC_COUNCIL_CANDS; sl++){
+          int t = statecraft_council_cand_tier(w->seed, cid, 1, sl, 0);
+          if (t<worst_tier){ worst_tier=t; worst_slot=sl; }
+      }
+      statecraft_council_hire(sc, w->seed, cid, 1, worst_slot, 0);
+      float mult_after = influence_council_mult(sc, w->seed, cid, NULL);
+      printf("   2e siege pourvu du PIRE candidat (rang %d) : %.4f -> %.4f\n",
+             worst_tier, mult_before, mult_after);
+      ok("pourvoir un 2e siege du PIRE ministre ne fait JAMAIS baisser mult_conseil",
+         mult_after >= mult_before - 0.001f);
+      ok("decapiter son Conseil ne paie plus : un siege vide vaut exactement un rang I",
+         near_f(mult_after, ((double)best_tier + (double)worst_tier + (double)FLOOR)/3.0, 0.001)); }
 
     /* ── 1d. Dépense / refus (jamais négatif) ── */
     printf("\n-- 4. Depense / refus -- l'accumulateur ne descend jamais sous 0 --\n");
@@ -246,7 +278,8 @@ int main(int argc, char **argv){
 
     /* ═══ 2. FAÇADE — le DRAIN réel (scps_sim.c) : coût REMPLACE le cooldown ═══ */
     printf("\n-- 6. Facade (drain reel) : le cout REMPLACE le cooldown de l'emissaire --\n");
-    tune_set("INFLUENCE_COST_ENVOY", 12.f);
+    tune_set("INFLUENCE_COST_ENVOY", 6.f);   /* RECALIBRÉ 2026-09-03 (P2) : le tarif de
+                                              * base est halvé parce qu'il passe par é. */
     tune_set("DIPLO_ENVOY_FLOOR_DAYS", 30.f);
     ScpsSim *s2 = scps_sim_new();
     scps_sim_generate(s2, seed);
@@ -272,15 +305,33 @@ int main(int argc, char **argv){
         while (inf.stock < 30 && budget_days < 3650);
         ok("le stock d'influence croit avec le temps (generation mensuelle, joueur seul)", inf.stock>0);
 
+        /* ⚠ RECALIBRÉ 2026-09-03 (P2) : le coût n'est plus le tarif NU — il passe par é
+         * (influence_scale). La façade PUBLIE le prix réel (ScpsDiploOptions.influence_
+         * cost_envoy, miroir exact du drain) : le banc lit CE nombre, jamais le tunable,
+         * et vérifie du même coup que la façade ne ment pas au joueur. */
         int before_stock = inf.stock;
+        ScpsDiploOptions op1; scps_diplo_options(s2, t1, &op1);
+        float cost_envoy = op1.influence_cost_envoy;
+        ok("la facade publie un cout d'envoi REEL non nul (tarif x e, jamais le tarif nu)",
+           cost_envoy > 0.f);
+        ok("le cout REEL respecte le plancher d'echelle (>= tarif x 0.25)",
+           cost_envoy >= tune_f("INFLUENCE_COST_ENVOY",6.f)*0.25f - 0.001f);
+        /* KILL-SWITCH INFLUENCE_BASE_REF=0 (e ≡ 1.0, « prix plats d'avant ») : le prix
+         * publie retombe EXACTEMENT sur le tarif nu — la preuve que le cout passe bien
+         * par e, et rien d'autre. */
+        { tune_set("INFLUENCE_BASE_REF", 0.f);
+          ScpsDiploOptions oflat; scps_diplo_options(s2, t1, &oflat);
+          ok("kill-switch INFLUENCE_BASE_REF=0 : le cout publie retombe sur le tarif PLAT",
+             near_f(oflat.influence_cost_envoy, tune_f("INFLUENCE_COST_ENVOY",6.f), 0.001));
+          tune_set("INFLUENCE_BASE_REF", 2.f); }
         int r1 = scps_player_offer_pact(s2, t1);
         ok("verbe d'ENVOI (pacte) ENFILE", r1==1);
         scps_sim_advance_days(s2, 1);   /* le drain applique : coût débité, plancher posé */
         scps_influence_info(s2, pl, &inf);
-        printf("   stock avant/apres 1er envoi : %d -> %d (cout attendu %.0f)\n",
-               before_stock, inf.stock, tune_f("INFLUENCE_COST_ENVOY",12.f));
-        ok("le verbe d'ENVOI a COUTE de l'influence (le cout REMPLACE le cooldown)",
-           inf.stock <= before_stock - (int)tune_f("INFLUENCE_COST_ENVOY",12.f) + 1);
+        printf("   stock avant/apres 1er envoi : %d -> %d (cout REEL publie %.2f = %.0f x e)\n",
+               before_stock, inf.stock, cost_envoy, tune_f("INFLUENCE_COST_ENVOY",6.f));
+        ok("le verbe d'ENVOI a COUTE le prix PUBLIE par la facade (le cout REMPLACE le cooldown)",
+           inf.stock <= before_stock - (int)cost_envoy + 1);
 
         /* coup sur coup, SOUS le plancher (30 j) : refusé net, même si l'influence suffit. */
         ScpsDiploOptions o2; scps_diplo_options(s2, t2, &o2);
@@ -297,7 +348,9 @@ int main(int argc, char **argv){
         /* au-delà du NOUVEAU plancher (31 j, largement sous l'ANCIEN cooldown 60 j) : reprend,
          * si l'influence a été reconstituée entre-temps (générée mois après mois). */
         scps_sim_advance_days(s2, 31);
-        do { scps_influence_info(s2, pl, &inf); if (inf.stock >= (int)tune_f("INFLUENCE_COST_ENVOY",12.f)) break;
+        do { scps_influence_info(s2, pl, &inf);
+             ScpsDiploOptions oc; scps_diplo_options(s2, t2, &oc);
+             if (inf.stock >= (int)oc.influence_cost_envoy + 1) break;
              scps_sim_advance_days(s2, 30); } while (1);
         int r3 = scps_player_embargo(s2, t2, 1);
         scps_sim_advance_days(s2, 1);

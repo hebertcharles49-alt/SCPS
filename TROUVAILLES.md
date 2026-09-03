@@ -11193,3 +11193,817 @@ est gatée par l'arsenal, comme prévu.
   traitées ici** (calibrage/design, décision joueur).
 - `scps/golden_deep.txt` reste STALE (constaté par la mission P3-IA du 2026-09-02,
   antérieur à cette vague) — non touché.
+
+
+---
+
+## Mission 2026-09-03 — CALIB TECH (agent maths, LECTURE SEULE)
+
+Livrable : `docs/CALIB_TECH_2026-09-03.md`. Aucun fichier source touche, aucun `make`.
+Sources : `sweep_doct_ai_10x200/*.log` (20 sims) + 3 runs `./chronicle.exe 7 1 120 6 12`
+(base, `SCPS_TUNE=AI_RESEARCH_INCOME_W=1.0`, `SCPS_TUNE=TECH_COST_MULT=1.0`).
+
+**Decouvertes**
+
+- `TECH_COUNT = 74` (`scps_tech.h:110`) — `docs/LEVIERS.md:461` dit encore « 85 noeuds ».
+  Repartition : 6/16/18/10/21/3 par tier, Σ `BASE_COST` = 10 520.
+- `tech_cost` se simplifie en **`BASE × 9.072 × sqrt(N)`** : `COST_SCALE 14.4 ×
+  TECH_COST_MULT 0.70 × TECH_COST_N_K 0.90`. **`TECH_COST_N_FLOOR = 0.5` est une branche
+  MORTE** (`0.90·sqrt(N) >= 0.90 > 0.50` des N=1) — `scps_tech.c:667-680`.
+- **Les 3 noeuds `needs_ruins` (Invocation, L'Eveil, Savoir interdit) sont inaccessibles a
+  vie** : `scps_sim.c:1726` fait `tech_state_init(&s->ts[c], false)` pour TOUS les pays et
+  aucun site ne repasse jamais `has_ruins_access` a `true` (seul `army_demo.c:240-260` le
+  fait, hors sim). C'est la preuve arithmetique du plafond `arbre max 95% = 71/74` present
+  dans 18 logs sur 20. **`TECH_EVEIL` est le SEUL noeud a `triggers_crisis=true`**
+  (`scps_tech.c:59`) ⇒ ce mecanisme n'a jamais pu se declencher.
+- Le leader boucle l'arbre : **65 tech (= 71/74) en mediane sur 20 sims** (min 57, max 65),
+  atteint vers l'an 185-195 (mesure : 49 tech a l'an 120). L'intention `scps_tech.c:30`
+  (« ~40-60 % → il SPECIALISE ») n'est pas tenue au sommet. La mediane publiee (44 %) est la
+  moyenne d'un leader a 95 % et d'une queue a 8-9 % (colonne `min` = 8-9 % dans 20/20).
+- `pe->tech_prod = 1 + tech_prod_bonus + tech_eff_bonus` est **SANS PLAFOND HAUT**
+  (`econ_apply_country_tech`, `scps_econ.c`) : Σ`NODE_PROD_PCT` = 1,65 + Σ`NODE_EFF_PCT` =
+  0,38 ⇒ **arbre complet = x3,03** (+0,30 traditions). Boucle de retroaction positive
+  production → pop → `econ_country_savoir` → recherche → arbre → production.
+- **L'acces d'heritage tier-3 se prend par la GOUVERNANCE, pas par la metabolisation** :
+  `heritage_access_pack` prend le MAX(profondeur, metabolisation) (`scps_ai.c:2338-2354`), et
+  `ai_archetype_depth:2270-2277` donne `PROF_PROFOND` (= tier 3 PLEIN) des que **cohesion de
+  la region >= 0.33**, tandis que `region_bears_arch:2233-2245` renvoie vrai des qu'**UN SEUL
+  groupe de pop d'UNE province** porte l'archetype — **aucun seuil d'effectif ni
+  d'integration sur ce groupe**. Une poignee de deportes/soumis ouvre donc 100 % de la porte
+  tech d'un heritage, alors que leur diffusion de savoir est bridee a
+  `METAB_DIFFUSE_SLAVE 0.30 × SLAVE_METAB_FLOOR 0.15 ~= 4,5 %`. Les deux voies se
+  contredisent. Consequence mesuree : `6/6 archetype(s)` dans 18/20 sims, combos jusqu'a
+  219/sim, 26 empires porteurs (essai_s512).
+- **Pourquoi doctrine Technologie = 2/331** : `scps_ai.c:3303-3304`,
+  `clamp(nlib*0.6,0,1.2) + clamp(savoir/pop,0,0.6)`. `nlib ~= 0` (Σ build.savoir ~= 0 partout,
+  deja mesure `TROUVAILLES.md:4227`) et `savoir/pop ~= 0.0014` ⇒ **score ~= 0,002** contre
+  Production <= 2,0 / Infrastructure <= 2,4 / courant 1,0-2,0. **Erreur d'echelle d'un facteur
+  ~400 sur le terme savoir-par-tete.** Idem Connaissands (`:3288`) : 0,04-0,75, toujours sous
+  Production. Elles ne peuvent jamais gagner l'argmax de `ai_doctrines_year:3324-3330`.
+- **Cles fantomes du catalogue de doctrines** : `METAB_TIER12` (`scps_doctrines.c:67` et
+  `:121`) n'existe **dans AUCUN registre et a AUCUN site** ; `FOG_SEA_HALO` (`:118`) est un
+  `#define` local de `scps_api.c:656`, pas un tunable ; `AI_TECH_DIFFUSE_MAX` (`:120`) est lu
+  par `tune_f` seul a `scps_ai.c:2438`, sans `doctrine_key_mult`. Sur 12 idees des deux
+  doctrines de savoir, **4 affichent une cle sans site** et seules 4 sont vivantes.
+- `AI_RESEARCH_CADENCE = 365` (`scps_ai.c:75`) : cap dur d'**UN noeud par an**, et ce n'est
+  PAS un tunable du registre J.
+- **Elasticites mesurees** (graine 7, an 120) : `AI_RESEARCH_INCOME_W` 4.5→1 ⇒ monde
+  239→**48** noeuds, leader 49→21 tech. `TECH_COST_MULT` 0.70→1.00 (prix x1,43) ⇒ monde
+  239→**178**, leader 49→**31** tech, max 74 %→**52 %**, combos 12→**3**. Le prix est donc un
+  levier fin (elasticite leader/prix ~ -0,85), pas seulement le revenu.
+- **Des que l'argent manque, la « soif de savoir » monopolise** : la specialisation bascule en
+  `16-17 Savoir · 0 Forge · 1-6 Societe` dans les deux bras contraints — l'epargne ciblee
+  Scriptorium→Universite (`scps_ai.c:2648-2679`) rafle tout. Et le theme **FORGE n'est
+  dominant chez PERSONNE** : `0 Forge` dans 15 des 20 logs du sweep.
+- La chaine `Scriptorium+Academie+Universite` = 290 pts de base (**2,8 % de la Σ BASE**) pour
+  `tech_research_yield` x1→**x2,5** permanent : amortie en ~11 ans chez le leader. Meilleur
+  rapport du jeu, de tres loin.
+
+**Pieges**
+
+- `« N tech »` de la fiche empire = **`n_unlocked − 6`** (socle tier-0), `chronicle.c:2013-2014`,
+  alors que `« arbre X% »` = `100·n_unlocked/74` (`:2432`) — les deux ne se lisent pas pareil.
+  `65 tech` ⇔ `95 %` ⇔ `71/74`.
+- **`scps_sim.c:1556` `s->ts[ch] = s->ts[pa]`** : un fragment ne du resplit §27 (an 180) herite
+  de l'arbre COMPLET du parent. `essai_s512_y200.log` liste `Clans Fizzexa` (5 reg, 8k hab) a
+  **64 tech**, plus des grappes entieres a 64 / 49 / 40 — ce sont des COPIES, pas de la
+  recherche (leur revenu est de ~150 pts/an ; un tier-4 leur couterait un siecle). **Toute
+  statistique d'arbre lue apres l'an 180 est contaminee** : ne pas calibrer dessus sans
+  filtrer les heritiers.
+- `SCPS_TECHDIAG` deverse une ligne `[TD]` par pays et par an sur stderr : inexploitable sur
+  200 ans. Les lignes de bilan de la chronique suffisent et sont plus sures.
+- Le scratchpad de session est PARTAGE entre les agents de la vague (`p_base.log`,
+  `run_new_s7_6e_120.log`… d'autres missions y ecrivent des runs de meme taille) — nommer ses
+  sorties de facon distinctive.
+- `chronicle 7 1 120 6 12` prend ~9 minutes sur cette machine : lancer en arriere-plan, jamais
+  deux d'affilee dans un seul appel avec timeout par defaut.
+
+**Restes**
+
+- Les 9 propositions chiffrees (P1 plafond `tech_prod` · P2 `TECH_COST_N_EXP` 0.5→0.65 ·
+  P3 `BASE_COST[4]/[5]` 260/400→340/560 · P4 seuil sur la porte d'archetype · P5 porte des
+  ruines · P6 scores des doctrines de savoir · P7 cles fantomes · P8 telemetrie honnete de
+  l'arbre · P9 cadence au registre) sont **decrites, chiffrees et NON appliquees** —
+  decision joueur, cf. `docs/CALIB_TECH_2026-09-03.md` §4.
+- **P8 d'abord** : tant que la mediane `arbre %` melange heritiers de cataclysme et fragments
+  neufs (`chronicle.c:2429-2444`), P1-P4 se calibreraient sur du bruit.
+- Non verifie faute d'instrumentation : quels noeuds precis un empire MOYEN ne prend jamais
+  (le leader, lui, prend tout sauf les 3 `needs_ruins` — c'est prouve par 71/74). Il faudrait
+  un compteur par `TechId` en fin de chronique.
+- `docs/LEVIERS.md:461` (« 85 noeuds ») a rafraichir a 74.
+
+---
+
+## Mission 2026-09-03 — CALIB ÉCONOMIE : rapport de coûts (docs/CALIB_ECONOMIE_2026-09-03.md)
+
+Lecture seule. Aucun fichier moteur touché. Livrables : `docs/CALIB_ECONOMIE_2026-09-03.md`
++ ce bloc. Sources : `scps_econ.c` / `scps_agency.c` / `scps_intertrade.c` /
+`scps_sim.c` / `scps_tune_list.h`, les 20 journaux de `sweep_doct_ai_10x200/`,
+et 3 sondes `./chronicle 7 1 120 6 12` (baseline / `ENTRETIEN_DIV=100` /
+`MANUF_BUILD_COST=250`).
+
+### Découvertes
+
+- **Les trois freins anti-thésaurisation sont MORTS, et c'est mesuré trois fois.**
+  `cour`, `admin` et `encadrement des manufactures` sont gatés sur
+  `re->treasury > COURT_FLOOR (4000)` **PAR PROVINCE** (`scps_econ.c:4590`, `:4614`,
+  `:4624`), alors que la richesse est PAR PAYS : un hégémon à 95 122 or réparti sur
+  70 provinces fait **1 359 or/province**, sous le seuil. Ligne `flux décomposé` du
+  chronicle : `admin` vaut **-0,1 à -0,5 or/mois/empire** sur les 20 sims 200 ans,
+  contre un nominal `ADMIN_BASE 0,4 × n^0,3 × n_prov` ~= **80** pour 60 régions
+  (**-99 %**) ; et **exactement `cour +0.0 admin +0.0 encadr. +0.0`** dans les TROIS
+  sondes 120 ans, quel que soit le calibrage. C'est LE trou du robinet d'or.
+- **Un édifice ne coûte RIEN en or dès que l'empire possède la matière.**
+  `intertrade_buy_cost` ne facture QUE la part importée — `(void)p_emp; /* l'empire est
+  GRATUIT (marge 0) */` (`scps_intertrade.c:461`). Recettes = trio bois/pierre/argile
+  seul ; tout empire avec une tuile bois + une tuile argile est autosuffisant. Preuve :
+  ligne `chantiers` du flux = **-0,0 à -5,5 or/mois/empire** contre **+356 à +2 658** de
+  taxes, 20/20 sims. Corollaire : **rénover est gratuit aussi** (`RENOV_COST_FRAC` 0,5 ×
+  un coût nul, `scps_agency.c:764`) — la vétusté 2 %/an n'est donc jamais un dilemme.
+- **Le coût d'un bâtiment n'est PAS son prix, c'est son entretien** —
+  `W × 35 / 400 × 365/12 = W × 2,661 or/mois` (`scps_econ.c:2988-2994`), avec
+  `W = K + 1,5·H + P + PE + food + port + faith + savoir`. Au plancher fiscal
+  (`TAX_BASE_LABORER` 0,06 × `TAX_FLOOR_FRAC` 0,5 = 0,03/mois/tête), il faut **89 × W
+  habitants** pour l'amortir : 89 pour un Grenier, 798 pour une Citadelle. La province
+  médiane pèse 800-2 000 hab ==> **tous les édifices sont amortis d'office**. Table
+  complète des 26 édifices dans le rapport §1.
+- **`MANUF_BUILD_COST` ne mord que sur le JOUEUR.** `econ_build_tick` (§NF v2,
+  `scps_econ.c:2819`) sème gratuitement un bâtiment de niveau 1 dans toute province IA en
+  pénurie, chaque tick ; le gate `if (pe->owner == g_econ_human) continue;` (`:2834`)
+  exclut le joueur, qui paie 50 × ipm. Sonde : `MANUF_BUILD_COST=250` (×5) laisse le
+  **nombre total de manufactures INCHANGÉ** (~= 2 000) — le levier ne fait que
+  redistribuer les types.
+- **Le levier `labor` n'a jamais été recalé hors panier** : VA/ouvrier de **0,0087**
+  (apothicaire, `labor` 404) à **24,56** (atelier d'outillage, `labor` 0,9) — un facteur
+  **2 800×**. La formule E3 `labor = 1200 × qout / demande_1000hab` (commentaires
+  `scps_econ.c:429-435`, `:454`, `:499`, `:504`) n'a été appliquée qu'aux 6 biens du
+  panier ; les 24 autres recettes sont restées à 0,8-1,4.
+- **5 recettes ont une VA structurellement NÉGATIVE aux prix de base** (clampée à 0,
+  `scps_econ.c:4383`) : étoffe précieuse (-1,1 : 4 étoffes à 4,5 = 18,0 = exactement le
+  prix de la précieuse), arquebuserie (-8,4 : 2 poudres à 11 pour une arme à 16),
+  charbonnière (-0,2), corne divine (-2,0), foreuse arcanique (-19,0 : l'essence à 34
+  pour 2 fer à 2,4). Elles ne tournent que quand le ratio de prix bascule complètement
+  (intrant au plancher `0,15×base×pl`, sortie au plafond `8×base×pl` — un écart de 53×).
+- **« prix 0.377 vs 0.443 » du `resume.txt` N'EST PAS UN PRIX.**
+  `tools/sweep_doct_ai.sh:106` étiquette `prix` un champ alimenté par
+  `/inflation \(M7-I1\)/ ... moy`, c'est-à-dire `econ_world_price_index`
+  (`scps_econ.h:889`) = **moyenne pondérée-VA de `price_level` = caisse d'État / VA**.
+  Recoupé à la main : Somme des 10 `indice moy` essai = 3,765 -> 0,3765 OK ; témoin = 4,432 ->
+  0,4432 OK. L'écart de 15 % s'explique : le bras `AI_DOCT=1` adopte Production 62 fois
+  (la doctrine la plus prise, ×`MANUF_QOUT_MULT` et ×`RAW_BOOST_PER_TIER`,
+  `scps_doctrines.c:99`) ==> plus de VA, même caisse ==> ratio plus bas. **Les doctrines sont
+  déflationnistes par construction.** Le grain médian à la Brèche est identique dans les
+  deux bras (0,16 vs 0,15) : aucun effondrement de prix de marché.
+- **Le monde a deux régimes de prix, pas des cycles.** `target = base × price_level ×
+  clamp(demande/offre, 0,2, 6)` (`scps_econ.c:5390-5398`) : un bien glutté (grain, fer,
+  étoffe) est collé au clamp bas ==> **6-10 % de sa base** toute la partie ; un bien à
+  demande bornée (orfèvrerie via `GATE_DEMAND_BUFFER`, outils via `TOOLS_PER_LABORER`)
+  sature au clamp haut ==> **1,8-3,0 × base × pl**. Fourchettes mesurées, rapport §4.2.
+- **La saisie de banqueroute est le 2e plus gros transfert du modèle** (après la frappe) :
+  `BANKRUPTCY_GARNISH` 0,75 confisque **75 % de la valeur de TOUTE la production
+  manufacturière** du failli pendant 10 ans décroissants (`scps_econ.c:4277`). Mesuré :
+  **104 484 à 1 934 548 or/sim** confisqués, pour une **dette mondiale totale de 430 à
+  109 116 or** — soit 10 à 200× l'encours déclencheur.
+- **La dette est un problème de premier siècle uniquement** : dette/revenu passe de
+  7-245 % (an 40, méd. ~= 130 %) à 0-73 % (an 160, méd. ~= **7 %**). Sur **350 lignes-empire**
+  lues à l'an 200, **deux seulement** ont un trésor négatif (-58 et -42). La vraie
+  pathologie de pauvreté est la **friche** : 16 à 47 régions impayées/sim (5-13 % des
+  colonisées), production × `FRICHE_FACTOR` 0,6.
+- **Coloniser ne coûte pas d'or** : `COLONY_COST_POP` = 150 âmes, borné à 25 % de la
+  classe libre (`scps_econ.c:718`, `:6034`) — aucun débit de trésor. Ligne
+  `colonisation +0/an` du résidu de périmètre, 20/20 sims. 78 à 358 fondations/sim.
+- **La chaîne navale est morte et le chronicle le dit lui-même** : « 0 coque(s) bâtie(s) ·
+  **0 fournitures navales consommées** (NE doit plus être zéro) » dans **20/20** sims,
+  alors que 22 à 35 scieries navales par sim brûlent bois + cuivre. `RES_NAVAL_SUPPLIES`
+  n'a d'acheteur que `scps_navy.c` / `scps_campaign.c:509`, et `NAVY_COMBAT_ON`=0 est une
+  **décision joueur** (TROUVAILLES 2026-08-16 « c'est OFF ») — non re-litigée, seulement
+  chiffrée.
+- **5 entrées fantômes dans `docs/LEVIERS.md`** (§ Économie) : `MANUF_UPKEEP_DAY`,
+  `CREDIT_LINE_BASE`, `CREDIT_RATE_BASE`, `CREDIT_RATIO_CAP`, `ARB_CAPTURE` — **0**
+  occurrence dans `scps_tune_list.h` ET **0** appel `tune_f` dans tout `scps/*.c`. Même
+  motif exact que `IMPORT_TOLL_FRAC` purgé le 2026-09-01. `MANUF_UPKEEP_DAY` a été
+  remplacé par `econ_job_upkeep_month` (M3d) et la doc annonce toujours l'ancien.
+- **18 constantes économiques structurantes ne sont PAS au registre J** (donc
+  insondables au sweep, invisibles au panneau F10) : `BUILD_GOLD_PER_DELTA` (35),
+  `DEF_UPKEEP_MULT` (1,5), `STATE_SPEND_RATE` (0,30), `NF_SHORTAGE` (1,8),
+  `PRICE_INERTIA` (0,65), `FRICHE_FACTOR` (0,6), `PAYROLL_FRACTION`,
+  `STATE_TAX_AMBITION`, `TAX_RATE`, `WAGE_SHARE`, `GATE_DEMAND_BUFFER`,
+  `DEMAND_TENSION`, `BUILD_MIN_PRICE`, `MANUF_LEVEL_STEP`, `IT_CHOKE_TOLL`,
+  `COLONY_SEED_POP`, `RENOV_DAYS`, `NF_SEED_LEVEL`.
+
+### Pièges
+
+- **`ENTRETIEN_DIV` n'est PAS le levier du trésor de l'hégémon** — sonde mesurée :
+  `ENTRETIEN_DIV=100` (÷4 ==> entretien nominal ×4) ne multiplie l'entretien réellement
+  PRÉLEVÉ que par **2,25** (borné au surplus au-dessus de `SINK_FLOOR`,
+  `scps_econ.c:4560`), mais coûte **-43 % de taxes**, **-5 points de satisfaction
+  Laborer** et **-40 % d'indice de prix**. Et contre-intuitivement la **friche BAISSE**
+  (75 -> 54 régions) : le compte de friche n'est **pas monotone** en ce levier. Quiconque
+  veut reprendre l'or dormant doit viser `COURT_FLOOR`, pas `ENTRETIEN_DIV`.
+- **Le champ `prix` du résumé de sweep ment** (voir Découvertes) — ne JAMAIS le citer
+  comme un prix de marché. Le vrai prix du grain est dans le bloc « par âge » de chaque
+  log (`marché : grain X · étoffe Y · orfèvr. Z · outils W`).
+- **`econ_avg_price` peut rendre 0 pour TOUS les biens** l'année d'un avènement d'âge :
+  `marché : grain 0.00 · étoffe 0.00 · orfèvr. 0.00 · outils 0.00` au 2e âge de la
+  graine 7 (reproduit dans le sweep 200 ans ET dans la sonde 120 ans). Ne pas prendre
+  cette ligne pour un effondrement économique.
+- **Le lissage par entrepôt ne se vérifie pas** : la mesure causale
+  « sigma centres À entrepôt vs centres SANS » donne les centres AVEC entrepôt **PLUS
+  volatils dans 6/20 sims** (`essai_s7` 0,732 vs 0,666 ; `essai_s2026` 1,198 vs 0,978 ;
+  `temoin_s2026` idem), alors que la ligne annonce « les stocks doivent LISSER ».
+- **Ne pas toucher `labor` des 6 biens du panier** (papier, eau-de-vie, bière, tunique,
+  poterie, remède) dans une vague de calibrage économique : ils sont l'ancre de la
+  satisfaction et donc de la démographie (commentaires E3 au site). Les 7 luxes hors
+  panier (statuaire + les 6 signatures d'éthos) sont, eux, servis en « désir croisé »
+  (`scps_econ.c:4818-4823`) et ne gatent aucun banc.
+- **`docs/LEVIERS.md` n'est toujours pas la source de vérité** (piège déjà consigné le
+  2026-09-01) — 5 nouveaux fantômes trouvés en une passe. Croiser SYSTÉMATIQUEMENT avec
+  `scps_tune_list.h` ET avec un `grep tune_f("KEY"` avant de bâtir une proposition sur
+  un tunable.
+- **Le chronicle bufferise sa sortie jusqu'à la fin de la sim** : un `.log` qui stagne à
+  6 Ko pendant 10 minutes n'est PAS bloqué, il en est encore au worldgen + la sim. Ne pas
+  relancer.
+- Un run `./chronicle 7 1 120 6 12` prend **~8 min** dans un arbre partagé par 4 agents.
+  Prévoir large ou lancer en tâche de fond dès le début de mission.
+
+### Restes
+
+- **Aucune des 8 propositions du rapport n'est appliquée.** P1 (`COURT_FLOOR`
+  4 000 -> 1 200) et P2 (`labor` 1,1 -> 6,0 sur les 7 luxes hors panier) sont les deux qui
+  changent réellement l'équilibre ; les deux exigent un **re-baseline golden documenté**
+  et un sweep apparié 3×3 (`trésor moy`, `friche`, satisfaction Laborer, `accession 960 j`).
+- **P3 (`BUILD_OWN_MATERIAL_PRICE`)** demande une modification de
+  `scps_intertrade.c:461` — un tunable neuf à défaut 0 (legacy byte-identique). Le gate
+  de sortie : l'`accession 960 j` (mesurée an 29-51, moyenne 41) ne doit pas dépasser
+  l'an 120.
+- **P4 (purge des 5 fantômes de LEVIERS.md) est golden-neutre et peut partir seule** —
+  docs uniquement, aucun code.
+- **P5 (exposer 6 `#define` au registre J)** est byte-identique par construction et
+  débloquerait les sweeps futurs sur l'entretien, la redépense et l'inertie des prix.
+- **Le trésor gelé à 2 000 exactement** (= `GENESIS_TREASURY_EMPIRE`, `scps_econ.c:1780`)
+  avec `+0.0/mois` à l'an 200, observé sur plusieurs polities mineures (`essai_s7` Ligue
+  Dornredor, `essai_s512` Couronne Morgoryn) : équilibre taxes/redépense ou trésor
+  réellement figé — non départagé.
+- **`SINK_FLOOR` × n_provinces** immobilise structurellement ~= 35 000 or dans un empire
+  de 70 provinces (37 % du trésor de `temoin_s1009`). Ce n'est pas un bug, mais quiconque
+  lit « trésor 95 122 » doit savoir qu'un tiers n'est jamais dépensable.
+- **`econ_scan` n'a pas de binaire** (`scps/econ_scan.c` existe, `econ_scan.exe` non) —
+  sa table « AUDIT BÂTIMENTS : supply/demand par bien » manque au rapport. Un
+  `make econ_scan` la fournirait pour la prochaine passe.
+
+---
+
+## Mission 2026-09-03 — CALIB INFLUENCE (agent MATHS, lecture seule)
+
+Rapport : `docs/CALIB_INFLUENCE_2026-09-03.md`. Aucune ligne de code touchée.
+
+### Découvertes
+
+- **Le sweep `sweep_doct_ai_10x200/` est ANTÉRIEUR à la re-key d'assiette.**
+  `manifest.txt` : `finished_utc=2026-09-02T18:54:41Z` ; `ddd1b1c` (assiette
+  SIÈGES) est du 03-09 09:47. Ses chiffres de **cadence** et son §3.5f/J2
+  (« Aristocratie gagne ») sont caducs ; ses **juges** et ses **plafonds de
+  score** tiennent (le score ne lit pas l'assiette). Le binaire `chronicle.exe`
+  à la racine (03-09 10:53) est en revanche **postérieur à tous les sources** —
+  vérifié par mtime, `git status scps/` propre : il mesure bien la clé neuve.
+- **`chronicle <graine> <sims> <ans> <empires> <cités>`** — les 4e/5e positionnels
+  (`chronicle.c:677-678`, `fix_emp`/`fix_cs`) sont indispensables pour retrouver
+  le monde du sweep (6/12). Sans eux le monde ne fait que **2 empires** et toute
+  comparaison est fausse.
+- **Le log de chronicle est à 80 % du dump `PROV …`** (~820 lignes sur 1020).
+  Tout l'analytique tient dans `grep -v "^   PROV "` → ~190 lignes. Le bloc
+  DOCTRINES est **avant** le dump, les blocs SIÈGES/religion/conseil **après**.
+- **`influence_council_mult` (`scps_influence.c:52`) IGNORE les sièges vacants**
+  (`if (slot<0) continue`), alors que le design écrit dit « siège vide compte 0
+  dans la moyenne » (`DESIGN_MISSIONS_DOCTRINES.md:219-222`). Conséquence :
+  **un ministre de rang I DILUE l'influence**. N'asseoir QUE son meilleur
+  ministre = mult 3,00 au lieu de 1,67 **et** 5 % de salaire au lieu de 8 %
+  (`COUNCIL_TIER{1,2,3}_REVENUE_RATE` 1,5/3,0/5,0 %). L'exploit *inverse* (renvoyer
+  pour brader les prix) est bien fermé, lui, par `influence_scale` — c'est celui
+  qui était surveillé, et ce n'est pas le bon.
+- **`statecraft_council_ai` ne pourvoit QU'UN siège** — celui de l'éthos de la
+  capitale (`scps_statecraft.c:514`, `sc_ethos_seat`). Mesuré : 16-26 sièges
+  pourvus pour ~28 pays (moy. 18,6 ⇒ **0,66 siège/pays**). L'IA profite donc
+  gratuitement de la règle « moyenne des pourvus » ; un joueur qui pourvoit ses
+  3 sièges est **pénalisé** face à elle.
+- **DIVIN est mort de trois causes indépendantes**, et la principale est un
+  **bug de grain** : `infl_believers` (`scps_influence.c:90-102`) somme sur
+  TOUTES les provinces, mais le SEUL écrivain de `PopGroup.faith` dans le moteur
+  est `region_set_native_faith` (`scps_religion.c:99-106`) qui n'écrit que sur
+  **`econ_region_rep_province`**. 804 prov / 297 rég = 2,71 ⇒ au mieux 37 % des
+  âmes sont marquées croyantes ⇒ plafond Divin 0,617e-4 < Aristocratie 0,790e-4 :
+  **la doctrine est arithmétiquement impossible à gagner**, quelle que soit la
+  conversion réelle. Motif « write-side région / read-side province » de la
+  re-key 2026-07, encore vivant.
+- **La sonde qui tranche Divin sans toucher au code** :
+  `SCPS_TUNE=INFLUENCE_PER_NOBLE_ARISTO=0.002,INFLUENCE_PER_BOURGEOIS=0.0011,INFLUENCE_PER_LABORER=0.00011`
+  annule les 3 boosts de classe ⇒ les 4 assiettes s'égalisent ⇒ Divin gagne
+  **strictement** dès UN fidèle (`influence_base_gain` ajoute son terme).
+  Résultat : **0 Divin, 5 Aristocratie** ⇒ au moment du choix du courant,
+  `infl_believers` valait **0** pour tous les adoptants. Preuve, pas conjecture.
+- **`aid_best_current` tranche les égalités par l'id le plus PETIT**
+  (`scps_ai.c:3130`, `>` strict) ⇒ **DOCT_ARISTOCRATIE (13)** rafle toute égalité.
+  Combiné à la clé ancienne (strates de genèse 80/15/5 : aristo 12,5e-5 vs
+  populaire 9,6e-5), ça explique les 43 Aristocratie du sweep. Sous la clé neuve
+  (sièges 15,8/9,2/73,6) le vainqueur bascule vers **Bourgeoisie/Populaire** —
+  mesuré : Aristocratie 2 · Bourgeoisie 1 · Populaire 3.
+- **Le coût ne départage AUCUNE doctrine** : `doctrines_adopt_cost_f` ne lit que
+  `n_active`, `doctrines_idea_cost_f` que `n_ideas` (`scps_doctrines.c:301-307`).
+  La distribution est **100 % un produit de `ai_doct_scores`**. Chercher la cause
+  d'une doctrine morte dans les prix est une impasse par construction.
+- **Production sature à 2,0 dès l'an ~20 et n'en bouge plus** : `nbld×0,10`
+  plafonne à **12 manufactures** (`scps_ai.c:3292`) alors que le monde en pose
+  **250/sim** ; `rawcap/nprov×0,03` plafonne à 26,7. C'est la cause racine unique
+  de la monotonie (62/331 adoptions, présente chez 10 des 10 gros adoptants).
+- **Le temps d'acquisition est invariant d'échelle et prédictible** :
+  `t = C/(2·mult)` mois, arbre entier = **1822,5/mult mois**. Mesure réelle
+  (6 empires, clé neuve) : saturation 36/36 slots + 216/216 idées à l'**an 96**
+  contre 89 ans prédits à mult 1,7 — **écart 8 %**. Le modèle est bon, s'en servir.
+
+### Pièges
+
+- **`é` s'annule dans le temps d'acquisition** (`t = C·é/(2é·mult)`), pas dans le
+  temps des **coûts plats** (émissaire/fabrication/pivot). C'est LÀ que le
+  déséquilibre vit : ×241 d'écart entre la cité-état (24 mois de revenu par
+  émissaire) et l'hégémon (0,10 mois — soit 10 émissaires/mois payables quand le
+  plancher `DIPLO_ENVOY_FLOOR_DAYS=30` n'en laisse passer qu'un).
+- **La référence d'échelle du design est périmée d'un ordre de grandeur.**
+  `DESIGN_MISSIONS_DOCTRINES.md:224-227` dit « empire mûr ~13 000 hab, é≈2,8 ».
+  Le vrai empire mûr fait **90-130 k hab, é = 22 à 32**. Tout barème écrit sur
+  « ~4/mois de génération » — dont le fibonacci des synergies 0·2·3·5·8 — est
+  faux : 4 synergies vaudraient **4,5 mois de revenu par mois**.
+- **Le plancher `é = 0,25` ne mord plus que sous 1 004 habitants** (clé neuve).
+  La proposition F5 du rapport 02-09 (plancher → 0,50) visait un symptôme de
+  l'ancienne assiette où *tout le monde* était planché : **caduque**. La queue
+  parasite qui subsiste (`Ligue Karggoris`, 400 âmes, 3 doctrines complètes) est
+  un **héritage de taille** (acheté quand le pays était gros, jamais perdu), pas
+  un effet de plancher.
+- **`scps_influence.c` a une mtime (02-09 21:47) ANTÉRIEURE à son commit**
+  (`ddd1b1c`, 03-09 09:47) — travail fait en worktree, mtimes préservées à la
+  fusion. Ne jamais dater une modification par la mtime dans cet arbre ; croiser
+  `git log` **et** `git status`.
+- **P1 (Conseil) et P3 (marches de prix) du rapport ne se cumulent PAS** : chacun
+  repousse la saturation de ~×1,6 à ×2 ; ensemble ils la portent au-delà de
+  l'an 280 et l'arbre ne se finit plus jamais. Choisir l'un OU l'autre, et mesurer.
+
+### Restes
+
+- **Le puits n'existe pas.** Après l'an ~96, **100 %** de l'influence générée est
+  thésaurisée (stocks mesurés : 12 265 à l'an 120, jusqu'à **70 354** à l'an 200).
+  Le puits maximal d'un joueur (12 émissaires/an) absorbe **10 %** du robinet
+  d'un hégémon ; celui de l'IA, **0 %** (`sim_cmd_drain` est gaté joueur). Les
+  synergies fibonacci sont la réponse écrite au design — elles n'existent pas
+  encore, et leur barème doit être re-chiffré **en fraction du revenu**.
+- **Le grain de la foi (`region_set_native_faith`)** est une correction à part
+  entière (17 lecteurs « dominant », golden + golden-deep à re-baseliner) : hors
+  périmètre d'un patch d'influence, mais **préalable obligatoire** à toute
+  décision sur Divin — y compris à la gate « a FONDÉ ».
+- **Les poids de `ai_doct_scores` ne sont PAS au registre J** (brief §1.3 : « ce
+  ne sont pas des tunables »). Aplatir Production exige de les y inscrire
+  d'abord — sinon aucun sweep apparié n'est possible sur ce levier.
+- **Les cités-états génèrent une influence qu'aucun verbe ne dépense**
+  (`scps_sim.c:1270-1274` ne les exclut pas, `ai_doctrines_year` si) : la médiane
+  du chronicle en est faussée (s512 : « médiane 0,0 · max 38 109,6 »).
+- **Aucune mesure n'a été faite sur 6 empires × plusieurs graines sous la clé
+  neuve** (3 runs, une seule graine — plafond de budget CPU de la mission). Le
+  re-sweep apparié reste à lancer par le joueur ; les prédictions du rapport sont
+  des modèles vérifiés sur UNE graine, pas des mesures de distribution.
+
+---
+
+## Mission 2026-09-03 — CALIB ARMÉE (rapport de lecture, docs/CALIB_ARMEE_2026-09-03.md)
+
+### Découvertes
+
+- **97-99 % de la solde d'un régiment est le PRIX DES ARMES, pas le type d'unité.**
+  `warhost_unit_pay_month` (`scps_warhost.c:159-168`) = `12×pay_mult×IPM/13 + 100×price[arm]/26`.
+  Part or : 0,6 à 7,0 or/mois (facteur 11). Part armes aux prix de base
+  (`scps_econ.c:342-350`) : 34,6 (légère 9) · 38,5 (trait 10) · 53,8 (lourde 14) ·
+  61,5 (feu 16) · 115,4 (bâton 30) · 130,8 (nécessaire 34) · 176,9 (enchantées 46) ·
+  **0 (RES_NONE = Milice)**. Toute la mission « solde par type d'unité »
+  (`scps_army.c:128-164`, `unit_pay_mult` 0,65→7,60) déplace donc au mieux 6 or/mois sur
+  un régiment qui en coûte 35 à 184. **`unit_pay_mult` est arithmétiquement inerte** ; le
+  seul vrai levier est `REGIMENT_PAY` (registre J), qui multiplie les deux termes.
+- **La MILICE est l'unité la plus rentable du jeu, de 27×.** `RES_NONE`
+  (`scps_army.c:119-121`) : zéro arme consommée, **zéro arme dans la solde**, zéro gate
+  d'arsenal. Solde 0,6 or/mois contre 35 pour un piquier (**59× moins cher**) pour une
+  force 2,2× moindre. Efficacité (1+disc)×moral / solde : Milice **112**, meilleur
+  suivant Piquier **4,2**. Et elle ne PERD que contre le Berserker (son `side_counter`
+  reste environ 1,0 partout ailleurs). `SOLDE_FORTUNE_DISC 0.35` croit retirer 35 % ; il
+  en retire 97-99 %.
+- **L'État paie sa solde depuis UNE SEULE province.** `warhost_tick` débite
+  `econ->prov[crpp].treasury` (crpp = province représentative de la RÉGION-capitale,
+  `scps_warhost.c:296-327`) et le prix de recrutement au même endroit (`:408-420`). Or
+  le trésor est province-owned (`econ_country_gold` = « Σ trésor des provinces »,
+  `scps_econ.h:433`), les taxes se collectent province par province
+  (`scps_econ.c:4521`), **il n'existe aucune caisse nationale** (seule la frappe est
+  créditée à la capitale, `:5628-5758`). Avec `paid = fmaxf(0, fminf(pay, treasury))`
+  (`:324`), **dès que cette province est à sec, tout le reste de l'armée est gratuit**.
+  PREUVE dans les journaux : `essai_s11:675` Clans Hobwickis **317 rgt pour −24,8 or/mois**
+  de flux national et `essai_s777:781` Couronne Falwick **342 rgt pour −2,9 or/mois** —
+  environ 92-99 % de la masse salariale jamais versée. C'est la cause profonde d'A3 ; la
+  garde de budget de 38523b6 en soigne le symptôme (on n'empile plus), pas le trou.
+- **Le prix ne freine pas l'armée : le trésor le fait.** Probe `REGIMENT_PAY=45`
+  (moitié), graine 512, 120 ans, contre le défaut : régiments **+20 à +63 %** par
+  empire, mais **dépense de solde −12 % seulement** (−82,3 → −72,5 or/mois/empire).
+  Les armées grossissent jusqu'à re-remplir le budget. `SOLDE_OVER_K 3.0` ne freine
+  donc pas le doomstack : il en fixe le prix — payé par une seule tuile.
+- **Le budget militaire s'effondre dans le temps** (`flux décomposé`, soldes/taxes) :
+  **48 % à l'an 30** (mesuré, run B) → **25 % à l'an 120** (run A) →
+  **5-11 % à l'an 200** (`temoin_s512:767` 5 % · `essai_s512:782` 11 %). La cible
+  W-GUERRE-3 (10-15 %, `scps_tune_list.h:225-229`) n'est tenue qu'au milieu de la courbe.
+- **La bataille n'a plus qu'UNE issue : 97-100 % de déroutes, 1-3 % de décrochages,
+  0 nul sur environ 1 700 batailles.** Raison arithmétique : `BT_DECROCHE 0.22` contre
+  `BT_RUPTURE 0.20` : **fenêtre de 2 points**, testée **un jour sur cinq**
+  (`if (ph==BT_CHOC_J)`, `scps_campaign.c:1048`). Une armée qui passe sous 0,22 rompt
+  à 0,20 dans le même cycle de choc. Le « retrait en ordre » est mort.
+- **Le terrain de combat est écrasé par son propre clamp.** `bt_terrainA` fait
+  `fminf(adv, 1 + BT_DEF_EDGE(0.10))` (`scps_campaign.c:766`) alors que
+  `terrain_combat_bonus` rend montagne **1.20**, jungle 1.15, forêt 1.12, marais 1.10
+  (`scps_army.c:613-622`). **4 biomes sur 6 sont indiscernables** ; seules
+  « collines 1.05 » et « plaine 1.00 » survivent. La rivière non pontée (1.25) aussi.
+  Le CONTRE, lui, vaut jusqu'à 2^0.6 = **1.52** — 5× le terrain.
+- **Le siège est un décor : tout est au plafond.** `siege_days = (45 + 60×def +
+  30×food_months) × terrain`, borné [14, 730] (`scps_army.c:624-635`) avec
+  `food_months = food_sat×12` : **jusqu'à +360 jours pour les seuls vivres**. Une
+  province T1 à 4 bâtiments et food 0,7 : 477 j ; une capitale T4 : 867 → **cap 730**.
+  La conquête ne passe donc JAMAIS par l'investissement, mais par `bt_press_siege` qui
+  borne le compte à `BT_RELIEF_FALL = 30 j` après une bataille gagnée (`:851-859`).
+  Vérifié : **0,16 à 0,34 prise par bataille** dans tout le corpus (essai_s512 45/186,
+  temoin_s11 92/274, essai_s60 79/496, run A 34/136). Corollaire : `DEF_PER_H` (registre
+  J) agit sur `full_days`, donc sur RIEN tant que `fminf(full,30)` est le chemin réel.
+- **Le choc ne tue personne en dessous d'environ 25 paquets.** `lossB += effectif × 0.006
+  × 2pA/tot` par jour de choc, mais `dueB = (long)lossB − (long)prev_lossB`
+  (`scps_campaign.c:1029-1030`) : à 5 paquets il faut **33 jours de choc** pour tuer
+  1 paquet, alors qu'une bataille en dure 12. Mesuré : run B (an 30) **0 mort au choc**
+  sur 23 batailles ; run C ratio **24×**. Les anomalies A13 (34,3× / 23,1×) sont ce
+  même artefact d'ÉCHELLE, pas une dérive de calibrage.
+- **Attrition de marche : l'arme secrète de la cavalerie.** `12/(v×f)` jours avec `v` =
+  mouvement de l'unité la plus LENTE. Pertes par case : plaine 3,3 % (v=2) contre 0,8 %
+  (v=8) ; **jungle 38,2 % contre 11,4 %** ; montagne 32,4 % contre 9,3 % ; désert 25,1 %.
+  À v=1 (une seule ligne d'Arbalétriers lourds, mouvement 1) tout DOUBLE : jungle 62 %.
+  Cumulé au levier de curée (`CAV_PURSUIT 0.45 + CAV_CUREE_CAP 0.40` : un vainqueur monté
+  tue **55-62 %** du vaincu contre **8-12 %** pour l'infanterie) et au fait que la
+  **Cav. lourde n'a AUCUN gate de tech** (`unit_tech_gate` défaut `TECH_COUNT`,
+  `scps_army.c:101`) avec **9 contres** — le plus large réseau du roster.
+- **Le HALLEBARDIER est gaté tier 0.** `TECH_CASERNE` a `tier 0, parent NONE`
+  (`scps_tech.c:203`), donc `pay_mult = 1.00`. Force 171 (2e du roster), **5 contres dont
+  les QUATRE cavaleries**. Il domine strictement le Piquier (150) et le Lancier (125)
+  au même prix or.
+- **`bt_reinforce` n'amène qu'UN corps par camp et par bataille**
+  (`scps_campaign.c:981-983`, `if (*slot>=0) continue`), allié/suzerain/vassal
+  ADJACENT et libre. D'où une variance absurde : **0 renfort / 101 batailles**
+  (`essai_s777:883`, 4 pactes) contre **256 / 496** (`essai_s60:888`). Avec 10-22
+  protectorats (`temoin_s11:724`, `essai_s512:746`) l'apport militaire du vassal est
+  quasi nul : **le vassal est un objet fiscal, pas militaire.**
+- **Le pillage ne finance rien.** 41 pillages : 8 078 or (+ 20 965 de siège) sur 200 ans
+  (`essai_s512:759-760`) = **145 or/an au MONDE** contre 2 890 or/an de revenu d'État
+  par empire (`:783`). Fourchette du corpus : **58 à 401 or/an**, soit 0,3 à 5 % du
+  revenu d'UN empire. Le taux de captation est bon (43-88 % de la cible) : c'est
+  l'assiette (20 % du revenu annuel d'un micro-État) qui est dérisoire.
+- **Boucle de rancune perpétuelle.** `rancor += 1.0` par province perdue, décroissance
+  **−0,1/an**, seuil de CB territorial **0,75** (`scps_diplo.c:72-77, 1067`),
+  poids `AI_RANCOR_W = 3.0` sur un score où `rel.threat` vaut 1-10 (`scps_ai.c:60, 514`).
+  Donc 1 province = 2,5 ans de CB, **3 provinces = 22,5 ans**, 10 = 92 ans — alors que
+  `TRUCE_MAX` plafonne à **12 ans**. Au-delà d'environ 2 provinces perdues, la paire se
+  rebat indéfiniment. C'est la source des 87-114 guerres/200 ans des graines 512 et 11.
+- **`diplo_mil_power` sature vers 40 régiments.** `gear = 1.8×(1 − 1/(1+kit×0.03))` avec
+  `kit = mil_stock = units×8` (`scps_warhost.c:432`, `scps_diplo.c:970`) : à 40 rgt
+  gear vaut 1,35 sur un max de 1,8. Au-delà, **doubler l'armée n'augmente plus la
+  puissance perçue** (d'où « armée 14 (342 rgt) »). Et c'est `√pop × 0.04` qui domine
+  le total (`:971`) : la POPULATION, pas l'armée, décide qui l'IA ose attaquer.
+- **Marine : éteinte par interrupteur, pas cassée.** `NAVY_COMBAT_ON = 0` par défaut
+  (`scps_tune_list.h:703`) coupe coques, course et interception (`scps_sim.c:1348`,
+  `scps_navy.c:287,417`, `scps_campaign.c:519,571`). Les `0 coque · 0 bataille navale ·
+  0 interception` des 20 journaux sont la DÉCISION. Mais la ligne de synthèse
+  `0 fournitures consommées (NE doit plus être zéro)` (`essai_s512:811`) annonce un
+  défaut inexistant — assertion périmée.
+- **Le risque « assiégé ruiné » du correctif 38523b6, chiffré** : **0 pays sur 7** à
+  0 rgt à l'an 120 (run A), **1 sur 6** à l'an 30 (run B, Ligue Thrumdinel 4 rég,
+  or 156). Le seul cas résiduel du sweep post-fix est de toute façon gaté par
+  l'ARSENAL, pas par la garde de budget. **Le correctif ne désarme personne qui pouvait
+  s'armer.** Et les guerres ne s'enlisent pas : 87 guerres/200 ans avec `AI_WAR_CAP=3`
+  donne **6,9 ans de durée moyenne**, sous `AI_WAR_EXHAUST=10`.
+- **Le reste « corps au front absent du pool » est actif, et il est ÉLITE.**
+  `army_class_free` ne soustrait que `a->pop_by_class_in_army` de l'`ArmyState` passé
+  (`scps_army.c:317-323`), et `campaign_order/raise` VIDENT le host. Le pool commun ne
+  mord jamais (Clans Tikexis : 77 600 laboureurs = 776 paquets pour 30 régiments) —
+  **c'est le gate d'ÉLITE qui mord** (`scps_warhost.c:213`) : 3 100 élites = 31 paquets
+  de cavalerie, exactement l'ordre de grandeur observé. Le doublement du pool d'élite
+  par « corps parti » est donc le canal actif de sur-levée de la CAVALERIE.
+
+### Pièges
+
+- **9 valeurs structurantes de l'armée sont INSURCHARGEABLES.** `SOLDE_EU4_DIV`,
+  `SOLDE_ARMS_DIV`, `SOLDE_FL_FLOOR`, `SOLDE_FL_PER_REG`, `SOLDE_OVER_K` sont des
+  `#define` locaux (`scps_warhost.c:35-42`, le TODO de migration est écrit ligne 33-34
+  depuis 2026-07-06). Et **4 clés lues par `tune_f` n'existent PAS dans
+  `scps_tune_list.h`** — `BT_DEF_EDGE` (`scps_campaign.c:766`), `BT_DECROCHE` (`:1054`),
+  `BT_RELIEF_FALL` (`:858`), `BT_ATK_RATIO` (`scps_sim.c:222`) : `tune_f` rend le
+  défaut, mais `SCPS_TUNE=BT_DECROCHE=0.35` **sort en exit 2** (nom inconnu).
+  Vérifié par `./chronicle.exe --tunables`. Tout sweep d'équilibrage de bataille est
+  aujourd'hui impossible sans toucher au code.
+- **`./chronicle.exe 512 1 120 6 12` prend 8 minutes** sur cette machine (1 minute pour
+  30 ans). Budgéter : un balayage 3×3 sur 120 ans coûte environ 1 h 15.
+- **La chronique n'imprime AUCUNE ventilation par type d'unité** — impossible de
+  vérifier aux journaux quelles unités sont réellement levées. La seule voie est
+  `AFF` (`scps_warhost.c:73-81`) : aucune colonne n'est nulle, donc aucune unité n'est
+  structurellement morte, mais Cav. cuirassée/Cav. lourde (Conquérant seul), Lame
+  franche (Marchand seul) et Sorcier/Chaman (Transgresseur seul) sont mono-éthos.
+- **« armée N » dans la ligne empire n'est PAS un compte d'armées** (déjà noté le
+  2026-09-03) : c'est `diplo_mil_power`. Et **`n/limite de force` n'est imprimé nulle
+  part** — c'est ce qui a coûté deux missions à diagnostiquer A2/A3.
+- **`resolve_battle` (`scps_army.c:392-466`) est du code MORT en jeu** : la campagne
+  utilise `bt_day`. `ARM_THRESHOLD`, `ARM_FLANK_GAP`, `PURSUIT_KILL`, le d20 et la
+  table `terrain_combat_bonus` COMPLÈTE n'y servent plus qu'aux bancs. Ne pas calibrer
+  là-dedans en croyant toucher la guerre.
+- **`WH_GARRISON_UNITS` (4.0, `scps_warhost.c:15`) est une constante fantôme** — plus
+  référencée que dans un commentaire (`:385`).
+- **Comparer deux bras appariés à l'an 120+ est indicatif, jamais causal** : les mondes
+  divergent dès l'an 2 (rappel de la mission précédente). Le run C (`REGIMENT_PAY=45`)
+  montre −53 % de régions réduites : c'est une OBSERVATION, pas une causalité.
+
+### Restes
+
+- **P10 du rapport — la solde payée depuis la caisse du PAYS** (répartition au prorata
+  sur les provinces après épuisement de la capitale) est le seul correctif de fond du
+  trou « une seule province paie », et c'est une **vague à elle seule** (trésorerie de
+  tous les empires en guerre, donc chantiers, crédit, banqueroutes). Kill-switch prouvé
+  + sweep apparié 3×3 obligatoires. **À faire APRÈS P1** (plafond de levée de guerre à
+  2× la limite de force), qui en absorbe l'essentiel du symptôme pour un centième du
+  risque.
+- **P3 (ouvrir `BT_DECROCHE` à 0.35 + tester les DEUX jours d'accalmie) exige une
+  mesure appariée** : le décrochage n'appelle pas `bt_press_siege` (`:1068-1071`),
+  donc plus de décrochages = moins de prises. À mitiger en faisant presser le siège au
+  vainqueur d'un décrochage.
+- **P7 (`BT_DEF_EDGE 0.10 → 0.20`) porte une mémoire** : le commentaire P3
+  (`scps_campaign.c:763-766`) documente qu'un bonus défensif trop haut a déjà gelé le
+  front (217 batailles, 0 occupation). 0.20 = exactement le max de la table, pas plus.
+- **P5 avant P4** : ouvrir la Milice comme plancher de levée sans corriger sa solde
+  (0,6 or/mois) donnerait à l'IA une raison de ne plus jamais lever autre chose.
+- Le `or` négatif résiduel persiste : `Ordre Caelwic` **−43** à l'an 120 du run A comme
+  à l'an 200 du sweep (`essai_s512:705`, −42). Même micro-État, même découvert —
+  confirme le reste laissé au module CRÉDIT le 2026-09-03.
+- Runs conservés hors dépôt : `/runA_512_120.log`, `/runB_512_30.log`,
+  `/runC_512_120_pay45.log`.
+
+---
+
+## Mission 2026-09-03 — CALIB POPULATION (rapport d'analyse, docs/CALIB_POPULATION_2026-09-03.md)
+
+Lecture seule : aucun fichier moteur touché, aucun `make`, aucun sweep neuf. 1 seul run de
+sonde (`SCPS_CAPDIAG=1 ./chronicle.exe 7 1 100 6 12`, binaire courant).
+
+### Découvertes
+
+- **L'ÉMERGENCE DE CLASSE NE TOURNE QUE SUR UNE PROVINCE PAR RÉGION.**
+  `demography_emerge_classes` est appelée depuis `scps_demography.c:1215-1220`, dans une
+  boucle `for r < n_regions` routée par `econ_region_rep_province`. Toute province
+  NON-représentative garde à jamais le `pop_by_class` posé à sa fondation, soit
+  **100 % CLASS_LABORER** (`scps_world.c:3377` à la genèse, `scps_econ.c:6161` à la
+  colonisation). Mesuré sur les 20 journaux (`PROV total N colonisée(s)` vs `n_régions`) :
+  la part au plus représentative va de **39,5 % (graine 7) à 73,1 % (graine 4243), médiane
+  47,0 %** ⇒ **au moins 53 % des provinces colonisées du monde n'ont jamais ni bourgeois ni
+  noble au sens des sièges**. Ce n'est pas une différence de définition entre les deux
+  réalités de classe : c'est un ledger à moitié calculé.
+  Conséquences câblées et vérifiées : l'assiette d'INFLUENCE (verbe joueur, `ddd1b1c`,
+  `scps_influence.c:74-86`), le canal `pol_sat` (`scps_econ.c:5081-5093` — `gpop==0` pour
+  BOURGEOIS et ELITE ⇒ **canal mort pour 2 classes sur 3 dans la majorité du monde**),
+  les poids de faction/éthos IA (`scps_factions.c:157-171`, biais permanent vers le
+  penchant journalier), et la fiche province de la façade (`scps_api.c:1560-1567`).
+
+- **L'invariant « Σ pop_by_class == count » (`scps_econ.h:211`) est cassé par 7 sites.**
+  Le pire : `migration_move` (`scps_demography.c:303`) fait `ng = *src` — **le nouveau
+  groupe hérite du `pop_by_class` du groupe source ENTIER** avant que `ng.count = amount`
+  ne le réduise. Un flux de 200 âmes emporte les sièges de 5 000. Les six autres :
+  `:320`, `:322`, `:241` (assimilation — le commentaire `:228` reconnaît la perte),
+  `scps_econ.c:6304` (seep passif, **le canal d'expansion dominant**), `scps_revolt.c:412`
+  et `:597`. Sur une province représentative l'écart est réparé au tick suivant ; sur les
+  autres il est **permanent et cumulatif**.
+
+- **`region[].pop` n'est PAS un agrégat, c'est une COPIE** de la province représentative
+  (`scps_econ.c:1649` : `ag->pop = pe->pop`) — alors que `region[].strata` EST une vraie
+  somme (`:1627`). Piège de lecture : la même structure porte un agrégat et une copie.
+
+- **Le seep passif est une POMPE DE PROLÉTARISATION.** `econ_passive_seep` prélève à la
+  source au prorata des trois classes (`scps_econ.c:6296-6300`) et dépose **100 % en
+  journaliers** (`:6301`). Idem pour les relocalisations de pénurie (`:6621-6637`, 95-295
+  par sim). C'est ce qui explique que le monde parte de **80/15/5** (`CLASS_SHARE`,
+  `scps_econ.c:605`) et finisse à **89/8/2** — alors que les plafonds doux sont à
+  **0,32 / 0,11** (`:3650-3651`) et ne mordent JAMAIS. La contre-pression est bridée trois
+  fois : gate `manuf = n_bld>0` (`:3657`, absent de 77-93 % des provinces T1), seuil 1,4× le
+  panier alors que la richesse/tête du journalier tombe à 0,3-2,8 dès l'an 80, et démotion
+  **2× plus rapide** que la promotion (`:3688` vs `:3456`).
+
+- **Le monde est à 118 % de sa capacité effective à l'an 100** (sonde `SCPS_CAPDIAG`,
+  graine 7 : `pop=335 381 | remplissage_col=113 % | pop/EFF_CAP=118 % | food_sat=0,85 |
+  needs_met=0,61`). `cap_factor = max(0, 1 − pop/(eff_cap×1,1))` (`scps_econ.c:5212`) est
+  donc clampé à 0 sur la majorité des provinces : **la fertilité ne pilote plus rien**,
+  seuls BÂTIR (manufactures = logement, `HOUSE_MANUF`=100) et COLONISER font monter la pop.
+  Cohérent avec T1 = 77-93 % des provinces à l'an 200.
+
+- **Le plancher `st->pop < 1 ⇒ 1` (`scps_econ.c:5261`) est PAR STRATE, pas par province** —
+  il fabrique 12,5 % des pyramides affichées (19 lignes-pays `pop 0k` sur 152). Signature
+  arithmétique : `B% == É%` exactement (L=4,B=1,É=1 → « 66/17/17 » ; L=24,B=1,É=1 →
+  « 92/4/4 »). Cas limite : `temoin_s512 Métallurgiste libre` = **« J 0 % · B 11 % ·
+  É 89 % »**, soit un État de 9 âmes dont 8 nobles. Symétrique : `Mécaniste libre`,
+  **18-23 k habitants, J 100 % · B 0 % · É 0 %** (jamais d'atelier ⇒ promotion impossible).
+
+- **La levée militaire ne coûte RIEN en population.** `army_class_free`
+  (`scps_army.c:317-322`) lit `Σ region[].strata[cl].pop` — **100 % de la population, sans
+  fraction d'âge** — et les affectés RESTENT dans les strates (ils produisent, paient
+  l'impôt, cherchent et se reproduisent, cf. le commentaire `:337-340`). Part de la pop sous
+  les armes, mesurée (`rgt × 100 / pop`) : **médiane hégémon 2,4 %** (min 0,6, max 3,5) mais
+  **26 % / 43 % / 56 % / 93 %** pour les petits États en guerre perpétuelle (les mêmes cas
+  que l'anomalie A3, traitée côté BUDGET par `38523b6` — le trou de CONCEPTION demeure).
+
+- **Deux « tiers de capitale » pour la même province** : `prov_elite_seats_ex` appelle
+  `capitale_max_tier(Σ count)` (`scps_demography.c:576`) tandis que TOUS les autres
+  appelants passent `Σ strata` (`scps_ai.c:1056`, `scps_api.c:1730`, `chronicle.c:2697`,
+  `scps_econ.c:4029`, `scps_revolt.c:510`). Le tier « politique » et le tier « de
+  construction » divergent silencieusement.
+
+- **La strate servile est morte, et on sait pourquoi.** 0-281 âmes/monde (médiane ~6 pour
+  812 k habitants = **0,007 ‰**), face à 150-2 929 affranchissements/sim.
+  `diplo_enslave_capture` (`scps_diplo.c:1395-1450`) ne prend `SLAVE_FRACTION` (5 %, 15 %
+  avec tech) que du plus gros groupe de **LA province représentative** de la région prise,
+  et ne dépose que dans la province représentative de la capitale — **refus SILENCIEUX** si
+  elle a déjà `SCPS_MAX_GROUPS`=8 groupes (`:1413`). `SLAVE_REVOLT_SHARE`=0,20 ne peut donc
+  jamais mordre.
+
+- **Aucune croissance organique des `count`.** Aucune boucle `count *= 1+growth` n'existe
+  (constat explicite `scps_econ.c:5216-5222`) ; seule la strate servile est synchronisée par
+  delta (`:5253-5257`). Les strates composent à ~1,24 %/an, les groupes non ⇒ **l'écart
+  entre les deux ledgers ne peut que croître**.
+
+- **Le brassage a une variance de 1 à l'infini** : `brassage : 0 à 507 flux (0 à 38 892
+  âmes)` sur 20 sims ; métabolisation moyenne 1,3-11,8 %, **max d'empire 10,9 % à 68,4 % de
+  bonus de recherche**. C'est le plus gros multiplicateur de tech du jeu et il est
+  quasi-aléatoire du point de vue joueur.
+
+### Pièges
+
+- **Les lignes `influence :` des 20 journaux sont PRÉ-re-key.** Le sweep est du 2026-09-02,
+  le re-key de l'assiette sur les sièges est du 2026-09-03 (`ddd1b1c`). Toute lecture
+  « l'influence vaut X » sur ce sweep parle de l'ANCIENNE assiette (strate élite seule).
+  `chronicle.exe` à la racine est daté du 2026-09-03 10:53 : il porte le re-key ET les
+  correctifs de guerre `38523b6` — un run neuf n'est donc **pas** comparable ligne à ligne
+  au sweep.
+- **La ligne per-pays « classes : J … B … É … » du chronicle est en STRATES, pas en
+  sièges** (`chronicle.c:2033` → `country_class_pop` `:283-287`, `Σ region[].strata`) — alors
+  que la ligne mondiale « SIÈGES » 30 lignes plus haut est en `pop_by_class`. Deux réalités
+  dans le même bloc de sortie.
+- **`warhost_units` renvoie des PAQUETS de 100, pas des unités** (`scps_warhost.c:149-152`,
+  `POP_PER_UNIT`=100) : « 342 rgt » = **34 200 âmes**. Sans cette conversion la ligne
+  « armée N (M rgt) » est illisible.
+- **Aucun diag existant n'imprime `Σ pop_by_class` ni `Σ count`.** `SCPS_CAPDIAG` /
+  `SCPS_NDIAG` / le CSV `SCPS_CSV` sont tous en strates. Le ratio strates↔groupes — la
+  mesure la plus utile de tout ce dossier — **ne peut pas être obtenu sans ajouter une ligne
+  print-only** (proposition P11 du rapport). Ne pas croire pouvoir le déduire des
+  pourcentages « SIÈGES » : ils sont normalisés par `Σcount`.
+- **`n_régions` inclut des régions jamais colonisées** : la part « au plus représentative »
+  calculée par `n_régions / PROV colonisées` est une **borne HAUTE** ; la part de provinces
+  figées est donc une borne BASSE (au moins 53 %).
+
+### Restes
+
+- **P11 (instrumenter `Σcount` vs `Σstrata` dans `chronicle.c`) est le prérequis de tout le
+  reste** — aucune re-calibration de l'assiette d'influence, des factions ou de `pol_sat`
+  n'est mesurable avant.
+- **P1 (émergence sur toutes les provinces) ne peut PAS partir seule** : sur une tuile à
+  300 âmes, `capitale_max_tier(count)×100` = 100 sièges = 33 % d'élites. Elle exige P2
+  (invariant) et P9 (tier unifié) dans la MÊME vague, et un unique re-baseline golden.
+- **Le corps de campagne n'est toujours pas compté dans le pool de recrutement** (reste déjà
+  consigné par la mission « ANOMALIES » du 2026-09-03) — P3 (fraction mobilisable) le
+  couvrirait par construction.
+- **P7 (volume d'esclavage) est une décision JOUEUR** : le brief 2026-07-21 dit « taux très
+  faible » ; P7 augmente le VOLUME (portée de la capture) sans toucher au TAUX. Ne pas
+  l'appliquer sans arbitrage.
+- Rapport complet, tables, sites et 11 propositions chiffrées :
+  `docs/CALIB_POPULATION_2026-09-03.md`.
+
+
+---
+
+## Mission 2026-09-03 — W1-E INFLUENCE / FOI : Conseil (variante B) · coûts × é · la foi au grain PROVINCE · courant IA différé
+
+Feuille de route : `docs/CALIB_INFLUENCE_2026-09-03.md` (P1, P2, P4a, P4b).
+Décision joueur : « corrige tout » + « **aucun plafond** » (INFLUENCE_CAP reste à 0).
+
+### Découvertes
+
+- **`region_set_native_faith` était l'UNIQUE écrivain de `PopGroup.faith` du moteur.**
+  Un seul grep sur les affectations de `.faith` le prouve : tous les autres sites
+  posent `-1` (genèse, colonisation, intertrade) ou construisent un groupe de banc.
+  Donc les QUATRE chemins de foi — fondation (`religion_set_region`), héritage
+  (`religion_inherit_regions`), schisme (`religion_fracture`), missionnaire
+  (`religion_scholar_tick`) — sont corrigés **d'un seul patch de 6 lignes**. Ne
+  pas partir chercher un écrivain par chemin : il n'y en a qu'un.
+- **Le vrai plafond de Divin n'était pas un tunable, c'était une division.** La
+  foi n'était écrite que sur `econ_region_rep_province` alors qu'`infl_believers`
+  somme TOUTES les provinces : à 2,71 prov/région (graine 7), le terme Divin
+  plafonnait à 0,617e-4 contre 0,790e-4 pour Aristocratie. `INFLUENCE_PER_BELIEVER`
+  (1/6000) est **juste** — le corriger aurait compensé un bug par un nombre.
+- **Le Conseil était monotone À L'ENVERS.** Le `continue` sur siège vacant faisait
+  la moyenne des seuls sièges POURVUS : un ministre de rang I *diluait*, et
+  décapiter son propre Conseil valait +80 % d'influence pour −37 % de salaire. La
+  spec écrite disait « siège vide compte 0 » — les DEUX étaient fausses (celle-là
+  rendait un Conseil vide muet). La variante B (siège vide = `INFLUENCE_COUNCIL_FLOOR`,
+  divisé par 3 sièges) est la seule des trois qui soit monotone ET sans tunable
+  neuf : le plancher devient **deux choses à la fois**, la valeur d'un siège vide
+  et, par construction (3×1,0/3), le multiplicateur d'un Conseil entièrement vide.
+- **Le puits s'est ouvert tout seul.** Sans créer AUCUN sink, la thésaurisation
+  s'effondre — parce que le Conseil de l'IA (qui ne pourvoit qu'UN siège) ne
+  multiplie plus par ~2,2 mais par ~1,4 :
+  `./chronicle 7 1 120 6 12` — influence médiane **3133,6 → 390,3** (−88 %),
+  max **12265,1 → 2890,3** (−76 %), générée Σ **108035 → 69984** (−35 %).
+  Et l'arbre **cesse de saturer** : l'an 96 passait 36/36 doctrines + 216/216
+  idées ; il donne maintenant 37 doctrines / 195 idées, et l'an 120 s'arrête à
+  **39/42 slots · 231/252 idées** — la roue tourne encore quand la partie finit.
+  `./chronicle 7 1 120` (2 empires) : médiane 3377,8 → 722,9 · Σ 34551 → 26389.
+- **La monotonie a rendu le catalogue moins monotone.** M2, distribution des
+  adoptions : **Diplomatie apparaît (1)** — elle était à 4/331 dans le sweep —,
+  Commerce 5 → 7, Offense 1 → 4, Infrastructure 3 → 4 ; Mercantilisme sort.
+  Personne n'a touché aux juges : c'est le budget plus serré qui redistribue.
+- **La façade mentait sur le prix, et personne ne l'avait vu** parce que le
+  Godot n'expose PAS le coût diplo : `scps_sim_node.cpp` ne met ni
+  `influence_have` ni le coût dans le dictionnaire `diplo_options` (seul
+  `pivot_cout` est lié). La gate `STR_GATE_INFLUENCE_SUFFISANTE` comparait au
+  tunable NU — elle serait devenue franchement fausse avec le passage par é.
+  Corrigé en publiant le prix réel dans
+  `ScpsDiploOptions.influence_cost_envoy/_fab`, lus par TOUTES les gates.
+
+### Pièges
+
+- **`missions_seal` / `ai_doctrines_year` : il a fallu ajouter un paramètre.**
+  `dessein_pivot_pay` ne voyait que `InfluenceState` (donc pas d'é) et
+  `ai_doct_scores` ne voyait pas l'année. Le motif propre existait déjà : les
+  verbes de doctrine reçoivent `ech` de l'appelant (`scps_sim.c`). J'ai suivi ce
+  motif plutôt que de binder econ+doct dans le module missions — ça aurait
+  DUPLIQUÉ une TROISIÈME fois le traducteur `DoctrineId → InfluenceBase`
+  (`sim_influence_base` + `api_influence_base` sont déjà deux). **Conséquence :
+  `ai_demo.c` (hors périmètre) a dû être touché — 10 sites mécaniques + un
+  `const int YEAR = 50`** pour que le test d'exclusivité du courant reste vivant.
+- **`api_influence_base` est défini au §INFLUENCE, tout en bas de `scps_api.c`** —
+  la déclarer en avant JUSTE au-dessus de `da_fill_conds` ne suffit pas : le
+  premier usage est dans `scps_diplo_options`, ~60 lignes plus HAUT. Poser la
+  forward-déclaration au-dessus de `scps_diplo_options`.
+- **`region_set_native_faith` est appelée QUOTIDIENNEMENT** par
+  `religion_scholar_tick` (`scps_sim.c:1191`). Passer de O(1) à O(n_prov) y est
+  acceptable **seulement** parce que la boucle est gatée sur les lettrés ACTIFS
+  (quelques pays), pas sur les 64 : vérifier ce gate avant tout autre
+  élargissement région→provinces dans ce module.
+- **Le heredoc Python de l'outil Bash mange les backslashes.** Un
+  backslash-backslash-n dans une chaîne Python est arrivé comme backslash + `n`
+  littéral et a saboté les continuations de macro de `scps_tune_list.h` (et fait
+  échouer silencieusement un `assert s.count(a)==1`). **Pour tout fichier à
+  continuations de macro, utiliser l'outil Edit, ou `chr(92)`/`chr(10)`** —
+  jamais un littéral backslash dans un heredoc.
+- **`make determinism` reste VERT quand le golden casse** : il ne prouve que
+  A==B sur le même binaire. Ne pas le lire comme « rien n'a bougé ».
+- **`influence_demo` section 3 était un test dégénéré** : `best_tier` valait 1
+  sur cette graine, donc `mult == best_tier` passait avec l'ancienne ET la
+  nouvelle formule. Recalibré en testant ce qui compte — la MONOTONIE (pourvoir
+  un 2e siège du PIRE candidat ne fait jamais baisser le multiplicateur) et
+  l'égalité « un siège vide vaut exactement un rang I ».
+
+### Restes
+
+- **Divin reste à 0 adoption** (graine 7, 6 empires, 120 ans) même après P4a+P4b.
+  Le plafond arithmétique est levé (terme des fidèles : 0,617e-4 → 1,667e-4, au
+  DESSUS d'Aristocratie 0,790e-4) et le banc `religion_demo` prouve que la foi
+  atteint les provinces NON représentatives — mais à l'an 40 les pays n'ont
+  toujours PAS de foi d'État : `chronicle` mesure 3 foi(s) fondée(s)/sim et la
+  fondation exige un Temple T2. **SONDE MESURÉE : monter le gate ne suffit PAS.**
+  `SCPS_TUNE=AI_DOCT_CURRENT_YEAR=100 ./chronicle 7 1 120 6 12` donne Divin **0**
+  et fait DISPARAÎTRE les courants (Aristocratie 0 · Populaire 0 · Bourgeoisie 1,
+  contre 1/2/1 à l'an 40) : à l'an 100 les six slots sont déjà pris par les
+  doctrines ordinaires. **Le gate an-40 est donc le bon compromis** — plus tard,
+  on ne débloque pas Divin, on tue les quatre courants. **Ce qui reste à trancher
+  (décision joueur) : ouvrir `doctrines_abandon` à l'IA (le seul vrai levier —
+  elle pourrait alors troquer son courant de classe contre Divin quand sa foi
+  arrive), ou avancer le gate Temple T2 de la fondation religieuse.** Ne PAS
+  toucher `INFLUENCE_PER_BELIEVER` : le taux est bon.
+- **`religion_refresh_region` lit encore la rep-province** (`scps_religion.c`, la
+  2e occurrence d'`econ_region_rep_province` du fichier) pour calculer le culte
+  DOMINANT d'une région — c'est un LECTEUR, pas une écriture, et le correctif
+  d'écriture le rend plus juste (toutes les provinces portent la même foi), donc
+  il n'a pas été touché. Mais un agrégat de région qui n'échantillonne qu'UNE
+  province reste faux dès qu'une région est partiellement convertie (colonie
+  fraîche à `faith=-1`, conquête). À faire au grain province dans une vague
+  religion dédiée.
+- **La façade Godot n'expose toujours pas le coût diplo** : ajouter
+  `d["influence_cost_envoy"] / ["influence_cost_fab"] / ["influence_have"]` dans
+  `ScpsWorld::diplo_options` (`godot/src/scps_sim_node.cpp:1230`) est un ajout de
+  3 lignes — non fait ici (fichier hors périmètre de la mission).
+- **La doctrine « Chancellerie » (`doctrine_key_mult`) n'est toujours pas
+  miroitée côté façade** : le drain applique ×0,8, la gate non. Écart PRÉEXISTANT,
+  volontairement pas élargi — mais il devient visible maintenant que le prix
+  affiché est exact par ailleurs.
+- **P3 (remonter `DOCT_COST_STEP`/`IDEA_COST_STEP`) n'a PAS été appliqué** : le
+  rapport dit explicitement « jamais P1 ET P3 ensemble » (saturation repoussée à
+  l'an ~280). P1 a suffi — mesure ci-dessus.
+- **P5 (le puits), P6 (aplatir Production), P7 (cités-états qui génèrent) : non
+  faits** (design/calibrage, décision joueur ; P5 attend les synergies de paires).
+- **`make golden` casse — NON re-baseliné** (consigne : l'orchestrateur le fait au
+  merge). `golden_deep.txt` reste STALE (antérieur à cette vague), non touché.

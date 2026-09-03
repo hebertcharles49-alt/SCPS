@@ -216,10 +216,17 @@ influence/mois = (élites × INFLUENCE_PER_NOBLE
   classe (les deux autres restent à leur taux `_BASE`) — toujours
   **≥ l'assiette par défaut, jamais un malus**. Divin ne relève aucun taux de
   classe : il AJOUTE le terme des FIDÈLES (§4.3bis) à l'assiette par défaut.
-- **`mult_conseil`** = le niveau des conseillers : rang moyen des ministres en
-  siège (I → ×1 … IV → ×4 ; siège vide compte 0 dans la moyenne). Le Conseil
-  n'est plus seulement un décor de loyauté : il est le multiplicateur du jeu
-  politique.
+- **`mult_conseil`** = le niveau des conseillers : rang moyen SUR LES TROIS
+  SIÈGES (I → ×1 … III → ×3), **un siège vide valant `INFLUENCE_COUNCIL_FLOOR`
+  = 1.0** — révision 2026-09-03 (« variante B », rapport
+  `docs/CALIB_INFLUENCE_2026-09-03.md` §4.1/P1). L'ancienne rédaction disait
+  « siège vide compte 0 » et le code faisait la moyenne des seuls sièges
+  POURVUS : les deux étaient mauvaises. La première rendait un Conseil vide nul
+  (le joueur muet en diplomatie) ; la seconde rendait le Conseil monotone À
+  L'ENVERS — un ministre de rang I DILUAIT, et décapiter son propre Conseil
+  valait **+80 % d'influence pour −37 % de salaire**. Avec la variante B,
+  pourvoir un siège ne peut JAMAIS nuire. Le Conseil n'est plus seulement un
+  décor de loyauté : il est le multiplicateur du jeu politique.
 - Ordre de grandeur (13/8/78 %) : empire de départ (~2 750 hab) ≈ **1,2/mois**
   (échelle é≈0,6) ; empire mûr (~13 000 hab) ≈ **5,7/mois** (é≈2,8), avant le
   rang du Conseil. Tunables registre J : `INFLUENCE_PER_NOBLE` (0.002),
@@ -245,9 +252,9 @@ satisfaction de la classe Élite. Le taux est plat : effectif × rang, point.
 
 | Dépense | Coût indicatif | Note |
 |---|---|---|
-| **Envoi de diplomate** (alliance, pacte, embargo, migration, paix offerte…) | 10-15 | **DÉCIDÉ : le coût REMPLACE le cooldown `diplo_ready_day`** — on enchaîne si on a économisé, on est muet à sec (plancher court anti-spam conservé) |
-| **Fabriquer une revendication** | 20-30 | en sus du coût d'or existant (2 ans de revenu de la cible) — l'intrigue mobilise la cour |
-| **Sceller un pivot exclusif de Dessein** | 15-25 | le choix d'orientation est un acte politique ; les échelons ordinaires restent gratuits |
+| **Envoi de diplomate** (alliance, pacte, embargo, migration, paix offerte…) | **6 × é** | **DÉCIDÉ : le coût REMPLACE le cooldown `diplo_ready_day`** — on enchaîne si on a économisé, on est muet à sec (plancher court anti-spam conservé). ⚠ **× é depuis 2026-09-03 (P2)** : le tarif PLAT (12) était inerte au sommet (0,10 mois de revenu pour un hégémon) et prohibitif en bas (24 mois pour une cité-état) — ×241 d'écart. ×é, le prix vaut `C/(2·mult_conseil)` MOIS de revenu à TOUTE taille |
+| **Fabriquer une revendication** | **12 × é** | en sus du coût d'or existant (2 ans de revenu de la cible) — l'intrigue mobilise la cour |
+| **Sceller un pivot exclusif de Dessein** | **10 × é** | le choix d'orientation est un acte politique ; les échelons ordinaires restent gratuits |
 | **Adopter une doctrine** | 50 + 25 × doctrines actives | coût fixe et scalable (révision 2026-09-01) |
 | **Entretenir une doctrine** | **1/mois chacune** | l'entretien est EN INFLUENCE (pas en couronnes) — insolvable ce mois = les dernières adoptées se suspendent |
 | **Acheter une idée de doctrine** | 30 + 3 × idées possédées (total) | façon unités Stellaris — plus t'en as, plus c'est cher ; 6 par doctrine, en séquence |
@@ -333,6 +340,12 @@ Aristocratie (élites ×0.0025, contre 0.002 par défaut) · Bourgeoisie
 (bourgeois ×0.0022, contre 0.0011) · Populaire (journaliers ×0.00022, contre
 0.00011) · Divin (ajoute les FIDÈLES × 1/6000 à l'assiette par défaut, sans
 relever aucun taux de classe). Le courant occupe un slot comme les autres.
+**L'IA ne délibère son courant qu'à partir de `AI_DOCT_CURRENT_YEAR` (an 40)**
+— révision 2026-09-03 (P4b) : avant, le slot se prenait entre l'an 5 et l'an
+40, alors qu'une religion d'État n'existe qu'au Temple T2 bâti (bien plus
+tard) et que l'IA n'abandonne jamais une doctrine ; **Divin était donc
+structurellement impossible** (0 adoption sur 331 dans le sweep 10×200). Le
+joueur, lui, n'est pas gaté : il clique quand il veut.
 
 Plus aucun sous-titre d'apparat, plus aucun gate d'éthos ni prérequis : tout
 le monde peut tout prendre, l'IA choisit par score. Chaque doctrine = 6 idées

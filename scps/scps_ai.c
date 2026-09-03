@@ -3137,7 +3137,7 @@ static int aid_best_current(const WorldEconomy *econ, int cid, float *out_share)
  * pas des tunables — c'est le sweep apparié qui dira s'ils méritent le registre. */
 static void ai_doct_scores(const World *w, const WorldEconomy *econ, const DiploState *dp,
                            const Statecraft *sc, const RouteNetwork *rn,
-                           const TechState *ts, int cid, float out[DOCT_COUNT])
+                           const TechState *ts, int cid, int year, float out[DOCT_COUNT])
 {
     for (int d=0; d<DOCT_COUNT; d++) out[d]=0.f;
     if (!w || !econ || cid<0 || cid>=SCPS_MAX_COUNTRY) return;
@@ -3307,7 +3307,14 @@ static void ai_doct_scores(const World *w, const WorldEconomy *econ, const Diplo
     if (nfaust>0 && crisis < tune_f("FAUST_BRECHE_CAUTION",0.55f))
         out[DOCT_FAUSTIEN] = aid_clamp((float)nfaust*0.5f, 0.f, 2.0f);
 
-    /* Les QUATRE COURANTS — un seul, le mieux assis */
+    /* Les QUATRE COURANTS — un seul, le mieux assis. ⚠ PAS AVANT
+     * AI_DOCT_CURRENT_YEAR (correctif 2026-09-03 P4b, rapport §5.2) : le courant
+     * remplissait un slot dès l'an 5-40, or la première foi d'État n'arrive qu'au
+     * Temple T2 bâti (5 % des provinces à l'an 200) et l'IA n'abandonne JAMAIS une
+     * doctrine — Divin ne pouvait donc littéralement jamais être choisi. On ne
+     * ferme pas la porte à Divin, on attend simplement que le pays SACHE s'il a
+     * une foi. 0 = kill-switch (comportement d'avant : le courant dès l'an 0). */
+    if ((float)year >= tune_f("AI_DOCT_CURRENT_YEAR", 40.f))
     { float share=0.f; int cur = aid_best_current(econ,cid,&share);
       if (cur>=0) out[cur] = 1.0f + aid_clamp(share, 0.f, 1.f); }
 }
@@ -3315,7 +3322,7 @@ static void ai_doct_scores(const World *w, const WorldEconomy *econ, const Diplo
 int ai_doctrines_year(DoctrineState *ds, InfluenceState *is,
                       const World *w, const WorldEconomy *econ, const DiploState *dp,
                       const Statecraft *sc, const RouteNetwork *rn, const TechState *ts,
-                      int cid, float ech)
+                      int cid, float ech, int year)
 {
     if (tune_f("AI_DOCT", 1.f) <= 0.f) return 0;      /* KILL-SWITCH : golden par construction */
     if (!ds || !w || !econ || cid<0 || cid>=SCPS_MAX_COUNTRY) return 0;
@@ -3326,7 +3333,7 @@ int ai_doctrines_year(DoctrineState *ds, InfluenceState *is,
     if (w->country[cid].n_regions<=0) return 0;
 
     float sco[DOCT_COUNT];
-    ai_doct_scores(w, econ, dp, sc, rn, ts, cid, sco);
+    ai_doct_scores(w, econ, dp, sc, rn, ts, cid, year, sco);
 
     float reserve = tune_f("AI_DOCT_RESERVE", 1.5f);
     if (reserve < 1.f) reserve = 1.f;                 /* le coussin ne descend jamais SOUS le prix */
@@ -3369,6 +3376,6 @@ int ai_doctrines_year(DoctrineState *ds, InfluenceState *is,
 /* Le SCORE nu, pour les bancs et la chronique (aucun effet de bord). */
 void ai_doctrines_scores(const World *w, const WorldEconomy *econ, const DiploState *dp,
                          const Statecraft *sc, const RouteNetwork *rn,
-                         const TechState *ts, int cid, float out[DOCT_COUNT]){
-    ai_doct_scores(w, econ, dp, sc, rn, ts, cid, out);
+                         const TechState *ts, int cid, int year, float out[DOCT_COUNT]){
+    ai_doct_scores(w, econ, dp, sc, rn, ts, cid, year, out);
 }

@@ -499,7 +499,7 @@
     X(STR_DIPLO_REASON_INSUFFICIENT_GOLD,     "Not enough crowns to fund the plot") \
     X(STR_DIPLO_REASON_INSUFFICIENT_INFLUENCE,"Not enough political influence for this act") \
     X(STR_DIPLO_REASON_FABRICATION_UNAVAILABLE,"Plot unavailable for now") \
-    X(STR_INFLUENCE_HOVER,      "%d nobles · %d bourgeois · %d laborers × the Council (average rank %s)") \
+    X(STR_INFLUENCE_HOVER,      "%d nobles · %d bourgeois · %d laborers × the Council (average rank %s over 3 seats — an empty seat counts as rank I)") \
     X(STR_INFLUENCE_HOVER_VIDE, "%d nobles · %d bourgeois · %d laborers × the Council (no minister seated — floor)") \
     X(STR_INFLUENCE_RANK_I,     "I") \
     X(STR_INFLUENCE_RANK_II,    "II") \

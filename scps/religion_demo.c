@@ -80,6 +80,50 @@ int main(void){
     CK(religion_fracture_level(w,e,cid) == 0.f, "les 2 régions professent la foi d'État → fracture_level = 0");
     CK(religion_credo_drift(w,e,cid) == 0.f,    "credo_drift (alias) = 0 aussi");
 
+    /* ── LE GRAIN DE LA FOI (correctif 2026-09-03, P4a) ──────────────────────
+     * religion_set_region écrivait PopGroup.faith sur la SEULE province
+     * représentative de la région ; toutes les autres restaient athées à jamais,
+     * alors que le terme des FIDÈLES de la doctrine Divin (infl_believers) somme
+     * TOUTES les provinces du pays — write-side région contre read-side province.
+     * À 2,7 provinces/région, Divin plafonnait sous Aristocratie : impossible.
+     * On prend une région MULTI-PROVINCE, on sème un groupe natif ATHÉE dans une
+     * province qui N'EST PAS la représentative, et on exige qu'elle soit convertie. */
+    { int rg_multi=-1, pid_other=-1;
+      for (int rg=0; rg<e->n_regions && rg_multi<0; rg++){
+          if (rg==r0 || rg==r1) continue;   /* r0/r1 portent la fracture testée plus bas */
+          int rep = econ_region_rep_province(e, rg), other=-1, n=0;
+          for (int pid=0; pid<e->n_prov; pid++){
+              if (e->prov[pid].region != rg) continue;
+              n++;
+              if (pid!=rep && other<0) other=pid;
+          }
+          if (n>=2 && rep>=0 && other>=0){ rg_multi=rg; pid_other=other; }
+      }
+      CK(rg_multi>=0, "le monde du banc porte au moins une région MULTI-PROVINCE");
+      if (rg_multi>=0){
+          ProvinceEconomy *po=&e->prov[pid_other];
+          po->active=true; po->colonized=true;
+          memset(&po->pop.groups[0],0,sizeof po->pop.groups[0]);
+          po->pop.groups[0].count=500; po->pop.groups[0].diaspora=false;
+          po->pop.groups[0].integration=1.f; po->pop.groups[0].faith=-1;
+          po->pop.groups[0].home_reg=-1;
+          po->pop.n_groups=1;
+          religion_set_region(e, rg_multi, rid);
+          printf("   région %d : province NON représentative %d → faith=%d (attendu %d)\n",
+                 rg_multi, pid_other, po->pop.groups[0].faith, rid);
+          CK(po->pop.groups[0].faith == rid,
+             "GRAIN PROVINCE : une province NON représentative reçoit AUSSI la foi d'État");
+          /* et rien n'a fui vers la diaspora ni vers une autre région */
+          int leak=0;
+          for (int pid=0; pid<e->n_prov; pid++){
+              if (e->prov[pid].region == rg_multi) continue;
+              const ProvincePop *pp=&e->prov[pid].pop;
+              for (int i=0;i<pp->n_groups;i++)
+                  if (pp->groups[i].faith==rid && e->prov[pid].region!=r0 && e->prov[pid].region!=r1) leak++;
+          }
+          CK(leak==0, "la conversion reste BORNÉE à la région visée (aucune fuite hors région)");
+      } }
+
     /* Fonde une SECONDE foi (schisme réel) et bascule r1 dessus : r1 devient MINORITAIRE
      * (hors foi d'État) — la moitié de la pop (pop-pondérée) est off ⇒ fracture ≈ 0.5. */
     int trad2[3]={RP_SILENCE, RP_MUR, RP_COURONNE};

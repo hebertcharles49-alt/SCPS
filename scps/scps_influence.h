@@ -84,9 +84,9 @@ float influence_scale(const WorldEconomy *econ, int cid, InfluenceBase base);
  *   gain/mois = influence_base_gain(econ, cid, base) × mult_conseil
  * L'assiette par défaut = les TROIS classes (sièges, somme PROVINCE, jamais
  * region[].pop). mult_conseil =
- * influence_council_mult (rang moyen des sièges POURVUS, plancher INFLUENCE_COUNCIL_FLOOR
- * si aucun siège pourvu — sinon un Conseil vide rend le joueur muet en diplomatie, choix
- * signalé). Clampe à INFLUENCE_CAP si >0 (0 = sans plafond, décision joueur 2026-09-01). */
+ * influence_council_mult (rang moyen SUR LES TROIS SIÈGES, un siège vide valant
+ * INFLUENCE_COUNCIL_FLOOR — un Conseil vide ne rend donc jamais le joueur muet en
+ * diplomatie). Clampe à INFLUENCE_CAP si >0 (0 = sans plafond, décision joueur 2026-09-01). */
 void influence_tick(InfluenceState *is, const World *w, const WorldEconomy *econ,
                      const Statecraft *sc, uint32_t seed, int cid, InfluenceBase base);
 
@@ -97,10 +97,16 @@ int   influence_can_spend(const InfluenceState *is, int cid, float cost);
  * 0 (ne descend jamais négatif, motif econ_flux/credit). */
 void  influence_spend(InfluenceState *is, int cid, float cost);
 
-/* La moyenne de RANG (I=1..III=3, statecraft_council_cand_tier) des sièges du Conseil
- * EN SIÈGE — plancher INFLUENCE_COUNCIL_FLOOR si aucun siège pourvu. `out_n_seated`
- * (peut être NULL) reçoit le nombre de sièges pourvus (0 = plancher appliqué), pour que
- * la membrane façade distingue « aucun ministre » de « rang moyen I ». */
+/* La moyenne de RANG (I=1..III=3, statecraft_council_cand_tier) SUR LES TROIS SIÈGES
+ * du Conseil — un siège VACANT vaut INFLUENCE_COUNCIL_FLOOR (1.0), il ne sort PAS du
+ * dénominateur (« variante B », correctif 2026-09-03 : la moyenne des seuls sièges
+ * POURVUS rendait le Conseil MONOTONE À L'ENVERS — un ministre de rang I DILUAIT, et
+ * décapiter son propre Conseil valait +80 % d'influence pour −37 % de salaire, l'exact
+ * inverse de ce que l'UI encourage ; cf. docs/CALIB_INFLUENCE_2026-09-03.md §4.1/P1).
+ * Désormais : pourvoir un siège ne peut JAMAIS nuire (tier ≥ 1 = floor), Conseil vide
+ * = plancher exact (3×1.0/3), Conseil plein de III = 3.0. `out_n_seated` (peut être
+ * NULL) reçoit le nombre de sièges POURVUS (0 = Conseil vide), pour que la membrane
+ * façade distingue « aucun ministre » de « rang moyen I ». */
 float influence_council_mult(const Statecraft *sc, uint32_t seed, int cid, int *out_n_seated);
 
 /* TÉLÉMÉTRIE (print-only, chronicle) — Σ influence GÉNÉRÉE depuis la genèse de cette

@@ -90,9 +90,13 @@ float dessein_mult(int cid, DesseinBoon k){
 #include "scps_influence.h"
 static InfluenceState *g_pivot_infl = NULL;
 void dessein_pivot_bind(InfluenceState *is){ g_pivot_infl = is; }
-bool dessein_pivot_pay(int cid){
+bool dessein_pivot_pay(int cid, float ech){
     if (!g_pivot_infl) return true;
-    float cost = tune_f("DESSEIN_PIVOT_INFLUENCE", 20.f);
+    /* LE PRIX PASSE PAR é (correctif 2026-09-03 P2) — même échelle que les
+     * doctrines : un pivot vaut le même nombre de MOIS de revenu politique à
+     * toute taille d'empire. ech<=0 (banc non lié à une assiette) ⇒ tarif nu. */
+    float cost = tune_f("DESSEIN_PIVOT_INFLUENCE", (float)DESSEIN_PIVOT_INFLUENCE);
+    if (ech > 0.f) cost *= ech;
     if (!influence_can_spend(g_pivot_infl, cid, cost)) return false;
     influence_spend(g_pivot_infl, cid, cost);
     return true;
@@ -635,7 +639,7 @@ void missions_tick(MissionsState *ms, World *w, WorldEconomy *econ,
 
 int missions_seal(MissionsState *ms, World *w, WorldEconomy *econ,
                   DiploState *dp, Statecraft *sc, uint32_t seed, int year,
-                  int cid, int branch, int rung, int voie){
+                  int cid, int branch, int rung, int voie, float ech){
     if (!ms||!w||!econ) return 0;
     if (cid<0||cid>=SCPS_MISSIONS_MAX||cid>=w->n_countries) return 0;
     if (branch<0||branch>=DESS_BRANCH_COUNT) return 0;
@@ -646,13 +650,13 @@ int missions_seal(MissionsState *ms, World *w, WorldEconomy *econ,
     if (!country_alive(econ,w,cid)) return 0;
 
     if (dessein_is_pivot(rung)){
-        /* LE PIVOT — irréversible, l'autre voie s'éteint. Prix UNIFORME (20
-         * d'influence, D6.4), et une PREUVE D'USAGE : un pivot est un choix de
-         * campagne, pas un achat au guichet. */
+        /* LE PIVOT — irréversible, l'autre voie s'éteint. Prix UNIFORME
+         * (DESSEIN_PIVOT_INFLUENCE × é, D6.4), et une PREUVE D'USAGE : un pivot
+         * est un choix de campagne, pas un achat au guichet. */
         if (voie!=DESS_VOIE_CONQUETE && voie!=DESS_VOIE_VASSALISATION) return 0;
         if (voie==DESS_VOIE_CONQUETE      && !d->proof_a) return 0;
         if (voie==DESS_VOIE_VASSALISATION && !d->proof_b) return 0;
-        if (!dessein_pivot_pay(cid)) return 0;
+        if (!dessein_pivot_pay(cid, ech)) return 0;
         d->voie=(int8_t)voie;
     }
     d->sealed_year[rung] = (int16_t)((year<-1)?-1:(year>4096)?4096:year);

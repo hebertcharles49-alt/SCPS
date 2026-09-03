@@ -49,15 +49,14 @@ float influence_council_mult(const Statecraft *sc, uint32_t seed, int cid, int *
     int n = 0; float sum = 0.f;
     for (int seat=0; seat<SC_COUNCIL_SEATS; seat++){
         int slot = statecraft_council_seated(sc, cid, seat);
-        if (slot < 0) continue;   /* siège vacant : ne compte pas dans la moyenne */
+        if (slot < 0){ sum += floor_mult; continue; }   /* siège VACANT : vaut le plancher, il ne
+                                                         * disparaît PAS de la moyenne (variante B) */
         int gen = statecraft_council_seated_gen(sc, cid, seat);
         int tier = statecraft_council_cand_tier(seed, cid, seat, slot, gen);   /* I=1..III=3 */
         sum += (float)tier; n++;
     }
     if (out_n_seated) *out_n_seated = n;
-    if (n == 0) return floor_mult;   /* AUCUN siège pourvu : plancher (sinon un Conseil vide
-                                      * rend le joueur muet en diplomatie — décision signalée) */
-    return sum / (float)n;
+    return sum / (float)SC_COUNCIL_SEATS;
 }
 
 /* ── L'ASSIETTE — les TROIS classes, TOUJOURS (§3.1bis, §4.3bis) ─────────

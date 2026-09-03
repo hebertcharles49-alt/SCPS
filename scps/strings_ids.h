@@ -520,7 +520,7 @@
     X(STR_DIPLO_REASON_INSUFFICIENT_GOLD,     "Couronnes insuffisantes pour financer l'intrigue") \
     X(STR_DIPLO_REASON_INSUFFICIENT_INFLUENCE,"Influence politique insuffisante pour cet acte") \
     X(STR_DIPLO_REASON_FABRICATION_UNAVAILABLE,"Intrigue indisponible pour l'instant") \
-    X(STR_INFLUENCE_HOVER,      "%d nobles · %d bourgeois · %d journaliers × le Conseil (rang moyen %s)") \
+    X(STR_INFLUENCE_HOVER,      "%d nobles · %d bourgeois · %d journaliers × le Conseil (rang moyen %s sur 3 sièges — un siège vide compte pour un rang I)") \
     X(STR_INFLUENCE_HOVER_VIDE, "%d nobles · %d bourgeois · %d journaliers × le Conseil (aucun ministre en siège — plancher)") \
     X(STR_INFLUENCE_RANK_I,     "I") \
     X(STR_INFLUENCE_RANK_II,    "II") \

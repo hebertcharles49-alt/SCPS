@@ -532,15 +532,24 @@ static void sim_cmd_drain(Sim *s, World *w){
              * CMD_FABRICATE_CB coûte INFLUENCE_COST_FAB (en SUS de son coût d'or existant,
              * inchangé) — influence insuffisante ⇒ REFUSÉ net, le plancher n'est PAS posé
              * (aucun tour d'émissaire gâché pour rien). MAKE_PEACE/REQUEST_LOAN restent hors
-             * périmètre §3 (aucune spec ne les tarife) : ils gardent le seul plancher. */
+             * périmètre §3 (aucune spec ne les tarife) : ils gardent le seul plancher.
+             * ⚠ LES DEUX TARIFS PASSENT PAR é (correctif 2026-09-03 P2, rapport
+             * docs/CALIB_INFLUENCE_2026-09-03.md §3) : un tarif PLAT était inerte au
+             * sommet (0,10 mois de revenu pour un hégémon) et prohibitif en bas (24
+             * mois pour une cité-état) — ×241 d'écart, l'inverse exact de la promesse
+             * du design. ×é (la MÊME échelle que les doctrines, influence_scale), le
+             * coût vaut C/(2×mult_conseil) MOIS de revenu à toute taille. Les tarifs
+             * de base sont donc halvés (12→6, 25→12). GOLDEN NEUTRE : ce drain est
+             * joueur-seul (gate `p = s->human_player` en tête de fonction). */
             if (c->verb != CMD_DECLARE_WAR){
                 if (s->day < s->diplo_ready_day) continue;
+                float ech = influence_scale(s->econ, p, sim_influence_base(s, p));
                 float cost = 0.f;
                 if (c->verb==CMD_OFFER_ALLIANCE || c->verb==CMD_OFFER_PACT || c->verb==CMD_OFFER_MIGRATION
                  || c->verb==CMD_EMBARGO || c->verb==CMD_PEACE_OFFER)
-                    cost = tune_f("INFLUENCE_COST_ENVOY", 12.f)*doctrine_key_mult(p,"INFLUENCE_COST_ENVOY");   /* doctrine Diplomatie : « Chancellerie » */
+                    cost = tune_f("INFLUENCE_COST_ENVOY", 6.f)*ech*doctrine_key_mult(p,"INFLUENCE_COST_ENVOY");   /* doctrine Diplomatie : « Chancellerie » */
                 else if (c->verb==CMD_FABRICATE_CB)
-                    cost = tune_f("INFLUENCE_COST_FAB", 25.f);
+                    cost = tune_f("INFLUENCE_COST_FAB", 12.f)*ech;
                 if (cost>0.f && !influence_can_spend(s->infl, p, cost)) continue;
                 if (cost>0.f) influence_spend(s->infl, p, cost);
                 s->diplo_ready_day = s->day + (int)tune_f("DIPLO_ENVOY_FLOOR_DAYS", 30.f);
@@ -1011,7 +1020,8 @@ static void sim_cmd_drain(Sim *s, World *w){
               int t0 = d0 ? dessein_target_pid(d0) : -1;
               if (t0>=0 && t0<w->n_provinces) treg = w->province[t0].region; }
             if (!missions_seal(s->missions, w, s->econ, s->dp, s->sc, w->seed, s->year,
-                               p, branch, rung, voie)) break;
+                               p, branch, rung, voie,
+                               influence_scale(s->econ, p, sim_influence_base(s, p)))) break;
             /* MÉMOIRE : l'Annale du règne (la façade en dérive l'ÉPITHÈTE — un
              * parachèvement pèse le poids plein d'un âge). annal_push peut rendre
              * -1 (le fait trop léger face au panthéon) : on n'en dépend jamais. */
@@ -1640,7 +1650,7 @@ void sim_day(Sim *s, World *w) {
                     if (c==s->human_player || !s->ai_on[c]) continue;
                     if (regions_of(s->econ, c) <= 0) continue;
                     ai_doctrines_year(s->doct, s->infl, w, s->econ, s->dp, s->sc, s->rn, s->ts, c,
-                                      influence_scale(s->econ, c, sim_influence_base(s, c)));
+                                      influence_scale(s->econ, c, sim_influence_base(s, c)), s->year);
                 }
         }
         faction_bind(w, s->econ);   /* GLISSEMENT 2026-08-06 : grief/capture vivent sur les groupes — lier le monde avant tout lecteur/écrivain de faction */

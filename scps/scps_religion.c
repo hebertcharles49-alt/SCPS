@@ -93,16 +93,29 @@ static void cr_ensure(void){
   }
 }
 int  religion_of_region(int rg){ cr_ensure(); return (rg>=0&&rg<RELIG_MAX_REGION)?g_region_religion[rg]:-1; }
-/* pose la foi `rid` sur les NATIFS de souche de la région (rep-province) — fondation /
- * missionnaire / Contre-Réforme convertissent la SOUCHE ; la diaspora garde sa foi portée
- * (un migrant/réfugié ne se fait pas convertir d'office). */
+/* pose la foi `rid` sur les NATIFS de souche de TOUTES les provinces de la région —
+ * fondation / missionnaire / Contre-Réforme convertissent la SOUCHE ; la diaspora garde
+ * sa foi portée (un migrant/réfugié ne se fait pas convertir d'office).
+ * ⚠ CORRECTIF 2026-09-03 (P4a, docs/CALIB_INFLUENCE_2026-09-03.md §5.3) : ceci n'écrivait
+ * que sur econ_region_rep_province — LA province représentative. Toutes les autres
+ * provinces de la région restaient ATHÉES à jamais (faith=-1 posé à la colonisation), or
+ * infl_believers LIT toutes les provinces : write-side RÉGION contre read-side PROVINCE,
+ * le motif exact de la re-key 2026-07 et une violation directe de la doctrine « jamais
+ * l'indirection rep-province dans un chemin joueur ». À 2,71 provinces/région (graine 7),
+ * le plafond du terme Divin valait 0,617e-4 contre 0,790e-4 pour Aristocratie : la
+ * doctrine Divin était ARITHMÉTIQUEMENT impossible, même à conversion totale.
+ * C'est l'UNIQUE écrivain de PopGroup.faith du moteur — les quatre chemins (fondation
+ * religion_set_region, héritage religion_inherit_regions, schisme religion_fracture,
+ * missionnaire religion_scholar_tick) passent tous par ici, donc tous corrigés d'un coup. */
 static void region_set_native_faith(WorldEconomy *econ, int r, int rid){
   if(!econ || r<0 || r>=econ->n_regions) return;
-  int rpid=econ_region_rep_province(econ, r);
-  if(rpid<0 || rpid>=econ->n_prov) return;
-  ProvincePop *pp=&econ->prov[rpid].pop;
-  for(int i=0;i<pp->n_groups;i++)
-    if(!pp->groups[i].diaspora) pp->groups[i].faith=rid;
+  int np = (econ->n_prov < SCPS_MAX_PROV) ? econ->n_prov : SCPS_MAX_PROV;
+  for(int pid=0; pid<np; pid++){
+    if(econ->prov[pid].region != (int16_t)r) continue;
+    ProvincePop *pp=&econ->prov[pid].pop;
+    for(int i=0;i<pp->n_groups && i<SCPS_MAX_GROUPS;i++)
+      if(!pp->groups[i].diaspora) pp->groups[i].faith=rid;
+  }
 }
 void religion_set_region(WorldEconomy *econ, int rg, int rid){
   cr_ensure();

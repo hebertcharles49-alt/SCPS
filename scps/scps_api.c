@@ -2399,6 +2399,10 @@ int scps_country_relations(ScpsSim *s, int me, ScpsRelation *out, int max){
 
 /* §3 — OPTIONS DIPLO : la légalité des verbes du joueur contre `target` + l'aperçu du consentement
  * (ai_consider_offer, l'opinion #26). Pour GRISER les boutons et montrer « il refusera » avant l'offre. */
+/* L'assiette courante du pays — défini au §INFLUENCE plus bas ; déclaré ici parce
+ * que le PRIX des verbes diplo passe par é (2026-09-03 P2) et que é lit l'assiette. */
+static InfluenceBase api_influence_base(ScpsSim *s, int cid);
+
 int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out){
     if (!out) return 0;
     memset(out, 0, sizeof *out);
@@ -2450,6 +2454,13 @@ int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out){
     /* INFLUENCE POLITIQUE §3 : le stock courant du joueur — pour la checklist de refus
      * (da_fill_conds) et le calcul d'`allowed` (scps_diplo_action_legal). */
     out->influence_have = s->sim.infl ? influence_get(s->sim.infl, p) : 0.f;
+    /* … et le PRIX RÉEL des deux verbes tarifés : tarif de base × é, le MÊME calcul
+     * qu'au drain (2026-09-03 P2). Un tarif plat mentait à l'UI dès que l'empire
+     * grandissait ; la doctrine « Chancellerie » (doctrine_key_mult) reste hors de
+     * ce nombre, comme avant — elle n'a jamais été miroitée côté façade. */
+    { float ech = influence_scale(s->sim.econ, p, api_influence_base(s, p));
+      out->influence_cost_envoy = tune_f("INFLUENCE_COST_ENVOY", 6.f)  * ech;
+      out->influence_cost_fab   = tune_f("INFLUENCE_COST_FAB",  12.f)  * ech; }
     return 1;
 }
 
@@ -2486,21 +2497,21 @@ static void da_fill_conds(ScpsActionLegal *out, const ScpsDiploOptions *o, int s
         /* INFLUENCE POLITIQUE §3 : cond INDÉPENDANTE de l'état diplo (jamais masquée —
          * elle ne dépend d'aucun préalable ci-dessus) ⇒ AND(conds)==allowed reste exact
          * (cf. scps_diplo_action_legal, qui ET-combine can_offer_alliance ET infl_ok). */
-        GATE(tr(STR_GATE_INFLUENCE_SUFFISANTE), o->influence_have >= tune_f("INFLUENCE_COST_ENVOY",12.f)-0.001);
+        GATE(tr(STR_GATE_INFLUENCE_SUFFISANTE), o->influence_have >= o->influence_cost_envoy-0.001);
         break;
       case SCPS_DIPLO_PACT:
         GATE(tr(STR_GATE_PAS_GUERRE), !at_war);
         GATE(tr(STR_GATE_PAS_PACTE_COMMERCIAL), at_war ? 1 : o->can_offer_pact);
-        GATE(tr(STR_GATE_INFLUENCE_SUFFISANTE), o->influence_have >= tune_f("INFLUENCE_COST_ENVOY",12.f)-0.001);
+        GATE(tr(STR_GATE_INFLUENCE_SUFFISANTE), o->influence_have >= o->influence_cost_envoy-0.001);
         break;
       case SCPS_DIPLO_MIGRATION:
         GATE(tr(STR_GATE_PAS_GUERRE), !at_war);
         GATE(tr(STR_GATE_PAS_PACTE_MIGRATOIRE), at_war ? 1 : o->can_offer_migration);
-        GATE(tr(STR_GATE_INFLUENCE_SUFFISANTE), o->influence_have >= tune_f("INFLUENCE_COST_ENVOY",12.f)-0.001);
+        GATE(tr(STR_GATE_INFLUENCE_SUFFISANTE), o->influence_have >= o->influence_cost_envoy-0.001);
         break;
       case SCPS_DIPLO_EMBARGO:
         GATE(tr(STR_GATE_RELATION_COMMERCABLE), o->can_embargo || o->can_lift_embargo);
-        GATE(tr(STR_GATE_INFLUENCE_SUFFISANTE), o->influence_have >= tune_f("INFLUENCE_COST_ENVOY",12.f)-0.001);
+        GATE(tr(STR_GATE_INFLUENCE_SUFFISANTE), o->influence_have >= o->influence_cost_envoy-0.001);
         break;
       case SCPS_DIPLO_FABRICATE:
         /* fabrique : conds VISIBLES (or, intrigue en cours, influence) — les préalables
@@ -2508,7 +2519,7 @@ static void da_fill_conds(ScpsActionLegal *out, const ScpsDiploOptions *o, int s
          * pas l'inverse (contrat propre à la fabrique, cf. scps_api_demo). */
         GATE(tr(STR_GATE_OR_SUFFISANT), out->gold_missing<=0.0);
         GATE(tr(STR_GATE_AUCUNE_INTRIGUE), !o->fabricating && !o->cb_ready);
-        GATE(tr(STR_GATE_INFLUENCE_SUFFISANTE), o->influence_have >= tune_f("INFLUENCE_COST_FAB",25.f)-0.001);
+        GATE(tr(STR_GATE_INFLUENCE_SUFFISANTE), o->influence_have >= o->influence_cost_fab-0.001);
         break;
       default: break;
     }
@@ -2567,7 +2578,7 @@ int scps_diplo_action_legal(ScpsSim *s, int target, int action, ScpsActionLegal 
         /* INFLUENCE POLITIQUE §3 — le coût REMPLACE le cooldown de l'émissaire : `allowed`
          * exige AUSSI l'influence (miroir exact du drain, scps_sim.c). infl_ok est une cond
          * INDÉPENDANTE des autres (jamais masquée) ⇒ AND(conds)==allowed (da_fill_conds). */
-        bool infl_ok = o.influence_have >= tune_f("INFLUENCE_COST_ENVOY",12.f)-0.001;
+        bool infl_ok = o.influence_have >= o.influence_cost_envoy-0.001;
         out->would_accept=o.would_accept_alliance;
         if(o.can_offer_alliance && infl_ok)DIP_OK();
         else if(st==DIPLO_WAR)DIP_NO("at_war",sz(tr(STR_DIPLO_REASON_AT_WAR)));
@@ -2576,7 +2587,7 @@ int scps_diplo_action_legal(ScpsSim *s, int target, int action, ScpsActionLegal 
         else DIP_NO("insufficient_influence",sz(tr(STR_DIPLO_REASON_INSUFFICIENT_INFLUENCE)));
         break; }
       case SCPS_DIPLO_PACT: {
-        bool infl_ok = o.influence_have >= tune_f("INFLUENCE_COST_ENVOY",12.f)-0.001;
+        bool infl_ok = o.influence_have >= o.influence_cost_envoy-0.001;
         out->would_accept=o.would_accept_pact;
         if(o.can_offer_pact && infl_ok)DIP_OK();
         else if(st==DIPLO_WAR)DIP_NO("at_war",sz(tr(STR_DIPLO_REASON_AT_WAR)));
@@ -2584,7 +2595,7 @@ int scps_diplo_action_legal(ScpsSim *s, int target, int action, ScpsActionLegal 
         else DIP_NO("insufficient_influence",sz(tr(STR_DIPLO_REASON_INSUFFICIENT_INFLUENCE)));
         break; }
       case SCPS_DIPLO_MIGRATION: {
-        bool infl_ok = o.influence_have >= tune_f("INFLUENCE_COST_ENVOY",12.f)-0.001;
+        bool infl_ok = o.influence_have >= o.influence_cost_envoy-0.001;
         out->would_accept=o.would_accept_migration;
         if(o.can_offer_migration && infl_ok)DIP_OK();
         else if(st==DIPLO_WAR)DIP_NO("at_war",sz(tr(STR_DIPLO_REASON_AT_WAR)));
@@ -2592,7 +2603,7 @@ int scps_diplo_action_legal(ScpsSim *s, int target, int action, ScpsActionLegal 
         else DIP_NO("insufficient_influence",sz(tr(STR_DIPLO_REASON_INSUFFICIENT_INFLUENCE)));
         break; }
       case SCPS_DIPLO_EMBARGO: {
-        bool infl_ok = o.influence_have >= tune_f("INFLUENCE_COST_ENVOY",12.f)-0.001;
+        bool infl_ok = o.influence_have >= o.influence_cost_envoy-0.001;
         out->unilateral=1;
         out->toggle_on=o.can_embargo?1:0;
         if((o.can_embargo || o.can_lift_embargo) && infl_ok)DIP_OK();
@@ -2600,7 +2611,7 @@ int scps_diplo_action_legal(ScpsSim *s, int target, int action, ScpsActionLegal 
         else DIP_NO("insufficient_influence",sz(tr(STR_DIPLO_REASON_INSUFFICIENT_INFLUENCE)));
         break; }
       case SCPS_DIPLO_FABRICATE: {
-        bool infl_ok_fab = o.influence_have >= tune_f("INFLUENCE_COST_FAB",25.f)-0.001;
+        bool infl_ok_fab = o.influence_have >= o.influence_cost_fab-0.001;
         out->unilateral=1; out->cost_gold=o.fabricate_cost;
         out->gold_missing=fmax(0.0,out->cost_gold-out->gold_have);
         if(o.can_fabricate && infl_ok_fab){DIP_OK();out->duration_days=(int)tune_f("FAB_MATURE_DAYS",365.f);}
@@ -2696,8 +2707,10 @@ int scps_peace_preview(ScpsSim *s,int target,ScpsPeacePreview *out){
     out->reparations_cost=10;out->humiliate_cost=20;out->pillage_cost=10;
     out->liberate_cost=50;out->fragment_cost=100;
     /* INFLUENCE POLITIQUE §3 : le prix affiché (motif checklist) — CMD_PEACE_OFFER
-     * coûte INFLUENCE_COST_ENVOY au drain, comme les autres verbes d'envoi. */
-    out->influence_cost = tune_f("INFLUENCE_COST_ENVOY", 12.f);
+     * coûte INFLUENCE_COST_ENVOY × é au drain, comme les autres verbes d'envoi
+     * (2026-09-03 P2 : le tarif plat mentait dès que l'empire grandissait). */
+    out->influence_cost = tune_f("INFLUENCE_COST_ENVOY", 6.f)
+                        * influence_scale(s->sim.econ, p, api_influence_base(s, p));
     out->influence_have = s->sim.infl ? influence_get(s->sim.infl, p) : 0.f;
     return 1;
 }
@@ -3377,7 +3390,10 @@ int scps_dessein_info(ScpsSim *s, int cid, int branche, ScpsDessein *out){
     out->branche     = sz(tr(STR_DESS_SOL));
     out->rung        = d->rung;
     out->rungs_total = DESSEIN_RUNGS;
-    out->pivot_cout  = (int)tune_f("DESSEIN_PIVOT_INFLUENCE", DESSEIN_PIVOT_INFLUENCE);
+    /* le prix RÉEL du pivot : tarif de base × é (2026-09-03 P2), arrondi ENTIER —
+     * la façade ne montre jamais la formule, seulement le nombre qui sera débité. */
+    out->pivot_cout  = (int)(tune_f("DESSEIN_PIVOT_INFLUENCE", DESSEIN_PIVOT_INFLUENCE)
+                             * influence_scale(s->sim.econ, cid, api_influence_base(s, cid)) + 0.5f);
     out->voie_a      = sz(tr(STR_DESS_SOL_VOIE_A));
     out->voie_b      = sz(tr(STR_DESS_SOL_VOIE_B));
     out->voie_a_ok   = d->proof_a ? 1 : 0;

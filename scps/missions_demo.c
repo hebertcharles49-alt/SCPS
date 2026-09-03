@@ -109,9 +109,9 @@ int main(int argc, char **argv){
     float k0 = econ->prov[cap].build.K_inst;
     float tre0 = econ->prov[cap].treasury;
     ok("sceller un échelon qui n'est PAS le courant est refusé",
-       missions_seal(ms,w,econ,dp,sc,seed,1,cid,DESS_SOL,DESS_RUNG_RIVAL,0)==0);
+       missions_seal(ms,w,econ,dp,sc,seed,1,cid,DESS_SOL,DESS_RUNG_RIVAL,0,0.f)==0);
     ok("sceller l'échelon courant rempli est ACCEPTÉ",
-       missions_seal(ms,w,econ,dp,sc,seed,1,cid,DESS_SOL,DESS_RUNG_UNIFICATION,0)==1);
+       missions_seal(ms,w,econ,dp,sc,seed,1,cid,DESS_SOL,DESS_RUNG_UNIFICATION,0,0.f)==1);
     ok("K_inst de la capitale a monté de 0,6 (densité institutionnelle RÉALISÉE)",
        econ->prov[cap].build.K_inst > k0 + 0.55f && econ->prov[cap].build.K_inst < k0 + 0.65f);
     ok("le trésor n'a PAS bougé — la règle d'or §2.4 (jamais d'or créé)",
@@ -119,7 +119,7 @@ int main(int argc, char **argv){
     ok("l'échelon suivant est armé (Expansion), l'an du sceau est latché",
        d->rung==DESS_RUNG_EXPANSION && d->sealed_year[DESS_RUNG_UNIFICATION]==1);
     ok("re-sceller le même échelon est refusé (il n'est plus le courant)",
-       missions_seal(ms,w,econ,dp,sc,seed,1,cid,DESS_SOL,DESS_RUNG_UNIFICATION,0)==0);
+       missions_seal(ms,w,econ,dp,sc,seed,1,cid,DESS_SOL,DESS_RUNG_UNIFICATION,0,0.f)==0);
 
     /* ═══ 4. LA CIBLE : résolution, re-résolution, et ce qui ne bouge PAS ═ */
     printf("\n── 4. La cible : la DESTRUCTION la re-résout, l'inconvénient ne la touche pas ──\n");
@@ -151,7 +151,7 @@ int main(int argc, char **argv){
           missions_tick(ms, w, econ, dp, 2, cid);
           ok("objectif atteint par N'IMPORTE QUELLE voie ⇒ l'échelon est prêt", d->ready==1);
           ok("… et sa récompense amorce la RECONSTRUCTION de la marche prise",
-             missions_seal(ms,w,econ,dp,sc,seed,2,cid,DESS_SOL,DESS_RUNG_EXPANSION,0)==1
+             missions_seal(ms,w,econ,dp,sc,seed,2,cid,DESS_SOL,DESS_RUNG_EXPANSION,0,0.f)==1
              && econ->prov[t].reconstruction >= 0.99f);
       } }
     ok("l'échelon « Le rival » a nommé un rival", d->rung==DESS_RUNG_RIVAL);
@@ -165,7 +165,7 @@ int main(int argc, char **argv){
     { int t3=d->tpid[DESS_RUNG_RIVAL];
       if (t3>=0 && t3<econ->n_prov){ econ->prov[t3].owner=(int16_t)cid; econ->prov[t3].colonized=true; }
       missions_tick(ms, w, econ, dp, 10, cid);
-      int sealed = missions_seal(ms,w,econ,dp,sc,seed,10,cid,DESS_SOL,DESS_RUNG_RIVAL,0);
+      int sealed = missions_seal(ms,w,econ,dp,sc,seed,10,cid,DESS_SOL,DESS_RUNG_RIVAL,0,0.f);
       ok("« Le rival » scellé (l'épée OU le serment)", sealed==1);
       if (sealed){
           ok("la remise DATÉE est ACTIVE l'année du sceau",
@@ -188,11 +188,11 @@ int main(int argc, char **argv){
     missions_tick(ms, w, econ, dp, 11, cid);
     ok("le pivot est toujours « prêt » — c'est le SCEAU qui exige la preuve", d->ready==1);
     ok("une voie hors domaine est refusée",
-       missions_seal(ms,w,econ,dp,sc,seed,11,cid,DESS_SOL,DESS_RUNG_PIVOT,7)==0);
+       missions_seal(ms,w,econ,dp,sc,seed,11,cid,DESS_SOL,DESS_RUNG_PIVOT,7,0.f)==0);
     /* aucun vassal, aucune terre arrachée par traité : les deux voies sont fermées. */
     ok("sans preuve d'usage, la voie Vassalisation est refusée",
        d->proof_b!=0 || missions_seal(ms,w,econ,dp,sc,seed,11,cid,DESS_SOL,DESS_RUNG_PIVOT,
-                                      DESS_VOIE_VASSALISATION)==0);
+                                      DESS_VOIE_VASSALISATION,0.f)==0);
     /* on FABRIQUE la preuve de la voie Conquête : la trace durable d'une province
      * arrachée par traité (rancor du dépossédé — cf. le commentaire de
      * missions_tick : conq_value est soldé À L'INTÉRIEUR de diplo_settle). */
@@ -203,7 +203,7 @@ int main(int argc, char **argv){
       missions_tick(ms, w, econ, dp, 11, cid);
       ok("une province arrachée par traité LATCHE la preuve de la voie Conquête", d->proof_a==1);
       ok("le pivot se scelle sur la voie Conquête",
-         missions_seal(ms,w,econ,dp,sc,seed,11,cid,DESS_SOL,DESS_RUNG_PIVOT,DESS_VOIE_CONQUETE)==1);
+         missions_seal(ms,w,econ,dp,sc,seed,11,cid,DESS_SOL,DESS_RUNG_PIVOT,DESS_VOIE_CONQUETE,0.f)==1);
       ok("la voie est posée, IRRÉVERSIBLE, et l'échelon suivant est armé",
          d->voie==DESS_VOIE_CONQUETE && d->rung==DESS_RUNG_4);
       ok("les noms d'échelon suivent la voie (slot d'affichage 4-7 = Conquête)",
@@ -256,7 +256,7 @@ int main(int argc, char **argv){
       ok("un vassal LATCHE la preuve de la voie Vassalisation", db->proof_b==1);
       ok("le pivot se scelle sur la voie Vassalisation",
          missions_seal(ms2,w,econ,dp,sc,seed,20,cid,DESS_SOL,DESS_RUNG_PIVOT,
-                       DESS_VOIE_VASSALISATION)==1);
+                       DESS_VOIE_VASSALISATION,0.f)==1);
       int v1 = dessein_target_cid(db,dp,cid);
       ok("« Premier vassal » vise une COURONNE (jamais une province)",
          db->rung==DESS_RUNG_4 && v1>=0 && dessein_target_pid(db)<0);
@@ -267,7 +267,7 @@ int main(int argc, char **argv){
       missions_tick(ms2, w, econ, dp, 20, cid);
       ok("la couronne nommée ayant juré, l'échelon est PRÊT", db->ready==1);
       ok("le sceau verse le crédit du serment (OPINION_VASSAL daté)",
-         missions_seal(ms2,w,econ,dp,sc,seed,20,cid,DESS_SOL,DESS_RUNG_4,0)==1
+         missions_seal(ms2,w,econ,dp,sc,seed,20,cid,DESS_SOL,DESS_RUNG_4,0,0.f)==1
          && (missions_boons_sync(ms2,20), dessein_mult(cid, DBOON_OPINION_VASSAL)==1.30f));
       ok("les deux voies portent des clés DISTINCTES (aucun double-dip)",
          dessein_mult(cid, DBOON_ANNEX_SOFT_SCAR)==1.0f);

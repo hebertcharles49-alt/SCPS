@@ -242,13 +242,19 @@ float    ai_research_income(const WorldEconomy *econ, const TechState *ts, int c
  * impossible de le forward-déclarer) ; `InfluenceState` est tagué, donc une
  * forward-déclaration suffit — scps_ai.h ne tire pas scps_influence.h. */
 struct InfluenceState;
+/* `year` = l'AN COURANT de la sim. Il ne sert qu'à UNE chose : différer le choix
+ * du COURANT politique (Aristocratie/Bourgeoisie/Populaire/Divin) jusqu'à
+ * AI_DOCT_CURRENT_YEAR (correctif 2026-09-03 P4b). Avant, le courant se prenait
+ * entre l'an 5 et l'an 40, alors que la première religion d'État n'existe qu'au
+ * Temple T2 bâti — et comme l'IA n'abandonne JAMAIS une doctrine, Divin était
+ * structurellement inatteignable (0 adoption sur 331 dans le sweep 10×200). */
 int  ai_doctrines_year(DoctrineState *ds, struct InfluenceState *is,
                        const World *w, const WorldEconomy *econ, const DiploState *dp,
                        const Statecraft *sc, const RouteNetwork *rn, const TechState *ts,
-                       int cid, float ech);
+                       int cid, float ech, int year);
 /* Le SCORE nu (lecture pure, aucun effet de bord) — bancs & diagnostic. */
 void ai_doctrines_scores(const World *w, const WorldEconomy *econ, const DiploState *dp,
                          const Statecraft *sc, const RouteNetwork *rn,
-                         const TechState *ts, int cid, float out[DOCT_COUNT]);
+                         const TechState *ts, int cid, int year, float out[DOCT_COUNT]);
 
 #endif /* SCPS_AI_H */

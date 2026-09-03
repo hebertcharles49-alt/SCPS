@@ -862,6 +862,11 @@ typedef struct {
     const char *claim_name;        /* le territoire concret visé par l'intrigue */
     int   has_casus_belli;         /* CB utilisable MAINTENANT (gratuit OU intrigue mûre) — pour la checklist de refus */
     float influence_have;          /* INFLUENCE POLITIQUE §3 : le stock courant du joueur (pour la checklist de refus) */
+    /* LE PRIX RÉEL des deux verbes tarifés, tarif de base × é (2026-09-03 P2) —
+     * miroir EXACT de ce que débite le drain (scps_sim.c), pour que la checklist
+     * grise sur le même nombre que la caisse et que l'UI l'affiche ENTIER. */
+    float influence_cost_envoy;    /* alliance/pacte/migration/embargo/paix offerte */
+    float influence_cost_fab;      /* fabriquer une revendication (EN SUS de l'or) */
 } ScpsDiploOptions;
 int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out);
 

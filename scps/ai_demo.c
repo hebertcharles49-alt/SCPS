@@ -737,6 +737,7 @@ int main(int argc, char **argv){
         else {
             doctrines_init(ds); influence_init(isf); statecraft_init(dsc, s.w);
             const float ECH = 1.0f;                     /* prix PLATS : le banc teste la LOGIQUE, pas l'échelle */
+            const int   YEAR = 50;                      /* apres AI_DOCT_CURRENT_YEAR : le COURANT est deliberable (2026-09-03 P4b) */
             /* On reprend `polity[]` (les polités RÉELLES, PLAYER/ANTAGONIST) : un
              * hameau POLITY_WILD a un `n_regions` non nul mais AUCUNE province
              * propre au sens `prov[].owner` — la seule vérité économique — donc
@@ -753,16 +754,16 @@ int main(int argc, char **argv){
                 /* 1. KILL-SWITCH — AI_DOCT=0 : l'IA n'adopte JAMAIS (la preuve golden). */
                 isf->influence[c] = 100000.f;
                 tune_set("AI_DOCT", 0.f);
-                int acted_off = ai_doctrines_year(ds,isf,s.w,s.econ,s.dp,dsc,s.rn,s.ts,c,ECH);
+                int acted_off = ai_doctrines_year(ds,isf,s.w,s.econ,s.dp,dsc,s.rn,s.ts,c,ECH,YEAR);
                 ok("kill-switch AI_DOCT=0 : aucun acte", acted_off==0);
                 ok("kill-switch AI_DOCT=0 : aucune doctrine posée", doctrines_n_active(ds,c)==0);
                 tune_set("AI_DOCT", 1.f);
 
                 /* 2. LE SCORE SUIT L'ÉTAT — Vassaux ne s'allume QUE si un vassal est tenu. */
-                ai_doctrines_scores(s.w,s.econ,s.dp,dsc,s.rn,s.ts,c,sco);
+                ai_doctrines_scores(s.w,s.econ,s.dp,dsc,s.rn,s.ts,c,YEAR,sco);
                 bool vass_before = (sco[DOCT_VASSAUX] > 0.f);
                 diplo_set_vassal(s.dp, c, v, CONTRAT_PROTECTORAT);
-                ai_doctrines_scores(s.w,s.econ,s.dp,dsc,s.rn,s.ts,c,sco);
+                ai_doctrines_scores(s.w,s.econ,s.dp,dsc,s.rn,s.ts,c,YEAR,sco);
                 ok("le score Vassaux s'allume quand un vassal est TENU (et pas avant)",
                    !vass_before && sco[DOCT_VASSAUX] > 0.f);
 
@@ -770,7 +771,7 @@ int main(int argc, char **argv){
                 { float col0 = sco[DOCT_COLONISATION];
                   int16_t save_dst = s.econ->colony[c].dst;
                   s.econ->colony[c].dst = 0;             /* fixture : un convoi en route */
-                  ai_doctrines_scores(s.w,s.econ,s.dp,dsc,s.rn,s.ts,c,sco);
+                  ai_doctrines_scores(s.w,s.econ,s.dp,dsc,s.rn,s.ts,c,YEAR,sco);
                   ok("un chantier de colonisation OUVERT monte le score Colonisation",
                      sco[DOCT_COLONISATION] > col0 + 0.5f);
                   s.econ->colony[c].dst = save_dst; }
@@ -781,9 +782,9 @@ int main(int argc, char **argv){
                   if (a&&b){
                       InfluenceState ia, ib;
                       doctrines_init(a); influence_init(&ia); ia.influence[c]=100000.f;
-                      ai_doctrines_year(a,&ia,s.w,s.econ,s.dp,dsc,s.rn,s.ts,c,ECH);
+                      ai_doctrines_year(a,&ia,s.w,s.econ,s.dp,dsc,s.rn,s.ts,c,ECH,YEAR);
                       doctrines_init(b); influence_init(&ib); ib.influence[c]=100000.f;
-                      ai_doctrines_year(b,&ib,s.w,s.econ,s.dp,dsc,s.rn,s.ts,c,ECH);
+                      ai_doctrines_year(b,&ib,s.w,s.econ,s.dp,dsc,s.rn,s.ts,c,ECH,YEAR);
                       ok("deux délibérations sur le MÊME état donnent le MÊME choix",
                          memcmp(a,b,sizeof *a)==0);
                       doctrines_init(ds);                /* on repart propre (miroir global) */
@@ -795,17 +796,17 @@ int main(int argc, char **argv){
                   float cost = doctrines_adopt_cost_f(ds,c,ECH);
                   isf->influence[c] = cost;              /* pile le prix : PAS le coussin */
                   ok("influence = le prix nu : l'IA s'abstient (coussin AI_DOCT_RESERVE)",
-                     ai_doctrines_year(ds,isf,s.w,s.econ,s.dp,dsc,s.rn,s.ts,c,ECH)==0);
+                     ai_doctrines_year(ds,isf,s.w,s.econ,s.dp,dsc,s.rn,s.ts,c,ECH,YEAR)==0);
                   isf->influence[c] = cost * tune_f("AI_DOCT_RESERVE",1.5f) + 1.f;
                   ok("influence = prix × réserve : l'IA adopte",
-                     ai_doctrines_year(ds,isf,s.w,s.econ,s.dp,dsc,s.rn,s.ts,c,ECH)==1);
+                     ai_doctrines_year(ds,isf,s.w,s.econ,s.dp,dsc,s.rn,s.ts,c,ECH,YEAR)==1);
                   ok("l'adoption a bien consommé de l'influence", isf->influence[c] < cost*1.5f);
                   ok("un slot est occupé", doctrines_n_active(ds,c)==1); }
 
                 /* 6. L'EXCLUSIVITÉ — Commerce ⊥ Mercantilisme, et UN SEUL courant. */
                 { doctrines_init(ds); influence_init(isf); isf->influence[c]=100000.f;
                   doctrines_adopt(ds,isf,c,0,DOCT_COMMERCE,ECH);
-                  for (int t=0;t<40;t++) ai_doctrines_year(ds,isf,s.w,s.econ,s.dp,dsc,s.rn,s.ts,c,ECH);
+                  for (int t=0;t<40;t++) ai_doctrines_year(ds,isf,s.w,s.econ,s.dp,dsc,s.rn,s.ts,c,ECH,YEAR);
                   ok("l'IA n'adopte JAMAIS Mercantilisme quand elle tient Commerce",
                      doctrines_slot_of(ds,c,DOCT_MERCANTILISME) < 0);
                   int ncur=0;
@@ -823,7 +824,7 @@ int main(int argc, char **argv){
                 if (cs>=0){
                     doctrines_init(ds); influence_init(isf); isf->influence[cs]=100000.f;
                     ok("une CITÉ-ÉTAT n'adopte jamais de doctrine",
-                       ai_doctrines_year(ds,isf,s.w,s.econ,s.dp,dsc,s.rn,s.ts,cs,ECH)==0
+                       ai_doctrines_year(ds,isf,s.w,s.econ,s.dp,dsc,s.rn,s.ts,cs,ECH,YEAR)==0
                        && doctrines_n_active(ds,cs)==0);
                 } else ok("(pas de cité-état dans ce monde — exclusion non testable)", true);
 
