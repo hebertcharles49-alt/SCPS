@@ -861,6 +861,6 @@
     X(STR_DOCT_REASON_ALREADY,   "Already adopted") \
     X(STR_DOCT_REASON_PAIR,      "Trade or Mercantilism, never both") \
     X(STR_DOCT_REASON_CURRENT,   "One political current at a time") \
-    X(STR_DOCT_REASON_INFLUENCE, "Not enough influence") \
+    X(STR_DOCT_REASON_INFLUENCE, "Not enough influence")     X(STR_DOCT_REASON_FAITH,     "No founded religion") \
     X(STR_INFLUENCE_DEPENSES,    "Upkeep for %d doctrine(s): %d per month") \
     X(STR_INFLUENCE_DEPENSES_0,  "No doctrine to maintain")

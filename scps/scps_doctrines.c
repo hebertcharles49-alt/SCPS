@@ -15,6 +15,7 @@
 #include "scps_influence.h"
 #include "scps_lang.h"    /* StrId : les noms/bonus du catalogue naissent en STR_* */
 #include "scps_tune.h"    /* registre J : DOCT_COST_* / IDEA_COST_* / INFLUENCE_PER_* */
+#include "scps_religion.h" /* g_religions[].founder_cid : la gate de Divin (religion FONDÉE) */
 #include <string.h>
 
 /* LE CATALOGUE — 17 doctrines x 6 idees (docs/DESIGN_DOCTRINES_ANNEXE.md).
@@ -340,6 +341,17 @@ int doctrines_why_not(const DoctrineState *ds, const InfluenceState *is,
             int d = doctrines_at(ds,cid,s);
             if (d>=0 && doct_is_current(d)) return DOCT_EXCLUSIVE_CURRENT;
         }
+    }
+    /* DIVIN — la seule gate de fait de l'arbre (décision joueur 2026-09-03) : le pays
+     * doit avoir FONDÉ une religion (fondation initiale, schisme ou hérésie — tout
+     * passe par religion_spawn/religion_schism, qui posent founder_cid). Adopter une
+     * foi étrangère ne suffit pas. L'IA passe par doctrines_why_not(is=NULL) ⇒ même
+     * gate, aucun score à toucher. */
+    if (doctrine==DOCT_DIVIN){
+        int founded=0;
+        for (int r=0; r<g_religion_count && r<RELIG_MAX; r++)
+            if (g_religions[r].founder_cid==cid){ founded=1; break; }
+        if (!founded) return DOCT_NO_FAITH;
     }
     if (slot>=0){
         if (slot>=DOCT_SLOTS_MAX || slot>=doctrines_slots_open(ds,cid)) return DOCT_NO_SLOT;

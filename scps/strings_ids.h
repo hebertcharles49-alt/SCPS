@@ -890,7 +890,7 @@
     X(STR_DOCT_REASON_ALREADY,   "Déjà adoptée") \
     X(STR_DOCT_REASON_PAIR,      "Commerce ou Mercantilisme, jamais les deux") \
     X(STR_DOCT_REASON_CURRENT,   "Un seul courant politique à la fois") \
-    X(STR_DOCT_REASON_INFLUENCE, "Influence insuffisante") \
+    X(STR_DOCT_REASON_INFLUENCE, "Influence insuffisante")     X(STR_DOCT_REASON_FAITH,     "Aucune religion fondée") \
     X(STR_INFLUENCE_DEPENSES,    "Entretien de %d doctrine(s) : %d par mois") \
     X(STR_INFLUENCE_DEPENSES_0,  "Aucune doctrine à entretenir")
 

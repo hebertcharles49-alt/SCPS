@@ -163,9 +163,10 @@ float doctrines_idea_cost_f (const DoctrineState *ds, int cid, float ech);
 int   doctrines_current   (const DoctrineState *ds, int cid);
 /* Pourquoi `doctrine` n'est-elle PAS adoptable ? 0 = elle l'est.
  * DOCT_NO_SLOT / DOCT_NO_INFLUENCE / DOCT_ALREADY / DOCT_EXCLUSIVE_PAIR /
- * DOCT_EXCLUSIVE_CURRENT — la façade en fait des MOTS. */
+ * DOCT_EXCLUSIVE_CURRENT / DOCT_NO_FAITH — la façade en fait des MOTS. */
 enum { DOCT_OK = 0, DOCT_NO_SLOT, DOCT_ALREADY, DOCT_EXCLUSIVE_PAIR,
-       DOCT_EXCLUSIVE_CURRENT, DOCT_NO_INFLUENCE };
+       DOCT_EXCLUSIVE_CURRENT, DOCT_NO_INFLUENCE,
+       DOCT_NO_FAITH };   /* Divin : le pays doit avoir FONDÉ une religion (décision joueur 2026-09-03) */
 int   doctrines_why_not(const DoctrineState *ds, const struct InfluenceState *is,
                         int cid, int slot, int doctrine, float ech);
 

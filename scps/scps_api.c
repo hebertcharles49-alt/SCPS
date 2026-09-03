@@ -3494,6 +3494,7 @@ static const char *doct_reason_word(int why){
       case DOCT_EXCLUSIVE_PAIR:     return tr(STR_DOCT_REASON_PAIR);
       case DOCT_EXCLUSIVE_CURRENT:  return tr(STR_DOCT_REASON_CURRENT);
       case DOCT_NO_INFLUENCE:       return tr(STR_DOCT_REASON_INFLUENCE);
+      case DOCT_NO_FAITH:           return tr(STR_DOCT_REASON_FAITH);
       default:                      return "";
     }
 }

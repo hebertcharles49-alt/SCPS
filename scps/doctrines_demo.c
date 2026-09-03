@@ -23,6 +23,7 @@
 #include "scps_statecraft.h"
 #include "scps_tune.h"
 #include "scps_lang.h"
+#include "scps_religion.h"   /* gate Divin : religion_reset/religion_spawn (fixture) */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -315,6 +316,22 @@ int main(int argc, char **argv){
       ok("aucune idee-VERBE n'est cablee (les verbes sont une vague a part)", n_verbes>0);
       ok("une part substantielle des idees porte un effet moteur reel", n_cablees>=30);
     }
+
+    /* ═══ 9. DIVIN — la seule gate de fait : une religion FONDÉE par le pays ═══ */
+    printf("\n-- 9. Divin : refuse sans religion fondee par le pays, prend des qu'il en fonde une --\n");
+    { int cid2 = (cid+1 < w->n_countries) ? cid+1 : cid;   /* un pays SANS courant (fixture) */
+      religion_reset();
+      ok("sans aucune religion, Divin est refuse pour NO_FAITH",
+         doctrines_why_not(ds,NULL,cid2,-1,DOCT_DIVIN,ech)==DOCT_NO_FAITH);
+      { int trad[3]={0,2,4}; uint8_t col[3]={200,120,40};
+        int foreign = religion_spawn(0, trad, 0, (cid2==cid)?cid+7:cid, col);
+        ok("une religion fondee par un AUTRE pays ne compte pas",
+           foreign>=0 && doctrines_why_not(ds,NULL,cid2,-1,DOCT_DIVIN,ech)==DOCT_NO_FAITH);
+        int mine = religion_spawn(0, trad, 1, cid2, col);
+        ok("une religion fondee par le pays ouvre Divin",
+           mine>=0 && doctrines_why_not(ds,NULL,cid2,-1,DOCT_DIVIN,ech)==DOCT_OK);
+        ok("le mot de la raison existe (facade)", tr(STR_DOCT_REASON_FAITH)[0]!=0); }
+      religion_reset(); }
 
     free(w); free(econ); free(sc); free(is); free(ds);
 
