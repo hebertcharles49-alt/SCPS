@@ -261,7 +261,18 @@
     X(SOLDE_FL_PER_REG,       0.7f) \
     X(SOLDE_OVER_K,           3.0f) \
     X(BT_DEF_EDGE,            0.10f) \
-    X(BT_DECROCHE,            0.35f) \
+    /* W2-3 (2026-09-04) — CALIBRAGE DU DÉCROCHAGE, 10 runs de 120 ans (graines 7 et 512,
+     * `<graine> 1 120 6 12`). W1-F avait ouvert la fenêtre à 0,35 : décrochages 40 % (s7),
+     * bien au-dessus de la cible 15-25 % du rapport, et les prises s'effondraient (régions
+     * réduites 49 à l'ancre 0,22 → 27). Sonde 0,26/0,28/0,30/0,32 sur les deux graines
+     * (part de décrochage s7 · s512) : 0,26 → 22 % · 19 % — LA SEULE dans la bande sur les
+     * DEUX graines ; 0,28 → 34 % · 24 % ; 0,30 → 27 % · 28 % ; 0,32 → 34 % · 66 %. 0,26 est
+     * aussi la valeur qui garde le plus de prises (41 et 37 régions réduites, contre 39-44
+     * et 20-29 ailleurs) et le plus de guerres (51 et 49). Il n'y a JAMAIS de nul : déroutes
+     * et décrochages somment à 100 %, donc « décrochages ≤ 25 % » ET « déroutes ≤ 75 % »
+     * sont la même contrainte inversée — la bande du rapport impose 75-85 % de déroutes,
+     * mesuré 78 % · 81 %. */ \
+    X(BT_DECROCHE,            0.26f) \
     X(BT_RELIEF_FALL,        30.0f) \
     X(BT_ATK_RATIO,           1.2f) \
     /* CALIB_ARMEE §1.3-b/§5-P5 — L'UNITÉ DE FORTUNE (RES_NONE, la Milice) PAIE SA PART.

@@ -12995,3 +12995,122 @@ Fichiers touchés : `scps/scps_econ.c` · `scps/scps_intertrade.{c,h}` · `scps/
 - **`golden` à re-baseliner par l'orchestrateur** (trajectoires changées, attendu).
   Avant : `7 3f53021c · 108 0763a08a · 209 4df442e9 · 310 0627589a · 411 98fc8cb3`.
   Après : `7 8bcad2f7 · 108 ab5c9c12 · 209 384ab021 · 310 0463b80d · 411 bb6e8b44`.
+
+
+
+## Mission 2026-09-04 — W2-3 DÉCROCHAGE : calibrage de `BT_DECROCHE` (0,35 → 0,26)
+
+Feuille de route : `docs/CALIB_ARMEE_2026-09-03.md` §3.1/§5-P3, reste de W1-F. Décision
+joueur « pas de cap ». 12 runs de 120 ans (`<graine> 1 120 6 12`, séquentiels) : 8 sondes
++ 2 ancres + 2 de vérification du repli. **Défaut retenu : `BT_DECROCHE = 0.26`.**
+
+| BT_DECROCHE | graine | batailles | % déroutes | % décrochages | j/bat | rég. réduites | guerres |
+|---|---|---:|---:|---:|---:|---:|---:|
+| 0,22 (ancre) | 7 | 192 | 97,4 | **2,6** | 17 | **49** | 68 |
+| 0,26 | 7 | 109 | 78,0 | **22,0** | 19 | 41 | 51 |
+| 0,28 | 7 | 156 | 66,0 | 34,0 | 18 | 44 | 57 |
+| 0,30 | 7 | 159 | 73,0 | 27,0 | 16 | 44 | 52 |
+| 0,32 | 7 | 164 | 66,5 | 33,5 | 16 | 39 | 45 |
+| 0,35 (ancre) | 7 | 156 | 60,3 | **39,7** | 16 | **27** | 43 |
+| 0,26 | 512 | 109 | 80,7 | **19,3** | 17 | **37** | 49 |
+| 0,28 | 512 | 135 | 75,6 | 24,4 | 16 | 20 | 50 |
+| 0,30 | 512 | 108 | 72,2 | 27,8 | 15 | 29 | 43 |
+| 0,32 | 512 | 212 | 34,0 | **66,0** | 15 | 25 | 39 |
+
+### Découvertes
+
+- **`BT_DECROCHE = 0,26` est la SEULE valeur dans la bande 15-25 % sur les DEUX graines**
+  (22,0 % et 19,3 %). C'est aussi celle qui garde le plus de prises (41 et 37 régions
+  réduites, contre 39-44 · 20-29 pour les autres sondes) et le plus de guerres (51 et 49,
+  contre 39-57). 0,28 et 0,32 sortent de la bande sur s7 ; 0,32 **explose** sur s512
+  (66 % de décrochages, 212 batailles) — le haut de la plage est instable.
+- **« décrochages ≤ 25 % » et « déroutes ≤ 75 % » sont la MÊME contrainte inversée.** Il
+  n'y a JAMAIS de nul (0 sur les 12 runs, `BT_MAX_JOURS 120` contre 15-19 j de bataille
+  réelle) : déroutes + décrochages = 100,0 % exactement, sur les 12 runs. La bande
+  15-25 % de décrochages IMPOSE donc 75-85 % de déroutes ; les deux critères du brief ne
+  peuvent être satisfaits ensemble qu'au coin exact 25/75. Mesuré à 0,26 : 78 % et 81 %.
+- **L'ancre du rapport (80/34 régions réduites) est PÉRIMÉE.** Sur l'arbre courant
+  (post-908a7cd, frein de levée), l'ancre 0,22 de la graine 7 vaut **49**, pas 80 —
+  et 0,35 y tombe à 27. Le coût réel du décrochage grand ouvert est donc 49 → 27 (−45 %),
+  et 0,26 le ramène à 41 (84 % de l'ancre). Toute cible chiffrée héritée d'avant le frein
+  de levée doit être re-mesurée avant d'être opposée à une sonde.
+- **`bt_press_siege` EST déjà appelé au décrochage** — contrairement à ce qu'annonce le
+  rapport (§5-P3 « le décrochage n'appelle PAS bt_press_siege »). `bt_end`
+  (`scps_campaign.c:881`) fait presser le vainqueur quel que soit le mode de fin ; le
+  décroché, mis à `FA_IDLE` juste avant, n'est plus `FA_BATTLE` donc `stack_force` le voit
+  vide et le vainqueur est bien désigné. **La mitigation P3 est en place depuis W1-F.**
+- **Le décroché reste sur place (`broken_days=10`, `dest=-1`) là où le déroute marche au
+  foyer avec 45 j de brisure** — hypothèse naturelle pour expliquer les prises perdues
+  (il relève le siège avant les `BT_RELIEF_FALL` 30 j). **MESURÉE, elle est fausse** :
+  faire replier le décroché comme le déroute (même bloc que `bt_rout`, pas normal au lieu
+  de ×0,8) donne, à 0,26 : régions réduites **41 → 41** (s7) et **37 → 27** (s512),
+  provinces transférées à la paix 116 → 153 (s512). Aucun gain, une perte sur une graine :
+  **le correctif a été retiré**, un commentaire au site le consigne pour que le successeur
+  ne le re-tente pas sans une autre hypothèse.
+- **AUCUNE armée fantôme.** Sur les deux journaux de la configuration retenue, tout pays à
+  0 rgt est SOIT sans arme au stock, SOIT sans population, SOIT sans or : s7 `Ligue Gualred`
+  (3 rég, 20k hab, or 0, stock Poisson/Bétail/Perle/Charbon) · `Ligue Karggoris`,
+  2 × `Mécaniste libre`, 2 × `Métallurgiste libre` (1-3 rég, pop ≈ 0) · s512 `Ordre Caelwic`
+  (1 rég, or 1) et `Clanique libre` (stock Σ 0). Le frein de levée (désertion +
+  `WH_PAY_REVENUE_FRAC` 0,35) ne fabrique pas d'armée impayée : `rgt/limite de force` reste
+  ≤ 1,0 partout (max mesuré **0,99** — `Ligue Kargrakel`, 35 rgt pour FL 35,4).
+- **Le vrai plafond de la levée aujourd'hui, ce sont les ARMES au stock, pas l'or.**
+  Corrélation directe : `Havre Gualyan` 888 Armes légères → 8 rgt · `Ligue Kargrakel`
+  20 841 Armes légères → 35 rgt (FL 35,4, saturé) ; à l'inverse `Ligue Pyxexis`
+  (**50 régions, 32 896 or, +71,8/mois, aucune arme au top-stock**) ne tient que **3 rgt**,
+  et `Clans Tikexis` (43 rég, 50 948 or) que 12. `econ_arms_take` rend `stock/100` paquets
+  — un hégémon riche sans fabrique d'armes est militairement nu.
+
+### Pièges
+
+- **P4 du rapport (« la Milice comme plancher de levée ») est un NO-OP tel qu'il est
+  écrit.** Il propose de remplacer les deux planchers de `wh_levy_batch`
+  (`scps_warhost.c:229` `target[U_PIQUIER]=2…` et `:238` `if (placed<=0)`) par `U_MILICE`.
+  Or **aucun des deux n'est atteint** par un pays sans arsenal : `U_PIQUIER` n'a pas de
+  gate de tech, donc `sum>0` (1er plancher sauté) et `placed` compte les paquets
+  DEMANDÉS, pas levés, donc `placed>0` (2ᵉ plancher sauté). Le zéro naît **à l'intérieur**
+  de `wh_arm_unit` → `wh_arms_take` → `econ_arms_take` = 0. Le vrai correctif est un repli
+  sur `force_units(a)` INCHANGÉ après la boucle (« rien n'a été effectivement levé →
+  `wh_arm_unit(..., U_MILICE, batch, ...)` »), ~4 lignes. NON FAIT : cf. Restes.
+- **`armée N (M rgt)` de la chronique : `N` n'a AUCUN rapport avec `M`.** `N` est
+  `diplo_mil_power` (pop + `H_coerc` + `mil_stock` + poudre + héritage), pas un compte
+  d'armées. s512 `Horde Brewick` affiche `armée 187 (1 rgt)`. Ne jamais lire `N` comme un
+  effectif — c'est le trou P11-3 (le rapport `rgt/limite de force` n'est imprimé nulle part
+  et se recalcule à la main à chaque mesure).
+- **`diff` et `cmp` n'existent pas dans le shell MSYS2 `-l` utilisé ici** (`command not
+  found`, et le script continue en signalant un faux KO). Comparer deux fichiers de hashes
+  se fait en les imprimant tous les deux, ou avec `md5sum`.
+- **Un run `1 120 6 12` coûte 530-700 s** (~10 min) sur cette machine : une sonde à
+  4 valeurs × 2 graines = ~1 h 40 de mur, séquentielle. Prévoir l'attente en avant-plan
+  BLOQUANT par tranches de 10 min (l'outil Bash coupe à 600 s) et ne jamais relancer un
+  run déjà écrit sur disque.
+- **Les métriques de campagne ont une variance monde-à-monde énorme.** `régions réduites`
+  va de 20 à 44 entre deux valeurs voisines de la même graine (s512 : 37 à 0,26 → 20 à
+  0,28 → 29 à 0,30). Ne trancher que sur la métrique qui répond de façon monotone à la clé
+  (ici la PART de décrochage, propre et monotone : 2,6 → 22 → 34 → 27 → 34 → 40), et lire
+  les autres en distribution.
+
+### Restes
+
+- **P4 — la MILICE comme plancher de levée : non faite, et le brief du rapport est à
+  corriger.** Site réel : après la boucle de `wh_levy_batch` (`scps_warhost.c:~236`),
+  `if (force_units(a)==before) wh_arm_unit(a,econ,cid,U_MILICE,batch,deployed);`. Justifiée
+  par la mesure (`Ligue Pyxexis` : 50 régions, 32 896 or, 3 rgt faute d'armes ;
+  `Havre Tuckbyel` : 24 régions, 1 354 or, 13 rgt). **Non posée faute de budget de mesure** :
+  elle ferait passer tout pays pauvre en armes de 0-3 rgt à sa garnison de paix pleine
+  (`FL × PEACE_GAR_FRAC`, soit ~22 rgt de milice pour 23 régions) — un basculement mondial
+  de l'équilibre militaire qui exige un apparié 3×3, pas deux runs. P5 (le prix de la
+  milice, `SOLDE_FORTUNE_ARMS 0.25`) est fait et reste son prérequis.
+- **Golden 3/5 hashes bougent — NON re-baseliné** (l'orchestrateur le fait au merge) :
+  `7 3f53021c` et `108 0763a08a` **INCHANGÉS**, `209 4df442e9→6854ea44 ·
+  310 0627589a→1df0d9eb · 411 98fc8cb3→b9d70788`. **Kill-switch prouvé** :
+  `SCPS_TUNE=BT_DECROCHE=0.35 ./chronicle --hash 7 5 12` redonne les 5 hashes du golden
+  commité, byte-identique — aucune fuite de code, la seule différence est le défaut.
+- **Le décrochage tue 8 % en dur** (`scps_campaign.c:~1071`, `lp*0.08f`) — non tunable,
+  non mesuré ici. C'est l'autre moitié du contrat « se retirer coûte moins que rompre »
+  (déroute : 8-62 % selon la cavalerie) et la seule constante de bataille encore hors
+  registre après P2.
+- **Non traités du rapport** (inchangés depuis W1-F) : P6 (le choc ne tue rien sous ~25
+  paquets — re-vu ici : `morts choc 0` sur 3 des 12 runs), P7 (`BT_DEF_EDGE` 0,10→0,20),
+  P8 (levier cavalerie), P10 (la solde payée par le PAYS), P11 (télémétrie : ventilation
+  par type d'unité, ligne mer périmée, `rgt/FL` jamais imprimé).

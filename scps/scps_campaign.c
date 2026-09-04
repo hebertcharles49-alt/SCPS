@@ -1051,8 +1051,9 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
          * BT_DECROCHE 0.22] faisait DEUX points de large — une réserve qui descend sous
          * 0.22 passe sous 0.20 dans le même cycle de choc et rompt avant d'avoir pu
          * décrocher ; (ii) le test ne tombait qu'UN jour sur cinq (`ph==BT_CHOC_J`, le
-         * premier des deux jours d'accalmie). La fenêtre passe à 15 points (BT_DECROCHE
-         * 0.35, registre J — 0.22 = ancien comportement) et le test à `ph>=BT_CHOC_J` :
+         * premier des deux jours d'accalmie). La fenêtre s'ouvre (BT_DECROCHE au registre J
+         * — 0.22 = ancien comportement ; W2-3 l'a calibrée à 0.26, 0.35 décrochait 40 % des
+         * batailles pour une cible de 15-25 %) et le test passe à `ph>=BT_CHOC_J` :
          * les DEUX jours d'accalmie. Une armée battue peut se retirer en payant 8 % au
          * lieu des 8-62 % de la poursuite. */
         if (ph>=BT_CHOC_J){                            /* DÉCROCHER : en ordre, poursuite réduite */
@@ -1061,7 +1062,7 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
              * abaissé, tunable). Sinon la bataille se DÉCIDE (déroute) — c'est ce qui
              * fait tomber les sièges et prendre le terrain (avant : 98 % de décrochages,
              * 0 occupation). Posture prudente = plus prompte à rompre (+0.10). */
-            float base=tune_f("BT_DECROCHE",0.35f);
+            float base=tune_f("BT_DECROCHE",0.26f);   /* W2-3 : 0,35 donnait 40 % de décrochages (cible 15-25) — cf. scps_tune_list.h */
             float sA=base, sB=base;
             int who=(fA<sA && fA<fB-0.08f)?0:(fB<sB && fB<fA-0.08f)?1:-1;
             if (who>=0){
@@ -1076,6 +1077,12 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
                     c->dead_pursuit_player += pursued*100;   /* #32 : le joueur est belligérant ICI */
                 bt_score(dp,V->owner,L->owner,2.f);
                 for (int i=0;i<CAMPAIGN_ARMY_CAP;i++) if (stack_member(&c->army[i],L->owner,bt->loc)){
+                    /* W2-3 (2026-09-04) — le décroché reste SUR PLACE, à dessein : le faire
+                     * marcher au foyer comme le déroute (même bloc que bt_rout) a été
+                     * MESURÉ à 0,26 sur 2 graines et ne rend RIEN — régions réduites 41→41
+                     * (s7) et 37→27 (s512), prov. transférées 116→153 : le siège pressé ne
+                     * tombe pas davantage, la guerre se règle seulement plus à la table.
+                     * Ne pas le re-tenter sans une autre hypothèse. */
                     c->army[i].phase=FA_IDLE; c->army[i].dest=-1; c->army[i].next=-1; c->army[i].broken_days=10;
                 }
                 bt_end(c,e,dp,bt); return;
