@@ -560,7 +560,13 @@ typedef struct {
      * préservé — le mécanisme anti-6:1). `va_country_prev` mémorise la VA nationale TOTALE du
      * tick précédent (dénominateur — le vrai total du tick COURANT n'est connu qu'après la
      * boucle complète des provinces, même lag que le prix national). Persisté (SAVE_VERSION
-     * 88, save_sane borne ≥0 et <1e12, motif reserve_gold). */
+     * 88, save_sane borne ≥0 et <1e12, motif reserve_gold).
+     * A3 (2026-09-04) — CETTE CASE PORTE DÉSORMAIS LA VA **RÉELLE** (aux prix de BASE), pas
+     * la VA nominale : au prix du marché, le dénominateur était libellé dans le prix que le
+     * ratio lui-même fixait — `pl(t) = caisse / (Q × pl(t−1))`, une application hyperbolique
+     * qui oscille et dont 0 est un point fixe ABSORBANT (tous les prix d'un empire à 0,00
+     * pour toujours ; anomalie A4 du sweep W1W2). Même type, même taille, AUCUN bump de
+     * save : seul le CONTENU change de nature. PL_LEGACY=1 y remet la nominale. */
     float         va_country_prev[SCPS_MAX_COUNTRY];
 
     /* ── FIN_CHAUD (§27, 2026-07-08) — CUMULS SIM du combustible RÉELLEMENT brûlé
@@ -880,29 +886,45 @@ static inline float econ_avg_price(const WorldEconomy *e, Resource res){
     return n? (float)(s/n):0.f;
 }
 
+/* le revenu fiscal de l'an écoulé (défini plus bas, contrat en regard de sa déclaration) —
+ * remonté ici parce que le miroir de price_level ci-dessous en a besoin depuis A3. */
+float  econ_country_tax_year(int cid);
+
 /* MONNAIE M7 — I1 (télémétrie/UI, lecture seule) : RECALCULE `price_level[cid]` à
  * l'identique du bloc en tête d'econ_tick (scps_econ.c, « caisse_snapshot ») — même
- * formule, mêmes tunables (SINK_FLOOR/INFLATION_CAP), AUCUN état neuf : la caisse
- * nationale (Σ surplus des trésors provinciaux au-dessus de SINK_FLOOR) sur la VA
- * nationale du tick précédent, plafonnée à INFLATION_CAP. Coût : Σprovinces DU PAYS —
- * appelée par la chronique une fois/an, jamais par le moteur (pas de doublon d'état). */
+ * formule, mêmes tunables (PL_SINK_FLOOR/PL_SINK_MONTHS/INFLATION_CAP), AUCUN état neuf :
+ * la caisse nationale (le trésor de l'empire au-dessus de sa réserve, nulle par défaut
+ * depuis A3) sur la VA RÉELLE du tick précédent, plafonnée à INFLATION_CAP. Coût :
+ * Σprovinces DU PAYS — appelée par la chronique une fois/an, jamais par le moteur. */
 static inline float econ_country_price_level(const WorldEconomy *e, int cid){
     if (!e || cid<0 || cid>=SCPS_MAX_COUNTRY) return 1.f;
     if (e->va_country_prev[cid]<=1e-6f) return 1.f;
-    /* LA CAISSE NATIONALE (2026-09-03) : le trésor de l'empire au-dessus de sa réserve
-     * d'exploitation. Le plancher SINK_FLOOR est PAR PROVINCE (un État large a besoin d'une
-     * réserve large) — Σ des planchers, calibrage pré-national préservé à l'identique. */
-    const float floor_=tune_f("SINK_FLOOR", 500.f);
+    /* A3 (2026-09-04) — CE MIROIR MENTAIT DEPUIS W2-1 : il retranchait encore `SINK_FLOOR ×
+     * n_prov` alors que le moteur était passé à `PL_SINK_MONTHS`, si bien que l'indice mondial
+     * (M7-I1, `econ_world_price_index`) affichait `0.000` sur toute une sim où le moteur, lui,
+     * tournait à 0,7-1,2 (graine 4243, 120 ans). Il suit désormais le moteur À LA LETTRE :
+     * réserve = nat_floor(PL_SINK_FLOOR, PL_SINK_MONTHS) — 0/0 par défaut, donc la caisse EST
+     * le trésor. Le dénominateur `va_country_prev` porte désormais la VA RÉELLE (prix de base,
+     * cf. scps_econ.c §M3b-v2 CŒUR A) : rien à changer ici, c'est la même case. */
+    const float floor_ =tune_f("PL_SINK_FLOOR",  0.f);
+    const float months_=tune_f("PL_SINK_MONTHS", 0.f);
     int nprov=0;
     for (int p=0;p<e->n_prov && p<SCPS_MAX_PROV;p++){
         const ProvinceEconomy *pr=&e->prov[p];
         if (pr->active && pr->colonized && pr->owner==cid) nprov++;
     }
-    float caisse = fmaxf(0.f, e->nat_treasury[cid] - floor_*(float)nprov);
+    float reserve = (months_>0.f) ? months_*econ_country_tax_year(cid)/12.f : floor_*(float)nprov;
+    if (months_>0.f && reserve<floor_) reserve=floor_;
+    float caisse = fmaxf(0.f, e->nat_treasury[cid] - reserve);
     /* clamp manuel (pas de scps_math.h ici : redéfinirait absf/clampf pour tout
      * inclueur transitif de scps_econ.h — plusieurs bancs portent encore une copie
      * locale, cf. demography_demo.c). */
+    /* A3 — même VISCOSITÉ que le moteur (pl_curve, scps_econ.c) : le miroir doit rendre le
+     * MÊME nombre, sinon la télémétrie M7-I1 re-diverge comme elle l'a fait depuis W2-1. */
     float ratio = caisse/e->va_country_prev[cid], cap = tune_f("INFLATION_CAP", 2.0f);   /* M15-F1 : fallback aligné (dead code, cf. scps_econ.c econ_country_mint_share) */
+    { float ex = tune_f("PL_EXPONENT", 0.5f);
+      if (ex<=0.f)      ratio = 1.f;
+      else if (ex<1.f)  ratio = (ratio>0.f) ? powf(ratio, ex) : 0.f; }
     if (ratio!=ratio) return 0.f;   /* NaN garde-fou, motif clampf */
     return ratio<0.f ? 0.f : (ratio>cap ? cap : ratio);
 }

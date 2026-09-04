@@ -3004,7 +3004,22 @@ void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
  * seuil W1-A produisait un artefact et non un énoncé économique : une réserve SUPÉRIEURE au
  * trésor rend une caisse nulle, donc un price_level nul, donc TOUS les prix à 0,00.
  * 0 = kill-switch EXACT (SINK_FLOOR × n_prov). */
-#define PL_SINK_MONTHS         3.f
+/* A3 (2026-09-04) — LE DÉNOMINATEUR ÉTAIT LIBELLÉ DANS LE PRIX QU'IL FIXAIT. `PL_SINK_MONTHS`
+ * (W2-1) a bien relevé la caisse, mais l'anomalie A4 du sweep (5 sims sur 27 à grain 0,000)
+ * n'était PAS ce plancher-là : `va_country_prev` est la VA du tick précédent mesurée AUX PRIX
+ * DU MARCHÉ, et ces prix valent `BASE × price_level × …`. Donc
+ *   price_level(t) = caisse / (Q × price_level(t−1))
+ * — une application hyperbolique, pas un régulateur : elle OSCILLE (période 2) et possède un
+ * point fixe ABSORBANT en 0. Trace `SCPS_PRICEDIAG`, graine 4243, pays 36 : VA 547,6 (an 4)
+ * → 0,0 (an 5) ⇒ pl 0 ⇒ tous les prix 0 ⇒ gages 0 ⇒ richesse des classes 0 ⇒ impôt 0 (il est
+ * borné par `st->wealth`, §6-7) ⇒ trésor 4 061 → 48 ⇒ pl reste 0 (ans 15-118, 91 provinces).
+ * L'autre attracteur est le plafond : VA 0,4 ⇒ pl = INFLATION_CAP.
+ * LE GESTE : le dénominateur devient la VA RÉELLE (aux prix de BASE, `PL_LEGACY=0`) — une
+ * quantité, plus un miroir du prix. `price_level` redevient ce qu'il prétend être : la monnaie
+ * de l'État par unité de production réelle. Plus de boucle, plus de zéro absorbant.
+ * Les DEUX réserves (PL_SINK_FLOOR/PL_SINK_MONTHS) passent à 0 : voir scps_tune_list.h. */
+#define PL_SINK_MONTHS         0.f
+#define PL_SINK_FLOOR          0.f
 #define DEF_UPKEEP_MULT      1.5f    /* I3 — la famille défensive (H) s'entretient ×1.5 */
 /* MONNAIE M3b-v2 — item 5 : partage 33/33/33 (amendable) de l'entretien reversé aux 3
  * classes de la province (les 2 premiers tunables, le 3e = 1−lab−bourg, cf. WAGE_SHARE). */
@@ -3020,6 +3035,23 @@ static float nat_floor(int cid, float floor_, float months, int nprov_){
     if (months <= 0.f) return floor_ * (float)nprov_;
     float wf = months * ((cid>=0) ? econ_country_tax_year(cid) : 0.f) / 12.f;
     return (wf > floor_) ? wf : floor_;
+}
+/* A3 (2026-09-04) — LA VISCOSITÉ DES PRIX. `ratio` = monnaie d'État par unité de production
+ * RÉELLE ; `exp` dit dans quelle mesure les prix la suivent. 1 = plein (théorie quantitative
+ * nue) · 0 = prix figés au pair (kill-switch : `price_level` ≡ 1, prix = BASE × offre/demande
+ * seule) · 0,5 (défaut) = à MOITIÉ en log, la moyenne géométrique du ratio et du pair.
+ * POURQUOI 0,5 ET PAS 1 : ce n'est pas un réglage de confort, c'est le POINT FIXE de la
+ * formule d'avant. `pl = caisse/(Q×pl)` a pour équilibre `pl* = √(caisse/Q)` — tout le
+ * calibrage monétaire (M3b/M12/M15) a été fait SUR cette racine, sans que personne le sache.
+ * Mesuré graine 7, 120 ans, avec exp=1 : masse monétaire 1 664 602 → 398 825, manufactures
+ * privées 264 → 37, satisfaction Laborer 49 % → 34 % — le monde déflate de tout ce que la
+ * racine compensait. exp=0,5 garde l'ÉQUILIBRE d'hier et jette la seule chose qui était
+ * fausse : la DYNAMIQUE (oscillation période-2 + zéro absorbant). */
+static float pl_curve(float ratio, float exp_){
+    if (ratio<=0.f) return 0.f;
+    if (exp_<=0.f)  return 1.f;             /* prix figés au pair — kill-switch monétaire */
+    if (exp_>=1.f)  return ratio;           /* théorie quantitative nue */
+    return powf(ratio, exp_);
 }
 /* le seuil de HOARDING du pays `owner` (voir COURT_MONTHS ci-dessus) : au-dessus,
  * cour/admin/encadrement commencent à mordre le surplus. */
@@ -3999,6 +4031,12 @@ void econ_tick(WorldEconomy *e, float dt) {
      * peuplé et le ratio caisse/VA normal reprend la main. PL_GENESIS=1.0 = comportement
      * LEGACY EXACT (kill-switch : la formule redevient `1.f` pour ce cas). */
     const float pl_genesis = tune_f("PL_GENESIS", 0.f);
+    /* A3 (2026-09-04) — kill-switch MAÎTRE : 1 = la formule d'avant, EXACTE (VA nominale au
+     * dénominateur, réserve 500/3 mois, hameaux libres à pl_genesis). Voir PL_SINK_MONTHS. */
+    const bool pl_legacy = tune_f("PL_LEGACY", 0.f) > 0.f;
+    /* A3 — la VISCOSITÉ des prix (voir pl_curve). PL_LEGACY=1 ⇒ 1.0 (le ratio nu de la
+     * formule d'avant, dont la racine était produite par la boucle elle-même). */
+    const float pl_exp = pl_legacy ? 1.f : tune_f("PL_EXPONENT", 0.5f);
     /* MONNAIE M12 — E2 : L'ÉTAT NÉGOCIANT (docs/MONNAIE_CONCEPT.md, décision joueur « l'État
      * achète à 60 % du prix du marché, tunable »). STATE_BUY_FRAC (défaut 0.60, registre J)
      * scale UNIQUEMENT ce que l'État PAIE aux 3 pools de gages (§3 plus bas, pay_wage/profit/
@@ -4020,16 +4058,48 @@ void econ_tick(WorldEconomy *e, float dt) {
           int o=pr->owner; if (o<0||o>=SCPS_MAX_COUNTRY) continue;
           nprov_c[o]++;
       }
+      /* A3 : la réserve retranchée du NUMÉRATEUR est nulle par défaut (PL_SINK_FLOOR=0,
+       * PL_SINK_MONTHS=0 ⇒ nat_floor rend 0×n_prov). PL_LEGACY=1 remet les valeurs W2-1. */
+      const float pl_floor  = pl_legacy ? tune_f("SINK_FLOOR", SINK_FLOOR)
+                                        : tune_f("PL_SINK_FLOOR",  PL_SINK_FLOOR);
+      const float pl_months = pl_legacy ? 3.f /* le défaut W2-1, littéral : PL_SINK_MONTHS vaut 0 désormais */
+                                        : tune_f("PL_SINK_MONTHS", PL_SINK_MONTHS);
       for (int c=0;c<SCPS_MAX_COUNTRY;c++)
           caisse_snapshot[c] = fmaxf(0.f, e->nat_treasury[c]
-                             - nat_floor(c, tune_f("SINK_FLOOR", SINK_FLOOR),
-                                            tune_f("PL_SINK_MONTHS", PL_SINK_MONTHS), nprov_c[c]));
+                             - nat_floor(c, pl_floor, pl_months, nprov_c[c]));
       for (int c=0;c<SCPS_MAX_COUNTRY;c++)
-          price_level[c] = (e->va_country_prev[c]>EPS)
-                          ? clampf(caisse_snapshot[c]/e->va_country_prev[c], 0.f, inflation_cap)
+          price_level[c] = (!pl_legacy && econ_is_wild_country(c))
+                          ? 1.f          /* A3 : le hameau libre est DÉMONÉTISÉ (M3e) — il n'a
+                                          * ni trésor ni VA nationale, donc jamais de caisse :
+                                          * la formule lui rendait 0 et écrasait ses prix à
+                                          * 0,00 (graine 4243 an 118 : 114 provinces sur 381).
+                                          * Sans monnaie, le troc se fait au PAIR — même énoncé
+                                          * que la branche ISOLÉE (owner<0), qui multiplie par
+                                          * l'IPM ≈ 1 et non par un ratio de caisse. */
+                          : (e->va_country_prev[c]>EPS)
+                          ? clampf(pl_curve(caisse_snapshot[c]/e->va_country_prev[c], pl_exp), 0.f, inflation_cap)
                           : pl_genesis;   /* MONNAIE M12 — E1 : plus de VA de référence (genèse/pays neuf) : démarrer BAS, converger (pl_genesis=1.0 legacy) */
+      /* A3 (2026-09-04) — SCPS_PRICEDIAG : la trace ANNUELLE de la chaîne trésor→prix, par
+       * pays vivant (print-only, gated, stderr). Sert à trancher « trésor sous réserve »
+       * contre « VA nulle » contre « boucle absorbante » sur les sims à grain 0,000. */
+      if (getenv("SCPS_PRICEDIAG") && (e->tick % 12)==0){
+          for (int c=0;c<SCPS_MAX_COUNTRY;c++){
+              if (nprov_c[c]<=0) continue;
+              fprintf(stderr,"[PRICEDIAG] an %d c=%d nprov=%d tresor=%.1f reserve=%.1f taxan=%.1f caisse=%.1f VAprev=%.1f pl=%.4f\n",
+                      e->tick/12, c, nprov_c[c], e->nat_treasury[c],
+                      nat_floor(c, pl_floor, pl_months, nprov_c[c]),
+                      econ_country_tax_year(c), caisse_snapshot[c],
+                      e->va_country_prev[c], price_level[c]);
+          }
+      }
     }
     float va_country_this[SCPS_MAX_COUNTRY]={0};
+    /* A3 — la MÊME VA, mais aux prix de BASE : une QUANTITÉ (production réelle), pas une
+     * valeur libellée dans le prix qu'on cherche à fixer. C'est elle qui va dans
+     * `va_country_prev` (hors PL_LEGACY) — même tableau, même taille, aucun bump de save :
+     * seul son CONTENU change de nature (documenté dans scps_econ.h). La nominale reste
+     * calculée : l'invariant monétaire (g_va_produced_cum) la lit toujours. */
+    float va_real_this[SCPS_MAX_COUNTRY]={0};
     /* MONNAIE M3c — le besoin NATIONAL de péréquation (Σ des reliquats LOCAUX non payés,
      * §3 plus bas), réglé APRÈS la boucle complète des provinces (credit_borrow_local,
      * scps_credit.c) — jamais pendant (même précaution d'ordre que caisse_snapshot/
@@ -4056,6 +4126,7 @@ void econ_tick(WorldEconomy *e, float dt) {
                            + re->strata[CLASS_SLAVE].pop;
         float labor_used  = 0.f;
         float gdp         = 0.f;
+        float va_real     = 0.f;   /* A3 : la MÊME VA que gdp, valorisée aux prix de BASE */
         float wage_pool   = 0.f;   /* → laborers */
         float profit_pool = 0.f;   /* → bourgeois */
         float tax_pool    = 0.f;   /* → rente d'élite */
@@ -4224,6 +4295,7 @@ void econ_tick(WorldEconomy *e, float dt) {
             supply[r]    += out_merch;
             float value = out_merch*re->price[r];
             gdp += value;
+            va_real += out_merch*BASE_PRICE[r];   /* A3 : la même extraction, aux prix de base */
             /* SLIDERS D'ACHAT : la couronne rachète au taux du pays — vivrier (0) ou brutes (1) */
             buy_pay(owner_, res_is_food((Resource)r)?0:1, value, &wage_pool, &profit_pool, &tax_pool);
         }
@@ -4336,19 +4408,21 @@ void econ_tick(WorldEconomy *e, float dt) {
             /* Consomme intrants, produit sortie (valeur ajoutée = sortie − intrants).
              * in1 d'abord, puis le repli alt1 à SA quantité (perle = 2× l'or/bijou). */
             float val_in =0.f;
+            float val_in_base=0.f;   /* A3 : les mêmes intrants, aux prix de base */
             if (e_in1!=RES_NONE){
                 float out1=fminf(lim, S[e_in1]/fmaxf(e_q1,EPS));   /* part faite avec l'intrant primaire (pool) */
                 float g1=out1*e_q1;
-                S[e_in1]-=g1; demand[e_in1]+=g1; val_in+=g1*re->price[e_in1];
+                S[e_in1]-=g1; demand[e_in1]+=g1; val_in+=g1*re->price[e_in1]; val_in_base+=g1*BASE_PRICE[e_in1];
                 if (e_in1==RES_COAL) e->fuel_coal_cum += (double)g1;   /* FIN_CHAUD : charbon BRÛLÉ (intrant consommé) */
                 float rem=lim-out1;
                 if (rem>0.f && e_alt!=RES_NONE){
                     float ga=rem*e_altq;
-                    S[e_alt]-=ga; demand[e_alt]+=ga; val_in+=ga*re->price[e_alt];
+                    S[e_alt]-=ga; demand[e_alt]+=ga; val_in+=ga*re->price[e_alt]; val_in_base+=ga*BASE_PRICE[e_alt];
                     if (e_alt==RES_COAL) e->fuel_coal_cum += (double)ga;   /* FIN_CHAUD : idem (repli) */
                 }
             }
             if (rc->in2!=RES_NONE){ S[rc->in2]-=lim*rc->q2; demand[rc->in2]+=lim*rc->q2; val_in+=lim*rc->q2*re->price[rc->in2];
+                val_in_base+=lim*rc->q2*BASE_PRICE[rc->in2];
                 if (rc->in2==RES_COAL) e->fuel_coal_cum += (double)(lim*rc->q2); }   /* FIN_CHAUD : poudrière/forge céleste */
             float out_full=lim*rc->qout*prod_mult;   /* outils → productivité */
             out_full *= (1.f - 0.5f*re->revolt_scar); /* la cicatrice de révolte ronge la production */
@@ -4485,6 +4559,7 @@ void econ_tick(WorldEconomy *e, float dt) {
             float val_out=out*re->price[rc->out];
             float va=fmaxf(0.f, val_out-val_in);
             gdp += va;
+            va_real += fmaxf(0.f, out*BASE_PRICE[rc->out] - val_in_base);   /* A3 : idem aux prix de base */
             buy_pay(owner_, 2, va, &wage_pool, &profit_pool, &tax_pool);   /* manufacturés (2) */
         }
         re->gdp=gdp;
@@ -4517,11 +4592,16 @@ void econ_tick(WorldEconomy *e, float dt) {
              * qu'une MESURE de la VA déjà reflétée en physique (stock[]/S[], §2 ci-dessus) —
              * aucune monnaie n'est créée : le hameau n'a pas de « compte de marché », il vit
              * du panier RÉEL (§5, budget=∞ pour lui plus bas). va_country_this reste à 0
-             * (pas de caisse nationale pour un hameau, cf. price_level plus haut : leur
-             * price_level[owner_] n'est simplement jamais LU par cette branche). */
+             * (pas de caisse nationale pour un hameau).
+             * A3 (2026-09-04) — LA PHRASE QUI SUIVAIT ÉTAIT FAUSSE : « leur price_level n'est
+             * jamais LU ». La clôture PRIX NATIONAL le lit pour TOUT owner ∈ [0,MAX_COUNTRY),
+             * hameaux compris — leur VA restant à 0, ils tombaient sur PL_GENESIS=0 et TOUTES
+             * leurs provinces valaient 0,00 couronne (114 sur 381, graine 4243 an 118). Ils
+             * sont désormais épinglés à pl=1 en tête de tick : sans monnaie, on troque au PAIR. */
         } else if (re->owner>=0 && re->owner<SCPS_MAX_COUNTRY){
             int oc=re->owner;
             va_country_this[oc] += va_prov;
+            va_real_this[oc]    += va_real;   /* A3 : le dénominateur RÉEL du niveau de prix */
             float pf = price_level[oc];
             /* MONNAIE M12 — E2 : l'État négociant — il PAIE à `pf_buy` (price_level ×
              * STATE_BUY_FRAC), jamais au plein `pf` (sauf kill-switch STATE_BUY_FRAC=1.0).
@@ -5507,7 +5587,7 @@ void econ_tick(WorldEconomy *e, float dt) {
         if (getenv("SCPS_MKTDIAG") && c<4)
             fprintf(stderr,"[MKTDIAG] tick=%d c=%d caisse=%.1f price_level=%.4f va_this=%.1f va_prev=%.1f\n",
                     e->tick, c, caisse_snapshot[c], price_level[c], va_country_this[c], e->va_country_prev[c]);
-        e->va_country_prev[c] = va_country_this[c];
+        e->va_country_prev[c] = pl_legacy ? va_country_this[c] : va_real_this[c];   /* A3 : RÉELLE hors legacy */
     }
 
     /* PRIX NATIONAL — soldé UNE FOIS par empire sur demande/(pool+offre) NATIONALES (mêmes

@@ -13557,3 +13557,157 @@ base 127) — aucun littéral ajouté. DLL rebâtie, 24 captures rejouées par
 - `doctrines_current(cid)` non exposé ; `scps_player_set_buy_rate`/`scps_country_buy_rate` (rachat par catégorie) présents dans scps_api.h, jamais bindés.
 - Constantes non bindées (PEACE_*, ScpsDiploAction 0 WAR·1 PEACE·2 ALLIANCE·3 PACT·4 MIGRATION·5 EMBARGO·6 FABRICATE, FieldPhase, FeedKind, UnitType) : à recopier en dur côté .gd.
 - Pas de reader « guerres en cours » ni `war_info(a,b)` : dériver de `country_relations()` + `diplo_context()["war_score"]`.
+
+
+## Mission 2026-09-04 — A3 GRAIN 0,000 : le dénominateur du niveau de prix était libellé dans le prix qu'il fixait
+
+Anomalie A4 du sweep W1W2 (`docs/SWEEP_VALID_W1W2_2026-09-04.md` §2.4, §A4, proposition P2) :
+5 sims sur 27 rendent `prix du grain : médiane 0.000` sur 250 ans. Fichiers touchés :
+`scps/scps_econ.c` · `scps/scps_econ.h` · `scps/scps_tune_list.h`.
+
+### Découvertes
+
+- **LA CAUSE N'EST PAS LE TRÉSOR — c'est une boucle de rétroaction.**
+  `price_level[c] = caisse / va_country_prev[c]` (`scps_econ.c:4041`), et
+  `va_country_prev` était la VA du tick précédent **mesurée aux prix du marché**
+  (`va = out*re->price[out] − val_in`, `scps_econ.c:4506`), prix qui valent eux-mêmes
+  `BASE × price_level × …` (`scps_econ.c:5566`). Donc
+  `pl(t) = caisse / (Q × pl(t−1))` : une application **hyperbolique**, pas un régulateur.
+  Elle oscille en période 2 entre ses deux attracteurs — `INFLATION_CAP` quand la VA
+  s'effondre, **0 quand la VA atteint exactement 0** — et **0 est ABSORBANT** :
+  `pl=0 ⇒ tous les prix 0 ⇒ gages 0 (pay_wage = pool × pl × STATE_BUY_FRAC) ⇒ richesse des
+  classes → 0 ⇒ impôt 0 (il est BORNÉ par `st->wealth`, `scps_econ.c:4649`) ⇒ trésor → 0 ⇒
+  pl reste 0`. Rien ne peut en sortir.
+- **La trace qui le prouve** (`SCPS_PRICEDIAG`, graine 4243, 120 ans, pays 36) :
+  `an 4 VA 547,6 pl 0,97` → `an 5 VA 0,0 pl 0,0000` → pl reste 0 des ans 15 à 118 pendant
+  que le pays passe de 18 à **91 provinces** et que son trésor tombe de 4 061 à 48 or.
+  Rechute symétrique à l'an 11 : `VA 12,0 ⇒ pl = 2,0000` (le plafond) — les deux attracteurs
+  dans la même trajectoire.
+- **Le trésor n'est PAS le discriminant, contrairement à l'hypothèse P2** : les 5 sims à
+  0,000 ont des trésors moyens de **4 038** (`essai_s3`) à **41 843 or** (`temoin_s777`) ;
+  `temoin_s2026`, cité par le rapport avec 1 452 or, a un grain à **0,932**. La corrélation
+  lue au sweep était fortuite.
+- **Deuxième cause, indépendante et permanente : les HAMEAUX LIBRES.** `econ_is_wild_country`
+  saute l'accumulation de VA (`scps_econ.c:4553`, démonétisation M3e voulue) — leur
+  `va_country_prev` reste 0, donc `price_level = PL_GENESIS = 0` (M12-E1 a remplacé le `1.f`
+  historique par 0), donc **toutes leurs provinces à 0,00 couronne, pour toujours**. Mesuré
+  graine 4243 an 118 : **114 provinces sur 381** appartiennent aux 12 hameaux — à elles
+  seules elles tirent la médiane monde vers 0. Le commentaire du site affirmait que
+  « leur price_level n'est simplement jamais LU » : c'est faux, la clôture PRIX NATIONAL le
+  lit pour tout `owner ∈ [0, SCPS_MAX_COUNTRY)`, hameaux compris.
+- **Troisième cause, celle que W2-1 a réintroduite par le haut** : la réserve indexée sur le
+  revenu fiscal dépasse le trésor des États à gros revenu et petite caisse — graine 4243
+  an 118, pays 54 : revenu 14 704 or/an ⇒ réserve 3 676, trésor 2 412 ⇒ **caisse 0 ⇒ ses 21
+  provinces à 0,00**. `PL_SINK_MONTHS=3` a déplacé le seuil, il ne l'a pas supprimé.
+- **Le miroir de télémétrie mentait depuis W2-1.** `econ_country_price_level`
+  (`scps_econ.h:889`) retranchait encore `SINK_FLOOR × n_prov` quand le moteur était passé à
+  `PL_SINK_MONTHS` : la ligne `inflation (M7-I1) : indice moy` affichait **0.000 sur toute
+  une sim** (graine 4243, 120 ans) alors que le moteur tournait à 0,67-1,21. Toute lecture de
+  l'indice mondial du sweep W1W2 est à jeter.
+- **Le geste retenu** : le dénominateur devient la **VA RÉELLE** (aux prix de BASE) — une
+  quantité, plus un miroir du prix ; les hameaux libres, démonétisés, commercent **au pair**
+  (`pl=1`, même énoncé que la branche ISOLÉE `owner<0` qui multiplie par l'IPM≈1) ; et la
+  réserve retranchée du numérateur passe à **0** (elle dit la SOLVABILITÉ, pas la valeur de
+  la monnaie). `va_country_prev` change de NATURE sans changer de taille : **aucun bump de
+  SAVE_VERSION**. Kill-switch maître `PL_LEGACY=1` (registre J) = la formule d'avant, exacte
+  — **PROUVÉ** : `SCPS_TUNE=PL_LEGACY=1 make golden` → *hash monde IDENTIQUE au golden commité*.
+- **TOUT LE CALIBRAGE MONÉTAIRE ÉTAIT FAIT SUR UNE RACINE CARRÉE, SANS QUE PERSONNE LE SACHE.**
+  Le point fixe de `pl = caisse/(Q × pl)` est `pl* = √(caisse/Q)`. Remplacer le dénominateur
+  par la VA réelle SANS rien d'autre remplace donc `√x` par `x` — le monde déflate de tout ce
+  que la racine compensait. **Mesuré, graine 7, 120 ans** : masse monétaire **1 664 602 →
+  398 825**, manufactures privées **264 → 37**, satisfaction Laborer **49 % → 34 %**, commerce
+  1 372 → 837, taxes 1 695,8 → 180,2 or/mois/empire. C'est la mesure qui a imposé la forme
+  finale : `pl = (caisse/VA_réelle)^PL_EXPONENT`, **PL_EXPONENT = 0,5 par défaut** — la
+  VISCOSITÉ des prix (ils ne suivent la monnaie qu'à moitié en log ; 0,5 = moyenne géométrique
+  du ratio et du pair). On garde l'ÉQUILIBRE d'hier et on jette la seule chose qui était
+  fausse : la DYNAMIQUE. `PL_EXPONENT=0` = prix figés au pair (kill-switch monétaire : le prix
+  n'est plus QUE l'offre/demande) ; `=1` = théorie quantitative nue.
+
+### Pièges
+
+- **`e->va_country_prev` est lu à trois titres** : dénominateur du niveau de prix, poids de
+  `econ_world_price_index`, et garde `save_sane` (`scps_save.c:309`, borne ≥0 et <1e12).
+  Changer sa NATURE (nominale → réelle) est sans risque sur les trois ; changer sa TAILLE
+  aurait coûté un bump de save.
+- **`va_prov` (nominale) doit RESTER nominale** : `g_va_produced_cum` (l'invariant monétaire
+  M3c, `scps_econ.c:4570/4579`) la lit. Il faut donc DEUX accumulateurs, pas un renommage.
+- **Une quantité de plus n'est pas un pool de plus** : `va_real` est un local de la boucle
+  province, `va_real_this[]` un local d'`econ_tick` — rien de sérialisé, rien de partagé.
+- **`econ_country_tax_year` est déclaré APRÈS le miroir inline dans `scps_econ.h`** : le
+  miroir qui veut la réserve en mois a besoin d'une déclaration remontée en tête.
+- **`price_level` est un TAUX DE CHANGE DÉGUISÉ, et le calibrage de tout le reste s'y adosse.**
+  Le changer d'un facteur 2 déplace la masse monétaire d'un facteur 4 (elle est créée par
+  l'achat d'État `pay = pool × pl × STATE_BUY_FRAC`), donc la richesse des classes, donc
+  l'assiette fiscale, donc le semis privé de manufactures, donc la satisfaction. **Toute
+  correction de la formule DOIT être mesurée sur la masse monétaire et le nombre de
+  manufactures privées, pas seulement sur le prix du grain.**
+- **La théorie quantitative complète (monnaie TOTALE / VA réelle) ne tient pas telle quelle** :
+  mesurée, `M(fin)=1 709 931` pour une VA réelle monde de l'ordre de 40 000/mois — un ratio
+  de ~40, qui collerait tout le monde à `INFLATION_CAP`. Elle exigerait une constante de
+  VITESSE arbitraire ; écartée pour cette raison (voir Restes).
+
+### Restes
+
+- **Un État à sec a toujours des prix quasi nuls** (graine 4243 : pays 33, 4 provinces,
+  trésor 1-5 or, `pl ≈ 0,01-0,05` stable des ans 20 à 45 — plus de boucle absorbante, mais
+  un piège de pauvreté). C'est le modèle M3b assumé (« l'État achète la production ») ;
+  le découpler VRAIMENT de la caisse demande un numérateur = monnaie du pays (trésor +
+  bourses des classes) et donc une constante de vitesse. **Décision joueur.**
+- **`PL_GENESIS=0` reste un zéro absorbant en puissance** pour tout pays neuf : il ne dure
+  plus qu'un tick (la VA réelle est peuplée dès le suivant), mais la valeur 0 pour un
+  price_level reste un choix à re-litiger si un cas s'y coince.
+- La ligne `marché :` du bloc « par âge » et la médiane province divergeaient (rapport W1W2
+  §2.4) parce que la première ne lit que les provinces d'empires vivants : après A3, les deux
+  doivent converger — à vérifier au prochain sweep.
+
+### Gates (A3, 2026-09-04)
+
+`make test` **42/42 verts, 0 rouge** (dont `scps_api_demo` 255/255 — l'assertion W2-7
+« chaque prix est celui qui sera FACTURÉ, jamais 0,00 » tient) · `make determinism` **OK**
+(5 graines × 12 ans, hashes stables) · `make lang-check` **OK** (125, base 125) ·
+`./scps_viewer --savetest` **2 réussis / 0 échoué** (A==B, altération d'un octet refusée) ·
+`make golden` **ÉCHEC ATTENDU** (les prix changent) — golden commité
+`bddb8872 / 0600e3e5 / b3aba329 / 30127a4d / c23330c4`, actuel A3
+`48cf6380 / 58406f5e / 06e0186c / 6c86953c / 21ddba0a`. **AUCUN `golden-update` fait** :
+re-baseline = décision joueur. **Kill-switch prouvé** : `SCPS_TUNE=PL_LEGACY=1 make golden`
+→ *golden OK : hash monde IDENTIQUE au golden commité*.
+
+### PL_EXPONENT tranché par la mesure (run orchestrateur, `runs/A3_pl_exponent/`, 3 graines × 120 ans × 2 bras)
+
+Chaque cellule : `avant A3` / `exp=1` (théorie quantitative nue) / `exp=0,5` (le défaut).
+
+| graine | grain médiane | grain moyenne | indice M7-I1 | dérive OLS %/an | M(fin) | manuf. privées | friche | trésor moy | taxes or/mois/emp |
+|---|---|---|---|---|---|---|---|---|---|
+| 7 | **0,000** / 0,127 / **0,138** | 0,119 / 0,409 / **0,456** | 0,009 / 0,196 / **0,242** | **−54,72** / +2,82 / **+1,28** | 1 664 602 / 398 825 / 468 823 | 264 / 37 / 35 | 51 / 49 / **41** | 6 099 / 2 196 / 1 897 | 1 695,8 / 180,2 / 236,7 |
+| 512 | 0,122 / 0,145 / **0,200** | 0,240 / 0,585 / **0,800** | 0,032 / 0,277 / **0,429** | +1,54 / +0,98 / **+0,99** | 2 410 038 / 1 083 968 / **1 612 219** | 61 / **6** / **69** | 22 / 31 / **16** | 4 878 / 3 926 / **6 471** | 1 242,7 / 247,6 / **661,8** |
+| 4243 | 0,200 / 0,200 / 0,200 | 0,602 / 0,671 / **0,814** | **0,000** / 0,607 / 0,591 | 0,00 / +0,64 / **+0,50** | 1 709 931 / 1 797 888 / 1 461 325 | 64 / 103 / **182** | 39 / 30 / **24** | 6 987 / 12 591 / 11 501 | 1 585,8 / 804,8 / **1 018,6** |
+
+- **LE CRITÈRE QUI TRANCHE N'EST PAS LE PRIX DU GRAIN, C'EST LA DÉRIVE SÉCULAIRE.** La cible
+  JOUEUR de M7 (`docs/MONNAIE_CONCEPT.md`, 0,5-1,5 %/an) est tenue par les **TROIS** graines à
+  `exp=0,5` (+1,28 · +0,99 · +0,50) et **manquée à `exp=1`** (+2,82 sur la graine 7). Avant A3
+  elle était absurde (−54,72 %/an sur la 7 ; +0,00 sur la 4243 — l'indice était collé à zéro).
+  C'est la mesure la plus dure du lot, et elle est nette.
+- L'indice M7-I1 médian revient à **0,429** à `exp=0,5` — pile la fourchette d'avant les vagues
+  (0,377-0,443, `tools/sweep_doct_ai.sh`) — contre 0,277 à `exp=1` (trop bas) et 0,009-0,032
+  avant A3. **Sans dépasser** : aucun bras ne franchit 0,61.
+- **La friche est le gain le plus régulier** : `exp=0,5` bat les DEUX autres régimes sur les
+  trois graines (41/16/24 contre 51/22/39 avant A3 et 49/31/30 à `exp=1`).
+- **`exp=1` casse le semis privé là où `exp=0,5` le restaure** : graine 512, manufactures
+  privées **61 → 6 → 69**. Mon relevé initial (« 264 → 37 » sur la graine 7) était vrai mais
+  NON REPRÉSENTATIF : les 264 de la graine 7 sont l'anomalie du corpus (61 et 64 ailleurs), et
+  ce sont les seules manufactures qu'`exp=0,5` ne récupère pas.
+- La ligne `marché : grain` par âge ne s'effondre plus : graine 7,
+  **1,06 / 0,94 / 0,82 / 0,01 / 0,06** (avant) → **1,74 / 1,54 / 2,17 / 0,63 / 0,53**
+  (`exp=0,5`). Les âges tardifs, qui tombaient à 1 % de la base, tiennent.
+- **Le seul point qui va dans l'autre sens** : la satisfaction Laborer est un cheveu sous
+  `exp=1` sur deux graines (512 : 42 % vs 44 % · 4243 : 51 % vs 58 %), et sous l'avant-A3
+  partout (49/54/63). Les taxes restent en dessous de l'avant-A3 sur 7 et 512 — attendu et
+  HONNÊTE : avant, le panier vital coûtait ~0 (prix nuls), donc l'exonération sous-panier
+  (`scps_econ.c:4633`) ne mordait JAMAIS et l'État levait le forfait sur tout le monde. Des
+  prix réels exonèrent réellement les pauvres. **Calibrage de `TAX_EXEMPT_BASKET_MULT` —
+  décision joueur, hors périmètre A3** (et l'assiette fiscale est le chantier de A1).
+- **VERDICT : `PL_EXPONENT=0,5` CONFIRMÉ comme défaut.** Il gagne sur le grain (médiane ET
+  moyenne, 3/3), l'indice, la dérive séculaire (le seul critère avec une cible écrite), la
+  friche (3/3), les taxes (3/3) et les manufactures privées (2/3) ; il perd de peu sur la
+  satisfaction Laborer (2/3). Aucune ligne de code changée par ce dépouillement : **hashes
+  golden inchangés** (`48cf6380 / 58406f5e / 06e0186c / 6c86953c / 21ddba0a`).

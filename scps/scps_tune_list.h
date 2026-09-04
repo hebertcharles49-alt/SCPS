@@ -178,7 +178,34 @@
      * `SINK_MONTHS` borne ce que l'État peut DÉPENSER, `PL_SINK_MONTHS` dit ce qui ADOSSE ses
      * achats — et c'est ici qu'une réserve supérieure au trésor écrasait tous les prix à 0,00.
      * 0 = kill-switch (SINK_FLOOR × n_prov). */ \
-    X(PL_SINK_MONTHS,         3.0f) \
+    X(PL_SINK_MONTHS,         0.0f) \
+    /* A3 (2026-09-04) — LE PLANCHER DE LA CAISSE QUI ADOSSE LES PRIX, EN CLAIR. Le rôle (b)
+     * de SINK_FLOOR était lu en dur dans `price_level` ; il est désormais SA PROPRE clé, et
+     * son défaut est **0 = aucune réserve retranchée**. Motif : un plancher soustrait du
+     * NUMÉRATEUR d'un niveau de prix fabrique un prix nul dès que le trésor passe dessous
+     * (mesuré graine 4243 an 118 : le pays 54, revenu fiscal 14 704 or/an donc réserve 3 676,
+     * trésor 2 412 ⇒ caisse 0 ⇒ ses 21 provinces à 0,00 couronne). Le niveau de prix d'un
+     * empire ne dépend pas de ce que son État garde en caisse de secours : la réserve dit la
+     * SOLVABILITÉ (SINK_MONTHS/SINK_FLOOR, qui bornent l'entretien et la redépense), pas la
+     * valeur de la monnaie. Restaurer W2-1 : PL_SINK_FLOOR=500 PL_SINK_MONTHS=3 ;
+     * restaurer W1-A : PL_SINK_FLOOR=500 PL_SINK_MONTHS=0. */ \
+    X(PL_SINK_FLOOR,          0.0f) \
+    /* A3 (2026-09-04) — KILL-SWITCH MAÎTRE du niveau de prix. 1 = la formule d'AVANT, EXACTE
+     * (dénominateur = VA NOMINALE du tick précédent, réserve SINK_FLOOR/PL_SINK_MONTHS=3,
+     * hameaux libres à PL_GENESIS) : golden pré-A3 byte-identique. 0 (défaut) = le
+     * dénominateur est la VA RÉELLE (aux prix de BASE) et les hameaux libres, démonétisés,
+     * commercent au pair. Voir scps_econ.c §M3b-v2 CŒUR A pour la boucle absorbante que ce
+     * commutateur ferme. */ \
+    X(PL_LEGACY,              0.0f) \
+    /* A3 (2026-09-04) — LA VISCOSITÉ DES PRIX : dans quelle mesure le niveau de prix suit la
+     * monnaie d'État par unité de production réelle. 1 = plein · 0 = prix figés au pair
+     * (price_level ≡ 1 : le prix n'est plus QUE l'offre/demande — kill-switch monétaire) ·
+     * 0,5 = à moitié en log. Le défaut 0,5 n'est PAS un réglage de confort : c'est le POINT
+     * FIXE de la formule d'avant (`pl = caisse/(Q×pl)` ⇒ `pl* = √(caisse/Q)`), donc l'échelle
+     * sur laquelle tout le calibrage monétaire M3b/M12/M15 a été fait à son insu. À 1,0,
+     * mesuré graine 7 sur 120 ans : masse monétaire 1 664 602 → 398 825, manufactures privées
+     * 264 → 37, satisfaction Laborer 49 % → 34 %. */ \
+    X(PL_EXPONENT,            0.5f) \
     X(INVEST_SPEND_FRAC,      0.30f) \
     X(ROAD_SPEND_FRAC,        0.15f) \
     /* MONNAIE M3b-v2 — item 5 : DISPATCH DES DÉPENSES D'ÉTAT (les puits M0 §2 deviennent des
