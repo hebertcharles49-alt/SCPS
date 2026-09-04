@@ -2214,7 +2214,7 @@ int main(int argc, char **argv){
                 long corps_rgt=0;
                 if (s.camp) for (int n=0;n<campaign_corps_count(s.camp,c);n++)
                     corps_rgt += campaign_corps_units(s.camp, campaign_corps_id_at(s.camp,c,n));
-                printf(" · corps %ld rgt · solde %.0f/an · revenu %.1f (assiette %.1f) · %s · levée : %s\n",
+                printf(" · corps %ld rgt · solde %.0f/an · revenu %.1f (assiette %.1f) · %s · levée : %s",
                        corps_rgt, pay_c, rev_c, assiette,
                        c_war?"EN GUERRE":"en paix",
                        warhost_levy_reason_name(warhost_levy_reason(c)));
