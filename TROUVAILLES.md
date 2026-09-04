@@ -13545,3 +13545,15 @@ base 127) — aucun littéral ajouté. DLL rebâtie, 24 captures rejouées par
 - **Aucun fichier moteur n'a été touché.** Livrables : `docs/SWEEP_VALID_W1W2_2026-09-04.md`
   + cet append. Le §3 du rapport `docs/RAPPORT_CORRECTIFS_SWEEP_2026-09-04.md` reste à
   remplir par l'orchestrateur à partir de ce dépouillement.
+
+## Note 2026-09-04 — CARTE DE LA FAÇADE GUERRE/DIPLO (sous-agent de l'Opus joueur DOMINANT, arrêté avant de jouer)
+### Découvertes
+- Doctrines : `card["id"]` = index de l'enum DoctrineId (0 Offense … 12 Faustien, 13-16 = courants Aristocratie/Bourgeoisie/Populaire/Divin) ; `bg` = identifiant machine stable, préférable au nom localisé. Courant actif = première ligne de `doctrine_slots()["rows"]` avec `doctrine >= 13`.
+- Vassalisation : aucun verbe autonome ; la seule voie est `player_peace_offer(cible, [], score, 16)` (PEACE_VASSALIZE) → protectorat ; `PEACE_FRAGMENT` (32) est exclusif.
+- Grain : les verbes de corps/guerre sont RÉGION (`player_campaign/move_corps/raise_corps`, `battle_info`, `region_war_state`, `peace_offer(regions)`), le reste est PROVINCE ; `peace_terms()["territories"]` porte les deux ids par ligne.
+### Restes (manques de binding Godot, à câbler avant un joueur-agent conquérant)
+- `warhost_force_limit` (limite de force) : jamais exposée ; `warhost_braking_stats` (désertions, sur-budget) : chronicle seul.
+- Aucun indicateur de puissance/menace d'un pays tiers (`country_strength/threat`) : à composer (pop, provinces, or, `country_army()`).
+- `doctrines_current(cid)` non exposé ; `scps_player_set_buy_rate`/`scps_country_buy_rate` (rachat par catégorie) présents dans scps_api.h, jamais bindés.
+- Constantes non bindées (PEACE_*, ScpsDiploAction 0 WAR·1 PEACE·2 ALLIANCE·3 PACT·4 MIGRATION·5 EMBARGO·6 FABRICATE, FieldPhase, FeedKind, UnitType) : à recopier en dur côté .gd.
+- Pas de reader « guerres en cours » ni `war_info(a,b)` : dériver de `country_relations()` + `diplo_context()["war_score"]`.

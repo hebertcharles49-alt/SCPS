@@ -58,7 +58,7 @@ Restes W2-7 : pacte accepté sans trace (`diplo_context` ne rapporte aucun engag
 
 ## 2. Ce qui reste ouvert (décisions joueur)
 
-- **Marbrive structurellement mort** : ses trois conditions (agitation ≥ 55, instabilité bâtie ≥ 1, coercition ≥ 0,25) sont anti-corrélées, 0 occurrence sur 3,3 M région-jours ; le banc force la fixture. Piste : OU sur l'instabilité bâtie, ou seuil 0,3, seuils au registre.
+- ~~Marbrive structurellement mort~~ : **réfuté par le sweep** (63 déclenchements sur 27 sims × 250 ans) — le constat de W2-6 valait une graine sur 60 ans ; il reste rare avant l'an 60, pas mort. Rien à corriger ; le banc events_demo pourrait tester l'atteinte par le monde plutôt que forcer la fixture.
 - **Abandon de doctrine par l'IA** : Divin reste à 0 adoption (slots pris avant l'an 40) ; seul levier restant.
 - **Exposant tech** : 0,65 laisse le leader vers 78-80 % de l'arbre à l'an 200 (cible 40-60 %) ; 0,78 casserait « wide récompensé » (×2 sur l'empire moyen). Recommandation : renchérir les tiers 4-5 en vague séparée.
 - **« Hors registre » ~1 700 or/mois/empire** dans le recoupement I0 : des dépenses que le registre de flux ne voit pas (chantiers matière maison, semis IA, colonisation ?).
