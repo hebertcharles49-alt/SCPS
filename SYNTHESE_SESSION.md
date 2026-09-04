@@ -1,3 +1,11 @@
+# SYNTHÈSE SESSION — 2026-09-04 : VAGUES W1/W2 LANDÉES, SWEEP 50×250 EN COURS
+
+- **5 rapports de calibrage** (docs/CALIB_*_2026-09-03.md : influence, économie, tech, armée, population) puis **W1** (5 agents opus, worktrees) : trésor+stock NATIONAUX (908a7cd, save v108 — décision joueur « C'est voulu par toi, pas par moi »), population (invariant sièges, émergence toutes provinces), tech (ruines, exposant 0,65), influence/foi (foi au grain province, Conseil monotone, coûts diplo ×é), armée (corps au front, milice, gates, levée province). Interaction A×F isolée par 3 arbres → frein économique de levée (désertion + 35 % du revenu), jamais un cap.
+- **W2** : front (stock retiré, prix diplo réels), chronicle/sweep v2, F2 refermé (âmes = strates, élite 11 %), économie (prix effondrés → PL_SINK_MONTHS ; COURT_MONTHS 60 ; matière maison facturée), décrochage 0,26, banc API réparé (pas de régression), Opus JOUEUR (docs/RAPPORT_JOUEUR_2026-09-04.md). W2-7 façade/UI en vol.
+- **EN COURS** : sweep de validation 50 graines × 250 ans (sweep_valid_W1W2_50x250/, 8 jobs) → Opus data analyst → docs/RAPPORT_CORRECTIFS_SWEEP_2026-09-04.md (§1 correctifs écrit, §3 sweep à remplir).
+- **DÉCISIONS JOUEUR EN ATTENTE** : Marbrive mort (3 conditions anti-corrélées), abandon de doctrine par l'IA (Divin 0), exposant tech 0,65 vs 0,78, hors-registre ~1700 or/mois/empire, P7/P10/P8 population.
+- **Pièges de vague** : Opus 529 en rafale (reprendre par message, worktrees intacts) ; heredoc bash mange les backslashes (Write + python) ; « applied cleanly » ≠ sémantique fusionnée (mesurer 120 ans sur l'arbre fusionné) ; scratchpad partagé entre agents ; bash.exe -l refusé depuis un worktree (PowerShell).
+
 # SYNTHÈSE SESSION — 2026-09-03 : SWEEP 10×200 LU, ASSIETTE SIÈGES, ANOMALIES DE GUERRE
 
 - **Sweep 10 graines × 200 ans dépouillé** (3edb071, docs/SWEEP_DOCT_AI_2026-09-02.md,
