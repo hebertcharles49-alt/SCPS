@@ -13949,3 +13949,56 @@ par catégorie, la solde et le revenu.
   411 c23330c4→c9e738ad`. Les 4 clés à 0 redonnent **exactement** le golden commité.
 - **Non mesuré à 250 ans** : la queue `armée / limite` (432 %) et le cas nominatif
   `Ligue Dhûrganyn`. Demande de run déposée à l'orchestrateur.
+
+### Vérification à 250 ans (runs de l'orchestrateur, `runs/A2_levee/`)
+Bras APPARIÉ sur `s3` (MÊME binaire, seules les 4 clés changent) ; `s60`/`s11` n'ont pas
+d'AVANT apparié (les journaux du sweep viennent d'un autre binaire — mondes différents dès
+l'an 2), leur APRÈS se lit contre la BANDE du sweep, jamais contre un homologue.
+| mesure (250 ans, `1 250 6 12`) | s3 AVANT | s3 APRÈS | s60 APRÈS | s11 APRÈS |
+|---|---:|---:|---:|---:|
+| armée / limite — médiane · **max** | 74 % · **432 %** | 97 % · **313 %** | 49 % · 332 % | 60 % · 255 % |
+| solde / revenu — médiane · **max** | 34 % · **3 981 %** | 15 % · **1 404 %** | 33 % · 6 723 % | 17 % · 1 397 % |
+| **arsenal vide** (pays-an) | **3 063** | **0** | **0** | **0** |
+| plus d'hommes | 909 | 1 506 | 1 474 | 2 047 |
+| sans capitale | 570 | **0** | **0** | **0** |
+| levées réussies | 1 771 | **3 441** | 3 648 | 3 550 |
+| rgt désertés | 1 918 | **3 984** | 4 636 | 4 815 |
+| lignes empire à 0 rgt | 3 | 2 | 3 | 2 |
+| **dont SANS armée au front** (`corps 0 rgt`) | **1** | **0** | **0** | **0** |
+- **LE RICHE DÉSARMÉ EST FERMÉ, sur l'empire même de A3** : `Ligue Dhûrganyn`, citée par le
+  sweep à `0 rgt / limite 51` avec 184 577 or et 127 329 armes lourdes, termine à
+  **`49 rég · 65 rgt / limite 40 · corps 6 rgt · levée : levée`**. Aucun empire majeur n'est
+  plus désarmé dans les trois APRÈS, et le seul « 0 rgt SANS corps » du bras AVANT
+  (`Havre Wyntonis 1 rég · or 9 · corps 0 rgt · levée : **arsenal vide**`) **a disparu** :
+  1 → 0 sur les trois runs. Les « 0 rgt » restants sont des hameaux de 1-2 régions dont
+  TOUTE l'armée est au front (`corps 1` à `30 rgt`) et dont le pool est déjà consommé.
+- **LA QUEUE EST ATTÉNUÉE, PAS FERMÉE** : apparié, **432 % → 313 %** (et sur la dernière
+  année, `32 rgt / limite 7` → `21 rgt / limite 7`) ; `solde/revenu` max **3 981 % → 1 404 %**.
+  Mais la médiane MONTE (74 % → 97 %) : c'est attendu — l'arsenal ne bloque plus, les pays
+  lèvent enfin (1 771 → 3 441 levées) et le frein les rattrape par la désertion
+  (1 918 → 3 984 rgt). Le résidu se lit en deux familles, toutes deux LÉGITIMES au regard
+  de « pas de cap » :
+  1. `Ligue Khazdin 17 rég · 33 rgt / limite 18 (183 %) · **solde/revenu 31 %**` — sous le
+     plafond de 35 % : cet empire PAIE son armée, la limite de force n'est pas un plafond dur.
+  2. `Clanique libre 1 rég · 21 rgt / limite 7 (300 %) · corps 27 rgt · solde/revenu 77 % ·
+     EN GUERRE · levée : **budget**` — le frein est ARMÉ et a **cessé la croissance** ; ce
+     qui reste, c'est qu'**une armée au-dessus du budget ne FOND pas sous le feu** (on ne
+     démobilise pas sous le feu, décision 38523b6 ; et la désertion ne mord que sur la part
+     IMPAYÉE, or le trésor de pillage paie encore).
+- **`sans capitale` 570 → 0 pays-an** : à lire avec prudence, ce n'est pas un correctif de
+  cette mission (le compteur n'est gaté par aucune clé) — les deux mondes divergent. Mais
+  il confirme que le recalage 38523b6 referme le cas quand le monde ne fragmente pas trop.
+- **`revenu fiscal NUL` MONTE** (418 → 1 089 pays-mois sur s3) : mécanique, pas une
+  régression — bien plus de pays ont enfin des régiments, donc entrent dans le bloc de
+  solde ; et leur assiette RECALCULÉE est nulle elle aussi (`assiette 0.0` sur les hameaux).
+  Le repli ne peut rien pour eux : c'est le registre de flux (A1) qui doit parler.
+**Correction qui s'impose (NON faite, hors périmètre du brief) — la seule qui fermerait la
+queue sans poser de cap** : *facturer la solde des CORPS AU FRONT*. Les offenders restants
+portent 14 à 30 paquets en campagne qui ne coûtent RIEN (`typed_pay` n'itère que sur
+`h->army[c]` ; `FX_SOLDE` n'est écrit qu'aux deux sites de `scps_warhost.c`). En les
+facturant, `Clanique libre` passerait de 77 % à ~250 % de son revenu : le trésor s'épuise,
+`unpaid` devient positif, `WH_DESERT_RATE` mord — l'armée fond **par l'économie**, sans
+qu'aucune borne n'ait été posée. Geste : un `static inline` d'en-tête sommant les corps du
+pays (les DIX bancs qui lient `scps_warhost.o` sans `scps_campaign.o` interdisent un symbole
+de plus dans `scps_campaign.c` — motif `campaign_deployed_class`), + une clé `WH_PAY_CORPS`.
+À mesurer en apparié : ça double la facture militaire de TOUT pays en guerre.
