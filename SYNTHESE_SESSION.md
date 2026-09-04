@@ -1,3 +1,12 @@
+# SYNTHÈSE SESSION — 2026-09-04 (suite) : SWEEP LU, VAGUE A LANDÉE, A4 EN VOL
+
+- **Sweep de validation** coupé à 5 h (13 paires × 250 ans, docs/SWEEP_VALID_W1W2_2026-09-04.md) : arbre de doctrines joué jusqu'à l'an 250 sans casser les agrégats ; population/décrochage/courants/héritage tenus ; 5 anomalies → vague A.
+- **Vague A landée (76dd1c9, save v109, golden re-baseliné)** : A3 grain 0,000 (price_level se calculait sur lui-même : VA aux prix de base, PL_EXPONENT 0,5 tranché par run unifiée ; l'indice du sweep W1/W2 était un miroir faux, à jeter) · A1 hors-registre (achat d'État + 9 buckets FX_*, sur-comptages, impôt par classe ; −2 800 → +66/+99 or/mois/empire ; frappe libre = robinet ×40, chantier MONNAIE) · A2 levée (arsenal gaté, levée partielle, milice plancher, repli revenu : riche désarmé fermé, queue 432 % → 313 %) · Marbrive : faux constat, vivant.
+- **A4 en vol** : solde des corps au front (WH_PAY_CORPS) — le dernier trou de la queue de levée ; run appariée par l'orchestrateur à sa demande, puis dernier re-baseline.
+- **Opus joueurs** : un rapport d'impressions (docs/RAPPORT_JOUEUR_2026-09-04.md) puis W2-7 façade/UI ; les 3 joueurs à pas de 6 mois ARRÊTÉS (CPU) ; carte de la façade guerre dans TROUVAILLES.
+- **RÈGLE NEUVE** : les runs de chronicle passent par l'orchestrateur (agents = smoke ≤ 30 ans + DEMANDE DE RUN ; journaux partagés dans runs/).
+- **Décisions joueur en attente** : abandon de doctrine par l'IA (Divin 0), exposant tech 0,65/0,78, TAX_EXEMPT_BASKET_MULT (prix réels exonèrent vraiment les pauvres), reprise du sweep à 50 graines, ventilation des portes par poste (print-only), corps au front (A4).
+
 # SYNTHÈSE SESSION — 2026-09-04 : VAGUES W1/W2 LANDÉES, SWEEP 50×250 EN COURS
 
 - **5 rapports de calibrage** (docs/CALIB_*_2026-09-03.md : influence, économie, tech, armée, population) puis **W1** (5 agents opus, worktrees) : trésor+stock NATIONAUX (908a7cd, save v108 — décision joueur « C'est voulu par toi, pas par moi »), population (invariant sièges, émergence toutes provinces), tech (ruines, exposant 0,65), influence/foi (foi au grain province, Conseil monotone, coûts diplo ×é), armée (corps au front, milice, gates, levée province). Interaction A×F isolée par 3 arbres → frein économique de levée (désertion + 35 % du revenu), jamais un cap.
