@@ -56,6 +56,17 @@ W2-7 (façade/UI des bugs vus par le joueur : prix des stocks nationaux à 0, gr
 
 Restes W2-7 : pacte accepté sans trace (`diplo_context` ne rapporte aucun engagement) ; panneau Armée hors pile Échap ; Annales qui ne retiennent que « un âge a commencé » ; **`econ_country_tax_class_month` rend 0** alors que FX_TAX vaut ~14 or/mois (tout le fiscal tombe dans « Autres mouvements » — probablement resté région-grain après le re-key) ; registre FX_* sans bucket pour l'achat d'État.
 
+### 1.5 Vague A — les anomalies du sweep (2026-09-04, après le sweep)
+
+| Commit | Anomalie | Cause | Correctif | Mesure |
+|---|---|---|---|---|
+| bed60a2 | Grain à 0,000 (A3) | `price_level = caisse / VA` où la VA était mesurée aux prix du marché, donc sur elle-même : hyperbole à 0 absorbant (pl 0 → prix 0 → gages 0 → impôt 0 → trésor 0). Le trésor n'était pas le discriminant. Hameaux sans VA à 0 ; miroir `econ_country_price_level` resté faux depuis W2-1 (l'indice du sweep W1/W2 est à jeter) | VA réelle aux prix de base, `pl = (trésor/VA)^PL_EXPONENT` (0,5 = point fixe de l'ancienne formule), hameaux au pair, `PL_LEGACY` kill-switch | run unifiée 3 graines × 120 × {0,5 ; 1} : dérive séculaire tenue 3/3 à 0,5, indice médian 0,429, grain jamais 0,000, friche et taxes meilleures 3/3 |
+| 5bc851e | Hors-registre I0 (A1) | L'achat d'État (§3) et l'assiette M5 sans bucket (−6 657 or/mois/empire), 3 sur-comptages (péage plein, refinancement, frappe sans débit du métal), impôt par classe sans plancher per-capita | 10 buckets FX_* (FX_COUNT 20 → 30, save v109), `FluxComp` sur les débits prorata, contrôle des portes print-only, `tax_class_month_prov` factorisé | hors registre −2 807 / −2 190 → +99 / +66 or/mois/empire à 120 ans (5,9 % / 5,3 % des taxes, signe inversé : reste une ENTRÉE de porte non nommée — ventilation des portes par poste à faire, print-only) ; golden identique. Robinet rendu lisible : la frappe libre crée ~40× ce qu'elle paie le métal (s512 : frappe +504 pour métal −12) |
+| _(à venir)_ | Queue de levée & riche désarmé (A2) | La levée ne gatait jamais l'ARSENAL (l'éthos réclamait une catégorie absente → 0) ; le fer prélevé avant un recrutement tout-ou-rien ; frein désarmé quand le revenu fiscal lit 0 | `WH_ARSENAL_GATE`, `WH_POOL_CLAMP` (levée partielle), `WH_MILICE_FLOOR`, `WH_REV_FALLBACK` — aucun plafond | 30 ans : arsenal vide 319/358/453 → 0 pays-an ; solde/revenu max 4 518 % → 49 % (s512) ; run 250 ans en cours |
+| — | Marbrive (anomalie 5) | Faux constat de W2-6 (une graine, 60 ans) | rien : 63 déclenchements sur 27 sims | — |
+
+Découverte de A2 non refermée : **un régiment au front est gratuit** (la solde ne paie que le host, `campaign_order` transfère tout au corps) — à mesurer en apparié, vague suivante.
+
 ## 2. Ce qui reste ouvert (décisions joueur)
 
 - ~~Marbrive structurellement mort~~ : **réfuté par le sweep** (63 déclenchements sur 27 sims × 250 ans) — le constat de W2-6 valait une graine sur 60 ans ; il reste rare avant l'an 60, pas mort. Rien à corriger ; le banc events_demo pourrait tester l'atteinte par le monde plutôt que forcer la fixture.
