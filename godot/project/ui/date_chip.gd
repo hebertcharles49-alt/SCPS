@@ -18,4 +18,8 @@ func _draw() -> void:
 		return
 	var doy := int(w.day_of_year())
 	var txt := "Jour %d · mois %d · an %d" % [(doy % 30) + 1, mini(doy / 30 + 1, 12), int(w.year())]
-	VKit.text(self, Vector2(0, (size.y - 18.0) * 0.5), VKit.COL_PARCH, txt)
+	# W2-7 (rapport joueur F13) : la date était écrite à l'ENCRE (COL_PARCH, un brun
+	# presque noir) sur le CUIR SOMBRE du bandeau — illisible sans zoomer sur la capture,
+	# alors que c'est la valeur la plus consultée d'un jeu en temps réel. Elle passe au
+	# ton le plus CLAIR de la palette, au-dessus même des chiffres des cellules.
+	VKit.text(self, Vector2(0, (size.y - 18.0) * 0.5), VKit.COL_PANEL2, txt)

@@ -863,4 +863,7 @@
     X(STR_DOCT_REASON_CURRENT,   "One political current at a time") \
     X(STR_DOCT_REASON_INFLUENCE, "Not enough influence")     X(STR_DOCT_REASON_FAITH,     "No founded religion") \
     X(STR_INFLUENCE_DEPENSES,    "Upkeep for %d doctrine(s): %d per month") \
-    X(STR_INFLUENCE_DEPENSES_0,  "No doctrine to maintain")
+    X(STR_INFLUENCE_DEPENSES_0,  "No doctrine to maintain") \
+    X(STR_FLUX_AUTRES,           "Other movements") \
+    X(STR_PROV_SANS_NOM,         "Unnamed province") \
+    X(STR_MANUF_SANS_NOM,        "Unnamed manufacture")

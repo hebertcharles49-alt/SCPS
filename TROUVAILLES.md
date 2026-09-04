@@ -13251,3 +13251,170 @@ Livrables : `docs/RAPPORT_JOUEUR_2026-09-04.md` · `godot/project/player_session
 - **Le motif `ok("(… — ignoré)", true)`** (19 sites, surtout `events_demo.c`) transforme
   une famine en banc VERT. C'est lui qui a caché 40 min de vide. À convertir en échec
   franc partout où la condition n'est pas une vraie contrainte de fixture.
+
+
+
+## Mission 2026-09-04 — W2-7 FAÇADE/UI : les bugs vus par le joueur (rapport OPUS JOUEUR)
+
+Périmètre tenu : `scps/scps_api.{c,h}` (lecteurs seuls) · `scps/strings_*.h` ·
+`scps/scps_api_demo.c` · `godot/src/scps_sim_node.{cpp,h}` · `godot/project/ui/*.gd`.
+AUCUN `scps_econ.c` / `scps_events.c` / `scps_decrees.c` / `scps_sim.c` touché.
+
+### Gates
+
+`tools/run_tests.sh full` : **41 verts / 42** — le seul rouge est `scps_api_demo` en
+TIMEOUT au plafond par défaut du runner (120 s ; il tourne ~35 min sur cet arbre). Lancé
+SEUL : **254 réussis, 0 échoué**, dont les 5 assertions neuves de W2-7. `make golden` :
+ÉCHEC PRÉEXISTANT (prouvé, cf. Pièges). `make lang-check` : 145 (147 avant la mission,
+base 127) — aucun littéral ajouté. DLL rebâtie, 24 captures rejouées par
+`player_session.gd -- seed=7 mode=play` dans `godot/project/shots_player/`.
+
+### Découvertes
+
+- **F1 « tous les prix à 0,00 » n'était PAS un champ vide : c'était le MAUVAIS prix.**
+  `country_stocks[].price` rendait `re->price[]`, le prix de REVENTE NU (0,004 à 0,10 en
+  début de partie ⇒ « 0.00 » à deux décimales). Le prix que le joueur PAIE en cliquant
+  « Acheter 10 » est `max(re->price, MARKET_MIN_PRICE=0,2) × re->import_margin`
+  (`intertrade_market_buy`, scps_intertrade.c:651-662) — exactement ce que
+  `scps_market_quote` calcule déjà. Le lecteur rend désormais CE prix, lu UNE fois sur le
+  comptoir (la région de la capitale, le seul depuis lequel le verbe joueur achète).
+  Mesuré graine 7, an 29, par la DLL réelle : Céréales 0,52 · Poisson 8,70 · Fourrure
+  21,74 · Outils 61,60 · Armes lourdes 101,46 — différenciés, jamais nuls.
+  **Le motif : quand un nombre du marché paraît faux, remonter à ce que le VERBE facture,
+  pas à ce que le tick stocke.**
+- **F2 « le grand livre à 0 » : le lecteur était SAIN, le registre est INCOMPLET.**
+  `scps_country_budget` lisait bien `econ_flux_get` ; mais `scps_econ.h` §I0 le dit
+  lui-même — **l'achat d'État §3 (`pending_buy_debit`) et l'assiette M5 R3 n'ont AUCUN
+  bucket FX_\***. Sur une jeune Ligue à 5 provinces ils portaient ~40 % du mouvement d'or :
+  le panneau affichait des zéros pendant que l'or fondait. Réparé côté FAÇADE (le moteur
+  n'est pas à moi) : la façade est le SEUL appelant d'`econ_flux_year_capture`, elle
+  mémorise donc le trésor de chaque pays au RAZ (`ScpsSim.flux_gold0/flux_day0`) et rend
+  une ligne **« Autres mouvements »** (STR_FLUX_AUTRES) = (delta de trésor observé − Σ des
+  postes nommés). **Σ des lignes == variation réelle de l'or, PAR CONSTRUCTION** — banc
+  `scps_api_demo` sur TOUS les pays, à ±1 couronne. Vu à l'écran : le Trésor est passé de
+  « +0/mois » à « +9/mois », colonne RENTRÉES « Autres mouvements +55/mois », SORTIES
+  « Entretien 4/mois · redépense 64/mois ».
+- **Le « /mois » était recalculé QUATRE fois côté .gd, et faux en début d'année.**
+  `topbar.gd` (×2), `budget_panel_v2.gd`, `economy_page.gd`, `sidebar_drawer.gd` (×2)
+  faisaient chacun `amount / day_of_year × 30` : un 3 janvier, ×10 — des dépenses
+  fantômes. `ScpsFluxLine` porte désormais `month`, normalisé par la façade sur la
+  fenêtre RÉELLE et **jamais extrapolé sous un mois**. Les 6 sites lisent la clé (repli
+  sur l'ancien calcul pour une DLL antérieure).
+- **F3 « allocation 90 % → 100 % » est un ARTEFACT DE SONDE, pas un bug d'UI.**
+  `player_session.gd:340` pousse UN SEUL puits (`player_alloc_raw(cap, id, 90)`) ;
+  `CMD_ALLOC_RAW` (scps_sim.c:968) pose ce poids ET `alloc_on=1`, donc TOUS les autres
+  poids (jamais écrits tant qu'on était en AUTO) valent 0 ⇒ part normalisée 100 %/0 %.
+  La vraie fiche (`province_panel_v2._alloc_apply`) pousse l'allocation COMPLÈTE et n'a
+  pas ce défaut — son propre commentaire l'avertissait déjà. **Et le « 38 % » de la ligne
+  de classe est la SATISFACTION** (`_class_row`, infobulle déjà présente), pas un taux
+  d'emploi. Rien à corriger : l'écran disait la vérité.
+  **Leçon : une sonde qui appelle un verbe joueur DOIT reproduire la séquence du panneau,
+  sinon elle mesure un état que le joueur ne peut pas produire.**
+- **F4/F19 « une ligne sur deux illisible » : le zébrage était bon, le FOND avait changé.**
+  `VKit.list_row_bg` ne peint QUE les index pairs (COL_PANEL2 à 0,34) — pensé pour un fond
+  PARCHEMIN. La bande droite a reçu en 2026-08-26 un chrome de **CUIR SOMBRE**
+  (`chrome_rightbar_bg`) : les lignes impaires tombaient sur le cuir avec l'encre
+  `COL_PARCH` (brun quasi noir). Le JOURNAL et VILLES ne peignaient AUCUNE bande → 100 %
+  invisibles — c'est aussi tout le mystère de la « ligne de guerre sans nom » (F19) : le
+  nom était là, en encre noire sur cuir. `list_row_bg` prend un paramètre `on_dark` : les
+  DEUX parités portent un bandeau clair (0,80 / 0,62), le zébrage survit par la NUANCE.
+  **Tout dessin VKit posé sur un fond d'ART sombre est suspect par construction** (même
+  cause pour la date, F13).
+- **F5 « région 21 / Prov.6 / région 18 » : quatre sites, une seule cause — aucun NOM
+  n'existait au grain région côté façade.** `scps_region_city_name` rend "" tant que la
+  ville n'est pas nommée, et `gen_province_names` (scps_world.c:2954) nomme TOUTE province
+  « Prov.N » (stub). D'où **`scps_region_label`** : toponyme → nom de la 1re province de
+  `Region.province_ids` (**géographie du World, PAS l'indirection économique
+  `econ_region_rep_province`**) → `STR_PROV_SANS_NOM`. Bindé (`region_label`), + un champ
+  `region_name` dans CHAQUE évènement du fil (`ScpsFeedEvent`) : `alerts.gd:160` n'a plus
+  qu'à le lire, et le popup / le chip / le JOURNAL héritent du nom d'un coup. Les gabarits
+  `FEED_KINDS` perdent leur « la région » devant le nom (accord de genre — même piège que
+  `empire_sidebar._journal_full_text` avait déjà rencontré). `diplo_context` aussi :
+  « Voir la capitale — Prov.6 » est devenu « — Foyestep ».
+- **F21 « manufactures nommées ? » : le binding gardait une COPIE de la table du moteur,
+  figée à 24 entrées pour 30 types.** Les six manufactures d'ÉTHOS (Heaumerie, Parurier,
+  Horloger, Chancellerie de luxe, Comptoir d'artisan, Atelier serein) sortaient en « ? ».
+  `scps_manuf_name` expose `building_name` par la façade ; la copie est SUPPRIMÉE.
+  **Chercher les autres tables recopiées dans `scps_sim_node.cpp` : c'est un motif.**
+- **F9/F20 étaient le MÊME bug.** `_short()` coupait au premier « — », précisément le
+  séparateur derrière lequel vivent le lieu, le camp et le bien : sept « Une place est
+  TOMBÉE » identiques, et « BIEN INTROUVABLE » sans son bien. On ne coupe plus qu'à la
+  parenthèse (l'an, déjà en préfixe de ligne) ; la troncature (ici ET dans les deux
+  boucles de largeur d'`empire_sidebar`, `_clip_words`) tombe sur un ESPACE et ne laisse
+  pas de séparateur orphelin avant les points de suspension.
+- **F15 le « grand rectangle vert » n'est PAS une texture manquante** : c'est le champ de
+  bataille de `battle_anim.gd` en mode PARADE (`COL_TERRAIN_DEFAUT = 0x5c6b3c`, W×H). Un
+  corps de 400 hommes s'y résume à une marque. Décision de design, pas un bug.
+
+### Pièges
+
+- **`gcc` sous `make` ne reçoit AUCUN TMP/TEMP/TMPDIR utilisable dans cet environnement**
+  et retombe sur `C:\Windows\` (« Cannot create temporary file : Permission denied »).
+  Le même gcc, appelé directement, marche. Ni `TMPDIR=… make`, ni `make TMPDIR=…`, ni un
+  préfixe d'affectation sur `$(CC)` ne passent. **Ce qui marche : un wrapper
+  `CC="sh ./ccwrap.sh"` qui exporte TMPDIR puis `exec gcc "$@"`.** Même remède pour
+  `scons` (script `scons_wt.sh` : PATH MinGW propre + `use_mingw=yes` + TMPDIR).
+- **`chronicle` ne lie PAS `scps_api.o`** : après un changement de `scps_api.h`, un
+  `make chronicle` laisse `build/scps_scps_api.o` PÉRIMÉ. Un binaire lié à la main sur
+  `build/*.o` mélange alors DEUX dispositions de struct — segfault dans `printf` sur un
+  `const char*` qui est en fait un `double` (ABI silencieuse, backtrace trompeur qui
+  pointe le worldgen à cause du buffering stdout). **Après tout changement de struct de
+  façade : `make scps_api_demo`, pas `make chronicle`.**
+- **`make golden` ÉCHOUE sur cette branche AVANT toute ligne de W2-7** — prouvé en
+  remettant `strings_ids.h`/`strings_en.h` à HEAD et en rebâtissant : hashes IDENTIQUES à
+  ceux du travail en cours (7 bddb8872 · 108 0600e3e5 · 209 b3aba329 · 310 30127a4d ·
+  411 c23330c4) contre un golden re-baseliné pour la dernière fois à **908a7cd**.
+  `dd7f64d` (W2-1 ÉCONOMIE) et `1ba07b9` (W2-3 décrochage) ont changé les trajectoires
+  SANS re-baseliner. **À re-baseliner par l'orchestrateur — ce n'est pas une régression.**
+- **`--check-only --script res://ui/x.gd` est INUTILE sur ce projet** : les autoloads ne
+  sont pas enregistrés, tout fichier qui touche `Sim` sort « Identifier not found: Sim »,
+  `main/main.gd` INCLUS. Le seul parse-check qui vaut est de lancer une sonde qui
+  instancie `Main.tscn`.
+- **`player_session.gd` par défaut est en `mode=recon`** (dumps de lecteurs, AUCUNE
+  capture — mais un excellent banc de façade à travers la vraie DLL). Les captures
+  exigent `-- seed=7 mode=play`, en FENÊTRÉ (`--headless` = noir). Bon point : il écrit
+  dans `res://shots_player/`, donc dans SON worktree.
+- **L'outil Bash mange les `\` des heredocs Python** (piège déjà noté par l'orchestrateur
+  W1) : un `"\n"` inséré par patch devient un VRAI saut de ligne dans une chaîne GDScript
+  — erreur de parse muette jusqu'au lancement. Relire le `git diff` de tout fichier
+  patché par script.
+- Une passe `--import` réécrit `godot/project/i18n/ui.*.translation` (versionnés) :
+  `git restore` après, comme W2-5 l'avait déjà noté.
+- Le binaire d'un banc EN COURS D'EXÉCUTION verrouille son `.exe` : `make` échoue au LIEN
+  (« cannot open output file ») alors que la compilation, elle, a réussi.
+
+### Restes
+
+- **`econ_country_tax_class_month` rend 0 pour les trois ordres** alors que `FX_TAX` vaut
+  ~14 or/mois au même instant (graine 7, an 27) : la colonne RENTRÉES du Trésor affiche
+  « Laboureurs/Artisans/Noblesse 0/mois » et tout le revenu fiscal atterrit dans « Autres
+  mouvements ». Le lecteur vit dans `scps_econ.c` (hors périmètre W2-7) — **probablement
+  resté au grain région après le re-key national**. C'est le prochain trou du grand livre.
+- **Le registre FX_\* reste incomplet** : tant que l'achat d'État et l'assiette M5 n'ont
+  pas de bucket, « Autres mouvements » portera leur masse. La ligne est honnête, pas
+  satisfaisante — un bucket par poste serait mieux (moteur).
+- **`make lang-check` : 147 → 145 (base 127)**. W2-7 n'a AJOUTÉ aucun littéral (tout texte
+  neuf est en STR_\* FR+EN : `STR_FLUX_AUTRES`, `STR_PROV_SANS_NOM`, `STR_MANUF_SANS_NOM`)
+  et en a retiré deux ; les 18 restants sont la dette de la vague W1 (flavor d'édifices,
+  lignes d'annales, motifs de refus tech). Reflux ou re-baseline = décision joueur.
+- **Sur le rail droit, les VALEURS libres restent faibles** : `VKit.value` (COL_VALUE, un
+  olive sombre) hors d'une ligne de liste — « En campagne : 400 », « Réserve : 4 » — tombe
+  encore sur le cuir. Le correctif `on_dark` ne couvre que les LISTES (le F4 du rapport).
+- **La ligne « Autres mouvements » du Trésor choisit sa colonne au premier affichage**
+  (RENTRÉES si positive) et n'en change plus tant que le panneau n'est pas reconstruit ;
+  son montant est donc rendu SIGNÉ pour que la colonne ne mente jamais.
+- Frictions du rapport NON traitées, dans leur ordre : **F7** (l'action diplomatique
+  réussie ne laisse aucune trace — la ligne « En cours : … » existe, mais `diplo_context`
+  ne rapporte AUCUN engagement après un pacte accepté : à instruire côté diplo moteur) ·
+  **F11** (le panneau Armée hors de la pile Échap, recouvre le tiroir gauche) · **F12**
+  (aucune recherche relancée : comportement, pas affichage) · **F15** (le champ de parade,
+  décision de design) · **F17** (flottants qui fuient : « légitimité +0.2 »,
+  « Cuivre ×0.2 », « net/j +378.0 » — trois sites distincts dont un moteur) · **F22**
+  (colonnes « net/j » et « couv. » du tiroir Stocks : par JOUR alors que la doctrine
+  impose le mois).
+- La topbar reste **muette** (sept cellules, aucun mot) et deux de ses cellules montrent
+  « 0 · −N/mois » : le nombre est VRAI (stock nul, demande non servie — mesuré : Outils
+  net −13,3/j, Armes légères −7,9/j) mais se lit comme faux — il lui manque le MOT, pas le
+  chiffre. Chantier de topbar, pas un correctif.
+- `manuf_cost()` sans argument (toutes les manufactures à 51) reste entier : décision de
+  design non tranchée, comme l'avait laissée OPUS JOUEUR.

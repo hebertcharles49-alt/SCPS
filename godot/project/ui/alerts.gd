@@ -38,7 +38,7 @@ const JOURNAL_MAX := 200   ## le JOURNAL (empire_sidebar.gd, section JOURNAL) : 
 
 ## LA TABLE DU FIL (FeedKind → présentation) — AJOUTER UN ÉVÈNEMENT = une ligne ici
 ## (+ la valeur enum + le feed_push au site d'observation, cf. scps_provlog.h).
-## fmt : {a}/{b} = pays · {r} = région · {y} = an.
+## fmt : {a}/{b} = pays · {r} = LE NOM du lieu (façade region_label, jamais un index) · {y} = an.
 ## icônes de GENRE (lot11_systeme jrn_*, campagne 2, 2026-08-26) : 12 genres livrés
 ## (guerre/bataille/siège/révolte/sécession/colonisation/découverte/conseil/foi/
 ## commerce/catastrophe/trésor) mappés sur les 11 FeedKind moteur (scps_provlog.h) —
@@ -48,15 +48,15 @@ const JOURNAL_MAX := 200   ## le JOURNAL (empire_sidebar.gd, section JOURNAL) : 
 const FEED_KINDS := {
 	1: {"icon": "jrn_guerre",     "col": COL_ARMEE, "fmt": "GUERRE — {a} entre en guerre contre nous (an {y})"},
 	2: {"icon": "dipl_alliance",  "col": COL_ETAT,  "fmt": "PAIX signée avec {a} (an {y})"},   # tip enrichi du VERDICT (score {v}) dans _poll_feed
-	3: {"icon": "jrn_siege",      "col": COL_ARMEE, "fmt": "Une place est TOMBÉE — {a} occupe la région {r} (an {y})"},
-	4: {"icon": "jrn_bataille",   "col": COL_ARMEE, "fmt": "Région {r} REPRISE par nos armes (an {y})"},
-	5: {"icon": "alert_warning",  "col": COL_ARMEE, "fmt": "PILLAGE — la région {r} a été mise à sac (an {y})"},
-	6: {"icon": "jrn_revolte",    "col": COL_ETAT,  "fmt": "RÉVOLTE — un soulèvement éclate en région {r} (an {y})"},   # {a} = "Rebelles de X" si la guerre civile est INCARNÉE (sinon générique) — cf. _poll_feed
+	3: {"icon": "jrn_siege",      "col": COL_ARMEE, "fmt": "Une place est TOMBÉE — {a} occupe {r} (an {y})"},
+	4: {"icon": "jrn_bataille",   "col": COL_ARMEE, "fmt": "{r} REPRISE par nos armes (an {y})"},
+	5: {"icon": "alert_warning",  "col": COL_ARMEE, "fmt": "PILLAGE — {r} a été mise à sac (an {y})"},
+	6: {"icon": "jrn_revolte",    "col": COL_ETAT,  "fmt": "RÉVOLTE — un soulèvement éclate à {r} (an {y})"},   # {a} = "Rebelles de X" si la guerre civile est INCARNÉE (sinon générique) — cf. _poll_feed
 	7: {"icon": "jrn_secession",  "col": COL_ETAT, "fmt": "SÉCESSION — {a} proclame son indépendance (an {y})"},
-	8: {"icon": "jrn_bataille",   "col": COL_ARMEE, "fmt": "BATAILLE GAGNÉE contre {b} en région {r} (an {y})"},
-	9: {"icon": "jrn_bataille",   "col": COL_ARMEE, "fmt": "BATAILLE PERDUE contre {b} — l'ost est brisé (région {r}, an {y})"},
-	10: {"icon": "jrn_catastrophe", "col": COL_ETAT, "fmt": "{label} — région {r} (an {y})"},   # ÉVÈNEMENT du directeur (inondation/peste/creuset…)
-	11: {"icon": "jrn_bataille",  "col": COL_ARMEE, "fmt": "BATAILLE INDÉCISE contre {b} en région {r} (an {y})"},
+	8: {"icon": "jrn_bataille",   "col": COL_ARMEE, "fmt": "BATAILLE GAGNÉE contre {b} à {r} (an {y})"},
+	9: {"icon": "jrn_bataille",   "col": COL_ARMEE, "fmt": "BATAILLE PERDUE contre {b} — l'ost est brisé à {r} (an {y})"},
+	10: {"icon": "jrn_catastrophe", "col": COL_ETAT, "fmt": "{label} — {r} (an {y})"},   # ÉVÈNEMENT du directeur (inondation/peste/creuset…)
+	11: {"icon": "jrn_bataille",  "col": COL_ARMEE, "fmt": "BATAILLE INDÉCISE contre {b} à {r} (an {y})"},
 }
 ## kinds MAJEURS → popup OYEZ OYEZ (pause + boutons adaptatifs) au lieu d'un chip.
 const POPUP_KINDS := [1, 2, 6, 7, 10]   # guerre · paix (verdict) · révolte · sécession · directeur
@@ -156,8 +156,14 @@ func _poll_feed() -> void:
 			if not mine:
 				continue
 		var k: Dictionary = FEED_KINDS[kind]
+		# W2-7 (rapport joueur F5) : {r} est LE LIEU, jamais son index moteur. La façade
+		# rend déjà le nom (toponyme → province → repli) dans « region_name » ; le repli
+		# sur l'index ne sert qu'aux DLL d'avant cette vague.
+		var rname := String(ev.get("region_name", ""))
+		if rname == "":
+			rname = str(int(ev["region"]))
 		var tip := String(k["fmt"]).replace("{a}", String(ev["a"])).replace("{b}", String(ev["b"])) \
-			.replace("{r}", str(int(ev["region"]))).replace("{y}", str(int(ev["year"]))) \
+			.replace("{r}", rname).replace("{y}", str(int(ev["year"]))) \
 			.replace("{label}", String(ev.get("label", "")))
 		if kind == 2:
 			# la PAIX porte le SCORE DE GUERRE final (±100, notre point de vue) → le VERDICT
@@ -188,6 +194,19 @@ func _poll_feed() -> void:
 	while _events.size() > FEED_MAX:
 		_events.pop_front()   # bornés : les plus récents restent
 
+## LE NOM D'UN LIEU (W2-7, rapport joueur F5) — un seul appel façade (`region_label` :
+## toponyme → nom de province → mot de repli), jamais l'index moteur. Repli sur l'index
+## pour une DLL d'avant cette vague, seul cas où un nombre peut encore paraître.
+func _region_label(r: int) -> String:
+	if r < 0:
+		return ""
+	var w = Sim.world
+	if w != null and w.has_method("region_label"):
+		var nm := String(w.region_label(r))
+		if nm != "":
+			return nm
+	return str(r)
+
 ## bâtit le POPUP d'un kind majeur : titre + corps + BOUTONS ADAPTATIFS à la situation.
 func _popup_of(kind: int, ev: Dictionary, tip: String) -> Dictionary:
 	var reg := int(ev["region"])
@@ -215,7 +234,14 @@ func _popup_of(kind: int, ev: Dictionary, tip: String) -> Dictionary:
 				btns = [{"label": "Y aller", "act": "goto", "region": reg}, {"label": "Vu", "act": "close"}]
 			else:
 				btns = [{"label": "Vu", "act": "close"}]
-	return {"title": title, "body": tip, "buttons": btns, "kind": kind}
+	# W2-7 (rapport joueur F8) : le corps du popup REPRENAIT le titre mot pour mot
+	# (« La forêt brûle » / « La forêt brûle — Marbrive (an 4) »). Le titre porte déjà
+	# le nom de l'évènement : le corps ne garde que ce qui s'y AJOUTE (le lieu, l'an).
+	var body := tip
+	if title != "" and body.begins_with(title):
+		body = body.substr(title.length()).lstrip(" —·-")
+	return {"title": title, "body": body, "buttons": btns, "kind": kind}
+
 
 ## LA COLLECTE : chaque « élément en attente » du gameplay, lu de la façade.
 func _collect() -> Array:
@@ -277,15 +303,15 @@ func _collect() -> Array:
 		if int(pa.get("revolt_region", -1)) >= 0:
 			out.append({"icon": "jrn_revolte", "col": COL_ETAT, "act": "goto",
 				"region": int(pa["revolt_region"]),
-				"tip": "La région %d GRONDE (agitation %d) — réprimer, assimiler ou apaiser (clic : y aller)" % [int(pa["revolt_region"]), int(pa["revolt_agit"])]})
+				"tip": "%s GRONDE (agitation %d) — réprimer, assimiler ou apaiser (clic : y aller)" % [_region_label(int(pa["revolt_region"])), int(pa["revolt_agit"])]})
 		if int(pa.get("famine_region", -1)) >= 0:
 			out.append({"icon": "jrn_catastrophe", "col": COL_SOCIAL, "act": "goto",
 				"region": int(pa["famine_region"]),
-				"tip": "FAMINE — la région %d ne mange qu'à %d %% (greniers, import, colonie vivrière) (clic : y aller)" % [int(pa["famine_region"]), int(pa["famine_pct"])]})
+				"tip": "FAMINE — %s ne mange qu'à %d %% (greniers, import, colonie vivrière) (clic : y aller)" % [_region_label(int(pa["famine_region"])), int(pa["famine_pct"])]})
 		if int(pa.get("siege_region", -1)) >= 0:
 			out.append({"icon": "jrn_siege", "col": COL_ARMEE, "act": "goto",
 				"region": int(pa["siege_region"]),
-				"tip": "SIÈGE — %s assiège notre région %d ! Lever l'ost (clic : y aller)" % [String(pa["siege_by"]), int(pa["siege_region"])]})
+				"tip": "SIÈGE — %s assiège %s ! Lever l'ost (clic : y aller)" % [String(pa["siege_by"]), _region_label(int(pa["siege_region"]))]})
 		if int(pa.get("price_good", -1)) >= 0:
 			out.append({"icon": "jrn_commerce", "col": COL_ECO, "act": "market",
 				"tip": "PRIX EXORBITANT — %s à ×%.1f de l'ancre au marché (clic : onglet Marché)" % [String(pa["price_name"]), float(pa["price_x10"]) / 10.0]})
@@ -391,17 +417,23 @@ func _stack() -> Array:
 ## de la « letter » (façon RimWorld : la notification se lit sans survol).
 func _short(tip: String) -> String:
 	var s := tip
-	var cut := s.find(" — ")
-	if cut < 0:
-		cut = s.find(" (")
-	if cut < 0:
-		cut = s.find(" : ")
+	# W2-7 (rapport joueur F9) : la coupe au PREMIER « — » jetait exactement ce qui
+	# distingue deux lignes — le LIEU et le camp (« Une place est TOMBÉE » ×7, toutes
+	# identiques). On ne coupe plus qu'à la parenthèse (l'an, déjà en préfixe de ligne) ;
+	# le reste tient à la longueur.
+	var cut := s.find(" (")
 	if cut > 0:
 		s = s.substr(0, cut)
 	# 42 au lieu de 26 : « 3 siège(s) du conseil VAC… » se lisait tronqué (retour
 	# joueur 2026-07-10) — le cartouche s'élargit à son texte, on peut le laisser dire.
+	# W2-7 (F18) : la troncature tombe sur un ESPACE, jamais au milieu d'un mot.
 	if s.length() > 42:
-		s = s.substr(0, 41) + "…"
+		var head := s.substr(0, 41)
+		var sp := head.rfind(" ")
+		s = (head.substr(0, sp) if sp > 20 else head)
+		# … et jamais un séparateur orphelin juste avant les points de suspension
+		# (« conseil VACANT(S) —… »).
+		s = s.rstrip(" —·:,-") + "…"
 	return s
 
 ## Action publique utilisée par les lignes du ledger. Les clics gardent exactement la

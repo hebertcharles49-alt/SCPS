@@ -21,6 +21,7 @@ const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
 const PopBar = preload("res://ui/pop_bar.gd")
 const Concepts = preload("res://ui/concepts.gd")
+const ConstructionPanel = preload("res://ui/construction_panel.gd")   # ses TAB_NAMES nomment les 2 boutons « Construire… »
 
 const PW := 384.0   ## largeur plafond (lignes par classe + boutons collés)
 const ALLOC_STEP := 10   ## pas de répartition raw (poids 0-100)
@@ -214,7 +215,9 @@ func refresh() -> void:
 
 func _update_header(w, info: Dictionary, cap: Dictionary) -> void:
 	_title_lbl.text = String(info.get("nom", "Province"))
-	_sub_lbl.text = "tier %d · %s" % [int(cap.get("tier", 0)), String(info.get("relief", ""))]
+	# W2-7 : « tier » est un mot de MOTEUR. Le palier a déjà son mot pour le joueur
+	# (« Cité », à droite) ; le nombre garde le vocabulaire du jeu : « palier ».
+	_sub_lbl.text = "palier %d · %s" % [int(cap.get("tier", 0)), String(info.get("relief", ""))]
 	var owner := int(info.get("owner", -1))
 	if owner >= 0 and w.has_method("country_info"):
 		var ci: Dictionary = w.country_info(owner)
@@ -447,7 +450,12 @@ func _build_infrastructure(w, info: Dictionary, _cap: Dictionary) -> void:
 		_kv(grid, "Croissance", "—", ParchTheme.DIM_INK)
 	_grow_pid = _pid; _grow_total = pop_now; _grow_day = abs_day
 	var tax := float(w.province_tax(_pid)) if w.has_method("province_tax") else 0.0
-	_kv(grid, "Impôts", "~%s couronnes/mois" % _grp(int(round(tax))), ParchTheme.INK)
+	# W2-7 : le « ~ » d'approximation collé à un zéro se lit « −0 » à la taille de la fiche
+	# (rapport joueur : « un zéro négatif, la signature d'un chiffre cassé »). Un zéro est
+	# un zéro : pas d'approximation à marquer.
+	var tax_i := int(round(tax))
+	_kv(grid, "Impôts", ("0 couronnes/mois" if tax_i == 0 else "~%s couronnes/mois" % _grp(tax_i)),
+		ParchTheme.INK)
 	var aisance := int(info.get("aisance_val", 0))
 	_kv(grid, "Prospérité", "%d%%" % aisance, _score_col(aisance))
 	# MÉTRIQUES (modèle 2026-07-25) : le chiffre seul, le POURQUOI chiffré au hover
@@ -631,7 +639,12 @@ func _edifice_section(w, mine: bool) -> void:
 func _construct_btn(kind: int) -> void:
 	var wrap := HBoxContainer.new()
 	_body.add_child(wrap)
-	var b := _sq_btn("⚒ Construire…", 108)
+	# W2-7 (rapport joueur F10) : DEUX boutons « Construire… » identiques cohabitaient sur
+	# la fiche, à 60 px l'un de l'autre — rien ne disait lequel ouvrait quoi. Ils portent
+	# désormais le mot de l'onglet qu'ils ouvrent (une seule source : ConstructionPanel).
+	var lbl: String = ConstructionPanel.TAB_NAMES[kind] if kind >= 0 and kind < ConstructionPanel.TAB_NAMES.size() else ""
+	var b := _sq_btn(("⚒ %s…" % lbl) if lbl != "" else "⚒ Construire…", 128)
+	b.tooltip_text = "Ouvrir le menu Construction sur cet onglet."
 	b.pressed.connect(func(): build_requested.emit(kind))
 	wrap.add_child(b)
 

@@ -50,7 +50,11 @@ W2-7 (façade/UI des bugs vus par le joueur : prix des stocks nationaux à 0, gr
 
 ### 1.4 Fusions postérieures au lancement du sweep
 
-_(à compléter : W2-7)_
+| Domaine | Ce qui a changé | Preuve |
+|---|---|---|
+| Façade/UI (W2-7, bugs du rapport joueur) | Prix des stocks nationaux = prix FACTURÉ (le lecteur rendait le prix nu 0,004-0,10 : « 0,00 » à l'écran) ; grand livre : la façade mémorise l'or au RAZ et rend « Autres mouvements » ⇒ Σ postes = delta de trésor, champ `month` unique ; `scps_region_label` (toponyme) et `region_name` dans chaque événement (fin des « région 21 / Prov.6 ») ; `scps_manuf_name` (fin des manufactures « ? », la copie du binding avait 24 entrées pour 30) ; rail droit : bandeau clair sur les deux parités (JOURNAL, VILLES, GUERRES lisibles) ; libellés coupés sur espace ; panneau Doctrines : « Influence N · +N/mois » + « Prochaine idée : X — N d'influence » ; boutons « Édifices… / Manufactures… » ; « tier » → « palier ». L'« allocation 90 % → 100 % » n'était pas un bug (la probe poussait un seul puits) | 5 assertions ajoutées au banc API (Σ postes = solde ±1 sur tous les pays, prix ≥ plancher = devis×marge, aucune manufacture « ? », chaque région nommée) ; 24 captures rejouées (godot/project/shots_player_w27/) |
+
+Restes W2-7 : pacte accepté sans trace (`diplo_context` ne rapporte aucun engagement) ; panneau Armée hors pile Échap ; Annales qui ne retiennent que « un âge a commencé » ; **`econ_country_tax_class_month` rend 0** alors que FX_TAX vaut ~14 or/mois (tout le fiscal tombe dans « Autres mouvements » — probablement resté région-grain après le re-key) ; registre FX_* sans bucket pour l'achat d'État.
 
 ## 2. Ce qui reste ouvert (décisions joueur)
 

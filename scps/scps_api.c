@@ -42,6 +42,14 @@ struct ScpsSim {
     float      *ppx, *ppy; /* centroïdes PROVINCE (siège de ville : la province rep, pas la région) */
     int         n_pcent;
     bool        ready;
+    /* GRAND LIVRE (W2-7, 2026-09-04) : la FENÊTRE de mesure du flux. Le registre FX_*
+     * ne couvre pas TOUTES les sorties de trésor (l'achat d'État et l'assiette M5 n'ont
+     * pas de bucket, cf. scps_econ.h) : le panneau Trésor affichait donc « 0/mois »
+     * partout pendant que l'or fondait. On mémorise l'or de CHAQUE pays au dernier RAZ
+     * du flux (la façade EST le seul appelant d'econ_flux_year_capture) pour rendre une
+     * ligne de RECOUPEMENT — le grand livre somme alors au delta de trésor réel. */
+    double      flux_gold0[SCPS_MAX_COUNTRY];
+    int         flux_day0;
 };
 
 /* OVERRIDE des paramètres de genèse (l'écran « Nouvelle partie »). Inactif par défaut
@@ -118,6 +126,16 @@ static void api_centroids(ScpsSim *s){
     free(ax); free(ay); free(cn); free(pax); free(pay); free(pcn);
 }
 
+/* GRAND LIVRE — ouvre une fenêtre de mesure : le trésor de chaque pays et le jour, au
+ * moment PRÉCIS où le registre FX_* repart de zéro. À appeler APRÈS chaque
+ * econ_flux_reset/econ_flux_year_capture de la façade, jamais ailleurs. */
+static void api_flux_window_open(ScpsSim *s){
+    if(!s || !s->w) return;
+    int nc = s->w->n_countries; if(nc>SCPS_MAX_COUNTRY) nc=SCPS_MAX_COUNTRY;
+    for(int c=0; c<nc; c++) s->flux_gold0[c] = econ_country_gold(s->sim.econ, c);
+    s->flux_day0 = s->sim.day;
+}
+
 void scps_sim_generate(ScpsSim *s, uint32_t seed){
     if(!s) return;
     tune_once();
@@ -165,6 +183,7 @@ void scps_sim_generate(ScpsSim *s, uint32_t seed){
     feed_set_focus(s->sim.player);     /* le fil d'évènements ne garde que ce qui LE concerne */
     econ_flux_reset();   /* budget façade : repart d'une ardoise propre (le flux est un état GLOBAL ;
                           * econ_init, déjà appelé par sim_init, a RAZ g_tax_lastyear — pas de capture ici) */
+    api_flux_window_open(s);
     s->ready = true;
     api_centroids(s);   /* centroïdes région (géo figée par worldgen) */
 }
@@ -173,7 +192,10 @@ void scps_sim_generate(ScpsSim *s, uint32_t seed){
 void scps_sim_advance_days(ScpsSim *s, int ndays){
     if(!s || !s->ready) return;
     for(int i=0; i<ndays; i++){
-        if(s->sim.day % 365 == 0) econ_flux_year_capture();   /* budget façade : le flux ET le revenu annuel (d_treasury_mois) */
+        if(s->sim.day % 365 == 0){
+            econ_flux_year_capture();   /* budget façade : le flux ET le revenu annuel (d_treasury_mois) */
+            api_flux_window_open(s);    /* … et la référence de trésor du grand livre */
+        }
         sim_day(&s->sim, s->w);
     }
 }
@@ -322,6 +344,22 @@ bool scps_region_colonized(const ScpsSim *s, int r){
 const char *scps_region_city_name(const ScpsSim *s, int r){
     if(!s || !s->ready || r<0 || r>=s->sim.econ->n_regions) return "";
     return toponym_region_name(r);
+}
+/* LE NOM D'UN LIEU (voir scps_api.h) — un seul point de vérité pour toute la façade :
+ * toponyme de ville, sinon nom de la 1re province de la région (World.region[].province_ids,
+ * pure géographie), sinon le mot de repli. AUCUN appelant ne doit plus composer
+ * « région %d » : l'index moteur n'a rien à faire devant le joueur. */
+const char *scps_region_label(const ScpsSim *s, int r){
+    if(!s || !s->ready || r<0 || r>=s->w->n_regions) return "";
+    const char *city = toponym_region_name(r);
+    if(city && *city) return city;
+    const Region *rg = &s->w->region[r];
+    for(int i=0;i<rg->n_provinces && i<12;i++){
+        int pid = rg->province_ids[i];
+        if(pid>=0 && pid<s->w->n_provinces && s->w->province[pid].name[0])
+            return s->w->province[pid].name;
+    }
+    return tr(STR_PROV_SANS_NOM);
 }
 bool scps_region_centroid(const ScpsSim *s, int r, float *x, float *y){
     if(!s || !s->ready || r<0 || r>=s->n_cent || s->cx[r]<0.f) return false;
@@ -1768,23 +1806,42 @@ void scps_country_demo(ScpsSim *s, int cid, ScpsCountryDemo *out){
     }
 }
 
+/* LE PRIX QUE LE MARCHÉ FACTURE (W2-7, 2026-09-04) — la MÊME primitive que
+ * intertrade_market_buy (scps_intertrade.c : `price=max(re->price,MARKET_MIN_PRICE);
+ * up=price*import_margin`) et que scps_market_quote. Le prix de revente NU
+ * (`re->price`) vaut 0,004 à 0,10 en début de partie : affiché tel quel il rendait
+ * « 0.00 couronnes » sur les quinze lignes du Marché (rapport joueur F1) — un nombre
+ * FAUX, puisque cliquer « Acheter 10 » débite le prix planché ET la marge. On rend
+ * donc ce qui sera DÉBITÉ. Marge et plancher se lisent sur la région de la CAPITALE,
+ * le seul comptoir depuis lequel le verbe joueur achète. */
+#define API_MARKET_MIN_PRICE 0.2f   /* miroir de MARKET_MIN_PRICE (scps_intertrade.c) */
+static float api_market_charged_price(const RegionEconomy *comptoir, float margin, int good){
+    if(good<=RES_NONE || good>=RES_COUNT) return 0.f;
+    float price = comptoir ? comptoir->price[good] : 0.f;
+    if(price<API_MARKET_MIN_PRICE) price=API_MARKET_MIN_PRICE;
+    return price*margin;
+}
+
 int scps_country_stocks(ScpsSim *s, int cid, ScpsStock *out, int max){
     if(!out || max<=0 || !s || !s->ready || cid<0 || cid>=s->w->n_countries) return 0;
-    double dem[RES_COUNT]={0}, sup[RES_COUNT]={0}, stk[RES_COUNT]={0}, pri[RES_COUNT]={0};
-    int nreg=0;
+    double dem[RES_COUNT]={0}, sup[RES_COUNT]={0}, stk[RES_COUNT]={0};
     for(int r=0; r<s->sim.econ->n_regions; r++){
         RegionEconomy *re = &s->sim.econ->region[r];
         if(re->owner!=cid || !re->colonized) continue;
-        nreg++;
         for(int g=1; g<RES_COUNT; g++){
             dem[g] += re->demand[g]; sup[g] += re->supply[g];
-            pri[g] += re->price[g];
         }
     }
     /* LE STOCK EST NATIONAL (2026-09-03) : offre/demande se SOMMENT sur les régions
      * (elles produisent et consomment vraiment), mais l'entrepôt se lit UNE fois sur
      * le pays — le sommer par région le compterait autant de fois qu'il y a de régions. */
     for(int g=1; g<RES_COUNT; g++) stk[g] = econ_country_stock_sum(s->sim.econ, cid, (Resource)g);
+    /* LE COMPTOIR : la région de la CAPITALE — le seul depuis lequel le verbe joueur
+     * achète. Résolu UNE FOIS pour toutes les lignes (marge + barème de prix). */
+    int capreg = scps_country_capital_region(s, cid);
+    const RegionEconomy *comptoir = (capreg>=0 && capreg<s->sim.econ->n_regions && capreg<SCPS_MAX_REG)
+                                    ? &s->sim.econ->region[capreg] : NULL;
+    float comptoir_margin = (comptoir && comptoir->import_margin>1.f) ? comptoir->import_margin : 1.f;
     int n=0;
     for(int g=1; g<RES_COUNT && n<max; g++){
         if(!(stk[g]>0.5 || dem[g]>0.05 || sup[g]>0.05)) continue;   /* bien VIVANT seulement */
@@ -1797,7 +1854,7 @@ int scps_country_stocks(ScpsSim *s, int cid, ScpsStock *out, int max){
         out[n].net_day     = net;
         out[n].supply_month = (float)sup[g];
         out[n].demand_month = (float)dem[g];
-        out[n].price       = (nreg>0) ? (float)(pri[g]/nreg) : 0.f;
+        out[n].price       = api_market_charged_price(comptoir, comptoir_margin, g);
         out[n].res_id      = g;
         if(net < -0.05f){ float dj = (float)stk[g]/(-net); out[n].coverage_days = (dj>365.f)?366:(int)dj; }
         else out[n].coverage_days = -1;
@@ -2674,16 +2731,18 @@ int scps_diplo_context(ScpsSim *s, int target, ScpsDiploContext *out){
         best=score; out->route_a=r->ra; out->route_b=r->rb;
         out->route_maritime=r->maritime?1:0; out->route_open=r->open?1:0;
         out->route_sea_days=r->sea_days; out->route_yield=r->yield;
-        int pa=econ_region_rep_province(s->sim.econ,r->ra);
-        int pb=econ_region_rep_province(s->sim.econ,r->rb);
-        out->route_a_name=(pa>=0&&pa<s->w->n_provinces)?sz(s->w->province[pa].name):sz("Région");
-        out->route_b_name=(pb>=0&&pb<s->w->n_provinces)?sz(s->w->province[pb].name):sz("Région");
+        /* W2-7 : LE NOM DU LIEU, jamais son index ni le stub « Prov.N » — scps_region_label
+         * rend le toponyme de la ville (ou le nom de province, ou le mot de repli). */
+        out->route_a_name=scps_region_label(s,r->ra);
+        out->route_b_name=scps_region_label(s,r->rb);
     }
     int cp=s->w->country[target].capital_prov;
     if(cp>=0&&cp<s->w->n_provinces){
         out->target_capital_province=cp;
         out->target_capital_region=s->w->province[cp].region;
-        out->target_capital_name=sz(s->w->province[cp].name);
+        /* le bouton « Voir la capitale — … » portait « Prov.6 » (rapport joueur F5) :
+         * le toponyme de la capitale est le nom que le joueur reconnaît. */
+        out->target_capital_name=scps_region_label(s,s->w->province[cp].region);
     }
     return 1;
 }
@@ -2833,6 +2892,16 @@ const char *scps_edifice_name(int edifice){
     if (edifice<0 || edifice>=EDIFICE_COUNT) return "";
     const EdificeDef *d = edifice_def((Edifice)edifice);
     return (d && d->name) ? d->name : "";
+}
+/* Nom d'une MANUFACTURE (BuildingType) — W2-7, 2026-09-04. Le binding Godot en gardait
+ * une COPIE statique tronquée à 24 entrées : les six manufactures d'éthos (Heaumerie,
+ * Parurier, Horloger, Chancellerie de luxe, Comptoir d'artisan, Atelier serein) sortaient
+ * en « ? » dans le menu Construction (rapport joueur F21). Une seule table désormais :
+ * celle du moteur. "" si hors-borne. */
+const char *scps_manuf_name(int bld){
+    if (bld<0 || bld>=BLD_TYPE_COUNT) return "";
+    const char *n = building_name((BuildingType)bld);
+    return (n && n[0] && n[0]!='?') ? n : tr(STR_MANUF_SANS_NOM);
 }
 /* Palier SUIVANT d'un édifice (le « + » upgrade). EDIFICE_COUNT = sommet/singleton. */
 int scps_edifice_succ(int edifice){
@@ -3316,15 +3385,51 @@ void scps_lang_set(int lang){
 }
 int scps_lang_get(void){ return (lang_get() == LANG_EN) ? 1 : 0; }
 
+/* GRAND LIVRE — la FENÊTRE de mesure courante, en jours, et son facteur /mois.
+ * Le facteur ne DIVISE jamais une fenêtre plus courte qu'un mois : extrapoler trois
+ * jours de janvier par ×10 affichait des dépenses fantômes en début d'année (le même
+ * piège que les deltas de la topbar, cf. rapport joueur §méthode). Sous un mois de
+ * recul, on montre donc le CUMUL observé tel quel — jamais un nombre gonflé. */
+static double api_flux_month_factor(const ScpsSim *s, int *days_out){
+    int days = s->sim.day - s->flux_day0; if(days<1) days=1;
+    if(days_out) *days_out = days;
+    return (days<30) ? 1.0 : 30.0/(double)days;
+}
+/* Ce que le trésor a RÉELLEMENT bougé depuis l'ouverture de la fenêtre. */
+static double api_flux_gold_delta(const ScpsSim *s, int cid){
+    if(cid<0 || cid>=SCPS_MAX_COUNTRY) return 0.0;
+    return econ_country_gold(s->sim.econ, cid) - s->flux_gold0[cid];
+}
+/* La ligne de RECOUPEMENT : delta de trésor observé − Σ des postes nommés. Le registre
+ * FX_* ne couvre PAS tout (achat d'État §3 / assiette M5 n'ont pas de bucket, cf.
+ * scps_econ.h §I0) ; sans cette ligne le grand livre disait « 0 » pendant que l'or
+ * fondait sous les yeux du joueur (rapport joueur F2). */
+static double api_flux_unaccounted(const ScpsSim *s, int cid){
+    double sum=0;
+    for(int comp=0; comp<FX_COUNT; comp++) sum += econ_flux_get(cid, (FluxComp)comp);
+    return api_flux_gold_delta(s, cid) - sum;
+}
+
 int scps_country_budget(ScpsSim *s, int cid, ScpsFluxLine *out, int max){
     if(!out || max<=0 || !s || !s->ready || cid<0 || cid>=s->w->n_countries) return 0;
     int n=0;
+    double mf = api_flux_month_factor(s, NULL);
     for(int comp=0; comp<FX_COUNT && n<max; comp++){
         double amt = econ_flux_get(cid, (FluxComp)comp);
         if(amt > -0.5 && amt < 0.5) continue;          /* poste vide → omis */
         out[n].name   = sz(econ_flux_name((FluxComp)comp));
         out[n].amount = amt;
+        out[n].month  = amt*mf;
         n++;
+    }
+    if(n<max){
+        double autres = api_flux_unaccounted(s, cid);
+        if(autres > 0.5 || autres < -0.5){
+            out[n].name   = sz(tr(STR_FLUX_AUTRES));
+            out[n].amount = autres;
+            out[n].month  = autres*mf;
+            n++;
+        }
     }
     return n;
 }
@@ -3339,15 +3444,19 @@ void scps_budget_summary(ScpsSim *s, int cid, ScpsBudget *out){
         double a = econ_flux_get(cid, (FluxComp)comp);
         if(a>0) inc+=a; else exp+= -a;                 /* dépenses stockées NÉGATIVES → |a| */
     }
+    /* … plus le RECOUPEMENT : le solde affiché est celui du TRÉSOR, pas celui du
+     * registre — l'un et l'autre coïncident désormais par construction. */
+    double autres = api_flux_unaccounted(s, cid);
+    if(autres>0) inc+=autres; else exp+= -autres;
     out->gold        = econ_country_gold(s->sim.econ, cid);
     out->income      = inc;
     out->expense     = exp;
     out->net         = inc - exp;
     out->credit_line = credit_line(s->w, s->sim.econ, cid);
-    int elapsed=scps_day_of_year(s); if(elapsed<1)elapsed=1;
-    out->monthly_income=inc/(double)elapsed*30.0;
-    out->monthly_expense=exp/(double)elapsed*30.0;
-    out->monthly_net=out->net/(double)elapsed*30.0;
+    int elapsed=0; double mf = api_flux_month_factor(s, &elapsed);
+    out->monthly_income=inc*mf;
+    out->monthly_expense=exp*mf;
+    out->monthly_net=out->net*mf;
     int remaining=365-scps_day_of_year(s); if(remaining<0)remaining=0;
     out->projected_year_end=out->gold+out->monthly_net*((double)remaining/30.0);
     out->runway_months=(out->monthly_net<0.0)
@@ -4509,6 +4618,7 @@ int scps_feed_poll(ScpsSim *s, int after_seq, ScpsFeedEvent *out, int max){
         out[i].a_name = (fe[i].a>=0 && fe[i].a<s->w->n_countries) ? sz(s->w->country[fe[i].a].name) : "";
         out[i].b_name = (fe[i].b>=0 && fe[i].b<s->w->n_countries) ? sz(s->w->country[fe[i].b].name) : "";
         out[i].label  = (fe[i].kind==FEED_DIRECTOR) ? sz(events_name_of(fe[i].v)) : "";
+        out[i].region_name = (fe[i].region>=0) ? scps_region_label(s, fe[i].region) : "";
     }
     return n;
 }
@@ -5745,6 +5855,7 @@ int scps_sim_load(ScpsSim *s, int slot){
     campaign_set_human(s->sim.player); /* #32 : miroir du load (cf. scps_sim_new) */
     feed_set_focus(s->sim.player);   /* le fil repart, focalisé joueur (RAZ par le load) */
     econ_flux_reset();
+    api_flux_window_open(s);         /* grand livre : la fenêtre repart au chargement aussi */
     s->ready = true;
     api_centroids(s);   /* la carte chargée : recalcule les centroïdes */
     return 0;

@@ -76,6 +76,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("region_centroid", "region"),  &ScpsWorld::region_centroid);
     ClassDB::bind_method(D_METHOD("region_seat", "region"),      &ScpsWorld::region_seat);
     ClassDB::bind_method(D_METHOD("region_city_name", "region"), &ScpsWorld::region_city_name);
+    ClassDB::bind_method(D_METHOD("region_label", "region"),     &ScpsWorld::region_label);
 
     ClassDB::bind_method(D_METHOD("province_at", "x", "y"),          &ScpsWorld::province_at);
     ClassDB::bind_method(D_METHOD("province_region", "province"),    &ScpsWorld::province_region);
@@ -594,6 +595,11 @@ Vector2 ScpsWorld::region_seat(int r) const {
  * scps_readout.c, non touché ici) : c'est l'IDENTITÉ DE LA VILLE, pas l'ancrage régional. */
 String ScpsWorld::region_city_name(int r) const {
     return String::utf8(scps_region_city_name(sim, r));
+}
+/* LE NOM MONTRABLE d'un lieu : toponyme, sinon nom de province, sinon le mot de repli
+ * — jamais « région N » (W2-7, rapport joueur F5). */
+String ScpsWorld::region_label(int r) const {
+    return String::utf8(scps_region_label(sim, r));
 }
 
 int ScpsWorld::province_at(int x, int y) const     { return scps_province_at(sim, x, y); }
@@ -1731,6 +1737,7 @@ Array ScpsWorld::country_budget(int country) {
         Dictionary d;
         d["name"]   = String::utf8(fx[i].name);
         d["amount"] = fx[i].amount;
+        d["month"]  = fx[i].month;   /* W2-7 : le poste PAR MOIS, normalisé par la façade */
         a.push_back(d);
     }
     return a;
@@ -2000,6 +2007,8 @@ Array ScpsWorld::feed_poll(int after_seq) {
         d["a"]      = String::utf8(ev[i].a_name);
         d["b"]      = String::utf8(ev[i].b_name);
         d["label"]  = String::utf8(ev[i].label);
+        /* W2-7 : LE LIEU EN TOUTES LETTRES — le fil ne remonte plus un index moteur. */
+        d["region_name"] = String::utf8(ev[i].region_name);
         a.push_back(d);
     }
     return a;
@@ -2195,24 +2204,14 @@ Dictionary ScpsWorld::renover_state(int province) {
 bool ScpsWorld::player_renover(int province) {
     return sim && scps_player_renover(sim, province) != 0;
 }
-/* Nom d'affichage d'un BuildingType — miroir DISPLAY-ONLY de la table FR de
- * `building_name()` (scps_econ.c). La membrane interdit d'inclure scps_econ.h ici
- * (le binding ne voit QUE scps_api.h) ; aucun lecteur façade n'expose ce nom pour
- * un type PAS ENCORE posé (scps_region_alloc ne nomme que les puits EXISTANTS) —
- * cette petite copie statique est le compromis minimal accepté. Garder EN PHASE
- * avec l'enum BuildingType de scps_econ.h si de nouveaux types sont ajoutés. */
+/* Nom d'affichage d'un BuildingType. W2-7 (2026-09-04) : la COPIE statique qui vivait
+ * ici s'était figée à 24 entrées pendant que l'enum moteur en comptait 30 — les six
+ * manufactures d'éthos (Heaumerie, Parurier, Horloger, Chancellerie de luxe, Comptoir
+ * d'artisan, Atelier serein) s'affichaient « ? » dans le menu Construction (rapport
+ * joueur F21). La façade porte désormais le nom (scps_manuf_name) : une seule table,
+ * celle du moteur — plus aucune dérive possible. */
 String ScpsWorld::manuf_name(int bld) {
-    static const char *NAMES[] = {
-        "Manufacture textile", "Scierie navale", "Papeterie", "Distillerie",
-        "Brasserie", "Joaillerie", "Atelier d'étoffe précieuse", "Atelier de mage",
-        "Forge céleste", "Atelier d'outillage", "Armurerie légère", "Poudrière",
-        "Apothicaire", "Atelier de tunique", "Charbonnière", "Foreuse arcanique",
-        "Alambic", "Réplicateur ligneux", "Corne divine", "Armurerie lourde",
-        "Atelier d'arc", "Arquebuserie", "Poterie", "Atelier de sculpture",
-    };
-    static const int N_NAMES = (int)(sizeof(NAMES) / sizeof(NAMES[0]));
-    if (bld < 0 || bld >= N_NAMES) return String("?");
-    return String::utf8(NAMES[bld]);
+    return String::utf8(scps_manuf_name(bld));
 }
 String ScpsWorld::edifice_name(int edifice) {
     return String::utf8(scps_edifice_name(edifice));

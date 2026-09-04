@@ -38,6 +38,7 @@ var _abandon_armed := false
 var _abandon_armed_ms := -100000
 
 var _title_lbl: Label = null
+var _infl_lbl: Label = null   ## bandeau : stock d'influence + gain/mois (W2-7, F6)
 var _back_btn: Button = null
 var _scroll: ScrollContainer = null
 var _stack: VBoxContainer = null
@@ -101,6 +102,17 @@ func _build_shell() -> void:
 	_title_lbl.clip_text = true
 	_title_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hb.add_child(_title_lbl)
+	# W2-7 (rapport joueur F6) : le panneau ne disait NI le stock d'influence NI le prix
+	# de la prochaine idée — un achat ne rendait que « 1/6 ». Le stock (et son gain/mois)
+	# vit désormais dans le bandeau, VISIBLE DANS LES TROIS VUES ; le prix de la prochaine
+	# idée s'affiche sous le titre de la vue DÉTAIL. Tout vient d'`influence_info`, le
+	# MÊME reader que la cellule de topbar — aucun calcul refait ici.
+	_infl_lbl = Label.new()
+	_infl_lbl.theme_type_variation = "RowDim"
+	_infl_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_infl_lbl.tooltip_text = "Votre réserve d'influence politique et ce qu'elle gagne par mois."
+	_infl_lbl.mouse_filter = Control.MOUSE_FILTER_STOP
+	hb.add_child(_infl_lbl)
 	hb.add_child(_close_btn())
 
 	# CORPS (fond transparent, laisse voir le parchemin) : déroule sous une hauteur
@@ -175,6 +187,7 @@ func refresh() -> void:
 	_fit_scroll()
 
 func _update_title() -> void:
+	_update_influence()
 	match _view:
 		View.CATALOGUE:
 			_title_lbl.text = "Choisir une doctrine"
@@ -182,6 +195,25 @@ func _update_title() -> void:
 			_title_lbl.text = _detail_name if _detail_name != "" else "Doctrine"
 		_:
 			_title_lbl.text = "Doctrines"
+
+## LE STOCK D'INFLUENCE dans le bandeau (W2-7) — `influence_info`, le même reader que
+## la cellule de topbar : stock nu + gain mensuel, en mots du moteur. Vide si le reader
+## manque (DLL d'avant), jamais un zéro inventé.
+func _update_influence() -> void:
+	if _infl_lbl == null:
+		return
+	var w = Sim.world
+	if w == null or not w.has_method("influence_info"):
+		_infl_lbl.text = ""
+		return
+	var me := int(w.player()) if w.has_method("player") else 0
+	var inf: Dictionary = w.influence_info(me)
+	var stock := int(inf.get("stock", 0))
+	var net := int(inf.get("net_month", inf.get("gain_month", 0)))
+	_infl_lbl.text = "Influence %d · %+d/mois" % [stock, net]
+	var hv := String(inf.get("hover", ""))
+	if hv != "":
+		_infl_lbl.tooltip_text = hv
 
 # ── VUE SLOTS — grille 6 cases (verrouillé/vide/occupé) ─────────────────────────
 ## `doctrine_slots(me)` : {slots_total, slots_open, rows:[{slot, state, doctrine, name,
@@ -431,6 +463,25 @@ func _build_detail() -> void:
 	var ideas: Array = d.get("ideas", [])
 	for raw in ideas:
 		idea_col.add_child(_idea_icon(raw))
+
+	# W2-7 (rapport joueur F6) — LA PROCHAINE IDÉE, EN CLAIR : son nom, ce qu'elle fait
+	# et son prix. Le panneau ne rendait que « 1/6 » d'un achat, et le coût vivait
+	# uniquement dans l'infobulle d'une icône. Tout vient de `doctrine_detail` (le
+	# moteur nomme l'idée et son bonus) ; rien n'est recalculé ici.
+	for raw_n in ideas:
+		var nx: Dictionary = raw_n
+		if not bool(nx.get("next", false)):
+			continue
+		var nl := Label.new()
+		nl.theme_type_variation = "RowLabel"
+		nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var bonus_n := String(nx.get("bonus", ""))
+		nl.text = "Prochaine idée : %s — %d d'influence" % [
+			String(nx.get("name", "")), int(nx.get("cost", 0))]
+		if bonus_n != "":
+			nl.text += "\n" + bonus_n
+		_detail_page.add_child(nl)
+		break
 
 	# ABANDONNER — confirmation simple (armé 4 s, motif banqueroute/rembourser).
 	var abtn := Button.new()

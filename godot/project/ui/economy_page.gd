@@ -192,7 +192,8 @@ func _update_values(me: int) -> void:
 	var flux := {}
 	if w.has_method("country_budget"):
 		for p in w.country_budget(me):
-			flux[String(p.get("name", ""))] = float(p.get("amount", 0.0)) * mf
+			# W2-7 : poste DÉJÀ mensualisé par la façade (repli = ancien ×30/jour).
+			flux[String(p.get("name", ""))] = float(p.get("month", float(p.get("amount", 0.0)) * mf))
 	for k in _flux_of:
 		var lbl2: Label = _val_lbls.get(k, null)
 		if lbl2 != null:

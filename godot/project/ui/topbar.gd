@@ -161,7 +161,9 @@ func _budget_parts_txt(w, me: int, doy: int) -> String:
 		return ""
 	var parts := []
 	for p in w.country_budget(me):
-		var amt: float = float(p.get("amount", 0.0)) / float(doy) * 30.0
+		# W2-7 : la façade rend le poste DÉJÀ mensualisé (fenêtre réelle depuis le dernier
+		# RAZ, jamais extrapolée sous un mois) — le repli /doy×30 ne sert qu'aux DLL d'avant.
+		var amt: float = float(p.get("month", float(p.get("amount", 0.0)) / float(doy) * 30.0))
 		if absf(amt) < 0.5:
 			continue
 		parts.append("%s %+d" % [String(p.get("name", "")), int(round(amt))])
@@ -191,7 +193,7 @@ func _treasury_card(w, me: int, gold: float) -> Dictionary:
 	var expense_lines := []
 	if w.has_method("country_budget"):
 		for p in w.country_budget(me):
-			var amount := float(p.get("amount", 0.0)) / float(doy) * 30.0
+			var amount := float(p.get("month", float(p.get("amount", 0.0)) / float(doy) * 30.0))
 			if absf(amount) >= 0.5:
 				var line := {"label": String(p.get("name", "Poste")),
 					"value": "%+d / mois" % int(round(amount)),

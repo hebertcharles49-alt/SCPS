@@ -892,6 +892,13 @@
     X(STR_DOCT_REASON_CURRENT,   "Un seul courant politique à la fois") \
     X(STR_DOCT_REASON_INFLUENCE, "Influence insuffisante")     X(STR_DOCT_REASON_FAITH,     "Aucune religion fondée") \
     X(STR_INFLUENCE_DEPENSES,    "Entretien de %d doctrine(s) : %d par mois") \
-    X(STR_INFLUENCE_DEPENSES_0,  "Aucune doctrine à entretenir")
+    X(STR_INFLUENCE_DEPENSES_0,  "Aucune doctrine à entretenir") \
+    /* GRAND LIVRE (W2-7) — la ligne de RECOUPEMENT : ce que le trésor a bougé sans
+     * passer par un poste nommé (achats d'État, marché, saisies). Sans elle le
+     * panneau Trésor affichait « 0/mois » partout pendant que l'or fondait. */ \
+    X(STR_FLUX_AUTRES,           "Autres mouvements") \
+    /* MARCHÉ — les MOTS des noms de repli (jamais un identifiant moteur face joueur). */ \
+    X(STR_PROV_SANS_NOM,         "Province sans nom") \
+    X(STR_MANUF_SANS_NOM,        "Manufacture sans nom")
 
 #endif /* SCPS_STRINGS_IDS_H */

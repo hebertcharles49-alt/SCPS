@@ -524,7 +524,11 @@ typedef struct {
     float demand_month;     /* demande brute du dernier tick mensuel */
     int   coverage_days;    /* jours de couverture si net<0 (366 = >1 an) ; -1 sinon */
     int   market_band;      /* 0..4 BandMarche (pour la couleur) */
-    float price;            /* prix moyen (or) — pour l'onglet Marché */
+    float price;            /* prix FACTURÉ à l'unité par le marché (couronnes) — plancher
+                             * MARKET_MIN_PRICE × marge d'import de la capitale, exactement
+                             * ce qu'« Acheter » débite (W2-7, 2026-09-04). PAS le prix de
+                             * revente nu (0,004 en début de partie ⇒ « 0.00 couronnes »
+                             * partout, rapport joueur F1). La revente encaisse le NU. */
     int   res_id;           /* indice Resource (enum) — pour le SPRITE de ressource */
 } ScpsStock;
 int scps_country_stocks(ScpsSim *s, int country, ScpsStock *out, int max);
@@ -977,6 +981,10 @@ int scps_diplo_journal(ScpsSim *s, int country, ScpsDiploAct *out, int max);
 int scps_build_legal(ScpsSim *s, int province, int edifice);
 int scps_build_legal_ex(ScpsSim *s, int province, int edifice, int *reason_out);
 const char *scps_edifice_name(int edifice);   /* nom (picker « poser » de l'onglet province) */
+/* nom d'une MANUFACTURE (BuildingType) — LA table du moteur, pas une copie dans le
+ * binding (W2-7 : la copie s'arrêtait à 24 types, les 6 manufactures d'éthos rendaient
+ * « ? »). "" hors-borne. */
+const char *scps_manuf_name(int bld);
 int scps_edifice_succ(int edifice);           /* palier suivant (le « + » ; EDIFICE_COUNT = sommet) */
 /* ENTRETIEN (2026-07-14, retour joueur « le mécanisme... passé à la trappe ? ») : or/mois
  * ARRONDI (tangible), miroir EXACT du prélèvement E1bis.10 (econ_edifice_upkeep_month) —
@@ -1324,7 +1332,16 @@ typedef struct {
     int a_id, b_id;                /* index pays BRUTS (le filtre de pertinence du front) */
     const char *a_name, *b_name;   /* pays concernés ("" si -1) */
     const char *label;             /* FEED_DIRECTOR : le NOM de l'évènement (résolu) ; "" sinon */
+    const char *region_name;       /* LE LIEU, en toutes lettres — jamais son index (W2-7,
+                                    * 2026-09-04 : « La forêt brûle — région 21 » remontait
+                                    * l'index moteur jusque dans le popup, rapport joueur F5).
+                                    * "" si non localisé. Voir scps_region_label. */
 } ScpsFeedEvent;
+/* LE NOM D'UN LIEU au grain RÉGION, tel qu'on le montre au joueur : le toponyme de sa
+ * ville si elle est nommée, sinon le nom de sa première province (Region.province_ids —
+ * géographie du World, PAS l'indirection économique econ_region_rep_province), sinon
+ * « Province sans nom ». Jamais vide, jamais un nombre. */
+const char *scps_region_label(const ScpsSim *s, int region);
 int scps_feed_poll(ScpsSim *s, int after_seq, ScpsFeedEvent *out, int max);
 
 /* ── MEMBRANE DE DÉCISION — LA FILE JOUEUR (3e voie des alertes) ────────────────────
@@ -1632,7 +1649,14 @@ void scps_tech_info(ScpsSim *s, ScpsTechInfo *out);
 typedef struct {
     const char *name;   /* libellé du poste (econ_flux_name) */
     double amount;      /* or de l'année (signé : + revenu, − dépense) */
+    double month;       /* LE MÊME poste PAR MOIS (doctrine UI) — la façade normalise sur
+                         * la fenêtre RÉELLE depuis le dernier RAZ, sans jamais extrapoler
+                         * une fenêtre plus courte qu'un mois (W2-7, 2026-09-04). */
 } ScpsFluxLine;
+/* La DERNIÈRE ligne rendue peut être « Autres mouvements » (STR_FLUX_AUTRES) : le
+ * recoupement au TRÉSOR. Le registre FX_* ne porte pas de bucket pour l'achat d'État
+ * ni pour l'assiette M5 (scps_econ.h §I0) ; cette ligne rend au grand livre la
+ * propriété qui compte pour le joueur — Σ des lignes == variation réelle de l'or. */
 int scps_country_budget(ScpsSim *s, int cid, ScpsFluxLine *out, int max);
 
 typedef struct {

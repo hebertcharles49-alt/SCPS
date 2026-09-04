@@ -275,6 +275,7 @@ func _draw() -> void:
 		for cd in cities:
 			if shown >= 10:
 				break
+			VKit.list_row_bg(self, Rect2(x - 2.0, y - 1.0, W - 22.0, 16.0), shown, false, true)   # W2-7 (F4)
 			VKit.text(self, Vector2(x, y), VKit.COL_PARCH, _region_name(cd[1]))
 			var pg := _grp(cd[0])
 			VKit.value(self, Vector2(W - 14.0 - VKit.text_w(pg), y), pg)
@@ -404,13 +405,13 @@ func _draw() -> void:
 			var region := int(entry.get("region", -1))
 			var col: Color = entry.get("col", VKit.COL_DIM)
 			var rr := Rect2(x - 2.0, y, W - 22.0, 20.0)
+			VKit.list_row_bg(self, rr, _journal_rects.size(), false, true)   # W2-7 (F4) : sans bande, l'encre tombait sur le cuir
 			VKit.fill(self, Rect2(rr.position.x, rr.position.y + 1.0, 3.0, rr.size.y - 2.0), col)
 			UIKit.draw_icon(self, String(entry.get("icon", "alert_event_bell")), Vector2(x + 6.0, y + 1.0), 16)
 			var full := _journal_full_text(entry, region)
 			var line := "an %d · %s" % [int(entry.get("year", 0)), full]
-			# tronqué à la largeur (le détail COMPLET reste dans l'infobulle native)
-			while VKit.text_w(line, VKit.FS_SMALL) > W - 52.0 and line.length() > 8:
-				line = line.substr(0, line.length() - 4) + "…"
+			# tronqué à la largeur, SUR UN ESPACE (le détail COMPLET reste dans l'infobulle)
+			line = _clip_words(line, W - 52.0)
 			VKit.text(self, Vector2(x + 26.0, y + 2.0), VKit.COL_PARCH, line, VKit.FS_SMALL)
 			_journal_rects.append({"rect": rr, "data": entry})
 			y += 20.0
@@ -525,7 +526,7 @@ func _draw_wars(x: float, y: float, w, me: int) -> float:
 			var ctx: Dictionary = w.diplo_context(cid) if w.has_method("diplo_context") else {}
 			var score := float(ctx.get("war_score", rel.get("war_score", 0.0)))
 			var rr := Rect2(x - 2.0, y, W - 22.0, 32.0)
-			VKit.list_row_bg(self, rr, _war_rects.size())
+			VKit.list_row_bg(self, rr, _war_rects.size(), false, true)   # W2-7 : fond de cuir SOMBRE
 			UIKit.draw_icon(self, "dipl_rivalry", Vector2(x + 2.0, y + 3.0), 26)
 			var nm := String(rel.get("name", w.country_info(cid).get("nom", "?")))
 			while VKit.text_w(nm, VKit.FS_SMALL) > 142.0 and nm.length() > 8:
@@ -556,13 +557,12 @@ func _draw_notifications(x: float, y: float) -> float:
 		for al in rows:
 			var data: Dictionary = al
 			var rr := Rect2(x - 2.0, y, W - 22.0, 34.0)
-			VKit.list_row_bg(self, rr, _notif_rects.size())
+			VKit.list_row_bg(self, rr, _notif_rects.size(), false, true)   # W2-7 : fond de cuir SOMBRE
 			var col: Color = data.get("col", VKit.COL_GOLD)
 			VKit.fill(self, Rect2(rr.position.x, rr.position.y, 3.0, rr.size.y), col)
 			UIKit.draw_icon(self, String(data.get("icon", "alert_warning")), Vector2(x + 5.0, y + 4.0), 26)
 			var lab := String(_alerts_source.call("ledger_short", data)) if _alerts_source.has_method("ledger_short") else String(data.get("tip", ""))
-			while VKit.text_w(lab, VKit.FS_SMALL) > W - 64.0 and lab.length() > 8:
-				lab = lab.substr(0, lab.length() - 2) + "…"
+			lab = _clip_words(lab, W - 64.0)
 			VKit.text(self, Vector2(x + 38.0, y + 9.0), VKit.COL_PARCH, lab, VKit.FS_SMALL)
 			if data.has("seq"):
 				draw_circle(Vector2(W - 16.0, y + 7.0), 3.0, Color(0.95, 0.90, 0.75))
@@ -641,3 +641,18 @@ func _get_tooltip(at_position: Vector2) -> String:
 		if (sr["rect"] as Rect2).has_point(cp):
 			return String(SEC_TIPS.get(String(sr["title"]), ""))
 	return ""
+
+## TRONCATURE À LA LARGEUR, sur un ESPACE (W2-7, rapport joueur F18 : « Un ÉDIFICE est
+## constructible (ex. Tribun… », « BIEN INTROUVABLE — Outils est dema… » — coupés au
+## milieu d'un mot). Le texte COMPLET reste dans l'infobulle native de la ligne.
+func _clip_words(txt: String, max_w: float) -> String:
+	if VKit.text_w(txt, VKit.FS_SMALL) <= max_w:
+		return txt
+	var s2 := txt
+	while s2.length() > 8 and VKit.text_w(s2 + "…", VKit.FS_SMALL) > max_w:
+		var sp := s2.rstrip(" ").rfind(" ")
+		if sp <= 8:
+			s2 = s2.substr(0, s2.length() - 2)
+		else:
+			s2 = s2.substr(0, sp)
+	return s2.rstrip(" —·:,-") + "…"

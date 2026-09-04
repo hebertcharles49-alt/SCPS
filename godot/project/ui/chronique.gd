@@ -160,5 +160,11 @@ func _resize_to(n: int) -> void:
 ## rouvre le panneau (touche H en jeu).
 func open() -> void:
 	show()
+	# W2-7 (rapport joueur F16) : les Annales se posaient à (0,0) — elles recouvraient la
+	# moitié gauche de la topbar et coupaient leur propre dernière ligne. Ancré FULL_RECT
+	# en _ready, ce Control vit sous un CanvasLayer et ne reçoit pas toujours la taille du
+	# viewport : on la lui donne à l'ouverture (le CenterContainer fait le reste).
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	size = get_viewport_rect().size
 	Sound.play("ui_parchment_open")
 	_rebuild()

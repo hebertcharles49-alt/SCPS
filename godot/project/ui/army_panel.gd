@@ -952,14 +952,26 @@ func _refill_tooltip(previews: Array) -> String:
 		lines.append("Le manque peut être acheté au marché au prix et au trésor du prochain drain.")
 	return "\n".join(lines)
 
+## LE NOM D'UN LIEU (W2-7, rapport joueur F5) : la façade rend « region_label »
+## (toponyme → province → repli) — le panneau n'écrit plus « région 18 ».
+func _region_label(r: int) -> String:
+	if r < 0:
+		return ""
+	var w = Sim.world
+	if w != null and w.has_method("region_label"):
+		var nm := String(w.region_label(r))
+		if nm != "":
+			return nm
+	return str(r)
+
 func _corps_status_text(a: Dictionary) -> String:
 	var loc := String(a.get("location", ""))
-	if loc == "": loc = "région %d" % int(a.get("region", -1))
+	if loc == "": loc = _region_label(int(a.get("region", -1)))
 	var phase := String(a.get("phase", "Inconnu"))
 	var text := "Corps #%d · %s · %s · %s hommes" % [int(a.get("id", -1)), loc, phase, _grp(int(a.get("units", 0)))]
 	var dest := String(a.get("destination", ""))
 	if int(a.get("dest", -1)) >= 0:
-		if dest == "": dest = "région %d" % int(a.get("dest", -1))
+		if dest == "": dest = _region_label(int(a.get("dest", -1)))
 		text += " → %s" % dest
 	var progress := int(a.get("progress_pct", -1))
 	if progress >= 0:
@@ -989,7 +1001,7 @@ func _move_preview_text(preview: Dictionary) -> String:
 		return ""
 	var count := int(preview.get("corps_count", 0))
 	var target := String(preview.get("target_name", ""))
-	if target == "": target = "région %d" % int(preview.get("target_region", -1))
+	if target == "": target = _region_label(int(preview.get("target_region", -1)))
 	if not bool(preview.get("valid", false)):
 		return "Impossible vers %s · %s (%d/%d corps bloqués)" % [target,
 			String(preview.get("reason", "route refusée")), int(preview.get("invalid_count", count)), count]

@@ -341,10 +341,19 @@ static func row(ci: CanvasItem, x: float, y: float, cat: String, word: String, w
 
 ## Ligne de ledger : alternance à peine visible, séparateur bas et sélection à gauche.
 ## Les grandes listes gardent ainsi la densité d'EU4 sans devenir une soupe de texte.
-static func list_row_bg(ci: CanvasItem, r: Rect2, index: int, selected: bool = false) -> void:
+static func list_row_bg(ci: CanvasItem, r: Rect2, index: int, selected: bool = false,
+		on_dark: bool = false) -> void:
 	if selected:
 		fill(ci, r, COL_PANEL_HI)
 		fill(ci, Rect2(r.position, Vector2(3.0, r.size.y)), COL_GOLD)
+	elif on_dark:
+		# FOND SOMBRE (bande droite : le chrome de cuir) — W2-7, rapport joueur F4. Ne
+		# peindre qu'UNE parité y rendait l'autre ligne illisible : l'encre COL_PARCH est
+		# un brun FONCÉ, pensé pour du parchemin, et tombait sur le cuir sombre. Les DEUX
+		# parités portent donc un bandeau clair ; le zébrage survit par la NUANCE (deux
+		# opacités), plus par la présence ou l'absence de fond.
+		fill(ci, r, Color(COL_PANEL2.r, COL_PANEL2.g, COL_PANEL2.b,
+			0.80 if index % 2 == 0 else 0.62))
 	elif index % 2 == 0:
 		fill(ci, r, Color(COL_PANEL2.r, COL_PANEL2.g, COL_PANEL2.b, 0.34))
 	fill(ci, Rect2(r.position.x, r.position.y + r.size.y - 1.0, r.size.x, 1.0),

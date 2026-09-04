@@ -163,9 +163,56 @@ int main(int argc, char **argv){
        bg.projected_year_end==bg.projected_year_end && bg.runway_months==bg.runway_months);
     ok("P6 budget : autonomie négative seulement quand le solde est stable",
        (bg.monthly_net>=0.0 && bg.runway_months<0.0) || (bg.monthly_net<0.0 && bg.runway_months>=0.0));
+    /* W2-7 (rapport joueur F2) — LE GRAND LIVRE RECOUPE LE TRÉSOR. Le registre FX_* ne
+     * porte pas TOUTES les sorties d'or (l'achat d'État et l'assiette M5 n'ont pas de
+     * bucket) : le panneau Trésor affichait « 0/mois » partout pendant que l'or fondait.
+     * La façade ajoute une ligne de RECOUPEMENT, donc Σ des postes == variation réelle
+     * du trésor sur la fenêtre. On l'exige sur TOUS les pays, pas seulement le joueur. */
+    { int recoupe=1, mois_ok=1;
+      for (int ci=0; ci<nc && recoupe; ci++){
+          ScpsFluxLine fl[48]; int n=scps_country_budget(s, ci, fl, 48);
+          ScpsBudget b2; scps_budget_summary(s, ci, &b2);
+          double sum=0; for (int i=0;i<n;i++){ sum+=fl[i].amount;
+              /* le poste /mois ne doit jamais AMPLIFIER le cumul (pas d'extrapolation
+               * d'une fenêtre plus courte qu'un mois — le ×30/jour d'un 3 janvier). */
+              if (fabs(fl[i].month) > fabs(fl[i].amount)+1e-6) mois_ok=0; }
+          if (fabs(sum - b2.net) > 1.0) recoupe=0;   /* ±1 couronne (arrondi) */
+      }
+      ok("W2-7 budget : Σ des postes == solde du trésor (ligne de recoupement)", recoupe);
+      ok("W2-7 budget : le poste /mois n'extrapole jamais au-dessus du cumul", mois_ok); }
 
     ScpsStock market_st[40]; int nmarket_st=scps_country_stocks(s,pl0,market_st,40);
     ok("marché : au moins un bien vivant exposé", nmarket_st>0);
+    /* W2-7 (rapport joueur F1) — AUCUN PRIX À ZÉRO. Le prix rendu est celui que le marché
+     * FACTURE (plancher MARKET_MIN_PRICE × marge d'import), pas le prix de revente nu qui
+     * vaut 0,004 en début de partie et s'affichait « 0.00 couronnes » sur les quinze
+     * lignes. Il DOIT donc valoir au moins le plancher, et coïncider avec le devis. */
+    { int prix_ok=(nmarket_st>0);
+      for(int i=0;i<nmarket_st;i++){
+          if(!(market_st[i].price >= 0.2f && market_st[i].price==market_st[i].price)) prix_ok=0;
+          ScpsMarketQuote q;
+          if(scps_market_quote(s,pl0,market_st[i].res_id,10,&q) && q.valid
+             && fabs((double)market_st[i].price - (double)q.price*(double)q.margin) > 1e-3) prix_ok=0;
+      }
+      ok("W2-7 marché : chaque prix est celui qui sera FACTURÉ (jamais 0,00)", prix_ok); }
+    /* W2-7 (rapport joueur F21) — TOUTE manufacture a un nom : la copie du binding
+     * s'arrêtait à 24 types pour 30 dans l'enum, les six manufactures d'éthos rendaient
+     * « ? ». Le nom vient désormais de la table du moteur. */
+    { int noms_ok=1;
+      for(int b=0;b<64;b++){
+          const char *n=scps_manuf_name(b);
+          if(!n) { noms_ok=0; break; }
+          if(n[0] && (n[0]=='?')) { noms_ok=0; break; }
+      }
+      ok("W2-7 construction : aucune manufacture ne s'appelle « ? »", noms_ok); }
+    /* W2-7 (rapport joueur F5) — UN LIEU SE NOMME. « région 21 » remontait l'index moteur
+     * jusque dans le popup d'évènement ; scps_region_label rend TOUJOURS des lettres. */
+    { int lieux_ok=1, nreg=scps_region_count(s);
+      for(int r=0;r<nreg;r++){
+          const char *l=scps_region_label(s,r);
+          if(!l || !l[0] || (l[0]>='0' && l[0]<='9')){ lieux_ok=0; break; }
+      }
+      ok("W2-7 membrane : chaque région se nomme en lettres (jamais son index)", lieux_ok); }
     if(nmarket_st>0){
         ScpsMarketQuote mq;
         int mqok=scps_market_quote(s,pl0,market_st[0].res_id,10,&mq);

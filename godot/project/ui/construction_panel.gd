@@ -24,6 +24,11 @@ var _builds := []
 var _bytype := {}          # type(int) → b(Dictionary) — pour résoudre le « Prochain palier » (edifice_succ)
 var _blegal := {}          # type → {legal, reason} — miroir read-only du drain CMD_BUILD (lot M)
 var _tab := 0              # 0 = Édifices · 1 = Manufactures
+
+## LES DEUX ONGLETS, nommés UNE fois : la fiche province réutilise ces mots pour
+## distinguer ses deux boutons « Construire… » (W2-7, rapport joueur F10 — ils étaient
+## identiques à 60 px l'un de l'autre). Un seul vocabulaire pour une seule surface.
+const TAB_NAMES := ["Édifices", "Manufactures"]
 var _flash := ""           # retour de la dernière action (chantier mis / refus)
 var _flash_ok := true
 
@@ -83,7 +88,7 @@ func _build_shell() -> void:
 	tabpanel.add_child(tabs)
 	_tab_group = ButtonGroup.new()
 	_tab_btns.clear()
-	var names := ["Édifices", "Manufactures"]
+	var names := TAB_NAMES
 	for i in range(names.size()):
 		var b := Button.new()
 		b.theme_type_variation = "Tab"

@@ -288,7 +288,8 @@ func _draw_budget_controls(x: float, y: float, me: int) -> float:
 	var flux := {}
 	if Sim.world.has_method("country_budget"):
 		for p in Sim.world.country_budget(me):
-			flux[String(p.get("name", ""))] = float(p.get("amount", 0.0)) * mf   # couronnes/mois signé
+			# W2-7 : poste DÉJÀ mensualisé par la façade (repli = ancien ×30/jour).
+			flux[String(p.get("name", ""))] = float(p.get("month", float(p.get("amount", 0.0)) * mf))   # couronnes/mois signé
 	y = VKit.section(self, x, y, "Pilotage budgétaire")
 	# rendement fiscal AGRÉGÉ en direct (le détail par classe n'est pas exposé par la façade)
 	var tax_month: float = absf(float(flux.get("taxes", 0.0)))
@@ -395,7 +396,7 @@ func _draw_eco(x: float, y: float, me: int) -> float:
 	var revenues := []
 	var expenses := []
 	for p in Sim.world.country_budget(me):
-		var monthly := float(p["amount"]) * month_factor
+		var monthly := float(p.get("month", float(p["amount"]) * month_factor))
 		if monthly >= 0.0:
 			revenues.append({"name": String(p["name"]), "amount": monthly})
 		else:
@@ -557,7 +558,7 @@ func _draw_marche(x: float, y: float, me: int) -> float:
 		scx += tw + 6.0
 	y += 22
 
-	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "bien              prix          état                actions", VKit.FS_SMALL)
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "bien                 prix                état", VKit.FS_SMALL)
 	y += 16
 	if cap_region < 0:
 		VKit.text(self, Vector2(x, y), VKit.sense(0.30), "Aucune capitale connue — achats/ventes indisponibles.", VKit.FS_SMALL)
@@ -569,19 +570,23 @@ func _draw_marche(x: float, y: float, me: int) -> float:
 		var col := _marche_col(band)
 		var res_id := int(st["res_id"])
 		var name := String(st["name"])
-		var is_active := (res_id == _marche_hover_res) or (res_id == _marche_selected_res)
+		# W2-7 (rapport joueur, écran Marché 1/5) : le NOM est TOUJOURS écrit à côté de
+		# l'icône — l'en-tête promet « bien », la colonne ne montrait qu'un pictogramme
+		# tant qu'on ne survolait pas la ligne (dix-huit lignes muettes).
 		var spr := UIKit.resource_sprite(res_id, name)
 		if spr != null:
 			draw_texture_rect(spr, Rect2(x, y - 3, 18, 18), false)
-			if is_active:
-				VKit.text(self, Vector2(x + 22, y), col, _fit_text(name, 108.0, VKit.FS_SMALL), VKit.FS_SMALL)
+			VKit.text(self, Vector2(x + 22, y), col, _fit_text(name, 112.0, VKit.FS_SMALL), VKit.FS_SMALL)
 		else:
-			VKit.text(self, Vector2(x, y), col, _fit_text(name, 122.0, VKit.FS_SMALL), VKit.FS_SMALL)
-		# prix — sa propre position, sa propre couleur (bande)
-		VKit.text(self, Vector2(x + 140, y), col, "%.2f couronnes" % float(st["price"]), VKit.FS_SMALL)
+			VKit.text(self, Vector2(x, y), col, _fit_text(name, 134.0, VKit.FS_SMALL), VKit.FS_SMALL)
+		# prix — sa propre colonne, BORNÉE (W2-7, F14 : « 0.00 couronnpénurie sévère » —
+		# deux abscisses fixes, aucune n'ajustait le texte).
+		VKit.text(self, Vector2(x + 142, y), col,
+			_fit_text("%.2f couronnes" % float(st["price"]), 94.0, VKit.FS_SMALL), VKit.FS_SMALL)
 		# état du marché — SÉPARÉ du prix (gap + colonne dédiée) ; couleur + MOT (jamais
 		# la couleur seule — le mot vient déjà du moteur, ex. « pénurie »/« sain »).
-		VKit.text(self, Vector2(x + 212, y), col, String(st["marche"]), VKit.FS_SMALL)
+		VKit.text(self, Vector2(x + 242, y), col,
+			_fit_text(String(st["marche"]), DW - 2.0 * x - 242.0, VKit.FS_SMALL), VKit.FS_SMALL)
 		y += 18
 
 		# actions — ligne DISTINCTE (séparée de prix/état) : boutons PLEINS ≥32px de
@@ -1305,7 +1310,7 @@ func _draw_armee(x: float, y: float, me: int) -> float:
 	var ar: Dictionary = Sim.world.army_info(me)
 	if bool(ar.get("active", false)):
 		VKit.text(self, Vector2(x, y), VKit.COL_GOLD,
-			"armée de campagne — région %d · %s" % [int(ar["region"]), ar["phase"]], VKit.FS_SMALL)
+			"armée de campagne — %s · %s" % [_region_label(int(ar["region"])), ar["phase"]], VKit.FS_SMALL)
 		y += 16
 		VKit.value(self, Vector2(x, y),
 			"inf %d · arch %d · cav %d · mages %d  (Σ %d)" % [
@@ -1814,3 +1819,14 @@ func _grp(n) -> String:
 		if c % 3 == 0 and i > 0:
 			out = " " + out
 	return ("-" if int(n) < 0 else "") + out
+
+## LE NOM D'UN LIEU (W2-7, rapport joueur F5) : la façade rend « region_label »
+## (toponyme → nom de province → mot de repli) — le tiroir n'écrit plus « région 18 ».
+func _region_label(r: int) -> String:
+	if r < 0:
+		return ""
+	if Sim.world != null and Sim.world.has_method("region_label"):
+		var nm := String(Sim.world.region_label(r))
+		if nm != "":
+			return nm
+	return str(r)

@@ -26,6 +26,13 @@ const DIVIDER := ParchTheme.DIVIDER
 # de cette liste historique.
 const SPEND_HAS_SLIDER := {0: true, 1: true, 2: true, 3: true, 4: true, 5: true}
 
+# W2-7 — les postes de flux DÉJÀ portés ailleurs sur cette page (enveloppes à curseur
+# `spend_flux` + l'impôt, ventilé par classe à gauche) : ils ne doivent pas se dédoubler
+# en ligne LUE quand on ouvre la colonne SORTIES aux postes que la façade ajoute.
+const FLUX_SHOWN_ELSEWHERE := {
+	"taxes": true, "invest.": true, "entretien": true, "soldes": true,
+	"marine": true, "routes": true, "frappe": true}
+
 const TABS := ["Balance", "Monnaie", "Marché", "Commerce"]
 const CLASS_NAMES := ["Journaliers", "Bourgeois", "Élite"]   # SocialClass 0-2 (curseurs fiscaux/emprunt)
 const CLASS_ICON := ["cls_journalier", "cls_bourgeois", "cls_elite"]   # lot11_systeme, même index
@@ -47,6 +54,9 @@ var _val_lbls := {}
 var _sliders := {}
 # lignes LUES : clé de _val_lbls -> nom de poste de flux (country_budget)
 var _flux_of := {}
+# W2-7 : les lignes NÉES du reader (ex. « Autres mouvements ») affichent un montant
+# SIGNÉ — leur sens peut basculer d'un mois à l'autre, la colonne seule mentirait.
+var _flux_signed := {}
 var _tab_group: ButtonGroup = null
 var _tab := 0
 var _tab_btns: Array = []
@@ -397,6 +407,7 @@ func _build_body(me: int) -> void:
 	_val_lbls.clear()
 	_sliders.clear()
 	_flux_of.clear()
+	_flux_signed.clear()
 	for c in _left_col.get_children():
 		c.queue_free()
 	for c in _right_col.get_children():
@@ -468,13 +479,35 @@ func _update_values(me: int) -> void:
 	var flux := {}
 	if w.has_method("country_budget"):
 		for p in w.country_budget(me):
-			flux[String(p.get("name", ""))] = float(p.get("amount", 0.0)) * mf
-	# postes LUS (Export / Péages / Conseil / Cour) : |montant| en couronnes/mois
+			# W2-7 : « month » vient de la façade (fenêtre réelle, jamais extrapolée sous
+			# un mois — le ×30/jour d'un 3 janvier inventait des dépenses fantômes).
+			flux[String(p.get("name", ""))] = float(p.get("month", float(p.get("amount", 0.0)) * mf))
+	# W2-7 — LE RECOUPEMENT : la façade rend une ligne « Autres mouvements » (le delta de
+	# trésor que les postes nommés n'expliquent pas). Sans elle, la colonne SORTIES listait
+	# des zéros pendant que l'or fondait (rapport joueur F2). La ligne naît à la DEMANDE et
+	# porte le libellé du MOTEUR — aucun mot inventé côté .gd.
+	for fname_new in flux.keys():
+		var key_new := "flux:%s" % fname_new
+		if _val_lbls.has(key_new) or _flux_of.values().has(fname_new):
+			continue
+		if FLUX_SHOWN_ELSEWHERE.has(fname_new):
+			continue   # poste déjà porté par une enveloppe à curseur (spend_flux) ou l'impôt
+		var positive: bool = float(flux[fname_new]) >= 0.0
+		_row(_left_col if positive else _right_col, String(fname_new), key_new,
+			"Income" if positive else "Expense")
+		_flux_of[key_new] = fname_new
+		_flux_signed[key_new] = true
+	# postes LUS (Export / Péages / Conseil / Cour + les lignes nées ci-dessus) :
+	# |montant| en couronnes/mois
 	for k in _flux_of:
 		var lbl2: Label = _val_lbls.get(k, null)
 		if lbl2 != null:
 			var fname: String = _flux_of[k]
-			lbl2.text = "%s/mois" % _grp(int(round(absf(float(flux.get(fname, 0.0))))))
+			var v2 := float(flux.get(fname, 0.0))
+			if _flux_signed.has(k):
+				lbl2.text = "%s%s/mois" % ["+" if v2 >= 0.0 else "−", _grp(int(round(absf(v2))))]
+			else:
+				lbl2.text = "%s/mois" % _grp(int(round(absf(v2))))
 	# sorties : enveloppe réalisée (couronnes/mois) + curseur
 	var spend_flux := ["invest.", "entretien", "soldes", "marine", "routes"]
 	for raw2 in ctl.get("spending", []):
