@@ -89,6 +89,29 @@ int main(int argc,char**argv){
                                             else if (econ->region[r].owner==cb) nrb++; }
       econ->nat_stock[ca][RES_ARMS_LIGHT]=5000.f*(float)nra; econ->nat_stock[ca][RES_ARMS_HEAVY]=2000.f*(float)nra;
       econ->nat_stock[cb][RES_ARMS_LIGHT]=5000.f*(float)nrb; econ->nat_stock[cb][RES_ARMS_HEAVY]=2000.f*(float)nrb; }
+    /* LE POOL DE MAIN-D'ŒUVRE, À LA TAILLE QUE CE BANC VISE (2026-09-04, WH_POOL_CLAMP).
+     * La levée demande désormais à l'arsenal exactement ce que la CLASSE peut armer
+     * (`army_recruit_ex` étant tout-ou-rien, la demande est bornée au pool) : le pool est
+     * donc devenu le facteur LIMITANT de ce banc. Or la fixture (monde neuf + 8 econ_tick)
+     * n'offrait qu'UN paquet mobilisable — « guerre 1 vs paix 0 » : l'assertion « la paix
+     * lève MOINS » tenait sur un écart de un, sous le bruit. On donne aux trois pays testés
+     * une assiette de classes qui laisse respirer la cadence (ARMY_POOL_FRAC 0.20 sur ×20
+     * de strate = quelques dizaines de paquets), pour que 7 levées/an de guerre et 3/an
+     * d'entretien redeviennent lisibles l'une contre l'autre. MÊME geste, MÊME raison que
+     * la re-calibration d'army_demo par W1-F. */
+    for (int p=0;p<econ->n_prov;p++){
+        int o=econ->prov[p].owner;
+        if (o!=ca && o!=cb && (cp<0 || o!=cp)) continue;
+        for (int cl=0; cl<LAB_CLASS_COUNT; cl++) econ->prov[p].strata[cl].pop *= 20.f;
+    }
+    /* ET UN TRÉSOR : ce banc mesure « la guerre lève plus que la paix », pas le FREIN
+     * ÉCONOMIQUE (W1-A/W1-F). Sans un sou en caisse, `pay_starved` est vrai dès le 1er
+     * régiment et c'est la GUERRE qui cesse de lever (la garde de budget ne désarme que
+     * la levée de guerre ; la garnison de paix, elle, continue) — le banc mesurait alors
+     * l'inverse de son énoncé. On solde l'État pour que la CADENCE soit ce qu'on lit.
+     * (LOT 1.5 remet délibérément ce trésor à −500 pour tester le débit borné.) */
+    econ->nat_treasury[ca]=100000.f; econ->nat_treasury[cb]=100000.f;
+    if (cp>=0) econ->nat_treasury[cp]=100000.f;
     float arms0=capital_arms(w,econ,ca);
     /* 3 ans : assez pour que le PIED DE GUERRE (WH_BATCH_WAR=7/an) lève son plafond,
      * mais trop court pour que l'ENTRETIEN de paix (WH_BATCH_PEACE=1.5/an) le rattrape.

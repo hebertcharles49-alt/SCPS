@@ -808,6 +808,8 @@ int main(int argc, char **argv){
     long tot_ligues=0, tot_frondes=0, tot_indep=0, tot_renvers=0, tot_ecrase=0;   /* fronde */
     long tot_bt=0, tot_btj=0, tot_routs=0, tot_rallies=0, tot_mchoc=0, tot_mpour=0, tot_deseng=0, tot_renf=0, tot_nul=0;   /* batailles */
     long tot_desert=0, tot_overbudget=0, tot_paycheck=0;   /* W1 : le frein économique de la levée */
+    long tot_whr[WHR_COUNT]={0};                           /* P3 : raisons du refus de levée (pays-an) */
+    long tot_wh_elite=0, tot_wh_norev=0, tot_wh_growover=0;
     long tot_relig_state=0, tot_relig_emp=0; double tot_relig_faithful=0;   /* W1-E : la foi d'État, assiette du courant Divin */
     double tot_sat[CLASS_COUNT]={0}; double tot_trade=0;   /* §distrib : satisfaction par classe + commerce */
     double tot_wpc[CLASS_COUNT]={0};   /* MONNAIE M4-IP : richesse/tête par classe, fin de sim */
@@ -2180,13 +2182,42 @@ int main(int argc, char **argv){
                 double fl_c   = (double)warhost_force_limit(regions_of(s.econ,c));
                 double pay_c  = -econ_flux_get(c, FX_SOLDE);          /* solde payée, dern. année (or/an) */
                 double rev_c  = (double)econ_country_tax_year(c);     /* revenu de l'an écoulé (l'assiette du frein) */
-                double payrev = (rev_c>1.0)? 100.0*pay_c/rev_c : -1.0;
+                /* P3 (2026-09-04) — MÊME REPLI QUE LE MOTEUR (WH_REV_FALLBACK) : quand le
+                 * registre FX_TAX rend 0, le frein lit le rendement fiscal RECALCULÉ ; la
+                 * télémétrie doit lire la MÊME assiette, sinon `solde / revenu` explose sur
+                 * un dénominateur nul (max 19 066 %, `temoin_s60:972` — une division, pas une
+                 * armée). Miroir exact de scps_warhost.c, aucun calcul neuf. */
+                double assiette = 12.0*((double)econ_country_tax_class_month(s.econ,c,CLASS_LABORER)
+                                       +(double)econ_country_tax_class_month(s.econ,c,CLASS_BOURGEOIS)
+                                       +(double)econ_country_tax_class_month(s.econ,c,CLASS_ELITE));
+                double rev_eff = (rev_c>0.0)? rev_c
+                               : (tune_f("WH_REV_FALLBACK",1.f)>0.f ? assiette : rev_c);
+                double payrev = (rev_eff>1.0)? 100.0*pay_c/rev_eff : -1.0;
                 printf("                    classes : J %.1fk (%.0f%%) · B %.1fk (%.0f%%) · É %.1fk (%.0f%%) | or %.0f (%+.1f/mois, dern. année) · armée %.0f (%ld rgt / limite %.0f) · solde/revenu ",
                        cp[CLASS_LABORER]/1000.0,   100*cp[CLASS_LABORER]/cpt,
                        cp[CLASS_BOURGEOIS]/1000.0, 100*cp[CLASS_BOURGEOIS]/cpt,
                        cp[CLASS_ELITE]/1000.0,     100*cp[CLASS_ELITE]/cpt,
                        g1, flux, diplo_mil_power(w,s.econ,c), warhost_units(s.host,c), fl_c);
-                if (payrev>=0.0) printf("%.0f%%\n", payrev); else printf("n/d\n");
+                if (payrev>=0.0) printf("%.0f%%", payrev); else printf("n/d");
+                /* P3 (2026-09-04) — DEUX nombres qui manquaient à côté de « 0 rgt » : les paquets
+                 * que les CORPS DE CAMPAGNE de ce pays portent au front (le host tombe à 0 quand
+                 * campaign_order TRANSFÈRE : « 0 rgt » peut vouloir dire « toute l'armée est
+                 * partie »), et la RAISON du dernier refus de levée lue au moteur. */
+                /* `revenu` = le registre FX_TAX de l'an écoulé (ce que le moteur lit) ;
+                 * `assiette` = le rendement fiscal RECALCULÉ de l'état courant. Un écart
+                 * massif dit que le dénominateur du frein est faux, pas que le pays est pauvre. */
+                bool c_war=false;
+                for (int b=0;b<w->n_countries && !c_war;b++)
+                    if (b!=c && diplo_status(s.dp,c,b)==DIPLO_WAR) c_war=true;
+                /* ⚠ campaign_units(c,owner) ne rend QUE le corps du SLOT 0
+                 * (CAMPAIGN_CORPS_ID(owner,0)==owner) : on somme TOUS les corps du pays. */
+                long corps_rgt=0;
+                if (s.camp) for (int n=0;n<campaign_corps_count(s.camp,c);n++)
+                    corps_rgt += campaign_corps_units(s.camp, campaign_corps_id_at(s.camp,c,n));
+                printf(" · corps %ld rgt · solde %.0f/an · revenu %.1f (assiette %.1f) · %s · levée : %s\n",
+                       corps_rgt, pay_c, rev_c, assiette,
+                       c_war?"EN GUERRE":"en paix",
+                       warhost_levy_reason_name(warhost_levy_reason(c)));
                 if (fl_c>0.0 && g_fl_n<8192){ g_fl_all[g_fl_n]=100.0*(double)warhost_units(s.host,c)/fl_c; g_fl_n++; }
                 if (payrev>=0.0 && g_pr_n<8192){ g_pr_all[g_pr_n]=payrev; g_pr_n++; }
                 /* usage du marché inter-pays (dernier tick annuel) + entrepôts (top 4) */
@@ -2583,6 +2614,18 @@ int main(int argc, char **argv){
           printf("              frein de levée : %ld rgt déserté(s) faute de solde · %ld/%ld mois-pays sur-budget (%.0f %%)\n",
                  des, ovb, chk, chk>0? 100.0*(double)ovb/(double)chk : 0.0);
           tot_desert+=des; tot_overbudget+=ovb; tot_paycheck+=chk; }
+        /* P3 du sweep W1/W2 (2026-09-04) — LA RAISON DU REFUS DE LEVÉE, pays-an par pays-an.
+         * Trois missions ont deviné pourquoi « le 1er empire du monde » finit à 0 régiment
+         * avec de l'or ET des armes en stock : ici on la LIT. `sans revenu` compte les
+         * pays-mois où econ_country_tax_year rend 0, donc où le plafond de solde est DÉSARMÉ. */
+        { const long *rc=NULL; long eg=0, nr=0, go=0;
+          warhost_levy_reason_stats(&rc, &eg, &nr, &go);
+          printf("              levée refusée :");
+          for (int k=1;k<WHR_COUNT;k++) printf(" %s %ld ·", warhost_levy_reason_name(k), rc[k]);
+          printf(" (levées %ld) | gate d'élite %ld pays-an · revenu nul %ld pays-mois (plafond désarmé) · croissance hors limite %ld pays-an\n",
+                 rc[WHR_LEVE], eg, nr, go);
+          for (int k=0;k<WHR_COUNT;k++) tot_whr[k]+=rc[k];
+          tot_wh_elite+=eg; tot_wh_norev+=nr; tot_wh_growover+=go; }
           tot_repress+=rep; tot_assim+=ass; tot_purge+=pur; tot_purge_dead+=dead;
           tot_serv+=s.dp->n_servage; tot_prot+=s.dp->n_protectorat; tot_conc+=s.dp->n_concordat;
           tot_cite+=s.dp->n_cite; tot_defect+=s.dp->n_defections; tot_annex+=s.dp->n_annex; }
@@ -3095,6 +3138,13 @@ int main(int argc, char **argv){
     printf("   frein de levée .............. %ld rgt déserté(s) faute de solde (%.1f/sim) · %ld/%ld mois-pays sur-budget (%.0f %%)\n",
            tot_desert, (double)tot_desert/(nsims>0?nsims:1), tot_overbudget, tot_paycheck,
            tot_paycheck>0? 100.0*(double)tot_overbudget/(double)tot_paycheck : 0.0);
+    /* P3 (2026-09-04) — la SYNTHÈSE des raisons de refus : la table que trois missions ont
+     * remplacée par des hypothèses. Somme monde × sims, en pays-an. */
+    printf("   levée refusée (pays-an) .....");
+    for (int k=1;k<WHR_COUNT;k++) printf(" %s %ld ·", warhost_levy_reason_name(k), tot_whr[k]);
+    printf(" (levées %ld)\n", tot_whr[WHR_LEVE]);
+    printf("   gates de levée .............. gate d'élite %ld pays-an · revenu fiscal NUL %ld pays-mois (plafond WH_PAY_REVENUE_FRAC DÉSARMÉ) · croissance hors limite de force %ld pays-an\n",
+           tot_wh_elite, tot_wh_norev, tot_wh_growover);
     printf("   syncrétisme TECH (gouvernance) %.1f nœud(s)/sim · %.1f archétype(s) distincts/sim (porte = CULTURE, plus heritage ; la diffusion par contact DIVERGE)\n",
            (double)tot_sync/(nsims>0?nsims:1), (double)tot_sync_distinct/(nsims>0?nsims:1));
     printf("   religion .................... %.1f foi(s) fondée(s)/sim · %.1f schisme(s)/sim · %.1f pays fidèle(s)/sim · %.1f région(s) minoritaire(s)/sim (dont same-root/hérésie %.1f · foreign/zélote %.1f) (monde ATHÉE au départ ; fonde au TEMPLE T2 bâti — LOT T ; racines ≤ ⌈empires/2⌉ genèse · ≤ %d schisme(s)/racine)\n",

@@ -323,6 +323,24 @@
      * levée cesse de grossir (0 = désactivé). Cible rapport armée : 10-15 % en paix. */ \
     X(WH_DESERT_RATE,         0.50f) \
     X(WH_PAY_REVENUE_FRAC,    0.35f) \
+    /* LA QUEUE DE LA LEVÉE ET L'EMPIRE DÉSARMÉ (2026-09-04, sweep de validation W1/W2 §3
+     * A2/A3/A5 — P3 de l'analyste : instrumenter AVANT de toucher un nombre). Quatre
+     * interrupteurs, aucun plafond ; tous à 0 = comportement d'avant, byte-identique.
+     *   WH_POOL_CLAMP    : la levée ne demande à l'arsenal que ce que la CLASSE peut armer
+     *                      (army_recruit_ex est tout-ou-rien : sans ce clamp, les armes
+     *                      partaient au tampon de combat sans un homme dessus, à vie) ;
+     *   WH_ARSENAL_GATE  : une recette que l'arsenal ne peut PAS armer pèse 0, comme une
+     *                      tech absente — l'IA lève ce que son stock permet ;
+     *   WH_MILICE_FLOOR  : plancher de levée = la MILICE (armes de fortune) au lieu de
+     *                      piquier/épéiste/archer, eux-mêmes gatés sur l'arsenal
+     *                      (CALIB_ARMEE §5-P4, dont P5/SOLDE_FORTUNE_ARMS était le prérequis) ;
+     *   WH_REV_FALLBACK  : quand le registre FX_TAX rend 0, le plafond de solde se replie
+     *                      sur le rendement fiscal RECALCULÉ (sinon `rev>0` était faux et le
+     *                      frein tout entier était désarmé). */ \
+    X(WH_POOL_CLAMP,          1.0f) \
+    X(WH_ARSENAL_GATE,        1.0f) \
+    X(WH_MILICE_FLOOR,        1.0f) \
+    X(WH_REV_FALLBACK,        1.0f) \
     /* LOT 3 (audit de guerre) — le SIÈGE LIT LA GARNISON : chaque point de H_coerc
      * (Garnison/Forteresse/Citadelle bâties, re->build.H_coerc) durcit la place en
      * plus du simple compte de bâtiments — poids modeste (~5-10 % sur la durée

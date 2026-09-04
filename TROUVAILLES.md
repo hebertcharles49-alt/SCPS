@@ -13809,3 +13809,143 @@ calculait tout seul, sans plancher) → **1 / 9 / 8 or/mois** avec le lecteur r�
   fenêtre de mesure (an 0), mais à surveiller si un pays peut naître doté en cours de partie.
 - **Le grand livre façade gagne 10 postes nommés** : « Autres mouvements » devrait fondre à
   l'écran. Non re-capturé côté Godot (hors périmètre A1).
+
+
+
+## Mission 2026-09-04 — A2 LEVÉE : LA QUEUE ET LE RICHE DÉSARMÉ (A2/A3/A5 du sweep W1/W2)
+
+Décision joueur : « corrige les 5 anomalies », **PAS DE CAP**. P3 de l'analyste appliquée
+à la lettre : **instrumenter d'abord**, ne toucher un nombre qu'après avoir LU la raison.
+
+### Découvertes
+
+- **La raison du refus de levée n'existait nulle part — et une fois imprimée, elle dit
+  autre chose que les trois hypothèses des missions précédentes.** Compteurs print-only
+  (`warhost_levy_reason*`, `scps_warhost.c:80-115`) : un code par pays-an (levée · garnison
+  au complet · budget · **arsenal vide** · **plus d'hommes** · sans capitale · sans région ·
+  main du joueur) + gate d'élite, revenu nul, croissance hors limite. Mesuré à 30 ans
+  (graines 512/11/3, `<g> 1 30 6 12`, appariement par kill-switch sur le MÊME binaire) :
+
+  | raison (pays-an) | s512 | s11 | s3 |
+  |---|---:|---:|---:|
+  | **arsenal vide** | **319** | **358** | **453** |
+  | plus d'hommes (pool de classe) | 236 | 206 | 155 |
+  | garnison au complet | 55 | 89 | 56 |
+  | budget (solde/trésor) | 68 | 61 | 36 |
+  | sans capitale | 0 | 0 | 0 |
+  | *(levées réussies)* | *188* | *160* | *134* |
+
+  **L'arsenal est la PREMIÈRE cause, devant le pool, et la levée échoue plus souvent
+  qu'elle ne réussit.** « Sans capitale » est à 0 partout : le correctif 38523b6 tient.
+- **« Arsenal vide » ne veut pas dire « pas d'armes » : ça veut dire pas d'armes DU TYPE
+  que l'éthos réclame.** `wh_levy_batch` compose par AFF×factions, gate TECH et gate ÉLITE
+  — mais **aucun gate ARSENAL** : une recette de piques était choisie par un pays qui n'a
+  que des armes lourdes, `wh_arms_take` rendait 0 et la levée entière rendait 0. Le
+  « plancher conventionnel » (piquier/épéiste/archer, `scps_warhost.c`) est LUI AUSSI gaté
+  sur l'arsenal, donc il ne sauvait rien. D'où `essai_s11:698` : 1er empire du monde,
+  64 régions, 378 k habitants, **or 184 577**, stocks **Armes lourdes 127 329 · Armes de
+  trait 108 922**, et **0 régiment**. Le verdict W2-3 « le vrai plafond est le stock
+  d'armes » était juste à moitié : c'est le stock **par catégorie**.
+- **`army_recruit_ex` est TOUT-OU-RIEN, et il vide l'arsenal dans le vide.** `wh_arm_unit`
+  prélevait les armes au stock national, les versait dans `a->weapons[]` (le tampon de
+  combat), PUIS appelait `army_recruit_ex(count=got)` — qui refuse EN BLOC si la classe ne
+  porte pas `got×100` hommes. Résultat : le fer sort du stock, aucun homme ne se lève, et
+  ça recommence chaque année. La levée est désormais bornée à la DEMANDE que le pool peut
+  armer (`WH_POOL_CLAMP`) — elle devient PARTIELLE : comptabilité, pas plafond.
+- **Le frein de solde était DÉSARMÉ chaque fois que le registre fiscal rendait 0.**
+  `over_budget = (rev>0.f && …)` avec `rev = econ_country_tax_year` : quand FX_TAX est à
+  zéro (bootstrap, pays neuf, pays dont l'impôt n'inscrit rien), la condition est FAUSSE,
+  donc `pay_starved` ne peut venir que du trésor — et une levée de guerre financée au
+  pillage grossit **sans aucune borne**. Mesuré : **59 à 60 pays-mois à revenu nul en
+  30 ans** (s512/s11). C'est la queue `armée / limite` (max 432 %, `temoin_s3:1017`).
+- **`solde / revenu` à 19 066 % (`temoin_s60:972`) est une DIVISION, pas une armée.** Le
+  chronicle divisait par le registre FX_TAX brut. Avec le même repli que le moteur, le max
+  de s512 tombe de **4 518 % à 49 %** et celui de s3 de **425 % à 177 %** (30 ans, apparié).
+- **Le registre FX_TAX et le rendement fiscal recalculé divergent d'un facteur 100, dans
+  LES DEUX SENS** (lu sur la ligne empire : `revenu 1194.5 (assiette 11.9)` ET
+  `revenu 3287.7 (assiette 13133.6)`). Le recalcul est donc un REPLI (quand le registre
+  rend 0), **jamais un plancher** — sinon on remplace un dénominateur faux par un autre.
+  La réparation du registre appartient à `scps_econ.c` (A1).
+- **`armée N (M rgt)` ne compte QUE le host : les corps de campagne sont invisibles ET
+  GRATUITS.** `warhost_units` lit `h->army[cid]` seul, et `typed_pay` (la solde) itère sur
+  ce même host : **un régiment transféré au front (`campaign_order` → `army_merge_into`
+  VIDE la source) sort du registre de paie**. Un pays en guerre permanente peut donc porter
+  une armée que l'État ne paie jamais, pendant que le host regrossit et se fait payer. Le
+  pool, lui, VOIT les corps (`wh_deployed`/`campaign_deployed_class`, W1-F) — d'où
+  « plus d'hommes » sur des empires peuplés. **Trou non refermé** (voir Restes).
+- **TOUS les « 0 rgt » lus à 30 ans ont leur armée AU FRONT.** La colonne `corps N rgt`
+  ajoutée à la ligne empire le dit du premier coup : `essai s11` avant → `Couronne
+  Caelyanel 17 rég · 0 rgt / limite 18 · **corps 6 rgt** · EN GUERRE · levée : budget` ;
+  `Ordre Brenredyn 1 rég · 0 rgt / limite 7 · **corps 2 rgt** · levée : arsenal vide` ;
+  `témoin s512` avant → `Ordre Caelwic 1 rég · 0 rgt / limite 7 · **corps 7 rgt** ·
+  levée : arsenal vide`. **« 0 rgt » n'est pas « désarmé » : c'est « le host est vide
+  parce que campaign_order a TRANSFÉRÉ ».** Et le host ne peut pas re-lever, puisque le
+  pool VOIT les corps (`wh_deployed`) : `Ordre Brenredyn` (2 k hab → 4 paquets mobilisables)
+  en porte 7 au front. **A3 doit être re-jugé sur `rgt + corps`, jamais sur `rgt` seul** —
+  reste à vérifier à 250 ans pour `Ligue Dhûrganyn` (demande de run).
+- **`campaign_units(c, owner)` ne rend QUE le corps du SLOT 0** : `CAMPAIGN_CORPS_ID(owner,0)
+  == owner`, la fonction prend son 2e argument pour un ID de corps. Toute lecture « les
+  corps du pays » doit boucler sur `campaign_corps_count`/`campaign_corps_id_at`.
+- **Le gate d'élite (`elite<=200`) mord 620-640 pays-an sur 30 ans** — quasiment tous les
+  pays, tout le temps. Ce n'est pas la cause des « 0 rgt » (l'empire de `essai_s11` a
+  14 500 élites) mais c'est le gate le plus fréquent du roster. Non touché : c'est un
+  SEUIL de design (« ce pays a-t-il une aristocratie ? »), pas un défaut.
+
+### Correctifs (4 clés au registre J, toutes à 0 = comportement d'avant, byte-identique prouvé)
+
+| clé | geste | site |
+|---|---|---|
+| `WH_POOL_CLAMP` | la levée ne demande à l'arsenal que ce que la CLASSE peut armer (levée PARTIELLE au lieu de tout-ou-rien) | `scps_warhost.c` `wh_arm_unit` |
+| `WH_ARSENAL_GATE` | une recette que l'arsenal ne peut pas armer pèse 0, comme une tech absente — l'IA lève CE QUE SON STOCK PERMET | `scps_warhost.c` `wh_levy_batch` |
+| `WH_MILICE_FLOOR` | le plancher de levée devient la MILICE (armes de fortune, `RES_NONE`) au lieu de piquier/épéiste/archer, eux-mêmes gatés sur l'arsenal — P4 de CALIB_ARMEE, dont P5 était le prérequis (fait) | `scps_warhost.c` `wh_levy_batch` |
+| `WH_REV_FALLBACK` | quand FX_TAX rend 0, le plafond de solde se replie sur le rendement fiscal RECALCULÉ (`econ_country_tax_class_month`, lecteur pur) — sinon le frein tout entier était désarmé | `scps_warhost.c` `warhost_tick` + miroir télémétrie `chronicle.c` |
+
+Aucun plafond posé : pas de borne de régiments, pas de ×FL. Le frein reste le pool, l'arsenal
+par catégorie, la solde et le revenu.
+
+### Pièges
+
+- **La consigne « pas de mesure > 30 ans sans demande » est arrivée en cours de mission** :
+  toute la mesure 250 ans de ce rapport vient des journaux du sweep (`sweep_valid_W1W2_50x250/`,
+  lecture seule) ; l'appariement avant/après est fait à **30 ans par kill-switch sur le même
+  binaire**, ce qui est la seule façon honnête d'apparier sans re-run (les deux bras
+  divergent dès l'an 2 — piège documenté depuis la mission ANOMALIES).
+- **`warhost_demo` mesurait l'inverse de son énoncé.** Sa fixture n'offrait qu'UN paquet
+  mobilisable (`ARMY_POOL_FRAC` sur un monde de 8 econ_tick) et **aucun trésor** : dès le
+  1er régiment, `pay_starved` était vrai, donc c'est la GUERRE qui cessait de lever (la
+  garde de budget ne désarme QUE la levée de guerre ; la garnison de paix, elle, continue).
+  « guerre 1 · paix 0 » passait par chance. Re-calibré (strates ×20 sur les 3 pays testés
+  + trésor semé) : **guerre 21 · paix 7**, stable sur les graines 42/9/512, 8/8. Même
+  geste et même raison que la re-calibration d'`army_demo` par W1-F.
+- **`SCPS_TUNE=NONE=0` fait sortir le binaire en code 2** (clé inconnue) sans rien
+  imprimer : ne jamais s'en servir comme « bras témoin sans surcharge » dans une boucle
+  de script — le bras rend le VIDE et on croit à un run muet.
+- **`diff` n'existe pas dans le MSYS2 de cette machine** (`cmp` oui) : un script de gate
+  qui compare deux fichiers avec `diff` rapporte un ÉCHEC qui n'existe pas.
+- **Rebuild impossible pendant qu'un `./chronicle` tourne** (Windows verrouille l'exe) :
+  écrire les correctifs pendant la mesure, builder après.
+
+### Restes
+
+- **LA SOLDE NE PAIE PAS LES CORPS AU FRONT** (découverte ci-dessus). C'est le dernier
+  canal qui échappe au frein économique : `typed_pay` n'itère que sur `h->army[c]`, et
+  `FX_SOLDE` n'est écrit que là (grep : `scps_warhost.c` et `scps_ai.c` seuls). Geste :
+  sommer les corps du pays dans `typed_pay` (les champs sont publics, mais **dix bancs
+  lient `scps_warhost.o` sans `scps_campaign.o`** — il faut un `static inline` d'en-tête
+  comme `campaign_deployed_class`). Non fait : hors des deux anomalies du brief, et ça
+  double la facture militaire de tous les pays en guerre — à mesurer en apparié avant
+  d'acter.
+- **La désertion ne fond que le HOST** (`wh_shed` sur `h->army[c]`) : un pays dont toute
+  l'armée est en corps est insensible au frein, même une fois la solde des corps facturée.
+- **« plus d'hommes » devient la 1re cause après correctif** (322-344 pays-an sur 30 ans,
+  contre 155-236 avant — mécanique : il y a enfin des levées à borner). C'est le frein
+  VOULU (`ARMY_POOL_FRAC` 0.20). La sonde 0,20 → 0,30 de P3 de l'analyste est désormais
+  légitime : la raison lue EST le pool. **Décision joueur**, non prise ici.
+- **`revenu fiscal NUL` subsiste après repli** (157-230 pays-mois à 30 ans, en hausse
+  parce que bien plus de pays entrent dans le bloc de solde) : ces pays ont AUSSI une
+  assiette recalculée nulle. À recouper avec la réparation du registre par A1.
+- **Golden 5/5 hashes bougent — NON re-baseliné** (consigne). `7 bddb8872→e43f76c2 ·
+  108 0600e3e5→9baec2f2 · 209 b3aba329→bd17a2f9 · 310 30127a4d→18f320f9 ·
+  411 c23330c4→c9e738ad`. Les 4 clés à 0 redonnent **exactement** le golden commité.
+- **Non mesuré à 250 ans** : la queue `armée / limite` (432 %) et le cas nominatif
+  `Ligue Dhûrganyn`. Demande de run déposée à l'orchestrateur.

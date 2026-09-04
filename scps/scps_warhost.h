@@ -73,6 +73,28 @@ void warhost_armsdiag(const long **want, const long **got, const long **levied, 
  * (WH_DESERT_RATE) · mois-pays au-dessus du plafond de solde (WH_PAY_REVENUE_FRAC) · mois-pays
  * observés (le dénominateur). Diagnostic pur — jamais lu par le moteur, RAZ par warhost_init. */
 void warhost_braking_stats(long *deserted, long *overbudget_months, long *checked_months);
+/* LA RAISON DU REFUS DE LEVÉE (2026-09-04, P3 du sweep W1/W2 — PRINT-ONLY) : sans elle,
+ * « le 1er empire du monde à 0 régiment avec 184 577 or et 127 329 armes lourdes » reste
+ * une devinette. Un code par pays et par an (le DERNIER passage de warhost_tick), plus les
+ * cumuls pays-an du monde. Diagnostic pur — aucune décision moteur n'en dépend, RAZ par
+ * warhost_init (par sim), exactement comme ARMSDIAG et le frein. */
+enum { WHR_LEVE=0,          /* la levée a rendu des paquets */
+       WHR_COMPLET,         /* rien à lever : la garnison de paix est atteinte (ou on dégraisse) */
+       WHR_BUDGET,          /* la solde ne suit plus (trésor < 3 mois, ou au-dessus du revenu) */
+       WHR_ARMES,           /* l'arsenal n'a pas donné un seul paquet d'armes DU TYPE voulu */
+       WHR_POOL,            /* armes prises, mais la classe n'a plus d'hommes disponibles */
+       WHR_SANS_CAPITALE,   /* capital_prov < 0 : le pays ne lève jamais rien, à vie */
+       WHR_SANS_REGION,     /* aucune région : hors du tick */
+       WHR_JOUEUR,          /* main humaine : c'est le joueur qui compose */
+       WHR_COUNT };
+int  warhost_levy_reason(int cid);                 /* dernier code vu par ce pays (-1 = jamais vu) */
+const char *warhost_levy_reason_name(int code);    /* le MOT (outillage console, français) */
+/* `par_code` : SCPS_MAX pays-an par code · `elite_gated` : pays-an où le gate d'élite (≤200
+ * aristocrates) a rayé au moins une unité voulue · `sans_revenu` : pays-mois où le revenu
+ * fiscal était nul, donc où le plafond WH_PAY_REVENUE_FRAC était DÉSARMÉ · `croissance_hors_limite` :
+ * pays-an où la levée de guerre a grossi une armée DÉJÀ au-dessus de sa limite de force. */
+void warhost_levy_reason_stats(const long **par_code, long *elite_gated,
+                               long *sans_revenu, long *croissance_hors_limite);
 
 /* Affinité ÉTHOS→unité (0-3) de la table AFF — read-only, pour l'UI de construction
  * (« quel éthos favorise cette unité »). N'influe sur rien : pure lecture. */

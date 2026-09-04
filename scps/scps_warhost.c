@@ -74,6 +74,37 @@ void warhost_braking_stats(long *deserted, long *overbudget_months, long *checke
     if (checked_months)    *checked_months    = g_wh_paycheck;
 }
 
+/* ─── LA RAISON DU REFUS DE LEVÉE (2026-09-04, P3 · PRINT-ONLY) ──────────────────────
+ * Trois missions se sont succédé sur « l'empire riche à 0 régiment » en devinant la cause
+ * (armes ? pop ? or ?) ; on la MESURE désormais. Compteurs de module, jamais relus par le
+ * moteur, RAZ par warhost_init — même contrat que ARMSDIAG et le frein. */
+static signed char g_wh_reason[SCPS_MAX_COUNTRY];   /* dernier code par pays (-1 = jamais vu) */
+static long g_wh_reason_cnt[WHR_COUNT];             /* pays-an par code (Σ monde, Σ sim) */
+static long g_wh_elite_gated=0;   /* pays-an où le gate d'élite a rayé une unité voulue */
+static long g_wh_norev=0;         /* pays-mois où le revenu fiscal est nul (plafond DÉSARMÉ) */
+static long g_wh_grow_over=0;     /* pays-an où la levée a grossi une armée déjà hors limite */
+static void wh_reason(int cid, int code){
+    if (cid<0||cid>=SCPS_MAX_COUNTRY||code<0||code>=WHR_COUNT) return;
+    g_wh_reason[cid]=(signed char)code; g_wh_reason_cnt[code]++;
+}
+int warhost_levy_reason(int cid){
+    return (cid>=0&&cid<SCPS_MAX_COUNTRY)? g_wh_reason[cid] : -1;
+}
+const char *warhost_levy_reason_name(int code){
+    static const char *N[WHR_COUNT]={ "levée","garnison au complet","budget","arsenal vide",
+                                      "plus d'hommes","sans capitale","sans région","main du joueur" };
+    return (code>=0&&code<WHR_COUNT)?N[code]:"jamais levé";
+}
+void warhost_levy_reason_stats(const long **par_code, long *elite_gated,
+                               long *sans_revenu, long *croissance_hors_limite){
+    if (par_code)               *par_code               = g_wh_reason_cnt;
+    if (elite_gated)            *elite_gated            = g_wh_elite_gated;
+    if (sans_revenu)            *sans_revenu            = g_wh_norev;
+    if (croissance_hors_limite) *croissance_hors_limite = g_wh_grow_over;
+}
+/* Ce que le DERNIER appel à wh_levy_batch a obtenu, pour trancher armes vs hommes. */
+static long g_lb_got=0, g_lb_levied=0, g_lb_poolcut=0;
+
 /* ───────────────────────────────────────────────────────────────────────────
  * L'ÉTHOS COMPOSE L'ARMÉE (les « intentions ») — affinité faction → unité (0-3).
  * La distribution de factions du pays (enracinée dans sa pop) pondère la RECETTE
@@ -135,11 +166,27 @@ static long wh_arms_take(WorldEconomy *econ, int cid, UnitType t, long want){
 static void wh_arm_unit(ArmyState *a, WorldEconomy *econ, int cid, UnitType t, long want,
                         const long deployed[LAB_CLASS_COUNT]){
     const UnitDef *d=unit_def(t); if(!d || want<=0) return;
+    /* NE DEMANDER À L'ARSENAL QUE CE QUE LA CLASSE PEUT ARMER (2026-09-04, sweep W1/W2 P3).
+     * `army_recruit_ex` est TOUT-OU-RIEN : demander 5 paquets quand la classe n'en porte
+     * que 4 rend 0 — et les armes, DÉJÀ prélevées au stock national, restent dans le
+     * tampon de combat sans un homme dessus. Année après année l'arsenal se vidait dans un
+     * tampon mort pendant que le pays restait à 0 régiment (« plus d'hommes » : 459 pays-an
+     * sur 60 ans, graine 512). On borne la DEMANDE au pool : la levée devient PARTIELLE.
+     * C'est de la comptabilité, pas un plafond — la part mobilisable est déjà ARMY_POOL_FRAC.
+     * 0 = ancien comportement (kill-switch). */
+    if (tune_f("WH_POOL_CLAMP",1.f)>0.f){
+        long free_pk = army_class_free_ex(a, econ, cid, d->from,
+                                          deployed?deployed[d->from]:0) / POP_PER_UNIT;
+        if (free_pk<0) free_pk=0;
+        if (want>free_pk) want=free_pk;
+        if (want<=0){ g_lb_poolcut++; return; }   /* P3 : print-only */
+    }
     long got=wh_arms_take(econ, cid, t, want);
     a->weapons[d->weapon] += got;                   /* le tampon de combat, rempli depuis le macro */
     /* pool par classe = strates PROVINCE du pays × part mobilisable, MOINS ce que le host
      * porte ET ce que les corps portent au front (`deployed`) — cf. army_class_free_ex. */
     long levied=army_recruit_ex(a, econ, cid, t, got, deployed?deployed[d->from]:0);
+    g_lb_got += got; g_lb_levied += levied;   /* P3 (print-only) : armes obtenues vs hommes levés */
     { Resource arm=unit_res_arm(t);
       if (arm!=RES_NONE) g_ad_levied[arm] += levied*POP_PER_UNIT; }   /* ARMSDIAG : le gate POP après le gate armes */
 }
@@ -151,6 +198,10 @@ void warhost_init(WarHost *h){
     memset(g_ad_want,0,sizeof g_ad_want); memset(g_ad_got,0,sizeof g_ad_got);   /* ARMSDIAG : RAZ par sim */
     memset(g_ad_levied,0,sizeof g_ad_levied); memset(g_ad_returned,0,sizeof g_ad_returned);
     g_wh_deserted=0; g_wh_overbudget=0; g_wh_paycheck=0;   /* FREIN (print-only) : RAZ par sim */
+    memset(g_wh_reason_cnt,0,sizeof g_wh_reason_cnt);      /* RAISON DE REFUS (print-only) : RAZ par sim */
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++) g_wh_reason[c]=-1;
+    g_wh_elite_gated=0; g_wh_norev=0; g_wh_grow_over=0;
+    g_lb_got=0; g_lb_levied=0; g_lb_poolcut=0;
 }
 /* Jauge de levée (sidebar §5) : un palier, pas un float. */
 void warhost_set_levy(WarHost *h, int cid, int levy){
@@ -244,6 +295,10 @@ static void wh_levy_batch(ArmyState *a, WorldEconomy *econ, const World *w,
                           const TechState *t, int cid, long batch, long elite,
                           const long deployed[LAB_CLASS_COUNT]){
     if (batch<=0) return;
+    g_lb_got=0; g_lb_levied=0; g_lb_poolcut=0;   /* P3 (print-only) : ce que CETTE levée obtient */
+    bool elite_gated=false;      /* P3 : le gate d'aristocratie a-t-il rayé une unité voulue ? */
+    float arsenal_gate = tune_f("WH_ARSENAL_GATE",1.f);
+    float milice_floor = tune_f("WH_MILICE_FLOOR",1.f);
     float fw[FAC_COUNT];
     country_faction_weights(w, econ, cid, fw);
     float target[U_COUNT], sum=0.f;
@@ -251,10 +306,34 @@ static void wh_levy_batch(ArmyState *a, WorldEconomy *econ, const World *w,
         float v=0.f;
         for (int f=0; f<FAC_COUNT; f++) v += fw[f]*AFF[f][u];
         if (!unit_recruitable(t,(UnitType)u))                      v=0.f;   /* tech absente → 0 */
-        if (unit_def((UnitType)u)->from==LAB_ELITE && elite<=200)  v=0.f;   /* pas d'élite → 0 */
+        if (unit_def((UnitType)u)->from==LAB_ELITE && elite<=200){
+            if (v>0.f) elite_gated=true;                                    /* P3 : print-only */
+            v=0.f;   /* pas d'élite → 0 */
+        }
+        /* GATE ARSENAL (2026-09-04) — L'IA LÈVE CE QUE SON STOCK PERMET. Une recette que
+         * l'arsenal ne peut pas armer pèse 0, exactement comme une tech absente. Sans ce
+         * gate, l'éthos réclamait une catégorie d'armes que le pays n'avait pas et la levée
+         * rendait ZÉRO : `essai_s11:698` — 1er empire du monde, 184 577 or, 127 329 armes
+         * LOURDES et 108 922 de trait en stock, **0 régiment** (« arsenal vide » : 594
+         * pays-an sur 60 ans, graine 512 — la première cause de refus, devant le pool).
+         * 0 = ancien comportement (kill-switch). */
+        if (arsenal_gate>0.f && v>0.f){
+            Resource arm=unit_res_arm((UnitType)u);
+            if (arm!=RES_NONE && econ_country_stock_sum(econ,cid,arm) < (float)POP_PER_UNIT) v=0.f;
+        }
         target[u]=v; sum+=v;
     }
-    if (sum<=0.f){ target[U_PIQUIER]=2.f; target[U_EPEISTE]=1.f; target[U_ARCHER]=1.f; sum=4.f; } /* plancher */
+    /* LE PLANCHER — LE « BAN » DU PAYS SANS ARSENAL (CALIB_ARMEE §5-P4, posé 2026-09-04).
+     * Le plancher conventionnel piquier/épéiste/archer est LUI AUSSI gaté sur l'arsenal :
+     * un pays sans armes de ces catégories ne levait RIEN, à vie. La MILICE (armes de
+     * fortune, `RES_NONE` → aucun gate d'arme) est le ban : elle perd, mais elle EXISTE.
+     * Ouverte UNIQUEMENT ici, jamais dans la composition normale — §5-P4 : sinon l'IA
+     * n'aurait plus de raison de lever autre chose ; son prix a été rendu honnête par P5
+     * (SOLDE_FORTUNE_ARMS, efficacité 112 → 7,2). 0 = ancien plancher (kill-switch). */
+    if (sum<=0.f){
+        if (milice_floor>0.f){ target[U_MILICE]=1.f; sum=1.f; }
+        else { target[U_PIQUIER]=2.f; target[U_EPEISTE]=1.f; target[U_ARCHER]=1.f; sum=4.f; }
+    }
     long placed=0;
     for (int u=0; u<U_COUNT; u++){
         if (target[u]<=0.f) continue;
@@ -263,7 +342,14 @@ static void wh_levy_batch(ArmyState *a, WorldEconomy *econ, const World *w,
         wh_arm_unit(a, econ, cid, (UnitType)u, n, deployed);
         placed+=n;
     }
-    if (placed<=0) wh_arm_unit(a, econ, cid, U_PIQUIER, batch, deployed);   /* garde-fou ultime */
+    if (placed<=0)   /* garde-fou ultime : le ban de fortune plutôt que rien */
+        wh_arm_unit(a, econ, cid, (milice_floor>0.f)?U_MILICE:U_PIQUIER, batch, deployed);
+    /* P3 (print-only) : NOMMER le refus. `got` = paquets que l'arsenal a armés (armes DU TYPE
+     * voulu — un stock plein d'armes lourdes ne sert à rien à une recette d'armes légères) ;
+     * `poolcut` = demandes rabotées faute d'hommes ; `levied` = paquets réellement levés. */
+    if (elite_gated) g_wh_elite_gated++;
+    wh_reason(cid, (g_lb_levied>0) ? WHR_LEVE
+                 : (g_lb_poolcut>0 || g_lb_got>0) ? WHR_POOL : WHR_ARMES);
 }
 
 /* DÉMOBILISER `n` paquets : les unités fondent (de la dernière vers la première), la pop affectée
@@ -314,9 +400,10 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                   const DiploState *dp, const TechState *ts, const Campaign *cmp, float dt){
     if (!h || !econ || dt<=0.f) return;
     for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
-        if (w->country[c].role==POLITY_UNCLAIMED || w->country[c].capital_prov<0) continue;
+        if (w->country[c].role==POLITY_UNCLAIMED) continue;
+        if (w->country[c].capital_prov<0){ wh_reason(c, WHR_SANS_CAPITALE); continue; }   /* P3 : print-only */
         int nreg=0; for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==c){ nreg++; }
-        if (nreg==0) continue;
+        if (nreg==0){ wh_reason(c, WHR_SANS_REGION); continue; }   /* P3 : print-only */
         bool at_war=false;
         for (int b=0;b<w->n_countries;b++)
             if (b!=c && diplo_status(dp,c,b)==DIPLO_WAR){ at_war=true; break; }
@@ -399,12 +486,30 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                * rapport armée : 10-15 % en paix, plus sous le feu). Au-delà, on cesse de
                * GROSSIR (même mécanique que la famine de trésor) — le stock d'or, national,
                * n'est plus un juge : c'est le REVENU qui porte une armée. 0 = désactivé.
-               * econ_country_tax_year rend 0 durant le bootstrap (<90 j) ⇒ pas de frein. */
+               * econ_country_tax_year rend 0 durant le bootstrap (<90 j) — REPLI depuis
+               * 2026-09-04 (WH_REV_FALLBACK, ci-dessous) : un revenu nul désarmait le frein. */
               bool over_budget = false;
               { float rev  = econ_country_tax_year(c);
+                /* L'ASSIETTE DU FREIN DOIT ÊTRE UN REVENU VRAI (2026-09-04, sweep W1/W2 A2/A5).
+                 * `rev>0` est la condition d'ARMEMENT du plafond : quand le registre FX_TAX
+                 * rend 0 — année de bootstrap, pays neuf, pays dont l'impôt n'a rien inscrit —
+                 * le frein était ENTIÈREMENT DÉSARMÉ et la levée de guerre grossissait sans
+                 * aucune borne (armée/limite jusqu'à 432 %, `temoin_s3:1017` ; mesuré ici :
+                 * 97 pays-mois à revenu nul sur 60 ans, graine 512). On replie sur le rendement
+                 * fiscal RECALCULÉ de l'état courant (`econ_country_tax_class_month` : lecteur
+                 * pur, aucun accumulateur, aucun champ sérialisé) — un revenu, pas un plafond.
+                 * ⚠ registre et recalcul divergent fortement dans les DEUX sens (mesuré
+                 * `revenu 1194.5 / assiette 11.9` et `revenu 3287.7 / assiette 13133.6`) : le
+                 * recalcul est un REPLI, jamais un plancher — c'est le registre de flux (A1,
+                 * scps_econ.c) qui doit être réparé. 0 = ancien comportement (kill-switch). */
+                if (rev<=0.f && tune_f("WH_REV_FALLBACK",1.f)>0.f)
+                    rev = 12.f*( econ_country_tax_class_month(econ,c,CLASS_LABORER)
+                               + econ_country_tax_class_month(econ,c,CLASS_BOURGEOIS)
+                               + econ_country_tax_class_month(econ,c,CLASS_ELITE) );
                 float frac = tune_f("WH_PAY_REVENUE_FRAC", 0.35f);
                 over_budget = (rev>0.f && frac>0.f && base_pay > rev*frac);
-                if (rev>0.f && frac>0.f){ g_wh_paycheck++; if (over_budget) g_wh_overbudget++; } }   /* compteurs PRINT-ONLY */
+                if (rev>0.f && frac>0.f){ g_wh_paycheck++; if (over_budget) g_wh_overbudget++; }   /* compteurs PRINT-ONLY */
+                else if (frac>0.f) g_wh_norev++;   /* P3 : le plafond de revenu est DÉSARMÉ ici */ }
               pay_starved = (base_pay>0.f && ((float)econ_country_gold(econ,c) < base_pay*0.25f || over_budget));
               if (!at_war && pay_starved && h->levy[c]>0)
                   h->levy[c] -= 1;
@@ -434,7 +539,7 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
         /* PAYS JOUEUR : l'humain compose son armée à la main (panneau Construction) →
          * on saute la MOBILISATION/DÉMOBILISATION auto (la solde ci-dessus est déjà
          * payée : son armée coûte ; mais elle ne croît/fond plus toute seule). */
-        if (c == g_human_player) continue;
+        if (c == g_human_player){ wh_reason(c, WHR_JOUEUR); continue; }   /* P3 : print-only */
         /* GUERRE = MOBILISER · PAIX = DÉMOBILISER. La guerre lève au pied de guerre
          * vers le plafond de pop (la cadence rate-limite la montée) ; la paix tend
          * vers une GARNISON ∝ jauge (le « plancher de levée ») — au-dessus on
@@ -447,8 +552,9 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
             long batch = (long)(WH_BATCH_WAR*LEVY_MULT[lv]*dt + 0.5f);
             if (batch>0 && !pay_starved){   /* AUDIT 2026-09-02 : on ne lève plus ce qu'on ne solde plus */
                 long elite = wh_country_elite(econ, c);
+                if (cur >= (long)warhost_force_limit(nreg)) g_wh_grow_over++;   /* P3 : print-only */
                 wh_levy_batch(&h->army[c], econ, w, ts?&ts[c]:NULL, c, batch, elite, deployed);
-            }
+            } else wh_reason(c, WHR_BUDGET);   /* P3 : print-only */
         } else {
             /* GARNISON DE PAIX ∝ TAILLE (2026-07-06 : « une vingtaine de rgt pour un empire
              * moyen ») — l'ancien plancher PLAT (WH_GARRISON_UNITS×LEVY_MULT = 2-4 rgt) était
@@ -461,14 +567,15 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
             long garrison = (long)(warhost_force_limit(nreg) * PEACE_GAR_FRAC[lv] + 0.5f);
             if (cur > garrison){
                 wh_shed(&h->army[c], econ, c, (cur - garrison + 1)/2);   /* ~moitié/an vers la garnison */
+                wh_reason(c, WHR_COMPLET);   /* P3 : print-only */
             } else if (cur < garrison){
                 long batch = (long)(WH_BATCH_PEACE*LEVY_MULT[lv]*dt + 0.5f);
                 long deficit = garrison - cur; if (batch>deficit) batch=deficit;
                 if (batch>0){
                     long elite = wh_country_elite(econ, c);
                     wh_levy_batch(&h->army[c], econ, w, ts?&ts[c]:NULL, c, batch, elite, deployed);
-                }
-            }
+                } else wh_reason(c, WHR_COMPLET);   /* P3 : print-only */
+            } else wh_reason(c, WHR_COMPLET);   /* P3 : print-only */
         }
         /* I1 — le PRIX du régiment au RECRUTEMENT (sink d'ENTRÉE : lever des hommes coûte
          * enfin quelque chose) : payé pour les paquets NETS levés ce tick, depuis la capitale. */
