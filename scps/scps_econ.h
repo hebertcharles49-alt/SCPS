@@ -577,6 +577,15 @@ typedef struct {
      * Sérialisés dans le blob ECON (fwrite brut ⇒ dernier changement : SAVE_VERSION 79). ── */
     double        fuel_wood_cum;
     double        fuel_coal_cum;
+
+    /* ── LA CADENCE DE L'INITIATIVE PRIVÉE (2026-09-04, décision joueur « une par
+     * mois ») — crédit de semis par PAYS, en manufactures privées : +PRIV_SEED_PER_MONTH
+     * à chaque tick mensuel, PLAFONNÉ à max(taux,1) (aucun crédit ne se thésaurise, donc
+     * un pays longtemps sans candidate ne rattrape JAMAIS en rafale), −1 à chaque semis.
+     * Inter-ticks ⇒ sérialisé dans le blob ECON (fwrite brut ⇒ SAVE_VERSION 110),
+     * save_sane le borne [0, 1e6]. À 0 (kill-switch PRIV_SEED_PER_MONTH=0) la case n'est
+     * jamais lue ni écrite : chemin d'avant, byte-identique. ── */
+    float         ip_seed_credit[SCPS_MAX_COUNTRY];
 } WorldEconomy;
 
 /* ---- Identités culturelles nommées ----------------------------------- *
@@ -1361,6 +1370,33 @@ int econ_ip_invest_tick(WorldEconomy *e);
 /* Télémétrie CUMULATIVE (statics de module, RAZ à econ_init, non sérialisés — motif
  * econ_colony_stats) : compteurs bruts depuis la genèse de CETTE sim. */
 void econ_ip_stats(long *colonies, long *manufs);
+/* LA CADENCE DE L'INITIATIVE PRIVÉE (décision joueur 2026-09-04, « donne un cap mensuel
+ * aux initiatives privées, une par mois ») : au plus PRIV_SEED_PER_MONTH manufacture(s)
+ * privée(s) par MOIS et par PAYS. Ce n'est PAS un plafond de stock (règle « pas de cap »
+ * intacte) : une CADENCE — le monde peut en bâtir autant qu'il veut, une à la fois. La
+ * candidate qui passe est LA PLUS RENTABLE (intensité de pénurie prix/base la plus forte,
+ * à égalité le plus petit pid) — déterministe, jamais un tirage. AUCUN facteur
+ * géographique paramétré : la géographie ENTRE par les prix (matières, ports, routes),
+ * elle n'est pas modulée à la main. PRIV_SEED_PER_MONTH=0 : illimité = comportement
+ * d'avant, byte-identique.
+ * Le crédit de cadence (fractionnaire, plafonné à max(taux,1) — AUCUNE thésaurisation de
+ * crédits, donc aucune rafale de rattrapage) vit dans WorldEconomy.ip_seed_credit :
+ * inter-ticks ⇒ SÉRIALISÉ (SAVE_VERSION 110), motif des accumulateurs EMOB/COLC/TXYR. */
+/* LA RAISON DU SEMIS PRIVÉ, OU DE SON REFUS (2026-09-04, P2 du sweep de régression A ·
+ * PRINT-ONLY) : le compteur « manufactures privées » allait de 141 à 18 060 selon la
+ * graine sans qu'aucune ligne ne dise POURQUOI. Motif warhost_levy_reason* : un code par
+ * PROVINCE-MOIS, cumulé monde+sim, jamais relu par le moteur, RAZ à econ_init. */
+enum { IPR_SEME=0,      /* une manufacture privée est née ce mois-ci */
+       IPR_CADENCE,     /* candidate valable, mais la cadence du mois est déjà prise */
+       IPR_CAPITAL,     /* richesse/tête sous IP_INVEST_WPC : aucune classe n'a de surplus */
+       IPR_PRIX,        /* aucun palier du panier en pénurie ICI : rien à gagner (rentabilité) */
+       IPR_PALIER,      /* pénurie lue, mais la province est trop petite (staffage/tier) */
+       IPR_MATIERE,     /* pénurie lue, mais le royaume ne sait pas nourrir la recette */
+       IPR_TRESOR,      /* la classe n'a pas MANUF_BUILD_COST en caisse (riche par tête, trop peu nombreuse) */
+       IPR_ECHEC,       /* le poseur (fonder/renforcer) a refusé */
+       IPR_COUNT };
+const char *econ_ip_reason_name(int code);          /* le MOT (outillage console, français) */
+void econ_ip_reason_stats(const long **par_code);   /* IPR_COUNT compteurs en province-mois */
 /* RE-KEY PROVINCE — transfert de PROPRIÉTÉ D'UNE RÉGION ENTIÈRE (conquête/annexion/
  * sécession/cataclysme) : pose `new_owner` (et `colonized`) sur TOUTES les provinces
  * membres de `region`. econ->region[r].owner est un DÉRIVÉ (capitale, sinon meilleure

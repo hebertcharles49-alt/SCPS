@@ -1788,6 +1788,21 @@
     X(IP_COLON_WPC,                    4.0f) \
     X(IP_INVEST_WPC,                  12.0f) \
     X(IP_SHORTAGE,                     1.4f) \
+    /* LA CADENCE DE L'INITIATIVE PRIVÉE (décision joueur 2026-09-04, mot pour mot :
+     * « Donne un cap mensuel aux initiatives privées, une par mois » — puis, corrigeant
+     * une modulation par la géographie : « Non, ça doit être un comportement émergent lié
+     * à la géographie. Laisse. Juste un cap mensuel. »). Manufactures privées semées AU
+     * PLUS par MOIS et par PAYS (econ_ip_invest_tick) — EXCEPTION EXPLICITE à la règle
+     * « pas de plafond » : c'est une CADENCE (un débit), pas un plafond de stock ; le
+     * monde en bâtit autant qu'il veut, une à la fois. Constat : le compteur allait de
+     * 141 à 18 060 par sim selon la graine (jusqu'à 6/mois pendant 250 ans, sweep de
+     * régression A §N2). Fractionnaire accepté (0,5 = une tous les deux mois) : le crédit
+     * par pays vit dans WorldEconomy.ip_seed_credit, plafonné à max(taux,1) — aucune
+     * rafale de rattrapage. La candidate qui passe est la PLUS RENTABLE (pénurie la plus
+     * intense), à égalité le plus petit pid : déterministe, jamais un tirage. AUCUN
+     * facteur géographique ici — la géographie entre par les PRIX.
+     * 0 = illimité : le comportement d'avant, byte-identique (kill-switch). */ \
+    X(PRIV_SEED_PER_MONTH,             1.0f) \
     /* MONNAIE M3i — L'IMPÔT SUR LE REVENU (décision joueur 2026-07-15, « lié aux revenus
      * des ordres » plutôt qu'un forfait par tête). Retenue à la SOURCE, au moment où
      * l'État paie une classe (gages/rente §3 du circuit M3b, intérêt de la dette aux

@@ -1205,6 +1205,23 @@ void econ_ip_stats(long *colonies, long *manufs){
     if (colonies) *colonies = g_ip_colony_founded;
     if (manufs)   *manufs   = g_ip_manuf_built;
 }
+/* P2 du sweep de régression A — LA RAISON DU SEMIS PRIVÉ (print-only, motif
+ * warhost_levy_reason*) : un code par PROVINCE-MOIS observée, jamais relu par le moteur,
+ * RAZ à econ_init comme la télémétrie ci-dessus. */
+static long g_ip_reason_cnt[IPR_COUNT];
+static void ip_reason(int code){
+    if (code>=0 && code<IPR_COUNT) g_ip_reason_cnt[code]++;
+}
+static void ip_reason_n(int code, long n){
+    if (code>=0 && code<IPR_COUNT && n>0) g_ip_reason_cnt[code]+=n;
+}
+const char *econ_ip_reason_name(int code){
+    static const char *N[IPR_COUNT]={ "semis","cadence","capital","prix","palier","matière","trésor","échec" };
+    return (code>=0&&code<IPR_COUNT)?N[code]:"?";
+}
+void econ_ip_reason_stats(const long **par_code){
+    if (par_code) *par_code = g_ip_reason_cnt;
+}
 
 /* MONNAIE M3a — L'INSTRUMENT (print-only, docs/MONNAIE_M0_AUDIT.md) : §1.1 (VA) et §2.1
  * (consommation) sont LA planche à billets et LE trou noir principal, mais n'ont AUCUN
@@ -1695,6 +1712,7 @@ void econ_init(WorldEconomy *e, const World *w) {
       for (int c=0;c<SCPS_MAX_COUNTRY;c++) for (int k=0;k<3;k++) econ_set_buy_rate(c,k,def); }
     g_colony_founded=0; g_colony_survival=0;    /* E7 : RAZ télémétrie colonisation (par partie/sim, non sérialisé) */
     g_ip_colony_founded=0; g_ip_manuf_built=0;  /* MONNAIE M4-IP : RAZ télémétrie initiative privée (par partie/sim, non sérialisé) */
+    memset(g_ip_reason_cnt,0,sizeof g_ip_reason_cnt);   /* P2 : RAZ les raisons de semis/refus (même motif) */
     g_va_produced_cum=0.0; g_consumption_destroyed_cum=0.0; g_colonization_net_cum=0.0;   /* MONNAIE M3a : RAZ instrument (par partie/sim, non sérialisé) */
     g_assiette_revenue_cum=0.0;   /* MONNAIE M5 — R3 : RAZ instrument (même motif) */
     g_debase_gold_cum=0.0; g_debase_country_months=0;   /* MONNAIE M3h : RAZ télémétrie débase (par partie/sim, non sérialisé) */
@@ -6848,10 +6866,14 @@ int econ_ip_colonize_tick(WorldEconomy *e){
  * quasi 0 cible dans un monde 100% IA une fois les slots pré-remplis). Renvoie le
  * premier candidat trouvé (déterministe : ordre NEED_ORDER puis ordre BuildingType). */
 #define IP_STAFF_PER_MANUF 250.f   /* = AI_STAFF_PER_MANUF (scps_ai.c) / le seuil de CMD_BUILD_MANUF : pas dans le vide */
+/* `out_why` (P2, PRINT-ONLY — jamais lu par le moteur) : quand rien n'est trouvé, LE MUR
+ * LE PLUS PROFOND atteint (prix < palier < matière), pour que la chronique dise pourquoi
+ * un empire ne sème jamais au lieu de le faire deviner. */
 static bool ip_find_shortage_building(const WorldEconomy *e, const ProvinceEconomy *pe,
                                        int owner, int klass, int active_needs,
-                                       BuildingType *out_b, bool *out_have){
+                                       BuildingType *out_b, bool *out_have, int *out_why){
     float shortage=tune_f("IP_SHORTAGE",1.4f);   /* < NF_SHORTAGE : les riches investissent AVANT la crise (registre J) */
+    int why=IPR_PRIX;                            /* rien n'a même passé le signal-prix */
     for (int i=0;i<9 && NEED_ORDER[klass][i]!=RES_NONE;i++){
         if (i >= active_needs) break;                            /* palier pas encore débloqué ici */
         Resource want=NEED_ORDER[klass][i];
@@ -6866,17 +6888,19 @@ static bool ip_find_shortage_building(const WorldEconomy *e, const ProvinceEcono
                 continue;                                         /* civil seulement — armement/arcane restent doctrinaux */
             bool have=false; for (int k=0;k<pe->n_bld;k++) if (pe->bld[k].type==(BuildingType)b){ have=true; break; }
             float rpop=pe->strata[CLASS_LABORER].pop+pe->strata[CLASS_BOURGEOIS].pop+pe->strata[CLASS_ELITE].pop;
+            if (why==IPR_PRIX) why=IPR_PALIER;                    /* la pénurie EST lue : le mur suivant est la province */
             if (rpop < IP_STAFF_PER_MANUF*(float)(pe->n_bld+1)) continue;   /* sous-staffé : pas dans le vide */
             if (capitale_max_tier((long)rpop) < bld_min_tier((BuildingType)b)) continue;
             Resource in1=rc->in1;
             bool feed = (in1==RES_NONE) || (pe->raw_cap[in1] > 0.f);
             for (int pi=0; pi<e->n_prov && !feed; pi++)
                 if (e->prov[pi].owner==owner && e->prov[pi].raw_cap[in1]>0.f) feed=true;
-            if (!feed) continue;                                  /* le royaume ne sait pas le nourrir */
+            if (!feed){ why=IPR_MATIERE; continue; }              /* le royaume ne sait pas le nourrir */
             *out_b=(BuildingType)b; *out_have=have;
             return true;
         }
     }
+    if (out_why) *out_why=why;
     return false;
 }
 
@@ -6888,41 +6912,128 @@ static bool ip_find_shortage_building(const WorldEconomy *e, const ProvinceEcono
  * investisseuse débite, les LABORERS locaux créditent (motif item 5 « chantiers de
  * manufactures → gages », M3b-v2.1) — jamais le crédit d'État (credit_spend/
  * credit_borrow*, M3c INTACT par construction). */
+/* LE CANDIDAT d'une province, SANS l'acte (lecture pure) : quelle classe financerait, quel
+ * bâtiment, à quel prix — et l'INTENSITÉ de la pénurie visée (prix/base), le signal de
+ * RENTABILITÉ qui départage deux candidates du même mois sous cadence. Extrait tel quel de
+ * la boucle d'origine (mêmes gates, même ordre BOURGEOIS→ÉLITE, même « une pose par
+ * province ») pour que le chemin illimité reste byte-identique. `out_why` : le mur le plus
+ * PROFOND rencontré, print-only (l'enum IPR_* est ordonné par profondeur croissante). */
+typedef struct { int klass; BuildingType b; bool have; float cost; float score; } IpCand;
+static bool ip_candidate(const WorldEconomy *e, const ProvinceEconomy *pe,
+                         float wpc_gate, IpCand *out, int *out_why){
+    static const int INVESTOR_ORDER[2]={CLASS_BOURGEOIS, CLASS_ELITE};
+    long rpop_nd=(long)(pe->strata[CLASS_LABORER].pop+pe->strata[CLASS_BOURGEOIS].pop+pe->strata[CLASS_ELITE].pop);
+    /* MONNAIE M10 — P1 : même SOURCE UNIQUE que §4/§5 d'econ_tick (econ_needs_active_
+     * for_country) — pe->owner est déjà >=0 (gate de l'appelant) ; -1 (kill-switch)
+     * retombe sur le legacy pop LOCALE, à l'identique de l'ancien "miroir exact". */
+    int active_needs; { int nat=econ_needs_active_for_country(pe->owner);
+        active_needs = (nat>=1) ? nat : (1+capitale_max_tier(rpop_nd)); }
+    int why=IPR_CAPITAL;   /* le mur le plus superficiel : aucune classe n'a de surplus par tête */
+    for (int oi=0; oi<2; oi++){
+        int klass=INVESTOR_ORDER[oi];
+        float pop=pe->strata[klass].pop;
+        if (pop<=0.f) continue;
+        float wpc=pe->strata[klass].wealth/pop;
+        if (wpc < wpc_gate) continue;                          /* pas assez de surplus */
+        BuildingType b; bool have; int w2=IPR_PRIX;
+        if (!ip_find_shortage_building(e, pe, pe->owner, klass, active_needs, &b, &have, &w2)){
+            if (w2>why) why=w2;
+            continue;
+        }
+        float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(e)*doctrine_key_mult(pe->owner,"MANUF_BUILD_COST");   /* même prix que le civil IA + doctrine Production : « Gages » */
+        if (pe->strata[klass].wealth < cost){ why=IPR_TRESOR; continue; }   /* peut être RICHE en tête mais la CLASSE pas assez nombreuse : pas d'endettement */
+        out->klass=klass; out->b=b; out->have=have; out->cost=cost;
+        Resource want=RECIPE[b].out;
+        out->score = (BASE_PRICE[want]>0.f)? pe->price[want]/BASE_PRICE[want] : 0.f;
+        return true;
+    }
+    if (out_why) *out_why=why;
+    return false;
+}
+/* L'ACTE (le seul site qui écrit) : fonder ou renforcer, puis le TRANSFERT PUR
+ * investisseur → gages des journaliers locaux. Renvoie 1 si la manufacture est née. */
+static int ip_invest_do(WorldEconomy *e, int p, const IpCand *cd){
+    ProvinceEconomy *pe=&e->prov[p];
+    bool ok = cd->have ? econ_manuf_level_delta(e, p, cd->b, +1)   /* RENFORCER (motif CMD_MANUF_LEVEL) */
+                       : econ_build_manufacture(e, p, cd->b);      /* FONDER (motif CMD_BUILD_MANUF) */
+    if (!ok){ ip_reason(IPR_ECHEC); return 0; }
+    pe->strata[cd->klass].wealth -= cd->cost;
+    pe->strata[CLASS_LABORER].wealth += cd->cost;                  /* item 5 : gages des artisans locaux */
+    ip_reason(IPR_SEME); g_ip_manuf_built++;
+    return 1;
+}
 int econ_ip_invest_tick(WorldEconomy *e){
     if (!e) return 0;
     int built=0;
     float wpc_gate=tune_f("IP_INVEST_WPC",12.0f);
+    float rate=tune_f("PRIV_SEED_PER_MONTH",1.0f);
     int nprov=e->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
-    static const int INVESTOR_ORDER[2]={CLASS_BOURGEOIS, CLASS_ELITE};
-    for (int p=0;p<nprov;p++){
-        ProvinceEconomy *pe=&e->prov[p];
-        if (!pe->active || !pe->colonized || pe->owner<0) continue;
-        long rpop_nd=(long)(pe->strata[CLASS_LABORER].pop+pe->strata[CLASS_BOURGEOIS].pop+pe->strata[CLASS_ELITE].pop);
-        /* MONNAIE M10 — P1 : même SOURCE UNIQUE que §4/§5 d'econ_tick (econ_needs_active_
-         * for_country) — pe->owner ici est déjà >=0 (gate ligne ci-dessus) ; -1 (kill-switch)
-         * retombe sur le legacy pop LOCALE, à l'identique de l'ancien "miroir exact". */
-        int active_needs; { int nat=econ_needs_active_for_country(pe->owner);
-            active_needs = (nat>=1) ? nat : (1+capitale_max_tier(rpop_nd)); }
-        for (int oi=0; oi<2; oi++){
-            int klass=INVESTOR_ORDER[oi];
-            float pop=pe->strata[klass].pop;
-            if (pop<=0.f) continue;
-            float wpc=pe->strata[klass].wealth/pop;
-            if (wpc < wpc_gate) continue;                          /* pas assez de surplus */
-            BuildingType b; bool have;
-            if (!ip_find_shortage_building(e, pe, pe->owner, klass, active_needs, &b, &have)) continue;
-            float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(e)*doctrine_key_mult(pe->owner,"MANUF_BUILD_COST");   /* même prix que le civil IA + doctrine Production : « Gages » */
-            if (pe->strata[klass].wealth < cost) continue;         /* peut être RICHE en tête mais la CLASSE pas assez nombreuse : pas d'endettement */
-            bool ok = have ? econ_manuf_level_delta(e, p, b, +1)   /* RENFORCER (motif CMD_MANUF_LEVEL) */
-                           : econ_build_manufacture(e, p, b);      /* FONDER (motif CMD_BUILD_MANUF) */
-            if (ok){
-                pe->strata[klass].wealth -= cost;
-                pe->strata[CLASS_LABORER].wealth += cost;           /* item 5 : gages des artisans locaux */
-                built++; g_ip_manuf_built++;
-            }
-            break;   /* une pose par province par an — la classe suivante attendra l'an prochain */
+
+    if (rate<=0.f){   /* KILL-SWITCH : cadence éteinte = le chemin d'AVANT, à l'identique */
+        for (int p=0;p<nprov;p++){
+            ProvinceEconomy *pe=&e->prov[p];
+            if (!pe->active || !pe->colonized || pe->owner<0) continue;
+            IpCand cd; int why=IPR_CAPITAL;
+            if (!ip_candidate(e, pe, wpc_gate, &cd, &why)){ ip_reason(why); continue; }
+            built += ip_invest_do(e, p, &cd);
         }
+        return built;
     }
+
+    /* LA CADENCE (décision joueur 2026-09-04) : le crédit de chaque pays monte de `rate`
+     * par mois et PLAFONNE à max(rate,1) — un pays sans candidate pendant 20 ans ne
+     * rattrape rien, il repart à une par mois (le cap est une CADENCE, pas un stock).
+     * AUCUN facteur géographique : ce qui départage est le PRIX, donc la géographie
+     * ENTRE par le jeu (matières, ports, routes) au lieu d'être modulée à la main. */
+    float credit_cap = (rate>1.f)? rate : 1.f;
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++){
+        float v=e->ip_seed_credit[c]+rate;
+        e->ip_seed_credit[c] = (v>credit_cap)? credit_cap : v;
+    }
+    uint8_t served[SCPS_MAX_PROV]; memset(served,0,(size_t)nprov);
+    int   best_pid[SCPS_MAX_COUNTRY];
+    float best_sc [SCPS_MAX_COUNTRY];
+    IpCand best_cd[SCPS_MAX_COUNTRY];
+    long  viable  [SCPS_MAX_COUNTRY]={0};   /* candidates valables du mois (1re passe) */
+    long  picked  [SCPS_MAX_COUNTRY]={0};   /* celles que la cadence a laissé passer */
+    /* Un pays qui n'a rien trouvé à la passe précédente n'a RIEN à trouver à la suivante
+     * (seules les provinces SERVIES ont bougé) : on le raye du balayage. Sans ça, à
+     * cadence 1 la 2e passe re-coûterait un tick entier pour tous les pays muets. */
+    bool  scan_c  [SCPS_MAX_COUNTRY];
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++) scan_c[c]=true;
+    bool first=true;
+    for (;;){
+        for (int c=0;c<SCPS_MAX_COUNTRY;c++){ best_pid[c]=-1; best_sc[c]=0.f; }
+        for (int p=0;p<nprov;p++){
+            ProvinceEconomy *pe=&e->prov[p];
+            if (!pe->active || !pe->colonized || pe->owner<0 || pe->owner>=SCPS_MAX_COUNTRY) continue;
+            if (served[p]) continue;
+            int c=pe->owner;
+            if (!scan_c[c]) continue;
+            bool has_credit = (e->ip_seed_credit[c] >= 1.f);
+            if (!first && !has_credit) continue;          /* ce pays n'a plus rien à décider ce mois-ci */
+            IpCand cd; int why=IPR_CAPITAL;
+            if (!ip_candidate(e, pe, wpc_gate, &cd, &why)){ if (first) ip_reason(why); continue; }
+            if (first) viable[c]++;
+            if (!has_credit) continue;
+            /* LA PLUS RENTABLE gagne (pénurie la plus intense) ; à égalité, le plus petit
+             * pid — la comparaison est STRICTE et l'ordre de balayage croissant. */
+            if (best_pid[c]<0 || cd.score>best_sc[c]){ best_pid[c]=p; best_sc[c]=cd.score; best_cd[c]=cd; }
+        }
+        int acted=0;
+        for (int c=0;c<SCPS_MAX_COUNTRY;c++){
+            if (best_pid[c]<0){ scan_c[c]=false; continue; }
+            /* Le crédit part à la TENTATIVE, pas à la réussite : un poseur qui refuse a tout
+             * de même consommé l'initiative du mois — sinon un pays dont toutes les poses
+             * échouent rebalaye ses provinces une par une (O(n²) par mois). */
+            served[best_pid[c]]=1; picked[c]++; e->ip_seed_credit[c]-=1.f; acted=1;
+            built += ip_invest_do(e, best_pid[c], &best_cd[c]);
+        }
+        first=false;
+        if (!acted) break;
+    }
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++)                  /* ce que la cadence a écarté ce mois-ci */
+        if (viable[c]>picked[c]) ip_reason_n(IPR_CADENCE, viable[c]-picked[c]);
     return built;
 }
 

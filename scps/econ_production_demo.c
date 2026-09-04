@@ -167,6 +167,73 @@ int main(int argc, char **argv){
     printf("   stock d'outils sans entretien : %.0f → %.0f (usure)\n", tw0, tw1);
     ok("sans atelier pour les entretenir, le stock d'outils DÉCROÎT", tw1 < tw0 - 1.f);
 
+    /* ═══ 5. LA CADENCE DE L'INITIATIVE PRIVÉE ══════════════════════════
+     * Décision joueur 2026-09-04 (« une initiative privée par mois ») : le semis privé
+     * (econ_ip_invest_tick) allait jusqu'à 6 manufactures par MOIS et par pays sur 250 ans.
+     * On monte quatre provinces JUMELLES d'un même empire synthétique, toutes riches et
+     * toutes en pénurie — seule l'INTENSITÉ de la pénurie les distingue — et on vérifie :
+     *   PRIV_SEED_PER_MONTH=0 (kill-switch) : les quatre sèment le même mois (illimité) ;
+     *   PRIV_SEED_PER_MONTH=1 (défaut)      : UNE seule sème, et c'est LA PLUS RENTABLE. */
+    printf("\n── 5. Initiative privée : au plus UNE par mois et par pays ──\n");
+    {
+        const int NP=4;
+        int cid = SCPS_MAX_COUNTRY-9;          /* empire synthétique, jamais attribué par le worldgen */
+        int pids[4]; int npid=0;
+        for (int p=0;p<e->n_prov && npid<NP;p++) pids[npid++]=p;
+        /* Quatre jumelles : même pop, même richesse, même dotation — SEUL le prix diffère
+         * (×2, ×3, ×5, ×4 de la base) : la 3e est la plus rentable, et ce n'est PAS la
+         * plus petite pid, donc le banc distingue « la plus rentable » de « la première ». */
+        const float PMULT[4]={2.f,3.f,5.f,4.f};
+        int winner=2;
+        /* Le palier de besoins d'un pays SYNTHÉTIQUE n'a jamais tourné (g_needs_tier_held=0
+         * ⇒ le panier s'arrête au grain, qu'aucune recette ne fabrique) : on repasse par le
+         * chemin LEGACY (NEEDS_TIER_POP=0 ⇒ palier déduit de la pop locale), où une pop de
+         * 5 000 ouvre les paliers manufacturés (sel/étoffe). */
+        float need_tier_save=tune_f("NEEDS_TIER_POP",3000.f);
+        tune_set("NEEDS_TIER_POP",0.f);
+        for (int i=0;i<npid;i++){
+            ProvinceEconomy *pe=&e->prov[pids[i]];
+            memset(pe->strata,0,sizeof pe->strata);
+            pe->active=true; pe->colonized=true; pe->culture.settled=true;
+            pe->owner=(int16_t)cid; pe->n_bld=0;
+            pe->strata[CLASS_LABORER].pop  =4000.f; pe->strata[CLASS_LABORER].wealth  =40000.f;
+            pe->strata[CLASS_BOURGEOIS].pop=1000.f; pe->strata[CLASS_BOURGEOIS].wealth=1000000.f;
+            for (int k=0;k<RES_COUNT;k++){
+                pe->raw_cap[k]=8.f;                                  /* toute recette est nourrissable ICI */
+                pe->price[k]=econ_base_price((Resource)k)*PMULT[i];                 /* pénurie franche, d'intensité DIFFÉRENTE */
+                e->nat_stock[cid][k]=100000.f;                       /* le chantier ne manque de rien */
+            }
+        }
+        int before[4]; for (int i=0;i<npid;i++) before[i]=e->prov[pids[i]].n_bld;
+        tune_set("PRIV_SEED_PER_MONTH",0.f);   /* kill-switch : illimité (le comportement d'avant) */
+        econ_ip_invest_tick(e);
+        int free_seeds=0; for (int i=0;i<npid;i++) free_seeds += e->prov[pids[i]].n_bld-before[i];
+        { const long *ipr=NULL; econ_ip_reason_stats(&ipr);   /* P2 : la table des raisons, lisible ici aussi */
+          printf("   raisons (province-mois) :");
+          for (int k=0;k<IPR_COUNT;k++) printf(" %s %ld ·", econ_ip_reason_name(k), ipr[k]);
+          printf("\n"); }
+        printf("   cadence ÉTEINTE (0) : %d semis le même mois sur %d provinces\n", free_seeds, npid);
+        ok("sans cadence, plusieurs manufactures privées naissent le même mois", free_seeds>1);
+
+        for (int i=0;i<npid;i++){          /* on remet les quatre jumelles à zéro */
+            ProvinceEconomy *pe=&e->prov[pids[i]];
+            pe->n_bld=0;
+            pe->strata[CLASS_BOURGEOIS].wealth=1000000.f;
+            for (int k=0;k<RES_COUNT;k++) pe->price[k]=econ_base_price((Resource)k)*PMULT[i];
+        }
+        e->ip_seed_credit[cid]=0.f;
+        tune_set("PRIV_SEED_PER_MONTH",1.f);   /* le DÉFAUT : une par mois et par pays */
+        econ_ip_invest_tick(e);
+        int capped=0, who=-1;
+        for (int i=0;i<npid;i++) if (e->prov[pids[i]].n_bld>0){ capped++; who=i; }
+        printf("   cadence à 1/mois : %d semis (province gagnante %d, pénurie ×%.0f)\n",
+               capped, who, who>=0?PMULT[who]:0.f);
+        ok("à cadence 1, UNE seule manufacture privée naît par mois et par pays", capped==1);
+        ok("la gagnante est la province la PLUS RENTABLE (pénurie la plus intense), pas la plus petite pid",
+           who==winner);
+        tune_set("NEEDS_TIER_POP",need_tier_save);   /* la fixture repart telle qu'elle était */
+    }
+
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n", g_pass, g_fail);
     printf("══════════════════════════════════════════════════════════════\n");

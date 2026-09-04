@@ -814,6 +814,7 @@ int main(int argc, char **argv){
     double tot_sat[CLASS_COUNT]={0}; double tot_trade=0;   /* §distrib : satisfaction par classe + commerce */
     double tot_wpc[CLASS_COUNT]={0};   /* MONNAIE M4-IP : richesse/tête par classe, fin de sim */
     long tot_ip_colony=0, tot_ip_manuf=0;   /* MONNAIE M4-IP : initiative privée cumulée */
+    long tot_ipr[IPR_COUNT]={0};            /* P2 : raisons du semis privé, Σ sims (province-mois) */
     long tot_emp_n=0, tot_emp_hub=0;   /* par-empire : moyennes de fin de sim */
     double tot_emp_gold=0, tot_emp_flux=0, tot_emp_imp=0, tot_emp_exp=0, tot_emp_expgold=0;
     /* I0 — L'ASSIETTE DE LA DÉCOMPOSITION DU FLUX (2026-09-03, trésor NATIONAL) : le
@@ -2354,6 +2355,16 @@ int main(int argc, char **argv){
         { long ipc=0, ipm_n=0; econ_ip_stats(&ipc,&ipm_n);
           printf("              initiative privée : %ld colonie(s) du peuple/sim · %ld manufacture(s) privée(s)/sim\n", ipc, ipm_n);
           tot_ip_colony+=ipc; tot_ip_manuf+=ipm_n; }
+        /* P2 du sweep de régression A (2026-09-04) — POURQUOI le semis privé sème ou ne
+         * sème pas : le compteur ci-dessus allait de 141 à 18 060 selon la graine sans
+         * qu'une seule ligne dise ce qui bloquait. `cadence` = candidates VALABLES écartées
+         * par le cap mensuel (PRIV_SEED_PER_MONTH) ; les autres codes sont les murs, du
+         * plus superficiel au plus profond. Unité : la PROVINCE-MOIS. */
+        { const long *ipr=NULL; econ_ip_reason_stats(&ipr);
+          printf("              initiatives privées : %ld semée(s) · %ld refusée(s) (cadence) · raisons :", ipr[IPR_SEME], ipr[IPR_CADENCE]);
+          for (int k=IPR_CAPITAL;k<IPR_COUNT;k++) printf(" %s %ld ·", econ_ip_reason_name(k), ipr[k]);
+          printf(" (province-mois)\n");
+          for (int k=0;k<IPR_COUNT;k++) tot_ipr[k]+=ipr[k]; }
         /* §5 PUISSANCE COMMERCIALE : le pool MENSUEL de volume échangeable (0.04·bourgeois + 0.01·élite,
          * × chaîne commerciale) borne les achats au marché — la preuve d'équilibre = combien il MORD. */
         { long cc_capped=0; double cc_drawn=0.0; intertrade_commerce_diag(&cc_capped,&cc_drawn);
@@ -3018,6 +3029,13 @@ int main(int argc, char **argv){
            tot_wpc[CLASS_LABORER]/nsims, tot_wpc[CLASS_BOURGEOIS]/nsims, tot_wpc[CLASS_ELITE]/nsims);
     printf("   initiative privée (M4-IP) .... %ld colonie(s) du peuple (moy. %.1f/sim) · %ld manufacture(s) privée(s) (moy. %.1f/sim)\n",
            tot_ip_colony, (double)tot_ip_colony/nsims, tot_ip_manuf, (double)tot_ip_manuf/nsims);
+    /* P2 (2026-09-04) — la SYNTHÈSE des raisons du semis privé : `cadence` mesure ce que le
+     * cap mensuel (PRIV_SEED_PER_MONTH) a écarté, les autres codes disent quel mur tient le
+     * canal fermé quand une graine ne sème rien. Somme monde × sims, en province-mois. */
+    printf("   initiatives privées (raisons) %ld semée(s) · %ld refusée(s) (cadence) ·",
+           tot_ipr[IPR_SEME], tot_ipr[IPR_CADENCE]);
+    for (int k=IPR_CAPITAL;k<IPR_COUNT;k++) printf(" %s %ld ·", econ_ip_reason_name(k), tot_ipr[k]);
+    printf(" (province-mois ; moy. %.1f semis/sim)\n", (double)tot_ipr[IPR_SEME]/(nsims>0?nsims:1));
     /* « par empire » : moyenne sur TOUTES les sims (les empires jouables de chaque fin de
      * sim) — la ligne I0 juste en dessous, elle, ne peut porter que sur la DERNIÈRE (le
      * registre FX_* est un état global). Le recoupement I0 se lit donc sur la dernière sim. */

@@ -14388,3 +14388,100 @@ sérialisée touchée, aucun `SAVE_VERSION`, rien lu par le moteur.
 - **Non résolu faute de run** : `W1W2/essai_s7:877` est ENGLOUTISSEMENT (11 régions) avec
   `0 empire(s)` hérité — resplit sans coupure (aucun fragment ≥ `SPLIT_VIABLE_MIN`=2) OU
   héritiers disparus. Le nouveau compteur tranche en une lecture au prochain sweep.
+
+
+
+---
+
+## Mission 2026-09-04 — S2 CADENCE DES INITIATIVES PRIVÉES (« une par mois », trou N2 du sweep A)
+
+Décision joueur, mot pour mot : « Donne un cap mensuel aux initiatives privées, une par mois »
+puis, corrigeant une proposition de modulation : « Pourquoi modulé par la géographie ? Non, ça
+doit être un comportement émergent lié à la géographie. Laisse. Juste un cap mensuel. »
+Exception EXPLICITE à la règle « pas de cap » : c'est une CADENCE (un débit), pas un plafond de
+stock — le monde bâtit autant qu'il veut, une à la fois.
+
+### Découvertes
+
+- **Le compteur qui explose n'est PAS le semis §NF v2.** « N manufacture(s) privée(s) » =
+  `g_ip_manuf_built`, incrémenté par `econ_ip_invest_tick` (`scps/scps_econ.c`, bloc MONNAIE
+  M4-IP §2, ~l.6890-7035), appelé UNE seule fois dans tout le dépôt : `scps/scps_sim.c:1328`,
+  juste après `econ_tick`/`credit_settle_monthly`, **cadence mensuelle**. `NF_SEED_PAID` (le
+  semis §NF de l'IA, `scps_econ.c:2855`) est un AUTRE canal, non compté par cette ligne.
+- **Le signal du semis privé** : classe BOURGEOIS puis ÉLITE (la 2e ne finance que si la 1re
+  échoue une porte), `richesse/tête ≥ IP_INVEST_WPC` (12), un palier du panier de la classe
+  dont le `price ≥ BASE_PRICE × IP_SHORTAGE` (1,4) **dans CETTE province**, une recette civile
+  non-faustienne, staffage `≥ 250 × (n_bld+1)`, tier de province, intrant nourrissable dans le
+  royaume, puis `wealth ≥ MANUF_BUILD_COST × ipm × doctrine`. Aucun de ces gates n'est
+  géographique EN PROPRE : la géographie entre par `price` (matières, ports, routes). C'est
+  pour ça que la cadence n'a eu **aucun** facteur géo à ajouter — le brief le demandait.
+- **Le mur réel, mesuré** (instrumentation P2, motif `warhost_levy_reason*`) : à 30 ans, sur
+  777 comme sur 11, **100 % des province-mois butent sur `capital` puis `prix`** (777 :
+  `capital 19422 · prix 4145`, tout le reste à 0). Le canal ne s'ouvre pas avant l'an 30 : le
+  golden 12 ans est donc **INCHANGÉ** par cette vague, cadence active ou non.
+- **La cadence à 1/mois ne mord pas non plus avant l'an 30** : à vannes ouvertes
+  (`IP_INVEST_WPC=0.5,IP_SHORTAGE=1.0`), 777×30 ans donne 2 semis à cadence 0, 1 et 3, et
+  `1 semée · 1 refusée (cadence)` à 0,5. Le régime à 6 semis/mois est un phénomène TARDIF —
+  seul un run 250 ans le montrera.
+
+### L'implémentation
+
+- Clé registre J **`PRIV_SEED_PER_MONTH`** (défaut **1,0** ; **0 = illimité = le chemin
+  d'avant**, byte-identique PROUVÉ : `SCPS_TUNE=PRIV_SEED_PER_MONTH=0 ./chronicle --hash 7 5 12`
+  rend md5 identique à `scps/golden_hashes.txt`).
+- **Fractionnaire** : crédit par PAYS `WorldEconomy.ip_seed_credit[SCPS_MAX_COUNTRY]`,
+  `+rate`/mois, **plafonné à max(rate,1)** — donc AUCUNE thésaurisation de crédits, un pays
+  muet 20 ans ne rattrape pas en rafale. Inter-ticks ⇒ sérialisé (blob ECON par `sizeof`) ⇒
+  **SAVE_VERSION 109 → 110**, `save_sane` borne `[0, 1e6)` (refuse NaN).
+- **Départage déterministe** : la candidate qui passe est **la plus rentable** (intensité de
+  pénurie `price/BASE_PRICE` la plus forte) ; à égalité le **plus petit pid** (comparaison
+  stricte + balayage croissant). Jamais un tirage. Le banc le prouve : la gagnante est la
+  province d'indice 2 (pénurie ×5), pas l'indice 0.
+- **Le crédit part à la TENTATIVE, pas à la réussite** : un poseur qui refuse a consommé
+  l'initiative du mois. Sans ça, un pays dont toutes les poses échouent rebalaye ses provinces
+  une par une → O(n²) par mois.
+- Refactor minimal : la boucle d'origine est coupée en `ip_candidate` (lecture PURE, mêmes
+  gates, même ordre) + `ip_invest_do` (le seul site qui écrit). Les deux chemins (illimité et
+  cadencé) appellent les mêmes deux fonctions — impossible qu'ils divergent.
+- **Chronique** : ligne par sim ET en synthèse — `initiatives privées : N semée(s) · M
+  refusée(s) (cadence) · raisons : capital … · prix … · palier … · matière … · trésor … ·
+  échec … (province-mois)`. Unité = la PROVINCE-MOIS (pas le pays-an d'A2).
+
+### Pièges
+
+- **`econ_needs_active_for_country(cid)` = `1 + g_needs_tier_held[cid]`** : pour un pays
+  SYNTHÉTIQUE de banc (jamais passé par `econ_tick`), il rend **1** ⇒ le panier s'arrête à
+  `NEED_ORDER[…][0] = RES_GRAIN`, **qu'aucune recette ne fabrique** ⇒ le semis privé ne peut
+  JAMAIS déclencher, et la raison lue est `prix` (le mur n'est pas atteint plus loin). Le banc
+  doit repasser par le chemin legacy : `tune_set("NEEDS_TIER_POP",0)` (palier déduit de la pop
+  locale), puis restaurer. Deux heures perdues là-dessus.
+- **`BASE_PRICE` n'est pas exporté** : hors `scps_econ.c`, c'est `econ_base_price(Resource)`.
+- La raison est comptée **une fois par province-mois** et seulement à la 1re passe — sinon les
+  passes de cadence la comptent en double. Les `cadence` sont comptées à la FIN
+  (`viable[c] − picked[c]`), pas au fil de l'eau.
+- Un pays sans candidate à la passe N n'en aura pas à la passe N+1 (seules les provinces
+  SERVIES ont bougé) : `scan_c[]` le raye, sinon la 2e passe re-coûte un tick entier. Vérifié :
+  30 ans en 28,4 s dans les DEUX bras (aucune régression de perf).
+- `rm build/*.o` obligatoire (sizeof(WorldEconomy) change) ; la DLL Godot devra être rebuildée
+  aussi (`scons -C godot`), non fait ici.
+
+### Gates (tous verts, binaire de ce worktree)
+
+`make test` **42/42** (`econ_production_demo` passe de 5/5 à **8/8**) · `make determinism` OK ·
+`make golden` **OK, hash INCHANGÉ** (5 graines × 12 ans : `78f8b0f8 3dabef2b a37f6931 9d4381aa
+82ee100c`) · kill-switch md5-identique au golden commité · `--savetest` A==B (v110) ·
+`--fuzztest` 9/9 · ASan/UBSan muets (7×1×20) · `lang-check` 123/123 · membrane/region-write OK.
+
+### Restes
+
+- **`make golden-deep` NON LANCÉ** (83 + 250 ans, hors du plafond « smoke ≤ 30 ans » du brief) :
+  la cadence mordant APRÈS l'an 30, `scps/golden_deep.txt` va très probablement bouger — c'est
+  une re-baseline DÉLIBÉRÉE à acter par l'orchestrateur après la run appariée.
+- **La colonisation spontanée des journaliers (`econ_ip_colonize_tick`) n'est PAS cadencée** :
+  la décision joueur porte sur « les initiatives privées » et le trou N2 ne mesure que les
+  manufactures ; ce canal reste à « une fondation par province SOURCE par mois ». À trancher si
+  le joueur veut le même cap.
+- Le semis §NF v2 de l'IA (`NF_SEED_PAID`) n'a **pas** de cadence : autre canal, hors périmètre.
+- Les raisons `palier` / `matière` / `trésor` / `échec` sont restées à **0** dans tous les
+  smokes : soit elles ne mordent jamais, soit elles ne mordent qu'en régime tardif — c'est
+  précisément ce que la run 250 ans doit dire.

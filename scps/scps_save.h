@@ -32,7 +32,12 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 109u          /* v109 : REGISTRE I0 COMPLET (A1 « hors-registre », 2026-09-04) —
+#define SAVE_VERSION 110u          /* v110 : CADENCE DE L'INITIATIVE PRIVÉE (décision joueur 2026-09-04,
+                                    * « une initiative privée par mois ») — WorldEconomy gagne
+                                    * ip_seed_credit[SCPS_MAX_COUNTRY] (le crédit de semis mensuel par
+                                    * pays, inter-ticks ⇒ sérialisé dans le blob ECON) ⇒ sizeof change.
+                                    * save_sane le borne [0, 1e6]. <v110 refusé.
+                                    * v109 : REGISTRE I0 COMPLET (A1 « hors-registre », 2026-09-04) —
                                     * 10 postes FX_* neufs (achat d'État, assiette, semis, emprunt,
                                     * marché, spéculation, tribut/dons, butin, évènements, achat
                                     * métal) : FX_COUNT passe de 20 à 30 ⇒ sizeof(g_flux) change,

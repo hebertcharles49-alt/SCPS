@@ -322,6 +322,12 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
             float v=s->econ->nat_stock[c][g];
             if (!(v > -1.0e12f && v < 1.0e12f)) return false;   /* faux pour NaN : la garde tient */
         }
+        /* v110 — LE CRÉDIT DE CADENCE DE L'INITIATIVE PRIVÉE : jamais négatif (on ne
+         * décrémente qu'au-dessus de 1) et plafonné par construction à max(taux,1) — on
+         * borne large (1e6, un taux délirant reste un taux) et on refuse le NaN/inf, qui
+         * gèlerait le semis privé du pays à vie. */
+        { float v=s->econ->ip_seed_credit[c];
+          if (!(v >= 0.f && v < 1.0e6f)) return false; }         /* faux pour NaN : la garde tient */
     }
     if (w->n_countries <0 || w->n_countries >SCPS_MAX_COUNTRY)   return false;
     if (w->n_continents<0 || w->n_continents>SCPS_MAX_CONTINENT) return false;
