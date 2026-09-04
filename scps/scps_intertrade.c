@@ -203,6 +203,13 @@ static inline void it_credit(WorldEconomy *e, int region, float delta){
     int o=it_owner(e,region);
     if (o>=0 && delta!=0.f) econ_nation_gold_force(e, o, delta);
 }
+/* A1 « HORS-REGISTRE » (2026-09-04) : même geste + LA LIGNE du registre I0. Le marché
+ * des Centres bougeait le trésor de trois pays (acheteur, source, absorbeur) sans
+ * qu'aucun poste FX_* ne le voie — le recoupement I0 ne pouvait pas fermer. */
+static inline void it_credit_fx(WorldEconomy *e, int region, float delta, FluxComp comp){
+    int o=it_owner(e,region);
+    if (o>=0 && delta!=0.f){ econ_nation_gold_force(e, o, delta); econ_flux_add(o, comp, delta); }
+}
 /* débit BORNÉ au disponible (rend l'appliqué, signé) — remplace econ_region_treasury_add. */
 static inline float it_gold_add(WorldEconomy *e, int region, float delta){
     int o=it_owner(e,region);
@@ -561,13 +568,13 @@ void intertrade_market_consume(WorldEconomy *e, int region, int good, float qty,
     float cc_imp0=qty;                                                 /* volume d'import autorisé */
     if (hub>=0 && hub!=region){                                        /* 3. Centre local étranger : IMPORT */
         float t = centre_take(e, hub, good, qty);
-        it_credit(e,hub, t * unit_price);   /* la SOURCE encaisse le NU (conservation, dual-write) */
+        it_credit_fx(e,hub, t * unit_price, FX_MARCHE);   /* la SOURCE encaisse le NU (conservation, dual-write) */
         qty -= t;
     }
     if (hub>=0) for (int r=0;r<e->n_regions && r<SCPS_MAX_REG && qty>1e-3f; r++){   /* 4. réseau mondial étranger : IMPORT */
         if (!g_centre[r]||r==hub||r==region) continue;
         float t = centre_take(e, r, good, qty);
-        it_credit(e,r, t * unit_price);      /* idem : la source encaisse le NU (dual-write) */
+        it_credit_fx(e,r, t * unit_price, FX_MARCHE);      /* idem : la source encaisse le NU (dual-write) */
         qty -= t;
         if (qty<=1e-3f) break;
     }
@@ -597,8 +604,8 @@ float intertrade_market_pull(WorldEconomy *e, int region, int good, float want, 
         float up=price*((has_host)?(MULT):1.f); long aff=(up>0.f&&buyer_tr)?(long)(*buyer_tr/up):0; \
         float w=fminf(want,(float)aff); if(w>1e-3f){ \
             float tk=centre_take(e,(R),good,w); float nu=tk*price, tot=tk*up; \
-            it_credit(e,(R),nu); \
-            if(has_host&&tot>nu) it_credit(e,toll_r,(tot-nu)); \
+            it_credit_fx(e,(R),nu,FX_MARCHE); \
+            if(has_host&&tot>nu) it_credit_fx(e,toll_r,(tot-nu),FX_TOLL_RECV); \
             it_credit(e,region,-tot); \
             if(owner>=0) econ_flux_add(owner,FX_IMPORT,-tot); \
             got+=tk; want-=tk; } } }while(0)
@@ -680,8 +687,9 @@ long intertrade_market_buy(WorldEconomy *e, int region, int good, long want, int
         if (got<=0) return 0;
         cost=(float)got*up;
         econ_nation_gold_force(e, bown, -cost);                   /* l'acheteur paie sur SON trésor */
+        econ_flux_add(bown, FX_MARCHE, -cost);                    /* I0 : la ligne marché (A1) */
         econ_nation_stock_add(e, bown, good, (float)got);         /* la matière entre à SON entrepôt */
-        it_credit(e,hub, cost);   /* CONSERVATION : le hub (source+hôte) encaisse le plein */
+        it_credit_fx(e,hub, cost, FX_MARCHE);   /* CONSERVATION : le hub (source+hôte) encaisse le plein */
     } else {
         long rem=qty; float nu_credited=0.f;
         for (int r=0;r<e->n_regions && r<SCPS_MAX_REG && rem>0;r++){
@@ -691,17 +699,18 @@ long intertrade_market_buy(WorldEconomy *e, int region, int good, long want, int
             if (t<=0) continue;
             rem-=t;
             float nu=(float)t*price;
-            it_credit(e,r, nu); /* la source encaisse le NU */
+            it_credit_fx(e,r, nu, FX_MARCHE); /* la source encaisse le NU */
             nu_credited += nu;
         }
         got=qty-rem;
         if (got<=0) return 0;
         cost=(float)got*up;
         econ_nation_gold_force(e, bown, -cost);                   /* facturé sur le RÉEL */
+        econ_flux_add(bown, FX_MARCHE, -cost);                    /* I0 : la ligne marché (A1) */
         econ_nation_stock_add(e, bown, good, (float)got);
         float toll = cost - nu_credited;                          /* la marge → cité-état hôte */
         if (toll>0.f && re->import_toll_region>=0 && re->import_toll_region<e->n_regions)
-            it_credit(e,re->import_toll_region, toll);
+            it_credit_fx(e,re->import_toll_region, toll, FX_TOLL_RECV);   /* I0 : le péage a DÉJÀ son poste */
     }
     g_global_cache[good]-=(float)got; if(g_global_cache[good]<0.f)g_global_cache[good]=0.f;  /* V2.2 : cache à jour (anti sur-tirage intra-tick) */
     if (g_commerce_active && cid_ok(cc_owner)) commerce_draw(cc_owner, (float)got);   /* §5 : l'achat draine le pool commercial */
@@ -747,7 +756,8 @@ long intertrade_market_sell(WorldEconomy *e, int region, int good, long want, in
     if (sold<=0) return 0;
     float gain=(float)sold*price;
     econ_nation_gold_force(e, sown, gain);                        /* le VENDEUR encaisse */
-    it_credit(e,dep,  -gain);                                     /* l'absorbeur PAIE (vendeur +gain == dep −gain) */
+    econ_flux_add(sown, FX_MARCHE, gain);                         /* I0 : la ligne marché (A1) */
+    it_credit_fx(e,dep,  -gain, FX_MARCHE);                       /* l'absorbeur PAIE (vendeur +gain == dep −gain) */
     it_stock_add(e, dep, good, (float)sold);                      /* le bien rejoint le marché (un AUTRE Centre) */
     g_global_cache[good]+=(float)sold;                           /* V2.2 : cache à jour */
     if (gained) *gained=(long)(gain+0.5f);
@@ -852,16 +862,17 @@ long intertrade_slave_sell(WorldEconomy *e, int region, long count){
           int hub=intertrade_country_centre(e,cid);
           float paid=0.f;
           if (hub>=0 && hub<e->n_regions && hub!=region)
-              paid = -it_gold_add(e,hub,-value);
+              { paid = -it_gold_add(e,hub,-value);
+                int ho=it_owner(e,hub); if (ho>=0) econ_flux_add(ho, FX_MARCHE, -paid); }
           if (paid < value - 1e-3f){
               float rest=value-paid;
               paid += -econ_region_wealth_add(e,region,CLASS_LABORER,  -rest*0.42f);
               paid += -econ_region_wealth_add(e,region,CLASS_BOURGEOIS,-rest*0.20f);
               paid += -econ_region_wealth_add(e,region,CLASS_ELITE,    -rest*0.38f);
           }
-          it_credit(e, region, paid);
+          it_credit_fx(e, region, paid, FX_MARCHE);
       } else {
-          it_credit(e, region, value);
+          it_credit_fx(e, region, value, FX_MARCHE);
       } }
     return sold;
 }
@@ -928,16 +939,17 @@ long intertrade_slave_buy(WorldEconomy *e, int region, long count, bool can_ensl
            * mondial), sinon les classes du marché régional. Débit via treasury_add
            * (clampé + dual-write region[], remplace l'écrit nu *buyer_tr). */
           float paid = -it_gold_add(e,region,-total);
+          econ_flux_add(cid, FX_MARCHE, -paid);
           int hub=intertrade_country_centre(e,cid);
           if (hub>=0 && hub<e->n_regions && hub!=region)
-              it_credit(e,hub,paid);
+              it_credit_fx(e,hub,paid,FX_MARCHE);
           else {
               econ_region_wealth_add(e,region,CLASS_LABORER,  paid*0.42f);
               econ_region_wealth_add(e,region,CLASS_BOURGEOIS,paid*0.20f);
               econ_region_wealth_add(e,region,CLASS_ELITE,    paid*0.38f);
           }
       } else {
-          *buyer_tr -= total;   /* legacy : l'or disparaissait (kill-switch) */
+          *buyer_tr -= total; econ_flux_add(cid, FX_MARCHE, -total);   /* legacy : l'or disparaissait (kill-switch) */
       } }
     return want;
 }
@@ -1143,8 +1155,7 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
               } }
             it_credit(e,dst_r,-total);                          /* l'acheteur PAIE (dual-write) */
             it_credit(e,src_r, gross);                          /* le vendeur ENCAISSE le NU (dual-write) */
-            if (src->owner>=0){ econ_flux_add(src->owner, FX_EXPORT, gross);
-                                econ_flux_add(src->owner, FX_TOLL_RECV, total-gross); }  /* I0 */
+            if (src->owner>=0) econ_flux_add(src->owner, FX_EXPORT, gross);   /* I0 */
             /* MONNAIE M3b-v2 — item 5 (décision joueur 2026-07-14) : le PÉAGE (la marge
              * total−gross, TRADE_LEVY) → BOURGEOIS de la province exportatrice, plus le
              * trésor d'État (les marchands qui négocient l'échange, pas la couronne).
@@ -1156,7 +1167,11 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
                 float toll_lv=total-gross;
                 float st=clampf(tune_f("TOLL_STATE_SHARE",0.5f),0.f,1.f);
                 float state_part=toll_lv*st, bourg_part=toll_lv-state_part;
-                if (state_part>0.f) it_gold_add(e, src_r, state_part);
+                /* A1 : SEUL `state_part` entre au TRÉSOR — le registre ne compte plus le
+                 * péage PLEIN (le reste va aux bourgeois, hors trésor : c'était un
+                 * sur-comptage d'ENTRÉE, donc un « hors registre » négatif). */
+                if (state_part>0.f){ float got_st=it_gold_add(e, src_r, state_part);
+                    if (src->owner>=0) econ_flux_add(src->owner, FX_TOLL_RECV, got_st); }
                 if (bourg_part>0.f) econ_region_wealth_add(e, src_r, CLASS_BOURGEOIS, bourg_part);
             }
             if (dst->owner>=0) econ_flux_add(dst->owner, FX_IMPORT, -total);
@@ -1168,16 +1183,20 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
                 if (toll<0.f) toll=0.f;
                 if (toll>0.f){
                     *src_tr -= toll;
+                    if (src->owner>=0) econ_flux_add(src->owner, FX_TOLL_PAID, -toll);   /* A1 : le détroit se PAIE — au registre */
                     /* item 5 : le péage de DÉTROIT → BOURGEOIS du tenant (même famille que le
                      * péage d'échange ci-dessus), plus son trésor d'État.
                      * MONNAIE M5 — R1 : TOLL_STATE_SHARE split trésor/bourgeois (même toll,
                      * cf. site échange ci-dessus). */
+                    float choke_state=0.f;
                     { float st=clampf(tune_f("TOLL_STATE_SHARE",0.5f),0.f,1.f);
                       float state_part=toll*st, bourg_part=toll-state_part;
-                      if (state_part>0.f) it_gold_add(e, choke_hold_reg, state_part);
+                      if (state_part>0.f) choke_state=it_gold_add(e, choke_hold_reg, state_part);
                       if (bourg_part>0.f) econ_region_wealth_add(e, choke_hold_reg, CLASS_BOURGEOIS, bourg_part); }
                     if (cid_ok(choke_hold_cid)){
-                        g_choke_toll[choke_hold_cid]+=toll; econ_flux_add(choke_hold_cid, FX_TOLL_RECV, toll);
+                        /* A1 : le registre ne prend que ce qui a RÉELLEMENT atteint le trésor
+                         * (la part bourgeoise du péage n'y entre jamais). */
+                        g_choke_toll[choke_hold_cid]+=toll; econ_flux_add(choke_hold_cid, FX_TOLL_RECV, choke_state);
                         g_choke_toll_cumul[choke_hold_cid]+=toll;   /* le CUMUL de sim (la preuve) */
                     }
                     g_choke_toll_total+=toll; g_choke_toll_cumul_total+=toll; choke_tax_route=true;

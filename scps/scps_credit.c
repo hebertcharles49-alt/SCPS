@@ -336,13 +336,18 @@ float credit_state_exposure_limit(const WorldEconomy *e, int debtor, int lender)
  * descend jamais sous sa réserve d'exploitation. Depuis 2026-09-03 il n'y a plus de
  * prorata à faire (UN trésor) ni de vue region[] à tenir en phase : cette fonction reste
  * le SEUL débiteur partagé de TOUTE la chaîne de crédit (emprunt local/cité-état/état,
- * intérêt, amortissement, rachat) — corriger ICI ferme d'un coup tous ses appelants. */
-static void debit_surplus_prorata(WorldEconomy *e, int c, float floor_, float amount){
+ * intérêt, amortissement, rachat) — corriger ICI ferme d'un coup tous ses appelants.
+ * A1 « HORS-REGISTRE » (2026-09-04) : `comp` = LE poste du registre I0 que ce débit
+ * alimente — le débit est BORNÉ au surplus, donc seul le montant RÉELLEMENT appliqué
+ * (rendu) doit être écrit au registre, jamais celui demandé. */
+static float debit_surplus_prorata(WorldEconomy *e, int c, float floor_, float amount, FluxComp comp){
     /* Plus rien à répartir : UN trésor, UN débit (borné au surplus, jamais de dette ici). */
-    if (amount<=CR_EPS) return;
-    float tot=country_surplus(e,c,floor_); if (tot<=CR_EPS) return;
+    if (amount<=CR_EPS) return 0.f;
+    float tot=country_surplus(e,c,floor_); if (tot<=CR_EPS) return 0.f;
     if (amount>tot) amount=tot;
     econ_nation_gold_force(e, c, -amount);
+    econ_flux_add(c, comp, -amount);
+    return amount;
 }
 /* Σ richesse LENDABLE (élites+bourgeois, pondérées) d'un pays — les laborers n'ont pas
  * d'épargne (brief), poids registre J. */
@@ -449,7 +454,7 @@ float credit_borrow_local(WorldEconomy *e, int c, float need){
      * aucun compte à créditer ici. */
     float nat=country_surplus(e,c,floor_);
     float perq=fminf(need, nat);
-    if (perq>CR_EPS){ debit_surplus_prorata(e,c,floor_,perq); covered+=perq; }
+    if (perq>CR_EPS){ debit_surplus_prorata(e,c,floor_,perq,FX_ACHAT); covered+=perq; }   /* A1 : la péréquation solde l'achat d'État §3 (country_shortfall) — MÊME poste */
     float rem=need-covered;
     if (rem>CR_EPS) covered += credit_borrow_classes(e,c,rem);
     return covered;
@@ -491,6 +496,7 @@ float credit_borrow_class(WorldEconomy *e, int c, SocialClass cls, float need){
     else                  g_debt[c].to_bourgeois += debt_origination(c, borrow);   /* MONNAIE M11 — A3 v2 : forfait figé */
     /* LE DÉPÔT : au trésor NATIONAL, sans détour par une capitale (2026-09-03). */
     econ_nation_gold_force(e, c, borrow);
+    econ_flux_add(c, FX_EMPRUNT, borrow);   /* A1 : le dépôt ENTRE au trésor — au registre */
     return borrow;
 }
 
@@ -500,7 +506,7 @@ float credit_borrow_citystate(WorldEconomy *e, const World *w, int c, float need
     if (L<0) return 0.f;
     float borrow=fminf(need,state_lending_capacity_at(e,c,L,credit_debt_total(c)));
     if (borrow<=CR_EPS) return 0.f;
-    debit_surplus_prorata(e,L,tune_f("SINK_FLOOR",500.f),borrow);   /* DÉBIT seul (même raison que credit_borrow_local) */
+    debit_surplus_prorata(e,L,tune_f("SINK_FLOOR",500.f),borrow,FX_EMPRUNT);   /* DÉBIT seul (même raison que credit_borrow_local) */
     g_debt[c].to_cs += debt_origination(c, borrow);   /* MONNAIE M11 — A3 v2 : forfait figé */
     g_debt[c].cs_id = (int16_t)L;
     return borrow;
@@ -566,10 +572,16 @@ bool credit_spend(WorldEconomy *e, const World *w, int c, float cost){
          * elle qui a essuyé le débit ci-dessus) — les autres provinces/classes/prêteurs
          * ont, eux, été DÉBITÉS par la chaîne (péréquation/classes/cité-état). */
         econ_nation_gold_force(e, c, covered);
+        /* A1 : ce re-crédit est le SEUL mouvement de trésor de la chaîne côté débiteur
+         * (credit_borrow_classes/citystate ne créditent PAS) — il entre au registre ;
+         * le débit `-cost` juste au-dessus, lui, reste au poste de l'APPELANT (FX_SOLDE,
+         * FX_BUILD…). Rollback plus bas : le registre est défait avec le trésor. */
+        econ_flux_add(c, FX_EMPRUNT, covered);
         /* credit_can_spend a simulé exactement ces deux étages ; aucun état financier
          * n'a changé entre les deux appels. Cette garde détecte une régression plutôt que
          * de transformer à nouveau l'action en paiement partiel. */
         if (covered+CR_EPS < short_){
+            econ_flux_add(c, FX_EMPRUNT, -covered);   /* A1 : le registre suit le rollback du trésor */
             e->nat_treasury[c]=nat_treas_before;
             for (int p=0;p<np;p++){
                 e->prov[p].strata[CLASS_ELITE].wealth=p_elite[p];
@@ -611,11 +623,12 @@ float credit_borrow_state(WorldEconomy *e, const World *w, int debtor_c, int len
     float avail=credit_state_borrow_capacity(e,debtor_c,lender_c);
     float borrow=(amount>CR_EPS)?fminf(amount,avail):avail;
     if (borrow<=CR_EPS) return 0.f;
-    debit_surplus_prorata(e,lender_c,tune_f("SINK_FLOOR",500.f),borrow);
+    debit_surplus_prorata(e,lender_c,tune_f("SINK_FLOOR",500.f),borrow,FX_EMPRUNT);
     /* LE DÉPÔT chez le DÉBITEUR : son trésor NATIONAL (2026-09-03) — plus de capitale à
      * résoudre, plus de vue régionale à tenir en phase. `w` ne sert plus qu'au garde-fou
      * NULL ci-dessus. */
     econ_nation_gold_force(e, debtor_c, borrow);
+    econ_flux_add(debtor_c, FX_EMPRUNT, borrow);   /* A1 : le dépôt ENTRE au trésor — au registre */
     g_debt[debtor_c].to_cs += debt_origination(debtor_c, borrow);   /* MONNAIE M11 — A3 v2 : forfait figé */
     g_debt[debtor_c].cs_id = (int16_t)lender_c;
     return borrow;
@@ -683,7 +696,7 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
          * du débiteur. */
         float avail=country_surplus(e,c,floor_);
         float cash_paid=fminf(charge, avail);
-        if (cash_paid>CR_EPS) debit_surplus_prorata(e,c,floor_,cash_paid);
+        if (cash_paid>CR_EPS) debit_surplus_prorata(e,c,floor_,cash_paid,FX_CREDIT);   /* A1 : le cash SORT du trésor — au registre (cash_paid ≤ avail : l'appliqué == le demandé) */
         float refinanced=0.f, rem_due=charge-cash_paid;
         if (rem_due>CR_EPS){
             refinanced=credit_borrow_classes(e,c,rem_due);
@@ -731,8 +744,10 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
                 credit_wealth_prorata(e,c,CLASS_ELITE,     amt_e);
                 credit_wealth_prorata(e,c,CLASS_BOURGEOIS, amt_b);
             }
-            if (i_cs>CR_EPS && old_cs_id>=0)
+            if (i_cs>CR_EPS && old_cs_id>=0){
                 econ_nation_gold_force(e, old_cs_id, i_cs);   /* l'intérêt va au trésor du CRÉANCIER */
+                econ_flux_add(old_cs_id, FX_CREDIT, i_cs);    /* A1 : le REVENU du créancier — au registre */
+            }
             /* `fixed` : le remboursement ÉTEINT une part du stock (principal+markup blended,
              * motif amortissement ci-dessous) — « rembourses 1050 » se solde en RÉDUISANT la
              * créance de ce qui a été payé. `!fixed` (legacy) : le stock NE bouge PAS ici
@@ -770,7 +785,7 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
         if (surplus>CR_EPS && debt_total_amort>CR_EPS){
             float repay=fminf(debt_total_amort, fminf(surplus, debt_total_amort*tune_f("PRINCIPAL_REPAY_RATE",0.10f)));
             if (repay>CR_EPS){
-                debit_surplus_prorata(e,c,hof,repay);
+                debit_surplus_prorata(e,c,hof,repay,FX_CREDIT);   /* A1 : l'amortissement SORT du trésor — au registre */
                 float class_tot_a=g_debt[c].to_elite+g_debt[c].to_bourgeois;
                 float r_class=repay*(class_tot_a/debt_total_amort), r_cs=repay-r_class;
                 /* MONNAIE M14 — B5 : même correctif que l'échéance ci-dessus — ventilé ∝ la
@@ -781,8 +796,10 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
                     credit_wealth_prorata(e,c,CLASS_ELITE,     r_e);
                     credit_wealth_prorata(e,c,CLASS_BOURGEOIS, r_b);
                 }
-                if (r_cs>CR_EPS && g_debt[c].cs_id>=0)
+                if (r_cs>CR_EPS && g_debt[c].cs_id>=0){
                     econ_nation_gold_force(e, g_debt[c].cs_id, r_cs);   /* amortissement au CRÉANCIER */
+                    econ_flux_add(g_debt[c].cs_id, FX_CREDIT, r_cs);    /* A1 : au registre */
+                }
                 g_debt[c].to_elite     -= r_e; if (g_debt[c].to_elite<0.f)     g_debt[c].to_elite=0.f;
                 g_debt[c].to_bourgeois -= r_b; if (g_debt[c].to_bourgeois<0.f) g_debt[c].to_bourgeois=0.f;
                 g_debt[c].to_cs        -= r_cs; if (g_debt[c].to_cs<0.f)       g_debt[c].to_cs=0.f;
@@ -831,8 +848,10 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
     for(int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
         float pend=g_garnish_cs_pending[c]; if (pend<=CR_EPS) continue;
         int L=g_garnish_cs_id[c];
-        if (L>=0 && L<w->n_countries && L!=c)
+        if (L>=0 && L<w->n_countries && L!=c){
             econ_nation_gold_force(e, L, pend);   /* la saisie va au trésor du CRÉANCIER */
+            econ_flux_add(L, FX_CREDIT, pend);    /* A1 : au registre */
+        }
         g_garnish_cs_pending[c]=0.f;
     }
 
@@ -878,7 +897,7 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
         float idle=country_surplus(e,L,ifloor)*ishare;
         float amount=fminf(to_class_tot, fminf(idle,state_face_room(e,c,L)));
         if (amount<=CR_EPS) continue;
-        debit_surplus_prorata(e,L,ifloor,amount);            /* le racheteur paie face value */
+        debit_surplus_prorata(e,L,ifloor,amount,FX_EMPRUNT);   /* le racheteur paie face value */
         /* MONNAIE M14 — B5 : les créanciers CASHÉS OUT sont les VRAIS prêteurs (∝ ce que
          * CHACUN a réellement avancé), plus les poids fixes ELITE/BOURGEOIS_LEND_WEIGHT. */
         float share_bb=(to_class_tot>CR_EPS)?(g_debt[c].to_elite/to_class_tot):0.5f;
@@ -987,7 +1006,7 @@ float credit_repay_principal(WorldEconomy *e, const World *w, int c, float amoun
     float repay=fminf(debt_total, surplus);
     if (amount>CR_EPS) repay=fminf(repay, amount);
     if (repay<=CR_EPS) return 0.f;
-    debit_surplus_prorata(e,c,hof,repay);
+    debit_surplus_prorata(e,c,hof,repay,FX_CREDIT);
     float class_tot=g_debt[c].to_elite+g_debt[c].to_bourgeois;
     float r_class=repay*(class_tot/debt_total), r_cs=repay-r_class;
     float share_e=(class_tot>CR_EPS)?(g_debt[c].to_elite/class_tot):0.5f;
@@ -996,8 +1015,10 @@ float credit_repay_principal(WorldEconomy *e, const World *w, int c, float amoun
         credit_wealth_prorata(e,c,CLASS_ELITE,     r_e);
         credit_wealth_prorata(e,c,CLASS_BOURGEOIS, r_b);
     }
-    if (r_cs>CR_EPS && g_debt[c].cs_id>=0)
+    if (r_cs>CR_EPS && g_debt[c].cs_id>=0){
         econ_nation_gold_force(e, g_debt[c].cs_id, r_cs);   /* au trésor du CRÉANCIER */
+        econ_flux_add(g_debt[c].cs_id, FX_CREDIT, r_cs);    /* A1 : au registre */
+    }
     g_debt[c].to_elite     -= r_e;  if (g_debt[c].to_elite<0.f)     g_debt[c].to_elite=0.f;
     g_debt[c].to_bourgeois -= r_b;  if (g_debt[c].to_bourgeois<0.f) g_debt[c].to_bourgeois=0.f;
     g_debt[c].to_cs        -= r_cs; if (g_debt[c].to_cs<0.f)        g_debt[c].to_cs=0.f;

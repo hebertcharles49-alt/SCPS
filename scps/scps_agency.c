@@ -412,14 +412,19 @@ bool agency_build_acct(AgencyState *a, WorldEconomy *econ, const World *w, int r
          * (`region`, le chantier lui-même — même pays) pour une conservation triviale
          * équivalente (coût net = base_gold, comme un hub franc n'aurait jamais surfacturé). */
         if (!econ_region_has_keeper(econ, re->import_toll_region)){
-            econ_nation_gold_add(econ, re->owner, toll);
+            float back=econ_nation_gold_add(econ, re->owner, toll);
+            if (re->owner>=0) econ_flux_add(re->owner, FX_BUILD, back);   /* A1 : le hub franc REMBOURSE la marge — au registre */
         } else {
             float st=clampf(tune_f("TOLL_STATE_SHARE",0.5f),0.f,1.f);
             float state_part=toll*st, bourg_part=toll-state_part;
-            if (state_part>0.f) econ_nation_gold_add(econ, econ->region[re->import_toll_region].owner, state_part);
+            int tro=econ->region[re->import_toll_region].owner;
+            float got_st=0.f;
+            if (state_part>0.f) got_st=econ_nation_gold_add(econ, tro, state_part);
             if (bourg_part>0.f) econ_region_wealth_add(econ, re->import_toll_region, CLASS_BOURGEOIS, bourg_part);   /* RE-KEY : sur la PROVINCE */
             if (re->owner>=0) econ_flux_add(re->owner, FX_TOLL_PAID, -toll);                       /* I0 */
-            int tro=econ->region[re->import_toll_region].owner; if (tro>=0) econ_flux_add(tro, FX_TOLL_RECV, toll);
+            /* A1 : le TENANT n'encaisse que sa part d'État (le reste va aux bourgeois) —
+             * le registre comptait le péage PLEIN en entrée : un sur-comptage. */
+            if (tro>=0) econ_flux_add(tro, FX_TOLL_RECV, got_st);
         }
     }
     const BuildCost *c=&EDIFICES[e].cost;          /* … et l'on POMPE les matériaux du marché (vrais stocks) */

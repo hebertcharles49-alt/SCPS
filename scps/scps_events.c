@@ -2256,6 +2256,7 @@ static void apply_region_eff(EventCtx *cx, int r, const EvEffect *e){
       int cid_tr = re->owner;
       if (cid_tr>=0 && e->d_treasury<0.f){
           float paid = -econ_nation_gold_add(cx->econ, cid_tr, e->d_treasury);   /* débit BORNÉ */
+          econ_flux_add(cid_tr, FX_EVENT, -paid);   /* I0 : la ligne évènements (A1) */
           if (paid>0.f){
               float wl,wb,we; econ_wage_split(paid,&wl,&wb,&we);
               re->strata[CLASS_LABORER].wealth   += wl;
@@ -2271,6 +2272,7 @@ static void apply_region_eff(EventCtx *cx, int r, const EvEffect *e){
           re->strata[CLASS_BOURGEOIS].wealth -= tb;
           re->strata[CLASS_ELITE].wealth     -= te;
           econ_nation_gold_add(cx->econ, cid_tr, tl+tb+te);
+          econ_flux_add(cid_tr, FX_EVENT, tl+tb+te);   /* I0 (A1) */
       } }
     /* ESCLAVAGE — FUITE #9 : un évènement (peste/famine/vague migratoire…) multiplie la pop
      * de TOUTES les strates — mais aucun évènement ne touche les PopGroup (ce module ne les
@@ -2300,6 +2302,7 @@ static void resolve_treasury_mois(EventCtx *cx, int cid, int region, const EvEff
      * négatif) ; le trésor ne reçoit que ce qui a RÉELLEMENT été levé. */
     if (montant<0.f){
         float paid = econ_nation_gold_add(cx->econ, cid, montant);
+        econ_flux_add(cid, FX_EVENT, paid);   /* I0 (A1) */
         if (paid<0.f){
             float amt=-paid, wl,wb,we; econ_wage_split(amt,&wl,&wb,&we);
             econ_region_wealth_add(cx->econ, region, CLASS_LABORER,   wl);
@@ -2312,6 +2315,7 @@ static void resolve_treasury_mois(EventCtx *cx, int cid, int region, const EvEff
         float tb = -econ_region_wealth_add(cx->econ, region, CLASS_BOURGEOIS, -wb);
         float te = -econ_region_wealth_add(cx->econ, region, CLASS_ELITE,     -we);
         econ_nation_gold_add(cx->econ, cid, tl+tb+te);
+        econ_flux_add(cid, FX_EVENT, tl+tb+te);   /* I0 (A1) */
     }
 }
 static void apply_effect(EventCtx *cx, EvScope scope, int subject, const EvEffect *e){

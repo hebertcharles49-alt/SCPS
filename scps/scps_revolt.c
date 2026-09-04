@@ -962,7 +962,8 @@ static void apply_rebel_victory(RevoltState *rs, World *w, WorldEconomy *econ,
             }
             if (treas>CONCEDE_TREAS_FLOOR){
                 /* ACHETER LA PAIX sur le trésor NATIONAL — borné au disponible. */
-                econ_nation_gold_add(econ, cid, -tune_f("CONCEDE_GOLD",CONCEDE_GOLD));
+                econ_flux_add(cid, FX_TRIBUT,                                     /* I0 : la paix ACHETÉE (A1) */
+                    econ_nation_gold_add(econ, cid, -tune_f("CONCEDE_GOLD",CONCEDE_GOLD)));
             }
             if (cid>=0&&cid<SCPS_MAX_COUNTRY) rs->concede_cd[cid]=CONCEDE_CD_DAYS;                    /* 10 ans avant de re-céder */
             pe->satisfaction=clampf(pe->satisfaction+0.20f,0.f,1.f);

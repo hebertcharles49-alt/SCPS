@@ -13711,3 +13711,101 @@ Chaque cellule : `avant A3` / `exp=1` (théorie quantitative nue) / `exp=0,5` (l
   friche (3/3), les taxes (3/3) et les manufactures privées (2/3) ; il perd de peu sur la
   satisfaction Laborer (2/3). Aucune ligne de code changée par ce dépouillement : **hashes
   golden inchangés** (`48cf6380 / 58406f5e / 06e0186c / 6c86953c / 21ddba0a`).
+
+
+## Mission 2026-09-04 — A1 « LE HORS-REGISTRE » : fermer le recoupement I0 (anomalie A1 du sweep)
+
+Périmètre : registre FX_*, sites de dépense/recette du trésor NATIONAL, lecteurs fiscaux,
+grand livre façade, ligne I0 du chronicle. **Golden IDENTIQUE** (comptabilité pure).
+Save v108 → **v109** (g_flux est sérialisé, FX_COUNT 20 → 30).
+
+### Découvertes
+
+- **Le trou était l'ACHAT D'ÉTAT (§3, `pending_buy_debit`), et rien d'autre à cette
+  échelle.** `scps_econ.c` §3 débite le trésor de ce que l'État paie aux 3 pools de gages
+  (−6 657 or/mois/empire à l'an 120 graine 7) : AUCUN bucket. Sa contrepartie, l'ASSIETTE
+  M5 (§5, `*natT += consumed`, +3 790), n'en avait pas non plus. À eux deux ils
+  expliquent ~2 870 des 2 807 or/mois de « hors registre » — le signe constamment NÉGATIF
+  du sweep venait de là (une sortie massive, permanente, ∝ l'activité).
+- **Le registre ne se ferme pas par le haut, il se ferme par les PORTES.** Il n'existe que
+  deux portes (`econ_nation_gold_add` / `econ_nation_gold_force`) plus une poignée
+  d'écritures DIRECTES de `nat_treasury[]` (l'alias `natT` du tick, `buyer_tr`/`src_tr`
+  d'intertrade, le rollback de `credit_spend`, la genèse). D'où le **contrôle des portes**
+  ajouté au chronicle (`econ_flux_door_note`/`_get`, print-only, RAZ avec le registre) :
+  il sépare « une porte sans poste » de « une écriture directe » — sans lui on cherche à
+  l'aveugle. Mesuré à l'an 30 : écritures directes +56,5 == taxes 24,4 + assiette 32,1
+  **au centième** ⇒ tout le tick est comptabilisé ; le résidu restant est côté PORTE.
+- **Trois SUR-comptages d'entrée, pas seulement des manques.** (a) Le péage
+  (`scps_agency.c`, `scps_intertrade.c` échange ET détroit) écrivait `FX_TOLL_RECV` avec
+  le péage PLEIN alors que `TOLL_STATE_SHARE` n'en route que la moitié au trésor (le reste
+  va aux bourgeois) ; (b) `FX_CREDIT` écrivait `-covered` (= cash + REFINANCÉ) alors que le
+  refinancement ne touche PAS le trésor du débiteur (`credit_borrow_classes`/`_citystate`
+  DÉBITENT seulement, ils ne créditent pas) ; (c) `FX_MINT` portait la CRÉATION
+  (`qty×parité`) sans l'ACHAT du métal (`nat_pay_wages(cost)`) — d'où `FX_METAL`.
+- **`econ_country_tax_class_month` rendait 0 non par grain-région mais par PLANCHER
+  MANQUANT.** Le lecteur DISPLAY était un miroir PÉRIMÉ de §3b : il avait la branche
+  `INCOME_TAX` mais pas le **plancher per-capita `TAX_FLOOR_FRAC`** — or au premier siècle
+  le marché est sec (`re->gdp` ≈ 0 en valeur), donc l'impôt-revenu vaut ~0 et TOUT le
+  rendement réel vient du plancher forfaitaire. Il manquait aussi l'exonération vitale
+  (`g_basket_pc`). Corrigé en factorisant §3b dans `tax_class_month_prov()` — les DEUX
+  lecteurs (`econ_country_tax_class_month`, `econ_province_tax_month`) y délèguent
+  désormais, donc ils ne peuvent plus diverger l'un de l'autre ni du tick.
+- **`debit_surplus_prorata` est LE débiteur partagé de toute la chaîne de crédit** : lui
+  passer le `FluxComp` de l'appelant (7 sites) ferme d'un coup l'échéance, l'amortissement,
+  le rachat, la péréquation et les prêts consentis. La péréquation de `credit_borrow_local`
+  est comptée en **FX_ACHAT** : c'est littéralement l'achat d'État §3 que le tick n'a pas
+  pu payer province par province (`country_shortfall`).
+
+### Mesures
+
+| ligne « recoupement I0 » | AVANT | APRÈS (étape 1 : achat+assiette+… ) |
+|---|---|---|
+| `./chronicle 7 1 120`   | Σ postes +3055,2 · mesuré +248,2 · **hors registre −2807,0** | Σ postes +193,2 · mesuré +248,2 · **+55,0** |
+| `./chronicle 512 1 120` | Σ postes +2556,0 · mesuré +365,9 · **hors registre −2190,1** | Σ postes +328,9 · mesuré +365,9 · **+37,0** |
+| `./chronicle 7 1 30` (avec FX_METAL + contrôle des portes) | — | Σ postes +22,1 · mesuré +23,6 · **+1,6** ; portes −32,9 · écriture directe +56,5 |
+
+Impôt par classe (`SCPS_M8DIAG=1 ./chronicle 7 1 30`, pays 6, ans 0/25/29) :
+**0 / 0 / 0 or/mois** avec `TAX_FLOOR_FRAC=0` (= exactement ce que l'ancien lecteur
+calculait tout seul, sans plancher) → **1 / 9 / 8 or/mois** avec le lecteur réparé. Et le
+Σ monde du lecteur (48 or/mois) recoupe désormais `FX_TAX` de la ligne I0
+(24,4 × 2 empires = 48,8) à ~2 % près.
+
+### Pièges
+
+- **NE PAS ÉDITER LES SOURCES PENDANT UN `make test`.** Deux bancs (`scps_api_demo`,
+  `navy_demo`) sont sortis ROUGES sur un run où j'avais touché `scps_econ.c/h` en cours de
+  route ; rebâtis proprement ils font 255/255 et 32/32. Coût : un `make test` complet perdu.
+- **Le binaire en cours d'exécution verrouille son `.exe`** (déjà noté par W2-7) : un
+  `chronicle` de fond fait échouer le LIEN (`collect2: ld returned 1`) alors que toute la
+  compilation a réussi. Attendre la fin du run avant de relier.
+- **`g_flux` EST sérialisé** (section TXYR, `econ_flux_year_save`) : ajouter un poste change
+  `sizeof g_flux` ⇒ **bump obligatoire de `SAVE_VERSION`**. Facile à rater, le registre
+  ayant tout d'un instrument print-only.
+- **`econ_flux_name()` est lu FACE JOUEUR** (grand livre, `scps_country_budget` → `sz()`) :
+  les libellés des postes sont des chaînes françaises du moteur, PAS des STR_*. C'est le
+  patron existant ; `make lang-check` ne compte que `scps_api.c`/`scps_readout.c`, donc
+  ajouter des libellés dans `scps_econ.c` ne bouge pas le cliquet (resté 125/125).
+- **Le banc API lit `fl[48]`** pour l'assertion « Σ postes == solde » : avec 30 postes + la
+  ligne « autres » on est à 31, ça passe — mais tout futur poste rapproche du mur.
+- **`g_basket_pc` est déclaré ~800 lignes APRÈS les lecteurs fiscaux** : il a fallu un
+  accesseur `econ_basket_pc_at()` prototypé en amont (pas de second `static` possible).
+- **Le critère « |hors registre| < 1 % du flux mesuré » est presque impossible par
+  construction** : le flux mesuré est une DIFFÉRENCE de flux bruts énormes (Σ|postes| ≈
+  10 500 or/mois/empire pour un net de +248). Le critère du sweep — `|hors| < 0,10 × taxes`
+  — est le bon dénominateur.
+
+### Restes
+
+- **Un résidu de PORTE non localisé, ~+1,5 or/mois/empire à l'an 30** (+55 à l'an 120 avant
+  `FX_METAL`) : les écritures directes recoupent au centième, donc c'est un appel de porte
+  crédité sans poste. Les 11 sites de porte sans `econ_flux_add` adjacent ont tous été
+  vérifiés (tous comptés par leur appelant). Le prochain pas est mécanique : le contrôle des
+  portes est en place, il suffit de le ventiler PAR SITE (un `FluxComp` passé aux deux portes
+  en mode diag) pour le nommer.
+- **`buy_rate_reset` (scps_econ.c:2493) est du code MORT** — défini, aucun appelant, warning
+  `-Wunused-function` à chaque build. Pré-existant (vérifié sur HEAD), non touché.
+- **La dotation de genèse** (`nat_treasury[cid] = GENESIS_TREASURY_EMPIRE`) et
+  `econ_nation_reset` (naissance d'un pays) sont des écritures directes SANS poste : hors
+  fenêtre de mesure (an 0), mais à surveiller si un pays peut naître doté en cours de partie.
+- **Le grand livre façade gagne 10 postes nommés** : « Autres mouvements » devrait fondre à
+  l'écran. Non re-capturé côté Godot (hors périmètre A1).

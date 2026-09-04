@@ -2905,6 +2905,7 @@ void ai_speculate_tick(AiActor *a, WorldEconomy *econ){
                 if (vol>=1.f){
                     a->hoard[g]+=vol; held+=vol;
                     float paid = -econ_nation_gold_add(econ, a->cid, -vol*p);   /* réellement débité (borné) */
+                    econ_flux_add(a->cid, FX_SPEC, -paid);   /* I0 : la ligne spéculation (A1) */
                     if (tune_f("SPECULATE_CONSERVED",1.f)>0.f && paid>0.f){
                         /* F2 : la contrepartie réelle — les classes qui possédaient le
                          * stock retiré du marché encaissent (compte de marché M3b). */
@@ -2934,6 +2935,7 @@ void ai_speculate_tick(AiActor *a, WorldEconomy *econ){
                     gain = paidL+paidB+paidE;   /* conservation stricte : le trésor n'encaisse que le RÉELLEMENT prélevé */
                 }
                 econ_nation_gold_add(econ, a->cid, gain);
+                econ_flux_add(a->cid, FX_SPEC, gain);   /* I0 : la ligne spéculation (A1) */
                 a->stats.spec_vol+=vol; a->stats.spec_gold+=vol*p; a->stats.spec_sells++;
                 a->spec_cd[g]=SPEC_COOLDOWN;
             }

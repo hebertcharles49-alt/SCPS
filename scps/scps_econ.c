@@ -2699,39 +2699,65 @@ float econ_income_tax_rate_capital(const WorldEconomy *e, int cid, SocialClass c
  * forfait × pop × curseur × (1−évasion)), sommé sur les PROVINCES du pays (la province
  * EST la vérité éco ; la région n'agrège que pour l'UI). Omet le plafond wealth
  * (négligeable en régime). */
-float econ_country_tax_class_month(const WorldEconomy *e, int cid, SocialClass c){
-    if (!e || cid<0 || cid>=SCPS_MAX_COUNTRY || c<0 || c>=CLASS_COUNT) return 0.f;
+/* A1 (2026-09-04) — le panier/tête capté au tick, DÉFINI plus bas (g_basket_pc) : les deux
+ * lecteurs fiscaux ci-dessous en ont besoin pour reproduire l'exonération vitale de §3b. */
+static float econ_basket_pc_at(int pid, int cls);
+/* A1 — LE MOTIF §3b EN UNE FONCTION : le rendement fiscal MENSUEL d'UNE classe dans UNE
+ * province, à l'IDENTIQUE de la boucle 3b du tick (dt=1/12 ⇒ le facteur (dt·12) vaut 1).
+ * Les deux lecteurs DISPLAY ci-dessous ne divergeaient plus du tick : ils ignoraient le
+ * PLANCHER PER-CAPITA (TAX_FLOOR_FRAC) — LE terme qui porte tout l'impôt du premier siècle
+ * (marché sec, revenu monétisé ≈ 0) — et l'EXONÉRATION VITALE. `econ_country_tax_class_month`
+ * rendait donc 0 pour les trois ordres pendant que FX_TAX levait vraiment (rapport joueur
+ * W2-7, graine 7 an 27) : tout le fiscal tombait dans « Autres mouvements » du grand livre. */
+static float tax_class_month_prov(const WorldEconomy *e, const ProvinceEconomy *re,
+                                  int pid, SocialClass c, bool inc_on){
+    if (c==CLASS_SLAVE) return 0.f;   /* pas d'impôt sur les esclaves */
     float base;
     switch (c){
         case CLASS_LABORER:   base=tune_f("TAX_BASE_LABORER",   TAX_BASE_LABORER);   break;
         case CLASS_BOURGEOIS: base=tune_f("TAX_BASE_BOURGEOIS", TAX_BASE_BOURGEOIS); break;
         case CLASS_ELITE:     base=tune_f("TAX_BASE_ELITE",     TAX_BASE_ELITE);     break;
-        default: return 0.f;   /* CLASS_SLAVE : pas d'impôt */
+        default: return 0.f;
     }
+    const PopStratum *st=&re->strata[c];
+    float sat     = clampf(st->satisfaction,0.f,1.f);
+    float seuil   = econ_tax_tolerance(re->culture.ethos,c)*(0.40f+0.60f*sat)
+                    * econ_debase_tax_factor(re->debase_kdrain)   /* M3h */
+                    * econ_satisfaction_tax_factor(sat);          /* M8 C1 */
+    float mult    = econ_country_tax_mult(e, re->owner, c);
+    float ambition= STATE_TAX_AMBITION * mult;
+    float evasion = clampf(ambition - seuil, 0.f, 1.f);
+    float coll;
+    if (inc_on){
+        float income_gross = (c==CLASS_LABORER)   ? re->gdp*WAGE_SHARE
+                            : (c==CLASS_BOURGEOIS) ? re->gdp*(1.f-WAGE_SHARE-TAX_RATE)
+                            :                        re->gdp*TAX_RATE;
+        coll = income_gross * econ_income_tax_rate(c) * mult * (1.f-evasion);
+        /* LE PLANCHER PER-CAPITA (§3b) : l'impôt EN NATURE précède la monnaie. */
+        float floor_pc = base * st->pop * mult * (1.f-evasion) * tune_f("TAX_FLOOR_FRAC", 0.5f);
+        if (coll < floor_pc) coll = floor_pc;
+    } else {
+        coll = base * st->pop * mult * (1.f-evasion);
+    }
+    /* L'EXONÉRATION SOUS LE PANIER VITAL (§3b) — le misérable ne paie rien. */
+    if (st->pop>EPS && pid>=0 && pid<SCPS_MAX_PROV
+        && (st->wealth/st->pop) < econ_basket_pc_at(pid,c)
+                                  * tune_f("TAX_EXEMPT_BASKET_MULT",1.0f)
+                                  * doctrine_key_mult(re->owner,"TAX_EXEMPT_BASKET_MULT"))
+        return 0.f;
+    if (coll > st->wealth) coll = st->wealth;   /* même plafond que le tick */
+    return coll;
+}
+float econ_country_tax_class_month(const WorldEconomy *e, int cid, SocialClass c){
+    if (!e || cid<0 || cid>=SCPS_MAX_COUNTRY || c<0 || c>=CLASS_COUNT) return 0.f;
     bool  inc_on = econ_income_tax_on();
-    float rate   = inc_on ? econ_income_tax_rate(c) : 0.f;
-    float mult     = econ_country_tax_mult(e, cid, c);
-    float ambition = STATE_TAX_AMBITION * mult;
-    float total    = 0.f;
+    float total  = 0.f;
     for (int p=0; p<e->n_prov && p<SCPS_MAX_PROV; p++){
         const ProvinceEconomy *re=&e->prov[p];
         if (!re->active || !re->colonized || re->owner!=cid) continue;
-        const PopStratum *st=&re->strata[c];
-        float sat     = clampf(st->satisfaction,0.f,1.f);
-        float seuil   = econ_tax_tolerance(re->culture.ethos,c)*(0.40f+0.60f*sat)
-                        * econ_debase_tax_factor(re->debase_kdrain)   /* M3h */
-                        * econ_satisfaction_tax_factor(sat);          /* M8 C1 */
-        float evasion = clampf(ambition - seuil, 0.f, 1.f);
-        if (inc_on){
-            float income_gross = (c==CLASS_LABORER)   ? re->gdp*WAGE_SHARE
-                                : (c==CLASS_BOURGEOIS) ? re->gdp*(1.f-WAGE_SHARE-TAX_RATE)
-                                :                         re->gdp*TAX_RATE;
-            total += income_gross * rate * mult * (1.f-evasion);
-        } else {
-            total += base * st->pop * mult * (1.f-evasion);
-        }
+        total += tax_class_month_prov(e, re, p, c, inc_on);
     }
-    return total;
+    return total;   /* or/MOIS */
 }
 
 /* LECTEUR PUR (display) — l'impôt MENSUEL d'UNE province, en or/mois, recalculé de l'état
@@ -2743,35 +2769,8 @@ float econ_province_tax_month(const WorldEconomy *e, int pid){
     if (!re->active || !re->colonized) return 0.f;
     bool inc_on = econ_income_tax_on();
     float total=0.f;
-    for (int c=0;c<CLASS_COUNT;c++){
-        if (c==CLASS_SLAVE) continue;                       /* pas d'impôt sur les esclaves */
-        float base;
-        switch (c){
-            case CLASS_LABORER:   base=tune_f("TAX_BASE_LABORER",   TAX_BASE_LABORER);   break;
-            case CLASS_BOURGEOIS: base=tune_f("TAX_BASE_BOURGEOIS", TAX_BASE_BOURGEOIS); break;
-            case CLASS_ELITE:     base=tune_f("TAX_BASE_ELITE",     TAX_BASE_ELITE);     break;
-            default: continue;
-        }
-        const PopStratum *st=&re->strata[c];
-        float sat     = clampf(st->satisfaction,0.f,1.f);
-        float seuil   = econ_tax_tolerance(re->culture.ethos,(SocialClass)c)*(0.40f+0.60f*sat)
-                        * econ_debase_tax_factor(re->debase_kdrain)   /* M3h */
-                        * econ_satisfaction_tax_factor(sat);          /* M8 C1 */
-        float mult    = econ_country_tax_mult(e, re->owner, (SocialClass)c);
-        float ambition= STATE_TAX_AMBITION * mult;
-        float evasion = clampf(ambition - seuil, 0.f, 1.f);
-        float coll;
-        if (inc_on){
-            float income_gross = (c==CLASS_LABORER)   ? re->gdp*WAGE_SHARE
-                                : (c==CLASS_BOURGEOIS) ? re->gdp*(1.f-WAGE_SHARE-TAX_RATE)
-                                :                         re->gdp*TAX_RATE;
-            coll = income_gross * econ_income_tax_rate((SocialClass)c) * mult * (1.f-evasion);
-        } else {
-            coll = base * st->pop * mult * (1.f-evasion);
-        }
-        if (coll > st->wealth) coll = st->wealth;           /* même plafond que le tick */
-        total += coll;
-    }
+    for (int c=0;c<CLASS_COUNT;c++)
+        total += tax_class_month_prov(e, re, pid, (SocialClass)c, inc_on);
     return total;   /* or/MOIS */
 }
 /* §B — DÉ-STÉRILISER LE TRÉSOR + FERMER LE CISEAU OFFRE/DEMANDE.
@@ -2864,6 +2863,7 @@ static void econ_build_tick(WorldEconomy *e){
             if (seeded && seed_cost > 0.f){
                 float paid = -econ_nation_gold_add(e, pe->owner, -seed_cost);
                 pe->strata[CLASS_LABORER].wealth += paid;   /* gages des artisans locaux (item 5) */
+                econ_flux_add(pe->owner, FX_SEMIS, -paid);  /* I0 : la ligne semis */
             }
         }
     }
@@ -3219,7 +3219,7 @@ float econ_nation_stock_add(WorldEconomy *e, int cid, int good, float delta){
 float econ_nation_gold_add(WorldEconomy *e, int cid, float delta){
     if (!e || cid<0 || cid>=SCPS_MAX_COUNTRY || delta==0.f) return 0.f;
     float *t=&e->nat_treasury[cid];
-    if (delta>0.f){ *t+=delta; return delta; }
+    if (delta>0.f){ *t+=delta; econ_flux_door_note(cid, delta); return delta; }
     /* DEBIT BORNE : le residu NON couvert n'est PAS force en dette fantome (hors
      * CountryDebt : sans interet, sans creancier, hors banqueroute — cf. TROUVAILLES
      * M14 B2(a)). Semantique  clampe-reduit  : l'appelant lit le retour pour savoir
@@ -3227,6 +3227,7 @@ float econ_nation_gold_add(WorldEconomy *e, int cid, float delta){
     float avail=*t; if (avail<0.f) avail=0.f;
     float took=(avail > -delta) ? -delta : avail;
     *t-=took;
+    econ_flux_door_note(cid, -took);
     return -took;
 }
 /* DEBIT NON BORNE — autorise le tresor NEGATIF : la dette REELLE, adossee a CountryDebt
@@ -3234,6 +3235,7 @@ float econ_nation_gold_add(WorldEconomy *e, int cid, float delta){
 float econ_nation_gold_force(WorldEconomy *e, int cid, float delta){
     if (!e || cid<0 || cid>=SCPS_MAX_COUNTRY || delta==0.f) return 0.f;
     e->nat_treasury[cid]+=delta;
+    econ_flux_door_note(cid, delta);
     return delta;
 }
 /* NAISSANCE d'un pays : le slot repart a SEC (un slot recycle n'herite jamais du magot
@@ -3494,6 +3496,18 @@ bool econ_manuf_level_delta(WorldEconomy *econ, int pid, BuildingType b, int dir
 
 /* I0 — L'INSTRUMENT : décomposition du flux d'or par empire. */
 static double g_flux[SCPS_MAX_COUNTRY][FX_COUNT];
+/* A1 (2026-09-04) — LE CONTRÔLE DES PORTES (print-only, jamais sérialisé, RAZ avec le
+ * registre) : Σ de TOUT ce qui passe par les DEUX seules portes du trésor
+ * (econ_nation_gold_add / econ_nation_gold_force). Il sépare deux fautes que le seul
+ * « hors registre » confondait : une PORTE non écrite au registre (portes ≠ Σ postes) et
+ * une écriture DIRECTE de nat_treasury[] hors des portes (Δtrésor ≠ portes). */
+static double g_door[SCPS_MAX_COUNTRY];
+void   econ_flux_door_note(int cid, float applied){
+    if (cid>=0 && cid<SCPS_MAX_COUNTRY) g_door[cid]+=applied;
+}
+double econ_flux_door_get(int cid){
+    return (cid>=0&&cid<SCPS_MAX_COUNTRY) ? g_door[cid] : 0.0;
+}
 void econ_flux_add(int cid, FluxComp comp, float amount){
     if (cid<0||cid>=SCPS_MAX_COUNTRY||comp<0||comp>=FX_COUNT) return;
     g_flux[cid][comp] += amount;
@@ -3501,7 +3515,7 @@ void econ_flux_add(int cid, FluxComp comp, float amount){
 double econ_flux_get(int cid, FluxComp comp){
     return (cid>=0&&cid<SCPS_MAX_COUNTRY&&comp>=0&&comp<FX_COUNT) ? g_flux[cid][comp] : 0.0;
 }
-void econ_flux_reset(void){ memset(g_flux,0,sizeof g_flux); }
+void econ_flux_reset(void){ memset(g_flux,0,sizeof g_flux); memset(g_door,0,sizeof g_door); }
 
 /* Sérialisation TXYR (v62, ÉTENDUE v65) : g_tax_lastyear + drapeau + L'ANNÉE EN COURS
  * (g_flux entier + compteurs de mois). Sans l'année en cours, la capture annuelle
@@ -3534,7 +3548,9 @@ const char *econ_flux_name(FluxComp comp){
         "taxes","export","péages+",
         "entretien","cour","admin","encadr.",
         "soldes","marine","audits","péages−","invest.","conseil","import",
-        "chantiers","redépense","intérêts","intrigue","routes","frappe" };
+        "chantiers","redépense","intérêts","intrigue","routes","frappe",
+        "achat d'État","assiette","semis","emprunt","marché","spéculation",
+        "tribut/dons","butin","évènements","achat métal" };
     return (comp>=0&&comp<FX_COUNT)?N[comp]:"?";
 }
 float econ_base_price(Resource r){ return (r>RES_NONE && r<RES_COUNT)? BASE_PRICE[r] : 0.f; }
@@ -3575,6 +3591,11 @@ static inline float council_m(int owner, int seat){
                                           * satisfaction est < 50 % (on ne grossit pas une élite
                                           * misérable — la cause du « 13 % à la pire satisfaction ») */
 static float   g_basket_pc[SCPS_MAX_PROV][CLASS_COUNT];   /* panier/tête capté au tick */
+/* A1 : l'accès LECTURE au panier/tête pour les lecteurs fiscaux DISPLAY (déclarés bien plus
+ * haut dans ce fichier — cf. tax_class_month_prov). */
+static float econ_basket_pc_at(int pid, int cls){
+    return (pid>=0 && pid<SCPS_MAX_PROV && cls>=0 && cls<CLASS_COUNT) ? g_basket_pc[pid][cls] : 0.f;
+}
 static uint8_t g_lowsat_streak[SCPS_MAX_PROV][CLASS_COUNT];/* mois consécutifs de sat < 30 % */
 /* MONNAIE M3f — BONUS (convergence prix-métal→parité) : l'achat de la FRAPPE LIBRE
  * (§M3e) débitait le stock SANS jamais pousser demand[] — le prix restait au niveau
@@ -4888,6 +4909,7 @@ void econ_tick(WorldEconomy *e, float dt) {
           if (re->owner>=0 && re->owner<SCPS_MAX_COUNTRY){
               country_shortfall[re->owner] += (pending_buy_debit - debit);
               g_pldiag_buyprod[re->owner] -= (double)debit;   /* E1 diag : la dépense RÉELLE (signe FX_*, dépense négative) */
+              econ_flux_add(re->owner, FX_ACHAT, -debit);     /* I0 : LA sortie qui manquait au registre (A1) */
           } }
 
         /* §besoins progressifs — combien de besoins sont ACTIFS pour CE PAYS : depuis MONNAIE
@@ -5247,7 +5269,8 @@ void econ_tick(WorldEconomy *e, float dt) {
             if (!wh){ float consumed = budget0-re->strata[c].wealth;
               if (re->owner>=0 && re->owner<SCPS_MAX_COUNTRY){ *natT += consumed;
                   g_assiette_revenue_cum += (double)consumed;   /* M5 R3 : instrument print-only, « paie ton assiette » */
-                  g_pldiag_assiette[re->owner] += (double)consumed; }   /* E1 diag : la MÊME ligne, PAR PAYS */
+                  g_pldiag_assiette[re->owner] += (double)consumed;   /* E1 diag : la MÊME ligne, PAR PAYS */
+                  econ_flux_add(re->owner, FX_ASSIETTE, consumed); }   /* I0 : l'entrée qui manquait au registre (A1) */
               else                                            g_consumption_destroyed_cum += (double)consumed; }
             /* MONNAIE M10 — P1 : kill-switch p1_on faux ⇒ basket/nbasket/nsat LEGACY inchangés
              * (calculés ci-dessus). p1_on vrai — « n'importe quel bien… peu importe l'ordre »
@@ -5775,7 +5798,8 @@ void econ_tick(WorldEconomy *e, float dt) {
                     econ_country_stock_take(e, c, FREE_METALS[mi2], qty);
                 if (tune_f("MINT_FULL_PARITY", 1.0f) > 0.5f){
                     /* A1 : PAYER LE VENDEUR — motif EXACT de la boucle legacy ci-dessous. */
-                    nat_pay_wages(e, c, cost, WAGE_SHARE, 1.f-WAGE_SHARE-TAX_RATE, TAX_RATE);
+                    econ_flux_add(c, FX_METAL,   /* A1 : le métal se PAIE — FX_MINT ne porte que la CRÉATION */
+                        -nat_pay_wages(e, c, cost, WAGE_SHARE, 1.f-WAGE_SHARE-TAX_RATE, TAX_RATE));
                     econ_nation_gold_force(e, c, qty*av);
                     econ_flux_add(c, FX_MINT, qty*av);        /* I0 : la vraie création (paire entière) */
                     g_mint_free_cum += (double)(qty*av);      /* tableau de bord : frappe LIBRE */
@@ -5823,7 +5847,8 @@ void econ_tick(WorldEconomy *e, float dt) {
                      * disponible, aucune dette forcée), crédité aux 3 classes de CHAQUE région
                      * qui a fourni le métal (item 5, clé 42/20/38) — le marché est RÉELLEMENT
                      * compensé, jamais une saisie silencieuse. */
-                    nat_pay_wages(e, c, cost, WAGE_SHARE, 1.f-WAGE_SHARE-TAX_RATE, TAX_RATE);
+                    econ_flux_add(c, FX_METAL,   /* A1 : le métal se PAIE — FX_MINT ne porte que la CRÉATION */
+                        -nat_pay_wages(e, c, cost, WAGE_SHARE, 1.f-WAGE_SHARE-TAX_RATE, TAX_RATE));
                     /* CRÉER À PARITÉ PLEINE (qty×parité, pas seulement `gain`) — même canal
                      * que la frappe royale (§M2 ci-dessous), province CAPITALE, dual-write
                      * région (A2, econ_prov_treasury_credit). FX_MINT reçoit la VRAIE création

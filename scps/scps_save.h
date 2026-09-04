@@ -32,7 +32,12 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 108u          /* v108 : TRÉSOR ET STOCK NATIONAUX (décision joueur 2026-09-03,
+#define SAVE_VERSION 109u          /* v109 : REGISTRE I0 COMPLET (A1 « hors-registre », 2026-09-04) —
+                                    * 10 postes FX_* neufs (achat d'État, assiette, semis, emprunt,
+                                    * marché, spéculation, tribut/dons, butin, évènements, achat
+                                    * métal) : FX_COUNT passe de 20 à 30 ⇒ sizeof(g_flux) change,
+                                    * et g_flux est sérialisé (section TXYR). <v109 refusé.
+                                    * v108 : TRÉSOR ET STOCK NATIONAUX (décision joueur 2026-09-03,
                                     * docs/DESIGN_TRESOR_NATIONAL.md) — UN trésor par empire, UN
                                     * stock par empire et par ressource. ProvinceEconomy perd
                                     * treasury/stock[], RegionEconomy aussi ; WorldEconomy gagne

@@ -1029,12 +1029,32 @@ typedef enum {
     FX_INTRIGUE,                                       /* W-GUERRE-3 : fabrication d'un casus belli (corruption, disparaît) */
     FX_ROADS,                                         /* entretien des routes (curseur budgétaire joueur) */
     FX_MINT,                                          /* MONNAIE M2 : frappe mensuelle (revenu +, réserve → trésor capitale) */
+    /* A1 « HORS-REGISTRE » (2026-09-04) — les postes STRUCTURELS qui sortaient/entraient
+     * SANS bucket : le recoupement I0 ne se recoupait jamais (27/27 journaux du sweep,
+     * médiane −1 519 or/mois/empire, TOUJOURS négatif ⇒ des DÉPENSES hors registre).
+     * Comptabilité pure : aucun de ces buckets ne change une décision moteur. */
+    FX_ACHAT,                                         /* l'État ACHÈTE la production (§3, pending_buy_debit) — LA sortie manquante */
+    FX_ASSIETTE,                                      /* l'État REVEND le panier aux ménages (§5, M5 R3) — sa contrepartie */
+    FX_SEMIS,                                         /* semis §NF payé (l'IA amorce une manufacture, NF_SEED_PAID) */
+    FX_EMPRUNT,                                       /* crédit : dépôt d'emprunt (+) / prêt consenti à un tiers (−) */
+    FX_MARCHE,                                        /* marché des Centres (intertrade) : achat (−) / vente (+) */
+    FX_SPEC,                                          /* spéculation d'État (le magot de l'IA : achat −, vente +) */
+    FX_TRIBUT,                                        /* tribut, dons, indemnités de paix, digestion, paix achetée aux révoltés */
+    FX_BUTIN,                                         /* pillage, saisie de conquête, butin de guerre */
+    FX_EVENT,                                         /* évènements/dilemmes : le trésor bouge (d_treasury, d_treasury_mois) */
+    FX_METAL,                                         /* frappe LIBRE : l'ACHAT du métal au marché (A1 : FX_MINT ne porte que la CRÉATION) */
     FX_COUNT
 } FluxComp;
 void   econ_flux_add(int cid, FluxComp comp, float amount);   /* incrémente (signé par convention ci-dessus) */
 double econ_flux_get(int cid, FluxComp comp);                 /* cumul depuis le dernier reset */
 void   econ_flux_reset(void);                                 /* RAZ (début de fenêtre de mesure) */
 const char *econ_flux_name(FluxComp comp);                    /* libellé court (français, outillage) */
+/* A1 — LE CONTRÔLE DES PORTES (print-only, RAZ avec econ_flux_reset) : Σ signée de ce qui
+ * a franchi econ_nation_gold_add/force pour ce pays. `econ_flux_door_note` est appelé par
+ * les portes elles-mêmes (et par elles seules) ; le chronicle compare Σ portes à Σ postes
+ * (une porte hors registre) puis à Δtrésor (une écriture DIRECTE de nat_treasury[]). */
+void   econ_flux_door_note(int cid, float applied);
+double econ_flux_door_get(int cid);
 /* MEMBRANE DE DÉCISION — le REVENU ANNUEL par pays (Σtaxes de la fenêtre écoulée),
  * capturé PUIS remis à zéro (remplace les sites nus d'econ_flux_reset : chronicle.c
  * et scps_api.c appellent désormais CETTE fonction au roulement d'année — un SEUL
@@ -1274,9 +1294,10 @@ void econ_money_instrument_get(double *va_produced, double *consumption_destroye
 /* MONNAIE M5 — R3 : cumul « assiette » (revenu que la consommation crédite au trésor,
  * print-only, RAZ par sim, jamais sérialisé — même motif que econ_money_instrument_get). */
 double econ_assiette_revenue_get(void);
-/* MONNAIE M12 — E1 : le P&L PAR PAYS, PAR ANNÉE (print-only, jamais sérialisé) — deux
- * lignes SANS bucket FX_* : l'achat d'État §3 (pending_buy_debit) et l'assiette M5 R3 PAR
- * PAYS (économ_assiette_revenue_get ci-dessus est MONDE seul). econ_pldiag_reset() doit être
+/* MONNAIE M12 — E1 : le P&L PAR PAYS, PAR ANNÉE (print-only, jamais sérialisé) : l'achat
+ * d'État §3 (pending_buy_debit) et l'assiette M5 R3 PAR PAYS (econ_assiette_revenue_get
+ * ci-dessus est MONDE seul). Depuis A1 (2026-09-04) ces deux lignes ONT leur bucket
+ * (FX_ACHAT / FX_ASSIETTE) : ce diag n'en est plus la SEULE trace. econ_pldiag_reset() doit être
  * appelé UNE FOIS/an (chronicle, même point qu'econ_flux_year_capture) pour que les getters
  * reflètent l'année COURANTE seule, pas un cumul sim entière. */
 void   econ_pldiag_reset(void);

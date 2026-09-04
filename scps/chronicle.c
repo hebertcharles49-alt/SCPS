@@ -2997,6 +2997,15 @@ int main(int argc, char **argv){
               double mesure = last_emp_flux/last_emp_n;
               printf("   recoupement I0 : Σ postes %+.1f · flux mesuré au trésor %+.1f · hors registre %+.1f or/mois/empire (trésor moy dern. sim %.0f or)\n",
                      somme, mesure, mesure-somme, last_emp_gold/last_emp_n);
+              /* A1 (2026-09-04) — LE CONTRÔLE DES PORTES : le « hors registre » ci-dessus
+               * confondait deux fautes. Cette ligne les SÉPARE — `portes−postes` = un
+               * mouvement passé par econ_nation_gold_add/force SANS poste FX_* ;
+               * `mesuré−portes` = une écriture DIRECTE de nat_treasury[] (hors des deux
+               * portes). Zéro sur les deux ⇒ le registre est COMPLET, par construction. */
+              double porte=0; for (int a=0;a<ne && last_emp_n>0;a++) porte += econ_flux_door_get(last_emp[a]);
+              porte = porte/ne/12.0;
+              printf("   contrôle des portes (A1) : Σ portes %+.1f · porte hors poste %+.1f · écriture directe %+.1f or/mois/empire\n",
+                     porte, porte-somme, mesure-porte);
           }
           /* MONNAIE M5 — R3 : « assiette » (revenu que la consommation crédite au trésor,
            * §4-6) n'a pas de bucket FX_* (mesuré à part, SIM ENTIÈRE — pas dern. année

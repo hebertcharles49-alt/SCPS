@@ -148,7 +148,7 @@ bool navy_order_build(NavyState *ns, const World *w, WorldEconomy *econ, int cid
     /* TRÉSOR/STOCK NATIONAUX (2026-09-03) : le chantier se paie sur LE trésor du pays et
      * puise dans SON entrepôt — plus sur la seule caisse de la rade. Le port ne fournit
      * que le marché (prix), les bras et la demande visible. */
-    econ_nation_gold_add(econ, cid, -gold);
+    econ_flux_add(cid, FX_NAVY, econ_nation_gold_add(econ, cid, -gold));   /* I0 : le chantier naval (A1) */
     econ_nation_stock_add(econ, cid, RES_NAVAL_SUPPLIES, -h->supplies);
     econ_nation_stock_add(econ, cid, RES_WOOD,           -h->wood);
     if (h->copper>0.f) econ_nation_stock_add(econ, cid, RES_COPPER, -h->copper);
@@ -176,7 +176,7 @@ bool navy_convert(NavyState *ns, const World *w, WorldEconomy *econ, int cid, bo
     float gold=navy_build_gold(econ,port,HULL_PIRATE);
     if ((float)econ_country_gold(econ,cid) < gold) return false;
     /* TRÉSOR/STOCK NATIONAUX (2026-09-03) : la conversion se paie au pays, pas à la rade. */
-    econ_nation_gold_add(econ, cid, -gold);
+    econ_flux_add(cid, FX_NAVY, econ_nation_gold_add(econ, cid, -gold));   /* I0 : la conversion (A1) */
     econ_nation_stock_add(econ, cid, RES_NAVAL_SUPPLIES, -h->supplies);
     n->supplies_eaten+=h->supplies;
     n->hull[from]--; n->hull[to]++;

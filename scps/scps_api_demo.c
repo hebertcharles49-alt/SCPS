@@ -163,11 +163,12 @@ int main(int argc, char **argv){
        bg.projected_year_end==bg.projected_year_end && bg.runway_months==bg.runway_months);
     ok("P6 budget : autonomie négative seulement quand le solde est stable",
        (bg.monthly_net>=0.0 && bg.runway_months<0.0) || (bg.monthly_net<0.0 && bg.runway_months>=0.0));
-    /* W2-7 (rapport joueur F2) — LE GRAND LIVRE RECOUPE LE TRÉSOR. Le registre FX_* ne
-     * porte pas TOUTES les sorties d'or (l'achat d'État et l'assiette M5 n'ont pas de
-     * bucket) : le panneau Trésor affichait « 0/mois » partout pendant que l'or fondait.
-     * La façade ajoute une ligne de RECOUPEMENT, donc Σ des postes == variation réelle
-     * du trésor sur la fenêtre. On l'exige sur TOUS les pays, pas seulement le joueur. */
+    /* W2-7 (rapport joueur F2) — LE GRAND LIVRE RECOUPE LE TRÉSOR : Σ des postes ==
+     * variation réelle du trésor sur la fenêtre, exigée sur TOUS les pays. Depuis A1
+     * (2026-09-04) le registre FX_* NOMME les sorties qui manquaient (achat d'État,
+     * assiette M5, emprunt, marché, tribut, butin, évènements, achat métal) : la ligne de
+     * recoupement de la façade est devenue un FILET, plus le poste dominant. Le banc,
+     * lui, ne change pas : c'est l'identité qu'il garde, pas la taille du résidu. */
     { int recoupe=1, mois_ok=1;
       for (int ci=0; ci<nc && recoupe; ci++){
           ScpsFluxLine fl[48]; int n=scps_country_budget(s, ci, fl, 48);

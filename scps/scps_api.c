@@ -3400,10 +3400,10 @@ static double api_flux_gold_delta(const ScpsSim *s, int cid){
     if(cid<0 || cid>=SCPS_MAX_COUNTRY) return 0.0;
     return econ_country_gold(s->sim.econ, cid) - s->flux_gold0[cid];
 }
-/* La ligne de RECOUPEMENT : delta de trésor observé − Σ des postes nommés. Le registre
- * FX_* ne couvre PAS tout (achat d'État §3 / assiette M5 n'ont pas de bucket, cf.
- * scps_econ.h §I0) ; sans cette ligne le grand livre disait « 0 » pendant que l'or
- * fondait sous les yeux du joueur (rapport joueur F2). */
+/* La ligne de RECOUPEMENT : delta de trésor observé − Σ des postes nommés. Depuis A1
+ * (2026-09-04) le registre FX_* couvre TOUS les sites structurels (achat d'État, assiette,
+ * emprunt, marché, tribut, butin, évènements, achat métal…) : ce résidu est désormais un
+ * FILET, plus le poste dominant. On le garde nommé — il ne se cache pas. */
 static double api_flux_unaccounted(const ScpsSim *s, int cid){
     double sum=0;
     for(int comp=0; comp<FX_COUNT; comp++) sum += econ_flux_get(cid, (FluxComp)comp);

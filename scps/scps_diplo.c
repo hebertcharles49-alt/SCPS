@@ -354,6 +354,7 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
             float take = -econ_nation_gold_add(econ, v,
                              -fmaxf(0.f,(float)econ_country_gold(econ,v))*frac);
             econ_nation_gold_add(econ, s, take);
+            econ_flux_add(v, FX_TRIBUT, -take); econ_flux_add(s, FX_TRIBUT, take);   /* I0 (A1) */
             if (c==CONTRAT_SERVAGE && capreg[v]>=0 && capreg[v]<econ->n_regions){
                 int vcp=econ_region_rep_province(econ,capreg[v]);
                 if (vcp>=0 && vcp<econ->n_prov) econ->prov[vcp].coercion = fminf(1.f, econ->prov[vcp].coercion+0.04f);
@@ -446,6 +447,7 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
                         float taken = -econ_nation_gold_add(econ, v,
                                           -fminf(want, fmaxf(0.f,(float)econ_country_gold(econ,v))));
                         econ_nation_gold_add(econ, s, taken);
+                        econ_flux_add(v, FX_TRIBUT, -taken); econ_flux_add(s, FX_TRIBUT, taken);   /* I0 (A1) */
                     }
                 }
             }
@@ -465,7 +467,7 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
                 float gcost=tune_f("AI_ANNEX_GOLD_PER_PRICE",2.f)*price;
                 /* TRÉSOR NATIONAL (2026-09-03) : la digestion se paie sur LE trésor du maître. */
                 if ((float)econ_country_gold(econ,s) >= gcost){
-                    econ_nation_gold_add(econ, s, -gcost);
+                    econ_flux_add(s, FX_TRIBUT, econ_nation_gold_add(econ, s, -gcost));   /* I0 : la digestion se paie (A1) */
                     float years=fmaxf(1.f, tune_f("AI_ANNEX_YEARS_PER_PRICE",0.5f)
                                        *dessein_mult(s, DBOON_ANNEX_YEARS_PER_PRICE)*price
                                        *(1.f-tune_f("ANNEX_INTEGRATION_DISCOUNT",0.6f)*doctrine_key_mult(s,"ANNEX_INTEGRATION_DISCOUNT")*d->v_integration[v]));   /* doctrine Vassaux : « Annexion » */
@@ -556,6 +558,7 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
                     float paid=-econ_nation_gold_add(econ,s0,-don);
                     if (paid>0.f){
                         econ_nation_gold_add(econ,worst,paid);
+                        econ_flux_add(s0, FX_TRIBUT, -paid); econ_flux_add(worst, FX_TRIBUT, paid);   /* I0 : le DON (A1) */
                         d->v_grief[worst]=fmaxf(0.f, d->v_grief[worst]-0.25f/(1.f+(float)d->v_dons[worst]));
                         if (d->v_dons[worst]<250) d->v_dons[worst]++;
                         d->v_loyal[worst]=3.f*365.f; d->n_lev_don++;
@@ -721,7 +724,7 @@ bool diplo_fabricate_cb(World *w, WorldEconomy *econ, DiploState *d, int a, int 
     /* Le gate est NATIONAL : le débit l'est aussi — TRÉSOR NATIONAL (2026-09-03), un seul
      * prélèvement, plus de balayage des régions ni de restitution atomique à orchestrer. */
     float paid=-econ_nation_gold_add(econ,a,-cost);
-    if (paid+1e-3f<cost){ econ_nation_gold_add(econ,a,paid); return false; }   /* on rend et on renonce */
+    if (paid+1e-3f<cost){ econ_nation_gold_add(econ,a,paid); return false; }   /* on rend et on renonce (registre INTACT : rien n'a été écrit) */
     /* MONNAIE M3f — item 4 : « l'or SORT et disparaît » devient un TRANSFERT PUR — la
      * corruption vise la noblesse ADVERSE (brief joueur, tranche explicitement contre le
      * motif « sink volontaire » proposé par M0 §2.10) : l'or de l'intrigue crédite les
@@ -1239,6 +1242,7 @@ float diplo_peace_take_gold(World *w,WorldEconomy *econ,int winner,int loser,flo
     float total = -econ_nation_gold_add(econ, loser,
                       -fminf(wanted, fmaxf(0.f,(float)econ_country_gold(econ,loser))));
     econ_nation_gold_add(econ, winner, total);
+    econ_flux_add(loser, FX_TRIBUT, -total); econ_flux_add(winner, FX_TRIBUT, total);   /* I0 : l'indemnité (A1) */
     return total;
 }
 
@@ -1449,6 +1453,7 @@ float diplo_pillage_value(WorldEconomy *econ, int region, int dst_region, int vi
      * celle de la province saccagée. */
     float gold = -econ_nation_gold_add(econ, victim_cid,
                      -fminf(fmaxf(0.f,(float)econ_country_gold(econ,victim_cid)), target));
+    econ_flux_add(victim_cid, FX_BUTIN, -gold);   /* I0 : le SAC, côté victime (A1) */
     loot += gold;
     float remain = target - loot;
     /* MONNAIE M3f — item 5 : le RESTE n'est plus monétisé depuis le STOCK (M0 §2.12 —
@@ -1469,8 +1474,11 @@ float diplo_pillage_value(WorldEconomy *econ, int region, int dst_region, int vi
     }
     /* TRÉSOR NATIONAL : le butin se fond dans le trésor du PAYS QUI TIENT la région de
      * destination (la rade du pirate, la base de l'occupant) — plus dans une caisse locale. */
-    if (dst_region>=0 && dst_region<econ->n_regions && dst_region!=region)
-        econ_nation_gold_add(econ, econ->region[dst_region].owner, loot);
+    if (dst_region>=0 && dst_region<econ->n_regions && dst_region!=region){
+        int lo=econ->region[dst_region].owner;
+        econ_nation_gold_add(econ, lo, loot);
+        econ_flux_add(lo, FX_BUTIN, loot);   /* I0 : le SAC, côté pillard (A1) */
+    }
     g_pil_events++; g_pil_value+=(double)loot; g_pil_target+=(double)target;   /* télémétrie « pillage réel » */
     return loot;
 }
@@ -1711,6 +1719,7 @@ float diplo_reparations(DiploState *d, World *w, WorldEconomy *econ, int a, int 
     float total = -econ_nation_gold_add(econ, loser,
                       -frac*fmaxf(0.f,(float)econ_country_gold(econ,loser)));
     econ_nation_gold_add(econ, winner, total);
+    econ_flux_add(loser, FX_TRIBUT, -total); econ_flux_add(winner, FX_TRIBUT, total);   /* I0 (A1) */
     return total;
 }
 
@@ -1728,6 +1737,7 @@ float diplo_loot(World *w, WorldEconomy *econ, int attacker, int defender, float
     float total = -econ_nation_gold_add(econ, defender,
                       -fminf(want, fmaxf(0.f,(float)econ_country_gold(econ,defender))));
     econ_nation_gold_add(econ, attacker, total);
+    econ_flux_add(defender, FX_BUTIN, -total); econ_flux_add(attacker, FX_BUTIN, total);   /* I0 (A1) */
     return total;
 }
 
