@@ -13196,3 +13196,58 @@ Livrables : `docs/RAPPORT_JOUEUR_2026-09-04.md` · `godot/project/player_session
   (prix par manufacture ou prix unique assumé) avant de toucher au menu Construction.
 - `manuf_name(27)`/`(29)` renvoient « ? » alors que leurs recettes existent (« Registres scellés »,
   « Ouvrages d'agrément »).
+
+
+## Mission 2026-09-04 — W2-6 DÉCISIONS TARIES : la file joueur, le seep et Marbrive
+### Découvertes
+- **AUCUN commit coupable : le banc jouait à PILE OU FACE.** Sonde (banc jetable
+  `scps_pending_count` par an + compteur de PORTES ouvertes instrumenté dans
+  `world_events_tick`) sur les DEUX arbres, graine 3, 60 ans : le paysage de portes
+  joueur est **IDENTIQUE** avant (908a7cd, banc VERT en 4 min) et après (1ba07b9,
+  banc à 200 ans à vide). Dans les deux cas : joueur figé à **1 région**, `marbrive=0`,
+  `ethos=0`, et **une seule** des ~18 portes de dilemme joueur s'ouvre jamais —
+  `EVID_PARENTE_LOINTAINE` — qui se **REFERME vers l'an 26** (8040 jours-ouverts avant,
+  8790 après). Le banc pariait donc sur UN tirage mtth de 1825 j ; la vague W1/W2 a
+  seulement fait tomber la pièce de l'autre côté. `scps_events.c` est d'ailleurs
+  **inchangé** entre 908a7cd et 1ba07b9 (`git diff` vide).
+- **La cause de la stérilité : `scps_api_demo.c:46`.** `tune_set("PASSIVE_SEEP", 0.f)`
+  est **PROCESS-GLOBAL** alors que son commentaire ne le destine qu'aux chantiers
+  testés. Il gelait aussi le monde du bloc « membrane de décision » (~1000 lignes plus
+  bas) à sa province de départ : sans expansion, pas de conseil, pas de religion, pas
+  de 2e région ⇒ monde **décision-MORT** passé l'an 26. Seep rendu (défaut du jeu = 1) :
+  la porte reste ouverte **tout du long**, première décision an 14 (1ba07b9), an 3
+  (908a7cd), an 37 (graine 7).
+- **MARBRIVE EST STRUCTURELLEMENT MORT (mesure, pas une opinion).** `trig_marbrive`
+  (`scps_events.c:420`) ET trois conditions. Sur graine 7 / 60 ans / **3 315 660
+  région-jours** : `agitation>=55` = 140 456 (4,2 %) · `K_inst>=1` = 63 990 (1,9 %) ·
+  `coercion>=0,25` = 165 690 (5,0 %) · **LES TROIS ENSEMBLE = 0**. Elles sont
+  ANTI-corrélées : une province BÂTIE est un cœur développé, donc ni agitée ni coercée.
+  D'où « membrane de décision : 0 Marbrive » dans toutes les chroniques.
+  `events_demo.c:642` ne le voit pas : il **FORCE** la fixture (`K_inst=2.0`,
+  `coercion=0.4`, `agitation=60`) — il prouve le CODE du trigger, pas que le monde y
+  arrive jamais.
+### Pièges
+- **L'outil Bash refuse de lancer `bash.exe -l script.sh` depuis un worktree isolé**
+  (garde d'isolation git). Passer par l'outil **PowerShell** :
+  `$env:MSYSTEM='MINGW64'; & D:\MSYS2\usr\bin\bash.exe -l <script>`. Idem, l'outil
+  Write refuse d'écrire dans un worktree de bisect : écrire dans le sien puis `cp`.
+- **Ne pas conclure d'une seule mesure de « l'an de la 1re décision »** : c'est un
+  tirage mtth, pas un gate. La mesure qui TRANCHE est le compteur de **jours-ouverts
+  par porte** — il a montré du premier coup que rien n'avait changé.
+- Dans un worktree de bisect neuf, `make <un .o>` ne construit QUE cet objet : lier
+  une sonde exige `make scps_api_demo` d'abord (sinon `undefined reference to tune_set`).
+- Le banc coûte ~285 s ; `make test` le tue à **BANC_TIMEOUT=420** — les 40 min
+  observées étaient donc AUSSI un `make test` rouge par timeout, pas seulement lent.
+### Restes
+- **Rouvrir Marbrive** (décision joueur / calibrage — NON fait ici, ça re-baseline le
+  golden) : le plus honnête est un OU plutôt qu'un ET sur `K_inst` (la province BÂTIE
+  n'a rien à voir avec la province AGITÉE), ou `K_inst>=0,3`. Mesurer d'abord, et
+  passer ces seuils au registre des tunables pour pouvoir les sonder par `SCPS_TUNE`.
+- **Les 15 autres portes joueur n'ouvrent jamais en 60 ans** (Conseil ×7, Merveille,
+  trahisons ×3, tolérance, lettré, pratique) même seep ACTIF : seules
+  `PARENTE_LOINTAINE`, `RIVAUX_VOISINS` (an ~50) et `MARCHE_ETHOS` (an ~40) s'ouvrent.
+  La membrane FONCTIONNE ; c'est le CONTENU qui est famélique. Un sweep dédié
+  « portes ouvertes par an » vaudrait mieux qu'un sweep de plus.
+- **Le motif `ok("(… — ignoré)", true)`** (19 sites, surtout `events_demo.c`) transforme
+  une famine en banc VERT. C'est lui qui a caché 40 min de vide. À convertir en échec
+  franc partout où la condition n'est pas une vraie contrainte de fixture.

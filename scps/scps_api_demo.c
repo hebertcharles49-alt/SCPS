@@ -1078,6 +1078,22 @@ int main(int argc, char **argv){
 
     /* ── MEMBRANE DE DÉCISION — la file joueur : pending EXPOSÉ + choix DRAINÉ. ── */
     {
+        /* ⚠ L'EXPANSION PASSIVE EST RENDUE À CE BLOC (W2-6, 2026-09-04). Le
+         * `tune_set("PASSIVE_SEEP", 0.f)` de main() est PROCESS-GLOBAL alors que son
+         * intention (cf. son commentaire) ne visait QUE les chantiers testés : il gelait
+         * aussi CE monde-ci à SA province de départ pendant 200 ans. MESURE (sonde
+         * W2-6, graine 3) : joueur à 1 région pour toujours ⇒ des ~18 portes de dilemme
+         * joueur, UNE SEULE s'ouvre jamais (PARENTE_LOINTAINE) et elle se REFERME vers
+         * l'an 26 — après quoi le monde est décision-MORT. Le banc jouait donc à pile ou
+         * face sur un unique tirage mtth de 1825 j, et la vague W1/W2 (qui ne touche
+         * AUCUNE porte : landscape de portes mesuré IDENTIQUE avant/après) a simplement
+         * fait tomber la pièce du mauvais côté : 200 ans à vide, 40 min, 5 assertions
+         * SILENCIEUSEMENT sautées. Avec le seep rendu (le défaut DU JEU), la porte reste
+         * ouverte tout du long : première décision an 14 sur l'arbre qui échouait
+         * (1ba07b9), an 3 ici, an 37 sur la graine 7.
+         * On restaure 0 à la sortie du bloc — les chantiers d'après comptent leurs
+         * provinces. */
+        tune_set("PASSIVE_SEEP", 1.f);
         ScpsSim *sp = scps_sim_new(); scps_sim_generate(sp, seed);
         ok("pending : aucune décision en attente à la genèse (monde frais)",
            scps_pending_count(sp)==0);
@@ -1091,10 +1107,15 @@ int main(int argc, char **argv){
          * résolution IA sur son propre pays) ; on la résout via le VERBE (drain déterministe). */
         int pl2 = scps_player(sp);
         int n0 = scps_pending_count(sp);
-        for (int yr=0; yr<200 && scps_pending_count(sp)==n0; yr++)
+        /* HORIZON 60 ANS (était 200) + ASSERTION FRANCHE : la disette de décisions doit
+         * ÉCHOUER BRUYAMMENT en 3 min, pas se sauter en silence après 40 min. */
+        int yr=0; for (; yr<60 && scps_pending_count(sp)==n0; yr++)
             scps_sim_advance_days(sp, 365);
         int n1 = scps_pending_count(sp);
+        ok("une VRAIE décision atteint la file du joueur en 60 ans (la membrane n'est pas tarie)",
+           n1>n0);
         if (n1>n0){
+            printf("   première décision joueur : an %d\n", yr);
             ok("pending_event lit un slot VALIDE (situation résolue, une option ou plus)",
                scps_pending_event(sp, 0, &pe)==1 && pe.n_options>=1 && pe.situation[0]!='\0');
             bool options_complete=true;
@@ -1128,15 +1149,10 @@ int main(int argc, char **argv){
             }
             ok("chaque entrée porte une LIGNE diégétique non vide", has_line);
             ok("scps_annals rend les entrées TRIÉES par année croissante", sorted);
-        } else {
-            ok("(aucune décision joueur apparue en 150 ans sur cette graine — ignoré)", true);
-            ok("(idem)", true);
-            ok("(idem)", true);
-            ok("(idem)", true);
-            ok("(idem)", true);
-        }
+        }   /* pas de branche « ignoré » : la disette a déjà ÉCHOUÉ franchement ci-dessus. */
         (void)pl2;
         scps_sim_free(sp);
+        tune_set("PASSIVE_SEEP", 0.f);   /* on rend le monde gelé aux chantiers d'après */
     }
 
     /* ── DÉCRETS DU JOUEUR (civics) — liste exposée, toggle drainé, réforme irréversible. ── */
