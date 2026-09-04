@@ -13114,3 +13114,85 @@ joueur « pas de cap ». 12 runs de 120 ans (`<graine> 1 120 6 12`, séquentiels
   paquets — re-vu ici : `morts choc 0` sur 3 des 12 runs), P7 (`BT_DEF_EDGE` 0,10→0,20),
   P8 (levier cavalerie), P10 (la solde payée par le PAYS), P11 (télémétrie : ventilation
   par type d'unité, ligne mer périmée, `rgt/FL` jamais imprimé).
+
+
+## Mission 2026-09-04 — OPUS JOUEUR (une partie jouée à travers les probes, graine 7)
+
+Livrables : `docs/RAPPORT_JOUEUR_2026-09-04.md` · `godot/project/player_session.gd` + `.tscn`
+· 24 captures `godot/project/shots_player/`.
+
+### Découvertes
+- **Le motif de probe qui NE MENT PAS, c'est `d7_icons_shot.gd`** : instancier `Main.tscn`
+  entier (`_main = load("res://main/Main.tscn").instantiate()`), puis `_main._menu.hide()`,
+  `Sound.stop_music()`, `Sim.game_on = true`, `Sim.set_speed(0)`. Les probes qui instancient
+  un panneau SEUL (province_shot, army_panel_shot) perdent la topbar, les deux rails, le
+  thème de fenêtre et le positionnement fait par `main.gd` — donc elles ne montrent PAS
+  l'écran du joueur. Pour une mission d'impressions, c'est le seul motif valable.
+- Membres utiles de `main.gd` pour piloter les panneaux depuis une probe : `_sidebar.open_tab(i)`
+  (0=Éco 1=Démo 2=Stocks 3=Marché 4=Armée 5=Filtres 6=Diplo 7=Conseil), `_sidebar._drawer._conseil_tab`
+  (0=Gouvernement 1=**Politiques/décrets** 2=Factions), `_prov_panel_v2.show_province(pid)`+`select_tab`,
+  `_construct.target_pid`+`open_on(tab)`, `_budget_v2.select_tab`, `_doctrine_panel.open()`,
+  `_empire_win.open()`+`select_tab`, `_chronique.open()`, `_tech.visible`, `_country_actions.open_country(cid)`.
+  Le **panneau Armée n'a PAS de nom de nœud** (`main.gd:237` ne pose pas `.name`) : le retrouver
+  en balayant les enfants de `_ui` sur `has_method("set_army")`.
+- **Piège de la topbar** : ses deltas « /mois » valent `(valeur − valeur au dernier month_ticked)`
+  (`topbar.gd:356`). Une probe qui fait `advance_days(360)×10` puis émet UN `month_ticked`
+  affiche le saut ENTIER (« pop 5 907 **+5907/mois** ») — artefact de probe, PAS un bug du jeu.
+  Remède : finir chaque étape par 2×`advance_days(30)` chacun suivi de son `month_ticked`.
+- Sans `Sim._process` (probe qui appelle `advance_days` à la main), **aucun signal ne part** :
+  émettre soi-même `Sim.generated`, `Sim.month_ticked`, `Sim.ticked` ou les panneaux affichent
+  l'état du boot.
+- `EventPopup` / `EventDialog` (`main.gd:425,468`) restent AU-DESSUS de tout panneau ouvert
+  ensuite, et le panneau Armée n'est pas dans la pile Échap (`_close_topmost` ne le ferme pas) :
+  les masquer explicitement dans `_reset()` ET juste avant chaque capture, sinon la moitié des
+  PNG montrent la même boîte d'évènement au lieu du panneau à juger.
+- Le menu Construction retombe sur une position calculée pour une fiche de **348 px** alors que
+  `province_panel_v2` en fait ~400 : hors du chemin `main.gd:331`, il passe SOUS la fiche et la
+  1re lettre de chaque ligne est mangée (« onstruction », « DIFICES », « ntretien »). Reproduire
+  `position = pp.position.x + pp.size.x + 6` dans toute probe qui l'ouvre.
+- **Le zébrage du rail droit rend une ligne sur deux illisible** : `VKit.list_row_bg`
+  (`empire_sidebar.gd:559`) alterne bandeau clair / fond sombre, mais le texte reste `COL_PARCH`
+  (brun foncé) dans les deux cas. Le JOURNAL tombe entièrement sur le fond sombre → ses lignes
+  sont 100 % invisibles. Même cause pour les lignes de VILLES.
+- `ui/alerts.gd:160` colle **l'index brut de région** dans le texte de TOUT évènement du fil :
+  `.replace("{r}", str(int(ev["region"])))` → « La forêt brûle — **région 21** (an 4) ». Un seul
+  point de substitution à corriger pour tout le fil.
+- `alerts.gd:392` (`_short`) coupe au premier « — », ce qui jette précisément le nom et l'année :
+  sept notifications identiques « Une place est TOMBÉE ».
+
+### Pièges
+- `godot/godot-cpp` **absent du worktree** : `New-Item -ItemType Junction -Path <wt>\godot\godot-cpp
+  -Target E:\JEUX\SCPS\godot\godot-cpp` (déjà bâti, ~176 Mo de `.a`) — puis scons ne recompile que
+  moteur + binding (~3 min).
+- **`scons -C godot` seul attrape MSVC** (`cl.exe` hérité du PATH PowerShell) et échoue sur
+  `scps_events.c` (« initialiseurs trop nombreux ») : il FAUT `use_mingw=yes` **et** un PATH propre
+  (`export PATH="/mingw64/bin:/usr/bin:/bin"`) dans le script MSYS2. Purger `godot/build` après un
+  essai MSVC (objets incompatibles).
+- Le Bash de Claude Code **refuse** `cmd //c mklink`, un `bash.exe` externe, et tout `sed`/`awk`
+  dont un argument vient d'une variable — passer par l'outil PowerShell pour ces trois cas.
+- La sortie de Godot ne se capture pas avec `> fichier` en PowerShell (fichier vide) : utiliser
+  `Start-Process -NoNewWindow -Wait -RedirectStandardOutput/-RedirectStandardError`.
+- Arités de façade qui piègent (vérifier `godot/src/scps_sim_node.cpp` avant d'écrire une probe) :
+  `research_status()`, `age_state()`, `annals()`, `colony_status()`, `tech_info()`, `manuf_cost()`
+  **sans argument** ; `unit_roster(country)`, `diplo_options(target)`, `build_legal(prov, edifice)`,
+  `manuf_upkeep_month(prov, bld)` ; `doctrine_catalog(**country**)` — y passer 0 au lieu de
+  `player()` fait lire un AUTRE pays et conclure à tort (« Influence insuffisante »).
+- `manuf_legal(prov, bld)` renvoie un **int** (1 = légale), pas un Dictionary — un test
+  `typeof(...) == TYPE_DICTIONARY` conclut « aucune manufacture légale » alors qu'il y en a huit.
+- `player_raise_corps(packets, region)` prend un **int** (paquets tirés de la RÉSERVE), pas une
+  liste d'unités : il faut d'abord `player_recruit(type)` plusieurs fois, laisser passer un tick,
+  puis lever. `player_set_levy(level)` renvoie **void** (le lire fait planter la probe).
+- Le tri des nœuds tech utilise la clé **`allowed`** + `reason_code == "ok"` (pas
+  `available`/`unlocked`) — sinon `player_research` n'est jamais appelé.
+
+### Restes
+- Les 4 BLOQUANTS du rapport (prix à 0,00 · grand livre à 0 · allocation 90→100 avec classe à
+  38 % · zébrage illisible) ne sont **pas** corrigés : mission d'observation, aucune ligne de
+  moteur ni d'UI touchée.
+- Les Annales ne retiennent que « un âge a commencé » : guerres, batailles gagnées, place prise
+  et colonie fondée n'entrent jamais dans `annals()` (côté `scps_events.c`) — c'est le trou le
+  plus visible du récit, à instruire séparément.
+- `manuf_cost()` sans argument = toutes les manufactures à 51 : décision de design à trancher
+  (prix par manufacture ou prix unique assumé) avant de toucher au menu Construction.
+- `manuf_name(27)`/`(29)` renvoient « ? » alors que leurs recettes existent (« Registres scellés »,
+  « Ouvrages d'agrément »).
