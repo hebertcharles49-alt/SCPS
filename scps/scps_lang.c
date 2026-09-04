@@ -367,6 +367,21 @@ static const GlossEntry G_GLOSSARY[] = {
   { STR_GLOSS_AGITATION, STR_HOVER_AGITATION, GLOSS_CAT_PROVINCE, "agitation|colère|révolte|garnison" },
   { STR_GLOSS_SAVOIR,    STR_HOVER_SAVOIR,    GLOSS_CAT_SAVOIR,   "savoir|recherche|arts|arcane" },
   { STR_GLOSS_PRESAGE,   STR_HOVER_PRESAGE,   GLOSS_CAT_SAVOIR,   "présage|brèche|ombre|charge" },
+  /* UI-1 (2026-09-04) — LES MOTS DU MENU CONSTRUCTION. Le joueur lisait « +1 prospérité »
+   * sur le Port sans que rien ne dise ce que prospérité veut dire : les neuf termes que
+   * les cartes d'édifice ET de manufacture peuvent afficher entrent ICI, dans le registre
+   * qui existait déjà (Prospérité et Savoir y étaient — ils n'étaient simplement pas
+   * exposés à la façade). Les alias portent la forme MINUSCULE et les mots voisins que
+   * le readout emploie ; glossary_find replie la casse ASCII, donc « Port » trouve « port ». */
+  { STR_GLOSS_CAPADM,    STR_HOVER_CAPADM,    GLOSS_CAT_PROVINCE, "capacité administrative|institutions|administration|garnison" },
+  { STR_GLOSS_LOGEMENT,  STR_HOVER_LOGEMENT,  GLOSS_CAT_PROVINCE, "logement|abri|plafond de population" },
+  { STR_GLOSS_SERVICE,   STR_HOVER_SERVICE,   GLOSS_CAT_PROVINCE, "service|services|aménités|culte" },
+  { STR_GLOSS_PORT,      STR_HOVER_PORT,      GLOSS_CAT_ECONOMIE, "port|rade|havre" },
+  { STR_GLOSS_STRUCTUREL,STR_HOVER_STRUCTUREL,GLOSS_CAT_PROVINCE, "structurel|structurelle|structurel (voir sa famille)" },
+  { STR_GLOSS_ENTRETIEN, STR_HOVER_ENTRETIEN, GLOSS_CAT_ECONOMIE, "entretien|friche|impayé" },
+  { STR_GLOSS_RECETTE,   STR_HOVER_RECETTE,   GLOSS_CAT_ECONOMIE, "recette|intrants|manufacture" },
+  { STR_GLOSS_PALIER,    STR_HOVER_PALIER,    GLOSS_CAT_PROVINCE, "palier|tier|déverrouille" },
+  { STR_GLOSS_OR,        STR_HOVER_OR,        GLOSS_CAT_ECONOMIE, "or|couronnes|chantier" },
 };
 enum { GLOSSARY_N = (int)(sizeof G_GLOSSARY / sizeof *G_GLOSSARY) };
 

@@ -225,6 +225,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("manuf_recipe", "bld"),                 &ScpsWorld::manuf_recipe);
     ClassDB::bind_method(D_METHOD("manuf_upkeep_month", "province", "bld"), &ScpsWorld::manuf_upkeep_month);
     ClassDB::bind_method(D_METHOD("manuf_name", "bld"),                   &ScpsWorld::manuf_name);
+    ClassDB::bind_method(D_METHOD("glossary"),                            &ScpsWorld::glossary);
+    ClassDB::bind_method(D_METHOD("gloss_of", "mot"),                     &ScpsWorld::gloss_of);
     ClassDB::bind_method(D_METHOD("edifice_name", "edifice"),             &ScpsWorld::edifice_name);
     ClassDB::bind_method(D_METHOD("edifice_succ", "edifice"),             &ScpsWorld::edifice_succ);
     ClassDB::bind_method(D_METHOD("edifice_upkeep_month", "edifice"),     &ScpsWorld::edifice_upkeep_month);
@@ -2212,6 +2214,23 @@ bool ScpsWorld::player_renover(int province) {
  * celle du moteur — plus aucune dérive possible. */
 String ScpsWorld::manuf_name(int bld) {
     return String::utf8(scps_manuf_name(bld));
+}
+/* UI-1 — LE GLOSSAIRE (scps_glossary) : aucune copie ici, on relaie la table du moteur
+ * (le piège F21 ci-dessus : toute table RECOPIÉE dans ce binding finit par diverger). */
+Array ScpsWorld::glossary() const {
+    Array out;
+    ScpsGloss g[SCPS_GLOSS_MAX];
+    int n = scps_glossary(g, SCPS_GLOSS_MAX);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["mot"] = String::utf8(g[i].mot);
+        d["def"] = String::utf8(g[i].def);
+        out.push_back(d);
+    }
+    return out;
+}
+String ScpsWorld::gloss_of(String mot) const {
+    return String::utf8(scps_gloss_of(mot.utf8().get_data()));
 }
 String ScpsWorld::edifice_name(int edifice) {
     return String::utf8(scps_edifice_name(edifice));

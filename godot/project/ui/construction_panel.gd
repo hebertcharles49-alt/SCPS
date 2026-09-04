@@ -253,6 +253,10 @@ func _build_info_card(b: Dictionary, legal: Dictionary) -> Dictionary:
 	var effect := String(b.get("effet", ""))
 	if effect != "":
 		lines.append({"label": "Effet", "value": effect})
+	# … et ce que CHACUN de ces mots veut dire : les mots de l'effet + les deux libellés
+	# que la carte porte toujours (Or, Entretien). Rien de plus : une définition qui ne
+	# répond à AUCUN mot affiché serait du bruit.
+	_append_gloss(lines, [effect, "Or", "Entretien" if int(b.get("entretien", 0)) > 0 else ""])
 	return {
 		"title": String(b.get("nom", "Construction")),
 		"state": "Constructible" if allowed else "Bloqué — %s" % _reason_label(legal),
@@ -261,6 +265,43 @@ func _build_info_card(b: Dictionary, legal: Dictionary) -> Dictionary:
 		"body": "Cliquez la carte pour ordonner le chantier." if allowed else
 			"Premier verrou opposé par le moteur : %s." % _reason_label(legal),
 	}
+
+## ── UI-1 (retour joueur 2026-09-04) : LES VERBES DE CONSTRUCTION SONT CODEXIFIÉS ──────
+## « on voit +1 prospérité sur le port sans savoir ce que prospérité veut dire ; répéter
+## le process pour chaque building. » Le hover d'une carte DIT désormais, en une phrase,
+## ce que chaque mot d'effet signifie EN JEU. Les définitions viennent du GLOSSAIRE DU
+## MOTEUR (scps_lang.c::G_GLOSSARY → façade `glossary()`), le même registre qui porte
+## déjà Stabilité/Prospérité/Savoir : la ligne d'effet et sa définition sortent du MÊME
+## STR_GLOSS_* (api_edifice_effet), donc un terme affiché ne peut pas manquer sa phrase.
+## Aucun texte ne naît ici : ni le mot, ni la définition.
+var _gloss := {}          ## mot MINUSCULE → {mot: le mot tel qu'écrit, def: la phrase}
+var _gloss_read := false
+
+func _gloss_table() -> Dictionary:
+	if _gloss_read:
+		return _gloss
+	_gloss_read = true
+	if Sim.world != null and Sim.world.has_method("glossary"):
+		for g in Sim.world.glossary():
+			var m := String(g.get("mot", ""))
+			if m != "":
+				_gloss[m.to_lower()] = {"mot": m, "def": String(g.get("def", ""))}
+	return _gloss
+
+## ajoute UNE ligne « mot → sa phrase » par terme trouvé dans `textes` (sans doublon,
+## dans l'ordre du glossaire). `to_lower()` replie correctement les accents français —
+## contrairement au flag (?i) des RegEx de Godot (piège vérifié, cf. concepts.gd::D4).
+func _append_gloss(lines: Array, textes: Array) -> void:
+	var hay := " " + " ".join(PackedStringArray(textes)).to_lower() + " "
+	# la ponctuation devient de l'espace : on cherche des MOTS ENTIERS, jamais une
+	# tranche (sans ça « Port » livrerait aussi la définition de « or »).
+	for ch in ["·", ",", ";", ":", ".", "(", ")", "…", "—", "/", "%", "+", "×", "\n"]:
+		hay = hay.replace(ch, " ")
+	for key in _gloss_table().keys():
+		if not hay.contains(" " + String(key) + " "):
+			continue
+		var e: Dictionary = _gloss[key]
+		lines.append({"label": String(e["mot"]), "value": String(e["def"]), "tone": "dim"})
 
 ## la RECETTE réelle d'une manufacture, en mots : « Laine ×1.5 (ou Coton) → Étoffe ×2.8 ».
 func _recipe_text(rec: Dictionary) -> String:
@@ -340,11 +381,13 @@ func _renover_card(rs: Dictionary) -> Control:
 	var bg := ParchTheme.HEADER_BG if allowed else ParchTheme.PANEL_BG
 	var bd := ParchTheme.BORDER if allowed else ParchTheme.DIVIDER
 	card.add_theme_stylebox_override("panel", ParchTheme.sb(bg, bd, 1, 4, 10, 10, 8, 8))
+	var rlines := [{"label": "Bâti", "value": "%d %%" % wear}, {"label": "Or", "value": str(gold)}]
+	_append_gloss(rlines, ["Or"])   # UI-1 : la rénovation aussi dit ses mots
 	card.card_data = {
 		"title": "Rénover le bâti",
 		"state": "Disponible" if allowed else "Bloqué",
 		"trend": "180 jours",
-		"lines": [{"label": "Bâti", "value": "%d %%" % wear}, {"label": "Or", "value": str(gold)}],
+		"lines": rlines,
 		"body": "Re-pose l'effet plein de chaque édifice de la province.",
 	}
 	if allowed:
@@ -533,6 +576,8 @@ func _manuf_card(bld: int, nom: String, recipe_txt: String, mcost: int, upkeep: 
 	var info_lines := [{"label": "Recette", "value": recipe_txt}]
 	if upkeep > 0:
 		info_lines.append({"label": "Entretien", "value": "%d couronnes/mois" % upkeep})
+	# UI-1 : « répéter le process pour chaque building » — les manufactures aussi.
+	_append_gloss(info_lines, ["Recette", "Entretien" if upkeep > 0 else "", "Or"])
 	card.card_data = {
 		"title": nom,
 		"state": "Constructible",

@@ -341,6 +341,19 @@ static func row(ci: CanvasItem, x: float, y: float, cat: String, word: String, w
 
 ## Ligne de ledger : alternance à peine visible, séparateur bas et sélection à gauche.
 ## Les grandes listes gardent ainsi la densité d'EU4 sans devenir une soupe de texte.
+## PASTILLE SUR FOND SOMBRE — le pendant de `list_row_bg(on_dark)` pour tout ce qui
+## N'EST PAS une ligne de liste : un CHIFFRE ou une ICÔNE posés à même un chrome d'ART
+## sombre (chrome_topbar_bg, chrome_sidebar_bg, chrome_rightbar_bg). UI-1 (retour joueur
+## 2026-09-04 : « les chiffres sont peu visibles sur la top bar et les icônes se fondent
+## mal dans les rails ») — MÊME REMÈDE que W2-7/F4, la seule règle qui tienne sur ce
+## projet : l'ENCRE reste l'encre de parchemin (COL_VALUE/COL_PARCH/sense(), leur SENS
+## ne bouge pas), c'est le FOND qui redevient du parchemin sous elle. `alpha` module la
+## discrétion du bandeau (0.62 = chip de valeur, 0.80 = pastille d'icône).
+static func plate(ci: CanvasItem, r: Rect2, alpha: float = 0.72, edge: bool = false) -> void:
+	fill(ci, r, Color(COL_PANEL2.r, COL_PANEL2.g, COL_PANEL2.b, alpha))
+	if edge:
+		box(ci, r, Color(COL_EDGE.r, COL_EDGE.g, COL_EDGE.b, 0.55))
+
 static func list_row_bg(ci: CanvasItem, r: Rect2, index: int, selected: bool = false,
 		on_dark: bool = false) -> void:
 	if selected:

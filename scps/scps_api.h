@@ -1148,6 +1148,19 @@ typedef struct {
 } ScpsEdificeDef;
 int scps_building_roster(ScpsSim *s, int country, ScpsEdificeDef *out, int max);
 
+/* LE GLOSSAIRE DES CONCEPTS, exposé (UI-1, 2026-09-04 — retour joueur : « on voit
+ * +1 prospérité sur le port sans savoir ce que prospérité veut dire »). Le registre
+ * `G_GLOSSARY` (scps_lang.c : terme STR_GLOSS_* + phrase STR_HOVER_* + alias) EXISTAIT
+ * mais ne sortait jamais côté hôte ; il porte désormais AUSSI les neuf mots du menu
+ * Construction, et `api_edifice_effet` compose sa ligne d'effet avec LES MÊMES ids —
+ * un terme affiché ne peut donc pas manquer sa définition.
+ * PUR (aucune sim requise). `scps_glossary` dresse la table (mot, une phrase) ;
+ * `scps_gloss_of` répond pour UN mot (casse ASCII repliée, alias compris) ou "". */
+typedef struct { const char *mot; const char *def; } ScpsGloss;
+#define SCPS_GLOSS_MAX 32
+int         scps_glossary(ScpsGloss *out, int max);
+const char *scps_gloss_of(const char *mot);
+
 /* ---- ALLOCATION DE MAIN-D'ŒUVRE (onglet province) ---------------------- *
  * Les PUITS de main-d'œuvre d'une PROVINCE : chaque brute extraite (kind 0) et chaque
  * manufacture bâtie (kind 1). Le joueur règle un POIDS par puits (somme normalisée à

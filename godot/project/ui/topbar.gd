@@ -286,6 +286,15 @@ func _cell(px: float, icon: String, rid_or_val, val: String, dtxt: String, dpos:
 	elif icon != "":
 		UIKit.draw_icon(self, icon, Vector2(px, (H - 32.0) * 0.5), 32)
 	var tx := px + 36.0
+	# UI-1 (retour joueur 2026-09-04 : « les chiffres sont peu visibles sur la top bar ») —
+	# la barre a reçu en 2026-08-26 un chrome de CUIR SOMBRE (chrome_topbar_bg) et l'encre
+	# est restée celle du PARCHEMIN : COL_VALUE (#5b4a2a, un olive sombre) et les sense()
+	# tombaient sur du brun presque noir. Même remède que W2-7/F4 : on ne touche NI la
+	# couleur NI son sens, on rend au chiffre son fond clair (VKit.plate) — une pastille
+	# par cellule, exactement sur la boîte texte (valeur empilée sur son delta).
+	var wv := VKit.text_w(val)
+	var wd := (VKit.text_w(dtxt, VKit.FS_SMALL) if dtxt != "" else 0.0)
+	VKit.plate(self, Rect2(tx - 5.0, 3.0, maxf(wv, wd) + 10.0, H - 6.0), 0.66, true)
 	# la VALEUR de la cellule (chiffre-clé du topbar : trésor/pop/nourriture/savoir/…) —
 	# COL_VALUE par défaut ; un `vcol` explicite (sense() bon/mauvais, ex. revenu net)
 	# reste PRIORITAIRE — ce sens sémantique ne doit jamais être écrasé.
@@ -293,11 +302,8 @@ func _cell(px: float, icon: String, rid_or_val, val: String, dtxt: String, dpos:
 		VKit.text(self, Vector2(tx, 6.0), vcol, val)
 	else:
 		VKit.value(self, Vector2(tx, 6.0), val)
-	var wv := VKit.text_w(val)
-	var wd := 0.0
 	if dtxt != "":
 		VKit.text(self, Vector2(tx, 26.0), VKit.sense(0.85) if dpos else VKit.sense(0.12), dtxt, VKit.FS_SMALL)
-		wd = VKit.text_w(dtxt, VKit.FS_SMALL)
 	var cw := 36.0 + maxf(wv, wd) + 10.0   # (UI-DOCTRINE D7 : icône 26→32, marge +4 assortie)
 	if tip != "":
 		_tips.append([Rect2(px - 4.0, 0.0, cw + 8.0, H), tip])

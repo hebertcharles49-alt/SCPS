@@ -31,18 +31,52 @@ func enqueue(e: Dictionary) -> void:
 	if not visible:
 		_show_next()
 
+## UI-1 (retour joueur 2026-09-04 : « les events se superposent : le pop-up apparaît, et
+## le deuxième OYEZ OYEZ arrive en sous-couche ») — UNE SEULE MODALE D'ÉVÈNEMENT À
+## L'ÉCRAN. Le vrai coupable n'était pas cette file (elle marchait) mais l'AUTRE modale :
+## event_dialog.gd est ajouté APRÈS ce popup dans `ui` (main.gd), donc dessiné PAR-DESSUS,
+## et les deux s'ouvraient chacune de leur côté — l'OYEZ restait dessous, invisible et
+## pourtant vivant (il volait aussi la vitesse d'avant à la restauration). Les deux nœuds
+## partagent le groupe « event_modal » : chacun attend que l'autre ait rendu la main.
+## (Le même couple de fonctions vit dans event_dialog.gd — deux nœuds, une règle.)
+func _other_modal_open() -> bool:
+	for m in get_tree().get_nodes_in_group("event_modal"):
+		if m != self and m is Control and (m as Control).visible:
+			return true
+	return false
+
+## réveille l'autre modale : c'est son tour si elle a quelque chose en attente.
+func _wake_others() -> void:
+	for m in get_tree().get_nodes_in_group("event_modal"):
+		if m != self and m.has_method("wake"):
+			m.wake()
+
+## appelée par l'autre modale quand elle se referme (rien à faire si la file est vide).
+func wake() -> void:
+	if not visible and not _queue.is_empty():
+		_show_next()
+
+## ÉCHAP (main.gd::_close_topmost, tier 0) : « Vu » sans cliquer — la file poursuit.
+func dismiss() -> void:
+	_fire("close", -1)
+
 func _show_next() -> void:
 	if _queue.is_empty():
 		visible = false
 		if _prev_speed >= 0:
 			Sim.set_speed(_prev_speed)             # la vie reprend à la vitesse d'avant
 			_prev_speed = -1
+		_wake_others()
+		return
+	if _other_modal_open():
+		visible = false                            # notre tour viendra (file conservée)
 		return
 	if not visible:
 		_prev_speed = Sim.speed_index
 		Sim.set_speed(0)                           # PAUSE : l'évènement mérite le regard
 	_cur = _queue.pop_front()
 	visible = true
+	move_to_front()                                # jamais sous un panneau ouvert après nous
 	_center()
 	queue_redraw()
 

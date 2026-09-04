@@ -349,14 +349,28 @@ const char *scps_region_city_name(const ScpsSim *s, int r){
  * toponyme de ville, sinon nom de la 1re province de la région (World.region[].province_ids,
  * pure géographie), sinon le mot de repli. AUCUN appelant ne doit plus composer
  * « région %d » : l'index moteur n'a rien à faire devant le joueur. */
+/* UI-1 (2026-09-04) : « Prov.42 » N'EST PAS UN NOM — c'est l'index moteur déguisé.
+ * `gen_province_names` (scps_world.c:2954) numérote TOUTES les provinces ainsi, sans
+ * exception ; tout repli qui passe par là remet donc un chiffre devant le joueur. */
+static int api_name_is_stub(const char *n){
+    return n && n[0]=='P' && n[1]=='r' && n[2]=='o' && n[3]=='v' && n[4]=='.';
+}
 const char *scps_region_label(const ScpsSim *s, int r){
     if(!s || !s->ready || r<0 || r>=s->w->n_regions) return "";
     const char *city = toponym_region_name(r);
     if(city && *city) return city;
     const Region *rg = &s->w->region[r];
+    /* UI-1, retour joueur « le log d'évènements propose des chiffres au lieu de nommer
+     * les provinces » : la région porte DEPUIS LE WORLDGEN un vrai nom géographique
+     * (`gen_region_names`, scps_world.c:2338 — tiré du biome dominant, de la latitude et
+     * du climat). Il passait APRÈS le stub « Prov.N », donc jamais : mesuré graine 7,
+     * 149 régions sur 297 s'affichaient par leur NUMÉRO. Il passe désormais avant, et un
+     * nom de province n'est retenu que s'il n'est pas ce stub. */
+    if(rg->name[0]) return rg->name;
     for(int i=0;i<rg->n_provinces && i<12;i++){
         int pid = rg->province_ids[i];
-        if(pid>=0 && pid<s->w->n_provinces && s->w->province[pid].name[0])
+        if(pid>=0 && pid<s->w->n_provinces && s->w->province[pid].name[0]
+           && !api_name_is_stub(s->w->province[pid].name))
             return s->w->province[pid].name;
     }
     return tr(STR_PROV_SANS_NOM);
@@ -3049,18 +3063,41 @@ static const char *api_edifice_effet(Edifice e){
         if (fabsf(_v-(float)(long)(_v+0.5f))<0.05f) snprintf(_n,sizeof _n,"%ld",(long)(_v+0.5f)); \
         else snprintf(_n,sizeof _n,"%.1f",_v); \
         len += snprintf(b+len, sizeof eb[e]-(size_t)len, "%s+%s %s", first?"":" · ", _n, (word)); first=0; } }while(0)
-    EF_ADD("capacité administrative", d->delta.K_inst + d->delta.H_coerc);
-    EF_ADD("prospérité",    fmaxf(d->delta.PE_infra, d->delta.P_open));
-    EF_ADD("logement",      d->delta.food_cap);
-    EF_ADD("service",       d->delta.faith);
-    EF_ADD("savoir",        d->delta.savoir);
+    /* UI-1 (2026-09-04) : les six mots ne sont plus des LITTÉRAUX ici — ils naissent en
+     * STR_GLOSS_*, les mêmes identifiants que le glossaire `G_GLOSSARY` (scps_lang.c) rend
+     * avec LEUR définition. Un terme affiché sur une carte ne peut donc plus exister sans
+     * sa phrase : c'est le même id des deux côtés, pas deux tables à tenir en phase. */
+    EF_ADD(tr(STR_GLOSS_CAPADM),   d->delta.K_inst + d->delta.H_coerc);
+    EF_ADD(tr(STR_GLOSS_PROSP),    fmaxf(d->delta.PE_infra, d->delta.P_open));
+    EF_ADD(tr(STR_GLOSS_LOGEMENT), d->delta.food_cap);
+    EF_ADD(tr(STR_GLOSS_SERVICE),  d->delta.faith);
+    EF_ADD(tr(STR_GLOSS_SAVOIR),   d->delta.savoir);
     #undef EF_ADD
     if (d->delta.port > 0.001f){
-        len += snprintf(b+len, sizeof eb[e]-(size_t)len, "%sport", first?"":" · ");
+        len += snprintf(b+len, sizeof eb[e]-(size_t)len, "%s%s", first?"":" · ", tr(STR_GLOSS_PORT));
         first=0;
     }
-    if (first) snprintf(b, sizeof eb[e], "structurel (voir sa famille)");
+    if (first) snprintf(b, sizeof eb[e], "%s", tr(STR_EFFET_STRUCTUREL));
     return b;
+}
+
+/* Le GLOSSAIRE, tel quel (voir scps_api.h) — simple relais de `G_GLOSSARY`, aucune
+ * seconde table : le registre des concepts vit dans scps_lang.c depuis toujours, il
+ * n'était juste jamais sorti côté hôte. */
+int scps_glossary(ScpsGloss *out, int max){
+    if (!out || max<=0) return 0;
+    int n = glossary_count();
+    if (n > max) n = max;
+    for (int i=0;i<n;i++){
+        const GlossEntry *g = glossary_at(i);
+        out[i].mot = sz(g ? tr(g->term) : NULL);
+        out[i].def = sz(g ? tr(g->def)  : NULL);
+    }
+    return n;
+}
+const char *scps_gloss_of(const char *mot){
+    const GlossEntry *g = glossary_find(mot);
+    return g ? sz(tr(g->def)) : "";
 }
 
 int scps_building_roster(ScpsSim *s, int country, ScpsEdificeDef *out, int max){

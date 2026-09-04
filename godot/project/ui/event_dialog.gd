@@ -29,10 +29,44 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_center)
 	Sim.ticked.connect(func(_y): _poll())
 
+## UI-1 — UNE SEULE MODALE D'ÉVÈNEMENT À L'ÉCRAN (cf. le commentaire jumeau dans
+## event_popup.gd) : ce dialogue se dessine PAR-DESSUS l'OYEZ (ajouté après lui dans
+## `ui`), les deux s'ouvraient chacune de leur côté et l'une passait en sous-couche.
+## Groupe partagé « event_modal » ; chacun attend que l'autre ait rendu la main.
+func _other_modal_open() -> bool:
+	for m in get_tree().get_nodes_in_group("event_modal"):
+		if m != self and m is Control and (m as Control).visible:
+			return true
+	return false
+
+func _wake_others() -> void:
+	for m in get_tree().get_nodes_in_group("event_modal"):
+		if m != self and m.has_method("wake"):
+			m.wake()
+
+## appelée par l'autre modale quand elle se referme : une décision attend peut-être.
+func wake() -> void:
+	_poll()
+
+## ÉCHAP (main.gd::_close_topmost, tier 0) : on RANGE la boîte sans trancher — le
+## pending reste en attente côté moteur et reviendra au prochain tick (aucun choix
+## n'est enfilé). La vitesse d'avant est rendue, comme après un choix.
+func dismiss() -> void:
+	if not visible:
+		return
+	_slot = -1
+	visible = false
+	if _prev_speed >= 0:
+		Sim.set_speed(_prev_speed)
+		_prev_speed = -1
+	_wake_others()
+
 ## Vérifie s'il y a une décision en attente ; l'ouvre si le dialogue n'est pas déjà visible.
 func _poll() -> void:
 	if visible or not Sim.game_on:
 		return   # avant que la PARTIE ne commence, le monde de fond ne concerne pas le joueur
+	if _other_modal_open():
+		return   # un OYEZ tient l'écran : la décision attend son tour (wake() la rouvrira)
 	var w = Sim.world
 	if w == null or not w.has_method("pending_count") or int(w.pending_count()) <= 0:
 		return
@@ -54,6 +88,7 @@ func _open_slot(slot: int) -> void:
 		Sim.set_speed(0)              # la décision mérite le regard : le monde attend
 		Sound.play("ui_quill")
 	visible = true
+	move_to_front()               # UI-1 : au-dessus de tout panneau ouvert après nous
 	_center()
 	queue_redraw()
 
@@ -193,6 +228,7 @@ func _choose(option: int) -> void:
 	if _prev_speed >= 0:
 		Sim.set_speed(_prev_speed)
 		_prev_speed = -1
+	_wake_others()   # UI-1 : un OYEZ patientait peut-être derrière — à lui l'écran
 	# PAS de _poll() immédiat ici : le choix vient d'être ENFILÉ, pas encore DRAINÉ — ce
 	# MÊME pending est encore compté par pending_count() jusqu'au prochain tick (Sim.ticked),
 	# qui rappellera _poll() naturellement. Un poll immédiat rouvrirait CE pending à l'instant.

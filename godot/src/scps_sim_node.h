@@ -271,6 +271,11 @@ public:
     Dictionary manuf_recipe(int bld) const;               /* la recette réelle (menu construction) */
     int        manuf_upkeep_month(int province, int bld) const; /* entretien/mois (niveau bâti, ou naissance si absente) */
     String     manuf_name(int bld);                      /* nom d'affichage du BuildingType (miroir display-only) */
+    /* UI-1 (2026-09-04) — LE GLOSSAIRE, sorti du moteur : [{mot, def}] pour tous les
+     * concepts du registre (scps_lang.c), MOTS DU MENU CONSTRUCTION compris. Le menu
+     * l'utilise pour DIRE, sous chaque effet, ce que le mot veut dire en jeu. */
+    Array      glossary() const;
+    String     gloss_of(String mot) const;               /* la phrase d'UN mot ("" si inconnu) */
     String     edifice_name(int edifice);                /* nom d'un édifice (picker « poser ») */
     int        edifice_succ(int edifice);                /* palier suivant (le « + » upgrade) */
     int        edifice_upkeep_month(int edifice) const;  /* entretien/mois d'un édifice (miroir E1bis.10) */

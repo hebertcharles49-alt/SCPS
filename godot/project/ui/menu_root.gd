@@ -26,6 +26,12 @@ var _options: Control
 var _load: Control
 var _load_box: VBoxContainer = null
 var _load_msg: Label = null
+## UI-1 (retour joueur 2026-09-04 : « Échap quitte la simulation, ne propose pas le
+## menu ») — Échap en jeu ouvrait CET écran-titre, sans aucune porte de sortie : ni
+## bouton « Reprendre », ni Échap qui referme. Le joueur, devant Jouer/Charger/Options/
+## Codex/QUITTER, lisait à juste titre « ma partie est finie ». Le bouton n'apparaît
+## qu'EN JEU (au premier boot, avant toute partie, il n'aurait aucune cible).
+var _resume_btn: Button = null
 
 
 func _ready() -> void:
@@ -156,6 +162,11 @@ func _build_main() -> void:
 
 	col.add_child(_spacer(20))
 
+	# REPRENDRE en TÊTE (UI-1) : la première chose lue doit être le retour au jeu, pas
+	# « Jouer » (une nouvelle partie) ni « Quitter ». Caché tant qu'aucune partie ne tourne.
+	_resume_btn = _menu_button(tr("T_MENU_RESUME"), func(): resume())
+	_resume_btn.visible = false
+	col.add_child(_resume_btn)
 	col.add_child(_menu_button(tr("T_MENU_PLAY"), func(): _show(_new_game)))
 	col.add_child(_menu_button(tr("T_MENU_LOAD"), func(): _show(_load)))
 	col.add_child(_menu_button(tr("T_MENU_OPTIONS"), func(): _show(_options)))
@@ -277,4 +288,32 @@ func open() -> void:
 	Sim.set_speed(0)
 	show()
 	_show(_main)
+	if _resume_btn != null:
+		_resume_btn.visible = Sim.game_on     # UI-1 : la porte de sortie, visible d'emblée
 	Sound.play_music("main_menu")   # le thème du menu reprend
+
+## UI-1 — LE RETOUR AU JEU : le menu se referme, la musique de menu s'éteint, le monde
+## reste en PAUSE (le joueur reprend la main par la barre de vitesse, comme après un
+## chargement — `_on_load`). Aucune autre conséquence : rien n'est quitté.
+func resume() -> void:
+	if not Sim.game_on:
+		return
+	hide()
+	Sound.stop_music()
+
+## UI-1 — ÉCHAP DANS LE SHELL (appelé par main.gd::_unhandled_input, qui ne connaît pas
+## les écrans d'ici). Règle du joueur : « Échap doit quitter les pop-ups, les fenêtres,
+## revenir au menu OU au jeu si on est dans le menu in-game, jamais rien quitter. »
+##   · un SOUS-ÉCRAN ouvert (Nouvelle partie / Charger / Options) → retour au menu ;
+##   · le menu racine, une partie en cours → RETOUR AU JEU ;
+##   · le menu racine sans partie (écran-titre au boot) → rien (Échap ne quitte JAMAIS).
+## Renvoie true si l'appui a été consommé.
+func escape() -> bool:
+	for p in [_new_game, _options, _load]:
+		if p != null and p.visible:
+			_show(_main)
+			return true
+	if Sim.game_on:
+		resume()
+		return true
+	return false

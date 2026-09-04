@@ -117,8 +117,8 @@
     X(STR_HOVER_ASSISE, "Sur quoi repose l'obéissance : l'adhésion des cœurs, ou le seul poids des armes.") \
     X(STR_HOVER_LEGIT, "Le droit reconnu au trône de régner ; sacrée, nul ne la conteste — usurpée, chacun guette la chute.") \
     X(STR_HOVER_CONCORDE, "L'unité des peuples sous une même couronne ; quand les coutures lâchent, les marges rêvent d'indépendance.") \
-    X(STR_HOVER_PROSP, "La richesse qui circule et qu'on parvient à lever ; un royaume opulent rayonne, une disette le vide.") \
-    X(STR_HOVER_SAVOIR, "Le savoir né aux carrefours des cultures ; il nourrit les arts et les arcanes.") \
+    X(STR_HOVER_PROSP, "La richesse qui circule et qu'on parvient à lever ; un royaume opulent rayonne, une disette le vide. Bâtie dans une province (infrastructure, ouverture au négoce), elle y nourrit la croissance, la satisfaction des classes et l'assiette de l'impôt.") \
+    X(STR_HOVER_SAVOIR, "Le savoir né aux carrefours des cultures ; il nourrit les arts et les arcanes. Ce sont ces points de recherche, produits chaque mois, qui paient les technologies — rien d'autre ne les paie.") \
     X(STR_HOVER_PRESAGE, "Ce que la quête de puissance attire ; plus on force l'arcane, plus l'ombre s'épaissit.") \
     X(STR_HOVER_STATURE, "L'ampleur de l'établissement humain, du hameau perdu à la cité grouillante.") \
     X(STR_HOVER_FLUX, "Le mouvement des âmes : un afflux gonfle la province, un exode la vide.") \
@@ -899,6 +899,32 @@
     X(STR_FLUX_AUTRES,           "Autres mouvements") \
     /* MARCHÉ — les MOTS des noms de repli (jamais un identifiant moteur face joueur). */ \
     X(STR_PROV_SANS_NOM,         "Province sans nom") \
-    X(STR_MANUF_SANS_NOM,        "Manufacture sans nom")
+    X(STR_MANUF_SANS_NOM,        "Manufacture sans nom") \
+    /* LES MOTS DU MENU CONSTRUCTION (UI-1, retour joueur 2026-09-04 : « on voit
+     * +1 prospérité sur le port sans savoir ce que prospérité veut dire »). Même
+     * convention que le glossaire §hover_* existant (STR_GLOSS_* le TITRE, STR_HOVER_*
+     * LA PHRASE) : ces paires REJOIGNENT la table `G_GLOSSARY` (scps_lang.c) plutôt que
+     * d'ouvrir un second registre — Prospérité et Savoir y étaient DÉJÀ, seuls les neuf
+     * termes ci-dessous manquaient. `api_edifice_effet` compose sa ligne d'effet avec
+     * CES MÊMES STR_GLOSS_*, donc un terme affiché ne peut pas manquer sa définition. */ \
+    X(STR_GLOSS_CAPADM,      "Capacité administrative") \
+    X(STR_HOVER_CAPADM,      "Ce que l'État tient vraiment dans la province : institutions et garnisons bâties. Elle tient l'ordre, porte les services rendus et l'impôt réellement levé — et s'use avec le temps.") \
+    X(STR_GLOSS_LOGEMENT,    "Logement") \
+    X(STR_HOVER_LOGEMENT,    "Ce que le bâti peut nourrir et abriter : la population croît vers ce plafond et s'y arrête.") \
+    X(STR_GLOSS_SERVICE,     "Service") \
+    X(STR_HOVER_SERVICE,     "Ce qui apaise la province (culte, aménités) : l'agitation retombe et la loyauté tient.") \
+    X(STR_GLOSS_PORT,        "Port") \
+    X(STR_HOVER_PORT,        "La rade de la province : sans port, ni route de mer, ni flotte, ni commerce maritime.") \
+    X(STR_GLOSS_STRUCTUREL,  "Structurel") \
+    X(STR_HOVER_STRUCTUREL,  "Aucun effet chiffré propre : cet édifice ouvre un palier ou une famille, pas une métrique.") \
+    X(STR_GLOSS_ENTRETIEN,   "Entretien") \
+    X(STR_HOVER_ENTRETIEN,   "Le coût récurrent du bâti, en couronnes par mois. Impayé, la province tombe en friche et sa production chute.") \
+    X(STR_GLOSS_RECETTE,     "Recette") \
+    X(STR_HOVER_RECETTE,     "Les matières que la manufacture consomme chaque mois, et le bien qu'elle rend en échange.") \
+    X(STR_GLOSS_PALIER,      "Palier") \
+    X(STR_HOVER_PALIER,      "Le rang suivant d'un édifice : chaque palier suit le tier du bourg et ouvre de nouveaux effets.") \
+    X(STR_GLOSS_OR,          "Or") \
+    X(STR_HOVER_OR,          "Le prix du chantier, payé une seule fois au trésor national — la recette de matières, elle, se prend sur les stocks.") \
+    X(STR_EFFET_STRUCTUREL,  "Structurel (voir sa famille)")
 
 #endif /* SCPS_STRINGS_IDS_H */

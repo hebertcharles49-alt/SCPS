@@ -23,6 +23,12 @@ var fg_is_icon2 := false           ## icone du NOUVEAU lot (icons2/), resolue pa
 var selected := false
 var pad_frac := 0.18
 var enabled := true                ## faux = « indisponible » (UI-3.2) : éteint, clic ignoré
+## UI-1 (retour joueur 2026-09-04 : « les icônes se fondent mal dans les rails ») — le
+## bouton est posé sur un chrome d'ART SOMBRE (chrome_sidebar_bg / chrome_rightbar_bg) :
+## au repos, la branche « icône nue » ne peignait AUCUN fond et rabaissait même le glyphe
+## (mod 0.92), donc l'encre du lot icons2 tombait sur le cuir. Vrai pour le RAIL, faux
+## pour les boutons flottants posés sur la CARTE (fond clair) — d'où le drapeau.
+var on_dark := false
 
 var _hover := false
 
@@ -60,12 +66,19 @@ func _draw() -> void:
 		# `enabled` : un onglet indisponible ne porte AUCUN fond d'état — un seul
 		# canal (la teinte éteinte plus bas) pour ne pas contredire « indisponible ».
 		if selected and enabled:
+			if on_dark:
+				VKit.plate(self, r, 0.86)      # le fond CLAIR d'abord : la teinte ambrée se pose dessus
 			VKit.fill(self, r, VKit.COL_PANEL_HI)
 			VKit.fill(self, Rect2(0, 0, 3.0, r.size.y), VKit.COL_GOLD)
 			VKit.box(self, r, VKit.COL_EDGE)
 		elif hov:
 			VKit.fill(self, r, Color(0.25, 0.28, 0.27, 0.88))
 			VKit.box(self, r, Color(VKit.COL_EDGE.r, VKit.COL_EDGE.g, VKit.COL_EDGE.b, 0.8))
+		elif on_dark and enabled:
+			# UI-1 : au REPOS aussi le rail porte sa pastille — sinon l'icône se fond dans
+			# le cuir (le survol/la sélection ne se voyaient QUE parce qu'ils en peignaient
+			# une, l'état neutre restait invisible).
+			VKit.plate(self, r, 0.58, true)
 	# avant-plan
 	var mod := Color.WHITE
 	if not enabled:
@@ -76,6 +89,7 @@ func _draw() -> void:
 		# pièce auto-suffisante : la teinte porte l'état
 		if selected: mod = Color(1.20, 1.12, 0.88)
 		elif hov: mod = Color(1.12, 1.12, 1.12)
+		elif on_dark: mod = Color(1.0, 1.0, 1.0)   # UI-1 : plus de rabais au repos sur le cuir
 		else: mod = Color(0.92, 0.92, 0.92)
 	else:
 		# icône d'encre sombre sur chrome graphite : un LIFT rend le glyphe lisible

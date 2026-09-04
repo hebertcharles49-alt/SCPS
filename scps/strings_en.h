@@ -112,8 +112,8 @@
     X(STR_HOVER_ASSISE, "What obedience rests on: the consent of hearts, or the weight of arms alone.") \
     X(STR_HOVER_LEGIT, "The throne's recognised right to rule; sacred, none dispute it — usurped, everyone watches for the fall.") \
     X(STR_HOVER_CONCORDE, "The unity of peoples under one crown; when the seams give way, the borderlands dream of independence.") \
-    X(STR_HOVER_PROSP, "The wealth that circulates and can be levied; an opulent realm shines, a dearth empties it.") \
-    X(STR_HOVER_SAVOIR, "Knowledge born at the crossroads of cultures; it feeds the arts and the arcane.") \
+    X(STR_HOVER_PROSP, "The wealth that circulates and can be levied; an opulent realm shines, a dearth empties it. Built in a province (infrastructure, openness to trade), it feeds growth there, the classes' satisfaction and the tax base.") \
+    X(STR_HOVER_SAVOIR, "Knowledge born at the crossroads of cultures; it feeds the arts and the arcane. These research points, produced each month, are what pay for technologies - nothing else does.") \
     X(STR_HOVER_PRESAGE, "What the quest for power draws in; the harder the arcane is forced, the thicker the shadow grows.") \
     X(STR_HOVER_STATURE, "The scale of human settlement, from the lost hamlet to the teeming city.") \
     X(STR_HOVER_FLUX, "The movement of souls: an inflow swells the province, an exodus empties it.") \
@@ -866,4 +866,23 @@
     X(STR_INFLUENCE_DEPENSES_0,  "No doctrine to maintain") \
     X(STR_FLUX_AUTRES,           "Other movements") \
     X(STR_PROV_SANS_NOM,         "Unnamed province") \
-    X(STR_MANUF_SANS_NOM,        "Unnamed manufacture")
+    X(STR_MANUF_SANS_NOM,        "Unnamed manufacture") \
+    X(STR_GLOSS_CAPADM,      "Administrative capacity") \
+    X(STR_HOVER_CAPADM,      "What the state actually holds in the province: institutions and garrisons built. It keeps order, carries the services rendered and the tax truly levied here - and it wears down over time.") \
+    X(STR_GLOSS_LOGEMENT,    "Housing") \
+    X(STR_HOVER_LOGEMENT,    "What the built stock can feed and shelter: population grows toward this ceiling and stops there.") \
+    X(STR_GLOSS_SERVICE,     "Service") \
+    X(STR_HOVER_SERVICE,     "What soothes the province (worship, amenities): unrest falls back and loyalty holds.") \
+    X(STR_GLOSS_PORT,        "Harbour") \
+    X(STR_HOVER_PORT,        "The province's roadstead: without a harbour there is no sea route, no fleet, no maritime trade.") \
+    X(STR_GLOSS_STRUCTUREL,  "Structural") \
+    X(STR_HOVER_STRUCTUREL,  "No figure of its own: this building opens a tier or a family, not a metric.") \
+    X(STR_GLOSS_ENTRETIEN,   "Upkeep") \
+    X(STR_HOVER_ENTRETIEN,   "The recurring cost of the built stock, in crowns per month. Unpaid, the province falls fallow and its output drops.") \
+    X(STR_GLOSS_RECETTE,     "Recipe") \
+    X(STR_HOVER_RECETTE,     "The materials the manufacture consumes each month, and the good it yields in return.") \
+    X(STR_GLOSS_PALIER,      "Tier") \
+    X(STR_HOVER_PALIER,      "A building's next rank: each tier follows the town's tier and opens new effects.") \
+    X(STR_GLOSS_OR,          "Gold") \
+    X(STR_HOVER_OR,          "The price of the works, paid once from the national treasury - the material recipe is taken from the stocks instead.") \
+    X(STR_EFFET_STRUCTUREL,  "Structural (see its family)")

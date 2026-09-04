@@ -30,6 +30,9 @@ var _battle_panel: Control     # W-GUERRE UI (lot B) : panneau de combat, ouvert
 var _codex: Control            # LE CODEX DES VERBES (touche F1) : tout ce que le joueur peut faire
 var _search_palette: Control   # P5 : Ctrl+K, accès universel aux objets et explications
 var _memory_panel: Control     # P9 : récents, épingles et comparaison live
+var _army_panel: Control       # panneau ARMÉE (piloté par la sélection carte) — dans la pile Échap (UI-1)
+var _event_popup: Control      # OYEZ OYEZ (notification majeure) — le tier MODALE de la pile Échap
+var _event_dialog: Control     # UNE DÉCISION S'IMPOSE (dilemme joueur) — idem
 var _faith_prompted := false   # le créateur de foi ne s'ouvre qu'UNE fois (1er édifice religieux)
 var _epilogue_shown := false   # l'épilogue ne s'ouvre qu'UNE fois par partie (latch UI)
 var _nav: Node
@@ -235,6 +238,8 @@ func _ready() -> void:
 	# ARMÉE : le pion sélectionné ouvre sa barre de COMMANDEMENT (recompléter/piller/
 	# dissoudre) ; le clic-destination sur la carte donne l'ordre de marche/attaque.
 	var army_panel: Control = load("res://ui/army_panel.gd").new()
+	army_panel.name = "ArmyPanel"
+	_army_panel = army_panel          # UI-1 : le panneau entre dans la pile Echap (il n'avait pas de nom de noeud)
 	ui.add_child(army_panel)
 	map.army_selection_changed.connect(army_panel.set_army)
 	map.army_order_feedback.connect(army_panel.show_feedback)
@@ -423,6 +428,7 @@ func _ready() -> void:
 	# adaptatifs ; les kinds majeurs du fil y sont ROUTÉS par alerts (popup_requested).
 	var popup = load("res://ui/event_popup.gd").new()
 	popup.name = "EventPopup"
+	_event_popup = popup
 	ui.add_child(popup)
 	alerts.popup_requested.connect(popup.enqueue)
 	popup.goto_region.connect(goto_fn)
@@ -466,7 +472,13 @@ func _ready() -> void:
 	# ici RIEN n'est encore appliqué tant que le joueur n'a pas choisi.
 	var event_dialog = load("res://ui/event_dialog.gd").new()
 	event_dialog.name = "EventDialog"
+	_event_dialog = event_dialog
 	ui.add_child(event_dialog)
+	# UI-1 (retour joueur : « les events se superposent ») : les DEUX modales d'evenement
+	# s'arbitrent entre elles (une seule a l'ecran, la suivante attend) — cf. leur
+	# groupe « event_modal » et event_popup.gd::_other_modal_open.
+	popup.add_to_group("event_modal")
+	event_dialog.add_to_group("event_modal")
 
 	# RETOUR JOUEUR : bouton « Signaler un bug » (toujours visible en jeu) + détection de
 	# crash au redémarrage + export LOCAL d'un rapport (remarque · log · screenshot ·
@@ -579,11 +591,14 @@ func _unhandled_input(e: InputEvent) -> void:
 			return
 	match e.keycode:
 		KEY_ESCAPE:
-			# PILE DE FERMETURE : Échap ferme d'abord le panneau flottant visible (un par
-			# pression), puis la sélection (panneau province/pays), et SEULEMENT ensuite
-			# ouvre le menu — « tout panneau affiché doit pouvoir être dismiss ».
+			# PILE DE FERMETURE (UI-1, directive joueur 2026-09-04 : « Échap doit quitter
+			# les pop-ups, les fenêtres, revenir au menu OU au jeu si on est dans le menu
+			# in-game, JAMAIS rien quitter ») — un cran par pression, du plus haut au plus
+			# bas : modale d'évènement → panneau flottant → sélection → menu in-game → jeu.
+			# Le trou d'avant : le menu ouvert AVALAIT l'appui (`pass`), et l'écran-titre
+			# n'offrait aucun retour — Échap semblait donc « quitter la simulation ».
 			if _menu != null and _menu.visible:
-				pass                                   # le menu gère ses écrans (Retour)
+				_menu.escape()
 			elif _close_topmost():
 				pass
 			elif _menu != null:
@@ -806,6 +821,15 @@ func _on_tick_endgame(_year: int) -> void:
 ## SEUL Échap via `_clear_selection()` ci-dessous (pleine désélection : panneau ET
 ## contour doré de la carte), pas via un hide() sec qui laisserait la sélection en l'air.
 func _close_topmost() -> bool:
+	# UI-1 — TIER 0, LES MODALES D'ÉVÈNEMENT : elles sont dessinées AU-DESSUS de tout
+	# panneau (ajoutées après lui dans `ui`) et bloquent la souris ; Échap doit donc les
+	# congédier EN PREMIER, sinon il ferme dans le dos du joueur un panneau qu'il ne voit
+	# même pas. `dismiss()` referme proprement (vitesse d'avant restaurée, file reprise) —
+	# une décision non tranchée n'est PAS perdue : le pending revient au tick suivant.
+	for m in [_event_dialog, _event_popup]:
+		if m != null and m.visible and m.has_method("dismiss"):
+			m.dismiss()
+			return true
 	while not _panel_stack.is_empty():
 		var top: Control = _panel_stack[_panel_stack.size() - 1]
 		_panel_stack.remove_at(_panel_stack.size() - 1)
@@ -826,6 +850,12 @@ func _close_topmost() -> bool:
 	var mv := get_node_or_null("MapView")
 	if mv != null and not mv._selected_corps.is_empty():
 		mv._set_selected_corps([])
+		return true
+	# UI-1 : … et s'il est VISIBLE sans sélection de corps (le tiroir Armée l'ouvre aussi),
+	# on le referme franchement — « tous les panneaux doivent être dans cette pile ».
+	if _army_panel != null and _army_panel.visible:
+		_army_panel.visible = false
+		Sound.play("ui_parchment_close")
 		return true
 	if (_prov_panel_v2 != null and _prov_panel_v2.visible) or (_country_panel != null and _country_panel.visible):
 		_clear_selection()

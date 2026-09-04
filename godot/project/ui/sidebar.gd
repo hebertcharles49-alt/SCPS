@@ -76,6 +76,7 @@ func _ready() -> void:
 		_vb.add_child(b)
 		b.setup_icon(String(TABS[i][0]), BTN, "", true)   # SANS fond de chrome, icône du lot icons2/lot2_rail/
 		b.pad_frac = 0.16
+		b.on_dark = true   # UI-1 : le rail est un chrome de CUIR — l'icône a besoin de sa pastille
 		b.pressed.connect(_on_tab.bind(i))
 		# politique hover : nom + raccourci (l'explication vit dans le tiroir lui-même) —
 		# le raccourci EXACT vient du même mapping que main.gd:374 (F1 = index 0, …).

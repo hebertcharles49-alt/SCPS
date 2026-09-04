@@ -14102,3 +14102,106 @@ de plus dans `scps_campaign.c` — motif `campaign_deployed_class`), + une clé 
 s'imprime dès que la part > 0,5 %, même quand `FX_SOLDE` de l'année vaut ~0 — d'où deux
 lignes `solde 0 or/an dont corps 0 (100%)` et `solde -0 or/an dont corps -0 (50%)`.
 Correctif : gater sur `sh>0.005 && pay_c>0.5` au lieu de `sh>0.005`. Aucun effet moteur.
+
+
+
+## Mission 2026-09-04 — UI-1 SIX CORRECTIFS D'INTERFACE
+
+Périmètre tenu : `godot/project/ui/*.gd` + `main/main.gd` + `i18n/ui.csv` ·
+`godot/src/scps_sim_node.{cpp,h}` · `scps/scps_api.{c,h}` (lecteurs seuls) ·
+`scps/strings_*.h` · `scps/scps_lang.c` (la TABLE du glossaire, display-only) ·
+`scps/scps_api_demo.c`. AUCUN scps_econ/events/sim/warhost touché.
+Sonde : `godot/project/ui1_audit.{gd,tscn}` — le MÊME binaire tourne avant/après
+(`-- seed=7 years=25 tag=avant|apres`), 8+2 captures dans `godot/project/shots_ui1/`.
+
+### Découvertes
+
+- **`scps_region_label` rendait un IDENTIFIANT pour la MOITIÉ du monde, et le banc
+  W2-7 le validait.** Le repli sautait le nom GÉOGRAPHIQUE de la région
+  (`w->region[r].name`, posé par `gen_region_names`, scps_world.c:2338 — biome
+  dominant + latitude + climat) pour tomber directement sur le nom de PROVINCE, que
+  `gen_province_names` (scps_world.c:2954) fabrique en « Prov.%d » pour TOUTES les
+  provinces, sans exception. Mesuré par la sonde à travers la DLL réelle, graine 7 :
+  **149 régions sur 297** s'affichaient par leur numéro (0 après). L'assertion W2-7
+  « chaque région se nomme en lettres » ne regardait que le PREMIER caractère —
+  « Prov.42 » commence par un P, elle était verte depuis le début. **Leçon : une
+  assertion de membrane doit refuser le STUB, pas seulement le chiffre nu.**
+- **Le glossaire des concepts EXISTAIT déjà en C et ne sortait jamais.**
+  `scps_lang.h` §GLOSSAIRE + `G_GLOSSARY` (scps_lang.c:357) : terme `STR_GLOSS_*`,
+  phrase `STR_HOVER_*`, catégorie, alias, et `glossary_find()` qui replie la casse
+  ASCII. Prospérité et Savoir y étaient DÉJÀ. Il n'y avait donc rien à inventer : 9
+  paires ajoutées (Capacité administrative · Logement · Service · Port · Structurel ·
+  Entretien · Recette · Palier · Or), deux lecteurs de façade (`scps_glossary`,
+  `scps_gloss_of`), et `api_edifice_effet` compose désormais sa ligne d'effet avec LES
+  MÊMES `STR_GLOSS_*` — un mot affiché ne PEUT plus manquer sa définition, c'est le
+  même identifiant des deux côtés. **Avant de créer un registre côté .gd, chercher
+  `glossary_`/`STR_GLOSS_` : la table est en C depuis longtemps.**
+- **Échap n'ouvrait pas un menu : il ouvrait l'ÉCRAN-TITRE, sans porte de sortie.**
+  `main.gd:581` faisait `pass` quand le menu était visible (« le menu gère ses
+  écrans »), et `menu_root.gd` n'avait ni bouton Reprendre ni gestion d'Échap : devant
+  Jouer/Charger/Options/Codex/**Quitter**, le joueur lisait « ma partie est finie » —
+  et c'était vrai, aucun chemin ne ramenait au jeu. Correctif : `menu_root.escape()`
+  (sous-écran → menu ; menu + partie en cours → `resume()` ; écran-titre → rien) +
+  bouton « Reprendre » en TÊTE, visible seulement si `Sim.game_on`.
+- **La superposition des events n'était pas un bug de FILE : c'était l'AUTRE modale.**
+  `event_popup.gd` a sa file et elle marche. Mais `event_dialog.gd` est ajouté APRÈS
+  le popup dans `ui` (main.gd:425 vs 468) — donc dessiné PAR-DESSUS — et chacun
+  s'ouvrait de son côté, l'OYEZ restant vivant EN DESSOUS (il volait au passage la
+  « vitesse d'avant » à la restauration). Mesuré : `dialogue=true · popup=true`.
+  Correctif : groupe `event_modal`, `_other_modal_open()` / `wake()` / `dismiss()`
+  symétriques dans les deux fichiers + `move_to_front()` à l'ouverture.
+- **Le chrome de CUIR de 2026-08-26 continue de manger l'encre de parchemin.** Après
+  le JOURNAL et les VILLES (W2-7/F4) et la date (F13), c'était au tour des CHIFFRES de
+  la topbar (`VKit.value` = COL_VALUE #5b4a2a sur `chrome_topbar_bg`) et des ICÔNES du
+  rail (`icon_button.gd`, branche « icône nue » : AUCUN fond au repos et un modulate
+  qui RABAISSE le glyphe à 0.92). Remède identique à F4 : `VKit.plate()` — la
+  contrepartie de `list_row_bg(on_dark)` pour ce qui n'est pas une ligne de liste.
+  **Règle : tout dessin VKit posé sur un chrome d'ART sombre est suspect par
+  construction ; c'est le FOND qu'on rend au parchemin, jamais le sens de la couleur.**
+- La sonde `ui1_audit.gd` sait poser la souris pour de vrai (`Input.warp_mouse` + ~90
+  frames > la constante `DELAY` = 0,45 s du TooltipServer) : `apres_02b_hover_effet.png`
+  montre le tooltip RÉEL, pas une reconstitution. En fenêtré seulement.
+
+### Pièges
+
+- **Le premier `scons -C godot` d'un worktree neuf REBÂTIT godot-cpp EN ENTIER** (~12
+  min ici, cc1plus × N) même avec la jonction vers `E:\JEUX\SCPS\godot\godot-cpp`
+  déjà bâti — et il ÉCRIT dans cet arbre partagé (`libgodot-cpp….a` réécrite). Les
+  passes suivantes sont incrémentales (~2 min). Prévoir ce quart d'heure AVANT de
+  planifier les captures « avant ».
+- **`make` n'existe pas dans le bash de l'outil** : il faut le PATH MinGW propre + un
+  TMPDIR utilisable. Deux scripts écrits pour ça et laissés au successeur :
+  `tools/wt_make.sh <worktree> <cible>` et `tools/scons_wt.sh <worktree>`, lancés par
+  l'outil PowerShell (`$env:MSYSTEM='MINGW64'; & D:\MSYS2\usr\bin\bash.exe -l …`).
+- **`glossary_find` compare le mot ENTIER** : « Structurel (voir sa famille) » ne
+  matche pas la clé « Structurel ». Ajouté en ALIAS (les alias sont français bruts,
+  hors table — donc muets en EN : le repli est le mot seul).
+- Côté .gd, un glossaire cherché par `contains()` NU livre des tranches : « Port »
+  contient « or ». La recherche est bornée aux MOTS (ponctuation → espaces) dans
+  `construction_panel._append_gloss`.
+- Le `capitalize()` de Godot met une majuscule à CHAQUE mot (« Capacité Administrative ») :
+  garder le terme tel que le glossaire l'écrit, ne jamais le recomposer.
+- **`Prov.N` n'est pas le seul stub** : `province_info["nom"]` le rend toujours (la
+  fiche province, elle, affiche le toponyme de sa région). Non corrigé ici — le vrai
+  remède est un nom de province au WORLDGEN, hors périmètre façade.
+- L'outil Bash refuse un heredoc `cat >> fichier` depuis un worktree isolé (« trop
+  complexe pour vérifier ») : écrire le bloc dans le scratchpad puis `cat A >> B`.
+
+### Restes
+
+- **Les noms de PROVINCE restent « Prov.N »** (`gen_province_names`, scps_world.c:2954).
+  `scps_region_label` ne les montre plus, mais tout lecteur qui lit `province_info.nom`
+  en direct les montre encore. Chantier worldgen (toponymie de province), pas façade.
+- **Les VALEURS libres du rail DROIT** (« Réserve : 4 », « En campagne : 400 ») tombent
+  toujours sur le cuir : `VKit.plate()` existe désormais, il reste à l'appliquer dans
+  `empire_sidebar.gd` hors des lignes de liste (reste déjà noté par W2-7).
+- **`make lang-check` : 125 → 123** (les six mots d'effet sont sortis de `scps_api.c`
+  vers `STR_GLOSS_*`). `scps/lang_baseline.txt` n'a PAS été abaissé — reflux à acter
+  par l'orchestrateur.
+- Les définitions de **Prospérité** et **Savoir** ont reçu une clause mécanique en
+  plus de leur phrase d'ambiance (elles servent maintenant AUSSI la carte de
+  construction) : le Codex et le readout affichent donc deux phrases là où il y en
+  avait une. À relire si la place manque quelque part.
+- Le glossaire du MOTEUR (21 entrées) et celui du FRONT (`ui/concepts.gd`, 68 entrées)
+  coexistent toujours : le menu Construction lit le premier, le TooltipServer/Codex le
+  second. Fusion possible (le C est la bonne maison), pas faite ici — hors mandat.

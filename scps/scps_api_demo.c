@@ -214,6 +214,45 @@ int main(int argc, char **argv){
           if(!l || !l[0] || (l[0]>='0' && l[0]<='9')){ lieux_ok=0; break; }
       }
       ok("W2-7 membrane : chaque région se nomme en lettres (jamais son index)", lieux_ok); }
+    /* UI-1 (2026-09-04, retour joueur « le log propose des chiffres au lieu de nommer les
+     * provinces ») — l'assertion W2-7 ci-dessus ne regardait que le PREMIER caractère :
+     * « Prov.42 » commence par un P, elle passait au vert pendant que la moitié des
+     * régions s'affichaient par leur numéro. Le stub numéroté est désormais REFUSÉ. */
+    { int stub=0, nreg=scps_region_count(s);
+      for(int r=0;r<nreg;r++){
+          const char *l=scps_region_label(s,r);
+          if(!l || !l[0] || strncmp(l,"Prov.",5)==0) stub++;
+      }
+      printf("   UI-1 toponymie : %d région(s) sur %d sans nom montrable\n", stub, nreg);
+      ok("UI-1 membrane : aucune région ne se nomme « Prov.<index> »", stub==0); }
+    /* UI-1 — LE GLOSSAIRE sort du moteur, et TOUT mot d'effet d'édifice y répond : le
+     * joueur lisait « +1 prospérité » sans qu'aucune surface ne dise ce que c'est. */
+    { ScpsGloss gl[SCPS_GLOSS_MAX];
+      int ng=scps_glossary(gl,SCPS_GLOSS_MAX), gl_ok=(ng>0);
+      for(int i=0;i<ng;i++) gl_ok &= gl[i].mot && gl[i].mot[0] && gl[i].def && gl[i].def[0];
+      ok("UI-1 glossaire : chaque concept porte un mot ET une phrase", gl_ok);
+      /* chaque TERME composé par la ligne d'effet a sa définition (mots séparés par
+       * « · », un « +N » possible en tête — on interroge la table sur le mot nu). */
+      ScpsEdificeDef eds[64];
+      int ne=scps_building_roster(s,pl0,eds,64), eff_ok=(ne>0), manque=0;
+      for(int i=0;i<ne;i++){
+          if(!eds[i].effet || !eds[i].effet[0]){ eff_ok=0; continue; }
+          const char *p=eds[i].effet;
+          while(*p){
+              const char *sep=strstr(p, " \xC2\xB7 ");            /* « · », le séparateur */
+              size_t len = sep ? (size_t)(sep-p) : strlen(p);
+              char mot[96];
+              if(len>=sizeof mot) len=sizeof mot-1;
+              memcpy(mot,p,len); mot[len]='\0';
+              char *m=mot;
+              if(*m=='+'){ while(*m && *m!=' ') m++; while(*m==' ') m++; }   /* jeter le nombre */
+              { char *par=strstr(m," (");  if(par) *par='\0'; }              /* « … (voir sa famille) » */
+              if(*m && !scps_gloss_of(m)[0]){ manque++; printf("   UI-1 sans définition : « %s »\n", m); }
+              if(!sep) break;
+              p = sep+4;
+          }
+      }
+      ok("UI-1 construction : chaque mot d'effet d'édifice a sa définition", eff_ok && manque==0); }
     if(nmarket_st>0){
         ScpsMarketQuote mq;
         int mqok=scps_market_quote(s,pl0,market_st[0].res_id,10,&mq);
