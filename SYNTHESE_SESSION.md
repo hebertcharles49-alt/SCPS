@@ -1,3 +1,11 @@
+# SYNTHÈSE SESSION — 2026-09-04 (soir) : PAUSE — état à reprendre
+
+- **Commité/poussé** : vague A (A3 prix, A1 registre, A2 levée, A4 solde des corps ; golden 96fb172), non-régression A lue (a891633 : I0/riche désarmé/grain FERMÉS, queues atténuées ; nouveaux trous : satisfaction journaliers −20 pt, semis privé tout-ou-rien, crédit éteint, armée/limite illisible), UI-1 (c26fa14), S3 arbre hérité = légitime (872d1e4), S2 cadence 1 initiative privée/mois/pays (1484d5a, save v110).
+- **Arrêtés en vol, worktrees INTACTS, à reprendre par un nouveau brief (SendMessage indisponible)** : S1 leviers de satisfaction pour l'IA (`.claude/worktrees/agent-a78d1c9083bc82593`) · PERF-1 profilage + `--bench` + goulet maritime (`agent-a9e6832aec985f65e`). Leur travail partiel est dans leur worktree : lire `git -C <wt> status/diff` avant de relancer.
+- **Run S2 interrompue** (runs/S2_cadence/, journaux partiels) : à relancer (777/11 témoin + 7 essai, 250 ans, PRIV_SEED_PER_MONTH=0 vs défaut, binaire `.claude/worktrees/agent-a5000658ecf8f2181/chronicle.exe` — worktree S2 conservé pour ça), puis verdict S2 et re-baseline golden-deep (S2 v110 le fait bouger).
+- **Décisions joueur en attente** : satisfaction 42 % = nouvel équilibre ou retour vers 60 % (TAX_EXEMPT_BASKET_MULT / WAGE_SHARE) ; fins §27 uniformisées sur RONCES (entropie faustienne effondrée avec les prix : FIN_BASE_*) ; limite de force sur le host seul ; crédit éteint ; colonies du peuple à cadencer aussi ? ; abandon de doctrine IA ; exposant tech.
+- **Règles** : runs par l'orchestrateur seul ; pas de cap (exception actée : cadence des initiatives privées, plate, jamais géo-paramétrée) ; un seul agent perf à la fois, hashes identiques obligatoires.
+
 # SYNTHÈSE SESSION — 2026-09-04 (suite) : SWEEP LU, VAGUE A LANDÉE, A4 EN VOL
 
 - **Sweep de validation** coupé à 5 h (13 paires × 250 ans, docs/SWEEP_VALID_W1W2_2026-09-04.md) : arbre de doctrines joué jusqu'à l'an 250 sans casser les agrégats ; population/décrochage/courants/héritage tenus ; 5 anomalies → vague A.
