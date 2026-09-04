@@ -14205,3 +14205,119 @@ Sonde : `godot/project/ui1_audit.{gd,tscn}` — le MÊME binaire tourne avant/ap
 - Le glossaire du MOTEUR (21 entrées) et celui du FRONT (`ui/concepts.gd`, 68 entrées)
   coexistent toujours : le menu Construction lit le premier, le TooltipServer/Codex le
   second. Fusion possible (le C est la bonne maison), pas faite ici — hors mandat.
+
+
+## Mission 2026-09-04 — ANALYSTE RÉGRESSION A (24 journaux appariés, docs/SWEEP_REGRESSION_A_2026-09-04.md)
+
+Question du joueur : « vérifie que les corrections n'ont pas ouvert de nouveaux trous ».
+Corpus : `sweep_valid_A_6x250/` (12 journaux, binaire `128df3a0…`) contre les MÊMES 6 graines
+dans `sweep_valid_W1W2_50x250/` (12 journaux, binaire `2bb5301c…`). Lecture seule, zéro
+modification de code, zéro run.
+
+### Découvertes
+
+- **Les 5 anomalies du sweep W1/W2 : 3 FERMÉES, 2 ATTÉNUÉES, 0 OUVERTE.** Le recoupement I0
+  passe de −1 826 à **+2,7** or/mois/empire en médiane, signe inversé, 12/12 sous le critère
+  `|hors| < 0,10 × taxes` (pire cas `A/temoin_s60:941` +37,9 pour des taxes de 1 058). Le grain
+  n'est plus jamais 0,000 (3/12 → 0/12). `Ligue Dhûrganyn` passe de `0 rgt / limite 51` avec
+  184 577 or (`W1W2/essai_s11:697`) à `56 rgt / limite 34 · corps 22 rgt` (`A/essai_s11:716`).
+  `arsenal vide` = 0 pays-an dans 12/12. `armée/limite` max 432 % → 319 % (pire cas de la graine 3 :
+  432 % → 134 %) ; `solde/revenu` max 19 066 % → 4 706 %.
+- **LE TROU OUVERT PAR LA VAGUE EST LA SATISFACTION DES JOURNALIERS : −20 points de médiane
+  (60,5 % → 42 %), 11 journaux sur 12, plancher 28 %** (`A/temoin_s60:936`). TROUVAILLES §A3
+  l'avait vu à 120 ans sur une graine (−15 pt) et l'avait acté comme un coût honnête, renvoyé au
+  calibrage de `TAX_EXEMPT_BASKET_MULT` (« décision joueur, hors périmètre A3 »). **À 250 ans sur
+  12 journaux ce n'est plus un cheveu, c'est le régime.** Le Bourgeois ne perd que 8,5 pt et
+  l'Élite 3,5 : la baisse est SPÉCIFIQUE aux journaliers, ce n'est pas une déflation uniforme.
+  La richesse/tête Laborer suit : médiane 5,29 → 2,85, avec `A/temoin_s3` à **0,16**.
+- **Le semis privé de manufactures est devenu tout-ou-rien** : étendue 1 053-12 886 (×12) →
+  **141-18 060 (×128)**. `A/temoin_s11:813` 141 · `A/temoin_s777:873` 18 060. La promesse d'A3
+  (« exp=0,5 restaure le semis ») ne se vérifie pas à 250 ans. Même sort pour la friche, qu'A3
+  donnait « gain le plus régulier » : elle MONTE dans 8 journaux sur 12 (médiane 30 → 33,5).
+  Les provinces FIGÉES montent aussi, dans 9/12 (médiane 8,5 % → 10,5 %, pic 17 % `A/temoin_s3`).
+- **`armée / limite de force` n'est plus interprétable** : la médiane s'effondre de 71 % à 22 %
+  parce que A4 pousse les régiments au front et que le NUMÉRATEUR comme la limite restent
+  host-seuls. `A/temoin_s512:675-676` `Clans Tikexis 56 rég · **5 rgt / limite 45** · corps 79 rgt` ;
+  `A/essai_s11:719-720` `Ligue Mertonis · **0 rgt / limite 32** · corps 61 rgt`. C'est le reste
+  ACTÉ de A4 (« la limite de force doit-elle compter l'armée de campagne ? ») — il faut le
+  trancher avant de relire cette ligne.
+- **Le crédit s'est éteint** : banqueroutes médiane 31,5 → 3,5, prêteurs ruinés 9,5 → **0**,
+  saisie 8,0 M → 0,26 M, poste `intérêts` −93/−770 → −0,1/−37,9. `A/essai_s3:106` = **1**
+  banqueroute et **863 or** de saisie sur 250 ans. Ce sont des zéros de système mort, pas de
+  santé — et pendant ce temps `dette/revenu MAX` MONTE sur 6/12 (jusqu'à 115,6× sur
+  `A/temoin_s60:107`), même maladie de dénominateur que `solde/revenu`.
+- **La dérive séculaire est réparée en SIGNE et manquée en NIVEAU** : 6/12 négatives avant,
+  **0/12 après**, bande [+0,08 ; +0,51] — mais la cible joueur est 0,5-1,5 %/an et **11 valeurs
+  sur 12 sont sous le plancher**. `PL_EXPONENT=0,5` a été tranché sur une mesure à 120 ans
+  (+1,28/+0,99/+0,50) qui ne survit pas à 250 ans (médiane +0,365).
+- **Les fins §27 s'uniformisent** : RONCES 7/12 → **11/12**, ENGLOUTISSEMENT 4 → 1, GRAND HIVER
+  1 → 0. L'entropie faustienne s'effondre avec les prix (`A/essai_s7` 3 691 → **66**,
+  `A/temoin_s3` 245 363 → 5 762). La ligne se dénonçait déjà (`ratio max/min 99.9:1`) : la vague
+  l'a aggravée. L'arbre HÉRITÉ (§27) suit et redevient muet : 3 journaux non nuls → 1.
+- **Les provinces `owner=-1` SONT les régions ENGLOUTIES** — corrélation parfaite sur 24 journaux :
+  tout journal dont la fin §27 est ENGLOUTISSEMENT a des orphelines (12 régions englouties →
+  21 orphelines sur `A/essai_s7`), tout journal RONCES en a 0. Le compte
+  `COLONISABLES/infranchissables` bouge pour la même raison, à graine IDENTIQUE. Ce n'est PAS une
+  divergence de worldgen : ne pas refaire le diagnostic.
+- **LA DIVERGENCE s60 SIGNALÉE PAR A4 EST LEVÉE, ET A4 EST INNOCENTÉ.** Sur les deux bras :
+  figées `10 → 11 %` (témoin) mais `36 → 10 %` (essai) ; intérêts `−8,9 → −37,9` (témoin) mais
+  `−149,8 → −19,6` (essai). **Deux signaux sur trois changent de sens selon le bras = bruit de
+  trajectoire.** Le troisième (satisfaction 56 → 28 %) est réel mais n'est pas propre à s60 :
+  c'est le trou général. Et le poste `soldes` de s60 tombe de −562,3 à −192,6 or/mois/empire,
+  exactement ce que A4 promettait (« l'État paie moins parce qu'il entretient moins »).
+- **Effets de bord positifs non visés** : trésor moyen/empire 10 448 → 12 965 et flux moyen
+  −10,6 → +19,1 or/mois ; l'écart âmes/strates PAR PROVINCE (anomalie A7, jamais traitée)
+  s'effondre — `A/temoin_s3` **130 941 % → 227,8 %**, `A/essai_s11` 85 814 % → 617 % ; l'invariant
+  M3f revient de 172 % à 99 % sur `essai_s3` ; `édifices refusés faute de palier` médiane
+  374,5 → 273 ; Divin sort du zéro absolu (2 adoptions) ; la fronde vassale produit enfin ses trois
+  fins (`A/temoin_s11` 3 frondes → 1 indépendance + 2 renversements) et le `concordat` vit
+  (`A/essai_s7` 17).
+
+### Pièges
+
+- **Ne JAMAIS comparer l'`indice` (M7-I1) entre les deux corpus** : le miroir
+  `econ_country_price_level` était faux avant A3 (`SINK_FLOOR × n_prov`). Les comparaisons de prix
+  passent par `prix du grain` et par la ligne `marché :` du bloc par âge — cette dernière est la
+  plus parlante (graine 7 témoin : les six âges passent de 1,06/0,94/0,81/0,07/0,15/0,26 à
+  1,71/1,69/1,95/0,71/0,47/0,34).
+- **Le `recoupement I0` peut fermer alors que le résidu de PORTE est énorme** : `A/essai_s777:934`
+  `Σ portes +456,4 · **porte hors poste +444,4** · écriture directe −443,7` — les deux se
+  compensent au centième, donc I0 rend +0,7, mais le résidu vaut 22 % des taxes. Lire les DEUX
+  lignes ; celle qui informe est `contrôle des portes`, pas `recoupement I0`.
+- **Toutes les mesures nominales sont divisées par ~2** par A3 (M(fin) médiane 17,3 M → 9,0 M) :
+  pillage, saisie, dette, trésor, richesse/tête ne se comparent pas brutalement d'un corpus à
+  l'autre. Les mesures RÉELLES (satisfaction, friche, figées, décrochages, provinces, guerres)
+  sont les seules qui portent un verdict.
+- **`hubs 100 %` n'est pas l'artefact A6** quand le volume est au-dessus du plancher :
+  `A/temoin_s11:822` donne `1910 / 1910`, c'est une vraie captation totale par 12 cités-états.
+  Vérifier le volume avant de classer la ligne en artefact.
+- Le plancher de volume sur l'agrégat hubs de la SYNTHÈSE (`chronicle.c:3045`, proposition P6 du
+  sweep précédent) et le plancher de revenu sur `solde/revenu` (P7) **n'ont toujours pas été
+  posés** — deux gestes print-only de 3 lignes traînent depuis le sweep W1/W2.
+
+### Restes
+
+- **P1, le prochain pas** : ventiler la satisfaction du journalier en ses termes moteur (panier
+  servi · gages · exonération mordue) en print-only AVANT de toucher un nombre, puis calibrer
+  `TAX_EXEMPT_BASKET_MULT`. Site pressenti `scps/scps_econ.c` + impression `chronicle.c`.
+  Mesure d'acceptation : Laborer ≥ 55 % médiane, aucune graine < 40 %.
+- **P2** : imprimer la RAISON du refus de semis privé (motif `warhost_levy_reason*` d'A2),
+  `scps/scps_econ.c` §NF.
+- **P3, décision joueur** : sommer les corps dans `warhost_units` et dans `over`/`sizemult`
+  (`scps/scps_warhost.c`) — les trois `static inline` d'en-tête existent déjà depuis A4. Pas de
+  cap : l'intendance de dépassement est un COÛT. À mesurer en apparié, ça renchérit d'un coup
+  tout pays en guerre longue.
+- **P4 / P6** : plancher de revenu sur `solde/revenu` et `dette/revenu` (P7 jamais appliquée) ;
+  ventilation par SITE du résidu de porte (`econ_flux_door_note`). Print-only tous les deux.
+- **P7, décision joueur** : re-trancher `PL_EXPONENT` (0,5 → 0,6 ?) sur la dérive à 250 ans, en
+  lisant D'ABORD la satisfaction et le semis privé, pas seulement la dérive.
+- **P5, décision joueur** : le crédit. Ne PAS le rouvrir avant P1 — si la satisfaction remonte par
+  les gages, l'assiette fiscale remonte avec elle et le crédit peut se réveiller seul.
+- **Non fait** : les dumps `PROV` n'ont été relus intégralement que sur 4 des 12 journaux APRÈS
+  (`temoin_s7`, `temoin_s11`, `essai_s11`, `essai_s7` — pop max 1,6 à 3,3 % du monde ; l'anomalie
+  A8 « une tuile à 8 % » n'y est pas retrouvée, mais ce n'est pas une preuve de fermeture).
+- **Inchangés, ni ouverts ni fermés par la vague** : marine (0 coque · 0 fourniture · 0
+  interception dans 12/12, pour 30-34 Scieries navales bâties par sim), `0 ralliés
+  culturellement` (12/12), fins RÉCHAUFFEMENT/ASCENSION/SANG (0/12), `Pont effondré` (0/12),
+  guerres anti-piraterie (0/12), arbre RECHERCHÉ max = 100 % (10/12), `brassage : 0 flux`
+  (3/12 → 5/12, aggravé).

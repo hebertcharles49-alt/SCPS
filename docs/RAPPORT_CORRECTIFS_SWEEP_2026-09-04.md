@@ -110,3 +110,15 @@ Coupé par le joueur après 5 h de simulation (« 5 h de sim continue suffisent 
 
 ### 3.5 Limites
 13 paires sur 50, une sim par cellule (aucun bruit intra-graine), horizon unique de 250 ans face à des cibles calibrées à 120 : la moitié des écarts peut être un effet d'horizon. Les 13 graines arrivées sont les plus rapides, donc les mondes les plus petits. La commande de reprise (mêmes graines, script v2) permet de compléter à 50.
+
+## 4. Non-régression de la vague A (sweep apparié 6 graines × 250 ans, mêmes graines qu'avant)
+
+docs/SWEEP_REGRESSION_A_2026-09-04.md (analyste, 24 journaux lus). Les 5 anomalies : recoupement I0 FERMÉ (−1 826 → +2,7 or/mois/empire), riche désarmé FERMÉ (0 → 56 rgt + 22 au front, arsenal vide 0 partout), grain 0,000 FERMÉ (3/12 → 0/12, âges tardifs 0,07 → 0,71), armée/limite ATTÉNUÉ (max 432 → 319 %), solde/revenu ATTÉNUÉ (19 066 → 4 706 %, dénominateur famélique). A4 innocenté sur la graine 60 (poste soldes −562 → −193).
+
+**Nouveaux trous ouverts par la vague :**
+- CRITIQUE — satisfaction des journaliers −20 points de médiane (60,5 → 42 %, plancher 28 %) dans 11 journaux sur 12 : des prix enfin réels que l'exonération vitale (`TAX_EXEMPT_BASKET_MULT`) ne compense pas.
+- HAUTE — semis de manufactures privées devenu tout-ou-rien (141 à 18 060, ×128) ; crédit éteint (banqueroutes ÷9, prêteurs ruinés 0, 863 or saisis en 250 ans) pendant que dette/revenu max monte 6/12 ; `armée/limite` illisible (médiane 71 → 22 % : A4 paie les corps que ni le numérateur ni la limite ne comptent).
+- MOYENNE — friche +8/12, provinces figées +9/12, dérive séculaire sous la cible 11/12, fins §27 uniformisées (RONCES 7 → 11/12), hubs à 100 % ×2, arbre HÉRITÉ muet, résidu de porte jusqu'à 22 % des taxes.
+- BASSE — brassage 0 sur 5/12, Conseil emballé ×2, grain à 2,25.
+
+Propositions de l'analyste : ventiler la satisfaction du journalier (print-only) puis calibrer l'exonération vitale ; imprimer la raison du refus de semis privé ; sommer les corps dans `warhost_units` et l'intendance de dépassement (décision joueur, sans cap).
