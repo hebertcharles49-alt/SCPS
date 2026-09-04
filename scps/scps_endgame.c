@@ -36,6 +36,7 @@ void endgame_init(EndgameState *eg) {
     eg->fin_year        = -1;
     eg->merv_country    = -1;
     eg->merv_site_reg   = -1;
+    endgame_succession_born_reset();   /* idem pour le compte de successeurs NÉS (télémétrie seule) */
     endgame_exodus_reset();   /* LOT F — compteur télémétrie de l'exode : RAZ par sim (module-static,
                                * pas de hook scps_sim.c propre à ce lot — endgame_init EST le point de
                                * reset canonique du module, cf. demography_*_reset appelés ailleurs). */
@@ -219,8 +220,20 @@ static void region_centroid(const World *w, int r, int *ox, int *oy) {
  * adoption IA). Hors save (rien à sérialiser : la paire ne survit jamais au tick). */
 static int g_succ_child[SCPS_MAX_COUNTRY], g_succ_parent[SCPS_MAX_COUNTRY];
 static int g_succ_n = 0;
+/* … et le compteur CUMULÉ des naissances (télémétrie seule, motif g_exodus_total : RAZ
+ * par sim dans endgame_init, hors save, jamais lu par le moteur). Sans lui la ligne
+ * « arbre HÉRITÉ » du bilan confond TROIS mondes très différents sous le même « 0
+ * empire(s) » : (1) aucun resplit POSSIBLE — la fin tirée est RONCES/FROID, qui ne
+ * fragmentent jamais un empire (seuls cataclysm_water_step/chaud_step resplittent) ;
+ * (2) un resplit qui n'a coupé personne en deux composantes viables ; (3) des héritiers
+ * bel et bien NÉS, puis conquis (regions_of==0) ou remis à chercher (stats.techs>0)
+ * avant la fin du run — 70 ans séparent l'an 180 de l'an 250. Le compte de naissances
+ * sépare (1)+(2) de (3) sans relancer un sweep. */
+static long g_succ_total = 0;
 void endgame_succession_reset(void){ g_succ_n = 0; }
 int  endgame_succession_count(void){ return g_succ_n; }
+long endgame_succession_born(void){ return g_succ_total; }
+void endgame_succession_born_reset(void){ g_succ_total = 0; }
 void endgame_succession_get(int i, int *child, int *parent){
     if (i<0 || i>=g_succ_n){ if(child)*child=-1; if(parent)*parent=-1; return; }
     if (child)  *child  = g_succ_child[i];
@@ -229,6 +242,7 @@ void endgame_succession_get(int i, int *child, int *parent){
 static void endgame_succession_record(int child, int parent){
     if (g_succ_n >= SCPS_MAX_COUNTRY) return;
     g_succ_child[g_succ_n] = child; g_succ_parent[g_succ_n] = parent; g_succ_n++;
+    g_succ_total++;
 }
 
 /* Un slot de pays RÉUTILISABLE (UNCLAIMED, ne tient aucune région), sinon agrandit

@@ -164,6 +164,11 @@ void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
  * héritage de l'arbre de tech (le savoir survit à la fragmentation) + adoption IA. */
 int  endgame_succession_count(void);
 void endgame_succession_get(int i, int *child, int *parent);
+/* … et le CUMUL des successeurs nés depuis le début de la sim (télémétrie seule, RAZ dans
+ * endgame_init, hors save) : distingue « aucun héritier n'est JAMAIS né » (fin RONCES/FROID,
+ * ou resplit qui n'a coupé personne) de « des héritiers sont nés puis ont disparu du bilan ». */
+long endgame_succession_born(void);
+void endgame_succession_born_reset(void);
 
 /* Démarre la Merveille d'Ascension (ordre agency JOUEUR uniquement ; l'IA ne la
  * poursuit pas). No-op si déjà en cours. */

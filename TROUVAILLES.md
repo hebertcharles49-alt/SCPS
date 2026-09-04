@@ -14321,3 +14321,70 @@ modification de code, zéro run.
   culturellement` (12/12), fins RÉCHAUFFEMENT/ASCENSION/SANG (0/12), `Pont effondré` (0/12),
   guerres anti-piraterie (0/12), arbre RECHERCHÉ max = 100 % (10/12), `brassage : 0 flux`
   (3/12 → 5/12, aggravé).
+
+
+
+## Mission 2026-09-04 — S3 ARBRE HÉRITÉ MUET (investigation §27, print-only)
+
+Point N11 du sweep `docs/SWEEP_REGRESSION_A_2026-09-04.md` (« l'arbre HÉRITÉ (§27) redevient
+muet », 3 journaux non nuls → 1). Décision joueur : « à investiguer. » **Verdict : LÉGITIME —
+la ligne dit vrai, c'est la distribution des FINS qui a changé.** Un seul geste, print-only.
+
+### Découvertes
+
+- **`cataclysm_resplit_empire` n'est appelée que par DEUX fins sur six.**
+  `scps/scps_endgame.c:458` (`cataclysm_water_step`, FIN_EAU) et `:572` (`chaud_step`,
+  FIN_CHAUD). `thorns_step` (RONCES) et `cold_step` (FROID) ne resplittent JAMAIS — et c'est
+  cohérent au design : la mer COUPE un empire en composantes connexes, les ronces et le gel le
+  rongent sans le trancher. Pas d'héritier ⇒ `arbre HÉRITÉ` structurellement à 0.
+  **Le sweep A a fini RONCES sur 11 journaux sur 12** (contre 7/12 avant) : la ligne se tait
+  parce que la fin tirée ne fragmente rien, pas parce que l'héritage est cassé.
+- **Corrélation vérifiée sur les 24 journaux des 12 mêmes graines** : `arbre HÉRITÉ` non nul
+  UNIQUEMENT sur des journaux ENGLOUTISSEMENT — 4 sur les 5 qui existent
+  (`W1W2/temoin_s777:851` 2 emp 77 %, `W1W2/temoin_s3:965` 6 emp 91 %, `W1W2/essai_s3:1000`
+  1 emp 90 %, `A/essai_s7:1006` 4 emp 79 %) ; **0 sur 19** pour RONCES/GRAND HIVER.
+- **Les trois hypothèses du brief tranchées par smoke 60 ans** (fin forcée à l'an 30 par
+  `SCPS_TUNE="ENDGAME_YEAR_OPEN=30,RACE_ENTROPY_FIN=0,FIN_BASE_RONCES=0,FIN_BASE_FROID=0"`) :
+  EAU forcée ⇒ héritiers sur les 3 graines testées (s3/s7/s777 : 1/2/1 empires). Donc **(a)
+  le discriminant `stats.techs==0` marche toujours** (A2/A3/F2 innocentés) et **(c) le
+  compteur est bien alimenté** — seule (b) tient : la fin RONCES exclut le resplit.
+- **LA VRAIE FAIBLESSE DE LA LIGNE, trouvée en la testant** : sur le smoke EAU graine 3,
+  **3 successeurs NÉS pour 1 seul empire compté**. Les deux autres ont disparu du bilan en
+  30 ans — conquis (`regions_of()==0`, sauté) ou remis à chercher (`stats.techs>0`, reversés
+  côté RECHERCHÉ, ce qui est honnête mais invisible). En sweep, **70 ans séparent l'an 180 de
+  l'an 250** : la ligne est un compte de SURVIVANTS lu comme un compte de naissances.
+- **La loterie des fins est un hash de la TRAJECTOIRE, pas de la graine seule**
+  (`endgame_pick_fin_lottery`, `:1282`) : poids = plancher climatique + part de production
+  faustienne (`wp->faust_consumed[0..2]` = essence/flux/fer → EAU/RONCES/FROID). `temoin_s777`
+  tire EAU avant et RONCES après **avec le MÊME fauteur (35), le MÊME épicentre (53), la MÊME
+  année (180)** : le tirage est identique, ce sont les POIDS qui ont bougé (conso foreuse
+  11 660 → 2 761). Toute vague qui touche l'éco re-tire les fins du monde entier.
+
+### Pièges
+
+- **Ne pas lire `ratio max/min dispatch 99.9:1` comme un défaut d'équilibrage** sur un journal
+  à 1 sim : 6 des 7 catégories sont à 0 par construction, le ratio est un artefact de n=1.
+- **`arbre HÉRITÉ : 0 empire(s)` ne prouve RIEN sans la ligne `§27 FIN` du même journal.**
+  Croiser les deux avant de crier à la régression — c'est ce qui a coûté un point de sweep ici.
+- Le compteur ajouté est un module-static : **le RAZ par sim se pose dans `endgame_init`**
+  (motif `endgame_exodus_reset`, `scps_endgame.c:39`), sinon il s'accumule d'une sim à l'autre
+  dans un run multi-sims.
+
+### Correctif (print-only, golden intact)
+
+`scps_endgame.c` : `g_succ_total` cumulé dans `endgame_succession_record`, RAZ dans
+`endgame_init`, exposé par `endgame_succession_born()` (+ décl. `scps_endgame.h`).
+`chronicle.c:2673` : la ligne porte désormais `· N successeur(s) né(s) du resplit (seules
+EAU/RÉCHAUFFEMENT fragmentent)`. **0 né** ⇒ aucun resplit possible ou aucun empire coupé ;
+**N né mais 0 empire** ⇒ les héritiers sont morts ou se sont remis à chercher. Aucune struct
+sérialisée touchée, aucun `SAVE_VERSION`, rien lu par le moteur.
+
+### Restes
+
+- **Le vrai sujet est N9, pas N11** : les fins se sont uniformisées sur RONCES (11/12) parce
+  que l'entropie faustienne s'est effondrée avec les prix (A3). Tant que la loterie ne rend
+  pas EAU, l'arbre HÉRITÉ restera muet — c'est un symptôme du dispatch des fins, à traiter
+  côté `FIN_BASE_*` / entropie (hors périmètre S3, décision joueur).
+- **Non résolu faute de run** : `W1W2/essai_s7:877` est ENGLOUTISSEMENT (11 régions) avec
+  `0 empire(s)` hérité — resplit sans coupure (aucun fragment ≥ `SPLIT_VIABLE_MIN`=2) OU
+  héritiers disparus. Le nouveau compteur tranche en une lecture au prochain sweep.

@@ -2670,8 +2670,13 @@ int main(int argc, char **argv){
                      fsum/nemp, fmin, fmax, dom[THM_SAVOIR], dom[THM_FORGE], dom[THM_SOCIETE]);
               tot_tree_pct += fsum/nemp; tot_tree_sims++;
           }
-          printf("              arbre HÉRITÉ (§27, jamais payé) : %d empire(s) · %ld%% déverrouillé/empire (max %d%%)\n",
-                 nher, nher>0?hsum/nher:0L, hmax);
+          /* S3 (2026-09-04) — POURQUOI LA LIGNE SE TAIT. « 0 empire(s) » couvrait trois
+           * mondes distincts ; le compte de NAISSANCES les sépare : 0 né ⇒ aucun resplit
+           * (fin RONCES/FROID — seuls cataclysm_water_step/chaud_step fragmentent — ou
+           * resplit qui n'a coupé personne en deux composantes ≥ SPLIT_VIABLE_MIN) ;
+           * N né mais 0 empire ⇒ les héritiers sont morts ou se sont remis à chercher. */
+          printf("              arbre HÉRITÉ (§27, jamais payé) : %d empire(s) · %ld%% déverrouillé/empire (max %d%%) · %ld successeur(s) né(s) du resplit (seules EAU/RÉCHAUFFEMENT fragmentent)\n",
+                 nher, nher>0?hsum/nher:0L, hmax, endgame_succession_born());
         }
 
         /* LOT I — SCPS_SAVOIRDIAG : où le savoir se perd. Par empire : bibliothèques bâties
