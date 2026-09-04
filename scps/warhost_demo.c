@@ -15,6 +15,8 @@
 #include "scps_army.h"
 #include "scps_labor.h"
 #include "scps_warhost.h"
+#include "scps_campaign.h"   /* A4 : la solde des CORPS de campagne (WH_PAY_CORPS) */
+#include "scps_tune.h"       /* A4 : les deux bras du kill-switch */
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -130,6 +132,49 @@ int main(int argc,char**argv){
         printf("   pays en PAIX %d → %ld paquets (entretien minimal)\n", cp, ucp);
         ok("la PAIX démobilise : un pays en paix lève MOINS qu'un pays en guerre", ucp < ua);
     } else ok("(pas de 3e pays pour comparer paix vs guerre)", true);
+
+    /* ── A4 (2026-09-04) : UN RÉGIMENT AU FRONT N'EST PLUS GRATUIT ────────────────────
+     * `campaign_order`/`campaign_raise` TRANSFÈRENT la force du host au corps de campagne
+     * (LOT 1 : le host est VIDÉ). La solde n'itérait que `h->army[c]` : partir en guerre
+     * rendait donc l'armée GRATUITE, et rien ne la faisait plus fondre. On transfère TOUTE
+     * l'armée de cb à un corps, on désigne cb comme MAIN HUMAINE (warhost_tick cesse de
+     * lever/dégraisser tout seul — la solde, elle, reste due : c'est précisément ce qu'on
+     * isole), puis on compare les deux bras de WH_PAY_CORPS sur un trésor plein (personne
+     * ne déserte : `paid == pay`). PLACÉ ICI, juste après la levée des 3 ans : plus bas,
+     * les ticks de LOT 1.5/LOT 2 ont déjà fondu ces toutes petites armées de banc. cb
+     * n'est plus relu ensuite (LOT 1.5 et LOT 2 ne travaillent que sur ca). */
+    printf("\n── A4 : un CORPS AU FRONT coûte sa solde (WH_PAY_CORPS) ──\n");
+    { Campaign *cmp = malloc(sizeof(Campaign));
+      int rb=-1; for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==cb){ rb=r; break; }
+      long ub0 = warhost_units(&h,cb);
+      if (!cmp || rb<0 || ub0<=0){ ok("(pas de corps déployable pour cb : test A4 sauté)", true); }
+      else {
+          campaign_init(cmp,w,econ);
+          int id = campaign_raise(cmp,econ,cb,rb,rb,&h.army[cb],ub0);
+          long au_front = (id>=0)? campaign_corps_units(cmp,id) : 0;
+          printf("   cb=%d : %ld paquet(s) TRANSFÉRÉ(S) au corps (host %ld → %ld · corps %ld)\n",
+                 cb, ub0, ub0, warhost_units(&h,cb), au_front);
+          warhost_set_human(cb);                       /* plus de levée auto : on isole la SOLDE */
+          econ->nat_treasury[cb] = 1000000.f;          /* trésor plein : paid==pay, personne ne déserte */
+          double g0 = econ_country_gold(econ,cb);
+          tune_set("WH_PAY_CORPS", 0.f);
+          warhost_tick(&h,w,econ,&dp,NULL,cmp,1.f);
+          double d_off = g0 - econ_country_gold(econ,cb);
+          econ->nat_treasury[cb] = 1000000.f;
+          g0 = econ_country_gold(econ,cb);
+          tune_set("WH_PAY_CORPS", 1.f);
+          warhost_tick(&h,w,econ,&dp,NULL,cmp,1.f);
+          double d_on = g0 - econ_country_gold(econ,cb);
+          printf("   solde payée sur un an : WH_PAY_CORPS=0 → %.1f or · WH_PAY_CORPS=1 → %.1f or\n", d_off, d_on);
+          ok("le host est VIDÉ par le transfert (l'armée est au front, plus en réserve)",
+             warhost_units(&h,cb)==0 && au_front==ub0 && au_front>0);
+          ok("WH_PAY_CORPS=0 : le corps au front ne coûte RIEN (ancien comportement)", d_off < 0.01);
+          ok("WH_PAY_CORPS=1 : le corps au front coûte SA solde", d_on > 0.01);
+          ok("la part des corps dans la solde est ENTIÈRE (le host est vide)",
+             warhost_corps_pay_share(cb) > 0.99f);
+          warhost_set_human(-1);
+      }
+      free(cmp); }
 
     /* MONNAIE M14 — B1 : LE TRÉSOR NÉGATIF NE DOIT JAMAIS INVERSER LE PAIEMENT.
      * `fminf(pay, treasury)` avec treasury<0 rendait `paid` NÉGATIF : le trésor

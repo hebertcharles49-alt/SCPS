@@ -14002,3 +14002,71 @@ qu'aucune borne n'ait été posée. Geste : un `static inline` d'en-tête somman
 pays (les DIX bancs qui lient `scps_warhost.o` sans `scps_campaign.o` interdisent un symbole
 de plus dans `scps_campaign.c` — motif `campaign_deployed_class`), + une clé `WH_PAY_CORPS`.
 À mesurer en apparié : ça double la facture militaire de TOUT pays en guerre.
+
+
+## Mission 2026-09-04 — A4 SOLDE DES CORPS (« un régiment au front n'est plus gratuit »)
+
+### Découvertes
+
+- **Le trou exact** : `warhost_tick` (scps/scps_warhost.c) ne sommait `typed_pay` que sur
+  `h->army[c]`. Or `campaign_order`/`campaign_raise` **TRANSFÈRENT** (LOT 1, `army_merge_into`
+  / `force_take`) : le host est VIDÉ dès qu'un corps part. Un pays en guerre permanente
+  entretenait donc une armée de campagne à coût NUL — et `WH_DESERT_RATE`, dont l'assiette
+  était `u = warhost_units(h,c)`, ne pouvait pas mordre (u=0 ⇒ nd=0). Le frein W1-A/W1-F
+  avait stoppé la CROISSANCE du host, jamais nourri l'existant au front.
+- **`wh_shed` est déjà générique sur l'`ArmyState`** (pas sur le host) : `wh_shed(&corps->force,
+  econ, cid, n)` fait exactement les bons gestes — pop rendue au registre DU CORPS
+  (`force.pop_by_class_in_army`, celui que lit `campaign_deployed_class`), armes rendues au
+  stock NATIONAL. **Aucune fonction neuve dans scps_campaign.c n'a été nécessaire.**
+- **La désertion n'est PAS une mort** : ne surtout pas passer par `kill_packets` /
+  `dead_class_pending` (scps_campaign.c) — ce canal fait payer les morts à la strate. Un
+  déserteur RENTRE : `wh_shed` est le bon verbe, `kill_packets` le mauvais.
+- Le barème `warhost_unit_pay_month` est **typé** : l'assiette des corps doit être ventilée
+  par `UnitType`, pas un simple total de paquets (un corps de cavalerie lourde ne coûte pas
+  ce que coûte une milice).
+- `warhost_tick` n'a qu'**UN SEUL** appelant moteur (scps/scps_sim.c:1613, `s->camp`) et un
+  banc qui passe NULL : passer `cmp` de `const Campaign*` à `Campaign*` n'a rien cassé
+  ailleurs (rien côté godot/, rien côté tools/).
+
+### Pièges
+
+- **La contrainte de lien est réelle** : dix bancs lient `scps_warhost.o` SANS
+  `scps_campaign.o`. Le seul motif autorisé est celui de `campaign_deployed_class` —
+  un **`static inline` d'en-tête** dans scps_campaign.h sur des champs publics. Trois
+  ajoutées ici : `campaign_deployed_units`, `campaign_deployed_by_type`,
+  `campaign_prune_empty`. Ne JAMAIS ajouter un symbole à campaign.c pour warhost.c.
+- **Un corps vidé doit quitter la carte** : `campaign_tick` ne prune PAS les corps actifs à
+  0 paquet en début de tick (il n'y a de nettoyage qu'aux sorties de bataille, de marche et
+  au ralliement — cf. l'audit 2026-08-12 « armée ACTIVE à 0 paquet qui ré-engage des
+  batailles fantômes »). D'où `campaign_prune_empty`, qui resynchronise aussi le cache
+  `n_corps[owner]` (sérialisé/validé).
+- **Le gate d'entrée du bloc de solde était `if (u>0 …)`** : il fallait l'ouvrir à
+  `(u>0 || u_corps>0)`, sinon le pays dont TOUTE l'armée est au front ne passait jamais par
+  la solde, la garde de budget ni la jauge de levée. Sous `WH_PAY_CORPS=0`, `u_corps` vaut 0
+  par construction ⇒ gate inchangé ⇒ kill-switch byte-identique.
+- **Le banc warhost_demo tourne sur des armées d'UN paquet** qui ont déjà fondu au moment de
+  LOT 1.5 / LOT 2 (trésor à −500 ⇒ désertion). Le test A4 a dû être placé JUSTE APRÈS la
+  boucle des 3 ans, pas en fin de banc — et il utilise `warhost_set_human(cb)` pour geler la
+  levée auto et n'isoler QUE la solde. `warhost_player_recruit` ne dépanne pas (pop/armes
+  déjà épuisées à ce stade du banc).
+- **`SCPS_TUNE=WH_PAY_CORPS=0` n'est pas la même chose que `tune_set()`** : le banc utilise
+  `tune_set` (il repose la clé à 1 après), la preuve golden utilise l'env.
+
+### Restes
+
+- **La LIMITE DE FORCE reste host-seule** : `over`/`sizemult` se calculent sur
+  `u = warhost_units(h,c)` uniquement — un pays à 3 rgt de host et 200 rgt de corps ne paie
+  aucune intendance de dépassement. C'était HORS PÉRIMÈTRE (le brief cadre « même sizemult »),
+  mais c'est le prochain trou de la même famille. **Décision joueur** : la limite de force
+  doit-elle compter l'armée de campagne ?
+- **Collision de fusion attendue avec A2** sur `scps/chronicle.c` ~2184-2196 : A2 ajoute
+  « corps N rgt » DANS le printf de la ligne empire, A4 ajoute « · solde N or/an dont corps M »
+  APRÈS lui. Édits volontairement disjoints (format vs queue), mais adjacents.
+- **`make golden` échoue par construction** (le monde change : une armée impayée fond
+  désormais aussi au front) — re-baseline = décision joueur, PAS faite ici.
+  `golden` : `bddb8872 0600e3e5 b3aba329 30127a4d c23330c4` → `7ec1e58a 8df4dde2 b3aba329
+  88eb6537 e0b803f4` (graine 209 inchangée). `golden-deep` : `702bda38 / 6e175558` →
+  `1f1343c3 / 9b65bdac`. **`SCPS_TUNE=WH_PAY_CORPS=0` rend les DEUX goldens commités
+  byte-identiques** (12 ans ET 83+250 ans) : le kill-switch est prouvé des deux côtés.
+  Reste vert : `make test` 42/42 (warhost_demo 12/12, campaign_demo 34/34),
+  `make determinism`, `make lang-check` 125/125.

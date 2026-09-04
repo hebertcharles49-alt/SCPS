@@ -283,6 +283,62 @@ static inline long campaign_deployed_class(const Campaign *c, int owner, LaborCl
             n += c->army[i].force.pop_by_class_in_army[cl];
     return n;
 }
+/* ── UN RÉGIMENT AU FRONT N'EST PLUS GRATUIT (2026-09-04, A4) ─────────────────────
+ * `warhost_tick` ne soldait QUE `h->army[c]` : `campaign_order` transfère la force au
+ * corps de campagne, donc un régiment parti au front ne coûtait RIEN — l'armée impayée
+ * ne fondait jamais (sweep A2 : 21 rgt de host / limite 7, 27 rgt de corps, solde à
+ * 77 % du revenu et la guerre éternelle). Les trois inlines ci-dessous donnent au
+ * warhost l'ASSIETTE (effectif total, ventilation par type) et le NETTOYAGE d'un corps
+ * vidé par la désertion.
+ * INLINE D'EN-TÊTE AU MÊME TITRE QUE campaign_deployed_class ci-dessus, et pour LA MÊME
+ * raison : dix bancs lient `scps_warhost.o` SANS `scps_campaign.o` — un symbole de plus
+ * dans campaign.c casserait leur édition de liens. Pure lecture/écriture de champs déjà
+ * publics : aucun état de module, aucun coût. */
+static inline long campaign_deployed_units(const Campaign *c, int owner){
+    if (!c || owner<0 || owner>=SCPS_MAX_COUNTRY) return 0;
+    long n=0;
+    for (int i=0;i<CAMPAIGN_ARMY_CAP;i++){
+        if (!c->army[i].active || c->army[i].owner!=owner) continue;
+        for (int u=0;u<c->army[i].force.n_units;u++)
+            if (c->army[i].force.units[u].count>0) n += c->army[i].force.units[u].count;
+    }
+    return n;
+}
+/* Ventilation des paquets des corps actifs de `owner` PAR TYPE d'unité (out[U_COUNT]) —
+ * l'assiette de la solde : le barème `warhost_unit_pay_month` est typé, un corps de
+ * cavalerie lourde ne coûte pas ce que coûte une milice. */
+static inline void campaign_deployed_by_type(const Campaign *c, int owner, long *out){
+    for (int t=0;t<U_COUNT;t++) out[t]=0;
+    if (!c || owner<0 || owner>=SCPS_MAX_COUNTRY) return;
+    for (int i=0;i<CAMPAIGN_ARMY_CAP;i++){
+        if (!c->army[i].active || c->army[i].owner!=owner) continue;
+        for (int u=0;u<c->army[i].force.n_units;u++){
+            int t=(int)c->army[i].force.units[u].type;
+            if (t>=0 && t<U_COUNT && c->army[i].force.units[u].count>0)
+                out[t] += c->army[i].force.units[u].count;
+        }
+    }
+}
+/* Un corps VIDÉ (par la désertion faute de solde) quitte la carte — sinon il reste
+ * ACTIF à 0 paquet, ré-engage des batailles fantômes et fausse `n_corps` (même motif
+ * que l'audit 2026-08-12 sur le ralliement, cf. campaign_tick). Resynchronise le cache
+ * `n_corps[owner]` au passage. Idempotente. */
+static inline void campaign_prune_empty(Campaign *c, int owner){
+    if (!c || owner<0 || owner>=SCPS_MAX_COUNTRY) return;
+    int n=0;
+    for (int s=0;s<CAMPAIGN_MAX_CORPS;s++){
+        FieldArmy *a=&c->army[CAMPAIGN_CORPS_ID(owner,s)];
+        if (!a->active) continue;
+        long t=0;
+        for (int u=0;u<a->force.n_units;u++) if (a->force.units[u].count>0) t+=a->force.units[u].count;
+        if (t>0){ n++; continue; }
+        a->active=false; a->phase=FA_IDLE; a->dest=-1; a->next=-1; a->taken_region=-1;
+        a->days_left=0.f; a->leg_days=0.f; a->broken_days=0;
+        a->rally_days=0.f; a->rally_packets=0; a->nominal=0;
+    }
+    c->n_corps[owner]=n;
+}
+
 long        campaign_disband_corps(Campaign *c, int id, ArmyState *dst_host_army);
 bool        campaign_can_refill_corps(const Campaign *c, const WorldEconomy *econ, int id);
 void        campaign_refill_corps_cost(const Campaign *c, int id, long *men, long *mat);

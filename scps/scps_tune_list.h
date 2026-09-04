@@ -341,6 +341,13 @@
     X(WH_ARSENAL_GATE,        1.0f) \
     X(WH_MILICE_FLOOR,        1.0f) \
     X(WH_REV_FALLBACK,        1.0f) \
+    /* UN RÉGIMENT AU FRONT N'EST PLUS GRATUIT (2026-09-04, A4) — la solde n'itérait que
+     * l'armée du HOST ; `campaign_order` la TRANSFÈRE au corps de campagne, donc partir en
+     * guerre rendait l'armée gratuite et rien ne la faisait plus fondre. 1 = les corps
+     * entrent dans la même assiette (même barème typé, mêmes multiplicateurs) et la
+     * désertion faute de solde y mord au prorata ; 0 = ancien comportement (kill-switch).
+     * Ce n'est pas un plafond : c'est une facture. */ \
+    X(WH_PAY_CORPS,           1.0f) \
     /* LOT 3 (audit de guerre) — le SIÈGE LIT LA GARNISON : chaque point de H_coerc
      * (Garnison/Forteresse/Citadelle bâties, re->build.H_coerc) durcit la place en
      * plus du simple compte de bâtiments — poids modeste (~5-10 % sur la durée

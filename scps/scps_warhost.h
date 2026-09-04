@@ -49,9 +49,12 @@ void warhost_free(WarHost *h);
  * `cmp` (NULLABLE) : la CAMPAGNE, lue en SEULE LECTURE pour que le pool de recrutement
  * voie les corps partis au front — sans elle, un corps en campagne vide l'affectation
  * du host et le pays relève sa population une seconde fois (CALIB_ARMEE §4.2). NULL =
- * pays sans corps déployé (bancs) : comptabilité du host seul. */
+ * pays sans corps déployé (bancs) : comptabilité du host seul.
+ * A4 (2026-09-04) — `cmp` est désormais MUTABLE : la solde facture AUSSI les corps au
+ * front (WH_PAY_CORPS) et la désertion faute de solde y fond au prorata. Un régiment
+ * parti en campagne n'est plus gratuit. */
 void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
-                  const DiploState *dp, const TechState *ts, const Campaign *cmp,
+                  const DiploState *dp, const TechState *ts, Campaign *cmp,
                   float dt_years);  /* ts[SCPS_MAX_COUNTRY] : F8 gate de variété */
 
 long warhost_units (const WarHost *h, int cid);   /* paquets de 100 levés (UI/IA) */
@@ -95,6 +98,12 @@ const char *warhost_levy_reason_name(int code);    /* le MOT (outillage console,
  * pays-an où la levée de guerre a grossi une armée DÉJÀ au-dessus de sa limite de force. */
 void warhost_levy_reason_stats(const long **par_code, long *elite_gated,
                                long *sans_revenu, long *croissance_hors_limite);
+/* LA PART DES CORPS DANS LA SOLDE (2026-09-04, A4 · PRINT-ONLY) : fraction [0..1] de la
+ * solde du dernier tick de `cid` imputable aux CORPS DE CAMPAGNE (le reste = le host).
+ * Le barème et les multiplicateurs étant les MÊMES des deux côtés, la part est celle des
+ * assiettes typées — la chronique en déduit la part en or sans recalculer le moteur.
+ * 0 si le pays n'a rien au front ou si WH_PAY_CORPS=0. RAZ par warhost_init. */
+float warhost_corps_pay_share(int cid);
 
 /* Affinité ÉTHOS→unité (0-3) de la table AFF — read-only, pour l'UI de construction
  * (« quel éthos favorise cette unité »). N'influe sur rien : pure lecture. */

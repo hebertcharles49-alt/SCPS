@@ -73,6 +73,13 @@ void warhost_braking_stats(long *deserted, long *overbudget_months, long *checke
     if (overbudget_months) *overbudget_months = g_wh_overbudget;
     if (checked_months)    *checked_months    = g_wh_paycheck;
 }
+/* A4 — la PART DES CORPS dans la solde du dernier tick, par pays (PRINT-ONLY : la
+ * chronique la lit pour dire « dont corps X or/an », le moteur ne la relit jamais).
+ * RAZ par warhost_init comme les compteurs ci-dessus. */
+static float g_wh_corps_share[SCPS_MAX_COUNTRY];
+float warhost_corps_pay_share(int cid){
+    return (cid>=0 && cid<SCPS_MAX_COUNTRY) ? g_wh_corps_share[cid] : 0.f;
+}
 
 /* ─── LA RAISON DU REFUS DE LEVÉE (2026-09-04, P3 · PRINT-ONLY) ──────────────────────
  * Trois missions se sont succédé sur « l'empire riche à 0 régiment » en devinant la cause
@@ -202,6 +209,7 @@ void warhost_init(WarHost *h){
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) g_wh_reason[c]=-1;
     g_wh_elite_gated=0; g_wh_norev=0; g_wh_grow_over=0;
     g_lb_got=0; g_lb_levied=0; g_lb_poolcut=0;
+    memset(g_wh_corps_share,0,sizeof g_wh_corps_share);    /* A4 part des corps (print-only) */
 }
 /* Jauge de levée (sidebar §5) : un palier, pas un float. */
 void warhost_set_levy(WarHost *h, int cid, int levy){
@@ -378,6 +386,48 @@ static void wh_shed(ArmyState *a, WorldEconomy *econ, int cid, long n){
     }
 }
 
+/* ── A4 : LA DÉSERTION MORD AUSSI AU FRONT (2026-09-04) ─────────────────────────────
+ * Fondre `n` paquets sur les CORPS DE CAMPAGNE de `cid`, au PRORATA de leur effectif.
+ * Mêmes gestes que wh_shed (c'est wh_shed qui opère, il est générique sur l'ArmyState) :
+ * les hommes rentrent au pays — l'AFFECTATION se rend au registre DU CORPS
+ * (`force.pop_by_class_in_army`, celui que lit campaign_deployed_class : le pool de
+ * levée les revoit aussitôt, cf. 38523b6) et les armes retournent au stock national.
+ * Ce n'est PAS une mort (kill_packets/dead_class_pending) : un déserteur rentre chez lui.
+ * Un corps vidé quitte la carte (campaign_prune_empty). Renvoie les paquets fondus.
+ * Aucun symbole de scps_campaign.c n'est référencé ici — que des inlines d'en-tête et
+ * des champs publics : les dix bancs qui lient warhost.o sans campaign.o tiennent. */
+static long wh_shed_corps(Campaign *cmp, WorldEconomy *econ, int cid, long n){
+    if (!cmp || n<=0 || cid<0 || cid>=SCPS_MAX_COUNTRY) return 0;
+    long tot = campaign_deployed_units(cmp, cid);
+    if (tot<=0) return 0;
+    if (n>tot) n=tot;
+    long done=0;
+    /* passe 1 : la part de chacun (troncature — jamais plus que ce qu'il a) */
+    for (int s=0;s<CAMPAIGN_MAX_CORPS && done<n;s++){
+        FieldArmy *a=&cmp->army[CAMPAIGN_CORPS_ID(cid,s)];
+        if (!a->active) continue;
+        long have=0;
+        for (int u=0;u<a->force.n_units;u++) if (a->force.units[u].count>0) have+=a->force.units[u].count;
+        if (have<=0) continue;
+        long take=(n*have)/tot;
+        if (take>have)   take=have;
+        if (take>n-done) take=n-done;
+        if (take>0){ wh_shed(&a->force, econ, cid, take); done+=take; }
+    }
+    /* passe 2 : le RELIQUAT d'arrondi, du premier corps encore garni au dernier */
+    for (int s=0;s<CAMPAIGN_MAX_CORPS && done<n;s++){
+        FieldArmy *a=&cmp->army[CAMPAIGN_CORPS_ID(cid,s)];
+        if (!a->active) continue;
+        long have=0;
+        for (int u=0;u<a->force.n_units;u++) if (a->force.units[u].count>0) have+=a->force.units[u].count;
+        if (have<=0) continue;
+        long take=n-done; if (take>have) take=have;
+        wh_shed(&a->force, econ, cid, take); done+=take;
+    }
+    campaign_prune_empty(cmp, cid);
+    return done;
+}
+
 /* ACTION JOUEUR — lever `packs` paquets d'un TYPE choisi (le verbe que l'IA n'a pas :
  * elle compose par AFF). Mêmes gates que la levée : tech (unit_recruitable), classe
  * (élite ⇒ pop d'élite requise), et ARMES en stock macro (consommées). La pop est
@@ -397,7 +447,7 @@ long warhost_player_recruit(WarHost *h, const World *w, WorldEconomy *econ,
 }
 
 void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
-                  const DiploState *dp, const TechState *ts, const Campaign *cmp, float dt){
+                  const DiploState *dp, const TechState *ts, Campaign *cmp, float dt){
     if (!h || !econ || dt<=0.f) return;
     for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
         if (w->country[c].role==POLITY_UNCLAIMED) continue;
@@ -422,6 +472,18 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
          * budget exige déjà en paix (même seuil, aucun nombre neuf). */
         bool pay_starved = false;
         { long u = warhost_units(h,c);
+          /* A4 (2026-09-04) — UN RÉGIMENT AU FRONT N'EST PLUS GRATUIT : `campaign_order`
+           * TRANSFÈRE la force au corps de campagne (LOT 1 : le host est VIDÉ), si bien
+           * que la solde, qui n'itérait que `h->army[c]`, ne facturait plus rien dès que
+           * l'armée partait en guerre. Un pays en guerre permanente entretenait donc une
+           * armée de campagne GRATUITE que rien ne faisait fondre (sweep A2 : host 21 rgt
+           * pour une limite de 7, corps 27 rgt, solde à 77 % du revenu — le frein de levée
+           * avait stoppé la CROISSANCE, pas nourri l'existant). Les corps entrent dans la
+           * MÊME assiette, au MÊME barème typé et sous les MÊMES multiplicateurs.
+           * WH_PAY_CORPS=0 = ancien comportement (kill-switch byte-identique). */
+          bool pay_corps = (cmp!=NULL) && (tune_f("WH_PAY_CORPS",1.f) > 0.f);
+          long u_corps = pay_corps ? campaign_deployed_units(cmp,c) : 0;
+          g_wh_corps_share[c] = 0.f;   /* PRINT-ONLY : jamais une valeur périmée d'un tick d'avant */
           int cpp = w->country[c].capital_prov;
           int crp = (cpp>=0&&cpp<w->n_provinces)?w->province[cpp].region:-1;
           /* TRÉSOR NATIONAL (2026-09-03) : la solde sort du trésor DU PAYS — plus de la
@@ -429,7 +491,7 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
            * La région capitale ne sert plus qu'au PRIX (warhost_unit_pay_month) ; sa
            * province représentative ne reçoit que la RICHESSE des pops soldées. */
           int crpp = (crp>=0&&crp<econ->n_regions)?econ_region_rep_province(econ,crp):-1;
-          if (u>0 && crp>=0 && crp<econ->n_regions){
+          if ((u>0 || u_corps>0) && crp>=0 && crp<econ->n_regions){
               /* warhost_tick est ANNUEL (dt=1 an) → ×12 : la solde est MENSUELLE. */
               /* I1 — la JAUGE renchérit la solde : pied de guerre ×1.25, levée en masse ×1.5
                * (tenir plus d'hommes sous les armes coûte plus que proportionnellement). */
@@ -438,6 +500,16 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
               for (int i=0;i<h->army[c].n_units;i++)
                   typed_pay += (float)h->army[c].units[i].count
                              * warhost_unit_pay_month(econ, crp, h->army[c].units[i].type);
+              /* A4 — LES CORPS AU FRONT DANS LA MÊME ASSIETTE (même barème typé). */
+              float corps_pay = 0.f;
+              if (u_corps>0){
+                  long ct[U_COUNT]; campaign_deployed_by_type(cmp, c, ct);
+                  for (int t2=0;t2<U_COUNT;t2++)
+                      if (ct[t2]>0) corps_pay += (float)ct[t2]
+                                               * warhost_unit_pay_month(econ, crp, (UnitType)t2);
+                  typed_pay += corps_pay;
+              }
+              g_wh_corps_share[c] = (typed_pay>1e-6f)? corps_pay/typed_pay : 0.f;   /* PRINT-ONLY */
               /* LIMITE DE FORCE : en-deçà ×1 ; au-delà, l'intendance mord. */
               float fl   = warhost_force_limit(nreg);
               float over = (fl>0.f)? ((float)u/fl - 1.f) : 0.f;
@@ -474,12 +546,22 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                * n'est PAS un plafond (décision joueur) : une armée que l'État ne PAIE PAS
                * FOND — la part impayée déserte au rythme WH_DESERT_RATE par an (0 = ancien
                * comportement : moral seul, l'armée impayée restait entière et gratuite). */
+              /* A4 — LA DÉSERTION MORD OÙ EST L'ARMÉE : l'assiette qui déserte est celle
+               * qu'on vient de FACTURER (host + corps), et les paquets fondent AU PRORATA
+               * des deux — sans quoi une armée entièrement partie au front serait facturée
+               * sans jamais fondre (u=0 ⇒ nd=0), et le frein resterait un mot. */
               { float unpaid = (pay>1e-3f)? 1.f - paid/pay : 0.f;
                 float drate  = tune_f("WH_DESERT_RATE", 0.5f);
-                if (unpaid>0.01f && drate>0.f){
-                    long nd = (long)((double)u * (double)unpaid * (double)drate * (double)dt + 0.5);
-                    if (nd>u) nd=u;
-                    if (nd>0){ wh_shed(&h->army[c], econ, c, nd); g_wh_deserted += nd; }   /* compteur PRINT-ONLY */
+                long  u_tot  = u + u_corps;
+                if (unpaid>0.01f && drate>0.f && u_tot>0){
+                    long nd = (long)((double)u_tot * (double)unpaid * (double)drate * (double)dt + 0.5);
+                    if (nd>u_tot) nd=u_tot;
+                    long nd_corps = (u_corps>0)? (long)((double)nd*(double)u_corps/(double)u_tot) : 0;
+                    long nd_host  = nd - nd_corps;
+                    if (nd_host>u){ nd_corps += nd_host-u; nd_host=u; }   /* l'arrondi retombe au front */
+                    if (nd_corps>u_corps) nd_corps=u_corps;
+                    if (nd_host>0){ wh_shed(&h->army[c], econ, c, nd_host); g_wh_deserted += nd_host; }
+                    if (nd_corps>0) g_wh_deserted += wh_shed_corps(cmp, econ, c, nd_corps);   /* PRINT-ONLY */
                 } }
               /* BUDGET MILITAIRE SUR LE FLUX (2026-09-03) : la solde annuelle ne doit pas
                * dépasser WH_PAY_REVENUE_FRAC du revenu fiscal de l'an écoulé (cible du

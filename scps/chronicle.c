@@ -2218,6 +2218,14 @@ int main(int argc, char **argv){
                        corps_rgt, pay_c, rev_c, assiette,
                        c_war?"EN GUERRE":"en paix",
                        warhost_levy_reason_name(warhost_levy_reason(c)));
+                /* A4 (2026-09-04) — LA SOLDE DIT ENFIN LE FRONT : `pay_c` (FX_SOLDE) porte
+                 * désormais host ET corps de campagne ; la part des corps est celle des
+                 * assiettes typées (mêmes multiplicateurs des deux côtés), lue print-only du
+                 * moteur — aucun recalcul. Muette quand rien n'est au front. */
+                { double sh = (double)warhost_corps_pay_share(c);
+                  if (sh>0.005) printf(" · solde %.0f or/an dont corps %.0f (%.0f%%)",
+                                       pay_c, pay_c*sh, 100.0*sh); }
+                printf("\n");
                 if (fl_c>0.0 && g_fl_n<8192){ g_fl_all[g_fl_n]=100.0*(double)warhost_units(s.host,c)/fl_c; g_fl_n++; }
                 if (payrev>=0.0 && g_pr_n<8192){ g_pr_all[g_pr_n]=payrev; g_pr_n++; }
                 /* usage du marché inter-pays (dernier tick annuel) + entrepôts (top 4) */
