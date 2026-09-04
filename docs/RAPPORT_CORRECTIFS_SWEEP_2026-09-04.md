@@ -71,4 +71,30 @@ Restes W2-7 : pacte accepté sans trace (`diplo_context` ne rapporte aucun engag
 
 Protocole : `tools/sweep_doct_ai.sh` v2, apparié témoin `AI_DOCT=0` vs essai, 100 sims, 8 jobs, dossier `sweep_valid_W1W2_50x250/`. Lecture intégrale par un Opus data analyst.
 
-_(section remplie à la sortie du sweep : résumé de l'analyste, tables, anomalies, verdict)_
+Coupé par le joueur après 5 h de simulation (« 5 h de sim continue suffisent ») : **13 paires complètes** (graines 1 2 3 7 11 60 90 512 777 1009 2026 3333 4243) + un témoin orphelin (graine 5) ; 27 journaux lus intégralement par l'analyste (docs/SWEEP_VALID_W1W2_2026-09-04.md, 7 sections, 16 anomalies citées fichier:ligne). Aucun ASSERT, invariant monnaie max 201 % pour un seuil de 370 %, 6 âges dans 27/27.
+
+### 3.1 Verdict global (témoin AI_DOCT=0 vs essai, et vs le sweep 10×200 d'avant les vagues)
+- L'arbre de doctrines est joué jusqu'à l'an 250 (96 adoptions cumulées médianes, influence médiane 250) SANS casser les agrégats : pays 38 → 33, guerres 245 → 219, masse monétaire +2,5 %, satisfaction des journaliers +3 points.
+- La monnaie et le grain sont plus bas qu'avant les vagues : indice ÷6, trésor ÷2,7, grain médian 0,23 pour une base 1,00.
+
+### 3.2 Correctifs TENUS (les plus nets)
+1. Population (W1-B + W2-2) : « écart +0 = 0,0 % » et « 0 groupe hors invariant » dans 27/27 ; âmes/strates 97,8-100,4 %.
+2. Décrochage (W2-3) 0,26 : 18,5-19,7 % médians, 0 nul, 27/27.
+3. Juge martial : 62 % → 86 % pondéré.
+4. Courant IA différé (W1-E) : Aristocratie 13,0 % → 1,6 % des adoptions, Populaire 55 % des courants ; Technologie ×16, Connaissances ×11,5 ; Faustien sort du code mort.
+5. Arbre HÉRITÉ (§27, W1-C) enfin visible (jusqu'à 11 empires à 92 %).
+
+### 3.3 Anomalies graves
+1. **Le recoupement I0 ne se recoupe jamais** : toujours négatif, médiane −1 519 / −1 891 or/mois/empire, pire −4 078 — signe constant, donc une dépense structurelle hors registre, pas des buckets épars.
+2. **Queue de la levée hors frein** : armée/limite jusqu'à 432 %, solde/revenu jusqu'à 19 066 % — le frein W1 n'a pas de prise sur la queue de distribution.
+3. **Armée fantôme réfutée à l'envers** : le premier empire du monde à 0 régiment avec 184 577 or et 127 329 armes lourdes en stock (essai_s11:698).
+4. **Prix du grain 0,000 exact dans 5 sims sur 27** (le plancher indexé sur le trésor retombe à 0 sur certains mondes).
+5. **Marbrive n'est pas mort** : 63 déclenchements sur 27 sims (le constat de W2-6 valait un an-60 sur une graine).
+
+### 3.4 Propositions de l'analyste (par impact)
+- P1 : bucket `FX_AUTRES` par différence puis ventilation (print-only) — sans quoi aucune mesure monétaire ne peut servir de gate.
+- P3 : imprimer la RAISON du refus de levée (armes, or, pool, budget) avant de toucher `ARMY_POOL_FRAC` — l'empire riche à 0 régiment doit s'expliquer.
+- P2 : plancher du prix du grain découplé du trésor — décision joueur (limite de « pas de cap » : un plancher n'est pas un plafond, mais c'est un nombre neuf).
+
+### 3.5 Limites
+13 paires sur 50, une sim par cellule (aucun bruit intra-graine), horizon unique de 250 ans face à des cibles calibrées à 120 : la moitié des écarts peut être un effet d'horizon. Les 13 graines arrivées sont les plus rapides, donc les mondes les plus petits. La commande de reprise (mêmes graines, script v2) permet de compléter à 50.

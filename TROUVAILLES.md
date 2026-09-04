@@ -13418,3 +13418,130 @@ base 127) — aucun littéral ajouté. DLL rebâtie, 24 captures rejouées par
   chiffre. Chantier de topbar, pas un correctif.
 - `manuf_cost()` sans argument (toutes les manufactures à 51) reste entier : décision de
   design non tranchée, comme l'avait laissée OPUS JOUEUR.
+
+
+## Mission 2026-09-04 — ANALYSTE SWEEP W1/W2 (lecture intégrale, 27 journaux, docs/SWEEP_VALID_W1W2_2026-09-04.md)
+
+### Découvertes
+
+- **LE CORPUS N'EST PAS CELUI DU BRIEF : 13 paires, pas 17.** Les journaux à
+  `.rc = 127` (essai s5/s13/s17/s19, temoin s13/s17/s19/s23) font 67-68 lignes et
+  s'arrêtent sur le bloc `biomes (prov/cellules)` : c'est la sortie du **worldgen
+  seul**, la boucle de sim n'est jamais entrée. Un `.rc` présent ne prouve donc RIEN
+  sur la complétude — `run_one()` écrit le code de retour même quand le shell tue le
+  binaire. **Vérifier la taille du journal ET la présence de `BILAN an`, jamais le
+  seul `.rc`.** Paires complètes : 1 2 3 7 11 60 90 512 777 1009 2026 3333 4243
+  (+ orphelin `temoin_s5`, son essai est un tronc).
+- **`resume.txt` n'existe pas** : le sweep a été coupé avant l'étape de dépouillement
+  du script (elle est APRÈS le `wait` final). Il n'y a aucune table automatique à
+  rejouer en « mode résumé » — `sum_arm()` n'est pas appelable isolément sans éditer
+  le script. Le dépouillement est intégralement manuel.
+- **MARBRIVE N'EST PAS MORT.** W2-6 concluait « structurellement mort, 0 sur 3,3 M
+  région-jours » — mesure faite à **60 ans sur UNE graine**. À 250 ans : **63
+  déclenchements sur 27 sims**, non nul dans **20 journaux sur 27** (`temoin_s11:769`
+  5 Marbrive, `temoin_s2` 5, `essai_s2` 4…). Le trigger est LENT, pas mort. **Toute
+  conclusion « X est structurellement mort » tirée d'un run de 60 ans est à re-mesurer
+  à l'horizon de partie avant d'ouvrir un correctif.**
+- **Le recoupement I0 ne se recoupe JAMAIS, et toujours dans le même sens.** Les 27
+  journaux ont un « hors registre » NÉGATIF (médiane −1 519 témoin / −1 891 essai
+  or/mois/empire, pire **−4 077,8** `temoin_s7:993`). Le signe constant exclut
+  « quelques buckets FX_* manquants » : un poste absent serait aléatoire en signe.
+  Ce qui manque est une SORTIE permanente valant 20-40 % de la ligne `taxes`.
+  Le reste W2-4 (« hors registre +149,9 ») était un an-120 sur 2 empires.
+- **Le frein de levée n'a pas de prise sur la queue.** Médiane `armée/limite`
+  30-45 % (le chantier W1-F a bien travaillé) mais **max 432 %** (`temoin_s3:1017`),
+  331 %, 325 %, 313 %… dans 27/27. Et `solde/revenu` max **19 066 %**
+  (`temoin_s60:972`) — produit par un dénominateur proche de 0 chez les micro-États :
+  **la métrique est inutilisable comme gate sans plancher de revenu.**
+- **W2-3 « aucune armée fantôme » est réfuté** : `essai_s11:698` `Ligue Dhûrganyn
+  64 rég · 378 k hab · **or 184 577** · **0 rgt** / limite 51`, stock
+  `Armes lourdes 127 329 · Armes de trait 108 922`. Idem `essai_s3333:650`
+  (or 59 502, Armes de trait 126 467, 0 rgt), `essai_s4243:651`, `temoin_s90:790`
+  (73 rég, 5 rgt / limite 57). Ni l'or, ni les armes, ni la pop : la cause est
+  ailleurs (pool `ARMY_POOL_FRAC` sur `prov[]`, ou un gate d'unité).
+- **Le prix du grain n'est réparé qu'à moitié** : médiane du corpus **0,23** pour une
+  base 1,00, et **0,000 EXACT dans 5 sims sur 27** (`temoin_s3:102`, `temoin_s777:102`,
+  `essai_s1:101`, `essai_s3:101`, `essai_s4243:101`). La ligne `marché : grain` du bloc
+  « par âge » se tient beaucoup mieux (0,15-3,74) : **le grain moribond est un fait de
+  PROVINCE, pas un fait de marché** — c'est le plancher indexé `price_level` qui
+  retombe à zéro là où le trésor est bas.
+- **La distribution des doctrines s'est retournée** (1 209 doctrines actives, 13 sims) :
+  Technologie **×16** (0,6 % → 9,6 %), Connaissances **×11,5**, Offense/Défense **×1,9**,
+  **Faustien sort du code mort** (1 adoption, `essai_s11:113`) — mais Aristocratie
+  s'effondre (13,0 % → **1,6 %**) et **Colonisation avec elle (14,2 % → 4,4 %)**.
+  Conséquence directe : **juge martial 62 % → 86 %**, **juge côtier 77 % → 30 %**.
+  Le courant Populaire a pris la place d'Aristocratie (55 % des courants contre 21 %).
+- **Divin : la porte est OUVERTE, le slot ne l'est pas.** 33-35 % des empires ont une
+  religion d'État dans presque tous les mondes (`temoin_s90:118` 12/20,
+  `essai_s11:134` 9/17) avec des assiettes énormes (`temoin_s2026:118` fidèles
+  Σ 48 878) — et **0 adoption sur 1 209**. Le blocage n'est plus la foi (W1-E a bien
+  travaillé), c'est la compétition de courant contre Populaire.
+- **Le leader technologique finit l'arbre** : `arbre RECHERCHÉ … max **100 %**` dans
+  **23 journaux sur 27** pour une moyenne de 37-42 %. L'exposant 0,65 freine l'empire
+  moyen, pas le premier. Le reste W1-C (renchérir t4/t5) est confirmé, plus durement
+  que son extrapolation à 200 ans.
+- **`arbre HÉRITÉ (§27)` vit enfin** — il fallait 250 ans : non nul dans 4 journaux,
+  jusqu'à `essai_s2:1009` **11 empires à 92 %**. W1-C avait raison de dire « P8 n'est
+  pas mesurable sous 180 ans ».
+- **Population : le correctif le mieux tenu de la vague.** `écart +0 = 0.0 %` et
+  `0 groupe(s) hors invariant` dans **27/27**, âmes/strates 97,8-100,4 %. Sans une
+  exception. En revanche les **FIGÉES sont bimodales** (5 % à **61 %**,
+  `temoin_s2026:641`) et un empire entier peut être gelé (`essai_s1009:530`
+  `Ordre Khazdin 22 prov, **91 % figées**`).
+- **Décrochage (W2-3) tient à 250 ans** : 18,5-19,7 % de décrochages médians, bande
+  15,7-26,0 %, **0 nul dans 27/27**, `déroutes + décrochages = batailles` partout.
+
+### Pièges
+
+- **Un `.rc` à 0 ne prouve pas que la sim a tourné, et un `.rc` non nul ne prouve pas
+  un échec moteur.** Ici les `127` sont des runs TUÉS par la coupure, pas des
+  invariants cassés. Le résumé du script (« runs en ÉCHEC ») les aurait nommés — mais
+  il n'a jamais tourné.
+- **`hubs` : le plancher de volume A16 n'est posé qu'à MOITIÉ.** `scps/chronicle.c:2234`
+  (ligne par-sim) refuse le pourcentage sous V=500 ; `scps/chronicle.c:3045` (SYNTHÈSE)
+  ne le refuse pas. D'où `temoin_s2026:694` « **marché atone** (V=424) » suivi de
+  `:776` « **100 %** du commerce mondial ». Ne jamais citer la ligne SYNTHÈSE des hubs
+  sans regarder la ligne par-sim.
+- **« Divin ADOPTABLE » est une chaîne EN DUR** (`scps/chronicle.c:1804`), imprimée même
+  quand `nfoi = 0` : `temoin_s7:118` dit `0/9 … — Divin ADOPTABLE`. Ce n'est pas un
+  verdict du moteur, c'est une étiquette. Ne pas la lire comme une mesure.
+- **`armée N (M rgt)` : `N` n'a toujours aucun rapport avec `M`** (piège W2-3, toujours
+  actif) — `N` est `diplo_mil_power`. Lire uniquement `M rgt / limite L`.
+- **Comparer ce sweep au 10×200 exige de la prudence sur DEUX axes à la fois** :
+  l'horizon (250 vs 200) ET le binaire (trésor national, F2, prix). La moitié des
+  écarts peut être un effet d'horizon. Sans point à 120 ans dans le MÊME binaire on ne
+  peut pas séparer. **C'est la limite la plus lourde du corpus.**
+- **`reps_per_seed=1`** : aucune répétition, donc aucune mesure de bruit intra-graine.
+  Les médianes sur 13 paires tiennent ; **les Δ par graine ne sont pas des signaux**.
+- **Les 13 graines arrivées ne sont pas un tirage aléatoire des 50** : ce sont les plus
+  RAPIDES, donc les mondes les plus petits. Biais à déclarer dans toute extrapolation.
+- **`LEDGERS âmes/strates PAR PROVINCE`** : la médiane (0,1 %) et le max (jusqu'à
+  **130 941 %**, `temoin_s3:814`) racontent deux histoires. Le max est une province par
+  monde (colons de `demography_on_conquest`, reste W2-2), pas un état du ledger.
+
+### Restes
+
+- **Le trou du recoupement I0 est le premier chantier** : tant qu'il vaut 20-40 % de
+  `taxes`, aucune mesure monétaire du chronicle ne peut servir de gate. Proposition
+  P1 du rapport : bucket `FX_AUTRES` par différence, imprimé, puis ventilé.
+- **Instrumenter le refus de levée** (P3) : ajouter la RAISON à la ligne
+  `armée N (M rgt / limite L)` avant de toucher `ARMY_POOL_FRAC`. Print-only,
+  golden-neutre.
+- **Le plancher de prix du grain** (P2) : découpler du trésor. C'est à la limite de la
+  doctrine « pas de cap » (un plancher de PRIX n'est pas un plafond de quantité) —
+  **décision joueur**.
+- **Systèmes morts à trancher (décision joueur)** : marine (0 coque, 0 fourniture, et
+  pourtant 25-36 Scieries navales bâties par sim), ralliement culturel des hameaux
+  (0/27), fins RÉCHAUFFEMENT/ASCENSION/SANG (0/27), classe servile (≤ 0,9 %, **0 dans
+  `temoin_s512:742`**), guerres anti-piraterie (0/27), « Pont effondré » (0/27).
+  Aujourd'hui le chronicle s'accuse lui-même 27 fois (« NE doit plus être zéro »).
+- **`brassage : 0 flux` sur 250 ans dans 9 journaux sur 27** (contre 2/20 au sweep
+  précédent) : le canal migratoire s'éteint plus souvent qu'avant. Non diagnostiqué.
+- **`L'Année Sans Été` manque à la ventilation du directeur dans `temoin_s1:925` et
+  `essai_s1:943`** seulement (présente dans les 25 autres) : tirage manqué ou ligne
+  tronquée, non tranché.
+- **Ne PAS assouplir Marbrive** sur la foi du reste W2-6 : re-juger sur les 63
+  déclenchements mesurés ici.
+- **Aucun fichier moteur n'a été touché.** Livrables : `docs/SWEEP_VALID_W1W2_2026-09-04.md`
+  + cet append. Le §3 du rapport `docs/RAPPORT_CORRECTIFS_SWEEP_2026-09-04.md` reste à
+  remplir par l'orchestrateur à partir de ce dépouillement.
