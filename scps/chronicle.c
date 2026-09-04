@@ -2223,7 +2223,7 @@ int main(int argc, char **argv){
                  * assiettes typées (mêmes multiplicateurs des deux côtés), lue print-only du
                  * moteur — aucun recalcul. Muette quand rien n'est au front. */
                 { double sh = (double)warhost_corps_pay_share(c);
-                  if (sh>0.005) printf(" · solde %.0f or/an dont corps %.0f (%.0f%%)",
+                  if (sh>0.005 && pay_c>0.5) printf(" · solde %.0f or/an dont corps %.0f (%.0f%%)",
                                        pay_c, pay_c*sh, 100.0*sh); }
                 printf("\n");
                 if (fl_c>0.0 && g_fl_n<8192){ g_fl_all[g_fl_n]=100.0*(double)warhost_units(s.host,c)/fl_c; g_fl_n++; }

@@ -14070,3 +14070,35 @@ de plus dans `scps_campaign.c` — motif `campaign_deployed_class`), + une clé 
   byte-identiques** (12 ans ET 83+250 ans) : le kill-switch est prouvé des deux côtés.
   Reste vert : `make test` 42/42 (warhost_demo 12/12, campaign_demo 34/34),
   `make determinism`, `make lang-check` 125/125.
+
+### Verdict de la run appariée (runs/A4_solde_corps/, 250 ans, 6 empires · 12 cités, off=WH_PAY_CORPS=0 vs on=défaut)
+**OUI, l'armée fond par l'économie, et la queue se ferme.** Apparié off→on, les trois graines :
+| | armée/limite MAX | solde/revenu MAX | rgt désertés | poste `soldes` (or/mois/empire) |
+|---|---|---|---|---|
+| témoin s3 (AI_DOCT=0) | **432 % → 185 %** | 3981 % → **1175 %** | 1918 → **2566** | −75,1 → **−63,5** |
+| témoin s60 (AI_DOCT=0) | **218 % → 138 %** | 19066 % → **1805 %** | 1788 → **3140** | −562,3 → **−148,7** |
+| essai s11 | **331 % → 185 %** | 437 % → 979 % | 2300 → **2473** | −111,7 → **−82,7** |
+- **Le mécanisme est le bon** : plus de désertions (+7 % à +76 %) ET une facture de solde
+  PLUS BASSE à l'arrivée — l'État finit par payer moins parce qu'il entretient moins, pas
+  parce qu'on a plafonné quoi que ce soit. Le max armée/limite tombe sur **les trois**
+  graines. Zéro corps facturé côté `off` (0 ligne « dont corps » vs 29/13/11 côté `on`) :
+  le kill-switch se voit aussi dans la télémétrie.
+- **La solde des corps est massive et jamais marginale** : parts mesurées 4 % → **100 %**
+  de la solde d'un pays ; les cas à 100 % sont exactement le trou (`0 rgt / limite 7 ·
+  solde/revenu 638 %`) — un pays à zéro régiment de host qui payait ZÉRO et paie enfin.
+- **Le 979 % de s11 n'est PAS une régression** : c'est un micro-État de 3 rgt à 85 or/an
+  de solde sur ~9 or/an de revenu — un dénominateur famélique, pas un doomstack (son max
+  armée/limite tombe de 331 % à 185 %). La queue mesurée en RÉGIMENTS se ferme partout.
+- **Pas d'effet pervers sur la guerre** : les guerres se déclenchent toujours (284→366,
+  279→317, 286→276), les batailles TRANCHENT (déroutes 79-83 % des batailles dans les deux
+  bras, **0 nul** partout), et la conquête continue (1er empire s3 18→**32 rég**).
+- **Pas d'empires ruinés par leur front, sauf un signal à surveiller** : intérêts de dette
+  en BAISSE sur s3 (−45,9→−22,9) et s11 (−137,8→−123,8), taxes stables ou en hausse. Mais
+  **s60 `on` diverge** : intérêts −8,9 → **−344,8**, grain médian 0,23 → 1,51, satisfaction
+  Laborer 56 % → 36 %, **provinces figées 10 % → 38 %**. Une graine sur trois, sens inverse
+  des deux autres ⇒ **trajectoire chaotique probable, PAS un verdict** — à re-juger sur un
+  apparié 3×3 avant d'incriminer A4.
+**Seule correction à décrire (cosmétique, print-only, chronicle.c ~2194)** : la queue
+s'imprime dès que la part > 0,5 %, même quand `FX_SOLDE` de l'année vaut ~0 — d'où deux
+lignes `solde 0 or/an dont corps 0 (100%)` et `solde -0 or/an dont corps -0 (50%)`.
+Correctif : gater sur `sh>0.005 && pay_c>0.5` au lieu de `sh>0.005`. Aucun effet moteur.
