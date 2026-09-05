@@ -7,6 +7,7 @@ const Frame = preload("res://ui/frame.gd")
 const InfoRef = preload("res://ui/info_ref.gd")
 const NavigationHub = preload("res://ui/navigation_hub.gd")
 const UIKit = preload("res://ui/uikit.gd")   # load_img() export-safe (curseur, etc.)
+const ParchTheme = preload("res://ui/parch_theme.gd")
 
 var _country_panel: Control
 var _sidebar: Control
@@ -17,6 +18,12 @@ var _budget_v2: Control        # PILOTE « grand livre parchemin » (conteneurs 
 var _prov_panel_v2: Control    # PILOTE fiche province « conteneurs natifs + Theme parchemin », touche V
 var _empire_win: Control       # FENÊTRE EMPIRE à onglets (Économie/Population/Diplomatie/Conseil), touche E
 var _doctrine_panel: Control   # UI-DOCTRINE P2 : les 6 slots de Doctrines, ouvert par la cellule Influence (topbar)
+var _dessein_panel: Control   # arbre d'ambitions joueur, façade dessein_info/seal_dessein
+var _discovery_panel: Control # aide contextuelle depuis l'état courant
+var _dessein_button: Button
+var _discovery_button: Button
+var _order_log_panel: Control
+var _order_log_button: Button
 var _prov_detail: Control
 var _menu: Control
 var _religion: Control
@@ -308,6 +315,40 @@ func _ready() -> void:
 	_doctrine_panel.name = "DoctrinePanel"
 	_doctrine_panel.visible = false   # add_to_group("draggable") : fait dans son propre _ready()
 	ui.add_child(_doctrine_panel)
+	# DESSEINS : accès permanent dans le shell, sans modifier la topbar ni le rail
+	# existants. Le panneau lit exclusivement la façade moteur et reste dans la pile Échap.
+	_dessein_panel = load("res://ui/desseins_panel.gd").new()
+	_dessein_panel.name = "DesseinsPanel"
+	_dessein_panel.visible = false
+	ui.add_child(_dessein_panel)
+	_dessein_panel.target_requested.connect(func(request: Dictionary): _nav.go(request))
+	_dessein_button = _shell_button(tr("T_DESS_TITLE"), Vector2(Frame.SIDEBAR_W + 12.0, Frame.TOPBAR_H + 8.0))
+	_dessein_button.pressed.connect(func():
+		if _dessein_panel.visible: _dessein_panel.close_panel()
+		else: _dessein_panel.open())
+	ui.add_child(_dessein_button)
+	# DÉCOUVERTES : pistes réelles, dismissibles et reliées aux panneaux existants.
+	_discovery_panel = load("res://ui/discovery_panel.gd").new()
+	_discovery_panel.name = "DiscoveryPanel"
+	_discovery_panel.visible = false
+	ui.add_child(_discovery_panel)
+	_discovery_panel.navigate_requested.connect(func(request: Dictionary): _nav.go(request))
+	_discovery_panel.dessein_requested.connect(func(): _dessein_panel.open())
+	_discovery_button = _shell_button("? " + tr("T_DISC_TITLE"), Vector2(Frame.SIDEBAR_W + 12.0, Frame.TOPBAR_H + 43.0))
+	_discovery_button.pressed.connect(func():
+		if _discovery_panel.visible: _discovery_panel.close_panel()
+		else: _discovery_panel.open())
+	ui.add_child(_discovery_button)
+	# JOURNAL DES ORDRES : états transient du moteur, y compris pending à la pause.
+	_order_log_panel = load("res://ui/order_log_panel.gd").new()
+	_order_log_panel.name = "OrderLogPanel"
+	_order_log_panel.visible = false
+	ui.add_child(_order_log_panel)
+	_order_log_button = _shell_button(tr("T_ORDER_TITLE"), Vector2(Frame.SIDEBAR_W + 12.0, Frame.TOPBAR_H + 78.0))
+	_order_log_button.pressed.connect(func():
+		if _order_log_panel.visible: _order_log_panel.close_panel()
+		else: _order_log_panel.open())
+	ui.add_child(_order_log_button)
 	# LA fiche province (D1-UNIFICATION, 2026-07-18) : conteneurs natifs + Theme
 	# parchemin, doctrine « bâti seul + hover + /mois ». province_panel.gd (legacy,
 	# dessin immédiat, nomenclature divergente Laboureurs/Artisans/Noblesse) est
@@ -507,6 +548,28 @@ func _ready() -> void:
 
 	Sim.set_speed(0)            # monde en pause tant que le menu est ouvert
 
+func _shell_button(label: String, at: Vector2) -> Button:
+	var b := Button.new()
+	b.text = label
+	b.position = at
+	b.custom_minimum_size = Vector2(136.0, 30.0)
+	b.focus_mode = Control.FOCUS_NONE
+	b.add_theme_font_size_override("font_size", 14)
+	b.add_theme_stylebox_override("normal", ParchTheme.sb(ParchTheme.PANEL_BG, ParchTheme.BORDER, 1, 3, 8, 8, 3, 3))
+	b.add_theme_stylebox_override("hover", ParchTheme.sb(ParchTheme.HEADER_BG, ParchTheme.TAB_UNDERLINE, 1, 3, 8, 8, 3, 3))
+	b.add_theme_stylebox_override("pressed", ParchTheme.sb(ParchTheme.DIVIDER, ParchTheme.TAB_UNDERLINE, 1, 3, 8, 8, 3, 3))
+	b.add_theme_color_override("font_color", ParchTheme.INK)
+	b.add_theme_color_override("font_hover_color", ParchTheme.INK)
+	b.add_theme_color_override("font_pressed_color", ParchTheme.INK)
+	return b
+
+func _process(_delta: float) -> void:
+	# Les portes du shell ne sont pertinentes qu'après « Lancer » ou « Charger ».
+	var on := Sim.game_on
+	if _dessein_button != null: _dessein_button.visible = on
+	if _discovery_button != null: _discovery_button.visible = on
+	if _order_log_button != null: _order_log_button.visible = on
+
 ## ESPACE = pause, intercepté EN AMONT du focus GUI (_input passe avant les boutons
 ## focusés) — le focus clavier reste VIVANT partout (Tab/Entrée, audit 2026-07-10) ;
 ## on ne vole la barre d'espace qu'aux boutons, jamais à un champ de saisie.
@@ -646,6 +709,18 @@ func _unhandled_input(e: InputEvent) -> void:
 				else:
 					_empire_win.open()
 					Sound.play("ui_parchment_open")
+		KEY_D:
+			if _dessein_panel != null and Sim.game_on:
+				if _dessein_panel.visible: _dessein_panel.close_panel()
+				else: _dessein_panel.open()
+		KEY_F:
+			if _discovery_panel != null and Sim.game_on:
+				if _discovery_panel.visible: _discovery_panel.close_panel()
+				else: _discovery_panel.open()
+		KEY_O:
+			if _order_log_panel != null and Sim.game_on:
+				if _order_log_panel.visible: _order_log_panel.close_panel()
+				else: _order_log_panel.open()
 		KEY_H:
 			if _chronique != null:
 				if _chronique.visible:
@@ -719,6 +794,11 @@ func _route_navigation(request: Dictionary) -> void:
 	var map = get_node_or_null("MapView")
 	match kind:
 		InfoRef.SIDEBAR_TAB:
+			if surface == "budget" and _budget_v2 != null and Sim.game_on:
+				_budget_v2.visible = true
+				if _budget_v2.has_method("refresh"):
+					_budget_v2.refresh()
+				return
 			if _sidebar != null:
 				_sidebar.open_tab(int(id), context)
 		InfoRef.RESOURCE:
@@ -839,7 +919,7 @@ func _close_topmost() -> bool:
 			return true
 	for p in [_memory_panel, _search_palette, _construct, _tech, _econ, _religion, _prov_detail,
 			_devpanel, _country_actions, _chronique, _age_recap, _epilogue, _battle_panel, _codex,
-			_budget_v2, _empire_win]:
+			_budget_v2, _empire_win, _dessein_panel, _discovery_panel, _order_log_panel]:
 		if p != null and p.visible:
 			p.visible = false
 			Sound.play("ui_parchment_close")

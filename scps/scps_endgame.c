@@ -114,7 +114,7 @@ static void endgame_entropy_widen(EndgameState *eg, WorldProsperity *wp,
     if (ts) {
         float tech_ent = 0.f;
         for (int c = 0; c < nc && c < SCPS_MAX_COUNTRY; c++) tech_ent += ts[c].charge;
-        wp->entropy += tune_f("ENTROPY_TECH_W", 1.0f) * tech_ent;
+        wp->entropy += tune_f("ENTROPY_TECH_W", 0.2f) * tech_ent;
     }
     wp->entropy += tune_f("ENTROPY_BREACH_W", 0.6f) * wp->age_breach_flux;
     if (eg && camp) {
@@ -518,7 +518,7 @@ static int chaud_key_cmp(const void *a, const void *b) {
 #define CHAUD_COAST_MAX (SCPS_N/4)   /* capacité du tri annuel (les côtes d'une carte 1024×512 ≪) */
 static void chaud_step(EndgameState *eg, World *w, WorldEconomy *econ, Campaign *camp) {
     /* (a) la rampe de chaleur — delta RÉELLEMENT appliqué (borné, comme le froid). */
-    float ramp = tune_f("HEAT_RAMP_PER_YEAR", 0.006f);
+    float ramp = tune_f("HEAT_RAMP_PER_YEAR", 0.0099999998f);
     float prev = eg->heat_offset;
     eg->heat_offset += ramp;
     if (eg->heat_offset > 1.0f) eg->heat_offset = 1.0f;   /* plafond : monde étuve */
@@ -1056,10 +1056,15 @@ static int endgame_metab_count_ts(const World *w, const WorldEconomy *econ,
 }
 
 /* API publique (header) : sans TechState — repli metab-seule (arch_depth absent).
- * Le tick interne (wonder_tick) utilise endgame_metab_count_ts (avec ts) pour la
- * barre COMPLÈTE (contact OU métabolisation individualisée). */
+ * Le tick interne (wonder_tick) et la fondation d'évènement utilisent la variante
+ * avec ts[] pour la barre COMPLÈTE (contact OU métabolisation individualisée). */
 int endgame_metab_count(const World *w, const WorldEconomy *econ, int cid) {
     return endgame_metab_count_ts(w, econ, NULL, cid);
+}
+
+int endgame_wonder_metab_count(const World *w, const WorldEconomy *econ,
+                               const TechState ts[], int cid) {
+    return endgame_metab_count_ts(w, econ, ts, cid);
 }
 
 /* Requis de métabolisation du palier COURANT (décision #2 : FORGE≥3, SOCIÉTÉ≥4,
@@ -1180,7 +1185,7 @@ static void wonder_tick(EndgameState *eg, World *w, WorldEconomy *econ,
     bool done_state = (eg->merv==MERV_FORGE_DONE || eg->merv==MERV_SOCIETE_DONE || eg->merv==MERV_SAVOIR_DONE);
     if (!done_state) {
         int req = endgame_metab_required(eg->merv);
-        if (req > 0 && endgame_metab_count_ts(w, econ, ts, eg->merv_country) < req) return;  /* sous son compte : gelé */
+        if (req > 0 && endgame_wonder_metab_count(w, econ, ts, eg->merv_country) < req) return;  /* sous son compte : gelé */
         int phase = (eg->merv==MERV_FORGE)?0 : (eg->merv==MERV_SOCIETE)?1 : 2;
         float feed = endgame_empire_consume(econ, eg->merv_country, MERV_RARE[phase], MERV_RARE_PER_YEAR);
         if (feed > 0.f) {                                       /* la rare alimente → on bâtit */
@@ -1208,6 +1213,10 @@ static void wonder_tick(EndgameState *eg, World *w, WorldEconomy *econ,
     if (eg->merv == MERV_FORGE_DONE)        { eg->merv = MERV_SOCIETE; mervdiag_transition(eg, w, year, "enchaîne SOCIÉTÉ"); }
     else if (eg->merv == MERV_SOCIETE_DONE) { eg->merv = MERV_SAVOIR; mervdiag_transition(eg, w, year, "enchaîne SAVOIR"); }
     else if (eg->merv == MERV_SAVOIR_DONE) {
+        /* La course est déjà perdue si une apocalypse a été latchée. Ne pas
+         * transformer le palier achevé en ascension silencieuse, ni effacer
+         * l'empire sans publier la victoire correspondante. */
+        if (eg->fired) return;
         eg->merv = MERV_ASCENDED;
         mervdiag_transition(eg, w, year, "VICTOIRE");
         if (!eg->fired) {
@@ -1362,8 +1371,8 @@ static void findiag_fire(const EndgameState *eg, const WorldEconomy *econ,
         "feu/tete %.2f (seuil %.1f)\n",
         year, FN[fi], voie, (double)wp->entropy, (double)tune_f("ENTROPY_FIN", 50.f),
         (double)wp->faust_consumed[0], (double)wp->faust_consumed[1], (double)wp->faust_consumed[2],
-        endgame_blood_ratio(eg, econ), (double)tune_f("ENDGAME_BLOOD_FRAC", 0.20f),
-        endgame_fuel_ratio(eg, econ), (double)tune_f("FUEL_FALLBACK_MIN", 4.0f));
+        endgame_blood_ratio(eg, econ), (double)tune_f("ENDGAME_BLOOD_FRAC", 0.090000004f),
+        endgame_fuel_ratio(eg, econ), (double)tune_f("FUEL_FALLBACK_MIN", 2.0f));
 }
 
 /* ── F1 — DIAGNOSTIC DES COURSES (SCPS_RACEDIAG, mission FINS, 2026-07-16) ──────
@@ -1585,7 +1594,7 @@ static void endgame_select_and_fire(EndgameState *eg, const World *w,
      * au sommet de cette fonction). Gardé ici mot pour mot (kill-switch
      * FINS_RACE=0 ⇒ golden pre-fins byte-identique). */
     if (!race) {
-        bool sang_ok = endgame_blood_ratio(eg, econ) >= (double)tune_f("ENDGAME_BLOOD_FRAC", 0.20f);
+        bool sang_ok = endgame_blood_ratio(eg, econ) >= (double)tune_f("ENDGAME_BLOOD_FRAC", 0.090000004f);
         if (sang_ok && campaign_get_human() >= 0)
             sang_ok = endgame_blood_player_share(eg) >= (double)tune_f("BLOOD_PLAYER_SHARE", 0.25f);
         if (sang_ok) {
@@ -1654,7 +1663,7 @@ void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
         fprintf(stderr, "[ENTDIAG] an %d : entropie %.1f / fin %.0f · fuel_ratio %.2f (repli seuil %.1f)%s%s%s\n",
                 year, (double)wp->entropy, (double)tune_f("ENTROPY_FIN", 50.f),
                 endgame_fuel_ratio(eg, econ),
-                (double)tune_f("FUEL_FALLBACK_MIN", 4.f),
+                (double)tune_f("FUEL_FALLBACK_MIN", 2.0f),
                 eg->fired ? " [" : "", eg->fired ? FN[fn_i] : "",
                 eg->fired ? "]" : "");
     }

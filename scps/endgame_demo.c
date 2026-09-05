@@ -108,7 +108,7 @@ int main(void) {
     prosperity_init(wp, w);
 
     printf("\nC1 widen : la charge de tech faustienne abonde l'entropie\n");
-    float TECH_W = tune_f("ENTROPY_TECH_W", 1.0f);
+    float TECH_W = tune_f("ENTROPY_TECH_W", 0.2f);
     float FIN0   = tune_f("ENTROPY_FIN", 50.f);
     endgame_init(&eg);
     wp->entropy = 0.f; wp->entropy_epicenter = -1;
@@ -552,6 +552,34 @@ int main(void) {
     CHECK("terre INTACTE (biome/height inchangés — pas de carve)",
           probe_cell < 0 || (w->cell[probe_cell].biome == probe_bio && w->cell[probe_cell].height == probe_h));
 
+    /* ---- C6-R : course concurrente (audit de progression) ----------------
+     * An apocalypse is already latched when the final Wonder phase ticks;
+     * this remains in the ordinary suite as a permanent contract check. */
+        printf("\nC6-R course concurrente : apocalypse déjà latchée\n");
+        world_generate(w, &p); econ_init(econ, w); gen_population(w, econ); prosperity_init(wp, w);
+        econ_aggregate_regions(econ);
+        int race_player=-1;
+        for (int c=0;c<w->n_countries;c++)
+            if (w->country[c].role==POLITY_PLAYER || w->country[c].role==POLITY_ANTAGONIST){ race_player=c; break; }
+        int race_site=-1;
+        if (race_player>=0){
+            int cp=w->country[race_player].capital_prov;
+            if (cp>=0 && cp<w->n_provinces) race_site=w->province[cp].region;
+        }
+        static EndgameState race;
+        endgame_init(&race);
+        race.fired=true; race.fin=FIN_SANG; race.fin_year=180;
+        race.merv=MERV_SAVOIR_DONE; race.merv_country=race_player; race.merv_site_reg=race_site;
+        int owned_before=0;
+        for (int q=0;q<econ->n_prov;q++) if (econ->prov[q].owner==race_player) owned_before++;
+        CHECK("fixture : empire joueur et provinces présents", race_player>=0 && owned_before>0);
+        endgame_tick(&race,w,econ,wp,ts,NULL,NULL,NULL,NULL,race_player,181);
+        int owned_after=0;
+        for (int q=0;q<econ->n_prov;q++) if (econ->prov[q].owner==race_player) owned_after++;
+        CHECK("apocalypse préexistante : pas d'Ascension silencieuse", race.merv==MERV_SAVOIR_DONE &&
+              race.fired && race.fin==FIN_SANG);
+        CHECK("apocalypse préexistante : l'empire reste présent", owned_after==owned_before && owned_after>0);
+
     /* ---- C7 : V1a — le SANG (morts de guerre → entropie → FIN_SANG) --------- */
     printf("\nC7 apocalypse de SANG (morts de guerre, entropie unifiée, gate métabolisation)\n");
     world_generate(w, &p); econ_init(econ, w); gen_population(w, econ); prosperity_init(wp, w);
@@ -588,7 +616,7 @@ int main(void) {
      * donné FIN_EAU), le sang prime dès que le ratio franchit ENDGAME_BLOOD_FRAC. */
     endgame_init(&eg);
     endgame_set_pop_ref(&eg, econ);
-    double blood_frac = (double)tune_f("ENDGAME_BLOOD_FRAC", 0.20f);
+    double blood_frac = (double)tune_f("ENDGAME_BLOOD_FRAC", 0.090000004f);
     camp->dead_choc = (long)(eg.pop_ref * (blood_frac + 0.05));  /* nettement au-dessus du seuil */
     camp->dead_pursuit = 0;
     wp->entropy = tune_f("ENTROPY_FIN", 55.f) + 10.f;   /* seuil d'entropie déjà franchi */
@@ -707,7 +735,7 @@ int main(void) {
       world_generate(w, &p); econ_init(econ, w); gen_population(w, econ); prosperity_init(wp, w);
       for (int c = 0; c < SCPS_MAX_COUNTRY; c++) ts[c].charge = 0.f;
       endgame_init(&eg); endgame_set_pop_ref(&eg, econ);
-      double blood_frac2 = (double)tune_f("ENDGAME_BLOOD_FRAC", 0.20f);
+      double blood_frac2 = (double)tune_f("ENDGAME_BLOOD_FRAC", 0.090000004f);
       double share_thr = (double)tune_f("BLOOD_PLAYER_SHARE", 0.25f);
       /* ratio MONDIAL largement au-dessus du seuil, mais la part DU joueur (via le
        * jumeau) reste NULLE — un monde IA sanglant, un joueur qui n'a rien fait. */
@@ -735,7 +763,7 @@ int main(void) {
       world_generate(w, &p); econ_init(econ, w); gen_population(w, econ); prosperity_init(wp, w);
       for (int c = 0; c < SCPS_MAX_COUNTRY; c++) ts[c].charge = 0.f;
       endgame_init(&eg); endgame_set_pop_ref(&eg, econ);
-      double blood_frac3 = (double)tune_f("ENDGAME_BLOOD_FRAC", 0.20f);
+      double blood_frac3 = (double)tune_f("ENDGAME_BLOOD_FRAC", 0.090000004f);
       camp->dead_choc = (long)(eg.pop_ref * (blood_frac3 + 0.05));
       camp->dead_pursuit = 0; camp->dead_choc_player = 0; camp->dead_pursuit_player = 0;
       wp->entropy = tune_f("ENTROPY_FIN", 55.f) + 10.f;

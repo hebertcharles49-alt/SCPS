@@ -653,7 +653,7 @@ static bool trig_tarif_appris(const EventCtx *cx,int r){
 static bool trig_merv_fondation(const EventCtx *cx, int c){
     if (!cx->eg || cx->human_player<0 || c!=cx->human_player) return false;
     if (cx->eg->merv != MERV_NONE) return false;
-    return endgame_metab_count(cx->w, cx->econ, c) >= 3;
+    return endgame_wonder_metab_count(cx->w, cx->econ, cx->ts, c) >= 3;
 }
 static bool trig_merv_sacrifice(const EventCtx *cx, int c){
     if (!cx->eg || cx->human_player<0 || c!=cx->human_player) return false;
@@ -3191,14 +3191,14 @@ static bool age_trig_exchange(World *w, WorldEconomy *econ, WorldProsperity *wp,
     for (int r=0;r<econ->n_regions;r++){
         if (econ->region[r].owner<0) continue;
         habited++;
-        if (econ->region[r].route_pe > tune_f("AGE_EXCHANGE_NODE_VALUE",1.0f)) rich++;
+        if (econ->region[r].route_pe > tune_f("AGE_EXCHANGE_NODE_VALUE",2.5f)) rich++;
     }
-    if (rich < (int)tune_f("AGE_EXCHANGE_NODE_MIN",4.0f)) return false;
-    return habited>0 && (float)rich/(float)habited >= tune_f("AGE_EXCHANGE_NODE_SHARE",0.08f);
+    if (rich < (int)tune_f("AGE_EXCHANGE_NODE_MIN",10.0f)) return false;
+    return habited>0 && (float)rich/(float)habited >= tune_f("AGE_EXCHANGE_NODE_SHARE",0.2f);
 }
 static bool age_trig_discovery(World *w, WorldEconomy *econ, WorldProsperity *wp, const TechState ts[]){
     (void)econ;(void)wp;(void)ts;
-    if (w_living_count(w,wp) < (int)tune_f("AGE_DISCOVERY_COUNTRY_MIN",6.0f)) return false;
+    if (w_living_count(w,wp) < (int)tune_f("AGE_DISCOVERY_COUNTRY_MIN",8.0f)) return false;
     /* DÉPOUILLEMENT 2026-08-11 : le RATIO de paires connues était vrai dès l'an 3-5
      * (le rayon de fog de genèse rencontre assez de voisins). Une DÉCOUVERTE se
      * mesure en paires LOINTAINES : connaître ≥ FAR_PAIRS pays dont la capitale est
@@ -3207,7 +3207,7 @@ static bool age_trig_discovery(World *w, WorldEconomy *econ, WorldProsperity *wp
     float farc = tune_f("AGE_DISCOVERY_FAR_CELLS",200.f);
     if (farc > 0.f)
         return country_known_far_pair_count(w, farc) >= (int)tune_f("AGE_DISCOVERY_FAR_PAIRS",2.f);
-    return ages_known_pair_share(w) >= tune_f("AGE_DISCOVERY_KNOWN_PAIR_SHARE",0.12f);
+    return ages_known_pair_share(w) >= tune_f("AGE_DISCOVERY_KNOWN_PAIR_SHARE",0.22f);
 }
 static bool age_trig_empires(World *w, WorldEconomy *econ, WorldProsperity *wp, const TechState ts[],
                              WorldLegitimacy *wl, int year){
@@ -3226,8 +3226,8 @@ static bool age_trig_empires(World *w, WorldEconomy *econ, WorldProsperity *wp, 
         if (wl->years_held[r] >= (float)(year-5)) continue;
         world_n++; per_country[o]++;
     }
-    if (world_n < (int)tune_f("AGE_EMPIRES_REGIONS_WORLD",8.0f)) return false;
-    int need_one = (int)tune_f("AGE_EMPIRES_REGIONS_ONE_COUNTRY",4.0f);
+    if (world_n < (int)tune_f("AGE_EMPIRES_REGIONS_WORLD",20.0f)) return false;
+    int need_one = (int)tune_f("AGE_EMPIRES_REGIONS_ONE_COUNTRY",8.0f);
     for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++) if (per_country[c] >= need_one) return true;
     return false;
 }
@@ -3259,13 +3259,13 @@ static bool age_trig_lumieres(World *w, WorldProsperity *wp){
  * quand même avenir le second après coup. */
 static bool age_trig_soulevements(const EventsState *ev, World *w, WorldProsperity *wp){
     (void)ev; if (!wp) return false;
-    return events_count_revolutionary(w,wp) >= (int)tune_f("AGE_SOULEVEMENTS_MIN_COUNTRIES",2.0f);
+    return events_count_revolutionary(w,wp) >= (int)tune_f("AGE_SOULEVEMENTS_MIN_COUNTRIES",8.0f);
 }
 static bool age_trig_tyrans(const EventsState *ev, World *w, WorldProsperity *wp){
     (void)ev; if (!wp) return false;
-    return w_mean_fracture(w,wp) > tune_f("AGE_TYRANS_FRACTURE",3.0f)
+    return w_mean_fracture(w,wp) > tune_f("AGE_TYRANS_FRACTURE",0.30000001f)
         && w_mean_dereal(w,wp)   > tune_f("AGE_TYRANS_DEREAL",1.25f)
-        && w_mean_SI(w,wp)       < tune_f("AGE_TYRANS_SI",5.0f);
+        && w_mean_SI(w,wp)       < tune_f("AGE_TYRANS_SI",8.5f);
 }
 
 /* ---- JITTER SANS CHRONOLOGIE CACHÉE (hash pur, aucun état de rng partagé) ---- */
@@ -3295,7 +3295,7 @@ static uint32_t age_priority(uint32_t seed, AgeId a){
 
 /* ---- LEVIERS DE FACTION SCOPÉS (« que dans les pays MATÉRIELLEMENT concernés ») */
 static void age_lever_exchange(World *w, WorldEconomy *econ){
-    float y = tune_f("AGE_EXCHANGE_NODE_VALUE",1.0f);
+    float y = tune_f("AGE_EXCHANGE_NODE_VALUE",2.5f);
     float lv = tune_f("AGE_EXCHANGE_MERCHANT_LEVER",0.08f);
     bool hit[SCPS_MAX_COUNTRY]={0};
     for (int r=0;r<econ->n_regions;r++){
@@ -3306,7 +3306,7 @@ static void age_lever_exchange(World *w, WorldEconomy *econ){
         if (hit[c]) faction_lever_apply(c, FAC_MARCHAND, lv);
 }
 static void age_lever_discovery(World *w, WorldProsperity *wp){
-    float share_min = tune_f("AGE_DISCOVERY_KNOWN_PAIR_SHARE",0.12f);
+    float share_min = tune_f("AGE_DISCOVERY_KNOWN_PAIR_SHARE",0.22f);
     float lv_t = tune_f("AGE_DISCOVERY_TRANSGRESSEUR_LEVER",0.06f);
     float lv_m = tune_f("AGE_DISCOVERY_MERCHANT_LEVER",0.04f);
     int nc = nc_loop(w,wp);
@@ -3326,7 +3326,7 @@ static void age_lever_discovery(World *w, WorldProsperity *wp){
 static void age_lever_empires(World *w, WorldEconomy *econ, WorldLegitimacy *wl){
     if (!wl) return;
     float held_min = tune_f("AGE_EMPIRES_HELD_YEARS",35.0f);
-    int need_one = (int)tune_f("AGE_EMPIRES_REGIONS_ONE_COUNTRY",4.0f);
+    int need_one = (int)tune_f("AGE_EMPIRES_REGIONS_ONE_COUNTRY",8.0f);
     float lv = tune_f("AGE_EMPIRES_CONQUEROR_LEVER",0.10f);
     int per_country[SCPS_MAX_COUNTRY]={0};
     for (int r=0;r<econ->n_regions;r++){
@@ -3464,16 +3464,16 @@ bool events_check_ages(EventsState *ev, World *w, WorldEconomy *econ,
         for (int r=0;r<econ->n_regions;r++){
             if (econ->region[r].owner<0) continue;
             habited++;
-            if (econ->region[r].route_pe > tune_f("AGE_EXCHANGE_NODE_VALUE",1.0f)) rich++;
+            if (econ->region[r].route_pe > tune_f("AGE_EXCHANGE_NODE_VALUE",2.5f)) rich++;
         }
         fprintf(stderr,
             "[AGEDIAG] an %d : revolutionnaires=%d (seuil %d) | fracture_moy=%.2f (seuil>%.2f) "
             "dereal_moy=%.2f (seuil>%.2f) SI_moy=%.2f (seuil<%.2f) | Soulevements=%s Tyrans=%s "
             "dawned{S=%d,T=%d} | exch rich=%d/%d | pairs=%.3f\n",
-            year, events_count_revolutionary(w,wp), (int)tune_f("AGE_SOULEVEMENTS_MIN_COUNTRIES",2.0f),
-            (double)w_mean_fracture(w,wp), (double)tune_f("AGE_TYRANS_FRACTURE",3.0f),
+            year, events_count_revolutionary(w,wp), (int)tune_f("AGE_SOULEVEMENTS_MIN_COUNTRIES",8.0f),
+            (double)w_mean_fracture(w,wp), (double)tune_f("AGE_TYRANS_FRACTURE",0.30000001f),
             (double)w_mean_dereal(w,wp),   (double)tune_f("AGE_TYRANS_DEREAL",1.25f),
-            (double)w_mean_SI(w,wp),       (double)tune_f("AGE_TYRANS_SI",5.0f),
+            (double)w_mean_SI(w,wp),       (double)tune_f("AGE_TYRANS_SI",8.5f),
             trig[AGE_SOULEVEMENTS]?"VRAI":"faux", trig[AGE_TYRANS]?"VRAI":"faux",
             (int)ev->ages.dawned[AGE_SOULEVEMENTS], (int)ev->ages.dawned[AGE_TYRANS],
             rich, habited, (double)ages_known_pair_share(w));

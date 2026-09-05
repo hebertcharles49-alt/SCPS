@@ -6,6 +6,7 @@
  * (table redondante) et les stats. Le contre prime sur la qualité brute.
  */
 #include "scps_army.h"
+#include "scps_modparse.h"
 #include "scps_math.h"   /* xs32 partagé */
 #include "scps_tune.h"   /* Arc J : ARMY_POOL_FRAC (la part mobilisable d'une classe) */
 #include <string.h>
@@ -695,13 +696,15 @@ float siege_days(float defense_level, float food_months, float def_mult){
 
 /* ── MODTOOLS — surcharge des STATS D'UNITÉ par fichier (SCPS_MODS) ───────────
  * unit<TAB><unité><TAB><discipline><TAB><moral><TAB><mvt><TAB><commandement>
- * Sans fichier ⇒ valeurs compilées ⇒ golden/déterminisme INTACTS. */
+ * Sans fichier ⇒ valeurs compilées ⇒ golden/déterminisme INTACTS. Les champs
+ * numériques sont strictement finis et non négatifs ; une ligne est atomique. */
 static int army_split(char *line, char *out[], int maxf){
     int n=0; char *p=line;
     while (n<maxf){ out[n++]=p; char *t=strchr(p,'\t'); if(!t) break; *t=0; p=t+1; }
     return n;
 }
 static int unit_by_name(const char *t){
+    if(!t) return -1;
     for (int i=0;i<U_COUNT;i++){ const char *n=unit_name((UnitType)i); if(n&&strcmp(n,t)==0) return i; }
     return -1;
 }
@@ -716,15 +719,31 @@ int army_moddata_load(const char *path){
     if(!path||!*path) return -1;
     FILE *f=fopen(path,"r"); if(!f) return -1;
     char line[256]; int applied=0; char *fld[7];
+    int line_no=0;
     while(fgets(line,sizeof line,f)){
-        if(line[0]=='#') continue;
+        line_no++;
+        if(!scps_mod_line_complete(f,line)){ scps_mod_invalid(path,line_no,"ligne trop longue"); continue; }
+        char *first=scps_mod_first_nonspace(line);
+        if(!first||*first=='#'||*first=='\0') continue;
         char *nl=strpbrk(line,"\r\n"); if(nl)*nl=0;
-        int nf=army_split(line,fld,7); if(nf<6) continue;
-        if(strcmp(fld[0],"unit")!=0) continue;
-        int i=unit_by_name(fld[1]); if(i<0) continue;
-        UNITS[i].discipline=(float)atof(fld[2]); UNITS[i].moral=(float)atof(fld[3]);
-        UNITS[i].mouvement=(float)atof(fld[4]); UNITS[i].commandement=(float)atof(fld[5]);
-        applied++;
+        int nf=army_split(first,fld,7); float discipline=0.f,moral=0.f,mouvement=0.f,commandement=0.f;
+        if(strcmp(fld[0],"unit")==0){
+            int i=unit_by_name(nf>=2?fld[1]:NULL);
+            int valid=(nf==6 && i>=0 && i<U_COUNT &&
+                       scps_mod_float(fld[2],&discipline) && scps_mod_float(fld[3],&moral) &&
+                       scps_mod_float(fld[4],&mouvement) && scps_mod_float(fld[5],&commandement) &&
+                       discipline>=0.f && moral>=0.f && mouvement>=0.f && commandement>=0.f);
+            if(!valid){ scps_mod_invalid(path,line_no,"unité/domaine"); continue; }
+            UNITS[i].discipline=discipline; UNITS[i].moral=moral;
+            UNITS[i].mouvement=mouvement; UNITS[i].commandement=commandement;
+            applied++;
+        } else if(strcmp(fld[0],"price")==0 || strcmp(fld[0],"recipe")==0 ||
+                  strcmp(fld[0],"basecost")==0 || strcmp(fld[0],"techbonus")==0){
+        /* SCPS_MODS is deliberately shared by all three loaders. */
+        continue;
+    } else {
+        scps_mod_invalid(path,line_no,"enregistrement inconnu");
+    }
     }
     fclose(f);
     if(applied>0) fprintf(stderr,"[mods] unités : %d surchargée(s) depuis %s.\n",applied,path);

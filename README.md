@@ -23,6 +23,13 @@ make scps && ./scps_viewer              # visualiseur interactif (requiert SDL2/
 `stb_perlin.h` est vendorisé : le moteur est entièrement autonome (aucune
 dépendance hors SDL2, et SDL2 n'est requis que pour le visualiseur).
 
+Le front Godot est prévu pour **Godot 4.6.3**. Les sauvegardes du jeu sont
+placées par Godot dans `user://saves` (sous Windows :
+`%APPDATA%/Godot/app_userdata/SCPS/saves`). Le format courant est **111** ; une
+sauvegarde d'un format antérieur est refusée proprement et ne modifie pas la
+partie active. Pour fabriquer un paquet Windows, définir `GODOT_BIN` vers le
+binaire Godot 4.6.3 puis lancer `packaging/windows/build_godot.sh` depuis MSYS2.
+
 ## Modules
 
 | Module | Rôle |

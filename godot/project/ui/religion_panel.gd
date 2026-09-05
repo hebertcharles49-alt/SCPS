@@ -28,6 +28,7 @@ var _credo_opt: OptionButton
 var _trad_opt := [null, null, null]
 var _trad_tip := [null, null, null]
 var _valid_lbl: Label
+var _action_lbl: Label
 var _state_lbl: Label
 var _title_lbl: Label
 var _found_btn: Button
@@ -106,6 +107,10 @@ func _build_ui() -> void:
 
 	_valid_lbl = Label.new()
 	col.add_child(_valid_lbl)
+	_action_lbl = Label.new()
+	_action_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_action_lbl.add_theme_color_override("font_color", C_BAD)
+	col.add_child(_action_lbl)
 
 	# lot M — le LETTRÉ (P6, Missionnaire/Gourou/Moine selon crédo) : état + recrutement.
 	# Il agit à la CAPITALE (CONVERT répand · STABILIZE exempte du malus · RESIST bloque).
@@ -208,7 +213,11 @@ func _refresh() -> void:
 			_state_lbl.text = "Aucune foi fondée. Composez un crédo + 3 traditions."
 			_found_btn.text = "Fonder"
 		else:
-			_state_lbl.text = "Le monde a atteint son nombre de religions (⌈empires/3⌉) — vous RALLIEZ une foi existante."
+			var cap := -1
+			if Sim.world.has_method("religion_cap"):
+				cap = int(Sim.world.religion_cap())
+			var cap_text := (" (%d maximum)" % cap) if cap > 0 else ""
+			_state_lbl.text = "Le plafond de religions est atteint%s — vous ralliez une foi existante." % cap_text
 			_found_btn.text = "Rallier une foi"
 		# D4 — « Rallier une foi » nomme le concept (Foi) ; « Fonder » seul, non.
 		_found_btn.tooltip_text = Concepts.def_of_label(_found_btn.text)
@@ -218,12 +227,21 @@ func _refresh() -> void:
 	# validité (axes distincts)
 	var t0 := _cur_pole(0); var t1 := _cur_pole(1); var t2 := _cur_pole(2)
 	var ok: bool = Sim.world.religion_picks_valid(t0, t1, t2)
+	var can_create := true
+	if not has and Sim.world.has_method("religion_can_found"):
+		can_create = int(Sim.world.religion_can_found()) == 1
+	var founding_ready := true
+	if not has and can_create and Sim.world.has_method("religion_founding_ready"):
+		founding_ready = int(Sim.world.religion_founding_ready(me)) == 1
 	if not has:
-		var can_create := true
-		if Sim.world.has_method("religion_can_found"):
-			can_create = int(Sim.world.religion_can_found()) == 1
-		_found_btn.disabled = (not ok) if can_create else false   # rallier ne dépend pas des picks
-	if ok:
+		_found_btn.disabled = ((not ok) or (not founding_ready)) if can_create else false   # rallier ne dépend pas des picks
+	if not has and not can_create:
+		_valid_lbl.text = "✓ Les choix sont ignorés pour rallier une foi existante."
+		_valid_lbl.add_theme_color_override("font_color", C_GOOD)
+	elif not has and can_create and not founding_ready:
+		_valid_lbl.text = tr("T_RELIGION_TEMPLE_REQUIRED")
+		_valid_lbl.add_theme_color_override("font_color", C_BAD)
+	elif ok:
 		_valid_lbl.text = "✓ Trois axes distincts."
 		_valid_lbl.add_theme_color_override("font_color", C_GOOD)
 	else:
@@ -272,29 +290,50 @@ func _on_recruit_scholar() -> void:
 	var role: int = int(Sim.world.religion_recruit_scholar(me, region))
 	Sound.play("ui_click")
 	if role >= 0:
+		_action_lbl.text = ""
 		_refresh()
+	else:
+		_action_lbl.text = "Lettré refusé : la capitale ou les conditions de foi ne permettent pas ce recrutement."
 
 
 func _on_found() -> void:
 	if Sim.world == null:
 		return
 	var me: int = Sim.world.player()
+	var can_found := true
+	if Sim.world.has_method("religion_can_found"):
+		can_found = int(Sim.world.religion_can_found()) == 1
+	var founding_ready := true
+	if can_found and Sim.world.has_method("religion_founding_ready"):
+		founding_ready = int(Sim.world.religion_founding_ready(me)) == 1
 	var rid: int = Sim.world.religion_found(me, _cur_credo(), _cur_pole(0), _cur_pole(1), _cur_pole(2))
 	if rid >= 0:
+		_action_lbl.text = ""
 		_refresh()
+	else:
+		_action_lbl.text = (tr("T_RELIGION_TEMPLE_REQUIRED") if can_found and not founding_ready
+			else "Fondation refusée : choix de traditions ou conditions invalides." if can_found
+			else "Ralliement refusé : aucune foi disponible dans les conditions actuelles.")
 
 func _on_schism() -> void:
 	if Sim.world == null:
 		return
 	var me: int = Sim.world.player()
+	if Sim.world.has_method("religion_eligible") and int(Sim.world.religion_eligible(me)) <= 0:
+		_action_lbl.text = "Schisme indisponible : la foi n'est pas éligible actuellement."
+		return
 	# repick : on rejoue les 2 derniers slots avec les pôles choisis (un schisme « dérivé »)
 	var res: Dictionary = Sim.world.religion_schism(me, 1, _cur_pole(1), 2, _cur_pole(2), _cur_credo())
 	if int(res.get("child", -1)) >= 0:
+		_action_lbl.text = ""
 		_refresh()
+	else:
+		_action_lbl.text = "Schisme refusé : la foi ou les pôles choisis ne satisfont plus les conditions."
 
 ## ouvre le panneau (touche R en jeu).
 func open() -> void:
 	show()
 	Sound.play("ui_parchment_open")
+	_action_lbl.text = ""
 	_refresh()
 	queue_redraw()

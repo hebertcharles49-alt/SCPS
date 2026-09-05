@@ -126,8 +126,7 @@ SCPS_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_toponym.o $(OBJDIR)
              $(OBJDIR)/scps_scps_sim.o $(OBJDIR)/scps_scps_save.o $(OBJDIR)/scps_viewer.o
 SCPS_TARGET := scps_viewer$(EXE)
 
-scps:
-	@$(MAKE) --no-print-directory $(SCPS_TARGET)
+scps: $(SCPS_TARGET)
 $(SCPS_TARGET): $(SCPS_OBJS)
 	$(CC) $(SCPS_OBJS) -o $@ -lm $(OMPFLAG)
 
@@ -394,6 +393,42 @@ API_DEMO_OBJS := $(filter-out $(OBJDIR)/scps_chronicle.o,$(CHRONICLE_OBJS)) \
                  $(OBJDIR)/scps_scps_render.o $(OBJDIR)/scps_scps_api.o $(OBJDIR)/scps_scps_api_demo.o
 scps_api_demo: $(API_DEMO_OBJS)
 	$(CC) $(API_DEMO_OBJS) -o $@ -lm $(OMPFLAG)
+
+# Contrat de reprise : même moteur que la façade, emplacements de test isolés.
+SAVE_CONTRACT_OBJS := $(filter-out $(OBJDIR)/scps_scps_api_demo.o,$(API_DEMO_OBJS)) $(OBJDIR)/scps_save_contract_demo.o
+save_contract_demo: $(SAVE_CONTRACT_OBJS)
+	$(CC) $(SAVE_CONTRACT_OBJS) -o $@ -lm $(OMPFLAG)
+
+# Contrat du registre J : validation des valeurs, empreinte complète et
+# rafraîchissement du cache de seuils après édition F10/API.
+TUNE_CONTRACT_OBJS := $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_tune_contract_demo.o
+tune_contract_demo: $(TUNE_CONTRACT_OBJS)
+	$(CC) $(TUNE_CONTRACT_OBJS) -o $@ -lm
+
+COMMAND_FEEDBACK_OBJS := $(filter-out $(OBJDIR)/scps_scps_api_demo.o,$(API_DEMO_OBJS)) $(OBJDIR)/scps_command_feedback_demo.o
+command_feedback_demo: $(COMMAND_FEEDBACK_OBJS)
+	$(CC) $(COMMAND_FEEDBACK_OBJS) -o $@ -lm $(OMPFLAG)
+
+# Le banc inclut la façade pour injecter les pannes d'allocation localement.
+API_CACHE_OBJS := $(filter-out $(OBJDIR)/scps_scps_api_demo.o $(OBJDIR)/scps_scps_api.o,$(API_DEMO_OBJS)) $(OBJDIR)/scps_api_cache_demo.o
+api_cache_demo: $(API_CACHE_OBJS)
+	$(CC) $(API_CACHE_OBJS) -o $@ -lm $(OMPFLAG)
+
+PLAYER_CONTRACT_OBJS := $(filter-out $(OBJDIR)/scps_scps_api_demo.o $(OBJDIR)/scps_scps_api.o,$(API_DEMO_OBJS)) $(OBJDIR)/scps_player_contract_demo.o
+player_contract_demo: $(PLAYER_CONTRACT_OBJS)
+	$(CC) $(PLAYER_CONTRACT_OBJS) -o $@ -lm $(OMPFLAG)
+
+VERB_ATOMICITY_OBJS := $(filter-out $(OBJDIR)/scps_scps_api_demo.o,$(API_DEMO_OBJS)) $(OBJDIR)/scps_verb_atomicity_demo.o
+verb_atomicity_demo: $(VERB_ATOMICITY_OBJS)
+	$(CC) $(VERB_ATOMICITY_OBJS) -o $@ -lm $(OMPFLAG)
+
+MODDATA_CONTRACT_OBJS := $(filter-out $(OBJDIR)/scps_scps_api_demo.o,$(API_DEMO_OBJS)) $(OBJDIR)/scps_moddata_contract_demo.o
+moddata_contract_demo: $(MODDATA_CONTRACT_OBJS)
+	$(CC) $(MODDATA_CONTRACT_OBJS) -o $@ -lm $(OMPFLAG)
+
+SAVE_FAILURE_OBJS := $(filter-out $(OBJDIR)/scps_scps_api_demo.o,$(API_DEMO_OBJS)) $(OBJDIR)/scps_save_failure_demo.o
+save_failure_demo: $(SAVE_FAILURE_OBJS)
+	$(CC) $(SAVE_FAILURE_OBJS) -o $@ -lm $(OMPFLAG) -Wl,--wrap=tmpfile -Wl,--wrap=fwrite -Wl,--wrap=save_write_atomic
 
 # ---- INFLUENCE POLITIQUE (§3) : module (génération/plancher/dépense/persistance)
 # + façade (le DRAIN réel, coût REMPLACE le cooldown) — même socle que scps_api_demo. ----
@@ -685,7 +720,9 @@ BENCH_BINS := core_demo monde_reel readout_demo heritage_demo tech_demo \
   campaign_demo factions_demo econ_tax_demo econ_culture_demo econ_arcane_demo \
   econ_production_demo missions_demo influence_demo doctrines_demo ai_demo diplo_demo warhost_demo \
   events_demo structural_demo forks_demo prosperity_demo credit_demo cap_demo \
-  endgame_demo audit_eco lang_demo scps_api_demo econ_demo culture_demo navy_demo trade_demo
+  endgame_demo audit_eco lang_demo scps_api_demo econ_demo culture_demo navy_demo trade_demo \
+  save_contract_demo tune_contract_demo command_feedback_demo api_cache_demo save_failure_demo \
+  player_contract_demo verb_atomicity_demo moddata_contract_demo
 TOOL_BINS := scps_viewer scps_dump scps_batch chronicle chronicle_asan econ_scan
 
 clean:
@@ -721,7 +758,9 @@ lang-check:
 	@n=0; \
 	for f in $(LANG_STR_FILES); do \
 	  [ -f "$$f" ] || continue; \
-	  stripped=$$($(CC) -fpreprocessed -dD -E "$$f" 2>/dev/null); \
+	  if ! stripped=$$($(CC) -fpreprocessed -dD -E "$$f" 2>/dev/null); then \
+	    echo "lang-check ÉCHEC : préprocesseur impossible pour $$f"; exit 1; \
+	  fi; \
 	  cnt=$$(printf '%s\n' "$$stripped" | grep -v 'fprintf(stderr' | grep -oE $(LANG_ACCENT_RE) | wc -l); \
 	  n=$$((n+cnt)); \
 	done; \
@@ -753,7 +792,9 @@ membrane-check:
 	@viol=0; \
 	for f in $(MEMBRANE_FILES); do \
 	  [ -f "$$f" ] || continue; \
-	  stripped=$$($(CC) -fpreprocessed -dD -E "$$f" 2>/dev/null); \
+	  if ! stripped=$$($(CC) -fpreprocessed -dD -E "$$f" 2>/dev/null); then \
+	    echo "membrane-check ÉCHEC : préprocesseur impossible pour $$f"; exit 1; \
+	  fi; \
 	  if printf '%s\n' "$$stripped" | grep -qE '^[[:space:]]*#[[:space:]]*include[[:space:]]*["<]scps_core\.h[">]'; then \
 	    echo "membrane-check ÉCHEC : $$f INCLUT scps_core.h (la cloison readout→renderer est franchie)"; viol=1; \
 	  fi; \
@@ -777,11 +818,13 @@ REGION_WRITE_ALLOW_RE := ^scps/scps_econ\.c:|^scps/scps_credit\.c:|^scps/scps_de
 #  RegionEconomy ni sur ProvinceEconomy — ils sont NATIONAUX, cf. docs/DESIGN_TRESOR_NATIONAL.md.)
 REGION_PERSIST_FIELDS := culture|culture_id|pop|build|edi_built|raw_cap|raw_boost|strata|gdp|cap_pop|coercion|arcane_charge|faust_charge|faust_consumed|mil_stock|revolt_scar|annex_scar|bankruptcy_scar|owner|colonized
 region-write-check:
-	@pattern='(?:->|\.)region\s*\[[^]]+\]\s*\.\s*($(REGION_PERSIST_FIELDS))(?:\s*\[[^]]+\])?(?:\s*\.[A-Za-z_][A-Za-z0-9_]*)?\s*(?:\+\+|--|[+*/-]=|(?<![=!<>])=(?!=))'; \
+	@pattern='(?:->|\.)region\s*\[(?:[^\[\]]|\[[^\[\]]*\])+\]\s*\.\s*($(REGION_PERSIST_FIELDS))(?:\s*\[(?:[^\[\]]|\[[^\[\]]*\])+\])?(?:\s*\.[A-Za-z_][A-Za-z0-9_]*)?\s*(?:\+\+|--|[+*/-]=|(?<![=!<>])=(?!=))'; \
 	if command -v rg >/dev/null 2>&1; then \
-	  hits=$$(rg --pcre2 -n --glob '*.c' --glob '!**/*_demo.c' "$$pattern" scps || true); \
+	  hits=$$(rg --pcre2 -n --glob '*.c' --glob '!**/*_demo.c' "$$pattern" scps); rc=$$?; \
+	  if [ $$rc -gt 1 ]; then echo "region-write-check ÉCHEC : rg/PCRE2 rc=$$rc"; exit $$rc; fi; \
 	else \
-	  hits=$$(grep -Prn --include='*.c' --exclude='*_demo.c' "$$pattern" scps || true); \
+	  hits=$$(grep -Prn --include='*.c' --exclude='*_demo.c' "$$pattern" scps); rc=$$?; \
+	  if [ $$rc -gt 1 ]; then echo "region-write-check ÉCHEC : grep/PCRE2 rc=$$rc"; exit $$rc; fi; \
 	fi; \
 	hits=$$(printf '%s\n' "$$hits" | grep -v 'REGION_MIRROR_OK' | grep -vE '$(REGION_WRITE_ALLOW_RE)' || true); \
 	if [ -n "$$hits" ]; then \

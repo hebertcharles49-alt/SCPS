@@ -11,6 +11,7 @@ signal game_saved(slot: int)       ## sidecars d'interface liés au même emplac
 signal game_loaded(slot: int)
 signal ticked(year: int)        ## un pas de simulation vient d'avancer (chaque JOUR — carte/anim)
 signal month_ticked(year: int)  ## un MOIS simulé (~30 j) a passé — la CADENCE des chiffres joueur
+signal command_feedback_changed() ## un ordre a été mis en file ou drainé par le moteur
 
 const SEED_DEFAULT := 9
 
@@ -83,10 +84,42 @@ func load_game(slot: int) -> int:
 	if world == null:
 		return 1
 	var rc: int = world.load_game(slot)
+	if rc == 3:
+		# Le moteur a refusé le slot et n'a pas pu restaurer son snapshot. La DLL
+		# invalide déjà sa façade ; suspendre aussi l'état UI pour qu'aucun lecteur
+		# ou ordre ne continue d'utiliser une instance inconnue.
+		world = null
+		game_on = false
+		speed_index = 0
+		_accum = 0.0
 	if rc == 0:
+		_reset_after_load()
 		generated.emit()
 		game_loaded.emit(slot)
 	return rc
+
+## Les sidecars d'interface et les cadences ne font pas partie de la sauvegarde
+## moteur. Après un chargement, ils repartent d'un point cohérent avec la date
+## restaurée ; l'objectif d'émissaire est volontairement oublié car le moteur ne
+## le sérialise pas (un refus ou une reprise ne doit jamais réafficher une promesse).
+func _reset_after_load() -> void:
+	_accum = 0.0
+	_month_accum = 0.0
+	_acted = false
+	emissary_objective = ""
+	if world != null and world.has_method("year"):
+		day_count = int(world.year()) * 365
+		if world.has_method("day_of_year"):
+			day_count += maxi(0, int(world.day_of_year()))
+	else:
+		day_count = 0
+	# Le binding C++ peut exposer seed() (ou world_seed()) selon la DLL chargée.
+	# Tant qu'aucun getter n'est présent, conserver la dernière graine connue est
+	# le seul repli sûr ; le chargeur moteur reste la source canonique du monde.
+	if world != null and world.has_method("seed"):
+		current_seed = int(world.seed())
+	elif world != null and world.has_method("world_seed"):
+		current_seed = int(world.world_seed())
 
 func save_slots() -> Array:
 	return world.save_slots() if world != null else []
@@ -113,6 +146,7 @@ func _process(delta: float) -> void:
 		if _dt > 20000:
 			print("[PERF] advance nd=%d jour=%d : %.1f ms (MOTEUR)" % [nd, day_count, _dt / 1000.0])
 	day_count += nd
+	command_feedback_changed.emit()
 	ticked.emit(world.year())
 	# CADENCE MENSUELLE (chiffres joueur) : le moteur avance en JOURS (déterminisme) mais les
 	# ressources ne se rafraîchissent qu'au MOIS — sinon les chiffres dansent chaque jour. Une
@@ -153,5 +187,14 @@ func speed_label() -> String:
 ## redessine quand même (l'effet réel s'appliquera à la reprise ; au moins l'UI réagit au clic).
 func notify_action() -> void:
 	_acted = true
+	command_feedback_changed.emit()
 	if speed_index == 0 and world != null:
 		month_ticked.emit(world.year())
+
+## Lecture unique du journal transient moteur. Les entrées restent des résultats
+## d'ordre (pending/executed/refused), jamais une déduction à partir du booléen
+## renvoyé par player_*.
+func command_feedback() -> Array:
+	if world == null or not world.has_method("command_feedback"):
+		return []
+	return world.command_feedback()

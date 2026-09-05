@@ -495,20 +495,16 @@ bool campaign_order_sea(Campaign *c, const World *w, const WorldEconomy *econ,
     if (owner<0 || owner>=SCPS_MAX_COUNTRY || !src_force || !navy || !w) return false;
     if (from_region<0 || from_region>=econ->n_regions) return false;
     if (target_region<0 || target_region>=econ->n_regions || from_region==target_region) return false;
+    FieldArmy *a=&c->army[owner];
     long packets=force_units(src_force);
+    /* Un réordonnancement restitue d’abord le reliquat du corps historique dans
+     * src_force. Inclure ce reliquat dans le besoin de transports avant de réserver
+     * la traversée ; sinon le corps fusionné pouvait embarquer avec une réservation
+     * sous-dimensionnée. */
+    if (src_force != &a->force && a->active) packets += force_units(&a->force);
     if (packets<=0) return false;
     const RegionEconomy *pr=&econ->region[from_region];
     if (pr->owner!=owner || pr->build.port<=0.f || !pr->coastal) return false;  /* on n'embarque qu'à SON port */
-    /* L'EMBARQUEMENT COÛTE (décision joueur 2026-08-12) : gréer un convoi consomme du
-     * MATÉRIEL NAVAL — EMBARK_NAVAL_COST (10) par stack, pris au port. Pas de
-     * matériel = pas de traversée (le mur est ÉCONOMIQUE, comme la flotte). */
-    { float needsup=tune_f("EMBARK_NAVAL_COST",10.f);
-      if (needsup>0.f){
-          /* POOL NATIONAL (2026-08-16) : le convoi se grée sur le matériel de l'EMPIRE,
-           * pas sur le seul stock du port (« les stocks sont nationaux »). */
-          if (econ_country_stock_sum(econ, owner, RES_NAVAL_SUPPLIES) < needsup-1e-3f) return false;
-          econ_country_stock_take((WorldEconomy*)econ, owner, RES_NAVAL_SUPPLIES, needsup);
-      } }
     if (!econ->region[target_region].coastal) return false;                     /* on atterrit par la côte */
     int ax,ay,bx,by;
     if (!world_region_sea_anchor(w,from_region,&ax,&ay))  return false;
@@ -518,8 +514,15 @@ bool campaign_order_sea(Campaign *c, const World *w, const WorldEconomy *econ,
     int need_tr=(int)((packets+9)/10); if (need_tr<1) need_tr=1;                /* 1 transport = 10 paquets */
     bool navy_on = tune_f("NAVY_COMBAT_ON",0.f)>0.f;
     if (navy_on && navy->n[owner].hull[HULL_TRANSPORT]-navy->n[owner].at_sea < need_tr) return false;
+    /* Toutes les validations géographiques et de capacité précèdent le débit :
+     * un trajet impossible ne consomme ni fournitures ni armée. */
+    { float needsup=tune_f("EMBARK_NAVAL_COST",10.f);
+      if (needsup>0.f){
+          /* POOL NATIONAL (2026-08-16) : le convoi se grée sur le matériel de l'EMPIRE,
+           * pas sur le seul stock du port (« les stocks sont nationaux »). */
+          if (econ_country_stock_sum(econ, owner, RES_NAVAL_SUPPLIES) < needsup-1e-3f) return false;
+      } }
     if (!navy_on) need_tr=0;   /* OFF = OFF : aucune coque à réserver, le matériel payé EST le convoi */
-    FieldArmy *a=&c->army[owner];
     if (a->active && force_units(&a->force)>0)
         army_merge_into(src_force, &a->force);            /* le reliquat rentre (et VIDE a->force) AVANT l'embarquement */
     a->active=true; a->owner=owner; a->loc=from_region; a->dest=target_region; a->next=-1;
@@ -532,6 +535,11 @@ bool campaign_order_sea(Campaign *c, const World *w, const WorldEconomy *econ,
     a->intercept_done=false;
     a->land_at_port = (econ->region[target_region].build.port>0.f);
     navy->n[owner].at_sea += need_tr;                   /* la flotte est ENGAGÉE jusqu'au débarquement */
+    /* Débit atomique après le dernier point de refus : les champs du corps sont
+     * désormais installés et aucune validation aval ne peut annuler l'ordre. */
+    { float needsup=tune_f("EMBARK_NAVAL_COST",10.f);
+      if (needsup>0.f)
+          econ_country_stock_take((WorldEconomy*)econ, owner, RES_NAVAL_SUPPLIES, needsup); }
     c->n_sails++; c->sail_days_sum += days;
     corps_count_sync(c,owner);
     return true;

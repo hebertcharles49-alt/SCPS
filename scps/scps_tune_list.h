@@ -690,9 +690,16 @@
      * empires demandés, on resserre d'un cran jusqu'à SPAWN_SAFE_HOPS_MIN. « Tout caser » prime, à
      * l'espacement max possible (HUGE=12 retombe sur 5 ; les presets qui tiennent à 6 le gardent). */ \
     X(SPAWN_SAFE_HOPS_MIN,    5.0f) \
+    /* TOPONYMIE — seuils de relief, rade, île et poids d'éthos utilisés par
+     * scps_toponym.c ; ils étaient auparavant des valeurs de repli non listées. */ \
+    X(TOPONYM_RIVER_MAJOR,   160.0f) \
+    X(TOPONYM_HARBOR_HIGH,     0.5f) \
+    X(TOPONYM_ISLAND_MAX_AREA,700.0f) \
+    X(TOPONYM_ETHOS_REINFORCED,0.80f) \
+    X(TOPONYM_ETHOS_BASE,      0.25f) \
     /* VOCATION — nb de brutes (hors vivrier & stratégiques) gardées par région : la tuile
      * produit sa spécialité, pas la liste complète (la traîne mineure vient du commerce). */ \
-    X(REGION_RAW_KEEP,        2.0f) \
+    X(REGION_RAW_KEEP,        2.0f) /* LEGACY INACTIF : vocation désormais dérivée */ \
     /* REFONTE A0 — EXTRACTION LABOR-BOUND (ressource PAR OUVRIER). out = ouvriers × YIELD ×
      * geo_eff × prix. GEO_REF = raw_cap donnant geo_eff=1 (la tuile standard) ; GEO_CAP =
      * plafond de qualité ; LABOR_SHARE = part des journaliers à l'extraction (le levier de
@@ -708,7 +715,7 @@
     /* REFONTE A5 — la NOURRITURE DU SPAWN : socle de grain (raw_cap) sur la capitale de
      * chaque empire (geo_eff = SPAWN_FOOD_RAW/EXTRACT_GEO_REF). La SEULE règle vivrière de
      * worldgen ; tout le reste est géologie + commerce (0 = aucun grenier de spawn). */ \
-    X(SPAWN_FOOD_RAW,        12.0f) \
+    X(SPAWN_FOOD_RAW,        12.0f) /* LEGACY INACTIF : plus de socle worldgen */ \
     /* PIPELINE IA ÉCO — la PRÉVISION (forecast) qui rend l'IA voyante de ses flux.
      * SAFETY_HORIZON : un runway sous ce nb d'années est URGENT (le stress monte). PROJ_HORIZON :
      * fenêtre de projection du shortfall (colonisation/priorités anticipent à cet horizon).
@@ -835,7 +842,7 @@
     X(TAX_FLOOR_FRAC,         0.5f) \
     X(NAVY_COLONY_MAX_DAYS,   240.0f) \
     X(NAVY_TRANSPORT_MIN,     1.0f) \
-    X(NAVY_BUILD_SUPPLY_FLOOR, 1.0f) /* annees de fournitures exigees au port AVANT de
+    X(NAVY_BUILD_SUPPLY_FLOOR, 1.0f) /* LEGACY INACTIF : ancien gate non raccordé ; annees de fournitures exigees au port AVANT de
                                             * commander une coque (anti construire-affamer-
                                             * pourrir-reconstruire, retour joueur 2026-08-16) */ \
     X(WAR_DEATHS_REAL,        1.0f) /* audit 2026-08-12 : les paquets tues debitent la
@@ -844,6 +851,12 @@
      * exit(2), F10 aveugle) — enregistrés aux défauts des call-sites. */ \
     X(BANKRUPTCY_GARNISH,     0.75f) \
     X(RELIG_MINORITY_SAT,     0.15f) \
+    /* RELIGION — seuils de schisme et durée du mandat savant, auparavant codés
+     * en dur dans scps_religion.c (valeurs historiques conservées). */ \
+    X(RELIG_SCHISM_FLIP_D,     5.0f) \
+    X(RELIG_SCHISM_FLIP_L,     4.0f) \
+    X(RELIG_SCHOLAR_DAYS,   1825.0f) \
+    X(RELIG_SCHISM_MAX,        5.0f) \
     X(SEED_PROV_CAP_MULT,     3.0f) \
     /* AGITATION SERVILE (decision joueur 2026-08-12) : plus d'esclaves que de libres
      * -> la marmite chauffe (l'affranchissement gagne son premier benefice reel). */     X(SLAVE_AGIT_SHARE,       0.5f)     X(SLAVE_AGIT_W,           60.0f) \
@@ -858,7 +871,7 @@
      * d'une province d'autrui → l'IA convoite qui TIENT ce qui lui manque. COMPLEMENT_W :
      * poids de MON manque dans le choix d'allié (s'allier à qui me COMPLÈTE). */ \
     X(AI_COVET_W,             0.5f) \
-    X(AI_COMPLEMENT_W,        1.0f) \
+    X(AI_COMPLEMENT_W,        1.0f) /* LEGACY INACTIF : choix d'allié sans ce poids */ \
     /* PIPELINE DIPLO étage 3 — LA VASSALITÉ SUR LA DURÉE (la VALEUR cible, l'ÉTHOS décide la
      * MÉTHODE : tenir-et-traire vs digérer). INTÉGRATION : un vassal TENU à la paix se rapproche
      * de son maître (INTEGRATE_YEARS = ~temps de pleine intégration à culture identique ; freiné
@@ -922,7 +935,7 @@
     X(WILD_CULTURE_DISTINCT,  1.0f) \
     X(WILD_DEFECT_YEARS,      0.0f) \
     X(WILD_HOARD,            60.0f) \
-    X(WILD_REGIMENTS,         2.0f) \
+    X(WILD_REGIMENTS,         2.0f) /* LEGACY INACTIF : les hameaux ne lèvent plus ce quota */ \
     /* POOL CITÉ-ÉTAT — réserve TRADABLE de matières brutes (bois/fer/argile/pierre) déposée sur
      * la région-pivot de chaque cité-état : le marché mondial (#5) la revend aux empires nés
      * NUS, qui importent ainsi de quoi BÂTIR au lieu de stagner au plancher ½·cap_pop. */ \

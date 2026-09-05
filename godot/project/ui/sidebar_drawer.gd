@@ -246,7 +246,8 @@ func _draw_multiplier_slider(x: float, y: float, label: String, current: float,
 	## réglage brut. Le curseur est LINÉARISÉ 0–100 % (0.02..1.0) ; display-only.
 	var key := _slider_key(data)
 	var value := float(_slider_preview.get(key, current))
-	value = clampf(value, 0.02, 1.0)
+	var min_value := 0.0 if String(data.get("kind", "")) == "buy" else 0.02
+	value = clampf(value, min_value, 1.0)
 	var row := Rect2(x - 3.0, y - 2.0, DW - 2.0 * x + 6.0, 22.0)
 	VKit.list_row_bg(self, row, zones.size())
 	VKit.text(self, Vector2(x + 4.0, y + 3.0), VKit.COL_PARCH, label, VKit.FS_SMALL)
@@ -256,7 +257,7 @@ func _draw_multiplier_slider(x: float, y: float, label: String, current: float,
 	# ce curseur immédiat-mode (onglet Économie du tiroir) en divergeait seul.
 	VKit.fill(self, track, Color("caa768"))
 	VKit.box(self, track.grow(1.0), VKit.COL_EDGE)
-	var frac := (value - 0.02) / 0.98
+	var frac := (value - min_value) / (1.0 - min_value)
 	VKit.fill(self, Rect2(track.position, Vector2(track.size.x * frac, track.size.y)), VKit.COL_GOLD)
 	var kx := track.position.x + track.size.x * frac
 	draw_circle(Vector2(kx, track.get_center().y), 5.0, VKit.COL_PARCH)
@@ -339,6 +340,38 @@ func _draw_budget_controls(x: float, y: float, me: int) -> float:
 			_eco_sliders, {"kind": "eco", "family": 1, "index": idx}, tip, live)
 	return y + 3.0
 
+func _buy_rate_enabled(w) -> bool:
+	if not w.has_method("tunables"):
+		return true
+	for raw in w.tunables():
+		var t: Dictionary = raw
+		if String(t.get("nom", "")) == "BUY_RATE_ON":
+			return float(t.get("value", 1.0)) > 0.0
+	return true
+
+func _draw_buy_rates(x: float, y: float, me: int) -> float:
+	# Le moteur garde le levier même si l'ancienne UI ne l'exposait pas. Ne pas
+	# afficher un faux curseur quand le kill-switch BUY_RATE_ON est coupé.
+	var w = Sim.world
+	if w == null or not w.has_method("country_buy_rate") or not w.has_method("player_set_buy_rate"):
+		return y
+	y = VKit.section(self, x, y, tr("T_BUY_RATE_TITLE"))
+	if not _buy_rate_enabled(w):
+		VKit.text(self, Vector2(x, y), VKit.COL_DIM,
+			tr("T_BUY_RATE_INACTIVE"), VKit.FS_SMALL)
+		return y + 22.0
+	var names := [tr("T_BUY_RATE_FOOD"), tr("T_BUY_RATE_RAW"), tr("T_BUY_RATE_MANUFACTURED")]
+	var tips := [
+		tr("T_BUY_RATE_FOOD_TIP"),
+		tr("T_BUY_RATE_RAW_TIP"),
+		tr("T_BUY_RATE_MANUFACTURED_TIP")
+	]
+	for cat in range(3):
+		var pct := clampf(float(w.country_buy_rate(me, cat)) / 100.0, 0.0, 1.0)
+		y = _draw_multiplier_slider(x, y, names[cat], pct, _eco_sliders,
+			{"kind": "buy", "family": -1, "index": cat}, tips[cat])
+	return y + 3.0
+
 func _draw_mat_line(x: float, y: float, me: int) -> float:
 	if not Sim.world.has_method("country_stocks"):
 		return y
@@ -364,6 +397,7 @@ func _draw_eco(x: float, y: float, me: int) -> float:
 	VKit.text(self, Vector2(x + 24, y + 3), VKit.COL_GOLD, "Courbes dans le temps  ▸", VKit.FS_SMALL)
 	y += 28
 	y = _draw_budget_controls(x, y, me)
+	y = _draw_buy_rates(x, y, me)
 	# — Trésor & budget de l'année (la décomposition du flux d'or) —
 	var b: Dictionary = Sim.world.budget_summary(me)
 	UIKit.draw_icon(self, "gold_coin", Vector2(x, y - 1), 16)
@@ -1291,22 +1325,39 @@ func _servile_act(act: String, qty: int, me: int) -> void:
 		Sound.play("ui_click")
 	queue_redraw()
 
-# ── ARMÉE (sb_panel_armee) : readouts + VERBES joueur (recruter/flotte). Levée &
-#    posture RETIRÉES (retour joueur : jamais demandées). ──
+# ── ARMÉE (sb_panel_armee) : readouts + VERBES joueur (levée/recrutement/flotte). ──
 const HULL_LABELS := [["+Guerre", 0], ["+Transport", 1], ["+Marchand", 2]]   # HullType : HULL_WAR·HULL_TRANSPORT·HULL_MERCHANT
+const LEVY_SHORT_KEYS := ["T_LEVY_LEVEL_LOW", "T_LEVY_LEVEL_GUARD", "T_LEVY_LEVEL_WAR", "T_LEVY_LEVEL_MASS"]
 
 var _army_btns := []      # [{rect, act}] Recompléter / Dissoudre
 var _navy_btns := []      # [{rect, hull}] +Guerre / +Transport / +Marchand
+var _levy_btns := []      # [{rect, level}] niveaux de levée 0..3
 
 func _draw_armee(x: float, y: float, me: int) -> float:
-	_army_btns.clear(); _navy_btns.clear()
+	_army_btns.clear(); _navy_btns.clear(); _levy_btns.clear()
 	var a: Dictionary = Sim.world.country_army(me)
 	UIKit.draw_icon(self, "menu_army", Vector2(x, y - 1), 22)   # UI-DOCTRINE D7 : 18→22 (ligne à y+=24, la marge le permet)
-	VKit.value(self, Vector2(x + 26, y), "force mobilisée : %d régiments" % int(a["regiments"]))
+	VKit.value(self, Vector2(x + 26, y), "force mobilisée : %d régiments" % int(a.get("regiments", 0)))
 	y += 24
-	# (levée + posture RETIRÉES — retour joueur : jamais demandées. Le joueur compose son
-	#  armée à la main via « Composer l'armée » ci-dessous ; le recrutement ne dépend pas
-	#  de la levée côté moteur.)
+	# — LEVÉE : réglage réel du rythme de la réserve (CMD_SET_LEVY, niveaux 0..3).
+	# Le nom courant vient de la façade country_army ; les boutons restent visibles pour
+	# rendre les quatre crans lisibles même quand la jauge est à zéro.
+	var levy: int = clampi(int(a.get("levy", 0)), 0, 3)
+	var levy_name := tr(LEVY_SHORT_KEYS[levy])
+	VKit.text(self, Vector2(x, y), VKit.COL_GOLD,
+		tr("T_LEVY_CURRENT") % [tr("T_ORDER_VERB_LEVY"), levy, levy_name], VKit.FS_SMALL)
+	y += 17
+	var levy_w := (DW - 2.0 * x - 3.0 * 5.0) / 4.0
+	for level in range(4):
+		var lr := Rect2(x + level * (levy_w + 5.0), y, levy_w, 20)
+		var active := level == levy
+		VKit.fill(self, lr, VKit.COL_GOLD if active else VKit.COL_PANEL2)
+		VKit.box(self, lr, VKit.COL_GOLD if active else VKit.COL_EDGE)
+		var lc := VKit.COL_PANEL if active else VKit.COL_GOLD
+		VKit.text(self, lr.position + Vector2(5, 2), lc,
+			"%d · %s" % [level, tr(LEVY_SHORT_KEYS[level])], VKit.FS_SMALL)
+		_levy_btns.append({"rect": lr, "level": level})
+	y += 27
 	var ar: Dictionary = Sim.world.army_info(me)
 	if bool(ar.get("active", false)):
 		VKit.text(self, Vector2(x, y), VKit.COL_GOLD,
@@ -1579,7 +1630,7 @@ func _opinion_col(op: int) -> Color:
 	if op < -15: return VKit.sense(0.15)
 	return VKit.COL_DIM
 
-## Armée : levée [-]/[+], recompléter/dissoudre, mise en chantier de coque —
+## Armée : réglage de levée, recompléter/dissoudre, mise en chantier de coque —
 ## verbes journalisés (drainés au tick), aucun n'échoue localement sauf navy_build.
 func _armee_act(kind: String, val: int) -> void:
 	var w = Sim.world
@@ -1599,6 +1650,21 @@ func _armee_act(kind: String, val: int) -> void:
 			var ok: bool = w.player_navy_build(val)
 			_armee_flash_ok = ok
 			_armee_flash = "⚑ coque en chantier — ordre émis" if ok else "✗ chantier naval — refusé"
+	queue_redraw()
+
+func _set_levy(level: int) -> void:
+	var w = Sim.world
+	if w == null or not w.has_method("player_set_levy"):
+		_armee_flash_ok = false
+		_armee_flash = "✗ " + tr("T_LEVY_UNAVAILABLE")
+		queue_redraw()
+		return
+	level = clampi(level, 0, 3)
+	w.player_set_levy(level)
+	if Sim.has_method("notify_action"):
+		Sim.notify_action()
+	_armee_flash_ok = true
+	_armee_flash = "⚑ " + (tr("T_LEVY_PENDING") % level)
 	queue_redraw()
 
 ## Marché : achat/vente de 10 unités sur la région-capitale (verbe journalisé).
@@ -1651,8 +1717,11 @@ func _slider_value(data: Dictionary, mouse_x: float) -> float:
 	if track.size.x <= 0.0:
 		return 1.0
 	var frac := clampf((mouse_x - track.position.x) / track.size.x, 0.0, 1.0)
-	# LINÉARISÉ 0–100 % : extrême gauche = 0.02 (« 0 % »), extrême droite = 1.0 (« 100 % »).
-	return clampf(roundf((0.02 + frac * 0.98) * 100.0) / 100.0, 0.02, 1.0)
+	var min_value := 0.0 if String(data.get("kind", "")) == "buy" else 0.02
+	# LINÉARISÉ 0–100 % : rachat accepte 0 %, les curseurs budgétaires gardent leur
+	# borne historique 2 % pour éviter une enveloppe totalement muette.
+	return clampf(roundf((min_value + frac * (1.0 - min_value)) * 100.0) / 100.0,
+		min_value, 1.0)
 
 func _apply_multiplier_slider(data: Dictionary, mouse_x: float) -> void:
 	var w = Sim.world
@@ -1663,7 +1732,17 @@ func _apply_multiplier_slider(data: Dictionary, mouse_x: float) -> void:
 	if absf(float(_slider_preview.get(key, -10.0)) - value) < 0.01:
 		return
 	var ok := false
-	if String(data.get("kind", "")) == "pay":
+	var kind := String(data.get("kind", ""))
+	if kind == "buy":
+		if not _buy_rate_enabled(w):
+			return
+		var category := int(data.get("index", -1))
+		var pct := int(round(value * 100.0))
+		w.player_set_buy_rate(category, pct)
+		# L'API historique est void : relire le registre évite d'annoncer une
+		# modification si le moteur a refusé l'observateur ou une phase invalide.
+		ok = int(w.country_buy_rate(int(w.player()), category)) == pct
+	elif kind == "pay":
 		ok = bool(w.player_council_pay(int(data.get("seat", -1)), value))
 	elif w.has_method("player_budget_policy"):
 		ok = bool(w.player_budget_policy(int(data.get("family", -1)), int(data.get("index", -1)), value))
@@ -1736,6 +1815,11 @@ func _gui_input(event: InputEvent) -> void:
 					accept_event()
 					return
 		if _tab == 4:
+			for b in _levy_btns:
+				if (b["rect"] as Rect2).has_point(event.position):
+					_set_levy(int(b["level"]))
+					accept_event()
+					return
 			for b in _army_btns:
 				if b.rect.has_point(event.position):
 					_armee_act(String(b.act), 0)

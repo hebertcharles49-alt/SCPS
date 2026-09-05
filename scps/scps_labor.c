@@ -22,21 +22,22 @@
  * TROUVAILLES). Seuils dialables (registre J), mais mis en cache à la PREMIÈRE lecture
  * (pas un tune_f() par appel) : cette fonction est appelée dans des boucles PAR-PROVINCE
  * PAR-TICK (scps_econ.c, jusqu'à SCPS_MAX_PROV fois/jour) — un lookup registre (linéaire,
- * ~200 noms) par appel coûterait cher sur tout un chronicle. Conséquence ASSUMÉE : une
- * surcharge SCPS_TUNE au lancement s'applique (lue au 1er appel) ; le panneau F10 EN
- * DIRECT ne rafraîchit PAS ces 6 seuils précis sans relancer (documenté, cf. TROUVAILLES).
+ * ~200 noms) par appel coûterait cher sur tout un chronicle. Le cache est donc relu
+ * seulement quand tune_revision() progresse : une surcharge SCPS_TUNE au lancement
+ * s'applique, et le panneau F10 peut ensuite modifier les seuils sans redémarrage.
  */
 static long g_tier_pop[6];    /* [0]=T2 … [5]=T7 */
-static int  g_tier_pop_init = 0;
+static unsigned g_tier_pop_revision = (unsigned)-1;
 static void tier_pop_init(void){
-    if (g_tier_pop_init) return;
-    g_tier_pop_init = 1;
+    unsigned rev = tune_revision();
+    if (g_tier_pop_revision == rev) return;
     g_tier_pop[0] = (long)tune_f("TIER2_POP",  2000.f);
     g_tier_pop[1] = (long)tune_f("TIER3_POP",  3000.f);
     g_tier_pop[2] = (long)tune_f("TIER4_POP",  4000.f);
     g_tier_pop[3] = (long)tune_f("TIER5_POP",  5000.f);
     g_tier_pop[4] = (long)tune_f("TIER6_POP",  8000.f);
     g_tier_pop[5] = (long)tune_f("TIER7_POP", 10000.f);
+    g_tier_pop_revision = rev;
 }
 /* Tier que la POPULATION débloque (plafond) — la pop OUVRE, la recette PAIE. */
 int capitale_max_tier(long pop){

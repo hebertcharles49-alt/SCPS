@@ -32,7 +32,9 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 110u          /* v110 : CADENCE DE L'INITIATIVE PRIVÉE (décision joueur 2026-09-04,
+#define SAVE_VERSION 111u          /* v111 : CIBLE DE RECHERCHE JOUEUR ajoutée à SaveMisc.
+                                    * <v111 refusé (la file était perdue au chargement).
+                                    * v110 : CADENCE DE L'INITIATIVE PRIVÉE (décision joueur 2026-09-04,
                                     * « une initiative privée par mois ») — WorldEconomy gagne
                                     * ip_seed_credit[SCPS_MAX_COUNTRY] (le crédit de semis mensuel par
                                     * pays, inter-ticks ⇒ sérialisé dans le blob ECON) ⇒ sizeof change.
@@ -365,17 +367,20 @@ typedef struct {
     uint32_t flags;            /* SAVE_F_CRYPT : sections chiffrées (l'en-tête reste en CLAIR) */
     uint64_t nonce;            /* nonce ChaCha20 — unique par sauvegarde */
     uint64_t plain_ck;         /* empreinte FNV-1a du CLAIR : un octet altéré = refus net */
-    uint32_t tune_ck;          /* FNV des surcharges SCPS_TUNE résolues (autres règles ⇒ AVERTIT) */
+    uint32_t tune_ck;          /* Empreinte des noms et bits des réglages effectifs ; ancien préfixe signalé. */
 } SaveHeader;
 
-/* chemin du slot (saves/slot_N.scps). */
+/* Chemin du slot. Le headless garde le défaut `saves`; un front peut choisir un
+ * dossier absolu sans modifier le cwd global du processus. */
+bool scps_save_set_dir(const char *dir);
 const char *save_slot_path(int slot);
 /* lit l'en-tête CLAIR d'un slot (pour l'écran Charger) ; false si absent/mauvais magic. */
 bool scps_save_slot_info(int slot, SaveHeader *out);
 /* sauve la partie ENTIÈRE (atomique). setup_heritage∈[0,HERITAGE_COUNT)·setup_ethos∈[0,ETHOS_COUNT)
  * = l'identité de culture du front (mémorisée dans SaveMisc). false si l'écriture échoue. */
 bool scps_save_game(int slot, World *w, Sim *s, const WorldParams *params, int setup_heritage, int setup_ethos);
-/* charge un slot : 0 ok · 1 absent/corrompu · 2 « ère antérieure » (version). out_heritage et
+/* charge un slot : 0 ok · 1 absent/corrompu · 2 « ère antérieure » (version) · 3 état de
+ * secours impossible à restaurer (la façade doit invalider l'instance). out_heritage et
  * out_ethos ← l'identité de setup restaurée (le front y remet ses globals) ; NULL si indifférent. */
 int  scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_heritage, int *out_ethos);
 /* garde-fou post-chargement : revalide tous les comptes/indices désérialisés (refus net). */

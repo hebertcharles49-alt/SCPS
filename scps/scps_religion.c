@@ -6,6 +6,7 @@
 #include <string.h>
 #include <assert.h>
 #include "scps_math.h"   /* clampf partagé */
+#include "scps_tune.h"
 
 /* magnitudes Civ-tier, calibrables ICI */
 #define M_COORD   1.0f   /* coord 0-10  */
@@ -162,8 +163,8 @@ void religion_refresh_all(const WorldEconomy *econ){
 /* FRACTURE (P8) — au schisme INTERNE : les régions du pays distantes (culture vs centre)
  * ET peu légitimes (L bas) basculent vers l'enfant ; le noyau (région-centre) garde le
  * parent. D∞ inline sur les axes PopCulture (valeurs/subsistance/parenté/religion). */
-#define SCHISM_FLIP_D 5.0f   /* D∞ vs culture du centre (calibrable) */
-#define SCHISM_FLIP_L 4.0f   /* L locale sous laquelle le flip devient probable */
+#define SCHISM_FLIP_D tune_f("RELIG_SCHISM_FLIP_D",5.0f)
+#define SCHISM_FLIP_L tune_f("RELIG_SCHISM_FLIP_L",4.0f)
 /* la province r DÉRIVE-t-elle de la foi du centre ? — culturellement DISTANTE du
  * centre orthodoxe (D∞ > SCHISM_FLIP_D sur un axe PopCulture) ET peu légitime
  * (L < SCHISM_FLIP_L). MÊME porte pour l'ÉLIGIBILITÉ (lecture) et la FRACTURE
@@ -200,7 +201,7 @@ int religion_fracture(const World *w, WorldEconomy *econ,
 }
 
 /* ── P6 : LETTRÉ (scholar) ─────────────────────────────────────────────── */
-#define SCHOLAR_DURATION 1825   /* ~5 ans d'action (jours) */
+#define SCHOLAR_DURATION ((int)clampf(tune_f("RELIG_SCHOLAR_DAYS",1825.f),1.f,365000.f))
 typedef struct { int active; int role; int region; int timer; } ReligScholarSt;
 static ReligScholarSt g_scholar[RELIG_MAX_COUNTRY];
 
@@ -287,7 +288,7 @@ int religion_can_schism(int parent_rid){
   int root=religion_root_of(parent_rid), n=0;
   for(int i=0;i<g_religion_count;i++)
     if(g_religions[i].parent>=0 && religion_root_of(i)==root) n++;   /* descendants de CETTE racine */
-  return n < RELIG_SCHISM_MAX;
+  return n < (int)clampf(tune_f("RELIG_SCHISM_MAX",5.f),0.f,(float)RELIG_MAX);
 }
 /* le plafond est ANCRÉ au compte d'empires de GENÈSE (stable) — pas au compte courant, qui
  * gonfle avec les sécessions : « 6 empires ⇒ 2 religions », pas 8 quand le monde se fragmente. */
@@ -475,7 +476,8 @@ int religion_load(FILE *f){
     g_scholar[i].active=(v[0]!=0);
     g_scholar[i].role=(v[1]>=0&&v[1]<SCHOLAR_ROLE_COUNT)?v[1]:0;            /* borné */
     g_scholar[i].region=(v[2]>=-1&&v[2]<RELIG_MAX_REGION)?v[2]:-1;
-    g_scholar[i].timer=(v[3]>=0&&v[3]<=SCHOLAR_DURATION)?v[3]:0;
+    /* Une modification de durée ne doit pas annuler une mission déjà sauvée. */
+    g_scholar[i].timer=(v[3]>=0&&v[3]<=365000)?v[3]:0;
     if(g_scholar[i].timer<=0) g_scholar[i].active=0; }
   /* AUDIT P1 : ancre du plafond religieux (empires de genèse) — restaurée ici, bornée
    * ≥ 0 (une save forgée à valeur négative retombe à 0 = plafond 1, jamais un index fou). */

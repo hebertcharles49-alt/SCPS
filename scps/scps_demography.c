@@ -1132,8 +1132,8 @@ static long refugee_settle_home(ProvincePop *home, const PopGroup *ref, long amt
 int demography_refugee_tick(World *w, WorldEconomy *e, const DiploState *dp){
     (void)w; (void)dp;
     if (!e) return 0;
-    float flee_scar = tune_f("REFUGEE_FLEE_SCAR", 0.5f);    /* révolte/sac au-delà ⇒ on fuit */
-    float flee_frac = tune_f("REFUGEE_FLEE_FRAC", 0.10f);   /* part d'un groupe qui fuit/an */
+    float flee_scar = tune_f("REFUGEE_FLEE_SCAR", 0.40000001f);    /* révolte/sac au-delà ⇒ on fuit */
+    float flee_frac = tune_f("REFUGEE_FLEE_FRAC", 0.12f);   /* part d'un groupe qui fuit/an */
     long  flee_min  = (long)tune_f("REFUGEE_FLEE_MIN", 30.f);
     float calm      = tune_f("REFUGEE_HOME_CALM", 0.25f);   /* foyer sous ce seuil ⇒ retour possible */
     float pull_ref  = tune_f("REFUGEE_RETURN_PULL", 0.12f); /* réfugié : retour FORT */
@@ -1424,7 +1424,7 @@ long demography_manumit_count(void){ return g_manumit_total; }
  * forcera). L'intégration vient d'assimilation_tick : déterministe, aucune roue.
  * MANUMIT_INTEG>=1 = le puits d'hier (kill-switch). */
 long demography_manumit_integrated(WorldEconomy *econ, const World *w){
-    float thr = tune_f("MANUMIT_INTEG", 0.85f);
+    float thr = tune_f("MANUMIT_INTEG", 0.94999999f);
     if (!econ || !w || thr>=1.f) return 0;
     long freed=0;
     int nprov=econ->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;

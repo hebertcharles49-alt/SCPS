@@ -1113,7 +1113,7 @@ int main(int argc, char **argv){
                         int cpp=w->country[best].capital_prov;
                         int crp=(cpp>=0&&cpp<w->n_provinces)?w->province[cpp].region:-1;
                         double pm = (double)warhost_unit_pay_month(s.econ, crp, U_PIQUIER)
-                                  * ((double)tune_f("REGIMENT_PAY",1.5f)/90.0);   /* dial, miroir de warhost_tick */
+                                  * ((double)tune_f("REGIMENT_PAY",90.0f)/90.0);   /* dial, miroir de warhost_tick */
                         double fl = (double)warhost_force_limit(bn);
                         double sm4 = 1.0 + ((4.0/fl-1.0)>0.0 ? (4.0/fl-1.0)*3.0 : 0.0);   /* 3.0 = SOLDE_OVER_K (miroir) */
                         double sm6 = 1.0 + ((6.0/fl-1.0)>0.0 ? (6.0/fl-1.0)*3.0 : 0.0);
@@ -1985,14 +1985,14 @@ int main(int argc, char **argv){
             printf("              sang : mémoire des morts %.0f (demi-vie %.0f ans) = %.2f%% de la pop VIVANTE (seuil %.0f%%)\n",
                    s.eg->war_dead, (double)tune_f("SANG_MEMORY_HL", 40.f),
                    100.0*endgame_blood_ratio(s.eg, s.econ),
-                   (double)tune_f("ENDGAME_BLOOD_FRAC", 0.20f)*100.0);
+                   (double)tune_f("ENDGAME_BLOOD_FRAC", 0.090000004f)*100.0);
         /* FIN_CHAUD (v74 ; REPLI) — LE FEU, toujours visible : la mémoire de combustible
          * per-capita qui ARME le RÉCHAUFFEMENT de repli (seuil FUEL_FALLBACK_MIN, après
          * FUEL_FALLBACK_DELAY ans) — permet d'OBSERVER si un monde calme est éligible au
          * repli. Le combustible NE charge PLUS l'entropie (design REPLI, seconde position). */
         if (s.eg && s.eg->pop_ref>0.0){
             double fr = endgame_fuel_ratio(s.eg, s.econ);
-            double mn = (double)tune_f("FUEL_FALLBACK_MIN", 4.f);
+            double mn = (double)tune_f("FUEL_FALLBACK_MIN", 2.0f);
             printf("              feu : combustible/tête %.1f (demi-vie %.0f ans · charbon ×%.0f) → repli RÉCHAUFFEMENT %s (seuil %.1f, après +%.0f ans)\n",
                    fr, (double)tune_f("FUEL_MEMORY_HL", 60.f), (double)tune_f("FUEL_COAL_W", 3.f),
                    fr>=mn ? "ARMÉ" : "sous seuil", mn, (double)tune_f("FUEL_FALLBACK_DELAY", 60.f));

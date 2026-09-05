@@ -738,6 +738,33 @@ int main(int argc,char**argv){
             /* (b) INTÉGRATION : V vassal de S, à la paix → le lien MÛRIT, lentement. */
             diplo_set_vassal(dp,S,V,CONTRAT_PROTECTORAT);
             dp->v_integration[V]=0.f; dp->v_grief[V]=0.f;
+
+            /* A06 : la coercition du suzerain victorieux doit survivre à
+             * econ_aggregate_regions. Le périmètre attendu est l'ensemble des
+             * provinces actives du vassal dans sa région capitale. */
+            {
+                int n_target=0;
+                for (int p=0;p<econ->n_prov && p<SCPS_MAX_PROV;p++){
+                    ProvinceEconomy *pe=&econ->prov[p];
+                    if (pe->active && pe->owner==V && pe->region==capV){ pe->coercion=0.f; n_target++; }
+                }
+                dp->fronde_suz=(int16_t)S; dp->fronde_lead=(int16_t)V;
+                dp->fronde_score=0.f; dp->v_ligue[V]=1;
+                /* diplo_set_vassal above leaves this pair at peace, which is
+                 * precisely the resolution path for a suzerain victory. */
+                diplo_suzerainty_tick(dp,w,econ,wp);
+                econ_aggregate_regions(econ);
+                bool persisted=(n_target>0);
+                int n_coerced=0;
+                for (int p=0;p<econ->n_prov && p<SCPS_MAX_PROV;p++){
+                    const ProvinceEconomy *pe=&econ->prov[p];
+                    if (pe->active && pe->owner==V && pe->region==capV){
+                        if (pe->coercion>=0.399f) n_coerced++;
+                    }
+                }
+                ok("A06 : victoire de fronde écrit la coercition sur les provinces du vassal", persisted && n_coerced==n_target);
+                dp->fronde_suz=-1; dp->fronde_lead=-1; dp->fronde_score=0.f; dp->v_ligue[V]=0;
+            }
             diplo_suzerainty_tick(dp,w,econ,wp);
             float i1=dp->v_integration[V];
             ok("l'intégration MONTE dès la 1re année de paix", i1>0.f);

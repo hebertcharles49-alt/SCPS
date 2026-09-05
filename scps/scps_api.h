@@ -27,6 +27,48 @@ extern "C" {
 
 typedef struct ScpsSim ScpsSim;   /* opaque : l'hôte ne voit jamais les structs moteur */
 
+/* Retour TRANSIENT des ordres joueur. Les appels player_* restent des appels
+ * d'enfilage (leur booléen ne signifie jamais « exécuté »). Le snapshot est
+ * borné et vidé à la nouvelle partie/au chargement réussi. */
+enum {
+    SCPS_FEEDBACK_PENDING = 0,
+    SCPS_FEEDBACK_EXECUTED = 1,
+    SCPS_FEEDBACK_REFUSED = 2
+};
+enum {
+    SCPS_FEEDBACK_NONE = 0,
+    SCPS_FEEDBACK_STARTED = 1,
+    SCPS_FEEDBACK_COMPLETED = 2,
+    SCPS_FEEDBACK_MUTATED = 3
+};
+enum {
+    SCPS_FEEDBACK_REASON_OK = 0,
+    SCPS_FEEDBACK_REASON_INVALID_ARGUMENT = 1,
+    SCPS_FEEDBACK_REASON_NOT_OWNED = 2,
+    SCPS_FEEDBACK_REASON_BUSY = 3,
+    SCPS_FEEDBACK_REASON_INSUFFICIENT_GOLD = 4,
+    SCPS_FEEDBACK_REASON_INSUFFICIENT_MATERIAL = 5,
+    SCPS_FEEDBACK_REASON_NO_CAPACITY = 6,
+    SCPS_FEEDBACK_REASON_NO_CONSENT = 7,
+    SCPS_FEEDBACK_REASON_COOLDOWN = 8,
+    SCPS_FEEDBACK_REASON_NO_EFFECT = 9,
+    SCPS_FEEDBACK_REASON_NOT_READY = 10,
+    SCPS_FEEDBACK_REASON_QUEUE_FULL = 11,
+    SCPS_FEEDBACK_REASON_UNAVAILABLE = 12,
+    SCPS_FEEDBACK_REASON_INSUFFICIENT_INFLUENCE = 13,
+    SCPS_FEEDBACK_REASON_COUNT = 14
+};
+typedef struct {
+    uint32_t id;
+    uint8_t verb, status, outcome, reserved;
+    int32_t reason, year, day, a[4];
+    int64_t value, value2;
+    float amount;
+} ScpsCommandFeedback;
+int  scps_command_feedback_count(const ScpsSim *s);
+bool scps_command_feedback_at(const ScpsSim *s, int index, ScpsCommandFeedback *out);
+void scps_command_feedback_reset(ScpsSim *s);
+
 /* ---- cycle de vie ---------------------------------------------------- */
 ScpsSim *scps_sim_new(void);
 void     scps_sim_generate(ScpsSim *s, uint32_t seed);
@@ -59,6 +101,7 @@ void scps_map_layer(ScpsSim *s, uint8_t *dst, int layer);
 /* ---- nombres TANGIBLES (membrane) ------------------------------------ */
 int    scps_year         (const ScpsSim *s);
 int    scps_day_of_year  (const ScpsSim *s);   /* jour dans l'année 0-364 (date d'affichage) */
+int    scps_world_seed   (const ScpsSim *s);   /* graine sérialisée du monde courant */
 int    scps_player       (const ScpsSim *s);
 void   scps_set_observer (ScpsSim *s, int on);   /* mode observateur : retire la main humaine (tout IA) */
 int    scps_is_observer  (const ScpsSim *s);
@@ -1095,7 +1138,12 @@ int scps_country_shortages(ScpsSim *s, int country, ScpsShortage *out, int max);
 /* ARMÉE d'un pays (sb_panel_armee, read-only) : mobilisation + flotte. L'armée de
  * CAMPAGNE (position/phase/composition) se lit via scps_army_info. */
 typedef struct {
-    long regiments;         /* force mobilisée (warhost_units) */
+    long regiments;         /* réserve du host, en paquets de 100 hommes */
+    long campaign_units;    /* hommes présents dans TOUS les corps actifs (×100 déjà appliqué) */
+    long total_units;       /* réserve (regiments ×100) + campagne, sans double compte */
+    float force_limit;      /* limite en régiments, même lecture que la solde */
+    float reserve_over_limit_pct; /* dépassement brut de la limite par la réserve seule */
+    float reserve_surcharge_pct; /* surcoût d'intendance réel appliqué à la réserve */
     int  levy;              /* cran de levée 0-3 */
     const char *levy_name;  /* Basse · Garde · Pied de guerre · Levée en masse */
     int  fleet;             /* total de coques */
@@ -1639,10 +1687,14 @@ typedef struct {
     double      value;       /* valeur active (surcharge ou défaut) */
     double      def_value;   /* défaut compilé */
     int         overridden;  /* 1 si surchargé (env ou panneau) */
+    int         active;      /* 0 = clé historique sans actionneur */
+    const char *phase;       /* phase d'application moteur, distincte de overridden */
 } ScpsTunable;
 int  scps_tune_count(void);
 void scps_tune_at(int i, ScpsTunable *out);
 void scps_tune_set_val(const char *nom, double value);
+int  scps_tune_set_checked(const char *nom, double value); /* refus = 0, aucune mutation */
+int  scps_tune_reset(const char *nom); /* revient au défaut et retire la surcharge */
 
 /* ---- LANGUE (i18n moteur) --------------------------------------------- *
  * Bascule la TABLE COMPILÉE que tr() résout (scps_lang.h : FR de référence /
@@ -1820,6 +1872,9 @@ typedef struct {
     const char *recompense; /* ce qu'il donne, en UNE ligne */
     const char *saveur;     /* une phrase */
     const char *cible;      /* le lieu / la couronne visée ("" si l'échelon patiente) */
+    int    cible_pid;       /* province stable de la cible (-1 si aucune) */
+    int    cible_cid;       /* couronne stable de la cible (-1 si aucune) */
+    int    cible_region;    /* région stable si la cible est une province (-1 sinon) */
     int    pret;            /* 1 = la condition est REMPLIE : le sceau est offert */
     int    pivot;           /* 1 = l'échelon courant est le PIVOT (choix de voie) */
     const char *voie_a, *voie_b;  /* les deux voies du pivot */
@@ -1901,7 +1956,9 @@ int  scps_set_player_culture(int heritage, int ethos, int t0, int t1, int t2);
  * -1 auto. Posé AVANT la (re)génération ; la capitale du joueur naît sur la classe. */
 void scps_set_player_climat(int climat);
 /* Le ±X « Votre politique » du hover de satisfaction (points −15..+15, classe 0-2). */
-/* SLIDERS D'ACHAT : taux de rachat 0-100 par catégorie (0 vivrier · 1 brutes · 2 manuf). */
+/* SLIDERS D'ACHAT : taux de rachat 0-100 par catégorie (0 vivrier · 1 brutes · 2 manuf).
+ * Mutation immédiate du pays humain. Monde non prêt, observateur ou arguments hors
+ * bornes : aucun effet. Le taux est sérialisé ; BUY_RATE_ON active son actionneur. */
 int  scps_country_buy_rate(ScpsSim *s, int cid, int cat);
 void scps_player_set_buy_rate(ScpsSim *s, int cat, int pct);
 int  scps_country_class_policy_sat(ScpsSim *s, int cid, int classe);
@@ -1984,7 +2041,8 @@ void scps_worldgen_clear(void);
 /* 3 emplacements (1..3). La section CULT persiste les cultures composées.   */
 /* ====================================================================== */
 int  scps_sim_save(ScpsSim *s, int slot);   /* 1 = écrit · 0 = échec */
-int  scps_sim_load(ScpsSim *s, int slot);   /* 0 ok · 1 absent/corrompu · 2 « ère antérieure » */
+int  scps_sim_load(ScpsSim *s, int slot);   /* 0 ok · 1 absent/corrompu · 2 ère antérieure · 3 secours irrécupérable */
+bool scps_set_save_directory(const char *dir); /* chemin hôte des slots (Godot: user://saves globalisé) */
 /* infos des slots (pour la liste « Charger ») : used + année + ligne résumée. */
 typedef struct { int used; int year; char line[96]; } ScpsSaveSlot;
 void scps_save_slots(ScpsSaveSlot *out, int max);   /* remplit out[0..max) = slots 1..max */

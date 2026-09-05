@@ -8,7 +8,7 @@
 #     smoke : un sous-ensemble RAPIDE (colonne vertébrale + bornes éco/langue)
 #             pour un feedback en quelques secondes dans la boucle serrée du dev.
 #
-#   BANC_TIMEOUT=<s> : plafond de temps PAR banc (défaut 120). Un banc qui PEND
+#   BANC_TIMEOUT=<s> : plafond de temps PAR banc (défaut 420 : le banc API en prend ~300). Un banc qui PEND
 #                      est compté ROUGE (timeout) au lieu de bloquer la suite —
 #                      c'est le garde-fou contre un banc qui part en boucle.
 set -u
@@ -30,8 +30,9 @@ BENCHES_FULL=(
   campaign_demo factions_demo econ_tax_demo econ_culture_demo econ_arcane_demo
   econ_production_demo missions_demo influence_demo doctrines_demo ai_demo diplo_demo warhost_demo
   events_demo structural_demo forks_demo prosperity_demo credit_demo cap_demo
-  endgame_demo audit_eco lang_demo scps_api_demo culture_demo navy_demo
-  religion_demo trade_demo
+  endgame_demo audit_eco lang_demo scps_api_demo save_contract_demo culture_demo navy_demo
+  religion_demo trade_demo command_feedback_demo api_cache_demo save_failure_demo player_contract_demo
+  verb_atomicity_demo tune_contract_demo moddata_contract_demo
 )
 
 # Le sous-ensemble RAPIDE : la colonne vertébrale (worldgen/readout/éco/IA),
@@ -47,13 +48,20 @@ case "$mode" in
   full)  BENCHES=("${BENCHES_FULL[@]}") ;;
   *) echo "usage: run_tests.sh [full|smoke]" >&2; exit 2 ;;
 esac
+# Tests ciblés (notamment pour les runners CI) sans dupliquer les listes
+# smoke/full : RUN_TESTS_BENCHES="core_demo save_contract_demo".
+if [ -n "${RUN_TESTS_BENCHES:-}" ]; then
+  read -r -a BENCHES <<< "$RUN_TESTS_BENCHES"
+fi
 
-TIMEOUT="${BANC_TIMEOUT:-120}"
+TIMEOUT="${BANC_TIMEOUT:-420}"
+LOG_DIR="${RUN_TESTS_LOG_DIR:-build/test-logs}"
+mkdir -p "$LOG_DIR"
 have_timeout=0; command -v timeout >/dev/null 2>&1 && have_timeout=1
 
-run_banc(){  # $1 = binaire ; borne le temps si `timeout` est dispo (124 = dépassé)
-  if [ "$have_timeout" -eq 1 ]; then timeout "$TIMEOUT" ./"$1" 2>&1
-  else ./"$1" 2>&1; fi
+run_banc(){  # $1 = binaire, $2 = journal ; borne le temps si timeout existe
+  if [ "$have_timeout" -eq 1 ]; then timeout "$TIMEOUT" ./"$1" >"$2" 2>&1
+  else ./"$1" >"$2" 2>&1; fi
 }
 
 green=0 red=0 buildfail=0 timedout=0
@@ -61,17 +69,26 @@ red_list="" build_list="" timeout_list=""
 printf "%-26s %s\n" "BANC" "RÉSULTAT"
 printf '%.0s-' {1..50}; echo
 for b in "${BENCHES[@]}"; do
-  if ! make "$b" >"$BUILD_LOG" 2>&1; then
+  build_log="$LOG_DIR/${b}.build.log"
+  run_log="$LOG_DIR/${b}.run.log"
+  if ! make "$b" >"$build_log" 2>&1; then
     printf "%-26s \033[31mBUILD ÉCHEC\033[0m\n" "$b"
     buildfail=$((buildfail+1)); build_list="$build_list $b"; continue
   fi
-  out=$(run_banc "$b"); rc=$?
+  run_banc "$b" "$run_log"; rc=$?
+  out=$(cat "$run_log")
   if [ "$rc" -eq 124 ] && [ "$have_timeout" -eq 1 ]; then
     printf "%-26s \033[31mTIMEOUT (>%ss)\033[0m\n" "$b" "$TIMEOUT"
     red=$((red+1)); timedout=$((timedout+1)); timeout_list="$timeout_list $b"; continue
   fi
   # « X réussis, Y échoués » (banc auto-vérifiant)
   line=$(echo "$out" | grep -oE "[0-9]+ réussis, [0-9]+ échoués" | tail -1)
+  # Un banc qui annonce un bilan vert mais sort avec rc≠0 reste ROUGE : le
+  # code retour couvre les crashs/abortions et les runners sans bilan.
+  if [ "$rc" -ne 0 ]; then
+    printf "%-26s \033[31mrc=%s\033[0m\n" "$b" "$rc"
+    red=$((red+1)); red_list="$red_list $b"; continue
+  fi
   if [ -n "$line" ]; then
     pass=$(echo "$line" | grep -oE "^[0-9]+")
     fail=$(echo "$line" | grep -oE "[0-9]+ échoués" | grep -oE "^[0-9]+")
@@ -90,6 +107,7 @@ for b in "${BENCHES[@]}"; do
 done
 printf '%.0s-' {1..50}; echo
 echo "VERTS : $green · ROUGES : $red · BUILD ÉCHEC : $buildfail   (sur ${#BENCHES[@]} bancs, mode $mode)"
+echo "JOURNAUX : $LOG_DIR"
 [ -n "$red_list" ]     && echo "  rouges   :$red_list"
 [ -n "$timeout_list" ] && echo "  timeouts :$timeout_list"
 [ -n "$build_list" ]   && echo "  build    :$build_list"

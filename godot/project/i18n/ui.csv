@@ -15,6 +15,7 @@ T_LOAD,Charger,Load
 T_SAVED_OK,Partie sauvegardée (emplacement %d).,Game saved (slot %d).
 T_SAVE_FAIL,Échec de la sauvegarde.,Save failed.
 T_LOAD_FAIL,Chargement impossible (emplacement vide ou version différente).,Cannot load (empty slot or different version).
+T_LOAD_RESTART,La partie ne peut pas être restaurée. Fermez puis relancez le jeu avant de charger une sauvegarde.,The current game could not be restored. Close and restart the game before loading a save.
 T_OPT_TITLE,Options,Options
 T_OPT_LANG,Langue,Language
 T_OPT_FULLSCREEN,Plein écran,Fullscreen
@@ -62,3 +63,208 @@ T_ETHOS_2,Ordre,Order
 T_ETHOS_3,Bureaucrate,Bureaucrat
 T_ETHOS_4,Mercantile,Mercantile
 T_ETHOS_5,Pacifiste,Pacifist
+T_DESS_TITLE,Desseins,Designs
+T_DESS_BRANCH,Le Sol,The Soil
+T_DESS_PROGRESS,Échelon %d sur %d,Rung %d of %d
+T_DESS_DONE,Dessein accompli,Design completed
+T_DESS_DONE_HELP,La branche est scellée. Ses effets durables vivent désormais dans votre royaume.,The branch is sealed. Its lasting effects now live in your realm.
+T_DESS_UNAVAILABLE,Aucun Dessein n'est encore éveillé pour ce royaume.,No Design is awake for this realm yet.
+T_DESS_OBJECTIVE,Condition actuelle,Current condition
+T_DESS_TARGET,Cible : %s,Target: %s
+T_DESS_REWARD,Récompense,Reward
+T_DESS_READY,Condition remplie — le sceau est offert,Condition met — the seal is available
+T_DESS_WAITING,En attente de la condition,Waiting for the condition
+T_DESS_CHOOSE,Choisissez une voie — ce choix est irréversible,Choose a path — this choice is irreversible
+T_DESS_WAY_A,Conquête,Conquest
+T_DESS_WAY_B,Vassalisation,Vassalization
+T_DESS_PROOF,Preuve : %s,Proof: %s
+T_DESS_PROOF_OK,acquise,acquired
+T_DESS_PROOF_MISSING,à construire,needed
+T_DESS_COST,Coût du pivot : %d influence, Pivot cost: %d influence
+T_DESS_SEAL,Sceller l'échelon,Seal rung
+T_DESS_SEAL_LOCKED,Sceau indisponible,Seal unavailable
+T_DESS_ORDER_SENT,Sceau envoyé — il sera vérifié par le prochain pas.,Seal sent — it will be checked on the next step.
+T_DESS_ORDER_REFUSED,Le moteur a refusé le sceau dans l'état actuel.,The engine refused the seal in the current state.
+T_DESS_NO_ENGINE,Moteur indisponible.,Engine unavailable.
+T_DISC_TITLE,Découvertes,Discoveries
+T_DISC_HELP,Ces pistes suivent votre royaume. Ouvrez un panneau pour agir ou terminez une piste pour la masquer.,These prompts follow your realm. Open a panel to act or finish a prompt to hide it.
+T_DISC_NONE,Aucune piste active pour le moment. Revenez quand le royaume aura changé.,No active prompt right now. Return when the realm changes.
+T_DISC_OPEN,Ouvrir,Open
+T_DISC_DONE,Terminer cette piste,Finish this prompt
+T_DISC_PREVIOUS,← Précédentes,← Previous
+T_DISC_NEXT,Suivantes →,Next →
+T_DISC_PAGE,%d / %d,%d / %d
+T_DISC_CAPITAL_TITLE,Observer la capitale,Inspect the capital
+T_DISC_CAPITAL_BODY,La capitale rassemble les premiers choix de population et de développement.,The capital gathers your first population and development choices.
+T_DISC_RESEARCH_TITLE,Choisir une recherche,Choose a research
+T_DISC_RESEARCH_BODY,L'arbre du savoir montre les chemins accessibles et leurs prérequis.,The knowledge tree shows accessible paths and prerequisites.
+T_DISC_BUILD_TITLE,Développer une province,Develop a province
+T_DISC_BUILD_BODY,Une province peut ouvrir sa fiche puis son menu de construction.,A province can open its sheet and then its construction menu.
+T_DISC_SHORTAGE_TITLE,Approvisionner le royaume,Supply the realm
+T_DISC_SHORTAGE_BODY,"%s risque une rupture dans %s jours : ouvrez les stocks pour voir la couverture et les voies d'approvisionnement.","%s may run out in %s days: open Stocks to inspect coverage and supply routes."
+T_DISC_SHORTAGE_UNKNOWN,"Surveillez %s : le forecast ne voit pas encore de date de rupture.","Watch %s: the forecast has no rupture date yet."
+T_DISC_BUDGET_TITLE,Redresser le budget,Stabilize the budget
+T_DISC_BUDGET_BODY,Le solde mensuel est négatif : le Trésor permet d'ajuster les recettes et les dépenses.,Monthly balance is negative: the Treasury lets you adjust revenue and spending.
+T_DISC_NEIGHBOR_TITLE,Rencontrer un pays connu,Meet a known country
+T_DISC_NEIGHBOR_BODY,"La fenêtre diplomatique rassemble les pactes, échanges et décisions disponibles.","The diplomacy window gathers available pacts, trade and decisions."
+T_DISC_DESSEIN_TITLE,Suivre un Dessein,Follow a Design
+T_DISC_DESSEIN_BODY,"Une ambition nommée est prête : voyez sa cible, sa condition et sa récompense.","A named ambition is ready: see its target, condition and reward."
+T_ARMY_RESERVE,Réserve : %s hommes (%d régiments),Reserve: %s men (%d regiments)
+T_ARMY_CAMPAIGN,Campagne : %s hommes,Campaign: %s men
+T_ARMY_TOTAL,Total : %s hommes,Total: %s men
+T_ARMY_LIMIT,Limite : %.1f régiments,Limit: %.1f regiments
+T_ARMY_SURCHARGE,Surcoût de réserve : +%d %%,Reserve surcharge: +%d %%
+T_LEVY_LEVEL_LOW,Basse,Low
+T_LEVY_LEVEL_GUARD,Garde,Guard
+T_LEVY_LEVEL_WAR,Guerre,War
+T_LEVY_LEVEL_MASS,Masse,Mass
+T_LEVY_CURRENT,%s — niveau %d : %s,%s — level %d: %s
+T_LEVY_PENDING,Levée niveau %d — ordre en attente du prochain pas,Levy level %d — order pending for the next step
+T_LEVY_UNAVAILABLE,Réglage de levée indisponible,Levy control unavailable
+T_BUY_RATE_TITLE,Rachat de la production,Production buyback
+T_BUY_RATE_FOOD,Vivrier,Food
+T_BUY_RATE_RAW,Brutes,Raw materials
+T_BUY_RATE_MANUFACTURED,Manufacturés,Manufactured goods
+T_BUY_RATE_FOOD_TIP,Part de la production vivrière rachetée par la couronne.,Share of food production bought by the crown.
+T_BUY_RATE_RAW_TIP,Part des matières brutes rachetée par la couronne.,Share of raw materials bought by the crown.
+T_BUY_RATE_MANUFACTURED_TIP,Part des produits manufacturés rachetée par la couronne.,Share of manufactured goods bought by the crown.
+T_BUY_RATE_INACTIVE,Inactif (BUY_RATE_ON = 0),Inactive (BUY_RATE_ON = 0)
+T_TUNE_INVALID,Refusé : valeur réelle finie attendue · phase inchangée.,Rejected: a finite real value is required · phase unchanged.
+T_TUNE_UNKNOWN,Refusé : tunable inconnu « %s » · phase inchangée.,Rejected: unknown tunable “%s” · phase unchanged.
+T_TUNE_INACTIVE,Refusé : tunable inactif « %s » · phase : inactive.,Rejected: inactive tunable “%s” · phase: inactive.
+T_TUNE_NO_CHECK,Refusé : validation moteur indisponible · phase inchangée.,Rejected: engine validation unavailable · phase unchanged.
+T_TUNE_REJECTED,Refusé : valeur hors contrat du moteur · phase inchangée.,Rejected: value rejected by the engine contract · phase unchanged.
+T_TUNE_ACCEPTED,Accepté : %s = %s · phase : %s.,Accepted: %s = %s · phase: %s.
+T_TUNE_RESET_NO_CHECK,Refusé : remise au défaut indisponible · phase inchangée.,Rejected: reset unavailable · phase unchanged.
+T_TUNE_RESET_REJECTED,Refusé : ce tunable ne peut pas revenir au défaut · phase inchangée.,Rejected: this tunable cannot reset to its default · phase unchanged.
+T_TUNE_RESET_DONE,Défaut rétabli : %s.,Default restored: %s.
+T_TUNE_COPIED,Réglages copiés (%d surcharge(s)).,Settings copied (%d override(s)).
+T_RELIGION_TEMPLE_REQUIRED,Temple ou Cathédrale requis dans une province possédée.,A Temple or Cathedral is required in an owned province.
+T_ORDER_TITLE,Journal des ordres,Order log
+T_ORDER_EMPTY,Aucun ordre joueur récent.,No recent player orders.
+T_ORDER_LINE,Ordre #%d · %s — %s,Order #%d · %s — %s
+T_ORDER_PENDING,En attente,Pending
+T_ORDER_EXECUTED,Exécuté,Executed
+T_ORDER_REFUSED,Refusé,Refused
+T_ORDER_RESUME,reprendre pour vérifier,resume to verify
+T_ORDER_STARTED,Démarré,Started
+T_ORDER_COMPLETED,Terminé,Completed
+T_ORDER_MUTATED,Appliqué,Applied
+T_ORDER_REASON_1,Argument invalide,Invalid argument
+T_ORDER_REASON_2,Le pays ne vous appartient pas,Country is not yours
+T_ORDER_REASON_3,Action déjà occupée,Action is busy
+T_ORDER_REASON_4,Or insuffisant,Insufficient gold
+T_ORDER_REASON_5,Matériaux insuffisants,Insufficient materials
+T_ORDER_REASON_6,Capacité insuffisante,Insufficient capacity
+T_ORDER_REASON_7,Consentement absent,Consent not granted
+T_ORDER_REASON_8,Action en attente de délai,Cooldown active
+T_ORDER_REASON_9,Aucun effet possible,No effect
+T_ORDER_REASON_10,Condition non remplie,Not ready
+T_ORDER_REASON_11,File d'ordres pleine,Order queue full
+T_ORDER_REASON_12,Action indisponible,Unavailable
+T_ORDER_REASON_13,Influence insuffisante,Insufficient influence
+T_ORDER_VERB_UNKNOWN,Action joueur,Player action
+T_ORDER_VERB_NONE,Aucun ordre,No order
+T_ORDER_VERB_BUILD,Bâtir,Build
+T_ORDER_VERB_RECRUIT,Recruter,Recruit
+T_ORDER_VERB_LEVY,Régler la levée,Set levy
+T_ORDER_VERB_RESEARCH,Rechercher,Research
+T_ORDER_VERB_WAR,Déclarer la guerre,Declare war
+T_ORDER_VERB_PEACE,Faire la paix,Make peace
+T_ORDER_VERB_CAMPAIGN,Lancer une campagne,Start campaign
+T_ORDER_VERB_REFILL,Renforcer,Refill
+T_ORDER_VERB_NAVY,Bâtir une flotte,Build navy
+T_ORDER_VERB_DISBAND,Dissoudre,Disband
+T_ORDER_VERB_COLONIZE,Coloniser,Colonize
+T_ORDER_VERB_MANUF,Bâtir une manufacture,Build manufacture
+T_ORDER_VERB_MOVE,Mobiliser,Move army
+T_ORDER_VERB_CORPS_RAISE,Lever un corps,Raise corps
+T_ORDER_VERB_CORPS_SPLIT,Scinder un corps,Split corps
+T_ORDER_VERB_CORPS_MERGE,Fusionner des corps,Merge corps
+T_ORDER_VERB_CORPS_MOVE,Déplacer un corps,Move corps
+T_ORDER_VERB_CORPS_REFILL,Renforcer un corps,Refill corps
+T_ORDER_VERB_CORPS_DISBAND,Dissoudre un corps,Disband corps
+T_ORDER_VERB_DESSEIN,Sceller un Dessein,Seal Design
+T_ORDER_VERB_ALLIANCE,Proposer une alliance,Offer alliance
+T_ORDER_VERB_PACT,Proposer un pacte,Offer pact
+T_ORDER_VERB_EMBARGO,Imposer un embargo,Impose embargo
+T_ORDER_VERB_REPRESS,Réprimer,Repress
+T_ORDER_VERB_ASSIMILATE,Assimiler,Assimilate
+T_ORDER_VERB_PURGE,Épurer,Purge
+T_ORDER_VERB_COUNCIL_HIRE,Recruter un conseiller,Hire councillor
+T_ORDER_VERB_COUNCIL_DISMISS,Renvoyer un conseiller,Dismiss councillor
+T_ORDER_VERB_ROUTE,Ouvrir une route,Open route
+T_ORDER_VERB_MARKET_BUY,Acheter au marché,Buy from market
+T_ORDER_VERB_MARKET_SELL,Vendre au marché,Sell at market
+T_ORDER_VERB_ALLOC_RAW,Régler les matières,Set raw allocation
+T_ORDER_VERB_ALLOC_BLD,Régler les bâtiments,Set building allocation
+T_ORDER_VERB_ALLOC_INPUT,Régler les intrants,Set input allocation
+T_ORDER_VERB_ALLOC_AUTO,Revenir à l'allocation automatique,Return to automatic allocation
+T_ORDER_VERB_AGE,S'engager pour l'âge,Engage for the age
+T_ORDER_VERB_MIGRATION,Proposer une migration,Offer migration
+T_ORDER_VERB_EVENT,Choisir un évènement,Choose event option
+T_ORDER_VERB_DECREE,Activer un décret,Set decree
+T_ORDER_VERB_MANUMIT,Affranchir le pays,Manumit the country
+T_ORDER_VERB_SLAVE_BUY,Acheter des esclaves,Buy slaves
+T_ORDER_VERB_SLAVE_SELL,Vendre des esclaves,Sell slaves
+T_ORDER_VERB_POP_TRANSFER,Transférer de la population,Transfer population
+T_ORDER_VERB_FABRICATE,Fabriquer une revendication,Fabricate claim
+T_ORDER_VERB_COUNCIL_PAY,Régler la paie du conseil,Set council pay
+T_ORDER_VERB_RAID,Piller une côte,Raid coast
+T_ORDER_VERB_BUDGET,Régler le budget,Set budget policy
+T_ORDER_VERB_PEACE_OFFER,Proposer la paix,Offer peace
+T_ORDER_VERB_MANUF_LEVEL,Régler le niveau de manufacture,Set manufacture level
+T_ORDER_VERB_DEMOLISH,Démolir,Demolish
+T_ORDER_VERB_BANKRUPTCY,Déclarer la banqueroute,Declare bankruptcy
+T_ORDER_VERB_REPAY,Rembourser une dette,Repay debt
+T_ORDER_VERB_BORROW_CLASS,Emprunter à une classe,Borrow from a class
+T_ORDER_VERB_REQUEST_LOAN,Demander un emprunt,Request a loan
+T_ORDER_VERB_RENOVER,Rénover,Rennovate
+T_ORDER_VERB_CORPS_SPLIT_COMP,Scinder par composition,Split by composition
+T_ORDER_VERB_DOCT_ADOPT,Adopter une doctrine,Adopt doctrine
+T_ORDER_VERB_DOCT_IDEA,Acheter une idée,Buy doctrine idea
+T_ORDER_VERB_DOCT_ABANDON,Abandonner une doctrine,Abandon doctrine
+T_ORDER_TARGET_TECH,Technologie : %s,Technology: %s
+T_ORDER_RESEARCH_CANCEL,Annuler la recherche,Cancel research
+T_ORDER_TARGET_PROVINCE,Province : %s,Province: %s
+T_ORDER_TARGET_REGION,Région : %s,Region: %s
+T_ORDER_TARGET_REGION_PAIR,De %s vers %s,From %s to %s
+T_ORDER_TARGET_REGION_QUANTITY,%s · quantité %d,%s · quantity %d
+T_ORDER_TARGET_PROVINCE_PAIR,De %s vers %s,From %s to %s
+T_ORDER_TARGET_PROVINCE_QUANTITY,%s · quantité %d,%s · quantity %d
+T_ORDER_TRANSFER_DETAIL,De %s vers %s · quantité %d,From %s to %s · quantity %d
+T_ORDER_TARGET_COUNTRY,Pays : %s,Country: %s
+T_ORDER_TARGET_CORPS,Corps #%d,Corps #%d
+T_ORDER_QUANTITY,Quantité : %d,Quantity: %d
+T_ORDER_RAID_LOOT,Butin : %d,Plunder: %d
+T_ORDER_RAISE_DETAIL,Lever %d régiments vers %s,Raise %d regiments toward %s
+T_ORDER_TARGET_DESSEIN,Dessein · branche %d · échelon %d · voie %d,Design · branch %d · rung %d · path %d
+T_ORDER_LEVY_DETAIL,Niveau de levée : %d,Levy level: %d
+T_ORDER_COUNCIL_DETAIL,Siège du conseil : %d,Council seat: %d
+T_ORDER_NAVY_DETAIL,Type de coque : %d,Hull type: %d
+T_ORDER_EVENT_DETAIL,Évènement %d · option %d,Event %d · option %d
+T_ORDER_DECREE_DETAIL,Décret : %d,Decree: %d
+T_ORDER_BUDGET_DETAIL,%s · %s,%s · %s
+T_ORDER_BUDGET_TAXES,Fiscalité,Taxation
+T_ORDER_BUDGET_SPENDING,Dépenses,Spending
+T_ORDER_BUDGET_LABORER,Laboureurs,Laborers
+T_ORDER_BUDGET_BOURGEOIS,Artisans,Bourgeois
+T_ORDER_BUDGET_ELITE,Noblesse,Elite
+T_ORDER_BUDGET_INVEST,Investissement public,Public investment
+T_ORDER_BUDGET_UPKEEP,Entretien des bâtiments,Building upkeep
+T_ORDER_BUDGET_ARMY,Armée,Army
+T_ORDER_BUDGET_NAVY,Flotte,Navy
+T_ORDER_BUDGET_ROADS,Entretien des routes,Road upkeep
+T_ORDER_BUDGET_MINT,Frappe,Minting
+T_ORDER_BUDGET_DEBASE,Débase,Debasement
+T_ORDER_BUDGET_UNKNOWN,Ligne inconnue,Unknown line
+T_ORDER_SLOT_DETAIL,Emplacement : %d,Slot: %d
+T_ORDER_DOCTRINE_DETAIL,Doctrine : %d,Doctrine: %d
+T_ORDER_AMOUNT_DETAIL,Montant : %d,Amount: %d
+T_ORDER_RECRUIT_DETAIL,Type d'unité %d · quantité %d,Unit type %d · quantity %d
+T_ORDER_BORROW_DETAIL,Classe %d · montant %d,Class %d · amount %d
+T_ORDER_NO_TARGET,Action sans cible,Action without target
+T_ORDER_UNKNOWN_PLACE,lieu inconnu,unknown place
+T_ORDER_UNKNOWN_COUNTRY,pays inconnu,unknown country
+T_ORDER_UNKNOWN_TECH,technologie inconnue,unknown technology
+T_ORDER_NEXT_TICK,sera vérifié au prochain pas,checked on next step

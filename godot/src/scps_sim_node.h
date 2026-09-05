@@ -36,6 +36,8 @@ public:
     /* cycle de vie */
     void  generate(int seed);
     void  advance_days(int days);
+    Array command_feedback() const;  /* résultats transient FIFO, bornés à 128 entrées */
+    void  reset_command_feedback();
 
     /* carte */
     int   map_w() const;
@@ -51,6 +53,7 @@ public:
 
     /* nombres tangibles (membrane) */
     int     year() const;
+    int     seed() const;                         /* graine canonique sérialisée */
     int     player() const;
     void       set_observer(bool on);
     bool       is_observer() const;
@@ -178,11 +181,15 @@ public:
     Dictionary merv_metab();                            /* MERVEILLE : ce qui compte VRAIMENT pour la victoire — {count,required,heritages[]} */
     Array      tunables();                             /* MODTOOLS : registre des tunables (nom·valeur·défaut·surchargé) */
     void       tune_set(const godot::String &nom, double value);  /* MODTOOLS : surcharge LIVE d'un tunable */
+    bool       tune_set_checked(const godot::String &nom, double value); /* MODTOOLS : accepte seulement si le moteur valide */
+    bool       tune_reset(const godot::String &nom); /* MODTOOLS : revient au défaut si la clé est active */
     void       lang_set(int lang);                     /* I18N : table moteur 0=FR · 1=EN (GLOBAL, à chaud) */
     int        lang_get() const;                       /* I18N : langue moteur active (0/1) */
     Array      country_budget(int country);            /* budget : postes de flux de l'année (signés) */
     Dictionary budget_summary(int country);            /* budget : or · revenus · dépenses · net · crédit · prêteur */
     Dictionary budget_controls(int country);           /* fiscalité par classe + investissement/entretiens [0.1,2] */
+    int        country_buy_rate(int country, int category) const; /* rachat production : 0 vivrier · 1 brutes · 2 manuf */
+    void       player_set_buy_rate(int category, int pct);         /* curseur joueur 0..100, validé par la façade C */
     Dictionary mission_info(int country);              /* ⚠ DÉPOSÉ (2026-09-01) : la commission décennale n'existe
                                                         * plus — rend toujours active=false. Remplacé par les
                                                         * DESSEINS ci-dessous ; à retirer avec country_panel.gd

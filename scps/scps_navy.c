@@ -145,6 +145,12 @@ bool navy_order_build(NavyState *ns, const World *w, WorldEconomy *econ, int cid
     if ((float)econ_country_gold(econ,cid) < gold) return false;
     if (re->strata[CLASS_LABORER].pop < (float)navy_hull_crew(t)+200.f) return false;  /* pas les bras */
     const HullCost *h=&HULLS[t];
+    /* Vérifier l'intégralité du kit avant toute mutation. econ_nation_stock_add()
+     * borne un débit au disponible ; l'ancien chemin ignorait ce retour et pouvait
+     * lancer une coque avec un kit partiel. */
+    if (econ_country_stock_sum(econ, cid, RES_NAVAL_SUPPLIES) < h->supplies-1e-3f) return false;
+    if (econ_country_stock_sum(econ, cid, RES_WOOD)           < h->wood-1e-3f)     return false;
+    if (h->copper>0.f && econ_country_stock_sum(econ, cid, RES_COPPER) < h->copper-1e-3f) return false;
     /* TRÉSOR/STOCK NATIONAUX (2026-09-03) : le chantier se paie sur LE trésor du pays et
      * puise dans SON entrepôt — plus sur la seule caisse de la rade. Le port ne fournit
      * que le marché (prix), les bras et la demande visible. */
@@ -219,7 +225,7 @@ void navy_tick(NavyState *ns, const World *w, WorldEconomy *econ, struct DiploSt
             /* I9 — LA MARINE SE PAIE (le sink en OR ; les fournitures en biens restent) :
              * ~1.5 or/mois par coque × IPM. Impayé → la flotte affame (starve_days →
              * désarmement existant plus bas) — c'est le « désarme des coques » d'IG. */
-            { float base_gold = (float)hulls * tune_f("NAVY_UPKEEP_GOLD",1.5f)
+            { float base_gold = (float)hulls * tune_f("NAVY_UPKEEP_GOLD",90.0f)
                               * econ_world_ipm(econ) * (at_war?1.5f:1.f) * (dt_days/30.f);
               float navy_mult = econ_country_budget_mult(econ,c,BUDGET_NAVY);
               float gold = base_gold * navy_mult;
@@ -690,13 +696,17 @@ void navy_interception_tick(NavyState *ns, struct Campaign *camp, const World *w
             a->intercept_done=true;                            /* une chasse par traversée */
             Navy *esc=&ns->n[owner];
             int escort=esc->hull[HULL_WAR];
-            int lA,lB,pr;
+            int lA=0,lB=0,pr=0;
             float effA=(float)pat->hull[HULL_WAR]*(pat->starve_days>0.f?0.7f:1.f);
             float effB=(float)escort*(esc->starve_days>0.f?0.7f:1.f);
             int v=(escort>0)
                 ? navy_battle(w,0,0,(int)(effA+0.5f),(int)(effB+0.5f),0.f,rng,&lA,&lB,&pr,
                               navy_pay_morale(econ,e),navy_pay_morale(econ,owner))
                 : (+1);                                        /* sans escorte : PROIE */
+            /* Sans escorte, il n'y a pas de poursuite ni de résultat de capture
+             * produit par navy_battle : le convoi est une proie et ses transports
+             * sont coulés. `pr=0` est donc la règle déterministe, pas une chance
+             * ajoutée artificiellement à cette branche. */
             if (escort>0){
                 if (lA>pat->hull[HULL_WAR]) lA=pat->hull[HULL_WAR];
                 if (lB>esc->hull[HULL_WAR]) lB=esc->hull[HULL_WAR];

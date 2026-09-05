@@ -264,7 +264,7 @@ func _on_load(slot: int) -> void:
 		Sim.game_on = true  # la partie EST commencée : alertes & popups s'éveillent
 		game_started.emit()
 	else:
-		_load_msg.text = tr("T_LOAD_FAIL")
+		_load_msg.text = tr("T_LOAD_RESTART") if rc == 3 else tr("T_LOAD_FAIL")
 
 
 func _show(which: Control) -> void:

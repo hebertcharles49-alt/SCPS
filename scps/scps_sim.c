@@ -414,12 +414,99 @@ static void sim_campaign_year(Sim *s, World *w) {
  * LaborEcon/tier-de-capitale, clampé 4, joueur-only (bug-gabarit de l'audit éco). Cf. le bloc de
  * recherche dans sim_day. */
 
+/* Ajoute un résultat au journal borné. Quand le journal est plein, le résultat
+ * le plus ancien sort : la file de commandes reste indépendante et chaque
+ * nouvel ordre garde ainsi une trace observable (même s'il est refusé avant
+ * d'entrer dans la file). */
+static SimCmdFeedback *sim_cmd_feedback_append(Sim *s){
+    if (!s) return NULL;
+    int k;
+    if (s->cmd_feedback_n < SCPS_CMD_FEEDBACK_MAX){
+        k=(s->cmd_feedback_head+s->cmd_feedback_n)%SCPS_CMD_FEEDBACK_MAX;
+        s->cmd_feedback_n++;
+    } else {
+        /* Les ordres PENDING sont prioritaires : une rafale de refus de file
+         * ne doit jamais faire disparaître le verdict d'un ordre déjà accepté
+         * avant son drain. Il y a au plus SCPS_CMDQ_MAX pending (64), donc une
+         * place historique est toujours disponible dans ce journal de 128. */
+        int victim=-1;
+        for (int off=0; off<SCPS_CMD_FEEDBACK_MAX; off++){
+            SimCmdFeedback *old=&s->cmd_feedback[(s->cmd_feedback_head+off)%SCPS_CMD_FEEDBACK_MAX];
+            if (old->status!=SCPS_CMD_PENDING){ victim=off; break; }
+        }
+        if (victim<0) return NULL; /* défense : ne jamais écraser un PENDING */
+        for (int off=victim; off<SCPS_CMD_FEEDBACK_MAX-1; off++){
+            int dst=(s->cmd_feedback_head+off)%SCPS_CMD_FEEDBACK_MAX;
+            int src=(s->cmd_feedback_head+off+1)%SCPS_CMD_FEEDBACK_MAX;
+            s->cmd_feedback[dst]=s->cmd_feedback[src];
+        }
+        k=(s->cmd_feedback_head+SCPS_CMD_FEEDBACK_MAX-1)%SCPS_CMD_FEEDBACK_MAX;
+    }
+    SimCmdFeedback *f=&s->cmd_feedback[k];
+    memset(f,0,sizeof *f);
+    f->day=s->day; f->year=s->year;
+    return f;
+}
+
 /* enfile un ordre joueur (façade) — FIFO bornée ; false si pleine (jamais d'écrasement). */
 bool sim_cmd_push(Sim *s, PlayerCmd c){
-    if (!s || s->cmd_n >= SCPS_CMDQ_MAX) return false;
-    if (c.verb==CMD_NONE || c.verb>=CMD_COUNT) return false;   /* verbe hors domaine : refus net */
+    if (!s) return false;
+    if (s->cmd_n >= SCPS_CMDQ_MAX){
+        /* Même un refus d'enfilage est observable, mais ne consomme jamais la
+         * file de commandes. L'ID permet à l'hôte de distinguer ce cas. */
+        SimCmdFeedback *f=sim_cmd_feedback_append(s);
+        if (!f) return false;
+        f->id=++s->cmd_next_id; f->verb=c.verb; f->status=SCPS_CMD_REFUSED;
+        f->reason=SCPS_CMD_REASON_QUEUE_FULL;
+        return false;
+    }
+    if (c.verb==CMD_NONE || c.verb>=CMD_COUNT){
+        SimCmdFeedback *f=sim_cmd_feedback_append(s);
+        if (!f) return false;
+        f->id=++s->cmd_next_id; f->verb=c.verb; f->status=SCPS_CMD_REFUSED;
+        f->reason=SCPS_CMD_REASON_INVALID_ARGUMENT;
+        return false;
+    }   /* verbe hors domaine : refus net */
+    c.id=++s->cmd_next_id;
+    SimCmdFeedback *f=sim_cmd_feedback_append(s);
+    if (!f) return false;
+    f->id=c.id; f->verb=c.verb; f->status=SCPS_CMD_PENDING;
+    f->reason=SCPS_CMD_REASON_OK;
+    for(int i=0;i<4;i++) f->a[i]=c.a[i];
     s->cmdq[s->cmd_n++] = c;
     return true;
+}
+
+int sim_cmd_feedback_count(const Sim *s){ return s ? s->cmd_feedback_n : 0; }
+bool sim_cmd_feedback_at(const Sim *s, int index, SimCmdFeedback *out){
+    if (!s || !out || index<0 || index>=s->cmd_feedback_n) return false;
+    *out=s->cmd_feedback[(s->cmd_feedback_head+index)%SCPS_CMD_FEEDBACK_MAX];
+    return true;
+}
+void sim_cmd_feedback_reset(Sim *s){
+    if (!s) return;
+    memset(s->cmd_feedback,0,sizeof s->cmd_feedback);
+    s->cmd_feedback_head=0; s->cmd_feedback_n=0; s->cmd_next_id=0;
+}
+
+static SimCmdFeedback *sim_cmd_feedback_find(Sim *s, uint32_t id){
+    if (!s || !id) return NULL;
+    for (int i=0;i<s->cmd_feedback_n;i++){
+        SimCmdFeedback *f=&s->cmd_feedback[(s->cmd_feedback_head+i)%SCPS_CMD_FEEDBACK_MAX];
+        if (f->id==id) return f;
+    }
+    return NULL;
+}
+static void sim_cmd_feedback_exec(SimCmdFeedback *f, int outcome, int64_t value, int64_t value2, float amount){
+    if (!f) return;
+    f->status=SCPS_CMD_EXECUTED; f->outcome=(uint8_t)outcome; f->reason=SCPS_CMD_REASON_OK;
+    f->value=value; f->value2=value2; f->amount=amount;
+}
+static void sim_cmd_feedback_refuse(SimCmdFeedback *f, int reason){
+    if (!f || f->status!=SCPS_CMD_PENDING) return;
+    f->status=SCPS_CMD_REFUSED; f->outcome=SCPS_CMD_OUTCOME_NONE;
+    f->reason=(reason>SCPS_CMD_REASON_OK && reason<SCPS_CMD_REASON_COUNT)
+              ? reason : SCPS_CMD_REASON_NO_EFFECT;
 }
 
 static void peace_rebuild_country(World *w,const WorldEconomy *econ,int cid){
@@ -509,9 +596,15 @@ static InfluenceBase sim_influence_base(const Sim *s, int cid){
 
 static void sim_cmd_drain(Sim *s, World *w){
     int p = s->human_player;
-    if (p < 0 || p >= w->n_countries){ s->cmd_n = 0; return; }   /* pas d'humain : on jette (sécurité) */
+    if (p < 0 || p >= w->n_countries){
+        for (int i=0;i<s->cmd_n;i++)
+            sim_cmd_feedback_refuse(sim_cmd_feedback_find(s,s->cmdq[i].id), SCPS_CMD_REASON_NOT_READY);
+        s->cmd_n = 0; return;
+    }   /* pas d'humain : on jette (sécurité) */
     for (int i=0; i<s->cmd_n; i++){
         const PlayerCmd *c = &s->cmdq[i];
+        SimCmdFeedback *fb = sim_cmd_feedback_find(s,c->id);
+        if (fb){ fb->year=s->year; fb->day=s->day; }
         /* le DIPLOMATE : les actes diplo passent par UN émissaire. Un ordre INVALIDE (cible
          * hors-borne, soi-même, pays mort) ne le fait pas partir ; un ordre arrivé pendant sa
          * tournée est IGNORÉ (l'UI lit scps_diplo_cd et grise). INFLUENCE POLITIQUE §3
@@ -522,7 +615,9 @@ static void sim_cmd_drain(Sim *s, World *w){
          || c->verb==CMD_OFFER_PACT  || c->verb==CMD_OFFER_MIGRATION || c->verb==CMD_EMBARGO
          || c->verb==CMD_FABRICATE_CB || c->verb==CMD_PEACE_OFFER || c->verb==CMD_REQUEST_LOAN){
             int t = c->a[0];
-            if (t<0 || t>=w->n_countries || t==p || regions_of(s->econ, t)<=0) continue;
+            if (t<0 || t>=w->n_countries || t==p || regions_of(s->econ, t)<=0){
+                sim_cmd_feedback_refuse(fb,SCPS_CMD_REASON_INVALID_ARGUMENT); continue;
+            }
             /* INFLUENCE POLITIQUE §3 (2026-09, décision joueur) — CMD_DECLARE_WAR reste
              * GRATUIT ET HORS ÉMISSAIRE (« la guerre n'attend pas la cour ») : ni plancher
              * ni coût ne le concernent plus (miroir exact requis côté légalité façade,
@@ -542,7 +637,9 @@ static void sim_cmd_drain(Sim *s, World *w){
              * de base sont donc halvés (12→6, 25→12). GOLDEN NEUTRE : ce drain est
              * joueur-seul (gate `p = s->human_player` en tête de fonction). */
             if (c->verb != CMD_DECLARE_WAR){
-                if (s->day < s->diplo_ready_day) continue;
+                if (s->day < s->diplo_ready_day){
+                    sim_cmd_feedback_refuse(fb,SCPS_CMD_REASON_COOLDOWN); continue;
+                }
                 float ech = influence_scale(s->econ, p, sim_influence_base(s, p));
                 float cost = 0.f;
                 if (c->verb==CMD_OFFER_ALLIANCE || c->verb==CMD_OFFER_PACT || c->verb==CMD_OFFER_MIGRATION
@@ -550,7 +647,9 @@ static void sim_cmd_drain(Sim *s, World *w){
                     cost = tune_f("INFLUENCE_COST_ENVOY", 6.f)*ech*doctrine_key_mult(p,"INFLUENCE_COST_ENVOY");   /* doctrine Diplomatie : « Chancellerie » */
                 else if (c->verb==CMD_FABRICATE_CB)
                     cost = tune_f("INFLUENCE_COST_FAB", 12.f)*ech;
-                if (cost>0.f && !influence_can_spend(s->infl, p, cost)) continue;
+                if (cost>0.f && !influence_can_spend(s->infl, p, cost)){
+                    sim_cmd_feedback_refuse(fb,SCPS_CMD_REASON_INSUFFICIENT_INFLUENCE); continue;
+                }
                 if (cost>0.f) influence_spend(s->infl, p, cost);
                 s->diplo_ready_day = s->day + (int)tune_f("DIPLO_ENVOY_FLOOR_DAYS", 30.f);
             }
@@ -564,7 +663,8 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (s->econ->prov[pid].owner != p) break;             /* REVALIDE : la province est-elle encore au joueur ? */
             int reg = (pid<w->n_provinces) ? w->province[pid].region : -1;
             if (reg<0 || reg>=s->econ->n_regions) break;          /* le marché/la géo maritime (gates agency_build_acct) restent région */
-            agency_build_acct(s->ag, s->econ, w, reg, (Edifice)e, p, pid);
+            if (agency_build_acct(s->ag, s->econ, w, reg, (Edifice)e, p, pid))
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_STARTED,0,0,0.f);
             break; }
           case CMD_RENOVER: {   /* a[0]=pid — revalidé au drain, comme CMD_BUILD */
             int pid = c->a[0];
@@ -572,20 +672,45 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (s->econ->prov[pid].owner != p) break;
             int reg = (pid<w->n_provinces) ? w->province[pid].region : -1;
             if (reg<0 || reg>=s->econ->n_regions) break;
-            agency_renover_acct(s->ag, s->econ, w, reg, p, pid);
+            if (agency_renover_acct(s->ag, s->econ, w, reg, p, pid))
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_STARTED,0,0,0.f);
             break; }
           case CMD_RECRUIT: {
             int u = c->a[0]; long n = (c->a[1] > 0) ? c->a[1] : 1;
             if (u<0 || u>=U_COUNT) break;
-            warhost_player_recruit(s->host, w, s->econ, &s->ts[p], s->camp, p, (UnitType)u, n);
+            { long got=warhost_player_recruit(s->host, w, s->econ, &s->ts[p], s->camp, p, (UnitType)u, n);
+              if (got>0) sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,got,0,0.f); }
             break; }
-          case CMD_SET_LEVY:
+          case CMD_SET_LEVY: {
+            if (c->a[0]<WH_LEVY_BASSE || c->a[0]>WH_LEVY_MASSE){
+                sim_cmd_feedback_refuse(fb,SCPS_CMD_REASON_INVALID_ARGUMENT); break;
+            }
+            int old=warhost_levy(s->host,p);
             warhost_set_levy(s->host, p, c->a[0]);
-            break;
+            if (warhost_levy(s->host,p)!=old) sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,warhost_levy(s->host,p),old,0.f);
+            break; }
           case CMD_RESEARCH: {
             int t = c->a[0];
-            if (t<0 || t>=TECH_COUNT){ s->research_target = -1; break; }   /* a[0]<0 ⇒ annuler la cible */
-            s->research_target = t;   /* file de 1 : la progression/déblocage se fait au tick (bloc sim_day) */
+            if (t<-1 || t>=TECH_COUNT){ sim_cmd_feedback_refuse(fb,SCPS_CMD_REASON_INVALID_ARGUMENT); break; }
+            if (t<0){
+                if (s->research_target!=-1){ s->research_target=-1; sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,-1,0,0.f); }
+                break; /* a[0]<0 ⇒ annuler la cible */
+            }
+            { unsigned access=ai_heritage_access(w,s->econ,s->rn,p);
+              const TechNode *node=tech_node((TechId)t);
+              /* Une cible refusée ici ne doit jamais être brièvement annoncée
+               * comme active avant d'être effacée par sim_day. */
+              if (!node || !tech_can_research(&s->ts[p],(TechId)t,access)){
+                  sim_cmd_feedback_refuse(fb,SCPS_CMD_REASON_UNAVAILABLE); break;
+              }
+              if (!ages_tech_researchable(s->wp,node->theme,node->tier)){
+                  sim_cmd_feedback_refuse(fb,SCPS_CMD_REASON_NOT_READY); break;
+              }
+            }
+            if (s->research_target!=t){
+                s->research_target = t;   /* file de 1 : la progression/déblocage se fait au tick (bloc sim_day) */
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,t,0,0.f);
+            }
             break; }
           /* ── §3 — DIPLO (capstone #26) : le joueur PROPOSE, le vis-à-vis ÉVALUE (ai_consider_offer).
            *    Tout est REVALIDÉ contre l'état courant ; une offre non consentie est silencieusement
@@ -610,6 +735,8 @@ static void sim_cmd_drain(Sim *s, World *w){
             }
             if (cb==CB_NONE) break;   /* aucun motif gratuit, aucune intrigue mûre → pas de guerre */
             diplo_declare_war_cb(s->dp, p, t, cb);
+            if (diplo_status(s->dp,p,t)==DIPLO_WAR)
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,DIPLO_WAR,(int64_t)cb,0.f);
             break; }
           case CMD_FABRICATE_CB: {   /* W-GUERRE-3 : fabriquer une revendication (payante) contre a[0] */
             int t = c->a[0];
@@ -617,7 +744,10 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (!diplo_can_fabricate(w, s->econ, s->dp, p, t)) break;   /* déjà une intrigue en cours OU or insuffisant */
             CasusBelli cb = diplo_casus_belli(w, s->econ, s->wp, s->dp, p, t, RES_NONE);
             if (!diplo_cb_needs_fabrication(cb)) cb = CB_TERRITORIAL;  /* pas de motif offensif lu → revendication territoriale par défaut */
-            diplo_fabricate_cb(w, s->econ, s->dp, p, t, cb);
+            { int old=(int)s->dp->fab_state[p][t];
+              diplo_fabricate_cb(w, s->econ, s->dp, p, t, cb);
+              if ((int)s->dp->fab_state[p][t]!=old)
+                  sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_STARTED,(int)s->dp->fab_state[p][t],(int)cb,0.f); }
             break; }
           case CMD_MAKE_PEACE: {
             int t = c->a[0];
@@ -625,6 +755,9 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (diplo_status(s->dp,p,t)!=DIPLO_WAR) break;
             if (ai_consider_offer(w, s->econ, s->wp, s->dp, s->sc, p, t, OFFER_PEACE))
                 diplo_make_peace(s->dp, p, t);                        /* paix BLANCHE si l'autre cède */
+            if (diplo_status(s->dp,p,t)!=DIPLO_WAR)
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,(int)diplo_status(s->dp,p,t),0,0.f);
+            else sim_cmd_feedback_refuse(fb,SCPS_CMD_REASON_NO_CONSENT);
             break; }
           case CMD_PEACE_OFFER: {
             int t=c->a[0],flags=c->a[1],gold_score=c->a[2],nr=c->a[3];
@@ -665,24 +798,38 @@ static void sim_cmd_drain(Sim *s, World *w){
             if(flags&PEACE_FRAGMENT)peace_fragment_country(s,w,t);
             peace_rebuild_country(w,s->econ,p); peace_rebuild_country(w,s->econ,t);
             diplo_peace_finalize(s->dp,w,s->econ,p,t);
+            if (diplo_status(s->dp,p,t)!=DIPLO_WAR)
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,(int)diplo_status(s->dp,p,t),0,cost);
             break; }
           case CMD_OFFER_ALLIANCE: {
             int t = c->a[0];
             if (t<0 || t>=w->n_countries || t==p || w->country[t].role==POLITY_UNCLAIMED) break;
+            int old=(int)diplo_status(s->dp,p,t);
             if (ai_consider_offer(w, s->econ, s->wp, s->dp, s->sc, p, t, OFFER_ALLIANCE))
                 diplo_form_alliance(s->dp, p, t);                     /* … BILATÉRAL : seulement si consenti (#26) */
+            if (diplo_status(s->dp,p,t)==DIPLO_ALLIED && old!=DIPLO_ALLIED)
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,DIPLO_ALLIED,0,0.f);
+            else sim_cmd_feedback_refuse(fb,SCPS_CMD_REASON_NO_CONSENT);
             break; }
           case CMD_OFFER_PACT: {
             int t = c->a[0];
             if (t<0 || t>=w->n_countries || t==p || w->country[t].role==POLITY_UNCLAIMED) break;
+            bool old=diplo_trade_pact(s->dp,p,t);
             if (ai_consider_offer(w, s->econ, s->wp, s->dp, s->sc, p, t, OFFER_TRADE_PACT))
                 diplo_set_trade_pact(s->dp, p, t, true);
+            if (diplo_trade_pact(s->dp,p,t) && !old)
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,1,0,0.f);
+            else sim_cmd_feedback_refuse(fb,SCPS_CMD_REASON_NO_CONSENT);
             break; }
           case CMD_OFFER_MIGRATION: {  /* BRASSAGE : le pacte migratoire (échange passif de population) */
             int t = c->a[0];
             if (t<0 || t>=w->n_countries || t==p || w->country[t].role==POLITY_UNCLAIMED) break;
+            bool old=s->dp->migration_pact[p][t];
             if (ai_consider_offer(w, s->econ, s->wp, s->dp, s->sc, p, t, OFFER_MIGRATION))
                 diplo_set_migration_pact(s->dp, p, t, true);
+            if (s->dp->migration_pact[p][t] && !old)
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,1,0,0.f);
+            else sim_cmd_feedback_refuse(fb,SCPS_CMD_REASON_NO_CONSENT);
             break; }
           case CMD_REQUEST_LOAN: {   /* MONNAIE M9 — V2 : demander un emprunt à un État (diplomatie) */
             int t = c->a[0];
@@ -692,6 +839,8 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (ai_consider_offer(w, s->econ, s->wp, s->dp, s->sc, p, t, OFFER_LOAN))
                 got = credit_borrow_state(s->econ, w, p, t, amount);
             credit_loan_request_note(p, t, got>0.f);   /* état TRANSIENT pour la façade (MOTS) */
+            if (got>0.f) sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,0,0,got);
+            else sim_cmd_feedback_refuse(fb,SCPS_CMD_REASON_NO_CONSENT);
             break; }
           case CMD_BUILD_MANUF: {      /* PANNEAU B : le joueur pose une manufacture — RE-KEY PROVINCE
                                         * (a[0]=pid direct, miroir des gates IA civiles au grain province) */
@@ -728,6 +877,7 @@ static void sim_cmd_drain(Sim *s, World *w){
                  * même motif qu'ai_build_civmanuf (pas de table de matériaux, tout le coût
                  * paie les artisans de LA province). */
                 pe->strata[CLASS_LABORER].wealth += cost;
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,1,0,cost);
             }
             break; }
           case CMD_MANUF_LEVEL: {   /* onglet province : monter/descendre le niveau d'une manuf bâtie
@@ -746,9 +896,11 @@ static void sim_cmd_drain(Sim *s, World *w){
                     if (!credit_spend(s->econ, w, p, cost)) break;
                     econ_flux_add(p, FX_BUILD, -cost);               /* I0 : la ligne chantiers */
                     pe->strata[CLASS_LABORER].wealth += cost;         /* item 5 : idem, gages */
+                    sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,1,0,cost);
                 }
             } else {
-                econ_manuf_level_delta(s->econ, pid, (BuildingType)b, -1);   /* DESCENDRE = démolition libre */
+                if (econ_manuf_level_delta(s->econ, pid, (BuildingType)b, -1))
+                    sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,-1,0,0.f);   /* DESCENDRE = démolition libre */
             }
             break; }
           case CMD_DEMOLISH_EDI: {  /* onglet province : démolir un édifice d'un cran
@@ -758,12 +910,19 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (e<0 || e>=EDIFICE_COUNT) break;
             ProvinceEconomy *pe=&s->econ->prov[pid];
             if (pe->owner != p) break;                                /* REVALIDE : à soi */
-            agency_demolish_edifice(s->econ, pid, (Edifice)e);
+            { uint32_t old=pe->edi_built;
+              agency_demolish_edifice(s->econ, pid, (Edifice)e);
+              if (pe->edi_built!=old) sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,(pe->edi_built& (1u<<e))?1:0,0,0.f); }
             break; }
           case CMD_EMBARGO: {
             int t = c->a[0];
             if (t<0 || t>=w->n_countries || t==p || w->country[t].role==POLITY_UNCLAIMED) break;
-            intertrade_order_embargo(p, t, c->a[1]!=0);               /* décret unilatéral (pas d'évaluation) */
+            bool want=c->a[1]!=0, old=intertrade_embargoed(p,t);
+            intertrade_order_embargo(p, t, want);               /* décret unilatéral (pas d'évaluation) */
+            { bool after=intertrade_embargoed(p,t);
+              if (after!=old && after==want)
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,want?1:0,0,0.f);
+            }
             break; }
           /* ── §3 — INTÉRIEUR : les leviers passent par les MÊMES actionneurs que l'IA
            *    (agency/statecraft) ; RE-KEY PROVINCE (a[0] est un PID direct, jamais
@@ -773,93 +932,114 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (pid<0 || pid>=s->econ->n_prov || s->econ->prov[pid].owner!=p) break;
             int r = (pid<w->n_provinces) ? w->province[pid].region : -1;
             if (r<0 || r>=s->econ->n_regions) break;
-            agency_order_repress(s->ag, r, pid);
+            if (agency_order_repress(s->ag, r, pid)) sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_STARTED,0,0,0.f);
             break; }
           case CMD_ASSIMILATE: {
             int pid=c->a[0];
             if (pid<0 || pid>=s->econ->n_prov || s->econ->prov[pid].owner!=p) break;
             int r = (pid<w->n_provinces) ? w->province[pid].region : -1;
             if (r<0 || r>=s->econ->n_regions) break;
-            agency_order_assimilate(s->ag, r, c->a[1]!=0, pid);       /* a[1] = creuset (TECH_INTEGRATION) */
+            if (agency_order_assimilate(s->ag, r, c->a[1]!=0, pid))
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_STARTED,0,0,0.f);       /* a[1] = creuset (TECH_INTEGRATION) */
             break; }
           case CMD_PURGE: {
             int pid=c->a[0];
             if (pid<0 || pid>=s->econ->n_prov || s->econ->prov[pid].owner!=p) break;
             int r = (pid<w->n_provinces) ? w->province[pid].region : -1;
             if (r<0 || r>=s->econ->n_regions) break;
-            agency_order_purge(s->ag, r, pid);
+            if (agency_order_purge(s->ag, r, pid)) sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_STARTED,0,0,0.f);
             break; }
           case CMD_COUNCIL_HIRE: {
             int seat=c->a[0], slot=c->a[1];
             if (seat<0 || seat>=SC_COUNCIL_SEATS || slot<0 || slot>=SC_COUNCIL_CANDS) break;
+            int old=statecraft_council_seated(s->sc,p,seat);
             statecraft_council_hire(s->sc, w->seed, p, seat, slot, statecraft_council_gen(s->year));
+            if (statecraft_council_seated(s->sc,p,seat)==slot && old!=slot)
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,slot,0,0.f);
             break; }
           case CMD_COUNCIL_DISMISS: {
             int seat=c->a[0];
             if (seat<0 || seat>=SC_COUNCIL_SEATS) break;
+            int old=statecraft_council_seated(s->sc,p,seat);
             statecraft_council_dismiss(s->sc, w->seed, p, seat);
+            if (old>=0 && statecraft_council_seated(s->sc,p,seat)<0)
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,-1,0,0.f);
             break; }
           case CMD_COUNCIL_PAY: {
             int seat=c->a[0]; float pay=(float)c->a[1]/100.f;             /* a[1] = paie ×100 (0..200) */
             if (seat<0 || seat>=SC_COUNCIL_SEATS) break;
             if (statecraft_council_seated(s->sc,p,seat)<0) break;         /* siège vacant : rien à payer */
+            float oldpay=statecraft_council_pay(s->sc,p,seat);
             statecraft_council_set_pay(s->sc, p, seat, pay);
+            if (fabsf(statecraft_council_pay(s->sc,p,seat)-oldpay)>0.0001f)
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,(int64_t)lroundf(pay*100.f),0,pay);
             break; }
           case CMD_BUDGET_POLICY: {
             int family=c->a[0], index=c->a[1]; float mult=(float)c->a[2]/100.f;
             if (family==0){
                 if (index<0 || index>=CLASS_COUNT) break;
-                econ_country_tax_set(s->econ,p,(SocialClass)index,mult);
+                { float old=econ_country_tax_mult(s->econ,p,(SocialClass)index); econ_country_tax_set(s->econ,p,(SocialClass)index,mult);
+                  if (fabsf(econ_country_tax_mult(s->econ,p,(SocialClass)index)-old)>0.0001f)
+                      sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,index,0,mult); }
             } else if (family==1){
                 if (index<0 || index>=BUDGET_POLICY_COUNT) break;
-                econ_country_budget_set(s->econ,p,(BudgetPolicy)index,mult);
+                { float old=econ_country_budget_mult(s->econ,p,(BudgetPolicy)index); econ_country_budget_set(s->econ,p,(BudgetPolicy)index,mult);
+                  if (fabsf(econ_country_budget_mult(s->econ,p,(BudgetPolicy)index)-old)>0.0001f)
+                      sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,index,1,mult); }
             }
             break; }
           case CMD_BORROW_CLASS: {   /* MONNAIE M9 — V1 : emprunter à un ordre (panneau éco) */
             int cls = c->a[0];
             if (cls<0 || cls>=CLASS_COUNT) break;
             float need = (float)c->a[1];   /* <=0 ⇒ le maximum disponible (credit_borrow_class) */
-            credit_borrow_class(s->econ, p, (SocialClass)cls, need);   /* la classe NE REFUSE PAS */
+            { float got=credit_borrow_class(s->econ, p, (SocialClass)cls, need);
+              if (got>0.f) sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,cls,0,got); }
             break; }
           /* ── §3 — COMMERCE ── */
           case CMD_ROUTE: {
             int ra=c->a[0], rb=c->a[1];
             if (ra<0 || ra>=s->econ->n_regions || rb<0 || rb>=s->econ->n_regions || ra==rb) break;
             if (s->econ->region[ra].owner!=p) break;                 /* on TRACE depuis une région à soi */
-            routes_order(s->rn, w, s->econ, ra, rb, c->a[2]!=0);     /* a[2] = maritime */
+            if (routes_order(s->rn, w, s->econ, ra, rb, c->a[2]!=0))
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,ra,rb,0.f);     /* a[2] = maritime */
             break; }
           case CMD_MARKET_BUY: {   /* GRAIN PROVINCE (décision joueur 2026-08-12) : a[0] = PID */
             int pid=c->a[0], g=c->a[1]; long q=c->a[2]; int tier=c->a[3];
             if (pid<0 || pid>=s->econ->n_prov || s->econ->prov[pid].owner!=p) break;
             if (g<=RES_NONE || g>=RES_COUNT || q<=0) break;
             if (tier<0) tier=0; else if (tier>2) tier=2;
-            long spent=0; intertrade_market_buy_pid(s->econ, pid, (Resource)g, q, tier, &spent);
+            long spent=0; long got=intertrade_market_buy_pid(s->econ, pid, (Resource)g, q, tier, &spent);
+            if (got>0) sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,got,spent,(float)spent);
             break; }
           case CMD_MARKET_SELL: {
             int pid=c->a[0], g=c->a[1]; long q=c->a[2]; int tier=c->a[3];
             if (pid<0 || pid>=s->econ->n_prov || s->econ->prov[pid].owner!=p) break;
             if (g<=RES_NONE || g>=RES_COUNT || q<=0) break;
             if (tier<0) tier=0; else if (tier>2) tier=2;
-            long gained=0; intertrade_market_sell_pid(s->econ, pid, (Resource)g, q, tier, &gained);
+            long gained=0; long sold=intertrade_market_sell_pid(s->econ, pid, (Resource)g, q, tier, &gained);
+            if (sold>0) sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,sold,gained,(float)gained);
             break; }
           /* ── §3 — GUERRE (campagne & flotte) : la force = l'ost MOBILISÉ du joueur (host) ── */
           case CMD_CAMPAIGN: {
             int from=c->a[0], tgt=c->a[1];
             if (from<0 || from>=s->econ->n_regions || tgt<0 || tgt>=s->econ->n_regions) break;
             if (s->econ->region[from].owner!=p) break;               /* on LANCE depuis une région à soi */
-            campaign_order(s->camp, s->econ, p, from, tgt, &s->host->army[p]);
+            if (campaign_order(s->camp, s->econ, p, from, tgt, &s->host->army[p]))
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_STARTED,from,tgt,0.f);
             break; }
           case CMD_MOVE_ARMY: {   /* clic-armée → clic-destination : mouvement LIBRE */
             int tgt=c->a[0];
             if (tgt<0 || tgt>=s->econ->n_regions) break;
             if (campaign_active(s->camp, p)){
-                if (!campaign_redirect(s->camp, s->econ, s->dp, p, tgt)  /* en campagne : re-cible (self-gardé) */
+                bool moved=campaign_redirect(s->camp, s->econ, s->dp, p, tgt);  /* en campagne : re-cible (self-gardé) */
+                if (!moved
                     && tune_f("SEA_TRAVEL",1.f)>0.f){
                     /* M15 — F3 : le corps actif ne rejoint pas par terre — repli sur
                      * l'embarquement DEPUIS SA POSITION ACTUELLE (mêmes conditions que
                      * le déploiement initial ci-dessous : port ami, transports). */
-                    campaign_redirect_corps_sea(s->camp, w, s->econ, s->navy, p, tgt);
+                    moved=campaign_redirect_corps_sea(s->camp, w, s->econ, s->navy, p, tgt);
                 }
+                if (moved) sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_STARTED,tgt,0,0.f);
             } else {                                                 /* réserve : déployer depuis la capitale */
                 int cap=w->country[p].capital_prov;
                 int from=(cap>=0 && cap<w->n_provinces)? w->province[cap].region : -1;
@@ -871,12 +1051,14 @@ static void sim_cmd_drain(Sim *s, World *w){
                      * terrestre. L'IA savait déjà traverser (guerre outre-mer,
                      * plus haut) ; ce repli donne le MÊME geste au joueur.
                      * Kill-switch : SEA_TRAVEL=0 → comportement legacy exact. */
-                    if (!campaign_order(s->camp, s->econ, p, from, tgt, &s->host->army[p])
+                    bool moved=campaign_order(s->camp, s->econ, p, from, tgt, &s->host->army[p]);
+                    if (!moved
                         && tune_f("SEA_TRAVEL",1.f)>0.f){
                         int port=navy_best_port(w,s->econ,p);
                         if (port>=0)
-                            campaign_order_sea(s->camp, w, s->econ, s->navy, p, port, tgt, &s->host->army[p]);
+                            moved=campaign_order_sea(s->camp, w, s->econ, s->navy, p, port, tgt, &s->host->army[p]);
                     }
+                    if (moved) sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_STARTED,from,tgt,0.f);
                 }
             }
             break; }
@@ -886,51 +1068,62 @@ static void sim_cmd_drain(Sim *s, World *w){
             int from=(cap>=0 && cap<w->n_provinces)?w->province[cap].region:-1;
             if (packets>0 && tgt>=0 && tgt<s->econ->n_regions && from>=0 && from<s->econ->n_regions
                 && s->econ->region[from].owner==p)
-                campaign_raise(s->camp,s->econ,p,from,tgt,&s->host->army[p],packets);
+                if (campaign_raise(s->camp,s->econ,p,from,tgt,&s->host->army[p],packets)>0)
+                    sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_STARTED,packets,tgt,0.f);
             break; }
           case CMD_CORPS_SPLIT: {
             int id=c->a[0]; const FieldArmy *a=campaign_corps_const(s->camp,id);
-            if (a && a->active && a->owner==p) campaign_split(s->camp,id,c->a[1]);
+            if (a && a->active && a->owner==p && campaign_split(s->camp,id,c->a[1])>=0)
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,id,c->a[1],0.f);
             break; }
           case CMD_SPLIT_COMP: {   /* a: id, inf_p, arch_p, cav_p, mages_p */
             int id=c->a[0]; const FieldArmy *a=campaign_corps_const(s->camp,id);
-            if (a && a->active && a->owner==p)
-                campaign_split_comp(s->camp,id,c->a[1],c->a[2],c->a[3],c->a[4]);
+            if (a && a->active && a->owner==p &&
+                campaign_split_comp(s->camp,id,c->a[1],c->a[2],c->a[3],c->a[4])>=0)
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,id,0,0.f);
             break; }
           case CMD_CORPS_MERGE: {
             int dst=c->a[0], src=c->a[1];
             const FieldArmy *a=campaign_corps_const(s->camp,dst), *b=campaign_corps_const(s->camp,src);
-            if (a&&b&&a->active&&b->active&&a->owner==p&&b->owner==p) campaign_merge(s->camp,dst,src);
+            if (a&&b&&a->active&&b->active&&a->owner==p&&b->owner==p && campaign_merge(s->camp,dst,src))
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,dst,src,0.f);
             break; }
           case CMD_CORPS_MOVE: {
             int id=c->a[0], tgt=c->a[1]; const FieldArmy *a=campaign_corps_const(s->camp,id);
             if (a&&a->active&&a->owner==p&&tgt>=0&&tgt<s->econ->n_regions){
-                if (!campaign_redirect_corps(s->camp,s->econ,s->dp,id,tgt)
-                    && tune_f("SEA_TRAVEL",1.f)>0.f)
-                    campaign_redirect_corps_sea(s->camp, w, s->econ, s->navy, id, tgt);  /* M15 — F3 */
+                bool moved=campaign_redirect_corps(s->camp,s->econ,s->dp,id,tgt);
+                if (!moved && tune_f("SEA_TRAVEL",1.f)>0.f)
+                    moved=campaign_redirect_corps_sea(s->camp, w, s->econ, s->navy, id, tgt);  /* M15 — F3 */
+                if (moved) sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_STARTED,id,tgt,0.f);
             }
             break; }
           case CMD_CORPS_REFILL: {
             int id=c->a[0]; const FieldArmy *a=campaign_corps_const(s->camp,id);
             if (a&&a->active&&a->owner==p&&campaign_can_refill_corps(s->camp,s->econ,id))
-                campaign_refill_corps(s->camp,id,s->econ);
+                if (campaign_refill_corps(s->camp,id,s->econ)>0)
+                    sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,id,0,0.f);
             break; }
           case CMD_CORPS_DISBAND: {
             int id=c->a[0]; const FieldArmy *a=campaign_corps_const(s->camp,id);
-            if (a&&a->active&&a->owner==p) campaign_disband_corps(s->camp,id,&s->host->army[p]);
+            if (a&&a->active&&a->owner==p && campaign_disband_corps(s->camp,id,&s->host->army[p])>0)
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,id,0,0.f);
             break; }
           case CMD_REFILL:
-            if (campaign_can_refill(s->camp,s->econ,p))
-                campaign_refill(s->camp, p, s->econ);                /* recomplète sur sol national (pool = strates econ) */
+            if (campaign_can_refill(s->camp,s->econ,p) && campaign_refill(s->camp, p, s->econ))
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,p,0,0.f);                /* recomplète sur sol national (pool = strates econ) */
             break;
           case CMD_NAVY_BUILD: {
             int h=c->a[0];
             if (h<0 || h>=HULL_COUNT) break;
-            navy_order_build(s->navy, w, s->econ, p, (HullType)h);
+            if (navy_order_build(s->navy, w, s->econ, p, (HullType)h))
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_STARTED,h,0,0.f);
             break; }
           case CMD_DISBAND:
-            if (campaign_active(s->camp,p)) campaign_disband(s->camp,p,&s->host->army[p]);
-            else warhost_disband(s->host, s->econ, p);                /* sinon dissout la réserve levée */
+            if (campaign_active(s->camp,p)) {
+                if (campaign_disband(s->camp,p,&s->host->army[p])>0)
+                    sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,p,0,0.f);
+            } else if (warhost_disband(s->host, s->econ, p)>0)
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,p,0,0.f);                /* sinon dissout la réserve levée */
             break;
           case CMD_RAID_COAST: {   /* LOT P — PILLER LA CÔTE (a[0]=province CIBLE, côtière, ennemie) */
             int prov=c->a[0];
@@ -953,12 +1146,13 @@ static void sim_cmd_drain(Sim *s, World *w){
              * revenu annuel de la victime, sans guerre requise — la piraterie reste un
              * acte GRIS, miroir de navy_course_tick §4) + esclavage 5% si le joueur a le
              * gate (tech OU éthos conquérant) + balafre/CD partagés (navy_mark_raided). */
-            diplo_pillage_value(s->econ, region, navy_best_port(w,s->econ,p), victim);
+            float loot=diplo_pillage_value(s->econ, region, navy_best_port(w,s->econ,p), victim);
             { /* bool→float (2026-07-21) : même correctif que le sac de siège — la VRAIE
                * fraction, jamais le `true` promu en 100 %. */
               float sf = econ_country_slave_fraction(w, s->econ, &s->ts[p], p);
               if (sf > 0.f) diplo_enslave_capture(w, s->econ, p, region, sf); }
             navy_mark_raided(s->econ, region);
+            sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,prov,region,loot);
             break; }
           /* ── ALLOCATION de main-d'œuvre (onglet province). Tout REVALIDÉ : province ∈ [0,n) ET
            *    au joueur ; poids clampé ; res/bld bornés. Poser un poids ACTIVE l'override
@@ -970,27 +1164,32 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (pid<0 || pid>=s->econ->n_prov || s->econ->prov[pid].owner!=p) break;
             if (g<=RES_NONE || g>=RES_PROD_FIRST) break;
             if (wt<0) wt=0; else if (wt>255) wt=255;
+            if (s->econ->prov[pid].alloc_on && s->econ->prov[pid].alloc_raw[g]==(uint8_t)wt) break;
             s->econ->prov[pid].alloc_raw[g]=(uint8_t)wt;
             s->econ->prov[pid].alloc_on=1;
+            sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,pid,g,(float)wt);
             break; }
           case CMD_ALLOC_BLD: {   /* a={province, bld_type, poids (0=fermé)} */
             int pid=c->a[0], b=c->a[1], wt=c->a[2];
             if (pid<0 || pid>=s->econ->n_prov || s->econ->prov[pid].owner!=p) break;
             if (b<0 || b>=BLD_TYPE_COUNT) break;
             if (wt<0) wt=0; else if (wt>255) wt=255;
+            if (s->econ->prov[pid].alloc_on && s->econ->prov[pid].alloc_bld[b]==(uint8_t)wt) break;
             s->econ->prov[pid].alloc_bld[b]=(uint8_t)wt;
             s->econ->prov[pid].alloc_on=1;
+            sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,pid,b,(float)wt);
             break; }
           case CMD_ALLOC_INPUT: {   /* a={province, bld_type, intrant(0/1)} */
             int pid=c->a[0], b=c->a[1];
             if (pid<0 || pid>=s->econ->n_prov || s->econ->prov[pid].owner!=p) break;
             if (b<0 || b>=BLD_TYPE_COUNT) break;
-            s->econ->prov[pid].bld_input[b]=(c->a[2]!=0)?1:0;
+            { uint8_t old=s->econ->prov[pid].bld_input[b]; s->econ->prov[pid].bld_input[b]=(c->a[2]!=0)?1:0;
+              if (old!=s->econ->prov[pid].bld_input[b]) sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,pid,b,(float)s->econ->prov[pid].bld_input[b]); }
             break; }
           case CMD_ALLOC_AUTO: {   /* a={province} : retour au split AUTO */
             int pid=c->a[0];
             if (pid<0 || pid>=s->econ->n_prov || s->econ->prov[pid].owner!=p) break;
-            s->econ->prov[pid].alloc_on=0;
+            if (s->econ->prov[pid].alloc_on){ s->econ->prov[pid].alloc_on=0; sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,pid,0,0.f); }
             break; }
           /* ── ÂGES SANS ORDRE IMPOSÉ (raccord 8) — CMD_AGE_ENGAGE n'applique plus AUCUN
            *    effet moteur (l'ancien vote de faction mondial + bonus de satisfaction sont
@@ -1005,6 +1204,7 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (age<0 || s->player_age_engaged==age) break;   /* rien de levé / déjà engagé */
             if (regions_of(s->econ,p)<=0) break;               /* royaume mort : refus net */
             s->player_age_engaged = age;
+            sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,age,0,0.f);
             break; }
           /* ── LES DESSEINS — SCELLER un échelon (le patron CMD_AGE_ENGAGE : le
            *    moteur a DÉJÀ constaté la condition à la clôture, le verbe n'est
@@ -1022,6 +1222,7 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (!missions_seal(s->missions, w, s->econ, s->dp, s->sc, w->seed, s->year,
                                p, branch, rung, voie,
                                influence_scale(s->econ, p, sim_influence_base(s, p)))) break;
+            sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,branch,rung,0.f);
             /* MÉMOIRE : l'Annale du règne (la façade en dérive l'ÉPITHÈTE — un
              * parachèvement pèse le poids plein d'un âge). annal_push peut rendre
              * -1 (le fait trop léger face au panthéon) : on n'en dépend jamais. */
@@ -1059,15 +1260,18 @@ static void sim_cmd_drain(Sim *s, World *w){
            *    influence disponible) vit dans le module — miroir exact de save_sane
            *    et de doctrines_why_not, la source unique lue par la façade. ── */
           case CMD_DOCT_ADOPT:
-            doctrines_adopt(s->doct, s->infl, p, c->a[0], c->a[1],
-                            influence_scale(s->econ, p, sim_influence_base(s, p)));
+            if (doctrines_adopt(s->doct, s->infl, p, c->a[0], c->a[1],
+                            influence_scale(s->econ, p, sim_influence_base(s, p))))
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,c->a[0],c->a[1],0.f);
             break;
           case CMD_DOCT_IDEA:
-            doctrines_buy_idea(s->doct, s->infl, p, c->a[0],
-                               influence_scale(s->econ, p, sim_influence_base(s, p)));
+            if (doctrines_buy_idea(s->doct, s->infl, p, c->a[0],
+                               influence_scale(s->econ, p, sim_influence_base(s, p))))
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,c->a[0],0,0.f);
             break;
           case CMD_DOCT_ABANDON:
-            doctrines_abandon(s->doct, s->infl, p, c->a[0]);
+            if (doctrines_abandon(s->doct, s->infl, p, c->a[0]))
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,c->a[0],0,0.f);
             break;
           /* ── COLONISATION (charte) : a[0] = la province CIBLE (vierge). La SOURCE = la
            *    province colonisée du joueur la plus peuplée (miroir du modèle viewer) ;
@@ -1082,7 +1286,8 @@ static void sim_cmd_drain(Sim *s, World *w){
                 float pp=0.f; for (int k=0;k<CLASS_COUNT;k++) pp+=pe->strata[k].pop;
                 if (pp>best){ best=pp; src=q; }
             }
-            if (src>=0) econ_colonize_province(s->econ, w, src, dst, p);
+            if (src>=0 && econ_colonize_province(s->econ, w, src, dst, p))
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_STARTED,src,dst,0.f);
             break; }
           /* ── MEMBRANE DE DÉCISION : le joueur CHOISIT parmi les options d'un évènement
            *    en attente. a={slot, option}. REVALIDÉ : slot occupé, option bornée, ET le
@@ -1099,8 +1304,9 @@ static void sim_cmd_drain(Sim *s, World *w){
                 ? ((pe.subject>=0 && pe.subject<s->econ->n_regions) ? s->econ->region[pe.subject].owner : -1)
                 : pe.subject;
             if (owner!=p) break;   /* la région/le pays a changé de mains : le choix ne s'applique plus */
-            pending_event_resolve(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp, s->eg,
-                                  slot, option, s->ev->ages.days_elapsed, s->human_player);
+            if (pending_event_resolve(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp, s->eg,
+                                  slot, option, s->ev->ages.days_elapsed, s->human_player))
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,slot,option,0.f);
             break; }
           /* ── ORIENTATIONS/DÉCISIONS (civics, scps_decrees) : a={DecreeId, on/off}.
            *    REVALIDÉ — id borné. DCR_DECISION (Audit des offices) : "on" TIRE la
@@ -1113,12 +1319,14 @@ static void sim_cmd_drain(Sim *s, World *w){
             int id=c->a[0]; bool on=(c->a[1]!=0);
             if (id<0 || id>=DECREE_COUNT) break;
             if (DECREES[id].type==DCR_DECISION){
-                if (on && decree_legal(w, s->econ, s->ts, s->wl, s->sc, s->dp, p, (DecreeId)id))
-                    decree_fire_decision(w, s->econ, s->wl, p, (DecreeId)id);
+                if (on && decree_legal(w, s->econ, s->ts, s->wl, s->sc, s->dp, p, (DecreeId)id)
+                    && decree_fire_decision(w, s->econ, s->wl, p, (DecreeId)id))
+                    sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,id,1,0.f);
                 break;
             }
             if (on && !decree_legal(w, s->econ, s->ts, s->wl, s->sc, s->dp, p, (DecreeId)id)) break;
-            decree_toggle(p, (DecreeId)id, on);
+            { bool old=decree_active(p,(DecreeId)id); decree_toggle(p, (DecreeId)id, on);
+              if (decree_active(p,(DecreeId)id)!=old) sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_MUTATED,id,on?1:0,0.f); }
             break; }
           /* ── ESCLAVAGE — la manœuvre PACIFISTE : l'affranchissement (granularité PAYS,
            *    une politique). Aucun argument (agit sur p). DÉCISION PONCTUELLE (spec
@@ -1131,6 +1339,7 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (freed>0)
                 faction_lever_apply(p, FAC_COMMUNAUTAIRE,
                                     tune_f("DECISION_MANUMIT_COMMUNAUTAIRE_BIAS", 0.10f));
+            if (freed>0) sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,freed,0,0.f);
             break; }
           /* ── MONNAIE M3d — LA BANQUEROUTE VOLONTAIRE (granularité PAYS, motif CMD_MANUMIT
            *    ci-dessus). Répudiation totale (credit_bankruptcy RAZ la dette + pose la
@@ -1138,15 +1347,21 @@ static void sim_cmd_drain(Sim *s, World *w){
            *    minimal : la CITÉ-ÉTAT créancière frappée (motif §6 rancune diplo_rancor,
            *    scps_diplo.h) — sim.c a s->dp, credit.c ne l'a pas (hors scope). ── */
           case CMD_BANKRUPTCY: {
+            float debt_before=credit_debt_total(p);
+            if (debt_before<=0.f){ sim_cmd_feedback_refuse(fb,SCPS_CMD_REASON_NO_EFFECT); break; }
             int L = credit_bankruptcy(s->econ, p, false /* volontaire */);
+            float debt_after=credit_debt_total(p);
             if (L>=0 && L<w->n_countries)
                 s->dp->rancor[L][p] += tune_f("BANKRUPTCY_RANCOR", 2.0f);
+            if (debt_after<debt_before)
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,L,0,debt_before-debt_after);
             break; }
           /* ── LE REMBOURSEMENT VOLONTAIRE (2026-07-21, KoH2 « Repay All ») : le miroir
            *    de l'amortissement annuel, à la main du joueur — conservation stricte
            *    (credit_repay_principal), a[0]<=0 = tout ce que le surplus permet. ── */
           case CMD_REPAY: {
-            credit_repay_principal(s->econ, w, p, (float)c->a[0]);
+            { float paid=credit_repay_principal(s->econ, w, p, (float)c->a[0]);
+              if (paid>0.f) sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,0,0,paid); }
             break; }
           /* ── ESCLAVAGE — le MARCHÉ des Centres. a={pid, count}. RE-KEY PROVINCE :
            *    a[0] est un PID direct (jamais une région) — les esclaves vivent dans
@@ -1160,7 +1375,8 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (pid<0 || pid>=s->econ->n_prov || s->econ->prov[pid].owner!=p || n<=0) break;
             int r = (pid<w->n_provinces) ? w->province[pid].region : -1;
             if (r<0 || r>=s->econ->n_regions) break;
-            intertrade_slave_sell(s->econ, r, n);
+            { long sold=intertrade_slave_sell(s->econ, r, n);
+              if (sold>0) sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,sold,0,0.f); }
             break; }
           case CMD_SLAVE_BUY: {
             int pid=c->a[0]; long n=c->a[1];
@@ -1168,7 +1384,8 @@ static void sim_cmd_drain(Sim *s, World *w){
             int r = (pid<w->n_provinces) ? w->province[pid].region : -1;
             if (r<0 || r>=s->econ->n_regions) break;
             bool can = econ_country_can_enslave(w, s->econ, &s->ts[p], p);
-            intertrade_slave_buy(s->econ, r, n, can, pid);
+            { long got=intertrade_slave_buy(s->econ, r, n, can, pid);
+              if (got>0) sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,got,0,0.f); }
             break; }
           /* ── LOT G — RÉINCORPORATION DE POP : a={pidA, pidB, klass, count}. RE-KEY
            *    PROVINCE : A/B sont des PID directs (plus d'indirection région — seul
@@ -1179,9 +1396,14 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (pa<0 || pa>=s->econ->n_prov || pb<0 || pb>=s->econ->n_prov || pa==pb) break;
             if (s->econ->prov[pa].owner!=p || s->econ->prov[pb].owner!=p) break;
             if (klass<0 || klass>=CLASS_COUNT || n<=0) break;
-            demography_pop_transfer(s->econ, pa, pb, klass, n);
+            { long moved=demography_pop_transfer(s->econ, pa, pb, klass, n);
+              if (moved>0) sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,moved,klass,0.f); }
             break; }
         }
+        /* Toute branche qui n'a explicitement confirmé une mutation/commande
+         * est un refus réel. Cela évite qu'un appel différé avec actionneur void
+         * soit annoncé à tort comme succès. */
+        sim_cmd_feedback_refuse(fb,SCPS_CMD_REASON_NO_EFFECT);
     }
     s->cmd_n = 0;
 }
@@ -1771,6 +1993,7 @@ void sim_init(Sim *s, World *w) {
     econ_guarantee_player_construction(s->econ, w, s->player);
     s->human_player = -1;   /* aucun humain par DÉFAUT (la chronique reste 100 % IA) ; la façade débraye après coup */
     s->cmd_n = 0;           /* journal de commandes joueur : vide (la chronique n'enfile jamais) */
+    sim_cmd_feedback_reset(s); /* journal transient : nouvelle partie = nouvelle séquence */
     s->research_target = -1;   /* aucune cible de recherche joueur (la chronique n'en pose jamais ⇒ bloc no-op) */
     s->player_age_engaged = -1;   /* §7 : aucun âge engagé par le joueur */
     s->diplo_ready_day = 0;       /* l'émissaire est disponible dès l'an 0 */

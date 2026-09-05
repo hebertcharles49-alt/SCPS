@@ -275,6 +275,50 @@ int main(int argc, char **argv){
       missions_boons_sync(ms, 11);   /* on rend le miroir à la branche de la voie A */
     }
 
+    /* ═══ 6. RÉGRESSION : ready est un cache, le sceau relit l'état réel ═══ */
+    printf("\n── 6. Le sceau revalide la condition après un changement d'état ──\n");
+    static MissionsState regression;
+    missions_init(&regression);
+    int rreg=w->province[cap].region, reg_victim=-1;
+    if (rreg>=0 && rreg<w->n_regions){
+        const Region *rr=&w->region[rreg];
+        for (int k=0;k<rr->n_provinces;k++){
+            int pid=rr->province_ids[k];
+            if (pid>=0 && pid<econ->n_prov && econ->prov[pid].active){
+                econ->prov[pid].owner=(int16_t)cid;
+                econ->prov[pid].colonized=true;
+                if (pid!=cap) reg_victim=pid;
+            }
+        }
+    }
+    ok("la fixture contient une province-cible distincte de la capitale", reg_victim>=0);
+    if (reg_victim>=0){
+        missions_tick(&regression,w,econ,dp,30,cid);
+        Dessein *rd=&regression.d[cid][DESS_SOL];
+        ok("la clôture marque l'échelon prêt", rd->ready==1 && rd->rung==DESS_RUNG_UNIFICATION);
+        Dessein before=*rd;
+        float k_before=econ->prov[cap].build.K_inst;
+        econ->prov[reg_victim].owner=-1;         /* changement après la clôture : cache volontairement périmé */
+        int stale=missions_seal(&regression,w,econ,dp,sc,seed,30,cid,DESS_SOL,
+                                DESS_RUNG_UNIFICATION,0,0.f);
+        ok("sceau refusé si la province n'est plus tenue (revalidation réelle)", stale==0);
+        ok("refus sans mutation de l'échelon ni récompense", stale==0 &&
+           memcmp(rd,&before,sizeof before)==0 && econ->prov[reg_victim].owner==-1 &&
+           econ->prov[cap].build.K_inst==k_before);
+        econ->prov[reg_victim].owner=(int16_t)cid;
+        missions_tick(&regression,w,econ,dp,31,cid);
+        float k_ready=econ->prov[cap].build.K_inst;
+        int accepted=missions_seal(&regression,w,econ,dp,sc,seed,31,cid,DESS_SOL,
+                                   DESS_RUNG_UNIFICATION,0,0.f);
+        ok("après rétablissement et clôture, le sceau réussit", accepted==1 &&
+           rd->rung==DESS_RUNG_EXPANSION && econ->prov[cap].build.K_inst>k_ready+0.55f);
+        float k_sealed=econ->prov[cap].build.K_inst;
+        ok("un second sceau du même échelon est refusé sans double récompense",
+           missions_seal(&regression,w,econ,dp,sc,seed,31,cid,DESS_SOL,
+                         DESS_RUNG_UNIFICATION,0,0.f)==0 &&
+           econ->prov[cap].build.K_inst==k_sealed);
+    }
+
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n", g_pass, g_fail);
     printf("══════════════════════════════════════════════════════════════\n");

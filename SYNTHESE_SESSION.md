@@ -1,3 +1,26 @@
+# ÉTAT COURANT — 2026-09-05 : verbes et corrections complémentaires
+
+- Rapports : `docs/RAPPORT_CORRECTIONS_VERBES_2026-09-05.md`, `docs/RAPPORT_FINITION_2026-09-05.md`. Besoins ouverts : `docs/BESOINS_FINITION_2026-09-05.md`. Les sections suivantes sont l'historique, pas des décisions à redemander.
+- Décisions confirmées : limite militaire inchangée sur réserve, affichage réserve/campagne/total ; économie jugée par efficacité des choix et diversité des stratégies, sans cible mondiale imposée.
+- Corrections complémentaires : SCPS_MODS strict, atomique par ligne, formats existants préservés ; fondation protégée par Temple/Cathédrale provincial et bouton explicite. Exécutants Luna, revue et intégration par l'orchestrateur. Runner 50 cibles ; preuves ciblées et limites dans le rapport.
+- Export courant : `packaging/windows/dist_godot/session-20260905-finition/`, save 111. DLL du projet actualisée, ancienne copie conservée sous `runs/finition-2026-09-05/previous-project-dll/`. Traductions compilées et captures utilisateur préservées ; import effectué dans la copie de revue.
+- Restes : campagnes et stratégies mesurées, progression jusqu'aux fins, configuration des sauvegardes, replay persistant, confort et performances. Aucun test disponible ne permet de déclarer le jeu entièrement terminé.
+
+# SYNTHÈSE SESSION — 2026-09-05 : REMISE EN ÉTAT INTÉGRÉE (session parallèle) — reprise des chantiers
+
+- **Remise en état** (agents gpt-5.6-luna, rapport docs/RAPPORT_REMISE_EN_ETAT_2026-09-05.md, audit AUDIT_CODE_2026-09-04.md) intégrée et contre-vérifiée par l'orchestrateur : save v111 (cible de recherche persistée, chargement transactionnel, save_sane élargi, user://saves), 4 bancs neufs (46 au runner), panneaux Desseins (D) / Découvertes (F) / Journal des ordres (O), effectifs réserve+corps+total, coercition de vassalisation au grain PROVINCE, interception navale initialisée, runner/gates/sweep/packaging durcis, export Windows validé (dist ignoré par git). Golden identique ; golden-deep re-baseliné (coercition) ; api banc 261/261 hors runner (le runner limite à 120 s : à relever).
+- **Chantiers en pause, worktrees intacts** : S1 leviers de satisfaction IA (`agent-a78d1c9083bc82593`), PERF-1 profilage/`--bench`/maritime (`agent-a9e6832aec985f65e`) — leur base est a891633 : fusion 3-way avec la remise en état (scps_sim.c, scps_api.c, warhost) à prévoir. Run S2 (cadence initiatives privées) à relancer, puis verdict.
+- **Décisions joueur en attente** : satisfaction 42 % (nouvel équilibre ou 60 %), fins §27 uniformisées sur RONCES, limite de force sur le host seul, crédit éteint, colonies du peuple à cadencer, abandon de doctrine IA, exposant tech ; côté remise en état : prouver des stratégies viables (production/commerce/militaire), campagne longue, confort UI réel, pauses UI.
+
+# SESSION LIVRÉE — 2026-09-05 : remise en état CODE + GAMEPLAY, agents Luna
+
+- Autorisation utilisateur : implémenter les modifications proposées, agents gpt-5.6-luna ; parent review, tests intégrés, rapport final Markdown.
+- Base e55e0b1, SAVE_VERSION 110 au départ. Modifications utilisateur préexistantes préservées (traductions compilées et 2 captures ; manifeste runs/remise_en_etat_2026-09-05).
+- Décisions confirmées : règle limite militaire inchangée (réserve seule), afficher réserve/campagne/total ; conserver tunables économiques et juger les leviers/diversité par mesures.
+- Livré : sauvegardes v111 (recherche, purge, rollback, chemin utilisateur), naval/coercition/caches, Desseins/Découvertes/Journal D/F/O, réserve/campagne/total, runner/CI/packaging. Agents Luna terminés ; parent a revu, corrigé et intégré.
+- Validation : 42 bancs existants verts puis reprises ciblées (API 261/261, commandes 21/21, caches 54/54, contrats/save E/S verts), ASan+UBSan moteur 20 ans et save injectée, déterminisme/golden 5×12 inchangés, UI FR/EN 100/125/150 %, export graphique rc0. Le runner full contient maintenant 46 bancs.
+- Jeu : packaging/windows/dist_godot/session-20260905-validated/scps.exe (garder DLL voisine). Anciennes saves v110 incompatibles, préservées. Aucun commit/push/publication.
+- Rapport final : docs/RAPPORT_REMISE_EN_ETAT_2026-09-05.md. Preuves : runs/remise_en_etat_2026-09-05/. Restes : parcours stratégiques réels, progression longue, profil des pauses graphiques ; aucun retuning économique arbitraire.
 # SYNTHÈSE SESSION — 2026-09-04 (soir) : PAUSE — état à reprendre
 
 - **Commité/poussé** : vague A (A3 prix, A1 registre, A2 levée, A4 solde des corps ; golden 96fb172), non-régression A lue (a891633 : I0/riche désarmé/grain FERMÉS, queues atténuées ; nouveaux trous : satisfaction journaliers −20 pt, semis privé tout-ou-rien, crédit éteint, armée/limite illisible), UI-1 (c26fa14), S3 arbre hérité = légitime (872d1e4), S2 cadence 1 initiative privée/mois/pays (1484d5a, save v110).

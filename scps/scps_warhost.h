@@ -68,6 +68,12 @@ float warhost_unit_pay_month(const WorldEconomy *econ, int price_region, UnitTyp
 /* LA LIMITE DE FORCE (lecture EU4) : combien de régiments un pays de `n_regions`
  * entretient à prix plein — au-delà, l'intendance renchérit chaque régiment. */
 float warhost_force_limit(int n_regions);
+/* Multiplicateur de solde exact du moteur pour la réserve (1.0 sous la limite).
+ * Les corps de campagne ne sont pas inclus : leur solde a son propre calcul. */
+float warhost_reserve_pay_multiplier(long reserve_regiments, float force_limit);
+/* Surcharge d'intendance appliquée à la réserve seule pour la lecture joueur.
+ * Même coefficient que la solde, sans inclure les corps déjà déployés. */
+float warhost_reserve_surcharge_pct(long reserve_regiments, float force_limit);
 /* AUDIT DU GOULOT D'ARMES (SCPS_ARMSDIAG) : expose les compteurs de levée par
  * Resource (armes voulues / prises à l'arsenal / paquets ×100 levés après le gate
  * pop / rendues à la démob). Diagnostic pur — jamais lu par le moteur. */

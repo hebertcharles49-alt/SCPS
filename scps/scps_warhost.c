@@ -255,6 +255,14 @@ float warhost_unit_pay_month(const WorldEconomy *econ, int price_region, UnitTyp
 float warhost_force_limit(int n_regions){
     return tune_f("SOLDE_FL_FLOOR",6.f) + tune_f("SOLDE_FL_PER_REG",0.7f)*(float)(n_regions>0?n_regions:0);
 }
+float warhost_reserve_pay_multiplier(long reserve_regiments, float force_limit){
+    if (reserve_regiments<=0 || force_limit<=0.f) return 1.f;
+    float over=(float)reserve_regiments/force_limit-1.f;
+    return 1.f + (over>0.f ? over*tune_f("SOLDE_OVER_K",3.f) : 0.f);
+}
+float warhost_reserve_surcharge_pct(long reserve_regiments, float force_limit){
+    return (warhost_reserve_pay_multiplier(reserve_regiments, force_limit)-1.f)*100.f;
+}
 long warhost_disband(WarHost *h, WorldEconomy *econ, int cid){
     if (!h || cid<0 || cid>=SCPS_MAX_COUNTRY) return 0;
     long n=warhost_units(h,cid);
@@ -512,10 +520,9 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
               g_wh_corps_share[c] = (typed_pay>1e-6f)? corps_pay/typed_pay : 0.f;   /* PRINT-ONLY */
               /* LIMITE DE FORCE : en-deçà ×1 ; au-delà, l'intendance mord. */
               float fl   = warhost_force_limit(nreg);
-              float over = (fl>0.f)? ((float)u/fl - 1.f) : 0.f;
-              float sizemult = 1.f + (over>0.f ? over*tune_f("SOLDE_OVER_K",3.f) : 0.f);
+              float sizemult = warhost_reserve_pay_multiplier(u, fl);
               /* dial global : REGIMENT_PAY/90 (registre J — neutre à 90, balayable en env). */
-              float dial = tune_f("REGIMENT_PAY",1.5f)/SOLDE_PAY_ANCHOR;
+              float dial = tune_f("REGIMENT_PAY",90.0f)/SOLDE_PAY_ANCHOR;
               float base_pay = typed_pay * sizemult * dial
                              * (at_war?1.5f:1.f) * lvmult * dt * 12.f;
               float army_mult = econ_country_budget_mult(econ,c,BUDGET_ARMY);

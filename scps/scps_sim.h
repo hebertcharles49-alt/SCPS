@@ -97,11 +97,11 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
        /* ESCLAVAGE — le joueur AFFRANCHIT tout son pays (granularité PAYS, une politique,
         * pas une province). Pas d'arguments (agit sur p = s->human_player). */
        CMD_MANUMIT,
-       /* ESCLAVAGE — le MARCHÉ des Centres. a[0]=région (au joueur), a[1]=count.
+       /* ESCLAVAGE — le MARCHÉ des Centres. a[0]=province PID (au joueur), a[1]=count.
         * ACHAT gaté éthos/tech (miroir diplo_enslave_capture) ; VENTE sans gate (on
         * vend ce qu'on tient déjà). */
        CMD_SLAVE_BUY, CMD_SLAVE_SELL,
-       /* LOT G — RÉINCORPORATION DE POP : a={région A (source), région B (dest),
+       /* LOT G — RÉINCORPORATION DE POP : a={province PID A (source), province PID B (dest),
         * classe (SocialClass), count}. REVALIDÉ : A≠B toutes deux au joueur. */
        CMD_POP_TRANSFER,
        /* W-GUERRE-3 — FABRIQUER un casus belli PAYANT contre a[0] (cible). Revalidé au
@@ -189,7 +189,52 @@ enum {
     PEACE_VASSALIZE   = 1u<<4,
     PEACE_FRAGMENT    = 1u<<5
 };
-typedef struct { uint8_t verb; int32_t a[4 + SCPS_PEACE_MAX_TERRITORIES]; } PlayerCmd;
+typedef struct { uint8_t verb; int32_t a[4 + SCPS_PEACE_MAX_TERRITORIES]; uint32_t id; } PlayerCmd;
+
+/* Résultat TRANSIENT d'un ordre joueur. Le journal ne fait partie d'aucune
+ * section de sauvegarde : il sert à rendre explicite la différence entre
+ * « mis dans la file » et « réellement drainé ». */
+enum {
+    SCPS_CMD_PENDING = 0,
+    SCPS_CMD_EXECUTED = 1,
+    SCPS_CMD_REFUSED = 2
+};
+enum {
+    SCPS_CMD_OUTCOME_NONE = 0,
+    SCPS_CMD_OUTCOME_STARTED = 1,   /* chantier/ordre différé réellement lancé */
+    SCPS_CMD_OUTCOME_COMPLETED = 2, /* actionneur terminée au drain */
+    SCPS_CMD_OUTCOME_MUTATED = 3    /* état ou cible modifiée */
+};
+enum {
+    SCPS_CMD_REASON_OK = 0,
+    SCPS_CMD_REASON_INVALID_ARGUMENT,
+    SCPS_CMD_REASON_NOT_OWNED,
+    SCPS_CMD_REASON_BUSY,
+    SCPS_CMD_REASON_INSUFFICIENT_GOLD,
+    SCPS_CMD_REASON_INSUFFICIENT_MATERIAL,
+    SCPS_CMD_REASON_NO_CAPACITY,
+    SCPS_CMD_REASON_NO_CONSENT,
+    SCPS_CMD_REASON_COOLDOWN,
+    SCPS_CMD_REASON_NO_EFFECT,
+    SCPS_CMD_REASON_NOT_READY,
+    SCPS_CMD_REASON_QUEUE_FULL,
+    SCPS_CMD_REASON_UNAVAILABLE,
+    SCPS_CMD_REASON_INSUFFICIENT_INFLUENCE,
+    SCPS_CMD_REASON_COUNT
+};
+#define SCPS_CMD_FEEDBACK_MAX 128
+typedef struct {
+    uint32_t id;
+    uint8_t verb;
+    uint8_t status;
+    uint8_t outcome;
+    uint8_t reserved;
+    int32_t reason;
+    int32_t year, day;
+    int32_t a[4];
+    int64_t value, value2;
+    float amount;
+} SimCmdFeedback;
 
 /* L'ÉTAT PLEIN d'une partie (tous les sous-systèmes). Membres alloués sur le tas
  * (sim_alloc) ; les pointeurs sont assignés par l'hôte ou sim_alloc. */
@@ -211,6 +256,9 @@ typedef struct {
     int day, year, player;
     int human_player;        /* index du pays piloté À LA MAIN (-1 = aucun : la chronique headless reste 100 % IA) */
     PlayerCmd cmdq[SCPS_CMDQ_MAX]; int cmd_n;   /* journal de commandes JOUEUR (vidé au tick, déterministe) */
+    SimCmdFeedback cmd_feedback[SCPS_CMD_FEEDBACK_MAX];
+    int cmd_feedback_head, cmd_feedback_n;
+    uint32_t cmd_next_id;
     int research_target;   /* cible de recherche du JOUEUR (-1 = aucune ; file de 1, modèle viewer) */
     int player_age_engaged;   /* §7 : dernier âge ENGAGÉ par le joueur (-1 = aucun) — persiste (SaveMisc v48) */
     int diplo_ready_day;   /* le DIPLOMATE : jour où le prochain acte diplo JOUEUR est permis —
@@ -234,6 +282,9 @@ int  regions_of(const WorldEconomy *e, int c);   /* régions tenues par un pays 
 /* enfile un ordre JOUEUR (façade). false si la file est pleine. L'ordre est
  * REVALIDÉ et appliqué au prochain sim_day (drain déterministe). */
 bool sim_cmd_push(Sim *s, PlayerCmd c);
+int  sim_cmd_feedback_count(const Sim *s);
+bool sim_cmd_feedback_at(const Sim *s, int index, SimCmdFeedback *out);
+void sim_cmd_feedback_reset(Sim *s);
 
 /* HAMEAUX LIBRES — sérialisation des compteurs de contact pacifique (section WILD, v48).
  * Sans elle, un CHARGEMENT en processus frais remettait le ralliement à zéro (retardé

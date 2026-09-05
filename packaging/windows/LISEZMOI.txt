@@ -8,11 +8,20 @@ gouverne : diplomatie, construction, recherche, foi, guerre. Les royaumes peuven
 mourir ; une fin du monde peut tout emporter. Un DIRECTEUR d'événements lit la
 « température » du monde et le remue ou l'apaise, sans s'acharner.
 
+VERSION ET SAUVEGARDES
+----------------------
+Ce paquet est construit avec Godot 4.6.3. Les sauvegardes sont écrites dans
+`user://saves` (Windows : `%APPDATA%/Godot/app_userdata/SCPS/saves`) et gardent
+trois emplacements. Le format courant est **111** ; les formats plus anciens
+sont refusés proprement afin de préserver la partie en mémoire.
+
 CONTENU
 -------
   scps.exe          Le jeu. Double-clic pour lancer.
   libscps.*.dll     Le moteur déterministe — DOIT rester dans le même dossier
                     que scps.exe (ne pas séparer / renommer).
+  MANIFEST-SHA256.txt  Version de construction, état git et empreinte SHA-256
+                       de chaque fichier livré.
 
 LANCER
 ------

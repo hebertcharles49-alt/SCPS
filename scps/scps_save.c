@@ -7,7 +7,7 @@
 #include "scps_save.h"
 #include "scps_crypt.h"     /* scrypt_stream, scrypt_fnv1a */
 #include "scps_save_io.h"   /* save_write_atomic */
-#include "scps_tune.h"      /* tune_active_string */
+#include "scps_tune.h"      /* canonical tune fingerprint */
 #include "scps_heritage.h"   /* culture_slots_save/load (section CULT) */
 #include "scps_religion.h"  /* religion_save/load (section RELG, v37) */
 #include "scps_demography.h"/* demography_dyn_id_rebase */
@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <math.h>
 
 #if defined(_WIN32)
 #  include <direct.h>
@@ -29,10 +30,29 @@
 typedef struct { int32_t day, year, player, prev_dawned; uint32_t camp_rng;
                  int32_t heritage, ethos; int16_t prev_owner[SCPS_MAX_REG];
                  int32_t player_age_engaged;   /* v48 : engagement d'âge JOUEUR (§7) */
-                 int32_t diplo_ready_day; } SaveMisc;   /* v50 : le DIPLOMATE (1 acte / 2 mois) */
+                 int32_t diplo_ready_day;       /* v50 : le DIPLOMATE (1 acte / 2 mois) */
+                 int32_t research_target; } SaveMisc;   /* v111 : cible de recherche joueur */
+
+static char g_save_dir[1024] = "saves";
+static char g_save_path[2048];
+
+bool scps_save_set_dir(const char *dir){
+    if (!dir || !*dir) return false;
+    size_t n=strlen(dir);
+    while (n>1 && (dir[n-1]=='/' || dir[n-1]=='\\')) n--;
+    if (n==0 || n>=sizeof g_save_dir) return false;
+    memcpy(g_save_dir,dir,n); g_save_dir[n]='\0';
+    return true;
+}
 
 const char *save_slot_path(int slot){
-    static char p[64]; snprintf(p,sizeof p,"saves/slot_%d.scps",slot); return p;
+    char sep = '\\';
+#ifndef _WIN32
+    sep='/';
+#endif
+    if (slot<1 || slot>3) return "";
+    int n=snprintf(g_save_path,sizeof g_save_path,"%s%cslot_%d.scps",g_save_dir,sep,slot);
+    return (n<0 || (size_t)n>=sizeof g_save_path) ? "" : g_save_path;
 }
 bool scps_save_slot_info(int slot, SaveHeader *out){
     FILE *f=fopen(save_slot_path(slot),"rb");
@@ -45,7 +65,7 @@ bool scps_save_slot_info(int slot, SaveHeader *out){
     if (ok){
         out->line[sizeof out->line - 1] = '\0';
         if (out->version > SAVE_VERSION*4u) ok=false;          /* version délirante = pas un slot */
-        if (out->year > 100000u) ok=false;
+        if (out->year < 0 || out->year > 100000) ok=false;
     }
     fclose(f); return ok;
 }
@@ -108,6 +128,20 @@ static bool sv_r(FILE *f, uint32_t tag, void *p, size_t sz){
     return sz==0 || fread(p,sz,1,f)==1;
 }
 
+/* econ_rebuild_prov_adj indexe e->prov[] directement avec la province portée
+ * par chaque cellule. Ce lien doit donc être borné AVANT de reconstruire le
+ * cache : save_sane arrive plus tard, après la lecture de toutes les sections,
+ * et une cellule forgée pouvait sinon provoquer une lecture hors tableau. */
+static bool sv_geo_links_sane(const World *w, const WorldEconomy *e){
+    if (!w || !e || w->n_provinces<0 || w->n_provinces>SCPS_MAX_PROV ||
+        e->n_prov<0 || e->n_prov>SCPS_MAX_PROV) return false;
+    for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++){
+        int p=w->cell[scps_idx(x,y)].province;
+        if (p < -1 || p >= e->n_prov) return false;
+    }
+    return true;
+}
+
 /* ÉCRIT le PAYLOAD (toutes les sections, dans l'ORDRE) sur `f`. Extrait de scps_save_game
  * pour être RÉUTILISÉ par le SNAPSHOT transactionnel du chargement (AUDIT P2). Le lecteur
  * sv_read_payload ci-dessous en est le miroir EXACT — tout changement de sections doit
@@ -140,6 +174,7 @@ static bool sv_write_payload(FILE *f, World *w, Sim *s, int heritage, int ethos)
       memcpy(m.prev_owner,s->prev_owner_mo,sizeof m.prev_owner);
       m.player_age_engaged=(int32_t)s->player_age_engaged;
       m.diplo_ready_day=(int32_t)s->diplo_ready_day;
+      m.research_target=(int32_t)s->research_target;
       ok&=sv_w(f,SVT_MISC, &m, sizeof m); }
     ok&=sv_w(f,SVT_ITRD, NULL,0); intertrade_save(f);
     ok&=sv_w(f,SVT_AGYS, NULL,0); agency_save(f);
@@ -169,8 +204,19 @@ static bool sv_write_payload(FILE *f, World *w, Sim *s, int heritage, int ethos)
 static bool sv_read_payload(FILE *f, World *w, Sim *s, int *out_heritage, int *out_ethos){
     bool ok=true;
     ok&=sv_r(f,SVT_WRLD, w,        sizeof *w);
+    /* prov_adj est un cache process, mais ECON est sérialisé brut : son ancien
+     * pointeur (ou un pointeur forgé) ne doit jamais rester publiable pendant
+     * une lecture partielle. Le reconstruire seulement après avoir validé les
+     * liens géographiques garde le rollback sûr même si le flux est tronqué. */
+    s->econ->prov_adj = NULL;
     ok&=sv_r(f,SVT_ECON, s->econ,  sizeof *s->econ);
-    if (ok){ s->econ->prov_adj = NULL; econ_rebuild_prov_adj(s->econ, w); }
+    s->econ->prov_adj = NULL;
+    if (ok && sv_geo_links_sane(w,s->econ)){
+        econ_rebuild_prov_adj(s->econ, w);
+        if (!s->econ->prov_adj) ok=false; /* allocation failure => rollback, never half-ready */
+    } else if (ok) {
+        ok=false;
+    }
     ok&=sv_r(f,SVT_PROS, s->wp,    sizeof *s->wp);
     ok&=sv_r(f,SVT_LEGI, s->wl,    sizeof *s->wl);
     ok&=sv_r(f,SVT_NETW, s->net,   sizeof *s->net);
@@ -201,7 +247,8 @@ static bool sv_read_payload(FILE *f, World *w, Sim *s, int *out_heritage, int *o
                s->player_age_engaged = (m.player_age_engaged>=-1 && m.player_age_engaged<1024)
                                        ? (int)m.player_age_engaged : -1;
                s->diplo_ready_day = (m.diplo_ready_day>=0 && m.diplo_ready_day<=m.day+120)
-                                    ? (int)m.diplo_ready_day : 0; } }
+                                    ? (int)m.diplo_ready_day : 0;
+               s->research_target = (int)m.research_target; } }
     ok&=sv_r(f,SVT_ITRD, NULL,0); ok&=intertrade_load(f);
     ok&=sv_r(f,SVT_AGYS, NULL,0); ok&=agency_load(f);
     ok&=sv_r(f,SVT_DPLS, NULL,0); ok&=diplo_load_statics(f);
@@ -225,16 +272,17 @@ static bool sv_read_payload(FILE *f, World *w, Sim *s, int *out_heritage, int *o
 }
 
 bool scps_save_game(int slot, World *w, Sim *s, const WorldParams *params, int setup_heritage, int setup_ethos){
-    if (slot<1 || slot>3) return false;
-    scps_mkdir("saves");
+    if (slot<1 || slot>3 || !w || !s || !params ||
+        setup_heritage<0 || setup_heritage>=HERITAGE_COUNT || setup_ethos<0 || setup_ethos>=ETHOS_COUNT ||
+        !scps_save_sane(w,s,s->player)) return false;
+    scps_mkdir(g_save_dir);
     FILE *f=tmpfile();
     if (!f) return false;
     SaveHeader h; memset(&h,0,sizeof h);
     h.magic=SAVE_MAGIC; h.version=SAVE_VERSION; h.seed=params->seed;
     h.day=s->day; h.year=s->year; h.player=s->player; h.params=*params;
     h.stamp=(int64_t)time(NULL);
-    { const char *tstr=tune_active_string();
-      h.tune_ck=(uint32_t)scrypt_fnv1a(tstr, strlen(tstr)); }
+    h.tune_ck=tune_fingerprint32();
     { int nreg=0; for (int r=0;r<s->econ->n_regions;r++) if (s->econ->region[r].owner==s->player) nreg++;
       snprintf(h.line,sizeof h.line,"An %d — %s, %d région(s)",
                s->year, (s->player>=0&&s->player<w->n_countries)?w->country[s->player].name:"?", nreg); }
@@ -265,9 +313,44 @@ bool scps_save_game(int slot, World *w, Sim *s, const WorldParams *params, int s
     return ok;
 }
 
+#define SAVE_MAX_PAYLOAD (256u<<20)   /* plafond de vraisemblance : pas de malloc(4 Go) sur en-tête forgé */
+
+static bool sane_float(float v, float lo, float hi){ return isfinite(v) && v>=lo && v<=hi; }
+static bool sane_army(const ArmyState *a){
+    if (!a || a->n_units<0 || a->n_units>ARMY_MAX_UNITS) return false;
+    for (int i=0;i<a->n_units;i++){
+        const Unit *u=&a->units[i];
+        if ((int)u->type<0 || (int)u->type>=U_COUNT || u->count<0 || u->count>100000000L ||
+            !sane_float(u->moral_courant,0.f,1.0e9f)) return false;
+    }
+    for (int i=0;i<W_COUNT;i++) if (a->weapons[i]<0 || a->weapons[i]>100000000L) return false;
+    for (int i=0;i<LAB_CLASS_COUNT;i++) if (a->pop_by_class_in_army[i]<0 || a->pop_by_class_in_army[i]>100000000L) return false;
+    if (!sane_float(a->doctrine.weapon_power,0.f,1.0e6f) ||
+        !sane_float(a->doctrine.moral_mul,0.f,1.0e6f) ||
+        !sane_float(a->doctrine.arcane_power,0.f,1.0e6f) ||
+        !sane_float(a->doctrine.firearm_power,0.f,1.0e6f)) return false;
+    return true;
+}
+static bool sane_buildings(const Building *b, int n){
+    if (!b || n<0 || n>ECON_MAX_BLD) return false;
+    for (int i=0;i<n;i++){
+        if ((int)b[i].type<0 || (int)b[i].type>=BLD_TYPE_COUNT) return false;
+        if (!sane_float(b[i].level,0.f,1.0e9f) || !sane_float(b[i].workers,0.f,1.0e9f)) return false;
+    }
+    return true;
+}
+
 bool scps_save_sane(const World *w, const Sim *s, int player){
+    if (!w || !s || !s->econ || !s->wp || !s->wl || !s->net || !s->ts || !s->sc ||
+        !s->ag || !s->ev || !s->drift || !s->dp || !s->rn || !s->rs || !s->camp ||
+        !s->host || !s->navy || !s->missions || !s->infl || !s->doct) return false;
     if (w->n_provinces <0 || w->n_provinces >SCPS_MAX_PROV)      return false;
     if (w->n_regions   <0 || w->n_regions   >SCPS_MAX_REG)       return false;
+    /* Ces bornes DOIVENT précéder toute boucle indexant les tableaux par pays ou
+     * continent (les anciennes gardes arrivaient après plusieurs de ces boucles). */
+    if (w->n_countries <0 || w->n_countries >SCPS_MAX_COUNTRY)   return false;
+    if (w->n_continents<0 || w->n_continents>SCPS_MAX_CONTINENT) return false;
+    if (s->player<0 || s->player>=w->n_countries || player!=s->player) return false;
     /* AUDIT 2026-08-12 (codex P1) : econ->n_prov borné ICI, AVANT sa première
      * utilisation (les boucles rep-prov l.~258 et prov l.~333 le lisaient AVANT la
      * borne historique — une save forgée à checksum recalculé lisait hors du tableau
@@ -329,8 +412,6 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         { float v=s->econ->ip_seed_credit[c];
           if (!(v >= 0.f && v < 1.0e6f)) return false; }         /* faux pour NaN : la garde tient */
     }
-    if (w->n_countries <0 || w->n_countries >SCPS_MAX_COUNTRY)   return false;
-    if (w->n_continents<0 || w->n_continents>SCPS_MAX_CONTINENT) return false;
     for (int c=0;c<w->n_countries;c++)
         if (credit_of(c) < -1 || credit_of(c) >= w->n_countries) return false;
     /* v89 — MONNAIE M3c : la dette désérialisée (scps_credit.c) se revalide (≥0, finie —
@@ -369,10 +450,18 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         if (c->province < -1 || c->region    < -1 ||
             c->country  < -1 || c->continent < -1) return false;
         if (c->province >= w->n_provinces || c->region    >= w->n_regions ||
-            c->country  >= w->n_countries || c->continent >= w->n_continents) return false; }
+            c->country  >= w->n_countries || c->continent >= w->n_continents) return false;
+        if ((int)c->biome < 0 || (int)c->biome >= BIO_COUNT ||
+            c->flow_dir < -1 || c->flow_dir > 7 || c->sea > SEA_COURANT) return false;
+        if (!sane_float(c->height,-100.f,100.f) || !sane_float(c->moisture,-100.f,100.f) ||
+            !sane_float(c->temperature,-100.f,100.f) || !sane_float(c->fertility,-100.f,100.f)) return false; }
     for (int p=0;p<w->n_provinces;p++){ const Province *pr=&w->province[p];
         if (pr->region < 0 || pr->country < 0) return false;
-        if (pr->region >= w->n_regions || pr->country >= w->n_countries) return false; }
+        if (pr->region >= w->n_regions || pr->country >= w->n_countries) return false;
+        if ((int)pr->biome_dominant < 0 || (int)pr->biome_dominant >= BIO_COUNT ||
+            (int)pr->resource < 0 || (int)pr->resource >= RES_COUNT ||
+            (int)pr->resource2 < 0 || (int)pr->resource2 >= RES_COUNT) return false;
+        if (!sane_float(pr->habitability,0.f,1.f)) return false; }
     for(int p=0;p<s->econ->n_prov;p++){
         const ProvinceEconomy *pe=&s->econ->prov[p];
         if(pe->culture_id && !econ_culture_identity_valid(pe->culture_id)) return false;
@@ -386,21 +475,27 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
             if(!(pe->strata[c2].pop    >= -1.f) || pe->strata[c2].pop    > 1e9f) return false;
             if(!(pe->strata[c2].wealth >= -1.f) || pe->strata[c2].wealth > 1e12f) return false;
         }
+        if (!sane_buildings(pe->bld,pe->n_bld)) return false;
+        for (int b=0;b<BLD_TYPE_COUNT;b++) if (pe->bld_input[b]>1) return false;
     }
     for (int r=0;r<w->n_regions;r++){ const Region *rg=&w->region[r];
         if (rg->n_provinces<0 || rg->n_provinces>12 || rg->country< -1 || rg->country>=w->n_countries) return false;
         for (int k=0;k<rg->n_provinces;k++)
             if (rg->province_ids[k]<0 || rg->province_ids[k]>=w->n_provinces) return false;
-        if (!(rg->harbor>=0.f && rg->harbor<=1.f)) return false; }
+        if (!sane_float(rg->harbor,0.f,1.f) || rg->continent < -1 || rg->continent >= w->n_continents) return false; }
     for (int c=0;c<w->n_countries;c++){ const Country *ct=&w->country[c];
         if (ct->n_regions<0 || ct->n_regions>32 || ct->capital_prov< -1 || ct->capital_prov>=w->n_provinces) return false;
+        if (ct->continent < -1 || ct->continent >= w->n_continents ||
+            (int)ct->role < POLITY_PLAYER || (int)ct->role > POLITY_WILD) return false;
         for (int k=0;k<ct->n_regions;k++)
             if (ct->region_ids[k]<0 || ct->region_ids[k]>=w->n_regions) return false; }
-    if (s->econ->n_regions<0 || s->econ->n_regions>SCPS_MAX_REG) return false;
+    if (s->econ->n_regions<0 || s->econ->n_regions>SCPS_MAX_REG || s->econ->n_regions!=w->n_regions) return false;
     for (int r=0;r<s->econ->n_regions;r++){ const RegionEconomy *re=&s->econ->region[r];
         if (re->owner < -1 || re->owner >= w->n_countries) return false;
         if (re->pop.n_groups<0 || re->pop.n_groups>SCPS_MAX_GROUPS) return false;
         if (!(re->annex_scar>=0.f && re->annex_scar<=1.f)) return false;
+        if (!sane_buildings(re->bld,re->n_bld)) return false;
+        for (int b=0;b<BLD_TYPE_COUNT;b++) if (re->bld_input[b]>1) return false;
         for (int c=0;c<CLASS_COUNT;c++)
             if (!(re->strata[c].pop>=0.f)) return false; }   /* v68 : ESCLAVAGE — mirroir, même garde */
     /* ÉCONOMIE PAR-PROVINCE (v47) : prov[] est LA VÉRITÉ désormais — mêmes bornes que
@@ -427,6 +522,7 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
          * se revalide (≥0, fini — motif reserve_gold, PAS un index, un montant de
          * points K sans plafond dur mais borné large pour rejeter un fichier forgé). */
         if (!(pe->debase_kdrain>=0.f && pe->debase_kdrain<1.0e6f)) return false; }
+    if (s->research_target < -1 || s->research_target >= TECH_COUNT) return false;
     /* v50 — chantiers de colonisation : src/dst indexent prov[] (ou -1), délais/cadence
      * bornés (une forge hors-borne indexerait la fondation ou gèlerait la cadence). */
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){
@@ -442,6 +538,21 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
     for (int i=0;i<s->rn->n;i++){ const TradeRoute *rt=&s->rn->route[i];
         if (rt->ra<0 || rt->ra>=s->econ->n_regions || rt->rb<0 || rt->rb>=s->econ->n_regions) return false;
         if (rt->choke_region< -1 || rt->choke_region>=s->econ->n_regions) return false; }
+    if (s->camp->n_regions != s->econ->n_regions) return false;
+    if (s->camp->n_battles<0 || s->camp->n_routs<0 || s->camp->n_disengage<0 ||
+        s->camp->n_reinforce<0 || s->camp->n_stalemate<0 || s->camp->n_rallies<0 ||
+        s->camp->n_sails<0 || s->camp->battle_days<0 ||
+        !sane_float(s->camp->sail_days_sum,0.f,1.0e9f)) return false;
+    for (int bi=0;bi<CAMPAIGN_MAX_BATTLES;bi++){
+        const FieldBattle *b=&s->camp->battle[bi];
+        if (!b->active) continue;
+        if (b->a<0 || b->a>=w->n_countries || b->b<0 || b->b>=w->n_countries || b->a==b->b ||
+            b->helpA< -1 || b->helpA>=w->n_countries || b->helpB< -1 || b->helpB>=w->n_countries ||
+            b->loc<0 || b->loc>=s->econ->n_regions || b->cycle<0 || b->cycle>4 || b->days<0 || b->chocs<0 ||
+            !sane_float(b->resA,0.f,1.0e12f) || !sane_float(b->resB,0.f,1.0e12f) ||
+            !sane_float(b->resA0,0.f,1.0e12f) || !sane_float(b->resB0,0.f,1.0e12f) ||
+            !sane_float(b->lossA,0.f,1.0e12f) || !sane_float(b->lossB,0.f,1.0e12f)) return false;
+    }
     for (int owner=0;owner<SCPS_MAX_COUNTRY;owner++){
         int counted=0;
         if (s->camp->n_corps[owner]<0 || s->camp->n_corps[owner]>CAMPAIGN_MAX_CORPS) return false;
@@ -452,6 +563,11 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         if (a->owner>=w->n_countries) return false;
         if (a->loc <0 || a->loc >=s->econ->n_regions) return false;
         if (a->dest< -1 || a->dest>=s->econ->n_regions || a->next< -1 || a->next>=s->econ->n_regions) return false;
+        if ((int)a->phase<FA_IDLE || (int)a->phase>=FA_PHASE_COUNT || a->taken<0 || a->legs<0 ||
+            a->battles<0 || a->broken_days<0 || a->rally_packets<0 || a->sail_transports<0 ||
+            !sane_float(a->days_left,0.f,1.0e7f) || !sane_float(a->leg_days,0.f,1.0e7f) ||
+            !sane_float(a->rally_days,0.f,1.0e7f) || !sane_float(a->sail_days,0.f,1.0e7f) ||
+            !sane_army(&a->force)) return false;
         /* v97 — LA FORCE NOMINALE : pas un index, une QUANTITÉ (paquets de 100, motif
          * reserve_gold/va_country_prev) — juste ≥0 et sous un plafond large (un fichier
          * forgé ne doit pas planter le calcul de déficit avec une valeur folle). */
@@ -459,6 +575,7 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         }
         if (counted!=s->camp->n_corps[owner]) return false;
     }
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++) if (!sane_army(&s->host->army[c])) return false;
     for (int i=0;i<SCPS_MAX_COUNTRY;i++){ const Navy *nv=&s->navy->n[i];
         for (int t=0;t<HULL_COUNT;t++) if (nv->hull[t]<0 || nv->hull[t]>100000) return false;
         if (nv->at_sea<0 || nv->build_hull<-1 || nv->build_hull>=HULL_COUNT) return false;
@@ -467,10 +584,42 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         if (s->dp->occupier[r] < -1 || s->dp->occupier[r] >= w->n_countries) return false;
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){
         if (s->dp->suzerain[c] < -1 || s->dp->suzerain[c] >= w->n_countries) return false;
+        if (s->dp->suzerain[c]==c || s->dp->contrat[c] < CONTRAT_NONE || s->dp->contrat[c] > CONTRAT_CITE ||
+            (s->dp->suzerain[c]<0 && s->dp->contrat[c]!=CONTRAT_NONE) ||
+            (s->dp->suzerain[c]>=0 && s->dp->contrat[c]==CONTRAT_NONE)) return false;
         if (s->dp->reparations_to[c] < -1 || s->dp->reparations_to[c] >= w->n_countries) return false;
         if (!(s->dp->reparations_days[c]>=0.f && s->dp->reparations_days[c]<=3650.f)) return false;
-        if (!(s->dp->v_integration[c]>=0.f && s->dp->v_integration[c]<=1.f)) return false;
-        if (!(s->dp->v_annex[c]      >=0.f && s->dp->v_annex[c]      <=1.f)) return false; }
+        if (!sane_float(s->dp->v_integration[c],0.f,1.f) || !sane_float(s->dp->v_annex[c],0.f,1.f) ||
+            !sane_float(s->dp->v_grief[c],0.f,1.f) || !sane_float(s->dp->v_loyal[c],-31.f,1.0e7f) ||
+            s->dp->v_ligue[c]>1) return false; }
+    for (int a=0;a<SCPS_MAX_COUNTRY;a++) for (int b=0;b<SCPS_MAX_COUNTRY;b++){
+        if ((int)s->dp->status[a][b] < DIPLO_NEUTRAL || (int)s->dp->status[a][b] > DIPLO_WAR ||
+            s->dp->cb[a][b] < CB_NONE || s->dp->cb[a][b] > CB_ANTIPIRATERIE ||
+            s->dp->contrat[a] < CONTRAT_NONE || s->dp->contrat[a] > CONTRAT_CITE ||
+            s->dp->trade_pact[a][b] > 1 || s->dp->migration_pact[a][b] > 1 ||
+            !sane_float(s->dp->war_years[a][b],0.f,1.0e6f) || !sane_float(s->dp->truce[a][b],0.f,1.0e7f) ||
+            !sane_float(s->dp->battle_score[a][b],-100.f,100.f) || !sane_float(s->dp->conq_value[a][b],0.f,1.0e12f) ||
+            /* La rancune ajoute une unité par province perdue et +2 par faillite;
+             * elle n'est donc pas normalisée dans [0,1]. La rancune de course,
+             * elle, est plafonnée à 10 par diplo_pirate_rancor. */
+            !sane_float(s->dp->rancor[a][b],0.f,1.0e6f) || !sane_float(s->dp->pirate_rancor[a][b],0.f,10.f) ||
+            s->dp->pirate_disarm[a]>1 || !sane_float(s->dp->faustian[a],0.f,1.f) ||
+            s->dp->fab_state[a][b] < FAB_NONE || s->dp->fab_state[a][b] > FAB_READY ||
+            s->dp->fab_cb[a][b] < CB_NONE || s->dp->fab_cb[a][b] > CB_ANTIPIRATERIE ||
+            !sane_float(s->dp->fab_days[a][b],0.f,1.0e7f)) return false;
+    }
+    if (s->dp->fronde_suz < -1 || s->dp->fronde_suz >= w->n_countries ||
+        s->dp->fronde_lead < -1 || s->dp->fronde_lead >= w->n_countries ||
+        (s->dp->fronde_suz<0) != (s->dp->fronde_lead<0) ||
+        (s->dp->fronde_suz>=0 && s->dp->fronde_suz==s->dp->fronde_lead) ||
+        /* Une fronde active reprend le score de bataille de son meneur : pendant
+         * une guerre, celui-ci peut légitimement passer sous zéro. */
+        !sane_float(s->dp->fronde_score,-100.f,100.f)) return false;
+    { const int *cnt[] = { &s->dp->n_servage,&s->dp->n_protectorat,&s->dp->n_concordat,&s->dp->n_cite,
+                            &s->dp->n_defections,&s->dp->n_ligues,&s->dp->n_frondes,&s->dp->n_indep,
+                            &s->dp->n_renvers,&s->dp->n_ecrase,&s->dp->n_defect_paix,&s->dp->n_defect_guerre,
+                            &s->dp->n_lev_don,&s->dp->n_lev_allege,&s->dp->n_lev_divise,&s->dp->n_lev_intim };
+      for (size_t i=0;i<sizeof cnt/sizeof cnt[0];i++) if (*cnt[i]<0) return false; }
     /* W-GUERRE-3 — intrigues fabriquées : état borné {NONE,MATURING,READY}, jours non
      * négatifs (le tick les décompte à 0 puis change d'état — jamais durablement négatif),
      * CB acheté borné à l'enum CasusBelli (indexe diplo_cb_name/le motif d'une déclaration). */
@@ -495,9 +644,16 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
     if (s->rs){
         if (s->rs->count < 0 || s->rs->count > REVOLT_MAX) return false;
         for (int i=0;i<s->rs->count;i++){
-            if (s->rs->list[i].region < -1 || s->rs->list[i].region >= s->econ->n_regions) return false;
+            const Rebellion *rb=&s->rs->list[i];
+            if (rb->region < -1 || rb->region >= s->econ->n_regions || rb->owner < -1 || rb->owner >= w->n_countries ||
+                rb->rebel_country < -1 || rb->rebel_country >= w->n_countries || rb->spawned < -1 || rb->spawned >= w->n_countries ||
+                (int)rb->kind < REBEL_NONE || (int)rb->kind > REBEL_ZELOTE ||
+                (int)rb->heritage < 0 || (int)rb->heritage >= HERITAGE_COUNT ||
+                (int)rb->klass < 0 || (int)rb->klass >= CLASS_COUNT || rb->outcome < OUT_ONGOING || rb->outcome > OUT_COUP ||
+                rb->drift_id < -1 || rb->mobilized < 0 || rb->days < 0 || rb->war_days < 0 ||
+                !sane_float(rb->deficit,0.f,1.f)) return false;
             /* Phase 3a — le pays rebelle incarné (-1 = aucun) indexe w->country[] : borne. */
-            if (s->rs->list[i].rebel_country < -1 || s->rs->list[i].rebel_country >= w->n_countries) return false;
+            if (rb->active && (rb->region<0 || rb->owner<0)) return false;
         }
         /* CONTRAT DE SAVE (défaut #1, 2026-07-07) — LES TROIS GRÂCES/COOLDOWNS PAR PAYS
          * (revolt_grace/coup_grace/concede_cd) GATENT une décision moteur (allumage
@@ -513,6 +669,13 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
             if (s->rs->coup_grace[c]   < -31.f || s->rs->coup_grace[c]   > 40.f*365.f) return false;
             if (s->rs->concede_cd[c]   < -31.f || s->rs->concede_cd[c]   > 40.f*365.f) return false;
         }
+        for (int r=0;r<SCPS_MAX_REG;r++)
+            if (!sane_float(s->rs->desperation_days[r],0.f,1.0e7f) ||
+                !sane_float(s->rs->revolt_cooldown[r],0.f,1.0e7f) ||
+                !sane_float(s->rs->revanchism_days[r],0.f,1.0e7f)) return false;
+        if (s->rs->n_ignited<0 || s->rs->n_crushed<0 || s->rs->n_seceded<0 || s->rs->n_concession<0 ||
+            s->rs->n_coup<0 || s->rs->n_heresy<0 || s->rs->n_zelote<0 || s->rs->pop_lost<0 ||
+            s->rs->last_spawned < -1 || s->rs->last_spawned >= w->n_countries) return false;
     }
     for (int i=0;i<CAMPAIGN_ARMY_CAP;i++){
         if (s->camp->army[i].force.n_units < 0 || s->camp->army[i].force.n_units > ARMY_MAX_UNITS) return false;
@@ -623,7 +786,6 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
     return true;
 }
 
-#define SAVE_MAX_PAYLOAD (256u<<20)   /* plafond de vraisemblance : pas de malloc(4 Go) sur en-tête forgé */
 int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_heritage, int *out_ethos){
     if (slot<1 || slot>3) return 1;
     FILE *f=fopen(save_slot_path(slot),"rb");
@@ -649,6 +811,14 @@ int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_her
      * heritage/ethos du snapshot = 0 (ignorés : un load rejeté ne les applique pas). */
     FILE *snap = tmpfile();
     bool have_snap = (snap != NULL) && sv_write_payload(snap, w, s, 0, 0) && fflush(snap)==0;
+    /* Un snapshot incomplet est un échec AVANT toute mutation : charger dans l'état
+     * vivant sans secours laisserait une partie partiellement écrasée si la validation
+     * échoue ensuite. */
+    if (!have_snap){
+        if (snap) fclose(snap);
+        fclose(f);
+        return 1;
+    }
     if (have_snap) rewind(snap);
 
     long p0=ftell(f);
@@ -660,8 +830,12 @@ int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_her
     if (ok) s->ev->last_name = NULL;
     bool good = ok && (uint32_t)(p1-p0)==h.payload && scps_save_sane(w, s, s->player);
     if (!good) {
-        if (have_snap){ sv_read_payload(snap, w, s, NULL, NULL); fclose(snap); }
-        else if (snap) fclose(snap);
+        bool restored=sv_read_payload(snap, w, s, NULL, NULL);
+        fclose(snap);
+        if (!restored || !scps_save_sane(w, s, s->player)){
+            fprintf(stderr,"[save] restauration du snapshot échouée après refus de chargement\n");
+            return 3; /* l'appelant doit rendre l'instance inutilisable : état inconnu */
+        }
         return 1;                                    /* échec PROPRE : la partie d'avant est intacte */
     }
     if (snap) fclose(snap);
@@ -681,10 +855,24 @@ int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_her
     *params=h.params;
     warhost_set_human(s->player);
     campaign_set_human(s->player);   /* #32 : le compteur de morts DU joueur suit le même contrat que warhost/econ */
-    { const char *tstr=tune_active_string();
-      if ((uint32_t)scrypt_fnv1a(tstr, strlen(tstr)) != h.tune_ck)
-          fprintf(stderr, "[save] AVERTISSEMENT : SCPS_TUNE actif ≠ celui de la sauvegarde — la partie évoluera "
-                          "sous d'AUTRES règles (replays / graines partagées invalides).\n"); }
+    /* Les ordres appartiennent à la session qui vient d'être remplacée. Les purger
+     * uniquement après un chargement validé conserve les ordres si le refus restaure A. */
+    memset(s->cmdq,0,sizeof s->cmdq);
+    s->cmd_n=0;
+    /* Les retours de commandes appartiennent à l'ancienne session, au même
+     * titre que sa file : ne les réinitialiser qu'après validation complète. */
+    sim_cmd_feedback_reset(s);
+    { uint32_t now=tune_fingerprint32();
+      /* Les sauvegardes antérieures à cette correction contenaient le hash du préfixe tronqué à
+       * 1023 octets. Le reconnaître conserve leur lecture, mais l'indiquer
+       * explicitement : cette ancienne empreinte ne prouve pas la config entière. */
+      if (now != h.tune_ck){
+          if (tune_legacy_fingerprint32() == h.tune_ck)
+              fprintf(stderr, "[save] AVERTISSEMENT : empreinte SCPS_TUNE historique tronquée ; la config complète n'est pas vérifiable.\n");
+          else
+              fprintf(stderr, "[save] AVERTISSEMENT : SCPS_TUNE actif ≠ celui de la sauvegarde — la partie évoluera "
+                              "sous d'AUTRES règles (replays / graines partagées invalides).\n");
+      } }
     /* (l'état « prêt » du front est tenu par l'appelant : la façade pose ScpsSim.ready ;
      * le Sim moteur n'a pas de champ ready.) */
     return 0;

@@ -57,7 +57,7 @@ const DEFS := {
 	"Entropie": {"d": "L'usure du monde (0-100), chargée par le faustien et les transmuteurs. Au seuil, une FIN se déclenche.", "i": "alert_disease"},
 	"Brèche": {"d": "La déchirure que la magie interdite agrandit. Toutes les fins arcanes en sortent.", "i": "alert_event_bell"},
 	"Merveille": {"d": "L'ouvrage de l'Ascension : trois paliers (Forge, Société, Savoir) nourris de rares — la victoire du joueur.", "i": "capital_tower"},
-	"Ascension": {"d": "La victoire par la Merveille : trois paliers achevés + tous les peuples métabolisés + l'arbre complet.", "i": "capital_tower"},
+	"Ascension": {"d": "La victoire par la Merveille : achever Forge, Société puis Savoir avant une apocalypse. Les paliers exigent 3, 4 puis 6 héritages intégrés ou en contact profond, et leurs ressources rares.", "i": "capital_tower"},
 	# ── diplomatie & guerre ──
 	"Opinion": {"d": "Ce qu'un pays pense de nous (±100) : statuts actifs + mémoire des actes (la trahison marque), le tout tendant vers zéro.", "i": "dipl_alliance"},
 	"Casus belli": {"d": "Le motif de guerre utilisable : gratuit (défense, subjugation) ou revendication payante qui mûrit un an.", "i": "dipl_rivalry"},

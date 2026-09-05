@@ -4,6 +4,7 @@
  */
 #include "scps_sim_node.h"
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
@@ -45,6 +46,8 @@ static float political_wash_grain(int x, int y, int owner) {
 void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("generate", "seed"),        &ScpsWorld::generate);
     ClassDB::bind_method(D_METHOD("advance_days", "days"),    &ScpsWorld::advance_days);
+    ClassDB::bind_method(D_METHOD("command_feedback"),         &ScpsWorld::command_feedback);
+    ClassDB::bind_method(D_METHOD("reset_command_feedback"),    &ScpsWorld::reset_command_feedback);
     ClassDB::bind_method(D_METHOD("map_w"),                   &ScpsWorld::map_w);
     ClassDB::bind_method(D_METHOD("map_h"),                   &ScpsWorld::map_h);
     ClassDB::bind_method(D_METHOD("map_image", "mode", "selected_prov"), &ScpsWorld::map_image, DEFVAL(-1));
@@ -56,6 +59,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("fog_image"),                &ScpsWorld::fog_image);
     ClassDB::bind_method(D_METHOD("fog_region_mask"),          &ScpsWorld::fog_region_mask);
     ClassDB::bind_method(D_METHOD("year"),                    &ScpsWorld::year);
+    ClassDB::bind_method(D_METHOD("seed"),                    &ScpsWorld::seed);
     ClassDB::bind_method(D_METHOD("player"),                  &ScpsWorld::player);
     ClassDB::bind_method(D_METHOD("set_observer", "on"),      &ScpsWorld::set_observer);
     ClassDB::bind_method(D_METHOD("is_observer"),             &ScpsWorld::is_observer);
@@ -154,11 +158,15 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("merv_metab"),                     &ScpsWorld::merv_metab);
     ClassDB::bind_method(D_METHOD("tunables"),                       &ScpsWorld::tunables);
     ClassDB::bind_method(D_METHOD("tune_set", "nom", "value"),       &ScpsWorld::tune_set);
+    ClassDB::bind_method(D_METHOD("tune_set_checked", "nom", "value"), &ScpsWorld::tune_set_checked);
+    ClassDB::bind_method(D_METHOD("tune_reset", "nom"),              &ScpsWorld::tune_reset);
     ClassDB::bind_method(D_METHOD("lang_set", "lang"),               &ScpsWorld::lang_set);
     ClassDB::bind_method(D_METHOD("lang_get"),                       &ScpsWorld::lang_get);
     ClassDB::bind_method(D_METHOD("country_budget", "country"),      &ScpsWorld::country_budget);
     ClassDB::bind_method(D_METHOD("budget_summary", "country"),      &ScpsWorld::budget_summary);
     ClassDB::bind_method(D_METHOD("budget_controls", "country"),     &ScpsWorld::budget_controls);
+    ClassDB::bind_method(D_METHOD("country_buy_rate", "country", "category"), &ScpsWorld::country_buy_rate);
+    ClassDB::bind_method(D_METHOD("player_set_buy_rate", "category", "pct"), &ScpsWorld::player_set_buy_rate);
     ClassDB::bind_method(D_METHOD("mission_info", "country"),        &ScpsWorld::mission_info);
     ClassDB::bind_method(D_METHOD("influence_info", "country"),      &ScpsWorld::influence_info);
     ClassDB::bind_method(D_METHOD("dessein_info", "country", "branche"), &ScpsWorld::dessein_info);
@@ -341,11 +349,34 @@ void ScpsWorld::_bind_methods() {
     BIND_CONSTANT(SCPS_LAYER_CLIFF);
 }
 
-ScpsWorld::ScpsWorld()  { sim = scps_sim_new(); }
+ScpsWorld::ScpsWorld()  {
+    /* Le moteur C manipule un chemin OS ; user:// est globalisé par Godot ici,
+     * sans changement de cwd (les slots restent ainsi propres à l'installation). */
+    String save_dir = ProjectSettings::get_singleton()->globalize_path("user://saves");
+    scps_set_save_directory(save_dir.utf8().get_data());
+    sim = scps_sim_new();
+}
 ScpsWorld::~ScpsWorld() { if (sim) { scps_sim_free(sim); sim = nullptr; } }
 
 void ScpsWorld::generate(int seed)      { if (sim) scps_sim_generate(sim, (uint32_t)seed); }
 void ScpsWorld::advance_days(int days)  { if (sim) scps_sim_advance_days(sim, days); }
+Array ScpsWorld::command_feedback() const {
+    Array out;
+    if (!sim) return out;
+    ScpsCommandFeedback f;
+    int n=scps_command_feedback_count(sim);
+    for (int i=0;i<n;i++) if (scps_command_feedback_at(sim,i,&f)) {
+        Dictionary d;
+        d["id"]=(int64_t)f.id; d["verb"]=(int)f.verb; d["status"]=(int)f.status;
+        d["outcome"]=(int)f.outcome; d["reason"]=(int)f.reason;
+        d["year"]=f.year; d["day"]=f.day;
+        d["a0"]=f.a[0]; d["a1"]=f.a[1]; d["a2"]=f.a[2]; d["a3"]=f.a[3];
+        d["value"]=f.value; d["value2"]=f.value2; d["amount"]=f.amount;
+        out.push_back(d);
+    }
+    return out;
+}
+void ScpsWorld::reset_command_feedback() { if (sim) scps_command_feedback_reset(sim); }
 
 int ScpsWorld::map_w() const { return scps_map_w(); }
 int ScpsWorld::map_h() const { return scps_map_h(); }
@@ -550,6 +581,7 @@ PackedByteArray ScpsWorld::fog_region_mask() {
 }
 
 int     ScpsWorld::year()          const { return scps_year(sim); }
+int     ScpsWorld::seed()          const { return scps_world_seed(sim); }
 int     ScpsWorld::player()        const { return scps_player(sim); }
 void    ScpsWorld::set_observer(bool on) { if (sim) scps_set_observer(sim, on ? 1 : 0); }
 bool    ScpsWorld::is_observer() const   { return sim ? scps_is_observer(sim) != 0 : false; }
@@ -1385,6 +1417,12 @@ Dictionary ScpsWorld::country_army(int country) {
     scps_country_army(sim, country, &ar);
     Dictionary d;
     d["regiments"] = (int64_t)ar.regiments;
+    d["reserve_regiments"] = (int64_t)ar.regiments;
+    d["campaign_units"] = (int64_t)ar.campaign_units;
+    d["total_units"] = (int64_t)ar.total_units;
+    d["force_limit"] = (double)ar.force_limit;
+    d["reserve_over_limit_pct"] = (double)ar.reserve_over_limit_pct;
+    d["reserve_surcharge_pct"] = (double)ar.reserve_surcharge_pct;
     d["levy"]      = ar.levy;
     d["levy_name"] = String::utf8(ar.levy_name);
     d["fleet"]     = ar.fleet;
@@ -1640,12 +1678,20 @@ Array ScpsWorld::tunables() {
         d["value"]      = t.value;
         d["def"]        = t.def_value;
         d["overridden"] = (bool)t.overridden;
+        d["active"]     = (bool)t.active;
+        d["phase"]      = String::utf8(t.phase ? t.phase : "");
         a.push_back(d);
     }
     return a;
 }
 void ScpsWorld::tune_set(const String &nom, double value) {
     scps_tune_set_val(nom.utf8().get_data(), value);
+}
+bool ScpsWorld::tune_set_checked(const String &nom, double value) {
+    return scps_tune_set_checked(nom.utf8().get_data(), value) != 0;
+}
+bool ScpsWorld::tune_reset(const String &nom) {
+    return scps_tune_reset(nom.utf8().get_data()) != 0;
 }
 
 /* I18N — bascule la TABLE moteur (0=FR 1=EN). GLOBAL, à chaud, display-only :
@@ -1781,6 +1827,15 @@ Dictionary ScpsWorld::budget_controls(int country) {
     return d;
 }
 
+int ScpsWorld::country_buy_rate(int country, int category) const {
+    if (!sim) return 0;
+    return scps_country_buy_rate(sim, country, category);
+}
+
+void ScpsWorld::player_set_buy_rate(int category, int pct) {
+    if (sim) scps_player_set_buy_rate(sim, category, pct);
+}
+
 Dictionary ScpsWorld::mission_info(int country) {
     Dictionary d;
     ScpsMission m;
@@ -1910,6 +1965,9 @@ Dictionary ScpsWorld::dessein_info(int country, int branche) {
     d["recompense"]  = String::utf8(x.recompense);
     d["saveur"]      = String::utf8(x.saveur);
     d["cible"]       = String::utf8(x.cible);
+    d["target_pid"]    = x.cible_pid;
+    d["target_cid"]    = x.cible_cid;
+    d["target_region"] = x.cible_region;
     d["pret"]        = (bool)x.pret;
     d["pivot"]       = (bool)x.pivot;
     d["voie_a"]      = String::utf8(x.voie_a);
@@ -1921,7 +1979,9 @@ Dictionary ScpsWorld::dessein_info(int country, int branche) {
 }
 /* SCELLER un échelon — ENFILE l'ordre (le drain revalide TOUT). */
 bool ScpsWorld::seal_dessein(int branche, int echelon, int voie) {
-    return sim ? scps_player_seal_dessein(sim, branche, echelon, voie) != 0 : false;
+    /* P1 expose seulement la branche Sol ; les futures branches restent
+     * explicitement hors contrat tant que leur moteur/API ne sont pas présents. */
+    return sim && branche == 0 ? scps_player_seal_dessein(sim, branche, echelon, voie) != 0 : false;
 }
 
 /* LES FACTIONS du pays (spectre d'éthos interne) : {list:[{name,part,grief,dominant}],
@@ -2725,7 +2785,16 @@ bool ScpsWorld::save_game(int slot) {
     return sim ? scps_sim_save(sim, slot) != 0 : false;
 }
 int ScpsWorld::load_game(int slot) {
-    return sim ? scps_sim_load(sim, slot) : 1;
+    if (!sim) return 1;
+    int rc = scps_sim_load(sim, slot);
+    if (rc == 3) {
+        /* Le moteur signale que le rollback est irrécupérable : jeter le handle
+         * évite qu'une méthode native conserve une instance dont l'état est
+         * inconnu. Le singleton GDScript invalide ensuite sa façade UI. */
+        scps_sim_free(sim);
+        sim = nullptr;
+    }
+    return rc;
 }
 Array ScpsWorld::save_slots() {
     Array a;

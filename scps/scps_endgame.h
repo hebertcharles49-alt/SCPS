@@ -177,8 +177,15 @@ void endgame_start_wonder(EndgameState *eg, int player, int capital_region);
 /* MÉTABOLISATION — nb d'héritages (sur HERITAGE_COUNT) « métabolisés » par cid :
  * natif (l'héritage de la capitale) + tout héritage digéré au tier 3 (même seuil
  * METAB_TIER3 que la barre d'accès tech — décision joueur #2 : PAS un nouveau
- * seuil). Gate les paliers de la Merveille (FORGE≥3, SOCIÉTÉ≥4, SAVOIR≥6). */
+ * seuil). Ce repli legacy ignore le cache de contact ; les gates réelles de la
+ * Merveille utilisent endgame_wonder_metab_count avec TechState. */
 int endgame_metab_count(const World *w, const WorldEconomy *econ, int cid);
+
+/* Variante utilisée par le tick de la Merveille et les évènements joueur :
+ * inclut la profondeur de contact portée par TechState. Le repli historique
+ * ci-dessus reste volontairement sans TechState pour les appelants legacy. */
+int endgame_wonder_metab_count(const World *w, const WorldEconomy *econ,
+                               const TechState ts[], int cid);
 
 /* Requis de métabolisation du palier COURANT de la Merveille (3/4/6 ; 0 si
  * MERV_NONE/ASCENDED — aucun palier actif). Lecteur simple pour le front. */

@@ -1,0 +1,619 @@
+﻿cle,defaut_registre,statut_lecture,phase_prouvee,unites_compilation_lectrices,references_source
+MINT_ROYALTY,0.60000002,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\chronicle.c:1526; scps\chronicle.c:1536; scps\scps_econ.c:4011
+MINT_AI_SHARE,0.60000002,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\chronicle.c:1536; scps\scps_econ.c:2566
+MINT_PARITY_GOLD,16,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\chronicle.c:1507; scps\chronicle.c:1535; scps\scps_econ.c:2642; scps\scps_econ.c:2652; scps\scps_econ.c:5836
+MINT_PARITY_COPPER,5.1999998,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\chronicle.c:1508; scps\chronicle.c:1535; scps\scps_econ.c:2642; scps\scps_econ.c:2652; scps\scps_econ.c:5836
+MINT_FREE_BUY_FRAC,0.15000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5779
+MINT_FREE_STOCK_FLOOR_FRAC,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5780
+MINT_FULL_PARITY,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\credit_demo.c:343; scps\credit_demo.c:376; scps\credit_demo.c:385; scps\scps_econ.c:5817; scps\scps_econ.c:5862
+MINT_ALLOY,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\chronicle.c:1534; scps\credit_demo.c:322; scps\credit_demo.c:386; scps\credit_demo.c:667; scps\credit_demo.c:722; scps\credit_demo.c:726; scps\scps_econ.c:2594; scps\scps_econ.c:2623; scps\scps_econ.c:5792; scps\scps_econ.c:5910
+MINT_ALLOY_VALUE,32,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\chronicle.c:1534; scps\scps_econ.c:2631; scps\scps_econ.c:5799; scps\scps_econ.c:5914
+DEBASE_BILLON,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\chronicle.c:1537; scps\scps_econ.c:2638
+DEBASE_DROUGHT,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\chronicle.c:1538; scps\credit_demo.c:759; scps\credit_demo.c:763; scps\scps_econ.c:2594
+DROUGHT_PAIR_MIN,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\chronicle.c:1538; scps\scps_econ.c:2597
+INFLATION_CAP,2,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c; scps\scps_ai.c; scps\scps_api.c; scps\scps_army.c; scps\scps_campaign.c; scps\scps_credit.c; scps\scps_decrees.c; scps\scps_demography.c; scps\scps_diplo.c; scps\scps_doctrines.c; scps\scps_econ.c; scps\scps_endgame.c; scps\scps_events.c; scps\scps_factions.c; scps\scps_fog.c; scps\scps_influence.c; scps\scps_intertrade.c; scps\scps_labor.c; scps\scps_legitimacy.c; scps\scps_missions.c; scps\scps_navy.c; scps\scps_prosperity.c; scps\scps_readout.c; scps\scps_religion.c; scps\scps_render.c; scps\scps_revolt.c; scps\scps_routes.c; scps\scps_save.c; scps\scps_sim.c; scps\scps_statecraft.c; scps\scps_toponym.c; scps\scps_trade.c; scps\scps_warhost.c; scps\scps_world.c,scps\scps_econ.c:4056; scps\scps_econ.h:933
+GOLD_DISCOVERY_RATE,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:218; scps\scps_events.c:921
+GOLD_DISCOVERY_MTTH_BOOST,3,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:4207
+ENTRETIEN_DIV,400,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:3119; scps\scps_econ.c:4773
+JOB_UPKEEP_TAX_FRAC,0.60000002,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_doctrines.c:99; scps\scps_econ.c:3139
+JOB_UPKEEP_PRICE_FLOOR,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:3137
+COURT_FLOOR,4000,lecture moteur presente,non certifiee individuellement,scps\scps_credit.c; scps\scps_econ.c,scps\scps_credit.c:783; scps\scps_credit.c:1003; scps\scps_econ.c:3077
+COURT_MONTHS,60,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:3078
+COURT_RATE,0.0099999998,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:4834
+ADMIN_BASE,0.40000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_doctrines.c:143; scps\scps_econ.c:4850; scps\scps_econ.c:4850
+ADMIN_EXP,1.2999999,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:4851
+SINK_FLOOR,500,lecture moteur presente,non certifiee individuellement,scps\scps_credit.c; scps\scps_econ.c,scps\scps_credit.c:294; scps\scps_credit.c:319; scps\scps_credit.c:330; scps\scps_credit.c:449; scps\scps_credit.c:509; scps\scps_credit.c:626; scps\scps_credit.c:662; scps\scps_credit.c:878; scps\scps_credit.c:968; scps\scps_econ.c:3083; scps\scps_econ.c:4102
+SINK_MONTHS,0,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:3084
+PL_SINK_MONTHS,0,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c; scps\scps_ai.c; scps\scps_api.c; scps\scps_army.c; scps\scps_campaign.c; scps\scps_credit.c; scps\scps_decrees.c; scps\scps_demography.c; scps\scps_diplo.c; scps\scps_doctrines.c; scps\scps_econ.c; scps\scps_endgame.c; scps\scps_events.c; scps\scps_factions.c; scps\scps_fog.c; scps\scps_influence.c; scps\scps_intertrade.c; scps\scps_labor.c; scps\scps_legitimacy.c; scps\scps_missions.c; scps\scps_navy.c; scps\scps_prosperity.c; scps\scps_readout.c; scps\scps_religion.c; scps\scps_render.c; scps\scps_revolt.c; scps\scps_routes.c; scps\scps_save.c; scps\scps_sim.c; scps\scps_statecraft.c; scps\scps_toponym.c; scps\scps_trade.c; scps\scps_warhost.c; scps\scps_world.c,scps\scps_econ.c:4105; scps\scps_econ.h:919
+PL_SINK_FLOOR,0,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c; scps\scps_ai.c; scps\scps_api.c; scps\scps_army.c; scps\scps_campaign.c; scps\scps_credit.c; scps\scps_decrees.c; scps\scps_demography.c; scps\scps_diplo.c; scps\scps_doctrines.c; scps\scps_econ.c; scps\scps_endgame.c; scps\scps_events.c; scps\scps_factions.c; scps\scps_fog.c; scps\scps_influence.c; scps\scps_intertrade.c; scps\scps_labor.c; scps\scps_legitimacy.c; scps\scps_missions.c; scps\scps_navy.c; scps\scps_prosperity.c; scps\scps_readout.c; scps\scps_religion.c; scps\scps_render.c; scps\scps_revolt.c; scps\scps_routes.c; scps\scps_save.c; scps\scps_sim.c; scps\scps_statecraft.c; scps\scps_toponym.c; scps\scps_trade.c; scps\scps_warhost.c; scps\scps_world.c,scps\scps_econ.c:4103; scps\scps_econ.h:918
+PL_LEGACY,0,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:4075
+PL_EXPONENT,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c; scps\scps_ai.c; scps\scps_api.c; scps\scps_army.c; scps\scps_campaign.c; scps\scps_credit.c; scps\scps_decrees.c; scps\scps_demography.c; scps\scps_diplo.c; scps\scps_doctrines.c; scps\scps_econ.c; scps\scps_endgame.c; scps\scps_events.c; scps\scps_factions.c; scps\scps_fog.c; scps\scps_influence.c; scps\scps_intertrade.c; scps\scps_labor.c; scps\scps_legitimacy.c; scps\scps_missions.c; scps\scps_navy.c; scps\scps_prosperity.c; scps\scps_readout.c; scps\scps_religion.c; scps\scps_render.c; scps\scps_revolt.c; scps\scps_routes.c; scps\scps_save.c; scps\scps_sim.c; scps\scps_statecraft.c; scps\scps_toponym.c; scps\scps_trade.c; scps\scps_warhost.c; scps\scps_world.c,scps\scps_econ.c:4078; scps\scps_econ.h:934
+INVEST_SPEND_FRAC,0.30000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5711
+ROAD_SPEND_FRAC,0.15000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5734
+UPKEEP_SHARE_LAB,0.33340001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:4790
+UPKEEP_SHARE_BOURG,0.33329999,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:4790
+TAX_EXEMPT_BASKET_MULT,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_doctrines.c:152; scps\scps_econ.c:2763; scps\scps_econ.c:2764; scps\scps_econ.c:3759; scps\scps_econ.c:3759; scps\scps_econ.c:4738; scps\scps_econ.c:4738
+TAX_BASE_LABORER,0.059999999,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2735; scps\scps_econ.c:3140; scps\scps_econ.c:4019
+TAX_BASE_BOURGEOIS,0.15000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2736; scps\scps_econ.c:4020
+TAX_BASE_ELITE,0.27000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2737; scps\scps_econ.c:4021
+IMPORT_MARGIN_OWN,1.2999999,lecture moteur presente,non certifiee individuellement,scps\scps_intertrade.c,scps\scps_doctrines.c:59; scps\scps_intertrade.c:1053
+IMPORT_MARGIN_THIRD,1.7999999,lecture moteur presente,non certifiee individuellement,scps\scps_intertrade.c,scps\scps_doctrines.c:50; scps\scps_intertrade.c:1053
+IMPORT_MARGIN_NONE,2,lecture moteur presente,non certifiee individuellement,scps\scps_intertrade.c,scps\scps_intertrade.c:1054
+TRADE_LEVY,0.1,lecture moteur presente,non certifiee individuellement,scps\scps_intertrade.c,scps\scps_doctrines.c:47; scps\scps_intertrade.c:1077
+DIR_T_HOT,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3996
+DIR_T_COLD,0.31999999,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3997
+AMPL_TRAUMA_CHARGE,180,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3608
+AMPL_TRAUMA_HALF,900,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3643
+AMPL_TRAUMA_MAX,2000,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3609
+AMPL_TRAUMA_SCALE,500,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3614
+AMPL_BUDGET_POP,0.02,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3653
+AMPL_BUDGET_GOLD,0.0099999998,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3654
+AMPL_BUDGET_CAP,400,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3655
+AMPL_OMEN_COST,60,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3661
+AMPL_OMEN_AMPL,0.34999999,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3662
+C3_K_HOLLOW,0.2,lecture moteur presente,non certifiee individuellement,scps\scps_revolt.c,scps\doctrines_demo.c:188; scps\scps_doctrines.c:156; scps\scps_revolt.c:981; scps\scps_revolt.c:981
+C3_L_HOLLOW,0.30000001,lecture moteur presente,non certifiee individuellement,scps\scps_revolt.c,scps\scps_doctrines.c:156; scps\scps_revolt.c:983; scps\scps_revolt.c:983
+CONCEDE_GOLD,150,lecture moteur presente,non certifiee individuellement,scps\scps_revolt.c,scps\scps_revolt.c:966
+CUREE_CAP,0.22,lecture moteur presente,non certifiee individuellement,scps\scps_campaign.c,scps\scps_campaign.c:932
+CAV_PURSUIT,0.44999999,lecture moteur presente,non certifiee individuellement,scps\scps_campaign.c,scps\scps_campaign.c:929
+CAV_CUREE_CAP,0.40000001,lecture moteur presente,non certifiee individuellement,scps\scps_campaign.c,scps\scps_campaign.c:932
+BT_DMG_K,0.057,lecture moteur presente,non certifiee individuellement,scps\scps_campaign.c,scps\scps_campaign.c:1021; scps\scps_campaign.c:1023; scps\scps_campaign.c:1024; scps\scps_doctrines.c:32
+CTR_BITE,0.60000002,lecture moteur presente,non certifiee individuellement,scps\scps_campaign.c,scps\scps_campaign.c:791; scps\scps_campaign.c:1015; scps\scps_campaign.c:1015; scps\scps_campaign.c:1016; scps\scps_campaign.c:1016; scps\scps_doctrines.c:32
+CTR_PURSUIT,0.30000001,lecture moteur presente,non certifiee individuellement,scps\scps_campaign.c,scps\scps_campaign.c:930
+BT_CHOC_MORTS,0.006,lecture moteur presente,non certifiee individuellement,scps\scps_campaign.c,scps\scps_campaign.c:1026; scps\scps_campaign.c:1027
+BT_RUPTURE,0.2,lecture moteur presente,non certifiee individuellement,scps\scps_campaign.c,scps\scps_campaign.c:800; scps\scps_campaign.c:1040; scps\scps_campaign.c:1041
+CHOC_ROUNDS_BONUS,2,lecture moteur presente,non certifiee individuellement,scps\scps_campaign.c,scps\scps_campaign.c:1039
+REGIMENT_PAY,90,lecture moteur presente,non certifiee individuellement,scps\scps_warhost.c,scps\chronicle.c:1116; scps\scps_warhost.c:525
+REGIMENT_PRICE,12,lecture moteur presente,non certifiee individuellement,scps\scps_warhost.c,scps\scps_warhost.c:242; scps\scps_warhost.c:676
+SOLDE_EU4_DIV,13,lecture moteur presente,non certifiee individuellement,scps\scps_warhost.c,scps\scps_warhost.c:251
+SOLDE_ARMS_DIV,26,lecture moteur presente,non certifiee individuellement,scps\scps_warhost.c,scps\scps_warhost.c:251
+SOLDE_FL_FLOOR,6,lecture moteur presente,non certifiee individuellement,scps\scps_warhost.c,scps\scps_warhost.c:256
+SOLDE_FL_PER_REG,0.69999999,lecture moteur presente,non certifiee individuellement,scps\scps_warhost.c,scps\scps_doctrines.c:36; scps\scps_warhost.c:256
+SOLDE_OVER_K,3,lecture moteur presente,non certifiee individuellement,scps\scps_warhost.c,scps\scps_doctrines.c:36; scps\scps_warhost.c:261
+BT_DEF_EDGE,0.1,lecture moteur presente,non certifiee individuellement,scps\scps_campaign.c,scps\scps_campaign.c:766
+BT_DECROCHE,0.25999999,lecture moteur presente,non certifiee individuellement,scps\scps_campaign.c,scps\scps_campaign.c:1065
+BT_RELIEF_FALL,30,lecture moteur presente,non certifiee individuellement,scps\scps_campaign.c,scps\scps_campaign.c:858
+BT_ATK_RATIO,1.2000001,lecture moteur presente,non certifiee individuellement,scps\scps_sim.c,scps\scps_sim.c:222
+SOLDE_FORTUNE_ARMS,0.25,lecture moteur presente,non certifiee individuellement,scps\scps_warhost.c,scps\scps_warhost.c:248
+ARMY_POOL_FRAC,0.2,lecture moteur presente,non certifiee individuellement,scps\scps_army.c,scps\scps_army.c:365
+WH_DESERT_RATE,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_warhost.c,scps\scps_warhost.c:561
+WH_PAY_REVENUE_FRAC,0.34999999,lecture moteur presente,non certifiee individuellement,scps\scps_warhost.c,scps\scps_warhost.c:598
+WH_POOL_CLAMP,1,lecture moteur presente,non certifiee individuellement,scps\scps_warhost.c,scps\scps_warhost.c:184
+WH_ARSENAL_GATE,1,lecture moteur presente,non certifiee individuellement,scps\scps_warhost.c,scps\scps_warhost.c:316
+WH_MILICE_FLOOR,1,lecture moteur presente,non certifiee individuellement,scps\scps_warhost.c,scps\scps_warhost.c:317
+WH_REV_FALLBACK,1,lecture moteur presente,non certifiee individuellement,scps\scps_warhost.c,scps\chronicle.c:2195; scps\scps_warhost.c:594
+WH_PAY_CORPS,1,lecture moteur presente,non certifiee individuellement,scps\scps_warhost.c,scps\scps_warhost.c:492; scps\warhost_demo.c:160; scps\warhost_demo.c:165
+DEF_PER_H,0.050000001,lecture moteur presente,non certifiee individuellement,scps\scps_campaign.c,scps\scps_campaign.c:236; scps\scps_campaign.c:236; scps\scps_doctrines.c:39
+SIEGE_LOOT_FRAC,0.25,lecture moteur presente,non certifiee individuellement,scps\scps_diplo.c,scps\scps_diplo.c:1540; scps\scps_diplo.c:1540; scps\scps_doctrines.c:34; scps\scps_doctrines.c:43
+PILLAGE_INCOME_FRAC,0.2,lecture moteur presente,non certifiee individuellement,scps\scps_diplo.c,scps\scps_diplo.c:1458; scps\scps_diplo.c:1458; scps\scps_doctrines.c:34; scps\scps_doctrines.c:43
+NAVY_UPKEEP_GOLD,90,lecture moteur presente,non certifiee individuellement,scps\scps_navy.c,scps\scps_navy.c:222
+AI_SAVOIR_K,2.5,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:1624
+AI_FAITH_ZEAL,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:1454; scps\scps_ai.c:1571
+AI_FAITH_LADDER,1,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:742; scps\scps_ai.c:766; scps\scps_ai.c:1446; scps\scps_ai.c:1463
+TECH_COST_MULT,0.69999999,lecture moteur presente,non certifiee individuellement,scps\scps_tech.c,scps\scps_tech.c:684
+TECH_COST_N_EXP,0.64999998,lecture moteur presente,non certifiee individuellement,scps\scps_tech.c,scps\scps_tech.c:677
+TECH_RUINS_ACCESS,1,lecture moteur presente,non certifiee individuellement,scps\scps_sim.c,scps\scps_sim.c:1495
+RES_MAT_SPREAD,1,lecture moteur presente,non certifiee individuellement,scps\scps_world.c,scps\scps_world.c:3830
+RES_GUARANTEE_ALL,1,lecture moteur presente,non certifiee individuellement,scps\scps_world.c,scps\scps_world.c:4011
+RES_GEO_GRAFT,0,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:1911
+CLEAR_GOLD_PER_LAB,0.34999999,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c,scps\scps_agency.c:585
+CLEAR_GOLD_MIN,60,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c,scps\scps_agency.c:586
+CLEAR_FARMLAND,1,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c,scps\scps_agency.c:866
+CLEAR_FARMLAND_CELLS,300,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c,scps\scps_agency.c:867
+AI_DERIVE_ODDS,8,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:1798; scps\scps_ai.c:1798; scps\scps_doctrines.c:164
+AI_THREAT_GATE,0.55000001,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:1875
+AI_THREAT_BRAKE,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:1876
+AI_WAR_LOSING,-25,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:418
+AI_ALLY_NEED_W,1,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:641
+AI_METAB_RES_W,1,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c; scps\scps_api.c; scps\scps_sim.c,scps\chronicle.c:2511; scps\scps_ai.c:2637; scps\scps_ai.c:2637; scps\scps_api.c:863; scps\scps_api.c:880; scps\scps_api.c:3393; scps\scps_doctrines.c:68; scps\scps_doctrines.c:123; scps\scps_sim.c:1453
+AI_RESEARCH_INCOME_W,4.5,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c; scps\scps_api.c; scps\scps_sim.c,scps\scps_ai.c:2455; scps\scps_ai.c:2629; scps\scps_api.c:879; scps\scps_sim.c:1455
+SAVOIR_W_ELITE,0.0099999998,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:1007
+SAVOIR_W_BOURGEOIS,0.0049999999,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\doctrines_demo.c:280; scps\doctrines_demo.c:295; scps\doctrines_demo.c:298; scps\scps_doctrines.c:112; scps\scps_econ.c:1008; scps\scps_econ.c:1008
+SAVOIR_W_LABORER,0.0010000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_doctrines.c:112; scps\scps_econ.c:1009; scps\scps_econ.c:1009
+SAVOIR_LIB_PER,0.067000002,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_doctrines.c:111; scps\scps_econ.c:1026; scps\scps_econ.c:1026
+SAVOIR_LIB_MAX,0.33000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_doctrines.c:111; scps\scps_econ.c:1027; scps\scps_econ.c:1027
+TECHPOP,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c; scps\scps_endgame.c; scps\scps_sim.c,scps\scps_econ.c:1034; scps\scps_endgame.c:379; scps\scps_sim.c:1656; scps\scps_sim.c:1679; scps\scps_sim.c:1813
+TECHPOP_SAT_FLOOR,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:1036
+TECHPOP_SAT_SPAN,0.75,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:1037
+AI_SAVOIR_CATCHUP_FRAC,0.44999999,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:852
+COMMERCE_W_BOURGEOIS,0.2,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\doctrines_demo.c:174; scps\doctrines_demo.c:177; scps\doctrines_demo.c:181; scps\doctrines_demo.c:271; scps\scps_doctrines.c:51; scps\scps_doctrines.c:144; scps\scps_econ.c:1054; scps\scps_econ.c:1054
+COMMERCE_W_ELITE,0.050000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_doctrines.c:51; scps\scps_econ.c:1055; scps\scps_econ.c:1055
+COMMERCE_BLD_PER,0.1,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_econ.c,scps\scps_api.c:2020; scps\scps_econ.c:1064
+COMMERCE_BLD_MAX,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_econ.c,scps\scps_api.c:2020; scps\scps_econ.c:1064
+COMMERCE_ECO_W,0.050000001,lecture moteur presente,non certifiee individuellement,scps\scps_diplo.c,scps\scps_diplo.c:913
+METAB_TIER1,0.1,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:2274; scps\scps_ai.c:2376
+METAB_TIER2,0.2,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:2273; scps\scps_ai.c:2376
+METAB_TIER3,0.34999999,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:2272; scps\scps_ai.c:2377
+METAB_TIER12,1,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:2375; scps\scps_ai.c:2375; scps\scps_doctrines.c:68; scps\scps_doctrines.c:122
+METAB_COH_PROFOND,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:2310
+METAB_BEARER_BAR,1,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:2270
+METAB_DIFFUSE_SLAVE,0.30000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c; scps\scps_endgame.c,scps\scps_econ.c:966; scps\scps_endgame.c:966
+SLAVE_METAB_FLOOR,0.15000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c; scps\scps_endgame.c,scps\scps_econ.c:981; scps\scps_endgame.c:1003
+SLAVE_FRACTION,0.050000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:866
+SLAVE_FRACTION_TECH,0.15000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:865
+SLAVE_GROWTH,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\demography_integ_demo.c:177; scps\demography_integ_demo.c:182; scps\scps_econ.c:5477
+SLAVE_PRICE,40,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_intertrade.c,scps\scps_api.c:4075; scps\scps_intertrade.c:816; scps\scps_intertrade.c:900
+SLAVE_MARKET_CONSERVED,1,lecture moteur presente,non certifiee individuellement,scps\scps_intertrade.c,scps\scps_intertrade.c:853; scps\scps_intertrade.c:936
+MIG_PACT_FRAC,0.006,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:1030
+MIG_PACT_FRAC_ALLY,0.050000001,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:1029
+MIG_PACT_FRAC_LATE,0.02,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:1035
+MIG_PACT_MIN,30,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:1036; scps\scps_doctrines.c:63
+MIG_PACT_ALLY_GATE_DAYS,4380,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:1028
+REFUGEE_FLEE_SCAR,0.40000001,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:1135
+REFUGEE_FLEE_FRAC,0.12,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:1136
+REFUGEE_FLEE_MIN,30,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:1137
+REFUGEE_HOME_CALM,0.25,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:1138
+REFUGEE_RETURN_PULL,0.12,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:1139; scps\scps_doctrines.c:65
+MIGRANT_RETURN_PULL,0.015,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:1140
+REFUGEE_SETTLE_INTEG,0.89999998,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:1141; scps\scps_doctrines.c:65
+ASSIM_K_INST_REF,1.5,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:1265; scps\scps_demography.c:1265; scps\scps_doctrines.c:64
+ASSIM_K_INST_AMP,4,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:1265
+MIG_ATTRACT_INST_W,1,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:538
+MIG_PULL_MAX,5,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:1321
+AI_TECH_DIFFUSE_MAX,0.40000001,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:2431; scps\scps_doctrines.c:114
+RAW_BOOST_PER_TIER,0.050000001,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c; scps\scps_econ.c,scps\scps_ai.c:1353; scps\scps_doctrines.c:100; scps\scps_econ.c:4315; scps\scps_econ.c:4315; scps\scps_econ.c:5998; scps\scps_econ.c:5998
+RAW_BOOST_MAX_TIER,8,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c; scps\scps_econ.c,scps\scps_ai.c:1350; scps\scps_econ.c:4314
+RAW_BOOST_COST,40,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:1354; scps\scps_doctrines.c:100
+RAW_BOOST_PAYBACK,8,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:1352
+RAW_WORKS_NEED,25,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_doctrines.c:104; scps\scps_econ.c:6045; scps\scps_econ.c:6045
+PLAYER_GUARANTEE_RAW,4,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:1466
+COMFORT_JOY,0.079999998,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5178
+COMFORT_HOUSE_RELIEF,0.15000001,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c; scps\scps_ai.c; scps\scps_api.c; scps\scps_army.c; scps\scps_campaign.c; scps\scps_credit.c; scps\scps_decrees.c; scps\scps_demography.c; scps\scps_diplo.c; scps\scps_doctrines.c; scps\scps_econ.c; scps\scps_endgame.c; scps\scps_events.c; scps\scps_factions.c; scps\scps_fog.c; scps\scps_influence.c; scps\scps_intertrade.c; scps\scps_labor.c; scps\scps_legitimacy.c; scps\scps_missions.c; scps\scps_navy.c; scps\scps_prosperity.c; scps\scps_readout.c; scps\scps_religion.c; scps\scps_render.c; scps\scps_revolt.c; scps\scps_routes.c; scps\scps_save.c; scps\scps_sim.c; scps\scps_statecraft.c; scps\scps_toponym.c; scps\scps_trade.c; scps\scps_warhost.c; scps\scps_world.c,scps\scps_econ.h:790
+ETHOS_LUXURY_MIN_TIER,4,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:4997; scps\scps_econ.c:5054; scps\scps_econ.c:5257
+ETHOS_LUXURY_WEIGHT,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5262
+SPEC_BUY_BAND,0.80000001,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:2899; scps\scps_ai.c:2899; scps\scps_doctrines.c:56
+SPEC_SELL_BAND,1.25,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:2920; scps\scps_ai.c:2920; scps\scps_doctrines.c:56
+SPEC_GOLD_FLOOR,350,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:2899; scps\scps_ai.c:2902
+AI_WAR_DECISIVE,50,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:585; scps\scps_ai.c:1912; scps\scps_doctrines.c:84
+AI_WAR_EXHAUST,10,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:585; scps\scps_ai.c:1913; scps\scps_doctrines.c:84
+AI_WAR_BASELINE,0.050000001,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:1868
+AI_WAR_SATURATION,0.2,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:1869
+AI_WAR_CAP,3,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:1882
+EMPIRE_CAP,13000,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:1785
+CITY_CAP,6500,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:1786
+EMPIRE_SEED,4000,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2075
+CITY_SEED,2000,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2076
+WORLD_PROV_BASE,24,lecture moteur presente,non certifiee individuellement,scps\scps_world.c,scps\audit_eco.c:47; scps\diplo_demo.c:63; scps\econ_production_demo.c:83; scps\scps_world.c:4879; scps\social_demo.c:155
+WORLD_PROV_PER_EMPIRE,120,lecture moteur presente,non certifiee individuellement,scps\scps_world.c,scps\audit_eco.c:48; scps\diplo_demo.c:64; scps\econ_production_demo.c:84; scps\scps_world.c:4880; scps\social_demo.c:156
+WORLD_PROV_PER_CITY,5,lecture moteur presente,non certifiee individuellement,scps\scps_world.c,scps\audit_eco.c:49; scps\diplo_demo.c:65; scps\econ_production_demo.c:85; scps\scps_world.c:4881; scps\social_demo.c:157
+WORLD_EMP_COMFORT_LOW,0.57999998,lecture moteur presente,non certifiee individuellement,scps\scps_world.c,scps\scps_world.c:4873
+WORLD_EMP_COMFORT_FULL,6,lecture moteur presente,non certifiee individuellement,scps\scps_world.c,scps\scps_world.c:4872
+WORLD_PROV_SAT_K,124416,lecture moteur presente,non certifiee individuellement,scps\scps_world.c,scps\scps_world.c:1991
+RIVER_FILL,1,lecture moteur presente,non certifiee individuellement,scps\scps_world.c,scps\scps_world.c:1142; scps\scps_world.c:3476
+RIVER_ARID_NIL,1,lecture moteur presente,non certifiee individuellement,scps\scps_world.c,scps\scps_world.c:4746
+RIVER_NILE_KEEP,110,lecture moteur presente,non certifiee individuellement,scps\scps_world.c,scps\scps_world.c:4754
+SPAWN_SAFE_HOPS,6,lecture moteur presente,non certifiee individuellement,scps\scps_world.c,scps\scps_world.c:2554
+SPAWN_SAFE_HOPS_MIN,5,lecture moteur presente,non certifiee individuellement,scps\scps_world.c,scps\scps_world.c:2555
+REGION_RAW_KEEP,2,aucune lecture moteur trouvee,non certifiee individuellement,,
+EXTRACT_GEO_REF,4.5,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:4002; scps\scps_econ.c:5974; scps\scps_econ.c:6627
+EXTRACT_GEO_CAP,3,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:4003; scps\scps_econ.c:5975; scps\scps_econ.c:6628
+EXTRACT_LABOR_SHARE,0.64999998,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_doctrines.c:95; scps\scps_econ.c:4004; scps\scps_econ.c:5976
+FOOD_NEED,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:4005; scps\scps_econ.c:5961
+SPAWN_FOOD_RAW,12,aucune lecture moteur trouvee,non certifiee individuellement,,
+AI_SAFETY_HORIZON,12,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c; scps\scps_api.c; scps\scps_diplo.c; scps\scps_econ.c,scps\scps_ai.c:321; scps\scps_ai.c:323; scps\scps_ai.c:1351; scps\scps_api.c:4143; scps\scps_diplo.c:1685; scps\scps_econ.c:6626
+AI_PROJ_HORIZON,25,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c; scps\scps_api.c; scps\scps_diplo.c; scps\scps_econ.c,scps\scps_ai.c:320; scps\scps_ai.c:474; scps\scps_ai.c:1963; scps\scps_api.c:4142; scps\scps_diplo.c:1200; scps\scps_econ.c:6624
+AI_SAFE_STOCK_MONTHS,6,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:324; scps\scps_ai.c:324; scps\scps_doctrines.c:55
+COLONY_SURVIVE_SEED,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:6631
+COLONY_WEALTH_SHARE,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:6209; scps\scps_econ.c:6362; scps\scps_econ.c:6796
+AI_COLONY_NEEDS_W,1.5,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:6629
+AI_COLONY_TEMPO,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:6585
+AI_COLONY_PER_YEAR,4,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:6642
+NAVY_COLONY_CD_DAYS,180,lecture moteur presente,non certifiee individuellement,scps\scps_navy.c,scps\scps_navy.c:28
+COLONY_CROSS_DEAD,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:6669
+SPAWN_CONT_QUOTA,1,lecture moteur presente,non certifiee individuellement,scps\scps_world.c,scps\scps_world.c:2525
+SPAWN_CONT_MIN_HAB,0.1,lecture moteur presente,non certifiee individuellement,scps\scps_world.c,scps\scps_world.c:2536
+HAB_CULTURE,1,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c; scps\scps_world.c,scps\scps_demography.c:1231; scps\scps_world.c:2794
+PASSIVE_SEEP,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_api_demo.c:47; scps\scps_api_demo.c:1184; scps\scps_api_demo.c:1243; scps\scps_econ.c:6418
+SEEP_POP_MONTH,2.8,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:6420
+SEEP_TARGET,100,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:6421
+FAC_CLASS_W,1,lecture moteur presente,non certifiee individuellement,scps\scps_factions.c,scps\scps_factions.c:90
+FAC_TINT_GAIN,2,lecture moteur presente,non certifiee individuellement,scps\scps_factions.c,scps\scps_factions.c:492
+EDI_ELITE_JOBS,100,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:706; scps\scps_demography.c:706; scps\scps_doctrines.c:138
+EDI_ELITE_POP_PCT,0.0040000002,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:728; scps\scps_demography.c:728; scps\scps_doctrines.c:155
+POL_SAT_W,0.30000001,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_econ.c,scps\scps_api.c:5737; scps\scps_doctrines.c:151; scps\scps_econ.c:5318; scps\scps_econ.c:5318
+POL_SAT_CAP,0.15000001,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_econ.c,scps\scps_api.c:5737; scps\scps_econ.c:5328
+POP_MOOD_GAIN,1,lecture moteur presente,non certifiee individuellement,scps\scps_factions.c,scps\scps_factions.c:55
+MANUF_QOUT_MULT,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_doctrines.c:98; scps\scps_econ.c:4370; scps\scps_econ.c:4370
+BUY_RATE_ON,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2534
+DISEASE_ON,0,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:4013; scps\scps_events.c:4091
+BUY_RATE_ALL,0,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:1711
+VAL_DRIFT_RATE,0.02,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:867
+VAL_HYST,0.80000001,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:869
+VAL_W_CONF,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:870
+VAL_W_WAR,0.80000001,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:871
+VAL_W_K,0.40000001,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:872
+ELITE_WEALTH_PROMOTE,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:3818
+ELITE_RIVAL_W,0.34999999,lecture moteur presente,non certifiee individuellement,scps\scps_revolt.c,scps\scps_revolt.c:256
+ASSIM_STATE_W,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:1282
+RUIN_POP_FLOOR,50,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:6525
+RUIN_FAMINE_GATE,0.25,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:6539
+MANUMIT_INTEG,0.94999999,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:1427
+TAX_FLOOR_FRAC,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2755; scps\scps_econ.c:4722
+NAVY_COLONY_MAX_DAYS,240,lecture moteur presente,non certifiee individuellement,scps\scps_navy.c,scps\scps_navy.c:27
+NAVY_TRANSPORT_MIN,1,lecture moteur presente,non certifiee individuellement,scps\scps_navy.c,scps\scps_navy.c:491
+NAVY_BUILD_SUPPLY_FLOOR,1,aucune lecture moteur trouvee,non certifiee individuellement,,
+WAR_DEATHS_REAL,1,lecture moteur presente,non certifiee individuellement,scps\scps_sim.c,scps\scps_sim.c:312
+BANKRUPTCY_GARNISH,0.75,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:4492
+RELIG_MINORITY_SAT,0.15000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_doctrines.c:164; scps\scps_econ.c:5546; scps\scps_econ.c:5546
+SEED_PROV_CAP_MULT,3,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2089
+SLAVE_AGIT_SHARE,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_statecraft.c,scps\scps_statecraft.c:816
+SLAVE_AGIT_W,60,lecture moteur presente,non certifiee individuellement,scps\scps_statecraft.c,scps\scps_statecraft.c:818
+NAVY_COMBAT_ON,0,lecture moteur presente,non certifiee individuellement,scps\scps_campaign.c; scps\scps_navy.c; scps\scps_sim.c,scps\navy_demo.c:28; scps\scps_campaign.c:519; scps\scps_campaign.c:571; scps\scps_navy.c:287; scps\scps_navy.c:417; scps\scps_sim.c:1610
+EMBARK_NAVAL_COST,10,lecture moteur presente,non certifiee individuellement,scps\scps_campaign.c,scps\navy_demo.c:29; scps\scps_campaign.c:505; scps\scps_campaign.c:575
+COUNCIL_CLASS_SAT_W,40,lecture moteur presente,non certifiee individuellement,scps\scps_statecraft.c,scps\scps_statecraft.c:419
+AI_COVET_W,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:475
+AI_COMPLEMENT_W,1,aucune lecture moteur trouvee,non certifiee individuellement,,
+AI_VASSAL_INTEGRATE_YEARS,20,lecture moteur presente,non certifiee individuellement,scps\scps_diplo.c,scps\scps_diplo.c:404; scps\scps_diplo.c:404; scps\scps_doctrines.c:87
+AI_VASSAL_CONTRIB_GATE,0.64999998,lecture moteur presente,non certifiee individuellement,scps\scps_diplo.c,scps\scps_diplo.c:406; scps\scps_diplo.c:406; scps\scps_doctrines.c:88; scps\scps_doctrines.c:135
+AI_VASSAL_CONTRIB_BASE,0.050000001,lecture moteur presente,non certifiee individuellement,scps\scps_diplo.c,scps\scps_diplo.c:411; scps\scps_diplo.c:411; scps\scps_doctrines.c:88; scps\scps_doctrines.c:135
+AI_ANNEX_MIN_INTEGRATION,0.64999998,lecture moteur presente,non certifiee individuellement,scps\scps_diplo.c,scps\scps_diplo.c:477
+AI_ANNEX_YEARS_PER_PRICE,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_diplo.c,scps\scps_diplo.c:484
+AI_ANNEX_GOLD_PER_PRICE,2,lecture moteur presente,non certifiee individuellement,scps\scps_diplo.c,scps\scps_diplo.c:480
+ANNEX_INTEGRATION_DISCOUNT,0.60000002,lecture moteur presente,non certifiee individuellement,scps\scps_diplo.c,scps\scps_diplo.c:486; scps\scps_diplo.c:486; scps\scps_doctrines.c:91
+ANNEX_SOFT_SCAR,0.40000001,lecture moteur presente,non certifiee individuellement,scps\scps_diplo.c,scps\scps_diplo.c:492
+ANNEX_SCAR_DECAY,0.2,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5419
+ANNEX_SAT_W,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5333
+OPINION_ALLY,50,lecture moteur presente,non certifiee individuellement,scps\scps_statecraft.c,scps\scps_doctrines.c:79; scps\scps_statecraft.c:574; scps\scps_statecraft.c:574; scps\scps_statecraft.c:738
+OPINION_WAR,60,lecture moteur presente,non certifiee individuellement,scps\scps_statecraft.c,scps\scps_statecraft.c:575; scps\scps_statecraft.c:738
+OPINION_VASSAL,30,lecture moteur presente,non certifiee individuellement,scps\scps_statecraft.c,scps\scps_statecraft.c:581; scps\scps_statecraft.c:739
+OPINION_PACT,15,lecture moteur presente,non certifiee individuellement,scps\scps_statecraft.c,scps\scps_doctrines.c:79; scps\scps_statecraft.c:583; scps\scps_statecraft.c:583; scps\scps_statecraft.c:739
+OPINION_EMBARGO,25,lecture moteur presente,non certifiee individuellement,scps\scps_statecraft.c,scps\scps_statecraft.c:586; scps\scps_statecraft.c:740
+OPINION_RANCOR_W,8,lecture moteur presente,non certifiee individuellement,scps\scps_statecraft.c,scps\scps_doctrines.c:81; scps\scps_statecraft.c:584; scps\scps_statecraft.c:740
+OPINION_MEM_DECAY,0.00030000001,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_statecraft.c,scps\scps_api.c:2863; scps\scps_doctrines.c:81; scps\scps_statecraft.c:737
+OPINION_MEM_BETRAYAL,35,lecture moteur presente,non certifiee individuellement,scps\scps_statecraft.c,scps\scps_statecraft.c:623
+OPINION_MEM_SECESSION,45,lecture moteur presente,non certifiee individuellement,scps\scps_statecraft.c,scps\scps_statecraft.c:635
+OPINION_MEM_CAP,100,lecture moteur presente,non certifiee individuellement,scps\scps_statecraft.c,scps\scps_statecraft.c:623; scps\scps_statecraft.c:635; scps\scps_statecraft.c:741
+AI_OFFER_ALLY_OPINION,10,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:579; scps\scps_ai.c:579; scps\scps_doctrines.c:83
+AI_OFFER_PACT_OPINION,0,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:589
+AI_OFFER_MIG_OPINION,40,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:597; scps\scps_ai.c:597; scps\scps_doctrines.c:63; scps\scps_doctrines.c:83
+WILD_PER_PLAYABLE,2,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c; scps\scps_world.c,scps\scps_econ.c:2208; scps\scps_world.c:2687; scps\scps_world.c:2688
+WILD_POP,750,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2210
+WILD_POP_VAR,0,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2210
+WILD_CAP,1600,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2211
+WILD_FOOD,8,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2211
+WILD_SPAWN_HOPS,3,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2208
+WILD_CULTURE_DISTINCT,1,lecture moteur presente,non certifiee individuellement,scps\scps_world.c,scps\scps_world.c:3247
+WILD_DEFECT_YEARS,0,lecture moteur presente,non certifiee individuellement,scps\scps_sim.c,scps\scps_sim.c:85
+WILD_HOARD,60,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2211
+WILD_REGIMENTS,2,aucune lecture moteur trouvee,non certifiee individuellement,,
+CS_TRADE_POOL,1000,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2140
+HOUSE_MANUF,100,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c; scps\scps_ai.c; scps\scps_api.c; scps\scps_army.c; scps\scps_campaign.c; scps\scps_credit.c; scps\scps_decrees.c; scps\scps_demography.c; scps\scps_diplo.c; scps\scps_doctrines.c; scps\scps_econ.c; scps\scps_endgame.c; scps\scps_events.c; scps\scps_factions.c; scps\scps_fog.c; scps\scps_influence.c; scps\scps_intertrade.c; scps\scps_labor.c; scps\scps_legitimacy.c; scps\scps_missions.c; scps\scps_navy.c; scps\scps_prosperity.c; scps\scps_readout.c; scps\scps_religion.c; scps\scps_render.c; scps\scps_revolt.c; scps\scps_routes.c; scps\scps_save.c; scps\scps_sim.c; scps\scps_statecraft.c; scps\scps_toponym.c; scps\scps_trade.c; scps\scps_warhost.c; scps\scps_world.c,scps\scps_ai.c:1233; scps\scps_doctrines.c:107; scps\scps_econ.h:777; scps\scps_econ.h:777
+MARKET_DIST_FALLOFF,0.12,lecture moteur presente,non certifiee individuellement,scps\scps_intertrade.c,scps\scps_doctrines.c:48; scps\scps_intertrade.c:1054
+ARB_VOL_CAP,3,lecture moteur presente,non certifiee individuellement,scps\scps_intertrade.c,scps\scps_intertrade.c:1238
+ARB_MIN_SPREAD,0.2,lecture moteur presente,non certifiee individuellement,scps\scps_intertrade.c,scps\scps_intertrade.c:1238
+SYNC_TRADE_SEA_W,2,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:2335
+SYNC_TRADE_LAND_W,1,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:2335
+SYNC_TRADE_METIER,1,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:2356; scps\scps_ai.c:2356; scps\scps_doctrines.c:120
+SYNC_TRADE_PROFOND,2,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:2355; scps\scps_ai.c:2355; scps\scps_doctrines.c:120
+SYNC_TRADE_YIELDREF,5,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:2336
+SYNC_FUSE_RATE,0.1,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_demography.c,scps\scps_api.c:1392; scps\scps_demography.c:925
+CULTURE_NAME_MINOR_MIN,0.1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:160
+CULTURE_AUTONYM_GENERATION,2,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:281
+CULTURE_RUIN_SUBSTRATE_W,0.1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:6313
+FAUST_SPAWN_CHARGE,0.15000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_doctrines.c:132; scps\scps_econ.c:4576; scps\scps_econ.c:4576
+CHARGE_DECAY,0.039999999,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_doctrines.c:131; scps\scps_econ.c:4348; scps\scps_econ.c:4348
+ENTROPY_TERMINAL,4000,lecture moteur presente,non certifiee individuellement,scps\scps_prosperity.c,scps\scps_prosperity.c:189
+FAUST_BRECHE_CAUTION,0.55000001,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:2675; scps\scps_ai.c:3372
+MANUF_BUILD_COST,50,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c; scps\scps_api.c; scps\scps_econ.c; scps\scps_sim.c,scps\scps_ai.c:1116; scps\scps_ai.c:1155; scps\scps_ai.c:1272; scps\scps_api.c:3954; scps\scps_api.c:3954; scps\scps_api.c:3965; scps\scps_api.c:3966; scps\scps_doctrines.c:99; scps\scps_econ.c:2875; scps\scps_econ.c:2876; scps\scps_econ.c:6943; scps\scps_econ.c:6943; scps\scps_sim.c:870; scps\scps_sim.c:871; scps\scps_sim.c:892; scps\scps_sim.c:893
+NF_SEED_PAID,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2873
+MANUF_ARMS_MULT,10,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:4432; scps\scps_econ.c:4514; scps\scps_econ.c:4519
+BUILD_RESERVE_BULK,15,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_doctrines.c:55; scps\scps_doctrines.c:104; scps\scps_econ.c:3580
+BUILD_OWN_MATERIAL_PRICE,1,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c; scps\scps_intertrade.c,scps\intertrade_demo.c:289; scps\scps_agency.c:320; scps\scps_intertrade.c:511
+CLASS_LEND_SHARE,0.050000001,lecture moteur presente,non certifiee individuellement,scps\scps_credit.c,scps\scps_credit.c:381
+CLASS_EXPOSURE_SHARE,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_credit.c,scps\scps_credit.c:378
+ELITE_LEND_WEIGHT,1,lecture moteur presente,non certifiee individuellement,scps\scps_credit.c; scps\scps_econ.c,scps\scps_credit.c:373; scps\scps_econ.c:4500
+BOURGEOIS_LEND_WEIGHT,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_credit.c; scps\scps_econ.c,scps\scps_credit.c:373; scps\scps_econ.c:4500
+CITYSTATE_LEND_SHARE,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_credit.c,scps\scps_credit.c:320
+LENDER_PORTFOLIO_SHARE,0.75,lecture moteur presente,non certifiee individuellement,scps\scps_credit.c,scps\scps_credit.c:298
+LENDER_DEBTOR_SHARE,0.34999999,lecture moteur presente,non certifiee individuellement,scps\scps_credit.c,scps\scps_credit.c:299
+LENDER_MEMORY,1,lecture moteur presente,non certifiee individuellement,scps\scps_credit.c,scps\credit_demo.c:798; scps\credit_demo.c:801; scps\scps_credit.c:312
+LENDER_RUIN_SHARE,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_credit.c,scps\credit_demo.c:848; scps\credit_demo.c:852; scps\scps_credit.c:966
+PRINCIPAL_REPAY_RATE,0.1,lecture moteur presente,non certifiee individuellement,scps\scps_credit.c,scps\scps_credit.c:786
+BUYBACK_DEBT_THRESHOLD,500,lecture moteur presente,non certifiee individuellement,scps\scps_credit.c,scps\scps_credit.c:876
+BUYBACK_IDLE_SHARE,0.30000001,lecture moteur presente,non certifiee individuellement,scps\scps_credit.c,scps\scps_credit.c:877
+DEBT_REVENUE_FLOOR,200,lecture moteur presente,non certifiee individuellement,scps\scps_credit.c,scps\scps_credit.c:121; scps\scps_credit.c:128
+DEBT_RATE_BASE,0.02,lecture moteur presente,non certifiee individuellement,scps\scps_credit.c,scps\scps_credit.c:130
+DEBT_RATE_LINEAR,0.015,lecture moteur presente,non certifiee individuellement,scps\scps_credit.c,scps\scps_credit.c:131
+DEBT_RATE_QUAD,0.0074999998,lecture moteur presente,non certifiee individuellement,scps\scps_credit.c,scps\scps_credit.c:132
+DEBT_RATE_MIN,0.02,lecture moteur presente,non certifiee individuellement,scps\scps_credit.c,scps\scps_credit.c:133
+DEBT_RATE_MAX,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_credit.c,scps\scps_credit.c:133
+DEBT_FIXED,1,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_credit.c,scps\credit_demo.c:194; scps\credit_demo.c:202; scps\credit_demo.c:221; scps\credit_demo.c:263; scps\credit_demo.c:321; scps\credit_demo.c:636; scps\credit_demo.c:645; scps\credit_demo.c:646; scps\credit_demo.c:649; scps\scps_api.c:2403; scps\scps_api_demo.c:570; scps\scps_api_demo.c:574; scps\scps_credit.c:157; scps\scps_credit.c:259; scps\scps_credit.c:322; scps\scps_credit.c:380; scps\scps_credit.c:687
+DEBT_DUE_FRAC,0.1,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_credit.c,scps\credit_demo.c:637; scps\credit_demo.c:646; scps\scps_api.c:2404; scps\scps_api_demo.c:551; scps\scps_credit.c:689
+DEBT_DEFAULT_THRESHOLD,3000,lecture moteur presente,non certifiee individuellement,scps\scps_credit.c,scps\credit_demo.c:244; scps\scps_credit.c:830
+BANKRUPTCY_SCAR_YEARS,10,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5423
+BANKRUPTCY_RANCOR,2,lecture moteur presente,non certifiee individuellement,scps\scps_sim.c,scps\scps_sim.c:1355; scps\scps_sim.c:1879
+BANKRUPTCY_GRACE_YEARS,5,lecture moteur presente,non certifiee individuellement,scps\scps_credit.c; scps\scps_econ.c,scps\scps_credit.c:837; scps\scps_econ.c:2585
+DEBASE_MAX,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2573
+DEBASE_AI_ONSET_YEARS,2,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2583
+DEBASE_K_EROSION_RATE,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5939
+DEBASE_K_HEAL_RATE,0.1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5946
+DEBASE_ROT_RATE,0.15000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5942
+DEBASE_TAX_K_REF,2,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2313
+DEBASE_TAX_EROSION_MAX,0.34999999,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2314
+GENESIS_TREASURY_EMPIRE,2000,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:1798
+GENESIS_RESERVE_GOLD,200,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:1815
+GENESIS_RESERVE_COPPER,500,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:1816
+INVARIANT_DRIFT_FRAC,3.7,telemetrie chronicle uniquement,non certifiee individuellement,,scps\chronicle.c:635; scps\chronicle.c:1686
+POP_R_BASE,0.0198,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5398; scps\scps_econ.c:6005
+POP_PROSP_MID,0.2,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5399
+POP_PROSP_SPAN,1.7999999,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5400
+POP_PROSP_W,0.15000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5401
+POP_NEEDS_W,0.85000002,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5402
+POP_SAT_W,0.2,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_doctrines.c:152; scps\scps_econ.c:5406; scps\scps_econ.c:5406
+NEEDS_MET_TAU,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5091
+HAB_MALUS_K,0.2,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_doctrines.c:73; scps\scps_econ.c:4260; scps\scps_econ.c:4260; scps\scps_econ.c:5436; scps\scps_econ.c:5436
+VETUSTE_RATE,0.02,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c,scps\scps_agency.c:748; scps\scps_doctrines.c:105
+VETUSTE_FLOOR,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c,scps\scps_agency.c:751; scps\scps_doctrines.c:105
+RENOV_COST_FRAC,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c,scps\scps_agency.c:790
+RENOV_AI_TRIG,0.69999999,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:1498
+RENOV_SHARE_LAB,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c,scps\scps_agency.c:811
+PROVMOD_ABOND_REF,0.44999999,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c; scps\scps_ai.c; scps\scps_api.c; scps\scps_army.c; scps\scps_campaign.c; scps\scps_credit.c; scps\scps_decrees.c; scps\scps_demography.c; scps\scps_diplo.c; scps\scps_doctrines.c; scps\scps_econ.c; scps\scps_endgame.c; scps\scps_events.c; scps\scps_factions.c; scps\scps_fog.c; scps\scps_influence.c; scps\scps_intertrade.c; scps\scps_labor.c; scps\scps_legitimacy.c; scps\scps_missions.c; scps\scps_navy.c; scps\scps_prosperity.c; scps\scps_readout.c; scps\scps_religion.c; scps\scps_render.c; scps\scps_revolt.c; scps\scps_routes.c; scps\scps_save.c; scps\scps_sim.c; scps\scps_statecraft.c; scps\scps_toponym.c; scps\scps_trade.c; scps\scps_warhost.c; scps\scps_world.c,scps\scps_econ.h:812
+PROVMOD_ABOND_K,2,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c; scps\scps_ai.c; scps\scps_api.c; scps\scps_army.c; scps\scps_campaign.c; scps\scps_credit.c; scps\scps_decrees.c; scps\scps_demography.c; scps\scps_diplo.c; scps\scps_doctrines.c; scps\scps_econ.c; scps\scps_endgame.c; scps\scps_events.c; scps\scps_factions.c; scps\scps_fog.c; scps\scps_influence.c; scps\scps_intertrade.c; scps\scps_labor.c; scps\scps_legitimacy.c; scps\scps_missions.c; scps\scps_navy.c; scps\scps_prosperity.c; scps\scps_readout.c; scps\scps_religion.c; scps\scps_render.c; scps\scps_revolt.c; scps\scps_routes.c; scps\scps_save.c; scps\scps_sim.c; scps\scps_statecraft.c; scps\scps_toponym.c; scps\scps_trade.c; scps\scps_warhost.c; scps\scps_world.c,scps\scps_econ.h:820
+PROVMOD_FERVEUR_K,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c; scps\scps_ai.c; scps\scps_api.c; scps\scps_army.c; scps\scps_campaign.c; scps\scps_credit.c; scps\scps_decrees.c; scps\scps_demography.c; scps\scps_diplo.c; scps\scps_doctrines.c; scps\scps_econ.c; scps\scps_endgame.c; scps\scps_events.c; scps\scps_factions.c; scps\scps_fog.c; scps\scps_influence.c; scps\scps_intertrade.c; scps\scps_labor.c; scps\scps_legitimacy.c; scps\scps_missions.c; scps\scps_navy.c; scps\scps_prosperity.c; scps\scps_readout.c; scps\scps_religion.c; scps\scps_render.c; scps\scps_revolt.c; scps\scps_routes.c; scps\scps_save.c; scps\scps_sim.c; scps\scps_statecraft.c; scps\scps_toponym.c; scps\scps_trade.c; scps\scps_warhost.c; scps\scps_world.c,scps\scps_doctrines.c:160; scps\scps_econ.h:827; scps\scps_econ.h:827
+PROVMOD_FERVEUR_DECAY,0.067000002,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_doctrines.c:160; scps\scps_econ.c:5417; scps\scps_econ.c:5417
+PROVMOD_RECON_K,0.60000002,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c; scps\scps_ai.c; scps\scps_api.c; scps\scps_army.c; scps\scps_campaign.c; scps\scps_credit.c; scps\scps_decrees.c; scps\scps_demography.c; scps\scps_diplo.c; scps\scps_doctrines.c; scps\scps_econ.c; scps\scps_endgame.c; scps\scps_events.c; scps\scps_factions.c; scps\scps_fog.c; scps\scps_influence.c; scps\scps_intertrade.c; scps\scps_labor.c; scps\scps_legitimacy.c; scps\scps_missions.c; scps\scps_navy.c; scps\scps_prosperity.c; scps\scps_readout.c; scps\scps_religion.c; scps\scps_render.c; scps\scps_revolt.c; scps\scps_routes.c; scps\scps_save.c; scps\scps_sim.c; scps\scps_statecraft.c; scps\scps_toponym.c; scps\scps_trade.c; scps\scps_warhost.c; scps\scps_world.c,scps\scps_econ.h:834
+PROVMOD_RECON_DECAY,0.1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5418
+PROVMOD_LIMON_K,0.15000001,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c; scps\scps_ai.c; scps\scps_api.c; scps\scps_army.c; scps\scps_campaign.c; scps\scps_credit.c; scps\scps_decrees.c; scps\scps_demography.c; scps\scps_diplo.c; scps\scps_doctrines.c; scps\scps_econ.c; scps\scps_endgame.c; scps\scps_events.c; scps\scps_factions.c; scps\scps_fog.c; scps\scps_influence.c; scps\scps_intertrade.c; scps\scps_labor.c; scps\scps_legitimacy.c; scps\scps_missions.c; scps\scps_navy.c; scps\scps_prosperity.c; scps\scps_readout.c; scps\scps_religion.c; scps\scps_render.c; scps\scps_revolt.c; scps\scps_routes.c; scps\scps_save.c; scps\scps_sim.c; scps\scps_statecraft.c; scps\scps_toponym.c; scps\scps_trade.c; scps\scps_warhost.c; scps\scps_world.c,scps\scps_econ.h:840
+PROVMOD_GIBIER_K,0.1,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c; scps\scps_ai.c; scps\scps_api.c; scps\scps_army.c; scps\scps_campaign.c; scps\scps_credit.c; scps\scps_decrees.c; scps\scps_demography.c; scps\scps_diplo.c; scps\scps_doctrines.c; scps\scps_econ.c; scps\scps_endgame.c; scps\scps_events.c; scps\scps_factions.c; scps\scps_fog.c; scps\scps_influence.c; scps\scps_intertrade.c; scps\scps_labor.c; scps\scps_legitimacy.c; scps\scps_missions.c; scps\scps_navy.c; scps\scps_prosperity.c; scps\scps_readout.c; scps\scps_religion.c; scps\scps_render.c; scps\scps_revolt.c; scps\scps_routes.c; scps\scps_save.c; scps\scps_sim.c; scps\scps_statecraft.c; scps\scps_toponym.c; scps\scps_trade.c; scps\scps_warhost.c; scps\scps_world.c,scps\scps_econ.h:845
+PROVMOD_HALIEU_K,0.1,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c; scps\scps_ai.c; scps\scps_api.c; scps\scps_army.c; scps\scps_campaign.c; scps\scps_credit.c; scps\scps_decrees.c; scps\scps_demography.c; scps\scps_diplo.c; scps\scps_doctrines.c; scps\scps_econ.c; scps\scps_endgame.c; scps\scps_events.c; scps\scps_factions.c; scps\scps_fog.c; scps\scps_influence.c; scps\scps_intertrade.c; scps\scps_labor.c; scps\scps_legitimacy.c; scps\scps_missions.c; scps\scps_navy.c; scps\scps_prosperity.c; scps\scps_readout.c; scps\scps_religion.c; scps\scps_render.c; scps\scps_revolt.c; scps\scps_routes.c; scps\scps_save.c; scps\scps_sim.c; scps\scps_statecraft.c; scps\scps_toponym.c; scps\scps_trade.c; scps\scps_warhost.c; scps\scps_world.c,scps\scps_econ.h:850
+PROVMOD_ADMIN_K,0.059999999,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c; scps\scps_ai.c; scps\scps_api.c; scps\scps_army.c; scps\scps_campaign.c; scps\scps_credit.c; scps\scps_decrees.c; scps\scps_demography.c; scps\scps_diplo.c; scps\scps_doctrines.c; scps\scps_econ.c; scps\scps_endgame.c; scps\scps_events.c; scps\scps_factions.c; scps\scps_fog.c; scps\scps_influence.c; scps\scps_intertrade.c; scps\scps_labor.c; scps\scps_legitimacy.c; scps\scps_missions.c; scps\scps_navy.c; scps\scps_prosperity.c; scps\scps_readout.c; scps\scps_religion.c; scps\scps_render.c; scps\scps_revolt.c; scps\scps_routes.c; scps\scps_save.c; scps\scps_sim.c; scps\scps_statecraft.c; scps\scps_toponym.c; scps\scps_trade.c; scps\scps_warhost.c; scps\scps_world.c,scps\scps_econ.h:856
+ENTROPY_FIN,55,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c; scps\scps_events.c; scps\scps_readout.c,scps\endgame_demo.c:112; scps\endgame_demo.c:153; scps\endgame_demo.c:594; scps\endgame_demo.c:717; scps\endgame_demo.c:741; scps\scps_endgame.c:1363; scps\scps_endgame.c:1390; scps\scps_endgame.c:1492; scps\scps_endgame.c:1655; scps\scps_events.c:4063; scps\scps_readout.c:460
+ENDGAME_YEAR_OPEN,180,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:1385; scps\scps_endgame.c:1420
+ENTROPY_TECH_W,0.2,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\endgame_demo.c:111; scps\scps_endgame.c:117
+COLD_RAMP_PER_YEAR,0.0049999999,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:484
+THORN_CELLS_PER_YEAR,200,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:817
+THORN_RANDOM_FRAC,0.34999999,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:818
+MERV_PHASE_DAYS,3650,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:1191
+MERV_CHARGE_PER_TICK,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:1196
+ENTROPY_BREACH_W,0.60000002,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:119
+ENTROPY_BLOOD_W,8,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:145
+ENDGAME_BLOOD_FRAC,0.090000004,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_endgame.c,scps\chronicle.c:1988; scps\endgame_demo.c:591; scps\endgame_demo.c:710; scps\endgame_demo.c:738; scps\scps_api.c:1282; scps\scps_endgame.c:1365; scps\scps_endgame.c:1391; scps\scps_endgame.c:1462; scps\scps_endgame.c:1588
+SANG_MEMORY_HL,40,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\chronicle.c:1986; scps\scps_endgame.c:131
+BLOOD_PLAYER_SHARE,0.25,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\endgame_demo.c:711; scps\scps_endgame.c:1464; scps\scps_endgame.c:1590
+FIN_BASE_EAU,1.5,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\endgame_demo.c:150; scps\scps_endgame.c:1311
+FIN_BASE_RONCES,1,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\endgame_demo.c:151; scps\scps_endgame.c:1313
+FIN_BASE_FROID,1,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\endgame_demo.c:152; scps\scps_endgame.c:1315
+FIN_PROD_W_ESSENCE,1,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:1312
+FIN_PROD_W_FLUX,1,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:1314
+FIN_PROD_W_FER,1,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:1316
+EXODUS_INTENSITY_MIN,0.15000001,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:767
+EXODUS_FRAC_PER_YEAR,0.1,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:768
+FUEL_FALLBACK_DELAY,60,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\chronicle.c:1998; scps\scps_endgame.c:1528
+FUEL_FALLBACK_MIN,2,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\chronicle.c:1995; scps\scps_endgame.c:1366; scps\scps_endgame.c:1392; scps\scps_endgame.c:1530; scps\scps_endgame.c:1657
+FUEL_COAL_W,3,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\chronicle.c:1997; scps\scps_endgame.c:172
+FUEL_MEMORY_HL,60,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\chronicle.c:1997; scps\scps_endgame.c:170
+HEAT_RAMP_PER_YEAR,0.0099999998,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:521
+HEAT_DROUGHT,0.60000002,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:535
+SEA_RISE_CELLS_PER_YEAR,140,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:548
+CALM_DISASTER_YEAR,200,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\chronicle.c:3202; scps\scps_events.c:4062
+CALM_DISASTER_ENTFRAC,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:4063
+CALM_DISASTER_MULT,2.5,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:4064
+METAB_MERV_RATIO,0.60000002,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:1017; scps\scps_endgame.c:1115
+METAB_MERV_MIN,500,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:1026
+FINS_RACE,1,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:1016; scps\scps_endgame.c:1114; scps\scps_endgame.c:1452
+RACE_ENTROPY_FIN,25,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:1492
+RACE_FUEL_FALLBACK_MIN,7,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:1530
+RACE_METAB_MERV_RATIO,0.25,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:1016; scps\scps_endgame.c:1114
+FAUSTIEN_BOOST,1,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c; scps\scps_ai.c; scps\scps_api.c; scps\scps_army.c; scps\scps_campaign.c; scps\scps_credit.c; scps\scps_decrees.c; scps\scps_demography.c; scps\scps_diplo.c; scps\scps_doctrines.c; scps\scps_econ.c; scps\scps_endgame.c; scps\scps_events.c; scps\scps_factions.c; scps\scps_fog.c; scps\scps_influence.c; scps\scps_intertrade.c; scps\scps_labor.c; scps\scps_legitimacy.c; scps\scps_missions.c; scps\scps_navy.c; scps\scps_prosperity.c; scps\scps_readout.c; scps\scps_religion.c; scps\scps_render.c; scps\scps_revolt.c; scps\scps_routes.c; scps\scps_save.c; scps\scps_sim.c; scps\scps_statecraft.c; scps\scps_toponym.c; scps\scps_trade.c; scps\scps_warhost.c; scps\scps_world.c,scps\scps_econ.c:1834; scps\scps_econ.c:4016; scps\scps_econ.h:868; scps\scps_endgame.c:1026; scps\scps_endgame.c:1458
+FAUST_ARCANE_DIV,2,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:1835
+FAUST_CELESTIAL_DIV,4,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:1836
+FAUST_YIELD_MULT,2,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_doctrines.c:132; scps\scps_econ.c:4478; scps\scps_econ.c:4478; scps\scps_econ.c:4539; scps\scps_econ.c:4539
+ENTROPY_PER_USE,0.1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:4587
+FAUST_FOREUSE_PRECIOUS_MULT,5,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:4540
+FAUST_CORNE_ALCOHOL_QTY,2,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:4566
+FAUST_MUTATION_K,0.2,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c; scps\scps_ai.c; scps\scps_api.c; scps\scps_army.c; scps\scps_campaign.c; scps\scps_credit.c; scps\scps_decrees.c; scps\scps_demography.c; scps\scps_diplo.c; scps\scps_doctrines.c; scps\scps_econ.c; scps\scps_endgame.c; scps\scps_events.c; scps\scps_factions.c; scps\scps_fog.c; scps\scps_influence.c; scps\scps_intertrade.c; scps\scps_labor.c; scps\scps_legitimacy.c; scps\scps_missions.c; scps\scps_navy.c; scps\scps_prosperity.c; scps\scps_readout.c; scps\scps_religion.c; scps\scps_render.c; scps\scps_revolt.c; scps\scps_routes.c; scps\scps_save.c; scps\scps_sim.c; scps\scps_statecraft.c; scps\scps_toponym.c; scps\scps_trade.c; scps\scps_warhost.c; scps\scps_world.c,scps\scps_doctrines.c:131; scps\scps_econ.h:875; scps\scps_econ.h:875
+FAUST_METAB_MERV_MIN,400,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:1026
+W_AGITATION_UNREST,0.2,lecture moteur presente,non certifiee individuellement,scps\scps_revolt.c,scps\scps_doctrines.c:151; scps\scps_revolt.c:553; scps\scps_revolt.c:554
+AI_REBEL_BACKING_OPINION,1.6,lecture moteur presente,non certifiee individuellement,scps\scps_revolt.c,scps\scps_revolt.c:746
+AI_REBEL_BACKING_ATWAR_W,0.34999999,lecture moteur presente,non certifiee individuellement,scps\scps_revolt.c,scps\scps_revolt.c:717
+AI_REBEL_BACKING_MAXWARS,1,lecture moteur presente,non certifiee individuellement,scps\scps_revolt.c,scps\scps_revolt.c:745
+AI_REBEL_MATERIEL_FRAC,0.2,lecture moteur presente,non certifiee individuellement,scps\scps_revolt.c,scps\scps_revolt.c:778
+REBEL_VET_ADD,2,lecture moteur presente,non certifiee individuellement,scps\scps_revolt.c,scps\scps_revolt.c:667
+SLAVE_REVOLT_SHARE,0.2,lecture moteur presente,non certifiee individuellement,scps\scps_revolt.c,scps\scps_revolt.c:348; scps\scps_revolt.c:540
+SLAVE_REVOLT_W,1.2000001,lecture moteur presente,non certifiee individuellement,scps\scps_revolt.c,scps\scps_revolt.c:349; scps\scps_revolt.c:542
+SLAVE_POOL_REF,600,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_intertrade.c,scps\scps_api.c:4071; scps\scps_intertrade.c:800
+SLAVE_AI_KEEP_FRAC,0.02,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:3117
+SLAVE_AI_SELL_FRAC,0.25,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:3119
+SLAVE_AI_BUY_FRAC,0.2,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:3058
+FAB_CB_COST_YEARS,2,lecture moteur presente,non certifiee individuellement,scps\scps_diplo.c,scps\scps_diplo.c:695; scps\scps_doctrines.c:35
+FAB_MATURE_DAYS,365,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_diplo.c,scps\scps_api.c:2715; scps\scps_diplo.c:750; scps\scps_doctrines.c:35
+FAB_VALID_DAYS,1825,lecture moteur presente,non certifiee individuellement,scps\scps_diplo.c; scps\scps_missions.c,scps\scps_diplo.c:785; scps\scps_missions.c:488
+COUNCIL_HIRE_LEVER,0.1,lecture moteur presente,non certifiee individuellement,scps\scps_statecraft.c,scps\scps_statecraft.c:264
+COUNCIL_DISMISS_GRIEF,0.1,lecture moteur presente,non certifiee individuellement,scps\scps_statecraft.c,scps\scps_doctrines.c:136; scps\scps_statecraft.c:276; scps\scps_statecraft.c:276; scps\statecraft_demo.c:619; scps\statecraft_demo.c:621
+COUNCIL_LOYAL_RATE,0.050000001,lecture moteur presente,non certifiee individuellement,scps\scps_statecraft.c,scps\scps_statecraft.c:426
+COUNCIL_ROT_BOOST,1.5,lecture moteur presente,non certifiee individuellement,scps\scps_statecraft.c,scps\scps_doctrines.c:147; scps\scps_statecraft.c:427
+COUNCIL_PAY_ADJ,30,lecture moteur presente,non certifiee individuellement,scps\scps_statecraft.c,scps\scps_doctrines.c:136; scps\scps_statecraft.c:405; scps\scps_statecraft.c:405
+COUNCIL_BETRAYAL_THRESHOLD,15,lecture moteur presente,non certifiee individuellement,scps\scps_statecraft.c,scps\scps_statecraft.c:391
+ARMS_PER_LABORER,0.050000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_doctrines.c:31; scps\scps_econ.c:4222; scps\scps_econ.c:4223
+ARSENAL_DECAY,0.99000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_doctrines.c:31; scps\scps_econ.c:5688; scps\scps_econ.c:5688
+TIER2_POP,2000,lecture moteur presente,"premier appel, cache statique",scps\scps_labor.c,scps\scps_labor.c:34
+TIER3_POP,3000,lecture moteur presente,"premier appel, cache statique",scps\scps_labor.c,scps\scps_labor.c:35
+TIER4_POP,4000,lecture moteur presente,"premier appel, cache statique",scps\scps_labor.c,scps\scps_labor.c:36
+TIER5_POP,5000,lecture moteur presente,"premier appel, cache statique",scps\scps_labor.c,scps\scps_labor.c:37
+TIER6_POP,8000,lecture moteur presente,"premier appel, cache statique",scps\scps_labor.c,scps\scps_labor.c:38
+TIER7_POP,10000,lecture moteur presente,"premier appel, cache statique",scps\scps_labor.c,scps\scps_labor.c:39
+SPAWN_KIT_WOOD,250,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2163
+SPAWN_KIT_FOOD,2000,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2164
+SPAWN_KIT_CLAY,20,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2165
+SPAWN_KIT_IRON,20,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2166
+SPAWN_KIT_STONE,20,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2167
+SPAWN_KIT_TOOLS,20,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2168
+SPAWN_KIT_ARMS,100,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2169
+SPAWN_KIT_RANGED,100,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2170
+SPAWN_KIT_BEER,20,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2171
+TRAD_REND_W,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2912
+TRAD_INFL_W,10,lecture moteur presente,non certifiee individuellement,scps\scps_statecraft.c,scps\scps_statecraft.c:544
+TRAD_CAP_W,0.30000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5375
+TRAD_PERM_W,3,lecture moteur presente,non certifiee individuellement,scps\scps_demography.c,scps\scps_demography.c:1274
+TRAD_ARCANE_W,0.25,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:2442
+TRAD_DERIVE_W,1,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_demography.c,scps\scps_api.c:1395; scps\scps_demography.c:971
+TRAD_FRACT_W,0.059999999,lecture moteur presente,non certifiee individuellement,scps\scps_revolt.c,scps\scps_revolt.c:564
+COUNCIL_SAVOIR_BASE,0.12,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_statecraft.c,scps\scps_api.c:2081; scps\scps_statecraft.c:90
+COUNCIL_ROYAUME_BASE,0.15000001,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_statecraft.c,scps\scps_api.c:2082; scps\scps_statecraft.c:91
+COUNCIL_OUVRAGES_BASE,0.2,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_statecraft.c,scps\scps_api.c:2083; scps\scps_statecraft.c:92
+COUNCIL_TIER2_MULT,1.5,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_statecraft.c,scps\scps_api.c:2089; scps\scps_statecraft.c:98
+COUNCIL_TIER3_MULT,2,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_statecraft.c,scps\scps_api.c:2090; scps\scps_statecraft.c:99
+COUNCIL_TIER1_REVENUE_RATE,0.015,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_statecraft.c,scps\scps_api.c:2097; scps\scps_statecraft.c:108
+COUNCIL_TIER2_REVENUE_RATE,0.029999999,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_statecraft.c,scps\scps_api.c:2098; scps\scps_statecraft.c:109
+COUNCIL_TIER3_REVENUE_RATE,0.050000001,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_statecraft.c,scps\scps_api.c:2099; scps\scps_statecraft.c:110
+COUNCIL_EFF_BASE,0.69999999,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_statecraft.c,scps\scps_api.c:2104; scps\scps_api.c:2114; scps\scps_statecraft.c:378; scps\statecraft_demo.c:573
+COUNCIL_EFF_K_PER,0.029999999,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_statecraft.c,scps\scps_api.c:2105; scps\scps_api.c:2115; scps\scps_statecraft.c:379; scps\statecraft_demo.c:573
+COUNCIL_EFF_LOY_W,0.15000001,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_statecraft.c,scps\scps_api.c:2106; scps\scps_api.c:2116; scps\scps_statecraft.c:380; scps\statecraft_demo.c:574
+COUNCIL_EFF_CORRUPTION_PER_POINT,0.0035000001,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_statecraft.c,scps\scps_api.c:2107; scps\scps_api.c:2117; scps\scps_statecraft.c:381; scps\statecraft_demo.c:574
+COUNCIL_EFF_MIN,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_statecraft.c,scps\scps_api.c:2108; scps\scps_api.c:2119; scps\scps_statecraft.c:382; scps\statecraft_demo.c:575; scps\statecraft_demo.c:575; scps\statecraft_demo.c:600
+COUNCIL_EFF_MAX,1.15,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_statecraft.c,scps\scps_api.c:2108; scps\scps_api.c:2120; scps\scps_statecraft.c:382; scps\statecraft_demo.c:576; scps\statecraft_demo.c:576; scps\statecraft_demo.c:585
+DESSEIN_SOL_HEGEMON_FRAC,0.40000001,lecture moteur presente,non certifiee individuellement,scps\scps_missions.c,scps\scps_missions.c:463
+DESSEIN_BOON_YEARS,20,lecture moteur presente,non certifiee individuellement,scps\scps_missions.c,scps\missions_demo.c:181; scps\missions_demo.c:182; scps\scps_missions.c:79
+DESSEIN_PIVOT_INFLUENCE,10,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_missions.c,scps\scps_api.c:3584; scps\scps_missions.c:98
+DECREE_RATIONS_REVENUE_RATE,0.0049999999,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_decrees.c,scps\scps_api.c:2265; scps\scps_decrees.c:218
+DECREE_RATIONS_FOOD_NEED_MULT,0.94999999,lecture moteur presente,non certifiee individuellement,scps\scps_decrees.c,scps\scps_decrees.c:147
+DECREE_RATIONS_POP_R_BASE_MULT,0.97000003,lecture moteur presente,non certifiee individuellement,scps\scps_decrees.c,scps\scps_decrees.c:151
+DECREE_FOYERS_REVENUE_RATE,0.015,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_decrees.c,scps\scps_api.c:2266; scps\scps_decrees.c:219
+DECREE_FOYERS_POP_R_BASE_MULT,1.0499999,lecture moteur presente,non certifiee individuellement,scps\scps_decrees.c,scps\scps_decrees.c:152
+DECREE_FOYERS_FOOD_NEED_MULT,1.04,lecture moteur presente,non certifiee individuellement,scps\scps_decrees.c,scps\scps_decrees.c:148
+DECREE_ECOLES_REVENUE_RATE,0.02,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_decrees.c,scps\scps_api.c:2267; scps\scps_decrees.c:220
+DECREE_ECOLES_SAVOIR_W_MULT,1.0499999,lecture moteur presente,non certifiee individuellement,scps\scps_decrees.c,scps\scps_decrees.c:155
+DECREE_ATELIERS_REVENUE_RATE,0.02,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_decrees.c,scps\scps_api.c:2268; scps\scps_decrees.c:221
+DECREE_ATELIERS_MANUF_COST_MULT,0.94999999,lecture moteur presente,non certifiee individuellement,scps\scps_decrees.c,scps\scps_decrees.c:158
+DECREE_COMPTOIRS_REVENUE_RATE,0.015,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_decrees.c,scps\scps_api.c:2269; scps\scps_decrees.c:222
+DECREE_COMPTOIRS_COMMERCE_W_MULT,1.0499999,lecture moteur presente,non certifiee individuellement,scps\scps_decrees.c,scps\scps_decrees.c:161
+DECREE_CIRCULATION_REVENUE_RATE,0.0074999998,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_decrees.c,scps\scps_api.c:2270; scps\scps_decrees.c:223
+DECREE_CIRCULATION_MIG_PACT_MULT,1.1,lecture moteur presente,non certifiee individuellement,scps\scps_decrees.c,scps\scps_decrees.c:165
+DECREE_FRONTIERES_REVENUE_RATE,0,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_decrees.c,scps\scps_api.c:2271; scps\scps_decrees.c:224
+DECREE_FRONTIERES_MIG_PACT_MULT,0,lecture moteur presente,non certifiee individuellement,scps\scps_decrees.c,scps\scps_decrees.c:166
+DECREE_FRONTIERES_COMMERCE_W_MULT,0.94999999,lecture moteur presente,non certifiee individuellement,scps\scps_decrees.c,scps\scps_decrees.c:162
+DECREE_MECENAT_REVENUE_RATE,0.015,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_decrees.c,scps\scps_api.c:2272; scps\scps_decrees.c:225
+DECREE_MECENAT_UNREST_MULT,0.94999999,lecture moteur presente,non certifiee individuellement,scps\scps_decrees.c,scps\scps_decrees.c:169
+DECREE_LEGATIONS_REVENUE_RATE,0.015,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_decrees.c,scps\scps_api.c:2273; scps\scps_decrees.c:226
+DECREE_LEGATIONS_INFLUENCE_PER_MONTH,0.25,lecture moteur presente,non certifiee individuellement,scps\scps_decrees.c,scps\scps_decrees.c:259
+DECREE_LEVEE_REVENUE_RATE,0,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_decrees.c,scps\scps_api.c:2274; scps\scps_decrees.c:227
+DECREE_LEVEE_MIN_LEVEL,2,lecture moteur presente,non certifiee individuellement,scps\scps_decrees.c,scps\scps_decrees.c:265
+DECISION_MANUMIT_COMMUNAUTAIRE_BIAS,0.1,lecture moteur presente,non certifiee individuellement,scps\scps_sim.c,scps\scps_sim.c:1341
+DECISION_AUDIT_CORRUPTION_MIN,20,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_decrees.c,scps\scps_api.c:2297; scps\scps_decrees.c:37
+DECISION_AUDIT_REVENUE_RATE,0.25,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_decrees.c,scps\scps_api.c:2275; scps\scps_decrees.c:282
+DECISION_AUDIT_COOLDOWN_YEARS,5,lecture moteur presente,non certifiee individuellement,scps\scps_decrees.c,scps\scps_decrees.c:292
+DECISION_AUDIT_L_DELTA,0.30000001,lecture moteur presente,non certifiee individuellement,scps\scps_decrees.c,scps\scps_decrees.c:286
+WATER_RIFT_ARMS,5,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:431
+WATER_RIFT_LENGTH,96,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:432
+WATER_RIFT_STEP,3,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:433
+SANG_SCAR_MIN,0.15000001,lecture moteur presente,non certifiee individuellement,scps\scps_endgame.c,scps\scps_endgame.c:876
+AGE_TRIGGER_JITTER_YEARS,4,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3280
+AGE_STRUCTURAL_DECAY_DAY,0.00015000001,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:4288
+AGE_EXCHANGE_NODE_VALUE,2.5,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3194; scps\scps_events.c:3298; scps\scps_events.c:3467
+AGE_EXCHANGE_NODE_MIN,10,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3196
+AGE_EXCHANGE_NODE_SHARE,0.2,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3197
+AGE_EXCHANGE_C,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_events.c,scps\scps_api.c:4638; scps\scps_events.c:3382
+AGE_EXCHANGE_P,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_events.c,scps\scps_api.c:4638; scps\scps_events.c:3383
+AGE_EXCHANGE_MIG_PACT_MULT,1.15,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_events.c,scps\scps_api.c:4639; scps\scps_events.c:3384
+AGE_EXCHANGE_MERCHANT_LEVER,0.079999998,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_events.c,scps\scps_api.c:4639; scps\scps_events.c:3299
+AGE_DISCOVERY_KNOWN_PAIR_SHARE,0.22,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3210; scps\scps_events.c:3309
+AGE_DISCOVERY_COUNTRY_MIN,8,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3201
+AGE_DISCOVERY_FAR_CELLS,200,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3207
+AGE_DISCOVERY_FAR_PAIRS,2,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3209
+AGE_DISCOVERY_C,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_events.c,scps\scps_api.c:4641; scps\scps_events.c:3389
+AGE_DISCOVERY_RESEARCH_MULT,1.1,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_events.c,scps\scps_api.c:4641; scps\scps_events.c:3390
+AGE_DISCOVERY_FOG_RADIUS_ADD,1,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3184
+AGE_DISCOVERY_TRANSGRESSEUR_LEVER,0.059999999,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_events.c,scps\scps_api.c:4642; scps\scps_events.c:3310
+AGE_DISCOVERY_MERCHANT_LEVER,0.039999999,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_events.c,scps\scps_api.c:4642; scps\scps_events.c:3311
+AGE_EMPIRES_REGIONS_WORLD,20,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3229
+AGE_EMPIRES_REGIONS_ONE_COUNTRY,8,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3230; scps\scps_events.c:3329
+AGE_EMPIRES_HELD_YEARS,35,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_events.c,scps\scps_api.c:4645; scps\scps_events.c:3216; scps\scps_events.c:3328
+AGE_EMPIRES_INTEGRATION_MULT,1.2000001,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_events.c,scps\scps_api.c:4644; scps\scps_events.c:3395
+AGE_EMPIRES_CONQUEROR_LEVER,0.1,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_events.c,scps\scps_api.c:4645; scps\scps_events.c:3330
+AGE_HERO_EFFICIENCY_MIN,1,lecture moteur presente,non certifiee individuellement,scps\scps_sim.c,scps\scps_sim.c:1250
+AGE_HERO_LOYALTY_MIN,75,lecture moteur presente,non certifiee individuellement,scps\scps_sim.c,scps\scps_sim.c:1251
+AGE_HERO_FACTION_LEVER,0.079999998,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:2787
+AGE_HERO_REFUSED_GRIEF,0.079999998,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:2790
+AGE_BREACH_CHARGE,6,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3242; scps\scps_events.c:3342
+AGE_BREACH_MIN_YEAR,180,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3241
+BREACH_AGE_ON_FIN,1,lecture moteur presente,non certifiee individuellement,scps\scps_events.c; scps\scps_sim.c,scps\scps_events.c:3447; scps\scps_sim.c:1803
+AGE_BREACH_FLUX,1.5,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_events.c,scps\scps_api.c:4648; scps\scps_events.c:3402
+AGE_BREACH_TRANSGRESSEUR_LEVER,0.12,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_events.c,scps\scps_api.c:4648; scps\scps_events.c:3343
+AGE_LUMIERES_SAVOIR_MEAN,5,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3248
+AGE_LUMIERES_C_MEAN,4.5,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3249
+AGE_LUMIERES_I,1.5,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_events.c,scps\scps_api.c:4650; scps\scps_events.c:3407
+AGE_LUMIERES_SOLVENT,1.25,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_events.c,scps\scps_api.c:4650; scps\scps_events.c:3408
+AGE_LUMIERES_LEGISTE_LEVER,0.059999999,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_events.c,scps\scps_api.c:4651; scps\scps_events.c:3352
+AGE_LUMIERES_COMMUNAUTAIRE_LEVER,0.039999999,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_events.c,scps\scps_api.c:4651; scps\scps_events.c:3353
+AGE_SOULEVEMENTS_MIN_COUNTRIES,8,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3262; scps\scps_events.c:3473; scps\structural_demo.c:239
+AGE_SOULEVEMENTS_L,1.5,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_events.c,scps\scps_api.c:4653; scps\scps_events.c:3412
+AGE_SOULEVEMENTS_COMMUNAUTAIRE_LEVER,0.12,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_events.c,scps\scps_api.c:4653; scps\scps_events.c:3361
+AGE_TYRANS_FRACTURE,0.30000001,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3266; scps\scps_events.c:3474
+AGE_TYRANS_DEREAL,1.25,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3267; scps\scps_events.c:3475
+AGE_TYRANS_SI,8.5,lecture moteur presente,non certifiee individuellement,scps\scps_events.c,scps\scps_events.c:3268; scps\scps_events.c:3476
+AGE_TYRANS_H,1.75,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_events.c,scps\scps_api.c:4655; scps\scps_events.c:3416
+AGE_TYRANS_DIVERSITY,1.5,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_events.c,scps\scps_api.c:4655; scps\scps_events.c:3417
+AGE_TYRANS_CONQUEROR_LEVER,0.079999998,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_events.c,scps\scps_api.c:4656; scps\scps_events.c:3367
+AGE_TYRANS_LEGISTE_LEVER,0.039999999,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_events.c,scps\scps_api.c:4656; scps\scps_events.c:3368
+COLONY_MIN_POP,300,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_econ.c; scps\scps_navy.c,scps\scps_api.c:4527; scps\scps_doctrines.c:71; scps\scps_econ.c:727; scps\scps_econ.c:6422; scps\scps_navy.c:299
+COLONY_COST_POP,150,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_doctrines.c:71; scps\scps_econ.c:728
+COLONY_FOOD_GATE,0.25,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c; scps\scps_navy.c,scps\scps_econ.c:730; scps\scps_navy.c:300
+FOOD_STOCK_MONTHS,6,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_doctrines.c:72; scps\scps_econ.c:739; scps\scps_econ.c:739; scps\scps_econ.c:5158
+IP_COLON_WPC,4,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:6828
+IP_INVEST_WPC,12,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:6968
+IP_SHORTAGE,1.4,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:6875
+PRIV_SEED_PER_MONTH,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\econ_production_demo.c:208; scps\econ_production_demo.c:225; scps\scps_econ.c:6969
+INCOME_TAX,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\credit_demo.c:508; scps\credit_demo.c:534; scps\credit_demo.c:591; scps\credit_demo.c:621; scps\scps_econ.c:2680
+INCOME_TAX_RATE_LABORER,0.40000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2685
+INCOME_TAX_RATE_BOURGEOIS,0.55000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2686
+INCOME_TAX_RATE_ELITE,0.75,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_doctrines.c:139; scps\scps_doctrines.c:155; scps\scps_econ.c:2687
+TOLL_STATE_SHARE,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_agency.c; scps\scps_intertrade.c,scps\scps_agency.c:418; scps\scps_doctrines.c:59; scps\scps_intertrade.c:1168; scps\scps_intertrade.c:1192
+TOLL_NEEDS_KEEPER,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:3222
+SEA_LANES,1,lecture moteur presente,non certifiee individuellement,scps\scps_api.c,scps\scps_api.c:5497
+SEA_TRAVEL,1,lecture moteur presente,non certifiee individuellement,scps\scps_sim.c,scps\scps_sim.c:1036; scps\scps_sim.c:1056; scps\scps_sim.c:1095
+GENESIS_RESERVE_GOLD_EMPIRE,100,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:1807
+GENESIS_RESERVE_COPPER_EMPIRE,100,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:1808
+ASSIETTE_ON,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5109; scps\scps_econ.c:5151
+CONSUME_ELASTIC_K,0.30000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5113
+CONSUME_ELASTIC_MIN,0.80000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5114
+CONSUME_ELASTIC_MAX,3,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:5114
+TAX_SAT_COUPLING,0.34999999,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2336
+TAX_SAT_REF,0.60000002,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2338
+TAX_SAT_FACTOR_MIN,0.5,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2340
+TAX_SAT_FACTOR_MAX,1.5,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2340
+AI_FISCAL_TARGET,0.60000002,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2451
+AI_FISCAL_DEADBAND,0.050000001,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2454
+AI_FISCAL_STEP,0.012,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2455
+AI_FISCAL_BOOTSTRAP_COHERENCE,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2458
+AI_FISCAL_REVENUE_FLOOR,200,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2445
+AI_LOAN_MIN_LIQUIDITY,4000,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:612
+AI_OFFER_LOAN_OPINION,30,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:615
+AI_OFFER_LOAN_OPINION_STRICT,60,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:615
+RRACHAT_META,1,lecture moteur presente,non certifiee individuellement,scps\scps_credit.c,scps\scps_credit.c:920
+BUYBACK_CS_GOODWILL,1,lecture moteur presente,non certifiee individuellement,scps\scps_sim.c,scps\scps_sim.c:1866
+BUYBACK_PACIFIST_LEVER,0.050000001,lecture moteur presente,non certifiee individuellement,scps\scps_sim.c,scps\scps_sim.c:1868
+TAX_MULT_FLOOR,0.75,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:2483
+NEEDS_TIER_POP,3000,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\econ_production_demo.c:192; scps\econ_production_demo.c:193; scps\econ_production_demo.c:234; scps\scps_econ.c:3678; scps\scps_econ.c:3687; scps\scps_econ.c:3998; scps\scps_econ.c:4950
+NEEDS_TIER_GROWTH,2,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:3647; scps\scps_econ.c:3689
+NEEDS_TIER_MAX,10,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:3648
+NEEDS_TIER_DECAY_YEARS,5,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:3664
+PL_GENESIS,0,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:4072
+STATE_BUY_FRAC,0.60000002,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:4087
+INVARIANT_SCALE_FLOOR,500,telemetrie chronicle uniquement,non certifiee individuellement,,scps\chronicle.c:632
+SPECULATE_CONSERVED,1,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:2909; scps\scps_ai.c:2927
+CHOKE_REAL_PATH,0,lecture moteur presente,non certifiee individuellement,scps\scps_routes.c,scps\scps_routes.c:76
+CHOKE_EMERGENT,1,lecture moteur presente,non certifiee individuellement,scps\scps_routes.c; scps\scps_world.c,scps\scps_routes.c:75; scps\scps_routes.c:177; scps\scps_world.c:5462
+CHOKE_MIN_ROUTES,2,lecture moteur presente,non certifiee individuellement,scps\scps_world.c,scps\scps_world.c:5652
+CHOKE_MIN_FRAC,0.15000001,lecture moteur presente,non certifiee individuellement,scps\scps_world.c,scps\scps_world.c:5653
+REDEP_REMAINDER_CONSERVED,1,lecture moteur presente,non certifiee individuellement,scps\scps_econ.c,scps\scps_econ.c:4907
+INFLUENCE_PER_NOBLE,0.0020000001,lecture moteur presente,non certifiee individuellement,scps\scps_influence.c,scps\doctrines_demo.c:108; scps\influence_demo.c:92; scps\scps_influence.c:136
+INFLUENCE_COUNCIL_FLOOR,1,lecture moteur presente,non certifiee individuellement,scps\scps_influence.c,scps\doctrines_demo.c:115; scps\influence_demo.c:99; scps\influence_demo.c:204; scps\scps_influence.c:46
+INFLUENCE_CAP,0,lecture moteur presente,non certifiee individuellement,scps\scps_influence.c,scps\doctrines_demo.c:116; scps\influence_demo.c:100; scps\scps_influence.c:165
+INFLUENCE_COST_ENVOY,6,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_sim.c,scps\influence_demo.c:281; scps\influence_demo.c:318; scps\influence_demo.c:325; scps\influence_demo.c:332; scps\scps_api.c:2560; scps\scps_api.c:2812; scps\scps_doctrines.c:80; scps\scps_sim.c:647; scps\scps_sim.c:647
+INFLUENCE_COST_FAB,12,lecture moteur presente,non certifiee individuellement,scps\scps_api.c; scps\scps_sim.c,scps\scps_api.c:2561; scps\scps_sim.c:649
+DIPLO_ENVOY_FLOOR_DAYS,30,lecture moteur presente,non certifiee individuellement,scps\scps_sim.c,scps\influence_demo.c:283; scps\influence_demo.c:359; scps\scps_sim.c:654
+DOCT_COST_BASE,50,lecture moteur presente,non certifiee individuellement,scps\scps_doctrines.c,scps\doctrines_demo.c:118; scps\scps_doctrines.c:303
+DOCT_COST_STEP,25,lecture moteur presente,non certifiee individuellement,scps\scps_doctrines.c,scps\doctrines_demo.c:118; scps\scps_doctrines.c:303
+IDEA_COST_BASE,30,lecture moteur presente,non certifiee individuellement,scps\scps_doctrines.c,scps\doctrines_demo.c:119; scps\scps_doctrines.c:307
+IDEA_COST_STEP,3,lecture moteur presente,non certifiee individuellement,scps\scps_doctrines.c,scps\doctrines_demo.c:119; scps\scps_doctrines.c:307
+INFLUENCE_PER_NOBLE_ARISTO,0.0024999999,lecture moteur presente,non certifiee individuellement,scps\scps_influence.c,scps\doctrines_demo.c:109; scps\influence_demo.c:93; scps\scps_influence.c:135
+INFLUENCE_PER_BOURGEOIS_BASE,0.0011,lecture moteur presente,non certifiee individuellement,scps\scps_influence.c,scps\doctrines_demo.c:110; scps\influence_demo.c:94; scps\scps_influence.c:139
+INFLUENCE_PER_BOURGEOIS,0.0022,lecture moteur presente,non certifiee individuellement,scps\scps_influence.c,scps\doctrines_demo.c:111; scps\influence_demo.c:95; scps\scps_influence.c:138
+INFLUENCE_PER_LABORER_BASE,0.00011,lecture moteur presente,non certifiee individuellement,scps\scps_influence.c,scps\doctrines_demo.c:112; scps\influence_demo.c:96; scps\scps_influence.c:142
+INFLUENCE_PER_LABORER,0.00022,lecture moteur presente,non certifiee individuellement,scps\scps_influence.c,scps\doctrines_demo.c:113; scps\influence_demo.c:97; scps\scps_influence.c:141
+INFLUENCE_PER_BELIEVER,0.00016667,lecture moteur presente,non certifiee individuellement,scps\scps_influence.c,scps\doctrines_demo.c:114; scps\influence_demo.c:98; scps\scps_influence.c:146
+INFLUENCE_BASE_REF,2,lecture moteur presente,non certifiee individuellement,scps\scps_influence.c,scps\doctrines_demo.c:117; scps\influence_demo.c:322; scps\influence_demo.c:326; scps\scps_influence.c:151
+AI_DOCT,1,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c; scps\scps_sim.c,scps\ai_demo.c:770; scps\ai_demo.c:774; scps\scps_ai.c:3392; scps\scps_sim.c:1897
+AI_DOCT_CHECK_MONTHS,12,lecture moteur presente,non certifiee individuellement,scps\scps_sim.c,scps\scps_sim.c:1898
+AI_DOCT_RESERVE,1.5,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\ai_demo.c:814; scps\scps_ai.c:3403
+AI_DOCT_CURRENT_YEAR,40,lecture moteur presente,non certifiee individuellement,scps\scps_ai.c,scps\scps_ai.c:3382

@@ -263,6 +263,20 @@ static float country_price(const WorldEconomy *e, int cid){
 #define FRONDE_RATIO     1.2f
 #define FRONDE_GRIEF_MIN 0.45f
 
+/* La coercition de la victoire du suzerain est un état provincial persistant.
+ * Son périmètre naturel est la région capitale de chaque vassal écrasé : toutes
+ * ses provinces actives de cette région reçoivent la même pression. Écrire
+ * region[] ici serait perdu par econ_aggregate_regions au tick suivant. */
+static void fronde_coerce_capital_region(WorldEconomy *econ, int vassal, int capreg){
+    if (!econ || vassal<0 || vassal>=SCPS_MAX_COUNTRY || capreg<0 || capreg>=econ->n_regions) return;
+    int n=econ->n_prov; if (n>SCPS_MAX_PROV) n=SCPS_MAX_PROV;
+    for (int p=0; p<n; p++){
+        ProvinceEconomy *pe=&econ->prov[p];
+        if (!pe->active || pe->owner!=vassal || pe->region!=capreg) continue;
+        pe->coercion=fminf(1.f, pe->coercion+0.4f);
+    }
+}
+
 void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
                            const WorldProsperity *wp){
     if (!d||!w||!econ) return;
@@ -324,8 +338,7 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
                     if (d->suzerain[v]==s0){
                         d->contrat[v]=CONTRAT_SERVAGE;       /* les contrats se durcissent */
                         d->v_grief[v]=0.35f;                  /* écrasé mais PAS éteint (Kuran : ça couve) */
-                        if (capreg[v]>=0&&capreg[v]<econ->n_regions)
-                            econ->region[capreg[v]].coercion=fminf(1.f,econ->region[capreg[v]].coercion+0.4f);
+                        fronde_coerce_capital_region(econ, v, capreg[v]);
                     }
                 }
                 d->n_ecrase++;

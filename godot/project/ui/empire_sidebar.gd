@@ -295,17 +295,29 @@ func _draw() -> void:
 	if not _folded("ARMÉES"):
 		var ca: Dictionary = w.country_army(me) if w.has_method("country_army") else {}
 		var ai: Dictionary = w.army_info(me)
-		if bool(ai.get("active", false)):
-			var camp_lbl_w: float = VKit.detail(self, Vector2(x, y), "En campagne : ", VKit.FS)
-			var camp_val_w: float = VKit.value(self, Vector2(x + camp_lbl_w, y), _grp(int(ai.get("units", 0))), VKit.FS)
-			VKit.detail(self, Vector2(x + camp_lbl_w + camp_val_w, y), " (%s)" % String(ai.get("phase", "")), VKit.FS)
-			y += 16
-		var res_n := int(ca.get("regiments", 0))
-		var res_lbl_w: float = VKit.detail(self, Vector2(x, y), "Réserve : ", VKit.FS)
-		if res_n > 0:
-			VKit.value(self, Vector2(x + res_lbl_w, y), _grp(res_n), VKit.FS)
-		else:
-			VKit.detail(self, Vector2(x + res_lbl_w, y), "0", VKit.FS)
+		var res_n := int(ca.get("reserve_regiments", ca.get("regiments", 0)))
+		var res_h := res_n * 100
+		var camp_h := int(ca.get("campaign_units", 0))
+		var total_h := int(ca.get("total_units", res_h + camp_h))
+		VKit.text(self, Vector2(x, y), VKit.COL_PARCH,
+			tr("T_ARMY_RESERVE") % [_grp(res_h), res_n], VKit.FS)
+		y += 16
+		VKit.text(self, Vector2(x, y), VKit.COL_PARCH,
+			tr("T_ARMY_CAMPAIGN") % _grp(camp_h), VKit.FS)
+		var phase := String(ai.get("phase", "")) if bool(ai.get("active", false)) else ""
+		if phase != "":
+			VKit.text(self, Vector2(x + 160, y), VKit.COL_DIM, "(%s)" % phase, VKit.FS_SMALL)
+		y += 16
+		VKit.text(self, Vector2(x, y), VKit.COL_VALUE,
+			tr("T_ARMY_TOTAL") % _grp(total_h), VKit.FS)
+		y += 16
+		var force_limit := float(ca.get("force_limit", 0.0))
+		VKit.text(self, Vector2(x, y), VKit.COL_DIM,
+			tr("T_ARMY_LIMIT") % force_limit, VKit.FS_SMALL)
+		y += 16
+		var surcharge := int(round(float(ca.get("reserve_surcharge_pct", 0.0))))
+		VKit.text(self, Vector2(x, y), VKit.sense(0.15) if surcharge > 0 else VKit.COL_DIM,
+			tr("T_ARMY_SURCHARGE") % surcharge, VKit.FS_SMALL)
 		y += 16
 		# RECOMPLÉTER (retour joueur : « doit être dans la side bar droite ») — verbe journalisé
 		_refill_rect = Rect2(x, y, 104, 20)

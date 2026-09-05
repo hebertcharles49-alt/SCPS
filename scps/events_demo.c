@@ -1032,13 +1032,51 @@ int main(int argc, char **argv){
             ok("eg->merv reste MERV_NONE (aucune fondation, aucun mutateur appelé)",
                s.eg->merv==MERV_NONE);
 
-            /* FORCER l'éligibilité : endgame_start_wonder directement (le trigger
-             * dépend de endgame_metab_count, coûteux à fabriquer en fixture — on
-             * teste ici le CYCLE sacrifice/ascension une fois la Merveille lancée,
-             * ce que la mission demande explicitement : « sacrifice pendant merv »
-             * et « ascension 3 issues »). */
-            endgame_start_wonder(s.eg, human, capr);
-            ok("endgame_start_wonder lance le palier FORGE", s.eg->merv==MERV_FORGE);
+            /* Contact profond : le compteur public legacy (sans TechState) doit
+             * rester sous le seuil, tandis que le même compteur avec ts[] doit
+             * rendre la fondation éligible. On retire les groupes du joueur pour
+             * isoler cette voie de la métabolisation diaspora. */
+            Heritage native=s.econ->region[capr].culture.heritage;
+            for (int p=0;p<s.econ->n_prov;p++) if (s.econ->prov[p].owner==human)
+                s.econ->prov[p].pop.n_groups=0;
+            for (int h=0;h<ARCH_COUNT;h++) s.ts[human].arch_depth[h]=PROF_NONE;
+            int deep=0;
+            for (int h=0;h<HERITAGE_COUNT && deep<2;h++) if (h!=(int)native){
+                s.ts[human].arch_depth[h]=PROF_PROFOND; deep++;
+            }
+            int legacy_count=endgame_metab_count(s.w,s.econ,human);
+            int wonder_count=endgame_wonder_metab_count(s.w,s.econ,s.ts,human);
+            ok("contact profond : le compteur legacy reste sous 3", legacy_count<3);
+            ok("contact profond : le compteur Merveille atteint exactement 3", deep==2 && wonder_count==3);
+
+            long f_contact=events_merv_fondation_fired();
+            bool has_foundation=false; int foundation_slot=-1;
+            for (int d=0; d<365*30 && !has_foundation; d+=30){
+                world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,30,human);
+                for (int i=0;i<pending_event_count(s.ev);i++){
+                    PendingEvent pe;
+                    if (pending_event_at(s.ev,i,&pe) && pe.evid==EVID_MERV_FONDATION){
+                        has_foundation=true; foundation_slot=i; break;
+                    }
+                }
+                /* Keep the small player queue available for the foundation
+                 * decision; resolve unrelated choices through the same public
+                 * path, preserving the event-driven proof. */
+                if (!has_foundation)
+                    for (int i=pending_event_count(s.ev)-1;i>=0;i--){
+                        PendingEvent pe;
+                        if (pending_event_at(s.ev,i,&pe) && pe.evid!=EVID_MERV_FONDATION)
+                            pending_event_resolve(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,
+                                                  i,0,s.ev->ages.days_elapsed,human);
+                    }
+            }
+            ok("EVID_MERV_FONDATION s'enfile avec deux contacts profonds", has_foundation);
+            ok("la fondation contact est en attente avant résolution", events_merv_fondation_fired()==f_contact);
+            bool founded=has_foundation && pending_event_resolve(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,
+                                                                  foundation_slot,0,s.ev->ages.days_elapsed,human);
+            ok("pending_event_resolve démarre la Merveille par le chemin réel", founded && s.eg->merv==MERV_FORGE);
+            ok("la fondation contact est comptée une seule fois à la résolution",
+               founded && events_merv_fondation_fired()==f_contact+1);
             long s0=events_merv_sacrifice_fired();
             /* mtth 1200 j sur fenêtre FIXE de 10 ans ⇒ ~5 % d'échec PUR ALÉA (la
              * séquence frand dépend du monde amont — le recalage grands-fleuves/

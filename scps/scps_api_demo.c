@@ -17,6 +17,7 @@
 #include "scps_tech.h"       /* LOT T : tech_has_tier (la preuve de tier de recherche) */
 #include "scps_fog.h"        /* DIPLO-FOG : fog_debug_meet_all (découverte forcée, banc seul) */
 #include "scps_factions.h"   /* FAC_COUNT : profondeur du lecteur politique */
+#include "scps_warhost.h"    /* lecture commune du multiplicateur de solde */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1092,19 +1093,32 @@ int main(int argc, char **argv){
     {
         ScpsSim *sf=scps_sim_new(); scps_sim_generate(sf, seed);
         int pl=scps_player(sf);
-        int rid=scps_religion_found(sf, pl, CREDO_PLURALISTE, RP_FECONDITE, RP_ACCUEIL, RP_GNOSE);
-        ok("religion fondée (façade)", rid>=0 && scps_religion_of_country(sf,pl)==rid);
+        int count_before=g_religion_count;
+        int blocked=scps_religion_found(sf, pl, CREDO_PLURALISTE, RP_FECONDITE, RP_ACCUEIL, RP_GNOSE);
+        ok("fondation sans Temple refusée (façade)", blocked<0 && g_religion_count==count_before);
+        /* La façade est testée positivement par player_contract_demo, qui peut
+         * poser un Temple directement dans sa fixture de province. Ce banc garde
+         * sa suite P8 indépendante en injectant ici une foi de test interne. */
+        int rt[3]={RP_FECONDITE, RP_ACCUEIL, RP_GNOSE};
+        int rid=religion_spawn(CREDO_PLURALISTE, rt, 0, pl, NULL);
+        religion_set_country(pl, rid);
+        for(int r=0;r<scps_region_count(sf);r++)
+            if(scps_region_owner(sf,r)==pl) religion_set_region(NULL, r, rid);
+        ok("religion de fixture disponible pour la suite", rid>=0 && scps_religion_of_country(sf,pl)==rid);
         int inherited=0, nrg=scps_region_count(sf);
         for(int r=0;r<nrg;r++) if(scps_religion_of_region(sf,r)==rid) inherited++;
         ok("régions du pays HÉRITENT de la religion", inherited>0);
         int flipped=0;
+        int eligible=scps_religion_eligible(sf,pl);
+        int count_before_schism=g_religion_count;
         int child=scps_religion_schism(sf, pl, 1, RP_MUR, 2, RP_ORTHODOXIE, CREDO_PURIFICATEUR, &flipped);
         int now_child=0; for(int r=0;r<nrg;r++) if(scps_religion_of_region(sf,r)==child) now_child++;
         printf("   P8 schisme interne : enfant=%d · régions basculées=%d/%d · régions enfant=%d\n",
                child, flipped, inherited, now_child);
-        ok("schisme interne crée un enfant", child>rid);
+        ok("schisme respecte l'éligibilité du lecteur",
+           eligible ? child>rid : (child<0 && g_religion_count==count_before_schism && flipped==0));
         ok("fracture bornée (0..régions héritées)", flipped>=0 && flipped<=inherited);
-        ok("régions basculées == compte enfant (cohérent)", now_child==flipped);
+        ok("régions basculées == compte enfant (cohérent)", child<0 ? flipped==0 : now_child==flipped);
         scps_sim_free(sf);
         religion_reset();
     }
@@ -1113,8 +1127,13 @@ int main(int argc, char **argv){
     {
         ScpsSim *ss=scps_sim_new(); scps_sim_generate(ss, seed);
         int pl=scps_player(ss);
-        int rid=scps_religion_found(ss, pl, CREDO_EVANGELISTE, RP_FECONDITE, RP_ACCUEIL, RP_GNOSE);
-        ok("foi évangéliste fondée", rid>=0);
+        int count_before=g_religion_count;
+        int blocked=scps_religion_found(ss, pl, CREDO_EVANGELISTE, RP_FECONDITE, RP_ACCUEIL, RP_GNOSE);
+        ok("fondation sans Temple refusée (lettré)", blocked<0 && g_religion_count==count_before);
+        int rt[3]={RP_FECONDITE, RP_ACCUEIL, RP_GNOSE};
+        int rid=religion_spawn(CREDO_EVANGELISTE, rt, 0, pl, NULL);
+        religion_set_country(pl, rid);
+        ok("foi évangéliste de fixture", rid>=0);
         int prg=-1, nrg=scps_region_count(ss);
         for(int r=0;r<nrg;r++) if(scps_region_owner(ss,r)==pl){ prg=r; break; }
         ok("région du joueur trouvée", prg>=0);
@@ -1598,6 +1617,27 @@ int main(int argc, char **argv){
                && aiN.inf==100 && aiN.arch==0 && aiN.cav==0 && aiN.mages==0 && aiN.units==100);
             ok("SPLIT COMPOSÉ : le corps source perd EXACTEMENT ce qui est parti (conservation, jamais un clamp)",
                cid>=0 && aiS.inf==ai0.inf-100 && aiS.units==ai0.units-100);
+            ScpsArmy arm_multi={0}; scps_country_army(sn, mp, &arm_multi);
+            long campaign_sum = 0;
+            for (int n=0; n<nc2; n++) {
+                int idn = scps_country_corps_id(sn, mp, n);
+                ScpsArmyInfo ain={0}; scps_corps_info(sn, idn, &ain);
+                if (ain.active) campaign_sum += ain.units;
+            }
+            ok("LECTURE ARMÉE : campagne = somme de tous les corps, slot 0 compté une seule fois",
+               arm_multi.campaign_units==campaign_sum && arm_multi.total_units==arm_multi.regiments*100L+campaign_sum);
+            ok("LECTURE ARMÉE : limite et surcoût de réserve sont bornés",
+               arm_multi.force_limit>=0.f && arm_multi.reserve_over_limit_pct>=0.f
+               && arm_multi.reserve_surcharge_pct>=0.f
+               && fabsf(arm_multi.reserve_surcharge_pct
+                        - warhost_reserve_surcharge_pct(arm_multi.regiments, arm_multi.force_limit))<1e-4f);
+            /* Probe pur de la règle d'intendance : deux fois la limite donnent
+             * exactement ×4, soit +300 %, sans dépendre d'une graine ou d'une
+             * composition de corps. */
+            float probe_mult = warhost_reserve_pay_multiplier(20, 10.f);
+            float probe_pct = warhost_reserve_surcharge_pct(20, 10.f);
+            ok("RÈGLE SOLDE : 2× la limite de réserve = +300 % (coefficient partagé)",
+               fabsf(probe_mult - 4.f)<1e-6f && fabsf(probe_pct - 300.f)<1e-4f);
             scps_sim_free(sn);
         }
 

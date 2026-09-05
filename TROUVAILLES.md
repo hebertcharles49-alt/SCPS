@@ -5,6 +5,48 @@
 
 ---
 
+## 2026-09-05 — progression : le statut prêt n'est pas une preuve actuelle
+
+**Découvertes** : `missions_tick` recalcule `ready` mensuellement ; `missions_seal` utilisait pourtant ce seul cache. Province perdue entre clôture et sceau ⇒ récompense encore versée. Reproduction `runs/progression-2026-09-05/before.log` : 53 verts, 3 échecs ; après relecture de `sol_condition` avant tout effet : 56/56. Ne pas changer les latches historiques `proof_a/proof_b`, qui ont une autre sémantique.
+
+**Pièges** : la façade/UI Desseins ne doit pas reconstruire les règles. Le statut visible peut dater de la clôture ; le drain reste autoritaire. La présence de sept branches dans une proposition ne prouve pas sept branches livrées : enum et panneau n'exposent que le Sol (huit échelons, deux voies alternatives).
+
+**Restes** : `docs/RAPPORT_PROGRESSION_2026-09-05.md` suit la progression réelle, les branches absentes et les raccords de Merveille. Les tests de fixtures ne remplacent pas une campagne complète sur chaque stratégie.
+
+## 2026-09-05 — chaîne des verbes corrigée, finition encore ouverte
+
+**Découvertes**
+
+- `scps_tune.c:tune_fingerprint32` : hasher toutes les valeurs effectives avec leurs bits, pas le texte `%g` ni son préfixe de 1023 octets. Deux floats voisins peuvent avoir le même affichage. Anciennes saves 111 lisibles, empreinte historique signalée ; le profil n'est pas restauré depuis la save.
+- `scps_labor.c:tier_pop_init` : le cache TIER doit suivre `tune_revision`, sinon F10 change le registre sans effet. Les phases des 627 clés sont exposées : lecture de règle, genèse, prochaine action, diagnostic, inactif. Cinq clés mortes sont refusées, pas reconnectées à une règle inventée.
+- Atomicité : `agency_renover_acct` doit vérifier la place AVANT crédit/paiement ; `campaign_order_sea` doit valider le voyage avant fournitures ; `navy_order_build` doit vérifier le kit complet avant les débits bornés. Banc `verb_atomicity_demo` 22/22. Garder sa grosse fixture Campaign hors pile Windows.
+- Façade religion : pays humain, région possédée et éligibilité de schisme se vérifient dans la mutation, pas seulement dans le panneau. Le trou Temple est corrigé : `religion_founding_ready` lit les provinces possédées et la fondation le vérifie ; l'agrégat régional peut être périmé ou trompeur. Ralliement au plafond conservé. Contrat joueur 26/26 et panneau Godot vérifiés.
+
+**Pièges**
+
+- Les 59 CMD et leur journal ne couvrent pas les mutations directes religion/rachats, ni un replay persistant. Le feedback est volontairement transient (`scps_sim.h`) : un test headless déterministe n'est pas un test de rejeu joueur.
+- Windows : cc1 lancé hors PATH MinGW réclame libisl-23.dll, même si le fichier existe. Le précontrôle du compilateur et le PATH explicite doivent précéder les sous-processus ; ne jamais lancer une série de probes après un premier échec de chargement.
+- Godot : le minimum d'un label replié peut gonfler un panneau caché à sa première ouverture. Tester le panneau visible après calcul de largeur, puis recentrer. Le banc ferme les lecteurs audio avant de quitter pour ne pas confondre lectures en cours et fuite du panneau.
+- Registre validé ≠ tous les modtools validés : les chargeurs SCPS_MODS utilisaient encore atof/atoi. Correction : parsing strict et validation avant écriture ; conserver le format price court, les zéros admissibles et les tags étrangers du fichier partagé. Banc 16/16, dump combiné intégralement relu ; ASan/UBSan muets sur ce banc. Cela ne garantit pas l'équilibre de valeurs extrêmes.
+
+**Restes / preuves**
+
+- `docs/BESOINS_FINITION_2026-09-05.md` énumère exigences, contradictions et preuves manquantes : replay, stratégies production/commerce/guerre, campagne jusqu'aux fins, confort, performances et contrat séculaire. Temple et parsing corrigés dans le rapport complémentaire. Ne pas déclarer le jeu terminé sur les seuls tests de plomberie. `--savetest` compare un digest partiel, pas tout l'état ; time/nonce empêchent la comparaison brute des saves.
+- Livraison verbes : 49 bancs validés (API relancée après timeout, 261/261), registre 650/650, contrat joueur 19/19, mémoire ciblée sans diagnostic, golden 5×12 stable. Gates supplémentaires revérifiés dans `runs/finition-2026-09-05/gates.log` : membrane, langue (123/123), écritures régionales.
+- Export de référence de ce lot : `packaging/windows/dist_godot/session-20260905-verbes/`. Rapport `docs/RAPPORT_CORRECTIONS_VERBES_2026-09-05.md`. Les déclarations anciennes de bancs cassés, compte de tests ou façade read-only sont historiques, pas l'état courant.
+- Complément finition livré : `session-20260905-finition/`, rapport `docs/RAPPORT_FINITION_2026-09-05.md`. Sept bancs ciblés verts (API 263/263), mémoire ciblée, Godot, golden et démarrage export verts. Runner désormais 50 cibles ; ne pas confondre cette liste avec une nouvelle exécution complète des 50.
+
+## 2026-09-05 — revue code/gameplay et export Windows
+
+- `scps_save.c:sv_read_payload` : borner les liens cellule→province AVANT la reconstruction d'adjacence ; `econ->prov_adj` est un cache de process partagé, jamais un pointeur de fichier à réutiliser/libérer. Le nullifier même lors d'une lecture partielle. v111 ajoute la cible de recherche ; succès seulement ⇒ purge ordres/feedback.
+- Gardes de save : la rancune n'est pas normalisée (+2 lors d'une faillite), le score de fronde peut être négatif. Des bornes « intuitives » refusaient des parties légitimes ; les vérifier contre les producteurs et les bancs de sauvegarde longue.
+- `credit_bankruptcy` : -1 peut signifier dette de CLASSE annulée sans créancier étranger ; le feedback doit comparer la dette avant/après, pas tester l'identifiant comme un booléen.
+- Bancs : `check(...,1)` et `count>=0` ne prouvent pas une panne d'allocation. `api_cache_demo` vérifie l'injection atteinte, les six pointeurs nuls, puis la reprise ; `save_failure_demo` intercepte tmpfile/fwrite/écriture atomique uniquement au lien du banc.
+- Windows : `economic_probe.exe` dynamique lancé hors PATH MinGW ouvre des erreurs libwinpthread en boucle. Probes natifs statiques ou PATH MSYS explicite ; DLL release livrée autonome. `build_godot.sh` utilise un TEMP natif sous build et une destination absolue : `/tmp` ou DIST relatif peuvent produire un export incomplet même après un import réussi.
+- Godot : importer la copie `build/session-review`, pas l'original (traductions utilisateur compilées à préserver ; godot-cpp original est une jonction vers E:). Un import rc0 ne remplace pas un vrai lancement des scripts. Les closures du test UI retenaient un panneau ; méthodes nommées et libération des nœuds suppriment la fuite.
+- Décisions utilisateur : limite militaire sur RÉSERVE conservée, tous les corps affichés séparément ; pas de cible mondiale de satisfaction imposée. Mesures fiscales 9 scénarios et limites détaillées dans `docs/RAPPORT_REMISE_EN_ETAT_2026-09-05.md`. Build validé : `packaging/windows/dist_godot/session-20260905-validated/`.
+
+
 ## ÉCONOMIE & PROVINCES
 
 **Découvertes clés** :

@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <float.h>
 
 struct ScpsSim {
     World      *w;
@@ -79,34 +80,42 @@ void scps_sim_free(ScpsSim *s){
     free(s->w); free(s->px); free(s->cx); free(s->cy); free(s->ppx); free(s->ppy); free(s);
 }
 
+int scps_world_seed(const ScpsSim *s){
+    return (s && s->w) ? (int)s->w->seed : -1;
+}
+
+bool scps_set_save_directory(const char *dir){
+    return scps_save_set_dir(dir);
+}
+
 /* centroïdes région + PROVINCE (la géo est figée par worldgen/chargement ; seul l'OWNER
  * changera). Les centroïdes de province servent au SIÈGE de ville (scps_region_seat) :
  * le bourg vit dans la province REPRÉSENTATIVE de sa région, pas au barycentre de la
  * région entière (qui peut tomber à son bord, voire hors d'elle sur une forme concave). */
 static void api_centroids(ScpsSim *s){
+    if (!s || !s->w || !s->sim.econ) return;
     int nr = s->sim.econ->n_regions;
     int np = s->w->n_provinces;
-    /* AUDIT 2026-08-12 (codex P3) : les reallocs remplaçaient les pointeurs et les
-     * tailles AVANT de connaître le résultat — sous pression mémoire, une instance
-     * « prête » aux tableaux nuls. Transactionnel : tout ou rien. */
-    float *ncx=(float*)realloc(s->cx,(size_t)nr*sizeof(float));
-    float *ncy=(float*)realloc(s->cy,(size_t)nr*sizeof(float));
-    float *npx=(float*)realloc(s->ppx,(size_t)np*sizeof(float));
-    float *npy=(float*)realloc(s->ppy,(size_t)np*sizeof(float));
-    if(!ncx||!ncy||!npx||!npy){
-        if(ncx)s->cx=ncx; if(ncy)s->cy=ncy; if(npx)s->ppx=npx; if(npy)s->ppy=npy;
-        s->n_cent=0; s->n_pcent=0;   /* l'échec est DIT : aucun centroïde servi */
-        return;
-    }
-    s->cx=ncx; s->cy=ncy; s->ppx=npx; s->ppy=npy;
-    s->n_cent=nr; s->n_pcent=np;
+    /* Tous les nouveaux buffers restent privés jusqu'à la fin du calcul. Cela
+     * évite à la façade de publier une taille dont les accumulateurs seraient
+     * absents, et conserve l'ancien groupe intact pendant une panne. */
+    float *ncx=(float*)malloc((size_t)nr*sizeof(float));
+    float *ncy=(float*)malloc((size_t)nr*sizeof(float));
+    float *npx=(float*)malloc((size_t)np*sizeof(float));
+    float *npy=(float*)malloc((size_t)np*sizeof(float));
     double *ax = (double*)calloc((size_t)nr, sizeof(double));
     double *ay = (double*)calloc((size_t)nr, sizeof(double));
     long   *cn = (long*)  calloc((size_t)nr, sizeof(long));
     double *pax = (double*)calloc((size_t)np, sizeof(double));
     double *pay = (double*)calloc((size_t)np, sizeof(double));
     long   *pcn = (long*)  calloc((size_t)np, sizeof(long));
-    if(s->cx && s->cy && s->ppx && s->ppy && ax && ay && cn && pax && pay && pcn){
+    if(!ncx || !ncy || !npx || !npy || !ax || !ay || !cn || !pax || !pay || !pcn){
+        free(ncx); free(ncy); free(npx); free(npy);
+        free(ax); free(ay); free(cn); free(pax); free(pay); free(pcn);
+        s->n_cent=0; s->n_pcent=0;   /* aucun cache partiel n'est servi */
+        return;
+    }
+    {
         for(int y=0; y<SCPS_H; y++) for(int x=0; x<SCPS_W; x++){
             const Cell *c = scps_cellc(s->w, x, y);
             int r = c->region;
@@ -115,15 +124,18 @@ static void api_centroids(ScpsSim *s){
             if(p>=0 && p<np){ pax[p]+=x; pay[p]+=y; pcn[p]++; }
         }
         for(int r=0; r<nr; r++){
-            if(cn[r]){ s->cx[r]=(float)(ax[r]/(double)cn[r]); s->cy[r]=(float)(ay[r]/(double)cn[r]); }
-            else     { s->cx[r]=-1.f; s->cy[r]=-1.f; }
+            if(cn[r]){ ncx[r]=(float)(ax[r]/(double)cn[r]); ncy[r]=(float)(ay[r]/(double)cn[r]); }
+            else     { ncx[r]=-1.f; ncy[r]=-1.f; }
         }
         for(int p=0; p<np; p++){
-            if(pcn[p]){ s->ppx[p]=(float)(pax[p]/(double)pcn[p]); s->ppy[p]=(float)(pay[p]/(double)pcn[p]); }
-            else      { s->ppx[p]=-1.f; s->ppy[p]=-1.f; }
+            if(pcn[p]){ npx[p]=(float)(pax[p]/(double)pcn[p]); npy[p]=(float)(pay[p]/(double)pcn[p]); }
+            else      { npx[p]=-1.f; npy[p]=-1.f; }
         }
     }
     free(ax); free(ay); free(cn); free(pax); free(pay); free(pcn);
+    free(s->cx); free(s->cy); free(s->ppx); free(s->ppy);
+    s->cx=ncx; s->cy=ncy; s->ppx=npx; s->ppy=npy;
+    s->n_cent=nr; s->n_pcent=np;
 }
 
 /* GRAND LIVRE — ouvre une fenêtre de mesure : le trésor de chaque pays et le jour, au
@@ -199,6 +211,20 @@ void scps_sim_advance_days(ScpsSim *s, int ndays){
         sim_day(&s->sim, s->w);
     }
 }
+
+int scps_command_feedback_count(const ScpsSim *s){
+    return s ? sim_cmd_feedback_count(&s->sim) : 0;
+}
+bool scps_command_feedback_at(const ScpsSim *s, int index, ScpsCommandFeedback *out){
+    if (!s || !out) return false;
+    SimCmdFeedback f;
+    if (!sim_cmd_feedback_at(&s->sim,index,&f)) return false;
+    out->id=f.id; out->verb=f.verb; out->status=f.status; out->outcome=f.outcome;
+    out->reserved=f.reserved; out->reason=f.reason; out->year=f.year; out->day=f.day;
+    memcpy(out->a,f.a,sizeof out->a); out->value=f.value; out->value2=f.value2; out->amount=f.amount;
+    return true;
+}
+void scps_command_feedback_reset(ScpsSim *s){ if (s) sim_cmd_feedback_reset(&s->sim); }
 
 int scps_map_w(void){ return SCPS_W; }
 int scps_map_h(void){ return SCPS_H; }
@@ -1254,7 +1280,7 @@ void scps_endgame_info(ScpsSim *s, ScpsEndgameInfo *out){
      * jamais de flottant moteur qui franchit la membrane. */
     if (s->sim.eg) {
         double ratio = endgame_blood_ratio(s->sim.eg, s->sim.econ);
-        float frac = tune_f("ENDGAME_BLOOD_FRAC", 0.20f);
+        float frac = tune_f("ENDGAME_BLOOD_FRAC", 0.090000004f);
         int bp = (frac > 0.f) ? (int)(100.0 * ratio / (double)frac + 0.5) : 0;
         out->blood_pct = (bp < 0) ? 0 : (bp > 100 ? 100 : bp);
         double share = endgame_blood_player_share(s->sim.eg);
@@ -2937,6 +2963,21 @@ void scps_country_army(ScpsSim *s, int cid, ScpsArmy *out){
     memset(out, 0, sizeof *out); out->levy_name = "";
     if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return;
     out->regiments = warhost_units(s->sim.host, cid);
+    /* La réserve est le host ; la campagne est un registre distinct. Parcourir
+     * les IDs stables évite de compter deux fois le slot 0 historique. */
+    long campaign = 0;
+    int corps_n = s->sim.camp ? campaign_corps_count(s->sim.camp, cid) : 0;
+    for(int i=0; i<corps_n; i++){
+        int id = campaign_corps_id_at(s->sim.camp, cid, i);
+        const FieldArmy *a = campaign_corps_const(s->sim.camp, id);
+        if(a && a->active && a->owner == cid) campaign += campaign_corps_units(s->sim.camp, id) * 100L;
+    }
+    out->campaign_units = campaign;
+    out->total_units = out->regiments * 100L + campaign;
+    out->force_limit = warhost_force_limit(regions_of(s->sim.econ, cid));
+    out->reserve_over_limit_pct = out->force_limit > 0.f
+        ? fmaxf(0.f, ((float)out->regiments / out->force_limit - 1.f) * 100.f) : 0.f;
+    out->reserve_surcharge_pct = warhost_reserve_surcharge_pct(out->regiments, out->force_limit);
     out->levy      = warhost_levy(s->sim.host, cid);
     out->levy_name = sz(warhost_levy_name(out->levy));
     int f=0; for(int t=0; t<HULL_COUNT; t++) f += s->sim.navy->n[cid].hull[t];
@@ -3410,8 +3451,15 @@ void scps_tune_at(int i, ScpsTunable *out){
     out->value      = (double)tune_value_at(i);
     out->def_value  = (double)tune_default_at(i);
     out->overridden = tune_overridden_at(i);
+    out->active     = tune_is_active(out->nom);
+    out->phase      = sz(tune_phase(out->nom));
 }
-void scps_tune_set_val(const char *nom, double value){ tune_set(nom, (float)value); }
+int scps_tune_set_checked(const char *nom, double value){
+    if(!nom || !isfinite(value) || value>FLT_MAX || value<-FLT_MAX) return 0;
+    return tune_set_checked(nom,(float)value);
+}
+void scps_tune_set_val(const char *nom, double value){ (void)scps_tune_set_checked(nom,value); }
+int scps_tune_reset(const char *nom){ return tune_reset(nom); }
 
 /* LANGUE — bascule la table compilée que tr() résout (GLOBAL, display-only).
  * Hors bornes : ignoré (la langue courante reste). La surcharge scps_lang.txt
@@ -3530,6 +3578,7 @@ int scps_dessein_info(ScpsSim *s, int cid, int branche, ScpsDessein *out){
     memset(out, 0, sizeof *out);
     out->branche=""; out->voie=""; out->nom=""; out->objectif="";
     out->recompense=""; out->saveur=""; out->cible=""; out->voie_a=""; out->voie_b="";
+    out->cible_pid=-1; out->cible_cid=-1; out->cible_region=-1;
     if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return 0;
     const Dessein *d = dessein_of(s->sim.missions, cid, branche);
     if(!d) return 0;
@@ -3565,9 +3614,12 @@ int scps_dessein_info(ScpsSim *s, int cid, int branche, ScpsDessein *out){
     g_dess_cible[0]=0;
     if (tp>=0 && tp<s->w->n_provinces){
         int r = s->w->province[tp].region;
+        out->cible_pid = tp;
+        out->cible_region = r;
         if (r>=0 && r<s->w->n_regions)
             snprintf(g_dess_cible, sizeof g_dess_cible, "%s", s->w->region[r].name);
     } else if (tc>=0 && tc<s->w->n_countries){
+        out->cible_cid = tc;
         snprintf(g_dess_cible, sizeof g_dess_cible, "%s", s->w->country[tc].name);
     }
     out->cible = g_dess_cible;
@@ -5061,6 +5113,29 @@ static float *g_ag = NULL, *g_aheapf = NULL;
 static int   *g_afrom = NULL, *g_agen = NULL, *g_aclosed = NULL, *g_aheapi = NULL;
 static int    g_acurgen = 0, g_aheap_n = 0;
 
+static void api_astar_buffers_release(void){
+    free(g_ag); free(g_afrom); free(g_agen); free(g_aclosed); free(g_aheapf); free(g_aheapi);
+    g_ag=NULL; g_afrom=NULL; g_agen=NULL; g_aclosed=NULL; g_aheapf=NULL; g_aheapi=NULL;
+}
+
+static bool api_astar_buffers_ensure(void){
+    if (g_ag && g_afrom && g_agen && g_aclosed && g_aheapf && g_aheapi) return true;
+    /* A previous partial attempt must never make a later call skip init. */
+    api_astar_buffers_release();
+    float *ag=(float*)malloc(sizeof(float)*SCPS_N);
+    int *afrom=(int*)malloc(sizeof(int)*SCPS_N);
+    int *agen=(int*)calloc(SCPS_N,sizeof(int));
+    int *aclosed=(int*)calloc(SCPS_N,sizeof(int));
+    float *aheapf=(float*)malloc(sizeof(float)*SCPS_N);
+    int *aheapi=(int*)malloc(sizeof(int)*SCPS_N);
+    if(!ag || !afrom || !agen || !aclosed || !aheapf || !aheapi){
+        free(ag); free(afrom); free(agen); free(aclosed); free(aheapf); free(aheapi);
+        return false;
+    }
+    g_ag=ag; g_afrom=afrom; g_agen=agen; g_aclosed=aclosed; g_aheapf=aheapf; g_aheapi=aheapi;
+    return true;
+}
+
 static void aheap_push(float f, int idx){
     /* AUDIT 2026-08-12 (codex P2) : l'A* re-pousse une cellule à chaque relaxation
      * (générations, pas de decrease-key) — le tas dimensionné SCPS_N pouvait déborder
@@ -5097,12 +5172,7 @@ static float api_road_cost(const World *w, int x, int y){
 }
 static bool api_road_astar(const World *w, int ax, int ay, int bx, int by, ApiRoad *out){
     if(ax<0||ay<0||ax>=SCPS_W||ay>=SCPS_H||bx<0||by<0||bx>=SCPS_W||by>=SCPS_H) return false;
-    if(!g_ag){
-        g_ag=(float*)malloc(sizeof(float)*SCPS_N); g_afrom=(int*)malloc(sizeof(int)*SCPS_N);
-        g_agen=(int*)calloc(SCPS_N,sizeof(int)); g_aclosed=(int*)calloc(SCPS_N,sizeof(int));
-        g_aheapf=(float*)malloc(sizeof(float)*SCPS_N); g_aheapi=(int*)malloc(sizeof(int)*SCPS_N);
-        if(!g_ag||!g_afrom||!g_agen||!g_aclosed||!g_aheapf||!g_aheapi) return false;
-    }
+    if(!api_astar_buffers_ensure()) return false;
     int minx=(ax<bx?ax:bx)-48, maxx=(ax>bx?ax:bx)+48, miny=(ay<by?ay:by)-48, maxy=(ay>by?ay:by)+48;
     if(minx<0) minx=0;
     if(miny<0) miny=0;
@@ -5348,12 +5418,7 @@ static float api_lane_cost(const World *w, int x, int y){
  * boîte ÉLARGIE (±96 : contourner une masse terrestre écarte bien plus qu'un col). */
 static bool api_lane_astar(const World *w, int ax, int ay, int bx, int by, ApiLane *out){
     if(ax<0||ay<0||ax>=SCPS_W||ay>=SCPS_H||bx<0||by<0||bx>=SCPS_W||by>=SCPS_H) return false;
-    if(!g_ag){
-        g_ag=(float*)malloc(sizeof(float)*SCPS_N); g_afrom=(int*)malloc(sizeof(int)*SCPS_N);
-        g_agen=(int*)calloc(SCPS_N,sizeof(int)); g_aclosed=(int*)calloc(SCPS_N,sizeof(int));
-        g_aheapf=(float*)malloc(sizeof(float)*SCPS_N); g_aheapi=(int*)malloc(sizeof(int)*SCPS_N);
-        if(!g_ag||!g_afrom||!g_agen||!g_aclosed||!g_aheapf||!g_aheapi) return false;
-    }
+    if(!api_astar_buffers_ensure()) return false;
     int minx=(ax<bx?ax:bx)-96, maxx=(ax>bx?ax:bx)+96, miny=(ay<by?ay:by)-96, maxy=(ay>by?ay:by)+96;
     if(minx<0) minx=0;
     if(miny<0) miny=0;
@@ -5668,10 +5733,8 @@ int scps_country_buy_rate(ScpsSim *s, int cid, int cat){
     return (int)(econ_country_buy_rate(cid, cat)*100.f + 0.5f);
 }
 void scps_player_set_buy_rate(ScpsSim *s, int cat, int pct){
-    if (!s) return;
-    int pl=-1;
-    for (int c=0;c<s->w->n_countries;c++)
-        if (s->w->country[c].role==POLITY_PLAYER){ pl=c; break; }
+    if (!s || !s->ready || cat<0 || cat>=3 || pct<0 || pct>100) return;
+    int pl=s->sim.human_player;
     if (pl>=0) econ_set_buy_rate(pl, cat, (float)pct/100.f);
 }
 int scps_country_class_policy_sat(ScpsSim *s, int cid, int classe){
@@ -5737,7 +5800,7 @@ int scps_religion_can_found(ScpsSim *s){
 }
 int scps_religion_found(ScpsSim *s, int cid, int credo, int t0, int t1, int t2){
     if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return -1;
-    if(!religion_picks_valid(t0,t1,t2)) return -1;
+    if(cid!=s->sim.human_player || religion_of_country(cid)>=0) return -1;
     /* PLAFOND ⌈n_emp/2⌉ sur les RACINES (LOT T) : au-delà, le joueur RALLIE une foi existante (les
      * empires se PARTAGENT les religions) au lieu d'en fonder une nouvelle. */
     if(!religion_can_found(api_count_empires(s))){
@@ -5745,6 +5808,11 @@ int scps_religion_found(ScpsSim *s, int cid, int credo, int t0, int t1, int t2){
         if(rid>=0) religion_inherit_regions(s->w, s->sim.econ, cid);
         return rid;
     }
+    /* Fondation : le Temple ou la Cathédrale doit être bâti dans une province
+     * réellement possédée. L'agrégat de région peut conserver un bit historique
+     * après une séparation; le lecteur province est donc la seule preuve. */
+    if(!scps_religion_founding_ready(s, cid)) return -1;
+    if(credo<0 || credo>=CREDO_COUNT || !religion_picks_valid(t0,t1,t2)) return -1;
     int trad[3]={t0,t1,t2};
     int rid=religion_spawn(credo, trad, api_capital_cell(s,cid), cid, NULL);
     if(rid<0) return -1;
@@ -5753,7 +5821,7 @@ int scps_religion_found(ScpsSim *s, int cid, int credo, int t0, int t1, int t2){
     return rid;
 }
 int scps_religion_eligible(ScpsSim *s, int cid){
-    if(!s || !s->ready) return 0;
+    if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return 0;
     /* PLAFOND PAR RACINE : pas de schisme si la foi a déjà ses RELIG_SCHISM_MAX sectes (bouton grisé) —
      * la foi en exil PERSISTE alors au lieu d'essaimer une secte de plus. */
     if(!religion_can_schism(religion_of_country(cid))) return 0;
@@ -5763,7 +5831,7 @@ int scps_religion_schism(ScpsSim *s, int cid, int slot_a, int pole_a, int slot_b
                          int new_credo, int *out_flipped){
     if(out_flipped) *out_flipped=0;
     if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return -1;
-    if(!religion_can_schism(religion_of_country(cid))) return -1;   /* plafond schismes/racine atteint */
+    if(cid!=s->sim.human_player || !scps_religion_eligible(s,cid)) return -1;
     int parent=religion_of_country(cid);
     if(parent<0) return -1;
     int child=religion_schism(parent, slot_a, pole_a, slot_b, pole_b, new_credo,
@@ -5777,6 +5845,8 @@ int scps_religion_of_country(ScpsSim *s, int cid){ (void)s; return religion_of_c
 int scps_religion_of_region (ScpsSim *s, int region){ (void)s; return religion_of_region(region); }
 int scps_religion_recruit_scholar(ScpsSim *s, int cid, int region){
     if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return -1;
+    if(cid!=s->sim.human_player || region<0 || region>=s->w->n_regions
+       || s->w->region[region].country!=cid) return -1;
     return religion_scholar_recruit(cid, region);
 }
 int scps_religion_scholar_role(ScpsSim *s, int cid){ (void)s; return religion_scholar_role(cid); }
@@ -5816,8 +5886,12 @@ int scps_religion_founding_ready(ScpsSim *s, int cid){
     if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return 0;
     if(religion_of_country(cid) >= 0) return 0;   /* a déjà une foi */
     uint32_t mask = (1u<<EDI_TEMPLE)|(1u<<EDI_CATHEDRALE);
-    for(int r=0;r<s->sim.econ->n_regions;r++)
-        if(s->sim.econ->region[r].owner==cid && (s->sim.econ->region[r].edi_built & mask)) return 1;
+    /* ProvinceEconomy est la vérité du bâti. Ne pas lire RegionEconomy::edi_built:
+     * c'est une union d'affichage des provinces, qui peut être trompeuse pour une
+     * région dont le propriétaire représentatif n'est pas le propriétaire de chaque
+     * province. */
+    for(int pid=0; pid<s->sim.econ->n_prov; pid++)
+        if(s->sim.econ->prov[pid].owner==cid && (s->sim.econ->prov[pid].edi_built & mask)) return 1;
     return 0;
 }
 const char *scps_religion_name(ScpsSim *s, int cid){
@@ -5882,6 +5956,7 @@ int scps_sim_load(ScpsSim *s, int slot){
     if(!s) return 1;
     int r=0, e=0;
     int rc = scps_load_game(slot, s->w, &s->sim, &s->params, &r, &e);
+    if(rc==3){ s->ready=false; return rc; }
     if(rc!=0) return rc;
     /* MAIN HUMAINE : comme à la genèse (le load restaure ai_on du save, mais on garantit
      * que le joueur reste débrayé de l'IA côté façade). */

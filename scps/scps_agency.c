@@ -801,6 +801,10 @@ bool agency_renover_acct(AgencyState *a, WorldEconomy *econ, const World *w, int
     for (int i=0; i<a->n; i++)                             /* pas de doublon en file */
         if (a->order[i].active && a->order[i].kind==AGY_RENOVER &&
             a->order[i].region==region && a->order[i].prov==prov) return false;
+    /* Réserver la place AVANT tout débit : enqueue() ne peut refuser ici que
+     * lorsque le journal d'agence est plein. Un paiement ne doit jamais être
+     * perdu sur ce refus tardif. */
+    if (a->n >= SCPS_MAX_BUILDS) return false;
     float gold = agency_renover_gold(econ, region, pe);
     if (gold <= 0.f) return false;
     if (!credit_can_spend(econ, w, owner, gold)) return false;

@@ -7,6 +7,7 @@
  * fait par l'appelant (qui paie le coût, fournit le masque de héritages, lit l'arbre).
  */
 #include "scps_tech.h"
+#include "scps_modparse.h"
 #include "scps_tune.h"   /* TECH_COST_MULT (registre J) */
 #include <math.h>
 #include <stddef.h>
@@ -729,13 +730,15 @@ bool tech_fusion_available(const TechState *s, int recipe_idx,
 
 /* ── MODTOOLS — surcharge des COÛTS/BONUS de tech par fichier (SCPS_MODS) ─────
  * basecost<TAB><tier 0-5><TAB><coût>  ·  techbonus<TAB><tech><TAB><prod_pct><TAB><eff_pct>
- * Sans fichier ⇒ valeurs compilées ⇒ golden/déterminisme INTACTS. */
+ * Sans fichier ⇒ valeurs compilées ⇒ golden/déterminisme INTACTS. Les champs
+ * numériques sont strictement finis et non négatifs ; une ligne est atomique. */
 static int tech_split(char *line, char *out[], int maxf){
     int n=0; char *p=line;
     while (n<maxf){ out[n++]=p; char *t=strchr(p,'\t'); if(!t) break; *t=0; p=t+1; }
     return n;
 }
 static int tech_by_name(const char *t){
+    if(!t) return -1;
     for (int i=0;i<TECH_COUNT;i++){ const char *n=tech_name((TechId)i); if(n&&strcmp(n,t)==0) return i; }
     return -1;
 }
@@ -752,17 +755,34 @@ int tech_moddata_load(const char *path){
     if(!path||!*path) return -1;
     FILE *f=fopen(path,"r"); if(!f) return -1;
     char line[256]; int applied=0; char *fld[5];
+    int line_no=0;
     while(fgets(line,sizeof line,f)){
-        if(line[0]=='#') continue;
+        line_no++;
+        if(!scps_mod_line_complete(f,line)){ scps_mod_invalid(path,line_no,"ligne trop longue"); continue; }
+        char *first=scps_mod_first_nonspace(line);
+        if(!first||*first=='#'||*first=='\0') continue;
         char *nl=strpbrk(line,"\r\n"); if(nl)*nl=0;
-        int nf=tech_split(line,fld,5); if(nf<3) continue;
+        int nf=tech_split(first,fld,5); int valid=0;
         if(strcmp(fld[0],"basecost")==0){
-            int t=atoi(fld[1]); if(t<0||t>5) continue;
-            BASE_COST[t]=(float)atof(fld[2]); applied++;
-        } else if(strcmp(fld[0],"techbonus")==0 && nf>=4){
-            int i=tech_by_name(fld[1]); if(i<0) continue;
-            NODE_PROD_PCT[i]=(float)atof(fld[2]); NODE_EFF_PCT[i]=(float)atof(fld[3]); applied++;
+            int t=-1; float cost=0.f;
+            valid=(nf==3 && scps_mod_int(fld[1],&t) && t>=0 && t<6 &&
+                   scps_mod_float(fld[2],&cost) && cost>=0.f);
+            if(valid) BASE_COST[t]=cost;
+        } else if(strcmp(fld[0],"techbonus")==0){
+            int i=tech_by_name(nf>=2?fld[1]:NULL); float prod=0.f,eff=0.f;
+            valid=(nf==4 && i>=0 && i<TECH_COUNT &&
+                   scps_mod_float(fld[2],&prod) && scps_mod_float(fld[3],&eff) &&
+                   prod>=0.f && eff>=0.f);
+            if(valid){ NODE_PROD_PCT[i]=prod; NODE_EFF_PCT[i]=eff; }
+        } else if(strcmp(fld[0],"price")==0 || strcmp(fld[0],"recipe")==0 ||
+                  strcmp(fld[0],"unit")==0){
+            /* SCPS_MODS is deliberately shared by all three loaders. */
+            continue;
+        } else {
+            scps_mod_invalid(path,line_no,"enregistrement inconnu"); continue;
         }
+        if(!valid) scps_mod_invalid(path,line_no,"enregistrement/domaine");
+        else applied++;
     }
     fclose(f);
     if(applied>0) fprintf(stderr,"[mods] tech : %d valeur(s) surchargée(s) depuis %s.\n",applied,path);

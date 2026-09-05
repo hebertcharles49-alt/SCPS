@@ -4,8 +4,8 @@
 # `scps_api` + le binding C++ (godot-cpp), en UNE bibliothèque partagée chargée
 # par Godot. Le moteur n'est PAS modifié — on compile les mêmes .c que `make`.
 #
-# Prérequis : godot-cpp 4.x à côté (submodule ou clone) :
-#   cd godot && git clone -b 4.3 https://github.com/godotengine/godot-cpp
+# Prérequis : Godot 4.6.3 et godot-cpp compatible à côté (submodule ou clone) :
+#   cd godot && git clone -b 4.6 https://github.com/godotengine/godot-cpp
 #   scons            # debug   → project/bin/libscps.<platform>.template_debug.<arch>.<so|dll>
 #   scons target=template_release
 #

@@ -6,6 +6,7 @@
  * la simulation — l'aléa est dans la génération du monde, pas dans l'éco.
  */
 #include "scps_econ.h"
+#include "scps_modparse.h"
 #include "scps_modifier.h"   /* audit 2026-08-12 : les ruines rendent les dérives */
 #include "scps_math.h"    /* clampf partagé */
 #include "scps_tune.h"    /* Arc J : constantes de calibrage surchargeables (SCPS_TUNE) */
@@ -1004,9 +1005,9 @@ static float metab_group_mix(const PopGroup *g, float out[HERITAGE_COUNT]){
 float econ_country_savoir(const WorldEconomy *econ, int cid){
     if (!econ || cid<0) return 0.f;
     float decree_w = decree_savoir_w_mult(cid);   /* orientation ÉCOLES SOUTENUES */
-    float we=tune_f("SAVOIR_W_ELITE",SAVOIR_W_ELITE)*decree_w,
-          wb=tune_f("SAVOIR_W_BOURGEOIS",SAVOIR_W_BOURGEOIS)*decree_w*doctrine_key_mult(cid,"SAVOIR_W_BOURGEOIS"),
-          wl=tune_f("SAVOIR_W_LABORER",SAVOIR_W_LABORER)*decree_w*doctrine_key_mult(cid,"SAVOIR_W_LABORER");   /* doctrine Technologie : « Écoles de ville » */
+    float we=tune_f("SAVOIR_W_ELITE",0.01f)*decree_w,
+          wb=tune_f("SAVOIR_W_BOURGEOIS",0.005f)*decree_w*doctrine_key_mult(cid,"SAVOIR_W_BOURGEOIS"),
+          wl=tune_f("SAVOIR_W_LABORER",0.001f)*decree_w*doctrine_key_mult(cid,"SAVOIR_W_LABORER");   /* doctrine Technologie : « Écoles de ville » */
     double base=0.0, lib=0.0, satw=0.0, popw=0.0;
     for (int r=0;r<econ->n_regions;r++){
         const RegionEconomy *re=&econ->region[r];   /* strata & build : l'AGRÉGAT RÉGION est la vue fiable (cf. puissance commerciale / trade) */
@@ -2160,8 +2161,8 @@ void econ_init(WorldEconomy *e, const World *w) {
      * même site/jurisprudence que CS_TRADE_POOL ci-dessus.
      * Tunables à 0 = désactivés (registre J, scps_tune_list.h). */
     {
-        float kit_wood   = tune_f("SPAWN_KIT_WOOD",    50.0f);
-        float kit_food   = tune_f("SPAWN_KIT_FOOD",   100.0f);
+        float kit_wood   = tune_f("SPAWN_KIT_WOOD",    250.0f);
+        float kit_food   = tune_f("SPAWN_KIT_FOOD",   2000.0f);
         float kit_clay   = tune_f("SPAWN_KIT_CLAY",    20.0f);
         float kit_iron   = tune_f("SPAWN_KIT_IRON",    20.0f);
         float kit_stone  = tune_f("SPAWN_KIT_STONE",   20.0f);
@@ -5111,7 +5112,7 @@ void econ_tick(WorldEconomy *e, float dt) {
                 if (ref>EPS){
                     float wealth_ratio=(budget0/units)/ref;
                     elastic_mult=clampf(1.f + tune_f("CONSUME_ELASTIC_K",0.3f)*(wealth_ratio-1.f),
-                                        tune_f("CONSUME_ELASTIC_MIN",0.8f), tune_f("CONSUME_ELASTIC_MAX",1.2f));
+                                        tune_f("CONSUME_ELASTIC_MIN",0.8f), tune_f("CONSUME_ELASTIC_MAX",3.0f));
                 }
             }
             /* need_w/met_w : l'ANCIENNE échelle value-weighted (basket LEGACY, p1_on faux — ET
@@ -5395,7 +5396,7 @@ void econ_tick(WorldEconomy *e, float dt) {
          * via la MÊME entrée DÉMO. GATED → aucun effet sans religion (golden intact). */
         if (re->owner>=0 && religion_of_country(re->owner) >= 0)
             demo += religion_country_acc(re->owner)->ch[RC_POPGROWTH];
-        float r_base  = tune_f("POP_R_BASE", 0.01733f)*decree_pop_r_base_mult(re->owner);   /* ln2/40 = ×2/40ans plancher (vitalité) + orientations RATIONS/FOYERS */
+        float r_base  = tune_f("POP_R_BASE", 0.0198f)*decree_pop_r_base_mult(re->owner);   /* ln2/40 = ×2/40ans plancher (vitalité) + orientations RATIONS/FOYERS */
         float prosp_n = clampf((re->prosperity - tune_f("POP_PROSP_MID",0.2f))
                               / tune_f("POP_PROSP_SPAN",1.8f), 0.f, 1.f);   /* PIB/tête → [0,1] (bande haute ≈2.0) */
         float bonus   = tune_f("POP_PROSP_W",0.15f)*prosp_n
@@ -6002,7 +6003,7 @@ void econ_country_forecast(const WorldEconomy *e, int cid, float horizon, EconFo
     if (P0<1.0) return;
     out->pop=(float)P0; out->eff_cap=(float)effcap;
     float nm=(float)(nm_w/P0);
-    float r=tune_f("POP_R_BASE",0.01733f)*decree_pop_r_base_mult(cid)*(1.f+0.85f*nm);   /* taux annualisé approx (la fertilité moteur) + orientations RATIONS/FOYERS */
+    float r=tune_f("POP_R_BASE",0.0198f)*decree_pop_r_base_mult(cid)*(1.f+0.85f*nm);   /* taux annualisé approx (la fertilité moteur) + orientations RATIONS/FOYERS */
     if (effcap <= P0*1.05) r*=0.2f;                          /* proche du plafond → la croissance s'éteint */
     out->growth_r=r;
     double lnr=log(1.0+(r>1e-4f?r:1e-4f));
@@ -6825,7 +6826,7 @@ int econ_ip_colonize_tick(WorldEconomy *e){
     if (!e || !e->prov_adj) return 0;
     int founded=0;
     int nprov=e->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
-    float wpc_gate=tune_f("IP_COLON_WPC",8.0f);
+    float wpc_gate=tune_f("IP_COLON_WPC",4.0f);
     for (int ps=0; ps<nprov; ps++){
         ProvinceEconomy *src=&e->prov[ps];
         if (!src->active || !src->colonized || src->owner<0) continue;
@@ -7249,18 +7250,20 @@ bool econ_prodcap_load(FILE *f){
  * OPT-IN (l'app charge via SCPS_MODS). SANS fichier ⇒ valeurs compilées IDENTIQUES
  * ⇒ golden/déterminisme INTACTS. Format TAG-keyed, TAB-séparé (les noms ont des
  * espaces) : « price<TAB>ressource<TAB>base<TAB>yield » · « recipe<TAB>bâtiment<TAB>
- * labor<TAB>qout ». '#'/vide ignorés ; nom inconnu ignoré (tolérant). En fin de
- * fichier : RECIPE/BASE_PRICE/EXTRACT_YIELD tous définis. */
+ * labor<TAB>qout ». Une ligne price à trois champs conserve la compatibilité
+ * historique et ne modifie que le prix ; les lignes invalides sont signalées. */
 static int moddata_split(char *line, char *out[], int maxf){   /* split TAB en place (1 copie/module) */
     int n=0; char *p=line;
     while (n<maxf){ out[n++]=p; char *t=strchr(p,'\t'); if(!t) break; *t=0; p=t+1; }
     return n;
 }
 static int econ_res_by_name(const char *t){
+    if(!t) return -1;
     for (int r=0;r<RES_COUNT;r++){ const char *n=resource_name((Resource)r); if(n&&strcmp(n,t)==0) return r; }
     return -1;
 }
 static int econ_bld_by_name(const char *t){
+    if(!t) return -1;
     for (int b=0;b<BLD_TYPE_COUNT;b++){ const char *n=building_name((BuildingType)b); if(n&&strcmp(n,t)==0) return b; }
     return -1;
 }
@@ -7280,19 +7283,38 @@ int econ_moddata_load(const char *path){
     if(!path||!*path) return -1;
     FILE *f=fopen(path,"r"); if(!f) return -1;
     char line[256]; int applied=0; char *fld[5];
+    int line_no=0;
     while(fgets(line,sizeof line,f)){
-        if(line[0]=='#') continue;
+        line_no++;
+        if(!scps_mod_line_complete(f,line)){ scps_mod_invalid(path,line_no,"ligne trop longue"); continue; }
+        char *first=scps_mod_first_nonspace(line);
+        if(!first||*first=='#'||*first=='\0') continue;
         char *nl=strpbrk(line,"\r\n"); if(nl)*nl=0;
-        int nf=moddata_split(line,fld,5); if(nf<3) continue;
+        int nf=moddata_split(first,fld,5);
         if(strcmp(fld[0],"price")==0){
-            int r=econ_res_by_name(fld[1]); if(r<0) continue;
-            BASE_PRICE[r]=(float)atof(fld[2]);
-            if(nf>=4) EXTRACT_YIELD[r]=(float)atof(fld[3]);
+            int r=econ_res_by_name(nf>=2?fld[1]:NULL); float price=0.f,yield=0.f;
+            int valid=((nf==3 || nf==4) && r>RES_NONE && r<RES_COUNT &&
+                       scps_mod_float(fld[2],&price) && price>=0.f);
+            if(nf==4) valid=valid && scps_mod_float(fld[3],&yield) && yield>=0.f;
+            /* Legacy price-only rows remain valid and retain their current
+             * extraction yield; four-field rows update both values atomically. */
+            if(!valid){ scps_mod_invalid(path,line_no,"prix/domaine"); continue; }
+            BASE_PRICE[r]=price; if(nf==4) EXTRACT_YIELD[r]=yield;
             applied++;
-        } else if(strcmp(fld[0],"recipe")==0 && nf>=4){
-            int b=econ_bld_by_name(fld[1]); if(b<0) continue;
-            RECIPE[b].labor=(float)atof(fld[2]); RECIPE[b].qout=(float)atof(fld[3]);
+        } else if(strcmp(fld[0],"recipe")==0){
+            int b=econ_bld_by_name(nf>=2?fld[1]:NULL); float labor=0.f,qout=0.f;
+            int valid=(nf==4 && b>=0 && b<BLD_TYPE_COUNT &&
+                       scps_mod_float(fld[2],&labor) && scps_mod_float(fld[3],&qout) &&
+                       labor>=0.f && qout>=0.f);
+            if(!valid){ scps_mod_invalid(path,line_no,"recette/domaine"); continue; }
+            RECIPE[b].labor=labor; RECIPE[b].qout=qout;
             applied++;
+        } else if(strcmp(fld[0],"unit")==0 || strcmp(fld[0],"basecost")==0 ||
+                  strcmp(fld[0],"techbonus")==0){
+            /* SCPS_MODS is deliberately shared by all three loaders. */
+            continue;
+        } else {
+            scps_mod_invalid(path,line_no,"enregistrement inconnu");
         }
     }
     fclose(f);

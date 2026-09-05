@@ -46,11 +46,11 @@ colonne économique reste byte-identique), et `scps_readout.c` traduit en mots.
 
 ## Bâtir
 
-Prérequis : `scons`, un compilo C/C++, et **godot-cpp 4.x** à côté :
+Prérequis : `scons`, un compilo C/C++, et **Godot 4.6.3 + godot-cpp 4.6** à côté :
 
 ```bash
 cd godot
-git clone --depth 1 -b 4.3 https://github.com/godotengine/godot-cpp
+git clone --depth 1 -b 4.6 https://github.com/godotengine/godot-cpp
 scons -j$(nproc)                  # debug   → project/bin/libscps.<plateforme>.template_debug.<arch>.so
 scons target=template_release     # release
 ```
@@ -62,7 +62,7 @@ moteur (la liste `CHRONICLE_OBJS` sans chronicle/viewer, + `scps_render` +
 ## Lancer
 
 ```bash
-godot --path project          # ou ouvrir project/ dans l'éditeur Godot 4.3+
+godot --path project          # ou ouvrir project/ dans l'éditeur Godot 4.6.3
 ```
 
 Au lancement (`autoload/sim.gd` → `main/main.gd`) : `Sim` génère le monde
@@ -75,7 +75,7 @@ pas bâtie, `Sim` le dit dans la console (pas de crash).
 ## État
 
 - ✅ **façade C `scps_api`** testée sans Godot : `make scps_api_demo` (9/9, REPRODUCTIBLE).
-- ✅ **binding** C++ compile contre godot-cpp 4.3 ; `libscps.so` lie moteur+façade+binding.
+- ✅ **binding** C++ compile contre godot-cpp 4.6 / Godot 4.6.3 ; `libscps.so` lie moteur+façade+binding.
 - ✅ **Phase 1 (carte vivante)** : autoload `Sim`, `MapView` (terrain + shader +
   caméra + modes de carte), `Topbar`.
 - ✅ **Phase 2 (lire le monde)** : clic → `ProvincePanel` / `CountryPanel` (la

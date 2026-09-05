@@ -648,6 +648,10 @@ int missions_seal(MissionsState *ms, World *w, WorldEconomy *econ,
     if (rung != d->rung) return 0;                       /* on ne scelle QUE l'échelon courant */
     if (!d->ready) return 0;                             /* la condition n'est pas remplie */
     if (!country_alive(econ,w,cid)) return 0;
+    /* `ready` is a clôture cache.  The world may have changed between the
+     * last missions_tick and this player action; re-read the same state
+     * predicate before any pivot debit or coordinate reward. */
+    if (!sol_condition(w,econ,dp,d,cid)) return 0;
 
     if (dessein_is_pivot(rung)){
         /* LE PIVOT — irréversible, l'autre voie s'éteint. Prix UNIFORME

@@ -27,7 +27,8 @@ typedef enum { LAB_LABORER=0, LAB_ARTISAN, LAB_ELITE, LAB_CLASS_COUNT } LaborCla
  * LOT T (2026-07-07) — SOURCE UNIQUE du tier par POP pour TOUT le moteur (readout,
  * façade/viewer, T-gate ai.c, agency) : T1 <2000 (libre, hameau de colonisation) ·
  * T2 ≥2000 · T3 ≥3000 · T4 ≥4000 · T5 ≥5000 · T6 ≥8000 · T7 ≥10000 (seuils T2-T7
- * dialables, registre J : TIER2_POP…TIER7_POP). ⚠ GRAIN : cette fonction ne sait
+ * dialables, registre J : TIER2_POP…TIER7_POP ; le cache se rafraîchit quand la
+ * révision du registre change). ⚠ GRAIN : cette fonction ne sait
  * PAS elle-même si `pop` est une province ou une région — chaque appelant choisit
  * (cf. commentaires aux sites d'appel : les T-gates de construction (ai.c, agency)
  * lisent la PROVINCE-hôte, charte PROVINCE_MODEL.md ; quelques lecteurs historiques
