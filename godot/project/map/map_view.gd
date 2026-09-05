@@ -52,6 +52,7 @@ var _selected_prov := -1
 var _army_selected := false     ## MODE MARCHE : le pion du joueur est sélectionné, le prochain clic ordonne la destination
 var _selected_corps: Array[int] = []
 var _move_preview: Dictionary = {}
+var _engaged_routes: Dictionary = {} ## corps joueur → segment réellement engagé [région, prochaine étape]
 var _preview_region := -2
 var _raid_mode := false          ## sous-mode PILLAGE : le prochain clic pille la province cible au lieu de marcher
 var _press_pos := Vector2.ZERO
@@ -130,9 +131,41 @@ func globe_to_screen(_wx: float, _wy: float, _lift: float = 0.0) -> Dictionary:
 func _on_generated() -> void:
 	_himg = Sim.world.layer_image(LAYER_HEIGHT)
 	focus_player()   # nouveau monde → cadrer d'emblée sur la capitale du JOUEUR (« je joue qui / où »)
+	_refresh_engaged_routes()
 
 func _on_ticked(_year: int) -> void:
-	pass
+	_refresh_engaged_routes()
+
+## Publie seulement la portion de trajet que le moteur a effectivement engagée.
+## `corps_route()` ne demande aucun recalcul : il relit le segment loc → next.
+## L'overlay ne dessine jamais next → dest comme si les étapes intermédiaires
+## étaient connues.
+func _refresh_engaged_routes() -> void:
+	if _overlay == null:
+		return
+	var fresh := {}
+	if Sim.world == null or not Sim.world.has_method("corps_ids"):
+		_engaged_routes = fresh
+		_overlay.engaged_routes = _engaged_routes.duplicate(true)
+		_overlay.queue_redraw()
+		return
+	var me := int(Sim.world.player()) if Sim.world.has_method("player") else -1
+	if me >= 0:
+		for raw_id in Sim.world.corps_ids(me):
+			var id := int(raw_id)
+			var info: Dictionary = Sim.world.corps_info(id) if Sim.world.has_method("corps_info") else {}
+			if not bool(info.get("active", false)):
+				continue
+			if not Sim.world.has_method("corps_route"):
+				continue
+			var route: Array = Sim.world.corps_route(id)
+			if route.size() >= 2:
+				# Le premier couple est l'unique segment autoritaire du déplacement.
+				fresh[id] = [int(route[0]), int(route[1])]
+	_engaged_routes = fresh
+	if _overlay != null:
+		_overlay.engaged_routes = _engaged_routes.duplicate(true)
+		_overlay.queue_redraw()
 
 func set_mode(m: int) -> void:
 	mode = m
@@ -353,6 +386,7 @@ func _issue_selected_move(dreg: int, prov: int = -1) -> int:
 		army_order_feedback.emit("Ordre de marche émis vers %s pour %d corps." % [destination, issued], true)
 	else:
 		army_order_feedback.emit("Destination invalide ou corps indisponible.", false)
+	_refresh_engaged_routes()
 	return issued
 
 func _update_move_preview() -> void:

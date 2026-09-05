@@ -32,7 +32,7 @@ BENCHES_FULL=(
   events_demo structural_demo forks_demo prosperity_demo credit_demo cap_demo
   endgame_demo audit_eco lang_demo scps_api_demo save_contract_demo culture_demo navy_demo
   religion_demo trade_demo command_feedback_demo api_cache_demo save_failure_demo player_contract_demo
-  verb_atomicity_demo tune_contract_demo moddata_contract_demo
+  verb_atomicity_demo tune_contract_demo moddata_contract_demo campaign_cadence_demo
 )
 
 # Le sous-ensemble RAPIDE : la colonne vertébrale (worldgen/readout/éco/IA),

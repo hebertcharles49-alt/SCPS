@@ -934,6 +934,17 @@ void scps_corps_info(ScpsSim *s, int id, ScpsArmyInfo *out){
     out->taken=a->taken; out->legs=a->legs; out->battles=a->battles;
 }
 
+int scps_corps_route(ScpsSim *s, int id, int *path, int max_path){
+    if(!s || !s->ready || !path || max_path<=0) return 0;
+    const FieldArmy *a=campaign_corps_const(s->sim.camp,id);
+    if(!a || !a->active || a->loc<0 || a->loc>=s->sim.econ->n_regions) return 0;
+    int n=0;
+    path[n++]=a->loc;                         /* position authoritative du corps */
+    if(a->next>=0 && a->next<s->sim.econ->n_regions && n<max_path && a->next!=path[n-1])
+        path[n++]=a->next;                    /* seul segment suivant réellement mémorisé */
+    return n;
+}
+
 int scps_corps_move_preview(ScpsSim *s, int id, int target, ScpsMovePreview *out,
                            int *path, int max_path){
     if(!out)return 0;
@@ -2733,6 +2744,7 @@ int scps_diplo_context(ScpsSim *s, int target, ScpsDiploContext *out){
     memset(out,0,sizeof *out);
     out->target=target; out->contract="";
     out->route_a=-1; out->route_b=-1; out->route_a_name=""; out->route_b_name="";
+    out->route_days_done=0; out->route_days_total=0;
     out->target_capital_province=-1; out->target_capital_region=-1;
     out->target_capital_name="";
     if(!s || !s->ready)return 0;
@@ -2759,6 +2771,7 @@ int scps_diplo_context(ScpsSim *s, int target, ScpsDiploContext *out){
     }
     out->trade_value=intertrade_pair_value(p,target);
     float best=-1.f;
+    const TradeRoute *best_route=NULL, *formation_route=NULL;
     for(int i=0;i<s->sim.rn->n;i++){
         const TradeRoute *r=&s->sim.rn->route[i];
         if(r->ra<0||r->ra>=s->sim.econ->n_regions||r->rb<0||r->rb>=s->sim.econ->n_regions)continue;
@@ -2766,15 +2779,27 @@ int scps_diplo_context(ScpsSim *s, int target, ScpsDiploContext *out){
         if(!((a==p&&b==target)||(a==target&&b==p)))continue;
         out->shared_routes++;
         if(r->open)out->open_routes++;
+        if(!r->open && !formation_route) formation_route=r;
         float score=(r->open?100000.f:0.f)+r->yield;
         if(score<=best)continue;
-        best=score; out->route_a=r->ra; out->route_b=r->rb;
-        out->route_maritime=r->maritime?1:0; out->route_open=r->open?1:0;
-        out->route_sea_days=r->sea_days; out->route_yield=r->yield;
+        best=score; best_route=r;
+    }
+    /* Une liaison en formation est la progression utile à la fiche relation.
+     * Lorsqu’il en existe une, elle passe devant une ancienne liaison ouverte ;
+     * shared_routes/open_routes restent les compteurs complets du réseau. */
+    const TradeRoute *chosen=formation_route?formation_route:best_route;
+    if(chosen){
+        out->route_a=chosen->ra; out->route_b=chosen->rb;
+        out->route_maritime=chosen->maritime?1:0; out->route_open=chosen->open?1:0;
+        out->route_days_total=chosen->days_total>0?chosen->days_total:0;
+        out->route_days_done=chosen->days_done<0?0:chosen->days_done;
+        if(out->route_days_done>out->route_days_total)
+            out->route_days_done=out->route_days_total;
+        out->route_sea_days=chosen->sea_days; out->route_yield=chosen->yield;
         /* W2-7 : LE NOM DU LIEU, jamais son index ni le stub « Prov.N » — scps_region_label
          * rend le toponyme de la ville (ou le nom de province, ou le mot de repli). */
-        out->route_a_name=scps_region_label(s,r->ra);
-        out->route_b_name=scps_region_label(s,r->rb);
+        out->route_a_name=scps_region_label(s,chosen->ra);
+        out->route_b_name=scps_region_label(s,chosen->rb);
     }
     int cp=s->w->country[target].capital_prov;
     if(cp>=0&&cp<s->w->n_provinces){

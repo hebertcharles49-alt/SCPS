@@ -87,6 +87,128 @@ int main(int argc,char**argv){
     diplo_declare_war(&dp, A, B);
     int owner_before = econ->region[target].owner;
 
+    /* ═══ 0. ARRIVÉE NEUTRE & FIN DE GUERRE ============================= */
+    printf("\n── 0. Une région neutre n'est pas assiégée ; la paix arrête un siège ──\n");
+    /* La frontière A/B éprouvée ci-dessus fournit déjà une cible marchable :
+     * on la garde, mais sans déclarer la guerre, pour tester l'arrivée diplomatiquement
+     * neutre. Il ne faut pas transformer l'absence d'une autre région neutre en succès. */
+    static DiploState neutral_dp; diplo_init(&neutral_dp);
+    campaign_init(camp2,w,econ);
+    ArmyState neutral_force=make_force(3,0,0);
+    bool neutral_order=campaign_order(camp2,econ,A,frontier,target,&neutral_force);
+    int neutral_arrived=0;
+    for(int it=0; neutral_order && it<800 && !neutral_arrived; it++){
+        uint32_t rng=0xD00u + (uint32_t)it*2654435761u;
+        campaign_tick(camp2,w,econ,&neutral_dp,&rng,5.f);
+        if(campaign_location(camp2,A)==target) neutral_arrived=1;
+    }
+    ok("l'arrivée diplomatiquement neutre reste au repos, sans siège ni prise",
+       neutral_order && neutral_arrived && campaign_phase(camp2,A)==FA_IDLE
+       && campaign_taken(camp2,A)==0);
+
+    campaign_init(camp2,w,econ);
+    ArmyState neutral_home=make_force(1,0,0);
+    bool neutral_same=campaign_order(camp2,econ,A,target,target,&neutral_home);
+    uint32_t neutral_rng=0x4E55u;
+    campaign_tick(camp2,w,econ,&neutral_dp,&neutral_rng,1.f);
+    ok("un ordre neutre sur place reste immédiatement au repos",
+       neutral_same && campaign_phase(camp2,A)==FA_IDLE
+       && campaign_location(camp2,A)==target && campaign_taken(camp2,A)==0);
+
+    /* Une cible ennemie déjà tenue par A ne doit pas être re-sieégée :
+     * l'occupation est une sortie de siège, même si la guerre continue. */
+    static DiploState held_dp; diplo_init(&held_dp); diplo_declare_war(&held_dp,A,B);
+    bool held= diplo_occupy(&held_dp,econ,A,target);
+    campaign_init(camp2,w,econ);
+    ArmyState held_force=make_force(8,5,2);
+    bool held_order=campaign_order(camp2,econ,A,frontier,target,&held_force);
+    int held_arrived=0;
+    for(int it=0; held_order && it<800 && !held_arrived; it++){
+        uint32_t rng=0x0CCu + (uint32_t)it*65537u;
+        campaign_tick(camp2,w,econ,&held_dp,&rng,5.f);
+        held_arrived=(campaign_location(camp2,A)==target);
+    }
+    bool held_redirect=held_arrived && campaign_redirect_corps(camp2,econ,&held_dp,A,target);
+    ok("une région ennemie déjà occupée par nous reste au repos à l'arrivée",
+       held && held_order && held_arrived && campaign_phase(camp2,A)==FA_IDLE
+       && campaign_taken(camp2,A)==0);
+    ok("une redirection sur notre occupation ne recrée pas de siège",
+       held_redirect && campaign_phase(camp2,A)==FA_IDLE
+       && campaign_taken(camp2,A)==0);
+
+    static DiploState peace_dp; diplo_init(&peace_dp); diplo_declare_war(&peace_dp,A,B);
+    campaign_init(camp2,w,econ);
+    ArmyState peace_force=make_force(22,16,9);
+    bool peace_order=campaign_order(camp2,econ,A,frontier,target,&peace_force);
+    int peace_siege=0;
+    for(int it=0; peace_order && it<800 && !peace_siege; it++){
+        uint32_t rng=0xBEEFu + (uint32_t)it*40503u;
+        campaign_tick(camp2,w,econ,&peace_dp,&rng,5.f);
+        peace_siege=campaign_phase(camp2,A)==FA_SIEGE;
+    }
+    diplo_make_peace(&peace_dp,A,B);
+    uint32_t peace_rng=0xA11u;
+    campaign_tick(camp2,w,econ,&peace_dp,&peace_rng,1.f);
+    ok("la paix en plein siège annule la phase sans prise",
+       peace_siege && diplo_status(&peace_dp,A,B)!=DIPLO_WAR
+       && campaign_phase(camp2,A)==FA_IDLE && campaign_taken(camp2,A)==0);
+
+    static DiploState war_dp; diplo_init(&war_dp); diplo_declare_war(&war_dp,A,B);
+    campaign_init(camp2,w,econ);
+    ArmyState war_force=make_force(22,16,9);
+    bool war_order=campaign_order(camp2,econ,A,frontier,target,&war_force);
+    int war_siege=0;
+    for(int it=0; war_order && it<800 && !war_siege; it++){
+        uint32_t rng=0xCAFEu + (uint32_t)it*40503u;
+        campaign_tick(camp2,w,econ,&war_dp,&rng,5.f);
+        war_siege=campaign_phase(camp2,A)==FA_SIEGE;
+    }
+    float war_left=camp2->army[A].days_left;
+    uint32_t war_rng=0xA12u;
+    campaign_tick(camp2,w,econ,&war_dp,&war_rng,1.f);
+    ok("la guerre maintenue laisse le siège actif",
+       war_siege && diplo_status(&war_dp,A,B)==DIPLO_WAR
+       && campaign_phase(camp2,A)==FA_SIEGE && camp2->army[A].days_left<war_left);
+
+    /* Fixture de libération réelle : la frontière appartient à A, mais B l'occupe.
+     * Le corps A doit d'abord reprendre la place en guerre ; le règlement de
+     * l'occupation reste ensuite une opération diplomatique publique. */
+    static DiploState liberate_dp; diplo_init(&liberate_dp); diplo_declare_war(&liberate_dp,A,B);
+    bool occupied=diplo_occupy(&liberate_dp,econ,B,frontier);
+    campaign_init(camp2,w,econ);
+    ArmyState liberate_force=make_force(20,15,8);
+    bool liberate_order=campaign_order(camp2,econ,A,frontier,frontier,&liberate_force);
+    bool liberate_siege=liberate_order
+        && campaign_redirect_corps(camp2,econ,&liberate_dp,A,frontier)
+        && campaign_phase(camp2,A)==FA_SIEGE;
+    int liberate_taken=0;
+    for(int it=0; liberate_siege && it<800 && !liberate_taken; it++){
+        uint32_t rng=0x1BEEFu + (uint32_t)it*40503u;
+        campaign_tick(camp2,w,econ,&liberate_dp,&rng,5.f);
+        liberate_taken=campaign_taken(camp2,A)>0 && camp2->army[A].taken_region==frontier;
+    }
+    ok("en guerre, le corps arrivé sur notre terre occupée assiège l'occupant",
+       occupied && liberate_siege);
+    ok("le siège abouti marque la région à libérer",
+       liberate_taken && camp2->army[A].taken_region==frontier);
+    diplo_liberate(&liberate_dp,econ,frontier);
+    ok("la libération nettoie l'occupation et conserve la guerre",
+       liberate_taken && liberate_dp.occupier[frontier]<0
+       && econ->region[frontier].owner==A && diplo_status(&liberate_dp,A,B)==DIPLO_WAR);
+
+    static DiploState peace_occupied_dp; diplo_init(&peace_occupied_dp);
+    diplo_declare_war(&peace_occupied_dp,A,B);
+    bool peace_occupied=diplo_occupy(&peace_occupied_dp,econ,B,frontier);
+    diplo_make_peace(&peace_occupied_dp,A,B);
+    campaign_init(camp2,w,econ);
+    ArmyState peace_home=make_force(20,15,8);
+    bool peace_home_order=campaign_order(camp2,econ,A,frontier,frontier,&peace_home);
+    bool peace_home_idle=peace_home_order
+        && campaign_redirect_corps(camp2,econ,&peace_occupied_dp,A,frontier)
+        && campaign_phase(camp2,A)==FA_IDLE;
+    ok("en paix, la même terre reste au repos sans réouvrir de siège",
+       peace_occupied && peace_home_idle && campaign_taken(camp2,A)==0);
+
     /* ═══ 1. ORDRE & MARCHE ═══════════════════════════════════════════ */
     printf("\n── 1. La force part de la frontière et MARCHE vers la région ennemie ──\n");
     campaign_init(camp, w, econ);
@@ -110,6 +232,42 @@ int main(int argc,char**argv){
     ok("l'aperçu est une LECTURE PURE : il ne modifie pas l'ordre en cours",
        camp->army[A].next==next_before && camp->army[A].dest==dest_before
        && camp->army[A].days_left==left_before);
+
+    /* Le code d'issue est public : 1 = stationner en paix, 0 = déjà sur place,
+     * 2 = siège réellement autorisé par la guerre. */
+    static Campaign preview_camp; static DiploState preview_peace, preview_war;
+    int preview_route[SCPS_MAX_REG], preview_n=0, preview_reason2=-1, preview_arrival2=-1;
+    float preview_days2=0.f;
+    diplo_init(&preview_peace);
+    campaign_init(&preview_camp,w,econ);
+    ArmyState preview_force=make_force(4,3,1);
+    bool preview_order=campaign_order(&preview_camp,econ,A,frontier,target,&preview_force);
+    preview_n=campaign_preview_corps(&preview_camp,econ,&preview_peace,A,target,
+                                     preview_route,SCPS_MAX_REG,&preview_days2,
+                                     &preview_reason2,&preview_arrival2);
+    ok("l'aperçu d'une cible ennemie en paix annonce le stationnement (1)",
+       preview_order && preview_n>=2 && preview_reason2==0 && preview_arrival2==1);
+
+    campaign_init(&preview_camp,w,econ);
+    ArmyState preview_home=make_force(4,3,1);
+    bool preview_same=campaign_order(&preview_camp,econ,A,target,target,&preview_home);
+    preview_reason2=-1; preview_arrival2=-1;
+    preview_n=campaign_preview_corps(&preview_camp,econ,&preview_peace,A,target,
+                                     preview_route,SCPS_MAX_REG,&preview_days2,
+                                     &preview_reason2,&preview_arrival2);
+    ok("l'aperçu sur la région courante annonce le stationnement (0)",
+       preview_same && preview_n==1 && preview_reason2==0 && preview_arrival2==0);
+
+    diplo_init(&preview_war); diplo_declare_war(&preview_war,A,B);
+    campaign_init(&preview_camp,w,econ);
+    ArmyState preview_attack=make_force(4,3,1);
+    bool preview_war_order=campaign_order(&preview_camp,econ,A,frontier,target,&preview_attack);
+    preview_reason2=-1; preview_arrival2=-1;
+    preview_n=campaign_preview_corps(&preview_camp,econ,&preview_war,A,target,
+                                     preview_route,SCPS_MAX_REG,&preview_days2,
+                                     &preview_reason2,&preview_arrival2);
+    ok("l'aperçu d'une cible ennemie en guerre annonce le siège (2)",
+       preview_war_order && preview_n>=2 && preview_reason2==0 && preview_arrival2==2);
     long u0 = campaign_units(camp,A);
 
     /* ═══ 2. ARRIVÉE → SIÈGE → RÉDUCTION ══════════════════════════════ */

@@ -126,8 +126,23 @@ int regions_of(const WorldEconomy *e, int c){
     int n=0; for (int r=0;r<e->n_regions;r++) if (e->region[r].owner==c) n++; return n;
 }
 
+static bool sim_campaign_defense_busy(const Sim *s, const FieldArmy *a, int owner) {
+    if (!a || !a->active) return true;
+    if (a->dest>=0 || a->phase==FA_SIEGE) return true;
+    if (a->loc<0 || a->loc>=s->econ->n_regions || s->econ->region[a->loc].owner!=owner) return false;
+    /* Une unité arrivée sur son sol reste affectée tant qu'un siège ennemi y est
+     * actif, même si son propre corps n'a pas encore reçu `taken_region`. */
+    for (int k=0;k<CAMPAIGN_ARMY_CAP;k++){
+        const FieldArmy *en=&s->camp->army[k];
+        if (!en->active || en->phase!=FA_SIEGE || en->owner==owner || en->loc!=a->loc) continue;
+        if (diplo_status(s->dp,owner,en->owner)==DIPLO_WAR) return true;
+    }
+    return false;
+}
+
 static void sim_campaign_defense(Sim *s, World *w) {
     (void)w;
+    bool assigned[CAMPAIGN_ARMY_CAP]; memset(assigned,0,sizeof assigned);
     for (int k=0; k<CAMPAIGN_ARMY_CAP; k++) {
         const FieldArmy *en=&s->camp->army[k];
         if (!en->active || en->phase!=FA_SIEGE) continue;
@@ -136,13 +151,23 @@ static void sim_campaign_defense(Sim *s, World *w) {
         if (def<0 || def>=SCPS_MAX_COUNTRY || def==en->owner) continue;
         if (def==s->human_player) continue;   /* la sortie défensive du JOUEUR est SA décision (gate IA-off ; human=-1 ⇒ no-op chronique) */
         if (diplo_status(s->dp,def,en->owner)!=DIPLO_WAR) continue;
+        bool covered=false;
+        for (int n=0;n<campaign_corps_count(s->camp,def);n++){
+            int id=campaign_corps_id_at(s->camp,def,n); const FieldArmy *a=campaign_corps_const(s->camp,id);
+            if (a && a->active && a->broken_days<=0 && a->phase<FA_EMBARK
+                && (a->loc==en->loc || a->dest==en->loc)){ covered=true; break; }
+        }
+        if (covered) continue;  /* une menace déjà couverte ne recrute pas un doublon */
         int responder=-1;
         for(int n=0;n<campaign_corps_count(s->camp,def);n++){
             int id=campaign_corps_id_at(s->camp,def,n); const FieldArmy *a=campaign_corps_const(s->camp,id);
-            if(a && a->phase!=FA_BATTLE && a->phase<FA_EMBARK && a->broken_days<=0){responder=id;break;}
+            if(a && id>=0 && id<CAMPAIGN_ARMY_CAP && !assigned[id]
+               && a->phase!=FA_BATTLE && a->phase<FA_EMBARK && a->broken_days<=0
+               && !sim_campaign_defense_busy(s,a,def)){responder=id;break;}
         }
         if (responder>=0){
-            campaign_redirect_corps(s->camp,s->econ,s->dp,responder,en->loc);
+            if (campaign_redirect_corps(s->camp,s->econ,s->dp,responder,en->loc))
+                assigned[responder]=true;
         } else if (warhost_units(s->host,def)>0){
             campaign_raise(s->camp,s->econ,def,en->loc,en->loc,&s->host->army[def],warhost_units(s->host,def));
         }
@@ -265,81 +290,7 @@ static int battle_loss_pack(const Campaign *c, int slot, int player){
     return (int32_t)packed;
 }
 
-static void sim_campaign_year(Sim *s, World *w) {
-    /* L1 — la campagne RESPIRE AU MOIS : la défense intercepte en route, la récolte
-     * tombe au fil de l'an et l'attaquant re-cible sans attendre janvier. (Le test
-     * de paires de campaign_tick s'évalue désormais 12×/an — deux armées qui se
-     * croisent se TROUVENT ; l'ordre frais de projection reste annuel.) */
-    int hp_fb = s->human_player;
-    for (int month=0; month<12; month++){
-        if (month==0) sim_campaign_orders(s, w);            /* les ordres frais : annuels (inchangé) */
-        sim_campaign_defense(s, w);                          /* L1 : la défense marche À LA RENCONTRE */
-        /* Les convois FA_EMBARK/FA_SAIL n'existent que dans CETTE boucle de campagne : les
-         * intercepter dans le bloc mensuel de sim_day arrivait douze fois AVANT
-         * sim_campaign_year, puis campaign_tick les résolvait sans jamais exposer
-         * leur phase de voile à la marine. La chasse doit donc précéder le tick qui
-         * fait avancer/résout le convoi, à la même maille mensuelle. */
-        navy_interception_tick(s->navy, s->camp, w, s->econ, s->dp, &s->camp_rng);
-        int was_active[CAMPAIGN_MAX_BATTLES], was_days[CAMPAIGN_MAX_BATTLES];
-        int was_a[CAMPAIGN_MAX_BATTLES], was_b[CAMPAIGN_MAX_BATTLES];
-        for(int k=0;k<CAMPAIGN_MAX_BATTLES;k++){
-            was_active[k]=s->camp->battle[k].active?1:0; was_days[k]=s->camp->battle[k].days;
-            was_a[k]=s->camp->battle[k].a; was_b[k]=s->camp->battle[k].b;
-        }
-        campaign_tick(s->camp, w, s->econ, s->dp, &s->camp_rng, 365.f/12.f);
-        if (hp_fb>=0 && hp_fb<SCPS_MAX_COUNTRY){
-            for(int k=0;k<CAMPAIGN_MAX_BATTLES;k++){
-                const FieldBattle *bt=&s->camp->battle[k];
-                bool changed=was_active[k] || bt->days!=was_days[k] || bt->a!=was_a[k] || bt->b!=was_b[k];
-                if(!changed || bt->active || bt->a<0 || bt->b<0)continue;
-                int oa=s->camp->army[bt->a].owner, ob=s->camp->army[bt->b].owner;
-                if(oa!=hp_fb && ob!=hp_fb)continue;
-                int mine=(oa==hp_fb)?bt->a:bt->b, foe=(oa==hp_fb)?ob:oa;
-                const FieldArmy *pa=&s->camp->army[mine];
-                bool won=pa->active && pa->broken_days<=0;
-                const FieldArmy *foe_army=&s->camp->army[(oa==hp_fb)?bt->b:bt->a];
-                bool draw=pa->active && foe_army->active && pa->broken_days==15 && foe_army->broken_days==15;
-                feed_push(draw?FEED_BATTLE_DRAW:(won?FEED_BATTLE_WON:FEED_BATTLE_LOST),hp_fb,foe,bt->loc,
-                          battle_loss_pack(s->camp,k,hp_fb));
-            }
-        }
-        campaign_release_transports(s->camp, s->navy);       /* les transports rentrent à la rade */
-        /* AUDIT 2026-08-12 — LES MORTS MEURENT : le registre des paquets tués
-         * (campagne, par pays × classe) se draine vers les VRAIS gens — la strate
-         * de la capitale paie (écho des équipages navals/rebelles, qui mouraient
-         * déjà), et l'affectation se rend (le recrutement respire à nouveau).
-         * WAR_DEATHS_REAL=0 : l'hier exact (les morts redeviennent des mots). */
-        { bool real = tune_f("WAR_DEATHS_REAL",1.f)>0.f;
-          for (int cd=0;cd<w->n_countries && cd<SCPS_MAX_COUNTRY;cd++)
-            for (int cl=0;cl<3;cl++){
-              long pend=s->camp->dead_class_pending[cd][cl];
-              if (pend<=0) continue;
-              s->camp->dead_class_pending[cd][cl]=0;
-              long souls=pend*100;   /* POP_PER_UNIT */
-              /* AUDIT 2026-09-02 : l'affectation se rend DÉSORMAIS au registre du CORPS
-               * qui perd les hommes (kill_packets, scps_campaign.c) — pas ici, sur
-               * host->army[cd], qui ne les portait pas. Ce site ne fait plus QUE tuer les
-               * gens pour de vrai. */
-              if (!real) continue;
-              int cp=w->country[cd].capital_prov;
-              int cr=(cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
-              if (cr>=0) econ_region_pop_add(s->econ, cr, cl, -(float)souls);
-            } }
-        /* LOT 4 — LE PILLAGE DE SIÈGE : chaque force EN SIÈGE (occupe/assiège une
-         * région qui n'est pas la sienne) détourne CE MOIS une fraction de la
-         * production locale vers SA capitale (diplo_siege_loot, distinct du butin
-         * final au règlement — cf. scps_diplo.c). Lecture seule sur la propriété :
-         * la conquête abstraite (diplo_settle) reste la SEULE à faire basculer un
-         * territoire. */
-        for (int i=0; i<CAMPAIGN_ARMY_CAP; i++){
-            const FieldArmy *a=&s->camp->army[i];
-            if (!a->active || a->phase!=FA_SIEGE) continue;
-            if (a->loc<0 || a->loc>=s->econ->n_regions) continue;
-            if (s->econ->region[a->loc].owner==a->owner) continue;   /* on assiège CHEZ SOI (libération) : pas de pillage */
-            int cp=w->country[a->owner].capital_prov;
-            int crr=(cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
-            g_siege_loot_total += (double)diplo_siege_loot(s->econ, a->loc, crr);
-        }
+static void sim_campaign_harvest(Sim *s, World *w) {
         /* RÉCOLTE (couche sim) : chaque siège mené à terme (taken_region) pose une
          * OCCUPATION réelle (région ennemie tenue) ou LIBÈRE (notre région reprise). La
          * propriété ne bascule qu'à la paix (diplo_settle) ; la campagne est restée lectrice. */
@@ -406,7 +357,68 @@ static void sim_campaign_year(Sim *s, World *w) {
             }
             if (ntgt>=0 && a->owner!=s->human_player) campaign_redirect_corps(s->camp, s->econ, s->dp, a->id, ntgt);   /* le JOUEUR re-cible à la main */
         }
+}
+
+static void sim_campaign_monthly(Sim *s, World *w) {
+    /* Ces deux conséquences restent mensuelles : le pas de marche quotidien ne
+     * doit pas transformer le butin ou la mortalité en un débit quotidien. */
+    { bool real = tune_f("WAR_DEATHS_REAL",1.f)>0.f;
+      for (int cd=0;cd<w->n_countries && cd<SCPS_MAX_COUNTRY;cd++)
+        for (int cl=0;cl<3;cl++){
+          long pend=s->camp->dead_class_pending[cd][cl];
+          if (pend<=0) continue;
+          s->camp->dead_class_pending[cd][cl]=0;
+          if (!real) continue;
+          int cp=w->country[cd].capital_prov;
+          int cr=(cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
+          if (cr>=0) econ_region_pop_add(s->econ, cr, cl, -(float)(pend*100));
+        } }
+    for (int i=0; i<CAMPAIGN_ARMY_CAP; i++){
+        const FieldArmy *a=&s->camp->army[i];
+        if (!a->active || a->phase!=FA_SIEGE) continue;
+        if (a->loc<0 || a->loc>=s->econ->n_regions) continue;
+        int victim=s->econ->region[a->loc].owner;
+        if (victim<0 || victim==a->owner) continue;
+        if (!s->dp || diplo_status(s->dp,a->owner,victim)!=DIPLO_WAR) continue;
+        int cp=w->country[a->owner].capital_prov;
+        int crr=(cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
+        g_siege_loot_total += (double)diplo_siege_loot(s->econ, a->loc, crr);
     }
+}
+
+static void sim_campaign_day(Sim *s, World *w) {
+    int hp_fb=s->human_player;
+    sim_campaign_defense(s, w);
+    /* L'interception est appelée à la maille quotidienne ; son risque est
+     * normalisé par dt_days dans le helper pour conserver les 45 % mensuels.
+     * Elle reste avant le tick qu'elle peut interrompre. */
+    navy_interception_tick(s->navy, s->camp, w, s->econ, s->dp, 1.f, &s->camp_rng);
+    int was_active[CAMPAIGN_MAX_BATTLES], was_days[CAMPAIGN_MAX_BATTLES];
+    int was_a[CAMPAIGN_MAX_BATTLES], was_b[CAMPAIGN_MAX_BATTLES];
+    for(int k=0;k<CAMPAIGN_MAX_BATTLES;k++){
+        was_active[k]=s->camp->battle[k].active?1:0; was_days[k]=s->camp->battle[k].days;
+        was_a[k]=s->camp->battle[k].a; was_b[k]=s->camp->battle[k].b;
+    }
+    campaign_tick(s->camp, w, s->econ, s->dp, &s->camp_rng, 1.f);
+    if (hp_fb>=0 && hp_fb<SCPS_MAX_COUNTRY){
+        for(int k=0;k<CAMPAIGN_MAX_BATTLES;k++){
+            const FieldBattle *bt=&s->camp->battle[k];
+            bool changed=was_active[k] || bt->days!=was_days[k] || bt->a!=was_a[k] || bt->b!=was_b[k];
+            if(!changed || bt->active || bt->a<0 || bt->b<0)continue;
+            int oa=s->camp->army[bt->a].owner, ob=s->camp->army[bt->b].owner;
+            if(oa!=hp_fb && ob!=hp_fb)continue;
+            int mine=(oa==hp_fb)?bt->a:bt->b, foe=(oa==hp_fb)?ob:oa;
+            const FieldArmy *pa=&s->camp->army[mine];
+            bool won=pa->active && pa->broken_days<=0;
+            const FieldArmy *foe_army=&s->camp->army[(oa==hp_fb)?bt->b:bt->a];
+            /* Le nul pose 15 jours de brisure ; ce tick quotidien en a déjà décompté un. */
+            bool draw=pa->active && foe_army->active && pa->broken_days==14 && foe_army->broken_days==14;
+            feed_push(draw?FEED_BATTLE_DRAW:(won?FEED_BATTLE_WON:FEED_BATTLE_LOST),hp_fb,foe,bt->loc,
+                      battle_loss_pack(s->camp,k,hp_fb));
+        }
+    }
+    campaign_release_transports(s->camp, s->navy);
+    sim_campaign_harvest(s, w);
 }
 
 /* RECHERCHE — le revenu de SAVOIR est désormais UNIFIÉ (joueur ET IA) via econ_country_savoir :
@@ -1001,7 +1013,7 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (ra<0 || ra>=s->econ->n_regions || rb<0 || rb>=s->econ->n_regions || ra==rb) break;
             if (s->econ->region[ra].owner!=p) break;                 /* on TRACE depuis une région à soi */
             if (routes_order(s->rn, w, s->econ, ra, rb, c->a[2]!=0))
-                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_COMPLETED,ra,rb,0.f);     /* a[2] = maritime */
+                sim_cmd_feedback_exec(fb,SCPS_CMD_OUTCOME_STARTED,ra,rb,0.f);       /* liaison en formation; a[2] = maritime */
             break; }
           case CMD_MARKET_BUY: {   /* GRAIN PROVINCE (décision joueur 2026-08-12) : a[0] = PID */
             int pid=c->a[0], g=c->a[1]; long q=c->a[2]; int tier=c->a[3];
@@ -1419,6 +1431,7 @@ void sim_day(Sim *s, World *w) {
     if (s->day % 30 == 0) intertrade_commerce_reset(s->econ);   /* §5 : le pool commercial se refait au ROULEMENT de mois (plein AVANT les achats) */
     PROF(PB_AGENCY, agency_advance(s->ag, w, s->econ, s->wl, s->drift, 1));
     sim_cmd_drain(s, w);   /* JOUEUR : ses ordres s'appliquent ICI, après agency_advance, AVANT l'IA (point fixe) */
+    PROF(PB_CAMPAGNE, sim_campaign_day(s, w));  /* marche/siège au jour réel ; les effets économiques restent mensuels */
     econ_colony_day(s->econ, w);   /* chantiers de colonisation JOUEUR (no-op intégral sans chantier → golden) */
     religion_scholar_tick(w, s->econ);   /* P6 : lettrés (quotidien) — Missionnaire répand la foi ; gated (no-op sans foi) */
     /* leviers intérieurs : draine les coûts SCPS différés (purge/mater) vers TechState */
@@ -1474,6 +1487,7 @@ void sim_day(Sim *s, World *w) {
      * en quotidien, et il est pleinement dt-scalé (rien ne le veut au jour). */
     /* — mensuel : économie + réputation diplomatique (O(n²)) + démographie — */
     if (s->day % 30 == 29) {
+        sim_campaign_monthly(s, w);  /* butin et morts : un seul débit par clôture mensuelle */
         /* PORTE DES RUINES (correctif 2026-09-03) — `has_ruins_access` était posé à FAUX
          * pour tout le monde à la genèse (tech_state_init ci-dessous, « RAZ PLEINE PLAGE »)
          * et AUCUN site ne le repassait jamais à vrai : les 3 nœuds `needs_ruins`
@@ -1833,7 +1847,7 @@ void sim_day(Sim *s, World *w) {
          * (la guerre peut reprendre après le répit), et le SCORE DE GUERRE (bras-de-fer
          * + attrition qui saigne les armes). */
         PROF(PB_WARHOST, warhost_tick(s->host, w, s->econ, s->dp, s->ts, s->camp, 1.0f));   /* la mobilisation : les armées vivent (le pool compte les corps au front) */
-        PROF(PB_CAMPAGNE, sim_campaign_year(s, w));                           /* … et MARCHENT : campagne sur la carte */
+        PROF(PB_CAMPAGNE, sim_campaign_orders(s, w));                          /* ordres IA annuels, après la mobilisation */
         if (getenv("SCPS_FORGEDIAG")){   /* pic d'effectif par type sur tout le siècle (démasque la démob) */
             long yu[U_COUNT]; memset(yu,0,sizeof yu);
             for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)

@@ -242,6 +242,26 @@ static float region_food_months(const WorldEconomy *e, int r){
     return f * FOOD_MONTHS_FULL;
 }
 
+/* Une arrivée ne peut assiéger qu'un pays avec lequel elle est en guerre.
+ * `dp==NULL` reste le contrat historique des petites fixtures bas niveau :
+ * elles ne peuvent pas exprimer la paix et gardent l'ancien siège étranger.
+ * Le chemin Sim fournit toujours dp et applique donc la règle stricte. */
+static bool campaign_siege_allowed(const WorldEconomy *e, const DiploState *dp,
+                                   const FieldArmy *a, int loc){
+    if (!e || !a || loc<0 || loc>=e->n_regions) return false;
+    int owner=e->region[loc].owner;
+    int occ=dp ? dp->occupier[loc] : -1;
+    if (!dp) return owner>=0 && owner!=a->owner;
+    if (occ==a->owner) return false; /* déjà tenue par nous, même si le propriétaire reste ennemi */
+    if (owner==a->owner){
+        /* Une occupation de notre propre terre par nous-mêmes n'est jamais
+         * une cible : seul l'occupant ennemi peut être libéré en guerre. */
+        if (occ<0 || occ==a->owner) return false;
+        return diplo_status(dp,a->owner,occ)==DIPLO_WAR;
+    }
+    return owner>=0 && owner!=a->owner && diplo_status(dp,a->owner,owner)==DIPLO_WAR;
+}
+
 /* ---- Init ------------------------------------------------------------- */
 
 void campaign_init(Campaign *c, const World *w, const WorldEconomy *econ){
@@ -416,10 +436,10 @@ bool campaign_redirect_corps(Campaign *c, const WorldEconomy *econ, const DiploS
     if (force_units(&a->force)<=0) return false;
     if (a->loc==target_region){
         /* sur place : on re-décide comme une ARRIVÉE (mêmes règles que la marche). */
-        bool ours=(econ->region[a->loc].owner==a->owner);
-        int  occ = dp ? dp->occupier[a->loc] : -1;
         a->dest=target_region;
-        if (occ==a->owner || (ours && occ<0)){ a->phase=FA_IDLE; a->dest=-1; a->next=-1; return true; }
+        if (!campaign_siege_allowed(econ,dp,a,a->loc)){
+            a->phase=FA_IDLE; a->dest=-1; a->next=-1; a->days_left=0.f; return true;
+        }
         a->phase=FA_SIEGE; a->next=-1;
         a->days_left = siege_days(region_defense(econ,a->loc), region_food_months(econ,a->loc),
                                   terrain_defense_mult(c->reg_biome[a->loc], c->reg_height[a->loc]));
@@ -474,10 +494,9 @@ int campaign_preview_corps(const Campaign *c, const WorldEconomy *econ, const Di
         n++;
     }
     if(cur!=target_region){ if(reason_out)*reason_out=7; return 0; }
-    int ours=econ->region[target_region].owner==a->owner;
-    int occ=dp?dp->occupier[target_region]:-1;
-    if(arrival_out)*arrival_out=(occ==a->owner || (ours && occ<0))?1:2;
-    if(a->loc==target_region && arrival_out && (occ==a->owner || (ours && occ<0))) *arrival_out=0;
+    bool siege=campaign_siege_allowed(econ,dp,a,target_region);
+    if(arrival_out)*arrival_out=siege?2:1;
+    if(a->loc==target_region && arrival_out && !siege) *arrival_out=0;
     if(days_out)*days_out=days;
     return n;
 }
@@ -1231,12 +1250,10 @@ void campaign_tick(Campaign *c, const World *w, const WorldEconomy *e,
                 a->loc=to; a->legs++;
                 if (force_units(&a->force)<=0){ a->active=false; a->phase=FA_IDLE; break; }
                 if (a->loc==a->dest){
-                    bool ours = (e->region[a->loc].owner==a->owner);  /* même index que partout : pas de borne neuve */
-                    int  occ  = dp ? dp->occupier[a->loc] : -1;
-                    if (occ==a->owner || (ours && occ<0)){        /* déjà tenue par nous, ou notre terre LIBRE : rien à réduire */
+                    if (!campaign_siege_allowed(e,dp,a,a->loc)){    /* paix : stationner, jamais assiéger */
                         a->phase=FA_IDLE; a->dest=-1; a->next=-1; break;
                     }
-                    a->phase=FA_SIEGE; a->next=-1;                /* ennemie, OU notre terre OCCUPÉE : on assiège (libération) */
+                    a->phase=FA_SIEGE; a->next=-1;                /* ennemi en guerre, OU notre terre occupée par un belligérant */
                     a->days_left = siege_days(region_defense(e,a->loc),
                                               region_food_months(e,a->loc),
                                               terrain_defense_mult(c->reg_biome[a->loc], c->reg_height[a->loc]));
@@ -1248,6 +1265,9 @@ void campaign_tick(Campaign *c, const World *w, const WorldEconomy *e,
                     a->days_left = a->leg_days;
                 }
             } else if (a->phase==FA_SIEGE){
+                if (!campaign_siege_allowed(e,dp,a,a->loc)){
+                    a->phase=FA_IDLE; a->dest=-1; a->next=-1; a->days_left=0.f; break;
+                }
                 bool leader=true;
                 for (int j=0;j<i;j++) if (c->army[j].active && c->army[j].owner==a->owner
                     && c->army[j].loc==a->loc && c->army[j].phase==FA_SIEGE){ leader=false; break; }
@@ -1276,10 +1296,10 @@ void campaign_tick(Campaign *c, const World *w, const WorldEconomy *e,
                 if (!a->land_at_port)                            /* la grève EXPOSE — léger, pas un mur */
                     army_march_attrition(&a->force, c->reg_biome[a->loc], a->leg_days*0.5f);
                 if (force_units(&a->force)<=0){ a->active=false; a->phase=FA_IDLE; break; }
-                if (e->region[a->loc].owner==a->owner){          /* notre terre : débarqué, c'est tout */
+                if (!campaign_siege_allowed(e,dp,a,a->loc)){
                     a->phase=FA_IDLE; a->dest=-1; a->next=-1; break;
                 }
-                a->phase=FA_SIEGE; a->next=-1;                   /* l'ennemi : on assiège depuis la côte */
+                a->phase=FA_SIEGE; a->next=-1;                   /* ennemi en guerre, ou libération depuis la côte */
                 a->days_left = siege_days(region_defense(e,a->loc),
                                           region_food_months(e,a->loc),
                                           terrain_defense_mult(c->reg_biome[a->loc], c->reg_height[a->loc]));

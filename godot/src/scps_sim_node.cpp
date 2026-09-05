@@ -90,6 +90,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("army_info", "country"),           &ScpsWorld::army_info);
     ClassDB::bind_method(D_METHOD("corps_ids", "country"),            &ScpsWorld::corps_ids);
     ClassDB::bind_method(D_METHOD("corps_info", "id"),                &ScpsWorld::corps_info);
+    ClassDB::bind_method(D_METHOD("corps_route", "id"),               &ScpsWorld::corps_route);
     ClassDB::bind_method(D_METHOD("corps_move_preview", "id", "target_region"), &ScpsWorld::corps_move_preview);
     ClassDB::bind_method(D_METHOD("corps_refill_preview", "id"), &ScpsWorld::corps_refill_preview);
     ClassDB::bind_method(D_METHOD("region_tier", "region"),          &ScpsWorld::region_tier);
@@ -765,6 +766,12 @@ Dictionary ScpsWorld::corps_info(int id) {
     d["taken"]=a.taken; d["legs"]=a.legs; d["battles"]=a.battles;
     return d;
 }
+Array ScpsWorld::corps_route(int id) {
+    Array out; int path[2];
+    int n=sim?scps_corps_route(sim,id,path,2):0;
+    for(int i=0;i<n;i++) out.push_back(path[i]);
+    return out;
+}
 
 Dictionary ScpsWorld::corps_move_preview(int id, int target_region) {
     Dictionary d; ScpsMovePreview p{}; int route[128];
@@ -1338,6 +1345,7 @@ Dictionary ScpsWorld::diplo_context(int target) {
     d["shared_routes"]=c.shared_routes; d["open_routes"]=c.open_routes;
     d["route_a"]=c.route_a; d["route_b"]=c.route_b;
     d["route_maritime"]=(bool)c.route_maritime; d["route_open"]=(bool)c.route_open;
+    d["route_days_done"]=c.route_days_done; d["route_days_total"]=c.route_days_total;
     d["route_sea_days"]=c.route_sea_days; d["route_yield"]=c.route_yield;
     d["route_a_name"]=String::utf8(c.route_a_name?c.route_a_name:"");
     d["route_b_name"]=String::utf8(c.route_b_name?c.route_b_name:"");

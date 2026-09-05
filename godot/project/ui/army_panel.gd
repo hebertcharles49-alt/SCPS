@@ -49,7 +49,7 @@ var _flash_ms := -100000
 
 # STRUCTURE (décision joueur 2026-07-25) : plus d'onglets — UNE colonne : troupes ·
 # composition · raccourcis · stats · (combat s'il y en a un) · et EN BAS, la formation
-# (battle_anim : parade au repos, le choc animé en bataille). Le détail tactique complet
+# de combat quand elle est active. Le détail tactique complet
 # reste dans battle_panel (clic sur le jeton).
 var _body: VBoxContainer = null     # corps rebâti à chaque refresh
 var _title_lbl: Label = null
@@ -176,6 +176,10 @@ func _build_shell() -> void:
 	# CORPS (fond transparent — laisse voir le parchemin)
 	var bodypanel := PanelContainer.new()
 	bodypanel.theme_type_variation = "Body"
+	# Le chrome de la racine est sombre; le texte de contenu est calibré pour le
+	# parchemin clair. Cet override reste local à ArmyPanel et ne change pas le thème partagé.
+	bodypanel.add_theme_stylebox_override("panel",
+		ParchTheme.sb(Color(ParchTheme.PANEL_BG, 0.96), ParchTheme.BORDER, 1, 6, 10, 10, 8, 8))
 	root.add_child(bodypanel)
 	_body = VBoxContainer.new()
 	_body.add_theme_constant_override("separation", 4)
@@ -226,8 +230,8 @@ func _refresh() -> void:
 	_feed_anim(data)
 	_layout.call_deferred()
 
-## EN BAS, LA FORMATION : le choc animé quand une bataille est vive, la PARADE sinon
-## (le biome du lieu n'a de reader qu'en combat — la parade pose le fond par défaut).
+## EN BAS, LA FORMATION : uniquement quand une bataille est vive. Marche, siège et
+## réserve gardent le panneau compact et lisible.
 func _feed_anim(data: Dictionary) -> void:
 	if _anim == null:
 		return
@@ -239,16 +243,10 @@ func _feed_anim(data: Dictionary) -> void:
 		_anim.visible = true
 		return
 	_anim_battle_region = -1
-	if int(data.active) <= 0:
-		_anim.visible = false
-		_parade_sig = []
-		return
-	var sig := [int(data.inf), int(data.arch), int(data.cav), int(data.mages)]
-	if sig != _parade_sig:
-		_parade_sig = sig
-		_anim.setup_parade({"inf": data.inf, "arch": data.arch, "cav": data.cav,
-			"mages": data.mages, "region": (data.regions as Array)[0] if not (data.regions as Array).is_empty() else 0})
-	_anim.visible = true
+	# La formation est une lecture de combat; une parade verte occupait le panneau
+	# pendant la marche et la réserve sans ajouter d'information actionnable.
+	_anim.visible = false
+	_parade_sig = []
 
 ## rassemble les corps SÉLECTIONNÉS valides : agrégats (effectif, composition) +
 ## la liste brute (pour les lignes détaillées et les gates d'action).
@@ -837,13 +835,27 @@ func _do_refill() -> void:
 			_grp(int(totals.requested)), _grp(int(totals.guaranteed))] if ok else "Rien à renforcer.", ok)
 
 func _do_raise() -> void:
-	if Sim.world == null or not Sim.world.has_method("player_raise_corps"): return
+	if Sim.world == null or not Sim.world.has_method("player_raise_corps"):
+		_flash_msg("Levée indisponible.", false)
+		return
 	var me := int(Sim.world.player())
 	var reserve := int(Sim.world.country_army(me).get("regiments", 0))
 	var capital := int(Sim.world.country_capital_region(me)) if Sim.world.has_method("country_capital_region") else -1
+	if reserve <= 0 or capital < 0:
+		_flash_msg("Levée impossible : réserve insuffisante ou capitale indisponible.", false)
+		return
 	var packets := maxi(1, int(reserve / 2))
-	var ok: bool = reserve > 0 and capital >= 0 and Sim.world.player_raise_corps(packets, capital)
-	_flash_msg("Nouveau corps levé à la capitale." if ok else "Réserve insuffisante.", ok)
+	var queued: bool = Sim.world.player_raise_corps(packets, capital)
+	if not queued:
+		# Le booléen ne connaît que l'enfilement (file pleine / argument invalide) ;
+		# le drain peut encore refuser l'ordre, donc ne pas annoncer un corps créé.
+		_flash_msg("Ordre de levée refusé à l'enfilement.", false)
+		return
+	# Le journal transient est déjà affiché par OrderLogPanel ; réveiller le même
+	# signal permet aussi de voir l'ordre en pause. Le corps ne sera confirmé
+	# qu'après le prochain drain et la relecture des corps.
+	Sim.notify_action()
+	_flash_msg("Ordre de levée transmis · résultat au prochain jour.", true)
 
 func _do_disband() -> void:
 	if not _disband_armed:

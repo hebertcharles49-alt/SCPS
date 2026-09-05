@@ -1,6 +1,7 @@
 extends Node
 
 const ArmyPanel = preload("res://ui/army_panel.gd")
+var _failed := false
 
 func _ready() -> void:
 	var panel = ArmyPanel.new()
@@ -60,11 +61,20 @@ func _ready() -> void:
 	])
 	_check(blocked.contains("indisponible") and blocked.contains("région nationale"), "refus de renfort illisible")
 	panel.free()
-	print("army_panel_test: OK")
-	get_tree().quit(0)
+	var visual = ArmyPanel.new()
+	visual._build_shell()
+	visual._feed_anim({"active": 1, "inf": 100, "arch": 0, "cav": 0, "mages": 0, "regions": [2]})
+	_check(not visual._anim.visible, "formation visible hors bataille")
+	visual._battle_live = {"in_battle": true, "region": 2, "atk_inf": 100, "atk_units": 100,
+		"def_inf": 100, "def_units": 100, "units_are_humans": true}
+	visual._feed_anim({"active": 1, "inf": 100, "arch": 0, "cav": 0, "mages": 0, "regions": [2]})
+	_check(visual._anim.visible, "formation masquée pendant la bataille")
+	visual.free()
+	print("army_panel_test: ", "FAILED" if _failed else "OK")
+	get_tree().quit(1 if _failed else 0)
 
 func _check(ok: bool, message: String) -> void:
 	if ok:
 		return
+	_failed = true
 	push_error("army_panel_test: " + message)
-	get_tree().quit(1)

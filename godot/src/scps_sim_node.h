@@ -91,6 +91,7 @@ public:
     Dictionary army_info(int country);                /* armée de campagne (vide si inactive) */
     Array      corps_ids(int country);                 /* ids stables des corps actifs */
     Dictionary corps_info(int id);                    /* un corps explicite */
+    Array      corps_route(int id);                    /* segment engagé stocké : position → prochaine étape */
     Dictionary corps_move_preview(int id, int target_region); /* chemin/durée/attrition/issue, lecture pure */
     Dictionary corps_refill_preview(int id);        /* hommes/armes garantis + motif de refus */
     int        region_tier(int region) const;         /* tier de ville 0-5 (-1 si non colonisée) */

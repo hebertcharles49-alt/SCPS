@@ -135,10 +135,16 @@ void navy_mark_raided(WorldEconomy *econ, int region);
  * bataille aux CONVOIS hostiles qui embarquent ou traversent — un transport sans
  * escorte est une proie ; l'armée coulée SOMBRE (paquets noyés). Le blocus expose
  * donc physiquement le départ, mais ne l'interdit jamais par une garde booléenne.
- * À appeler au pas mensuel DE CAMPAGNE, après les ordres et avant campaign_tick :
- * c'est l'intervalle où le convoi est encore observable en FA_EMBARK/FA_SAIL. */
+ * À appeler après les ordres et avant campaign_tick, avec le nombre de jours
+ * écoulés depuis le dernier appel : passer 365.f/12.f pour conserver le pas
+ * mensuel historique, ou 1.f pour un appel quotidien. C'est l'intervalle où le
+ * convoi est encore observable en FA_EMBARK/FA_SAIL. */
 struct Campaign;
+/* Probabilité pure d'une rencontre pour l'intervalle écoulé. Le pas mensuel
+ * historique (365/12 jours) vaut 0,45 ; les intervalles invalides valent 0. */
+float navy_interception_probability(float dt_days);
 void navy_interception_tick(NavyState *ns, struct Campaign *camp, const World *w,
-                            WorldEconomy *econ, struct DiploState *dp, uint32_t *rng);
+                            WorldEconomy *econ, struct DiploState *dp,
+                            float dt_days, uint32_t *rng);
 
 #endif /* SCPS_NAVY_H */

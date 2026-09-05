@@ -648,6 +648,11 @@ func _refresh() -> void:
 		route = "%s ↔ %s · %d/%d route(s) ouverte(s) · rendement %.1f" % [
 			String(ctx.get("route_a_name", "?")), String(ctx.get("route_b_name", "?")),
 			int(ctx.get("open_routes", 0)), shared, float(ctx.get("route_yield", 0.0))]
+		if not bool(ctx.get("route_open", false)):
+			var route_done := int(ctx.get("route_days_done", 0))
+			var route_total := int(ctx.get("route_days_total", 0))
+			if route_total > 0:
+				route += " · formation %d/%d j" % [clampi(route_done, 0, route_total), route_total]
 		if bool(ctx.get("route_maritime", false)):
 			route += " · mer %.0f j" % float(ctx.get("route_sea_days", 0.0))
 	_engagement_lbl.text = "En cours : %s\n%s\n%s" % [", ".join(engagements), scope, route]

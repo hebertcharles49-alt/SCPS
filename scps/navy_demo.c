@@ -17,6 +17,7 @@
 #include "scps_navy.h"
 #include "scps_campaign.h"
 #include "scps_diplo.h"
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -51,6 +52,46 @@ int main(int argc,char**argv){
     ok("équipage : navire de guerre=100", navy_hull_crew(HULL_WAR)==NAVY_CREW_WAR);
     ok("équipage : coque légère=50",
        navy_hull_crew(HULL_TRANSPORT)==NAVY_CREW_LIGHT && navy_hull_crew(HULL_MERCHANT)==NAVY_CREW_LIGHT);
+    { const float pmonth=navy_interception_probability(365.f/12.f);
+      const float pday=navy_interception_probability(1.f);
+      ok("interception : le pas mensuel conserve 45 %", fabsf(pmonth-0.45f)<1e-6f);
+      ok("interception : le pas quotidien réduit le risque par appel", pday>0.f && pday<pmonth);
+      ok("interception : dt invalide n'ajoute aucun risque",
+         navy_interception_probability(0.f)==0.f && navy_interception_probability(NAN)==0.f); }
+
+    /* Contrat de cadence sans statistique : avec le même premier tirage connu
+     * (0,06446), un appel quotidien ne trouve pas la cible (p≈1,95 %), tandis
+     * que le pas mensuel historique la trouve (p=45 %). */
+    if (w->n_countries>=2){
+        Campaign *cad=calloc(1,sizeof *cad); DiploState *cad_dp=calloc(1,sizeof *cad_dp);
+        NavyState cad_navy; navy_init(&cad_navy);
+        ok("interception cadence : fixtures allouées", cad!=NULL && cad_dp!=NULL);
+        if (cad && cad_dp){
+            campaign_init(cad,w,econ); diplo_init(cad_dp); diplo_declare_war(cad_dp,0,1);
+            FieldArmy *probe=campaign_corps(cad,campaign_corps_id(1,1));
+            probe->id=campaign_corps_id(1,1); probe->owner=1; probe->active=true; probe->phase=FA_SAIL;
+            probe->sail_transports=1; probe->force.n_units=1;
+            probe->force.units[0].type=U_MILICE; probe->force.units[0].count=7;
+            cad_navy.n[0].mission=NAVY_INTERCEPTION; cad_navy.n[0].mission_target=1;
+            cad_navy.n[0].hull[HULL_WAR]=1;
+            uint32_t probe_rng=4u;
+            tune_set("NAVY_COMBAT_ON",0.f);
+            navy_interception_tick(&cad_navy,cad,w,econ,cad_dp,365.f/12.f,&probe_rng);
+            ok("marine désactivée : ancienne patrouille sans effet ni tirage",
+               probe_rng==4u && probe->active && !probe->intercept_done);
+            tune_set("NAVY_COMBAT_ON",1.f);
+            navy_interception_tick(&cad_navy,cad,w,econ,cad_dp,0.f,&probe_rng);
+            navy_interception_tick(&cad_navy,cad,w,econ,cad_dp,NAN,&probe_rng);
+            ok("interception cadence : dt invalide ne consomme ni RNG ni état",
+               probe_rng==4u && probe->active && !probe->intercept_done);
+            navy_interception_tick(&cad_navy,cad,w,econ,cad_dp,1.f,&probe_rng);
+            ok("interception cadence : 1 jour ne déclenche pas le jet mensuel", probe->active && !probe->intercept_done && probe_rng!=4u);
+            probe_rng=4u;
+            navy_interception_tick(&cad_navy,cad,w,econ,cad_dp,365.f/12.f,&probe_rng);
+            ok("interception cadence : 365/12 jours déclenche à 45 %", !probe->active && probe->intercept_done);
+        }
+        free(cad_dp); free(cad);
+    }
 
     /* (3) trouver un pays CÔTIER (best_coast >= 0) */
     int cid=-1, coast=-1;
@@ -142,7 +183,7 @@ int main(int argc,char**argv){
                    sails && sail->army[cid].phase==FA_EMBARK && risk.n[cid].at_sea==1);
                 uint32_t rrng=seed^0xA511E9B3u;
                 for (int tries=0;tries<64 && sail->army[cid].active;tries++)
-                    navy_interception_tick(&risk,sail,w,econ,sdp,&rrng);
+                    navy_interception_tick(&risk,sail,w,econ,sdp,365.f/12.f,&rrng);
                 ok("blocus-risque : la bordée peut couler le convoi pendant l'embarquement",
                    !sail->army[cid].active && risk.n[blocker].intercepts==1);
 
@@ -208,7 +249,7 @@ int main(int argc,char**argv){
             ix.n[victim].hull[HULL_TRANSPORT]=1; ix.n[victim].at_sea=1;
             uint32_t irng=seed^0x9e3779b9u;
             for (int tries=0; tries<64 && fa->active; tries++)
-                navy_interception_tick(&ix,camp,w,econ,dp,&irng);
+                navy_interception_tick(&ix,camp,w,econ,dp,365.f/12.f,&irng);
             ok("interception : le blocus voit le convoi de SA cible en FA_SAIL", !fa->active && ix.n[hunter].intercepts==1);
             ok("interception : les noyés sont ceux du corps secondaire exact", ix.n[hunter].drowned==7);
             ok("interception : transport et réservation sont physiquement détruits",

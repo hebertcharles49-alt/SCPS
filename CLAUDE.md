@@ -1,6 +1,23 @@
 # SCPS — Codebase Instructions
 
-**SCPS** est un jeu de civilisation en temps réel déterministe, codé en C99 (`scps/`), avec façade Godot 4 (`godot/project`). Moteur pur : une graine + un journal de commandes rejouent le monde byte-identique. Membrane stricte : le front Godot ne lit que des MOTS et des coordonnées, jamais un flottant moteur.
+**SCPS** est un jeu de civilisation en temps réel déterministe, codé en C99 (`scps/`), avec façade Godot 4 (`godot/project`). Le déterminisme du moteur est vérifié par des runs appariés et des bancs de sauvegarde. Le journal UI des ordres ne constitue pas, à lui seul, un fichier de replay complet : ne pas présenter le rejeu intégral d'une partie joueur comme acquis sans test dédié. Membrane : le front de jeu passe par les lecteurs de façade ; les outils développeur F10 constituent une surface explicite d'édition des coefficients.
+
+## État vérifié — 2026-09-05
+
+- Dernière suite complète après correction paix/siège : 50/51, timeout API à 420 s ; relance isolée à vérifier dans `runs/selection-2026-09-05/api-isolated.log`. Ne pas confondre avec les 51/51 de la passe cadence précédente.
+
+- Les corrections et leurs limites sont dans `docs/RAPPORT_CORRECTIONS_VERBES_2026-09-05.md` et `docs/RAPPORT_FINITION_2026-09-05.md` ; besoins de finition et contradictions : `docs/BESOINS_FINITION_2026-09-05.md`.
+- Export courant : `packaging/windows/dist_godot/session-20260905-paix/`. Format de sauvegarde 111, sans nouveau bump pour ces corrections. Fondation contrôlée sur Temple/Cathédrale provincial ; SCPS_MODS strict et atomique par ligne. Runner : 51 bancs, 7 smoke.
+- Parcours réel militaire : sélection sur silhouette, fond clair local du panneau, vignette réservée aux batailles. Arrivée en paix = repos ; guerre exigée pour siège et butin mensuel, aperçu raccordé à la même règle. Campagnes 47/47, cadence 19/19, picking/mouvement 15/15 ; preuve avant/après sur vrai écran dans `docs/RAPPORT_SELECTION_PAIX_2026-09-05.md`. Fermeture du rendu complet : ressources graphiques non libérées encore signalées, ne pas déclarer le viewer exempt de diagnostics.
+- Carte militaire : soldat individuel 2D, position liée à la progression quotidienne, aperçu avant ordre et segment engagé `[loc,next]` après ordre. Pas de route complète mémorisée ni de marche articulée. Cadence/lecteur 19/19, Godot mouvement 8/8, sauvegardes siège/bataille 20/20 chacune. Déterminisme 5×12 stable mais golden historique divergent après cadence quotidienne ; aucune re-baseline masquée.
+- Parcours : fiche relation avec progression de route (priorité aux chantiers), feedback 34/34 et Godot vert. Trois paires commerciales sur un an : échanges effectifs sur 9/11, aucun avec la cible choisie sur 7 ; rendement culturel ≠ valeur échangée. Rapport `docs/RAPPORT_PARCOURS_2026-09-05.md`.
+- Cadence militaire : `sim_campaign_day` résout désormais marche/bataille chaque jour et appelle l'interception navale avec `dt=1`; les pertes et le butin restent mensuels. `campaign_tick` garde des écarts à traiter autour des compteurs de déroute/ralliement et des contacts détectés dans un lot. Preuves et golden attendu après changement : `docs/RAPPORT_CADENCE_2026-09-05.md`.
+- Marine hors combat : `NAVY_COMBAT_ON=0` validé par `runs/cadence-2026-09-05/navy-off.log` (40/40) ; le banc doit rester explicite sur ce mode et ne vaut pas preuve du combat naval actif.
+- Campagnes : pilote public API, trois graines × témoin/production × cinq ans. Résultats contrastés, aucun tunable changé ; ne pas présenter ce pilote comme trois stratégies validées. Route acceptée = STARTED, recrutement/levée enfilés = ordre transmis. Voir `docs/RAPPORT_CAMPAGNES_2026-09-05.md` (feedback 25/25, Godot et export testés).
+- Objectif encore ouvert : campagnes intéressantes et stratégies viables, progression jusqu'aux fins, confort et performances mesurés. Des bancs verts ne démontrent pas que le jeu est terminé.
+- Pour les agents de cette session Codex, l'utilisateur a demandé Luna comme exécutants et une revue par l'orchestrateur. La hiérarchie Claude Code ci-dessous ne remplace pas cette instruction de session.
+- Progression : seule la branche du Sol est implémentée (`DESS_BRANCH_COUNT=1`), avec deux voies alternatives. Les six autres branches du document de conception sont proposées/reportées, pas jouables. Le sceau revalide maintenant la condition réelle avant récompense ; `ready` est un cache mensuel, les preuves historiques du pivot restent des latches. Voir `docs/RAPPORT_PROGRESSION_2026-09-05.md`.
+- Merveille : événement de fondation et paliers lisent `endgame_wonder_metab_count` avec `TechState` (contacts profonds compris). Une apocalypse déjà latchée empêche le verdict Ascension et l'effacement de l'empire. L'aide décrit les trois paliers ; ne pas réintroduire arbre complet/assimilation totale comme exigences retirées du verdict.
 
 ## Hiérarchie multi-agents (Claude Code)
 
@@ -42,11 +59,11 @@
 
 ## Build & vérification
 
-- `make test` : 40 bancs auto-vérifiant (core_demo + modules) ; `make smoke` (8 rapides) · `make full-test` (tout).
-- `make determinism` : 12 ans byte-identique vs golden · `make determinism-deep` : 200 ans (endgame/cataclysme/crédit).
+- `make test` : runner des bancs auto-vérifiants, précédé des gates membrane/langue/écritures régionales ; liste autoritative `tools/run_tests.sh:BENCHES_FULL` (49 à la livraison verbes). `make smoke` : 7 bancs rapides. `make full-test` ajoute déterminisme, golden et exécution sanitizer sur 20 ans.
+- `make determinism` : deux runs appariés, 5 graines × 12 ans ; `make golden` compare à la référence enregistrée. `make determinism-deep` : runs appariés à 200 ans (endgame/cataclysme/crédit), à exécuter pour prouver le contrat long.
 - `make chronicle && ./chronicle <seed> <sims> <years>` : balayage headless ; télémétrie = preuve d'équilibre.
 - `make asan && ./chronicle_asan` : ASan+UBSan muets.
-- `scps_viewer --savetest` : save→reload→rejoue A==B byte-identique · `--fuzztest` : edge cases.
+- `scps_viewer --savetest` : compare un digest partiel après continuation et save→reload→continuation ; ni replay des actions joueur, ni comparaison de tout l'état. `--fuzztest` : edge cases.
 - `make golden` : vérif non-régression (golden_hashes.txt) ; re-baseline = décision joueur documentée.
 - `make lang-check` : littéraux face-joueur vs base.
 - `make scps` : console viewer (SDL-free) · `scons -C godot` : DLL Godot.
@@ -56,15 +73,15 @@
 ## Contrats actifs (l'historique : git log + TROUVAILLES.md + AUDIT.md)
 
 - **SAVE_VERSION** : bump si sizeof(struct sérialisée) change ; `save_sane` revalide TOUT ; <version refusé.
-- **Golden hash** : gate non-régression ; 3 KO Windows pré-existants (intertrade setenv, campaign/warhost stack).
-- **Tunables registre J** : override `SCPS_TUNE=X=Y` · F10 live panel · F4 recharge scps_lang.txt.
+- **Golden hash** : gate non-régression ; 5 graines × 12 ans identiques à la livraison verbes. Les anciennes mentions de KO Windows ne remplacent pas les résultats actuels (49 bancs validés, API relancée après timeout).
+- **Tunables registre J** : 627 clés à la livraison verbes. `SCPS_TUNE=X=Y`, F10 validation/reset/copie ; phase d'application distincte de la valeur affichée. Cinq clés historiques inactives, deux diagnostics. Les seuils TIER se rafraîchissent via la révision du registre. Empreinte des valeurs effectives indépendante du texte d'affichage ; anciens profils de sauvegarde signalés, pas restaurés automatiquement. F4 recharge scps_lang.txt.
 - **Modtools 3 canaux** : `SCPS_MODS` fichier (éco/tech/unités) · `scps_lang.txt` chaînes · gen_content.py codegen.
 - **Membrane stricte** : jamais un flottant moteur face joueur ; MOTS + coords tangibles ; effets via ENTRÉES moteur, jamais bonus plat.
-- **Déterminisme** : pas de Date.now/rand hors xs32 ; save/reload bit-identique.
+- **Déterminisme** : pas de Date.now/rand hors xs32 ; objectif de continuation identique après save/reload. Le savetest actuel ne compare qu'un digest partiel ; les métadonnées time/nonce excluent la comparaison brute des fichiers.
 - **Pool national P1** : stocks empire-wide, main-d'œuvre locale, prix NATIONAL par empire (projeté sur les provinces). Allocation joueur override : CMD_* + onglet.
-- **Province grain** : verbes = journal CMD_* drainé point fixe, revalidés drain, golden-neutres. Build legal mirror : `scps_build_legal_ex` ↔ `agency_build_acct`.
+- **Province grain** : les commandes CMD_* sont revalidées au drain. Les actions religieuses et les taux de rachat sont encore des mutations directes, à inclure explicitement dans toute preuve de replay. La granularité province reste l'exigence pour les verbes économiques ; vérifier les exceptions existantes au lieu de les déclarer migrées. Build legal mirror : `scps_build_legal_ex` ↔ `agency_build_acct`.
 - **Accumulateurs EMOB/COLC/TXYR/RVLT/ITRD** : inter-ticks ⇒ sérialisés ; savetest les prend.
-- **Religion** : groupe-grain · cap ⌈N/2⌉ · fondation Temple T2+ · façade read-only.
+- **Religion** : groupe-grain · cap ⌈N/2⌉ · fondation Temple T2+ exigée par le design et contrôlée dans `scps_religion_found` via `scps_religion_founding_ready` (bâti provincial possédé). La façade a des lecteurs ET des mutations ; propriété et éligibilité de schisme sont contrôlées. Ralliement au plafond distinct de la création d'une nouvelle racine.
 - **Héritage + accès tech** : métabolisation (déverrouille/boost/remise) + 12 rungs + combos paires + apex T5 + coût √N · UI Medusa.
 - **IA AUTO** : allocation demande-driven ; override = levier joueur ; diplo via value SUBJECTIVE ; support révoltes.
 - **Worldgen** : 8 archétypes · falaises maritimes · rivières emergent (mouth-up) · lacs priority-flood · biomes pente+alluvion.

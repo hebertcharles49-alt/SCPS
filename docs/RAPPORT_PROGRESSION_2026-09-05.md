@@ -27,7 +27,25 @@ L'audit `runs/progression-2026-09-05/endgame-audit.md` démontre deux chemins à
 
 L'aide `concepts.gd` a également été alignée sur la décision actuelle du moteur : Forge, Société, Savoir, seuils de 3/4/6 héritages intégrés ou en contact profond et ressources rares. Les anciennes exigences arbre complet/assimilation de tout le monde ne sont plus annoncées.
 
-Validation intégrée des raccords Merveille et livraison : en cours. Le fond artistique dédié à la fin chaude reste absent ; l'épilogue possède un voile de secours et son texte. Ce manque d'illustration n'est pas présenté comme un défaut de déclenchement.
+Validation intégrée : événements 124/124, fins 122/122. La preuve du déclencheur contact est un test après correction confronté à l'ancien appel sans `TechState` ; contrairement aux deux autres régressions, aucun journal d'échec avant correction n'a été produit pour ce cas. Le fond artistique dédié à la fin chaude reste absent ; l'épilogue possède un voile de secours et son texte. Ce manque d'illustration n'est pas présenté comme un défaut de déclenchement.
+
+## Vérifications et livraison
+
+| Vérification | Résultat | Preuve sous `runs/progression-2026-09-05/` |
+|---|---|---|
+| Desseins | 56/56 | `missions-review.log` |
+| Influence | 49/49 | `missions-review.log` |
+| Retours d'ordres | Vert, sortie 0 | `tests/command_feedback_demo.run.log` |
+| Événements, fondation réelle incluse | 124/124 | `endgame-review.log` |
+| Fins, apocalypse concurrente incluse | 122/122 | `endgame-review.log` |
+| ASan/UBSan : Desseins et fins | 56/56 et 122/122, sans diagnostic des sanitizers | `missions-san.log`, `endgame-san.log` |
+| Membrane, langue, écritures régionales | Verts | `gates-golden.log` |
+| Golden court | 5 graines × 12 ans identiques à la référence existante | `gates-golden.log` |
+| Godot, export et démarrage Windows | Sorties 0, aucune erreur de script | `ui-final.log`, `export.log`, `package-smoke.log` |
+
+Cinq bancs ciblés ont été exécutés dans cette passe ; pas une nouvelle suite complète de 50. Les tests mémoire utilisent `detect_leaks=0`. Le golden court ne démontre pas l'équilibre des fins longues. Le message Godot sur le magasin de certificats reste un diagnostic d'environnement distinct des scripts du jeu.
+
+Le jeu actualisé est dans `packaging/windows/dist_godot/session-20260905-progression/scps.exe`, avec sa DLL voisine, LISEZMOI.txt et SHA256SUMS.txt. Les anciens exports sont conservés. Les DLL du projet sont actualisées et leurs versions précédentes sauvegardées sous `previous-project-dll/`. Le manifeste compare 229 fichiers de sources et contrats à la copie de revue ; les sources compilées correspondent au dépôt. Une modification parallèle du délai par défaut du runner (120→420 s) a été conservée et synchronisée ; les exécutions de cette passe avaient des délais explicites de 240/300 s, donc ne dépendaient pas de ce défaut. Aucun format de sauvegarde ni coefficient d'équilibre modifié.
 
 ## Critères restant à satisfaire
 

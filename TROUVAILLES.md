@@ -5,6 +5,24 @@
 
 ---
 
+## 2026-09-05 — parcours : cadence militaire annuelle masquée
+
+**Découvertes** : `sim_campaign_year` boucle douze pas de 365/12 mais n'est appelée qu'en clôture annuelle. La sonde `military-9-daily.log` observe le corps en marche jour 393, 8,9 jours restants, puis au repos jour 730 avec une bataille et aucune prise. Le temps affiché n'est donc pas un compte à rebours quotidien réel. Corriger cette cadence nécessite de relire défense/interception/récolte/mobilisation/RNG, pas seulement de renommer un compteur.
+
+**Pièges** : `scps_corps_move_preview(...,NULL,0)` retourne zéro points COPIÉS même quand `out.valid` est vrai. `ScpsDiploOptions` n'a pas de champ valid. Commerce régional à la paix sans pacte général ni Centre obligatoire : `intertrade_tick` et `intertrade_active_routes`, règles distinctes du réseau mondial. Sur 7, rendement culturel 5,927 et échanges zéro ; sur 9, rendement culturel zéro et échanges positifs.
+
+**Preuves/restes** : six simulations commerciales d'un an, route/témoin graines 7/9/11 ; effet commercial constaté sur 9/11, pas une rentabilité longue. Progression route raccordée lecteur→binding→fiche, 34/34 et test Godot. Fixture deuxième liaison obtenue par colonisation publique, pas par hypothèse de deux régions initiales. Rapport `docs/RAPPORT_PARCOURS_2026-09-05.md` ; cadence militaire encore à corriger.
+
+## 2026-09-05 — campagnes : un ordre accepté ne prouve pas son rendement
+
+**Découvertes** : trois paires API publique, graines 7/9/11, cinq ans, départs identiques. Politique de construction mensuelle : 8/10/1 manufactures finales, 1085/48/0 ouvriers. Sur 7, population +5,3 % mais solde dégradé ; sur 9, trésorerie et population moindres. Sur 11, bétail abondant ne garantit pas céréales/satisfaction ; diagnostic causal encore ouvert. Les chiffres sont dans `runs/campagnes-2026-09-05/comparison.json`.
+
+**Pièges** : `province_income_prov` retourne des quantités physiques de biens, pas des revenus monétaires. Le repli de la politique production peut choisir un bien non déficitaire ; manufacture légale ≠ manufacture rentable. CMD_ROUTE démarre une liaison différée : le journal annonce désormais STARTED. Les booléens d'enfilement recrutement/levée ne confirment pas leur exécution.
+
+**Contradiction alimentaire confirmée** : `scps_country_food` et `food_runway` comptent le bétail, mais `NEED` ne le demande jamais ; le complément résiduel `scps_econ.c:5342` ne consomme que le fruit. Compteur de rations ≠ vivres effectivement consommables. Choix demandé entre corriger la lecture et ajouter la substitution par bétail ; aucune modification de consommation effectuée dans cette passe.
+
+**Restes** : commerce avec rendement effectif et chaîne militaire complète non mesurés. Ne pas remplacer ces parcours par un achat ponctuel ou des tests de présence. Rapport `docs/RAPPORT_CAMPAGNES_2026-09-05.md`, export `session-20260905-campagnes/` ; aucun tunable changé.
+
 ## 2026-09-05 — progression : le statut prêt n'est pas une preuve actuelle
 
 **Découvertes** : `missions_tick` recalcule `ready` mensuellement ; `missions_seal` utilisait pourtant ce seul cache. Province perdue entre clôture et sceau ⇒ récompense encore versée. Reproduction `runs/progression-2026-09-05/before.log` : 53 verts, 3 échecs ; après relecture de `sol_condition` avant tout effet : 56/56. Ne pas changer les latches historiques `proof_a/proof_b`, qui ont une autre sémantique.
@@ -12,6 +30,8 @@
 **Pièges** : la façade/UI Desseins ne doit pas reconstruire les règles. Le statut visible peut dater de la clôture ; le drain reste autoritaire. La présence de sept branches dans une proposition ne prouve pas sept branches livrées : enum et panneau n'exposent que le Sol (huit échelons, deux voies alternatives).
 
 **Restes** : `docs/RAPPORT_PROGRESSION_2026-09-05.md` suit la progression réelle, les branches absentes et les raccords de Merveille. Les tests de fixtures ne remplacent pas une campagne complète sur chaque stratégie.
+
+**Merveille, raccords vérifiés** : le trigger Fondation appelait le compteur legacy sans `TechState`, donc ignorait les contacts profonds affichés. Il partage maintenant `endgame_wonder_metab_count` avec les paliers ; `events_demo` passe par l'événement et sa résolution (124/124), pas un démarrage direct de fixture. `wonder_tick` effaçait aussi l'empire après une apocalypse déjà latchée : deux échecs reproduits, garde avant ASCENDED/vanish, fixture permanente (fins 122/122). Aide Ascension corrigée : les anciennes conditions arbre complet/assimilation totale étaient retirées du moteur. Mémoire ciblée, Godot, golden court et export verts ; dernier export `session-20260905-progression/`.
 
 ## 2026-09-05 — chaîne des verbes corrigée, finition encore ouverte
 
@@ -14527,3 +14547,46 @@ stock — le monde bâtit autant qu'il veut, une à la fois.
 - Les raisons `palier` / `matière` / `trésor` / `échec` sont restées à **0** dans tous les
   smokes : soit elles ne mordent jamais, soit elles ne mordent qu'en régime tardif — c'est
   précisément ce que la run 250 ans doit dire.
+
+## 2026-09-05 — cadence militaire quotidienne et marine désactivée
+
+**Découvertes** : `sim_campaign_day` résout désormais marche, bataille et
+interception chaque jour ; `navy_interception_tick` reçoit `dt_days` et conserve
+le risque historique de 45 % au pas `365/12` via `1-(1-0.45)^(dt/(365/12))`.
+Pertes et butin économiques restent mensuels. `campaign_tick` conserve des
+écarts de découpage autour de `broken_days`/`rally_days`, des contacts détectés
+dans un lot et du reste fractionnaire tronqué.
+
+**Preuves** : avant le dernier garde `NAVY_COMBAT_ON`, le full test comptait 51
+bancs verts (`runs/cadence-2026-09-05/full-tests.log`) ; le mode marine OFF
+compte 40/40 (`navy-off.log`) ; le banc de cadence compte 12/12
+(`cadence-final.log`).
+
+**Pièges** : `golden-before-update.log` échoue sur les hashes affectés par la
+cadence ; c'est attendu avant décision de re-baseline. La marine OFF ne prouve
+pas le combat naval actif. Le banc naval final doit être relancé par
+l'orchestrateur après intégration de la DLL finale.
+# Soldat de carte — complément 2026-09-05
+
+Le moteur ne mémorise que loc/next/dest et recalcule chaque prochain saut. Ne pas
+dessiner `[loc,next,dest]` comme une route complète : next→dest serait fictif.
+`scps_corps_route` expose le segment engagé uniquement. L'overlay interpole le
+pied du sprite selon `progress_pct`, et le hit-test suit cette position. Marine
+OFF conservée. C 19/19, Godot mouvement 8/8, rendu transparent inspecté ; rapport
+`docs/RAPPORT_CADENCE_2026-09-05.md`. Le sprite n'est pas une animation articulée.
+# Arrivée en paix et sélection — 2026-09-05
+
+Vraie carte : une arrivée au jour 19 chez un neutre affichait « En siège, 579 j » avec zéro
+guerre ; assertion repos échouait. Arrival/redirect/siege et butin mensuel
+omettaient DIPLO_WAR. Correction : garde partagée avec preview, annulation à
+la paix, préservation libération et exclusion région déjà tenue par nous.
+Campagnes 47/47, cadence 19/19 ; vraie carte : un échec avant, zéro après. Sélection 15/15
+sur le rectangle du sprite, panneau clair et vignette en bataille uniquement. Rapport
+`docs/RAPPORT_SELECTION_PAIX_2026-09-05.md`. Diagnostics de ressources graphiques
+à la fermeture restent ouverts ; ne pas les confondre avec les tests C.
+# Délai du banc API — 2026-09-05, passe paix
+
+La suite complète termine à 50/51 : `scps_api_demo` dépasse 420 s après des
+assertions réussies et pendant une nouvelle genèse. La passe cadence précédente
+prenait environ 281 s pour ce banc (horodatages des journaux). La cause n'est
+pas établie ; relance isolée à délai identique, sans relever le plafond.

@@ -273,6 +273,12 @@ void scps_army_info(ScpsSim *s, int country, ScpsArmyInfo *out);
 int  scps_country_corps_count(ScpsSim *s, int country);
 int  scps_country_corps_id(ScpsSim *s, int country, int ordinal);
 void scps_corps_info(ScpsSim *s, int id, ScpsArmyInfo *out);
+/* Copie le segment de route actuellement engagé : région courante puis prochaine
+ * étape mémorisée si elle existe. La destination finale reste `ScpsArmyInfo.dest`;
+ * elle n'est pas présentée comme une étape intermédiaire. Aucun BFS ni recalcul de
+ * prévisualisation n'est effectué. Retourne le nombre de régions copiées, borné à
+ * `max_path`; 0 si simulation, corps, buffer ou état actif invalide. */
+int  scps_corps_route(ScpsSim *s, int id, int *path, int max_path);
 
 typedef struct {
     int         valid;
@@ -960,6 +966,7 @@ typedef struct {
     float trade_value;
     int shared_routes, open_routes;
     int route_a, route_b, route_maritime, route_open;
+    int route_days_done, route_days_total; /* route sélectionnée : formation en jours */
     float route_sea_days, route_yield;
     const char *route_a_name, *route_b_name;
     int target_capital_province, target_capital_region;

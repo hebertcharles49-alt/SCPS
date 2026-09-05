@@ -409,6 +409,10 @@ COMMAND_FEEDBACK_OBJS := $(filter-out $(OBJDIR)/scps_scps_api_demo.o,$(API_DEMO_
 command_feedback_demo: $(COMMAND_FEEDBACK_OBJS)
 	$(CC) $(COMMAND_FEEDBACK_OBJS) -o $@ -lm $(OMPFLAG)
 
+CAMPAIGN_CADENCE_OBJS := $(filter-out $(OBJDIR)/scps_scps_api_demo.o,$(API_DEMO_OBJS)) $(OBJDIR)/scps_campaign_cadence_demo.o
+campaign_cadence_demo: $(CAMPAIGN_CADENCE_OBJS)
+	$(CC) $(CAMPAIGN_CADENCE_OBJS) -o $@ -lm $(OMPFLAG)
+
 # Le banc inclut la façade pour injecter les pannes d'allocation localement.
 API_CACHE_OBJS := $(filter-out $(OBJDIR)/scps_scps_api_demo.o $(OBJDIR)/scps_scps_api.o,$(API_DEMO_OBJS)) $(OBJDIR)/scps_api_cache_demo.o
 api_cache_demo: $(API_CACHE_OBJS)
@@ -721,7 +725,7 @@ BENCH_BINS := core_demo monde_reel readout_demo heritage_demo tech_demo \
   econ_production_demo missions_demo influence_demo doctrines_demo ai_demo diplo_demo warhost_demo \
   events_demo structural_demo forks_demo prosperity_demo credit_demo cap_demo \
   endgame_demo audit_eco lang_demo scps_api_demo econ_demo culture_demo navy_demo trade_demo \
-  save_contract_demo tune_contract_demo command_feedback_demo api_cache_demo save_failure_demo \
+  save_contract_demo tune_contract_demo command_feedback_demo campaign_cadence_demo api_cache_demo save_failure_demo \
   player_contract_demo verb_atomicity_demo moddata_contract_demo
 TOOL_BINS := scps_viewer scps_dump scps_batch chronicle chronicle_asan econ_scan
 

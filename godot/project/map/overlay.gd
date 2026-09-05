@@ -4,13 +4,14 @@ extends Node2D
 ## army_info, centroïdes), ne calcule rien. Redessine au tick (les données bougent).
 ##
 ## Villes : un disque au centroïde, dimensionné au tier (0-5), teinté au pays.
-## Armées : un losange au centroïde de leur région + une ligne vers leur but
-## (marche), un anneau coloré par phase (marche/siège/bataille).
+## Armées : un soldat individuel au siège ou interpolé sur le segment engagé,
+## un anneau coloré par phase (marche/siège/bataille) et un effectif lisible.
 
 const UIKit = preload("res://ui/uikit.gd")
 const VKit = preload("res://ui/vkit.gd")
 const GeoNames = preload("res://map/geo_names.gd")
 const HeraldryK = preload("res://ui/heraldry.gd")
+const SOLDIER_MAP_TEX: Texture2D = preload("res://assets/scps/ui/parch/army_soldier_map_v1.png")
 const PHASE_MARCH := 1
 const PHASE_SIEGE := 2
 const PHASE_BATTLE := 3
@@ -124,6 +125,7 @@ var _region_seat := {}    ## région colonisée → SIÈGE du tampon : cellule I
 var army_selected := false                 ## compat panneau historique
 var selected_corps: Array[int] = []
 var move_preview: Dictionary = {}          ## route survolée avant clic (façade campaign, lecture pure)
+var engaged_routes: Dictionary = {}        ## corps joueur → [région courante, prochaine étape]
 ## corps_id(int) -> {pos:Vector2, radius:float} POUR LES ARMÉES ; "g<pays>"(String) -> idem POUR
 ## LES GARNISONS (revue overlay #1 : les deux espaces de clés étaient mélangés — une garnison
 ## clée par index de PAYS pouvait coïncider avec un id de CORPS réel et se faire sélectionner/
@@ -3099,9 +3101,14 @@ func point_hits_player_army(local: Vector2) -> int:
 	for id in _pa_positions:
 		if typeof(id) != TYPE_INT:
 			continue                      # garnison : pas un corps, hors hit-test
-		var p: Vector2 = _pa_positions[id]["pos"]
+		var entry: Dictionary = _pa_positions[id]
+		var p: Vector2 = entry["pos"]
 		var d := local.distance_to(p)
-		if d <= maxf(float(_pa_positions[id]["radius"]), 6.0) and d < best_d:
+		var soldier_rect: Rect2 = entry.get("rect", Rect2(p, Vector2.ZERO))
+		var inside := soldier_rect.has_point(local) or d <= maxf(float(entry["radius"]), 6.0)
+		# Distance to the feet gives a stable winner when silhouettes overlap;
+		# the lower corps id breaks an exact tie independently of Dictionary order.
+		if inside and (d < best_d or (d == best_d and (best < 0 or int(id) < best))):
 			best = int(id); best_d = d
 	return best
 
@@ -3111,7 +3118,10 @@ func player_corps_in_rect(rect: Rect2) -> Array[int]:
 	for id in _pa_positions:
 		if typeof(id) != TYPE_INT:
 			continue                      # garnison : exclue (pas un corps réel)
-		if rect.has_point(_pa_positions[id]["pos"]): out.append(int(id))
+		var entry: Dictionary = _pa_positions[id]
+		var soldier_rect: Rect2 = entry.get("rect", Rect2(entry["pos"], Vector2.ZERO))
+		if rect.intersects(soldier_rect) or rect.has_point(entry["pos"]):
+			out.append(int(id))
 	return out
 
 ## GARNISON : la réserve MOBILISÉE d'un pays (régiments recrutés, PAS en campagne) — un
@@ -3214,6 +3224,83 @@ func _draw_move_preview(w, mv: Node2D, zoom: float) -> void:
 			draw_circle(center, 8.0 / maxf(zoom, 0.001), Color(color, 0.12))
 			draw_arc(center, 8.0 / maxf(zoom, 0.001), 0.0, TAU, 24, color,
 				1.8 / maxf(zoom, 0.001), true)
+
+## Segment de marche réellement engagé : le binding fournit la prochaine étape,
+## tandis que `dest` reste seulement la cible finale. Aucun trait n'est donc
+## inventé entre la prochaine étape et la cible.
+func _draw_engaged_routes(w, mv: Node2D, zoom: float, human_idx: int) -> void:
+	for raw_id in engaged_routes:
+		var id := int(raw_id)
+		var info: Dictionary = w.corps_info(id) if w.has_method("corps_info") else {}
+		if not bool(info.get("active", false)) or int(info.get("owner", human_idx)) != human_idx:
+			continue
+		var route: Array = engaged_routes[raw_id]
+		if route.size() < 2:
+			continue
+		var from_region := int(route[0])
+		var next_region := int(route[1])
+		var from_world: Vector2 = _region_seat.get(from_region, w.region_centroid(from_region))
+		var next_world: Vector2 = _region_seat.get(next_region, w.region_centroid(next_region))
+		if from_world.x < 0 or next_world.x < 0 or from_region == next_region:
+			continue
+		var p0: Vector2 = mv.iso_pos(from_world.x, from_world.y)
+		var p1: Vector2 = mv.iso_pos(next_world.x, next_world.y)
+		var phase := int(info.get("phase_id", PHASE_MARCH))
+		var ink := Color(_phase_color(phase), 0.78)
+		draw_line(p0, p1, ink, _w(zoom, 0.42, 1.0, 2.2), true)
+		draw_circle(p1, _w(zoom, 0.48, 1.4, 3.0), ink)
+		# La cible finale est signalée sans être reliée directement : les étapes
+		# intermédiaires restent celles que le moteur n'a pas encore engagées.
+		var dest_region := int(info.get("dest", -1))
+		if dest_region >= 0 and dest_region != next_region:
+			var dest_world: Vector2 = _region_seat.get(dest_region, w.region_centroid(dest_region))
+			if dest_world.x >= 0:
+				var dp: Vector2 = mv.iso_pos(dest_world.x, dest_world.y)
+				draw_arc(dp, _w(zoom, 0.75, 2.0, 4.2), 0.0, TAU, 20,
+					Color(ink, 0.70), _w(zoom, 0.20, 0.7, 1.3), true)
+
+## Position du pied du soldat. `progress_pct` est l'état moteur; le ratio des
+## compteurs est le repli explicite pour les anciens bindings.
+func _army_world_position(w, info: Dictionary) -> Vector2:
+	var region := int(info.get("region", -1))
+	var current: Vector2 = _region_seat.get(region, w.region_centroid(region))
+	if current.x < 0 or int(info.get("phase_id", 0)) != PHASE_MARCH:
+		return current
+	var next_region := int(info.get("next", -1))
+	if next_region < 0:
+		return current
+	var next: Vector2 = _region_seat.get(next_region, w.region_centroid(next_region))
+	if next.x < 0:
+		return current
+	var pct := float(info.get("progress_pct", -1))
+	if pct < 0.0 or pct > 100.0:
+		var leg_days := float(info.get("leg_days", 0.0))
+		var days_left := float(info.get("days_left", 0.0))
+		pct = 100.0 * (1.0 - days_left / leg_days) if leg_days > 0.0 else 0.0
+	return current.lerp(next, clampf(pct / 100.0, 0.0, 1.0))
+
+func _draw_army_soldier(ctr: Vector2, s: float, zoom: float, phase: int, flip_x := false) -> void:
+	# Texture source 1024×1536 : conserver le ratio 2:3, pied aligné sur ctr.
+	var rect := _army_soldier_rect(ctr, s, flip_x)
+	var w := rect.size.x
+	draw_circle(ctr + Vector2(0.0, 1.0 / maxf(zoom, 0.001)),
+		w * 0.28, Color(_phase_color(phase), 0.28))
+	var sx := -1.0 if flip_x else 1.0
+	draw_set_transform(ctr, 0.0, Vector2(sx, 1.0))
+	var local_rect := Rect2(Vector2(-rect.size.x * 0.5, -rect.size.y), rect.size)
+	draw_texture_rect(SOLDIER_MAP_TEX,
+		Rect2(local_rect.position + Vector2(1.2, 1.8) / maxf(zoom, 0.001), local_rect.size),
+		false, Color(0.05, 0.03, 0.02, 0.35))
+	draw_texture_rect(SOLDIER_MAP_TEX, local_rect, false, Color(1.0, 1.0, 1.0, 0.98))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+## Rectangle de collision = exactement le rectangle de destination du sprite.
+## Le miroir ne change pas son enveloppe axis-aligned, mais reste un paramètre
+## commun au calcul de rendu et au hit-test pour garder le contrat explicite.
+func _army_soldier_rect(ctr: Vector2, s: float, _flip_x := false) -> Rect2:
+	var h := s * 1.42
+	var w := h * (1024.0 / 1536.0)
+	return Rect2(ctr + Vector2(-w * 0.5, -h), Vector2(w, h))
 
 func _draw() -> void:
 	var w = Sim.world
@@ -3601,10 +3688,10 @@ func _draw_iso(w, mv: Node2D) -> void:
 
 	_draw_move_preview(w, mv, zoom)
 
-	# ── ARMÉES : PION DE PLATEAU (planche 32 — la figurine d'étain posée SUR la
-	#    table, drapeau teinté au pays, la POSE dit la phase) + ligne de marche.
-	#    Ombre de contact = la même pièce en silhouette, décalée SE (front32). ──
+	# ── ARMÉES : SOLDAT INDIVIDUEL (asset parchemin 2:3), pied sur le siège ou sur
+	#    l'étape engagée; la phase reste indiquée par l'anneau/marker. ──
 	_pa_positions.clear()
+	_draw_engaged_routes(w, mv, zoom, human_idx)
 	var actors: Array[Dictionary] = []
 	for c in range(w.country_count()):
 		var ids: Array = w.corps_ids(c) if w.has_method("corps_ids") else []
@@ -3629,42 +3716,33 @@ func _draw_iso(w, mv: Node2D) -> void:
 		if c != human_idx and not _fog_visible_region(reg):
 			continue
 		# POSE sur le SIÈGE (la ville), pas le centroïde — l'armée reste SUR la province.
-		var rctr: Vector2 = _region_seat.get(reg, w.region_centroid(reg))
+		var phase: int = int(a.get("phase_id", 0))
+		# En marche, le pied glisse sur l'étape engagée; au siège/repos il reste
+		# sur le siège de la région courante.
+		var rctr: Vector2 = _army_world_position(w, a)
 		if rctr.x < 0:
 			continue
 		var ctr: Vector2 = mv.iso_pos(rctr.x, rctr.y)
 		var stack_i: int = int(actor["stack"])
 		ctr += Vector2((stack_i % 4) * 5.0, -float(stack_i / 4) * 4.0) / maxf(zoom,0.0001)
+		var s := _w(zoom, 7.0, 34.0, 74.0)
+		var facing_left := false
+		if phase == PHASE_MARCH:
+			var next_region := int(a.get("next", -1))
+			if next_region >= 0:
+				var next_world: Vector2 = _region_seat.get(next_region, w.region_centroid(next_region))
+				facing_left = next_world.x < rctr.x
 		if c == human_idx:
-			_pa_positions[corps_id] = {"pos":ctr,"radius":_w(zoom,6.0,30.0,64.0)*0.7}
+			_pa_positions[corps_id] = {"pos":ctr, "radius":_w(zoom,6.0,30.0,64.0)*0.7,
+				"rect":_army_soldier_rect(ctr, s, facing_left)}
 			if corps_id in selected_corps:
 				_draw_army_ring(ctr, _w(zoom, 6.0, 30.0, 64.0), zoom)
-		var phase: int = a.get("phase_id", 0)
-		var dest: int = a.get("dest", -1)
-		if dest >= 0 and dest != reg:
-			var dw: Vector2 = w.region_centroid(dest)
-			if dw.x >= 0:
-				draw_line(ctr, mv.iso_pos(dw.x, dw.y), Color(_phase_color(phase), 0.7), 1.4 / zoom)
-		var pt: Texture2D = HeraldryK.pion(phase, c)
-		if pt != null:
-			var s := _w(zoom, 7.0, 34.0, 74.0)
-			var r := Rect2(ctr - Vector2(s * 0.5, s * 0.80), Vector2(s, s))
-			draw_texture_rect(pt, Rect2(r.position + Vector2(s * 0.05, s * 0.04), r.size),
-				false, Color(0.05, 0.03, 0.02, 0.32))       # ombre de contact SE
-			draw_texture_rect(pt, r, false)
-			if phase == PHASE_BATTLE:
-				var mk: Texture2D = HeraldryK.marker("battle")
-				if mk != null:
-					var ms := s * 0.42
-					draw_texture_rect(mk, Rect2(ctr + Vector2(s * 0.30, -s * 0.30), Vector2(ms, ms)), false)
-		else:
-			# repli vectoriel (pièce absente) : l'ancien losange teinté
-			var col := _country_color(c)
-			var sv := 5.0 / zoom
-			draw_circle(ctr, sv + _w(zoom, 0.45, 1.4, 2.6), Color(_phase_color(phase), 0.9))
-			var diamond := PackedVector2Array([
-				ctr + Vector2(0, -sv), ctr + Vector2(sv, 0), ctr + Vector2(0, sv), ctr + Vector2(-sv, 0)])
-			draw_colored_polygon(diamond, col)
+		_draw_army_soldier(ctr, s, zoom, phase, facing_left)
+		if phase == PHASE_BATTLE:
+			var mk: Texture2D = HeraldryK.marker("battle")
+			if mk != null:
+				var ms := s * 0.42
+				draw_texture_rect(mk, Rect2(ctr + Vector2(s * 0.30, -s * 0.30), Vector2(ms, ms)), false)
 		# COMPTEUR D'EFFECTIF (rendu attendu EU4) : strip à la couleur du pays + « N k »,
 		# taille ÉCRAN constante, posé SOUS le pion — la force se lit sans cliquer.
 		var un := int(a.get("units", 0))

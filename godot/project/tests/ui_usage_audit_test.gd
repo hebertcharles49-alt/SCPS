@@ -7,6 +7,7 @@ const SearchPalette = preload("res://ui/search_palette.gd")
 const DesseinsPanel = preload("res://ui/desseins_panel.gd")
 const DiscoveryPanel = preload("res://ui/discovery_panel.gd")
 const OrderLogPanel = preload("res://ui/order_log_panel.gd")
+const CountryActions = preload("res://ui/country_actions.gd")
 const SidebarDrawer = preload("res://ui/sidebar_drawer.gd")
 const DevPanel = preload("res://ui/devpanel.gd")
 const ReligionPanel = preload("res://ui/religion_panel.gd")
@@ -160,6 +161,58 @@ func _run() -> void:
 	if Sim.world != null and Sim.world.has_method("religion_eligible") and int(Sim.world.religion_eligible(int(Sim.world.player()))) <= 0:
 		religion._on_schism()
 		_check(String(religion._action_lbl.text) != "", "un refus religion n'est pas visible dans le panneau")
+	# PARCOURS COMMERCE : la fiche relation lit les compteurs du chantier de route
+	# et ne promet pas encore de rendement avant l'ouverture. On crée explicitement
+	# une route terrestre vers une région d'un pays connu, puis on laisse un jour
+	# moteur drainer l'ordre et faire progresser le chantier.
+	if Sim.world != null and Sim.world.has_method("country_relations") \
+		and Sim.world.has_method("diplo_context") and Sim.world.has_method("player_route") \
+		and Sim.world.has_method("region_count") and Sim.world.has_method("region_owner") \
+		and Sim.world.has_method("country_capital_province") and Sim.world.has_method("province_region"):
+		var route_probe_done := false
+		var route_player := int(Sim.world.player())
+		var route_cap_prov := int(Sim.world.country_capital_province(route_player))
+		var route_cap := int(Sim.world.province_region(route_cap_prov))
+		for raw_rel in Sim.world.country_relations(route_player):
+			var rel_probe: Dictionary = raw_rel
+			var route_target := int(rel_probe.get("country", -1))
+			var route_ctx: Dictionary = Sim.world.diplo_context(route_target)
+			if route_cap < 0:
+				continue
+			for candidate_region in range(Sim.world.region_count()):
+				if int(Sim.world.region_owner(candidate_region)) != route_target:
+					continue
+				var before_shared := int(route_ctx.get("shared_routes", 0))
+				if not Sim.world.player_route(route_cap, candidate_region, false):
+					continue
+				var before: Dictionary = Sim.world.diplo_context(route_target)
+				before_shared = int(before.get("shared_routes", before_shared))
+				Sim.world.advance_days(1)
+				var after: Dictionary = Sim.world.diplo_context(route_target)
+				var after_shared := int(after.get("shared_routes", 0))
+				if after_shared <= before_shared:
+					continue
+				var route_total := int(after.get("route_days_total", 0))
+				var route_done := int(after.get("route_days_done", 0))
+				_check(after_shared > before_shared and route_total > 0,
+					"la commande route ne crée pas le chantier relationnel attendu")
+				_check(route_done >= 0 and route_done <= route_total,
+					"la fiche relation expose une progression de route hors bornes")
+				_check(not bool(after.get("route_open", false)) and route_done > 0,
+					"la fiche relation ne montre pas la route en formation après le drain")
+				var relation_panel := CountryActions.new()
+				add_child(relation_panel)
+				relation_panel.open_country(route_target)
+				await get_tree().process_frame
+				_check(String(relation_panel._engagement_lbl.text).contains("formation"),
+					"la fiche relation n’affiche pas le chantier de route")
+				relation_panel.queue_free()
+				route_probe_done = true
+				break
+			if route_probe_done:
+				break
+		_check(route_probe_done,
+			"le parcours route ne peut pas créer de liaison vers un pays connu")
 	religion.queue_free()
 	dev.queue_free()
 	var discovery := DiscoveryPanel.new()

@@ -1836,7 +1836,8 @@ func _gui_input(event: InputEvent) -> void:
 					if bool(ub.on) and Sim.world != null:
 						var okr: bool = int(Sim.world.player_recruit(int(ub.type))) > 0
 						_armee_flash_ok = okr
-						_armee_flash = ("⚔ %s — levée ordonnée" % String(ub.nom)) if okr else ("✗ %s — file pleine" % String(ub.nom))
+						_armee_flash = ("⚔ %s — ordre de recrutement transmis · résultat au prochain jour." % String(ub.nom)) if okr \
+							else ("✗ %s — ordre de recrutement refusé à l'enfilement." % String(ub.nom))
 						Sound.play("ui_click")
 						Sim.notify_action()
 						queue_redraw()

@@ -670,12 +670,24 @@ void navy_course_tick(NavyState *ns, const World *w, WorldEconomy *econ,
  * ════════════════════════════════════════════════════════════════════════ */
 #include "scps_campaign.h"
 
+float navy_interception_probability(float dt_days){
+    if (!isfinite(dt_days) || dt_days<=0.f) return 0.f;
+    return 1.f-powf(1.f-0.45f,dt_days/(365.f/12.f));
+}
+
 void navy_interception_tick(NavyState *ns, struct Campaign *camp, const World *w,
-                            WorldEconomy *econ, struct DiploState *dp, uint32_t *rng){
+                            WorldEconomy *econ, struct DiploState *dp,
+                            float dt_days, uint32_t *rng){
+    if (!ns || !camp || !w || !econ || !dp || !rng
+        || !isfinite(dt_days) || dt_days<=0.f) return;
+    if (tune_f("NAVY_COMBAT_ON",0.f)<=0.f) return; /* OFF reste OFF, même avec une ancienne mission sauvegardée. */
+    /* 45 % était le risque par appel mensuel. En cadence quotidienne, convertir
+     * ce risque en intensité garde la même probabilité cumulée sur un mois. */
+    const float encounter_p=navy_interception_probability(dt_days);
     for (int i=0;i<CAMPAIGN_ARMY_CAP;i++){
         FieldArmy *a=&camp->army[i];
         /* L'embarquement doit être exposé lui aussi : une traversée courte peut
-         * passer EMBARK→SAIL→LAND à l'intérieur d'un unique tick mensuel et ne
+         * passer EMBARK→SAIL→LAND à l'intérieur d'un unique appel et ne
          * serait sinon jamais observable par la marine. */
         if (!a->active || (a->phase!=FA_EMBARK && a->phase!=FA_SAIL) || a->intercept_done) continue;
         int owner=a->owner;
@@ -692,7 +704,7 @@ void navy_interception_tick(NavyState *ns, struct Campaign *camp, const World *w
                         || (pat->mission==NAVY_BLOCUS && pat->mission_target==owner);
             if (!hunting || pat->hull[HULL_WAR]<1) continue;
             if (diplo_status(dp,e,owner)!=DIPLO_WAR) continue;
-            if (crs_f(rng)>0.45f) continue;                   /* la mer est grande : on ne trouve pas toujours */
+            if (crs_f(rng)>encounter_p) continue;              /* risque calibré par mois, dt indépendant */
             a->intercept_done=true;                            /* une chasse par traversée */
             Navy *esc=&ns->n[owner];
             int escort=esc->hull[HULL_WAR];
@@ -732,7 +744,7 @@ void navy_interception_tick(NavyState *ns, struct Campaign *camp, const World *w
                     pat->crew+=NAVY_CREW_LIGHT; pat->prises++;
                 }
             }
-            break;                                             /* une bataille par convoi et par mois */
+            break;                                             /* une bataille par convoi et par appel */
         }
     }
 }
